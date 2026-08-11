@@ -13,6 +13,10 @@ import {
 } from "@elizaos/core";
 import { SELF_ENTITY_ID } from "@elizaos/shared";
 import { describe, expect, it, vi } from "vitest";
+import {
+  completeLifeOpsEffect,
+  lifeOpsNoopEffect,
+} from "./action-effect-result.js";
 import { createFamilyCommunicationsAction } from "./family-communications/action.js";
 import type { FamilyCommunicationsService } from "./family-communications/service.js";
 import { createHouseholdOperationsAction } from "./household-operations/action.js";
@@ -672,5 +676,81 @@ describe("LifeOps action effect settlement", () => {
     expect(result.success).toBe(false);
     expect(String(result.error)).toMatch(/invalid result|commit proof/iu);
     expect(malformedCallback).not.toHaveBeenCalled();
+  });
+});
+
+// The settlement helper's callback is the turn's single visible delivery of
+// the canonical text, so a successful settlement must also declare the turn
+// complete — that opts every LifeOps read/answer action (calendar feed,
+// contact search, owner records, …) into the planner's gated-evaluator skip in
+// one place, closing the double-speak where the model paraphrased an
+// already-delivered answer ("clear tomorrow." then "you're clear tomorrow.").
+describe("completeLifeOpsEffect turn completion", () => {
+  const receipt = () =>
+    lifeOpsNoopEffect({
+      receiptId: "CALENDAR:calendar.feed:message-effect-contract:snapshot-1",
+      operation: "calendar.feed",
+      resource: { kind: "runtime.message", id: "message-effect-contract" },
+      artifacts: [],
+      idempotency: { key: null, replayed: false },
+      observedAt: COMMITTED_AT,
+      reason: "Read-only evaluation left calendar state unchanged.",
+    });
+
+  it("declares a successful settlement turn-complete and delivers the text once", async () => {
+    const callback = vi.fn(async () => []);
+    const result = await completeLifeOpsEffect(
+      callback,
+      { success: true, text: "clear tomorrow." },
+      receipt(),
+    );
+
+    expect(result).toMatchObject({
+      success: true,
+      text: "clear tomorrow.",
+      userFacingText: "clear tomorrow.",
+      verifiedUserFacing: true,
+      turnComplete: true,
+    });
+    expect(callback).toHaveBeenCalledOnce();
+    expect(callback).toHaveBeenCalledWith({ text: "clear tomorrow." });
+  });
+
+  it("preserves an action's explicit turnComplete: false disclaimer", async () => {
+    const result = await completeLifeOpsEffect(
+      undefined,
+      { success: true, text: "clear tomorrow.", turnComplete: false },
+      receipt(),
+    );
+
+    expect(result.turnComplete).toBe(false);
+  });
+
+  it("declares a verified failure settlement turn-complete too", async () => {
+    const result = await completeLifeOpsEffect(
+      undefined,
+      { success: false, text: "The calendar provider is unavailable." },
+      receipt(),
+    );
+
+    // The delivered failure text is the turn's complete honest outcome; the
+    // stamp keeps the evaluator from appending a paraphrase bubble (live
+    // incident: "calendar's acting up" plus "I couldn't verify...").
+    expect(result.verifiedUserFacing).toBe(true);
+    expect(result.turnComplete).toBe(true);
+  });
+
+  it("preserves an explicit turnComplete: false disclaimer on failures", async () => {
+    const result = await completeLifeOpsEffect(
+      undefined,
+      {
+        success: false,
+        text: "The calendar provider is unavailable.",
+        turnComplete: false,
+      },
+      receipt(),
+    );
+
+    expect(result.turnComplete).toBe(false);
   });
 });

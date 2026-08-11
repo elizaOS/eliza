@@ -558,17 +558,30 @@ async function handleSearch(
 	const visible = matches
 		.filter((item) => storedDocumentMatchesFilters(item, filters))
 		.slice(0, limit);
+	const projected = visible.map((item) => {
+		const metadata = item.metadata as Record<string, unknown> | undefined;
+		return {
+			...item,
+			transcriptId:
+				typeof metadata?.transcriptId === "string"
+					? metadata.transcriptId
+					: undefined,
+			startMs:
+				typeof metadata?.startMs === "number" ? metadata.startMs : undefined,
+			endMs: typeof metadata?.endMs === "number" ? metadata.endMs : undefined,
+		};
+	});
 	const text =
-		visible.length === 0
+		projected.length === 0
 			? `I couldn't find any documents matching ${describeQuery(query)}.`
-			: `Found ${visible.length} document fragment(s) for ${describeQuery(query)}:\n\n${visible
+			: `Found ${projected.length} document fragment(s) for ${describeQuery(query)}:\n\n${projected
 					.map((item, index) => `${index + 1}. ${item.content.text ?? ""}`)
 					.join("\n\n")}`;
 	// No visible callback: fragments are intermediate retrieval data for the
 	// planner to synthesize into the answer, not the answer itself.
 	return result(true, text, "search", {
-		values: { query: queryLogView(query), results: visible },
-		data: { query: queryLogView(query), results: visible },
+		values: { query: queryLogView(query), results: projected },
+		data: { query: queryLogView(query), results: projected },
 	});
 }
 

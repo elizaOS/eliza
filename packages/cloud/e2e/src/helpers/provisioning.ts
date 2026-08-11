@@ -7,6 +7,7 @@
  */
 
 import { expect } from "@playwright/test";
+import { retrySharedRuntimeWarming } from "./shared-runtime";
 
 const CRON_SECRET = "test-cron-secret";
 
@@ -363,28 +364,42 @@ export interface BridgeRpcResponse {
   error?: { code: number; message: string };
 }
 
+/**
+ * POST a JSON-RPC request to a shared agent's bridge.
+ *
+ * The route resolves agent scope `cacheOnly`, so the first calls against a
+ * freshly created agent answer the retryable cache-warming 503 while hydration
+ * runs under `waitUntil` (see `src/helpers/shared-runtime.ts`). Poll that
+ * signal exactly like the shipped bridge poller does; every other status is
+ * still an immediate failure.
+ */
 export async function sendAgentBridgeRequest(
   endpoints: ProvisioningEndpoints,
   apiKey: string,
   sandboxId: string,
   rpc: BridgeRpcRequest,
 ): Promise<BridgeRpcResponse> {
-  const res = await fetch(
-    `${endpoints.apiUrl}/api/v1/eliza/agents/${sandboxId}/bridge`,
-    {
-      method: "POST",
-      headers: {
-        ...authHeaders(apiKey),
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(rpc),
+  const { status, json } = await retrySharedRuntimeWarming<unknown>(
+    async () => {
+      const res = await fetch(
+        `${endpoints.apiUrl}/api/v1/eliza/agents/${sandboxId}/bridge`,
+        {
+          method: "POST",
+          headers: {
+            ...authHeaders(apiKey),
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(rpc),
+        },
+      );
+      return { status: res.status, json: (await res.json()) as unknown };
     },
   );
   expect(
-    res.status,
-    `agent bridge returned ${res.status}: ${await res.clone().text()}`,
+    status,
+    `agent bridge returned ${status}: ${JSON.stringify(json)}`,
   ).toBe(200);
-  const body = (await res.json()) as BridgeRpcResponse;
+  const body = json as BridgeRpcResponse;
   expect(body.jsonrpc).toBe("2.0");
   return body;
 }

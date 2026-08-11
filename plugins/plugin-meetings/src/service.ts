@@ -24,6 +24,7 @@ import {
   DEFAULT_MEETING_MAX_DURATION_MS,
   MEETING_PLATFORM_LABELS,
   MEETING_TRANSCRIPT_FINALIZED_EVENT,
+  type MeetingArtifact,
   type MeetingAutoLeaveConfig,
   type MeetingBillingState,
   type MeetingEndReason,
@@ -34,6 +35,7 @@ import {
   type MeetingSession,
   type MeetingSessionStatus,
   type MeetingTranscriptFinalizedPayload,
+  meetingArtifactToTranscriptSegments,
   parseMeetingUrl,
   parsePositiveInteger,
 } from "@elizaos/shared";
@@ -43,7 +45,16 @@ import type {
 } from "@elizaos/shared/transcripts";
 import { MeetingEventEmitter } from "./events.js";
 import { resolveMeetingRuntimeSupport } from "./platform-support.js";
-import { MeetingTranscriptWriter } from "./transcripts/meeting-transcript-writer.js";
+import {
+  ZoomCloudImportError,
+  type ZoomCloudImportInput,
+  type ZoomCloudImportResult,
+} from "./platforms/zoom/cloud-import.js";
+import { buildZoomBotMeetingArtifact } from "./platforms/zoom/shared-artifact.js";
+import {
+  MeetingTranscriptWriter,
+  persistMeetingMedia,
+} from "./transcripts/meeting-transcript-writer.js";
 import type {
   MeetingAudioSink,
   MeetingBillingError,
@@ -69,12 +80,31 @@ export interface MeetingServiceDependencies {
   createBillingSession?(
     input: MeetingBillingSessionInput,
   ): MeetingBillingSession | null;
+  importZoomCloudMeeting?(
+    input: ZoomCloudImportInput,
+  ): Promise<ZoomCloudImportResult>;
+}
+
+export interface ZoomMeetingImportRequest {
+  meetingId: string;
+  accessToken?: string;
+  retainRecordings?: boolean;
+  maxFileBytes?: number;
+  maxTotalBytes?: number;
+}
+
+export interface ZoomMeetingImportResult {
+  artifact: MeetingArtifact;
+  transcript: Transcript;
+  warnings: string[];
+  requestIds: string[];
 }
 
 export type MeetingJoinErrorCode =
   | "invalid_url"
   | "unsupported_platform"
   | "unsupported_host"
+  | "policy_blocked"
   | "already_joined"
   | "invalid_duration_cap"
   | "insufficient_credits";
@@ -213,6 +243,8 @@ export class MeetingService extends Service {
       );
     }
 
+    this.assertCapturePolicyAllowsJoin();
+
     const duplicate = [...this.sessions.values()].find(
       (s) =>
         !TERMINAL_STATUSES.has(s.status) &&
@@ -271,6 +303,21 @@ export class MeetingService extends Service {
       sessionId,
       language: request.language,
       retainAudio,
+      ...(request.ghostAttendance?.attendees?.length
+        ? {
+            calendarSpeakerEvidence: request.ghostAttendance.attendees.map(
+              (attendee, index) => ({
+                source: "calendar_attendee" as const,
+                name: attendee.name,
+                confidence: 0.82,
+                evidenceId:
+                  request.calendarEventId ??
+                  request.ghostAttendance?.calendarId ??
+                  `meeting-calendar-attendee:${sessionId}:${index}`,
+              }),
+            ),
+          }
+        : {}),
       ...(billing ? { billing } : {}),
       onSpendCapReached: (error: MeetingBillingError) => {
         const live = this.sessions.get(sessionId);
@@ -332,6 +379,7 @@ export class MeetingService extends Service {
         platform: parsed.platform,
         meetingUrl: parsed.meetingUrl,
         nativeMeetingId: parsed.nativeMeetingId,
+        consentState: "not_required",
       });
     } catch (err) {
       try {
@@ -429,6 +477,101 @@ export class MeetingService extends Service {
     const live = [...this.sessions.values()].map((s) => this.toDto(s));
     const all = options?.active ? live : [...live, ...this.terminated.values()];
     return all.sort((a, b) => b.requestedAt - a.requestedAt);
+  }
+
+  /** Import one completed Zoom cloud meeting into canonical media/transcripts. */
+  async importZoomMeeting(
+    request: ZoomMeetingImportRequest,
+  ): Promise<ZoomMeetingImportResult> {
+    const importer = this.deps.importZoomCloudMeeting;
+    if (!importer) {
+      throw new Error("[MeetingService] Zoom cloud import is not configured");
+    }
+    const accessToken =
+      request.accessToken?.trim() ||
+      this.settingString("ELIZA_ZOOM_ACCESS_TOKEN") ||
+      this.settingString("ZOOM_ACCESS_TOKEN");
+    if (!accessToken) {
+      throw new ZoomCloudImportError(
+        "invalid_request",
+        "Zoom access token is required in the private request or ELIZA_ZOOM_ACCESS_TOKEN.",
+        400,
+      );
+    }
+    const imported = await importer({
+      meetingId: request.meetingId,
+      accessToken,
+      retainRecordings: request.retainRecordings,
+      maxFileBytes: request.maxFileBytes,
+      maxTotalBytes: request.maxTotalBytes,
+    });
+    const importId = crypto.randomUUID() as UUID;
+    const roomId = createUniqueUuid(
+      this.runtime,
+      `zoom-import:${imported.artifact.meeting.id}`,
+    );
+    const worldId = await this.ensureMeetingsWorld();
+    await this.runtime.ensureRoomExists({
+      id: roomId,
+      name:
+        imported.artifact.meeting.title ??
+        `Zoom meeting ${imported.artifact.meeting.id}`,
+      source: "zoom",
+      type: ChannelType.GROUP,
+      channelId: imported.artifact.meeting.id,
+      worldId,
+      metadata: {
+        kind: "zoom-cloud-import",
+        meetingArtifactId: imported.artifact.artifactId,
+      },
+    });
+    const writer = new MeetingTranscriptWriter(this.runtime, 0);
+    await writer.start({
+      sessionId: importId,
+      worldId,
+      roomId,
+      entityId: this.runtime.agentId,
+      title:
+        imported.artifact.meeting.title ??
+        `Zoom meeting ${imported.artifact.meeting.id}`,
+      platform: "zoom",
+      meetingUrl: `https://zoom.us/j/${encodeURIComponent(request.meetingId)}`,
+      nativeMeetingId:
+        imported.artifact.meeting.nativeMeetingId ??
+        imported.artifact.meeting.id,
+      consentState:
+        imported.artifact.meeting.consent.state === "redacted"
+          ? "unknown"
+          : imported.artifact.meeting.consent.state,
+    });
+    const segments = meetingArtifactToTranscriptSegments(imported.artifact);
+    const retainedAudio = imported.artifact.media.find((media) =>
+      media.mimeType.startsWith("audio/"),
+    );
+    const transcript = await writer.finalize({
+      segments,
+      endReason: "normal_completion",
+      participants: imported.artifact.platformParticipants.map(
+        (participant) => ({
+          id: participant.id,
+          displayName: participant.displayName ?? participant.id,
+          joinedAtMs: participant.joinedAtMs,
+          leftAtMs: participant.leftAtMs,
+        }),
+      ),
+      retainedAudio: retainedAudio
+        ? { url: retainedAudio.url, contentType: retainedAudio.mimeType }
+        : undefined,
+      metadata: {
+        capture: { mode: "platform_import" },
+        meetingArtifact: imported.artifact,
+        zoomImport: {
+          warnings: imported.warnings,
+          requestIds: imported.requestIds,
+        },
+      },
+    });
+    return { ...imported, transcript };
   }
 
   /** API/UI projection of one internal session (defensive copies). */
@@ -645,11 +788,53 @@ export class MeetingService extends Service {
     }
 
     try {
+      const audioWav = session.pipeline.sessionAudioWav?.() ?? null;
+      let retainedAudio: { url: string; contentType: string } | undefined;
+      let meetingArtifact: MeetingArtifact | undefined;
+      if (session.platform === "zoom" && audioWav && audioWav.length > 0) {
+        const stored = persistMeetingMedia(audioWav, "wav");
+        const endedAt = new Date().toISOString();
+        meetingArtifact = buildZoomBotMeetingArtifact({
+          artifactId: `zoom-bot:${session.id}`,
+          meetingId: session.nativeMeetingId,
+          title: `Zoom meeting ${session.nativeMeetingId}`,
+          startedAt: session.activeAt
+            ? new Date(session.activeAt).toISOString()
+            : undefined,
+          endedAt,
+          participants: session.participants,
+          segments,
+          audio: { ...stored, mimeType: "audio/wav" },
+        });
+        retainedAudio = { url: stored.url, contentType: "audio/wav" };
+      }
       finalizedTranscript = await session.writer.finalize({
         segments,
         endReason,
         participants: session.participants,
-        audioWav: session.pipeline.sessionAudioWav?.() ?? null,
+        audioWav: retainedAudio ? null : audioWav,
+        retainedAudio,
+        metadata: meetingArtifact
+          ? {
+              capture: { mode: "bot" },
+              meetingArtifact,
+              zoomCapture: {
+                capturePath: "bot_web_client",
+                sourceLoss: [
+                  "mixed_audio_only",
+                  "per_participant_audio_unavailable",
+                ],
+              },
+            }
+          : session.platform === "zoom"
+            ? {
+                zoomCapture: {
+                  capturePath: "bot_web_client",
+                  artifactStatus: "unavailable",
+                  reason: "source_audio_not_retained",
+                },
+              }
+            : undefined,
       });
     } catch (err) {
       endReason = "error";
@@ -741,6 +926,43 @@ export class MeetingService extends Service {
   private settingString(key: string): string | null {
     const value = this.runtime.getSetting(key);
     return typeof value === "string" && value.trim() ? value.trim() : null;
+  }
+
+  /**
+   * Enforce the organization capture policy before billing, pipeline creation,
+   * transcript persistence, or adapter launch. Local/self-hosted runtimes keep
+   * their current opt-in meeting behavior. Cloud/organization-managed runtimes
+   * must carry an explicit `allow`; absence or an unrecognized value fails
+   * closed so a policy lookup/configuration failure cannot start media capture.
+   */
+  private assertCapturePolicyAllowsJoin(): void {
+    const configured = this.settingString(
+      "ELIZA_MEETINGS_CAPTURE_POLICY",
+    )?.toLowerCase();
+    const cloudEnabled = this.settingString(
+      "ELIZAOS_CLOUD_ENABLED",
+    )?.toLowerCase();
+    const organizationManaged =
+      Boolean(
+        this.settingString("ELIZAOS_CLOUD_ORG_ID") ??
+          this.settingString("ELIZA_CLOUD_ORGANIZATION_ID"),
+      ) ||
+      cloudEnabled === "true" ||
+      cloudEnabled === "1";
+
+    if (configured === "allow") return;
+    if (configured === "deny") {
+      throw new MeetingJoinError(
+        "policy_blocked",
+        "meeting capture is blocked by organization policy",
+      );
+    }
+    if (configured !== undefined || organizationManaged) {
+      throw new MeetingJoinError(
+        "policy_blocked",
+        "meeting capture policy is unavailable; capture was not started",
+      );
+    }
   }
 
   private resolveMaxDurationMs(requested: number | undefined): number {

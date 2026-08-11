@@ -1,25 +1,29 @@
 /**
  * Login page (public) — Steward is the sole auth provider. Renders the lazy
- * Steward login section with the terms/privacy links.
+ * Steward login section with the terms/privacy links. Listens for device-code
+ * auth completion on same-origin tabs so an orphaned sign-in form does not
+ * stay live after the session already finished (#18001).
  */
 
 import { BRAND_PATHS, LOGO_FILES } from "@elizaos/shared/brand";
-import { lazy, Suspense } from "react";
-import { Link } from "react-router-dom";
+import { CheckCircle2 } from "lucide-react";
+import { lazy, Suspense, useEffect, useState } from "react";
+import { Link, useSearchParams } from "react-router-dom";
+import { Button } from "../../../../components/primitives";
+import { subscribeCloudAuthComplete } from "../../../auth/cloud-auth-complete-signal";
 import { useCloudT } from "../../../shell/CloudI18nProvider";
 import { usePageTitle } from "../../lib/use-page-title";
+import { LoginOptionsSkeleton } from "./login-section-skeleton";
 
 const StewardLoginSection = lazy(() => import("./steward-login-section"));
 
+// Chunk-load fallback with the SAME geometry as the section's own
+// provider-discovery skeleton and the final option stack, so the card holds
+// one height from first paint through hydration to interactive (#18256).
 function StewardLoginSectionFallback() {
   return (
-    <div className="space-y-4" aria-busy="true" aria-hidden="true">
-      <div className="h-touch w-full rounded-md bg-bg-muted" />
-      <div className="flex gap-2">
-        <div className="h-touch flex-1 rounded-md bg-bg-muted" />
-        <div className="h-touch flex-1 rounded-md bg-bg-muted" />
-      </div>
-      <div className="mx-auto h-3 w-3/4 rounded-full bg-bg-muted" />
+    <div aria-busy="true" aria-hidden="true">
+      <LoginOptionsSkeleton />
     </div>
   );
 }
@@ -68,14 +72,82 @@ function LoginBackground({ children }: { children: React.ReactNode }) {
   );
 }
 
+function sessionIdFromLoginReturnTo(returnTo: string | null): string | null {
+  if (!returnTo?.trim()) return null;
+  try {
+    const url = new URL(returnTo, window.location.origin);
+    if (!url.pathname.includes("/auth/cli-login")) return null;
+    const session = url.searchParams.get("session")?.trim();
+    return session || null;
+  } catch (error) {
+    void error;
+    return null;
+  }
+}
+
 export default function LoginPage() {
   const t = useCloudT();
+  const [searchParams] = useSearchParams();
+  const handoffSessionId = sessionIdFromLoginReturnTo(
+    searchParams.get("returnTo"),
+  );
+  const [handoffComplete, setHandoffComplete] = useState(false);
+
   usePageTitle(
     t("cloud.login.metaTitle", { defaultValue: "Sign In | Eliza Cloud" }),
   );
+
+  useEffect(() => {
+    if (!handoffSessionId) return;
+    return subscribeCloudAuthComplete((message) => {
+      if (message.sessionId !== handoffSessionId) return;
+      setHandoffComplete(true);
+      try {
+        window.close();
+      } catch (error) {
+        void error;
+      }
+    });
+  }, [handoffSessionId]);
+
+  if (handoffComplete) {
+    return (
+      <LoginBackground>
+        <div className="space-y-6 text-center">
+          <CheckCircle2 className="mx-auto h-10 w-10 text-status-success" />
+          <div className="space-y-1.5">
+            <h1 className="font-sans text-2xl font-semibold tracking-tight text-txt-strong">
+              {t("cloud.login.handoffCompleteTitle", {
+                defaultValue: "You're signed in",
+              })}
+            </h1>
+            <p className="text-sm text-muted">
+              {t("cloud.login.handoffCompleteBody", {
+                defaultValue:
+                  "Return to the Eliza app tab to continue. You can close this window.",
+              })}
+            </p>
+          </div>
+          <Button
+            className="w-full h-11 bg-accent hover:bg-accent-hover text-accent-foreground"
+            onClick={() => {
+              try {
+                window.close();
+              } catch (error) {
+                void error;
+              }
+            }}
+          >
+            {t("cloud.login.closeWindow", { defaultValue: "Close window" })}
+          </Button>
+        </div>
+      </LoginBackground>
+    );
+  }
+
   return (
     <LoginBackground>
-      <div className="space-y-8">
+      <main className="space-y-8">
         <div className="space-y-3 text-center">
           <img
             src={`${BRAND_PATHS.logos}/${LOGO_FILES.cloudWhite}`}
@@ -105,19 +177,19 @@ export default function LoginPage() {
           })}{" "}
           <Link
             to="/terms-of-service"
-            className="font-medium text-txt underline-offset-4 transition-opacity hover:underline hover:opacity-80"
+            className="inline-flex min-h-touch min-w-touch items-center justify-center rounded-sm px-2 font-medium text-txt underline-offset-4 transition-[opacity,background-color,color] hover:underline hover:opacity-80"
           >
             {t("cloud.login.termsLink", { defaultValue: "Terms" })}
           </Link>{" "}
           {t("cloud.login.and", { defaultValue: "and" })}{" "}
           <Link
             to="/privacy-policy"
-            className="font-medium text-txt underline-offset-4 transition-opacity hover:underline hover:opacity-80"
+            className="inline-flex min-h-touch min-w-touch items-center justify-center rounded-sm px-2 font-medium text-txt underline-offset-4 transition-[opacity,background-color,color] hover:underline hover:opacity-80"
           >
             {t("cloud.login.privacyPolicy", { defaultValue: "Privacy Policy" })}
           </Link>
         </p>
-      </div>
+      </main>
     </LoginBackground>
   );
 }

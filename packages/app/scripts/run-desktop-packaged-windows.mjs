@@ -2,21 +2,15 @@
 /**
  * Windows packaged-desktop smoke lane (`test:desktop:packaged:windows`).
  *
- * This is the canonical entry point invoked by three call sites that used to
- * reference a non-existent script name:
- *   - .github/workflows/release-electrobun.yml  ("Smoke test packaged Windows app")
- *   - packages/app-core/scripts/release-check.ts
- *   - packages/app-core/test/regression-matrix.json (desktop-packaged-windows)
- *
  * It runs the existing packaged Windows PowerShell smoke on Windows, preserving
- * the workflow's `ELIZA_TEST_WINDOWS_LAUNCHER_PATH_FILE` handoff contract, and
+ * the `ELIZA_TEST_WINDOWS_LAUNCHER_PATH_FILE` handoff contract, and
  * — critically — fails with a NON-ZERO exit and a truthful precondition message
  * on any non-Windows host, instead of the previous `error: Script not found`
  * (invisible break) or a silent green "skipped" run. A release smoke lane that
  * cannot actually run must report that as a failure so the packaged-Windows
  * loop is never reported green with nothing executed.
  *
- * The `ELIZA_TEST_WINDOWS_*` env contract set by the workflow step (install
+ * The `ELIZA_TEST_WINDOWS_*` env contract set by the operator (install
  * dir, launcher dir, launcher-path file, artifacts/build dirs) is inherited by
  * the delegated Playwright process unchanged.
  */

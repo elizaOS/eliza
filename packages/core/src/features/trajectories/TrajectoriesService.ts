@@ -8,7 +8,11 @@ import { v4 as uuidv4 } from "uuid";
 import { ElizaError } from "../../errors";
 import { logger } from "../../logger";
 import { serializeTrajectoryExport } from "../../services/trajectory-export";
-import { sanitizeTrajectoryJsonValue } from "../../services/trajectory-json";
+import {
+	createTrajectoryJsonBudget,
+	sanitizeTrajectoryJsonValue,
+	sanitizeTrajectoryJsonValueInBudget,
+} from "../../services/trajectory-json";
 import type {
 	TrajectoryExportOptions as CanonicalTrajectoryExportOptions,
 	TrajectoryDetailRecord,
@@ -519,22 +523,37 @@ function normalizeTrajectoryStep(value: unknown): TrajectoryStep | null {
 	const stepId = stringValue(value.stepId);
 	const stepNumber = numberValue(value.stepNumber);
 	const timestamp = numberValue(value.timestamp);
-	const environmentState = normalizeEnvironmentState(value.environmentState);
-	const observation = isJsonObject(value.observation)
-		? value.observation
-		: null;
+	// Rows written before envelope-first persistence could lose trailing step
+	// keys to sanitizer budget exhaustion (an oversized llmCall broke out of
+	// the object walk mid-step). ABSENT fields therefore decode to their
+	// startStep defaults so those rows stay readable and terminalizable;
+	// fields that are present but mistyped still reject the step.
+	const environmentState = Object.hasOwn(value, "environmentState")
+		? normalizeEnvironmentState(value.environmentState)
+		: timestamp !== null
+			? { timestamp }
+			: null;
+	const observation = Object.hasOwn(value, "observation")
+		? isJsonObject(value.observation)
+			? value.observation
+			: null
+		: {};
+	const llmCallsRaw = Object.hasOwn(value, "llmCalls") ? value.llmCalls : [];
+	const providerAccessesRaw = Object.hasOwn(value, "providerAccesses")
+		? value.providerAccesses
+		: [];
 	const hasAction = Object.hasOwn(value, "action");
 	const action = hasAction ? normalizeActionAttempt(value.action) : null;
-	const reward = numberValue(value.reward);
-	const done = booleanValue(value.done);
+	const reward = Object.hasOwn(value, "reward") ? numberValue(value.reward) : 0;
+	const done = Object.hasOwn(value, "done") ? booleanValue(value.done) : false;
 	if (
 		!stepId ||
 		stepNumber === null ||
 		timestamp === null ||
 		!environmentState ||
 		!observation ||
-		!Array.isArray(value.llmCalls) ||
-		!Array.isArray(value.providerAccesses) ||
+		!Array.isArray(llmCallsRaw) ||
+		!Array.isArray(providerAccessesRaw) ||
 		(hasAction && !action) ||
 		reward === null ||
 		done === null
@@ -542,13 +561,13 @@ function normalizeTrajectoryStep(value: unknown): TrajectoryStep | null {
 		return null;
 	}
 	const llmCalls: LLMCall[] = [];
-	for (const callValue of value.llmCalls) {
+	for (const callValue of llmCallsRaw) {
 		const call = normalizeLlmCall(callValue);
 		if (!call) return null;
 		llmCalls.push(call);
 	}
 	const providerAccesses: ProviderAccess[] = [];
-	for (const accessValue of value.providerAccesses) {
+	for (const accessValue of providerAccessesRaw) {
 		const access = normalizeProviderAccess(accessValue);
 		if (!access) return null;
 		providerAccesses.push(access);
@@ -679,6 +698,113 @@ function sqlLiteral(v: unknown): string {
 	if (typeof v === "object")
 		return `'${stringifyTrajectoryJsonForSql(v).replace(/'/g, "''")}'`;
 	return `'${String(v).replace(/'/g, "''")}'`;
+}
+
+/**
+ * Persist steps envelope-first so a persisted row can ALWAYS be re-read by
+ * `parseTrajectorySteps`. The fields the strict reader requires (stepId,
+ * stepNumber, timestamp, environmentState, observation, reward, done) are
+ * written from their typed in-memory values; only the bulky payload —
+ * llmCalls, providerAccesses, action, reasoning, metadata — competes for the
+ * shared sanitization budget. Whole-graph sanitization used to let budget
+ * exhaustion inside one oversized llmCall (a planner call carrying large tool
+ * schemas crosses the node cap by itself) break out of the step object and
+ * drop its trailing required keys, poisoning the row for every subsequent
+ * read: later captures were lost and terminalization failed permanently.
+ *
+ * A payload entry that no longer satisfies its read contract after bounding
+ * is dropped and counted on `step.metadata.truncatedLlmCalls` /
+ * `.truncatedProviderAccesses` instead of being persisted as garbage.
+ */
+function boundStepsForPersistence(steps: TrajectoryStep[]): JsonValue[] {
+	const budget = createTrajectoryJsonBudget();
+	return steps.map((step) => {
+		const envCandidate = sanitizeTrajectoryJsonValueInBudget(
+			step.environmentState,
+			budget,
+		);
+		const environmentState: JsonValue = normalizeEnvironmentState(envCandidate)
+			? (envCandidate as JsonValue)
+			: { timestamp: step.timestamp };
+		const observationCandidate = sanitizeTrajectoryJsonValueInBudget(
+			step.observation,
+			budget,
+		);
+		const observation: JsonValue = isJsonObject(observationCandidate)
+			? observationCandidate
+			: {};
+
+		let truncatedLlmCalls = 0;
+		const llmCalls: JsonValue[] = [];
+		for (const call of step.llmCalls) {
+			const bounded = sanitizeTrajectoryJsonValueInBudget(call, budget);
+			if (bounded !== undefined && normalizeLlmCall(bounded)) {
+				llmCalls.push(bounded);
+			} else {
+				truncatedLlmCalls += 1;
+			}
+		}
+		let truncatedProviderAccesses = 0;
+		const providerAccesses: JsonValue[] = [];
+		for (const access of step.providerAccesses) {
+			const bounded = sanitizeTrajectoryJsonValueInBudget(access, budget);
+			if (bounded !== undefined && normalizeProviderAccess(bounded)) {
+				providerAccesses.push(bounded);
+			} else {
+				truncatedProviderAccesses += 1;
+			}
+		}
+
+		const actionCandidate =
+			step.action === undefined
+				? undefined
+				: sanitizeTrajectoryJsonValueInBudget(step.action, budget);
+		const action = normalizeActionAttempt(actionCandidate)
+			? actionCandidate
+			: undefined;
+		const reasoningCandidate =
+			typeof step.reasoning === "string"
+				? sanitizeTrajectoryJsonValueInBudget(step.reasoning, budget)
+				: undefined;
+		const metadataCandidate =
+			step.metadata === undefined
+				? undefined
+				: sanitizeTrajectoryJsonValueInBudget(step.metadata, budget);
+		const metadataBase = isJsonObject(metadataCandidate)
+			? metadataCandidate
+			: undefined;
+		const metadata =
+			truncatedLlmCalls > 0 || truncatedProviderAccesses > 0
+				? {
+						...(metadataBase ?? {}),
+						...(truncatedLlmCalls > 0 ? { truncatedLlmCalls } : {}),
+						...(truncatedProviderAccesses > 0
+							? { truncatedProviderAccesses }
+							: {}),
+					}
+				: metadataBase;
+
+		return {
+			stepId: step.stepId,
+			stepNumber: step.stepNumber,
+			timestamp: step.timestamp,
+			environmentState,
+			observation,
+			llmCalls,
+			providerAccesses,
+			...(action !== undefined ? { action } : {}),
+			reward: step.reward,
+			done: step.done,
+			...(typeof reasoningCandidate === "string"
+				? { reasoning: reasoningCandidate }
+				: {}),
+			...(metadata !== undefined ? { metadata } : {}),
+		};
+	});
+}
+
+function stepsSqlLiteral(steps: TrajectoryStep[]): string {
+	return `'${JSON.stringify(boundStepsForPersistence(steps)).replace(/'/g, "''")}'`;
 }
 
 function trajectoryRunIdWhereClause(runId: string): string {
@@ -1694,7 +1820,7 @@ export class TrajectoriesService extends Service {
           total_cache_read_input_tokens = ${totals.totalCacheReadInputTokens},
           total_cache_creation_input_tokens = ${totals.totalCacheCreationInputTokens},
           total_reward = ${trajectory.totalReward},
-          steps_json = ${sqlLiteral(trajectory.steps)},
+          steps_json = ${stepsSqlLiteral(trajectory.steps)},
           reward_components_json = ${sqlLiteral(trajectory.rewardComponents)},
           metrics_json = ${sqlLiteral(trajectory.metrics)},
           metadata_json = ${sqlLiteral(trajectory.metadata)},
@@ -1720,7 +1846,7 @@ export class TrajectoriesService extends Service {
           total_cache_read_input_tokens = ${totals.totalCacheReadInputTokens},
           total_cache_creation_input_tokens = ${totals.totalCacheCreationInputTokens},
           total_reward = ${trajectory.totalReward},
-          steps_json = ${sqlLiteral(trajectory.steps)},
+          steps_json = ${stepsSqlLiteral(trajectory.steps)},
           metadata = ${sqlLiteral(trajectory.metadata)},
           updated_at = ${sqlLiteral(updatedAtIso)}
         WHERE id = ${sqlLiteral(trajectoryId)}
@@ -1897,7 +2023,7 @@ export class TrajectoriesService extends Service {
 			const updatedAtIso = new Date().toISOString();
 			await this.executeRawSql(`
 				UPDATE trajectories SET
-					steps_json = ${sqlLiteral(trajectory.steps)},
+					steps_json = ${stepsSqlLiteral(trajectory.steps)},
 					step_count = ${totals.stepCount},
 					llm_call_count = ${totals.llmCallCount},
 					provider_access_count = ${totals.providerAccessCount},
@@ -2164,7 +2290,7 @@ export class TrajectoriesService extends Service {
 			const updatedAtIso = new Date().toISOString();
 			await this.executeRawSql(`
 				UPDATE trajectories SET
-					steps_json = ${sqlLiteral(trajectory.steps)},
+					steps_json = ${stepsSqlLiteral(trajectory.steps)},
 					step_count = ${totals.stepCount},
 					llm_call_count = ${totals.llmCallCount},
 					provider_access_count = ${totals.providerAccessCount},
@@ -2494,7 +2620,7 @@ export class TrajectoriesService extends Service {
 				const updatedAtIso = new Date().toISOString();
 				await execute(`
 				UPDATE trajectories SET
-					steps_json = ${sqlLiteral(trajectory.steps)},
+					steps_json = ${stepsSqlLiteral(trajectory.steps)},
 					step_count = ${totals.stepCount},
 					llm_call_count = ${totals.llmCallCount},
 					provider_access_count = ${totals.providerAccessCount},

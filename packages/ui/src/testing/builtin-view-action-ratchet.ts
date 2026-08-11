@@ -280,11 +280,11 @@ export const BUILTIN_VIEW_MUTATION_BASELINE = [
     viewId: "skills",
     sourceFiles: [
       "packages/ui/src/components/pages/SkillsView.tsx",
-      "packages/ui/src/components/pages/skill-marketplace.tsx",
+      "packages/ui/src/components/pages/skill-installer.tsx",
       "packages/ui/src/components/pages/skill-detail-panel.tsx",
     ],
     semanticActions: ["SKILL", "USE_SKILL"],
-    maxMutationSites: 56,
+    maxMutationSites: 45,
     notes:
       "Skill install/toggle/uninstall and marketplace flows pair with SKILL (manage) and USE_SKILL (invoke) from plugin-agent-skills.",
   },

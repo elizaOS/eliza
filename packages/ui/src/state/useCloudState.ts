@@ -34,6 +34,7 @@ import {
   invokeDesktopBridgeRequestWithTimeout,
   isElectrobunRuntime,
 } from "../bridge";
+import { publishCloudAuthComplete } from "../cloud/auth/cloud-auth-complete-signal";
 import { clearStaleStewardSession } from "../cloud/shell/StewardProviderShared";
 import { getBootConfig, setBootConfig } from "../config/boot-config";
 import { dispatchElizaCloudStatusUpdated } from "../events";
@@ -145,6 +146,8 @@ function isMatchingCloudAuthCompleteMessage(
   data: unknown,
   sessionId: string,
 ): boolean {
+  // Keep the message contract aligned with cloud-auth-complete-signal.ts
+  // (BroadcastChannel + postMessage share the same payload shape).
   if (!sessionId || typeof data !== "object" || data === null) return false;
   const message = data as { type?: unknown; sessionId?: unknown };
   return (
@@ -1033,6 +1036,17 @@ export function useCloudState({
 
               closePrePoppedWindow();
               void closeExternalBrowser();
+              // Same-origin Cloud auth tabs (orphaned /login) dismiss via BC.
+              // Cross-origin openers already advanced via this poll.
+              if (sessionId) {
+                publishCloudAuthComplete(sessionId);
+              }
+              try {
+                window.focus();
+              } catch (error) {
+                void error;
+                // error-policy:J6 focus is best-effort after auth return.
+              }
 
               stopCloudLoginPolling();
               setElizaCloudConnected(true);

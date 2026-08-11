@@ -3,8 +3,9 @@
  *
  * The module turns transcribed voice memos and owner-authored exemplars into a
  * structured prompt contract, a style card, and an iterable draft artifact.
- * It deliberately keeps storage out of scope: work-thread/document surfaces can
- * persist the returned artifact without re-parsing prompt prose.
+ * The CREATIVE_DRAFT action persists this artifact through the shared document
+ * service; these primitives remain storage-agnostic so other sanctioned
+ * surfaces can reuse the same artifact contract.
  *
  * The drafting instructions are a GEPA optimization target: buildCreativeDraftPrompt
  * sources them through OptimizedPromptService for the `creative_draft` task
@@ -84,6 +85,8 @@ export interface CreativeDraftArtifact {
   readonly acceptedEdits: readonly string[];
   readonly vetoedPhrases: readonly string[];
   readonly sections: readonly CreativeDraftSection[];
+  /** Latest composed prose, retained with the standing artifact across turns. */
+  readonly narrative?: string;
   readonly createdAt: string;
   readonly updatedAt: string;
 }

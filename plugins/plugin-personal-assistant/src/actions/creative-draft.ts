@@ -1,32 +1,39 @@
 /**
  * `CREATIVE_DRAFT` action — owner-voice drafting from transcribed memos and
- * owner-authored exemplars. It is the real consumer of the creative-draft
- * primitives (`src/lifeops/creative-draft/index.ts`): it builds an owner-voice
- * style card, composes or revises a structured draft artifact, runs one live
- * model pass through the sanctioned `creative_draft` OptimizedPromptService
- * task, and scores the result's owner-voice fidelity.
+ * owner-authored exemplars. It consumes voice transcripts produced by the
+ * canonical attachment pipeline, sources owner-authored documents, builds an
+ * owner-voice style card, and persists the standing draft in the shared
+ * owner-private document store. One live model pass uses the sanctioned
+ * `creative_draft` OptimizedPromptService task and scores owner-voice fidelity.
  *
  * Subactions:
  *   - `compose` — build a style card from exemplars + memos and draft in the
  *     owner's voice, returning a `CreativeDraftArtifact` and a fidelity score.
- *   - `revise`  — apply a `CreativeDraftRevision` to a supplied draft artifact
+ *   - `revise`  — reload a persisted draft, apply a `CreativeDraftRevision`
  *     (targeting the section named by `sectionId`/`sectionIndex`), then
- *     re-compose the narrative.
+ *     re-compose and persist the narrative.
  *
- * Drafts are returned to the caller, never persisted here — work-thread and
- * document surfaces own storage. Owner-only via `hasLifeOpsAccess`.
+ * Owner-only via `hasLifeOpsAccess`.
  */
 
 import type {
   Action,
   ActionExample,
   ActionResult,
+  DocumentService,
   HandlerCallback,
   HandlerOptions,
   IAgentRuntime,
+  Media,
   Memory,
+  UUID,
 } from "@elizaos/core";
-import { logger, ModelType, runWithTrajectoryPurpose } from "@elizaos/core";
+import {
+  ElizaError,
+  logger,
+  ModelType,
+  runWithTrajectoryPurpose,
+} from "@elizaos/core";
 import { hasLifeOpsAccess } from "../lifeops/access.js";
 import {
   applyCreativeDraftRevision,
@@ -62,9 +69,25 @@ interface CreativeDraftActionParameters {
   request?: CreativeDraftRequest;
   memos?: readonly CreativeMemoTranscript[];
   ownerSources?: readonly OwnerVoiceSource[];
+  draftDocumentId?: string;
   currentDraft?: CreativeDraftArtifact;
   revision?: CreativeDraftRevision;
 }
+
+interface StoredCreativeDraftEnvelope {
+  readonly schemaVersion: 1;
+  readonly kind: "creative-owner-voice-draft";
+  readonly draft: CreativeDraftArtifact;
+}
+
+type CreativeDraftDocumentService = Pick<
+  DocumentService,
+  "addDocument" | "getDocumentById" | "listDocuments" | "updateDocument"
+>;
+
+const CREATIVE_DRAFT_DOCUMENT_KIND = "creative-owner-voice-draft";
+const MAX_OWNER_VOICE_SOURCES = 12;
+const MAX_OWNER_SOURCE_CHARS = 6_000;
 
 function getParams(
   options: HandlerOptions | undefined,
@@ -116,6 +139,8 @@ async function composeDraftNarrative(args: {
       args.runtime.useModel(ModelType.TEXT_LARGE, { prompt }),
     );
   } catch (error) {
+    // error-policy:J4 A transient narrative-model failure leaves the persisted
+    // structured draft visibly intact instead of fabricating generated prose.
     logger.warn(
       {
         src: "action:creative_draft",
@@ -127,6 +152,255 @@ async function composeDraftNarrative(args: {
     return undefined;
   }
   return typeof raw === "string" ? raw.trim() : undefined;
+}
+
+function creativeDraftDocuments(
+  runtime: IAgentRuntime,
+): CreativeDraftDocumentService | null {
+  return runtime.getService<DocumentService>("documents");
+}
+
+function isVoiceMemoAttachment(attachment: Media): boolean {
+  return (
+    attachment.contentType === "audio" ||
+    attachment.contentType === "video" ||
+    attachment.mimeType?.startsWith("audio/") === true ||
+    attachment.mimeType?.startsWith("video/") === true
+  );
+}
+
+async function resolveMemoTranscripts(args: {
+  runtime: IAgentRuntime;
+  message: Memory;
+  supplied: readonly CreativeMemoTranscript[];
+}): Promise<CreativeMemoTranscript[]> {
+  const byId = new Map(args.supplied.map((memo) => [memo.id, memo]));
+  const incoming = (args.message.content.attachments ?? []).filter(
+    isVoiceMemoAttachment,
+  );
+  let processed = incoming;
+  if (incoming.some((attachment) => !attachment.text?.trim())) {
+    const processor = args.runtime.messageService?.processAttachments;
+    if (!processor) {
+      throw new ElizaError(
+        "Voice memo transcription is unavailable because the attachment processor is not running",
+        { code: "CREATIVE_DRAFT_TRANSCRIPTION_UNAVAILABLE" },
+      );
+    }
+    processed = (
+      await processor.call(args.runtime.messageService, args.runtime, incoming)
+    ).filter(isVoiceMemoAttachment);
+  }
+
+  for (const attachment of processed) {
+    const transcript = attachment.text?.trim();
+    if (!transcript) {
+      throw new ElizaError(
+        `Voice memo ${attachment.filename ?? attachment.title ?? attachment.id} has no usable transcript`,
+        {
+          code: "CREATIVE_DRAFT_TRANSCRIPTION_EMPTY",
+          context: { attachmentId: attachment.id },
+        },
+      );
+    }
+    byId.set(attachment.id, {
+      id: attachment.id,
+      transcript,
+      affect: "neutral",
+    });
+  }
+  return [...byId.values()];
+}
+
+function ownerVoiceSourceKind(memory: Memory): OwnerVoiceSource["source"] {
+  const metadata = memory.metadata as Record<string, unknown> | undefined;
+  const label = [metadata?.source, metadata?.filename, metadata?.title]
+    .filter((value): value is string => typeof value === "string")
+    .join(" ")
+    .toLowerCase();
+  if (/mail|email|gmail/u.test(label)) return "sent_mail";
+  if (/thread|post|tweet|social/u.test(label)) return "thread";
+  if (/essay|article|blog/u.test(label)) return "essay";
+  return "note";
+}
+
+async function resolveOwnerVoiceSources(args: {
+  documents: CreativeDraftDocumentService;
+  message: Memory;
+  supplied: readonly OwnerVoiceSource[];
+}): Promise<OwnerVoiceSource[]> {
+  const byId = new Map(args.supplied.map((source) => [source.id, source]));
+  const documents = await args.documents.listDocuments(args.message, {
+    addedBy: args.message.entityId,
+    limit: MAX_OWNER_VOICE_SOURCES,
+  });
+  for (const document of documents) {
+    const metadata = document.metadata as Record<string, unknown> | undefined;
+    if (metadata?.documentKind === CREATIVE_DRAFT_DOCUMENT_KIND) continue;
+    const text = document.content.text?.trim();
+    if (!document.id || !text) continue;
+    byId.set(document.id, {
+      id: document.id,
+      text: text.slice(0, MAX_OWNER_SOURCE_CHARS),
+      source: ownerVoiceSourceKind(document),
+    });
+    if (byId.size >= MAX_OWNER_VOICE_SOURCES) break;
+  }
+  return [...byId.values()].slice(0, MAX_OWNER_VOICE_SOURCES);
+}
+
+function serializeDraft(draft: CreativeDraftArtifact): string {
+  const envelope: StoredCreativeDraftEnvelope = {
+    schemaVersion: 1,
+    kind: CREATIVE_DRAFT_DOCUMENT_KIND,
+    draft,
+  };
+  return JSON.stringify(envelope, null, 2);
+}
+
+function parseStoredDraft(
+  content: string,
+  documentId: string,
+): CreativeDraftArtifact {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(content);
+  } catch (cause) {
+    // error-policy:J2 Preserve the malformed durable record as the cause of a
+    // typed draft-load failure instead of treating it as an empty draft.
+    throw new ElizaError("Stored creative draft is not valid JSON", {
+      code: "CREATIVE_DRAFT_STORED_INVALID",
+      cause,
+      context: { documentId },
+    });
+  }
+  if (
+    typeof parsed !== "object" ||
+    parsed === null ||
+    Reflect.get(parsed, "kind") !== CREATIVE_DRAFT_DOCUMENT_KIND
+  ) {
+    throw new ElizaError("Stored document is not a creative draft", {
+      code: "CREATIVE_DRAFT_STORED_INVALID",
+      context: { documentId },
+    });
+  }
+  const draft = Reflect.get(parsed, "draft");
+  if (
+    typeof draft !== "object" ||
+    draft === null ||
+    typeof Reflect.get(draft, "id") !== "string" ||
+    typeof Reflect.get(draft, "title") !== "string" ||
+    !Array.isArray(Reflect.get(draft, "sections"))
+  ) {
+    throw new ElizaError("Stored creative draft artifact is malformed", {
+      code: "CREATIVE_DRAFT_STORED_INVALID",
+      context: { documentId },
+    });
+  }
+  return draft as CreativeDraftArtifact;
+}
+
+async function persistNewDraft(args: {
+  runtime: IAgentRuntime;
+  documents: CreativeDraftDocumentService;
+  message: Memory;
+  draft: CreativeDraftArtifact;
+}): Promise<string> {
+  const filename = `${
+    args.draft.title
+      .normalize("NFKD")
+      .replace(/[^a-zA-Z0-9]+/gu, "-")
+      .replace(/^-+|-+$/gu, "")
+      .toLowerCase() || "creative-draft"
+  }.creative-draft.json`;
+  const content = serializeDraft(args.draft);
+  const stored = await args.documents.addDocument({
+    agentId: args.runtime.agentId,
+    worldId: args.message.worldId ?? args.message.roomId,
+    roomId: args.message.roomId,
+    entityId: args.message.entityId,
+    clientDocumentId: "" as UUID,
+    contentType: "application/json",
+    originalFilename: filename,
+    content,
+    scope: "owner-private",
+    scopedToEntityId: args.message.entityId,
+    addedBy: args.message.entityId,
+    addedByRole: "OWNER",
+    addedFrom: "lifeops",
+    metadata: {
+      source: "lifeops",
+      documentKind: CREATIVE_DRAFT_DOCUMENT_KIND,
+      creativeDraftId: args.draft.id,
+      title: args.draft.title,
+      filename,
+      tags: ["creative-draft", "owner-voice"],
+    },
+  });
+  return stored.clientDocumentId;
+}
+
+async function loadPersistedDraft(args: {
+  documents: CreativeDraftDocumentService;
+  message: Memory;
+  documentId: string;
+}): Promise<CreativeDraftArtifact> {
+  const document = await args.documents.getDocumentById(
+    args.documentId as UUID,
+    args.message,
+  );
+  if (!document?.content.text) {
+    throw new ElizaError("Creative draft document was not found", {
+      code: "CREATIVE_DRAFT_NOT_FOUND",
+      context: { documentId: args.documentId },
+    });
+  }
+  return parseStoredDraft(document.content.text, args.documentId);
+}
+
+async function findStandingDraftDocumentId(args: {
+  documents: CreativeDraftDocumentService;
+  message: Memory;
+}): Promise<string | null> {
+  const documents = await args.documents.listDocuments(args.message, {
+    addedBy: args.message.entityId,
+    scope: "owner-private",
+    tags: ["creative-draft"],
+    limit: 25,
+  });
+  const standing = documents.find((document) => {
+    const metadata = document.metadata as Record<string, unknown> | undefined;
+    return metadata?.documentKind === CREATIVE_DRAFT_DOCUMENT_KIND;
+  });
+  return standing?.id ?? null;
+}
+
+async function updatePersistedDraft(args: {
+  documents: CreativeDraftDocumentService;
+  message: Memory;
+  documentId: string;
+  draft: CreativeDraftArtifact;
+}): Promise<void> {
+  await args.documents.updateDocument({
+    documentId: args.documentId as UUID,
+    content: serializeDraft(args.draft),
+    message: args.message,
+  });
+}
+
+function creativeDraftFailure(
+  error: unknown,
+  operation: Subaction,
+): ActionResult {
+  const code =
+    error instanceof ElizaError ? error.code : "CREATIVE_DRAFT_FAILED";
+  const detail = error instanceof Error ? error.message : String(error);
+  logger.error({ error, operation }, `[CREATIVE_DRAFT] ${operation} failed`);
+  return {
+    success: false,
+    text: `The owner-voice draft could not be ${operation === "compose" ? "created" : "revised"}: ${detail}`,
+    data: { error: code },
+  };
 }
 
 const examples: ActionExample[][] = [
@@ -206,6 +480,12 @@ export const creativeDraftAction: Action & {
       schema: { type: "array" as const, items: { type: "object" as const } },
     },
     {
+      name: "draftDocumentId",
+      description:
+        "Persisted creative-draft document UUID to reload and revise. Preferred over supplying the full currentDraft.",
+      schema: { type: "string" as const },
+    },
+    {
       name: "currentDraft",
       description:
         "Existing CreativeDraftArtifact to revise. Required for revise.",
@@ -235,85 +515,161 @@ export const creativeDraftAction: Action & {
     const params = getParams(options);
     const subaction = resolveSubaction(params) ?? "compose";
     const nowIso = new Date().toISOString();
+    const documents = creativeDraftDocuments(runtime);
+    if (!documents) {
+      return {
+        success: false,
+        text: "Owner-voice drafts are unavailable because document storage is not running.",
+        data: { error: "DOCUMENTS_SERVICE_UNAVAILABLE" },
+      };
+    }
 
-    if (subaction === "revise") {
-      if (!params.currentDraft || !params.revision) {
+    try {
+      const ownerSources = await resolveOwnerVoiceSources({
+        documents,
+        message,
+        supplied: params.ownerSources ?? [],
+      });
+
+      if (subaction === "revise") {
+        if (!params.revision) {
+          return {
+            success: false,
+            text: "To revise, supply the requested revision.",
+            data: { error: "MISSING_REVISION_INPUT" },
+          };
+        }
+        const standingDraftDocumentId =
+          params.draftDocumentId ??
+          (await findStandingDraftDocumentId({ documents, message }));
+        const currentDraft = standingDraftDocumentId
+          ? await loadPersistedDraft({
+              documents,
+              message,
+              documentId: standingDraftDocumentId,
+            })
+          : params.currentDraft;
+        if (!currentDraft) {
+          throw new ElizaError("Creative draft is unavailable", {
+            code: "CREATIVE_DRAFT_NOT_FOUND",
+          });
+        }
+        const revisedBase = applyCreativeDraftRevision(
+          currentDraft,
+          params.revision,
+        );
+        const styleCard = buildOwnerVoiceStyleCard(ownerSources);
+        const narrative = await composeDraftNarrative({
+          runtime,
+          request: reconstructRequest(revisedBase),
+          memos: [],
+          styleCard,
+          currentDraft: revisedBase,
+        });
+        const revised = narrative ? { ...revisedBase, narrative } : revisedBase;
+        const fidelity =
+          narrative !== undefined
+            ? scoreOwnerVoiceFidelity(narrative, styleCard)
+            : undefined;
+        const draftDocumentId =
+          standingDraftDocumentId ??
+          (await persistNewDraft({
+            runtime,
+            documents,
+            message,
+            draft: revised,
+          }));
+        if (standingDraftDocumentId) {
+          await updatePersistedDraft({
+            documents,
+            message,
+            documentId: standingDraftDocumentId,
+            draft: revised,
+          });
+        }
+        const text = narrative ?? `Revised "${revised.title}".`;
+        logger.info(
+          `[CREATIVE_DRAFT] revise id=${revised.id} document=${draftDocumentId} sections=${revised.sections.length} fidelity=${fidelity ?? "n/a"}`,
+        );
+        await callback?.({ text, source: "action", action: ACTION_NAME });
         return {
-          success: false,
-          text: "To revise, supply both the current draft and the revision.",
-          data: { error: "MISSING_REVISION_INPUT" },
+          success: true,
+          text,
+          data: {
+            subaction,
+            draft: revised,
+            draftId: revised.id,
+            draftDocumentId,
+            fidelity,
+          },
         };
       }
-      const revised = applyCreativeDraftRevision(
-        params.currentDraft,
-        params.revision,
-      );
-      const styleCard = buildOwnerVoiceStyleCard(params.ownerSources ?? []);
+
+      if (!params.request) {
+        return {
+          success: false,
+          text: "To draft in your voice, tell me what you want to create.",
+          data: { error: "MISSING_COMPOSE_INPUT" },
+        };
+      }
+      const memos = await resolveMemoTranscripts({
+        runtime,
+        message,
+        supplied: params.memos ?? [],
+      });
+      if (memos.length === 0) {
+        return {
+          success: false,
+          text: "To draft in your voice, attach a voice memo or supply a transcript.",
+          data: { error: "MISSING_COMPOSE_INPUT" },
+        };
+      }
+
+      const styleCard = buildOwnerVoiceStyleCard(ownerSources);
+      const draftBase = createCreativeDraftArtifact({
+        request: params.request,
+        memos,
+        styleCard,
+        nowIso,
+      });
       const narrative = await composeDraftNarrative({
         runtime,
-        request: reconstructRequest(revised),
-        memos: params.memos ?? [],
+        request: params.request,
+        memos,
         styleCard,
-        currentDraft: revised,
+        currentDraft: draftBase,
       });
+      const draft = narrative ? { ...draftBase, narrative } : draftBase;
       const fidelity =
         narrative !== undefined
           ? scoreOwnerVoiceFidelity(narrative, styleCard)
           : undefined;
-      const text = narrative ?? `Revised "${revised.title}".`;
+      const draftDocumentId = await persistNewDraft({
+        runtime,
+        documents,
+        message,
+        draft,
+      });
+      const text = narrative ?? `Drafted "${draft.title}" in your voice.`;
       logger.info(
-        `[CREATIVE_DRAFT] revise id=${revised.id} sections=${revised.sections.length} fidelity=${fidelity ?? "n/a"}`,
+        `[CREATIVE_DRAFT] compose id=${draft.id} document=${draftDocumentId} sections=${draft.sections.length} styleSources=${styleCard.sourceIds.length} fidelity=${fidelity ?? "n/a"}`,
       );
       await callback?.({ text, source: "action", action: ACTION_NAME });
       return {
         success: true,
         text,
-        data: { subaction, draft: revised, draftId: revised.id, fidelity },
+        data: {
+          subaction,
+          draft,
+          draftId: draft.id,
+          draftDocumentId,
+          styleCard,
+          fidelity,
+        },
       };
+    } catch (error) {
+      return creativeDraftFailure(error, subaction);
     }
-
-    if (!params.request || !params.memos || params.memos.length === 0) {
-      return {
-        success: false,
-        text: "To draft in your voice, tell me the request and the voice memos to work from.",
-        data: { error: "MISSING_COMPOSE_INPUT" },
-      };
-    }
-
-    const styleCard = buildOwnerVoiceStyleCard(params.ownerSources ?? []);
-    const draft = createCreativeDraftArtifact({
-      request: params.request,
-      memos: params.memos,
-      styleCard,
-      nowIso,
-    });
-    const narrative = await composeDraftNarrative({
-      runtime,
-      request: params.request,
-      memos: params.memos,
-      styleCard,
-      currentDraft: draft,
-    });
-    const fidelity =
-      narrative !== undefined
-        ? scoreOwnerVoiceFidelity(narrative, styleCard)
-        : undefined;
-    const text = narrative ?? `Drafted "${draft.title}" in your voice.`;
-    logger.info(
-      `[CREATIVE_DRAFT] compose id=${draft.id} sections=${draft.sections.length} styleSources=${styleCard.sourceIds.length} fidelity=${fidelity ?? "n/a"}`,
-    );
-    await callback?.({ text, source: "action", action: ACTION_NAME });
-    return {
-      success: true,
-      text,
-      data: {
-        subaction,
-        draft,
-        draftId: draft.id,
-        styleCard,
-        fidelity,
-      },
-    };
   },
 };
 

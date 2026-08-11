@@ -44,12 +44,12 @@ railway up . --path-as-root --service whisper-stt \
   --build-arg WHISPER_IMAGE=ghcr.io/speaches-ai/speaches:0.8.2-cuda
 ```
 
-## Scheduled live contract lane
+## Manual live contract lane
 
 `voice-kokoro-whisper-live.test.ts` was referenced by zero workflows, so a dead
-service surfaced only as a user report. It now runs in the **voice-railway-contract**
-job of `.github/workflows/voice-live-e2e.yml` (nightly + `workflow_dispatch`),
-env-gated on `ELIZA_VOICE_LIVE_RAILWAY=1`. The job reads the two service URLs
+service surfaced only as a user report. It now runs in the **voice** suite of
+`.github/workflows/live-smoke.yml` (`workflow_dispatch` only), env-gated on
+`ELIZA_VOICE_LIVE_RAILWAY=1`. The step reads the two service URLs
 from repo variables `ELIZA_VOICE_KOKORO_TTS_URL` / `ELIZA_VOICE_WHISPER_STT_URL`
 (falling back to the test defaults), so drift or death of either service is a red
 run instead of a silent outage.

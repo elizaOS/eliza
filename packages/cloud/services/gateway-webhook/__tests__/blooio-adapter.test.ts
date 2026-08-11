@@ -48,6 +48,30 @@ function inboundPayload(overrides: Record<string, unknown> = {}): string {
   });
 }
 
+function v4InboundPayload(overrides: Record<string, unknown> = {}): string {
+  return JSON.stringify({
+    id: "evt_abc123",
+    type: "message.received",
+    created_at: 1_786_244_262_331,
+    organization_id: "org_abc123",
+    data: {
+      id: "msg_v4_abc123",
+      chat_id: "chat_abc123",
+      channel_id: "ch_abc123",
+      channel_type: "blooio",
+      direction: "inbound",
+      sender: "+15551234567",
+      recipient: "+15550001111",
+      channel_address: "+15550001111",
+      text: "hey from v4",
+      protocol: "imessage",
+      is_group: false,
+      attachments: [],
+      ...overrides,
+    },
+  });
+}
+
 const originalFetch = globalThis.fetch;
 
 afterEach(() => {
@@ -147,6 +171,29 @@ describe("blooio extractEvent", () => {
     expect(event?.chatId).toBe("+15551234567");
     expect(event?.senderId).toBe("+15551234567");
     expect(event?.text).toBe("hey eliza");
+  });
+
+  test("maps a current v4 webhook envelope to a ChatEvent", async () => {
+    const body = v4InboundPayload();
+    const event = await blooioAdapter.extractEvent(body);
+
+    expect(event).not.toBeNull();
+    expect(event?.messageId).toBe("msg_v4_abc123");
+    expect(event?.chatId).toBe("+15551234567");
+    expect(event?.senderId).toBe("+15551234567");
+    expect(event?.text).toBe("hey from v4");
+    expect(event?.rawPayload).toEqual(JSON.parse(body));
+  });
+
+  test("uses the v4 contact identity when sender is absent", async () => {
+    const event = await blooioAdapter.extractEvent(
+      v4InboundPayload({
+        sender: null,
+        contact: { identifier: "+15557654321" },
+      }),
+    );
+
+    expect(event?.senderId).toBe("+15557654321");
   });
 
   test("skips an event with no sender instead of emitting an unroutable ChatEvent", async () => {
@@ -264,7 +311,7 @@ describe("blooio sendReply", () => {
       init: RequestInit;
     };
     expect(url).toBe(
-      "https://backend.blooio.com/v2/api/chats/%2B15551234567/messages",
+      "https://api.blooio.com/v2/api/chats/%2B15551234567/messages",
     );
     const headers = init.headers as Record<string, string>;
     expect(headers.Authorization).toBe("Bearer bl_live_test");

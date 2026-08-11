@@ -57,6 +57,26 @@ describe("decodeTranscriptEvent", () => {
     if (!res.ok) expect(res.error.field).toBe("at");
   });
 
+  it("preserves a valid optional `at` timestamp", () => {
+    const result = decodeTranscriptEvent({
+      type: "stt.partial",
+      seq: 1,
+      turnId: "turn",
+      text: "hello",
+      at: 123.5,
+    });
+    expect(result).toEqual({
+      ok: true,
+      event: {
+        type: "stt.partial",
+        seq: 1,
+        turnId: "turn",
+        text: "hello",
+        at: 123.5,
+      },
+    });
+  });
+
   it("accepts an empty stt text but rejects a non-string one", () => {
     expect(
       decodeTranscriptEvent({
@@ -86,6 +106,23 @@ describe("decodeTranscriptEvent", () => {
     });
     expect(res.ok).toBe(false);
     if (!res.ok) expect(res.error.field).toBe("words");
+  });
+
+  it("rejects negative or reversed word timing ranges", () => {
+    for (const words of [
+      [{ text: "bad", startMs: -1, endMs: 10 }],
+      [{ text: "bad", startMs: 10, endMs: 9 }],
+    ]) {
+      const result = decodeTranscriptEvent({
+        type: "stt.final",
+        seq: 1,
+        turnId: "turn",
+        text: "bad",
+        words,
+      });
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.error.field).toBe("words");
+    }
   });
 
   it("rejects a non-boolean agent.text final", () => {

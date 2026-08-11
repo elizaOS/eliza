@@ -3539,45 +3539,8 @@ export async function handleIosLocalAgentRequest(
     return json({ ok: true });
   }
 
-  if (method === "GET" && pathname === "/api/skills/catalog") {
-    return json({
-      total: 0,
-      page: 1,
-      perPage: 50,
-      totalPages: 0,
-      installedCount: 0,
-      skills: [],
-    });
-  }
-
-  if (method === "GET" && pathname === "/api/skills/catalog/search") {
-    return json({
-      query: url.searchParams.get("q") ?? "",
-      count: 0,
-      results: [],
-    });
-  }
-
-  if (method === "POST" && pathname === "/api/skills/catalog/refresh") {
-    return json({ ok: true, count: 0 });
-  }
-
-  if (
-    method === "POST" &&
-    (pathname === "/api/skills/catalog/install" ||
-      pathname === "/api/skills/catalog/uninstall" ||
-      pathname === "/api/skills/marketplace/install" ||
-      pathname === "/api/skills/marketplace/uninstall")
-  ) {
+  if (method === "POST" && pathname === "/api/skills/install") {
     return unavailableLocalBackendRoute("skill_installer_unavailable");
-  }
-
-  if (method === "GET" && pathname === "/api/skills/marketplace/search") {
-    return json({ ok: true, results: [] });
-  }
-
-  if (pathname === "/api/skills/marketplace/config") {
-    if (method === "GET" || method === "PUT") return json({ keySet: false });
   }
 
   if (method === "GET" && pathname === "/api/registry/plugins") {

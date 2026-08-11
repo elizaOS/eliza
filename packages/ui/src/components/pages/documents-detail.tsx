@@ -5,7 +5,10 @@
  * documents-detail.helpers; this file owns the fetch/edit/save lifecycle.
  */
 
-import type { Transcript } from "@elizaos/shared/transcripts";
+import type {
+  Transcript,
+  TranscriptCaptureSharingState,
+} from "@elizaos/shared/transcripts";
 import {
   BadgeCheck,
   Bot,
@@ -31,6 +34,7 @@ import type {
 import { useAppSelector } from "../../state";
 import { formatByteSize, resolveAppAssetUrl } from "../../utils";
 import { safeAttachmentUrl } from "../../utils/attachment-url";
+import { confirmDesktopAction } from "../../utils/desktop-dialogs";
 import {
   canShareFiles,
   downloadAttachment,
@@ -39,6 +43,7 @@ import {
 } from "../../utils/download-share";
 import { PagePanel } from "../composites/page-panel";
 import { TranscriptPlayer } from "../transcripts/TranscriptPlayer";
+import { ArtifactPrivacyControls } from "../transcripts/TranscriptsView";
 import { Button } from "../ui/button";
 import { Textarea } from "../ui/textarea";
 import { getDocumentTypeLabel } from "./documents-detail.helpers";
@@ -60,9 +65,11 @@ function formatDocumentTimestamp(value?: number): string | null {
 
 export function DocumentViewer({
   documentId,
+  initialSeekMs,
   onUpdated,
 }: {
   documentId: string | null;
+  initialSeekMs?: number;
   onUpdated?: () => void;
 }) {
   const t = useAppSelector((s) => s.t);
@@ -80,6 +87,8 @@ export function DocumentViewer({
   // loaded lazily so the reader can render the word-synced player. The knowledge
   // doc stays the searchable denormalized copy; TranscriptStore stays the truth.
   const [transcript, setTranscript] = useState<Transcript | null>(null);
+  const [privacySaving, setPrivacySaving] = useState(false);
+  const [privacyError, setPrivacyError] = useState<string | null>(null);
 
   useEffect(() => {
     const id = documentId ?? "";
@@ -172,6 +181,54 @@ export function DocumentViewer({
     };
   }, [transcriptId]);
 
+  const handleUpdateTranscriptPrivacy = (
+    sharing: Partial<TranscriptCaptureSharingState>,
+  ) => {
+    if (!transcriptId) return;
+    setPrivacySaving(true);
+    setPrivacyError(null);
+    client
+      .updateTranscriptPrivacy(transcriptId, { sharing })
+      .then(({ transcript: updated }) => setTranscript(updated))
+      .catch((privacyUpdateError) => {
+        // error-policy:J4 privacy mutation failures remain visible in the artifact reader.
+        setPrivacyError(
+          privacyUpdateError instanceof Error
+            ? privacyUpdateError.message
+            : "Failed to update artifact privacy",
+        );
+      })
+      .finally(() => setPrivacySaving(false));
+  };
+
+  const handleDeleteTranscriptSourceAudio = async () => {
+    if (!transcriptId) return;
+    const confirmed = await confirmDesktopAction({
+      title: "Delete source audio?",
+      message:
+        "The transcript text will remain, but audio replay cannot be restored.",
+      type: "warning",
+      confirmLabel: "Delete audio",
+    });
+    if (!confirmed) return;
+    setPrivacySaving(true);
+    setPrivacyError(null);
+    try {
+      const { transcript: updated } =
+        await client.deleteTranscriptSourceAudio(transcriptId);
+      setTranscript(updated);
+    } catch (sourceAudioDeleteError) {
+      // error-policy:J4 source deletion failures remain visible in the artifact reader.
+      setPrivacyError(
+        sourceAudioDeleteError instanceof Error
+          ? sourceAudioDeleteError.message
+          : "Failed to delete source audio",
+      );
+    } finally {
+      setPrivacySaving(false);
+    }
+  };
+
   const previewText = doc?.content?.text?.trim();
   const readerKind = doc
     ? knowledgeReaderKind({
@@ -200,7 +257,10 @@ export function DocumentViewer({
   // The original served file (when the backend exposes a fetchable URL for the
   // document, e.g. uploaded binaries / mirrored transcript audio). v1 gates the
   // download/share affordances on this URL existing.
-  const servedFileUrl = doc?.url || doc?.transcriptAudioUrl || null;
+  const servedFileUrl =
+    doc?.transcriptId && transcript
+      ? transcript.audioUrl || null
+      : doc?.url || doc?.transcriptAudioUrl || null;
   // Resolve to an app-absolute URL and pass it through the attachment-URL
   // allowlist before ever handing it to an <img>/<audio>/<video>/<iframe> src
   // (reuse the one guard; do not add a second, #8876).
@@ -279,6 +339,7 @@ export function DocumentViewer({
           <TranscriptPlayer
             transcript={transcript}
             audioUrl={mediaUrl || undefined}
+            initialSeekMs={initialSeekMs}
           />
         </PagePanel>
       ) : mediaUrl ? (
@@ -521,6 +582,18 @@ export function DocumentViewer({
 
             {mediaBlock ? (
               <div data-testid="reader-media">{mediaBlock}</div>
+            ) : null}
+
+            {transcript?.source === "meeting" && !transcript.redacted ? (
+              <ArtifactPrivacyControls
+                transcript={transcript}
+                onUpdate={handleUpdateTranscriptPrivacy}
+                onDeleteSourceAudio={() =>
+                  void handleDeleteTranscriptSourceAudio()
+                }
+                saving={privacySaving}
+                error={privacyError}
+              />
             ) : null}
 
             {/* The transcript player already renders the full body; a plain

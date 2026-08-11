@@ -123,6 +123,84 @@ export function looksLikeLocalShellRequest(text: string): boolean {
 	);
 }
 
+const URL_TOKEN_PATTERN = /\bhttps?:\/\/[^\s<>()]+/giu;
+
+/** Connector-appended link-preview blocks (Discord renders shared-link embeds
+ * into the processed text as "Embed #N:\n  Title:…\n  Description:…"). Preview
+ * text is DERIVED from the linked page — it is never a user instruction, so
+ * intent detection must not read it as one. The header tail must stay on
+ * `[ \t]*`: a `\s*` there greedily eats the newline plus the next line's
+ * indent, so the indented Title/Description lines never match and page-derived
+ * text leaks into the residue. */
+const LINK_EMBED_BLOCK_PATTERN =
+	/(?:^|\n)[ \t]*Embed #\d+:[ \t]*(?:\n[ \t]+[^\n]*)*/giu;
+
+/** Explicitly conversational or reactive residue patterns — short commentary
+ * that does NOT carry a work directive aimed at the agent. These are the ONLY
+ * non-empty residue shapes that are passive link shares; any other non-empty
+ * residue is treated as a potential work order. The set is deliberately narrow
+ * and must not be extended with imperatives like "review" or "audit". */
+const LINK_SHARE_CONVERSATIONAL_RESIDUE_PATTERN =
+	/^(?:lol|lmao|nice|cool|wow|neat|huh|hmm|whoa|ok|okay|k|ty|thx|thanks|interesting|wowza|dope|sick|amazing|crazy|insane|funny|wild|fire|check this out|check it out|check this|look at this|look at this|look at that|thoughts|thoughts\?|any thoughts|any thoughts\?|thoughts on this|what do you think|wdyt|wdyt\?|see this|seen this|anyone seen this|thoughts on this one|fwd|fyi|tbh|imo|nvm|rip|omg|oh no|oof|rip|wtf|smh|gg|ngl)\s*[.!?]*$/iu;
+
+/**
+ * True when a message is essentially just a shared link: one or more URLs,
+ * optionally with connector-derived embed preview text, and at most a short
+ * remainder that is empty or explicitly conversational/reactive (no work
+ * directive aimed at the agent).
+ *
+ * A shared link is content, not a work order (observed live: a bare URL whose
+ * embed title happened to contain workflow-ish words spawned a coding
+ * sub-agent with an empty derived task). Link shares route to the web-read
+ * light path — fetch and react to the page, or acknowledge from the embed
+ * metadata when the page is not readable — never to coding delegation.
+ *
+ * Detection is intentionally conservative: only empty or explicitly
+ * conversational residue is a bare share. Any other non-empty residue —
+ * including imperatives absent from any English allowlist (review, audit,
+ * investigate) and non-English work orders — is left to ordinary routing.
+ */
+export function looksLikeBareLinkShare(text: string): boolean {
+	const trimmed = text.trim();
+	if (!trimmed) return false;
+	const withoutEmbeds = trimmed.replace(LINK_EMBED_BLOCK_PATTERN, " ");
+	const urls = withoutEmbeds.match(URL_TOKEN_PATTERN);
+	if (!urls || urls.length === 0) return false;
+	let residue = withoutEmbeds;
+	for (const url of urls) {
+		residue = residue.replace(url, " ");
+	}
+	residue = residue
+		.replace(/[|<>*_~`"()'[\]{}.,:;!?@#-]+/gu, " ")
+		.replace(/\s+/gu, " ")
+		.trim();
+	// A substantial remainder means the user actually said something; ordinary
+	// routing applies.
+	if (residue.length > 120) return false;
+	// Empty residue after removing URLs and embed previews: a bare link share.
+	if (residue.length === 0) return true;
+	// Short residue that is explicitly conversational/reactive (no directive
+	// aimed at the agent): still a bare share.
+	return LINK_SHARE_CONVERSATIONAL_RESIDUE_PATTERN.test(residue);
+}
+
+/**
+ * The user's OWN words in a link-share message: connector-derived embed
+ * preview blocks and the URLs themselves removed, original punctuation kept.
+ * Lets delivery seams distinguish "here's a link" from "here's a link — does
+ * it do X?" without re-deriving the connector text shape (a bare share and a
+ * short question both route to the web-read light path, but they want
+ * different answer styles).
+ */
+export function linkShareOwnText(text: string): string {
+	return text
+		.trim()
+		.replace(LINK_EMBED_BLOCK_PATTERN, " ")
+		.replace(URL_TOKEN_PATTERN, " ")
+		.replace(/\s+/gu, " ")
+		.trim();
+}
+
 export function looksLikeWebSearchRequest(text: string): boolean {
 	const normalized = text.toLowerCase();
 	if (!normalized.trim()) {
@@ -494,6 +572,14 @@ export function inferDirectCurrentRequestCandidateInference(
 	if (hooks.looksLikeCodingWorkRequest?.(messageText)) {
 		const codingAction = hooks.findCodingDelegationActionName?.(actions);
 		if (codingAction) return { names: [codingAction], kind: "coding" };
+	}
+	// A bare link share routes to the web-read light path before any view/verb
+	// token in the DERIVED embed preview text can hijack the turn: read the
+	// page and react to it (degrading to the embed metadata already present in
+	// the message when the page is not publicly fetchable) — never spawn work.
+	if (looksLikeBareLinkShare(messageText)) {
+		const lookupActions = findWebLookupActionNames(actions);
+		if (lookupActions.length > 0) return { names: lookupActions, kind: "web" };
 	}
 	if (looksLikeVoiceSettingsWriteRequest(messageText)) {
 		const settingsAction = findSettingsWriteActionName(actions);

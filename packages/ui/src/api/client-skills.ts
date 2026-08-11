@@ -1,5 +1,5 @@
 /**
- * Skills domain methods — skills, catalog, marketplace, apps,
+ * Skills domain methods — local skills, direct installation, apps,
  * custom actions, WhatsApp, agent events.
  */
 
@@ -18,8 +18,6 @@ import type {
   AppSessionControlAction,
   AppSessionState,
   AppStopResult,
-  CatalogSearchResult,
-  CatalogSkill,
   InstalledAppInfo,
   InstalledPlugin,
   PluginInstallResult,
@@ -28,7 +26,6 @@ import type {
   RegistryPlugin,
   RegistryPluginItem,
   SkillInfo,
-  SkillMarketplaceResult,
   SkillScanReportSummary,
 } from "./client-types";
 import type {
@@ -90,39 +87,8 @@ declare module "./client-base" {
   interface ElizaClient {
     getSkills(): Promise<{ skills: SkillInfo[] }>;
     refreshSkills(): Promise<{ ok: boolean; skills: SkillInfo[] }>;
-    getSkillCatalog(opts?: {
-      page?: number;
-      perPage?: number;
-      sort?: string;
-    }): Promise<{
-      total: number;
-      page: number;
-      perPage: number;
-      totalPages: number;
-      skills: CatalogSkill[];
-    }>;
-    searchSkillCatalog(
-      query: string,
-      limit?: number,
-    ): Promise<{
-      query: string;
-      count: number;
-      results: CatalogSearchResult[];
-    }>;
-    getSkillCatalogDetail(slug: string): Promise<{ skill: CatalogSkill }>;
-    refreshSkillCatalog(): Promise<{ ok: boolean; count: number }>;
-    installCatalogSkill(
-      slug: string,
-      version?: string,
-    ): Promise<{
+    installSkillFromGitHub(githubUrl: string): Promise<{
       ok: boolean;
-      slug: string;
-      message: string;
-      alreadyInstalled?: boolean;
-    }>;
-    uninstallCatalogSkill(slug: string): Promise<{
-      ok: boolean;
-      slug: string;
       message: string;
     }>;
     getRegistryPlugins(): Promise<{
@@ -148,27 +114,6 @@ declare module "./client-base" {
       name: string,
       autoRestart?: boolean,
     ): Promise<PluginMutationResult & { pluginName: string }>;
-    searchSkillsMarketplace(
-      query: string,
-      installed: boolean,
-      limit: number,
-    ): Promise<{ results: SkillMarketplaceResult[] }>;
-    getSkillsMarketplaceConfig(): Promise<{ keySet: boolean }>;
-    updateSkillsMarketplaceConfig(apiKey: string): Promise<{ keySet: boolean }>;
-    installMarketplaceSkill(data: {
-      slug?: string;
-      githubUrl?: string;
-      repository?: string;
-      path?: string;
-      name?: string;
-      description?: string;
-      source: string;
-      autoRefresh?: boolean;
-    }): Promise<void>;
-    uninstallMarketplaceSkill(
-      skillId: string,
-      autoRefresh: boolean,
-    ): Promise<void>;
     enableSkill(skillId: string): Promise<{
       ok: boolean;
       skill: SkillInfo;
@@ -461,57 +406,13 @@ ElizaClient.prototype.refreshSkills = async function (this: ElizaClient) {
   return this.fetch("/api/skills/refresh", { method: "POST" });
 };
 
-ElizaClient.prototype.getSkillCatalog = async function (
+ElizaClient.prototype.installSkillFromGitHub = async function (
   this: ElizaClient,
-  opts?,
+  githubUrl,
 ) {
-  const params = new URLSearchParams();
-  if (opts?.page) params.set("page", String(opts.page));
-  if (opts?.perPage) params.set("perPage", String(opts.perPage));
-  if (opts?.sort) params.set("sort", opts.sort);
-  const qs = params.toString();
-  return this.fetch(`/api/skills/catalog${qs ? `?${qs}` : ""}`);
-};
-
-ElizaClient.prototype.searchSkillCatalog = async function (
-  this: ElizaClient,
-  query,
-  limit = 30,
-) {
-  return this.fetch(
-    `/api/skills/catalog/search?q=${encodeURIComponent(query)}&limit=${limit}`,
-  );
-};
-
-ElizaClient.prototype.getSkillCatalogDetail = async function (
-  this: ElizaClient,
-  slug,
-) {
-  return this.fetch(`/api/skills/catalog/${encodeURIComponent(slug)}`);
-};
-
-ElizaClient.prototype.refreshSkillCatalog = async function (this: ElizaClient) {
-  return this.fetch("/api/skills/catalog/refresh", { method: "POST" });
-};
-
-ElizaClient.prototype.installCatalogSkill = async function (
-  this: ElizaClient,
-  slug,
-  version?,
-) {
-  return this.fetch("/api/skills/catalog/install", {
+  return this.fetch("/api/skills/install", {
     method: "POST",
-    body: JSON.stringify({ slug, version }),
-  });
-};
-
-ElizaClient.prototype.uninstallCatalogSkill = async function (
-  this: ElizaClient,
-  slug,
-) {
-  return this.fetch("/api/skills/catalog/uninstall", {
-    method: "POST",
-    body: JSON.stringify({ slug }),
+    body: JSON.stringify({ githubUrl }),
   });
 };
 
@@ -570,57 +471,6 @@ ElizaClient.prototype.uninstallRegistryPlugin = async function (
   return this.fetch("/api/plugins/uninstall", {
     method: "POST",
     body: JSON.stringify({ name, autoRestart }),
-  });
-};
-
-ElizaClient.prototype.searchSkillsMarketplace = async function (
-  this: ElizaClient,
-  query,
-  installed,
-  limit,
-) {
-  const params = new URLSearchParams({
-    q: query,
-    installed: String(installed),
-    limit: String(limit),
-  });
-  return this.fetch(`/api/skills/marketplace/search?${params}`);
-};
-
-ElizaClient.prototype.getSkillsMarketplaceConfig = async function (
-  this: ElizaClient,
-) {
-  return this.fetch("/api/skills/marketplace/config");
-};
-
-ElizaClient.prototype.updateSkillsMarketplaceConfig = async function (
-  this: ElizaClient,
-  apiKey,
-) {
-  return this.fetch("/api/skills/marketplace/config", {
-    method: "PUT",
-    body: JSON.stringify({ apiKey }),
-  });
-};
-
-ElizaClient.prototype.installMarketplaceSkill = async function (
-  this: ElizaClient,
-  data,
-) {
-  await this.fetch("/api/skills/marketplace/install", {
-    method: "POST",
-    body: JSON.stringify(data),
-  });
-};
-
-ElizaClient.prototype.uninstallMarketplaceSkill = async function (
-  this: ElizaClient,
-  skillId,
-  autoRefresh,
-) {
-  await this.fetch("/api/skills/marketplace/uninstall", {
-    method: "POST",
-    body: JSON.stringify({ id: skillId, autoRefresh }),
   });
 };
 

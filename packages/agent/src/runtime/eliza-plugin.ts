@@ -66,6 +66,7 @@ import {
 import { createUserNameProvider } from "../providers/user-name.ts";
 import { createWorkspaceProvider } from "../providers/workspace-provider.ts";
 import { ApprovalService } from "../services/approval/index.ts";
+import { AudioRedactionService } from "../services/audio-redaction-service.ts";
 import { ElizaCharacterPersistenceService } from "../services/character-persistence.ts";
 import { LocalFileStorageService } from "../services/file-storage.ts";
 import { GlobalPauseService } from "../services/global-pause/index.ts";
@@ -151,6 +152,7 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
       // set. Independent config + adapter from the memory sweep above.
       LogsRetentionService as ServiceClass,
       ApprovalService as ServiceClass,
+      AudioRedactionService as ServiceClass,
       // OWNER_BIND_VERIFY: backend authority for the connector /eliza-pair
       // commands. Registered here (before connector plugins start) so the
       // Discord/Telegram pairing services find it and register their commands.

@@ -94,7 +94,12 @@ vi.mock("../permissions/PermissionPrimingModal", () => ({
   },
 }));
 
-vi.mock("../settings/settings-sections", () => {
+vi.mock("../settings/settings-sections", async () => {
+  // The pure hash-route helpers are real (they live in settings-route.ts and
+  // are re-exported by settings-sections); only the section registry is stubbed.
+  const settingsRoute = await vi.importActual<
+    typeof import("../settings/settings-route")
+  >("../settings/settings-route");
   const sections = stubSections.map((section) => ({
     ...section,
     icon: Settings,
@@ -121,6 +126,7 @@ vi.mock("../settings/settings-sections", () => {
   };
   const groupOrder = ["agent", "system", "security"];
   return {
+    ...settingsRoute,
     SECTION_TONE_ICON_CLASS: {
       ok: "",
       warn: "",

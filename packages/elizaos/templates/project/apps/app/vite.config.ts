@@ -368,6 +368,28 @@ function resolveNativePluginAliasEntries(): Array<{
 
 const NATIVE_PLUGIN_ALIAS_ENTRIES = resolveNativePluginAliasEntries();
 
+export const VIEWPORT_META_NATIVE =
+  "width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover";
+export const VIEWPORT_META_WEB =
+  "width=device-width, initial-scale=1.0, viewport-fit=cover";
+
+/** Resolves the scaffold shell's viewport policy for hosted and native builds. */
+export function appShellViewportPlugin(
+  capacitorBuildTarget = process.env.ELIZA_CAPACITOR_BUILD_TARGET ?? "",
+): Plugin {
+  const native =
+    capacitorBuildTarget === "ios" || capacitorBuildTarget === "android";
+  return {
+    name: "app-shell-viewport",
+    transformIndexHtml(html) {
+      return html.replaceAll(
+        "__APP_VIEWPORT_CONTENT__",
+        native ? VIEWPORT_META_NATIVE : VIEWPORT_META_WEB,
+      );
+    },
+  };
+}
+
 function resolveManualChunk(id: string): string | undefined {
   const normalizedId = id.split(path.sep).join("/");
 
@@ -1058,6 +1080,7 @@ export default defineConfig({
     ),
   },
   plugins: [
+    appShellViewportPlugin(),
     nativeModuleStubPlugin(),
     asyncLocalStoragePatchPlugin(),
     watchWorkspacePackagesPlugin(),

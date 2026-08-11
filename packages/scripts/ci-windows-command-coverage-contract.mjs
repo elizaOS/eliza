@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Contract for #13402's Windows command-coverage slice. The Windows CI lane is
+ * Contract for #13402's Windows command-coverage slice. The Windows lane is
  * a deliberately narrow subset of the Linux gates, so the
  * suites it guards are the only proof that the runtime/dashboard/shared
  * TypeScript packages still build and pass on Windows. Nothing else re-runs
@@ -10,10 +10,10 @@
  * with a still-green pipeline and no reviewer signal.
  *
  * This is a static YAML census — it never executes a workflow. It parses the
- * `commands` lists under `jobs.windows.strategy.matrix.include[]` in
- * `.github/workflows/windows-ci.yml`, flattens them into a set, and asserts
+ * `run:` steps of `jobs.platform-smoke` in `.github/workflows/nightly.yml`
+ * (whose matrix includes windows-2025), flattens them into a set, and asserts
  * every command in the committed inventory `.github/ci-windows-command-inventory.json`
- * is still wired in some lane. If any inventoried command is missing, Windows
+ * is still wired there. If any inventoried command is missing, Windows
  * coverage shrank: the contract throws (exit 1) naming the dropped commands.
  *
  * Adding a command is always allowed — the inventory is a floor, not an exact
@@ -31,9 +31,9 @@ const DEFAULT_REPO_ROOT = resolve(
   "..",
 );
 
-const WORKFLOW_FILE = ".github/workflows/windows-ci.yml";
+const WORKFLOW_FILE = ".github/workflows/nightly.yml";
 const INVENTORY_FILE = ".github/ci-windows-command-inventory.json";
-const JOB_KEY = "windows";
+const JOB_KEY = "platform-smoke";
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);
@@ -71,44 +71,28 @@ function jobBlockLines(workflowText, jobKey) {
   return lines.slice(start, end);
 }
 
-// Collect every command string from the `commands:` block-sequences inside the
-// job's `strategy.matrix.include[]`. Each `commands:` header opens a YAML list
-// whose items (`- <command>`) sit at a deeper indent; the list ends at the
-// first line indented at or below the header (the next `- lane:` entry or the
-// sibling matrix key). Multiple `include[]` entries each contribute their list.
+// Collect every single-line `run:` command from the job's steps. The
+// platform-smoke matrix includes windows-2025, so each run step here is
+// executed on Windows; the job must also keep windows in its matrix or the
+// coverage claim is hollow.
 export function parseWindowsCommands(repoRoot = DEFAULT_REPO_ROOT) {
   const text = readFileSync(resolve(repoRoot, WORKFLOW_FILE), "utf8");
   const lines = jobBlockLines(text, JOB_KEY);
 
-  const commands = [];
-  let listIndent = null;
-  for (const line of lines) {
-    if (line.trim() === "") continue;
-    if (/^\s*commands:\s*$/.test(line)) {
-      listIndent = indentOf(line);
-      continue;
-    }
-    if (listIndent === null) continue;
+  assert(
+    lines.some((line) => /\bwindows-\d+\b/.test(line)),
+    `${WORKFLOW_FILE}: "${JOB_KEY}" no longer includes a windows matrix entry - Windows coverage is gone`,
+  );
 
-    const itemIndent = indentOf(line);
-    if (itemIndent <= listIndent) {
-      listIndent = null;
-      continue;
-    }
-    // YAML comments are legitimate inside the list (e.g. rationale above a
-    // split-out suite) and are not command items.
-    if (line.slice(itemIndent).startsWith("#")) continue;
-    const item = line.slice(itemIndent).match(/^-\s+(.+?)\s*$/);
-    assert(
-      item !== null,
-      `${WORKFLOW_FILE}: malformed command list under "${JOB_KEY}" matrix (got: ${JSON.stringify(line)})`,
-    );
-    commands.push(item[1]);
+  const commands = [];
+  for (const line of lines) {
+    const match = line.match(/^\s*run:\s+(.+?)\s*$/);
+    if (match) commands.push(match[1]);
   }
 
   assert(
     commands.length > 0,
-    `${WORKFLOW_FILE}: parsed no commands from "${JOB_KEY}" strategy.matrix.include[].commands`,
+    `${WORKFLOW_FILE}: parsed no run commands from "${JOB_KEY}" steps`,
   );
   return commands;
 }

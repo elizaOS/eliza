@@ -23,7 +23,6 @@ import type {
   BscTradeTxStatusResponse,
   BscTransferExecuteRequest,
   BscTransferExecuteResponse,
-  CatalogSkill,
   CharacterData,
   ChatTokenUsage,
   CodingAgentSession,
@@ -46,7 +45,6 @@ import type {
   RegistryStatus,
   ReleaseChannel,
   SkillInfo,
-  SkillMarketplaceResult,
   SkillScanReportSummary,
   StewardApprovalActionResponse,
   StewardBalanceResponse,
@@ -407,12 +405,9 @@ export interface AppState {
   skillReviewId: string;
   skillReviewLoading: boolean;
   skillToggleAction: string;
-  skillsMarketplaceQuery: string;
-  skillsMarketplaceResults: SkillMarketplaceResult[];
-  skillsMarketplaceError: string;
-  skillsMarketplaceLoading: boolean;
-  skillsMarketplaceAction: string;
-  skillsMarketplaceManualGithubUrl: string;
+  skillInstallError: string;
+  skillInstallAction: string;
+  skillInstallGithubUrl: string;
 
   // Logs
   logs: LogEntry[];
@@ -542,19 +537,6 @@ export interface AppState {
   storeError: string | null;
   storeDetailPlugin: RegistryPlugin | null;
   storeSubTab: "plugins" | "skills";
-
-  // Catalog
-  catalogSkills: CatalogSkill[];
-  catalogTotal: number;
-  catalogPage: number;
-  catalogTotalPages: number;
-  catalogSort: "downloads" | "stars" | "updated" | "name";
-  catalogSearch: string;
-  catalogLoading: boolean;
-  catalogError: string | null;
-  catalogDetailSkill: CatalogSkill | null;
-  catalogInstalling: Set<string>;
-  catalogUninstalling: Set<string>;
 
   // Workbench
   workbenchLoading: boolean;
@@ -818,13 +800,7 @@ export interface AppActions {
   handleDeleteSkill: (skillId: string, name: string) => Promise<void>;
   handleReviewSkill: (skillId: string) => Promise<void>;
   handleAcknowledgeSkill: (skillId: string) => Promise<void>;
-  searchSkillsMarketplace: () => Promise<void>;
-  installSkillFromMarketplace: (item: SkillMarketplaceResult) => Promise<void>;
-  uninstallMarketplaceSkill: (skillId: string, name: string) => Promise<void>;
   installSkillFromGithubUrl: () => Promise<void>;
-  enableMarketplaceSkill: (skillId: string, name: string) => Promise<void>;
-  disableMarketplaceSkill: (skillId: string, name: string) => Promise<void>;
-  copyMarketplaceSkillSource: (skillId: string, name: string) => Promise<void>;
 
   // Logs
   loadLogs: () => Promise<void>;

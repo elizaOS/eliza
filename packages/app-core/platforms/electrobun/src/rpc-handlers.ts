@@ -114,6 +114,10 @@ import {
 import { getSwabbleManager } from "./native/swabble";
 import { getTalkModeManager } from "./native/talkmode";
 import {
+  publishNativeTranscriptStream,
+  readNativeTranscriptViewModel,
+} from "./native-transcript-host";
+import {
   buildDynamicViewRpcHandlers,
   buildNotificationRpcHandlers,
   buildWindowRpcHandlers,
@@ -142,6 +146,7 @@ import {
   updateConfigViaHttp,
   updateTradePermissionModeViaHttp,
 } from "./settings-mutations-rpc";
+import type { ShellControllerEndpoint } from "./shell-sync-relay";
 import {
   composeSubscriptionStatusSnapshot,
   readSubscriptionStatusViaHttp,
@@ -288,10 +293,23 @@ function getRpcLaunchOrchestrator(
   return rpcLaunchOrchestrator;
 }
 
+function requireShellControllerEndpoint(
+  endpoint: ShellControllerEndpoint | undefined,
+): ShellControllerEndpoint {
+  if (!endpoint) {
+    throw new Error(
+      "[shell-controller-authority] RPC endpoint is unavailable for this window",
+    );
+  }
+  return endpoint;
+}
+
 export function buildBunRpcHandlers({
   sendToWebview,
+  shellControllerEndpoint,
 }: {
   sendToWebview: SendToWebview;
+  shellControllerEndpoint?: ShellControllerEndpoint;
 }): BunRpcHandlers {
   const agent = getAgentManager();
   const camera = getCameraManager();
@@ -663,6 +681,11 @@ export function buildBunRpcHandlers({
       };
     },
     desktopHttpRequest,
+    nativeTranscriptPublishStream: async (params) =>
+      publishNativeTranscriptStream(params),
+    nativeTranscriptReadViewModel: async () => ({
+      view: readNativeTranscriptViewModel(),
+    }),
 
     // ---- Local-agent IPC transport (#12180 / #12355) ----
     // Buffered agent request routed over the child stdio bridge (no loopback
@@ -1370,6 +1393,26 @@ export function buildBunRpcHandlers({
     fileWatcherList: async () => ({ watches: fileWatcher.listWatches() }),
     fileWatcherGetStatus: async (params: { watchId: string }) =>
       fileWatcher.getWatch(params.watchId),
+
+    // ---- Main-authoritative shell chat/voice controller (#16442) ----
+    shellControllerConnect: async (params: unknown) =>
+      requireShellControllerEndpoint(shellControllerEndpoint).connect(params),
+    shellControllerHeartbeat: async (params: unknown) =>
+      requireShellControllerEndpoint(shellControllerEndpoint).heartbeat(params),
+    shellControllerPublishSnapshot: async (params: unknown) =>
+      requireShellControllerEndpoint(shellControllerEndpoint).publishSnapshot(
+        params,
+      ),
+    shellControllerDispatchCommand: async (params: unknown) =>
+      requireShellControllerEndpoint(shellControllerEndpoint).dispatchCommand(
+        params,
+      ),
+    shellControllerCompleteCommand: async (params: unknown) =>
+      requireShellControllerEndpoint(shellControllerEndpoint).completeCommand(
+        params,
+      ),
+    shellControllerDeliver: async (params: unknown) =>
+      requireShellControllerEndpoint(shellControllerEndpoint).deliver(params),
   };
 }
 

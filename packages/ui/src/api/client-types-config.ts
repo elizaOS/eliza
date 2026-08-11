@@ -708,59 +708,6 @@ export interface SkillScanReportSummary {
   skillPath: string;
 }
 
-// Skill Catalog types
-export interface CatalogSkillStats {
-  comments: number;
-  downloads: number;
-  installsAllTime: number;
-  installsCurrent: number;
-  stars: number;
-  versions: number;
-}
-
-export interface CatalogSkillVersion {
-  version: string;
-  createdAt: number;
-  changelog: string;
-}
-
-export interface CatalogSkill {
-  slug: string;
-  displayName: string;
-  summary: string | null;
-  tags: Record<string, string>;
-  stats: CatalogSkillStats;
-  createdAt: number;
-  updatedAt: number;
-  latestVersion: CatalogSkillVersion | null;
-  installed?: boolean;
-}
-
-export interface CatalogSearchResult {
-  slug: string;
-  displayName: string;
-  summary: string | null;
-  score: number;
-  latestVersion: string | null;
-  downloads: number;
-  stars: number;
-  installs: number;
-}
-
-// Skills Marketplace
-export interface SkillMarketplaceResult {
-  id: string;
-  slug?: string;
-  name: string;
-  description: string;
-  githubUrl?: string;
-  repository?: string;
-  path?: string;
-  tags?: string[];
-  score?: number;
-  source?: string;
-}
-
 export interface WalletExportResult {
   evm: { privateKey: string; address: string | null } | null;
   solana: { privateKey: string; address: string | null } | null;

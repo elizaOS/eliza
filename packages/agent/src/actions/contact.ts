@@ -54,6 +54,7 @@ import {
   FOLLOW_UP_CAPABLE_ACTION_TAG,
   findEntityByName,
   getConfiguredOwnerEntityIds,
+  getEntityDetails,
   logger,
   ModelType,
   parseJSONObjectFromText,
@@ -469,6 +470,41 @@ export function registerEntitySearchCategory(runtime: IAgentRuntime): void {
 // op:search
 // ---------------------------------------------------------------------------
 
+/**
+ * Deterministic room-participant lookup for the contact-search dead-end: an
+ * exact (case/`@`-insensitive) name match against the people present in the
+ * message's room, excluding the agent itself. Read-only — used to tell the
+ * planner "not a saved contact, but they are in this channel".
+ */
+async function findRoomParticipantMatches(
+  runtime: IAgentRuntime,
+  roomId: UUID,
+  query: string,
+): Promise<Array<{ entityId: string; name: string }>> {
+  const normalize = (value: string): string =>
+    value
+      .trim()
+      .toLowerCase()
+      .replace(/^[@#]+/, "");
+  const target = normalize(query);
+  if (!target) return [];
+  const details = await getEntityDetails({ runtime, roomId });
+  const matches: Array<{ entityId: string; name: string }> = [];
+  for (const entity of details ?? []) {
+    if (!entity.id || entity.id === runtime.agentId) continue;
+    const names = [entity.name, ...(entity.names ?? [])].filter(
+      (name): name is string => typeof name === "string" && name.length > 0,
+    );
+    if (names.some((name) => normalize(name) === target)) {
+      matches.push({
+        entityId: String(entity.id),
+        name: names[0] ?? query,
+      });
+    }
+  }
+  return matches;
+}
+
 async function handleSearch(
   runtime: IAgentRuntime,
   message: Memory,
@@ -519,11 +555,40 @@ async function handleSearch(
     });
 
     if (!snapshot || snapshot.people.length === 0) {
+      // Honest dead-end: before reporting "not found", check whether the name
+      // matches someone PRESENT in the current room. "tell vega …" about a
+      // channel participant must not dead-end at the saved-contacts rolodex —
+      // surface the participant so the planner can offer an in-room reply.
+      // Read-only; no send happens here.
+      const roomParticipants = await findRoomParticipantMatches(
+        runtime,
+        message.roomId,
+        query,
+      );
+      const noMatchText = `No contacts found matching "${query}"${platform ? ` on ${platform}` : ""}.`;
+      const participantHint =
+        roomParticipants.length > 0
+          ? ` However, ${roomParticipants
+              .map((p) => `"${p.name}"`)
+              .join(
+                ", ",
+              )} matching that name is present in the current room/channel (not a saved contact). A plain reply in this channel can address them directly — offer that to the user instead of a DM or contact lookup.`
+          : "";
       return {
-        text: `No contacts found matching "${query}"${platform ? ` on ${platform}` : ""}.`,
+        text: `${noMatchText}${participantHint}`,
         success: true,
-        values: { success: true, resultCount: 0 },
-        data: { actionName: CONTACT_ACTION, op: "search", query, platform },
+        values: {
+          success: true,
+          resultCount: 0,
+          roomParticipantMatchCount: roomParticipants.length,
+        },
+        data: {
+          actionName: CONTACT_ACTION,
+          op: "search",
+          query,
+          platform,
+          roomParticipantMatches: roomParticipants,
+        },
       };
     }
 

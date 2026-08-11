@@ -259,6 +259,76 @@ describe("TranscriptsView", () => {
     expect(state.textContent).toContain("Artifacts: Shared");
   });
 
+  it("exposes independent artifact controls and source-audio deletion", () => {
+    const onUpdatePrivacy = vi.fn();
+    const onDeleteSourceAudio = vi.fn();
+    const archivedMeeting: Transcript = {
+      ...selected,
+      id: "m1",
+      source: "meeting",
+      status: "ready",
+      metadata: {
+        ...meetingDetailMetadata,
+        sharing: {
+          transcript: "owner_private",
+          notes: "restricted",
+          sourceAudio: "owner_private",
+          artifacts: "disabled",
+        },
+      },
+    };
+    render(
+      <TranscriptsView
+        transcripts={[{ ...meetingSummary, status: "ready" }]}
+        selectedId="m1"
+        selected={archivedMeeting}
+        onSelect={vi.fn()}
+        onUpdatePrivacy={onUpdatePrivacy}
+        onDeleteSourceAudio={onDeleteSourceAudio}
+      />,
+    );
+
+    expect(
+      screen.getByTestId("transcript-artifact-privacy-controls"),
+    ).toBeTruthy();
+    expect(screen.getByLabelText("Transcript visibility")).toBeTruthy();
+    expect(screen.getByLabelText("Notes visibility")).toBeTruthy();
+    expect(screen.getByLabelText("Source audio visibility")).toBeTruthy();
+    expect(
+      screen.getByLabelText("Generated artifacts visibility"),
+    ).toBeTruthy();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Delete source audio" }),
+    );
+    expect(onDeleteSourceAudio).toHaveBeenCalledTimes(1);
+  });
+
+  it("renders distinct selected loading, unavailable, and mutation error states", () => {
+    const { rerender } = render(
+      <TranscriptsView
+        transcripts={summaries}
+        selectedId="t1"
+        selected={null}
+        selectedLoading
+        onSelect={vi.fn()}
+      />,
+    );
+    expect(screen.getByTestId("transcripts-detail-loading")).toBeTruthy();
+
+    rerender(
+      <TranscriptsView
+        transcripts={summaries}
+        selectedId="t1"
+        selected={null}
+        selectedError="Transcript unavailable"
+        onSelect={vi.fn()}
+      />,
+    );
+    expect(
+      screen.getByTestId("transcripts-detail-error").textContent,
+    ).toContain("Transcript unavailable");
+  });
+
   it("renders the join bar and forwards a join request", () => {
     const onJoinMeeting = vi.fn();
     render(

@@ -272,6 +272,36 @@ describe("collectReferencedMedia", () => {
     expect(referenced.size).toBe(1);
   });
 
+  it("retains both original and verified-redacted transcript audio objects", () => {
+    const memories = [
+      {
+        content: {
+          transcript: JSON.stringify({
+            id: "transcript-original",
+            audioUrl: `/api/media/${HASH_A}.wav`,
+          }),
+        },
+        metadata: { source: "transcript" },
+      },
+      {
+        content: {
+          transcript: JSON.stringify({
+            id: "transcript-redacted-variant",
+            audioUrl: `/api/media/${HASH_B}.wav`,
+          }),
+        },
+        metadata: {
+          source: "transcript",
+          redactionOf: "transcript-original",
+        },
+      },
+    ] as unknown as Memory[];
+
+    const referenced = collectReferencedMedia(memories);
+
+    expect(referenced).toEqual(new Set([`${HASH_A}.wav`, `${HASH_B}.wav`]));
+  });
+
   it("reports malformed transcript JSON without aborting collection", () => {
     const diagnostics = {
       logger: { warn: vi.fn() },

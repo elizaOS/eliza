@@ -79,6 +79,8 @@ const TWIN_DEFAULT_RMS = 0.003;
 const EXPECTED_PREFS_LEDGER = [
   {
     continuous: "always-on",
+    osIntentAutoStartVoice: false,
+    osIntentAutoStartTranscription: false,
     vadAutoStop: {
       silenceMs: TWIN_DEFAULT_SILENCE_MS,
       speechRmsThreshold: TWIN_DEFAULT_RMS,
@@ -86,14 +88,20 @@ const EXPECTED_PREFS_LEDGER = [
   },
   {
     continuous: "always-on",
+    osIntentAutoStartVoice: false,
+    osIntentAutoStartTranscription: false,
     vadAutoStop: { silenceMs: 1200, speechRmsThreshold: TWIN_DEFAULT_RMS },
   },
   {
     continuous: "always-on",
+    osIntentAutoStartVoice: false,
+    osIntentAutoStartTranscription: false,
     vadAutoStop: { silenceMs: 1200, speechRmsThreshold: 0.008 },
   },
   {
     continuous: "off",
+    osIntentAutoStartVoice: false,
+    osIntentAutoStartTranscription: false,
     vadAutoStop: { silenceMs: 1200, speechRmsThreshold: 0.008 },
   },
 ];
@@ -167,7 +175,7 @@ export default scenario({
         expectSettingsTurn(execution, {
           success: true,
           responseText:
-            "Voice settings updated: continuous chat is always-on, silence is 650ms, speech threshold is 0.003.",
+            "Voice settings updated: continuous chat is always-on, voice shortcut auto-start is off, transcription shortcut auto-start is off, silence is 650ms, speech threshold is 0.003.",
         }),
     },
     {
@@ -185,7 +193,7 @@ export default scenario({
         expectSettingsTurn(execution, {
           success: true,
           responseText:
-            "Voice settings updated: continuous chat is always-on, silence is 1200ms, speech threshold is 0.003.",
+            "Voice settings updated: continuous chat is always-on, voice shortcut auto-start is off, transcription shortcut auto-start is off, silence is 1200ms, speech threshold is 0.003.",
         }),
     },
     {
@@ -203,7 +211,7 @@ export default scenario({
         expectSettingsTurn(execution, {
           success: true,
           responseText:
-            "Voice settings updated: continuous chat is always-on, silence is 1200ms, speech threshold is 0.008.",
+            "Voice settings updated: continuous chat is always-on, voice shortcut auto-start is off, transcription shortcut auto-start is off, silence is 1200ms, speech threshold is 0.008.",
         }),
     },
     {
@@ -221,7 +229,7 @@ export default scenario({
         expectSettingsTurn(execution, {
           success: true,
           responseText:
-            "Voice settings updated: continuous chat is off, silence is 1200ms, speech threshold is 0.008.",
+            "Voice settings updated: continuous chat is off, voice shortcut auto-start is off, transcription shortcut auto-start is off, silence is 1200ms, speech threshold is 0.008.",
         }),
     },
     {

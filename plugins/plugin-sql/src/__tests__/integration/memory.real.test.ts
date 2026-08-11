@@ -132,6 +132,76 @@ describe("Memory Integration Tests", () => {
     expect(retrieved.embedding.length).toEqual(384);
   });
 
+  it.each([0, 1, 2])(
+    "rolls back every row when atomic batch position %i fails",
+    async (failureIndex) => {
+      const valid = [
+        createTestMemory({ text: "parent" }),
+        createTestMemory({ text: "fragment one" }),
+        createTestMemory({ text: "fragment two" }),
+      ];
+      const batch = valid.map((memory, index) => ({
+        memory: index === failureIndex ? { ...memory, id: "not-a-uuid" as UUID } : memory,
+        tableName: index === 0 ? "documents" : "document_fragments",
+        unique: false,
+      }));
+
+      await expect(adapter.createMemories(batch)).rejects.toThrow();
+
+      for (const memory of valid) {
+        expect(await adapter.getMemoryById(memory.id as UUID)).toBeNull();
+      }
+    }
+  );
+
+  it("rejects an invalid batch embedding before writing its parent", async () => {
+    const parent = createTestMemory({ text: "must remain unpublished" });
+    const fragment = createTestMemory({ text: "bad embedding" }, [1, 2, 3]);
+
+    await expect(
+      adapter.createMemories([
+        { memory: parent, tableName: "documents", unique: false },
+        { memory: fragment, tableName: "document_fragments", unique: false },
+      ])
+    ).rejects.toThrow(/Invalid embedding in atomic memory batch/);
+
+    expect(await adapter.getMemoryById(parent.id as UUID)).toBeNull();
+    expect(await adapter.getMemoryById(fragment.id as UUID)).toBeNull();
+  });
+
+  it("isolates a failing atomic batch from a concurrent successful batch", async () => {
+    const committed = [
+      createTestMemory({ text: "committed parent" }),
+      createTestMemory({ text: "committed fragment" }),
+    ];
+    const rolledBack = [
+      createTestMemory({ text: "rolled-back parent" }),
+      { ...createTestMemory({ text: "invalid fragment" }), id: "not-a-uuid" as UUID },
+    ];
+
+    const outcomes = await Promise.allSettled([
+      adapter.createMemories(
+        committed.map((memory, index) => ({
+          memory,
+          tableName: index === 0 ? "documents" : "document_fragments",
+          unique: false,
+        }))
+      ),
+      adapter.createMemories(
+        rolledBack.map((memory, index) => ({
+          memory,
+          tableName: index === 0 ? "documents" : "document_fragments",
+          unique: false,
+        }))
+      ),
+    ]);
+
+    expect(outcomes.map((outcome) => outcome.status).sort()).toEqual(["fulfilled", "rejected"]);
+    expect(await adapter.getMemoryById(committed[0].id as UUID)).not.toBeNull();
+    expect(await adapter.getMemoryById(committed[1].id as UUID)).not.toBeNull();
+    expect(await adapter.getMemoryById(rolledBack[0].id as UUID)).toBeNull();
+  });
+
   afterEach(async () => {
     // Clean up memories after each test to ensure isolation
     const db = adapter.getDatabase() as DrizzleDatabase;

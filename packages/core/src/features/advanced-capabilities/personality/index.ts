@@ -5,6 +5,7 @@
 export { characterAction } from "./actions/character.ts";
 export { personalityAction } from "./actions/personality.ts";
 export { defaultProfiles } from "./profiles/index.ts";
+export { characterGateNoticeProvider } from "./providers/character-gate-notice.ts";
 export { userPersonalityProvider } from "./providers/user-personality.ts";
 export * from "./reply-gate.ts";
 // CharacterFileManager + PersonalityStore are lazy-loaded in advancedServices
@@ -25,10 +26,12 @@ import { anchorBundleSafety } from "../../../bundle-safety.ts";
 // when a consumer dereferences a re-exported binding at runtime.
 import { characterAction as _bs_1_characterAction } from "./actions/character.ts";
 import { personalityAction as _bs_3_personalityAction } from "./actions/personality.ts";
+import { characterGateNoticeProvider as _bs_4_characterGateNoticeProvider } from "./providers/character-gate-notice.ts";
 import { userPersonalityProvider as _bs_2_userPersonalityProvider } from "./providers/user-personality.ts";
 
 anchorBundleSafety("FEATURES_ADVANCED_CAPABILITIES_PERSONALITY_INDEX", [
 	_bs_1_characterAction,
 	_bs_2_userPersonalityProvider,
 	_bs_3_personalityAction,
+	_bs_4_characterGateNoticeProvider,
 ]);

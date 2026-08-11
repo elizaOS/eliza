@@ -1,8 +1,8 @@
 # Managed dedicated staging canary
 
 `managed-dedicated-canary.ts` is the canonical live proof for the managed
-Cloud dedicated-agent path. The workflow is manual, daily-scheduled, or run by
-an explicit maintainer label at `.github/workflows/managed-dedicated-canary.yml`.
+Cloud dedicated-agent path. It is an explicit operator-run diagnostic and is
+not part of routine pull-request or scheduled CI.
 
 The lane deliberately does not call Hetzner. It presents the existing
 repository Cloud bearer to the staging Worker; the deployed managed

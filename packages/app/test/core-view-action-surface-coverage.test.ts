@@ -112,7 +112,7 @@ const CORE_SURFACE_OWNERS: Readonly<Record<string, CoreSurfaceOwner>> = {
     files: [
       "packages/ui/src/components/pages/SkillsView.tsx",
       "packages/ui/src/components/pages/skill-detail-panel.tsx",
-      "packages/ui/src/components/pages/skill-marketplace.tsx",
+      "packages/ui/src/components/pages/skill-installer.tsx",
     ],
     minAgentElements: 6,
   },

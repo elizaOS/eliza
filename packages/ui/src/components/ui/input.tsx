@@ -2,8 +2,8 @@
  * Text-input primitive with cva variants (default, and skins used across
  * settings/config forms). The canonical single-line input for the kit; other
  * inputs compose it rather than re-styling a bare `<input>`. Coarse-pointer
- * surfaces retain a 44px minimum hit area even when a compact density or
- * caller-provided size is used.
+ * surfaces retain a 44px minimum hit area and 16px font size (prevents iOS
+ * Safari focus-zoom) even when a compact density or caller-provided size is used.
  */
 import { cva, type VariantProps } from "class-variance-authority";
 import * as React from "react";
@@ -11,7 +11,7 @@ import * as React from "react";
 import { cn } from "../../lib/utils";
 
 const inputVariants = cva(
-  "w-full min-w-0 border text-sm transition-[border-color,box-shadow,background-color] pointer-coarse:min-h-touch pointer-coarse:min-w-touch disabled:cursor-not-allowed disabled:opacity-50",
+  "w-full min-w-0 border text-sm pointer-coarse:text-[16px] transition-[border-color,box-shadow,background-color] pointer-coarse:min-h-touch pointer-coarse:min-w-touch disabled:cursor-not-allowed disabled:opacity-50",
   {
     variants: {
       variant: {

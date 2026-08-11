@@ -3384,6 +3384,48 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // Experience edit/delete seams: the Experience view's per-record PATCH
+  // (inline edit save) and DELETE (remove) both target
+  // /api/character/experiences/:id. Mutate the in-memory stub list so the
+  // follow-up GET reflects the write.
+  {
+    const experienceMatch = /^\/api\/character\/experiences\/([^/]+)$/.exec(
+      url.pathname,
+    );
+    if (experienceMatch) {
+      const experienceId = decodeURIComponent(experienceMatch[1]);
+      const index = stubExperiences.findIndex(
+        (experience) => experience.id === experienceId,
+      );
+      if (req.method === "GET") {
+        if (index === -1) {
+          sendJson(req, res, 404, { error: "experience not found" });
+          return;
+        }
+        sendJson(req, res, 200, { data: stubExperiences[index] });
+        return;
+      }
+      if (req.method === "PATCH") {
+        if (index === -1) {
+          sendJson(req, res, 404, { error: "experience not found" });
+          return;
+        }
+        const body = (await readJsonBody(req)) || {};
+        Object.assign(stubExperiences[index], body, {
+          id: experienceId,
+          updatedAt: nowIso(),
+        });
+        sendJson(req, res, 200, { data: stubExperiences[index] });
+        return;
+      }
+      if (req.method === "DELETE") {
+        if (index !== -1) stubExperiences.splice(index, 1);
+        sendJson(req, res, 200, { success: true });
+        return;
+      }
+    }
+  }
+
   if (req.method === "GET" && url.pathname === "/api/relationships/activity") {
     sendJson(req, res, 200, { activity: [] });
     return;
@@ -3849,6 +3891,35 @@ const server = http.createServer(async (req, res) => {
 
   if (req.method === "GET" && url.pathname === "/api/local-inference/hub") {
     sendJson(req, res, 200, emptyLocalInferenceHub);
+    return;
+  }
+
+  // Model catalog behind the Settings model panel + slash-command completions.
+  // Empty providers with an empty validated catalog keeps the panel in its
+  // designed-empty state without tripping the catch-all 501.
+  if (req.method === "GET" && url.pathname === "/api/models") {
+    sendJson(req, res, 200, { providers: {}, catalog: { providers: {} } });
+    return;
+  }
+
+  // Authoritative device-tier assessment consumed by the Settings voice
+  // section and first-run gate. Shape mirrors plugin-local-inference's
+  // /api/local-inference/device-tier response.
+  if (
+    req.method === "GET" &&
+    url.pathname === "/api/local-inference/device-tier"
+  ) {
+    sendJson(req, res, 200, {
+      tier: {
+        tier: "GOOD",
+        reasons: ["ui-smoke stub assessment"],
+        canRunLocalLm: true,
+        canRunLocalVoice: true,
+        recommendedMode: "local",
+        recommendedFit: null,
+        numericContext: { vramGb: 16, appleSilicon: true, mobile: false },
+      },
+    });
     return;
   }
 
@@ -4351,68 +4422,7 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  if (req.method === "GET" && url.pathname === "/api/skills/catalog") {
-    sendJson(req, res, 200, {
-      total: 0,
-      page: Number(url.searchParams.get("page") ?? 1),
-      perPage: Number(url.searchParams.get("perPage") ?? 50),
-      totalPages: 0,
-      installedCount: 0,
-      skills: [],
-    });
-    return;
-  }
-
-  if (req.method === "GET" && url.pathname === "/api/skills/catalog/search") {
-    sendJson(req, res, 200, {
-      query: url.searchParams.get("q") ?? "",
-      count: 0,
-      results: [],
-    });
-    return;
-  }
-
-  if (req.method === "GET" && url.pathname.startsWith("/api/skills/catalog/")) {
-    sendJson(req, res, 404, { error: "Skill not found" });
-    return;
-  }
-
-  if (req.method === "POST" && url.pathname === "/api/skills/catalog/refresh") {
-    sendJson(req, res, 200, { ok: true, count: 0 });
-    return;
-  }
-
-  if (
-    req.method === "GET" &&
-    url.pathname === "/api/skills/marketplace/search"
-  ) {
-    sendJson(req, res, 200, { results: [] });
-    return;
-  }
-
-  if (
-    req.method === "GET" &&
-    url.pathname === "/api/skills/marketplace/config"
-  ) {
-    sendJson(req, res, 200, { keySet: false });
-    return;
-  }
-
-  if (
-    req.method === "PUT" &&
-    url.pathname === "/api/skills/marketplace/config"
-  ) {
-    sendJson(req, res, 200, { keySet: true });
-    return;
-  }
-
-  if (
-    req.method === "POST" &&
-    (url.pathname === "/api/skills/marketplace/install" ||
-      url.pathname === "/api/skills/marketplace/uninstall" ||
-      url.pathname === "/api/skills/catalog/install" ||
-      url.pathname === "/api/skills/catalog/uninstall")
-  ) {
+  if (req.method === "POST" && url.pathname === "/api/skills/install") {
     sendJson(req, res, 200, { ok: true });
     return;
   }

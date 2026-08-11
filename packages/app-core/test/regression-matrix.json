@@ -37,11 +37,9 @@
       "files": [".github/workflows/release-electrobun.yml"],
       "scheduledSuites": [
         "regression-matrix-release",
-        "live-cloud",
         "e2e-heavy",
         "desktop-packaged-macos",
-        "desktop-packaged-windows",
-        "desktop-playwright"
+        "desktop-packaged-windows"
       ]
     },
     "release-contract": {

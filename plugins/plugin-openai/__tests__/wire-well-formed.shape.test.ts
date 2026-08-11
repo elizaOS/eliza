@@ -31,8 +31,13 @@ function startCaptureServer(): Promise<string> {
     const chunks: Buffer[] = [];
     request.on("data", (chunk: Buffer) => chunks.push(chunk));
     request.on("end", () => {
-      captured.push({ url: request.url ?? "", bytes: Buffer.concat(chunks) });
+      const raw = Buffer.concat(chunks).toString("utf8");
+      captured.push({ url: request.url ?? "", bytes: Buffer.from(raw, "utf8") });
       response.writeHead(200, { "content-type": "application/json" });
+      // When the request includes response_format (structured output), the AI
+      // SDK parses the response content as JSON; return valid JSON for those.
+      const hasStructuredOutput = raw.includes("response_format");
+      const content = hasStructuredOutput ? JSON.stringify({ goodField: "value" }) : "ok";
       response.end(
         JSON.stringify({
           id: "chatcmpl-test",
@@ -42,7 +47,7 @@ function startCaptureServer(): Promise<string> {
           choices: [
             {
               index: 0,
-              message: { role: "assistant", content: "ok" },
+              message: { role: "assistant", content },
               finish_reason: "stop",
             },
           ],
@@ -172,5 +177,51 @@ describe("#18025: request bodies are well-formed strict JSON", () => {
     const body = assertStrictParseable(captured[0].bytes);
     const messages = body.messages as Array<{ role: string; content: string }>;
     expect(messages.find((message) => message.role === "user")?.content).toBe("tail �");
+  });
+
+  // #18081: Tool descriptions, output schemas, and provider options must also
+  // be sanitized — the original #18079 only sanitized prompt/messages/system.
+  it("sanitizes a lone surrogate in a tool description (#18081)", async () => {
+    const result = await handleTextSmall(buildRuntime(), {
+      prompt: "use the tool",
+      tools: {
+        "lone-surrogate-tool": {
+          description: `bad tool \uD83D`,
+          parameters: { type: "object", properties: {} },
+        },
+      },
+    } as never);
+    expect(typeof result === "string" ? result : (result as { text: string }).text).toBe("ok");
+
+    expect(captured).toHaveLength(1);
+    const raw = captured[0].bytes.toString("utf8");
+    expect(LONE_SURROGATE_ESCAPE.test(raw)).toBe(false);
+    const body = assertStrictParseable(captured[0].bytes);
+    const serialized = JSON.stringify(body);
+    expect(serialized).toContain("bad tool \uFFFD");
+    expect(LONE_SURROGATE_ESCAPE.test(serialized)).toBe(false);
+  });
+
+  // #18081 review: structured-output schemas must also be sanitized. The plain
+  // schema is sanitized before being wrapped in Output.object, so schema keys
+  // AND values carrying lone surrogates never reach the provider wire.
+  it("sanitizes a lone surrogate in a response schema key and description (#18081 review)", async () => {
+    await handleTextSmall(buildRuntime(), {
+      prompt: "return structured data",
+      responseSchema: {
+        type: "object",
+        description: `schema desc \uD83D`,
+        properties: {
+          goodField: { type: "string", description: "clean" },
+          [`bad${"\uD83D"}`]: { type: "string", description: `also \uD83D` },
+        },
+      },
+    } as never);
+    expect(captured).toHaveLength(1);
+    const raw = captured[0].bytes.toString("utf8");
+    expect(LONE_SURROGATE_ESCAPE.test(raw)).toBe(false);
+    const body = assertStrictParseable(captured[0].bytes);
+    const serialized = JSON.stringify(body);
+    expect(LONE_SURROGATE_ESCAPE.test(serialized)).toBe(false);
   });
 });

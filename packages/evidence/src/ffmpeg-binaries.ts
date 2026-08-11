@@ -10,6 +10,7 @@ import { execFile } from "node:child_process";
 import fs from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
+import { setTimeout as delayMs } from "node:timers/promises";
 import { promisify } from "node:util";
 
 const require = createRequire(import.meta.url);
@@ -52,24 +53,63 @@ export function resolveNodeInstallRunner({
     : "node";
 }
 
-/** Whether a binary answers `-version`, with a reason when it does not. */
+// Exec failures that clear on their own once a concurrent writer closes the
+// binary it is still producing: ETXTBSY means "open for write while exec'd",
+// which happens when a sibling process races the same lazy binary install.
+const TRANSIENT_PROBE_CODES = new Set(["ETXTBSY", "EBUSY", "EAGAIN"]);
+const PROBE_RETRY_DELAYS_MS = [100, 200, 400, 800, 1_600];
+
+type ProbeExec = (
+  bin: string,
+  args: string[],
+  options: { timeout: number },
+) => Promise<unknown>;
+
+/**
+ * Whether a binary answers `-version`, with a reason when it does not.
+ * Transient exec codes are retried on a short backoff so a cross-process
+ * install race degrades into a slightly slower probe instead of a false
+ * "bundled binary failed". `execProbe` is injectable for deterministic tests.
+ */
+export async function probeBinaryAvailable(
+  bin: string,
+  execProbe: ProbeExec = (probeBin, args, options) =>
+    execFileAsync(probeBin, args, options),
+): Promise<{ available: true } | { available: false; reason: string }> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt <= PROBE_RETRY_DELAYS_MS.length; attempt += 1) {
+    try {
+      await execProbe(bin, ["-version"], { timeout: 10_000 });
+      return { available: true };
+    } catch (error) {
+      lastError = error;
+      const code = (error as NodeJS.ErrnoException)?.code;
+      if (code === "ENOENT") {
+        return { available: false, reason: `${bin} not installed` };
+      }
+      if (
+        typeof code === "string" &&
+        TRANSIENT_PROBE_CODES.has(code) &&
+        attempt < PROBE_RETRY_DELAYS_MS.length
+      ) {
+        await delayMs(PROBE_RETRY_DELAYS_MS[attempt]);
+        continue;
+      }
+      break;
+    }
+  }
+  return {
+    available: false,
+    reason: `${bin} -version failed: ${String(
+      lastError instanceof Error ? lastError.message : lastError,
+    ).slice(0, 160)}`,
+  };
+}
+
 async function binaryAvailable(
   bin: string,
 ): Promise<{ available: true } | { available: false; reason: string }> {
-  try {
-    await execFileAsync(bin, ["-version"], { timeout: 10_000 });
-    return { available: true };
-  } catch (error) {
-    const enoent = (error as NodeJS.ErrnoException)?.code === "ENOENT";
-    return {
-      available: false,
-      reason: enoent
-        ? `${bin} not installed`
-        : `${bin} -version failed: ${String(
-            error instanceof Error ? error.message : error,
-          ).slice(0, 160)}`,
-    };
-  }
+  return probeBinaryAvailable(bin);
 }
 
 function envPath(names: string[]): string | undefined {
@@ -101,9 +141,65 @@ function packageRoot(packageName: string): string | null {
   return null;
 }
 
-function installFfmpegStaticOnce(): Promise<
-  { installed: true } | { installed: false; reason: string }
-> {
+const INSTALL_LOCK_STALE_MS = 180_000;
+const INSTALL_LOCK_POLL_MS = 250;
+
+/**
+ * Serialize a critical section across processes through an atomic lock
+ * directory. The per-process install memo below cannot see sibling test
+ * workers, so without this every worker races the same download into the same
+ * package directory and one of them execs a binary another still has open for
+ * write (spawn ETXTBSY). A lock left behind by a crashed holder is reclaimed
+ * after `staleMs` so one dead process cannot poison every later install.
+ */
+export async function withInstallLock<T>(
+  lockDir: string,
+  fn: () => Promise<T>,
+  {
+    staleMs = INSTALL_LOCK_STALE_MS,
+    pollMs = INSTALL_LOCK_POLL_MS,
+  }: { staleMs?: number; pollMs?: number } = {},
+): Promise<T> {
+  const deadline = Date.now() + staleMs * 2;
+  for (;;) {
+    try {
+      fs.mkdirSync(lockDir);
+      break;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException)?.code !== "EEXIST") throw error;
+      try {
+        const age = Date.now() - fs.statSync(lockDir).mtimeMs;
+        if (age > staleMs) {
+          fs.rmdirSync(lockDir);
+          continue;
+        }
+      } catch {
+        // error-policy:J6 the holder released between the stat and the rmdir;
+        // loop back to the acquire attempt.
+      }
+      if (Date.now() > deadline) {
+        throw new Error(
+          `install lock at ${lockDir} was not released in time; remove it if no installer is running`,
+        );
+      }
+      await delayMs(pollMs);
+    }
+  }
+  try {
+    return await fn();
+  } finally {
+    try {
+      fs.rmdirSync(lockDir);
+    } catch {
+      // error-policy:J6 best-effort lock release; the stale-lock reclaim above
+      // covers a release that failed here.
+    }
+  }
+}
+
+function installFfmpegStaticOnce(
+  candidate: string,
+): Promise<{ installed: true } | { installed: false; reason: string }> {
   ffmpegStaticInstallPromise ??= (async () => {
     const root = packageRoot("ffmpeg-static");
     if (root === null) {
@@ -122,12 +218,21 @@ function installFfmpegStaticOnce(): Promise<
     }
 
     try {
-      const nodeRunner = resolveNodeInstallRunner();
-      await execFileAsync(nodeRunner, [installer], {
-        cwd: root,
-        timeout: 120_000,
-      });
-      return { installed: true };
+      return await withInstallLock(
+        path.join(root, ".eliza-ffmpeg-install-lock"),
+        async () => {
+          // A sibling process may have completed the install while this one
+          // waited on the lock; downloading again would reopen the binary for
+          // write under a concurrent prober.
+          if (fs.existsSync(candidate)) return { installed: true as const };
+          const nodeRunner = resolveNodeInstallRunner();
+          await execFileAsync(nodeRunner, [installer], {
+            cwd: root,
+            timeout: 120_000,
+          });
+          return { installed: true as const };
+        },
+      );
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       return {
@@ -145,7 +250,7 @@ async function bundledFfmpegPath(): Promise<BundledPathResult> {
   if (candidate === null) return { bin: null };
   if (fs.existsSync(candidate)) return { bin: candidate };
 
-  const installed = await installFfmpegStaticOnce();
+  const installed = await installFfmpegStaticOnce(candidate);
   if (!installed.installed) {
     return { bin: null, reason: installed.reason };
   }

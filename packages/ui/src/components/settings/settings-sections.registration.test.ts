@@ -37,6 +37,14 @@ describe("settings-sections registration (lazy boot seam)", () => {
     }
   });
 
+  it("keeps Voice user-visible so microphone auto-start consent is reversible", () => {
+    const voice = getAllSettingsSections().find(
+      (section) => section.id === "voice",
+    );
+    expect(voice).toBeDefined();
+    expect(voice?.developerOnly).not.toBe(true);
+  });
+
   it("also registers the folded-in cloud + runtime sections", () => {
     // These used to be ad-hoc `registerSettingsSection(...)` bypass calls; they
     // are now single-source entries in BUILTIN_SECTION_DEFINITIONS carrying

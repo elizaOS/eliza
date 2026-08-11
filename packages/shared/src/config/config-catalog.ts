@@ -276,6 +276,99 @@ export function evaluateVisibility(
   return evaluateLogicExpression(condition as LogicExpression, state);
 }
 
+/** True when a draft/persisted config value counts as "filled in". */
+export function isConfigValuePresent(value: unknown): boolean {
+  if (value == null) return false;
+  if (typeof value === "string") return value.trim().length > 0;
+  if (typeof value === "number") return Number.isFinite(value);
+  if (typeof value === "boolean") return true;
+  if (Array.isArray(value)) return value.length > 0;
+  if (typeof value === "object") return Object.keys(value).length > 0;
+  return Boolean(value);
+}
+
+function normalizeRequirementList(
+  keys: string | string[] | undefined,
+): string[] {
+  if (keys == null) return [];
+  const list = Array.isArray(keys) ? keys : [keys];
+  return list.map((key) => key.trim()).filter((key) => key.length > 0);
+}
+
+/**
+ * Whether `key` is present in live form values or already persisted (`setKeys`).
+ * Sensitive secrets are often `isSet` without a echoed `currentValue`, so
+ * `setKeys` is the only signal that unlocks dependent fields.
+ */
+export function isConfigKeySatisfied(
+  key: string,
+  values: Record<string, unknown>,
+  setKeys?: ReadonlySet<string>,
+): boolean {
+  if (setKeys?.has(key)) return true;
+  return isConfigValuePresent(values[key]);
+}
+
+/**
+ * Build the state object used for `visible` path checks. Persisted-but-masked
+ * secrets (in `setKeys`) are injected as `true` so `{ path: "TOKEN" }` works
+ * even when the form value is empty for security.
+ */
+export function buildConfigVisibilityState(
+  values: Record<string, unknown>,
+  setKeys?: ReadonlySet<string>,
+): Record<string, unknown> {
+  if (!setKeys || setKeys.size === 0) return values;
+  const state: Record<string, unknown> = { ...values };
+  for (const key of setKeys) {
+    if (!isConfigValuePresent(state[key])) {
+      state[key] = true;
+    }
+  }
+  return state;
+}
+
+/**
+ * Evaluate `requires` / `requiresAny` / `visible` for a config field.
+ * All declared gates must pass; missing gates are treated as open.
+ */
+export function evaluateFieldVisibility(options: {
+  hidden?: boolean;
+  requires?: string | string[];
+  requiresAny?: string | string[];
+  visible?: VisibilityCondition;
+  values: Record<string, unknown>;
+  setKeys?: ReadonlySet<string>;
+}): boolean {
+  if (options.hidden) return false;
+
+  const requires = normalizeRequirementList(options.requires);
+  if (
+    requires.length > 0 &&
+    !requires.every((key) =>
+      isConfigKeySatisfied(key, options.values, options.setKeys),
+    )
+  ) {
+    return false;
+  }
+
+  const requiresAny = normalizeRequirementList(options.requiresAny);
+  if (
+    requiresAny.length > 0 &&
+    !requiresAny.some((key) =>
+      isConfigKeySatisfied(key, options.values, options.setKeys),
+    )
+  ) {
+    return false;
+  }
+
+  if (options.visible === undefined) return true;
+  return evaluateVisibility(
+    options.visible,
+    buildConfigVisibilityState(options.values, options.setKeys),
+  );
+}
+
 // ── Visibility helpers (≈ json-render visibility.*) ─────────────────────
 
 export const visibility = {
@@ -1016,6 +1109,10 @@ export interface ResolvedField {
   advanced: boolean;
   hidden: boolean;
   width: "full" | "half" | "third";
+  /** All of these keys must be present (see {@link evaluateFieldVisibility}). */
+  requires?: string | string[];
+  /** Any one of these keys is enough. */
+  requiresAny?: string | string[];
   visible?: VisibilityCondition;
   validation?: ValidationConfig;
   readonly: boolean;
@@ -1065,6 +1162,8 @@ export function resolveFields(
       advanced: hint.advanced ?? false,
       hidden: hint.hidden ?? false,
       width: hint.width ?? (HALF_WIDTH_TYPES.has(fieldType) ? "half" : "full"),
+      requires: hint.requires,
+      requiresAny: hint.requiresAny,
       visible: hint.visible,
       validation: hint.validation,
       readonly: hint.readonly ?? false,

@@ -44,7 +44,6 @@
       "source": "bundled",
       "tags": [
         "agent-skills",
-        "clawhub",
         "otto",
         "skills",
         "agents",
@@ -66,14 +65,6 @@
           "sensitive": false,
           "label": "Auto Load",
           "help": "Automatically load installed skills on startup",
-          "advanced": false
-        },
-        "SKILLS_REGISTRY": {
-          "type": "string",
-          "required": false,
-          "sensitive": false,
-          "label": "Registry",
-          "help": "Skill registry URL (default: https://clawhub.ai)",
           "advanced": false
         },
         "BUNDLED_SKILLS_DIRS": {

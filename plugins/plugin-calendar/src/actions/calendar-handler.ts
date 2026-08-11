@@ -38,8 +38,13 @@ import type {
   LifeOpsCalendarRecurrenceScope,
   LifeOpsNextCalendarEventContext,
 } from "@elizaos/shared";
+import { isAppleCalendarGrant } from "../apple-calendar.js";
 import { CALENDAR_DETAILS_PARAMETER_SCHEMA } from "../calendar-action-schema.js";
-import { resolveDefaultTimeZone } from "../internal/constants.js";
+import {
+  CALENDAR_TIME_ZONE_ALIASES,
+  isValidTimeZone,
+  resolveDefaultTimeZone,
+} from "../internal/constants.js";
 import {
   detailArray,
   detailBoolean,
@@ -60,6 +65,7 @@ import {
   formatCalendarFeed,
   formatNextEventContext,
 } from "../internal/format.js";
+import { GOOGLE_CONNECTOR_ACCOUNT_GRANT_PREFIX } from "../internal/google-delegates.js";
 import {
   describeRecurrence,
   normalizeRecurrenceScope,
@@ -72,6 +78,7 @@ import {
   getWeekdayForLocalDate,
   getZonedDateParts,
 } from "../internal/time.js";
+import { isMicrosoftCalendarGrantId } from "../microsoft/accounts.js";
 import { CalendarService } from "../service/CalendarService.js";
 import type {
   CalendarActionDeps,
@@ -172,14 +179,49 @@ function requireCompleteFreshCalendarFeed(
   return feed;
 }
 
+// Planner-authored `details` records are junk-prone input: the planner fills
+// every schema key, and the connector-scope hints (`mode`, `side`, `grantId`)
+// have no legitimate planner-visible source unless copied verbatim from a
+// provider-rendered grant. CalendarService enum-validates these fields with a
+// hard 400 — correct for its HTTP routes, fatal for a chat turn: live
+// regression 2026-08-09 had feed reads failing CALENDAR_SERVICE_400 because
+// the planner filled `mode:"read"` and `grantId:"primary"`. The action
+// boundary therefore accepts only recognizable values and drops the rest, so
+// placeholder junk cannot abort the read the user asked for.
+function connectorModeDetail(
+  details: Record<string, unknown> | undefined,
+): "local" | "remote" | "cloud_managed" | undefined {
+  const value = detailString(details, "mode");
+  return value === "local" || value === "remote" || value === "cloud_managed"
+    ? value
+    : undefined;
+}
+
+function connectorSideDetail(
+  details: Record<string, unknown> | undefined,
+): "owner" | "agent" | undefined {
+  const value = detailString(details, "side");
+  return value === "owner" || value === "agent" ? value : undefined;
+}
+
 // Mutation lookups must stay unscoped when the planner omits grantId: the
 // aggregated feed already includes the built-in Eliza source alongside every
 // connected provider, so defaulting the lookup to one grant would hide
 // external events (and their busy windows) from update/delete/create flows.
-function mutationGrantId(
+// Only values shaped like a real grant id pass through — junk like "primary"
+// or "all" would otherwise scope discovery to a nonexistent grant and turn a
+// full-feed read into a fabricated-account provider call.
+function connectorGrantIdDetail(
   details: Record<string, unknown> | undefined,
 ): string | undefined {
-  return detailString(details, "grantId");
+  const value = detailString(details, "grantId");
+  if (!value) return undefined;
+  return isAppleCalendarGrant(value) ||
+    isMicrosoftCalendarGrantId(value) ||
+    value === ELIZA_CALENDAR_GRANT_ID ||
+    value.startsWith(GOOGLE_CONNECTOR_ACCOUNT_GRANT_PREFIX)
+    ? value
+    : undefined;
 }
 
 type CreateEventTravelIntent = CalendarTravelIntent;
@@ -1567,7 +1609,17 @@ export function parseExplicitLocalDate(
 function resolveCalendarTimeZone(
   details: Record<string, unknown> | undefined,
 ): string {
-  return detailString(details, "timeZone") ?? resolveDefaultTimeZone();
+  const requested = detailString(details, "timeZone");
+  if (requested) {
+    const normalized =
+      CALENDAR_TIME_ZONE_ALIASES[requested.toLowerCase()] ?? requested;
+    if (isValidTimeZone(normalized)) {
+      return normalized;
+    }
+  }
+  // Planner junk (e.g. "user's timezone") falls back to the agent default
+  // instead of letting CalendarService reject the whole read with a 400.
+  return resolveDefaultTimeZone();
 }
 
 type LocalDateOnly = Pick<
@@ -1914,13 +1966,9 @@ async function loadCreateEventCalendarContext(
   const requestTimeZone = resolveCalendarTimeZone(details);
   const feed = await service.getCalendarFeed(INTERNAL_URL, {
     includeHiddenCalendars: true,
-    mode: detailString(details, "mode") as
-      | "local"
-      | "remote"
-      | "cloud_managed"
-      | undefined,
-    side: detailString(details, "side") as "owner" | "agent" | undefined,
-    grantId: mutationGrantId(details),
+    mode: connectorModeDetail(details),
+    side: connectorSideDetail(details),
+    grantId: connectorGrantIdDetail(details),
     calendarId: detailString(details, "calendarId"),
     timeZone: requestTimeZone,
     forceSync: true,
@@ -2628,20 +2676,9 @@ function buildCreateEventRequest(
     resolvedWindowPreset,
     travelIntent,
     request: {
-      mode:
-        (detailString(args.details, "mode") as
-          | "local"
-          | "remote"
-          | "cloud_managed"
-          | undefined) ?? args.fallbackRequest?.mode,
-      side: ((detailString(args.details, "side") as
-        | "owner"
-        | "agent"
-        | undefined) ?? args.fallbackRequest?.side) as
-        | "owner"
-        | "agent"
-        | undefined,
-      grantId: detailString(args.details, "grantId"),
+      mode: connectorModeDetail(args.details) ?? args.fallbackRequest?.mode,
+      side: connectorSideDetail(args.details) ?? args.fallbackRequest?.side,
+      grantId: connectorGrantIdDetail(args.details),
       calendarId:
         detailString(args.details, "calendarId") ??
         args.fallbackRequest?.calendarId,
@@ -3768,6 +3805,15 @@ const calendarAction: CalendarHandlerAction = {
         text,
         userFacingText: text,
         verifiedUserFacing: true,
+        // The callback above already delivered this exact text, and the action
+        // description promises the final grounded reply. A calendar operation
+        // is a single-operation turn whose delivered text IS the answer — on
+        // success AND on failure ("calendar's acting up" is the complete
+        // honest outcome) — so declare it complete: the gated-evaluator skip
+        // keeps the model from re-rendering the delivery as a second message
+        // ("clear tomorrow." / "you're clear tomorrow.", or a failure
+        // paraphrase like "I couldn't verify... want me to try again?").
+        turnComplete: true,
         effectReceipts: [effectReceipt],
         userFacingEffectReceiptIds: [effectReceipt.receiptId],
         ...(payload.data !== undefined ? { data: payload.data } : {}),
@@ -4113,16 +4159,9 @@ const calendarAction: CalendarHandlerAction = {
           const feed = requireCompleteFreshCalendarFeed(
             await service.getCalendarFeed(INTERNAL_URL, {
               includeHiddenCalendars: true,
-              mode: detailString(details, "mode") as
-                | "local"
-                | "remote"
-                | "cloud_managed"
-                | undefined,
-              side: detailString(details, "side") as
-                | "owner"
-                | "agent"
-                | undefined,
-              grantId: mutationGrantId(details),
+              mode: connectorModeDetail(details),
+              side: connectorSideDetail(details),
+              grantId: connectorGrantIdDetail(details),
               forceSync: true,
               ...feedRequest,
             }),
@@ -4217,16 +4256,9 @@ const calendarAction: CalendarHandlerAction = {
           targetEvent = await service.getConditionalCalendarMutationTarget(
             INTERNAL_URL,
             {
-              mode: detailString(details, "mode") as
-                | "local"
-                | "remote"
-                | "cloud_managed"
-                | undefined,
-              side: detailString(details, "side") as
-                | "owner"
-                | "agent"
-                | undefined,
-              grantId: mutationGrantId(details),
+              mode: connectorModeDetail(details),
+              side: connectorSideDetail(details),
+              grantId: connectorGrantIdDetail(details),
               calendarId: resolvedCalendarId,
               eventId: resolvedEventId,
             },
@@ -4461,16 +4493,9 @@ const calendarAction: CalendarHandlerAction = {
           const feed = requireCompleteFreshCalendarFeed(
             await service.getCalendarFeed(INTERNAL_URL, {
               includeHiddenCalendars: true,
-              mode: detailString(details, "mode") as
-                | "local"
-                | "remote"
-                | "cloud_managed"
-                | undefined,
-              side: detailString(details, "side") as
-                | "owner"
-                | "agent"
-                | undefined,
-              grantId: mutationGrantId(details),
+              mode: connectorModeDetail(details),
+              side: connectorSideDetail(details),
+              grantId: connectorGrantIdDetail(details),
               forceSync: true,
               ...feedRequest,
             }),
@@ -4528,16 +4553,9 @@ const calendarAction: CalendarHandlerAction = {
           targetEvent = await service.getConditionalCalendarMutationTarget(
             INTERNAL_URL,
             {
-              mode: detailString(details, "mode") as
-                | "local"
-                | "remote"
-                | "cloud_managed"
-                | undefined,
-              side: detailString(details, "side") as
-                | "owner"
-                | "agent"
-                | undefined,
-              grantId: mutationGrantId(details),
+              mode: connectorModeDetail(details),
+              side: connectorSideDetail(details),
+              grantId: connectorGrantIdDetail(details),
               calendarId: detailString(details, "calendarId"),
               eventId: explicitEventId,
             },
@@ -4677,13 +4695,9 @@ const calendarAction: CalendarHandlerAction = {
       if (subaction === "trip_window" && tripWindowIntent) {
         const feed = await service.getCalendarFeed(INTERNAL_URL, {
           includeHiddenCalendars: true,
-          mode: detailString(details, "mode") as
-            | "local"
-            | "remote"
-            | "cloud_managed"
-            | undefined,
-          side: detailString(details, "side") as "owner" | "agent" | undefined,
-          grantId: detailString(details, "grantId"),
+          mode: connectorModeDetail(details),
+          side: connectorSideDetail(details),
+          grantId: connectorGrantIdDetail(details),
           ...resolveTripWindowRequest(details, llmPlan),
         });
         const itineraryEvents = resolveTripWindowEvents(
@@ -4754,13 +4768,9 @@ const calendarAction: CalendarHandlerAction = {
       const hasExplicitWindow = baseResolved.explicitWindow;
       const feed = await service.getCalendarFeed(INTERNAL_URL, {
         includeHiddenCalendars: true,
-        mode: detailString(details, "mode") as
-          | "local"
-          | "remote"
-          | "cloud_managed"
-          | undefined,
-        side: detailString(details, "side") as "owner" | "agent" | undefined,
-        grantId: detailString(details, "grantId"),
+        mode: connectorModeDetail(details),
+        side: connectorSideDetail(details),
+        grantId: connectorGrantIdDetail(details),
         ...request,
       });
 
@@ -5018,6 +5028,24 @@ const calendarAction: CalendarHandlerAction = {
             }),
           });
         }
+        // The failure receipt carries only a code; without the service
+        // error's message and the request hints the operator cannot see WHICH
+        // validation or provider call rejected the turn (live 2026-08-09: a
+        // swallowed "mode must be one of ..." surfaced only as
+        // CALENDAR_SERVICE_400).
+        runtime.reportError("calendar:action", error, {
+          subaction: subaction ?? "none",
+          status: error.status,
+          code: error.code ?? `CALENDAR_SERVICE_${error.status}`,
+          detail: error.message,
+          calendarId: detailString(details, "calendarId") ?? "unset",
+          timeMin: detailString(details, "timeMin") ?? "unset",
+          timeMax: detailString(details, "timeMax") ?? "unset",
+          timeZone: detailString(details, "timeZone") ?? "unset",
+          mode: detailString(details, "mode") ?? "unset",
+          side: detailString(details, "side") ?? "unset",
+          grantId: detailString(details, "grantId") ?? "unset",
+        });
         const fallback = buildCalendarServiceErrorFallback(error, intent);
         return respond({
           success: false,

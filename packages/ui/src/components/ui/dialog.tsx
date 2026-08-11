@@ -47,10 +47,9 @@ const DialogContent = React.forwardRef<
     /** Hide the default top-right close button when the consumer renders its own close affordance. */
     showCloseButton?: boolean;
     /**
-     * Extra classes for the backdrop dim. A dialog that must beat the ambient
-     * chat overlay's stacking (z≈9000) raises BOTH layers — content via
-     * `className`, dim via this — so the sheet is dimmed under it instead of
-     * painting over the modal.
+     * Extra classes for the backdrop dim. View-owned dialogs may raise both
+     * dialog layers to cover native/plugin content, but must stay below
+     * `Z_SHELL_OVERLAY`; persistent chat chrome is never dimmed or occluded.
      */
     overlayClassName?: string;
   }

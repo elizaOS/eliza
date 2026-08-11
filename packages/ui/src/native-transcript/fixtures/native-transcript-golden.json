@@ -1,6 +1,6 @@
 {
   "schema": "eliza.native-transcript/v1",
-  "note": "Language-neutral golden conformance fixture for eliza.native-transcript/v1. Every shell (web here; iOS/Android native next) must decode these exact events and fold them into `expectView`. `expectRejectedIndexes` lists positions in `events` that MUST fail decode (malformed). Item objects omit optional fields that are absent; a conformant comparison ignores undefined-valued keys.",
+  "note": "Language-neutral golden conformance fixture for eliza.native-transcript/v1. Web, iOS, Android, and Electrobun decode these exact events and fold them into `expectView`. `expectRejectedIndexes` lists positions in `events` that MUST fail decode (malformed). Item objects omit optional fields that are absent; a conformant comparison ignores undefined-valued keys.",
   "scenarios": [
     {
       "name": "happy-path-voice-turn",

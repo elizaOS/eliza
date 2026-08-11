@@ -65,8 +65,8 @@ Scripts from `plugins/plugin-anthropic/package.json`:
 bun run --cwd plugins/plugin-anthropic build          # Bun.build (node + browser + cjs, via build.ts)
 bun run --cwd plugins/plugin-anthropic dev            # build in watch mode
 bun run --cwd plugins/plugin-anthropic test           # run all tests (vitest, excludes *.live.test.ts)
-bun run --cwd plugins/plugin-anthropic test:unit      # vitest --dir __tests__/unit (no unit/ subdir exists; all tests are in __tests__/ root)
-bun run --cwd plugins/plugin-anthropic test:integration  # vitest --dir __tests__/integration (no integration/ subdir exists)
+bun run --cwd plugins/plugin-anthropic test:unit      # run the default keyless test suite
+bun run --cwd plugins/plugin-anthropic test:integration  # run the deterministic real-runtime integration suite
 bun run --cwd plugins/plugin-anthropic typecheck      # tsc --noEmit
 bun run --cwd plugins/plugin-anthropic lint           # biome check --write --unsafe
 bun run --cwd plugins/plugin-anthropic format         # biome format --write

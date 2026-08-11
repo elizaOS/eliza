@@ -85,7 +85,40 @@ class FakeEntityStore {
     name?: string;
     type?: string;
   }): Promise<EntityResolveCandidate[]> {
-    return [];
+    const query = _query;
+    return [...this.entities.values()]
+      .filter(
+        (entity) =>
+          (!query.type || entity.type === query.type) &&
+          (!query.name ||
+            entity.preferredName
+              .toLowerCase()
+              .includes(query.name.toLowerCase())),
+      )
+      .map((entity) => ({
+        entity,
+        confidence:
+          entity.preferredName.toLowerCase() === query.name?.toLowerCase()
+            ? 0.9
+            : 0.55,
+        evidence: [],
+        safeToSend: false,
+      }));
+  }
+
+  async merge(targetId: string, sourceIds: string[]): Promise<Entity> {
+    const target = this.entities.get(targetId);
+    if (!target) throw new Error(`missing merge target ${targetId}`);
+    const identities = [...target.identities];
+    for (const sourceId of sourceIds) {
+      const source = this.entities.get(sourceId);
+      if (!source) continue;
+      identities.push(...source.identities);
+      this.entities.delete(sourceId);
+    }
+    const merged = { ...target, identities, updatedAt: nowIso() };
+    this.entities.set(targetId, merged);
+    return merged;
   }
 }
 
@@ -126,6 +159,7 @@ function makeRuntime(): {
   const emitted: Array<{ type: string; payload: Record<string, unknown> }> = [];
   const runtime = {
     agentId: "agent-1",
+    reportError: vi.fn(),
     emitEvent: vi.fn(async (type: string, payload: Record<string, unknown>) => {
       emitted.push({ type, payload });
     }),
@@ -196,6 +230,139 @@ describe("handleVoiceTurnObserved", () => {
       }),
     ).resolves.toBeUndefined();
     expect(emitted).toHaveLength(0);
+  });
+
+  it("applies a confirmed correction through the merge engine without leaving duplicate entities", async () => {
+    const entityStore = new FakeEntityStore();
+    const relationshipStore = new FakeRelationshipStore();
+    const first = await entityStore.observeIdentity({
+      platform: "meeting",
+      handle: "participant-sarah-a",
+      displayName: "Sarah",
+      evidence: ["roster-a"],
+      confidence: 0.7,
+      suggestedType: "person",
+    });
+    const second = await entityStore.observeIdentity({
+      platform: "calendar",
+      handle: "attendee-sarah-b",
+      displayName: "Sarah",
+      evidence: ["calendar-b"],
+      confidence: 0.7,
+      suggestedType: "person",
+    });
+    setVoiceObserverFactory(
+      async () =>
+        new VoiceObserver({
+          entityStore: entityStore as unknown as ConstructorParameters<
+            typeof VoiceObserver
+          >[0]["entityStore"],
+          relationshipStore:
+            relationshipStore as unknown as ConstructorParameters<
+              typeof VoiceObserver
+            >[0]["relationshipStore"],
+        }),
+    );
+
+    const { runtime, emitted } = makeRuntime();
+    await handleVoiceTurnObserved({
+      runtime,
+      turnId: "turn-correction-sarah",
+      text: "This is Sarah.",
+      imprintClusterId: "cluster-speaker-2",
+      matchConfidence: 1,
+      matchedEntityId: null,
+      speakerNameInference: {
+        resolution: "confirmed",
+        displayName: "Sarah",
+        confidence: 1,
+        candidateNames: [
+          {
+            name: "Sarah",
+            normalizedName: "sarah",
+            confidence: 1,
+            sources: ["user_correction"],
+            provenance: [
+              {
+                source: "user_correction",
+                confidence: 1,
+                evidenceId: "turn-correction-sarah",
+              },
+            ],
+          },
+        ],
+        provenance: [
+          {
+            source: "user_correction",
+            confidence: 1,
+            evidenceId: "turn-correction-sarah",
+          },
+        ],
+        reasonCodes: ["high_confidence_name", "user_correction_applied"],
+        requiresReview: false,
+      },
+    });
+
+    const sarahs = (await entityStore.list()).filter(
+      (entity) => entity.preferredName === "Sarah",
+    );
+    expect(sarahs).toHaveLength(1);
+    const expectedTargetId = [
+      first.entity.entityId,
+      second.entity.entityId,
+    ].sort()[0];
+    expect(sarahs[0]?.entityId).toBe(expectedTargetId);
+    expect(emitted).toHaveLength(1);
+    expect(emitted[0]).toMatchObject({
+      type: EventType.VOICE_ENTITY_BOUND,
+      payload: {
+        entityId: expectedTargetId,
+        displayName: "Sarah",
+        wasCreated: false,
+        speakerNameInference: {
+          resolution: "confirmed",
+          displayName: "Sarah",
+        },
+      },
+    });
+  });
+
+  it("withholds an ambiguous name decision without creating or binding an entity", async () => {
+    const entityStore = new FakeEntityStore();
+    const relationshipStore = new FakeRelationshipStore();
+    setVoiceObserverFactory(
+      async () =>
+        new VoiceObserver({
+          entityStore: entityStore as unknown as ConstructorParameters<
+            typeof VoiceObserver
+          >[0]["entityStore"],
+          relationshipStore:
+            relationshipStore as unknown as ConstructorParameters<
+              typeof VoiceObserver
+            >[0]["relationshipStore"],
+        }),
+    );
+
+    const { runtime, emitted } = makeRuntime();
+    await handleVoiceTurnObserved({
+      runtime,
+      turnId: "turn-ambiguous",
+      text: "Speaker 2",
+      imprintClusterId: "cluster-ambiguous",
+      matchConfidence: 0.8,
+      matchedEntityId: null,
+      speakerNameInference: {
+        resolution: "withheld",
+        confidence: 0.82,
+        candidateNames: [],
+        provenance: [],
+        reasonCodes: ["same_first_name_ambiguity"],
+        requiresReview: true,
+      },
+    });
+
+    expect(await entityStore.list()).toEqual([]);
+    expect(emitted).toEqual([]);
   });
 
   it("is registered on personalAssistantPlugin.events (runtime reachability, issue #8234)", async () => {

@@ -220,6 +220,15 @@ android {
         targetCompatibility JavaVersion.VERSION_21
     }
 
+    // Android and web execute the exact same language-neutral conformance
+    // bytes; no copied fixture is allowed to drift from the wire contract.
+    sourceSets {
+        test.resources.srcDir new File(
+            elizaRepoRoot,
+            'packages/ui/src/native-transcript/fixtures'
+        )
+    }
+
     packaging {
         jniLibs {
             useLegacyPackaging = true

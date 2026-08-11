@@ -54,8 +54,8 @@ bun run --cwd plugins/plugin-google-genai build          # Bun.build (node + bro
 bun run --cwd plugins/plugin-google-genai dev            # build --watch
 bun run --cwd plugins/plugin-google-genai typecheck      # tsc --noEmit
 bun run --cwd plugins/plugin-google-genai test           # vitest run (all tests)
-bun run --cwd plugins/plugin-google-genai test:unit      # vitest run --dir __tests__/unit
-bun run --cwd plugins/plugin-google-genai test:integration  # vitest run --dir __tests__/integration
+bun run --cwd plugins/plugin-google-genai test:unit      # run the default keyless test suite
+bun run --cwd plugins/plugin-google-genai test:integration  # run the deterministic real-runtime integration suite
 bun run --cwd plugins/plugin-google-genai lint           # biome check --write --unsafe
 bun run --cwd plugins/plugin-google-genai format         # biome format --write
 bun run --cwd plugins/plugin-google-genai clean          # rm -rf dist .turbo .turbo-tsconfig.json tsconfig.tsbuildinfo

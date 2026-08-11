@@ -83,7 +83,7 @@ export const GUARDED_REAL_LIVE_SUITES = [
   {
     file: "packages/app-core/src/services/coding-account-bridge.live.test.ts",
     optIn: "ORCHESTRATOR_LIVE_MULTI_ACCOUNT",
-    notes: "runs in .github/workflows/orchestrator-live-multi-account.yml",
+    notes: "operator-run multi-account integration; not part of routine CI",
   },
   {
     file: "packages/app-core/test/services/smithers-linked-codex-subscription.live.test.ts",

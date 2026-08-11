@@ -1,7 +1,10 @@
 /**
  * Exercises `wrapSingleTurnVisibleCallback` (services/message): action-callback
  * text is rewritten through TEXT_SMALL into natural language, while passive REPLY
- * callbacks pass through untouched. Runs against a mock runtime with a stubbed model.
+ * callbacks pass through untouched, and a failed rewrite degrades to the raw
+ * callback text — never fabricated meta-narration (observed live: a successful
+ * settings action shipped an internal formatting apology to chat). Runs against
+ * a mock runtime with a stubbed model.
  */
 import { describe, expect, it, vi } from "vitest";
 import { createMockRuntime } from "../../testing/mock-runtime";
@@ -108,5 +111,155 @@ describe("action callback voice rewriting", () => {
 			{ text: canonicalText, agentVoiced: true },
 			"READ_CALENDAR",
 		);
+	});
+});
+
+// The exact string the removed fallback used to fabricate; it must never reach
+// a delivery callback again.
+const META_APOLOGY = /couldn't format the details cleanly/i;
+
+function deliveredTexts(callback: ReturnType<typeof vi.fn>): string[] {
+	return callback.mock.calls
+		.map((call) => (call[0] as { text?: string } | undefined)?.text)
+		.filter((text): text is string => typeof text === "string");
+}
+
+describe("action callback voice rewrite failure", () => {
+	const message = {
+		id: "message",
+		roomId: "room",
+		entityId: "user",
+	} as unknown as Memory;
+
+	it("delivers the raw callback text when the rewrite model returns unusable output", async () => {
+		const callback = vi.fn(async () => []);
+		const runtime = createMockRuntime({
+			character: { name: "Example" },
+			logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+			useModel: vi.fn(async () => ""),
+		});
+		const raw = "Got it — I'll only reply when you @-mention me.";
+
+		const wrapped = wrapSingleTurnVisibleCallback(
+			runtime,
+			message,
+			callback as unknown as HandlerCallback,
+		);
+		await wrapped?.({ text: raw, actions: ["PERSONALITY"] }, "PERSONALITY");
+
+		expect(runtime.useModel).toHaveBeenCalledTimes(1);
+		expect(callback).toHaveBeenCalledTimes(1);
+		expect(callback).toHaveBeenCalledWith(
+			{ text: raw, actions: ["PERSONALITY"] },
+			"PERSONALITY",
+		);
+		for (const text of deliveredTexts(callback)) {
+			expect(text).not.toMatch(META_APOLOGY);
+		}
+	});
+
+	it("delivers the raw callback text when the rewrite model call throws", async () => {
+		const callback = vi.fn(async () => []);
+		const reportError = vi.fn();
+		const runtime = createMockRuntime({
+			character: { name: "Example" },
+			logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+			useModel: vi.fn(async () => {
+				throw new Error("model unavailable");
+			}),
+			reportError,
+		});
+		const raw = "Reply gate lifted — back to normal.";
+
+		const wrapped = wrapSingleTurnVisibleCallback(
+			runtime,
+			message,
+			callback as unknown as HandlerCallback,
+		);
+		await wrapped?.({ text: raw }, "PERSONALITY");
+
+		expect(callback).toHaveBeenCalledWith({ text: raw }, "PERSONALITY");
+		expect(reportError).toHaveBeenCalledWith(
+			"MessageService.rewriteActionCallback",
+			expect.any(Error),
+			expect.objectContaining({ actionName: "PERSONALITY" }),
+		);
+		for (const text of deliveredTexts(callback)) {
+			expect(text).not.toMatch(META_APOLOGY);
+		}
+	});
+
+	it("routes an action-owned error string through reportError, never chat", async () => {
+		const callback = vi.fn(async () => []);
+		const reportError = vi.fn();
+		const runtime = createMockRuntime({
+			character: { name: "Example" },
+			logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+			useModel: vi.fn(async () => ""),
+			reportError,
+		});
+		const raw = "The gate did not change.";
+		const actionError = "store write rejected";
+
+		const wrapped = wrapSingleTurnVisibleCallback(
+			runtime,
+			message,
+			callback as unknown as HandlerCallback,
+		);
+		await wrapped?.({ text: raw, error: actionError }, "PERSONALITY");
+
+		expect(reportError).toHaveBeenCalledWith(
+			"MessageService.rewriteActionCallback",
+			expect.objectContaining({ message: actionError }),
+			expect.objectContaining({ actionName: "PERSONALITY" }),
+		);
+		for (const text of deliveredTexts(callback)) {
+			expect(text).not.toMatch(META_APOLOGY);
+			expect(text).not.toContain(actionError);
+		}
+		expect(deliveredTexts(callback)).toEqual([raw]);
+	});
+
+	it("delivers the raw callback text when the runtime has no model", async () => {
+		const callback = vi.fn(async () => []);
+		const runtime = createMockRuntime({
+			character: { name: "Example" },
+			logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+		});
+		const raw = "Cleared verbosity for you.";
+
+		const wrapped = wrapSingleTurnVisibleCallback(
+			runtime,
+			message,
+			callback as unknown as HandlerCallback,
+		);
+		await wrapped?.({ text: raw }, "PERSONALITY");
+
+		expect(callback).toHaveBeenCalledWith({ text: raw }, "PERSONALITY");
+		for (const text of deliveredTexts(callback)) {
+			expect(text).not.toMatch(META_APOLOGY);
+		}
+	});
+
+	it("never fabricates text for whitespace-only callback text", async () => {
+		const callback = vi.fn(async () => []);
+		const runtime = createMockRuntime({
+			character: { name: "Example" },
+			logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+			useModel: vi.fn(),
+		});
+
+		const wrapped = wrapSingleTurnVisibleCallback(
+			runtime,
+			message,
+			callback as unknown as HandlerCallback,
+		);
+		await wrapped?.({ text: "   " }, "PERSONALITY");
+
+		expect(runtime.useModel).not.toHaveBeenCalled();
+		for (const text of deliveredTexts(callback)) {
+			expect(text).not.toMatch(META_APOLOGY);
+			expect(text.trim()).toBe("");
+		}
 	});
 });

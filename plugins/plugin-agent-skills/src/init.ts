@@ -40,23 +40,31 @@ function isCommandsService(service: Service): service is Service & CommandsServi
 export async function initializeAgentSkillsPlugin(
 	runtime: IAgentRuntime,
 ): Promise<void> {
-	const [service, commands] = await Promise.all([
-		runtime.getServiceLoadPromise("AGENT_SKILLS_SERVICE"),
-		runtime.getServiceLoadPromise("commands"),
-	]);
+	const service = await runtime.getServiceLoadPromise("AGENT_SKILLS_SERVICE");
 	if (!isSkillsLifecycleService(service)) {
 		throw new ElizaError("Agent Skills service has an invalid runtime contract", {
 			code: "AGENT_SKILLS_SERVICE_CONTRACT_INVALID",
 		});
+	}
+
+	disposeAgentSkillsPlugin(runtime);
+	syncTaskCleanupByRuntime.set(runtime, startSyncTask(runtime));
+
+	let commands: Service;
+	try {
+		commands = await runtime.getServiceLoadPromise("commands");
+	} catch {
+		// error-policy:J4 Slash commands are optional; skills remain fully usable.
+		runtime.logger.debug(
+			"AgentSkills: Commands service unavailable; skipping slash command registration",
+		);
+		return;
 	}
 	if (!isCommandsService(commands)) {
 		throw new ElizaError("Commands service has an invalid runtime contract", {
 			code: "COMMANDS_SERVICE_CONTRACT_INVALID",
 		});
 	}
-
-	disposeAgentSkillsPlugin(runtime);
-	syncTaskCleanupByRuntime.set(runtime, startSyncTask(runtime));
 
 	const registeredCommands = registerLoadedSkillCommands(
 		runtime,

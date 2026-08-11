@@ -12,7 +12,8 @@
  *     Discord handler path, which may be a separate/public service).
  *
  * These tests capture the outbound headers by mocking global `fetch` and assert
- * the strip/stamp contract for each case.
+ * the strip/stamp contract for each case, including Twilio re-signing after
+ * the BFF rewrites the upstream route.
  */
 
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
@@ -31,12 +32,15 @@ const HEADER = "x-eliza-webhook-forwarder-secret";
 const GATEWAY = "https://gateway.internal.test";
 
 let capturedHeaders: Headers | null = null;
+let capturedUrl: string | null = null;
 const originalFetch = globalThis.fetch;
 
 beforeEach(() => {
   capturedHeaders = null;
-  globalThis.fetch = mock(async (_input: unknown, init?: RequestInit) => {
+  capturedUrl = null;
+  globalThis.fetch = mock(async (input: unknown, init?: RequestInit) => {
     // The forwarder builds a Request/URL + Headers; capture what it sends.
+    capturedUrl = String(input);
     capturedHeaders = new Headers(init?.headers as HeadersInit);
     return new Response("{}", { status: 200 });
   }) as unknown as typeof fetch;
@@ -119,7 +123,77 @@ describe("forwardToWebhookGateway — gateway shared secret (L3)", () => {
     // The attacker value is replaced by the trusted one, never concatenated.
     expect(capturedHeaders?.get(HEADER)).toBe("real-secret");
   });
+
+  test("re-signs Twilio form data for the rewritten gateway route", async () => {
+    const secret = "twilio-secret";
+    const body = new URLSearchParams({
+      MessageSid: "SM_whatsapp_inbound",
+      AccountSid: "AC_test",
+      From: "whatsapp:+15551234567",
+      To: "whatsapp:+14155238886",
+      Body: "hello from WhatsApp",
+    }).toString();
+    const publicUrl = "https://api.example.test/api/eliza-app/webhook/twilio";
+    const sorted = Array.from(new URLSearchParams(body).entries())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([key, value]) => `${key}${value}`)
+      .join("");
+    const inboundSignature = await hmacBase64(secret, `${publicUrl}${sorted}`);
+
+    const app = new Hono();
+    app.post("/api/eliza-app/webhook/twilio", async (c) =>
+      forwardToWebhookGateway(
+        c as unknown as Parameters<typeof forwardToWebhookGateway>[0],
+        "twilio",
+      ),
+    );
+    const response = await app.fetch(
+      new Request(publicUrl, {
+        method: "POST",
+        headers: {
+          "content-type": "application/x-www-form-urlencoded",
+          "x-twilio-signature": inboundSignature,
+        },
+        body,
+      }),
+      {
+        ELIZA_APP_WEBHOOK_GATEWAY_URL: GATEWAY,
+        ELIZA_APP_TWILIO_AUTH_TOKEN: secret,
+      },
+    );
+
+    expect(response.status).toBe(200);
+    expect(capturedUrl).toBe(
+      "https://gateway.internal.test/webhook/eliza-app/twilio",
+    );
+    const forwardedPublicUrl =
+      "https://api.example.test/webhook/eliza-app/twilio";
+    const expectedForwardedSignature = await hmacBase64(
+      secret,
+      `${forwardedPublicUrl}${sorted}`,
+    );
+    expect(capturedHeaders?.get("x-twilio-signature")).toBe(
+      expectedForwardedSignature,
+    );
+    expect(expectedForwardedSignature).not.toBe(inboundSignature);
+  });
 });
+
+async function hmacBase64(secret: string, payload: string): Promise<string> {
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(secret),
+    { name: "HMAC", hash: "SHA-1" },
+    false,
+    ["sign"],
+  );
+  const signature = await crypto.subtle.sign(
+    "HMAC",
+    key,
+    new TextEncoder().encode(payload),
+  );
+  return btoa(String.fromCharCode(...new Uint8Array(signature)));
+}
 
 function forwardDiscord(
   env: Record<string, unknown>,

@@ -15,6 +15,11 @@ import { VISUAL_ROUTES, VISUAL_VIEWPORTS } from "./visual-routes";
 
 const FIXED_TIME = new Date("2026-01-15T14:30:00.000Z");
 
+test.skip(
+  process.platform !== "linux",
+  "Visual regression baselines are committed for the Linux CI renderer only",
+);
+
 async function waitForShader(page: Page) {
   await expect(page.locator("[data-shader-background]")).toHaveAttribute(
     "data-shader-background",

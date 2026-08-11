@@ -1,7 +1,9 @@
 /** Covers the dashboard cloud E2E flow using Playwright against the real local stack with mock-backed external services. */
 import {
+  createCloudAgent,
   getPersistedDockerImage,
   pollSandboxStatus,
+  startAgentProvisioning,
 } from "../src/helpers/provisioning";
 import { expect, test } from "../src/helpers/test-fixtures";
 
@@ -35,12 +37,14 @@ test.describe("dashboard session", () => {
     expect([200, 401, 404]).toContain(me.status);
   });
 
-  test("dashboard deploys an agent with a custom image", async ({
+  test("dashboard lists a running custom-image agent", async ({
     authenticatedPage,
     stack,
     seededUser,
   }) => {
+    const api = { apiUrl: stack.urls.api };
     const dockerImage = "ghcr.io/elizaos/eliza:e2e-dashboard-custom";
+    const agentName = "e2e-dashboard-agent";
     const processJobs = async () => {
       const result = await stack.mocks.controlPlane.processDbBackedJobs(
         stack.urls.pglite,
@@ -48,70 +52,33 @@ test.describe("dashboard session", () => {
       expect(result.failed, JSON.stringify(result.errors)).toBe(0);
     };
 
-    // #8493 made the classic dashboard the default surface; the canvas deploy
-    // flow this test exercises now lives behind the UI toggle. Seed the
-    // persisted canvas store so the canvas workspace (and its deploy form)
-    // renders. version:1 matches the store so the classic-default migration
-    // (which only resets defaultUiMode when version < 1) leaves this intact.
-    await authenticatedPage.addInitScript(() => {
-      localStorage.setItem(
-        "eliza-cloud-canvas",
-        JSON.stringify({ state: { defaultUiMode: "canvas" }, version: 1 }),
-      );
+    // The console no longer deploys agents: /dashboard/agents is a management
+    // table, and provisioning happens in the `/join` flow (default image) or
+    // through the API. The custom-image DEPLOY contract is covered end to end at
+    // the API boundary by provision.spec.ts ("API provisions a custom image
+    // through the full agent lifecycle"); what belongs here is the surviving
+    // console surface — that a dedicated custom-image agent actually reaches the
+    // dashboard's table as running.
+    const agentId = await createCloudAgent(api, seededUser.apiKey, agentName, {
+      dockerImage,
+      autoProvision: false,
     });
-
-    await authenticatedPage.goto(`${stack.urls.frontend}/dashboard/agents`);
-    await authenticatedPage
-      .getByPlaceholder("e.g. trading-assistant")
-      .fill("e2e-dashboard-agent");
-    // The dashboard now exposes the deploy flow inside the canvas workspace.
-    // Custom images are always deployed to dedicated sandboxes; the UI
-    // auto-selects and locks that tier so the API receives a routable image.
-    await authenticatedPage.locator("select").nth(0).selectOption("custom");
-    await expect(authenticatedPage.locator("select").nth(1)).toHaveValue(
-      "dedicated",
-    );
-    await authenticatedPage
-      .getByPlaceholder("ghcr.io/elizaos/eliza:stable")
-      .fill(dockerImage);
-
-    const createResponsePromise = authenticatedPage.waitForResponse(
-      (response) =>
-        new URL(response.url()).pathname === "/api/v1/eliza/agents" &&
-        response.request().method() === "POST" &&
-        [201, 202].includes(response.status()),
-    );
-
-    await authenticatedPage
-      .getByRole("button", { name: "Deploy Agent Instance" })
-      .click();
-    const createResponse = await createResponsePromise;
-
-    const createBody = (await createResponse.json()) as {
-      data?: { id?: string; agentId?: string; sandboxId?: string };
-    };
-    const agentId =
-      createBody.data?.agentId ??
-      createBody.data?.id ??
-      createBody.data?.sandboxId;
-    if (!agentId) {
-      throw new Error("Expected create response to include agent id");
-    }
-
     expect(
       await getPersistedDockerImage(agentId, seededUser.organizationId),
     ).toBe(dockerImage);
 
-    await pollSandboxStatus(
-      { apiUrl: stack.urls.api },
-      seededUser.apiKey,
-      agentId,
-      "running",
-      {
-        timeoutMs: 30_000,
-        intervalMs: 250,
-        onTick: processJobs,
-      },
-    );
+    await startAgentProvisioning(api, seededUser.apiKey, agentId);
+    await pollSandboxStatus(api, seededUser.apiKey, agentId, "running", {
+      timeoutMs: 30_000,
+      intervalMs: 250,
+      onTick: processJobs,
+    });
+
+    await authenticatedPage.goto(`${stack.urls.frontend}/dashboard/agents`);
+    const row = authenticatedPage
+      .getByRole("row")
+      .filter({ hasText: agentName });
+    await expect(row.first()).toBeVisible({ timeout: 30_000 });
+    await expect(row.first()).toContainText("running");
   });
 });

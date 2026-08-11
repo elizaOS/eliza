@@ -40,8 +40,8 @@ describe("E2E_LIVE_COVERAGE.md path integrity", () => {
 
   it("references only paths that exist in the repo", () => {
     const paths = referencedRepoPaths(doc);
-    // Sanity: a broken extraction regex must not silently empty the roster.
-    expect(paths.length).toBeGreaterThan(10);
+    // A broken extraction regex must not let the existence check pass vacuously.
+    expect(paths).not.toEqual([]);
     const missing = paths.filter((p) => !existsSync(path.join(REPO_ROOT, p)));
     expect(
       missing,

@@ -3,7 +3,7 @@
  * trajectories — the agent-authored curated skills (source !== "human") read
  * from `/api/skills/curated` and grouped by status (proposed / active /
  * disabled). Backs the promoted top-level Skills view and the skills section of
- * the character hub; distinct from the installable developer skill catalog.
+ * the character hub; distinct from developer-managed Agent Skills.
  * Pass `showTitle={false}` when a host ViewHeader already renders the title.
  */
 import { useCallback, useMemo, useState } from "react";

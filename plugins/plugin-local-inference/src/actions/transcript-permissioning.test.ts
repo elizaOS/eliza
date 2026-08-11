@@ -13,6 +13,7 @@ import {
 	type TranscriptStoreRuntime,
 } from "../services/voice/transcript-store";
 import {
+	manageTranscriptPrivacyAction,
 	redactTranscriptAction,
 	shareTranscriptAction,
 } from "./transcript-permissioning";
@@ -24,6 +25,7 @@ const ADMIN = "33333333-3333-3333-3333-333333333333" as UUID;
 const VIEWER = "44444444-4444-4444-4444-444444444444" as UUID;
 const STRANGER = "55555555-5555-5555-5555-555555555555" as UUID;
 const TRANSCRIPT_ID = "66666666-6666-6666-6666-666666666666" as UUID;
+const REDACTED_AUDIO_URL = `/api/media/${"b".repeat(64)}.wav`;
 
 function makeTranscript(overrides: Partial<Transcript> = {}): Transcript {
 	return {
@@ -37,6 +39,13 @@ function makeTranscript(overrides: Partial<Transcript> = {}): Transcript {
 		scope: "owner-private",
 		status: "ready",
 		speakerCount: 1,
+		metadata: {
+			consent: { state: "granted" },
+			participants: [
+				{ id: "alice", displayName: "Alice", entityId: VIEWER },
+				{ id: "carol", displayName: "Carol", entityId: STRANGER },
+			],
+		},
 		segments: [
 			{
 				id: "s1",
@@ -44,7 +53,15 @@ function makeTranscript(overrides: Partial<Transcript> = {}): Transcript {
 				startMs: 0,
 				endMs: 2000,
 				text: "Email bob@example.com and use SSN 123-45-6789.",
-				words: [{ text: "bob@example.com", startMs: 0, endMs: 500 }],
+				words: [
+					{ text: "Email", startMs: 0, endMs: 200 },
+					{ text: "bob@example.com", startMs: 200, endMs: 600 },
+					{ text: "and", startMs: 600, endMs: 800 },
+					{ text: "use", startMs: 800, endMs: 1000 },
+					{ text: "SSN", startMs: 1000, endMs: 1200 },
+					{ text: "123-45-6789", startMs: 1200, endMs: 1600 },
+					{ text: "today", startMs: 1600, endMs: 1900 },
+				],
 			},
 		],
 		...overrides,
@@ -55,15 +72,19 @@ function fakeRuntime(): TranscriptStoreRuntime &
 	IAgentRuntime & {
 		rows: Map<string, Memory>;
 		reportError: ReturnType<typeof vi.fn>;
+		audioRedaction: ReturnType<typeof vi.fn>;
 	} {
 	const rows = new Map<string, Memory>();
 	const tables = new Map<string, string>();
 	const reportError = vi.fn();
+	const audioRedaction = vi.fn(async () => ({ url: REDACTED_AUDIO_URL }));
 	return {
 		rows,
 		agentId: AGENT,
 		reportError,
-		getService: () => null,
+		audioRedaction,
+		getService: (type: string) =>
+			type === "audio-redaction" ? { redactAndVerify: audioRedaction } : null,
 		getSetting: (key: string) =>
 			key === "ELIZA_ADMIN_ENTITY_ID" ? ADMIN : undefined,
 		getRoom: async () => null,
@@ -104,6 +125,7 @@ function fakeRuntime(): TranscriptStoreRuntime &
 		IAgentRuntime & {
 			rows: Map<string, Memory>;
 			reportError: ReturnType<typeof vi.fn>;
+			audioRedaction: ReturnType<typeof vi.fn>;
 		};
 }
 
@@ -128,12 +150,48 @@ async function seed(runtime: TranscriptStoreRuntime): Promise<TranscriptStore> {
 }
 
 describe("transcript permission actions", () => {
-	it("registers redaction and share actions on the local-inference plugin", () => {
+	it("registers redaction, share, and retention actions on the local-inference plugin", () => {
 		expect(localInferencePlugin.actions?.map((action) => action.name)).toEqual(
-			expect.arrayContaining(["REDACT_TRANSCRIPT", "SHARE_TRANSCRIPT"]),
+			expect.arrayContaining([
+				"REDACT_TRANSCRIPT",
+				"SHARE_TRANSCRIPT",
+				"MANAGE_TRANSCRIPT_PRIVACY",
+			]),
 		);
 		expect(redactTranscriptAction.roleGate).toEqual({ minRole: "USER" });
 		expect(shareTranscriptAction.roleGate).toEqual({ minRole: "USER" });
+		expect(manageTranscriptPrivacyAction.roleGate).toEqual({ minRole: "USER" });
+	});
+
+	it("updates one artifact visibility through the semantic action", async () => {
+		const runtime = fakeRuntime();
+		await seed(runtime);
+		const result = await manageTranscriptPrivacyAction.handler(
+			runtime,
+			message(OWNER),
+			undefined,
+			{
+				parameters: {
+					transcriptId: TRANSCRIPT_ID,
+					artifact: "notes",
+					state: "disabled",
+				},
+			},
+		);
+		expect(result).toMatchObject({
+			success: true,
+			data: {
+				actionName: "MANAGE_TRANSCRIPT_PRIVACY",
+				transcriptId: TRANSCRIPT_ID,
+				artifact: "notes",
+				state: "disabled",
+			},
+		});
+		expect(
+			(await new TranscriptStore(runtime).get(TRANSCRIPT_ID))?.metadata,
+		).toMatchObject({
+			sharing: { notes: "disabled" },
+		});
 	});
 
 	it("creates a redacted variant before granting redacted transcript access", async () => {
@@ -168,7 +226,8 @@ describe("transcript permission actions", () => {
 		});
 		expect(viewerTranscript?.id).toBe(TRANSCRIPT_ID);
 		expect(viewerTranscript?.redacted).toBe(true);
-		expect(viewerTranscript?.audioUrl).toBeUndefined();
+		expect(viewerTranscript?.audioUrl).toBe(REDACTED_AUDIO_URL);
+		expect(viewerTranscript?.audioUrl).not.toBe("/api/media/original.wav");
 		expect(viewerTranscript?.segments[0]?.text).toContain("[EMAIL]");
 		expect(viewerTranscript?.segments[0]?.text).not.toContain(
 			"bob@example.com",
@@ -180,6 +239,16 @@ describe("transcript permission actions", () => {
 		});
 		expect(adminTranscript?.audioUrl).toBe("/api/media/original.wav");
 		expect(adminTranscript?.redacted).toBeUndefined();
+		expect(runtime.audioRedaction).toHaveBeenCalledWith(
+			expect.objectContaining({
+				originalAudioUrl: "/api/media/original.wav",
+				durationMs: 2000,
+				piiSpans: expect.arrayContaining([
+					expect.objectContaining({ text: "bob@example.com" }),
+					expect.objectContaining({ text: "123-45-6789" }),
+				]),
+			}),
+		);
 	});
 
 	it("lets a transcript owner create a redacted variant without changing the original", async () => {
@@ -199,7 +268,7 @@ describe("transcript permission actions", () => {
 				actionName: "REDACT_TRANSCRIPT",
 				transcriptId: TRANSCRIPT_ID,
 				redacted: true,
-				hasAudio: false,
+				hasAudio: true,
 			},
 		});
 		expect(result?.data?.variantId).toBeUndefined();
@@ -220,7 +289,7 @@ describe("transcript permission actions", () => {
 			role: "USER",
 			isOwner: true,
 		});
-		expect(variant?.audioUrl).toBeUndefined();
+		expect(variant?.audioUrl).toBe(REDACTED_AUDIO_URL);
 		expect(variant?.segments[0]?.text).toContain("[EMAIL]");
 
 		const nested = await redactTranscriptAction.handler(
@@ -317,5 +386,134 @@ describe("transcript permission actions", () => {
 			error: "SHARE_TRANSCRIPT_INVALID",
 		});
 		expect(getMemoryById).not.toHaveBeenCalled();
+	});
+
+	it("fails closed without the verifier service and writes no share grant", async () => {
+		const runtime = fakeRuntime();
+		runtime.getService = () => null;
+		await seed(runtime);
+
+		const result = await shareTranscriptAction.handler(
+			runtime,
+			message(ADMIN),
+			undefined,
+			{
+				parameters: {
+					transcriptId: TRANSCRIPT_ID,
+					entityId: VIEWER,
+					mode: "redacted",
+				},
+			},
+		);
+
+		expect(result).toMatchObject({
+			success: false,
+			error: "SHARE_TRANSCRIPT_FAILED",
+		});
+		const metadata = runtime.rows.get(TRANSCRIPT_ID)?.metadata as
+			| Record<string, unknown>
+			| undefined;
+		expect(metadata?.share).toBeUndefined();
+		expect(metadata?.redactedVariantId).toBeUndefined();
+		expect(runtime.rows.size).toBe(1);
+	});
+
+	it("lets an admin redact for the persisted room roster while privileged viewers retain full access", async () => {
+		const runtime = fakeRuntime();
+		const store = await seed(runtime);
+
+		const result = await shareTranscriptAction.handler(
+			runtime,
+			message(ADMIN),
+			undefined,
+			{
+				parameters: {
+					transcriptId: TRANSCRIPT_ID,
+					redactForAll: true,
+					mode: "redacted",
+				},
+			},
+		);
+
+		expect(result).toMatchObject({
+			success: true,
+			data: {
+				actionName: "SHARE_TRANSCRIPT",
+				transcriptId: TRANSCRIPT_ID,
+				roomId: ROOM,
+				entityCount: 2,
+				redactForAll: true,
+				mode: "redacted",
+			},
+		});
+		for (const entityId of [VIEWER, STRANGER]) {
+			const participantView = await store.get(TRANSCRIPT_ID, {
+				requesterEntityId: entityId,
+				role: "USER",
+			});
+			expect(participantView?.redacted).toBe(true);
+			expect(participantView?.segments[0]?.text).not.toContain(
+				"bob@example.com",
+			);
+		}
+		const adminView = await store.get(TRANSCRIPT_ID, {
+			requesterEntityId: ADMIN,
+			role: "ADMIN",
+		});
+		expect(adminView?.redacted).toBeUndefined();
+		expect(adminView?.segments[0]?.text).toContain("bob@example.com");
+		expect(runtime.rows.get(TRANSCRIPT_ID)?.metadata).toMatchObject({
+			share: {
+				roomSnapshot: {
+					roomId: ROOM,
+					entityIds: [VIEWER, STRANGER],
+				},
+				grants: [
+					expect.objectContaining({ entityId: VIEWER, mode: "redacted" }),
+					expect.objectContaining({ entityId: STRANGER, mode: "redacted" }),
+				],
+			},
+		});
+	});
+
+	it("fails closed before variant or grant writes when consent is not affirmative", async () => {
+		const runtime = fakeRuntime();
+		const store = new TranscriptStore(runtime);
+		await store.create({
+			roomId: ROOM,
+			entityId: OWNER,
+			transcript: makeTranscript({
+				metadata: {
+					consent: { state: "revoked" },
+					participants: [
+						{ id: "alice", displayName: "Alice", entityId: VIEWER },
+					],
+				},
+			}),
+		});
+
+		const result = await shareTranscriptAction.handler(
+			runtime,
+			message(ADMIN),
+			undefined,
+			{
+				parameters: {
+					transcriptId: TRANSCRIPT_ID,
+					entityId: VIEWER,
+					mode: "redacted",
+				},
+			},
+		);
+
+		expect(result).toMatchObject({
+			success: false,
+			error: "SHARE_TRANSCRIPT_CONSENT_REQUIRED",
+		});
+		const metadata = runtime.rows.get(TRANSCRIPT_ID)?.metadata as
+			| Record<string, unknown>
+			| undefined;
+		expect(metadata?.share).toBeUndefined();
+		expect(metadata?.redactedVariantId).toBeUndefined();
+		expect(runtime.rows.size).toBe(1);
 	});
 });

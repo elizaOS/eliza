@@ -380,14 +380,14 @@ async function runPlannerLoopIterations(
 	// Rejected terminal ANSWER text from the IMMEDIATELY PREVIOUS
 	// required-tool miss (reassigned every miss, like lastMissWidgetText, so
 	// the identity check below demands CONSECUTIVE re-emission). Used only
-	// when the tool requirement stands on heuristic text inference
-	// (params.requiredToolEvidence === "inferred", i.e. Stage 1's model
-	// emitted no candidate of its own): a planner that re-commits to the
+	// when the tool requirement stands on relaxable heuristic text inference
+	// (params.requiredToolEvidence === "inferred"): a planner that re-commits to the
 	// IDENTICAL answer after one corrective retry is deterministically
 	// committed — accept it instead of burning the remaining budget on the
 	// heuristic's guess (observed live: 4 identical REPLYs, ~36s, for a
 	// pure-opinion ask force-planned by an inferred web candidate). Model-
-	// emitted requirements keep the full corrective budget.
+	// emitted requirements and strong deterministic coding-work inferences keep
+	// the full corrective budget.
 	let lastMissAnswerText: string | undefined;
 	const heuristicRequiredToolEvidence =
 		params.requiredToolEvidence === "inferred";
@@ -1574,8 +1574,9 @@ const TURN_SCOPE_ARG_SCHEMA: JSONSchema = {
 	description:
 		`"${TURN_SCOPE_FINAL}" when this batch of tool calls is everything the ` +
 		`user's request needs this turn; "${TURN_SCOPE_MORE_WORK_PENDING}" when ` +
-		"further tool calls will follow after these results. Stripped before " +
-		"the tool runs.",
+		"further tool calls will follow after these results — including any " +
+		"list/get/search call made to find an id or target for a later write " +
+		"(read-then-act). Stripped before the tool runs.",
 };
 
 /**
@@ -1600,6 +1601,16 @@ export function withTurnScopeToolArg(
 		}
 		const properties = parameters.properties ?? {};
 		if (properties[TURN_SCOPE_ARG] !== undefined) return tool;
+		// Required, not optional: small planner models reliably fill required
+		// enum args but reliably omit optional ones. An omitted scope let a
+		// lookup (`list` to find an issue) end the turn before the write the
+		// user asked for ran (live 2026-08-10); schema-forcing the declaration
+		// makes precondition 6 of the evaluator gate actually load-bearing.
+		// Absent values still parse as "unspecified" downstream, so models
+		// that ignore the requirement degrade to today's behavior.
+		const required = Array.isArray(parameters.required)
+			? parameters.required
+			: [];
 		return {
 			...tool,
 			parameters: {
@@ -1608,6 +1619,9 @@ export function withTurnScopeToolArg(
 					...properties,
 					[TURN_SCOPE_ARG]: TURN_SCOPE_ARG_SCHEMA,
 				},
+				required: required.includes(TURN_SCOPE_ARG)
+					? required
+					: [...required, TURN_SCOPE_ARG],
 			},
 		};
 	});
@@ -2278,7 +2292,13 @@ function compactText(value: string, maxLength: number): string {
 	}
 	const headLength = Math.max(20, Math.floor(maxLength * 0.65));
 	const tailLength = Math.max(20, maxLength - headLength - 24);
-	return `${truncateWellFormed(text, headLength)} ...[${text.length - headLength - tailLength} chars compacted]... ${tailWellFormed(text, tailLength)}`;
+	// Compute the compacted count from the ACTUAL retained code-unit lengths
+	// after surrogate-safe truncation — truncateWellFormed and tailWellFormed
+	// may back off at surrogate boundaries, so the retained length can differ
+	// from the request (#18081).
+	const head = truncateWellFormed(text, headLength);
+	const tail = tailWellFormed(text, tailLength);
+	return `${head} ...[${text.length - head.length - tail.length} chars compacted]... ${tail}`;
 }
 
 /**
@@ -3263,22 +3283,26 @@ function normalizeArgs(value: unknown): Record<string, unknown> | undefined {
 	return undefined;
 }
 
+/**
+ * REPLY / IGNORE / STOP / NONE are the planner's terminal signals — they mean
+ * "I have nothing further to dispatch, end the turn." `NONE` was missing here,
+ * so when the planner emitted it after a successful tool call the loop tried
+ * to EXECUTE NONE as a real action. NONE's contextGate (`contexts:
+ * ["general"]`) commonly fails when the surface narrowed to a non-general
+ * tier-A context, the call returned "Action NONE is not allowed in the current
+ * context", and the planner retried until hitting the repeated-tool-failure
+ * limit — at which point the runtime shipped a generic "something flaked"
+ * reply even though the previous action's work had succeeded. Treating NONE as
+ * terminal makes the loop stop cleanly instead. Exported so the message
+ * service's preserved-tool-result rescue agrees with the loop on what counts
+ * as a real tool.
+ */
+export function isTerminalPlannerToolName(name: string): boolean {
+	return ["REPLY", "IGNORE", "STOP", "NONE"].includes(name.toUpperCase());
+}
+
 function isTerminalToolCall(toolCall: PlannerToolCall): boolean {
-	// REPLY / IGNORE / STOP / NONE are the planner's terminal signals —
-	// they mean "I have nothing further to dispatch, end the turn."
-	// `NONE` was missing here, so when the planner emitted it after a
-	// successful tool call the loop tried to EXECUTE NONE as a real
-	// action. NONE's contextGate (`contexts: ["general"]`) commonly
-	// fails when the surface narrowed to a non-general tier-A context,
-	// the call returned "Action NONE is not allowed in the current
-	// context", and the planner retried until hitting the
-	// repeated-tool-failure limit — at which point the runtime
-	// shipped a generic "something flaked" reply even though the
-	// previous action's work had succeeded. Treating NONE as terminal
-	// makes the loop stop cleanly instead.
-	return ["REPLY", "IGNORE", "STOP", "NONE"].includes(
-		toolCall.name.toUpperCase(),
-	);
+	return isTerminalPlannerToolName(toolCall.name);
 }
 
 function getToolDefinitionName(tool: ToolDefinition): string | undefined {
@@ -4645,6 +4669,11 @@ function failedStepCauseForPrompt(step: PlannerStep): string | undefined {
  *      explicitly disclaimed. Absent or `true` preserves the gate's
  *      original behavior (backward compat).
  *
+ * One deliberate exception to precondition 1: a SOLE failed tool that
+ * delivered its verified failure text and stamped `turnComplete:true` owns the
+ * turn the same way a verified success does — see
+ * {@link tryGateVerifiedFailure}.
+ *
  * On any single ambiguity the function returns `null` and the caller falls
  * through to the full evaluator path. Returning a synthesized `EvaluatorOutput`
  * preserves trajectory observability: `appendEvaluationEvent` still records
@@ -4666,7 +4695,10 @@ function failedStepCauseForPrompt(step: PlannerStep): string | undefined {
  */
 type GatedEvaluatorDecision = {
 	output: EvaluatorOutput;
-	reason: "explicit_terminal_reply" | "action_terminal_result";
+	reason:
+		| "explicit_terminal_reply"
+		| "action_terminal_result"
+		| "action_terminal_failure";
 };
 
 function tryGateEvaluator(args: {
@@ -4677,7 +4709,9 @@ function tryGateEvaluator(args: {
 }): GatedEvaluatorDecision | null {
 	const latestStep = args.trajectory.steps[args.trajectory.steps.length - 1];
 	const latestResult = latestStep?.result;
-	if (latestResult?.success !== true) return null;
+	if (latestResult?.success !== true) {
+		return tryGateVerifiedFailure(latestResult, args);
+	}
 	// #16983 allows a verified terminal action to skip the evaluator, but that
 	// success cannot complete an unrelated operation that remains failed.
 	if (latestUnresolvedFailedNonTerminalToolStep(args.trajectory)) return null;
@@ -4699,6 +4733,55 @@ function completedToolStepCount(trajectory: PlannerTrajectory): number {
 	return [...trajectory.archivedSteps, ...trajectory.steps].filter(
 		(step) => step.toolCall && step.result,
 	).length;
+}
+
+/**
+ * A verified action-owned FAILURE delivery may also own the turn's single
+ * user-facing message. Mirrors the success-side `action_terminal_result` gate:
+ * the sole executed tool failed, delivered its exact failure text through the
+ * callback, and stamped `turnComplete: true` + `verifiedUserFacing: true` to
+ * declare that text the complete honest outcome — so the evaluator's
+ * paraphrase-capable model call is skipped and the byte-equal finalMessage is
+ * suppressed at delivery as already sent (live incident: "calendar's acting
+ * up." followed by "I couldn't verify... want me to try again?" — two bubbles
+ * for one failed read).
+ *
+ * The gate stays narrow so recovery guidance survives everywhere it is still
+ * additive: actions that want an evaluator follow-up simply do not stamp
+ * `turnComplete` on failures, multi-step turns and planner-disclaimed turns
+ * (`completed:false`) fall through, and confirmation/awaiting-input pauses
+ * keep their own terminal authority.
+ */
+function tryGateVerifiedFailure(
+	latestResult: PlannerToolResult | undefined,
+	args: {
+		trajectory: PlannerTrajectory;
+		lastPlannerExplicitCompleted: boolean | undefined;
+	},
+): GatedEvaluatorDecision | null {
+	if (latestResult?.success !== false) return null;
+	if (latestResult.turnComplete !== true) return null;
+	if (latestResult.verifiedUserFacing !== true) return null;
+	if (
+		hasAwaitingUserInputMarker(latestResult) ||
+		hasRequiresConfirmationMarker(latestResult)
+	) {
+		return null;
+	}
+	const message = latestResult.userFacingText?.trim();
+	if (!message || isUnsafeUserVisibleText(message)) return null;
+	if (args.trajectory.plannedQueue.length > 0) return null;
+	if (args.lastPlannerExplicitCompleted === false) return null;
+	if (completedToolStepCount(args.trajectory) !== 1) return null;
+	return {
+		reason: "action_terminal_failure",
+		output: {
+			success: false,
+			decision: "FINISH",
+			thought: ACTION_FAILURE_GATED_EVALUATOR_THOUGHT,
+			messageToUser: message,
+		},
+	};
 }
 
 function selectGatedEvaluatorReply(
@@ -4742,6 +4825,9 @@ export const GATED_EVALUATOR_THOUGHT =
 
 export const ACTION_RESULT_GATED_EVALUATOR_THOUGHT =
 	"Gated FINISH: queue drained successfully with a terminal action-owned userFacingText; evaluator LLM call skipped.";
+
+export const ACTION_FAILURE_GATED_EVALUATOR_THOUGHT =
+	"Gated FINISH: sole tool failed with a delivered verified failure text that owns the turn; evaluator LLM call skipped.";
 
 const TERMINAL_TOOL_CALL_FINISH_THOUGHT =
 	"Terminal FINISH: planner ended the loop with a terminal tool call; evaluator LLM call skipped.";

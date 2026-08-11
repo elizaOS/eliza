@@ -201,7 +201,11 @@ export class EmbeddingGenerationService extends Service {
 		const { memory } = item;
 
 		const memoryContent = memory.content;
-		if (!memoryContent.text) {
+		// Trim-check to match the embedding model contract: backends reject
+		// whitespace-only text, and no queue retry can ever change that
+		// (live 2026-08-10: image-only messages with whitespace text error-
+		// logged on every retry).
+		if (!memoryContent.text?.trim()) {
 			this.runtime.logger.warn(
 				{
 					src: "plugin:basic-capabilities:service:embedding",
@@ -328,7 +332,9 @@ export class EmbeddingGenerationService extends Service {
 		const skipped: EmbeddingQueueItem[] = [];
 		for (const item of items) {
 			const text = item.memory.content.text;
-			if (!text || item.memory.embedding) {
+			// Same trim rule as the per-item path — backends reject
+			// whitespace-only text as terminally invalid.
+			if (!text?.trim() || item.memory.embedding) {
 				skipped.push(item);
 			} else {
 				toEmbed.push({ item, text });

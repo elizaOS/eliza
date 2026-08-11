@@ -172,9 +172,8 @@ the daemon stays running on its own VM.
 
 ## Followups
 
-CI for this module exists: `.github/workflows/terraform-control-plane.yml`
-runs fmt + validate on PRs and plan/apply on operator dispatch
-(`terraform-pages-domains.yml` covers the Cloudflare Pages-domains root).
+Terraform operations use the manual `.github/workflows/infra.yml`, which
+supports the control-plane and Cloudflare Pages-domains roots.
 Still open:
 
 - [ ] Terraform module for headscale state (preauth keys, ACLs)

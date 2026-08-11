@@ -78,7 +78,9 @@ function decodeWords(
     if (
       typeof w.text !== "string" ||
       !isFiniteNumber(w.startMs) ||
-      !isFiniteNumber(w.endMs)
+      !isFiniteNumber(w.endMs) ||
+      w.startMs < 0 ||
+      w.endMs < w.startMs
     ) {
       return { ok: false };
     }
@@ -108,6 +110,7 @@ export function decodeTranscriptEvent(raw: unknown): TranscriptDecodeResult {
     return fail("invalid-field", "`at` must be a finite number", "at");
   }
   const seq = r.seq;
+  const at = isFiniteNumber(r.at) ? { at: r.at } : {};
 
   switch (type) {
     case "stt.partial": {
@@ -115,7 +118,10 @@ export function decodeTranscriptEvent(raw: unknown): TranscriptDecodeResult {
         return fail("missing-field", "`turnId` is required", "turnId");
       if (typeof r.text !== "string")
         return fail("invalid-field", "`text` must be a string", "text");
-      return { ok: true, event: { type, seq, turnId: r.turnId, text: r.text } };
+      return {
+        ok: true,
+        event: { type, seq, turnId: r.turnId, text: r.text, ...at },
+      };
     }
     case "stt.final": {
       if (!isNonEmptyString(r.turnId))
@@ -132,8 +138,8 @@ export function decodeTranscriptEvent(raw: unknown): TranscriptDecodeResult {
       return {
         ok: true,
         event: words
-          ? { type, seq, turnId: r.turnId, text: r.text, words }
-          : { type, seq, turnId: r.turnId, text: r.text },
+          ? { type, seq, turnId: r.turnId, text: r.text, words, ...at }
+          : { type, seq, turnId: r.turnId, text: r.text, ...at },
       };
     }
     case "agent.text": {
@@ -158,6 +164,7 @@ export function decodeTranscriptEvent(raw: unknown): TranscriptDecodeResult {
           text: r.text,
           final: r.final,
           ...(isNonEmptyString(r.turnId) ? { turnId: r.turnId } : {}),
+          ...at,
         },
       };
     }
@@ -194,6 +201,7 @@ export function decodeTranscriptEvent(raw: unknown): TranscriptDecodeResult {
           phase: r.phase,
           ...(typeof r.detail === "string" ? { detail: r.detail } : {}),
           ...(isNonEmptyString(r.turnId) ? { turnId: r.turnId } : {}),
+          ...at,
         },
       };
     }
@@ -224,6 +232,7 @@ export function decodeTranscriptEvent(raw: unknown): TranscriptDecodeResult {
           utteranceId: r.utteranceId,
           phase: r.phase,
           ...(isNonEmptyString(r.messageId) ? { messageId: r.messageId } : {}),
+          ...at,
         },
       };
     }
@@ -246,6 +255,7 @@ export function decodeTranscriptEvent(raw: unknown): TranscriptDecodeResult {
           scope: r.scope,
           ...(isNonEmptyString(r.turnId) ? { turnId: r.turnId } : {}),
           ...(typeof r.reason === "string" ? { reason: r.reason } : {}),
+          ...at,
         },
       };
     }
@@ -272,6 +282,7 @@ export function decodeTranscriptEvent(raw: unknown): TranscriptDecodeResult {
           code: r.code,
           retryable: r.retryable,
           ...(typeof r.message === "string" ? { message: r.message } : {}),
+          ...at,
         },
       };
     }
@@ -294,7 +305,7 @@ export function decodeTranscriptEvent(raw: unknown): TranscriptDecodeResult {
         );
       return {
         ok: true,
-        event: { type, seq, phase: r.phase, attempt: r.attempt },
+        event: { type, seq, phase: r.phase, attempt: r.attempt, ...at },
       };
     }
     default:

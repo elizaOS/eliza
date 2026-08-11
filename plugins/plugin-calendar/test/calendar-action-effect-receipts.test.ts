@@ -116,6 +116,7 @@ function deps(overrides: Partial<CalendarActionDeps> = {}): CalendarActionDeps {
 function runtime(
   service: Record<string, unknown>,
   action: Action,
+  reportError: ReturnType<typeof vi.fn> = vi.fn(),
 ): IAgentRuntime {
   return {
     actions: [action],
@@ -126,6 +127,7 @@ function runtime(
       warn: vi.fn(),
       error: vi.fn(),
     },
+    reportError,
     getService: (serviceType: string) =>
       serviceType === "calendar" ? service : null,
   } as unknown as IAgentRuntime;
@@ -137,8 +139,9 @@ async function execute(args: {
   actor: Memory;
   parameters: Record<string, unknown>;
   delivered: Content[];
+  reportError?: ReturnType<typeof vi.fn>;
 }) {
-  const actorRuntime = runtime(args.service, args.action);
+  const actorRuntime = runtime(args.service, args.action, args.reportError);
   return executePlannedToolCall(
     actorRuntime,
     {
@@ -203,6 +206,10 @@ describe("CALENDAR effect receipt settlement", () => {
     expect(result, JSON.stringify(result)).toMatchObject({
       success: true,
       verifiedUserFacing: true,
+      // The delivered feed text IS the turn's answer: the read declares the
+      // turn complete so the evaluator cannot paraphrase it into a second
+      // user-facing message (the "clear tomorrow." double-speak).
+      turnComplete: true,
       effectReceipts: [
         {
           operation: "calendar.feed.read",
@@ -724,6 +731,134 @@ describe("CALENDAR effect receipt settlement", () => {
         },
       ],
     });
+    // The delivered failure text is the turn's complete honest outcome: the
+    // stamp routes it through the same single-message gate as successes so
+    // the evaluator cannot append a paraphrase bubble.
+    expect(result.turnComplete).toBe(true);
     expectBoundDelivery(delivered, result);
+  });
+
+  it("sanitizes planner junk connector hints instead of rejecting the read", async () => {
+    const getCalendarFeed = vi.fn(
+      async (_url: URL, _request?: Record<string, unknown>) => feed(),
+    );
+    const service = { getCalendarFeed };
+    const action = createCalendarActionRunner(deps());
+    const delivered: Content[] = [];
+
+    // Live regression 2026-08-09: the planner junk-fills every details key;
+    // mode:"read" / grantId:"primary" previously hard-400'd inside
+    // CalendarService's enum validation and the user saw "calendar's acting
+    // up" for a healthy calendar.
+    const result = await execute({
+      action,
+      service,
+      actor: message("whats on my calendar tomorrow"),
+      parameters: {
+        subaction: "feed",
+        details: {
+          mode: "read",
+          side: "owner",
+          grantId: "primary",
+          timeZone: "UTC",
+          timeMin: "2026-07-27T00:00:00.000Z",
+          timeMax: "2026-08-03T00:00:00.000Z",
+        },
+      },
+      delivered,
+    });
+
+    expect(result, JSON.stringify(result)).toMatchObject({
+      success: true,
+      verifiedUserFacing: true,
+      turnComplete: true,
+    });
+    expect(getCalendarFeed).toHaveBeenCalledOnce();
+    const request = getCalendarFeed.mock.calls[0]?.[1] as Record<
+      string,
+      unknown
+    >;
+    // The junk hints are dropped, the recognizable ones survive, and the
+    // window reaches the service well-formed.
+    expect(request.mode).toBeUndefined();
+    expect(request.grantId).toBeUndefined();
+    expect(request.side).toBe("owner");
+    expect(request.timeZone).toBe("UTC");
+    expect(request.timeMin).toBe("2026-07-27T00:00:00.000Z");
+    expect(request.timeMax).toBe("2026-08-03T00:00:00.000Z");
+  });
+
+  it("passes a real grant id through untouched", async () => {
+    const getCalendarFeed = vi.fn(
+      async (_url: URL, _request?: Record<string, unknown>) => feed(),
+    );
+    const service = { getCalendarFeed };
+    const action = createCalendarActionRunner(deps());
+
+    await execute({
+      action,
+      service,
+      actor: message("whats on my calendar tomorrow"),
+      parameters: {
+        subaction: "feed",
+        details: { grantId: "connector-account:calendar-owner" },
+      },
+      delivered: [],
+    });
+
+    const request = getCalendarFeed.mock.calls[0]?.[1] as Record<
+      string,
+      unknown
+    >;
+    expect(request.grantId).toBe("connector-account:calendar-owner");
+  });
+
+  it("reports the swallowed service-rejection detail with the request hints", async () => {
+    const service = {
+      getCalendarFeed: vi.fn(async () => {
+        throw new CalendarServiceError(
+          400,
+          "mode must be one of: local, remote, cloud_managed",
+        );
+      }),
+    };
+    const action = createCalendarActionRunner(deps());
+    const reportError = vi.fn();
+
+    const result = await execute({
+      action,
+      service,
+      actor: message("whats on my calendar tomorrow"),
+      parameters: {
+        subaction: "feed",
+        details: { mode: "definitely-junk", timeZone: "UTC" },
+      },
+      delivered: [],
+      reportError,
+    });
+
+    expect(result).toMatchObject({
+      success: false,
+      effectReceipts: [
+        {
+          outcome: "failed",
+          failure: { code: "CALENDAR_SERVICE_400" },
+        },
+      ],
+    });
+    // The operator-facing report carries the actual rejection message and the
+    // request hints that produced it — the receipt alone only says 400.
+    expect(reportError).toHaveBeenCalledWith(
+      "calendar:action",
+      expect.any(CalendarServiceError),
+      expect.objectContaining({
+        subaction: "feed",
+        status: 400,
+        code: "CALENDAR_SERVICE_400",
+        detail: "mode must be one of: local, remote, cloud_managed",
+        mode: "definitely-junk",
+        timeZone: "UTC",
+      }),
+    );
   });
 });

@@ -447,9 +447,19 @@ async function prepareJobPayload<T extends Partial<Job> | Partial<NewJob>>(
         }
       : {}),
     ...(result
-      ? { result: result.value, result_storage: result.storage, result_key: result.key }
+      ? {
+          result: result.value,
+          result_storage: result.storage,
+          result_key: result.key,
+        }
       : {}),
-    ...(error ? { error: error.value, error_storage: error.storage, error_key: error.key } : {}),
+    ...(error
+      ? {
+          error: error.value,
+          error_storage: error.storage,
+          error_key: error.key,
+        }
+      : {}),
   };
 }
 
@@ -587,6 +597,38 @@ export class JobsRepository {
       .limit(filters.limit || 1000)
       .orderBy(filters.orderBy === "desc" ? desc(jobs.created_at) : jobs.created_at);
     return await Promise.all(rows.map(hydrateJob));
+  }
+
+  /**
+   * Most recent lifecycle job for one agent, whatever its status.
+   *
+   * `findByFilters` cannot express this: it has no `agent_id` predicate, and
+   * widening it would change a reader many callers share. Callers use this to
+   * decide whether enough time has passed since the last attempt — so the row
+   * must be the latest attempt, not the latest *failed* one, or a retry that
+   * is still running would look like an opportunity to start another.
+   *
+   * Served by `jobs_org_type_agent_created_idx` on
+   * (organization_id, type, agent_id, created_at) WHERE agent_id IS NOT NULL.
+   */
+  async findLatestAgentLifecycleJob(filters: {
+    type: ProvisioningJobType;
+    organizationId: string;
+    agentId: string;
+  }): Promise<Job | null> {
+    const [row] = await dbRead
+      .select()
+      .from(jobs)
+      .where(
+        and(
+          eq(jobs.organization_id, filters.organizationId),
+          eq(jobs.type, filters.type),
+          eq(jobs.agent_id, filters.agentId),
+        ),
+      )
+      .orderBy(desc(jobs.created_at))
+      .limit(1);
+    return row ? await hydrateJob(row) : null;
   }
 
   /**
@@ -1184,6 +1226,7 @@ export class JobsRepository {
           status: params.isFailed ? "failed" : "pending",
           ...payload,
           attempts: params.newAttempts,
+          completed_at: params.isFailed ? new Date() : null,
           execution_quiesced_at: new Date(),
           updated_at: new Date(),
         })
@@ -1333,17 +1376,16 @@ export class JobsRepository {
    */
   async updateStatus(id: string, status: string, additionalFields?: Partial<Job>): Promise<void> {
     let updates: Partial<Job> = {
-      status,
-      updated_at: new Date(),
       ...additionalFields,
+      status,
+      updated_at: additionalFields?.updated_at ?? new Date(),
     };
 
     if (status === "in_progress" && !additionalFields?.started_at) {
       updates.started_at = new Date();
     }
-    if (status === "completed" && !additionalFields?.completed_at) {
-      updates.completed_at = new Date();
-    }
+    const isTerminal = SETTLED_JOB_STATUSES.has(status);
+    const explicitCompletedAt = additionalFields?.completed_at;
 
     if (hasPayloadUpdates(updates)) {
       const [existing] = await dbWrite.select().from(jobs).where(eq(jobs.id, id)).limit(1);
@@ -1353,7 +1395,23 @@ export class JobsRepository {
       updates = await prepareJobPayload(updates, existing);
     }
 
-    await dbWrite.update(jobs).set(updates).where(eq(jobs.id, id));
+    await dbWrite
+      .update(jobs)
+      .set({
+        ...updates,
+        ...(status === "pending"
+          ? { completed_at: null }
+          : isTerminal && !(explicitCompletedAt instanceof Date)
+            ? {
+                completed_at: sql`CASE
+                  WHEN ${jobs.status} IN ('completed', 'failed', 'cancelled')
+                    THEN COALESCE(${jobs.completed_at}, NOW())
+                  ELSE NOW()
+                END`,
+              }
+            : {}),
+      })
+      .where(eq(jobs.id, id));
   }
 
   /**
@@ -1371,12 +1429,14 @@ export class JobsRepository {
     if (!executionOwnerId) {
       throw new Error(`Execution owner is required to settle claimed job ${claimedJob.id}`);
     }
+    const settledAt =
+      additionalFields?.completed_at instanceof Date ? additionalFields.completed_at : new Date();
     let updates: Partial<Job> = {
-      status,
-      completed_at: status === "completed" ? new Date() : claimedJob.completed_at,
-      execution_quiesced_at: new Date(),
-      updated_at: new Date(),
       ...additionalFields,
+      status,
+      completed_at: settledAt,
+      execution_quiesced_at: additionalFields?.execution_quiesced_at ?? new Date(),
+      updated_at: additionalFields?.updated_at ?? new Date(),
     };
     if (hasPayloadUpdates(updates)) {
       updates = await prepareJobPayload(updates, claimedJob);
@@ -1548,6 +1608,7 @@ export class JobsRepository {
           status: isFailed ? "failed" : "pending",
           ...payload,
           attempts: newAttempts,
+          completed_at: isFailed ? new Date() : null,
           execution_quiesced_at: expectedExecutionGeneration
             ? new Date()
             : job.execution_quiesced_at,
@@ -1689,6 +1750,7 @@ export class JobsRepository {
         .set({
           status: "pending",
           ...payload,
+          completed_at: null,
           execution_quiesced_at: new Date(),
           updated_at: new Date(),
           scheduled_for: scheduledFor,

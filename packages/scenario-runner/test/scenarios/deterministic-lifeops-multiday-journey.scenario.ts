@@ -625,14 +625,17 @@ export default scenario({
       kind: "message",
       name: "Monday: create the daily pharmacy reminder",
       text: createText,
-      responseIncludesAny: ["Created daily pharmacy reminder"],
+      // SCHEDULED_TASKS commits are turnComplete + verifiedUserFacing
+      // (#18119): the action's verified ack is the turn's reply, not the
+      // planner fixture's messageToUser.
+      responseIncludesAny: ["Scheduled the scheduled item"],
       assertTurn: expectCreateTurn,
     },
     {
       kind: "message",
       name: "Monday: snooze it to Wednesday 15:00",
       text: snoozeText,
-      responseIncludesAny: ["Snoozed pharmacy reminder"],
+      responseIncludesAny: ["Snoozed that scheduled item"],
       assertTurn: expectSnoozeTurn,
     },
     {
@@ -647,7 +650,7 @@ export default scenario({
       kind: "message",
       name: "Tuesday: task is still scheduled with the override intact",
       text: getText,
-      responseIncludesAny: ["Pharmacy reminder status read"],
+      responseIncludesAny: ["Found that scheduled item"],
       assertTurn: expectStillScheduledTurn,
     },
     {
@@ -662,7 +665,7 @@ export default scenario({
       kind: "message",
       name: "Wednesday: complete the fired occurrence",
       text: completeText,
-      responseIncludesAny: ["Completed pharmacy reminder"],
+      responseIncludesAny: ["Marked that scheduled item as completed"],
       assertTurn: expectCompleteTurn,
     },
     {
@@ -677,7 +680,7 @@ export default scenario({
       kind: "message",
       name: "history shows the full multi-day transition chain",
       text: historyText,
-      responseIncludesAny: ["pharmacy reminder log rows"],
+      responseIncludesAny: ["history entr"],
       assertTurn: expectHistoryTurn,
     },
   ],

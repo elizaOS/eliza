@@ -16,7 +16,10 @@ import type {
   MeetingSession,
   MeetingSessionStatus,
 } from "@elizaos/shared";
-import type { Transcript } from "@elizaos/shared/transcripts";
+import type {
+  Transcript,
+  TranscriptCaptureSharingState,
+} from "@elizaos/shared/transcripts";
 import * as React from "react";
 import { client } from "../../api/client";
 import { parseMeetingStatusEvent } from "../../api/client-meetings";
@@ -38,6 +41,10 @@ export function TranscriptsPage(): React.JSX.Element {
   const [selected, setSelected] = React.useState<Transcript | null>(null);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
+  const [selectedLoading, setSelectedLoading] = React.useState(false);
+  const [selectedError, setSelectedError] = React.useState<string | null>(null);
+  const [privacySaving, setPrivacySaving] = React.useState(false);
+  const [privacyError, setPrivacyError] = React.useState<string | null>(null);
   const [activeMeetings, setActiveMeetings] = React.useState<MeetingSession[]>(
     [],
   );
@@ -49,14 +56,26 @@ export function TranscriptsPage(): React.JSX.Element {
   const selectedIdRef = React.useRef<string | null>(null);
   selectedIdRef.current = selectedId;
 
-  const loadTranscript = React.useCallback((id: string) => {
-    return client
-      .getTranscript(id)
-      .then((r) => setSelected(r.transcript))
-      .catch((e) =>
-        setError(e instanceof Error ? e.message : "Failed to load transcript"),
-      );
-  }, []);
+  const loadTranscript = React.useCallback(
+    (id: string, showLoading = false) => {
+      if (showLoading) setSelectedLoading(true);
+      setSelectedError(null);
+      return client
+        .getTranscript(id)
+        .then((r) => setSelected(r.transcript))
+        .catch((e) => {
+          // error-policy:J4 selected-detail failures render as unavailable.
+          setSelected(null);
+          setSelectedError(
+            e instanceof Error ? e.message : "Transcript is unavailable",
+          );
+        })
+        .finally(() => {
+          if (showLoading) setSelectedLoading(false);
+        });
+    },
+    [],
+  );
 
   const refresh = React.useCallback(async () => {
     const [listResult, meetingsResult] = await Promise.allSettled([
@@ -136,10 +155,62 @@ export function TranscriptsPage(): React.JSX.Element {
     (id: string) => {
       setSelectedId(id);
       setSelected(null);
-      void loadTranscript(id);
+      setPrivacyError(null);
+      void loadTranscript(id, true);
     },
     [loadTranscript],
   );
+
+  const onUpdatePrivacy = React.useCallback(
+    (sharing: Partial<TranscriptCaptureSharingState>) => {
+      if (!selectedId) return;
+      setPrivacySaving(true);
+      setPrivacyError(null);
+      client
+        .updateTranscriptPrivacy(selectedId, { sharing })
+        .then(({ transcript }) => {
+          setSelected(transcript);
+          return refresh();
+        })
+        .catch((e) => {
+          // error-policy:J4 mutation failures stay visible beside the controls.
+          setPrivacyError(
+            e instanceof Error
+              ? e.message
+              : "Failed to update artifact privacy",
+          );
+        })
+        .finally(() => setPrivacySaving(false));
+    },
+    [refresh, selectedId],
+  );
+
+  const onDeleteSourceAudio = React.useCallback(() => {
+    if (!selectedId) return;
+    if (
+      typeof globalThis.confirm === "function" &&
+      !globalThis.confirm(
+        "Delete the retained source audio? The transcript text will remain, but audio replay cannot be restored.",
+      )
+    ) {
+      return;
+    }
+    setPrivacySaving(true);
+    setPrivacyError(null);
+    client
+      .deleteTranscriptSourceAudio(selectedId)
+      .then(({ transcript }) => {
+        setSelected(transcript);
+        return refresh();
+      })
+      .catch((e) => {
+        // error-policy:J4 deletion failures stay visible beside the controls.
+        setPrivacyError(
+          e instanceof Error ? e.message : "Failed to delete source audio",
+        );
+      })
+      .finally(() => setPrivacySaving(false));
+  }, [refresh, selectedId]);
 
   const onJoinMeeting = React.useCallback(
     (input: MeetingJoinRequest) => {
@@ -184,6 +255,12 @@ export function TranscriptsPage(): React.JSX.Element {
           onSelect={onSelect}
           loading={loading}
           error={error}
+          selectedLoading={selectedLoading}
+          selectedError={selectedError}
+          onUpdatePrivacy={onUpdatePrivacy}
+          onDeleteSourceAudio={onDeleteSourceAudio}
+          privacySaving={privacySaving}
+          privacyError={privacyError}
           activeMeetings={activeMeetings}
           onJoinMeeting={onJoinMeeting}
           onStopMeeting={onStopMeeting}

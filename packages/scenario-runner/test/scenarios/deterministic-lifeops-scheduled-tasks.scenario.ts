@@ -447,21 +447,24 @@ export default scenario({
       kind: "message",
       name: "create scheduled reminder",
       text: createText,
-      responseIncludesAny: ["Scheduled reminder task"],
+      // SCHEDULED_TASKS commits are turnComplete + verifiedUserFacing
+      // (#18119): the action's verified ack is the turn's reply, not the
+      // planner fixture's messageToUser.
+      responseIncludesAny: ["Scheduled the scheduled item"],
       assertTurn: expectCreatedTurn,
     },
     {
       kind: "message",
       name: "list scheduled reminders",
       text: listText,
-      responseIncludesAny: ["scheduled task"],
+      responseIncludesAny: ["scheduled item match"],
       assertTurn: expectListTurn,
     },
     {
       kind: "message",
       name: "get created scheduled reminder",
       text: getText,
-      responseIncludesAny: ["Found scheduled task"],
+      responseIncludesAny: ["Found that scheduled item"],
       assertTurn: (execution) =>
         expectTaskStatusTurn(execution, getParameters, "get", "scheduled"),
     },
@@ -469,14 +472,14 @@ export default scenario({
       kind: "message",
       name: "snooze created scheduled reminder",
       text: snoozeText,
-      responseIncludesAny: ["Snoozed scheduled task"],
+      responseIncludesAny: ["Snoozed that scheduled item"],
       assertTurn: expectSnoozeTurn,
     },
     {
       kind: "message",
       name: "complete created scheduled reminder",
       text: completeText,
-      responseIncludesAny: ["Completed scheduled task"],
+      responseIncludesAny: ["Marked that scheduled item as completed"],
       assertTurn: (execution) =>
         expectTaskStatusTurn(
           execution,
@@ -489,7 +492,7 @@ export default scenario({
       kind: "message",
       name: "read scheduled reminder history",
       text: historyText,
-      responseIncludesAny: ["scheduled-task log row"],
+      responseIncludesAny: ["history entr"],
       assertTurn: expectHistoryTurn,
     },
   ],

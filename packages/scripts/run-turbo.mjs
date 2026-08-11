@@ -151,6 +151,26 @@ if (
   turboArgs.splice(runIndex + 1, 0, "--log-order=stream");
 }
 
+// RUN_TURBO_CONCURRENCY caps task fan-out from the environment. Hosted CI
+// runners (4 vCPU / 16 GB) die at the package-script default of 8 concurrent
+// tsc processes on a full-workspace cone — the VM itself is OOM-killed and the
+// job exits 143 (#15140) — so CI lanes set this to 4 without forking the
+// `verify`/`typecheck` script definitions.
+if (process.env.RUN_TURBO_CONCURRENCY) {
+  const idx = turboArgs.findIndex(
+    (arg) => arg === "--concurrency" || arg.startsWith("--concurrency="),
+  );
+  const override = `--concurrency=${process.env.RUN_TURBO_CONCURRENCY}`;
+  if (idx === -1) {
+    if (runIndex !== -1) turboArgs.splice(runIndex + 1, 0, override);
+    else turboArgs.push(override);
+  } else if (turboArgs[idx] === "--concurrency") {
+    turboArgs.splice(idx, 2, override);
+  } else {
+    turboArgs.splice(idx, 1, override);
+  }
+}
+
 // Test seam: RUN_TURBO_BIN points at a Node script that stands in for the
 // turbo binary so the retry contract below is provable with real
 // subprocesses (see __tests__/run-turbo-windows-init-crash-retry.test.ts).

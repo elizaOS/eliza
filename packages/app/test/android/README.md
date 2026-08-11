@@ -215,7 +215,7 @@ simctl`) and `scripts/ios-e2e.mjs`; run on a Mac (`xcrun` is macOS-only). The
 WebKit WebView is not CDP-drivable like Android, so iOS route coverage is
 screenshot + deep-link + backend-probe based rather than Playwright-driven.
 
-`mobile-build-smoke.yml` also runs `scripts/ios-onboarding-smoke.mjs` after the
+The operator-run iOS release checks also run `scripts/ios-onboarding-smoke.mjs` after the
 iOS Simulator `.app` build/stamp checks. The workflow starts the deterministic
 host agent on `127.0.0.1:31337`, installs the freshly built simulator app, clears
 Capacitor first-run Preferences, writes `eliza:ios-onboarding-smoke:request`,

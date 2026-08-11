@@ -1,0 +1,78 @@
+# This manual workflow is the general credential-backed product smoke
+# dispatcher. Specialized app and voice live-evidence flows
+# (`app-live-e2e.yml`, `voice-live-e2e.yml`) also run on schedule or dispatch.
+# Live integrations do not run on pull requests, so missing credentials cannot
+# make normal repository health red.
+name: Live Smoke
+
+on:
+  workflow_dispatch:
+    inputs:
+      suite:
+        description: Live surface to exercise
+        required: true
+        default: all
+        type: choice
+        options: [all, app, scenarios, cloud, voice]
+
+concurrency:
+  group: live-smoke-${{ inputs.suite }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    name: ${{ inputs.suite }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      CI: "true"
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
+      ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
+      ELIZAOS_CLOUD_API_KEY: ${{ secrets.ELIZAOS_CLOUD_API_KEY }}
+      ELIZAOS_CLOUD_BASE_URL: ${{ vars.ELIZAOS_CLOUD_BASE_URL }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          submodules: false
+
+      - uses: ./.github/actions/setup-bun-workspace
+        with:
+          bun-version: "1.3.14"
+          node-version: "24.15.0"
+          install-command: bun install --frozen-lockfile --ignore-scripts
+          skip-avatar-clone: "true"
+          no-vision-deps: "true"
+
+      - name: Install Chromium
+        if: inputs.suite == 'all' || inputs.suite == 'app'
+        run: .github/scripts/install-playwright-browsers.sh chromium
+
+      - name: App walkthrough
+        if: inputs.suite == 'all' || inputs.suite == 'app'
+        run: bun run --cwd packages/app test:e2e:walkthrough:live
+
+      - name: Live scenarios
+        if: inputs.suite == 'all' || inputs.suite == 'scenarios'
+        run: bun run --cwd packages/scenario-runner test:live:e2e
+
+      - name: Cloud end-to-end
+        if: inputs.suite == 'all' || inputs.suite == 'cloud'
+        run: bun run test:cloud:e2e
+
+      - name: Voice service
+        if: inputs.suite == 'all' || inputs.suite == 'voice'
+        run: bun run --cwd packages/scenario-runner test:real-service:voice
+
+      - name: Railway voice contract
+        if: inputs.suite == 'all' || inputs.suite == 'voice'
+        env:
+          ELIZA_VOICE_LIVE_RAILWAY: "1"
+          KOKORO_TTS_URL: ${{ vars.ELIZA_VOICE_KOKORO_TTS_URL }}
+          WHISPER_STT_URL: ${{ vars.ELIZA_VOICE_WHISPER_STT_URL }}
+          WHISPER_STT_MODEL: ${{ vars.ELIZA_VOICE_WHISPER_STT_MODEL }}
+        run: bun test packages/cloud/api/__tests__/voice-kokoro-whisper-live.test.ts

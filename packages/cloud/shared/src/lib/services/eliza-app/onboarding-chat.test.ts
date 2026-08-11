@@ -76,7 +76,7 @@ mock.module("./user-service", () => ({
   },
 }));
 
-const { runOnboardingChat } = await import(
+const { runOnboardingChat, validateTelegramOnboardingContinuation } = await import(
   `./onboarding-chat.ts?test=onboarding-chat-${Date.now()}`
 );
 
@@ -157,13 +157,210 @@ describe("runOnboardingChat", () => {
     });
 
     const loginUrl = new URL(result.loginUrl);
-    expect(loginUrl.origin).toBe("https://app.elizacloud.ai");
+    expect(loginUrl.origin).toBe("https://eliza.app");
     expect(loginUrl.searchParams.get("method")).toBe("telegram");
     expect(loginUrl.searchParams.get("link")).toBe("true");
     expect(loginUrl.searchParams.get("onboardingSession")).toMatch(
       /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
     );
     expect(result.loginUrl).not.toContain("123456789");
+  });
+
+  test("preflights a bot-issued Telegram continuation before account mutation", async () => {
+    const gatewayTurn = await runOnboardingChat({
+      message: "My name is Sam",
+      platform: "telegram",
+      platformUserId: "123456789",
+      sessionId: "platform:telegram:123456789",
+      trustedPlatformIdentity: true,
+    });
+    const token = continuationToken(gatewayTurn);
+
+    await expect(
+      validateTelegramOnboardingContinuation({
+        continuationToken: token,
+        telegramId: "123456789",
+      }),
+    ).resolves.toEqual({
+      sessionId: "platform:telegram:123456789",
+      userId: undefined,
+      organizationId: undefined,
+    });
+    await expect(
+      validateTelegramOnboardingContinuation({
+        continuationToken: token,
+        telegramId: "different-telegram-user",
+      }),
+    ).rejects.toMatchObject({
+      code: "ONBOARDING_PLATFORM_IDENTITY_MISMATCH",
+    });
+    await expect(
+      validateTelegramOnboardingContinuation({
+        continuationToken: "unknown-opaque-continuation",
+        telegramId: "123456789",
+      }),
+    ).rejects.toMatchObject({
+      code: "ONBOARDING_TRUSTED_CONTINUATION_INVALID",
+    });
+  });
+
+  test("strict Telegram redemption rejects an organization mismatch for the same user", async () => {
+    const gatewayTurn = await runOnboardingChat({
+      message: "My name is Sam",
+      platform: "telegram",
+      platformUserId: "123456789",
+      sessionId: "platform:telegram:123456789",
+      trustedPlatformIdentity: true,
+    });
+    ensureElizaAppProvisioning.mockResolvedValue({
+      status: "pending",
+      agentId: null,
+      bridgeUrl: null,
+      sandbox: null,
+    });
+    const token = continuationToken(gatewayTurn);
+
+    await runOnboardingChat({
+      sessionId: token,
+      platform: "telegram",
+      continuationMode: "trusted-telegram",
+      authenticatedUser: {
+        userId: "user-1",
+        organizationId: "org-1",
+        telegramId: "123456789",
+      },
+      idempotencyKey: "telegram-auth-continuation",
+    });
+
+    await expect(
+      runOnboardingChat({
+        sessionId: token,
+        platform: "telegram",
+        continuationMode: "trusted-telegram",
+        authenticatedUser: {
+          userId: "user-1",
+          organizationId: "org-2",
+          telegramId: "123456789",
+        },
+        idempotencyKey: "telegram-auth-continuation",
+      }),
+    ).rejects.toMatchObject({
+      code: "ONBOARDING_TRUSTED_CONTINUATION_INVALID",
+    });
+  });
+
+  test("strict Telegram replay revalidates the signed Telegram identity before cache lookup", async () => {
+    const gatewayTurn = await runOnboardingChat({
+      message: "My name is Sam",
+      platform: "telegram",
+      platformUserId: "123456789",
+      sessionId: "platform:telegram:123456789",
+      trustedPlatformIdentity: true,
+    });
+    ensureElizaAppProvisioning.mockResolvedValue({
+      status: "pending",
+      agentId: null,
+      bridgeUrl: null,
+      sandbox: null,
+    });
+    const token = continuationToken(gatewayTurn);
+    const input = {
+      sessionId: token,
+      platform: "telegram" as const,
+      continuationMode: "trusted-telegram" as const,
+      authenticatedUser: {
+        userId: "user-1",
+        organizationId: "org-1",
+        telegramId: "123456789",
+      },
+      idempotencyKey: "telegram-auth-continuation",
+    };
+    await runOnboardingChat(input);
+
+    await expect(
+      runOnboardingChat({
+        ...input,
+        authenticatedUser: {
+          ...input.authenticatedUser,
+          telegramId: "different-telegram-user",
+        },
+      }),
+    ).rejects.toMatchObject({
+      code: "ONBOARDING_PLATFORM_IDENTITY_MISMATCH",
+    });
+  });
+
+  test("rejects a partially bound Telegram continuation without mutating it", async () => {
+    const gatewayTurn = await runOnboardingChat({
+      message: "My name is Sam",
+      platform: "telegram",
+      platformUserId: "123456789",
+      sessionId: "platform:telegram:123456789",
+      trustedPlatformIdentity: true,
+    });
+    const storedKey = `eliza-app:onboarding:${gatewayTurn.session.id}`;
+    const stored = sessionCache.get(storedKey) as OnboardingSession;
+    const partial = { ...stored, userId: "user-1", organizationId: undefined };
+    sessionCache.set(storedKey, partial);
+
+    await expect(
+      validateTelegramOnboardingContinuation({
+        continuationToken: continuationToken(gatewayTurn),
+        telegramId: "123456789",
+        authenticatedAccount: { userId: "user-1", organizationId: "org-1" },
+      }),
+    ).rejects.toMatchObject({
+      code: "ONBOARDING_TRUSTED_CONTINUATION_INVALID",
+    });
+    await expect(
+      runOnboardingChat({
+        sessionId: continuationToken(gatewayTurn),
+        platform: "telegram",
+        continuationMode: "trusted-telegram",
+        authenticatedUser: {
+          userId: "user-1",
+          organizationId: "org-1",
+          telegramId: "123456789",
+        },
+      }),
+    ).rejects.toMatchObject({
+      code: "ONBOARDING_TRUSTED_CONTINUATION_INVALID",
+    });
+    expect(sessionCache.get(storedKey)).toEqual(partial);
+    expect(ensureElizaAppProvisioning).not.toHaveBeenCalled();
+  });
+
+  test("strict Telegram redemption rejects an expired continuation", async () => {
+    const gatewayTurn = await runOnboardingChat({
+      message: "My name is Sam",
+      platform: "telegram",
+      platformUserId: "123456789",
+      sessionId: "platform:telegram:123456789",
+      trustedPlatformIdentity: true,
+    });
+    const storedKey = `eliza-app:onboarding:${gatewayTurn.session.id}`;
+    const stored = sessionCache.get(storedKey) as OnboardingSession;
+    sessionCache.set(storedKey, {
+      ...stored,
+      createdAt: "2020-01-01T00:00:00.000Z",
+      updatedAt: "2020-01-01T00:00:00.000Z",
+    });
+
+    await expect(
+      runOnboardingChat({
+        sessionId: continuationToken(gatewayTurn),
+        platform: "telegram",
+        continuationMode: "trusted-telegram",
+        authenticatedUser: {
+          userId: "user-1",
+          organizationId: "org-1",
+          telegramId: "123456789",
+        },
+        idempotencyKey: "telegram-auth-continuation",
+      }),
+    ).rejects.toMatchObject({
+      code: "ONBOARDING_TRUSTED_CONTINUATION_INVALID",
+    });
   });
 
   test("rejects an authenticated continuation without the gateway Telegram identity", async () => {
@@ -223,6 +420,125 @@ describe("runOnboardingChat", () => {
     });
   });
 
+  test("strict Telegram redemption rejects an unknown continuation", async () => {
+    await expect(
+      runOnboardingChat({
+        sessionId: "unknown-opaque-continuation",
+        platform: "telegram",
+        continuationMode: "trusted-telegram",
+        authenticatedUser: {
+          userId: "user-1",
+          organizationId: "org-1",
+          telegramId: "123456789",
+        },
+      }),
+    ).rejects.toMatchObject({
+      code: "ONBOARDING_TRUSTED_CONTINUATION_INVALID",
+    });
+    expect(ensureElizaAppProvisioning).not.toHaveBeenCalled();
+  });
+
+  test("strict Telegram redemption rejects a continuation from another platform", async () => {
+    const discordTurn = await runOnboardingChat({
+      message: "My name is Sam",
+      platform: "discord",
+      platformUserId: "discord-user-1",
+      sessionId: "platform:discord:discord-user-1",
+      trustedPlatformIdentity: true,
+    });
+
+    await expect(
+      runOnboardingChat({
+        sessionId: continuationToken(discordTurn),
+        platform: "telegram",
+        continuationMode: "trusted-telegram",
+        authenticatedUser: {
+          userId: "user-1",
+          organizationId: "org-1",
+          telegramId: "123456789",
+        },
+      }),
+    ).rejects.toMatchObject({
+      code: "ONBOARDING_TRUSTED_CONTINUATION_INVALID",
+    });
+  });
+
+  test("strict Telegram redemption rejects missing or mismatched signed identity", async () => {
+    const gatewayTurn = await runOnboardingChat({
+      message: "My name is Sam",
+      platform: "telegram",
+      platformUserId: "123456789",
+      sessionId: "platform:telegram:123456789",
+      trustedPlatformIdentity: true,
+    });
+    const sessionId = continuationToken(gatewayTurn);
+
+    for (const telegramId of [undefined, "different-telegram-user"]) {
+      await expect(
+        runOnboardingChat({
+          sessionId,
+          platform: "telegram",
+          continuationMode: "trusted-telegram",
+          authenticatedUser: {
+            userId: "user-1",
+            organizationId: "org-1",
+            telegramId,
+          },
+        }),
+      ).rejects.toMatchObject({
+        code: "ONBOARDING_PLATFORM_IDENTITY_MISMATCH",
+      });
+    }
+    expect(ensureElizaAppProvisioning).not.toHaveBeenCalled();
+  });
+
+  test("strict Telegram redemption is idempotent for the same account", async () => {
+    const gatewayTurn = await runOnboardingChat({
+      message: "My name is Sam",
+      platform: "telegram",
+      platformUserId: "123456789",
+      sessionId: "platform:telegram:123456789",
+      trustedPlatformIdentity: true,
+    });
+    ensureElizaAppProvisioning.mockResolvedValue({
+      status: "pending",
+      agentId: null,
+      bridgeUrl: null,
+      sandbox: null,
+    });
+    const input = {
+      sessionId: continuationToken(gatewayTurn),
+      platform: "telegram" as const,
+      continuationMode: "trusted-telegram" as const,
+      authenticatedUser: {
+        userId: "user-1",
+        organizationId: "org-1",
+        telegramId: "123456789",
+      },
+      idempotencyKey: "telegram-auth-continuation",
+    };
+
+    const first = await runOnboardingChat(input);
+    const retry = await runOnboardingChat(input);
+
+    expect(first.session.userId).toBe("user-1");
+    expect(retry).toEqual(first);
+    expect(ensureElizaAppProvisioning).toHaveBeenCalledTimes(1);
+
+    await expect(
+      runOnboardingChat({
+        ...input,
+        authenticatedUser: {
+          userId: "user-2",
+          organizationId: "org-2",
+          telegramId: "123456789",
+        },
+      }),
+    ).rejects.toMatchObject({
+      code: "ONBOARDING_TRUSTED_CONTINUATION_INVALID",
+    });
+  });
+
   test("discord login handoff carries a CTA and keeps the raw URL out of the text", async () => {
     const result = await runOnboardingChat({
       message: "call me Sam",
@@ -242,7 +558,7 @@ describe("runOnboardingChat", () => {
   });
 
   test("discord handoff falls back to the inline-URL copy when the login URL cannot be a button (http scheme)", async () => {
-    cloudEnv = { ELIZA_ONBOARDING_APP_URL: "http://localhost:3000" };
+    cloudEnv = { ELIZA_ONBOARDING_LOGIN_APP_URL: "http://localhost:3000" };
     const result = await runOnboardingChat({
       message: "call me Sam",
       platform: "discord",
@@ -262,7 +578,7 @@ describe("runOnboardingChat", () => {
 
   test("discord handoff falls back to the inline-URL copy when the login URL exceeds Discord's 512-char button bound", async () => {
     cloudEnv = {
-      ELIZA_ONBOARDING_APP_URL: `https://example.com/${"a".repeat(520)}`,
+      ELIZA_ONBOARDING_LOGIN_APP_URL: `https://example.com/${"a".repeat(520)}`,
     };
     const result = await runOnboardingChat({
       message: "call me Sam",
@@ -315,7 +631,7 @@ describe("runOnboardingChat", () => {
   test("stays deterministic and model-free even when a Cerebras key is configured", async () => {
     cloudEnv = {
       CEREBRAS_API_KEY: "test-key",
-      ELIZA_ONBOARDING_APP_URL: "https://elizaos-homepage.pages.dev",
+      ELIZA_ONBOARDING_LOGIN_APP_URL: "https://elizaos-homepage.pages.dev",
     };
     const first = await runOnboardingChat({
       message: "My name is Sam",
@@ -589,7 +905,10 @@ describe("runOnboardingChat", () => {
         message: "My name is Eve",
         platform: "twilio",
         platformUserId: "+15550002222",
-        authenticatedUser: { userId: "attacker-user", organizationId: "attacker-org" },
+        authenticatedUser: {
+          userId: "attacker-user",
+          organizationId: "attacker-org",
+        },
       });
       expect(withSessionId.session.id).toMatch(UUID_PATTERN);
       expect(sessionCache.has(cacheKey("platform:twilio:+15550002222"))).toBe(false);
@@ -598,7 +917,10 @@ describe("runOnboardingChat", () => {
         message: "My name is Eve",
         platform: "twilio",
         platformUserId: "+15550003333",
-        authenticatedUser: { userId: "attacker-user", organizationId: "attacker-org" },
+        authenticatedUser: {
+          userId: "attacker-user",
+          organizationId: "attacker-org",
+        },
       });
       expect(withoutSessionId.session.id).toMatch(UUID_PATTERN);
       expect(sessionCache.has(cacheKey("platform:twilio:+15550003333"))).toBe(false);
@@ -614,7 +936,10 @@ describe("runOnboardingChat", () => {
 
       const attacker = await runOnboardingChat({
         sessionId: PLATFORM_SESSION,
-        authenticatedUser: { userId: "attacker-user", organizationId: "attacker-org" },
+        authenticatedUser: {
+          userId: "attacker-user",
+          organizationId: "attacker-org",
+        },
       });
 
       expect(attacker.session.id).not.toBe(PLATFORM_SESSION);
@@ -640,14 +965,20 @@ describe("runOnboardingChat", () => {
       const victimBound = await runOnboardingChat({
         sessionId: continuationToken(victim),
         platform: "blooio",
-        authenticatedUser: { userId: "victim-user", organizationId: "victim-org" },
+        authenticatedUser: {
+          userId: "victim-user",
+          organizationId: "victim-org",
+        },
       });
       expect(victimBound.session.id).toBe(PLATFORM_SESSION);
       expect(victimBound.session.userId).toBe("victim-user");
 
       const attacker = await runOnboardingChat({
         sessionId: PLATFORM_SESSION,
-        authenticatedUser: { userId: "attacker-user", organizationId: "attacker-org" },
+        authenticatedUser: {
+          userId: "attacker-user",
+          organizationId: "attacker-org",
+        },
       });
 
       expect(attacker.session.id).not.toBe(PLATFORM_SESSION);
@@ -693,11 +1024,14 @@ describe("runOnboardingChat", () => {
       expect(first.session.history).toHaveLength(1);
       expect(first.session.history[0]?.role).toBe("assistant");
 
+      // A second message-less turn (status poll, continuation poll) must NOT
+      // grow history — the proactive welcome fires only once per session.
+      // Regression for #18078: repeated polls were appending duplicate
+      // assistant-only entries.
       const second = await runTrustedPhoneTurn("   \n\t  ");
-      expect(second.session.history).toHaveLength(2);
-      expect(
-        second.session.history.every((m: OnboardingChatMessage) => m.role === "assistant"),
-      ).toBe(true);
+      expect(second.session.history).toHaveLength(1);
+      expect(typeof second.reply).toBe("string");
+      expect(second.reply.length).toBeGreaterThan(0);
     });
 
     test("emoji-only messages never capture a name and the reply stays ASCII", async () => {
@@ -872,7 +1206,7 @@ describe("runOnboardingChat", () => {
   });
 
   describe("provisioning-state replies without an LLM", () => {
-    test("provisioning error reply points at the control panel and never claims the agent is live", async () => {
+    test("provisioning error reply promises the queued retry and never claims the agent is live", async () => {
       ensureElizaAppProvisioning.mockResolvedValue({
         status: "error",
         agentId: "agent-1",
@@ -889,7 +1223,13 @@ describe("runOnboardingChat", () => {
       });
       expect(result.provisioning.status).toBe("error");
       expect(result.handoffComplete).toBe(false);
-      expect(result.reply).toContain("dashboard");
+      // The retry is queued automatically now (#17924), so the reply must say
+      // so rather than send the user to a dashboard that has no button to fix
+      // this — that instruction was a dead end for every stranded org.
+      expect(result.reply.toLowerCase()).toContain("queued");
+      expect(result.reply.toLowerCase()).not.toContain("dashboard");
+      // Still must not overclaim: the row is `error` at this instant and only
+      // becomes `provisioning` when the daemon claims the job.
       expect(result.reply).not.toContain("agent is live");
       expect(result.reply.toLowerCase()).not.toContain("running");
     });
@@ -958,11 +1298,18 @@ describe("runOnboardingChat", () => {
           status: "running",
           agentId: "agent-1",
           bridgeUrl: "https://agent-1.example",
-          sandbox: { id: "agent-1", status: "running", bridge_url: "https://agent-1.example" },
+          sandbox: {
+            id: "agent-1",
+            status: "running",
+            bridge_url: "https://agent-1.example",
+          },
         });
         launchManagedElizaAgent.mockResolvedValue({
           appUrl: "https://app.elizacloud.ai/dashboard/agents/agent-1",
-          connection: { apiBase: "https://agent-1.example", token: "agent-token" },
+          connection: {
+            apiBase: "https://agent-1.example",
+            token: "agent-token",
+          },
         });
 
         const first = await runOnboardingChat({
@@ -1019,11 +1366,18 @@ describe("runOnboardingChat", () => {
           status: "running",
           agentId: "agent-1",
           bridgeUrl: "https://agent-1.example",
-          sandbox: { id: "agent-1", status: "running", bridge_url: "https://agent-1.example" },
+          sandbox: {
+            id: "agent-1",
+            status: "running",
+            bridge_url: "https://agent-1.example",
+          },
         });
         launchManagedElizaAgent.mockResolvedValue({
           appUrl: "https://app.elizacloud.ai/dashboard/agents/agent-1",
-          connection: { apiBase: "https://agent-1.example", token: "agent-token" },
+          connection: {
+            apiBase: "https://agent-1.example",
+            token: "agent-token",
+          },
         });
 
         const result = await runOnboardingChat({
@@ -1045,6 +1399,175 @@ describe("runOnboardingChat", () => {
             error: "body stream broke",
           }),
         );
+      } finally {
+        globalThis.fetch = originalFetch;
+      }
+    });
+  });
+
+  describe("provisioning poll duplicates (#18078)", () => {
+    test("repeated message-less status polls do not grow session history", async () => {
+      const first = await runTrustedPhoneTurn("");
+      expect(first.session.history).toHaveLength(1);
+      expect(first.session.history[0]?.role).toBe("assistant");
+
+      // Simulate 5s-interval browser polling: no message, no statusOnly flag
+      // (the backend guard handles this independently of the frontend flag).
+      for (let i = 0; i < 5; i++) {
+        const poll = await runTrustedPhoneTurn("");
+        expect(poll.session.history).toHaveLength(1);
+        expect(typeof poll.reply).toBe("string");
+        expect(poll.reply.length).toBeGreaterThan(0);
+      }
+
+      // After all polls, history still has exactly one entry.
+      const final = getCachedSession(PLATFORM_SESSION);
+      expect(final.history).toHaveLength(1);
+    });
+
+    test("statusOnly flag suppresses the proactive welcome even on a fresh session", async () => {
+      const result = await runOnboardingChat({
+        platform: "blooio",
+        platformUserId: PHONE,
+        sessionId: PLATFORM_SESSION,
+        trustedPlatformIdentity: true,
+        statusOnly: true,
+      });
+
+      expect(result.session.history).toHaveLength(0);
+      expect(typeof result.reply).toBe("string");
+      expect(result.reply.length).toBeGreaterThan(0);
+    });
+
+    test("statusOnly with a message still does not mutate history or capture a name", async () => {
+      const result = await runOnboardingChat({
+        message: "My name is Eve",
+        platform: "blooio",
+        platformUserId: PHONE,
+        sessionId: PLATFORM_SESSION,
+        trustedPlatformIdentity: true,
+        statusOnly: true,
+      });
+
+      // statusOnly must override message processing entirely.
+      expect(result.session.history).toHaveLength(0);
+      expect(result.session.name).toBeUndefined();
+      expect(typeof result.reply).toBe("string");
+      expect(result.reply.length).toBeGreaterThan(0);
+    });
+
+    test("real user messages continue to create user/assistant turns", async () => {
+      const first = await runTrustedPhoneTurn("My name is Alice");
+      expect(first.session.history).toHaveLength(2); // user + assistant
+      expect(first.session.history[0]?.role).toBe("user");
+      expect(first.session.history[0]?.content).toBe("My name is Alice");
+      expect(first.session.history[1]?.role).toBe("assistant");
+
+      // A status poll between real messages does not grow history.
+      const poll = await runTrustedPhoneTurn("");
+      expect(poll.session.history).toHaveLength(2);
+
+      // Another real message adds a new turn.
+      const second = await runTrustedPhoneTurn("hello again");
+      expect(second.session.history).toHaveLength(4); // 2 prior + user + assistant
+      expect(second.session.history[2]?.role).toBe("user");
+      expect(second.session.history[2]?.content).toBe("hello again");
+      expect(second.session.history[3]?.role).toBe("assistant");
+    });
+
+    test("handoff transcript contains no poll-generated duplicates", async () => {
+      const originalFetch = globalThis.fetch;
+      const rememberRequests: Array<{ body: unknown }> = [];
+      globalThis.fetch = mock(async (_input: RequestInfo | URL, init?: RequestInit) => {
+        rememberRequests.push({
+          body: init?.body ? JSON.parse(String(init.body)) : null,
+        });
+        return new Response("{}", { status: 200 });
+      }) as typeof fetch;
+
+      try {
+        findOrCreateByPhone.mockResolvedValue({
+          user: { id: "user-1", name: null },
+          organization: { id: "org-1" },
+          isNew: true,
+        });
+        // Start with provisioning pending — no handoff yet.
+        ensureElizaAppProvisioning.mockResolvedValue({
+          status: "provisioning",
+          agentId: "agent-1",
+          bridgeUrl: null,
+          sandbox: null,
+        });
+        launchManagedElizaAgent.mockResolvedValue({
+          appUrl: "https://app.elizacloud.ai/dashboard/agents/agent-1",
+          connection: {
+            apiBase: "https://agent-1.example/",
+            token: "agent-token",
+          },
+        });
+
+        // Start with a real user message so the transcript has real content.
+        const named = await runOnboardingChat({
+          message: "My name is Sam",
+          platform: "blooio",
+          platformUserId: PHONE,
+          sessionId: PLATFORM_SESSION,
+          trustedPlatformIdentity: true,
+          authenticatedUser: { userId: "user-1", organizationId: "org-1" },
+        });
+
+        // No handoff while provisioning is pending.
+        expect(rememberRequests).toHaveLength(0);
+
+        // Simulate several status polls while provisioning is still pending.
+        for (let i = 0; i < 3; i++) {
+          await runOnboardingChat({
+            platform: "blooio",
+            sessionId: continuationToken(named),
+            authenticatedUser: { userId: "user-1", organizationId: "org-1" },
+            statusOnly: true,
+          });
+        }
+
+        // Still no handoff — polls never triggered one.
+        expect(rememberRequests).toHaveLength(0);
+
+        // Provisioning reaches running — the next turn fires the handoff.
+        ensureElizaAppProvisioning.mockResolvedValue({
+          status: "running",
+          agentId: "agent-1",
+          bridgeUrl: "https://agent-1.example",
+          sandbox: {
+            id: "agent-1",
+            status: "running",
+            bridge_url: "https://agent-1.example",
+          },
+        });
+
+        await runOnboardingChat({
+          platform: "blooio",
+          sessionId: continuationToken(named),
+          authenticatedUser: { userId: "user-1", organizationId: "org-1" },
+          statusOnly: true,
+        });
+
+        // Exactly one remember call with a transcript containing no duplicates.
+        expect(rememberRequests).toHaveLength(1);
+        const firstRequest = rememberRequests[0];
+        if (!firstRequest) throw new Error("Expected at least one remember request");
+        const transcript = String((firstRequest.body as { text: string }).text);
+
+        // Count both user lines AND assistant lines to catch any
+        // poll-generated duplicate "Eliza onboarding:" entries that a
+        // user-only assertion would miss.
+        const userLines = transcript.match(/^User: /gm) ?? [];
+        expect(userLines).toHaveLength(1);
+        expect(transcript).toContain("User: My name is Sam");
+
+        // The assistant reply fires exactly once. Poll-generated duplicates
+        // serialize as "Eliza onboarding: ..." — assert there is at most one.
+        const onboardingLines = transcript.match(/^Eliza onboarding:/gm) ?? [];
+        expect(onboardingLines.length).toBeLessThanOrEqual(1);
       } finally {
         globalThis.fetch = originalFetch;
       }

@@ -66,9 +66,8 @@ provider always requires an exact fixture or explicit resolver:
   `SHELL`, and `WORKTREE` handlers against an isolated throwaway git repo under
   `/tmp`, including file side effects and worktree cleanup.
 - `deterministic-agent-skills-actions` covers the real agent-skills parent and
-  promoted virtual actions: search, details, install, toggle, sync, uninstall,
-  and `USE_SKILL`, with a mocked ClawHub registry/download endpoint and real
-  skill storage side effects.
+  promoted local actions: toggle, uninstall, and `USE_SKILL`, with real local
+  skill storage side effects and no network dependency.
 - `deterministic-media-actions` covers `GENERATE_MEDIA` image/audio
   dispatch through deterministic runtime model handlers.
 

@@ -20,7 +20,7 @@ same runtime target, and same handoff semantics.
   `packages/homepage/tests/e2e/marketing-cloud-download.spec.ts`.
 - Release metadata generation:
   `packages/app-core/scripts/write-homepage-release-data.mjs`,
-  `packages/app-core/scripts/run-release-contract-suite.mjs`,
+  `.github/workflows/release.yaml`,
   `packages/app-core/platforms/electrobun/scripts/verify-windows-installer-proof.ps1`,
   `packages/app-core/platforms/electrobun/scripts/stage-macos-release-artifacts.sh`.
 - Mobile runtime and sideload behavior:
@@ -226,7 +226,7 @@ Implementation requirements:
 - Keep release metadata generation in
   `packages/app-core/scripts/write-homepage-release-data.mjs`.
 - Extend release contracts in
-  `packages/app-core/scripts/run-release-contract-suite.mjs` when adding new
+  `.github/workflows/release.yaml` when changing the package release contract
   artifact types or store metadata.
 - Desktop release status remains visible in the app release center under
   `packages/ui/src/components/release-center/`.
@@ -240,7 +240,7 @@ Acceptance criteria:
 - A release candidate cannot be marked ready unless homepage metadata,
   desktop artifacts, mobile sideload artifacts, and gateway deploy metadata are
   internally consistent.
-- `node packages/app-core/scripts/run-release-contract-suite.mjs` passes before
+- the release workflow contract tests pass before
   public release.
 - Homepage build uses freshly generated release data:
   `bun run --cwd packages/homepage build`.

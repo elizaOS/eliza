@@ -16,7 +16,6 @@ name: Cloud CF Deploy
 # Per environment (both projects):
 # - push to develop  -> staging   (api-staging.elizacloud.ai; staging.* / app-staging.*)
 # - push to main     -> production (api.elizacloud.ai; elizacloud.ai / app.elizacloud.ai)
-# - pull_request     -> preview    (Pages preview branch backed by staging API)
 #
 # Required repo secrets:
 #   CLOUDFLARE_API_TOKEN   - account-scoped token with Workers + Pages edit perms
@@ -37,22 +36,10 @@ name: Cloud CF Deploy
 #   (Ed25519 keypair for the signed voice-model catalog; the catalog route 503s
 #   while the signing key is unset).
 #
-# Source: cloud/.github/workflows/cf-deploy.yml in the original elizaOS/cloud repo.
+# Consolidated from the original standalone Cloud deployment workflow.
 
 on:
   push:
-    branches: [main, develop]
-    paths:
-      - "packages/cloud/api/**"
-      - "packages/cloud/shared/**"
-      - "packages/cloud/services/**"
-      - "packages/cloud/sdk/**"
-      - "packages/cloud/scripts/**"
-      - "packages/app/**"
-      - "packages/app-core/**"
-      - "packages/ui/**"
-      - ".github/workflows/cloud-cf-deploy.yml"
-  pull_request:
     branches: [main, develop]
     paths:
       - "packages/cloud/api/**"
@@ -190,7 +177,7 @@ jobs:
   # Database migrations — the schema gate for every deploy job below (#11208).
   #
   # Prod refreshes via a workflow_dispatch of THIS workflow, but migrate-db
-  # used to live only in cloud-deploy-backend.yml — the two were decoupled, so
+  # is kept in this deployment authority so
   # a refresh shipped new Worker/Pages code against whatever schema prod
   # happened to have. Every deploy job below now `needs: migrate-db`, which
   # guarantees migrations run AND succeed before any new code serves traffic:
@@ -206,17 +193,9 @@ jobs:
     name: Run Database Migrations
     needs: [validate-deploy-source, admit-staging]
     if: ${{ always() && github.event_name != 'pull_request' && (((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && (needs.validate-deploy-source.result == 'success' || needs.validate-deploy-source.result == 'skipped') || (!((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && needs.admit-staging.outputs.should_deploy == 'true')) }}
-    # GitHub-hosted by DEFAULT so migrations don't inherit the shared
-    # self-hosted deploy fleet's heavy-checkout failure modes (mirrors
-    # cloud-deploy-backend). But the hosted ubuntu-latest pool periodically
-    # backs up for hours (org-wide zombie-freeze), and since every deploy job
-    # `needs: migrate-db`, a starved hosted queue blocks ALL prod deploys even
-    # while the self-hosted robot pool sits idle. CLOUD_CF_MIGRATE_RUNNER_JSON
-    # lets ops fail migrations over to the robot pool (e.g.
-    # ["self-hosted","Linux","X64","hetzner-robot"]) when hosted is jammed;
-    # migrate is a light `bun install` + `db:cloud:migrate`, not the heavy
-    # working-tree materialization that motivated keeping deploys off-hosted.
-    runs-on: ${{ fromJSON(vars.CLOUD_CF_MIGRATE_RUNNER_JSON || '["ubuntu-latest"]') }}
+    # Hosted unconditionally: CI must never contend with production
+    # agent-placement nodes for disk or CPU (#17881).
+    runs-on: ubuntu-latest
     # Job-level concurrency groups are repo-wide, so this also serializes
     # against an explicitly dispatched legacy cloud-deploy-backend migration.
     # The v2 suffix retires the un-versioned group: the same stale 2026-05-15
@@ -301,11 +280,8 @@ jobs:
     concurrency:
       group: cloud-cf-deploy-api-${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'production' || 'staging' }}
       cancel-in-progress: false
-    # Keep the deploy fleet configurable while Cloud ops converges on the
-    # reliable runner pool. Set CLOUD_CF_DEPLOY_RUNNER_JSON to a JSON runs-on
-    # array such as ["self-hosted","Linux","X64","hetzner-robot"] to use the
-    # Hetzner fleet; otherwise default to GitHub-hosted Ubuntu.
-    runs-on: ${{ fromJSON(vars.CLOUD_CF_DEPLOY_RUNNER_JSON || '["ubuntu-latest"]') }}
+    # Hosted unconditionally to preserve CI/placement workload separation.
+    runs-on: ubuntu-latest
     timeout-minutes: 75
     # Schema gate (#11208): the Worker talks to the database, so it only
     # deploys after migrate-db succeeded for this same commit. A failed or
@@ -1016,13 +992,8 @@ jobs:
     concurrency:
       group: cloud-cf-deploy-console-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || (((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'production' || 'staging') }}
       cancel-in-progress: ${{ github.event_name == 'pull_request' }}
-    # Keep the deploy fleet configurable while Cloud ops converges on the
-    # reliable runner pool. Set CLOUD_CF_DEPLOY_RUNNER_JSON to a JSON runs-on
-    # array such as ["self-hosted","Linux","X64","hetzner-robot"] to use the
-    # Hetzner fleet; otherwise default to GitHub-hosted Ubuntu. Pull request
-    # previews always use GitHub-hosted runners because the shared deploy robot
-    # can fail before any cleanup step while staging downloaded setup actions.
-    runs-on: ${{ fromJSON(github.event_name == 'pull_request' && '["ubuntu-latest"]' || vars.CLOUD_CF_DEPLOY_RUNNER_JSON || '["ubuntu-latest"]') }}
+    # Hosted unconditionally to preserve CI/placement workload separation.
+    runs-on: ubuntu-latest
     timeout-minutes: 75
     # Schema gate (#11208): real (non-PR) deploys only run after migrate-db
     # succeeded, so the frontend never goes live ahead of the schema its API
@@ -1433,13 +1404,8 @@ jobs:
     concurrency:
       group: cloud-cf-deploy-app-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || (((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'production' || 'staging') }}
       cancel-in-progress: ${{ github.event_name == 'pull_request' }}
-    # Keep the deploy fleet configurable while Cloud ops converges on the
-    # reliable runner pool. Set CLOUD_CF_DEPLOY_RUNNER_JSON to a JSON runs-on
-    # array such as ["self-hosted","Linux","X64","hetzner-robot"] to use the
-    # Hetzner fleet; otherwise default to GitHub-hosted Ubuntu. Pull request
-    # previews always use GitHub-hosted runners because the shared deploy robot
-    # can fail before any cleanup step while staging downloaded setup actions.
-    runs-on: ${{ fromJSON(github.event_name == 'pull_request' && '["ubuntu-latest"]' || vars.CLOUD_CF_DEPLOY_RUNNER_JSON || '["ubuntu-latest"]') }}
+    # Hosted unconditionally to preserve CI/placement workload separation.
+    runs-on: ubuntu-latest
     timeout-minutes: 75
     # Schema gate (#11208): same contract as deploy-console — non-PR deploys
     # require a successful migrate-db; PR previews (migrate-db skipped) still
@@ -1779,7 +1745,7 @@ jobs:
   # THAT environment -- not the other one leaking through the prod
   # `*.elizacloud.ai/*` wildcard or a mis-mapped Pages custom domain. This does
   # NOT gate the deploy (it already happened); it surfaces a misroute as a red
-  # check. The always-on scheduled monitor is .github/workflows/verify-cf-routing.yml.
+  # check. Operators can also dispatch this workflow for an explicit recheck.
   # ---------------------------------------------------------------------------
   verify-routing:
     name: Verify ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'production' || 'staging' }} routing

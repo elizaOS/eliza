@@ -9,6 +9,7 @@
 
 import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
+import net from "node:net";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -23,7 +24,34 @@ const preloadPath = path.join(integrationRoot, "preload.ts");
 const serverPreload = preloadPath;
 const dbPreload = preloadPath;
 const timeoutMs = process.env.CLOUD_INTEGRATION_TIMEOUT_MS || "120000";
-const apiPort = process.env.API_DEV_PORT || "8787";
+
+/**
+ * Reserve an OS-assigned free port. Shared self-hosted runners host several
+ * concurrent jobs on one machine; a fixed 8787 meant this runner could adopt a
+ * DIFFERENT job's wrangler as "its" healthy server (its own wrangler then died
+ * with EADDRINUSE), and the suite collapsed mid-run when that foreign job
+ * finished and tore its server down. Only used when the caller did not pin a
+ * port or target URL.
+ */
+function reserveFreePort() {
+  return new Promise((resolve, reject) => {
+    const server = net.createServer();
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      const { port } = server.address();
+      server.close(() => resolve(String(port)));
+    });
+  });
+}
+
+const callerPinnedTarget = Boolean(
+  process.env.API_DEV_PORT ||
+    process.env.TEST_API_BASE_URL?.trim() ||
+    process.env.TEST_BASE_URL?.trim(),
+);
+const apiPort = callerPinnedTarget
+  ? process.env.API_DEV_PORT || "8787"
+  : await reserveFreePort();
 const baseUrl =
   process.env.TEST_API_BASE_URL?.trim() ||
   process.env.TEST_BASE_URL?.trim() ||
@@ -133,6 +161,15 @@ async function waitForServer(child) {
       );
     }
     if (await isServerHealthy()) {
+      // A health 200 alone is not proof OUR server answered it: a zombie
+      // process from a previous run can hold the port, answer health, and
+      // then die mid-suite while our wrangler exits with EADDRINUSE. Only
+      // accept health responses while our child is still alive.
+      if (child.exitCode !== null) {
+        throw new Error(
+          `[cloud-integration] API server exited (code ${child.exitCode}) but ${baseUrl} still answers health — a stale process holds port ${apiPort}. Kill it and retry.`,
+        );
+      }
       return;
     }
     await new Promise((resolve) => setTimeout(resolve, 1_000));
@@ -140,6 +177,13 @@ async function waitForServer(child) {
   throw new Error(
     "[cloud-integration] Timed out waiting for API server health",
   );
+}
+
+function isPortOccupied(port) {
+  const lsof = spawnSync("lsof", ["-ti", `tcp:${port}`, "-sTCP:LISTEN"], {
+    encoding: "utf8",
+  });
+  return lsof.status === 0 && lsof.stdout.trim().length > 0;
 }
 
 async function ensureServer() {
@@ -151,6 +195,11 @@ async function ensureServer() {
   }
   if (process.env.TEST_API_BASE_URL || process.env.TEST_BASE_URL) {
     throw new Error("[cloud-integration] Configured API server is not healthy");
+  }
+  if (isPortOccupied(apiPort)) {
+    throw new Error(
+      `[cloud-integration] Port ${apiPort} is already bound by a process that does not answer ${baseUrl}/api/health — a stale server from a previous run is holding the port. Kill it and retry.`,
+    );
   }
 
   console.log(`[cloud-integration] START API dev server at ${baseUrl}`);

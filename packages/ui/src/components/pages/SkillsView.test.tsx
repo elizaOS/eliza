@@ -54,12 +54,9 @@ function makeContext(
     skillReviewId: "",
     skillReviewLoading: false,
     skillToggleAction: "",
-    skillsMarketplaceQuery: "",
-    skillsMarketplaceResults: [],
-    skillsMarketplaceError: "",
-    skillsMarketplaceLoading: false,
-    skillsMarketplaceAction: "",
-    skillsMarketplaceManualGithubUrl: "",
+    skillInstallError: "",
+    skillInstallAction: "",
+    skillInstallGithubUrl: "",
     loadSkills: vi.fn(async () => {}),
     refreshSkills: vi.fn(async () => {}),
     handleSkillToggle: vi.fn(async () => {}),
@@ -67,13 +64,7 @@ function makeContext(
     handleDeleteSkill: vi.fn(async () => {}),
     handleReviewSkill: vi.fn(),
     handleAcknowledgeSkill: vi.fn(),
-    searchSkillsMarketplace: vi.fn(),
-    installSkillFromMarketplace: vi.fn(),
-    uninstallMarketplaceSkill: vi.fn(),
     installSkillFromGithubUrl: vi.fn(),
-    enableMarketplaceSkill: vi.fn(),
-    disableMarketplaceSkill: vi.fn(),
-    copyMarketplaceSkillSource: vi.fn(),
     setState: vi.fn(),
     t,
     ...overrides,
@@ -177,5 +168,18 @@ describe("SkillsView", () => {
 
     expect(screen.queryByTestId("skill-row-skill-alpha")).toBeNull();
     expect(screen.getByTestId("skills-filter-empty")).toBeTruthy();
+  });
+
+  it("offers only direct GitHub installation", () => {
+    render(<SkillsView />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Install" }));
+
+    expect(screen.getByRole("dialog")).toBeTruthy();
+    expect(screen.getByLabelText("GitHub repository URL")).toBeTruthy();
+    expect(
+      screen.getByText(/Install a skill directly from a GitHub repository/i),
+    ).toBeTruthy();
+    expect(screen.queryByRole("searchbox")).toBeNull();
   });
 });

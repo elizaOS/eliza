@@ -299,6 +299,7 @@ export {
   sanitizeForSettingsDebug,
   settingsDebugCloudSummary,
 } from "./settings-debug.js";
+export * from "./speaker-name-inference.js";
 export * from "./spoken-text.js";
 export * from "./terminal/links.js";
 export * from "./terminal/theme.js";

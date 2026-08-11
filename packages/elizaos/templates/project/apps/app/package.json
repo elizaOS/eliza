@@ -26,7 +26,7 @@
     "cap:sync:android": "capacitor sync android",
     "cap:open:ios": "capacitor open ios",
     "cap:open:android": "capacitor open android",
-    "build:web": "bun --bun vite build"
+    "build:web": "bun --bun vite build && node scripts/verify-viewport-meta.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.0.2",

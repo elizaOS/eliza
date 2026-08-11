@@ -497,8 +497,8 @@ export default defineConfig({
       // causes file-system race conditions on shared test fixtures.
       // Keep the standalone-safe Electrobun tests in the default unit suite.
       // native/agent.test.ts requires the full desktop runtime, so it runs only
-      // via `bun run test:desktop:contract` in `.github/workflows/test.yml`
-      // (and the matching nightly desktop-contract job).
+      // via the package-owned desktop contract command during release review;
+      // routine CI does not duplicate that platform-specific lane.
       "packages/plugin-wechat/src/**/*.test.ts",
       "src/**/*.test.{ts,tsx}",
       "scripts/**/*.test.{ts,tsx}",

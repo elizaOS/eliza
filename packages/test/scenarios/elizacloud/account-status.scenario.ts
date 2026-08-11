@@ -146,19 +146,9 @@ export default scenario({
             },
             times: 1,
           },
-          {
-            name: "elizacloud-decision",
-            match: (call: { modelType: string; toolNames: string[] }) =>
-              call.modelType === ModelType.RESPONSE_HANDLER &&
-              !call.toolNames.includes("HANDLE_RESPONSE"),
-            response: {
-              success: true,
-              decision: "FINISH",
-              thought: "Reported the cloud balance; nothing more to do.",
-              messageToUser: "Here's your Eliza Cloud balance.",
-            },
-            times: 1,
-          },
+          // No post-action decision fixture: CLOUD_ACCOUNT_STATUS's verified
+          // read is turnComplete (#18119), so the planner-loop finishes on the
+          // action's own ack and never issues the FINISH decision call.
         );
         return undefined;
       },

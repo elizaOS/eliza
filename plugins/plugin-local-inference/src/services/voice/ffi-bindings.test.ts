@@ -185,6 +185,18 @@ const FFI_STUB_DIR = path.resolve(
 	"scripts",
 	"ffi-stub",
 );
+const NATIVE_FFI_HEADER = path.resolve(
+	__dirname,
+	"..",
+	"..",
+	"..",
+	"native",
+	"llama.cpp",
+	"tools",
+	"omnivoice",
+	"include",
+	"eliza-inference-ffi.h",
+);
 const STUB_BUILD_DIR = mkdtempSync(path.join(tmpdir(), "eliza-ffi-stub-"));
 const STUB_DYLIB = path.join(
 	STUB_BUILD_DIR,
@@ -251,6 +263,42 @@ describe("ffi-bindings — pure unit (no Bun, no dylib)", () => {
 	it("ELIZA_INFERENCE_ABI_VERSION is 15 (exact-size Kokoro PCM allocation)", () => {
 		expect(ELIZA_INFERENCE_ABI_VERSION).toBe(15);
 	});
+
+	// The native header lives inside the llama.cpp submodule, which most CI
+	// lanes and dev checkouts leave uninitialized. Skip (rather than fail) when
+	// the submodule is absent, and also when a persistent runner workdir left
+	// the submodule materialized at a commit other than the repo's pinned
+	// gitlink (actions/checkout does not sync submodules, so a stale checkout
+	// from an earlier run would make this test read the wrong header). The
+	// voice lanes with submodules:recursive still enforce the pin.
+	const submoduleAtPinnedCommit = (): boolean => {
+		const submoduleDir = path.dirname(
+			path.dirname(path.dirname(NATIVE_FFI_HEADER)),
+		);
+		const pluginDir = path.resolve(submoduleDir, "..", "..");
+		const pinned = spawnSync(
+			"git",
+			["-C", pluginDir, "ls-tree", "HEAD", "--", "native/llama.cpp"],
+			{ encoding: "utf8" },
+		);
+		const actual = spawnSync("git", ["-C", submoduleDir, "rev-parse", "HEAD"], {
+			encoding: "utf8",
+		});
+		if (pinned.status !== 0 || actual.status !== 0) return false;
+		const pinnedSha = pinned.stdout.match(/\b([0-9a-f]{40})\b/)?.[1];
+		return pinnedSha !== undefined && pinnedSha === actual.stdout.trim();
+	};
+
+	it.skipIf(!existsSync(NATIVE_FFI_HEADER) || !submoduleAtPinnedCommit())(
+		"keeps the TypeScript ABI version aligned with the pinned native header",
+		() => {
+			const header = readFileSync(NATIVE_FFI_HEADER, "utf8");
+			const declared = header.match(
+				/^#define ELIZA_INFERENCE_ABI_VERSION (\d+)$/m,
+			)?.[1];
+			expect(declared).toBe(String(ELIZA_INFERENCE_ABI_VERSION));
+		},
+	);
 
 	it("loadElizaInferenceFfi throws VoiceLifecycleError when FFI is unavailable", () => {
 		// Depending on the test runner this is either a non-Bun runtime or Bun

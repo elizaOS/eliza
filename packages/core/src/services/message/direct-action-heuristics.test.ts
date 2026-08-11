@@ -17,9 +17,256 @@ import {
 	inferDirectCurrentRequestCandidateActions,
 	inferDirectCurrentRequestCandidateInference,
 	isShellDirectActionName,
+	linkShareOwnText,
+	looksLikeBareLinkShare,
 	looksLikeLocalShellRequest,
 	looksLikeWebSearchRequest,
 } from "./direct-action-heuristics.ts";
+
+/** The exact processed-content shape Discord produces for a shared link with a
+ * rendered preview: raw URL, then the connector-appended embed block. */
+const DISCORD_LINK_WITH_EMBED = [
+	"https://claude.ai/public/artifacts/abc123",
+	"Embed #1:",
+	"  Title:how the agent decides to message people",
+	"  Description:(none)",
+].join("\n");
+
+describe("looksLikeBareLinkShare", () => {
+	it("fires on a bare URL with no commentary", () => {
+		expect(looksLikeBareLinkShare("https://example.com/some/page")).toBe(true);
+	});
+
+	it("fires on a URL with a connector embed preview — preview text is derived, not instruction", () => {
+		// The embed title contains workflow-ish words ("decides to message
+		// people"); they must not read as user intent.
+		expect(looksLikeBareLinkShare(DISCORD_LINK_WITH_EMBED)).toBe(true);
+	});
+
+	it("fires even when the embed TITLE carries a work imperative — derived text never defeats the guard", () => {
+		const imperativeTitle = [
+			"https://example.com/build-guide",
+			"Embed #1:",
+			"  Title:Build and deploy your first app",
+			"  Description:A tutorial for creating projects",
+		].join("\n");
+		expect(looksLikeBareLinkShare(imperativeTitle)).toBe(true);
+	});
+
+	it("fires on a URL with short non-imperative commentary", () => {
+		expect(looksLikeBareLinkShare("check this out https://example.com")).toBe(
+			true,
+		);
+		expect(looksLikeBareLinkShare("https://example.com lol")).toBe(true);
+		expect(looksLikeBareLinkShare("thoughts? https://example.com")).toBe(true);
+	});
+
+	it("does NOT fire when the user's own words carry a work imperative", () => {
+		expect(
+			looksLikeBareLinkShare(
+				"build me a landing page based on this https://example.com/design",
+			),
+		).toBe(false);
+		expect(
+			looksLikeBareLinkShare("fix the bug described here https://example.com"),
+		).toBe(false);
+		// The imperative may live in the residue even with an embed present.
+		expect(
+			looksLikeBareLinkShare(
+				`implement what this describes\n${DISCORD_LINK_WITH_EMBED}`,
+			),
+		).toBe(false);
+	});
+
+	it("does NOT fire without a URL or on substantial commentary", () => {
+		expect(looksLikeBareLinkShare("tell vega to take a break")).toBe(false);
+		expect(looksLikeBareLinkShare("")).toBe(false);
+		const longCommentary = `${"here is a very long analysis of the situation with many words that go on ".repeat(3)}https://example.com`;
+		expect(looksLikeBareLinkShare(longCommentary)).toBe(false);
+	});
+
+	it("does NOT fire on explicit work orders whose verb is absent from the old allowlist", () => {
+		// These are the exact counterexamples from issue #18108. Before the fix,
+		// each short residue lacked a recognized English imperative and was
+		// misclassified as a bare link share — blocking TASKS delegation and
+		// steering toward the passive web-read path.
+		expect(
+			looksLikeBareLinkShare(
+				"review this PR https://github.com/elizaOS/eliza/pull/18106",
+			),
+		).toBe(false);
+		expect(
+			looksLikeBareLinkShare(
+				"audit this repository https://github.com/elizaOS/eliza",
+			),
+		).toBe(false);
+		expect(
+			looksLikeBareLinkShare(
+				"investigate the failure here https://example.com/run",
+			),
+		).toBe(false);
+		// Additional verbs absent from the old allowlist that are genuine
+		// coding-intent work orders, not passive shares.
+		expect(
+			looksLikeBareLinkShare("analyze this error https://example.com/log"),
+		).toBe(false);
+		expect(
+			looksLikeBareLinkShare(
+				"test the changes in https://github.com/elizaOS/eliza/pull/12345",
+			),
+		).toBe(false);
+		expect(
+			looksLikeBareLinkShare(
+				"read through these docs https://example.com/docs",
+			),
+		).toBe(false);
+	});
+
+	it("does NOT fire on non-English explicit work orders", () => {
+		// The old closed English verb allowlist structurally excluded every
+		// non-English work order. Conservative residue detection does not
+		// depend on language.
+		expect(
+			looksLikeBareLinkShare(
+				"revisa este PR https://github.com/elizaOS/eliza/pull/12345",
+			),
+		).toBe(false); // Spanish: "review this PR"
+		expect(
+			looksLikeBareLinkShare("审计这个代码库 https://github.com/elizaOS/eliza"),
+		).toBe(false); // Chinese: "audit this codebase"
+		expect(
+			looksLikeBareLinkShare("このバグを修正して https://example.com/issue"),
+		).toBe(false); // Japanese: "fix this bug"
+	});
+
+	it("does NOT fire on multi-word work orders with a URL", () => {
+		// The residue is neither empty nor a recognized conversational phrase,
+		// so it must reach ordinary routing.
+		expect(
+			looksLikeBareLinkShare(
+				"help me understand this stack trace https://example.com/trace",
+			),
+		).toBe(false);
+		expect(
+			looksLikeBareLinkShare(
+				"can you check why this build failed https://example.com/ci",
+			),
+		).toBe(false);
+	});
+});
+
+describe("linkShareOwnText", () => {
+	it("keeps only the user's own words, punctuation intact", () => {
+		expect(
+			linkShareOwnText("does it support backups? https://example.com"),
+		).toBe("does it support backups?");
+		expect(linkShareOwnText("https://example.com/some/page")).toBe("");
+	});
+
+	it("drops connector embed preview text — a page title is not the user asking", () => {
+		// The embed title carries a question mark that must not surface as the
+		// user's own phrasing.
+		const shared = [
+			"https://example.com/what-is-it",
+			"Embed #1:",
+			"  Title:What is umbrelOS?",
+			"  Description:(none)",
+		].join("\n");
+		expect(linkShareOwnText(shared)).toBe("");
+	});
+});
+
+describe("bare link share routes to the web-read light path, never coding", () => {
+	const actions = [
+		{ name: "REPLY", similes: [] },
+		{ name: "WEB_FETCH", similes: [] },
+		{ name: "WEB_SEARCH", similes: [] },
+		{ name: "TASKS", similes: [], tags: ["domain:coding"] },
+	] as unknown as ReadonlyArray<Pick<Action, "name" | "similes" | "tags">>;
+
+	it("a shared link surfaces WEB_FETCH-first web candidates (kind web)", () => {
+		const inference = inferDirectCurrentRequestCandidateInference(
+			actions,
+			DISCORD_LINK_WITH_EMBED,
+			{
+				// A coding hook that would fire on the embed's derived text must
+				// not be consulted before the link-share light path.
+				looksLikeCodingWorkRequest: () => false,
+				findCodingDelegationActionName: () => "TASKS",
+			},
+		);
+		expect(inference.kind).toBe("web");
+		expect(inference.names).toEqual(["WEB_FETCH", "WEB_SEARCH"]);
+	});
+
+	it("an explicit build instruction with a URL still routes to coding", () => {
+		const inference = inferDirectCurrentRequestCandidateInference(
+			actions,
+			"build me a page like this https://example.com/design",
+			{
+				looksLikeCodingWorkRequest: (text) => /\bbuild\b/i.test(text),
+				findCodingDelegationActionName: () => "TASKS",
+			},
+		);
+		expect(inference.kind).toBe("coding");
+		expect(inference.names).toEqual(["TASKS"]);
+	});
+
+	it("work orders with unlisted verbs are NOT forced to the web-read path (issue #18108)", () => {
+		// These are the exact utterances from issue #18108. Before the fix,
+		// looksLikeBareLinkShare returned true for each because the verb
+		// (review/audit/investigate) was absent from the old closed allowlist,
+		// so inferDirectCurrentRequestCandidateInference shunted them to the
+		// web-read light path before the coding hook was ever consulted.
+		// After the fix, the residue is non-empty and non-conversational, so
+		// looksLikeBareLinkShare returns false and inference falls through to
+		// ordinary routing — where a coding hook (if present) can select TASKS.
+		for (const text of [
+			"review this PR https://github.com/elizaOS/eliza/pull/18106",
+			"audit this repository https://github.com/elizaOS/eliza",
+			"investigate the failure here https://example.com/run",
+		]) {
+			// Without a coding hook, the inference must NOT be "web" — proving
+			// the utterance was not forced to the link-share light path.
+			const inference = inferDirectCurrentRequestCandidateInference(
+				actions,
+				text,
+				{},
+			);
+			expect(inference.kind).not.toBe("web");
+			expect(inference.names).not.toContain("WEB_FETCH");
+		}
+	});
+
+	it("a bare URL / 'thoughts?' still routes to the web-read light path (control)", () => {
+		// The control: messages that ARE genuine passive link shares must
+		// still be forced to the web-read path. This proves the fix did not
+		// widen the routing to let passive shares reach TASKS.
+		for (const text of [
+			"https://example.com/some/page",
+			"thoughts? https://example.com",
+		]) {
+			const inference = inferDirectCurrentRequestCandidateInference(
+				actions,
+				text,
+				{},
+			);
+			expect(inference.kind).toBe("web");
+			expect(inference.names).toEqual(["WEB_FETCH", "WEB_SEARCH"]);
+		}
+	});
+
+	it("with no web backend the link share yields no forced candidate", () => {
+		const inference = inferDirectCurrentRequestCandidateInference(
+			[{ name: "REPLY", similes: [] }] as unknown as ReadonlyArray<
+				Pick<Action, "name" | "similes" | "tags">
+			>,
+			DISCORD_LINK_WITH_EMBED,
+			{},
+		);
+		expect(inference.names).toEqual([]);
+	});
+});
 
 describe("looksLikeLocalShellRequest", () => {
 	it("fires on local inspect-the-repo intent, not on unrelated text", () => {

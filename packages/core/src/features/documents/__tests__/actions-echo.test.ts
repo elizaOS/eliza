@@ -170,6 +170,36 @@ describe("DOCUMENT search/list echo clamping", () => {
 			'I couldn\'t find any documents matching "launch notes".',
 		);
 	});
+
+	it("projects transcript audio anchors into planner-facing search results", async () => {
+		const service = makeService();
+		service.searchDocuments.mockResolvedValueOnce([
+			{
+				id: "00000000-0000-0000-0000-0000000000f1" as UUID,
+				content: { text: "anchored phrase" },
+				metadata: {
+					documentId: DOC_ID,
+					transcriptId: "transcript-1",
+					startMs: 12_500,
+					endMs: 15_000,
+				},
+			},
+		]);
+
+		const res = await documentAction.handler(
+			makeRuntime(service),
+			makeMessage(""),
+			undefined,
+			options({ action: "search", query: "anchored phrase" }),
+		);
+		const results = (res.data as { results: Array<Record<string, unknown>> })
+			.results;
+		expect(results[0]).toMatchObject({
+			transcriptId: "transcript-1",
+			startMs: 12_500,
+			endMs: 15_000,
+		});
+	});
 });
 
 describe("DOCUMENT structural extraction on hardened messages", () => {

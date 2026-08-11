@@ -1,9 +1,8 @@
 name: Build Agent Image
 
 # Single source of truth for the cloud-agent container image used by the
-# cloud sandbox provisioner. Three trigger surfaces:
+# cloud sandbox provisioner. Two trigger surfaces:
 #   - push to develop/main → :develop / :stable + :latest, plus :sha-<short>
-#   - GitHub release created → release tag (e.g. v2.0.0-alpha.176)
 #   - workflow_dispatch → manual canonical reruns or digest-preserving demo promotion
 # The previous release-only workflow (image.yaml) duplicated this entire
 # pre-build sequence; it's been deleted in favor of this consolidated build.
@@ -23,8 +22,6 @@ on:
       - "packages/cloud/sdk/**"
       - ".github/workflows/build-agent-image.yml"
       - ".dockerignore"
-  release:
-    types: [created]
   workflow_dispatch:
     inputs:
       publication_target:
@@ -44,10 +41,10 @@ env:
 
 # Default to least privilege. Override per-job where needed.
 # New develop images supersede older in-flight develop builds. Stable main,
-# release, and manual publications always finish because they publish durable
-# tags or operator-selected targets.
+# Manual publications always finish because they publish operator-selected
+# targets.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.release.id || github.ref }}
+  group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'push' && github.ref == 'refs/heads/develop' }}
 
 permissions:
@@ -55,7 +52,7 @@ permissions:
 
 jobs:
   build-and-push:
-    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    runs-on: ubuntu-24.04
     timeout-minutes: 60
     permissions:
       contents: read
@@ -287,15 +284,13 @@ jobs:
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
           # develop push  → :develop + :sha-<short>
           # main push     → :stable + :latest + :sha-<short>
-          # release       → the git tag verbatim (e.g. v2.0.0-alpha.176)
-          # Keeping :latest on main avoids breaking the four code sites that
+# Keeping :latest on main avoids breaking the four code sites that
           # still hardcode it (containers-env fallback, sandbox-provider
           # fallback, two test fixtures) until they migrate to :stable.
           tags: |
             type=raw,value=develop,enable=${{ github.ref == 'refs/heads/develop' }}
             type=raw,value=stable,enable=${{ github.ref == 'refs/heads/main' }}
             type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
-            type=ref,event=tag
             type=sha,prefix=sha-,format=short
 
       # Build the image into the local Docker daemon first (load, do NOT push).
@@ -498,50 +493,30 @@ jobs:
           subject-digest: ${{ steps.promote-demo.outputs.digest }}
           push-to-registry: true
 
-      - name: Make Docker image public
+      - name: Verify canonical image is anonymously pullable
         if: ${{ steps.image.outputs.publication_target == 'canonical' }}
-        # Idempotent — patching to public when already public is a no-op.
-        # Previously lived in image.yaml; folded in here on consolidation.
+        env:
+          EXPECTED_DIGEST: ${{ steps.push.outputs.digest }}
+          EXPECTED_IMAGE_ID: ${{ steps.push.outputs.image_id }}
+          GHCR_REPOSITORY: elizaos/eliza
+        # Package visibility is an organization setting; GitHub's Packages
+        # REST API exposes no visibility mutation. Prove the actual contract
+        # after bounded propagation retries instead of trusting the historical
+        # unsupported package-visibility request.
         run: |
-          curl \
-            -X PATCH \
-            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-            -H "Accept: application/vnd.github.v3+json" \
-            https://api.github.com/user/packages/container/${{ env.IMAGE_NAME }}/visibility \
-            -d '{"visibility":"public"}'
+          node packages/scripts/verify-ghcr-anonymous-manifest.mjs \
+            --repository "$GHCR_REPOSITORY" \
+            --digest "$EXPECTED_DIGEST" \
+            --image-id "$EXPECTED_IMAGE_ID"
 
       - name: Verify demo image is anonymously pullable
         if: ${{ steps.image.outputs.publication_target == 'demo' }}
         env:
           EXPECTED_DIGEST: ${{ steps.promote-demo.outputs.digest }}
           EXPECTED_IMAGE_ID: ${{ steps.push.outputs.image_id }}
+          GHCR_REPOSITORY: elizaos/eliza-demo
         run: |
-          set -euo pipefail
-          manifest_file="$(mktemp)"
-          headers_file="$(mktemp)"
-          trap 'rm -f "$manifest_file" "$headers_file"' EXIT
-          token="$(
-            curl --fail-with-body --silent --show-error \
-              'https://ghcr.io/token?scope=repository%3Aelizaos%2Feliza-demo%3Apull' |
-              jq -er '.token'
-          )"
-          curl --fail-with-body --silent --show-error \
-            --dump-header "$headers_file" \
-            --output "$manifest_file" \
-            -H 'Accept: application/vnd.docker.distribution.manifest.v2+json, application/vnd.oci.image.manifest.v1+json' \
-            -H "Authorization: Bearer $token" \
-            "https://ghcr.io/v2/elizaos/eliza-demo/manifests/$EXPECTED_DIGEST"
-          remote_digest="$(
-            tr -d '\r' < "$headers_file" |
-              awk 'tolower($1) == "docker-content-digest:" { print $2 }' |
-              tail -n 1
-          )"
-          remote_image_id="$(jq -er '.config.digest' "$manifest_file")"
-          if [ "$remote_digest" != "$EXPECTED_DIGEST" ]; then
-            echo "::error::Anonymous GHCR read returned a different manifest digest." >&2
-            exit 1
-          fi
-          if [ "$remote_image_id" != "$EXPECTED_IMAGE_ID" ]; then
-            echo "::error::Published demo manifest does not reference the boot-verified image config." >&2
-            exit 1
-          fi
+          node packages/scripts/verify-ghcr-anonymous-manifest.mjs \
+            --repository "$GHCR_REPOSITORY" \
+            --digest "$EXPECTED_DIGEST" \
+            --image-id "$EXPECTED_IMAGE_ID"

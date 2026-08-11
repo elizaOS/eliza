@@ -334,11 +334,12 @@ describe("selectOrProvisionCloudAgent — never duplicate on a failed lookup", (
   it("keeps the structural agent-gone shape on the cause chain of a failed lookup", async () => {
     const { client, getCloudCompatAgents } = fakeClient();
     // What a stale binding produces: the deleted agent's origin answers the
-    // compat agent list with the cloud router's 404 shape.
+    // compat agent list with the structured agent_not_found 404.
     getCloudCompatAgents.mockRejectedValue(
       Object.assign(new Error("agent not found or not running"), {
         kind: "http",
         status: 404,
+        code: "agent_not_found",
         path: "/api/cloud/compat/agents",
       }),
     );
@@ -356,6 +357,17 @@ describe("selectOrProvisionCloudAgent — never duplicate on a failed lookup", (
     expect(
       isCloudAgentGoneError(
         Object.assign(new Error("unauthorized"), { status: 401 }),
+      ),
+    ).toBe(false);
+    // Pre-change router used this code-less body for both deleted and
+    // stopped/cold rows — must not classify as gone (mixed-version safety).
+    expect(
+      isCloudAgentGoneError(
+        Object.assign(new Error("agent not found or not running"), {
+          kind: "http",
+          status: 404,
+          path: "/api/cloud/compat/agents",
+        }),
       ),
     ).toBe(false);
   });

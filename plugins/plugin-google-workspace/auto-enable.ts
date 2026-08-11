@@ -4,17 +4,73 @@
 // `elizaos.plugin.autoEnableModule`. Keep this module light: env reads only,
 // no service init, no transitive imports of the full plugin runtime. The
 // auto-enable engine loads dozens of these per boot.
-import type { PluginAutoEnableContext } from "@elizaos/core";
+import {
+  isGoogleChatConfigured,
+  type PluginAutoEnableContext,
+} from "@elizaos/core";
 
-/** Enable when a `googlechat` connector block is present and not explicitly disabled. */
+function entryEnabled(
+  entries: Record<string, unknown> | undefined,
+  id: string,
+): boolean {
+  const entry = entries?.[id];
+  if (!entry || typeof entry !== "object" || Array.isArray(entry)) return false;
+  return (entry as { enabled?: unknown }).enabled === true;
+}
+
+function hasNonEmptyEnv(
+  env: NodeJS.ProcessEnv | Record<string, unknown>,
+  key: string,
+): boolean {
+  const value = env[key];
+  return typeof value === "string" && value.trim().length > 0;
+}
+
+/**
+ * Enable Google Workspace only on an explicit Google signal:
+ * - a configured `googlechat` connector block (not empty `{}`)
+ * - plugins.entries["google-workspace"].enabled === true
+ * - GOOGLE_CLIENT_ID + GOOGLE_CLIENT_SECRET + GOOGLE_REDIRECT_URI configured
+ *
+ * Do not enable merely because Calendar is present — Calendar also covers
+ * Apple, Microsoft, and ICS feeds without Google.
+ * `plugins.entries["google-workspace"].enabled === false` is an unconditional veto.
+ */
 export function shouldEnable(ctx: PluginAutoEnableContext): boolean {
-  const c = (ctx.config.connectors as Record<string, unknown> | undefined)
-    ?.googlechat;
-  if (!c || typeof c !== "object") return false;
-  const config = c as Record<string, unknown>;
-  if (config.enabled === false) return false;
-  // The full per-connector field check (service account credentials / project)
-  // lives in the central engine's isConnectorConfigured; this module gates only
-  // on "block present + not explicitly disabled".
-  return true;
+  const entries = (
+    ctx.config.plugins as { entries?: Record<string, unknown> } | undefined
+  )?.entries;
+  // Explicit disable is authoritative over every other signal.
+  const workspaceEntry = entries?.["google-workspace"];
+  if (
+    workspaceEntry &&
+    typeof workspaceEntry === "object" &&
+    !Array.isArray(workspaceEntry) &&
+    (workspaceEntry as { enabled?: unknown }).enabled === false
+  ) {
+    return false;
+  }
+
+  const connectors = ctx.config.connectors as
+    | Record<string, unknown>
+    | undefined;
+  if (isGoogleChatConfigured(connectors?.googlechat)) {
+    return true;
+  }
+
+  if (entryEnabled(entries, "google-workspace")) {
+    return true;
+  }
+
+  // Full local OAuth trio — matches readClientConfig() so we never enable a
+  // provider that cannot start authorization.
+  if (
+    hasNonEmptyEnv(ctx.env, "GOOGLE_CLIENT_ID") &&
+    hasNonEmptyEnv(ctx.env, "GOOGLE_CLIENT_SECRET") &&
+    hasNonEmptyEnv(ctx.env, "GOOGLE_REDIRECT_URI")
+  ) {
+    return true;
+  }
+
+  return false;
 }

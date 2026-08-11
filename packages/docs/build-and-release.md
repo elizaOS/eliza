@@ -1,189 +1,98 @@
 ---
 title: Build and Release
-description: "How the monorepo builds desktop artifacts and fans releases out to distribution channels."
+description: "How the monorepo validates builds and publishes an explicit npm release."
 ---
 
-# Build and release (CI, desktop binaries)
+# Build and release
 
-`.github/workflows/release-electrobun.yml` is the canonical desktop release workflow and reusable desktop release-build graph. `.github/workflows/test-electrobun-release.yml` calls that same graph on pull requests in build-only mode.
+The repository has one pull-request workflow and one release workflow:
 
-Post-release distribution is now centralized in `.github/workflows/release-orchestrator.yml`. Why: the repo ships multiple downstream channels (npm, PyPI, Snap, Debian/APT, Flatpak, Google Play, Apple stores, Homebrew, homepage), and letting each workflow independently listen to `release: published` made retries, compliance routing, and drift management harder than necessary. The orchestrator owns channel policy and fans out to reusable child workflows.
+- `.github/workflows/ci.yml` validates every pull request and protected-branch
+  push. Its stable `CI / Required` job is the only required status.
+- `.github/workflows/release.yaml` is manually dispatched from the exact tip of
+  `develop`. It builds one immutable package cohort, publishes those tarballs to
+  npm, verifies the registry, and only then creates the exact Git tag and GitHub
+  Release.
 
-Why the release pipeline and desktop bundle work the way they do.
+Nightly validation never publishes packages or creates releases. A tag or
+GitHub Release event never starts publication.
 
-## macOS: why two DMGs (arm64 and x64)
+## Prepare a release
 
-We ship **separate** `Eliza-arm64.dmg` and `Eliza-x64.dmg` because:
+1. Rebase the release change on current `develop`.
+2. Run `bun install --frozen-lockfile`, `bun run verify`, `bun run format:check`,
+   and `bun run test`.
+3. Set the exact cohort version in the manifests governed by
+   `packages/scripts/release-cohort.json`.
+4. Dispatch `release.yaml` from `develop` with the exact source SHA, canonical
+   source ref (`refs/heads/develop`), version, channel, and npm publisher.
 
-- **Native Node addons** (e.g. `onnxruntime-node`) ship prebuilt `.node` binaries per OS and arch. There is no single "universal" npm artifact that contains both arm64 and x64; the addon is built for the arch of the machine that ran `npm install` / `bun install`.
-- **CI builds both macOS architectures separately.** The Apple Silicon artifact runs on `macos-14`, and the Intel artifact runs on the dedicated `macos-15-intel` runner.
-- **The Intel artifact still uses explicit x64 invocations** through the shared desktop builder (`ELIZA_DESKTOP_COMMAND_PREFIX="arch -x86_64"`) so native modules and helper binaries are resolved consistently as x64 throughout the packaging path.
-- **Why this still matters on the Intel runner:** our workflow shares the same commands and staging logic across all jobs, and the explicit x64 path avoids accidental host/translation drift in the install and packaging steps.
+The workflow refuses any source SHA, source ref, repository, or workflow
+revision that is not the current protected `develop` tip.
 
-See `.github/workflows/release-electrobun.yml`: the platform jobs run `arch -x86_64` for the macOS Intel leg during installation and the `packages/app-core/scripts/desktop-build.mjs` staging and packaging commands.
+## Transaction design
 
-**Runner hygiene:** When GitHub **renames, updates, or retires** labels such as `macos-14` or `macos-15-intel`, update the matrix in `.github/workflows/release-electrobun.yml` (and any callers) and run **`.github/workflows/test-electrobun-release.yml`** on a branch to confirm the desktop build graph still passes before relying on it for a release.
+The candidate job has no publishing credentials. It validates the release
+identity, tests the source, builds and packs once, records integrity hashes, and
+uploads the immutable candidate artifact.
 
-## Desktop bundle: why we copy plugins and deps
+The publication job receives only that artifact and the protected npm
+environment. It publishes the recorded tarballs and promotes the complete
+cohort to the requested `beta` or `latest` channel.
 
-The packaged app runs the agent from `eliza-dist/` (bundled JS + `node_modules`). The main bundle is built by tsdown with dependencies inlined where possible, but:
+The finalization job reads every public npm version and channel back before it
+pushes the planned tag and creates the GitHub Release. Failed or incomplete
+registry publication cannot produce a release tag.
 
-- **Plugins** (`@elizaos/plugin-*`) are loaded at runtime; their dist/ and any **runtime-only** dependencies (native addons, optional requires, etc.) must be present in `eliza-dist/node_modules`.
-- **Why not rely on a single global node_modules at pack time?** The app is built into an ASAR (and unpacked dirs); resolution at runtime is from the app directory. So we copy the subset we need into `packages/app-core/platforms/electrobun/eliza-dist/node_modules` before packaging runs.
+## Desktop and mobile artifacts
 
-The packaging scripts derive that subset instead of keeping a hand-maintained allowlist:
+Desktop, Android, and Apple builds are release evidence produced with the
+package-owned scripts rather than independent GitHub Actions release graphs.
+This keeps store credentials and platform troubleshooting out of the npm
+transaction.
 
-1. `packages/app-core/scripts/copy-runtime-node-modules.ts` handles the Electrobun build, scans the built output for bare package imports, and copies the required runtime dependency closure.
-2. The packaging flow **walks package.json `dependencies` and `optionalDependencies` recursively**. **Why:** dynamic plugin loading and native optional deps change more often than the release workflow; deriving the closure from installed package metadata avoids shipping a stale allowlist.
-3. Known dev/renderer-only packages (for example `typescript`, `lucide-react`) are skipped to keep the packaged runtime smaller.
+### Desktop release lane (`release-electrobun.yml`)
 
-We do **not** exclude dependencies merely because a plugin bundler may have
-inlined them into `dist/`; plugins can still import dependencies at runtime, so
-excluding them would risk a packaged "Cannot find module" failure.
+`.github/workflows/release-electrobun.yml` is the Electrobun desktop build lane.
+It is **tag-bound and upload-only**: it resolves the existing release tag to its
+peeled commit SHA, checks out that exact commit for every validation, build, and
+release step, and uploads assets to the canonical GitHub Release created by
+`release.yaml`. It does not create a missing tag or GitHub Release.
 
-## Release workflow: design and WHYs
+The workflow rejects malformed or nonexistent tags before any build work begins.
+For tag-push events, it proves the push SHA resolves to the same tagged commit.
+The `release` and OTA jobs re-resolve the tag immediately before publication and
+require the canonical non-draft GitHub Release to name the same exact commit. A
+moved tag, missing release, conflicting release target, or duplicate asset name
+fails closed; the desktop lane never replaces an existing release asset. Manual
+dispatches with `draft: true` retain only their Actions build artifacts and do
+not mutate the public release or OTA channel.
 
-The release workflow (`.github/workflows/release-electrobun.yml`) is designed for **reproducible, fail-fast builds** and **diagnosable failures**. Key choices and their reasons:
+Useful entry points include:
 
-- **Strict shell (`bash -euo pipefail`)** — Applied at job default for `build-desktop` so every step exits on first error, undefined variable, or pipe failure. **Why:** Without it, a failing command in the middle of a script can be ignored and the step still "succeeds", producing broken artifacts or confusing later failures.
-- **Retry loops with final assertion** — `bun install` steps retry up to 3 times, then run the same install command once more after the loop. **Why:** If all retries failed, the loop exits without failing the step; the final run ensures the step fails with a clear install error instead of silently continuing.
-- **Crash dump uses the maintained ASAR CLI** — When packaging crashes, we list ASAR contents with the maintained ASAR CLI, not the deprecated `asar` package. **Why:** The deprecated package can be missing or incompatible; the maintained ASAR tooling works when the build fails.
-- **`find -print0` and `while IFS= read -r -d ''`** — Copying JS into `eliza-dist` and removing node-gyp artifacts use null-delimited find + read. **Why:** Filenames with newlines or spaces would break `find | while read`; null-delimited iteration is safe for any path.
-- **DMG path via `find` + `stat -f`** — We pick the newest DMG with `find dist -name '*.dmg' -exec stat -f '%m\t%N' {} \; | sort -rn | head -1` instead of `ls -t dist/*.dmg`. **Why:** `ls -t` with a glob can fail or behave oddly when no DMG exists or paths have spaces; find + stat is robust and this step runs only on macOS where `stat -f` is available.
-- **Remove node-gyp build artifacts before packaging** — We delete `build-tmp*` and `node_gyp_bins` under `node_modules` (root and eliza-dist). **Why:** @tensorflow/tfjs-node and other native addons leave symlinks to system Python there; the packager refuses to pack symlinks to paths outside the app (security), so the pack step would fail without removal.
-- **Size report includes `eliza-dist`** — We report sizes of both `app.asar.unpacked/node_modules` and `app.asar.unpacked/eliza-dist` (and its node_modules when present). **Why:** Both regions contribute to artifact size; reporting both makes it obvious where bloat comes from.
-- **Size report `du | sort | head` pipelines** — We run each pipeline in a subshell and capture exit code with `( pipeline ) || r=$?`, then allow 0 or 141; we also redirect `sort` stderr to `/dev/null`. **Why:** Under `bash -euo pipefail`, when `head` closes the pipe after N lines, `sort` gets SIGPIPE and exits 141; the step would exit before `r=$?` ran. The subshell + `||` lets us treat 141 as success. Silencing `sort` avoids noisy "Broken pipe" in logs.
-- **Single Capacitor build step** — One "Build Capacitor app" step runs `npx vite build` on all platforms. **Why:** The previous split (non-Windows vs Windows) was redundant; vite build works everywhere, so one step reduces drift and confusion.
-- **Packaged DMG E2E: 240s CDP timeout in CI, stdout/stderr dump on timeout** — In CI we use a longer CDP wait and on timeout we log app stdout/stderr before failing. **Why:** CI can be slower; a longer timeout reduces flaky failures. Dumping logs makes CDP timeouts debuggable instead of silent.
+```bash
+node packages/app-core/scripts/desktop-build.mjs build
+bash packages/app-core/platforms/electrobun/scripts/smoke-test.sh
+bun run --cwd packages/app build:android:cloud
+bun run --cwd packages/app build:ios:cloud:sim
+```
 
-## Node.js and Bun in CI: WHYs
+Run platform builds on the supported host, inspect the installed artifact, and
+attach the resulting screenshots, recordings, hashes, and logs to the release
+issue. Store submission remains an explicit operator action.
 
-CI workflows that need Node (for node-gyp / native modules or npm registry) were timing out on Node download and install. We fixed this as follows.
+## Local build troubleshooting
 
-- **`actions/setup-node@v4` on all runners** — Every workflow uses the standard `actions/setup-node@v4` on GitHub-hosted `ubuntu-24.04` / `windows-2025` runners.
-- **`check-latest: false`** — We set this explicitly on every `actions/setup-node` step. **Why:** With the default, the action can hit nodejs.org to check for a newer patch; that adds latency and can timeout. We want a fixed, cached Node version for reproducible CI.
-- **Bun global cache (`~/.bun/install/cache`)** — test.yml, release-electrobun.yml, benchmark-tests.yml, publish-npm.yml, and nightly.yml all cache this path with `actions/cache@v4` keyed by `bun.lock`. **Why:** Bun install is fast, but re-downloading every package every run was still a major cost; caching the global cache avoids re-downloading tarballs while letting `bun install` do its fast hardlink/clonefile into `node_modules`. We do not cache `node_modules` itself — compression/upload cost exceeds the gain.
-- **`timeout-minutes` on jobs** — We set explicit timeouts (e.g. 20–30 min for test jobs, 45 for release build-desktop). **Why:** So a hung or extremely slow run fails in a bounded time instead of burning runner hours; also makes flakiness visible.
+The Electrobun packager resolves its CLI from
+`packages/app-core/platforms/electrobun/node_modules/.bin` before falling back
+to the host. If preload packaging fails around `electrobun/view`:
 
-## Where this runs
+1. Stop Bun, Electrobun, and Eliza processes.
+2. Remove the Electrobun workspace `node_modules` and the root Bun install
+   cache for this checkout.
+3. Run `bun install --frozen-lockfile`.
+4. Run `node packages/app-core/scripts/desktop-build.mjs preflight`.
+5. Retry the desktop build and packaged smoke test.
 
-- **Electrobun PR release validation:** `.github/workflows/test-electrobun-release.yml` — on pull requests; runs the same Electrobun release build matrix in build-only mode without creating a GitHub release.
-- **Electrobun release:** `.github/workflows/release-electrobun.yml` — on version tag push or manual dispatch; builds macOS arm64, macOS x64, Windows x64, and Linux x64 Electrobun artifacts plus update channel files.
-- **Pre-release gate and tag publication:** `.github/workflows/agent-release.yml` — validates the heavy build matrix, then creates the GitHub Release only after the blocking lanes are green.
-- **Post-release distribution:** `.github/workflows/release-orchestrator.yml` — triggered by the published GitHub Release (or manual dispatch), computes stable vs pre-release channel policy, and fans out to the reusable publish workflows for npm, package registries, Android, Apple, Homebrew, and homepage deploy.
-- **Local desktop build:** From repo root, use the Electrobun path: `node packages/app-core/scripts/desktop-build.mjs build` for a local bundle build, then `bash packages/app-core/platforms/electrobun/scripts/smoke-test.sh` for packaged desktop verification.
-
-## Electrobun update-channel naming
-
-Electrobun writes **platform-prefixed flat artifact names** into `packages/app-core/platforms/electrobun/artifacts/`, for example:
-
-- `canary-macos-arm64-Eliza-canary.app.tar.zst`
-- `canary-macos-arm64-Eliza-canary.dmg`
-- `canary-macos-arm64-update.json`
-
-Why the workflow mirrors that shape directly to `https://eliza.ai/releases/`:
-
-- The Electrobun updater resolves manifests at `${baseUrl}/${platformPrefix}-update.json`, not `${baseUrl}/${channel}/update.json`.
-- It also resolves tarballs at `${baseUrl}/${platformPrefix}-${tarballFileName}`.
-- Because of that, the release upload step must publish `*-update.json`, `*.tar.zst`, and optional `*.patch` files at the **flat release root**. Uploading only a generic `update.json` or nesting files under version folders breaks in-app updates.
-
-## CLI usage in this repo
-
-The official Electrobun docs expect the CLI to come from the project dependency and be invoked through npm scripts or `bunx`. Eliza now uses the shared desktop builder to reach that package-local path:
-
-- `packages/app-core/platforms/electrobun/package.json` declares `electrobun` as a dependency.
-- `packages/app-core/scripts/desktop-build.mjs stage` installs the Electrobun workspace package before packaging.
-- `packages/app-core/scripts/desktop-build.mjs package` resolves `electrobun` from
-  `packages/app-core/platforms/electrobun/node_modules/.bin` first, then falls back to a
-  PATH/global binary and only uses `bunx` as a last resort.
-
-Why: package-local resolution keeps desktop packaging reproducible and makes CI
-logs clearer. If `bunx` is the normal path, Bun/Electrobun can silently fetch
-or materialize CLI assets during the packaging step, which looks like a hung
-build when the network is slow.
-
-We still keep two Windows-specific guards around that documented flow:
-
-- **Pre-extract the Electrobun CLI tarball:** `electrobun@1.16.0` still shells out to plain `tar -xzf ...` on Windows. On GitHub runners that can resolve to GNU tar and fail on `C:` paths, so the workflow downloads the official `electrobun-cli-win-x64.tar.gz`, verifies its SHA256 from the GitHub release metadata, and extracts it with `C:\\Windows\\System32\\tar.exe` before the build runs.
-- **Seed `rcedit` when needed:** the CLI still imports `rcedit` dynamically during Windows packaging, so the workflow copies a known-good `rcedit-x64.exe` from the already-installed workspace Bun packages into the Electrobun package before invoking `bun run build`. This avoids relying on a separate global registry fetch during release time.
-
-## Windows preload EACCES recovery
-
-`packages/app-core/scripts/desktop-build.mjs` runs a desktop preflight before preload bundling. It verifies:
-
-- Bun version is a supported stable version.
-- `packages/app-core/platforms/electrobun/node_modules/electrobun/package.json` contains `exports["./view"]`.
-- Bun can resolve/import `electrobun/view` from `packages/app-core/platforms/electrobun`.
-
-If preload build fails with `EACCES` around `electrobun/view`, use this exact repair flow:
-
-1. Stop all Bun/Electrobun/Eliza processes.
-2. Delete `packages/app-core/platforms/electrobun/node_modules`.
-3. Delete root `node_modules/.bun`.
-4. From repo root run `bun install --frozen-lockfile`.
-5. Retry `bun run dev:desktop`.
-
-You can run the preflight alone with `node packages/app-core/scripts/desktop-build.mjs preflight`.
-
-## Desktop WebGPU: browser + native
-
-Eliza now carries both WebGPU paths in the desktop app:
-
-- **Renderer-side WebGPU:** the existing avatar and vector-browser scenes run in the webview and prefer `three/webgpu` when the embedded browser exposes `navigator.gpu`.
-- **Electrobun-native WebGPU:** `packages/app-core/platforms/electrobun/electrobun.config.ts` enables `bundleWGPU: true` on macOS, Windows, and Linux, so packaged desktop builds also include Dawn (`libwebgpu_dawn.*`) for Bun-side `GpuWindow`, `WGPUView`, and `<electrobun-wgpu>` surfaces.
-- **Renderer choice for packaged builds:** macOS stays on the native renderer by default, while Windows and Linux default to bundled CEF. That matches Electrobun's current cross-platform guidance: Linux distribution should use CEF-backed `BrowserWindow`/`BrowserView` instances, and CEF gives us the most consistent browser-side WebGPU path on the non-macOS desktop targets.
-
-Why this split exists:
-
-- The current UI/React surfaces already live in the renderer webview, so browser WebGPU remains the lowest-risk path for those scenes.
-- Bundling Dawn keeps the desktop runtime ready for native GPU surfaces and Bun-side compute/render workloads without maintaining a separate desktop flavor.
-
-## Electrobun backend startup verification
-
-The local Electrobun smoke test now verifies the backend, not just the window shell:
-
-- After building, `packages/app-core/platforms/electrobun/scripts/smoke-test.sh` launches the packaged app and tails `~/.config/Eliza/eliza-startup.log`.
-- It fails if the child runtime logs `Cannot find module`, exits before becoming healthy, or never reaches `Runtime started -- agent: ... port: ...`.
-- Once the startup log reports a port, the script probes `http://127.0.0.1:${port}/api/health` and requires that endpoint to stay healthy for the liveness window.
-- On Windows, `packages/app-core/platforms/electrobun/scripts/smoke-test-windows.ps1` now prefers the packaged `*.tar.zst` bundle and launches its `launcher.exe` directly. It only falls back to the `Eliza-Setup*.exe` installer path when no direct packaged bundle artifact is available.
-
-Why: the previous smoke test could pass while the launcher stayed open but the embedded agent backend had already crashed.
-
-## On-device build inputs: the deterministic pipeline map (#9309)
-
-Every on-device artifact assembles the **latest** of every input at build time
-and **fails loudly** if any input is stale or missing — it never falls back to a
-cached artifact. The inputs and the gate that keeps each one fresh:
-
-| Input | Where it's built | Where it's staged | Freshness gate (fails/rebuilds on stale) |
-|---|---|---|---|
-| Renderer bundle | `packages/app/dist` (`vite build`) | iOS `ios/App/App/public`; Android `assets/public`; desktop Electrobun `eliza-dist` | `eliza-renderer-build.json` build stamp + `assertStagedRendererMatchesBuild` (iOS/Android overlay+assert; desktop `assertRendererRebuiltSince`) |
-| Agent bundle | `packages/agent/dist-mobile-ios` (`build:ios-bun`, force-clean rebuild) | iOS `public/agent` | freshness vs `agent/src` + staged-copy sha256 integrity in `stageIosAgentRuntime` |
-| iOS llama.cpp MTP slice | `~/.eliza/local-inference/bin/mtp/<target>` (`build-llama-cpp-mtp.mjs`) | `LlamaCpp.xcframework` | `mtpSliceReuse`: rebuild when the fork revision changed or any fork source is newer than `CAPABILITIES.json` |
-| iOS full-Bun engine | `ElizaBunEngine.xcframework` | CocoaPods | ABI version + required-symbol + no-JIT + platform-variant validation |
-| Desktop fused `libelizainference` | `stage-desktop-fused-lib.mjs` | `dist/local-inference/lib` | `staged-fused-lib.json` provenance sidecar (rebuild on variant/platform change) + DT_NEEDED symbol verify |
-| Desktop runtime packages | each `@elizaos/*` `dist` | Electrobun bundle | marker files + `src`-newer-than-`dist` mtime check |
-
-**Reuse overrides** (all default to the safe, fail-loud behavior):
-`ELIZA_MOBILE_SKIP_WEB_BUILD` (+ `_ALLOW_STALE`), `ELIZA_IOS_REBUILD_MTP`,
-`ELIZA_MOBILE_ALLOW_STALE_AGENT_BUNDLE`, `ELIZA_DESKTOP_REBUILD_FUSED_LIB` /
-`ELIZA_DESKTOP_TRUST_RUNTIME_PACKAGE_DIST`.
-
-**Verification.** `packages/app-core/scripts/verify-ondevice-artifact.mjs`
-(`--platform ios|android|desktop`) asserts a staged artifact carries the freshly
-built renderer + required companion files; it runs in the Mobile Build Smoke CI
-lane after the iOS build. The renderer build stamp is surfaced in-app on
-`window.__ELIZA_RENDERER_BUILD__` and the iOS simulator smoke
-(`mobile-local-chat-smoke.mjs`) asserts the **installed** app's stamp equals the
-freshly built one — proving the device runs the latest UI.
-
-**Brand separation.** The shared canonical Android tree
-(`app-core/platforms/android`) is used only for the elizaOS app
-(`androidUsesAppDirFor`); whitelabel builds (or `ELIZA_ANDROID_USE_APP_DIR=1`)
-build in their own `appDir/android`. iOS and desktop have no shared tree (each
-app owns `appDir/ios` and `appDir`), so separation holds for them by
-construction.
-
-## See also
-
-- [CHANGELOG](./changelog) — concrete changes and WHYs per release.
+Do not use a green build command as a substitute for launching and inspecting
+the produced application.

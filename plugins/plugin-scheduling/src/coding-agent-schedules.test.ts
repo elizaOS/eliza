@@ -341,10 +341,12 @@ describe("pr-shepherd coding-agent schedules", () => {
     const schedule = await schedulePrShepherd(h.runner, h.agentId);
     const record = {
       taskId: schedule.taskId,
+      kind: schedule.kind,
       firedAtIso: "2026-07-17T12:00:00.000Z",
       channelKey: PR_SHEPHERD_DISPATCH_CHANNEL,
       promptInstructions: schedule.promptInstructions,
       contextRequest: schedule.contextRequest,
+      ownerVisible: schedule.ownerVisible,
       metadata: schedule.metadata,
     };
     const dispatcher = createCodingAgentScheduleDispatcher({
@@ -423,10 +425,12 @@ describe("pr-shepherd coding-agent schedules", () => {
     const dispatcher = createCodingAgentScheduleDispatcher(h.runtime);
     await dispatcher.dispatch({
       taskId: resumed.taskId,
+      kind: resumed.kind,
       firedAtIso: "2026-07-17T13:01:00.000Z",
       channelKey: PR_SHEPHERD_DISPATCH_CHANNEL,
       promptInstructions: resumed.promptInstructions,
       contextRequest: resumed.contextRequest,
+      ownerVisible: resumed.ownerVisible,
       metadata: resumed.metadata,
     });
     expect(h.orchestrator.tasks).toHaveLength(1);
@@ -565,12 +569,14 @@ describe("pr-shepherd coding-agent schedules", () => {
 
     await dispatcher.dispatch({
       taskId: schedule.taskId,
+      kind: schedule.kind,
       firedAtIso: "2026-07-17T12:00:00.000Z",
       // Host-capability substitution uses the generic notification channel,
       // so recipe dispatch must delegate rather than minting coding work.
       channelKey: "in_app",
       promptInstructions: schedule.promptInstructions,
       contextRequest: schedule.contextRequest,
+      ownerVisible: schedule.ownerVisible,
       metadata: schedule.metadata,
     });
 

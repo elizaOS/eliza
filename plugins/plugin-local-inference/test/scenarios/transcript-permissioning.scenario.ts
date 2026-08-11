@@ -6,16 +6,18 @@
  *
  * The seed writes one meeting transcript containing PII (email + phone) into
  * the transcripts partition, owned by the scenario's ADMIN requester. The turn
- * asks the agent to share it with a non-privileged colleague, redacted. The
- * planner fixture routes to `SHARE_TRANSCRIPT` with `mode: "redacted"`, which
- * mints the deterministic redacted variant and writes a per-entity grant on the
- * original row.
+ * asks the agent to redact it for every persisted room participant. The planner
+ * fixture routes to `SHARE_TRANSCRIPT` with `redactForAll`, which mints the
+ * deterministic redacted variant, snapshots the roster, and materializes one
+ * grant per participant on the original row.
  *
  * The effect proof reads the store back the way the API route does — through
  * the ONE role-aware disclosure predicate (#14781): the colleague (USER, with
- * the redacted grant) gets the variant served under the original id with audio
- * withheld and PII scrubbed, while an ADMIN viewer gets the untouched original
- * with audio and raw PII intact. Handler success without those two disclosures
+ * the redacted grant) gets the variant served under the original id with PII
+ * scrubbed, while an ADMIN viewer gets the untouched original with raw PII.
+ * This text-permissioning fixture intentionally has no retained audio; verified
+ * audio publication is covered by the agent audio-redaction integration suite.
+ * Handler success without those two disclosures
  * differing is not proof, so the check fails on either leak or missing redaction.
  */
 import {
@@ -38,6 +40,7 @@ const TRANSCRIPT_ID = stringToUuid(
   "scenario:transcript-permissioning:meeting-1",
 ) as UUID;
 const COLLEAGUE_ID = "a11ce000-0000-4000-8000-000000000001" as UUID;
+const SECOND_COLLEAGUE_ID = "b0b00000-0000-4000-8000-000000000003" as UUID;
 const ADMIN_VIEWER_ID = "ad311000-0000-4000-8000-000000000002" as UUID;
 
 const ALICE_EMAIL = "alice@example.com";
@@ -57,8 +60,6 @@ function buildTranscript(ownerHint: string): Transcript {
     createdAt: 1_700_000_000_000,
     endedAt: 1_700_000_600_000,
     durationMs: 600_000,
-    audioUrl: "/api/media/deadbeef.wav",
-    audioContentType: "audio/wav",
     segments: [
       {
         id: "seg-1",
@@ -81,17 +82,24 @@ function buildTranscript(ownerHint: string): Transcript {
     scope: "owner-private",
     status: "ready",
     speakerCount: 2,
+    metadata: {
+      consent: { state: "granted" },
+      participants: [
+        { id: "alice", displayName: "Alice", entityId: COLLEAGUE_ID },
+        { id: "bob", displayName: "Bob", entityId: SECOND_COLLEAGUE_ID },
+      ],
+    },
   };
 }
 
 export default scenario({
   lane: "pr-deterministic",
   id: "local-inference.transcript-permissioning",
-  title: "Local inference: share a meeting transcript redacted to a colleague",
+  title: "Local inference: redact a meeting transcript for its room roster",
   domain: "local-inference",
   tags: ["local-inference", "voice", "security", "permissioning", "memory"],
   description:
-    "Exercises SHARE_TRANSCRIPT end to end: an admin asks the agent to share a PII-bearing meeting transcript with a non-privileged colleague; the colleague gets the redacted variant (audio withheld, PII scrubbed) while an admin viewer keeps the full original. Keyless deterministic proxy.",
+    "Exercises SHARE_TRANSCRIPT end to end: an admin asks the agent to redact a PII-bearing meeting transcript for every persisted room participant; both users get the redacted variant while an admin viewer keeps the full original. Keyless deterministic proxy; verified audio has a separate real-byte integration suite.",
 
   requires: { plugins: ["@elizaos/plugin-local-inference"] },
   isolation: "per-scenario",
@@ -119,7 +127,8 @@ export default scenario({
             name: "transcript-permissioning-stage1",
             match: {
               modelType: ModelType.RESPONSE_HANDLER,
-              input: (v: string) => v.toLowerCase().includes("share"),
+              input: (v: string) =>
+                /\b(?:share|redact)\b/.test(v.toLowerCase()),
               toolName: "HANDLE_RESPONSE",
             },
             response: {
@@ -135,13 +144,14 @@ export default scenario({
             name: "transcript-permissioning-planner",
             match: {
               modelType: ModelType.ACTION_PLANNER,
-              input: (v: string) => v.toLowerCase().includes("share"),
+              input: (v: string) =>
+                /\b(?:share|redact)\b/.test(v.toLowerCase()),
               toolName: SHARE_TRANSCRIPT,
             },
             response: {
               text: "",
               thought:
-                "Alice is not an admin, so share the transcript with her as a redacted variant.",
+                "The requester is an admin, so snapshot the meeting roster and disclose the redacted variant to every participant.",
               messageToUser: "",
               completed: true,
               finishReason: "tool-calls",
@@ -152,7 +162,7 @@ export default scenario({
                   type: "function",
                   arguments: {
                     transcriptId: TRANSCRIPT_ID,
-                    entityId: COLLEAGUE_ID,
+                    redactForAll: true,
                     mode: "redacted",
                   },
                 },
@@ -192,7 +202,7 @@ export default scenario({
     {
       kind: "message",
       name: "share-redacted",
-      text: `Share the meeting transcript ${TRANSCRIPT_ID} with Alice (${COLLEAGUE_ID}). She is not an admin, so send her the redacted version.`,
+      text: `Redact the meeting transcript ${TRANSCRIPT_ID} for everyone in that meeting room. Keep the full original available only to admins.`,
       timeoutMs: 120_000,
       assertTurn: (turn) => {
         const call = turn.actionsCalled.find(
@@ -222,7 +232,7 @@ export default scenario({
     {
       // Effect proof: read the store the way the disclosure route does. A
       // non-privileged colleague with the redacted grant must get the variant
-      // (audio withheld, PII scrubbed), and an admin viewer must still get the
+      // (PII scrubbed), and an admin viewer must still get the
       // untouched original — handler success is not enough on its own.
       type: "custom",
       name: "redacted-to-colleague-full-to-admin",
@@ -232,31 +242,44 @@ export default scenario({
           runtime as unknown as TranscriptStoreRuntime,
         );
 
-        const colleagueView = await store.get(TRANSCRIPT_ID, {
-          requesterEntityId: COLLEAGUE_ID,
-          role: "USER",
-        });
-        if (!colleagueView) {
-          return "colleague with a redacted grant saw nothing (expected the redacted variant)";
+        for (const colleagueId of [COLLEAGUE_ID, SECOND_COLLEAGUE_ID]) {
+          const colleagueView = await store.get(TRANSCRIPT_ID, {
+            requesterEntityId: colleagueId,
+            role: "USER",
+          });
+          if (!colleagueView) {
+            return `room participant ${colleagueId} saw nothing (expected the redacted variant)`;
+          }
+          if (colleagueView.redacted !== true) {
+            return `room participant ${colleagueId} view was not flagged redacted`;
+          }
+          if (colleagueView.audioUrl !== undefined)
+            return "audio-less fixture unexpectedly produced a participant audioUrl";
+          const colleagueText = colleagueView.segments
+            .map((s) => s.text)
+            .join(" ");
+          if (
+            colleagueText.includes(ALICE_EMAIL) ||
+            colleagueText.includes(ALICE_PHONE) ||
+            colleagueText.includes(BOB_EMAIL)
+          ) {
+            return `redacted participant view leaked PII: ${colleagueText}`;
+          }
+          if (!colleagueText.includes("[EMAIL]")) {
+            return `redacted participant view did not scrub email: ${colleagueText}`;
+          }
         }
-        if (colleagueView.redacted !== true) {
-          return "colleague view was not flagged redacted";
-        }
-        if (colleagueView.audioUrl !== undefined) {
-          return "redacted colleague view leaked audioUrl (audio is never redacted in v1 and must be withheld)";
-        }
-        const colleagueText = colleagueView.segments
-          .map((s) => s.text)
-          .join(" ");
+
+        const originalRow = await runtime.getMemoryById(TRANSCRIPT_ID);
+        const share = (originalRow?.metadata as Record<string, unknown> | undefined)
+          ?.share as
+          | { roomSnapshot?: { roomId?: string; entityIds?: string[] } }
+          | undefined;
         if (
-          colleagueText.includes(ALICE_EMAIL) ||
-          colleagueText.includes(ALICE_PHONE) ||
-          colleagueText.includes(BOB_EMAIL)
+          share?.roomSnapshot?.entityIds?.join(",") !==
+          [COLLEAGUE_ID, SECOND_COLLEAGUE_ID].join(",")
         ) {
-          return `redacted colleague view leaked PII: ${colleagueText}`;
-        }
-        if (!colleagueText.includes("[EMAIL]")) {
-          return `redacted colleague view did not scrub email to a surrogate: ${colleagueText}`;
+          return "room snapshot did not persist the exact participant roster";
         }
 
         const adminView = await store.get(TRANSCRIPT_ID, {
@@ -269,9 +292,8 @@ export default scenario({
         if (adminView.redacted) {
           return "admin viewer got a redacted view (admins retain full disclosure)";
         }
-        if (adminView.audioUrl !== "/api/media/deadbeef.wav") {
-          return "admin viewer lost the original audioUrl (the original must be untouched)";
-        }
+        if (adminView.audioUrl !== undefined)
+          return "audio-less fixture unexpectedly produced an admin audioUrl";
         const adminText = adminView.segments.map((s) => s.text).join(" ");
         if (
           !adminText.includes(ALICE_EMAIL) ||

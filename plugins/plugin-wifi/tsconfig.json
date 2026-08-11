@@ -61,16 +61,6 @@
       "@elizaos/plugin-whatsapp": [
         "../../plugins/plugin-whatsapp/src/index.ts"
       ],
-      "react": ["../../packages/app-core/node_modules/@types/react/index.d.ts"],
-      "react/jsx-runtime": [
-        "../../packages/app-core/node_modules/@types/react/jsx-runtime.d.ts"
-      ],
-      "react/jsx-dev-runtime": [
-        "../../packages/app-core/node_modules/@types/react/jsx-dev-runtime.d.ts"
-      ],
-      "react-dom": [
-        "../../packages/app-core/node_modules/@types/react-dom/index.d.ts"
-      ],
       "@elizaos/plugin-mcp": ["../../plugins/plugin-mcp/src/index.ts"],
       "@elizaos/plugin-mcp/*": ["../../plugins/plugin-mcp/src/*"],
       "@elizaos/plugin-workflow": [

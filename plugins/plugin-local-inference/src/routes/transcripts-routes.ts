@@ -10,15 +10,20 @@
 
 import type {
 	ArtifactShareGrantMode,
+	Memory,
+	PiiEntityRecognizer,
+	PiiEntityRecognizerService,
 	Route,
 	RouteHandlerContext,
 	RouteHandlerResult,
 	UUID,
 } from "@elizaos/core";
-import { isAdminRank } from "@elizaos/core";
+import { isAdminRank, PII_ENTITY_RECOGNIZER_SERVICE } from "@elizaos/core";
 import {
 	type MeetingArtifact,
+	TRANSCRIPT_SHARING_STATES,
 	type Transcript,
+	type TranscriptCaptureSharingState,
 	type TranscriptScope,
 	type TranscriptSegment,
 	type TranscriptSource,
@@ -26,11 +31,15 @@ import {
 	transcriptSpeakerCount,
 	validateMeetingArtifact,
 } from "@elizaos/shared";
+import { TranscriptPrivacyService } from "../services/voice/transcript-privacy.js";
 import {
 	TranscriptService,
 	type TranscriptServiceRuntime,
 } from "../services/voice/transcript-service.js";
-import { TranscriptStore } from "../services/voice/transcript-store.js";
+import {
+	TranscriptStore,
+	transcriptConsentAllowsSharing,
+} from "../services/voice/transcript-store.js";
 import { persistTranscriptAudioWav } from "./transcript-audio-store.js";
 
 function service(ctx: RouteHandlerContext): TranscriptService {
@@ -39,6 +48,28 @@ function service(ctx: RouteHandlerContext): TranscriptService {
 
 function store(ctx: RouteHandlerContext): TranscriptStore {
 	return new TranscriptStore(ctx.runtime as TranscriptServiceRuntime);
+}
+
+function requesterCanManageRow(
+	ctx: RouteHandlerContext,
+	row: Pick<Memory, "entityId">,
+): boolean {
+	const access = ctx.accessContext;
+	if (!access) return true;
+	return (
+		isAdminRank(access.role) ||
+		access.isOwner === true ||
+		access.requesterEntityId === row.entityId
+	);
+}
+
+function runtimePiiRecognizer(
+	ctx: RouteHandlerContext,
+): PiiEntityRecognizer | undefined {
+	const service = ctx.runtime.getService(
+		PII_ENTITY_RECOGNIZER_SERVICE,
+	) as Partial<PiiEntityRecognizerService> | null;
+	return service?.getRecognizer?.() ?? undefined;
 }
 
 /** The body a recording session POSTs to create a transcript record. */
@@ -80,15 +111,17 @@ export function buildTranscriptFromRequest(
 ): Transcript {
 	const segments = Array.isArray(body.segments) ? body.segments : [];
 	const createdAt = body.createdAt ?? now;
-	const metadata =
-		body.meetingArtifact || body.metadata
-			? {
-					...(body.metadata ?? {}),
-					...(body.meetingArtifact
-						? { meetingArtifact: body.meetingArtifact }
-						: {}),
-				}
-			: undefined;
+	const artifactConsent = body.meetingArtifact?.meeting.consent.state;
+	const metadata = {
+		consent: {
+			state:
+				artifactConsent && artifactConsent !== "redacted"
+					? artifactConsent
+					: "unknown",
+		},
+		...(body.metadata ?? {}),
+		...(body.meetingArtifact ? { meetingArtifact: body.meetingArtifact } : {}),
+	};
 	return {
 		id,
 		title: body.title?.trim() || defaultTitle(createdAt),
@@ -102,7 +135,7 @@ export function buildTranscriptFromRequest(
 		scope: body.scope ?? "owner-private",
 		status: "ready",
 		speakerCount: transcriptSpeakerCount(segments),
-		...(metadata ? { metadata } : {}),
+		metadata,
 	};
 }
 
@@ -155,6 +188,13 @@ const deleteRoute: Route = {
 				body: { error: "redacted transcript views cannot be deleted" },
 			};
 		}
+		const row = await (ctx.runtime as TranscriptServiceRuntime).getMemoryById(
+			ctx.params.id as UUID,
+		);
+		if (!row) return { status: 404, body: { error: "not found" } };
+		if (!requesterCanManageRow(ctx, row)) {
+			return { status: 403, body: { error: "manage access required" } };
+		}
 		await service(ctx).delete(ctx.params.id as UUID);
 		return { status: 200, body: { ok: true } };
 	},
@@ -171,7 +211,43 @@ export interface UpdateTranscriptRequest {
 
 export interface ShareTranscriptRequest {
 	entityId?: UUID;
+	roomId?: UUID;
 	mode?: ArtifactShareGrantMode;
+	redactForAll?: boolean;
+}
+
+export interface UpdateTranscriptPrivacyRequest {
+	sharing: Partial<TranscriptCaptureSharingState>;
+}
+
+const ARTIFACT_SHARING_KEYS = [
+	"transcript",
+	"notes",
+	"sourceAudio",
+	"artifacts",
+] as const;
+
+const UUID_PATTERN =
+	/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function requestUuid(value: unknown): UUID | null {
+	return typeof value === "string" && UUID_PATTERN.test(value.trim())
+		? (value.trim() as UUID)
+		: null;
+}
+
+function participantEntityIds(transcript: Transcript): UUID[] {
+	const participants = transcript.metadata?.participants;
+	if (!Array.isArray(participants)) return [];
+	const ids = new Set<UUID>();
+	for (const participant of participants) {
+		if (!participant || typeof participant !== "object") continue;
+		const entityId = requestUuid(
+			(participant as { entityId?: unknown }).entityId,
+		);
+		if (entityId) ids.add(entityId);
+	}
+	return [...ids];
 }
 
 const updateRoute: Route = {
@@ -196,6 +272,13 @@ const updateRoute: Route = {
 				status: 403,
 				body: { error: "redacted transcript views cannot be edited" },
 			};
+		}
+		const row = await (ctx.runtime as TranscriptServiceRuntime).getMemoryById(
+			ctx.params.id as UUID,
+		);
+		if (!row) return { status: 404, body: { error: "not found" } };
+		if (!requesterCanManageRow(ctx, row)) {
+			return { status: 403, body: { error: "manage access required" } };
 		}
 		const agentId = ctx.runtime.agentId as UUID;
 		const updated = await service(ctx).update(ctx.params.id as UUID, {
@@ -262,21 +345,52 @@ const shareRoute: Route = {
 	rawPath: true,
 	routeHandler: async (ctx): Promise<RouteHandlerResult> => {
 		const body = (ctx.body ?? {}) as ShareTranscriptRequest;
-		const entityId =
-			typeof body.entityId === "string" && body.entityId.trim().length > 0
-				? (body.entityId.trim() as UUID)
-				: null;
+		const entityId = requestUuid(body.entityId);
+		const roomId = requestUuid(body.roomId);
+		if (body.entityId !== undefined && !entityId) {
+			return { status: 400, body: { error: "entityId must be a UUID" } };
+		}
+		if (body.roomId !== undefined && !roomId) {
+			return { status: 400, body: { error: "roomId must be a UUID" } };
+		}
+		if (
+			body.redactForAll !== undefined &&
+			typeof body.redactForAll !== "boolean"
+		) {
+			return { status: 400, body: { error: "redactForAll must be boolean" } };
+		}
+		const redactForAll = body.redactForAll === true;
+		const targetCount =
+			Number(Boolean(entityId)) +
+			Number(Boolean(roomId)) +
+			Number(redactForAll);
 		const mode = body.mode ?? "redacted";
-		if (!entityId) {
-			return { status: 400, body: { error: "entityId is required" } };
+		if (targetCount !== 1) {
+			return {
+				status: 400,
+				body: {
+					error: "exactly one of entityId, roomId, or redactForAll is required",
+				},
+			};
 		}
 		if (mode !== "full" && mode !== "redacted") {
 			return { status: 400, body: { error: "mode must be full or redacted" } };
 		}
-		if (mode === "full" && !isAdminRank(ctx.accessContext?.role)) {
+		if (redactForAll && mode !== "redacted") {
+			return {
+				status: 400,
+				body: { error: "redactForAll requires redacted mode" },
+			};
+		}
+		if (
+			(mode === "full" || redactForAll) &&
+			!isAdminRank(ctx.accessContext?.role)
+		) {
 			return {
 				status: 403,
-				body: { error: "full transcript sharing requires ADMIN" },
+				body: {
+					error: "full transcript sharing and redactForAll require ADMIN",
+				},
 			};
 		}
 
@@ -291,30 +405,81 @@ const shareRoute: Route = {
 				body: { error: "redacted transcript views cannot be re-shared" },
 			};
 		}
+		const row = await (ctx.runtime as TranscriptServiceRuntime).getMemoryById(
+			ctx.params.id as UUID,
+		);
+		if (!row) return { status: 404, body: { error: "not found" } };
+		if (!requesterCanManageRow(ctx, row)) {
+			return { status: 403, body: { error: "manage access required" } };
+		}
+		if (!transcriptConsentAllowsSharing(transcript)) {
+			return {
+				status: 409,
+				body: {
+					error: "persisted transcript consent does not permit sharing",
+					code: "TRANSCRIPT_CONSENT_NOT_SHAREABLE",
+				},
+			};
+		}
 
 		let variantId: string | undefined;
 		const transcriptStore = store(ctx);
+		const roomTarget = roomId ?? (redactForAll ? row.roomId : null);
+		if (roomTarget && roomTarget !== row.roomId) {
+			return {
+				status: 400,
+				body: { error: "roomId does not match the transcript room" },
+			};
+		}
+		const roomEntityIds = roomTarget ? participantEntityIds(transcript) : [];
+		if (roomTarget && roomEntityIds.length === 0) {
+			return {
+				status: 409,
+				body: {
+					error:
+						"persisted meeting roster has no resolved participant entities",
+					code: "TRANSCRIPT_ROOM_SNAPSHOT_EMPTY",
+				},
+			};
+		}
 		if (mode === "redacted") {
+			const recognizer = runtimePiiRecognizer(ctx);
 			const variant = await transcriptStore.createRedactedVariant({
 				originalId: ctx.params.id as UUID,
 				redactedBy: ctx.accessContext?.requesterEntityId,
+				...(recognizer ? { recognizer } : {}),
 			});
 			variantId = variant.id;
 		}
-		await transcriptStore.share({
-			transcriptId: ctx.params.id as UUID,
-			entityId,
-			mode,
-			grantedBy: ctx.accessContext?.requesterEntityId,
-			grantedAtMs: Date.now(),
-		});
+		const grantedAtMs = Date.now();
+		if (roomTarget) {
+			await transcriptStore.shareRoomSnapshot({
+				transcriptId: ctx.params.id as UUID,
+				roomId: roomTarget,
+				entityIds: roomEntityIds,
+				mode,
+				grantedBy: ctx.accessContext?.requesterEntityId,
+				grantedAtMs,
+			});
+		} else if (entityId) {
+			await transcriptStore.share({
+				transcriptId: ctx.params.id as UUID,
+				entityId,
+				mode,
+				grantedBy: ctx.accessContext?.requesterEntityId,
+				grantedAtMs,
+			});
+		}
 		return {
 			status: 200,
 			body: {
 				ok: true,
 				transcriptId: ctx.params.id,
-				entityId,
-				mode,
+				...(entityId ? { entityId } : {}),
+				...(roomTarget ? { roomId: roomTarget } : {}),
+				...(roomTarget ? { entityCount: roomEntityIds.length } : {}),
+				...(redactForAll ? { redactForAll: true } : {}),
+				mode: redactForAll ? "redacted" : mode,
 				...(variantId ? { variantId } : {}),
 			},
 		};
@@ -337,6 +502,13 @@ const revokeShareRoute: Route = {
 				body: { error: "redacted transcript views cannot revoke grants" },
 			};
 		}
+		const row = await (ctx.runtime as TranscriptServiceRuntime).getMemoryById(
+			ctx.params.id as UUID,
+		);
+		if (!row) return { status: 404, body: { error: "not found" } };
+		if (!requesterCanManageRow(ctx, row)) {
+			return { status: 403, body: { error: "manage access required" } };
+		}
 		await store(ctx).revokeShare({
 			transcriptId: ctx.params.id as UUID,
 			entityId: ctx.params.entityId as UUID,
@@ -352,12 +524,136 @@ const revokeShareRoute: Route = {
 	},
 };
 
+const updatePrivacyRoute: Route = {
+	type: "PATCH",
+	path: "/api/transcripts/:id/privacy",
+	rawPath: true,
+	routeHandler: async (ctx): Promise<RouteHandlerResult> => {
+		const body = (ctx.body ?? {}) as UpdateTranscriptPrivacyRequest;
+		if (!body.sharing || typeof body.sharing !== "object") {
+			return { status: 400, body: { error: "sharing is required" } };
+		}
+		const entries = Object.entries(body.sharing);
+		if (entries.length === 0) {
+			return {
+				status: 400,
+				body: { error: "at least one sharing state is required" },
+			};
+		}
+		for (const [key, value] of entries) {
+			if (
+				!ARTIFACT_SHARING_KEYS.includes(
+					key as (typeof ARTIFACT_SHARING_KEYS)[number],
+				) ||
+				!TRANSCRIPT_SHARING_STATES.includes(value as never) ||
+				value === "unknown" ||
+				value === "public"
+			) {
+				return {
+					status: 400,
+					body: { error: `unsupported sharing state for ${key}` },
+				};
+			}
+		}
+
+		const transcript = await service(ctx).get(
+			ctx.params.id as UUID,
+			ctx.accessContext,
+		);
+		if (!transcript) return { status: 404, body: { error: "not found" } };
+		if (transcript.redacted) {
+			return {
+				status: 403,
+				body: { error: "redacted transcript views cannot manage privacy" },
+			};
+		}
+		const row = await (ctx.runtime as TranscriptServiceRuntime).getMemoryById(
+			ctx.params.id as UUID,
+		);
+		if (!row) return { status: 404, body: { error: "not found" } };
+		if (!requesterCanManageRow(ctx, row)) {
+			return { status: 403, body: { error: "manage access required" } };
+		}
+
+		try {
+			const updated = await new TranscriptPrivacyService(
+				ctx.runtime as TranscriptServiceRuntime,
+			).updateArtifactSharing(ctx.params.id as UUID, body.sharing);
+			return { status: 200, body: { transcript: updated } };
+		} catch (error) {
+			// error-policy:J1 translate an expected grant conflict at the HTTP boundary.
+			if (
+				error instanceof Error &&
+				"code" in error &&
+				error.code === "TRANSCRIPT_GRANT_REQUIRED"
+			) {
+				return {
+					status: 409,
+					body: { error: error.message, code: error.code },
+				};
+			}
+			throw error;
+		}
+	},
+};
+
+const deleteSourceAudioRoute: Route = {
+	type: "DELETE",
+	path: "/api/transcripts/:id/source-audio",
+	rawPath: true,
+	routeHandler: async (ctx): Promise<RouteHandlerResult> => {
+		const transcript = await service(ctx).get(
+			ctx.params.id as UUID,
+			ctx.accessContext,
+		);
+		if (!transcript) return { status: 404, body: { error: "not found" } };
+		if (transcript.redacted) {
+			return {
+				status: 403,
+				body: { error: "redacted transcript views cannot delete source audio" },
+			};
+		}
+		const row = await (ctx.runtime as TranscriptServiceRuntime).getMemoryById(
+			ctx.params.id as UUID,
+		);
+		if (!row) return { status: 404, body: { error: "not found" } };
+		if (!requesterCanManageRow(ctx, row)) {
+			return { status: 403, body: { error: "manage access required" } };
+		}
+		try {
+			const updated = await new TranscriptPrivacyService(
+				ctx.runtime as TranscriptServiceRuntime,
+			).deleteSourceAudio(ctx.params.id as UUID);
+			return { status: 200, body: { deleted: true, transcript: updated } };
+		} catch (error) {
+			// error-policy:J1 translate expected storage states at the HTTP boundary.
+			if (error instanceof Error && "code" in error) {
+				if (error.code === "TRANSCRIPT_FILE_STORAGE_UNAVAILABLE") {
+					return {
+						status: 503,
+						body: { error: error.message, code: error.code },
+					};
+				}
+				if (error.code === "TRANSCRIPT_SOURCE_AUDIO_NOT_STORED") {
+					return {
+						status: 409,
+						body: { error: error.message, code: error.code },
+					};
+				}
+			}
+			throw error;
+		}
+	},
+};
+
 export const transcriptsRoutes: Route[] = [
 	listRoute,
 	createRoute,
 	getRoute,
 	shareRoute,
 	revokeShareRoute,
+	updatePrivacyRoute,
+	deleteSourceAudioRoute,
 	updateRoute,
 	deleteRoute,
 ];

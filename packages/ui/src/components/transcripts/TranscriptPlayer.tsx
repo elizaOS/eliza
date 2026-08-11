@@ -8,7 +8,7 @@
 
 import type { Transcript } from "@elizaos/shared/transcripts";
 import { Pause, Play } from "lucide-react";
-import type * as React from "react";
+import * as React from "react";
 import { cn } from "../../lib/utils";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
@@ -19,6 +19,8 @@ export interface TranscriptPlayerProps {
   transcript: Transcript;
   /** Served audio URL; when absent the player is read-only (no transport). */
   audioUrl?: string;
+  /** One-time audio offset used when opening an anchored search hit. */
+  initialSeekMs?: number;
   className?: string;
 }
 
@@ -33,10 +35,16 @@ function formatMs(ms: number): string {
 export function TranscriptPlayer({
   transcript,
   audioUrl,
+  initialSeekMs,
   className,
 }: TranscriptPlayerProps): React.JSX.Element {
   const audio = useAudioElement();
   const durationMs = audio.durationMs || transcript.durationMs;
+
+  React.useEffect(() => {
+    if (!audioUrl || initialSeekMs === undefined) return;
+    audio.seekMs(initialSeekMs);
+  }, [audio.seekMs, audioUrl, initialSeekMs]);
 
   return (
     <div className={cn("flex flex-col gap-4", className)}>

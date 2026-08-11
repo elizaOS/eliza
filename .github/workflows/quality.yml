@@ -283,6 +283,7 @@ jobs:
       - name: Prompt secret scan
         run: cd packages/prompts && bun run check:secrets
 
+      # Self-test asserts the AST classifier before the gate relies on it.
       - name: UI determinism self-test
         run: bun run audit:ui-determinism:self-test
 

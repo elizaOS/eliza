@@ -978,6 +978,46 @@ export function saveContinuousChatMode(mode: ContinuousChatModeValue): void {
   }, undefined);
 }
 
+/* ── OS-intent microphone auto-start consent ───────────────────────────── */
+// Explicit, reversible consent for deep links/shortcuts to begin capture. Both
+// values default false; Settings → Voice and its semantic SETTINGS-action twin
+// are the only writers, while the routing authority reads them synchronously at
+// the moment an intent is handled.
+const OS_INTENT_VOICE_AUTO_START_KEY = "eliza:voice:os-intent-auto-start-voice";
+const OS_INTENT_TRANSCRIPTION_AUTO_START_KEY =
+  "eliza:voice:os-intent-auto-start-transcription";
+
+export interface OsIntentAutoStartConsent {
+  voice: boolean;
+  transcription: boolean;
+}
+
+export function loadOsIntentAutoStartConsent(): OsIntentAutoStartConsent {
+  return tryLocalStorage(
+    () => ({
+      voice: localStorage.getItem(OS_INTENT_VOICE_AUTO_START_KEY) === "true",
+      transcription:
+        localStorage.getItem(OS_INTENT_TRANSCRIPTION_AUTO_START_KEY) === "true",
+    }),
+    { voice: false, transcription: false },
+  );
+}
+
+export function saveOsIntentAutoStartConsent(
+  consent: OsIntentAutoStartConsent,
+): void {
+  tryLocalStorage(() => {
+    shellLocalStorage.setItem(
+      OS_INTENT_VOICE_AUTO_START_KEY,
+      String(consent.voice),
+    );
+    shellLocalStorage.setItem(
+      OS_INTENT_TRANSCRIPTION_AUTO_START_KEY,
+      String(consent.transcription),
+    );
+  }, undefined);
+}
+
 /* ── Wake-word listening persistence ────────────────────────────────────── */
 // Device-local master switch for the "hey <name>" wake-word listening window
 // (see useWakeListenWindow). Stored here — not under `messages.voice` — because

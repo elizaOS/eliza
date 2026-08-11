@@ -302,6 +302,7 @@ describe("plain-text backstop — complete-direct-reply valve (2026-07-01)", () 
 		// an ack fails looksLikeCompleteDirectReply → live-info still fetches.
 		expect(out.plan.requiresTool).toBe(true);
 		expect(out.plan.candidateActions?.length ?? 0).toBeGreaterThan(0);
+		expect(out.plan.requiredToolEvidence).toBe("inferred");
 	});
 
 	it("forces the fetch even when the model HALLUCINATES a complete answer to a fresh ask", () => {
@@ -335,6 +336,10 @@ describe("plain-text backstop — complete-direct-reply valve (2026-07-01)", () 
 		);
 		// coding work must not be short-circuited by the complete-reply valve.
 		expect(out.plan.requiresTool).toBe(true);
+		// Coding inference is structurally strong. It must not get the weak
+		// evidence marker that lets the planner accept a repeated terminal answer
+		// without executing TASKS.
+		expect(out.plan.requiredToolEvidence).toBeUndefined();
 	});
 });
 
@@ -592,6 +597,96 @@ describe("live routing regressions", () => {
 				"what is the current bitcoin price",
 			),
 		).toEqual(["WEB_SEARCH"]);
+	});
+
+	it("URL work orders with unlisted verbs reach TASKS through the real production path (issue #18108)", () => {
+		// This is the load-bearing regression for issue #18108: "review this PR …",
+		// "audit this repository …", and "investigate the failure here …" must each
+		// reach TASKS through the PRODUCTION routing boundary — the exported wrapper
+		// in services/message.ts that wires the REAL looksLikeCodingWorkRequest and
+		// findCodingDelegationActionName hooks. No injected mocks are used.
+		//
+		// Before the fix, two layers conspired to block these utterances:
+		//   1. looksLikeBareLinkShare returned true (verb absent from the old
+		//      closed English allowlist) → shunted to the web-read light path.
+		//   2. looksLikeCodingWorkRequest's verb list (build|create|…|verify) did
+		//      not include review|audit|investigate → even if the link-share veto
+		//      was lifted, the coding hook returned false → no TASKS candidate.
+		//
+		// The fix addresses BOTH layers: conservative link-share detection (only
+		// empty/conversational residue is passive) AND the production
+		// looksLikeCodingWorkRequest now recognizes review|audit|investigate as
+		// coding-work verbs when paired with a code/repo/PR artifact noun.
+		const actions: Array<Pick<Action, "name" | "similes" | "tags">> = [
+			{ name: "TASKS", similes: ["TASKS_SPAWN_AGENT"] },
+			{ name: "WEB_FETCH" },
+			{ name: "WEB_SEARCH" },
+		];
+		for (const text of [
+			"review this PR https://github.com/elizaOS/eliza/pull/18106",
+			"audit this repository https://github.com/elizaOS/eliza",
+			"investigate the failure here https://example.com/run",
+		]) {
+			const result = inferDirectCurrentRequestCandidateActions(actions, text);
+			expect(result).toEqual(["TASKS"]);
+			expect(result).not.toContain("WEB_FETCH");
+			expect(result).not.toContain("WEB_SEARCH");
+		}
+	});
+
+	it("passive shares still route to WEB_FETCH and never reach TASKS (control for #18108)", () => {
+		// The control: genuine passive link shares must still route to the
+		// web-read light path — the fix must not widen routing to let passive
+		// shares reach TASKS.
+		const actions: Array<Pick<Action, "name" | "similes" | "tags">> = [
+			{ name: "TASKS", similes: ["TASKS_SPAWN_AGENT"] },
+			{ name: "WEB_FETCH" },
+			{ name: "WEB_SEARCH" },
+		];
+		for (const text of [
+			"https://example.com/some/page",
+			"thoughts? https://example.com",
+		]) {
+			const result = inferDirectCurrentRequestCandidateActions(actions, text);
+			expect(result).toContain("WEB_FETCH");
+			expect(result).not.toContain("TASKS");
+		}
+	});
+
+	it("ambiguous personal-work nouns do not become coding tasks without URL or code context", () => {
+		const actions: Array<Pick<Action, "name" | "similes" | "tags">> = [
+			{ name: "TASKS", similes: ["TASKS_SPAWN_AGENT"] },
+			{ name: "WEB_FETCH" },
+			{ name: "WEB_SEARCH" },
+		];
+		for (const text of [
+			"review this issue with my health insurance",
+			"analyze the error in my blood test results",
+			"audit my exercise log",
+			"review my documentation for the tax return",
+			"trace my run and diagnose my fitness test",
+			"review this page in my lease",
+			"analyze this feature of my health plan",
+		]) {
+			const result = inferDirectCurrentRequestCandidateActions(actions, text);
+			expect(result).not.toContain("TASKS");
+		}
+	});
+
+	it("strong code artifacts still reach TASKS without requiring a URL", () => {
+		const actions: Array<Pick<Action, "name" | "similes" | "tags">> = [
+			{ name: "TASKS", similes: ["TASKS_SPAWN_AGENT"] },
+		];
+		for (const text of [
+			"review this PR",
+			"audit the repository",
+			"diagnose this stack trace",
+			"inspect the failing pipeline",
+		]) {
+			expect(inferDirectCurrentRequestCandidateActions(actions, text)).toEqual([
+				"TASKS",
+			]);
+		}
 	});
 
 	it("fast-paths a direct shell ask to TERMINAL_SHELL in a lean-chat runtime (follow-up to #12021)", () => {
@@ -1140,6 +1235,27 @@ describe("VIEWS hijack of answered simple turns (tj-501e594bfb23a7)", () => {
 		expect(routed.plan.requiredToolEvidence).toBe("inferred");
 	});
 
+	it("keeps inferred coding work on the full required-tool budget", () => {
+		const tasksAction: Pick<Action, "name" | "similes" | "tags"> = {
+			name: "TASKS",
+			similes: ["TASKS_SPAWN_AGENT"],
+			tags: ["domain:coding", "coding-delegation"],
+		};
+		const routed = messageHandlerFromFieldResult(
+			stageOneAnswered("On it."),
+			undefined,
+			{
+				actions: [replyAction, tasksAction],
+				messageText:
+					"review this PR https://github.com/elizaOS/eliza/pull/18106",
+			},
+		);
+
+		expect(routed.plan.requiresTool).toBe(true);
+		expect(routed.plan.candidateActions).toContain("TASKS");
+		expect(routed.plan.requiredToolEvidence).toBeUndefined();
+	});
+
 	it("a field-run preempt pins the turn to a direct simple reply regardless of routed contexts", () => {
 		// The preempt seam (ack-and-stop / direct-reply / ignore) is how field
 		// evaluators short-circuit a turn; it must override planning contexts
@@ -1354,5 +1470,108 @@ describe("view-surface overlap miss-budget cap (vim-window shape)", () => {
 		expect(routed.plan.requiresTool).toBe(true);
 		expect(routed.plan.candidateActions).toContain("VIEWS");
 		expect(routed.plan.requiredToolMissBudget).toBeUndefined();
+	});
+});
+
+describe("bare link shares never commit the turn to coding delegation (link-spawn guard)", () => {
+	const replyAction: Pick<Action, "name" | "similes" | "tags"> = {
+		name: "REPLY",
+		similes: [],
+		tags: [],
+	};
+	const spawnAction: Pick<Action, "name" | "similes" | "tags"> = {
+		name: "TASKS_SPAWN_AGENT",
+		similes: ["SPAWN_AGENT"],
+		tags: ["domain:coding", "coding-delegation"],
+	};
+	const webAction: Pick<Action, "name" | "similes" | "tags"> = {
+		name: "WEB_FETCH",
+		similes: [],
+		tags: [],
+	};
+
+	/** The exact processed-content shape Discord produces for a shared link
+	 * with a rendered preview (raw URL + connector-appended embed block). The
+	 * embed title's workflow-ish words are DERIVED content, not instruction. */
+	const linkShareText = [
+		"https://claude.ai/public/artifacts/abc123",
+		"Embed #1:",
+		"  Title:how the agent decides to message people",
+		"  Description:(none)",
+	].join("\n");
+
+	const fieldResult = (replyText: string) => ({
+		shouldRespond: "RESPOND" as const,
+		contexts: ["general"],
+		intents: [],
+		replyText,
+		candidateActionNames: ["TASKS_SPAWN_AGENT"],
+		facts: [],
+		relationships: [],
+		addressedTo: [],
+	});
+
+	it("a complete reaction to a shared link stays direct even when the model named a spawn candidate", () => {
+		// Live incident shape: bare URL + embed, and the model (mis)committed to
+		// TASKS_SPAWN_AGENT off the embed title. The delegation-commitment
+		// override must NOT stand on a link share — the finished reaction wins.
+		const routed = messageHandlerFromFieldResult(
+			fieldResult(
+				"Neat write-up — it lays out how the agent weighs room context before messaging anyone.",
+			),
+			undefined,
+			{
+				actions: [replyAction, spawnAction, webAction],
+				messageText: linkShareText,
+			},
+		);
+
+		expect(routed.plan.simple).toBe(true);
+		expect(routed.plan.requiresTool).toBe(false);
+		expect(routed.plan.candidateActions ?? []).toEqual([]);
+	});
+
+	it("an explicit build instruction with a URL still commits to delegation", () => {
+		const routed = messageHandlerFromFieldResult(
+			fieldResult("On it — I'll get that page built for you now, one moment."),
+			undefined,
+			{
+				actions: [replyAction, spawnAction, webAction],
+				messageText:
+					"build me a landing page based on this https://example.com/design",
+			},
+		);
+
+		expect(routed.plan.requiresTool).toBe(true);
+		expect(routed.plan.candidateActions).toContain("TASKS_SPAWN_AGENT");
+	});
+
+	it("an unanswered link share escalates to the web-read light path, not a spawn", () => {
+		// Stage 1 acked without reading the page: the deterministic backstop
+		// surfaces the web tools so the planner fetches and reacts to the actual
+		// content (degrading to the embed metadata when unfetchable) instead of
+		// inventing work.
+		const routed = applyDirectCurrentCandidateBackstopToMessageHandler(
+			{
+				processMessage: "RESPOND",
+				thought: "",
+				plan: {
+					contexts: ["simple"],
+					reply: "Taking a look.",
+					simple: true,
+					requiresTool: false,
+				},
+			},
+			{
+				actions: [replyAction, spawnAction, webAction],
+				messageText: linkShareText,
+			},
+		);
+
+		expect(routed.plan.requiresTool).toBe(true);
+		expect(routed.plan.candidateActions).toContain("WEB_FETCH");
+		expect(routed.plan.candidateActions ?? []).not.toContain(
+			"TASKS_SPAWN_AGENT",
+		);
 	});
 });

@@ -90,6 +90,41 @@ describe("TranscriptBody word-sync highlight", () => {
     expect(screen.getByText("Bob")).toBeTruthy();
   });
 
+  it("renders speaker attribution confidence and provenance beside the anonymous label", () => {
+    const reviewTranscript: Transcript = {
+      ...transcript,
+      segments: [
+        {
+          ...transcript.segments[0],
+          speakerLabel: "Speaker 1",
+          speakerNameAttribution: {
+            resolution: "needs_confirmation",
+            confidence: 0.9,
+            candidateNames: [
+              {
+                name: "Alice Chen",
+                normalizedName: "alice chen",
+                confidence: 0.9,
+                sources: ["platform_roster"],
+                provenance: [{ source: "platform_roster", confidence: 0.9 }],
+              },
+            ],
+            provenance: [{ source: "platform_roster", confidence: 0.9 }],
+            reasonCodes: ["low_confidence_name"],
+            requiresReview: true,
+          },
+        },
+      ],
+    };
+    render(<TranscriptBody transcript={reviewTranscript} currentTimeMs={0} />);
+    expect(screen.getByText("Speaker 1")).toBeTruthy();
+    const badge = screen.getByTestId("speaker-name-attribution");
+    expect(badge.textContent).toContain("Review");
+    expect(badge.textContent).toContain("90%");
+    expect(badge.textContent).toContain("roster");
+    expect(screen.queryByText("Alice Chen")).toBeNull();
+  });
+
   it("falls back to a clickable segment when it has no word timings", () => {
     const onSeekMs = vi.fn();
     const noWords: Transcript = {

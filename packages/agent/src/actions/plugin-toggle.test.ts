@@ -17,6 +17,7 @@ interface CapturedRequest {
   url: string;
   method?: string;
   body: unknown;
+  headers?: HeadersInit;
 }
 
 function stubFetch(response: Record<string, unknown>): {
@@ -30,6 +31,7 @@ function stubFetch(response: Record<string, unknown>): {
       url: String(input),
       method: init?.method,
       body: typeof init?.body === "string" ? JSON.parse(init.body) : init?.body,
+      headers: init?.headers,
     });
     return {
       ok: true,
@@ -148,5 +150,30 @@ describe("PLUGIN action=toggle → PUT /api/plugins/:id", () => {
     expect(result?.success).toBe(false);
     // No network call when the required param is missing.
     expect(captured).toHaveLength(0);
+  });
+
+  it("attaches the process API token so cloud containers do not 401 loopback toggles", async () => {
+    // Cloud-provisioned agents reject tokenless loopback. PLUGIN toggle must
+    // send createSelfApiRequestHeaders() (Authorization: Bearer …) or the
+    // local PUT /api/plugins/:id returns 401 Unauthorized.
+    const previous = process.env.ELIZA_API_TOKEN;
+    process.env.ELIZA_API_TOKEN = "cloud-container-api-token";
+    const { captured, restore } = stubFetch({ success: true });
+    restoreFetch = () => {
+      restore();
+      if (previous === undefined) {
+        delete process.env.ELIZA_API_TOKEN;
+      } else {
+        process.env.ELIZA_API_TOKEN = previous;
+      }
+    };
+
+    await invokeToggle("calendar", true);
+
+    expect(captured).toHaveLength(1);
+    expect(captured[0].headers).toMatchObject({
+      Authorization: "Bearer cloud-container-api-token",
+      "Content-Type": "application/json",
+    });
   });
 });

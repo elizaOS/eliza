@@ -3516,6 +3516,22 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
   ): Promise<UUID> {
     const memoryId = memory.id ?? (v4() as UUID);
 
+    await this.resolveMemoryUniqueness(memory, tableName);
+
+    // Use withEntityContext to set Entity RLS context if needed. The helper
+    // also supplies the real Drizzle transaction used for both the memory row
+    // and its optional embedding.
+    await this.withEntityContext(memory.entityId, async (tx) => {
+      await this.insertMemoryInTransaction(tx, memory, tableName, memoryId);
+    });
+
+    return memoryId;
+  }
+
+  private async resolveMemoryUniqueness(
+    memory: Memory & { metadata?: MemoryMetadata },
+    tableName: string
+  ): Promise<void> {
     // only do costly check if we need to
     if (memory.unique === undefined) {
       memory.unique = true; // set default
@@ -3532,7 +3548,33 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         memory.unique = similarMemories.length === 0;
       }
     }
+  }
 
+  private validateMemoryBatchEmbeddings(
+    memories: Array<{ memory: Memory; tableName: string }>
+  ): void {
+    const expectedDimension = Number(this.embeddingDimension.replace(/^dim/, ""));
+    for (let index = 0; index < memories.length; index++) {
+      const { memory, tableName } = memories[index];
+      if (!memory.embedding) continue;
+      if (
+        !Array.isArray(memory.embedding) ||
+        memory.embedding.length !== expectedDimension ||
+        memory.embedding.some((value) => !Number.isFinite(value))
+      ) {
+        throw new Error(
+          `Invalid embedding in atomic memory batch at index ${index} (${tableName}); expected ${expectedDimension} finite values`
+        );
+      }
+    }
+  }
+
+  private async insertMemoryInTransaction(
+    tx: DrizzleDatabase,
+    memory: Memory & { metadata?: MemoryMetadata },
+    tableName: string,
+    memoryId: UUID
+  ): Promise<void> {
     // Ensure we always pass a JSON string to the SQL bind parameter; if we pass an
     // object directly PG sees `[object Object]` and fails the `::jsonb` cast.
     const contentToInsert =
@@ -3541,70 +3583,64 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     const metadataToInsert =
       typeof memory.metadata === "string" ? memory.metadata : JSON.stringify(memory.metadata ?? {});
 
-    // Use withEntityContext to set Entity RLS context if needed
-    // This delegates to the concrete adapter implementation (PostgreSQL or PGLite)
-    await this.withEntityContext(memory.entityId, async (tx) => {
-      const inserted = await tx
-        .insert(memoryTable)
-        .values([
+    const inserted = await tx
+      .insert(memoryTable)
+      .values([
+        {
+          id: memoryId,
+          type: tableName,
+          content: sql`${contentToInsert}::jsonb`,
+          metadata: sql`${metadataToInsert}::jsonb`,
+          entityId: memory.entityId,
+          roomId: memory.roomId,
+          worldId: memory.worldId,
+          agentId: memory.agentId || this.agentId,
+          unique: memory.unique,
+          createdAt: memory.createdAt !== undefined ? new Date(memory.createdAt) : new Date(),
+        },
+      ])
+      .onConflictDoNothing()
+      .returning();
+
+    if (inserted.length === 0) {
+      return;
+    }
+
+    if (memory.embedding && Array.isArray(memory.embedding)) {
+      const expectedDimension = Number(this.embeddingDimension.replace(/^dim/, ""));
+      if (memory.embedding.length !== expectedDimension) {
+        // The runtime's TEXT_EMBEDDING provider returned a vector whose width
+        // does not match the column this agent is configured to write to —
+        // typically because a fallback provider (e.g. cloud at 1536 dims) ran
+        // before the configured local model finished warmup. Persist the
+        // memory itself; skip the embedding so a later write with the right
+        // model can supply one.
+        logger.warn(
           {
-            id: memoryId,
-            type: tableName,
-            content: sql`${contentToInsert}::jsonb`,
-            metadata: sql`${metadataToInsert}::jsonb`,
-            entityId: memory.entityId,
-            roomId: memory.roomId,
-            worldId: memory.worldId, // Include worldId
-            agentId: memory.agentId || this.agentId,
-            unique: memory.unique,
-            createdAt: memory.createdAt !== undefined ? new Date(memory.createdAt) : new Date(),
+            src: "plugin:sql",
+            agentId: this.agentId,
+            expectedDimension,
+            receivedDimension: memory.embedding.length,
+            column: this.embeddingDimension,
           },
-        ])
-        .onConflictDoNothing()
-        .returning();
+          "Skipping embedding insert: dimension mismatch with configured column"
+        );
+      } else {
+        const embeddingValues: Record<string, unknown> = {
+          id: v4(),
+          memoryId: memoryId,
+          createdAt: memory.createdAt !== undefined ? new Date(memory.createdAt) : new Date(),
+        };
 
-      if (inserted.length === 0) {
-        return;
+        const cleanVector = memory.embedding.map((n) =>
+          Number.isFinite(n) ? Number(n.toFixed(6)) : 0
+        );
+
+        embeddingValues[this.embeddingDimension] = cleanVector;
+
+        await tx.insert(embeddingTable).values([embeddingValues]);
       }
-
-      if (memory.embedding && Array.isArray(memory.embedding)) {
-        const expectedDimension = Number(this.embeddingDimension.replace(/^dim/, ""));
-        if (memory.embedding.length !== expectedDimension) {
-          // The runtime's TEXT_EMBEDDING provider returned a vector whose width
-          // does not match the column this agent is configured to write to —
-          // typically because a fallback provider (e.g. cloud at 1536 dims) ran
-          // before the configured local model finished warmup. Persist the
-          // memory itself; skip the embedding so a later write with the right
-          // model can supply one.
-          logger.warn(
-            {
-              src: "plugin:sql",
-              agentId: this.agentId,
-              expectedDimension,
-              receivedDimension: memory.embedding.length,
-              column: this.embeddingDimension,
-            },
-            "Skipping embedding insert: dimension mismatch with configured column"
-          );
-        } else {
-          const embeddingValues: Record<string, unknown> = {
-            id: v4(),
-            memoryId: memoryId,
-            createdAt: memory.createdAt !== undefined ? new Date(memory.createdAt) : new Date(),
-          };
-
-          const cleanVector = memory.embedding.map((n) =>
-            Number.isFinite(n) ? Number(n.toFixed(6)) : 0
-          );
-
-          embeddingValues[this.embeddingDimension] = cleanVector;
-
-          await tx.insert(embeddingTable).values([embeddingValues]);
-        }
-      }
-    });
-
-    return memoryId;
+    }
   }
 
   /**
@@ -6216,12 +6252,32 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
   async createMemories(
     memories: Array<{ memory: Memory; tableName: string; unique?: boolean }>
   ): Promise<UUID[]> {
-    const ids: UUID[] = [];
-    for (const { memory, tableName, unique } of memories) {
-      const memoryWithUnique = unique !== undefined ? { ...memory, unique } : memory;
-      const id = await this.createMemory(memoryWithUnique, tableName);
-      ids.push(id);
+    if (memories.length === 0) return [];
+
+    this.validateMemoryBatchEmbeddings(memories);
+
+    const entityContexts = new Set(memories.map(({ memory }) => memory.entityId ?? null));
+    // A homogeneous batch keeps its entity-scoped RLS context. Mixed-entity
+    // bulk imports are system operations, so they run under the server context
+    // while retaining one all-or-nothing database transaction.
+    const entityContext = entityContexts.size === 1 ? (memories[0].memory.entityId ?? null) : null;
+
+    const prepared = memories.map(({ memory, tableName, unique }) => ({
+      memory: unique !== undefined ? { ...memory, unique } : memory,
+      tableName,
+      id: memory.id ?? (v4() as UUID),
+    }));
+    for (const entry of prepared) {
+      await this.resolveMemoryUniqueness(entry.memory, entry.tableName);
     }
+
+    await this.withEntityContext(entityContext, async (tx) => {
+      for (const entry of prepared) {
+        await this.insertMemoryInTransaction(tx, entry.memory, entry.tableName, entry.id);
+      }
+    });
+
+    const ids = prepared.map((entry) => entry.id);
     return ids;
   }
 

@@ -81,12 +81,17 @@ bun run --cwd plugins/plugin-mcp clean        # rm -rf dist .turbo
 
 ## Config / env vars
 
-All config is read from the character `settings` object (or runtime settings), not from environment variables directly. The `PATH` env var is forwarded to stdio child processes automatically.
+Config is read from the character `settings` object (or runtime settings), plus optional per-server environment variables. The `PATH` env var is forwarded to stdio child processes automatically.
 
 | Key (in `settings`) | Type | Required | Description |
 |---|---|---|---|
-| `mcp.servers` | `Record<string, McpServerConfig>` | Yes (for any connectivity) | Map of server name → transport config |
+| `mcp.servers` | `Record<string, McpServerConfig>` | Yes (unless env-declared) | Map of server name → transport config |
 | `mcp.maxRetries` | `number` | No (default `2`) | Max reconnect attempts per server |
+
+| Env var | Description |
+|---|---|
+| `MCP_SERVER_<NAME>_URL` | Declares an HTTP server `<name>` (lowercased) at this URL. Env-declared servers merge on top of `mcp.servers` (env wins on a name collision) and pass the same security validation. Keeps credential-bearing URLs out of character settings, so they never persist into the character file or agent DB. |
+| `MCP_SERVER_<NAME>_TYPE` | Optional transport for the matching URL: `sse` or `http`; anything else falls back to `streamable-http`. |
 
 Transport config shapes (see `src/types.ts`):
 
@@ -121,7 +126,7 @@ Add a branch in `src/routes-mcp.ts` `handleMcpRoutes`. The host server passes a 
 ## Conventions / gotchas
 
 - **Node-only.** `index.browser.ts` is a browser-unavailable entry. The MCP SDK's stdio and SSE transports require Node.js APIs. The `eliza.platforms` field in `package.json` is `["node"]`.
-- **Service type key is lowercase `"mcp"`.** `McpService.serviceType = "mcp"`. The status route resolves the service by uppercase `"MCP"` for legacy compat — keep this in mind if you refactor.
+- **Service type key is lowercase `"mcp"`.** `McpService.serviceType = "mcp"`, and core's service lookup is case-sensitive — always resolve via the `MCP_SERVICE_NAME` constant, never a hand-written string.
 - **Tool schema fixup runs synchronously.** `createMcpToolCompatibilitySync` uses `require()` internally; this is intentional (called lazily during tool listing in `fetchToolsList`, not at import time).
 - **Ping monitoring is stdio-only.** HTTP/SSE transports do not use the ping interval; reconnect is handled by transport error/close events.
 - **Config changes require a restart.** The service reads `settings.mcp` once at init. `restartConnection(name)` re-initializes a single server without full restart; adding/removing servers requires plugin reinit.

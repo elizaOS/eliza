@@ -73,6 +73,7 @@ export function routeIntent(
   intent: OsIntent,
   context: RoutingContext,
   dedupe: IntentDedupeStore,
+  options: { record?: boolean } = {},
 ): IntentOutcome {
   const { intentId } = intent;
   const intentType = intent.type;
@@ -114,7 +115,7 @@ export function routeIntent(
   }
 
   const commands = commandsForIntent(intent);
-  dedupe.record(intentId, context.now);
+  if (options.record !== false) dedupe.record(intentId, context.now);
   return { status: "routed", intentId, intentType, target, commands };
 }
 

@@ -37,6 +37,7 @@ interface DocumentsLike {
 		scope?: TranscriptScope;
 		addedFrom?: string;
 		metadata?: Record<string, unknown>;
+		fragments?: Array<{ text: string; metadata?: Record<string, unknown> }>;
 	}): Promise<{ storedDocumentMemoryId: UUID }>;
 }
 
@@ -193,6 +194,7 @@ export class TranscriptService {
 				scope: payload.scope,
 				addedFrom: "runtime-internal",
 				metadata: payload.metadata,
+				fragments: payload.fragments,
 			});
 			return res.storedDocumentMemoryId;
 		} catch (err) {

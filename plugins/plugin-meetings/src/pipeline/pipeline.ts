@@ -16,7 +16,14 @@
 
 import type { Buffer } from "node:buffer";
 import { logger } from "@elizaos/core";
-import type { MeetingParticipant, TranscriptSegment } from "@elizaos/shared";
+import {
+  inferSpeakerName,
+  type MeetingParticipant,
+  type SpeakerNameAttribution,
+  type SpeakerNameEvidence,
+  type TranscriptSegment,
+  toSpeakerNameAttribution,
+} from "@elizaos/shared";
 import {
   isMeetingInsufficientCreditsError,
   MEETING_AUDIO_SAMPLE_RATE,
@@ -30,6 +37,42 @@ import { float32ToWav } from "./wav";
 
 /** Silence gap (ms) between words that splits a submission into segments. */
 const WORD_GAP_SEGMENT_SPLIT_MS = 600;
+
+const SELF_INTRODUCTION_STOP_WORDS = new Set([
+  "a",
+  "also",
+  "am",
+  "an",
+  "at",
+  "be",
+  "currently",
+  "excited",
+  "feeling",
+  "for",
+  "glad",
+  "going",
+  "happy",
+  "in",
+  "just",
+  "looking",
+  "not",
+  "of",
+  "on",
+  "ready",
+  "sorry",
+  "that",
+  "the",
+  "this",
+  "to",
+  "trying",
+  "will",
+  "working",
+]);
+
+const SELF_INTRODUCTION_PATTERNS = [
+  /\bmy name is\s+([a-z][a-z'’.-]*(?:\s+[a-z][a-z'’.-]*){0,2})(?=[,.!?]|$|\s+(?:and|from|with|here|speaking|joining)\b)/i,
+  /\b(?:i am|i['’]?m|this is)\s+([a-z][a-z'’.-]*(?:\s+[a-z][a-z'’.-]*)?)(?=[,.!?]|$|\s+(?:and|from|with|here|speaking|joining)\b)/i,
+] as const;
 
 interface RetainedChunk {
   offsetSamples: number;
@@ -84,6 +127,11 @@ class MeetingPipeline implements MeetingTranscriptionPipeline {
 
   /** speakerKey → display name (setSpeakerName vote-and-lock result). */
   private readonly names = new Map<string, string>();
+  /** speakerKey → platform/self-introduction evidence observed for this stream. */
+  private readonly speakerNameEvidence = new Map<
+    string,
+    SpeakerNameEvidence[]
+  >();
   /** speakerKey → fallback label ("Speaker N") in first-audio order. */
   private readonly fallbackLabels = new Map<string, string>();
   private readonly participants = new Map<string, MeetingParticipant>();
@@ -112,9 +160,17 @@ class MeetingPipeline implements MeetingTranscriptionPipeline {
     };
 
     this.manager.onSegmentConfirmed = (event) => {
+      const speakerNameAttribution = this.attributionFor(
+        event.speakerKey,
+        event.text,
+      );
       const segment: TranscriptSegment = {
         id: `${this.idPrefix}:${event.speakerKey}:${event.seq}`,
-        speakerLabel: event.speakerName,
+        speakerLabel: this.displayLabelFor(
+          event.speakerKey,
+          speakerNameAttribution,
+        ),
+        ...(speakerNameAttribution ? { speakerNameAttribution } : {}),
         startMs: Math.max(0, event.startMs),
         endMs: Math.max(0, event.endMs),
         text: event.text,
@@ -155,6 +211,12 @@ class MeetingPipeline implements MeetingTranscriptionPipeline {
     const name = displayName.trim();
     if (!name) return;
     this.names.set(speakerKey, name);
+    this.addSpeakerNameEvidence(speakerKey, {
+      source: "platform_roster",
+      name,
+      confidence: 0.9,
+      evidenceId: `platform-roster:${speakerKey}`,
+    });
     this.manager.updateSpeakerName(speakerKey, name);
   }
 
@@ -212,10 +274,13 @@ class MeetingPipeline implements MeetingTranscriptionPipeline {
     for (const segment of this.confirmed) {
       if (segment.speakerLabel) names.add(segment.speakerLabel);
     }
-    for (const key of this.fallbackLabels.keys()) {
-      names.add(this.labelFor(key));
+    const activeKeys = new Set([
+      ...this.fallbackLabels.keys(),
+      ...this.names.keys(),
+    ]);
+    for (const key of activeKeys) {
+      names.add(this.displayLabelFor(key, this.attributionFor(key, "")));
     }
-    for (const name of this.names.values()) names.add(name);
     return Array.from(names);
   }
 
@@ -259,6 +324,97 @@ class MeetingPipeline implements MeetingTranscriptionPipeline {
       this.fallbackLabels.set(speakerKey, fallback);
     }
     return fallback;
+  }
+
+  private fallbackLabelFor(speakerKey: string): string {
+    let fallback = this.fallbackLabels.get(speakerKey);
+    if (!fallback) {
+      fallback = `Speaker ${this.fallbackLabels.size + 1}`;
+      this.fallbackLabels.set(speakerKey, fallback);
+    }
+    return fallback;
+  }
+
+  private addSpeakerNameEvidence(
+    speakerKey: string,
+    evidence: SpeakerNameEvidence,
+  ): void {
+    const existing = this.speakerNameEvidence.get(speakerKey) ?? [];
+    const normalizedName = evidence.name?.trim().toLocaleLowerCase() ?? "";
+    if (
+      existing.some(
+        (item) =>
+          item.source === evidence.source &&
+          (item.name?.trim().toLocaleLowerCase() ?? "") === normalizedName &&
+          item.evidenceId === evidence.evidenceId,
+      )
+    ) {
+      return;
+    }
+    this.speakerNameEvidence.set(speakerKey, [...existing, evidence]);
+  }
+
+  private relevantCalendarEvidence(
+    speakerKey: string,
+  ): readonly SpeakerNameEvidence[] {
+    const calendar = this.options.calendarSpeakerEvidence ?? [];
+    if (calendar.length <= 1) return calendar;
+    const rosterName = this.names.get(speakerKey)?.trim().toLocaleLowerCase();
+    if (!rosterName) return calendar;
+    const rosterFirstName = rosterName.split(/\s+/)[0];
+    return calendar.filter((item) => {
+      const calendarName = item.name?.trim().toLocaleLowerCase();
+      if (!calendarName) return false;
+      return (
+        calendarName === rosterName ||
+        calendarName.split(/\s+/)[0] === rosterFirstName
+      );
+    });
+  }
+
+  private selfIntroduction(text: string): string | null {
+    for (const pattern of SELF_INTRODUCTION_PATTERNS) {
+      const name = pattern.exec(text)?.[1]?.trim();
+      if (!name) continue;
+      const words = name.toLocaleLowerCase().split(/\s+/);
+      if (words.some((word) => SELF_INTRODUCTION_STOP_WORDS.has(word))) {
+        continue;
+      }
+      return name;
+    }
+    return null;
+  }
+
+  private attributionFor(
+    speakerKey: string,
+    text: string,
+  ): SpeakerNameAttribution | undefined {
+    const introducedName = this.selfIntroduction(text);
+    if (introducedName) {
+      this.addSpeakerNameEvidence(speakerKey, {
+        source: "self_introduction",
+        name: introducedName,
+        confidence: 0.96,
+        evidenceId: `${this.idPrefix}:${speakerKey}:self-introduction`,
+      });
+    }
+    const evidence = [
+      ...(this.speakerNameEvidence.get(speakerKey) ?? []),
+      ...this.relevantCalendarEvidence(speakerKey),
+    ];
+    if (evidence.length === 0) return undefined;
+    return toSpeakerNameAttribution(
+      inferSpeakerName({ speakerId: speakerKey, evidence }),
+    );
+  }
+
+  private displayLabelFor(
+    speakerKey: string,
+    attribution: SpeakerNameAttribution | undefined,
+  ): string {
+    return attribution?.resolution === "confirmed" && attribution.displayName
+      ? attribution.displayName
+      : this.fallbackLabelFor(speakerKey);
   }
 
   private transcribeWindow(
@@ -336,9 +492,14 @@ class MeetingPipeline implements MeetingTranscriptionPipeline {
     for (const speakerKey of this.manager.getActiveSpeakers()) {
       const snapshot = this.manager.getPendingSnapshot(speakerKey);
       if (!snapshot) continue;
+      const speakerNameAttribution = this.attributionFor(
+        speakerKey,
+        snapshot.text,
+      );
       pending.push({
         id: `${this.idPrefix}:${speakerKey}:pending`,
-        speakerLabel: snapshot.speakerName,
+        speakerLabel: this.displayLabelFor(speakerKey, speakerNameAttribution),
+        ...(speakerNameAttribution ? { speakerNameAttribution } : {}),
         startMs: Math.max(0, snapshot.startMs),
         endMs: Date.now() - this.sessionEpochMs,
         text: snapshot.text,

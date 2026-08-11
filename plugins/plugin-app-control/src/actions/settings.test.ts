@@ -531,6 +531,8 @@ describe("SETTINGS action: set on an owned route section", () => {
 					existing: { keep: true },
 					voice: {
 						continuous: "always-on",
+						osIntentAutoStartVoice: false,
+						osIntentAutoStartTranscription: false,
 						vadAutoStop: {
 							silenceMs: 900,
 							speechRmsThreshold: 0.006,
@@ -577,6 +579,8 @@ describe("SETTINGS action: set on an owned route section", () => {
 				messages: {
 					voice: {
 						continuous: "always-on",
+						osIntentAutoStartVoice: false,
+						osIntentAutoStartTranscription: false,
 						vadAutoStop: DEFAULT_VOICE_SETTINGS_PREFS.vadAutoStop,
 					},
 				},
@@ -620,11 +624,55 @@ describe("SETTINGS action: set on an owned route section", () => {
 				messages: {
 					voice: {
 						continuous: "vad-gated",
+						osIntentAutoStartVoice: false,
+						osIntentAutoStartTranscription: false,
 						vadAutoStop: {
 							silenceMs: 1200,
 							speechRmsThreshold: 0.006,
 						},
 					},
+				},
+			},
+		});
+		expect(result?.success).toBe(true);
+	});
+
+	it("persists and live-applies explicit voice shortcut auto-start consent", async () => {
+		const routeFetch = vi.fn<SettingsRouteFetch>(async (request) => {
+			if (request.method === "GET") {
+				return { ok: true, data: { messages: { voice: {} } } };
+			}
+			return { ok: true };
+		});
+		const { result } = await invoke(
+			{
+				action: "set",
+				section: "voice",
+				key: "shortcut-voice",
+				value: "on",
+			},
+			routeFetch,
+		);
+		expect(routeFetch).toHaveBeenNthCalledWith(2, {
+			method: "PUT",
+			path: "/api/config",
+			body: {
+				messages: {
+					voice: {
+						...DEFAULT_VOICE_SETTINGS_PREFS,
+						osIntentAutoStartVoice: true,
+					},
+				},
+			},
+		});
+		expect(routeFetch).toHaveBeenNthCalledWith(3, {
+			method: "POST",
+			path: "/api/views/events/broadcast",
+			body: {
+				type: VOICE_SETTINGS_APPLY_EVENT,
+				payload: {
+					...DEFAULT_VOICE_SETTINGS_PREFS,
+					osIntentAutoStartVoice: true,
 				},
 			},
 		});
@@ -708,6 +756,8 @@ describe("SETTINGS action: set on an owned route section", () => {
 				messages: {
 					voice: {
 						continuous: "vad-gated",
+						osIntentAutoStartVoice: false,
+						osIntentAutoStartTranscription: false,
 						vadAutoStop: {
 							silenceMs: 1200,
 							speechRmsThreshold:
@@ -740,6 +790,8 @@ describe("SETTINGS action: set on an owned route section", () => {
 				messages: {
 					voice: {
 						continuous: "off",
+						osIntentAutoStartVoice: false,
+						osIntentAutoStartTranscription: false,
 						vadAutoStop: {
 							silenceMs: DEFAULT_LOCAL_ASR_AUTO_STOP.silenceMs,
 							speechRmsThreshold: 0.01,
@@ -790,6 +842,8 @@ describe("SETTINGS action: set on an owned route section", () => {
 				type: VOICE_SETTINGS_APPLY_EVENT,
 				payload: {
 					continuous: "always-on",
+					osIntentAutoStartVoice: false,
+					osIntentAutoStartTranscription: false,
 					vadAutoStop: { silenceMs: 1100, speechRmsThreshold: 0.005 },
 				},
 			},

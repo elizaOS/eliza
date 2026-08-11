@@ -125,6 +125,11 @@ Cloud + models:
 - Model overrides: `ELIZAOS_CLOUD_{NANO,SMALL,MEDIUM,LARGE,MEGA}_MODEL`, `ELIZAOS_CLOUD_{PLANNER,ACTION_PLANNER,SHOULD_RESPOND,RESPONSE_HANDLER}_MODEL`.
 - Provider keys: `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `OPENAI_BASE_URL`.
 
+Verified audio redaction:
+- `ELIZA_FFMPEG_PATH` / `ELIZA_FFPROBE_PATH` — optional executable overrides for non-PCM16 containers; PCM16 WAV redaction is dependency-free.
+- `ELIZA_AUDIO_REDACTION_VERIFY_STT_URL` and `ELIZA_AUDIO_REDACTION_VERIFY_STT_MODEL` — optional second OpenAI-compatible STT verifier; configure both or neither.
+- `ELIZA_AUDIO_REDACTION_VERIFY_STT_API_KEY` — optional bearer credential for that independent verifier. The guarded client never follows redirects.
+
 Capability router (remote plugins — see `docs/capability-router-remote-plugins.md`):
 - `ELIZA_CAPABILITY_ROUTER_ENABLED`, `ELIZA_CAPABILITY_ROUTER_URLS`, `ELIZA_CAPABILITY_ROUTER_ALLOWED_MODULES`, `ELIZA_CAPABILITY_ROUTER_TRUST_POLICY`, `ELIZA_CAPABILITY_ROUTER_TRUST_AUDIT`.
 

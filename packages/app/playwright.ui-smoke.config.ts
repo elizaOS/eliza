@@ -11,6 +11,11 @@ import { defineConfig, devices } from "@playwright/test";
 // derive the on-disk WAV from it for Chromium's --use-file-for-fake-audio-capture.
 import { KNOWN_PHRASE_WAV_DATA_URL } from "../ui/src/voice/voice-selftest/fixtures/known-phrase";
 import {
+  resolveRequestedAuditProjects,
+  UI_SMOKE_AUDIT_PROJECTS_ENV,
+  writeAuditProjectPropagation,
+} from "./scripts/lib/playwright-audit-projects.mjs";
+import {
   ASSERTION_GRADE_DASHBOARD_SPECS,
   DASHBOARD_E2E_DEVICE_MATRIX,
 } from "./test/ui-smoke/device-matrix";
@@ -67,18 +72,37 @@ const VOICE_MIC_SPEC = /(voice-realaudio|transcript-realaudio)\.spec\.ts/;
 const WEBKIT_POINTER_FOCUS_SPEC =
   /(chat-overlay-controls-interactions|conversation-management|slash-commands|plugin-views-visual)\.spec\.ts/;
 const webkitLaneEnabled = process.env.PLAYWRIGHT_WEBKIT === "1";
+const requestedAuditProjects = resolveRequestedAuditProjects({
+  argv: process.argv,
+  serialized: process.env[UI_SMOKE_AUDIT_PROJECTS_ENV],
+});
+// Playwright reloads this module inside workers without the launcher's CLI
+// arguments, so publish the allowlisted selection before that process boundary.
+writeAuditProjectPropagation(process.env, requestedAuditProjects);
+const projectRequested = (projectName: string): boolean =>
+  requestedAuditProjects.includes(projectName);
 // The all-views aesthetic audit (#8796) walks ~50 views × 2 viewports; it is a
 // dedicated tool run via `audit:app`, not part of the default e2e smoke.
 const AUDIT_APP_SPEC = /all-views-aesthetic-audit\.spec\.ts/;
+const AUDIT_PROJECT_WORKER_CONTRACT_SPEC =
+  /audit-project-worker-contract\.spec\.ts/;
+const auditAppEnabled = projectRequested("audit-app");
+// Screenshot inventory for the offline vision-review tool. It records readiness
+// failures in JSON instead of asserting them, so it is an audit artifact
+// producer rather than part of the default E2E correctness gate.
+const AI_QA_CAPTURE_SPEC = /ai-qa-capture\.spec\.ts/;
+const aiQaCaptureEnabled = process.env.ELIZA_AI_QA_CAPTURE === "1";
 // The cloud-surface aesthetic audit (#10725/#11342) walks every registered
 // cloud route (packages/ui/src/cloud/register-all.ts) at desktop + mobile; a
 // dedicated tool run via `audit:cloud`, not part of the default e2e smoke.
 const AUDIT_CLOUD_SPEC = /cloud-surfaces-aesthetic-audit\.spec\.ts/;
+const auditCloudEnabled = projectRequested("audit-cloud");
 // Focused light/dark contrast proof for the Applications dropdown/select
 // popovers (#14232): renders the two touched surfaces in BOTH themes with the
 // SelectContent popover open. Run via `--project=audit-app-dropdown`; kept out
 // of the default e2e lane like the other dedicated aesthetic-audit tools.
 const AUDIT_APP_DROPDOWN_SPEC = /applications-dropdown-contrast\.spec\.ts/;
+const auditAppDropdownEnabled = projectRequested("audit-app-dropdown");
 // The WebKit lane (#10104/#10722): the assertion-grade dashboard specs, the
 // core shell smoke, and the input-modality spec on a real Desktop Safari
 // engine. WebKit-only behavior differences are real (for example,
@@ -153,11 +177,18 @@ export default defineConfig({
       // in the dedicated `chromium-voice-mic` project below, not here. The
       // all-views aesthetic audit runs only via the `audit:app` project; the
       // cloud-surface audit only via `audit:cloud`.
+      // The viewport-zoom spec runs under `mobile-chromium` where the Pixel 7
+      // profile respects viewport-meta zoom caps — Desktop Chrome's CDP
+      // setPageScaleFactor overrides the meta unconditionally, producing a
+      // false positive for both locked and unlocked viewports.
       testIgnore: [
         VOICE_MIC_SPEC,
+        AI_QA_CAPTURE_SPEC,
         AUDIT_APP_SPEC,
+        AUDIT_PROJECT_WORKER_CONTRACT_SPEC,
         AUDIT_CLOUD_SPEC,
         AUDIT_APP_DROPDOWN_SPEC,
+        /viewport-zoom-visualviewport\.spec\.ts/,
       ],
       use: {
         ...devices["Desktop Chrome"],
@@ -203,7 +234,7 @@ export default defineConfig({
       // so each surface is exercised at the same WebView viewport that ships on
       // Capacitor iOS/Android.
       testMatch:
-        /(apps-personal-assistant-decomposed-interactions|chat-clear-swipe|chat-send-voice-newchat-fuzz|gesture-matrix|input-modality|launcher-gesture-loop)\.spec\.ts/,
+        /(apps-personal-assistant-decomposed-interactions|chat-clear-swipe|chat-send-voice-newchat-fuzz|gesture-matrix|input-modality|launcher-gesture-loop|viewport-zoom-visualviewport)\.spec\.ts/,
       use: { ...devices["Pixel 7"], ...withLaunchOptions() },
     },
     // WebKit cross-engine lane (opt-in). Only added when PLAYWRIGHT_WEBKIT=1 so a
@@ -251,41 +282,68 @@ export default defineConfig({
         serviceWorkers: "block",
       },
     },
-    {
-      // All-views aesthetic audit (#8796) — run with `audit:app`
-      // (`--project=audit-app`). Walks every view at desktop + mobile internally.
-      name: "audit-app",
-      testMatch: AUDIT_APP_SPEC,
-      use: {
-        ...devices["Desktop Chrome"],
-        ...withChromiumLaunchOptions(),
-      },
-    },
-    {
-      // Cloud-surface aesthetic audit (#10725/#11342) — run with `audit:cloud`
-      // (`--project=audit-cloud`). Walks every registered cloud route at
-      // desktop + mobile internally. Requires a renderer built with
-      // VITE_PLAYWRIGHT_TEST_AUTH=true; the runner invalidates dist for this
-      // project so a cached non-auth build cannot skip the local auth shell.
-      name: "audit-cloud",
-      testMatch: AUDIT_CLOUD_SPEC,
-      use: {
-        ...devices["Desktop Chrome"],
-        ...withChromiumLaunchOptions(),
-      },
-    },
-    {
-      // Applications dropdown/select light+dark contrast proof (#14232), run
-      // via `--project=audit-app-dropdown`. Like audit-cloud it needs the
-      // renderer built with VITE_PLAYWRIGHT_TEST_AUTH=true so the Steward auth
-      // shell serves the app-detail route.
-      name: "audit-app-dropdown",
-      testMatch: AUDIT_APP_DROPDOWN_SPEC,
-      use: {
-        ...devices["Desktop Chrome"],
-        ...withChromiumLaunchOptions(),
-      },
-    },
+    ...(aiQaCaptureEnabled
+      ? [
+          {
+            name: "audit-ai-qa",
+            testMatch: AI_QA_CAPTURE_SPEC,
+            use: {
+              ...devices["Desktop Chrome"],
+              ...withChromiumLaunchOptions(),
+            },
+          },
+        ]
+      : []),
+    ...(auditAppEnabled
+      ? [
+          {
+            // All-views aesthetic audit (#8796) — run with `audit:app`
+            // (`--project=audit-app`). Walks every view at desktop + mobile internally.
+            name: "audit-app",
+            testMatch: [AUDIT_APP_SPEC, AUDIT_PROJECT_WORKER_CONTRACT_SPEC],
+            use: {
+              ...devices["Desktop Chrome"],
+              ...withChromiumLaunchOptions(),
+            },
+          },
+        ]
+      : []),
+    ...(auditCloudEnabled
+      ? [
+          {
+            // Cloud-surface aesthetic audit (#10725/#11342) — run with `audit:cloud`
+            // (`--project=audit-cloud`). Walks every registered cloud route at
+            // desktop + mobile internally. Requires a renderer built with
+            // VITE_PLAYWRIGHT_TEST_AUTH=true; the runner invalidates dist for this
+            // project so a cached non-auth build cannot skip the local auth shell.
+            name: "audit-cloud",
+            testMatch: [AUDIT_CLOUD_SPEC, AUDIT_PROJECT_WORKER_CONTRACT_SPEC],
+            use: {
+              ...devices["Desktop Chrome"],
+              ...withChromiumLaunchOptions(),
+            },
+          },
+        ]
+      : []),
+    ...(auditAppDropdownEnabled
+      ? [
+          {
+            // Applications dropdown/select light+dark contrast proof (#14232), run
+            // via `--project=audit-app-dropdown`. Like audit-cloud it needs the
+            // renderer built with VITE_PLAYWRIGHT_TEST_AUTH=true so the Steward auth
+            // shell serves the app-detail route.
+            name: "audit-app-dropdown",
+            testMatch: [
+              AUDIT_APP_DROPDOWN_SPEC,
+              AUDIT_PROJECT_WORKER_CONTRACT_SPEC,
+            ],
+            use: {
+              ...devices["Desktop Chrome"],
+              ...withChromiumLaunchOptions(),
+            },
+          },
+        ]
+      : []),
   ],
   webServer: {
     command: `${JSON.stringify(nodeExecutable)} ${JSON.stringify(path.join(repoRoot, "packages", "app-core", "scripts", "run-node-tsx.mjs"))} --exit-with-parent ${JSON.stringify(uiSmokeLiveStack)}`,

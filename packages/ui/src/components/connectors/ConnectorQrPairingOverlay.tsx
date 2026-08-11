@@ -9,6 +9,7 @@
 import type { ReactNode } from "react";
 import { useEffect, useRef } from "react";
 import { useAppSelector } from "../../state";
+import { PagePanel } from "../composites/page-panel";
 import { Button } from "../ui/button";
 
 type ConnectorPairingStatus =
@@ -97,86 +98,81 @@ export function ConnectorQrPairingOverlay({
 
   if (status === "connected") {
     return (
-      <div className="mt-3 border border-ok bg-[var(--ok-subtle)] p-4">
-        <div className="flex items-center gap-2">
-          <span className="inline-block h-2 w-2 rounded-full bg-ok" />
-          <span className="text-xs font-medium text-ok">
-            {t("common.connected")}
-            {phoneNumber ? ` (${connectedPhonePrefix}${phoneNumber})` : ""}
-          </span>
+      <PagePanel.Notice
+        tone="accent"
+        actions={
+          !onConnected ? (
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={() => void onDisconnect()}
+            >
+              {t("common.disconnect")}
+            </Button>
+          ) : undefined
+        }
+      >
+        <div className="space-y-1">
+          <div className="flex items-center gap-2 text-xs font-semibold text-ok">
+            <span className="inline-block h-2 w-2 rounded-full bg-ok" />
+            <span>
+              {t("common.connected")}
+              {phoneNumber ? ` (${connectedPhonePrefix}${phoneNumber})` : ""}
+            </span>
+          </div>
+          <p className="text-xs-tight text-muted">
+            {connectedMessage ??
+              (onConnected
+                ? `Finishing ${connectorName} setup...`
+                : `${connectorName} is paired. Auth state is saved for automatic reconnection.`)}
+          </p>
         </div>
-        <div className="mt-1 text-2xs text-muted">
-          {connectedMessage ??
-            (onConnected
-              ? `Finishing ${connectorName} setup...`
-              : `${connectorName} is paired. Auth state is saved for automatic reconnection.`)}
-        </div>
-        {!onConnected ? (
-          <Button
-            variant="destructive"
-            size="sm"
-            className="mt-2 text-2xs"
-            onClick={() => void onDisconnect()}
-          >
-            {t("common.disconnect")}
-          </Button>
-        ) : null}
-      </div>
+      </PagePanel.Notice>
     );
   }
 
   if (status === "error" || status === "timeout") {
     return (
-      <div className="mt-3 border border-danger bg-[var(--destructive-subtle)] p-4">
-        <div className="mb-2 text-xs text-danger">
+      <PagePanel.Notice
+        tone="danger"
+        actions={
+          <Button variant="default" size="sm" onClick={start}>
+            {tryAgainLabel}
+          </Button>
+        }
+      >
+        <p className="text-xs-tight">
           {status === "timeout"
             ? timeoutMessage
             : (error ?? defaultErrorMessage)}
-        </div>
-        <Button
-          variant="outline"
-          size="sm"
-          className="text-xs-tight"
-          style={{ borderColor: "var(--accent)", color: "var(--accent)" }}
-          onClick={start}
-        >
-          {tryAgainLabel}
-        </Button>
-      </div>
+        </p>
+      </PagePanel.Notice>
     );
   }
 
   if (status === "idle" || status === "disconnected") {
     return (
-      <div className="mt-3 border border-border bg-bg-hover p-4">
-        <div className="mb-2 text-xs text-muted">{idleDescription}</div>
-        {idleDetail ? (
-          <div className="mb-2 text-2xs text-muted opacity-70">
-            {idleDetail}
-          </div>
-        ) : null}
-        {error ? <div className="mb-2 text-xs text-danger">{error}</div> : null}
-        <Button
-          variant="outline"
-          size="sm"
-          className="text-xs-tight"
-          style={{ borderColor: "var(--accent)", color: "var(--accent)" }}
-          onClick={start}
-        >
-          {connectLabel}
-        </Button>
-      </div>
+      <PagePanel.Notice
+        tone={error ? "danger" : "default"}
+        actions={
+          <Button variant="default" size="sm" onClick={start}>
+            {connectLabel}
+          </Button>
+        }
+      >
+        <div className="space-y-1">
+          <p className="text-xs-tight text-muted">{idleDescription}</p>
+          {idleDetail ? (
+            <p className="text-2xs text-muted">{idleDetail}</p>
+          ) : null}
+          {error ? <p className="text-xs text-danger">{error}</p> : null}
+        </div>
+      </PagePanel.Notice>
     );
   }
 
   return (
-    <div
-      className="mt-3 p-4"
-      style={{
-        border: "1px solid rgba(255,255,255,0.08)",
-        background: "rgba(255,255,255,0.04)",
-      }}
-    >
+    <div className="rounded-sm border border-border/60 bg-card/60 p-4">
       <div className="flex flex-col items-start gap-4 sm:flex-row">
         <div className="shrink-0">
           {qrDataUrl ? (

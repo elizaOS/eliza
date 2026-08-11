@@ -80,7 +80,7 @@
     "test": "bunx vitest run --config vitest.config.ts",
     "test:real-runtime": "bunx vitest run --config vitest.real-runtime.config.ts",
     "test:unit": "bunx vitest run --config vitest.config.ts",
-    "test:integration": "bunx vitest run --config vitest.config.ts --dir __tests__/integration",
+    "test:integration": "bunx vitest run --config vitest.real-runtime.config.ts",
     "test:watch": "bunx vitest --config vitest.config.ts",
     "build": "bun run build.ts",
     "build:ts": "bun run build.ts"

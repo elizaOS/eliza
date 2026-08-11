@@ -18,6 +18,7 @@ import {
 import * as React from "react";
 import { cn } from "../../lib/utils";
 import { Button } from "../ui/button";
+import { SpeakerNameAttributionBadge } from "./SpeakerNameAttributionBadge";
 
 export interface TranscriptBodyProps {
   transcript: Transcript;
@@ -100,9 +101,12 @@ export function TranscriptBody({
         const segActive = seg.words.length === 0 && si === fallbackSeg;
         return (
           <div key={seg.id} data-testid={`transcript-segment-${si}`}>
-            {seg.speakerLabel ? (
-              <div className="mb-0.5 text-xs font-medium text-muted">
-                {seg.speakerLabel}
+            {seg.speakerLabel || seg.speakerNameAttribution ? (
+              <div className="mb-0.5 flex flex-wrap items-center gap-1.5 text-xs font-medium text-muted">
+                {seg.speakerLabel ? <span>{seg.speakerLabel}</span> : null}
+                <SpeakerNameAttributionBadge
+                  attribution={seg.speakerNameAttribution}
+                />
               </div>
             ) : null}
             <p

@@ -211,8 +211,12 @@ export function discoverTestSourceFiles(
           // worktree. Audit the executable checkout while leaving symlinks in
           // the inventory for the containment validator to reject below.
           try {
-            fs.lstatSync(path.join(root, file));
-            return true;
+            const stat = fs.lstatSync(path.join(root, file));
+            // Embedded untracked worktrees can make `git ls-files --others`
+            // report a directory with a trailing slash. Directories are not
+            // source candidates; retain symlinks so containment checks still
+            // reject a symlinked test source or ancestor.
+            return stat.isFile() || stat.isSymbolicLink();
           } catch (error) {
             if (error?.code === "ENOENT") return false;
             throw error;

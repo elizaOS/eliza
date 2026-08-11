@@ -11,7 +11,10 @@ export { channelTopicsProvider } from "./channelTopics.ts";
 export { characterProvider } from "./character.ts";
 export { choiceProvider } from "./choice.ts";
 export { contextBenchProvider } from "./contextBench.ts";
-export { currentTimeProvider } from "./currentTime.ts";
+export {
+	currentTimeProvider,
+	resolveMessageTimeZone,
+} from "./currentTime.ts";
 export { entitiesProvider } from "./entities.ts";
 export {
 	PLATFORM_CHAT_CONTEXT_PROVIDER_NAME,

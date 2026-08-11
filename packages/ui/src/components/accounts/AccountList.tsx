@@ -108,6 +108,26 @@ export function AccountList({ providerId }: AccountListProps) {
     );
   }
 
+  if (accounts.error && !accounts.data) {
+    return (
+      <div
+        role="alert"
+        className="mt-3 flex items-center justify-between gap-3 rounded-sm border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive"
+      >
+        <span>{accounts.error}</span>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={() => void accounts.refresh()}
+          className="h-7 shrink-0 px-2 text-xs"
+        >
+          {t("common.retry", { defaultValue: "Retry" })}
+        </Button>
+      </div>
+    );
+  }
+
   return (
     <div className="mt-3 flex flex-col gap-2 rounded-sm border border-border/40 bg-bg-accent/40 p-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -189,11 +209,11 @@ export function AccountList({ providerId }: AccountListProps) {
           setAddDialogOpen(false);
           setCredentialRepairAccount(null);
         }}
-        onCreated={() => {
-          // useAccounts already injects the new entry on success, so
-          // there's nothing to do here. Refresh anyway in case the
-          // optimistic insert missed a server-side default.
-          void accounts.refresh();
+        onCreated={(account) => {
+          // The dialog owns the create request. Adopt its successful response
+          // immediately, then reconcile any server-side defaults in the same
+          // refresh so a slow list request cannot leave a stale empty card.
+          void accounts.refresh({ providerId, account });
         }}
       />
     </div>

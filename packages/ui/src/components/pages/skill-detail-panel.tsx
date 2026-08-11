@@ -19,7 +19,7 @@ import {
 } from "../ui/admin-dialog";
 import { Button } from "../ui/button";
 import { Dialog, DialogDescription, DialogTitle } from "../ui/dialog";
-import { InstallModal } from "./skill-marketplace";
+import { InstallModal } from "./skill-installer";
 
 const BINANCE_SKILL_IDS = new Set([
   "binance-crypto-market-rank",
@@ -265,19 +265,10 @@ export function SkillsModalView() {
     handleDeleteSkill,
     refreshSkills,
     setState,
-    skillsMarketplaceQuery,
-    skillsMarketplaceResults,
-    skillsMarketplaceError,
-    skillsMarketplaceLoading,
-    skillsMarketplaceAction,
-    skillsMarketplaceManualGithubUrl,
-    searchSkillsMarketplace,
-    installSkillFromMarketplace,
-    uninstallMarketplaceSkill,
+    skillInstallError,
+    skillInstallAction,
+    skillInstallGithubUrl,
     installSkillFromGithubUrl,
-    enableMarketplaceSkill,
-    disableMarketplaceSkill,
-    copyMarketplaceSkillSource,
     t,
   } = useAppSelectorShallow((s) => ({
     skills: s.skills,
@@ -287,19 +278,10 @@ export function SkillsModalView() {
     handleDeleteSkill: s.handleDeleteSkill,
     refreshSkills: s.refreshSkills,
     setState: s.setState,
-    skillsMarketplaceQuery: s.skillsMarketplaceQuery,
-    skillsMarketplaceResults: s.skillsMarketplaceResults,
-    skillsMarketplaceError: s.skillsMarketplaceError,
-    skillsMarketplaceLoading: s.skillsMarketplaceLoading,
-    skillsMarketplaceAction: s.skillsMarketplaceAction,
-    skillsMarketplaceManualGithubUrl: s.skillsMarketplaceManualGithubUrl,
-    searchSkillsMarketplace: s.searchSkillsMarketplace,
-    installSkillFromMarketplace: s.installSkillFromMarketplace,
-    uninstallMarketplaceSkill: s.uninstallMarketplaceSkill,
+    skillInstallError: s.skillInstallError,
+    skillInstallAction: s.skillInstallAction,
+    skillInstallGithubUrl: s.skillInstallGithubUrl,
     installSkillFromGithubUrl: s.installSkillFromGithubUrl,
-    enableMarketplaceSkill: s.enableMarketplaceSkill,
-    disableMarketplaceSkill: s.disableMarketplaceSkill,
-    copyMarketplaceSkillSource: s.copyMarketplaceSkillSource,
     t: s.t,
   }));
 
@@ -530,24 +512,13 @@ export function SkillsModalView() {
 
       {installModalOpen && (
         <InstallModal
-          skills={skills}
-          skillsMarketplaceQuery={skillsMarketplaceQuery}
-          skillsMarketplaceResults={skillsMarketplaceResults}
-          skillsMarketplaceError={skillsMarketplaceError}
-          skillsMarketplaceLoading={skillsMarketplaceLoading}
-          skillsMarketplaceAction={skillsMarketplaceAction}
-          skillsMarketplaceManualGithubUrl={skillsMarketplaceManualGithubUrl}
-          searchSkillsMarketplace={searchSkillsMarketplace}
-          installSkillFromMarketplace={installSkillFromMarketplace}
-          uninstallMarketplaceSkill={uninstallMarketplaceSkill}
-          installSkillFromGithubUrl={installSkillFromGithubUrl}
-          enableSkill={enableMarketplaceSkill}
-          disableSkill={disableMarketplaceSkill}
-          copySkillSource={copyMarketplaceSkillSource}
-          showSkillDetails={(_skillId: string) => {
-            setInstallModalOpen(false);
-          }}
-          setState={setState}
+          githubUrl={skillInstallGithubUrl}
+          error={skillInstallError}
+          installing={skillInstallAction === "install:github"}
+          onGithubUrlChange={(value) =>
+            setState("skillInstallGithubUrl", value)
+          }
+          onInstall={installSkillFromGithubUrl}
           onClose={() => setInstallModalOpen(false)}
         />
       )}

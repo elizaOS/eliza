@@ -11,6 +11,7 @@ import { act, cleanup, render } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   loadContinuousChatMode,
+  loadOsIntentAutoStartConsent,
   loadVadAutoStop,
   saveContinuousChatMode,
   saveVadAutoStop,
@@ -85,6 +86,21 @@ describe("useVoiceSettingsApplyChannel", () => {
     expect(loadVadAutoStop()).toEqual({
       silenceMs: 950,
       speechRmsThreshold: 0.006,
+    });
+  });
+
+  it("applies explicit shortcut consent without enabling the other capture mode", () => {
+    render(<Channel />);
+    apply({ osIntentAutoStartVoice: true });
+    expect(loadOsIntentAutoStartConsent()).toEqual({
+      voice: true,
+      transcription: false,
+    });
+
+    apply({ osIntentAutoStartTranscription: true });
+    expect(loadOsIntentAutoStartConsent()).toEqual({
+      voice: true,
+      transcription: true,
     });
   });
 });

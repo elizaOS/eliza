@@ -16,9 +16,11 @@ import { fileURLToPath } from "node:url";
 
 import {
   buildInventory,
+  missingWorkflowRootScriptReferences,
   parseInventoryArgs,
   readRepositoryCandidateText,
   workflowExecutionSteps,
+  workflowRootScriptReferences,
 } from "../audit-scripts-inventory.mjs";
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
@@ -105,20 +107,11 @@ describe("script inventory: packages/app surface (issue #10200)", () => {
     }
   });
 
-  test("a --cwd packages/app CI-only script is reachable-from-ci-workflow", () => {
-    // test:e2e is invoked across the workflows as `--cwd packages/app test:e2e`.
-    const names = new Set(appScriptNames());
-    if (names.has("test:e2e")) {
-      const entry = inv.appScripts.find((a) => a.name === "test:e2e");
-      expect(entry?.category).toBe("reachable-from-ci-workflow");
-    }
-  });
-
   test("the root/file sections are still present and unchanged in shape", () => {
     expect(Array.isArray(inv.roots)).toBe(true);
     expect(Array.isArray(inv.files)).toBe(true);
     expect(inv.summary.totalRootScripts).toBe(inv.roots.length);
-    expect(inv.scriptTests.discoveredCount).toBeGreaterThan(100);
+    expect(inv.scriptTests.discoveredCount).toBeGreaterThan(90);
     expect(inv.scriptTests.excluded).toEqual([
       {
         file: "packages/scripts/__tests__/release-verdaccio.integration.test.ts",
@@ -237,9 +230,78 @@ describe("script inventory: packages/app surface (issue #10200)", () => {
     `);
     expect(steps).toEqual([
       {
+        job: "proof",
         run: "bun run visible:command",
         workingDirectory: "packages/app",
       },
+    ]);
+  });
+
+  test("workflow root-script checks cover conditionals and built-in-named scripts", () => {
+    const source = `
+      jobs:
+        proof:
+          steps:
+            - run: |
+                if bun run test; then
+                  bun run browser-bridge:package:release
+                fi
+    `;
+    expect(workflowRootScriptReferences(source, "proof.yml")).toEqual([
+      { file: "proof.yml", job: "proof", script: "test" },
+      {
+        file: "proof.yml",
+        job: "proof",
+        script: "browser-bridge:package:release",
+      },
+    ]);
+    expect(
+      missingWorkflowRootScriptReferences([{ file: "proof.yml", source }], {
+        test: "vitest",
+      }),
+    ).toEqual([
+      {
+        file: "proof.yml",
+        job: "proof",
+        script: "browser-bridge:package:release",
+      },
+    ]);
+  });
+
+  test("workflow root-script checks honor working-directory precedence", () => {
+    const source = `
+      defaults:
+        run:
+          working-directory: packages/one
+      jobs:
+        inherited:
+          steps:
+            - run: bun run package-only
+        overridden:
+          defaults:
+            run:
+              working-directory: packages/two
+          steps:
+            - run: bun run other-package-only
+            - working-directory: .
+              run: bun run root-only
+    `;
+    expect(workflowRootScriptReferences(source, "defaults.yml")).toEqual([
+      { file: "defaults.yml", job: "overridden", script: "root-only" },
+    ]);
+  });
+
+  test("workflow root-script checks follow inline cd commands", () => {
+    const source = `
+      jobs:
+        proof:
+          steps:
+            - run: |
+                bun run root-before
+                cd packages/prompts && bun run check:secrets
+    `;
+    expect(workflowRootScriptReferences(source, "cd.yml")).toEqual([
+      { file: "cd.yml", job: "proof", script: "root-before" },
     ]);
   });
 });

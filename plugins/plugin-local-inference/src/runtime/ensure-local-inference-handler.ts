@@ -34,6 +34,7 @@ import {
 	ModelType,
 	renderMessageHandlerStablePrefix,
 	resolveBackgroundInferenceBudget,
+	Service,
 	type TextEmbeddingParams,
 	type TextToSpeechParams,
 	type TranscriptionParams,
@@ -431,10 +432,9 @@ function engineGenerateArgsFromParams(
 					.join("\n\n")
 			: "";
 	const streamStructured = params.streamStructured === true;
-	// Surface per-token chunks to the caller: the runtime passes the agent
-	// reply path's `onStreamChunk` here for the LLM→TTS handoff. Wire it only
-	// when the caller asked for streaming (`stream` or `streamStructured`) so
-	// non-streaming callers don't pay the chunk-callback overhead.
+	// Surface per-token chunks to the caller only when it requested streaming.
+	// Rendering and diagnostics also consume this callback, so voice ownership
+	// remains an independent, explicit `voiceOutput` contract.
 	const onTextChunk =
 		(params.stream === true || streamStructured) &&
 		typeof params.onStreamChunk === "function"
@@ -463,9 +463,7 @@ function engineGenerateArgsFromParams(
 		maxTokensPerStep: onTextChunk
 			? resolveChatStreamTokensPerStep()
 			: undefined,
-		voiceOutput:
-			params.voiceOutput ??
-			(typeof params.onStreamChunk === "function" ? "user-visible" : undefined),
+		voiceOutput: params.voiceOutput,
 	};
 }
 
@@ -1267,6 +1265,37 @@ function registerDeviceBridgeLoader(runtime: AgentRuntime): void {
 }
 
 /**
+ * Expose fused v12 word timings as an additive runtime service. Consumers such
+ * as plugin-meetings can discover this structural seam without importing this
+ * plugin or widening the string-only TRANSCRIPTION model contract.
+ */
+class TimedAsrService extends Service {
+	static serviceType = "timedAsr";
+	capabilityDescription =
+		"Word-timed local ASR over the fused voice engine (transcribeWav returns per-word timings).";
+
+	static async start(runtime: IAgentRuntime): Promise<TimedAsrService> {
+		return new TimedAsrService(runtime);
+	}
+
+	async stop(): Promise<void> {}
+
+	isAvailable(): boolean {
+		return localInferenceEngine.voice() !== null;
+	}
+
+	async transcribeWav(wav: Uint8Array, signal?: AbortSignal) {
+		const audio = decodeMonoPcm16Wav(wav);
+		return localInferenceEngine.transcribePcmTimed(audio, signal);
+	}
+}
+
+async function registerTimedAsrService(runtime: AgentRuntime): Promise<void> {
+	if (typeof runtime.registerService !== "function") return;
+	await runtime.registerService(TimedAsrService);
+}
+
+/**
  * AOSP / generic-FFI path: load the fused `libelizainference.so` into the bun
  * process via `bun:ffi` (the AOSP plugin's loader; libllama is retired). The
  * loader stays inactive at runtime when neither `ELIZA_LOCAL_LLAMA === "1"`
@@ -1502,6 +1531,7 @@ export async function ensureLocalInferenceHandler(
 	// event — capturing our own handlers below plus anything else that
 	// registers during the rest of boot. Idempotent per-runtime.
 	handlerRegistry.installOn(runtime);
+	await registerTimedAsrService(runtime);
 
 	// Loader precedence:
 	//   1. AOSP native FFI loader when running inside the AOSP agent process

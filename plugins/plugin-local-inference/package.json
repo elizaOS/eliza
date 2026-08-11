@@ -109,6 +109,7 @@
 		"test": "NODE_OPTIONS='--experimental-sqlite' vitest run && bun run test:ci-scripts",
 		"test:ci-scripts": "node --test scripts/local-inference-attest.test.mjs scripts/local-inference-performance-check.test.mjs",
 		"test:asr:real": "NODE_OPTIONS='--experimental-sqlite' bun scripts/asr-real-smoke.ts",
+		"meetingstress:real": "NODE_OPTIONS='--experimental-sqlite' bun scripts/meeting-acoustic-stress-real.ts",
 		"test:kokoro:real": "bun scripts/kokoro-real-smoke.ts",
 		"probe:sd-cpp": "node scripts/probe-sd-cpp.mjs --human",
 		"memory:benchmark": "bun run scripts/memory-benchmark.ts",

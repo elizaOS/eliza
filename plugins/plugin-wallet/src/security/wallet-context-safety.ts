@@ -1,9 +1,10 @@
 /**
  * Security guards that stand between untrusted message/channel content and
  * on-chain financial writes. `assertWalletFinancialActionAllowed` blocks
- * transfer/swap/bridge/pump_fun_buy subactions, governance votes, and
- * steward TRADE order submission when core has flagged the inbound message
- * as suspected prompt injection (GHSA-gh63-5vpj-39qp).
+ * transfer/swap/bridge/pump_fun_buy subactions, governance votes, LIQUIDITY
+ * open/close/reposition writes, and steward TRADE order submission when core
+ * has flagged the inbound message as suspected prompt injection
+ * (GHSA-gh63-5vpj-39qp).
  * `assertEvmTransferRecipientAuthorized` / `messageAuthorizesEvmRecipient`
  * and the Solana equivalents `assertSolanaTransferRecipientAuthorized` /
  * `messageAuthorizesSolanaRecipient` enforce that a transfer recipient (EVM
@@ -34,6 +35,14 @@ export const ON_CHAIN_WRITE_SUBACTIONS: ReadonlySet<string> = new Set([
   // governance votes/delegations are on-chain writes; an injected message must not
   // drive them any more than it may drive a transfer
   "gov",
+  // LP-owned verbs from lp/actions/liquidity.ts (not wallet-router Zod
+  // enums). They move the same vault funds through DEX adapters and route
+  // through both gates. Do not reuse these names on the wallet router without
+  // namespacing — a future router `close` would inherit injection-block +
+  // mandatory confirmation.
+  "open",
+  "close",
+  "reposition",
 ]);
 
 export const FINANCIAL_WRITE_SUBACTIONS: ReadonlySet<string> = new Set([
@@ -142,7 +151,7 @@ export function assertWalletFinancialActionAllowed(
   }
   if (messageHasPromptInjectionFlag(message)) {
     throw new Error(
-      "Wallet transfers, swaps, bridges, pump.fun buys, governance votes, and trade orders are blocked for this message (GHSA-gh63-5vpj-39qp): suspected prompt injection in untrusted channel content.",
+      "Wallet transfers, swaps, bridges, pump.fun buys, governance votes, liquidity operations, and trade orders are blocked for this message (GHSA-gh63-5vpj-39qp): suspected prompt injection in untrusted channel content.",
     );
   }
 }

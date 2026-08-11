@@ -102,6 +102,22 @@ describe("managed Eliza environment", () => {
     expect(result.environmentVars.WAIFU_ELIZA_CLOUD_AGENT_ID).toBe("cloud-agent-1");
   });
 
+  test("marks managed containers as cloud-provisioned for UI env detection", async () => {
+    const { prepareManagedElizaBaseEnvironment } = await import("./managed-eliza-config");
+
+    const result = await prepareManagedElizaBaseEnvironment({
+      organizationId: "org-1",
+      userId: "user-1",
+      agentSandboxId: "cloud-agent-1",
+      existingEnv: {
+        // Callers must not be able to clear the managed hosting marker.
+        ELIZA_CLOUD_PROVISIONED: "0",
+      },
+    });
+
+    expect(result.environmentVars.ELIZA_CLOUD_PROVISIONED).toBe("1");
+  });
+
   test("preserves waifu-provided hosted UI enablement", async () => {
     const { prepareManagedElizaBaseEnvironment } = await import("./managed-eliza-config");
 

@@ -711,6 +711,37 @@ function recoverEvaluatorTextOutput(
 		};
 	}
 
+	// A response that IS an envelope — fenced or bare — but failed strict
+	// parsing is machinery, never prose. Salvage the known over-escaping
+	// quirk first (small models emit \\" and \\n inside string values, which
+	// terminates the JSON string early); if the repaired envelope parses, the
+	// user gets the answer trapped in `messageToUser`. If it still cannot be
+	// parsed, replan — the raw envelope must never ship as a reply (live
+	// leak 2026-08-10: a whole fenced FINISH envelope posted to the channel
+	// because only the trailing-envelope strip below guarded this path).
+	const envelopeShaped = looksLikeEvaluatorEnvelopeText(text);
+	if (envelopeShaped) {
+		const salvaged = salvageOverEscapedEnvelope(text);
+		if (salvaged) {
+			return {
+				success: salvaged.success,
+				decision: salvaged.decision,
+				thought: salvaged.thought,
+				messageToUser: salvaged.messageToUser,
+				raw: { recoverySource: "salvaged_over_escaped_envelope" },
+			};
+		}
+		return {
+			...output,
+			success: false,
+			decision: "CONTINUE",
+			thought:
+				"Evaluator emitted a malformed envelope instead of evaluator JSON; replanning from recorded tool results.",
+			parseError: undefined,
+			raw: { recoverySource: "malformed_envelope_text" },
+		};
+	}
+
 	if (!hasSuccessfulToolResult(trajectory)) return output;
 	if (!looksLikeUserFacingAnswer(text)) return output;
 
@@ -785,6 +816,78 @@ function stripTrailingEvaluatorEnvelope(text: string): string {
 	}
 	if (!isEvaluatorEnvelopeObject(parsed)) return text;
 	return trimmed.slice(0, trimmed.length - candidate.length).trimEnd();
+}
+
+/**
+ * True when the (fence-stripped) text is a single evaluator envelope by shape:
+ * one leading JSON object carrying the envelope's discriminator keys. Shape
+ * detection is deliberately parse-free so it still classifies envelopes whose
+ * JSON is broken — that is exactly the case it exists for.
+ */
+function looksLikeEvaluatorEnvelopeText(text: string): boolean {
+	const body = stripJsonFence(text);
+	if (!body.startsWith("{")) return false;
+	return (
+		/"success"\s*:/.test(body) &&
+		(/"decision"\s*:/.test(body) || /"route"\s*:/.test(body))
+	);
+}
+
+function stripJsonFence(text: string): string {
+	return text
+		.trim()
+		.replace(/^```(?:json)?\s*/i, "")
+		.replace(/\s*```$/, "")
+		.trim();
+}
+
+/**
+ * Deterministic repair for the known small-model envelope quirk: string
+ * values emitted with doubled escapes (`\\"`, `\\n`), where the literal
+ * backslash terminates the JSON string early and the whole envelope fails to
+ * parse. Collapses double-backslash-before-escape-char into a single escape
+ * and re-parses. Returns the normalized envelope only when the repaired body
+ * parses AND looks like a real envelope with a usable string
+ * `messageToUser`; anything else returns undefined so the caller replans.
+ */
+function salvageOverEscapedEnvelope(text: string):
+	| {
+			success: boolean;
+			decision: "FINISH" | "CONTINUE";
+			thought: string;
+			messageToUser: string;
+	  }
+	| undefined {
+	const body = stripJsonFence(text);
+	const repaired = body.replace(/\\\\(["nrt])/g, "\\$1");
+	if (repaired === body) return undefined;
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(repaired);
+	} catch {
+		// error-policy:J3 untrusted model output; unrepairable stays unparsed
+		// and the caller replans instead of shipping it.
+		return undefined;
+	}
+	if (!isEvaluatorEnvelopeObject(parsed)) return undefined;
+	const record = parsed as Record<string, unknown>;
+	const messageToUser =
+		typeof record.messageToUser === "string" ? record.messageToUser.trim() : "";
+	if (!messageToUser) return undefined;
+	const rawDecision = (
+		(typeof record.decision === "string" && record.decision) ||
+		(typeof record.route === "string" && record.route) ||
+		"FINISH"
+	).toUpperCase();
+	return {
+		success: record.success === true,
+		decision: rawDecision === "CONTINUE" ? "CONTINUE" : "FINISH",
+		thought:
+			typeof record.thought === "string"
+				? record.thought
+				: "Recovered from an over-escaped evaluator envelope.",
+		messageToUser,
+	};
 }
 
 function isEvaluatorEnvelopeObject(value: unknown): boolean {

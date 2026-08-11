@@ -61,12 +61,13 @@ function makeEffects(): {
 
 /** The wrapped list-lookup failure `selectOrProvisionCloudAgent` throws when
  * the bound (deleted) agent's origin answers the agent list with the cloud
- * router's structural agent-gone shape. */
+ * router's structural agent-gone shape (`agent_not_found` code). */
 function agentGoneError(): Error {
   return new Error("agent not found or not running", {
     cause: Object.assign(new Error("agent not found or not running"), {
       kind: "http",
       status: 404,
+      code: "agent_not_found",
       path: "/api/cloud/compat/agents",
     }),
   });

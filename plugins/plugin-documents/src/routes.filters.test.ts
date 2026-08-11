@@ -392,6 +392,9 @@ describe("GET /api/documents/search — roomId pushed into service scope (#13593
       tags: ["help"],
       scope: "global",
       addedBy: AGENT_ID,
+      transcriptId: "transcript-1",
+      startMs: 12_500,
+      endMs: 15_000,
     });
     helpFragment.content.text = "The chat pill opens Eliza from every view.";
     helpFragment.similarity = 0.92;
@@ -443,6 +446,9 @@ describe("GET /api/documents/search — roomId pushed into service scope (#13593
         {
           documentId: "help-doc",
           documentTitle: "Getting started",
+          transcriptId: "transcript-1",
+          startMs: 12_500,
+          endMs: 15_000,
         },
       ],
     });

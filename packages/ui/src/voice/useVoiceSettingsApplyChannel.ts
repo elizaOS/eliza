@@ -21,7 +21,9 @@ import {
 } from "@elizaos/shared/events";
 import { useViewEvent } from "../hooks/useViewEvent";
 import {
+  loadOsIntentAutoStartConsent,
   saveContinuousChatMode,
+  saveOsIntentAutoStartConsent,
   saveVadAutoStop,
   type VadAutoStopValue,
 } from "../state/persistence";
@@ -63,5 +65,22 @@ export function useVoiceSettingsApplyChannel(): void {
 
     const vadAutoStop = readVadAutoStop(payload.vadAutoStop);
     if (vadAutoStop) saveVadAutoStop(vadAutoStop);
+
+    if (
+      typeof payload.osIntentAutoStartVoice === "boolean" ||
+      typeof payload.osIntentAutoStartTranscription === "boolean"
+    ) {
+      const current = loadOsIntentAutoStartConsent();
+      saveOsIntentAutoStartConsent({
+        voice:
+          typeof payload.osIntentAutoStartVoice === "boolean"
+            ? payload.osIntentAutoStartVoice
+            : current.voice,
+        transcription:
+          typeof payload.osIntentAutoStartTranscription === "boolean"
+            ? payload.osIntentAutoStartTranscription
+            : current.transcription,
+      });
+    }
   });
 }

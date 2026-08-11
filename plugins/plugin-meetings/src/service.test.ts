@@ -3,7 +3,11 @@
  * single-bot-per-meeting enforcement, roster, transcript persistence, and
  * listing. Deterministic: fake runtime plus scripted adapter/pipeline.
  */
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
+  buildMeetingArtifactFixtures,
   DEFAULT_MEETING_MAX_DURATION_MS,
   MEETING_TRANSCRIPT_FINALIZED_EVENT,
 } from "@elizaos/shared";
@@ -25,9 +29,12 @@ function makeService(
   billingSessions: FakeMeetingBillingSession[] = [],
 ) {
   const fake = makeFakeRuntime();
-  const { deps, pipelines } = scriptedDeps(adapters, billingSessions);
+  const { deps, pipelines, pipelineOptions } = scriptedDeps(
+    adapters,
+    billingSessions,
+  );
   const service = new MeetingService(fake.runtime, deps);
-  return { fake, service, pipelines, adapters };
+  return { fake, service, pipelines, pipelineOptions, adapters };
 }
 
 describe("MeetingService.requestJoin — validation", () => {
@@ -53,6 +60,65 @@ describe("MeetingService.requestJoin — validation", () => {
     await expect(
       service.requestJoin({ platform: "google_meet", meetingUrl: MEET_URL }),
     ).rejects.toBeInstanceOf(MeetingJoinError);
+  });
+
+  it("fails closed on organization-managed runtimes before media setup", async () => {
+    const adapter = new ScriptedAdapter("google_meet");
+    const { fake, service, pipelines } = makeService([adapter]);
+    fake.settings.ELIZAOS_CLOUD_ORG_ID = "org-policy-managed";
+
+    await expect(
+      service.requestJoin({ platform: "google_meet", meetingUrl: MEET_URL }),
+    ).rejects.toMatchObject({ code: "policy_blocked" });
+    expect(pipelines).toHaveLength(0);
+    expect(adapter.session).toBeNull();
+    expect(fake.memories.size).toBe(0);
+  });
+
+  it("honors explicit allow and deny capture policy decisions", async () => {
+    const deniedAdapter = new ScriptedAdapter("google_meet");
+    const {
+      fake: deniedFake,
+      service: deniedService,
+      pipelines: deniedPipelines,
+    } = makeService([deniedAdapter]);
+    deniedFake.settings.ELIZA_MEETINGS_CAPTURE_POLICY = "deny";
+    await expect(
+      deniedService.requestJoin({
+        platform: "google_meet",
+        meetingUrl: MEET_URL,
+      }),
+    ).rejects.toMatchObject({ code: "policy_blocked" });
+    expect(deniedPipelines).toHaveLength(0);
+    expect(deniedAdapter.session).toBeNull();
+
+    const allowedAdapter = new ScriptedAdapter("google_meet");
+    const { fake: allowedFake, service: allowedService } = makeService([
+      allowedAdapter,
+    ]);
+    allowedFake.settings.ELIZAOS_CLOUD_ORG_ID = "org-policy-managed";
+    allowedFake.settings.ELIZA_MEETINGS_CAPTURE_POLICY = "allow";
+    const session = await allowedService.requestJoin({
+      platform: "google_meet",
+      meetingUrl: MEET_URL,
+    });
+    expect(session.status).toBe("requested");
+    await allowedAdapter.started;
+    expect(allowedAdapter.session).not.toBeNull();
+  });
+
+  it("does not treat an explicitly disabled cloud runtime as organization-managed", async () => {
+    const adapter = new ScriptedAdapter("google_meet");
+    const { fake, service } = makeService([adapter]);
+    fake.settings.ELIZAOS_CLOUD_ENABLED = "false";
+
+    const session = await service.requestJoin({
+      platform: "google_meet",
+      meetingUrl: MEET_URL,
+    });
+    expect(session.status).toBe("requested");
+    await adapter.started;
+    expect(adapter.session).not.toBeNull();
   });
 
   it("enforces single-bot-per-meeting across URL spellings", async () => {
@@ -213,6 +279,46 @@ describe("MeetingService.requestJoin — validation", () => {
     expect(adapter.session).toBeNull();
     expect(service.listSessions()).toHaveLength(0);
     expect(billing.reserveInitialCalls).toBe(1);
+  });
+});
+
+describe("MeetingService.importZoomMeeting", () => {
+  it("persists imported canonical spans and never stores the OAuth token", async () => {
+    const fake = makeFakeRuntime();
+    const { deps } = scriptedDeps([]);
+    const artifact = buildMeetingArtifactFixtures().zoomPerParticipant;
+    if (!artifact) throw new Error("Expected Zoom artifact fixture");
+    let receivedToken = "";
+    deps.importZoomCloudMeeting = async (input) => {
+      receivedToken = input.accessToken;
+      return {
+        artifact,
+        warnings: ["fixture-warning"],
+        requestIds: ["zoom-request-1"],
+      };
+    };
+    const service = new MeetingService(fake.runtime, deps);
+
+    const result = await service.importZoomMeeting({
+      meetingId: "123456789",
+      accessToken: "private-zoom-token",
+    });
+
+    expect(receivedToken).toBe("private-zoom-token");
+    expect(result.transcript.status).toBe("ready");
+    expect(result.transcript.segments).toHaveLength(1);
+    expect(result.transcript.metadata).toMatchObject({
+      capture: { mode: "platform_import" },
+      meetingArtifact: { schemaVersion: "eliza.meeting_artifact.v1" },
+      zoomImport: {
+        warnings: ["fixture-warning"],
+        requestIds: ["zoom-request-1"],
+      },
+    });
+    expect(JSON.stringify([...fake.memories.values()])).not.toContain(
+      "private-zoom-token",
+    );
+    expect(fake.documents).toHaveLength(1);
   });
 });
 
@@ -425,6 +531,39 @@ describe("MeetingService — session state machine", () => {
 });
 
 describe("MeetingService — roster, transcripts, listing", () => {
+  it("passes calendar attendees into the speaker-name policy input", async () => {
+    const { service, pipelineOptions } = makeService();
+    await service.requestJoin({
+      platform: "google_meet",
+      meetingUrl: MEET_URL,
+      calendarEventId: "event-123",
+      ghostAttendance: {
+        ownerUserId: "owner-1",
+        ownerDisplayName: "Shaw",
+        careAbouts: [],
+        attendees: [
+          { name: "Alice Chen", email: "alice@example.com" },
+          { name: "Bob Jones", email: "bob@example.com" },
+        ],
+      },
+    });
+
+    expect(pipelineOptions[0]?.calendarSpeakerEvidence).toEqual([
+      {
+        source: "calendar_attendee",
+        name: "Alice Chen",
+        confidence: 0.82,
+        evidenceId: "event-123",
+      },
+      {
+        source: "calendar_attendee",
+        name: "Bob Jones",
+        confidence: 0.82,
+        evidenceId: "event-123",
+      },
+    ]);
+  });
+
   it("wires participants to entities and tracks join/leave", async () => {
     const adapter = new ScriptedAdapter("google_meet");
     const { fake, service, pipelines } = makeService([adapter]);
@@ -497,6 +636,69 @@ describe("MeetingService — roster, transcripts, listing", () => {
     expect((fake.documents[0].metadata as { tags: string[] }).tags).toContain(
       "transcript",
     );
+  });
+
+  it("persists real Zoom bot capture as a shared canonical artifact", async () => {
+    const previousStateDir = process.env.ELIZA_STATE_DIR;
+    const stateDir = mkdtempSync(join(tmpdir(), "eliza-zoom-bot-artifact-"));
+    process.env.ELIZA_STATE_DIR = stateDir;
+    try {
+      const adapter = new ScriptedAdapter("zoom");
+      const { fake, service, pipelines } = makeService([adapter]);
+      const dto = await service.requestJoin({
+        platform: "zoom",
+        meetingUrl: "https://zoom.us/j/1234567890",
+      });
+      const botSession = await adapter.started;
+      botSession.sink.participantJoined({
+        id: "zoom-alice",
+        displayName: "Alice",
+      });
+      const speech = segment(
+        "zoom-span-1",
+        "Alice",
+        "Hello from Zoom.",
+        0,
+        1_000,
+      );
+      pipelines[0].finalSegments = [speech];
+      pipelines[0].audioWav = Buffer.from([82, 73, 70, 70, 1, 2, 3, 4]);
+
+      adapter.end("normal_completion");
+      await new Promise((resolve) => setTimeout(resolve, 10));
+
+      const row = fake.memories.get(dto.transcriptId as string);
+      const transcript = row ? readTranscriptRow(row) : null;
+      if (!transcript) throw new Error("Expected a finalized Zoom transcript");
+      expect(transcript.audioUrl).toMatch(/^\/api\/media\/[a-f0-9]{64}\.wav$/);
+      expect(transcript.metadata?.meetingArtifact).toMatchObject({
+        schemaVersion: "eliza.meeting_artifact.v1",
+        meeting: {
+          id: "1234567890",
+          platform: "zoom",
+          captureMode: "platform_bot",
+        },
+        sourceStreams: [
+          expect.objectContaining({
+            label: expect.stringContaining("mixed_audio_only"),
+          }),
+        ],
+        transcriptSpans: [
+          expect.objectContaining({
+            id: "zoom-span-1",
+            platformParticipantId: "zoom-alice",
+          }),
+        ],
+      });
+      expect(transcript.metadata?.zoomCapture).toMatchObject({
+        capturePath: "bot_web_client",
+        sourceLoss: ["mixed_audio_only", "per_participant_audio_unavailable"],
+      });
+    } finally {
+      if (previousStateDir === undefined) delete process.env.ELIZA_STATE_DIR;
+      else process.env.ELIZA_STATE_DIR = previousStateDir;
+      rmSync(stateDir, { recursive: true, force: true });
+    }
   });
 
   it("emits the finalized transcript event with ghost-attendance context", async () => {

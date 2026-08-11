@@ -36,6 +36,17 @@ import type {
   LaunchSnapshot,
 } from "./launch/types";
 import type {
+  ShellAuthorityCommandPush,
+  ShellAuthorityCommandResult,
+  ShellAuthorityCompleteCommandParams,
+  ShellAuthorityConnectParams,
+  ShellAuthorityDeliverParams,
+  ShellAuthorityDeliveryPush,
+  ShellAuthorityDispatchCommandParams,
+  ShellAuthorityPublishSnapshotParams,
+  ShellAuthorityState,
+} from "./shell-sync-relay";
+import type {
   TraceEvent,
   TraceRecordEventParams,
   TraceSearchParams,
@@ -1541,6 +1552,14 @@ export type ElizaDesktopRPCSchema = {
         params: DesktopHttpRequestOptions;
         response: DesktopHttpRequestResult;
       };
+      nativeTranscriptPublishStream: {
+        params: { schema: string; events: unknown[] };
+        response: { view: unknown; rejectedIndexes: number[] };
+      };
+      nativeTranscriptReadViewModel: {
+        params: undefined;
+        response: { view: unknown };
+      };
       localAgentRequest: {
         params: LocalAgentRequestOptions;
         response: LocalAgentRequestResult;
@@ -2155,6 +2174,32 @@ export type ElizaDesktopRPCSchema = {
         params: undefined;
         response: StewardRpcStatus;
       };
+
+      // Main-process authority for the one cross-window chat/voice controller.
+      shellControllerConnect: {
+        params: ShellAuthorityConnectParams;
+        response: ShellAuthorityState;
+      };
+      shellControllerHeartbeat: {
+        params: ShellAuthorityConnectParams;
+        response: ShellAuthorityState;
+      };
+      shellControllerPublishSnapshot: {
+        params: ShellAuthorityPublishSnapshotParams;
+        response: { ok: boolean };
+      };
+      shellControllerDispatchCommand: {
+        params: ShellAuthorityDispatchCommandParams;
+        response: ShellAuthorityCommandResult;
+      };
+      shellControllerCompleteCommand: {
+        params: ShellAuthorityCompleteCommandParams;
+        response: { ok: boolean };
+      };
+      shellControllerDeliver: {
+        params: ShellAuthorityDeliverParams;
+        response: { ok: boolean };
+      };
     };
     // biome-ignore lint/complexity/noBannedTypes: empty message schema placeholder for future audio streaming
     messages: {
@@ -2187,6 +2232,12 @@ export type ElizaDesktopRPCSchema = {
     };
     messages: {
       // Push events FROM bun TO webview
+
+      // Main-authoritative shell controller state, command, delivery, and ping.
+      shellControllerAuthorityState: ShellAuthorityState;
+      shellControllerAuthorityCommand: ShellAuthorityCommandPush;
+      shellControllerAuthorityDelivery: ShellAuthorityDeliveryPush;
+      shellControllerAuthorityPing: { generation: number; now: number };
 
       // Gateway
       gatewayDiscovery: {

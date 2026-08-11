@@ -42,6 +42,7 @@ const chatSchema = z.object({
   platform: platformSchema.optional(),
   platformUserId: z.string().trim().max(256).optional(),
   platformDisplayName: z.string().trim().max(120).optional(),
+  statusOnly: z.boolean().optional(),
 });
 
 /**
@@ -145,6 +146,7 @@ app.post("/", async (c) => {
       authenticatedUser: caller.authenticatedUser,
       trustedPlatformIdentity: caller.trustedPlatformIdentity,
       idempotencyKey: idempotencyKey || undefined,
+      statusOnly: parsed.data.statusOnly ?? false,
     });
 
     // A platform gateway relays a reply back over the connector; it reads
@@ -177,11 +179,12 @@ app.post("/", async (c) => {
   } catch (error) {
     if (
       isElizaError(error) &&
-      error.code === "ONBOARDING_PLATFORM_IDENTITY_MISMATCH"
+      (error.code === "ONBOARDING_PLATFORM_IDENTITY_MISMATCH" ||
+        error.code === "ONBOARDING_TRUSTED_CONTINUATION_INVALID")
     ) {
-      // error-policy:J1 translate the service's fail-closed identity mismatch
-      // into a stable user-facing authorization response.
-      logger.warn("[eliza-app onboarding/chat] Platform identity mismatch", {
+      // error-policy:J1 translate fail-closed continuation rejection into one
+      // stable authorization response without disclosing session existence.
+      logger.warn("[eliza-app onboarding/chat] Continuation rejected", {
         context: error.context,
       });
       return failureResponse(

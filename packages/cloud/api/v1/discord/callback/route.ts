@@ -15,6 +15,11 @@ import {
 import { managedAgentDiscordService } from "@/lib/services/agent-managed-discord";
 import { discordAutomationService } from "@/lib/services/discord-automation";
 import type { OAuthState } from "@/lib/services/discord-automation/types";
+import {
+  clearOAuthSuccessParams,
+  isOAuthSuccessLandingPath,
+  mintOAuthSuccessProof,
+} from "@/lib/services/oauth/success-proof";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -96,22 +101,54 @@ app.get("/", async (c) => {
     }
   }
 
-  function redirectWithStatus(
+  async function redirectWithStatus(
     status: "connected" | "error",
     params: Record<string, string>,
-  ): Response {
+    binding?: { organizationId: string; userId: string },
+  ): Promise<Response> {
     const target = new URL(returnTarget.toString());
+    // Drop reserved OAuth success markers so a prior success URL cannot keep a
+    // valid proof across a Discord error (or a different provider completion).
+    clearOAuthSuccessParams(target);
+    // Legacy marker retained for non-/auth/success consumers.
     target.searchParams.set("discord", status);
     Object.entries(params).forEach(([key, value]) => {
       target.searchParams.set(key, value);
     });
+    // `/auth/success` requires platform + a one-time org/user-bound proof.
+    // Discord bot OAuth has no connection_id; mint only when binding is known.
+    if (
+      status === "connected" &&
+      isOAuthSuccessLandingPath(target.pathname) &&
+      binding
+    ) {
+      target.searchParams.set("platform", "discord");
+      target.searchParams.set("discord_connected", "true");
+      const proof = await mintOAuthSuccessProof({
+        platform: "discord",
+        organizationId: binding.organizationId,
+        userId: binding.userId,
+      });
+      if (proof) {
+        target.searchParams.set("proof", proof);
+      } else {
+        // Discord bot OAuth has no connection_id — without a bound proof the
+        // success page cannot verify. Fail closed instead of a false Connected.
+        logger.error(
+          "[Discord Callback] success proof secret/ticket unavailable; cannot verify /auth/success without a proof",
+        );
+        clearOAuthSuccessParams(target);
+        target.searchParams.set("discord", "error");
+        target.searchParams.set("message", "success_proof_unavailable");
+      }
+    }
     return Response.redirect(target.toString());
   }
 
   // Handle OAuth errors (user cancelled, etc.)
   if (error) {
     logger.warn("[Discord Callback] OAuth error", { error, errorDescription });
-    return redirectWithStatus("error", {
+    return await redirectWithStatus("error", {
       message: errorDescription || error,
     });
   }
@@ -124,7 +161,7 @@ app.get("/", async (c) => {
       hasCode: !!code,
       hasDecodedState: !!decodedState,
     });
-    return redirectWithStatus("error", { message: "missing_params" });
+    return await redirectWithStatus("error", { message: "missing_params" });
   }
 
   try {
@@ -174,21 +211,35 @@ app.get("/", async (c) => {
           },
         });
 
-        return redirectWithStatus("connected", {
-          managed: "1",
-          agentId: decodedState.agentId,
-          guildId: result.guildId ?? guildId,
-          guildName: result.guildName || "",
-          restarted: connected.restarted ? "1" : "0",
-        });
+        return await redirectWithStatus(
+          "connected",
+          {
+            managed: "1",
+            agentId: decodedState.agentId,
+            guildId: result.guildId ?? guildId,
+            guildName: result.guildName || "",
+            restarted: connected.restarted ? "1" : "0",
+          },
+          {
+            organizationId: decodedState.organizationId,
+            userId: decodedState.userId,
+          },
+        );
       }
 
-      return redirectWithStatus("connected", {
-        guildId: result.guildId ?? guildId,
-        guildName: result.guildName || "",
-      });
+      return await redirectWithStatus(
+        "connected",
+        {
+          guildId: result.guildId ?? guildId,
+          guildName: result.guildName || "",
+        },
+        {
+          organizationId: decodedState.organizationId,
+          userId: decodedState.userId,
+        },
+      );
     } else {
-      return redirectWithStatus("error", {
+      return await redirectWithStatus("error", {
         message: result.error || "unknown",
       });
     }
@@ -196,7 +247,7 @@ app.get("/", async (c) => {
     logger.error("[Discord Callback] Unexpected error", {
       error: err instanceof Error ? err.message : "Unknown error",
     });
-    return redirectWithStatus("error", { message: "callback_failed" });
+    return await redirectWithStatus("error", { message: "callback_failed" });
   }
 });
 

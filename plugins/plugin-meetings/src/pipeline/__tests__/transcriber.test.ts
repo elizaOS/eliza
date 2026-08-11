@@ -1,7 +1,7 @@
 /**
- * RuntimeModelAsrBackend — the ASR seam that WAV-encodes a PCM window and routes
- * it through `runtime.useModel(TRANSCRIPTION)`, returning text plus word
- * timings. Deterministic: the model is a capturing fake.
+ * RuntimeModelAsrBackend prefers an available timed-ASR runtime service and
+ * otherwise routes WAV windows through `runtime.useModel(TRANSCRIPTION)`.
+ * Deterministic: both collaborators are capturing fakes.
  */
 import { Buffer } from "node:buffer";
 import type { IAgentRuntime } from "@elizaos/core";
@@ -26,10 +26,19 @@ function runtimeWith(
     localTranscription?: boolean;
     localProvider?: string;
     metadataLocal?: boolean;
+    timedAsr?: {
+      isAvailable(): boolean;
+      transcribeWav(wav: Buffer): Promise<{
+        text: string;
+        words?: Array<{ text: string; startMs: number; endMs: number }>;
+      }>;
+    };
   },
 ): IAgentRuntime {
   return {
     useModel,
+    getService: (name: string) =>
+      name === "timedAsr" ? (opts?.timedAsr ?? null) : null,
     getModelRegistrations: () =>
       opts?.localTranscription
         ? [
@@ -81,6 +90,54 @@ describe("RuntimeModelAsrBackend", () => {
       billable: true,
       reason: "meeting-final-window",
     });
+  });
+
+  it("uses the additive timed-ASR service and returns real word spans", async () => {
+    const useModel = vi.fn();
+    const transcribeWav = vi.fn().mockResolvedValue({
+      text: "hello meeting",
+      words: [
+        { text: "hello", startMs: 0, endMs: 350 },
+        { text: "meeting", startMs: 350, endMs: 900 },
+      ],
+    });
+    const backend = new RuntimeModelAsrBackend(
+      runtimeWith(useModel, {
+        timedAsr: { isAvailable: () => true, transcribeWav },
+      }),
+    );
+
+    await expect(backend.transcribe(WAV, {})).resolves.toEqual({
+      text: "hello meeting",
+      words: [
+        { text: "hello", startMs: 0, endMs: 350 },
+        { text: "meeting", startMs: 350, endMs: 900 },
+      ],
+    });
+    expect(transcribeWav).toHaveBeenCalledWith(WAV, undefined);
+    expect(useModel).not.toHaveBeenCalled();
+  });
+
+  it("uses timed ASR for interim windows without requiring a model registration", async () => {
+    const useModel = vi.fn();
+    const transcribeWav = vi.fn().mockResolvedValue({
+      text: "partial meeting",
+      words: [{ text: "partial", startMs: 0, endMs: 300 }],
+    });
+    const backend = new RuntimeModelAsrBackend(
+      runtimeWith(useModel, {
+        timedAsr: { isAvailable: () => true, transcribeWav },
+      }),
+    );
+
+    await expect(
+      backend.transcribe(WAV, { purpose: "interim" }),
+    ).resolves.toEqual({
+      text: "partial meeting",
+      words: [{ text: "partial", startMs: 0, endMs: 300 }],
+    });
+    expect(transcribeWav).toHaveBeenCalledWith(WAV, undefined);
+    expect(useModel).not.toHaveBeenCalled();
   });
 
   it("routes interim LocalAgreement windows to local inference as non-billable", async () => {

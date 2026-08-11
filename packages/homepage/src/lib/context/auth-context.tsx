@@ -53,7 +53,9 @@ interface AuthResult {
   errorCode?: string;
 }
 
-export type TelegramLoginResult = AuthResult;
+export type TelegramLoginResult = AuthResult & {
+  continuationRedeemed?: boolean;
+};
 export type DiscordLoginResult = AuthResult;
 export type WhatsAppLoginResult = AuthResult;
 export type SolanaLoginResult = AuthResult & { address?: string };
@@ -69,6 +71,7 @@ interface AuthContextValue {
     data: TelegramAuthData,
     phoneNumber: string,
     existingToken?: string,
+    onboardingSession?: string | null,
   ) => Promise<TelegramLoginResult>;
   loginWithDiscord: (
     code: string,
@@ -106,6 +109,7 @@ interface TelegramAuthResponse {
     expires_at: string;
   };
   is_new_user: boolean;
+  continuation_redeemed?: boolean;
   error?: string;
   code?: string;
 }
@@ -243,6 +247,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       data: TelegramAuthData,
       phoneNumber: string,
       existingToken?: string,
+      onboardingSession?: string | null,
     ): Promise<TelegramLoginResult> => {
       setIsLoading(true);
       setError(null);
@@ -261,6 +266,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             body: JSON.stringify({
               ...data,
               phone_number: phoneNumber,
+              ...(onboardingSession && {
+                onboarding_session: onboardingSession,
+              }),
             }),
           },
         );
@@ -278,7 +286,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const token = response.session.token;
         setSessionToken(token);
         await fetchUserInfo(token);
-        return { success: true };
+        return {
+          success: true,
+          continuationRedeemed: response.continuation_redeemed === true,
+        };
       } catch (err) {
         const result = parseAuthError(err);
         setError(result.error ?? "Authentication failed");

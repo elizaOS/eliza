@@ -411,6 +411,51 @@ export interface ErrorReportedPayload extends EventPayload {
 	roomId?: UUID;
 }
 
+/** Evidence sources accepted by the cross-plugin speaker-name policy. */
+export type VoiceSpeakerNameEvidenceSource =
+	| "platform_roster"
+	| "calendar_attendee"
+	| "self_introduction"
+	| "user_correction"
+	| "voice_profile"
+	| "speaker_memory";
+
+/** One inspectable source behind a speaker-name candidate. */
+export interface VoiceSpeakerNameProvenancePayload {
+	source: VoiceSpeakerNameEvidenceSource;
+	confidence: number;
+	evidenceId?: string;
+	entityId?: string;
+	profileId?: string;
+	observedAt?: string;
+}
+
+/** Candidate retained for review when the policy cannot confirm a name. */
+export interface VoiceSpeakerNameCandidatePayload {
+	name: string;
+	normalizedName: string;
+	confidence: number;
+	sources: VoiceSpeakerNameEvidenceSource[];
+	provenance: VoiceSpeakerNameProvenancePayload[];
+}
+
+/**
+ * Transport-safe result of the deterministic speaker-name policy.
+ *
+ * The producer owns evidence collection and policy evaluation. The entity
+ * graph consumes only a confirmed decision; review, withheld, and unknown
+ * decisions remain inspectable without creating or rebinding an identity.
+ */
+export interface VoiceSpeakerNameInferencePayload {
+	resolution: "confirmed" | "needs_confirmation" | "withheld" | "unknown";
+	displayName?: string;
+	confidence: number;
+	candidateNames: VoiceSpeakerNameCandidatePayload[];
+	provenance: VoiceSpeakerNameProvenancePayload[];
+	reasonCodes: string[];
+	requiresReview: boolean;
+}
+
 /**
  * Payload for {@link EventType.VOICE_TURN_OBSERVED}.
  *
@@ -434,6 +479,12 @@ export interface VoiceTurnObservedPayload extends EventPayload {
 	isOwner?: boolean;
 	/** ISO timestamp of the observation. */
 	observedAt?: string;
+	/**
+	 * Evaluated name provenance for an explicit correction or meeting speaker.
+	 * When present, consumers must bind only `resolution: "confirmed"` and must
+	 * not infer identity again from the display text.
+	 */
+	speakerNameInference?: VoiceSpeakerNameInferencePayload;
 }
 
 /**
@@ -452,6 +503,8 @@ export interface VoiceEntityBoundPayload extends EventPayload {
 	displayName?: string;
 	/** True when the merge engine created a new entity (vs. matched one). */
 	wasCreated?: boolean;
+	/** Name decision persisted alongside the voice-profile binding. */
+	speakerNameInference?: VoiceSpeakerNameInferencePayload;
 }
 
 export interface FormFieldEventPayload extends EventPayload {

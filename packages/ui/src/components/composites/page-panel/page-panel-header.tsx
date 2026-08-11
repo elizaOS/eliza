@@ -128,28 +128,43 @@ export function PanelNotice({
   tone = "default",
   ...props
 }: PanelNoticeProps) {
+  // Tone colors the copy only — never the action rail. Cascading `text-muted`
+  // onto buttons made primary CTAs (accent fill) render with unreadable labels.
+  const toneClass =
+    tone === "accent"
+      ? "text-txt"
+      : tone === "warning"
+        ? "text-txt"
+        : tone === "danger"
+          ? "text-danger"
+          : "text-muted";
+
   return (
     <div
       className={cn(
-        "px-1 py-2 text-sm",
-        tone === "accent"
-          ? "text-txt"
-          : tone === "warning"
-            ? "text-txt"
-            : tone === "danger"
-              ? "text-danger"
-              : "text-muted",
+        // Dense by default — callers that need air add it explicitly. The old
+        // px-1 py-2 read as empty padding inside accordion/setup rows.
+        "px-0 py-0 text-sm",
         className,
       )}
       {...props}
     >
       {actions ? (
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div>{children}</div>
-          <div className="shrink-0">{actions}</div>
+        // Always left copy / right actions (wrap only when the row is too
+        // narrow). Avoid sm:-only row which stacked buttons under the copy on
+        // mid-width settings panes.
+        <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
+          <div
+            className={cn("min-w-0 flex-1 basis-[min(100%,16rem)]", toneClass)}
+          >
+            {children}
+          </div>
+          <div className="ml-auto flex shrink-0 flex-wrap items-center justify-end gap-2 text-txt-strong">
+            {actions}
+          </div>
         </div>
       ) : (
-        children
+        <div className={toneClass}>{children}</div>
       )}
     </div>
   );

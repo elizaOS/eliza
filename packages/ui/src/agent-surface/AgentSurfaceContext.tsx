@@ -13,7 +13,7 @@ import {
   AgentSurfaceContext,
   type AgentSurfaceContextValue,
 } from "./AgentSurfaceContext.hooks";
-import { getOrCreateViewRegistry, removeViewRegistry } from "./registry";
+import { getOrCreateViewRegistry, retainViewRegistry } from "./registry";
 import type { AgentViewType } from "./types";
 
 export interface AgentSurfaceProviderProps {
@@ -41,15 +41,12 @@ export function AgentSurfaceProvider({
     };
   }
 
-  useEffect(() => {
-    // Re-assert the module-map entry on mount (it may have been created above
-    // during render) and tear it down on unmount.
-    getOrCreateViewRegistry(viewId, viewType);
-    return () => removeViewRegistry(viewId, viewType);
-  }, [viewId, viewType]);
+  const value = valueRef.current;
+
+  useEffect(() => retainViewRegistry(value.registry), [value.registry]);
 
   return (
-    <AgentSurfaceContext.Provider value={valueRef.current}>
+    <AgentSurfaceContext.Provider value={value}>
       {children}
     </AgentSurfaceContext.Provider>
   );

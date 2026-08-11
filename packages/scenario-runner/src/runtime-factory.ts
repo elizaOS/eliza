@@ -80,6 +80,7 @@ const DETERMINISTIC_MODEL_PROVIDER_NAME =
 const SCHEDULED_DISPATCH_RENDER_PROMPT_PREFIX =
   "You are the owner's personal assistant. A scheduled task just fired and you must now write the message to send to the owner.";
 const SCHEDULED_DISPATCH_RENDER_INSTRUCTION_MARKER = "\nInstruction:\n";
+const SCHEDULED_DISPATCH_RENDER_MESSAGE_MARKER = "\n\nMessage:";
 const SCHEDULED_DISPATCH_RENDER_FIRED_AT_MARKER = "\n\nFired at:";
 const SCHEDULED_DISPATCH_TITLE_PROMPT_PREFIX =
   "You are the owner's personal assistant. Write a concise notification title for the scheduled message below.";
@@ -374,7 +375,6 @@ export function isScheduledDispatchRenderPrompt(prompt: string): boolean {
   return (
     prompt.startsWith(SCHEDULED_DISPATCH_RENDER_PROMPT_PREFIX) &&
     prompt.includes(SCHEDULED_DISPATCH_RENDER_INSTRUCTION_MARKER) &&
-    prompt.includes(SCHEDULED_DISPATCH_RENDER_FIRED_AT_MARKER) &&
     prompt.trimEnd().endsWith("Message:")
   );
 }
@@ -385,16 +385,22 @@ export function deterministicScheduledDispatchRenderText(
   const instructionStart = prompt.indexOf(
     SCHEDULED_DISPATCH_RENDER_INSTRUCTION_MARKER,
   );
-  const firedAtStart = prompt.indexOf(
-    SCHEDULED_DISPATCH_RENDER_FIRED_AT_MARKER,
+  // The instruction section ends at "Message:" in the current prompt shape;
+  // legacy prompts carried a trailing "Fired at:" line first. Stop at whichever
+  // marker follows the instruction earliest.
+  const instructionEnd = Math.min(
+    ...[
+      prompt.indexOf(SCHEDULED_DISPATCH_RENDER_FIRED_AT_MARKER),
+      prompt.lastIndexOf(SCHEDULED_DISPATCH_RENDER_MESSAGE_MARKER),
+    ].filter((index) => index > instructionStart),
   );
   const instruction =
-    instructionStart >= 0 && firedAtStart > instructionStart
+    instructionStart >= 0 && Number.isFinite(instructionEnd)
       ? prompt
           .slice(
             instructionStart +
               SCHEDULED_DISPATCH_RENDER_INSTRUCTION_MARKER.length,
-            firedAtStart,
+            instructionEnd,
           )
           .trim()
       : "";
@@ -405,15 +411,20 @@ export function deterministicScheduledDispatchRenderText(
     .replace(/^gentle check-in:\s*/i, "")
     .replace(/\s+/g, " ")
     .trim();
-  // Echo the instruction (minus its "remind the owner to …" framing) as the
-  // rendered body. A deterministic stand-in for the dispatch-render model must be
-  // predictable so scenarios can assert the delivered copy exactly; a decorative
-  // "Quick nudge:" prefix only diverged the rendered message from the reminder
-  // text every scheduled-dispatch scenario checks against.
-  return ownerMessage || "checking in.";
+  // A deterministic stand-in for the dispatch-render model must be predictable
+  // so scenarios can assert the delivered copy exactly, but the renderer's
+  // instruction-echo guard rejects copy that equals (or, at >=64 chars,
+  // contains) the raw instruction. Prefix the de-framed instruction and clamp
+  // long instructions so the deterministic copy always passes that guard.
+  if (!ownerMessage) return "checking in.";
+  const clamped =
+    ownerMessage.length >= 64
+      ? `${ownerMessage.slice(0, 60).trimEnd()}…`
+      : ownerMessage;
+  return `Heads up: ${clamped}`;
 }
 
-// The dispatcher renders a notification TITLE through a second TEXT_LARGE call
+// The dispatcher renders a notification TITLE through a second model call
 // after the body. Left unanswered, the strict proxy rejects it, the in_app
 // dispatcher's notify branch swallows the throw, and delivery silently drops to
 // zero surfaces — reported as `disconnected`, so the task advances without firing
@@ -501,7 +512,13 @@ function deterministicCallTextCandidates(
 export function resolveScenarioDeterministicModelCall(
   call: ScenarioDeterministicModelCall,
 ): string | null {
-  if (call.modelType !== ModelType.TEXT_LARGE) {
+  // Scheduled-dispatch voicing renders through TEXT_SMALL (dispatch-render.ts);
+  // older callers used TEXT_LARGE. Accept both so zero-key scenario lanes keep
+  // deterministic copy for either surface.
+  if (
+    call.modelType !== ModelType.TEXT_LARGE &&
+    call.modelType !== ModelType.TEXT_SMALL
+  ) {
     return null;
   }
   const candidates = deterministicCallTextCandidates(call);
@@ -628,7 +645,6 @@ export async function createScenarioRuntime(
     process.env.ELIZA_DISABLE_PROACTIVE_AGENT;
   const prevElizaDisableLifeOpsScheduler =
     process.env.ELIZA_DISABLE_LIFEOPS_SCHEDULER;
-  const prevSkillsSyncCatalogOnStart = process.env.SKILLS_SYNC_CATALOG_ON_START;
   const prevSkillsDir = process.env.SKILLS_DIR;
   const scenarioSkillsRoot =
     executionProfile === "simulated" && !prevSkillsDir?.trim()
@@ -643,10 +659,6 @@ export async function createScenarioRuntime(
   }
   if (scenarioSkillsRoot) {
     process.env.SKILLS_DIR = scenarioSkillsRoot;
-  }
-  if (executionProfile === "simulated") {
-    process.env.SKILLS_SYNC_CATALOG_ON_START =
-      prevSkillsSyncCatalogOnStart ?? "false";
   }
   if (!process.env.LOCAL_EMBEDDING_DIMENSIONS?.trim()) {
     process.env.LOCAL_EMBEDDING_DIMENSIONS = "384";
@@ -678,8 +690,6 @@ export async function createScenarioRuntime(
   const scenarioRuntimeSettings =
     executionProfile === "simulated"
       ? {
-          SKILLS_SYNC_CATALOG_ON_START:
-            process.env.SKILLS_SYNC_CATALOG_ON_START ?? "false",
           ...(process.env.SKILLS_DIR
             ? { SKILLS_DIR: process.env.SKILLS_DIR }
             : {}),
@@ -692,12 +702,9 @@ export async function createScenarioRuntime(
     plugins: [],
     logLevel: "warn",
     enableAutonomy: false,
-    // The agent-skills service reads SKILLS_DIR / SKILLS_SYNC_CATALOG_ON_START
-    // via runtime.getSetting(), which does NOT consult process.env. Mirror the
-    // scenario env into runtime settings so skills storage lands in the
-    // throwaway temp dir and the boot-time catalog sync stays off — otherwise
-    // every scenario hits the real registry at boot (network dependency) and
-    // pollutes ./skills in the repo.
+    // The agent-skills service reads SKILLS_DIR via runtime.getSetting(), which
+    // does not consult process.env. Mirror the scenario env into runtime
+    // settings so skills storage lands in the throwaway temp directory.
     // These settings exist only to keep the legacy simulated harness
     // deterministic. Provider-qualified runs inherit the production defaults.
     settings: scenarioRuntimeSettings,
@@ -992,11 +999,6 @@ export async function createScenarioRuntime(
         prevElizaDisableLifeOpsScheduler;
     } else {
       delete process.env.ELIZA_DISABLE_LIFEOPS_SCHEDULER;
-    }
-    if (prevSkillsSyncCatalogOnStart !== undefined) {
-      process.env.SKILLS_SYNC_CATALOG_ON_START = prevSkillsSyncCatalogOnStart;
-    } else {
-      delete process.env.SKILLS_SYNC_CATALOG_ON_START;
     }
     if (prevSkillsDir !== undefined) {
       process.env.SKILLS_DIR = prevSkillsDir;

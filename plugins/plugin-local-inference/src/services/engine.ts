@@ -122,13 +122,15 @@ function resolveVoiceSkeletonStreamFields(
 	return fields;
 }
 
-function skeletonHasFreeStringKey(
+function skeletonHasStringKey(
 	skeleton: ResponseSkeleton | undefined,
 	key: string,
 ): boolean {
 	return (
 		skeleton?.spans.some(
-			(span) => span.kind === "free-string" && span.key === key,
+			(span) =>
+				(span.kind === "free-string" || span.kind === "enum") &&
+				span.key === key,
 		) ?? false
 	);
 }
@@ -1857,16 +1859,12 @@ export class LocalInferenceEngine {
 				: [];
 		const hasShouldRespondGate =
 			args.streamStructured === true &&
-			skeletonHasFreeStringKey(args.responseSkeleton, "shouldRespond");
+			skeletonHasStringKey(args.responseSkeleton, "shouldRespond");
 		const extractorStreamFields =
 			hasShouldRespondGate && !structuredVoiceFields.includes("shouldRespond")
 				? ["shouldRespond", ...structuredVoiceFields]
 				: structuredVoiceFields;
-		const userVisibleVoice =
-			args.voiceOutput === "user-visible" ||
-			(args.voiceOutput === undefined &&
-				(typeof args.onTextChunk === "function" ||
-					structuredVoiceFields.length > 0));
+		const userVisibleVoice = args.voiceOutput === "user-visible";
 		if (!voiceOn || !bridge || !userVisibleVoice) {
 			return {
 				args,
@@ -1922,6 +1920,7 @@ export class LocalInferenceEngine {
 				? new ResponseSkeletonStreamExtractor({
 						skeleton: args.responseSkeleton,
 						streamFields: extractorStreamFields,
+						unordered: true,
 						abortSignal: bargeAbort.signal,
 						onChunk: (chunk: string, field?: string) => {
 							if (chunk.length === 0) return;

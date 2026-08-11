@@ -36,6 +36,11 @@ const WEBHOOK_GATEWAY_SECRET_ENV_KEYS = [
 // the Discord handler) and stamped ONLY on gateway forwards.
 const GATEWAY_SECRET_HEADER = "x-eliza-webhook-forwarder-secret";
 
+// Blooio documents a five-minute replay window. The edge and gateway must use
+// the same tolerance or a valid provider retry can pass one boundary and fail
+// the other.
+const BLOOIO_SIGNATURE_TOLERANCE_SECONDS = 300;
+
 function readStringEnv(c: AppContext, keys: readonly string[]): string | null {
   for (const key of keys) {
     const value = c.env[key];
@@ -168,7 +173,8 @@ async function verifyBlooioSignature(
   const timestamp = Number.parseInt(timestampPart.slice(2), 10);
   if (!Number.isFinite(timestamp)) return false;
   const now = Math.floor(Date.now() / 1000);
-  if (Math.abs(now - timestamp) > 120) return false;
+  if (Math.abs(now - timestamp) > BLOOIO_SIGNATURE_TOLERANCE_SECONDS)
+    return false;
 
   const expected = signaturePart.slice(3);
   const computed = await hmacHex(secret, `${timestamp}.${rawBody}`, "SHA-256");
@@ -331,6 +337,7 @@ interface ProxyOptions extends ForwardOptions {
   // trust header is ALWAYS stripped regardless, so a client can never inject it
   // — even on the Discord path, which never stamps.
   stampGatewaySecret?: boolean;
+  headerOverrides?: Readonly<Record<string, string>>;
 }
 
 async function proxyRequest(
@@ -359,6 +366,9 @@ async function proxyRequest(
     if (gatewaySecret) {
       headers.set(GATEWAY_SECRET_HEADER, gatewaySecret);
     }
+  }
+  for (const [name, value] of Object.entries(options.headerOverrides ?? {})) {
+    headers.set(name, value);
   }
 
   try {
@@ -439,10 +449,37 @@ export async function forwardToWebhookGateway(
   target.pathname = `/webhook/${encodeURIComponent(project)}/${platform}${suffix}`;
   target.search = sourceUrl.search;
 
+  const headerOverrides: Record<string, string> = {};
+  if (platform === "twilio") {
+    const secret = platformSecret(c, platform);
+    const body = signedBody ?? "";
+    if (secret) {
+      // Twilio signs the complete public webhook URL. The BFF changes the path
+      // from /api/eliza-app/webhook/twilio to /webhook/eliza-app/twilio, so the
+      // original signature cannot pass the gateway's second verification. The
+      // edge has already authenticated that signature; re-sign the exact URL
+      // the gateway reconstructs from X-Forwarded-Host/Proto plus its route.
+      const gatewayVerificationUrl = new URL(target);
+      gatewayVerificationUrl.protocol = sourceUrl.protocol;
+      gatewayVerificationUrl.host = sourceUrl.host;
+      const params = new URLSearchParams(body);
+      const sorted = Array.from(params.entries())
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([key, value]) => `${key}${value}`)
+        .join("");
+      headerOverrides["x-twilio-signature"] = await hmacBase64(
+        secret,
+        `${gatewayVerificationUrl.toString()}${sorted}`,
+        "SHA-1",
+      );
+    }
+  }
+
   return proxyRequest(c, target, "webhook gateway", {
     ...options,
     body: options.body ?? signedBody,
     stampGatewaySecret: true,
+    headerOverrides,
   });
 }
 

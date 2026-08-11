@@ -32,18 +32,39 @@ class FixtureSkillsService extends Service {
   getCatalogStats(): ReturnType<AgentSkillsService["getCatalogStats"]> {
     return {
       loaded: 1,
-      installed: 1,
       total: 1,
-      cachedAt: null,
       storageType: "memory",
-      categories: ["productivity"],
-    };
+    } as ReturnType<AgentSkillsService["getCatalogStats"]>;
   }
 
   async stop(): Promise<void> {}
 }
 
 describe("Agent Skills runtime lifecycle", () => {
+  it("starts without publishing commands when the optional service is absent", async () => {
+    const skillsPlugin: Plugin = {
+      name: "fixture-agent-skills-without-commands",
+      description: "Uses Agent Skills without an optional commands service",
+      services: [
+        FixtureSkillsService as ServiceClass,
+        AgentSkillsPluginLifecycleService as ServiceClass,
+      ],
+    };
+    const runtime = new AgentRuntime({ logLevel: "fatal" });
+    await runtime.initialize({ allowNoDatabase: true, skipMigrations: true });
+
+    try {
+      await runtime.registerPlugin(skillsPlugin);
+      await expect(
+        runtime.getServiceLoadPromise(
+          AgentSkillsPluginLifecycleService.serviceType,
+        ),
+      ).resolves.toBeInstanceOf(AgentSkillsPluginLifecycleService);
+    } finally {
+      await runtime.stop({ fast: true });
+    }
+  });
+
   it("waits for a delayed commands service before publishing skill commands", async () => {
     const commandsStart = Promise.withResolvers<void>();
     const registeredKeys: string[] = [];

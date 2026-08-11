@@ -14,6 +14,8 @@ export interface StackUrls {
 
 export const PLAYWRIGHT_TEST_AUTH_SECRET =
   "playwright-local-auth-secret-32bytes";
+export const ELIZA_APP_TEST_JWT_SECRET =
+  "eliza-app-local-e2e-jwt-secret-32bytes";
 const CLOUD_E2E_LOCAL_ROOT_KEY = "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=";
 
 /**
@@ -83,6 +85,8 @@ export function buildSharedEnv(
     // Playwright test auth bypass — secret read by cloud-shared auth helpers
     PLAYWRIGHT_TEST_AUTH: "true",
     PLAYWRIGHT_TEST_AUTH_SECRET: PLAYWRIGHT_TEST_AUTH_SECRET,
+    ELIZA_APP_JWT_SECRET:
+      process.env.ELIZA_APP_JWT_SECRET ?? ELIZA_APP_TEST_JWT_SECRET,
     NEXT_PUBLIC_PLAYWRIGHT_TEST_AUTH: "true",
     VITE_PLAYWRIGHT_TEST_AUTH: "true",
     // Stub the Cloudflare registrar/DNS so domain check/buy routes never hit

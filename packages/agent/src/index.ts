@@ -238,6 +238,7 @@ export * from "./runtime/core-plugins.ts";
 export * from "./runtime/eliza.ts";
 export * from "./runtime/eliza-plugin.ts";
 export * from "./runtime/first-run-names.ts";
+export { extractPlugin } from "./runtime/load-plugin-from-vfs.ts";
 export {
   isCloudExecutionMode,
   type LocalExecutionMode,
@@ -454,6 +455,7 @@ export * from "./services/tee-runtime-config.ts";
 export * from "./services/tee-sealed-volume.ts";
 export * from "./services/tee-signer-backend.ts";
 export { resolveDefaultAgentWorkspaceDir } from "./shared/workspace-resolution.ts";
+export * from "./triggers/humanize.ts";
 export * from "./triggers/runtime.ts";
 export * from "./triggers/scheduling.ts";
 export * from "./triggers/types.ts";

@@ -1,6 +1,6 @@
 /**
  * The Skills view (`/skills`): browses the agent's installed runtime skills and
- * the skill marketplace for installing new ones. Renders a full-page layout or a
+ * installs new ones directly from GitHub. Renders a full-page layout or a
  * compact modal variant depending on the `inModal` prop. Skill data and
  * install/create mutations come from the app store; tiles register with the
  * agent surface via `useAgentElement`.
@@ -26,7 +26,7 @@ import { StatusBadge } from "../ui/status-badge";
 import { Switch } from "../ui/switch";
 import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
 import { EditSkillModal, SkillsModalView } from "./skill-detail-panel";
-import { InstallModal } from "./skill-marketplace";
+import { InstallModal } from "./skill-installer";
 
 /* ── Agent-controllable child controls (hooks must stay at top level) ── */
 
@@ -156,12 +156,9 @@ function SkillsFullViewContent({
     skillReviewId,
     skillReviewLoading,
     skillToggleAction,
-    skillsMarketplaceQuery,
-    skillsMarketplaceResults,
-    skillsMarketplaceError,
-    skillsMarketplaceLoading,
-    skillsMarketplaceAction,
-    skillsMarketplaceManualGithubUrl,
+    skillInstallError,
+    skillInstallAction,
+    skillInstallGithubUrl,
     loadSkills,
     refreshSkills,
     handleSkillToggle,
@@ -169,13 +166,7 @@ function SkillsFullViewContent({
     handleDeleteSkill,
     handleReviewSkill,
     handleAcknowledgeSkill,
-    searchSkillsMarketplace,
-    installSkillFromMarketplace,
-    uninstallMarketplaceSkill,
     installSkillFromGithubUrl,
-    enableMarketplaceSkill,
-    disableMarketplaceSkill,
-    copyMarketplaceSkillSource,
     setState,
     t,
   } = useAppSelectorShallow((s) => ({
@@ -188,12 +179,9 @@ function SkillsFullViewContent({
     skillReviewId: s.skillReviewId,
     skillReviewLoading: s.skillReviewLoading,
     skillToggleAction: s.skillToggleAction,
-    skillsMarketplaceQuery: s.skillsMarketplaceQuery,
-    skillsMarketplaceResults: s.skillsMarketplaceResults,
-    skillsMarketplaceError: s.skillsMarketplaceError,
-    skillsMarketplaceLoading: s.skillsMarketplaceLoading,
-    skillsMarketplaceAction: s.skillsMarketplaceAction,
-    skillsMarketplaceManualGithubUrl: s.skillsMarketplaceManualGithubUrl,
+    skillInstallError: s.skillInstallError,
+    skillInstallAction: s.skillInstallAction,
+    skillInstallGithubUrl: s.skillInstallGithubUrl,
     loadSkills: s.loadSkills,
     refreshSkills: s.refreshSkills,
     handleSkillToggle: s.handleSkillToggle,
@@ -201,13 +189,7 @@ function SkillsFullViewContent({
     handleDeleteSkill: s.handleDeleteSkill,
     handleReviewSkill: s.handleReviewSkill,
     handleAcknowledgeSkill: s.handleAcknowledgeSkill,
-    searchSkillsMarketplace: s.searchSkillsMarketplace,
-    installSkillFromMarketplace: s.installSkillFromMarketplace,
-    uninstallMarketplaceSkill: s.uninstallMarketplaceSkill,
     installSkillFromGithubUrl: s.installSkillFromGithubUrl,
-    enableMarketplaceSkill: s.enableMarketplaceSkill,
-    disableMarketplaceSkill: s.disableMarketplaceSkill,
-    copyMarketplaceSkillSource: s.copyMarketplaceSkillSource,
     setState: s.setState,
     t: s.t,
   }));
@@ -334,7 +316,7 @@ function SkillsFullViewContent({
     role: "button",
     label: t("common.install", { defaultValue: "Install" }),
     group: "skills-toolbar",
-    description: "Open the skill marketplace install dialog",
+    description: "Open the direct GitHub skill installer",
     onActivate: () => setInstallModalOpen(true),
   });
 
@@ -861,25 +843,13 @@ function SkillsFullViewContent({
       )}
       {installModalOpen && (
         <InstallModal
-          skills={skills}
-          skillsMarketplaceQuery={skillsMarketplaceQuery}
-          skillsMarketplaceResults={skillsMarketplaceResults}
-          skillsMarketplaceError={skillsMarketplaceError}
-          skillsMarketplaceLoading={skillsMarketplaceLoading}
-          skillsMarketplaceAction={skillsMarketplaceAction}
-          skillsMarketplaceManualGithubUrl={skillsMarketplaceManualGithubUrl}
-          searchSkillsMarketplace={searchSkillsMarketplace}
-          installSkillFromMarketplace={installSkillFromMarketplace}
-          uninstallMarketplaceSkill={uninstallMarketplaceSkill}
-          installSkillFromGithubUrl={installSkillFromGithubUrl}
-          enableSkill={enableMarketplaceSkill}
-          disableSkill={disableMarketplaceSkill}
-          copySkillSource={copyMarketplaceSkillSource}
-          showSkillDetails={(skillId) => {
-            setSelectedId(skillId);
-            setInstallModalOpen(false);
-          }}
-          setState={setState}
+          githubUrl={skillInstallGithubUrl}
+          error={skillInstallError}
+          installing={skillInstallAction === "install:github"}
+          onGithubUrlChange={(value) =>
+            setState("skillInstallGithubUrl", value)
+          }
+          onInstall={installSkillFromGithubUrl}
           onClose={() => setInstallModalOpen(false)}
         />
       )}
