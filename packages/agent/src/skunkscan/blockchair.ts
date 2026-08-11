@@ -87,6 +87,16 @@ type BlockchairEnvelope<T> = {
   context?: BlockchairContext;
 };
 
+// Same lesson learned fixing Solana's token-holdings timeout: a timer
+// cleared right after fetch() resolves never protects a slow BODY read,
+// since fetch() only waits for response headers, not the full payload -
+// live-confirmed there (fetch() resolved at ~700ms while the body took 40+
+// seconds to fully transfer for an oversized response). The timeout below
+// stays armed across fetch() AND every response.json() call on both the
+// error and success paths, all inside one try, cleared only in the shared
+// finally once every await that touches the response is done.
+const BLOCKCHAIR_TIMEOUT_MS = 20_000;
+
 async function callBlockchairRestWithContext<T>(
   path: string,
   searchParams: Record<string, string> = {},
@@ -101,40 +111,61 @@ async function callBlockchairRestWithContext<T>(
 
   url.searchParams.set("key", apiKey);
 
-  const response = await fetch(url.toString(), {
-    method: "GET",
-    headers: {
-      Accept: "application/json",
-    },
-  });
+  const controller = new AbortController();
+  const timeoutHandle = setTimeout(
+    () => controller.abort(),
+    BLOCKCHAIR_TIMEOUT_MS,
+  );
 
-  if (!response.ok) {
-    let blockchairMessage: string | null = null;
+  try {
+    const response = await fetch(url.toString(), {
+      method: "GET",
+      headers: {
+        Accept: "application/json",
+      },
+      signal: controller.signal,
+    });
 
-    try {
-      const body = (await response.json()) as { context?: BlockchairContext };
-      blockchairMessage = body.context?.error ?? null;
-    } catch {
-      // Body wasn't JSON (or was empty) - fall back to status-only.
+    if (!response.ok) {
+      let blockchairMessage: string | null = null;
+
+      try {
+        const body = (await response.json()) as {
+          context?: BlockchairContext;
+        };
+        blockchairMessage = body.context?.error ?? null;
+      } catch {
+        // Body wasn't JSON (or was empty) - fall back to status-only.
+      }
+
+      throw new BlockchairRequestError(response.status, blockchairMessage);
     }
 
-    throw new BlockchairRequestError(response.status, blockchairMessage);
+    const envelope = (await response.json()) as BlockchairEnvelope<T>;
+
+    // Blockchair signals real errors (rate limits, invalid input, IP
+    // blacklisting) with HTTP 200 and data: null, not a non-2xx status - a
+    // caller that only checked response.ok would silently treat these as
+    // successful empty results.
+    if (envelope.data === null) {
+      throw new BlockchairRequestError(
+        envelope.context?.code ?? response.status,
+        envelope.context?.error ?? null,
+      );
+    }
+
+    return { data: envelope.data, context: envelope.context };
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") {
+      throw new Error(
+        `Blockchair request timed out after ${BLOCKCHAIR_TIMEOUT_MS}ms (${path})`,
+      );
+    }
+
+    throw error;
+  } finally {
+    clearTimeout(timeoutHandle);
   }
-
-  const envelope = (await response.json()) as BlockchairEnvelope<T>;
-
-  // Blockchair signals real errors (rate limits, invalid input, IP
-  // blacklisting) with HTTP 200 and data: null, not a non-2xx status - a
-  // caller that only checked response.ok would silently treat these as
-  // successful empty results.
-  if (envelope.data === null) {
-    throw new BlockchairRequestError(
-      envelope.context?.code ?? response.status,
-      envelope.context?.error ?? null,
-    );
-  }
-
-  return { data: envelope.data, context: envelope.context };
 }
 
 async function callBlockchairRest<T>(
