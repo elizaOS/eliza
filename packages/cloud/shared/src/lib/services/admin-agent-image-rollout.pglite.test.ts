@@ -2237,6 +2237,47 @@ describe("admin agent image rollout on primary PGlite", () => {
     }
   });
 
+  test("a second canary accepts the immutable demo image as its exact source pair", async () => {
+    const seeded = await seedAgents(1);
+    const firstTarget = seeded.targets[0]!;
+    const nextImage = `ghcr.io/elizaos/eliza-demo@${NEXT_DIGEST}`;
+    await dbWrite
+      .update(agentSandboxes)
+      .set({ docker_image: TARGET_IMAGE, image_digest: TARGET_DIGEST })
+      .where(eq(agentSandboxes.id, firstTarget.agentId));
+
+    const result = await executeUpgradeCanary({
+      actorUserId: seeded.actorUserId,
+      targetImage: nextImage,
+      targets: [
+        {
+          ...firstTarget,
+          expectedSourceImage: TARGET_IMAGE,
+          expectedSourceDigest: TARGET_DIGEST,
+        },
+      ],
+    });
+
+    expect(result.targets).toEqual([
+      expect.objectContaining({
+        sourceImage: TARGET_IMAGE,
+        sourceDigest: TARGET_DIGEST,
+        targetImage: nextImage,
+        targetDigest: NEXT_DIGEST,
+      }),
+    ]);
+    const [job] = await dbWrite
+      .select()
+      .from(jobs)
+      .where(eq(jobs.type, JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE));
+    expect(readAdminCanaryImageJobData(job!)).toMatchObject({
+      sourceImage: TARGET_IMAGE,
+      sourceDigest: TARGET_DIGEST,
+      targetImage: nextImage,
+      targetDigest: NEXT_DIGEST,
+    });
+  });
+
   test("one conflicting fifth target rolls back every canary insert", async () => {
     const seeded = await seedAgents(5);
     const blocked = seeded.targets[4]!;

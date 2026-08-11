@@ -51,6 +51,7 @@ import { logger } from "../utils/logger";
 import { settleOffResponsePath } from "../utils/settle-off-response-path";
 import { withTimeout } from "../utils/with-timeout";
 import {
+  assertAdminCanaryUpgradeSourcePair,
   assertCanonicalSourceImage,
   assertDemoSourceImage,
   assertSha256Digest,
@@ -7891,8 +7892,8 @@ export class ElizaSandboxService {
     onCutoverInTx: AdminCanaryImageExecutionPolicy["onCutoverInTx"];
     onConvergedInTx: AdminCanaryImageExecutionPolicy["onConvergedInTx"];
   }): Promise<ImageSwapResult> {
-    assertCanonicalSourceImage(params.sourceImage, "sourceImage");
     assertSha256Digest(params.sourceDigest, "sourceDigest");
+    assertAdminCanaryUpgradeSourcePair(params.sourceImage, params.sourceDigest, "sourceImage");
     const target = parseAdminCanaryDemoImage(params.targetImage);
     if (target.digest !== params.targetDigest) {
       return { success: false, error: "Canary target image and digest do not match" };

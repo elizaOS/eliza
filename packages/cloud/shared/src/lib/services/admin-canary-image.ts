@@ -178,6 +178,25 @@ export function assertDemoSourceImage(image: string, field: string): void {
   }
 }
 
+/**
+ * An upgrade starts on the canonical release image, but a later canary starts
+ * on the immutable demo image produced by the earlier canary. Demo sources
+ * therefore require an exact image/digest pair; canonical sources retain their
+ * existing tag-plus-digest contract.
+ */
+export function assertAdminCanaryUpgradeSourcePair(
+  image: string,
+  digest: string,
+  field: string,
+): void {
+  if (imageRepo(image) === ADMIN_CANARY_CANONICAL_IMAGE_REPOSITORY) return;
+
+  const source = parseAdminCanaryDemoImage(image);
+  if (source.digest !== digest) {
+    throw ValidationError(`${field} digest must equal sourceDigest`);
+  }
+}
+
 function assertTargetExpectations(targets: AdminCanaryTargetExpectation[]): void {
   if (targets.length < 1 || targets.length > ADMIN_CANARY_MAX_TARGETS) {
     throw ValidationError(`targets must contain between 1 and ${ADMIN_CANARY_MAX_TARGETS} agents`);
@@ -193,7 +212,11 @@ function assertTargetExpectations(targets: AdminCanaryTargetExpectation[]): void
       throw ValidationError(`targets contains duplicate agent ${target.agentId}`);
     }
     seen.add(key);
-    assertCanonicalSourceImage(target.expectedSourceImage, `targets[${index}].expectedSourceImage`);
+    assertAdminCanaryUpgradeSourcePair(
+      target.expectedSourceImage,
+      target.expectedSourceDigest,
+      `targets[${index}].expectedSourceImage`,
+    );
   }
 }
 
@@ -365,7 +388,7 @@ export function assertAdminCanaryImageJobData(data: AdminCanaryImageJobData): vo
     if (data.sourceRolloutId !== undefined || data.sourceJobId !== undefined) {
       throw ValidationError("upgrade jobs cannot reference a rollback source");
     }
-    assertCanonicalSourceImage(data.sourceImage, "sourceImage");
+    assertAdminCanaryUpgradeSourcePair(data.sourceImage, data.sourceDigest, "sourceImage");
     const target = parseAdminCanaryDemoImage(data.targetImage);
     if (target.digest !== data.targetDigest) {
       throw ValidationError("targetImage digest must equal targetDigest");

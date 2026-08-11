@@ -7177,7 +7177,7 @@ describe("ElizaSandboxService.executeUpgrade blue/green rollback + CAS guard (LA
 
   test("admin canary requires reported blue digest and uses the primary exact-pair read", async () => {
     const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
-    const SOURCE_IMAGE = "ghcr.io/elizaos/eliza:sha-production";
+    const SOURCE_IMAGE = `ghcr.io/elizaos/eliza-demo@${FROM_DIGEST}`;
     const TARGET_IMAGE = `ghcr.io/elizaos/eliza-demo@${TO_DIGEST}`;
     const agent: AgentSandbox = { ...liveAgentRow(), docker_image: SOURCE_IMAGE };
     const primarySpy = spyOn(agentSandboxesRepository, "findByIdAndOrgForWrite").mockResolvedValue(

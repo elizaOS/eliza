@@ -47,6 +47,39 @@ describe("admin canary image contract", () => {
         ],
       }),
     ).not.toThrow();
+
+    expect(() =>
+      assertAdminCanaryRolloutInput({
+        operation: "upgrade",
+        requestId: REQUEST,
+        dryRun: true,
+        targetImage: `ghcr.io/elizaos/eliza-demo@${PLAN_FINGERPRINT}`,
+        targets: [
+          {
+            agentId: AGENT,
+            organizationId: ORG,
+            expectedSourceImage: TARGET_IMAGE,
+            expectedSourceDigest: TARGET_DIGEST,
+          },
+        ],
+      }),
+    ).not.toThrow();
+    expect(() =>
+      assertAdminCanaryRolloutInput({
+        operation: "upgrade",
+        requestId: REQUEST,
+        dryRun: true,
+        targetImage: `ghcr.io/elizaos/eliza-demo@${PLAN_FINGERPRINT}`,
+        targets: [
+          {
+            agentId: AGENT,
+            organizationId: ORG,
+            expectedSourceImage: TARGET_IMAGE,
+            expectedSourceDigest: SOURCE_DIGEST,
+          },
+        ],
+      }),
+    ).toThrow("must equal sourceDigest");
   });
 
   test("requires canonical lowercase request IDs without changing other UUID fields", () => {
@@ -163,6 +196,19 @@ describe("admin canary image contract", () => {
       canonicalRequestHash: REQUEST_HASH,
     };
     expect(() => assertAdminCanaryImageJobData(data)).not.toThrow();
+    expect(() =>
+      assertAdminCanaryImageJobData({
+        ...data,
+        sourceImage: TARGET_IMAGE,
+        sourceDigest: TARGET_DIGEST,
+      }),
+    ).not.toThrow();
+    expect(() =>
+      assertAdminCanaryImageJobData({
+        ...data,
+        sourceImage: TARGET_IMAGE,
+      }),
+    ).toThrow("must equal sourceDigest");
     expect(() => assertAdminCanaryImageJobData({ ...data, targetDigest: SOURCE_DIGEST })).toThrow(
       "must equal",
     );
