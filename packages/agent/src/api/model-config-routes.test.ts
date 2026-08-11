@@ -220,6 +220,33 @@ describe("POST /api/models/config chat writes", () => {
     });
   });
 
+  it("keeps endpoint validation independent from a catalog-backed model write", async () => {
+    const { ctx, json, config, managerStart } = makeHarness(
+      "POST",
+      { target: "large", model: "gpt-oss-120b" },
+      {
+        config: {
+          serviceRouting: {
+            llmText: {
+              backend: "cerebras",
+              transport: "direct",
+              accountId: "cerebras",
+            },
+          },
+          env: { OPENAI_BASE_URL: "not a URL" },
+        } as never,
+      },
+    );
+    await handleModelConfigRoutes(ctx as never);
+    expect(responseOf(json).status).toBeUndefined();
+    expect(managerStart).toHaveBeenCalledOnce();
+    const env = (config as Record<string, unknown>).env as Record<
+      string,
+      unknown
+    >;
+    expect(env.OPENAI_LARGE_MODEL).toBe("gpt-oss-120b");
+  });
+
   it("writes ANTHROPIC keys (model + per-target effort) for claude-chat", async () => {
     // sonnet-5, not haiku: haiku carries no chat effort knob (live-probed).
     const { ctx, config, processEnv } = makeHarness("POST", {
@@ -546,6 +573,24 @@ describe("GET /api/models/config activeChat", () => {
       },
     },
   } as never;
+  const directCerebrasConfig = {
+    serviceRouting: {
+      llmText: {
+        backend: "cerebras",
+        transport: "direct",
+        accountId: "cerebras",
+      },
+    },
+  } as never;
+  const directAnthropicConfig = {
+    serviceRouting: {
+      llmText: {
+        backend: "anthropic",
+        transport: "direct",
+        accountId: "anthropic",
+      },
+    },
+  } as never;
 
   it("names the cloud brain + its endpoint under cloud-proxy routing", async () => {
     const { ctx, json } = makeHarness("GET", null, {
@@ -581,16 +626,11 @@ describe("GET /api/models/config activeChat", () => {
 
   it("names the direct provider endpoint under cerebras routing and omits cloud defaults", async () => {
     const { ctx, json } = makeHarness("GET", null, {
-      config: {
-        serviceRouting: {
-          llmText: {
-            backend: "cerebras",
-            transport: "direct",
-            accountId: "cerebras",
-          },
-        },
-      } as never,
-      processEnv: { OPENAI_BASE_URL: "https://api.cerebras.ai/v1" },
+      config: directCerebrasConfig,
+      processEnv: {
+        OPENAI_BASE_URL: "https://api.cerebras.ai/v1",
+        CEREBRAS_BASE_URL: "https://unused.example/v1",
+      },
     });
     await handleModelConfigRoutes(ctx as never);
     const { body } = responseOf(json);
@@ -605,6 +645,343 @@ describe("GET /api/models/config activeChat", () => {
     >;
     expect(targets.small?.ELIZAOS_CLOUD_SMALL_MODEL).toBeNull();
     expect(targets.large?.ELIZAOS_CLOUD_LARGE_MODEL).toBeNull();
+  });
+
+  it("reports the canonical Cerebras endpoint when no base override exists", async () => {
+    const { ctx, json } = makeHarness("GET", null, {
+      config: directCerebrasConfig,
+      processEnv: { CEREBRAS_API_KEY: "cerebras-test-key" },
+    });
+    await handleModelConfigRoutes(ctx as never);
+    expect(responseOf(json).body.activeChat).toEqual({
+      provider: "cerebras",
+      family: "OPENAI",
+      endpoint: "api.cerebras.ai",
+    });
+  });
+
+  it("reports a configured Cerebras base when the OpenAI compatibility base is absent", async () => {
+    const { ctx, json } = makeHarness("GET", null, {
+      config: directCerebrasConfig,
+      processEnv: {
+        CEREBRAS_API_KEY: "cerebras-test-key",
+        CEREBRAS_BASE_URL: "https://private.cerebras.example/v1",
+      },
+    });
+    await handleModelConfigRoutes(ctx as never);
+    expect(responseOf(json).body.activeChat).toEqual({
+      provider: "cerebras",
+      family: "OPENAI",
+      endpoint: "private.cerebras.example",
+    });
+  });
+
+  it.each(["", "   "])(
+    "falls through a blank persisted OpenAI base to the nested plugin setting: %j",
+    async (blankBase) => {
+      const { ctx, json } = makeHarness("GET", null, {
+        config: {
+          serviceRouting: {
+            llmText: {
+              backend: "cerebras",
+              transport: "direct",
+              accountId: "cerebras",
+            },
+          },
+          env: {
+            OPENAI_BASE_URL: blankBase,
+            vars: { OPENAI_BASE_URL: "https://nested.cerebras.ai/v1" },
+          },
+        } as never,
+        processEnv: {
+          OPENAI_BASE_URL: "https://lower-priority.example/v1",
+        },
+      });
+      await handleModelConfigRoutes(ctx as never);
+      expect(responseOf(json).body.activeChat).toEqual({
+        provider: "cerebras",
+        family: "OPENAI",
+        endpoint: "nested.cerebras.ai",
+      });
+    },
+  );
+
+  it.each([
+    "not a URL",
+    "javascript:opaque",
+    "javascript://secret.example/private",
+  ])(
+    "returns an observable config error when the selected base is not an HTTP endpoint: %s",
+    async (openAiBase) => {
+      const { ctx, json } = makeHarness("GET", null, {
+        config: directCerebrasConfig,
+        processEnv: {
+          ELIZA_PROVIDER: "cerebras",
+          OPENAI_BASE_URL: openAiBase,
+          CEREBRAS_BASE_URL: "https://lower-priority.example/v1",
+        },
+      });
+      await handleModelConfigRoutes(ctx as never);
+      const { body, status } = responseOf(json);
+      expect(status).toBe(400);
+      expect(body).toEqual({
+        error:
+          "OPENAI_BASE_URL must be an absolute HTTP(S) URL with a hostname",
+        code: "MODEL_CONFIG_INVALID",
+        context: { key: "OPENAI_BASE_URL" },
+      });
+      expect(JSON.stringify(body)).not.toContain(openAiBase);
+    },
+  );
+
+  it("reports the EvoLink endpoint when the shared OpenAI plugin is in EvoLink mode", async () => {
+    const { ctx, json } = makeHarness("GET", null, {
+      config: directCerebrasConfig,
+      processEnv: {
+        ELIZA_PROVIDER: "evolink",
+        EVOLINK_API_KEY: "evolink-test-key",
+        EVOLINK_BASE_URL: "https://private.evolink.example/v1",
+      },
+    });
+    await handleModelConfigRoutes(ctx as never);
+    expect(responseOf(json).body.activeChat).toEqual({
+      provider: "cerebras",
+      family: "OPENAI",
+      endpoint: "private.evolink.example",
+    });
+  });
+
+  it("reports the test wire proxy that plugin-openai gives highest precedence", async () => {
+    const { ctx, json } = makeHarness("GET", null, {
+      config: directCerebrasConfig,
+      processEnv: {
+        CEREBRAS_API_KEY: "cerebras-test-key",
+        ELIZA_MOCK_OPENAI_BASE: "  https://wire-proxy.example/v1  ",
+      },
+    });
+    await handleModelConfigRoutes(ctx as never);
+    expect(responseOf(json).body.activeChat).toEqual({
+      provider: "cerebras",
+      family: "OPENAI",
+      endpoint: "wire-proxy.example",
+    });
+  });
+
+  it("reports the test wire proxy that plugin-anthropic gives highest precedence", async () => {
+    const { ctx, json } = makeHarness("GET", null, {
+      config: directAnthropicConfig,
+      processEnv: {
+        ANTHROPIC_BASE_URL: "https://configured.anthropic.example/v1",
+        ELIZA_MOCK_ANTHROPIC_BASE: "https://wire-anthropic.example/v1",
+      },
+    });
+    await handleModelConfigRoutes(ctx as never);
+    expect(responseOf(json).body.activeChat).toEqual({
+      provider: "claude-chat",
+      family: "ANTHROPIC",
+      endpoint: "wire-anthropic.example",
+    });
+  });
+
+  it.each([
+    {
+      name: "Eliza Cloud",
+      config: cloudRoutedConfig,
+      key: "ELIZAOS_CLOUD_BASE_URL",
+      value: "javascript://cloud-secret.example/private",
+    },
+    {
+      name: "Anthropic",
+      config: directAnthropicConfig,
+      key: "ANTHROPIC_BASE_URL",
+      value: "   ",
+      leakNeedle: null,
+    },
+  ])(
+    "returns an observable config error for an invalid $name base",
+    async ({ config, key, value, leakNeedle = value }) => {
+      const { ctx, json } = makeHarness("GET", null, {
+        config,
+        processEnv: { [key]: value },
+      });
+      await handleModelConfigRoutes(ctx as never);
+      const { body, status } = responseOf(json);
+      expect(status).toBe(400);
+      expect(body).toEqual({
+        error: `${key} must be an absolute HTTP(S) URL with a hostname`,
+        code: "MODEL_CONFIG_INVALID",
+        context: { key },
+      });
+      if (leakNeedle) expect(JSON.stringify(body)).not.toContain(leakNeedle);
+    },
+  );
+
+  it.each([
+    {
+      name: "Eliza Cloud",
+      config: cloudRoutedConfig,
+      key: "ELIZAOS_CLOUD_BASE_URL",
+      endpoint: "elizacloud.ai",
+    },
+    {
+      name: "Anthropic",
+      config: directAnthropicConfig,
+      key: "ANTHROPIC_BASE_URL",
+      endpoint: "api.anthropic.com",
+    },
+  ])(
+    "treats a blank $name base as unset, matching its plugin resolver",
+    async ({ config, key, endpoint }) => {
+      const { ctx, json } = makeHarness("GET", null, {
+        config,
+        processEnv: { [key]: "" },
+      });
+      await handleModelConfigRoutes(ctx as never);
+      const activeChat = responseOf(json).body.activeChat as {
+        endpoint: string;
+      };
+      expect(activeChat.endpoint).toBe(endpoint);
+    },
+  );
+
+  it("falls through a blank persisted Cloud base to the effective process setting", async () => {
+    const { ctx, json } = makeHarness("GET", null, {
+      config: {
+        serviceRouting: {
+          llmText: {
+            backend: "elizacloud",
+            transport: "cloud-proxy",
+            accountId: "elizacloud",
+          },
+        },
+        env: { ELIZAOS_CLOUD_BASE_URL: "" },
+      } as never,
+      processEnv: {
+        ELIZAOS_CLOUD_BASE_URL: "https://lower-priority.example/v1",
+      },
+    });
+    await handleModelConfigRoutes(ctx as never);
+    expect(responseOf(json).body.activeChat).toEqual({
+      provider: "elizacloud",
+      family: "ELIZAOS_CLOUD",
+      endpoint: "lower-priority.example",
+    });
+  });
+
+  it("falls through a blank runtime Anthropic base to its process setting", async () => {
+    const { ctx, json } = makeHarness("GET", null, {
+      config: {
+        serviceRouting: {
+          llmText: {
+            backend: "anthropic",
+            transport: "direct",
+            accountId: "anthropic",
+          },
+        },
+        env: { ANTHROPIC_BASE_URL: "   " },
+      } as never,
+      processEnv: {
+        ANTHROPIC_BASE_URL: "https://process.anthropic.example/v1",
+      },
+    });
+    await handleModelConfigRoutes(ctx as never);
+    expect(responseOf(json).body.activeChat).toEqual({
+      provider: "claude-chat",
+      family: "ANTHROPIC",
+      endpoint: "process.anthropic.example",
+    });
+  });
+
+  it("fails closed when a nested Anthropic base projects whitespace to the plugin process", async () => {
+    const { ctx, json } = makeHarness("GET", null, {
+      config: {
+        serviceRouting: {
+          llmText: {
+            backend: "anthropic",
+            transport: "direct",
+            accountId: "anthropic",
+          },
+        },
+        env: { vars: { ANTHROPIC_BASE_URL: "   " } },
+      } as never,
+      processEnv: {
+        ANTHROPIC_BASE_URL: "https://lower-priority.example/v1",
+      },
+    });
+    await handleModelConfigRoutes(ctx as never);
+    expect(responseOf(json)).toEqual({
+      body: {
+        error:
+          "ANTHROPIC_BASE_URL must be an absolute HTTP(S) URL with a hostname",
+        code: "MODEL_CONFIG_INVALID",
+        context: { key: "ANTHROPIC_BASE_URL" },
+      },
+      status: 400,
+    });
+  });
+
+  it("returns only the hostname from a credentialed compatible base", async () => {
+    const { ctx, json } = makeHarness("GET", null, {
+      config: directCerebrasConfig,
+      processEnv: {
+        OPENAI_BASE_URL:
+          "https://route-user:route-password@edge.cerebras.ai/v1?token=route-secret",
+      },
+    });
+    await handleModelConfigRoutes(ctx as never);
+    const activeChat = responseOf(json).body.activeChat;
+    expect(activeChat).toEqual({
+      provider: "cerebras",
+      family: "OPENAI",
+      endpoint: "edge.cerebras.ai",
+    });
+    expect(JSON.stringify(activeChat)).not.toMatch(
+      /route-user|route-password|route-secret|\/v1/,
+    );
+  });
+
+  it.each(["openai-test-key", "   "])(
+    "retains the OpenAI endpoint when an effective OpenAI key keeps the shared plugin out of Cerebras mode: %j",
+    async (openAiKey) => {
+      const { ctx, json } = makeHarness("GET", null, {
+        config: directCerebrasConfig,
+        processEnv: {
+          CEREBRAS_API_KEY: "cerebras-test-key",
+          OPENAI_API_KEY: openAiKey,
+        },
+      });
+      await handleModelConfigRoutes(ctx as never);
+      expect(responseOf(json).body.activeChat).toEqual({
+        provider: "cerebras",
+        family: "OPENAI",
+        endpoint: "api.openai.com",
+      });
+    },
+  );
+
+  it("uses a nested OpenAI key when the persisted direct copy is blank", async () => {
+    const { ctx, json } = makeHarness("GET", null, {
+      config: {
+        serviceRouting: {
+          llmText: {
+            backend: "cerebras",
+            transport: "direct",
+            accountId: "cerebras",
+          },
+        },
+        env: {
+          OPENAI_API_KEY: "",
+          vars: { OPENAI_API_KEY: "openai-test-key" },
+        },
+      } as never,
+      processEnv: { CEREBRAS_API_KEY: "cerebras-test-key" },
+    });
+    await handleModelConfigRoutes(ctx as never);
+    expect(responseOf(json).body.activeChat).toEqual({
+      provider: "cerebras",
+      family: "OPENAI",
+      endpoint: "api.openai.com",
+    });
   });
 
   it("omits activeChat when no routing is configured", async () => {
