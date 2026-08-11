@@ -64,7 +64,7 @@ jobs:
     # Path classifier is a git-diff + node script: no self-hosted resources.
     # Keep it on GitHub-hosted so a drained hetzner fleet cannot leave it
     # queued indefinitely and pile up runs (#13617/#8501).
-    runs-on: ${{ fromJSON((vars.HETZNER_FLEET_ONLINE != 'true' || github.event.pull_request.head.repo.fork == true) && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    runs-on: ${{ fromJSON(github.event_name == 'pull_request' && '["ubuntu-24.04"]' || vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 10
     outputs:
       dev_smoke: ${{ steps.filter.outputs.dev_smoke }}
@@ -99,7 +99,7 @@ jobs:
     name: bun run dev onboarding chat
     needs: changes
     if: github.event_name != 'pull_request' || needs.changes.outputs.dev_smoke == 'true'
-    runs-on: ${{ fromJSON((vars.HETZNER_FLEET_ONLINE != 'true' || github.event.pull_request.head.repo.fork == true) && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    runs-on: ${{ fromJSON(github.event_name == 'pull_request' && '["ubuntu-24.04"]' || vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 35
     env:
       PGLITE_WASM_MODE: node
@@ -170,7 +170,7 @@ jobs:
     name: Vite HMR dependency-level smoke
     needs: changes
     if: github.event_name != 'pull_request' || needs.changes.outputs.dev_smoke == 'true'
-    runs-on: ${{ fromJSON((vars.HETZNER_FLEET_ONLINE != 'true' || github.event.pull_request.head.repo.fork == true) && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    runs-on: ${{ fromJSON(github.event_name == 'pull_request' && '["ubuntu-24.04"]' || vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 35
     env:
       PGLITE_WASM_MODE: node
