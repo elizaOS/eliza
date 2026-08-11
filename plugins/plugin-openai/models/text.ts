@@ -42,16 +42,15 @@ import { createOpenAIClient } from "../providers";
 import type { TextStreamResult, TokenUsage } from "../types";
 import {
   getActionPlannerModel,
+  getBaseURL,
   getExperimentalTelemetry,
   getLargeModel,
   getMediumModel,
   getMegaModel,
   getNanoModel,
   getResponseHandlerModel,
-  getSetting,
   getSmallModel,
   getUsageProvider,
-  isBrowser,
   isCerebrasMode,
 } from "../utils/config";
 import { emitModelUsageEvent, type ModelRetryTelemetry } from "../utils/events";
@@ -329,41 +328,35 @@ function isCerebrasReasoningModel(modelName: string | undefined): boolean {
   return id === "gpt-oss-120b" || id === "zai-glm-4.7";
 }
 
-/** Detects OpenCode Go from the configured upstream, even behind a browser proxy. */
+/** Detects OpenCode Go only when it is the effective request endpoint. */
 function isOpenCodeGoMode(runtime: IAgentRuntime): boolean {
-  const isGoURL = (value: string | undefined): boolean => {
-    if (!value) return false;
-    try {
-      const url = new URL(value);
-      return (
-        url.protocol === "https:" &&
-        url.hostname.toLowerCase() === "opencode.ai" &&
-        (url.pathname === "/zen/go/v1" || url.pathname.startsWith("/zen/go/v1/"))
-      );
-    } catch {
-      // error-policy:J3 Malformed configuration is not a matching provider URL.
-      return false;
-    }
-  };
-  return (
-    isGoURL(getSetting(runtime, "OPENAI_BASE_URL")) ||
-    (isBrowser() && isGoURL(getSetting(runtime, "OPENAI_BROWSER_BASE_URL")))
-  );
+  try {
+    const url = new URL(getBaseURL(runtime));
+    return (
+      url.protocol === "https:" &&
+      url.hostname.toLowerCase() === "opencode.ai" &&
+      (url.pathname === "/zen/go/v1" || url.pathname.startsWith("/zen/go/v1/"))
+    );
+  } catch {
+    // error-policy:J3 Malformed configuration is not a matching provider URL.
+    return false;
+  }
 }
 
-/** Maps thinking suppression only for endpoint/model pairs proven to support it. */
+/** Maps thinking suppression only for exact model ids on proven endpoints. */
 function resolveThinkingOffReasoningEffort(
   runtime: IAgentRuntime,
   modelName: string | undefined
 ): "low" | "none" | undefined {
   if (!modelName) return undefined;
-  const id = normalizeCerebrasModelId(modelName);
+  const cerebrasId = normalizeCerebrasModelId(modelName);
   if (isCerebrasMode(runtime)) {
-    if (id === "gpt-oss-120b") return "low";
-    if (id === "zai-glm-4.7") return "none";
+    if (cerebrasId === "gpt-oss-120b") return "low";
+    if (cerebrasId === "zai-glm-4.7") return "none";
   }
 
-  if (isOpenCodeGoMode(runtime) && id === "deepseek-v4-flash") return "none";
+  const exactModelId = modelName.trim().toLowerCase();
+  if (exactModelId === "deepseek-v4-flash" && isOpenCodeGoMode(runtime)) return "none";
   return undefined;
 }
 
