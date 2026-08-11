@@ -25,6 +25,24 @@ final class WidgetGalleryCaptureUITests: XCTestCase {
 
     private let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
 
+    // MARK: - Brand-aware display name
+
+    /// The installed target application's real accessibility label, mirroring
+    /// `CFBundleDisplayName` / `ELIZA_DISPLAY_NAME` from `app.config.ts`.
+    private var widgetAppDisplayName: String {
+        let app = XCUIApplication()
+        let label = app.label.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !label.isEmpty {
+            return label
+        }
+        let sbApp = XCUIApplication(bundleIdentifier: "ai.elizaos.app")
+        let sbLabel = sbApp.label.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !sbLabel.isEmpty {
+            return sbLabel
+        }
+        return "Eliza"
+    }
+
     override func setUpWithError() throws {
         continueAfterFailure = true
     }
@@ -59,11 +77,12 @@ final class WidgetGalleryCaptureUITests: XCTestCase {
         let search = springboard.searchFields.firstMatch
         if search.waitForExistence(timeout: 5) {
             search.tap()
-            search.typeText("Eliza")
+            let displayName = widgetAppDisplayName
+            search.typeText(displayName)
             Thread.sleep(forTimeInterval: 2)
             attachScreenshot(named: "widget-03-gallery-search-eliza")
 
-            let appRow = springboard.staticTexts["elizaOS"].firstMatch
+            let appRow = springboard.staticTexts[displayName].firstMatch
             if appRow.waitForExistence(timeout: 5) {
                 // The result row is often "visible but not hittable" to XCUI's
                 // hit-tester inside the gallery sheet; a coordinate tap works.
