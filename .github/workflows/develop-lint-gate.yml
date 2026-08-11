@@ -23,10 +23,15 @@ on:
 
 concurrency:
   # Unique group so this workflow is never superseded by another push.
-  # cancel-in-progress: false is the entire point — the gate must always
-  # complete so develop lint state is always known.
+  # cancel-in-progress: false protects the running job; queue: max allows
+  # up to 100 pending runs to queue rather than be superseded by a newer
+  # push (GitHub's default queue: single replaces the older pending run).
+  # Together they guarantee EVERY develop push completes — the entire
+  # purpose of this gate.
+  # Ref: https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/control-workflow-concurrency
   group: develop-lint-gate
   cancel-in-progress: false
+  queue: max
 
 permissions:
   contents: read

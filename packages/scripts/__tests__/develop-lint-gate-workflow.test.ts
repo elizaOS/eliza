@@ -56,6 +56,27 @@ describe("develop-lint-gate.yml contract", () => {
     expect(workflow.concurrency?.["cancel-in-progress"]).toBe(false);
   });
 
+  test("guarantees every push completes via queue: max", () => {
+    // cancel-in-progress: false alone only protects the running job.
+    // GitHub's default queue: single replaces an older pending run when a
+    // newer push arrives — so the older pending run never executes.
+    // queue: max allows up to 100 pending runs to queue sequentially,
+    // guaranteeing every develop push completes. This is the core fix
+    // for tokenmaxxor's CHANGES_REQUESTED finding.
+    // Ref: https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/control-workflow-concurrency
+    const workflow = Bun.YAML.parse(source) as {
+      concurrency?: {
+        queue?: string;
+        "cancel-in-progress"?: boolean;
+      };
+    };
+    expect(workflow.concurrency?.queue).toBe("max");
+    expect(workflow.concurrency?.["cancel-in-progress"]).toBe(false);
+    // queue: max and cancel-in-progress: true is not allowed by GitHub
+    // Actions, so verify this combination is valid.
+    expect(workflow.concurrency?.["cancel-in-progress"]).not.toBe(true);
+  });
+
   test("runs biome format:check and lint:check", () => {
     expect(source).toContain("bun run format:check");
     expect(source).toContain("bun run lint:check");
