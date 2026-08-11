@@ -78,6 +78,7 @@ const HYDRATION_MAX_ATTEMPTS = 5;
  * — bounded, not indefinite.
  */
 const HYDRATION_READINESS_MAX_ATTEMPTS = 30;
+const HYDRATION_READINESS_FALLBACK_DELAY_MS = 2_000;
 const HYDRATION_BASE_DELAY_MS = 500;
 const HYDRATION_MAX_DELAY_MS = 30_000;
 const HYDRATION_JITTER_RATIO = 0.2;
@@ -406,7 +407,22 @@ function hydrationMaxAttempts(error: unknown): number {
     : HYDRATION_MAX_ATTEMPTS;
 }
 
+/**
+ * Delay for a given error. Readiness errors (503 NOTIFICATION_SERVICE_NOT_READY)
+ * use a fixed delay honoring Retry-After (typically 1s) — never exponential
+ * backoff — so the 30-attempt budget covers ~30s of cold-start, not ~12 min.
+ * All other errors use the existing exponential path.
+ */
 function hydrationRetryDelayMs(error: unknown, attempt: number): number {
+  // Readiness errors: fixed delay, no exponential growth.
+  if (isNotificationServiceNotReady(error)) {
+    const retryAfter =
+      isApiError(error) && typeof error.retryAfter === "number"
+        ? error.retryAfter * 1_000
+        : 0;
+    return retryAfter > 0 ? retryAfter : HYDRATION_READINESS_FALLBACK_DELAY_MS;
+  }
+
   const exponential = Math.min(
     HYDRATION_MAX_DELAY_MS,
     HYDRATION_BASE_DELAY_MS * 2 ** Math.max(0, attempt - 1),
