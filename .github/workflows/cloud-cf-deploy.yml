@@ -1454,18 +1454,32 @@ jobs:
         id: pages
         working-directory: ${{ env.CHECKOUT_DIR }}
         env:
-          PR_HEAD_REF: ${{ github.head_ref }}
           EVENT_NAME: ${{ github.event_name }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          TARGET_ENVIRONMENT: ${{ inputs.environment }}
         run: |
+          set -euo pipefail
+
           if [ "$EVENT_NAME" = "pull_request" ]; then
-            echo "branch=$PR_HEAD_REF" >> "$GITHUB_OUTPUT"
-          elif [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.environment }}" = "production" ]; then
-            echo "branch=main" >> "$GITHUB_OUTPUT"
-          elif [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "branch=develop" >> "$GITHUB_OUTPUT"
+            if ! [[ "$PR_NUMBER" =~ ^[1-9][0-9]*$ ]]; then
+              echo "::error::Pull-request Pages branch requires a valid immutable PR number"
+              exit 1
+            fi
+            pages_branch="pr-${PR_NUMBER}"
+            case "$pages_branch" in
+              main|develop)
+                echo "::error::Pull-request Pages branch may not target canonical branch $pages_branch"
+                exit 1
+                ;;
+            esac
+          elif [ "$EVENT_NAME" = "workflow_dispatch" ] && [ "$TARGET_ENVIRONMENT" = "production" ]; then
+            pages_branch="main"
+          elif [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            pages_branch="develop"
           else
-            echo "branch=${GITHUB_REF#refs/heads/}" >> "$GITHUB_OUTPUT"
+            pages_branch="${GITHUB_REF#refs/heads/}"
           fi
+          echo "branch=$pages_branch" >> "$GITHUB_OUTPUT"
 
       - name: Check Cloudflare credentials
         id: cf
@@ -1870,18 +1884,32 @@ jobs:
         id: pages
         working-directory: ${{ env.CHECKOUT_DIR }}
         env:
-          PR_HEAD_REF: ${{ github.head_ref }}
           EVENT_NAME: ${{ github.event_name }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          TARGET_ENVIRONMENT: ${{ inputs.environment }}
         run: |
+          set -euo pipefail
+
           if [ "$EVENT_NAME" = "pull_request" ]; then
-            echo "branch=$PR_HEAD_REF" >> "$GITHUB_OUTPUT"
-          elif [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.environment }}" = "production" ]; then
-            echo "branch=main" >> "$GITHUB_OUTPUT"
-          elif [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "branch=develop" >> "$GITHUB_OUTPUT"
+            if ! [[ "$PR_NUMBER" =~ ^[1-9][0-9]*$ ]]; then
+              echo "::error::Pull-request Pages branch requires a valid immutable PR number"
+              exit 1
+            fi
+            pages_branch="pr-${PR_NUMBER}"
+            case "$pages_branch" in
+              main|develop)
+                echo "::error::Pull-request Pages branch may not target canonical branch $pages_branch"
+                exit 1
+                ;;
+            esac
+          elif [ "$EVENT_NAME" = "workflow_dispatch" ] && [ "$TARGET_ENVIRONMENT" = "production" ]; then
+            pages_branch="main"
+          elif [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            pages_branch="develop"
           else
-            echo "branch=${GITHUB_REF#refs/heads/}" >> "$GITHUB_OUTPUT"
+            pages_branch="${GITHUB_REF#refs/heads/}"
           fi
+          echo "branch=$pages_branch" >> "$GITHUB_OUTPUT"
 
       - name: Check Cloudflare credentials
         id: cf
