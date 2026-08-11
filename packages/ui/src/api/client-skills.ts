@@ -1082,6 +1082,17 @@ ElizaClient.prototype.getBlueBubblesStatus = async function (
         reason?: string;
       };
     }>("/api/setup/bluebubbles/status");
+    if (
+      !res ||
+      typeof (res as Record<string, unknown>).connector !== "string" ||
+      (res as Record<string, unknown>).connector !== "bluebubbles" ||
+      typeof (res as Record<string, unknown>).state !== "string" ||
+      !["idle", "configuring", "paired", "error"].includes(
+        (res as Record<string, unknown>).state as string,
+      )
+    ) {
+      throw new Error("Invalid BlueBubbles status response: bad connector/state");
+    }
     const detail = (res as { detail?: unknown })?.detail;
     if (
       !detail ||
@@ -1105,6 +1116,10 @@ ElizaClient.prototype.getBlueBubblesStatus = async function (
     };
   } catch (err) {
     const status = (err as { status?: unknown })?.status;
+    const code = (err as { code?: unknown })?.code;
+    if (status === 404 && code === "agent_not_found") {
+      throw err;
+    }
     if (status === 404) {
       return {
         available: false,

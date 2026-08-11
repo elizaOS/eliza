@@ -136,4 +136,58 @@ describe("getBlueBubblesStatus canonical contract", () => {
     await client.getBlueBubblesStatus();
     expect(fetchSpy).not.toHaveBeenCalledWith("/api/bluebubbles/status");
   });
+
+  it("rethrows structured agent_not_found 404 instead of masking as inactive", async () => {
+    const client = makeClient();
+    const err = new ApiError({
+      kind: "http",
+      path: "/api/setup/bluebubbles/status",
+      status: 404,
+      message: "Not Found",
+      code: "agent_not_found",
+    });
+    vi.spyOn(
+      client as unknown as { fetch: typeof client.fetch },
+      "fetch",
+    ).mockRejectedValue(err);
+
+    await expect(client.getBlueBubblesStatus()).rejects.toBe(err);
+  });
+
+  it("throws on wrong connector or unknown state", async () => {
+    const client = makeClient();
+    vi.spyOn(
+      client as unknown as { fetch: typeof client.fetch },
+      "fetch",
+    ).mockResolvedValue({
+      connector: "wrong",
+      state: "paired",
+      detail: {
+        available: true,
+        connected: true,
+        webhookPath: "/webhooks/bluebubbles",
+      },
+    } as unknown as Awaited<ReturnType<typeof client.fetch>>);
+
+    await expect(client.getBlueBubblesStatus()).rejects.toThrow(
+      /bad connector\/state/,
+    );
+
+    vi.spyOn(
+      client as unknown as { fetch: typeof client.fetch },
+      "fetch",
+    ).mockResolvedValue({
+      connector: "bluebubbles",
+      state: "unknown-state",
+      detail: {
+        available: true,
+        connected: true,
+        webhookPath: "/webhooks/bluebubbles",
+      },
+    } as unknown as Awaited<ReturnType<typeof client.fetch>>);
+
+    await expect(client.getBlueBubblesStatus()).rejects.toThrow(
+      /bad connector\/state/,
+    );
+  });
 });
