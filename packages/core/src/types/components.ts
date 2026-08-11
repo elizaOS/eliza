@@ -5,6 +5,8 @@
  * action modes, message-handler plan/extract results). The heart of the
  * action/provider surface that the message loop dispatches against.
  */
+
+import type { RoomHandlerLease } from "../runtime/room-handler-queue";
 import type { ConnectorAccountPolicy } from "./connector-account-policy";
 import type {
 	AgentContext,
@@ -1051,6 +1053,13 @@ export interface HandlerOptions {
 
 	/** Optional stream chunk callback for streaming responses */
 	onStreamChunk?: StreamChunkCallback;
+
+	/**
+	 * Exact room ownership inherited from the host turn. State-writing actions
+	 * reuse this opaque capability when async-local context is unavailable. It is
+	 * execution context, never a model-visible action parameter.
+	 */
+	roomHandlerLease?: RoomHandlerLease;
 
 	/**
 	 * Validated input parameters extracted from the conversation.

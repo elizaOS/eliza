@@ -50,7 +50,8 @@ import {
 } from "../inference-timing";
 import { logger } from "../logger";
 import { describeImageCached } from "../media";
-import { fetchRemoteMedia } from "../media/fetch";
+import { fetchAttachmentBytes } from "../media/attachment-bytes";
+import { TRANSCRIPTION_EMPTY_RESULT_MARKER } from "../media/transcription";
 import { imageDescriptionTemplate, messageHandlerTemplate } from "../prompts";
 import {
 	checkSenderRole,
@@ -287,7 +288,6 @@ import type {
 } from "../types/streaming";
 import {
 	composePrompt,
-	getLocalServerUrl,
 	parseBooleanFromText,
 	parseJSONObjectFromText,
 	truncateToCompleteSentence,
@@ -1375,13 +1375,6 @@ type MediaWithInlineData = Media & {
 	_data?: unknown;
 	_mimeType?: unknown;
 };
-
-/**
- * Hard cap on bytes fetched while enriching a single attachment (description /
- * transcription / text extraction). Bounds memory and is enforced by the
- * SSRF-guarded fetcher for remote URLs and explicitly for local ones.
- */
-const ATTACHMENT_FETCH_MAX_BYTES = 50 * 1024 * 1024;
 
 function sanitizeAttachmentsForStorage(
 	attachments: Media[] | undefined,
@@ -6824,6 +6817,7 @@ export async function runShortcutGate(args: {
 	responseId: UUID;
 	senderRole: RoleGateRole;
 	onSettledActionResult?: (result: ActionResult) => void;
+	roomHandlerLease?: RoomHandlerLease;
 	runTerminalOwner?: MessageRunTerminalOwner;
 }): Promise<V5MessageRuntimeStage1Result | null> {
 	if (process.env.ELIZA_SHORTCUTS_DISABLED === "1") return null;
@@ -6874,6 +6868,9 @@ export async function runShortcutGate(args: {
 		},
 		{
 			actions: [action],
+			...(args.roomHandlerLease
+				? { roomHandlerLease: args.roomHandlerLease }
+				: {}),
 			...(args.onSettledActionResult
 				? { onSettledResult: args.onSettledActionResult }
 				: {}),
@@ -8456,6 +8453,9 @@ export async function runV5MessageRuntimeStage1(args: {
 										plannerRuntime,
 										executorOptions: {
 											actions: exposedPlannerActions,
+											...(args.roomHandlerLease
+												? { roomHandlerLease: args.roomHandlerLease }
+												: {}),
 											...(args.onSettledActionResult
 												? {
 														onSettledResult: args.onSettledActionResult,
@@ -12255,6 +12255,9 @@ export class DefaultMessageService implements IMessageService {
 				state,
 				responseId,
 				senderRole: shortcutSenderRole,
+				...(opts.roomHandlerLease
+					? { roomHandlerLease: opts.roomHandlerLease }
+					: {}),
 				...(opts.onSettledActionResult
 					? { onSettledActionResult: opts.onSettledActionResult }
 					: {}),
@@ -13268,10 +13271,6 @@ export class DefaultMessageService implements IMessageService {
 				const processedAttachment: Media = { ...attachment };
 
 				const isRemote = /^(http|https):\/\//.test(attachment.url);
-				const url = isRemote
-					? attachment.url
-					: getLocalServerUrl(attachment.url);
-
 				try {
 					// Only process images that don't already have descriptions
 					if (
@@ -13292,7 +13291,7 @@ export class DefaultMessageService implements IMessageService {
 							"Generating image description",
 						);
 
-						let imageUrl = url;
+						let imageUrl = attachment.url;
 						const inlineData = attachment as MediaWithInlineData;
 
 						if (
@@ -13307,11 +13306,9 @@ export class DefaultMessageService implements IMessageService {
 							// an attacker-controlled URL itself. Remote bytes go through the
 							// SSRF-guarded fetcher (blocks private/loopback hosts); local
 							// media-store URLs use the trusted runtime fetch.
-							const { buffer, contentType } = await this.fetchAttachmentBytes(
+							const { buffer, contentType } = await fetchAttachmentBytes(
 								runtime,
 								attachment.url,
-								url,
-								isRemote,
 							);
 							imageUrl = `data:${contentType};base64,${buffer.toString("base64")}`;
 						}
@@ -13353,11 +13350,9 @@ export class DefaultMessageService implements IMessageService {
 						attachment.contentType === ContentType.DOCUMENT &&
 						!attachment.text
 					) {
-						const { buffer, contentType } = await this.fetchAttachmentBytes(
+						const { buffer, contentType } = await fetchAttachmentBytes(
 							runtime,
 							attachment.url,
-							url,
-							isRemote,
 						);
 						// Any text/* document (plain, csv, markdown) and application/json —
 						// all on the chat upload allow-list — is readable as UTF-8 text;
@@ -13427,11 +13422,9 @@ export class DefaultMessageService implements IMessageService {
 							// Fetch the bytes (remote → SSRF-guarded, size-capped) and pass
 							// the buffer to the transcription model so it never fetches an
 							// attacker-controlled URL itself.
-							const { buffer } = await this.fetchAttachmentBytes(
+							const { buffer } = await fetchAttachmentBytes(
 								runtime,
 								attachment.url,
-								url,
-								isRemote,
 							);
 
 							const transcript = await runtime.useModel(
@@ -13457,7 +13450,7 @@ export class DefaultMessageService implements IMessageService {
 								);
 							} else {
 								processedAttachment.notProcessed =
-									"Audio transcription returned no text (empty or no speech detected)";
+									TRANSCRIPTION_EMPTY_RESULT_MARKER;
 							}
 						} catch (err) {
 							// error-policy:J4 The attachment remains available with an
@@ -13484,11 +13477,9 @@ export class DefaultMessageService implements IMessageService {
 							// Fetch the bytes (remote → SSRF-guarded, size-capped) and pass
 							// the buffer to the transcription model so it never fetches an
 							// attacker-controlled URL itself.
-							const { buffer } = await this.fetchAttachmentBytes(
+							const { buffer } = await fetchAttachmentBytes(
 								runtime,
 								attachment.url,
-								url,
-								isRemote,
 							);
 
 							const transcript = await runtime.useModel(
@@ -13514,7 +13505,7 @@ export class DefaultMessageService implements IMessageService {
 								);
 							} else {
 								processedAttachment.notProcessed =
-									"Video transcription returned no text (empty or no speech detected)";
+									TRANSCRIPTION_EMPTY_RESULT_MARKER;
 							}
 						} catch (err) {
 							// error-policy:J4 The attachment remains available with an
@@ -13553,43 +13544,6 @@ export class DefaultMessageService implements IMessageService {
 		);
 
 		return processedAttachments;
-	}
-
-	/**
-	 * Fetch an attachment's bytes for enrichment with a hard size cap. Remote
-	 * (attacker-influenceable) URLs go through the SSRF-guarded fetcher, which
-	 * blocks private/loopback/link-local hosts; trusted local media-store URLs
-	 * (built from a path-validated relative URL) use the runtime fetch. This is
-	 * the ONLY place a raw fetch is used during attachment enrichment.
-	 */
-	private async fetchAttachmentBytes(
-		runtime: IAgentRuntime,
-		rawUrl: string,
-		resolvedLocalUrl: string,
-		isRemote: boolean,
-	): Promise<{ buffer: Buffer; contentType: string }> {
-		if (isRemote) {
-			const { buffer, contentType } = await fetchRemoteMedia({
-				url: rawUrl,
-				maxBytes: ATTACHMENT_FETCH_MAX_BYTES,
-			});
-			return {
-				buffer,
-				contentType: contentType ?? "application/octet-stream",
-			};
-		}
-		const runtimeFetch = runtime.fetch ?? globalThis.fetch;
-		const res = await runtimeFetch(resolvedLocalUrl);
-		if (!res.ok) {
-			throw new Error(`Failed to fetch attachment: ${res.statusText}`);
-		}
-		const buffer = Buffer.from(await res.arrayBuffer());
-		if (buffer.length > ATTACHMENT_FETCH_MAX_BYTES) {
-			throw new Error(`Attachment exceeds ${ATTACHMENT_FETCH_MAX_BYTES} bytes`);
-		}
-		const contentType =
-			res.headers.get("content-type") || "application/octet-stream";
-		return { buffer, contentType };
 	}
 
 	private resolveRecentMessagesForFailureReply(

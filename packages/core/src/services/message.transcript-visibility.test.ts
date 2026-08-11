@@ -8,10 +8,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createCharacter } from "../character";
 import { InMemoryDatabaseAdapter } from "../database/inMemoryAdapter";
 import { AgentRuntime } from "../runtime";
+import { RoomHandlerQueue } from "../runtime/room-handler-queue";
 import type {
 	Action,
 	Content,
 	HandlerCallback,
+	HandlerOptions,
 	Memory,
 	State,
 	UUID,
@@ -95,6 +97,8 @@ interface Harness {
 	callback: HandlerCallback;
 	callbacks: Content[];
 	callbackActionNames: Array<string | undefined>;
+	plannerHandler: ReturnType<typeof vi.fn>;
+	responseHandler: ReturnType<typeof vi.fn>;
 	sent: Content[];
 	voiceHandler: ReturnType<typeof vi.fn>;
 }
@@ -232,6 +236,8 @@ async function createHarness(
 		callback,
 		callbacks,
 		callbackActionNames,
+		plannerHandler,
+		responseHandler,
 		sent,
 		voiceHandler,
 	};
@@ -347,5 +353,130 @@ describe("DefaultMessageService transcript visibility integration", () => {
 		]);
 		expect(harness.callbacks).not.toHaveLength(0);
 		expect(harness.callbackActionNames).toContain("VIEWS");
+	});
+
+	it("propagates an explicit room lease through the real V5 planned-tool path without model or result leakage", async () => {
+		const harness = await createHarness(INTERNAL_DIAGNOSTIC);
+		const queue = new RoomHandlerQueue({ asyncContext: "explicit" });
+		Object.defineProperty(harness.runtime, "roomHandlerQueue", {
+			configurable: true,
+			value: queue,
+		});
+		let observedLease: HandlerOptions["roomHandlerLease"];
+		let markHandlerEntered = () => {};
+		const handlerEntered = new Promise<void>((resolve) => {
+			markHandlerEntered = resolve;
+		});
+		harness.actionHandler.mockImplementation(
+			async (
+				runtime: AgentRuntime,
+				message: Memory,
+				_state: State | undefined,
+				options: HandlerOptions | undefined,
+			) => {
+				observedLease = options?.roomHandlerLease;
+				markHandlerEntered();
+				await runtime.roomHandlerQueue.withLeases(
+					[message.roomId],
+					async () => undefined,
+					observedLease ? { lease: observedLease } : undefined,
+				);
+				return {
+					success: true,
+					text: INTERNAL_DIAGNOSTIC,
+					transcriptVisibility: "internal" as const,
+					data: { views: [] },
+				};
+			},
+		);
+
+		const lease = await queue.acquire(harness.runtime.agentId);
+		const pending = new DefaultMessageService().handleMessage(
+			harness.runtime,
+			makeMessage(harness.runtime, "What apps are available?"),
+			harness.callback,
+			{ roomHandlerLease: lease },
+		);
+		await handlerEntered;
+		if (observedLease !== lease) await lease.release();
+		const result = await pending;
+		await lease.release();
+
+		expect(observedLease).toBe(lease);
+		expect(result.actionResults).toEqual([
+			expect.objectContaining({ success: true, text: INTERNAL_DIAGNOSTIC }),
+		]);
+		expect(
+			JSON.stringify({
+				plannerParams: harness.plannerHandler.mock.calls.map((call) => call[1]),
+				responseParams: harness.responseHandler.mock.calls.map(
+					(call) => call[1],
+				),
+				result,
+			}),
+		).not.toContain("roomHandlerLease");
+	});
+
+	it("propagates an explicit room lease from the message service through the shortcut action path", async () => {
+		const harness = await createHarness("shortcut should not call a model");
+		harness.runtime.shortcutRegistry.register({
+			id: "views:list",
+			kind: "explicit",
+			aliases: ["/views"],
+			target: {
+				kind: "action",
+				name: "VIEWS",
+				parameters: { action: "list" },
+			},
+		});
+		const queue = new RoomHandlerQueue({ asyncContext: "explicit" });
+		Object.defineProperty(harness.runtime, "roomHandlerQueue", {
+			configurable: true,
+			value: queue,
+		});
+		let observedLease: HandlerOptions["roomHandlerLease"];
+		let markHandlerEntered = () => {};
+		const handlerEntered = new Promise<void>((resolve) => {
+			markHandlerEntered = resolve;
+		});
+		harness.actionHandler.mockImplementation(
+			async (
+				runtime: AgentRuntime,
+				message: Memory,
+				_state: State | undefined,
+				options: HandlerOptions | undefined,
+				actionCallback?: HandlerCallback,
+			) => {
+				observedLease = options?.roomHandlerLease;
+				markHandlerEntered();
+				await runtime.roomHandlerQueue.withLeases(
+					[message.roomId],
+					async () => undefined,
+					observedLease ? { lease: observedLease } : undefined,
+				);
+				await actionCallback?.({ text: "Listed views under the room lease." });
+				return { success: true, text: "Listed views under the room lease." };
+			},
+		);
+
+		const lease = await queue.acquire(harness.runtime.agentId);
+		const pending = new DefaultMessageService().handleMessage(
+			harness.runtime,
+			makeMessage(harness.runtime, "/views"),
+			harness.callback,
+			{ roomHandlerLease: lease },
+		);
+		await handlerEntered;
+		if (observedLease !== lease) await lease.release();
+		const result = await pending;
+		await lease.release();
+
+		expect(observedLease).toBe(lease);
+		expect(result.responseContent?.text).toBe(
+			"Listed views under the room lease.",
+		);
+		expect(harness.responseHandler).not.toHaveBeenCalled();
+		expect(harness.plannerHandler).not.toHaveBeenCalled();
+		expect(JSON.stringify(result)).not.toContain("roomHandlerLease");
 	});
 });

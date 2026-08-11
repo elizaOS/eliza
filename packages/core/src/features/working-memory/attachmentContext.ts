@@ -6,8 +6,8 @@
  * id/locator match, or the sole attachment), and materializes readable content
  * for each — stored extracted text or description, falling back to an on-demand
  * vision description that reuses the shared content-addressed image cache.
- * Consumed by readAttachmentAction.ts; the `_data`/`_mimeType`/`_createdAt` fields
- * are inline-transport and ordering extensions carried alongside `Media`.
+ * Consumed by readAttachmentAction.ts; inline transport stays on the attachment,
+ * while each read record retains its owning message id for durable enrichment.
  */
 import { buildAccessContext } from "../../access-context.ts";
 import {
@@ -37,6 +37,12 @@ type ReadAttachmentResult = {
 	attachment: AttachmentWithInlineData;
 	content: string;
 	autoSelected: boolean;
+	owningMemoryId?: UUID;
+};
+
+type ConversationAttachmentLocation = {
+	attachment: AttachmentWithInlineData;
+	owningMemoryId?: UUID;
 };
 
 function attachmentLocator(attachment: Media): string {
@@ -57,15 +63,20 @@ function isUnreadableFallbackDescription(value: string): boolean {
 }
 
 function attachmentStoredContent(attachment: Media): string {
-	return [attachment.text, attachment.description]
-		.filter(
-			(value): value is string =>
-				typeof value === "string" &&
-				value.trim().length > 0 &&
-				!isUnreadableFallbackDescription(value),
-		)
-		.join("\n\n")
-		.trim();
+	const values = [attachment.text, attachment.description].filter(
+		(value): value is string =>
+			typeof value === "string" &&
+			value.trim().length > 0 &&
+			!isUnreadableFallbackDescription(value),
+	);
+	const [text, description] = values;
+	if (
+		text !== undefined &&
+		description?.trim() === `Transcript: ${text.trim()}`
+	) {
+		return text.trim();
+	}
+	return values.join("\n\n").trim();
 }
 
 const MEMORY_SCOPES: ReadonlySet<string> = new Set<MemoryScope>([
@@ -194,11 +205,11 @@ async function readableAttachmentContent(
 	return content;
 }
 
-export async function listConversationAttachments(
+async function listConversationAttachmentLocations(
 	runtime: IAgentRuntime,
 	message: Memory,
 	options: { maxLookback?: number } = {},
-): Promise<AttachmentWithInlineData[]> {
+): Promise<ConversationAttachmentLocation[]> {
 	const currentMessageAttachments = (message.content.attachments ??
 		[]) as AttachmentWithInlineData[];
 	const conversationLength =
@@ -220,32 +231,39 @@ export async function listConversationAttachments(
 		recentMessages.length === 0
 	) {
 		return currentMessageAttachments
-			.map((attachment) =>
-				selectAttachmentForRequester(
+			.map((attachment) => {
+				const selected = selectAttachmentForRequester(
 					message,
 					{ ...attachment, _createdAt: message.createdAt ?? Date.now() },
 					accessContext,
 					agentId,
-				),
-			)
-			.filter((attachment): attachment is AttachmentWithInlineData =>
-				Boolean(attachment),
+				);
+				return selected
+					? {
+							attachment: selected,
+							...(message.id ? { owningMemoryId: message.id } : {}),
+						}
+					: null;
+			})
+			.filter((location): location is ConversationAttachmentLocation =>
+				Boolean(location),
 			);
 	}
 
-	const attachmentsById = new Map<string, AttachmentWithInlineData>();
+	const attachmentsById = new Map<string, ConversationAttachmentLocation>();
 
 	const rememberAttachment = (
 		attachment: AttachmentWithInlineData,
 		createdAt: number,
+		owningMemoryId?: UUID,
 	) => {
 		const existing = attachmentsById.get(attachment.id);
-		if (existing && (existing._createdAt ?? 0) >= createdAt) {
+		if (existing && (existing.attachment._createdAt ?? 0) >= createdAt) {
 			return;
 		}
 		attachmentsById.set(attachment.id, {
-			...attachment,
-			_createdAt: createdAt,
+			attachment: { ...attachment, _createdAt: createdAt },
+			...(owningMemoryId ? { owningMemoryId } : {}),
 		});
 	};
 
@@ -256,7 +274,9 @@ export async function listConversationAttachments(
 			accessContext,
 			agentId,
 		);
-		if (selected) rememberAttachment(selected, message.createdAt ?? Date.now());
+		if (selected) {
+			rememberAttachment(selected, message.createdAt ?? Date.now(), message.id);
+		}
 	}
 
 	for (const recentMessage of recentMessages) {
@@ -270,13 +290,29 @@ export async function listConversationAttachments(
 				accessContext,
 				agentId,
 			);
-			if (selected) rememberAttachment(selected, createdAt);
+			if (selected) {
+				rememberAttachment(selected, createdAt, recentMessage.id);
+			}
 		}
 	}
 
 	return Array.from(attachmentsById.values()).sort(
-		(left, right) => (right._createdAt ?? 0) - (left._createdAt ?? 0),
+		(left, right) =>
+			(right.attachment._createdAt ?? 0) - (left.attachment._createdAt ?? 0),
 	);
+}
+
+export async function listConversationAttachments(
+	runtime: IAgentRuntime,
+	message: Memory,
+	options: { maxLookback?: number } = {},
+): Promise<AttachmentWithInlineData[]> {
+	const locations = await listConversationAttachmentLocations(
+		runtime,
+		message,
+		options,
+	);
+	return locations.map((location) => location.attachment);
 }
 
 export async function resolveAttachmentSelection(
@@ -318,7 +354,8 @@ export async function readAttachmentRecord(
 	message: Memory,
 	attachmentId?: string | null,
 ): Promise<ReadAttachmentResult | null> {
-	const attachments = await listConversationAttachments(runtime, message);
+	const locations = await listConversationAttachmentLocations(runtime, message);
+	const attachments = locations.map((location) => location.attachment);
 	if (attachments.length === 0) {
 		return null;
 	}
@@ -328,14 +365,15 @@ export async function readAttachmentRecord(
 	if (!selectedId) {
 		return null;
 	}
-	const attachment = attachments.find((item) => item.id === selectedId);
-	if (!attachment) {
+	const location = locations.find((item) => item.attachment.id === selectedId);
+	if (!location) {
 		return null;
 	}
 	return {
-		attachment,
-		content: await readableAttachmentContent(runtime, attachment),
+		attachment: location.attachment,
+		content: await readableAttachmentContent(runtime, location.attachment),
 		autoSelected: !attachmentId?.trim(),
+		owningMemoryId: location.owningMemoryId,
 	};
 }
 
@@ -353,17 +391,24 @@ export async function readAttachmentRecords(
 		[]) as AttachmentWithInlineData[];
 	if (currentAttachments.length > 0) {
 		const createdAt = message.createdAt ?? Date.now();
-		const attachments = await listConversationAttachments(runtime, message);
+		const locations = await listConversationAttachmentLocations(
+			runtime,
+			message,
+		);
 		const currentIds = new Set(
 			currentAttachments.map((attachment) => attachment.id),
 		);
 		return Promise.all(
-			attachments
-				.filter((attachment) => currentIds.has(attachment.id))
-				.map(async (attachment) => ({
-					attachment: { ...attachment, _createdAt: createdAt },
-					content: await readableAttachmentContent(runtime, attachment),
+			locations
+				.filter((location) => currentIds.has(location.attachment.id))
+				.map(async (location) => ({
+					attachment: { ...location.attachment, _createdAt: createdAt },
+					content: await readableAttachmentContent(
+						runtime,
+						location.attachment,
+					),
 					autoSelected: true,
+					owningMemoryId: location.owningMemoryId,
 				})),
 		);
 	}

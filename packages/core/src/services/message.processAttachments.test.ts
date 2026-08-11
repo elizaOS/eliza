@@ -8,6 +8,7 @@
  * `notProcessed` reason instead of leaving text/description silently unset.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { TRANSCRIPTION_EMPTY_RESULT_MARKER } from "../media/transcription";
 import { ContentType, type Media } from "../types/primitives";
 import type { IAgentRuntime } from "../types/runtime";
 
@@ -21,6 +22,9 @@ vi.mock("../media/fetch", async (importActual) => ({
 }));
 
 const { DefaultMessageService } = await import("./message");
+const STORED_MEDIA_HASH = "c".repeat(64);
+const storedMediaUrl = (extension: string) =>
+	`/api/media/${STORED_MEDIA_HASH}.${extension}`;
 
 function mockRuntime(
 	fetchImpl?: (input: unknown) => Promise<unknown>,
@@ -112,7 +116,7 @@ describe("DefaultMessageService.processAttachments", () => {
 		const out = await svc.processAttachments(runtime, [
 			{
 				id: "doc",
-				url: "/api/media/abc.txt",
+				url: storedMediaUrl("txt"),
 				contentType: ContentType.DOCUMENT,
 			},
 		]);
@@ -146,7 +150,7 @@ describe("DefaultMessageService.processAttachments", () => {
 		const out = await svc.processAttachments(runtime, [
 			{
 				id: "doc",
-				url: `/api/media/abc.${ext}`,
+				url: storedMediaUrl(ext),
 				contentType: ContentType.DOCUMENT,
 			},
 		]);
@@ -167,7 +171,7 @@ describe("DefaultMessageService.processAttachments", () => {
 		const out = await svc.processAttachments(runtime, [
 			{
 				id: "doc",
-				url: "/api/media/abc.json",
+				url: storedMediaUrl("json"),
 				contentType: ContentType.DOCUMENT,
 			},
 		]);
@@ -188,7 +192,7 @@ describe("DefaultMessageService.processAttachments", () => {
 		const out = await svc.processAttachments(runtime, [
 			{
 				id: "doc",
-				url: "/api/media/abc.zip",
+				url: storedMediaUrl("zip"),
 				contentType: ContentType.DOCUMENT,
 			},
 		]);
@@ -210,7 +214,7 @@ describe("DefaultMessageService.processAttachments", () => {
 		const out = await svc.processAttachments(runtime, [
 			{
 				id: "aud",
-				url: "/api/media/abc.mp3",
+				url: storedMediaUrl("mp3"),
 				contentType: ContentType.AUDIO,
 			},
 		]);
@@ -232,7 +236,7 @@ describe("DefaultMessageService.processAttachments", () => {
 		const out = await svc.processAttachments(runtime, [
 			{
 				id: "aud",
-				url: "/api/media/abc.mp3",
+				url: storedMediaUrl("mp3"),
 				contentType: ContentType.AUDIO,
 			},
 		]);
@@ -240,7 +244,7 @@ describe("DefaultMessageService.processAttachments", () => {
 		// Bytes stay stored + served (URL preserved); the failure is explicit, not
 		// a fabricated empty transcript.
 		expect(out[0].text).toBeUndefined();
-		expect(out[0].url).toBe("/api/media/abc.mp3");
+		expect(out[0].url).toBe(storedMediaUrl("mp3"));
 		expect(out[0].notProcessed).toMatch(/audio transcription unavailable/i);
 		expect(out[0].notProcessed).toContain(
 			"no transcription provider configured",
@@ -257,13 +261,13 @@ describe("DefaultMessageService.processAttachments", () => {
 		const out = await svc.processAttachments(runtime, [
 			{
 				id: "aud",
-				url: "/api/media/abc.mp3",
+				url: storedMediaUrl("mp3"),
 				contentType: ContentType.AUDIO,
 			},
 		]);
 
 		expect(out[0].text).toBeUndefined();
-		expect(out[0].notProcessed).toMatch(/no text|no speech/i);
+		expect(out[0].notProcessed).toBe(TRANSCRIPTION_EMPTY_RESULT_MARKER);
 	});
 
 	it("transcribes a local video attachment via the TRANSCRIPTION model", async () => {
@@ -278,7 +282,7 @@ describe("DefaultMessageService.processAttachments", () => {
 		const out = await svc.processAttachments(runtime, [
 			{
 				id: "vid",
-				url: "/api/media/abc.mp4",
+				url: storedMediaUrl("mp4"),
 				contentType: ContentType.VIDEO,
 			},
 		]);
@@ -320,7 +324,7 @@ describe("DefaultMessageService.processAttachments", () => {
 		const out = await svc.processAttachments(runtime, [
 			{
 				id: "doc",
-				url: "/api/media/abc.pdf",
+				url: storedMediaUrl("pdf"),
 				contentType: ContentType.DOCUMENT,
 			},
 		]);

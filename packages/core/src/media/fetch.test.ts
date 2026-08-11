@@ -29,6 +29,65 @@ describe("fetchRemoteMedia", () => {
 		expect(result.contentType).toBe("image/png");
 	});
 
+	it("rejects a declared oversized error body before reading it", async () => {
+		let cancelled = false;
+		let pulls = 0;
+		const body = new ReadableStream<Uint8Array>({
+			pull(controller) {
+				pulls += 1;
+				controller.enqueue(new Uint8Array(1024));
+			},
+			cancel() {
+				cancelled = true;
+			},
+		});
+
+		await expect(
+			fetchRemoteMedia({
+				url: "https://example.com/oversized-error",
+				maxBytes: 10,
+				lookupFn: async () => [{ address: "93.184.216.34", family: 4 }],
+				pinnedFetchImpl: async () =>
+					new Response(body, {
+						status: 503,
+						headers: { "content-length": "1024" },
+					}),
+			}),
+		).rejects.toMatchObject({ code: "max_bytes" });
+
+		// Construction may satisfy one stream pull, but the status diagnostic must
+		// never acquire a reader after the declared length already violates policy.
+		expect(pulls).toBeLessThanOrEqual(1);
+		expect(cancelled).toBe(true);
+	});
+
+	it("cancels a chunked hostile error body as soon as the cap is crossed", async () => {
+		let cancelled = false;
+		let pulls = 0;
+		const body = new ReadableStream<Uint8Array>({
+			pull(controller) {
+				pulls += 1;
+				controller.enqueue(new Uint8Array(1024));
+				if (pulls === 101) controller.close();
+			},
+			cancel() {
+				cancelled = true;
+			},
+		});
+
+		await expect(
+			fetchRemoteMedia({
+				url: "https://example.com/chunked-error",
+				maxBytes: 10,
+				lookupFn: async () => [{ address: "93.184.216.34", family: 4 }],
+				pinnedFetchImpl: async () => new Response(body, { status: 503 }),
+			}),
+		).rejects.toMatchObject({ code: "http_error" });
+
+		expect(cancelled).toBe(true);
+		expect(pulls).toBeLessThanOrEqual(2);
+	});
+
 	function fetchWithContentDisposition(contentDisposition: string) {
 		return fetchRemoteMedia({
 			url: "https://example.com/files/42",

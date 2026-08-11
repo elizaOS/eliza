@@ -14,7 +14,10 @@
  * inference so routing stays language-agnostic (#10471).
  */
 
-import { fetchRemoteMedia } from "../../media/fetch.ts";
+import { ElizaError } from "../../errors.ts";
+import { fetchAttachmentBytes } from "../../media/attachment-bytes.ts";
+import { MediaFetchError } from "../../media/fetch.ts";
+import { TRANSCRIPTION_EMPTY_RESULT_MARKER } from "../../media/transcription.ts";
 import {
 	linkShareOwnText,
 	looksLikeBareLinkShare,
@@ -50,6 +53,19 @@ const MIN_ATTACHMENT_ANSWER_TOKENS = 1024;
 const MAX_ATTACHMENT_ANSWER_TOKENS = 4096;
 /** A bare link share wants a one-to-two sentence reaction, not a page digest. */
 const BARE_LINK_ANSWER_TOKENS = 256;
+const ATTACHMENT_ACTION_PARAMETER_KEYS = [
+	"action",
+	"subaction",
+	"op",
+	"attachmentId",
+	"id",
+	"addToClipboard",
+	"persistToClipboard",
+	"saveToClipboard",
+	"clipboardTitle",
+	"title",
+	"scope",
+] as const;
 type AttachmentAction = (typeof ATTACHMENT_ACTIONS)[number];
 type AttachmentRecord = Awaited<
 	ReturnType<typeof readAttachmentRecords>
@@ -117,6 +133,16 @@ function mediaTranscriptionUnavailable(records: AttachmentRecord[]): boolean {
 	);
 }
 
+function mediaTranscriptionReturnedNoText(
+	records: AttachmentRecord[],
+): boolean {
+	return records.every(
+		(record) =>
+			isMediaAttachment(record) &&
+			record.attachment.notProcessed === TRANSCRIPTION_EMPTY_RESULT_MARKER,
+	);
+}
+
 function missingReadableContentMessage(records: AttachmentRecord[]): string {
 	const hasOnlyImages = records.every(
 		(record) => record.attachment.contentType === ContentType.IMAGE,
@@ -128,10 +154,13 @@ function missingReadableContentMessage(records: AttachmentRecord[]): string {
 	}
 	const hasOnlyMedia = records.every(isMediaAttachment);
 	if (hasOnlyMedia) {
+		if (mediaTranscriptionReturnedNoText(records)) {
+			return records.length === 1
+				? "I couldn't find any speech to transcribe in that attachment."
+				: "I couldn't find any speech to transcribe in those attachments.";
+		}
 		// Honest unavailability beats an open-ended "yet": when no TRANSCRIPTION
-		// provider can serve (observed live: cloud STT gated off with no local
-		// fallback), "yet" reads as "ask me again later" and the retry dead-ends
-		// on the same reply.
+		// provider can serve, "yet" incorrectly promises that retrying can help.
 		if (mediaTranscriptionUnavailable(records)) {
 			return records.length === 1
 				? "I can't transcribe that attachment — speech-to-text isn't enabled on this deployment."
@@ -146,9 +175,6 @@ function missingReadableContentMessage(records: AttachmentRecord[]): string {
 		: "I don't have readable text for those attachments yet.";
 }
 
-/** Same cap the ingest path enforces (`ATTACHMENT_FETCH_MAX_BYTES`). */
-const ON_DEMAND_TRANSCRIPTION_MAX_BYTES = 50 * 1024 * 1024;
-
 /**
  * True when a TRANSCRIPTION failure means no provider can serve at all —
  * a provider's *UnavailableError fall-through (e.g. `CloudSttUnavailableError`)
@@ -157,6 +183,10 @@ const ON_DEMAND_TRANSCRIPTION_MAX_BYTES = 50 * 1024 * 1024;
  * the former may claim "speech-to-text isn't enabled" to the user.
  */
 function isTranscriptionUnavailableError(err: unknown): err is Error {
+	// Remote and local byte-loader failures are transient fetch failures. Their
+	// diagnostic text may include a hostile response body, so typed provenance
+	// must win before any provider-message compatibility check.
+	if (err instanceof MediaFetchError) return false;
 	if (!(err instanceof Error)) return false;
 	if (err.name.endsWith("UnavailableError")) return true;
 	return /falling through to next TRANSCRIPTION handler|no (?:model )?handler.*TRANSCRIPTION|TRANSCRIPTION.*not (?:available|enabled|registered)/i.test(
@@ -164,62 +194,274 @@ function isTranscriptionUnavailableError(err: unknown): err is Error {
 	);
 }
 
+type AttachmentTranscriptionState =
+	| { kind: "transcript"; text: string }
+	| { kind: "empty" };
+
 /**
- * Live retry for media records whose ingest-time transcription produced
- * nothing (observed live: a video posted while cloud STT was gated off has no
- * transcript, and every later "can you get one?" dead-ended on the canned
- * missing-transcript reply even after STT came back). Fetches the stored
- * attachment bytes through core's SSRF-guarded, size-capped media fetch —
- * conversation media the ingest path already fetched once, not a new URL from
- * chat text (that still routes to WEB_FETCH) — and hands the provider a
- * buffer, mirroring the ingest call shape. Success fills the record in place
- * so read/save answer from the fresh transcript; unavailability keeps the
- * explicit unavailable state; a transient failure changes nothing so the
- * user-facing reply stays the honest open-ended "yet".
+ * Publish an on-demand result through the owning message row before exposing it
+ * to this read. Re-reading the fresh row then needs neither byte fetch nor STT,
+ * while a failed write leaves the attachment retryable instead of claiming an
+ * ephemeral transcript was stored.
+ */
+async function persistAttachmentTranscription(
+	runtime: IAgentRuntime,
+	record: AttachmentRecord,
+	state: AttachmentTranscriptionState,
+	roomHandlerLease?: HandlerOptions["roomHandlerLease"],
+): Promise<void> {
+	const attachmentId = record.attachment.id;
+	if (!record.owningMemoryId) {
+		throw new ElizaError(
+			`Attachment ${attachmentId} has no owning message id`,
+			{
+				code: "ATTACHMENT_TRANSCRIPTION_PERSIST_FAILED",
+				context: { attachmentId },
+				severity: "ephemeral",
+			},
+		);
+	}
+	const owningMemoryId = record.owningMemoryId;
+	const failureContext = { attachmentId, owningMemoryId };
+	const ownerSnapshot = await runtime.getMemoryById(owningMemoryId);
+	if (!ownerSnapshot) {
+		throw new ElizaError(
+			`Owning message ${owningMemoryId} is no longer available`,
+			{
+				code: "ATTACHMENT_TRANSCRIPTION_PERSIST_FAILED",
+				context: failureContext,
+				severity: "ephemeral",
+			},
+		);
+	}
+
+	await runtime.roomHandlerQueue.withLeases(
+		[ownerSnapshot.roomId],
+		async (leases) =>
+			runtime.roomHandlerQueue.withLeaseWrites(leases, async () => {
+				const owningMemory = await runtime.getMemoryById(owningMemoryId);
+				if (!owningMemory) {
+					throw new ElizaError(
+						`Owning message ${owningMemoryId} is no longer available`,
+						{
+							code: "ATTACHMENT_TRANSCRIPTION_PERSIST_FAILED",
+							context: failureContext,
+							severity: "ephemeral",
+						},
+					);
+				}
+				if (owningMemory.roomId !== ownerSnapshot.roomId) {
+					throw new ElizaError(
+						`Owning message ${owningMemoryId} changed rooms before its attachment update`,
+						{
+							code: "ATTACHMENT_TRANSCRIPTION_PERSIST_FAILED",
+							context: {
+								...failureContext,
+								expectedRoomId: ownerSnapshot.roomId,
+								actualRoomId: owningMemory.roomId,
+							},
+							severity: "ephemeral",
+						},
+					);
+				}
+				const attachments = owningMemory.content.attachments;
+				if (!Array.isArray(attachments)) {
+					throw new ElizaError(
+						`Owning message ${owningMemoryId} has no attachment collection`,
+						{
+							code: "ATTACHMENT_TRANSCRIPTION_PERSIST_FAILED",
+							context: failureContext,
+						},
+					);
+				}
+				const matchingAttachments = attachments.filter(
+					(attachment) => attachment.id === attachmentId,
+				);
+				if (matchingAttachments.length !== 1) {
+					throw new ElizaError(
+						`Attachment ${attachmentId} is not uniquely present on its owning message`,
+						{
+							code: "ATTACHMENT_TRANSCRIPTION_PERSIST_FAILED",
+							context: failureContext,
+						},
+					);
+				}
+				if (matchingAttachments[0]?.url !== record.attachment.url) {
+					throw new ElizaError(
+						`Attachment ${attachmentId} changed before its transcription could be stored`,
+						{
+							code: "ATTACHMENT_TRANSCRIPTION_PERSIST_FAILED",
+							context: failureContext,
+						},
+					);
+				}
+
+				const updatedAttachments = attachments.map((attachment) => {
+					if (attachment.id !== attachmentId) return attachment;
+					const updated = { ...attachment };
+					if (state.kind === "transcript") {
+						updated.text = state.text;
+						updated.description = `Transcript: ${state.text}`;
+						delete updated.notProcessed;
+					} else {
+						delete updated.text;
+						if (updated.description?.startsWith("Transcript:")) {
+							delete updated.description;
+						}
+						updated.notProcessed = TRANSCRIPTION_EMPTY_RESULT_MARKER;
+					}
+					return updated;
+				});
+				if (
+					!(await runtime.updateMemory({
+						id: owningMemoryId,
+						content: {
+							...owningMemory.content,
+							attachments: updatedAttachments,
+						},
+					}))
+				) {
+					throw new ElizaError(
+						`Owning message ${owningMemoryId} rejected its attachment update`,
+						{
+							code: "ATTACHMENT_TRANSCRIPTION_PERSIST_FAILED",
+							context: failureContext,
+							severity: "ephemeral",
+						},
+					);
+				}
+
+				const durableMemory = await runtime.getMemoryById(owningMemoryId);
+				if (!durableMemory) {
+					throw new ElizaError(
+						`Owning message ${owningMemoryId} disappeared during its attachment update`,
+						{
+							code: "ATTACHMENT_TRANSCRIPTION_PERSIST_FAILED",
+							context: failureContext,
+							severity: "ephemeral",
+						},
+					);
+				}
+				const durableAttachments = durableMemory.content.attachments?.filter(
+					(attachment) => attachment.id === attachmentId,
+				);
+				if (durableAttachments?.length !== 1) {
+					throw new ElizaError(
+						`Attachment ${attachmentId} was not durably updated on its owning message`,
+						{
+							code: "ATTACHMENT_TRANSCRIPTION_PERSIST_FAILED",
+							context: failureContext,
+						},
+					);
+				}
+				const durableAttachment = durableAttachments[0];
+				if (
+					!durableAttachment ||
+					durableAttachment.url !== record.attachment.url ||
+					(state.kind === "transcript"
+						? durableAttachment.text !== state.text ||
+							durableAttachment.description !== `Transcript: ${state.text}` ||
+							durableAttachment.notProcessed !== undefined
+						: durableAttachment.text !== undefined ||
+							durableAttachment.notProcessed !==
+								TRANSCRIPTION_EMPTY_RESULT_MARKER ||
+							durableAttachment.description?.startsWith("Transcript:") === true)
+				) {
+					throw new ElizaError(
+						`Attachment ${attachmentId} did not retain its transcription update`,
+						{
+							code: "ATTACHMENT_TRANSCRIPTION_PERSIST_FAILED",
+							context: failureContext,
+						},
+					);
+				}
+
+				record.attachment = { ...durableAttachment };
+				record.content = state.kind === "transcript" ? state.text : "";
+			}),
+		roomHandlerLease ? { lease: roomHandlerLease } : undefined,
+	);
+}
+
+/**
+ * Retries media records whose ingest-time transcription produced nothing so a
+ * deployment that regains STT can enrich already-stored attachments. Fetches
+ * only the attachment's stored URL through core's bounded media boundary and
+ * hands the provider bytes, never a new URL extracted from chat text. Success
+ * fills the record from the durable owning message; capability unavailability
+ * remains explicit, while retryable transport/provider failures yield "yet".
  */
 async function transcribeMediaOnDemand(
 	runtime: IAgentRuntime,
 	records: AttachmentRecord[],
-): Promise<boolean> {
-	let transcribedAny = false;
+	roomHandlerLease?: HandlerOptions["roomHandlerLease"],
+): Promise<void> {
 	for (const record of records) {
 		const { attachment } = record;
 		if (!isMediaAttachment(record) || record.content.trim()) continue;
+		// A redacted grant may point at derivative bytes but shares the source id.
+		// Writing its transcript onto the source row would disclose or corrupt the
+		// owner's artifact, so only the owning/original attachment is enrichable.
+		if (attachment.redacted) continue;
+		// A successful empty result is definitive stored state, not a provider
+		// outage. Repeating the same byte/model work cannot create speech that was
+		// absent from the attachment.
+		if (attachment.notProcessed === TRANSCRIPTION_EMPTY_RESULT_MARKER) {
+			continue;
+		}
 		if (typeof attachment.url !== "string" || !attachment.url.trim()) continue;
+		let buffer: Buffer;
 		try {
-			const { buffer } = await fetchRemoteMedia({
-				url: attachment.url,
-				maxBytes: ON_DEMAND_TRANSCRIPTION_MAX_BYTES,
-			});
-			const transcript = await runtime.useModel(
-				ModelType.TRANSCRIPTION,
-				buffer,
-			);
-			if (typeof transcript === "string" && transcript.trim()) {
-				const text = transcript.trim();
-				record.content = text;
-				attachment.text = text;
-				attachment.description = `Transcript: ${text}`;
-				attachment.notProcessed = undefined;
-				transcribedAny = true;
+			({ buffer } = await fetchAttachmentBytes(runtime, attachment.url));
+		} catch (err) {
+			if (
+				!(err instanceof MediaFetchError) ||
+				(err.code !== "fetch_failed" && err.code !== "http_error")
+			) {
+				throw err;
 			}
+			// error-policy:J4 A bounded/guarded media fetch failure is a retryable
+			// unavailable read; it never becomes a provider-capability verdict.
+			delete attachment.notProcessed;
+			logger.debug(
+				{ attachmentId: attachment.id, err },
+				"[ReadAttachment] On-demand media fetch failed",
+			);
+			continue;
+		}
+
+		let transcript: unknown;
+		try {
+			transcript = await runtime.useModel(ModelType.TRANSCRIPTION, buffer);
 		} catch (err) {
 			// error-policy:J4 the attachment stays readable-as-absent and the
 			// caller's fallback message reports the state honestly. Only a
-			// no-provider-can-serve failure marks the record unavailable (and
-			// thus the "isn't enabled" reply); a transient fetch/provider error
-			// leaves the record untouched so the reply stays the retryable
-			// "yet". Expected whenever STT is disabled, so debug, not warn.
+			// no-provider-can-serve failure marks the record unavailable; transient
+			// provider errors leave it retryable. Expected when STT is disabled, so
+			// debug, not warn.
 			if (isTranscriptionUnavailableError(err)) {
-				attachment.notProcessed ??= `Transcription unavailable: ${err.message}`;
+				attachment.notProcessed = `Transcription unavailable: ${err.message}`;
+			} else {
+				delete attachment.notProcessed;
 			}
 			logger.debug(
 				{ attachmentId: attachment.id, err },
 				"[ReadAttachment] On-demand transcription did not produce a transcript",
 			);
+			continue;
 		}
+
+		const trimmed = typeof transcript === "string" ? transcript.trim() : "";
+		const state: AttachmentTranscriptionState = trimmed
+			? { kind: "transcript", text: trimmed }
+			: { kind: "empty" };
+		await persistAttachmentTranscription(
+			runtime,
+			record,
+			state,
+			roomHandlerLease,
+		);
 	}
-	return transcribedAny;
 }
 
 function titleForRecord(record: AttachmentRecord): string {
@@ -301,8 +543,7 @@ async function answerAttachmentRequest(params: {
 			? params.message.content.text.trim()
 			: "";
 	// A message that is essentially just a URL asks for a short reaction to the
-	// page, not a rendition of it (observed live: a shared link answered with
-	// the whole stored page arrived as a ~13-message wall on Discord).
+	// page, not a rendition of its full stored content.
 	const bareLinkShare = isLinkShareWithoutAsk(userRequest);
 	const prompt = [
 		"You are answering a user request about an attachment.",
@@ -344,7 +585,12 @@ function getActionParams(
 		direct.parameters && typeof direct.parameters === "object"
 			? (direct.parameters as Record<string, unknown>)
 			: {};
-	return { ...direct, ...parameters };
+	const actionParameters: Record<string, unknown> = {};
+	for (const key of ATTACHMENT_ACTION_PARAMETER_KEYS) {
+		if (key in direct) actionParameters[key] = direct[key];
+		if (key in parameters) actionParameters[key] = parameters[key];
+	}
+	return actionParameters;
 }
 
 function readAttachmentId(params: Record<string, unknown>): string | null {
@@ -527,11 +773,11 @@ export const readAttachmentAction: Action = {
 		runtime: IAgentRuntime,
 		message: Memory,
 		_state: State | undefined,
-		_options: HandlerOptions | undefined,
+		options: HandlerOptions | undefined,
 		callback?: HandlerCallback,
 	) => {
 		try {
-			const params = getActionParams(_options);
+			const params = getActionParams(options);
 			const action = readAttachmentActionKind(params);
 			const messageWithParams: Memory = {
 				...message,
@@ -581,12 +827,14 @@ export const readAttachmentAction: Action = {
 				};
 			}
 
-			let hasContent = hasReadableContent(records);
-			// Media with no stored transcript gets one live attempt before the
-			// missing-content fallback, covering both read and save_as_document.
-			if (!hasContent && (await transcribeMediaOnDemand(runtime, records))) {
-				hasContent = hasReadableContent(records);
-			}
+			// Every selected media record with no stored transcript gets one live
+			// attempt, even when a readable sibling already exists.
+			await transcribeMediaOnDemand(
+				runtime,
+				records,
+				options?.roomHandlerLease,
+			);
+			const hasContent = hasReadableContent(records);
 			const storedContent = hasContent ? contentForRecords(records) : "";
 			if (action === "save_as_document") {
 				return saveAttachmentAsDocument({
@@ -636,12 +884,10 @@ export const readAttachmentAction: Action = {
 					? messageWithParams.content.text.trim()
 					: "";
 			// The record dump (metadata envelope + full stored content) is
-			// planner-facing and reaches chat only when the user explicitly asked
-			// for the attachment record. Every other read answers in prose —
-			// observed live: a clipboard-requested read of a shared link switched
-			// delivery to the record dump and shipped the whole scraped page
-			// verbatim to Discord. The planner still gets the full content and
-			// clipboard state through `data`.
+			// planner-facing and reaches chat only when the user explicitly asks for
+			// it. Keeping clipboard reads on the prose path prevents stored page
+			// bodies from becoming accidental chat output; `data` still carries the
+			// full content and clipboard state for the planner.
 			const visibleText = shouldShowAttachmentRecord(messageText)
 				? responseText
 				: hasContent

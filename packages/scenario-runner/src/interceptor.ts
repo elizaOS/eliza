@@ -412,10 +412,19 @@ export function attachInterceptor(runtime: IAgentRuntime): ActionInterceptor {
         Record<string, unknown> | undefined,
         HandlerCallback | undefined,
       ];
+      const reportableOptions = options
+        ? Object.fromEntries(
+            Object.entries(options).filter(
+              ([key]) => key !== "roomHandlerLease",
+            ),
+          )
+        : undefined;
       const entry: CapturedAction = {
         actionName: action.name,
         // Snapshot, never the live object — see toJsonSafe.
-        parameters: toJsonSafe(options) as Record<string, unknown> | undefined,
+        parameters: toJsonSafe(reportableOptions) as
+          | Record<string, unknown>
+          | undefined,
       };
       const wrappedArgs = [...args];
       if (isCallable(callback)) {
@@ -478,7 +487,7 @@ export function attachInterceptor(runtime: IAgentRuntime): ActionInterceptor {
           captureConnectorDispatchesFromAction(
             connectorDispatches,
             action.name,
-            options,
+            reportableOptions,
             resultForReport,
           );
         } else {

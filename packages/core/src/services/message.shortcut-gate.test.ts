@@ -5,12 +5,13 @@
  * failures, and the disable flag remain covered.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { RoomHandlerQueue } from "../runtime/room-handler-queue";
 import { ShortcutRegistry } from "../runtime/shortcut-registry";
 import {
 	getStreamingContext,
 	runWithStreamingContext,
 } from "../streaming-context";
-import type { Action } from "../types/components";
+import type { Action, HandlerOptions } from "../types/components";
 import type { EffectReceipt } from "../types/effects";
 import { EventType } from "../types/events";
 import type { Memory, State, UUID } from "../types/index";
@@ -123,6 +124,56 @@ describe("runShortcutGate (#8791 pre-LLM gate)", () => {
 			EventType.ACTION_COMPLETED,
 			EventType.SLASH_COMMAND_INVOKED,
 		]);
+	});
+
+	it("propagates an explicit room lease through shortcut action execution", async () => {
+		const queue = new RoomHandlerQueue({ asyncContext: "explicit" });
+		const message = msg("/echo hi");
+		const lease = await queue.acquire(message.roomId);
+		let observedLease: HandlerOptions["roomHandlerLease"];
+		let markHandlerEntered = () => {};
+		const handlerEntered = new Promise<void>((resolve) => {
+			markHandlerEntered = resolve;
+		});
+		const action = echoAction();
+		action.handler = async (rt, actionMessage, _state, options, callback) => {
+			const handlerOptions = options as HandlerOptions | undefined;
+			observedLease = handlerOptions?.roomHandlerLease;
+			markHandlerEntered();
+			await rt.roomHandlerQueue.withLeases(
+				[actionMessage.roomId],
+				async () => undefined,
+				observedLease ? { lease: observedLease } : undefined,
+			);
+			await callback?.({ text: "echoed under lease" });
+			return { success: true, text: "echoed under lease" };
+		};
+		const { runtime } = makeRuntime({ actions: [action] });
+		(
+			runtime as typeof runtime & { roomHandlerQueue: RoomHandlerQueue }
+		).roomHandlerQueue = queue;
+
+		const pending = runShortcutGate({
+			// biome-ignore lint/suspicious/noExplicitAny: minimal fake runtime
+			runtime: runtime as any,
+			message,
+			state: {} as State,
+			responseId,
+			senderRole: "OWNER",
+			roomHandlerLease: lease,
+		});
+		await handlerEntered;
+		if (observedLease !== lease) await lease.release();
+		const result = await pending;
+		await lease.release();
+
+		expect(observedLease).toBe(lease);
+		expect(result?.kind).toBe("direct_reply");
+		expect(result?.result.responseContent.text).toBe("echoed under lease");
+		expect(result?.result.actionResults).toEqual([
+			expect.objectContaining({ success: true, text: "echoed under lease" }),
+		]);
+		expect(JSON.stringify(result)).not.toContain("roomHandlerLease");
 	});
 
 	it("publishes a receipt-backed shortcut settlement before later turn work", async () => {

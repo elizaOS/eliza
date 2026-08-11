@@ -25,6 +25,7 @@ import {
 import type {
 	Action,
 	HandlerCallback,
+	HandlerOptions,
 	IAgentRuntime,
 	Memory,
 } from "../../types";
@@ -1002,6 +1003,88 @@ describe("executePlannedToolCall", () => {
 		expect(trajectoryLogger.flushWriteQueue).toHaveBeenCalledWith(
 			"trajectory-1",
 		);
+	});
+
+	it("keeps a room lease execution-only across model, event, result, and trajectory records", async () => {
+		const roomHandlerLease: NonNullable<HandlerOptions["roomHandlerLease"]> = {
+			release: vi.fn(async () => {}),
+		};
+		let observedLease: HandlerOptions["roomHandlerLease"];
+		const trajectoryLogger = {
+			isEnabled: vi.fn(() => true),
+			startStep: vi.fn(() => "leased-action-step"),
+			completeStep: vi.fn(),
+			flushWriteQueue: vi.fn(async () => {}),
+			annotateStep: vi.fn(async () => {}),
+		};
+		const emitEvent = vi.fn(async () => undefined);
+		const useModel = vi.fn(async () => "classified");
+		const action = makeAction({
+			name: "CLASSIFY_ATTACHMENT",
+			parameters: [
+				{
+					name: "attachmentId",
+					description: "Attachment to classify",
+					required: true,
+					schema: { type: "string" },
+				},
+			],
+			handler: async (rt, _message, _state, options) => {
+				const handlerOptions = options as HandlerOptions | undefined;
+				observedLease = handlerOptions?.roomHandlerLease;
+				await rt.useModel(ModelType.TEXT_SMALL, {
+					prompt: `classify ${handlerOptions?.parameters?.attachmentId}`,
+				});
+				return { success: true, data: { classification: "voice" } };
+			},
+		});
+		const runtime = makeRuntime([action], {
+			emitEvent,
+			getService: vi.fn((serviceType: string) =>
+				serviceType === "trajectories" ? trajectoryLogger : undefined,
+			),
+			getServicesByType: vi.fn(() => []),
+			useModel,
+		});
+
+		const result = await runWithTrajectoryContext(
+			{
+				trajectoryId: "trajectory-lease",
+				trajectoryStepId: "parent-lease-step",
+				purpose: "planner",
+			},
+			() =>
+				executePlannedToolCall(
+					runtime,
+					{ message: makeMessage() },
+					{
+						name: "CLASSIFY_ATTACHMENT",
+						params: { attachmentId: "attachment-1" },
+					},
+					{ roomHandlerLease },
+				),
+		);
+
+		expect(observedLease).toBe(roomHandlerLease);
+		expect(useModel).toHaveBeenCalledWith(ModelType.TEXT_SMALL, {
+			prompt: "classify attachment-1",
+		});
+		expect(trajectoryLogger.completeStep).toHaveBeenCalledWith(
+			"trajectory-lease",
+			"leased-action-step",
+			expect.objectContaining({
+				parameters: { attachmentId: "attachment-1" },
+				result: expect.objectContaining({ success: true }),
+			}),
+		);
+		expect(
+			JSON.stringify({
+				result,
+				modelCalls: useModel.mock.calls,
+				trajectoryCalls: trajectoryLogger.completeStep.mock.calls,
+				eventContent: emitEvent.mock.calls.map((call) => call[1]?.content),
+			}),
+		).not.toContain("roomHandlerLease");
 	});
 
 	it("bounds oversized action parameters and results before trajectory settlement", async () => {

@@ -93,10 +93,15 @@ function parseContentDispositionFileName(
 
 async function readErrorBodySnippet(
 	res: Response,
+	maxBytes?: number,
 	maxChars = 200,
 ): Promise<string | undefined> {
 	try {
-		const text = await res.text();
+		// Error bodies are diagnostic only. Four KiB is ample for the visible
+		// snippet, while the caller's smaller media budget remains authoritative.
+		const text = (
+			await readResponseWithLimit(res, Math.min(maxBytes ?? 4096, 4096))
+		).toString("utf8");
 		if (!text) {
 			return undefined;
 		}
@@ -144,6 +149,7 @@ async function throwIfHttpError(
 	res: Response,
 	url: string,
 	finalUrl: string,
+	maxBytes?: number,
 ): Promise<void> {
 	if (res.ok) {
 		return;
@@ -155,7 +161,7 @@ async function throwIfHttpError(
 	if (!res.body) {
 		detail = `HTTP ${res.status}${statusText}; empty response body`;
 	} else {
-		const snippet = await readErrorBodySnippet(res);
+		const snippet = await readErrorBodySnippet(res, maxBytes);
 		if (snippet) {
 			detail += `; body: ${snippet}`;
 		}
@@ -166,11 +172,11 @@ async function throwIfHttpError(
 	);
 }
 
-function enforceContentLengthLimit(
+async function enforceContentLengthLimit(
 	res: Response,
 	url: string,
 	maxBytes?: number,
-): void {
+): Promise<void> {
 	const contentLength = res.headers.get("content-length");
 	if (!maxBytes || !contentLength) {
 		return;
@@ -178,6 +184,12 @@ function enforceContentLengthLimit(
 
 	const length = Number(contentLength);
 	if (Number.isFinite(length) && length > maxBytes) {
+		try {
+			await res.body?.cancel();
+		} catch {
+			// error-policy:J6 Body cancellation is best-effort after the declared
+			// byte-limit failure has already been established.
+		}
 		throw new MediaFetchError(
 			"max_bytes",
 			`Failed to fetch media from ${url}: content length ${length} exceeds maxBytes ${maxBytes}`,
@@ -247,8 +259,8 @@ export async function fetchRemoteMedia(
 	const { response: res, finalUrl, release } = await fetchGuardedMedia(options);
 
 	try {
-		await throwIfHttpError(res, options.url, finalUrl);
-		enforceContentLengthLimit(res, options.url, options.maxBytes);
+		await enforceContentLengthLimit(res, options.url, options.maxBytes);
+		await throwIfHttpError(res, options.url, finalUrl, options.maxBytes);
 
 		const buffer = options.maxBytes
 			? await readResponseWithLimit(res, options.maxBytes)
@@ -269,7 +281,8 @@ export async function fetchRemoteMedia(
 	}
 }
 
-async function readResponseWithLimit(
+/** Read a response body while aborting as soon as its byte budget is exceeded. */
+export async function readResponseWithLimit(
 	res: Response,
 	maxBytes: number,
 ): Promise<Buffer> {
