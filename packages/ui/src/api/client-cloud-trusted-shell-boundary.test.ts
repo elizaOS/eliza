@@ -309,6 +309,83 @@ describe("dedicated Cloud account boundary on trusted app shells", () => {
     },
   );
 
+  it.each([
+    {
+      label: "native",
+      hostname: "localhost",
+      native: true,
+      electrobun: false,
+    },
+    {
+      label: "Electrobun",
+      hostname: "127.0.0.1",
+      native: false,
+      electrobun: true,
+    },
+    {
+      label: "localhost dev",
+      hostname: "localhost",
+      native: false,
+      electrobun: false,
+    },
+  ])(
+    "rejects a hostile configured Cloud endpoint from $label without any transport",
+    async ({ hostname, native, electrobun }) => {
+      platform.native = native;
+      setPageLocation(hostname);
+      setElectrobunRuntime(electrobun);
+      setBootConfig({
+        branding: {},
+        cloudApiBase: "https://attacker.example",
+      });
+      localStorage.setItem(STEWARD_TOKEN_KEY, "steward-jwt");
+      const fetchSpy = vi.spyOn(globalThis, "fetch");
+      const client = new ElizaClient(DEDICATED_STAGING_BASE, "agent-bearer");
+
+      const listed = await client.getCloudCompatAgents();
+      const created = await client.createCloudCompatAgent({
+        agentName: "Disposable",
+        forceCreate: true,
+      });
+      const resumed = await client.resumeCloudCompatAgent("agent-new");
+
+      expect(listed).toMatchObject({ success: false, data: [] });
+      expect(created).toMatchObject({
+        success: false,
+        data: { status: "error" },
+      });
+      expect(resumed).toMatchObject({
+        success: false,
+        data: { status: "auth-missing" },
+      });
+      expect(platform.request).not.toHaveBeenCalled();
+      expect(fetchSpy).not.toHaveBeenCalled();
+    },
+  );
+
+  it("keeps an arbitrary self-hosted native client on its own compat origin", async () => {
+    platform.native = true;
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(jsonResponse({ success: true, data: [] }));
+    const selfHostedBase = "https://agent.example.test";
+    const client = new ElizaClient(selfHostedBase, "agent-bearer");
+
+    await client.getCloudCompatAgents();
+
+    expect(platform.request).not.toHaveBeenCalled();
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(String(fetchSpy.mock.calls[0]?.[0])).toBe(
+      `${selfHostedBase}/api/cloud/compat/agents`,
+    );
+    expect(String(fetchSpy.mock.calls[0]?.[0])).not.toContain(
+      STAGING_CONTROL_PLANE,
+    );
+    expect(
+      new Headers(fetchSpy.mock.calls[0]?.[1]?.headers).get("authorization"),
+    ).toBe("Bearer agent-bearer");
+  });
+
   it("does not grant an arbitrary self-hosted page direct control-plane access", async () => {
     setPageLocation("dashboard.example.test", "https:");
     const fetchSpy = vi

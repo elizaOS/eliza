@@ -167,38 +167,31 @@ function isCloudRouteNotFound(error: unknown): error is ApiError {
   );
 }
 
-function originsMatch(left: string, right: string): boolean {
+function resolveKnownDirectCloudApiBase(baseUrl: string): string | null {
   try {
-    return new URL(left).origin === new URL(right).origin;
+    return (
+      DIRECT_ELIZA_CLOUD_API_BY_HOST.get(
+        new URL(baseUrl).hostname.toLowerCase(),
+      ) ?? null
+    );
   } catch {
-    // error-policy:J3 malformed URL input fails closed (no origin match).
-    return false;
+    // error-policy:J3 malformed Cloud endpoints fail closed.
+    return null;
   }
 }
 
 function isDirectCloudBase(client: ElizaClient): boolean {
   const baseUrl = client.getBaseUrl().trim();
   if (!baseUrl) return false;
-
-  const configuredCloudBase =
-    getBootConfig().cloudApiBase?.trim() || DEFAULT_DIRECT_CLOUD_BASE_URL;
-  if (originsMatch(baseUrl, configuredCloudBase)) return true;
-
-  try {
-    const host = new URL(baseUrl).hostname.toLowerCase();
-    return DIRECT_ELIZA_CLOUD_API_BY_HOST.has(host);
-  } catch {
-    // error-policy:J3 malformed base URL reads as "not a direct cloud base".
-    return false;
-  }
+  return resolveKnownDirectCloudApiBase(baseUrl) !== null;
 }
 
 function isDedicatedCloudAgentClient(client: ElizaClient): boolean {
   return isDedicatedCloudAgentBase(client.getBaseUrl());
 }
 
-function resolveConfiguredDirectCloudApiBase(): string {
-  return resolveDirectCloudAuthApiBase(
+function resolveConfiguredDirectCloudApiBase(): string | null {
+  return resolveKnownDirectCloudApiBase(
     getBootConfig().cloudApiBase?.trim() || DEFAULT_DIRECT_CLOUD_BASE_URL,
   );
 }
@@ -479,7 +472,7 @@ function resolveDirectCloudClientApiBase(client: ElizaClient): string | null {
   const dedicatedControlPlaneApiBase =
     resolveDedicatedCloudAgentControlPlaneApiBase(client);
   if (dedicatedControlPlaneApiBase) return dedicatedControlPlaneApiBase;
-  if (shouldUseNativeCloudHttp()) {
+  if (shouldUseNativeCloudHttp() && !baseUrl) {
     return resolveConfiguredDirectCloudApiBase();
   }
   // Web SPA served from a cloud host with no agent baseUrl yet — exactly the
@@ -617,11 +610,18 @@ export async function refreshCloudStewardSession(opts?: {
 }
 
 function isDirectCloudAuthMissing(client: ElizaClient): boolean {
-  return (
+  const directApiBase = resolveDirectCloudClientApiBase(client);
+  const dedicatedControlPlaneRequired =
+    isDedicatedCloudAgentClient(client) &&
     (shouldUseNativeCloudHttp() ||
+      isElectrobunRuntime() ||
+      isTrustedLocalCloudPage() ||
+      isPageServedFromDirectCloudHost());
+  return (
+    (dedicatedControlPlaneRequired && !directApiBase) ||
+    ((shouldUseNativeCloudHttp() ||
       Boolean(resolveDedicatedCloudAgentControlPlaneApiBase(client))) &&
-    Boolean(resolveDirectCloudClientApiBase(client)) &&
-    !readDirectCloudToken(client)
+      !readDirectCloudToken(client))
   );
 }
 
