@@ -49,7 +49,17 @@ describe("resolveShutdownDrainWindowMs", () => {
   });
 
   it("degrades broken overrides to the default, never to zero", () => {
-    for (const raw of ["nope", "-5", "0", "NaN", "Infinity"]) {
+    for (const raw of [
+      "nope",
+      "-5",
+      "0",
+      "0.1",
+      "0.999",
+      "NaN",
+      "Infinity",
+      "2147483648",
+      "1e20",
+    ]) {
       expect(
         resolveShutdownDrainWindowMs({ [SHUTDOWN_DRAIN_WINDOW_ENV]: raw }),
       ).toBe(DEFAULT_SHUTDOWN_DRAIN_WINDOW_MS);
@@ -65,11 +75,14 @@ describe("drainSpawnedChildren (deterministic)", () => {
     const signalTree = vi.fn();
     const exited = makeChild();
     exited.exitCode = 0;
+    const spawnFailed = makeChild();
+    spawnFailed.pid = undefined;
 
     const result = await drainSpawnedChildren({
       children: [
         { name: "null", child: null },
         { name: "exited", child: exited },
+        { name: "spawn-failed", child: spawnFailed },
       ],
       drainWindowMs: 5000,
       signalTree,

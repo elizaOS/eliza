@@ -34,6 +34,11 @@ export const DEFAULT_SHUTDOWN_DRAIN_WINDOW_MS = 15_000;
  */
 export const DEFAULT_KILL_GRACE_MS = 2_000;
 
+// Node clamps larger delays to 1 ms and emits TimeoutOverflowWarning. Keep
+// environment-derived windows within the documented 32-bit timer range so a
+// malformed "very large" override cannot become an immediate SIGKILL fuse.
+const MAX_NODE_TIMEOUT_MS = 2_147_483_647;
+
 /**
  * Resolve the drain window from the environment. Unset, empty, non-numeric,
  * and non-positive values all fall back to the default: a broken override
@@ -47,23 +52,33 @@ export function resolveShutdownDrainWindowMs(env = process.env) {
   const raw = env[SHUTDOWN_DRAIN_WINDOW_ENV];
   if (raw === undefined || raw === "") return DEFAULT_SHUTDOWN_DRAIN_WINDOW_MS;
   const value = Number(raw);
-  if (!Number.isFinite(value) || value <= 0) {
+  const floored = Math.floor(value);
+  if (
+    !Number.isFinite(value) ||
+    floored <= 0 ||
+    floored > MAX_NODE_TIMEOUT_MS
+  ) {
     return DEFAULT_SHUTDOWN_DRAIN_WINDOW_MS;
   }
-  return Math.floor(value);
+  return floored;
 }
 
 /**
- * A child is live when it exists and has not yet reported an exit. A child
- * that failed to spawn (`error` event, no pid) is treated as live and simply
- * never emits `exit`; the window bound covers it, and signaling it is a
- * no-op in the tree killer.
+ * A child is live when it has a valid spawned PID and has not yet reported an
+ * exit. A child that failed to spawn has no PID and may never emit `exit`, so
+ * waiting for it would burn the entire drain window without a process to reap.
  *
  * @param {import("node:child_process").ChildProcess | null | undefined} child
  * @returns {boolean}
  */
 function isLive(child) {
-  return Boolean(child) && child.exitCode == null && child.signalCode == null;
+  return (
+    Boolean(child) &&
+    Number.isInteger(child.pid) &&
+    child.pid > 0 &&
+    child.exitCode == null &&
+    child.signalCode == null
+  );
 }
 
 /**
