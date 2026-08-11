@@ -2245,7 +2245,7 @@ const VIEWS_ROUTING_HINT = [
 	"View switching is a common proactive response in app chat: use action=show when the user asks to open, show, switch to, or pull up a matching surface, including a bare surface name in any language.",
 	"Use VIEWS for navigation, close/hide, the view manager, split/tile/window/pin layouts, and capabilities that the selected view actually declares.",
 	"Opening the Calendar surface uses VIEWS action=show; reading or changing calendar events uses the CALENDAR action because the first-party Calendar view is read-only.",
-	"Sticky Notes operations use the registered Notes capabilities. Create and update pass the complete user-authored note in the single content field; never invent a separate title or body. Do not route Notes to documents or Knowledge.",
+	"Sticky Notes operations use the registered Notes capabilities. Create and update pass the complete user-authored note in the single content field; delete uses only the selected capability's declared selector (title for an exact first-line label, query for unique contained text, or id for stable identity), never content. Do not route Notes to documents or Knowledge.",
 	"Phone flashlight requests use action=interact view=device-control capability=set-flashlight with params={enabled:true|false}; never claim success before the capability returns success.",
 	"For declared domain capabilities, use action=interact with an explicit view and capability. Semantic record capabilities are required; agent-fill and agent-click are only for an explicitly requested form-control interaction. Pass parameters in params rather than dotted keys.",
 	"Close/hide means VIEWS action=close, never delete/remove.",
@@ -2548,7 +2548,7 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 			{
 				name: "params",
 				description:
-					"Object parameters for the capability (interact mode), e.g. Notes create uses { content: 'launch checklist' }. Use only parameters declared by that capability and never dotted names like 'params.content'.",
+					"Object parameters for the capability (interact mode), e.g. Notes create uses { content: 'launch checklist' }, while Notes delete uses only a declared selector such as { title: 'exact first-line label' }, { query: 'unique contained text' }, or a stable { id }. Use only parameters declared by that capability and never dotted names like 'params.content'.",
 				required: false,
 				schema: { type: "object", additionalProperties: true },
 			},
@@ -2583,7 +2583,7 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 			{
 				name: "content",
 				description:
-					"Complete user-authored content for a registered one-field capability, including Notes create/update. Preserve the user's wording and do not add a separate title.",
+					"Complete user-authored content for a registered one-field capability, including Notes create/update. Preserve the user's wording and do not add a separate title. Never use content for Notes deletion; use the delete capability's declared selector.",
 				required: false,
 				schema: { type: "string" },
 			},

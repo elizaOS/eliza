@@ -397,6 +397,20 @@ describe("view management actions", () => {
 		expect(action.routingHint).toContain(
 			"action=interact view=device-control capability=set-flashlight",
 		);
+		expect(action.routingHint).toContain(
+			"title for an exact first-line label, query for unique contained text",
+		);
+		const viewsParameters = Array.isArray(action.parameters)
+			? action.parameters
+			: [];
+		expect(
+			viewsParameters.find((parameter) => parameter.name === "params")
+				?.description,
+		).toContain("{ title: 'exact first-line label' }");
+		expect(
+			viewsParameters.find((parameter) => parameter.name === "content")
+				?.description,
+		).toContain("Never use content for Notes deletion");
 		expect(action.similes).toContain("SET_FLASHLIGHT");
 		expect(action.tags).toContain("flashlight");
 		expect(action.description).toContain("native device controls");
@@ -412,6 +426,58 @@ describe("view management actions", () => {
 		).toEqual(["view", "id", "name", "target"]);
 		expect(closeOne.tags).not.toContain("notes");
 		expect(closeAll.tags).not.toContain("notes");
+	});
+
+	it("keeps undeclared Notes delete content fail-closed", async () => {
+		const { runtime } = createRuntime();
+		const action = createViewsAction({
+			client: {
+				listViews: vi.fn(async () => [
+					view({
+						id: "notes",
+						label: "Notes",
+						path: "/notes",
+						capabilities: [
+							{
+								id: "delete-note",
+								description: "Delete one note by unique text.",
+								params: {
+									title: {
+										type: "string",
+										description: "Exact first-line label.",
+									},
+									query: {
+										type: "string",
+										description: "Unique note text.",
+									},
+								},
+							},
+						],
+					}),
+				]),
+				getCurrentView: vi.fn(async () => null),
+			},
+			hasOwnerAccess: vi.fn(async () => true),
+		});
+
+		const result = await action.handler(
+			runtime as never,
+			message(
+				"Delete the note whose exact first-line label is Demo note.",
+			) as never,
+			undefined,
+			{
+				action: "interact",
+				view: "notes",
+				capability: "delete-note",
+				params: { content: "Demo note" },
+			},
+			vi.fn(),
+		);
+
+		expect(result?.success).toBe(false);
+		expect(result?.text).toContain('does not accept parameter "content"');
+		expect(globalThis.fetch).not.toHaveBeenCalled();
 	});
 
 	it("does not reinterpret an undeclared explicit capability on the current view", async () => {
