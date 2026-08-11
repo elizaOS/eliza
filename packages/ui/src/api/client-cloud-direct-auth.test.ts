@@ -966,7 +966,9 @@ describe("ElizaClient direct Cloud auth on native", () => {
       throw new Error(`Unexpected native Cloud request: ${method} ${url}`);
     });
 
-    const client = new ElizaClient("http://localhost:31337");
+    // Native Cloud account setup starts without an agent binding. A non-empty
+    // local/self-hosted base is intentionally kept on its own compat origin.
+    const client = new ElizaClient("");
     const login = await client.cloudLoginDirect("https://www.elizacloud.ai");
     const poll = await client.cloudLoginPollDirect(
       login.apiBase ?? "https://api.elizacloud.ai",
