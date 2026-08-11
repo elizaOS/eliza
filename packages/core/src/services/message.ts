@@ -1844,7 +1844,7 @@ export function preservedSettledToolResult(
 ): (PlannerToolResult & { userFacingText: string }) | undefined {
 	for (let index = settled.length - 1; index >= 0; index--) {
 		const entry = settled[index];
-		if (entry?.result.success !== true) continue;
+		if (!entry || entry.result.success !== true) continue;
 		if (isTerminalPlannerToolName(entry.name)) continue;
 		const candidate = entry.result.userFacingText?.trim();
 		if (!candidate) continue;

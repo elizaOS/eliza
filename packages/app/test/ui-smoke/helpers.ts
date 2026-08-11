@@ -112,116 +112,6 @@ type SmokeNote = {
   updatedAt: string;
 };
 
-type SmokePluginInfo = {
-  id: string;
-  name: string;
-  description: string;
-  tags: string[];
-  enabled: boolean;
-  configured: boolean;
-  envKey: string | null;
-  category:
-    | "ai-provider"
-    | "connector"
-    | "streaming"
-    | "database"
-    | "app"
-    | "feature";
-  source: "bundled" | "store";
-  parameters: Array<{
-    key: string;
-    name?: string;
-    type: string;
-    description?: string;
-    required: boolean;
-    sensitive: boolean;
-    default?: string;
-  }>;
-  validationErrors: Array<{ field: string; message: string }>;
-  validationWarnings: Array<{ field: string; message: string }>;
-  npmName: string;
-  isActive: boolean;
-  status: string;
-  version: string;
-};
-
-function smokePluginCatalog(): SmokePluginInfo[] {
-  return [
-    {
-      id: "plugin-browser",
-      name: "Browser Workspace",
-      description: "Open and manage browser workspaces.",
-      tags: ["browser", "workspace"],
-      enabled: true,
-      configured: true,
-      envKey: null,
-      category: "app",
-      source: "bundled",
-      parameters: [],
-      validationErrors: [],
-      validationWarnings: [],
-      npmName: "@elizaos/plugin-browser",
-      isActive: true,
-      status: "loaded",
-      version: "0.0.0-smoke",
-    },
-    {
-      id: "openai",
-      name: "OpenAI",
-      description: "Model provider configuration.",
-      tags: ["ai", "provider"],
-      enabled: false,
-      configured: false,
-      envKey: "OPENAI_API_KEY",
-      category: "ai-provider",
-      source: "bundled",
-      parameters: [
-        {
-          key: "OPENAI_API_KEY",
-          name: "API key",
-          type: "password",
-          required: true,
-          sensitive: true,
-          description: "OpenAI API key.",
-        },
-      ],
-      validationErrors: [],
-      validationWarnings: [],
-      npmName: "@elizaos/plugin-openai",
-      isActive: false,
-      status: "available",
-      version: "0.0.0-smoke",
-    },
-    {
-      id: "anthropic",
-      name: "Anthropic",
-      description: "Anthropic model provider configuration.",
-      tags: ["ai", "provider"],
-      enabled: false,
-      configured: false,
-      envKey: "ANTHROPIC_API_KEY",
-      category: "ai-provider",
-      source: "bundled",
-      parameters: [
-        {
-          key: "ANTHROPIC_API_KEY",
-          name: "API key",
-          type: "password",
-          required: true,
-          sensitive: true,
-          description: "Anthropic API key.",
-        },
-      ],
-      validationErrors: [],
-      validationWarnings: [],
-      npmName: "@elizaos/plugin-anthropic",
-      isActive: false,
-      status: "available",
-      version: "0.0.0-smoke",
-    },
-  ];
-}
-
 function isSmokeRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
@@ -1662,8 +1552,6 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
     revision: notesRevision,
     notes: smokeNotes,
   });
-  let smokePlugins = smokePluginCatalog();
-  const smokePluginsSnapshot = () => ({ plugins: smokePlugins });
 
   // Answer with a stamp that carries NO commit/label/builtAt, so the BuildBadge
   // (#14174) — whose toLabel() needs one of those to produce a label — renders
@@ -1813,80 +1701,6 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
         uptime: 60_000,
       }),
     });
-  });
-
-  // Plugin management is optional in the zero-key smoke runtime. A missing
-  // plugin-registry backend returns 501 for `/api/plugins*`, which is useful in
-  // live-route tests but noisy in generic renderer interaction passes: clicking
-  // a PluginsView toggle should prove the control fires the same mutation as
-  // production, not fail because an optional server route is absent. Keep a
-  // tiny mutable catalog here so list/filter/toggle/config-save semantics stay
-  // real while the route remains deterministic and keyless.
-  await page.route("**/api/plugins**", async (route) => {
-    const request = route.request();
-    const url = new URL(request.url());
-    if (!url.pathname.startsWith("/api/plugins")) {
-      await route.fallback();
-      return;
-    }
-    if (request.method() === "GET" && url.pathname === "/api/plugins") {
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify(smokePluginsSnapshot()),
-      });
-      return;
-    }
-    if (
-      request.method() === "PUT" &&
-      /^\/api\/plugins\/[^/]+$/.test(url.pathname)
-    ) {
-      const pluginId = decodeURIComponent(
-        url.pathname.slice("/api/plugins/".length),
-      );
-      const body = route.request().postDataJSON() as
-        | Record<string, unknown>
-        | undefined;
-      let updatedPlugin: SmokePluginInfo | null = null;
-      smokePlugins = smokePlugins.map((plugin) => {
-        if (plugin.id !== pluginId) return plugin;
-        updatedPlugin = {
-          ...plugin,
-          ...(typeof body?.enabled === "boolean"
-            ? {
-                enabled: body.enabled,
-                isActive: body.enabled && plugin.configured,
-                status: body.enabled ? "loaded" : "available",
-              }
-            : {}),
-          ...(isSmokeRecord(body?.config)
-            ? { configured: true, validationErrors: [] }
-            : {}),
-        };
-        return updatedPlugin;
-      });
-      if (!updatedPlugin) {
-        await route.fulfill({
-          status: 404,
-          contentType: "application/json",
-          body: JSON.stringify({ ok: false, error: "Plugin not found" }),
-        });
-        return;
-      }
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({
-          ok: true,
-          plugin: updatedPlugin,
-          applied: "config_apply",
-          requiresRestart: false,
-          restartedRuntime: false,
-        }),
-      });
-      return;
-    }
-    await route.fallback();
   });
 
   await page.route("**/api/notes/state", async (route) => {

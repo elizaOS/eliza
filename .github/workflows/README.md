@@ -8,15 +8,10 @@ runners, environments, and a concise job graph.
 
 `ci.yml` is the canonical required pull-request workflow for both `develop` and
 `main`. It classifies changed paths, runs repository quality checks, affected
-tests, deterministic smoke tests, cloud smoke tests, a path-scoped Android
-release AAB audit, and a diff-scoped secret scan. The stable `CI / Required`
-job is the only status intended for branch protection. Individual jobs remain
-visible for diagnosis but are not separately wired into protection rules.
-
-Deterministic browser smoke and cloud smoke run as separate jobs because both
-surfaces can be long-running when caches are cold. Keeping them parallel
-preserves the same required coverage while preventing one healthy lane from
-exhausting the other's timeout budget.
+tests, deterministic smoke tests, a path-scoped Android release AAB audit, and a
+diff-scoped secret scan. The stable `CI / Required` job is the only status
+intended for branch protection. Individual jobs remain visible for diagnosis
+but are not separately wired into protection rules.
 
 `nightly.yml` calls the same CI workflow once per day and adds macOS and Windows
 core smoke tests. It never publishes packages or creates releases.

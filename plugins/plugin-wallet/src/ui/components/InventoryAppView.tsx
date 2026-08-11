@@ -1124,9 +1124,6 @@ function WalletRailAddress({
 
   const handleCopy = useCallback(() => {
     if (!address) return;
-    // Clipboard permission is browser/context dependent. The wallet surface
-    // should never crash just because Chromium/WebKit denies writeText in a
-    // smoke/audit context; only show copied feedback after a confirmed write.
     void copyTextToClipboard(address).then(
       () => {
         setCopied(true);
@@ -1136,7 +1133,6 @@ function WalletRailAddress({
         // error-policy:J4 clipboard denial (permissions policy, headless
         // harness) is an expected per-call failure: the control stays in its
         // visible un-copied state instead of flashing a false "Copied".
-        setCopied(false);
       },
     );
   }, [address]);

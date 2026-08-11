@@ -19,7 +19,8 @@ const FAILURE_MARKER = closesDescriptor
   ? 'smithers child exited before payload'
   : 'smithers payload stream closed without error';
 const workerScript = `
-  const { writeFileSync } = require('node:fs');
+  const { closeSync, writeFileSync } = require('node:fs');
+  ${closesDescriptor ? 'closeSync(3);' : ''}
   process.stderr.write(${JSON.stringify(
     `${FAILURE_MARKER}; OPENAI_API_KEY=${REDACTION_SENTINEL}\n${'x'.repeat(8_192)}`
   )}, () => writeFileSync(${JSON.stringify(workerReadyPath)}, 'ready'));
@@ -30,8 +31,7 @@ let spawnedWorker: childProcess.ChildProcess | undefined;
 let workerClosed = false;
 
 // Only process creation is redirected: the replacement is still a real child
-// with the same stdio topology as the production worker, while stdin is made to
-// fail in the two payload-delivery ways the boundary must handle.
+// with the same four-pipe topology as the production worker.
 Object.defineProperty(childProcess, 'spawn', {
   configurable: true,
   value: (_command: unknown, _args: unknown, options: childProcess.SpawnOptions | undefined) => {
@@ -40,39 +40,21 @@ Object.defineProperty(childProcess, 'spawn', {
       ...options,
       env: { PATH: process.env.PATH },
     });
-    const payloadInput = child.stdin;
+    const payloadInput = child.stdio[3];
     if (!payloadInput) {
       child.kill('SIGKILL');
       throw new Error('Smithers early-close fixture requires payload input');
     }
-    if (closesDescriptor) {
-      Object.defineProperty(payloadInput, 'write', {
-        configurable: true,
-        value: (_chunk: unknown, callback?: (error?: Error | null) => void) => {
-          const error = Object.assign(new Error('smithers child exited before payload'), {
-            code: 'EPIPE',
-          });
-          queueMicrotask(() => {
-            callback?.(error);
-            payloadInput.emit('error', error);
-          });
-          return false;
-        },
-      });
-    } else {
+    if (!closesDescriptor) {
       const closeOnlyPayloadInput = new PassThrough();
-      Object.defineProperty(closeOnlyPayloadInput, 'write', {
+      Object.defineProperty(closeOnlyPayloadInput, 'end', {
         configurable: true,
         value: () => {
           closeOnlyPayloadInput.emit('close');
-          return false;
+          return closeOnlyPayloadInput;
         },
       });
-      Object.defineProperty(child, 'stdin', {
-        configurable: true,
-        value: closeOnlyPayloadInput,
-      });
-      Object.defineProperty(child.stdio, '0', {
+      Object.defineProperty(child.stdio, '3', {
         configurable: true,
         value: closeOnlyPayloadInput,
       });

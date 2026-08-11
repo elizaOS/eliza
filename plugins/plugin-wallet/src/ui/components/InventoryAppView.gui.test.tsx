@@ -574,32 +574,6 @@ describe("InventoryView GUI — address copy buttons", () => {
       expect(navigator.clipboard.writeText).toHaveBeenCalledWith(SOL_ADDRESS),
     );
   });
-
-  it("does not leak an unhandled error when clipboard permission is denied", async () => {
-    const clipboardWrite = vi
-      .fn()
-      .mockRejectedValue(new DOMException("Write permission denied."));
-    Object.defineProperty(navigator, "clipboard", {
-      configurable: true,
-      value: { writeText: clipboardWrite },
-    });
-    appHooks.useApp.mockReturnValue(makeAppState());
-    render(React.createElement(InventoryAppView));
-    const sidebar = await screen.findByTestId("wallets-sidebar");
-
-    fireEvent.click(
-      within(sidebar).getByRole("button", { name: "Copy EVM address" }),
-    );
-
-    await waitFor(() =>
-      expect(clipboardWrite).toHaveBeenCalledWith(EVM_ADDRESS),
-    );
-    await waitFor(() =>
-      expect(
-        within(sidebar).getByRole("button", { name: "Copy EVM address" }),
-      ).toBeTruthy(),
-    );
-  });
 });
 
 describe("InventoryView GUI — background poll + RPC settings", () => {

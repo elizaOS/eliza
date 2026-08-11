@@ -109,7 +109,7 @@ describe("TASKS effect receipts", () => {
     ]);
   });
 
-  it("keeps read-only action text planner-only without inventing a direct callback", async () => {
+  it("binds non-empty action text without inventing a direct callback", async () => {
     const { runtime } = runtimeWithVoidSend();
     const callback = vi.fn(async () => []);
     const result = await tasksAction.handler(
@@ -121,15 +121,13 @@ describe("TASKS effect receipts", () => {
     );
 
     expect(callback).not.toHaveBeenCalled();
-    expect(result?.text).toContain("Active task agents (1):");
-    // Read-only listings are observations for the planner. Binding this raw
-    // text as verified user-facing copy would bypass the evaluator's job of
-    // answering the user's status question in voice.
-    expect(result?.userFacingText).toBeUndefined();
-    expect(result?.verifiedUserFacing).toBeUndefined();
+    expect(result?.userFacingText).toBe(result?.text);
+    expect(result?.verifiedUserFacing).toBe(true);
     expect(result?.effectReceipts).toEqual([
       expect.objectContaining({ outcome: "noop" }),
     ]);
-    expect(result?.userFacingEffectReceiptIds).toBeUndefined();
+    expect(result?.userFacingEffectReceiptIds).toEqual([
+      result?.effectReceipts?.[0]?.receiptId,
+    ]);
   });
 });

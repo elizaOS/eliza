@@ -548,8 +548,8 @@ export function tabFromPath(pathname: string, basePath = ""): Tab | null {
   }
 
   // Legacy /connectors and /connectors/<id> — Settings → Connectors (index or
-  // detail). Index paths preserve the public URL; detail paths write
-  // `#connectors/<id>` so ConnectorsSection can deep-link.
+  // detail). The hash `#connectors` / `#connectors/<id>` is written by the
+  // shell when these paths are opened so ConnectorsSection can deep-link.
   if (normalized === "/connectors" || normalized.startsWith("/connectors/")) {
     return "settings";
   }

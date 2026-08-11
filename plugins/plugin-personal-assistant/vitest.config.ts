@@ -88,12 +88,6 @@ const agentSourceJsToTsPlugin = {
     if (source === "@elizaos/plugin-google-workspace") {
       return path.join(lifeopsTestStubsRoot, "plugin-google-workspace.ts");
     }
-    if (source === "@elizaos/plugin-google-workspace/calendar") {
-      return path.join(
-        lifeopsTestStubsRoot,
-        "plugin-google-workspace-calendar.ts",
-      );
-    }
 
     const normalizedImporter = importer?.replace(/^\/@fs/, "");
     if (
@@ -767,17 +761,6 @@ export default defineConfig({
         replacement: path.join(
           lifeopsTestStubsRoot,
           "plugin-google-workspace.ts",
-        ),
-      },
-      {
-        // CalendarService imports these typed errors from the lightweight
-        // calendar subpath. Keep the integration suite on the local test double
-        // so collecting PA specs never requires a built google-workspace dist or
-        // optional Google SDK modules.
-        find: /^@elizaos\/plugin-google-workspace\/calendar$/,
-        replacement: path.join(
-          lifeopsTestStubsRoot,
-          "plugin-google-workspace-calendar.ts",
         ),
       },
       {

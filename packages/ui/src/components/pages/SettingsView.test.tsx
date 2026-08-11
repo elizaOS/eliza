@@ -55,16 +55,6 @@ const stubSections = vi.hoisted(() => [
     defaultTitle: "Runtime",
   },
   {
-    id: "connectors",
-    label: "settings.sections.connectors.label",
-    defaultLabel: "Connectors",
-    tone: "neutral",
-    hue: "slate",
-    group: "system",
-    titleKey: "settings.sections.connectors.label",
-    defaultTitle: "Connectors",
-  },
-  {
     id: "crash",
     label: "settings.sections.crash.label",
     defaultLabel: "Crash",
@@ -110,10 +100,6 @@ vi.mock("../settings/settings-sections", async () => {
   const settingsRoute = await vi.importActual<
     typeof import("../settings/settings-route")
   >("../settings/settings-route");
-  const replaceSettingsHashRoute = vi.fn(
-    (route: Parameters<typeof settingsRoute.replaceSettingsHashRoute>[0]) =>
-      settingsRoute.replaceSettingsHashRoute(route),
-  );
   const sections = stubSections.map((section) => ({
     ...section,
     icon: Settings,
@@ -177,31 +163,9 @@ vi.mock("../settings/settings-sections", async () => {
         .sort((a, b) => a.order - b.order)
         .map(({ group, label, items }) => ({ group, label, items }));
     },
-    backFromConnectorDetail: vi.fn(() => {
-      window.history.replaceState(null, "", "#connectors");
-      window.dispatchEvent(new Event("popstate"));
-    }),
-    openConnectorsIndexHash: vi.fn(() =>
-      replaceSettingsHashRoute({ kind: "section", sectionId: "connectors" }),
-    ),
-    parseSettingsHash: settingsRoute.parseSettingsHash,
-    readSettingsHashRoute: () =>
-      settingsRoute.parseSettingsHash(window.location.hash),
-    readSettingsHashSection: () => {
-      const route = settingsRoute.parseSettingsHash(window.location.hash);
-      return route.kind === "hub" ? null : route.sectionId;
-    },
-    replaceConnectorDetailHash: vi.fn((connectorId: string) =>
-      replaceSettingsHashRoute({
-        kind: "connector-detail",
-        sectionId: "connectors",
-        connectorId,
-      }),
-    ),
-    replaceSettingsHash: vi.fn((sectionId: string) =>
-      replaceSettingsHashRoute({ kind: "section", sectionId }),
-    ),
-    replaceSettingsHashRoute,
+    readSettingsHashSection: () =>
+      window.location.hash.length > 1 ? window.location.hash.slice(1) : null,
+    replaceSettingsHash: vi.fn(),
     settingsSectionLabel: (section: { defaultLabel: string }) =>
       section.defaultLabel,
     settingsSectionTitle: (section: { defaultTitle: string }) =>
@@ -295,19 +259,6 @@ describe("SettingsView", () => {
     expect(screen.getByTestId("stub-runtime")).toBeTruthy();
     expect(screen.queryByTestId("stub-identity")).toBeNull();
     expect(screen.getByTestId("view-header").textContent).toContain("Runtime");
-  });
-
-  it("opens the legacy /connectors index path without rewriting the public URL hash", async () => {
-    window.history.replaceState(null, "", "/connectors");
-
-    render(<SettingsView />);
-
-    await waitFor(() => {
-      expect(screen.getByTestId("view-header").textContent).toContain(
-        "Connectors",
-      );
-    });
-    expect(window.location.hash).toBe("");
   });
 
   it("synchronizes same-page settings navigation dispatched through popstate", () => {

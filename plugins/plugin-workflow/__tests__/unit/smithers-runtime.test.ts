@@ -301,12 +301,11 @@ describe('runWorkflowWithSmithers (in-process Smithers engine)', () => {
       const worker = spawn(process.execPath, ['-e', createSmithersScript()], {
         cwd: pluginRoot,
         env: buildChildEnv(),
-        // The worker receives the run payload as the first stdin protocol line;
-        // stdin stays open afterward so node-response records can follow.
-        stdio: ['pipe', 'pipe', 'pipe'],
+        stdio: ['pipe', 'pipe', 'pipe', 'pipe'],
       });
       try {
-        worker.stdin?.write(`${payload}\n`);
+        const payloadPipe = worker.stdio[3] as NodeJS.WritableStream;
+        payloadPipe.end(payload);
         let stdout = '';
         worker.stdout?.setEncoding('utf8');
         const sawNodeRequest = new Promise<void>((resolve, reject) => {

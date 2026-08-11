@@ -554,10 +554,9 @@ export async function executeTriggerTask(
         : "Trigger dispatch failed",
     );
     // Scheduled automations run without the user in the chat loop, so a
-    // dispatch failure is otherwise invisible. Await the failure notification
-    // so a completed scheduler tick means the rail entry is durable too; still
-    // report-and-swallow notify errors so they never mask the trigger error.
-    await getNotifier(runtime)
+    // dispatch failure is otherwise invisible. Surface it on the notification
+    // rail (fire-and-forget; never let a notify failure mask the trigger error).
+    void getNotifier(runtime)
       ?.notify({
         title: workflowGone
           ? `Automation "${trigger.displayName}" disabled`

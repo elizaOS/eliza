@@ -3,9 +3,8 @@
  * Translates the plugin's WorkflowDefinition into the Smithers execution plan,
  * spawns a Bun worker (Smithers needs `bun:sqlite`) to run it, and maps the
  * result back to a WorkflowExecution with engine metrics. Definitions and
- * trigger data cross stdin as the first protocol record so provider secrets and
- * run payloads do not enter the worker environment or argv; each run has a
- * wall-clock deadline.
+ * trigger data cross a dedicated pipe so provider secrets and run payloads do
+ * not enter the worker environment; each run has a wall-clock deadline.
  *
  * Consumed by EmbeddedWorkflowService as the node-execution backend. Reads
  * optional `SMITHERS_DB_*`, `ELIZA_SMITHERS_TIMEOUT_MS`, and `BUN_BIN` env vars.
@@ -249,7 +248,7 @@ function writeSmithersPayload(input: NodeJS.WritableStream, payload: string): Pr
     input.on('error', onError);
     input.once('close', onClose);
     try {
-      input.write(`${payload}\n`, settle);
+      input.end(payload, settle);
     } catch (error) {
       // error-policy:J1 translate a synchronous payload-pipe write failure into
       // the promise observed by the worker-process boundary.
@@ -294,14 +293,11 @@ export function createSmithersScript(): string {
   return String.raw`
     import { Smithers } from '@smithers-orchestrator/engine';
     import { Effect, Schema } from 'effect';
+    import { readFileSync } from 'node:fs';
     import { createInterface } from 'node:readline/promises';
 
+    const payload = JSON.parse(readFileSync(3, 'utf8'));
     const rl = createInterface({ input: process.stdin, crlfDelay: Infinity });
-    let payload;
-    let settlePayload;
-    const payloadReady = new Promise((resolve, reject) => {
-      settlePayload = { resolve, reject };
-    });
     const pending = new Map();
     let requestSeq = 0;
     const metrics = { nodes: 0, levels: 0, maxConcurrency: 0, started: 0, finished: 0, failed: 0, skipped: 0, retries: 0 };
@@ -319,15 +315,6 @@ export function createSmithersScript(): string {
     (async () => {
       for await (const line of rl) {
         if (!line.trim()) continue;
-        if (!payload) {
-          try {
-            payload = JSON.parse(line);
-            settlePayload.resolve();
-          } catch (error) {
-            settlePayload.reject(error);
-          }
-          continue;
-        }
         let response;
         try { response = JSON.parse(line); } catch { continue; }
         const entry = pending.get(response.requestId);
@@ -341,7 +328,6 @@ export function createSmithersScript(): string {
           entry.resolve(response.outputData ?? [[]]);
         }
       }
-      if (!payload) settlePayload.reject(new Error('Smithers worker stdin closed before payload'));
       // stdin EOF: the parent finished with this worker or died. A node request
       // still pending can never be answered, and leaving its promise unsettled
       // keeps the Effect fiber — and this process — alive forever; leaked
@@ -443,7 +429,6 @@ export function createSmithersScript(): string {
     }
 
     try {
-      await payloadReady;
       const enabledNodes = payload.plan.enabledNodes;
       const incoming = payload.plan.incoming;
       const startNodes = new Set(payload.plan.startNodes);
@@ -651,12 +636,17 @@ export async function runWorkflowWithSmithers({
   const proc = spawn(resolveBunBinary(), ['-e', createSmithersScript()], {
     cwd: pluginRoot,
     env: buildSmithersWorkerEnv(),
-    // Bun's node:child_process shim is fragile with extra fd pipes under CI
-    // test concurrency. The first stdin line is reserved for payload, then the
-    // same stream carries node-response records back to the worker. This keeps
-    // secrets out of env/argv while using only standard stdio handles.
-    stdio: ['pipe', 'pipe', 'pipe'],
+    stdio: ['pipe', 'pipe', 'pipe', 'pipe'],
   });
+  const payloadInput = proc.stdio[3];
+  if (!payloadInput || typeof (payloadInput as { end?: unknown }).end !== 'function') {
+    proc.kill('SIGKILL');
+    throw new ElizaError('Smithers worker payload pipe was not created', {
+      code: 'SMITHERS_PAYLOAD_PIPE_MISSING',
+      context: { workflowId: workflow.id ?? '', executionId },
+    });
+  }
+  const payloadStream = payloadInput as NodeJS.WritableStream;
   // A worker that dies abruptly surfaces late stream errors on the parent side
   // (EPIPE on stdin writes, teardown errors on the stdout/stderr pipes). None
   // of these streams otherwise carries an 'error' listener, so without this
@@ -833,7 +823,7 @@ export async function runWorkflowWithSmithers({
     if (externalSignal.aborted) onExternalAbort();
     else externalSignal.addEventListener('abort', onExternalAbort, { once: true });
   }
-  const payloadErrorPromise = writeSmithersPayload(proc.stdin, payload).then(
+  const payloadErrorPromise = writeSmithersPayload(payloadStream, payload).then(
     () => null,
     (error: Error) => {
       killWorker(error);
@@ -853,7 +843,7 @@ export async function runWorkflowWithSmithers({
   // every stdio handle — destroying again would double-close file descriptors
   // whose numbers a concurrently running worker's pipes may have reused.
   if (!closeObserved) {
-    for (const stream of [proc.stdin, proc.stdout, proc.stderr]) {
+    for (const stream of [proc.stdin, proc.stdout, proc.stderr, payloadStream]) {
       try {
         (stream as { destroy?: () => void }).destroy?.();
       } catch {
