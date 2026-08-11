@@ -528,6 +528,152 @@ describe("Notes capabilities", () => {
     ]);
   });
 
+  it("deletes a note by exact title label using the declared title selector", async () => {
+    const service = await serviceFor(await temporaryStateFile());
+    await interact(
+      "create-note",
+      { content: "Shopping\nMilk and eggs", color: "green" },
+      service,
+    );
+    await interact(
+      "create-note",
+      { content: "Workout\nPush day", color: "yellow" },
+      service,
+    );
+    expect(service.listNotes()).toHaveLength(2);
+    const shoppingId = service
+      .listNotes()
+      .find((n) => n.title === "Shopping")?.id;
+    if (!shoppingId) throw new Error("Shopping note id is required.");
+
+    const deleted = await interact(
+      "delete-note",
+      { title: "Shopping" },
+      service,
+    );
+    expect(deleted).toMatchObject({ success: true });
+    expectAppliedMutationReceipt(deleted, "delete-note", {
+      kind: "notes.note",
+      id: shoppingId,
+    });
+    expect(service.listNotes().map((note) => note.title)).toEqual(["Workout"]);
+  });
+
+  it("reads and updates a note by exact title label", async () => {
+    const service = await serviceFor(await temporaryStateFile());
+    await interact(
+      "create-note",
+      { content: "Groceries\nWeekly list", color: "slate" },
+      service,
+    );
+
+    const read = await interact("get-note", { title: "Groceries" }, service);
+    expect(read).toMatchObject({
+      success: true,
+      data: { note: { title: "Groceries" } },
+    });
+
+    const updated = await interact(
+      "update-note",
+      { title: "Groceries", content: "Groceries\nUpdated list", color: "rose" },
+      service,
+    );
+    expect(updated).toMatchObject({ success: true });
+    expect(service.listNotes()[0]?.body).toBe("Updated list");
+    expect(service.listNotes()[0]?.color).toBe("rose");
+  });
+
+  it("rejects delete-note content as an undeclared payload field (fail-closed)", async () => {
+    const service = await serviceFor(await temporaryStateFile());
+    await interact(
+      "create-note",
+      { content: "Target\nDelete me", color: "yellow" },
+      service,
+    );
+    const before = service.snapshot();
+
+    // content is the create/update payload contract, not a deletion selector.
+    // It must be rejected at the VIEWS boundary with zero fetch and zero mutation.
+    await expect(
+      interact("delete-note", { content: "Target\nDelete me" }, service),
+    ).resolves.toMatchObject({
+      success: false,
+      error: { code: "NOTES_VALIDATION_FAILED" },
+    });
+    expect(service.snapshot()).toEqual(before);
+    expect(service.listNotes()).toHaveLength(1);
+  });
+
+  it("rejects conflicting selectors on delete-note", async () => {
+    const service = await serviceFor(await temporaryStateFile());
+    await interact("create-note", { content: "Alpha" }, service);
+    const before = service.snapshot();
+
+    await expect(
+      interact("delete-note", { id: "note-test-1", title: "Alpha" }, service),
+    ).resolves.toMatchObject({
+      success: false,
+      error: { code: "NOTES_VALIDATION_FAILED" },
+    });
+    expect(service.snapshot()).toEqual(before);
+  });
+
+  it("rejects empty selector values on delete-note", async () => {
+    const service = await serviceFor(await temporaryStateFile());
+    await interact("create-note", { content: "Alpha" }, service);
+    const before = service.snapshot();
+
+    await expect(
+      interact("delete-note", { title: "   " }, service),
+    ).resolves.toMatchObject({
+      success: false,
+      error: { code: "NOTES_VALIDATION_FAILED" },
+    });
+    expect(service.snapshot()).toEqual(before);
+  });
+
+  it("rejects unknown selector fields on delete-note", async () => {
+    const service = await serviceFor(await temporaryStateFile());
+    await interact("create-note", { content: "Alpha" }, service);
+    const before = service.snapshot();
+
+    await expect(
+      interact("delete-note", { label: "Alpha" }, service),
+    ).resolves.toMatchObject({
+      success: false,
+      error: { code: "NOTES_VALIDATION_FAILED" },
+    });
+    expect(service.snapshot()).toEqual(before);
+  });
+
+  it("rejects ambiguous title matches on delete-note without mutation", async () => {
+    const service = await serviceFor(await temporaryStateFile());
+    await interact("create-note", { content: "Same Title\nFirst" }, service);
+    await interact("create-note", { content: "Same Title\nSecond" }, service);
+    const before = service.snapshot();
+
+    await expect(
+      interact("delete-note", { title: "Same Title" }, service),
+    ).resolves.toMatchObject({
+      success: false,
+      error: { code: "NOTES_AMBIGUOUS_NOTE" },
+    });
+    expect(service.snapshot()).toEqual(before);
+    expect(service.listNotes()).toHaveLength(2);
+  });
+
+  it("rejects delete-note with no selector provided", async () => {
+    const service = await serviceFor(await temporaryStateFile());
+    await interact("create-note", { content: "Alpha" }, service);
+    const before = service.snapshot();
+
+    await expect(interact("delete-note", {}, service)).resolves.toMatchObject({
+      success: false,
+      error: { code: "NOTES_VALIDATION_FAILED" },
+    });
+    expect(service.snapshot()).toEqual(before);
+  });
+
   it("returns explicit failures for invalid input and rejects undeclared capabilities", async () => {
     const service = await serviceFor(await temporaryStateFile());
     await expect(
