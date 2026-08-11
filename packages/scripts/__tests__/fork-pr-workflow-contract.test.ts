@@ -12,7 +12,44 @@ const repositoryRoot = join(import.meta.dir, "../../..");
 const workflow = (name: string): string =>
   readFileSync(join(repositoryRoot, ".github/workflows", name), "utf8");
 
-const forkSkip = "github.event.pull_request.head.repo.fork == false";
+const trustedPullRequest =
+  "github.event.pull_request.head.repo.fork == false && github.actor != 'dependabot[bot]'";
+const trustedPullRequestOrPush =
+  `github.event_name != 'pull_request' || (${trustedPullRequest})`;
+
+function jobCondition(contents: string, jobName: string): string {
+  const lines = contents.split("\n");
+  const jobStart = lines.findIndex((line) => line === `  ${jobName}:`);
+  expect(jobStart).toBeGreaterThanOrEqual(0);
+
+  for (const line of lines.slice(jobStart + 1)) {
+    if (/^  \S/u.test(line)) break;
+    const condition = line.match(/^    if: (.+)$/u)?.[1];
+    if (condition) return condition;
+  }
+
+  throw new Error(`job ${jobName} has no condition`);
+}
+
+type WorkflowEvent = {
+  eventName: "pull_request" | "push";
+  actor: string;
+  headRepositoryFork?: boolean;
+};
+
+function trustedPullRequestJobRuns(event: WorkflowEvent): boolean {
+  return (
+    event.eventName === "pull_request" &&
+    event.headRepositoryFork === false &&
+    event.actor !== "dependabot[bot]"
+  );
+}
+
+function gitleaksJobRuns(event: WorkflowEvent): boolean {
+  return (
+    event.eventName !== "pull_request" || trustedPullRequestJobRuns(event)
+  );
+}
 
 describe("fork pull-request workflow policy", () => {
   test("canonical CI is entirely GitHub-hosted and read-only", () => {
@@ -25,21 +62,67 @@ describe("fork pull-request workflow policy", () => {
     ).toBeGreaterThanOrEqual(7);
   });
 
-  test("duplicate develop PR jobs skip forks", () => {
+  test("each duplicate develop PR job uses the complete trust predicate", () => {
     const developPr = workflow("develop-pr.yml");
 
-    expect(
-      developPr.match(new RegExp(forkSkip.replaceAll(".", "\\."), "g"))?.length,
-    ).toBe(4);
+    for (const job of ["lint", "typecheck", "build", "plugin-tests"]) {
+      expect(jobCondition(developPr, job)).toBe(trustedPullRequest);
+    }
   });
 
-  test("standalone gitleaks skips forks while preserving push coverage", () => {
+  test("standalone gitleaks uses the same trust boundary and preserves pushes", () => {
     const gitleaks = workflow("gitleaks.yml");
 
-    expect(gitleaks).toContain(
-      `if: github.event_name != 'pull_request' || ${forkSkip}`,
-    );
+    expect(jobCondition(gitleaks, "gitleaks")).toBe(trustedPullRequestOrPush);
     expect(gitleaks).toContain('push:\n    branches: ["main", "develop"]');
+  });
+
+  test("trust truth table separates forks, Dependabot, trusted PRs, and pushes", () => {
+    const cases: Array<{
+      event: WorkflowEvent;
+      developPr: boolean;
+      gitleaks: boolean;
+    }> = [
+      {
+        event: {
+          eventName: "pull_request",
+          actor: "outside-contributor",
+          headRepositoryFork: true,
+        },
+        developPr: false,
+        gitleaks: false,
+      },
+      {
+        event: {
+          eventName: "pull_request",
+          actor: "dependabot[bot]",
+          headRepositoryFork: false,
+        },
+        developPr: false,
+        gitleaks: false,
+      },
+      {
+        event: {
+          eventName: "pull_request",
+          actor: "trusted-contributor",
+          headRepositoryFork: false,
+        },
+        developPr: true,
+        gitleaks: true,
+      },
+      {
+        event: { eventName: "push", actor: "maintainer" },
+        developPr: false,
+        gitleaks: true,
+      },
+    ];
+
+    for (const scenario of cases) {
+      expect(trustedPullRequestJobRuns(scenario.event)).toBe(
+        scenario.developPr,
+      );
+      expect(gitleaksJobRuns(scenario.event)).toBe(scenario.gitleaks);
+    }
   });
 
   test("distinct fork checks remain available", () => {
@@ -51,7 +134,7 @@ describe("fork pull-request workflow policy", () => {
     ]) {
       const contents = workflow(name);
       expect(contents).toContain("pull_request:");
-      expect(contents).not.toContain(forkSkip);
+      expect(contents).not.toContain(trustedPullRequest);
     }
   });
 

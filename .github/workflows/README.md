@@ -36,14 +36,15 @@ the `pr.yaml` title check cover narrower contracts. None replaces the
 
 ### Outside contributors
 
-Fork pull requests run the canonical `ci.yml` workflow on ephemeral
-GitHub-hosted runners with read-only permissions. Cloud integration/E2E, UI
-fixture, and PR-policy workflows remain enabled because they add coverage that
-canonical CI does not provide. `develop-pr.yml` and the standalone
-`gitleaks.yml` lane skip forks because canonical CI already supplies their
-lint, format, typecheck, plugin-test, build-core, and diff-scoped secret-scan
-contracts; running both copies only delays feedback and consumes hosted
-capacity.
+Untrusted pull requests—forks and same-repository Dependabot heads—run the
+canonical `ci.yml` workflow on ephemeral GitHub-hosted runners with read-only
+permissions. Cloud integration/E2E, UI fixture, and PR-policy workflows remain
+enabled because they add coverage that canonical CI does not provide. The jobs
+in `develop-pr.yml` and the standalone `gitleaks.yml` job are skipped for these
+PRs because canonical CI already supplies their lint, format, typecheck,
+plugin-test, build-core, and diff-scoped secret-scan contracts; running both
+copies only delays feedback and consumes capacity. Their `pull_request`
+triggers still create workflow runs, whose guarded jobs settle as skipped.
 
 Repository variables are not an authorization boundary for fork events. Any
 fork-capable workflow with optional Hetzner placement must default to hosted
