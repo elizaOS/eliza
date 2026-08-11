@@ -294,19 +294,33 @@ export class BaseBlockchainConnector implements BlockchainConnector {
     address: string,
   ): Promise<ChainOperationResult<NftHoldingsResult>> {
     try {
-      const holdings = await getEthereumNftHoldings(address, MORALIS_CHAIN);
+      const { holdings, truncated } = await getEthereumNftHoldings(
+        address,
+        MORALIS_CHAIN,
+      );
 
-      return createSuccessResult({
-        chainId: BASE_CHAIN_ID,
-        address: address.trim(),
-        holdings: holdings.map((nft) => ({
-          asset: createBaseNftAsset(nft),
-          name: nft.name,
-          collection: null,
-          imageUrl: nft.imageUrl,
-        })),
-        retrievedAt: new Date().toISOString(),
-      });
+      return createSuccessResult(
+        {
+          chainId: BASE_CHAIN_ID,
+          address: address.trim(),
+          holdings: holdings.map((nft) => ({
+            asset: createBaseNftAsset(nft),
+            name: nft.name,
+            collection: null,
+            imageUrl: nft.imageUrl,
+          })),
+          retrievedAt: new Date().toISOString(),
+        },
+        truncated
+          ? [
+              {
+                code: "BASE_NFT_COUNT_EXCEEDS_PAGE_LIMIT",
+                message:
+                  "This wallet holds more NFTs than could be retrieved within the page limit - the list below is incomplete, not an accurate 'this wallet holds few/no NFTs' result.",
+              },
+            ]
+          : [],
+      );
     } catch (error) {
       return createErrorResult(error, "BASE_NFT_RETRIEVAL_FAILED");
     }

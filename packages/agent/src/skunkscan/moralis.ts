@@ -309,6 +309,7 @@ export type MoralisNft = {
 
 export type MoralisWalletNftsResponse = {
   result?: MoralisNft[];
+  cursor?: string | null;
 };
 
 export type EthereumNftHolding = {
@@ -318,24 +319,69 @@ export type EthereumNftHolding = {
   imageUrl: string | null;
 };
 
+export type EthereumNftHoldingsResult = {
+  holdings: EthereumNftHolding[];
+  // Same shape/meaning as EthereumTokenHoldingsResult.truncated - true when
+  // MAX_NFT_HOLDING_PAGES was hit before the cursor ran out. Previously this
+  // function made a single un-paginated call (live-confirmed: a real
+  // 100+-NFT wallet, 0xd387a6e4e84a6c86bd90c158c6028a58cc8ac459, returns a
+  // real cursor Moralis expected the caller to follow), silently dropping
+  // everything past the first page with no signal to the caller - unlike
+  // the token-holdings path, which already surfaced this correctly.
+  truncated: boolean;
+};
+
+// Same pagination shape as getEthereumTokenHoldings's MAX_TOKEN_HOLDING_PAGES
+// - a separate constant (not reused) so NFT and token page limits can be
+// tuned independently, even though both currently land on the same 20 x 100
+// = 2,000-item ceiling.
+const MAX_NFT_HOLDING_PAGES = 20;
+
 export async function getEthereumNftHoldings(
   address: string,
   chain: MoralisEvmChain,
-): Promise<EthereumNftHolding[]> {
+): Promise<EthereumNftHoldingsResult> {
   const walletAddress = address.trim();
 
   if (!walletAddress) {
     throw new Error("Wallet address is required");
   }
 
-  const data = await callMoralisRest<MoralisWalletNftsResponse>(
-    `/${walletAddress}/nft`,
-    { chain, format: "decimal" },
-  );
+  const allNfts: MoralisNft[] = [];
+  let cursor: string | null = null;
+  let truncated = false;
 
-  const items = Array.isArray(data.result) ? data.result : [];
+  for (let page = 0; page < MAX_NFT_HOLDING_PAGES; page += 1) {
+    const searchParams: Record<string, string> = {
+      chain,
+      format: "decimal",
+      limit: "100",
+    };
 
-  return items
+    if (cursor) {
+      searchParams.cursor = cursor;
+    }
+
+    const data = await callMoralisRest<MoralisWalletNftsResponse>(
+      `/${walletAddress}/nft`,
+      searchParams,
+    );
+
+    const results = Array.isArray(data.result) ? data.result : [];
+    allNfts.push(...results);
+
+    if (!data.cursor) {
+      break;
+    }
+
+    cursor = data.cursor;
+
+    if (page === MAX_NFT_HOLDING_PAGES - 1) {
+      truncated = true;
+    }
+  }
+
+  const holdings = allNfts
     .filter(
       (nft) =>
         typeof nft.token_address === "string" &&
@@ -347,6 +393,8 @@ export async function getEthereumNftHoldings(
       name: nft.normalized_metadata?.name ?? nft.name ?? null,
       imageUrl: nft.normalized_metadata?.image ?? null,
     }));
+
+  return { holdings, truncated };
 }
 
 export type MoralisNativeTransfer = {
