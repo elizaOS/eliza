@@ -434,8 +434,111 @@ describe("isIdempotentBrowserSubaction", () => {
     expect(isIdempotentBrowserSubaction("navigate")).toBe(false);
     expect(isIdempotentBrowserSubaction("open")).toBe(false);
     expect(isIdempotentBrowserSubaction("upload")).toBe(false);
-    expect(isIdempotentBrowserSubaction("submit")).toBe(false);
+    expect(isIdempotentBrowserSubaction("dblclick")).toBe(false);
     expect(isIdempotentBrowserSubaction("scroll")).toBe(false);
     expect(isIdempotentBrowserSubaction("press")).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Bridge capability manifest regression (issue #18258 review P1 #2)
+//
+// The bridge target advertises session-gated subactions (open/navigate/close/
+// show/hide/back/forward/reload) in BRIDGE_SUPPORTED_SUBACTIONS. But the
+// executor unconditionally rejects every one of them because a LifeOps session
+// is required. An unpinned side-effecting command can therefore select the
+// high-priority bridge as "capable", hit a known pre-execution rejection, and
+// be mislabeled UNCERTAIN_OUTCOME instead of selecting a genuinely capable
+// target. The fix: BRIDGE_SUPPORTED_SUBACTIONS must only include subactions
+// the bridge can execute directly, not session-gated ones.
+// ---------------------------------------------------------------------------
+
+describe("Bridge capability manifest excludes session-gated subactions (#18258 review)", () => {
+  it("BRIDGE_SUPPORTED_SUBACTIONS does not advertise session-gated operations", async () => {
+    const { BRIDGE_SUPPORTED_SUBACTIONS } = await import(
+      "../targets/bridge-target.js"
+    );
+
+    // Direct-executable subactions the bridge handles without a session.
+    expect(BRIDGE_SUPPORTED_SUBACTIONS.has("list")).toBe(true);
+    expect(BRIDGE_SUPPORTED_SUBACTIONS.has("state")).toBe(true);
+    expect(BRIDGE_SUPPORTED_SUBACTIONS.has("get")).toBe(true);
+    expect(BRIDGE_SUPPORTED_SUBACTIONS.has("tab")).toBe(true);
+
+    // Session-gated subactions — must NOT be in the manifest so the
+    // pre-dispatch capability check skips the bridge for them.
+    expect(BRIDGE_SUPPORTED_SUBACTIONS.has("open")).toBe(false);
+    expect(BRIDGE_SUPPORTED_SUBACTIONS.has("navigate")).toBe(false);
+    expect(BRIDGE_SUPPORTED_SUBACTIONS.has("close")).toBe(false);
+    expect(BRIDGE_SUPPORTED_SUBACTIONS.has("show")).toBe(false);
+    expect(BRIDGE_SUPPORTED_SUBACTIONS.has("hide")).toBe(false);
+    expect(BRIDGE_SUPPORTED_SUBACTIONS.has("back")).toBe(false);
+    expect(BRIDGE_SUPPORTED_SUBACTIONS.has("forward")).toBe(false);
+    expect(BRIDGE_SUPPORTED_SUBACTIONS.has("reload")).toBe(false);
+  });
+
+  it("does not select the bridge for a session-gated side-effecting command", async () => {
+    // Simulate the real bridge-vs-workspace race: bridge has higher priority
+    // and advertises only direct subactions. A `navigate` (session-gated,
+    // side-effecting) must skip the bridge and select workspace.
+    const service = new BrowserService();
+
+    // Mirror the real bridge target's capability manifest.
+    const bridge = createTarget({
+      id: "bridge",
+      priority: 200,
+      score: () => 160,
+      supports: (cmd) => {
+        // Only direct-executable subactions.
+        return ["list", "state", "get", "tab"].includes(cmd.subaction);
+      },
+    });
+
+    // Workspace supports everything.
+    const workspace = createTarget({ id: "workspace", priority: 100 });
+
+    service.registerTarget(bridge);
+    service.registerTarget(workspace);
+
+    // navigate is side-effecting and session-gated — bridge must be skipped.
+    const result = await service.execute({
+      subaction: "navigate",
+      url: "https://example.test",
+    });
+
+    expect(result.value).toBe("workspace");
+    expect(bridge.execute).not.toHaveBeenCalled();
+    expect(workspace.execute).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not mislabel a session-gated operation as UNCERTAIN_OUTCOME when the bridge skips it", async () => {
+    // Regression: previously the bridge was selected as "capable" for
+    // session-gated ops, then rejected at execute time, which for a
+    // side-effecting command was classified as UNCERTAIN_OUTCOME.
+    // Now the bridge is skipped pre-dispatch and a capable workspace is
+    // selected instead — no UNCERTAIN_OUTCOME.
+    const service = new BrowserService();
+
+    const bridge = createTarget({
+      id: "bridge",
+      priority: 200,
+      score: () => 160,
+      supports: (cmd) =>
+        ["list", "state", "get", "tab"].includes(cmd.subaction),
+      fail: true, // even if selected, it would fail
+    });
+    const workspace = createTarget({ id: "workspace", priority: 100 });
+
+    service.registerTarget(bridge);
+    service.registerTarget(workspace);
+
+    const result = await service.execute({
+      subaction: "open",
+      url: "https://example.test",
+    });
+
+    // Workspace handles it successfully — bridge was never called.
+    expect(result.value).toBe("workspace");
+    expect(bridge.execute).not.toHaveBeenCalled();
   });
 });
