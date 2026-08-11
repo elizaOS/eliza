@@ -447,6 +447,21 @@ describe("collectPluginNames runtime mode provider policy", () => {
     expect(names.has("agent-orchestrator")).toBe(true);
   });
 
+  it("resolves the persisted Agent Orchestrator registry id to its plugin package", () => {
+    const names = collectPluginNames({
+      plugins: {
+        allow: ["agent-orchestrator"],
+        entries: {
+          "agent-orchestrator": { enabled: true },
+        },
+      },
+    } as ElizaConfig);
+
+    expect(names.has("@elizaos/plugin-agent-orchestrator")).toBe(true);
+    expect(names.has("@elizaos/core")).toBe(false);
+    expect(names.has("@elizaos/plugin-core")).toBe(false);
+  });
+
   it("lets ELIZA_AGENT_ORCHESTRATOR=false override coding-agent defaults", () => {
     process.env.ELIZA_AGENT_ORCHESTRATOR = "false";
     process.env.ELIZA_DEFAULT_AGENT_TYPE = "opencode";
