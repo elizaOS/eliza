@@ -263,6 +263,9 @@ function isValidPluginExport(c: unknown): c is {
 	if (!c || typeof c !== "object" || Array.isArray(c)) return false;
 	const obj = c as Record<string, unknown>;
 	if (typeof obj.name !== "string" || obj.name.length === 0) return false;
+	// Validate actions shape before the type predicate narrows it —
+	// a non-array `actions` (e.g. `{}` or `"bad"`) must not pass.
+	if (obj.actions !== undefined && !Array.isArray(obj.actions)) return false;
 	return !!(
 		obj.init ||
 		obj.services ||
@@ -319,10 +322,13 @@ async function loadPlugin(entryPath: string): Promise<{
 		// not bridged. Warn so a misconfigured isolation:"worker" app
 		// doesn't silently boot as an inert worker.
 		if (actions.length === 0) {
-			console.warn(
-				`[app-worker] plugin "${plugin.name}" loaded with zero actions; ` +
-					"non-action surfaces (providers/routes/services) are not exposed in the worker sandbox",
-			);
+			// error-policy:J8 worker diagnostic — non-blocking warning surfaced to
+			// the parent thread so a misconfigured isolation:"worker" app doesn't
+			// silently boot as an inert worker.
+			parentPort?.postMessage({
+				type: "warn",
+				message: `plugin "${plugin.name}" loaded with zero actions; non-action surfaces (providers/routes/services) are not exposed in the worker sandbox`,
+			});
 		}
 		for (const action of actions) {
 			if (
