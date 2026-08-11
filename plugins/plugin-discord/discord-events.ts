@@ -462,8 +462,19 @@ export function setupDiscordEventListeners(service: DiscordServiceInternals): {
 			);
 		}
 
-		// Skip if channel restrictions are set and this channel is not allowed
+		const channelType = message.channel.type as DiscordChannelType;
+		const isDm =
+			channelType === DiscordChannelType.DM ||
+			channelType === DiscordChannelType.GroupDM;
+
+		// Skip if channel restrictions are set and this channel is not allowed.
+		// DMs (and group DMs) are exempt: CHANNEL_IDS scopes which *guild*
+		// surfaces the bot participates in, while DM access is governed by the
+		// DM policy (dmPolicy/allowFrom, enforced in the message manager via
+		// dm-access.ts). Without this exemption any CHANNEL_IDS deployment
+		// silently drops every DM before the DM policy ever runs.
 		if (
+			!isDm &&
 			service.allowedChannelIds &&
 			!service.isChannelAllowed(message.channel.id)
 		) {
@@ -528,11 +539,6 @@ export function setupDiscordEventListeners(service: DiscordServiceInternals): {
 			if (!service.messageManager) {
 				return;
 			}
-
-			const channelType = message.channel.type as DiscordChannelType;
-			const isDm =
-				channelType === DiscordChannelType.DM ||
-				channelType === DiscordChannelType.GroupDM;
 
 			if (isDm) {
 				// DMs are 1:1 and gain nothing from channel-style debouncing.
