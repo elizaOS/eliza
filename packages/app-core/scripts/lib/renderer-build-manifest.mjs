@@ -122,6 +122,59 @@ export function readRendererBuildManifest(dir) {
   }
 }
 
+function isNullableString(value) {
+  return value === null || typeof value === "string";
+}
+
+/**
+ * Return whether a parsed manifest has the v1 shape and matches the renderer
+ * bytes beside it. This is the reuse boundary; a copied or partial stamp must
+ * not make a stale renderer look current.
+ *
+ * @param {string} distDir
+ * @param {unknown} manifest
+ */
+export function rendererBuildManifestMatchesDist(distDir, manifest) {
+  if (
+    manifest === null ||
+    typeof manifest !== "object" ||
+    Array.isArray(manifest)
+  ) {
+    return false;
+  }
+
+  if (
+    manifest.schema !== RENDERER_BUILD_MANIFEST_SCHEMA ||
+    typeof manifest.buildId !== "string" ||
+    !/^[a-f0-9]{64}$/.test(manifest.buildId) ||
+    typeof manifest.indexHtmlSha256 !== "string" ||
+    !/^[a-f0-9]{64}$/.test(manifest.indexHtmlSha256) ||
+    !Number.isInteger(manifest.assetCount) ||
+    manifest.assetCount < 0 ||
+    typeof manifest.builtAt !== "string" ||
+    !Number.isFinite(Date.parse(manifest.builtAt)) ||
+    !isNullableString(manifest.commit) ||
+    !isNullableString(manifest.variant) ||
+    !isNullableString(manifest.capacitorTarget) ||
+    !isNullableString(manifest.runtimeMode) ||
+    (manifest.playwrightTestAuth !== null &&
+      typeof manifest.playwrightTestAuth !== "boolean")
+  ) {
+    return false;
+  }
+
+  try {
+    const fingerprint = computeRendererFingerprint(distDir);
+    return (
+      manifest.buildId === fingerprint.buildId &&
+      manifest.indexHtmlSha256 === fingerprint.indexHtmlSha256 &&
+      manifest.assetCount === fingerprint.assetCount
+    );
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Assert a STAGED renderer directory carries exactly the renderer that was just
  * built in `freshDistDir`. Throws loudly on any mismatch so a stale/missing/

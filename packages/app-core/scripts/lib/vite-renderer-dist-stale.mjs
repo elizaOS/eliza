@@ -10,7 +10,11 @@
  */
 import fs from "node:fs";
 import path from "node:path";
-import { readRendererBuildManifest } from "./renderer-build-manifest.mjs";
+import { loadEnv } from "vite";
+import {
+  readRendererBuildManifest,
+  rendererBuildManifestMatchesDist,
+} from "./renderer-build-manifest.mjs";
 
 const TEXT_EXT = new Set([
   ".ts",
@@ -77,11 +81,18 @@ export function rendererDistMatchesPlaywrightTestAuth(
   appDir,
   expectedPlaywrightTestAuth,
 ) {
-  const manifest = readRendererBuildManifest(path.join(appDir, "dist"));
+  const distDir = path.join(appDir, "dist");
+  const manifest = readRendererBuildManifest(distDir);
   return (
-    typeof manifest?.buildId === "string" &&
-    manifest.buildId.length > 0 &&
+    rendererBuildManifestMatchesDist(distDir, manifest) &&
     manifest.playwrightTestAuth === expectedPlaywrightTestAuth
+  );
+}
+
+/** Resolve the UI-smoke auth variant with Vite's production env precedence. */
+export function resolvePlaywrightTestAuth(appDir) {
+  return (
+    loadEnv("production", appDir, "VITE_").VITE_PLAYWRIGHT_TEST_AUTH === "true"
   );
 }
 
@@ -95,11 +106,12 @@ export function viteRendererBuildNeeded(appDir, repoRoot, options = {}) {
   if (!fs.existsSync(distIndex)) {
     return true;
   }
-  const expectedPlaywrightTestAuth =
-    options.expectedPlaywrightTestAuth ??
-    process.env.VITE_PLAYWRIGHT_TEST_AUTH === "true";
   if (
-    !rendererDistMatchesPlaywrightTestAuth(appDir, expectedPlaywrightTestAuth)
+    typeof options.expectedPlaywrightTestAuth === "boolean" &&
+    !rendererDistMatchesPlaywrightTestAuth(
+      appDir,
+      options.expectedPlaywrightTestAuth,
+    )
   ) {
     return true;
   }
@@ -109,6 +121,10 @@ export function viteRendererBuildNeeded(appDir, repoRoot, options = {}) {
   const candidates = [
     path.join(appDir, "index.html"),
     path.join(appDir, "vite.config.ts"),
+    path.join(appDir, ".env"),
+    path.join(appDir, ".env.local"),
+    path.join(appDir, ".env.production"),
+    path.join(appDir, ".env.production.local"),
   ];
 
   for (const p of candidates) {

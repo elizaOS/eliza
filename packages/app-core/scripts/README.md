@@ -22,7 +22,7 @@ Most scripts here are invoked from **root `package.json`** (`bun run …`). **Ap
 
 | Module | Why it exists |
 |--------|----------------|
-| `vite-renderer-dist-stale.mjs` | Renderer-manifest variant and mtime checks so `vite build` is skipped only when `apps/app/dist` is reusable — avoids redundant multi-minute production builds on restart. |
+| `vite-renderer-dist-stale.mjs` | Renderer mtime checks, plus opt-in UI-smoke manifest validation, so reusable `apps/app/dist` builds skip redundant multi-minute rebuilds. |
 | `kill-ui-listen-port.mjs` | Clears the UI port before Vite binds; Unix uses `lsof`, Windows uses `netstat` + `taskkill` because `lsof` is not standard there. |
 | `kill-process-tree.mjs` | Kills **only** the PID tree rooted at each spawned child — avoids `pkill bun` style collateral damage to other workspaces. |
 
