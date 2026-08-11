@@ -1,14 +1,15 @@
 name: Develop Lint Gate
 
 # A fast, always-completing format/lint gate that fires on every push to
-# `develop`. The canonical `ci.yaml` and `quality.yml` workflows use
+# `develop`. The canonical `ci.yml` and `quality.yml` workflows use
 # `cancel-in-progress: true` on push events, so a rapid series of develop
 # pushes cancels their Quality / lint jobs mid-run — leaving lint/format
 # reds invisible until a release pin or merged-base check surfaces them
 # (#18326, #18338, #18360). This workflow has its own concurrency group
 # with `cancel-in-progress: false`, so the develop tip's biome format +
-# lint state is always known within seconds-scale minutes, regardless of
-# push velocity.
+# lint state is always known within minutes, regardless of push velocity.
+# The static group name is unique repo-wide — distinct from the
+# `develop-lint-gate` *job* in quality.yml (which IS cancellable).
 #
 # The gate runs `bun run format:check` (biome format check across all
 # packages via Turbo) and `bun run lint:check` (biome lint check). Both
@@ -18,6 +19,7 @@ name: Develop Lint Gate
 on:
   push:
     branches: [develop]
+  workflow_dispatch:
 
 concurrency:
   # Unique group so this workflow is never superseded by another push.
@@ -37,11 +39,12 @@ jobs:
   develop-lint:
     name: Develop Lint + Format
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           submodules: false
+          persist-credentials: false
 
       - name: Setup Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
@@ -66,4 +69,5 @@ jobs:
         run: bun run format:check
 
       - name: Check lint (biome)
+        if: always()
         run: bun run lint:check

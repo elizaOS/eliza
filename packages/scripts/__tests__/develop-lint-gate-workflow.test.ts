@@ -70,11 +70,26 @@ describe("develop-lint-gate.yml contract", () => {
   });
 
   test("uses a lean workspace setup without postinstall or native deps", () => {
-    expect(source).toContain("run-postinstall");
-    expect(source).toContain('"false"');
-    expect(source).toContain("install-native-deps");
-    expect(source).toContain("setup-python");
-    expect(source).toContain("install-protoc");
+    const workflow = Bun.YAML.parse(source) as {
+      jobs?: Record<
+        string,
+        {
+          steps?: Array<{
+            uses?: string;
+            with?: Record<string, string>;
+          }>;
+        }
+      >;
+    };
+    const setupStep = workflow.jobs?.["develop-lint"]?.steps?.find(
+      (s) => s.uses === "./.github/actions/setup-bun-workspace",
+    );
+    expect(setupStep).toBeTruthy();
+    const inputs = setupStep?.with;
+    expect(inputs?.["install-native-deps"]).toBe("false");
+    expect(inputs?.["setup-python"]).toBe("false");
+    expect(inputs?.["install-protoc"]).toBe("false");
+    expect(inputs?.["run-postinstall"]).toBe("false");
   });
 
   test("uses least-privilege permissions", () => {
