@@ -892,6 +892,27 @@ export type WalletExecutiveVerdict = {
   suggestedAction: string;
 };
 
+// The always-free summary shown before any paywall. Deliberately headline-
+// only for green/yellow (the full investigation is the paid product), but
+// reasons are always populated for red - withholding an active scam warning
+// behind a paywall would be a real harm, not just a lost sale, so red is
+// never gated. See analyzers/trustCheckCard.ts.
+export type WalletTrustCheckTier = "green" | "yellow" | "red";
+
+export type WalletTrustCheckCard = {
+  chain: SupportedChain;
+  address: string;
+  status: WalletInvestigationStatus;
+  tier: WalletTrustCheckTier | null;
+  headline: string;
+  // Populated only when tier is "red" - see the file header comment above.
+  reasons: string[];
+  riskDisplay?: string;
+  trustDisplay?: string;
+  exposureDisplay?: string;
+  warnings: string[];
+};
+
 export type WalletCustodyProfile = {
   custodyType:
     | "unknown"
