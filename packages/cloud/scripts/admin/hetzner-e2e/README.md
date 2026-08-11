@@ -62,27 +62,23 @@ offered at `HETZNER_E2E_LOCATION`, the provisioner falls back through
 a short list of known-good shared-cpu `cpx22` locations, followed by `cpx11` in
 `hil`, before giving up.
 
-## Manual trigger / dry run
+## Operator use / dry run
 
-```bash
-gh workflow run hetzner-e2e.yml
-```
-
-To test locally without touching Hetzner, run only the helpers that
+The former scheduled and dispatch workflows were retired during CI
+consolidation. To test locally without touching Hetzner, run only the helpers that
 don't make real API calls (e.g. typecheck them with `tsc --noEmit`).
 **Do not** invoke `hetzner-e2e-provision.ts` outside of CI unless you
 intend to create a real billable server.
 
 ## Files
 
-- `.github/workflows/hetzner-e2e.yml` — provision + deploy + healthcheck + teardown
-- `.github/workflows/hetzner-e2e-reaper.yml` — scheduled label-selector sweep
 - `hetzner-e2e-provision.ts` — `HetznerCloudClient.createServer()`
 - `hetzner-e2e-provision-diagnostic.ts` — validated failure classification and
   operator summary rendering
 - `hetzner-e2e-wait-ready.ts` — SSH-poll for cloud-init + Docker
 - `hetzner-e2e-deploy-agent.ts` — create + provision a trivial agent
-- `hetzner-e2e-healthcheck.ts` — single `status.get` bridge ping
+- `hetzner-e2e-healthcheck.ts` — bounded `status.get` bridge polling across
+  explicit Cloud cache-warming responses
 - `hetzner-e2e-chat.ts` — one real `message.send` chat turn, judged by
   `../bridge-reply-verdict.ts` (#15616): the reply must echo the
   per-run proof token within the retry budget and must not be

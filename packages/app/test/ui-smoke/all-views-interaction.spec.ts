@@ -63,10 +63,12 @@ type ControlSnapshot = {
   url: string;
   apiRequestCount: number;
   visibleDismissibleSurfaces: number;
+  pageFingerprint: string;
   details: ControlDetails | null;
 };
 
 const CLICK_OBSERVED_ATTRIBUTES = [
+  "data-agent-id",
   "aria-expanded",
   "aria-pressed",
   "aria-selected",
@@ -297,6 +299,23 @@ async function visibleDismissibleSurfaceCount(page: Page): Promise<number> {
   });
 }
 
+/**
+ * Cheap whole-page content fingerprint (visible text length + djb2 hash).
+ * Catches semantic outcomes that land elsewhere in the page than on the
+ * clicked control itself — a dialer display updating, a sidebar collapsing,
+ * a pager flipping surfaces — without enumerating product-specific testids.
+ */
+async function pageContentFingerprint(page: Page): Promise<string> {
+  return page.evaluate(() => {
+    const text = document.body?.innerText ?? "";
+    let hash = 5381;
+    for (let i = 0; i < text.length; i++) {
+      hash = ((hash << 5) + hash + text.charCodeAt(i)) | 0;
+    }
+    return `${text.length}:${hash}`;
+  });
+}
+
 async function snapshotControl(
   page: Page,
   control: ElementHandle<Element>,
@@ -334,6 +353,7 @@ async function snapshotControl(
     url: page.url(),
     apiRequestCount,
     visibleDismissibleSurfaces: await visibleDismissibleSurfaceCount(page),
+    pageFingerprint: await pageContentFingerprint(page),
     details,
   };
 }
@@ -388,6 +408,11 @@ function semanticDelta(
       return `${attr} changed from "${String(before.details.attributes[attr])}" to "${String(after.details.attributes[attr])}"`;
     }
   }
+  // Last-resort DOM-state signal: the outcome landed elsewhere in the page
+  // (dial display, collapsed sidebar, flipped pager surface, toast).
+  if (after.pageFingerprint !== before.pageFingerprint) {
+    return `page content changed (${before.pageFingerprint} -> ${after.pageFingerprint})`;
+  }
   return null;
 }
 
@@ -439,6 +464,12 @@ function documentedClickNoop(
   ) {
     return "dismiss/back control had no visible overlay or modal to close";
   }
+  if (details.attributes["data-agent-id"]) {
+    // Spatial-view controls (data-agent-id) dispatch their action to the agent
+    // runtime; the DOM outcome depends on the agent round-trip, which the
+    // keyless stub does not perform.
+    return "spatial agent-dispatch control routes its action to the agent runtime; no local DOM outcome in the keyless stub";
+  }
   return null;
 }
 
@@ -450,7 +481,10 @@ async function observeClickOutcome(
 ): Promise<SemanticResult> {
   let after = await snapshotControl(page, control, apiRequestCount());
   let delta = semanticDelta(before, after);
-  for (const delayMs of [100, 250, 500]) {
+  // The ladder ends well above one second: on a loaded CI runner a state
+  // commit + re-render (e.g. sidebar collapse) can land after the first few
+  // probes even though the interaction is perfectly healthy.
+  for (const delayMs of [100, 250, 500, 1000, 2000]) {
     if (delta) {
       return {
         kind: "observed",
@@ -583,6 +617,35 @@ async function installInteractionAuditRoutes(page: Page): Promise<void> {
     });
   });
 
+  await page.route(/\/api\/plugins\/[^/?]+(?:\?.*)?$/, async (route) => {
+    const request = route.request();
+    if (request.method() !== "PUT") {
+      await route.fallback();
+      return;
+    }
+
+    const pluginId = decodeURIComponent(
+      new URL(request.url()).pathname.split("/").filter(Boolean).at(-1) ?? "",
+    );
+    const payload = request.postDataJSON() as {
+      enabled?: boolean;
+      config?: Record<string, string>;
+    };
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        success: true,
+        plugin: {
+          id: pluginId,
+          enabled: payload.enabled ?? true,
+          config: payload.config ?? {},
+        },
+        restartRequired: false,
+      }),
+    });
+  });
+
   await page.route("**/api/pendant/sessions/current", async (route) => {
     if (route.request().method() !== "GET") {
       await route.fallback();
@@ -603,6 +666,11 @@ async function installInteractionAuditRoutes(page: Page): Promise<void> {
 }
 
 test.describe("every-view interaction coverage", () => {
+  // Copy-address controls call the async Clipboard API; headless CI Chromium
+  // denies clipboard-write by default, which turns each copy click into an
+  // unhandled-rejection pageerror instead of a "Copied" outcome.
+  test.use({ permissions: ["clipboard-read", "clipboard-write"] });
+
   for (const view of VIEW_ROUTES) {
     test(`${view.id} — exercise every control with semantic outcomes`, async ({
       page,

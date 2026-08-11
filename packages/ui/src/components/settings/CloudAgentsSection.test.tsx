@@ -1,13 +1,8 @@
-/** Verifies CloudAgentsSection rename through the package's configured test harness. */
-// @vitest-environment jsdom
-
 /**
- * Covers CloudAgentsSection rename (client call + persisted active-server label
- * sync, no-op on unchanged/empty names, error revert) and suspend/resume
- * lifecycle (direct-path client calls, error surfacing, status re-sync), and
- * safe teardown while a list request is pending. jsdom renders with the app
- * store, cloud API client, and persistence mocked.
+ * Verifies Cloud agent settings lifecycle and credential-safe creation through
+ * the app store, Cloud client, and persistence boundaries mocked in jsdom.
  */
+// @vitest-environment jsdom
 
 import {
   act,
@@ -19,6 +14,7 @@ import {
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CloudCompatAgent } from "../../api/client-types-cloud";
+import { loadAgentProfileRegistry } from "../../state/agent-profiles";
 
 const appMock = vi.hoisted(() => ({
   value: {} as {
@@ -36,6 +32,10 @@ const clientMock = vi.hoisted(() => ({
   getCloudCompatJobStatus: vi.fn(),
   getCloudCompatAgentStatus: vi.fn(),
   selectOrProvisionCloudAgent: vi.fn(),
+}));
+
+const cloudAuthMock = vi.hoisted(() => ({
+  token: "tok" as string | null,
 }));
 
 /** A status-poll response shaped like `getCloudCompatAgentStatus` returns. */
@@ -62,6 +62,10 @@ const persistenceMock = vi.hoisted(() => ({
   createPersistedActiveServer: vi.fn((args: Record<string, unknown>) => args),
 }));
 
+const cloudPairTokenMock = vi.hoisted(() => ({
+  clearStalePairCredentialsForAgent: vi.fn(),
+}));
+
 vi.mock("../../state", () => ({
   useApp: () => appMock.value,
   useAppSelector: (sel: (value: typeof appMock.value) => unknown) =>
@@ -75,10 +79,9 @@ vi.mock("../../api", () => ({
 }));
 
 vi.mock("../../api/client-cloud", () => ({
-  resolveCloudAgentApiBase: () => "https://agent.example.test",
-  // currentCloudToken now resolves Steward-first via getCloudAuthToken; return
-  // null so it falls through to the persisted active-server token these tests set.
-  getCloudAuthToken: () => null,
+  resolveCloudAgentApiBase: (args: { agentId: string }) =>
+    `https://api.elizacloud.ai/api/v1/eliza/agents/${args.agentId}`,
+  getCloudAuthToken: () => cloudAuthMock.token,
 }));
 
 vi.mock("../../config/boot-config", () => ({
@@ -90,6 +93,8 @@ vi.mock("../../config/branding", () => ({
 }));
 
 vi.mock("../../state/persistence", () => persistenceMock);
+
+vi.mock("../../state/cloud-pair-token", () => cloudPairTokenMock);
 
 import { CloudAgentsSection } from "./CloudAgentsSection";
 
@@ -294,6 +299,7 @@ describe("CloudAgentsSection rename", () => {
 
 /** Shared mock setup for the lifecycle / load-state suites below. */
 function resetClientMocks() {
+  window.localStorage.clear();
   clientMock.getCloudCompatAgents.mockReset();
   clientMock.deleteCloudCompatAgent.mockReset();
   clientMock.suspendCloudCompatAgent.mockReset();
@@ -531,13 +537,31 @@ describe("CloudAgentsSection waking on switch", () => {
   });
 
   it("does not wake (resume) a running agent on switch — binds directly", async () => {
-    await renderWithAgents([agent({ status: "running" })]);
+    const agentId = "23766030-c096-4a14-932a-a4e43c562432";
+    await renderWithAgents([
+      agent({
+        agent_id: agentId,
+        agent_name: "Bound Agent",
+        status: "running",
+      }),
+    ]);
 
     fireEvent.click(screen.getByText("Use"));
 
     await waitFor(() => expect(reloadSpy).toHaveBeenCalled());
     expect(clientMock.resumeCloudCompatAgent).not.toHaveBeenCalled();
     expect(clientMock.getCloudCompatAgentStatus).not.toHaveBeenCalled();
+    const bound = loadAgentProfileRegistry().profiles.find(
+      (profile) => profile.cloudAgentId === agentId,
+    );
+    expect(bound).toEqual(
+      expect.objectContaining({
+        kind: "cloud",
+        cloudAgentId: agentId,
+        apiBase: `https://api.elizacloud.ai/api/v1/eliza/agents/${agentId}`,
+        accessToken: "tok",
+      }),
+    );
   });
 
   it("surfaces an error and does not bind when the resume call is rejected", async () => {
@@ -607,6 +631,7 @@ describe("CloudAgentsSection delete (job polling)", () => {
   beforeEach(() => {
     appMock.value = { elizaCloudConnected: true, setActionNotice: vi.fn() };
     resetClientMocks();
+    cloudPairTokenMock.clearStalePairCredentialsForAgent.mockReset();
     // The active server is a DIFFERENT agent so delete is not disabled.
     persistenceMock.loadPersistedActiveServer.mockReturnValue({
       kind: "cloud",
@@ -658,6 +683,11 @@ describe("CloudAgentsSection delete (job polling)", () => {
       "success",
       expect.any(Number),
     );
+    // Pair credentials purged for the deleted agent only after the job
+    // actually completes.
+    expect(
+      cloudPairTokenMock.clearStalePairCredentialsForAgent,
+    ).toHaveBeenCalledWith("agent-1");
   });
 
   it("keeps the row and surfaces an error when the delete job fails", async () => {
@@ -686,6 +716,10 @@ describe("CloudAgentsSection delete (job polling)", () => {
         1,
       ),
     );
+    // Credentials are NOT purged when the delete did not complete.
+    expect(
+      cloudPairTokenMock.clearStalePairCredentialsForAgent,
+    ).not.toHaveBeenCalled();
   });
 
   it("removes the row immediately for a synchronous delete (no jobId)", async () => {
@@ -699,6 +733,10 @@ describe("CloudAgentsSection delete (job polling)", () => {
 
     await waitFor(() => expect(screen.queryByText("Sync")).toBeNull());
     expect(clientMock.getCloudCompatJobStatus).not.toHaveBeenCalled();
+    // Synchronous delete: credentials purged right after the row drops.
+    expect(
+      cloudPairTokenMock.clearStalePairCredentialsForAgent,
+    ).toHaveBeenCalledWith("agent-1");
   });
 
   it("does NOT delete when the confirm dialog is dismissed", async () => {
@@ -709,6 +747,9 @@ describe("CloudAgentsSection delete (job polling)", () => {
 
     expect(clientMock.deleteCloudCompatAgent).not.toHaveBeenCalled();
     expect(screen.queryByText("Sync")).not.toBeNull();
+    expect(
+      cloudPairTokenMock.clearStalePairCredentialsForAgent,
+    ).not.toHaveBeenCalled();
   });
 });
 
@@ -810,6 +851,35 @@ describe("CloudAgentsSection load state (error vs empty)", () => {
     });
   });
 
+  it("consumes a list rejection that settles after unmount", async () => {
+    const unhandled: unknown[] = [];
+    const onUnhandled = (reason: unknown) => {
+      unhandled.push(reason);
+    };
+    process.on("unhandledRejection", onUnhandled);
+
+    try {
+      let rejectFetch!: (reason?: unknown) => void;
+      const pendingFetch = new Promise<never>((_resolve, reject) => {
+        rejectFetch = reject;
+      });
+      clientMock.getCloudCompatAgents.mockReturnValue(pendingFetch);
+
+      const view = render(<CloudAgentsSection />);
+      await waitFor(() =>
+        expect(clientMock.getCloudCompatAgents).toHaveBeenCalledTimes(1),
+      );
+      view.unmount();
+
+      rejectFetch(new Error("late cloud-agent fetch failure"));
+      await new Promise<void>((resolve) => setImmediate(resolve));
+
+      expect(unhandled).toEqual([]);
+    } finally {
+      process.off("unhandledRejection", onUnhandled);
+    }
+  });
+
   it("does not let an older list response overwrite a newer refresh", async () => {
     let resolveInitial:
       | ((value: { success: true; data: [] }) => void)
@@ -837,6 +907,90 @@ describe("CloudAgentsSection load state (error vs empty)", () => {
     });
     expect(screen.getByText("Newest")).toBeTruthy();
     expect(screen.queryByTestId("cloud-agents-empty")).toBeNull();
+  });
+});
+
+describe("CloudAgentsSection create credential boundary", () => {
+  beforeEach(() => {
+    appMock.value = {
+      elizaCloudConnected: true,
+      setActionNotice: vi.fn(),
+    };
+    cloudAuthMock.token = "tok";
+    clientMock.getCloudCompatAgents.mockReset();
+    clientMock.selectOrProvisionCloudAgent.mockReset();
+    persistenceMock.loadPersistedActiveServer.mockReset();
+    persistenceMock.savePersistedActiveServer.mockReset();
+    persistenceMock.loadPersistedActiveServer.mockReturnValue({
+      kind: "cloud",
+      id: "cloud:agent-1",
+      label: "Existing",
+      accessToken: "paired-agent-bearer",
+    });
+  });
+
+  afterEach(() => {
+    cloudAuthMock.token = "tok";
+    cleanup();
+  });
+
+  it("does not substitute the persisted agent bearer when the Steward session is missing", async () => {
+    cloudAuthMock.token = null;
+    await renderWithAgents([agent({ agent_name: "Existing" })]);
+
+    fireEvent.change(screen.getByPlaceholderText(/Agent name/), {
+      target: { value: "Disposable" },
+    });
+    fireEvent.click(screen.getByText("Create"));
+
+    await waitFor(() =>
+      expect(appMock.value.setActionNotice).toHaveBeenCalledWith(
+        "Sign in to Eliza Cloud before creating an agent.",
+        "error",
+        4000,
+      ),
+    );
+    expect(clientMock.selectOrProvisionCloudAgent).not.toHaveBeenCalled();
+    expect(screen.getByTestId("cloud-agent-create-error").textContent).toBe(
+      "Sign in to Eliza Cloud before creating an agent.",
+    );
+  });
+
+  it("does not bind an ambiguous force-create response", async () => {
+    clientMock.selectOrProvisionCloudAgent.mockResolvedValue({
+      agentId: "agent-existing",
+      agentName: "Existing",
+      apiBase: "https://agent-existing.elizacloud.ai",
+      created: undefined,
+    });
+    await renderWithAgents([agent({ agent_name: "Existing" })]);
+
+    const input = screen.getByPlaceholderText(/Agent name/) as HTMLInputElement;
+    fireEvent.change(input, {
+      target: { value: "Disposable" },
+    });
+    fireEvent.click(screen.getByText("Create"));
+
+    await waitFor(() =>
+      expect(appMock.value.setActionNotice).toHaveBeenCalledWith(
+        expect.stringContaining("did not confirm that a new agent was created"),
+        "error",
+        7000,
+      ),
+    );
+    const alert = screen.getByTestId("cloud-agent-create-error");
+    expect(alert.textContent).toContain(
+      "did not confirm that a new agent was created",
+    );
+    expect(input.value).toBe("Disposable");
+    expect(
+      (screen.getByText("Create", { selector: "button" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(false);
+    expect(persistenceMock.savePersistedActiveServer).not.toHaveBeenCalled();
+
+    fireEvent.change(input, { target: { value: "Another disposable" } });
+    expect(screen.queryByTestId("cloud-agent-create-error")).toBeNull();
   });
 });
 

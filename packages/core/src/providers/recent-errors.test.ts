@@ -150,6 +150,25 @@ describe("RECENT_ERRORS provider", () => {
 		expect(result.text).not.toContain("TASK_TICK_FAILED");
 	});
 
+	it("never narrates diagnostic-only persistence failures into chat", async () => {
+		const entries: ReportedError[] = [
+			{
+				scope: "TrajectoryStorage.write",
+				code: "TRAJECTORY_SAVE_FAILED",
+				message: "Could not save trajectory",
+				context: { stepId: "step-failed", diagnosticOnly: true },
+				at: Date.now(),
+			},
+		];
+		const result = await recentErrorsProvider.get(
+			runtimeWith(entries),
+			message,
+			state,
+		);
+		expect(result.text).toBe("");
+		expect(result.data?.recentErrors).toEqual([]);
+	});
+
 	it("frames the block as internal diagnostics that never absorb user questions", async () => {
 		// A live "available_apps provider timeout" rendered without this framing
 		// got answered as if it were the user's question (tj-f8249b30e986d6).

@@ -63,6 +63,10 @@ describe("CLOUD_ACCOUNT_STATUS", () => {
     expect(result.success).toBe(true);
     expect(replies[0]?.text).toContain("$12.34");
     expect(result.data).toMatchObject({ balance: 12.34, low: false, critical: false });
+    // The delivered balance IS the answer: turnComplete opts into the gated
+    // evaluator skip so the model cannot paraphrase it as a second message.
+    expect(result.verifiedUserFacing).toBe(true);
+    expect(result.turnComplete).toBe(true);
   });
 
   it("warns and links the top-up page on a critical balance", async () => {
@@ -128,6 +132,10 @@ describe("CLOUD_LIST_AGENTS", () => {
     expect(replies[0]?.text).toContain("2 agents hosted on Eliza Cloud");
     expect(replies[0]?.text).toContain("• alpha — running");
     expect(replies[0]?.text).toContain("• beta — stopped");
+    // The delivered agent list IS the answer: turnComplete opts into the gated
+    // evaluator skip so the model cannot re-render it as a second message.
+    expect(result.verifiedUserFacing).toBe(true);
+    expect(result.turnComplete).toBe(true);
   });
 
   it("renders the designed empty state when there are no agents", async () => {
@@ -144,6 +152,27 @@ describe("CLOUD_LIST_AGENTS", () => {
     expect(result.success).toBe(true);
     expect(result.data).toMatchObject({ count: 0 });
     expect(replies[0]?.text).toContain("don't have any agents hosted");
+    // The callback already contains the complete empty-state answer and both
+    // supported next steps, so no evaluator may paraphrase it into bubble two.
+    expect(result.verifiedUserFacing).toBe(true);
+    expect(result.turnComplete).toBe(true);
+  });
+
+  it("keeps the signed-out recovery path non-terminal", async () => {
+    const runtime = makeRuntime({ baseUrl: server.url, authenticated: false });
+    const { replies, callback } = collectCallback();
+    const result = await listCloudAgentsAction.handler(
+      runtime,
+      message("my hosted agents"),
+      STATE,
+      undefined,
+      callback
+    );
+    expect(result.success).toBe(false);
+    expect(result.data).toMatchObject({ reason: "not_connected" });
+    expect(replies[0]?.text).toContain("not connected to Eliza Cloud");
+    expect(result.verifiedUserFacing).toBeUndefined();
+    expect(result.turnComplete).toBeUndefined();
   });
 
   it("fails honestly on a cloud API error", async () => {
@@ -159,6 +188,8 @@ describe("CLOUD_LIST_AGENTS", () => {
     );
     expect(result.success).toBe(false);
     expect(result.data).toMatchObject({ reason: "error" });
+    expect(result.verifiedUserFacing).toBeUndefined();
+    expect(result.turnComplete).toBeUndefined();
   });
 });
 

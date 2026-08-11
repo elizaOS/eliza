@@ -159,6 +159,7 @@ async function main() {
     platform: "google_meet",
     meetingUrl: "https://meet.google.com/fake-e2e-run",
     nativeMeetingId: "fake-e2e-run",
+    consentState: "not_required",
   });
 
   // Transcript record created in "recording" status.

@@ -1,4 +1,4 @@
-// Handles v1 cloud API realtime voice-session mint traffic (Phase 1, flag-gated).
+/** Handles flag-gated v1 Cloud realtime voice-session mint traffic. */
 import { Hono } from "hono";
 import { z } from "zod";
 
@@ -24,7 +24,7 @@ import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
  * POST /api/v1/voice/session — mint a scoped voice-session token (contract §7.1).
  *
  * Auth: the EXISTING Eliza bearer/API-key session. The mint response NEVER
- * contains a provider key (Deepgram/Cartesia) — the token only authorizes ONE
+ * contains a provider key (Cartesia) — the token only authorizes one
  * WS connection scoped to a single org+agent+conversation, and the server holds
  * the provider keys.
  *
@@ -81,32 +81,39 @@ app.post("/", async (c) => {
   // user_characters and conversations are USER-owned (not just org-owned), so a
   // same-org peer who learns another user's IDs must still be refused.
   // The managed-cloud UI persists the selected agent_sandboxes UUID, while
-  // older callers submit the character UUID. Accept either public identifier,
-  // but always resolve both records and enforce the same user + org ownership
-  // before minting a server-credentialed session.
+  // older callers submit the character UUID. A dedicated sandbox does not need
+  // a linked character, so direct sandbox IDs authorize against the sandbox
+  // owner itself. The legacy character path still resolves both records.
   let sandboxAgent = await agentSandboxesRepository.findById(body.agentId);
-  const characterId = sandboxAgent?.character_id ?? body.agentId;
-  const agent = await userCharactersRepository.findByIdInOrganization(
-    characterId,
-    auth.organization_id,
-  );
-  if (!agent || agent.user_id !== auth.id) {
-    return c.json({ error: "agent not found", code: "agent_not_found" }, 404);
-  }
-  if (!sandboxAgent) {
-    sandboxAgent =
-      await agentSandboxesRepository.findLatestByCharacterId(characterId);
-  }
-  if (
-    !sandboxAgent ||
-    sandboxAgent.character_id !== agent.id ||
-    sandboxAgent.organization_id !== auth.organization_id ||
-    sandboxAgent.user_id !== auth.id
-  ) {
-    return c.json(
-      { error: "agent runtime not found", code: "agent_not_found" },
-      404,
+  if (sandboxAgent) {
+    if (
+      sandboxAgent.organization_id !== auth.organization_id ||
+      sandboxAgent.user_id !== auth.id
+    ) {
+      return c.json({ error: "agent not found", code: "agent_not_found" }, 404);
+    }
+  } else {
+    const agent = await userCharactersRepository.findByIdInOrganization(
+      body.agentId,
+      auth.organization_id,
     );
+    if (!agent || agent.user_id !== auth.id) {
+      return c.json({ error: "agent not found", code: "agent_not_found" }, 404);
+    }
+    sandboxAgent = await agentSandboxesRepository.findLatestByCharacterId(
+      agent.id,
+    );
+    if (
+      !sandboxAgent ||
+      sandboxAgent.character_id !== agent.id ||
+      sandboxAgent.organization_id !== auth.organization_id ||
+      sandboxAgent.user_id !== auth.id
+    ) {
+      return c.json(
+        { error: "agent runtime not found", code: "agent_not_found" },
+        404,
+      );
+    }
   }
 
   // A supplied conversationId that exists must belong to the caller (org AND

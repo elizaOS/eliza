@@ -11,6 +11,7 @@
 export * from "./agent-backup.ts";
 export * from "./agent-export.ts";
 export * from "./app-session-gate.ts";
+export * from "./audio-redaction-service.ts";
 export {
   type AuditedDecision,
   type BrokerOptions,

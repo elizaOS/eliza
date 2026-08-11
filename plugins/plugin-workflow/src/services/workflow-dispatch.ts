@@ -16,6 +16,7 @@
 
 import type { IAgentRuntime } from '@elizaos/core';
 import { logger } from '@elizaos/core';
+import { WorkflowApiError } from '../types/index';
 import {
   EMBEDDED_WORKFLOW_SERVICE_TYPE,
   type EmbeddedWorkflowService,
@@ -33,6 +34,13 @@ export interface WorkflowDispatchResult {
    * instead of treating the call as a fresh execution.
    */
   dedup?: boolean;
+  /**
+   * Machine-readable permanent-failure class. `workflow_not_found` means the
+   * target workflow row no longer exists, so retrying the same dispatch can
+   * never succeed — callers owning a schedule (the trigger dispatcher) should
+   * disable it instead of re-firing forever. Absent for transient failures.
+   */
+  code?: 'workflow_not_found';
 }
 
 /**
@@ -195,11 +203,17 @@ async function runDispatch(
     });
     return execution.id ? { ok: true, executionId: execution.id } : { ok: true };
   } catch (err) {
+    // error-policy:J1 dispatch boundary — the trigger scheduler consumes a
+    // structured result; a permanent not-found is classed so it can disable
+    // the schedule instead of re-firing forever.
     const message = err instanceof Error ? err.message : String(err);
     logger.warn(
       { src: 'plugin:workflow:dispatch' },
       `Workflow execution failed for ${workflowId}: ${message}`
     );
+    if (err instanceof WorkflowApiError && err.statusCode === 404) {
+      return { ok: false, error: message, code: 'workflow_not_found' };
+    }
     return { ok: false, error: message };
   }
 }

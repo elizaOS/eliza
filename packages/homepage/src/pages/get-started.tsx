@@ -27,6 +27,11 @@ import {
   PhoneNumberInput,
   useCountryOptions,
 } from "@/components/login/phone-number-input";
+import {
+  clearRememberedReturnTo,
+  peekReturnTo,
+  rememberReturnTo,
+} from "@/lib/auth-return";
 import { useT } from "@/providers/I18nProvider";
 
 // Defer the WebGL shader background so the form UI is interactive immediately.
@@ -36,8 +41,11 @@ const ShaderBackground = lazy(
 
 import {
   buildElizaSmsHref,
+  buildElizaTelegramHref,
   ELIZA_PHONE_FORMATTED,
   ELIZA_PHONE_NUMBER,
+  getDiscordBotApplicationId,
+  getTelegramBotUsername,
   getWhatsAppNumber,
 } from "@/lib/contact";
 import {
@@ -45,6 +53,7 @@ import {
   type TelegramAuthData,
   useAuth,
 } from "@/lib/context/auth-context";
+import { getTelegramLinkDestination } from "@/lib/telegram-onboarding";
 
 const SOLANA_GRADIENT = "linear-gradient(135deg, #9945FF 0%, #14F195 100%)";
 
@@ -105,6 +114,7 @@ type OnboardingMethod =
 
 type OnboardingStep =
   | "SELECT_METHOD"
+  | "TELEGRAM_DIRECT"
   | "TELEGRAM_OAUTH"
   | "PHONE_INPUT"
   | "IMESSAGE_DIRECT"
@@ -113,20 +123,12 @@ type OnboardingStep =
   | "DISCORD_SETUP_GUIDE"
   | "PROVISIONING_CHAT";
 
-function getTelegramBotUsername(): string {
-  return import.meta.env.VITE_TELEGRAM_BOT_USERNAME || "ElizaCloudBot";
-}
-
 function getTelegramBotId(): string {
   return (import.meta.env.VITE_TELEGRAM_BOT_ID || "").trim();
 }
 
 function getDiscordClientId(): string {
   return (import.meta.env.VITE_DISCORD_CLIENT_ID || "").trim();
-}
-
-function getDiscordBotApplicationId(): string {
-  return getDiscordClientId();
 }
 
 const MONO = "Geist, system-ui, sans-serif";
@@ -364,6 +366,8 @@ export default function GetStartedPage() {
   const discordCode = searchParams.get("code");
   const discordState = searchParams.get("state");
   const guideParam = searchParams.get("guide");
+  const returnTo = searchParams.get("returnTo");
+  const postAuthDestination = peekReturnTo(returnTo);
   const isLinkMode =
     searchParams.get("link") === "true" ||
     (typeof window !== "undefined" &&
@@ -447,6 +451,7 @@ export default function GetStartedPage() {
 
     const state = generateOAuthState();
     sessionStorage.setItem(DISCORD_OAUTH_STATE_KEY, state);
+    rememberReturnTo(returnTo);
 
     if (isLinkMode) {
       sessionStorage.setItem(DISCORD_LINK_MODE_KEY, "true");
@@ -465,7 +470,7 @@ export default function GetStartedPage() {
 
     window.location.href = `https://discord.com/oauth2/authorize?${params.toString()}`;
     return true;
-  }, [isLinkMode, t]);
+  }, [isLinkMode, returnTo, t]);
 
   useEffect(() => {
     if (
@@ -478,7 +483,8 @@ export default function GetStartedPage() {
       !discordCode &&
       step !== "PROVISIONING_CHAT"
     ) {
-      navigate("/connected", { replace: true });
+      clearRememberedReturnTo();
+      navigate(postAuthDestination, { replace: true });
     }
   }, [
     isAuthenticated,
@@ -490,6 +496,7 @@ export default function GetStartedPage() {
     isLinkMode,
     discordCode,
     step,
+    postAuthDestination,
   ]);
 
   useEffect(() => {
@@ -539,7 +546,7 @@ export default function GetStartedPage() {
       setInitialMethodHandled(true);
       if (methodParam === "telegram") {
         setSelectedMethod("telegram");
-        setStep("TELEGRAM_OAUTH");
+        setStep(isLinkMode ? "TELEGRAM_OAUTH" : "TELEGRAM_DIRECT");
       } else if (methodParam === "imessage") {
         setSelectedMethod("imessage");
         setStep("IMESSAGE_DIRECT");
@@ -566,6 +573,8 @@ export default function GetStartedPage() {
   ]);
 
   useEffect(() => {
+    if (!isLinkMode) return;
+
     const script = document.createElement("script");
     script.src = "https://telegram.org/js/telegram-widget.js?22";
     script.async = true;
@@ -585,7 +594,7 @@ export default function GetStartedPage() {
     return () => {
       hiddenContainer.remove();
     };
-  }, []);
+  }, [isLinkMode]);
 
   const getFullPhoneNumber = useCallback(() => {
     return buildFullPhoneNumber(phoneValue, selectedCountry, countryOptions);
@@ -600,7 +609,8 @@ export default function GetStartedPage() {
     try {
       const result = await loginWithSolana();
       if (result.success) {
-        navigate("/connected", { replace: true });
+        clearRememberedReturnTo();
+        navigate(postAuthDestination, { replace: true });
       } else {
         setSolanaError(
           result.error ??
@@ -614,7 +624,7 @@ export default function GetStartedPage() {
     } finally {
       setIsSolanaLoading(false);
     }
-  }, [loginWithSolana, navigate, t]);
+  }, [loginWithSolana, navigate, postAuthDestination, t]);
 
   const handleMethodSelect = (method: OnboardingMethod) => {
     setSelectedMethod(method);
@@ -624,7 +634,7 @@ export default function GetStartedPage() {
     setSolanaError(null);
 
     if (method === "telegram") {
-      setStep("TELEGRAM_OAUTH");
+      setStep(isLinkMode ? "TELEGRAM_OAUTH" : "TELEGRAM_DIRECT");
     } else if (method === "discord") {
       setIsRedirectingToOAuth(true);
       if (!handleDiscordOAuthRedirect()) {
@@ -640,7 +650,7 @@ export default function GetStartedPage() {
   };
 
   const handleBack = () => {
-    if (step === "TELEGRAM_OAUTH") {
+    if (step === "TELEGRAM_DIRECT" || step === "TELEGRAM_OAUTH") {
       if (isLinkMode) {
         navigate("/connected");
       } else {
@@ -731,11 +741,28 @@ export default function GetStartedPage() {
       pendingTelegramData,
       fullPhone,
       existingToken,
+      onboardingSessionId,
     );
 
     if (result.success) {
       if (isLinkMode) {
-        navigate("/connected", { replace: true });
+        if (onboardingSessionId && !result.continuationRedeemed) {
+          setPhoneError(
+            t("homepage_eliza.getStarted.errTelegramContinuation", {
+              defaultValue:
+                "We couldn't finish linking this Telegram chat. Return to the bot and request a new link.",
+            }),
+          );
+          setIsSubmittingPhone(false);
+          return;
+        }
+        clearRememberedReturnTo();
+        navigate(
+          getTelegramLinkDestination(result.continuationRedeemed === true),
+          {
+            replace: true,
+          },
+        );
       } else {
         setStep("PROVISIONING_CHAT");
       }
@@ -786,6 +813,7 @@ export default function GetStartedPage() {
     getFullPhoneNumber,
     loginWithTelegram,
     isLinkMode,
+    onboardingSessionId,
     navigate,
     t,
   ]);
@@ -913,7 +941,8 @@ export default function GetStartedPage() {
   };
 
   const handleContinueToConnected = () => {
-    navigate("/connected");
+    clearRememberedReturnTo();
+    navigate(postAuthDestination);
   };
 
   if (authLoading) {
@@ -1147,6 +1176,43 @@ export default function GetStartedPage() {
             </>
           )}
 
+          {step === "TELEGRAM_DIRECT" && (
+            <>
+              <div className="w-16 h-16 rounded-xs bg-[#229ED9]/20 flex items-center justify-center mb-6">
+                <TelegramIcon className="size-8 text-[#229ED9]" />
+              </div>
+
+              <h1 className="text-xl font-medium text-neutral-900 text-center mb-2">
+                {t("homepage_eliza.getStarted.telegramDirectTitle", {
+                  defaultValue: "Message Eliza on Telegram",
+                })}
+              </h1>
+              <p className="text-sm text-neutral-500 text-center mb-8">
+                {t("homepage_eliza.getStarted.telegramDirectSubtitle", {
+                  defaultValue:
+                    "Open Telegram, press Start, and send Eliza a message.",
+                })}
+              </p>
+
+              <Button
+                asChild
+                className="w-full h-[52px] rounded-xs bg-[#229ED9] hover:bg-[#1b7fae] text-white font-medium gap-2"
+              >
+                <a
+                  href={buildElizaTelegramHref()}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  <TelegramIcon className="size-5" />
+                  {t("homepage_eliza.getStarted.openTelegram", {
+                    defaultValue: "Open Telegram",
+                  })}
+                  <ExternalLink className="size-4 ml-1" />
+                </a>
+              </Button>
+            </>
+          )}
+
           {step === "TELEGRAM_OAUTH" && (
             <>
               <div className="w-16 h-16 rounded-xs bg-[#229ED9]/20 flex items-center justify-center mb-6">
@@ -1301,7 +1367,7 @@ export default function GetStartedPage() {
                 type="button"
                 onClick={() => {
                   setSelectedMethod("telegram");
-                  setStep("TELEGRAM_OAUTH");
+                  setStep("TELEGRAM_DIRECT");
                 }}
                 className="w-full mt-4 text-sm text-neutral-500 hover:text-neutral-700"
               >
@@ -1348,7 +1414,7 @@ export default function GetStartedPage() {
                 type="button"
                 onClick={() => {
                   setSelectedMethod("telegram");
-                  setStep("TELEGRAM_OAUTH");
+                  setStep("TELEGRAM_DIRECT");
                 }}
                 className="w-full mt-4 text-sm text-neutral-500 hover:text-neutral-700"
               >
@@ -1362,7 +1428,10 @@ export default function GetStartedPage() {
           {step === "PROVISIONING_CHAT" && (
             <ProvisioningChatStep
               onboardingSessionId={onboardingSessionId}
-              onContinue={() => navigate("/connected")}
+              onContinue={() => {
+                clearRememberedReturnTo();
+                navigate(postAuthDestination);
+              }}
             />
           )}
 

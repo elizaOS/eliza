@@ -46,6 +46,7 @@ import {
   createTaskGateRegistry,
   getAnchorRegistry,
   getScheduledTaskRunner,
+  hasScheduledDispatchModel,
   installScheduledTaskEventBridge,
   registerAnchorRegistry,
   registerAppLifeOpsAnchors,
@@ -87,6 +88,7 @@ import {
   readScheduledTaskChatDeliveryBinding,
   revalidateScheduledTaskChatDeliveryBinding,
 } from "./delivery-binding.js";
+import { resolveScheduledTaskDispatchContext } from "./dispatch-context.js";
 import { registerModelMomentCheckGate } from "./moment-judge.js";
 import { createLifeOpsSubjectStoreView } from "./subject-store.js";
 
@@ -280,9 +282,9 @@ function metadataString(
  *   CheckinService already composes that text through the model.
  * - Everything else renders through `renderScheduledDispatchMessage` (the
  *   CheckinService model seam): the instruction is the PROMPT, the model's
- *   output is what the owner sees. Render failure throws and the dispatcher
- *   translates it into a typed retryable failure — no raw-instruction
- *   fallback and no canned placeholder copy.
+ *   output is what the owner sees. A model-free runtime receives a neutral
+ *   deterministic fallback; a present-but-failed model call is a typed,
+ *   retryable dispatch failure.
  */
 async function composeOwnerFacingScheduledTaskText(
   runtime: IAgentRuntime,
@@ -321,7 +323,13 @@ async function composeOwnerFacingScheduledTaskText(
     }
   }
 
-  return renderScheduledDispatchMessage(runtime, record);
+  const resolvedContext = hasScheduledDispatchModel(runtime)
+    ? await resolveScheduledTaskDispatchContext(runtime, record)
+    : undefined;
+  return renderScheduledDispatchMessage(runtime, {
+    ...record,
+    ...(resolvedContext ? { resolvedContext } : {}),
+  });
 }
 
 const LOCAL_AGENT_BACKUP_OPERATION = "agent.localBackup";

@@ -114,6 +114,11 @@ if (fullSetup) {
 }
 
 await run(bunExecutable, ["--bun", "vite", "build"], appDir);
+await run(
+  process.execPath,
+  [path.join(__dirname, "verify-viewport-meta.mjs")],
+  appDir,
+);
 if (resolveElizaAssetBaseUrls().appAssetBaseUrl) {
   await run(process.execPath, [pruneCdnAssetsScript], repoRoot);
 }

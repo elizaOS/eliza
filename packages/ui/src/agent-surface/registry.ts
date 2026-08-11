@@ -310,6 +310,7 @@ export class ViewAgentRegistry {
 // ── module-level map of live registries ─────────────────────────────────────
 
 const viewRegistries = new Map<string, ViewAgentRegistry>();
+const viewRegistryMountCounts = new Map<ViewAgentRegistry, number>();
 
 function key(viewId: string, viewType: AgentViewType): string {
   return `${viewType}:${viewId}`;
@@ -335,9 +336,45 @@ export function getViewRegistry(
   return viewRegistries.get(key(viewId, viewType));
 }
 
+/**
+ * Retain the exact registry supplied through a mounted provider. React Strict
+ * Mode replays effects without re-rendering, so recreating the map entry during
+ * replay would disconnect descendants from the registry read by the bridge.
+ * Counts also keep overlapping providers for the same view from tearing down a
+ * shared registry while one provider remains mounted.
+ */
+export function retainViewRegistry(registry: ViewAgentRegistry): () => void {
+  const registryKey = key(registry.viewId, registry.viewType);
+  viewRegistries.set(registryKey, registry);
+  viewRegistryMountCounts.set(
+    registry,
+    (viewRegistryMountCounts.get(registry) ?? 0) + 1,
+  );
+
+  let retained = true;
+  return () => {
+    if (!retained) return;
+    retained = false;
+
+    const remaining = (viewRegistryMountCounts.get(registry) ?? 1) - 1;
+    if (remaining > 0) {
+      viewRegistryMountCounts.set(registry, remaining);
+      return;
+    }
+
+    viewRegistryMountCounts.delete(registry);
+    if (viewRegistries.get(registryKey) === registry) {
+      viewRegistries.delete(registryKey);
+    }
+  };
+}
+
 export function removeViewRegistry(
   viewId: string,
   viewType: AgentViewType,
 ): void {
-  viewRegistries.delete(key(viewId, viewType));
+  const registryKey = key(viewId, viewType);
+  const registry = viewRegistries.get(registryKey);
+  viewRegistries.delete(registryKey);
+  if (registry) viewRegistryMountCounts.delete(registry);
 }

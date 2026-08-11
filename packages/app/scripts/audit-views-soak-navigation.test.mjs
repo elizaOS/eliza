@@ -25,6 +25,17 @@ test("cleanup navigates through the shell event instead of raw History", () => {
   expect(source).not.toContain("window.history.replaceState");
 });
 
+test("navigation uses an independent cold-load timeout with target diagnostics", () => {
+  expect(source).toContain(
+    "const NAV_TIMEOUT_MS = Number(process.env.NAV_TIMEOUT_MS || 10_000);",
+  );
+  expect(source).toContain(
+    "{ timeout: Math.max(NAV_TIMEOUT_MS, NAV_WAIT_MS * 3) }",
+  );
+  expect(source).toContain("navigation to view");
+  expect(source).toContain("did not reach");
+});
+
 test("context teardown owns video finalization without swallowed failures", () => {
   expect(source).not.toContain("ctx.close().catch");
   expect(source).not.toContain("await page.close()");
@@ -156,9 +167,9 @@ test("the soak recognizes unavailable optional services and protected boundaries
 });
 
 test("the soak fails on console errors as well as uncaught page errors (#15922)", () => {
-  expect(source).toContain(
-    'const consoleErrors = consoleLog.filter((entry) => entry.type === "error")',
-  );
+  expect(source).toContain("const consoleErrors = [];");
+  expect(source).toContain('if (entry.type !== "error") continue;');
+  expect(source).toContain("expectedConsoleMatcher.consumeConsoleError(");
   expect(source).toContain("consoleErrors.length === 0");
-  expect(source).toContain("no console errors during the soak");
+  expect(source).toContain("no unexpected console errors during the soak");
 });

@@ -33,6 +33,7 @@ import {
 import * as utils from "./utils";
 import { stableStringify } from "./utils/deterministic";
 import { isObjectRecord as isRecord } from "./utils/type-guards";
+import { truncateWellFormed } from "./utils/well-formed";
 
 type EntityDetailsRecord = Pick<
 	Entity,
@@ -658,7 +659,7 @@ function truncateEntityMetadata(metadata: unknown): string {
 	if (rendered.length <= MAX_ENTITY_METADATA_CHARS) {
 		return rendered;
 	}
-	return `${rendered.slice(0, MAX_ENTITY_METADATA_CHARS)}... (truncated)`;
+	return `${truncateWellFormed(rendered, MAX_ENTITY_METADATA_CHARS)}... (truncated)`;
 }
 
 export function formatEntities({ entities }: { entities: Entity[] }) {

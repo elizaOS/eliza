@@ -15,6 +15,7 @@ import { ModelType } from "../types/model";
 import type { IAgentRuntime } from "../types/runtime";
 import { Service } from "../types/service";
 import { type BatchItemOutcome, BatchQueue } from "../utils/batch-queue";
+import { isExpectedLocalEmbeddingUnavailability } from "../utils/expected-local-embedding-unavailability";
 
 interface EmbeddingQueueItem {
 	memory: Memory;
@@ -200,7 +201,11 @@ export class EmbeddingGenerationService extends Service {
 		const { memory } = item;
 
 		const memoryContent = memory.content;
-		if (!memoryContent.text) {
+		// Trim-check to match the embedding model contract: backends reject
+		// whitespace-only text, and no queue retry can ever change that
+		// (live 2026-08-10: image-only messages with whitespace text error-
+		// logged on every retry).
+		if (!memoryContent.text?.trim()) {
 			this.runtime.logger.warn(
 				{
 					src: "plugin:basic-capabilities:service:embedding",
@@ -237,11 +242,15 @@ export class EmbeddingGenerationService extends Service {
 
 			await this.persistEmbedding(item, embedding, duration);
 		} catch (error) {
-			// error-policy:J2 Queue retry policy needs the original failure; report
-			// the memory context here and rethrow unchanged.
-			this.runtime.reportError("EmbeddingService.generate", error, {
-				memoryId: memory.id,
-			});
+			// error-policy:J2 Queue retry policy needs the original failure; rethrow
+			// unchanged. Expected local backend/capability absence is designed
+			// degraded mode — report only unexpected failures so RECENT_ERRORS
+			// and owner escalation are not filled by ordinary keyword-only turns.
+			if (!isExpectedLocalEmbeddingUnavailability(error)) {
+				this.runtime.reportError("EmbeddingService.generate", error, {
+					memoryId: memory.id,
+				});
+			}
 			this.runtime.logger.error(
 				{
 					src: "plugin:basic-capabilities:service:embedding",
@@ -323,7 +332,9 @@ export class EmbeddingGenerationService extends Service {
 		const skipped: EmbeddingQueueItem[] = [];
 		for (const item of items) {
 			const text = item.memory.content.text;
-			if (!text || item.memory.embedding) {
+			// Same trim rule as the per-item path — backends reject
+			// whitespace-only text as terminally invalid.
+			if (!text?.trim() || item.memory.embedding) {
 				skipped.push(item);
 			} else {
 				toEmbed.push({ item, text });

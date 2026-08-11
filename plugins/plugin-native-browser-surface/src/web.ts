@@ -12,9 +12,14 @@ import type {
   CreateSurfaceOptions,
   ElizaSurfaceManagerPlugin,
   NavigateOptions,
+  PresentSurfaceOptions,
+  ReconcileOwnerOptions,
   SetBoundsOptions,
+  SetOcclusionRectsOptions,
   SurfaceIdOptions,
+  SurfaceOwnerOptions,
   SurfaceState,
+  SurfaceStateList,
 } from "./definitions";
 
 const UNAVAILABLE =
@@ -30,22 +35,30 @@ export class BrowserSurfaceWeb
   async setBounds(_options: SetBoundsOptions): Promise<void> {
     throw this.unavailable(UNAVAILABLE);
   }
+  async setOcclusionRects(_options: SetOcclusionRectsOptions): Promise<void> {
+    throw this.unavailable(UNAVAILABLE);
+  }
   async navigate(_options: NavigateOptions): Promise<void> {
     throw this.unavailable(UNAVAILABLE);
   }
-  async foregroundSurface(_options: SurfaceIdOptions): Promise<void> {
+  async reloadSurface(_options: SurfaceIdOptions): Promise<void> {
     throw this.unavailable(UNAVAILABLE);
   }
-  async backgroundSurface(_options: SurfaceIdOptions): Promise<void> {
+  async presentSurface(_options: PresentSurfaceOptions): Promise<void> {
     throw this.unavailable(UNAVAILABLE);
   }
   async destroySurface(_options: SurfaceIdOptions): Promise<void> {
     throw this.unavailable(UNAVAILABLE);
   }
-  async foregroundHost(): Promise<void> {
+  async getSurfaceState(_options: SurfaceIdOptions): Promise<SurfaceState> {
     throw this.unavailable(UNAVAILABLE);
   }
-  async getSurfaceState(_options: SurfaceIdOptions): Promise<SurfaceState> {
+  async listSurfaceStates(
+    _options: SurfaceOwnerOptions,
+  ): Promise<SurfaceStateList> {
+    throw this.unavailable(UNAVAILABLE);
+  }
+  async reconcileOwner(_options: ReconcileOwnerOptions): Promise<void> {
     throw this.unavailable(UNAVAILABLE);
   }
 }

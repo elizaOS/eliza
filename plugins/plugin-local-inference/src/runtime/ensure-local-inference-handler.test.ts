@@ -251,6 +251,33 @@ describe("ensureLocalInferenceHandler", () => {
 		);
 	});
 
+	it("maps explicit legacy voice names without treating model ids as voices", async () => {
+		const { registrations, runtime } = makeRuntime();
+		await ensureLocalInferenceHandler(runtime);
+		const handler = findRegisteredHandler(
+			registrations,
+			ModelType.TEXT_TO_SPEECH,
+		);
+
+		await handler(runtime, {
+			text: "hello",
+			voice: "  Nova  ",
+			model: "tts-1",
+		});
+		expect(engineState.synthesizeSpeech).toHaveBeenLastCalledWith(
+			"hello",
+			undefined,
+			"af_nova",
+		);
+
+		await handler(runtime, { text: "hello again", model: "tts-1" });
+		expect(engineState.synthesizeSpeech).toHaveBeenLastCalledWith(
+			"hello again",
+			undefined,
+			undefined,
+		);
+	});
+
 	it("honors ELIZA_DISABLE_LOCAL_EMBEDDINGS by leaving TEXT_EMBEDDING unregistered", async () => {
 		process.env.ELIZA_DISABLE_LOCAL_EMBEDDINGS = "1";
 		const { registrations, runtime } = makeRuntime();
@@ -397,6 +424,36 @@ describe("ensureLocalInferenceHandler", () => {
 				process.env.ELIZA_LOCAL_STREAM_TOKENS_PER_STEP = prior;
 			}
 		}
+	});
+
+	it("routes only explicitly user-visible generations to local voice", async () => {
+		const { registrations, runtime } = makeRuntime();
+		engineState.hasLoadedModel.mockReturnValue(true);
+
+		await ensureLocalInferenceHandler(runtime);
+		const handler = findRegisteredHandler(
+			registrations,
+			ModelType.RESPONSE_HANDLER,
+		);
+
+		await handler(runtime, {
+			prompt: "internal structured work",
+			stream: true,
+			onStreamChunk: () => {},
+		});
+		expect(engineState.generate).toHaveBeenLastCalledWith(
+			expect.objectContaining({ voiceOutput: undefined }),
+		);
+
+		await handler(runtime, {
+			prompt: "visible reply",
+			stream: true,
+			onStreamChunk: () => {},
+			voiceOutput: "user-visible",
+		});
+		expect(engineState.generate).toHaveBeenLastCalledWith(
+			expect.objectContaining({ voiceOutput: "user-visible" }),
+		);
 	});
 
 	it("passes hardware-aware load args through desktop lazy assignment loads", async () => {

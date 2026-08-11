@@ -58,6 +58,22 @@ function hostTimeZone(): string {
 }
 
 /**
+ * Resolve the timezone for turn-local dates and clock times. The sender's
+ * device is authoritative for the active turn; runtime configuration covers
+ * non-interactive callers, and the host is the final local deployment fallback.
+ */
+export function resolveMessageTimeZone(
+	runtime: IAgentRuntime,
+	message: Memory,
+): string {
+	return (
+		clientTimeZone(message) ??
+		validTimeZone(runtime.getSetting("TIMEZONE")) ??
+		hostTimeZone()
+	);
+}
+
+/**
  * Current time provider function that retrieves the current date and time
  * in various formats for use in time-based operations or responses.
  *
@@ -73,14 +89,11 @@ export const currentTimeProvider: Provider = {
 	contextGate: { anyOf: ["general"] },
 	cacheStable: false,
 	cacheScope: "turn",
-	roleGate: { minRole: "USER" },
+	roleGate: { minRole: "GUEST" },
 
 	get: async (_runtime: IAgentRuntime, _message: Memory, _state: State) => {
 		const now = new Date();
-		const timeZone =
-			clientTimeZone(_message) ??
-			validTimeZone(_runtime.getSetting("TIMEZONE")) ??
-			hostTimeZone();
+		const timeZone = resolveMessageTimeZone(_runtime, _message);
 
 		const isoTimestamp = now.toISOString();
 		const unixTimestamp = Math.floor(now.getTime() / 1000);

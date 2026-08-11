@@ -35,6 +35,7 @@ import type {
 	MeetingParticipant,
 	MeetingSession,
 	MeetingTranscriptEvent,
+	TranscriptConsentState,
 	TranscriptSegment,
 } from "@elizaos/shared";
 import type { ICompatRuntime } from "./compat";
@@ -144,6 +145,7 @@ export interface VoiceMeetingWriterStartInput {
 	platform: "discord";
 	meetingUrl: string;
 	nativeMeetingId: string;
+	consentState: TranscriptConsentState;
 }
 
 export interface VoiceMeetingWriterFinalizeInput {
@@ -325,6 +327,7 @@ export class DiscordVoiceMeetingSession {
 			platform: "discord",
 			meetingUrl: this.meetingUrl,
 			nativeMeetingId: this.channel.channelId,
+			consentState: "not_required",
 		});
 
 		for (const member of this.channel.members) {

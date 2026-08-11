@@ -55,8 +55,12 @@ app.post("/", async (c) => {
     return c.json({ error: "SIWS verification failed" }, 401);
   }
 
-  const { user, isNewAccount } =
-    await findOrCreateSolanaUserByWalletAddress(address);
+  // The SIWS message and its nonce were just verified and consumed above, so
+  // this caller may mark the wallet proven.
+  const { user, isNewAccount } = await findOrCreateSolanaUserByWalletAddress(
+    address,
+    { walletProven: true },
+  );
   if (!user.organization_id) {
     return c.json(
       { error: "Organization creation failed - please try again" },

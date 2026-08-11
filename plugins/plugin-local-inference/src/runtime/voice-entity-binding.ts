@@ -23,6 +23,7 @@ import {
 	logger,
 	resolveStateDir,
 	type VoiceEntityBoundPayload,
+	type VoiceSpeakerNameInferencePayload,
 } from "@elizaos/core";
 import {
 	AGENT_SELF_VOICE_THRESHOLD,
@@ -75,6 +76,8 @@ export interface EmitVoiceTurnObservedArgs {
 	isOwner?: boolean;
 	/** ISO timestamp; defaults to now. */
 	observedAt?: string;
+	/** Evaluated speaker-name provenance for correction and meeting paths. */
+	speakerNameInference?: VoiceSpeakerNameInferencePayload;
 }
 
 /**
@@ -96,6 +99,9 @@ export async function emitVoiceTurnObserved(
 		matchedEntityId: args.matchedEntityId ?? null,
 		observedAt: args.observedAt ?? new Date().toISOString(),
 		...(args.isOwner !== undefined ? { isOwner: args.isOwner } : {}),
+		...(args.speakerNameInference
+			? { speakerNameInference: args.speakerNameInference }
+			: {}),
 	});
 }
 
@@ -350,25 +356,39 @@ export async function handleVoiceEntityBound(
 	const store = await getVoiceProfileStore();
 	const records = await store.list();
 	const targets = records.filter(
-		(r) =>
-			r.imprintClusterId === payload.imprintClusterId &&
-			r.entityId !== payload.entityId,
+		(r) => r.imprintClusterId === payload.imprintClusterId,
 	);
 	let bound = 0;
+	let metadataUpdated = 0;
 	for (const record of targets) {
-		const updated = await store.bindEntity({
-			profileId: record.profileId,
-			entityId: payload.entityId,
-			...(payload.displayName ? { label: payload.displayName } : {}),
-		});
-		if (updated) bound += 1;
+		if (record.entityId !== payload.entityId) {
+			const updated = await store.bindEntity({
+				profileId: record.profileId,
+				entityId: payload.entityId,
+				...(payload.displayName ? { label: payload.displayName } : {}),
+			});
+			if (updated) bound += 1;
+		}
+		if (payload.displayName || payload.speakerNameInference) {
+			const updated = await store.updateMetadata(record.profileId, {
+				...(payload.displayName ? { label: payload.displayName } : {}),
+				...(payload.speakerNameInference
+					? {
+							speakerNameInference: payload.speakerNameInference,
+							speakerNameUpdatedAt: new Date().toISOString(),
+						}
+					: {}),
+			});
+			if (updated) metadataUpdated += 1;
+		}
 	}
-	if (bound > 0) {
+	if (bound > 0 || metadataUpdated > 0) {
 		logger.info(
 			{
 				imprintClusterId: payload.imprintClusterId,
 				entityId: payload.entityId,
 				bound,
+				metadataUpdated,
 			},
 			"[local-inference] persisted voice→entity binding onto profile(s)",
 		);

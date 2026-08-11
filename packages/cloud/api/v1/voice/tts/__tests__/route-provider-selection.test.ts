@@ -40,25 +40,20 @@ const billUsage = mock(async (..._args: unknown[]) => ({
   platformMarkup: 0,
 }));
 const createUsage = mock(async (..._args: unknown[]) => undefined);
-const elevenLabsTextToSpeech = mock(
-  async () =>
-    new ReadableStream<Uint8Array>({
-      start(controller) {
-        controller.enqueue(new Uint8Array([73, 68, 51]));
-        controller.close();
-      },
-    }),
-);
-let drainPcm16ToWavError: Error | null = null;
-const encodedWav = Uint8Array.from([
-  82, 73, 70, 70, 40, 0, 0, 0, 87, 65, 86, 69, 1, 0, 2, 0,
-]);
-const drainPcm16ToWav = mock(async () => {
-  if (drainPcm16ToWavError) throw drainPcm16ToWavError;
-  return encodedWav;
-});
+let elevenLabsBytes = new Uint8Array([73, 68, 51]);
+let elevenLabsStreamFactory = () => {
+  const bytes = elevenLabsBytes;
+  return new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(bytes);
+      controller.close();
+    },
+  });
+};
+const elevenLabsTextToSpeech = mock(async () => elevenLabsStreamFactory());
 let allowKokoroFetch = false;
 let cartesiaStatus = 200;
+let cacheBypass = true;
 let cachedVoiceResponse: {
   bytes: Uint8Array;
   byteSize: number;
@@ -94,6 +89,9 @@ const fetchMock = Object.assign(
   { preconnect: () => undefined },
 ) satisfies typeof fetch;
 const realFetch = globalThis.fetch;
+const cacheGet = mock(async () => cachedVoiceResponse);
+const cacheHas = mock(async () => true);
+const cachePut = mock(async () => true);
 
 mock.module("@/lib/api/cloud-worker-errors", () => ({
   ApiError: class ApiError extends Error {
@@ -178,22 +176,14 @@ mock.module("@/lib/services/elevenlabs", () => ({
   getElevenLabsService: () => ({ textToSpeech: elevenLabsTextToSpeech }),
 }));
 
-mock.module("@/lib/services/pcm16-wav", () => ({
-  drainPcm16ToWav,
-  drainPcm16Stream: async () => new Uint8Array([1, 0, 2, 0]),
-  pcm16ChunksToWav: (chunks: readonly Uint8Array[]) =>
-    chunks[0] ?? new Uint8Array(),
-  pcm16ToWav: (pcm: Uint8Array) => pcm,
-}));
-
 mock.module("@/lib/services/tts-first-line-cache", () => ({
   fingerprintCloudVoiceSettings: () => "fp-test",
   getCloudFirstLineCacheService: () => ({
-    get: async () => cachedVoiceResponse,
-    has: async () => true,
-    put: async () => true,
+    get: cacheGet,
+    has: cacheHas,
+    put: cachePut,
   }),
-  shouldBypassCloudFirstLineCache: () => true,
+  shouldBypassCloudFirstLineCache: () => cacheBypass,
 }));
 
 mock.module("@/lib/services/usage", () => ({
@@ -230,7 +220,18 @@ beforeAll(async () => {
 beforeEach(() => {
   allowKokoroFetch = false;
   cartesiaStatus = 200;
+  cacheBypass = true;
   cachedVoiceResponse = null;
+  elevenLabsBytes = new Uint8Array([73, 68, 51]);
+  elevenLabsStreamFactory = () => {
+    const bytes = elevenLabsBytes;
+    return new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(bytes);
+        controller.close();
+      },
+    });
+  };
   fetchMock.mockClear();
   assertSafeForPublicUse.mockClear();
   reserveCredits.mockClear();
@@ -238,8 +239,9 @@ beforeEach(() => {
   createUsage.mockClear();
   elevenLabsTextToSpeech.mockClear();
   reconcileReservation.mockClear();
-  drainPcm16ToWav.mockClear();
-  drainPcm16ToWavError = null;
+  cacheGet.mockClear();
+  cacheHas.mockClear();
+  cachePut.mockClear();
 });
 
 afterAll(() => {
@@ -480,7 +482,9 @@ describe("POST /api/v1/voice/tts provider selection", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  test("returns exact bounded WAV bytes and bills only after encoding succeeds", async () => {
+  test("returns exact bounded WAV bytes, bypasses MP3 cache, and bills after encoding", async () => {
+    cacheBypass = false;
+    elevenLabsBytes = new Uint8Array([1, 2, 3, 4]);
     const response = await postTts({
       text: "Codec-less playback.",
       voiceId: "custom-elevenlabs-voice",
@@ -491,24 +495,26 @@ describe("POST /api/v1/voice/tts provider selection", () => {
     expect(response.headers.get("Content-Type")).toBe("audio/wav");
     expect(response.headers.get("Cache-Control")).toBe("no-cache");
     expect(response.headers.get("X-TTS-Cache")).toBe("miss");
-    expect(new Uint8Array(await response.arrayBuffer())).toEqual(encodedWav);
+    expect(response.headers.get("X-Eliza-TTS-Provider")).toBe("elevenlabs");
+    expect(response.headers.get("Server-Timing")).toContain("synthesis;dur=");
+    const wav = new Uint8Array(await response.arrayBuffer());
+    expect(new TextDecoder().decode(wav.subarray(0, 4))).toBe("RIFF");
+    expect(new DataView(wav.buffer).getUint32(40, true)).toBe(4);
+    expect([...wav.subarray(44)]).toEqual([1, 2, 3, 4]);
     expect(elevenLabsTextToSpeech).toHaveBeenCalledWith({
       text: "Codec-less playback.",
       voiceId: "custom-elevenlabs-voice",
       modelId: undefined,
       outputFormat: "pcm_24000",
     });
-    expect(drainPcm16ToWav).toHaveBeenCalledWith(
-      expect.any(ReadableStream),
-      16 * 1024 * 1024,
-      24_000,
-    );
+    expect(cacheGet).not.toHaveBeenCalled();
+    expect(cacheHas).not.toHaveBeenCalled();
     expect(billUsage).toHaveBeenCalledTimes(1);
     expect(reconcileReservation).not.toHaveBeenCalled();
   });
 
-  test("refunds the reservation and never bills when WAV encoding fails", async () => {
-    drainPcm16ToWavError = new Error("bounded PCM drain failed");
+  test("refunds the reservation and never bills malformed PCM", async () => {
+    elevenLabsBytes = new Uint8Array([1, 2, 3]);
     const response = await postTts({
       text: "Do not charge failed audio.",
       voiceId: "custom-elevenlabs-voice",
@@ -518,6 +524,58 @@ describe("POST /api/v1/voice/tts provider selection", () => {
     expect(response.status).toBe(500);
     expect(billUsage).not.toHaveBeenCalled();
     expect(reconcileReservation).toHaveBeenCalledTimes(1);
+    expect(reconcileReservation).toHaveBeenCalledWith(0);
+  });
+
+  test("cancels oversized PCM without billing, caching, or a partial WAV", async () => {
+    cacheBypass = false;
+    let cancelReason: unknown;
+    const oversized = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new Uint8Array(16 * 1024 * 1024 + 2));
+      },
+      cancel(reason) {
+        cancelReason = reason;
+      },
+    });
+    elevenLabsStreamFactory = () => oversized;
+
+    const response = await postTts({
+      text: "Oversized PCM.",
+      voiceId: "custom-elevenlabs-voice",
+      format: "wav",
+    });
+
+    expect(response.status).toBe(500);
+    expect(response.headers.get("Content-Type")).not.toBe("audio/wav");
+    expect(cancelReason).toBe(
+      "PCM16 response exceeded the configured byte limit",
+    );
+    expect(oversized.locked).toBe(false);
+    expect(billUsage).not.toHaveBeenCalled();
+    expect(cachePut).not.toHaveBeenCalled();
+    expect(reconcileReservation).toHaveBeenCalledWith(0);
+  });
+
+  test("releases failed PCM reads without billing, caching, or a partial WAV", async () => {
+    const failing = new ReadableStream<Uint8Array>({
+      pull() {
+        throw new Error("upstream PCM read failed");
+      },
+    });
+    elevenLabsStreamFactory = () => failing;
+
+    const response = await postTts({
+      text: "Failed PCM stream.",
+      voiceId: "custom-elevenlabs-voice",
+      format: "wav",
+    });
+
+    expect(response.status).toBe(500);
+    expect(response.headers.get("Content-Type")).not.toBe("audio/wav");
+    expect(failing.locked).toBe(false);
+    expect(billUsage).not.toHaveBeenCalled();
+    expect(cachePut).not.toHaveBeenCalled();
     expect(reconcileReservation).toHaveBeenCalledWith(0);
   });
 

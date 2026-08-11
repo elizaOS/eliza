@@ -1174,6 +1174,190 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 		]);
 	});
 
+	it("ships exactly one message when a settled action confirmation owns the turn", async () => {
+		// Live double-message repro (settings-style action): an unsettled
+		// confirmation left the evaluator replanning — its FINISH carried an empty
+		// messageToUser — so a second planner iteration composed a duplicate
+		// reply. A settled result (userFacingText + verified + turnComplete)
+		// makes the action's own callback the sole delivery: the settlement
+		// boundary marks the byte-matching callback agentVoiced (no voice-rewrite
+		// model call at all) and the turn gate skips the evaluator.
+		const confirmation = "Got it — I'll only reply when you @-mention me.";
+		const delivered: string[] = [];
+		const deliveredVisibleTexts = new Set<string>();
+		const action = makeMockAction({
+			name: "PERSONALITY",
+			suppressPostActionContinuation: true,
+			handler: async (_runtime, _message, _state, _options, callback) => {
+				await callback?.(
+					{ text: confirmation, actions: ["PERSONALITY"] },
+					"PERSONALITY",
+				);
+				return {
+					success: true,
+					text: confirmation,
+					userFacingText: confirmation,
+					verifiedUserFacing: true,
+					turnComplete: true,
+					data: { actionName: "PERSONALITY" },
+				};
+			},
+		});
+		const runtime = makeRuntime({
+			actions: [action],
+			responses: [
+				{
+					expectModelType: ModelType.RESPONSE_HANDLER,
+					body: stage1Response({
+						contexts: ["general"],
+						candidateActionNames: ["PERSONALITY"],
+						thought: "Changing the reply gate needs the tool.",
+					}),
+				},
+				{
+					expectModelType: ModelType.ACTION_PLANNER,
+					body: {
+						text: "",
+						toolCalls: [{ id: "call-1", name: "PERSONALITY", args: {} }],
+					},
+				},
+			],
+		});
+		const callback = vi.fn(async (content: { text?: string }) => {
+			if (content.text) delivered.push(content.text);
+			return [];
+		});
+		const wrappedCallback = wrapSingleTurnVisibleCallback(
+			runtime,
+			makeMessage("only reply when I mention you"),
+			callback,
+			(text) => deliveredVisibleTexts.add(text.toLowerCase()),
+		);
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage("only reply when I mention you"),
+			state: makeState(),
+			responseId: RESPONSE_ID,
+			callback: wrappedCallback,
+			deliveredVisibleTexts,
+		});
+
+		expect(delivered).toEqual([confirmation]);
+		expect(callback).toHaveBeenCalledTimes(1);
+		for (const text of delivered) {
+			expect(text).not.toMatch(/couldn't format the details cleanly/i);
+		}
+		expect(result.kind).toBe("planned_reply");
+		if (result.kind === "planned_reply") {
+			expect(result.result.responseContent).toBeNull();
+		}
+		// The settled action owns the turn: no rewrite call, no evaluator call,
+		// no second planner iteration composing a duplicate reply.
+		expect(getCalls(runtime).map((call) => call.modelType)).toEqual([
+			ModelType.RESPONSE_HANDLER,
+			ModelType.ACTION_PLANNER,
+		]);
+	});
+
+	it("delivers the raw callback text when the voice rewrite fails on an unsettled callback", async () => {
+		// The other half of the live incident: a non-canonical action callback
+		// entered the character-voice rewrite, the TEXT_SMALL call returned no
+		// usable text, and the old fallback fabricated an internal formatting
+		// apology as the wire text — shipped one second before the evaluator's
+		// real reply. A failed rewrite must degrade to the raw callback text;
+		// the meta-apology must never reach a delivery.
+		const raw = "Reply gate set to on_mention for this user.";
+		const evaluatorReply = "word. reply gate set to on_mention.";
+		const delivered: string[] = [];
+		const deliveredVisibleTexts = new Set<string>();
+		const action = makeMockAction({
+			name: "SETTINGS_NOTE",
+			handler: async (_runtime, _message, _state, _options, callback) => {
+				await callback?.({ text: raw }, "SETTINGS_NOTE");
+				return {
+					success: true,
+					text: raw,
+					data: { actionName: "SETTINGS_NOTE" },
+				};
+			},
+		});
+		const runtime = makeRuntime({
+			actions: [action],
+			responses: [
+				{
+					expectModelType: ModelType.RESPONSE_HANDLER,
+					body: stage1Response({
+						contexts: ["general"],
+						candidateActionNames: ["SETTINGS_NOTE"],
+						thought: "Needs the tool.",
+					}),
+				},
+				{
+					expectModelType: ModelType.ACTION_PLANNER,
+					body: {
+						text: "",
+						toolCalls: [{ id: "call-1", name: "SETTINGS_NOTE", args: {} }],
+					},
+				},
+				// The character-voice rewrite fails by returning no usable text.
+				{ expectModelType: ModelType.TEXT_SMALL, body: "" },
+				{
+					expectModelType: ModelType.RESPONSE_HANDLER,
+					body: JSON.stringify({
+						success: true,
+						decision: "FINISH",
+						thought: "Confirming the change in voice.",
+						messageToUser: evaluatorReply,
+					}),
+				},
+			],
+		});
+		const callback = vi.fn(async (content: { text?: string }) => {
+			if (content.text) delivered.push(content.text);
+			return [];
+		});
+		const wrappedCallback = wrapSingleTurnVisibleCallback(
+			runtime,
+			makeMessage("note the gate change"),
+			callback,
+			(text) => deliveredVisibleTexts.add(text.toLowerCase()),
+		);
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage("note the gate change"),
+			state: makeState(),
+			responseId: RESPONSE_ID,
+			callback: wrappedCallback,
+			deliveredVisibleTexts,
+		});
+
+		// The callback delivery is the RAW action text — before the fix this was
+		// the fabricated formatting apology.
+		expect(delivered).toEqual([raw]);
+		expect(callback).toHaveBeenCalledTimes(1);
+		expect(result.kind).toBe("planned_reply");
+		if (result.kind === "planned_reply") {
+			expect(result.result.responseContent?.text).toBe(evaluatorReply);
+		}
+		const surfacedTexts = [
+			...delivered,
+			...(result.kind === "planned_reply"
+				? [result.result.responseContent?.text ?? ""]
+				: []),
+		];
+		for (const text of surfacedTexts) {
+			expect(text).not.toMatch(/couldn't format the details cleanly/i);
+		}
+		expect(getCalls(runtime).map((call) => call.modelType)).toEqual([
+			ModelType.RESPONSE_HANDLER,
+			ModelType.ACTION_PLANNER,
+			ModelType.TEXT_SMALL,
+			ModelType.RESPONSE_HANDLER,
+		]);
+	});
+
 	it("suppresses a speculative Stage 1 reply when a deterministic action owns the callback", async () => {
 		let viewCalls = 0;
 		const earlyReply = vi.fn(async () => undefined);

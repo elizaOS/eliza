@@ -51,7 +51,7 @@ describe("classifyResult", () => {
     ).toBe("skipped");
   });
 
-  test("exit 3 without status lines is the vacuous-green skip", () => {
+  test("exit 3 without status lines is a semantic-work failure", () => {
     expect(
       classifyResult({
         label: LABEL,
@@ -60,7 +60,19 @@ describe("classifyResult", () => {
         tail: "",
         cancelled: false,
       }),
-    ).toBe("skipped");
+    ).toBe("failed");
+  });
+
+  test("PASS text cannot override a semantic-work failure exit", () => {
+    expect(
+      classifyResult({
+        label: LABEL,
+        code: 3,
+        signal: null,
+        tail: `[eliza-test] PASS ${LABEL} (10ms)`,
+        cancelled: false,
+      }),
+    ).toBe("failed");
   });
 
   test("signal death is failure; cancellation wins over everything", () => {
@@ -97,21 +109,20 @@ describe("classifyResult", () => {
 
 describe("store roundtrip", () => {
   let store: typeof import("../lib/store.mjs");
+  let testConsoleDir: string;
 
   beforeAll(async () => {
-    process.env.ELIZA_TEST_CONSOLE_DIR = fs.mkdtempSync(
+    testConsoleDir = fs.mkdtempSync(
       path.join(os.tmpdir(), "eliza-test-console-"),
     );
+    process.env.ELIZA_TEST_CONSOLE_DIR = testConsoleDir;
     store = await import("../lib/store.mjs");
   });
 
   test("credentials save with 0600 and merge into env", () => {
     store.setConnection("openai", { OPENAI_API_KEY: "sk-test-123" });
     store.setConnection("github", { GITHUB_TOKEN: "ghp_test" });
-    const file = path.join(
-      process.env.ELIZA_TEST_CONSOLE_DIR!,
-      "credentials.json",
-    );
+    const file = path.join(testConsoleDir, "credentials.json");
     expect(fs.statSync(file).mode & 0o777).toBe(0o600);
     expect(store.credentialsToEnv()).toEqual({
       OPENAI_API_KEY: "sk-test-123",
@@ -156,10 +167,13 @@ describe("registry (real plan discovery)", () => {
     );
     expect(webSearchTask).toBeDefined();
 
-    const suiteState = (registry: ReturnType<typeof buildRegistry>) =>
-      registry.tasks
+    const suiteState = (registry: ReturnType<typeof buildRegistry>) => {
+      const suite = registry.tasks
         .flatMap((t) => t.liveSuites)
-        .find((s) => s.file.includes("webSearchService.real.test.ts"))!.state;
+        .find((s) => s.file.includes("webSearchService.real.test.ts"));
+      if (!suite) throw new Error("web-search live suite was not discovered");
+      return suite.state;
+    };
 
     // Deterministic regardless of ambient env: with an explicit key the suite
     // arms; the no-credentials expectation only holds on machines that don't

@@ -9,6 +9,10 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { getFreePort } from "../test/utils/get-free-port.mjs";
 import { resolveAuditAppOutput } from "./lib/audit-output.mjs";
+import {
+  auditProjectsRequestedByArgs,
+  writeAuditProjectPropagation,
+} from "./lib/playwright-audit-projects.mjs";
 import { withElizaSourceNodeOptions } from "./lib/playwright-node-options.mjs";
 
 const appDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -21,10 +25,17 @@ const cleanupHelperScript = path.join(
   "rm-path-recursive.mjs",
 );
 const playwrightArgs = process.argv.slice(2);
+const uiSmokeViewLockNamespace =
+  process.env.ELIZA_UI_SMOKE_VIEW_LOCK_NAMESPACE?.trim().replace(
+    /[^A-Za-z0-9_-]/g,
+    "-",
+  );
 const uiSmokeViewLockDir = path.join(
   repoRoot,
   ".turbo",
-  "ui-smoke-view-bundles.lock",
+  uiSmokeViewLockNamespace
+    ? `ui-smoke-view-bundles-${uiSmokeViewLockNamespace}.lock`
+    : "ui-smoke-view-bundles.lock",
 );
 const uiSmokeTempPrefixes = ["eliza-ui-smoke-stub-", "eliza-ui-smoke-live-"];
 
@@ -152,6 +163,9 @@ function resolveNodeCommand() {
 }
 
 const env = { ...process.env };
+// Derive the handoff from this invocation alone so a stale parent environment
+// can never opt the default E2E command into a dedicated audit project.
+writeAuditProjectPropagation(env, auditProjectsRequestedByArgs(playwrightArgs));
 delete env.NO_COLOR;
 delete env.FORCE_COLOR;
 delete env.CLICOLOR_FORCE;

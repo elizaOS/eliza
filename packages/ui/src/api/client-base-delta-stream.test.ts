@@ -150,8 +150,38 @@ describe("delta-v2 chat stream client reducer", () => {
     );
 
     // Mid-stream the buffer was "par"; the authoritative done text replaces it.
-    expect(onToken).toHaveBeenCalledWith("par", "par");
+    expect(onToken).toHaveBeenCalledWith("par", "par", false);
     expect(result.text).toBe("partial complete");
     expect(result.completed).toBe(true);
+  });
+
+  // Voice double-speak fix: the server marks in-flight action-callback text
+  // `provisional: true` on its token frames. The client must surface that flag
+  // to onToken (voice output holds provisional text) and default it to false
+  // on ordinary frames.
+  it("surfaces the provisional flag on action-callback frames to onToken", async () => {
+    const { client } = streamFromSse(
+      'data: {"type":"token","fullText":"Set tone=warm for you.","provisional":true}\n\n' +
+        'data: {"type":"token","fullText":"okay i changed personality to warm"}\n\n' +
+        'data: {"type":"done","fullText":"okay i changed personality to warm","agentName":"Eliza"}\n\n',
+    );
+    const calls: Array<[string, string | undefined, boolean | undefined]> = [];
+    const onToken = vi.fn(
+      (token: string, accumulated?: string, provisional?: boolean) => {
+        calls.push([token, accumulated, provisional]);
+      },
+    );
+
+    const result = await client.streamChatEndpoint(
+      "/api/conversations/c/messages/stream",
+      "change your personality to warm",
+      onToken,
+    );
+
+    expect(calls).toEqual([
+      ["", "Set tone=warm for you.", true],
+      ["", "okay i changed personality to warm", false],
+    ]);
+    expect(result.text).toBe("okay i changed personality to warm");
   });
 });

@@ -78,8 +78,12 @@ export function AccountManagementPanel({
   const [showAvailable, setShowAvailable] = useState(false);
 
   const providerMap = useMemo(() => {
+    if (!accounts.data) return new Map();
     return new Map(
-      accounts.data?.providers.map((p) => [p.providerId, p]) ?? [],
+      accounts.data.providers.map((provider) => [
+        provider.providerId,
+        provider,
+      ]),
     );
   }, [accounts.data]);
 
@@ -88,11 +92,13 @@ export function AccountManagementPanel({
   const { connectedOptions, availableOptions } = useMemo(() => {
     const all: AccountProviderOption[] = [];
     const seen = new Set<LinkedAccountProviderId>();
-    for (const p of accounts.data?.providers ?? []) {
-      const option = getAccountProviderOption(p.providerId);
-      if (option && !seen.has(option.id)) {
-        all.push(option);
-        seen.add(option.id);
+    if (accounts.data) {
+      for (const provider of accounts.data.providers) {
+        const option = getAccountProviderOption(provider.providerId);
+        if (option && !seen.has(option.id)) {
+          all.push(option);
+          seen.add(option.id);
+        }
       }
     }
     for (const option of ACCOUNT_PROVIDER_OPTIONS) {
@@ -202,7 +208,12 @@ export function AccountManagementPanel({
   // ── Loading skeleton (structural, matches the row layout) ──
   if (accounts.loading && !accounts.data) {
     return (
-      <div className="grid gap-2" aria-busy>
+      <div
+        className="grid gap-2"
+        aria-busy
+        data-testid="account-management-panel"
+        data-state="loading"
+      >
         <div className="flex items-center justify-between">
           <Skeleton className="h-3 w-32" />
           <Skeleton className="h-8 w-24 rounded-md" />
@@ -217,7 +228,11 @@ export function AccountManagementPanel({
   // ── Explicit error + retry (never collapse into empty) ──
   if (accounts.error && !accounts.data) {
     return (
-      <div className="flex flex-col items-start gap-3 rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-4">
+      <div
+        className="flex flex-col items-start gap-3 rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-4"
+        data-testid="account-management-panel"
+        data-state="error"
+      >
         <div className="flex items-center gap-2 text-sm text-destructive">
           <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden />
           <span>
@@ -244,7 +259,11 @@ export function AccountManagementPanel({
   const nothingConnected = connectedOptions.length === 0;
 
   return (
-    <div className="grid gap-3">
+    <div
+      className="grid gap-3"
+      data-testid="account-management-panel"
+      data-state="ready"
+    >
       {/* Header: one line of intent + the primary add affordance. */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-xs leading-5 text-muted">

@@ -1,5 +1,5 @@
 // Persists users records for cloud services through the shared DB boundary.
-import { and, desc, eq, ne, type SQL, sql } from "drizzle-orm";
+import { and, desc, eq, isNull, ne, or, type SQL, sql } from "drizzle-orm";
 import { sqlRows } from "../execute-helpers";
 import { dbRead, dbWrite } from "../helpers";
 import { type Organization } from "../schemas/organizations";
@@ -36,6 +36,11 @@ export function providerForPlatform(platform: string | undefined): IdentityProvi
   }
 }
 
+export type LinkTelegramAndPhoneResult =
+  | { status: "linked"; user: User }
+  | { status: "user_not_found" }
+  | { status: "phone_mismatch"; existingPhone: string };
+
 export interface ResolvedIdentity {
   user: User;
   identity?: UserIdentity;
@@ -50,6 +55,21 @@ const EVM_ADDRESS_RE = /^0x[0-9a-f]{40}$/i;
 export type UserWithOrganization = User & {
   organization: Organization | null;
 };
+
+export interface TelegramPhoneIdentityLink {
+  telegram_id: string;
+  telegram_username?: string;
+  telegram_first_name?: string;
+  telegram_photo_url?: string;
+  phone_number: string;
+}
+
+export interface DiscordIdentityLink {
+  discord_id: string;
+  discord_username: string;
+  discord_global_name?: string | null;
+  discord_avatar_url?: string | null;
+}
 
 /**
  * Repository for user database operations.
@@ -114,6 +134,14 @@ export class UsersRepository {
    */
   async findWithOrganization(userId: string): Promise<UserWithOrganization | undefined> {
     return await this.findUserWithOrganizationById(dbRead, userId);
+  }
+
+  /**
+   * Finds a user by ID with organization data from primary. Use after identity
+   * writes when the just-written canonical row must be visible immediately.
+   */
+  async findWithOrganizationForWrite(userId: string): Promise<UserWithOrganization | undefined> {
+    return await this.findUserWithOrganizationById(dbWrite, userId);
   }
 
   /**
@@ -203,6 +231,19 @@ export class UsersRepository {
     });
     if (!identity) return undefined;
     return this.findWithOrganization(identity.user_id);
+  }
+
+  /**
+   * Finds a user by the CANONICAL `users.discord_id` column, bypassing the
+   * identity projection. Only for converging legacy canonical-only links
+   * (written before {@link refreshDiscordProjectionForWrite} existed) back
+   * into the projection — routing and normal lookups must keep resolving via
+   * {@link findByDiscordIdWithOrganization}.
+   */
+  async findByCanonicalDiscordIdWithOrganization(
+    discordId: string,
+  ): Promise<UserWithOrganization | undefined> {
+    return await this.findUserWithOrganizationByPredicate(dbRead, eq(users.discord_id, discordId));
   }
 
   async listForAdminDashboard(
@@ -372,6 +413,161 @@ export class UsersRepository {
     return updated;
   }
 
+  /** Links Discord on the canonical user and routing projection atomically. */
+  async linkDiscordIdentity(
+    userId: string,
+    identity: DiscordIdentityLink,
+  ): Promise<User | undefined> {
+    return dbWrite.transaction(async (tx) => {
+      const updatedAt = new Date();
+      const [updated] = await tx
+        .update(users)
+        .set({ ...identity, updated_at: updatedAt })
+        .where(eq(users.id, userId))
+        .returning();
+      if (!updated) return undefined;
+
+      await tx
+        .insert(userIdentities)
+        .values({
+          user_id: userId,
+          steward_user_id: updated.steward_user_id,
+          is_anonymous: updated.is_anonymous,
+          anonymous_session_id: updated.anonymous_session_id,
+          expires_at: updated.expires_at,
+          ...identity,
+          updated_at: updatedAt,
+        })
+        .onConflictDoUpdate({
+          target: userIdentities.user_id,
+          set: { ...identity, updated_at: updatedAt },
+        });
+      return updated;
+    });
+  }
+
+  /**
+   * Links a verified phone on both the canonical user and the identity lookup
+   * projection in one transaction. Phone gateways resolve through the
+   * projection, so committing only the canonical row would fabricate a
+   * successful link that inbound routing cannot observe.
+   */
+  async linkVerifiedPhone(id: string, phoneNumber: string): Promise<User | undefined> {
+    return dbWrite.transaction(async (tx) => {
+      const now = new Date();
+      const [updated] = await tx
+        .update(users)
+        .set({
+          phone_number: phoneNumber,
+          phone_verified: true,
+          updated_at: now,
+        })
+        .where(eq(users.id, id))
+        .returning();
+      if (!updated) return undefined;
+
+      const [identity] = await tx
+        .update(userIdentities)
+        .set({
+          phone_number: phoneNumber,
+          phone_verified: true,
+          updated_at: now,
+        })
+        .where(eq(userIdentities.user_id, id))
+        .returning({ id: userIdentities.id });
+      if (!identity) {
+        throw new Error(`User ${id} has no identity projection for phone linking`);
+      }
+      return updated;
+    });
+  }
+
+  /**
+   * Links Telegram and phone on the canonical row and its lookup projection in
+   * one transaction. A uniqueness failure in either table rolls back both.
+   *
+   * The phone guard lives in the UPDATE predicate (not check-then-write): a
+   * user whose row already carries a different verified phone number is
+   * refused with `phone_mismatch` rather than silently overwritten.
+   * Re-linking the same phone is idempotent, and an unverified placeholder
+   * phone may be replaced.
+   */
+  async linkTelegramAndPhoneIdentity(
+    userId: string,
+    identity: TelegramPhoneIdentityLink,
+  ): Promise<LinkTelegramAndPhoneResult> {
+    return dbWrite.transaction(async (tx) => {
+      const updatedAt = new Date();
+      const [updated] = await tx
+        .update(users)
+        .set({
+          ...identity,
+          phone_verified: true,
+          updated_at: updatedAt,
+        })
+        .where(
+          and(
+            eq(users.id, userId),
+            or(
+              isNull(users.phone_number),
+              eq(users.phone_number, identity.phone_number),
+              sql`${users.phone_verified} IS NOT TRUE`,
+            ),
+          ),
+        )
+        .returning();
+
+      if (!updated) {
+        const [existing] = await tx
+          .select({ phone_number: users.phone_number })
+          .from(users)
+          .where(eq(users.id, userId))
+          .limit(1);
+        if (!existing || !existing.phone_number) {
+          // A present row with a NULL phone would have matched the UPDATE
+          // predicate, so a phoneless miss means the user row is gone.
+          return { status: "user_not_found" };
+        }
+        return { status: "phone_mismatch", existingPhone: existing.phone_number };
+      }
+
+      await tx
+        .insert(userIdentities)
+        .values({
+          user_id: updated.id,
+          steward_user_id: updated.steward_user_id,
+          is_anonymous: updated.is_anonymous,
+          anonymous_session_id: updated.anonymous_session_id,
+          expires_at: updated.expires_at,
+          telegram_id: updated.telegram_id,
+          telegram_username: updated.telegram_username,
+          telegram_first_name: updated.telegram_first_name,
+          telegram_photo_url: updated.telegram_photo_url,
+          phone_number: updated.phone_number,
+          phone_verified: updated.phone_verified,
+          updated_at: updatedAt,
+        })
+        .onConflictDoUpdate({
+          target: userIdentities.user_id,
+          set: {
+            steward_user_id: updated.steward_user_id,
+            is_anonymous: updated.is_anonymous,
+            anonymous_session_id: updated.anonymous_session_id,
+            expires_at: updated.expires_at,
+            telegram_id: updated.telegram_id,
+            telegram_username: updated.telegram_username,
+            telegram_first_name: updated.telegram_first_name,
+            telegram_photo_url: updated.telegram_photo_url,
+            phone_number: updated.phone_number,
+            phone_verified: updated.phone_verified,
+            updated_at: updatedAt,
+          },
+        });
+
+      return { status: "linked", user: updated };
+    });
+  }
+
   /**
    * Links a Steward user ID to an existing user.
    */
@@ -437,6 +633,83 @@ export class UsersRepository {
         updated_at: new Date(),
       })
       .where(eq(userIdentities.user_id, userId));
+  }
+
+  /**
+   * Refreshes Discord projection fields from the canonical users row.
+   * Inbound Discord routing resolves senders exclusively through the
+   * `user_identities` projection (see {@link findByDiscordIdWithOrganization}),
+   * so a canonical-only `users.discord_id` write is invisible to routing until
+   * this refresh projects it.
+   *
+   * Two deliberate behaviors, mirroring {@link refreshWhatsAppProjectionForWrite}
+   * and {@link linkTelegramAndPhoneIdentity}:
+   * - an existing projection row owned by a DIFFERENT user for the same
+   *   discord_id declines the refresh (tenant safety) instead of stealing the
+   *   identity;
+   * - a user with no projection row yet (created before projection upserts
+   *   existed) gets one, because an UPDATE-only refresh would silently leave
+   *   routing broken for exactly the accounts this method exists to repair.
+   */
+  async refreshDiscordProjectionForWrite(userId: string): Promise<void> {
+    const [canonical] = await dbWrite
+      .select({
+        steward_user_id: users.steward_user_id,
+        is_anonymous: users.is_anonymous,
+        anonymous_session_id: users.anonymous_session_id,
+        expires_at: users.expires_at,
+        discord_id: users.discord_id,
+        discord_username: users.discord_username,
+        discord_global_name: users.discord_global_name,
+        discord_avatar_url: users.discord_avatar_url,
+      })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+
+    if (!canonical) {
+      return;
+    }
+
+    if (canonical.discord_id) {
+      const conflictingProjection = await dbWrite.query.userIdentities.findFirst({
+        where: and(
+          eq(userIdentities.discord_id, canonical.discord_id),
+          ne(userIdentities.user_id, userId),
+        ),
+      });
+
+      if (conflictingProjection) {
+        return;
+      }
+    }
+
+    const updatedAt = new Date();
+    const discordProjection = {
+      discord_id: canonical.discord_id ?? null,
+      discord_username: canonical.discord_id ? (canonical.discord_username ?? null) : null,
+      discord_global_name: canonical.discord_id ? (canonical.discord_global_name ?? null) : null,
+      discord_avatar_url: canonical.discord_id ? (canonical.discord_avatar_url ?? null) : null,
+    };
+
+    await dbWrite
+      .insert(userIdentities)
+      .values({
+        user_id: userId,
+        steward_user_id: canonical.steward_user_id,
+        is_anonymous: canonical.is_anonymous,
+        anonymous_session_id: canonical.anonymous_session_id,
+        expires_at: canonical.expires_at,
+        ...discordProjection,
+        updated_at: updatedAt,
+      })
+      .onConflictDoUpdate({
+        target: userIdentities.user_id,
+        set: {
+          ...discordProjection,
+          updated_at: updatedAt,
+        },
+      });
   }
 
   /**

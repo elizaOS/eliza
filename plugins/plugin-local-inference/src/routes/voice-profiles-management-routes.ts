@@ -93,6 +93,11 @@ export interface VoiceProfileDto {
 	source: Source;
 	retentionDays: number | null;
 	samplePreviewUri: string | null;
+	samples: Array<{
+		id: string;
+		durationMs: number;
+		recordedAt: string;
+	}>;
 }
 
 function metaString(
@@ -167,6 +172,11 @@ function toDto(
 		samplePreviewUri: hasSample
 			? `/api/voice/profiles/${encodeURIComponent(record.profileId)}/sample`
 			: null,
+		samples: (record.audioRefs ?? []).map((sample) => ({
+			id: sample.sampleId,
+			durationMs: sample.durationMs,
+			recordedAt: sample.recordedAt,
+		})),
 	};
 }
 
@@ -327,6 +337,16 @@ async function mergeProfile(
 		return true;
 	}
 	const store = await getStore();
+	const source = await store.get(id);
+	if (!source) {
+		sendJsonError(res, `profile not found: ${id}`, 404);
+		return true;
+	}
+	const owner = ownerEntityId();
+	if (owner && source.entityId === owner) {
+		sendJsonError(res, "the OWNER profile cannot be merged away", 409);
+		return true;
+	}
 	let merged: VoiceProfileRecord | null;
 	try {
 		merged = await store.mergeProfiles({
@@ -365,11 +385,34 @@ async function splitProfile(
 		return true;
 	}
 	const store = await getStore();
+	const record = await store.get(id);
+	if (!record) {
+		sendJsonError(res, `profile not found: ${id}`, 404);
+		return true;
+	}
+	const retainedSampleIds = new Set(
+		(record.audioRefs ?? []).map((sample) => sample.sampleId),
+	);
+	const selectedSampleIds = new Set(
+		utteranceIds.filter((sampleId) => retainedSampleIds.has(sampleId)),
+	);
+	if (selectedSampleIds.size === 0) {
+		sendJsonError(res, "no selected utterance belongs to this profile", 400);
+		return true;
+	}
+	if (selectedSampleIds.size >= retainedSampleIds.size) {
+		sendJsonError(
+			res,
+			"a split must leave at least one sample in the profile",
+			400,
+		);
+		return true;
+	}
 	let result: Awaited<ReturnType<VoiceProfileStore["splitProfile"]>>;
 	try {
 		result = await store.splitProfile({
 			profileId: id,
-			sampleIds: utteranceIds,
+			sampleIds: [...selectedSampleIds],
 		});
 	} catch (err) {
 		// error-policy:J1 boundary translation — HTTP route boundary. A split
@@ -413,6 +456,16 @@ async function bindProfile(
 			? body.label.trim()
 			: undefined;
 	const store = await getStore();
+	const existing = await store.get(id);
+	if (!existing) {
+		sendJsonError(res, `profile not found: ${id}`, 404);
+		return true;
+	}
+	const owner = ownerEntityId();
+	if (owner && existing.entityId === owner && entityId !== owner) {
+		sendJsonError(res, "the OWNER profile cannot be rebound", 409);
+		return true;
+	}
 	const updated = await store.bindEntity({ profileId: id, entityId, label });
 	if (!updated) {
 		sendJsonError(res, `profile not found: ${id}`, 404);
@@ -427,6 +480,16 @@ async function unbindProfile(
 	id: string,
 ): Promise<true> {
 	const store = await getStore();
+	const existing = await store.get(id);
+	if (!existing) {
+		sendJsonError(res, `profile not found: ${id}`, 404);
+		return true;
+	}
+	const owner = ownerEntityId();
+	if (owner && existing.entityId === owner) {
+		sendJsonError(res, "the OWNER profile cannot be unbound", 409);
+		return true;
+	}
 	const updated = await store.unbindEntity(id);
 	if (!updated) {
 		sendJsonError(res, `profile not found: ${id}`, 404);

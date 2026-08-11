@@ -197,7 +197,7 @@ export const PLUGIN_ROUTE_COVERAGE: Record<string, ManifestEntry> = {
   "plugin-personal-assistant": {
     status: "exempt",
     reason:
-      "lifeOps HTTP routes are exercised by the scheduled live-scenarios.yml default corpus and the plugin-personal-assistant test suite; a keyless route e2e would duplicate that coverage without a deterministic backend.",
+      "lifeOps HTTP routes are exercised by the manual live-smoke scenario suite and the plugin-personal-assistant test suite; a keyless route e2e would duplicate that coverage without a deterministic backend.",
   },
   "plugin-vision": {
     status: "exempt",

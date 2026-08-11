@@ -1,7 +1,7 @@
 /**
  * React lifecycle binding for the realtime voice-session client: it arms the
  * WebSocket voice path as an ADDITIVE enhancement of the existing batch mic —
- * same button, same `VoiceContinuousStatus` bar, no second UI surface.
+ * same button, same `VoiceContinuousStatus` vocabulary, no second mic.
  *
  * Eligibility requires the VITE realtime flag and stable chat ids. Startup
  * failures before the realtime mic becomes live return a typed outcome so the
@@ -145,7 +145,7 @@ export interface UseRealtimeVoiceSessionState {
    * socket connect, server ready, mic bring-up). Bounded by the ready timer.
    */
   connecting: boolean;
-  /** Unified status for the existing `ChatVoiceStatusBar`. */
+  /** Unified status for the mounted composer or an embedded status bar. */
   status: VoiceContinuousStatus;
   /** Live partial transcript (server `stt_partial`). "" when none. */
   transcriptPartial: string;
@@ -160,6 +160,8 @@ export interface UseRealtimeVoiceSessionState {
    * visibility-hide — a PAUSED state, not a broken one. Clears on resume.
    */
   paused: boolean;
+  /** True when the live microphone uplink is intentionally sending silence. */
+  microphoneMuted: boolean;
   /** Actionable/typed error, or null. */
   error: RealtimeVoiceError | null;
   /** Last reason realtime handed this interaction to batch. */
@@ -178,6 +180,8 @@ export interface UseRealtimeVoiceSessionState {
   stop: () => Promise<void>;
   /** Barge-in: flush local playback + notify server. No-op when not speaking. */
   bargeIn: () => void;
+  /** Toggle microphone uplink mute without ending or re-minting the session. */
+  toggleMicrophoneMute: () => void;
   /** Resume the AudioContext on a user gesture (iOS autoplay). */
   unlock: () => Promise<void>;
 }
@@ -294,6 +298,7 @@ export function useRealtimeVoiceSession(
   const [agentSpeaking, setAgentSpeaking] = useState(false);
   const [needsUnlock, setNeedsUnlock] = useState(false);
   const [paused, setPaused] = useState(false);
+  const [microphoneMuted, setMicrophoneMuted] = useState(false);
   const [active, setActive] = useState(false);
   const [connecting, setConnecting] = useState(false);
   const [error, setError] = useState<RealtimeVoiceError | null>(null);
@@ -420,6 +425,7 @@ export function useRealtimeVoiceSession(
       setAgentSpeaking(false);
       setNeedsUnlock(false);
       setPaused(false);
+      setMicrophoneMuted(false);
       setStatus("idle");
       setTranscriptPartial("");
     }
@@ -444,6 +450,7 @@ export function useRealtimeVoiceSession(
 
     startingRef.current = true;
     micOwnedRef.current = false;
+    setMicrophoneMuted(false);
     setError(null);
     setFallbackReason(null);
     setNeedsUnlock(false);
@@ -500,8 +507,16 @@ export function useRealtimeVoiceSession(
     };
 
     const client = createClientRef.current({
+      // The client's own LIVE reconnect budget (with backoff, healthy refill,
+      // and pre-expiry rotation) is the structural answer to transient
+      // transport loss — a wifi switch or the server's 120s token sever must
+      // recover, not end the session. This hook must never zero out
+      // `maxReconnects`. Pre-live is different: a failure before the first
+      // server `ready` hands the SAME mic gesture to the batch path, so the
+      // pre-live budget is 0 — retrying past the gesture would strand the
+      // start outcome.
       ...clientOptionsRef.current,
-      maxReconnects: clientOptionsRef.current?.maxReconnects ?? 0,
+      preLiveMaxReconnects: clientOptionsRef.current?.preLiveMaxReconnects ?? 0,
       agentId: aId,
       conversationId: cId,
       // The client invokes this immediately before every mint/re-mint. Keeping
@@ -671,6 +686,16 @@ export function useRealtimeVoiceSession(
     clientRef.current?.bargeIn();
   }, []);
 
+  const toggleMicrophoneMute = useCallback(() => {
+    const client = clientRef.current;
+    if (!client) return;
+    setMicrophoneMuted((current) => {
+      const next = !current;
+      client.setMicrophoneMuted(next);
+      return next;
+    });
+  }, []);
+
   const unlock = useCallback(async () => {
     try {
       await clientRef.current?.unlockPlayback();
@@ -762,6 +787,7 @@ export function useRealtimeVoiceSession(
       agentSpeaking,
       needsUnlock,
       paused,
+      microphoneMuted,
       error,
       fallbackReason,
       reportFallback,
@@ -769,6 +795,7 @@ export function useRealtimeVoiceSession(
       start,
       stop,
       bargeIn,
+      toggleMicrophoneMute,
       unlock,
     }),
     [
@@ -781,6 +808,7 @@ export function useRealtimeVoiceSession(
       agentSpeaking,
       needsUnlock,
       paused,
+      microphoneMuted,
       error,
       fallbackReason,
       reportFallback,
@@ -788,6 +816,7 @@ export function useRealtimeVoiceSession(
       start,
       stop,
       bargeIn,
+      toggleMicrophoneMute,
       unlock,
     ],
   );

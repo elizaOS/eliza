@@ -443,19 +443,4 @@ ${machineFooter()}`;
     }
   });
 
-  it("loads the comment validator only from the trusted default branch", () => {
-    const workflow = readFileSync(
-      new URL(
-        "../.github/workflows/contribution-comment-attribution.yml",
-        import.meta.url,
-      ),
-      "utf8",
-    );
-    assert.match(
-      workflow,
-      /uses:\s*actions\/checkout@[0-9a-f]{40}[\s\S]*?\n\s+ref:\s*\$\{\{\s*github\.event\.repository\.default_branch\s*\}\}/,
-    );
-    assert.match(workflow, /\n\s{2}discussion_comment:\s*\n/);
-    assert.match(workflow, /\n\s{2}issues:\s*\n/);
-  });
 });

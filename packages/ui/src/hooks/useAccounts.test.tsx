@@ -66,7 +66,9 @@ const initial: AccountsListResponse = {
   ],
 };
 
-const primaryAccount = initial.providers[0]?.accounts[0];
+const initialProvider = initial.providers[0];
+if (!initialProvider) throw new Error("Provider fixture is incomplete");
+const primaryAccount = initialProvider.accounts[0];
 if (!primaryAccount) throw new Error("Account fixture is incomplete");
 
 beforeEach(() => {
@@ -94,6 +96,50 @@ beforeEach(() => {
 });
 
 describe("useAccounts", () => {
+  it("adopts a dialog-created account before the inventory refresh settles", async () => {
+    let resolveRefresh: ((value: AccountsListResponse) => void) | undefined;
+    const pendingRefresh = new Promise<AccountsListResponse>((resolve) => {
+      resolveRefresh = resolve;
+    });
+    client.listAccounts
+      .mockResolvedValueOnce(initial)
+      .mockImplementationOnce(() => pendingRefresh);
+    const { result } = renderHook(() => useAccounts({ pollMs: 0 }));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    const created = {
+      ...primaryAccount,
+      id: "dialog-created",
+      label: "Dialog created",
+      priority: 1,
+    };
+    let refresh: Promise<void> | undefined;
+    act(() => {
+      refresh = result.current.refresh({
+        providerId: "openai-api",
+        account: created,
+      });
+    });
+
+    await waitFor(() =>
+      expect(result.current.data?.providers[0]?.accounts).toEqual([
+        primaryAccount,
+        { ...created, hasCredential: true },
+      ]),
+    );
+    await act(async () => {
+      resolveRefresh?.({
+        providers: [
+          {
+            ...initialProvider,
+            accounts: [primaryAccount, { ...created, hasCredential: true }],
+          },
+        ],
+      });
+      await refresh;
+    });
+  });
+
   it("loads, mutates, and reconciles account state", async () => {
     const notices = vi.fn();
     const { result } = renderHook(() =>

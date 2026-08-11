@@ -7,6 +7,7 @@
  * network-status-change event it emits. WebSocket stubbed, no live server.
  */
 
+import { Capacitor } from "@capacitor/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { NETWORK_STATUS_CHANGE_EVENT } from "../events";
 import { __resetNetworkStatusForTests, ElizaClient } from "./client-base";
@@ -29,6 +30,7 @@ function stubWebSocket(): string[] {
 }
 
 interface FakeWs {
+  url: string;
   readyState: number;
   onopen: (() => void) | null;
   onclose: (() => void) | null;
@@ -48,7 +50,7 @@ function stubWebSocketWithInstances(): FakeWs[] {
     onclose: (() => void) | null = null;
     onerror: (() => void) | null = null;
     onmessage: ((event: { data: string }) => void) | null = null;
-    constructor(_url: string) {
+    constructor(readonly url: string) {
       instances.push(this);
     }
     send(): void {}
@@ -81,8 +83,32 @@ function stubWindowProtocol(protocol: string): void {
   );
 }
 
+// Stub the page origin (protocol + host) the same-origin WS derivation reads
+// when the client has no explicit base — the self-hosted "nginx in front of
+// the agent on a portless HTTPS domain" shape.
+function stubWindowOrigin(protocol: string, host: string): void {
+  const jsdomWindow = window;
+  const location = new Proxy(jsdomWindow.location, {
+    get(target, property) {
+      if (property === "protocol") return protocol;
+      if (property === "host") return host;
+      return Reflect.get(target, property, target);
+    },
+  });
+  vi.stubGlobal(
+    "window",
+    new Proxy(jsdomWindow, {
+      get(target, property) {
+        if (property === "location") return location;
+        return Reflect.get(target, property, target);
+      },
+    }),
+  );
+}
+
 describe("ElizaClient websocket connection policy", () => {
   afterEach(() => {
+    vi.restoreAllMocks();
     vi.unstubAllGlobals();
     __resetNetworkStatusForTests();
   });
@@ -132,6 +158,36 @@ describe("ElizaClient websocket connection policy", () => {
     expect(createdUrls[0]).toContain("token=agent-token");
   });
 
+  it("opens a same-origin websocket from a portless HTTPS host in a plain browser", () => {
+    // Regression (sol-dev 2026-08-05): the Capacitor synthetic-host guard was
+    // unconditional, so a browser served same-origin from `https://host/` (no
+    // port — nginx terminating TLS in front of the agent) silently never
+    // opened /ws. REST kept working, so server-pushed WS events
+    // (proactive-message: voice-turn mirrors, proactive sends) never rendered
+    // live in the open thread.
+    const createdUrls = stubWebSocket();
+    stubWindowOrigin("https:", "sol-dev.example.test");
+
+    const client = new ElizaClient("", "agent-token");
+    client.connectWs();
+
+    expect(createdUrls).toHaveLength(1);
+    expect(createdUrls[0]).toContain("wss://sol-dev.example.test/ws?");
+    expect(createdUrls[0]).toContain("token=agent-token");
+  });
+
+  it("still skips the synthetic-host websocket on Capacitor native", () => {
+    const createdUrls = stubWebSocket();
+    stubWindowOrigin("https:", "myapp.app");
+    vi.stubGlobal("Capacitor", { isNativePlatform: () => true });
+
+    const client = new ElizaClient("", "agent-token");
+    client.connectWs();
+
+    // Native WebView bundle host has no server behind it — no socket attempt.
+    expect(createdUrls).toEqual([]);
+  });
+
   it("does not open mixed-content ws from an https origin", () => {
     const createdUrls = stubWebSocket();
 
@@ -164,6 +220,39 @@ describe("ElizaClient websocket connection policy", () => {
       maxReconnectAttempts: 15,
       disconnectedAt: null,
     });
+  });
+
+  it("opens loopback ws from a local Android sideload renderer", () => {
+    const createdUrls = stubWebSocket();
+    vi.spyOn(Capacitor, "getPlatform").mockReturnValue("android");
+    const client = new ElizaClient("http://127.0.0.1:31338", "agent-token");
+
+    client.connectWs();
+
+    expect(window.location.protocol).toBe("https:");
+    expect(createdUrls).toHaveLength(1);
+    expect(createdUrls[0]).toContain("ws://127.0.0.1:31338/ws?");
+  });
+
+  it("opens trusted private-LAN ws from a local Android sideload renderer", () => {
+    const createdUrls = stubWebSocket();
+    vi.spyOn(Capacitor, "getPlatform").mockReturnValue("android");
+    const client = new ElizaClient("http://192.168.1.10:31338", "agent-token");
+
+    client.connectWs();
+
+    expect(createdUrls).toHaveLength(1);
+    expect(createdUrls[0]).toContain("ws://192.168.1.10:31338/ws?");
+  });
+
+  it("still blocks public cleartext ws from a local Android sideload renderer", () => {
+    const createdUrls = stubWebSocket();
+    vi.spyOn(Capacitor, "getPlatform").mockReturnValue("android");
+    const client = new ElizaClient("http://203.0.113.10:31338", "agent-token");
+
+    client.connectWs();
+
+    expect(createdUrls).toEqual([]);
   });
 
   it("still opens cleartext ws from an HTTP page", () => {
@@ -199,6 +288,28 @@ describe("ElizaClient websocket connection policy", () => {
     // 404s), so we don't attempt a websocket at all — no "Reconnecting… (N/15)"
     // header churn — and report connected-over-REST immediately. (Revisit once
     // /ws is proxied + advertised via /api/config.)
+    expect(instances).toHaveLength(0);
+    expect(client.getConnectionState().state).toBe("connected");
+  });
+
+  it("treats a control-plane host base as connected without opening a websocket (#18172)", () => {
+    const instances = stubWebSocketWithInstances();
+    // staging console — the alias Worker routes only /api*//steward* and
+    // strips Connection/Upgrade, so /ws can never upgrade; dialing it burned
+    // 15 reconnects and raised the fatal overlay over a working REST backend.
+    const client = new ElizaClient(
+      "https://staging.elizacloud.ai",
+      "cloud-token",
+    );
+    client.connectWs();
+    expect(instances).toHaveLength(0);
+    expect(client.getConnectionState().state).toBe("connected");
+  });
+
+  it("covers production control-plane hosts too, not just staging", () => {
+    const instances = stubWebSocketWithInstances();
+    const client = new ElizaClient("https://app.elizacloud.ai", "cloud-token");
+    client.connectWs();
     expect(instances).toHaveLength(0);
     expect(client.getConnectionState().state).toBe("connected");
   });
@@ -359,6 +470,21 @@ describe("ElizaClient websocket connection policy", () => {
     const before = instances.length;
     instances[0].onclose?.();
     expect(instances).toHaveLength(before);
+  });
+
+  it("repointBaseUrl installs the selected bearer before opening the replacement socket", () => {
+    const instances = stubWebSocketWithInstances();
+    const client = new ElizaClient("https://old.example.test", "old-token");
+    client.connectWs();
+
+    client.repointBaseUrl("https://new.example.test", "new-token");
+
+    expect(instances).toHaveLength(2);
+    const replacementUrl = new URL(instances[1].url);
+    expect(replacementUrl.origin).toBe("wss://new.example.test");
+    expect(replacementUrl.searchParams.get("token")).toBe("new-token");
+    expect(replacementUrl.searchParams.get("token")).not.toBe("old-token");
+    expect(client.getRestAuthToken()).toBe("new-token");
   });
 
   it("resetConnection leaves a healthy websocket connected without a disconnected flap", () => {

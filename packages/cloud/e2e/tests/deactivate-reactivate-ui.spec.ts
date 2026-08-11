@@ -6,7 +6,10 @@
  * control-plane job processor advances the real `agent_sandboxes` row to
  * `sleeping`, the page renders the deactivated state as a designed (non-error)
  * state with an explicit $0.00/hr cost, and "Reactivate Agent" fires the real
- * `POST /wake` job that restores the agent until its bridge serves again.
+ * `POST /wake` job that restores the agent until its container endpoint serves
+ * again. Serving state is witnessed on the dedicated path (the cloud-api DTO's
+ * `bridgeUrl` plus that endpoint itself), never on the shared JSON-RPC bridge —
+ * see the comment on the deactivated assertion.
  * A second test covers the same lifecycle from the agents list (row actions).
  */
 import {
@@ -15,7 +18,6 @@ import {
   getSandboxState,
   listBackups,
   pollSandboxStatus,
-  sendAgentBridgeRequest,
   startAgentProvisioning,
 } from "../src/helpers/provisioning";
 import { expect, test } from "../src/helpers/test-fixtures";
@@ -148,16 +150,25 @@ test.describe("deactivate / reactivate via dashboard UI", () => {
       backups.length,
       "deactivate must leave at least one restore point",
     ).toBeGreaterThanOrEqual(1);
-    const sleepingHeartbeat = await sendAgentBridgeRequest(
-      api,
-      seededUser.apiKey,
-      sandboxId,
-      { jsonrpc: "2.0", id: "deactivated-heartbeat", method: "heartbeat" },
-    );
+    // "Stopped serving" is asserted at the boundary that actually distinguishes
+    // it for a DEDICATED agent: the cloud-api DTO. A deactivated agent exposes
+    // no container endpoint at all (`bridgeUrl: null`) — the exact inverse of
+    // the post-wake assertion below, which requires one back. The shared
+    // JSON-RPC bridge (`/agents/:id/bridge`) is deliberately NOT used here: it
+    // serves shared-tier agents only and rejects a dedicated agent with 404
+    // "Not a shared-runtime agent" in EVERY state, running included, so it
+    // cannot witness deactivation.
+    const { status: sleepingStatus, body: sleepingBody } =
+      await getSandboxState(api, seededUser.apiKey, sandboxId);
+    expect(sleepingStatus).toBe(200);
+    const deactivated = (
+      sleepingBody as { data?: { status?: string; bridgeUrl?: string | null } }
+    ).data;
+    expect(deactivated?.status).toBe("sleeping");
     expect(
-      JSON.stringify(sleepingHeartbeat.error ?? {}),
-      "a deactivated agent must not serve bridge traffic",
-    ).toContain("not running");
+      deactivated?.bridgeUrl,
+      "a deactivated agent must expose no container endpoint",
+    ).toBeNull();
 
     // ── Reactivate: the UI fires POST /wake (202) and the agent runs again ──
     const wakeResponsePromise = page.waitForResponse(

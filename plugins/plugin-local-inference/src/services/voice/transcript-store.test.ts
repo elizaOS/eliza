@@ -19,6 +19,7 @@ function makeTranscript(over: Partial<Transcript> = {}): Transcript {
 		scope: "owner-private",
 		status: "ready",
 		speakerCount: 1,
+		metadata: { consent: { state: "not_required" } },
 		segments: [
 			{
 				id: "s1",
@@ -278,7 +279,7 @@ describe("TranscriptStore", () => {
 			expect(list[0].redacted).toBeUndefined();
 		});
 
-		it("USER with a redacted grant gets the variant under the ORIGINAL id, flagged, audio withheld", async () => {
+		it("USER with a redacted grant gets an audio-less variant under the ORIGINAL id", async () => {
 			const rt = fakeRuntime();
 			const { store } = await seed(rt);
 			const viewer = { requesterEntityId: VIEWER, role: "USER" as const };
@@ -305,7 +306,7 @@ describe("TranscriptStore", () => {
 			expect(list[0].preview).not.toContain("123-45-6789");
 		});
 
-		it("USER with a full grant sees the original in full", async () => {
+		it("USER with a full grant sees transcript text but not owner-private artifacts", async () => {
 			const rt = fakeRuntime();
 			const { store, original } = await seed(rt);
 			const originalRow = rt.rows.get(ORIGINAL_ID) as Memory;
@@ -317,7 +318,68 @@ describe("TranscriptStore", () => {
 				} as Memory["metadata"],
 			});
 			const viewer = { requesterEntityId: VIEWER, role: "USER" as const };
-			expect(await store.get(ORIGINAL_ID as UUID, viewer)).toEqual(original);
+			const granted = await store.get(ORIGINAL_ID as UUID, viewer);
+			expect(granted?.segments).toEqual(original.segments);
+			expect(granted?.audioUrl).toBeUndefined();
+			expect((await store.list(ROOM, 100, viewer))[0]?.hasAudio).toBe(false);
+		});
+
+		it("projects source audio, notes, and generated artifacts independently", async () => {
+			const rt = fakeRuntime();
+			const { store } = await seed(rt);
+			const originalRow = rt.rows.get(ORIGINAL_ID) as Memory;
+			rt.rows.set(ORIGINAL_ID, {
+				...originalRow,
+				metadata: {
+					...(originalRow.metadata as Record<string, unknown>),
+					share: { grants: [{ entityId: VIEWER, mode: "full" }] },
+				} as Memory["metadata"],
+			});
+			await store.updateArtifactSharing({
+				transcriptId: ORIGINAL_ID as UUID,
+				sharing: {
+					transcript: "shared",
+					notes: "owner_private",
+					sourceAudio: "shared",
+					artifacts: "disabled",
+				},
+			});
+			const owner = await store.get(ORIGINAL_ID as UUID);
+			await store.update({
+				...(owner as Transcript),
+				metadata: {
+					...owner?.metadata,
+					notes: { text: "private notes" },
+					meetingArtifact: { secret: "generated artifact" },
+					retention: {
+						state: "delete_pending",
+						sourceAudioDeleted: false,
+						sourceAudioFileName: `${"a".repeat(64)}.wav`,
+					},
+				},
+			});
+
+			const viewer = await store.get(ORIGINAL_ID as UUID, {
+				requesterEntityId: VIEWER,
+				role: "USER",
+			});
+			expect(viewer?.audioUrl).toBe("/api/media/x.wav");
+			expect(viewer?.metadata).not.toHaveProperty("notes");
+			expect(viewer?.metadata).not.toHaveProperty("meetingArtifact");
+			expect(viewer?.metadata?.retention).not.toHaveProperty(
+				"sourceAudioFileName",
+			);
+			expect(
+				(
+					await store.list(ROOM, 100, {
+						requesterEntityId: VIEWER,
+						role: "USER",
+					})
+				)[0]?.hasAudio,
+			).toBe(true);
+			expect((await store.get(ORIGINAL_ID as UUID))?.metadata).toHaveProperty(
+				"notes",
+			);
 		});
 
 		it("ungranted USER and GUEST see nothing: omitted from list, null on get", async () => {
@@ -377,7 +439,14 @@ describe("TranscriptStore", () => {
 				audioUrl: "/api/media/original.wav",
 				audioContentType: "audio/wav",
 				knowledgeDocumentId: "knowledge-original",
-				metadata: { platform: "meet", sensitiveJoinUrl: "https://join" },
+				metadata: {
+					platform: "meet",
+					sensitiveJoinUrl: "https://join",
+					consent: { state: "granted" },
+					participants: [
+						{ id: "alice", displayName: "Alice", entityId: VIEWER },
+					],
+				},
 				segments: [
 					{
 						id: "s1",
@@ -385,7 +454,7 @@ describe("TranscriptStore", () => {
 						speakerEntityId: VIEWER,
 						startMs: 0,
 						endMs: 2000,
-						text: "Email bob@example.com and use SSN 123-45-6789.",
+						text: "Alice should email bob@example.com and use SSN 123-45-6789.",
 						words: [
 							{
 								text: "bob@example.com",
@@ -416,6 +485,7 @@ describe("TranscriptStore", () => {
 			});
 
 			expect(second.id).toBe(first.id);
+			expect(second.segments).toEqual(first.segments);
 			expect(first.audioUrl).toBeUndefined();
 			expect(first.audioContentType).toBeUndefined();
 			expect(first.knowledgeDocumentId).toBeUndefined();
@@ -430,6 +500,8 @@ describe("TranscriptStore", () => {
 			expect(first.segments[0]?.text).toContain("[SSN]");
 			expect(first.segments[0]?.text).not.toContain("bob@example.com");
 			expect(first.segments[0]?.text).not.toContain("123-45-6789");
+			expect(first.segments[0]?.text).not.toContain("Alice");
+			expect(first.segments[0]?.speakerLabel).not.toBe("Alice");
 			expect(first.segments[0]?.speakerEntityId).toBeUndefined();
 			expect(first.segments[0]?.words[0]?.text).toBe("[EMAIL]");
 
@@ -444,6 +516,46 @@ describe("TranscriptStore", () => {
 			>;
 			expect(variantMeta.redactionOf).toBe(ORIGINAL_ID);
 			expect(variantMeta.redactedBy).toBe(VIEWER);
+		});
+
+		it("serves only the verified variant audio to a redacted-grant viewer", async () => {
+			const rt = fakeRuntime();
+			const store = new TranscriptStore(rt);
+			const originalAudioUrl = `/api/media/${"a".repeat(64)}.wav`;
+			const redactedAudioUrl = `/api/media/${"b".repeat(64)}.wav`;
+			await store.create({
+				roomId: ROOM,
+				entityId: ENTITY,
+				transcript: makeTranscript({
+					id: ORIGINAL_ID,
+					audioUrl: originalAudioUrl,
+					audioContentType: "audio/wav",
+				}),
+			});
+			await store.createRedactedVariant({
+				originalId: ORIGINAL_ID as UUID,
+				redactedAudioUrl,
+				seed: "verified-audio",
+				nowMs: 3000,
+			});
+			await store.share({
+				transcriptId: ORIGINAL_ID as UUID,
+				entityId: VIEWER,
+				mode: "redacted",
+			});
+
+			const viewer = await store.get(ORIGINAL_ID as UUID, {
+				requesterEntityId: VIEWER,
+				role: "USER",
+			});
+			expect(viewer?.audioUrl).toBe(redactedAudioUrl);
+			expect(JSON.stringify(viewer)).not.toContain(originalAudioUrl);
+			const owner = await store.get(ORIGINAL_ID as UUID, {
+				requesterEntityId: ENTITY,
+				role: "USER",
+				isOwner: true,
+			});
+			expect(owner?.audioUrl).toBe(originalAudioUrl);
 		});
 
 		it("keeps seeded redacted variant ids scoped to the original transcript", async () => {
@@ -517,6 +629,110 @@ describe("TranscriptStore", () => {
 					},
 				],
 			});
+		});
+
+		it("persists delete-pending and finalized source-audio retention states", async () => {
+			const rt = fakeRuntime();
+			const store = new TranscriptStore(rt);
+			await store.create({
+				roomId: ROOM,
+				entityId: ENTITY,
+				transcript: makeTranscript({ id: ORIGINAL_ID }),
+			});
+
+			const pending = await store.markSourceAudioDeletePending({
+				transcriptId: ORIGINAL_ID as UUID,
+				fileName: `${"a".repeat(64)}.wav`,
+			});
+			expect(pending.audioUrl).toBeUndefined();
+			expect(pending.metadata).toMatchObject({
+				sharing: { sourceAudio: "disabled" },
+				retention: {
+					state: "delete_pending",
+					sourceAudioDeleted: false,
+					sourceAudioFileName: `${"a".repeat(64)}.wav`,
+				},
+			});
+
+			const finalized = await store.markSourceAudioDeleted(ORIGINAL_ID as UUID);
+			expect(finalized.metadata).toMatchObject({
+				retention: {
+					state: "audio_deleted_transcript_retained",
+					sourceAudioDeleted: true,
+				},
+			});
+			expect(JSON.stringify(finalized)).not.toContain("sourceAudioFileName");
+			expect(finalized.segments).toEqual(makeTranscript().segments);
+		});
+
+		it("captures a room snapshot and grants only its resolved roster", async () => {
+			const rt = fakeRuntime();
+			const store = new TranscriptStore(rt);
+			await store.create({
+				roomId: ROOM,
+				entityId: ENTITY,
+				transcript: makeTranscript({ id: ORIGINAL_ID }),
+			});
+
+			await store.shareRoomSnapshot({
+				transcriptId: ORIGINAL_ID as UUID,
+				roomId: ROOM,
+				entityIds: [VIEWER, STRANGER, VIEWER],
+				mode: "redacted",
+				grantedBy: ENTITY,
+				grantedAtMs: 6000,
+			});
+
+			const row = rt.rows.get(ORIGINAL_ID) as Memory;
+			expect((row.metadata as Record<string, unknown>).share).toEqual({
+				grants: [
+					{
+						entityId: VIEWER,
+						mode: "redacted",
+						grantedBy: ENTITY,
+						grantedAtMs: 6000,
+					},
+					{
+						entityId: STRANGER,
+						mode: "redacted",
+						grantedBy: ENTITY,
+						grantedAtMs: 6000,
+					},
+				],
+				roomSnapshot: {
+					roomId: ROOM,
+					entityIds: [VIEWER, STRANGER],
+					atMs: 6000,
+				},
+			});
+		});
+
+		it("rejects share writes for missing, denied, or revoked consent", async () => {
+			for (const state of [undefined, "denied", "revoked"] as const) {
+				const rt = fakeRuntime();
+				const store = new TranscriptStore(rt);
+				await store.create({
+					roomId: ROOM,
+					entityId: ENTITY,
+					transcript: makeTranscript({
+						id: ORIGINAL_ID,
+						metadata: state ? { consent: { state } } : {},
+					}),
+				});
+				await expect(
+					store.share({
+						transcriptId: ORIGINAL_ID as UUID,
+						entityId: VIEWER,
+						mode: "full",
+					}),
+				).rejects.toMatchObject({
+					code: "TRANSCRIPT_CONSENT_NOT_SHAREABLE",
+				});
+				const metadata = rt.rows.get(ORIGINAL_ID)?.metadata as
+					| Record<string, unknown>
+					| undefined;
+				expect(metadata?.share).toBeUndefined();
+			}
 		});
 
 		it("refuses to attach grants to a redacted variant row", async () => {

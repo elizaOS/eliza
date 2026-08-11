@@ -187,7 +187,8 @@ function providerValue(value: unknown): LifeOpsCalendarProvider | null {
   return normalized === "google" ||
     normalized === "microsoft" ||
     normalized === "apple_calendar" ||
-    normalized === "ics"
+    normalized === "ics" ||
+    normalized === "eliza"
     ? normalized
     : null;
 }
@@ -316,12 +317,18 @@ function configIntent(args: {
   operation: "connect" | "reconnect";
   reason: string;
 }): CalendarSourceConnectionIntent {
+  // UI InlinePluginConfig looks up /api/plugins by exact id after stripping
+  // @scope/plugin-; google OAuth lives on plugin id "google-workspace".
+  // Microsoft Graph OAuth is registered by plugin-calendar itself — there is
+  // no standalone "microsoft" plugin id in /api/plugins.
+  const connectorId =
+    args.provider === "google" ? "google-workspace" : "calendar";
   return {
     state: "configuration_required",
     provider: args.provider,
     operation: args.operation,
     connected: false,
-    connectorId: args.provider,
+    connectorId,
     reason: args.reason,
     completion: "configuration_required",
   };
@@ -403,10 +410,17 @@ async function beginOAuthIntent(args: {
   const manager = getConnectorAccountManager(args.runtime);
   const provider = manager.getProvider(args.provider);
   if (!provider?.startOAuth) {
+    // Distinct copy for Google: the OAuth provider + Calendar API live in
+    // plugin-google-workspace. A missing registration is a plugin-enable problem,
+    // not a vague "auth error".
+    const reason =
+      args.provider === "google"
+        ? "Google Calendar OAuth is not registered in this runtime. Enable @elizaos/plugin-google-workspace, then connect again to open the owner authorization URL."
+        : `${args.provider} OAuth is not registered in this runtime.`;
     return configIntent({
       provider: args.provider,
       operation: args.operation,
-      reason: `${args.provider} OAuth is not registered in this runtime.`,
+      reason,
     });
   }
   const account =
@@ -432,6 +446,38 @@ async function beginOAuthIntent(args: {
       },
     });
   } catch (cause) {
+    // error-policy:J1 Incomplete OAuth env (missing redirect URI, etc.) is an
+    // actionable configuration handoff — not a generic auth-start failure.
+    const causeMessage =
+      cause instanceof Error ? cause.message : String(cause ?? "");
+    const causeCode = cause instanceof ElizaError ? cause.code : undefined;
+    if (
+      args.provider === "google" &&
+      /GOOGLE_CLIENT_ID|GOOGLE_CLIENT_SECRET|GOOGLE_REDIRECT_URI/i.test(
+        causeMessage,
+      )
+    ) {
+      return configIntent({
+        provider: "google",
+        operation: args.operation,
+        reason:
+          "Google OAuth is incomplete. Set GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, and GOOGLE_REDIRECT_URI, then connect again.",
+      });
+    }
+    if (
+      args.provider === "microsoft" &&
+      (causeCode === "MICROSOFT_OAUTH_CONFIG_MISSING" ||
+        /MICROSOFT_CLIENT_ID|MICROSOFT_REDIRECT_URI|MICROSOFT_CLIENT_SECRET/i.test(
+          causeMessage,
+        ))
+    ) {
+      return configIntent({
+        provider: "microsoft",
+        operation: args.operation,
+        reason:
+          "Microsoft OAuth is incomplete. Set MICROSOFT_CLIENT_ID and MICROSOFT_REDIRECT_URI on the calendar plugin, then connect again.",
+      });
+    }
     // error-policy:J2 Preserve the provider/configuration failure while giving
     // the action boundary one stable classification.
     throw new ElizaError(
@@ -448,12 +494,23 @@ async function beginOAuthIntent(args: {
       },
     );
   }
-  if (!flow.authUrl?.trim()) {
+  const authUrl = flow.authUrl?.trim() ?? "";
+  if (!authUrl) {
     throw new ElizaError(`${args.provider} authorization returned no URL.`, {
       code: "CALENDAR_SOURCE_AUTH_URL_MISSING",
       context: { provider: args.provider, flowId: flow.id },
       severity: "fatal",
     });
+  }
+  if (!isTrustedOAuthAuthorizationUrl(args.provider, authUrl)) {
+    throw new ElizaError(
+      `${args.provider} authorization returned an untrusted URL host/path.`,
+      {
+        code: "CALENDAR_SOURCE_AUTH_URL_UNTRUSTED",
+        context: { provider: args.provider, flowId: flow.id },
+        severity: "fatal",
+      },
+    );
   }
   return {
     state: "authorization_required",
@@ -462,12 +519,45 @@ async function beginOAuthIntent(args: {
     connected: false,
     flowId: flow.id,
     accountId: account?.id ?? null,
-    authUrl: flow.authUrl,
+    authUrl,
     expiresAt: flow.expiresAt ? new Date(flow.expiresAt).toISOString() : null,
     flowPersistedAt: new Date(flow.updatedAt).toISOString(),
     requestedCapabilities,
     completion: "awaiting_user_action",
   };
+}
+
+/** Only elevate provider OAuth URLs we construct/expect to verified UI text. */
+function isTrustedOAuthAuthorizationUrl(
+  provider: "google" | "microsoft",
+  raw: string,
+): boolean {
+  try {
+    const url = new URL(raw);
+    if (url.protocol !== "https:") return false;
+    if (url.username || url.password) return false;
+    // Default HTTPS ports only — reject nonstandard ports.
+    if (url.port && url.port !== "443") return false;
+    if (provider === "google") {
+      return (
+        url.hostname === "accounts.google.com" &&
+        (url.pathname === "/o/oauth2/v2/auth" ||
+          url.pathname === "/o/oauth2/auth")
+      );
+    }
+    // Microsoft identity platform authorize endpoints only:
+    // /{tenant}/oauth2/v2.0/authorize
+    if (
+      url.hostname !== "login.microsoftonline.com" &&
+      url.hostname !== "login.microsoft.com"
+    ) {
+      return false;
+    }
+    return /^\/[^/]+\/oauth2\/v2\.0\/authorize$/.test(url.pathname);
+  } catch {
+    // error-policy:J3 Untrusted URL text is explicitly invalid.
+    return false;
+  }
 }
 
 function applePermissionIntent(
@@ -611,8 +701,15 @@ async function connectionIntent(args: {
   if (!provider) {
     throw new CalendarServiceError(
       400,
-      "Calendar source connection requires provider=google, microsoft, apple_calendar, or ics.",
+      "Calendar source connection requires provider=google, microsoft, apple_calendar, or ics. The built-in Eliza calendar needs no connection.",
       "CALENDAR_SOURCE_PROVIDER_REQUIRED",
+    );
+  }
+  if (provider === "eliza") {
+    throw new CalendarServiceError(
+      400,
+      "The built-in Eliza calendar is already available. Use list, select, or deselect instead of connecting it.",
+      "ELIZA_CALENDAR_CONNECTION_NOT_REQUIRED",
     );
   }
   if (provider === "apple_calendar") {
@@ -638,15 +735,24 @@ async function connectionIntent(args: {
 function connectionText(intent: CalendarSourceConnectionIntent): string {
   switch (intent.state) {
     case "authorization_required":
+      // Template uses only enum provider + already-trusted authUrl.
       return `Authorization started for ${intent.provider}. The calendar is not connected until the owner completes this URL: ${intent.authUrl}`;
     case "permission_required":
       return applePermissionText(intent);
-    case "configuration_required":
-      // [CONFIG:<id>] renders a plugin-configuration card; ICS has no plugin
-      // config — its destination is the source-manager UI named in the reason.
-      return intent.provider === "ics"
-        ? intent.reason
-        : `${intent.reason}\n\n[CONFIG:${intent.connectorId}]`;
+    case "configuration_required": {
+      // Fixed owner-facing templates only — never interpolate untrusted reason.
+      if (intent.provider === "ics") {
+        return "ICS/webcal subscription URLs are capability secrets and never pass through me. Add the subscription in Settings → Calendar sources; once it exists I can list, select, and reconnect it.";
+      }
+      if (intent.provider === "google") {
+        return "Google Calendar needs @elizaos/plugin-google-workspace enabled with GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, and GOOGLE_REDIRECT_URI configured. Open the setup card, then connect again.\n\n[CONFIG:google-workspace]";
+      }
+      if (intent.provider === "microsoft") {
+        return "Microsoft Calendar needs MICROSOFT_CLIENT_ID and MICROSOFT_REDIRECT_URI configured on @elizaos/plugin-calendar. Open the setup card, then connect again.\n\n[CONFIG:calendar]";
+      }
+      // No dynamic fallback — unknown providers must not become verified UI text.
+      return "Calendar source configuration is required. Open Settings → Calendar sources to continue.";
+    }
     case "connected":
       return `ICS source ${intent.sourceId} connected and synchronized (${intent.sync.outcome}).`;
     case "configured_sync_failed":
@@ -855,22 +961,54 @@ function connectionEffectReceipts(
 }
 
 function connectionAwaitsUser(intent: CalendarSourceConnectionIntent): boolean {
+  // configuration_required also needs an owner next step (plugin config card),
+  // so mark it the same as OAuth/permission handoffs for planner preservation.
   return (
     intent.state === "authorization_required" ||
-    intent.state === "permission_required"
+    intent.state === "permission_required" ||
+    intent.state === "configuration_required"
   );
+}
+
+/**
+ * Only mark connect outcomes verified when the text is fully constructed from
+ * allowlisted templates / trusted OAuth hosts (not arbitrary provider strings).
+ */
+function connectionIsVerifiedHandoff(
+  intent: CalendarSourceConnectionIntent,
+): boolean {
+  switch (intent.state) {
+    case "authorization_required":
+      return isTrustedOAuthAuthorizationUrl(intent.provider, intent.authUrl);
+    case "permission_required":
+    case "configuration_required":
+      return true;
+    case "connected":
+    case "configured_sync_failed":
+      return false;
+  }
 }
 
 async function resultWithCallback(
   result: ActionResult,
   callback: Parameters<NonNullable<Action["handler"]>>[4],
 ): Promise<ActionResult> {
+  // agentVoiced skips ACTION_CALLBACK_VOICE_REWRITE so card markers
+  // ([CONFIG:…], permission_request JSON) and OAuth URLs stay byte-exact.
   await callback?.({
     text: result.text,
     source: "action",
     action: ACTION_NAME,
+    ...(result.verifiedUserFacing === true ? { agentVoiced: true } : {}),
   });
-  return result;
+  // The callback above is the turn's single visible delivery of this text. A
+  // successful verified result is therefore the complete answer: declaring the
+  // turn complete (unless explicitly disclaimed) opts into the gated-evaluator
+  // skip so the model cannot paraphrase the already-delivered source list as a
+  // second message. Failures and unverified results stay un-gated.
+  return result.success === true && result.verifiedUserFacing === true
+    ? { ...result, turnComplete: result.turnComplete ?? true }
+    : result;
 }
 
 function defaultAuthorize(
@@ -903,11 +1041,22 @@ export function createCalendarSourcesAction(
       "CONNECT_CALENDAR_SOURCE",
       "RECONNECT_CALENDAR_SOURCE",
       "MANAGE_CALENDAR_SOURCES",
+      // Natural-language connect intents must win over CONNECTOR.CONNECT_GOOGLE
+      // so Google/Microsoft/Apple calendar handoffs emit [CONFIG:…] / OAuth /
+      // permission_request cards instead of generic account-connect prose.
+      "CONNECT_CALENDAR",
+      "CONNECT_GOOGLE_CALENDAR",
+      "CONNECT_MICROSOFT_CALENDAR",
+      "CONNECT_APPLE_CALENDAR",
+      "LINK_CALENDAR",
+      "LINK_GOOGLE_CALENDAR",
+      "ADD_GOOGLE_CALENDAR",
+      "SETUP_GOOGLE_CALENDAR",
     ],
     description:
-      "Read and change which calendar sources feed the owner's calendar, across Google, Microsoft, Apple, and ICS. select and deselect are writes: they durably include or exclude a source from the combined feed, and are the way to act on a source. Call list before select/deselect; echo provider, grantId, connectorAccountId, calendarId, and version exactly. Connect/reconnect returns OAuth, device-permission, configuration, or verified ICS states and never implies authorization is complete. New ICS/webcal subscriptions are added by the owner in the source-manager UI; subscription URLs never pass through this action.",
+      "Read and change which calendar sources feed the owner's calendar, across Google, Microsoft, Apple, and ICS. Prefer this action for any 'connect/link/add my calendar' request (including 'connect Google Calendar') — do not use CONNECTOR or PLUGIN for calendar feed authorization. select and deselect are writes: they durably include or exclude a source from the combined feed, and are the way to act on a source. Call list before select/deselect; echo provider, grantId, connectorAccountId, calendarId, and version exactly. Connect/reconnect returns OAuth, device-permission, configuration ([CONFIG:…]), or verified ICS states and never implies authorization is complete. New ICS/webcal subscriptions are added by the owner in the source-manager UI; subscription URLs never pass through this action.",
     descriptionCompressed:
-      "calendar sources: list reads; select|deselect WRITE feed inclusion; connect|reconnect start owner auth; exact identity + version; ics create=owner UI only",
+      "calendar sources: list; select|deselect WRITE feed; connect|reconnect owner auth + [CONFIG] cards; prefer over CONNECTOR for calendar; ics create=owner UI",
     tags: [
       "domain:calendar",
       "capability:read",
@@ -918,7 +1067,7 @@ export function createCalendarSourcesAction(
     contexts: ["general", "calendar", "connectors"],
     roleGate: { minRole: "OWNER" },
     routingHint:
-      "calendar source connection, reconnection, health, or including/excluding a calendar from the feed (a durable write, not just a report) -> CALENDAR_SOURCES; calendar event reads/writes -> CALENDAR",
+      "connect/link/add/setup Google|Microsoft|Apple calendar, reconnect calendar source, calendar source health, or include/exclude a calendar from the feed -> CALENDAR_SOURCES (not CONNECTOR, not PLUGIN); calendar event CRUD -> CALENDAR; Gmail/Drive account without calendar wording -> CONNECTOR",
     suppressPostActionContinuation: true,
     validate: authorize,
     handler: async (runtime, message, _state, options, callback) => {
@@ -1017,14 +1166,21 @@ export function createCalendarSourcesAction(
           appliedReceiptIds.length > 0
             ? appliedReceiptIds
             : effectReceipts.map((receipt) => receipt.receiptId);
+        // Pin allowlisted handoffs as verified user-facing text so the planner
+        // echoes [CONFIG:…], permission_request JSON, and trusted OAuth URLs
+        // instead of paraphrasing them. Do not elevate arbitrary provider text.
+        // Only attach effectReceipts when present — an empty array would make
+        // the verified-path proof check fail.
+        const verified = connectionIsVerifiedHandoff(intent);
         return resultWithCallback(
           {
             success: connectionSucceeded(intent),
             text,
+            ...(verified
+              ? { userFacingText: text, verifiedUserFacing: true as const }
+              : {}),
             ...(effectReceipts.length > 0
               ? {
-                  userFacingText: text,
-                  verifiedUserFacing: true,
                   effectReceipts,
                   userFacingEffectReceiptIds,
                 }
@@ -1085,11 +1241,11 @@ export function createCalendarSourcesAction(
       {
         name: "provider",
         description:
-          "Exact provider for selection or connection: google, microsoft, apple_calendar, or ics.",
+          "Exact provider for selection: eliza, google, microsoft, apple_calendar, or ics. Connection operations apply only to external providers.",
         required: false,
         schema: {
           type: "string",
-          enum: ["google", "microsoft", "apple_calendar", "ics"],
+          enum: ["eliza", "google", "microsoft", "apple_calendar", "ics"],
         },
       },
       {
@@ -1149,6 +1305,32 @@ export function createCalendarSourcesAction(
           name: "{{agentName}}",
           content: {
             text: "I’ll start least-privilege Google Calendar authorization. I won’t claim it is connected until authorization completes.",
+            actions: [ACTION_NAME],
+          },
+        },
+      ],
+      [
+        {
+          name: "{{name1}}",
+          content: { text: "connect google calendar" },
+        },
+        {
+          name: "{{agentName}}",
+          content: {
+            text: "I’ll start Google Calendar source connection and surface the owner handoff card or OAuth URL.",
+            actions: [ACTION_NAME],
+          },
+        },
+      ],
+      [
+        {
+          name: "{{name1}}",
+          content: { text: "can u do it now; connect google cal" },
+        },
+        {
+          name: "{{agentName}}",
+          content: {
+            text: "Starting Google Calendar source connect via CALENDAR_SOURCES.",
             actions: [ACTION_NAME],
           },
         },

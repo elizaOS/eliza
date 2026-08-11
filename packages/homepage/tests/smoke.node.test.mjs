@@ -13,6 +13,7 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const packageJsonPath = resolve(__dirname, "../package.json");
+const indexHtmlPath = resolve(__dirname, "../index.html");
 const pruneAssetsPath = resolve(
   __dirname,
   "../scripts/prune-unused-static-assets.mjs",
@@ -26,12 +27,16 @@ const shaderBackgroundPath = resolve(
   __dirname,
   "../src/components/ShaderBackground/ShaderBackground.tsx",
 );
+const visualRegressionSpecPath = resolve(__dirname, "./e2e/visual.spec.ts");
 const globalStylesPath = resolve(__dirname, "../src/index.css");
 const iphoneModelPath = resolve(
   __dirname,
   "../public/models/iphone-meshopt.glb",
 );
-const elizaAvatarPath = resolve(__dirname, "../public/elizapfp.webp");
+const elizaAvatarPath = resolve(
+  __dirname,
+  "../public/brand/logos/logo_white_orangebg.svg",
+);
 const profileImagePath = resolve(
   __dirname,
   "../public/eliza-app-profile-image.webp",
@@ -40,7 +45,7 @@ const headersPath = resolve(__dirname, "../public/_headers");
 const viteConfigPath = resolve(__dirname, "../vite.config.ts");
 const tsconfigPath = resolve(__dirname, "../tsconfig.app.json");
 
-test("landing ships compressed iPhone and WebP profile assets", () => {
+test("landing ships its compressed phone and canonical profile assets", () => {
   const model = readFileSync(iphoneModelPath);
   assert.equal(model.subarray(0, 4).toString("ascii"), "glTF");
   assert.ok(
@@ -48,14 +53,14 @@ test("landing ships compressed iPhone and WebP profile assets", () => {
     "phone model must stay under its 550 KB transfer budget",
   );
 
-  for (const assetPath of [elizaAvatarPath, profileImagePath]) {
-    const asset = readFileSync(assetPath);
-    assert.equal(asset.subarray(0, 4).toString("ascii"), "RIFF");
-    assert.equal(asset.subarray(8, 12).toString("ascii"), "WEBP");
-  }
+  const avatar = readFileSync(elizaAvatarPath, "utf8");
+  assert.match(avatar, /fill="#FF5800"/);
+  const profileImage = readFileSync(profileImagePath);
+  assert.equal(profileImage.subarray(0, 4).toString("ascii"), "RIFF");
+  assert.equal(profileImage.subarray(8, 12).toString("ascii"), "WEBP");
   assert.ok(
-    statSync(elizaAvatarPath).size < 8_000,
-    "phone avatar must stay under its 8 KB transfer budget",
+    statSync(elizaAvatarPath).size < 25_000,
+    "canonical phone avatar must stay under its 25 KB transfer budget",
   );
   assert.ok(
     statSync(profileImagePath).size < 25_000,
@@ -83,6 +88,16 @@ test("landing keeps WebGL deferred and render loops demand-driven", () => {
   assert.match(pruneAssets, /"brand\/background", "product"/);
 });
 
+test("visual regression compares the quality-validated capture itself", () => {
+  const visualSpec = readFileSync(visualRegressionSpecPath, "utf8");
+
+  assert.match(
+    visualSpec,
+    /const screenshot = await captureScreenshotWithQualityRetry\(/,
+  );
+  assert.match(visualSpec, /expect\(screenshot\)\.toMatchSnapshot\(/);
+});
+
 test("large visual assets receive a durable browser cache policy", () => {
   const headers = readFileSync(headersPath, "utf8");
 
@@ -94,6 +109,31 @@ test("large visual assets receive a durable browser cache policy", () => {
       ),
     );
   }
+});
+
+test("preloaded image declares the MIME type of the referenced asset", () => {
+  const indexHtml = readFileSync(indexHtmlPath, "utf8");
+  const preloadTag = indexHtml.match(/<link(?=[^>]*rel="preload")[^>]*>/)?.[0];
+
+  assert.ok(preloadTag, "expected an image preload tag");
+  assert.match(preloadTag, /href="\/eliza-logo\.webp"/);
+  assert.match(preloadTag, /type="image\/webp"/);
+  assert.doesNotMatch(preloadTag, /favicon\.svg/);
+});
+
+test("built asset URLs include a deployment-specific cache revision", () => {
+  const viteConfig = readFileSync(viteConfigPath, "utf8");
+
+  assert.match(viteConfig, /process\.env\.GITHUB_SHA/);
+  assert.match(viteConfig, /process\.env\.CF_PAGES_COMMIT_SHA/);
+  assert.match(
+    viteConfig,
+    /entryFileNames: `assets\/\[name\]-\[hash\]-\$\{homepageBuildRevision\}\.js`/,
+  );
+  assert.match(
+    viteConfig,
+    /chunkFileNames: `assets\/\[name\]-\[hash\]-\$\{homepageBuildRevision\}\.js`/,
+  );
 });
 
 test("reduced-motion keeps functional loading indicators animated", () => {

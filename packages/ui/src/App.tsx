@@ -109,6 +109,7 @@ import {
   NotificationsDataBoot,
   NotificationsShellBoot,
 } from "./components/shell/notifications-boot";
+import { PairingView } from "./components/shell/PairingView";
 import { ShellControllerProvider } from "./components/shell/ShellControllerContext";
 import { useShellControllerContext } from "./components/shell/ShellControllerContext.hooks";
 import { ShellOverlays } from "./components/shell/ShellOverlays";
@@ -175,6 +176,7 @@ import {
 import {
   authProbeShouldHoldShell,
   firstRunOwnsLoginSurface,
+  shouldShowRemoteAgentPairingGate,
   topLevelAuthGateOwnsSurface,
 } from "./state/top-level-auth-gate";
 import {
@@ -221,6 +223,7 @@ import {
 import {
   isImmersiveWallpaperRoute,
   resolveBuiltinBackgroundPolicy,
+  resolveBuiltinRoutedViewManifest,
   resolveBuiltinTabId,
 } from "./builtin-tab-registry";
 // DesktopTabBar stays static: it is already pulled
@@ -246,6 +249,7 @@ import {
   type ViewRegistryEntry,
 } from "./hooks/useAvailableViews";
 import { useDesktopTabs } from "./hooks/useDesktopTabs";
+import { isDynamicViewLoadingAllowed } from "./platform/platform-guards";
 import { useEnabledViewKinds } from "./state/useViewKinds";
 import { WidgetHost } from "./widgets";
 
@@ -879,6 +883,17 @@ function resolveActiveViewSurface({
     };
   }
 
+  // Builtin routed content views resolve through the same declarative registry
+  // the background resolver reads, so a builtin's declared framing (e.g. the
+  // Browser's `header: "fullscreen"`) drives the identical full-bleed shell
+  // path a registered fullscreen page (Notes, Calendar) takes. Immersive
+  // wallpaper surfaces return null here — they keep their dedicated shell
+  // branches.
+  const builtinManifest = resolveBuiltinRoutedViewManifest(tab);
+  if (builtinManifest) {
+    return { manifest: builtinManifest, viewId: resolveBuiltinTabId(tab) };
+  }
+
   return { manifest: resolveSurfaceManifest(null), viewId: tab };
 }
 
@@ -978,19 +993,15 @@ function findRemoteViewForRoute(
 
 function renderRemoteView(view: ViewRegistryEntry, nav?: ReactNode): ReactNode {
   if (!view.bundleUrl && !view.frameUrl) return null;
-  // Remote plugin bundles render only their own content (a SpatialSurface), not
-  // the app-shell chrome — so the shell owns the standard top bar for them. Every
-  // `normal`-policy view gets the shared ViewHeader (title + back-to-launcher),
-  // matching #13586 ("the shell enforces the shared ViewHeader on every normal
-  // view"); `fullscreen`/`modal`/`immersive` opt out. A section nav (Wallet /
-  // Character strip) already supplies the header, so it suppresses this one.
+  // Plugin views own their canvas and stay flush with the shell. Repeating a
+  // route title above every plugin wasted the narrowest part of mobile screens
+  // and duplicated view-owned headings; navigation remains available from the
+  // persistent chat-actions menu and the browser/OS back affordance.
   const manifest = resolveSurfaceManifest(view);
-  const showHeader = !nav && manifest.header === "normal";
   const ownsViewport =
     manifest.header === "fullscreen" || manifest.header === "immersive";
   return (
     <TabContentView nav={nav} reserveChatClearance={!ownsViewport}>
-      {showHeader ? <ViewHeader title={view.label} /> : null}
       <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
         <DynamicViewLoader
           bundleUrl={view.bundleUrl}
@@ -1398,6 +1409,27 @@ function renderViewRouterContent({
       walletNav,
     });
   }
+  const appShellPageForRoute = findAppShellPageForRoute(navigationPath);
+  const visibleAppShellPage =
+    appShellPageForRoute && isViewVisible(appShellPageForRoute, enabledKinds)
+      ? appShellPageForRoute
+      : undefined;
+  const renderAppShellPage = (registration: AppShellPageRegistration) => (
+    <TabContentView
+      nav={walletNav}
+      reserveChatClearance={!surfaceOwnsViewport(registration)}
+    >
+      <RegisteredAppShellPage registration={registration} />
+    </TabContentView>
+  );
+
+  // Restricted native renderers cannot execute an agent-served bundle. Prefer
+  // an exact signed registration at the final renderer boundary even if a
+  // stale/web-shaped registry snapshot still carries bundleUrl for the same
+  // id/path. Web and desktop deliberately retain remote-bundle precedence.
+  if (visibleAppShellPage && !isDynamicViewLoadingAllowed()) {
+    return renderAppShellPage(visibleAppShellPage);
+  }
   const remoteView = findRemoteViewForRoute(
     availableViews,
     navigationPath,
@@ -1407,19 +1439,8 @@ function renderViewRouterContent({
   if (remoteView?.bundleUrl || remoteView?.frameUrl) {
     return renderRemoteView(remoteView, walletNav);
   }
-  const appShellPageForRoute = findAppShellPageForRoute(navigationPath);
-  if (
-    appShellPageForRoute &&
-    isViewVisible(appShellPageForRoute, enabledKinds)
-  ) {
-    return (
-      <TabContentView
-        nav={walletNav}
-        reserveChatClearance={!surfaceOwnsViewport(appShellPageForRoute)}
-      >
-        <RegisteredAppShellPage registration={appShellPageForRoute} />
-      </TabContentView>
-    );
+  if (visibleAppShellPage) {
+    return renderAppShellPage(visibleAppShellPage);
   }
 
   if (visibleDynamicPage(dynamicPage, enabledKinds)) {
@@ -1634,13 +1655,11 @@ function routedShellMainClass(tab: string): string {
   // double-counted the clearance the wrapper already reserves, leaving an
   // oversized empty band under every view (the recurring "too much space at the
   // bottom" report). Bottom clearance is reserved exactly once, downstream.
-  // Views that own their full surface (browser/apps/views/background) still get
-  // zero padding.
+  // Views that own their full surface (apps/views/background) still get zero
+  // padding. (The browser no longer routes here at all — its fullscreen header
+  // takes the full-bleed shell path, like Notes/Calendar.)
   const pagePadding =
-    tab === "browser" ||
-    tab === "apps" ||
-    tab === "views" ||
-    tab === "background"
+    tab === "apps" || tab === "views" || tab === "background"
       ? ""
       : "px-2 sm:px-3 pt-[var(--view-pad-top)]";
   return `flex flex-1 min-h-0 min-w-0 overflow-hidden ${pagePadding}`;
@@ -2084,7 +2103,9 @@ function AppContent() {
   const cloudPairToken = getCloudPairTokenFromLocation();
   const isElizaCloudHosted = isElizaCloudHostedLocation();
   const activeAgentProfile = useAppSelector((s) => s.activeAgentProfile);
-  const handleCloudLogin = useAppSelector((s) => s.handleCloudLogin);
+  const handleCloudLoginRecovery = useAppSelector(
+    (s) => s.handleCloudLoginRecovery,
+  );
   const showCloudAgentReauthNotice = shouldShowCloudAgentReauthNotice({
     isHostedLocation: isElizaCloudHosted,
     isNative,
@@ -2111,7 +2132,12 @@ function AppContent() {
       return;
     }
     const rejectedCloudToken = getCloudAuthToken();
-    await handleCloudLogin(null, {
+    // Deliberate non-interactive same-tab recovery: native hosted re-auth has
+    // no popup, so it must go through the separately named recovery entry
+    // point — never the interactive one (which would open a second window)
+    // and never the raw null-window path (which is unrepresentable from the
+    // app surface, #17129).
+    await handleCloudLoginRecovery({
       requireClientAuth: true,
       forceReauth: true,
     });
@@ -2122,7 +2148,7 @@ function AppContent() {
       );
     }
     window.location.reload();
-  }, [handleCloudLogin, nativeCloudRecoveryMode]);
+  }, [handleCloudLoginRecovery, nativeCloudRecoveryMode]);
   const retryManagedNativeAgent = useCallback(async () => {
     window.location.reload();
   }, []);
@@ -2300,7 +2326,10 @@ function AppContent() {
     const handleFocusConnector = (event: Event) => {
       const detail = (event as CustomEvent<FocusConnectorEventDetail>).detail;
       if (!detail?.connectorId) return;
-      setSettingsInitialSection("connectors");
+      const id = detail.connectorId.trim().toLowerCase();
+      setSettingsInitialSection(
+        id ? `connectors/${id === "twitter" ? "x" : id}` : "connectors",
+      );
       setTab("settings");
     };
     document.addEventListener(FOCUS_CONNECTOR_EVENT, handleFocusConnector);
@@ -2689,6 +2718,19 @@ function AppContent() {
         return (
           <BugReportProvider value={bugReport}>
             <StartupScreen />
+            <BugReportModal />
+          </BugReportProvider>
+        );
+      }
+      if (
+        shouldShowRemoteAgentPairingGate({
+          reason: authState.reason,
+          access: authState.access,
+        })
+      ) {
+        return (
+          <BugReportProvider value={bugReport}>
+            <PairingView />
             <BugReportModal />
           </BugReportProvider>
         );

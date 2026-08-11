@@ -22,6 +22,7 @@ import type {
 	Memory,
 } from "../../../types/index.ts";
 import { asUUID, MemoryType, ModelType } from "../../../types/index.ts";
+import { truncateWellFormed } from "../../../utils/well-formed.ts";
 
 const EVALUATOR_NAME = "linkExtraction";
 const EVALUATOR_SOURCE = "link_extraction_evaluator";
@@ -112,16 +113,16 @@ function hasUrl(message: Memory): boolean {
 function extractTitle(html: string): string {
 	const titleMatch = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
 	if (titleMatch?.[1]) {
-		return decodeHtmlEntities(titleMatch[1])
-			.replace(/\s+/g, " ")
-			.trim()
-			.slice(0, 200);
+		return truncateWellFormed(
+			decodeHtmlEntities(titleMatch[1]).replace(/\s+/g, " ").trim(),
+			200,
+		);
 	}
 	const ogMatch = html.match(
 		/<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)["']/i,
 	);
 	if (ogMatch?.[1]) {
-		return decodeHtmlEntities(ogMatch[1]).trim().slice(0, 200);
+		return truncateWellFormed(decodeHtmlEntities(ogMatch[1]).trim(), 200);
 	}
 	return "";
 }
@@ -196,9 +197,12 @@ async function fetchLinkPreview(
 		if (!/text\/html|application\/xhtml/i.test(contentType)) {
 			return null;
 		}
-		const html = (await response.text()).slice(0, 200_000);
+		const html = truncateWellFormed(await response.text(), 200_000);
 		const title = extractTitle(html);
-		const bodyChunk = stripTags(html).slice(0, SUMMARY_MAX_INPUT_CHARS);
+		const bodyChunk = truncateWellFormed(
+			stripTags(html),
+			SUMMARY_MAX_INPUT_CHARS,
+		);
 		return { title, bodyChunk };
 	} catch {
 		// error-policy:J4 link previews are optional enrichments; blocked,
@@ -228,7 +232,7 @@ ${bodyChunk}
 Summary:`;
 	const response = await runtime.useModel(ModelType.TEXT_SMALL, { prompt });
 	if (typeof response === "string") {
-		return response.trim().slice(0, 1_000);
+		return truncateWellFormed(response.trim(), 1_000);
 	}
 	return "";
 }

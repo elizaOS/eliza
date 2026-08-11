@@ -94,6 +94,56 @@ describe("connector mode registry seam", () => {
     expect(modeToSetupPluginId("discord", "bot")).toBe("discord");
   });
 
+  it("offers BlueBubbles phone registration only when Eliza Cloud is connected", () => {
+    const offline = getConnectorModes("bluebubbles", {
+      elizaCloudConnected: false,
+    });
+    expect(offline.map((mode) => mode.id)).toEqual(["local"]);
+    expect(getDefaultConnectorModeId("bluebubbles", offline)).toBe("local");
+
+    const online = getConnectorModes("bluebubbles", {
+      elizaCloudConnected: true,
+    });
+    expect(online.map((mode) => mode.id)).toEqual(["cloud", "local"]);
+    expect(getDefaultConnectorModeId("bluebubbles", online)).toBe("cloud");
+    expect(getConnectorModeCloudGatewaySetup("bluebubbles", "cloud")).toBe(
+      "phone-registration",
+    );
+
+    expect(
+      getConnectorModes("imessage", { elizaCloudConnected: false }).map(
+        (mode) => mode.id,
+      ),
+    ).toEqual(["direct", "bluebubbles"]);
+    expect(
+      getConnectorModes("imessage", { elizaCloudConnected: true }).map(
+        (mode) => mode.id,
+      ),
+    ).toEqual(["blooio", "cloud-bluebubbles", "direct", "bluebubbles"]);
+    expect(
+      getConnectorModeCloudGatewaySetup("imessage", "cloud-bluebubbles"),
+    ).toBe("phone-registration");
+  });
+
+  it("defaults iMessage to Blooio in Cloud and direct chat.db offline", () => {
+    const offline = getConnectorModes("imessage", {
+      elizaCloudConnected: false,
+    });
+    expect(offline.map((mode) => mode.id)).toEqual(["direct", "bluebubbles"]);
+    expect(getDefaultConnectorModeId("imessage", offline)).toBe("direct");
+
+    const online = getConnectorModes("imessage", {
+      elizaCloudConnected: true,
+    });
+    expect(online.map((mode) => mode.id)).toEqual([
+      "blooio",
+      "cloud-bluebubbles",
+      "direct",
+      "bluebubbles",
+    ]);
+    expect(getDefaultConnectorModeId("imessage", online)).toBe("blooio");
+  });
+
   it("treats twitter as an alias of x (dead case is gone, not the behavior)", () => {
     expect(getConnectorModes("twitter", {}).map((m) => m.id)).toEqual(
       getConnectorModes("x", {}).map((m) => m.id),

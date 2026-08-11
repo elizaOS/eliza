@@ -77,8 +77,7 @@ const UI_PORT = Number(process.env.ELIZA_UI_SMOKE_PORT ?? "2138");
 const UI_SMOKE_RUN_ID = process.env.ELIZA_UI_SMOKE_RUN_ID?.trim() ?? "";
 const LIVE_PROVIDER = await selectLiveProviderAsync();
 const REAL_LOCAL_STACK = process.env.ELIZA_UI_SMOKE_REAL_LOCAL_STACK === "1";
-const REAL_LOCAL_BACKEND_LOG_PATH =
-  process.env.ELIZA_UI_SMOKE_BACKEND_LOG_PATH?.trim();
+const BACKEND_LOG_PATH = process.env.ELIZA_UI_SMOKE_BACKEND_LOG_PATH?.trim();
 // Precedence (force-stub > live opt-in > CI default) lives in one tested helper.
 // The key behavior: ELIZA_UI_SMOKE_LIVE_STACK=1 overrides the CI-based stub force
 // so a genuinely-real lane is possible (GitHub Actions always sets CI=true, which
@@ -822,6 +821,57 @@ async function waitForJsonPredicate<T>(
     : new Error(`Timed out waiting for ${url}`);
 }
 
+type DeferredBootHealth = {
+  deferredBoot?: {
+    phases?: Record<string, "pending" | "complete" | "failed">;
+    settled?: boolean;
+  };
+};
+
+async function waitForDeferredBootComplete(apiBase: string): Promise<void> {
+  const url = `${apiBase}/api/health`;
+  const deadline = Date.now() + READY_TIMEOUT_MS;
+  let lastHealth: DeferredBootHealth | null = null;
+  let lastError: unknown = null;
+
+  while (Date.now() < deadline) {
+    try {
+      const health = await fetchJson<DeferredBootHealth>(url);
+      lastHealth = health;
+      const phases = health.deferredBoot?.phases ?? {};
+      const failedPhases = Object.entries(phases)
+        .filter(([, status]) => status === "failed")
+        .map(([phase]) => phase);
+      if (failedPhases.length > 0) {
+        throw new Error(
+          `Deferred runtime boot failed (${failedPhases.join(", ")}): ${JSON.stringify(health.deferredBoot)}`,
+        );
+      }
+      if (
+        health.deferredBoot?.settled === true &&
+        phases["app-route-tail"] === "complete"
+      ) {
+        return;
+      }
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        error.message.startsWith("Deferred runtime boot failed")
+      ) {
+        throw error;
+      }
+      lastError = error;
+    }
+    await sleep(1_000);
+  }
+
+  throw new Error(
+    `Timed out waiting for deferred runtime boot: ${url}; lastHealth=${JSON.stringify(lastHealth)}${
+      lastError instanceof Error ? `; lastError=${lastError.message}` : ""
+    }`,
+  );
+}
+
 async function ensureUiDistReady(): Promise<void> {
   const distIndex = path.join(APP_DIST_DIR, "index.html");
   let needsBuild = false;
@@ -1109,8 +1159,8 @@ async function startRealLocalStack(): Promise<StartedStack> {
   let apiChild: ChildProcessWithoutNullStreams | null = null;
   let uiServer: Server | null = null;
   try {
-    const backendLogPath = REAL_LOCAL_BACKEND_LOG_PATH
-      ? path.resolve(REPO_ROOT, REAL_LOCAL_BACKEND_LOG_PATH)
+    const backendLogPath = BACKEND_LOG_PATH
+      ? path.resolve(REPO_ROOT, BACKEND_LOG_PATH)
       : null;
     if (backendLogPath) {
       await mkdir(path.dirname(backendLogPath), { recursive: true });
@@ -1200,6 +1250,13 @@ async function startRealStack(): Promise<StartedStack> {
   let apiChild: ChildProcessWithoutNullStreams | null = null;
   let uiServer: Server | null = null;
   try {
+    const backendLogPath = BACKEND_LOG_PATH
+      ? path.resolve(REPO_ROOT, BACKEND_LOG_PATH)
+      : null;
+    if (backendLogPath) {
+      await mkdir(path.dirname(backendLogPath), { recursive: true });
+      await writeFile(backendLogPath, "", "utf8");
+    }
     await seedLiveStackConfig(stateDir);
     const uiDistDir = await snapshotUiDist(stateDir);
     const apiBase = `http://127.0.0.1:${API_PORT}`;
@@ -1226,10 +1283,14 @@ async function startRealStack(): Promise<StartedStack> {
     );
 
     apiChild.stdout.on("data", (chunk) => {
-      process.stdout.write(`[ui-smoke][api] ${chunk}`);
+      const output = `[ui-smoke][api] ${chunk}`;
+      process.stdout.write(output);
+      if (backendLogPath) appendFileSync(backendLogPath, output);
     });
     apiChild.stderr.on("data", (chunk) => {
-      process.stdout.write(`[ui-smoke][api-err] ${chunk}`);
+      const output = `[ui-smoke][api-err] ${chunk}`;
+      process.stdout.write(output);
+      if (backendLogPath) appendFileSync(backendLogPath, output);
     });
 
     await waitForJson<{ complete: boolean }>(`${apiBase}/api/first-run/status`);
@@ -1266,13 +1327,7 @@ async function startRealStack(): Promise<StartedStack> {
       // App-control and plugin views are deferred capabilities. Treat the live
       // harness as ready only after the runtime's structured boot state settles;
       // logger filtering may legitimately suppress the human-readable marker.
-      await waitForJsonPredicate<{
-        deferredBoot?: { settled?: boolean };
-      }>(
-        `${apiBase}/api/health`,
-        (health) => health.deferredBoot?.settled === true,
-        READY_TIMEOUT_MS,
-      );
+      await waitForDeferredBootComplete(apiBase);
     }
 
     uiServer = await startUiProxyServer({

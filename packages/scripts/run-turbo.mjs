@@ -151,6 +151,26 @@ if (
   turboArgs.splice(runIndex + 1, 0, "--log-order=stream");
 }
 
+// RUN_TURBO_CONCURRENCY caps task fan-out from the environment. Hosted CI
+// runners (4 vCPU / 16 GB) die at the package-script default of 8 concurrent
+// tsc processes on a full-workspace cone — the VM itself is OOM-killed and the
+// job exits 143 (#15140) — so CI lanes set this to 4 without forking the
+// `verify`/`typecheck` script definitions.
+if (process.env.RUN_TURBO_CONCURRENCY) {
+  const idx = turboArgs.findIndex(
+    (arg) => arg === "--concurrency" || arg.startsWith("--concurrency="),
+  );
+  const override = `--concurrency=${process.env.RUN_TURBO_CONCURRENCY}`;
+  if (idx === -1) {
+    if (runIndex !== -1) turboArgs.splice(runIndex + 1, 0, override);
+    else turboArgs.push(override);
+  } else if (turboArgs[idx] === "--concurrency") {
+    turboArgs.splice(idx, 2, override);
+  } else {
+    turboArgs.splice(idx, 1, override);
+  }
+}
+
 // Test seam: RUN_TURBO_BIN points at a Node script that stands in for the
 // turbo binary so the retry contract below is provable with real
 // subprocesses (see __tests__/run-turbo-windows-init-crash-retry.test.ts).
@@ -181,6 +201,7 @@ if (!turboBinOverride && !turboShim && !fs.existsSync(turboPackageBin)) {
 // Turbo cache (completed tasks skip), and the retry is announced loudly so a
 // deterministic failure can never hide behind it.
 const WINDOWS_PROCESS_INIT_CRASH = "exited (-1073741502)";
+const TURBO_OUTPUT_DRAIN_GRACE_MS = 2_000;
 // The retry is live on Windows only (the crash class is a Windows runner
 // failure); RUN_TURBO_FORCE_INIT_CRASH_RETRY lets the contract tests exercise
 // the loop on every platform, RUN_TURBO_NO_INIT_CRASH_RETRY turns it off.
@@ -233,7 +254,19 @@ function runTurboOnce() {
         process.kill(process.pid, signal);
         return;
       }
-      resolve({ code: code ?? 1, sawInitCrash });
+
+      // Turbo's final failure line can arrive after `exit`, but descendants may
+      // inherit its pipes and prevent `close` forever. Drain until closure or a
+      // bounded grace period so retry detection is reliable without hanging CI.
+      let finished = false;
+      const finish = () => {
+        if (finished) return;
+        finished = true;
+        clearTimeout(timer);
+        resolve({ code: code ?? 1, sawInitCrash });
+      };
+      const timer = setTimeout(finish, TURBO_OUTPUT_DRAIN_GRACE_MS);
+      child.once("close", finish);
     });
 
     child.on("error", (error) => {

@@ -14,6 +14,8 @@ describe("resolveSharedNavIntent", () => {
     ["go home", "chat", undefined],
     ["what's on my calendar", "calendar", undefined],
     ["open my inbox", "inbox", undefined],
+    ["open cloud apps", "cloud-apps", undefined],
+    ["打开云应用", "cloud-apps", undefined],
     // Multilingual (matcher parity)
     ["muéstrame mi calendario", "calendar", undefined],
     ["打开设置", "settings", undefined],
@@ -100,6 +102,14 @@ describe("resolveSharedNavIntent", () => {
     // through to the LLM turn.
     "open the camera",
     "take a photo",
+    "list my cloud apps",
+    "show my cloud apps",
+    "list my deployed apps",
+    "do not open cloud apps",
+    "how do I open cloud apps?",
+    "when I open cloud apps it crashes",
+    "open cloud apps documentation",
+    "open the cloud app Acme",
   ])("falls through to the LLM for %j", (message) => {
     expect(resolveSharedNavIntent(message)).toBeNull();
   });
@@ -142,5 +152,17 @@ describe("resolveSharedNavIntent", () => {
     const result = navIntentActionResult(intent!);
     expect(result.values.viewId).toBe("settings");
     expect(result.values.subview).toBe("voice");
+  });
+
+  test("Cloud Apps carries the host-owned canonical path", () => {
+    const intent = resolveSharedNavIntent("open cloud apps");
+    expect(intent).toMatchObject({
+      viewId: "cloud-apps",
+      viewPath: "/cloud-apps",
+    });
+    expect(navIntentActionResult(intent!).values).toMatchObject({
+      viewId: "cloud-apps",
+      viewPath: "/cloud-apps",
+    });
   });
 });

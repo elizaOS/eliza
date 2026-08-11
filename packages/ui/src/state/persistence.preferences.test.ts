@@ -19,6 +19,7 @@ import {
   loadContinuousChatMode,
   loadHomeTimeWidgetHidden,
   loadLastNativeTab,
+  loadOsIntentAutoStartConsent,
   loadPersistedActivePackId,
   loadPersistedActivePackUrl,
   loadPersistedFirstRunComplete,
@@ -43,6 +44,7 @@ import {
   saveContinuousChatMode,
   saveHomeTimeWidgetHidden,
   saveLastNativeTab,
+  saveOsIntentAutoStartConsent,
   savePersistedActivePackId,
   savePersistedActivePackUrl,
   savePersistedFirstRunComplete,
@@ -79,6 +81,10 @@ describe("shell preference persistence", () => {
     expect(loadChatVoiceMuted()).toBe(false);
     expect(loadActiveConversationId()).toBeNull();
     expect(loadCompanionMessageCutoffTs()).toBe(0);
+    expect(loadOsIntentAutoStartConsent()).toEqual({
+      voice: false,
+      transcription: false,
+    });
   });
 
   it("round-trips boolean and enum preferences", () => {
@@ -93,6 +99,7 @@ describe("shell preference persistence", () => {
     saveComputerUseEnabled(true);
     saveChatAvatarVisible(false);
     saveChatVoiceMuted(true);
+    saveOsIntentAutoStartConsent({ voice: true, transcription: true });
 
     expect(loadHomeTimeWidgetHidden()).toBe(true);
     expect(loadPersistedFirstRunComplete()).toBe(true);
@@ -105,6 +112,10 @@ describe("shell preference persistence", () => {
     expect(loadComputerUseEnabled()).toBe(true);
     expect(loadChatAvatarVisible()).toBe(false);
     expect(loadChatVoiceMuted()).toBe(true);
+    expect(loadOsIntentAutoStartConsent()).toEqual({
+      voice: true,
+      transcription: true,
+    });
   });
 
   it("normalizes invalid and legacy theme and navigation values", () => {

@@ -97,7 +97,9 @@ const telegramPlugin: Plugin = {
 export * from "./account-auth-service";
 export * from "./accounts";
 export * from "./connector-account-provider";
+export * from "./identity";
 export * from "./local-client";
+export * from "./poller-lock";
 export type { TelegramStandaloneContext } from "./standalone/handler";
 export { handleTelegramStandaloneMessage } from "./standalone/handler";
 export { shouldStartTelegramStandaloneBot } from "./standalone/policy";

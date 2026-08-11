@@ -314,7 +314,7 @@ describe("stuck-provisioning owner predicates", () => {
       organizationId,
       staleThresholdMs: 15 * 60 * 1000,
     });
-    expect(firstRecovery).toBe(0);
+    expect(firstRecovery).toMatchObject({ retried: 0, permanentlyFailed: 0, failures: [] });
     expect(await jobStatus(firstClaim.id)).toMatchObject({
       status: "in_progress",
       attempts: 0,

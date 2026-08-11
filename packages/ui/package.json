@@ -278,6 +278,11 @@
       "import": "./dist/native-transcript/index.js",
       "default": "./dist/native-transcript/index.js"
     },
+    "./native-transcript/core": {
+      "types": "./dist/native-transcript/core.d.ts",
+      "import": "./dist/native-transcript/core.js",
+      "default": "./dist/native-transcript/core.js"
+    },
     "./navigation": {
       "types": "./dist/navigation/index.d.ts",
       "import": "./dist/navigation/index.js",
@@ -464,6 +469,7 @@
     "sonner": "^2.0.7",
     "tailwind-merge": "^3.4.0",
     "tailwindcss": "^4.3.1",
+    "thinking-orbs": "0.2.0",
     "three": "^0.184.0",
     "vaul": "^1.1.2",
     "viem": "^2.48.8",

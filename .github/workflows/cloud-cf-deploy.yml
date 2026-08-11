@@ -16,7 +16,6 @@ name: Cloud CF Deploy
 # Per environment (both projects):
 # - push to develop  -> staging   (api-staging.elizacloud.ai; staging.* / app-staging.*)
 # - push to main     -> production (api.elizacloud.ai; elizacloud.ai / app.elizacloud.ai)
-# - pull_request     -> preview    (Pages preview branch backed by staging API)
 #
 # Required repo secrets:
 #   CLOUDFLARE_API_TOKEN   - account-scoped token with Workers + Pages edit perms
@@ -37,22 +36,10 @@ name: Cloud CF Deploy
 #   (Ed25519 keypair for the signed voice-model catalog; the catalog route 503s
 #   while the signing key is unset).
 #
-# Source: cloud/.github/workflows/cf-deploy.yml in the original elizaOS/cloud repo.
+# Consolidated from the original standalone Cloud deployment workflow.
 
 on:
   push:
-    branches: [main, develop]
-    paths:
-      - "packages/cloud/api/**"
-      - "packages/cloud/shared/**"
-      - "packages/cloud/services/**"
-      - "packages/cloud/sdk/**"
-      - "packages/cloud/scripts/**"
-      - "packages/app/**"
-      - "packages/app-core/**"
-      - "packages/ui/**"
-      - ".github/workflows/cloud-cf-deploy.yml"
-  pull_request:
     branches: [main, develop]
     paths:
       - "packages/cloud/api/**"
@@ -190,7 +177,7 @@ jobs:
   # Database migrations — the schema gate for every deploy job below (#11208).
   #
   # Prod refreshes via a workflow_dispatch of THIS workflow, but migrate-db
-  # used to live only in cloud-deploy-backend.yml — the two were decoupled, so
+  # is kept in this deployment authority so
   # a refresh shipped new Worker/Pages code against whatever schema prod
   # happened to have. Every deploy job below now `needs: migrate-db`, which
   # guarantees migrations run AND succeed before any new code serves traffic:
@@ -206,17 +193,9 @@ jobs:
     name: Run Database Migrations
     needs: [validate-deploy-source, admit-staging]
     if: ${{ always() && github.event_name != 'pull_request' && (((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && (needs.validate-deploy-source.result == 'success' || needs.validate-deploy-source.result == 'skipped') || (!((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && needs.admit-staging.outputs.should_deploy == 'true')) }}
-    # GitHub-hosted by DEFAULT so migrations don't inherit the shared
-    # self-hosted deploy fleet's heavy-checkout failure modes (mirrors
-    # cloud-deploy-backend). But the hosted ubuntu-latest pool periodically
-    # backs up for hours (org-wide zombie-freeze), and since every deploy job
-    # `needs: migrate-db`, a starved hosted queue blocks ALL prod deploys even
-    # while the self-hosted robot pool sits idle. CLOUD_CF_MIGRATE_RUNNER_JSON
-    # lets ops fail migrations over to the robot pool (e.g.
-    # ["self-hosted","Linux","X64","hetzner-robot"]) when hosted is jammed;
-    # migrate is a light `bun install` + `db:cloud:migrate`, not the heavy
-    # working-tree materialization that motivated keeping deploys off-hosted.
-    runs-on: ${{ fromJSON(vars.CLOUD_CF_MIGRATE_RUNNER_JSON || '["ubuntu-latest"]') }}
+    # Hosted unconditionally: CI must never contend with production
+    # agent-placement nodes for disk or CPU (#17881).
+    runs-on: ubuntu-latest
     # Job-level concurrency groups are repo-wide, so this also serializes
     # against an explicitly dispatched legacy cloud-deploy-backend migration.
     # The v2 suffix retires the un-versioned group: the same stale 2026-05-15
@@ -301,11 +280,8 @@ jobs:
     concurrency:
       group: cloud-cf-deploy-api-${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'production' || 'staging' }}
       cancel-in-progress: false
-    # Keep the deploy fleet configurable while Cloud ops converges on the
-    # reliable runner pool. Set CLOUD_CF_DEPLOY_RUNNER_JSON to a JSON runs-on
-    # array such as ["self-hosted","Linux","X64","hetzner-robot"] to use the
-    # Hetzner fleet; otherwise default to GitHub-hosted Ubuntu.
-    runs-on: ${{ fromJSON(vars.CLOUD_CF_DEPLOY_RUNNER_JSON || '["ubuntu-latest"]') }}
+    # Hosted unconditionally to preserve CI/placement workload separation.
+    runs-on: ubuntu-latest
     timeout-minutes: 75
     # Schema gate (#11208): the Worker talks to the database, so it only
     # deploys after migrate-db succeeded for this same commit. A failed or
@@ -548,9 +524,9 @@ jobs:
           # FAL_KEY ?? FAL_API_KEY, and prod carries it as FAL_API_KEY (#13406).
           FAL_API_KEY: ${{ secrets.FAL_API_KEY }}
           ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
-          # Deepgram is used by both realtime voice and the explicitly selected
-          # prerecorded STT path. Publishing the key alone does not change the
-          # batch provider; VOICE_BATCH_STT_PROVIDER is the routing toggle.
+          # Deepgram is retained only for the explicitly selected prerecorded
+          # STT path. Realtime voice uses Cartesia Ink; publishing this key alone
+          # does not change the batch provider.
           DEEPGRAM_API_KEY: ${{ secrets.DEEPGRAM_API_KEY }}
           # Cartesia cloud TTS default route. Both are routing toggles:
           # CARTESIA_API_KEY presence makes default/unpinned TTS use Cartesia;
@@ -647,7 +623,7 @@ jobs:
           if [ "$DEPLOY_ENVIRONMENT" = "production" ] && \
              is_truthy "$PRODUCTION_REALTIME_WS_ENABLED"; then
             missing_voice_secrets=()
-            for name in DEEPGRAM_API_KEY CARTESIA_API_KEY VOICE_REALTIME_ELIZA_AUTHORIZATION PRODUCTION_REALTIME_CARTESIA_VOICE_ID PRODUCTION_REALTIME_ELIZA_ENDPOINT; do
+            for name in CARTESIA_API_KEY VOICE_REALTIME_ELIZA_AUTHORIZATION PRODUCTION_REALTIME_CARTESIA_VOICE_ID PRODUCTION_REALTIME_ELIZA_ENDPOINT; do
               if ! has_nonblank_value "${!name:-}"; then
                 missing_voice_secrets+=("$name")
               fi
@@ -665,7 +641,7 @@ jobs:
           if [ "$DEPLOY_ENVIRONMENT" = "staging" ] && \
              is_truthy "$VOICE_REALTIME_WS_ENABLED"; then
             missing_voice_secrets=()
-            for name in DEEPGRAM_API_KEY CARTESIA_API_KEY VOICE_REALTIME_ELIZA_AUTHORIZATION; do
+            for name in CARTESIA_API_KEY VOICE_REALTIME_ELIZA_AUTHORIZATION; do
               if ! has_nonblank_value "${!name:-}"; then
                 missing_voice_secrets+=("$name")
               fi
@@ -720,9 +696,15 @@ jobs:
             local name="$1"
             local value="${!name:-}"
             case "$name" in
-              DEEPGRAM_API_KEY|CARTESIA_API_KEY|VOICE_REALTIME_ELIZA_AUTHORIZATION)
+              CARTESIA_API_KEY|VOICE_REALTIME_ELIZA_AUTHORIZATION)
                 if ! is_truthy "$VOICE_REALTIME_WS_ENABLED"; then
                   echo "::notice::$name is gated by VOICE_REALTIME_WS_ENABLED; skipping"
+                  return 0
+                fi
+                ;;
+              DEEPGRAM_API_KEY)
+                if [ "${VOICE_BATCH_STT_PROVIDER,,}" != "deepgram" ]; then
+                  echo "::notice::$name is gated by VOICE_BATCH_STT_PROVIDER=deepgram; skipping"
                   return 0
                 fi
                 ;;
@@ -918,8 +900,28 @@ jobs:
     if: ${{ !cancelled() && (needs.migrate-db.result == 'success' || (github.event_name == 'pull_request' && needs.migrate-db.result == 'skipped')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    # GitHub preserves outputs from successful jobs when only failed jobs are
+    # rerun. Consumers must therefore use the producer's attempt, not their own
+    # newer github.run_attempt. A full rerun executes this job again and emits
+    # the new attempt, so its deploy jobs consume the newly built artifacts.
+    outputs:
+      artifact_run_id: ${{ steps.pages-artifact.outputs.run_id }}
+      artifact_run_attempt: ${{ steps.pages-artifact.outputs.run_attempt }}
+      artifact_source_sha: ${{ steps.pages-artifact.outputs.source_sha }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      - name: Bind Pages artifacts to this producer attempt
+        id: pages-artifact
+        env:
+          PRODUCER_RUN_ID: ${{ github.run_id }}
+          PRODUCER_RUN_ATTEMPT: ${{ github.run_attempt }}
+          PRODUCER_SOURCE_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          echo "run_id=$PRODUCER_RUN_ID" >> "$GITHUB_OUTPUT"
+          echo "run_attempt=$PRODUCER_RUN_ATTEMPT" >> "$GITHUB_OUTPUT"
+          echo "source_sha=$PRODUCER_SOURCE_SHA" >> "$GITHUB_OUTPUT"
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
@@ -940,6 +942,7 @@ jobs:
         env:
           VITE_API_URL: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'https://api.elizacloud.ai' || 'https://api-staging.elizacloud.ai' }}
           NEXT_PUBLIC_API_URL: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'https://api.elizacloud.ai' || 'https://api-staging.elizacloud.ai' }}
+          VITE_OIDC_ISSUER_URL: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'https://api.elizacloud.ai' || 'https://api-staging.elizacloud.ai' }}
           VITE_ELIZA_CLOUD_BASE: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'https://www.elizacloud.ai' || 'https://staging.elizacloud.ai' }}
           VITE_APP_URL: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'https://elizacloud.ai' || 'https://staging.elizacloud.ai' }}
           NEXT_PUBLIC_APP_URL: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'https://elizacloud.ai' || 'https://staging.elizacloud.ai' }}
@@ -957,7 +960,7 @@ jobs:
       - name: Upload console artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: pages-console-${{ github.run_id }}-${{ github.run_attempt }}
+          name: pages-console-${{ steps.pages-artifact.outputs.run_id }}-${{ steps.pages-artifact.outputs.run_attempt }}
           path: |
             packages/app/dist
             packages/app/functions
@@ -970,6 +973,7 @@ jobs:
         env:
           VITE_API_URL: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'https://api.elizacloud.ai' || 'https://api-staging.elizacloud.ai' }}
           NEXT_PUBLIC_API_URL: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'https://api.elizacloud.ai' || 'https://api-staging.elizacloud.ai' }}
+          VITE_OIDC_ISSUER_URL: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'https://api.elizacloud.ai' || 'https://api-staging.elizacloud.ai' }}
           VITE_ELIZA_CLOUD_BASE: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'https://www.elizacloud.ai' || 'https://staging.elizacloud.ai' }}
           NEXT_PUBLIC_APP_URL: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'https://app.elizacloud.ai' || 'https://app-staging.elizacloud.ai' }}
           VITE_STEWARD_TENANT_ID: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'elizacloud' || 'elizacloud-staging' }}
@@ -985,7 +989,7 @@ jobs:
       - name: Upload app artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: pages-app-${{ github.run_id }}-${{ github.run_attempt }}
+          name: pages-app-${{ steps.pages-artifact.outputs.run_id }}-${{ steps.pages-artifact.outputs.run_attempt }}
           path: |
             packages/app/dist
             packages/app/functions
@@ -1008,13 +1012,8 @@ jobs:
     concurrency:
       group: cloud-cf-deploy-console-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || (((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'production' || 'staging') }}
       cancel-in-progress: ${{ github.event_name == 'pull_request' }}
-    # Keep the deploy fleet configurable while Cloud ops converges on the
-    # reliable runner pool. Set CLOUD_CF_DEPLOY_RUNNER_JSON to a JSON runs-on
-    # array such as ["self-hosted","Linux","X64","hetzner-robot"] to use the
-    # Hetzner fleet; otherwise default to GitHub-hosted Ubuntu. Pull request
-    # previews always use GitHub-hosted runners because the shared deploy robot
-    # can fail before any cleanup step while staging downloaded setup actions.
-    runs-on: ${{ fromJSON(github.event_name == 'pull_request' && '["ubuntu-latest"]' || vars.CLOUD_CF_DEPLOY_RUNNER_JSON || '["ubuntu-latest"]') }}
+    # Hosted unconditionally to preserve CI/placement workload separation.
+    runs-on: ubuntu-latest
     timeout-minutes: 75
     # Schema gate (#11208): real (non-PR) deploys only run after migrate-db
     # succeeded, so the frontend never goes live ahead of the schema its API
@@ -1139,10 +1138,36 @@ jobs:
           # lookup during setup. See elizaOS/eliza#10839.
           bun-version: "1.3.14"
 
+      - name: Resolve immutable console artifact
+        id: pages-artifact
+        env:
+          PRODUCER_RUN_ID: ${{ needs.build-pages.outputs.artifact_run_id }}
+          PRODUCER_RUN_ATTEMPT: ${{ needs.build-pages.outputs.artifact_run_attempt }}
+          PRODUCER_SOURCE_SHA: ${{ needs.build-pages.outputs.artifact_source_sha }}
+        run: |
+          set -euo pipefail
+          if ! [[ "$PRODUCER_RUN_ID" =~ ^[1-9][0-9]*$ ]]; then
+            echo "::error::Pages producer run ID is missing or invalid"
+            exit 1
+          fi
+          if ! [[ "$PRODUCER_RUN_ATTEMPT" =~ ^[1-9][0-9]*$ ]]; then
+            echo "::error::Pages producer run attempt is missing or invalid"
+            exit 1
+          fi
+          if [ "$PRODUCER_RUN_ID" != "$GITHUB_RUN_ID" ]; then
+            echo "::error::Pages artifact run mismatch: producer=$PRODUCER_RUN_ID consumer=$GITHUB_RUN_ID"
+            exit 1
+          fi
+          if [ "$PRODUCER_SOURCE_SHA" != "$GITHUB_SHA" ]; then
+            echo "::error::Pages artifact SHA mismatch: producer=$PRODUCER_SOURCE_SHA consumer=$GITHUB_SHA"
+            exit 1
+          fi
+          echo "name=pages-console-${PRODUCER_RUN_ID}-${PRODUCER_RUN_ATTEMPT}" >> "$GITHUB_OUTPUT"
+
       - name: Download immutable console artifact
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
-          name: pages-console-${{ github.run_id }}-${{ github.run_attempt }}
+          name: ${{ steps.pages-artifact.outputs.name }}
           path: ${{ env.CHECKOUT_DIR }}/packages/app
 
       - name: Legacy inline fallback - install dependencies
@@ -1207,6 +1232,14 @@ jobs:
         env:
           VITE_API_URL: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'https://api.elizacloud.ai' || 'https://api-staging.elizacloud.ai' }}
           NEXT_PUBLIC_API_URL: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'https://api.elizacloud.ai' || 'https://api-staging.elizacloud.ai' }}
+          # The OpenID Provider origin, byte-identical to the Worker's
+          # OIDC_ISSUER_URL (packages/cloud/api/wrangler.toml). /oidc/continue
+          # resumes a signed-out relying-party sign-in against it, and it must
+          # be the absolute API origin: the per-request binding cookie is
+          # host-only on that host, so bouncing through the console origin's
+          # /api proxy would arrive without it and expire every sign-in.
+          # Unset, the console renders an explicit "not configured" page.
+          VITE_OIDC_ISSUER_URL: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'https://api.elizacloud.ai' || 'https://api-staging.elizacloud.ai' }}
           VITE_ELIZA_CLOUD_BASE: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'https://www.elizacloud.ai' || 'https://staging.elizacloud.ai' }}
           # The console's own canonical origin (OG/canonical tags, returnTo base).
           VITE_APP_URL: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'https://elizacloud.ai' || 'https://staging.elizacloud.ai' }}
@@ -1417,13 +1450,8 @@ jobs:
     concurrency:
       group: cloud-cf-deploy-app-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || (((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'production' || 'staging') }}
       cancel-in-progress: ${{ github.event_name == 'pull_request' }}
-    # Keep the deploy fleet configurable while Cloud ops converges on the
-    # reliable runner pool. Set CLOUD_CF_DEPLOY_RUNNER_JSON to a JSON runs-on
-    # array such as ["self-hosted","Linux","X64","hetzner-robot"] to use the
-    # Hetzner fleet; otherwise default to GitHub-hosted Ubuntu. Pull request
-    # previews always use GitHub-hosted runners because the shared deploy robot
-    # can fail before any cleanup step while staging downloaded setup actions.
-    runs-on: ${{ fromJSON(github.event_name == 'pull_request' && '["ubuntu-latest"]' || vars.CLOUD_CF_DEPLOY_RUNNER_JSON || '["ubuntu-latest"]') }}
+    # Hosted unconditionally to preserve CI/placement workload separation.
+    runs-on: ubuntu-latest
     timeout-minutes: 75
     # Schema gate (#11208): same contract as deploy-console — non-PR deploys
     # require a successful migrate-db; PR previews (migrate-db skipped) still
@@ -1544,10 +1572,36 @@ jobs:
           # lookup during setup. See elizaOS/eliza#10839.
           bun-version: "1.3.14"
 
+      - name: Resolve immutable app artifact
+        id: pages-artifact
+        env:
+          PRODUCER_RUN_ID: ${{ needs.build-pages.outputs.artifact_run_id }}
+          PRODUCER_RUN_ATTEMPT: ${{ needs.build-pages.outputs.artifact_run_attempt }}
+          PRODUCER_SOURCE_SHA: ${{ needs.build-pages.outputs.artifact_source_sha }}
+        run: |
+          set -euo pipefail
+          if ! [[ "$PRODUCER_RUN_ID" =~ ^[1-9][0-9]*$ ]]; then
+            echo "::error::Pages producer run ID is missing or invalid"
+            exit 1
+          fi
+          if ! [[ "$PRODUCER_RUN_ATTEMPT" =~ ^[1-9][0-9]*$ ]]; then
+            echo "::error::Pages producer run attempt is missing or invalid"
+            exit 1
+          fi
+          if [ "$PRODUCER_RUN_ID" != "$GITHUB_RUN_ID" ]; then
+            echo "::error::Pages artifact run mismatch: producer=$PRODUCER_RUN_ID consumer=$GITHUB_RUN_ID"
+            exit 1
+          fi
+          if [ "$PRODUCER_SOURCE_SHA" != "$GITHUB_SHA" ]; then
+            echo "::error::Pages artifact SHA mismatch: producer=$PRODUCER_SOURCE_SHA consumer=$GITHUB_SHA"
+            exit 1
+          fi
+          echo "name=pages-app-${PRODUCER_RUN_ID}-${PRODUCER_RUN_ATTEMPT}" >> "$GITHUB_OUTPUT"
+
       - name: Download immutable app artifact
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
-          name: pages-app-${{ github.run_id }}-${{ github.run_attempt }}
+          name: ${{ steps.pages-artifact.outputs.name }}
           path: ${{ env.CHECKOUT_DIR }}/packages/app
 
       - name: Legacy inline fallback - install dependencies
@@ -1610,6 +1664,7 @@ jobs:
         env:
           VITE_API_URL: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'https://api.elizacloud.ai' || 'https://api-staging.elizacloud.ai' }}
           NEXT_PUBLIC_API_URL: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'https://api.elizacloud.ai' || 'https://api-staging.elizacloud.ai' }}
+          VITE_OIDC_ISSUER_URL: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'https://api.elizacloud.ai' || 'https://api-staging.elizacloud.ai' }}
           VITE_ELIZA_CLOUD_BASE: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'https://www.elizacloud.ai' || 'https://staging.elizacloud.ai' }}
           # The app's own canonical origin — its own subdomain, NOT the apex.
           NEXT_PUBLIC_APP_URL: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'https://app.elizacloud.ai' || 'https://app-staging.elizacloud.ai' }}
@@ -1762,7 +1817,7 @@ jobs:
   # THAT environment -- not the other one leaking through the prod
   # `*.elizacloud.ai/*` wildcard or a mis-mapped Pages custom domain. This does
   # NOT gate the deploy (it already happened); it surfaces a misroute as a red
-  # check. The always-on scheduled monitor is .github/workflows/verify-cf-routing.yml.
+  # check. Operators can also dispatch this workflow for an explicit recheck.
   # ---------------------------------------------------------------------------
   verify-routing:
     name: Verify ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'production' || 'staging' }} routing

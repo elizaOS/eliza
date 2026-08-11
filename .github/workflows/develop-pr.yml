@@ -43,14 +43,21 @@ jobs:
           skip-avatar-clone: "true"
           no-vision-deps: "true"
 
+      - name: Validate CI Bun version pin contract
+        run: node packages/scripts/ci-bun-version-contract.mjs --inventory "$RUNNER_TEMP/bun-runtime-inventory.json"
+
+      - name: Upload Bun runtime resolution inventory
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: bun-runtime-inventory
+          path: ${{ runner.temp }}/bun-runtime-inventory.json
+          retention-days: 30
+
       - name: Run lint (read-only)
         run: bun run lint:check
 
       - name: Check formatting
         run: bun run format:check
-
-      - name: Validate merge-critical workflow invariants
-        run: node packages/scripts/ci-workflow-invariants.mjs
 
       - name: Install pinned workflow linters
         run: .github/scripts/install-workflow-linters.sh "$RUNNER_TEMP/workflow-linters"
@@ -59,22 +66,11 @@ jobs:
         run: >-
           "$RUNNER_TEMP/workflow-linters/actionlint"
           -config-file .github/actionlint.yaml
+          .github/workflows/ci.yml
           .github/workflows/develop-pr.yml
-          .github/workflows/develop-pr-gate.yml
           .github/workflows/cloud-tests.yml
           .github/workflows/gitleaks.yml
-          .github/workflows/local-inference-matrix.yml
-          .github/workflows/stale-base-guard.yml
           .github/workflows/test.yml
-
-      - name: Run zizmor on base-trusted workflows
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: >-
-          "$RUNNER_TEMP/workflow-linters/zizmor"
-          --offline
-          .github/workflows/develop-pr-gate.yml
-          .github/workflows/stale-base-guard.yml
 
   typecheck:
     runs-on: ubuntu-latest
@@ -279,4 +275,9 @@ jobs:
         run: |
           bun run build:core
           bun run build:views
-          node packages/scripts/run-all-tests.mjs --only=test --no-cloud --concurrency=3 --min-tasks=${{ steps.changed.outputs.count }}
+          # This step only runs when at least one changed plugin was selected,
+          # so --require-work (fail when the lane matches zero runnable tasks)
+          # carries the retired minimum-task vacuous-green guard under the
+          # runner's surviving flag surface; unknown flags exit 2 before any
+          # test runs.
+          node packages/scripts/run-all-tests.mjs --only=test --no-cloud --concurrency=3 --require-work

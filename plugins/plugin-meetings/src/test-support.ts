@@ -547,14 +547,18 @@ export function scriptedDeps(
       options: MeetingPipelineOptions,
     ) => MeetingPipelineInstance;
     createBillingSession?: MeetingServiceDependencies["createBillingSession"];
+    importZoomCloudMeeting?: MeetingServiceDependencies["importZoomCloudMeeting"];
   };
   pipelines: ScriptedPipeline[];
+  pipelineOptions: MeetingPipelineOptions[];
 } {
   const pipelines: ScriptedPipeline[] = [];
+  const pipelineOptions: MeetingPipelineOptions[] = [];
   return {
     deps: {
       adapters: new Map(adapters.map((a) => [a.platform, a])),
-      createPipeline: () => {
+      createPipeline: (options) => {
+        pipelineOptions.push(options);
         const pipeline = new ScriptedPipeline();
         pipelines.push(pipeline);
         return pipeline;
@@ -572,5 +576,6 @@ export function scriptedDeps(
         : {}),
     },
     pipelines,
+    pipelineOptions,
   };
 }

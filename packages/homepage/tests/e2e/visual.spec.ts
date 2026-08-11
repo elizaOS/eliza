@@ -1,33 +1,24 @@
 /**
  * Visual regression coverage for the public homepage routes.
  *
- * Every route and viewport is compared against committed baselines via
- * toHaveScreenshot, while the quality-retry pre-check rejects blank or
- * half-painted captures with a clear diagnostic before pixel diffing.
+ * Every route and viewport is compared against committed baselines using the
+ * exact capture the quality-and-stability gate validated: blank or
+ * half-painted frames are rejected, and the gate requires two consecutive
+ * visually-stable captures so a mid-composite WebGL frame is never diffed.
  * Baselines regenerate per platform through scripts/regenerate-baselines.sh.
  */
 
 import { expect, type Page, test } from "playwright/test";
 import { waitForLandingIntro } from "./landing-readiness";
 import { captureScreenshotWithQualityRetry } from "./screenshot-quality";
-
-const ROUTES = [
-  { path: "/", name: "landing" },
-  { path: "/downloads", name: "downloads" },
-  { path: "/login", name: "login" },
-  { path: "/connected", name: "connected" },
-  { path: "/get-started", name: "get-started" },
-  { path: "/leaderboard", name: "leaderboard" },
-  // "*" is the App.tsx catch-all; exercised via a representative unknown path.
-  { path: "*", name: "not-found", goto: "/this-page-does-not-exist" },
-] as const;
-
-const VIEWPORTS = [
-  { name: "desktop", width: 1280, height: 720 },
-  { name: "mobile", width: 390, height: 844 },
-] as const;
+import { VISUAL_ROUTES, VISUAL_VIEWPORTS } from "./visual-routes";
 
 const FIXED_TIME = new Date("2026-01-15T14:30:00.000Z");
+
+test.skip(
+  process.platform !== "linux",
+  "Visual regression baselines are committed for the Linux CI renderer only",
+);
 
 async function waitForShader(page: Page) {
   await expect(page.locator("[data-shader-background]")).toHaveAttribute(
@@ -55,17 +46,44 @@ async function waitForOnboardingCards(page: Page) {
     .toEqual({ opacity: 1, transform: "matrix(1, 0, 0, 1, 0, 0)" });
 }
 
+async function prepareProfileAuth(page: Page) {
+  await page.addInitScript(() => {
+    window.localStorage.setItem("eliza_app_session", "homepage-visual-token");
+  });
+  await page.route("https://www.elizacloud.ai/api/eliza-app/**", (route) =>
+    route.fulfill({
+      json: {
+        user: {
+          id: "user_homepage_visual",
+          name: "Homepage Visual",
+          organization_id: "org_homepage_visual",
+        },
+        organization: {
+          id: "org_homepage_visual",
+          name: "Homepage Visual Org",
+          credit_balance: "0",
+        },
+      },
+    }),
+  );
+}
+
 async function prepare(page: Page, routePath?: string) {
   if (routePath === "/" || routePath === "/leaderboard") {
     await waitForLandingIntro(page);
     return;
   }
   await page.evaluate(() => document.fonts.ready);
-  if (routePath === "/login" || routePath === "/connected") {
+  if (
+    routePath === "/login" ||
+    routePath === "/connected" ||
+    routePath === "/profile/edit"
+  ) {
     await page.waitForFunction(
       () =>
         window.location.pathname === "/get-started" ||
-        document.body.textContent?.includes("Connected."),
+        document.body.textContent?.includes("Connected.") ||
+        document.body.textContent?.includes("Link a public wallet."),
       undefined,
       { timeout: 20_000 },
     );
@@ -92,7 +110,7 @@ function dynamicMask(page: Page) {
   ];
 }
 
-for (const viewport of VIEWPORTS) {
+for (const viewport of VISUAL_VIEWPORTS) {
   test.describe(`visual regression — ${viewport.name}`, () => {
     test.use({
       viewport: { width: viewport.width, height: viewport.height },
@@ -100,14 +118,15 @@ for (const viewport of VIEWPORTS) {
       timezoneId: "UTC",
     });
 
-    for (const route of ROUTES) {
+    for (const route of VISUAL_ROUTES) {
       test(`${route.name} (${viewport.name})`, async ({ page }) => {
         test.setTimeout(60_000);
         await page.clock.setFixedTime(FIXED_TIME);
+        if ("authed" in route && route.authed) await prepareProfileAuth(page);
         const target = "goto" in route ? route.goto : route.path;
         await page.goto(target, { waitUntil: "domcontentloaded" });
         await prepare(page, route.path);
-        await captureScreenshotWithQualityRetry(
+        const screenshot = await captureScreenshotWithQualityRetry(
           page,
           `${route.name} ${viewport.name}`,
           {
@@ -116,14 +135,9 @@ for (const viewport of VIEWPORTS) {
             animations: "disabled",
           },
         );
-        await expect(page).toHaveScreenshot(
+        expect(screenshot).toMatchSnapshot(
           `${route.name}-${viewport.name}.png`,
-          {
-            fullPage: true,
-            mask: dynamicMask(page),
-            animations: "disabled",
-            maxDiffPixelRatio: 0.02,
-          },
+          { maxDiffPixelRatio: 0.02 },
         );
       });
     }

@@ -4,6 +4,7 @@
  * an in-process keyed queue over the cache-backed store.
  */
 
+import { ElizaError } from "@elizaos/core";
 import type {
   RuntimeDurableObjectNamespace,
   RuntimeDurableObjectStub,
@@ -71,10 +72,33 @@ export interface OnboardingChatInput {
   authenticatedUser?: {
     userId: string;
     organizationId: string;
+    telegramId?: string;
   } | null;
   trustedPlatformIdentity?: boolean;
+  /** Requests fail-closed redemption of an existing trusted Telegram session. */
+  continuationMode?: "trusted-telegram";
   /** Stable transport delivery id. Replays return the original result. */
   idempotencyKey?: string;
+  /**
+   * Read-only status poll. When true the call returns the current provisioning
+   * state and a deterministic reply but never appends to session history, even
+   * on a brand-new session. Browser polling uses this so repeated 5 s polls
+   * cannot grow the durable transcript with duplicate status copy.
+   */
+  statusOnly?: boolean;
+  /** Explicit, informed browser confirmation of a trusted platform link. */
+  confirmPlatformLink?: boolean;
+}
+
+export interface DiscordOnboardingContinuationPreview {
+  platform: "discord";
+  platformUserId: string;
+  platformDisplayName: string;
+}
+
+export interface OnboardingChatCta {
+  label: string;
+  url: string;
 }
 
 export interface OnboardingChatResult {
@@ -86,6 +110,13 @@ export interface OnboardingChatResult {
   launchUrl: string | null;
   provisioning: ElizaAppProvisioningStatus;
   handoffComplete: boolean;
+  /**
+   * Login handoff rendered as a platform affordance (for example a Discord
+   * link button). When present, the reply text intentionally omits the raw
+   * loginUrl; transports without button support keep the inline URL and get
+   * null here. Same loginUrl either way - presentation only.
+   */
+  cta?: OnboardingChatCta | null;
 }
 
 const SESSION_TTL_SECONDS = 14 * 24 * 60 * 60;
@@ -97,9 +128,19 @@ const MAX_HISTORY_MESSAGES = 200;
  */
 const MAX_MESSAGE_LENGTH = 4000;
 const DEFAULT_ONBOARDING_APP_URL = "https://app.elizacloud.ai";
+// `/get-started` belongs to the homepage, while dashboard and billing links
+// belong to the Cloud app. Keep these origins separate so fixing one route
+// cannot silently break the other surface.
+const DEFAULT_ONBOARDING_LOGIN_APP_URL = "https://eliza.app";
 const ELIZA_APP_INITIAL_CREDIT_USD = "$5";
-const ELIZA_APP_PRICING_SUMMARY =
-  "Eliza Cloud is usage-based: your agent runs in a private cloud container and spends credits only as it works.";
+/** Label for platforms that render the login link as a UI affordance. */
+const ONBOARDING_CTA_LABEL = "Connect";
+/**
+ * Discord rejects button URLs longer than 512 characters. Enforced here so a
+ * too-long login URL falls back to inline-URL copy instead of producing a CTA
+ * the transport would refuse (which would drop the whole reply).
+ */
+const MAX_CTA_URL_LENGTH = 512;
 
 function sessionCacheKey(sessionId: string): string {
   return `eliza-app:onboarding:${sessionId}`;
@@ -109,8 +150,18 @@ function continuationCacheKey(token: string): string {
   return `eliza-app:onboarding-continuation:${token}`;
 }
 
-function resultCacheKey(sessionId: string, idempotencyKey: string): string {
-  return `eliza-app:onboarding-result:${sessionId}:${idempotencyKey}`;
+function resultCacheKey(
+  sessionId: string,
+  idempotencyKey: string,
+  input: OnboardingChatInput,
+): string {
+  const account = input.authenticatedUser;
+  const scope = account
+    ? `account:${encodeURIComponent(account.organizationId)}:${encodeURIComponent(account.userId)}`
+    : "transport";
+  const mode = input.continuationMode ?? "standard";
+  const telegramId = input.authenticatedUser?.telegramId ?? "no-telegram";
+  return `eliza-app:onboarding-result:${sessionId}:${scope}:${mode}:${encodeURIComponent(telegramId)}:${idempotencyKey}`;
 }
 
 function nowIso(): string {
@@ -167,6 +218,21 @@ interface OnboardingContinuation {
   sessionId: string;
 }
 
+export interface TelegramOnboardingContinuationValidation {
+  sessionId: string;
+  userId?: string;
+  organizationId?: string;
+}
+
+export interface ValidateTelegramOnboardingContinuationInput {
+  continuationToken: string;
+  telegramId: string;
+  authenticatedAccount?: {
+    userId: string;
+    organizationId: string;
+  } | null;
+}
+
 function isOnboardingContinuation(value: unknown): value is OnboardingContinuation {
   if (!value || typeof value !== "object" || !("sessionId" in value)) {
     return false;
@@ -179,6 +245,27 @@ function isOnboardingContinuation(value: unknown): value is OnboardingContinuati
   );
 }
 
+async function resolveContinuationToken(token: string): Promise<string | null> {
+  const trimmed = token.trim();
+  if (!SESSION_ID_PATTERN.test(trimmed) || trimmed.startsWith(PLATFORM_SESSION_PREFIX)) {
+    return null;
+  }
+
+  const coordinator = onboardingCoordinator();
+  if (coordinator) {
+    const response = await coordinator
+      .getByName(trimmed)
+      .fetch("https://onboarding.internal/resolve", { method: "POST" });
+    if (response.ok) {
+      const resolved: unknown = await response.json();
+      if (isOnboardingContinuation(resolved)) return resolved.sessionId;
+    }
+  }
+
+  const continuation = await cache.get<unknown>(continuationCacheKey(trimmed));
+  return isOnboardingContinuation(continuation) ? continuation.sessionId : null;
+}
+
 async function resolveSessionId(input: OnboardingChatInput): Promise<string> {
   const sessionId = sanitizeSessionId(input.sessionId, input);
   if (
@@ -186,24 +273,227 @@ async function resolveSessionId(input: OnboardingChatInput): Promise<string> {
     input.trustedPlatformIdentity !== true &&
     input.sessionId?.trim() === sessionId
   ) {
-    const coordinator = onboardingCoordinator();
-    if (coordinator) {
-      const response = await coordinator
-        .getByName(sessionId)
-        .fetch("https://onboarding.internal/resolve", { method: "POST" });
-      if (response.ok) {
-        const resolved: unknown = await response.json();
-        if (isOnboardingContinuation(resolved)) {
-          return resolved.sessionId;
-        }
-      }
-    }
-    const continuation = await cache.get<unknown>(continuationCacheKey(sessionId));
-    if (isOnboardingContinuation(continuation)) {
-      return continuation.sessionId;
-    }
+    return (await resolveContinuationToken(sessionId)) ?? sessionId;
   }
   return sessionId;
+}
+
+async function loadOnboardingSessionForValidation(
+  sessionId: string,
+): Promise<OnboardingSession | null> {
+  const coordinator = onboardingCoordinator();
+  if (coordinator) {
+    const response = await coordinator
+      .getByName(sessionId)
+      .fetch("https://onboarding.internal/inspect", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ sessionId }),
+      });
+    if (response.ok) {
+      return (await response.json()) as OnboardingSession;
+    }
+  }
+  return loadCachedOnboardingSession(sessionId);
+}
+
+function trustedDiscordContinuationError(session: OnboardingSession | null): ElizaError {
+  return new ElizaError("Invalid Discord onboarding continuation", {
+    code: "ONBOARDING_TRUSTED_CONTINUATION_INVALID",
+    context: { platform: "discord", sessionFound: Boolean(session) },
+    severity: "ephemeral",
+  });
+}
+
+function isDiscordContinuationForAccount(
+  session: OnboardingSession | null,
+  authenticatedAccount: { userId: string; organizationId: string },
+): session is OnboardingSession & { platform: "discord"; platformUserId: string } {
+  const hasUserBinding = session?.userId !== undefined;
+  const hasOrganizationBinding = session?.organizationId !== undefined;
+  return Boolean(
+    session &&
+      session.platform === "discord" &&
+      session.platformIdentityTrusted === true &&
+      session.platformUserId &&
+      isFreshOnboardingSession(session) &&
+      hasUserBinding === hasOrganizationBinding &&
+      (session.userId === undefined || session.userId === authenticatedAccount.userId) &&
+      (session.organizationId === undefined ||
+        session.organizationId === authenticatedAccount.organizationId),
+  );
+}
+
+/** Resolve an opaque Discord continuation without mutating or binding it. */
+export async function inspectDiscordOnboardingContinuation(
+  continuationToken: string,
+  authenticatedAccount: { userId: string; organizationId: string },
+): Promise<DiscordOnboardingContinuationPreview> {
+  const sessionId = await resolveContinuationToken(continuationToken);
+  const session = sessionId ? await loadOnboardingSessionForValidation(sessionId) : null;
+  if (!isDiscordContinuationForAccount(session, authenticatedAccount)) {
+    throw trustedDiscordContinuationError(session);
+  }
+  return {
+    platform: "discord",
+    platformUserId: session.platformUserId,
+    platformDisplayName: session.platformDisplayName?.trim() || session.platformUserId,
+  };
+}
+
+/**
+ * A mutating Discord confirmation must still resolve the exact trusted session
+ * previewed by this account. This closes expiry/binding TOCTOU windows between
+ * GET preview and POST confirmation and refuses direct forged confirmations.
+ */
+function assertConfirmedDiscordContinuation(
+  session: OnboardingSession | null,
+  input: OnboardingChatInput,
+): void {
+  if (input.confirmPlatformLink !== true) return;
+  if (
+    !input.authenticatedUser ||
+    input.trustedPlatformIdentity === true ||
+    !isDiscordContinuationForAccount(session, input.authenticatedUser)
+  ) {
+    throw trustedDiscordContinuationError(session);
+  }
+}
+
+function isFreshOnboardingSession(session: OnboardingSession): boolean {
+  const createdAt = Date.parse(session.createdAt);
+  return (
+    Number.isFinite(createdAt) &&
+    createdAt <= Date.now() + 5 * 60 * 1000 &&
+    Date.now() - createdAt <= SESSION_TTL_SECONDS * 1000
+  );
+}
+
+function trustedContinuationError(session: OnboardingSession | null): ElizaError {
+  return new ElizaError("Invalid trusted Telegram onboarding continuation", {
+    code: "ONBOARDING_TRUSTED_CONTINUATION_INVALID",
+    context: {
+      sessionFound: Boolean(session),
+      trustedTelegramSession:
+        session?.platform === "telegram" && session.platformIdentityTrusted === true,
+    },
+    severity: "ephemeral",
+  });
+}
+
+export async function validateTelegramOnboardingContinuation(
+  input: ValidateTelegramOnboardingContinuationInput,
+): Promise<TelegramOnboardingContinuationValidation> {
+  const sessionId = await resolveContinuationToken(input.continuationToken);
+  if (!sessionId) throw trustedContinuationError(null);
+
+  const session = await loadOnboardingSessionForValidation(sessionId);
+  const hasUserBinding = session?.userId !== undefined;
+  const hasOrganizationBinding = session?.organizationId !== undefined;
+  if (
+    !session ||
+    session.platform !== "telegram" ||
+    session.platformIdentityTrusted !== true ||
+    !session.platformUserId ||
+    !isFreshOnboardingSession(session) ||
+    hasUserBinding !== hasOrganizationBinding ||
+    (session.userId !== undefined && session.userId !== input.authenticatedAccount?.userId) ||
+    (session.organizationId !== undefined &&
+      session.organizationId !== input.authenticatedAccount?.organizationId)
+  ) {
+    throw trustedContinuationError(session);
+  }
+
+  if (session.platformUserId !== input.telegramId) {
+    throw new ElizaError(
+      "The authenticated messaging identity does not match this onboarding session",
+      {
+        code: "ONBOARDING_PLATFORM_IDENTITY_MISMATCH",
+        context: { platform: "telegram", hasSignedPlatformIdentity: true },
+        severity: "ephemeral",
+      },
+    );
+  }
+
+  return {
+    sessionId,
+    userId: session.userId,
+    organizationId: session.organizationId,
+  };
+}
+
+export interface ClaimTelegramOnboardingContinuationInput
+  extends ValidateTelegramOnboardingContinuationInput {
+  claimId: string;
+  phoneNumber: string;
+}
+
+export interface TelegramOnboardingContinuationClaim {
+  status: "acquired" | "completed";
+  sessionId: string;
+  userId?: string;
+  organizationId?: string;
+}
+
+function parseTelegramOnboardingContinuationClaim(
+  value: unknown,
+): TelegramOnboardingContinuationClaim {
+  if (!value || typeof value !== "object") throw trustedContinuationError(null);
+  const claim = value as Record<string, unknown>;
+  const validSession = typeof claim.sessionId === "string" && Boolean(claim.sessionId);
+  const valid =
+    validSession &&
+    (claim.status === "acquired" ||
+      (claim.status === "completed" &&
+        typeof claim.userId === "string" &&
+        Boolean(claim.userId) &&
+        typeof claim.organizationId === "string" &&
+        Boolean(claim.organizationId)));
+  if (!valid) throw trustedContinuationError(null);
+  return claim as unknown as TelegramOnboardingContinuationClaim;
+}
+
+export async function claimTelegramOnboardingContinuation(
+  input: ClaimTelegramOnboardingContinuationInput,
+): Promise<TelegramOnboardingContinuationClaim> {
+  const token = input.continuationToken.trim();
+  const coordinator = onboardingCoordinator();
+  if (!coordinator || !SESSION_ID_PATTERN.test(token)) {
+    throw trustedContinuationError(null);
+  }
+  const response = await coordinator.getByName(token).fetch("https://onboarding.internal/claim", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      claimId: input.claimId,
+      telegramId: input.telegramId,
+      phoneNumber: input.phoneNumber,
+      userId: input.authenticatedAccount?.userId,
+      organizationId: input.authenticatedAccount?.organizationId,
+    }),
+  });
+  if (!response.ok) throw trustedContinuationError(null);
+  return parseTelegramOnboardingContinuationClaim(await response.json());
+}
+
+export async function completeTelegramOnboardingContinuationClaim(input: {
+  continuationToken: string;
+  claimId: string;
+  telegramId: string;
+  phoneNumber: string;
+  userId: string;
+  organizationId: string;
+}): Promise<void> {
+  const coordinator = onboardingCoordinator();
+  if (!coordinator) throw trustedContinuationError(null);
+  const response = await coordinator
+    .getByName(input.continuationToken.trim())
+    .fetch("https://onboarding.internal/complete-claim", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(input),
+    });
+  if (!response.ok) throw trustedContinuationError(null);
 }
 
 export async function loadCachedOnboardingSession(
@@ -383,15 +673,58 @@ async function maybeLinkAuthenticatedPlatformIdentity(
   session: OnboardingSession,
   input: OnboardingChatInput,
 ): Promise<OnboardingSession> {
-  // Phone linking requires a platform identity attested by a trusted
+  // Identity linking requires a platform identity attested by a trusted
   // transport — either this turn or a previous gateway turn on the session.
-  // An authenticated web caller claiming an arbitrary phone number in the
-  // request body must never bind that phone to their account.
+  // An authenticated web caller claiming an arbitrary phone number or Discord
+  // id in the request body must never bind that identity to their account.
   const platformIdentityTrusted =
     input.trustedPlatformIdentity === true || session.platformIdentityTrusted === true;
+  if (!input.authenticatedUser || !platformIdentityTrusted) {
+    return session;
+  }
+
+  // Discord: a PRIOR gateway turn attested "this session belongs to discord
+  // user X"; the user then authenticated (e.g. Steward email login) via the
+  // opaque continuation credential. Bind the Discord identity so
+  // routeDiscordMessage resolves their DMs to the provisioned agent instead of
+  // onboarding forever. Skipped on gateway turns themselves
+  // (input.trustedPlatformIdentity): there the authenticated account was
+  // RESOLVED FROM user_identities.discord_id, so the link already exists and
+  // re-linking would just add a DB round trip to every DM turn.
   if (
-    !input.authenticatedUser ||
-    !platformIdentityTrusted ||
+    session.platform === "discord" &&
+    session.platformUserId &&
+    input.trustedPlatformIdentity !== true
+  ) {
+    if (input.confirmPlatformLink !== true) {
+      throw new ElizaError("Discord identity linking requires explicit confirmation", {
+        code: "ONBOARDING_PLATFORM_LINK_CONFIRMATION_REQUIRED",
+        context: { platform: "discord" },
+        severity: "ephemeral",
+      });
+    }
+    // Same error policy as the phone link below: success:false is the designed
+    // tenant-safety decline (identity owned by another account) and onboarding
+    // continues; a genuine infra failure throws and propagates — it reruns on
+    // every eligible turn, so a transient throw self-heals on the next attempt.
+    const discordLink = await elizaAppUserService.linkDiscordToUser(
+      input.authenticatedUser.userId,
+      {
+        discordId: session.platformUserId,
+        username: session.platformDisplayName?.trim() || session.platformUserId,
+      },
+    );
+    if (!discordLink.success) {
+      throw new ElizaError(discordLink.error || "Discord identity could not be linked", {
+        code: "ONBOARDING_PLATFORM_IDENTITY_CONFLICT",
+        context: { platform: "discord" },
+        severity: "ephemeral",
+      });
+    }
+    return session;
+  }
+
+  if (
     !isPhoneLikePlatformIdentity({
       trustedPlatformIdentity: true,
       platform: session.platform,
@@ -426,6 +759,68 @@ async function maybeLinkAuthenticatedPlatformIdentity(
   return session;
 }
 
+function assertAuthenticatedTelegramIdentity(
+  session: OnboardingSession,
+  input: OnboardingChatInput,
+): void {
+  // A trusted transport attests its own platform identity — except in strict
+  // continuation mode, where the caller is the auth route acting on a signed
+  // browser payload and the identity match must always run.
+  if (
+    !input.authenticatedUser ||
+    (input.trustedPlatformIdentity === true && input.continuationMode !== "trusted-telegram") ||
+    session.platformIdentityTrusted !== true
+  ) {
+    return;
+  }
+
+  if (session.platform !== "telegram") {
+    return;
+  }
+  const signedPlatformId = input.authenticatedUser.telegramId;
+  if (signedPlatformId === session.platformUserId) {
+    return;
+  }
+
+  throw new ElizaError(
+    "The authenticated messaging identity does not match this onboarding session",
+    {
+      code: "ONBOARDING_PLATFORM_IDENTITY_MISMATCH",
+      context: {
+        platform: session.platform,
+        hasSignedPlatformIdentity: Boolean(signedPlatformId),
+      },
+      severity: "ephemeral",
+    },
+  );
+}
+
+export function assertTrustedTelegramContinuation(
+  session: OnboardingSession | null,
+  input: OnboardingChatInput,
+): void {
+  if (input.continuationMode !== "trusted-telegram") return;
+
+  const hasUserBinding = session?.userId !== undefined;
+  const hasOrganizationBinding = session?.organizationId !== undefined;
+  if (
+    !session ||
+    !input.authenticatedUser ||
+    session.platform !== "telegram" ||
+    session.platformIdentityTrusted !== true ||
+    !session.platformUserId ||
+    !isFreshOnboardingSession(session) ||
+    hasUserBinding !== hasOrganizationBinding ||
+    (session.userId !== undefined && session.userId !== input.authenticatedUser.userId) ||
+    (session.organizationId !== undefined &&
+      session.organizationId !== input.authenticatedUser.organizationId)
+  ) {
+    throw trustedContinuationError(session);
+  }
+
+  assertAuthenticatedTelegramIdentity(session, input);
+}
+
 function getOnboardingAppUrl(): string {
   const env = getCloudAwareEnv();
   const configured =
@@ -440,33 +835,81 @@ function onboardingAppPath(path: string): string {
   return `${getOnboardingAppUrl()}${path.startsWith("/") ? path : `/${path}`}`;
 }
 
+function onboardingLoginAppPath(path: string): string {
+  const configured =
+    getCloudAwareEnv().ELIZA_ONBOARDING_LOGIN_APP_URL || DEFAULT_ONBOARDING_LOGIN_APP_URL;
+  const baseUrl = configured.replace(/\/+$/, "");
+  return `${baseUrl}${path.startsWith("/") ? path : `/${path}`}`;
+}
+
+/**
+ * Platforms whose transports render the login handoff as a link button. The
+ * reply text on these platforms drops the raw URL; everything else (SMS,
+ * iMessage, web fallback) keeps the URL inline because it has no buttons.
+ */
+function rendersLoginAsButton(platform: OnboardingPlatform | undefined): boolean {
+  return platform === "discord";
+}
+
+/**
+ * Builds the login CTA, or null when the login URL cannot ride a link button
+ * (non-https scheme - possible via ELIZA_ONBOARDING_APP_URL and friends, which
+ * are read from env without scheme validation - or over Discord's 512-char
+ * button URL cap). The caller chooses the reply copy from whether this
+ * returned a CTA, so "text says tap below" and "button actually renders" are
+ * the same decision and cannot disagree.
+ */
+function buildLoginCta(loginUrl: string): OnboardingChatCta | null {
+  let parsed: URL;
+  try {
+    parsed = new URL(loginUrl);
+  } catch {
+    // error-policy:J3 Environment-derived login URLs are untrusted; malformed
+    // values disable the button and preserve the inline-link reply variant.
+    return null;
+  }
+  if (parsed.protocol !== "https:") return null;
+  if (loginUrl.length > MAX_CTA_URL_LENGTH) return null;
+  return { label: ONBOARDING_CTA_LABEL, url: loginUrl };
+}
+
 function fallbackReply(args: {
   session: OnboardingSession;
   provisioning: ElizaAppProvisioningStatus;
   requiresLogin: boolean;
   loginUrl: string;
   handoffComplete: boolean;
+  cta: OnboardingChatCta | null;
 }): string {
   const name = hasPreferredName(args.session) ? args.session.name : undefined;
   if (!name) {
-    return `Hey, I'm Eliza — I can get you set up with your own private Eliza Cloud agent that texts, remembers context, and works for you. ${ELIZA_APP_PRICING_SUMMARY} New users get ${ELIZA_APP_INITIAL_CREDIT_USD} free credit to try it. To get you started, what should I call you?`;
+    return `hey, I'm Eliza. I can get you set up with your own agent. it chats right here, remembers everything you talk about, and your first ${ELIZA_APP_INITIAL_CREDIT_USD} is on me. what should I call you?`;
   }
   if (args.requiresLogin) {
-    return `Nice to meet you, ${name}. I can set up your private Eliza Cloud agent next. ${ELIZA_APP_PRICING_SUMMARY} When you connect, you get ${ELIZA_APP_INITIAL_CREDIT_USD} free credit to try it. Connect Eliza Cloud here: ${args.loginUrl}`;
+    // "tap below" copy only when a CTA will actually render; otherwise the
+    // URL stays inline (SMS/iMessage, or a button-capable platform whose
+    // login URL could not become a valid button - see buildLoginCta).
+    if (args.cta) {
+      return `nice to meet you, ${name}. tap below to connect your account and I'll spin up your agent. your first ${ELIZA_APP_INITIAL_CREDIT_USD} is on me.`;
+    }
+    return `nice to meet you, ${name}. connect your account here and I'll spin up your agent, first ${ELIZA_APP_INITIAL_CREDIT_USD} on me: ${args.loginUrl}`;
   }
   if (args.handoffComplete) {
-    return `You're live, ${name}. Your private agent is running, and I copied this onboarding chat into its memory so you can continue with context. Your ${ELIZA_APP_INITIAL_CREDIT_USD} starter credit is on your account.`;
+    return `you're in, ${name}. your agent is live and already knows everything from this chat. just keep talking here.`;
   }
   if (args.provisioning.status === "running") {
-    return `Your container is running, ${name}. I'm finishing the handoff now.`;
+    return `almost there, ${name}. finishing setup now.`;
   }
   if (args.provisioning.status === "error") {
-    return `I hit a provisioning issue, ${name}. Your control panel has the latest status, and the team can inspect it there.`;
+    // The row is still `error` at this instant — the retry only flips it once
+    // the daemon claims the job — so this promises a retry, not progress, and
+    // sends nobody to a dashboard that has no button to fix it.
+    return `last attempt failed, ${name}. I've queued another one, nothing for you to do. keep chatting here.`;
   }
   if (args.provisioning.status === "insufficient_credits") {
-    return `You're out of credits, ${name}. ${ELIZA_APP_PRICING_SUMMARY} Add credits at ${onboardingAppPath("/dashboard/billing")} and I'll start your private agent.`;
+    return `you're out of credits, ${name}. top up at ${onboardingAppPath("/dashboard/billing")} and I'll get your agent going.`;
   }
-  return `Good, ${name}. Your private Eliza container is provisioning now. Keep chatting here while it starts up.`;
+  return `on it, ${name}. your agent is spinning up now, takes a minute or two. keep chatting here in the meantime.`;
 }
 
 function sanitizeReplyText(reply: string): string {
@@ -489,6 +932,7 @@ function generateOnboardingReply(args: {
   requiresLogin: boolean;
   loginUrl: string;
   handoffComplete: boolean;
+  cta: OnboardingChatCta | null;
 }): string {
   // This is a finite product state machine, not an open-ended generation task.
   // Deterministic copy prevents model latency, cost amplification, invented
@@ -612,6 +1056,13 @@ export async function runOnboardingChatWithStore(
   let sessionId = resolvedSessionId;
   let session = await store.load(sessionId);
 
+  // Browser account authentication is not proof that an arbitrary opaque ID
+  // belongs to a bot-issued Telegram session. Strict redemption must resolve
+  // an existing trusted session and match its signed Telegram identity before
+  // any new session, account binding, or provisioning work can occur.
+  assertTrustedTelegramContinuation(session, input);
+  assertConfirmedDiscordContinuation(session, input);
+
   // An untrusted caller must never create a platform-scoped session. Opaque
   // browser credentials resolve to an existing platform session above.
   if (
@@ -667,6 +1118,7 @@ export async function runOnboardingChatWithStore(
   }
 
   if (input.authenticatedUser) {
+    assertAuthenticatedTelegramIdentity(session, input);
     session = {
       ...session,
       userId: input.authenticatedUser.userId,
@@ -676,7 +1128,12 @@ export async function runOnboardingChatWithStore(
 
   session = await maybeLinkAuthenticatedPlatformIdentity(session, input);
 
-  const userMessage = input.message?.trim().slice(0, MAX_MESSAGE_LENGTH);
+  // statusOnly is a read-only poll: skip all user-message processing so it
+  // can never mutate session history, name, or preferred-name state, even if
+  // a caller accidentally includes a message field.
+  const userMessage = input.statusOnly
+    ? undefined
+    : input.message?.trim().slice(0, MAX_MESSAGE_LENGTH);
   let preferredNameProvidedThisTurn = false;
   if (userMessage) {
     session = appendMessage(session, "user", userMessage);
@@ -725,21 +1182,49 @@ export async function runOnboardingChatWithStore(
     handoffComplete = copied.copied;
   }
 
-  const loginUrl = onboardingAppPath(
-    `/get-started/?onboardingSession=${encodeURIComponent(
-      session.continuationToken ?? session.id,
-    )}`,
-  );
+  const loginParams = new URLSearchParams({
+    onboardingSession: session.continuationToken ?? session.id,
+  });
+  if (session.platform === "telegram") {
+    loginParams.set("method", "telegram");
+    loginParams.set("link", "true");
+  }
+  const loginUrl = onboardingLoginAppPath(`/get-started/?${loginParams.toString()}`);
   const panelUrl = controlPanelUrl(session.agentId);
+  // The CTA is derived FIRST and the copy chosen from whether it exists, so
+  // "tap below" text without a button is unrepresentable: the button CTA is
+  // present exactly when the reply is the login handoff on a button-capable
+  // platform AND the login URL is button-eligible (https, within Discord's
+  // URL bound). The text omits the URL only when the CTA carries it.
+  const cta =
+    requiresLogin && hasPreferredName(session) && rendersLoginAsButton(session.platform)
+      ? buildLoginCta(loginUrl)
+      : null;
+  // A turn with no user message produces a proactive welcome only the FIRST
+  // time — the initial mount/poll that has no user content yet. Every
+  // subsequent message-less turn (status-only polls every 5 s, continuation
+  // polls) returns the current provisioning state and a deterministic reply
+  // but leaves session.history untouched. Without this guard the durable
+  // transcript grows one assistant-only entry per poll; those duplicates are
+  // then returned to the UI and copied into managed-agent memory.
+  //
+  // The explicit statusOnly flag (sent by browser polling) is belt-and-
+  // suspenders: even if a poll arrives against a fresh session, statusOnly
+  // suppresses the welcome append — the initial mount POST already produced it.
+  const isFirstWelcome = !userMessage && session.history.length === 0 && !input.statusOnly;
+  const shouldAppendReply = userMessage || isFirstWelcome;
   const reply = generateOnboardingReply({
     session,
     provisioning,
     requiresLogin,
     loginUrl,
     handoffComplete,
+    cta,
   });
 
-  session = appendMessage(session, "assistant", reply);
+  if (shouldAppendReply) {
+    session = appendMessage(session, "assistant", reply);
+  }
   await store.save(session);
 
   return {
@@ -751,6 +1236,7 @@ export async function runOnboardingChatWithStore(
     launchUrl,
     provisioning,
     handoffComplete,
+    cta,
   };
 }
 
@@ -819,9 +1305,15 @@ export async function runOnboardingChat(input: OnboardingChatInput): Promise<Onb
   }
 
   return serializeLocal(sessionId, async () => {
+    if (normalizedInput.continuationMode === "trusted-telegram") {
+      assertTrustedTelegramContinuation(
+        await loadCachedOnboardingSession(sessionId),
+        normalizedInput,
+      );
+    }
     if (normalizedInput.idempotencyKey) {
       const replay = await cache.get<OnboardingChatResult>(
-        resultCacheKey(sessionId, normalizedInput.idempotencyKey),
+        resultCacheKey(sessionId, normalizedInput.idempotencyKey, normalizedInput),
       );
       if (replay) return replay;
     }
@@ -831,7 +1323,7 @@ export async function runOnboardingChat(input: OnboardingChatInput): Promise<Onb
     });
     if (normalizedInput.idempotencyKey) {
       await cache.set(
-        resultCacheKey(sessionId, normalizedInput.idempotencyKey),
+        resultCacheKey(sessionId, normalizedInput.idempotencyKey, normalizedInput),
         result,
         SESSION_TTL_SECONDS,
       );

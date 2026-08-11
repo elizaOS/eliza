@@ -11,6 +11,7 @@
  */
 import { describe, expect, test } from "bun:test";
 import { apps } from "../../../db/schemas/apps";
+import { jobs } from "../../../db/schemas/jobs";
 import { JOB_TYPES } from "../provisioning-job-types";
 import { ProvisioningJobService } from "../provisioning-jobs";
 
@@ -25,23 +26,47 @@ const CONTAINER_ID = "cccccccc-dddd-4eee-8fff-000000000000";
 // records every update(table).set(values) the writeback issues.
 function mockTx(containerRow: { projectName: string; organizationId: string } | null) {
   const updates: Array<{ table: unknown; values: Record<string, unknown> }> = [];
+  const inserts: Array<{ table: unknown; values: Record<string, unknown> }> = [];
   const tx = {
-    select: () => ({
+    select: (selection: Record<string, unknown>) => ({
       from: () => ({
         where: () => ({
-          limit: async () => (containerRow ? [containerRow] : []),
+          limit: async () => {
+            if ("projectName" in selection) return containerRow ? [containerRow] : [];
+            const inserted = inserts.at(-1)?.values;
+            return inserted
+              ? [
+                  {
+                    type: inserted.type,
+                    organizationId: inserted.organization_id,
+                    userId: inserted.user_id,
+                    data: inserted.data,
+                  },
+                ]
+              : [];
+          },
         }),
+      }),
+    }),
+    insert: (table: unknown) => ({
+      values: (values: Record<string, unknown>) => ({
+        onConflictDoNothing: async () => {
+          inserts.push({ table, values });
+        },
       }),
     }),
     update: (table: unknown) => ({
       set: (values: Record<string, unknown>) => ({
-        where: async () => {
-          updates.push({ table, values });
-        },
+        where: () => ({
+          returning: async () => {
+            updates.push({ table, values });
+            return [{ id: APP_ID }];
+          },
+        }),
       }),
     }),
   };
-  return { tx, updates };
+  return { tx, updates, inserts };
 }
 
 const service = new ProvisioningJobService();
@@ -51,6 +76,8 @@ function containerProvisionWriteback() {
     id: "job-1",
     type: JOB_TYPES.CONTAINER_PROVISION,
     max_attempts: 3,
+    organization_id: ORG_ID,
+    user_id: "user-1",
     data: { containerId: CONTAINER_ID, organizationId: "org-1", userId: "user-1" },
   };
   // buildPermanentFailureWriteback is private; exercise the real switch case.
@@ -69,12 +96,15 @@ describe("buildPermanentFailureWriteback: CONTAINER_PROVISION", () => {
   test("app container (UUID project_name) -> apps.deployment_status flipped to failed", async () => {
     const { job, cb } = containerProvisionWriteback();
     expect(cb).toBeDefined();
-    const { tx, updates } = mockTx({ projectName: APP_ID, organizationId: ORG_ID });
+    const { tx, updates, inserts } = mockTx({ projectName: APP_ID, organizationId: ORG_ID });
     await cb!(tx, job);
     expect(updates).toHaveLength(1);
     expect(updates[0].table).toBe(apps);
     expect(updates[0].values.deployment_status).toBe("failed");
     expect(updates[0].values.updated_at).toBeInstanceOf(Date);
+    expect(inserts).toHaveLength(1);
+    expect(inserts[0].table).toBe(jobs);
+    expect(inserts[0].values.type).toBe(JOB_TYPES.APP_CACHE_INVALIDATE);
   });
 
   test("plain container (non-UUID project_name) -> no app update", async () => {

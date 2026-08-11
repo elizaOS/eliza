@@ -229,11 +229,10 @@ describe("handleIosLocalAgentRequest", () => {
     await expect(getJson("/api/skills/curated")).resolves.toEqual({
       skills: [],
     });
-    await expect(getJson("/api/skills/catalog")).resolves.toMatchObject({
-      total: 0,
-      installedCount: 0,
-      skills: [],
+    const install = await post("/api/skills/install", {
+      githubUrl: "https://github.com/elizaos/example-skill",
     });
+    expect(install.status).toBe(503);
 
     const launch = await post("/api/apps/launch", { name: "app-lifeops" });
     expect(launch.status).toBe(503);

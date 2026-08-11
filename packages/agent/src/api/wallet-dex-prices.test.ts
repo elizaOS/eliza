@@ -1,11 +1,13 @@
 /**
- * Tests for the wallet USD value math (#8801 / #9943). computeValueUsd renders a
- * money figure shown to the user; the cents rounding and the guards against
- * non-positive / unparseable inputs are finance-correctness concerns, and it was
- * untested.
+ * Tests for the wallet USD value math (#8801 / #9943) and the DexPaprika
+ * fallback path (#17691): correct network slugs and summary.price_usd extraction.
  */
-import { describe, expect, it } from "vitest";
-import { computeValueUsd } from "./wallet-dex-prices";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  computeValueUsd,
+  DEXPAPRIKA_CHAIN_MAP,
+  fetchDexPaprikaPrices,
+} from "./wallet-dex-prices";
 
 describe("computeValueUsd", () => {
   it("multiplies balance by price to two decimals", () => {
@@ -31,5 +33,68 @@ describe("computeValueUsd", () => {
     expect(computeValueUsd("abc", "1")).toBe("0");
     expect(computeValueUsd("1", "")).toBe("0");
     expect(computeValueUsd("", "")).toBe("0");
+  });
+});
+
+describe("DEXPAPRIKA_CHAIN_MAP", () => {
+  it("uses live DexPaprika network slugs for Arbitrum and Polygon", () => {
+    expect(DEXPAPRIKA_CHAIN_MAP[42161]).toBe("arbitrum");
+    expect(DEXPAPRIKA_CHAIN_MAP[137]).toBe("polygon");
+  });
+});
+
+describe("fetchDexPaprikaPrices", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it("reads price from summary.price_usd and builds the correct network URL", async () => {
+    let requestedUrl: string | undefined;
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      requestedUrl = String(input);
+      return new Response(
+        JSON.stringify({
+          id: "0xAbC",
+          summary: { price_usd: 1879.41, liquidity_usd: 1 },
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const results = await fetchDexPaprikaPrices(42161, ["0xAbC"]);
+    expect(requestedUrl).toBe(
+      "https://api.dexpaprika.com/networks/arbitrum/tokens/0xAbC",
+    );
+    expect(results.get("0xabc")?.price).toBe("1879.41");
+    expect(fetchMock).toHaveBeenCalledOnce();
+  });
+
+  it.each([
+    ["missing summary", { id: "0xdef", price_usd: 99 }],
+    ["zero price", { id: "0xdef", summary: { price_usd: 0 } }],
+    ["unparseable price", { id: "0xdef", summary: { price_usd: "invalid" } }],
+  ])("returns empty for %s", async (_case, payload) => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(JSON.stringify(payload), {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          }),
+      ),
+    );
+    const results = await fetchDexPaprikaPrices(137, ["0xdef"]);
+    expect(results.size).toBe(0);
+  });
+
+  it("returns empty for unsupported chain ids", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const results = await fetchDexPaprikaPrices(999, ["0xabc"]);
+    expect(results.size).toBe(0);
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });

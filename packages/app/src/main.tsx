@@ -63,6 +63,12 @@ import type {
   WebsiteBlockerSettingsCardProps,
 } from "@elizaos/shared";
 import { getStylePresets } from "@elizaos/shared";
+import {
+  CLOUD_PAIR_LOCAL_OWNER_HINT_KEY,
+  cloudPairTokenKeyForAgent,
+  isCloudPairAgentId,
+  isCloudPairLoopbackOrigin,
+} from "@elizaos/shared/contracts";
 import { App } from "@elizaos/ui/App";
 import { client } from "@elizaos/ui/api";
 import { installAndroidNativeAgentFetchBridge } from "@elizaos/ui/api/android-native-agent-transport";
@@ -144,10 +150,12 @@ import {
 } from "@elizaos/ui/platform/window-shell";
 import { AppProvider } from "@elizaos/ui/state";
 import { upsertAndActivateAgentProfile } from "@elizaos/ui/state/agent-profiles";
+import { resolveDedicatedAgentId } from "@elizaos/ui/state/agent-session-recovery";
 import { initOcrBridge } from "@elizaos/ui/state/ocr-bridge";
 import {
   applyUiTheme,
   createPersistedActiveServer,
+  loadPersistedActiveServer,
   loadUiLanguage,
   loadUiThemeMode,
   resolveUiTheme,
@@ -204,6 +212,7 @@ import {
   createMobileLifecycle,
   type MobileLifecycle,
 } from "./mobile-lifecycle";
+import { installNativeTranscriptPlatformBridge } from "./native-transcript-bridge";
 import { installPackagedShellStorageTestBridge } from "./packaged-shell-storage-test-bridge";
 import {
   SIDE_EFFECT_APP_MODULE_LOADERS,
@@ -425,39 +434,133 @@ function getWindowUrlSearchParams(): URLSearchParams {
 
 function applyCloudPairSessionToken(): void {
   if (typeof window === "undefined") return;
+  // Gate 0 — trusted shell. The durable pair credential is adopted only by
+  // the real app shell; an embedded third-party surface (Telegram Mini App /
+  // Discord Activity iframe, #9947) must not read, migrate, or stamp it —
+  // those surfaces get a scoped session from the embed handshake instead.
+  if (isEmbedPath(window.location.pathname)) return;
+  // Gate 1 — resolve an owner-bound target BEFORE touching bearer storage.
+  // Canonical agent subdomains carry the owner in their hostname. Local
+  // Docker origins do not, so their relay leaves a UUID-only hint on the same
+  // strict loopback origin; arbitrary public origins can never use that seam.
+  const currentOrigin = window.location.origin;
+  let apiBase: string;
+  let agentId: string | null = null;
+  let usedLocalOwnerHint = false;
+  if (isDedicatedCloudAgentBase(currentOrigin)) {
+    apiBase = currentOrigin;
+    agentId = dedicatedCloudAgentIdFromBase(apiBase);
+  } else {
+    const configuredBase = getBootConfig().apiBase?.trim();
+    if (configuredBase && isDedicatedCloudAgentBase(configuredBase)) {
+      apiBase = configuredBase;
+      agentId = dedicatedCloudAgentIdFromBase(apiBase);
+    } else if (!isCloudPairLoopbackOrigin(currentOrigin)) {
+      return;
+    } else {
+      let ownerHint: string | null = null;
+      try {
+        ownerHint =
+          window.sessionStorage
+            .getItem(CLOUD_PAIR_LOCAL_OWNER_HINT_KEY)
+            ?.trim() || null;
+      } catch {
+        // error-policy:J4 hardened browser storage may reject session reads;
+        // durable storage remains the local relay's compatibility channel.
+      }
+      if (!ownerHint) {
+        try {
+          ownerHint =
+            window.localStorage
+              .getItem(CLOUD_PAIR_LOCAL_OWNER_HINT_KEY)
+              ?.trim() || null;
+        } catch {
+          // error-policy:J4 unreadable local storage means no owner-bound local
+          // session can be adopted.
+        }
+      }
+      if (!isCloudPairAgentId(ownerHint)) return;
+      apiBase = currentOrigin;
+      agentId = ownerHint;
+      usedLocalOwnerHint = true;
+    }
+  }
+  // Gate 2 — every accepted target must resolve to one dedicated-agent owner.
+  if (!agentId) return;
+  // Gate 3 — owner-bound read. The durable credential is stored under a
+  // per-agent key (`eliza:cloud-pair:api-token:<agentId>`), so this boot only
+  // ever reads the key belonging to the agent it resolved. A token persisted
+  // for agent A is invisible to a boot targeting agent B — it can never be
+  // adopted or mirrored across agents (#17579).
+  const agentTokenKey = cloudPairTokenKeyForAgent(agentId);
   let token: string | null = null;
   try {
-    token =
-      window.localStorage.getItem(CLOUD_PAIR_SESSION_TOKEN_KEY)?.trim() || null;
+    token = window.localStorage.getItem(agentTokenKey)?.trim() || null;
   } catch {
     // error-policy:J4 localStorage can be unavailable in hardened browser
     // contexts — sessionStorage remains the compatibility handoff.
   }
   if (!token) {
     try {
-      token =
-        window.sessionStorage.getItem(CLOUD_PAIR_SESSION_TOKEN_KEY)?.trim() ||
-        null;
+      token = window.sessionStorage.getItem(agentTokenKey)?.trim() || null;
     } catch {
       // error-policy:J4 sessionStorage can be unavailable in hardened browser
       // contexts — the pairing token is simply not adopted.
     }
     if (token) {
       try {
-        shellLocalStorage.setItem(CLOUD_PAIR_SESSION_TOKEN_KEY, token);
+        shellLocalStorage.setItem(agentTokenKey, token);
       } catch {
         // error-policy:J4 migration is best-effort; the same-tab token still
         // authenticates this launch.
       }
     }
   }
+  // Gate 4 — legacy single-key migration with target equality. A pre-#17579
+  // install stored the bearer under the global `eliza:cloud-pair:api-token`
+  // key with no owner binding. That key is adopted ONLY when the persisted
+  // active server for THIS agent still carries the identical bearer — i.e.
+  // the local record proves the legacy credential belongs to the agent being
+  // booted. Without that proof the legacy key is left untouched (never
+  // mirrored onto an agent that cannot claim it) and the pairing flow writes
+  // the scoped key on the next explicit pair.
+  if (!token) {
+    let legacyToken: string | null = null;
+    try {
+      legacyToken =
+        window.localStorage.getItem(CLOUD_PAIR_SESSION_TOKEN_KEY)?.trim() ||
+        null;
+    } catch {
+      // error-policy:J4 unreadable legacy storage — no adoption.
+    }
+    if (legacyToken) {
+      try {
+        const activeServer = loadPersistedActiveServer();
+        const ownedByTarget =
+          activeServer !== null &&
+          resolveDedicatedAgentId(activeServer) === agentId &&
+          activeServer.accessToken === legacyToken;
+        if (ownedByTarget) {
+          token = legacyToken;
+          try {
+            shellLocalStorage.setItem(agentTokenKey, token);
+          } catch {
+            // error-policy:J4 best-effort migration write.
+          }
+          try {
+            shellLocalStorage.removeItem(CLOUD_PAIR_SESSION_TOKEN_KEY);
+          } catch {
+            // error-policy:J3 best-effort legacy cleanup.
+          }
+        }
+      } catch {
+        // error-policy:J4 unreadable active-server record — legacy key stays
+        // unadopted rather than being stamped onto an unproven target.
+      }
+    }
+  }
   if (!token) return;
   client.setToken(token);
-  const apiBase = isDedicatedCloudAgentBase(window.location.origin)
-    ? window.location.origin
-    : getBootConfig().apiBase?.trim();
-  if (!isDedicatedCloudAgentBase(apiBase)) return;
-  const agentId = dedicatedCloudAgentIdFromBase(apiBase);
   const activeServer = createPersistedActiveServer({
     kind: "cloud",
     ...(agentId ? { id: `cloud:${agentId}` } : {}),
@@ -468,9 +571,30 @@ function applyCloudPairSessionToken(): void {
   upsertAndActivateAgentProfile({
     kind: "cloud",
     label: activeServer.label,
+    cloudAgentId: agentId,
     ...(activeServer.apiBase ? { apiBase: activeServer.apiBase } : {}),
     accessToken: token,
   });
+  if (usedLocalOwnerHint) {
+    const persisted = loadPersistedActiveServer();
+    const sessionDurable =
+      persisted !== null &&
+      resolveDedicatedAgentId(persisted) === agentId &&
+      persisted.apiBase === apiBase &&
+      persisted.accessToken === token;
+    if (!sessionDurable) return;
+    try {
+      window.sessionStorage.removeItem(CLOUD_PAIR_LOCAL_OWNER_HINT_KEY);
+    } catch {
+      // error-policy:J6 the persisted active server now owns this session; a
+      // blocked best-effort hint cleanup cannot invalidate the adopted token.
+    }
+    try {
+      shellLocalStorage.removeItem(CLOUD_PAIR_LOCAL_OWNER_HINT_KEY);
+    } catch {
+      // error-policy:J6 the non-secret hint is redundant after persistence.
+    }
+  }
 }
 
 /**
@@ -508,9 +632,9 @@ installPackagedShellStorageTestBridge();
 // Branded AOSP/ElizaOS device images ARE the agent: pre-seed the on-device
 // agent as the startup target on first frame. Stock-phone sideload builds
 // self-exclude inside preSeedAndroidLocalRuntimeIfFresh (#14390): a fresh
-// install lands in onboarding, whose runtime chooser (enabled by default on
-// those builds) starts the local agent on demand only after the user picks
-// it. No-op on iOS/desktop/web and cloud builds.
+// install lands in onboarding; when that build explicitly enables the runtime
+// chooser, the local agent starts on demand only after the user picks it.
+// No-op on iOS/desktop/web and cloud builds.
 if (!hasFirstRunRuntimeOverride()) {
   preSeedAndroidLocalRuntimeIfFresh();
 }
@@ -1586,6 +1710,7 @@ async function initializeAgent(): Promise<void> {
 async function initializePlatform(): Promise<void> {
   await initializeStorageBridge();
   initializeCapacitorBridge();
+  installNativeTranscriptPlatformBridge();
   void runIosFullBunSmokeIfRequested();
   void runIosOnboardingSmokeIfRequested();
   void runIosCloudOnboardingSmokeIfRequested();

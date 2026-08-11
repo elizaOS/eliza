@@ -22,7 +22,8 @@ import type {
 	IAgentRuntime,
 	Memory,
 } from "@elizaos/core";
-import { logger, resolveServerOnlyPort } from "@elizaos/core";
+import { logger } from "@elizaos/core";
+import { getAppControlApiBase } from "../loopback-api.js";
 import {
 	describeTargetReference,
 	readStringOption,
@@ -236,8 +237,7 @@ async function deleteConfirmTask(
 async function unloadPlugin(
 	pluginName: string,
 ): Promise<{ ok: boolean; message: string }> {
-	const port = resolveServerOnlyPort(process.env);
-	const base = `http://127.0.0.1:${port}`;
+	const base = getAppControlApiBase();
 
 	// Real plugin teardown: POST /api/plugins/uninstall runs
 	// pluginManager.uninstallPlugin + applyPluginRuntimeMutation, which unloads

@@ -21,8 +21,6 @@
  * Parallels `ensure-text-to-speech-handler.ts` — same shape, same guards.
  */
 
-import { existsSync, linkSync, mkdirSync, symlinkSync } from "node:fs";
-import path from "node:path";
 import {
 	type AgentRuntime,
 	applyBackgroundInferenceBudget,
@@ -36,6 +34,7 @@ import {
 	ModelType,
 	renderMessageHandlerStablePrefix,
 	resolveBackgroundInferenceBudget,
+	Service,
 	type TextEmbeddingParams,
 	type TextToSpeechParams,
 	type TranscriptionParams,
@@ -71,12 +70,14 @@ import {
 } from "../services/structured-output";
 import type { AgentModelSlot } from "../services/types";
 import { decodeMonoPcm16Wav, type TranscriptionAudio } from "../services/voice";
+import { extractRequestedKokoroVoiceId } from "../services/voice/requested-voice.js";
 import { DEFAULT_MODELS_DIR } from "./embedding-manager-support";
 import {
 	EMBEDDING_PRESETS,
 	selectEmbeddingPresetFromHardware,
 } from "./embedding-presets";
 import { isLocalEmbeddingDisabledByEnv } from "./embedding-warmup-policy";
+import { resolveFusedEmbeddingBundleRoot } from "./fused-embedding-bundle";
 
 type GenerateTextHandler = (
 	runtime: IAgentRuntime,
@@ -431,10 +432,9 @@ function engineGenerateArgsFromParams(
 					.join("\n\n")
 			: "";
 	const streamStructured = params.streamStructured === true;
-	// Surface per-token chunks to the caller: the runtime passes the agent
-	// reply path's `onStreamChunk` here for the LLM→TTS handoff. Wire it only
-	// when the caller asked for streaming (`stream` or `streamStructured`) so
-	// non-streaming callers don't pay the chunk-callback overhead.
+	// Surface per-token chunks to the caller only when it requested streaming.
+	// Rendering and diagnostics also consume this callback, so voice ownership
+	// remains an independent, explicit `voiceOutput` contract.
 	const onTextChunk =
 		(params.stream === true || streamStructured) &&
 		typeof params.onStreamChunk === "function"
@@ -463,9 +463,7 @@ function engineGenerateArgsFromParams(
 		maxTokensPerStep: onTextChunk
 			? resolveChatStreamTokensPerStep()
 			: undefined,
-		voiceOutput:
-			params.voiceOutput ??
-			(typeof params.onStreamChunk === "function" ? "user-visible" : undefined),
+		voiceOutput: params.voiceOutput,
 	};
 }
 
@@ -675,58 +673,6 @@ function resolveDesktopEmbeddingConfig(
 }
 
 /**
- * Resolve (or stage) the bundle root the fused `eliza_inference_embed` should
- * anchor at for the dedicated embedding model. The fused C side embeds over the
- * single GGUF under `<root>/text/`, so we must point it at an isolated bundle
- * that contains ONLY the embedding model — never the chat bundle's text model
- * (whose decoder-as-embedder output has a different dimension). Resolution:
- *   1. `ELIZA_EMBED_BUNDLE_ROOT` — explicit override.
- *   2. The model already lives under a `text/` dir (`<root>/text/<model>.gguf`).
- *   3. `<modelsDir>/text/<model>` exists → anchor at `<modelsDir>`.
- *   4. Otherwise STAGE the dedicated embedding GGUF as the sole entry under
- *      `<modelsDir>/.eliza-embed-bundle/text/` (hardlink, symlink fallback) so
- *      the fused lib loads gte-small (384-dim bi-encoder, SQL dim384) — the
- *      same model the retired libllama path used, now through the fused lib.
- * Returns null only when the embedding GGUF is not present (boot warmup may
- * still be downloading) — the handler then raises LocalInferenceUnavailable and
- * the runtime falls through to the next embedding provider.
- */
-function resolveFusedEmbedBundleRoot(
-	cfg: DesktopEmbeddingConfig,
-): string | null {
-	const override = process.env.ELIZA_EMBED_BUNDLE_ROOT?.trim();
-	if (override && existsSync(path.join(override, "text"))) return override;
-	const modelPath = path.resolve(cfg.modelsDir, cfg.model);
-	const parent = path.dirname(modelPath);
-	if (path.basename(parent) === "text" && existsSync(modelPath)) {
-		return path.dirname(parent);
-	}
-	if (existsSync(path.join(cfg.modelsDir, "text", cfg.model))) {
-		return cfg.modelsDir;
-	}
-	if (!existsSync(modelPath)) return null;
-	const root = path.join(cfg.modelsDir, ".eliza-embed-bundle");
-	const textDir = path.join(root, "text");
-	const staged = path.join(textDir, path.basename(cfg.model));
-	try {
-		mkdirSync(textDir, { recursive: true });
-		if (!existsSync(staged)) {
-			try {
-				linkSync(modelPath, staged);
-			} catch {
-				symlinkSync(modelPath, staged);
-			}
-		}
-		return root;
-	} catch (err) {
-		logger.warn(
-			`[local-inference] could not stage the fused embed bundle for "${cfg.model}": ${String(err)}`,
-		);
-		return null;
-	}
-}
-
-/**
  * Lazily-resolved fused embedding handle. When the fused `libelizainference`
  * (ABI v9) is present, reports `embedSupported()`, and a `<root>/text/` bundle
  * root resolves for the embedding model, the desktop TEXT_EMBEDDING handler
@@ -799,7 +745,20 @@ async function getFusedEmbeddingHandle(cfg: DesktopEmbeddingConfig): Promise<{
 			const { resolveFusedLibraryPath } = await import(
 				"../services/desktop-fused-ffi-backend-runtime"
 			);
-			const bundleRoot = resolveFusedEmbedBundleRoot(cfg);
+			let bundleRoot: string | null;
+			try {
+				bundleRoot = resolveFusedEmbeddingBundleRoot({
+					...cfg,
+					override: process.env.ELIZA_EMBED_BUNDLE_ROOT?.trim(),
+				});
+			} catch (error) {
+				// error-policy:J4 a failed local artifact stage is an explicit
+				// unavailable provider state; the runtime can select another provider.
+				logger.warn(
+					`[local-inference] could not stage the fused embed bundle for "${cfg.model}": ${String(error)}`,
+				);
+				return null;
+			}
 			if (!bundleRoot) {
 				logger.warn(
 					`[local-inference] fused embed unavailable: no bundle root for "${cfg.model}" under "${cfg.modelsDir}"`,
@@ -867,7 +826,8 @@ async function getFusedEmbeddingHandle(cfg: DesktopEmbeddingConfig): Promise<{
  * Desktop TEXT_EMBEDDING handler over the FUSED `libelizainference`
  * (`eliza_inference_embed`, ABI v9). The dedicated embedding GGUF (gte-small,
  * 384-dim — an exact match for plugin-sql's dim384 column) is staged as the
- * sole entry of an isolated fused embed bundle (see `resolveFusedEmbedBundleRoot`)
+ * sole entry of an isolated fused embed bundle (see
+ * `resolveFusedEmbeddingBundleRoot`)
  * so the fused lib loads it directly. libllama is retired: there is no
  * capacitor/libllama fallback. When the fused embed cannot resolve (no bun:ffi,
  * no fused lib, or the embedding GGUF is still downloading) this throws so the
@@ -936,6 +896,7 @@ function makeTextToSpeechHandler(): TextToSpeechHandler {
 		return localInferenceEngine.synthesizeSpeech(
 			text,
 			extractSpeechSignal(params),
+			extractRequestedKokoroVoiceId(params),
 		);
 	};
 }
@@ -1304,6 +1265,37 @@ function registerDeviceBridgeLoader(runtime: AgentRuntime): void {
 }
 
 /**
+ * Expose fused v12 word timings as an additive runtime service. Consumers such
+ * as plugin-meetings can discover this structural seam without importing this
+ * plugin or widening the string-only TRANSCRIPTION model contract.
+ */
+class TimedAsrService extends Service {
+	static serviceType = "timedAsr";
+	capabilityDescription =
+		"Word-timed local ASR over the fused voice engine (transcribeWav returns per-word timings).";
+
+	static async start(runtime: IAgentRuntime): Promise<TimedAsrService> {
+		return new TimedAsrService(runtime);
+	}
+
+	async stop(): Promise<void> {}
+
+	isAvailable(): boolean {
+		return localInferenceEngine.voice() !== null;
+	}
+
+	async transcribeWav(wav: Uint8Array, signal?: AbortSignal) {
+		const audio = decodeMonoPcm16Wav(wav);
+		return localInferenceEngine.transcribePcmTimed(audio, signal);
+	}
+}
+
+async function registerTimedAsrService(runtime: AgentRuntime): Promise<void> {
+	if (typeof runtime.registerService !== "function") return;
+	await runtime.registerService(TimedAsrService);
+}
+
+/**
  * AOSP / generic-FFI path: load the fused `libelizainference.so` into the bun
  * process via `bun:ffi` (the AOSP plugin's loader; libllama is retired). The
  * loader stays inactive at runtime when neither `ELIZA_LOCAL_LLAMA === "1"`
@@ -1539,6 +1531,7 @@ export async function ensureLocalInferenceHandler(
 	// event — capturing our own handlers below plus anything else that
 	// registers during the rest of boot. Idempotent per-runtime.
 	handlerRegistry.installOn(runtime);
+	await registerTimedAsrService(runtime);
 
 	// Loader precedence:
 	//   1. AOSP native FFI loader when running inside the AOSP agent process

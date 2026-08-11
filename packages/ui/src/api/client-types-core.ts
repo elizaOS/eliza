@@ -525,6 +525,38 @@ export function isRateLimitedError(value: unknown): value is ApiError {
   );
 }
 
+/**
+ * Definitive "this agent row is gone" shape used for destructive binding
+ * cleanup and join stale-binding recovery. Requires the structured
+ * `agent_not_found` code that agent-router emits only when no sandbox row
+ * exists. Do **not** treat recoverable cold/stopped states
+ * (`agent_not_running` / 503) or code-less legacy 404 bodies as gone — the
+ * pre-change router emitted the same message for missing and non-running
+ * rows, so a mixed UI/router rollout would otherwise erase legitimate
+ * bindings. Walks the `cause` chain so wrapped selection errors classify.
+ */
+export function isCloudAgentGoneError(error: unknown): boolean {
+  let current: unknown = error;
+  for (let depth = 0; depth < 5 && current instanceof Error; depth += 1) {
+    const { status, code } = current as Error & {
+      status?: unknown;
+      code?: unknown;
+    };
+    if (code === "agent_not_running") {
+      current = (current as Error & { cause?: unknown }).cause;
+      continue;
+    }
+    if (
+      code === "agent_not_found" &&
+      (status === 404 || status === undefined)
+    ) {
+      return true;
+    }
+    current = (current as Error & { cause?: unknown }).cause;
+  }
+  return false;
+}
+
 export interface RuntimeDebugSnapshot {
   runtimeAvailable: boolean;
   generatedAt: number;

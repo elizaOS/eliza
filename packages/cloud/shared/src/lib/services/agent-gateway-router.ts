@@ -1,4 +1,4 @@
-// Coordinates cloud service agent gateway router behavior behind route handlers.
+/** Routes connector messages to their owning Cloud agent and returns transport-ready replies. */
 import { createHash, randomUUID } from "crypto";
 import { and, desc, eq } from "drizzle-orm";
 import { dbWrite } from "../../db/client";
@@ -32,9 +32,19 @@ export interface AgentGatewaySender {
   avatar?: string | null;
 }
 
+export interface AgentGatewayRouteReplyCta {
+  label: string;
+  url: string;
+}
+
 export interface AgentGatewayRouteResult {
   handled: boolean;
   replyText?: string | null;
+  /**
+   * Optional login handoff for transports that can render a link button
+   * (Discord). When set, replyText intentionally omits the raw login URL.
+   */
+  replyCta?: AgentGatewayRouteReplyCta | null;
   reason?: AgentGatewayRouteReason;
   agentId?: string;
   organizationId?: string;
@@ -335,7 +345,12 @@ export class AgentGatewayRouterService {
       lookupId,
     })
       .then((value) => {
-        this.phoneTargetCache.set(cacheKey, { value, cachedAt: Date.now() });
+        // A sender can complete the sign-in continuation between two texts.
+        // Negative caching would keep routing that newly linked phone through
+        // onboarding until the TTL expires, so only cache resolved identities.
+        if (value.reason !== "unknown_owner") {
+          this.phoneTargetCache.set(cacheKey, { value, cachedAt: Date.now() });
+        }
         return value;
       })
       .finally(() => {
@@ -635,10 +650,56 @@ export class AgentGatewayRouterService {
     content: string;
     sender: AgentGatewaySender;
   }): Promise<AgentGatewayRouteResult> {
-    const resolved = await this.resolveDiscordTarget({
-      guildId: args.guildId ?? null,
-      senderDiscordUserId: args.sender.id,
-    });
+    let resolved: Awaited<ReturnType<AgentGatewayRouterService["resolveDiscordTarget"]>>;
+    try {
+      resolved = await this.resolveDiscordTarget({
+        guildId: args.guildId ?? null,
+        senderDiscordUserId: args.sender.id,
+      });
+    } catch (error) {
+      // error-policy:J4 A private first-contact resolver outage degrades to the
+      // visibly distinct onboarding path; guild traffic remains fail-closed.
+      // Fail-open first contact (parity with routePhoneMessage): a resolver
+      // outage must never leave a new DM sender in silence. The onboarding
+      // worker is self-contained (its own session store), so it can still
+      // greet while the resolver bug gets root-caused from this log line.
+      logger.error("[AgentGatewayRouter] Failed to resolve Discord target", {
+        guildId: args.guildId ?? null,
+        channelId: args.channelId,
+        messageId: args.messageId,
+        senderDiscordUserId: args.sender.id,
+        error: error instanceof Error ? error.message : String(error),
+      });
+
+      if (args.guildId?.trim()) {
+        // Guild traffic never onboards: the login credential must not land in
+        // a public channel, resolver outage or not.
+        return {
+          handled: false,
+          reason: "bridge_failed",
+        };
+      }
+
+      const onboarding = await this.runOnboardingChat({
+        message: args.content,
+        platform: "discord",
+        platformUserId: args.sender.id,
+        platformDisplayName: args.sender.displayName ?? args.sender.username,
+        sessionId: `platform:discord:${args.sender.id}`,
+        trustedPlatformIdentity: true,
+        idempotencyKey: `discord:${args.messageId}`,
+      });
+
+      return {
+        handled: true,
+        replyText: onboarding.reply,
+        replyCta: onboarding.cta ?? null,
+        reason: "bridge_failed",
+        userId: onboarding.session.userId,
+        organizationId: onboarding.session.organizationId,
+        agentId: onboarding.provisioning.agentId ?? undefined,
+      };
+    }
 
     if (!resolved.target) {
       // Unknown-owner resolution also occurs for guild traffic. Keeping the
@@ -660,6 +721,7 @@ export class AgentGatewayRouterService {
         return {
           handled: true,
           replyText: onboarding.reply,
+          replyCta: onboarding.cta ?? null,
           reason: resolved.reason,
           userId: onboarding.session.userId,
           organizationId: onboarding.session.organizationId,
@@ -692,6 +754,7 @@ export class AgentGatewayRouterService {
         return {
           handled: true,
           replyText: onboarding.reply,
+          replyCta: onboarding.cta ?? null,
           reason: resolved.reason,
           userId: resolved.userId,
           organizationId: resolved.organizationId,
@@ -963,6 +1026,99 @@ export class AgentGatewayRouterService {
       userId: resolved.userId,
       organizationId: routed.organizationId ?? resolved.organizationId,
     };
+  }
+
+  /**
+   * Routes a message arriving through a registered, user-owned BlueBubbles
+   * bridge to the exact agent selected during authenticated registration.
+   */
+  async routeRegisteredBlueBubblesMessage(args: {
+    organizationId: string;
+    userId: string;
+    agentId: string;
+    from: string;
+    to: string;
+    body: string;
+    providerMessageId?: string;
+    mediaUrls?: string[];
+    metadata?: Record<string, unknown>;
+  }): Promise<AgentGatewayRouteResult> {
+    const resolved = await this.resolvePhoneContactAgentTarget({
+      agentId: args.agentId,
+      organizationId: args.organizationId,
+      userId: args.userId,
+    });
+    if (!resolved.target) {
+      return {
+        handled: false,
+        reason: resolved.reason,
+        agentId: args.agentId,
+        userId: args.userId,
+        organizationId: args.organizationId,
+      };
+    }
+
+    const normalizedFrom = normalizePhoneNumber(args.from);
+    const normalizedTo = normalizePhoneNumber(args.to);
+    const attachments = buildMediaAttachments(args.mediaUrls);
+    const rpcRequest: BridgeRequest = {
+      jsonrpc: "2.0",
+      id: randomUUID(),
+      method: "message.send",
+      params: {
+        text: args.body,
+        roomId: buildDirectConversationRoomId(
+          args.agentId,
+          "bluebubbles",
+          normalizedFrom,
+          normalizedTo,
+        ),
+        channelType: "DM",
+        source: "bluebubbles",
+        sender: {
+          id: normalizedFrom,
+          username: normalizedFrom,
+          metadata: {
+            bluebubbles: {
+              sender: normalizedFrom,
+              recipient: normalizedTo,
+            },
+          },
+        },
+        ...(attachments ? { attachments } : {}),
+        metadata: {
+          provider: "bluebubbles",
+          from: normalizedFrom,
+          to: normalizedTo,
+          ...(args.providerMessageId ? { providerMessageId: args.providerMessageId } : {}),
+          ...(args.metadata ?? {}),
+        },
+      },
+    };
+
+    try {
+      const routed = await this.routeToTarget(resolved.target, rpcRequest);
+      return {
+        ...routed,
+        agentId: routed.agentId ?? args.agentId,
+        userId: args.userId,
+        organizationId: routed.organizationId ?? args.organizationId,
+      };
+    } catch (error) {
+      logger.error("[AgentGatewayRouter] Registered BlueBubbles route failed", {
+        gatewayAgentId: args.agentId,
+        organizationId: args.organizationId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return {
+        handled: false,
+        reason: "bridge_failed",
+        agentId: args.agentId,
+        userId: args.userId,
+        organizationId: args.organizationId,
+        roomId: extractRoomId(rpcRequest),
+      };
+    }
   }
 
   async routeTelegramMessage(args: {

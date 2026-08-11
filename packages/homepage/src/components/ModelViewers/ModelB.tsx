@@ -35,6 +35,10 @@ import {
   VID_BTN_CX,
   VID_BTN_CY,
 } from "@/components/ChatUI/renderChatToCanvas";
+import {
+  TOUCH_OVERLAY_MIN_SIZE as OVERLAY_SIZE,
+  resolveTouchOverlaySize,
+} from "@/lib/touch-overlay-size";
 import { useT } from "@/providers/I18nProvider";
 
 export interface ModelBHandle {
@@ -157,8 +161,6 @@ function createModelRuntime(): ModelRuntime {
   };
 }
 
-const OVERLAY_SIZE = 44;
-
 function syncButtonOverlays(runtime: ModelRuntime) {
   const backElement = runtime.backButtonElement;
   const videoElement = runtime.videoButtonElement;
@@ -168,12 +170,13 @@ function syncButtonOverlays(runtime: ModelRuntime) {
   if (backElement) {
     const rect = runtime.backButtonRect;
     if (rect && show) {
+      const size = resolveTouchOverlaySize(rect.w, rect.h);
       backElement.style.display = "block";
       backElement.style.transform = isTelegram
         ? `translate(${rect.x - 12}px, ${rect.y + 12}px)`
         : `translate(${rect.x}px, ${rect.y}px)`;
-      backElement.style.width = `${rect.w}px`;
-      backElement.style.height = `${rect.h}px`;
+      backElement.style.width = `${size.width}px`;
+      backElement.style.height = `${size.height}px`;
     } else {
       backElement.style.display = "none";
     }

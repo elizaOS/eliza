@@ -31,6 +31,14 @@ export * from "./connectors/account-manager";
 export * from "./connectors/connector-config";
 export * from "./connectors/oauth-role";
 export * from "./connectors/privacy";
+// Linked-account contract literals are pure data (no Node deps); browser
+// clients validate untrusted /api/accounts payloads against them.
+export {
+	LINKED_ACCOUNT_ACCOUNT_SOURCES,
+	LINKED_ACCOUNT_HEALTH_STATES,
+	LINKED_ACCOUNT_PROVIDER_IDS,
+	SERVICE_ROUTE_ACCOUNT_STRATEGIES,
+} from "./contracts/service-routing-types";
 export * from "./database";
 export * from "./database/document-list-query";
 export * from "./database/inMemoryAdapter";
@@ -231,6 +239,7 @@ export * from "./utils/read-env";
 export * from "./utils/resolve-setting";
 export * from "./utils/streaming";
 export { ResponseSkeletonStreamExtractor } from "./utils/streaming";
+export * from "./utils/well-formed";
 // Validation helpers (validateActionKeywords / validateActionRegex /
 // secret-format validators) are pure functions with no Node-only deps,
 // so they're safe in the browser bundle. Several plugin browser dists

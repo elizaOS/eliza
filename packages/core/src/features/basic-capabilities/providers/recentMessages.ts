@@ -40,6 +40,7 @@ import type {
 	UUID,
 } from "../../../types/index.ts";
 import { ChannelType } from "../../../types/index.ts";
+import { truncateWellFormed } from "../../../utils/well-formed.ts";
 import {
 	addHeader,
 	conversationMessagesHeader,
@@ -370,7 +371,14 @@ export const recentMessagesProvider: Provider = {
 	// Conversation history is correctness-critical and may span several indexed
 	// reads on remote adapters. Extend its deadline without allowing partial state.
 	timeoutMs: 8_000,
-	roleGate: { minRole: "USER" },
+	// GUEST floor: this is the CURRENT room's transcript — content every
+	// participant can already read in their client. Gating it at USER made the
+	// agent-host role gate (packages/agent plugin-role-gating) withhold the
+	// entire conversation window from unassigned group-channel senders (they
+	// resolve to GUEST), so the bot answered "chat's empty" to anyone who was
+	// not a seeded admin. Cross-room/cross-platform recall stays gated on its
+	// own providers (recent-conversations ADMIN, relevant-conversations USER).
+	roleGate: { minRole: "GUEST" },
 
 	get: async (
 		runtime: IAgentRuntime,
@@ -515,7 +523,7 @@ export const recentMessagesProvider: Provider = {
 				? addHeader(
 						"# Conversation Compact Ledger",
 						compactLedger.length > MAX_COMPACT_LEDGER_CHARS
-							? `${compactLedger.slice(0, MAX_COMPACT_LEDGER_CHARS)}...`
+							? `${truncateWellFormed(compactLedger, MAX_COMPACT_LEDGER_CHARS)}...`
 							: compactLedger,
 					)
 				: "";

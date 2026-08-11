@@ -4699,25 +4699,35 @@ createServer(async (req, res) => {
       const tag = `eliza-remote-capability-smoke:${Date.now()}`;
       let containerId: string | null = null;
       try {
+        // A cold runner has to pull node:24-alpine first; on a loaded
+        // self-hosted host the pull alone has been observed to take ~2
+        // minutes, so the build budget must cover pull + copy comfortably.
         await execFileText("docker", ["build", "-t", tag, workspace], {
-          timeoutMs: 180_000,
+          timeoutMs: 480_000,
         });
+        // Container create + start on a loaded self-hosted daemon can exceed
+        // the default 30s exec budget, so give run/port the same generous
+        // headroom rationale as the build above.
         containerId = (
-          await execFileText("docker", [
-            "run",
-            "-d",
-            "-p",
-            "127.0.0.1::8080",
-            "-e",
-            "REMOTE_CAPABILITY_TOKEN=docker-token",
-            tag,
-          ])
+          await execFileText(
+            "docker",
+            [
+              "run",
+              "-d",
+              "-p",
+              "127.0.0.1::8080",
+              "-e",
+              "REMOTE_CAPABILITY_TOKEN=docker-token",
+              tag,
+            ],
+            { timeoutMs: 120_000 },
+          )
         ).trim();
-        const portOutput = await execFileText("docker", [
-          "port",
-          containerId,
-          "8080/tcp",
-        ]);
+        const portOutput = await execFileText(
+          "docker",
+          ["port", containerId, "8080/tcp"],
+          { timeoutMs: 60_000 },
+        );
         const portMatch = portOutput.match(/127\.0\.0\.1:(\d+)/);
         if (!portMatch?.[1]) {
           throw new Error(`Could not read Docker mapped port: ${portOutput}`);
@@ -5077,7 +5087,9 @@ createServer(async (req, res) => {
         await rm(workspace, { recursive: true, force: true });
       }
     },
-    240_000,
+    // Must exceed the 480s cold-pull build budget above plus container
+    // startup and endpoint polling.
+    600_000,
   );
 
   it("throws a structured capability error without a router service", async () => {
@@ -5478,9 +5490,13 @@ function execFileText(
       },
       (error, stdout, stderr) => {
         if (error) {
+          const killedNote =
+            "killed" in error && error.killed
+              ? ` (killed after ${options.timeoutMs ?? 30_000}ms timeout, signal ${String((error as { signal?: unknown }).signal)})`
+              : "";
           reject(
             new Error(
-              `${file} ${args.join(" ")} failed: ${error.message}\n${stderr}`,
+              `${file} ${args.join(" ")} failed${killedNote}: ${error.message}\n${stderr}`,
             ),
           );
           return;

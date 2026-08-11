@@ -21,6 +21,11 @@ import {
 import type * as React from "react";
 import type { ContinuousChatLatency } from "../../../hooks/useContinuousChat";
 import { cn } from "../../../lib/utils";
+import {
+  hasLiveNativeTranscriptContent,
+  LiveNativeTranscriptView,
+  useLiveNativeTranscript,
+} from "../../../native-transcript/LiveNativeTranscript";
 import type {
   VoiceContinuousStatus,
   VoiceSpeakerMetadata,
@@ -152,6 +157,10 @@ export function ChatVoiceStatusBar({
   className,
   "data-testid": dataTestId,
 }: ChatVoiceStatusBarProps): React.ReactElement | null {
+  const nativeTranscript = useLiveNativeTranscript();
+  const hasNativeTranscript = hasLiveNativeTranscriptContent(
+    nativeTranscript.view,
+  );
   // A fail-closed TTS error must always show, even if the bar is otherwise
   // hidden — a silenced voice with no explanation is exactly the bug (#12253).
   if (!visible && !ttsError) return null;
@@ -323,7 +332,9 @@ export function ChatVoiceStatusBar({
         )
       ) : null}
 
-      {interimTranscript && interimTranscript.trim().length > 0 ? (
+      {!hasNativeTranscript &&
+      interimTranscript &&
+      interimTranscript.trim().length > 0 ? (
         <span
           className="min-w-0 flex-1 truncate italic text-muted"
           data-testid="chat-voice-interim-transcript"
@@ -356,6 +367,10 @@ export function ChatVoiceStatusBar({
           <span className="text-[9px] uppercase opacity-70">cached</span>
         ) : null}
       </span>
+
+      {hasNativeTranscript ? (
+        <LiveNativeTranscriptView snapshot={nativeTranscript} />
+      ) : null}
     </div>
   );
 }

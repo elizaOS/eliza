@@ -17,6 +17,15 @@
  * must not be a second uncoordinated message about the same event), and a task
  * held un-done by a verification gate after reporting completion digests on
  * status transitions only. See noteTaskCompletion for the cross-surface half.
+ *
+ * Stall handling is OWNER-scoped, never room-scoped: a task's idle/stalled
+ * age is deliberately NOT part of the digest, because folding an incrementing
+ * idle timer into the room post turns a single stuck task into a stream of
+ * unprompted "still stalled" messages in a shared channel (completions already
+ * relay; a mere stall is noise there). A task that crosses the STALLED band
+ * instead escalates once through `runtime.reportError`, which feeds the
+ * RECENT_ERRORS ring and the owner-escalation threshold — quiet, owner-facing,
+ * and deduplicated until the task recovers.
  */
 
 import type {
@@ -67,11 +76,6 @@ export interface SupervisorTaskView {
   activeSessions: number;
   /** Latest session label (often "agentType · account"), if any. */
   sessionLabel?: string | null;
-  /** Coarse staleness indicator for a progress-expected task that has gone
-   *  idle (e.g. "⏳ idle 8m+"), or undefined when fresh. Folded into the digest
-   *  line so a genuinely STUCK task changes the digest and re-posts, instead of
-   *  being deduped into silence after the first post. */
-  staleness?: string;
   /** The originating chat target; null tasks (no chat origin) are skipped. */
   origin: { roomId: string; source: string } | null;
   /** True when the task is parked in the admission queue (waiting for a session
@@ -85,17 +89,18 @@ export interface SupervisorTaskView {
   recentlyRelayed?: boolean;
   /** True when this task has reported completion at least once but is still
    *  held un-done by a verification gate (URL-verify retry, residuals). The
-   *  verify-retry respawns churn session labels/counts and the staleness bands
-   *  escalate while the gate holds — each mutation would re-post "still
-   *  active" noise after the user already received the completion relay. The
-   *  digest line freezes to structural status for such tasks; a real status
-   *  transition still changes the digest and posts. */
+   *  verify-retry respawns churn session labels/counts while the gate holds —
+   *  each mutation would re-post "still active" noise after the user already
+   *  received the completion relay. The digest line freezes to structural
+   *  status for such tasks; a real status transition still changes the digest
+   *  and posts. */
   heldAfterCompletion?: boolean;
 }
 
-// Coarse staleness bands (minutes → label), highest first. Bucketed on purpose:
-// steady progress within a band still dedups, but a stall crossing into the
-// next band changes the digest and re-posts, escalating as it worsens.
+// Coarse staleness bands (minutes → label), highest first. These feed the
+// OWNER-scoped stall escalation (and its context text), never the room digest:
+// an incrementing idle timer in the digest would change it every band crossing
+// and re-post "still stalled" noise into a shared channel.
 const SUPERVISOR_STALENESS_BANDS: ReadonlyArray<readonly [number, string]> = [
   [45, "⚠️ stalled 45m+"],
   [20, "⏳ idle 20m+"],
@@ -103,9 +108,13 @@ const SUPERVISOR_STALENESS_BANDS: ReadonlyArray<readonly [number, string]> = [
   [3, "⏳ idle 3m+"],
 ];
 
+/** Idle age (minutes) at which a progress-expected task counts as STALLED and
+ *  escalates to the owner — the top staleness band. */
+const STALLED_BAND_MINUTES = SUPERVISOR_STALENESS_BANDS[0][0];
+
 /** Coarse staleness label for a progress-expected task, or undefined when it is
- *  fresh / has no known activity time. Pure (takes `nowMs`) so the digest stays
- *  deterministic and unit-testable without a clock. */
+ *  fresh / has no known activity time. Pure (takes `nowMs`) so the escalation
+ *  context stays deterministic and unit-testable without a clock. */
 export function supervisorStalenessLabel(
   latestActivityAt: number | null | undefined,
   nowMs: number,
@@ -118,6 +127,18 @@ export function supervisorStalenessLabel(
     if (ageMin >= min) return label;
   }
   return undefined;
+}
+
+/** Whether a progress-expected task has crossed the STALLED band. Pure; an
+ *  unknown activity time is never "stalled" (no false owner escalations). */
+export function isSupervisorStalled(
+  latestActivityAt: number | null | undefined,
+  nowMs: number,
+): boolean {
+  if (typeof latestActivityAt !== "number" || latestActivityAt <= 0) {
+    return false;
+  }
+  return nowMs - latestActivityAt >= STALLED_BAND_MINUTES * 60_000;
 }
 
 /** Statuses where the sub-agent is expected to be MAKING PROGRESS, so a long
@@ -159,16 +180,18 @@ export function composeRoomDigest(views: SupervisorTaskView[]): string {
     .sort((a, b) => a.label.localeCompare(b.label))
     .map((v) => {
       // Post-completion hold: only the structural status may drive a re-post
-      // (see heldAfterCompletion) — session churn and staleness escalation on
-      // a gate-held task are noise, not news.
+      // (see heldAfterCompletion) — session churn on a gate-held task is
+      // noise, not news.
       if (v.heldAfterCompletion) {
         return `${statusEmoji(v.status)} ${v.label} — ${v.status}`;
       }
       const detail = v.sessionLabel ? ` · ${v.sessionLabel}` : "";
       const sessions =
         v.activeSessions > 0 ? ` (${v.activeSessions} running)` : "";
-      const stale = v.staleness ? ` ${v.staleness}` : "";
-      return `${statusEmoji(v.status)} ${v.label} — ${v.status}${sessions}${detail}${stale}`;
+      // Deliberately no idle/staleness suffix: a stall is owner-escalation
+      // material (see escalateStalledTasks), not a room broadcast — and its
+      // ticking age must not mutate the digest into change-driven re-posts.
+      return `${statusEmoji(v.status)} ${v.label} — ${v.status}${sessions}${detail}`;
     });
   if (queuedCount > 0) {
     lines.push(`⏳ ${queuedCount} queued (waiting for a session slot)`);
@@ -251,9 +274,9 @@ export async function runSupervisorTick(
         }`,
       );
       // Permanent-failure damper: remember the digest that failed so the loop
-      // retries only when the digest CHANGES — staleness bands mutate the digest
-      // over time and room pruning resets state on task turnover, so stalled
-      // tasks still re-attempt without warn-looping every tick against a
+      // retries only when the digest CHANGES — structural transitions mutate
+      // the digest and room pruning resets state on task turnover, so live
+      // rooms still re-attempt without warn-looping every tick against a
       // permanently undeliverable target.
       seen.set(roomId, `undeliverable:${digest}`);
     }
@@ -320,6 +343,10 @@ export class TaskSupervisorService extends Service {
    *  verification gate is holding un-done. Pruned each tick against the live
    *  task list. */
   private readonly completionNotes = new Map<string, number>();
+  /** taskIds already escalated to the owner for the CURRENT stall, so a stuck
+   *  task escalates once — not once per tick — and re-escalates only after it
+   *  recovers (or vanishes) and stalls again. */
+  private readonly stallEscalated = new Set<string>();
   private readonly digestSinks = new Map<
     string,
     Set<TaskSupervisorDigestSink>
@@ -331,14 +358,25 @@ export class TaskSupervisorService extends Service {
     return svc;
   }
 
+  /** Deployment lever, same resolution as the orchestrator task service's
+   * levers: runtime setting first, then process.env. `getSetting` alone never
+   * reads the environment, so a service-manager `EnvironmentFile` entry
+   * (`ELIZA_ORCHESTRATOR_SUPERVISOR=0`) silently failed to disable the
+   * supervisor — observed live when a disabled deployment kept escalating
+   * stalled tasks. */
+  private readSetting(key: string): string | undefined {
+    const raw = this.runtime.getSetting(key);
+    if (typeof raw === "string" && raw.length > 0) return raw;
+    const env = process.env[key];
+    return typeof env === "string" && env.length > 0 ? env : undefined;
+  }
+
   private enabled(): boolean {
-    return this.runtime.getSetting("ELIZA_ORCHESTRATOR_SUPERVISOR") !== "0";
+    return this.readSetting("ELIZA_ORCHESTRATOR_SUPERVISOR") !== "0";
   }
 
   private intervalMs(): number {
-    const raw = this.runtime.getSetting(
-      "ELIZA_ORCHESTRATOR_SUPERVISOR_INTERVAL_MS",
-    );
+    const raw = this.readSetting("ELIZA_ORCHESTRATOR_SUPERVISOR_INTERVAL_MS");
     const n = typeof raw === "string" ? Number.parseInt(raw, 10) : NaN;
     return Number.isFinite(n) && n >= MIN_INTERVAL_MS ? n : DEFAULT_INTERVAL_MS;
   }
@@ -457,6 +495,9 @@ export class TaskSupervisorService extends Service {
       for (const taskId of [...this.completionNotes.keys()]) {
         if (!noteEligibleIds.has(taskId)) this.completionNotes.delete(taskId);
       }
+      // A stall never rides the room digest — it escalates to the OWNER, once
+      // per stall, through the reportError → RECENT_ERRORS/escalation path.
+      this.escalateStalledTasks(tasks, now);
       const views: SupervisorTaskView[] = await Promise.all(
         surfaced.map(async (t) => {
           const completionAt = this.completionNotes.get(t.id);
@@ -466,11 +507,6 @@ export class TaskSupervisorService extends Service {
             status: t.status,
             activeSessions: t.activeSessionCount,
             sessionLabel: t.latestSessionLabel,
-            // Surface a stall only for progress-expected statuses; waiting_on_user
-            // / blocked are legitimately idle.
-            staleness: PROGRESS_EXPECTED_STATUSES.has(t.status)
-              ? supervisorStalenessLabel(t.latestActivityAt, now)
-              : undefined,
             origin: await taskSvc.getTaskOriginTarget(t.id),
             queued: t.admission?.state === "queued",
             ...(typeof completionAt === "number"
@@ -506,6 +542,54 @@ export class TaskSupervisorService extends Service {
     }
   }
 
+  /**
+   * Owner-scoped stall surfacing: a progress-expected task (active/validating)
+   * whose last activity crossed the STALLED band is reported ONCE through
+   * `runtime.reportError` — the diagnostic boundary that feeds RECENT_ERRORS
+   * and the owner-escalation threshold — and never posted to the originating
+   * (possibly shared/group) room. The escalation mark clears when the task
+   * recovers or leaves the live set, so a later genuine re-stall re-escalates.
+   */
+  private escalateStalledTasks(
+    tasks: Array<{
+      id: string;
+      title: string;
+      status: OrchestratorTaskStatus;
+      latestActivityAt: number | null;
+    }>,
+    nowMs: number,
+  ): void {
+    const stalledIds = new Set<string>();
+    for (const t of tasks) {
+      if (!PROGRESS_EXPECTED_STATUSES.has(t.status)) continue;
+      if (!isSupervisorStalled(t.latestActivityAt, nowMs)) continue;
+      stalledIds.add(t.id);
+      if (this.stallEscalated.has(t.id)) continue;
+      this.stallEscalated.add(t.id);
+      this.runtime.reportError?.(
+        "TaskSupervisorService.stalledTask",
+        new Error(
+          `Orchestrator task "${t.title}" is ${t.status} with no activity (${
+            supervisorStalenessLabel(t.latestActivityAt, nowMs) ?? "stalled"
+          }) — it may need a restart, a stop, or attention.`,
+        ),
+        {
+          taskId: t.id,
+          status: t.status,
+          idleMs:
+            typeof t.latestActivityAt === "number" && t.latestActivityAt > 0
+              ? nowMs - t.latestActivityAt
+              : null,
+        },
+      );
+    }
+    // Recover-then-re-escalate: drop marks for tasks that are no longer stalled
+    // (fresh activity, terminal status, or gone) so a future stall re-reports.
+    for (const id of [...this.stallEscalated]) {
+      if (!stalledIds.has(id)) this.stallEscalated.delete(id);
+    }
+  }
+
   async stop(): Promise<void> {
     if (this.timer) {
       clearInterval(this.timer);
@@ -513,6 +597,7 @@ export class TaskSupervisorService extends Service {
     }
     this.seen.clear();
     this.completionNotes.clear();
+    this.stallEscalated.clear();
     this.digestSinks.clear();
   }
 }

@@ -21,6 +21,16 @@ export interface SandboxHealthOutcome {
   verdict: SandboxHealthVerdict;
 }
 
+/**
+ * Evidence produced by the provider-specific teardown used for agent deletion.
+ * A successful stop is sufficient even when removal fails because stopped
+ * containers do not consume compute slots. Unreachable workloads retain their
+ * capacity until reconciliation proves they are no longer running.
+ */
+export type SandboxDeletionStopOutcome =
+  | { kind: "not-running-proven" }
+  | { kind: "not-running-unresolved"; reason: "node-unreachable" };
+
 export interface SandboxReplacementCleanupLocator {
   sandboxId: string;
   nodeId: string;
@@ -73,7 +83,12 @@ export class SandboxReplacementCleanupUnresolvedError extends Error {
 
 export interface SandboxProvider {
   create(config: SandboxCreateConfig): Promise<SandboxHandle>;
-  stop(sandboxId: string): Promise<void>;
+  /**
+   * Tears down a sandbox for deletion and reports whether the provider proved
+   * the workload is not running. The deletion workflow owns capacity release,
+   * so an unresolved outcome completes deletion without authorizing release.
+   */
+  stopForDeletion(sandboxId: string): Promise<SandboxDeletionStopOutcome>;
   /**
    * Retires a sandbox before a replacement is allowed to start. Unlike the
    * ordinary delete-oriented stop path, this must reject whenever the provider

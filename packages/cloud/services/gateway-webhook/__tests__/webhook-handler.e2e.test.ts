@@ -1,4 +1,4 @@
-// Exercises the gateway-webhook webhook handler.e2e path with deterministic cloud service fixtures.
+/** Exercises gateway webhook routing with deterministic cloud-service fixtures. */
 import { afterEach, describe, expect, mock, test } from "bun:test";
 import type {
   ChatEvent,
@@ -31,6 +31,10 @@ class MemoryRedis implements GatewayRedis {
     if (options.nx && this.store.has(key)) return null;
     this.store.set(key, value);
     return "OK";
+  }
+
+  async del(key: string): Promise<unknown> {
+    return this.store.delete(key) ? 1 : 0;
   }
 
   async lpush(): Promise<unknown> {
@@ -96,6 +100,7 @@ const envKeys = [
   "ELIZA_APP_TWILIO_ACCOUNT_SID",
   "ELIZA_APP_TWILIO_AUTH_TOKEN",
   "ELIZA_APP_TWILIO_PHONE_NUMBER",
+  "ELIZA_APP_TELEGRAM_BOT_TOKEN",
 ] as const;
 const originalEnv = new Map(envKeys.map((key) => [key, process.env[key]]));
 
@@ -203,6 +208,210 @@ describe("gateway webhook handler e2e routing", () => {
       platformUserId: "+15551234567",
       platformDisplayName: "Ada",
     });
+  });
+
+  test("refuses Telegram egress when another worker atomically claimed delivery", async () => {
+    process.env.ELIZA_APP_TELEGRAM_BOT_TOKEN = "telegram-test-token";
+    const event: ChatEvent = {
+      platform: "telegram",
+      messageId: "update-1",
+      platformRecordId: "message-1",
+      chatId: "chat-1",
+      chatType: "private",
+      senderId: "sender-1",
+      senderName: "Ada",
+      text: "hello",
+      rawPayload: {},
+    };
+    const sendReply = mock(async () => undefined);
+    const adapter: PlatformAdapter = {
+      platform: "telegram",
+      getDedupeScope: () => "scope",
+      verifyWebhook: mock(async () => true),
+      extractEvent: mock(async () => event),
+      sendTypingIndicator: mock(async () => undefined),
+      sendReply,
+    };
+    class EgressContendedRedis extends MemoryRedis {
+      override async set(
+        key: string,
+        value: string,
+        options: RedisSetOptions = {},
+      ): Promise<unknown> {
+        if (value === "egress_started") return null;
+        return super.set(key, value, options);
+      }
+    }
+    const redis = new EgressContendedRedis();
+    redis.store.set(
+      "identity:telegram:sender-1",
+      JSON.stringify({
+        userId: "user-1",
+        organizationId: "org-1",
+        agentId: "agent-1",
+      }),
+    );
+    redis.store.set("agent:agent-1:server", "server-1");
+    redis.store.set("server:server-1:url", "http://agent-server.local");
+    globalThis.fetch = mock(
+      async () =>
+        new Response(JSON.stringify({ response: "agent reply" }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+    ) as typeof fetch;
+
+    const response = await handleWebhook(
+      new Request("https://gateway.example/webhook/eliza-app/telegram", {
+        method: "POST",
+        body: "{}",
+      }),
+      adapter,
+      {
+        redis,
+        cloudBaseUrl: "https://api.elizacloud.ai",
+        getAuthHeader: () => ({ Authorization: "Bearer internal-secret" }),
+      },
+      "eliza-app",
+    );
+
+    expect(response.status).toBe(503);
+    expect(sendReply).not.toHaveBeenCalled();
+    expect(
+      redis.store.has("webhook:telegram:scope:message:update-1:processing"),
+    ).toBe(false);
+  });
+
+  test("releases Telegram processing ownership after a pre-egress failure so the update can retry immediately", async () => {
+    process.env.ELIZA_APP_TELEGRAM_BOT_TOKEN = "telegram-test-token";
+    const event: ChatEvent = {
+      platform: "telegram",
+      messageId: "update-retry-before-egress",
+      platformRecordId: "message-retry-before-egress",
+      chatId: "chat-1",
+      chatType: "private",
+      senderId: "sender-1",
+      senderName: "Ada",
+      text: "hello",
+      rawPayload: {},
+    };
+    const sendReply = mock(async () => undefined);
+    const adapter: PlatformAdapter = {
+      platform: "telegram",
+      getDedupeScope: () => "scope",
+      verifyWebhook: mock(async () => true),
+      extractEvent: mock(async () => event),
+      sendReply,
+    };
+    const redis = new MemoryRedis();
+    redis.store.set(
+      "identity:telegram:sender-1",
+      JSON.stringify({ notFound: true }),
+    );
+    let onboardingAttempts = 0;
+    globalThis.fetch = mock(async () => {
+      onboardingAttempts += 1;
+      if (onboardingAttempts === 1) {
+        return new Response("temporarily unavailable", { status: 503 });
+      }
+      return new Response(
+        JSON.stringify({ data: { reply: "onboarding reply" } }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    }) as typeof fetch;
+    const request = () =>
+      new Request("https://gateway.example/webhook/eliza-app/telegram", {
+        method: "POST",
+        body: "{}",
+      });
+    const deps = {
+      redis,
+      cloudBaseUrl: "https://api.elizacloud.ai",
+      getAuthHeader: () => ({ Authorization: "Bearer internal-secret" }),
+    };
+    const processingKey =
+      "webhook:telegram:scope:message:update-retry-before-egress:processing";
+
+    await expect(
+      handleWebhook(request(), adapter, deps, "eliza-app"),
+    ).rejects.toThrow(/onboarding chat failed \(503\)/);
+    expect(redis.store.has(processingKey)).toBe(false);
+
+    const retry = await handleWebhook(request(), adapter, deps, "eliza-app");
+    expect(retry.status).toBe(200);
+    expect(sendReply).toHaveBeenCalledTimes(1);
+    expect(redis.store.has(processingKey)).toBe(true);
+  });
+
+  test("retries onboarding once with fresh auth and the same idempotency key", async () => {
+    configureEnv();
+    const redis = new MemoryRedis();
+    const event = createTwilioEvent({ messageId: "SM_onboarding_retry" });
+    const adapter = createAdapter(event);
+    const reauth = mock(async () => ({ Authorization: "Bearer fresh" }));
+    const onboardingRequests: Array<{
+      authorization: string | null;
+      idempotencyKey: string | null;
+    }> = [];
+
+    globalThis.fetch = mock(async (input, init) => {
+      const request = new Request(input, init);
+      if (
+        request.url ===
+        "https://api.elizacloud.ai/api/internal/identity/resolve"
+      ) {
+        return new Response(JSON.stringify({ success: false }), {
+          status: 404,
+        });
+      }
+      if (
+        request.url ===
+        "https://api.elizacloud.ai/api/eliza-app/onboarding/chat"
+      ) {
+        onboardingRequests.push({
+          authorization: request.headers.get("authorization"),
+          idempotencyKey: request.headers.get("idempotency-key"),
+        });
+        if (onboardingRequests.length === 1) {
+          return new Response("unauthorized", { status: 401 });
+        }
+        return new Response(
+          JSON.stringify({ data: { reply: "fresh-token reply" } }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }
+      throw new Error(`Unexpected fetch: ${request.url}`);
+    }) as typeof fetch;
+
+    const response = await handleWebhook(
+      requestFor(event),
+      adapter,
+      {
+        redis,
+        cloudBaseUrl: "https://api.elizacloud.ai",
+        getAuthHeader: () => ({ Authorization: "Bearer stale" }),
+        reacquireAuthHeader: reauth,
+      },
+      "eliza-app",
+    );
+
+    expect(response.status).toBe(200);
+    await waitFor(
+      () => adapter.replies.length === 1,
+      "retried onboarding reply",
+    );
+    expect(reauth).toHaveBeenCalledTimes(1);
+    expect(onboardingRequests).toEqual([
+      {
+        authorization: "Bearer stale",
+        idempotencyKey: event.messageId,
+      },
+      {
+        authorization: "Bearer fresh",
+        idempotencyKey: event.messageId,
+      },
+    ]);
+    expect(adapter.replies).toEqual(["fresh-token reply"]);
   });
 
   test("routes linked Twilio identity to the running agent server and sends the agent reply", async () => {
@@ -407,10 +616,9 @@ describe("gateway webhook handler e2e routing", () => {
     });
   });
 
-  test("caches an unresolved identity only briefly so linking takes effect quickly", async () => {
-    // The negative result must be cached (so webhook retries don't stampede the
-    // resolver) but on a short TTL: the message right after the user links their
-    // account has to reach their real agent, not another onboarding turn.
+  test("re-resolves an unresolved identity on the next message", async () => {
+    // A sender can finish browser onboarding between two provider messages, so
+    // an unresolved result must not hide the completed link from the next turn.
     configureEnv();
     const redis = new MemoryRedis();
     const event = createTwilioEvent({ messageId: "SM_negcache_1" });
@@ -452,8 +660,9 @@ describe("gateway webhook handler e2e routing", () => {
     );
     await waitFor(() => adapter.replies.length === 1, "first onboarding reply");
 
-    // Second inbound message from the same still-unlinked sender reuses the
-    // cached negative result instead of re-querying the resolver.
+    // A second inbound message re-queries even while the sender is still
+    // unlinked; if browser onboarding completed between these messages, this
+    // request would observe the new account and route it immediately.
     const second = createTwilioEvent({ messageId: "SM_negcache_2" });
     const secondAdapter = createAdapter(second);
     await handleWebhook(
@@ -471,10 +680,8 @@ describe("gateway webhook handler e2e routing", () => {
       "second onboarding reply",
     );
 
-    expect(resolveCalls).toBe(1);
-    expect(redis.store.get("identity:twilio:+15551234567")).toBe(
-      JSON.stringify({ notFound: true }),
-    );
+    expect(resolveCalls).toBe(2);
+    expect(redis.store.has("identity:twilio:+15551234567")).toBe(false);
   });
 
   test("routes to onboarding when the owned agent has no registered server", async () => {

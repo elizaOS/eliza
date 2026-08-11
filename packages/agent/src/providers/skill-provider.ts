@@ -373,7 +373,7 @@ export function createDynamicSkillProvider(): Provider {
 
         if (topMatch.score < THRESHOLD_HIGHLY_RELEVANT) {
           return {
-            text: `## Relevant Skills\n\n${compactList}\n\n*Use USE_SKILL to invoke one, or SEARCH_SKILLS for more detail.*`,
+            text: `## Relevant Skills\n\n${compactList}\n\n*Use USE_SKILL to invoke one.*`,
             values: {
               skillMatchTier: "relevant" as never,
               topSkill: topMatch.slug as never,

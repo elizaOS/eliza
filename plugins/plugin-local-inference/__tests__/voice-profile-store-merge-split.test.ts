@@ -170,4 +170,29 @@ describe("VoiceProfileStore.splitProfile", () => {
       store.splitProfile({ profileId: profile.profileId, sampleIds: ["zzz"] }),
     ).rejects.toThrow(/no matching sampleIds/);
   });
+
+  it("refuses to move every retained sample out of the original", async () => {
+    const profile = await store.createProfile({
+      centroid: unit([1, 0, 0, 0]),
+      embeddingModel: MODEL,
+      confidence: 0.5,
+      durationMs: 1000,
+      audioRef: ref("a"),
+    });
+    await store.refine({
+      profileId: profile.profileId,
+      embedding: unit([1, 0, 0, 0]),
+      durationMs: 1000,
+      confidence: 0.5,
+      audioRef: ref("b"),
+    });
+
+    await expect(
+      store.splitProfile({
+        profileId: profile.profileId,
+        sampleIds: ["a", "b"],
+      }),
+    ).rejects.toThrow(/leave at least one audio sample/);
+    expect((await store.get(profile.profileId))?.audioRefs).toHaveLength(2);
+  });
 });

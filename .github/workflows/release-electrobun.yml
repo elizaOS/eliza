@@ -108,33 +108,29 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
+          ref: ${{ github.workflow_sha }}
           submodules: false
+          persist-credentials: false
 
-      - name: Determine version + env
+      - name: Resolve tag to peeled commit
         id: version
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_API_URL: ${{ github.api_url }}
+          INPUT_TAG: ${{ inputs.tag }}
+          REF_NAME: ${{ github.ref_name }}
+          REF_TYPE: ${{ github.ref_type }}
+          EVENT_NAME: ${{ github.event_name }}
+          REPOSITORY: ${{ github.repository }}
         run: |
-          if [[ -n "${{ inputs.tag }}" ]]; then
-            TAG="${{ inputs.tag }}"
-          elif [[ "${{ github.ref_type }}" == "tag" ]]; then
-            TAG="${{ github.ref_name }}"
-          else
-            echo "Manual branch dispatches must provide inputs.tag; refusing to derive a release tag from package.json." >&2
-            exit 1
-          fi
-          VERSION="${TAG#v}"
-          # canary for pre-release tags, stable for everything else
-          if [[ "$VERSION" == *"-"* ]]; then
-            BUILD_ENV="canary"
-          else
-            BUILD_ENV="stable"
-          fi
-          {
-            echo "tag=$TAG"
-            echo "version=$VERSION"
-            echo "env=$BUILD_ENV"
-            echo "source_sha=$GITHUB_SHA"
-          } >> "$GITHUB_OUTPUT"
-          echo "Release: $VERSION (tag: $TAG, env: $BUILD_ENV, sha: $GITHUB_SHA)"
+          node packages/scripts/electrobun-release-identity.mjs resolve \
+            --repository "$REPOSITORY" \
+            --input-tag "$INPUT_TAG" \
+            --ref-type "$REF_TYPE" \
+            --ref-name "$REF_NAME" \
+            --event-name "$EVENT_NAME" \
+            --event-sha "$GITHUB_SHA" \
+            --github-output "$GITHUB_OUTPUT"
 
       - name: Select desktop platform matrix
         id: desktop-matrix
@@ -174,10 +170,23 @@ jobs:
       run:
         shell: bash -euo pipefail {0}
     steps:
-      - name: Checkout
+      - name: Checkout tagged commit
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           submodules: false
+          ref: ${{ needs.prepare.outputs.source_sha }}
+
+      - name: Verify checkout matches tagged commit
+        env:
+          EXPECTED_SHA: ${{ needs.prepare.outputs.source_sha }}
+          RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
+        run: |
+          CURRENT_SHA="$(git rev-parse HEAD)"
+          if [[ "$CURRENT_SHA" != "$EXPECTED_SHA" ]]; then
+            echo "::error::Checkout HEAD $CURRENT_SHA does not match tagged commit $EXPECTED_SHA." >&2
+            exit 1
+          fi
+          echo "Verified: checked out commit $CURRENT_SHA matches tag $RELEASE_TAG"
 
       - name: Setup Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
@@ -192,11 +201,6 @@ jobs:
           install-native-deps: "true"
           run-postinstall: "true"
           init-submodules: "false"
-
-      # TODO: verify this script exists in eliza or port equivalent.
-      # In eliza this was `bun run test:regression-matrix:release`.
-      - name: Regression matrix contract
-        run: bun run test:regression-matrix:release
 
       - name: Align version with release tag
         run: |
@@ -280,7 +284,7 @@ jobs:
           set -o pipefail
           log_file="$(mktemp)"
 
-          if bun run test:live:cloud 2>&1 | tee "$log_file"; then
+          if bun run --cwd packages/cloud/sdk test:e2e 2>&1 | tee "$log_file"; then
             exit 0
           fi
 
@@ -298,13 +302,6 @@ jobs:
         run: |
           node packages/app-core/scripts/write-homepage-release-data.mjs
           node packages/app-core/scripts/generate-static-asset-manifest.mjs
-
-      - name: Release readiness checks
-        env:
-          ELIZA_RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
-          ELIZA_CDN_VALIDATION_REF: ${{ github.sha }}
-          ELIZA_VALIDATE_CDN: "1"
-        run: bun run release:check
 
   build:
     name: Build ${{ matrix.platform.name }}
@@ -341,10 +338,21 @@ jobs:
             Write-Host "Enabled Git long paths in global config."
           }
 
-      - name: Checkout
+      - name: Checkout tagged commit
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           submodules: false
+          ref: ${{ needs.prepare.outputs.source_sha }}
+
+      - name: Verify checkout matches tagged commit
+        env:
+          EXPECTED_SHA: ${{ needs.prepare.outputs.source_sha }}
+        run: |
+          CURRENT_SHA="$(git rev-parse HEAD)"
+          if [[ "$CURRENT_SHA" != "$EXPECTED_SHA" ]]; then
+            echo "::error::Checkout HEAD $CURRENT_SHA does not match tagged commit $EXPECTED_SHA." >&2
+            exit 1
+          fi
 
       - name: Validate public desktop signing inputs
         env:
@@ -1074,7 +1082,7 @@ jobs:
 
       - name: Run Windows packaged renderer bootstrap check
         if: matrix.platform.os == 'windows' && steps.build-electrobun-app.outputs.fallback != 'true'
-        run: bun run test:desktop:playwright
+        run: bun run test:desktop:packaged
 
       - name: Upload Windows Playwright UI diagnostics
         if: failure() && matrix.platform.os == 'windows'
@@ -1570,10 +1578,11 @@ jobs:
           compression-level: 6
 
   release:
-    name: Create Release
+    name: Upload Release Assets
     if: >-
       ${{
         (inputs.platform == '' || inputs.platform == 'all') &&
+        !inputs.draft &&
         (github.event_name != 'workflow_call' || inputs.publish_release) &&
         (github.event_name != 'push' || needs.prepare.outputs.env != 'canary')
       }}
@@ -1584,8 +1593,27 @@ jobs:
       contents: write
       packages: write
     steps:
-      - name: Checkout
+      - name: Checkout tagged commit
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ needs.prepare.outputs.source_sha }}
+
+      - name: Verify checkout matches tagged commit
+        env:
+          EXPECTED_SHA: ${{ needs.prepare.outputs.source_sha }}
+        run: |
+          CURRENT_SHA="$(git rev-parse HEAD)"
+          if [[ "$CURRENT_SHA" != "$EXPECTED_SHA" ]]; then
+            echo "::error::Checkout HEAD $CURRENT_SHA does not match tagged commit $EXPECTED_SHA." >&2
+            exit 1
+          fi
+
+      - name: Checkout trusted release tooling
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: .release-tooling
+          persist-credentials: false
 
       - name: Download all artifacts
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
@@ -1646,18 +1674,28 @@ jobs:
           sha256sum -- * > SHA256SUMS.txt
           cat SHA256SUMS.txt
 
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228
-        with:
-          tag_name: ${{ needs.prepare.outputs.tag }}
-          target_commitish: ${{ needs.prepare.outputs.source_sha }}
-          name: Eliza ${{ needs.prepare.outputs.tag }}
-          draft: ${{ inputs.draft || false }}
-          prerelease: ${{ contains(needs.prepare.outputs.version, '-') }}
-          generate_release_notes: true
-          files: release-files/*
+      - name: Reverify canonical tag and GitHub Release
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_API_URL: ${{ github.api_url }}
+          EXPECTED_SHA: ${{ needs.prepare.outputs.source_sha }}
+          REPOSITORY: ${{ github.repository }}
+          TAG: ${{ needs.prepare.outputs.tag }}
+        run: |
+          node .release-tooling/packages/scripts/electrobun-release-identity.mjs verify \
+            --repository "$REPOSITORY" \
+            --tag "$TAG" \
+            --expected-commit "$EXPECTED_SHA"
+
+      - name: Upload assets to GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.prepare.outputs.tag }}
+        run: |
+          # Never use --clobber here: it deletes an existing asset before the
+          # replacement upload, so a failed retry can destroy valid release
+          # material. Duplicate names fail closed for explicit reconciliation.
+          gh release upload "$TAG" release-files/*
 
       # Upload platform-prefixed update manifests + tarballs to the eliza
       # releases host so the Electrobun updater can discover them via the
@@ -1701,8 +1739,27 @@ jobs:
     permissions:
       contents: write
     steps:
-      - name: Checkout
+      - name: Checkout tagged commit
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ needs.prepare.outputs.source_sha }}
+
+      - name: Verify checkout matches tagged commit
+        env:
+          EXPECTED_SHA: ${{ needs.prepare.outputs.source_sha }}
+        run: |
+          CURRENT_SHA="$(git rev-parse HEAD)"
+          if [[ "$CURRENT_SHA" != "$EXPECTED_SHA" ]]; then
+            echo "::error::Checkout HEAD $CURRENT_SHA does not match tagged commit $EXPECTED_SHA." >&2
+            exit 1
+          fi
+
+      - name: Checkout trusted release tooling
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: .release-tooling
+          persist-credentials: false
 
       - name: Generate channel manifest
         env:
@@ -1731,6 +1788,19 @@ jobs:
           echo "Channel manifest:"
           cat "latest-${CHANNEL}.json"
 
+      - name: Reverify canonical tag and GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_API_URL: ${{ github.api_url }}
+          EXPECTED_SHA: ${{ needs.prepare.outputs.source_sha }}
+          REPOSITORY: ${{ github.repository }}
+          TAG: ${{ needs.prepare.outputs.tag }}
+        run: |
+          node .release-tooling/packages/scripts/electrobun-release-identity.mjs verify \
+            --repository "$REPOSITORY" \
+            --tag "$TAG" \
+            --expected-commit "$EXPECTED_SHA"
+
       - name: Attach channel manifest to GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -1738,11 +1808,7 @@ jobs:
           BUILD_ENV: ${{ needs.prepare.outputs.env }}
         run: |
           CHANNEL="${BUILD_ENV}"
-          if ! gh release view "$TAG" >/dev/null 2>&1; then
-            echo "::warning::No GitHub release found for $TAG; skipping OTA manifest upload."
-            exit 0
-          fi
-          gh release upload "$TAG" "latest-${CHANNEL}.json" --clobber
+          gh release upload "$TAG" "latest-${CHANNEL}.json"
           echo "OTA manifest attached: latest-${CHANNEL}.json"
           echo "Update check URL: https://github.com/${{ github.repository }}/releases/download/${TAG}/latest-${CHANNEL}.json"
 

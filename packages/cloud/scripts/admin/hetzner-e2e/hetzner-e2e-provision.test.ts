@@ -391,19 +391,6 @@ describe("Hetzner E2E provision HTTP boundary", () => {
     expect(summary).not.toContain("rejected the API credential");
   });
 
-  test("workflow consumes structured diagnostics instead of grepping HTTP status text", () => {
-    const workflow = readFileSync(
-      join(import.meta.dir, "../../../../../.github/workflows/hetzner-e2e.yml"),
-      "utf8",
-    );
-    expect(workflow).toContain("hetzner-e2e-provision-diagnostic.ts");
-    expect(workflow).toContain('rm -f "$HETZNER_E2E_DIAGNOSTIC_FILE"');
-    expect(workflow).not.toContain("status: 401|status: 403");
-    expect(workflow).not.toContain(
-      'grep -qE "quota exhausted|server limit reached',
-    );
-  });
-
   test("round-trips the validated diagnostic consumed by the workflow", () => {
     const diagnostic = {
       version: 1 as const,

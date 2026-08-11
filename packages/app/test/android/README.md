@@ -9,7 +9,7 @@ mocked `/api` (that is `playwright.ui-smoke.config.ts`). Two layers:
 | `mobile-local-chat-smoke.mjs` | On-device agent boots, smallest model loads, a real chat round-trips | adb + on-device agent API (`:31337`) |
 | `onboarding-to-home.android.spec.ts` | Fresh Capacitor first-run onboarding selects a real remote host agent over `adb reverse`, completes first-run, and lands on the home/chat surface with screenshot + screenrecord artifacts | Playwright Android driver + deterministic host `startApiServer` |
 | `native-plugin-view-smoke.android.spec.ts` | The installed app's WebView calls `ElizaSystem` through Capacitor and receives Android/Kotlin-only status + settings values, with JSON, screenshot, screenrecord, console, and logcat artifacts | Playwright Android driver + real Capacitor bridge |
-| `touch-gesture.android.spec.ts` | The installed Android WebView runs the full chat gesture matrix — sheet detents, home↔launcher rail + back, push-to-talk hold, keyboard avoidance, media attachment, long-press — via real OS touch (`adb input`), asserting real touch delivery (never mouse) plus each gesture's semantics, recorded as one chunked screenrecord | Playwright Android driver + `adb shell input swipe` |
+| `touch-gesture.android.spec.ts` | The installed Android WebView runs the full chat gesture matrix — sheet detents, home↔launcher rail + back, talk hold, keyboard avoidance, media attachment, long-press — via real OS touch (`adb input`), asserting real touch delivery (never mouse) plus each gesture's semantics, recorded as one chunked screenrecord | Playwright Android driver + `adb shell input swipe` |
 | `sleep-wake.android.spec.ts` | The installed app emits pause/resume lifecycle events across a real Android sleep/wake cycle, returns to the home shell, and remains interactive, with JSON, screenshot, screenrecord, and logcat artifacts | Playwright Android driver + adb power events |
 | `lifecycle.android.spec.ts` | #12185 device-lifecycle matrix: app switching (home/recents/other app), camera interruption, mute, low battery + battery saver, forced doze, and force-stop + relaunch — after each event the shell is interactive, the agent loopback answers, and state persists (matrix: `docs/DEVICE_LIFECYCLE_MATRIX.md`) | Playwright Android driver + adb (keyevents, `am`, `dumpsys battery`/`deviceidle`, `cmd media_session`) |
 | `lifecycle-reboot.android.spec.ts` | `adb reboot` → ElizaBootReceiver auto-starts ElizaAgentService from BOOT_COMPLETED without an app launch, then a normal launch reaches a healthy agent with persisted state | plain adb (no WebView fixture — CDP cannot survive a reboot) |
@@ -190,8 +190,9 @@ own semantics:
 - **Sheet detents** — grabber drag opens (`chat-overlay[data-open]`,
   `chat-sheet[data-detent]`) then collapses.
 - **Rail pager** — home→launcher and launcher→home (`home-launcher-surface[data-page]`).
-- **Push-to-talk** — a >200ms hold on `chat-composer-mic` arms dictation without
-  latching the hands-free loop (mic aria-label never becomes "end conversation").
+- **Talk hold** — a >200ms hold on `chat-composer-mic` never arms the removed
+  push-to-talk dictation state; the control remains the talk toggle (a held
+  press has exactly the same action as a tap).
 - **Keyboard avoidance** — tapping the composer raises the IME (`dumpsys
   input_method mInputShown=true`) and the composer stays within the visual
   viewport.
@@ -214,7 +215,7 @@ simctl`) and `scripts/ios-e2e.mjs`; run on a Mac (`xcrun` is macOS-only). The
 WebKit WebView is not CDP-drivable like Android, so iOS route coverage is
 screenshot + deep-link + backend-probe based rather than Playwright-driven.
 
-`mobile-build-smoke.yml` also runs `scripts/ios-onboarding-smoke.mjs` after the
+The operator-run iOS release checks also run `scripts/ios-onboarding-smoke.mjs` after the
 iOS Simulator `.app` build/stamp checks. The workflow starts the deterministic
 host agent on `127.0.0.1:31337`, installs the freshly built simulator app, clears
 Capacitor first-run Preferences, writes `eliza:ios-onboarding-smoke:request`,

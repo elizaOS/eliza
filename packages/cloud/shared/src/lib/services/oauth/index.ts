@@ -32,10 +32,12 @@ export {
   getAllProviderIds,
   getConfiguredProviders,
   getProvider,
+  getProviderEnvDiagnostics,
   isProviderConfigured,
   isValidProvider,
   OAUTH_PROVIDERS,
   type OAuthProviderConfig,
+  type ProviderEnvDiagnostic,
 } from "./provider-registry";
 
 // Advanced use cases

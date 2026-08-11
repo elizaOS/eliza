@@ -146,9 +146,23 @@ function noteForAsset(name) {
   return "Release asset";
 }
 
+/** Internal/reserved release tag families that must never be selected as a
+ * public product release. The `pr-evidence` partitions store CI evidence
+ * assets and some are mis-flagged as non-prerelease; `[internal]` names mark
+ * infrastructure-only releases. */
+const INTERNAL_TAG_PATTERN = /^pr-evidence(?:-|$)/i;
+const INTERNAL_NAME_PATTERN = /^\s*\[internal\]/i;
+
+function isInternalRelease(release) {
+  if (!release) return false;
+  if (INTERNAL_TAG_PATTERN.test((release.tag_name ?? "").trim())) return true;
+  if (INTERNAL_NAME_PATTERN.test(release.name ?? "")) return true;
+  return false;
+}
+
 function sortReleasesByRecency(releases) {
   return [...releases]
-    .filter((release) => !release.draft)
+    .filter((release) => !release.draft && !isInternalRelease(release))
     .sort((a, b) => {
       const aTime = Date.parse(a.published_at ?? a.created_at ?? 0);
       const bTime = Date.parse(b.published_at ?? b.created_at ?? 0);
@@ -156,10 +170,31 @@ function sortReleasesByRecency(releases) {
     });
 }
 
+/** Required download IDs that mirror check-homepage-release-data.mjs's
+ * REQUIRED_IDS set. A release is only "downloadable" for public homepage
+ * selection when ALL of these resolve — a newer partial release must not
+ * shadow an older complete one. */
+const REQUIRED_DOWNLOAD_IDS = new Set([
+  "macos-arm64",
+  "macos-x64",
+  "windows-x64",
+  "linux-x64",
+  "android-apk",
+]);
+
+function hasDownloadableRelease(release) {
+  if (!release) return false;
+  const downloadIds = new Set(buildRelease(release).downloads.map((d) => d.id));
+  return [...REQUIRED_DOWNLOAD_IDS].every((id) => downloadIds.has(id));
+}
+
 function pickRelease(releases) {
   const published = sortReleasesByRecency(releases);
-  // Pick the most recent release that has downloadable assets
+  // This general selector also serves elizaOS artifacts, whose asset contract
+  // differs from the app's required installer set. Prefer a complete app
+  // release, then preserve the historical generic-asset fallback.
   return (
+    published.find((r) => hasDownloadableRelease(r)) ??
     published.find((r) => Array.isArray(r.assets) && r.assets.length > 0) ??
     published[0] ??
     null
@@ -168,11 +203,9 @@ function pickRelease(releases) {
 
 function pickStableRelease(releases) {
   const stable = sortReleasesByRecency(releases).filter((r) => !r.prerelease);
-  return (
-    stable.find((r) => Array.isArray(r.assets) && r.assets.length > 0) ??
-    stable[0] ??
-    null
-  );
+  // A partial stable release is not a stable download surface. Returning it
+  // here would also prevent main() from falling back to a complete canary.
+  return stable.find((r) => hasDownloadableRelease(r)) ?? null;
 }
 
 function pickCanaryRelease(releases) {
@@ -806,18 +839,25 @@ async function main() {
   try {
     const releases = await fetchReleases();
     const osReleases = await fetchReleases(OS_RELEASES_URL);
+    // Use stable release as primary; fall back to any release if no stable exists
     const stableRelease = pickStableRelease(releases);
     const canaryRelease = pickCanaryRelease(releases);
-    // Use stable release as primary; fall back to any release if no stable exists
     const primaryRelease = stableRelease ?? pickRelease(releases);
     const osArtifacts = await buildOsArtifacts(
       pickRelease(osReleases),
       canaryRelease ?? primaryRelease,
     );
+    // A release is displayable only if buildRelease() resolves the complete
+    // required installer set. pickStableRelease already enforces this, but
+    // pickRelease remains intentionally generic for the elizaOS repository.
+    const displayRelease =
+      primaryRelease && hasDownloadableRelease(primaryRelease)
+        ? primaryRelease
+        : null;
     await writePayload(
-      buildPayload(primaryRelease, canaryRelease, stableRelease, osArtifacts),
+      buildPayload(displayRelease, canaryRelease, stableRelease, osArtifacts),
     );
-    const tag = primaryRelease?.tag_name ?? "no published release";
+    const tag = displayRelease?.tag_name ?? "no published release";
     const canaryTag = canaryRelease?.tag_name;
     console.log(
       `homepage release data: stable=${tag}${canaryTag ? `, canary=${canaryTag}` : ""}, osArtifacts=${osArtifacts.length}`,
@@ -838,4 +878,21 @@ async function main() {
   }
 }
 
-await main();
+// Export pure functions for unit testing.
+export {
+  buildRelease,
+  hasDownloadableRelease,
+  isInternalRelease,
+  pickCanaryRelease,
+  pickRelease,
+  pickStableRelease,
+};
+
+// Run main only when executed directly (not imported by tests).
+const isDirectRun =
+  process.argv[1] &&
+  path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+
+if (isDirectRun) {
+  await main();
+}

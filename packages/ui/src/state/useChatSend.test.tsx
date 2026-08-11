@@ -755,7 +755,7 @@ describe("useChatSend action handoff", () => {
     vi.unstubAllGlobals();
   });
 
-  it("opens the canonical current view from a completed stream without a WebSocket frame", async () => {
+  it("opens the completed action target without a WebSocket frame or global-state fetch", async () => {
     mocks.client.sendConversationMessageStream.mockResolvedValue({
       text: "Opening Calendar.",
       completed: true,
@@ -767,21 +767,7 @@ describe("useChatSend action handoff", () => {
         },
       ],
     });
-    const fetchMock = vi.fn(async () =>
-      Promise.resolve(
-        new Response(
-          JSON.stringify({
-            currentView: {
-              viewId: "calendar",
-              viewPath: "/calendar",
-              viewLabel: "Calendar",
-              viewType: "gui",
-            },
-          }),
-          { status: 200, headers: { "Content-Type": "application/json" } },
-        ),
-      ),
-    );
+    const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
     const navigations: CustomEvent[] = [];
     const onNavigate = (event: Event) => navigations.push(event as CustomEvent);
@@ -798,16 +784,10 @@ describe("useChatSend action handoff", () => {
       });
     });
 
-    expect(fetchMock).toHaveBeenCalledWith(
-      "/api/views/current",
-      expect.any(Object),
-    );
+    expect(fetchMock).not.toHaveBeenCalled();
     expect(navigations).toHaveLength(1);
     expect(navigations[0]?.detail).toEqual({
       viewId: "calendar",
-      viewPath: "/calendar",
-      viewLabel: "Calendar",
-      viewType: "gui",
       source: "agent",
     });
     expect(deps.setActionNotice).not.toHaveBeenCalled();
@@ -937,12 +917,11 @@ describe("useChatSend action handoff", () => {
     expect(navigations).toHaveLength(1);
     expect(navigations[0]?.detail).toMatchObject({
       viewId: "calendar",
-      viewPath: "/calendar",
     });
     window.removeEventListener(NAVIGATE_VIEW_EVENT, onNavigate);
   });
 
-  it("preserves the successful reply and surfaces a distinct current-view fetch failure", async () => {
+  it("ignores an unavailable global current-view endpoint for caller-owned navigation", async () => {
     mocks.client.sendConversationMessageStream.mockResolvedValue({
       text: "Opening Calendar.",
       completed: true,
@@ -970,11 +949,7 @@ describe("useChatSend action handoff", () => {
       });
     });
 
-    expect(deps.setActionNotice).toHaveBeenCalledWith(
-      expect.stringMatching(/couldn't open/i),
-      "error",
-      8_000,
-    );
+    expect(deps.setActionNotice).not.toHaveBeenCalled();
     expect(
       deps.conversationMessagesRef.current.some(
         (message) =>

@@ -23,6 +23,7 @@ import {
 import type {
   HeartbeatResult,
   ProcessingResult,
+  ProvisioningRecoverySummary,
   RecoveryResult,
 } from "@elizaos/cloud-shared/lib/services/provisioning-jobs";
 import { loadLocalEnv } from "./shared/load-env";
@@ -721,7 +722,7 @@ async function processRecoveryCycle(concurrency = 5): Promise<RecoveryResult> {
 
 async function processStartupInterruptedJobsRecoveryCycle(
   config: ProvisioningWorkerConfig,
-): Promise<number> {
+): Promise<ProvisioningRecoverySummary> {
   const { provisioningJobService } = await loadDeps();
   return provisioningJobService.recoverInterruptedJobsOnStartup(
     workerStartedAt,
@@ -775,6 +776,12 @@ interface PoolReplenishSummary {
   created: number;
   failed: number;
   reason: string;
+}
+
+interface PoolHealthCheckSummary {
+  probed: number;
+  alive: number;
+  removed: number;
 }
 
 /**
@@ -946,15 +953,14 @@ export interface FleetUpgradeSummary {
   detail?: string;
 }
 
-const MAX_INFLIGHT_UPGRADES = 3;
-
 /**
  * Detect when the registry-side digest of the configured agent tag has moved
  * (e.g. a new `:develop` image was pushed) and enqueue blue/green
  * `agent_upgrade` jobs for every running agent still on the old digest.
  *
- * Rate-limited to at most `MAX_INFLIGHT_UPGRADES` upgrade jobs in flight at
- * any time so the fleet is never fully disrupted at once. The actual swap is
+ * Rate-limited to at most `MAX_INFLIGHT_UPGRADES` (default 3) upgrade jobs in
+ * flight at any time so the fleet is never fully disrupted at once. Set the
+ * env var to 0 to pause rollouts during an operational canary. The actual swap is
  * zero-downtime (a new container is provisioned on a different node, traffic
  * is atomically swapped, then the old container gets a 30s SIGTERM drain
  * before removal), so the rate limit is about resource pressure on
@@ -989,7 +995,7 @@ export async function processFleetUpgradeCycle(): Promise<FleetUpgradeSummary> {
     "agent_upgrade",
     "agent_admin_canary_image",
   ]);
-  const slack = MAX_INFLIGHT_UPGRADES - inFlight;
+  const slack = containersEnv.maxInflightUpgrades() - inFlight;
   if (slack <= 0) {
     return {
       action: "skip_capacity",
@@ -1050,6 +1056,26 @@ async function processPoolDrainIdleCycle(): Promise<PoolDrainSummary> {
   const pool = await getWarmPoolManager();
   const result = await pool.drainIdle(image);
   return { drained: result.drained.length };
+}
+
+/**
+ * Probe ready warm-pool entries and destroy entries whose containers are gone.
+ *
+ * Ready pool rows use the shared execution tier, so the agent heartbeat sweep
+ * skips them, while the unclaimable reconciler deliberately excludes rows that
+ * already satisfy the runtime-ready predicate. This phase is therefore the
+ * authoritative liveness sweep for ready pool containers. It runs after drain
+ * and before replenish so refill decisions use the surviving pool depth, and
+ * the manager self-gates on `WARM_POOL_ENABLED`.
+ */
+export async function processPoolHealthCheckCycle(): Promise<PoolHealthCheckSummary> {
+  const pool = await getWarmPoolManager();
+  const result = await pool.healthCheck();
+  return {
+    probed: result.probed,
+    alive: result.alive,
+    removed: result.removed.length,
+  };
 }
 
 /**
@@ -1404,12 +1430,13 @@ async function runBoundedPhase<T>(
   label: string,
   phase: () => Promise<T>,
   onResult: (result: T) => void,
+  timeoutMs: number = PHASE_TIMEOUT_MS,
 ): Promise<void> {
   const { withTimeout } = await loadDeps();
   try {
     const result = await withTimeout(
       phase(),
-      PHASE_TIMEOUT_MS,
+      timeoutMs,
       `[provisioning-worker] ${label}`,
     );
     onResult(result);
@@ -1765,6 +1792,25 @@ async function runInfraMaintenanceCycle(
     },
   );
 
+  // Probe ready warm-pool entries and collect the ones whose container is gone.
+  // Runs BEFORE replenish so the refill decision sees real depth, and after
+  // drain so it does not probe entries the drain just removed.
+  await runBoundedPhase(
+    logger,
+    "warm pool health check cycle",
+    () => processPoolHealthCheckCycle(),
+    (result) => {
+      if (result.removed > 0) {
+        logger.info("[provisioning-worker] warm pool health check complete", {
+          event: "warm_pool.dead_entries_collected",
+          probed: result.probed,
+          alive: result.alive,
+          removed: result.removed,
+        });
+      }
+    },
+  );
+
   // Refill the warm pool up to its forecast target. Runs AFTER node-health,
   // autoscale, and idle-drain so it decides how many containers to create
   // against fresh node capacity and post-drain pool depth. Error-isolated by
@@ -1789,6 +1835,14 @@ async function runInfraMaintenanceCycle(
         );
       }
     },
+    // A warm container creation takes ~70s end-to-end (image start + Steward
+    // registration + readiness), so the default 60s wedge budget expired every
+    // cycle while the entry then completed seconds later (observed live on
+    // cp-prod: "cycle timed out after 60000ms" followed by "pool entry
+    // ready"). Maintenance phases are off the watchdog-critical WORK group,
+    // so a 2-minute budget is invariant-safe and stops the false alarm
+    // without unbounding a genuinely wedged replenish.
+    2 * 60_000,
   );
 
   // FIX 3: orphan-container reconciliation. Runs LAST so it sees the fresh
@@ -1936,12 +1990,13 @@ async function main(): Promise<void> {
     logger,
     "startup interrupted-job recovery",
     () => processStartupInterruptedJobsRecoveryCycle(config),
-    (recovered) => {
-      if (recovered > 0) {
+    (recovery) => {
+      if (recovery.retried > 0 || recovery.permanentlyFailed > 0) {
         logger.info(
           "[provisioning-worker] startup interrupted-job recovery complete",
           {
-            recovered,
+            retried: recovery.retried,
+            permanentlyFailed: recovery.permanentlyFailed,
             startedBefore: workerStartedAt.toISOString(),
           },
         );

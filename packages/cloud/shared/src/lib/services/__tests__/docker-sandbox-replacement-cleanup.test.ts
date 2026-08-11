@@ -217,7 +217,7 @@ describe("DockerSandboxProvider replacement cleanup", () => {
 
     expect(findNode).toHaveBeenCalledWith(NODE.node_id);
     expect(commands[0]).toContain("docker inspect --format");
-    expect(commands[0]).toContain(CONTAINER_NAME);
+    expect(commands[0]).toContain(CONTAINER_ID);
     expect(commands.slice(1)).toEqual([
       `docker stop -t 10 '${CONTAINER_ID}'`,
       `docker rm -f '${CONTAINER_ID}'`,
@@ -249,6 +249,29 @@ describe("DockerSandboxProvider replacement cleanup", () => {
     expect(commands).toHaveLength(1);
     expect(commands[0]).toContain("docker inspect");
     expect(deleteVpn).not.toHaveBeenCalled();
+  });
+
+  test("bounds an id-less stale fence when the name belongs to a newer attempt", async () => {
+    stubNodeLookup();
+    const newerContainerId = "b".repeat(64);
+    const { commands } = stubSsh(async () => `${newerContainerId}|newer-attempt\n`);
+    const deleteVpn = spyOn(headscaleClient, "deleteNode").mockResolvedValue();
+    const provider = replacementProvider();
+
+    await expect(
+      provider.stopOnSpecificNodeForReplacement(
+        NODE.node_id,
+        CONTAINER_NAME,
+        "vpn-node-stale-fence",
+        replacementIdentity({ containerId: null }),
+      ),
+    ).resolves.toBeUndefined();
+
+    expect(commands).toHaveLength(1);
+    expect(commands[0]).toContain(CONTAINER_NAME);
+    expect(commands[0]).not.toContain(`docker stop`);
+    expect(commands[0]).not.toContain(`docker rm`);
+    expect(deleteVpn).toHaveBeenCalledWith("vpn-node-stale-fence");
   });
 
   test("refuses cleanup when Docker's inspected id differs from the persisted id", async () => {

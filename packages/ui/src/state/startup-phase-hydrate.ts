@@ -22,6 +22,7 @@ import {
 import { supportsFullAppShellRoutes } from "../api/app-shell-capabilities";
 import { mapServerTasksToSessions } from "../chat/coding-agent-session-state";
 import { prefetchAppsCatalog } from "../components/apps/load-apps-catalog";
+import { registerDeviceControlInteractHandler } from "../components/views/device-control-interact";
 import {
   type AppEmoteEventDetail,
   dispatchAppEmoteEvent,
@@ -315,6 +316,7 @@ export function bindReadyPhase(
 ): () => void {
   let ptyPollInterval: ReturnType<typeof setInterval> | null = null;
   let handleVis: (() => void) | null = null;
+  const unbindDeviceControl = registerDeviceControlInteractHandler();
 
   const doHydratePty = () => {
     const baseUrl =
@@ -558,6 +560,16 @@ export function bindReadyPhase(
         if (result.reason === "untrusted-remote") {
           depsRef.current?.setActionNotice(
             `Refused to switch to "${profile.label}" — untrusted remote address.`,
+            "error",
+          );
+        } else if (result.reason === "untrusted-cloud") {
+          depsRef.current?.setActionNotice(
+            `Refused to switch to "${profile.label}" — invalid Cloud agent address.`,
+            "error",
+          );
+        } else if (result.reason === "persistence-failed") {
+          depsRef.current?.setActionNotice(
+            `Couldn't switch to "${profile.label}" because browser storage is unavailable.`,
             "error",
           );
         }
@@ -912,6 +924,7 @@ export function bindReadyPhase(
     unbindSwitchAgent();
     unbindViewEvent();
     unbindViewInteract();
+    unbindDeviceControl();
     unbindConvUp();
     unbindPty();
     if (ptyPollInterval) clearInterval(ptyPollInterval);

@@ -8,7 +8,7 @@
  * second per-turn embed. Runs against a real AgentRuntime with deterministic
  * embedding API handlers registered through the production model router.
  */
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import { InMemoryDatabaseAdapter } from "../../database/inMemoryAdapter";
 import { AgentRuntime } from "../../runtime";
 import { EventType, ModelType } from "../../types";
@@ -213,6 +213,95 @@ describe("embedRecallQuery — resolve / fail-open", () => {
 			embed: async () => undefined as never,
 		});
 		await expect(embedRecallQuery(runtime, "boom")).resolves.toBeNull();
+	});
+
+	test.each(["backend_unavailable", "capability_unavailable"] as const)(
+		"expected local %s unavailability returns null without reportError",
+		async (reason) => {
+			const { runtime } = makeRuntime({
+				embed: async () => {
+					const err = new Error(`local embeddings: ${reason}`);
+					Object.assign(err, {
+						code: "LOCAL_INFERENCE_UNAVAILABLE",
+						modelType: ModelType.TEXT_EMBEDDING,
+						reason,
+					});
+					throw err;
+				},
+			});
+			const reportError = vi.spyOn(runtime, "reportError");
+			await expect(embedRecallQuery(runtime, "recall me")).resolves.toBeNull();
+			await expect(
+				embedRecallQuery(runtime, "recall me again"),
+			).resolves.toBeNull();
+			expect(reportError).not.toHaveBeenCalled();
+			reportError.mockRestore();
+		},
+	);
+
+	test.each(["invalid_input", "invalid_output"] as const)(
+		"LOCAL_INFERENCE_UNAVAILABLE %s still reports",
+		async (reason) => {
+			const { runtime } = makeRuntime({
+				embed: async () => {
+					const err = new Error(`local embeddings: ${reason}`);
+					Object.assign(err, {
+						code: "LOCAL_INFERENCE_UNAVAILABLE",
+						modelType: ModelType.TEXT_EMBEDDING,
+						reason,
+					});
+					throw err;
+				},
+			});
+			const reportError = vi.spyOn(runtime, "reportError");
+			await expect(embedRecallQuery(runtime, "bad input")).resolves.toBeNull();
+			expect(reportError).toHaveBeenCalledWith(
+				"DocumentRecall.embedding",
+				expect.objectContaining({
+					code: "RECALL_EMBEDDING_FAILED",
+				}),
+				expect.objectContaining({
+					phase: "asynchronous",
+					providerErrorCode: "LOCAL_INFERENCE_UNAVAILABLE",
+					modelType: ModelType.TEXT_EMBEDDING,
+					reason,
+				}),
+			);
+			reportError.mockRestore();
+		},
+	);
+
+	test("lookalike code with expected reason still reports", async () => {
+		const { runtime } = makeRuntime({
+			embed: async () => {
+				const err = new Error("lookalike");
+				Object.assign(err, {
+					code: "OTHER_UNAVAILABLE",
+					reason: "backend_unavailable",
+				});
+				throw err;
+			},
+		});
+		const reportError = vi.spyOn(runtime, "reportError");
+		await expect(embedRecallQuery(runtime, "lookalike")).resolves.toBeNull();
+		expect(reportError).toHaveBeenCalled();
+		reportError.mockRestore();
+	});
+
+	test("unknown embed failures still report", async () => {
+		const { runtime } = makeRuntime({
+			embed: async () => {
+				throw new Error("embeddings endpoint 500");
+			},
+		});
+		const reportError = vi.spyOn(runtime, "reportError");
+		await expect(embedRecallQuery(runtime, "boom")).resolves.toBeNull();
+		expect(reportError).toHaveBeenCalledWith(
+			"DocumentRecall.embedding",
+			expect.any(Error),
+			expect.objectContaining({ phase: "asynchronous" }),
+		);
+		reportError.mockRestore();
 	});
 });
 
@@ -624,5 +713,43 @@ describe("embedRecallQuery — pre-run messageId cache + in-run adoption (#15253
 		expect(a).toEqual([1, 1, 1]);
 		expect(b).toEqual([1, 1, 1]);
 		expect(calls.count).toBe(1);
+	});
+
+	test("an overlapping turn cannot evict another message's in-flight pre-run warm before adoption", async () => {
+		const resolvers = new Map<string, (value: number[]) => void>();
+		const { runtime, calls, startRun } = makeControllableRuntime(
+			({ text }) =>
+				new Promise<number[]>((resolve) => {
+					resolvers.set(text, resolve);
+				}),
+		);
+
+		const firstWarm = embedRecallQuery(runtime, "first room", {
+			messageId: MSG_A,
+		});
+		await yieldMacrotask();
+		expect(calls.count).toBe(1);
+
+		// A background/independent room starts while the first warm is pending.
+		// It needs its own slot but must not replace MSG_A's adoption handle.
+		startRun();
+		const otherTurn = embedRecallQuery(runtime, "other room", {
+			messageId: MSG_B,
+		});
+		await yieldMacrotask();
+		expect(calls.count).toBe(2);
+
+		startRun();
+		const adoptedFirst = embedRecallQuery(runtime, "first room", {
+			messageId: MSG_A,
+		});
+		expect(calls.count).toBe(2);
+
+		resolvers.get("first room")?.([0.1]);
+		resolvers.get("other room")?.([0.2]);
+		await expect(firstWarm).resolves.toEqual([0.1]);
+		await expect(adoptedFirst).resolves.toEqual([0.1]);
+		await expect(otherTurn).resolves.toEqual([0.2]);
+		expect(calls.count).toBe(2);
 	});
 });

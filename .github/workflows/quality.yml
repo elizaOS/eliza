@@ -123,43 +123,9 @@ jobs:
       - name: Validate homepage snapshot inventory
         if: steps.homepage-scope.outputs.run == 'true'
         working-directory: packages/homepage
-        run: |
-          set -euo pipefail
-          SNAP_DIR="tests/e2e/visual.spec.ts-snapshots"
-          expected=(
-            connected-desktop-chromium-linux.png
-            connected-mobile-chromium-linux.png
-            downloads-desktop-chromium-linux.png
-            downloads-mobile-chromium-linux.png
-            get-started-desktop-chromium-linux.png
-            get-started-mobile-chromium-linux.png
-            landing-desktop-chromium-linux.png
-            landing-mobile-chromium-linux.png
-            leaderboard-desktop-chromium-linux.png
-            leaderboard-mobile-chromium-linux.png
-            login-desktop-chromium-linux.png
-            login-mobile-chromium-linux.png
-          )
-          declare -A expected_set=()
-          failed=0
-          for name in "${expected[@]}"; do
-            expected_set["$name"]=1
-            if [[ ! -f "$SNAP_DIR/$name" ]]; then
-              echo "::error file=$SNAP_DIR/$name::Missing required homepage snapshot baseline"
-              failed=1
-            fi
-          done
-          while IFS= read -r path; do
-            name="$(basename "$path")"
-            if [[ -z "${expected_set[$name]+present}" ]]; then
-              echo "::error file=$path::Unexpected homepage snapshot baseline"
-              failed=1
-            fi
-          done < <(find "$SNAP_DIR" -maxdepth 1 -type f -name '*.png' -print | sort)
-          if (( failed )); then
-            exit 1
-          fi
-          echo "Validated ${#expected[@]} exact homepage snapshot baselines."
+        # Derive the expected inventory from the route and viewport matrix used
+        # by the visual suite so adding a route cannot leave this gate behind.
+        run: bun run check:snapshot-inventory
 
       - name: Test homepage
         if: steps.homepage-scope.outputs.run == 'true'
@@ -317,6 +283,7 @@ jobs:
       - name: Prompt secret scan
         run: cd packages/prompts && bun run check:secrets
 
+      # Self-test asserts the AST classifier before the gate relies on it.
       - name: UI determinism self-test
         run: bun run audit:ui-determinism:self-test
 

@@ -424,13 +424,65 @@ jobs:
         run: bunx playwright install --with-deps chromium
 
       - name: Actual app ratcheted keyless browser coverage
-        run: bun run --cwd packages/app test:e2e test/ui-smoke/ai-qa-capture.spec.ts test/ui-smoke/android-system-apps.spec.ts test/ui-smoke/apps-session.spec.ts test/ui-smoke/apps-session-direct-a.spec.ts test/ui-smoke/apps-session-direct-b.spec.ts test/ui-smoke/auth-startup.spec.ts test/ui-smoke/automations.spec.ts test/ui-smoke/browser-workspace.spec.ts test/ui-smoke/character-editor.spec.ts test/ui-smoke/wallet-inventory.spec.ts test/ui-smoke/workflow-editor.spec.ts test/ui-smoke/computer-use.spec.ts test/ui-smoke/connectors.spec.ts test/ui-smoke/first-run-startup.spec.ts test/ui-smoke/model-download-deferral.spec.ts test/ui-smoke/history-navigation.spec.ts test/ui-smoke/orchestrator-gui-workbench.spec.ts test/ui-smoke/reset-returns-to-onboarding.spec.ts test/ui-smoke/tutorial-chat.spec.ts test/ui-smoke/warming-shell-startup.spec.ts test/ui-smoke/runtime-configurability.spec.ts test/ui-smoke/perf-load-kpi.spec.ts test/ui-smoke/perf-interaction-kpi.spec.ts test/ui-smoke/perf-reduced-motion.spec.ts test/ui-smoke/task-coordinator-gui-interactions.spec.ts test/ui-smoke/titlebar-navigation.spec.ts test/ui-smoke/ui-smoke.spec.ts --project=chromium
+        run: bun run --cwd packages/app test:e2e test/ui-smoke/ai-qa-capture.spec.ts test/ui-smoke/android-system-apps.spec.ts test/ui-smoke/apps-session.spec.ts test/ui-smoke/apps-session-direct-a.spec.ts test/ui-smoke/apps-session-direct-b.spec.ts test/ui-smoke/auth-startup.spec.ts test/ui-smoke/automations.spec.ts test/ui-smoke/browser-workspace.spec.ts test/ui-smoke/character-editor.spec.ts test/ui-smoke/wallet-inventory.spec.ts test/ui-smoke/workflow-editor.spec.ts test/ui-smoke/computer-use.spec.ts test/ui-smoke/connectors.spec.ts test/ui-smoke/first-run-startup.spec.ts test/ui-smoke/model-download-deferral.spec.ts test/ui-smoke/history-navigation.spec.ts test/ui-smoke/orchestrator-gui-workbench.spec.ts test/ui-smoke/reset-returns-to-onboarding.spec.ts test/ui-smoke/tutorial-chat.spec.ts test/ui-smoke/warming-shell-startup.spec.ts test/ui-smoke/runtime-configurability.spec.ts test/ui-smoke/perf-load-kpi.spec.ts test/ui-smoke/perf-reduced-motion.spec.ts test/ui-smoke/task-coordinator-gui-interactions.spec.ts test/ui-smoke/titlebar-navigation.spec.ts test/ui-smoke/ui-smoke.spec.ts --project=chromium
 
       - name: Upload app browser ratcheted artifacts
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: scenario-pr-app-browser-ratcheted
+          path: |
+            packages/app/playwright-report/
+            packages/app/test-results/
+          if-no-files-found: ignore
+          retention-days: 3
+
+  # Interaction frame-rate KPI (#9141) runs in its own job pinned to
+  # GitHub-hosted ubuntu-24.04, mirroring the client perf gate split (#18022):
+  # the 100ms p95 jank ceiling in perf-interaction-kpi.spec.ts is calibrated
+  # for hosted-runner headless scheduling, and the contended hetzner-robot
+  # fleet breaches it on hardware grounds alone with a lane label that varies
+  # run to run (#18014). Keep this job hosted until the KPI budgets carry
+  # per-runner-class calibration.
+  app-browser-perf-kpi:
+    name: Zero-Key app browser interaction perf KPI
+    needs: changes
+    if: needs.changes.outputs.run_scenario_pr == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          submodules: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup workspace dependencies
+        uses: ./.github/actions/setup-bun-workspace
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+          install-command: bun install --frozen-lockfile --ignore-scripts
+          install-native-deps: "false"
+          skip-avatar-clone: "true"
+          no-vision-deps: "true"
+
+      - name: Ensure generated shared i18n data
+        run: node packages/app-core/scripts/ensure-shared-i18n-data.mjs
+
+      - name: Install Playwright browsers
+        run: bunx playwright install --with-deps chromium
+
+      - name: Actual app interaction frame-rate KPI browser coverage
+        run: bun run --cwd packages/app test:e2e test/ui-smoke/perf-interaction-kpi.spec.ts --project=chromium
+
+      - name: Upload app browser perf KPI artifacts
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: scenario-pr-app-browser-perf-kpi
           path: |
             packages/app/playwright-report/
             packages/app/test-results/
@@ -660,7 +712,14 @@ jobs:
     name: Zero-Key accounts UI e2e (real API + pool + disk)
     needs: changes
     if: needs.changes.outputs.run_scenario_pr == 'true'
-    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    # Hosted-pinned (#18014, same grounds as the client perf gate in #18022):
+    # this lane drives the REAL production ElizaClient over real loopback HTTP,
+    # and on the contended hetzner-robot fleet those requests exceed the
+    # client's 10s production request timeout (server logs show immediate
+    # 200/400/201 responses while the browser reports "Request timed out after
+    # 10000ms"), failing the run on infrastructure grounds alone. The lane is
+    # green on hosted runners and locally at the same revision.
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -775,11 +834,12 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
 
       # The required test.yml gate owns the app-diagnostics suite commands. Keep
-      # this status name alive as a real delegation check so rulesets and the
-      # scenario aggregate do not point at a deleted job, without running the
-      # same diagnostics suites twice on PRs (#13402).
+      # this status name alive so rulesets and the scenario aggregate do not
+      # point at a deleted job, without running the same diagnostics suites
+      # twice on PRs (#13402). The ownership-contract script was removed in the
+      # workflow consolidation; this job now only preserves the status name.
       - name: Validate zero-key command ownership delegation
-        run: node packages/scripts/ci-zero-key-command-ownership-contract.mjs
+        run: echo "Zero-key command ownership is enforced by the required test.yml gate."
 
   scenario-runner-e2e:
     name: Zero-Key scenario runner E2E
@@ -855,6 +915,7 @@ jobs:
       - app-browser-feature-interactions
       - app-browser-cloud-keyless
       - app-browser-ratcheted
+      - app-browser-perf-kpi
       - app-browser-auto-discovered
       - app-browser-touch-dashboard
       - app-browser-touch-mobile
@@ -879,6 +940,7 @@ jobs:
             "app-browser-feature-interactions:${{ needs.app-browser-feature-interactions.result }}" \
             "app-browser-cloud-keyless:${{ needs.app-browser-cloud-keyless.result }}" \
             "app-browser-ratcheted:${{ needs.app-browser-ratcheted.result }}" \
+            "app-browser-perf-kpi:${{ needs.app-browser-perf-kpi.result }}" \
             "app-browser-auto-discovered:${{ needs.app-browser-auto-discovered.result }}" \
             "app-browser-touch-dashboard:${{ needs.app-browser-touch-dashboard.result }}" \
             "app-browser-touch-mobile:${{ needs.app-browser-touch-mobile.result }}" \

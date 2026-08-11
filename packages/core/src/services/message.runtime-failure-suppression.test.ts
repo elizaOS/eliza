@@ -358,4 +358,108 @@ describe("planner failure after a promoted stage-1 answer", () => {
 		);
 		expect(visibleTexts.join("\n").toLowerCase()).not.toContain("rate-limit");
 	});
+
+	it("delivers the failure reply on an unaddressed group turn once stage-1 committed to respond", async () => {
+		// Stage 1 commits to RESPOND on a bare group message but produces no
+		// preservable answer (empty replyText, promoted to planning), and the
+		// planner then dies. The deterministic addressing gate alone would
+		// suppress the failure reply — the model's own RESPOND decision must
+		// qualify the turn for a visible failure instead of dead silence.
+		const responseHandlerFieldRegistry = new ResponseHandlerFieldRegistry();
+		for (const evaluator of BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS) {
+			responseHandlerFieldRegistry.register(evaluator);
+		}
+		let stage1Served = false;
+		const runtime = createMockRuntime({
+			agentId: AGENT,
+			character: { name: "Remilio", bio: "test agent" },
+			logger: {
+				debug: vi.fn(),
+				info: vi.fn(),
+				warn: vi.fn(),
+				error: vi.fn(),
+				trace: vi.fn(),
+			} as unknown as IAgentRuntime["logger"],
+			getSetting: vi.fn(() => undefined),
+			getService: vi.fn(() => null),
+			getModel: vi.fn(() => async () => {
+				throw RATE_LIMIT_ERROR;
+			}),
+			useModel: vi.fn(async (modelType: unknown) => {
+				if (String(modelType) === "RESPONSE_HANDLER" && !stage1Served) {
+					stage1Served = true;
+					return {
+						text: "",
+						toolCalls: [
+							{
+								id: "handle-response-1",
+								name: "HANDLE_RESPONSE",
+								arguments: {
+									shouldRespond: "RESPOND",
+									thought: "",
+									contexts: ["general"],
+									intents: [],
+									candidateActionNames: [],
+									replyText: "",
+									facts: [],
+									relationships: [],
+									addressedTo: [],
+								},
+							},
+						],
+					};
+				}
+				throw RATE_LIMIT_ERROR;
+			}),
+			composeState: vi.fn(async () => makeState()),
+			runActionsByMode: vi.fn(async () => undefined),
+			applyPipelineHooks: vi.fn(async () => undefined),
+			emitEvent: vi.fn(async () => undefined),
+			reportError: vi.fn(),
+			startRun: vi.fn(() => RUN_ID),
+			getCurrentRunId: vi.fn(() => RUN_ID),
+			endRun: vi.fn(),
+			getMemoryById: vi.fn(async () => null),
+			createMemory: vi.fn(async () => asUUID(v4())),
+			updateMemory: vi.fn(async () => true),
+			queueEmbeddingGeneration: vi.fn(async () => undefined),
+			getParticipantUserState: vi.fn(async () => null),
+			getRoom: vi.fn(async () => makeRoom(ChannelType.GROUP)),
+			getRoomsByIds: vi.fn(async () => [makeRoom(ChannelType.GROUP)]),
+			getMemories: vi.fn(async () => []),
+			isCheckShouldRespondEnabled: vi.fn(() => true),
+			turnControllers: new TurnControllerRegistry(),
+			responseHandlerFieldRegistry,
+			responseHandlerFieldEvaluators: [
+				...BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS,
+			],
+			responseHandlerEvaluators: [
+				{
+					name: "test-clobber-to-ack",
+					priority: 100,
+					shouldRun: () => true,
+					evaluate: () => ({ reply: "On it.", requiresTool: true }),
+				},
+			],
+		} as never);
+
+		const service = new DefaultMessageService();
+		const deliveries: Content[] = [];
+		const result = await service.handleMessage(
+			runtime,
+			makeMessage({}),
+			async (content) => {
+				deliveries.push(content);
+				return [];
+			},
+		);
+
+		const visibleTexts = deliveries
+			.map((content) => (typeof content.text === "string" ? content.text : ""))
+			.filter((text) => text.trim().length > 0);
+
+		expect(result.didRespond).toBe(true);
+		expect(visibleTexts).toHaveLength(1);
+		expect(visibleTexts[0].toLowerCase()).toContain("rate-limit");
+	});
 });

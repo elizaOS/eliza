@@ -8,6 +8,7 @@
  * Reference: eliza-cloud/backend/services/container-orchestrator.ts
  */
 
+import { ElizaError } from "@elizaos/core";
 import { buildDefaultElizaCloudServiceRouting } from "@elizaos/shared/contracts/service-routing";
 import { agentSandboxesRepository } from "../../db/repositories/agent-sandboxes";
 import { dockerNodesRepository } from "../../db/repositories/docker-nodes";
@@ -21,7 +22,10 @@ import { signStewardMutatingRequest } from "../steward/sign";
 import { resolveServerStewardApiUrlFromEnv } from "../steward-url";
 import { logger } from "../utils/logger";
 import { withTimeout } from "../utils/with-timeout";
-import { buildAgentContainerSecurityFlags } from "./agent-container-security";
+import {
+  buildAgentContainerMemoryFlags,
+  buildAgentContainerSecurityFlags,
+} from "./agent-container-security";
 import { ensureRegistryAccess } from "./containers/hetzner-client/registry";
 import { getNodeAutoscaler } from "./containers/node-autoscaler";
 import { resolveImageDigest } from "./containers/registry-probe";
@@ -30,7 +34,11 @@ import {
   isContainerAbsentMessage,
   isNodeUnreachableMessage,
 } from "./docker-error-classifier";
-import { dockerNodeManager } from "./docker-node-manager";
+import {
+  clearPlacementCommandFailures,
+  dockerNodeManager,
+  notePlacementCommandFailure,
+} from "./docker-node-manager";
 import { getUsedDockerHostPorts } from "./docker-port-allocation";
 import {
   allocatePort,
@@ -59,8 +67,10 @@ import { classifyDockerSshProbeError, DockerSSHClient } from "./docker-ssh";
 import { headscaleClient } from "./headscale-client";
 import { DEFAULT_REGISTRATION_TIMEOUT_MS, headscaleIntegration } from "./headscale-integration";
 import { buildKeylessOpenAIContainerEnv } from "./managed-eliza-env";
+import { applyRemoteDockerRuntimeMode } from "./remote-docker-runtime-mode";
 import type {
   SandboxCreateConfig,
+  SandboxDeletionStopOutcome,
   SandboxHandle,
   SandboxHealthOutcome,
   SandboxProvider,
@@ -160,7 +170,9 @@ const REPLACEMENT_VPN_CLOCK_SKEW_ALLOWANCE_MS = 30_000;
 
 class ReplacementPlacementPersistenceError extends Error {
   constructor(cause: unknown) {
-    super("[docker-sandbox] Failed to persist replacement placement", { cause });
+    super("[docker-sandbox] Failed to persist replacement placement", {
+      cause,
+    });
     this.name = "ReplacementPlacementPersistenceError";
   }
 }
@@ -561,7 +573,7 @@ const DOCKER_CMD_TIMEOUT_MS = 60_000;
  */
 const STOP_CMD_TIMEOUT_MS = 25_000;
 
-/** Cap on the best-effort headscale VPN cleanup during stop(). */
+/** Cap on best-effort Headscale VPN cleanup during sandbox teardown. */
 const HEADSCALE_CLEANUP_TIMEOUT_MS = 15_000;
 
 /** Autoscaled node readiness polling. */
@@ -943,14 +955,21 @@ export class DockerSandboxProvider implements SandboxProvider {
   async create(config: SandboxCreateConfig): Promise<SandboxHandle> {
     const MAX_ATTEMPTS = 3;
     let lastError: Error | undefined;
+    // This is the last caller-visible boundary before remote placement. Stored
+    // rows, warm claims, and image replays may carry historical values, but no
+    // remote create attempt may opt back into the container-owned pair relay.
+    const createConfig: SandboxCreateConfig = {
+      ...config,
+      environmentVars: applyRemoteDockerRuntimeMode(config.environmentVars),
+    };
 
     for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
       try {
-        return await this._createOnce(config);
+        return await this._createOnce(createConfig);
       } catch (err) {
         lastError = err instanceof Error ? err : new Error(String(err));
         if (
-          config.onReplacementCreateIntent ||
+          createConfig.onReplacementCreateIntent ||
           lastError instanceof SandboxReplacementCleanupUnresolvedError
         ) {
           throw lastError;
@@ -1067,6 +1086,22 @@ export class DockerSandboxProvider implements SandboxProvider {
         await dockerNodesRepository.incrementAllocated(nodeId);
       }
     } else {
+      const registeredNodes = await dockerNodesRepository.findAll();
+      if (registeredNodes.length > 0) {
+        throw new ElizaError(
+          "[docker-sandbox] Registered Docker nodes exist but none are available for placement; refusing CONTAINERS_DOCKER_NODES seed fallback",
+          {
+            code: "DOCKER_PLACEMENT_UNAVAILABLE",
+            context: {
+              registeredNodeCount: registeredNodes.length,
+              excludedNodeId: config.excludeNodeId ?? null,
+              requiredPlatform: imagePlatform ?? null,
+            },
+            severity: "ephemeral",
+          },
+        );
+      }
+
       // Fallback: seed-only path for initial setup before nodes are registered via Admin API.
       // Uses random selection (no least-loaded placement or capacity checks).
       // Operators should register nodes via POST /admin/docker-nodes for production use.
@@ -1325,7 +1360,7 @@ export class DockerSandboxProvider implements SandboxProvider {
         stewardAuthToken: stewardJwt || stewardAgentToken,
       });
 
-      const allEnv: Record<string, string> = {
+      const allEnv: Record<string, string> = applyRemoteDockerRuntimeMode({
         ...baseEnv,
         STEWARD_AGENT_TOKEN: stewardAgentToken,
         ...(stewardJwt
@@ -1377,7 +1412,7 @@ export class DockerSandboxProvider implements SandboxProvider {
               SANDBOX_PUBLIC_URL: `http://${hostname}:${bridgePort}/api`,
             }
           : {}),
-      };
+      });
 
       // Validate env keys/values before they are interpolated into remote shell commands.
       // Internal env vars must also remain UPPER_SNAKE_CASE so validation stays
@@ -1416,9 +1451,13 @@ export class DockerSandboxProvider implements SandboxProvider {
         "--health-timeout 5s",
         "--health-start-period 15s",
         "--health-retries 6",
-        ...(config.container?.memoryMb
-          ? [`--memory ${shellQuote(`${Math.ceil(config.container.memoryMb)}m`)}`]
-          : []),
+        // Per-container memory ceiling (see buildAgentContainerMemoryFlags):
+        // an explicit per-agent `container.memory` wins; otherwise the
+        // env-tunable fleet default applies so a boot-looping agent can never
+        // OOM-starve its co-tenants again (staging fleet incident 2026-08-05).
+        ...buildAgentContainerMemoryFlags(
+          config.container?.memoryMb ?? containersEnv.agentContainerMemoryLimitMb(),
+        ),
         // Escape-hardening (#12230/#12302): drop ALL kernel capabilities, forbid
         // privilege escalation, and bound the process count — then, under
         // headscale only, re-add exactly NET_ADMIN + /dev/net/tun for the VPN.
@@ -1603,6 +1642,9 @@ export class DockerSandboxProvider implements SandboxProvider {
         );
       }
     } catch (err) {
+      // Recorded before any rethrow branching below so every failure shape on
+      // this node feeds the placement breaker (only timeouts count inside).
+      notePlacementCommandFailure(nodeId, err);
       // Best-effort Steward deregistration — the agent was registered but the
       // container failed to start, so the Steward record is deleted here.
       try {
@@ -1681,6 +1723,9 @@ export class DockerSandboxProvider implements SandboxProvider {
       hostKeyFingerprint,
     };
     this.containers.set(containerName, meta);
+    // The container exists on the node — clear its breaker history so a
+    // recovered node is not one stale timeout away from re-quarantine.
+    clearPlacementCommandFailures(nodeId);
 
     // 8. Wait for Headscale VPN registration if enabled
     if (headscaleEnabled) {
@@ -2131,10 +2176,14 @@ export class DockerSandboxProvider implements SandboxProvider {
       node.ssh_user ?? DEFAULT_SSH_USERNAME,
     );
     const format = `{{.Id}}|{{index .Config.Labels "${REPLACEMENT_ATTEMPT_LABEL}"}}`;
+    // When Docker returned the create id before a later phase failed, inspect
+    // that immutable object directly. A same-name replacement can never make
+    // the old id look present or authorize deleting the newer occupant.
+    const inspectTarget = locator.containerId ?? locator.containerName;
     let output: string;
     try {
       output = await ssh.exec(
-        `docker inspect --format ${shellQuote(format)} ${shellQuote(locator.containerName)}`,
+        `docker inspect --format ${shellQuote(format)} ${shellQuote(inspectTarget)}`,
         DOCKER_CMD_TIMEOUT_MS,
       );
     } catch (error) {
@@ -2170,6 +2219,25 @@ export class DockerSandboxProvider implements SandboxProvider {
       );
     }
     if (attemptId !== locator.replacementAttemptId) {
+      // A timeout before Docker returned an id leaves only the deterministic
+      // name + attempt label as identity. If that name is now occupied by a
+      // DIFFERENT attempt, Docker's name uniqueness proves the unknown target
+      // is no longer at that name. Retain the occupant and converge the stale
+      // cleanup fence; the node-wide orphan reconciler remains responsible for
+      // any independently renamed debris. With an immutable id, a label
+      // mismatch is corruption and stays fail-closed.
+      if (!locator.containerId) {
+        logger.warn(
+          "[docker-sandbox] Replacement cleanup name is occupied by a different attempt; retaining occupant and treating the id-less target as absent",
+          {
+            nodeId: locator.nodeId,
+            containerName: locator.containerName,
+            expectedAttemptId: locator.replacementAttemptId,
+            observedAttemptId: attemptId || null,
+          },
+        );
+        return null;
+      }
       throw new Error(
         `[docker-sandbox] Replacement attempt label mismatch for ${locator.containerName}`,
       );
@@ -2270,8 +2338,13 @@ export class DockerSandboxProvider implements SandboxProvider {
     }
   }
 
-  async stop(sandboxId: string): Promise<void> {
-    await this.stopWithPolicy(sandboxId, true);
+  async stopForDeletion(sandboxId: string): Promise<SandboxDeletionStopOutcome> {
+    // Deletion is the one teardown whose capacity is owned elsewhere: the
+    // caller's deletion generation releases the slot exactly once via
+    // `tryReleaseDeletionAllocation`, because this path is retryable and
+    // treats either a successful stop or "already gone" as proof that the
+    // workload no longer consumes compute (#17185).
+    return this.stopWithPolicy(sandboxId, true, false);
   }
 
   /**
@@ -2280,10 +2353,19 @@ export class DockerSandboxProvider implements SandboxProvider {
    * an unresolved stop must retain the database fence and block replacement.
    */
   async stopForReplacement(sandboxId: string): Promise<void> {
-    await this.stopWithPolicy(sandboxId, false);
+    // Suspend, shutdown, sleep, warm-claim retire and ghost cleanup all route
+    // here. None has a durable generation to own the slot, and each stops
+    // exactly once under a fence, so the provider still releases capacity for
+    // them — the same per-operation ownership `stopOnSpecificNodeWithPolicy`
+    // already declares.
+    await this.stopWithPolicy(sandboxId, false, true);
   }
 
-  private async stopWithPolicy(sandboxId: string, allowUnreachableAbandon: boolean): Promise<void> {
+  private async stopWithPolicy(
+    sandboxId: string,
+    allowUnreachableAbandon: boolean,
+    releaseCapacity: boolean,
+  ): Promise<SandboxDeletionStopOutcome> {
     const meta = await this.resolveContainer(sandboxId);
 
     logger.info(
@@ -2327,6 +2409,7 @@ export class DockerSandboxProvider implements SandboxProvider {
       );
     }
 
+    let outcome: SandboxDeletionStopOutcome = { kind: "not-running-proven" };
     if (stopErr && rmErr) {
       const stopMsg = stopErr instanceof Error ? stopErr.message : String(stopErr);
       const rmMsg = rmErr instanceof Error ? rmErr.message : String(rmErr);
@@ -2348,14 +2431,10 @@ export class DockerSandboxProvider implements SandboxProvider {
       // cloud-api fails closed (agents API hangs).
       //
       // TRADE-OFF / HONEST LIMITATION: completing the delete here ABANDONS the
-      // container. There is currently NO automatic reclaimer — no orphan-sweep /
-      // node-reconcile job exists that lists actual containers on a node and
-      // removes ones with no DB row. So if the node later returns, the container
-      // (and its headscale registration, if deletion was skipped) can leak until
-      // such a sweeper is built or it is reclaimed by hand. We accept that leak
-      // to keep the work cycle bounded; the lifecycle/capacity owner should add
-      // a node-reconcile sweep (and revisit the allocated_count decrement below)
-      // when one lands. Do NOT claim a reconciler already reclaims it.
+      // container. The orphan reconciler retains the deletion generation's
+      // capacity ownership until it can inspect the node and prove the workload
+      // absent. This prevents the scheduler from packing against capacity that
+      // an abandoned container may still consume.
       const unreachable = isNodeUnreachableMessage(stopMsg) && isNodeUnreachableMessage(rmMsg);
       if (!stopIsGone && !rmIsGone && (!unreachable || !allowUnreachableAbandon)) {
         throw new Error(
@@ -2364,10 +2443,10 @@ export class DockerSandboxProvider implements SandboxProvider {
         );
       }
       if (unreachable) {
+        outcome = { kind: "not-running-unresolved", reason: "node-unreachable" };
         logger.warn(
           `[docker-sandbox] Node ${meta.hostname} unreachable during stop of ${meta.containerName}; ` +
-            `completing delete and ABANDONING the container — it will LEAK until reclaimed ` +
-            `(no automatic orphan-sweep / node-reconcile job exists yet) — ` +
+            `completing delete while retaining its capacity until reconciliation — ` +
             `docker stop -> ${stopMsg}; docker rm -f -> ${rmMsg}`,
           { nodeId: meta.nodeId, containerName: meta.containerName },
         );
@@ -2378,12 +2457,20 @@ export class DockerSandboxProvider implements SandboxProvider {
       }
     }
 
-    // Decrement allocated_count on the node
-    await dockerNodesRepository.decrementAllocated(meta.nodeId).catch((err) => {
-      logger.warn(
-        `[docker-sandbox] Failed to decrement allocated_count for node ${meta.nodeId}: ${err instanceof Error ? err.message : String(err)}`,
-      );
-    });
+    // Capacity release is per-operation, not unconditional. A teardown whose
+    // caller owns a durable generation passes `releaseCapacity: false` and
+    // hands the slot back itself, because this path is retryable and treats
+    // "already absent" as success — so decrementing here would run several
+    // times for one allocation and free a live sibling's slot (#17185).
+    if (releaseCapacity) {
+      await dockerNodesRepository.decrementAllocated(meta.nodeId).catch((err) => {
+        // error-policy:J6 best-effort teardown — the workload is already not
+        // running; the logged overcount is safe and the periodic recount heals it.
+        logger.warn(
+          `[docker-sandbox] Failed to decrement allocated_count for node ${meta.nodeId}: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      });
+    }
 
     // Deletes Headscale VPN registration only for containers that were
     // actually enrolled. Fallback-mode containers can run with HEADSCALE_API_KEY
@@ -2406,6 +2493,8 @@ export class DockerSandboxProvider implements SandboxProvider {
       if (cleanup) {
         await withTimeout(cleanup, HEADSCALE_CLEANUP_TIMEOUT_MS, "headscale cleanup").catch(
           (err) => {
+            // error-policy:J6 best-effort teardown — compute teardown is already
+            // complete, so VPN cleanup failure is observable without reviving it.
             logger.warn(
               `[docker-sandbox] Headscale cleanup failed for ${meta.agentId}: ${err instanceof Error ? err.message : String(err)}`,
             );
@@ -2420,6 +2509,7 @@ export class DockerSandboxProvider implements SandboxProvider {
 
     // Remove from in-memory registry
     this.containers.delete(meta.containerName);
+    return outcome;
   }
 
   // ------------------------------------------------------------------
@@ -2825,7 +2915,7 @@ export class DockerSandboxProvider implements SandboxProvider {
     };
 
     // Docker handles use the container name as sandboxId, so the refreshed row
-    // updates the same cache key used by create(), stop(), and runCommand().
+    // updates the same cache key used by create, teardown, and runCommand.
     this.containers.set(sandboxId, meta);
     logger.info(
       `[docker-sandbox] Hydrated container "${sandboxId}" from DB -> node ${meta.nodeId} (${meta.hostname})`,

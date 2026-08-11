@@ -73,18 +73,14 @@ const PLUGIN_VIEW_TARGETS: readonly PluginViewTarget[] = [
     label: "Calendar",
     path: "/calendar",
     viewId: "calendar",
-    // The dynamic route mounts CalendarSpatialView, whose spatial `agent`
-    // values are the canonical bridge ids.
-    ready: { text: "Design sync" },
-    requiredIds: [
-      "prev",
-      "today",
-      "next",
-      "new",
-      "mode:day",
-      "mode:week",
-      "mode:month",
-    ],
+    // #17859 swapped the /calendar bundle to the canonical month-grid
+    // SimpleCalendarView: `useAgentElement` day cells (`calendar-day-<date>`,
+    // date-dependent so not pinned here) plus the always-rendered month
+    // navigation. There is no Day/Week/Month mode control or standalone
+    // "new" button anymore — event mutations stay on the chat CALENDAR
+    // action path.
+    ready: { testId: "simple-calendar-view" },
+    requiredIds: ["prev", "today", "next", "month-picker"],
   },
   {
     label: "Inbox",

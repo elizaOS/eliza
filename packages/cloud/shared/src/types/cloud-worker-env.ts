@@ -198,7 +198,7 @@ export interface Bindings {
   CEREBRAS_API_KEY?: string;
   /** Opt-in batch STT provider. Deepgram is never selected by key presence alone. */
   VOICE_BATCH_STT_PROVIDER?: string;
-  /** Deepgram realtime Flux and opt-in prerecorded STT key (server-held; NEVER returned to clients). */
+  /** Opt-in prerecorded Deepgram STT key (server-held; never returned to clients). */
   DEEPGRAM_API_KEY?: string;
   /** BYOK OpenRouter key — the backup for models we have no native key for. */
   OPENROUTER_API_KEY?: string;
@@ -243,6 +243,11 @@ export interface Bindings {
   NEXT_PUBLIC_STEWARD_API_URL?: string;
   /** HS256 secret for verifying Steward session JWTs (jose). Either name works. */
   STEWARD_SESSION_SECRET?: string;
+  /** Optional dedicated secret for OAuth success-page HMAC proofs; falls back to STEWARD_SESSION_SECRET. */
+  OAUTH_SUCCESS_PROOF_SECRET?: string;
+  /** Required managed Google OAuth application credentials. */
+  GOOGLE_CLIENT_ID?: string;
+  GOOGLE_CLIENT_SECRET?: string;
   STEWARD_JWT_SECRET?: string;
   /** Steward vault encryption master password. Required for wallet/key operations. */
   STEWARD_MASTER_PASSWORD?: string;
@@ -257,6 +262,46 @@ export interface Bindings {
   STEWARD_REQUEST_SIGNING_SECRET?: string;
   STEWARD_REQUEST_SIGNING_SECRETS?: string;
   STEWARD_REQUEST_SIGNING_KEY_ID?: string;
+
+  // ---- OpenID Connect provider (Eliza Cloud as the OP for Eliza Hub) ----
+  /** Kill switch. The provider serves nothing unless this is exactly "true". */
+  OIDC_ENABLED?: string;
+  /**
+   * Issuer string, emitted VERBATIM into the discovery document and every
+   * token, and the only host the OIDC endpoints answer on. Relying parties
+   * byte-compare it, so a trailing slash or host change invalidates every
+   * existing account link. Must be a host this Worker is routed for — the
+   * apex `elizacloud.ai` is the SPA and never reaches the Worker.
+   */
+  OIDC_ISSUER_URL?: string;
+  /**
+   * Secret: JSON array of PRIVATE JWKs (optionally base64-wrapped). Element 0
+   * signs; every element is published at `jwks_uri`, which is what makes an
+   * overlapping key rotation possible.
+   */
+  OIDC_SIGNING_JWKS?: string;
+  /**
+   * Secret: JSON array of relying-party registry entries (optionally
+   * base64-wrapped). Client secrets are stored as sha256 hex only.
+   */
+  OIDC_CLIENTS?: string;
+  /**
+   * Domain that wallet-derived no-reply identities are minted on, for relying
+   * parties registered with `wallet_email_fallback`. Defaults to
+   * `users.noreply.<OIDC_ISSUER_URL hostname>` and is normally left unset.
+   *
+   * An override is accepted ONLY when it is a strict subdomain of the issuer
+   * hostname — that rule is what proves no user can register a name there, which
+   * is the entire security property of the address. Set but invalid turns the
+   * wallet-identity feature OFF with a named reason (`OidcConfig.
+   * walletEmailUnavailableReason`) and leaves the rest of the provider serving;
+   * it is one optional variable and must not 503 every relying party. A
+   * committed var, not a secret, for the same reason as OIDC_ISSUER_URL: losing
+   * it must not silently rewrite every wallet user's account identity at the
+   * relying party.
+   */
+  OIDC_WALLET_EMAIL_DOMAIN?: string;
+
   RPC_URL?: string;
   CHAIN_ID?: string;
 

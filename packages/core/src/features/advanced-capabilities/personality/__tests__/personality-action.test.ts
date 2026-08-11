@@ -93,12 +93,25 @@ describe("personalityAction — subactions write structured state", () => {
 	});
 
 	test("set_trait user-scope writes user slot only", async () => {
-		const { result } = await run(fake, "be terse with me", "set_trait", {
+		const { result, calls } = await run(fake, "be terse with me", "set_trait", {
 			scope: "user",
 			trait: "verbosity",
 			value: "terse",
 		});
 		expect(result.success).toBe(true);
+		// #17923 humanization: the ack is a human sentence, not settings-speak
+		// ("Set verbosity=terse for you."). Machine detail rides in values/data.
+		expect(calls[0].text).toBe("Okay — I'll be terse with you from here on.");
+		expect(calls[0].text).not.toContain("=");
+		expect(result.values).toMatchObject({
+			scope: "user",
+			trait: "verbosity",
+			value: "terse",
+		});
+		expect(
+			(result.data as { after?: { verbosity?: string | null } }).after
+				?.verbosity,
+		).toBe("terse");
 		const userSlot = fake.store.getSlot(
 			"00000000-0000-4000-8000-0000000000ff" as never,
 		);
@@ -128,6 +141,24 @@ describe("personalityAction — subactions write structured state", () => {
 			"00000000-0000-4000-8000-0000000000ff" as never,
 		);
 		expect(slot.reply_gate).toBe("never_until_lift");
+	});
+
+	test("set_reply_gate=addressed_or_ambient writes the gate with its own ack", async () => {
+		const { result, calls } = await run(
+			fake,
+			"only join in when it's for you or open chat",
+			"set_reply_gate",
+			{
+				scope: "user",
+				mode: "addressed_or_ambient",
+			},
+		);
+		expect(result.success).toBe(true);
+		expect(calls[0].text).toMatch(/address me|undirected/);
+		const slot = fake.store.getSlot(
+			"00000000-0000-4000-8000-0000000000ff" as never,
+		);
+		expect(slot.reply_gate).toBe("addressed_or_ambient");
 	});
 
 	test("lift_reply_gate resets to 'always'", async () => {
@@ -195,7 +226,13 @@ describe("personalityAction — subactions write structured state", () => {
 			scope: "user",
 		});
 		expect(result.success).toBe(true);
-		expect(calls[0].text).toContain("verbosity=terse");
+		// Humanized summary — no key=value settings-speak in the spoken line; the
+		// raw slot stays available as machine detail in data.slot.
+		expect(calls[0].text).toContain("verbosity terse");
+		expect(calls[0].text).not.toContain("=");
+		expect(
+			(result.data as { slot?: { verbosity?: string | null } }).slot?.verbosity,
+		).toBe("terse");
 	});
 });
 
@@ -247,6 +284,77 @@ describe("personalityAction — profiles", () => {
 		const profile = fake.store.getProfile("my-favorite");
 		expect(profile?.verbosity).toBe("terse");
 	});
+});
+
+describe("personalityAction — single-delivery settlement", () => {
+	// Every success confirmation must settle as verified + turnComplete with the
+	// callback text as the canonical userFacingText, so the action's own callback
+	// is the turn's sole user-facing delivery. Without it, the evaluator rejects
+	// a FINISH with an empty messageToUser and replans, and the user receives the
+	// confirmation twice (observed live on set_reply_gate).
+	const cases: Array<{
+		op: string;
+		userText: string;
+		params: Record<string, unknown>;
+	}> = [
+		{
+			op: "set_trait",
+			userText: "be terse with me",
+			params: { scope: "user", trait: "verbosity", value: "terse" },
+		},
+		{
+			op: "clear_trait",
+			userText: "reset verbosity",
+			params: { scope: "user", trait: "verbosity" },
+		},
+		{
+			op: "set_reply_gate",
+			userText: "only reply when I mention you",
+			params: { scope: "user", mode: "on_mention" },
+		},
+		{
+			op: "lift_reply_gate",
+			userText: "talk again",
+			params: { scope: "user" },
+		},
+		{
+			op: "add_directive",
+			userText: "no emojis please",
+			params: { scope: "user", directive: "no emojis" },
+		},
+		{
+			op: "clear_directives",
+			userText: "clear preferences",
+			params: { scope: "user" },
+		},
+		{
+			op: "load_profile",
+			userText: "load focused",
+			params: { name: "focused" },
+		},
+		{
+			op: "save_profile",
+			userText: "save this",
+			params: { name: "snapshot", description: "test snapshot" },
+		},
+		{ op: "list_profiles", userText: "list profiles", params: {} },
+		{ op: "show_state", userText: "show me", params: { scope: "user" } },
+	];
+
+	for (const { op, userText, params } of cases) {
+		test(`${op} settles its confirmation as the sole user-facing delivery`, async () => {
+			// Owner-seeded so the admin-only profile ops pass the role gate.
+			const fake = makeFakeRuntime({ owner: TEST_SENDER });
+			await initStore(fake);
+			const { result, calls } = await run(fake, userText, op, params);
+			expect(result.success).toBe(true);
+			expect(calls).toHaveLength(1);
+			expect(result.userFacingText).toBe(result.text);
+			expect(calls[0].text).toBe(result.userFacingText);
+			expect(result.verifiedUserFacing).toBe(true);
+			expect(result.turnComplete).toBe(true);
+		});
+	}
 });
 
 describe("personalityAction — audit trail", () => {

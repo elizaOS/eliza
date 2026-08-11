@@ -30,8 +30,7 @@
  * in this stack that produces an observable Hetzner node transition. Autoscale
  * (step g) uses the now-landed daemon path (#8920/#8921): the `agent-hot-pool`
  * cron the `--with-daemon` loop ticks replenishes the warm pool on its own. The
- * REAL-Hetzner variant of this loop runs nightly via
- * `.github/workflows/monetized-loop-nightly.yml`.
+ * REAL-Hetzner variant is an explicit operator-run integration.
  *
  * Load-bearing invariants (exact, not smoke):
  *   - Hetzner node: server count grows by 1 per provision, each reaching
@@ -50,7 +49,6 @@
  */
 
 import { appEarningsRepository } from "@elizaos/cloud-shared/db/repositories/app-earnings";
-import { appsRepository } from "@elizaos/cloud-shared/db/repositories/apps";
 import { stripeConnectAccountsRepository } from "@elizaos/cloud-shared/db/repositories/stripe-connect-accounts";
 import { appCreditsService } from "@elizaos/cloud-shared/lib/services/app-credits";
 import { redeemableEarningsService } from "@elizaos/cloud-shared/lib/services/redeemable-earnings";
@@ -62,7 +60,10 @@ import {
 } from "@elizaos/cloud-shared/lib/services/stripe-connect-payout";
 import type { CreditBalanceResponse } from "@elizaos/cloud-shared/lib/types/cloud-api";
 import type { MockServer } from "@elizaos/cloud-test-mocks/hetzner";
-import { authedClient } from "../src/helpers/monetization";
+import {
+  approveAppForMonetizationTest,
+  authedClient,
+} from "../src/helpers/monetization";
 import { expect, test } from "../src/helpers/test-fixtures";
 
 /** apps.create returns { success, app: <App>, apiKey, ... }; we only read id. */
@@ -226,7 +227,7 @@ test.describe("monetized full loop", () => {
       draftMonetization.status,
       "draft app cannot enable monetization before compliance approval",
     ).toBe(403);
-    await approveAppForMonetizedLoop(appId);
+    await approveAppForMonetizationTest(appId, authed);
 
     const monetization = await authed(
       "PUT",
@@ -561,15 +562,3 @@ test.describe("monetized full loop", () => {
     ).toBeLessThan(1e-9);
   });
 });
-
-async function approveAppForMonetizedLoop(appId: string): Promise<void> {
-  // This suite validates billing/monetization/payout behavior, not the live
-  // compliance-review classifier. Keep the draft 403 assertion above, then open
-  // the gate with the same deterministic grandfathered approval used by the
-  // review-gate e2e helper.
-  await appsRepository.update(appId, {
-    review_status: "approved",
-    review_content_hash: null,
-    reviewed_at: new Date(),
-  });
-}

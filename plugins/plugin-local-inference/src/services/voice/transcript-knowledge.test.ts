@@ -59,6 +59,17 @@ describe("transcriptKnowledgePayload", () => {
 		expect(p.metadata.durationMs).toBe(4000);
 		expect(p.metadata.speakerCount).toBe(2);
 		expect(p.metadata.textBacked).toBe(true);
+		expect(p.fragments).toEqual([
+			{
+				text: "Alice: ship the build\nBob: on it",
+				metadata: {
+					segmentIds: ["s1", "s2"],
+					startMs: 0,
+					endMs: 2000,
+					speakerLabels: ["Alice", "Bob"],
+				},
+			},
+		]);
 	});
 
 	it("omits audioUrl when the transcript has no audio, and slugs an empty title", () => {

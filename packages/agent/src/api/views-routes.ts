@@ -13,7 +13,7 @@
  *   GET  /api/views/:id/frame.html     — sandboxed iframe document (HTML)
  *   GET  /api/views/:id/<asset>        — compiled bundle chunk/asset
  *   GET  /api/views/:id/hero           — hero image (image/*)
- *   POST /api/views/:id/navigate       — broadcast shell navigation event (JSON)
+ *   POST /api/views/:id/navigate       — deliver a shell navigation event (JSON)
  *   POST /api/views/:id/elements       — report the view's addressable element snapshot
  *   POST /api/views/:id/interact       — agent-view interaction (capability dispatch)
  *   POST /api/views/interact-result    — frontend result callback (resolves pending interact)
@@ -901,9 +901,11 @@ export async function handleViewsRoutes(
   }
 
   // ── POST /api/views/:id/navigate ─────────────────────────────────────────
-  // Broadcasts a shell:navigate:view WebSocket event to all connected clients.
-  // The frontend's startup-phase-hydrate WS handler dispatches eliza:navigate:view
-  // on window when it receives this message, which App.tsx handles.
+  // Broadcasts a shell:navigate:view WebSocket event to connected clients unless
+  // the caller owns a narrower delivery channel. Realtime voice returns the
+  // validated VIEWS result through its originating WebSocket session; normal app
+  // chat returns it in the completed stream action result. A global echo from
+  // either path would navigate unrelated browsers and devices.
   //
   // Optional body fields:
   //   action: "pin-tab"    — tells the shell to add to desktop tab bar
@@ -918,6 +920,8 @@ export async function handleViewsRoutes(
   //   path: string         — override the navigation path
   //   alwaysOnTop: boolean — for open-window, ask the shell to keep it above normal windows
   //   payload: unknown     — opaque deep-link state consumed by the target view
+  //   delivery: "originating-client" — realtime caller navigates its own client
+  //   delivery: "completed-action" — app chat navigates from its stream result
   if (method === "POST" && subResource === "navigate") {
     const body = await readJsonBody<Record<string, unknown>>(req, res).catch(
       () => null,
@@ -963,6 +967,10 @@ export async function handleViewsRoutes(
         : undefined;
     const payload =
       body && Object.hasOwn(body, "payload") ? body.payload : undefined;
+    const callerOwnedDelivery =
+      body?.delivery === "originating-client" ||
+      body?.delivery === "completed-action";
+    const originatingClientId = resolveViewInteractClientId(req, body);
     const layoutPayload = {
       ...(layoutViews && layoutViews.length > 0 ? { views: layoutViews } : {}),
       ...(layout ? { layout } : {}),
@@ -1049,8 +1057,9 @@ export async function handleViewsRoutes(
       }
     }
 
-    // Skip the echo for user-reported switches (the client already navigated).
-    if (reportedSource !== "user") {
+    // Skip the echo when the client already navigated or when the caller owns a
+    // narrower delivery channel such as realtime voice or the app chat stream.
+    if (reportedSource !== "user" && !callerOwnedDelivery) {
       const navigatePayload: ShellNavigateViewPayload = {
         viewId: id,
         viewPath,
@@ -1063,7 +1072,23 @@ export async function handleViewsRoutes(
         ...layoutPayload,
         ...deepLinkPayload,
       };
-      ctx.broadcastWs?.(createShellNavigateViewWsFrame(navigatePayload));
+      const frame = createShellNavigateViewWsFrame(navigatePayload);
+      if (originatingClientId) {
+        const delivered = ctx.broadcastWsToClientId?.(
+          originatingClientId,
+          frame,
+        );
+        if (delivered === undefined || delivered <= 0) {
+          error(
+            res,
+            `No connected view client "${originatingClientId}" is available for "${id}".`,
+            409,
+          );
+          return true;
+        }
+      } else {
+        ctx.broadcastWs?.(frame);
+      }
     }
 
     json(res, {

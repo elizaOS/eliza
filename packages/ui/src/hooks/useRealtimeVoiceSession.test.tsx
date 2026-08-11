@@ -196,7 +196,13 @@ describe("useRealtimeVoiceSession", () => {
   });
 
   it("full flow: start → listening → partial → final → speaking → barge-in → stop through the REAL client", async () => {
-    const { options, ws, micCtx, pbCtx, getConsentNonce } = makeOptions();
+    const stopTrack = vi.fn();
+    const { options, ws, micCtx, pbCtx, getConsentNonce } = makeOptions({
+      getUserMedia: async () =>
+        ({
+          getTracks: () => [{ stop: stopTrack }],
+        }) as unknown as MediaStream,
+    });
     const { result } = renderHook(() => useRealtimeVoiceSession(options));
 
     // Flag on + ids present + not-yet-disabled ⇒ available for the batch caller
@@ -278,8 +284,13 @@ describe("useRealtimeVoiceSession", () => {
     // Clean stop → bye + teardown.
     await act(async () => {
       await result.current.stop();
+      await result.current.stop();
     });
     expect(sock.sentControls().some((c) => c.t === "bye")).toBe(true);
+    expect(sock.closed?.code).toBe(1000);
+    expect(stopTrack).toHaveBeenCalledTimes(1);
+    expect(micCtx.closed).toBe(true);
+    expect(pbCtx.closed).toBe(true);
     expect(result.current.active).toBe(false);
     expect(result.current.status).toBe("idle");
   });
@@ -436,8 +447,8 @@ describe("useRealtimeVoiceSession", () => {
     });
   });
 
-  it("does not return a batch fallback after the realtime mic has become live", async () => {
-    const { options, ws } = makeOptions();
+  it("recovers a LIVE session across a transport drop without surfacing an error (no batch fallback)", async () => {
+    const { options, ws, mint } = makeOptions();
     const { result } = renderHook(() => useRealtimeVoiceSession(options));
 
     const startPromise = beginStart(result);
@@ -446,14 +457,29 @@ describe("useRealtimeVoiceSession", () => {
     await waitFor(() => expect(result.current.active).toBe(true));
     await expect(startPromise).resolves.toEqual({ kind: "live" });
 
+    // The wifi-switch class: the live socket dies. The hook must leave the
+    // client's reconnect budget intact (never zero it), so the REAL client
+    // re-mints and reconnects instead of surfacing a transport error.
     await act(async () => {
-      sock.emitClose(1006, "post-ready");
+      sock.emitClose(1006, "post-ready network change");
+      await flushAsync();
+    });
+    await waitFor(() => expect(mint.calls.length).toBe(2));
+    const second = ws.last();
+    expect(second).not.toBe(sock);
+    await act(async () => {
+      second.emitOpen();
+      await flushAsync();
+      second.emitControl({ t: "ready", sessionId: "sess-2", traceId: "T2" });
       await flushAsync();
     });
 
-    await waitFor(() => expect(result.current.error?.kind).toBe("transport"));
-    expect(result.current.active).toBe(false);
+    await waitFor(() => expect(result.current.active).toBe(true));
+    expect(result.current.error).toBeNull();
     expect(result.current.available).toBe(true);
+    await act(async () => {
+      await result.current.stop();
+    });
   });
 
   it("does not arm when the VITE flag is off (batch path owns the mic)", async () => {

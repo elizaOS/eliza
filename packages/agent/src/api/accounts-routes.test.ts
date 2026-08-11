@@ -74,6 +74,16 @@ vi.mock("@elizaos/auth/account-storage", () => ({
     fakes.accounts.find((account) => account.id === accountId),
   saveAccount: fakes.saveAccount,
   deleteAccount: fakes.deleteAccount,
+  assertCanonicalAccountId: (accountId: string) => {
+    if (!/^[A-Za-z0-9][A-Za-z0-9._@-]{0,127}$/.test(accountId)) {
+      throw new Error(`invalid account id: ${accountId}`);
+    }
+  },
+  createRuntimeAccountStoragePolicy: (stateRoot: string) => ({
+    stateRoot,
+    authRoot: `${stateRoot}/auth`,
+    owner: "runtime",
+  }),
 }));
 vi.mock("@elizaos/auth/codex-usage", () => ({
   fetchCodexUsage: vi.fn(),
@@ -349,7 +359,11 @@ describe("accounts routes", () => {
 
     const deleted = makeContext("DELETE", "/api/accounts/openai-api/account-1");
     await handleAccountsRoutes(deleted.ctx);
-    expect(fakes.deleteAccount).toHaveBeenCalledWith("openai-api", "account-1");
+    expect(fakes.deleteAccount).toHaveBeenCalledWith(
+      "openai-api",
+      "account-1",
+      expect.objectContaining({ owner: "runtime" }),
+    );
     expect(deleted.jsonCalls[0]?.body).toEqual({ deleted: true });
   });
 
@@ -388,6 +402,7 @@ describe("accounts routes", () => {
         label: "Primary",
         credentials: expect.objectContaining({ access: "new-secret-value" }),
       }),
+      expect.objectContaining({ owner: "runtime" }),
     );
     expect(replaced.jsonCalls[0]).toMatchObject({
       status: 200,

@@ -13,9 +13,12 @@
  * fully real and runs without any paid key.
  */
 
-import { appsRepository } from "@elizaos/cloud-shared/db/repositories/apps";
 import { seedTestUser } from "../src/fixtures/seed";
-import { authedClient } from "../src/helpers/monetization";
+import {
+  approveAppForMonetizationTest,
+  authedClient,
+  retryInferenceCacheWarming,
+} from "../src/helpers/monetization";
 import { seedModelPricing } from "../src/helpers/seed-pricing";
 import { expect, test } from "../src/helpers/test-fixtures";
 
@@ -85,7 +88,7 @@ test.describe("creator-monetization journey (mock LLM, keyless)", () => {
       draftMonetize.status,
       "draft app cannot enable monetization before compliance approval",
     ).toBe(403);
-    await approveAppForMockJourney(appId);
+    await approveAppForMonetizationTest(appId, creator);
 
     const monetize = await creator(
       "PUT",
@@ -127,19 +130,24 @@ test.describe("creator-monetization journey (mock LLM, keyless)", () => {
         ?.totalLifetimeEarnings ?? 0;
 
     // ---- Paid inference: end-user calls the monetized app (mock LLM) ----
-    const inference = await buyer<MessagesResponse>(
-      "POST",
-      "/api/v1/messages",
-      {
-        model: MODEL,
-        max_tokens: 256,
-        messages: [
-          { role: "user", content: "Reply with exactly the word: PONG" },
-        ],
-      },
-      { "X-App-Id": appId },
+    const inference = await retryInferenceCacheWarming(() =>
+      buyer<MessagesResponse>(
+        "POST",
+        "/api/v1/messages",
+        {
+          model: MODEL,
+          max_tokens: 256,
+          messages: [
+            { role: "user", content: "Reply with exactly the word: PONG" },
+          ],
+        },
+        { "X-App-Id": appId },
+      ),
     );
-    expect(inference.status, "monetized inference returns 200").toBe(200);
+    expect(
+      inference.status,
+      `monetized inference returns 200: ${JSON.stringify(inference.json)}`,
+    ).toBe(200);
     const text =
       inference.json.content?.find((b) => b.type === "text")?.text ?? "";
     expect(text, "mock LLM returned the deterministic completion").toBe("PONG");
@@ -200,14 +208,3 @@ test.describe("creator-monetization journey (mock LLM, keyless)", () => {
     expect(redeemBal.status).toBe(200);
   });
 });
-
-async function approveAppForMockJourney(appId: string): Promise<void> {
-  // This spec validates billing + creator earnings, not the live review model.
-  // Use the deterministic grandfathered approval used by the other monetization
-  // e2e suites so the money path can run after proving the draft gate is closed.
-  await appsRepository.update(appId, {
-    review_status: "approved",
-    review_content_hash: null,
-    reviewed_at: new Date(),
-  });
-}

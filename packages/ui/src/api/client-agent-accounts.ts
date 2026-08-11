@@ -9,6 +9,7 @@ import type {
   LinkedAccountProviderId,
   ServiceRouteAccountStrategy,
 } from "@elizaos/shared";
+import { parseAccountsListResponse } from "./client-agent-accounts-validator";
 import { ElizaClient } from "./client-base";
 
 export type AccountStrategy = ServiceRouteAccountStrategy;
@@ -102,7 +103,11 @@ declare module "./client-base" {
 }
 
 ElizaClient.prototype.listAccounts = async function (this: ElizaClient) {
-  return this.fetch<AccountsListResponse>("/api/accounts");
+  // The agent is a separate process on an operator-controlled host, so its
+  // reply is untrusted input: validate the shape once here rather than letting
+  // a malformed provider list surface as undefined fields in the panel.
+  const response = await this.fetch<unknown>("/api/accounts");
+  return parseAccountsListResponse(response);
 };
 
 ElizaClient.prototype.createApiKeyAccount = async function (

@@ -27,6 +27,7 @@ export {
   type ZoomSourceLoss,
   type ZoomTranscriptSource,
 } from "./artifacts.js";
+export * from "./cloud-import.js";
 export {
   classifyZoomPage,
   isZoomAudioInitUrl,
@@ -41,6 +42,7 @@ export {
   s16leToFloat32,
   unloadNullSink,
 } from "./pulse-capture.js";
+export * from "./shared-artifact.js";
 export { ZoomSpeakerAttributor } from "./speaker-attribution.js";
 export {
   createZoomStrategies,

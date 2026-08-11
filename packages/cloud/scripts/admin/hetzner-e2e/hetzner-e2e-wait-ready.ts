@@ -18,6 +18,8 @@ const rmRecursiveScript = resolve(
   "..",
   "..",
   "..",
+  "..",
+  "scripts",
   "rm-path-recursive.mjs",
 );
 
@@ -34,7 +36,7 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function rmRecursive(targetPath: string): void {
+export function rmRecursive(targetPath: string): void {
   const result = spawnSync(process.execPath, [rmRecursiveScript, targetPath], {
     stdio: "inherit",
   });
@@ -104,4 +106,6 @@ async function main(): Promise<void> {
   }
 }
 
-await main();
+if (import.meta.main) {
+  await main();
+}

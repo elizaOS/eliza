@@ -197,7 +197,7 @@ function makeSyntheticSkillsPlugin(): Plugin {
     routes: [
       {
         type: "GET",
-        path: "/api/skills/catalog",
+        path: "/api/skills",
         rawPath: true,
         handler: async (_req, res) => {
           res.json({ skills: [] });
@@ -301,7 +301,7 @@ describe("skills-shaped plugin — 3 load/unload cycles", () => {
       expect(
         runtime.providers.some((p) => p.name === "ENABLED_SKILLS_PROVIDER"),
       ).toBe(true);
-      expect(hasRoutePath(runtime.routes, "/api/skills/catalog")).toBe(true);
+      expect(hasRoutePath(runtime.routes, "/api/skills")).toBe(true);
       expect(runtime.getPluginOwnership(plugin.name)?.services).toEqual([]);
 
       await runtime.unloadPlugin("synthetic-skills-plugin");
@@ -311,7 +311,7 @@ describe("skills-shaped plugin — 3 load/unload cycles", () => {
       expect(
         runtime.providers.some((p) => p.name === "ENABLED_SKILLS_PROVIDER"),
       ).toBe(false);
-      expect(hasRoutePath(runtime.routes, "/api/skills/catalog")).toBe(false);
+      expect(hasRoutePath(runtime.routes, "/api/skills")).toBe(false);
 
       expect(runtime.actions.length).toBe(baselineActions);
       expect(runtime.providers.length).toBe(baselineProviders);

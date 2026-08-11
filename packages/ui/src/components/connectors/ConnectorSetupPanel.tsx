@@ -7,7 +7,6 @@
 
 import { getBootConfig } from "../../config/boot-config";
 import { BlueBubblesStatusPanel } from "./BlueBubblesStatusPanel";
-import { ConnectorAccountList } from "./ConnectorAccountList";
 import { ConnectorAccountSetupScope } from "./ConnectorAccountSetupScope";
 import {
   connectorSetupRegistry,
@@ -18,9 +17,11 @@ import {
   getConnectorPluginManagedAccountOption,
   parseConnectorAccountManagementPanelPluginId,
 } from "./connector-account-options";
+import { useConnectorChannelMode } from "./connector-channel-mode";
 import { resolveConnectorSetupPanelToken } from "./connector-setup-panel-registry";
 import { DiscordLocalConnectorPanel } from "./DiscordLocalConnectorPanel";
 import { IMessageStatusPanel } from "./IMessageStatusPanel";
+import { OwnerAgentConnectorSetupPanel } from "./OwnerAgentConnectorSetupPanel";
 import { SignalQrOverlay } from "./SignalQrOverlay";
 import { TelegramAccountConnectorPanel } from "./TelegramAccountConnectorPanel";
 import { TelegramBotSetupPanel } from "./TelegramBotSetupPanel";
@@ -33,24 +34,36 @@ function ConnectorAccountManagementPanel({
   provider: string;
   connectorId: string;
 }) {
+  const channelMode = useConnectorChannelMode();
   const option =
     getConnectorPluginManagedAccountOption(connectorId) ??
     getConnectorPluginManagedAccountOption(provider);
   const createInput = option?.supportsOAuth
     ? undefined
-    : () => getConnectorPluginManagedAccountCreateInput(connectorId);
+    : getConnectorPluginManagedAccountCreateInput(connectorId);
 
   return (
-    <ConnectorAccountList
+    <OwnerAgentConnectorSetupPanel
       provider={provider}
       connectorId={connectorId}
-      title={option?.title ?? "Plugin-managed accounts"}
-      onAddAccount={createInput}
+      enableOwner={channelMode === "delegate"}
+      enableAgent={channelMode === "bot"}
+      enableTeam
+      description={option?.description}
+      onAddAccount={
+        createInput ? (role) => ({ ...createInput, role }) : undefined
+      }
     />
   );
 }
 
-export function ConnectorSetupPanel({ pluginId }: { pluginId: string }) {
+export function ConnectorSetupPanel({
+  pluginId,
+  modeId,
+}: {
+  pluginId: string;
+  modeId?: string;
+}) {
   const normalized = normalizePluginId(pluginId);
   const accountManagementPanel =
     parseConnectorAccountManagementPanelPluginId(pluginId);
@@ -96,7 +109,7 @@ export function ConnectorSetupPanel({ pluginId }: { pluginId: string }) {
     case "discord-local":
       return <DiscordLocalConnectorPanel />;
     case "bluebubbles":
-      return <BlueBubblesStatusPanel />;
+      return <BlueBubblesStatusPanel modeId={modeId} />;
     case "imessage":
       return <IMessageStatusPanel />;
     default:

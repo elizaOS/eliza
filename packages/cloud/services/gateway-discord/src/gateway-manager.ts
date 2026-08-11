@@ -1,4 +1,4 @@
-// Coordinates Discord gateway gateway manager behavior for multi-tenant bot pods.
+/** Coordinates multi-tenant Discord gateway connections and event routing. */
 import { Redis } from "@upstash/redis";
 import {
   type Attachment,
@@ -19,8 +19,18 @@ import {
   type Role,
   type User,
 } from "discord.js";
+import { reconcileDiscordConnectionReady } from "./connection-lifecycle";
 import { logger } from "./logger";
+import {
+  deliverManagedReply,
+  postManagedAgentMessageWithRetry,
+} from "./managed-message-egress";
 import { createMockRedis, createNativeRedis } from "./redis-adapter";
+import {
+  buildManagedFailureReplyOptions,
+  buildManagedReplyOptions,
+  classifyManagedReplyReceipt,
+} from "./reply-components";
 import {
   forwardToServer,
   refreshKedaActivity,
@@ -851,6 +861,45 @@ export class GatewayManager {
 
     this.connections.set(assignment.connectionId, conn);
 
+    const markConnectionReady = async (
+      source: "client-ready" | "shard-ready" | "shard-resume",
+      shardId?: number,
+    ): Promise<void> => {
+      const transition = reconcileDiscordConnectionReady(
+        conn,
+        client.guilds.cache.size,
+      );
+
+      // ClientReady supplies the canonical bot user identity after initial
+      // login. Shard recovery events only need to persist a real transition;
+      // duplicate ready/resume notifications must not create status-write
+      // storms while a connection is already healthy.
+      if (!transition.changed && source !== "client-ready") {
+        logger.debug("Bot connection already ready", {
+          connectionId: assignment.connectionId,
+          source,
+          shardId,
+        });
+        return;
+      }
+
+      logger.info("Bot connected", {
+        connectionId: assignment.connectionId,
+        guildCount: conn.guildCount,
+        username: client.user?.username,
+        botUserId: client.user?.id,
+        source,
+        shardId,
+        previousStatus: transition.previousStatus,
+      });
+      await this.updateConnectionStatus(
+        assignment.connectionId,
+        "connected",
+        undefined,
+        client.user?.id,
+      );
+    };
+
     // Create wrapped handlers with error boundaries
     const createHandler = <T extends unknown[]>(
       eventName: string,
@@ -873,23 +922,25 @@ export class GatewayManager {
     client.on(
       Events.ClientReady,
       createHandler(Events.ClientReady, async () => {
-        conn.status = "connected";
-        conn.connectedAt = new Date();
-        conn.guildCount = client.guilds.cache.size;
-        logger.info("Bot connected", {
-          connectionId: assignment.connectionId,
-          guildCount: conn.guildCount,
-          username: client.user?.username,
-          botUserId: client.user?.id,
-        });
-        // Pass bot user ID for mention detection (different from application_id)
-        await this.updateConnectionStatus(
-          assignment.connectionId,
-          "connected",
-          undefined,
-          client.user?.id,
-        );
+        await markConnectionReady("client-ready");
       }),
+    );
+
+    client.on(
+      Events.ShardReady,
+      createHandler(Events.ShardReady, async (shardId: number) => {
+        await markConnectionReady("shard-ready", shardId);
+      }),
+    );
+
+    client.on(
+      Events.ShardResume,
+      createHandler(
+        Events.ShardResume,
+        async (shardId: number, _replayedEvents: number) => {
+          await markConnectionReady("shard-resume", shardId);
+        },
+      ),
     );
 
     client.on(
@@ -1330,6 +1381,16 @@ export class GatewayManager {
         conn.characterId,
         userId,
         message.content,
+        {
+          senderName:
+            message.member?.displayName ??
+            message.author.globalName ??
+            message.author.username,
+          accountId: connectionId,
+          platformRecordId: message.id,
+          chatId: message.channelId,
+          chatType: message.guildId ? "group" : "dm",
+        },
       );
 
       if (response) {
@@ -1929,50 +1990,92 @@ export class GatewayManager {
         await message.channel.sendTyping();
       }
 
-      const response = await fetchWithTimeout(
-        `${this.config.elizaCloudUrl}/api/internal/discord/eliza-app/messages`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            ...this.getAuthHeader(),
-          },
-          body: JSON.stringify({
-            ...(message.guildId ? { guildId: message.guildId } : {}),
+      // Egress health (proven dropped-turn class, E2E 2026-08-05): a single
+      // transient failure from the routing API must not consume the user's
+      // turn. The route is idempotent on `discord:<messageId>`, so bounded
+      // retry replays the SAME turn instead of dropping it.
+      const outcome = await postManagedAgentMessageWithRetry({
+        doPost: () =>
+          fetchWithTimeout(
+            `${this.config.elizaCloudUrl}/api/internal/discord/eliza-app/messages`,
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                ...this.getAuthHeader(),
+              },
+              body: JSON.stringify({
+                ...(message.guildId ? { guildId: message.guildId } : {}),
+                channelId: message.channelId,
+                messageId: message.id,
+                content,
+                sender: {
+                  id: message.author.id,
+                  username: message.author.username,
+                  displayName:
+                    message.member?.displayName ??
+                    message.author.globalName ??
+                    undefined,
+                  avatar: message.author.displayAvatarURL() || null,
+                },
+              }),
+              timeout: EVENT_FORWARD_TIMEOUT_MS,
+            },
+          ),
+        refreshAuth: () => this.refreshToken(),
+        onAttemptFailure: ({ attempt, status, error }) => {
+          logger.warn("Managed Agent Discord routing attempt failed", {
+            guildId: message.guildId ?? null,
             channelId: message.channelId,
             messageId: message.id,
-            content,
-            sender: {
-              id: message.author.id,
-              username: message.author.username,
-              displayName:
-                message.member?.displayName ??
-                message.author.globalName ??
-                undefined,
-              avatar: message.author.displayAvatarURL() || null,
-            },
-          }),
-          timeout: EVENT_FORWARD_TIMEOUT_MS,
+            attempt,
+            ...(status !== undefined ? { status } : {}),
+            error: sanitizeError(error),
+          });
         },
-      );
+      });
 
-      if (!response.ok) {
-        const errorText = await response.text().catch(() => "");
-        logger.warn("Managed Agent Discord routing request failed", {
+      if (!outcome.ok) {
+        logger.error("Managed Agent Discord turn dropped after retries", {
           guildId: message.guildId ?? null,
           channelId: message.channelId,
-          status: response.status,
-          error: errorText.slice(0, 200),
+          messageId: message.id,
+          attempts: outcome.attempts,
+          ...(outcome.status !== undefined ? { status: outcome.status } : {}),
+          error: sanitizeError(outcome.error),
         });
+        const failureOptions = buildManagedFailureReplyOptions(message.id);
+        const failureDelivery = await deliverManagedReply({
+          sendFailureNotice: async () =>
+            classifyManagedReplyReceipt(
+              await message.reply(failureOptions),
+              failureOptions,
+            ),
+        });
+        if (failureDelivery.state === "deduplicated") {
+          logger.warn(
+            "Managed Agent Discord failure notice resolved to an existing nonce message",
+            {
+              guildId: message.guildId ?? null,
+              channelId: message.channelId,
+              messageId: message.id,
+            },
+          );
+        } else if (failureDelivery.state === "undeliverable") {
+          logger.error(
+            "Managed Agent Discord failure notice was undeliverable",
+            {
+              guildId: message.guildId ?? null,
+              channelId: message.channelId,
+              messageId: message.id,
+              error: sanitizeError(failureDelivery.failureNoticeError),
+            },
+          );
+        }
         return;
       }
 
-      const routed = (await response.json()) as {
-        handled?: boolean;
-        replyText?: string | null;
-        reason?: string;
-        agentId?: string;
-      };
+      const routed = outcome.routed;
 
       if (!routed.handled) {
         logger.debug("Managed Agent Discord message was not handled", {
@@ -1991,10 +2094,53 @@ export class GatewayManager {
       const replyText = routed.replyText.trim();
       const truncated =
         replyText.length > 2000 ? replyText.slice(0, 2000) : replyText;
-      await message.reply({
-        content: truncated,
-        allowedMentions: { repliedUser: false },
+      const replyOptions = buildManagedReplyOptions(
+        message.id,
+        truncated,
+        routed.replyCta,
+      );
+      const failureOptions = buildManagedFailureReplyOptions(message.id);
+      const delivery = await deliverManagedReply({
+        sendReply: async () =>
+          classifyManagedReplyReceipt(
+            await message.reply(replyOptions),
+            replyOptions,
+          ),
+        sendFailureNotice: async () =>
+          classifyManagedReplyReceipt(
+            await message.reply(failureOptions),
+            failureOptions,
+          ),
       });
+      if (delivery.state === "deduplicated") {
+        logger.warn(
+          "Managed Agent Discord send resolved to an existing nonce message",
+          {
+            guildId: message.guildId ?? null,
+            channelId: message.channelId,
+            messageId: message.id,
+            attempted: delivery.attempted,
+          },
+        );
+      } else if (delivery.state === "failure_notice") {
+        logger.warn("Managed Agent Discord reply degraded to failure notice", {
+          guildId: message.guildId ?? null,
+          channelId: message.channelId,
+          messageId: message.id,
+          error: sanitizeError(delivery.primaryError ?? "unknown"),
+        });
+      } else if (delivery.state === "undeliverable") {
+        logger.error(
+          "Managed Agent Discord reply and failure notice were undeliverable",
+          {
+            guildId: message.guildId ?? null,
+            channelId: message.channelId,
+            messageId: message.id,
+            primaryError: sanitizeError(delivery.primaryError ?? "unknown"),
+            failureNoticeError: sanitizeError(delivery.failureNoticeError),
+          },
+        );
+      }
     } catch (error) {
       logger.error("Failed to route managed Eliza Discord message", {
         guildId: message.guildId ?? null,

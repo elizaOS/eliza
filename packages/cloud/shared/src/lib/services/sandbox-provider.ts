@@ -3,6 +3,7 @@ import type { SandboxProvider } from "./sandbox-provider-types";
 
 export type {
   SandboxCreateConfig,
+  SandboxDeletionStopOutcome,
   SandboxHandle,
   SandboxProvider,
 } from "./sandbox-provider-types";

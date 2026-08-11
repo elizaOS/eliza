@@ -15,6 +15,7 @@ import {
   assertActiveTrajectoryForLlmCall,
   attestLlmInputSubstring,
   buildCanonicalSystemPrompt,
+  deepToWellFormedUnicode,
   dropDuplicateLeadingSystemMessage,
   ElizaError,
   logActiveTrajectoryLlmCall,
@@ -41,6 +42,7 @@ import { createOpenAIClient } from "../providers";
 import type { TextStreamResult, TokenUsage } from "../types";
 import {
   getActionPlannerModel,
+  getBaseURL,
   getExperimentalTelemetry,
   getLargeModel,
   getMediumModel,
@@ -326,14 +328,35 @@ function isCerebrasReasoningModel(modelName: string | undefined): boolean {
   return id === "gpt-oss-120b" || id === "zai-glm-4.7";
 }
 
-/** Maps thinking suppression only for the Cerebras models that document it. */
-function resolveCerebrasThinkingOffReasoningEffort(
+/** Detects OpenCode Go only when it is the effective request endpoint. */
+function isOpenCodeGoMode(runtime: IAgentRuntime): boolean {
+  try {
+    const url = new URL(getBaseURL(runtime));
+    return (
+      url.protocol === "https:" &&
+      url.hostname.toLowerCase() === "opencode.ai" &&
+      (url.pathname === "/zen/go/v1" || url.pathname.startsWith("/zen/go/v1/"))
+    );
+  } catch {
+    // error-policy:J3 Malformed configuration is not a matching provider URL.
+    return false;
+  }
+}
+
+/** Maps thinking suppression only for exact model ids on proven endpoints. */
+function resolveThinkingOffReasoningEffort(
+  runtime: IAgentRuntime,
   modelName: string | undefined
 ): "low" | "none" | undefined {
   if (!modelName) return undefined;
-  const id = normalizeCerebrasModelId(modelName);
-  if (id === "gpt-oss-120b") return "low";
-  if (id === "zai-glm-4.7") return "none";
+  const cerebrasId = normalizeCerebrasModelId(modelName);
+  if (isCerebrasMode(runtime)) {
+    if (cerebrasId === "gpt-oss-120b") return "low";
+    if (cerebrasId === "zai-glm-4.7") return "none";
+  }
+
+  const exactModelId = modelName.trim().toLowerCase();
+  if (exactModelId === "deepseek-v4-flash" && isOpenCodeGoMode(runtime)) return "none";
   return undefined;
 }
 
@@ -370,16 +393,13 @@ function resolveProviderOptions(
   const rawProviderOptions = withOpenAIOptions.providerOptions;
   const promptCacheOptions = resolvePromptCacheOptions(params);
   const reasoningEffort = resolveReasoningEffort(runtime, modelName);
-  // Thinking-off suppression outranks the env pin and the Cerebras "low"
-  // default (matching plugin-elizacloud: Stage-1/planner calls stay cheap
-  // regardless of a user-pinned effort). An explicit caller
-  // `providerOptions.openai.reasoningEffort` still wins via the spread guard
-  // below. Scoped to Cerebras mode: OpenAI-direct rejects `"none"`.
+  // Thinking-off suppression outranks the env pin and provider default so
+  // forced-tool planner calls do not enter an incompatible reasoning mode.
+  // Keep this endpoint/model allowlist exact: OpenAI-direct and many compatible
+  // endpoints reject `"none"`. An explicit caller value still wins below.
   const elizaThinking = (rawProviderOptions?.eliza as { thinking?: unknown } | undefined)?.thinking;
   const thinkingOffEffort =
-    elizaThinking === "off" && isCerebrasMode(runtime)
-      ? resolveCerebrasThinkingOffReasoningEffort(modelName)
-      : undefined;
+    elizaThinking === "off" ? resolveThinkingOffReasoningEffort(runtime, modelName) : undefined;
   const effectiveReasoningEffort = thinkingOffEffort ?? reasoningEffort;
 
   if (
@@ -764,7 +784,90 @@ function normalizeNativeMessages(messages: unknown): ModelMessage[] | undefined 
     return undefined;
   }
 
-  return messages.map((message) => normalizeNativeMessage(message));
+  return repairToolMessagePairing(messages.map((message) => normalizeNativeMessage(message)));
+}
+
+/**
+ * OpenAI-strict providers (Cerebras, and the OpenAI API itself) reject any
+ * `role: "tool"` message that is not an IMMEDIATE response to an assistant
+ * message carrying the matching `tool-call` id — HTTP 400 `Messages with role
+ * 'tool' must be a response to a preceeding message with 'tool_calls'` (sic).
+ * The trajectory assembler emits well-formed pairs, but history compaction and
+ * multi-step summarization upstream can drop the assistant half or interleave
+ * other messages between the pair. Two repairs at this single choke point keep
+ * the wire contract total:
+ *
+ * 1. A tool message with no single announcing assistant (orphaned ids, ids
+ *    split across assistants, or no ids at all) is demoted to a plain user
+ *    message so its content survives on the wire.
+ * 2. A paired tool message is re-seated immediately after its announcing
+ *    assistant's tool-response block, so strict adjacency holds even when
+ *    other messages were interleaved. Everything else keeps its order.
+ *
+ * A valid message array passes through untouched. Because EVERY outgoing
+ * request is normalized here, a provider 400 that still complains about tool
+ * pairing is provably spurious — `isTransientProviderError` relies on this
+ * invariant to retry that class (observed live 2026-08-07/08: Cerebras
+ * intermittently rejected well-formed evaluator requests).
+ */
+function repairToolMessagePairing(messages: ModelMessage[]): ModelMessage[] {
+  interface AssistantNode {
+    kind: "assistant";
+    message: ModelMessage;
+    responses: ModelMessage[];
+  }
+  interface PlainNode {
+    kind: "plain";
+    message: ModelMessage;
+  }
+  const nodes: Array<AssistantNode | PlainNode> = [];
+  const announcerById = new Map<string, AssistantNode>();
+
+  for (const message of messages) {
+    if (message.role === "assistant" && Array.isArray(message.content)) {
+      const node: AssistantNode = { kind: "assistant", message, responses: [] };
+      nodes.push(node);
+      for (const part of message.content) {
+        const id = (part as { type?: unknown; toolCallId?: unknown })?.toolCallId;
+        if ((part as { type?: unknown })?.type === "tool-call" && typeof id === "string") {
+          announcerById.set(id, node);
+        }
+      }
+      continue;
+    }
+    if (message.role === "tool" && Array.isArray(message.content)) {
+      const announcers = new Set(
+        message.content.map((part) => {
+          const id = (part as { toolCallId?: unknown })?.toolCallId;
+          return typeof id === "string" ? announcerById.get(id) : undefined;
+        })
+      );
+      const announcer = announcers.size === 1 ? announcers.values().next().value : undefined;
+      if (announcer !== undefined) {
+        announcer.responses.push(message);
+        continue;
+      }
+      const salvaged = message.content
+        .map((part) => {
+          const value = (part as { output?: { value?: unknown } })?.output?.value;
+          return typeof value === "string" ? value : JSON.stringify(value);
+        })
+        .join("\n");
+      nodes.push({
+        kind: "plain",
+        message: {
+          role: "user",
+          content: `[tool result]\n${salvaged}`,
+        } as ModelMessage,
+      });
+      continue;
+    }
+    nodes.push({ kind: "plain", message });
+  }
+
+  return nodes.flatMap((node) =>
+    node.kind === "plain" ? [node.message] : [node.message, ...node.responses]
+  );
 }
 
 function normalizeNativeMessage(message: unknown): ModelMessage {
@@ -1594,16 +1697,86 @@ function applyUsageToDetails(
   details: RecordLlmCallDetails,
   usage: LanguageModelUsage | undefined
 ): void {
-  if (!usage) {
-    return;
-  }
-  details.promptTokens = usage.inputTokens ?? 0;
-  details.completionTokens = usage.outputTokens ?? 0;
+  const normalized = convertUsage(usage);
+  if (!normalized) return;
+  details.promptTokens = normalized.promptTokens;
+  details.completionTokens = normalized.completionTokens;
+  details.cacheReadInputTokens = normalized.cacheReadInputTokens;
+  details.cacheCreationInputTokens = normalized.cacheCreationInputTokens;
 }
 
 // ============================================================================
 // Core Generation Function
 // ============================================================================
+
+/**
+ * Recover the provider's own error message from a failed call's response body.
+ *
+ * The AI SDK's openai error handler only understands the OpenAI error
+ * envelope (`{"error": {"message": ...}}`). Cerebras's OpenAI-compatible
+ * endpoint returns a FLAT shape — `{"message", "type", "param", "code"}` — so
+ * `APICallError.message` degrades to the bare HTTP statusText ("Bad Request")
+ * while the actionable cause (e.g. `Invalid JSON: lone leading surrogate...`,
+ * `please try again`) survives only on `error.responseBody`. Walks the error
+ * and a bounded `.cause` chain for the first parseable body message; falls
+ * back to a bounded raw-body excerpt so even a non-JSON body is not lost.
+ */
+function providerErrorBodyMessage(error: unknown): string | undefined {
+  const seen = new Set<unknown>();
+  let node: unknown = error;
+  for (let depth = 0; depth < 5 && node && typeof node === "object" && !seen.has(node); depth++) {
+    seen.add(node);
+    const record = node as { responseBody?: unknown; cause?: unknown };
+    const body = typeof record.responseBody === "string" ? record.responseBody : undefined;
+    if (body && body.trim().length > 0) {
+      try {
+        const parsed = JSON.parse(body) as {
+          message?: unknown;
+          error?: { message?: unknown } | string;
+        };
+        const candidates = [
+          parsed?.message,
+          typeof parsed?.error === "object" && parsed.error !== null
+            ? parsed.error.message
+            : parsed?.error,
+        ];
+        for (const candidate of candidates) {
+          if (typeof candidate === "string" && candidate.trim().length > 0) {
+            return candidate.trim();
+          }
+        }
+      } catch {
+        // error-policy:J3 untrusted-input sanitizing — a non-JSON error body is
+        // still diagnostic; return a bounded excerpt instead of dropping it.
+      }
+      return body.replace(/\s+/g, " ").trim().slice(0, 300);
+    }
+    node = record.cause;
+  }
+  return undefined;
+}
+
+/**
+ * Append the provider's real error message (recovered from the response body)
+ * to a masked provider error IN PLACE, preserving the error's identity, stack,
+ * and AI SDK marker fields. Idempotent: a message that already carries the
+ * body text is left untouched. Every plugin-openai throw boundary funnels
+ * through this so "Bad Request" is never the only diagnostic that escapes.
+ */
+function enrichProviderCallError(error: unknown): unknown {
+  if (!error || typeof error !== "object") return error;
+  const record = error as { message?: unknown };
+  if (typeof record.message !== "string") return error;
+  const bodyMessage = providerErrorBodyMessage(error);
+  if (!bodyMessage || record.message.includes(bodyMessage)) return error;
+  try {
+    (error as { message: string }).message = `${record.message}: ${bodyMessage}`;
+  } catch {
+    // error-policy:J6 best-effort enrichment — a frozen error object keeps its
+    // original message; the body remains readable via responseBody.
+  }
+  return error;
+}
 
 /**
  * Whether a thrown model-call error is a transient provider hiccup that is
@@ -1617,6 +1790,35 @@ function applyUsageToDetails(
  * like an overload, never when it looks like a genuine validation error, so we
  * don't mask real malformed-request bugs.
  */
+/**
+ * Every text fragment a provider failure can carry its real cause in, joined
+ * and lowercased for signature matching: the (possibly masked) `message`, the
+ * structured `data` payload, the error `type`, and the raw response body the
+ * AI SDK keeps but does not surface for flat (non-envelope) error shapes.
+ */
+function providerErrorSearchText(error: unknown): string {
+  const e = error as { message?: string; data?: unknown; type?: string } | undefined;
+  return `${e?.message ?? ""} ${JSON.stringify(e?.data ?? "")} ${e?.type ?? ""} ${
+    providerErrorBodyMessage(error) ?? ""
+  }`.toLowerCase();
+}
+
+/**
+ * Cerebras's tool-pairing rejection, tolerant of its "preceeding" spelling and
+ * OpenAI's correct one. `repairToolMessagePairing` guarantees the pairing
+ * invariant on every outgoing request, so a provider 400 carrying this
+ * complaint is provably a false rejection of a well-formed request — observed
+ * live 2026-08-07/08 as an intermittent Cerebras failure mode (9 rejected vs
+ * 34 accepted structurally identical evaluator requests) that killed tool
+ * turns after the tool had already succeeded.
+ */
+const SPURIOUS_TOOL_PAIRING_400_RE =
+  /role '?"?tool"?'? must be a response to a prece+ding message with '?"?tool_calls"?'?/;
+
+function isSpuriousToolPairingRejection(error: unknown): boolean {
+  return SPURIOUS_TOOL_PAIRING_400_RE.test(providerErrorSearchText(error));
+}
+
 function isTransientProviderError(error: unknown): boolean {
   const e = error as
     | { statusCode?: number; status?: number; message?: string; data?: unknown }
@@ -1625,9 +1827,11 @@ function isTransientProviderError(error: unknown): boolean {
   const status = e.statusCode ?? e.status;
   if (status === 408 || status === 409 || status === 429) return true;
   if (typeof status === "number" && status >= 500 && status < 600) return true;
-  const msg = `${e.message ?? ""} ${JSON.stringify(e.data ?? "")} ${
-    (e as { type?: string }).type ?? ""
-  }`.toLowerCase();
+  // Include the raw response body: the AI SDK derives `message` from the
+  // OpenAI `{"error":{...}}` envelope only, so a provider that reports its
+  // transient overload in a FLAT body (Cerebras) otherwise reads as a bare
+  // "Bad Request" here and the transient-400 lane below can never match.
+  const msg = providerErrorSearchText(error);
   // No HTTP status: either a network-level failure OR a provider that returns
   // its transient error as a bare object (Cerebras passes
   // `{message:"Encountered a server error, please try again", type:"server_error"}`
@@ -1642,14 +1846,65 @@ function isTransientProviderError(error: unknown): boolean {
     );
   }
   // Transient 400: overload/server-error wording. Do NOT retry genuine
-  // validation failures (invalid/unsupported/schema/required/malformed).
+  // validation failures (invalid/unsupported/schema/required/malformed) — with
+  // one proven exception: the tool-pairing complaint, which our request-side
+  // normalization makes structurally impossible, so it can only be a spurious
+  // provider-side rejection worth retrying.
   if (status === 400) {
+    if (SPURIOUS_TOOL_PAIRING_400_RE.test(msg)) {
+      return true;
+    }
     if (/invalid|unsupported|must be|required|malformed|not allowed|schema/.test(msg)) {
       return false;
     }
     return /server error|try again|overload|capacity|temporarily|busy|rate/.test(msg);
   }
   return false;
+}
+
+/**
+ * Structured debug diagnostics for a provider tool-pairing rejection: the
+ * outgoing role sequence and each message's tool-call / tool-result ids —
+ * never message content, so no secrets or PII — making the next occurrence
+ * diagnosable from logs alone. No-op unless the error carries the pairing
+ * complaint, which the request-side pairing invariant makes provably spurious.
+ */
+function logToolPairingRejectionShape(
+  error: unknown,
+  generateParams: { messages?: unknown }
+): void {
+  if (!isSpuriousToolPairingRejection(error)) return;
+  const messages = generateParams.messages;
+  if (!Array.isArray(messages)) return;
+  const roleSequence = messages.map((message) => {
+    const record = message as { role?: unknown; content?: unknown };
+    const role = typeof record.role === "string" ? record.role : "unknown";
+    if (!Array.isArray(record.content)) return { role };
+    const toolCallIds: string[] = [];
+    const toolResultIds: string[] = [];
+    for (const part of record.content) {
+      const type = (part as { type?: unknown })?.type;
+      const id = (part as { toolCallId?: unknown })?.toolCallId;
+      if (typeof id !== "string") continue;
+      if (type === "tool-call") toolCallIds.push(id);
+      if (type === "tool-result") toolResultIds.push(id);
+    }
+    return {
+      role,
+      ...(toolCallIds.length > 0 ? { toolCallIds } : {}),
+      ...(toolResultIds.length > 0 ? { toolResultIds } : {}),
+    };
+  });
+  logger.debug(
+    {
+      src: "plugin-openai",
+      status:
+        (error as { statusCode?: number; status?: number })?.statusCode ??
+        (error as { status?: number })?.status,
+      roleSequence,
+    },
+    "[OpenAI] provider rejected tool pairing on a request whose pairing invariant holds"
+  );
 }
 
 /** The AbortSignal wired into a call's transport, when the caller passed one. */
@@ -1749,10 +2004,13 @@ async function generateTextWithTransientRetry(
         generateParams as Parameters<typeof generateText>[0]
         // biome-ignore lint/suspicious/noExplicitAny: see above.
       )) as any;
-    } catch (error) {
+    } catch (rawError) {
       // error-policy:J2 context-adding rethrow — terminal, retry-exhausted, or
-      // cancelled errors rethrow unchanged; only bounded transient provider
-      // errors on a still-live request retry.
+      // cancelled errors rethrow enriched with the provider's real body
+      // message; only bounded transient provider errors on a still-live
+      // request retry.
+      const error = enrichProviderCallError(rawError);
+      logToolPairingRejectionShape(error, generateParams);
       if (attempt >= maxRetries || signal?.aborted || !isTransientProviderError(error)) {
         throw error;
       }
@@ -1827,10 +2085,13 @@ async function consumeStreamWithTransientRetry(
       const finishReason = (await result.finishReason) as string | undefined;
       if (capturedError) throw capturedError;
       return { text, toolCalls, usage, finishReason };
-    } catch (error) {
+    } catch (rawError) {
       // error-policy:J2 context-adding rethrow — terminal, retry-exhausted, or
-      // cancelled errors rethrow unchanged; only bounded transient provider
-      // errors on a still-live request retry.
+      // cancelled errors rethrow enriched with the provider's real body
+      // message; only bounded transient provider errors on a still-live
+      // request retry.
+      const error = enrichProviderCallError(rawError);
+      logToolPairingRejectionShape(error, generateParams);
       if (attempt >= maxRetries || signal?.aborted || !isTransientProviderError(error)) {
         throw error;
       }
@@ -1921,9 +2182,16 @@ async function generateTextByModelType(
           "type" in callerResponseFormat
         ? (callerResponseFormat as { type: string }).type
         : undefined;
+  // Sanitize the plain response schema BEFORE it is wrapped in jsonSchema /
+  // Output.object. Once wrapped, responseFormat is a Promise that defeats the
+  // deepToWellFormedUnicode walk, so schema keys/values carrying lone
+  // surrogates would reach the provider wire untouched (#18081 review).
+  const sanitizedResponseSchema = paramsWithAttachments.responseSchema
+    ? deepToWellFormedUnicode(paramsWithAttachments.responseSchema)
+    : undefined;
   const preparedOutput =
-    paramsWithAttachments.responseSchema && !cerebrasMode
-      ? buildStructuredOutput(paramsWithAttachments.responseSchema, modelType)
+    sanitizedResponseSchema && !cerebrasMode
+      ? buildStructuredOutput(sanitizedResponseSchema, modelType)
       : undefined;
   const requestedOutput: NativeOutput | undefined =
     preparedOutput?.output ?? (responseFormatType === "json_object" ? Output.json() : undefined);
@@ -1940,10 +2208,25 @@ async function generateTextByModelType(
       : {}),
   });
 
+  // Wire-boundary guarantee: no upstream text bug may produce an invalid
+  // request body. A lone UTF-16 surrogate (e.g. from a mid-emoji slice)
+  // serializes as a \uD8xx escape that Cerebras's strict JSON parser 400s
+  // on ("lone leading surrogate in hex escape", wrong_api_format — #18025),
+  // so EVERY outgoing string — including tool descriptions/schemas, output
+  // schemas, and provider options — is forced to well-formed Unicode here.
+  const sanitizedTools = normalizedTools ? deepToWellFormedUnicode(normalizedTools) : undefined;
+  const sanitizedToolChoice = normalizedToolChoice
+    ? deepToWellFormedUnicode(normalizedToolChoice)
+    : undefined;
+  const sanitizedOutput = requestedOutput ? deepToWellFormedUnicode(requestedOutput) : undefined;
+  const sanitizedProviderOptions = providerOptions
+    ? (deepToWellFormedUnicode(providerOptions) as NativeProviderOptions)
+    : undefined;
+
   const generateParams: NativeTextParams = {
     model,
-    ...promptOrMessages,
-    system: systemPrompt,
+    ...deepToWellFormedUnicode(promptOrMessages),
+    system: systemPrompt === undefined ? undefined : deepToWellFormedUnicode(systemPrompt),
     allowSystemInMessages: true,
     ...(params.signal ? { abortSignal: params.signal } : {}),
     // Omit the cap when the caller opted out (direct-channel Stage-1) so the
@@ -1951,10 +2234,10 @@ async function generateTextByModelType(
     // model's limit. Other callers keep the 8192 default.
     ...(params.omitMaxTokens ? {} : { maxOutputTokens: params.maxTokens ?? 8192 }),
     experimental_telemetry: telemetryConfig,
-    ...(normalizedTools ? { tools: normalizedTools } : {}),
-    ...(normalizedToolChoice ? { toolChoice: normalizedToolChoice } : {}),
-    ...(requestedOutput ? { output: requestedOutput } : {}),
-    ...(providerOptions ? { providerOptions: providerOptions as NativeProviderOptions } : {}),
+    ...(sanitizedTools ? { tools: sanitizedTools } : {}),
+    ...(sanitizedToolChoice ? { toolChoice: sanitizedToolChoice } : {}),
+    ...(sanitizedOutput ? { output: sanitizedOutput } : {}),
+    ...(sanitizedProviderOptions ? { providerOptions: sanitizedProviderOptions } : {}),
   };
 
   // Handle streaming mode
@@ -1983,8 +2266,8 @@ async function generateTextByModelType(
       );
       details.response = "";
       const hasResponseTransform = preparedOutput?.transform !== undefined;
-      const buffered = await recordLlmCall(runtime, details, () =>
-        consumeStreamWithTransientRetry(
+      const buffered = await recordLlmCall(runtime, details, async () => {
+        const result = await consumeStreamWithTransientRetry(
           generateParams,
           hasResponseTransform ? undefined : params.onStreamChunk,
           {
@@ -1993,18 +2276,19 @@ async function generateTextByModelType(
             maxRetries: 5,
             beforeAttempt: () => attestLlmInputSubstring(details),
           }
-        )
-      );
-      const restoredText = restoreResponseText(buffered.text);
-      const restoredToolCalls = restoreRecordArgToolCalls(
-        buffered.toolCalls,
-        normalizedToolResult.recordArgTransformsByTool
-      );
-      details.response = restoredText;
-      details.toolCalls = restoredToolCalls;
-      details.finishReason = buffered.finishReason;
+        );
+        const text = restoreResponseText(result.text);
+        const toolCalls = restoreRecordArgToolCalls(
+          result.toolCalls,
+          normalizedToolResult.recordArgTransformsByTool
+        );
+        details.response = text;
+        details.toolCalls = toolCalls;
+        details.finishReason = result.finishReason;
+        if (result.usage) applyUsageToDetails(details, result.usage);
+        return { ...result, text, toolCalls };
+      });
       if (buffered.usage) {
-        applyUsageToDetails(details, buffered.usage);
         emitModelUsageEvent(
           runtime,
           modelType,
@@ -2016,15 +2300,15 @@ async function generateTextByModelType(
       }
       return {
         textStream: (async function* replayBufferedStream() {
-          if (restoredText) {
+          if (buffered.text) {
             if (hasResponseTransform) {
-              params.onStreamChunk?.(restoredText);
+              params.onStreamChunk?.(buffered.text);
             }
-            yield restoredText;
+            yield buffered.text;
           }
         })(),
-        text: Promise.resolve(restoredText),
-        ...(shouldReturnNativeResult ? { toolCalls: Promise.resolve(restoredToolCalls) } : {}),
+        text: Promise.resolve(buffered.text),
+        ...(shouldReturnNativeResult ? { toolCalls: Promise.resolve(buffered.toolCalls) } : {}),
         usage: Promise.resolve(convertUsage(buffered.usage)),
         finishReason: Promise.resolve(buffered.finishReason),
         providerMetadata: { modelName, provider: usageProvider, ...retryMetadata() },
@@ -2105,6 +2389,11 @@ async function generateTextByModelType(
       // check here plus the abort-aware backoff below guarantee no attempt
       // starts after cancellation.
       const abortSignal = retryAbortSignal(generateParams);
+      // Enrich BEFORE classifying: a Cerebras transient 400 arrives with the
+      // masked "Bad Request" message, and only the response body carries the
+      // wording the transient classifier matches on.
+      capturedStreamError = enrichProviderCallError(capturedStreamError);
+      logToolPairingRejectionShape(capturedStreamError, generateParams);
       if (
         !failedBeforeFirstToken ||
         attempt >= 5 ||
@@ -2262,11 +2551,11 @@ async function generateTextByModelType(
         } finally {
           await finalizeStreamingTelemetry();
         }
-        const streamError = streamIterationError ?? capturedStreamError ?? companionStreamError;
+        const streamError = enrichProviderCallError(
+          streamIterationError ?? capturedStreamError ?? companionStreamError
+        );
         settleStructuredText(streamError);
-        if (streamIterationError) throw streamIterationError;
-        if (capturedStreamError) throw capturedStreamError;
-        if (companionStreamError) throw companionStreamError;
+        if (streamError) throw streamError;
       })(),
       text: textPromise,
       ...(shouldReturnNativeResult ? { toolCalls: restoredToolCallsPromise } : {}),
@@ -2429,3 +2718,13 @@ export const __INTERNAL_normalizeNativeTools = normalizeNativeTools;
 export const __INTERNAL_normalizeNativeToolsForCall = normalizeNativeToolsForCall;
 /** @internal — exported for unit tests only. */
 export const __INTERNAL_restoreRecordArgToolCalls = restoreRecordArgToolCalls;
+/** @internal — exported for unit tests only. */
+export const __INTERNAL_providerErrorBodyMessage = providerErrorBodyMessage;
+/** @internal — exported for unit tests only. */
+export const __INTERNAL_enrichProviderCallError = enrichProviderCallError;
+/** @internal — exported for unit tests only. */
+export const __INTERNAL_isTransientProviderError = isTransientProviderError;
+/** @internal — exported for unit tests only. */
+export const __INTERNAL_isSpuriousToolPairingRejection = isSpuriousToolPairingRejection;
+/** @internal — exported for unit tests only. */
+export const __INTERNAL_logToolPairingRejectionShape = logToolPairingRejectionShape;

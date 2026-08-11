@@ -39,6 +39,7 @@ import { generateMediaAction } from "./actions/generate-media.js";
 import { identifySpeakerAction } from "./actions/identify-speaker.js";
 import { localInferenceManagementAction } from "./actions/local-inference-management.js";
 import {
+	manageTranscriptPrivacyAction,
 	redactTranscriptAction,
 	shareTranscriptAction,
 } from "./actions/transcript-permissioning.js";
@@ -51,6 +52,7 @@ import { transcriptsRoutes } from "./routes/transcripts-routes.js";
 import { voiceProfilePluginRoutes } from "./routes/voice-profile-plugin-routes.js";
 import { handleVoiceEntityBound } from "./runtime/voice-entity-binding.js";
 import { augmentVisionRequest } from "./services/vision/augmenter.js";
+import { extractRequestedVoiceId } from "./services/voice/requested-voice.js";
 
 export const LOCAL_INFERENCE_PROVIDER_ID = "eliza-local-inference";
 export const LOCAL_INFERENCE_PRIORITY = -100;
@@ -131,9 +133,11 @@ interface LocalInferenceTextToSpeechService {
 	synthesizeSpeech?: (
 		text: string,
 		signal?: AbortSignal,
+		voiceId?: string,
 	) => Promise<Uint8Array | ArrayBuffer | Buffer>;
 	textToSpeech?: (args: {
 		text: string;
+		voice?: string;
 		signal?: AbortSignal;
 	}) => Promise<Uint8Array | ArrayBuffer | Buffer>;
 	/**
@@ -146,6 +150,7 @@ interface LocalInferenceTextToSpeechService {
 	synthesizeSpeechStream?: (
 		text: string,
 		signal?: AbortSignal,
+		voiceId?: string,
 	) => AsyncIterable<Uint8Array>;
 }
 
@@ -653,6 +658,7 @@ function createTextToSpeechHandler() {
 			extractSpeechText(params),
 		);
 		const signal = extractSpeechSignal(params);
+		const voice = extractRequestedVoiceId(params);
 		// Explicit opt-in (NOT the generic `stream` useModel injects from an
 		// ambient text-streaming turn) so byte-expecting callers keep a buffer.
 		const wantsStream =
@@ -663,7 +669,7 @@ function createTextToSpeechHandler() {
 		// Real chunked streaming when the backend implements the seam.
 		if (wantsStream && typeof service.synthesizeSpeechStream === "function") {
 			return streamingAudioStreamResult(
-				service.synthesizeSpeechStream(text, signal),
+				service.synthesizeSpeechStream(text, signal, voice),
 				LOCAL_TTS_MIME,
 			);
 		}
@@ -671,12 +677,16 @@ function createTextToSpeechHandler() {
 		const synthesizeBuffered = async (): Promise<Uint8Array> => {
 			if (typeof service.synthesizeSpeech === "function") {
 				return normalizeAudioBytes(
-					await service.synthesizeSpeech(text, signal),
+					await service.synthesizeSpeech(text, signal, voice),
 				);
 			}
 			if (typeof service.textToSpeech === "function") {
 				return normalizeAudioBytes(
-					await service.textToSpeech({ text, ...(signal ? { signal } : {}) }),
+					await service.textToSpeech({
+						text,
+						...(voice ? { voice } : {}),
+						...(signal ? { signal } : {}),
+					}),
 				);
 			}
 			throw unavailable(
@@ -1124,6 +1134,7 @@ export const localInferencePlugin: Plugin = {
 		localInferenceManagementAction,
 		generateMediaAction,
 		identifySpeakerAction,
+		manageTranscriptPrivacyAction,
 		redactTranscriptAction,
 		shareTranscriptAction,
 		startTranscriptionAction,

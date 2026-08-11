@@ -65,7 +65,7 @@ const optionalCorePluginStubPackages = new Set([
   "@elizaos/plugin-app-manager",
   "@elizaos/plugin-elizacloud",
   "@elizaos/plugin-inbox/plugin",
-  "@elizaos/plugin-ollama",
+  "@elizaos/plugin-zerollama",
   "@elizaos/plugin-anthropic",
   "@elizaos/plugin-openai",
 ]);
@@ -754,6 +754,20 @@ export default defineConfig({
           "src",
           "routes",
           "$1.ts",
+        ),
+      },
+      {
+        // CalendarService imports the dependency-light runtime error classes
+        // from this subpath. The src-integration lane does not build workspace
+        // dist first, so resolve the subpath to source just as the bare package
+        // is resolved to its test stub below.
+        find: /^@elizaos\/plugin-google-workspace\/calendar$/,
+        replacement: path.join(
+          elizaRoot,
+          "plugins",
+          "plugin-google-workspace",
+          "src",
+          "calendar.ts",
         ),
       },
       {

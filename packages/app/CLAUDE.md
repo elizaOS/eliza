@@ -195,19 +195,24 @@ primary file via the Agent plugin's `appendBootTrace` bridge, so there is no
 separate renderer stream) — keep in sync with `ElizaStartupTrace.swift`;
 `ELIZA_IOS_BOOT_TRACE_PATH` overrides the pull path (script-side only).
 
-## iOS runtime-mode CI coverage (#13578)
+## iOS runtime-mode verification (#13578)
 
-The iOS app ships three runtime modes; their unattended (CI) coverage is:
+The iOS app ships three runtime modes. Native simulator/device verification is
+operator-run rather than a pull-request or nightly GitHub Actions matrix:
 
 | Mode | On-device engine | Automated lane | Gating |
 |---|---|---|---|
-| **remote** (pair to a host agent) | none — proxies to a paired host | `build-ios` job in `.github/workflows/mobile-build-smoke.yml` (onboarding smoke + `serve-real-local-agent` host + local-chat smoke) | PR-blocking |
-| **local** (full-Bun on-device engine) | full Bun runtime + on-device GGUF | `build-ios-local` job in `mobile-build-smoke.yml` — nightly `schedule` (too heavy for the PR path): builds with `ELIZA_IOS_FULL_BUN_ENGINE=1`, caches a real small GGUF, then runs `ios-e2e.mjs --skip-build --app-path …` to explicitly install the app, approve its custom scheme in the fresh simulator's LaunchServices dictionary (with one reboot), prove the auth-callback end state, and require the on-device non-stream + stream replies to contain the confirmation phrase without a failure signal | nightly-gating |
-| **cloud** (shared runtime by default) | none — talks to Eliza Cloud | `ios-cloud-mode` job in `mobile-build-smoke.yml` — nightly `schedule` / `workflow_dispatch`. Seeds a real Cloud credential from `secrets.ELIZACLOUD_API_KEY` (the headless session seed — bypasses the interactive device-code / OAuth browser leg that XCTSkips on the simulator) and runs `cloud-provisioning-e2e.mjs --fresh-agent`: creates a Cloud agent without a dedicated-tier signal, waits for its runtime URL, and probes `/api/status|health|me`. This is shared/status coverage, not managed dedicated/Hetzner ingress proof. With the seed present it is a HARD gate (no `continue-on-error`); when the secret is absent it records an explicit skip in the step summary. | nightly-gating (when seeded) |
+| **remote** (pair to a host agent) | none — proxies to a paired host | `bun run --cwd packages/app test:e2e:ios` with the real host-agent fixture | release evidence |
+| **local** (full-Bun on-device engine) | full Bun runtime + on-device GGUF | build with `ELIZA_IOS_FULL_BUN_ENGINE=1`, then run `ios-e2e.mjs --skip-build --app-path …` against a fresh simulator | release evidence |
+| **cloud** (shared runtime by default) | none — talks to Eliza Cloud | `bun run --cwd packages/app test:e2e:ios:cloud` with a real Cloud session | release evidence |
 
 Keep this table honest: an N/A row must name what is missing, not hide it.
 
-The XCUITest cloud-onboarding path (`testCloudOnboardingChatAndVoice`) still XCTSkips at the OAuth wall without a device Cloud session; the `ios-cloud-mode` lane covers the cloud *runtime* mode programmatically (the same path `ios-e2e.mjs --cloud` calls) rather than driving the simulator UI through OAuth. A device-UI cloud-onboarding lane needs the WebView-side session seed (`steward_session_token` / `POST /api/cloud/login/persist`) and is tracked in #13578 done-when #2.
+The XCUITest cloud-onboarding path (`testCloudOnboardingChatAndVoice`) still
+XCTSkips at the OAuth wall without a device Cloud session. A release operator
+must provide the WebView-side session seed (`steward_session_token` /
+`POST /api/cloud/login/persist`) before claiming device-UI cloud-onboarding
+evidence.
 
 ### What `test:sim:auth` proves (and does not) (#13693)
 
@@ -240,6 +245,7 @@ All env vars use the `ELIZA_` prefix (set in `app.config.ts` → `envPrefix: "EL
 |---|---|
 | `ELIZA_API_PORT` | Agent API server port (default 31337; `ELIZA_PORT` is a fallback) |
 | `ELIZA_UI_PORT` | Vite dev/UI server port (default 2138) |
+| `ELIZA_LOCAL_VOICE_GATEWAY_PORT` | Dev-only loopback voice gateway port; when set, Vite routes `/api/v1/voice` HTTP/WS traffic there, including realtime sessions and TTS |
 | `ELIZA_APP_SOURCEMAP` | Enable source maps in production build |
 | `ELIZA_DESKTOP_VITE_FAST_DIST` | Set by Electrobun dev orchestrator for Rollup watch mode |
 | `ELIZA_DEV_POLLING` | Enable filesystem polling for watch (useful in VMs) |

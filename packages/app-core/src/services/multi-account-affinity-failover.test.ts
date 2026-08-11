@@ -34,9 +34,20 @@
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { deleteAccount, saveAccount } from "@elizaos/auth/account-storage";
+import {
+  createIsolatedAccountStoragePolicy,
+  deleteAccount,
+  saveAccount,
+} from "@elizaos/auth/account-storage";
 import type { AccountCredentialProvider } from "@elizaos/auth/types";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+// Every suite here drives the real on-disk credential store; each storage-lock
+// acquisition performs multiple fsyncs, which stretch from milliseconds to
+// seconds apiece on saturated CI disks. Budget the whole file for that, not
+// just the sweep-heavy blocks.
+vi.setConfig({ testTimeout: 240_000, hookTimeout: 240_000 });
+
 import {
   __resetDefaultAccountPoolForTests,
   getDefaultAccountPool,
@@ -58,19 +69,22 @@ function writeAccount(
   access: string,
   createdAt: number,
 ): void {
-  saveAccount({
-    id,
-    providerId,
-    label: id,
-    source: "oauth",
-    credentials: {
-      access,
-      refresh: `${access}-refresh`,
-      expires: FAR_FUTURE,
+  saveAccount(
+    {
+      id,
+      providerId,
+      label: id,
+      source: "oauth",
+      credentials: {
+        access,
+        refresh: `${access}-refresh`,
+        expires: FAR_FUTURE,
+      },
+      createdAt,
+      updatedAt: Date.now(),
     },
-    createdAt,
-    updatedAt: Date.now(),
-  });
+    createIsolatedAccountStoragePolicy(home),
+  );
 }
 
 function bridgeOrThrow() {
@@ -295,7 +309,11 @@ describe("account removed mid-session", () => {
 
     // Operator deletes the account in the dashboard mid-session — the DELETE
     // route removes the on-disk credential AND the pool metadata overlay.
-    deleteAccount("anthropic-subscription", "gone");
+    deleteAccount(
+      "anthropic-subscription",
+      "gone",
+      createIsolatedAccountStoragePolicy(home),
+    );
     await pool.deleteMetadata("anthropic-subscription", "gone");
     expect(
       existsSync(
@@ -313,7 +331,11 @@ describe("account removed mid-session", () => {
     expect(failover?.envPatch.CLAUDE_CODE_OAUTH_TOKEN).toBe("sk-ant-oat-STAYS");
 
     // Removing the LAST account leaves an honest empty pool, not a crash.
-    deleteAccount("anthropic-subscription", "stays");
+    deleteAccount(
+      "anthropic-subscription",
+      "stays",
+      createIsolatedAccountStoragePolicy(home),
+    );
     await pool.deleteMetadata("anthropic-subscription", "stays");
     await expect(
       bridge.select("claude", { sessionKey: "task-del" }),

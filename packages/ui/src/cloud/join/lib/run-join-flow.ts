@@ -17,11 +17,16 @@
  *      reconnects to it.
  *   4. mark first-run complete so the app lands in CHAT, not the setup wizard.
  *
+ * A remembered binding whose agent was deleted server-side answers step 1 with
+ * the structural agent-gone shape; the flow then clears the stale binding and
+ * re-runs selection from the fresh-visit state instead of dead-ending.
+ *
  * The caller (JoinPage) then navigates to `/` — the tab/view app, where chat is
  * home. There is no "No agents yet" empty table: a brand-new user is talking to
  * an agent within seconds.
  */
 
+import { isCloudAgentGoneError } from "../../../api/client-types-core";
 import {
   buildCloudSharedAgentApiBase,
   ELIZA_CLOUD_CONTROL_PLANE_HOSTS,
@@ -57,6 +62,7 @@ export interface JoinFlowEffects {
     apiBase?: string;
     accessToken?: string;
   }): void;
+  clearPersistedActiveServer(): void;
   savePersistedFirstRunComplete(complete: boolean): void;
 }
 
@@ -132,15 +138,40 @@ export async function runJoinFlow(
     onProgress,
   } = args;
 
-  const selected = await client.selectOrProvisionCloudAgent({
+  const selectionOptions = {
     cloudApiBase,
     authToken,
     name: agentName,
     ...(bio?.length ? { bio } : {}),
-    ...(preferAgentId ? { preferAgentId } : {}),
     ...(forceCreate ? { forceCreate } : {}),
     ...(onProgress ? { onProgress } : {}),
-  });
+  };
+
+  let selected: Awaited<
+    ReturnType<JoinFlowClient["selectOrProvisionCloudAgent"]>
+  >;
+  try {
+    selected = await client.selectOrProvisionCloudAgent({
+      ...selectionOptions,
+      ...(preferAgentId ? { preferAgentId } : {}),
+    });
+  } catch (error) {
+    // error-policy:J4 only the structural agent-gone shape (404 +
+    // `agent_not_found` code) from a remembered binding is recovered here.
+    // Code-less legacy 404 bodies are intentionally excluded: older routers
+    // used the same message for stopped/cold rows. A stale persisted binding
+    // keeps the live client pointed at a DELETED agent's origin, so the
+    // selection lookup misroutes through that dead origin and 404s forever —
+    // retrying can never succeed. Drop the binding, reset the client to the
+    // fresh-visit state (empty base → control-plane resolution), and re-run
+    // selection: existing agents are picked normally, zero agents fall
+    // through to the provisioning path. Transport failures of a valid binding
+    // (and every other shape) still rethrow into the terminal error state.
+    if (!preferAgentId || !isCloudAgentGoneError(error)) throw error;
+    effects.clearPersistedActiveServer();
+    client.setBaseUrl(null);
+    selected = await client.selectOrProvisionCloudAgent(selectionOptions);
+  }
 
   if (!selected.agentId) {
     throw new Error("Cloud did not return an agent to connect to.");

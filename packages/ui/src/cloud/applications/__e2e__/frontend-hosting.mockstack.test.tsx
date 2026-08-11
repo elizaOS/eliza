@@ -39,17 +39,15 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { frontendPreviewPath } from "../lib/frontend-hosting";
 import { AppFrontendHosting } from "../components/app-frontend-hosting";
 import { CloudI18nProvider } from "../../shell/CloudI18nProvider";
+import { startCloudApiTestServer } from "./cloud-api-test-server";
 
 const REPO_ROOT = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "../../../../../..",
 );
-// Leg-3 test-port range (363xx); distinct from the smoke script's 36311.
-const PORT = 36312;
-const BASE = `http://127.0.0.1:${PORT}`;
-
 let pgdataDir: string;
 let server: ChildProcess | null = null;
+let baseUrl: string;
 let apiKey: string;
 let appId: string;
 const realFetch = globalThis.fetch;
@@ -59,7 +57,6 @@ function serverEnv(): NodeJS.ProcessEnv {
     ...process.env,
     MOCK_REDIS: "1",
     DATABASE_URL: `pglite://${pgdataDir}`,
-    API_DEV_PORT: String(PORT),
     CRON_SECRET: "local-cron-secret",
     // Api-key encryption needs a KMS; pin the local backend with a fixed
     // root key so SIWE signup works without a steward KMS deployment.
@@ -91,7 +88,7 @@ async function raw<T>(
   body?: unknown,
   key?: string,
 ): Promise<{ status: number; data: T }> {
-  const res = await realFetch(`${BASE}${p}`, {
+  const res = await realFetch(`${baseUrl}${p}`, {
     method,
     headers: {
       "content-type": "application/json",
@@ -150,16 +147,17 @@ beforeAll(async () => {
     "db:migrate",
   ]);
 
-  server = spawn(
-    "bun",
-    ["run", "packages/cloud/scripts/admin/dev/cloud-api-hono-dev.ts"],
-    { cwd: REPO_ROOT, env: serverEnv(), stdio: ["ignore", "inherit", "inherit"] },
-  );
+  const started = await startCloudApiTestServer({
+    repoRoot: REPO_ROOT,
+    env: serverEnv(),
+  });
+  server = started.child;
+  baseUrl = started.baseUrl;
 
   let healthy = false;
   for (let i = 0; i < 240 && !healthy; i++) {
     try {
-      const res = await realFetch(`${BASE}/api/health`);
+      const res = await realFetch(`${baseUrl}/api/health`);
       healthy = res.ok;
     } catch {
       // still booting
@@ -221,7 +219,7 @@ beforeAll(async () => {
   globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
     const url =
       typeof input === "string" && input.startsWith("/")
-        ? `${BASE}${input}`
+        ? `${baseUrl}${input}`
         : input;
     return realFetch(url as RequestInfo, init);
   }) as typeof fetch;
@@ -321,6 +319,7 @@ describe("frontend hosting tab against the real mock cloud stack (#10690)", () =
       },
       { timeout: 30_000 },
     );
+    await waitFor(() => expect(deleteV2.hasAttribute("disabled")).toBe(false));
 
     // Restore v1 as active for the following tests (v2 stays deletable).
     const v1 = before.deployments.find((d) => d.version === 1);
@@ -345,12 +344,14 @@ describe("frontend hosting tab against the real mock cloud stack (#10690)", () =
       () => expect(screen.queryByTestId("hosting-deployment-2")).toBeNull(),
       { timeout: 30_000 },
     );
+    await screen.findByTestId("hosting-deployment-1");
+    expect(screen.queryByTestId("hosting-deployment-2")).toBeNull();
     const state = await serverDeployments();
     expect(state.deployments.map((d) => d.version)).toEqual([1]);
   });
 
   it("owner preview serves the active bundle's actual bytes", async () => {
-    const res = await realFetch(`${BASE}${frontendPreviewPath(appId)}`, {
+    const res = await realFetch(`${baseUrl}${frontendPreviewPath(appId)}`, {
       headers: { authorization: `Bearer ${apiKey}` },
     });
     expect(res.status).toBe(200);

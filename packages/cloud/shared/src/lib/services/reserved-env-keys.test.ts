@@ -14,6 +14,21 @@ describe("reserved-env-keys", () => {
     ]);
   });
 
+  test("managed hosting marker ELIZA_CLOUD_PROVISIONED is platform-reserved", () => {
+    expect(findReservedEnvKeys(["ELIZA_CLOUD_PROVISIONED", "eliza_cloud_provisioned"])).toEqual([
+      "ELIZA_CLOUD_PROVISIONED",
+      "eliza_cloud_provisioned",
+    ]);
+    expect(RESERVED_PLATFORM_ENV_KEYS).toContain("ELIZA_CLOUD_PROVISIONED");
+  });
+
+  test("managed direct-pairing mode is platform-reserved", () => {
+    expect(
+      findReservedEnvKeys(["ELIZA_CLOUD_PAIR_DIRECT_RELAY", "eliza_cloud_pair_direct_relay"]),
+    ).toEqual(["ELIZA_CLOUD_PAIR_DIRECT_RELAY", "eliza_cloud_pair_direct_relay"]);
+    expect(RESERVED_PLATFORM_ENV_KEYS).toContain("ELIZA_CLOUD_PAIR_DIRECT_RELAY");
+  });
+
   test("findReservedEnvKeys returns [] when no reserved keys present", () => {
     expect(findReservedEnvKeys(["FOO", "BAR"])).toEqual([]);
   });

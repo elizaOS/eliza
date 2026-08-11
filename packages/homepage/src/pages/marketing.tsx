@@ -14,6 +14,7 @@ import {
   Store,
 } from "lucide-react";
 import { releaseData } from "@/generated/release-data";
+import { isReleaseAvailable } from "@/lib/release-availability";
 import { useT } from "@/providers/I18nProvider";
 
 const cloudUrl = `${EXTERNAL_URLS.cloud}/login?intent=launch`;
@@ -83,6 +84,7 @@ export default function MarketingPage() {
   const canaryDownloads = releaseData.canaryRelease?.downloads ?? [];
   const effectiveDownloads =
     stableDownloads.length > 0 ? stableDownloads : canaryDownloads;
+  const releaseAvailable = isReleaseAvailable(releaseData.release);
   const downloads = primaryDownloadIds.map((id) => {
     const releaseDownload = effectiveDownloads.find(
       (download) => download.id === id,
@@ -236,22 +238,52 @@ export default function MarketingPage() {
               aria-label={t("homepage_eliza.marketing.releaseLabel", {
                 defaultValue: "Current release",
               })}
+              data-testid="release-panel"
+              data-release-state={
+                releaseAvailable ? "available" : "unavailable"
+              }
             >
-              <div>
-                <span className="app-pill">
-                  {t("homepage_eliza.marketing.releasePill", {
-                    defaultValue: "Latest release",
-                  })}
-                </span>
-                <h2>{releaseData.release.tagName}</h2>
-                <p>{releaseData.release.publishedAtLabel}</p>
-              </div>
-              <a href={releaseData.release.url} className="app-release-link">
-                {t("homepage_eliza.marketing.releaseNotes", {
-                  defaultValue: "Release notes",
-                })}
-                <ExternalLink className="app-icon" aria-hidden="true" />
-              </a>
+              {releaseAvailable ? (
+                <>
+                  <div>
+                    <span className="app-pill">
+                      {t("homepage_eliza.marketing.releasePill", {
+                        defaultValue: "Latest release",
+                      })}
+                    </span>
+                    <h2>{releaseData.release.tagName}</h2>
+                    <p>{releaseData.release.publishedAtLabel}</p>
+                  </div>
+                  <a
+                    href={releaseData.release.url}
+                    className="app-release-link"
+                  >
+                    {t("homepage_eliza.marketing.releaseNotes", {
+                      defaultValue: "Release notes",
+                    })}
+                    <ExternalLink className="app-icon" aria-hidden="true" />
+                  </a>
+                </>
+              ) : (
+                <div data-testid="release-unavailable">
+                  <span className="app-pill">
+                    {t("homepage_eliza.marketing.releaseComingSoonPill", {
+                      defaultValue: "Coming soon",
+                    })}
+                  </span>
+                  <h2>
+                    {t("homepage_eliza.marketing.releaseComingSoonTitle", {
+                      defaultValue: "Downloads coming soon",
+                    })}
+                  </h2>
+                  <p>
+                    {t("homepage_eliza.marketing.releaseComingSoonBody", {
+                      defaultValue:
+                        "We're preparing the next release. Check back shortly.",
+                    })}
+                  </p>
+                </div>
+              )}
             </section>
           </div>
         </section>
@@ -276,13 +308,48 @@ export default function MarketingPage() {
                 })}
               </p>
             </div>
-            <div className="app-download-grid">
-              {downloads.map((download) => {
-                const Icon = download.icon;
-                return (
-                  <DownloadLink key={download.id} {...download} icon={Icon} />
-                );
-              })}
+            <div
+              className="app-download-grid"
+              data-testid="download-grid"
+              data-release-state={
+                releaseAvailable ? "available" : "unavailable"
+              }
+            >
+              {releaseAvailable ? (
+                downloads.map((download) => {
+                  const Icon = download.icon;
+                  return (
+                    <DownloadLink key={download.id} {...download} icon={Icon} />
+                  );
+                })
+              ) : (
+                <div
+                  className="app-download-unavailable"
+                  data-testid="download-unavailable"
+                >
+                  <Package className="app-icon" aria-hidden="true" />
+                  <strong>
+                    {t("homepage_eliza.marketing.downloadUnavailableTitle", {
+                      defaultValue: "No download available yet",
+                    })}
+                  </strong>
+                  <span>
+                    {t("homepage_eliza.marketing.downloadUnavailableBody", {
+                      defaultValue:
+                        "The latest release is being prepared. Check back soon or browse all releases on GitHub.",
+                    })}
+                  </span>
+                  <a
+                    href={releaseFallbackUrl}
+                    className="app-cta app-cta--ghost"
+                  >
+                    {t("homepage_eliza.marketing.viewAllReleases", {
+                      defaultValue: "View all releases",
+                    })}
+                    <ExternalLink className="app-icon" aria-hidden="true" />
+                  </a>
+                </div>
+              )}
             </div>
 
             <ul

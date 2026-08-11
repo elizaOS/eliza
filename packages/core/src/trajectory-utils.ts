@@ -32,11 +32,13 @@ import {
 import { stringifyForDiagnostics } from "./runtime/json-output";
 import type { TrajectoryProviderAttribution } from "./runtime/trajectory-provider-attribution";
 import { trackPostDeliveryTask } from "./services/post-delivery-task-tracker";
+import { sanitizeTrajectoryJsonObject } from "./services/trajectory-json";
 import type { TrajectorySkillInvocationRecord } from "./services/trajectory-types";
 import {
 	getTrajectoryContext,
 	runWithTrajectoryContext,
 } from "./trajectory-context";
+import type { ActionResult } from "./types/components";
 import type { ContextEvent, ContextObject } from "./types/context-object";
 import { isTextGenerationModelType } from "./types/model";
 import type { IAgentRuntime } from "./types/runtime";
@@ -98,6 +100,7 @@ export type TrajectoryLlmCallDetails = {
 	completionTokens?: number;
 	cacheReadInputTokens?: number;
 	cacheCreationInputTokens?: number;
+	reasoningTokens?: number;
 	providerOrder?: string[];
 	providerAttributions?: TrajectoryProviderAttribution[];
 };
@@ -442,6 +445,9 @@ type TrajectoryStepState = {
 	agentPoints?: number;
 	agentPnL?: number;
 	openPositions?: number;
+	kind?: "llm" | "action" | "evaluator";
+	parentStepId?: string;
+	evaluatorName?: string;
 };
 
 type TrajectoryStepKindLike = "llm" | "action";
@@ -470,11 +476,24 @@ type TrajectoryLoggerLike = {
 		options?: TrajectoryStartOptions,
 	) => Promise<string> | string;
 	startStep?: (trajectoryId: string, state: TrajectoryStepState) => string;
+	completeStep?: (
+		trajectoryId: string,
+		stepId: string,
+		action: {
+			actionType: string;
+			actionName: string;
+			parameters: Record<string, JsonValue>;
+			success: boolean;
+			result?: Record<string, JsonValue>;
+			error?: string;
+		},
+	) => void;
 	endTrajectory?: (
 		stepIdOrTrajectoryId: string,
 		status?: TrajectoryFinalStatus,
 		finalMetrics?: Record<string, unknown>,
 	) => Promise<void> | void;
+	releaseTrajectoryOwnership?: (stepIdOrTrajectoryId: string) => void;
 	flushWriteQueue?: (trajectoryId: string) => Promise<void> | void;
 	logLlmCall?: (params: { stepId: string } & TrajectoryLlmCallDetails) => void;
 	/**
@@ -500,6 +519,14 @@ type TrajectoryLlmGuardContext = {
 };
 
 const RECORD_LLM_CALL_DEPTH_KEY = Symbol.for("elizaos.recordLlmCallDepth");
+
+/**
+ * Ambient key for the per-call provider-recording flag AsyncLocalStorage.
+ * Stored as a Symbol.for so it survives dual-bundle scenarios.
+ */
+const MODEL_CALL_PROVIDER_RECORDED_KEY = Symbol.for(
+	"elizaos.modelCallProviderRecorded",
+);
 const LLM_INPUT_SUBSTRING_ATTESTATION_CONTEXT_MANAGER_KEY = Symbol.for(
 	"elizaos.llmInputSubstringAttestationContextManager",
 );
@@ -909,6 +936,159 @@ export function assertRecordedLlmCall(
 	);
 }
 
+/**
+ * Mutable per-call recording state. Exported so callers can hold the live
+ * reference and read `.recorded` at the actual suppression decision point.
+ */
+export type ModelCallRecordingState = { recorded: boolean };
+
+/**
+ * Open a request-local recording scope around a single `useModel()` call.
+ *
+ * Returns the live mutable store so the caller can read `.recorded` at the
+ * actual decision point — which may be AFTER streaming completes (#17532).
+ *
+ * For deferred-streaming providers (e.g. plugin-xai grok.ts), the handler
+ * returns a TextStreamResult immediately, but `recordLlmCall` only resolves
+ * when the stream is fully consumed. The mutable store reflects late-arriving
+ * marks because `markProviderRecordedCall` mutates the same object reference.
+ *
+ * Each call gets its own store via AsyncLocalStorage semantics, so concurrent
+ * `useModel()` calls cannot suppress one another.
+ */
+export async function runWithModelCallRecordingScope<T>(
+	fn: () => Promise<T> | T,
+): Promise<{ result: T; recordingState: ModelCallRecordingState }> {
+	const storage = getModelCallRecordingStorage();
+	const store: ModelCallRecordingState = { recorded: false };
+	const result = await storage.run(store, fn);
+	return { result, recordingState: store };
+}
+
+/**
+ * Re-enter the recording scope for a given recordingState, typically to
+ * consume a deferred stream whose provider finalizer calls
+ * `markProviderRecordedCall()`. Async generators do not retain
+ * AsyncLocalStorage context from their creation, so we must re-establish the
+ * scope around stream consumption (#17532).
+ */
+export function runInModelCallRecordingScope<T>(
+	recordingState: ModelCallRecordingState,
+	fn: () => T | Promise<T>,
+): T | Promise<T> {
+	const storage = getModelCallRecordingStorage();
+	return storage.run(recordingState, fn);
+}
+
+/**
+ * Mark the current model call as already recorded by the provider-level wire
+ * recorder. Called from `logActiveTrajectoryLlmCall` (the single chokepoint
+ * for all provider trajectory logging) when the log succeeds.
+ */
+export function markProviderRecordedCall(): void {
+	const storage = getModelCallRecordingStorage();
+	const store = storage.getStore();
+	if (store) {
+		store.recorded = true;
+	}
+}
+
+/**
+ * Returns `true` when the current model call has already been recorded by the
+ * provider-level wire recorder, so the generic `useModel` fallback can skip.
+ */
+export function isProviderRecordedCall(): boolean {
+	const storage = getModelCallRecordingStorage();
+	return storage.getStore()?.recorded === true;
+}
+
+/**
+ * Lazily-initialized AsyncLocalStorage for the per-call provider-recorded flag.
+ * Stored as an ambient singleton so it survives dual-bundle scenarios.
+ */
+type ModelCallRecordingStorage = {
+	getStore(): ModelCallRecordingState | undefined;
+	run<R>(
+		store: ModelCallRecordingState,
+		fn: () => R | Promise<R>,
+	): R | Promise<R>;
+};
+
+function getModelCallRecordingStorage(): ModelCallRecordingStorage {
+	return getAmbientSingleton(
+		MODEL_CALL_PROVIDER_RECORDED_KEY,
+		createModelCallRecordingStorage,
+	);
+}
+
+function createModelCallRecordingStorage(): ModelCallRecordingStorage {
+	if (supportsAsyncLocalStorage()) {
+		const { AsyncLocalStorage } = process.getBuiltinModule(
+			"node:async_hooks",
+		) as typeof import("node:async_hooks");
+		const storage = new AsyncLocalStorage<ModelCallRecordingState>();
+		return {
+			getStore: () => storage.getStore(),
+			run: (store, fn) => storage.run(store, fn),
+		};
+	}
+	// Synchronous fallback for browser/edge. The store is a mutable object
+	// passed by reference, so `runWithModelCallRecordingScope` can read the
+	// `recorded` flag after `fn` settles. The run wrapper awaits async `fn`
+	// before restoring the previous slot, so marks made during async work
+	// (e.g. recordLlmCall) are captured.
+	//
+	// LIMITATION: This fallback does NOT support concurrent async useModel
+	// calls — without AsyncLocalStorage, overlapping scopes corrupt the
+	// single mutable slot. The corruption direction is asymmetric and
+	// dangerous: call A opens, call B opens (saving A as prev), A's provider
+	// finalizer marks — and mutates B's store. B then observes
+	// `recorded === true` and suppresses its generic fallback record, while
+	// A observes `false` and records. Net effect: one call double-counted
+	// and another silently dropped. Because the PR's goal is preventing
+	// duplicate accounting, converting duplicates into ABSENT records (which
+	// read as healthy zero-cost calls) is the wrong failure direction.
+	//
+	// Node always uses the AsyncLocalStorage path above; this only affects
+	// browser/edge runtimes, where concurrent model calls are rare.
+	// AsyncLocalStorage is a Node built-in, NOT available in browsers.
+	// The nearest browser equivalent is the TC39 AsyncContext proposal,
+	// which is not yet shipped. If browser/edge concurrent calls become
+	// common, either adopt AsyncContext when available or thread per-call
+	// recording state explicitly through provider recording APIs.
+	let syncStore: ModelCallRecordingState | undefined;
+	return {
+		getStore: () => syncStore,
+		run: (store, fn) => {
+			const prev = syncStore;
+			syncStore = store;
+			const restore = () => {
+				syncStore = prev;
+			};
+			try {
+				const result = fn();
+				if (result instanceof Promise) {
+					return result.then(
+						(v) => {
+							restore();
+							return v;
+						},
+						(e) => {
+							restore();
+							throw e;
+						},
+					);
+				}
+				restore();
+				return result;
+			} catch (e) {
+				restore();
+				throw e;
+			}
+		},
+	};
+}
+
 export function resolveTrajectoryLogger(
 	runtime: IAgentRuntime,
 ): TrajectoryLoggerLike | null {
@@ -969,24 +1149,45 @@ export async function withStandaloneTrajectory<T>(
 		return callback();
 	}
 
-	const trajectoryId = String(
-		await trajectoryLogger.startTrajectory(runtime.agentId, {
+	let trajectoryId: string;
+	try {
+		trajectoryId = String(
+			await trajectoryLogger.startTrajectory(runtime.agentId, {
+				source: options.source,
+				metadata: options.metadata,
+			}),
+		).trim();
+	} catch (error) {
+		// error-policy:J7 standalone capture setup is diagnostic; without a
+		// durable trajectory owner the business callback runs uncaptured.
+		runtime.reportError("StandaloneTrajectory.start", error, {
 			source: options.source,
-			metadata: options.metadata,
-		}),
-	).trim();
+			diagnosticOnly: true,
+		});
+		return callback();
+	}
 	if (!trajectoryId) {
 		return callback();
 	}
 
-	const stepId =
-		typeof trajectoryLogger.startStep === "function"
-			? String(
+	let stepId = trajectoryId;
+	if (typeof trajectoryLogger.startStep === "function") {
+		try {
+			stepId =
+				String(
 					trajectoryLogger.startStep(trajectoryId, {
 						timestamp: Date.now(),
 					}),
-				).trim() || trajectoryId
-			: trajectoryId;
+				).trim() || trajectoryId;
+		} catch (error) {
+			// error-policy:J7 the parent already exists, so retain its correlation
+			// as the fallback step and close it after the callback finishes.
+			runtime.reportError("StandaloneTrajectory.startStep", error, {
+				trajectoryId,
+				diagnosticOnly: true,
+			});
+		}
+	}
 
 	let completed = false;
 	try {
@@ -998,14 +1199,33 @@ export async function withStandaloneTrajectory<T>(
 		return result;
 	} finally {
 		if (typeof trajectoryLogger.flushWriteQueue === "function") {
-			await trajectoryLogger.flushWriteQueue(trajectoryId);
+			try {
+				await trajectoryLogger.flushWriteQueue(trajectoryId);
+			} catch (error) {
+				// error-policy:J7 standalone trajectory persistence is diagnostic;
+				// a successful wrapped operation remains authoritative.
+				runtime.reportError("StandaloneTrajectory.flush", error, {
+					trajectoryId,
+					diagnosticOnly: true,
+				});
+			}
 		}
-		await trajectoryLogger.endTrajectory(
-			trajectoryId,
-			completed
-				? (options.successStatus ?? "completed")
-				: (options.errorStatus ?? "error"),
-		);
+		try {
+			await trajectoryLogger.endTrajectory(
+				trajectoryId,
+				completed
+					? (options.successStatus ?? "completed")
+					: (options.errorStatus ?? "error"),
+			);
+		} catch (error) {
+			// error-policy:J7 terminal telemetry failure cannot replace the
+			// callback's result or error at this wrapper boundary.
+			runtime.reportError("StandaloneTrajectory.end", error, {
+				trajectoryId,
+				diagnosticOnly: true,
+			});
+			trajectoryLogger.releaseTrajectoryOwnership?.(trajectoryId);
+		}
 	}
 }
 
@@ -1063,7 +1283,16 @@ export function logActiveTrajectoryLlmCall(
 	trajectoryLogger.logLlmCall({
 		stepId,
 		...details,
+		purpose: getTrajectoryContext()?.purpose ?? details.purpose,
 	});
+
+	// Mark the current model-call scope as provider-recorded. This is the
+	// single chokepoint for ALL provider-level trajectory logging — whether
+	// called via `recordLlmCall` or directly (e.g. plugin-openai live
+	// streaming). Centralizing here ensures every successful provider record
+	// suppresses the generic `useModel` fallback (#17532).
+	markProviderRecordedCall();
+
 	return true;
 }
 
@@ -1120,8 +1349,19 @@ export async function recordLlmCall<T>(
 					? ""
 					: tryStringify(result);
 
+	// Several providers do not surface token counts in the detail they hand to
+	// recordLlmCall even though the SDK result carries them: xAI omits tokens
+	// entirely from its recordLlmCall detail, and plugin-openai's buffered-stream
+	// path records before the buffered usage resolves. Because the generic
+	// useModel fallback is suppressed once this provider record lands
+	// (#17532), failing to backfill here would silently lose token/cost
+	// attribution for those providers. Normalize result.usage into any missing
+	// token field, never overwriting an explicitly provider-supplied value.
+	const tokenFields = normalizeTokenFieldsFromResult(result, details);
+
 	logActiveTrajectoryLlmCall(runtime, {
 		...details,
+		...tokenFields,
 		response: responseText,
 		latencyMs: Math.max(0, Math.round(elapsed)),
 	});
@@ -1129,28 +1369,85 @@ export async function recordLlmCall<T>(
 	return result;
 }
 
+/**
+ * Extract token/cache fields from a provider SDK result's `usage` object,
+ * preserving any value the caller already supplied in `details`. AI SDK
+ * `usage` carries `promptTokens`/`completionTokens` plus the cache variants;
+ * older shapes use `input`/`output` aliases. Returns only the fields that were
+ * missing, so the caller controls what wins (#17532 token backfill).
+ */
+function normalizeTokenFieldsFromResult(
+	result: unknown,
+	details: RecordLlmCallDetails,
+): Partial<
+	Pick<
+		TrajectoryLlmCallDetails,
+		| "promptTokens"
+		| "completionTokens"
+		| "cacheReadInputTokens"
+		| "cacheCreationInputTokens"
+	>
+> {
+	if (!result || typeof result !== "object") return {};
+	const usage = (result as { usage?: unknown }).usage;
+	if (!usage || typeof usage !== "object") return {};
+	const asNumber = (value: unknown): number | undefined =>
+		typeof value === "number" && Number.isFinite(value) ? value : undefined;
+	const u = usage as Record<string, unknown>;
+	const out: Partial<
+		Pick<
+			TrajectoryLlmCallDetails,
+			| "promptTokens"
+			| "completionTokens"
+			| "cacheReadInputTokens"
+			| "cacheCreationInputTokens"
+		>
+	> = {};
+	if (details.promptTokens === undefined) {
+		const prompt =
+			asNumber(u.promptTokens) ?? asNumber(u.inputTokens) ?? asNumber(u.input);
+		if (prompt !== undefined) out.promptTokens = prompt;
+	}
+	if (details.completionTokens === undefined) {
+		const completion =
+			asNumber(u.completionTokens) ??
+			asNumber(u.outputTokens) ??
+			asNumber(u.output);
+		if (completion !== undefined) out.completionTokens = completion;
+	}
+	if (details.cacheReadInputTokens === undefined) {
+		const cacheRead =
+			asNumber(u.cacheReadInputTokens) ?? asNumber(u.cachedInputTokens);
+		if (cacheRead !== undefined) out.cacheReadInputTokens = cacheRead;
+	}
+	if (details.cacheCreationInputTokens === undefined) {
+		const cacheCreation =
+			asNumber(u.cacheCreationInputTokens) ?? asNumber(u.cacheCreationTokens);
+		if (cacheCreation !== undefined)
+			out.cacheCreationInputTokens = cacheCreation;
+	}
+	return out;
+}
+
 function tryStringify(value: unknown): string {
 	return stringifyForDiagnostics({ response: value });
 }
 
-function generateChildStepId(prefix: string): string {
-	return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
-}
-
 async function withChildTrajectoryStep<T>(
 	runtime: IAgentRuntime | null | undefined,
-	options: { stepIdPrefix: string; purpose: string; actionName?: string },
-	fn: () => Promise<T> | T,
+	options: { purpose: string; actionName?: string; evaluatorName?: string },
+	fn: (hasChildStep: boolean) => Promise<T> | T,
 ): Promise<T> {
 	if (!runtime) {
-		return fn();
+		return fn(false);
 	}
 
 	const parentCtx = getTrajectoryContext();
 	const parentStepId = parentCtx?.trajectoryStepId;
 	if (!(typeof parentStepId === "string" && parentStepId.trim() !== "")) {
-		return fn();
+		return fn(false);
 	}
+	const normalizedParentStepId = parentStepId.trim();
 	const trajectoryId =
 		typeof parentCtx?.trajectoryId === "string" &&
 		parentCtx.trajectoryId.trim() !== ""
@@ -1163,61 +1460,152 @@ async function withChildTrajectoryStep<T>(
 		(typeof trajectoryLogger.isEnabled === "function" &&
 			!trajectoryLogger.isEnabled())
 	) {
-		return fn();
+		return fn(false);
 	}
 
-	let childStepId = generateChildStepId(options.stepIdPrefix);
+	let childStepId = normalizedParentStepId;
+	let hasChildStep = false;
 
 	if (trajectoryId && typeof trajectoryLogger.startStep === "function") {
 		try {
 			const startedStepId = trajectoryLogger.startStep(trajectoryId, {
 				timestamp: Date.now(),
+				parentStepId: normalizedParentStepId,
+				kind:
+					options.purpose === "action"
+						? "action"
+						: options.purpose === "evaluation"
+							? "evaluator"
+							: "llm",
+				evaluatorName: options.evaluatorName,
 			});
 			const normalizedStartedStepId =
 				typeof startedStepId === "string" ? startedStepId.trim() : "";
 			if (
 				normalizedStartedStepId !== "" &&
-				normalizedStartedStepId !== trajectoryId
+				normalizedStartedStepId !== trajectoryId &&
+				normalizedStartedStepId !== normalizedParentStepId
 			) {
 				childStepId = normalizedStartedStepId;
+				hasChildStep = true;
 			}
 		} catch (error) {
 			// error-policy:J7 Child-step recording is diagnostic and cannot block
 			// the operation whose parent trajectory remains active.
 			runtime.reportError("TrajectoryChildStep.start", error, {
 				purpose: options.purpose,
+				...(options.evaluatorName
+					? { evaluatorName: options.evaluatorName }
+					: {}),
 				actionName: options.actionName,
+				diagnosticOnly: true,
 			});
 		}
 	}
 
-	const childContext = {
-		...parentCtx,
-		trajectoryId,
-		trajectoryStepId: childStepId,
-		parentStepId,
-		purpose: options.purpose,
-	};
+	const childContext = hasChildStep
+		? {
+				...parentCtx,
+				trajectoryId,
+				trajectoryStepId: childStepId,
+				parentStepId: normalizedParentStepId,
+				purpose: options.purpose,
+			}
+		: { ...parentCtx, purpose: options.purpose };
 
 	try {
-		return await runWithTrajectoryContext(childContext, () => fn());
+		return await runWithTrajectoryContext(childContext, () => fn(hasChildStep));
 	} finally {
-		void trackPostDeliveryTask(
-			runtime,
-			`trajectory-child:${options.purpose}:${childStepId}`,
-			async () => {
-				if (
-					trajectoryId &&
-					typeof trajectoryLogger.flushWriteQueue === "function"
-				) {
-					await trajectoryLogger.flushWriteQueue(trajectoryId);
+		if (trajectoryId || hasChildStep) {
+			const finalizeChild = async (): Promise<void> => {
+				try {
+					if (
+						trajectoryId &&
+						typeof trajectoryLogger.flushWriteQueue === "function"
+					) {
+						await trajectoryLogger.flushWriteQueue(trajectoryId);
+					}
+				} catch (error) {
+					// error-policy:J7 child telemetry remains diagnostic, but evaluator
+					// finalization must complete before the parent run terminal is emitted.
+					runtime.reportError("TrajectoryChildStep.finalize", error, {
+						trajectoryId,
+						parentStepId: normalizedParentStepId,
+						...(hasChildStep ? { childStepId } : {}),
+						purpose: options.purpose,
+						diagnosticOnly: true,
+					});
 				}
-				await annotateActiveTrajectoryStep(runtime, {
-					stepId: parentStepId,
-					appendChildSteps: [childStepId],
-				});
-			},
-		);
+			};
+			if (options.purpose === "evaluation") {
+				// Evaluators already run after user delivery; awaiting their child flush
+				// preserves parent-before-terminal ordering without adding reply latency.
+				await finalizeChild();
+			} else {
+				void trackPostDeliveryTask(
+					runtime,
+					`trajectory-child:${options.purpose}:${childStepId}`,
+					finalizeChild,
+					{ kind: "diagnostic" },
+				);
+			}
+		}
+	}
+}
+
+function completeActionTrajectoryStep<T extends ActionResult>(
+	runtime: IAgentRuntime,
+	actionName: string,
+	parameters: Record<string, unknown> | undefined,
+	result: T,
+	projectResult?: (result: T) => ActionResult,
+): void {
+	const context = getTrajectoryContext();
+	const trajectoryId = context?.trajectoryId?.trim();
+	const stepId = context?.trajectoryStepId?.trim();
+	if (!trajectoryId || !stepId) return;
+
+	const trajectoryLogger = resolveTrajectoryLogger(runtime);
+	if (
+		!trajectoryLogger ||
+		typeof trajectoryLogger.completeStep !== "function"
+	) {
+		return;
+	}
+
+	let phase: "project" | "normalize" | "complete" = "project";
+	try {
+		const projectedResult = projectResult?.(result) ?? result;
+		phase = "normalize";
+		const normalizedParameters = sanitizeTrajectoryJsonObject(parameters ?? {});
+		const normalizedResult = sanitizeTrajectoryJsonObject(projectedResult);
+		if (!normalizedParameters || !normalizedResult) {
+			throw new ElizaError("Action settlement is not JSON serializable", {
+				code: "TRAJECTORY_ACTION_SETTLEMENT_INVALID",
+				context: { actionName, trajectoryId, stepId },
+			});
+		}
+
+		phase = "complete";
+		trajectoryLogger.completeStep(trajectoryId, stepId, {
+			actionType: actionName,
+			actionName,
+			parameters: normalizedParameters,
+			success: projectedResult.success,
+			result: normalizedResult,
+			...(typeof projectedResult.error === "string"
+				? { error: projectedResult.error }
+				: {}),
+		});
+	} catch (error) {
+		// error-policy:J7 Projection, normalization, and persistence are all
+		// diagnostic; the settled tool result remains authoritative.
+		runtime.reportError(`TrajectoryActionStep.${phase}`, error, {
+			actionName,
+			trajectoryId,
+			stepId,
+			diagnosticOnly: true,
+		});
 	}
 }
 
@@ -1229,15 +1617,31 @@ async function withChildTrajectoryStep<T>(
  * Transparent: when no trajectory is active, `fn` runs unchanged and no
  * step is created.
  */
-export async function withActionStep<T>(
+export async function withActionStep<T extends ActionResult>(
 	runtime: IAgentRuntime | null | undefined,
 	actionName: string,
 	fn: () => Promise<T> | T,
+	options: {
+		parameters?: Record<string, unknown>;
+		projectResult?: (result: T) => ActionResult;
+	} = {},
 ): Promise<T> {
 	return withChildTrajectoryStep(
 		runtime,
-		{ stepIdPrefix: "action", purpose: "action", actionName },
-		fn,
+		{ purpose: "action", actionName },
+		async (hasChildStep) => {
+			const result = await fn();
+			if (runtime && hasChildStep) {
+				completeActionTrajectoryStep(
+					runtime,
+					actionName,
+					options.parameters,
+					result,
+					options.projectResult,
+				);
+			}
+			return result;
+		},
 	);
 }
 
@@ -1251,17 +1655,15 @@ export async function withProviderStep<T>(
 ): Promise<T> {
 	return withChildTrajectoryStep(
 		runtime,
-		{ stepIdPrefix: "provider", purpose: "provider", actionName: providerName },
+		{ purpose: "provider", actionName: providerName },
 		fn,
 	);
 }
 
 /**
- * Same as {@link withActionStep} but for evaluator turns. Closes M14:
- * every evaluator invocation emits a child trajectory step whose model
- * call(s) attach to it. The child step's `kind` is set to `"evaluator"`
- * downstream by the agent persistence layer when the LLM call carries
- * `purpose === "evaluation"` (see `appendLlmCall`).
+ * Same as {@link withActionStep} but for evaluator turns. The child lifecycle
+ * carries evaluator identity before nested model calls are captured, so reloads
+ * do not need to infer ownership from prompt purpose.
  */
 export async function withEvaluatorStep<T>(
 	runtime: IAgentRuntime | null | undefined,
@@ -1271,9 +1673,9 @@ export async function withEvaluatorStep<T>(
 	return withChildTrajectoryStep(
 		runtime,
 		{
-			stepIdPrefix: "evaluator",
 			purpose: "evaluation",
 			actionName: evaluatorName,
+			evaluatorName,
 		},
 		fn,
 	);
@@ -1325,6 +1727,7 @@ export async function spawnWithTrajectoryLink<T>(
 				runtime.reportError("Trajectory.linkChild", error, {
 					parentStepId: handle.parentStepId,
 					childStepId,
+					diagnosticOnly: true,
 				});
 				return false;
 			}

@@ -8,6 +8,7 @@
 // fetch (the result callback transport) are doubled.
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { shellLocalStorage } from "../surface-realm-channel";
 import { addAgentProfile } from "./agent-profiles";
 import { bindReadyPhase, type ReadyPhaseDeps } from "./startup-phase-hydrate";
 
@@ -116,6 +117,35 @@ describe("bindReadyPhase shell:switch-agent handler", () => {
     expect(clientMock.handlers.has("shell:switch-agent")).toBe(false);
   });
 
+  it("refuses a Cloud profile whose kind masks an untrusted public host", () => {
+    addAgentProfile({
+      label: "Tampered Cloud agent",
+      kind: "cloud",
+      apiBase: "https://credential-sink.example.test",
+      cloudAgentId: "11111111-1111-4111-8111-111111111111",
+    });
+    const cleanup = bindReadyPhase({ current: makeDeps() });
+
+    clientMock.handlers.get("shell:switch-agent")?.({
+      requestId: "req-untrusted-cloud",
+      profile: "Tampered Cloud agent",
+    });
+
+    expect(clientMock.repointBaseUrl).not.toHaveBeenCalled();
+    expect(clientMock.setToken).not.toHaveBeenCalled();
+    expect(lastResultBody()).toEqual({
+      requestId: "req-untrusted-cloud",
+      ok: false,
+      reason: "untrusted-cloud",
+    });
+    expect(setActionNotice).toHaveBeenCalledWith(
+      expect.stringContaining("invalid Cloud agent"),
+      "error",
+    );
+
+    cleanup();
+  });
+
   it("applies a trusted local profile and reports success", () => {
     const laptop = addAgentProfile({
       label: "Laptop",
@@ -145,6 +175,50 @@ describe("bindReadyPhase shell:switch-agent handler", () => {
     );
 
     cleanup();
+  });
+
+  it("reports persistence failure without repointing or announcing success", () => {
+    addAgentProfile({
+      label: "Laptop",
+      kind: "local",
+      apiBase: "",
+    });
+    const setItem = shellLocalStorage.setItem.bind(shellLocalStorage);
+    const writeSpy = vi
+      .spyOn(shellLocalStorage, "setItem")
+      .mockImplementation((key, value) => {
+        if (key === "elizaos:agent-profiles") {
+          throw new DOMException("blocked", "SecurityError");
+        }
+        setItem(key, value);
+      });
+    const cleanup = bindReadyPhase({ current: makeDeps() });
+
+    try {
+      clientMock.handlers.get("shell:switch-agent")?.({
+        requestId: "req-storage-failed",
+        profile: "Laptop",
+      });
+
+      expect(clientMock.repointBaseUrl).not.toHaveBeenCalled();
+      expect(clientMock.setToken).not.toHaveBeenCalled();
+      expect(lastResultBody()).toEqual({
+        requestId: "req-storage-failed",
+        ok: false,
+        reason: "persistence-failed",
+      });
+      expect(setActionNotice).toHaveBeenCalledWith(
+        expect.stringContaining("browser storage"),
+        "error",
+      );
+      expect(setActionNotice).not.toHaveBeenCalledWith(
+        expect.stringContaining("Switched"),
+        "success",
+      );
+    } finally {
+      cleanup();
+      writeSpy.mockRestore();
+    }
   });
 
   it("reports not-found for an unknown profile query", () => {

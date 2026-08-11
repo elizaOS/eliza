@@ -32,8 +32,8 @@ describe("view matrix — exhaustive noun recall (every view × every language n
 	});
 
 	it.each(RECALL_CASES)(
-		"resolves $viewId noun '$noun' via verb/possessive/bare forms",
-		({ phrases }) => {
+		"resolves $viewId noun '$noun' under its arbitration policy",
+		({ viewId, phrases, navigationOnly }) => {
 			// Every noun must be reachable through an explicit verb and a possessive,
 			// and as a bare whole-message noun. The resolved view must be registered
 			// (a higher-priority view may legitimately win a shared substring, but it
@@ -41,6 +41,12 @@ describe("view matrix — exhaustive noun recall (every view × every language n
 			const verb = matchViewCommand(phrases.verb);
 			const poss = matchViewCommand(phrases.possessive);
 			const bare = matchViewCommand(phrases.bare);
+			if (navigationOnly) {
+				expect(verb, `verb form: "${phrases.verb}"`).toBe(viewId);
+				expect(poss, `inventory form: "${phrases.possessive}"`).toBeNull();
+				expect(bare, `bare form: "${phrases.bare}"`).toBeNull();
+				return;
+			}
 			expect(verb, `verb form: "${phrases.verb}"`).not.toBeNull();
 			expect(poss, `possessive form: "${phrases.possessive}"`).not.toBeNull();
 			expect(bare, `bare form: "${phrases.bare}"`).not.toBeNull();

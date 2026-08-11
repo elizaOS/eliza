@@ -20,6 +20,7 @@ import type {
   MeetingSession,
 } from "@elizaos/shared";
 import { parseMeetingUrl } from "@elizaos/shared";
+import { ZoomCloudImportError } from "../platforms/zoom/cloud-import.js";
 import { MeetingJoinError, type MeetingService } from "../service.js";
 import { selectSessionForViewer } from "../session-disclosure.js";
 
@@ -56,6 +57,7 @@ const joinErrorStatus: Record<MeetingJoinError["code"], number> = {
   invalid_url: 400,
   unsupported_platform: 422,
   unsupported_host: 422,
+  policy_blocked: 403,
   already_joined: 409,
   invalid_duration_cap: 400,
   insufficient_credits: 402,
@@ -137,6 +139,66 @@ const listRoute: Route = {
   },
 };
 
+/** Private authenticated body accepted by the Zoom cloud-import boundary. */
+export interface ImportZoomMeetingRequest {
+  meetingId: string;
+  /** Short-lived OAuth token; never logged or persisted. */
+  accessToken?: string;
+  retainRecordings?: boolean;
+  maxFileBytes?: number;
+  maxTotalBytes?: number;
+}
+
+const importZoomRoute: Route = {
+  type: "POST",
+  path: "/api/meetings/import/zoom",
+  rawPath: true,
+  routeHandler: async (ctx): Promise<RouteHandlerResult> => {
+    const svc = service(ctx);
+    if (!svc) return unavailable;
+    const body = ctx.body as ImportZoomMeetingRequest | undefined;
+    if (!body || typeof body.meetingId !== "string" || !body.meetingId.trim()) {
+      return { status: 400, body: { error: "meetingId is required" } };
+    }
+    if (
+      body.accessToken !== undefined &&
+      (typeof body.accessToken !== "string" || !body.accessToken.trim())
+    ) {
+      return {
+        status: 400,
+        body: { error: "accessToken must be a non-empty string" },
+      };
+    }
+    if (
+      body.retainRecordings !== undefined &&
+      typeof body.retainRecordings !== "boolean"
+    ) {
+      return {
+        status: 400,
+        body: { error: "retainRecordings must be boolean" },
+      };
+    }
+    try {
+      const result = await svc.importZoomMeeting(body);
+      return { status: 201, body: result };
+    } catch (error) {
+      // error-policy:J1 Typed provider/import failures are translated at the
+      // private HTTP boundary; unknown storage/runtime failures remain 5xx.
+      if (error instanceof ZoomCloudImportError) {
+        return {
+          status: error.status && error.status >= 400 ? error.status : 502,
+          body: {
+            error: error.message,
+            code: error.code,
+            requestId: error.requestId,
+          },
+        };
+      }
+      throw error;
+    }
+  },
+};
+
 const getRoute: Route = {
   type: "GET",
   path: "/api/meetings/:id",
@@ -177,6 +239,7 @@ const deleteRoute: Route = {
 export const meetingsRoutes: Route[] = [
   createRoute,
   listRoute,
+  importZoomRoute,
   getRoute,
   deleteRoute,
 ];

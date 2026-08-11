@@ -279,11 +279,12 @@ export interface PlannerLoopParams {
 	 */
 	requiredToolMissBudgetOverride?: number;
 	/**
-	 * Provenance of the required-tool enforcement: "inferred" when the
-	 * candidate actions behind `requireNonTerminalToolCall` were injected by
-	 * deterministic text inference rather than emitted by the Stage-1 model
-	 * (see MessageHandlerPlan.requiredToolEvidence — same vocabulary).
-	 * Inferred evidence is weaker — when the planner re-commits to the
+	 * Evidence class for required-tool enforcement: "inferred" when the
+	 * candidates behind `requireNonTerminalToolCall` came only from a relaxable
+	 * deterministic heuristic (see MessageHandlerPlan.requiredToolEvidence).
+	 * Strong coding-work inference and model-authored candidates omit this
+	 * marker and keep the full corrective budget. Inferred evidence is weaker —
+	 * when the planner re-commits to the
 	 * IDENTICAL terminal answer on consecutive misses, the loop accepts it
 	 * (mirroring the widget-identity early-finish, #15230) instead of
 	 * burning the full miss budget on the heuristic's guess. Omitted (the

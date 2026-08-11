@@ -20,7 +20,8 @@
  *
  * Usage:
  *   node packages/app-core/scripts/stage-desktop-fused-lib.mjs \
- *     [--variant auto|cpu|cuda|vulkan|metal|hip] [--out <dir>] [--jobs N] [--force]
+ *     [--variant auto|cpu|cuda|vulkan|metal|hip] [--out <dir>] [--jobs N]
+ *     [--portable-cpu] [--force]
  *
  * Backend autodetect (--variant auto, the default):
  *   macOS          → Metal (Apple GPU; always present)
@@ -174,6 +175,7 @@ function parseArgs(argv) {
     variant: "auto",
     outDir: null,
     jobs: null,
+    portableCpu: false,
     force: false,
     check: false,
   };
@@ -181,6 +183,7 @@ function parseArgs(argv) {
     if (argv[i] === "--variant") out.variant = argv[++i];
     else if (argv[i] === "--out") out.outDir = argv[++i];
     else if (argv[i] === "--jobs") out.jobs = parseInt(argv[++i], 10);
+    else if (argv[i] === "--portable-cpu") out.portableCpu = true;
     else if (argv[i] === "--force") out.force = true;
     else if (argv[i] === "--check") out.check = true;
     else if (argv[i] === "--ensure") out.ensure = true;
@@ -341,6 +344,7 @@ const {
   variant,
   outDir: outOverride,
   jobs: jobsArg,
+  portableCpu,
   force,
   check,
   ensure,
@@ -367,6 +371,10 @@ function stagedStalenessReasons() {
     reasons.push("fork working tree changed (uncommitted source edits)");
   if (stamp && stagedSha && stamp.fusedSha256 !== stagedSha)
     reasons.push("staged lib hash != stamp (partial copy / tampered)");
+  if (stamp && (stamp.cpuNative ?? true) !== !portableCpu)
+    reasons.push(
+      `CPU portability mode changed (${(stamp.cpuNative ?? true) ? "native" : "portable"} → ${portableCpu ? "portable" : "native"})`,
+    );
   return reasons;
 }
 
@@ -414,10 +422,13 @@ if (!have("cmake")) die("cmake not found on PATH");
 const backend = variant === "auto" ? detectBackend() : variant;
 log(`host: ${process.platform}/${process.arch}`);
 log(
-  `backend: ${backend}${variant === "auto" ? " (autodetected)" : ""} (GGML_CPU always on for fallback)`,
+  `backend: ${backend}${variant === "auto" ? " (autodetected)" : ""} (GGML_CPU fallback: ${portableCpu ? "portable" : "host-native"})`,
 );
 
-const buildDir = path.join(forkSrc, `build-desktop-${backend}`);
+const buildDir = path.join(
+  forkSrc,
+  `build-desktop-${backend}${portableCpu ? "-portable" : ""}`,
+);
 const outDir = stagedOutDir;
 
 // Self-healing clean rebuild: if the existing build dir was produced from a
@@ -455,9 +466,11 @@ const jobs =
 // (so the GPU backend can load the system driver at runtime) and matches the
 // dlopen()-able sibling set the runtime resolves. LLAMA_BUILD_OMNIVOICE +
 // LLAMA_BUILD_MTMD + LLAMA_BUILD_KOKORO are required for the fused
-// `elizainference` SHARED target (TTS + local ASR + Kokoro). GGML_NATIVE=ON tunes
-// the CPU backend to the build host — correct for a local/dev build; a
-// redistributable build should pin explicit CPU features instead.
+// `elizainference` SHARED target (TTS + local ASR + Kokoro). The default
+// GGML_NATIVE=ON tunes the CPU backend to the build host, which is correct for a
+// local/dev build. Cross-runner artifacts pass --portable-cpu so CMake targets
+// the architecture baseline instead of emitting instructions the consumer
+// host may not support.
 run("cmake", [
   "-S",
   forkSrc,
@@ -471,7 +484,7 @@ run("cmake", [
   // NDK toolchain forces PIC globally so never hit this; make it explicit here.
   "-DCMAKE_POSITION_INDEPENDENT_CODE=ON",
   "-DGGML_CPU=ON",
-  "-DGGML_NATIVE=ON",
+  `-DGGML_NATIVE=${portableCpu ? "OFF" : "ON"}`,
   "-DLLAMA_BUILD_OMNIVOICE=ON",
   "-DLLAMA_BUILD_MTMD=ON",
   "-DLLAMA_BUILD_KOKORO=ON",
@@ -578,6 +591,7 @@ const buildStamp = JSON.stringify(
     forkCommit: currentFork,
     forkDirty: currentDirty,
     backend,
+    cpuNative: !portableCpu,
     fusedLib: fusedName,
     fusedSha256: sha256File(path.join(outDir, fusedName)),
     builtAt: new Date().toISOString(),

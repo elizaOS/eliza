@@ -7,7 +7,7 @@
  * jsdom, with an in-memory localStorage shim.
  */
 
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -45,6 +45,9 @@ vi.mock("./VoiceProfileSection", () => ({
   VoiceProfileSection: () => null,
 }));
 
+import { loadOsIntentAutoStartConsent } from "../../state/persistence";
+import { emitViewEvent } from "../../views/view-event-bus";
+import { VOICE_SETTINGS_APPLY_EVENT } from "../../voice/useVoiceSettingsApplyChannel";
 import {
   DEFAULT_VAD_AUTO_STOP_PREFS,
   DEFAULT_VOICE_SECTION_PREFS,
@@ -158,6 +161,61 @@ describe("VoiceSectionMount — continuous-chat localStorage mirror", () => {
     await waitFor(() =>
       expect(window.localStorage.getItem(CONTINUOUS_KEY)).toBe("vad-gated"),
     );
+  });
+});
+
+describe("VoiceSectionMount — shortcut microphone consent", () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+    clientMock.getConfig.mockResolvedValue({});
+    clientMock.updateConfig.mockResolvedValue({});
+    clientMock.getLocalInferenceDeviceTier.mockResolvedValue({
+      tier: "GOOD",
+      reason: "",
+    });
+  });
+
+  afterEach(() => cleanup());
+
+  it("defaults off and persists an explicit voice auto-start opt-in", async () => {
+    const user = userEvent.setup();
+    render(<VoiceSectionMount />);
+    const toggle = (await screen.findByTestId(
+      "voice-section-intent-autostart-voice",
+    )) as HTMLInputElement;
+    expect(toggle.checked).toBe(false);
+    expect(loadOsIntentAutoStartConsent()).toEqual({
+      voice: false,
+      transcription: false,
+    });
+
+    await user.click(toggle);
+    await waitFor(() => expect(toggle.checked).toBe(true));
+    expect(loadOsIntentAutoStartConsent()).toEqual({
+      voice: true,
+      transcription: false,
+    });
+    await waitFor(() => expect(clientMock.updateConfig).toHaveBeenCalled());
+    const payload = clientMock.updateConfig.mock.calls.at(-1)?.[0] as {
+      messages: { voice: { osIntentAutoStartVoice: boolean } };
+    };
+    expect(payload.messages.voice.osIntentAutoStartVoice).toBe(true);
+  });
+
+  it("reflects a chat-driven consent broadcast while the panel is open", async () => {
+    render(<VoiceSectionMount />);
+    const toggle = (await screen.findByTestId(
+      "voice-section-intent-autostart-transcription",
+    )) as HTMLInputElement;
+    expect(toggle.checked).toBe(false);
+    act(() => {
+      emitViewEvent(
+        VOICE_SETTINGS_APPLY_EVENT,
+        { osIntentAutoStartTranscription: true },
+        "agent",
+      );
+    });
+    await waitFor(() => expect(toggle.checked).toBe(true));
   });
 });
 

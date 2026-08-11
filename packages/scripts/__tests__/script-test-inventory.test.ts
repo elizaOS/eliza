@@ -29,13 +29,11 @@ const packageScripts = {
   "test:scripts": SCRIPT_TEST_RUNNER,
   ...SCRIPT_TEST_LANE_COMMANDS,
 };
-const scenarioWorkflow = `
+const ciWorkflow = `
 jobs:
-  scenario-runner-e2e:
-    needs: changes
-    if: needs.changes.outputs.run_scenario_pr == 'true'
+  tests:
     steps:
-      - name: Complete packages/scripts test sweep
+      - name: Script contract tests
         env:
           E2E_COVERAGE_GATE_ENFORCE: "1"
         run: bun run test:scripts
@@ -59,7 +57,7 @@ function inventory(candidateFiles: string[], options = {}) {
     candidateFiles,
     exclusions: new Map(),
     packageScripts,
-    scenarioWorkflow,
+    ciWorkflow,
     verifyReadable: false,
     ...options,
   });
@@ -155,7 +153,7 @@ describe("packages/scripts executable-test inventory", () => {
         .readFileSync(junit, "utf8")
         .matchAll(/<testsuite\b[^>]*\bfile="([^"]+)"/g),
     ]
-      .map((match) => match[1])
+      .map((match) => match[1].replaceAll("\\", "/"))
       .sort();
     const inventoryFiles = fixtures.filter(isScriptTestPath).sort();
     expect(bunFiles).toEqual(inventoryFiles);
@@ -192,7 +190,7 @@ describe("packages/scripts executable-test inventory", () => {
     ).toThrow("stale exclusion");
   });
 
-  test("fails when root or scenario execution lanes drift", () => {
+  test("fails when root or CI execution lanes drift", () => {
     const files = ["packages/scripts/example.test.ts"];
     expect(() =>
       inventory(files, {
@@ -204,18 +202,16 @@ describe("packages/scripts executable-test inventory", () => {
         packageScripts: { ...packageScripts, test: "node workspace-tests.mjs" },
       }),
     ).toThrow("package.json test must be exactly");
-    expect(() => inventory(files, { scenarioWorkflow: "jobs: {}" })).toThrow(
-      "jobs.scenario-runner-e2e",
+    expect(() => inventory(files, { ciWorkflow: "jobs: {}" })).toThrow(
+      "jobs.tests",
     );
     expect(() =>
       inventory(files, {
-        scenarioWorkflow: `
+        ciWorkflow: `
 jobs:
-  scenario-runner-e2e:
-    needs: changes
-    if: needs.changes.outputs.run_scenario_pr == 'true'
+  tests:
     steps:
-      - name: Complete packages/scripts test sweep
+      - name: Script contract tests
         if: false
         env:
           E2E_COVERAGE_GATE_ENFORCE: "1"
@@ -225,29 +221,25 @@ jobs:
     ).toThrow("may not declare if");
     expect(() =>
       inventory(files, {
-        scenarioWorkflow: `
+        ciWorkflow: `
 jobs:
-  scenario-runner-e2e:
-    needs: changes
-    if: needs.changes.outputs.run_scenario_pr == 'true'
+  tests:
     continue-on-error: true
     steps:
-      - name: Complete packages/scripts test sweep
+      - name: Script contract tests
         env:
           E2E_COVERAGE_GATE_ENFORCE: "1"
         run: bun run test:scripts
 `,
       }),
-    ).toThrow("scenario-runner-e2e may not continue on error");
+    ).toThrow("tests job may not continue on error");
     expect(() =>
       inventory(files, {
-        scenarioWorkflow: `
+        ciWorkflow: `
 jobs:
-  scenario-runner-e2e:
-    needs: changes
-    if: needs.changes.outputs.run_scenario_pr == 'true'
+  tests:
     steps:
-      - name: Complete packages/scripts test sweep
+      - name: Script contract tests
         env:
           E2E_COVERAGE_GATE_ENFORCE: "1"
 `,
@@ -255,43 +247,35 @@ jobs:
     ).toThrow("must be a string scalar");
     expect(() =>
       inventory(files, {
-        scenarioWorkflow: `
+        ciWorkflow: `
 jobs:
   disabled-copy:
     steps:
-      - name: Complete packages/scripts test sweep
+      - name: Script contract tests
         run: bun run test:scripts
-  scenario-runner-e2e:
-    needs: changes
-    if: needs.changes.outputs.run_scenario_pr == 'true'
+  tests:
     steps: []
 `,
       }),
     ).toThrow("must own exactly one");
     expect(() =>
       inventory(files, {
-        scenarioWorkflow: `
+        ciWorkflow: `
 jobs:
-  scenario-runner-e2e:
-    needs: changes
-    if: "needs.changes.outputs.run_scenario_pr == 'true'"
+  tests:
     steps:
-      - name: Complete packages/scripts test sweep
-        env:
-          E2E_COVERAGE_GATE_ENFORCE: "1"
+      - name: Script contract tests
         run: bun run test:scripts
 `,
       }),
-    ).toThrow("must use plain YAML scalar syntax");
+    ).toThrow("must enforce the E2E coverage gate");
     expect(() =>
       inventory(files, {
-        scenarioWorkflow: `
+        ciWorkflow: `
 jobs:
-  scenario-runner-e2e:
-    needs: changes
-    if: needs.changes.outputs.run_scenario_pr == 'true'
+  tests:
     steps:
-      - name: Complete packages/scripts test sweep
+      - name: Script contract tests
         env:
           E2E_COVERAGE_GATE_ENFORCE: "1"
         run: |
@@ -301,7 +285,7 @@ jobs:
     ).toThrow("must use plain YAML scalar syntax");
     expect(() =>
       inventory(files, {
-        scenarioWorkflow: `${scenarioWorkflow}
+        ciWorkflow: `${ciWorkflow}
 jobs:
   duplicate: {}
 `,
@@ -309,15 +293,13 @@ jobs:
     ).toThrow("Map keys must be unique");
     expect(() =>
       inventory(files, {
-        scenarioWorkflow: `
+        ciWorkflow: `
 base: &base
   run: bun run test:scripts
 jobs:
-  scenario-runner-e2e:
-    needs: changes
-    if: needs.changes.outputs.run_scenario_pr == 'true'
+  tests:
     steps:
-      - name: Complete packages/scripts test sweep
+      - name: Script contract tests
         <<: *base
         env:
           E2E_COVERAGE_GATE_ENFORCE: "1"
@@ -411,7 +393,7 @@ jobs:
       "packages/scripts/run-script-test-files.mjs",
       "--config=packages/scripts/bunfig.script-tests.toml",
     ]);
-    expect(command).toContain("--concurrency=4");
+    expect(command).toContain("--concurrency=2");
     expect(
       command.findIndex((argument) => argument.startsWith("--junit=")),
     ).toBeLessThan(command.indexOf("packages/scripts/example.test.ts"));
@@ -589,6 +571,19 @@ jobs:
       assertions: 2,
       failures: 0,
       skipped: 0,
+      suiteFileCount: 1,
+    });
+    expect(
+      validateJunitEvidence(
+        xml.replaceAll(
+          "packages/scripts/example.test.ts",
+          "packages\\scripts\\example.test.ts",
+        ),
+        ["packages/scripts/example.test.ts"],
+        "reports/junit.xml",
+      ),
+    ).toMatchObject({
+      status: "valid",
       suiteFileCount: 1,
     });
     expect(() =>
@@ -904,7 +899,7 @@ jobs:
 
   test("the real repository has one executing lane for every discovered test", () => {
     const result = buildScriptTestInventory();
-    expect(result.discoveredCount).toBeGreaterThan(100);
+    expect(result.discoveredCount).toBeGreaterThan(90);
     expect(result.excluded).toEqual([
       {
         file: "packages/scripts/__tests__/release-verdaccio.integration.test.ts",

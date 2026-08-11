@@ -20,11 +20,13 @@ import {
   matchesDocumentFilter as matchesSharedDocumentFilter,
   parseDocumentScope,
   type RouteActor,
+  type RouteActorRole,
   routeActorAddedByRole,
   type DocumentFilter as SharedDocumentFilter,
   trimString,
 } from "@elizaos/agent/api/document-access";
 import type {
+  AccessContext,
   AgentRuntime,
   IFileStorageService,
   Memory,
@@ -34,6 +36,7 @@ import type {
 } from "@elizaos/core";
 import {
   __setDocumentUrlFetchImplForTests,
+  actorFromAccessContext,
   fetchDocumentFromUrl,
   isYouTubeUrl,
   ServiceType,
@@ -60,6 +63,7 @@ export type DocumentRouteHelpers = RouteHelpers;
 export interface DocumentRouteContext extends RouteRequestContext {
   url: URL;
   runtime: AgentRuntime | null;
+  accessContext?: AccessContext;
   decodePathComponent?: (
     raw: string,
     res: DocumentRouteContext["res"],
@@ -155,30 +159,45 @@ function getOwnerEntityId(runtime: AgentRuntime | null): UUID | undefined {
   return asUuid(runtime.getSetting("ELIZA_ADMIN_ENTITY_ID"));
 }
 
-function firstHeaderValue(value: string | string[] | undefined): string | null {
-  if (Array.isArray(value)) return firstHeaderValue(value[0]);
-  if (typeof value !== "string") return null;
-  const normalized = value.split(",")[0]?.trim();
-  return normalized ? normalized : null;
-}
-
-function resolveRouteActor(
-  req: DocumentRouteContext["req"],
+export function resolveRouteActor(
   agentId: UUID,
   ownerEntityId?: UUID,
-): RouteActor {
-  const headerEntityId =
-    asUuid(firstHeaderValue(req.headers["x-eliza-entity-id"])) ??
-    asUuid(firstHeaderValue(req.headers["x-eliza-actor-entity-id"]));
+  accessContext?: AccessContext,
+): RouteActor | null {
+  // No accessContext means trunk-authorized owner boundary — preserve existing
+  // unfiltered behavior by returning OWNER.
+  if (!accessContext) {
+    return {
+      entityId: ownerEntityId ?? agentId,
+      role: "OWNER",
+      ownerEntityId,
+    };
+  }
 
-  const entityId = headerEntityId ?? ownerEntityId ?? agentId;
-  if (headerEntityId === agentId) {
-    return { entityId, role: "AGENT", ownerEntityId };
-  }
-  if (!headerEntityId || (ownerEntityId && headerEntityId === ownerEntityId)) {
-    return { entityId, role: "OWNER", ownerEntityId };
-  }
-  return { entityId, role: "USER", ownerEntityId };
+  if (!accessContext.requesterEntityId) return null;
+
+  // Delegate the RoleName -> RouteActorRole mapping to core rather than
+  // restating it. The local version collapsed everything that was not
+  // OWNER/ADMIN into USER, which silently dropped AGENT: a request the agent
+  // makes about itself (requesterEntityId === agentId) came back as USER, so
+  // actorCanManageAgentDocuments — which grants on OWNER/AGENT/RUNTIME — could
+  // never be satisfied and the agent lost access to its own agent-private
+  // documents. actorFromAccessContext is the single definition of that mapping.
+  const scopeActor = actorFromAccessContext(accessContext, agentId);
+  // actorFromAccessContext only ever yields OWNER/USER/AGENT, but its static
+  // ActorRole type is wider (full RoleName). Narrow explicitly and fail closed
+  // to USER for anything outside the route-actor role set.
+  const role: RouteActorRole =
+    scopeActor.role === "OWNER" ||
+    scopeActor.role === "AGENT" ||
+    scopeActor.role === "RUNTIME"
+      ? scopeActor.role
+      : "USER";
+  return {
+    entityId: scopeActor.entityId,
+    role,
+    ownerEntityId,
+  };
 }
 
 function parseSearchMode(value: unknown): DocumentSearchMode | undefined {
@@ -704,9 +723,25 @@ export async function handleDocumentsRoutes(
   }
   const agentId = runtime.agentId as UUID;
   const ownerEntityId = getOwnerEntityId(runtime);
-  const routeActor = resolveRouteActor(req, agentId, ownerEntityId);
+  const routeActor = resolveRouteActor(
+    agentId,
+    ownerEntityId,
+    ctx.accessContext,
+  );
+
+  if (!routeActor) {
+    error(res, "Authentication required", 401);
+    return true;
+  }
 
   if (method === "GET" && pathname === "/api/documents/stats") {
+    if (
+      !actorCanManageOwnerDocuments(routeActor) &&
+      !actorCanManageAgentDocuments(routeActor)
+    ) {
+      error(res, "Forbidden: insufficient permissions for document stats", 403);
+      return true;
+    }
     const documentCount = await documentsService.countMemories({
       tableName: DOCUMENTS_TABLE,
       unique: false,
@@ -829,6 +864,12 @@ export async function handleDocumentsRoutes(
           ),
           documentProvenance: meta ? getDocumentProvenance(meta) : undefined,
           position: meta?.position,
+          transcriptId:
+            typeof meta?.transcriptId === "string"
+              ? meta.transcriptId
+              : undefined,
+          startMs: typeof meta?.startMs === "number" ? meta.startMs : undefined,
+          endMs: typeof meta?.endMs === "number" ? meta.endMs : undefined,
         };
       });
 

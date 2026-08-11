@@ -1,13 +1,17 @@
 /**
  * Exchanges one-time agent pairing tokens for browser and native clients.
  *
- * Browser requests remain Origin-bound. Native requests require Cloud auth and
- * bind consumption to the tenant, agent, and minted origin before returning
- * the agent's API credential.
+ * Browser requests are accepted only from loopback-bound local Docker agents;
+ * remote managed browsers redeem at their trusted agent-subdomain Worker.
+ * Native requests require Cloud auth and bind consumption to the tenant,
+ * agent, and minted origin before returning the agent's API credential.
  */
 
+import {
+  type CloudPairExchangeResponse,
+  isCloudPairAgentId,
+} from "@elizaos/shared/contracts";
 import { Hono } from "hono";
-import { agentSandboxesRepository } from "@/db/repositories/agent-sandboxes";
 import { AuthenticationError, errorToResponse } from "@/lib/api/errors";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
 import {
@@ -40,12 +44,6 @@ function isPlausiblePairingToken(token: string): boolean {
   return /^[A-Za-z0-9_-]{43}$/.test(token);
 }
 
-function isPlausibleAgentId(agentId: string): boolean {
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
-    agentId,
-  );
-}
-
 function normalizeHttpOrigin(value: string): string | null {
   try {
     const url = new URL(value);
@@ -56,6 +54,26 @@ function normalizeHttpOrigin(value: string): string | null {
   } catch {
     // error-policy:J3 untrusted client origins that cannot parse are invalid
     return null;
+  }
+}
+
+function isLoopbackHttpOrigin(value: string): boolean {
+  const normalizedOrigin = normalizeHttpOrigin(value);
+  if (!normalizedOrigin) return false;
+  try {
+    const hostname = new URL(normalizedOrigin).hostname
+      .toLowerCase()
+      .replace(/^\[|\]$/g, "");
+    if (hostname === "localhost" || hostname === "::1") return true;
+    const ipv4 = hostname.split(".");
+    return (
+      ipv4.length === 4 &&
+      ipv4[0] === "127" &&
+      ipv4.every((part) => /^\d{1,3}$/.test(part) && Number(part) <= 255)
+    );
+  } catch {
+    // error-policy:J3 malformed browser origins cannot enter the local relay.
+    return false;
   }
 }
 
@@ -70,14 +88,27 @@ app.post("/", async (c) => {
     const body: unknown = await c.req.json().catch(() => null);
     const token =
       isRecord(body) && typeof body.token === "string" ? body.token : undefined;
+    const agentId =
+      isRecord(body) && typeof body.agentId === "string"
+        ? body.agentId.trim()
+        : "";
 
-    if (!token) {
-      return c.json({ error: "Pairing code required" }, 400);
+    if (!token || !isCloudPairAgentId(agentId)) {
+      return c.json({ error: "Pairing code and agent identity required" }, 400);
     }
 
     const origin = c.req.header("origin") ?? null;
     if (!origin) {
       return c.json({ error: "Origin header required" }, 400);
+    }
+    if (!isLoopbackHttpOrigin(origin)) {
+      return c.json(
+        {
+          error:
+            "Managed browser pairing must be completed at the agent's Eliza Cloud address",
+        },
+        403,
+      );
     }
 
     if (!isPlausiblePairingToken(token)) {
@@ -85,31 +116,27 @@ app.post("/", async (c) => {
     }
 
     const tokenService = getPairingTokenService();
-    const pairingToken = await tokenService.validateToken(token, origin);
-    if (!pairingToken) {
+    const claim = await tokenService.claimBrowserToken(token, {
+      agentId,
+      expectedOrigin: origin,
+    });
+    if (claim.status === "invalid") {
       return c.json({ error: "Invalid or expired pairing code" }, 401);
     }
-
-    const sandbox = await agentSandboxesRepository.findByIdAndOrg(
-      pairingToken.agentId,
-      pairingToken.orgId,
-    );
-    if (!sandbox) {
-      return c.json({ error: "Agent not found" }, 404);
+    if (claim.status === "sandbox-credential-unavailable") {
+      logger.error("[auth/pair] sandbox API token unavailable", { agentId });
+      return c.json({ error: "Pairing credential unavailable" }, 503);
     }
 
-    const envVars = (sandbox.environment_vars ?? {}) as Record<string, string>;
-    const apiKey = envVars.ELIZA_API_TOKEN || null;
-
-    return c.json(
-      {
-        message: "Paired successfully",
-        apiKey,
-        agentName: sandbox.agent_name ?? "Agent",
-      },
-      200,
-      { "Cache-Control": "no-store, no-cache, must-revalidate" },
-    );
+    const response: CloudPairExchangeResponse = {
+      message: "Paired successfully",
+      apiKey: claim.apiKey,
+      agentName: claim.agentName ?? "Agent",
+      agentId: claim.pairingToken.agentId,
+    };
+    return c.json(response, 200, {
+      "Cache-Control": "no-store, no-cache, must-revalidate",
+    });
   } catch (err) {
     // error-policy:J1 public route boundary returns a generic failure while
     // retaining the dependency error in structured server logs.
@@ -184,7 +211,7 @@ app.post("/native", async (c) => {
 
     if (
       !isPlausiblePairingToken(token) ||
-      !isPlausibleAgentId(agentId) ||
+      !isCloudPairAgentId(agentId) ||
       !expectedOrigin
     ) {
       return c.json(

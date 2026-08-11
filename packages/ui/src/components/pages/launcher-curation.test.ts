@@ -192,6 +192,16 @@ describe("curateLauncherPages", () => {
     expect(ids(page)).toEqual(["wallet"]);
   });
 
+  it("never tiles the headless device-control capability surface, on or off AOSP", () => {
+    for (const isAosp of [false, true]) {
+      const page = curateLauncherPages(
+        [entry("device-control"), entry("settings"), entry("wallet")],
+        { isAosp, enabledKinds: ENABLED, cloudActive: true },
+      );
+      expect(ids(page)).toEqual(["settings", "wallet"]);
+    }
+  });
+
   it("never shows a chat launcher tile, even with Developer Mode on (#14479)", () => {
     const page = curateLauncherPages(
       [entry("chat"), entry("settings"), entry("wallet")],

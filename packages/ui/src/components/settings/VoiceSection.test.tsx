@@ -105,6 +105,31 @@ describe("VoiceSection", () => {
     expect(call.continuous).toBe("always-on");
   });
 
+  it("renders shortcut auto-start off and propagates explicit consent", () => {
+    const onPrefsChange = vi.fn();
+    render(
+      <VoiceSection
+        {...baseProps}
+        prefs={DEFAULT_VOICE_SECTION_PREFS}
+        onPrefsChange={onPrefsChange}
+      />,
+    );
+    const voice = screen.getByTestId(
+      "voice-section-intent-autostart-voice",
+    ) as HTMLInputElement;
+    const transcription = screen.getByTestId(
+      "voice-section-intent-autostart-transcription",
+    ) as HTMLInputElement;
+    expect(voice.checked).toBe(false);
+    expect(transcription.checked).toBe(false);
+
+    fireEvent.click(voice);
+    expect(onPrefsChange).toHaveBeenLastCalledWith({
+      ...DEFAULT_VOICE_SECTION_PREFS,
+      osIntentAutoStartVoice: true,
+    });
+  });
+
   it("falls back to GOOD tier when null is supplied", () => {
     render(
       <VoiceSection

@@ -30,7 +30,13 @@ function formatUpdatedAt(value: string): string {
   }).format(new Date(timestamp));
 }
 
+function noteContent(note: StickyNoteModel): string {
+  const body = note.body.trim();
+  return body ? `${note.title}\n${body}` : note.title;
+}
+
 function NoteCard({ note }: { note: StickyNoteModel }) {
+  const content = noteContent(note);
   const card = useAgentElement<HTMLElement>({
     // The agent surface is also planner context. Sharing the domain id keeps a
     // follow-up such as “delete that note” addressable by the same identifier
@@ -40,7 +46,7 @@ function NoteCard({ note }: { note: StickyNoteModel }) {
     label: `Note ${note.title}`,
     role: "card",
     group: "notes-list",
-    description: note.body || "Empty note body",
+    description: content,
     status: note.color,
   });
   const material = COLOR_MATERIALS[note.color];
@@ -51,53 +57,50 @@ function NoteCard({ note }: { note: StickyNoteModel }) {
       {...card.agentProps}
       style={{
         ...GLASS_PANEL_STYLE,
-        minHeight: 178,
+        minHeight: 150,
         padding: 16,
         display: "flex",
         flexDirection: "column",
-        gap: 11,
+        gap: 9,
         background: `linear-gradient(145deg, ${material.fill}, color-mix(in srgb, var(--card, #111) 78%, transparent))`,
       }}
     >
-      <div style={{ minWidth: 0 }}>
-        <h2
-          style={{
-            margin: 0,
-            fontSize: 15,
-            lineHeight: 1.35,
-            fontWeight: 720,
-            overflowWrap: "anywhere",
-          }}
-        >
-          {note.title}
-        </h2>
-        <p style={{ ...SECONDARY_TEXT_STYLE, marginTop: 3, fontSize: 11 }}>
-          {formatUpdatedAt(note.updatedAt)}
-        </p>
-      </div>
       <p
         style={{
           margin: 0,
           flex: 1,
-          color: "var(--muted-strong, rgba(255,255,255,.78))",
+          color: "var(--txt, #f5f5f5)",
           fontSize: 14,
           lineHeight: 1.5,
+          fontWeight: 560,
           whiteSpace: "pre-wrap",
           overflowWrap: "anywhere",
         }}
       >
-        {note.body || "No details"}
+        {content}
       </p>
-      <span
-        aria-hidden
+      <div
         style={{
-          width: 28,
-          height: 3,
-          borderRadius: 999,
-          background: material.dot,
-          opacity: 0.78,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 8,
         }}
-      />
+      >
+        <p style={{ ...SECONDARY_TEXT_STYLE, margin: 0, fontSize: 11 }}>
+          {formatUpdatedAt(note.updatedAt)}
+        </p>
+        <span
+          aria-hidden
+          style={{
+            width: 28,
+            height: 3,
+            borderRadius: 9999,
+            background: material.dot,
+            opacity: 0.78,
+          }}
+        />
+      </div>
     </article>
   );
 }

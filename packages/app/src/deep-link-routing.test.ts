@@ -24,7 +24,7 @@ describe("assistant launch deep-link routing", () => {
     const hashRoute = buildAssistantLaunchHashRoute(
       "ask",
       new URLSearchParams("text=Remind%20me%20at%205"),
-      { generateLaunchId: () => "launch-ask" },
+      { generateLaunchId: () => "launch-ask", now: () => 42 },
     );
 
     expect(hashRoute?.startsWith("#chat?")).toBe(true);
@@ -34,6 +34,7 @@ describe("assistant launch deep-link routing", () => {
     expect(params(hashRoute ?? "").get("assistant.launchId")).toBe(
       "launch-ask",
     );
+    expect(params(hashRoute ?? "").get("issuedAt")).toBe("42");
   });
 
   it("defaults chat links to the trusted assistant source so text is consumable", () => {
@@ -345,13 +346,20 @@ describe("top-level-surface deep-link navigation intents", () => {
     });
   });
 
-  it("routes a per-provider connectors deep link to Settings → Connectors", () => {
+  it("routes a per-provider connectors deep link to Settings → connector detail", () => {
     expect(
       resolveDeepLinkNavigationIntent("settings/connectors/discord"),
     ).toEqual({
       viewId: "settings",
       viewPath: "/settings",
-      subview: "connectors",
+      subview: "connectors/discord",
+    });
+    expect(
+      resolveDeepLinkNavigationIntent("settings/connectors/twitter"),
+    ).toEqual({
+      viewId: "settings",
+      viewPath: "/settings",
+      subview: "connectors/x",
     });
   });
 

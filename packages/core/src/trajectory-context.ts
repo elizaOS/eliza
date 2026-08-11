@@ -11,6 +11,7 @@ import type { TrajectoryProviderAttribution } from "./runtime/trajectory-provide
 import type { PseudonymSession } from "./security/pii-pseudonymizer";
 import type { SecretSwapSession } from "./security/secret-swap";
 import type { RoleGateRole } from "./types/contexts";
+import type { State } from "./types/state";
 import { StackContextManager } from "./utils/stack-context-manager";
 
 export interface TrajectoryContext {
@@ -39,13 +40,19 @@ export interface TrajectoryContext {
 	turnMemo?: Map<string, Promise<unknown>>;
 	/** Pipeline stage purpose for trajectory logging (e.g. "should_respond", "response", "action", "evaluation"). */
 	purpose?: string;
+	/** Evaluator owner for an evaluation child step. */
+	evaluatorName?: string;
 	/**
-	 * Latest composed provider contribution snapshot for the active step. The
-	 * runtime stamps it onto the next model call so DB trajectories can
-	 * reconstruct provider order and prompt spans without storing provider text.
+	 * Latest composed provider contribution snapshot for the active step.
+	 * `providerAttributionState` retains provider text so model-call writers can
+	 * rebind spans against the exact prompt they persist; precomputed
+	 * `providerAttributions` may carry spans only for the composition snapshot
+	 * and must not be copied onto a larger model prompt without rebinding.
 	 */
 	providerOrder?: string[];
 	providerAttributions?: TrajectoryProviderAttribution[];
+	/** Minimal State used to re-locate provider spans for a consuming model call. */
+	providerAttributionState?: State;
 	/**
 	 * Turn-scoped secret-swap session (#10469). Minted on the first `useModel`
 	 * call of a turn when secret-swap is enabled, then reused by every subsequent

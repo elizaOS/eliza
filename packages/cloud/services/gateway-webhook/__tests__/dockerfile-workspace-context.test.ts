@@ -16,10 +16,10 @@ const SERVICES_DIR = fileURLToPath(new URL("../..", import.meta.url));
  * Listed rather than skipped: fixing one makes this list wrong and the test
  * says so, instead of an exemption quietly outliving the defect.
  */
-const DOCKERFILE_BROKEN = new Set(["gateway-discord", "agent-server"]);
+const DOCKERFILE_BROKEN = new Set(["agent-server"]);
 
 /** Services still shipping a lockfile written before they gained a workspace dep. */
-const LOCKFILE_BLIND = new Set(["gateway-discord"]);
+const LOCKFILE_BLIND = new Set<string>();
 
 interface ServiceBuild {
   name: string;
@@ -98,14 +98,18 @@ describe("service Dockerfiles can resolve their workspace dependencies", () => {
   }
 
   test("this service builds from the repository root, and says so", () => {
-    const gateway = services.find((s) => s.name === "gateway-webhook");
-    expect(gateway?.workspaceDeps).toContain("@elizaos/cloud-services-common");
-    // The path prefix is what proves the context: a repo-root build addresses
-    // its own files through the full path, a directory-scoped one does not.
-    expect(gateway?.dockerfile).toContain(
-      "packages/cloud/services/gateway-webhook",
-    );
-    expect(gateway?.dockerfile).toContain("packages/cloud/services/_common");
+    for (const expected of ["gateway-webhook", "gateway-discord"]) {
+      const gateway = services.find((s) => s.name === expected);
+      expect(gateway?.workspaceDeps).toContain(
+        "@elizaos/cloud-services-common",
+      );
+      // The path prefix is what proves the context: a repo-root build addresses
+      // its own files through the full path, a directory-scoped one does not.
+      expect(gateway?.dockerfile).toContain(
+        `packages/cloud/services/${expected}`,
+      );
+      expect(gateway?.dockerfile).toContain("packages/cloud/services/_common");
+    }
   });
 
   for (const service of services.filter((s) => s.workspaceDeps.length > 0)) {

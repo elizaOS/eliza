@@ -70,6 +70,8 @@ import type { RestoringSessionCtx } from "./startup-phase-restore";
 const originalFetch = globalThis.fetch;
 const originalCapacitor = (globalThis as Record<string, unknown>).Capacitor;
 const originalBootConfig = getBootConfig();
+const AGENT_ID = "55555555-5555-4555-8555-555555555555";
+const AGENT_BASE = `https://${AGENT_ID}.elizacloud.ai`;
 
 function createPollingDeps(): PollingBackendDeps {
   return {
@@ -117,7 +119,7 @@ describe("managed-native stale-session cold boot", () => {
       cloudApiBase: "https://elizacloud.ai",
     });
     clientMock.hasToken.mockReturnValue(true);
-    clientMock.getBaseUrl.mockReturnValue("https://agent-123.elizacloud.ai");
+    clientMock.getBaseUrl.mockReturnValue(AGENT_BASE);
     clientMock.getAuthStatus.mockRejectedValue(
       Object.assign(new Error("Unauthorized"), {
         kind: "http",
@@ -141,10 +143,10 @@ describe("managed-native stale-session cold boot", () => {
 
   it("advances out of startup, exchanges once, and atomically replaces every stale bearer mirror", async () => {
     const activeServer = {
-      id: "cloud:agent-123",
+      id: `cloud:${AGENT_ID}`,
       kind: "cloud" as const,
       label: "Dedicated agent",
-      apiBase: "https://agent-123.elizacloud.ai",
+      apiBase: AGENT_BASE,
       accessToken: "stale-agent-bearer",
     };
     savePersistedActiveServer(activeServer);
@@ -155,12 +157,11 @@ describe("managed-native stale-session cold boot", () => {
     const fetchMock = vi.fn(
       async (input: RequestInfo | URL, _init: RequestInit | undefined) => {
         const url = String(input);
-        if (url.endsWith("/api/v1/eliza/agents/agent-123/pairing-token")) {
+        if (url.endsWith(`/api/v1/eliza/agents/${AGENT_ID}/pairing-token`)) {
           return new Response(
             JSON.stringify({
               data: {
-                redirectUrl:
-                  "https://agent-123.elizacloud.ai/pair?token=one-time-native",
+                redirectUrl: `${AGENT_BASE}/pair?token=one-time-native`,
               },
             }),
             { status: 200, headers: { "content-type": "application/json" } },
@@ -168,7 +169,10 @@ describe("managed-native stale-session cold boot", () => {
         }
         if (url === "https://api.elizacloud.ai/api/auth/pair/native") {
           return new Response(
-            JSON.stringify({ apiKey: "fresh-agent-bearer" }),
+            JSON.stringify({
+              apiKey: "fresh-agent-bearer",
+              agentId: AGENT_ID,
+            }),
             {
               status: 200,
               headers: { "content-type": "application/json" },
@@ -242,12 +246,17 @@ describe("managed-native stale-session cold boot", () => {
     expect(statuses).toContain("recovering");
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(clientMock.setToken).toHaveBeenCalledWith("fresh-agent-bearer");
-    expect(localStorage.getItem("eliza:cloud-pair:api-token")).toBe(
+    // The durable pair token is persisted under the per-agent key (#17579);
+    // the legacy global key must stay empty so another agent's boot can never
+    // adopt this credential.
+    expect(localStorage.getItem(`eliza:cloud-pair:api-token:${AGENT_ID}`)).toBe(
       "fresh-agent-bearer",
     );
-    expect(sessionStorage.getItem("eliza:cloud-pair:api-token")).toBe(
-      "fresh-agent-bearer",
-    );
+    expect(
+      sessionStorage.getItem(`eliza:cloud-pair:api-token:${AGENT_ID}`),
+    ).toBe("fresh-agent-bearer");
+    expect(localStorage.getItem("eliza:cloud-pair:api-token")).toBeNull();
+    expect(sessionStorage.getItem("eliza:cloud-pair:api-token")).toBeNull();
     expect(loadPersistedActiveServer()?.accessToken).toBe("fresh-agent-bearer");
     expect(getActiveProfile()?.accessToken).toBe("fresh-agent-bearer");
 
@@ -259,8 +268,8 @@ describe("managed-native stale-session cold boot", () => {
     });
     expect(JSON.parse(String(exchangeInit?.body))).toEqual({
       token: "one-time-native",
-      agentId: "agent-123",
-      expectedOrigin: "https://agent-123.elizacloud.ai",
+      agentId: AGENT_ID,
+      expectedOrigin: AGENT_BASE,
     });
   });
 });

@@ -65,6 +65,7 @@ import {
 } from "../../plugin-local-inference/src/runtime/voice-entity-binding.js";
 import { VoiceProfileStore } from "../../plugin-local-inference/src/services/voice/profile-store.js";
 import { WESPEAKER_RESNET34_LM_INT8_MODEL_ID } from "../../plugin-local-inference/src/services/voice/speaker/encoder.js";
+import { voiceSpeakerFromImprintMatch } from "../../plugin-local-inference/src/services/voice/speaker-imprint.js";
 import { EntityStore } from "../src/lifeops/entities/store.js";
 import { handleVoiceTurnObserved } from "../src/lifeops/entities/voice-observer-bridge.js";
 import { LifeOpsRepository } from "../src/lifeops/repository.js";
@@ -260,6 +261,95 @@ describe("voice → entity binding round-trip (issue #8234)", () => {
     const entity = await entityStore.get(bound?.entityId ?? "");
     expect(entity?.preferredName).toBe("Sam");
     expect(replies.join(" ")).toContain("Sam");
+  });
+
+  it("applies correction provenance and merges duplicate named entities", async () => {
+    const firstSarah = await entityStore.upsert({
+      entityId: "ent_voice_sarah_a",
+      type: "person",
+      preferredName: "Sarah",
+      identities: [],
+      tags: [],
+      visibility: "owner_agent_admin",
+      state: {},
+    });
+    const secondSarah = await entityStore.upsert({
+      entityId: "ent_voice_sarah_b",
+      type: "person",
+      preferredName: "Sarah",
+      identities: [],
+      tags: [],
+      visibility: "owner_agent_admin",
+      state: {},
+    });
+    const profile = await store.createProfile({
+      centroid: unit([0, 0, 0, 1]),
+      embeddingModel: MODEL,
+      imprintClusterId: "cluster_sarah",
+      confidence: 0.85,
+      durationMs: 3200,
+    });
+
+    const result = await identifySpeakerAction.handler(runtime, {
+      id: "turn_owner_correction_sarah",
+      content: { text: "that was Sarah" },
+    } as unknown as Memory);
+
+    expect(result?.success).toBe(true);
+    const sarahs = (await entityStore.list()).filter(
+      (entity) => entity.preferredName === "Sarah",
+    );
+    expect(sarahs).toHaveLength(1);
+    const expectedTargetId = [
+      firstSarah.entityId,
+      secondSarah.entityId,
+    ].sort()[0];
+    expect(sarahs[0]?.entityId).toBe(expectedTargetId);
+
+    const bound = await store.get(profile.profileId);
+    expect(bound?.entityId).toBe(expectedTargetId);
+    expect(bound?.metadata).toMatchObject({
+      label: "Sarah",
+      speakerNameInference: {
+        resolution: "confirmed",
+        displayName: "Sarah",
+        confidence: 1,
+        requiresReview: false,
+        provenance: [
+          {
+            source: "user_correction",
+            confidence: 1,
+            evidenceId: "turn_owner_correction_sarah",
+          },
+        ],
+      },
+    });
+
+    const reloaded = new VoiceProfileStore({ rootDir: tmpRoot });
+    await reloaded.init();
+    expect((await reloaded.get(profile.profileId))?.metadata).toMatchObject({
+      speakerNameInference: {
+        resolution: "confirmed",
+        provenance: [{ source: "user_correction" }],
+      },
+    });
+    const recurringMatch = await reloaded.findBestMatch({
+      embedding: unit([0, 0, 0, 1]),
+      embeddingModel: MODEL,
+    });
+    expect(recurringMatch?.profile.displayName).toBe("Sarah");
+    expect(
+      recurringMatch?.profile.metadata?.speakerNameInference,
+    ).toMatchObject({
+      resolution: "confirmed",
+      confidence: 1,
+      provenance: [{ source: "user_correction", confidence: 1 }],
+    });
+    expect(
+      recurringMatch
+        ? voiceSpeakerFromImprintMatch({ match: recurringMatch }).displayName
+        : undefined,
+    ).toBe("Sarah");
   });
 
   it("serves HTTP bind/unbind from the plugin route handlers", async () => {

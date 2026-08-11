@@ -15,6 +15,7 @@
  * runtime; tests construct one per scenario.
  */
 
+import type { VoiceSpeakerNameInferencePayload } from "@elizaos/core";
 import type { RelationshipStore } from "../relationships/store.js";
 import type { EntityStore } from "./store.js";
 import { SELF_ENTITY_ID } from "./types.js";
@@ -47,6 +48,8 @@ export interface VoiceTurnObservation {
   observedAt?: string;
   /** True if this turn was spoken by the OWNER. */
   isOwner?: boolean;
+  /** Evaluated correction/name evidence from the producer. */
+  speakerNameInference?: VoiceSpeakerNameInferencePayload;
 }
 
 export interface VoiceTurnIngestResult {
@@ -61,6 +64,12 @@ export interface VoiceTurnIngestResult {
    * self-affiliation claim. Null otherwise.
    */
   affiliationOrgEntityId: string | null;
+  /** Duplicate person entities folded by a confirmed correction. */
+  mergedEntityIds: string[];
+}
+
+function normalizedName(value: string): string {
+  return value.trim().replace(/\s+/g, " ").toLocaleLowerCase();
 }
 
 /**
@@ -88,16 +97,70 @@ export class VoiceObserver {
    *     relationship is realized via `RelationshipStore.observe`.
    */
   async ingestTurn(turn: VoiceTurnObservation): Promise<VoiceTurnIngestResult> {
+    let matchedEntityId = turn.matchedEntityId;
+    let bindingText = turn.text;
+    let bindingConfidence = turn.matchConfidence;
+    const mergedEntityIds: string[] = [];
+    const nameInference = turn.speakerNameInference;
+    if (nameInference) {
+      if (
+        nameInference.resolution !== "confirmed" ||
+        !nameInference.displayName?.trim()
+      ) {
+        throw new Error(
+          "[VoiceObserver] unconfirmed speaker-name inference reached the binding path",
+        );
+      }
+      const confirmedName = nameInference.displayName.trim();
+      const candidates = (
+        await this.deps.entityStore.resolve({
+          name: confirmedName,
+          type: "person",
+        })
+      )
+        .map((candidate) => candidate.entity)
+        .filter(
+          (entity) =>
+            entity.entityId !== SELF_ENTITY_ID &&
+            normalizedName(entity.preferredName) ===
+              normalizedName(confirmedName),
+        )
+        .sort((left, right) => left.entityId.localeCompare(right.entityId));
+      const target = candidates[0];
+      if (target) {
+        const sources = candidates
+          .slice(1)
+          .map((entity) => entity.entityId)
+          .filter((entityId) => entityId !== target.entityId);
+        if (sources.length > 0) {
+          await this.deps.entityStore.merge(target.entityId, sources);
+          mergedEntityIds.push(...sources);
+        }
+        matchedEntityId = target.entityId;
+      } else {
+        matchedEntityId = null;
+      }
+      bindingText = `This is ${confirmedName}.`;
+      bindingConfidence = nameInference.confidence;
+    }
+
     // Step 1: bind the imprint to an entity (create or match).
-    const binding = await bindVoiceTurnToEntity({
+    const observedBinding = await bindVoiceTurnToEntity({
       entityStore: this.deps.entityStore,
       pendingQueue: this.pendingQueue,
-      matchedEntityId: turn.matchedEntityId,
-      utteranceText: turn.text,
+      matchedEntityId,
+      utteranceText: bindingText,
       imprintClusterId: turn.imprintClusterId,
       evidenceIds: [turn.turnId],
-      matchConfidence: turn.matchConfidence,
+      matchConfidence: bindingConfidence,
     });
+    const binding =
+      nameInference?.displayName && observedBinding.resolvedClaimedName === null
+        ? {
+            ...observedBinding,
+            resolvedClaimedName: nameInference.displayName,
+          }
+        : observedBinding;
 
     // Step 2: realize any pending relationships the binding resolved.
     const relationshipIds: string[] = [];
@@ -197,6 +260,7 @@ export class VoiceObserver {
       relationshipIds,
       queuedPartnerClaims,
       affiliationOrgEntityId,
+      mergedEntityIds,
     };
   }
 

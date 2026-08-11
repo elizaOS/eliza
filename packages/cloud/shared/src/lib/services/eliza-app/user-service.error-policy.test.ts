@@ -1,21 +1,33 @@
-// Pins the fail-closed error policy of ElizaAppUserService.findOrCreateByDiscordId:
-// a real failure while linking a phone (tenant-identity write) must propagate, while a
-// cosmetic profile-refresh failure degrades to success. Deterministic repository fixtures.
+/**
+ * Pins fail-closed identity linking with deterministic service fixtures: real
+ * write failures propagate, phone and Telegram-plus-phone writes use the atomic
+ * repository boundaries, and only cosmetic Discord refreshes may degrade.
+ */
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 
 const findByDiscordIdWithOrganization = mock();
+const findByCanonicalDiscordIdWithOrganization = mock();
 const findByPhoneNumberWithOrganization = mock();
 const update = mock();
+const linkVerifiedPhone = mock();
+const linkTelegramAndPhoneIdentity = mock();
+const refreshDiscordProjectionForWrite = mock();
+const linkDiscordIdentity = mock();
 
 mock.module("../../../db/repositories/users", () => ({
   usersRepository: {
     findByDiscordIdWithOrganization,
+    findByCanonicalDiscordIdWithOrganization,
     findByPhoneNumberWithOrganization,
     findByTelegramIdWithOrganization: mock(),
     findByEmailWithOrganization: mock(),
     findByWhatsAppIdWithOrganization: mock(),
     findWithOrganization: mock(),
     update,
+    linkVerifiedPhone,
+    linkTelegramAndPhoneIdentity,
+    refreshDiscordProjectionForWrite,
+    linkDiscordIdentity,
     create: mock(),
   },
 }));
@@ -60,10 +72,33 @@ function uniqueConstraintError(): Error {
 describe("ElizaAppUserService.findOrCreateByDiscordId error policy", () => {
   beforeEach(() => {
     findByDiscordIdWithOrganization.mockReset();
+    findByCanonicalDiscordIdWithOrganization.mockReset();
     findByPhoneNumberWithOrganization.mockReset();
     update.mockReset();
+    linkVerifiedPhone.mockReset();
+    refreshDiscordProjectionForWrite.mockReset();
+    refreshDiscordProjectionForWrite.mockResolvedValue(undefined);
+    // No canonical-only legacy link by default.
+    findByCanonicalDiscordIdWithOrganization.mockResolvedValue(undefined);
     // Phone is unowned by default so the phone-link branch is reachable.
     findByPhoneNumberWithOrganization.mockResolvedValue(undefined);
+  });
+
+  test("converges a canonical-only legacy Discord link into the projection instead of forking a second account", async () => {
+    findByDiscordIdWithOrganization.mockResolvedValue(undefined);
+    findByCanonicalDiscordIdWithOrganization.mockResolvedValue({
+      id: "legacy-user",
+      discord_id: "d-legacy",
+      organization: { id: "org-legacy" },
+    });
+
+    const result = await elizaAppUserService.findOrCreateByDiscordId("d-legacy", {
+      username: "legacy",
+    });
+
+    expect(result.isNew).toBe(false);
+    expect(result.user.id).toBe("legacy-user");
+    expect(refreshDiscordProjectionForWrite).toHaveBeenCalledWith("legacy-user");
   });
 
   test("propagates a real DB failure while linking a phone (fail closed)", async () => {
@@ -115,5 +150,167 @@ describe("ElizaAppUserService.findOrCreateByDiscordId error policy", () => {
     expect(result.isNew).toBe(false);
     expect(result.user.id).toBe("user-2");
     expect(update).toHaveBeenCalledTimes(1);
+  });
+
+  test("links a phone through the atomic routing-identity repository contract", async () => {
+    linkVerifiedPhone.mockResolvedValue({ id: "user-3" });
+
+    await expect(elizaAppUserService.linkPhoneToUser("user-3", "+15551234567")).resolves.toEqual({
+      success: true,
+    });
+
+    expect(linkVerifiedPhone).toHaveBeenCalledWith("user-3", "+15551234567");
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  test("fails when phone linking cannot find an identity owner", async () => {
+    linkVerifiedPhone.mockResolvedValue(undefined);
+
+    await expect(
+      elizaAppUserService.linkPhoneToUser("missing-user", "+15551234567"),
+    ).rejects.toThrow("missing-user");
+  });
+});
+
+describe("ElizaAppUserService.linkTelegramAndPhoneToUser", () => {
+  beforeEach(() => {
+    update.mockReset();
+    linkTelegramAndPhoneIdentity.mockReset();
+  });
+
+  test("delegates the Telegram and phone identity pair to the atomic repository boundary", async () => {
+    linkTelegramAndPhoneIdentity.mockResolvedValue({
+      status: "linked",
+      user: { id: "user-1" },
+    });
+
+    const result = await elizaAppUserService.linkTelegramAndPhoneToUser(
+      "user-1",
+      {
+        id: 123456789,
+        first_name: "Sam",
+        username: "sam",
+        auth_date: 1_786_224_000,
+        hash: "a".repeat(64),
+      },
+      "+14155550123",
+    );
+
+    expect(result).toEqual({ success: true });
+    expect(linkTelegramAndPhoneIdentity).toHaveBeenCalledTimes(1);
+    expect(linkTelegramAndPhoneIdentity).toHaveBeenCalledWith(
+      "user-1",
+      expect.objectContaining({
+        telegram_id: "123456789",
+        telegram_username: "sam",
+        phone_number: "+14155550123",
+      }),
+    );
+    // The atomic repository boundary owns both writes; the service must not
+    // issue a separate canonical update around it.
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  test("reports an atomic repository uniqueness race without a compensating write", async () => {
+    linkTelegramAndPhoneIdentity.mockRejectedValue(uniqueConstraintError());
+
+    const result = await elizaAppUserService.linkTelegramAndPhoneToUser(
+      "user-1",
+      {
+        id: 123456789,
+        first_name: "Sam",
+        auth_date: 1_786_224_000,
+        hash: "a".repeat(64),
+      },
+      "+14155550123",
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("already linked");
+    expect(linkTelegramAndPhoneIdentity).toHaveBeenCalledTimes(1);
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  test("refuses to overwrite a different verified phone number", async () => {
+    linkTelegramAndPhoneIdentity.mockResolvedValue({
+      status: "phone_mismatch",
+      existingPhone: "+14155550999",
+    });
+
+    const result = await elizaAppUserService.linkTelegramAndPhoneToUser(
+      "user-1",
+      {
+        id: 123456789,
+        first_name: "Sam",
+        auth_date: 1_786_224_000,
+        hash: "a".repeat(64),
+      },
+      "+14155550123",
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("different verified phone number");
+  });
+
+  test("reports a vanished account as a failed link", async () => {
+    linkTelegramAndPhoneIdentity.mockResolvedValue({ status: "user_not_found" });
+
+    const result = await elizaAppUserService.linkTelegramAndPhoneToUser(
+      "user-1",
+      {
+        id: 123456789,
+        first_name: "Sam",
+        auth_date: 1_786_224_000,
+        hash: "a".repeat(64),
+      },
+      "+14155550123",
+    );
+
+    expect(result).toEqual({ success: false, error: "The account no longer exists" });
+  });
+});
+
+describe("ElizaAppUserService.linkDiscordToUser", () => {
+  beforeEach(() => {
+    linkDiscordIdentity.mockReset();
+  });
+
+  test("uses the atomic canonical-plus-projection repository boundary", async () => {
+    linkDiscordIdentity.mockResolvedValue({ id: "user-1" });
+    const result = await elizaAppUserService.linkDiscordToUser("user-1", {
+      discordId: "d-100",
+      username: "sam",
+    });
+    expect(result).toEqual({ success: true });
+    expect(linkDiscordIdentity).toHaveBeenCalledWith("user-1", {
+      discord_id: "d-100",
+      discord_username: "sam",
+      discord_global_name: null,
+      discord_avatar_url: null,
+    });
+  });
+
+  test("reports a concurrent uniqueness conflict as a real decline", async () => {
+    linkDiscordIdentity.mockRejectedValue(
+      Object.assign(new Error("duplicate key"), { code: "23505" }),
+    );
+    const result = await elizaAppUserService.linkDiscordToUser("user-1", {
+      discordId: "d-100",
+      username: "sam",
+    });
+    expect(result).toEqual({
+      success: false,
+      error: "This Discord account is already linked to another account",
+    });
+  });
+
+  test("propagates atomic transaction infrastructure failures", async () => {
+    linkDiscordIdentity.mockRejectedValue(new Error("connection terminated unexpectedly"));
+    await expect(
+      elizaAppUserService.linkDiscordToUser("user-1", {
+        discordId: "d-100",
+        username: "sam",
+      }),
+    ).rejects.toThrow("connection terminated unexpectedly");
   });
 });

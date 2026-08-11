@@ -10,8 +10,7 @@
 # here and ship a runtime-only image.
 #
 # LONG-TERM FIX: reconnect the Railway service to the GitHub repo (Railway
-# dashboard) so it auto-deploys on push as documented in railway.toml /
-# .github/workflows/cloud-gateway-discord.yml, and/or make the Dockerfile build
+# dashboard) so it auto-deploys on push as documented in railway.toml, and/or make the Dockerfile build
 # from the monorepo root. Until then, run this from the package directory:
 #
 #   railway link --project eliza-cloud --service gateway-discord --environment production
@@ -37,7 +36,7 @@ cat > "$STAGE/package.json" <<'JSON'
 JSON
 
 cat > "$STAGE/Dockerfile" <<'DOCKER'
-FROM oven/bun:canary-alpine
+FROM oven/bun:1.3.14-alpine
 WORKDIR /app
 ENV NODE_ENV=production
 RUN addgroup --system --gid 1001 nodejs && adduser --system --uid 1001 gateway

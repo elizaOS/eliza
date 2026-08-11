@@ -72,7 +72,7 @@ Status terms:
 |---|---:|---|
 | Homepage typecheck/build/e2e | Repo-ready | CI now runs homepage e2e in homepage quality gates. |
 | Release-data contract | Repo-ready | `check:release-data` blocks deploy when metadata/artifacts are missing. |
-| Release orchestrator waits for desktop artifacts | Repo-ready | `release-orchestrator.yml` can call the desktop release workflow before homepage deploy when `publish_desktop` is enabled. |
+| Release publication | Repo-ready | `.github/workflows/release.yaml` is the single manual npm release authority; desktop and store builds are operator-run evidence. |
 | Checksums | Repo-ready / external blocker | Android release jobs now attach checksums for AAB/APK outputs. Desktop release assets still need consistently published checksums before `check:release-data` can require them globally. |
 | Actual GitHub release assets | External blocker | Cut a release tag and run signed desktop/mobile jobs. |
 | Store rollout metadata in homepage | Repo-ready / external blocker | Generated release data now carries store target status/review fields. Add real URLs only after store review approves them. |

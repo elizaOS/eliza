@@ -27,12 +27,13 @@ Cross-package shapes (session DTO, WS events, `parseMeetingUrl`) live in
 
 | Kind | Name | Description |
 |---|---|---|
-| Service | `meetings` (`MeetingService`) | Session state machine: `requestJoin`, `stopSession`, `getSession`, `listSessions` |
+| Service | `meetings` (`MeetingService`) | Session state machine plus authenticated Zoom cloud import: `requestJoin`, `stopSession`, `getSession`, `listSessions`, `importZoomMeeting` |
 | Action | `JOIN_MEETING` (similes `INVITE_TO_MEETING`, `ATTEND_MEETING`) | Join a meeting URL from chat and transcribe it live |
 | Action | `LEAVE_MEETING` | Pull the bot out of an active meeting, finalize the transcript |
 | Action | `GET_MEETING_TRANSCRIPT` | Return the live/final transcript text of an attended meeting |
 | Provider | `ACTIVE_MEETINGS` | Injects currently-attended meetings (platform, URL, elapsed, roster) when any are active |
 | Route | `POST /api/meetings` | Start a bot for a meeting URL (400 invalid URL, 409 already joined, 422 unsupported platform) |
+| Route | `POST /api/meetings/import/zoom` | Import a completed Zoom meeting, roster, recordings, and VTT transcript into canonical media + Transcripts storage |
 | Route | `GET /api/meetings[?active=1]` | List sessions (newest first), optionally only non-terminal ones |
 | Route | `GET /api/meetings/:id` | One session DTO |
 | Route | `DELETE /api/meetings/:id` | Request a graceful leave |
@@ -52,23 +53,24 @@ host dispatcher answers 401 for unauthenticated callers.
 
 ## Zoom cloud/bot artifact contract
 
-Zoom cloud recording imports and bot/raw-data captures normalize through
-`src/platforms/zoom/artifacts.ts`. `buildZoomCanonicalArtifact()` maps saved Zoom
-cloud meeting metadata, participant lists, recording/transcript files, transcript
-entries, and live capture events into `schemaVersion:
-"elizaos.meeting_artifact.v1"`. The mapper preserves native Zoom participant
-ids (`zoomParticipantId`, `userId`, `userGuid`) separately from diarized speaker
-ids, emits per-participant streams when Meeting SDK/raw-data capture has them,
-and emits mixed-audio source-loss metadata when only a bot/web-client or
-bot-free mixed stream is available.
+The supported cloud boundary is `POST /api/meetings/import/zoom`. It accepts a
+meeting id and a short-lived OAuth access token (or reads
+`ELIZA_ZOOM_ACCESS_TOKEN`), calls Zoom's past-meeting, paginated participant, and
+recordings resources, parses downloaded VTT cues, and emits the shared
+`MeetingArtifact` schema `eliza.meeting_artifact.v1`. Every retained VTT,
+audio, or video file is byte-bounded, fetched through the SSRF/redirect guard,
+and rehosted under `/api/media/<sha256>.<ext>` before the artifact is validated.
+The token is never logged, returned, or persisted. Provider authorization,
+permission, missing-resource, expired-resource, malformed-response, network,
+and byte-quota failures remain typed at the private HTTP boundary.
 
-`classifyZoomImportError()` maps credential/import/capture failures into the
-same missing-artifact vocabulary used by the canonical artifact: revoked access,
-permission denied, missing meeting, expired media URL, waiting-room timeout,
-denied entry, host removal, muted participants, recording disabled, transcript
-unavailable, network loss, and host-ended meeting. The deterministic tests use
-saved response-shaped objects only; live Zoom account/API proof still belongs in
-issue evidence.
+The real Zoom browser-bot lifecycle also writes a shared `MeetingArtifact` into
+the finalized transcript metadata. The current browser capture retains one
+mixed session WAV, so the artifact explicitly records `mixed_audio_only` and
+`per_participant_audio_unavailable`; it does not claim Meeting SDK/raw-data
+per-participant streams. `src/platforms/zoom/artifacts.ts` remains a legacy pure
+diagnostic mapper for historical saved-response fixtures, not the persistence
+contract.
 
 ## Transcript persistence
 
@@ -101,8 +103,10 @@ Signal/WhatsApp pairing events use. No changes in `packages/agent` were needed.
 | Variable | Required | Purpose |
 |---|---|---|
 | `ELIZA_MEETINGS_BOT_NAME` | No | Bot display name (default `"<character name> Notetaker"`) |
+| `ELIZA_MEETINGS_CAPTURE_POLICY` | Required for organization-managed runtimes | `allow` or `deny`. Missing/invalid policy fails closed when an Eliza Cloud organization is configured; local/self-hosted runtimes remain allowed when unset. Evaluated before billing, transcript creation, pipeline setup, or browser launch. |
 | `ELIZA_MEETINGS_CHROMIUM_PATH` | No | Chromium executable override the platform bots launch |
 | `ELIZA_MEETINGS_HEADLESS` | No | Force headless (`true`) / headed (`false`). When unset, auto-detected from the available display (macOS/Windows always headed; Linux headed only when `DISPLAY`/`WAYLAND_DISPLAY` is set) |
+| `ELIZA_ZOOM_ACCESS_TOKEN` | No | Server-side Zoom OAuth token for private cloud-import requests that do not provide a short-lived token in the body |
 
 Enablement follows the standard feature-toggle convention (cf. plugin-coding-tools /
 plugin-browser) — there is **no bespoke on/off env flag**. Auto-enable is wired

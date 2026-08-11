@@ -163,5 +163,6 @@ export async function prepareManagedElizaEnvironment(params: {
     changed,
     environmentVars,
     agentApiKey: sharedEnvironment.agentApiKey,
+    revokedKeyHashes: sharedEnvironment.revokedKeyHashes,
   };
 }

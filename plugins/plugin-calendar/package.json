@@ -4,8 +4,10 @@
   "type": "module",
   "description": "First-class calendar plugin for elizaOS agents: Google, Microsoft, Apple, and ICS feeds; scheduling; event management; and owner-facing calendar views.",
   "sideEffects": [
+    "./src/register.ts",
     "./src/api/client-calendar.ts",
     "./src/ui.ts",
+    "./dist/register.js",
     "./dist/api/client-calendar.js",
     "./dist/ui.js"
   ],
@@ -107,6 +109,30 @@
   "agentConfig": {
     "pluginType": "elizaos:plugin:1.0.0",
     "pluginParameters": {
+      "MICROSOFT_CLIENT_ID": {
+        "type": "string",
+        "description": "Microsoft identity platform application (client) ID for Calendar OAuth.",
+        "required": false,
+        "sensitive": false
+      },
+      "MICROSOFT_CLIENT_SECRET": {
+        "type": "string",
+        "description": "Microsoft identity platform client secret for confidential Calendar OAuth clients.",
+        "required": false,
+        "sensitive": true
+      },
+      "MICROSOFT_REDIRECT_URI": {
+        "type": "string",
+        "description": "Microsoft OAuth redirect URI registered for Calendar connect callbacks.",
+        "required": false,
+        "sensitive": false
+      },
+      "MICROSOFT_TENANT_ID": {
+        "type": "string",
+        "description": "Microsoft tenant id (or common/organizations/consumers) for Calendar OAuth.",
+        "required": false,
+        "sensitive": false
+      },
       "GOOGLE_CALENDAR_WEBHOOK_ENABLED": {
         "type": "boolean",
         "description": "Explicitly enables the public Google Calendar push-notification endpoint and watch creation.",
@@ -123,6 +149,7 @@
     }
   },
   "elizaos": {
+    "appRegister": "register",
     "app": {
       "permissions": [
         "calendar"

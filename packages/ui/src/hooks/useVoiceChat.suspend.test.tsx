@@ -22,7 +22,8 @@ vi.mock("../api/csrf-client", () => ({
   fetchWithCsrf: vi.fn(),
 }));
 
-vi.mock("../voice/local-asr-capture", () => ({
+vi.mock("../voice/local-asr-capture", async (importOriginal) => ({
+  ...(await importOriginal<object>()),
   isLocalAsrCaptureSupported: vi.fn(),
   startLocalAsrRecorder: vi.fn(),
 }));

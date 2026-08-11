@@ -2,9 +2,21 @@
  * Service for managing apps and app-related operations.
  */
 
+import { ElizaError } from "@elizaos/core";
 import crypto from "crypto";
-import { type App, type AppUser, appsRepository, type NewApp } from "../../db/repositories/apps";
-import { inferenceAppMemoryCache } from "./inference-app-memory-cache";
+import {
+  type App,
+  type AppUser,
+  appsRepository,
+  type NewApp,
+  withAppCacheFences,
+} from "../../db/repositories/apps";
+import {
+  getAppByIdHydrationGeneration,
+  getInferenceAppById,
+  invalidateInferenceAppByIdState,
+  setInferenceAppById,
+} from "./inference-app-memory-cache";
 
 // Re-export the app row types so consumers (and tests) can import them from the
 // service module rather than reaching into the repository directly.
@@ -19,7 +31,6 @@ import { managedDomainsService } from "./managed-domains";
 
 const DEFAULT_MAX_APPS_PER_ORG = 25;
 const appByIdHydrations = new Map<string, Promise<void>>();
-const appByIdHydrationGeneration = new Map<string, number>();
 
 export interface AppCacheExecutionContext {
   waitUntil(promise: Promise<unknown>): void;
@@ -142,7 +153,7 @@ export class AppsService {
    * Negative cache: missing apps are remembered briefly to absorb invalid IDs.
    */
   async getById(id: string): Promise<App | undefined> {
-    const inMemory = inferenceAppMemoryCache.get(id);
+    const inMemory = getInferenceAppById(id);
     if (inMemory) return structuredClone(inMemory);
     const cacheKey = CacheKeys.app.byId(id);
 
@@ -152,7 +163,7 @@ export class AppsService {
         return undefined;
       }
       if (isCachedApp(cached, id)) {
-        inferenceAppMemoryCache.set(id, cached);
+        setInferenceAppById(id, cached);
         return cached;
       }
     }
@@ -162,14 +173,14 @@ export class AppsService {
 
   private async loadAndCacheAppById(id: string): Promise<App | undefined> {
     const cacheKey = CacheKeys.app.byId(id);
-    const generation = appByIdHydrationGeneration.get(id) ?? 0;
+    const generation = getAppByIdHydrationGeneration(id);
     const app = await appsRepository.findById(id);
-    if ((appByIdHydrationGeneration.get(id) ?? 0) !== generation) {
+    if (getAppByIdHydrationGeneration(id) !== generation) {
       return app;
     }
     if (app) {
       await cache.set(cacheKey, app, CacheTTL.app.byId);
-      inferenceAppMemoryCache.set(id, app);
+      setInferenceAppById(id, app);
     } else {
       await cache.set(cacheKey, { __none: true }, CacheTTL.app.none);
     }
@@ -206,7 +217,7 @@ export class AppsService {
     id: string,
     options: { executionCtx?: AppCacheExecutionContext } = {},
   ): Promise<InferenceAppCacheResolution> {
-    const inMemory = inferenceAppMemoryCache.get(id);
+    const inMemory = getInferenceAppById(id);
     if (inMemory) {
       return { kind: "ready", app: structuredClone(inMemory) };
     }
@@ -214,7 +225,7 @@ export class AppsService {
     if (outcome.kind === "hit") {
       if (isNoneMarker(outcome.value)) return { kind: "ready", app: null };
       if (isCachedApp(outcome.value, id)) {
-        inferenceAppMemoryCache.set(id, outcome.value);
+        setInferenceAppById(id, outcome.value);
         return { kind: "ready", app: outcome.value };
       }
     }
@@ -232,8 +243,9 @@ export class AppsService {
   /**
    * Get app by slug with Redis caching.
    *
-   * Caches the slug→app row directly (not slug→id→app); slugs are immutable in
-   * practice and the redundant write to the byId key keeps id-keyed reads hot too.
+   * Caches the slug→app row directly (not slug→id→app). By-id publication
+   * stays exclusive to the durable hydration fence so this independent lookup
+   * cannot refill stale by-id state after an invalidation.
    */
   async getBySlug(slug: string): Promise<App | undefined> {
     const cacheKey = CacheKeys.app.bySlug(slug);
@@ -246,18 +258,13 @@ export class AppsService {
       return cached as App;
     }
 
-    const app = await appsRepository.findBySlug(slug);
-
-    if (app) {
-      await Promise.all([
-        cache.set(cacheKey, app, CacheTTL.app.bySlug),
-        cache.set(CacheKeys.app.byId(app.id), app, CacheTTL.app.byId),
-      ]);
-    } else {
-      await cache.set(cacheKey, { __none: true }, CacheTTL.app.none);
-    }
-
-    return app;
+    return await appsRepository.hydrateBySlugForCache(slug, async (app) => {
+      if (app) {
+        await cache.set(cacheKey, app, CacheTTL.app.bySlug);
+      } else {
+        await cache.set(cacheKey, { __none: true }, CacheTTL.app.none);
+      }
+    });
   }
 
   async getByAffiliateCode(code: string): Promise<App | undefined> {
@@ -315,19 +322,15 @@ export class AppsService {
       return cached;
     }
 
-    // Cache miss - query DB directly
-    const app = await appsRepository.findByApiKeyId(apiKeyId);
-
-    // Cache result (including null to prevent repeated lookups for invalid keys)
-    if (app) {
-      await cache.set(cacheKey, app, CacheTTL.app.byApiKeyId);
-      logger.debug("[Apps] Cached app by API key", {
-        apiKeyId: apiKeyId.substring(0, 8),
-        appId: app.id,
-      });
-    }
-
-    return app;
+    return await appsRepository.hydrateByApiKeyIdForCache(apiKeyId, async (app) => {
+      if (app) {
+        await cache.set(cacheKey, app, CacheTTL.app.byApiKeyId);
+        logger.debug("[Apps] Cached app by API key", {
+          apiKeyId: apiKeyId.substring(0, 8),
+          appId: app.id,
+        });
+      }
+    });
   }
 
   /**
@@ -338,23 +341,50 @@ export class AppsService {
    * would leave stale data; we look up the existing row's slug to evict it too.
    */
   async invalidateCache(appId: string, apiKeyId?: string, slug?: string): Promise<void> {
-    inferenceAppMemoryCache.delete(appId);
-    appByIdHydrationGeneration.set(appId, (appByIdHydrationGeneration.get(appId) ?? 0) + 1);
-    const promises: Promise<void>[] = [
-      cache.del(CacheKeys.app.byId(appId)),
-      cache.del(CacheKeys.app.costMarkup(appId)),
-    ];
+    invalidateInferenceAppByIdState(appId);
+    await withAppCacheFences({ appId, apiKeyId, slug }, async () => {
+      const promises: Promise<void>[] = [
+        cache.del(CacheKeys.app.byId(appId)),
+        cache.del(CacheKeys.app.costMarkup(appId)),
+      ];
 
-    if (apiKeyId) {
-      promises.push(cache.del(CacheKeys.app.byApiKeyId(apiKeyId)));
-    }
+      if (apiKeyId) {
+        promises.push(cache.del(CacheKeys.app.byApiKeyId(apiKeyId)));
+      }
 
-    if (slug) {
-      promises.push(cache.del(CacheKeys.app.bySlug(slug)));
-    }
+      if (slug) {
+        promises.push(cache.del(CacheKeys.app.bySlug(slug)));
+      }
 
-    await Promise.all(promises);
+      await Promise.all(promises);
+    });
     logger.debug("[Apps] Invalidated app cache", { appId });
+  }
+
+  /**
+   * Invalidates every supplied app key only when the configured cache backend
+   * confirms each delete. Durable workers use this fail-closed contract;
+   * request-path callers retain {@link invalidateCache}'s best-effort behavior.
+   */
+  async invalidateCacheStrict(appId: string, apiKeyId?: string, slug?: string): Promise<void> {
+    await withAppCacheFences({ appId, apiKeyId, slug }, async () => {
+      const deletes = [
+        cache.delConfirmed(CacheKeys.app.byId(appId)),
+        cache.delConfirmed(CacheKeys.app.costMarkup(appId)),
+      ];
+      if (apiKeyId) deletes.push(cache.delConfirmed(CacheKeys.app.byApiKeyId(apiKeyId)));
+      if (slug) deletes.push(cache.delConfirmed(CacheKeys.app.bySlug(slug)));
+
+      const confirmations = await Promise.all(deletes);
+      if (confirmations.some((confirmed) => !confirmed)) {
+        throw new ElizaError("Configured cache backend did not confirm app cache deletion", {
+          code: "APP_CACHE_DELETE_UNCONFIRMED",
+          context: { appId },
+          severity: "ephemeral",
+        });
+      }
+    });
+    logger.debug("[Apps] Strictly invalidated app cache", { appId });
   }
 
   async listByOrganization(organizationId: string): Promise<App[]> {

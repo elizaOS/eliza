@@ -21,6 +21,7 @@ import path from "node:path";
 import process from "node:process";
 import * as readline from "node:readline";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { runBootHooks } from "./boot-hooks.ts";
 import {
   type BootContext,
   type BootPhaseName,
@@ -87,6 +88,10 @@ import {
   buildRuntimeSettingsProjection,
   type RuntimeSettingsProjectionOptions,
 } from "./runtime-settings.ts";
+import {
+  applySandboxCharacterFromEnv,
+  resolveSandboxRouteAgentId,
+} from "./sandbox-character.ts";
 
 export { deduplicatePluginActions } from "./plugin-action-dedupe.ts";
 export {
@@ -175,7 +180,11 @@ import {
 import { buildDefaultElizaCloudServiceRouting } from "@elizaos/shared/contracts/service-routing";
 import { resolveDefaultVaultDataDir } from "@elizaos/vault";
 import { registerDesktopScreenCaptureBridgeService } from "./desktop-screen-capture-bridge-service.ts";
-import { type AgentHostBridge, getAgentHostBridge } from "./host-bridge.ts";
+import {
+  type AgentHostBridge,
+  getAgentHostBridge,
+  hasDurableHostVault,
+} from "./host-bridge.ts";
 
 // Host capabilities (wallet-key hydration, vault bootstrap/access, account
 // pool, build variant) are INJECTED downward by the app-core host via
@@ -3963,6 +3972,11 @@ export async function startEliza(
     }
   }
 
+  // 1a. Local / sandbox character override — must run before first-run setup
+  //     so character.json (or ELIZA_AGENT_CHARACTER_JSON) sets the agent name
+  //     and skips the interactive name/style wizard.
+  applySandboxCharacterFromEnv(config);
+
   // 1b. First-run setup — ask for agent name if not configured.
   //     In headless mode (GUI) the first-run setup is handled by the web UI,
   //     so we skip the interactive CLI prompt and let the runtime start
@@ -4308,18 +4322,8 @@ export async function startEliza(
     return startInCloudMode(config, thinClientCloudAgentId, opts);
   }
 
-  // 3. Build elizaOS Character from Eliza config
-  // Cloud sandbox (Path A): if the provisioner injected the assigned
-  // character via ELIZA_AGENT_CHARACTER_JSON, merge it onto the config so the
-  // container boots AS that character (e.g. "Nyx") instead of the bundled
-  // default preset. Skipped when the env var is absent.
-  let sandboxRouteAgentId: string | null = null;
-  {
-    const { applySandboxCharacterFromEnv, resolveSandboxRouteAgentId } =
-      await import("./sandbox-character.ts");
-    applySandboxCharacterFromEnv(config);
-    sandboxRouteAgentId = resolveSandboxRouteAgentId();
-  }
+  // 3. Build elizaOS Character from Eliza config (override applied at 1a).
+  const sandboxRouteAgentId: string | null = resolveSandboxRouteAgentId();
 
   // 3b. Canonical file boot (sovereign identity): when configured via
   // ELIZA_CANONICAL_BOOT_ROOT / ELIZA_CANONICAL_BOOT_MANIFEST, read the
@@ -4335,7 +4339,6 @@ export async function startEliza(
     );
     applyCanonicalFileBootToConfig(config);
   }
-
   const character = buildCharacterFromConfig(config);
 
   // Pin the runtime agent id to the platform character_id so the gateways can
@@ -4824,6 +4827,52 @@ export async function startEliza(
     }
   };
 
+  // Durable storage for connector OAuth credential refs. Connector plugins
+  // resolve `connector_credential_store` for BOTH the write at OAuth-callback
+  // time and the read after restart; without this service their token writes
+  // fall through to the in-memory SECRETS global store and die with the
+  // process (the dangling vaultRef then fails every post-restart credential
+  // read). Registered only when the host vault is real — wrapping the no-op
+  // default vault would swallow writes instead.
+  const registerConnectorCredentialStoreService = async (): Promise<void> => {
+    try {
+      if (!hasDurableHostVault()) {
+        logger.debug(
+          "[eliza] ConnectorCredentialStoreService skipped: no durable host vault",
+        );
+        return;
+      }
+      const { ConnectorCredentialStoreService } = await import(
+        "../services/connector-credential-store.ts"
+      );
+      await runtime.registerService(ConnectorCredentialStoreService);
+    } catch (err) {
+      logger.debug(
+        `[eliza] ConnectorCredentialStoreService registration skipped: ${formatError(err)}`,
+      );
+    }
+  };
+
+  // registerService is lazy — the instance is only created by the ASYNC
+  // service-load path, while connector plugins resolve the credential store
+  // with the SYNCHRONOUS runtime.getService(), which returns null for a
+  // registered-but-never-started service. That null silently demotes every
+  // connector OAuth credential write to the in-memory SECRETS fallback (lost
+  // on restart). Force the start once runtime.initialize() has resolved (the
+  // load path awaits initPromise, so forcing earlier would deadlock boot) and
+  // surface a failure loudly — a missing store is exactly the silent-token-
+  // loss condition this service exists to prevent.
+  const ensureConnectorCredentialStoreStarted = async (): Promise<void> => {
+    if (!hasDurableHostVault()) return;
+    try {
+      await runtime.getServiceLoadPromise("connector_credential_store");
+    } catch (err) {
+      logger.warn(
+        `[eliza] ConnectorCredentialStoreService failed to start; connector OAuth credential writes will fall back to non-durable storage: ${formatError(err)}`,
+      );
+    }
+  };
+
   // Register the hosted-app run reader as a runtime service so the session gate
   // can query it via getService instead of statically importing the plugin
   // (which inverted the host→plugin dependency direction). Dynamic import keeps
@@ -4878,6 +4927,12 @@ export async function startEliza(
     await runRuntimeStartupMaintenance(runtime, opts?.abortSignal);
     opts?.abortSignal?.throwIfAborted();
     bootTimer.lap("svc:startup-maintenance");
+    // Pre-ready hooks are declared in registry data and drained here so every
+    // host (including headless agent-server) observes the same fixed point.
+    // A declared hook failure rejects boot; readiness must never hide a broken
+    // voice/model handler installation behind a fabricated degraded success.
+    await runBootHooks(runtime);
+    bootTimer.lap("svc:boot-hooks");
     // runtime.initialize() survives a total TEXT_EMBEDDING dimension-probe
     // failure (EmbeddingDimensionProbeError is caught in core, which flips the
     // runtime into embedding-disabled mode instead of writing vectors the SQL
@@ -5380,6 +5435,8 @@ export async function startEliza(
   const initializeRuntimeServices = async (): Promise<void> => {
     await registerConnectorSetupService();
     bootTimer.lap("svc:connector-setup");
+    await registerConnectorCredentialStoreService();
+    bootTimer.lap("svc:connector-credential-store");
     await registerAppSessionService();
     bootTimer.lap("svc:app-session");
     await registerRemoteCodingRunner();
@@ -5403,6 +5460,8 @@ export async function startEliza(
 
     await initializeCoreRuntime();
     bootTimer.lap("svc:runtime.initialize");
+    await ensureConnectorCredentialStoreStarted();
+    bootTimer.lap("svc:connector-credential-store-start");
     await registerDesktopScreenCaptureBridgeService(runtime);
     bootTimer.lap("svc:desktop-screen-capture");
   };
@@ -5449,14 +5508,50 @@ export async function startEliza(
       ...deferredPluginsForRuntime,
     ]);
 
-    const registerDeferredPlugin = async (plugin: Plugin): Promise<void> => {
+    const timeoutMs = (() => {
+      const raw =
+        process.env.ELIZA_DEFERRED_PLUGIN_REGISTRATION_TIMEOUT_MS?.trim();
+      if (!raw) return 30_000;
+      const parsed = Number.parseInt(raw, 10);
+      return Number.isFinite(parsed) && parsed > 0 ? parsed : 30_000;
+    })();
+    const registerDeferredPlugin = async (
+      plugin: (typeof deferredPluginsForRuntime)[number],
+    ): Promise<void> => {
       const startedAt = Date.now();
+      let registrationWatchdog: ReturnType<typeof setTimeout> | undefined;
+      let exceededWatchdog = false;
       try {
         abortSignal.throwIfAborted();
-        logger.debug(`[eliza] deferred: Registering plugin: ${plugin.name}...`);
+        logger.info(`[eliza] deferred: Registering plugin: ${plugin.name}...`);
+        // registerPlugin has no cancellation contract. Treat the configured
+        // deadline as an observable watchdog while continuing to await the
+        // real registration, so a "timed out" plugin cannot finish later and
+        // mutate a wave the host has already reported as settled.
+        registrationWatchdog = setTimeout(() => {
+          exceededWatchdog = true;
+          const error = new Error(
+            `Registration exceeded ${timeoutMs / 1000}s watchdog`,
+          );
+          logger.warn(
+            `[eliza] deferred: Plugin ${plugin.name} registration exceeded the ${timeoutMs / 1000}s watchdog; still waiting for a definitive result`,
+          );
+          // error-policy:J7 the watchdog reports a diagnostic without killing
+          // the deferred loop; the same registration promise remains awaited.
+          runtime.reportError(
+            "eliza.deferredPluginRegistrationWatchdog",
+            error,
+            {
+              plugin: plugin.name,
+              phase: "deferred-boot",
+              timeoutMs,
+            },
+          );
+        }, timeoutMs);
+        registrationWatchdog.unref?.();
         await runtime.registerPlugin(plugin);
-        logger.debug(
-          `[eliza] deferred: ✓ ${plugin.name} registered (${Date.now() - startedAt}ms)`,
+        logger.info(
+          `[eliza] deferred: ✓ ${plugin.name} registered (${Date.now() - startedAt}ms${exceededWatchdog ? ", after watchdog" : ""})`,
         );
       } catch (err) {
         if (abortSignal.aborted) throw err;
@@ -5472,29 +5567,42 @@ export async function startEliza(
           plugin: plugin.name,
           phase: "deferred-boot",
         });
+      } finally {
+        if (registrationWatchdog) clearTimeout(registrationWatchdog);
       }
     };
     // Deferred registrations run behind an already-listening server. Launching
     // every registerPlugin at once floods the event loop with CPU-bound init
     // work and starves the bound HTTP server of I/O turns for the whole wave
-    // (loadperf F3). A small worker pool with a setImmediate yield between
-    // registrations lets /api/* interleave while preserving runtime ownership
-    // and completion semantics. Mirrors the yield-between-imports loop in the
-    // deferred static import phase.
+    // (loadperf F3). The preferred provider is placed first in the shared queue,
+    // but it does not block the other workers from starting. A setImmediate
+    // yield between registrations lets /api/* interleave.
+    // Mirrors the yield-between-imports loop in the deferred static import phase.
+    const preferredPlugin = preferredProviderPluginName
+      ? deferredPluginsForRuntime.find(
+          (plugin) => plugin.name === preferredProviderPluginName,
+        )
+      : undefined;
+    const registrationQueue = preferredPlugin
+      ? [
+          preferredPlugin,
+          ...deferredPluginsForRuntime.filter(
+            (plugin) => plugin.name !== preferredPlugin.name,
+          ),
+        ]
+      : deferredPluginsForRuntime;
+
     const registrationConcurrency = 4;
     let nextPluginIndex = 0;
     await Promise.all(
       Array.from(
         {
-          length: Math.min(
-            registrationConcurrency,
-            deferredPluginsForRuntime.length,
-          ),
+          length: Math.min(registrationConcurrency, registrationQueue.length),
         },
         async () => {
-          while (nextPluginIndex < deferredPluginsForRuntime.length) {
+          while (nextPluginIndex < registrationQueue.length) {
             abortSignal.throwIfAborted();
-            const plugin = deferredPluginsForRuntime[nextPluginIndex];
+            const plugin = registrationQueue[nextPluginIndex];
             nextPluginIndex += 1;
             await registerDeferredPlugin(plugin);
             await new Promise<void>((resolve) => {

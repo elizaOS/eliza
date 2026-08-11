@@ -25,6 +25,7 @@ const GUI_CASES = VIEW_CASES.filter((c) => c.viewType === "gui");
 
 const MAX_CLICKS = 20;
 const MAX_INPUTS = 6;
+const LOCATOR_STABILITY_TIMEOUT_MS = 500;
 const CLICK_SELECTOR =
   "button:visible, [role='button']:visible, [role='tab']:visible, [role='menuitem']:visible, a[href^='#']:visible";
 const INPUT_SELECTOR =
@@ -41,14 +42,17 @@ const INPUT_SELECTOR =
  * clicked by a user pointer either.
  */
 async function isPointerReachable(control: Locator): Promise<boolean> {
-  return control.evaluate((el: Element) => {
-    const rect = el.getBoundingClientRect();
-    if (rect.width <= 0 || rect.height <= 0) return false;
-    const x = rect.left + rect.width / 2;
-    const y = rect.top + rect.height / 2;
-    const top = document.elementFromPoint(x, y);
-    return top === el || (top ? el.contains(top) : false);
-  });
+  return control.evaluate(
+    (el: Element) => {
+      const rect = el.getBoundingClientRect();
+      if (rect.width <= 0 || rect.height <= 0) return false;
+      const x = rect.left + rect.width / 2;
+      const y = rect.top + rect.height / 2;
+      const top = document.elementFromPoint(x, y);
+      return top === el || (top ? el.contains(top) : false);
+    },
+    { timeout: LOCATOR_STABILITY_TIMEOUT_MS },
+  );
 }
 
 async function fillOrToggleInput(input: Locator, index: number): Promise<void> {
@@ -122,6 +126,11 @@ async function fillOrToggleInput(input: Locator, index: number): Promise<void> {
 }
 
 test.describe("plugin view interaction coverage", () => {
+  // The fuzz pass's worst case (60s+30s mount waits, MAX_INPUTS fills and
+  // MAX_CLICKS clicks each bounded by the 15s action timeout) can exceed the
+  // suite's 180s default on a loaded CI runner even when nothing is broken,
+  // so this spec carries its own budget.
+  test.setTimeout(360_000);
   for (const view of GUI_CASES) {
     test(`${view.id} — exercise every control, no crash`, async ({ page }) => {
       const pageErrors: string[] = [];
@@ -192,12 +201,20 @@ test.describe("plugin view interaction coverage", () => {
           break;
         }
         const control = liveControls.nth(i);
-        if (!(await control.isVisible().catch(() => false))) {
+        if (
+          !(await control
+            .isVisible({ timeout: LOCATOR_STABILITY_TIMEOUT_MS })
+            .catch(() => false))
+        ) {
           continue;
         }
         // A disabled control is intentionally inert; clicking it just waits out
         // the actionability timeout. Skip it rather than record a false failure.
-        if (!(await control.isEnabled().catch(() => false))) {
+        if (
+          !(await control
+            .isEnabled({ timeout: LOCATOR_STABILITY_TIMEOUT_MS })
+            .catch(() => false))
+        ) {
           continue;
         }
         // Skip controls a raw pointer can't land on (off-viewport list rows,

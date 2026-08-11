@@ -139,7 +139,7 @@ const SearchResultListItem = memo(function SearchResultListItem({
   onSelect,
 }: {
   result: DocumentSearchResult;
-  onSelect: (documentId: string) => void;
+  onSelect: (documentId: string, startMs?: number) => void;
 }) {
   const { t } = useTranslation();
   const documentId = result.documentId || result.id;
@@ -154,14 +154,14 @@ const SearchResultListItem = memo(function SearchResultListItem({
     label: title,
     group: "documents-results",
     description: `Open search result "${title}"`,
-    onActivate: () => onSelect(documentId),
+    onActivate: () => onSelect(documentId, result.startMs),
   });
 
   return (
     <Button
       ref={ref}
       {...agentProps}
-      onClick={() => onSelect(documentId)}
+      onClick={() => onSelect(documentId, result.startMs)}
       variant="ghost"
       className="group flex h-auto w-full items-start justify-start whitespace-normal rounded-none px-0 py-3 text-left font-normal transition-colors hover:bg-bg-hover"
     >
@@ -389,6 +389,9 @@ export function DocumentsView({
   const [internalSelectedDocId, setInternalSelectedDocId] = useState<
     string | null
   >(null);
+  const [selectedAnchor, setSelectedAnchor] = useState<
+    { documentId: string; startMs: number } | undefined
+  >();
   const [loadError, setLoadError] = useState<string | null>(null);
   // Set when GET /api/documents 404s — the documents plugin isn't mounted on
   // this surface (e.g. the mobile/Android agent). Degrade to a calm
@@ -397,8 +400,17 @@ export function DocumentsView({
   const [isServiceLoading, setIsServiceLoading] = useState(false);
   const serviceRetryRef = useRef(0);
   const selectedDocId = selectedDocumentId ?? internalSelectedDocId;
+  const selectedSeekMs =
+    selectedAnchor?.documentId === selectedDocId
+      ? selectedAnchor.startMs
+      : undefined;
   const setSelectedDocId = useCallback(
-    (documentId: string | null) => {
+    (documentId: string | null, initialSeekMs?: number) => {
+      setSelectedAnchor(
+        documentId !== null && initialSeekMs !== undefined
+          ? { documentId, startMs: initialSeekMs }
+          : undefined,
+      );
       if (selectedDocumentId === undefined) {
         setInternalSelectedDocId(documentId);
       }
@@ -1187,6 +1199,7 @@ export function DocumentsView({
         <div className="flex min-h-0 flex-1 flex-col">
           <DocumentViewer
             documentId={selectedDocId}
+            initialSeekMs={selectedSeekMs}
             onUpdated={() => {
               void loadData();
             }}

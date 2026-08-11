@@ -151,7 +151,7 @@ Every `loop-*` lane checks these after each command (`checkInvariants` against a
   `settle()` returned mid-commit (now waits for animations done + the rail parked);
   and `tapTile` tapped off-window tiles after a scroll (now scrolls into view
   first). Three consecutive 500-action seeds run green locally (12375, 424242,
-  387289096); the CI gate pins seed 12375 in `chat-shell-gestures.yml`.
+  387289096); the local gesture test pins seed 12375.
 - **Two families are scoped out of the coarse-pointer web loop** because they
   diverge from the shared model on that surface, not because they are untested:
   `railEdgeButton` (chevrons self-hide on touch, yet the model always navigates —

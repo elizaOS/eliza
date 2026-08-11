@@ -686,16 +686,7 @@ export async function runFirstTimeSetup(
       // "skip" — do nothing
     }
 
-    // ── Step 6: Skills Registry (ClawHub default) ──────────────────────────
-    const hasSkillsRegistry = Boolean(
-      process.env.SKILLS_REGISTRY?.trim() ||
-        process.env.CLAWHUB_REGISTRY?.trim(),
-    );
-    if (!hasSkillsRegistry) {
-      process.env.SKILLS_REGISTRY = "https://clawhub.ai";
-    }
-
-    // ── Step 7: GitHub access (for coding agents, issue management) ─────────
+    // ── Step 6: GitHub access (for coding agents, issue management) ─────────
     const hasGithubToken = Boolean(process.env.GITHUB_TOKEN?.trim());
     const hasGithubOAuth = Boolean(process.env.GITHUB_OAUTH_CLIENT_ID?.trim());
     if (!hasGithubToken) {
@@ -800,9 +791,6 @@ export async function runFirstTimeSetup(
     }
     if (process.env.SOLANA_PRIVATE_KEY && !hasSolKey) {
       envBucket.SOLANA_PRIVATE_KEY = process.env.SOLANA_PRIVATE_KEY;
-    }
-    if (process.env.SKILLS_REGISTRY) {
-      envBucket.SKILLS_REGISTRY = process.env.SKILLS_REGISTRY;
     }
     if (process.env.GITHUB_TOKEN) {
       envBucket.GITHUB_TOKEN = process.env.GITHUB_TOKEN;

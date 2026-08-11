@@ -41,18 +41,36 @@ function makeClient(
 function makeEffects(): {
   effects: JoinFlowEffects;
   saveServer: ReturnType<typeof vi.fn>;
+  clearServer: ReturnType<typeof vi.fn>;
   saveFirstRun: ReturnType<typeof vi.fn>;
 } {
   const saveServer = vi.fn();
+  const clearServer = vi.fn();
   const saveFirstRun = vi.fn();
   return {
     effects: {
       savePersistedActiveServer: saveServer,
+      clearPersistedActiveServer: clearServer,
       savePersistedFirstRunComplete: saveFirstRun,
     },
     saveServer,
+    clearServer,
     saveFirstRun,
   };
+}
+
+/** The wrapped list-lookup failure `selectOrProvisionCloudAgent` throws when
+ * the bound (deleted) agent's origin answers the agent list with the cloud
+ * router's structural agent-gone shape (`agent_not_found` code). */
+function agentGoneError(): Error {
+  return new Error("agent not found or not running", {
+    cause: Object.assign(new Error("agent not found or not running"), {
+      kind: "http",
+      status: 404,
+      code: "agent_not_found",
+      path: "/api/cloud/compat/agents",
+    }),
+  });
 }
 
 describe("dedicatedSubdomainBase", () => {
@@ -184,6 +202,129 @@ describe("runJoinFlow", () => {
       "https://elizacloud.ai/api/v1/eliza/agents/agent-new",
     );
     expect(result.dedicated).toBe(false);
+  });
+
+  test("clears a stale binding and reselects fresh when the bound agent is gone (404)", async () => {
+    const setBaseUrl = vi.fn();
+    const setToken = vi.fn();
+    const select = vi
+      .fn()
+      .mockRejectedValueOnce(agentGoneError())
+      .mockResolvedValueOnce({
+        agentId: "agent-alive",
+        agentName: "Eliza",
+        apiBase: "https://api.elizacloud.ai/api/v1/eliza/agents/agent-alive",
+        bridgeUrl: null,
+        created: false,
+      });
+    const client: JoinFlowClient = {
+      selectOrProvisionCloudAgent: select,
+      setBaseUrl,
+      setToken,
+    };
+    const { effects, saveServer, clearServer, saveFirstRun } = makeEffects();
+
+    const result = await runJoinFlow({
+      client,
+      effects,
+      cloudApiBase: CLOUD_API_BASE,
+      authToken: "tok",
+      agentName: "Eliza",
+      preferAgentId: "agent-deleted",
+    });
+
+    // The stale binding is dropped and the client reset to the fresh-visit
+    // state BEFORE the fallback selection, so the retry resolves the control
+    // plane instead of misrouting through the dead agent origin again.
+    expect(clearServer).toHaveBeenCalledTimes(1);
+    expect(setBaseUrl.mock.calls[0]).toEqual([null]);
+    expect(select).toHaveBeenCalledTimes(2);
+    expect(select.mock.calls[1][0]).not.toHaveProperty("preferAgentId");
+    // The fallback selection binds normally — no terminal error state.
+    expect(result.agentId).toBe("agent-alive");
+    expect(saveServer).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "cloud:agent-alive" }),
+    );
+    expect(saveFirstRun).toHaveBeenCalledWith(true);
+  });
+
+  test("reaches the provisioning path when the org has zero agents after dropping the stale binding", async () => {
+    const select = vi
+      .fn()
+      .mockRejectedValueOnce(agentGoneError())
+      .mockResolvedValueOnce({
+        agentId: "agent-created",
+        agentName: "Eliza",
+        apiBase: "https://agent-created.elizacloud.ai",
+        bridgeUrl: null,
+        created: true,
+      });
+    const client: JoinFlowClient = {
+      selectOrProvisionCloudAgent: select,
+      setBaseUrl: vi.fn(),
+      setToken: vi.fn(),
+    };
+    const { effects, clearServer } = makeEffects();
+
+    const result = await runJoinFlow({
+      client,
+      effects,
+      cloudApiBase: CLOUD_API_BASE,
+      authToken: "tok",
+      agentName: "Eliza",
+      preferAgentId: "agent-deleted",
+    });
+
+    expect(clearServer).toHaveBeenCalledTimes(1);
+    expect(result.created).toBe(true);
+    expect(result.agentId).toBe("agent-created");
+  });
+
+  test("keeps the terminal error for a transport-level failure of a valid binding", async () => {
+    const select = vi.fn().mockRejectedValue(new TypeError("Failed to fetch"));
+    const client: JoinFlowClient = {
+      selectOrProvisionCloudAgent: select,
+      setBaseUrl: vi.fn(),
+      setToken: vi.fn(),
+    };
+    const { effects, clearServer, saveFirstRun } = makeEffects();
+
+    await expect(
+      runJoinFlow({
+        client,
+        effects,
+        cloudApiBase: CLOUD_API_BASE,
+        authToken: "tok",
+        agentName: "Eliza",
+        preferAgentId: "agent-bound",
+      }),
+    ).rejects.toThrow(/failed to fetch/i);
+    // Network-down is not agent-gone: the binding survives, no blind retry.
+    expect(clearServer).not.toHaveBeenCalled();
+    expect(select).toHaveBeenCalledTimes(1);
+    expect(saveFirstRun).not.toHaveBeenCalled();
+  });
+
+  test("rethrows an agent-gone failure when no binding was remembered", async () => {
+    const select = vi.fn().mockRejectedValue(agentGoneError());
+    const client: JoinFlowClient = {
+      selectOrProvisionCloudAgent: select,
+      setBaseUrl: vi.fn(),
+      setToken: vi.fn(),
+    };
+    const { effects, clearServer } = makeEffects();
+
+    await expect(
+      runJoinFlow({
+        client,
+        effects,
+        cloudApiBase: CLOUD_API_BASE,
+        authToken: "tok",
+        agentName: "Eliza",
+      }),
+    ).rejects.toThrow(/agent not found/i);
+    expect(clearServer).not.toHaveBeenCalled();
+    expect(select).toHaveBeenCalledTimes(1);
   });
 
   test("throws when no agent id is returned", async () => {

@@ -14,6 +14,8 @@ export interface StackUrls {
 
 export const PLAYWRIGHT_TEST_AUTH_SECRET =
   "playwright-local-auth-secret-32bytes";
+export const ELIZA_APP_TEST_JWT_SECRET =
+  "eliza-app-local-e2e-jwt-secret-32bytes";
 const CLOUD_E2E_LOCAL_ROOT_KEY = "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=";
 
 /**
@@ -62,6 +64,10 @@ export function buildSharedEnv(
       process.env.ELIZA_LOCAL_ROOT_KEY ?? CLOUD_E2E_LOCAL_ROOT_KEY,
     // Mocks
     MOCK_REDIS: "1",
+    // Worker inference is cache-only. Keep the local cache enabled so cold
+    // decisions can hydrate into the in-memory Redis adapter instead of
+    // returning a permanent warming response from `.dev.vars`' dev default.
+    CACHE_ENABLED: "true",
     MOCK_HETZNER_LATENCY: "0",
     MOCK_HETZNER_ACTION_MS: process.env.MOCK_HETZNER_ACTION_MS ?? "30",
     CONTROL_PLANE_TICK_MS: process.env.CONTROL_PLANE_TICK_MS ?? "50",
@@ -79,6 +85,8 @@ export function buildSharedEnv(
     // Playwright test auth bypass — secret read by cloud-shared auth helpers
     PLAYWRIGHT_TEST_AUTH: "true",
     PLAYWRIGHT_TEST_AUTH_SECRET: PLAYWRIGHT_TEST_AUTH_SECRET,
+    ELIZA_APP_JWT_SECRET:
+      process.env.ELIZA_APP_JWT_SECRET ?? ELIZA_APP_TEST_JWT_SECRET,
     NEXT_PUBLIC_PLAYWRIGHT_TEST_AUTH: "true",
     VITE_PLAYWRIGHT_TEST_AUTH: "true",
     // Stub the Cloudflare registrar/DNS so domain check/buy routes never hit

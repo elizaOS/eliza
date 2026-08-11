@@ -34,8 +34,6 @@ function extractTestPaths(command: string) {
 const selfControlScriptsExpected =
   typeof packageJson.scripts?.["test:selfcontrol:startup"] === "string" &&
   typeof packageJson.scripts?.["test:selfcontrol:e2e"] === "string";
-const hasWorkflows = (paths: string[]) =>
-  paths.every((p) => fs.existsSync(path.join(repoRoot, p)));
 
 describe("startup integration script drift", () => {
   it("keeps desktop dev Electrobun packaging aligned with the orchestrated root", () => {
@@ -141,33 +139,4 @@ describe("startup integration script drift", () => {
     },
   );
 
-  it.skipIf(
-    !selfControlScriptsExpected ||
-      !hasWorkflows([
-        ".github/workflows/test.yml",
-        ".github/workflows/nightly.yml",
-      ]),
-  )("keeps CI workflows calling the startup smoke guards", () => {
-    const workflowExpectations = new Map([
-      [
-        ".github/workflows/test.yml",
-        [
-          "bun run test:selfcontrol:e2e",
-          "bun run test:selfcontrol:startup",
-          "bun run test:startup:contract",
-        ],
-      ],
-      [".github/workflows/nightly.yml", ["bun run test:startup:contract"]],
-    ]);
-
-    for (const [workflowFile, requiredCommands] of workflowExpectations) {
-      const workflowText = fs.readFileSync(
-        path.join(repoRoot, workflowFile),
-        "utf8",
-      );
-      for (const command of requiredCommands) {
-        expect(workflowText).toContain(command);
-      }
-    }
-  });
 });

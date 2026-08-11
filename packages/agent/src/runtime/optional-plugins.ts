@@ -71,6 +71,7 @@ export const OPTIONAL_STATIC_PLUGIN_PACKAGES: readonly string[] = [
  */
 export const UNBUNDLED_OPTIONAL_PLUGINS: readonly string[] = [
   "@elizaos/plugin-gitpathologist",
+  "@elizaos/plugin-zerollama",
 ];
 
 /**
@@ -158,6 +159,9 @@ export const OPTIONAL_STATIC_PLUGIN_OVERRIDES: Readonly<
   // deferred-plugin timeout before being skipped. Skip it up front on
   // android/ios (it is a desktop dev tool, already gated in plugin-collector).
   "@elizaos/plugin-gitpathologist": { skipOnMobile: true },
+  // Ollama is a desktop/server HTTP daemon; never spend a mobile boot timeout
+  // trying to import a provider that cannot run on the phone itself.
+  "@elizaos/plugin-zerollama": { skipOnMobile: true },
   // Root barrel exports the InboxView React components; the runtime plugin
   // object lives at the ./plugin subpath (src/plugin.ts). Bundling the root
   // would drag react/.tsx into the bun-target mobile agent bundle. (In

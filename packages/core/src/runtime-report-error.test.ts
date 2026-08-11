@@ -7,6 +7,7 @@
 
 import { describe, expect, it, vi } from "vitest";
 import { ElizaError } from "./errors";
+import { recentErrorsProvider } from "./providers/recent-errors";
 import { AgentRuntime } from "./runtime";
 import type { Character, ErrorReportedPayload } from "./types";
 import { EventType } from "./types";
@@ -18,6 +19,33 @@ function makeRuntime(): AgentRuntime {
 }
 
 describe("AgentRuntime.reportError", () => {
+	it("keeps queue-listener diagnostics observable without narrating them into chat", async () => {
+		const runtime = makeRuntime();
+		runtime.roomHandlerQueue.onEvent(() => {
+			throw new Error("queue-listener-failed");
+		});
+
+		await expect(
+			runtime.roomHandlerQueue.runWith(
+				"00000000-0000-0000-0000-000000000001",
+				async () => "done",
+			),
+		).resolves.toBe("done");
+
+		const reported = runtime.getRecentReportedErrors();
+		expect(reported).toHaveLength(2);
+		expect(
+			reported.every((entry) => entry.context?.diagnosticOnly === true),
+		).toBe(true);
+		const providerResult = await recentErrorsProvider.get(
+			runtime,
+			{} as never,
+			{} as never,
+		);
+		expect(providerResult.text).toBe("");
+		expect(providerResult.data?.recentErrors).toEqual([]);
+	});
+
 	it("emits a typed ERROR_REPORTED payload derived from ElizaError", async () => {
 		const runtime = makeRuntime();
 		const received: ErrorReportedPayload[] = [];

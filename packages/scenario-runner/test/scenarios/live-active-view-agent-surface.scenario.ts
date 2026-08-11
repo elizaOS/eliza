@@ -26,14 +26,14 @@ import type {
   ViewDeclaration,
 } from "@elizaos/core";
 import { ModelType } from "@elizaos/core";
-import type { ScenarioTurnExecution } from "@elizaos/scenario-runner/schema";
-import { scenario } from "@elizaos/scenario-runner/schema";
-import { stage1ResponseHandlerFixture } from "@elizaos/core/testing";
-import type { DeterministicModelCall } from "@elizaos/core/testing";
 import {
+  type DeterministicModelCall,
   matchesScenarioInput,
   type RuntimeWithScenarioModelFixtures,
+  stage1ResponseHandlerFixture,
 } from "@elizaos/core/testing";
+import type { ScenarioTurnExecution } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/scenario-runner/schema";
 
 const VIEW_ID = "scenario-active-ledger";
 const VIEW_LABEL = "Scenario Active Ledger";
@@ -366,7 +366,7 @@ export default scenario({
             actionName: "VIEWS",
             contextIds: ["active-view", "views"],
             input: FILL_TEXT,
-            messageToUser: "Filling the active ledger title.",
+            messageToUser: "Filled the active ledger title.",
             args: {
               action: "interact",
               capability: "agent-fill",
@@ -386,7 +386,7 @@ export default scenario({
             actionName: "VIEWS",
             contextIds: ["active-view", "views"],
             input: CLICK_TEXT,
-            messageToUser: "Saving the active ledger.",
+            messageToUser: "Saved the active ledger.",
             args: {
               action: "interact",
               capability: "agent-click",

@@ -12,6 +12,12 @@
  * helpers module with chainable query builders that capture the generated SQL.
  */
 
+// These suites mock `db/helpers` with a partial `dbWrite` (no `execute`), so the
+// self-healing DDL guard cannot run here. Skipping it is the house pattern for
+// mocked-database suites; the guard itself is covered by the PGlite tests.
+const PRIOR_SKIP_ENSURE = process.env.SKIP_AGENT_SANDBOX_ENSURE;
+process.env.SKIP_AGENT_SANDBOX_ENSURE = "1";
+
 import { afterAll, afterEach, describe, expect, mock, spyOn, test } from "bun:test";
 import type { SQL } from "drizzle-orm";
 import { PgDialect } from "drizzle-orm/pg-core";
@@ -172,6 +178,20 @@ describe("enqueueAgentDeleteOnce.beforeInsert — cancels other pending jobs", (
       (c) => (c[0] as { status?: string })?.status === "cancelled",
     );
     expect(cancelSet).toBeDefined();
+    if (!cancelSet) {
+      throw new Error("cancellation update was not captured");
+    }
+    const cancelValues = cancelSet[0] as {
+      completed_at?: Date;
+      updated_at?: Date;
+    };
+    expect(cancelValues).toEqual(
+      expect.objectContaining({
+        completed_at: expect.any(Date),
+        updated_at: expect.any(Date),
+      }),
+    );
+    expect(cancelValues.completed_at).toEqual(cancelValues.updated_at);
 
     // The cancel WHERE is scoped to this org AND this agent, excludes
     // agent_delete (delete never self-cancels), and only touches pending rows.
@@ -320,4 +340,12 @@ describe("reEnqueueFailedDeletions — recover stuck deletion_failed rows", () =
       enqueueSpy.mockRestore();
     }
   });
+});
+
+// bun shares one process across files without --isolate, so an unrestored env
+// override here would silently disable the ensure guard for whatever suite runs
+// next. Restore exactly what was there before.
+afterAll(() => {
+  if (PRIOR_SKIP_ENSURE === undefined) delete process.env.SKIP_AGENT_SANDBOX_ENSURE;
+  else process.env.SKIP_AGENT_SANDBOX_ENSURE = PRIOR_SKIP_ENSURE;
 });

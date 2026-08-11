@@ -71,8 +71,13 @@ const HYDRATION_MAX_ATTEMPTS = 5;
 const HYDRATION_BASE_DELAY_MS = 500;
 const HYDRATION_MAX_DELAY_MS = 30_000;
 const HYDRATION_JITTER_RATIO = 0.2;
+// A booting notification service depends on the agent runtime's cold start.
+// Give that explicit server state a bounded startup window without weakening
+// the five-attempt budget for unrelated failures.
+const HYDRATION_SERVICE_READINESS_BUDGET_MS = 90_000;
 let hydrationInFlight: Promise<void> | null = null;
 let hydrationRetryTimer: ReturnType<typeof setTimeout> | null = null;
+let hydrationReadinessDeadlineAt = 0;
 let hydrationGeneration = 0;
 let liveEventRevision = 0;
 const notificationCleanups: Array<() => void> = [];
@@ -368,6 +373,14 @@ function isRetryableHydrationError(error: unknown): boolean {
   );
 }
 
+function isNotificationServiceStarting(error: unknown): boolean {
+  return (
+    isApiError(error) &&
+    error.status === 503 &&
+    error.code === "NOTIFICATION_SERVICE_NOT_READY"
+  );
+}
+
 function hydrationRetryDelayMs(error: unknown, attempt: number): number {
   const exponential = Math.min(
     HYDRATION_MAX_DELAY_MS,
@@ -391,6 +404,10 @@ function hydrationErrorMessage(error: unknown): string {
 async function runHydrationAttempt(generation: number): Promise<void> {
   const attempt = state.hydrationAttempts + 1;
   const liveRevisionAtStart = liveEventRevision;
+  if (attempt === 1) {
+    hydrationReadinessDeadlineAt =
+      Date.now() + HYDRATION_SERVICE_READINESS_BUDGET_MS;
+  }
   setState({
     hydrated: false,
     hydrationStatus: attempt === 1 ? "loading" : "retrying",
@@ -406,6 +423,7 @@ async function runHydrationAttempt(generation: number): Promise<void> {
     const notifications = mergeHydratedNotifications(res.notifications);
     const hydrationStatus =
       res.serviceStatus === "disabled" ? "disabled" : "ready";
+    hydrationReadinessDeadlineAt = 0;
     setState({
       notifications,
       unreadCount:
@@ -427,11 +445,33 @@ async function runHydrationAttempt(generation: number): Promise<void> {
     // live subscription active while surfacing terminal failure in store state.
     if (generation !== hydrationGeneration) return;
     const message = hydrationErrorMessage(err);
-    const retryable =
-      isRetryableHydrationError(err) && attempt < HYDRATION_MAX_ATTEMPTS;
-    if (!retryable) {
+    const serviceStarting = isNotificationServiceStarting(err);
+    const retryableByKind = isRetryableHydrationError(err);
+    const remainingReadinessMs = hydrationReadinessDeadlineAt - Date.now();
+    let delayMs: number | null = null;
+    if (serviceStarting && remainingReadinessMs > 0) {
+      delayMs = Math.min(
+        hydrationRetryDelayMs(err, attempt),
+        remainingReadinessMs,
+      );
+    } else if (
+      !serviceStarting &&
+      retryableByKind &&
+      attempt < HYDRATION_MAX_ATTEMPTS
+    ) {
+      delayMs = hydrationRetryDelayMs(err, attempt);
+    }
+    if (delayMs === null) {
+      hydrationReadinessDeadlineAt = 0;
       logger.error(
-        { err, attempt, retryable: isRetryableHydrationError(err) },
+        {
+          err,
+          attempt,
+          retryableByKind,
+          readinessBudgetExhausted:
+            serviceStarting && remainingReadinessMs <= 0,
+          serviceStarting,
+        },
         "[notification-store] inbox hydration terminal failure",
       );
       setState({
@@ -442,7 +482,6 @@ async function runHydrationAttempt(generation: number): Promise<void> {
       return;
     }
 
-    const delayMs = hydrationRetryDelayMs(err, attempt);
     logger.warn(
       { err, attempt, delayMs },
       "[notification-store] inbox hydration failed; retry scheduled",
@@ -488,6 +527,7 @@ function requestHydration(): Promise<void> {
 /** Retry a terminal inbox load after a user or lifecycle recovery signal. */
 export function retryNotificationHydration(): Promise<void> {
   if (state.hydrationStatus !== "failed") return Promise.resolve();
+  hydrationReadinessDeadlineAt = 0;
   setState({
     hydrated: false,
     hydrationStatus: "idle",
@@ -673,6 +713,7 @@ export function __resetNotificationStoreForTests(): void {
   if (hydrationRetryTimer) clearTimeout(hydrationRetryTimer);
   hydrationRetryTimer = null;
   hydrationInFlight = null;
+  hydrationReadinessDeadlineAt = 0;
   hydrationAuthRearmUnsub?.();
   hydrationAuthRearmUnsub = null;
   liveEventRevision = 0;

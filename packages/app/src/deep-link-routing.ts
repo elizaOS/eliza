@@ -9,8 +9,8 @@
  * event bus. `buildAssistantLaunchHashRoute()` handles chat-launch entries
  * (ask / chat / voice / smart-reply / LifeOps briefs and tasks, plus Android
  * feature-open aliases), folding them into a single `#chat?…` hash route that
- * carries the trusted `assistant-entry` source and a stable launch id the
- * always-mounted ChatOverlay claims. Both return `null` for
+ * carries the native source, a stable launch id, and an issuance timestamp for
+ * the always-mounted structural intent authority. Both return `null` for
  * unrecognized paths, so an unknown deep link is non-routable rather than
  * silently opening chat.
  */
@@ -19,6 +19,7 @@ const ASSISTANT_LAUNCH_TEXT_KEYS = ["text", "q", "query", "body"] as const;
 
 export interface AssistantLaunchHashRouteOptions {
   generateLaunchId?: () => string;
+  now?: () => number;
 }
 
 /**
@@ -33,6 +34,11 @@ export interface AssistantLaunchHashRouteOptions {
 export interface DeepLinkNavigationIntent {
   viewId: string;
   viewPath: string;
+  /**
+   * Settings section id, optionally with a nested connectors detail segment
+   * (`connectors` or `connectors/discord`). SettingsView / ConnectorsSection
+   * parse nested forms via the structured settings hash route helpers.
+   */
   subview?: string;
 }
 
@@ -46,21 +52,26 @@ export interface DeepLinkNavigationIntent {
  * app-window, so `getWindowNavigationPath()` reads `location.pathname` (never
  * the hash) — the target tab never opened. Returning a navigation intent lets
  * the caller dispatch the same `eliza:navigate:view` event the rest of the app
- * uses, which opens the surface on every platform. (Chat-launch deep links stay
- * on the hash: the always-mounted ChatOverlay claims the launch
- * payload from the hash directly.)
+ * uses, which opens the surface on every platform. Chat-launch deep links stay
+ * on the hash so the always-mounted structural intent authority can validate,
+ * deduplicate, consent-gate, and route them through the shared controller.
  */
 export function resolveDeepLinkNavigationIntent(
   path: string,
 ): DeepLinkNavigationIntent | null {
-  // eliza://connectors and eliza://settings/connectors/<provider> → open
-  // Settings focused on the Connectors section (a Settings section, not a
-  // top-level tab).
-  if (
-    path === "connectors" ||
-    /^settings\/connectors\/[a-z0-9-]+$/i.test(path)
-  ) {
+  // eliza://connectors → Settings → Connectors index.
+  // eliza://settings/connectors/<provider> → Settings → connector detail.
+  if (path === "connectors" || path === "settings/connectors") {
     return { viewId: "settings", viewPath: "/settings", subview: "connectors" };
+  }
+  const connectorDetail = path.match(/^settings\/connectors\/([a-z0-9-]+)$/i);
+  if (connectorDetail?.[1]) {
+    const connectorId = connectorDetail[1].toLowerCase();
+    return {
+      viewId: "settings",
+      viewPath: "/settings",
+      subview: `connectors/${connectorId === "twitter" ? "x" : connectorId}`,
+    };
   }
 
   switch (path) {
@@ -103,17 +114,22 @@ function defaultLaunchId(): string {
   );
 }
 
-function ensureAssistantLaunchId(
+function ensureAssistantLaunchMetadata(
   params: URLSearchParams,
   generateLaunchId: () => string,
+  now: () => number,
 ): void {
-  if (params.has("assistant.launchId")) return;
   const hasAssistantPayload =
     hasAssistantLaunchText(params) ||
     params.has("action") ||
     params.has("source");
   if (!hasAssistantPayload) return;
-  params.set("assistant.launchId", generateLaunchId());
+  if (!params.has("assistant.launchId")) {
+    params.set("assistant.launchId", generateLaunchId());
+  }
+  if (!params.has("issuedAt")) {
+    params.set("issuedAt", String(now()));
+  }
 }
 
 function hasAssistantLaunchText(params: URLSearchParams): boolean {
@@ -190,6 +206,7 @@ export function buildAssistantLaunchHashRoute(
   options: AssistantLaunchHashRouteOptions = {},
 ): string | null {
   const generateLaunchId = options.generateLaunchId ?? defaultLaunchId;
+  const now = options.now ?? Date.now;
 
   switch (path) {
     case "feature/open":
@@ -207,7 +224,7 @@ export function buildAssistantLaunchHashRoute(
         ASSISTANT_ENTRY_SOURCE,
       );
       params.set("action", params.get("action") ?? "ask");
-      ensureAssistantLaunchId(params, generateLaunchId);
+      ensureAssistantLaunchMetadata(params, generateLaunchId, now);
       return formatHashRoute("chat", params);
     }
     case "smart-reply":
@@ -218,7 +235,7 @@ export function buildAssistantLaunchHashRoute(
         ASSISTANT_ENTRY_SOURCE,
       );
       params.set("action", params.get("action") ?? "smart-reply");
-      ensureAssistantLaunchId(params, generateLaunchId);
+      ensureAssistantLaunchMetadata(params, generateLaunchId, now);
       return formatHashRoute("chat", params);
     }
     case "chat": {
@@ -228,7 +245,7 @@ export function buildAssistantLaunchHashRoute(
         ASSISTANT_ENTRY_SOURCE,
       );
       params.set("action", params.get("action") ?? "chat");
-      ensureAssistantLaunchId(params, generateLaunchId);
+      ensureAssistantLaunchMetadata(params, generateLaunchId, now);
       return formatHashRoute("chat", params);
     }
     case "voice":
@@ -238,7 +255,7 @@ export function buildAssistantLaunchHashRoute(
         "source",
         ASSISTANT_ENTRY_SOURCE,
       );
-      ensureAssistantLaunchId(params, generateLaunchId);
+      ensureAssistantLaunchMetadata(params, generateLaunchId, now);
       params.set("voice", "1");
       return formatHashRoute("chat", params);
     }
@@ -254,7 +271,7 @@ export function buildAssistantLaunchHashRoute(
         ASSISTANT_ENTRY_SOURCE,
       );
       params.set("action", params.get("action") ?? "lifeops.daily-brief");
-      ensureAssistantLaunchId(params, generateLaunchId);
+      ensureAssistantLaunchMetadata(params, generateLaunchId, now);
       return formatHashRoute("chat", params);
     }
     case "lifeops/tasks": {
@@ -264,7 +281,7 @@ export function buildAssistantLaunchHashRoute(
         ASSISTANT_ENTRY_SOURCE,
       );
       params.set("action", params.get("action") ?? "lifeops.tasks");
-      ensureAssistantLaunchId(params, generateLaunchId);
+      ensureAssistantLaunchMetadata(params, generateLaunchId, now);
       return formatHashRoute("chat", params);
     }
     case "lifeops/create":
@@ -277,7 +294,7 @@ export function buildAssistantLaunchHashRoute(
         ASSISTANT_ENTRY_SOURCE,
       );
       params.set("action", params.get("action") ?? "lifeops.create");
-      ensureAssistantLaunchId(params, generateLaunchId);
+      ensureAssistantLaunchMetadata(params, generateLaunchId, now);
       return formatHashRoute("chat", params);
     }
     default:

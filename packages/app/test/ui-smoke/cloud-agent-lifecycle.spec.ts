@@ -16,14 +16,20 @@ import { seedStewardSession } from "./helpers/test-auth";
  * provision (seeded + create) → list in Settings → delete agents → reprovision
  * another → delete the original. Exercises the `CloudAgentsSection` CRUD path
  * (`getCloudCompatAgents` / `deleteCloudCompatAgent` / `selectOrProvisionCloudAgent`)
- * end to end against the live ui-smoke stack, with the cloud API faked by a
- * single stateful in-memory agent store so the renderer drives every transition.
+ * end to end through canonical direct Cloud transport, with the cloud API faked
+ * by a single stateful in-memory agent store so the renderer drives every
+ * transition.
  *
  * Onboarding-time provisioning is covered by cloud-provisioning-startup.spec.ts;
  * this spec owns the post-provision management lifecycle the dashboard exposes.
  */
 
-const CLOUD_AUTH_TOKEN = "ui-smoke-cloud-lifecycle-token";
+const AGENT_AUTH_TOKEN = "ui-smoke-cloud-lifecycle-agent-token";
+const STEWARD_AUTH_TOKEN = "ui-smoke-cloud-lifecycle-steward-token";
+const HANDOFF_AUTH_TOKEN = "ui-smoke-cloud-handoff-token";
+const KEEP_AGENT_ID = "11111111-1111-4111-8111-111111111111";
+const DROP_AGENT_ID = "22222222-2222-4222-8222-222222222222";
+const NEW_AGENT_ID = "33333333-3333-4333-8333-333333333333";
 const VOICE_PREFIX_DONE_STORAGE_KEY = "eliza:voice:prefix-done";
 
 type StoreAgent = {
@@ -32,10 +38,26 @@ type StoreAgent = {
   status: string;
 };
 
+type CreateAgentRequest = {
+  agentName?: string;
+  alwaysOn?: boolean;
+  forceCreate?: boolean;
+};
+
+type CloudSessionTokens = {
+  agentAccessToken: string;
+  stewardToken: string;
+};
+
 type AgentStore = {
   agents: StoreAgent[];
-  nextId: number;
+  createdAgentId: string;
+  createRequests: CreateAgentRequest[];
 };
+
+function dedicatedAgentApiBase(agentId: string): string {
+  return `https://${agentId}.elizacloud.ai`;
+}
 
 async function fulfillJson(
   route: Route,
@@ -49,46 +71,73 @@ async function fulfillJson(
   });
 }
 
+function expectStewardAuthorization(route: Route): void {
+  const authorization = route.request().headers().authorization;
+  expect(authorization).toBe(`Bearer ${STEWARD_AUTH_TOKEN}`);
+  expect(authorization).not.toBe(`Bearer ${AGENT_AUTH_TOKEN}`);
+}
+
 /**
- * The embedded agent list only mounts when the Cloud Overview section reads a
- * CONNECTED cloud (`elizaCloudConnected` ← GET /api/cloud/status);
- * installDefaultAppRoutes mocks that route as disconnected, which renders the
- * "Connect Cloud" pitch instead of CloudAgentsSection. Register the connected
- * status + credits AFTER the defaults (later registrations win).
+ * Keep the dedicated-agent origin real enough for client classification while
+ * routing its otherwise-unhandled requests into the deterministic smoke server.
+ * The dedicated client also resolves control-plane requests through the
+ * canonical Cloud origin, so both origins share the same local transport.
+ * Register these first because Playwright evaluates later route handlers first.
  */
-async function installConnectedCloudStatus(page: Page): Promise<void> {
-  await page.route("**/api/cloud/status", async (route) => {
+async function installCloudOriginFallbacks(
+  page: Page,
+  apiBase: string,
+): Promise<void> {
+  for (const origin of [
+    dedicatedAgentApiBase(KEEP_AGENT_ID),
+    dedicatedAgentApiBase(DROP_AGENT_ID),
+    dedicatedAgentApiBase(NEW_AGENT_ID),
+    "https://api.elizacloud.ai",
+  ]) {
+    await page.route(`${origin}/**`, async (route) => {
+      const requestUrl = new URL(route.request().url());
+      const localUrl = new URL(apiBase);
+      localUrl.pathname = requestUrl.pathname;
+      localUrl.search = requestUrl.search;
+
+      const response = await route.fetch({ url: localUrl.toString() });
+      await route.fulfill({ response });
+    });
+  }
+}
+
+/**
+ * The embedded agent list only mounts after the trusted native shell verifies
+ * its Steward session against the canonical Cloud account endpoints. Register
+ * these after the origin adapter so the exact account contracts win.
+ */
+async function installConnectedCloudAccount(page: Page): Promise<void> {
+  await page.route("https://api.elizacloud.ai/api/v1/user", async (route) => {
     if (route.request().method() !== "GET") {
       await route.fallback();
       return;
     }
+    expectStewardAuthorization(route);
     await fulfillJson(route, 200, {
-      connected: true,
-      enabled: true,
-      cloudVoiceProxyAvailable: true,
-      hasApiKey: true,
-      userId: "ui-smoke-lifecycle-user",
+      id: "ui-smoke-lifecycle-user",
+      organization_id: "ui-smoke-lifecycle-org",
     });
   });
-  await page.route("**/api/cloud/credits", async (route) => {
-    if (route.request().method() !== "GET") {
-      await route.fallback();
-      return;
-    }
-    await fulfillJson(route, 200, {
-      balance: 100,
-      low: false,
-      critical: false,
-      authRejected: false,
-    });
-  });
+  await page.route(
+    "https://api.elizacloud.ai/api/v1/credits/balance",
+    async (route) => {
+      if (route.request().method() !== "GET") {
+        await route.fallback();
+        return;
+      }
+      expectStewardAuthorization(route);
+      await fulfillJson(route, 200, { balance: 100 });
+    },
+  );
 }
 
 /** Serialize one agent into the cloud's REST shape (snake_case + aliases). */
-function serializeAgent(
-  agent: StoreAgent,
-  apiBase: string,
-): Record<string, unknown> {
+function serializeAgent(agent: StoreAgent): Record<string, unknown> {
   return {
     id: agent.id,
     agent_id: agent.id,
@@ -97,8 +146,8 @@ function serializeAgent(
     status: agent.status,
     // A dedicated agent is reachable at its own base; point it at the live stack
     // so a re-bind after create resolves to a server the smoke stack serves.
-    bridge_url: apiBase,
-    bridgeUrl: apiBase,
+    bridge_url: dedicatedAgentApiBase(agent.id),
+    bridgeUrl: dedicatedAgentApiBase(agent.id),
     web_ui_url: null,
     webUiUrl: null,
     containerUrl: "",
@@ -117,39 +166,33 @@ function lastPathSegment(url: string): string {
 }
 
 /**
- * Register a stateful fake for every cloud agent endpoint the dashboard can
- * reach — direct (`api.elizacloud.ai/api/v1/eliza/agents`) and local-proxy
- * (`/api/cloud/compat/agents`, `/api/cloud/v1/...`) — backed by one mutable
- * store so list/create/delete stay consistent across the whole flow.
+ * Register a stateful fake for the canonical direct Cloud agent collection and
+ * item endpoints. One mutable store keeps list/create/delete consistent across
+ * the whole flow.
  */
 async function installAgentStoreRoutes(
   page: Page,
   store: AgentStore,
-  apiBase: string,
 ): Promise<void> {
   // Collection: GET = list, POST = create. Match the exact collection paths
   // (no trailing segment) so the per-agent routes below own `/<id>`.
-  const collectionPatterns = [
+  await page.route(
     "https://api.elizacloud.ai/api/v1/eliza/agents",
-    "**/api/cloud/compat/agents",
-    "**/api/cloud/v1/eliza/agents",
-  ];
-  for (const pattern of collectionPatterns) {
-    await page.route(pattern, async (route) => {
+    async (route) => {
+      expectStewardAuthorization(route);
       const method = route.request().method();
       if (method === "GET") {
         await fulfillJson(route, 200, {
           success: true,
-          data: store.agents.map((a) => serializeAgent(a, apiBase)),
+          data: store.agents.map(serializeAgent),
         });
         return;
       }
       if (method === "POST") {
         const body =
-          (route.request().postDataJSON() as { agentName?: string } | null) ??
-          {};
-        store.nextId += 1;
-        const id = `agent-${store.nextId}`;
+          (route.request().postDataJSON() as CreateAgentRequest | null) ?? {};
+        store.createRequests.push(body);
+        const id = store.createdAgentId;
         const agent: StoreAgent = {
           id,
           agentName: body.agentName || id,
@@ -158,6 +201,12 @@ async function installAgentStoreRoutes(
         store.agents.push(agent);
         await fulfillJson(route, 200, {
           success: true,
+          // The UI's forced-create path requires the server's explicit
+          // fresh-creation confirmation (client-cloud.ts
+          // requireConfirmedFreshCloudAgentCreate rejects
+          // `forceCreate && created !== true`); omit it and createAgent
+          // treats the response as idempotent reuse and never binds.
+          created: true,
           data: {
             id,
             agentId: id,
@@ -171,17 +220,14 @@ async function installAgentStoreRoutes(
         return;
       }
       await route.fallback();
-    });
-  }
+    },
+  );
 
   // Per-agent: GET = detail, DELETE = remove, POST(.../provision) = ack.
-  const itemPatterns = [
+  await page.route(
     "https://api.elizacloud.ai/api/v1/eliza/agents/*",
-    "**/api/cloud/compat/agents/*",
-    "**/api/cloud/v1/eliza/agents/*",
-  ];
-  for (const pattern of itemPatterns) {
-    await page.route(pattern, async (route) => {
+    async (route) => {
+      expectStewardAuthorization(route);
       const url = route.request().url();
       const method = route.request().method();
       // Sub-resources (…/provision, …/launch, …/pairing-token) just ack.
@@ -201,14 +247,14 @@ async function installAgentStoreRoutes(
         }
         await fulfillJson(route, 200, {
           success: true,
-          data: serializeAgent(agent, apiBase),
+          data: serializeAgent(agent),
         });
         return;
       }
       if (method === "DELETE") {
         store.agents = store.agents.filter((a) => a.id !== id);
-        // jobId:"" → the UI treats the delete as synchronous and drops the row
-        // immediately; the job route below still answers if a jobId is polled.
+        // An empty jobId makes this direct CRUD response synchronous, so no
+        // separate job transport can conceal whether the row was removed.
         await fulfillJson(route, 200, {
           success: true,
           data: { jobId: "", status: "deleted", message: "Agent deleted" },
@@ -223,46 +269,15 @@ async function installAgentStoreRoutes(
         return;
       }
       await route.fallback();
-    });
-  }
-
-  // Any delete/provision job poll → completed (covers a synthesized job-delete).
-  const jobPatterns = [
-    "https://api.elizacloud.ai/api/v1/jobs/*",
-    "**/api/cloud/compat/jobs/*",
-    "**/api/cloud/v1/jobs/*",
-  ];
-  for (const pattern of jobPatterns) {
-    await page.route(pattern, async (route) => {
-      if (route.request().method() !== "GET") {
-        await route.fallback();
-        return;
-      }
-      const jobId = lastPathSegment(route.request().url());
-      await fulfillJson(route, 200, {
-        success: true,
-        data: {
-          id: jobId,
-          jobId,
-          type: "agent_delete",
-          status: "completed",
-          state: "completed",
-          data: {},
-          result: {},
-          error: null,
-          createdAt: "2026-01-01T00:00:00.000Z",
-          completedAt: "2026-01-01T00:00:02.000Z",
-          retryCount: 0,
-        },
-      });
-    });
-  }
+    },
+  );
 }
 
 async function seedCloudActiveAgent(
   page: Page,
   agentId: string,
   apiBase: string,
+  tokens: CloudSessionTokens,
 ): Promise<void> {
   await seedAppStorage(page, {
     "elizaos:active-server": JSON.stringify({
@@ -270,7 +285,7 @@ async function seedCloudActiveAgent(
       kind: "cloud",
       label: "Eliza Cloud",
       apiBase,
-      accessToken: CLOUD_AUTH_TOKEN,
+      accessToken: tokens.agentAccessToken,
     }),
     "eliza:mobile-runtime-mode": "cloud",
   });
@@ -280,7 +295,7 @@ async function seedCloudActiveAgent(
     },
     { voiceKey: VOICE_PREFIX_DONE_STORAGE_KEY },
   );
-  await seedStewardSession(page, { token: CLOUD_AUTH_TOKEN });
+  await seedStewardSession(page, { token: tokens.stewardToken });
 }
 
 function agentRow(page: Page, name: string) {
@@ -294,19 +309,123 @@ test("cloud agents: list, delete, then reprovision another from Settings", async
   const apiBase = (baseURL ?? "").replace(/\/$/, "");
   expect(apiBase, "Playwright baseURL must be configured").toBeTruthy();
 
-  // Two provisioned agents; the seeded active one is "agent-keep".
+  const forbiddenCloudProxyRequests: Array<{ method: string; url: string }> =
+    [];
+  page.on("request", (request) => {
+    const url = request.url();
+    if (url.includes("/api/cloud/compat/") || url.includes("/api/cloud/v1/")) {
+      forbiddenCloudProxyRequests.push({ method: request.method(), url });
+    }
+  });
+
+  await page.addInitScript(() => {
+    const win = window as Window & {
+      Capacitor?: {
+        PluginHeaders?: Array<{
+          name: string;
+          methods: Array<{
+            name: string;
+            rtype: "promise" | "callback";
+          }>;
+        }>;
+        nativePromise?: (
+          pluginName: string,
+          methodName: string,
+          options?: unknown,
+        ) => Promise<unknown>;
+        nativeCallback?: (
+          pluginName: string,
+          methodName: string,
+          options?: unknown,
+          callback?: (...args: unknown[]) => void,
+        ) => string;
+      };
+      CapacitorCustomPlatform?: {
+        name: string;
+        plugins: Record<string, unknown>;
+      };
+    };
+    win.CapacitorCustomPlatform = { name: "android", plugins: {} };
+    win.Capacitor = {
+      ...(win.Capacitor ?? {}),
+      PluginHeaders: [
+        {
+          name: "StatusBar",
+          methods: [
+            { name: "setStyle", rtype: "promise" },
+            { name: "setOverlaysWebView", rtype: "promise" },
+            { name: "setBackgroundColor", rtype: "promise" },
+          ],
+        },
+        {
+          name: "Keyboard",
+          methods: [
+            { name: "addListener", rtype: "callback" },
+            { name: "removeListener", rtype: "promise" },
+          ],
+        },
+        {
+          name: "DeepLinkBuffer",
+          methods: [
+            { name: "peekPendingUrl", rtype: "promise" },
+            { name: "acknowledgePendingUrl", rtype: "promise" },
+          ],
+        },
+        {
+          name: "CapacitorBackgroundRunner",
+          methods: [{ name: "dispatchEvent", rtype: "promise" }],
+        },
+      ],
+      nativePromise: async (pluginName, methodName) => {
+        const call = `${pluginName}.${methodName}`;
+        if (call === "DeepLinkBuffer.peekPendingUrl") return { url: null };
+        if (call === "DeepLinkBuffer.acknowledgePendingUrl") {
+          return { cleared: true };
+        }
+        if (
+          call === "StatusBar.setStyle" ||
+          call === "StatusBar.setOverlaysWebView" ||
+          call === "StatusBar.setBackgroundColor" ||
+          call === "Keyboard.removeListener" ||
+          call === "CapacitorBackgroundRunner.dispatchEvent"
+        ) {
+          return {};
+        }
+        throw new Error(`Unexpected native promise call: ${call}`);
+      },
+      nativeCallback: (pluginName, methodName, options) => {
+        const call = `${pluginName}.${methodName}`;
+        if (call !== "Keyboard.addListener") {
+          throw new Error(`Unexpected native callback call: ${call}`);
+        }
+        return `keyboard-listener:${String(options)}`;
+      },
+    };
+  });
+
+  // Two provisioned agents; the seeded active one is KEEP_AGENT_ID.
   const store: AgentStore = {
     agents: [
-      { id: "agent-keep", agentName: "Keeper", status: "running" },
-      { id: "agent-drop", agentName: "Disposable", status: "running" },
+      { id: KEEP_AGENT_ID, agentName: "Keeper", status: "running" },
+      { id: DROP_AGENT_ID, agentName: "Disposable", status: "running" },
     ],
-    nextId: 100,
+    createdAgentId: NEW_AGENT_ID,
+    createRequests: [],
   };
 
-  await seedCloudActiveAgent(page, "agent-keep", apiBase);
+  await seedCloudActiveAgent(
+    page,
+    KEEP_AGENT_ID,
+    dedicatedAgentApiBase(KEEP_AGENT_ID),
+    {
+      agentAccessToken: AGENT_AUTH_TOKEN,
+      stewardToken: STEWARD_AUTH_TOKEN,
+    },
+  );
+  await installCloudOriginFallbacks(page, apiBase);
   await installDefaultAppRoutes(page);
-  await installConnectedCloudStatus(page);
-  await installAgentStoreRoutes(page, store, apiBase);
+  await installConnectedCloudAccount(page);
+  await installAgentStoreRoutes(page, store);
 
   // Cloud agents are embedded in the Cloud Overview settings section.
   await openAppPath(page, "/settings");
@@ -331,7 +450,7 @@ test("cloud agents: list, delete, then reprovision another from Settings", async
     timeout: 30_000,
   });
   await expect(agentRow(page, "Keeper")).toBeVisible();
-  expect(store.agents.map((a) => a.id)).toEqual(["agent-keep"]);
+  expect(store.agents.map((a) => a.id)).toEqual([KEEP_AGENT_ID]);
 
   // --- Reprovision: create a brand-new agent; the section binds it active and
   // reloads the app (the same path a returning user takes on switch).
@@ -344,11 +463,22 @@ test("cloud agents: list, delete, then reprovision another from Settings", async
       () =>
         page.evaluate(() => {
           const raw = localStorage.getItem("elizaos:active-server");
-          return raw ? (JSON.parse(raw) as { id?: string }).id : null;
+          if (!raw) return null;
+          const active = JSON.parse(raw) as {
+            id?: string;
+            apiBase?: string;
+          };
+          return { id: active.id, apiBase: active.apiBase };
         }),
       { timeout: 30_000 },
     )
-    .toBe("cloud:agent-101");
+    .toEqual({
+      id: `cloud:${NEW_AGENT_ID}`,
+      apiBase: dedicatedAgentApiBase(NEW_AGENT_ID),
+    });
+  expect(store.createRequests).toEqual([
+    { agentName: "Fresh Agent", alwaysOn: true, forceCreate: true },
+  ]);
   expect(store.agents.map((a) => a.agentName).sort()).toEqual([
     "Fresh Agent",
     "Keeper",
@@ -371,7 +501,8 @@ test("cloud agents: list, delete, then reprovision another from Settings", async
   await page.getByRole("button", { name: "Delete Keeper" }).click();
   await expect(agentRow(page, "Keeper")).toHaveCount(0, { timeout: 30_000 });
   await expect(agentRow(page, "Fresh Agent")).toBeVisible();
-  expect(store.agents.map((a) => a.id)).toEqual(["agent-101"]);
+  expect(store.agents.map((a) => a.id)).toEqual([NEW_AGENT_ID]);
+  expect(forbiddenCloudProxyRequests).toEqual([]);
 });
 
 /**
@@ -391,7 +522,10 @@ test("cloud handoff: home tile tracks migrating→switched, failures speak in ch
   const apiBase = (baseURL ?? "").replace(/\/$/, "");
   expect(apiBase, "Playwright baseURL must be configured").toBeTruthy();
 
-  await seedCloudActiveAgent(page, "agent-keep", apiBase);
+  await seedCloudActiveAgent(page, "agent-keep", apiBase, {
+    agentAccessToken: HANDOFF_AUTH_TOKEN,
+    stewardToken: HANDOFF_AUTH_TOKEN,
+  });
   await installDefaultAppRoutes(page);
   await openAppPath(page, "/");
 

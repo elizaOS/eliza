@@ -34,6 +34,13 @@ import { cn } from "../../lib/utils";
 import { PagePanel } from "../composites/page-panel";
 import { RedactedBadge } from "../RedactedBadge";
 import { Button } from "../ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../ui/select";
 import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
 import { LiveMeetingPane } from "./LiveMeetingPane";
 import { MeetingJoinBar } from "./MeetingJoinBar";
@@ -62,12 +69,135 @@ export interface TranscriptsViewProps {
   onSelect(id: string): void;
   loading?: boolean;
   error?: string | null;
+  selectedLoading?: boolean;
+  selectedError?: string | null;
+  onUpdatePrivacy?(
+    sharing: Partial<TranscriptCapturePrivacyState["sharing"]>,
+  ): void;
+  onDeleteSourceAudio?(): void;
+  privacySaving?: boolean;
+  privacyError?: string | null;
   /** Sessions not yet ended/failed (GET /api/meetings?active=1). */
   activeMeetings?: MeetingSession[];
   onJoinMeeting?(input: MeetingJoinRequest): void;
   onStopMeeting?(sessionId: string): void;
   joiningMeeting?: boolean;
   meetingError?: string | null;
+}
+
+type ArtifactSharingKey = keyof TranscriptCapturePrivacyState["sharing"];
+
+const ARTIFACT_SHARING_CONTROLS: ReadonlyArray<{
+  key: ArtifactSharingKey;
+  label: string;
+}> = [
+  { key: "transcript", label: "Transcript" },
+  { key: "notes", label: "Notes" },
+  { key: "sourceAudio", label: "Source audio" },
+  { key: "artifacts", label: "Generated artifacts" },
+];
+
+const MANAGEABLE_SHARING_STATES: readonly TranscriptSharingState[] = [
+  "owner_private",
+  "restricted",
+  "shared",
+  "disabled",
+];
+
+export function ArtifactPrivacyControls({
+  transcript,
+  onUpdate,
+  onDeleteSourceAudio,
+  saving,
+  error,
+}: {
+  transcript: Transcript;
+  onUpdate(sharing: Partial<TranscriptCapturePrivacyState["sharing"]>): void;
+  onDeleteSourceAudio(): void;
+  saving: boolean;
+  error?: string | null;
+}): React.JSX.Element {
+  const state = transcriptCapturePrivacyState(transcript);
+  return (
+    <section
+      data-testid="transcript-artifact-privacy-controls"
+      className="rounded-sm border border-border p-3"
+      aria-label="Meeting artifact privacy"
+    >
+      <div className="mb-3 grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+        <div>
+          <h3 className="text-sm font-medium text-txt">Artifact privacy</h3>
+          <p className="text-xs text-muted">
+            Control each retained artifact independently.
+          </p>
+        </div>
+        {transcript.audioUrl && !state.sourceAudioDeleted ? (
+          <Button
+            type="button"
+            variant="destructive"
+            size="sm"
+            className="justify-self-start sm:justify-self-end"
+            disabled={saving}
+            onClick={onDeleteSourceAudio}
+          >
+            Delete source audio
+          </Button>
+        ) : null}
+      </div>
+      <div className="grid gap-2 sm:grid-cols-2">
+        {ARTIFACT_SHARING_CONTROLS.map(({ key, label }) => {
+          const value = state.sharing[key] ?? "owner_private";
+          return (
+            <div key={key} className="grid gap-1 text-xs text-muted">
+              <span>{label}</span>
+              <Select
+                value={value}
+                disabled={
+                  saving || (key === "sourceAudio" && state.sourceAudioDeleted)
+                }
+                onValueChange={(next) =>
+                  onUpdate({ [key]: next as TranscriptSharingState })
+                }
+              >
+                <SelectTrigger
+                  data-testid={`transcript-sharing-${key}`}
+                  className="h-9"
+                  aria-label={`${label} visibility`}
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {MANAGEABLE_SHARING_STATES.map((option) => (
+                    <SelectItem key={option} value={option}>
+                      {SHARING_LABEL[option]}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          );
+        })}
+      </div>
+      {saving ? (
+        <p className="mt-2 text-xs text-muted" role="status">
+          Saving privacy settings…
+        </p>
+      ) : null}
+      {state.sourceAudioDeleted ? (
+        <p
+          data-testid="transcript-source-audio-deleted"
+          className="mt-2 text-xs text-muted"
+        >
+          Audio deleted, transcript retained
+        </p>
+      ) : null}
+      {error ? (
+        <p className="mt-2 text-xs text-destructive" role="alert">
+          {error}
+        </p>
+      ) : null}
+    </section>
+  );
 }
 
 function formatDuration(ms: number): string {
@@ -401,6 +531,12 @@ export function TranscriptsView({
   onSelect,
   loading,
   error,
+  selectedLoading = false,
+  selectedError,
+  onUpdatePrivacy,
+  onDeleteSourceAudio,
+  privacySaving = false,
+  privacyError,
   activeMeetings = [],
   onJoinMeeting,
   onStopMeeting,
@@ -476,7 +612,23 @@ export function TranscriptsView({
               selectedIsLiveMeeting ? "flex flex-col" : "overflow-y-auto",
             )}
           >
-            {selected ? (
+            {selectedLoading ? (
+              <div
+                data-testid="transcripts-detail-loading"
+                className="grid h-full place-items-center text-sm text-muted"
+                role="status"
+              >
+                Loading transcript…
+              </div>
+            ) : selectedError ? (
+              <div
+                data-testid="transcripts-detail-error"
+                className="grid h-full place-items-center text-sm text-destructive"
+                role="alert"
+              >
+                {selectedError}
+              </div>
+            ) : selected ? (
               <div
                 className={cn(
                   "flex flex-col gap-3",
@@ -498,6 +650,17 @@ export function TranscriptsView({
                   <>
                     <MeetingDetailHeader transcript={selected} />
                     <MeetingCapturePrivacyStrip transcript={selected} />
+                    {!selected.redacted &&
+                    onUpdatePrivacy &&
+                    onDeleteSourceAudio ? (
+                      <ArtifactPrivacyControls
+                        transcript={selected}
+                        onUpdate={onUpdatePrivacy}
+                        onDeleteSourceAudio={onDeleteSourceAudio}
+                        saving={privacySaving}
+                        error={privacyError}
+                      />
+                    ) : null}
                   </>
                 ) : null}
                 {selectedIsLiveMeeting ? (

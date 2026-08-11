@@ -6,6 +6,7 @@
  */
 import type { ChatMessage, ChatMessageContentPart } from "../types/model";
 import type { JsonValue } from "../types/primitives.ts";
+import { tailWellFormed, truncateWellFormed } from "../utils/well-formed";
 import { stringifyForModel } from "./json-output";
 import type { PlannerStep, PlannerToolResult } from "./planner-types";
 import {
@@ -75,20 +76,26 @@ export function truncateToolResultText(
 		const tailFloor = preserveBudget >= 20 ? 10 : preserveBudget > 1 ? 1 : 0;
 		const headChars = Math.max(headFloor, Math.floor(preserveBudget * 0.6));
 		const tailChars = Math.max(tailFloor, preserveBudget - headChars);
-		const preservedChars = headChars + tailChars;
-		const truncatedCount = text.length - preservedChars;
+		// Surrogate-safe cuts: a plain slice landing mid-emoji leaves a lone
+		// surrogate that strict provider JSON parsers reject (#18025).
+		const head = truncateWellFormed(text, headChars);
+		const tail = tailWellFormed(text, tailChars);
+		// Compute the truncated count from the ACTUAL retained code-unit
+		// lengths, not the requested head/tail lengths — truncateWellFormed
+		// and tailWellFormed back off at surrogate boundaries, so the actual
+		// retained length may be shorter than the request (#18081).
+		const actualPreserved = head.length + tail.length;
+		const truncatedCount = text.length - actualPreserved;
 		if (truncatedCount <= 0) {
-			return text.slice(0, limit);
+			return truncateWellFormed(text, limit);
 		}
 		const marker = markerFor(truncatedCount);
-		if (preservedChars + marker.length <= limit) {
-			const head = text.slice(0, headChars);
-			const tail = text.slice(text.length - tailChars);
+		if (actualPreserved + marker.length <= limit) {
 			return `${head}${marker}${tail}`;
 		}
 	}
 
-	return text.slice(0, limit);
+	return truncateWellFormed(text, limit);
 }
 
 /**

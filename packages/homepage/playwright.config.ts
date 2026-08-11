@@ -20,8 +20,10 @@ export default defineConfig({
   reporter: "list",
   timeout: 60_000,
   expect: {
-    timeout: 20000,
-    toHaveScreenshot: { maxDiffPixelRatio: 0.05 },
+    // Self-hosted fleet runners share one software GPU across several jobs;
+    // renderer starvation stalls rAF-driven state for tens of seconds, so CI
+    // assertion budgets must absorb host load. Local runs stay tight.
+    timeout: process.env.CI ? 60_000 : 20_000,
   },
   outputDir: recording
     ? path.resolve(

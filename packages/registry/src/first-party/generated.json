@@ -44,7 +44,6 @@
       "source": "bundled",
       "tags": [
         "agent-skills",
-        "clawhub",
         "otto",
         "skills",
         "agents",
@@ -66,14 +65,6 @@
           "sensitive": false,
           "label": "Auto Load",
           "help": "Automatically load installed skills on startup",
-          "advanced": false
-        },
-        "SKILLS_REGISTRY": {
-          "type": "string",
-          "required": false,
-          "sensitive": false,
-          "label": "Registry",
-          "help": "Skill registry URL (default: https://clawhub.ai)",
           "advanced": false
         },
         "BUNDLED_SKILLS_DIRS": {
@@ -1966,6 +1957,147 @@
       "shortIds": [],
       "kind": "plugin",
       "subtype": "storage"
+    },
+    {
+      "id": "fish-audio",
+      "name": "Fish Audio",
+      "description": "Governance-gated Fish Audio realtime text-to-speech provider for elizaOS.",
+      "npmName": "@elizaos/plugin-fish-audio",
+      "version": "0.1.0",
+      "source": "bundled",
+      "tags": ["ai-provider", "voice", "text-to-speech", "tts", "streaming"],
+      "config": {
+        "ELIZA_TTS_FISH_ENABLED": {
+          "type": "boolean",
+          "required": false,
+          "sensitive": false,
+          "default": false,
+          "label": "Enable Fish Audio",
+          "help": "Registers the Fish Audio TTS handler only when governance approval and credentials are also present.",
+          "advanced": false
+        },
+        "FISH_AUDIO_DATA_GOVERNANCE_APPROVED": {
+          "type": "boolean",
+          "required": false,
+          "sensitive": false,
+          "default": false,
+          "label": "Data Governance Approved",
+          "help": "Operator attestation that sending text and voice references to Fish Audio is approved for this deployment.",
+          "advanced": false
+        },
+        "FISH_AUDIO_API_KEY": {
+          "type": "secret",
+          "required": true,
+          "sensitive": true,
+          "label": "Fish Audio API Key",
+          "advanced": false
+        },
+        "FISH_AUDIO_MODEL": {
+          "type": "select",
+          "required": false,
+          "sensitive": false,
+          "default": "s2.1-pro",
+          "label": "Fish Audio Model",
+          "advanced": false,
+          "options": [
+            {
+              "value": "s1",
+              "label": "S1"
+            },
+            {
+              "value": "s2-pro",
+              "label": "S2 Pro"
+            },
+            {
+              "value": "s2.1-pro",
+              "label": "S2.1 Pro"
+            },
+            {
+              "value": "s2.1-pro-free",
+              "label": "S2.1 Pro Free"
+            }
+          ]
+        },
+        "FISH_AUDIO_REFERENCE_ID": {
+          "type": "string",
+          "required": false,
+          "sensitive": false,
+          "label": "Reference ID",
+          "help": "Consented Fish Audio voice/reference identifier.",
+          "advanced": false
+        },
+        "FISH_AUDIO_VOICE_ID": {
+          "type": "string",
+          "required": false,
+          "sensitive": false,
+          "label": "Voice ID",
+          "help": "Compatibility alias for the consented reference identifier.",
+          "advanced": true
+        },
+        "FISH_AUDIO_FORMAT": {
+          "type": "select",
+          "required": false,
+          "sensitive": false,
+          "default": "pcm",
+          "label": "Audio Format",
+          "advanced": true,
+          "options": [
+            {
+              "value": "pcm",
+              "label": "PCM16"
+            }
+          ]
+        },
+        "FISH_AUDIO_SAMPLE_RATE": {
+          "type": "number",
+          "required": false,
+          "sensitive": false,
+          "default": 24000,
+          "label": "Sample Rate",
+          "advanced": true,
+          "min": 24000,
+          "max": 24000,
+          "unit": "Hz"
+        },
+        "FISH_AUDIO_MAX_BUFFER_BYTES": {
+          "type": "number",
+          "required": false,
+          "sensitive": false,
+          "default": 16777216,
+          "label": "Maximum Buffered Audio",
+          "advanced": true,
+          "min": 1,
+          "unit": "bytes"
+        },
+        "FISH_AUDIO_SYNTHESIS_TIMEOUT_MS": {
+          "type": "number",
+          "required": false,
+          "sensitive": false,
+          "default": 120000,
+          "label": "Synthesis Timeout",
+          "advanced": true,
+          "min": 1,
+          "unit": "ms"
+        }
+      },
+      "render": {
+        "visible": true,
+        "pinTo": [],
+        "style": "card",
+        "icon": "AudioWaveform",
+        "group": "ai-provider",
+        "groupOrder": 30,
+        "actions": ["enable", "configure"]
+      },
+      "resources": {
+        "homepage": "https://github.com/elizaOS/eliza/tree/develop/plugins/plugin-fish-audio#readme",
+        "repository": "https://github.com/elizaOS/eliza"
+      },
+      "dependsOn": [],
+      "channels": [],
+      "shortIds": [],
+      "kind": "plugin",
+      "subtype": "ai-provider"
     },
     {
       "id": "form",
@@ -5989,6 +6121,125 @@
         "kind": "token",
         "credentialKeys": []
       }
+    },
+    {
+      "id": "zerollama",
+      "name": "Ollama / zerollama",
+      "description": "Local and self-hosted Ollama-compatible inference for text, embeddings, tool calls, structured output, speech, and transcription.",
+      "npmName": "@elizaos/plugin-zerollama",
+      "version": "2.0.3-beta.7",
+      "source": "bundled",
+      "tags": [
+        "ai-provider",
+        "llm",
+        "ollama",
+        "zerollama",
+        "local-models",
+        "self-hosted",
+        "embedding",
+        "voice",
+        "tts",
+        "transcription"
+      ],
+      "config": {
+        "OLLAMA_BASE_URL": {
+          "type": "string",
+          "required": false,
+          "sensitive": false,
+          "default": "http://127.0.0.1:11434",
+          "label": "Ollama Base URL",
+          "help": "Base URL of the Ollama-compatible server. A trailing /api is optional.",
+          "advanced": false,
+          "autoEnableProvider": true
+        },
+        "OLLAMA_API_ENDPOINT": {
+          "type": "string",
+          "required": false,
+          "sensitive": false,
+          "label": "Ollama API Endpoint",
+          "help": "Higher-precedence endpoint alias; values with or without /api are accepted.",
+          "advanced": true,
+          "autoEnableProvider": true
+        },
+        "OLLAMA_API_URL": {
+          "type": "string",
+          "required": false,
+          "sensitive": false,
+          "label": "Ollama API URL",
+          "help": "Compatibility endpoint alias used when OLLAMA_API_ENDPOINT is unset.",
+          "advanced": true,
+          "autoEnableProvider": true
+        },
+        "OLLAMA_SMALL_MODEL": {
+          "type": "string",
+          "required": false,
+          "sensitive": false,
+          "default": "eliza-1-2b",
+          "label": "Small Model",
+          "help": "Model tag for nano, small, and medium text calls unless separately overridden.",
+          "advanced": false
+        },
+        "OLLAMA_LARGE_MODEL": {
+          "type": "string",
+          "required": false,
+          "sensitive": false,
+          "default": "eliza-1-4b",
+          "label": "Large Model",
+          "help": "Model tag for large and mega text calls unless separately overridden.",
+          "advanced": false
+        },
+        "OLLAMA_EMBEDDING_MODEL": {
+          "type": "string",
+          "required": false,
+          "sensitive": false,
+          "default": "eliza-1-2b",
+          "label": "Embedding Model",
+          "help": "Ollama model tag used for TEXT_EMBEDDING.",
+          "advanced": false
+        },
+        "OLLAMA_TTS_MODEL": {
+          "type": "string",
+          "required": false,
+          "sensitive": false,
+          "label": "Speech Model",
+          "help": "Enables TEXT_TO_SPEECH through POST /v1/audio/speech when set.",
+          "advanced": true
+        },
+        "OLLAMA_TTS_VOICE": {
+          "type": "string",
+          "required": false,
+          "sensitive": false,
+          "label": "Speech Voice",
+          "help": "Optional voice identifier sent to the speech endpoint.",
+          "advanced": true
+        },
+        "OLLAMA_TRANSCRIPTION_MODEL": {
+          "type": "string",
+          "required": false,
+          "sensitive": false,
+          "label": "Transcription Model",
+          "help": "Enables TRANSCRIPTION through POST /v1/audio/transcriptions when set.",
+          "advanced": true
+        }
+      },
+      "render": {
+        "visible": true,
+        "pinTo": [],
+        "style": "card",
+        "icon": "Cpu",
+        "group": "ai-provider",
+        "groupOrder": 10,
+        "actions": ["enable", "configure"]
+      },
+      "resources": {
+        "homepage": "https://github.com/elizaOS/eliza/tree/develop/plugins/plugin-zerollama#readme",
+        "repository": "https://github.com/elizaOS/eliza"
+      },
+      "dependsOn": [],
+      "channels": [],
+      "shortIds": ["ollama", "zerollama"],
+      "kind": "plugin",
+      "subtype": "ai-provider"
     }
   ]
 }

@@ -58,7 +58,7 @@
     "inventory.",
     "inventoryview.",
     "knowledge.",
-    "documentsview.",
+    "knowledgeview.",
     "lifeopsoverview.",
     "lifeopspage.",
     "lifeopssettings.",
@@ -71,13 +71,11 @@
     "memory.",
     "memoryviewer.",
     "messagecontent.",
-    "elizaos.",
     "music.",
     "musicplayersettings.",
     "nav.",
     "nodeCatalog.",
     "notice.",
-    "setup.",
     "pairingview.",
     "permissionssection.",
     "pluginsview.",
@@ -121,5 +119,6 @@
     "whatsappqroverlay.",
     "workflowGraph.",
     "workspace."
-  ]
+  ],
+  "uncatalogued": []
 }

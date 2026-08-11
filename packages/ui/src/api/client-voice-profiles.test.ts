@@ -34,6 +34,13 @@ describe("VoiceProfilesClient.list", () => {
             lastHeardAtMs: 2,
             cohort: "owner",
             source: "first-run",
+            samples: [
+              {
+                id: "sample-1",
+                durationMs: 1250,
+                recordedAt: "2026-08-01T10:00:00.000Z",
+              },
+            ],
           },
         ],
       };
@@ -49,6 +56,13 @@ describe("VoiceProfilesClient.list", () => {
     expect(owner.entityId).toBe("ent-shaw");
     expect(owner.cohort).toBe("owner");
     expect(owner.source).toBe("first-run");
+    expect(owner.samples).toEqual([
+      {
+        id: "sample-1",
+        durationMs: 1250,
+        recordedAt: "2026-08-01T10:00:00.000Z",
+      },
+    ]);
   });
 
   it("surfaces failures instead of fabricating an empty list", async () => {
@@ -101,6 +115,26 @@ describe("VoiceProfilesClient.list", () => {
     }));
     const list = await client.list();
     expect(list).toHaveLength(1);
+  });
+
+  it("drops malformed sample descriptors without fabricating ids", async () => {
+    const client = makeClient(async () => ({
+      profiles: [
+        {
+          id: "profile-1",
+          samples: [
+            { id: "valid", durationMs: 50, recordedAt: "now" },
+            { durationMs: 10 },
+            null,
+          ],
+        },
+      ],
+    }));
+
+    const list = await client.list();
+    expect(list[0]?.samples).toEqual([
+      { id: "valid", durationMs: 50, recordedAt: "now" },
+    ]);
   });
 });
 
@@ -300,6 +334,8 @@ describe("VoiceProfilesClient mutations surface failures", () => {
     ["patch", (c) => c.patch("a", { displayName: "x" })],
     ["merge", (c) => c.merge("a", { intoId: "b" })],
     ["split", (c) => c.split("a", { utteranceIds: ["u1"] })],
+    ["bind", (c) => c.bind("a", { entityId: "entity-a" })],
+    ["unbind", (c) => c.unbind("a")],
     ["delete", (c) => c.delete("a")],
     ["deleteAll", (c) => c.deleteAll()],
   ];
@@ -323,6 +359,94 @@ describe("VoiceProfilesClient mutations surface failures", () => {
       );
     });
   }
+});
+
+describe("VoiceProfilesClient lifecycle responses", () => {
+  const profile = {
+    id: "p1",
+    entityId: null,
+    displayName: "Profile 1",
+    relationshipLabel: null,
+    isOwner: false,
+    embeddingCount: 2,
+    firstHeardAtMs: 1,
+    lastHeardAtMs: 2,
+    cohort: "unknown",
+    source: "auto-clustered",
+    samples: [],
+  };
+
+  it("returns normalized merge and split profiles", async () => {
+    const calls: string[] = [];
+    const client = makeClient(async (path) => {
+      calls.push(path);
+      if (path.endsWith("/merge")) return { ...profile, id: "target" };
+      return {
+        original: profile,
+        split: { ...profile, id: "split" },
+      };
+    });
+
+    await expect(
+      client.merge("p1", { intoId: "target" }),
+    ).resolves.toMatchObject({ id: "target" });
+    await expect(
+      client.split("p1", { utteranceIds: ["sample-1"] }),
+    ).resolves.toMatchObject({
+      original: { id: "p1" },
+      split: { id: "split" },
+    });
+    expect(calls).toEqual([
+      "/api/voice/profiles/p1/merge",
+      "/api/voice/profiles/p1/split",
+    ]);
+  });
+
+  it("returns normalized bind and unbind profiles", async () => {
+    const calls: Array<{ path: string; init?: RequestInit }> = [];
+    const client = makeClient(async (path, init) => {
+      calls.push({ path, init });
+      return path.endsWith("/bind")
+        ? { ...profile, entityId: "entity-1" }
+        : profile;
+    });
+
+    await expect(
+      client.bind("p1", { entityId: "entity-1", label: "Alex" }),
+    ).resolves.toMatchObject({ entityId: "entity-1" });
+    await expect(client.unbind("p1")).resolves.toMatchObject({
+      entityId: null,
+    });
+    expect(calls).toEqual([
+      {
+        path: "/api/voice/profiles/p1/bind",
+        init: {
+          method: "POST",
+          body: JSON.stringify({ entityId: "entity-1", label: "Alex" }),
+        },
+      },
+      {
+        path: "/api/voice/profiles/p1/unbind",
+        init: { method: "POST" },
+      },
+    ]);
+  });
+
+  it("rejects malformed lifecycle success payloads", async () => {
+    const client = makeClient(async () => ({ ok: true }));
+    await expect(
+      client.merge("p1", { intoId: "target" }),
+    ).rejects.toBeInstanceOf(VoiceProfilesUnavailableError);
+    await expect(
+      client.split("p1", { utteranceIds: ["sample-1"] }),
+    ).rejects.toBeInstanceOf(VoiceProfilesUnavailableError);
+    await expect(
+      client.bind("p1", { entityId: "entity-1" }),
+    ).rejects.toBeInstanceOf(VoiceProfilesUnavailableError);
+    await expect(client.unbind("p1")).rejects.toBeInstanceOf(
+      VoiceProfilesUnavailableError,
+    );
+  });
 });
 
 describe("VoiceProfilesClient.exportAll", () => {

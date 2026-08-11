@@ -22,6 +22,7 @@ import { Navigate } from "react-router-dom";
 import { client } from "../../api";
 import { Button } from "../../components/ui/button";
 import {
+  clearPersistedActiveServer,
   savePersistedActiveServer,
   savePersistedFirstRunComplete,
 } from "../../state/persistence";
@@ -84,7 +85,11 @@ export default function JoinPage(): React.JSX.Element {
     try {
       const result = await runJoinFlow({
         client,
-        effects: { savePersistedActiveServer, savePersistedFirstRunComplete },
+        effects: {
+          savePersistedActiveServer,
+          clearPersistedActiveServer,
+          savePersistedFirstRunComplete,
+        },
         cloudApiBase: resolveJoinCloudApiBase(),
         authToken,
         agentName: DEFAULT_AGENT_NAME,

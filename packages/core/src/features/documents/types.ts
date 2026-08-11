@@ -136,6 +136,12 @@ export interface TextGenerationOptions {
 	autoCacheContextualRetrieval?: boolean;
 }
 
+/** Producer-owned chunk whose metadata is projected onto its fragment row. */
+export interface PreChunkedFragmentInput {
+	text: string;
+	metadata?: Record<string, unknown>;
+}
+
 export interface AddDocumentOptions {
 	agentId?: UUID;
 	worldId: UUID;
@@ -151,6 +157,8 @@ export interface AddDocumentOptions {
 	addedByRole?: DocumentAddedByRole;
 	addedFrom?: DocumentAddedFrom;
 	metadata?: Record<string, unknown>;
+	/** Store these verbatim fragments instead of token-splitting `content`. */
+	fragments?: PreChunkedFragmentInput[];
 }
 declare module "../../types/service.ts" {
 	interface ServiceTypeRegistry {
@@ -240,6 +248,11 @@ export interface DocumentFragmentMemoryMetadata
 	source?: string;
 	documentTitle?: string;
 	timestamp?: number;
+	transcriptId?: string;
+	segmentIds?: string[];
+	startMs?: number;
+	endMs?: number;
+	speakerLabels?: string[];
 }
 export interface DocumentsConfig {
 	CTX_DOCUMENTS_ENABLED: boolean;

@@ -29,7 +29,7 @@ import type {
 	Memory,
 	State,
 } from "@elizaos/core";
-import { logger, resolveServerOnlyPort } from "@elizaos/core";
+import { logger } from "@elizaos/core";
 import {
 	APPEARANCE_APPLY_EVENT,
 	type AppearanceApplyPayload,
@@ -50,6 +50,7 @@ import {
 	type SETTINGS_NON_CATALOG_SECTION_META,
 	SETTINGS_SECTION_META,
 } from "@elizaos/ui/components/settings/settings-section-meta";
+import { getAppControlApiBase } from "../loopback-api.js";
 import { normalizeActionOptions, readStringOption } from "../params.js";
 import { createViewsRequestHeaders } from "./views-request-auth.js";
 
@@ -725,6 +726,8 @@ interface VoiceVadAutoStopPrefs {
 
 interface VoiceSettingsPrefs {
 	continuous: VoiceContinuousMode;
+	osIntentAutoStartVoice: boolean;
+	osIntentAutoStartTranscription: boolean;
 	vadAutoStop: VoiceVadAutoStopPrefs;
 }
 
@@ -758,6 +761,8 @@ const VOICE_CONTINUOUS_ALIASES: ReadonlyMap<string, VoiceContinuousMode> =
 // mechanically by a test that imports the canonical constant.
 export const DEFAULT_VOICE_SETTINGS_PREFS: VoiceSettingsPrefs = {
 	continuous: "off",
+	osIntentAutoStartVoice: false,
+	osIntentAutoStartTranscription: false,
 	// Must track the canonical capture default (`DEFAULT_LOCAL_ASR_AUTO_STOP` in
 	// @elizaos/ui): a chat-write that seeds a partial voice config must persist the
 	// same VAD sensitivity the running capture path uses, or the stored value
@@ -808,6 +813,9 @@ function readVoiceSettingsPrefs(config: unknown): VoiceSettingsPrefs {
 			: undefined;
 	return {
 		continuous: continuous ?? DEFAULT_VOICE_SETTINGS_PREFS.continuous,
+		osIntentAutoStartVoice: voice.osIntentAutoStartVoice === true,
+		osIntentAutoStartTranscription:
+			voice.osIntentAutoStartTranscription === true,
 		vadAutoStop: readVoiceVadAutoStop(voice.vadAutoStop),
 	};
 }
@@ -857,6 +865,29 @@ function buildVoiceSettingsPrefs(
 	}
 
 	if (
+		normalizedKey === "shortcut-voice" ||
+		normalizedKey === "voice-shortcut" ||
+		normalizedKey === "voice-auto-start"
+	) {
+		const enabled = parseBooleanValue(value);
+		if (enabled === null)
+			return "provide value=on|off for voice shortcut auto-start";
+		return { ...current, osIntentAutoStartVoice: enabled };
+	}
+
+	if (
+		normalizedKey === "shortcut-transcription" ||
+		normalizedKey === "transcription-shortcut" ||
+		normalizedKey === "transcription-auto-start"
+	) {
+		const enabled = parseBooleanValue(value);
+		if (enabled === null) {
+			return "provide value=on|off for transcription shortcut auto-start";
+		}
+		return { ...current, osIntentAutoStartTranscription: enabled };
+	}
+
+	if (
 		normalizedKey === "silence" ||
 		normalizedKey === "silence-ms" ||
 		normalizedKey === "vad-silence" ||
@@ -894,7 +925,7 @@ function buildVoiceSettingsPrefs(
 		};
 	}
 
-	return "provide key=continuous|silence-ms|rms";
+	return "provide key=continuous|silence-ms|rms|shortcut-voice|shortcut-transcription";
 }
 
 // Mirror the applied prefs onto the running shell. Persisting messages.voice
@@ -908,6 +939,8 @@ function voiceSettingsBroadcastRequest(
 ): SettingsRouteRequest {
 	const payload: VoiceSettingsApplyPayload = {
 		continuous: prefs.continuous,
+		osIntentAutoStartVoice: prefs.osIntentAutoStartVoice,
+		osIntentAutoStartTranscription: prefs.osIntentAutoStartTranscription,
 		vadAutoStop: prefs.vadAutoStop,
 	};
 	return {
@@ -919,7 +952,7 @@ function voiceSettingsBroadcastRequest(
 
 const VOICE_PREFS_KEY: SettingsWritableKey = {
 	description:
-		"Voice continuous-chat mode and VAD end-of-turn thresholds persisted under messages.voice through /api/config.",
+		"Voice continuous-chat mode, shortcut microphone auto-start consent, and VAD end-of-turn thresholds persisted under messages.voice through /api/config.",
 	valueType: "command",
 	apply: async ({ keyName, request, routeFetch }) => {
 		const current = await routeFetch({ method: "GET", path: "/api/config" });
@@ -948,7 +981,7 @@ const VOICE_PREFS_KEY: SettingsWritableKey = {
 	},
 	successText: (_value, _request, outcome) => {
 		const next = readVoiceSettingsPrefs({ messages: { voice: outcome.data } });
-		return `Voice settings updated: continuous chat is ${next.continuous}, silence is ${next.vadAutoStop.silenceMs}ms, speech threshold is ${next.vadAutoStop.speechRmsThreshold}.`;
+		return `Voice settings updated: continuous chat is ${next.continuous}, voice shortcut auto-start is ${next.osIntentAutoStartVoice ? "on" : "off"}, transcription shortcut auto-start is ${next.osIntentAutoStartTranscription ? "on" : "off"}, silence is ${next.vadAutoStop.silenceMs}ms, speech threshold is ${next.vadAutoStop.speechRmsThreshold}.`;
 	},
 };
 
@@ -1419,7 +1452,7 @@ export const SETTINGS_WRITE_REGISTRY: Readonly<
 	voice: {
 		kind: "route",
 		summary:
-			"Voice continuous-chat mode and VAD end-of-turn thresholds. Wake word remains a device-local toggle in Settings because it is not backed by a loopback route.",
+			"Voice continuous-chat mode, explicit shortcut microphone auto-start consent, and VAD end-of-turn thresholds. Wake word remains a device-local toggle in Settings because it is not backed by a loopback route.",
 		keys: {
 			continuous: VOICE_PREFS_KEY,
 			"continuous-chat": VOICE_PREFS_KEY,
@@ -1432,6 +1465,12 @@ export const SETTINGS_WRITE_REGISTRY: Readonly<
 			sensitivity: VOICE_PREFS_KEY,
 			"speech-threshold": VOICE_PREFS_KEY,
 			"vad-rms": VOICE_PREFS_KEY,
+			"shortcut-voice": VOICE_PREFS_KEY,
+			"voice-shortcut": VOICE_PREFS_KEY,
+			"voice-auto-start": VOICE_PREFS_KEY,
+			"shortcut-transcription": VOICE_PREFS_KEY,
+			"transcription-shortcut": VOICE_PREFS_KEY,
+			"transcription-auto-start": VOICE_PREFS_KEY,
 		},
 	},
 	capabilities: {
@@ -1704,8 +1743,7 @@ export function humanizeSettingsRouteFailure(
 async function defaultRouteFetch(
 	request: SettingsRouteRequest,
 ): Promise<SettingsRouteOutcome> {
-	const port = resolveServerOnlyPort(process.env);
-	const response = await fetch(`http://127.0.0.1:${port}${request.path}`, {
+	const response = await fetch(`${getAppControlApiBase()}${request.path}`, {
 		method: request.method,
 		// Every settings route crosses the same token-protected local API
 		// boundary (/api/config, /api/permissions, /api/wallet, /api/backups,
@@ -2048,11 +2086,11 @@ export function createSettingsAction(deps: SettingsActionDeps = {}): Action {
 			"VOICE_VAD_SETTINGS",
 		],
 		description:
-			"Change a built-in settings VALUE or run a built-in settings operation from chat — most importantly turning OS/runtime permissions like shell access on/off via section=permissions key=shell, requesting OS permissions via section=permissions key=request permission=microphone|camera|location|notifications|screen-recording, changing appearance values via section=appearance key=theme|accent|language|home-time-widget, changing voice continuous-chat/end-of-turn prefs via section=voice key=continuous|silence-ms|rms, toggling the wallet/browser/computer-use capabilities via section=capabilities key=wallet|browser|computer-use value=on|off, selecting wallet RPC providers via section=wallet-rpc key=evm|bsc|solana value=<provider> or key=cloud, granting/revoking an app permission namespace via section=app-permissions app=<slug> key=fs|net value=on|off, creating/restoring local agent backups via section=advanced key=create-backup|restore-backup, and checking/reporting connected-agent updates via section=updates key=status|check|channel|apply. Restore requires fileName and confirm=true. Update channel requires value=stable|beta|nightly. Also reads (`action=get`) or lists (`action=list`) which settings are changeable. `action=set` writes an owned section or points to the dedicated action that owns a delegated section (models→MODEL_SWITCH, background→BACKGROUND, identity→CHARACTER, connectors→PLUGIN, secrets→SECRETS). This CHANGES a setting's value or runs an explicit settings operation; opening a settings page without changing anything is VIEWS. Never fill a settings field with agent-fill.",
+			"Change a built-in settings VALUE or run a built-in settings operation from chat — most importantly turning OS/runtime permissions like shell access on/off via section=permissions key=shell, requesting OS permissions via section=permissions key=request permission=microphone|camera|location|notifications|screen-recording, changing appearance values via section=appearance key=theme|accent|language|home-time-widget, changing voice continuous-chat/end-of-turn prefs or explicit shortcut microphone auto-start consent via section=voice key=continuous|silence-ms|rms|shortcut-voice|shortcut-transcription, toggling the wallet/browser/computer-use capabilities via section=capabilities key=wallet|browser|computer-use value=on|off, selecting wallet RPC providers via section=wallet-rpc key=evm|bsc|solana value=<provider> or key=cloud, granting/revoking an app permission namespace via section=app-permissions app=<slug> key=fs|net value=on|off, creating/restoring local agent backups via section=advanced key=create-backup|restore-backup, and checking/reporting connected-agent updates via section=updates key=status|check|channel|apply. Restore requires fileName and confirm=true. Update channel requires value=stable|beta|nightly. Also reads (`action=get`) or lists (`action=list`) which settings are changeable. `action=set` writes an owned section or points to the dedicated action that owns a delegated section (models→MODEL_SWITCH, background→BACKGROUND, identity→CHARACTER, connectors→PLUGIN, secrets→SECRETS). This CHANGES a setting's value or runs an explicit settings operation; opening a settings page without changing anything is VIEWS. Never fill a settings field with agent-fill.",
 		descriptionCompressed:
 			"settings get|set|list section/key/value — CHANGE a setting VALUE or run a settings operation, incl. shell access, OS permission requests, appearance, voice, wallet RPC providers, app permissions, local backups, and updates",
 		routingHint:
-			"Semantic settings reads/writes that do NOT already have a dedicated action -> SETTINGS. Changing a PERMISSION or setting VALUE is SETTINGS action=set, NOT navigation: 'turn off shell permissions', 'disable shell access', 'turn off shell access', 'revoke shell access', 'stop the agent running shell commands', 'turn shell back on', 'change my permissions' -> SETTINGS section=permissions key=shell value=off|on. 'ask for microphone permission', 'request camera access', 'enable location permission', 'turn on notifications', 'request screen recording' -> SETTINGS section=permissions key=request permission=microphone|camera|location|notifications|screen-recording. 'switch to dark mode', 'use system theme', 'set the accent to green', 'change UI language to Spanish', 'hide/show the home time widget' -> SETTINGS section=appearance key=theme|accent|language|home-time-widget value=<value>. 'turn on continuous voice chat', 'switch voice to VAD', 'turn off hands-free voice' -> SETTINGS section=voice key=continuous value=always-on|vad-gated|off. 'set voice silence to 1200ms', 'make voice end-of-turn threshold 0.008' -> SETTINGS section=voice key=silence-ms|rms value=<number>. Wake word and voice profiles are device-local controls; open Settings > Voice for those. 'turn off the wallet capability', 'enable the browser capability', 'disable computer use' -> SETTINGS section=capabilities key=wallet|browser|computer-use value=on|off. 'use Alchemy for EVM RPC', 'set BSC RPC to NodeReal', 'use Helius for Solana RPC' -> SETTINGS section=wallet-rpc key=evm|bsc|solana value=alchemy|infura|ankr|nodereal|quicknode|helius-birdeye|eliza-cloud. 'use Eliza Cloud RPC' -> SETTINGS section=wallet-rpc key=cloud. 'switch wallet network to testnet' -> SETTINGS section=wallet-rpc key=network value=testnet. Never put wallet API keys or RPC URLs in SETTINGS; use SECRETS for API keys and vault material. 'check for updates', 'refresh update status' -> SETTINGS section=updates key=check. 'what update version am I on' -> SETTINGS section=updates key=status. 'switch updates to beta/nightly/stable' -> SETTINGS section=updates key=channel value=beta|nightly|stable. 'apply the available update' -> SETTINGS section=updates key=apply. 'revoke network access for my-app', 'grant filesystem access to sample-app' -> SETTINGS section=app-permissions app=<slug> key=net|fs value=off|on. 'back up my agent', 'create a local backup' -> SETTINGS section=advanced key=create-backup. 'restore backup <file>' -> SETTINGS section=advanced key=restore-backup fileName=<file> confirm=true; if confirm is absent, ask for confirmation. Also 'what settings can you change' / 'list settings' -> SETTINGS action=list. Do NOT use SETTINGS for changes a dedicated action owns: switching the model is MODEL_SWITCH, the background/wallpaper is BACKGROUND, the agent identity is CHARACTER, connector plugin lifecycle/config is PLUGIN, secret/API keys are SECRETS. The distinction from VIEWS is value-vs-navigation: changing/toggling a permission or setting VALUE, requesting an OS permission, changing an appearance value, changing voice preferences, changing wallet RPC provider selection, checking update status, changing update channel, or running a backup operation, is SETTINGS even though it lives on a settings page; merely OPENING or navigating to a settings page with no value change is VIEWS. SETTINGS never fills a form field with agent-fill.",
+			"Semantic settings reads/writes that do NOT already have a dedicated action -> SETTINGS. Changing a PERMISSION or setting VALUE is SETTINGS action=set, NOT navigation: 'turn off shell permissions', 'disable shell access', 'turn off shell access', 'revoke shell access', 'stop the agent running shell commands', 'turn shell back on', 'change my permissions' -> SETTINGS section=permissions key=shell value=off|on. 'ask for microphone permission', 'request camera access', 'enable location permission', 'turn on notifications', 'request screen recording' -> SETTINGS section=permissions key=request permission=microphone|camera|location|notifications|screen-recording. 'switch to dark mode', 'use system theme', 'set the accent to green', 'change UI language to Spanish', 'hide/show the home time widget' -> SETTINGS section=appearance key=theme|accent|language|home-time-widget value=<value>. 'turn on continuous voice chat', 'switch voice to VAD', 'turn off hands-free voice' -> SETTINGS section=voice key=continuous value=always-on|vad-gated|off. 'set voice silence to 1200ms', 'make voice end-of-turn threshold 0.008' -> SETTINGS section=voice key=silence-ms|rms value=<number>. 'allow voice shortcuts to start the microphone', 'turn off transcription shortcut auto-start' -> SETTINGS section=voice key=shortcut-voice|shortcut-transcription value=on|off. Wake word and voice profiles are device-local controls; open Settings > Voice for those. 'turn off the wallet capability', 'enable the browser capability', 'disable computer use' -> SETTINGS section=capabilities key=wallet|browser|computer-use value=on|off. 'use Alchemy for EVM RPC', 'set BSC RPC to NodeReal', 'use Helius for Solana RPC' -> SETTINGS section=wallet-rpc key=evm|bsc|solana value=alchemy|infura|ankr|nodereal|quicknode|helius-birdeye|eliza-cloud. 'use Eliza Cloud RPC' -> SETTINGS section=wallet-rpc key=cloud. 'switch wallet network to testnet' -> SETTINGS section=wallet-rpc key=network value=testnet. Never put wallet API keys or RPC URLs in SETTINGS; use SECRETS for API keys and vault material. 'check for updates', 'refresh update status' -> SETTINGS section=updates key=check. 'what update version am I on' -> SETTINGS section=updates key=status. 'switch updates to beta/nightly/stable' -> SETTINGS section=updates key=channel value=beta|nightly|stable. 'apply the available update' -> SETTINGS section=updates key=apply. 'revoke network access for my-app', 'grant filesystem access to sample-app' -> SETTINGS section=app-permissions app=<slug> key=net|fs value=off|on. 'back up my agent', 'create a local backup' -> SETTINGS section=advanced key=create-backup. 'restore backup <file>' -> SETTINGS section=advanced key=restore-backup fileName=<file> confirm=true; if confirm is absent, ask for confirmation. Also 'what settings can you change' / 'list settings' -> SETTINGS action=list. Do NOT use SETTINGS for changes a dedicated action owns: switching the model is MODEL_SWITCH, the background/wallpaper is BACKGROUND, the agent identity is CHARACTER, connector plugin lifecycle/config is PLUGIN, secret/API keys are SECRETS. The distinction from VIEWS is value-vs-navigation: changing/toggling a permission or setting VALUE, requesting an OS permission, changing an appearance value, changing voice preferences, changing wallet RPC provider selection, checking update status, changing update channel, or running a backup operation, is SETTINGS even though it lives on a settings page; merely OPENING or navigating to a settings page with no value change is VIEWS. SETTINGS never fills a settings field with agent-fill.",
 		suppressPostActionContinuation: true,
 
 		parameters: [
@@ -2072,7 +2110,7 @@ export function createSettingsAction(deps: SettingsActionDeps = {}): Action {
 			{
 				name: "key",
 				description:
-					"The specific toggle or operation within the section (e.g. theme, accent, language, home-time-widget, shell, voice continuous/silence-ms/rms, wallet-rpc evm/bsc/solana/cloud/network, fs/net, create-backup, restore-backup, status/check/channel/apply for updates). Optional; defaults to the section's primary key.",
+					"The specific toggle or operation within the section (e.g. theme, accent, language, home-time-widget, shell, voice continuous/silence-ms/rms/shortcut-voice/shortcut-transcription, wallet-rpc evm/bsc/solana/cloud/network, fs/net, create-backup, restore-backup, status/check/channel/apply for updates). Optional; defaults to the section's primary key.",
 				required: false,
 				schema: { type: "string" },
 			},

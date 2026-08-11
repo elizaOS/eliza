@@ -72,6 +72,9 @@ export {
 	DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
 	type DeploymentTargetConfig,
 	type DeploymentTargetRuntime,
+	LINKED_ACCOUNT_ACCOUNT_SOURCES,
+	LINKED_ACCOUNT_HEALTH_STATES,
+	LINKED_ACCOUNT_PROVIDER_IDS,
 	type LinkedAccountAccountSource,
 	type LinkedAccountConfig,
 	type LinkedAccountFlagConfig,
@@ -83,6 +86,7 @@ export {
 	type LinkedAccountStatus,
 	type LinkedAccountsConfig,
 	type LinkedAccountUsage,
+	SERVICE_ROUTE_ACCOUNT_STRATEGIES,
 	type ServiceCapability,
 	type ServiceRouteAccountStrategy,
 	type ServiceRouteConfig,
@@ -348,6 +352,7 @@ export {
 	findCodingDelegationActionName,
 	hasActionTags,
 	LEGACY_CODING_DELEGATION_ACTION_NAMES,
+	looksLikeBareLinkShare,
 	normalizeActionIdentifier,
 } from "./services/message/direct-action-heuristics";
 export { sanitizeOutboundText } from "./services/message/outbound-sanitize";
@@ -486,6 +491,7 @@ export * from "./utils/state-dir";
 // Export streaming utilities
 export * from "./utils/streaming";
 export { ResponseSkeletonStreamExtractor } from "./utils/streaming";
+export * from "./utils/well-formed";
 // User-chosen workspace folder persisted in <stateDir>/workspace-folder.json,
 // shared between the Electrobun renderer (writes via desktop RPC) and the
 // agent runtime (reads at boot to seed ELIZA_WORKSPACE_DIR for store builds).

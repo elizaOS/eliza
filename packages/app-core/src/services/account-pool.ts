@@ -17,15 +17,25 @@
  * so it survives process restarts.
  */
 
+import { randomUUID } from "node:crypto";
 import {
-  existsSync,
-  mkdirSync,
+  closeSync,
+  constants,
+  fstatSync,
+  fsyncSync,
+  openSync,
   readFileSync,
   renameSync,
+  rmSync,
   writeFileSync,
 } from "node:fs";
 import path from "node:path";
-import type { AccountCredentialRecord } from "@elizaos/auth/account-storage";
+import {
+  type AccountCredentialRecord,
+  type AccountStoragePolicy,
+  createRuntimeAccountStoragePolicy,
+  withAccountStorageMutation,
+} from "@elizaos/auth/account-storage";
 import {
   getAccessToken as getAccountAccessToken,
   listProviderAccounts,
@@ -40,6 +50,7 @@ import {
 } from "@elizaos/auth/types";
 import {
   type AnthropicAccountPoolBridge,
+  ElizaError,
   logger,
   resolveStateDir,
   setAnthropicAccountPoolBridge,
@@ -143,6 +154,16 @@ const OPENAI_COMPAT_BASE_BY_DIRECT_PROVIDER: Readonly<
 };
 
 const KEEP_ALIVE_INTERVAL_MS = 5 * 60_000;
+/**
+ * How long the keep-alive sweep waits before re-probing a parked
+ * (needs-reauth / invalid) SUBSCRIPTION account. A parked OAuth account's
+ * refresh grant is dead until a human re-auths, so each probe burns a doomed
+ * refresh attempt against the provider's token endpoint and emits an error
+ * log line — at the 5-minute sweep cadence that is ~288 spam lines per
+ * account per day. A credential update (re-auth) bypasses the cooldown, so
+ * recovered accounts still re-admit within one sweep.
+ */
+const PARKED_SUBSCRIPTION_PROBE_COOLDOWN_MS = 6 * 60 * 60_000;
 
 function accountSessionPct(account: LinkedAccountConfig): number {
   return typeof account.usage?.sessionPct === "number"
@@ -982,43 +1003,88 @@ interface PoolMetaFields {
 
 type PoolMetaStore = Record<PoolProviderId, Record<string, PoolMetaFields>>;
 
-function authRoot(): string {
-  return path.join(process.env.ELIZA_HOME || resolveStateDir(), "auth");
+function metadataFile(storagePolicy: AccountStoragePolicy): string {
+  return path.join(storagePolicy.authRoot, "_pool-metadata.json");
 }
 
-function metadataFile(): string {
-  return path.join(authRoot(), "_pool-metadata.json");
-}
-
-function readMetaStore(): PoolMetaStore {
-  const file = metadataFile();
-  if (!existsSync(file)) {
-    return {} as PoolMetaStore;
-  }
+function readMetaStore(storagePolicy: AccountStoragePolicy): PoolMetaStore {
+  const file = metadataFile(storagePolicy);
+  let descriptor: number | undefined;
   try {
-    const raw = readFileSync(file, "utf-8");
+    descriptor = openSync(file, constants.O_RDONLY | constants.O_NOFOLLOW);
+    if (!fstatSync(descriptor).isFile()) {
+      throw new ElizaError("Account-pool metadata is not a regular file", {
+        code: "ACCOUNT_POOL_METADATA_NOT_REGULAR",
+        context: { file },
+        severity: "fatal",
+      });
+    }
+    const raw = readFileSync(descriptor, "utf-8");
     const parsed = JSON.parse(raw) as unknown;
     if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
       return parsed as PoolMetaStore;
     }
-  } catch {
-    // Corrupt file — fall through to empty store. Next write rewrites it.
+  } catch (cause) {
+    if ((cause as NodeJS.ErrnoException).code === "ENOENT") {
+      return {} as PoolMetaStore;
+    }
+    if (cause instanceof ElizaError) throw cause;
+    throw new ElizaError("Account-pool metadata could not be read safely", {
+      code: "ACCOUNT_POOL_METADATA_CORRUPT",
+      cause,
+      context: { file },
+      severity: "fatal",
+    });
+  } finally {
+    if (descriptor !== undefined) closeSync(descriptor);
   }
-  return {} as PoolMetaStore;
+  throw new ElizaError("Account-pool metadata has an invalid root shape", {
+    code: "ACCOUNT_POOL_METADATA_CORRUPT",
+    context: { file },
+    severity: "fatal",
+  });
 }
 
-function writeMetaStore(store: PoolMetaStore): void {
-  const file = metadataFile();
-  const dir = path.dirname(file);
-  if (!existsSync(dir)) {
-    mkdirSync(dir, { recursive: true, mode: 0o700 });
+function fsyncMetadataDirectory(directory: string): void {
+  if (process.platform === "win32") return;
+  const descriptor = openSync(
+    directory,
+    constants.O_RDONLY | (constants.O_DIRECTORY ?? 0),
+  );
+  try {
+    fsyncSync(descriptor);
+  } finally {
+    closeSync(descriptor);
   }
-  const tmp = `${file}.tmp`;
-  writeFileSync(tmp, JSON.stringify(store, null, 2), {
-    encoding: "utf-8",
-    mode: 0o600,
-  });
-  renameSync(tmp, file);
+}
+
+function writeMetaStore(
+  store: PoolMetaStore,
+  storagePolicy: AccountStoragePolicy,
+): void {
+  const file = metadataFile(storagePolicy);
+  const dir = path.dirname(file);
+  const tmp = `${file}.${process.pid}.${randomUUID()}.tmp`;
+  let descriptor: number | undefined;
+  try {
+    descriptor = openSync(
+      tmp,
+      constants.O_WRONLY |
+        constants.O_CREAT |
+        constants.O_EXCL |
+        constants.O_NOFOLLOW,
+      0o600,
+    );
+    writeFileSync(descriptor, JSON.stringify(store, null, 2), "utf-8");
+    fsyncSync(descriptor);
+    closeSync(descriptor);
+    descriptor = undefined;
+    renameSync(tmp, file);
+    fsyncMetadataDirectory(dir);
+  } finally {
+    if (descriptor !== undefined) closeSync(descriptor);
+    rmSync(tmp, { force: true });
+  }
 }
 
 function recordToLinked(
@@ -1093,8 +1159,10 @@ function emailFromIdToken(idToken: string | undefined): string | undefined {
   }
 }
 
-function loadAllAccounts(): Record<string, LinkedAccountConfig> {
-  const meta = readMetaStore();
+function loadAllAccounts(
+  storagePolicy: AccountStoragePolicy,
+): Record<string, LinkedAccountConfig> {
+  const meta = readMetaStore(storagePolicy);
   const out: Record<string, LinkedAccountConfig> = {};
   for (const provider of ACCOUNT_CREDENTIAL_PROVIDER_IDS) {
     const records = listProviderAccounts(provider);
@@ -1114,47 +1182,64 @@ function loadAllAccounts(): Record<string, LinkedAccountConfig> {
   return out;
 }
 
-async function persistAccount(account: LinkedAccountConfig): Promise<void> {
+async function persistAccount(
+  account: LinkedAccountConfig,
+  storagePolicy: AccountStoragePolicy,
+): Promise<void> {
   if (!isLinkedAccountProviderId(account.providerId)) return;
-  const store = readMetaStore();
-  if (!store[account.providerId]) {
-    store[account.providerId] = {};
-  }
-  store[account.providerId][account.id] = {
-    label: account.label,
-    enabled: account.enabled,
-    priority: account.priority,
-    prioritySource: account.prioritySource ?? "generated",
-    health: account.health,
-    ...(account.healthDetail ? { healthDetail: account.healthDetail } : {}),
-    ...(account.usage ? { usage: account.usage } : {}),
-    ...(typeof account.subscriptionEndsAt === "number"
-      ? { subscriptionEndsAt: account.subscriptionEndsAt }
-      : {}),
-    ...(account.lastUsedAt !== undefined
-      ? { lastUsedAt: account.lastUsedAt }
-      : {}),
-    ...(account.lastPrimedAt !== undefined
-      ? { lastPrimedAt: account.lastPrimedAt }
-      : {}),
-    ...(account.email ? { email: account.email } : {}),
-  };
-  writeMetaStore(store);
+  withAccountStorageMutation(
+    storagePolicy,
+    "persist-account-pool-metadata",
+    () => {
+      const store = readMetaStore(storagePolicy);
+      if (!store[account.providerId]) {
+        store[account.providerId] = {};
+      }
+      store[account.providerId][account.id] = {
+        label: account.label,
+        enabled: account.enabled,
+        priority: account.priority,
+        prioritySource: account.prioritySource ?? "generated",
+        health: account.health,
+        ...(account.healthDetail ? { healthDetail: account.healthDetail } : {}),
+        ...(account.usage ? { usage: account.usage } : {}),
+        ...(typeof account.subscriptionEndsAt === "number"
+          ? { subscriptionEndsAt: account.subscriptionEndsAt }
+          : {}),
+        ...(account.lastUsedAt !== undefined
+          ? { lastUsedAt: account.lastUsedAt }
+          : {}),
+        ...(account.lastPrimedAt !== undefined
+          ? { lastPrimedAt: account.lastPrimedAt }
+          : {}),
+        ...(account.email ? { email: account.email } : {}),
+      };
+      writeMetaStore(store, storagePolicy);
+    },
+  );
 }
 
 async function deleteAccountMeta(
   providerId: PoolProviderId,
   accountId: string,
+  storagePolicy: AccountStoragePolicy,
 ): Promise<void> {
-  const store = readMetaStore();
-  const bucket = store[providerId];
-  if (!bucket) return;
-  if (!(accountId in bucket)) return;
-  delete bucket[accountId];
-  writeMetaStore(store);
+  withAccountStorageMutation(
+    storagePolicy,
+    "delete-account-pool-metadata",
+    () => {
+      const store = readMetaStore(storagePolicy);
+      const bucket = store[providerId];
+      if (!bucket) return;
+      if (!(accountId in bucket)) return;
+      delete bucket[accountId];
+      writeMetaStore(store, storagePolicy);
+    },
+  );
 }
 
 let cachedDefaultPool: AccountPool | null = null;
+let cachedRuntimeStoragePolicy: AccountStoragePolicy | null = null;
 let defaultSelectionConfig: AccountPoolSelectionConfig = {};
 
 function normalizeStrategy(value: unknown): Strategy | undefined {
@@ -1263,12 +1348,29 @@ export function configureDefaultAccountPoolSelection(
  * resolvers should import `getDefaultAccountPool()` rather than constructing
  * a new pool directly.
  */
+/**
+ * The storage policy every account mutation in this module presents.
+ * `getAccessToken` refuses to refresh without one, and a refresh that rotates a
+ * one-time grant must be able to persist what came back, so token resolution
+ * needs the same policy the pool's read/write/delete closures already carry.
+ */
+function defaultRuntimeStoragePolicy(): AccountStoragePolicy {
+  if (!cachedRuntimeStoragePolicy) {
+    cachedRuntimeStoragePolicy = createRuntimeAccountStoragePolicy(
+      process.env.ELIZA_HOME || resolveStateDir(),
+    );
+  }
+  return cachedRuntimeStoragePolicy;
+}
+
 export function getDefaultAccountPool(): AccountPool {
   if (!cachedDefaultPool) {
+    const storagePolicy = defaultRuntimeStoragePolicy();
     cachedDefaultPool = new AccountPool({
-      readAccounts: () => loadAllAccounts(),
-      writeAccount: persistAccount,
-      deleteAccount: deleteAccountMeta,
+      readAccounts: () => loadAllAccounts(storagePolicy),
+      writeAccount: (account) => persistAccount(account, storagePolicy),
+      deleteAccount: (providerId, accountId) =>
+        deleteAccountMeta(providerId, accountId, storagePolicy),
     });
     installAnthropicBridge(cachedDefaultPool);
     installCodingAgentSelectorBridge(cachedDefaultPool);
@@ -1305,7 +1407,9 @@ export async function applyAccountPoolApiCredentials(
       })) ?? accounts.slice().sort((a, b) => a.createdAt - b.createdAt)[0];
     if (!account) continue;
 
-    const token = await getAccountAccessToken(providerId, account.id);
+    const token = await getAccountAccessToken(providerId, account.id, {
+      storagePolicy: defaultRuntimeStoragePolicy(),
+    });
     if (!token) continue;
 
     const envKey = DIRECT_ACCOUNT_PROVIDER_ENV[providerId];
@@ -1489,7 +1593,30 @@ export async function sweepAccountPoolKeepAlive(
     await pool.sweepExpired(providerId);
     for (const record of listProviderAccounts(providerId)) {
       result.checked += 1;
-      if (pool.get(record.id, providerId)?.health === "expired") continue;
+      const pooled = pool.get(record.id, providerId);
+      if (pooled?.health === "expired") continue;
+
+      // A parked subscription account's refresh grant is dead until a human
+      // re-auths, so resolving it burns a doomed refresh against the
+      // provider's token endpoint (plus an error log line) every sweep,
+      // forever. Probe parked accounts only when the stored credential has
+      // changed since the last probe (a re-auth just landed — re-admit
+      // within one sweep) or the cooldown elapsed. Direct-API probes stay
+      // unthrottled: they read a static key with no network cost, and they
+      // are the heal path for accounts flagged by earlier failures.
+      if (
+        (pooled?.health === "needs-reauth" || pooled?.health === "invalid") &&
+        isSubscriptionProvider(providerId)
+      ) {
+        const lastProbeMs = pooled.healthDetail?.lastChecked ?? 0;
+        const credentialChanged = record.updatedAt > lastProbeMs;
+        if (
+          !credentialChanged &&
+          Date.now() - lastProbeMs < PARKED_SUBSCRIPTION_PROBE_COOLDOWN_MS
+        ) {
+          continue;
+        }
+      }
 
       // A Codex CLI may have rotated the one-time refresh token inside its
       // per-account CODEX_HOME mid-session; adopt it BEFORE resolving, or the
@@ -1498,14 +1625,24 @@ export async function sweepAccountPoolKeepAlive(
       if (providerId === "openai-codex") {
         await adoptRotatedCodexTokens(record.id);
       }
-      const token = await getAccountAccessToken(providerId, record.id);
-      if (!token) {
+      const outcome = await getAccountAccessToken(providerId, record.id, {
+        storagePolicy: defaultRuntimeStoragePolicy(),
+        outcome: true,
+      });
+      if (!outcome.ok) {
         result.failed += 1;
-        await pool.markNeedsReauth(record.id, "No valid credential available", {
-          providerId,
-        });
+        // Only a proven credential failure parks the account. Transport and
+        // provider outages keep the current health — one network blip must
+        // not mass-flag a healthy fleet as needs-reauth — and the next sweep
+        // simply retries.
+        if (outcome.kind === "auth") {
+          await pool.markNeedsReauth(record.id, outcome.message, {
+            providerId,
+          });
+        }
         continue;
       }
+      const token = outcome.accessToken;
 
       if (!isSubscriptionProvider(providerId)) {
         // Direct-API providers have no usage probe, but a successful token
@@ -1639,7 +1776,9 @@ function installAnthropicBridge(pool: AccountPool): void {
       return { id: account.id, expiresAt: Number.POSITIVE_INFINITY };
     },
     getAccessToken: (providerId, accountId) =>
-      getAccountAccessToken(providerId, accountId),
+      getAccountAccessToken(providerId, accountId, {
+        storagePolicy: defaultRuntimeStoragePolicy(),
+      }),
     markInvalid: (accountId, detail) =>
       pool.markInvalid(accountId, detail, {
         providerId: "anthropic-subscription",
@@ -1652,12 +1791,13 @@ function installAnthropicBridge(pool: AccountPool): void {
   setAnthropicAccountPoolBridge(bridge);
 }
 
-/**
- * Resets the cached singleton. Test-only.
- */
-export function __resetDefaultAccountPoolForTests(): void {
+export function resetDefaultAccountPoolAfterCredentialReset(): void {
   stopAccountPoolKeepAliveForTests();
   cachedDefaultPool = null;
+  cachedRuntimeStoragePolicy = null;
 }
+
+export const __resetDefaultAccountPoolForTests =
+  resetDefaultAccountPoolAfterCredentialReset;
 
 export type { LinkedAccountsConfig };

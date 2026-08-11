@@ -9,6 +9,11 @@ import type { ComponentType, ReactNode } from "react";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Button } from "../../../../components/primitives";
+import {
+  isCloudAuthHandoffSurface,
+  publishCloudAuthComplete,
+  subscribeCloudAuthComplete,
+} from "../../../auth/cloud-auth-complete-signal";
 import { ApiError, apiFetch } from "../../../lib/api-client";
 import { useSessionAuth } from "../../../lib/use-session-auth";
 import { useCloudT } from "../../../shell/CloudI18nProvider";
@@ -84,6 +89,32 @@ function resolveCliLoginMessageTargetOrigin(returnTo: string | null): string {
   if (typeof window === "undefined") return "https://elizacloud.ai";
   if (!returnTo) return window.location.origin;
   return new URL(returnTo).origin;
+}
+
+function notifyCliLoginComplete(
+  sessionId: string,
+  launchReturnTo: string | null,
+): void {
+  const targetOrigin = resolveCliLoginMessageTargetOrigin(launchReturnTo);
+  try {
+    window.opener?.postMessage(
+      { type: "eliza-cloud-auth-complete", sessionId },
+      targetOrigin,
+    );
+  } catch (error) {
+    void error;
+    // error-policy:J6 cross-origin opener policies can reject postMessage.
+  }
+  publishCloudAuthComplete(sessionId);
+}
+
+function tryCloseAuthWindow(): void {
+  try {
+    window.close();
+  } catch (error) {
+    void error;
+    // Some browsers reject script-close for normal tabs; success UI remains.
+  }
 }
 
 function getPageState({
@@ -186,10 +217,26 @@ export default function CliLoginPage() {
     setCompletion({ status: "idle" });
   }, [sessionId]);
 
+  // Another Cloud tab already finished this session — stop showing a live
+  // sign-in / completing state on this orphan surface. Ignore events after
+  // this tab has already started completion (avoids same-tab BroadcastChannel
+  // self-echo double-close).
+  useEffect(() => {
+    if (!sessionId) return;
+    return subscribeCloudAuthComplete((message) => {
+      if (message.sessionId !== sessionId) return;
+      if (completionFiredRef.current) return;
+      completionFiredRef.current = true;
+      setCompletion({ status: "success", apiKeyPrefix: "" });
+      tryCloseAuthWindow();
+    });
+  }, [sessionId]);
+
   useEffect(() => {
     if (!sessionId || !ready || !authenticated) return;
     if (completionFiredRef.current) return;
     completionFiredRef.current = true;
+    const activeSessionId = sessionId;
 
     const abort = new AbortController();
     const timeout = setTimeout(() => abort.abort(), COMPLETE_TIMEOUT_MS);
@@ -198,23 +245,25 @@ export default function CliLoginPage() {
       setCompletion({ status: "completing" });
       try {
         const response = await apiFetch(
-          `/api/auth/cli-session/${sessionId}/complete`,
+          `/api/auth/cli-session/${activeSessionId}/complete`,
           { method: "POST", json: {}, signal: abort.signal },
         );
         const data = (await response.json()) as { keyPrefix: string };
-        window.opener?.postMessage(
-          { type: "eliza-cloud-auth-complete", sessionId },
-          resolveCliLoginMessageTargetOrigin(launchReturnTo),
-        );
+        notifyCliLoginComplete(activeSessionId, launchReturnTo);
+
+        // Handoff surface (live opener OR named cloud-auth popup): the opener
+        // poll / BroadcastChannel owns continuation. Never navigate returnTo —
+        // that loads a second app shell when opener is severed by COOP or the
+        // opener tab closed while auth was in flight (#18001).
+        if (isCloudAuthHandoffSurface()) {
+          tryCloseAuthWindow();
+          setCompletion({ status: "success", apiKeyPrefix: data.keyPrefix });
+          return;
+        }
+
         if (launchReturnTo) {
           setCompletion({ status: "redirecting" });
-          try {
-            window.close();
-          } catch (error) {
-            void error;
-            // Some browsers reject script-close for normal tabs; redirect below
-            // still lands the user back in the app that started sign-in.
-          }
+          tryCloseAuthWindow();
           window.location.replace(launchReturnTo);
           return;
         }

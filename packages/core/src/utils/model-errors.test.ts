@@ -4,7 +4,11 @@
  * Deterministic — plain constructed error shapes, no live model.
  */
 import { describe, expect, it } from "vitest";
-import { isModelProviderError, modelProviderErrorStatus } from "./model-errors";
+import {
+	isModelProviderError,
+	modelProviderErrorDetail,
+	modelProviderErrorStatus,
+} from "./model-errors";
 
 function withStatus(status: number, message = "err"): Error {
 	const err = new Error(message) as Error & { statusCode: number };
@@ -89,5 +93,80 @@ describe("isModelProviderError", () => {
 
 	it("is FALSE for a sub-400 status", () => {
 		expect(isModelProviderError(withStatus(200))).toBe(false);
+	});
+});
+
+describe("modelProviderErrorDetail", () => {
+	function apiCallError(args: {
+		message?: string;
+		statusCode?: number;
+		responseBody?: string;
+		url?: string;
+	}): Error {
+		return Object.assign(new Error(args.message ?? "Bad Request"), {
+			statusCode: args.statusCode,
+			responseBody: args.responseBody,
+			url: args.url,
+		});
+	}
+
+	it("recovers the FLAT Cerebras error shape the AI SDK masks to statusText", () => {
+		// Live signature: Cerebras returns {"message","type","param","code"} with
+		// no OpenAI {"error":{...}} wrapper, so APICallError.message is the bare
+		// "Bad Request" while the actionable cause sits on responseBody.
+		const detail = modelProviderErrorDetail(
+			apiCallError({
+				statusCode: 400,
+				responseBody:
+					'{"message":": Invalid JSON: lone leading surrogate in hex escape at line 1 column 135","type":"invalid_request_error","param":"validation_error","code":"wrong_api_format"}',
+				url: "https://api.cerebras.ai/v1/chat/completions",
+			}),
+		);
+		expect(detail).toBeDefined();
+		expect(detail?.status).toBe(400);
+		expect(detail?.providerMessage).toContain("lone leading surrogate");
+		expect(detail?.responseBodyExcerpt).toContain("wrong_api_format");
+		expect(detail?.url).toContain("cerebras");
+	});
+
+	it("recovers the OpenAI error envelope shape", () => {
+		const detail = modelProviderErrorDetail(
+			apiCallError({
+				statusCode: 400,
+				responseBody:
+					'{"error":{"message":"context_length_exceeded: reduce your prompt","type":"invalid_request_error"}}',
+			}),
+		);
+		expect(detail?.providerMessage).toContain("context_length_exceeded");
+	});
+
+	it("keeps a bounded excerpt of a non-JSON body instead of dropping it", () => {
+		const detail = modelProviderErrorDetail(
+			apiCallError({
+				statusCode: 400,
+				responseBody: `<html>upstream gateway rejected ${"x".repeat(1000)}</html>`,
+			}),
+		);
+		expect(detail?.providerMessage).toBeUndefined();
+		expect(detail?.responseBodyExcerpt).toContain("upstream gateway rejected");
+		expect(detail?.responseBodyExcerpt?.length).toBeLessThanOrEqual(400);
+	});
+
+	it("walks the RetryError/cause chain for the body", () => {
+		const retry = new Error("retries exhausted") as Error & {
+			lastError: unknown;
+		};
+		retry.lastError = apiCallError({
+			statusCode: 400,
+			responseBody: '{"message":"please try again"}',
+		});
+		expect(modelProviderErrorDetail(retry)?.providerMessage).toBe(
+			"please try again",
+		);
+	});
+
+	it("is undefined when the chain carries neither status nor body", () => {
+		expect(modelProviderErrorDetail(new Error("plain"))).toBeUndefined();
+		expect(modelProviderErrorDetail(undefined)).toBeUndefined();
 	});
 });

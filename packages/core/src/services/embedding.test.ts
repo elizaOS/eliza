@@ -165,6 +165,41 @@ describe("EmbeddingGenerationService processBatch", () => {
 		await service.stop();
 	});
 
+	test("whitespace-only text is skipped, never sent to the backend", async () => {
+		// Backends reject whitespace-only text as terminally invalid
+		// (plugin-elizacloud throws "Cannot generate embedding for empty
+		// text"), so retrying it can never succeed — the partition must
+		// trim-check, not just falsy-check (live 2026-08-10: image-only
+		// messages error-logged on every retry).
+		let lastTexts: string[] = [];
+		const runtime = makeRuntime({
+			batch: true,
+			batchHandler: async ({ texts }) => {
+				lastTexts = texts;
+				return texts.map((_, i) => [i, i + 1]);
+			},
+			updateMemory: async () => {},
+		});
+		const service = (await EmbeddingGenerationService.start(
+			runtime,
+		)) as EmbeddingGenerationService;
+		// biome-ignore lint/suspicious/noExplicitAny: drive the private batch processor directly
+		const processBatch = (service as any).batchQueue.options.processBatch as (
+			items: unknown[],
+		) => Promise<{ item: { memory: { id: string } }; success: boolean }[]>;
+
+		const items = [makeItem("id-ws", "  \n "), makeItem("id-ok", "real text")];
+		const outcomes = await processBatch(items);
+
+		expect(lastTexts).toEqual(["real text"]);
+		const byId = new Map(outcomes.map((o) => [o.item.memory.id, o.success]));
+		// The whitespace item resolves as handled — not an error, not a retry.
+		expect(byId.get("id-ws")).toBe(true);
+		expect(byId.get("id-ok")).toBe(true);
+
+		await service.stop();
+	});
+
 	test("an empty vector in the batch is failed, not falsely succeeded or persisted", async () => {
 		const written: { id: string; embedding: number[] }[] = [];
 		const runtime = makeRuntime({
@@ -319,5 +354,79 @@ describe("EmbeddingGenerationService processBatch", () => {
 		expect(byId.get("id-b")).toBe(false);
 
 		await service.stop();
+	});
+});
+
+describe("EmbeddingGenerationService expected local unavailability (#17728)", () => {
+	test.each(["backend_unavailable", "capability_unavailable"] as const)(
+		"does not reportError for LOCAL_INFERENCE_UNAVAILABLE %s but still rethrows",
+		async (reason) => {
+			const runtime = makeRuntime({
+				batch: false,
+				embedHandler: async () => {
+					const err = new Error(`local embeddings: ${reason}`);
+					Object.assign(err, {
+						code: "LOCAL_INFERENCE_UNAVAILABLE",
+						modelType: ModelType.TEXT_EMBEDDING,
+						reason,
+					});
+					throw err;
+				},
+			});
+			const service = (await EmbeddingGenerationService.start(
+				runtime,
+			)) as EmbeddingGenerationService;
+			await expect(
+				// biome-ignore lint/suspicious/noExplicitAny: exercise private generate path
+				(service as any).generateEmbedding(makeItem("id-u", "text")),
+			).rejects.toMatchObject({
+				code: "LOCAL_INFERENCE_UNAVAILABLE",
+				reason,
+			});
+			expect(runtime.reportError).not.toHaveBeenCalled();
+			await service.stop();
+		},
+	);
+
+	test("reports invalid_input and unknown failures", async () => {
+		const invalid = Object.assign(new Error("bad input"), {
+			code: "LOCAL_INFERENCE_UNAVAILABLE",
+			reason: "invalid_input",
+		});
+		const runtimeInvalid = makeRuntime({
+			batch: false,
+			embedHandler: async () => {
+				throw invalid;
+			},
+		});
+		const serviceInvalid = (await EmbeddingGenerationService.start(
+			runtimeInvalid,
+		)) as EmbeddingGenerationService;
+		await expect(
+			// biome-ignore lint/suspicious/noExplicitAny: exercise private generate path
+			(serviceInvalid as any).generateEmbedding(makeItem("id-i", "text")),
+		).rejects.toBe(invalid);
+		expect(runtimeInvalid.reportError).toHaveBeenCalledWith(
+			"EmbeddingService.generate",
+			invalid,
+			expect.objectContaining({ memoryId: "id-i" }),
+		);
+		await serviceInvalid.stop();
+
+		const runtimeUnknown = makeRuntime({
+			batch: false,
+			embedHandler: async () => {
+				throw new Error("network down");
+			},
+		});
+		const serviceUnknown = (await EmbeddingGenerationService.start(
+			runtimeUnknown,
+		)) as EmbeddingGenerationService;
+		await expect(
+			// biome-ignore lint/suspicious/noExplicitAny: exercise private generate path
+			(serviceUnknown as any).generateEmbedding(makeItem("id-n", "text")),
+		).rejects.toThrow("network down");
+		expect(runtimeUnknown.reportError).toHaveBeenCalled();
+		await serviceUnknown.stop();
 	});
 });

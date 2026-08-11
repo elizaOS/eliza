@@ -46,10 +46,21 @@ env:
   CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
   OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
   ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+  # The Anthropic repository credential can be present but unfunded. The App
+  # Live chat lane already validates this repository's OpenAI key, so use that
+  # funded provider for the mandatory walkthrough screenshot review too.
+  AI_QA_VISION_BACKEND: openai
+  AI_QA_VISION_MODEL: gpt-5-mini
   GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
   OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
   GOOGLE_GENERATIVE_AI_API_KEY: ${{ secrets.GOOGLE_GENERATIVE_AI_API_KEY }}
   XAI_API_KEY: ${{ secrets.XAI_API_KEY }}
+  # App Live runs with disposable state on headless Linux. Bypass the native
+  # keychain path even if a stale D-Bus address makes the runner look graphical;
+  # @napi-rs/keyring can terminate the runtime before JavaScript can report it.
+  ELIZA_VAULT_DISABLE_KEYCHAIN: "1"
+  ELIZA_VAULT_PASSPHRASE: app-live-e2e-headless-vault-only
+  ELIZA_UI_SMOKE_BACKEND_LOG_PATH: e2e-recordings/app-live/backend.log
 
 jobs:
   # Real LOCAL chat turn through the live stack: a real app-core runtime + a real
@@ -125,6 +136,7 @@ jobs:
           path: |
             packages/app/playwright-report/
             packages/app/test-results/
+            e2e-recordings/app-live/backend.log
           if-no-files-found: ignore
           retention-days: 7
 
@@ -427,25 +439,34 @@ jobs:
     permissions:
       issues: write
     steps:
-      - name: Comment red-nightly diagnostic on tracking issue #13681
+      - name: "Comment red-nightly diagnostic on tracking issue #13681"
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3
         env:
-          GH_TOKEN: ${{ github.token }}
-          REPO: ${{ github.repository }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           R_CHAT: ${{ needs.app-live-chat.result }}
           R_WALK: ${{ needs.walkthrough-live.result }}
           R_CLOUD: ${{ needs.cloud-live.result }}
           R_DESKTOP: ${{ needs.desktop-packaged.result }}
-        run: |
-          set -euo pipefail
-          {
-            printf '## 🌙 Nightly App Live E2E failed (scheduled run)\n\n'
-            printf 'The only scheduled desktop-packaged lane went red. Per-job results:\n\n'
-            printf -- '- app live chat: `%s`\n' "$R_CHAT"
-            printf -- '- full walkthrough: `%s`\n' "$R_WALK"
-            printf -- '- cloud login+provision+chat: `%s`\n' "$R_CLOUD"
-            printf -- '- desktop packaged (build+boot+renderer): `%s`\n' "$R_DESKTOP"
-            printf '\nRun log + failure artifacts: %s\n\n' "$RUN_URL"
-            printf '_Auto-posted by app-live-e2e.yml so a red nightly notifies someone (Done-when, #13681)._\n'
-          } > "$RUNNER_TEMP/nightly-red.md"
-          gh issue comment 13681 --repo "$REPO" --body-file "$RUNNER_TEMP/nightly-red.md"
+        with:
+          github-token: ${{ github.token }}
+          script: |
+            const body = [
+              "## 🌙 Nightly App Live E2E failed (scheduled run)",
+              "",
+              "The only scheduled desktop-packaged lane went red. Per-job results:",
+              "",
+              `- app live chat: \`${process.env.R_CHAT}\``,
+              `- full walkthrough: \`${process.env.R_WALK}\``,
+              `- cloud login+provision+chat: \`${process.env.R_CLOUD}\``,
+              `- desktop packaged (build+boot+renderer): \`${process.env.R_DESKTOP}\``,
+              "",
+              `Run log + failure artifacts: ${process.env.RUN_URL}`,
+              "",
+              "_Auto-posted by app-live-e2e.yml so a red nightly notifies someone (Done-when, #13681)._",
+            ].join("\n");
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: 13681,
+              body,
+            });

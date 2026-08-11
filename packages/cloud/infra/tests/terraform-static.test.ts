@@ -145,7 +145,7 @@ describe("Cloudflare Pages domain durability", () => {
   const workflow = readFileSync(
     join(
       import.meta.dir,
-      "../../../../.github/workflows/terraform-pages-domains.yml",
+      "../../../../.github/workflows/infra.yml",
     ),
     "utf-8",
   );
@@ -188,20 +188,18 @@ describe("Cloudflare Pages domain durability", () => {
     expect(variables).toContain('variable "staging_agent_wildcard_origins"');
     expect(variables).toContain('variable "staging_agent_certificate_pack_id"');
     expect(workflow).toContain("STAGING_AGENT_WILDCARD_ORIGINS_JSON");
+    expect(workflow).toContain("pages-domains");
     expect(workflow).toContain("STAGING_AGENT_CERTIFICATE_PACK_ID");
     expect(workflow).toContain("terraform-probe.staging.elizacloud.ai");
   });
 
   test("keeps real writes manual and verifies certificate plus routing after apply", () => {
-    expect(workflow).toContain("oven-sh/setup-bun@");
-    expect(workflow).toContain(
-      "bun install --frozen-lockfile --ignore-scripts",
-    );
     expect(workflow).toContain("workflow_dispatch:");
-    expect(workflow).toContain("options: [plan, apply]");
+    expect(workflow).toContain("options: [plan, apply, state-rm]");
     expect(workflow).toContain("terraform apply -no-color -input=false");
     expect(workflow).toContain('entry.status !== "active"');
     expect(workflow).toContain("--require-beacon");
+    expect(workflow).not.toContain("bun install");
     expect(workflow).not.toContain("push:");
   });
 });

@@ -384,6 +384,7 @@ function PluginListView({
               ? "border-accent bg-accent text-accent-fg hover:bg-accent/90"
               : "border-border/50 bg-card/50 text-muted hover:border-accent/40 hover:text-txt"
           }`}
+          aria-pressed={isActive}
           onClick={() => setSubgroupFilter(tag.id)}
         >
           <Icon className="h-3.5 w-3.5 shrink-0" />

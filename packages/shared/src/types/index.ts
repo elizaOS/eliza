@@ -408,6 +408,18 @@ export type ConfigUiHint = {
   pattern?: string;
   /** Error message when pattern doesn't match. */
   patternError?: string;
+  /**
+   * Show this field only after every listed credential/key is present
+   * (draft value non-empty, or already persisted/`isSet` — including
+   * sensitive secrets that never echo their value). Prefer this over a
+   * raw `visible` path check for "token first, then tuning" forms.
+   */
+  requires?: string | string[];
+  /**
+   * Like {@link requires}, but any one of the listed keys is enough
+   * (e.g. API-token mode OR OAuth client id).
+   */
+  requiresAny?: string | string[];
   /** Rich visibility condition. */
   visible?: VisibilityCondition;
   /** Declarative validation checks. */

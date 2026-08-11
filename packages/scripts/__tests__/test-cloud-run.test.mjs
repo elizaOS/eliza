@@ -26,6 +26,7 @@ import {
   ensureCloudTestRuntime,
   findMissingRoots,
   formatBatchFiles,
+  MAX_FILES_PER_BATCH_WIN32,
   PREFLIGHT_STEPS,
   runBatches,
   runPreflightStep,
@@ -83,6 +84,13 @@ describe("chunkByBudget", () => {
   it("returns no batches for an empty file list", () => {
     expect(chunkByBudget([], 80, 100000)).toEqual([]);
   });
+
+  it("bounds Windows process lifetime for native and PGlite-heavy suites", () => {
+    const files = Array.from({ length: 40 }, (_, index) => `test-${index}.ts`);
+    const batches = chunkByBudget(files, MAX_FILES_PER_BATCH_WIN32, 100000);
+
+    expect(batches.map((batch) => batch.length)).toEqual([16, 16, 8]);
+  });
 });
 
 describe("formatBatchFiles", () => {
@@ -90,7 +98,7 @@ describe("formatBatchFiles", () => {
     const root = "/repo";
     const batch = ["/repo/packages/a/x.test.ts", "/repo/packages/b/y.spec.ts"];
     expect(formatBatchFiles(batch, root)).toBe(
-      "  - packages/a/x.test.ts\n  - packages/b/y.spec.ts",
+      `  - ${join("packages", "a", "x.test.ts")}\n  - ${join("packages", "b", "y.spec.ts")}`,
     );
   });
 });
@@ -356,7 +364,7 @@ describe("runBatches", () => {
     });
     expect(anyFailed).toBe(true);
     expect(err.lines.join("")).toContain("exited non-zero");
-    expect(err.lines.join("")).toContain("packages/x/a.test.ts");
+    expect(err.lines.join("")).toContain(join("packages", "x", "a.test.ts"));
   });
 
   it("normalizes the known Bun/PGlite status-99 pollution as a pass", () => {

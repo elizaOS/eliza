@@ -27,9 +27,14 @@ import {
 import {
 	decideReplyGate,
 	enforceVerbosity,
+	type ReplyGateMode,
+	resolveEffectiveReplyGate,
 } from "../features/advanced-capabilities/personality";
 import { getPersonalityStore } from "../features/advanced-capabilities/personality/services/personality-store.ts";
-import { embedRecallQuery } from "../features/documents/recall-embed";
+import {
+	aliasRecallQuery,
+	embedRecallQuery,
+} from "../features/documents/recall-embed";
 import { runShouldRespondInjectionGate } from "../features/trust/should-respond-risk-gate";
 import {
 	emitInferenceTiming,
@@ -136,6 +141,7 @@ import {
 	actionResultToPlannerToolResult,
 	cacheProviderOptions,
 	FAILED_TOOL_FALLBACK_MESSAGE,
+	isTerminalPlannerToolName,
 	type PlannerLoopParams,
 	type PlannerRuntime,
 	type PlannerToolCall,
@@ -167,6 +173,7 @@ import type {
 	ResponseHandlerSenderRole,
 } from "../runtime/response-handler-field-evaluator";
 import type { ResponseHandlerFieldSelectionOptions } from "../runtime/response-handler-field-registry";
+import type { RoomHandlerLease } from "../runtime/room-handler-queue";
 import type { ShortcutRegistry } from "../runtime/shortcut-registry";
 import { actionHasSubActions, runSubPlanner } from "../runtime/sub-planner";
 import { buildCanonicalSystemPrompt } from "../runtime/system-prompt";
@@ -210,6 +217,7 @@ import {
 	getTrajectoryContext,
 	runWithTrajectoryContext,
 } from "../trajectory-context";
+import { withEvaluatorStep } from "../trajectory-utils";
 import type { CharacterSettings } from "../types/agent";
 import type {
 	Action,
@@ -305,12 +313,14 @@ import {
 	getUserMessageText,
 	stripAugmentationForPersistence,
 } from "../utils/message-text";
+import { modelProviderErrorDetail } from "../utils/model-errors";
 import { readEnv } from "../utils/read-env";
 import {
 	extractFirstSentence,
 	hasFirstSentence,
 } from "../utils/text-splitting";
 import { isObjectRecord as isRecord } from "../utils/type-guards";
+import { truncateWellFormed } from "../utils/well-formed";
 import { maybeHandleAnalysisActivation } from "./analysis-mode-handler";
 import { ChannelTopicsService } from "./channel-topics";
 import { runPostTurnEvaluators } from "./evaluator";
@@ -327,6 +337,7 @@ import {
 	inferWebSearchQueryFromMessageText,
 	isShellDirectActionName,
 	LEGACY_CODING_DELEGATION_ACTION_NAMES,
+	looksLikeBareLinkShare,
 	looksLikeLocalShellRequest,
 	looksLikeWebSearchRequest,
 	normalizeActionIdentifier,
@@ -508,6 +519,27 @@ function messageExplicitlyAddressesAgent(
 			runtime.character?.username,
 		])
 	);
+}
+
+/**
+ * Resolves the sender's effective personality `reply_gate` mode (user slot →
+ * global slot) for the post-Stage-1 engagement addressing gate. An explicit
+ * `"always"` is the deliberate opt-out that keeps intentionally-chatty agents
+ * replying even to turns addressed to another participant; every other mode —
+ * including the default unset state — leaves that gate armed.
+ */
+function resolveStage1ReplyGateMode(
+	runtime: IAgentRuntime,
+	message: Memory,
+): ReplyGateMode | null {
+	const store = getPersonalityStore(runtime);
+	if (!store || message.entityId === runtime.agentId) {
+		return null;
+	}
+	return resolveEffectiveReplyGate(
+		store.getSlot(message.entityId),
+		store.getSlot("global"),
+	).mode;
 }
 
 function getPlannerActionObjectName(action: Record<string, unknown>): string {
@@ -1425,7 +1457,10 @@ type ResolvedMessageOptions = {
 	 * in-flight inference. Sourced from `MessageProcessingOptions.abortSignal`.
 	 */
 	abortSignal?: AbortSignal;
+	roomHandlerLease?: RoomHandlerLease;
 	onSettledActionResult?: (result: ActionResult) => void;
+	onTrajectoryTerminalOwner?: (owner: "run") => void;
+	runTerminalOwner?: MessageRunTerminalOwner;
 };
 
 function normalizeShouldRespondModelType(
@@ -1749,6 +1784,83 @@ function deliveredTextsCoverReply(
 		}
 	}
 	return false;
+}
+
+/**
+ * Records a settled planner tool result on the turn-scoped list the
+ * planner-loop failure catch reads, returning the result unchanged so the
+ * capture composes inline with the executor call.
+ */
+function trackSettledPlannerToolResult(
+	settled: Array<{ name: string; result: PlannerToolResult }>,
+	name: string,
+	result: PlannerToolResult,
+): PlannerToolResult {
+	settled.push({ name, result });
+	return result;
+}
+
+/**
+ * The completed-result body of a sub-agent `task_complete` relay message, or
+ * undefined when the text is not such a relay or carries no body. The relay
+ * format is `[sub-agent: … — task_complete — …]\n<result body>` (see
+ * plugin-agent-orchestrator's sub-agent-router): the bracketed first segment
+ * is a planner-only directive and never user-facing; the body below it is the
+ * sub-agent's finished result, already composed for user delivery. Lets a
+ * failed relay turn deliver the completed result instead of discarding it for
+ * the generic failed-tool fallback (#18208). Capped so a runaway transcript
+ * cannot flood the channel.
+ */
+export function subAgentCompletionRelayBody(
+	text: string | undefined,
+): string | undefined {
+	if (!text) return undefined;
+	const trimmed = text.trimStart();
+	if (!trimmed.startsWith("[sub-agent:")) return undefined;
+	const headerEnd = trimmed.indexOf("]");
+	if (headerEnd < 0) return undefined;
+	if (!trimmed.slice(0, headerEnd + 1).includes("task_complete")) {
+		return undefined;
+	}
+	const body = trimmed.slice(headerEnd + 1).trim();
+	if (!body) return undefined;
+	const maxLength = 1500;
+	return body.length > maxLength
+		? `${body.slice(0, maxLength).trimEnd()}…`
+		: body;
+}
+
+/**
+ * The most recent completed tool result whose `userFacingText` can still
+ * rescue a turn after the planner loop dies: successful, non-terminal, and not
+ * already delivered to the user through an action callback. Diagnostic
+ * `text` is never a candidate — the wire contract says it must not render as
+ * assistant prose — so a turn whose tools produced only diagnostics still
+ * falls through to the caller's failure handling.
+ */
+export function preservedSettledToolResult(
+	settled: ReadonlyArray<{ name: string; result: PlannerToolResult }>,
+	deliveredVisibleTexts: ReadonlySet<string>,
+): (PlannerToolResult & { userFacingText: string }) | undefined {
+	for (let index = settled.length - 1; index >= 0; index--) {
+		const entry = settled[index];
+		if (!entry || entry.result.success !== true) continue;
+		if (isTerminalPlannerToolName(entry.name)) continue;
+		const candidate = entry.result.userFacingText?.trim();
+		if (!candidate) continue;
+		// A text the user already saw via an action callback must not be
+		// re-sent; keep scanning for an undelivered result.
+		if (
+			deliveredTextsCoverReply(
+				deliveredVisibleTexts,
+				normalizeVisibleTextForDuplicateCheck(candidate),
+			)
+		) {
+			continue;
+		}
+		return { ...entry.result, userFacingText: candidate };
+	}
+	return undefined;
 }
 
 /** Zerollama/OpenAI-style async media endpoints should be delivered as attachments, not echoed as chat copy. */
@@ -3396,6 +3508,26 @@ function appliedEffectReceiptIdsForReply(
 	return [];
 }
 
+function uniqueAppliedCanonicalActionReply(
+	results: readonly ActionResult[],
+): string | null {
+	const allTurnReceipts = mergeEffectReceipts(
+		...results.map((result) => result.effectReceipts),
+	);
+	const candidates = new Set<string>();
+	for (const result of results) {
+		const text = result.userFacingText?.trim();
+		if (result.verifiedUserFacing !== true || !text) continue;
+		if (!resolveAppliedUserFacingEffectReceipts(result, allTurnReceipts)) {
+			continue;
+		}
+		candidates.add(text);
+	}
+	return candidates.size === 1
+		? (candidates.values().next().value ?? null)
+		: null;
+}
+
 /**
  * An action result grounds only the capability it actually proves.
  * Empty tracked-work claims require a `resource:tracked-work` read action.
@@ -3484,7 +3616,13 @@ export function evaluatePlannedReplyEgress(args: {
 		return {
 			verdict: "reject",
 			kind: "completed_side_effect",
-			fallbackReply: UNVERIFIED_EFFECT_REPLY,
+			// The planner may paraphrase a receipt-backed action by only punctuation
+			// or casing. Preserve the action's exact canonical text instead of
+			// replacing a real success with a false verification failure. Multiple
+			// distinct effects remain ambiguous and continue to fail closed.
+			fallbackReply:
+				uniqueAppliedCanonicalActionReply(args.actionResults) ??
+				UNVERIFIED_EFFECT_REPLY,
 		};
 	}
 	if (replyClaimsEmptyTrackedWorkState(reply)) {
@@ -4932,11 +5070,15 @@ export function messageHandlerFromFieldResult(
 	// required-tool enforcement — stand on deterministic text inference alone
 	// (coding backstop, ack inference, or direct inference). Record that so
 	// the planner loop can accept a firmly repeated terminal answer early
-	// instead of burning the full miss budget on a heuristic's guess.
+	// instead of burning the full miss budget on a heuristic's guess. Coding
+	// work is deliberately excluded: that inference is structurally anchored
+	// to an operation plus a code artifact, and relaxing it lets a planner ship
+	// a repeated progress/fallback answer without ever executing delegation.
 	if (
 		shouldPlan &&
 		planCandidateActions.length > 0 &&
-		rawCandidateActions.length === 0
+		rawCandidateActions.length === 0 &&
+		directCurrentInference.kind !== "coding"
 	) {
 		plan.requiredToolEvidence = "inferred";
 	}
@@ -5187,11 +5329,13 @@ export function applyDirectCurrentCandidateBackstopToMessageHandler(
 			...(viewOverlapMissBudget !== undefined
 				? { requiredToolMissBudget: viewOverlapMissBudget }
 				: {}),
-			// Same provenance stamp as the structured path: when Stage 1's own
-			// candidate list was empty, this escalation stands on deterministic
-			// text inference alone.
+			// Same relaxable-inference stamp as the structured path. Strong coding
+			// work orders keep the full corrective budget so a repeated terminal
+			// fallback cannot impersonate completed delegation.
 			...(getMessageHandlerCandidateActions(messageHandler).length === 0
-				? { requiredToolEvidence: "inferred" as const }
+				? directCurrentInference.kind !== "coding"
+					? { requiredToolEvidence: "inferred" as const }
+					: {}
 				: {}),
 		},
 	};
@@ -6273,7 +6417,7 @@ const SUB_STEP_SUMMARY_MAX_CHARS = 400;
 function truncateSubStepText(text: string): string {
 	const trimmed = text.trim();
 	if (trimmed.length <= SUB_STEP_SUMMARY_MAX_CHARS) return trimmed;
-	return `${trimmed.slice(0, SUB_STEP_SUMMARY_MAX_CHARS)}...`;
+	return `${truncateWellFormed(trimmed, SUB_STEP_SUMMARY_MAX_CHARS)}...`;
 }
 
 function collectSubPlannerSubSteps(
@@ -6680,6 +6824,7 @@ export async function runShortcutGate(args: {
 	responseId: UUID;
 	senderRole: RoleGateRole;
 	onSettledActionResult?: (result: ActionResult) => void;
+	runTerminalOwner?: MessageRunTerminalOwner;
 }): Promise<V5MessageRuntimeStage1Result | null> {
 	if (process.env.ELIZA_SHORTCUTS_DISABLED === "1") return null;
 	const text = getUserMessageText(args.message) ?? "";
@@ -6786,7 +6931,16 @@ export async function runShortcutGate(args: {
 	);
 
 	// #8792: report the interaction so the proactive-comment decider can react.
-	void emitInteractionEvent(args.runtime, match, args.message);
+	const interactionEvent = emitInteractionEvent(
+		args.runtime,
+		match,
+		args.message,
+	);
+	if (args.runTerminalOwner) {
+		args.runTerminalOwner.adopt("shortcut-interaction-event", interactionEvent);
+	} else {
+		void interactionEvent;
+	}
 
 	const thought = `Shortcut: ${match.shortcut.id}`;
 	return {
@@ -6906,6 +7060,8 @@ export async function runV5MessageRuntimeStage1(args: {
 	deliveredVisibleTexts?: Set<string>;
 	plannerLoopConfig?: PlannerLoopParams["config"];
 	onSettledActionResult?: (result: ActionResult) => void;
+	roomHandlerLease?: RoomHandlerLease;
+	runTerminalOwner?: MessageRunTerminalOwner;
 	/**
 	 * Optional pre-planner early-reply delivery seam. A consumer that decides
 	 * NOT to deliver the event (e.g. the voice fast path's async-handoff gate)
@@ -6916,6 +7072,13 @@ export async function runV5MessageRuntimeStage1(args: {
 	onResponseHandlerEarlyReply?: (
 		event: ResponseHandlerEarlyReplyEvent,
 	) => Promise<boolean> | Promise<void> | boolean | undefined;
+	/**
+	 * Fires once Stage 1 routing commits this turn to a response (final reply
+	 * or planning). Lets the caller distinguish "runtime died after the model
+	 * chose to answer" from "died before any respond decision existed" in its
+	 * failure-reply gate.
+	 */
+	onStage1RespondDecision?: () => void;
 }): Promise<V5MessageRuntimeStage1Result> {
 	const senderRole =
 		getTrajectoryContext()?.userRole ??
@@ -7117,13 +7280,21 @@ export async function runV5MessageRuntimeStage1(args: {
 		// call. We don't await — the user contract is "during".
 		// error-policy:J7 diagnostics-must-not-kill-the-loop — a rejection escaping
 		// runActionsByMode must not abort the turn, but it must surface.
-		void args.runtime
+		const responseHandlerDuring = args.runtime
 			.runActionsByMode("RESPONSE_HANDLER_DURING", args.message, args.state)
 			.catch((err) =>
 				args.runtime.reportError("MessageService.runActionsByMode", err, {
 					mode: "RESPONSE_HANDLER_DURING",
 				}),
 			);
+		if (args.runTerminalOwner) {
+			args.runTerminalOwner.adopt(
+				"RESPONSE_HANDLER_DURING",
+				responseHandlerDuring,
+			);
+		} else {
+			void responseHandlerDuring;
+		}
 
 		// Per-turn structure forcing. `buildResponseGrammar` composes the
 		// HANDLE_RESPONSE envelope skeleton (fixed key order + the `contexts`
@@ -7471,6 +7642,7 @@ export async function runV5MessageRuntimeStage1(args: {
 					settledFactsOutcome = outcome;
 					return outcome;
 				});
+			args.runTerminalOwner?.adopt("facts-and-relationships", factsTask);
 		}
 
 		// Persist `addressedTo` as relationship edges from the speaker to each
@@ -7479,7 +7651,7 @@ export async function runV5MessageRuntimeStage1(args: {
 		// failures land in the logger but never block the reply.
 		const addressedTo = messageHandler.extract?.addressedTo ?? [];
 		if (addressedTo.length > 0) {
-			void applyAddressedTo({
+			const addressedToTask = applyAddressedTo({
 				runtime: args.runtime,
 				message: args.message,
 				addressedTo,
@@ -7498,6 +7670,11 @@ export async function runV5MessageRuntimeStage1(args: {
 					"[message] applyAddressedTo failed",
 				);
 			});
+			if (args.runTerminalOwner) {
+				args.runTerminalOwner.adopt("apply-addressed-to", addressedToTask);
+			} else {
+				void addressedToTask;
+			}
 		}
 
 		// Record Stage-1-extracted topics into the per-channel LRU. Pure
@@ -7510,7 +7687,7 @@ export async function runV5MessageRuntimeStage1(args: {
 				ChannelTopicsService.serviceType,
 			);
 			if (channelTopics) {
-				void channelTopics
+				const recordTopicsTask = channelTopics
 					.recordTopics(args.message.roomId, topics)
 					.catch((error) => {
 						// error-policy:J7 Channel-topic state is detached enrichment; report
@@ -7528,6 +7705,14 @@ export async function runV5MessageRuntimeStage1(args: {
 							"[message] recordTopics failed",
 						);
 					});
+				if (args.runTerminalOwner) {
+					args.runTerminalOwner.adopt(
+						"record-channel-topics",
+						recordTopicsTask,
+					);
+				} else {
+					void recordTopicsTask;
+				}
 			}
 		}
 
@@ -7540,7 +7725,7 @@ export async function runV5MessageRuntimeStage1(args: {
 			// valid, discriminated MessageMetadata regardless of the inbound shape
 			// (never a sibling union member with an unexpected `topics` field).
 			const existingMetadata = args.message.metadata;
-			void args.runtime
+			const stampTopicsTask = args.runtime
 				.updateMemory({
 					id: args.message.id,
 					metadata: {
@@ -7560,6 +7745,11 @@ export async function runV5MessageRuntimeStage1(args: {
 						"[message] stamp message topics failed",
 					);
 				});
+			if (args.runTerminalOwner) {
+				args.runTerminalOwner.adopt("stamp-message-topics", stampTopicsTask);
+			} else {
+				void stampTopicsTask;
+			}
 		}
 
 		// Response-handler evaluators may promote a simple turn to planning and
@@ -7600,23 +7790,29 @@ export async function runV5MessageRuntimeStage1(args: {
 			messageHandler.plan.contexts,
 			availableContexts,
 		);
-		// #9874 item 1: skip the simple→requiresTool promotion when this turn is
-		// explicitly addressed to another participant (not us) — the agent is
-		// overhearing, not being asked to act, so forcing a tool fabricates a
-		// phantom task. Uniform addressing gate, NOT bot-specific: it fires the
-		// same for human and bot addressees (bot-ness is surfaced to the model as
-		// transcript context, not handled here). Cheap-gated: only resolve
-		// addressees when a promotion could actually fire (requiresTool /
-		// candidateActions) and the message carries explicit addressees.
-		const mayPromoteToTool =
-			messageHandler.plan.requiresTool === true ||
-			(messageHandler.plan.candidateActions?.length ?? 0) > 0;
-		// Fail SAFE on any resolution error (DB hiccup in getEntitiesForRoom): a
-		// transient failure must NOT convert a normal turn into the generic
-		// failure reply — it just means "don't suppress", matching the
-		// conservative contract and the fire-and-forget addressee handling above.
-		const suppressToolPromotion =
-			mayPromoteToTool && addressedTo.length > 0
+		// Full engagement addressing gate (extends #9874 item 1 from tool
+		// promotion to reply + planner + early-ack routing): when Stage 1 tagged
+		// this turn as explicitly addressed to ANOTHER participant (not us), the
+		// agent is overhearing — it must not reply, enter the planner, or
+		// fabricate a tool task. Uniform, NOT bot-specific: it fires the same
+		// for human and bot addressees (bot-ness is surfaced to the model as
+		// transcript context, not handled here). Undirected banter
+		// (addressedTo: []) never gates, so chatty agents still interject per
+		// their character. Eligibility is bounded by the canonical `ambientTurn`
+		// classifier: only positively identified unaddressed text-group traffic
+		// can be suppressed. Direct/API/self turns, client chat, autonomous and
+		// sub-agent traffic, explicit mentions/replies/names, and unknown channel
+		// types all fail open. The sender's effective personality reply_gate also
+		// provides a deliberate opt-out when it is explicitly "always".
+		//
+		// Fail OPEN on any resolution error (DB hiccup in getEntitiesForRoom): a
+		// transient failure must NOT convert a normal turn into silence — it
+		// just means "don't suppress", matching the conservative contract and
+		// the fire-and-forget addressee handling above.
+		const addressedToOtherParticipant =
+			ambientTurn &&
+			addressedTo.length > 0 &&
+			resolveStage1ReplyGateMode(args.runtime, args.message) !== "always"
 				? await messageAddressedToOtherParticipant({
 						runtime: args.runtime,
 						message: args.message,
@@ -7634,8 +7830,18 @@ export async function runV5MessageRuntimeStage1(args: {
 						return false;
 					})
 				: false;
+		if (addressedToOtherParticipant) {
+			args.runtime.logger?.debug?.(
+				{
+					src: "service:message",
+					roomId: args.message.roomId,
+					addressedToCount: addressedTo.length,
+				},
+				"[message] Turn addressed to another participant — engagement gate ignores it",
+			);
+		}
 		const route = routeMessageHandlerOutput(messageHandler, {
-			suppressToolPromotion,
+			addressedToOtherParticipant,
 		});
 		if (route.type === "ignored" || route.type === "stopped") {
 			return {
@@ -7645,6 +7851,13 @@ export async function runV5MessageRuntimeStage1(args: {
 				state: args.state,
 			};
 		}
+
+		// Past this point the Stage-1 model has committed this turn to a
+		// response (final reply or planning). Surface the per-message decision
+		// so a later runtime failure can qualify for a visible failure reply
+		// instead of the unaddressed-turn suppression — evaluator-demoted
+		// IGNOREs and the injection-gate return above never reach this.
+		args.onStage1RespondDecision?.();
 
 		if (route.type === "final_reply") {
 			// The simple-context reply IS the answer: Stage 1 emits `replyText` (→
@@ -7778,7 +7991,13 @@ export async function runV5MessageRuntimeStage1(args: {
 				earlyReplyText = "";
 			}
 		}
+		// The addressing gate above already terminal-routes addressed-to-other
+		// turns to ignored, so a gated turn cannot normally reach this planning
+		// path — but the early ack ships user-visible text BEFORE the planner,
+		// so it is re-checked here as defense in depth: no ack may leak from a
+		// gated turn regardless of how routing evolves upstream.
 		const earlyReplyEligible =
+			!addressedToOtherParticipant &&
 			messageHandler.processMessage === "RESPOND" &&
 			earlyReplyText.length > 0 &&
 			typeof onResponseHandlerEarlyReply === "function";
@@ -8017,9 +8236,20 @@ export async function runV5MessageRuntimeStage1(args: {
 			plannerTools.map((tool) => normalizeActionIdentifier(tool.name)),
 		);
 		const stageOneActionLookup = buildRuntimeActionLookup(args.runtime);
+		const plannerToolActions = plannerTools.flatMap(
+			(tool) => resolveRuntimeAction(stageOneActionLookup, tool.name) ?? [],
+		);
 		const candidateResolvesToPlannerTool = (name: string): boolean => {
 			const normalized = normalizeActionIdentifier(name);
 			if (plannerToolNames.has(normalized)) return true;
+			// Retrieval can replace an umbrella candidate (TASKS) with the precise
+			// promoted child exposed this turn (TASKS_SPAWN_AGENT). Promoted children
+			// deliberately carry the parent name as a simile, so resolve against the
+			// ACTUAL planner surface before consulting the full runtime. Otherwise the
+			// runtime lookup finds the exact parent, which is absent from plannerTools,
+			// and incorrectly disables hard-tool enforcement even though its child is
+			// exposed and runnable.
+			if (exposedActionMatches(plannerToolActions, normalized)) return true;
 			const resolved = resolveRuntimeAction(stageOneActionLookup, name);
 			return (
 				resolved !== undefined &&
@@ -8091,7 +8321,7 @@ export async function runV5MessageRuntimeStage1(args: {
 		// CONTEXT_DURING (non-blocking): runs in parallel with the planner.
 		// error-policy:J7 diagnostics-must-not-kill-the-loop — a rejection escaping
 		// runActionsByMode must not abort the planner, but it must surface.
-		void args.runtime
+		const contextDuring = args.runtime
 			.runActionsByMode("CONTEXT_DURING", args.message, plannerState, {
 				selectedContexts,
 			})
@@ -8100,6 +8330,11 @@ export async function runV5MessageRuntimeStage1(args: {
 					mode: "CONTEXT_DURING",
 				}),
 			);
+		if (args.runTerminalOwner) {
+			args.runTerminalOwner.adopt("CONTEXT_DURING", contextDuring);
+		} else {
+			void contextDuring;
+		}
 
 		// Track visible text an action already delivered to the user through the
 		// callback during this planner run. The set is populated by the outer
@@ -8118,6 +8353,17 @@ export async function runV5MessageRuntimeStage1(args: {
 						: [];
 				}
 			: undefined;
+
+		// Settled planner tool results, in execution order, captured OUTSIDE the
+		// loop so they survive a planner/evaluator crash. When the loop dies
+		// after a tool already completed, the catch below can still deliver that
+		// tool's user-facing text instead of the canned transient-failure reply
+		// (observed live 2026-08-07/08: intermittent provider 400s on the
+		// post-tool evaluator canned 26 turns whose tool had already succeeded).
+		const settledPlannerToolResults: Array<{
+			name: string;
+			result: PlannerToolResult;
+		}> = [];
 
 		const invokePlannerLoop = (
 			loopContext: typeof plannerContextAfterEarlyReply,
@@ -8179,45 +8425,49 @@ export async function runV5MessageRuntimeStage1(args: {
 					executeToolCall: (toolCall, ctx) =>
 						timeInferenceSpan(
 							"actions:planner-tool",
-							() =>
-								executeV5PlannedToolCall({
-									runtime: args.runtime,
-									toolCall,
-									plannerContext: loopContext,
-									executorCtx: buildV5ExecutorContext({
-										message: args.message,
-										state: plannerState,
-										selectedContexts,
-										senderRole,
-										previousResults: collectPreviousActionResults(
-											ctx.trajectory,
-											exposedPlannerActions,
-										),
-										// A pending batch has not earned transcript prose, but its
-										// media and interactive payloads still belong to the user.
-										...(recordingCallback
-											? {
-													callback:
-														ctx.plannerCompleted === false
-															? intermediateCallback
-															: recordingCallback,
-												}
-											: {}),
+							async () =>
+								trackSettledPlannerToolResult(
+									settledPlannerToolResults,
+									toolCall.name,
+									await executeV5PlannedToolCall({
+										runtime: args.runtime,
+										toolCall,
+										plannerContext: loopContext,
+										executorCtx: buildV5ExecutorContext({
+											message: args.message,
+											state: plannerState,
+											selectedContexts,
+											senderRole,
+											previousResults: collectPreviousActionResults(
+												ctx.trajectory,
+												exposedPlannerActions,
+											),
+											// A pending batch has not earned transcript prose, but its
+											// media and interactive payloads still belong to the user.
+											...(recordingCallback
+												? {
+														callback:
+															ctx.plannerCompleted === false
+																? intermediateCallback
+																: recordingCallback,
+													}
+												: {}),
+										}),
+										plannerRuntime,
+										executorOptions: {
+											actions: exposedPlannerActions,
+											...(args.onSettledActionResult
+												? {
+														onSettledResult: args.onSettledActionResult,
+													}
+												: {}),
+										},
+										evaluatorEffects,
+										recorder,
+										trajectoryId,
+										plannerLoopConfig: args.plannerLoopConfig,
 									}),
-									plannerRuntime,
-									executorOptions: {
-										actions: exposedPlannerActions,
-										...(args.onSettledActionResult
-											? {
-													onSettledResult: args.onSettledActionResult,
-												}
-											: {}),
-									},
-									evaluatorEffects,
-									recorder,
-									trajectoryId,
-									plannerLoopConfig: args.plannerLoopConfig,
-								}),
+								),
 							{ tool: toolCall.name },
 						),
 					evaluate: ({ runtime: plannerRuntimeForEval, context, trajectory }) =>
@@ -8245,7 +8495,73 @@ export async function runV5MessageRuntimeStage1(args: {
 				!preservedAnswer ||
 				PROGRESS_ONLY_ANSWER_REJECT.test(preservedAnswer)
 			) {
-				throw error;
+				// No answer-shaped Stage-1 text to rescue with — but a tool that
+				// already completed this turn may still own the user-facing result
+				// (observed live: the post-tool evaluator died on an intermittent
+				// provider 400 and the canned transient-failure reply replaced a
+				// result the turn had already produced). Deliver the preserved tool
+				// result; the canned line remains only when there is genuinely
+				// nothing user-facing to deliver.
+				const preservedToolResult = preservedSettledToolResult(
+					settledPlannerToolResults,
+					deliveredVisibleTexts,
+				);
+				if (!preservedToolResult) {
+					// #18208: a task_complete relay turn carries the sub-agent's
+					// finished result in its own body — the last preserved source
+					// before conceding to the canned failure reply.
+					const relayBody = subAgentCompletionRelayBody(
+						args.message?.content?.text,
+					);
+					if (!relayBody) {
+						throw error;
+					}
+					// error-policy:J4 a completed sub-agent result is a designed
+					// degrade when the relay turn's planning fails; report the loop
+					// failure and deliver the result the sub-agent already produced.
+					endStatus = "errored";
+					args.runtime.reportError("MessageService.plannerLoop", error, {
+						roomId: args.message.roomId,
+					});
+					return {
+						kind: "direct_reply",
+						messageHandler,
+						result: createV5ReplyStrategyResult({
+							...args,
+							state: plannerState,
+							text: relayBody,
+							thought: messageHandler.thought,
+						}),
+					};
+				}
+				// error-policy:J4 a completed tool's user-facing result is a designed
+				// degrade when later planning/evaluation fails; report the loop
+				// failure and deliver the tool's known-good text.
+				endStatus = "errored";
+				args.runtime.reportError("MessageService.plannerLoop", error, {
+					roomId: args.message.roomId,
+				});
+				return {
+					kind: "direct_reply",
+					messageHandler,
+					result: createV5ReplyStrategyResult({
+						...args,
+						state: plannerState,
+						text: preservedToolResult.userFacingText,
+						thought: messageHandler.thought,
+						// Only byte-exact canonical action text may skip the voice
+						// gate; ordinary tool output stays eligible for re-voicing.
+						...(preservedToolResult.verifiedUserFacing === true
+							? { agentVoiced: true }
+							: {}),
+						...(preservedToolResult.userFacingEffectReceiptIds?.length
+							? {
+									effectReceiptIds:
+										preservedToolResult.userFacingEffectReceiptIds,
+								}
+							: {}),
+					}),
+				};
 			}
 			// error-policy:J4 A completed Stage-1 answer is a designed degrade when
 			// later planning fails; report the planner failure and deliver known-good text.
@@ -8424,6 +8740,24 @@ export async function runV5MessageRuntimeStage1(args: {
 						: "")
 				: preservedAnswerFallback;
 		let effectiveReplyText = plannedText || ackFallback;
+		// #18208: a failed sub-agent completion relay must not discard the
+		// finished result it carries. When the turn ended on the generic
+		// failed-tool fallback and the triggering message IS a task_complete
+		// relay — whose body is the sub-agent's completed result, composed for
+		// user delivery — deliver that body instead of the canned line. Every
+		// other failed turn keeps the canned fallback, and the replacement
+		// still flows through the egress/dedupe checks below.
+		if (effectiveReplyText === FAILED_TOOL_FALLBACK_MESSAGE) {
+			const relayBody = subAgentCompletionRelayBody(
+				args.message?.content?.text,
+			);
+			if (relayBody) {
+				logger.debug(
+					"[MessageService] failed relay turn degraded to preserved sub-agent result",
+				);
+				effectiveReplyText = relayBody;
+			}
+		}
 		const finalReplyEgressDecision = evaluatePlannedReplyEgress({
 			reply: effectiveReplyText,
 			actionResults,
@@ -8628,14 +8962,21 @@ export async function runV5MessageRuntimeStage1(args: {
 				args.runtime,
 				"trajectory-finalization",
 				() => finalizeTrajectory(false),
+				"diagnostic",
 			);
-			if (settledFactsOutcome === undefined) {
+			if (
+				settledFactsOutcome === undefined &&
+				args.runTerminalOwner === undefined
+			) {
 				detachPostDeliverySideEffect(
 					args.runtime,
 					"facts-and-relationships",
 					async () => {
 						await factsTask;
 					},
+					"room-state",
+					args.message.roomId,
+					args.roomHandlerLease,
 				);
 			}
 		}
@@ -8949,6 +9290,7 @@ function extractMessageHandlerUsage(raw: GenerateTextResult):
 			completionTokens: number;
 			cacheReadInputTokens?: number;
 			cacheCreationInputTokens?: number;
+			reasoningTokens?: number;
 			totalTokens: number;
 	  }
 	| undefined {
@@ -8962,6 +9304,7 @@ function extractMessageHandlerUsage(raw: GenerateTextResult):
 		completionTokens: number;
 		cacheReadInputTokens?: number;
 		cacheCreationInputTokens?: number;
+		reasoningTokens?: number;
 		totalTokens: number;
 	} = { promptTokens, completionTokens, totalTokens };
 	if (typeof usage.cacheReadInputTokens === "number") {
@@ -8975,6 +9318,9 @@ function extractMessageHandlerUsage(raw: GenerateTextResult):
 	}
 	if (typeof usage.cacheCreationInputTokens === "number") {
 		out.cacheCreationInputTokens = usage.cacheCreationInputTokens;
+	}
+	if (typeof usage.reasoningTokens === "number") {
+		out.reasoningTokens = usage.reasoningTokens;
 	}
 	return out;
 }
@@ -9003,7 +9349,7 @@ export function hasTextGenerationHandler(runtime: IAgentRuntime): boolean {
 /**
  * Tracks the latest response ID per agent+room to handle message superseding
  */
-const latestResponseIds = new Map<string, Map<string, string>>();
+const latestResponseIds = new Map<string, Map<string, string[]>>();
 const INFERENCE_TIMING_LOG_TYPE = "inference_timing";
 const INFERENCE_TIMING_LOG_RETENTION = 4_096;
 const INFERENCE_TIMING_LOG_SWEEP_INTERVAL = 64;
@@ -9084,22 +9430,168 @@ function clearLatestResponseId(
 		return;
 	}
 
-	if (agentMap.get(roomId) !== responseId) {
+	const roomResponses = agentMap.get(roomId);
+	if (!roomResponses) {
 		return;
 	}
-
-	agentMap.delete(roomId);
+	const responseIndex = roomResponses.lastIndexOf(responseId);
+	if (responseIndex < 0) return;
+	roomResponses.splice(responseIndex, 1);
+	if (roomResponses.length === 0) agentMap.delete(roomId);
 	if (agentMap.size === 0) {
 		latestResponseIds.delete(agentId);
 	}
+}
+
+function getLatestResponseId(agentId: UUID, roomId: UUID): string | undefined {
+	const roomResponses = latestResponseIds.get(agentId)?.get(roomId);
+	return roomResponses?.[roomResponses.length - 1];
 }
 
 function detachPostDeliverySideEffect(
 	runtime: Pick<IAgentRuntime, "agentId" | "reportError">,
 	label: string,
 	task: () => Promise<unknown>,
-): void {
-	void trackPostDeliveryTask(runtime, label, task);
+	kind: "room-state" | "diagnostic" = "room-state",
+	roomId?: string,
+	roomHandlerLease?: RoomHandlerLease,
+): Promise<void> {
+	return trackPostDeliveryTask(
+		runtime,
+		label,
+		task,
+		kind === "diagnostic"
+			? { kind }
+			: roomId && roomHandlerLease
+				? { kind, roomId, roomHandlerLease }
+				: { kind },
+	);
+}
+
+/**
+ * Owns asynchronous continuations whose provider, model, or database-trajectory
+ * captures belong to one message-service run. Delivery returns as soon as the
+ * visible result is ready; the detached terminal waits for this set to quiesce,
+ * then emits exactly one `RUN_ENDED` event. File-recorder finalization and
+ * bounded inference-timing persistence are diagnostic-only and intentionally
+ * drain independently. A run-owned task may not join after terminalization is
+ * requested.
+ */
+class MessageRunTerminalOwner {
+	private readonly pending = new Set<Promise<void>>();
+	private terminalRequest:
+		| {
+				status: RunEventPayload["status"];
+				error?: unknown;
+		  }
+		| undefined;
+	private terminalTask: Promise<void> | undefined;
+
+	constructor(
+		private readonly runtime: IAgentRuntime,
+		private readonly runId: UUID,
+		private readonly message: Memory,
+		private readonly startTime: number,
+		private readonly roomHandlerLease?: RoomHandlerLease,
+	) {}
+
+	track(label: string, task: () => Promise<unknown>): Promise<void> {
+		if (this.terminalRequest) {
+			const error = new ElizaError(
+				"Run-owned work cannot start after terminalization was requested",
+				{
+					code: "RUN_TASK_AFTER_TERMINAL",
+					context: {
+						label,
+						runId: this.runId,
+						messageId: this.message.id,
+					},
+				},
+			);
+			this.runtime.reportError("MessageRunTerminalOwner.track", error, {
+				label,
+				runId: this.runId,
+				messageId: this.message.id,
+			});
+			return Promise.resolve();
+		}
+
+		let tracked!: Promise<void>;
+		tracked = Promise.resolve()
+			.then(task)
+			.then(() => undefined)
+			.catch((error) => {
+				// error-policy:J1 User delivery is already committed. Preserve the exact
+				// child failure while allowing the terminal barrier to release the run.
+				this.runtime.reportError("PostDeliveryTask", error, {
+					agentId: this.runtime.agentId,
+					label,
+					runId: this.runId,
+				});
+			})
+			.finally(() => {
+				this.pending.delete(tracked);
+			});
+		this.pending.add(tracked);
+		return tracked;
+	}
+
+	adopt(label: string, task: Promise<unknown>): Promise<void> {
+		return this.track(label, () => task);
+	}
+
+	request(status: RunEventPayload["status"], error?: unknown): Promise<void> {
+		if (this.terminalRequest) return this.terminalTask ?? Promise.resolve();
+		this.terminalRequest = {
+			status,
+			...(error === undefined ? {} : { error }),
+		};
+		try {
+			this.terminalTask = detachPostDeliverySideEffect(
+				this.runtime,
+				"RUN_ENDED",
+				async () => {
+					while (this.pending.size > 0) {
+						await Promise.allSettled([...this.pending]);
+					}
+					const terminal = this.terminalRequest;
+					if (!terminal) {
+						throw new ElizaError("Run terminal request disappeared", {
+							code: "RUN_TERMINAL_REQUEST_MISSING",
+							context: { runId: this.runId, messageId: this.message.id },
+						});
+					}
+					await this.runtime.emitEvent(EventType.RUN_ENDED, {
+						runtime: this.runtime,
+						source: "messageHandler",
+						runId: this.runId,
+						messageId: this.message.id,
+						roomId: this.message.roomId,
+						entityId: this.message.entityId,
+						startTime: this.startTime,
+						status: terminal.status,
+						endTime: Date.now(),
+						duration: Date.now() - this.startTime,
+						...(terminal.error === undefined
+							? {}
+							: {
+									error:
+										terminal.error instanceof Error
+											? terminal.error
+											: String(terminal.error),
+								}),
+					} as RunEventPayload);
+				},
+				"room-state",
+				this.message.roomId,
+				this.roomHandlerLease,
+			);
+		} catch (terminalScheduleError) {
+			this.terminalRequest = undefined;
+			throw terminalScheduleError;
+		}
+		return this.terminalTask;
+	}
 }
 
 export function isSimpleReplyResponse(
@@ -9240,12 +9732,62 @@ function looksLikeDelegationExcludedAsk(text: string): boolean {
 	) {
 		return true;
 	}
+	// A shared link with no explicit work imperative is content to react to,
+	// not a work order — even when the model itself proposed a spawn candidate
+	// off the embed preview text (observed live: bare URL + embed title →
+	// TASKS_SPAWN_AGENT with an empty derived task → doomed sub-agent).
+	if (looksLikeBareLinkShare(normalized)) {
+		return true;
+	}
 	if (looksLikeActionExplanationRequest(normalized)) {
 		return true;
 	}
 	return (
 		looksLikeCreativeWritingRequest(normalized) &&
 		!looksLikeCreativeCodingWorkRequest(normalized)
+	);
+}
+
+const LEGACY_CODING_WORK_VERB_PATTERN =
+	/\b(?:build|create|make|implement|write|scaffold|fix|edit|modify|update|verify)\b/giu;
+const LEGACY_CODING_ARTIFACT_PATTERN =
+	/\b(?:app|site|website|page|code|file|files|project|cli|script|backend|frontend|repo|feature|bug|url)\b/giu;
+const CODING_OPERATION_VERB_PATTERN =
+	/\b(?:refactor|debug|deploy|patch|optimize|migrate|profile)\b/giu;
+const REVIEW_WORK_VERB_PATTERN =
+	/\b(?:review|audit|investigate|analyze|inspect|test|trace|diagnose)\b/giu;
+const STRONG_CODE_ARTIFACT_PATTERN =
+	/\b(?:code|cli|script|backend|frontend|repo|repository|bug|pr|pull request|commit|branch|stack trace|pipeline|ci)\b/giu;
+const EXPANDED_WORK_ARTIFACT_PATTERN =
+	/\b(?:app|site|website|page|code|file|files|project|cli|script|backend|frontend|repo|repository|feature|bug|url|pr|pull request|issue|commit|branch|build|test|error|stack trace|failure|log|docs|documentation|run|pipeline|ci)\b/giu;
+const HTTP_URL_PATTERN = /\bhttps?:\/\/[^\s<>()]+/iu;
+
+interface TextSpan {
+	start: number;
+	end: number;
+}
+
+function collectTextSpans(text: string, pattern: RegExp): TextSpan[] {
+	return Array.from(text.matchAll(pattern), (match) => ({
+		start: match.index,
+		end: match.index + match[0].length,
+	}));
+}
+
+function hasNearbyTerms(
+	text: string,
+	leftPattern: RegExp,
+	rightPattern: RegExp,
+	maxGap: number,
+): boolean {
+	const leftSpans = collectTextSpans(text, leftPattern);
+	const rightSpans = collectTextSpans(text, rightPattern);
+	return leftSpans.some((left) =>
+		rightSpans.some((right) => {
+			if (left.end <= right.start) return right.start - left.end <= maxGap;
+			if (right.end <= left.start) return left.start - right.end <= maxGap;
+			return true;
+		}),
 	);
 }
 
@@ -9264,12 +9806,39 @@ function looksLikeCodingWorkRequest(text: string): boolean {
 		return false;
 	}
 	const asksCodingWork =
-		/\b(?:build|create|make|implement|write|scaffold|fix|edit|modify|update|verify)\b[\s\S]{0,160}\b(?:app|site|website|page|code|file|files|project|cli|script|backend|frontend|repo|feature|bug|url)\b/iu.test(
+		// Preserve the pre-#18108 construction/edit contract exactly.
+		hasNearbyTerms(
 			normalized,
+			LEGACY_CODING_WORK_VERB_PATTERN,
+			LEGACY_CODING_ARTIFACT_PATTERN,
+			160,
 		) ||
-		/\b(?:app|site|website|page|code|file|files|project|cli|script|backend|frontend|repo|feature|bug|url)\b[\s\S]{0,160}\b(?:build|create|make|implement|write|scaffold|fix|edit|modify|update|verify)\b/iu.test(
+		// Coding-native operations can safely use the expanded artifact set.
+		hasNearbyTerms(
 			normalized,
-		);
+			CODING_OPERATION_VERB_PATTERN,
+			EXPANDED_WORK_ARTIFACT_PATTERN,
+			160,
+		) ||
+		// Review-family verbs are common in health, finance, and personal work.
+		// Promote them without a URL only when paired with a code-specific noun.
+		hasNearbyTerms(
+			normalized,
+			REVIEW_WORK_VERB_PATTERN,
+			STRONG_CODE_ARTIFACT_PATTERN,
+			160,
+		) ||
+		// A URL plus a nearby review-family verb and work artifact is the
+		// deterministic work-order shape reported in #18108. Without the URL,
+		// generic nouns such as issue, test, log, or documentation remain planner
+		// decisions instead of being mislabeled as coding jobs.
+		(HTTP_URL_PATTERN.test(normalized) &&
+			hasNearbyTerms(
+				normalized,
+				REVIEW_WORK_VERB_PATTERN,
+				EXPANDED_WORK_ARTIFACT_PATTERN,
+				160,
+			));
 	return asksDelegation || asksCodingWork;
 }
 
@@ -9800,6 +10369,30 @@ export async function enforceTrustedDeliveryAudienceOnResult(
 }
 
 /**
+ * Builds provider-neutral TTS input from character settings.
+ *
+ * Only `voiceId` is a provider voice identifier. The historical `model`
+ * field contains Piper voice tags and `url` contains an endpoint, so forwarding
+ * either as `voice` breaks OpenAI and cloud provider selection. Omitting
+ * `voice` lets the active provider apply its own valid default.
+ */
+function buildTextToSpeechParams(
+	runtime: Pick<IAgentRuntime, "character">,
+	text: string,
+	signal?: AbortSignal,
+): TextToSpeechParams {
+	const voiceSettings = runtime.character.settings?.voice as
+		| { voiceId?: string }
+		| undefined;
+	const voiceId = voiceSettings?.voiceId?.trim();
+	return {
+		text,
+		...(voiceId ? { voice: voiceId } : {}),
+		...(signal ? { signal } : {}),
+	};
+}
+
+/**
  * First-sentence cloud-TTS delivery for streaming turns: synthesize the
  * sentence and hand the audio to the callback as a data-URI attachment. The
  * local-inference voice loop uses VoiceScheduler/PhraseChunker instead
@@ -9830,26 +10423,8 @@ export async function deliverFirstSentenceVoice(
 		return;
 	}
 	try {
-		const voiceSettings = runtime.character.settings?.voice as
-			| {
-					model?: string;
-					url?: string;
-					voiceId?: string;
-			  }
-			| undefined;
-
-		const model = voiceSettings?.model || "en_US-male-medium";
-		const voiceId = voiceSettings?.url || voiceSettings?.voiceId || "nova";
-
 		let audioBuffer: Buffer | null = null;
-		const params: TextToSpeechParams & {
-			model?: string;
-		} = {
-			text: first,
-			voice: voiceId,
-			model: model,
-			...(abortSignal ? { signal: abortSignal } : {}),
-		};
+		const params = buildTextToSpeechParams(runtime, first, abortSignal);
 		const result = runtime.getModel(ModelType.TEXT_TO_SPEECH)
 			? await runtime.useModel(ModelType.TEXT_TO_SPEECH, params)
 			: undefined;
@@ -10141,15 +10716,27 @@ async function rewriteActionCallbackInCharacter(args: {
 	actionName?: string;
 	text: string;
 }): Promise<string | null> {
-	const fallback = () => {
-		const action = args.actionName ?? "the action";
-		const error =
-			typeof args.response.error === "string" && args.response.error.trim()
-				? ` It reported: ${args.response.error.trim()}`
-				: "";
-		return `I ran ${action} and got a result, but I couldn't format the details cleanly here.${error}`;
+	// Failure contract: a failed rewrite must never fabricate wire text — no
+	// meta-narration about formatting ever ships (observed live: a settings
+	// action succeeded and the user received an internal formatting apology).
+	// Returning null keeps the raw callback text as the delivery: it was
+	// already user-destined before the re-voicing attempt. An action-owned
+	// error string is diagnostics for runtime.reportError, not chat content.
+	const fail = (reason: string): null => {
+		const actionError =
+			typeof args.response.error === "string" ? args.response.error.trim() : "";
+		if (actionError) {
+			args.runtime.reportError(
+				"MessageService.rewriteActionCallback",
+				new Error(actionError),
+				{ actionName: args.actionName, roomId: args.message.roomId, reason },
+			);
+		}
+		return null;
 	};
-	if (typeof args.runtime.useModel !== "function") return fallback();
+	if (typeof args.runtime.useModel !== "function") {
+		return fail("model_unavailable");
+	}
 	const character = args.runtime.character;
 	const characterVoice = {
 		name: character?.name,
@@ -10196,12 +10783,17 @@ async function rewriteActionCallbackInCharacter(args: {
 		} | null;
 		const response =
 			typeof parsed?.response === "string" ? parsed.response.trim() : "";
-		if (!response || response === args.text) return fallback();
-		if (parseJSONObjectFromText(response)) return fallback();
-		return response.replace(/^["'`]+|["'`]+$/g, "").trim() || fallback();
+		if (!response || response === args.text) {
+			return fail("unusable_model_response");
+		}
+		if (parseJSONObjectFromText(response)) return fail("json_shaped_response");
+		return (
+			response.replace(/^["'`]+|["'`]+$/g, "").trim() ||
+			fail("unusable_model_response")
+		);
 	} catch (error) {
 		// error-policy:J4 Voice rewriting is an optional presentation layer; the
-		// original action result remains the explicit degraded response.
+		// raw action callback text remains the delivered degraded response.
 		args.runtime.logger.debug(
 			{
 				src: "service:message",
@@ -10214,7 +10806,7 @@ async function rewriteActionCallbackInCharacter(args: {
 			actionName: args.actionName,
 			roomId: args.message.roomId,
 		});
-		return fallback();
+		return fail("rewrite_error");
 	}
 }
 
@@ -10549,6 +11141,7 @@ export class DefaultMessageService implements IMessageService {
 				? (message.metadata as { trajectoryId?: string }).trajectoryId
 				: undefined;
 
+		let alwaysDuringTask: Promise<void> | undefined;
 		if (
 			!(typeof trajectoryStepId === "string" && trajectoryStepId.trim() !== "")
 		) {
@@ -10582,14 +11175,16 @@ export class DefaultMessageService implements IMessageService {
 			// (identity extraction, dispute detection) whose results may
 			// influence Stage 1 routing.
 			await runtime.runActionsByMode("ALWAYS_BEFORE", message);
-			// ALWAYS_DURING (non-blocking): fire-and-forget alongside the
-			// rest of the pipeline. Telemetry, logging, side effects.
-			// error-policy:J7 diagnostics-must-not-kill-the-loop — a rejection
-			// escaping runActionsByMode must not abort the turn, but it must surface.
-			void runtime.runActionsByMode("ALWAYS_DURING", message).catch((err) =>
-				runtime.reportError("MessageService.runActionsByMode", err, {
-					mode: "ALWAYS_DURING",
-				}),
+			// ALWAYS_DURING begins alongside the response pipeline, but actions may
+			// mutate room state. The room owner therefore remains live until this
+			// tracked work settles even if the visible response finishes first.
+			alwaysDuringTask = detachPostDeliverySideEffect(
+				runtime,
+				"ALWAYS_DURING",
+				() => runtime.runActionsByMode("ALWAYS_DURING", message),
+				"room-state",
+				message.roomId,
+				options?.roomHandlerLease,
 			);
 
 			trajectoryStepId =
@@ -10667,6 +11262,7 @@ export class DefaultMessageService implements IMessageService {
 				let firstSentenceSent = false;
 				let firstSentenceText = "";
 				let streamTextFallback = "";
+				let runTerminalOwner: MessageRunTerminalOwner | undefined;
 				// Envelope-echo latch for this turn's stream: once the accumulated
 				// text reads as envelope material, every downstream chunk consumer
 				// (model_stream_chunk hook re-emission, first-sentence TTS, the
@@ -10734,13 +11330,30 @@ export class DefaultMessageService implements IMessageService {
 									if (first.length > 5) {
 										firstSentenceSent = true;
 										firstSentenceText = first;
-										// Fire-and-forget on purpose: audio must not stall the
-										// text stream; failures log inside.
-										void deliverFirstSentenceVoice(
-											runtime,
-											first,
-											callback,
-											opts.abortSignal,
+										// Audio does not stall the text stream, but its model capture
+										// remains owned by the run-terminal barrier.
+										const deliverVoice = () =>
+											deliverFirstSentenceVoice(
+												runtime,
+												first,
+												callback,
+												opts.abortSignal,
+											);
+										if (!runTerminalOwner) {
+											throw new ElizaError(
+												"Voice streaming requires a live run terminal owner",
+												{
+													code: "RUN_TERMINAL_OWNER_REQUIRED",
+													context: {
+														messageId: message.id,
+														roomId: message.roomId,
+													},
+												},
+											);
+										}
+										runTerminalOwner.track(
+											"first-sentence-voice",
+											deliverVoice,
 										);
 									}
 								}
@@ -10764,9 +11377,17 @@ export class DefaultMessageService implements IMessageService {
 						),
 					shouldRespondModel: resolvedShouldRespondModel,
 					...(options?.abortSignal ? { abortSignal: options.abortSignal } : {}),
+					...(options?.roomHandlerLease
+						? { roomHandlerLease: options.roomHandlerLease }
+						: {}),
 					...(options?.onSettledActionResult
 						? {
 								onSettledActionResult: options.onSettledActionResult,
+							}
+						: {}),
+					...(options?.onTrajectoryTerminalOwner
+						? {
+								onTrajectoryTerminalOwner: options.onTrajectoryTerminalOwner,
 							}
 						: {}),
 				};
@@ -10805,11 +11426,12 @@ export class DefaultMessageService implements IMessageService {
 					// Track this response ID - ensure map exists for this agent
 					let agentResponses = latestResponseIds.get(runtime.agentId);
 					if (!agentResponses) {
-						agentResponses = new Map<string, string>();
+						agentResponses = new Map<string, string[]>();
 						latestResponseIds.set(runtime.agentId, agentResponses);
 					}
 
-					const previousResponseId = agentResponses.get(message.roomId);
+					const roomResponses = agentResponses.get(message.roomId) ?? [];
+					const previousResponseId = roomResponses[roomResponses.length - 1];
 					if (previousResponseId) {
 						logger.debug(
 							{
@@ -10821,7 +11443,8 @@ export class DefaultMessageService implements IMessageService {
 							"Updating response ID",
 						);
 					}
-					agentResponses.set(message.roomId, responseId);
+					roomResponses.push(responseId);
+					agentResponses.set(message.roomId, roomResponses);
 
 					// Start run tracking with roomId for proper log association
 					const runId = runtime.startRun(message.roomId);
@@ -10851,7 +11474,21 @@ export class DefaultMessageService implements IMessageService {
 							t0EpochMs: startTime,
 						});
 
-					// Emit run started event
+					runTerminalOwner = new MessageRunTerminalOwner(
+						runtime,
+						runId,
+						message,
+						startTime,
+						opts.roomHandlerLease,
+					);
+					opts.runTerminalOwner = runTerminalOwner;
+					if (alwaysDuringTask) {
+						runTerminalOwner.adopt("ALWAYS_DURING", alwaysDuringTask);
+					}
+					opts.onTrajectoryTerminalOwner?.("run");
+
+					// The terminal owner exists before listener dispatch because event
+					// listeners may partially observe RUN_STARTED before another rejects.
 					await runWithInferenceTiming(inferenceTimer, () =>
 						timeInferenceSpan("message:lifecycle:run-started", () =>
 							runtime.emitEvent(EventType.RUN_STARTED, {
@@ -10866,7 +11503,6 @@ export class DefaultMessageService implements IMessageService {
 							} as RunEventPayload),
 						),
 					);
-
 					// Structured streaming is handled by dynamicPromptExecFromState for
 					// text fields. Native v5 planner/tool/evaluator events use the same
 					// callback with JSON event chunks so UIs can render tool progress.
@@ -10952,7 +11588,6 @@ export class DefaultMessageService implements IMessageService {
 										deliveredVisibleTexts,
 										responseId,
 										runId,
-										startTime,
 										opts,
 									),
 								),
@@ -10967,30 +11602,16 @@ export class DefaultMessageService implements IMessageService {
 						const fullText = result.responseContent.text;
 						const rest = fullText.replace(firstSentenceText, "").trim();
 						if (rest.length > 0) {
-							// Generate voice for rest
-							// (Async immediately)
-							(async () => {
+							// Synthesis remains detached from visible delivery, but its model
+							// capture belongs to this run and must settle before RUN_ENDED.
+							runTerminalOwner.track("remaining-voice", async () => {
 								try {
-									const voiceSettings = runtime.character.settings?.voice as
-										| {
-												model?: string;
-												url?: string;
-												voiceId?: string;
-										  }
-										| undefined;
-									const model = voiceSettings?.model || "en_US-male-medium";
-									const voiceId =
-										voiceSettings?.url || voiceSettings?.voiceId || "nova";
-
 									let audioBuffer: Buffer | null = null;
-									const params: TextToSpeechParams & {
-										model?: string;
-									} = {
-										text: rest,
-										voice: voiceId,
-										model: model,
-										...(opts.abortSignal ? { signal: opts.abortSignal } : {}),
-									};
+									const params = buildTextToSpeechParams(
+										runtime,
+										rest,
+										opts.abortSignal,
+									);
 									const result = runtime.getModel(ModelType.TEXT_TO_SPEECH)
 										? await runtime.useModel(ModelType.TEXT_TO_SPEECH, params)
 										: undefined;
@@ -11035,11 +11656,18 @@ export class DefaultMessageService implements IMessageService {
 										roomId: message.roomId,
 									});
 								}
-							})();
+							});
 						}
 					}
 
-					return result;
+					runTerminalOwner.request("completed");
+					return {
+						...result,
+						trajectoryTerminalOwner: "run",
+					};
+				} catch (error) {
+					runTerminalOwner?.request("error", error);
+					throw error;
 				} finally {
 					// Close + emit the per-turn latency breakdown. Detached side
 					// effects (post-turn evaluators) intentionally run after this and
@@ -11058,6 +11686,7 @@ export class DefaultMessageService implements IMessageService {
 									message,
 									inferenceSummary,
 								),
+							"diagnostic",
 						);
 					}
 
@@ -11090,9 +11719,18 @@ export class DefaultMessageService implements IMessageService {
 		deliveredVisibleTexts: Set<string>,
 		responseId: UUID,
 		runId: UUID,
-		startTime: number,
 		opts: ResolvedMessageOptions,
 	): Promise<MessageProcessingResult> {
+		const runTerminalOwner = opts.runTerminalOwner;
+		if (!runTerminalOwner) {
+			throw new ElizaError(
+				"Message processing requires a live run terminal owner",
+				{
+					code: "RUN_TERMINAL_OWNER_REQUIRED",
+					context: { runId, messageId: message.id, roomId: message.roomId },
+				},
+			);
+		}
 		// A reply already handed to a delivery callback for this room may still
 		// be persisting (deliver-then-persist fast path). Composing now would
 		// read RECENT_MESSAGES without the reply this message may be answering,
@@ -11100,8 +11738,9 @@ export class DefaultMessageService implements IMessageService {
 		// hundred ms worst case, and a no-op when nothing is pending.
 		await this.awaitDeliveredReplyPersistence(runtime, message.roomId);
 
-		const agentResponses = latestResponseIds.get(runtime.agentId);
-		if (!agentResponses) throw new Error("Agent responses map not found");
+		if (!latestResponseIds.has(runtime.agentId)) {
+			throw new Error("Agent responses map not found");
+		}
 
 		// Skip messages from self (unless it's an autonomous message)
 		const isAutonomousMessage =
@@ -11115,7 +11754,7 @@ export class DefaultMessageService implements IMessageService {
 				{ src: "service:message", agentId: runtime.agentId },
 				"Skipping message from self",
 			);
-			await this.emitRunEnded(runtime, runId, message, startTime, "self");
+			runTerminalOwner.request("self");
 			return {
 				didRespond: false,
 				responseContent: null,
@@ -11190,7 +11829,7 @@ export class DefaultMessageService implements IMessageService {
 
 		if (defLllmOff && agentUserState === null) {
 			runtime.logger.debug({ src: "service:message" }, "LLM is off by default");
-			await this.emitRunEnded(runtime, runId, message, startTime, "off");
+			runTerminalOwner.request("off");
 			return {
 				didRespond: false,
 				responseContent: null,
@@ -11233,7 +11872,7 @@ export class DefaultMessageService implements IMessageService {
 				},
 				"Ignoring muted room",
 			);
-			await this.emitRunEnded(runtime, runId, message, startTime, "muted");
+			runTerminalOwner.request("muted");
 			return {
 				didRespond: false,
 				responseContent: null,
@@ -11268,13 +11907,7 @@ export class DefaultMessageService implements IMessageService {
 					},
 					"Reply suppressed by personality reply_gate",
 				);
-				await this.emitRunEnded(
-					runtime,
-					runId,
-					message,
-					startTime,
-					"personality_gate",
-				);
+				runTerminalOwner.request("personality_gate");
 				return {
 					didRespond: false,
 					responseContent: null,
@@ -11309,13 +11942,7 @@ export class DefaultMessageService implements IMessageService {
 				},
 				"Unaddressed bot/webhook message ignored by small-model triage (skipped Stage 1)",
 			);
-			await this.emitRunEnded(
-				runtime,
-				runId,
-				message,
-				startTime,
-				"bot_noise_triage",
-			);
+			runTerminalOwner.request("bot_noise_triage");
 			return {
 				didRespond: false,
 				responseContent: null,
@@ -11335,8 +11962,8 @@ export class DefaultMessageService implements IMessageService {
 		// relevant-conversations provider, document recall, experience recall,
 		// and the FACTS path all route the same text through `embedRecallQuery`
 		// (keyed by this run), so they await this in-flight result rather than
-		// starting a fresh round-trip. Fire-and-forget; the value is re-read from
-		// the per-run cache by its normalized-text key.
+		// starting a fresh round-trip. Delivery does not await it, but RUN_ENDED
+		// does; the value is re-read from the per-run cache by normalized-text key.
 		// Present the turn's `messageId` so this prefetch ADOPTS the pre-run cache
 		// the API chat path's document augmentation already warmed under the same
 		// id (#15253): on a no-match turn the query text is byte-identical, so the
@@ -11348,7 +11975,7 @@ export class DefaultMessageService implements IMessageService {
 		if (typeof recallWarmText === "string" && recallWarmText.trim() !== "") {
 			const recallWarmMessageId =
 				typeof message.id === "string" ? message.id : undefined;
-			void embedRecallQuery(runtime, recallWarmText, {
+			const recallWarmTask = embedRecallQuery(runtime, recallWarmText, {
 				messageId: recallWarmMessageId,
 				...(opts.abortSignal ? { signal: opts.abortSignal } : {}),
 			}).catch((error) => {
@@ -11362,6 +11989,7 @@ export class DefaultMessageService implements IMessageService {
 					runId,
 				});
 			});
+			runTerminalOwner.adopt("recall-embed-prefetch", recallWarmTask);
 		}
 
 		// Process attachments before state composition / incoming hooks
@@ -11401,15 +12029,39 @@ export class DefaultMessageService implements IMessageService {
 		const postIncomingHookText =
 			typeof message.content?.text === "string" ? message.content.text : "";
 
-		if (message.id && postIncomingHookText !== preIncomingHookText) {
-			await runtime.updateMemory({
-				id: message.id,
-				content: message.content,
-			});
-			await runtime.queueEmbeddingGeneration(
-				{ ...message, id: message.id },
-				"normal",
-			);
+		if (postIncomingHookText !== preIncomingHookText) {
+			// An incoming hook rewrote the turn's text — the core security hook
+			// replaces `content.text` with the external-content envelope for every
+			// untrusted-source message (incoming-message-security.ts), and the
+			// storage scrub can rewrite trusted text too. Compose-time recall
+			// callers (relevant-conversations, document recall, experience recall)
+			// present the REWRITTEN text, whose normalized cache key misses the
+			// raw-text vector the prefetch above is already fetching — a guaranteed
+			// second, serial TEXT_EMBEDDING round-trip on every rewritten turn.
+			// Declare the rewritten text equivalent to the raw prompt for this
+			// turn's recall so those callers join the prefetch round-trip instead;
+			// the raw user text is also the semantically correct recall query (the
+			// user's words, not the security armor around them).
+			if (
+				preIncomingHookText.trim() !== "" &&
+				postIncomingHookText.trim() !== ""
+			) {
+				aliasRecallQuery(runtime, {
+					...(typeof message.id === "string" ? { messageId: message.id } : {}),
+					sourceText: preIncomingHookText,
+					aliasText: postIncomingHookText,
+				});
+			}
+			if (message.id) {
+				await runtime.updateMemory({
+					id: message.id,
+					content: message.content,
+				});
+				await runtime.queueEmbeddingGeneration(
+					{ ...message, id: message.id },
+					"normal",
+				);
+			}
 		}
 
 		// Compose initial state (after incoming hooks so providers/actions text matches this turn)
@@ -11443,6 +12095,7 @@ export class DefaultMessageService implements IMessageService {
 		let routedDecision: ContextRoutingDecision | null = null;
 		let strategyResult: StrategyResult | null = null;
 		let _usedV5Runtime = false;
+		let stage1DecidedRespond = false;
 		let stage1RiskGateApplied = false;
 		const earlyReplyMessages: Memory[] = [];
 		const persistedEarlyReplyIds = new Set<string>();
@@ -11498,9 +12151,10 @@ export class DefaultMessageService implements IMessageService {
 					}
 					const text = proposedText;
 					if (!text || !message.id) return false;
-					const currentResponseId = latestResponseIds
-						.get(runtime.agentId)
-						?.get(message.roomId);
+					const currentResponseId = getLatestResponseId(
+						runtime.agentId,
+						message.roomId,
+					);
 					if (currentResponseId !== responseId && !opts.keepExistingResponses) {
 						runtime.logger.info(
 							{
@@ -11632,12 +12286,19 @@ export class DefaultMessageService implements IMessageService {
 							responseId,
 							...(callback ? { callback } : {}),
 							deliveredVisibleTexts,
+							...(opts.roomHandlerLease
+								? { roomHandlerLease: opts.roomHandlerLease }
+								: {}),
+							runTerminalOwner,
 							...(opts.onSettledActionResult
 								? {
 										onSettledActionResult: opts.onSettledActionResult,
 									}
 								: {}),
 							onResponseHandlerEarlyReply: deliverResponseHandlerEarlyReply,
+							onStage1RespondDecision: () => {
+								stage1DecidedRespond = true;
+							},
 						}),
 					),
 					timeInferenceSpan("message:ingress:parallel-respond-hooks", () =>
@@ -11689,18 +12350,27 @@ export class DefaultMessageService implements IMessageService {
 				}
 				const errMsg = error instanceof Error ? error.message : String(error);
 				const errStack = error instanceof Error ? error.stack : undefined;
+				// Provider failures often surface with a masked statusText message
+				// ("Bad Request") while the actionable cause lives on the AI SDK
+				// error's responseBody — carry it so the failure is diagnosable
+				// from logs and RECENT_ERRORS without a wire capture.
+				const providerErrorDetail = modelProviderErrorDetail(error);
 				runtime.logger.warn(
 					{
 						src: "service:message",
 						agentId: runtime.agentId,
 						error: errMsg,
 						stack: errStack,
+						...(providerErrorDetail ? { providerErrorDetail } : {}),
 					},
 					"v5 message runtime failed",
 				);
 				runtime.reportError("MessageService.v5Runtime", error, {
 					entityId: message.entityId,
 					roomId: message.roomId,
+					...(providerErrorDetail
+						? { providerError: providerErrorDetail as JsonValue }
+						: {}),
 				});
 				// Mirror to process.stderr so bench / orchestrator runs can see
 				// the underlying cause when runtime.logger output is buffered or
@@ -11736,7 +12406,11 @@ export class DefaultMessageService implements IMessageService {
 					isAutonomous,
 					hasDeliveredEarlyReply: earlyReplyMessages.length > 0,
 				});
-				if (failureGate.addressed) {
+				// Stage 1 already made the per-message RESPOND decision for this
+				// turn before the runtime died — that is the model evaluation the
+				// deterministic gate defers to, so the anti-spam suppression
+				// (which exists for pre-decision throws) does not apply.
+				if (failureGate.addressed || stage1DecidedRespond) {
 					shouldRespondToMessage = true;
 					terminalDecision = null;
 					strategyResult = await this.buildStructuredFailureReply(
@@ -11916,7 +12590,10 @@ export class DefaultMessageService implements IMessageService {
 			// Keep only a deliverable response carrying the explicit REPLY/RESPOND
 			// marker. Action results opt into the user channel through userFacingText,
 			// and that path constructs the same explicit reply marker.
-			const currentResponseId = agentResponses.get(message.roomId);
+			const currentResponseId = getLatestResponseId(
+				runtime.agentId,
+				message.roomId,
+			);
 			if (currentResponseId !== responseId && !opts.keepExistingResponses) {
 				const keepReason = resolveSupersededResponseKeepReason(responseContent);
 				if (keepReason) {
@@ -11940,13 +12617,7 @@ export class DefaultMessageService implements IMessageService {
 					// Mirror the ignore-path sibling below: a superseded turn ends
 					// its run as "replaced" so the discard is an observable terminal
 					// outcome instead of an unrecorded nothing.
-					await this.emitRunEnded(
-						runtime,
-						runId,
-						message,
-						startTime,
-						"replaced",
-					);
+					runTerminalOwner.request("replaced");
 					return {
 						didRespond: false,
 						responseContent: null,
@@ -12144,7 +12815,7 @@ export class DefaultMessageService implements IMessageService {
 						// trajectory closure.
 						if (deliveryOutcome.status === "fulfilled") {
 							for (const responseMemory of deliveredClaimMemories) {
-								detachPostDeliverySideEffect(runtime, "MESSAGE_SENT", () =>
+								runTerminalOwner.track("MESSAGE_SENT", () =>
 									this.emitMessageSent(
 										runtime,
 										responseMemory,
@@ -12185,7 +12856,10 @@ export class DefaultMessageService implements IMessageService {
 			);
 
 			// Check if we still have the latest response ID
-			const currentResponseId = agentResponses.get(message.roomId);
+			const currentResponseId = getLatestResponseId(
+				runtime.agentId,
+				message.roomId,
+			);
 
 			if (currentResponseId !== responseId && !opts.keepExistingResponses) {
 				runtime.logger.info(
@@ -12196,7 +12870,7 @@ export class DefaultMessageService implements IMessageService {
 					},
 					"Ignore response discarded - newer message being processed",
 				);
-				await this.emitRunEnded(runtime, runId, message, startTime, "replaced");
+				runTerminalOwner.request("replaced");
 				return {
 					didRespond: false,
 					responseContent: null,
@@ -12211,13 +12885,7 @@ export class DefaultMessageService implements IMessageService {
 					{ src: "service:message", agentId: runtime.agentId },
 					"Message ID is missing, cannot create ignore response",
 				);
-				await this.emitRunEnded(
-					runtime,
-					runId,
-					message,
-					startTime,
-					"noMessageId",
-				);
+				runTerminalOwner.request("noMessageId");
 				return {
 					didRespond: false,
 					responseContent: null,
@@ -12307,22 +12975,24 @@ export class DefaultMessageService implements IMessageService {
 			state,
 			responseContent,
 		);
-		// Post-turn work is never part of connector completion. Connectors await
-		// handleMessage for generation/delivery bookkeeping, so awaiting an
-		// evaluator here makes every connector wait even though the reply has
-		// already been sent. Preserve evaluator-before-ALWAYS_AFTER ordering inside
-		// one detached task while keeping both failures observable at the boundary.
-		detachPostDeliverySideEffect(runtime, "post_turn", async () => {
-			if (semanticSignal) {
-				await runPostTurnEvaluators(runtime, message, state, {
+		// Post-turn work is never part of connector completion. It owns one real
+		// evaluator child step, and the run terminal follows in the same detached
+		// barrier so the parent cannot close while that child's telemetry is still
+		// being written. Child failure is reported at that barrier, which still
+		// releases the trajectory exactly once after the child settles.
+		runTerminalOwner.track("post_turn", async () => {
+			await withEvaluatorStep(runtime, "post_turn", async () => {
+				if (semanticSignal) {
+					await runPostTurnEvaluators(runtime, message, state, {
+						didRespond: didRespondGate,
+						responses: responseMessages,
+						semanticSignal,
+					});
+				}
+				await runtime.runActionsByMode("ALWAYS_AFTER", message, state, {
 					didRespond: didRespondGate,
 					responses: responseMessages,
-					semanticSignal,
 				});
-			}
-			await runtime.runActionsByMode("ALWAYS_AFTER", message, state, {
-				didRespond: didRespondGate,
-				responses: responseMessages,
 			});
 		});
 
@@ -12396,22 +13066,6 @@ export class DefaultMessageService implements IMessageService {
 			roomName,
 		};
 
-		// Delivery is already committed; lifecycle observers run after the
-		// caller receives the result and remain drainable during shutdown.
-		detachPostDeliverySideEffect(runtime, "RUN_ENDED", () =>
-			runtime.emitEvent(EventType.RUN_ENDED, {
-				runtime,
-				source: "messageHandler",
-				runId,
-				messageId: message.id,
-				roomId: message.roomId,
-				entityId: message.entityId,
-				startTime,
-				status: "completed",
-				endTime: Date.now(),
-				duration: Date.now() - startTime,
-			} as RunEventPayload),
-		);
 		return {
 			didRespond,
 			responseContent,
@@ -12807,8 +13461,16 @@ export class DefaultMessageService implements IMessageService {
 							}
 						} catch (err) {
 							// error-policy:J4 The attachment remains available with an
-							// explicit transcription-unavailable state.
-							processedAttachment.notProcessed = `Audio transcription unavailable: ${err instanceof Error ? err.message : String(err)}`;
+							// explicit failure state. Fetch-layer failures (MediaFetchError:
+							// size cap, remote HTTP error) happen before any TRANSCRIPTION
+							// provider runs, so they get a transient could-not-fetch marker —
+							// the "transcription unavailable" marker is reserved for genuine
+							// provider failures because the read action treats it as
+							// STT-is-disabled evidence.
+							processedAttachment.notProcessed =
+								err instanceof Error && err.name === "MediaFetchError"
+									? `Audio attachment could not be fetched: ${err.message}`
+									: `Audio transcription unavailable: ${err instanceof Error ? err.message : String(err)}`;
 							runtime.logger.warn(
 								{ src: "service:message", err },
 								"Audio transcription failed, continuing without transcript",
@@ -12864,8 +13526,16 @@ export class DefaultMessageService implements IMessageService {
 							}
 						} catch (err) {
 							// error-policy:J4 The attachment remains available with an
-							// explicit transcription-unavailable state.
-							processedAttachment.notProcessed = `Video transcription unavailable: ${err instanceof Error ? err.message : String(err)}`;
+							// explicit failure state. Fetch-layer failures (MediaFetchError:
+							// size cap, remote HTTP error) happen before any TRANSCRIPTION
+							// provider runs, so they get a transient could-not-fetch marker —
+							// the "transcription unavailable" marker is reserved for genuine
+							// provider failures because the read action treats it as
+							// STT-is-disabled evidence.
+							processedAttachment.notProcessed =
+								err instanceof Error && err.name === "MediaFetchError"
+									? `Video attachment could not be fetched: ${err.message}`
+									: `Video transcription unavailable: ${err instanceof Error ? err.message : String(err)}`;
 							runtime.logger.warn(
 								{ src: "service:message", err },
 								"Video transcription failed, continuing without transcript",
@@ -12972,7 +13642,15 @@ export class DefaultMessageService implements IMessageService {
 			ModelType.TEXT_NANO,
 		] as const) {
 			try {
-				const response = await runtime.useModel(modelType, { prompt });
+				// Bound reasoning on reasoning models (#16394): the failure-reply
+				// path is a plain-text fallback that must stay low-latency, so every
+				// slot carries thinking="off" like Stage-1, the evaluator, and every
+				// planner iteration. Without it a drained/failed turn can still spend
+				// hundreds of hidden reasoning tokens before producing visible text.
+				const response = await runtime.useModel(modelType, {
+					prompt,
+					providerOptions: { eliza: { thinking: "off" } },
+				});
 				if (typeof response !== "string") {
 					continue;
 				}
@@ -13220,30 +13898,6 @@ export class DefaultMessageService implements IMessageService {
 		};
 	}
 
-	/**
-	 * Helper to emit run ended events
-	 */
-	private async emitRunEnded(
-		runtime: IAgentRuntime,
-		runId: UUID,
-		message: Memory,
-		startTime: number,
-		status: string,
-	): Promise<void> {
-		await runtime.emitEvent(EventType.RUN_ENDED, {
-			runtime,
-			source: "messageHandler",
-			runId,
-			messageId: message.id,
-			roomId: message.roomId,
-			entityId: message.entityId,
-			startTime,
-			status: status as "completed" | "timeout",
-			endTime: Date.now(),
-			duration: Date.now() - startTime,
-		} as RunEventPayload);
-	}
-
 	private async emitMessageSent(
 		runtime: IAgentRuntime,
 		message: Memory,
@@ -13253,6 +13907,7 @@ export class DefaultMessageService implements IMessageService {
 			runtime,
 			message,
 			source,
+			trajectoryTerminalOwner: "run",
 		});
 	}
 

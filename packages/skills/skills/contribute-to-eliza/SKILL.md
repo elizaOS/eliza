@@ -55,7 +55,12 @@ put secrets, prompts, session identifiers, or hidden reasoning in the footer.
 In an issue body, complete the visible provenance rows once, then append only
 the lane signature and marker at the end. In a PR body, complete every stable
 contribution-attribution row in the repository template and append this footer
-after the template.
+after the template. The template row labels are deliberately different from the
+footer labels (see #17855): do **not** reword template rows to match
+`Client / agent tooling`, `Skill revision` / `Contribution skill revision`, or
+`Attribution status`, and do **not** paste a second copy of those footer lines
+into the provenance block — the army scorer requires exactly one of each footer
+label in the whole body.
 
 Resolve the skill revision before posting:
 

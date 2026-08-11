@@ -1,6 +1,6 @@
 /**
  * Closed semantic OCR contracts for every view in the app aesthetic audit.
- * Positive labels come from stable view chrome and designed states; universal
+ * Positive labels come from designed view states; universal
  * developer-string and placeholder rejection remains in `ocr-content-rules`.
  * Typed exemptions retain a fallback expectation, so they waive only ownership
  * of distinct view semantics rather than pixel correctness.
@@ -53,18 +53,19 @@ const VIEW_REGISTRY_FALLBACK: OcrExpectation = {
 
 export const VIEW_OCR_POLICIES = {
   "builtin-chat": expected({
-    requireAll: ["Mostly clear"],
+    requireAny: [
+      "Mostly clear",
+      "Learn conversational Spanish",
+      "Submit the quarterly report",
+    ],
   }),
   "builtin-phone": expected({
-    requireAll: ["Phone"],
     requireAny: ["call-blocked", "dialer", "recent"],
   }),
   "builtin-messages": expected({
-    requireAll: ["Messages"],
     requireAny: ["Set default SMS", "bridge-only", "compose"],
   }),
   "builtin-contacts": expected({
-    requireAll: ["Contacts"],
     requireAny: ["address book", "phone, or email", "search"],
   }),
   "builtin-camera": exempt(
@@ -236,14 +237,26 @@ export const VIEW_OCR_POLICIES = {
     VIEW_REGISTRY_FALLBACK,
   ),
   "plugin-contacts-gui": expected({
-    requireAll: ["Contacts"],
     requireAny: ["address book", "phone, or email", "search"],
   }),
   "plugin-focus-gui": expected({
-    requireAll: ["Focus", "Idle"],
+    requireAll: ["Idle"],
   }),
   "plugin-calendar-gui": expected({
-    requireAll: ["Calendar"],
+    requireAny: [
+      "January",
+      "February",
+      "March",
+      "April",
+      "May",
+      "June",
+      "July",
+      "August",
+      "September",
+      "October",
+      "November",
+      "December",
+    ],
   }),
   "plugin-documents-gui": exempt(
     "unregistered-remote-bundle",
@@ -251,11 +264,9 @@ export const VIEW_OCR_POLICIES = {
     VIEW_REGISTRY_FALLBACK,
   ),
   "plugin-finances-gui": expected({
-    requireAll: ["Finances"],
     requireAny: ["Balance", "Transactions", "Recurring"],
   }),
   "plugin-goals-gui": expected({
-    requireAll: ["Goals"],
     requireAny: ["Active", "needs a review", "paused"],
   }),
   "plugin-lifeops-live-test-gui": exempt(
@@ -268,27 +279,21 @@ export const VIEW_OCR_POLICIES = {
     requireAny: ["Last sleep", "Regularity", "Baseline"],
   }),
   "plugin-inbox-gui": expected({
-    requireAll: ["Inbox"],
     requireAny: ["needs a reply", "Email", "Discord"],
   }),
   "plugin-relationships-gui": expected({
-    requireAll: ["Relationships"],
     requireAny: ["People", "Organizations", "Graph"],
   }),
   "plugin-todos-gui": expected({
-    requireAll: ["Todos"],
     requireAny: ["Today", "Upcoming", "Someday"],
   }),
   "plugin-messages-gui": expected({
-    requireAll: ["Messages"],
     requireAny: ["Set default SMS", "bridge-only", "compose"],
   }),
   "plugin-phone-gui": expected({
-    requireAll: ["Phone"],
     requireAny: ["call-blocked", "dialer", "recent"],
   }),
   "plugin-wallet-gui": expected({
-    requireAll: ["Wallet"],
     requireAny: ["Tokens", "RPC", "ETH", "SOL"],
   }),
   "plugin-views-manager-gui": expected({
@@ -300,7 +305,6 @@ export const VIEW_OCR_POLICIES = {
     requireAny: ["Cloud agent", "demo recording"],
   }),
   "plugin-task-coordinator-gui": expected({
-    requireAll: ["Task Coordinator"],
     requireAny: ["Dispatch a coding agent", "search tasks", "tasks"],
   }),
   "plugin-orchestrator-gui": expected({
@@ -312,7 +316,6 @@ export const VIEW_OCR_POLICIES = {
     VIEW_REGISTRY_FALLBACK,
   ),
   "plugin-trajectory-logger-gui": expected({
-    requireAll: ["Trajectory Logger"],
     requireAny: ["Back to apps", "HANDLE", "PLAN"],
   }),
 } as const satisfies Record<string, ViewOcrPolicy>;

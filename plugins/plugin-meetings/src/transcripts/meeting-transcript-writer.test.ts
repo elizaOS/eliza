@@ -49,6 +49,7 @@ const START_INPUT = {
   platform: "google_meet" as const,
   meetingUrl: "https://meet.google.com/abc-defg-hij",
   nativeMeetingId: "abc-defg-hij",
+  consentState: "not_required" as const,
 };
 
 describe("MeetingTranscriptWriter — record shape golden", () => {
@@ -79,6 +80,7 @@ describe("MeetingTranscriptWriter — record shape golden", () => {
     );
     expect(transcriptCapturePrivacyState(recording as Transcript)).toEqual({
       captureMode: "bot",
+      consentState: "not_required",
       policyState: "allowed",
       permissionState: "not_required",
       retentionState: "transcript_only",
@@ -130,6 +132,7 @@ describe("MeetingTranscriptWriter — record shape golden", () => {
     expect(transcriptCapturePrivacyState(readBack as Transcript)).toMatchObject(
       {
         captureMode: "bot",
+        consentState: "not_required",
         policyState: "allowed",
         permissionState: "not_required",
         retentionState: "transcript_only",
@@ -158,6 +161,16 @@ describe("MeetingTranscriptWriter — record shape golden", () => {
       textBacked: true,
       transcriptId: writer.transcriptId,
     });
+    expect(fake.documents[0].fragments).toEqual([
+      expect.objectContaining({
+        text: "Jill: hello there\nBob: hi jill",
+        metadata: expect.objectContaining({
+          segmentIds: ["s1", "s2"],
+          startMs: 0,
+          endMs: 3_000,
+        }),
+      }),
+    ]);
     expect(readBack?.knowledgeDocumentId).toBeTypeOf("string");
   });
 

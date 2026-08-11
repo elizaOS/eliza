@@ -40,7 +40,7 @@ function providerWithHealth(outcome: { ready: boolean; verdict: string }): Sandb
     create: async () => {
       throw new Error("unused");
     },
-    stop: async () => {},
+    stopForDeletion: async () => ({ kind: "not-running-proven" }),
     checkHealth: async () => outcome.ready,
     checkHealthDetailed: async () => outcome,
   } as unknown as SandboxProvider;
@@ -146,7 +146,7 @@ describe("elizaSandboxService.reconcileStuckProvisioning (service seam)", () => 
       create: async () => {
         throw new Error("unused");
       },
-      stop: async () => {},
+      stopForDeletion: async () => ({ kind: "not-running-proven" }),
       checkHealth: async () => {
         throw new Error("ssh down");
       },

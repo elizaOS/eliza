@@ -1,12 +1,7 @@
 /**
- * run-all-tests.mjs
- *
- * Cross-package test runner for the elizaOS monorepo. Discovers every
- * workspace package via root package.json `workspaces`, then runs each
- * package's `test` / `test:integration` / `test:e2e` / `test:playwright`
- * / `test:ui` / `test:live` script in turn. After the workspace sweep
- * finishes, also shells out to `bun run test:cloud` (unless
- * `--no-cloud` is passed) so the cloud packages run locally too.
+ * Discovers and executes test scripts across every elizaOS workspace package.
+ * Filters, lanes, and deterministic shards share one live plan; required lanes
+ * bind green status to reconciled Bun or Vitest testcase evidence.
  *
  * Lane / shard / filter knobs are honoured via a mix of CLI flags and
  * env vars so CI matrices can drive sharding deterministically:
@@ -73,9 +68,11 @@
 
 import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { MAX_JUNIT_BYTES, parseJunitSummary } from "./lib/junit-summary.mjs";
 import {
   computeRealLiveAccounting,
   diffRealLiveManifest,
@@ -165,6 +162,7 @@ function failUsage(message) {
 }
 
 const noCloud = parseFlag("--no-cloud");
+const requireWorkFlag = parseFlag("--require-work");
 const helpFlag = parseFlag("--help") || parseFlag("-h");
 const barePlanFlag = parseFlag("--plan");
 let filterFlag;
@@ -187,6 +185,25 @@ try {
 } catch (error) {
   failUsage(error.message);
 }
+
+// `--min-tasks=<n>` / MIN_TEST_TASKS is the numeric ancestor of
+// `--require-work` and remains a supported surface: callers that KNOW how many
+// tasks their filter selected (the develop-pr changed-plugin gate passes its
+// exact selection count) get a floor the boolean cannot express. n > 0 implies
+// every `--require-work` guard plus the lane-wide `>= n` collection floor;
+// n = 0 is off. Dropping the flag broke those callers loudly at argv parse
+// (exit 2 before any test ran), which is the wrong kind of loud.
+const minTasksRaw = minTasksFlag ?? process.env.MIN_TEST_TASKS ?? "0";
+const minTasks =
+  typeof minTasksRaw === "string" && /^\d+$/.test(minTasksRaw)
+    ? Number(minTasksRaw)
+    : Number.NaN;
+if (!Number.isSafeInteger(minTasks)) {
+  failUsage(
+    `--min-tasks/MIN_TEST_TASKS must be a non-negative integer, got "${minTasksRaw}"`,
+  );
+}
+const requireWork = requireWorkFlag || minTasks > 0;
 
 // A named root lane (`--lane server`) resolves the anchored package filter it
 // used to hardcode as a `TEST_PACKAGE_FILTER` regex in the root package.json:
@@ -223,9 +240,10 @@ if (helpFlag) {
       "  --concurrency=<n>    Run parallel-safe `test` tasks through an n-worker",
       "                       pool (pr lane only; default 1 = fully serial).",
       "  --plan[=text|json]   Print the discovered test plan without running it.",
-      "  --min-tasks=<n>      Fail loudly (exit 3) if fewer than n tasks are",
-      "                       collected, or if every collected task skips. Guards",
-      "                       against a filter/glob collapse reporting vacuous green.",
+      "  --require-work       Fail (exit 3) when no runnable task is selected,",
+      "                       a shard owns no task, or no reconciled testcase runs.",
+      "  --min-tasks=<n>      --require-work plus a lane-wide floor: fail (exit 3)",
+      "                       when fewer than n tasks are collected. 0 = off.",
       "",
       "Env vars:",
       "  TEST_LANE=pr|post-merge        Lane select (default: pr).",
@@ -251,21 +269,6 @@ if (onlyFlag && !["e2e", "test"].includes(onlyFlag)) {
 }
 if (!["text", "json"].includes(planFormat)) {
   failUsage(`--plan must be "text" or "json", got "${planFormat}"`);
-}
-
-// Vacuous-green floor: a lane that collects zero tasks (a filter/shard/glob that
-// silently matched nothing) or whose every task skips (no test files) otherwise
-// exits green and reads as coverage. `--min-tasks`/`MIN_TEST_TASKS` turns both
-// into a loud non-zero exit (3) so the exhaustive lane's proof job can rely on it.
-const minTasksRaw = minTasksFlag ?? process.env.MIN_TEST_TASKS ?? "0";
-const minTasks =
-  typeof minTasksRaw === "string" && /^\d+$/.test(minTasksRaw)
-    ? Number(minTasksRaw)
-    : Number.NaN;
-if (!Number.isSafeInteger(minTasks)) {
-  failUsage(
-    `--min-tasks/MIN_TEST_TASKS must be a non-negative integer, got "${minTasksRaw}"`,
-  );
 }
 
 if (argv.length > 0) {
@@ -407,8 +410,9 @@ const MAX_CAPTURED_OUTPUT_CHARS = 16_000;
 const ADDITIONAL_PACKAGE_DIRS = [
   path.join(repoRoot, "packages", "app-core", "platforms", "electrobun"),
 ];
-const NO_CLOUD_PACKAGE_DIRS = new Set([
-  path.join("packages", "cloud", "e2e"),
+const NO_CLOUD_PACKAGE_DIRS = new Set([path.join("packages", "cloud", "e2e")]);
+const ROOT_PR_E2E_EXCLUDED_PACKAGE_DIRS = new Set([
+  path.join("packages", "homepage"),
 ]);
 
 // Combine --filter, --pattern, --lane, and TEST_PACKAGE_FILTER. All (when set)
@@ -777,6 +781,16 @@ function isSingleVitestRunCommand(command) {
   );
 }
 
+function isSingleVitestWrapperCommand(command) {
+  const commandWithoutEnv = stripLeadingEnvAssignments(command);
+  if (/[;&|]/.test(commandWithoutEnv)) {
+    return false;
+  }
+  return /^node\s+(?:\.\.\/)+scripts\/run-vitest\.mjs\s+run\b/.test(
+    commandWithoutEnv,
+  );
+}
+
 function stripLeadingEnvAssignments(command) {
   return command.replace(
     /^(?:[A-Za-z_][A-Za-z0-9_]*=(?:"[^"]*"|'[^']*'|\S+)\s+)*/,
@@ -790,6 +804,60 @@ function isSingleBunTestCommand(command) {
     return false;
   }
   return /^bun\s+test\b/.test(commandWithoutEnv);
+}
+
+function unwrapKnownBunTestSupervisors(command) {
+  let current = stripLeadingEnvAssignments(command);
+  for (let depth = 0; depth < 3; depth += 1) {
+    const flakeRetry = current.match(
+      /^node\s+(?:\.\.\/)+packages\/scripts\/run-with-flake-retry\.mjs\s+(?:'[^']*'|"[^"]*"|\S+)\s+--\s+(.+)$/,
+    );
+    if (flakeRetry) {
+      current = flakeRetry[1];
+      continue;
+    }
+    const deadline = current.match(
+      /^node\s+(?:\.\.\/)+packages\/scripts\/run-with-deadline\.mjs\s+[1-9]\d*\s+--\s+(.+)$/,
+    );
+    if (deadline) {
+      current = deadline[1];
+      continue;
+    }
+    break;
+  }
+  return current;
+}
+
+function isSingleIsolatedBunTestWrapperCommand(command) {
+  return /^node\s+scripts\/run-isolated-tests\.mjs$/.test(
+    unwrapKnownBunTestSupervisors(command),
+  );
+}
+
+function structuredEvidenceKind(scriptName, scripts) {
+  const command =
+    resolveScriptCommand(scriptName, scripts) ||
+    normalizeWhitespace(scripts?.[scriptName] ?? "");
+  if (
+    /(?:^|\s)--reporter(?:=|\s)|(?:^|\s)--reporter-outfile(?:=|\s)|(?:^|\s)--outputFile(?:\.junit)?(?:=|\s)/.test(
+      command,
+    )
+  ) {
+    return null;
+  }
+  if (
+    isSingleBunTestCommand(command) ||
+    isSingleIsolatedBunTestWrapperCommand(command)
+  ) {
+    return "bun";
+  }
+  if (
+    isSingleVitestRunCommand(command) ||
+    isSingleVitestWrapperCommand(command)
+  ) {
+    return "vitest";
+  }
+  return null;
 }
 
 function isSingleNoTestSkippableCommand(command) {
@@ -877,6 +945,7 @@ function buildPlanSummary(tasks) {
     lane: TEST_LANE,
     only: onlyFlag || "all",
     noCloud,
+    requireWork,
     shard: shardConfig,
     filters: packageFilters.map((rx) => rx.source),
     scriptFilter: scriptFilter?.source ?? null,
@@ -944,22 +1013,52 @@ function printPlan(tasks) {
   );
 }
 
-function buildForwardedScriptArgs(scriptName, scripts) {
-  if (excludeFlags.length === 0) {
-    return [];
-  }
-
+function buildForwardedScriptArgs(scriptName, scripts, evidence) {
   const command =
     resolveScriptCommand(scriptName, scripts) ||
     normalizeWhitespace(scripts?.[scriptName] ?? "");
-  if (!isSingleVitestRunCommand(command)) {
-    return [];
+  const args = [];
+  if (excludeFlags.length > 0 && isSingleVitestRunCommand(command)) {
+    args.push(
+      ...excludeFlags.flatMap((value) => [
+        "--exclude",
+        normalizeRepoPath(value),
+      ]),
+    );
   }
+  if (evidence?.kind === "bun") {
+    args.push("--reporter=junit", `--reporter-outfile=${evidence.path}`);
+  } else if (evidence?.kind === "vitest") {
+    args.push(
+      "--reporter=default",
+      "--reporter=junit",
+      `--outputFile.junit=${evidence.path}`,
+    );
+  }
+  return args;
+}
 
-  return excludeFlags.flatMap((value) => [
-    "--exclude",
-    normalizeRepoPath(value),
-  ]);
+let evidenceDirectory;
+let evidenceSequence = 0;
+
+function nextEvidencePath() {
+  if (!evidenceDirectory) {
+    evidenceDirectory = fs.mkdtempSync(
+      path.join(os.tmpdir(), "eliza-test-evidence-"),
+    );
+    process.once("exit", () => {
+      try {
+        fs.rmSync(evidenceDirectory, { recursive: true, force: true });
+      } catch (error) {
+        // error-policy:J6 temporary evidence teardown must not replace the run result.
+        console.warn(
+          `[eliza-test] WARN could not remove temporary evidence: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+    });
+  }
+  evidenceSequence += 1;
+  return path.join(evidenceDirectory, `${evidenceSequence}.xml`);
 }
 
 // ---------------------------------------------------------------------------
@@ -980,7 +1079,17 @@ function runScript(
   // line) so the logs remain readable.
   const stream = options.stream !== false;
   return new Promise((resolve, reject) => {
-    const forwardedArgs = buildForwardedScriptArgs(scriptName, scripts);
+    const evidenceKind = requireWork
+      ? structuredEvidenceKind(scriptName, scripts)
+      : null;
+    const evidence = evidenceKind
+      ? { kind: evidenceKind, path: nextEvidencePath() }
+      : null;
+    const forwardedArgs = buildForwardedScriptArgs(
+      scriptName,
+      scripts,
+      evidence,
+    );
     const liveTestDefault = TEST_LANE === "post-merge" ? "1" : "0";
     const child = spawn(
       bunCmd,
@@ -1040,11 +1149,51 @@ function runScript(
     child.on("error", reject);
     child.on("exit", (code, signal) => {
       if (code === 0) {
-        resolve({ skipped: false });
+        if (!evidence) {
+          resolve({ skipped: false, evidence: null });
+          return;
+        }
+        try {
+          const size = fs.statSync(evidence.path).size;
+          if (size > MAX_JUNIT_BYTES) {
+            throw new Error(
+              `JUnit artifact is ${size} bytes; limit is ${MAX_JUNIT_BYTES}`,
+            );
+          }
+          const summary = parseJunitSummary(
+            fs.readFileSync(evidence.path, "utf8"),
+          );
+          if (summary.failures > 0 || summary.errors > 0) {
+            throw new Error(
+              `report contains ${summary.failures} failure(s) and ${summary.errors} error(s) despite a successful child exit`,
+            );
+          }
+          resolve({
+            skipped: summary.executedTests === 0,
+            skipReason: `${summary.tests} reported test(s), all skipped`,
+            evidence: summary,
+          });
+        } catch (error) {
+          // error-policy:J2 add the package identity before rejecting invalid evidence.
+          if (!stream && capturedOutput) {
+            process.stdout.write(
+              `\n[eliza-test] ----- captured output: ${label} -----\n${capturedOutput}\n[eliza-test] ----- end output: ${label} -----\n`,
+            );
+          }
+          reject(
+            new Error(`${label} did not produce valid JUnit evidence`, {
+              cause: error,
+            }),
+          );
+        }
         return;
       }
       if (canSkipNoTests && shouldSkipAsNoTests(capturedOutput)) {
-        resolve({ skipped: true });
+        resolve({
+          skipped: true,
+          skipReason: "no test files found",
+          evidence: null,
+        });
         return;
       }
       if (!stream && capturedOutput) {
@@ -1126,11 +1275,9 @@ let started = startAt.length === 0;
 // subset through a worker pool instead of the historical strictly-serial loop.
 const tasks = [];
 const skippedPlanEntries = [];
-// Count of real, runnable tasks the lane's filters matched across the WHOLE
-// lane — before TEST_SHARD carves out this shard's slice. The vacuous-green
-// floor is a lane-level property ("did a filter/glob collapse the lane?"), so
-// it must be measured here and not against `tasks.length`, which only holds
-// this shard's ~1/M share once sharding is active.
+// Count real runnable tasks before TEST_SHARD carves out this shard's slice.
+// Required work distinguishes a collapsed lane from an unexpectedly empty
+// deterministic shard without relying on a historical repository-size floor.
 let laneMatchedTaskCount = 0;
 
 for (const packageJsonPath of packageJsonPaths) {
@@ -1169,6 +1316,18 @@ for (const packageJsonPath of packageJsonPaths) {
       } else {
         continue;
       }
+    }
+    // Homepage screenshot baselines, contact sheets, and functional browser
+    // flows are authoritative in the dedicated homepage deployment lane. The
+    // root PR job still protects every other deterministic E2E package; running
+    // homepage here repeats that gate and regularly consumes the entire two-hour
+    // job budget before later integration packages can report a result.
+    if (
+      TEST_LANE === "pr" &&
+      scriptName === "test:e2e" &&
+      ROOT_PR_E2E_EXCLUDED_PACKAGE_DIRS.has(relativeDir)
+    ) {
+      continue;
     }
     if (packageFilters.some((rx) => !rx.test(label))) {
       continue;
@@ -1214,25 +1373,26 @@ for (const packageJsonPath of packageJsonPaths) {
 
 const laneEnv = buildLaneEnv();
 
-// Collection-time vacuous-green floor. Evaluated before any task runs so a lane
-// that matched nothing fails immediately instead of "passing" with no work.
-// The floor is measured against the lane-wide matched total, not this shard's
-// slice: TEST_SHARD intentionally splits a healthy lane into M parts, so a
-// shard legitimately owning 1/M of the work is not a collapsed glob. When
-// sharded we still fail an empty shard, which signals broken shard math rather
-// than an intentional split.
+if (requireWork && laneMatchedTaskCount === 0) {
+  console.error(
+    "[eliza-test] VACUOUS-GREEN GUARD lane matched 0 runnable tasks. " +
+      "A filter or source contract collapsed this required lane.",
+  );
+  process.exit(3);
+}
+// Lane-wide, not per-shard: TEST_SHARD intentionally splits a healthy lane
+// into M parts, so a shard owning 1/M of the work is not a collapsed glob.
 if (minTasks > 0 && laneMatchedTaskCount < minTasks) {
   console.error(
     `[eliza-test] VACUOUS-GREEN GUARD lane matched ${laneMatchedTaskCount} task(s) < required ${minTasks}` +
       (shardConfig ? ` (this shard: ${tasks.length})` : "") +
-      ". A filter/shard/glob collapsed this lane to (near-)zero work. Failing loudly instead of reporting green.",
+      ". A filter/shard/glob collapsed this lane below its declared selection.",
   );
   process.exit(3);
 }
-if (minTasks > 0 && shardConfig && tasks.length === 0) {
+if (requireWork && shardConfig && tasks.length === 0) {
   console.error(
-    `[eliza-test] VACUOUS-GREEN GUARD shard ${TEST_SHARD} collected 0 of ${laneMatchedTaskCount} lane task(s). ` +
-      "The shard split assigned this shard no work. Failing loudly instead of reporting green.",
+    `[eliza-test] VACUOUS-GREEN GUARD shard ${TEST_SHARD} owns 0 of ${laneMatchedTaskCount} required task(s).`,
   );
   process.exit(3);
 }
@@ -1244,10 +1404,15 @@ if (planEnabled) {
 
 ensurePluginSqlPostgresEnv();
 
-// Runtime outcome tally, consumed by the all-skipped vacuous-green guard below.
-// A task that skips resolved (no local test files) counts toward `skipped`; a
-// task that actually ran vitest/bun counts toward `ran`.
-const outcomeTally = { ran: 0, skipped: 0 };
+const outcomeTally = {
+  completed: 0,
+  skipped: 0,
+  unobserved: 0,
+  reportedTasks: 0,
+  tests: 0,
+  executedTests: 0,
+  skippedTests: 0,
+};
 
 // Run one task, logging START/PASS/SKIP/FAIL. `stream` echoes child output live
 // (serial path); when false the output is buffered and flushed only on failure
@@ -1265,13 +1430,21 @@ async function runTask(task, { stream }) {
       { stream },
     );
     const durationMs = Date.now() - startedAt;
+    if (result.evidence) {
+      outcomeTally.reportedTasks += 1;
+      outcomeTally.tests += result.evidence.tests;
+      outcomeTally.executedTests += result.evidence.executedTests;
+      outcomeTally.skippedTests += result.evidence.skipped;
+    } else if (!result.skipped) {
+      outcomeTally.unobserved += 1;
+    }
     if (result.skipped) {
       outcomeTally.skipped += 1;
       console.log(
-        `[eliza-test] SKIP ${task.label} (${durationMs}ms, no test files found)`,
+        `[eliza-test] SKIP ${task.label} (${durationMs}ms, ${result.skipReason})`,
       );
     } else {
-      outcomeTally.ran += 1;
+      outcomeTally.completed += 1;
       console.log(`[eliza-test] PASS ${task.label} (${durationMs}ms)`);
     }
     return result;
@@ -1282,16 +1455,19 @@ async function runTask(task, { stream }) {
   }
 }
 
-// Enforced after the workspace sweep but before the cloud step: when a lane
-// collected work yet every task skipped (each package's glob matched no test
-// files on this runner), the run would otherwise exit green having asserted
-// nothing. `--min-tasks` upgrades that to a loud failure.
-function enforceRanFloor() {
-  if (minTasks <= 0) return;
-  if (outcomeTally.ran === 0 && tasks.length > 0) {
+function enforceRequiredWork() {
+  if (outcomeTally.reportedTasks > 0 || outcomeTally.unobserved > 0) {
+    console.log(
+      `[eliza-test] EVIDENCE reports=${outcomeTally.reportedTasks} tests=${outcomeTally.tests} ` +
+        `executed=${outcomeTally.executedTests} skipped=${outcomeTally.skippedTests} ` +
+        `unobserved-tasks=${outcomeTally.unobserved}`,
+    );
+  }
+  if (!requireWork) return;
+  if (outcomeTally.executedTests === 0) {
     console.error(
-      `[eliza-test] VACUOUS-GREEN GUARD ${tasks.length} task(s) collected but all skipped ` +
-        "(no test files found on this runner). Failing loudly instead of reporting green.",
+      `[eliza-test] VACUOUS-GREEN GUARD ${tasks.length} runnable task(s) completed without reconciled evidence that a testcase executed. ` +
+        "Unsupported wrappers do not count as semantic work.",
     );
     process.exit(3);
   }
@@ -1348,7 +1524,7 @@ if (concurrency <= 1) {
   }
 }
 
-enforceRanFloor();
+enforceRequiredWork();
 
 // Final stage: cloud tests (unless --no-cloud was passed)
 if (!noCloud) {

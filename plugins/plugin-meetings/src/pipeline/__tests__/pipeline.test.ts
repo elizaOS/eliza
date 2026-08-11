@@ -260,7 +260,176 @@ describe("createMeetingTranscriptionPipeline", () => {
     expect(confirmed?.endMs).toBe(800);
   });
 
-  it("labels speakers: setSpeakerName wins, 'Speaker N' fallback otherwise", async () => {
+  it("withholds a roster-only name and retains its provenance for review", async () => {
+    const backend = new ScriptedBackend();
+    backend.enqueue(
+      { text: "alice reporting status" },
+      { text: "alice reporting status" },
+    );
+    const pipeline = createMeetingTranscriptionPipeline(options(), backend);
+    pipeline.setSpeakerName("track-1", "Alice Chen");
+
+    pipeline.pushSpeakerAudio("track-1", seconds(2));
+    await tick(2000);
+    pipeline.pushSpeakerAudio("track-1", seconds(2));
+    await tick(2000);
+
+    const [segment] = await pipeline.finalize();
+    expect(segment?.speakerLabel).toBe("Speaker 1");
+    expect(segment?.speakerNameAttribution).toMatchObject({
+      resolution: "needs_confirmation",
+      confidence: 0.9,
+      requiresReview: true,
+      provenance: [expect.objectContaining({ source: "platform_roster" })],
+    });
+    expect(segment?.speakerNameAttribution?.displayName).toBeUndefined();
+  });
+
+  it("confirms an exact platform-roster and calendar-attendee agreement", async () => {
+    const backend = new ScriptedBackend();
+    backend.enqueue(
+      { text: "alice reporting status" },
+      { text: "alice reporting status" },
+    );
+    const pipeline = createMeetingTranscriptionPipeline(
+      options({
+        calendarSpeakerEvidence: [
+          {
+            source: "calendar_attendee",
+            name: "Alice Chen",
+            confidence: 0.82,
+            evidenceId: "calendar-event-1",
+          },
+          {
+            source: "calendar_attendee",
+            name: "Bob Jones",
+            confidence: 0.82,
+            evidenceId: "calendar-event-1",
+          },
+        ],
+      }),
+      backend,
+    );
+    pipeline.setSpeakerName("track-1", "Alice Chen");
+
+    pipeline.pushSpeakerAudio("track-1", seconds(2));
+    await tick(2000);
+    pipeline.pushSpeakerAudio("track-1", seconds(2));
+    await tick(2000);
+
+    const [segment] = await pipeline.finalize();
+    expect(segment?.speakerLabel).toBe("Alice Chen");
+    expect(segment?.speakerNameAttribution).toMatchObject({
+      resolution: "confirmed",
+      displayName: "Alice Chen",
+      confidence: 0.9,
+      requiresReview: false,
+    });
+    expect(segment?.speakerNameAttribution?.provenance).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ source: "platform_roster" }),
+        expect.objectContaining({ source: "calendar_attendee" }),
+      ]),
+    );
+  });
+
+  it("uses a self-introduction over a borrowed-device roster label", async () => {
+    const backend = new ScriptedBackend();
+    backend.enqueue(
+      { text: "Hi, I'm Mina Chen." },
+      { text: "Hi, I'm Mina Chen." },
+    );
+    const pipeline = createMeetingTranscriptionPipeline(options(), backend);
+    pipeline.setSpeakerName("track-1", "Taylor Owner");
+
+    pipeline.pushSpeakerAudio("track-1", seconds(2));
+    await tick(2000);
+    pipeline.pushSpeakerAudio("track-1", seconds(2));
+    await tick(2000);
+
+    const [segment] = await pipeline.finalize();
+    expect(segment?.speakerNameAttribution).toMatchObject({
+      resolution: "confirmed",
+      displayName: "Mina Chen",
+      confidence: 0.96,
+      reasonCodes: expect.arrayContaining(["borrowed_device_guardrail"]),
+    });
+    expect(segment?.speakerNameAttribution?.provenance).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ source: "self_introduction" }),
+      ]),
+    );
+    expect(segment?.speakerLabel).toBe("Mina Chen");
+  });
+
+  it("does not mistake ordinary first-person speech for a self-introduction", async () => {
+    const backend = new ScriptedBackend();
+    backend.enqueue(
+      { text: "I am happy to be here." },
+      { text: "I am happy to be here." },
+    );
+    const pipeline = createMeetingTranscriptionPipeline(options(), backend);
+    pipeline.setSpeakerName("track-1", "Taylor Owner");
+
+    pipeline.pushSpeakerAudio("track-1", seconds(2));
+    await tick(2000);
+    pipeline.pushSpeakerAudio("track-1", seconds(2));
+    await tick(2000);
+
+    const [segment] = await pipeline.finalize();
+    expect(segment?.speakerLabel).toBe("Speaker 1");
+    expect(segment?.speakerNameAttribution).toMatchObject({
+      resolution: "needs_confirmation",
+      candidateNames: [
+        expect.objectContaining({
+          name: "Taylor Owner",
+          sources: ["platform_roster"],
+        }),
+      ],
+    });
+  });
+
+  it("withholds same-first-name calendar candidates", async () => {
+    const backend = new ScriptedBackend();
+    backend.enqueue(
+      { text: "status update from the mobile team" },
+      { text: "status update from the mobile team" },
+    );
+    const pipeline = createMeetingTranscriptionPipeline(
+      options({
+        calendarSpeakerEvidence: [
+          {
+            source: "calendar_attendee",
+            name: "Sarah Kim",
+            confidence: 0.82,
+          },
+          {
+            source: "calendar_attendee",
+            name: "Sarah Patel",
+            confidence: 0.82,
+          },
+        ],
+      }),
+      backend,
+    );
+    pipeline.setSpeakerName("track-1", "Sarah");
+
+    pipeline.pushSpeakerAudio("track-1", seconds(2));
+    await tick(2000);
+    pipeline.pushSpeakerAudio("track-1", seconds(2));
+    await tick(2000);
+
+    const [segment] = await pipeline.finalize();
+    expect(segment?.speakerLabel).toBe("Speaker 1");
+    expect(segment?.speakerNameAttribution).toMatchObject({
+      resolution: "withheld",
+      reasonCodes: expect.arrayContaining(["same_first_name_ambiguity"]),
+      requiresReview: true,
+    });
+    expect(segment?.speakerNameAttribution?.candidateNames).toHaveLength(3);
+  });
+
+  it("labels speakers: confirmed names win and 'Speaker N' remains the fallback", async () => {
     const backend = new ScriptedBackend();
     backend.enqueue(
       { text: "alice reporting status" },
@@ -268,7 +437,18 @@ describe("createMeetingTranscriptionPipeline", () => {
       { text: "alice reporting status" },
       { text: "second stream reporting in" },
     );
-    const pipeline = createMeetingTranscriptionPipeline(options(), backend);
+    const pipeline = createMeetingTranscriptionPipeline(
+      options({
+        calendarSpeakerEvidence: [
+          {
+            source: "calendar_attendee",
+            name: "Alice Chen",
+            confidence: 0.82,
+          },
+        ],
+      }),
+      backend,
+    );
     pipeline.setSpeakerName("track-1", "Alice Chen");
 
     pipeline.pushSpeakerAudio("track-1", seconds(2));

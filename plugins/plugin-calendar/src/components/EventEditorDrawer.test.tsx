@@ -233,7 +233,10 @@ vi.mock("@elizaos/ui/agent-surface", () => ({
   useAgentElement: () => ({ ref: () => {}, agentProps: {} }),
 }));
 
-import { EventEditorDrawer } from "./EventEditorDrawer.js";
+import {
+  EventEditorDrawer,
+  eventEditorMutability,
+} from "./EventEditorDrawer.js";
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -795,6 +798,34 @@ describe("EventEditorDrawer", () => {
       screen.queryByText("Save and continue", { selector: "span.sr-only" }),
     ).toBeNull();
   }
+
+  it("keeps built-in calendar events editable with their local version token", () => {
+    const builtInEvent: LifeOpsCalendarEvent = {
+      ...editEvent,
+      provider: "eliza",
+      grantId: "eliza-calendar",
+      calendarId: "primary",
+      metadata: { etag: '"eliza-1"', version: 1 },
+    };
+
+    expect(eventEditorMutability(builtInEvent)).toEqual({
+      kind: "editable",
+      providerVersion: '"eliza-1"',
+    });
+
+    render(
+      <EventEditorDrawer
+        open
+        mode="edit"
+        event={builtInEvent}
+        onClose={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("Save", { selector: "span.sr-only" })).toBeTruthy();
+    expect(deleteButton().disabled).toBe(false);
+    expect(screen.queryByTestId("event-editor-read-only-reason")).toBeNull();
+  });
 
   it("renders Apple events read-only instead of offering saves that dead-end", async () => {
     const appleEvent: LifeOpsCalendarEvent = {

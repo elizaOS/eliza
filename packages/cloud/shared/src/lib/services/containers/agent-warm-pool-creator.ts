@@ -86,6 +86,10 @@ export class HetznerPoolContainerCreator implements PoolContainerCreator {
     if (!result.success && result.error !== "Agent not found") {
       throw new Error(`pool destroy failed: ${result.error}`);
     }
+    // Unresolved remote teardown retains the row as a capacity-ownership
+    // tombstone. Deleting it here would erase the orphan reaper's exactly-once
+    // release claim, so only clean deletion may run the defensive no-op below.
+    if (result.success && !result.rowDeleted) return;
     // deleteAgent already removes the row, but if it short-circuited (e.g.
     // because the container was never started) the pool row may still exist.
     // deletePoolEntry is a no-op (returns false) when the row is already gone,

@@ -174,7 +174,38 @@ export function injectApiBaseIntoHtml(
     );
   }
   if (trimmedToken) {
-    parts.push(`window.__ELIZA_API_TOKEN__=${JSON.stringify(trimmedToken)};`);
+    // Three sinks, because three different readers resolve the token:
+    //
+    // 1. boot-config `apiToken` — the single source of truth for
+    //    `getElizaApiToken()`, which reads ONLY the boot-config store. Seeding
+    //    it before React boots is what actually fixes first-render auth; the
+    //    bare window global below was never consulted by that accessor.
+    // 2. `window.__ELIZA_API_TOKEN__` — still the documented contract for the
+    //    native web shims (`plugin-native-agent`, `plugin-native-websiteblocker`)
+    //    and the Android WebView hydration. They read the global directly and
+    //    fall back only to `sessionStorage`, so dropping it would silently send
+    //    their API calls unauthenticated.
+    // 3. `elizaos:active-server.accessToken` — so the startup-restore phase
+    //    re-authenticates after a hard reload without re-pairing, for LAN
+    //    clients (e.g. iPad Safari) that cannot paste a token by hand.
+    //
+    // Sink 3 is scoped to THIS backend, and that scoping is the security
+    // boundary. The persisted record can point at any host the user has
+    // previously connected to; startup restore sends `accessToken` to that
+    // record's `apiBase`. Merging our token into a `remote`/`cloud` record
+    // would hand this agent's full-capability token to an unrelated LAN or
+    // Tailscale host. So: seed a fresh `local:embedded` record when none
+    // exists, refresh the token when the stored record is already this
+    // device's local backend, and otherwise leave the record untouched.
+    //
+    // `eliza:first-run-complete` is deliberately NOT written here.
+    // `ELIZA_FORCE_INJECT_TOKEN` only attests that the operator accepts HTML
+    // token injection; it does not prove character/provider setup finished, so
+    // suppressing onboarding off the back of it would strand a partially
+    // configured self-hosted deployment.
+    parts.push(
+      `(function(){var t=${JSON.stringify(trimmedToken)},k=Symbol.for("elizaos.app.boot-config"),w=window,prev=w.__ELIZAOS_APP_BOOT_CONFIG__||(w[k]&&w[k].current)||{},next=Object.assign({},prev,{apiToken:t});w.__ELIZAOS_APP_BOOT_CONFIG__=next;w[k]={current:next};w.__ELIZA_API_TOKEN__=t;try{var sk="elizaos:active-server",sp=null;try{sp=JSON.parse(localStorage.getItem(sk)||"null");}catch(e){sp=null;}if(!sp||typeof sp!=="object"){localStorage.setItem(sk,JSON.stringify({id:"local:embedded",kind:"local",label:"This device",accessToken:t}));}else if(sp.kind==="local"){localStorage.setItem(sk,JSON.stringify(Object.assign({},sp,{accessToken:t})));}}catch(e){}})();`,
+    );
   }
   const injection = Buffer.from(`<script>${parts.join("")}</script>`);
 
@@ -190,27 +221,48 @@ export function injectApiBaseIntoHtml(
  * return the token to inject (or `null`).
  *
  * The token is the full-capability API token, and the dashboard HTML is served
- * pre-auth, so embedding it is a capability grant. It is injected when:
- * - the agent runs inside a cloud-provisioned container (already behind cloud
- *   auth, with a controlled host/origin set), or
- * - the operator explicitly opts in with `ELIZA_FORCE_INJECT_TOKEN` — for
- *   self-hosters who front the dashboard with their own auth gate. This MUST NOT
- *   be enabled on a directly exposed agent port; we warn once when it is set
- *   outside a cloud container so the risk is observable.
+ * pre-auth, so embedding it is a capability grant. Managed containers never
+ * embed it: their browser session must arrive through the scoped pairing
+ * handoff. A self-hosted operator can explicitly opt in with
+ * `ELIZA_FORCE_INJECT_TOKEN` when an independent auth gate protects the HTML.
+ * This MUST NOT be enabled on a directly exposed agent port; we warn once so
+ * the risk is observable.
  */
 export function resolveInjectedDashboardToken(): string | null {
   const cloudProvisioned = isCloudProvisionedContainer();
   const forceInjectToken = isTruthyEnvValue(
     process.env.ELIZA_FORCE_INJECT_TOKEN,
   );
-  if (forceInjectToken && !cloudProvisioned && !warnedForceInjectToken) {
+  if (cloudProvisioned || !forceInjectToken) return null;
+  if (!warnedForceInjectToken) {
     warnedForceInjectToken = true;
     logger.warn(
       "[static-file-server] ELIZA_FORCE_INJECT_TOKEN is set — embedding the API token in served dashboard HTML. Ensure the dashboard is fronted by your own auth gate; do not enable this on a directly exposed agent port.",
     );
   }
-  if (!cloudProvisioned && !forceInjectToken) return null;
   return resolveApiToken(process.env);
+}
+
+/** Compose the exact SPA document returned by the static dashboard boundary. */
+export function buildServedDashboardHtml(html: Buffer): Buffer {
+  const injectedToken = resolveInjectedDashboardToken();
+  // The VAPID PUBLIC key is safe for the browser. The matching PRIVATE key
+  // remains a cloud secret and is never injected here.
+  const webPushVapidPublicKey =
+    process.env.ELIZA_WEB_PUSH_VAPID_PUBLIC_KEY?.trim() || null;
+  const injectOpts =
+    injectedToken || webPushVapidPublicKey
+      ? {
+          ...(injectedToken ? { apiToken: injectedToken } : {}),
+          ...(webPushVapidPublicKey ? { webPushVapidPublicKey } : {}),
+        }
+      : undefined;
+
+  return injectApiBaseIntoHtml(
+    html,
+    process.env.ELIZA_EXTERNAL_BASE_URL,
+    injectOpts,
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -303,31 +355,9 @@ export function serveStaticUi(
 
   if (!uiIndexHtml) return false;
 
-  // When served behind a reverse proxy that rewrites the app under a path prefix,
-  // inject the API base so the UI client sends requests to the correct path prefix.
-  // For cloud-provisioned containers, also inject the API token so the browser
-  // client can authenticate without requiring a pairing flow. Self-hosted
-  // operators who front the UI with their own auth gate (e.g. a reverse-proxy
-  // cookie wall) can opt into the same token injection with
-  // ELIZA_FORCE_INJECT_TOKEN (see resolveInjectedDashboardToken).
-  const cloudToken = resolveInjectedDashboardToken();
-  // Expose the VAPID PUBLIC key (safe for the browser) so the installed PWA can
-  // subscribe to Web Push. The PRIVATE key stays a cloud secret. Absent env ⇒
-  // the client renders the "push not configured" state.
-  const webPushVapidPublicKey =
-    process.env.ELIZA_WEB_PUSH_VAPID_PUBLIC_KEY?.trim() || null;
-  const injectOpts =
-    cloudToken || webPushVapidPublicKey
-      ? {
-          ...(cloudToken ? { apiToken: cloudToken } : {}),
-          ...(webPushVapidPublicKey ? { webPushVapidPublicKey } : {}),
-        }
-      : undefined;
-  const html = injectApiBaseIntoHtml(
-    uiIndexHtml,
-    process.env.ELIZA_EXTERNAL_BASE_URL,
-    injectOpts,
-  );
+  // Reverse-proxy config and explicit self-hosted grants are resolved at this
+  // boundary so tests can exercise the exact document that crosses pre-auth.
+  const html = buildServedDashboardHtml(uiIndexHtml);
 
   sendStaticResponse(
     req,

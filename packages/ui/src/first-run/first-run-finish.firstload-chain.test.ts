@@ -11,7 +11,7 @@
  *  1. A stored bearer skips the /api/v1/user status probe entirely — the
  *     agents list IS the connectivity probe, and its result is REUSED as
  *     `knownAgents` for the bind (exactly one list fetch, zero status probes).
- *  2. After `handleCloudLogin` lands a bearer, no post-login status re-probe
+ *  2. After `handleInteractiveCloudLogin` lands a bearer, no post-login status re-probe
  *     runs — the token is the proof; the probe only runs when no token landed.
  *  3. The bind warms the just-bound agent base with a fire-and-forget
  *     conversations fetch so the post-ready hydrate hits a warm container —
@@ -29,11 +29,11 @@ import {
   listOrAutoProvisionCloudAgent,
 } from "./first-run-finish";
 
-const SHARED_AGENT_BASE =
-  "https://staging.elizacloud.ai/api/v1/eliza/agents/cad3c071";
+const SHARED_AGENT_ID = "23766030-c096-4a14-932a-a4e43c562432";
+const SHARED_AGENT_BASE = `https://staging.elizacloud.ai/api/v1/eliza/agents/${SHARED_AGENT_ID}`;
 
 const RUNNING_AGENT = {
-  agent_id: "cad3c071",
+  agent_id: SHARED_AGENT_ID,
   agent_name: "Eliza",
   status: "running",
   created_at: "2026-07-01T00:00:00Z",
@@ -62,6 +62,9 @@ const savePersistedFirstRunCompleteStub = vi.hoisted(() => vi.fn());
 const silentlyRepointToDedicatedStub = vi.hoisted(() => vi.fn());
 const runAgentSessionRecoveryStub = vi.hoisted(() => vi.fn());
 const removeAgentProfileStub = vi.hoisted(() => vi.fn());
+const addAgentProfileStub = vi.hoisted(() =>
+  vi.fn(() => ({ id: "profile-1" })),
+);
 const loadPersistedActiveServerStub = vi.hoisted(() =>
   vi.fn<() => { kind: string; id?: string } | null>(() => null),
 );
@@ -92,7 +95,7 @@ vi.mock("../config/boot-config", () => ({
 }));
 
 vi.mock("../state", () => ({
-  addAgentProfile: vi.fn(() => ({ id: "profile-1" })),
+  addAgentProfile: addAgentProfileStub,
   createPersistedActiveServer: vi.fn((v) => ({ label: "Eliza Cloud", ...v })),
   loadPersistedActiveServer: loadPersistedActiveServerStub,
   removeAgentProfile: removeAgentProfileStub,
@@ -117,21 +120,21 @@ function draft(): FirstRunProfileDraft {
 
 function ports(overrides: Partial<FirstRunFinishPorts> = {}): {
   ports: FirstRunFinishPorts;
-  handleCloudLogin: ReturnType<typeof vi.fn>;
+  handleInteractiveCloudLogin: ReturnType<typeof vi.fn>;
 } {
-  const handleCloudLogin = vi.fn(async () => {});
+  const handleInteractiveCloudLogin = vi.fn(async () => {});
   return {
     ports: {
       uiLanguage: "en",
       elizaCloudConnected: false,
-      handleCloudLogin,
+      handleInteractiveCloudLogin,
       setRuntimeState: vi.fn(),
       setTab: vi.fn(),
       completeFirstRun: vi.fn(),
       onStatus: vi.fn(),
       ...overrides,
     },
-    handleCloudLogin,
+    handleInteractiveCloudLogin,
   };
 }
 
@@ -141,10 +144,10 @@ function storeStewardToken(token = "steward-jwt"): void {
 
 function stubSelection(): void {
   clientStub.selectOrProvisionCloudAgent.mockResolvedValue({
-    agentId: "cad3c071",
+    agentId: SHARED_AGENT_ID,
     agentName: "Eliza",
     apiBase: SHARED_AGENT_BASE,
-    bridgeUrl: "https://cad3c071.elizacloud.ai",
+    bridgeUrl: `https://${SHARED_AGENT_ID}.elizacloud.ai`,
     requiresAgentPairing: false,
     created: false,
   });
@@ -183,24 +186,24 @@ describe("listOrAutoProvisionCloudAgent — no serial status probe before the ag
     clientStub.getCloudCompatAgents
       .mockResolvedValueOnce({ success: false, data: [], error: "401" })
       .mockResolvedValueOnce({ success: true, data: [RUNNING_AGENT] });
-    const { ports: p, handleCloudLogin } = ports();
+    const { ports: p, handleInteractiveCloudLogin } = ports();
     const outcome = await listOrAutoProvisionCloudAgent(draft(), p);
     expect(outcome.kind).toBe("done");
     // The failure path consulted the status probe (legacy semantics kept)…
     expect(clientStub.getCloudStatus).toHaveBeenCalled();
     // …and re-entered login rather than treating the dead list as connected.
-    expect(handleCloudLogin).toHaveBeenCalledTimes(1);
+    expect(handleInteractiveCloudLogin).toHaveBeenCalledTimes(1);
     expect(clientStub.getCloudCompatAgents).toHaveBeenCalledTimes(2);
   });
 
-  it("after handleCloudLogin lands a bearer there is NO post-login status re-probe — one probe total on the no-token entry", async () => {
-    const { ports: p, handleCloudLogin } = ports();
-    handleCloudLogin.mockImplementation(async () => {
+  it("after handleInteractiveCloudLogin lands a bearer there is NO post-login status re-probe — one probe total on the no-token entry", async () => {
+    const { ports: p, handleInteractiveCloudLogin } = ports();
+    handleInteractiveCloudLogin.mockImplementation(async () => {
       storeStewardToken("fresh-jwt");
     });
     const outcome = await listOrAutoProvisionCloudAgent(draft(), p);
     expect(outcome.kind).toBe("done");
-    expect(handleCloudLogin).toHaveBeenCalledTimes(1);
+    expect(handleInteractiveCloudLogin).toHaveBeenCalledTimes(1);
     // Exactly ONE status probe (the pre-login connectivity check). The old
     // code issued a second one after login whose result was overridden by the
     // token check anyway — that serial round trip must not come back.
@@ -209,10 +212,10 @@ describe("listOrAutoProvisionCloudAgent — no serial status probe before the ag
   });
 
   it("returns needs-cloud-login when login lands no token and the probe stays disconnected", async () => {
-    const { ports: p, handleCloudLogin } = ports();
+    const { ports: p, handleInteractiveCloudLogin } = ports();
     const outcome = await listOrAutoProvisionCloudAgent(draft(), p);
     expect(outcome.kind).toBe("needs-cloud-login");
-    expect(handleCloudLogin).toHaveBeenCalledTimes(1);
+    expect(handleInteractiveCloudLogin).toHaveBeenCalledTimes(1);
     // Pre-login probe + post-login probe (no token landed, so the probe is
     // still the only evidence available).
     expect(clientStub.getCloudStatus).toHaveBeenCalledTimes(2);
@@ -221,6 +224,25 @@ describe("listOrAutoProvisionCloudAgent — no serial status probe before the ag
 });
 
 describe("bindCloudAgent — agent-base warm-up", () => {
+  it("persists the authoritative Cloud agent owner with its profile credential", async () => {
+    const outcome = await bindCloudAgent(
+      draft(),
+      "steward-token",
+      {},
+      ports().ports,
+    );
+
+    expect(outcome.kind).toBe("done");
+    expect(addAgentProfileStub).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: "cloud",
+        cloudAgentId: SHARED_AGENT_ID,
+        apiBase: SHARED_AGENT_BASE,
+        accessToken: "steward-token",
+      }),
+    );
+  });
+
   it("fires a fire-and-forget conversations fetch on the just-bound base so the post-ready hydrate hits a warm container", async () => {
     const outcome = await bindCloudAgent(
       draft(),

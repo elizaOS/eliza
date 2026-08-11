@@ -1,8 +1,8 @@
 /**
  * Packaged desktop storage seeding for regression tests that need a returning
  * install profile. The bridge is intentionally narrow: desktop test packaging
- * injects a marker global, and only then does this module expose one helper that
- * writes the exact first-run keys through the shell storage privilege channel.
+ * injects a marker global, and only then does this module expose narrow helpers
+ * that write exact first-run keys through the shell storage privilege channel.
  */
 import { shellLocalStorage } from "@elizaos/ui/bridge";
 
@@ -18,8 +18,18 @@ export interface ReturningInstallSeedResult {
   activeServer: string | null;
 }
 
+export interface ResettableStateSeedResult {
+  ok: true;
+  firstRunComplete: string | null;
+  activeServer: string | null;
+}
+
 export interface PackagedShellStorageTestBridge {
-  seedReturningInstallState(apiBase: string): ReturningInstallSeedResult;
+  seedResettableState(): ResettableStateSeedResult;
+  seedReturningInstallState(
+    apiBase: string,
+    chatOverlayHotkey?: string,
+  ): ReturningInstallSeedResult;
 }
 
 declare global {
@@ -51,12 +61,19 @@ function readSeededState(win: Window): ReturningInstallSeedResult {
 
 export function seedReturningInstallStateForPackagedTests(
   apiBase: string,
+  chatOverlayHotkey?: string,
   win = window,
 ): ReturningInstallSeedResult {
   shellLocalStorage.removeItem("elizaos:first-run:force-fresh");
   shellLocalStorage.setItem("eliza:first-run-complete", "1");
   shellLocalStorage.setItem("eliza:setup:step", "activate");
   shellLocalStorage.setItem("eliza:ui-shell-mode", "native");
+  if (chatOverlayHotkey) {
+    shellLocalStorage.setItem(
+      "eliza:chatOverlayHotkey",
+      JSON.stringify({ accelerator: chatOverlayHotkey, enabled: true }),
+    );
+  }
   shellLocalStorage.setItem(
     "elizaos:active-server",
     JSON.stringify({
@@ -69,14 +86,38 @@ export function seedReturningInstallStateForPackagedTests(
   return readSeededState(win);
 }
 
+export function seedResettableStateForPackagedTests(
+  win = window,
+): ResettableStateSeedResult {
+  shellLocalStorage.setItem("eliza:first-run-complete", "1");
+  shellLocalStorage.setItem(
+    "elizaos:active-server",
+    JSON.stringify({
+      id: "local:embedded",
+      kind: "local",
+      label: "This device",
+    }),
+  );
+  return {
+    ok: true,
+    firstRunComplete: win.localStorage.getItem("eliza:first-run-complete"),
+    activeServer: win.localStorage.getItem("elizaos:active-server"),
+  };
+}
+
 export function installPackagedShellStorageTestBridge(win = window): boolean {
   if (Reflect.get(win, DESKTOP_TEST_BRIDGE_MARKER) !== true) {
     return false;
   }
 
   const bridge: PackagedShellStorageTestBridge = {
-    seedReturningInstallState: (apiBase) =>
-      seedReturningInstallStateForPackagedTests(apiBase, win),
+    seedResettableState: () => seedResettableStateForPackagedTests(win),
+    seedReturningInstallState: (apiBase, chatOverlayHotkey) =>
+      seedReturningInstallStateForPackagedTests(
+        apiBase,
+        chatOverlayHotkey,
+        win,
+      ),
   };
   Object.defineProperty(win, PACKAGED_SHELL_STORAGE_TEST_GLOBAL, {
     configurable: true,

@@ -24,6 +24,7 @@ import * as realHelpersNs from "../../db/helpers";
 import { agentBillingRepository } from "../../db/repositories/agent-billing";
 import type { AgentSandbox, AgentSandboxBackup } from "../../db/repositories/agent-sandboxes";
 import { agentSandboxesRepository } from "../../db/repositories/agent-sandboxes";
+import { userCharactersRepository } from "../../db/repositories/characters";
 import type { DockerNode } from "../../db/repositories/docker-nodes";
 import { dockerNodesRepository } from "../../db/repositories/docker-nodes";
 import { sharedRuntimeHistoryRepository } from "../../db/repositories/shared-runtime-history";
@@ -233,14 +234,21 @@ function expectSameReplacement(
 function replacementAwareProvider<T extends SandboxProvider>(provider: T): T {
   const mutable = provider as T & {
     [replacementAwareProviderMarker]?: true;
+    stop?: (sandboxId: string) => Promise<void>;
   };
   if (mutable[replacementAwareProviderMarker]) return provider;
   mutable[replacementAwareProviderMarker] = true;
   const originalCreate = provider.create.bind(provider);
   if (!provider.stopForReplacement) {
-    provider.stopForReplacement = async (sandboxId) => {
-      await provider.stop(sandboxId);
-    };
+    const legacyFixtureStop = mutable.stop?.bind(provider);
+    provider.stopForReplacement = legacyFixtureStop
+      ? legacyFixtureStop
+      : async (sandboxId) => {
+          const outcome = await provider.stopForDeletion(sandboxId);
+          if (outcome.kind !== "not-running-proven") {
+            throw new Error("Replacement fixture could not prove the sandbox stopped");
+          }
+        };
   }
   provider.create = async (config: SandboxCreateConfig): Promise<SandboxHandle> => {
     let intentCalled = false;
@@ -1214,7 +1222,7 @@ describe("ElizaSandboxService wake", () => {
             webUiPort: 3000,
           },
         })),
-        stop: mock(async () => {}),
+        stopForDeletion: mock(async () => ({ kind: "not-running-proven" as const })),
         checkHealth: mock(async () => true),
       };
       const requests: string[] = [];
@@ -1367,7 +1375,8 @@ describe("ElizaSandboxService provision — from-backup override (#15603 B6)", (
           webUiPort: 3000,
         },
       })),
-      stop: mock(async () => {}),
+      stopForDeletion: mock(async () => ({ kind: "not-running-proven" as const })),
+      stopForReplacement: mock(async () => {}),
       checkHealth: mock(async () => true),
     };
     globalThis.fetch = mock(async (input: RequestInfo | URL) => {
@@ -1457,7 +1466,7 @@ describe("ElizaSandboxService provision — from-backup override (#15603 B6)", (
         h.rec.id,
         expect.objectContaining({ status: "error" }),
       );
-      expect(h.provider.stop).toHaveBeenCalled();
+      expect(h.provider.stopForReplacement).toHaveBeenCalled();
     } finally {
       h.restore();
     }
@@ -1523,7 +1532,7 @@ describe("ElizaSandboxService provision — from-backup override (#15603 B6)", (
         h.rec.id,
         expect.objectContaining({ status: "error" }),
       );
-      expect(h.provider.stop).toHaveBeenCalled();
+      expect(h.provider.stopForReplacement).toHaveBeenCalled();
       expect(h.pruneSpy).not.toHaveBeenCalled();
     } finally {
       h.restore();
@@ -1566,7 +1575,7 @@ describe("ElizaSandboxService shutdown fails closed without a current capture (#
       create: mock(async () => {
         throw new Error("must not create");
       }),
-      stop: mock(async () => {}),
+      stopForDeletion: mock(async () => ({ kind: "not-running-proven" as const })),
       stopForReplacement: mock(async () => {}),
       checkHealth: mock(async () => true),
     };
@@ -1585,7 +1594,7 @@ describe("ElizaSandboxService shutdown fails closed without a current capture (#
       expect(result.success).toBe(false);
       expect(result.error).toContain("Refusing to stop without a current backup");
       expect(result.error).toContain("snapshot endpoint timed out");
-      expect(provider.stop).not.toHaveBeenCalled();
+      expect(provider.stopForDeletion).not.toHaveBeenCalled();
       expect(provider.stopForReplacement).not.toHaveBeenCalled();
     } finally {
       getForWrite.mockRestore();
@@ -1602,7 +1611,7 @@ describe("ElizaSandboxService sleep refuses an unproven fallback backup (#17180 
       create: mock(async () => {
         throw new Error("must not create");
       }),
-      stop: mock(async () => {}),
+      stopForDeletion: mock(async () => ({ kind: "not-running-proven" as const })),
       stopForReplacement: mock(async () => {}),
       checkHealth: mock(async () => true),
     };
@@ -1659,7 +1668,7 @@ describe("ElizaSandboxService sleep refuses an unproven fallback backup (#17180 
       expect(result.success).toBe(false);
       expect(result.containerRemoved).toBe(false);
       expect(result.error).toContain("Refusing to deactivate on an unproven backup");
-      expect(provider.stop).not.toHaveBeenCalled();
+      expect(provider.stopForDeletion).not.toHaveBeenCalled();
       expect(provider.stopForReplacement).not.toHaveBeenCalled();
       expect(updateSpy).not.toHaveBeenCalled();
     } finally {
@@ -1682,7 +1691,8 @@ describe("ElizaSandboxService sleep", () => {
         bridgeUrl: "https://runtime.example",
         healthUrl: "https://runtime.example/health",
       })),
-      stop: mock(async () => {}),
+      stopForDeletion: mock(async () => ({ kind: "not-running-proven" as const })),
+      stopForReplacement: mock(async () => {}),
       checkHealth: mock(async () => true),
     };
     globalThis.fetch = mock(async () => {
@@ -1714,7 +1724,7 @@ describe("ElizaSandboxService sleep", () => {
         error:
           "Unable to create or find a durable backup before deactivation; agent was left running.",
       });
-      expect(provider.stop).not.toHaveBeenCalled();
+      expect(provider.stopForDeletion).not.toHaveBeenCalled();
       expect(createBackupSpy).not.toHaveBeenCalled();
       expect(updateSpy).not.toHaveBeenCalled();
     } finally {
@@ -3073,7 +3083,7 @@ describe("replacement lifecycle teardown is absence-proof", () => {
       create: mock(async () => {
         throw new Error("must not create");
       }),
-      stop: mock(async () => {}),
+      stopForDeletion: mock(async () => ({ kind: "not-running-proven" as const })),
       stopForReplacement: mock(async () => {
         throw new Error("old node unreachable");
       }),
@@ -3121,7 +3131,7 @@ describe("replacement lifecycle teardown is absence-proof", () => {
         error: "Failed to prove the previous sandbox stopped",
       });
       expect(provider.stopForReplacement).toHaveBeenCalledWith(rec.sandbox_id);
-      expect(provider.stop).not.toHaveBeenCalled();
+      expect(provider.stopForDeletion).not.toHaveBeenCalled();
       expect(writes).toHaveLength(0);
       expect(provision).not.toHaveBeenCalled();
     } finally {
@@ -3149,7 +3159,7 @@ describe("replacement lifecycle teardown is absence-proof", () => {
       create: mock(async () => {
         throw new Error("provision is spied");
       }),
-      stop: mock(async () => {}),
+      stopForDeletion: mock(async () => ({ kind: "not-running-proven" as const })),
       stopForReplacement: mock(async () => {}),
       checkHealth: mock(async () => true),
     };
@@ -3246,7 +3256,7 @@ describe("replacement lifecycle teardown is absence-proof", () => {
       create: mock(async () => {
         throw new Error("must not create");
       }),
-      stop: mock(async () => {}),
+      stopForDeletion: mock(async () => ({ kind: "not-running-proven" as const })),
       stopForReplacement: mock(async () => {}),
       checkHealth: mock(async () => true),
     };
@@ -3298,7 +3308,7 @@ describe("replacement lifecycle teardown is absence-proof", () => {
       create: mock(async () => {
         throw new Error("must not create");
       }),
-      stop: mock(async () => {}),
+      stopForDeletion: mock(async () => ({ kind: "not-running-proven" as const })),
       stopForReplacement: mock(async () => {
         throw new Error("old node unreachable");
       }),
@@ -3400,7 +3410,7 @@ describe("replacement lifecycle teardown is absence-proof", () => {
       create: mock(async () => {
         throw new Error("must not create");
       }),
-      stop: mock(async () => {}),
+      stopForDeletion: mock(async () => ({ kind: "not-running-proven" as const })),
       stopForReplacement: mock(async () => {
         throw new Error("old node unreachable");
       }),
@@ -3432,7 +3442,7 @@ describe("replacement lifecycle teardown is absence-proof", () => {
         error: "old node unreachable",
       });
       expect(provider.stopForReplacement).toHaveBeenCalledWith(rec.sandbox_id);
-      expect(provider.stop).not.toHaveBeenCalled();
+      expect(provider.stopForDeletion).not.toHaveBeenCalled();
       expect(tx.writes).toHaveLength(0);
     } finally {
       upgradeTransactionImpl = null;
@@ -3459,7 +3469,7 @@ describe("replacement lifecycle teardown is absence-proof", () => {
       create: mock(async () => {
         throw new Error("must not create");
       }),
-      stop: mock(async () => {}),
+      stopForDeletion: mock(async () => ({ kind: "not-running-proven" as const })),
       stopForReplacement: mock(async () => {}),
       checkHealth: mock(async () => true),
     };
@@ -3509,7 +3519,7 @@ describe("replacement lifecycle teardown is absence-proof", () => {
       create: mock(async () => {
         throw new Error("must not create");
       }),
-      stop: mock(async () => {}),
+      stopForDeletion: mock(async () => ({ kind: "not-running-proven" as const })),
       stopForReplacement: mock(async () => {}),
       checkHealth: mock(async () => true),
     };
@@ -3573,6 +3583,15 @@ describe("ElizaSandboxService.deleteAgent teardown cap (#9066)", () => {
 
   type Svc = {
     deleteAgent(agentId: string, orgId: string): Promise<unknown>;
+    executeDeletion(
+      agentId: string,
+      orgId: string,
+    ): Promise<{
+      success: boolean;
+      containerStopped: boolean;
+      rowDeleted: boolean;
+      error?: string;
+    }>;
     prepareAgentDelete(
       agentId: string,
       orgId: string,
@@ -3586,6 +3605,7 @@ describe("ElizaSandboxService.deleteAgent teardown cap (#9066)", () => {
       | { ok: false; error: string }
     >;
     commitAgentRowDelete(agentId: string, orgId: string): Promise<unknown>;
+    commitAgentReconciliationPending(agentId: string, orgId: string): Promise<unknown>;
     runBoundedSandboxStop(sandboxId: string): Promise<unknown>;
   };
 
@@ -3594,7 +3614,52 @@ describe("ElizaSandboxService.deleteAgent teardown cap (#9066)", () => {
     return new ElizaSandboxService() as unknown as Svc;
   }
 
-  test("(a) teardown timeout → delete still proceeds (row deleted) + leak warning, no phantom 'handled'", async () => {
+  test("linked character cleanup waits until the reconciliation tombstone is removed", async () => {
+    const svc = await makeSvc();
+    const characterId = "44444444-4444-4444-8444-444444444444";
+    const deletedSandbox = {
+      ...customSandbox(),
+      id: AGENT,
+      organization_id: ORG,
+      character_id: characterId,
+      agent_config: {},
+    };
+    const deletion = spyOn(svc, "deleteAgent")
+      .mockResolvedValueOnce({
+        success: true,
+        rowDeleted: false,
+        reconciliationPending: true,
+        deletedSandbox,
+      })
+      .mockResolvedValueOnce({
+        success: true,
+        rowDeleted: true,
+        deletedSandbox,
+      });
+    const deleteCharacter = spyOn(userCharactersRepository, "delete").mockResolvedValue(undefined);
+
+    try {
+      await expect(svc.executeDeletion(AGENT, ORG)).resolves.toEqual({
+        success: true,
+        containerStopped: false,
+        rowDeleted: false,
+      });
+      expect(deleteCharacter).not.toHaveBeenCalled();
+
+      await expect(svc.executeDeletion(AGENT, ORG)).resolves.toEqual({
+        success: true,
+        containerStopped: true,
+        rowDeleted: true,
+      });
+      expect(deleteCharacter).toHaveBeenCalledTimes(1);
+      expect(deleteCharacter).toHaveBeenCalledWith(characterId);
+    } finally {
+      deletion.mockRestore();
+      deleteCharacter.mockRestore();
+    }
+  });
+
+  test("(a) teardown timeout completes the attempt but retains a reconciliation tombstone", async () => {
     const svc = await makeSvc();
     const deletedSandbox = { ...customSandbox(), id: AGENT, organization_id: ORG };
     const prepare = spyOn(svc, "prepareAgentDelete").mockResolvedValue({
@@ -3603,13 +3668,20 @@ describe("ElizaSandboxService.deleteAgent teardown cap (#9066)", () => {
       status: "running",
       sourcePoolId: null,
     });
-    // Timed-out teardown is reported as the { error, timedOut } shape.
+    // Timed-out teardown is reported as an explicit tagged outcome.
     const stop = spyOn(svc, "runBoundedSandboxStop").mockResolvedValue({
+      kind: "stop-timed-out",
       error: new Error("agent-delete stop sandbox-e06bb509 timed out after 120000ms"),
-      timedOut: true,
     });
     const commit = spyOn(svc, "commitAgentRowDelete").mockResolvedValue({
       success: true,
+      rowDeleted: true,
+      deletedSandbox,
+    });
+    const retain = spyOn(svc, "commitAgentReconciliationPending").mockResolvedValue({
+      success: true,
+      rowDeleted: false,
+      reconciliationPending: true,
       deletedSandbox,
     });
     const apiKeySpy = spyOn(apiKeysService, "revokeForAgent").mockResolvedValue(undefined as never);
@@ -3618,22 +3690,25 @@ describe("ElizaSandboxService.deleteAgent teardown cap (#9066)", () => {
     try {
       const res = (await svc.deleteAgent(AGENT, ORG)) as {
         success: boolean;
+        rowDeleted?: boolean;
         deletedSandbox?: unknown;
       };
-      // A hang must NOT block the delete — the row is still removed.
+      // A hang does not retry in the hot queue, but its ownership row remains.
       expect(res.success).toBe(true);
+      expect(res.rowDeleted).toBe(false);
       expect(res.deletedSandbox).toEqual(deletedSandbox);
-      expect(commit).toHaveBeenCalledTimes(1);
-      // The warning must flag a real leak — not pretend an orphan got swept.
+      expect(commit).not.toHaveBeenCalled();
+      expect(retain).toHaveBeenCalledTimes(1);
+      // The warning must flag abandonment while preserving capacity accounting.
       const warned = warnSpy.mock.calls.map((c) => String(c[0])).join("\n");
       expect(warned).toContain("timed out");
       expect(warned).toContain("ABANDONING");
-      expect(warned).toContain("LEAK");
-      expect(warned).not.toContain("reconciler sweeps");
+      expect(warned).toContain("retaining its capacity");
     } finally {
       prepare.mockRestore();
       stop.mockRestore();
       commit.mockRestore();
+      retain.mockRestore();
       apiKeySpy.mockRestore();
       historySpy.mockRestore();
       warnSpy.mockRestore();
@@ -3650,6 +3725,7 @@ describe("ElizaSandboxService.deleteAgent teardown cap (#9066)", () => {
     });
     // Bounded (non-timeout) failure with a non-ignorable message.
     const stop = spyOn(svc, "runBoundedSandboxStop").mockResolvedValue({
+      kind: "stop-failed",
       error: new Error("docker stop -> daemon hung; docker rm -f -> daemon hung"),
     });
     const commit = spyOn(svc, "commitAgentRowDelete");
@@ -3679,10 +3755,12 @@ describe("ElizaSandboxService.deleteAgent teardown cap (#9066)", () => {
       sourcePoolId: null,
     });
     const stop = spyOn(svc, "runBoundedSandboxStop").mockResolvedValue({
+      kind: "stop-failed",
       error: new Error("container not found"),
     });
     const commit = spyOn(svc, "commitAgentRowDelete").mockResolvedValue({
       success: true,
+      rowDeleted: true,
       deletedSandbox,
     });
     const apiKeySpy = spyOn(apiKeysService, "revokeForAgent").mockResolvedValue(undefined as never);
@@ -3709,6 +3787,83 @@ describe("ElizaSandboxService.deleteAgent teardown cap (#9066)", () => {
     }
   });
 
+  test("(d) a missing-node-metadata hydration failure (node purged from docker_nodes) → ignorable, delete proceeds", async () => {
+    const svc = await makeSvc();
+    const deletedSandbox = { ...customSandbox(), id: AGENT, organization_id: ORG };
+    const prepare = spyOn(svc, "prepareAgentDelete").mockResolvedValue({
+      ok: true,
+      sandboxId: SANDBOX_ID,
+      status: "running",
+      sourcePoolId: null,
+    });
+    // The exact shape hydrateContainerFromDb throws when the sandbox row
+    // points at a node that no longer has a docker_nodes record: the host is
+    // gone, so there is nothing left to stop.
+    const stop = spyOn(svc, "runBoundedSandboxStop").mockResolvedValue({
+      kind: "stop-failed",
+      error: new Error(
+        '[docker-sandbox] Missing persisted docker node metadata for node "node-decommissioned"',
+      ),
+    });
+    const commit = spyOn(svc, "commitAgentRowDelete").mockResolvedValue({
+      success: true,
+      rowDeleted: true,
+      deletedSandbox,
+    });
+    const apiKeySpy = spyOn(apiKeysService, "revokeForAgent").mockResolvedValue(undefined as never);
+    const historySpy = spyOn(sharedRuntimeHistoryRepository, "deleteByAgent").mockResolvedValue(0);
+    const infoSpy = spyOn(logger, "info").mockImplementation(() => {});
+    const warnSpy = spyOn(logger, "warn").mockImplementation(() => {});
+    try {
+      const res = (await svc.deleteAgent(AGENT, ORG)) as { success: boolean };
+      expect(res.success).toBe(true);
+      expect(commit).toHaveBeenCalledTimes(1);
+      const infoed = infoSpy.mock.calls.map((c) => String(c[0])).join("\n");
+      expect(infoed).toContain("already absent");
+      const warned = warnSpy.mock.calls.map((c) => String(c[0])).join("\n");
+      expect(warned).not.toContain("ABANDONING");
+    } finally {
+      prepare.mockRestore();
+      stop.mockRestore();
+      commit.mockRestore();
+      apiKeySpy.mockRestore();
+      historySpy.mockRestore();
+      infoSpy.mockRestore();
+      warnSpy.mockRestore();
+    }
+  });
+
+  test("(e) an unrelated hydration failure (missing port data) → still NOT ignorable, delete aborts", async () => {
+    const svc = await makeSvc();
+    const prepare = spyOn(svc, "prepareAgentDelete").mockResolvedValue({
+      ok: true,
+      sandboxId: SANDBOX_ID,
+      status: "running",
+      sourcePoolId: null,
+    });
+    // A sibling hydrateContainerFromDb failure that does NOT mean the host is
+    // gone — the container may still be running, so the delete must escalate.
+    const stop = spyOn(svc, "runBoundedSandboxStop").mockResolvedValue({
+      kind: "stop-failed",
+      error: new Error(
+        '[docker-sandbox] Missing port data for "sandbox-e06bb509": bridge=null, webUi=null',
+      ),
+    });
+    const commit = spyOn(svc, "commitAgentRowDelete");
+    const warnSpy = spyOn(logger, "warn").mockImplementation(() => {});
+    try {
+      const res = (await svc.deleteAgent(AGENT, ORG)) as { success: boolean; error?: string };
+      expect(res.success).toBe(false);
+      expect(res.error).toBe("Failed to delete sandbox");
+      expect(commit).not.toHaveBeenCalled();
+    } finally {
+      prepare.mockRestore();
+      stop.mockRestore();
+      commit.mockRestore();
+      warnSpy.mockRestore();
+    }
+  });
+
   test("the bounded teardown runs OUTSIDE the row-delete phase (sequenced, not nested)", async () => {
     const svc = await makeSvc();
     const order: string[] = [];
@@ -3724,11 +3879,15 @@ describe("ElizaSandboxService.deleteAgent teardown cap (#9066)", () => {
     });
     const stop = spyOn(svc, "runBoundedSandboxStop").mockImplementation(async () => {
       order.push("teardown");
-      return null;
+      return { kind: "not-running-proven" };
     });
     const commit = spyOn(svc, "commitAgentRowDelete").mockImplementation(async () => {
       order.push("commit");
-      return { success: true, deletedSandbox: { ...customSandbox(), id: AGENT } };
+      return {
+        success: true,
+        rowDeleted: true,
+        deletedSandbox: { ...customSandbox(), id: AGENT },
+      };
     });
     const apiKeySpy = spyOn(apiKeysService, "revokeForAgent").mockImplementation(
       async (credentialOwnerId) => {
@@ -3765,7 +3924,9 @@ describe("ElizaSandboxService.deleteAgent teardown cap (#9066)", () => {
       status: "error",
       sourcePoolId,
     });
-    const stop = spyOn(svc, "runBoundedSandboxStop").mockResolvedValue(null);
+    const stop = spyOn(svc, "runBoundedSandboxStop").mockResolvedValue({
+      kind: "not-running-proven",
+    });
     const commit = spyOn(svc, "commitAgentRowDelete");
     const apiKeySpy = spyOn(apiKeysService, "revokeForAgent")
       .mockResolvedValueOnce(undefined)
@@ -3782,15 +3943,17 @@ describe("ElizaSandboxService.deleteAgent teardown cap (#9066)", () => {
     }
   });
 
-  test("runBoundedSandboxStop returns null on a clean provider stop", async () => {
+  test("runBoundedSandboxStop returns proven absence from a clean provider stop", async () => {
     const svc = await makeSvc();
     const getProvider = spyOn(
       svc as unknown as { getProvider: () => Promise<SandboxProvider> },
       "getProvider",
-    ).mockResolvedValue({ stop: async () => {} } as unknown as SandboxProvider);
+    ).mockResolvedValue({
+      stopForDeletion: async () => ({ kind: "not-running-proven" as const }),
+    } as unknown as SandboxProvider);
     try {
       const res = await svc.runBoundedSandboxStop(SANDBOX_ID);
-      expect(res).toBeNull();
+      expect(res).toEqual({ kind: "not-running-proven" });
     } finally {
       getProvider.mockRestore();
     }
@@ -3803,54 +3966,49 @@ describe("ElizaSandboxService.deleteAgent teardown cap (#9066)", () => {
       svc as unknown as { getProvider: () => Promise<SandboxProvider> },
       "getProvider",
     ).mockResolvedValue({
-      stop: async () => {
+      stopForDeletion: async () => {
         throw boom;
       },
     } as unknown as SandboxProvider);
     try {
       const res = (await svc.runBoundedSandboxStop(SANDBOX_ID)) as {
+        kind: string;
         error: unknown;
-        timedOut?: true;
       };
+      expect(res.kind).toBe("stop-failed");
       expect(res.error).toBe(boom);
-      // A captured error is NOT a timeout — the delete must treat it as a real
-      // failure, not abandon-and-proceed.
-      expect("timedOut" in res).toBe(false);
     } finally {
       getProvider.mockRestore();
     }
   });
 
-  // The whole reason #9066 exists: a provider.stop that genuinely never
+  // The whole reason #9066 exists: a provider stop that genuinely never
   // settles (SSH connect / provider init wedge) must be cut off at the hard
   // cap so a single stuck node can't hang the delete past the job watchdog and
   // wedge the provisioning worker. The two tests above cover clean/error; this
   // one drives the REAL withTimeout branch — a never-settling stop raced under
-  // fake timers — and asserts the abandon-and-proceed { error, timedOut }
-  // shape that deleteAgent keys "ABANDON + LEAK" on.
-  test("runBoundedSandboxStop cuts off a never-settling provider stop with { error, timedOut }", async () => {
+  // fake timers — and asserts the tagged timeout used to preserve capacity.
+  test("runBoundedSandboxStop cuts off a never-settling provider stop", async () => {
     const svc = await makeSvc();
     // Never resolves and never rejects: the only way out is the timeout race.
     const getProvider = spyOn(
       svc as unknown as { getProvider: () => Promise<SandboxProvider> },
       "getProvider",
     ).mockResolvedValue({
-      stop: () => new Promise<void>(() => {}),
+      stopForDeletion: () => new Promise<never>(() => {}),
     } as unknown as SandboxProvider);
     jest.useFakeTimers();
     try {
       const pending = svc.runBoundedSandboxStop(SANDBOX_ID) as Promise<{
+        kind: string;
         error: unknown;
-        timedOut?: true;
       }>;
       // Let getProvider() + the try-body microtasks settle so the timeout
       // timer is actually armed, then blow past the 120s hard cap.
       await Promise.resolve();
       jest.advanceTimersByTime(120_001);
       const res = await pending;
-      // Abandon-and-proceed: a genuine hang is reported as a TIMEOUT, distinct
-      // from a captured provider error (no `timedOut` flag on that path).
-      expect(res.timedOut).toBe(true);
+      expect(res.kind).toBe("stop-timed-out");
       expect(res.error).toBeInstanceOf(Error);
       expect((res.error as Error).message).toContain("timed out after");
     } finally {
@@ -3950,7 +4108,7 @@ describe("failed warm-claim replacement teardown", () => {
     const stopForReplacement = mock(async () => {});
     const provider: SandboxProvider = {
       create,
-      stop: mock(async () => {}),
+      stopForDeletion: mock(async () => ({ kind: "not-running-proven" as const })),
       stopForReplacement,
       checkHealth: mock(async () => true),
     };
@@ -4047,7 +4205,7 @@ describe("failed warm-claim replacement teardown", () => {
     });
     const provider: SandboxProvider = {
       create,
-      stop: mock(async () => {}),
+      stopForDeletion: mock(async () => ({ kind: "not-running-proven" as const })),
       stopForReplacement,
       checkHealth: mock(async () => true),
     };
@@ -4181,7 +4339,7 @@ describe("failed warm-claim replacement teardown", () => {
     }));
     const provider: SandboxProvider = {
       create,
-      stop: mock(async () => {}),
+      stopForDeletion: mock(async () => ({ kind: "not-running-proven" as const })),
       stopForReplacement,
       checkHealth: mock(async () => true),
     };
@@ -4432,7 +4590,8 @@ describe("ElizaSandboxService.provision dedup + port-collision retry (LARP H2)",
     const create = mock(async () => providerHandle());
     const provider: SandboxProvider = {
       create,
-      stop: mock(async () => {}),
+      stopForDeletion: mock(async () => ({ kind: "not-running-proven" as const })),
+      stopForReplacement: mock(async () => {}),
       checkHealth: mock(async () => true),
     };
     try {
@@ -4469,7 +4628,8 @@ describe("ElizaSandboxService.provision dedup + port-collision retry (LARP H2)",
     const create = mock(async () => providerHandle());
     const provider: SandboxProvider = {
       create,
-      stop: mock(async () => {}),
+      stopForDeletion: mock(async () => ({ kind: "not-running-proven" as const })),
+      stopForReplacement: mock(async () => {}),
       checkHealth: mock(async () => true),
     };
     try {
@@ -4589,7 +4749,8 @@ describe("ElizaSandboxService.provision dedup + port-collision retry (LARP H2)",
       "getProvider",
     ).mockResolvedValue({
       create,
-      stop: mock(async () => {}),
+      stopForDeletion: mock(async () => ({ kind: "not-running-proven" as const })),
+      stopForReplacement: mock(async () => {}),
       checkHealth: async () => true,
     } as SandboxProvider);
 
@@ -4651,7 +4812,8 @@ describe("ElizaSandboxService.provision dedup + port-collision retry (LARP H2)",
       "getProvider",
     ).mockResolvedValue({
       create,
-      stop: mock(async () => {}),
+      stopForDeletion: mock(async () => ({ kind: "not-running-proven" as const })),
+      stopForReplacement: mock(async () => {}),
       checkHealth: async () => true,
     } as SandboxProvider);
 
@@ -4911,7 +5073,8 @@ describe("ElizaSandboxService.provision dedup + port-collision retry (LARP H2)",
     });
     const provider: SandboxProvider = {
       create: mock(async () => handle),
-      stop: mock(async () => {}),
+      stopForDeletion: mock(async () => ({ kind: "not-running-proven" as const })),
+      stopForReplacement: mock(async () => {}),
       checkHealth: async () => true,
     };
     const svc = new ElizaSandboxService(provider);
@@ -4967,7 +5130,8 @@ describe("ElizaSandboxService.provision dedup + port-collision retry (LARP H2)",
     );
     const provider: SandboxProvider = {
       create: mock(async () => providerHandle()),
-      stop: mock(async () => {}),
+      stopForDeletion: mock(async () => ({ kind: "not-running-proven" as const })),
+      stopForReplacement: mock(async () => {}),
       checkHealth: mock(async () => true),
     };
     reactivateBillingSpy.mockClear();
@@ -5042,7 +5206,8 @@ describe("ElizaSandboxService.provision dedup + port-collision retry (LARP H2)",
       "getProvider",
     ).mockResolvedValue({
       create: mock(async () => providerHandle()),
-      stop: mock(async () => {}),
+      stopForDeletion: mock(async () => ({ kind: "not-running-proven" as const })),
+      stopForReplacement: mock(async () => {}),
       checkHealth: async () => true,
     } as SandboxProvider);
     try {
@@ -5292,7 +5457,8 @@ describe("ElizaSandboxService.provision dedup + port-collision retry (LARP H2)",
       "getProvider",
     ).mockResolvedValue({
       create,
-      stop: mock(async () => {}),
+      stopForDeletion: mock(async () => ({ kind: "not-running-proven" as const })),
+      stopForReplacement: mock(async () => {}),
       checkHealth: async () => true,
     } as SandboxProvider);
     try {
@@ -5628,7 +5794,8 @@ describe("ElizaSandboxService.provision dedup + port-collision retry (LARP H2)",
       "getProvider",
     ).mockResolvedValue({
       create,
-      stop: mock(async () => {}),
+      stopForDeletion: mock(async () => ({ kind: "not-running-proven" as const })),
+      stopForReplacement: mock(async () => {}),
       checkHealth: async () => true,
     } as SandboxProvider);
     try {
@@ -6670,9 +6837,16 @@ describe("ElizaSandboxService.executeUpgrade blue/green rollback + CAS guard (LA
     }
   });
 
-  test("(h1) preserved live VPN node: create gets reclaimStaleVpnNode=false, node deleted BY ID only after the swap (#16565)", async () => {
+  test("(h1) upgrade forces a stored direct-relay opt-in off while preserving the live VPN node (#16565)", async () => {
     const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
-    const agent = liveAgentRow();
+    const liveAgent = liveAgentRow();
+    const agent = {
+      ...liveAgent,
+      environment_vars: {
+        ...(liveAgent.environment_vars as Record<string, string>),
+        ELIZA_CLOUD_PAIR_DIRECT_RELAY: "1",
+      },
+    };
     const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrg").mockResolvedValue(agent);
     const nodeSpy = spyOn(dockerNodesRepository, "findByNodeId").mockResolvedValue(oldNode());
     const { provider, create, stopOnSpecificNode } = await makeDockerProvider({
@@ -6717,9 +6891,13 @@ describe("ElizaSandboxService.executeUpgrade blue/green rollback + CAS guard (LA
       expect(res.success).toBe(true);
       // Blue was provisioned in preserve mode.
       const createConfig = create.mock.calls[0]?.[0] as
-        | { reclaimStaleVpnNode?: boolean }
+        | {
+            reclaimStaleVpnNode?: boolean;
+            environmentVars?: Record<string, string>;
+          }
         | undefined;
       expect(createConfig?.reclaimStaleVpnNode).toBe(false);
+      expect(createConfig?.environmentVars?.ELIZA_CLOUD_PAIR_DIRECT_RELAY).toBe("0");
       expect(stopOnSpecificNode).toHaveBeenCalledTimes(1);
       expect(stopOnSpecificNode).toHaveBeenCalledWith(
         "node-old",
@@ -7945,9 +8123,17 @@ describe("ElizaSandboxService.executeDowngrade rollback onto previous_image_dige
     });
   }
 
-  test("happy path with empty persisted image ref → restores pre-upgrade snapshot then swaps back onto PREV_DIGEST", async () => {
+  test("rollback forces a stored direct-relay opt-in off while restoring the pre-upgrade snapshot", async () => {
     const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
-    const agent: AgentSandbox = { ...upgradedAgentRow(), previous_docker_image: "" };
+    const upgradedAgent = upgradedAgentRow();
+    const agent: AgentSandbox = {
+      ...upgradedAgent,
+      previous_docker_image: "",
+      environment_vars: {
+        ...(upgradedAgent.environment_vars as Record<string, string>),
+        ELIZA_CLOUD_PAIR_DIRECT_RELAY: "1",
+      },
+    };
     const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrg").mockResolvedValue(agent);
     const nodeSpy = spyOn(dockerNodesRepository, "findByNodeId").mockResolvedValue(curNode());
     // The pre-upgrade restore point + its reconstruction.
@@ -8014,6 +8200,9 @@ describe("ElizaSandboxService.executeDowngrade rollback onto previous_image_dige
       expect(params).toContain(PREV_DIGEST); // image_digest := previous
       expect(create.mock.calls[0]?.[0]).toMatchObject({
         dockerImage: `ghcr.io/elizaos/eliza-agent@${PREV_DIGEST}`,
+        environmentVars: {
+          ELIZA_CLOUD_PAIR_DIRECT_RELAY: "0",
+        },
       });
       expect(create).toHaveBeenCalledTimes(1);
       expect(checkHealth).toHaveBeenCalledTimes(1);
@@ -8241,14 +8430,15 @@ describe("ElizaSandboxService updateAgentProfile / updateAgentEnvironment", () =
       }),
     }));
     const update = mock(() => ({ set: updateSet }));
-    upgradeTransactionImpl = async (fn) =>
-      fn({
-        execute: async () => ({ rows: [] }),
-        update,
-      } as unknown as UpgradeTx);
+    const handle = {
+      execute: async () => ({ rows: [] }),
+      update,
+    } as unknown as UpgradeTx;
+    upgradeTransactionImpl = async (fn) => fn(handle);
     return {
       update,
       updateSet,
+      handle,
       getWhereClause: () => whereClause,
     };
   }
@@ -8404,13 +8594,46 @@ describe("ElizaSandboxService updateAgentProfile / updateAgentEnvironment", () =
     }
   });
 
-  test("managed launch revokes a newly minted credential when its environment CAS loses", async () => {
+  test("managed launch mints its replacement on the launch transaction, not a second connection", async () => {
+    const existing = customSandbox();
+    const tx = installLifecycleUpdateTransaction(existing);
+    const { svc, lock, read } = await makeMutableService(existing);
+    const mint = spyOn(apiKeysService, "createForAgent").mockResolvedValue({
+      apiKey: { id: "replacement-key" },
+      plainKey: "eliza_replacement_key",
+      revokedKeyHashes: [],
+    } as never);
+    try {
+      await svc.prepareManagedLaunchEnvironment({
+        agentId: existing.id,
+        organizationId: existing.organization_id,
+        userId: existing.user_id,
+      });
+      // Minting on the global write pool asks for a SECOND connection while
+      // this transaction still holds one; concurrent launches then starve the
+      // pool and each stalls out at connectionTimeoutMillis.
+      expect(mint).toHaveBeenCalledTimes(1);
+      expect(mint.mock.calls[0][0]).toMatchObject({
+        agentSandboxId: existing.id,
+        organizationId: existing.organization_id,
+        tx: tx.handle,
+      });
+    } finally {
+      upgradeTransactionImpl = null;
+      lock.mockRestore();
+      read.mockRestore();
+      mint.mockRestore();
+    }
+  });
+
+  test("managed launch unwinds the credential rotation when its environment CAS loses", async () => {
     const existing = customSandbox();
     const tx = installLifecycleUpdateTransaction(existing, { persist: false });
     const { svc, lock, read } = await makeMutableService(existing);
     const mint = spyOn(apiKeysService, "createForAgent").mockResolvedValue({
       apiKey: { id: "replacement-key" },
       plainKey: "eliza_replacement_key",
+      revokedKeyHashes: [],
     } as never);
     const revoke = spyOn(apiKeysService, "revokeForAgent").mockResolvedValue(undefined);
     try {
@@ -8422,7 +8645,10 @@ describe("ElizaSandboxService updateAgentProfile / updateAgentEnvironment", () =
         }),
       ).resolves.toBeUndefined();
       expect(mint).toHaveBeenCalledTimes(1);
-      expect(revoke).toHaveBeenCalledWith(existing.id);
+      // The rotation shares this transaction, so losing the CAS rolls it back.
+      // A compensating out-of-band revoke would now delete the RESTORED key and
+      // leave the agent with none.
+      expect(revoke).not.toHaveBeenCalled();
       expect(tx.update).toHaveBeenCalledTimes(1);
       const whereClause = tx.getWhereClause();
       if (!whereClause) throw new Error("managed launch did not build its ownership CAS");

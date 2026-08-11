@@ -111,6 +111,7 @@ const CORE_ACTION_SURFACE: Record<string, readonly string[]> = {
     "GENERATE_MEDIA",
     "IDENTIFY_SPEAKER",
     "LOCAL_INFERENCE",
+    "MANAGE_TRANSCRIPT_PRIVACY",
     "REDACT_TRANSCRIPT",
     "SHARE_TRANSCRIPT",
     "START_TRANSCRIPTION",
@@ -203,8 +204,15 @@ const KNOWN_UNCOVERED: readonly string[] = [
   "STOP_TRANSCRIPTION",
   // Transcript permissioning actions (#15606); no deterministic keyless
   // scenario yet.
+  "MANAGE_TRANSCRIPT_PRIVACY",
   "REDACT_TRANSCRIPT",
   "SHARE_TRANSCRIPT",
+  // Skill registry search/install/details/sync actions; dispatched through the
+  // skills surface, no deterministic keyless scenarios yet.
+  "SKILL_DETAILS",
+  "SKILL_INSTALL",
+  "SKILL_SEARCH",
+  "SKILL_SYNC",
   // New workflow code-eval action (#8914); no deterministic keyless scenario yet.
   "EVAL_CODE",
   // App-control agent/model switchers; dispatched through dashboard
@@ -273,10 +281,6 @@ const COVERED_ACTIONS: readonly string[] = [
   "MCP_READ_RESOURCE",
   "MCP_SEARCH_ACTIONS",
   "SKILL",
-  "SKILL_DETAILS",
-  "SKILL_INSTALL",
-  "SKILL_SEARCH",
-  "SKILL_SYNC",
   "SKILL_TOGGLE",
   "SKILL_UNINSTALL",
   "SHELL",
@@ -638,10 +642,6 @@ const STRICT_LLM_ROUTED_ACTIONS: readonly string[] = [
   "SCHEDULED_TASKS",
   "SHELL",
   "SKILL",
-  "SKILL_DETAILS",
-  "SKILL_INSTALL",
-  "SKILL_SEARCH",
-  "SKILL_SYNC",
   "SKILL_TOGGLE",
   "SKILL_UNINSTALL",
   "TODO",
@@ -674,17 +674,8 @@ const STRICT_LLM_ROUTING_SCENARIOS: Record<
     minMessageTurns: 1,
   },
   "deterministic-agent-skills-actions": {
-    actionNames: [
-      "SKILL",
-      "SKILL_DETAILS",
-      "SKILL_INSTALL",
-      "SKILL_SEARCH",
-      "SKILL_SYNC",
-      "SKILL_TOGGLE",
-      "SKILL_UNINSTALL",
-      "USE_SKILL",
-    ],
-    minMessageTurns: 9,
+    actionNames: ["SKILL", "SKILL_TOGGLE", "SKILL_UNINSTALL", "USE_SKILL"],
+    minMessageTurns: 5,
   },
   "deterministic-browser-actions": {
     actionNames: [

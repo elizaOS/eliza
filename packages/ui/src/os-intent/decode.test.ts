@@ -105,6 +105,61 @@ describe("decodeOsIntent", () => {
     if (!res.ok) expect(res.error.field).toBe("channelType");
   });
 
+  it("preserves valid send attachments and metadata", () => {
+    const result = decodeOsIntent({
+      type: "send",
+      intentId: "intent-with-image",
+      source: "android-share-sheet",
+      text: "review this",
+      images: [
+        {
+          data: "aGVsbG8=",
+          mimeType: "image/png",
+          name: "capture.png",
+        },
+      ],
+      metadata: { sourceApp: "camera" },
+    });
+
+    expect(result).toEqual({
+      ok: true,
+      intent: expect.objectContaining({
+        images: [expect.objectContaining({ name: "capture.png" })],
+        metadata: { sourceApp: "camera" },
+      }),
+    });
+  });
+
+  it("rejects malformed send attachments and metadata", () => {
+    const badImage = decodeOsIntent({
+      type: "send",
+      intentId: "bad-image",
+      source: "android-share-sheet",
+      text: "review this",
+      images: [{ data: 42, mimeType: "image/png", name: "capture.png" }],
+    });
+    expect(badImage).toEqual(
+      expect.objectContaining({
+        ok: false,
+        error: expect.objectContaining({ field: "images" }),
+      }),
+    );
+
+    const badMetadata = decodeOsIntent({
+      type: "send",
+      intentId: "bad-metadata",
+      source: "android-share-sheet",
+      text: "review this",
+      metadata: [],
+    });
+    expect(badMetadata).toEqual(
+      expect.objectContaining({
+        ok: false,
+        error: expect.objectContaining({ field: "metadata" }),
+      }),
+    );
+  });
+
   it("requires a valid mode for start-voice", () => {
     const bad = decodeOsIntent({
       type: "start-voice",
@@ -196,6 +251,40 @@ describe("decodeDeepLinkIntent", () => {
     }
   });
 
+  it.each([
+    "ios-app-intents",
+    "ios-control",
+    "ios-widget",
+    "android-assistant-session",
+    "android-recognition-service",
+    "android-ime",
+    "android-widget",
+  ] as const)("accepts the native voice source %s", (source) => {
+    const res = decodeDeepLinkIntent(
+      `elizaos://voice?source=${source}&action=voice&voice=1`,
+    );
+    expect(res.ok).toBe(true);
+    if (res.ok) expect(res.intent.type).toBe("start-voice");
+  });
+
+  it("maps iOS Live Activity stop/save to stop-transcription before voice=1", () => {
+    for (const action of ["stop", "save"]) {
+      const res = decodeDeepLinkIntent(
+        `elizaos://voice?source=ios-live-activity&action=${action}&voice=1`,
+      );
+      expect(res.ok).toBe(true);
+      if (res.ok) expect(res.intent.type).toBe("stop-transcription");
+    }
+  });
+
+  it("maps an iOS Live Activity open to conversation continuation", () => {
+    const res = decodeDeepLinkIntent(
+      "elizaos://voice?source=ios-live-activity&action=open&voice=1",
+    );
+    expect(res.ok).toBe(true);
+    if (res.ok) expect(res.intent.type).toBe("continue-conversation");
+  });
+
   it("prefers voice over a chat host when voice=1 is present", () => {
     const res = decodeDeepLinkIntent(
       "elizaos://chat?source=siri&voice=1&action=ask&text=hi",
@@ -228,14 +317,21 @@ describe("decodeDeepLinkIntent", () => {
     if (res.ok) expect(res.intent.type).toBe("open-chat");
   });
 
-  it("returns unrecognized-launch for a non-owned deep link (feature/lifeops)", () => {
-    for (const url of [
+  it("returns unrecognized-launch for a non-owned feature deep link", () => {
+    const res = decodeDeepLinkIntent(
       "elizaos://feature/open?source=android-app-actions&feature=x",
-      "elizaos://lifeops/task/new?source=ios-app-shortcuts&action=lifeops.create&text=buy%20milk",
-    ]) {
-      const res = decodeDeepLinkIntent(url);
-      expect(res.ok).toBe(false);
-      if (!res.ok) expect(res.error.code).toBe("unrecognized-launch");
+    );
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.error.code).toBe("unrecognized-launch");
+  });
+
+  it("preserves a trusted LifeOps text handoff as a reviewable chat send", () => {
+    const res = decodeDeepLinkIntent(
+      "elizaos://chat?source=ios-app-shortcuts&action=lifeops.create&text=buy%20milk",
+    );
+    expect(res.ok).toBe(true);
+    if (res.ok) {
+      expect(res.intent).toMatchObject({ type: "send", text: "buy milk" });
     }
   });
 

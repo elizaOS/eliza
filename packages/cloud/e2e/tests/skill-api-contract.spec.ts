@@ -10,7 +10,10 @@
  *   - `apps/{id}/users` is GET-only (POST must 404)
  *   - the documented org-credit and app-credit checkout bodies are accepted
  */
-import { authedClient } from "../src/helpers/monetization";
+import {
+  approveAppForMonetizationTest,
+  authedClient,
+} from "../src/helpers/monetization";
 import { expect, test } from "../src/helpers/test-fixtures";
 
 /** A documented endpoint must resolve to a real route with working auth. */
@@ -86,6 +89,28 @@ test.describe("skill ↔ API contract", () => {
       description: "renamed via contract test",
     });
     expect(rename.status, "rename/config app").toBe(200);
+
+    // `set markup percentage` is compliance-gated (#10732): a freshly created
+    // app is a review DRAFT, and turning monetization ON is refused with 403
+    // until review approves it. The route/method/auth the skill documents are
+    // correct — the prerequisite is a business rule the skill omitted, so pin
+    // BOTH halves of the real contract here (the same shape
+    // monetized-full-loop.spec.ts pins) rather than only the post-approval one.
+    const draftMonetization = await c(
+      "PUT",
+      `/api/v1/apps/${appId}/monetization`,
+      {
+        monetizationEnabled: true,
+        inferenceMarkupPercentage: 50,
+        purchaseSharePercentage: 10,
+      },
+    );
+    expect(
+      draftMonetization.status,
+      "draft app cannot enable monetization before compliance approval",
+    ).toBe(403);
+
+    await approveAppForMonetizationTest(appId, c);
 
     const monetization = await c("PUT", `/api/v1/apps/${appId}/monetization`, {
       monetizationEnabled: true,

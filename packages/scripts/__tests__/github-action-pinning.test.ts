@@ -11,6 +11,46 @@ import { fileURLToPath } from "node:url";
 const repoRoot = fileURLToPath(new URL("../../..", import.meta.url));
 const githubRoot = join(repoRoot, ".github");
 
+type WorkflowStep = {
+  if?: string;
+  name?: string;
+  run?: string;
+};
+
+const smokeBrowserInstallCommand =
+  "PLAYWRIGHT_INSTALL_CWD=packages/app .github/scripts/install-playwright-browsers.sh chromium webkit";
+
+function assertSmokeE2eBrowserBootstrap(source: string): void {
+  const workflow = Bun.YAML.parse(source) as {
+    jobs?: { smoke?: { steps?: WorkflowStep[] } };
+  };
+  const steps = workflow.jobs?.smoke?.steps ?? [];
+  const installIndex = steps.findIndex(
+    (step) => step.run === smokeBrowserInstallCommand,
+  );
+  const e2eIndex = steps.findIndex((step) => step.run === "bun run test:e2e");
+
+  if (installIndex < 0) {
+    throw new Error("Smoke must install Chromium and WebKit before E2E");
+  }
+  if (e2eIndex < 0) {
+    throw new Error("Smoke must retain the deterministic E2E command");
+  }
+  if (installIndex >= e2eIndex) {
+    throw new Error("Smoke must install browsers before running E2E");
+  }
+
+  const zeroKeyCondition = "needs.changes.outputs.zero_key == 'true'";
+  if (
+    steps[installIndex]?.if !== zeroKeyCondition ||
+    steps[e2eIndex]?.if !== zeroKeyCondition
+  ) {
+    throw new Error(
+      "Smoke browser bootstrap and E2E must share the zero-key condition",
+    );
+  }
+}
+
 function collectYamlFiles(directory: string): string[] {
   return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
     const path = join(directory, entry.name);
@@ -127,16 +167,45 @@ describe("GitHub action supply-chain references", () => {
     );
   });
 
+  test("installs both app browser engines before deterministic smoke E2E", () => {
+    const source = readFileSync(
+      join(githubRoot, "workflows", "ci.yml"),
+      "utf8",
+    );
+
+    expect(() => assertSmokeE2eBrowserBootstrap(source)).not.toThrow();
+    expect(() =>
+      assertSmokeE2eBrowserBootstrap(
+        source.replace(
+          smokeBrowserInstallCommand,
+          "echo browser-install-removed",
+        ),
+      ),
+    ).toThrow("Smoke must install Chromium and WebKit before E2E");
+
+    const installStep = `      - name: Install Playwright browsers
+        if: needs.changes.outputs.zero_key == 'true'
+        run: ${smokeBrowserInstallCommand}
+
+`;
+    const afterE2e = source
+      .replace(installStep, "")
+      .replace(
+        "        run: bun run test:e2e\n",
+        (command) => `${command}\n${installStep}`,
+      );
+    expect(() => assertSmokeE2eBrowserBootstrap(afterE2e)).toThrow(
+      "Smoke must install browsers before running E2E",
+    );
+  });
+
   test("provisions homepage Chromium without requiring self-hosted sudo", () => {
     const source = readFileSync(
       join(githubRoot, "workflows", "quality.yml"),
       "utf8",
     );
     const workflow = Bun.YAML.parse(source) as {
-      jobs?: Record<
-        string,
-        { "runs-on"?: string; "timeout-minutes"?: number }
-      >;
+      jobs?: Record<string, { "runs-on"?: string; "timeout-minutes"?: number }>;
     };
     const job = workflow.jobs?.["homepage-build"];
     const formatGate = workflow.jobs?.["format-check"];
@@ -151,6 +220,35 @@ describe("GitHub action supply-chain references", () => {
       "PLAYWRIGHT_INSTALL_CWD=packages/homepage .github/scripts/install-playwright-browsers.sh chromium",
     );
     expect(source).not.toContain("playwright install --with-deps chromium");
+  });
+
+  test("keeps production homepage deploys read-only and fully gated", () => {
+    const source = readFileSync(
+      join(githubRoot, "workflows", "deploy-homepage.yml"),
+      "utf8",
+    );
+    const workflow = Bun.YAML.parse(source) as {
+      permissions?: { contents?: string };
+    };
+
+    expect(workflow.permissions?.contents).toBe("read");
+    expect(source).toContain("bun run test");
+    expect(source).toContain("bun run typecheck");
+    expect(source).toContain("bun run lint:check");
+    expect(source).toContain("bun run check:snapshot-inventory");
+    expect(source).toContain("bun run test:e2e");
+    expect(source).toContain(
+      "PLAYWRIGHT_INSTALL_CWD=packages/homepage .github/scripts/install-playwright-browsers.sh chromium",
+    );
+    expect(source).not.toContain("playwright install --with-deps chromium");
+    expect(source).not.toContain("--update-snapshots");
+    expect(source).not.toContain("git push");
+    expect(source).not.toContain("continue-on-error");
+
+    const e2e = source.indexOf("bun run test:e2e");
+    const deploy = source.indexOf("wrangler@4.116.0 pages deploy dist");
+    expect(e2e).toBeGreaterThan(-1);
+    expect(deploy).toBeGreaterThan(e2e);
   });
 
   test("keeps the Docker smoke on a runner with a Docker daemon", () => {

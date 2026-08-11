@@ -189,6 +189,10 @@ export interface VoiceSettingsApplyPayload extends Record<string, unknown> {
     /** RMS amplitude (0–1) above which audio is treated as speech. */
     speechRmsThreshold: number;
   };
+  /** Whether an external voice shortcut may start microphone capture. */
+  osIntentAutoStartVoice?: boolean;
+  /** Whether an external transcription shortcut may start microphone capture. */
+  osIntentAutoStartTranscription?: boolean;
 }
 
 // ── Avatar / VRM ─────────────────────────────────────────────────────────

@@ -29,6 +29,10 @@ class MemoryRedis implements GatewayRedis {
     return "OK";
   }
 
+  async del(key: string): Promise<unknown> {
+    return this.store.delete(key) ? 1 : 0;
+  }
+
   async lpush(): Promise<unknown> {
     return 1;
   }
@@ -72,10 +76,7 @@ describe("resolveIdentity", () => {
     mock.restore();
   });
 
-  test("returns an account with no agent instead of throwing, on a short TTL", async () => {
-    // The pre-agent answer is the one about to become false, so it is cached
-    // only long enough to blunt retry storms — a container cannot boot inside
-    // that window, so nothing user-visible is served stale.
+  test("returns an account with no agent without caching the transition state", async () => {
     const redis = new MemoryRedis();
     respondWith({
       success: true,
@@ -89,7 +90,7 @@ describe("resolveIdentity", () => {
       organizationId: "org-9",
       agentId: null,
     });
-    expect(redis.ttls.get(CACHE_KEY)).toBe(15);
+    expect(redis.store.has(CACHE_KEY)).toBe(false);
   });
 
   test("caches an account that owns an agent for the full identity TTL", async () => {
@@ -128,11 +129,70 @@ describe("resolveIdentity", () => {
     );
   });
 
-  test("treats 404 as an unknown sender and caches it briefly", async () => {
+  test("treats 404 as an unknown sender without caching the transition state", async () => {
     const redis = new MemoryRedis();
     respondWith({ success: false }, 404);
 
     expect(await resolve(redis)).toBeNull();
-    expect(redis.ttls.get(CACHE_KEY)).toBe(15);
+    expect(redis.store.has(CACHE_KEY)).toBe(false);
+  });
+
+  test("observes an identity linked immediately after an unlinked lookup", async () => {
+    const redis = new MemoryRedis();
+    let requestCount = 0;
+    globalThis.fetch = mock(async () => {
+      requestCount += 1;
+      if (requestCount === 1) {
+        return new Response(JSON.stringify({ success: false }), {
+          status: 404,
+        });
+      }
+      return new Response(
+        JSON.stringify({
+          success: true,
+          userId: "user-9",
+          organizationId: "org-9",
+          agentId: "sandbox-9",
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    }) as typeof fetch;
+
+    expect(await resolve(redis)).toBeNull();
+    expect(await resolve(redis)).toEqual({
+      userId: "user-9",
+      organizationId: "org-9",
+      agentId: "sandbox-9",
+    });
+    expect(requestCount).toBe(2);
+  });
+
+  test("observes an agent assigned immediately after provisioning", async () => {
+    const redis = new MemoryRedis();
+    let requestCount = 0;
+    globalThis.fetch = mock(async () => {
+      requestCount += 1;
+      return new Response(
+        JSON.stringify({
+          success: true,
+          userId: "user-9",
+          organizationId: "org-9",
+          agentId: requestCount === 1 ? null : "sandbox-9",
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    }) as typeof fetch;
+
+    expect(await resolve(redis)).toEqual({
+      userId: "user-9",
+      organizationId: "org-9",
+      agentId: null,
+    });
+    expect(await resolve(redis)).toEqual({
+      userId: "user-9",
+      organizationId: "org-9",
+      agentId: "sandbox-9",
+    });
+    expect(requestCount).toBe(2);
   });
 });

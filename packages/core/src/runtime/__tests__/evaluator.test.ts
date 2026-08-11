@@ -31,6 +31,21 @@ describe("v5 evaluator skeleton", () => {
 		expect(evaluatorTemplate).toContain("The JSON inside [FORM] is form data");
 	});
 
+	it("teaches the model to omit post-tool process-status bubbles and keep outcomes task-grounded", () => {
+		// Contract for dual-bubble / canned-ack bugs: after verifiedUserFacing
+		// tool text, the evaluator must not invent a second process-status
+		// message; when messageToUser is set it must be grounded in THIS
+		// request's outcome, not a fixed phrase list enforced by runtime regex.
+		expect(evaluatorTemplate).toContain("verifiedUserFacing=true");
+		expect(evaluatorTemplate).toContain(
+			"omit messageToUser entirely unless you add NEW task-grounded substance",
+		);
+		expect(evaluatorTemplate).toContain("ground it in THIS request's outcome");
+		expect(evaluatorTemplate).toContain(
+			"Do not rely on a fixed canned phrase list",
+		);
+	});
+
 	it("normalizes evaluator routes and next tool recommendations", () => {
 		const output = parseEvaluatorOutput(`{
   "success": true,
@@ -952,5 +967,89 @@ describe("native tool dialects never recover as the user-facing answer", () => {
 		);
 		expect(result.decision).toBe("FINISH");
 		expect(result.messageToUser).toContain("165G free");
+	});
+});
+
+describe("malformed envelope recovery (#18240 class — the 2026-08-10 leak)", () => {
+	const harness = (raw: string) => ({
+		runtime: { useModel: vi.fn(async () => raw) },
+		context: {
+			id: "ctx",
+			staticPrefix: {
+				characterPrompt: { content: "agent_name: Eliza", stable: true },
+			},
+			events: [],
+		},
+		trajectory: {
+			context: { id: "ctx" },
+			steps: [
+				{
+					kind: "tool",
+					tool: { name: "WEB_SEARCH" },
+					result: { success: true, text: "search results" },
+				},
+			],
+			archivedSteps: [],
+			plannedQueue: [],
+			evaluatorOutputs: [],
+		},
+	});
+
+	// The live incident shape: gemma double-escaped the quotes inside
+	// messageToUser (\\" instead of \"), so the literal backslash terminates
+	// the JSON string early and strict parsing rejects the whole envelope.
+	const overEscaped = [
+		"```json",
+		"{",
+		' "success": true,',
+		' "decision": "FINISH",',
+		' "thought": "Verified the protocol claims against the search results.",',
+		' "messageToUser": "here is the reality check:\\\\n\\\\nit isn\'t a legal firm—it doesn\'t \\\\"support\\\\" a filing because that is a structure you establish independently."',
+		"}",
+		"```",
+	].join("\n");
+
+	it("salvages an over-escaped envelope and delivers the trapped answer", async () => {
+		const result = await runEvaluator(harness(overEscaped));
+		expect(result.decision).toBe("FINISH");
+		expect(result.messageToUser).toContain("reality check");
+		expect(result.messageToUser).toContain('"support"');
+		// No machinery may ship.
+		expect(result.messageToUser).not.toContain("```");
+		expect(result.messageToUser).not.toContain('"decision"');
+		expect(result.messageToUser).not.toContain("\\n");
+	});
+
+	it("replans instead of shipping an envelope that stays unparseable after salvage", async () => {
+		// Truncated mid-string: no escape repair can make this parse.
+		const mangled = [
+			"```json",
+			'{ "success": true, "decision": "FINISH", "thought": "done", "messageToUser": "the answer is',
+		].join("\n");
+		const result = await runEvaluator(harness(mangled));
+		expect(result.decision).toBe("CONTINUE");
+		expect(result.messageToUser).toBeUndefined();
+	});
+
+	it("still recovers plain prose after a successful tool (existing path untouched)", async () => {
+		const result = await runEvaluator(
+			harness("the repo has 42 open issues, mostly about connectors."),
+		);
+		expect(result.decision).toBe("FINISH");
+		expect(result.messageToUser).toContain("42 open issues");
+	});
+
+	it("does not classify a user-asked-for JSON payload as a malformed envelope", async () => {
+		// A JSON payload without the envelope discriminator keys must not be
+		// captured by the malformed-envelope branch; it keeps the pre-existing
+		// parse-failure replan behavior (and still never ships as machinery).
+		const result = await runEvaluator(
+			harness('```json\n{ "name": "color-pop", "hue": 210 }\n```'),
+		);
+		expect(result.decision).toBe("CONTINUE");
+		expect(result.messageToUser).toBeUndefined();
+		expect(
+			(result.raw as { recoverySource?: string } | undefined)?.recoverySource,
+		).not.toBe("malformed_envelope_text");
 	});
 });

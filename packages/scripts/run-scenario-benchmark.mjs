@@ -12,7 +12,7 @@
  * artifacts/benchmark-report.md plus the raw JSON at
  * artifacts/lifeops-scenario-report.json.
  *
- * Required env: same LLM + connector credentials as live-scenarios.yml.
+ * Required env: the same LLM and connector credentials as live-smoke.yml.
  * Optional:
  *   LIFEOPS_JUDGE_THRESHOLD (default 0.8)
  *   SCENARIO_FILTER         (comma-separated ids)

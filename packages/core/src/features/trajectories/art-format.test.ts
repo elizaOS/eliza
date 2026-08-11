@@ -46,6 +46,31 @@ describe("toARTMessages", () => {
 		expect(messages.some((m) => m.role === "user")).toBe(true);
 		expect(messages.some((m) => m.role === "assistant")).toBe(true);
 	});
+
+	it("does not throw on actionless bridge steps (#17730)", () => {
+		const messages = toARTMessages(
+			traj({
+				steps: [
+					{
+						...step(),
+						action: undefined,
+						llmCalls: [
+							{
+								purpose: "response",
+								systemPrompt: "sys",
+								userPrompt: "user",
+								response: "hello from bridge",
+							},
+						],
+					},
+				],
+			} as never),
+		);
+		expect(messages.some((m) => m.role === "assistant")).toBe(true);
+		expect(messages.find((m) => m.role === "assistant")?.content).toContain(
+			"hello from bridge",
+		);
+	});
 });
 
 describe("validateARTCompatibility", () => {

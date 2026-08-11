@@ -1,9 +1,13 @@
-// Exercises cloud admin daemons agent router.test automation behavior with deterministic script fixtures.
+/**
+ * Exercises agent-router routing, proxy headers, and HTTP response behavior
+ * with deterministic request and stream fixtures.
+ */
 
 import { describe, expect, it } from "bun:test";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { PassThrough } from "node:stream";
 import {
+  buildProxyHeaders,
   buildUnresolvedAgentResponse,
   extractAgentIdFromHost,
   handleRequest,
@@ -12,6 +16,16 @@ import {
   selectAgentProxyTarget,
   sendResponse,
 } from "./agent-router";
+
+function makeRequest(
+  headers: IncomingMessage["headers"],
+  remoteAddress = "127.0.0.1",
+): IncomingMessage {
+  return {
+    headers,
+    socket: { remoteAddress },
+  } as unknown as IncomingMessage;
+}
 
 function makeResponseStub() {
   const output = new PassThrough() as PassThrough & {
@@ -78,6 +92,46 @@ describe("sendResponse", () => {
     expect(output.statusCode).toBe(204);
     expect(headersFlushed()).toBe(false);
     expect(output.writableEnded).toBe(true);
+  });
+});
+
+describe("buildProxyHeaders", () => {
+  const AGENT = "e06bb509-6c52-4c33-a9f7-66addc43e8c8";
+  const PUBLIC_HOST = `${AGENT}.elizacloud.ai`;
+  const CONTROL_PLANE_HOST = "eliza-production-1.elizacloud.ai";
+  const TARGET = "100.64.0.21:3000";
+
+  it("preserves the Worker-pinned public host while retargeting Host to the agent", () => {
+    const headers = buildProxyHeaders(
+      makeRequest({
+        host: CONTROL_PLANE_HOST,
+        "x-forwarded-host": PUBLIC_HOST,
+        "x-forwarded-proto": "https",
+      }),
+      TARGET,
+    );
+
+    expect(headers.get("host")).toBe(TARGET);
+    expect(headers.get("x-forwarded-host")).toBe(PUBLIC_HOST);
+    expect(headers.get("x-forwarded-proto")).toBe("https");
+  });
+
+  it("falls back to the direct public Host when no proxy supplied a forwarded host", () => {
+    const headers = buildProxyHeaders(
+      makeRequest({ host: PUBLIC_HOST }),
+      TARGET,
+    );
+
+    expect(headers.get("host")).toBe(TARGET);
+    expect(headers.get("x-forwarded-host")).toBe(PUBLIC_HOST);
+    expect(headers.get("x-forwarded-proto")).toBe("http");
+  });
+
+  it("does not invent a forwarded host when neither trusted host signal exists", () => {
+    const headers = buildProxyHeaders(makeRequest({}), TARGET);
+
+    expect(headers.get("host")).toBe(TARGET);
+    expect(headers.has("x-forwarded-host")).toBe(false);
   });
 });
 
@@ -249,23 +303,31 @@ describe("buildUnresolvedAgentResponse — CORS-bearing failure (#15347)", () =>
     expect(body.code).toBe("agent_unroutable");
   });
 
-  it("no such agent (undefined) → 404 not-found, still CORS-bearing", async () => {
+  it("no such agent (undefined) → 404 agent_not_found, still CORS-bearing", async () => {
     const res = buildUnresolvedAgentResponse(undefined, ORIGIN);
     expect(res.status).toBe(404);
     expect(res.headers.get("access-control-allow-origin")).toBe(ORIGIN);
     expect(res.headers.get("retry-after")).toBeNull();
     const body = (await res.json()) as { error?: string; code?: string };
     expect(body.error).toBe("agent not found or not running");
-    expect(body.code).toBeUndefined();
+    expect(body.code).toBe("agent_not_found");
   });
 
-  it("non-running row (pending/stopped) with empty ip → 404, NOT 503 (only running is 'unroutable')", () => {
+  it("non-running row (pending/stopped) → 503 agent_not_running (recoverable, not deleted)", async () => {
     for (const status of ["pending", "stopped", "disconnected"]) {
       const res = buildUnresolvedAgentResponse(
         { status, headscale_ip: "", web_ui_port: 20001 },
         ORIGIN,
       );
-      expect(res.status).toBe(404);
+      expect(res.status).toBe(503);
+      const body = (await res.json()) as {
+        error?: string;
+        code?: string;
+        status?: string;
+      };
+      expect(body.code).toBe("agent_not_running");
+      expect(body.status).toBe(status);
+      expect(res.headers.get("retry-after")).toBe("5");
     }
   });
 
@@ -287,10 +349,15 @@ describe("handleRequest — agent-host CORS preflight (#15347)", () => {
     method: string,
     host: string,
     origin?: string,
+    forwardedHost?: string,
   ): IncomingMessage {
     return {
       method,
-      headers: origin ? { host, origin } : { host },
+      headers: {
+        host,
+        ...(origin ? { origin } : {}),
+        ...(forwardedHost ? { "x-forwarded-host": forwardedHost } : {}),
+      },
       socket: { remoteAddress: "127.0.0.1" },
     } as unknown as IncomingMessage;
   }
@@ -307,11 +374,30 @@ describe("handleRequest — agent-host CORS preflight (#15347)", () => {
     expect(res.headers.get("access-control-allow-methods")).toContain("POST");
   });
 
+  it("recognizes the public agent host forwarded through the control-plane origin", async () => {
+    const res = await handleRequest(
+      new URL("http://eliza-production-1.elizacloud.ai/api/agents"),
+      fakeReq("OPTIONS", "eliza-production-1.elizacloud.ai", ORIGIN, HOST),
+    );
+
+    expect(res.status).toBe(204);
+    expect(res.headers.get("access-control-allow-origin")).toBe(ORIGIN);
+  });
+
   it("non-agent host with no route match → plain 404 (unchanged)", async () => {
     const res = await handleRequest(
       new URL("http://cp-internal.example/nope"),
       fakeReq("GET", "cp-internal.example"),
     );
+    expect(res.status).toBe(404);
+  });
+
+  it("rejects an untrusted forwarded host instead of falling back to an agent Host", async () => {
+    const res = await handleRequest(
+      new URL(`http://${HOST}/api/agents`),
+      fakeReq("OPTIONS", HOST, ORIGIN, "attacker.example"),
+    );
+
     expect(res.status).toBe(404);
   });
 });

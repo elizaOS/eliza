@@ -1,31 +1,84 @@
-// Handles webhook gateway blooio behavior for authenticated connector fan-in.
+/**
+ * Authenticates Blooio webhook fan-in and maps stable one-to-one message
+ * deliveries onto the gateway's deduplicated chat contract.
+ */
 import crypto from "node:crypto";
 import { z } from "zod";
 import { logger } from "../logger";
 import type { ChatEvent, PlatformAdapter, WebhookConfig } from "./types";
 
-const BLOOIO_API_BASE = "https://backend.blooio.com/v2/api";
+const BLOOIO_API_BASE = "https://api.blooio.com/v2/api";
 
-const BlooioWebhookEventSchema = z.object({
+const BlooioAttachmentSchema = z.union([
+  z.string(),
+  z.object({ url: z.string().url(), name: z.string().nullish() }).passthrough(),
+]);
+
+const BlooioV2WebhookEventSchema = z.object({
   event: z.string().min(1),
-  message_id: z.string().nullish(),
+  message_id: z.string().trim().min(1).nullish(),
   external_id: z.string().nullish(),
   internal_id: z.string().nullish(),
-  sender: z.string().nullish(),
+  sender: z.string().trim().min(1).nullish(),
   text: z.string().nullish(),
-  attachments: z
-    .array(
-      z.union([
-        z.string(),
-        z.object({ url: z.string().url(), name: z.string().nullish() }),
-      ]),
-    )
-    .nullish(),
+  attachments: z.array(BlooioAttachmentSchema).nullish(),
   protocol: z.string().nullish(),
   is_group: z.boolean().nullish(),
   received_at: z.number().nullish(),
   timestamp: z.number().nullish(),
 });
+
+const BlooioV4MessageSchema = z
+  .object({
+    id: z.string().trim().min(1).nullish(),
+    message_id: z.string().trim().min(1).nullish(),
+    chat_id: z.string().nullish(),
+    sender: z.string().trim().min(1).nullish(),
+    recipient: z.string().nullish(),
+    channel_address: z.string().nullish(),
+    contact: z
+      .object({ identifier: z.string().trim().min(1).nullish() })
+      .nullish(),
+    text: z.string().nullish(),
+    attachments: z.array(BlooioAttachmentSchema).nullish(),
+    protocol: z.string().nullish(),
+    is_group: z.boolean().nullish(),
+    group: z.unknown().nullish(),
+  })
+  .passthrough();
+
+const BlooioV4WebhookEnvelopeSchema = z.object({
+  id: z.string().trim().min(1),
+  type: z.string().min(1),
+  created_at: z.number(),
+  data: BlooioV4MessageSchema,
+});
+
+type BlooioWebhookEvent = z.infer<typeof BlooioV2WebhookEventSchema>;
+
+function parseWebhookEvent(data: unknown): BlooioWebhookEvent | null {
+  const v2 = BlooioV2WebhookEventSchema.safeParse(data);
+  if (v2.success) return v2.data;
+
+  const v4 = BlooioV4WebhookEnvelopeSchema.safeParse(data);
+  if (!v4.success) return null;
+
+  const message = v4.data.data;
+  const sender = message.sender ?? message.contact?.identifier ?? null;
+  return {
+    event: v4.data.type,
+    message_id: message.message_id ?? message.id,
+    external_id: sender,
+    internal_id: message.recipient ?? message.channel_address,
+    sender,
+    text: message.text,
+    attachments: message.attachments,
+    protocol: message.protocol,
+    is_group: message.is_group ?? message.group != null,
+    received_at: v4.data.created_at,
+    timestamp: v4.data.created_at,
+  };
+}
 
 const ALLOWED_MEDIA_DOMAINS = [
   "blooio.com",
@@ -55,6 +108,14 @@ function extractMediaUrls(
     .filter((url) => isValidMediaUrl(url));
 }
 
+// Blooio's documented verification contract rejects deliveries older than
+// 300 seconds, and their retry backoff can legitimately land near that edge.
+// A tighter local window (this was 120s) silently drops valid retried
+// deliveries — a lost inbound message on the exact surface new users arrive
+// through. Match the provider's contract, but do not raise this above the
+// gateway's 300-second dedup TTL without raising that TTL first.
+const SIGNATURE_TOLERANCE_SECONDS = 300;
+
 async function verifySignature(
   secret: string,
   signatureHeader: string,
@@ -72,7 +133,7 @@ async function verifySignature(
     const expectedSignature = signaturePart.substring(3);
 
     const now = Math.floor(Date.now() / 1000);
-    if (Math.abs(now - timestamp) > 120) return false;
+    if (Math.abs(now - timestamp) > SIGNATURE_TOLERANCE_SECONDS) return false;
 
     const signedPayload = `${timestamp}.${rawBody}`;
     const encoder = new TextEncoder();
@@ -103,6 +164,8 @@ async function verifySignature(
       computedSignature.length === expectedSignature.length
     );
   } catch (err) {
+    // error-policy:J3 an invalid signature is untrusted input, not a
+    // recoverable provider result.
     logger.warn("Blooio signature verification error", {
       error: err instanceof Error ? err.message : String(err),
     });
@@ -133,22 +196,42 @@ export const blooioAdapter: PlatformAdapter = {
     try {
       data = JSON.parse(rawBody);
     } catch {
+      // error-policy:J3 malformed webhook JSON is rejected explicitly.
       logger.warn("Failed to parse Blooio webhook payload");
       return null;
     }
 
-    const parsed = BlooioWebhookEventSchema.safeParse(data);
-    if (!parsed.success) {
-      logger.warn("Invalid Blooio webhook payload", {
-        errors: parsed.error.format(),
+    const event = parseWebhookEvent(data);
+    if (!event) {
+      logger.warn("Invalid Blooio webhook payload");
+      return null;
+    }
+
+    if (event.event !== "message.received") return null;
+    if (event.is_group) return null;
+
+    // Blooio documents message_id as the stable identifier for message
+    // deliveries. internal_id is the receiving number and external_id is the
+    // sender, so neither can safely deduplicate retries. A delivery without
+    // message_id is malformed and must not enter a pipeline whose dedup and
+    // outbound idempotency keys both depend on it.
+    if (!event.message_id) {
+      logger.warn("Blooio event missing stable message id; skipping", {
+        sender: event.sender ?? null,
       });
       return null;
     }
 
-    const event = parsed.data;
-
-    if (event.event !== "message.received") return null;
-    if (event.is_group) return null;
+    // The schema allows a nullish sender, but an event without one is
+    // unroutable: chatId/senderId would be empty strings, identity-resolve
+    // would run against an empty platform user id, and sendReply would POST
+    // to /chats//messages. Skip it instead of forwarding garbage.
+    if (!event.sender) {
+      logger.warn("Blooio event missing sender; skipping", {
+        messageId: event.message_id,
+      });
+      return null;
+    }
 
     const text = event.text ?? "";
     if (!text && !event.attachments?.length) return null;
@@ -157,9 +240,9 @@ export const blooioAdapter: PlatformAdapter = {
 
     return {
       platform: "blooio",
-      messageId: event.message_id ?? event.internal_id ?? `${Date.now()}`,
-      chatId: event.sender ?? "",
-      senderId: event.sender ?? "",
+      messageId: event.message_id,
+      chatId: event.sender,
+      senderId: event.sender,
       text:
         mediaUrls.length > 0 && !text
           ? `[media: ${mediaUrls.join(", ")}]`
@@ -180,6 +263,11 @@ export const blooioAdapter: PlatformAdapter = {
     const headers: Record<string, string> = {
       Authorization: `Bearer ${config.apiKey}`,
       "Content-Type": "application/json",
+      // The gateway dedup key guarantees at most one reply per inbound
+      // message, so the inbound messageId is a stable idempotency scope: a
+      // send that times out client-side after Blooio accepted it must not
+      // double-text the user when retried.
+      "Idempotency-Key": `gw-reply-${event.messageId}`,
     };
     if (config.fromNumber) headers["X-From-Number"] = config.fromNumber;
 
@@ -209,8 +297,13 @@ export const blooioAdapter: PlatformAdapter = {
       if (config.fromNumber) headers["X-From-Number"] = config.fromNumber;
 
       await fetch(url, { method: "POST", headers });
-    } catch {
-      // non-critical UX feature
+    } catch (error) {
+      // error-policy:J4 typing is a non-critical UX affordance; a failed
+      // indicator is observable but must not fail message delivery.
+      logger.warn("Blooio typing indicator failed", {
+        error: error instanceof Error ? error.message : String(error),
+        messageId: event.messageId,
+      });
     }
   },
 };

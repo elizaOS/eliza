@@ -135,7 +135,6 @@ bun run --cwd packages/scenario-runner clean
 | `ELIZA_DISABLE_ACTIVITY_TRACKER` | Set to `1` by the runtime factory; suppresses activity-tracker background work |
 | `ELIZA_DISABLE_PROACTIVE_AGENT` | Set to `1` by the runtime factory |
 | `ELIZA_DISABLE_LIFEOPS_SCHEDULER` | Set to `1` by the runtime factory |
-| `SKILLS_SYNC_CATALOG_ON_START` | Set to `false` by the runtime factory (avoids live registry calls) |
 | `PGLITE_DATA_DIR` | Managed by `createScenarioRuntime`; restored on cleanup |
 | `GROQ_API_KEY` / `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` / `GOOGLE_GENERATIVE_AI_API_KEY` / `OPENROUTER_API_KEY` | Any one satisfies the live-provider requirement |
 

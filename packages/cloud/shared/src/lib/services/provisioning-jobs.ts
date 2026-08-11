@@ -28,12 +28,17 @@ import {
   sql,
 } from "drizzle-orm";
 import type { DbTransaction } from "../../db/client";
+import { ensureAgentSandboxSchema } from "../../db/ensure-agent-sandbox-schema";
 import { dbWrite } from "../../db/helpers";
 import { agentSandboxesRepository } from "../../db/repositories/agent-sandboxes";
 import {
+  cutoverResumeWindowAllows,
   hydrateJob,
   type Job,
+  type JobRecoveryFailure,
+  type JobRecoverySweepResult,
   jobsRepository,
+  msWindowTimestampMatch,
   type NewJob,
   prepareJobInsertData,
   type RecoveryFailureWritebackBuilder,
@@ -41,6 +46,7 @@ import {
 } from "../../db/repositories/jobs";
 import {
   type AgentExecutionTier,
+  type AgentSandboxStatus,
   agentSandboxes,
   UPGRADE_FAILURE_TARGET_MARKER_PREFIX,
 } from "../../db/schemas/agent-sandboxes";
@@ -65,12 +71,18 @@ import {
   isAdminCanaryImageJobData,
   isPendingAdminCanaryCutoverAudit,
 } from "./admin-canary-image";
+import {
+  AppCacheInvalidationRetryError,
+  dispatchAppCacheInvalidationJob,
+  enqueueAppCacheInvalidation,
+  formatAppCacheInvalidationError,
+} from "./app-cache-invalidation-job";
 import { dispatchAppDbDeprovisionJob } from "./app-db-deprovision-job-service";
 import { dispatchAppDeployJob, readAppDeployJobData } from "./app-deploy-job-service";
-import { appsService } from "./apps";
 import { dispatchContainerJob, getContainerExecutorDeps } from "./container-job-service";
 import { readContainerProvisionJobData } from "./container-jobs-data";
 import { dispatchContainerStopJob } from "./container-stop-job-service";
+import { holdsCountedNodeSlot, isDeletionContinuation } from "./docker-node-workload-queries";
 import {
   configureElizaLifecycleTransaction,
   elizaAdminCanaryRolloutAdvisoryLockSql,
@@ -735,7 +747,7 @@ interface LifecycleSandboxRow {
   agent_name: string | null;
   created_at: Date;
   execution_tier: AgentExecutionTier;
-  status: string;
+  status: AgentSandboxStatus;
   updated_at: Date | null;
   claimed_at: Date | null;
   warm_claim_credential_state: "pending" | "attested" | "ready" | "failed" | null;
@@ -1057,6 +1069,76 @@ type DependentRowJobType = (typeof DEPENDENT_ROW_JOB_TYPES)[number];
 function ownsDependentRow(jobType: string): jobType is DependentRowJobType {
   return (DEPENDENT_ROW_JOB_TYPES as readonly string[]).includes(jobType);
 }
+
+export interface ProvisioningRecoverySummary {
+  scanned: number;
+  retried: number;
+  permanentlyFailed: number;
+  unchanged: number;
+  failures: JobRecoveryFailure[];
+}
+
+export class ProvisioningRecoveryDegradedError extends ElizaError {
+  override readonly name = "ProvisioningRecoveryDegradedError";
+  readonly summary: ProvisioningRecoverySummary;
+
+  constructor(phase: "stale" | "startup", summary: ProvisioningRecoverySummary) {
+    const causes = summary.failures.map(({ cause }) => cause);
+    super(`Provisioning ${phase} recovery completed with ${summary.failures.length} failure(s)`, {
+      code: "PROVISIONING_RECOVERY_DEGRADED",
+      cause: new AggregateError(causes, `Provisioning ${phase} recovery failures`),
+      context: {
+        phase,
+        scanned: summary.scanned,
+        retried: summary.retried,
+        permanentlyFailed: summary.permanentlyFailed,
+        unchanged: summary.unchanged,
+        failures: summary.failures.map(({ jobId, jobType, cause }) => ({
+          jobId,
+          jobType,
+          error: cause instanceof Error ? cause.message : String(cause),
+        })),
+      },
+      severity: "ephemeral",
+    });
+    this.summary = summary;
+  }
+}
+
+function emptyRecoverySummary(): ProvisioningRecoverySummary {
+  return { scanned: 0, retried: 0, permanentlyFailed: 0, unchanged: 0, failures: [] };
+}
+
+function addRecoveryResult(
+  summary: ProvisioningRecoverySummary,
+  result: JobRecoverySweepResult,
+): void {
+  summary.scanned += result.scanned;
+  summary.retried += result.retried;
+  summary.permanentlyFailed += result.permanentlyFailed;
+  summary.unchanged += result.unchanged;
+  summary.failures.push(...result.failures);
+}
+
+function assertRecoveryHealthy(
+  phase: "stale" | "startup",
+  summary: ProvisioningRecoverySummary,
+): void {
+  if (summary.failures.length === 0) return;
+  logger.error(`[provisioning-jobs] ${phase} recovery finished degraded`, {
+    scanned: summary.scanned,
+    retried: summary.retried,
+    permanentlyFailed: summary.permanentlyFailed,
+    unchanged: summary.unchanged,
+    failures: summary.failures.map(({ jobId, jobType, cause }) => ({
+      jobId,
+      jobType,
+      error: cause instanceof Error ? cause.message : String(cause),
+    })),
+  });
+  throw new ProvisioningRecoveryDegradedError(phase, summary);
+}
+
 export class ProvisioningJobService {
   private readonly executionOverride?: (job: Job) => Promise<void>;
   private readonly executionTimeoutMs: (jobType: string) => number;
@@ -1411,6 +1493,10 @@ export class ProvisioningJobService {
       executionTier: AgentExecutionTier;
     };
   }): Promise<EnqueueAgentDeleteResult> {
+    // Stamps `deletion_allocation_counted`, and this runs inside the
+    // provisioning worker, whose deploy does not gate on migrate-db. Ensure is
+    // memoized, so the DDL runs once per isolate rather than once per enqueue.
+    await ensureAgentSandboxSchema();
     const expectedIdentity = params.expectedIdentity;
     const expectedCreatedAt = expectedIdentity ? new Date(expectedIdentity.createdAt) : null;
     if (expectedCreatedAt && !Number.isFinite(expectedCreatedAt.getTime())) {
@@ -1430,7 +1516,7 @@ export class ProvisioningJobService {
       webhookUrl: params.webhookUrl,
       maxAttempts: 3,
       // SSH stop is fast (~10s graceful + ~5s force kill), DB cascade is
-      // sub-second. 30s matches docker-sandbox-provider.stop() timeout.
+      // sub-second. 30s matches the Docker deletion-stop command timeout.
       estimatedDurationMs: 30_000,
       logName: "agent_delete",
       validateSandbox: expectedIdentity
@@ -1449,8 +1535,8 @@ export class ProvisioningJobService {
           }
         : undefined,
       // Flip status so the UI shows "deleting" and concurrent mutations
-      // bail. Actual row removal happens in executeAgentDelete once SSH
-      // stop() succeeds.
+      // bail. Actual row removal happens in executeAgentDelete once the
+      // provider proves the workload is no longer running.
       beforeInsert: async (tx, sandbox) => {
         if (
           sandbox.claimed_at &&
@@ -1465,9 +1551,14 @@ export class ProvisioningJobService {
         }
         // A pending row is either unclaimed or was made retryable only after its
         // prior execution acknowledged quiescence.
+        const cancelledAt = new Date();
         const cancelled = await tx
           .update(jobs)
-          .set({ status: "cancelled", updated_at: new Date() })
+          .set({
+            status: "cancelled",
+            completed_at: cancelledAt,
+            updated_at: cancelledAt,
+          })
           .where(
             and(
               eq(jobs.organization_id, params.organizationId),
@@ -1560,6 +1651,16 @@ export class ProvisioningJobService {
             status: "deletion_pending" as const,
             deletion_attempt_id: deletionAttemptId,
             ...(continuesEarlierDeletion ? {} : { deletion_started_at: new Date() }),
+            // Gated on the BROADER continuation signal than the start time is.
+            // `continuesEarlierDeletion` only checks `deletion_started_at`, and
+            // nothing ties that column to `status`, so a row already sitting in
+            // deletion_pending with null intent columns would take the "fresh"
+            // branch and re-derive ownership from its OWN deletion status —
+            // reading as "still counted" and freeing a slot on every recovery
+            // sweep, the exact double-free this column exists to stop (#17185).
+            ...(isDeletionContinuation(sandbox)
+              ? {}
+              : { deletion_allocation_counted: holdsCountedNodeSlot(sandbox) }),
             billing_status: "suspended" as const,
             scheduled_shutdown_at: null,
             shutdown_warning_sent_at: null,
@@ -2827,9 +2928,12 @@ export class ProvisioningJobService {
     // Recover legacy or already-quiesced stale claims, scoped to the same lane
     // so a lane-scoped daemon never resets the OTHER lane's rows. Generated
     // active attempts stay owned until settlement or daemon startup recovery.
-    const recovered = await this.recoverStaleJobs(jobTypes);
-    if (recovered > 0) {
-      logger.info("[provisioning-jobs] Recovered stale jobs", { recovered });
+    const recovery = await this.recoverStaleJobs(jobTypes);
+    if (recovery.retried > 0 || recovery.permanentlyFailed > 0) {
+      logger.info("[provisioning-jobs] Recovered stale jobs", {
+        retried: recovery.retried,
+        permanentlyFailed: recovery.permanentlyFailed,
+      });
     }
 
     return result;
@@ -2873,20 +2977,20 @@ export class ProvisioningJobService {
   async recoverInterruptedJobsOnStartup(
     startedBefore: Date,
     jobTypes: readonly ProvisioningJobType[] = Object.values(JOB_TYPES),
-  ): Promise<number> {
-    let totalRecovered = 0;
+  ): Promise<ProvisioningRecoverySummary> {
+    const summary = emptyRecoverySummary();
 
     for (const jobType of this.filterSnapshotLane(jobTypes, "startup-recovery")) {
-      const recovered = await jobsRepository.recoverInProgressJobsStartedBefore({
+      const result = await jobsRepository.recoverInProgressJobsStartedBefore({
         type: jobType,
         startedBefore,
         buildFailureWriteback: this.dependentRowWritebackBuilder(jobType),
-        onPermanentFailure: (failedJob) => this.evictAppCachesAfterPermanentFailure(failedJob),
       });
-      totalRecovered += recovered;
+      addRecoveryResult(summary, result);
     }
 
-    return totalRecovered;
+    assertRecoveryHealthy("startup", summary);
+    return summary;
   }
 
   // ---------------------------------------------------------------------------
@@ -2981,7 +3085,12 @@ export class ProvisioningJobService {
     err: unknown,
     result?: ProcessingResult,
   ): Promise<void> {
-    const errorMsg = err instanceof Error ? err.message : String(err);
+    const errorMsg =
+      err instanceof AppCacheInvalidationRetryError
+        ? formatAppCacheInvalidationError(err)
+        : err instanceof Error
+          ? err.message
+          : String(err);
     result?.errors.push({ jobId: job.id, error: errorMsg });
 
     if (
@@ -3041,39 +3150,20 @@ export class ProvisioningJobService {
         this.executionOwnerId,
       ),
     );
-
-    if (updated?.status === "failed") {
-      await this.evictAppCachesAfterPermanentFailure(job);
-    }
-  }
-
-  /**
-   * Post-commit read-cache eviction for a job whose dependent row was just
-   * flipped by the in-transaction writeback. The `apps` read cache lives
-   * outside the DB transaction, so it can only be evicted once the flip is
-   * durable — for app_deploy because appsService owns that cache, and for
-   * container_provision because its writeback updates apps.deployment_status
-   * with a raw in-tx statement that bypasses appsService entirely (otherwise
-   * the deploy-status route keeps reporting `building` until the 5-min TTL).
-   */
-  private async evictAppCachesAfterPermanentFailure(job: Job): Promise<void> {
-    if (job.type === JOB_TYPES.APP_DEPLOY) {
-      const { appId } = readAppDeployJobData(job);
-      await appsService.invalidateCache(appId);
-      return;
-    }
-    if (job.type === JOB_TYPES.CONTAINER_PROVISION) {
-      const { containerId } = readContainerProvisionJobData(job);
-      const [row] = await dbWrite
-        .select({ projectName: containers.project_name })
-        .from(containers)
-        .where(eq(containers.id, containerId))
-        .limit(1);
-      const appId = row?.projectName;
-      // The in-tx writeback already org-scoped the flip; an appId that matched
-      // no app is a harmless evict.
-      if (appId && isValidUUID(appId)) {
-        await appsService.invalidateCache(appId);
+    if (err instanceof AppCacheInvalidationRetryError) {
+      const context = {
+        jobId: job.id,
+        attempts: updated?.attempts ?? job.attempts,
+        maxAttempts: job.max_attempts,
+        error: errorMsg,
+      };
+      if (updated?.status === "failed") {
+        logger.error(
+          "[provisioning-jobs] App cache invalidation exhausted its retry budget",
+          context,
+        );
+      } else {
+        logger.warn("[provisioning-jobs] App cache invalidation failed; retry scheduled", context);
       }
     }
   }
@@ -3255,22 +3345,26 @@ export class ProvisioningJobService {
       // Apps / Product 2: a permanently failed deploy must flip the app off
       // `building`, or the deploy-status route (which echoes
       // `apps.deployment_status`) reports BUILDING forever — the CLI/dashboard
-      // never sees the failure. The read-cache invalidation runs post-commit
-      // in the caller (cache work must not live inside a DB transaction).
+      // never sees the failure. A durable cache task is inserted in the same
+      // transaction; its cache deletion runs later outside the transaction.
       // Especially relevant during the lane-migration window, when the agent
       // CP worker (still default=all lanes) claims an APP_DEPLOY it can't run
       // and exhausts retries.
       case JOB_TYPES.APP_DEPLOY: {
         const { appId } = readAppDeployJobData(job);
-        return async (tx) => {
-          await tx
+        return async (tx, failedJob) => {
+          const [failedApp] = await tx
             .update(apps)
             .set({ deployment_status: "failed", updated_at: new Date() })
-            .where(eq(apps.id, appId));
-          logger.warn(
-            "[provisioning-jobs] Marked app deployment as failed after permanent failure",
-            { jobId: job.id, appId },
-          );
+            .where(and(eq(apps.id, appId), eq(apps.organization_id, failedJob.organization_id)))
+            .returning({ id: apps.id, api_key_id: apps.api_key_id, slug: apps.slug });
+          if (failedApp) {
+            await enqueueAppCacheInvalidation(tx, failedJob, failedApp);
+            logger.warn(
+              "[provisioning-jobs] Marked app deployment as failed after permanent failure",
+              { jobId: job.id, appId },
+            );
+          }
         };
       }
       // Apps / Product 2: the APP_DEPLOY job above only self-completes after
@@ -3290,25 +3384,34 @@ export class ProvisioningJobService {
       // because the cross-org WHERE matches zero rows.
       case JOB_TYPES.CONTAINER_PROVISION: {
         const { containerId } = readContainerProvisionJobData(job);
-        return async (tx) => {
+        return async (tx, failedJob) => {
           const [row] = await tx
             .select({
               projectName: containers.project_name,
               organizationId: containers.organization_id,
             })
             .from(containers)
-            .where(eq(containers.id, containerId))
+            .where(
+              and(
+                eq(containers.id, containerId),
+                eq(containers.organization_id, failedJob.organization_id),
+              ),
+            )
             .limit(1);
           const appId = row?.projectName;
           if (!appId || !isValidUUID(appId)) return;
-          await tx
+          const [failedApp] = await tx
             .update(apps)
             .set({ deployment_status: "failed", updated_at: new Date() })
-            .where(and(eq(apps.id, appId), eq(apps.organization_id, row.organizationId)));
-          logger.warn(
-            "[provisioning-jobs] Marked app deployment as failed after container provision permanent failure",
-            { jobId: job.id, containerId, appId },
-          );
+            .where(and(eq(apps.id, appId), eq(apps.organization_id, row.organizationId)))
+            .returning({ id: apps.id, api_key_id: apps.api_key_id, slug: apps.slug });
+          if (failedApp) {
+            await enqueueAppCacheInvalidation(tx, failedJob, failedApp);
+            logger.warn(
+              "[provisioning-jobs] Marked app deployment as failed after container provision permanent failure",
+              { jobId: job.id, containerId, appId },
+            );
+          }
         };
       }
       // agent_delete: when the daemon gives up, flip the row to
@@ -3599,6 +3702,13 @@ export class ProvisioningJobService {
         });
         break;
       }
+      case JOB_TYPES.APP_CACHE_INVALIDATE:
+        await this.assertExecutionMutationLease(job);
+        await dispatchAppCacheInvalidationJob(job);
+        await this.settleClaimedExecution(job, "completed", {
+          completed_at: new Date(),
+        });
+        break;
       default:
         throw new Error(`Unknown job type: ${job.type}`);
     }
@@ -4019,11 +4129,11 @@ export class ProvisioningJobService {
         pendingAudit.startedAt ===
           (snapshot.started_at === null ? "" : jobAuditTimestamp(snapshot.started_at)) &&
         pendingAudit.cutoverAt === jobAuditTimestamp(snapshot.updated_at);
-      const resumedCleanupClaim =
-        Number.isFinite(rowStartedAt) &&
-        Number.isFinite(rowUpdatedAt) &&
-        cutoverAt <= rowStartedAt &&
-        rowStartedAt <= rowUpdatedAt;
+      const resumedCleanupClaim = cutoverResumeWindowAllows({
+        cutoverAtMs: cutoverAt,
+        rowStartedAtMs: rowStartedAt,
+        rowUpdatedAtMs: rowUpdatedAt,
+      });
       return (
         Number.isFinite(auditStartedAt) &&
         Number.isFinite(cutoverAt) &&
@@ -4103,15 +4213,19 @@ export class ProvisioningJobService {
             eq(jobs.max_attempts, snapshot.max_attempts),
             sql`${jobs.execution_generation} IS NOT DISTINCT FROM ${snapshot.execution_generation}`,
             isNull(jobs.execution_quiesced_at),
-            sql`${jobs.started_at} IS NOT DISTINCT FROM ${
-              snapshot.started_at ? new Date(jobAuditTimestamp(snapshot.started_at)) : null
-            }`,
-            sql`${jobs.completed_at} IS NOT DISTINCT FROM ${
-              snapshot.completed_at ? new Date(jobAuditTimestamp(snapshot.completed_at)) : null
-            }`,
-            sql`${jobs.updated_at} IS NOT DISTINCT FROM ${new Date(
-              jobAuditTimestamp(snapshot.updated_at),
-            )}`,
+            // #17919 / #17284 class: ms-window fence so µs-stored NOW() rows match JS reads
+            msWindowTimestampMatch(
+              jobs.started_at,
+              snapshot.started_at ? new Date(jobAuditTimestamp(snapshot.started_at)) : null,
+            ),
+            msWindowTimestampMatch(
+              jobs.completed_at,
+              snapshot.completed_at ? new Date(jobAuditTimestamp(snapshot.completed_at)) : null,
+            ),
+            msWindowTimestampMatch(
+              jobs.updated_at,
+              new Date(jobAuditTimestamp(snapshot.updated_at)),
+            ),
             sql`${jobs.data_storage} = 'inline'`,
             sql`${jobs.data_key} IS NOT DISTINCT FROM ${snapshot.data_key}`,
             sql`${jobs.data} IS NOT DISTINCT FROM ${JSON.stringify(snapshot.data)}::jsonb`,
@@ -4267,15 +4381,16 @@ export class ProvisioningJobService {
             eq(jobs.max_attempts, job.max_attempts),
             sql`${jobs.execution_generation} IS NOT DISTINCT FROM ${job.execution_generation}`,
             isNull(jobs.execution_quiesced_at),
-            sql`${jobs.started_at} IS NOT DISTINCT FROM ${
-              job.started_at ? new Date(jobAuditTimestamp(job.started_at)) : null
-            }`,
-            sql`${jobs.completed_at} IS NOT DISTINCT FROM ${
-              job.completed_at ? new Date(jobAuditTimestamp(job.completed_at)) : null
-            }`,
-            sql`${jobs.updated_at} IS NOT DISTINCT FROM ${new Date(
-              jobAuditTimestamp(job.updated_at),
-            )}`,
+            // #17919 / #17284 class: ms-window fence so µs-stored NOW() rows match JS reads
+            msWindowTimestampMatch(
+              jobs.started_at,
+              job.started_at ? new Date(jobAuditTimestamp(job.started_at)) : null,
+            ),
+            msWindowTimestampMatch(
+              jobs.completed_at,
+              job.completed_at ? new Date(jobAuditTimestamp(job.completed_at)) : null,
+            ),
+            msWindowTimestampMatch(jobs.updated_at, new Date(jobAuditTimestamp(job.updated_at))),
             sql`${jobs.data_storage} = 'inline'`,
             sql`${jobs.data_key} IS NOT DISTINCT FROM ${job.data_key}`,
             sql`${jobs.data} IS NOT DISTINCT FROM ${JSON.stringify(job.data)}::jsonb`,
@@ -4742,7 +4857,7 @@ export class ProvisioningJobService {
     const jobResult: AgentDeleteJobResult = {
       cloudAgentId: data.agentId,
       containerStopped: delResult.containerStopped,
-      rowDeleted: true,
+      rowDeleted: delResult.rowDeleted,
     };
 
     await this.settleClaimedExecution(job, "completed", {
@@ -5110,24 +5225,24 @@ export class ProvisioningJobService {
 
   private async recoverStaleJobs(
     jobTypes: readonly ProvisioningJobType[] = Object.values(JOB_TYPES),
-  ): Promise<number> {
-    let totalRecovered = 0;
+  ): Promise<ProvisioningRecoverySummary> {
+    const summary = emptyRecoverySummary();
 
     // Recover stale jobs per type across all organizations. The repository now
     // handles org-agnostic recovery, so we can do this in one pass.
     for (const jobType of jobTypes) {
-      const recovered = await jobsRepository.recoverStaleJobs({
+      const result = await jobsRepository.recoverStaleJobs({
         type: jobType,
         staleThresholdMs: COLD_BOOT_JOB_TYPES.has(jobType)
           ? COLD_BOOT_STALE_JOB_THRESHOLD_MS
           : DEFAULT_STALE_JOB_THRESHOLD_MS,
         buildFailureWriteback: this.dependentRowWritebackBuilder(jobType),
-        onPermanentFailure: (failedJob) => this.evictAppCachesAfterPermanentFailure(failedJob),
       });
-      totalRecovered += recovered;
+      addRecoveryResult(summary, result);
     }
 
-    return totalRecovered;
+    assertRecoveryHealthy("stale", summary);
+    return summary;
   }
 
   private async fireWebhook(

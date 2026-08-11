@@ -68,7 +68,6 @@ Useful optional settings include:
 | Setting | Purpose |
 | --- | --- |
 | `SKILLS_AUTO_LOAD` | Load installed skills during startup |
-| `SKILLS_REGISTRY` | Select the remote registry base URL |
 | `SKILLS_ALLOWLIST` | Allow only the listed skill slugs |
 | `SKILLS_DENYLIST` | Block listed skill slugs |
 | `WORKSPACE_SKILLS_DIR` | Add workspace-scoped skills |
@@ -77,9 +76,10 @@ Useful optional settings include:
 ## Invocation and management
 
 `USE_SKILL` is the stable action for invoking an enabled skill. The `SKILL`
-action manages search, details, catalog sync, toggling, installation, and
-uninstallation. The runtime providers expose a compact enabled-skill list and
-load matched instructions progressively.
+action toggles and uninstalls managed skills. The app can install a skill
+directly from a GitHub repository URL; there is no remote skill catalog. The
+runtime providers expose a compact enabled-skill list and load matched
+instructions progressively.
 
 Installed skills can contain executable scripts. Review their contents and
 source before enabling them, restrict the allowed set where appropriate, and

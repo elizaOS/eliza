@@ -19,6 +19,7 @@ const targetDigest = `sha256:${"a".repeat(64)}`;
 function installDeps(
   inFlight: number,
   candidates: Array<Record<string, string>> = [],
+  maxInflightUpgrades = 3,
 ) {
   const countInFlightByTypes = mock(async () => inFlight);
   const listRunningWithDigestOtherThan = mock(async () => candidates);
@@ -27,7 +28,10 @@ function installDeps(
     job: { id: "upgrade-job" },
   }));
   __setDepsForTests({
-    containersEnv: { defaultAgentImage: () => configuredImage },
+    containersEnv: {
+      defaultAgentImage: () => configuredImage,
+      maxInflightUpgrades: () => maxInflightUpgrades,
+    },
     resolveImageDigest: async () => targetDigest,
     jobsRepository: { countInFlightByTypes },
     agentSandboxesRepository: { listRunningWithDigestOtherThan },
@@ -56,6 +60,16 @@ describe("processFleetUpgradeCycle shared image-change capacity", () => {
       "agent_upgrade",
       "agent_admin_canary_image",
     ]);
+    expect(deps.listRunningWithDigestOtherThan).not.toHaveBeenCalled();
+    expect(deps.enqueueAgentUpgradeOnce).not.toHaveBeenCalled();
+  });
+
+  test("an env-configured zero limit pauses rollouts without a source hot patch", async () => {
+    const deps = installDeps(0, [], 0);
+
+    const result = await processFleetUpgradeCycle();
+
+    expect(result).toMatchObject({ action: "skip_capacity", inFlight: 0 });
     expect(deps.listRunningWithDigestOtherThan).not.toHaveBeenCalled();
     expect(deps.enqueueAgentUpgradeOnce).not.toHaveBeenCalled();
   });
@@ -210,6 +224,12 @@ describe("real one-shot daemon entrypoint", () => {
     }));
     const drainNode = mock(async () => {});
     const drainIdle = mock(async () => ({ drained: ["warm-agent"] }));
+    const healthCheck = mock(async () => ({
+      probed: 2,
+      alive: 2,
+      reconciliation: {},
+      removed: [],
+    }));
     const replenish = mock(async () => ({
       created: ["warm-agent-next"],
       failed: [],
@@ -246,6 +266,7 @@ describe("real one-shot daemon entrypoint", () => {
 
     class OneShotWarmPoolManager {
       drainIdle = drainIdle;
+      healthCheck = healthCheck;
       replenish = replenish;
     }
 
@@ -286,6 +307,7 @@ describe("real one-shot daemon entrypoint", () => {
       "@elizaos/cloud-shared/lib/config/containers-env": {
         containersEnv: {
           defaultAgentImage: () => configuredImage,
+          maxInflightUpgrades: () => 3,
         },
         assertSSHKeyAvailable: () => {},
       },
@@ -420,6 +442,7 @@ describe("real one-shot daemon entrypoint", () => {
         expect(provisionNode).toHaveBeenCalledTimes(1);
         expect(drainNode).not.toHaveBeenCalled();
         expect(drainIdle).toHaveBeenCalledWith(configuredImage);
+        expect(healthCheck).toHaveBeenCalledTimes(1);
         expect(replenish).toHaveBeenCalledWith(configuredImage);
         expect(reconcileOrphanContainersOnNodes).toHaveBeenCalledTimes(1);
         expect(reconcileOrphanAppContainersOnNodes).toHaveBeenCalledTimes(1);

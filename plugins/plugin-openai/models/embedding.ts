@@ -6,7 +6,13 @@
  * real embedding server is reachable.
  */
 import type { IAgentRuntime, TextEmbeddingParams } from "@elizaos/core";
-import { logger, ModelType, VECTOR_DIMS } from "@elizaos/core";
+import {
+  logger,
+  ModelType,
+  toWellFormedUnicode,
+  truncateWellFormed,
+  VECTOR_DIMS,
+} from "@elizaos/core";
 
 import type { OpenAIEmbeddingResponse } from "../types";
 import {
@@ -135,8 +141,11 @@ export async function handleTextEmbedding(
     logger.warn(
       `[OpenAI] Embedding input too long (~${Math.ceil(trimmedText.length / 4)} tokens), truncating to ~8000 tokens`
     );
-    trimmedText = trimmedText.slice(0, maxChars);
+    trimmedText = truncateWellFormed(trimmedText, maxChars);
   }
+  // Wire-boundary guarantee: lone surrogates in the JSON body 400 on strict
+  // provider parsers (#18025).
+  trimmedText = toWellFormedUnicode(trimmedText);
 
   if (shouldUseLocalEmbeddingFallback(runtime)) {
     logger.debug("[OpenAI] Using deterministic local embedding fallback for Cerebras mode");

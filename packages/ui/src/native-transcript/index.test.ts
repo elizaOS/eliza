@@ -17,6 +17,10 @@ describe("native-transcript public surface", () => {
     expect(typeof api.reduceTranscriptEvents).toBe("function");
     expect(typeof api.toViewModel).toBe("function");
     expect(typeof api.TranscriptEventView).toBe("function");
+    expect(typeof api.TranscriptView).toBe("function");
+    expect(typeof api.LiveNativeTranscript).toBe("function");
     expect(typeof api.useTranscriptEvents).toBe("function");
+    expect(typeof api.decodeTranscriptViewModel).toBe("function");
+    expect(typeof api.acceptNativeTranscriptViewModel).toBe("function");
   });
 });

@@ -26,6 +26,10 @@ import {
 	buildMeetingAcousticStressMatrix,
 	type MeetingAcousticStressCase,
 } from "../src/services/voice/meeting-acoustic-stress-matrix.ts";
+import {
+	MEETING_STRESS_CORPUS_SCHEMA_VERSION,
+	type MeetingStressAudioSourceMode,
+} from "../src/services/voice/meeting-acoustic-stress-evaluator.ts";
 import { VOICE_WORKBENCH_SCENARIOS } from "../src/services/voice/workbench-scenarios.ts";
 
 interface CorpusManifestEntry {
@@ -35,6 +39,8 @@ interface CorpusManifestEntry {
 	turns: number;
 	degraded: boolean;
 	dir: string;
+	audioSourceMode?: MeetingStressAudioSourceMode;
+	actualSourceManifestIds?: string[];
 	stress?: Omit<MeetingAcousticStressCase, "scenario">;
 }
 
@@ -73,6 +79,8 @@ async function main(): Promise<void> {
 			dir: path.relative(outDir, dir),
 			...(stress
 				? {
+						audioSourceMode: "synthetic_smoke" as const,
+						actualSourceManifestIds: ["synthetic_smoke"],
 						stress: {
 							id: stress.id,
 							snrDb: stress.snrDb,
@@ -98,7 +106,9 @@ async function main(): Promise<void> {
 		manifestPath,
 		`${JSON.stringify(
 			{
-				schemaVersion: 1,
+				schemaVersion: meetingStress
+					? MEETING_STRESS_CORPUS_SCHEMA_VERSION
+					: 1,
 				mode: meetingStress ? "meeting_stress" : "voice_workbench",
 				...(stressMatrix
 					? {

@@ -1,7 +1,7 @@
 /**
- * Exercises stale and startup job recovery against real PGlite state.
- * Single-attempt jobs fail closed before cutover, while a durable canary
- * cutover resumes idempotent cleanup without spending its terminal attempt.
+ * Exercises stale and startup recovery against real PGlite state. The suite
+ * covers isolated row degradation, durable cache work, and idempotent canary
+ * cleanup in addition to ordinary finite-attempt jobs.
  */
 
 import { afterAll, beforeAll, beforeEach, describe, expect, spyOn, test } from "bun:test";
@@ -54,7 +54,16 @@ function memoryBucket(objects: Map<string, string>): RuntimeR2Bucket {
 
 let dbWrite: typeof import("../../client").dbWrite;
 let closeDb: typeof import("../../client").closeDatabaseConnectionsForTests | undefined;
+let cache: typeof import("../../../lib/cache/client").cache;
+let CacheKeys: typeof import("../../../lib/cache/keys").CacheKeys;
+let CacheTTL: typeof import("../../../lib/cache/keys").CacheTTL;
 let repo: typeof import("../jobs").jobsRepository;
+let AppsServiceSingleton: typeof import("../../../lib/services/apps").appsService;
+let ProvisioningJobServiceCtor: typeof import("../../../lib/services/provisioning-jobs").ProvisioningJobService;
+let ProvisioningRecoveryDegradedErrorCtor: typeof import("../../../lib/services/provisioning-jobs").ProvisioningRecoveryDegradedError;
+let jobTypes: typeof import("../../../lib/services/provisioning-job-types").JOB_TYPES;
+let cacheInvalidationJobId: typeof import("../../../lib/services/app-cache-invalidation-job").appCacheInvalidationJobId;
+let cloudLogger: typeof import("../../../lib/utils/logger").logger;
 let pgliteReady = true;
 
 async function seedJob(params: {
@@ -155,8 +164,20 @@ function pendingCutoverAudit(jobId: string): Record<string, unknown> {
 
 beforeAll(async () => {
   try {
+    ({ cache } = await import("../../../lib/cache/client"));
+    ({ CacheKeys, CacheTTL } = await import("../../../lib/cache/keys"));
     ({ closeDatabaseConnectionsForTests: closeDb, dbWrite } = await import("../../client"));
     ({ jobsRepository: repo } = await import("../jobs"));
+    ({ appsService: AppsServiceSingleton } = await import("../../../lib/services/apps"));
+    ({
+      ProvisioningJobService: ProvisioningJobServiceCtor,
+      ProvisioningRecoveryDegradedError: ProvisioningRecoveryDegradedErrorCtor,
+    } = await import("../../../lib/services/provisioning-jobs"));
+    ({ JOB_TYPES: jobTypes } = await import("../../../lib/services/provisioning-job-types"));
+    ({ logger: cloudLogger } = await import("../../../lib/utils/logger"));
+    ({ appCacheInvalidationJobId: cacheInvalidationJobId } = await import(
+      "../../../lib/services/app-cache-invalidation-job"
+    ));
     await dbWrite.execute(
       `CREATE TABLE IF NOT EXISTS jobs (
 				id uuid PRIMARY KEY,
@@ -206,6 +227,16 @@ beforeAll(async () => {
         created_at timestamp NOT NULL DEFAULT now()
       );`,
     );
+    await dbWrite.execute(
+      `CREATE TABLE IF NOT EXISTS apps (
+        id uuid PRIMARY KEY,
+        organization_id uuid NOT NULL,
+        slug text,
+        api_key_id uuid,
+        deployment_status text NOT NULL,
+        updated_at timestamp NOT NULL DEFAULT now()
+      );`,
+    );
   } catch (error) {
     pgliteReady = false;
     console.warn("[jobs-recovery] PGlite unavailable, skipping:", error);
@@ -221,6 +252,7 @@ describe("jobsRepository.recoverStaleJobs", () => {
     expect(pgliteReady).toBe(true);
     await dbWrite.delete(jobExecutionLeases);
     await dbWrite.execute("DELETE FROM jobs;");
+    await dbWrite.execute("DELETE FROM apps;");
   });
 
   test("two live processors cannot reclaim one another before the winning lease expires", async () => {
@@ -266,10 +298,12 @@ describe("jobsRepository.recoverStaleJobs", () => {
     );
 
     expect(
-      await repo.recoverInProgressJobsStartedBefore({
-        type: "agent_message",
-        startedBefore: new Date(Date.now() + 60_000),
-      }),
+      (
+        await repo.recoverInProgressJobsStartedBefore({
+          type: "agent_message",
+          startedBefore: new Date(Date.now() + 60_000),
+        })
+      ).retried,
     ).toBe(0);
     expect(await repo.findByIdForWrite(jobId)).toMatchObject({ status: "in_progress" });
 
@@ -283,10 +317,12 @@ describe("jobsRepository.recoverStaleJobs", () => {
     expect(await repo.renewExecutionLease(claimed, winner, 60_000)).toBe("renewed");
     await expect(repo.assertExecutionLease(claimed, winner)).resolves.toBeUndefined();
     expect(
-      await repo.recoverInProgressJobsStartedBefore({
-        type: "agent_message",
-        startedBefore: new Date(Date.now() + 60_000),
-      }),
+      (
+        await repo.recoverInProgressJobsStartedBefore({
+          type: "agent_message",
+          startedBefore: new Date(Date.now() + 60_000),
+        })
+      ).retried,
     ).toBe(0);
 
     await dbWrite
@@ -294,10 +330,12 @@ describe("jobsRepository.recoverStaleJobs", () => {
       .set({ expires_at: new Date(Date.now() - 31_000) })
       .where(eq(jobExecutionLeases.job_id, jobId));
     expect(
-      await repo.recoverStaleJobs({
-        type: "agent_message",
-        staleThresholdMs: 1,
-      }),
+      (
+        await repo.recoverStaleJobs({
+          type: "agent_message",
+          staleThresholdMs: 1,
+        })
+      ).retried,
     ).toBe(1);
     expect(await repo.findByIdForWrite(jobId)).toMatchObject({
       status: "pending",
@@ -348,7 +386,7 @@ describe("jobsRepository.recoverStaleJobs", () => {
       maxAttempts: 3,
     });
 
-    expect(recovered).toBe(1);
+    expect(recovered).toMatchObject({ retried: 1, permanentlyFailed: 1, failures: [] });
     const rows = await dbWrite
       .select({
         id: jobs.id,
@@ -384,10 +422,12 @@ describe("jobsRepository.recoverStaleJobs", () => {
     });
 
     expect(
-      await repo.recoverStaleJobs({
-        type: "pii_scrub",
-        staleThresholdMs: 5 * 60 * 1000,
-      }),
+      (
+        await repo.recoverStaleJobs({
+          type: "pii_scrub",
+          staleThresholdMs: 5 * 60 * 1000,
+        })
+      ).retried,
     ).toBe(1);
     expect(await repo.findByIdForWrite(jobId)).toMatchObject({
       status: "pending",
@@ -420,7 +460,7 @@ describe("jobsRepository.recoverStaleJobs", () => {
       staleThresholdMs: 5 * 60 * 1000,
     });
 
-    expect(recovered).toBe(1);
+    expect(recovered).toMatchObject({ retried: 1, permanentlyFailed: 1, failures: [] });
     const rows = await dbWrite.select().from(jobs).orderBy(jobs.id);
     expect(rows.find((row) => row.id === committedJobId)).toMatchObject({
       status: "pending",
@@ -454,7 +494,7 @@ describe("jobsRepository.recoverStaleJobs", () => {
       startedBefore: new Date(),
     });
 
-    expect(recovered).toBe(1);
+    expect(recovered).toMatchObject({ retried: 1, permanentlyFailed: 0, failures: [] });
     const rows = await dbWrite
       .select({
         id: jobs.id,
@@ -502,7 +542,7 @@ describe("jobsRepository.recoverStaleJobs", () => {
       startedBefore: new Date(),
     });
 
-    expect(recovered).toBe(1);
+    expect(recovered).toMatchObject({ retried: 1, permanentlyFailed: 1, failures: [] });
     const rows = await dbWrite.select().from(jobs).orderBy(jobs.id);
     expect(rows.find((row) => row.id === committedJobId)).toMatchObject({
       status: "pending",
@@ -607,10 +647,12 @@ describe("jobsRepository.recoverStaleJobs", () => {
     }
 
     expect(
-      await repo.recoverStaleJobs({
-        type: "agent_admin_canary_image",
-        staleThresholdMs: 5 * 60 * 1000,
-      }),
+      (
+        await repo.recoverStaleJobs({
+          type: "agent_admin_canary_image",
+          staleThresholdMs: 5 * 60 * 1000,
+        })
+      ).retried,
     ).toBe(0);
 
     const rows = await dbWrite
@@ -682,10 +724,12 @@ describe("jobsRepository.recoverStaleJobs", () => {
 
     try {
       expect(
-        await repo.recoverStaleJobs({
-          type: "agent_admin_canary_image",
-          staleThresholdMs: 5 * 60 * 1000,
-        }),
+        (
+          await repo.recoverStaleJobs({
+            type: "agent_admin_canary_image",
+            staleThresholdMs: 5 * 60 * 1000,
+          })
+        ).retried,
       ).toBe(0);
     } finally {
       interpose.mockRestore();
@@ -783,8 +827,8 @@ describe("jobsRepository.recoverStaleJobs", () => {
     });
 
     expect(incremented).toBeUndefined();
-    expect(staleRecovered).toBe(0);
-    expect(startupRecovered).toBe(0);
+    expect(staleRecovered.retried).toBe(0);
+    expect(startupRecovered.retried).toBe(0);
     const [completed] = await dbWrite
       .select({
         status: jobs.status,
@@ -835,7 +879,7 @@ describe("jobsRepository.recoverStaleJobs", () => {
     }
   });
   test(
-    "a permanent flip hands the writeback and the hook the hydrated, post-flip job",
+    "a permanent flip hands the writeback the hydrated, post-flip job",
     async () => {
       expect(pgliteReady).toBe(true);
       const jobId = "00000000-0000-4000-8000-000000180901";
@@ -866,7 +910,6 @@ describe("jobsRepository.recoverStaleJobs", () => {
 
         const built: Array<{ data: unknown; error: string }> = [];
         const settled: Array<{ status: string; data: unknown; error: string | null }> = [];
-        const committed: Array<{ data: unknown; error: string | null }> = [];
         const recovered = await repo.recoverStaleJobs({
           type: "agent_delete",
           staleThresholdMs: 1,
@@ -884,20 +927,14 @@ describe("jobsRepository.recoverStaleJobs", () => {
                 .where(eq(jobs.id, failedJob.id));
             };
           },
-          onPermanentFailure: async (failedJob) => {
-            committed.push({ data: failedJob.data, error: failedJob.error });
-          },
         });
 
-        expect(recovered).toBe(0);
+        expect(recovered).toMatchObject({ retried: 0, permanentlyFailed: 1, failures: [] });
         const timeout = "Job timed out 1 times - max attempts reached";
         expect(built).toEqual([{ data: blobPayload, error: timeout }]);
         // hydrateJob(updated) equivalence: blob payload, plaintext error, and
         // the POST-flip status — the same value incrementAttempt passes.
         expect(settled).toEqual([{ status: "failed", data: blobPayload, error: timeout }]);
-        // The post-commit hook reads job data too, so it gets the same value.
-        expect(committed).toEqual([{ data: blobPayload, error: timeout }]);
-
         const [row] = await dbWrite.select().from(jobs).where(eq(jobs.id, jobId));
         expect(row.status).toBe("failed");
         // The row itself carries the pointer, so the assertions above are about
@@ -920,15 +957,17 @@ describe("jobsRepository.recoverStaleJobs", () => {
       const jobId = "00000000-0000-4000-8000-000000180902";
       await seedJob({ id: jobId, maxAttempts: 1, type: "agent_delete" });
 
-      await expect(
-        repo.recoverStaleJobs({
-          type: "agent_delete",
-          staleThresholdMs: 1,
-          buildFailureWriteback: () => async () => {
-            throw new Error("dependent row is locked");
-          },
-        }),
-      ).rejects.toThrow("failed for every job in the batch");
+      const recovery = await repo.recoverStaleJobs({
+        type: "agent_delete",
+        staleThresholdMs: 1,
+        buildFailureWriteback: () => async () => {
+          throw new Error("dependent row is locked");
+        },
+      });
+      expect(recovery.failures).toHaveLength(1);
+      expect(recovery.failures[0]?.cause).toEqual(
+        expect.objectContaining({ message: "dependent row is locked" }),
+      );
 
       const [row] = await dbWrite.select().from(jobs).where(eq(jobs.id, jobId));
       // Both writes rolled back together: the next sweep retries the pair.
@@ -939,7 +978,7 @@ describe("jobsRepository.recoverStaleJobs", () => {
   );
 
   test(
-    "one poisoned job does not starve the sweep, but an all-failed batch still throws",
+    "one poisoned job does not starve the sweep and all failures remain typed",
     async () => {
       expect(pgliteReady).toBe(true);
       const poisoned = "00000000-0000-4000-8000-000000180903";
@@ -958,7 +997,8 @@ describe("jobsRepository.recoverStaleJobs", () => {
             : undefined,
       });
 
-      expect(recovered).toBe(0);
+      expect(recovered).toMatchObject({ permanentlyFailed: 1, retried: 0 });
+      expect(recovered.failures).toHaveLength(1);
       const [poisonedRow] = await dbWrite.select().from(jobs).where(eq(jobs.id, poisoned));
       const [healthyRow] = await dbWrite.select().from(jobs).where(eq(jobs.id, healthy));
       expect(poisonedRow.status).toBe("in_progress");
@@ -969,15 +1009,14 @@ describe("jobsRepository.recoverStaleJobs", () => {
       await dbWrite.execute("DELETE FROM jobs;");
       await seedJob({ id: poisoned, maxAttempts: 1, type: "agent_delete" });
       await seedJob({ id: healthy, maxAttempts: 1, type: "agent_delete" });
-      await expect(
-        repo.recoverStaleJobs({
-          type: "agent_delete",
-          staleThresholdMs: 1,
-          buildFailureWriteback: () => async () => {
-            throw new Error("database is down");
-          },
-        }),
-      ).rejects.toThrow("failed for every job in the batch");
+      const allPoisoned = await repo.recoverStaleJobs({
+        type: "agent_delete",
+        staleThresholdMs: 1,
+        buildFailureWriteback: () => async () => {
+          throw new Error("database is down");
+        },
+      });
+      expect(allPoisoned.failures).toHaveLength(2);
     },
     PGLITE_TIMEOUT,
   );
@@ -1009,7 +1048,8 @@ describe("jobsRepository.recoverStaleJobs", () => {
         },
       });
 
-      expect(recovered).toBe(0);
+      expect(recovered).toMatchObject({ permanentlyFailed: 1, retried: 0 });
+      expect(recovered.failures).toHaveLength(1);
       const [unbuildableRow] = await dbWrite.select().from(jobs).where(eq(jobs.id, unbuildable));
       const [healthyRow] = await dbWrite.select().from(jobs).where(eq(jobs.id, healthy));
       // A job whose dependent row cannot be settled must not reach a terminal
@@ -1042,7 +1082,7 @@ describe("jobsRepository.recoverStaleJobs", () => {
         },
       });
 
-      expect(recovered).toBe(1);
+      expect(recovered).toMatchObject({ retried: 1, permanentlyFailed: 0, failures: [] });
       expect(builds).toBe(0);
       const [row] = await dbWrite.select().from(jobs).where(eq(jobs.id, jobId));
       expect(row.status).toBe("pending");
@@ -1052,7 +1092,7 @@ describe("jobsRepository.recoverStaleJobs", () => {
   );
 
   test(
-    "startup recovery fires the post-commit hook only for a flip that committed",
+    "startup recovery distinguishes a terminal flip from a retry",
     async () => {
       expect(pgliteReady).toBe(true);
       const failing = "00000000-0000-4000-8000-000000180906";
@@ -1060,20 +1100,301 @@ describe("jobsRepository.recoverStaleJobs", () => {
       await seedJob({ id: failing, maxAttempts: 1, type: "agent_delete" });
       await seedJob({ id: retrying, maxAttempts: 3, type: "agent_delete" });
 
-      const committed: string[] = [];
       const recovered = await repo.recoverInProgressJobsStartedBefore({
         type: "agent_delete",
         startedBefore: new Date("2021-01-01T00:00:00.000Z"),
         buildFailureWriteback: () => async () => {},
-        onPermanentFailure: async (failedJob) => {
-          committed.push(failedJob.id);
-        },
       });
 
-      expect(recovered).toBe(1);
-      expect(committed).toEqual([failing]);
+      expect(recovered).toMatchObject({ retried: 1, permanentlyFailed: 1, failures: [] });
       const [retryingRow] = await dbWrite.select().from(jobs).where(eq(jobs.id, retrying));
       expect(retryingRow.status).toBe("pending");
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "startup recovery reaches a later type before surfacing an earlier poisoned type",
+    async () => {
+      const poisoned = "00000000-0000-4000-8000-000000180910";
+      const later = "00000000-0000-4000-8000-000000180911";
+      await seedJob({ id: poisoned, maxAttempts: 1, type: jobTypes.AGENT_DELETE, data: {} });
+      await seedJob({ id: later, maxAttempts: 1, type: jobTypes.AGENT_LOGS });
+      const service = new ProvisioningJobServiceCtor();
+
+      let thrown: unknown;
+      try {
+        await service.recoverInterruptedJobsOnStartup(new Date("2021-01-01T00:00:00.000Z"), [
+          jobTypes.AGENT_DELETE,
+          jobTypes.AGENT_LOGS,
+        ]);
+      } catch (error) {
+        thrown = error;
+      }
+
+      expect(thrown).toBeInstanceOf(ProvisioningRecoveryDegradedErrorCtor);
+      expect(
+        (thrown as InstanceType<typeof ProvisioningRecoveryDegradedErrorCtor>).summary,
+      ).toMatchObject({ scanned: 2, permanentlyFailed: 1 });
+      expect(
+        (thrown as InstanceType<typeof ProvisioningRecoveryDegradedErrorCtor>).summary.failures,
+      ).toHaveLength(1);
+      expect(await repo.findByIdForWrite(poisoned)).toMatchObject({
+        status: "in_progress",
+        attempts: 0,
+      });
+      expect(await repo.findByIdForWrite(later)).toMatchObject({ status: "failed", attempts: 1 });
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "stale recovery reaches a later type before surfacing an earlier poisoned type",
+    async () => {
+      const poisoned = "00000000-0000-4000-8000-000000180912";
+      const later = "00000000-0000-4000-8000-000000180913";
+      await seedJob({ id: poisoned, maxAttempts: 1, type: jobTypes.AGENT_DELETE, data: {} });
+      await seedJob({ id: later, maxAttempts: 1, type: jobTypes.AGENT_LOGS });
+      const service = new ProvisioningJobServiceCtor();
+
+      let thrown: unknown;
+      try {
+        await service.processPendingJobs(1, {
+          jobTypes: [jobTypes.AGENT_DELETE, jobTypes.AGENT_LOGS],
+        });
+      } catch (error) {
+        thrown = error;
+      }
+
+      expect(thrown).toBeInstanceOf(ProvisioningRecoveryDegradedErrorCtor);
+      expect(
+        (thrown as InstanceType<typeof ProvisioningRecoveryDegradedErrorCtor>).summary,
+      ).toMatchObject({ scanned: 2, permanentlyFailed: 1 });
+      expect(
+        (thrown as InstanceType<typeof ProvisioningRecoveryDegradedErrorCtor>).summary.failures,
+      ).toHaveLength(1);
+      expect(await repo.findByIdForWrite(poisoned)).toMatchObject({
+        status: "in_progress",
+        attempts: 0,
+      });
+      expect(await repo.findByIdForWrite(later)).toMatchObject({ status: "failed", attempts: 1 });
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "terminal app recovery durably retries a transient cache invalidation failure",
+    async () => {
+      const sourceJobId = "00000000-0000-4000-8000-000000180914";
+      const appId = "00000000-0000-4000-8000-000000180915";
+      const apiKeyId = "00000000-0000-4000-8000-000000180918";
+      const slug = "durable-cache-retry";
+      await dbWrite.execute(
+        `INSERT INTO apps (id, organization_id, slug, api_key_id, deployment_status, updated_at)
+         VALUES ('${appId}', '${ORG_ID}', '${slug}', '${apiKeyId}', 'building', NOW());`,
+      );
+      await seedJob({
+        id: sourceJobId,
+        maxAttempts: 1,
+        type: jobTypes.APP_DEPLOY,
+        data: { appId },
+      });
+      const service = new ProvisioningJobServiceCtor();
+
+      const recovery = await service.recoverInterruptedJobsOnStartup(
+        new Date("2021-01-01T00:00:00.000Z"),
+        [jobTypes.APP_DEPLOY],
+      );
+      expect(recovery).toMatchObject({ permanentlyFailed: 1, failures: [] });
+      const taskId = cacheInvalidationJobId(sourceJobId);
+      expect(await repo.findByIdForWrite(taskId)).toMatchObject({
+        type: jobTypes.APP_CACHE_INVALIDATE,
+        status: "pending",
+        attempts: 0,
+        data: { appId, apiKeyId, slug, sourceJobId },
+      });
+
+      let invalidationCalls = 0;
+      const invalidate = spyOn(AppsServiceSingleton, "invalidateCacheStrict").mockImplementation(
+        async () => {
+          invalidationCalls++;
+          if (invalidationCalls === 1) throw new Error("redis temporarily unavailable");
+        },
+      );
+      try {
+        const first = await service.processPendingJobs(1, {
+          jobTypes: [jobTypes.APP_CACHE_INVALIDATE],
+        });
+        expect(first).toMatchObject({ claimed: 1, succeeded: 0, retried: 0, failed: 1 });
+        expect(await repo.findByIdForWrite(taskId)).toMatchObject({
+          status: "pending",
+          attempts: 1,
+          error:
+            "AppCacheInvalidationRetryError[APP_CACHE_INVALIDATION_RETRY]: App cache invalidation failed after terminal provisioning writeback <- Error: redis temporarily unavailable",
+        });
+
+        await dbWrite
+          .update(jobs)
+          .set({
+            status: "in_progress",
+            started_at: JOB_STARTED_AT,
+            scheduled_for: JOB_STARTED_AT,
+            execution_generation: null,
+            execution_quiesced_at: null,
+          })
+          .where(eq(jobs.id, taskId));
+        const interruptedTask = await repo.recoverStaleJobs({
+          type: jobTypes.APP_CACHE_INVALIDATE,
+          staleThresholdMs: 1,
+        });
+        expect(interruptedTask).toMatchObject({ retried: 1, permanentlyFailed: 0, failures: [] });
+        expect(await repo.findByIdForWrite(taskId)).toMatchObject({
+          status: "pending",
+          attempts: 1,
+        });
+        const second = await service.processPendingJobs(1, {
+          jobTypes: [jobTypes.APP_CACHE_INVALIDATE],
+        });
+        expect(second).toMatchObject({ claimed: 1, succeeded: 1, retried: 0, failed: 0 });
+        expect(await repo.findByIdForWrite(taskId)).toMatchObject({
+          status: "completed",
+          attempts: 1,
+        });
+        expect(invalidationCalls).toBe(2);
+        const cacheTasks = await dbWrite
+          .select({ id: jobs.id })
+          .from(jobs)
+          .where(eq(jobs.type, jobTypes.APP_CACHE_INVALIDATE));
+        expect(cacheTasks).toEqual([{ id: taskId }]);
+      } finally {
+        invalidate.mockRestore();
+      }
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "durable app recovery dispatch clears every persisted lookup identity through the real cache service",
+    async () => {
+      const sourceJobId = "00000000-0000-4000-8000-000000180920";
+      const appId = "00000000-0000-4000-8000-000000180921";
+      const apiKeyId = "00000000-0000-4000-8000-000000180922";
+      const slug = "durable-cache-all-identities";
+      await dbWrite.execute(
+        `INSERT INTO apps (id, organization_id, slug, api_key_id, deployment_status, updated_at)
+         VALUES ('${appId}', '${ORG_ID}', '${slug}', '${apiKeyId}', 'building', NOW());`,
+      );
+      await seedJob({
+        id: sourceJobId,
+        maxAttempts: 1,
+        type: jobTypes.APP_DEPLOY,
+        data: { appId },
+      });
+
+      const staleApp = { id: appId, slug, api_key_id: apiKeyId, deployment_status: "building" };
+      const keys = [
+        CacheKeys.app.byId(appId),
+        CacheKeys.app.bySlug(slug),
+        CacheKeys.app.byApiKeyId(apiKeyId),
+        CacheKeys.app.costMarkup(appId),
+      ];
+      await Promise.all(keys.map((key) => cache.set(key, staleApp, CacheTTL.app.byId)));
+
+      const service = new ProvisioningJobServiceCtor();
+      expect(
+        await service.recoverInterruptedJobsOnStartup(new Date("2021-01-01T00:00:00.000Z"), [
+          jobTypes.APP_DEPLOY,
+        ]),
+      ).toMatchObject({ permanentlyFailed: 1, failures: [] });
+
+      const taskId = cacheInvalidationJobId(sourceJobId);
+      expect(await repo.findByIdForWrite(taskId)).toMatchObject({
+        status: "pending",
+        data: { appId, apiKeyId, slug, sourceJobId },
+      });
+      expect(
+        await service.processPendingJobs(1, { jobTypes: [jobTypes.APP_CACHE_INVALIDATE] }),
+      ).toMatchObject({ claimed: 1, succeeded: 1, failed: 0 });
+      expect(await repo.findByIdForWrite(taskId)).toMatchObject({ status: "completed" });
+      expect(await Promise.all(keys.map((key) => cache.get(key)))).toEqual([
+        null,
+        null,
+        null,
+        null,
+      ]);
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "observed cache failures exhaust finite attempts and preserve a redacted cause chain",
+    async () => {
+      const sourceJobId = "00000000-0000-4000-8000-000000180916";
+      const appId = "00000000-0000-4000-8000-000000180917";
+      const apiKeyId = "00000000-0000-4000-8000-000000180919";
+      const slug = "durable-cache-exhaustion";
+      const taskId = cacheInvalidationJobId(sourceJobId);
+      await seedJob({
+        id: taskId,
+        maxAttempts: 3,
+        type: jobTypes.APP_CACHE_INVALIDATE,
+        data: { appId, apiKeyId, slug, sourceJobId },
+      });
+      await dbWrite
+        .update(jobs)
+        .set({ status: "pending", started_at: null, execution_generation: null })
+        .where(eq(jobs.id, taskId));
+
+      const secret = `sk-${"a".repeat(48)}`;
+      const invalidate = spyOn(AppsServiceSingleton, "invalidateCacheStrict").mockRejectedValue(
+        new Error("cache adapter rejected delete", {
+          cause: new Error(`upstream credential ${secret}`),
+        }),
+      );
+      const terminalLog = spyOn(cloudLogger, "error").mockImplementation(() => {});
+      try {
+        const service = new ProvisioningJobServiceCtor();
+        for (let attempt = 1; attempt <= 3; attempt++) {
+          await dbWrite
+            .update(jobs)
+            .set({ scheduled_for: JOB_STARTED_AT })
+            .where(eq(jobs.id, taskId));
+          const attemptStartedAt = Date.now();
+          const result = await service.processPendingJobs(1, {
+            jobTypes: [jobTypes.APP_CACHE_INVALIDATE],
+          });
+          expect(result).toMatchObject({ claimed: 1, succeeded: 0, retried: 0, failed: 1 });
+          const persisted = await repo.findByIdForWrite(taskId);
+          expect(persisted).toMatchObject({
+            status: attempt === 3 ? "failed" : "pending",
+            attempts: attempt,
+          });
+          if (attempt < 3) {
+            const expectedBackoffMs = attempt === 1 ? 30_000 : 120_000;
+            expect(persisted?.scheduled_for.getTime()).toBeGreaterThanOrEqual(
+              attemptStartedAt + expectedBackoffMs,
+            );
+            expect(persisted?.scheduled_for.getTime()).toBeLessThanOrEqual(
+              Date.now() + expectedBackoffMs + 1_000,
+            );
+          }
+        }
+
+        const failed = await repo.findByIdForWrite(taskId);
+        expect(failed?.error).toContain("AppCacheInvalidationRetryError");
+        expect(failed?.error).toContain("cache adapter rejected delete");
+        expect(failed?.error).toContain("upstream credential");
+        expect(failed?.error).not.toContain(secret);
+        expect(terminalLog).toHaveBeenCalledWith(
+          "[provisioning-jobs] App cache invalidation exhausted its retry budget",
+          expect.objectContaining({ jobId: taskId, attempts: 3, maxAttempts: 3 }),
+        );
+        expect(JSON.stringify(terminalLog.mock.calls)).not.toContain(secret);
+        expect(invalidate).toHaveBeenCalledTimes(3);
+      } finally {
+        invalidate.mockRestore();
+        terminalLog.mockRestore();
+      }
     },
     PGLITE_TIMEOUT,
   );

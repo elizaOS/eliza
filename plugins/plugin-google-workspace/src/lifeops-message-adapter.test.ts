@@ -23,6 +23,7 @@ function runtimeWithGoogleService(service: Record<string, unknown>): IAgentRunti
     listGmailTriageMessages: vi.fn(async () => []),
     searchGmailMessages: vi.fn(async () => []),
     sendGmailReply: vi.fn(async () => ({})),
+    sendGmailMessage: vi.fn(async () => ({})),
     modifyGmailMessages: vi.fn(async () => undefined),
     createGmailFilterForSender: vi.fn(async () => ({
       filterId: "filter_default",
@@ -149,6 +150,66 @@ describe("GoogleGmailAdapter", () => {
       references: "<root@example.com>",
     });
     expect(sent.externalId).toBe("sent_1");
+  });
+
+  it("advertises new-email send capability alongside reply", () => {
+    expect(new GoogleGmailAdapter().capabilities().send).toEqual({
+      reply: true,
+      new: true,
+      schedule: false,
+    });
+  });
+
+  it("creates and sends a NEW email draft (no inReplyToId) through sendGmailMessage", async () => {
+    const sendGmailMessage = vi.fn(async () => ({
+      messageId: "sent_new_1",
+      threadId: "thread_new_1",
+      labelIds: ["SENT"],
+    }));
+    const runtime = runtimeWithGoogleService({ sendGmailMessage });
+    const adapter = new GoogleGmailAdapter();
+
+    const draft = await adapter.createDraft(runtime, {
+      source: "gmail",
+      to: [{ identifier: "shadow@example.com" }],
+      subject: "Stop smoking",
+      body: "Please stop smoking.",
+      worldId: "acct_google_1",
+    });
+    const sent = await adapter.sendDraft(runtime, draft.draftId);
+
+    expect(draft.preview).toBe("Please stop smoking.");
+    expect(sendGmailMessage).toHaveBeenCalledWith({
+      accountId: "acct_google_1",
+      to: ["shadow@example.com"],
+      subject: "Stop smoking",
+      bodyText: "Please stop smoking.",
+    });
+    expect(sent.externalId).toBe("sent_new_1");
+  });
+
+  it("refuses a new draft without an email-address recipient", async () => {
+    const runtime = runtimeWithGoogleService({});
+    await expect(
+      new GoogleGmailAdapter().createDraft(runtime, {
+        source: "gmail",
+        to: [{ identifier: "not-an-address" }],
+        body: "hello",
+      })
+    ).rejects.toThrow(/email-address recipient/);
+  });
+
+  it("rejects a new draft when any requested recipient is invalid (no silent drop)", async () => {
+    const sendGmailMessage = vi.fn();
+    const runtime = runtimeWithGoogleService({ sendGmailMessage });
+    await expect(
+      new GoogleGmailAdapter().createDraft(runtime, {
+        source: "gmail",
+        to: [{ identifier: "valid@example.com" }, { identifier: "typo" }],
+        body: "hello",
+      })
+    ).rejects.toThrow(/invalid: typo/);
+    expect(sendGmailMessage).not.toHaveBeenCalled();
   });
 
   it("manages Gmail messages and unsubscribe requests with plugin-google-workspace operations", async () => {

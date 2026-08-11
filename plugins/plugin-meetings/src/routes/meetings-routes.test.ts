@@ -5,6 +5,7 @@
  */
 import type { AccessContext, RouteHandlerContext, UUID } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
+import { ZoomCloudImportError } from "../platforms/zoom/cloud-import.js";
 import { MeetingService } from "../service.js";
 import {
   FakeMeetingBillingSession,
@@ -159,6 +160,36 @@ describe("/api/meetings routes", () => {
     expect(
       (await del(ctx({ params: { id: crypto.randomUUID() } }))).status,
     ).toBe(404);
+  });
+
+  it("POST /import/zoom validates input and translates typed provider failures", async () => {
+    const { ctx, service } = makeHarness();
+    const post = route("POST", "/api/meetings/import/zoom");
+    expect((await post(ctx({ body: undefined }))).status).toBe(400);
+    expect(
+      (await post(ctx({ body: { meetingId: "meeting-1", accessToken: "" } })))
+        .status,
+    ).toBe(400);
+
+    service.importZoomMeeting = async () => {
+      throw new ZoomCloudImportError(
+        "permission_denied",
+        "Zoom artifacts are not visible to this account.",
+        403,
+        "zoom-request-403",
+      );
+    };
+    const denied = await post(
+      ctx({ body: { meetingId: "meeting-1", accessToken: "secret" } }),
+    );
+    expect(denied).toEqual({
+      status: 403,
+      body: {
+        error: "Zoom artifacts are not visible to this account.",
+        code: "permission_denied",
+        requestId: "zoom-request-403",
+      },
+    });
   });
 
   it("redacts transcriptId from meeting sessions when the requester cannot read the transcript", async () => {

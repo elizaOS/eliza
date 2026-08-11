@@ -77,7 +77,13 @@ function finalCheckTypes(sourceFile: ts.SourceFile): string[] {
     ) {
       found = true;
       for (const el of node.initializer.elements) {
-        if (!ts.isObjectLiteralExpression(el)) continue;
+        if (!ts.isObjectLiteralExpression(el)) {
+          // Helper-built checks (e.g. `judgeRubric({...})`) are effect checks
+          // whose `type` is assigned inside the helper; record them as opaque
+          // so the scenario is not misread as actionCalled-only.
+          types.push("__opaque__");
+          continue;
+        }
         for (const prop of el.properties) {
           if (!ts.isPropertyAssignment(prop)) continue;
           if (propName(prop.name) !== "type") continue;

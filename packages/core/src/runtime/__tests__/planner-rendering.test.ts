@@ -137,6 +137,48 @@ describe("truncateToolResultText (pure)", () => {
 		expect(out.length).toBeLessThanOrEqual(80);
 		expect(out).toMatch(/chars truncated/);
 	});
+
+	it("never splits a surrogate pair at the head or tail cut (#18025)", () => {
+		// All-astral content: any odd cut index lands mid-emoji, which used to
+		// leave a lone surrogate that strict provider JSON parsers reject
+		// ("lone leading surrogate in hex escape", wrong_api_format).
+		const emoji = "💀🔥🤖🎉😀".repeat(2_000);
+		for (const maxChars of [101, 202, 333, 1_000, 2_048]) {
+			const out = truncateToolResultText(emoji, maxChars);
+			expect(
+				(out as unknown as { isWellFormed(): boolean }).isWellFormed(),
+			).toBe(true);
+			expect(JSON.stringify(out)).not.toMatch(/\\u[dD][89a-fA-F]/);
+		}
+	});
+
+	// #18081: The truncated count must be exact — head + tail + truncated = total.
+	// The old code computed the count from requested head/tail lengths before
+	// surrogate-safe back-off, so the sum was wrong when a surrogate pair was
+	// split.
+	it("reports an exact truncated count for astral-only input (#18081)", () => {
+		const input = "💀".repeat(100); // 200 UTF-16 code units
+		const out = truncateToolResultText(input, 30);
+		expect(out).toMatch(/chars truncated/);
+		const match = out.match(/\[(\d+) chars truncated\]/);
+		expect(match).not.toBeNull();
+		const truncatedCount = Number.parseInt(match?.[1] ?? "0", 10);
+		const preserved = out.replace(/\s\[\d+ chars truncated\]\s/, "");
+		// head + tail + truncated = original length — the invariant.
+		expect(preserved.length + truncatedCount).toBe(input.length);
+	});
+
+	// #18081: Same invariant for mixed-content strings with emoji at cut boundaries.
+	it("reports an exact truncated count for mixed content with emoji boundaries (#18081)", () => {
+		const input = `header ${"💀".repeat(50)} ${"x".repeat(80)} ${"🔥".repeat(50)} footer`;
+		const out = truncateToolResultText(input, 80);
+		expect(out).toMatch(/chars truncated/);
+		const match = out.match(/\[(\d+) chars truncated\]/);
+		expect(match).not.toBeNull();
+		const truncatedCount = Number.parseInt(match?.[1] ?? "0", 10);
+		const preserved = out.replace(/\s\[\d+ chars truncated\]\s/, "");
+		expect(preserved.length + truncatedCount).toBe(input.length);
+	});
 });
 
 describe("trajectoryStepsToMessages — maxToolResultChars option", () => {

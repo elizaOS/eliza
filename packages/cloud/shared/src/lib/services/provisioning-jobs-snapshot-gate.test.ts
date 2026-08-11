@@ -10,6 +10,14 @@ import { jobsRepository } from "../../db/repositories/jobs";
 import { JOB_TYPES } from "./provisioning-job-types";
 import { ProvisioningJobService, provisioningJobService } from "./provisioning-jobs";
 
+const EMPTY_RECOVERY = {
+  scanned: 0,
+  retried: 0,
+  permanentlyFailed: 0,
+  unchanged: 0,
+  failures: [],
+};
+
 const prevGate = process.env.ELIZA_SNAPSHOT_JOBS_ENABLED;
 afterEach(() => {
   if (prevGate === undefined) delete process.env.ELIZA_SNAPSHOT_JOBS_ENABLED;
@@ -37,7 +45,7 @@ describe("claim path", () => {
       jobsRepository,
       "claimPendingJobsWithinSharedRunningLimit",
     ).mockResolvedValue([]);
-    const recoverSpy = spyOn(jobsRepository, "recoverStaleJobs").mockResolvedValue(0);
+    const recoverSpy = spyOn(jobsRepository, "recoverStaleJobs").mockResolvedValue(EMPTY_RECOVERY);
     try {
       await provisioningJobService.processPendingJobs(1);
       const claimedTypes = claimSpy.mock.calls.map((c) => c[0].type);
@@ -58,7 +66,7 @@ describe("claim path", () => {
       jobsRepository,
       "claimPendingJobsWithinSharedRunningLimit",
     ).mockResolvedValue([]);
-    const recoverSpy = spyOn(jobsRepository, "recoverStaleJobs").mockResolvedValue(0);
+    const recoverSpy = spyOn(jobsRepository, "recoverStaleJobs").mockResolvedValue(EMPTY_RECOVERY);
     try {
       await provisioningJobService.processPendingJobs(5);
       const snapshotCall = claimSpy.mock.calls.find((c) => c[0].type === JOB_TYPES.AGENT_SNAPSHOT);
@@ -82,7 +90,7 @@ describe("startup recovery", () => {
     const recoverSpy = spyOn(
       jobsRepository,
       "recoverInProgressJobsStartedBefore",
-    ).mockResolvedValue(0);
+    ).mockResolvedValue(EMPTY_RECOVERY);
     try {
       delete process.env.ELIZA_SNAPSHOT_JOBS_ENABLED;
       await provisioningJobService.recoverInterruptedJobsOnStartup(new Date());

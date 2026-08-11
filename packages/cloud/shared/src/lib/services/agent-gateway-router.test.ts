@@ -1,4 +1,4 @@
-// Exercises agent gateway router behavior with deterministic cloud-shared lib fixtures.
+/** Exercises connector-to-agent routing contracts with deterministic Cloud fixtures. */
 import { afterAll, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
 
 import { agentSandboxesRepository } from "../../db/repositories/agent-sandboxes";
@@ -443,6 +443,41 @@ describe("AgentGatewayRouterService phone routing", () => {
     );
   });
 
+  test("re-resolves an unknown sender immediately after authenticated phone linking", async () => {
+    findByPhoneNumberWithOrganization.mockResolvedValueOnce(null).mockResolvedValueOnce({
+      id: "newly-linked-user",
+      organization_id: "newly-linked-org",
+    });
+    queueSelectResult([], []);
+    runOnboardingChat.mockResolvedValue({
+      reply: "connect here",
+      session: {},
+      provisioning: {},
+    });
+    listOwnerSessions.mockResolvedValue([
+      {
+        runtimeAgentId: "newly-linked-agent",
+        organizationId: "newly-linked-org",
+      },
+    ]);
+    routeToSession.mockResolvedValue({ result: { text: "linked agent reply" } });
+    const router = newRouter();
+
+    const onboarding = await router.routePhoneMessage(routeArgs());
+    const linked = await router.routePhoneMessage(
+      routeArgs({ body: "I'm signed in", providerMessageId: "msg-2" }),
+    );
+
+    expect(onboarding).toMatchObject({ reason: "unknown_owner", replyText: "connect here" });
+    expect(linked).toMatchObject({
+      handled: true,
+      replyText: "linked agent reply",
+      agentId: "newly-linked-agent",
+      userId: "newly-linked-user",
+    });
+    expect(findByPhoneNumberWithOrganization).toHaveBeenCalledTimes(2);
+  });
+
   test("starts onboarding instead of throwing when phone target resolution fails", async () => {
     findByPhoneNumberWithOrganization.mockRejectedValue(new Error("lookup failed"));
     runOnboardingChat.mockResolvedValue({
@@ -626,6 +661,54 @@ describe("AgentGatewayRouterService phone routing", () => {
     });
     expect(runOnboardingChat).not.toHaveBeenCalled();
   });
+
+  test("routes a registered BlueBubbles bridge to its bound agent", async () => {
+    findRunningSandbox.mockResolvedValue({
+      id: "registered-agent",
+      organization_id: "registered-org",
+      user_id: "registered-user",
+      status: "running",
+      agent_config: {},
+    });
+    bridge.mockResolvedValue({ result: { text: "registered agent reply" } });
+
+    const result = await newRouter().routeRegisteredBlueBubblesMessage({
+      organizationId: "registered-org",
+      userId: "registered-user",
+      agentId: "registered-agent",
+      from: "+1 (555) 555-0100",
+      to: "+1 (415) 555-0123",
+      body: "hello from Messages",
+      providerMessageId: "bb-message-1",
+      metadata: { bluebubblesChatGuid: "iMessage;-;+15555550100" },
+    });
+
+    expect(findRunningSandbox).toHaveBeenCalledWith("registered-agent", "registered-org");
+    expect(bridge).toHaveBeenCalledWith(
+      "registered-agent",
+      "registered-org",
+      expect.objectContaining({
+        method: "message.send",
+        params: expect.objectContaining({
+          text: "hello from Messages",
+          source: "bluebubbles",
+          channelType: "DM",
+          metadata: expect.objectContaining({
+            provider: "bluebubbles",
+            providerMessageId: "bb-message-1",
+          }),
+        }),
+      }),
+    );
+    expect(result).toMatchObject({
+      handled: true,
+      replyText: "registered agent reply",
+      agentId: "registered-agent",
+      organizationId: "registered-org",
+      userId: "registered-user",
+    });
+    expect(findByPhoneNumberWithOrganization).not.toHaveBeenCalled();
+  });
 });
 
 describe("AgentGatewayRouterService discord DM onboarding (#17341)", () => {
@@ -650,6 +733,7 @@ describe("AgentGatewayRouterService discord DM onboarding (#17341)", () => {
     findByDiscordIdWithOrganization.mockResolvedValue(null);
     runOnboardingChat.mockResolvedValue({
       reply: "Welcome! Here is your login link.",
+      cta: { label: "Connect", url: "https://app.elizacloud.ai/get-started/?onboardingSession=t1" },
       session: { userId: undefined, organizationId: undefined },
       provisioning: { agentId: null },
     });
@@ -658,6 +742,10 @@ describe("AgentGatewayRouterService discord DM onboarding (#17341)", () => {
 
     expect(result.handled).toBe(true);
     expect(result.replyText).toBe("Welcome! Here is your login link.");
+    expect(result.replyCta).toEqual({
+      label: "Connect",
+      url: "https://app.elizacloud.ai/get-started/?onboardingSession=t1",
+    });
     expect(runOnboardingChat).toHaveBeenCalledWith(
       expect.objectContaining({
         platform: "discord",
@@ -687,6 +775,7 @@ describe("AgentGatewayRouterService discord DM onboarding (#17341)", () => {
 
     expect(result.handled).toBe(true);
     expect(result.replyText).toBe("Let's finish setting up your agent.");
+    expect(result.replyCta).toBeNull();
     expect(runOnboardingChat).toHaveBeenCalledWith(
       expect.objectContaining({
         platform: "discord",
@@ -711,6 +800,47 @@ describe("AgentGatewayRouterService discord DM onboarding (#17341)", () => {
 
     expect(result.handled).toBe(false);
     expect(result.reason).toBe("unknown_owner");
+    expect(runOnboardingChat).not.toHaveBeenCalled();
+  });
+
+  test("fail-open: a resolver throw on a first-contact DM still greets instead of dropping", async () => {
+    // Canon step 1 (ONBOARDING-CANON-2026-08-06): parity with routePhoneMessage.
+    // Before the fix, a throw here propagated and the DM died in silence.
+    findByDiscordIdWithOrganization.mockRejectedValue(new Error("db connection reset"));
+    runOnboardingChat.mockResolvedValue({
+      reply: "Welcome! Here is your login link.",
+      cta: { label: "Connect", url: "https://app.elizacloud.ai/get-started/?onboardingSession=t2" },
+      session: { userId: undefined, organizationId: undefined },
+      provisioning: { agentId: null },
+    });
+
+    const result = await newRouter().routeDiscordMessage(discordArgs());
+
+    expect(result.handled).toBe(true);
+    expect(result.reason).toBe("bridge_failed");
+    expect(result.replyText).toBe("Welcome! Here is your login link.");
+    expect(result.replyCta).toEqual({
+      label: "Connect",
+      url: "https://app.elizacloud.ai/get-started/?onboardingSession=t2",
+    });
+    expect(runOnboardingChat).toHaveBeenCalledWith(
+      expect.objectContaining({
+        platform: "discord",
+        platformUserId: "discord-user-1",
+        sessionId: "platform:discord:discord-user-1",
+        trustedPlatformIdentity: true,
+        idempotencyKey: "discord:msg-1",
+      }),
+    );
+  });
+
+  test("fail-open: a resolver throw in a GUILD channel never onboards (no credential in public)", async () => {
+    findByManagedDiscordGuildId.mockRejectedValue(new Error("db connection reset"));
+
+    const result = await newRouter().routeDiscordMessage(discordArgs({ guildId: "guild-9" }));
+
+    expect(result.handled).toBe(false);
+    expect(result.reason).toBe("bridge_failed");
     expect(runOnboardingChat).not.toHaveBeenCalled();
   });
 

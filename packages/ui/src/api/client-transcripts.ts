@@ -8,6 +8,7 @@
 import type { ArtifactShareGrantMode } from "@elizaos/core";
 import type {
   Transcript,
+  TranscriptCaptureSharingState,
   TranscriptScope,
   TranscriptSegment,
   TranscriptSource,
@@ -59,6 +60,10 @@ export interface TranscriptRevokeShareResult {
   entityId: string;
 }
 
+export interface TranscriptPrivacyUpdateInput {
+  sharing: Partial<TranscriptCaptureSharingState>;
+}
+
 declare module "./client-base" {
   interface ElizaClient {
     listTranscripts(
@@ -81,6 +86,13 @@ declare module "./client-base" {
       id: string,
       entityId: string,
     ): Promise<TranscriptRevokeShareResult>;
+    updateTranscriptPrivacy(
+      id: string,
+      input: TranscriptPrivacyUpdateInput,
+    ): Promise<{ transcript: Transcript }>;
+    deleteTranscriptSourceAudio(
+      id: string,
+    ): Promise<{ deleted: boolean; transcript: Transcript }>;
   }
 }
 
@@ -151,4 +163,24 @@ ElizaClient.prototype.revokeTranscriptShare = async function (
     )}`,
     { method: "DELETE" },
   );
+};
+
+ElizaClient.prototype.updateTranscriptPrivacy = async function (
+  this: ElizaClient,
+  id: string,
+  input: TranscriptPrivacyUpdateInput,
+) {
+  return this.fetch(`/api/transcripts/${encodeURIComponent(id)}/privacy`, {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  });
+};
+
+ElizaClient.prototype.deleteTranscriptSourceAudio = async function (
+  this: ElizaClient,
+  id: string,
+) {
+  return this.fetch(`/api/transcripts/${encodeURIComponent(id)}/source-audio`, {
+    method: "DELETE",
+  });
 };

@@ -413,6 +413,27 @@ describe("routeIntent — auto-start consent", () => {
 });
 
 describe("routeIntent — duplicate-start prevention + concurrency", () => {
+  it("lets the live authority record only after command execution succeeds", () => {
+    const store = new IntentDedupeStore();
+    const deferred = routeIntent(
+      intent({ type: "open-chat", intentId: "commit-after-apply" }),
+      healthyContext(),
+      store,
+      { record: false },
+    );
+    expect(deferred.status).toBe("routed");
+    expect(store.has("commit-after-apply", 1_000)).toBe(false);
+
+    store.record("commit-after-apply", 1_000);
+    expect(
+      routeIntent(
+        intent({ type: "open-chat", intentId: "commit-after-apply" }),
+        healthyContext(),
+        store,
+      ).status,
+    ).toBe("duplicate");
+  });
+
   it("dedupes the same intentId (retried deep link / re-tapped notification)", () => {
     const store = new IntentDedupeStore();
     const first = routeIntent(

@@ -42,7 +42,10 @@ import { useLoadOlderOnScroll } from "../../hooks/useLoadOlderOnScroll";
 import { useRealtimeVoiceMint } from "../../hooks/useRealtimeVoiceMint";
 import { useThreadAutoScroll } from "../../hooks/useThreadAutoScroll";
 import { useViewEvent } from "../../hooks/useViewEvent";
-import { claimAssistantLaunchPayloadFromHash } from "../../platform/assistant-launch-payload";
+import {
+  OS_INTENT_COMPOSER_PREFILL_EVENT,
+  type OsIntentComposerPrefillDetail,
+} from "../../os-intent/host";
 import {
   CodingAgentControlChip,
   PtyConsoleBase,
@@ -322,26 +325,21 @@ export function ChatView({
   useEffect(() => {
     if (isGameModal || typeof window === "undefined") return;
 
-    const consumeLaunchPayload = () => {
-      // Prefill the composer instead of auto-sending. An assistant-launch /
-      // deep-link / shortcut `text` is attacker-authorable (a crafted link can
-      // set it), so it must NOT be sent to the agent without the user reviewing
-      // it and pressing send. claim* dedupes by launchId and clears the hash.
-      const payload = claimAssistantLaunchPayloadFromHash(
-        window.location.hash,
-        {
-          allowedRoutes: ["chat"],
-        },
-      );
-      if (payload) {
-        setChatInput(payload.text);
-      }
+    const consumeLaunchPayload = (event: Event) => {
+      const detail = (event as CustomEvent<OsIntentComposerPrefillDetail>)
+        .detail;
+      if (detail?.text) setChatInput(detail.text);
     };
 
-    consumeLaunchPayload();
-    window.addEventListener("hashchange", consumeLaunchPayload);
+    window.addEventListener(
+      OS_INTENT_COMPOSER_PREFILL_EVENT,
+      consumeLaunchPayload,
+    );
     return () => {
-      window.removeEventListener("hashchange", consumeLaunchPayload);
+      window.removeEventListener(
+        OS_INTENT_COMPOSER_PREFILL_EVENT,
+        consumeLaunchPayload,
+      );
     };
   }, [isGameModal, setChatInput]);
 

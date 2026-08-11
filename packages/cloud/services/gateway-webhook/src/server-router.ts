@@ -1,5 +1,6 @@
-// Handles webhook gateway server router behavior for authenticated connector fan-in.
+/** Routes authenticated connector traffic to cloud identities and agent servers. */
 import { readFileSync } from "node:fs";
+import { reacquireAuthHeader } from "./auth";
 import { getHashTargets, refreshHashRing } from "./hash-router";
 import { logger } from "./logger";
 import type { GatewayRedis } from "./redis";
@@ -10,11 +11,6 @@ const RETRY_ATTEMPTS = 5;
 const RETRY_BASE_DELAY_MS = 2_000;
 const RETRY_INCREMENT_MS = 1_000;
 const IDENTITY_CACHE_TTL_SECONDS = 300;
-// A linked identity with no agent yet is a transient provisioning state, and an
-// unlinked identity becomes linked the moment onboarding finishes. Both are
-// cached only long enough to blunt webhook retry storms; a long TTL would strand
-// a just-provisioned or just-linked user in onboarding for the rest of the TTL.
-const IDENTITY_TRANSIENT_CACHE_TTL_SECONDS = 15;
 
 interface ServerRoute {
   serverName: string;
@@ -42,6 +38,7 @@ export async function resolveIdentity(
   platform: string,
   platformId: string,
   platformName?: string,
+  reauth: () => Promise<Record<string, string>> = reacquireAuthHeader,
 ): Promise<ResolvedIdentity | null> {
   const cacheKey = `identity:${platform}:${platformId}`;
   const cached = await redis.get<ResolvedIdentity | { notFound: true }>(
@@ -57,20 +54,34 @@ export async function resolveIdentity(
   const timeoutId = setTimeout(() => controller.abort(), FORWARD_TIMEOUT_MS);
 
   try {
-    const res = await fetch(url, {
+    const body = JSON.stringify({
+      platform,
+      platformId,
+      ...(platformName ? { platformName } : {}),
+    });
+    let res = await fetch(url, {
       method: "POST",
       headers: authHeader,
-      body: JSON.stringify({
-        platform,
-        platformId,
-        ...(platformName ? { platformName } : {}),
-      }),
+      body,
       signal: controller.signal,
     });
-    if (res.status === 404) {
-      await redis.set(cacheKey, JSON.stringify({ notFound: true }), {
-        ex: IDENTITY_TRANSIENT_CACHE_TTL_SECONDS,
+    // A Worker redeploy invalidates the gateway's token until its scheduled
+    // refresh, up to ~48 minutes away — and this call runs post-ack, so every
+    // 401 in that window is a user-visible silence. Re-bootstrap and retry
+    // exactly once; a second 401 falls through to the error path below.
+    if (res.status === 401) {
+      const freshHeader = await reauth();
+      res = await fetch(url, {
+        method: "POST",
+        headers: freshHeader,
+        body,
+        signal: controller.signal,
       });
+    }
+    if (res.status === 404) {
+      // An unlinked sender can become linked while the browser onboarding flow
+      // is open. Do not cache this transition state: the very next provider
+      // message must observe the completed identity link.
       return null;
     }
     if (!res.ok) throw new Error(`Identity resolve failed: ${res.status}`);
@@ -123,11 +134,14 @@ export async function resolveIdentity(
       organizationId,
       agentId: agentId ?? null,
     };
-    await redis.set(cacheKey, JSON.stringify(identity), {
-      ex: identity.agentId
-        ? IDENTITY_CACHE_TTL_SECONDS
-        : IDENTITY_TRANSIENT_CACHE_TTL_SECONDS,
-    });
+    // A linked account can gain its assigned agent at any moment during
+    // provisioning. Cache only the stable user+agent route so the first message
+    // after provisioning cannot be stranded behind a stale agentId:null entry.
+    if (identity.agentId) {
+      await redis.set(cacheKey, JSON.stringify(identity), {
+        ex: IDENTITY_CACHE_TTL_SECONDS,
+      });
+    }
     return identity;
   } finally {
     clearTimeout(timeoutId);
@@ -262,6 +276,12 @@ export interface ForwardMessageOptions {
   senderName?: string;
   /** Platform-specific chat/conversation ID for reply routing. */
   chatId?: string;
+  /** Connector account or bot identity that received the platform record. */
+  accountId?: string;
+  /** Stable platform-native message/update id used for canonical dedupe. */
+  platformRecordId?: string;
+  /** Platform-native chat type when the adapter exposes it. */
+  chatType?: string;
 }
 
 /**
@@ -284,6 +304,10 @@ export function buildForwardBody(
   if (options?.platformName) body.platformName = options.platformName;
   if (options?.senderName) body.senderName = options.senderName;
   if (options?.chatId) body.chatId = options.chatId;
+  if (options?.accountId) body.accountId = options.accountId;
+  if (options?.platformRecordId)
+    body.platformRecordId = options.platformRecordId;
+  if (options?.chatType) body.chatType = options.chatType;
   return body;
 }
 

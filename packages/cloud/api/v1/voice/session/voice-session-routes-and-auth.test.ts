@@ -224,7 +224,6 @@ function requestWithEnv(
 ) {
   return app.request(path, init, {
     VOICE_REALTIME_WS_ENABLED: "true",
-    DEEPGRAM_API_KEY: "dg",
     CARTESIA_API_KEY: "cartesia",
     VOICE_REALTIME_CARTESIA_VOICE_ID: "voice",
     VOICE_REALTIME_ELIZA_ENDPOINT: "https://eliza.test/sse",

@@ -6,11 +6,10 @@
  * match before the catch-all and stay reachable.
  *
  * After the existing Steward session auth resolves, the gate fetches the org's
- * agents and routes per `decideAppModeRoute`: one running dedicated agent →
- * full-page pairing redirect into its web UI (202 "must resume" and pairing
- * failures degrade to the Instances console); several → a minimal chooser;
- * dedicated-but-stopped → Instances; shared-tier-only orgs fall through to the
- * same-origin chat app unchanged; no agents at all → the `/join`
+ * agents and routes per `decideAppModeRoute`: any agents → the same-origin
+ * chat app (the chat floor — entry never pairing-redirects into a per-agent
+ * web UI and never bounces to the console; see `./app-mode` for why the
+ * entry-time pairing redirect was removed); no agents at all → the `/join`
  * deploy-first-agent flow. Unauthenticated visitors first get one shot at the
  * cross-host SSO bridge (`../sso-bridge/sso-bridge` — only when the
  * domain-wide session marker says the dashboard pair holds a live session and
@@ -21,8 +20,7 @@
  */
 
 import { type ReactNode, useEffect, useRef, useState } from "react";
-import { Navigate, useLocation, useNavigate } from "react-router-dom";
-import { Button } from "../../components/ui/button";
+import { Navigate, useLocation } from "react-router-dom";
 import { useAgents } from "../instances/lib/data/eliza-agents";
 import { useSessionAuth } from "../lib/use-session-auth";
 import {
@@ -30,12 +28,7 @@ import {
   redirectToSsoBridge,
   shouldAutoBridgeToSso,
 } from "../sso-bridge/sso-bridge";
-import {
-  APP_MODE_INSTANCES_PATH,
-  type AppModeAgent,
-  decideAppModeRoute,
-  redirectToAgentWebUI,
-} from "./app-mode";
+import { decideAppModeRoute } from "./app-mode";
 
 function EntryNotice({
   label,
@@ -61,11 +54,7 @@ export function AppModeEntryRoute({
 }): React.JSX.Element {
   const { ready, authenticated } = useSessionAuth();
   const location = useLocation();
-  const navigate = useNavigate();
   const agentsQuery = useAgents();
-
-  const redirectStartedRef = useRef(false);
-  const [redirectError, setRedirectError] = useState<string | null>(null);
 
   // Unauthenticated visits may ride the cross-host SSO bridge instead of the
   // local login: when the domain-wide session marker says the dashboard pair
@@ -96,30 +85,6 @@ export function AppModeEntryRoute({
     );
   }, [ready, authenticated, location]);
 
-  const route =
-    authenticated && agentsQuery.data !== undefined
-      ? decideAppModeRoute(agentsQuery.data)
-      : null;
-  const entryAgent = route?.kind === "enter-agent" ? route.agent : null;
-
-  // Exactly one running dedicated agent → full-page redirect into its web UI.
-  // The ref makes the pairing POST once-per-mount: the agents query repolls and
-  // re-derives `route`, and a second POST would burn another one-time token.
-  useEffect(() => {
-    if (!entryAgent || redirectStartedRef.current) return;
-    redirectStartedRef.current = true;
-    void redirectToAgentWebUI(entryAgent.id).then((result) => {
-      if (result.ok) return;
-      if (result.starting) {
-        // 202 — the server queued a resume; land on Instances where the agent's
-        // status and wake progress are visible.
-        navigate(APP_MODE_INSTANCES_PATH, { replace: true });
-        return;
-      }
-      setRedirectError(result.error);
-    });
-  }, [entryAgent, navigate]);
-
   if (!ready) {
     return <EntryNotice label="Loading" />;
   }
@@ -140,99 +105,21 @@ export function AppModeEntryRoute({
   }
 
   if (agentsQuery.isError) {
-    // Never a blank screen: the Instances console owns the failure surface
-    // (skeleton / error state / retry) for the same list.
-    return <Navigate to={APP_MODE_INSTANCES_PATH} replace />;
+    // Never a blank screen — and never the console either: the same-origin
+    // chat app is the app host's own surface, so a control-plane hiccup on
+    // the agents list keeps the visitor in the product.
+    return <>{appElement}</>;
   }
 
-  if (!route) {
+  if (agentsQuery.data === undefined) {
     return <EntryNotice label="Loading your agent" />;
   }
 
-  switch (route.kind) {
-    case "enter-agent":
-      if (redirectError) {
-        return (
-          <EntryNotice label="Connection failed">
-            <p className="max-w-sm text-sm text-white/62">{redirectError}</p>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => navigate(APP_MODE_INSTANCES_PATH)}
-            >
-              Go to your instances
-            </Button>
-          </EntryNotice>
-        );
-      }
-      return <EntryNotice label="Connecting to your agent" />;
-
-    case "choose-agent":
-      return <AgentChooser running={route.running} />;
-
-    case "resume":
-    case "create":
-      return <Navigate to={route.to} replace />;
-
-    case "chat-home":
-      return <>{appElement}</>;
+  const route = decideAppModeRoute(agentsQuery.data);
+  if (route.kind === "create") {
+    return <Navigate to={route.to} replace />;
   }
-}
-
-/** Minimal chooser for orgs with several running dedicated agents; each row
- * deep-links through the same pairing redirect as automatic entry. */
-function AgentChooser({
-  running,
-}: {
-  running: AppModeAgent[];
-}): React.JSX.Element {
-  const navigate = useNavigate();
-  const [pendingId, setPendingId] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  async function openAgent(agentId: string): Promise<void> {
-    setPendingId(agentId);
-    setError(null);
-    const result = await redirectToAgentWebUI(agentId, "user-initiated");
-    if (!result.ok) {
-      setPendingId(null);
-      setError(
-        result.starting
-          ? "Agent is still starting — try again shortly."
-          : result.error,
-      );
-    }
-  }
-
-  return (
-    <EntryNotice label="Pick your agent">
-      <div className="w-full max-w-sm space-y-2 text-left">
-        {running.map((agent) => (
-          <button
-            key={agent.id}
-            type="button"
-            disabled={pendingId !== null}
-            onClick={() => void openAgent(agent.id)}
-            className="flex w-full items-center justify-between border border-white/15 bg-white/5 px-4 py-3 text-sm text-white transition-colors hover:bg-white/10 disabled:opacity-50"
-          >
-            <span className="truncate">{agent.agentName ?? agent.id}</span>
-            <span className="ml-3 shrink-0 font-mono text-[11px] uppercase tracking-widest text-white/62">
-              {pendingId === agent.id ? "Connecting…" : "Open"}
-            </span>
-          </button>
-        ))}
-      </div>
-      {error ? <p className="max-w-sm text-sm text-red-400">{error}</p> : null}
-      <Button
-        type="button"
-        variant="link"
-        className="text-xs text-white/62"
-        onClick={() => navigate(APP_MODE_INSTANCES_PATH)}
-      >
-        Manage all instances
-      </Button>
-    </EntryNotice>
-  );
+  return <>{appElement}</>;
 }
 
 export default AppModeEntryRoute;

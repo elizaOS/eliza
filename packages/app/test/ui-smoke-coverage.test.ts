@@ -8,41 +8,13 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 /**
- * UI-smoke spec-coverage ratchet gate (vitest, boot-free).
- *
- * Sibling to the action-coverage and route-coverage gates. Those gates prove
- * that every action/route is *enumerated* in the smoke matrix — but a spec that
- * is enumerated yet never executed in CI is false confidence. This gate closes
- * that hole on the spec axis.
- *
- * The keyless PR lane (scenario-pr.yml) is DIRECTORY-DRIVEN (issue #9943): it
- * runs every ui-smoke spec under test/ui-smoke, including nested specs, EXCEPT
- * the entries recorded in the
- * checked-in deny-list (test/ui-smoke/.pr-deny-list.json). Most specs are
- * hand-named in slice jobs for parallelism; the `app-browser-auto-discovered`
- * job runs the remainder via scripts/ui-smoke-pr-specs.mjs --list-auto. The net
- * effect: a NEW spec is on the PR path by default, and the ONLY way to exclude
- * one is to record it in the deny-list with a category and a reason.
- *
- * This gate enforces that contract:
- *   1. The deny-list is well-formed (real specs, valid category, non-empty
- *      reason, no duplicates).
- *   2. The keyless-debt bucket is a non-growing ratchet (MAX_KEYLESS_DEBT).
- *   3. A spec that is hand-named in the workflow is never simultaneously
- *      deny-listed (that would run it despite the exclusion).
- *   4. The directory-driven catch-all job stays wired into scenario-pr.yml, so
- *      every non-denied spec actually runs (named slices ∪ auto-discovered =
- *      all non-denied specs).
+ * UI-smoke exclusion-list ratchet (vitest, boot-free). It keeps exclusions
+ * explicit and bounded without coupling the suite inventory to CI topology.
  */
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const UI_SMOKE_DIR = path.join(HERE, "ui-smoke");
 const DENY_LIST_PATH = path.join(UI_SMOKE_DIR, ".pr-deny-list.json");
-const REPO_ROOT = path.resolve(HERE, "../../..");
-const KEYLESS_WORKFLOW = path.join(
-  REPO_ROOT,
-  ".github/workflows/scenario-pr.yml",
-);
 
 const VALID_CATEGORIES = [
   "live-only",
@@ -93,16 +65,6 @@ function denyList(): DenyEntry[] {
     throw new Error(`${DENY_LIST_PATH}: expected a "specs" array`);
   }
   return parsed.specs;
-}
-
-/** Spec paths hand-named in scenario-pr.yml (test/ui-smoke/<path>.spec.ts). */
-function namedInWorkflow(): Set<string> {
-  const workflow = readFileSync(KEYLESS_WORKFLOW, "utf8");
-  return new Set(
-    [...workflow.matchAll(/test\/ui-smoke\/([A-Za-z0-9_./-]+\.spec\.ts)/g)].map(
-      (match) => match[1] ?? "",
-    ),
-  );
 }
 
 describe("ui-smoke spec coverage gate", () => {
@@ -156,64 +118,9 @@ describe("ui-smoke spec coverage gate", () => {
     ).toBeLessThanOrEqual(MAX_KEYLESS_DEBT);
   });
 
-  it("a hand-named slice spec is never also deny-listed", () => {
+  it("the exclusion list never swallows the whole suite", () => {
     const denied = new Set(denyList().map((e) => e.spec));
-    const named = namedInWorkflow();
-    const conflict = [...named].filter((spec) => denied.has(spec));
-    expect(
-      conflict,
-      `These specs are both hand-named in scenario-pr.yml AND deny-listed — a ` +
-        `deny-listed spec must not run, so remove it from the workflow or the ` +
-        `deny-list: ${conflict.join(", ")}`,
-    ).toEqual([]);
-  });
-
-  it("every spec hand-named in the workflow resolves to a real spec file", () => {
-    const specs = new Set(specFileNames());
-    const missing = [...namedInWorkflow()].filter((name) => !specs.has(name));
-    expect(
-      missing,
-      `scenario-pr.yml references ui-smoke specs that do not exist ` +
-        `(rename/typo?): ${missing.join(", ")}`,
-    ).toEqual([]);
-  });
-
-  it("the directory-driven auto-discovered catch-all job stays wired into scenario-pr.yml", () => {
-    const workflow = readFileSync(KEYLESS_WORKFLOW, "utf8");
-    expect(
-      workflow.includes("ui-smoke-pr-specs.mjs --list-auto"),
-      "scenario-pr.yml must invoke `ui-smoke-pr-specs.mjs --list-auto` so every " +
-        "non-denied ui-smoke spec runs on the PR path. Without it, new specs run nowhere.",
-    ).toBe(true);
-    expect(
-      workflow.includes("app-browser-auto-discovered"),
-      "The app-browser-auto-discovered job must exist and be gated by the " +
-        "deterministic-scenario aggregate.",
-    ).toBe(true);
-  });
-
-  it("named slices ∪ auto-discovered = every non-denied spec (nothing runs nowhere)", () => {
-    const denied = new Set(denyList().map((e) => e.spec));
-    const named = namedInWorkflow();
     const allSpecs = specFileNames();
-    const runnable = allSpecs.filter((name) => !denied.has(name));
-
-    // The auto-discovered job runs exactly the runnable specs not hand-named in a
-    // slice (mirror of scripts/ui-smoke-pr-specs.mjs --list-auto). Together with
-    // the named slices this must cover every runnable spec, with no overlap gaps.
-    const autoDiscovered = runnable.filter((name) => !named.has(name));
-    const covered = new Set<string>([
-      ...[...named].filter((name) => runnable.includes(name)),
-      ...autoDiscovered,
-    ]);
-    const uncovered = runnable.filter((name) => !covered.has(name));
-    expect(
-      uncovered,
-      `Runnable specs covered by neither a named slice nor the auto-discovered ` +
-        `job: ${uncovered.join(", ")}`,
-    ).toEqual([]);
-
-    // Sanity: the deny-list never swallows the whole directory.
     expect(denied.size).toBeLessThan(allSpecs.length);
   });
 });

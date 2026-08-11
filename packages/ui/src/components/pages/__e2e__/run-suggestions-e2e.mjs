@@ -238,10 +238,16 @@ const errorCapture = (_res, message, status) => {
   errors400.push({ message, status });
 };
 
+function jsonRequest(body) {
+  const req = Readable.from([Buffer.from(JSON.stringify(body))]);
+  req.headers = { "content-type": "application/json" };
+  return req;
+}
+
 async function postNavigate(viewId, body) {
   const pathname = `/api/views/${encodeURIComponent(viewId)}/navigate`;
   await handleViewsRoutes({
-    req: Readable.from([Buffer.from(JSON.stringify(body))]),
+    req: jsonRequest(body),
     res: noopRes,
     method: "POST",
     pathname,
@@ -255,7 +261,7 @@ async function postNavigate(viewId, body) {
 
 async function postShortcut(shortcutId) {
   await handleInteractionsRoutes({
-    req: Readable.from([Buffer.from(JSON.stringify({ shortcutId }))]),
+    req: jsonRequest({ shortcutId }),
     res: noopRes,
     method: "POST",
     pathname: "/api/interactions/shortcut",

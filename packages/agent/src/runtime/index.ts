@@ -8,12 +8,14 @@
  */
 export * from "./advanced-capabilities-config.ts";
 export * from "./agent-event-service.ts";
+export * from "./boot-hooks.ts";
 export * from "./boot-pipeline.ts";
 export * from "./conversation-compactor.ts";
 export * from "./conversation-compactor.types.ts";
 export * from "./eliza.ts";
 export * from "./eliza-plugin.ts";
 export * from "./first-run-names.ts";
+export { extractPlugin } from "./load-plugin-from-vfs.ts";
 export * from "./owner-entity.ts";
 export * from "./plugin-collector.ts";
 export * from "./plugin-lifecycle.ts";

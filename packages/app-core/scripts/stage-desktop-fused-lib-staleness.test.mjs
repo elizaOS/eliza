@@ -1,7 +1,7 @@
 /** Exercises stage desktop fused lib staleness behavior with deterministic app-core test fixtures. */
 import assert from "node:assert/strict";
-import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -40,9 +40,9 @@ function currentFork() {
 }
 
 /** Run `--check --out <dir>`; return the process exit code (0 fresh, 2 stale). */
-function checkExitCode(outDir) {
+function checkExitCode(outDir, extraArgs = []) {
   try {
-    execFileSync("node", [script, "--check", "--out", outDir], {
+    execFileSync("node", [script, "--check", "--out", outDir, ...extraArgs], {
       stdio: "ignore",
     });
     return 0;
@@ -139,6 +139,52 @@ test("--check: staged lib whose bytes don't match the stamp hash is STALE → ex
       }),
     );
     assert.equal(checkExitCode(dir), 2);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("--check: a host-native stamp is stale for a portable CPU request", () => {
+  const dir = mkTmp();
+  try {
+    const bytes = Buffer.from("fake-host-native-lib");
+    fs.writeFileSync(path.join(dir, libName), bytes);
+    fs.writeFileSync(
+      path.join(dir, STAMP),
+      JSON.stringify({
+        forkCommit: currentFork(),
+        forkDirty: "",
+        backend: "cpu",
+        cpuNative: true,
+        fusedLib: libName,
+        fusedSha256: createHash("sha256").update(bytes).digest("hex"),
+        builtAt: "now",
+      }),
+    );
+    assert.equal(checkExitCode(dir, ["--portable-cpu"]), 2);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("--check: a portable CPU stamp is fresh for a portable CPU request", () => {
+  const dir = mkTmp();
+  try {
+    const bytes = Buffer.from("fake-portable-lib");
+    fs.writeFileSync(path.join(dir, libName), bytes);
+    fs.writeFileSync(
+      path.join(dir, STAMP),
+      JSON.stringify({
+        forkCommit: currentFork(),
+        forkDirty: "",
+        backend: "cpu",
+        cpuNative: false,
+        fusedLib: libName,
+        fusedSha256: createHash("sha256").update(bytes).digest("hex"),
+        builtAt: "now",
+      }),
+    );
+    assert.equal(checkExitCode(dir, ["--portable-cpu"]), 0);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }

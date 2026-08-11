@@ -58,6 +58,13 @@ const publicPathPrefixes = [
   // every logout 401 once cookies were gone, so the server-side teardown never
   // ran and stale refresh cookies could silently re-mint a session.
   "/api/auth/logout",
+  // OpenID Connect provider. Every leg self-authenticates with a credential
+  // this gate cannot vouch for: /authorize resolves the Steward COOKIE only
+  // (never a Bearer, and never JIT-provisioning), /token authenticates the
+  // relying party's client secret, and /userinfo verifies a bearer access
+  // token against the OIDC key ring. Gating them here would 401 /token and
+  // /userinfo, whose callers hold no Cloud session at all.
+  "/api/oidc",
   "/api/set-anonymous-session",
   "/api/anonymous-session",
   "/api/auth/create-anonymous-session",
@@ -137,6 +144,9 @@ const publicPathPrefixes = [
   "/api/v1/voice/session/ws",
   "/api/v1/oauth/providers",
   "/api/v1/oauth/callback",
+  // Short-lived HMAC proof check for the browser OAuth success landing page
+  // (API-key OAuth cannot inherit Authorization into the redirect target).
+  "/api/v1/oauth/success-proof/verify",
   "/api/v1/user/wallets/rpc",
   "/api/v1/app-auth",
   "/api/.well-known",
@@ -182,13 +192,20 @@ function isPublicOutOfBandTokenPath(pathname: string): boolean {
 }
 
 export function isPublicPath(pathname: string): boolean {
-  // The browser pair relay is public because its one-time token is
-  // origin-bound by the route. Native pairing is a distinct authenticated
-  // sibling and must still pass through this global auth boundary.
+  // Local Docker's loopback browser relay is public because its one-time token
+  // and loopback Origin are both checked by the route. Remote managed pairing
+  // terminates on the agent-subdomain edge. Native pairing is a distinct
+  // authenticated sibling and must still pass through this auth boundary.
   if (pathname === "/api/auth/pair" || pathname === "/api/auth/pair/") {
     return true;
   }
   if (pathname === "/api/v1/oauth/callback") return true;
+  if (
+    pathname === "/api/v1/oauth/success-proof/verify" ||
+    pathname === "/api/v1/oauth/success-proof/verify/"
+  ) {
+    return true;
+  }
   if (/^\/api\/v1\/oauth\/[^/]+\/callback\/?$/.test(pathname)) return true;
   if (/^\/api\/v1\/apps\/[^/]+\/generate-image\/?$/.test(pathname)) return true;
   if (/^\/api\/v1\/apps\/[^/]+\/public\/?$/.test(pathname)) return true;

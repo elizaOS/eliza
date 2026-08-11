@@ -47,7 +47,10 @@ test.describe("deprovision", () => {
         headers: { Authorization: `Bearer ${seededUser.apiKey}` },
       },
     );
-    expect([200, 202, 204]).toContain(delRes.status);
+    expect(
+      [200, 202, 204],
+      `agent delete returned ${delRes.status}: ${await delRes.clone().text()}`,
+    ).toContain(delRes.status);
 
     await processJobs();
 

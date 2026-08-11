@@ -16,16 +16,29 @@
  *     rejected before any network call.
  */
 
-import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DocumentUploadFile } from "./documents-upload.helpers";
 
 const appMock = vi.hoisted(() => ({ value: {} as Record<string, unknown> }));
+const bindingMock = vi.hoisted(() => ({
+  value: null as null | { onQuery(value: string): void },
+}));
 const clientMock = vi.hoisted(() => ({
   listDocuments: vi.fn(),
   uploadDocumentsBulk: vi.fn(),
   searchDocuments: vi.fn(),
   getDocumentFacetCounts: vi.fn(),
+  getDocument: vi.fn(),
+  getDocumentFragments: vi.fn(),
+  getTranscript: vi.fn(),
 }));
 
 vi.mock("../../state", () => ({
@@ -38,7 +51,9 @@ vi.mock("../../state", () => ({
 }));
 vi.mock("../../api/client", () => ({ client: clientMock }));
 vi.mock("../../state/view-chat-binding", () => ({
-  useRegisterViewChatBinding: () => {},
+  useRegisterViewChatBinding: (binding: { onQuery(value: string): void }) => {
+    bindingMock.value = binding;
+  },
 }));
 vi.mock("../../utils/desktop-dialogs", () => ({
   confirmDesktopAction: vi.fn(async () => true),
@@ -87,6 +102,10 @@ beforeEach(() => {
   clientMock.uploadDocumentsBulk.mockReset();
   clientMock.searchDocuments.mockReset();
   clientMock.getDocumentFacetCounts.mockReset();
+  clientMock.getDocument.mockReset();
+  clientMock.getDocumentFragments.mockReset();
+  clientMock.getTranscript.mockReset();
+  bindingMock.value = null;
   clientMock.listDocuments.mockResolvedValue({ documents: [] });
   clientMock.uploadDocumentsBulk.mockResolvedValue({
     results: [{ index: 0, ok: true, filename: "notes.txt" }],
@@ -96,6 +115,11 @@ beforeEach(() => {
   // mount side-effect-free (an unmocked call would surface a load-error notice).
   clientMock.getDocumentFacetCounts.mockResolvedValue({
     counts: { all: 0, doc: 0, image: 0, audio: 0, video: 0, transcript: 0 },
+  });
+  clientMock.getDocumentFragments.mockResolvedValue({
+    documentId: "d1",
+    fragments: [],
+    count: 0,
   });
 });
 
@@ -241,6 +265,76 @@ describe("UploadZone — native file drop (handleDrop)", () => {
     expect(onFilesUpload.mock.calls[0][1]).toEqual({
       includeImageDescriptions: true,
       scope: "global",
+    });
+  });
+});
+
+describe("DocumentsView — anchored transcript search", () => {
+  it("opens a transcript hit at the projected audio offset", async () => {
+    clientMock.searchDocuments.mockResolvedValue({
+      results: [
+        {
+          id: "fragment-1",
+          documentId: "d1",
+          documentTitle: "Meeting transcript",
+          text: "the anchored phrase",
+          similarity: 0.94,
+          transcriptId: "t1",
+          startMs: 1250,
+          endMs: 1800,
+        },
+      ],
+    });
+    clientMock.getDocument.mockResolvedValue({
+      document: {
+        id: "d1",
+        filename: "meeting.txt",
+        contentType: "text/plain",
+        fileSize: 100,
+        createdAt: 1000,
+        fragmentCount: 1,
+        source: "transcript",
+        provenance: { kind: "transcript", label: "Transcript" },
+        canEditText: true,
+        canDelete: true,
+        content: { text: "the anchored phrase" },
+        transcriptId: "t1",
+        transcriptAudioUrl: "/api/media/a.wav",
+      },
+    });
+    clientMock.getTranscript.mockResolvedValue({
+      transcript: {
+        id: "t1",
+        title: "Meeting transcript",
+        createdAt: 1000,
+        durationMs: 2000,
+        source: "meeting",
+        scope: "owner-private",
+        status: "ready",
+        speakerCount: 1,
+        audioUrl: "/api/media/a.wav",
+        segments: [
+          {
+            id: "s1",
+            speakerLabel: "Alice",
+            startMs: 1000,
+            endMs: 1800,
+            text: "the anchored phrase",
+            words: [],
+          },
+        ],
+      },
+    });
+
+    render(<DocumentsView />);
+    await waitFor(() => expect(bindingMock.value).not.toBeNull());
+    act(() => bindingMock.value?.onQuery("anchored phrase"));
+    await waitFor(() => expect(clientMock.searchDocuments).toHaveBeenCalled());
+    fireEvent.click(await screen.findByText("Meeting transcript"));
+
+    await waitFor(() => {
+      const audio = document.querySelector("audio") as HTMLAudioElement | null;
+      expect(audio?.currentTime).toBeCloseTo(1.25, 3);
     });
   });
 });

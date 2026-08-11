@@ -101,5 +101,7 @@ describe("isPublicPath — removed dead eliza-app gateway (#12043)", () => {
     );
     expect(isPublicPath("/api/eliza-app/cli-auth/init")).toBe(true);
     expect(isPublicPath("/api/eliza-app/onboarding")).toBe(true);
+    expect(isPublicPath("/api/v1/oauth/success-proof/verify")).toBe(true);
+    expect(isPublicPath("/api/v1/oauth/success-proof/verify/")).toBe(true);
   });
 });

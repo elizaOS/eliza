@@ -21,7 +21,10 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { saveAccount } from "@elizaos/auth/account-storage";
+import {
+  createIsolatedAccountStoragePolicy,
+  saveAccount,
+} from "@elizaos/auth/account-storage";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   __resetDefaultAccountPoolForTests,
@@ -42,19 +45,22 @@ function writeAccount(
   access: string,
   extra: { createdAt?: number } = {},
 ): void {
-  saveAccount({
-    id,
-    providerId: PROVIDER,
-    label: id,
-    source: "api-key",
-    credentials: {
-      access,
-      refresh: "",
-      expires: FAR_FUTURE,
+  saveAccount(
+    {
+      id,
+      providerId: PROVIDER,
+      label: id,
+      source: "api-key",
+      credentials: {
+        access,
+        refresh: "",
+        expires: FAR_FUTURE,
+      },
+      createdAt: extra.createdAt ?? Date.now(),
+      updatedAt: Date.now(),
     },
-    createdAt: extra.createdAt ?? Date.now(),
-    updatedAt: Date.now(),
-  });
+    createIsolatedAccountStoragePolicy(home),
+  );
 }
 
 /** Mutate the pool-metadata overlay (priority/enabled) the way the HTTP PATCH route does. */

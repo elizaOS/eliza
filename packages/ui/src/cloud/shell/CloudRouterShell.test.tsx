@@ -2,7 +2,7 @@
 // @vitest-environment jsdom
 import { STEWARD_TOKEN_KEY } from "@elizaos/shared/steward-session-client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, describe, expect, it } from "vitest";
 import { appModeNavigation } from "../app-mode/app-mode";
@@ -273,16 +273,14 @@ describe("CloudRouterShell app-mode catch-all (app.elizacloud.ai)", () => {
     expect(screen.queryByTestId("agent-app")).toBeNull();
   });
 
-  it("routes a signed-in app-host visitor with one running dedicated agent into its web UI via pairing", async () => {
+  it("keeps a signed-in app-host visitor with one running dedicated agent in the same-origin chat app (chat floor: no pairing token, no redirect)", async () => {
+    // Regression pin for the cold-start dead-end: the previous gate minted a
+    // one-time 60s pairing token here and full-page-redirected into the
+    // per-agent /pair URL; a cold-starting container cannot consume the token
+    // inside its TTL, so entry dead-ended on "Sign-in link expired". Entry
+    // must render the chat app and issue zero pairing traffic.
     setHostname("app.elizacloud.ai");
-    const redirectUrl = "https://agent-1.elizacloud.ai/pair?token=tok";
     installFetchRecorder((url, init) => {
-      if (url === "/api/v1/eliza/agents/agent-1/pairing-token") {
-        return new Response(JSON.stringify({ data: { redirectUrl } }), {
-          status: 200,
-          headers: { "content-type": "application/json" },
-        });
-      }
       if (url === "/api/v1/eliza/agents" && (init?.method ?? "GET") === "GET") {
         return new Response(
           JSON.stringify({
@@ -307,8 +305,6 @@ describe("CloudRouterShell app-mode catch-all (app.elizacloud.ai)", () => {
       });
     });
     assignedUrls = [];
-    // Both seams feed one log: automatic entry replaces history, an explicit
-    // chooser pick pushes; the split itself is pinned in app-mode.test.ts.
     appModeNavigation.assign = (url: string) => {
       assignedUrls.push(url);
     };
@@ -318,11 +314,11 @@ describe("CloudRouterShell app-mode catch-all (app.elizacloud.ai)", () => {
     localStorage.setItem(STEWARD_TOKEN_KEY, stewardToken(FUTURE_EXP));
     renderCatchAllWithAppModeMarkers();
 
-    await waitFor(() => expect(assignedUrls).toEqual([redirectUrl]));
-    expect(fetchLog).toContain(
-      "POST /api/v1/eliza/agents/agent-1/pairing-token",
+    expect(await screen.findByTestId("agent-app")).toBeTruthy();
+    expect(fetchLog.filter((line) => line.includes("pairing-token"))).toEqual(
+      [],
     );
-    expect(screen.queryByTestId("agent-app")).toBeNull();
+    expect(assignedUrls).toEqual([]);
   });
 
   it("app-staging.elizacloud.ai is an app-mode host too (staging mirrors prod)", async () => {

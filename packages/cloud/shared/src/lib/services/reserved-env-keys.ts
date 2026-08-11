@@ -20,6 +20,13 @@ export const RESERVED_PLATFORM_ENV_KEYS = [
   "ELIZAOS_CLOUD_API_KEY",
   "ELIZAOS_CLOUD_BASE_URL",
   "ELIZAOS_CLOUD_ENABLED",
+  // Hosting-mode marker for managed Eliza Cloud containers. The UI and agent
+  // server read this (via isCloudProvisionedContainer) to distinguish managed
+  // Cloud from user-owned/self-hosted installs. Callers must not override it.
+  "ELIZA_CLOUD_PROVISIONED",
+  // Direct pairing is restricted to loopback-bound local Docker. Remote
+  // managed containers must not let caller env reopen the container relay.
+  "ELIZA_CLOUD_PAIR_DIRECT_RELAY",
   "ELIZA_CLOUD_AGENT_ID",
   "PUBLIC_BASE_URL",
   "STEWARD_API_URL",
