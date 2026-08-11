@@ -21,9 +21,7 @@ describe("server entry — no browser/UI imports (#18031)", () => {
     // ProjectSwitcher is a React component whose transitive import chain
     // reaches @elizaos/ui → @radix-ui/react-slot. It must only be reachable
     // from the view bundle, not from the server entry.
-    expect(source).not.toMatch(
-      /export\s+\{[^}]*ProjectSwitcher[^}]*\}/,
-    );
+    expect(source).not.toMatch(/export\s+\{[^}]*ProjectSwitcher[^}]*\}/);
   });
 
   it("does not import from @elizaos/ui", () => {
