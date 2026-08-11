@@ -142,6 +142,20 @@ type DirectCloudAgentCreateData = {
   status: string;
 };
 
+function requireConfirmedFreshCloudAgentCreate(
+  forceCreate: boolean | undefined,
+  created: boolean | undefined,
+  source?: string,
+): void {
+  const freshWarmPoolSource =
+    source === "warm_pool" || source === "warm_pool_recovery";
+  if (forceCreate && created !== true && !freshWarmPoolSource) {
+    throw new Error(
+      "Eliza Cloud did not confirm that a new agent was created. No agent was opened; refresh your session and try again.",
+    );
+  }
+}
+
 /** Async-job envelope returned by the restart/suspend/resume lifecycle routes. */
 type LifecycleResult = { jobId: string; status: string; message: string };
 
@@ -177,6 +191,19 @@ function isDirectCloudBase(client: ElizaClient): boolean {
     // error-policy:J3 malformed base URL reads as "not a direct cloud base".
     return false;
   }
+}
+
+function resolveCloudPageApiBaseForDedicatedAgent(
+  client: ElizaClient,
+): string | null {
+  if (typeof window === "undefined") return null;
+  const baseUrl = client.getBaseUrl().trim();
+  if (!isDedicatedCloudAgentBase(baseUrl)) return null;
+  return (
+    DIRECT_ELIZA_CLOUD_API_BY_HOST.get(
+      window.location.hostname.toLowerCase(),
+    ) ?? null
+  );
 }
 
 function stringOrNull(value: unknown): string | null {
@@ -421,6 +448,8 @@ function resolveDirectCloudClientApiBase(client: ElizaClient): string | null {
       getBootConfig().cloudApiBase?.trim() || DEFAULT_DIRECT_CLOUD_BASE_URL,
     );
   }
+  const cloudPageApiBase = resolveCloudPageApiBaseForDedicatedAgent(client);
+  if (cloudPageApiBase) return cloudPageApiBase;
   // Web SPA served from a cloud host with no agent baseUrl yet — exactly the
   // /join flow's state (selectOrProvisionCloudAgent runs BEFORE any agent
   // connection exists). Resolve the control plane from the page host so the
@@ -465,6 +494,13 @@ export function getCloudAuthToken(client?: ElizaClient): string | null {
 }
 
 function readDirectCloudToken(client: ElizaClient): string | null {
+  // A managed app may be connected to a dedicated agent while rendering its
+  // account settings. Control-plane calls then resolve from the trusted page
+  // host, but only the independently stored Steward session may cross that
+  // boundary; the client's REST token belongs to the agent container.
+  if (resolveCloudPageApiBaseForDedicatedAgent(client)) {
+    return readStoredStewardToken()?.trim() || null;
+  }
   return getCloudAuthToken(client);
 }
 
@@ -547,15 +583,16 @@ export async function refreshCloudStewardSession(opts?: {
   } | null;
 }
 
-function isNativeDirectCloudAuthMissing(client: ElizaClient): boolean {
+function isDirectCloudAuthMissing(client: ElizaClient): boolean {
   return (
-    shouldUseNativeCloudHttp() &&
+    (shouldUseNativeCloudHttp() ||
+      Boolean(resolveCloudPageApiBaseForDedicatedAgent(client))) &&
     Boolean(resolveDirectCloudClientApiBase(client)) &&
     !readDirectCloudToken(client)
   );
 }
 
-function nativeDirectCloudAuthMissingMessage(): string {
+function directCloudAuthMissingMessage(): string {
   return "Eliza Cloud login session is missing. Sign in again.";
 }
 
@@ -1223,10 +1260,10 @@ declare module "./client-base" {
       /**
        * Whether the backend actually MINTED a fresh agent (201/202) versus
        * handing back an existing non-terminal one via the idempotent reuse
-       * guard (200, `created: false`), e.g. the org is at its per-org agent
-       * cap (#11023). Callers surfacing a "created" affordance must not claim a
-       * fresh agent when this is false (#14487). Undefined when the response
-       * omits the flag (older worker / non-direct path); treat as unknown.
+       * guard (200, `created: false`) when `forceCreate` is omitted. A forced
+       * request is quota-checked instead and must never reuse an existing row.
+       * Warm-pool branches confirm freshness through their source marker and
+       * are normalized to `true`; undefined otherwise means unknown.
        */
       created?: boolean;
       data: {
@@ -1902,11 +1939,11 @@ ElizaClient.prototype.getCloudCompatAgents = async function (
     };
   }
 
-  if (isNativeDirectCloudAuthMissing(this)) {
+  if (isDirectCloudAuthMissing(this)) {
     return {
       success: false,
       data: [],
-      error: nativeDirectCloudAuthMissingMessage(),
+      error: directCloudAuthMissingMessage(),
     };
   }
 
@@ -1983,10 +2020,11 @@ ElizaClient.prototype.createCloudCompatAgent = async function (
   const tierFields = opts.preferSharedTier ? {} : { alwaysOn: true };
   const direct = await directCloudRequest<{
     success: boolean;
-    // `created: false` means the backend reused an existing non-terminal agent
-    // (idempotent 200) instead of minting a fresh one, e.g. the org hit its
-    // per-org cap (#11023). Thread it up so the UI can tell the truth (#14487).
+    // `created: false` means a non-forced request reused an existing
+    // non-terminal agent. Forced requests are rejected if they ever report
+    // reuse, because their contract is a distinct agent or an explicit error.
     created?: boolean;
+    source?: string;
     data: unknown;
     error?: string;
   }>(this, "/api/v1/eliza/agents", {
@@ -2010,10 +2048,15 @@ ElizaClient.prototype.createCloudCompatAgent = async function (
     }),
   });
   if (direct) {
+    requireConfirmedFreshCloudAgentCreate(
+      opts.forceCreate,
+      direct.created,
+      direct.source,
+    );
     const data = parseDirectCloudAgentCreateData(direct.data, opts.agentName);
     return {
       success: direct.success,
-      created: direct.created,
+      created: opts.forceCreate ? true : direct.created,
       data: {
         agentId: data.id,
         agentName: data.agentName,
@@ -2025,7 +2068,7 @@ ElizaClient.prototype.createCloudCompatAgent = async function (
     };
   }
 
-  if (isNativeDirectCloudAuthMissing(this)) {
+  if (isDirectCloudAuthMissing(this)) {
     return {
       success: false,
       data: {
@@ -2034,7 +2077,7 @@ ElizaClient.prototype.createCloudCompatAgent = async function (
         jobId: "",
         status: "error",
         nodeId: null,
-        message: nativeDirectCloudAuthMissingMessage(),
+        message: directCloudAuthMissingMessage(),
       },
     };
   }
@@ -2042,8 +2085,9 @@ ElizaClient.prototype.createCloudCompatAgent = async function (
   if (isDirectCloudBase(this)) {
     const response = await this.fetch<{
       success: boolean;
-      // See the direct-path note: `created: false` = idempotent reuse (#14487).
+      // See the direct-path note: `created: false` is valid only without force.
       created?: boolean;
+      source?: string;
       data: unknown;
       error?: string;
     }>("/api/v1/eliza/agents", {
@@ -2062,10 +2106,15 @@ ElizaClient.prototype.createCloudCompatAgent = async function (
           : {}),
       }),
     });
+    requireConfirmedFreshCloudAgentCreate(
+      opts.forceCreate,
+      response.created,
+      response.source,
+    );
     const data = parseDirectCloudAgentCreateData(response.data, opts.agentName);
     return {
       success: response.success,
-      created: response.created,
+      created: opts.forceCreate ? true : response.created,
       data: {
         agentId: data.id,
         agentName: data.agentName,
@@ -2075,6 +2124,12 @@ ElizaClient.prototype.createCloudCompatAgent = async function (
         message: response.success ? "Agent created" : (response.error ?? ""),
       },
     };
+  }
+
+  if (opts.forceCreate) {
+    throw new Error(
+      "Creating a distinct Cloud agent requires a signed-in direct Eliza Cloud session.",
+    );
   }
 
   return this.fetch("/api/cloud/compat/agents", {
@@ -2104,10 +2159,10 @@ ElizaClient.prototype.provisionCloudCompatAgent = async function (
     return normalizeCloudCompatProvisionResponse(direct, agentId);
   }
 
-  if (isNativeDirectCloudAuthMissing(this)) {
+  if (isDirectCloudAuthMissing(this)) {
     return {
       success: false,
-      error: nativeDirectCloudAuthMissingMessage(),
+      error: directCloudAuthMissingMessage(),
       data: { agentId, status: "auth-missing" },
     };
   }
@@ -2151,11 +2206,11 @@ ElizaClient.prototype.getCloudCompatAgent = async function (
     };
   }
 
-  if (isNativeDirectCloudAuthMissing(this)) {
+  if (isDirectCloudAuthMissing(this)) {
     return {
       success: false,
       data: toCloudCompatAgent({ id: agentId, status: "auth-missing" }),
-      error: nativeDirectCloudAuthMissingMessage(),
+      error: directCloudAuthMissingMessage(),
     };
   }
 
@@ -2415,14 +2470,14 @@ ElizaClient.prototype.deleteCloudCompatAgent = async function (
   });
   if (direct) return normalizeDelete(direct);
 
-  if (isNativeDirectCloudAuthMissing(this)) {
+  if (isDirectCloudAuthMissing(this)) {
     return {
       success: false,
-      error: nativeDirectCloudAuthMissingMessage(),
+      error: directCloudAuthMissingMessage(),
       data: {
         jobId: "",
         status: "auth-missing",
-        message: nativeDirectCloudAuthMissingMessage(),
+        message: directCloudAuthMissingMessage(),
       },
     };
   }
@@ -2477,10 +2532,10 @@ ElizaClient.prototype.updateCloudCompatAgent = async function (
   }>(this, path, { method: "PATCH", body });
   if (direct) return normalize(direct);
 
-  if (isNativeDirectCloudAuthMissing(this)) {
+  if (isDirectCloudAuthMissing(this)) {
     return {
       success: false,
-      error: nativeDirectCloudAuthMissingMessage(),
+      error: directCloudAuthMissingMessage(),
       data: { agentId, agentName: edit.agentName ?? "" },
     };
   }
@@ -2529,7 +2584,7 @@ ElizaClient.prototype.getCloudCompatAgentStatus = async function (
     };
   }
 
-  if (isNativeDirectCloudAuthMissing(this)) {
+  if (isDirectCloudAuthMissing(this)) {
     return {
       success: false,
       data: {
@@ -2538,10 +2593,10 @@ ElizaClient.prototype.getCloudCompatAgentStatus = async function (
         bridgeUrl: null,
         webUiUrl: null,
         currentNode: null,
-        suspendedReason: nativeDirectCloudAuthMissingMessage(),
+        suspendedReason: directCloudAuthMissingMessage(),
         databaseStatus: "unknown",
       },
-      error: nativeDirectCloudAuthMissingMessage(),
+      error: directCloudAuthMissingMessage(),
     };
   }
 
@@ -2620,14 +2675,14 @@ async function runCloudLifecycleAction(
   }>(client, directPath, { method: "POST" });
   if (direct) return normalizeCloudLifecycleResponse(direct, action);
 
-  if (isNativeDirectCloudAuthMissing(client)) {
+  if (isDirectCloudAuthMissing(client)) {
     return {
       success: false,
-      error: nativeDirectCloudAuthMissingMessage(),
+      error: directCloudAuthMissingMessage(),
       data: {
         jobId: "",
         status: "auth-missing",
-        message: nativeDirectCloudAuthMissingMessage(),
+        message: directCloudAuthMissingMessage(),
       },
     };
   }
@@ -2688,10 +2743,10 @@ ElizaClient.prototype.launchCloudCompatAgent = async function (
   });
   if (direct) return direct;
 
-  if (isNativeDirectCloudAuthMissing(this)) {
+  if (isDirectCloudAuthMissing(this)) {
     return {
       success: false,
-      error: nativeDirectCloudAuthMissingMessage(),
+      error: directCloudAuthMissingMessage(),
     };
   }
 
@@ -2732,15 +2787,15 @@ ElizaClient.prototype.getCloudCompatJobStatus = async function (
     };
   }
 
-  if (isNativeDirectCloudAuthMissing(this)) {
+  if (isDirectCloudAuthMissing(this)) {
     return {
       success: false,
       data: toCloudCompatJob({
         id: jobId,
         status: "failed",
-        error: nativeDirectCloudAuthMissingMessage(),
+        error: directCloudAuthMissingMessage(),
       }),
-      error: nativeDirectCloudAuthMissingMessage(),
+      error: directCloudAuthMissingMessage(),
     };
   }
 
@@ -3458,11 +3513,11 @@ ElizaClient.prototype.selectOrProvisionCloudAgent = async function (
   const resolvedCloudApiBase = resolveDirectCloudAuthApiBase(cloudApiBase);
   let forceCreateForTerminalAgents = false;
   let forceCreatePastSharedAgents = false;
-  // Ensure the direct-cloud requests below authenticate even on a cold boot,
-  // where the resolved token may be empty (the caller always passes the session
-  // token). Persist it through the canonical steward-session store so
-  // getCloudAuthToken() resolves it for those requests.
-  if (authToken) {
+  // Cold-boot callers pass the Steward session explicitly. Persist it only
+  // before a Cloud agent connection exists: once the app is bound to a
+  // dedicated agent, the caller's fallback may be that agent's bearer, which
+  // must never be relabeled as a control-plane credential.
+  if (authToken && !resolveCloudPageApiBaseForDedicatedAgent(this)) {
     writeStoredStewardToken(authToken);
   }
 
@@ -3595,6 +3650,7 @@ ElizaClient.prototype.selectOrProvisionCloudAgent = async function (
   if (!created.success || !created.data.agentId) {
     throw new Error(created.data.message || "Failed to create cloud agent");
   }
+  requireConfirmedFreshCloudAgentCreate(mustForceCreate, created.created);
   const agentId = created.data.agentId;
   // error-policy:J4 detail is an optimization probe (warm-pool fast path);
   // on failure the standard dedicated subdomain is still the desired default.
@@ -3649,12 +3705,9 @@ ElizaClient.prototype.selectOrProvisionCloudAgent = async function (
     agentName: created.data.agentName || name,
     apiBase,
     bridgeUrl: detailAgent?.bridge_url ?? null,
-    // Report what the backend ACTUALLY did, not what we asked for. When the org
-    // is at its per-org cap (#11023) the create POST returns 200 `created:
-    // false` (the reuse guard handed back the existing agent), and the caller's
-    // "created a new agent" affordance must not lie about it (#14487). Only an
-    // explicit `false` demotes to reuse; an absent flag (older worker) stays
-    // `true` so the pre-existing create UX is unchanged.
+    // Preserve compatibility for non-forced callers. A force-create response
+    // must explicitly confirm `created: true` above because a "Create new"
+    // action may never bind an existing or ambiguous agent response.
     created: created.created !== false,
     requiresAgentPairing: false,
     executionTier: detailAgent?.execution_tier ?? null,
