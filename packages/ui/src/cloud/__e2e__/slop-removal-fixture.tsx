@@ -33,7 +33,7 @@ import { CloudRouterShell } from "../shell/CloudRouterShell";
 // uses to open a section from `/settings#<hash>`.
 import { readSettingsHashSection } from "../../components/settings/settings-sections";
 
-registerAllCloudSurfaces();
+await registerAllCloudSurfaces();
 
 /**
  * Catch-all probe standing in for the tab/view app: shows where the router
