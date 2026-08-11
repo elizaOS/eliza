@@ -108,6 +108,7 @@ describe("writeRendererBuildManifest / readRendererBuildManifest", () => {
       commit: "deadbeef",
       variant: "store",
       capacitorTarget: "ios",
+      playwrightTestAuth: true,
     });
     expect(
       fs.existsSync(path.join(dist, RENDERER_BUILD_MANIFEST_FILENAME)),
@@ -116,6 +117,7 @@ describe("writeRendererBuildManifest / readRendererBuildManifest", () => {
     expect(read).toEqual(written);
     expect(read?.variant).toBe("store");
     expect(read?.capacitorTarget).toBe("ios");
+    expect(read?.playwrightTestAuth).toBe(true);
     expect(read?.buildId).toBe(computeRendererFingerprint(dist).buildId);
   });
 
@@ -290,5 +292,6 @@ describe("buildRendererManifest", () => {
     expect(manifest.commit).toBeNull();
     expect(manifest.variant).toBeNull();
     expect(manifest.capacitorTarget).toBeNull();
+    expect(manifest.playwrightTestAuth).toBeNull();
   });
 });

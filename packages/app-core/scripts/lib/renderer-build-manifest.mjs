@@ -74,7 +74,8 @@ export function computeRendererFingerprint(distDir) {
  * Build the manifest object for a renderer dir (does not write it).
  * @param {string} distDir
  * @param {{ builtAt?: string, commit?: string|null, variant?: string|null,
- *           capacitorTarget?: string|null, runtimeMode?: string|null }} [meta]
+ *           capacitorTarget?: string|null, runtimeMode?: string|null,
+ *           playwrightTestAuth?: boolean|null }} [meta]
  */
 export function buildRendererManifest(distDir, meta = {}) {
   const fingerprint = computeRendererFingerprint(distDir);
@@ -88,6 +89,7 @@ export function buildRendererManifest(distDir, meta = {}) {
     variant: meta.variant ?? null,
     capacitorTarget: meta.capacitorTarget ?? null,
     runtimeMode: meta.runtimeMode ?? null,
+    playwrightTestAuth: meta.playwrightTestAuth ?? null,
   };
 }
 

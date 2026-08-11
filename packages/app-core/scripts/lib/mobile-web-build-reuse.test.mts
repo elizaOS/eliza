@@ -40,6 +40,7 @@ function makeAppDist(
     variant?: string;
     capacitorTarget?: string;
     runtimeMode?: string;
+    playwrightTestAuth?: boolean;
   } = {},
 ) {
   const appDir = path.join(tmp, "app");
@@ -47,7 +48,10 @@ function makeAppDist(
   fs.mkdirSync(path.join(distDir, "assets"), { recursive: true });
   fs.writeFileSync(path.join(distDir, "index.html"), "<div id=root></div>");
   fs.writeFileSync(path.join(distDir, "assets", "index-abc123.js"), "boot()");
-  writeRendererBuildManifest(distDir, meta);
+  writeRendererBuildManifest(distDir, {
+    ...meta,
+    playwrightTestAuth: meta.playwrightTestAuth ?? false,
+  });
   return { appDir, distDir };
 }
 
