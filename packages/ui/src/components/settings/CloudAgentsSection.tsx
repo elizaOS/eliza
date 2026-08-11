@@ -77,18 +77,10 @@ function activeCloudAgentId(): string | null {
 
 /** The cloud access token for the current session. */
 function currentCloudToken(): string {
-  // Canonical Steward-first resolution (matches getCloudAuthToken: Steward JWT →
-  // runtime global → client), then fall back to the persisted active-server
-  // token for sessions without a Steward session. The old order read the
-  // persisted token first and skipped the Steward JWT entirely, which could send
-  // a stale/missing token from the agent manager.
-  const canonical = getCloudAuthToken();
-  if (canonical) return canonical;
-  const persisted = loadPersistedActiveServer();
-  if (persisted?.kind === "cloud" && persisted.accessToken) {
-    return persisted.accessToken;
-  }
-  return "";
+  // Agent management crosses the control-plane boundary, so only the
+  // independently stored Steward session is admissible. The active server's
+  // access token authenticates its container and must never substitute here.
+  return getCloudAuthToken() ?? "";
 }
 
 /**
@@ -106,6 +98,7 @@ export function CloudAgentsSection() {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState("");
+  const [createError, setCreateError] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
   // The agent currently being woken (resumed + readiness-polled) before we
@@ -180,6 +173,7 @@ export function CloudAgentsSection() {
       upsertAndActivateAgentProfile({
         kind: "cloud",
         label,
+        cloudAgentId: agentId,
         ...(persisted.apiBase !== undefined
           ? { apiBase: persisted.apiBase }
           : {}),
@@ -283,18 +277,19 @@ export function CloudAgentsSection() {
   const createAgent = useCallback(async () => {
     const name = newName.trim();
     if (!name) {
-      setActionNotice("Give your agent a name first.", "error", 3000);
+      const message = "Give your agent a name first.";
+      setCreateError(message);
+      setActionNotice(message, "error", 3000);
       return;
     }
     const token = currentCloudToken();
     if (!token) {
-      setActionNotice(
-        "Sign in to Eliza Cloud before creating an agent.",
-        "error",
-        4000,
-      );
+      const message = "Sign in to Eliza Cloud before creating an agent.";
+      setCreateError(message);
+      setActionNotice(message, "error", 4000);
       return;
     }
+    setCreateError(null);
     setCreating(true);
     try {
       const result = await client.selectOrProvisionCloudAgent({
@@ -304,28 +299,21 @@ export function CloudAgentsSection() {
         forceCreate: true,
         onProgress: () => {},
       });
-      // Honest outcome (#14487): with forceCreate the backend still reuses the
-      // org's existing agent when the org is at its per-org agent cap (#11023),
-      // returning `created: false`. Do NOT claim a fresh agent was made: bind
-      // to the (existing) agent we got back but tell the user why no new one
-      // appeared, so "Create a new agent" never silently lies.
-      const label = result.agentName || name;
-      if (result.created === false) {
-        bindAndReload(
-          result.agentId,
-          result.apiBase,
-          label,
-          `You've reached your agent limit, so we opened your existing agent “${label}” instead. Delete an agent or add credits to create another.`,
-        );
+      if (result.created !== true) {
+        const message =
+          "Eliza Cloud did not confirm that a new agent was created. No agent was opened; refresh your session and try again.";
+        setCreateError(message);
+        setActionNotice(message, "error", 7000);
+        setCreating(false);
+        return;
       } else {
         bindAndReload(result.agentId, result.apiBase, name);
       }
     } catch (err) {
-      setActionNotice(
-        err instanceof Error ? err.message : "Failed to create agent.",
-        "error",
-        4000,
-      );
+      const message =
+        err instanceof Error ? err.message : "Failed to create agent.";
+      setCreateError(message);
+      setActionNotice(message, "error", 4000);
       setCreating(false);
     }
   }, [newName, cloudApiBase, bindAndReload, setActionNotice]);
@@ -763,7 +751,10 @@ export function CloudAgentsSection() {
         <div className="flex flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center">
           <Input
             value={newName}
-            onChange={(e) => setNewName(e.target.value)}
+            onChange={(e) => {
+              setNewName(e.target.value);
+              setCreateError(null);
+            }}
             placeholder={`Agent name (e.g. ${appName})`}
             className="flex-1"
             maxLength={AGENT_NAME_MAX_LENGTH}
@@ -781,6 +772,15 @@ export function CloudAgentsSection() {
             {creating ? "Creating…" : "Create"}
           </Button>
         </div>
+        {createError && (
+          <p
+            role="alert"
+            data-testid="cloud-agent-create-error"
+            className="px-4 pb-3 text-sm text-destructive"
+          >
+            {createError}
+          </p>
+        )}
       </SettingsGroup>
     </SettingsStack>
   );

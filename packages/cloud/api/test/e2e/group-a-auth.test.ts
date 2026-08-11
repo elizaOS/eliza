@@ -49,6 +49,7 @@ const describeE2E = describe.skipIf(!serverReachable || !hasTestApiKey);
 
 let _sessionCookie: string | null = null;
 let anonSessionToken: string | null = null;
+const PAIRING_AGENT_ID = "00000000-0000-4000-8000-000000000001";
 
 function internalHeaders(): Record<string, string> {
   return {
@@ -98,7 +99,7 @@ describeE2E("Group A: auth + sessions", () => {
     test("validation: missing token returns 400", async () => {
       const res = await api.post(
         "/api/auth/pair",
-        {},
+        { agentId: PAIRING_AGENT_ID },
         {
           headers: {
             Origin: "http://localhost:8787",
@@ -117,7 +118,10 @@ describeE2E("Group A: auth + sessions", () => {
       const res = await fetch(`${getBaseUrl()}/api/auth/pair`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token: "fake-token" }),
+        body: JSON.stringify({
+          token: "fake-token",
+          agentId: PAIRING_AGENT_ID,
+        }),
       });
       // Bun's fetch sends no Origin → the route's "Origin header required"
       // branch answers 400 before token validation runs.
@@ -129,7 +133,10 @@ describeE2E("Group A: auth + sessions", () => {
     test("auth gate: invalid pairing token returns 401", async () => {
       const res = await api.post(
         "/api/auth/pair",
-        { token: "definitely-not-a-real-pairing-token-zzz" },
+        {
+          token: "definitely-not-a-real-pairing-token-zzz",
+          agentId: PAIRING_AGENT_ID,
+        },
         {
           headers: {
             Origin: "http://localhost:8787",

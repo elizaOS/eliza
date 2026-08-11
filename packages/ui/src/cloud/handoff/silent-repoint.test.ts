@@ -49,10 +49,11 @@ vi.mock("../../state", () => ({
 
 import { silentlyRepointToDedicated } from "./silent-repoint";
 
+const DEDICATED_AGENT_ID = "8dba1b08-03be-4f9a-8f63-bd5de03f91e8";
 const ARGS = {
-  containerBase: "https://dedicated-1.elizacloud.ai",
+  containerBase: `https://${DEDICATED_AGENT_ID}.elizacloud.ai`,
   authToken: "cloud-token",
-  dedicatedAgentId: "dedicated-1",
+  dedicatedAgentId: DEDICATED_AGENT_ID,
 };
 
 describe("silentlyRepointToDedicated", () => {
@@ -69,7 +70,7 @@ describe("silentlyRepointToDedicated", () => {
     // later boot phase reconnects — a visible drop).
     expect(mocks.repointBaseUrl).toHaveBeenCalledTimes(1);
     expect(mocks.repointBaseUrl).toHaveBeenCalledWith(
-      "https://dedicated-1.elizacloud.ai",
+      `https://${DEDICATED_AGENT_ID}.elizacloud.ai`,
     );
     expect(mocks.setBaseUrl).not.toHaveBeenCalled();
     expect(mocks.setToken).toHaveBeenCalledWith("cloud-token");
@@ -83,8 +84,8 @@ describe("silentlyRepointToDedicated", () => {
     expect(mocks.createPersistedActiveServer).toHaveBeenCalledWith(
       expect.objectContaining({
         kind: "cloud",
-        id: "cloud:dedicated-1",
-        apiBase: "https://dedicated-1.elizacloud.ai",
+        id: `cloud:${DEDICATED_AGENT_ID}`,
+        apiBase: `https://${DEDICATED_AGENT_ID}.elizacloud.ai`,
         accessToken: "cloud-token",
       }),
     );
@@ -96,7 +97,8 @@ describe("silentlyRepointToDedicated", () => {
     expect(mocks.addAgentProfile).toHaveBeenCalledWith(
       expect.objectContaining({
         kind: "cloud",
-        apiBase: "https://dedicated-1.elizacloud.ai",
+        cloudAgentId: DEDICATED_AGENT_ID,
+        apiBase: `https://${DEDICATED_AGENT_ID}.elizacloud.ai`,
         accessToken: "cloud-token",
       }),
     );

@@ -41,6 +41,13 @@ const warn = (m) => console.warn(`[sync-artifacts] WARNING: ${m}`);
 const PROGRESS_INTERVAL_MS = 5000;
 const STALE_TMP_MAX_AGE_MS = 6 * 60 * 60_000;
 
+// Sweep BEFORE any early exit. On shared self-hosted runners most jobs skip
+// the sync (ELIZA_SKIP_ARTIFACT_SYNC=1) or exit on the manifest/marker checks,
+// and a cancelled job leaks its ~1GB partial download — observed live: a
+// canonical prod node doubling as a CI runner reached 100% disk with a /tmp
+// full of eliza-artifacts-*.tar.gz that no surviving code path ever swept.
+cleanupStaleTempArchives();
+
 if (process.env.ELIZA_SKIP_ARTIFACT_SYNC === "1") {
   log("skipped (ELIZA_SKIP_ARTIFACT_SYNC=1)");
   process.exit(0);
@@ -52,7 +59,6 @@ if (!existsSync(MANIFEST)) {
 
 const m = JSON.parse(readFileSync(MANIFEST, "utf8"));
 const { version, asset } = m;
-cleanupStaleTempArchives();
 
 if (existsSync(MARKER) && readFileSync(MARKER, "utf8").trim() === version) {
   log(`artifacts already at ${version}; nothing to do`);

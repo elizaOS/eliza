@@ -148,6 +148,19 @@ describe("MyRuntimesContainer", () => {
     );
   });
 
+  it("surfaces an error when the runtime selection cannot be persisted", async () => {
+    const user = userEvent.setup();
+    mocks.switchRuntimeNonDestructive.mockReturnValue({
+      ok: false,
+      reason: "persistence-failed",
+    });
+    render(<MyRuntimesContainer />);
+    await user.click(screen.getByTestId("runtime-vps-1-use"));
+    expect(screen.getByTestId("my-runtimes-error").textContent).toMatch(
+      /couldn't be saved/i,
+    );
+  });
+
   it("adding a TRUSTED remote: adds it AND switches to it (badge reflects reality)", async () => {
     const user = userEvent.setup();
     render(<MyRuntimesContainer />);
@@ -163,9 +176,32 @@ describe("MyRuntimesContainer", () => {
         label: "Laptop",
         apiBase: "http://100.72.1.9:3000",
       }),
+      { activate: false },
     );
     // The added profile becomes active so the client repoints and the badge reflects it.
     expect(mocks.switchRuntimeNonDestructive).toHaveBeenCalledWith("new-1");
+  });
+
+  it("does not pre-activate a new remote and surfaces a failed durable switch", async () => {
+    const user = userEvent.setup();
+    mocks.switchRuntimeNonDestructive.mockReturnValue({
+      ok: false,
+      reason: "persistence-failed",
+    });
+    render(<MyRuntimesContainer />);
+    await user.type(screen.getByTestId("add-remote-label"), "Laptop");
+    await user.type(
+      screen.getByTestId("add-remote-url"),
+      "http://100.72.1.9:3000",
+    );
+    await user.click(screen.getByTestId("add-remote-submit"));
+
+    expect(mocks.addAgentProfile).toHaveBeenCalledWith(expect.any(Object), {
+      activate: false,
+    });
+    expect(screen.getByTestId("my-runtimes-error").textContent).toMatch(
+      /couldn't be saved/i,
+    );
   });
 
   it("rejecting an UNTRUSTED (public) remote at add time — no add, no switch", async () => {

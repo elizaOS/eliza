@@ -151,12 +151,30 @@ describe("mergeWarmClaimEnvironmentVars", () => {
       ELIZA_API_TOKEN: "agent_pool_live",
       JWT_SECRET: "pool-jwt",
       AGENT_SERVER_SHARED_SECRET: "pool-shared",
+      ELIZA_CLOUD_PAIR_DIRECT_RELAY: "0",
       MY_CUSTOM_SECRET: "keep-me",
     });
   });
 
-  test("null/absent pool env leaves the user env untouched", () => {
-    expect(mergeWarmClaimEnvironmentVars({ A: "1" }, null)).toEqual({ A: "1" });
-    expect(mergeWarmClaimEnvironmentVars(null, null)).toEqual({});
+  test("a historical direct-relay value cannot survive the warm-claim merge", () => {
+    expect(
+      mergeWarmClaimEnvironmentVars(
+        { ELIZA_CLOUD_PAIR_DIRECT_RELAY: "1", USER_SETTING: "keep" },
+        { ELIZA_CLOUD_PAIR_DIRECT_RELAY: "1" },
+      ),
+    ).toEqual({
+      ELIZA_CLOUD_PAIR_DIRECT_RELAY: "0",
+      USER_SETTING: "keep",
+    });
+  });
+
+  test("null/absent pool env preserves user values plus the remote pairing invariant", () => {
+    expect(mergeWarmClaimEnvironmentVars({ A: "1" }, null)).toEqual({
+      A: "1",
+      ELIZA_CLOUD_PAIR_DIRECT_RELAY: "0",
+    });
+    expect(mergeWarmClaimEnvironmentVars(null, null)).toEqual({
+      ELIZA_CLOUD_PAIR_DIRECT_RELAY: "0",
+    });
   });
 });

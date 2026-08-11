@@ -19,6 +19,7 @@ export type ApiErrorCode =
   | "validation_error"
   | "insufficient_credits"
   | "session_not_ready"
+  | "identity_conflict"
   | "agent_quota_exceeded"
   | "agent_image_not_allowed"
   | "agent_image_not_digest_pinned"

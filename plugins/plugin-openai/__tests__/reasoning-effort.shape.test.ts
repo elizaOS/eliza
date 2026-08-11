@@ -264,6 +264,63 @@ describe("eliza.thinking='off' reasoning suppression (Cerebras mode)", () => {
   });
 });
 
+describe("eliza.thinking='off' reasoning suppression (DeepSeek V4 Flash)", () => {
+  const thinkingOff = { prompt: "hi", providerOptions: { eliza: { thinking: "off" } } } as never;
+
+  it("maps thinking-off to 'none' for the exact DeepSeek V4 Flash model id", () => {
+    const runtime = buildRuntime({
+      OPENAI_API_KEY: "sk-test",
+      OPENAI_BASE_URL: "https://opencode.ai/zen/go/v1",
+    });
+    const opts = __INTERNAL_resolveProviderOptions(thinkingOff, runtime, "deepseek-v4-flash");
+    expect(
+      (opts as { openai?: { reasoningEffort?: string } } | undefined)?.openai?.reasoningEffort
+    ).toBe("none");
+  });
+
+  it("does not infer endpoint capabilities through an opaque browser proxy", () => {
+    vi.stubGlobal("document", {});
+    try {
+      const runtime = buildRuntime({
+        OPENAI_API_KEY: "sk-test",
+        OPENAI_BASE_URL: "https://opencode.ai/zen/go/v1",
+        OPENAI_BROWSER_BASE_URL: "https://app.example.test/api/openai",
+      });
+      const opts = __INTERNAL_resolveProviderOptions(thinkingOff, runtime, "deepseek-v4-flash");
+      const openai = (opts as { openai?: { reasoningEffort?: string } } | undefined)?.openai;
+      expect(openai?.reasoningEffort).toBeUndefined();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("does not send 'none' to an unverified compatible endpoint", () => {
+    const runtime = buildRuntime({
+      OPENAI_API_KEY: "sk-test",
+      OPENAI_BASE_URL: "https://compatible.example.test/v1",
+    });
+    const opts = __INTERNAL_resolveProviderOptions(thinkingOff, runtime, "deepseek-v4-flash");
+    const openai = (opts as { openai?: { reasoningEffort?: string } } | undefined)?.openai;
+    expect(openai?.reasoningEffort).toBeUndefined();
+  });
+
+  it.each([
+    "glm-5.1",
+    "openai/deepseek-v4-flash",
+    "cerebras/deepseek-v4-flash",
+    "deepseek-v4-flash:preview",
+    "deepseek-v4-flash-free",
+  ])("does not send 'none' to another wire model id: %s", (modelName) => {
+    const runtime = buildRuntime({
+      OPENAI_API_KEY: "sk-test",
+      OPENAI_BASE_URL: "https://opencode.ai/zen/go/v1",
+    });
+    const opts = __INTERNAL_resolveProviderOptions(thinkingOff, runtime, modelName);
+    const openai = (opts as { openai?: { reasoningEffort?: string } } | undefined)?.openai;
+    expect(openai?.reasoningEffort).toBeUndefined();
+  });
+});
+
 describe("strip reasoning-content from outbound assistant messages", () => {
   it("drops `type: reasoning` parts from a content array (tool-call branch)", () => {
     const normalized = __INTERNAL_normalizeNativeMessages([

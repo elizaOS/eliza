@@ -6,8 +6,10 @@
  * id/locator match, or the sole attachment), and materializes readable content
  * for each — stored extracted text or description, falling back to an on-demand
  * vision description that reuses the shared content-addressed image cache.
- * Consumed by readAttachmentAction.ts; the `_data`/`_mimeType`/`_createdAt` fields
- * are inline-transport and ordering extensions carried alongside `Media`.
+ * Consumed by readAttachmentAction.ts; the `_data`/`_mimeType`/`_createdAt`/
+ * `_messageId` fields are inline-transport, ordering, and source-row extensions
+ * carried alongside `Media` — `_messageId` names the message memory whose
+ * stored copy of the attachment on-demand enrichment must update.
  */
 import { buildAccessContext } from "../../access-context.ts";
 import {
@@ -30,6 +32,7 @@ type AttachmentWithInlineData = Media & {
 	_data?: string;
 	_mimeType?: string;
 	_createdAt?: number;
+	_messageId?: UUID;
 	redacted?: true;
 };
 
@@ -223,7 +226,11 @@ export async function listConversationAttachments(
 			.map((attachment) =>
 				selectAttachmentForRequester(
 					message,
-					{ ...attachment, _createdAt: message.createdAt ?? Date.now() },
+					{
+						...attachment,
+						_createdAt: message.createdAt ?? Date.now(),
+						_messageId: message.id,
+					},
 					accessContext,
 					agentId,
 				),
@@ -238,6 +245,7 @@ export async function listConversationAttachments(
 	const rememberAttachment = (
 		attachment: AttachmentWithInlineData,
 		createdAt: number,
+		messageId: UUID | undefined,
 	) => {
 		const existing = attachmentsById.get(attachment.id);
 		if (existing && (existing._createdAt ?? 0) >= createdAt) {
@@ -246,6 +254,7 @@ export async function listConversationAttachments(
 		attachmentsById.set(attachment.id, {
 			...attachment,
 			_createdAt: createdAt,
+			_messageId: messageId,
 		});
 	};
 
@@ -256,7 +265,8 @@ export async function listConversationAttachments(
 			accessContext,
 			agentId,
 		);
-		if (selected) rememberAttachment(selected, message.createdAt ?? Date.now());
+		if (selected)
+			rememberAttachment(selected, message.createdAt ?? Date.now(), message.id);
 	}
 
 	for (const recentMessage of recentMessages) {
@@ -270,7 +280,7 @@ export async function listConversationAttachments(
 				accessContext,
 				agentId,
 			);
-			if (selected) rememberAttachment(selected, createdAt);
+			if (selected) rememberAttachment(selected, createdAt, recentMessage.id);
 		}
 	}
 

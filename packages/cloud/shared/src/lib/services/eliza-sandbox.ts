@@ -99,6 +99,7 @@ import {
 } from "./managed-eliza-config";
 import { prepareManagedElizaEnvironment } from "./managed-eliza-env";
 import { EXCLUSIVE_AGENT_LIFECYCLE_JOB_TYPES, JOB_TYPES } from "./provisioning-job-types";
+import { applyRemoteDockerRuntimeMode } from "./remote-docker-runtime-mode";
 import { mergeRuntimeAgentSecretsFromEnv } from "./runtime-agent-secrets";
 import { resolveSandboxContainerLaunchConfig } from "./sandbox-container-launch-config";
 import {
@@ -2526,10 +2527,10 @@ export class ElizaSandboxService {
             agentId: rec.id,
             agentName: rec.agent_name ?? "CloudAgent",
             organizationId: rec.organization_id,
-            environmentVars: {
+            environmentVars: applyRemoteDockerRuntimeMode({
               ...callerEnv,
               ...dbEnv,
-            },
+            }),
             // Path A: pass the persisted character so the container boots AS
             // this agent (see docker-sandbox-provider ELIZA_AGENT_CHARACTER_JSON
             // injection + packages/agent/src/runtime/sandbox-character.ts).
@@ -8081,10 +8082,10 @@ export class ElizaSandboxService {
       // ELIZA_AGENT_LOCAL_STATE, PGLITE_DATA_DIR, ELIZA_PLUGIN_SET, ...) — the
       // narrow helper deliberately avoids the full provision merge, which would
       // mint a new API key / strip DATABASE_URL / flip local-state on upgrade (#8434).
-      environmentVars: {
+      environmentVars: applyRemoteDockerRuntimeMode({
         ...upgradeEnv,
         ...applyManagedAgentInferenceEnvDefaults(upgradeEnv),
-      },
+      }),
       dockerImage: digestPinnedImageRef(dockerImage, toDigest),
       excludeNodeId: oldNodeId,
       // Preserve the LIVE Headscale node during the overlap (#16565): the
@@ -8577,10 +8578,10 @@ export class ElizaSandboxService {
       agentId,
       agentName: agent.agent_name ?? "",
       organizationId: orgId,
-      environmentVars: {
+      environmentVars: applyRemoteDockerRuntimeMode({
         ...rollbackEnv,
         ...applyManagedAgentInferenceEnvDefaults(rollbackEnv),
-      },
+      }),
       dockerImage: digestPinnedImageRef(rollbackImage, toDigest),
       excludeNodeId: oldNodeId,
       // Preserve the LIVE Headscale node during the overlap (#16565): the
