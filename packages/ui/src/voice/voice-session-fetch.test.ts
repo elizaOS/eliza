@@ -81,6 +81,24 @@ describe("fetchVoiceSession", () => {
     expect(fetchWithCsrf).not.toHaveBeenCalled();
   });
 
+  it("preserves an explicit Authorization header", async () => {
+    loadPersistedActiveServer.mockReturnValue({ kind: "cloud" });
+    readStoredStewardToken.mockReturnValue("steward-token");
+
+    await fetchVoiceSession("/api/v1/voice/session", {
+      method: "POST",
+      headers: { Authorization: "Bearer explicit" },
+    });
+
+    const [, init] = requestViaAgentTransport.mock.calls[0] as [
+      string,
+      RequestInit,
+    ];
+    expect(new Headers(init.headers).get("authorization")).toBe(
+      "Bearer explicit",
+    );
+  });
+
   it("keeps self-hosted voice-session traffic on the selected runtime", async () => {
     loadPersistedActiveServer.mockReturnValue({ kind: "remote" });
 
