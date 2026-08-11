@@ -20,7 +20,13 @@
  */
 
 import { QueryClientProvider } from "@tanstack/react-query";
-import { type ComponentType, lazy, type ReactNode, Suspense } from "react";
+import {
+  type ComponentType,
+  lazy,
+  type ReactNode,
+  Suspense,
+  useSyncExternalStore,
+} from "react";
 import {
   BrowserRouter,
   Navigate,
@@ -42,7 +48,9 @@ import { ConsoleShell } from "./ConsoleShell";
 import {
   type CloudRouteDef,
   getCloudRouteGate,
+  getCloudRouteRegistryVersion,
   listCloudRoutes,
+  subscribeCloudRoutes,
 } from "./cloud-route-registry";
 import { StewardAuthProvider } from "./StewardProvider";
 
@@ -178,7 +186,7 @@ function CloudNotFound(): React.JSX.Element {
     <div className="theme-cloud min-h-dvh bg-black text-white">
       <div className="mx-auto max-w-prose p-8 text-sm text-white/62">
         <h1 className="mb-3 text-lg font-semibold text-white">Not found</h1>
-        <p>The page you requested doesn&apos;t exist.</p>
+        <p>The page you requested doesn't exist.</p>
       </div>
     </div>
   );
@@ -329,6 +337,13 @@ const AppModeEntryRoute = lazy(() => import("../app-mode/AppModeEntryRoute"));
 export function CloudRouterShell({
   appElement,
 }: CloudRouterShellProps): React.JSX.Element {
+  // Re-render when private domains finish dynamic registration after public
+  // routes have already painted (#18056).
+  useSyncExternalStore(
+    subscribeCloudRoutes,
+    getCloudRouteRegistryVersion,
+    getCloudRouteRegistryVersion,
+  );
   const cloudRoutes = listCloudRoutes();
   return (
     <BrowserRouter>
