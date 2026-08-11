@@ -32,14 +32,35 @@ export const BLOCKED_ENV_KEYS = new Set<string>([
 ]);
 
 /**
- * Check whether an env key is blocked at the config-write boundary.
- *
- * Uses the same predicate as the spawn sanitizer (exact match + prefix match)
- * so indexed families like {@code GIT_CONFIG_KEY_0} are caught at config write
- * time, not just at the later spawn boundary.
+ * Families whose whole namespace is dangerous, so no exact-key list can cover
+ * them. `BASH_FUNC_*` is the Shellshock function-export prefix; the
+ * package-manager and container families redirect registries, install hooks,
+ * and runtimes for anything spawned afterwards. The core spawn policy is the
+ * single source: it guards a caller-supplied child environment, while this
+ * boundary guards config and API writes, which reach `process.env` and are
+ * then inherited by every spawn site that passes no explicit env — so both
+ * paths need the same families.
+ */
+export const BLOCKED_ENV_KEY_PREFIXES: readonly string[] =
+  BLOCKED_SPAWN_ENV_PREFIXES;
+
+/**
+ * The single predicate every config/API env gate should use. `BLOCKED_ENV_KEYS`
+ * remains exported for callers that need the raw set, but membership alone
+ * misses the prefix families above, and indexed families like
+ * {@code GIT_CONFIG_KEY_0} are caught here at config write time, not just at
+ * the later spawn boundary.
  */
 export function isBlockedEnvKey(key: string): boolean {
-  const upper = key.toUpperCase();
-  if (BLOCKED_ENV_KEYS.has(upper)) return true;
-  return BLOCKED_SPAWN_ENV_PREFIXES.some((prefix) => upper.startsWith(prefix));
+  // Trim before matching: a surrounding-whitespace variant would otherwise slip
+  // past both the exact set and the prefix scan. No real key carries it, and the
+  // plugin route already normalises this way.
+  const upper = key.trim().toUpperCase();
+  if (upper.length === 0) {
+    return false;
+  }
+  if (BLOCKED_ENV_KEYS.has(upper)) {
+    return true;
+  }
+  return BLOCKED_ENV_KEY_PREFIXES.some((prefix) => upper.startsWith(prefix));
 }

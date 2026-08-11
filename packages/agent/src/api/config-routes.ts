@@ -4,7 +4,8 @@
  * (GET /schema), and hot-reloads eliza.json into the running runtime
  * (POST /reload). Sits behind the server's authenticated settings surface and
  * adds its own write-side hardening: an allowlist of top-level keys, prototype-
- * pollution rejection, stripping of step-up/wallet secrets and BLOCKED_ENV_KEYS
+ * pollution rejection, stripping of step-up/wallet secrets and every key
+ * rejected by isBlockedEnvKey
  * so the persistence→restart path cannot be turned into RCE, and terminal-token
  * authorization for stdio MCP servers. Writes split into hot-reloadable keys
  * (applied to state.config live) vs restart-required keys (plugins, providers,
@@ -59,7 +60,7 @@ export interface ConfigRouteContext {
   isBlockedObjectKey: (key: string) => boolean;
   stripRedactedPlaceholderValuesDeep: (value: unknown) => void;
   patchTouchesProviderSelection: (filtered: Record<string, unknown>) => boolean;
-  BLOCKED_ENV_KEYS: Set<string>;
+  isBlockedEnvKey: (key: string) => boolean;
   CONFIG_WRITE_ALLOWED_TOP_KEYS: Set<string>;
   resolveMcpServersRejection: (
     servers: Record<string, unknown>,
@@ -175,9 +176,9 @@ async function applyReloadedConfig(params: {
   state: ElizaConfig;
   next: ElizaConfig;
   runtime: AgentRuntime | null | undefined;
-  blockedEnvKeys: Set<string>;
+  isBlockedEnvKey: (key: string) => boolean;
 }): Promise<void> {
-  const { state, next, runtime, blockedEnvKeys } = params;
+  const { state, next, runtime, isBlockedEnvKey } = params;
 
   // Replace top-level keys in the live state.config with the loaded values.
   const stateRecord = asConfigRecord(state);
@@ -204,7 +205,7 @@ async function applyReloadedConfig(params: {
       ? (envSection.vars as Record<string, unknown>)
       : undefined;
   for (const key of PROVIDER_ENV_KEYS) {
-    if (blockedEnvKeys.has(key.toUpperCase())) continue;
+    if (isBlockedEnvKey(key)) continue;
     const value =
       typeof envVars?.[key] === "string"
         ? (envVars[key] as string)
@@ -265,7 +266,7 @@ export async function handleConfigRoutes(
     isBlockedObjectKey,
     stripRedactedPlaceholderValuesDeep,
     patchTouchesProviderSelection: _patchTouchesProviderSelection,
-    BLOCKED_ENV_KEYS,
+    isBlockedEnvKey,
     CONFIG_WRITE_ALLOWED_TOP_KEYS,
     resolveMcpServersRejection,
     resolveMcpTerminalAuthorizationRejection,
@@ -302,7 +303,7 @@ export async function handleConfigRoutes(
       state: config,
       next,
       runtime,
-      blockedEnvKeys: BLOCKED_ENV_KEYS,
+      isBlockedEnvKey,
     });
 
     if (isElizaSettingsDebugEnabled()) {
@@ -401,7 +402,7 @@ export async function handleConfigRoutes(
     ) {
       const envPatch = filtered.env as Record<string, unknown>;
       // Defense-in-depth: strip step-up secrets from persisted config before
-      // merge, even though BLOCKED_ENV_KEYS also blocks them during process.env
+      // merge, even though isBlockedEnvKey also blocks them during process.env
       // sync below. Keeping both guards prevents accidental persistence across
       // the API and environment-sync paths.
       delete envPatch.ELIZA_API_TOKEN;

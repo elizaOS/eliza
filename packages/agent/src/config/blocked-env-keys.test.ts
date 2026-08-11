@@ -11,7 +11,11 @@
 
 import { BLOCKED_SPAWN_ENV_KEYS } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
-import { BLOCKED_ENV_KEYS, isBlockedEnvKey } from "./blocked-env-keys";
+import {
+  BLOCKED_ENV_KEY_PREFIXES,
+  BLOCKED_ENV_KEYS,
+  isBlockedEnvKey,
+} from "./blocked-env-keys";
 import { collectConfigEnvVars } from "./env-vars";
 
 describe("BLOCKED_ENV_KEYS", () => {
@@ -51,6 +55,88 @@ describe("BLOCKED_ENV_KEYS", () => {
     // Benign keys pass through
     expect(isBlockedEnvKey("GIT_AUTHOR_NAME")).toBe(false);
     expect(isBlockedEnvKey("NODE_ENV")).toBe(false);
+  });
+
+  it("mirrors core's spawn prefix families so the two paths cannot drift", async () => {
+    // BLOCKED_SPAWN_ENV_PREFIXES guards a caller-supplied child environment.
+    // These prefixes guard config/API writes, which reach process.env and are
+    // then inherited by every spawn site that passes no explicit env.
+    const { BLOCKED_SPAWN_ENV_PREFIXES } = await import(
+      "@elizaos/core/security/spawn-env-policy"
+    );
+    const missing = [...BLOCKED_SPAWN_ENV_PREFIXES].filter(
+      (prefix) => !BLOCKED_ENV_KEY_PREFIXES.includes(prefix),
+    );
+    expect(missing).toEqual([]);
+  });
+
+  it("blocks any key inside a dangerous prefix family", () => {
+    for (const key of [
+      "BASH_FUNC_x%%",
+      "bash_func_payload",
+      "NPM_CONFIG_REGISTRY",
+      "PNPM_STORE_DIR",
+      "YARN_RC_FILENAME",
+      "BUN_CONFIG_REGISTRY",
+      "UV_INDEX_URL",
+      "PIP_INDEX_URL",
+      "PIPX_HOME",
+      "PYX_CACHE",
+      "DENO_DIR",
+      "DOCKER_HOST",
+      "PODMAN_CONNECTION",
+    ]) {
+      expect(isBlockedEnvKey(key)).toBe(true);
+    }
+  });
+
+  it("matches whole prefixes only, not any key that merely starts alike", () => {
+    // Each of these shares a leading substring with a blocked family but is not
+    // inside it — the trailing underscore is what makes the family a namespace.
+    for (const key of [
+      "UVICORN_HOST",
+      "PIPELINE_URL",
+      "DENOISE_LEVEL",
+      "DOCKERFILE_PATH",
+      "BASH_FUNCTION_NAME",
+      "YARNSPINNER_MODE",
+    ]) {
+      expect(isBlockedEnvKey(key)).toBe(false);
+    }
+  });
+
+  it("does not let a whitespace variant slip past either check", () => {
+    expect(isBlockedEnvKey(" BASH_FUNC_x%%")).toBe(true);
+    expect(isBlockedEnvKey("NPM_CONFIG_REGISTRY ")).toBe(true);
+    expect(isBlockedEnvKey("  LD_PRELOAD  ")).toBe(true);
+  });
+
+  it("still accepts the exact-key denylist through the same predicate", () => {
+    expect(isBlockedEnvKey("LD_PRELOAD")).toBe(true);
+    expect(isBlockedEnvKey("ld_preload")).toBe(true);
+    expect(isBlockedEnvKey("STEWARD_API_KEY")).toBe(true);
+    expect(isBlockedEnvKey("SAFE_PUBLIC_FLAG")).toBe(false);
+  });
+
+  it("drops prefix-family keys during startup env collection", () => {
+    const envVars = collectConfigEnvVars({
+      env: {
+        vars: {
+          "BASH_FUNC_x%%": "() { :; }; /tmp/evil",
+          NPM_CONFIG_REGISTRY: "https://evil.example",
+          SAFE_PUBLIC_FLAG: "enabled",
+        },
+        DOCKER_HOST: "tcp://evil.example:2375",
+        UVICORN_HOST: "127.0.0.1",
+        SAFE_DIRECT_VALUE: "direct",
+      },
+    });
+
+    expect(envVars).toEqual({
+      SAFE_PUBLIC_FLAG: "enabled",
+      UVICORN_HOST: "127.0.0.1",
+      SAFE_DIRECT_VALUE: "direct",
+    });
   });
 
   it("blocks canonical secret keys during startup env collection", () => {
