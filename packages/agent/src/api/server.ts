@@ -1325,6 +1325,7 @@ import { serveMediaFile } from "./media-store.ts";
 import {
   injectApiBaseIntoHtml,
   isAuthProtectedRoute,
+  serveSkunkScanWeb,
   serveStaticUi,
 } from "./static-file-server.ts";
 
@@ -1909,6 +1910,12 @@ async function handleRequest(
   }
   const isBlueBubblesWebhookEndpoint =
     blueBubblesWebhookPath != null && pathname === blueBubblesWebhookPath;
+  // The free Trust Check summary is the always-visible product surface that
+  // sits in front of the paywall (see analyzers/trustCheckCard.ts) - it has
+  // to be reachable without the shared ELIZA_API_TOKEN, unlike the full
+  // paid investigation at /api/skunkscan/wallet, which stays gated.
+  const isSkunkScanTrustCheckEndpoint =
+    method === "POST" && pathname === "/api/skunkscan/trust-check";
   const isAuthProtectedPath = isAuthProtectedRoute(pathname);
 
   const canonicalizeRestartReason = (reason: string): string => {
@@ -2033,6 +2040,10 @@ async function handleRequest(
   // while steward-managed containers can still reach the built-in dashboard.
   if (method === "GET" || method === "HEAD") {
     if (serveStaticUi(req, res, pathname)) return;
+    // The minimal SkunkScan Trust Check page (packages/skunkscan-web),
+    // scoped to /trust-check - served same-origin so its fetch() calls to
+    // /api/skunkscan/trust-check need no CORS configuration.
+    if (serveSkunkScanWeb(req, res, pathname)) return;
     // Chat media (uploaded + generated). Content-addressed sha256 filenames act
     // as unguessable capabilities, so media loads from <img>/<audio> without an
     // auth header — same rationale as static assets above.
@@ -2047,6 +2058,7 @@ async function handleRequest(
     !isCloudFirstRunStatusEndpoint &&
     !isWhatsAppWebhookEndpoint &&
     !isBlueBubblesWebhookEndpoint &&
+    !isSkunkScanTrustCheckEndpoint &&
     !isPublicRuntimePluginRoute({
       runtime: state.runtime,
       method,

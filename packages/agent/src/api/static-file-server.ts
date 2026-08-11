@@ -90,6 +90,137 @@ export function resolveUiDir(): string | null {
 }
 
 // ---------------------------------------------------------------------------
+// SkunkScan Trust Check UI (packages/skunkscan-web) - a separate, minimal
+// static bundle from the main dashboard, served same-origin under
+// /trust-check/ so the page can call /api/skunkscan/trust-check without any
+// CORS configuration. See packages/skunkscan-web's vite.config.ts (base:
+// "/trust-check/") for the matching build-side path.
+// ---------------------------------------------------------------------------
+
+const SKUNKSCAN_WEB_PREFIX = "/trust-check";
+
+let skunkscanWebDir: string | null | undefined;
+let skunkscanWebIndexHtml: Buffer | null = null;
+
+export function resolveSkunkScanWebDir(): string | null {
+  if (skunkscanWebDir !== undefined) return skunkscanWebDir;
+  if (process.env.NODE_ENV !== "production") {
+    skunkscanWebDir = null;
+    return null;
+  }
+
+  const thisDir = path.dirname(fileURLToPath(import.meta.url));
+  const packageRoot = findOwnPackageRoot(thisDir);
+  const candidates = [
+    path.resolve("packages/skunkscan-web/dist"),
+    path.resolve(packageRoot, "packages", "skunkscan-web", "dist"),
+  ];
+
+  for (const candidate of candidates) {
+    const indexPath = path.join(candidate, "index.html");
+    try {
+      if (fs.statSync(indexPath).isFile()) {
+        skunkscanWebDir = candidate;
+        skunkscanWebIndexHtml = fs.readFileSync(indexPath);
+        logger.info(`[eliza-api] Serving SkunkScan Trust Check UI from ${candidate}`);
+        return skunkscanWebDir;
+      }
+    } catch {
+      // Candidate not present, keep searching.
+    }
+  }
+
+  skunkscanWebDir = null;
+  logger.info(
+    "[eliza-api] No built SkunkScan Trust Check UI found - /trust-check is disabled",
+  );
+  return null;
+}
+
+/**
+ * Serve the built SkunkScan Trust Check single-page app from
+ * packages/skunkscan-web/dist, scoped strictly to /trust-check[/*]. Returns
+ * true when the request was handled.
+ */
+export function serveSkunkScanWeb(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  pathname: string,
+): boolean {
+  if (pathname !== SKUNKSCAN_WEB_PREFIX && !pathname.startsWith(`${SKUNKSCAN_WEB_PREFIX}/`)) {
+    return false;
+  }
+
+  const root = resolveSkunkScanWebDir();
+  if (!root) return false;
+
+  let decodedPath: string;
+  try {
+    decodedPath = decodeURIComponent(pathname);
+  } catch {
+    sendJsonError(res, "Invalid URL path encoding", 400);
+    return true;
+  }
+
+  const relativePath = decodedPath
+    .slice(SKUNKSCAN_WEB_PREFIX.length)
+    .replace(/^\/+/, "");
+  const candidatePath = path.resolve(root, relativePath);
+  if (
+    candidatePath !== root &&
+    !candidatePath.startsWith(`${root}${path.sep}`)
+  ) {
+    sendJsonError(res, "Forbidden", 403);
+    return true;
+  }
+
+  try {
+    const stat = fs.statSync(candidatePath);
+    if (stat.isFile()) {
+      const ext = path.extname(candidatePath).toLowerCase();
+      const body = getCachedFile(candidatePath, stat.mtimeMs);
+      const cacheControl = relativePath.startsWith("assets/")
+        ? "public, max-age=31536000, immutable"
+        : "public, max-age=0, must-revalidate";
+      sendStaticResponse(
+        req,
+        res,
+        200,
+        {
+          "Cache-Control": cacheControl,
+          "Content-Length": body.length,
+          "Content-Type": STATIC_MIME[ext] ?? "application/octet-stream",
+        },
+        body,
+      );
+      return true;
+    }
+  } catch {
+    // Missing file falls through to the SPA index fallback below.
+  }
+
+  // Single real route (the address-check form) - any non-asset request
+  // under the prefix gets index.html, same navigation-vs-asset distinction
+  // serveStaticUi uses.
+  const reqExt = path.extname(decodedPath).toLowerCase();
+  if (reqExt && reqExt !== ".html") return false;
+  if (!skunkscanWebIndexHtml) return false;
+
+  sendStaticResponse(
+    req,
+    res,
+    200,
+    {
+      "Cache-Control": "public, max-age=0, must-revalidate",
+      "Content-Length": skunkscanWebIndexHtml.length,
+      "Content-Type": "text/html; charset=utf-8",
+    },
+    skunkscanWebIndexHtml,
+  );
+  return true;
+}
+
+// ---------------------------------------------------------------------------
 // Response helpers
 // ---------------------------------------------------------------------------
 
