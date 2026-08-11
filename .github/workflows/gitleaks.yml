@@ -31,6 +31,9 @@ permissions:
 jobs:
   gitleaks:
     name: gitleaks
+    # ci.yml owns the same diff-scoped secret scan for fork PRs. Protected
+    # branch pushes and trusted PRs retain this independently visible SOC2 lane.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.fork == false
     runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     steps:
       - name: Checkout

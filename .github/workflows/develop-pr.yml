@@ -22,6 +22,10 @@ permissions:
 
 jobs:
   lint:
+    # Canonical CI already gives forks the same lint/format contract plus the
+    # broader repository verification lane. Keep this specialized fan-out for
+    # trusted branches without charging outside contributors for it twice.
+    if: github.event.pull_request.head.repo.fork == false
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -73,6 +77,7 @@ jobs:
           .github/workflows/test.yml
 
   typecheck:
+    if: github.event.pull_request.head.repo.fork == false
     runs-on: ubuntu-latest
     # 35 not 20: at --concurrency=4 a near-total affected cone (~250 packages)
     # needs headroom — the one green full-cone run spent 11 minutes in the
@@ -119,6 +124,7 @@ jobs:
           TURBO_SCM_BASE: ${{ github.event.pull_request.base.sha }}
 
   build:
+    if: github.event.pull_request.head.repo.fork == false
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -154,6 +160,7 @@ jobs:
   # a sharded post-merge lane and is far too slow for a per-PR gate.
   plugin-tests:
     name: plugin-tests
+    if: github.event.pull_request.head.repo.fork == false
     runs-on: ubuntu-latest
     # Rust-backed plugin suites can compile their native test harness on a cold
     # hosted runner. The cache keeps normal runs short; the cap prevents a
