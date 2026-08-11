@@ -1133,7 +1133,18 @@ function authoritativeRequestTokens(text: string): Set<string> {
 		if (isNegated) continue;
 		tokens.push(word);
 	}
-	return new Set(tokens);
+	const tokenSet = new Set(tokens);
+	// If the raw text contains a negated destructive phrase anywhere
+	// (including outside the primary clause), fail closed for delete.
+	if (
+		/\b(?:do not|don't|doesn't|didn't|won't|never|not)\s+(?:delete|remove|clear|destroy)\b/i.test(
+			raw,
+		)
+	) {
+		for (const d of ["delete", "remove", "clear", "destroy"])
+			tokenSet.delete(d);
+	}
+	return tokenSet;
 }
 
 function correctCapabilityOperationFamily(
@@ -1149,6 +1160,12 @@ function correctCapabilityOperationFamily(
 		!selectedFamily ||
 		requestedFamily === selectedFamily
 	) {
+		return capability;
+	}
+	// Structural safety: never lexically escalate a non-destructive selection
+	// into a destructive one. Destructive authority must be established by a
+	// dedicated confirmation flow, not by keyword proximity.
+	if (requestedFamily === "delete" && selectedFamily !== "delete") {
 		return capability;
 	}
 
@@ -3159,37 +3176,17 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 						if (!resolvedCapability && standardCapability)
 							capability = standardCapability;
 						if (resolvedCapability) {
-							const explicitCapRaw =
-								readStringOption(actionOptions, "capability") ??
-								readStringOption(options, "capability");
-							const isExplicit =
-								explicitCapRaw &&
-								normalizeCapabilityKey(explicitCapRaw) ===
-									normalizeCapabilityKey(resolvedCapability.capability.id);
-							const selectedFamilyForExplicit = operationFamilyForCapability(
+							const correctedCapability = correctCapabilityOperationFamily(
+								resolvedCapability.view,
 								resolvedCapability.capability,
+								text,
 							);
-							// Preserve an explicit destructive capability (e.g., delete-note)
-							// from being silently rewritten by incidental read-family words
-							// in a later/negated clause. Allow correction for genuinely
-							// wrong inferred create/update selections.
-							const shouldPreserveExplicit =
-								isExplicit && selectedFamilyForExplicit === "delete";
-							if (!shouldPreserveExplicit) {
-								const correctedCapability = correctCapabilityOperationFamily(
-									resolvedCapability.view,
-									resolvedCapability.capability,
-									text,
-								);
-								if (
-									correctedCapability.id !== resolvedCapability.capability.id
-								) {
-									resolvedCapability = {
-										...resolvedCapability,
-										capability: correctedCapability,
-									};
-									capability = correctedCapability.id;
-								}
+							if (correctedCapability.id !== resolvedCapability.capability.id) {
+								resolvedCapability = {
+									...resolvedCapability,
+									capability: correctedCapability,
+								};
+								capability = correctedCapability.id;
 							}
 						}
 						const paramsResolution = readCapabilityParams(
