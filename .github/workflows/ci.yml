@@ -193,15 +193,23 @@ jobs:
         if: needs.changes.outputs.zero_key == 'true'
         run: PLAYWRIGHT_INSTALL_CWD=packages/app .github/scripts/install-playwright-browsers.sh chromium webkit
 
-      # Every shard runs the identical command and differs only by
-      # ELIZA_UI_SMOKE_SHARD, so no shard can silently own a different lane.
-      # The orchestrator's two non-Playwright e2e tasks (~48s combined) repeat
-      # on each runner; duplicating them costs less than branching the command.
+      # Playwright is the only shardable task in the e2e lane; its other 16
+      # tasks run once in `smoke_lanes`. Measured on run 31504110080, replaying
+      # them here cost 8.6 min on EVERY shard -- plugin-personal-assistant alone
+      # is 5.8 -- for about 52 min of duplicate runner time per lane.
+      #
+      # Invoked directly rather than through run-all-tests: that orchestrator's
+      # --require-work guard certifies work from reconciled JUnit reports, and
+      # Playwright produces none. With the vitest tasks filtered away it has
+      # nothing left to observe and exits 3 on a suite that passed (run
+      # 31512602909: "87 passed" followed by VACUOUS-GREEN GUARD). The guard is
+      # right to refuse to certify what it cannot see, so this step does not ask
+      # it to.
       - name: Deterministic end-to-end smoke
         if: needs.changes.outputs.zero_key == 'true'
         env:
           ELIZA_UI_SMOKE_SHARD: ${{ matrix.shard }}/6
-        run: bun run test:e2e
+        run: bun run --cwd packages/app test:e2e
 
       - name: No affected e2e shard
         if: needs.changes.outputs.zero_key != 'true'
@@ -222,7 +230,7 @@ jobs:
           submodules: false
 
       - uses: ./.github/actions/setup-bun-workspace
-        if: needs.changes.outputs.desktop == 'true' || needs.changes.outputs.cloud == 'true'
+        if: needs.changes.outputs.desktop == 'true' || needs.changes.outputs.cloud == 'true' || needs.changes.outputs.zero_key == 'true'
         with:
           bun-version: ${{ env.BUN_VERSION }}
           node-version: ${{ env.NODE_VERSION }}
@@ -260,9 +268,16 @@ jobs:
         if: needs.changes.outputs.cloud == 'true'
         run: bun run test:cloud
 
+      # The complement of the shard job's work: the 16 e2e tasks that cannot be
+      # sharded, run once instead of once per shard. These are vitest-backed, so
+      # --require-work has real reports to reconcile here.
+      - name: Deterministic end-to-end smoke (unshardable tasks)
+        if: needs.changes.outputs.zero_key == 'true'
+        run: bun run test:e2e --filter='^(?!.*packages/app\)#test:e2e)'
+
       - name: No affected smoke lane
-        if: needs.changes.outputs.desktop != 'true' && needs.changes.outputs.cloud != 'true'
-        run: echo "No desktop or cloud smoke lane is affected."
+        if: needs.changes.outputs.desktop != 'true' && needs.changes.outputs.cloud != 'true' && needs.changes.outputs.zero_key != 'true'
+        run: echo "No desktop, cloud, or deterministic E2E lane is affected."
 
   android_aab:
     name: Android release AAB
