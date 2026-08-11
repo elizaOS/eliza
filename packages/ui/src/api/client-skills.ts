@@ -1071,5 +1071,48 @@ ElizaClient.prototype.saveDiscordLocalSubscriptions = async function (
 ElizaClient.prototype.getBlueBubblesStatus = async function (
   this: ElizaClient,
 ) {
-  return this.fetch("/api/bluebubbles/status");
+  try {
+    const res = await this.fetch<{
+      connector: string;
+      state: string;
+      detail?: {
+        available: boolean;
+        connected: boolean;
+        webhookPath: string;
+        reason?: string;
+      };
+    }>("/api/setup/bluebubbles/status");
+    const detail = (res as { detail?: unknown })?.detail;
+    if (
+      !detail ||
+      typeof (detail as Record<string, unknown>).available !== "boolean" ||
+      typeof (detail as Record<string, unknown>).connected !== "boolean" ||
+      typeof (detail as Record<string, unknown>).webhookPath !== "string"
+    ) {
+      throw new Error("Invalid BlueBubbles status response: missing detail");
+    }
+    const d = detail as {
+      available: boolean;
+      connected: boolean;
+      webhookPath: string;
+      reason?: string;
+    };
+    return {
+      available: d.available,
+      connected: d.connected,
+      webhookPath: d.webhookPath,
+      ...(typeof d.reason === "string" ? { reason: d.reason } : {}),
+    };
+  } catch (err) {
+    const status = (err as { status?: unknown })?.status;
+    if (status === 404) {
+      return {
+        available: false,
+        connected: false,
+        webhookPath: "/webhooks/bluebubbles",
+        reason: "bluebubbles service not registered",
+      };
+    }
+    throw err;
+  }
 };
