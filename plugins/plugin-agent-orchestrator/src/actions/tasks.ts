@@ -4531,11 +4531,16 @@ async function settleTasksOperation(args: {
   capturedCallbacks: CapturedCallback[];
   callback?: HandlerCallback;
 }): Promise<ActionResult> {
-  const plannerOnlyIssueRead = isIssueReadOperation(
-    args.operation,
-    args.params,
-    args.content,
-  );
+  // A read-only op's text is planner observation, never a user reply: keep it
+  // out of the canonical callback so the planner composes the answer instead of
+  // shipping the raw tool text. Covers the GitHub-issue reads (#18248) AND the
+  // orchestrator reads that share the same "no visible callback" contract —
+  // list_agents/history/share — whose internal text otherwise leaks verbatim
+  // (live 2026-08-10: a status-y ask routed to list_agents shipped
+  // "No active task agents. Use TASKS { action: \"create\" }..." to chat).
+  const plannerOnlyRead =
+    TASKS_READ_ONLY_OPERATIONS.has(args.operation) ||
+    isIssueReadOperation(args.operation, args.params, args.content);
   const { receipt, outcomeUnknown } = tasksEffectReceipt(args);
   const {
     userFacingText: _readUserFacingText,
@@ -4543,17 +4548,17 @@ async function settleTasksOperation(args: {
     turnComplete: _readTurnComplete,
     ...plannerOnlyResult
   } = args.result;
-  let result = plannerOnlyIssueRead ? plannerOnlyResult : args.result;
+  let result = plannerOnlyRead ? plannerOnlyResult : args.result;
   const helperEmittedCallback =
-    !plannerOnlyIssueRead && args.capturedCallbacks.length > 0;
+    !plannerOnlyRead && args.capturedCallbacks.length > 0;
   let canonical = helperEmittedCallback
     ? args.capturedCallbacks.at(-1)
     : undefined;
-  if (!plannerOnlyIssueRead && !canonical && effectString(result.text)) {
+  if (!plannerOnlyRead && !canonical && effectString(result.text)) {
     canonical = { response: { text: effectString(result.text) } };
   }
   if (
-    !plannerOnlyIssueRead &&
+    !plannerOnlyRead &&
     args.capturedCallbacks.length > 1 &&
     effectString(result.text) !== undefined
   ) {

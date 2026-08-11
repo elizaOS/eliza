@@ -1,6 +1,7 @@
 /**
  * Multi-line text-input primitive with cva variants, mirroring the Input skins
  * so single- and multi-line fields share styling across settings/config forms.
+ * Coarse-pointer surfaces use 16px font size to prevent iOS Safari focus-zoom.
  */
 import { cva, type VariantProps } from "class-variance-authority";
 import * as React from "react";
@@ -8,7 +9,7 @@ import * as React from "react";
 import { cn } from "../../lib/utils";
 
 const textareaVariants = cva(
-  "w-full border text-sm resize-y transition-[border-color,box-shadow,background-color] disabled:cursor-not-allowed disabled:opacity-50",
+  "w-full border text-sm pointer-coarse:text-[16px] resize-y transition-[border-color,box-shadow,background-color] disabled:cursor-not-allowed disabled:opacity-50",
   {
     variants: {
       variant: {
