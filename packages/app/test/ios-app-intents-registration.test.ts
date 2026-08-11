@@ -370,6 +370,9 @@ describe("native assistant entry contracts", () => {
       "let appDisplayName = XCUIApplication().label",
     );
     expect(widgetGalleryCaptureUITestsSwift).toContain(
+      "guard !appDisplayName.isEmpty else",
+    );
+    expect(widgetGalleryCaptureUITestsSwift).toContain(
       "springboard.staticTexts[appDisplayName]",
     );
     expect(deviceExtensionSurfaceUITestsSwift).not.toContain(

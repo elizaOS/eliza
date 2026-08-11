@@ -31,6 +31,9 @@ final class WidgetGalleryCaptureUITests: XCTestCase {
 
     func testCaptureHomeScreenWidgetGallery() throws {
         let appDisplayName = XCUIApplication().label
+        guard !appDisplayName.isEmpty else {
+            throw XCTSkip("The installed target application must expose a display label before the widget gallery can be searched.")
+        }
         goHome()
         attachScreenshot(named: "widget-00-home-screen")
 
