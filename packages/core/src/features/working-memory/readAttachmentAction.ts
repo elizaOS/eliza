@@ -107,14 +107,20 @@ function isMediaAttachment(record: AttachmentRecord): boolean {
  * True when a media record's transcript is missing because transcription
  * itself was unavailable (ingest or on-demand), not because nobody has asked
  * yet. `notProcessed` carries the raw provider error; the user-facing message
- * must stay a clean sentence, never that internal prose.
+ * must stay a clean sentence, never that internal prose. Anchored to the
+ * writer-controlled marker prefix ("Transcription unavailable:" on-demand,
+ * "Audio/Video transcription unavailable:" ingest) — the appended error prose
+ * can echo a hostile remote body (media/fetch.ts embeds up to ~200 chars of
+ * it), so mid-string matches must never count as unavailability evidence.
  */
 function mediaTranscriptionUnavailable(records: AttachmentRecord[]): boolean {
 	return records.some(
 		(record) =>
 			isMediaAttachment(record) &&
 			typeof record.attachment.notProcessed === "string" &&
-			/transcription unavailable/i.test(record.attachment.notProcessed),
+			/^(?:(?:audio|video)\s+)?transcription unavailable/i.test(
+				record.attachment.notProcessed,
+			),
 	);
 }
 
@@ -151,6 +157,13 @@ function missingReadableContentMessage(records: AttachmentRecord[]): string {
 const ON_DEMAND_TRANSCRIPTION_MAX_BYTES = 50 * 1024 * 1024;
 /** Same bound the pre-rework provider-side transcription fetch enforced. */
 const ON_DEMAND_TRANSCRIPTION_TIMEOUT_MS = 30_000;
+/**
+ * The only local shape the content-addressed media store serves
+ * (`packages/agent/src/api/media-store.ts`: `MEDIA_URL_PREFIX` + the strict
+ * `MEDIA_FILE_NAME` of a 64-hex sha256 and short alphanumeric extension).
+ * Anything else must never reach the trusted local fetch.
+ */
+const LOCAL_MEDIA_STORE_URL = /^\/api\/media\/[a-f0-9]{64}\.[a-z0-9]{1,8}$/;
 
 /**
  * True when a TRANSCRIPTION failure means no provider can serve at all —
@@ -178,10 +191,15 @@ function isTranscriptionUnavailableError(err: unknown): err is Error {
  * Fetches a conversation attachment's bytes for transcription, mirroring the
  * ingest split in `MessageService.fetchAttachmentBytes`: remote
  * (attacker-influenceable) http(s) URLs go through the SSRF-guarded,
- * size-capped, time-bounded media fetch, while relative media-store URLs
- * (`/api/media/<sha256>.<ext>`, the canonical stored shape — they cannot pass
- * remote-only URL parsing) resolve against the local server and use the
- * trusted runtime fetch with the same size cap.
+ * size-capped, time-bounded media fetch, while local URLs must be exactly the
+ * canonical media-store shape (`/api/media/<sha256>.<ext>`) before resolving
+ * against the local server with the same size cap and timeout. Anything else
+ * is rejected before any fetch: `getLocalServerUrl` is a bare string concat,
+ * so an unvalidated `@attacker.example/x` would become
+ * `http://localhost:PORT@attacker.example/x` (userinfo trick) and hand the
+ * trusted local fetch to an attacker host. Rejections throw plain
+ * transient-class errors with static messages (never echoing the
+ * attacker-influenceable url) so the reply degrades to the honest "yet" path.
  */
 async function fetchTranscribableBytes(
 	runtime: IAgentRuntime,
@@ -195,8 +213,23 @@ async function fetchTranscribableBytes(
 		});
 		return buffer;
 	}
+	if (!LOCAL_MEDIA_STORE_URL.test(url)) {
+		throw new Error(
+			"Attachment URL is not a canonical media-store path; refusing local fetch",
+		);
+	}
+	// Defence in depth on top of the shape check: the resolved origin must be
+	// the local server itself before the trusted fetch runs.
+	const localUrl = new URL(getLocalServerUrl(url));
+	if (localUrl.hostname !== "localhost" && localUrl.hostname !== "127.0.0.1") {
+		throw new Error(
+			"Local media fetch resolved to a non-local host; refusing local fetch",
+		);
+	}
 	const runtimeFetch = runtime.fetch ?? globalThis.fetch;
-	const res = await runtimeFetch(getLocalServerUrl(url));
+	const res = await runtimeFetch(localUrl.href, {
+		signal: AbortSignal.timeout(ON_DEMAND_TRANSCRIPTION_TIMEOUT_MS),
+	});
 	if (!res.ok) {
 		throw new Error(`Failed to fetch attachment: ${res.statusText}`);
 	}
@@ -218,6 +251,13 @@ async function fetchTranscribableBytes(
  * other stored field survives, and the gathering layer's underscore transport
  * fields never reach storage. Never throws — the in-memory transcript already
  * serves this reply, so a lost write only costs one future re-transcription.
+ *
+ * Two guards keep this write from destroying stored data: a redacted-disclosure
+ * variant (selectAttachmentForRequester keeps the shared `id`/`_messageId` but
+ * swaps `url` to the redacted bytes and strips text/description) must never
+ * persist its transcript over the original entry, and a stored entry that
+ * already carries a non-empty transcript is never overwritten — this fill-only
+ * rule also settles concurrent reads racing to persist.
  */
 async function persistTranscript(
 	runtime: IAgentRuntime,
@@ -229,6 +269,10 @@ async function persistTranscript(
 	// Without a known owning row (e.g. an unsaved in-flight message) there is
 	// nothing to update; the next read simply retries transcription.
 	if (!messageId) return;
+	// A redacted variant's transcript came from the redacted bytes; writing it
+	// would replace the original entry's real transcript. The in-memory
+	// transcript still serves this reply — only the write is skipped.
+	if (attachment.redacted) return;
 	try {
 		const stored = await runtime.getMemoryById(messageId);
 		const storedAttachments = stored?.content.attachments;
@@ -236,6 +280,8 @@ async function persistTranscript(
 		let found = false;
 		const attachments = storedAttachments.map((entry) => {
 			if (entry.id !== attachment.id) return entry;
+			// Fill-only: an existing stored transcript always wins.
+			if (typeof entry.text === "string" && entry.text.trim()) return entry;
 			found = true;
 			const { notProcessed: _stale, ...rest } = entry;
 			return {

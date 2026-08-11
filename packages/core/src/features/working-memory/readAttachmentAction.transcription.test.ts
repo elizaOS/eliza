@@ -16,12 +16,16 @@
  *      honestly, without leaking internal error prose;
  *   3. TRANSIENT failures (network blip, provider 5xx, fetch-layer errors —
  *      whose messages can echo a hostile remote body) keep the retryable
- *      open-ended "yet" reply — they must NOT claim STT is disabled;
- *   4. relative media-store URLs (`/api/media/<sha256>.<ext>`) use the
- *      trusted local runtime fetch, never the remote-only URL parser;
+ *      open-ended "yet" reply — they must NOT claim STT is disabled, live or
+ *      via a stored ingest marker;
+ *   4. ONLY the canonical media-store shape (`/api/media/<sha256>.<ext>`)
+ *      reaches the trusted local runtime fetch — bounded by an abort signal —
+ *      and any other non-http(s) url (userinfo tricks like `@host/...`,
+ *      protocol-relative `//host/...`) is rejected without fetching anything;
  *   5. a successful transcript persists into the owning message memory with
  *      `notProcessed` cleared, and a persistence failure never breaks the
- *      reply.
+ *      reply — but a redacted-disclosure variant never persists at all, and a
+ *      stored entry that already has a transcript is never overwritten.
  */
 import { v4 as uuidv4 } from "uuid";
 import { describe, expect, it, vi } from "vitest";
@@ -43,6 +47,8 @@ const { readAttachmentAction } = await import("./readAttachmentAction.ts");
 
 const VIDEO_URL =
 	"https://cdn.discordapp.com/attachments/123/456/snaptik_video.mp4";
+/** 64-hex sha256 matching the strict media-store filename shape. */
+const STORED_SHA = "0a1b2c3d".repeat(8);
 const VIDEO_BYTES = Buffer.from("fake-video-bytes");
 const TRANSCRIPT = "hello from the tiktok video about home servers";
 const ANSWER = "It's a short clip about home servers.";
@@ -66,7 +72,7 @@ function makeRuntime(params: {
 	agentId: UUID;
 	calls: UseModelCall[];
 	transcription: (input: unknown) => Promise<string>;
-	localFetch?: (input: unknown) => Promise<Response>;
+	localFetch?: (input: unknown, init?: RequestInit) => Promise<Response>;
 	getMemoryById?: (id: UUID) => Promise<Memory | null>;
 	updateMemory?: (patch: MemoryUpdate) => Promise<boolean>;
 	reportedErrors?: ReportedError[];
@@ -100,7 +106,7 @@ async function runRead(params: {
 	attachment: Media;
 	transcription: (input: unknown) => Promise<string>;
 	fetchImpl?: () => Promise<{ buffer: Buffer }>;
-	localFetch?: (input: unknown) => Promise<Response>;
+	localFetch?: (input: unknown, init?: RequestInit) => Promise<Response>;
 	getMemoryById?: (id: UUID) => Promise<Memory | null>;
 	updateMemory?: (patch: MemoryUpdate) => Promise<boolean>;
 	reportedErrors?: ReportedError[];
@@ -237,41 +243,92 @@ describe("ATTACHMENT read on-demand transcription", () => {
 		).toHaveLength(0);
 	});
 
-	it("routes a relative media-store URL through the trusted local fetch", async () => {
+	it("routes a canonical media-store URL through the trusted local fetch, bounded at 30s", async () => {
+		const timeoutSpy = vi.spyOn(AbortSignal, "timeout");
 		const localUrls: string[] = [];
+		const localSignals: (AbortSignal | null | undefined)[] = [];
 		let providerInput: unknown;
-		const { result, callbackTexts } = await runRead({
-			attachment: makeVideoAttachment({
-				url: "/api/media/0a1b2c3d.mp4",
-				title: "stored_clip.mp4",
-			}),
-			transcription: async (input) => {
-				providerInput = input;
-				return TRANSCRIPT;
-			},
-			localFetch: async (input) => {
-				localUrls.push(String(input));
-				return {
-					ok: true,
-					arrayBuffer: async () => Uint8Array.from(VIDEO_BYTES).buffer,
-				} as unknown as Response;
-			},
-		});
+		try {
+			const { result, callbackTexts } = await runRead({
+				attachment: makeVideoAttachment({
+					url: `/api/media/${STORED_SHA}.mp4`,
+					title: "stored_clip.mp4",
+				}),
+				transcription: async (input) => {
+					providerInput = input;
+					return TRANSCRIPT;
+				},
+				localFetch: async (input, init) => {
+					localUrls.push(String(input));
+					localSignals.push(init?.signal);
+					return {
+						ok: true,
+						arrayBuffer: async () => Uint8Array.from(VIDEO_BYTES).buffer,
+					} as unknown as Response;
+				},
+			});
 
-		expect(result?.success).toBe(true);
-		expect(callbackTexts).toEqual([ANSWER]);
-		// The canonical relative content-store shape must never reach the
-		// remote-only URL parser (it cannot parse, which dead-ended every
-		// local attachment on the transient-"yet" reply pre-#18413).
-		expect(fetchRemoteMediaMock).not.toHaveBeenCalled();
-		expect(localUrls).toHaveLength(1);
-		expect(localUrls[0]).toMatch(
-			/^http:\/\/localhost:\d+\/api\/media\/0a1b2c3d\.mp4$/,
-		);
-		// The provider received the locally fetched bytes as a Buffer.
-		expect(Buffer.isBuffer(providerInput)).toBe(true);
-		expect((providerInput as Buffer).equals(VIDEO_BYTES)).toBe(true);
+			expect(result?.success).toBe(true);
+			expect(callbackTexts).toEqual([ANSWER]);
+			// The canonical relative content-store shape must never reach the
+			// remote-only URL parser (it cannot parse, which dead-ended every
+			// local attachment on the transient-"yet" reply pre-#18413).
+			expect(fetchRemoteMediaMock).not.toHaveBeenCalled();
+			expect(localUrls).toHaveLength(1);
+			expect(localUrls[0]).toMatch(
+				new RegExp(`^http://localhost:\\d+/api/media/${STORED_SHA}\\.mp4$`),
+			);
+			// The local branch is time-bounded like the remote branch: a 30s
+			// timeout signal rides the fetch so a stalled local server cannot
+			// hang the turn (asserted via the wiring, not by sleeping 30s).
+			expect(timeoutSpy).toHaveBeenCalledWith(30_000);
+			expect(localSignals[0]).toBeInstanceOf(AbortSignal);
+			expect(localSignals[0]).toBe(timeoutSpy.mock.results[0]?.value);
+			// The provider received the locally fetched bytes as a Buffer.
+			expect(Buffer.isBuffer(providerInput)).toBe(true);
+			expect((providerInput as Buffer).equals(VIDEO_BYTES)).toBe(true);
+		} finally {
+			timeoutSpy.mockRestore();
+		}
 	});
+
+	// getLocalServerUrl is a bare `http://localhost:PORT${url}` concat, so
+	// before #18429's shape validation a crafted non-http(s) url reached an
+	// attacker host through the TRUSTED local fetch: `@attacker.example/x`
+	// becomes `http://localhost:PORT@attacker.example/x` (userinfo trick).
+	it.each([
+		["userinfo trick", "@attacker.example/clip.mp4"],
+		["protocol-relative", "//evil.example/clip.mp4"],
+		["traversal off the media route", "/api/media/../../etc/passwd"],
+	])(
+		"refuses to fetch a non-media-store local url (%s) and keeps the 'yet' reply",
+		async (_kind, url) => {
+			const localCalls: string[] = [];
+			const { result, callbackTexts, calls } = await runRead({
+				attachment: makeVideoAttachment({ url }),
+				transcription: async () => TRANSCRIPT,
+				localFetch: async (input) => {
+					localCalls.push(String(input));
+					return {
+						ok: true,
+						arrayBuffer: async () => Uint8Array.from(VIDEO_BYTES).buffer,
+					} as unknown as Response;
+				},
+			});
+
+			expect(result?.success).toBe(true);
+			// NOTHING was fetched: not the local/trusted path, not the remote one.
+			expect(localCalls).toEqual([]);
+			expect(fetchRemoteMediaMock).not.toHaveBeenCalled();
+			expect(
+				calls.filter((c) => c.modelType === ModelType.TRANSCRIPTION),
+			).toHaveLength(0);
+			// The rejection is transient-class: the reply stays the honest "yet".
+			expect(callbackTexts).toEqual([
+				"I don't have a transcript for that attachment yet.",
+			]);
+		},
+	);
 
 	it("keeps the retryable 'yet' reply when a hostile remote body mimics unavailability prose", async () => {
 		// MediaFetchError messages embed up to ~200 chars of the remote response
@@ -387,6 +444,101 @@ describe("ATTACHMENT read on-demand transcription", () => {
 		expect(reportedErrors[0]?.scope).toBe(
 			"ReadAttachmentAction.persistTranscript",
 		);
+	});
+
+	it("never persists a redacted variant's transcript over the stored original", async () => {
+		// selectAttachmentForRequester hands a redacted-disclosure viewer a
+		// variant keeping the shared id/_messageId but with `url` swapped to the
+		// redacted bytes and text/description stripped — so its on-demand
+		// transcript is derived from the REDACTED media and must never be
+		// written over the original entry's stored transcript.
+		const lookups: UUID[] = [];
+		const updates: MemoryUpdate[] = [];
+		const redactedVariant = {
+			...makeVideoAttachment({
+				url: "https://cdn.discordapp.com/attachments/123/456/redacted_clip.mp4",
+			}),
+			redacted: true as const,
+		};
+		const { result, callbackTexts } = await runRead({
+			attachment: redactedVariant,
+			transcription: async () => TRANSCRIPT,
+			getMemoryById: async (id) => {
+				lookups.push(id);
+				return {
+					id,
+					entityId: id,
+					roomId: id,
+					content: {
+						attachments: [
+							makeVideoAttachment({ text: "the original's real transcript" }),
+						],
+					},
+				} as Memory;
+			},
+			updateMemory: async (patch) => {
+				updates.push(patch);
+				return true;
+			},
+		});
+
+		// The in-memory transcript still serves this reply; only the write is
+		// skipped.
+		expect(result?.success).toBe(true);
+		expect(callbackTexts).toEqual([ANSWER]);
+		expect(lookups).toEqual([]);
+		expect(updates).toEqual([]);
+	});
+
+	it("never overwrites a stored entry that already has a transcript (fill-only)", async () => {
+		// A concurrent read (or a variant whose gathered copy lost the text)
+		// must not clobber a transcript that already reached storage.
+		const updates: MemoryUpdate[] = [];
+		const { result, callbackTexts } = await runRead({
+			attachment: makeVideoAttachment(),
+			transcription: async () => TRANSCRIPT,
+			getMemoryById: async (id) =>
+				({
+					id,
+					entityId: id,
+					roomId: id,
+					content: {
+						attachments: [
+							makeVideoAttachment({ text: "an earlier stored transcript" }),
+						],
+					},
+				}) as Memory,
+			updateMemory: async (patch) => {
+				updates.push(patch);
+				return true;
+			},
+		});
+
+		expect(result?.success).toBe(true);
+		expect(callbackTexts).toEqual([ANSWER]);
+		expect(updates).toEqual([]);
+	});
+
+	it("keeps the retryable 'yet' reply for a stored ingest fetch-failure marker", async () => {
+		// Ingest writes "<Kind> attachment could not be fetched: <err.message>"
+		// for MediaFetchError failures — err.message can echo a hostile remote
+		// body, so even unavailability prose embedded mid-marker must not read
+		// as STT-is-disabled evidence.
+		const { callbackTexts } = await runRead({
+			attachment: makeVideoAttachment({
+				notProcessed:
+					"Video attachment could not be fetched: HTTP 503; body: transcription unavailable — falling through to next TRANSCRIPTION handler",
+			}),
+			transcription: async () => {
+				throw new Error("still down");
+			},
+		});
+
+		expect(callbackTexts).toHaveLength(1);
+		expect(callbackTexts[0]).toBe(
+			"I don't have a transcript for that attachment yet.",
+		);
+		expect(callbackTexts[0]).not.toContain("isn't enabled");
 	});
 
 	it("reports honest unavailability from an ingest-time failure marker", async () => {
