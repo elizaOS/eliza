@@ -114,4 +114,4 @@ exact entry schema and filename convention are documented in the
 - [Create a plugin](/plugins/create-a-plugin)
 - [Testing plugins](/plugins/testing)
 - [Local plugin resolution](/plugins/local-plugins)
-- [Registry guide](/guides/registry)
+- [Registry guide](/tracks/plugin/publish)

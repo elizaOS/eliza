@@ -21,7 +21,7 @@ The maintained reference is
 
 | Script | Scope |
 | --- | --- |
-| `bun run test:component` | Fast deterministic tests under `src/__tests__`. |
+| `(test:component)` | Fast deterministic tests under `src/__tests__` (generated plugins). Use `bun run test` at the repository root. |
 | `bun run test:e2e` | Plugin behavior through the generated agent/runtime harness. |
 | `bun run test` | Both lanes, in that order. |
 
