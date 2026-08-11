@@ -267,25 +267,23 @@ describe("AppWorkerHostService worker bridge", () => {
 			);
 		});
 
-		it("accepts a valid plugin with no actions (providers/routes only)", async () => {
-			// Regression for #18240: apps that export a valid Plugin shape without
-			// an `actions` array were rejected with "no plugin export found in module".
-			// The fix relaxes the gate to accept any isValidPluginShape-compliant export.
-			const snapshot = await service.spawn({
-				slug: "fixture-no-actions",
-				isolation: "worker",
-				pluginEntryPath: NO_ACTIONS_PLUGIN_PATH,
-			});
-			expect(snapshot.slug).toBe("fixture-no-actions");
-			expect(snapshot.readyMs).not.toBeNull();
-			const reply = await service.invoke<{
-				pong: boolean;
-				actions: string[];
-			}>("fixture-no-actions", "ping");
-			expect(reply.ok).toBe(true);
-			if (!reply.ok) return;
-			expect(reply.result.pong).toBe(true);
-			expect(reply.result.actions).toEqual([]);
+		it("rejects a providers/routes-only plugin with an explicit failure (no false success)", async () => {
+			// Regression for #18240 + jmforj review: a plugin that contributes
+			// only providers/routes/services has no reachable surface inside the
+			// worker sandbox (which only bridges actions). The original fix
+			// emitted a `warn` message the host silently dropped — producing a
+			// healthy-looking but inert worker. This now fails explicitly so a
+			// misconfigured isolation:"worker" app is surfaced as a config error.
+			await expect(
+				service.spawn({
+					slug: "fixture-no-actions",
+					isolation: "worker",
+					pluginEntryPath: NO_ACTIONS_PLUGIN_PATH,
+				}),
+			).rejects.toThrow(/contributes no actions/);
+			expect(service.list().some((w) => w.slug === "fixture-no-actions")).toBe(
+				false,
+			);
 		});
 	});
 

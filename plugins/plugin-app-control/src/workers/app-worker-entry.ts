@@ -316,19 +316,19 @@ async function loadPlugin(entryPath: string): Promise<{
 			return { loaded: 0, error: "no plugin export found in module" };
 		}
 		const actions = plugin.actions ?? [];
-		// A valid plugin may contribute only providers, routes, services,
-		// or evaluators without any actions. The worker sandbox currently
-		// exposes only actions via invokeAction — non-action surfaces are
-		// not bridged. Warn so a misconfigured isolation:"worker" app
-		// doesn't silently boot as an inert worker.
+		// The worker sandbox only bridges actions via invokeAction. A
+		// plugin that contributes only providers, routes, or services has
+		// no reachable surface inside the worker — booting it successfully
+		// would produce a healthy-looking but inert worker (false success).
+		// Fail explicitly so a misconfigured isolation:"worker" app is
+		// surfaced as a configuration error, not a silent no-op.
+		// error-policy:J3 invalid plugin shape for the worker sandbox →
+		// explicit invalid result, never a fake-valid success.
 		if (actions.length === 0) {
-			// error-policy:J8 worker diagnostic — non-blocking warning surfaced to
-			// the parent thread so a misconfigured isolation:"worker" app doesn't
-			// silently boot as an inert worker.
-			parentPort?.postMessage({
-				type: "warn",
-				message: `plugin "${plugin.name}" loaded with zero actions; non-action surfaces (providers/routes/services) are not exposed in the worker sandbox`,
-			});
+			return {
+				loaded: 0,
+				error: `plugin "${plugin.name}" contributes no actions; the worker sandbox only exposes actions (invokeAction), not providers/routes/services`,
+			};
 		}
 		for (const action of actions) {
 			if (
