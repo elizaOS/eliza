@@ -43,9 +43,9 @@ const ID_PARAM = {
 const TITLE_PARAM: ViewCapabilityParameter = {
   type: "string",
   description:
-    "Exact first-line label of a note to identify it for deletion. Must match a known note label exactly.",
+    "Exact first-line label of a note to identify it. Must match a known note label exactly.",
   minLength: 1,
-  maxLength: 500,
+  maxLength: 240,
   pattern: "\\S",
 };
 
@@ -60,9 +60,10 @@ export const NOTES_CAPABILITIES: ViewCapability[] = [
   },
   {
     id: "get-note",
-    description: "Read one note by id or unique text it contains.",
+    description: "Read one note by id, exact first-line label, or unique text it contains.",
     params: {
       id: { ...ID_PARAM.id, required: false },
+      title: TITLE_PARAM,
       query: QUERY_PARAM,
     },
   },
@@ -78,9 +79,13 @@ export const NOTES_CAPABILITIES: ViewCapability[] = [
   {
     id: "update-note",
     description:
-      "Replace a note's complete user-authored content, change its color, or both. Identify it by id or unique existing text; never synthesize a separate title.",
+      "Replace a note's complete user-authored content, change its color, or both. Identify it by id, exact first-line label, or unique existing text; never synthesize a separate title.",
     params: {
       id: { ...ID_PARAM.id, description: "Stable note id.", required: false },
+      title: {
+        ...TITLE_PARAM,
+        description: "Exact first-line label identifying the note to update.",
+      },
       query: {
         ...QUERY_PARAM,
         description: "Unique existing text identifying the note to update.",
@@ -98,7 +103,7 @@ export const NOTES_CAPABILITIES: ViewCapability[] = [
   {
     id: "delete-note",
     description:
-      "Delete one note by stable id, unique contained text, or exact first-line label.",
+      "Delete one note by stable id, exact first-line label, or unique contained text.",
     params: {
       id: { ...ID_PARAM.id, description: "Stable note id.", required: false },
       query: QUERY_PARAM,

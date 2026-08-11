@@ -1510,13 +1510,18 @@ function deriveParamsFromMessageText(
 		}
 		const target = extractDeleteTargetText(trimmed);
 		if (target) {
-			// Prefer title (exact first-line label) for delete operations when
-			// the capability declares it — reinterpreting free-form text as a
-			// query selector can match unintended notes (#18377 accepted design).
-			if (capabilityParamKeys.has("title")) {
-				derived.title = target;
+			// Do not infer an exact title (destructive label selector) from
+			// free-form text — that reimplements the destructive-selector
+			// inference #18377 rejects. Prefer query (contained-text search)
+			// as the safe default; only infer title when the text explicitly
+			// references a label with "titled" or "named" (#18377).
+			const explicitTitle = extractReferencedTitle(trimmed);
+			if (explicitTitle && capabilityParamKeys.has("title")) {
+				derived.title = explicitTitle;
 			} else if (capabilityParamKeys.has("query")) {
 				derived.query = target;
+			} else if (capabilityParamKeys.has("title")) {
+				derived.title = target;
 			} else if (capabilityParamKeys.has("name")) {
 				derived.name = target;
 			}
