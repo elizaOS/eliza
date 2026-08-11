@@ -49,6 +49,14 @@ const SUPPORTED_SUBACTIONS = new Set<BrowserWorkspaceCommand["subaction"]>([
   "reload",
 ]);
 
+/**
+ * Capability manifest for the bridge target. Exported so the BrowserService
+ * bridge-target factory can wire a `supports()` pre-dispatch check from the
+ * same single source of truth (issue #18258).
+ */
+export const BRIDGE_SUPPORTED_SUBACTIONS: ReadonlySet<string> =
+  SUPPORTED_SUBACTIONS;
+
 function bridgeTabToWorkspaceTab(
   tab: BrowserBridgeTabSummary,
 ): BrowserWorkspaceTab {

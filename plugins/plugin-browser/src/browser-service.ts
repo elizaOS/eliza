@@ -29,9 +29,15 @@
 
 import { ElizaError, type IAgentRuntime, logger, Service } from "@elizaos/core";
 import {
+  BrowserDispatchFailure,
+  isBrowserDispatchFailure,
+  isIdempotentBrowserSubaction,
+} from "./dispatch-types.js";
+import {
   BROWSER_BRIDGE_ROUTE_SERVICE_TYPE,
   type BrowserBridgeRouteService,
 } from "./service.js";
+import { BRIDGE_SUPPORTED_SUBACTIONS } from "./targets/bridge-target.js";
 import { maybeCreateStagehandTarget } from "./targets/stagehand-target.js";
 import {
   ensureBrowserWorkspaceDefaultTabWithRetry,
@@ -59,9 +65,18 @@ export interface BrowserTargetResolutionContext {
  * (electrobun bridge, Chrome companion HTTP, puppeteer CDP, etc.) and
  * return the canonical BrowserWorkspaceCommandResult.
  *
- * Targets MAY decline subactions they don't support — throw a clear
- * `Error` from `execute` and the caller will see the message. Don't
- * silently ignore it.
+ * Capability-aware dispatch (issue #18258): targets SHOULD declare which
+ * subactions they support via {@link BrowserTarget.supports} so the dispatcher
+ * can skip an incapable target *before* dispatch (returning `UNSUPPORTED`)
+ * instead of relying on a thrown error after the command may have begun.
+ * Targets that omit `supports` are assumed to accept every subaction (legacy
+ * behavior, e.g. the `workspace` target).
+ *
+ * When a target detects mid-execution that a side effect may have occurred
+ * before an error was observed (e.g. a click fired but the page response
+ * timed out), it SHOULD throw a {@link BrowserDispatchFailure} with kind
+ * `UNCERTAIN_OUTCOME` so the dispatcher knows the command must not be
+ * replayed against another target.
  */
 export interface BrowserTarget {
   /** Stable identifier — `workspace`, `bridge`, `computeruse`, etc. */
@@ -85,7 +100,23 @@ export interface BrowserTarget {
    * (no network round-trips) when possible.
    */
   available(): Promise<boolean>;
-  /** Run the command. Throw on unsupported subactions. */
+  /**
+   * Capability check: return `true` if this target can execute `command`'s
+   * subaction, `false` if it cannot (the dispatcher returns `UNSUPPORTED`
+   * and tries the next target). When omitted, the target is treated as
+   * supporting every subaction (legacy behavior).
+   *
+   * This is a pre-dispatch selection signal — it must NOT have side effects
+   * and must be cheap. Implementations typically test a static `Set` of
+   * supported subaction strings.
+   */
+  supports?(command: BrowserWorkspaceCommand): boolean;
+  /**
+   * Run the command. Throw on unsupported subactions (legacy behavior) or,
+   * preferably, return a {@link BrowserDispatchFailure}. If a side effect may
+   * have begun before the error, throw a `BrowserDispatchFailure` with kind
+   * `UNCERTAIN_OUTCOME` so the command is never replayed.
+   */
   execute(
     command: BrowserWorkspaceCommand,
   ): Promise<BrowserWorkspaceCommandResult>;
@@ -267,40 +298,130 @@ export class BrowserService extends Service {
   }
 
   /**
-   * Dispatch a command. `targetId` pins the target; otherwise the service
-   * picks the first available one in registration order.
+   * Dispatch a command with capability-aware selection and side-effect safety
+   * (issue #18258).
+   *
+   * Selection phase (pre-dispatch): among available targets, the dispatcher
+   * finds one whose {@link BrowserTarget.supports} declares it can handle the
+   * command's subaction. Targets that omit `supports` are assumed capable.
+   * Fallback across candidates is permitted **only** in this phase — for
+   * `UNAVAILABLE` (no target available) and `UNSUPPORTED` (target can't handle
+   * the subaction) failures.
+   *
+   * Execution phase (post-dispatch): once a target's `execute()` is invoked,
+   * the command is committed to that target. If `execute()` throws, the command
+   * is **never replayed** against another target, because a click / submit /
+   * navigation / upload may have partially or fully completed before the error
+   * was observed. The original failure is surfaced to the caller. If the target
+   * throws a {@link BrowserDispatchFailure} with `UNCERTAIN_OUTCOME`, that kind
+   * is preserved so callers can branch on it. For idempotent (read-only)
+   * subactions, pre-dispatch fallback still applies but post-dispatch replay
+   * remains forbidden by default.
+   *
+   * `targetId` pins the target: no fallback is attempted, and capability is
+   * still checked (an `UNSUPPORTED` pin returns a typed failure rather than
+   * throwing deep inside the target).
    */
   async execute(
     command: BrowserWorkspaceCommand,
     targetId?: string,
   ): Promise<BrowserWorkspaceCommandResult> {
-    const targets = await this.resolveTargets(targetId, command);
-    if (targets.length === 0) {
-      const availableIds = this.targetOrder.join(", ") || "(none)";
-      throw new Error(
-        targetId
-          ? `Browser target "${targetId}" is not available. Registered targets: ${availableIds}.`
-          : `No browser target is available. Registered targets: ${availableIds}.`,
-      );
+    // --- Selection phase (pre-dispatch) -------------------------------------
+    // Find an available target that supports this command. Targets without a
+    // `supports` method are treated as supporting everything (legacy behavior).
+    const candidates = await this.resolveTargets(targetId, command);
+    if (candidates.length === 0) {
+      throw this.unavailableFailure(command, targetId);
     }
 
-    let lastError: unknown = null;
-    for (const target of targets) {
-      try {
-        return await target.execute(command);
-      } catch (err) {
-        lastError = err;
-        if (targetId) break;
-        const message = err instanceof Error ? err.message : String(err);
-        logger.debug(
-          `[BrowserService] target "${target.id}" failed; trying next target: ${message}`,
+    // For an unpinned dispatch, find the highest-scoring target that supports
+    // the command. Unsupported targets are skipped here (pre-dispatch fallback).
+    // For a pinned dispatch, honor the pin but still surface UNSUPPORTED as a
+    // typed failure instead of letting execute() throw opaquely.
+    let selected: BrowserTarget | null = null;
+    if (targetId) {
+      const pinned = candidates[0];
+      if (pinned) {
+        selected = pinned;
+        if (selected.supports && !selected.supports(command)) {
+          throw new BrowserDispatchFailure(
+            "UNSUPPORTED",
+            `Browser target "${selected.id}" does not support subaction "${command.subaction}".`,
+            { targetId: selected.id },
+          );
+        }
+      }
+    } else {
+      for (const candidate of candidates) {
+        if (!candidate.supports || candidate.supports(command)) {
+          selected = candidate;
+          break;
+        }
+      }
+      if (!selected) {
+        // Every available target declined this subaction.
+        throw new BrowserDispatchFailure(
+          "UNSUPPORTED",
+          `No available browser target supports subaction "${command.subaction}". Targets checked: ${candidates
+            .map((t) => `"${t.id}"`)
+            .join(", ")}.`,
         );
       }
     }
 
-    throw lastError instanceof Error
-      ? lastError
-      : new Error("Browser target execution failed.");
+    if (!selected) {
+      throw this.unavailableFailure(command, targetId);
+    }
+
+    // --- Execution phase (post-dispatch) ------------------------------------
+    // The command is now committed to `selected`. NEVER replay it against
+    // another target, even on error — a side effect may have already occurred.
+    try {
+      return await selected.execute(command);
+    } catch (err) {
+      // Preserve a typed dispatch failure's kind so callers can branch on
+      // UNCERTAIN_OUTCOME / STALE_REF / SESSION_GONE / AUTH_REQUIRED /
+      // POLICY_BLOCKED. Wrap any other error as UNCERTAIN_OUTCOME for
+      // side-effecting commands (we can't prove it didn't partially complete),
+      // or rethrow as-is for idempotent reads where no side effect is possible.
+      if (isBrowserDispatchFailure(err)) {
+        throw err;
+      }
+      const message = err instanceof Error ? err.message : String(err);
+      const idempotent = isIdempotentBrowserSubaction(command.subaction);
+      logger.debug(
+        `[BrowserService] target "${selected.id}" failed for ${command.subaction} (idempotent=${idempotent}): ${message}`,
+      );
+      if (idempotent) {
+        // Read-only command — no side effect possible. Rethrow the original so
+        // the caller sees the real cause; there's nothing to protect.
+        throw err;
+      }
+      // Side-effecting command failed opaquely. We cannot prove it didn't
+      // partially execute, so classify as UNCERTAIN_OUTCOME and never replay.
+      throw new BrowserDispatchFailure(
+        "UNCERTAIN_OUTCOME",
+        `Browser command "${command.subaction}" against target "${selected.id}" failed after dispatch and may have partially completed: ${message}. It will not be replayed against another target.`,
+        { targetId: selected.id, cause: err },
+      );
+    }
+  }
+
+  /**
+   * Build the typed `UNAVAILABLE` failure with helpful diagnostics.
+   */
+  private unavailableFailure(
+    command: BrowserWorkspaceCommand,
+    targetId?: string,
+  ): BrowserDispatchFailure {
+    const availableIds = this.targetOrder.join(", ") || "(none)";
+    return new BrowserDispatchFailure(
+      "UNAVAILABLE",
+      targetId
+        ? `Browser target "${targetId}" is not available. Registered targets: ${availableIds}.`
+        : `No browser target is available for subaction "${command.subaction}". Registered targets: ${availableIds}.`,
+      { targetId: targetId ?? null },
+    );
   }
 }
 
@@ -338,6 +459,11 @@ async function maybeCreateBridgeTarget(
     kind: "companion",
     priority: 80,
     score: ({ mobile }) => (mobile ? null : 80),
+    // Capability-aware pre-dispatch check (issue #18258): the bridge only
+    // handles a read-mostly subset of subactions. Declaring it here lets the
+    // dispatcher skip the bridge for unsupported commands *before* dispatch
+    // instead of discovering it via a thrown error.
+    supports: (command) => BRIDGE_SUPPORTED_SUBACTIONS.has(command.subaction),
     available: async () => {
       try {
         const companions = await service.listBrowserCompanions();
