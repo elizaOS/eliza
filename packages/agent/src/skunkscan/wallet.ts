@@ -377,6 +377,7 @@ const nftHoldings: UniversalNftHolding[] =
 // disclosed unconditionally rather than only when spam is detected.
 const investigationWarnings: string[] = [
   "This wallet's transaction sample and activity level include any NFT spam/airdrop transactions - unlike Ethereum/BSC/Base, which filter known spam patterns out of the sample, Solana has no filter applied yet. This isn't an oversight: two candidate signals were tested against real spam and real legitimate wallets and both produced false positives on genuine, wanted NFTs, so nothing was shipped rather than risk hiding real activity.",
+  ...tokenBalancesResult.warnings.map((warning) => warning.message),
 ];
 
        const pipeline = await runWalletPipeline({

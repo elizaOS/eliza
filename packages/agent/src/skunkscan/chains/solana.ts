@@ -407,27 +407,40 @@ export class SolanaBlockchainConnector
     ChainOperationResult<TokenBalancesResult>
   > {
     try {
-      const holdings =
+      const { holdings, truncated, totalCount } =
         await getSolanaTokenHoldings(address);
 
-      return createSuccessResult({
-        chainId: SOLANA_CHAIN_ID,
-        address: address.trim(),
-        balances: holdings.map((holding) => ({
-          asset: {
-            chainId: SOLANA_CHAIN_ID,
-            assetType: "fungible_token",
-            assetId: `solana:token:${holding.mint}`,
-            decimals: holding.decimals,
-            contractAddress: holding.mint,
-            tokenId: null,
-          },
-          rawAmount: holding.rawAmount,
-          decimalAmount: String(holding.amount),
-          estimatedUsdValue: null,
-        })),
-        retrievedAt: new Date().toISOString(),
-      });
+      return createSuccessResult(
+        {
+          chainId: SOLANA_CHAIN_ID,
+          address: address.trim(),
+          balances: holdings.map((holding) => ({
+            asset: {
+              chainId: SOLANA_CHAIN_ID,
+              assetType: "fungible_token",
+              assetId: `solana:token:${holding.mint}`,
+              decimals: holding.decimals,
+              contractAddress: holding.mint,
+              tokenId: null,
+            },
+            rawAmount: holding.rawAmount,
+            decimalAmount: String(holding.amount),
+            estimatedUsdValue: null,
+          })),
+          retrievedAt: new Date().toISOString(),
+        },
+        truncated
+          ? [
+              {
+                code: "SOLANA_TOKEN_HOLDINGS_TRUNCATED",
+                message:
+                  totalCount === null
+                    ? "This wallet holds an extremely large number of token accounts - retrieval timed out before the full list could be fetched, so token holdings are not shown for this investigation. This is typically spam/dust token accounts, not a data error."
+                    : `This wallet holds ${totalCount.toLocaleString()} token accounts, more than the ${holdings.length.toLocaleString()} shown here - likely spam/dust rather than a data error. Holdings beyond this limit are not displayed or priced.`,
+              },
+            ]
+          : [],
+      );
     } catch (error) {
       return createErrorResult(
         error,

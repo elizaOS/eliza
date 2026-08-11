@@ -141,36 +141,58 @@ async function callHeliusRpc<T>(
   id: string,
   method: string,
   params: unknown[],
+  options?: { timeoutMs?: number },
 ): Promise<T> {
-  const response = await fetch(getHeliusRpcUrl(), {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      jsonrpc: "2.0",
-      id,
-      method,
-      params,
-    }),
-  });
+  const controller = options?.timeoutMs
+    ? new AbortController()
+    : undefined;
+  const timeoutHandle =
+    controller && options?.timeoutMs
+      ? setTimeout(() => controller.abort(), options.timeoutMs)
+      : undefined;
 
-  if (!response.ok) {
-    throw new Error(
-      `Helius request failed with status ${response.status}`,
-    );
+  // The timeout must stay armed across BOTH the fetch() call and the
+  // response.json() read, not just fetch() - live-confirmed that fetch()
+  // resolves as soon as response headers arrive (~700ms even for a reply
+  // whose body takes 40+ seconds to fully transfer), so a timer cleared
+  // right after fetch() resolves never protects the actual slow part. Both
+  // steps share the same AbortSignal and both must run inside this try, or
+  // the clearTimeout in finally fires too early and disarms the guard
+  // before the body read that actually needs it even starts.
+  try {
+    const response = await fetch(getHeliusRpcUrl(), {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id,
+        method,
+        params,
+      }),
+      signal: controller?.signal,
+    });
+
+    if (!response.ok) {
+      throw new Error(
+        `Helius request failed with status ${response.status}`,
+      );
+    }
+
+    const data = await response.json();
+
+    if (data.error) {
+      throw new Error(
+        data.error.message ??
+          "Helius returned an error",
+      );
+    }
+
+    return data.result as T;
+  } finally {
+    if (timeoutHandle) clearTimeout(timeoutHandle);
   }
-
-  const data = await response.json();
-
-  if (data.error) {
-    throw new Error(
-      data.error.message ??
-        "Helius returned an error",
-    );
-  }
-
-  return data.result as T;
 }
 
 export async function getSolanaBalance(
@@ -303,34 +325,77 @@ export type SolanaTokenHolding = {
   rawAmount: string;
 };
 
+export type SolanaTokenHoldingsResult = {
+  holdings: SolanaTokenHolding[];
+  // True when the real holding count exceeds what's returned above - either
+  // because it was truncated to MAX_SOLANA_TOKEN_HOLDINGS after a successful
+  // fetch, or because the fetch itself was aborted for taking too long (see
+  // below) and holdings is empty. totalCount is the real count when known,
+  // or null when the timeout fired before we ever learned it.
+  truncated: boolean;
+  totalCount: number | null;
+};
+
+// getTokenAccountsByOwner has no server-side pagination/limit parameter in
+// the Solana JSON-RPC spec (unlike getSignaturesForAddress's `limit`) - live-
+// confirmed against a real 1.4M-token-account wallet
+// (5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1, investigated 2026-08-11):
+// the RPC node always returns the full result set regardless of any params
+// passed (dataSlice is documented as ignored under jsonParsed encoding, and
+// there is no limit/offset equivalent), so a Moralis-style "cap what's
+// fetched via pagination" isn't achievable here - the network transfer +
+// JSON parse of the full response happens no matter what. That real wallet's
+// getTokenAccountsByOwner call alone took 48.5s (of an ~65s total
+// investigation), well past what a synchronous HTTP client (ReqBin,
+// production 502s) will wait for. TOKEN_HOLDINGS_TIMEOUT_MS bounds the wait
+// itself via AbortController; MAX_SOLANA_TOKEN_HOLDINGS is a second,
+// independent guard for the case where the response DOES arrive in time but
+// still has an unreasonable count (protects downstream processing and the
+// price-lookup chunking in providers/pricing/solana.ts).
+const TOKEN_HOLDINGS_TIMEOUT_MS = 20_000;
+const MAX_SOLANA_TOKEN_HOLDINGS = 2000;
+
 export async function getSolanaTokenHoldings(
   address: string,
-): Promise<SolanaTokenHolding[]> {
+): Promise<SolanaTokenHoldingsResult> {
   if (!address || address.trim().length === 0) {
     throw new Error("Wallet address is required");
   }
 
-  const accounts = await callHeliusRpc<any[]>(
-    "skunkscan-token-accounts",
-    "getTokenAccountsByOwner",
-    [
-      address.trim(),
-      {
-        programId:
-          "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
-      },
-      {
-        encoding: "jsonParsed",
-      },
-    ],
-  ).then((result: any) => result?.value);
-
-  if (!Array.isArray(accounts)) {
-    return [];
+  let accounts: unknown[];
+  try {
+    accounts = await callHeliusRpc<any[]>(
+      "skunkscan-token-accounts",
+      "getTokenAccountsByOwner",
+      [
+        address.trim(),
+        {
+          programId:
+            "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        },
+        {
+          encoding: "jsonParsed",
+        },
+      ],
+      { timeoutMs: TOKEN_HOLDINGS_TIMEOUT_MS },
+    ).then((result: any) => result?.value);
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") {
+      // Wallet holds an extremely large number of token accounts (spam/dust
+      // is the common real-world cause - see the comment above) - the RPC
+      // node was still transferring the response when the timeout fired.
+      // Degrade gracefully rather than blocking the whole investigation.
+      return { holdings: [], truncated: true, totalCount: null };
+    }
+    throw error;
   }
 
-  return accounts
-    .map((account) => {
+  if (!Array.isArray(accounts)) {
+    return { holdings: [], truncated: false, totalCount: 0 };
+  }
+
+  const holdings = accounts
+    .map((account: any) => {
       const info =
         account?.account?.data?.parsed?.info;
 
@@ -354,6 +419,16 @@ export async function getSolanaTokenHoldings(
         token.mint.length > 0 &&
         token.amount > 0,
     );
+
+  const truncated = holdings.length > MAX_SOLANA_TOKEN_HOLDINGS;
+
+  return {
+    holdings: truncated
+      ? holdings.slice(0, MAX_SOLANA_TOKEN_HOLDINGS)
+      : holdings,
+    truncated,
+    totalCount: holdings.length,
+  };
 }
 
 export type SolanaNftHolding = {
