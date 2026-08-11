@@ -14,6 +14,7 @@ const SIGNAL_EXIT_CODES = {
   SIGTERM: 143,
 };
 const HEARTBEAT_INTERVAL_MS = 5_000;
+const ALLOWED_COMMAND_BASENAMES = new Set(["bun", "node"]);
 
 const REPO_TEST_PROCESS_MARKERS = [
   "node_modules/.bin/vitest run --config vitest.config.ts",
@@ -79,9 +80,6 @@ function isRealNodeExecutable(candidate) {
 }
 
 export function resolveNodeCmd() {
-  if (isRealNodeExecutable(process.env.npm_node_execpath)) {
-    return process.env.npm_node_execpath;
-  }
   for (const candidate of [
     "/opt/homebrew/bin/node",
     "/usr/local/bin/node",
@@ -521,6 +519,12 @@ export async function runManagedTestCommand({
   cwd = repoRoot,
   env = buildTestEnv(cwd),
 }) {
+  const commandBase = path.basename(command);
+  if (!ALLOWED_COMMAND_BASENAMES.has(commandBase)) {
+    throw new Error(`Managed command is not allowed: ${command}`);
+  }
+  const spawnCommand = commandBase === "node" ? resolveNodeCmd() : "bun";
+
   const lockPath = path.join(
     repoRoot,
     ".tmp",
@@ -584,7 +588,7 @@ export async function runManagedTestCommand({
       // with no shell expansion — callers supply a fixed command (e.g. "bun")
       // and a static args array, so there is no shell injection risk here.
       // lgtm[js/shell-command-injection-from-environment]
-      child = spawn(command, args, {
+      child = spawn(spawnCommand, args, {
         cwd,
         env,
         stdio: "inherit",

@@ -903,11 +903,11 @@ async function startRendererServer(): Promise<string> {
             statusText: upstream.statusText,
             headers: upstream.headers,
           });
-        } catch (err) {
+        } catch {
           return new Response(
             JSON.stringify({
               error: "API server unavailable",
-              detail: err instanceof Error ? err.message : String(err),
+              detail: "The local API server did not respond.",
             }),
             {
               status: 502,

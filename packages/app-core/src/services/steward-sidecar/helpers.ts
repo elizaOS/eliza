@@ -1,20 +1,24 @@
 /**
- * Steward Sidecar - utility helpers.
+ * Utility helpers for the Steward sidecar local control plane.
  */
 
 import { createHash } from "node:crypto";
 import { createServer } from "node:net";
 
 /**
- * Fingerprint a high-entropy (>= 256-bit) random token using SHA-256.
- *
- * This is NOT a password hash - the steward-fi sidecar protocol stores
- * `sha256(token)` as a wire-format identifier for a randomly generated
- * token, and the comparison is timing-safe on the server. Slow KDFs are
- * unnecessary for high-entropy random tokens.
+ * Fingerprint high-entropy random tokens using SHA-256. Steward verifies the
+ * presented API key by hashing the same wire-format string; this is a bearer
+ * token lookup identifier, not a human-password verifier.
  */
 export function fingerprintRandomToken(token: string): string {
+  // lgtm[js/insufficient-password-hash]
   return createHash("sha256").update(token).digest("hex");
+}
+
+function bytesToHex(bytes: Uint8Array): string {
+  return Array.from(bytes)
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
 }
 
 export function resolveDataDir(dataDir: string): string {
@@ -31,17 +35,13 @@ export function resolveDataDir(dataDir: string): string {
 export function generateApiKey(): string {
   const bytes = new Uint8Array(32);
   crypto.getRandomValues(bytes);
-  return `stw_${Array.from(bytes)
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("")}`;
+  return `stw_${bytesToHex(bytes)}`;
 }
 
 export function generateMasterPassword(): string {
   const bytes = new Uint8Array(32);
   crypto.getRandomValues(bytes);
-  return Array.from(bytes)
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
+  return bytesToHex(bytes);
 }
 
 export async function sleep(ms: number): Promise<void> {

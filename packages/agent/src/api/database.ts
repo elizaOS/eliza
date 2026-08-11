@@ -46,11 +46,17 @@ import type {
 export {
   stripSqlBlockComments,
   stripSqlDollarQuotedLiterals,
+  stripSqlDoubleQuotedIdentifiers,
+  stripSqlLineComments,
+  stripSqlSingleQuotedLiterals,
 } from "../shared/sql-sanitizers.ts";
 
 import {
   stripSqlBlockComments,
   stripSqlDollarQuotedLiterals,
+  stripSqlDoubleQuotedIdentifiers,
+  stripSqlLineComments,
+  stripSqlSingleQuotedLiterals,
 } from "../shared/sql-sanitizers.ts";
 
 // ---------------------------------------------------------------------------
@@ -1080,21 +1086,20 @@ async function handleQuery(
     // Use empty-string replacement (not space) to mirror how PostgreSQL
     // concatenates tokens across comments — e.g. DE/* */LETE → DELETE.
     // A space replacement would turn it into "DE LETE", hiding the keyword.
-    const stripped = stripSqlBlockComments(sqlText)
-      .replace(/--.*$/gm, "")
-      .trim();
+    const stripped = stripSqlLineComments(
+      stripSqlBlockComments(sqlText),
+    ).trim();
 
     // Strip string literals so that mutation keywords/functions inside quoted
     // strings are ignored. Handles single-quoted ('...'), dollar-quoted
     // ($$...$$), and tagged dollar-quoted ($tag$...$tag$) strings.
-    const noLiterals = stripSqlDollarQuotedLiterals(stripped).replace(
-      /'(?:[^']|'')*'/g,
-      " ",
+    const noLiterals = stripSqlSingleQuotedLiterals(
+      stripSqlDollarQuotedLiterals(stripped),
     );
 
     // For keyword checks, also strip double-quoted identifiers to avoid
     // matching words inside quoted table/column names.
-    const noStrings = noLiterals.replace(/"(?:[^"]|"")*"/g, " ");
+    const noStrings = stripSqlDoubleQuotedIdentifiers(noLiterals);
 
     // Reject PostgreSQL unicode-escaped quoted identifiers (`U&"s\0065tval"`)
     // in read-only mode: they decode to the real name only at parse time, so

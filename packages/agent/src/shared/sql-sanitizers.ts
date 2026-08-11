@@ -30,6 +30,27 @@ export function stripSqlBlockComments(sql: string): string {
   return result;
 }
 
+/** Strip `-- ... end-of-line` comments while preserving newline boundaries. */
+export function stripSqlLineComments(sql: string): string {
+  let result = "";
+  let i = 0;
+  while (i < sql.length) {
+    const open = sql.indexOf("--", i);
+    if (open === -1) {
+      result += sql.slice(i);
+      break;
+    }
+    result += sql.slice(i, open);
+    const newline = sql.indexOf("\n", open + 2);
+    if (newline === -1) {
+      break;
+    }
+    result += "\n";
+    i = newline + 1;
+  }
+  return result;
+}
+
 /**
  * Strip PostgreSQL dollar-quoted literals (`$$...$$`, `$tag$...$tag$`) in a
  * single pass. Unterminated literals are left intact so the read-only guard
@@ -81,5 +102,73 @@ export function stripSqlDollarQuotedLiterals(sql: string): string {
     i = closedAt + delimiter.length;
   }
 
+  return result;
+}
+
+/** Strip closed single-quoted SQL string literals in a single pass. */
+export function stripSqlSingleQuotedLiterals(sql: string): string {
+  let result = "";
+  let i = 0;
+  while (i < sql.length) {
+    const open = sql.indexOf("'", i);
+    if (open === -1) {
+      result += sql.slice(i);
+      break;
+    }
+    result += sql.slice(i, open);
+    let j = open + 1;
+    let closedAt = -1;
+    while (j < sql.length) {
+      if (sql[j] === "'" && sql[j + 1] === "'") {
+        j += 2;
+        continue;
+      }
+      if (sql[j] === "'") {
+        closedAt = j;
+        break;
+      }
+      j += 1;
+    }
+    if (closedAt === -1) {
+      result += sql.slice(open);
+      break;
+    }
+    result += " ";
+    i = closedAt + 1;
+  }
+  return result;
+}
+
+/** Strip closed double-quoted SQL identifiers in a single pass. */
+export function stripSqlDoubleQuotedIdentifiers(sql: string): string {
+  let result = "";
+  let i = 0;
+  while (i < sql.length) {
+    const open = sql.indexOf('"', i);
+    if (open === -1) {
+      result += sql.slice(i);
+      break;
+    }
+    result += sql.slice(i, open);
+    let j = open + 1;
+    let closedAt = -1;
+    while (j < sql.length) {
+      if (sql[j] === '"' && sql[j + 1] === '"') {
+        j += 2;
+        continue;
+      }
+      if (sql[j] === '"') {
+        closedAt = j;
+        break;
+      }
+      j += 1;
+    }
+    if (closedAt === -1) {
+      result += sql.slice(open);
+      break;
+    }
+    result += " ";
+    i = closedAt + 1;
+  }
   return result;
 }

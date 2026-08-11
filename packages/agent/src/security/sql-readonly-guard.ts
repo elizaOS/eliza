@@ -7,6 +7,9 @@
 import {
   stripSqlBlockComments,
   stripSqlDollarQuotedLiterals,
+  stripSqlDoubleQuotedIdentifiers,
+  stripSqlLineComments,
+  stripSqlSingleQuotedLiterals,
 } from "../shared/sql-sanitizers.ts";
 
 // Mirrors the server-side allowlist in api/database.ts. The scanner removes
@@ -83,12 +86,11 @@ const DANGEROUS_FUNCTIONS = [
 export function checkReadOnly(
   sqlText: string,
 ): { ok: true } | { ok: false; reason: string } {
-  const stripped = stripSqlBlockComments(sqlText).replace(/--.*$/gm, "").trim();
-  const noLiterals = stripSqlDollarQuotedLiterals(stripped).replace(
-    /'(?:[^']|'')*'/g,
-    " ",
+  const stripped = stripSqlLineComments(stripSqlBlockComments(sqlText)).trim();
+  const noLiterals = stripSqlSingleQuotedLiterals(
+    stripSqlDollarQuotedLiterals(stripped),
   );
-  const noStrings = noLiterals.replace(/"(?:[^"]|"")*"/g, " ");
+  const noStrings = stripSqlDoubleQuotedIdentifiers(noLiterals);
 
   // PostgreSQL unicode-escaped quoted identifiers can decode to dangerous
   // function names only at parse time, so reject the token after removing

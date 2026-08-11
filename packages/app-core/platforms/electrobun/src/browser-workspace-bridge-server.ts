@@ -1,4 +1,4 @@
-/** Implements Electrobun desktop browser workspace bridge server ts behavior for app-core shell integration. */
+/** Loopback-only browser workspace bridge for Electrobun automation surfaces. */
 import crypto from "node:crypto";
 import http from "node:http";
 import type { BrowserWorkspaceEventType } from "./native/browser-workspace";
@@ -61,16 +61,23 @@ function isLoopback(addr: string | undefined): boolean {
   return addr === "127.0.0.1" || addr === "::1" || addr === "::ffff:127.0.0.1";
 }
 
-function scrubStack(value: unknown): unknown {
+function sanitizeJsonPayload(
+  value: unknown,
+  seen = new WeakSet<object>(),
+): unknown {
   if (value instanceof Error)
     return { error: value.message || "Internal error" };
-  if (Array.isArray(value)) return value.map(scrubStack);
+  if (Array.isArray(value))
+    return value.map((item) => sanitizeJsonPayload(item, seen));
   if (value && typeof value === "object") {
+    if (seen.has(value)) return "[Circular]";
+    seen.add(value);
     const out: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
       if (k === "stack" || k === "stackTrace") continue;
-      out[k] = scrubStack(v);
+      out[k] = sanitizeJsonPayload(v, seen);
     }
+    seen.delete(value);
     return out;
   }
   return value;
@@ -82,7 +89,7 @@ function json(
   body: Record<string, unknown>,
 ): void {
   res.writeHead(status, { "Content-Type": "application/json; charset=utf-8" });
-  res.end(JSON.stringify(scrubStack(body)));
+  res.end(JSON.stringify(sanitizeJsonPayload(body)));
 }
 
 async function readJsonBody<T>(req: http.IncomingMessage): Promise<T | null> {

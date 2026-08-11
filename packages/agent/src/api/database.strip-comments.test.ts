@@ -11,6 +11,9 @@ import { describe, expect, it } from "vitest";
 import {
   stripSqlBlockComments,
   stripSqlDollarQuotedLiterals,
+  stripSqlDoubleQuotedIdentifiers,
+  stripSqlLineComments,
+  stripSqlSingleQuotedLiterals,
 } from "../shared/sql-sanitizers.ts";
 
 describe("stripSqlBlockComments", () => {
@@ -57,6 +60,14 @@ describe("stripSqlBlockComments", () => {
   });
 });
 
+describe("stripSqlLineComments", () => {
+  it("removes line comments and preserves later SQL lines", () => {
+    expect(stripSqlLineComments("SELECT 1 -- comment\nSELECT 2")).toBe(
+      "SELECT 1 \nSELECT 2",
+    );
+  });
+});
+
 describe("stripSqlDollarQuotedLiterals", () => {
   it("strips untagged and tagged dollar-quoted SQL literals", () => {
     expect(
@@ -79,5 +90,33 @@ describe("stripSqlDollarQuotedLiterals", () => {
     const elapsed = performance.now() - start;
     expect(out).toBe(evil);
     expect(elapsed).toBeLessThan(1000);
+  });
+});
+
+describe("stripSqlSingleQuotedLiterals", () => {
+  it("strips closed quoted strings and preserves doubled quote escapes", () => {
+    expect(stripSqlSingleQuotedLiterals("SELECT 'it''s DELETE' FROM t")).toBe(
+      "SELECT   FROM t",
+    );
+  });
+
+  it("leaves unterminated strings intact", () => {
+    expect(stripSqlSingleQuotedLiterals("SELECT 'unterminated DELETE")).toBe(
+      "SELECT 'unterminated DELETE",
+    );
+  });
+});
+
+describe("stripSqlDoubleQuotedIdentifiers", () => {
+  it("strips closed quoted identifiers and preserves doubled quote escapes", () => {
+    expect(stripSqlDoubleQuotedIdentifiers('SELECT "a""b" FROM t')).toBe(
+      "SELECT   FROM t",
+    );
+  });
+
+  it("leaves unterminated identifiers intact", () => {
+    expect(stripSqlDoubleQuotedIdentifiers('SELECT "unterminated DELETE')).toBe(
+      'SELECT "unterminated DELETE',
+    );
   });
 });
