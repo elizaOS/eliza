@@ -230,6 +230,7 @@ export async function handleAudioGeneration(
       "Music generation",
     );
   let response: CloudMusicResponse;
+  let outputDurationSeconds = durationSeconds;
   try {
     response = await postMusic(requestJson);
   } catch (err) {
@@ -252,6 +253,7 @@ export async function handleAudioGeneration(
     );
     const { durationSeconds: _omitted, ...fixedPriceJson } = requestJson;
     response = await postMusic(fixedPriceJson);
+    outputDurationSeconds = undefined;
   }
 
   const audioUrl = response.music?.url;
@@ -264,7 +266,7 @@ export async function handleAudioGeneration(
     audioUrl,
     mimeType: response.music?.content_type ?? "audio/mpeg",
     title: response.music?.file_name,
-    duration: durationSeconds,
+    duration: outputDurationSeconds,
     requestId: response.requestId,
     id: response.id,
     status: response.status,
