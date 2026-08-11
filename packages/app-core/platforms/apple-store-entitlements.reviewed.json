@@ -34,7 +34,7 @@
           "value": true,
           "justification": "Required for user-initiated camera capture features."
         },
-        "com.apple.security.device.microphone": {
+        "com.apple.security.device.audio-input": {
           "value": true,
           "justification": "Required for user-initiated voice input and audio capture features."
         },

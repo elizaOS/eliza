@@ -79,6 +79,7 @@ import { resolveMainAppDir } from "./lib/app-dir.mjs";
 import { resolveDesktopStartupEmbeddingWarmupPolicy } from "./lib/desktop-startup-embedding-warmup-policy.mjs";
 import { signalSpawnedProcessTree } from "./lib/kill-process-tree.mjs";
 import { killUiListenPort } from "./lib/kill-ui-listen-port.mjs";
+import { resolveMacNativeEffectsDevPlan } from "./lib/macos-native-effects-dev.mjs";
 import { extendNodePathEnv } from "./lib/node-path-env.mjs";
 import { formatOrchestratorDesktopDevBanner } from "./lib/orchestrator-desktop-dev-banner.mjs";
 import { appIdentityEnv } from "./lib/read-app-identity.mjs";
@@ -211,6 +212,35 @@ function syncRendererPublicAssets() {
       stdio: "inherit",
     },
   );
+}
+
+function prepareMacNativeEffectsForDesktopDev() {
+  const plan = resolveMacNativeEffectsDevPlan({
+    cwd: bundleRoot,
+    env: process.env,
+    platform: process.platform,
+    exists: existsSync,
+    modifiedAt: (value) => lstatSync(value).mtimeMs,
+  });
+  if (plan.kind === "skip") return;
+
+  if (plan.kind === "build") {
+    console.log("[eliza] Building macOS permission bridge…");
+    execFileSync(BUN_EXECUTABLE, ["run", "build:native-effects"], {
+      cwd: plan.packageDir,
+      env: process.env,
+      stdio: "inherit",
+    });
+  }
+  if (!existsSync(plan.dylibPath)) {
+    throw new Error(
+      `[eliza] macOS permission bridge was not produced at ${plan.dylibPath}`,
+    );
+  }
+  // Both the API and Electrobun children need the same concrete bridge. The
+  // latter owns macOS permission prompts because its signed Bun process is the
+  // application identity registered with TCC and UserNotificationCenter.
+  process.env.ELIZA_NATIVE_PERMISSIONS_DYLIB = plan.dylibPath;
 }
 
 // Load worktree-specific env overrides (ports, state dir) before anything reads process.env.
@@ -380,6 +410,7 @@ function ensureBunRootPackageLink(packageName) {
   }
 }
 
+prepareMacNativeEffectsForDesktopDev();
 syncRendererPublicAssets();
 const rendererDistStale = viteRendererBuildNeeded(appDir, bundleRoot);
 const rendererDistExists = existsSync(path.join(appDir, "dist", "index.html"));

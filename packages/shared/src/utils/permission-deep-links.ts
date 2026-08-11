@@ -32,7 +32,8 @@ const MAC_DEEP_LINKS: Record<PermissionId, string> = {
   microphone: `${ROOT_PRIVACY}_Microphone`,
   camera: `${ROOT_PRIVACY}_Camera`,
   location: `${ROOT_PRIVACY}_LocationServices`,
-  notifications: "x-apple.systempreferences:com.apple.preference.notifications",
+  notifications:
+    "x-apple.systempreferences:com.apple.Notifications-Settings.extension",
   "full-disk": `${ROOT_PRIVACY}_AllFiles`,
   automation: `${ROOT_PRIVACY}_Automation`,
   "speech-recognition": `${ROOT_PRIVACY}_SpeechRecognition`,
