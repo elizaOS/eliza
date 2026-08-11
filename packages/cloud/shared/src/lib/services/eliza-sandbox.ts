@@ -1005,13 +1005,39 @@ class ManagedLaunchOwnershipLost extends Error {
  * `fetchSnapshotState` (#18228) so an agent-side 500 (carrying the thrown
  * error message) is distinguishable from a bridge/proxy-hop 500 (proxy error
  * page or empty body) in Worker logs.
+ *
+ * Streams the body via a ReadableStream reader and stops after
+ * SNAPSHOT_ERROR_BODY_EXCERPT_BYTES of UTF-8, cancelling the remainder —
+ * never buffering the full response (a malicious upstream could OOM the
+ * Worker with an unbounded body).
  */
 async function readErrorBodyExcerpt(
-  res: Pick<Response, "text" | "headers">,
+  res: Pick<Response, "body" | "headers">,
 ): Promise<string | null> {
+  // error-policy:J2 non-blocking diagnostic — a body-read failure degrades to
+  // a null excerpt (status-only message) without aborting the snapshot path.
   try {
-    const body = await res.text();
-    if (!body?.trim()) return null;
+    if (!res.body) return null;
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder("utf-8", { fatal: false });
+    const chunks: string[] = [];
+    let totalBytes = 0;
+    try {
+      // error-policy:J2 stream cancellation after the byte budget is reached.
+      while (totalBytes < SNAPSHOT_ERROR_BODY_EXCERPT_BYTES) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        const remaining = SNAPSHOT_ERROR_BODY_EXCERPT_BYTES - totalBytes;
+        const sliced = value.length > remaining ? value.slice(0, remaining) : value;
+        chunks.push(decoder.decode(sliced, { stream: true }));
+        totalBytes += sliced.length;
+      }
+    } finally {
+      // Cancel the reader to release the connection even if the body is larger.
+      await reader.cancel().catch(() => {});
+    }
+    const body = chunks.join("");
+    if (!body.trim()) return null;
     const contentType = res.headers.get("content-type") ?? "";
     // JSON error bodies carry structured diagnostics — try to extract a message.
     if (contentType.includes("application/json")) {
@@ -1019,13 +1045,13 @@ async function readErrorBodyExcerpt(
         const data = JSON.parse(body) as { error?: unknown; message?: unknown };
         const msg = data.error ?? data.message;
         if (typeof msg === "string" && msg.trim()) {
-          return msg.trim().slice(0, SNAPSHOT_ERROR_BODY_EXCERPT_BYTES);
+          return msg.trim();
         }
       } catch {
         // Not valid JSON — fall through to raw excerpt.
       }
     }
-    return body.trim().slice(0, SNAPSHOT_ERROR_BODY_EXCERPT_BYTES);
+    return body.trim();
   } catch {
     return null;
   }
