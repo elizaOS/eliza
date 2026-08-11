@@ -18,6 +18,7 @@ import {
   stringToUuid,
 } from "@elizaos/core";
 import { afterEach, describe, expect, it } from "vitest";
+import { NOTES_CAPABILITIES } from "../capabilities.js";
 import {
   interact,
   type NotesInteractResult,
@@ -490,8 +491,21 @@ describe("Notes capabilities", () => {
   });
 
   it("resolves exact title selectors for read, update, and delete", async () => {
+    const deleteCapability = NOTES_CAPABILITIES.find(
+      (capability) => capability.id === "delete-note",
+    );
+    if (!deleteCapability?.params) {
+      throw new Error("The Notes delete capability contract is required.");
+    }
+    expect(Object.keys(deleteCapability.params).sort()).toEqual([
+      "id",
+      "query",
+      "title",
+    ]);
+    expect(deleteCapability.params).not.toHaveProperty("content");
+
     const service = await serviceFor(await temporaryStateFile());
-    await interact(
+    const created = await interact(
       "create-note",
       {
         content: "Overnight QA disposable note\nCreated by launch QA.",
@@ -499,6 +513,12 @@ describe("Notes capabilities", () => {
       },
       service,
     );
+    const createdNote = service.listNotes()[0];
+    if (!createdNote) throw new Error("The created note is required.");
+    expect(created).toMatchObject({
+      success: true,
+      data: { note: { id: createdNote.id } },
+    });
 
     await expect(
       interact("get-note", { title: "Overnight QA disposable note" }, service),
@@ -521,17 +541,23 @@ describe("Notes capabilities", () => {
       data: { note: { body: "Safe to delete." } },
     });
 
-    await expect(
-      interact(
-        "delete-note",
-        { title: "Overnight QA disposable note" },
-        service,
-      ),
-    ).resolves.toMatchObject({ success: true });
+    const deleted = await interact(
+      "delete-note",
+      { title: "Overnight QA disposable note" },
+      service,
+    );
+    expect(deleted).toMatchObject({
+      success: true,
+      data: { note: { id: createdNote.id } },
+    });
+    expectAppliedMutationReceipt(deleted, "delete-note", {
+      kind: "notes.note",
+      id: createdNote.id,
+    });
     expect(service.listNotes()).toEqual([]);
   });
 
-  it("fails closed when a title lookup is missing or ambiguous", async () => {
+  it("fails closed for unresolved and invalid selectors without changing durable state", async () => {
     const service = await serviceFor(await temporaryStateFile());
     await interact(
       "create-note",
@@ -544,26 +570,62 @@ describe("Notes capabilities", () => {
       service,
     );
 
-    await expect(
-      interact(
-        "update-note",
-        { query: "Daily plan", content: "Daily plan\nChanged" },
-        service,
-      ),
-    ).resolves.toMatchObject({
-      success: false,
-      error: { code: "NOTES_AMBIGUOUS_NOTE" },
-    });
-    await expect(
-      interact(
-        "update-note",
-        { query: "does not exist", content: "Changed" },
-        service,
-      ),
-    ).resolves.toMatchObject({
-      success: false,
-      error: { code: "NOTES_NOT_FOUND" },
-    });
+    const durableIdentity = () => {
+      const snapshot = service.snapshot();
+      return {
+        revision: snapshot.revision,
+        ids: snapshot.notes.map((note) => note.id).sort(),
+      };
+    };
+    const before = durableIdentity();
+    const knownId = before.ids[0];
+    if (!knownId) throw new Error("A protected note id is required.");
+
+    const attempts: Array<{
+      capability: "update-note" | "delete-note";
+      params: Record<string, unknown>;
+      code: string;
+    }> = [
+      {
+        capability: "update-note",
+        params: { query: "Daily plan", content: "Daily plan\nChanged" },
+        code: "NOTES_AMBIGUOUS_NOTE",
+      },
+      {
+        capability: "update-note",
+        params: { query: "does not exist", content: "Changed" },
+        code: "NOTES_NOT_FOUND",
+      },
+      {
+        capability: "delete-note",
+        params: { title: "Daily plan" },
+        code: "NOTES_AMBIGUOUS_NOTE",
+      },
+      {
+        capability: "delete-note",
+        params: { title: "does not exist" },
+        code: "NOTES_NOT_FOUND",
+      },
+      {
+        capability: "delete-note",
+        params: { id: knownId, title: "Daily plan" },
+        code: "NOTES_VALIDATION_FAILED",
+      },
+      {
+        capability: "delete-note",
+        params: { content: "Daily plan" },
+        code: "NOTES_VALIDATION_FAILED",
+      },
+    ];
+    for (const attempt of attempts) {
+      await expect(
+        interact(attempt.capability, attempt.params, service),
+      ).resolves.toMatchObject({
+        success: false,
+        error: { code: attempt.code },
+      });
+      expect(durableIdentity()).toEqual(before);
+    }
     expect(service.listNotes().map((note) => note.body)).toEqual([
       "Evening",
       "Morning",
