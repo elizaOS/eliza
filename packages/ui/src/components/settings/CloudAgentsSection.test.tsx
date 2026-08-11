@@ -309,6 +309,7 @@ function resetClientMocks() {
   clientMock.resumeCloudCompatAgent.mockReset();
   clientMock.getCloudCompatJobStatus.mockReset();
   clientMock.getCloudCompatAgentStatus.mockReset();
+  clientMock.selectOrProvisionCloudAgent.mockReset();
   persistenceMock.loadPersistedActiveServer.mockReset();
   persistenceMock.savePersistedActiveServer.mockReset();
   // deleteAgent now guards on window.confirm; default it to accept so the
@@ -316,6 +317,75 @@ function resetClientMocks() {
   // explicitly below).
   window.confirm = () => true;
 }
+
+describe("CloudAgentsSection create outcome", () => {
+  let reloadSpy: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    appMock.value = { elizaCloudConnected: true, setActionNotice: vi.fn() };
+    resetClientMocks();
+    persistenceMock.loadPersistedActiveServer.mockReturnValue({
+      kind: "cloud",
+      id: "cloud:agent-1",
+      label: "Old Name",
+      accessToken: "tok",
+    });
+    reloadSpy = vi.fn();
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      value: { ...window.location, reload: reloadSpy },
+    });
+  });
+
+  afterEach(() => {
+    cleanup();
+    vi.restoreAllMocks();
+  });
+
+  it("keeps an agent-limit outcome visible without binding or reloading", async () => {
+    clientMock.selectOrProvisionCloudAgent.mockResolvedValue({
+      agentId: "agent-1",
+      agentName: "Old Name",
+      apiBase: "https://agent-1.example.test",
+      created: false,
+    });
+    await renderWithAgents([agent()]);
+
+    const input = screen.getByPlaceholderText(/Agent name/) as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "Fresh Agent" } });
+    fireEvent.click(screen.getByText("Create", { selector: "button" }));
+
+    const alert = await screen.findByTestId("cloud-agent-create-error");
+    expect(alert.textContent).toContain("No new agent was created");
+    expect(alert.textContent).toContain("agent limit");
+    expect(appMock.value.setActionNotice).toHaveBeenCalledWith(
+      expect.stringContaining("No new agent was created"),
+      "error",
+      7000,
+    );
+    expect(input.value).toBe("Fresh Agent");
+    expect(persistenceMock.savePersistedActiveServer).not.toHaveBeenCalled();
+    expect(reloadSpy).not.toHaveBeenCalled();
+  });
+
+  it("clears the durable create error when the user edits the name", async () => {
+    clientMock.selectOrProvisionCloudAgent.mockResolvedValue({
+      agentId: "agent-1",
+      agentName: "Old Name",
+      apiBase: "https://agent-1.example.test",
+      created: false,
+    });
+    await renderWithAgents([agent()]);
+
+    const input = screen.getByPlaceholderText(/Agent name/) as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "Fresh Agent" } });
+    fireEvent.click(screen.getByText("Create", { selector: "button" }));
+    await screen.findByTestId("cloud-agent-create-error");
+
+    fireEvent.change(input, { target: { value: "Another Name" } });
+    expect(screen.queryByTestId("cloud-agent-create-error")).toBeNull();
+  });
+});
 
 describe("CloudAgentsSection lifecycle (suspend/resume)", () => {
   beforeEach(() => {
