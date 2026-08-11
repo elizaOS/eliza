@@ -1089,12 +1089,59 @@ function resolveViewCapability({
 	return best?.candidate ?? null;
 }
 
+function authoritativeRequestTokens(text: string): Set<string> {
+	const raw = viewRequestText(text);
+	const lower = raw.toLowerCase();
+	// Primary clause is the segment before the first contrastive/conditional
+	// or sentence boundary; later clauses carry incidental or safety wording
+	// and must not silently override an explicit capability.
+	const clauseBoundary =
+		/[.!?;]|\b(?:but|if|when|unless|however|then|although|whereas|while|after|before|once|until|and also|or also)\b/i;
+	const match = lower.match(clauseBoundary);
+	let primary = raw;
+	if (match && match.index !== undefined && match.index > 0) {
+		primary = raw.slice(0, match.index);
+	}
+	const normalized = normalizeCapabilityKey(primary);
+	const words = normalized.split(" ").filter(Boolean);
+	const negations = new Set([
+		"not",
+		"no",
+		"never",
+		"dont",
+		"don't",
+		"doesnt",
+		"doesn't",
+		"didnt",
+		"didn't",
+		"wont",
+		"won't",
+		"without",
+		"cannot",
+		"can't",
+		"cant",
+		"without",
+	]);
+	const tokens: string[] = [];
+	for (let i = 0; i < words.length; i++) {
+		const word = words[i];
+		if (!word) continue;
+		const prev1 = words[i - 1];
+		const prev2 = words[i - 2];
+		const isNegated =
+			(prev1 && negations.has(prev1)) || (prev2 && negations.has(prev2));
+		if (isNegated) continue;
+		tokens.push(word);
+	}
+	return new Set(tokens);
+}
+
 function correctCapabilityOperationFamily(
 	view: ViewSummary,
 	capability: ViewCapability,
 	text: string,
 ): ViewCapability {
-	const requestTokens = tokensFor(viewRequestText(text));
+	const requestTokens = authoritativeRequestTokens(text);
 	const requestedFamily = operationFamilyForTokens(requestTokens);
 	const selectedFamily = operationFamilyForCapability(capability);
 	if (
@@ -3112,17 +3159,37 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 						if (!resolvedCapability && standardCapability)
 							capability = standardCapability;
 						if (resolvedCapability) {
-							const correctedCapability = correctCapabilityOperationFamily(
-								resolvedCapability.view,
+							const explicitCapRaw =
+								readStringOption(actionOptions, "capability") ??
+								readStringOption(options, "capability");
+							const isExplicit =
+								explicitCapRaw &&
+								normalizeCapabilityKey(explicitCapRaw) ===
+									normalizeCapabilityKey(resolvedCapability.capability.id);
+							const selectedFamilyForExplicit = operationFamilyForCapability(
 								resolvedCapability.capability,
-								text,
 							);
-							if (correctedCapability.id !== resolvedCapability.capability.id) {
-								resolvedCapability = {
-									...resolvedCapability,
-									capability: correctedCapability,
-								};
-								capability = correctedCapability.id;
+							// Preserve an explicit destructive capability (e.g., delete-note)
+							// from being silently rewritten by incidental read-family words
+							// in a later/negated clause. Allow correction for genuinely
+							// wrong inferred create/update selections.
+							const shouldPreserveExplicit =
+								isExplicit && selectedFamilyForExplicit === "delete";
+							if (!shouldPreserveExplicit) {
+								const correctedCapability = correctCapabilityOperationFamily(
+									resolvedCapability.view,
+									resolvedCapability.capability,
+									text,
+								);
+								if (
+									correctedCapability.id !== resolvedCapability.capability.id
+								) {
+									resolvedCapability = {
+										...resolvedCapability,
+										capability: correctedCapability,
+									};
+									capability = correctedCapability.id;
+								}
 							}
 						}
 						const paramsResolution = readCapabilityParams(
