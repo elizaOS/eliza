@@ -444,19 +444,6 @@ if (
   }
 }
 
-if (
-  hasPlaywrightConfig("playwright.ui-smoke.config.ts") &&
-  hasPlaywrightProject("audit-cloud") &&
-  env.VITE_PLAYWRIGHT_TEST_AUTH === "true" &&
-  env.ELIZA_UI_SMOKE_SKIP_BUILD !== "1"
-) {
-  const appDistDir = path.join(appDir, "dist");
-  console.log(
-    "[ui-smoke] Removing app dist before audit-cloud so VITE_PLAYWRIGHT_TEST_AUTH is baked into a fresh renderer build.",
-  );
-  removePathRecursive(appDistDir, "app dist for audit-cloud auth build");
-}
-
 // The ui-smoke web server builds the renderer (`packages/app build:web`) whenever
 // the dist is stale — in BOTH stub and live mode (see playwright-ui-live-stack.ts
 // `viteRendererBuildNeeded` → `build:web`). That vite build needs linked

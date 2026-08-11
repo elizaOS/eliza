@@ -17,6 +17,8 @@ Chromium renderer tests that need a Steward session use
 - Pass `{ jwt: true }` only when the spec intentionally needs a decodable JWT
   shape. The helper creates an unsigned JWT with `exp`; client-cloud refresh
   logic only attempts refresh for JWT-like tokens that carry an expiry.
+- UI-smoke compares the requested `VITE_PLAYWRIGHT_TEST_AUTH` value with the
+  renderer build manifest for every project and rebuilds on either transition.
 
 ## Surface Matrix
 

@@ -1,7 +1,8 @@
 /**
- * Returns true when the main app needs a production `vite build` before Electrobun dev.
+ * Returns true when the main app needs a production `vite build`.
  *
- * Uses **mtime** of `dist/index.html` vs. app sources, shared packages, and key config files.
+ * Uses the renderer manifest for build-time variants, then **mtime** of `dist/index.html`
+ * vs. app sources, shared packages, and key config files.
  * **Why not always build:** A full Vite production compile is expensive; skipping when dist
  * is fresh makes `dev:desktop` restarts fast. **Why mtime:** Good enough for local dev; use
  * `--force-renderer` / `ELIZA_DESKTOP_RENDERER_BUILD=always` when you need a guaranteed
@@ -9,6 +10,7 @@
  */
 import fs from "node:fs";
 import path from "node:path";
+import { readRendererBuildManifest } from "./renderer-build-manifest.mjs";
 
 const TEXT_EXT = new Set([
   ".ts",
@@ -68,12 +70,37 @@ function maxMtimeAcrossDirs(dirs) {
 }
 
 /**
+ * UI-smoke may reuse a renderer only when its test-auth build flag exactly
+ * matches the current invocation. Missing legacy metadata fails closed.
+ */
+export function rendererDistMatchesPlaywrightTestAuth(
+  appDir,
+  expectedPlaywrightTestAuth,
+) {
+  const manifest = readRendererBuildManifest(path.join(appDir, "dist"));
+  return (
+    typeof manifest?.buildId === "string" &&
+    manifest.buildId.length > 0 &&
+    manifest.playwrightTestAuth === expectedPlaywrightTestAuth
+  );
+}
+
+/**
  * @param {string} appDir absolute path to packages/app
  * @param {string} repoRoot absolute path to repo root
+ * @param {{ expectedPlaywrightTestAuth?: boolean }} [options]
  */
-export function viteRendererBuildNeeded(appDir, repoRoot) {
+export function viteRendererBuildNeeded(appDir, repoRoot, options = {}) {
   const distIndex = path.join(appDir, "dist", "index.html");
   if (!fs.existsSync(distIndex)) {
+    return true;
+  }
+  const expectedPlaywrightTestAuth =
+    options.expectedPlaywrightTestAuth ??
+    process.env.VITE_PLAYWRIGHT_TEST_AUTH === "true";
+  if (
+    !rendererDistMatchesPlaywrightTestAuth(appDir, expectedPlaywrightTestAuth)
+  ) {
     return true;
   }
   const distMtime = fileMtime(distIndex);
