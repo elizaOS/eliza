@@ -77,18 +77,10 @@ function activeCloudAgentId(): string | null {
 
 /** The cloud access token for the current session. */
 function currentCloudToken(): string {
-  // Canonical Steward-first resolution (matches getCloudAuthToken: Steward JWT →
-  // runtime global → client), then fall back to the persisted active-server
-  // token for sessions without a Steward session. The old order read the
-  // persisted token first and skipped the Steward JWT entirely, which could send
-  // a stale/missing token from the agent manager.
-  const canonical = getCloudAuthToken();
-  if (canonical) return canonical;
-  const persisted = loadPersistedActiveServer();
-  if (persisted?.kind === "cloud" && persisted.accessToken) {
-    return persisted.accessToken;
-  }
-  return "";
+  // Agent management crosses the control-plane boundary, so only the
+  // independently stored Steward session is admissible. The active server's
+  // access token authenticates its container and must never substitute here.
+  return getCloudAuthToken() ?? "";
 }
 
 /**
@@ -305,19 +297,13 @@ export function CloudAgentsSection() {
         forceCreate: true,
         onProgress: () => {},
       });
-      // Honest outcome (#14487): with forceCreate the backend still reuses the
-      // org's existing agent when the org is at its per-org agent cap (#11023),
-      // returning `created: false`. Do NOT claim a fresh agent was made: bind
-      // to the (existing) agent we got back but tell the user why no new one
-      // appeared, so "Create a new agent" never silently lies.
-      const label = result.agentName || name;
-      if (result.created === false) {
-        bindAndReload(
-          result.agentId,
-          result.apiBase,
-          label,
-          `You've reached your agent limit, so we opened your existing agent “${label}” instead. Delete an agent or add credits to create another.`,
+      if (result.created !== true) {
+        setActionNotice(
+          "Eliza Cloud did not confirm that a new agent was created. No agent was opened; refresh your session and try again.",
+          "error",
+          7000,
         );
+        return;
       } else {
         bindAndReload(result.agentId, result.apiBase, name);
       }
