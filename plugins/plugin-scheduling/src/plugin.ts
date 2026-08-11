@@ -22,6 +22,37 @@ import {
   registerDefaultTaskPack,
   seedRegisteredTaskPacks,
 } from "./scheduled-task/seed-registry.js";
+import {
+  isStandaloneTickDisabled,
+  runStandaloneSchedulingTick,
+  STANDALONE_TICK_INTERVAL_MS,
+} from "./scheduled-task/standalone-tick.js";
+
+/**
+ * One fallback tick timer per runtime. WeakMap so a torn-down runtime's timer
+ * reference does not keep it alive; the timer itself is unref'd so it never
+ * blocks process exit.
+ */
+const standaloneTickTimers = new WeakMap<
+  IAgentRuntime,
+  ReturnType<typeof setInterval>
+>();
+
+function startStandaloneTickDriver(runtime: IAgentRuntime): void {
+  if (standaloneTickTimers.has(runtime)) return;
+  const timer = setInterval(() => {
+    void runStandaloneSchedulingTick(runtime).catch((error) => {
+      logger.warn(
+        { src: "scheduling:standalone-tick", agentId: runtime.agentId },
+        `[scheduling] standalone tick crashed; retrying next interval: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    });
+  }, STANDALONE_TICK_INTERVAL_MS);
+  timer.unref?.();
+  standaloneTickTimers.set(runtime, timer);
+}
 
 export async function waitForScheduledTaskRunnerService(
   runtime: IAgentRuntime,
@@ -100,6 +131,15 @@ export const schedulingPlugin: Plugin = {
             agentId: runtime.agentId,
           });
           await seedRegisteredTaskPacks(runtime, runner);
+          // Fallback wall-clock driver: without this, a runtime with no
+          // consumer host (plugin-personal-assistant) accepts scheduled
+          // tasks over REST but never fires them — `once`/`cron`/`interval`
+          // rows sat `scheduled` forever (sol-dev cutover QA 2026-08-11).
+          // The tick itself defers per-invocation when a consumer host's
+          // deps are registered, so starting it unconditionally is safe.
+          if (!isStandaloneTickDisabled()) {
+            startStandaloneTickDriver(runtime);
+          }
         } catch (error) {
           logger.warn(
             { src: "scheduling:boot-seed", agentId: runtime.agentId, error },
