@@ -113,7 +113,17 @@ function progressStatus(received, total, startedAt) {
 function cleanupStaleTempArchives() {
   const now = Date.now();
   let removed = 0;
-  for (const entry of readdirSync(tmpdir())) {
+  let entries;
+  try {
+    entries = readdirSync(tmpdir());
+  } catch (err) {
+    // error-policy:J6 best-effort temp cleanup; the sweep runs before every
+    // early exit, so an unreadable temp directory (missing TMPDIR, permission
+    // loss) must degrade to a warning — never fail the skip/no-op paths.
+    warn(`could not enumerate temp dir for stale archives: ${err.message}`);
+    return;
+  }
+  for (const entry of entries) {
     if (!/^eliza-artifacts-\d+\.tar\.gz$/.test(entry)) continue;
     const file = join(tmpdir(), entry);
     let stat;
