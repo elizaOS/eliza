@@ -157,11 +157,12 @@ jobs:
     name: Smoke
     needs: changes
     runs-on: ubuntu-24.04
-    # The zero-key deterministic e2e suite is 725 Playwright tests that the
-    # suite's one-live-stack-per-process invariant pins to a single worker, so
-    # wall clock only comes down by giving each slice its own runner. Six
-    # shards put the slowest slice near 20 minutes; the whole lane took ~96 on
-    # one machine.
+    # 725 Playwright tests that the suite's one-live-stack-per-process
+    # invariant pins to a single worker. Measured on run 31489483093: six
+    # shards land between 22.8 and 34.4 minutes of test time against ~96 on one
+    # machine. The spread is Playwright balancing by test count rather than
+    # duration, and roughly 13 minutes per shard is fixed setup that does not
+    # divide -- which is why more shards stop paying past this point.
     timeout-minutes: 60
     strategy:
       # One shard's product failure must not hide the other five: a shard that
@@ -175,7 +176,53 @@ jobs:
           submodules: false
 
       - uses: ./.github/actions/setup-bun-workspace
-        if: needs.changes.outputs.desktop == 'true' || needs.changes.outputs.zero_key == 'true' || needs.changes.outputs.cloud == 'true'
+        if: needs.changes.outputs.zero_key == 'true'
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+          node-version: ${{ env.NODE_VERSION }}
+          install-command: bun install --frozen-lockfile --ignore-scripts
+          install-native-deps: "false"
+          install-protoc: "false"
+          setup-python: "false"
+          skip-avatar-clone: "true"
+          no-vision-deps: "true"
+
+      # The zero-key e2e suite drives chromium (desktop + mobile projects) and
+      # webkit; without this the whole lane fails at browserType.launch.
+      - name: Install Playwright browsers
+        if: needs.changes.outputs.zero_key == 'true'
+        run: PLAYWRIGHT_INSTALL_CWD=packages/app .github/scripts/install-playwright-browsers.sh chromium webkit
+
+      # Every shard runs the identical command and differs only by
+      # ELIZA_UI_SMOKE_SHARD, so no shard can silently own a different lane.
+      # The orchestrator's two non-Playwright e2e tasks (~48s combined) repeat
+      # on each runner; duplicating them costs less than branching the command.
+      - name: Deterministic end-to-end smoke
+        if: needs.changes.outputs.zero_key == 'true'
+        env:
+          ELIZA_UI_SMOKE_SHARD: ${{ matrix.shard }}/6
+        run: bun run test:e2e
+
+      - name: No affected e2e shard
+        if: needs.changes.outputs.zero_key != 'true'
+        run: echo "No deterministic E2E lane is affected."
+
+  # The desktop and cloud lanes are whole-lane work that does not shard. Held
+  # off the matrix so no shard carries them: on run 31489483093 the cloud step
+  # alone added 15.2 minutes to shard 1 and made it the straggler at 45.5
+  # minutes while every sibling finished under 37.
+  smoke_lanes:
+    name: Smoke lanes
+    needs: changes
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          submodules: false
+
+      - uses: ./.github/actions/setup-bun-workspace
+        if: needs.changes.outputs.desktop == 'true' || needs.changes.outputs.cloud == 'true'
         with:
           bun-version: ${{ env.BUN_VERSION }}
           node-version: ${{ env.NODE_VERSION }}
@@ -194,35 +241,17 @@ jobs:
         if: needs.changes.outputs.desktop == 'true'
         run: bunx turbo run build --filter=@elizaos/core --filter=@elizaos/shared
 
-      # Only the Playwright suite is sharded, so the whole-lane steps below run
-      # on the first shard alone rather than once per runner.
       - name: Desktop startup smoke
-        if: needs.changes.outputs.desktop == 'true' && matrix.shard == 1
+        if: needs.changes.outputs.desktop == 'true'
         run: bun run test:dev-startup
 
-      # The zero-key e2e suite drives chromium (desktop + mobile projects) and
-      # webkit; without this the whole lane fails at browserType.launch.
-      - name: Install Playwright browsers
-        if: needs.changes.outputs.zero_key == 'true'
-        run: PLAYWRIGHT_INSTALL_CWD=packages/app .github/scripts/install-playwright-browsers.sh chromium webkit
-
-      # Every shard runs the identical command and differs only by
-      # ELIZA_UI_SMOKE_SHARD, so no shard can silently own a different lane.
-      # The orchestrator's two non-Playwright e2e tasks (~48s combined) repeat
-      # on each runner; duplicating them costs less than branching the command.
-      - name: Deterministic end-to-end smoke
-        if: needs.changes.outputs.zero_key == 'true'
-        env:
-          ELIZA_UI_SMOKE_SHARD: ${{ matrix.shard }}/6
-        run: bun run test:e2e
-
       - name: Cloud tests
-        if: needs.changes.outputs.cloud == 'true' && matrix.shard == 1
+        if: needs.changes.outputs.cloud == 'true'
         run: bun run test:cloud
 
       - name: No affected smoke lane
-        if: needs.changes.outputs.desktop != 'true' && needs.changes.outputs.zero_key != 'true' && needs.changes.outputs.cloud != 'true'
-        run: echo "No desktop, deterministic E2E, or cloud smoke lane is affected."
+        if: needs.changes.outputs.desktop != 'true' && needs.changes.outputs.cloud != 'true'
+        run: echo "No desktop or cloud smoke lane is affected."
 
   android_aab:
     name: Android release AAB
@@ -416,7 +445,7 @@ jobs:
   required:
     name: Required
     if: always()
-    needs: [changes, quality, tests, smoke, android_aab, secrets]
+    needs: [changes, quality, tests, smoke, smoke_lanes, android_aab, secrets]
     runs-on: ubuntu-24.04
     steps:
       - name: Require every CI job to succeed
@@ -426,6 +455,7 @@ jobs:
             quality=${{ needs.quality.result }}
             tests=${{ needs.tests.result }}
             smoke=${{ needs.smoke.result }}
+            smoke-lanes=${{ needs.smoke_lanes.result }}
             android-aab=${{ needs.android_aab.result }}
             secrets=${{ needs.secrets.result }}
         run: |
