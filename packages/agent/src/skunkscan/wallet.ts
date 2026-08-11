@@ -145,7 +145,57 @@ function buildEvmRecentTransactions(rawTransactions: EthereumTransaction[]): {
   };
 }
 
+// Total-latency guard for the EVM chains (Ethereum/BSC/Base) only. Found via
+// the cross-chain unbounded-fetch audit: even with every individual holdings
+// cap in place (MAX_TOKEN_HOLDING_PAGES, MAX_NFT_HOLDING_PAGES,
+// MAX_TOKENS_PER_PRICE_REQUEST chunking), a maximally-large EVM wallet can
+// still make up to ~60 sequential, un-timeouted Moralis calls (20 token-
+// holding pages + 20 NFT-holding pages + 20 price chunks) - nothing
+// individually hangs, but nothing stops the sum from taking multiple
+// minutes either. Unlike the Solana/Bitcoin fixes, this doesn't thread an
+// AbortController through every underlying fetch (a much larger change
+// across every moralis.ts function) - it races the whole investigation
+// against a deadline instead, so a caller gets a fast, clear failure rather
+// than an indefinite wait. Caveat, stated plainly rather than glossed over:
+// this does NOT cancel the in-flight Moralis calls when the race is lost -
+// investigateWalletInternal keeps running in the background and its result
+// is simply discarded, so a timed-out investigation still consumes the same
+// provider CU it would have without this guard. This fixes the caller-
+// facing symptom (a hung/502'd request), not the underlying API cost.
+const EVM_INVESTIGATION_TIMEOUT_MS = 60_000;
+const EVM_CHAINS_WITH_LATENCY_GUARD: ReadonlySet<SupportedChain> = new Set([
+  "ethereum",
+  "bnb",
+  "base",
+]);
+
 export async function investigateWallet(
+  chain: SupportedChain,
+  address: string,
+): Promise<WalletInvestigationResult> {
+  if (!EVM_CHAINS_WITH_LATENCY_GUARD.has(chain)) {
+    return investigateWalletInternal(chain, address);
+  }
+
+  return Promise.race([
+    investigateWalletInternal(chain, address),
+    new Promise<WalletInvestigationResult>((resolve) => {
+      setTimeout(() => {
+        resolve({
+          chain,
+          address: address.trim(),
+          status: "error",
+          summary: "Wallet investigation timed out.",
+          warnings: [
+            `This investigation did not complete within ${EVM_INVESTIGATION_TIMEOUT_MS / 1000}s. This usually means the wallet holds an extremely large number of distinct tokens and/or NFTs. Try again - a transient slowdown on the data provider's side is also possible - or note that this wallet may not be fully investigable within a reasonable time.`,
+          ],
+        });
+      }, EVM_INVESTIGATION_TIMEOUT_MS);
+    }),
+  ]);
+}
+
+async function investigateWalletInternal(
   chain: SupportedChain,
   address: string,
 ): Promise<WalletInvestigationResult> {
