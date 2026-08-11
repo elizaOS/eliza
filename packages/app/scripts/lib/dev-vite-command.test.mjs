@@ -27,7 +27,14 @@ describe("development Vite process commands", () => {
       resolveViteCommand({ appDir, nodePath: "/usr/local/bin/node" }),
       {
         command: "/usr/local/bin/node",
-        args: ["--import", "tsx", viteCli, "--configLoader", "native"],
+        args: [
+          "--conditions=eliza-source",
+          "--import",
+          "tsx",
+          viteCli,
+          "--configLoader",
+          "native",
+        ],
       },
     );
   });
@@ -43,6 +50,7 @@ describe("development Vite process commands", () => {
       {
         command: "/usr/bin/node",
         args: [
+          "--conditions=eliza-source",
           "--import",
           "tsx",
           viteCli,
@@ -63,6 +71,7 @@ describe("development Vite process commands", () => {
       {
         command: "/usr/bin/node",
         args: [
+          "--conditions=eliza-source",
           "--import",
           "tsx",
           viteCli,
@@ -75,27 +84,41 @@ describe("development Vite process commands", () => {
     );
   });
 
-  it("keeps direct package dev commands on Node with source import support", () => {
-    assert.equal(
-      appPackage.scripts.dev,
-      "node --import tsx ./node_modules/vite/bin/vite.js",
-    );
-    assert.equal(
-      appPackage.scripts["dev:chat-harness"],
-      "ELIZA_CHAT_UI_HARNESS=1 node --import tsx ./node_modules/vite/bin/vite.js",
-    );
+  it("forwards direct Vite CLI flags after the canonical dev arguments", () => {
+    const resolved = resolveViteCommand({
+      appDir,
+      nodePath: "/usr/bin/node",
+      viteArgs: ["--host", "127.0.0.1"],
+    });
+
+    assert.deepEqual(resolved.args.slice(-2), ["--host", "127.0.0.1"]);
   });
 
-  it("loads source-conditioned NodeNext workspace packages", () => {
+  it("keeps direct package dev commands on Node with source import support", () => {
+    assert.equal(appPackage.scripts.dev, "node scripts/dev.mjs");
+    assert.equal(
+      appPackage.scripts["dev:chat-harness"],
+      "ELIZA_CHAT_UI_HARNESS=1 node scripts/dev.mjs",
+    );
+    const directDevSource = readFileSync(
+      path.join(appDir, "scripts", "dev.mjs"),
+      "utf8",
+    );
+    assert.match(directDevSource, /resolveViteCommand\(\{/);
+    assert.match(directDevSource, /viteArgs: process\.argv\.slice\(2\)/);
+  });
+
+  it("loads NodeNext workspace source with the production child argv", () => {
     const viteCommand = resolveViteCommand({
       appDir,
       nodePath: "node",
     });
+    const viteCliIndex = viteCommand.args.indexOf(viteCli);
+    assert.notEqual(viteCliIndex, -1);
     const result = spawnSync(
       viteCommand.command,
       [
-        "--conditions=eliza-source",
-        ...viteCommand.args.slice(0, 2),
+        ...viteCommand.args.slice(0, viteCliIndex),
         "--input-type=module",
         "--eval",
         'await import("./packages/core/src/cloud-routing.ts")',
