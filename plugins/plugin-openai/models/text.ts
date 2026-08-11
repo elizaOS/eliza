@@ -51,6 +51,7 @@ import {
   getSmallModel,
   getUsageProvider,
   isCerebrasMode,
+  isOpenCodeGoMode,
 } from "../utils/config";
 import { emitModelUsageEvent, type ModelRetryTelemetry } from "../utils/events";
 
@@ -338,6 +339,29 @@ function resolveCerebrasThinkingOffReasoningEffort(
   return undefined;
 }
 
+/**
+ * OpenCode Go's DeepSeek V4 Flash accepts `none` as its explicit no-thinking
+ * value. Scope the mapping to the exact endpoint/model pair: other compatible
+ * providers and other OpenCode Go models may reject the field or interpret it
+ * differently.
+ */
+function resolveOpenCodeGoThinkingOffReasoningEffort(
+  modelName: string | undefined
+): "none" | undefined {
+  if (!modelName) return undefined;
+  return modelName.trim().toLowerCase() === "deepseek-v4-flash" ? "none" : undefined;
+}
+
+function resolveThinkingOffReasoningEffort(
+  runtime: IAgentRuntime,
+  modelName: string | undefined
+): "low" | "none" | undefined {
+  if (isOpenCodeGoMode(runtime)) {
+    return resolveOpenCodeGoThinkingOffReasoningEffort(modelName);
+  }
+  return isCerebrasMode(runtime) ? resolveCerebrasThinkingOffReasoningEffort(modelName) : undefined;
+}
+
 function resolveReasoningEffort(
   runtime: IAgentRuntime,
   modelName?: string
@@ -371,16 +395,15 @@ function resolveProviderOptions(
   const rawProviderOptions = withOpenAIOptions.providerOptions;
   const promptCacheOptions = resolvePromptCacheOptions(params);
   const reasoningEffort = resolveReasoningEffort(runtime, modelName);
-  // Thinking-off suppression outranks the env pin and the Cerebras "low"
-  // default (matching plugin-elizacloud: Stage-1/planner calls stay cheap
-  // regardless of a user-pinned effort). An explicit caller
+  // Thinking-off suppression outranks the env pin and provider defaults
+  // (matching plugin-elizacloud: Stage-1/planner calls stay cheap regardless
+  // of a user-pinned effort). An explicit caller
   // `providerOptions.openai.reasoningEffort` still wins via the spread guard
-  // below. Scoped to Cerebras mode: OpenAI-direct rejects `"none"`.
+  // below. Each mapping is scoped to an exact provider/model contract because
+  // OpenAI-direct and some compatible endpoints reject `"none"`.
   const elizaThinking = (rawProviderOptions?.eliza as { thinking?: unknown } | undefined)?.thinking;
   const thinkingOffEffort =
-    elizaThinking === "off" && isCerebrasMode(runtime)
-      ? resolveCerebrasThinkingOffReasoningEffort(modelName)
-      : undefined;
+    elizaThinking === "off" ? resolveThinkingOffReasoningEffort(runtime, modelName) : undefined;
   const effectiveReasoningEffort = thinkingOffEffort ?? reasoningEffort;
 
   if (

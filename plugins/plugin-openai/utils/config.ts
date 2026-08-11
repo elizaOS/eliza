@@ -233,6 +233,36 @@ export function getBaseURL(runtime: IAgentRuntime): string {
   return baseURL;
 }
 
+/**
+ * Matches only the OpenCode Go OpenAI-compatible base URL. Provider-specific
+ * request fields must not leak to another compatible host or endpoint.
+ */
+function isOpenCodeGoBaseURL(value: string | undefined): boolean {
+  if (!value) return false;
+  try {
+    const baseURL = new URL(value);
+    const exactPath = baseURL.pathname === "/zen/go/v1" || baseURL.pathname === "/zen/go/v1/";
+    return (
+      baseURL.origin === "https://opencode.ai" &&
+      exactPath &&
+      baseURL.search === "" &&
+      baseURL.hash === ""
+    );
+  } catch {
+    // error-policy:J3 Malformed configuration is not a matching provider URL.
+    return false;
+  }
+}
+
+/**
+ * True when the effective request URL is OpenCode Go. This follows the same
+ * browser, mock, and configured-base precedence as `getBaseURL`, so a shadowed
+ * upstream cannot leak provider-specific options through a browser proxy.
+ */
+export function isOpenCodeGoMode(runtime: IAgentRuntime): boolean {
+  return isOpenCodeGoBaseURL(getBaseURL(runtime));
+}
+
 export function getEmbeddingBaseURL(runtime: IAgentRuntime): string {
   const embeddingURL = isBrowser()
     ? (getSetting(runtime, "OPENAI_BROWSER_EMBEDDING_URL") ??
