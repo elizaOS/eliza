@@ -14,6 +14,7 @@ export function analyzeWalletPortfolio(
   tokenHoldings: WalletTokenHolding[],
   tokenPrices: Record<string, TokenPrice> = {},
   chain: SupportedChain,
+  tokenHoldingsIncomplete = false,
 ): WalletPortfolioSummary {
   const wrappedNativeAssetId = WRAPPED_NATIVE_ASSET_ID[chain];
 
@@ -116,8 +117,11 @@ export function analyzeWalletPortfolio(
 
   const nativeSymbol = nativeBalance.nativeSymbol;
 
-  const notes =
-    tokenHoldings.length === 0
+  const notes = tokenHoldingsIncomplete
+    ? [
+        "Token holdings could not be fully retrieved for this wallet (the fetch was truncated or timed out) - tokenCount, diversityLevel, and estimatedTotalUsdValue below reflect only the partial data retrieved, not the wallet's true holdings. This is not the same as a wallet that genuinely holds no other tokens.",
+      ]
+    : tokenHoldings.length === 0
       ? nativeEstimatedUsdValue !== null
         ? [
             "No other token holdings were found for this wallet.",
@@ -151,6 +155,7 @@ export function analyzeWalletPortfolio(
       ? Number(estimatedTotalUsdValue.toFixed(2))
       : null,
     concentrationLevel,
+    dataCompleteness: tokenHoldingsIncomplete ? "incomplete" : "complete",
     notes,
   };
 }

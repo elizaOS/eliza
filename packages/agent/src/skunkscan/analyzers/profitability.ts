@@ -20,6 +20,43 @@ type ProfitabilityInput = {
 export function analyzeWalletProfitability(
   input: ProfitabilityInput,
 ): WalletProfitabilitySummary {
+  // profitabilityScore below is a weighted blend of alpha/smartMoney/trust/
+  // conviction - not hardcoded, a real computation. But alpha, smartMoney,
+  // and conviction all read portfolio.diversityScore/diversityLevel
+  // directly (see their own dataCompleteness handling), so when token
+  // holdings were truncated/timed out, this blend rests on inputs we
+  // already know are unreliable. Short-circuiting here, rather than
+  // computing and displaying a number, is what prevents the exact bug this
+  // was built to fix: a confident-looking score (e.g. 5.9/10) with no
+  // positiveIndicators/negativeIndicators actually backing it.
+  if (input.portfolio.dataCompleteness === "incomplete") {
+    return {
+      profitabilityScore: 0,
+      displayScore: "N/A",
+      profitabilityLevel: "unknown",
+      estimatedProfitability: "unknown",
+      confidence: "low",
+      evidenceConfidence: "low",
+      confidenceAnalysis: {
+        rawScore: 0,
+        maxScore: 100,
+        displayScore: "N/A",
+        maxDisplayScore: 10,
+        level: "low",
+        reasons: [],
+      },
+      investorHeadline: "Insufficient Data for Profitability",
+      investorSummary:
+        "Token holdings could not be fully retrieved for this wallet, so a profitability assessment could not be computed.",
+      investorTakeaway:
+        "This is not a low-profitability finding - it means the underlying portfolio data needed to assess profitability was incomplete (the token-holdings fetch was truncated or timed out).",
+      positiveIndicators: [],
+      negativeIndicators: [],
+      limitations: [
+        "Token holdings could not be fully retrieved for this wallet (the fetch was truncated or timed out) - profitability could not be assessed from incomplete portfolio data.",
+      ],
+    };
+  }
 
   let profitabilityScore = 0;
 

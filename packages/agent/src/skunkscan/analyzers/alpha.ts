@@ -33,11 +33,26 @@ export function analyzeWalletAlpha(
   const weaknesses: string[] = [];
   const limitations: string[] = [];
 
+  // See whale.ts's identical flag - token holdings were truncated/timed
+  // out, so portfolio.diversityScore is not usable evidence.
+  // input.whale.whaleScore and input.smartMoney.smartMoneyScore are
+  // already reduced upstream when this is true (see whale.ts/smartMoney.ts),
+  // so only the direct portfolio.diversityScore term needs excluding here.
+  const portfolioDataIncomplete =
+    input.portfolio.dataCompleteness === "incomplete";
+
   score += input.smartMoney.smartMoneyScore * 0.25;
   score += input.conviction.convictionScore * 0.20;
   score += input.trust.trustScore * 0.20;
   score += input.whale.whaleScore * 0.15;
-  score += input.portfolio.diversityScore * 0.10;
+
+  if (portfolioDataIncomplete) {
+    limitations.push(
+      "Token holdings could not be fully retrieved, so portfolio diversity was excluded from this score rather than treated as genuinely low.",
+    );
+  } else {
+    score += input.portfolio.diversityScore * 0.10;
+  }
 
   if (input.strategy.primaryStrategy === "accumulating") {
     score += 5;
@@ -90,8 +105,9 @@ export function analyzeWalletAlpha(
     alphaLevel = "very_low";
   }
 
-  const confidence =
-    score >= 70
+  const confidence = portfolioDataIncomplete
+    ? "low"
+    : score >= 70
       ? "high"
       : score >= 40
       ? "medium"
