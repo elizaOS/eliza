@@ -425,6 +425,55 @@ describe("app plugin compatibility routes", () => {
     });
   });
 
+  it("falls back to the registry id for non-plugin package metadata", () => {
+    currentConfig = {
+      env: {},
+      plugins: {
+        allow: ["@elizaos/core"],
+        entries: {
+          core: { enabled: false },
+        },
+      },
+    };
+    const orchestrator = makePlugin({
+      id: "agent-orchestrator",
+      name: "Agent Orchestrator",
+      category: "feature",
+      npmName: "@elizaos/core",
+      enabled: true,
+    });
+
+    const result = persistCompatPluginMutation(
+      "agent-orchestrator",
+      { enabled: true },
+      orchestrator,
+    );
+
+    expect(result.status).toBe(200);
+    expect(savedConfig?.plugins).toEqual({
+      allow: ["agent-orchestrator"],
+      entries: {
+        "agent-orchestrator": { enabled: true },
+      },
+    });
+
+    currentConfig = clone(savedConfig ?? {});
+    savedConfig = undefined;
+    const disabled = persistCompatPluginMutation(
+      "agent-orchestrator",
+      { enabled: false },
+      orchestrator,
+    );
+
+    expect(disabled.status).toBe(200);
+    expect(savedConfig?.plugins).toEqual({
+      allow: [],
+      entries: {
+        "agent-orchestrator": { enabled: false },
+      },
+    });
+  });
+
   it("canonicalizes legacy app-package identities in both directions", () => {
     currentConfig = {
       env: {},

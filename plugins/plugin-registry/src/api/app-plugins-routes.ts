@@ -546,7 +546,21 @@ function shortPluginIdFromNpmName(npmName: string | null): string | null {
   if (npmName.startsWith("@elizaos/plugin-")) {
     return npmName.slice("@elizaos/plugin-".length);
   }
+  // First-party libraries can describe bundled features, but only plugin/app
+  // packages are runtime identities; the registry id owns every other case.
+  if (npmName.startsWith("@elizaos/")) {
+    return null;
+  }
   return normalizePluginId(npmName);
+}
+
+function canonicalPluginPackageName(
+  pluginId: string,
+  npmName: string | undefined,
+): string {
+  return shortPluginIdFromNpmName(npmName ?? null)
+    ? (npmName ?? pluginId)
+    : pluginId;
 }
 
 function canonicalPluginEntryId(
@@ -581,17 +595,22 @@ function writePluginAllowListEnabled(
   config.plugins.allow ??= [];
 
   const shortNpmId = shortPluginIdFromNpmName(npmName ?? null);
+  const canonicalPackageName = canonicalPluginPackageName(pluginId, npmName);
   const canonicalAliases = new Set(
-    [npmName, shortNpmId ?? (npmName ? undefined : pluginId)].filter(
+    [canonicalPackageName, shortNpmId].filter(
       (value): value is string => typeof value === "string" && value.length > 0,
     ),
   );
-  const staleCompatibilityAlias =
-    shortNpmId && pluginId !== shortNpmId ? pluginId : null;
+  const staleAliases = new Set(
+    [
+      shortNpmId && pluginId !== shortNpmId ? pluginId : null,
+      npmName && npmName !== canonicalPackageName ? npmName : null,
+    ].filter((value): value is string => value !== null),
+  );
 
-  if (staleCompatibilityAlias) {
+  if (staleAliases.size > 0) {
     config.plugins.allow = config.plugins.allow.filter(
-      (candidate) => candidate !== staleCompatibilityAlias,
+      (candidate) => !staleAliases.has(candidate),
     );
   }
 
@@ -599,7 +618,7 @@ function writePluginAllowListEnabled(
     if (
       !config.plugins.allow.some((candidate) => canonicalAliases.has(candidate))
     ) {
-      config.plugins.allow.push(npmName ?? pluginId);
+      config.plugins.allow.push(canonicalPackageName);
     }
     return;
   }
@@ -623,6 +642,10 @@ export function analyzePluginStateDrift(
         ? plugin.npmName
         : null;
     const shortId = shortPluginIdFromNpmName(npmName) ?? pluginId;
+    const canonicalPackageName = canonicalPluginPackageName(
+      pluginId,
+      npmName ?? undefined,
+    );
     const uiEnabled = Boolean(plugin.enabled);
     const compatEnabled =
       category === "connector"
@@ -643,7 +666,7 @@ export function analyzePluginStateDrift(
     const enabledAllowList =
       allowList === null || npmName == null
         ? null
-        : allowList.has(npmName) || allowList.has(shortId);
+        : allowList.has(canonicalPackageName) || allowList.has(shortId);
     const isActive = Boolean(plugin.isActive);
     const driftFlags: PluginDriftFlag[] = [];
 
@@ -878,7 +901,10 @@ async function applyCompatRuntimeMutation(options: {
       previousConfig,
       nextConfig,
       changedPluginId: pluginId,
-      changedPluginPackage: plugin.npmName,
+      changedPluginPackage: canonicalPluginPackageName(
+        pluginId,
+        plugin.npmName,
+      ),
       config:
         body.config &&
         typeof body.config === "object" &&
@@ -1401,19 +1427,30 @@ export function persistCompatPluginMutation(
   config.plugins ??= {};
   config.plugins.entries ??= {};
   const canonicalEntryId = canonicalPluginEntryId(pluginId, plugin.npmName);
+  const npmDerivedEntryId = plugin.npmName
+    ? normalizePluginId(plugin.npmName)
+    : null;
   const compatibilityEntry = config.plugins.entries[pluginId] as
     | Record<string, unknown>
     | undefined;
+  const npmDerivedEntry = npmDerivedEntryId
+    ? (config.plugins.entries[npmDerivedEntryId] as
+        | Record<string, unknown>
+        | undefined)
+    : undefined;
   const canonicalEntry = config.plugins.entries[canonicalEntryId] as
     | Record<string, unknown>
     | undefined;
   const pluginEntry = {
     ...(compatibilityEntry ?? {}),
+    ...(npmDerivedEntry ?? {}),
     ...(canonicalEntry ?? {}),
   };
   config.plugins.entries[canonicalEntryId] = pluginEntry;
-  if (canonicalEntryId !== pluginId) {
-    delete config.plugins.entries[pluginId];
+  for (const alias of new Set([pluginId, npmDerivedEntryId])) {
+    if (alias && alias !== canonicalEntryId) {
+      delete config.plugins.entries[alias];
+    }
   }
 
   if (typeof body.enabled === "boolean") {
