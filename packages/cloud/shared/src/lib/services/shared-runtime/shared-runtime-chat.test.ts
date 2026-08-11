@@ -453,6 +453,22 @@ describe("SharedRuntimeChatService", () => {
     await expect(service.bridge(agent, rpc, incomplete)).rejects.toMatchObject({
       code: "SHARED_RUNTIME_IDEMPOTENCY_CONFLICT",
     });
+
+    const interrupted = {
+      ...h,
+      historyStore: {
+        ...h.historyStore,
+        load: async () =>
+          h
+            .history()
+            .map((message) =>
+              message.id === first.result?.messageId ? { ...message, interrupted: true } : message,
+            ),
+      },
+    };
+    await expect(service.bridge(agent, rpc, interrupted)).rejects.toMatchObject({
+      code: "SHARED_RUNTIME_IDEMPOTENCY_CONFLICT",
+    });
   });
 
   test("rate denial and policy warming stop before billing admission or provider dispatch", async () => {

@@ -137,7 +137,12 @@ function completedTurn(
   const user = history.find((message) => message.id === ids.user);
   const assistant = history.find((message) => message.id === ids.assistant);
   if (!user && !assistant) return null;
-  if (user?.role !== "user" || user.content !== text || assistant?.role !== "assistant") {
+  if (
+    user?.role !== "user" ||
+    user.content !== text ||
+    assistant?.role !== "assistant" ||
+    assistant.interrupted === true
+  ) {
     throw new ElizaError("clientMessageId was already used for a different or incomplete turn", {
       code: "SHARED_RUNTIME_IDEMPOTENCY_CONFLICT",
       context: { userMessageId: ids.user, assistantMessageId: ids.assistant },
