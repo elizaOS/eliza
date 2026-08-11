@@ -98,6 +98,9 @@ export const approvalRequests = pgTable(
     metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
   },
   (table) => ({
+    // SQL migrations keep partial WHERE clauses on these indexes; Drizzle's
+    // schema DSL here is name-aligned only. A future db:generate may propose
+    // DROP/CREATE — prefer editing the SQL WHERE forms, not dropping them.
     org_created_idx: index("idx_cloud_approval_requests_org_created").on(
       table.organization_id,
       table.created_at,

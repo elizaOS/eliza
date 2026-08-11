@@ -110,6 +110,7 @@ app.post("/", async (c) => {
       signerIdentityId: verification.signerIdentityId,
     });
   } catch (error) {
+    // error-policy:J1 boundary translation — failureResponse maps typed/unknown errors to structured JSON.
     logger.error("[ApprovalRequests API] Failed to approve approval request", {
       error,
     });

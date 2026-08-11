@@ -79,6 +79,7 @@ app.post("/", async (c) => {
 
     return c.json({ success: true, approvalRequest });
   } catch (error) {
+    // error-policy:J1 boundary translation — failureResponse maps typed/unknown errors to structured JSON.
     logger.error("[ApprovalRequests API] Failed to cancel approval request", {
       error,
     });

@@ -73,8 +73,9 @@ app.get("/", async (c) => {
 
     return c.json({ success: true, approvalRequest: row });
   } catch (error) {
-    // Prefer message/code over `{ name: "Error" }` — Worker tails previously
-    // hid the Postgres column-missing cause behind an empty Error shell.
+    // error-policy:J1 boundary translation — failureResponse maps typed/unknown
+    // errors to structured JSON. Prefer message/code over `{ name: "Error" }`
+    // so Worker tails surface the Postgres cause instead of an empty shell.
     logger.error("[ApprovalRequests API] Failed to get approval request", {
       error:
         error instanceof Error

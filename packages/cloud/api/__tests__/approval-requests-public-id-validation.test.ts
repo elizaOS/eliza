@@ -42,14 +42,8 @@ afterAll(() => {
     "@/lib/middleware/rate-limit-hono-cloudflare",
     () => rateLimitActual,
   );
-  mock.module(
-    "@/lib/services/approval-requests",
-    () => approvalServiceActual,
-  );
-  mock.module(
-    "@/db/repositories/approval-requests",
-    () => approvalRepoActual,
-  );
+  mock.module("@/lib/services/approval-requests", () => approvalServiceActual);
+  mock.module("@/db/repositories/approval-requests", () => approvalRepoActual);
 });
 
 beforeEach(() => {

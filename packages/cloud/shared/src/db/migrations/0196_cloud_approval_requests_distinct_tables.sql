@@ -80,6 +80,7 @@ BEGIN
       challenge_kind, challenge_payload, expected_signer_identity_id,
       status, signature_text, signed_at, expires_at, created_at, updated_at, metadata
     FROM approval_requests
+    WHERE organization_id IS NOT NULL
     ON CONFLICT (id) DO NOTHING;
   END IF;
 
