@@ -85,12 +85,16 @@ export interface OAuthSuccessProofTicket {
  * without a live Redis. Production uses {@link cache}.
  *
  * Contract:
- * - {@link put} MUST report whether the backend acknowledged the write. Callers
- *   fail closed when `put` resolves `false`: no proof is signed/returned.
+ * - {@link put} MUST report whether the backend acknowledged the write AND
+ *   whether the backend supports atomic consume. Callers fail closed when `put`
+ *   resolves `false` (no atomic backend, write rejected, or backend error): no
+ *   proof is signed/returned. This is the atomicity gate — see
+ *   {@link defaultTicketStore}.
  * - {@link take} MUST be an atomic get-and-delete (single one-time consume).
- *   The default implementation refuses non-atomic backends (Cloudflare KV);
- *   a production store behind KV must move tickets to a strongly consistent
- *   primitive (Postgres `DELETE … RETURNING`, an atomic Redis backend, …).
+ *   The default implementation assumes the backend was already gated to atomic
+ *   at mint time; a production store behind a non-atomic backend (Cloudflare
+ *   KV) must move tickets to a strongly consistent primitive (Postgres
+ *   `DELETE … RETURNING`, an atomic Redis backend, …) before put() reports true.
  */
 export interface OAuthSuccessProofTicketStore {
   /** Returns true only when the backend acknowledged a durable write. */
@@ -101,6 +105,15 @@ export interface OAuthSuccessProofTicketStore {
 
 const defaultTicketStore: OAuthSuccessProofTicketStore = {
   async put(nonce, ticket, ttlSeconds) {
+    // Gate atomicity at MINT time, not consume time. Cloudflare KV (and any
+    // other eventually-consistent backend) reports supportsAtomicOperations()
+    // === false: its getdel is a two-step read/delete that lets two concurrent
+    // verifications both receive the same ticket. Waiting until take() to
+    // refuse is a dead-proof bug: put() succeeds (setWithOutcome reports
+    // "written"), a proof is minted and returned, but take() then yields null
+    // and the proof can never be consumed. Failing closed here ensures no
+    // unconsumable proof is ever signed (#18331).
+    if (!cache.supportsAtomicOperations()) return false;
     // Use the outcome-bearing setter so an unavailable/error backend is NOT
     // indistinguishable from a successful write. The legacy `cache.set` wrapper
     // discards the outcome (#18114).
@@ -108,11 +121,9 @@ const defaultTicketStore: OAuthSuccessProofTicketStore = {
     return outcome.kind === "written";
   },
   async take(nonce) {
-    // Cloudflare KV's getdel is a two-step read/delete and KV is eventually
-    // consistent, so two concurrent verifications can both receive the same
-    // ticket. Refuse the non-atomic backend rather than mint a replayable
-    // consume; production must select an atomic store for these tickets (#18114).
-    if (!cache.supportsAtomicOperations()) return null;
+    // Atomic get-and-delete via GETDEL. The atomicity gate lives in put(); a
+    // proof cannot have been minted against a non-atomic backend, so by the
+    // time we reach take() the backend is guaranteed atomic (#18331).
     return cache.getAndDelete<OAuthSuccessProofTicket>(`${TICKET_KEY_PREFIX}${nonce}`);
   },
 };
