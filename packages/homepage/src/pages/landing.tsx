@@ -780,7 +780,7 @@ export default function Leaderboard() {
       ref={pageRef}
       className="theme-app min-h-screen"
       style={{
-        touchAction: "pan-y",
+        touchAction: "pan-y pinch-zoom",
       }}
     >
       <main className="contents">
@@ -830,7 +830,7 @@ export default function Leaderboard() {
           />
         </Suspense>
         <div className="relative z-30 pointer-events-none">
-          <header className="flex items-center justify-between p-5 pointer-events-auto">
+          <header className="flex items-center justify-between p-[20px] pointer-events-auto">
             <button
               type="button"
               onClick={() => {
@@ -867,7 +867,7 @@ export default function Leaderboard() {
               </BlobButton>
             </nav>
           </header>
-          <div className="fixed top-[14%] left-1/2 -translate-x-1/2 pointer-events-auto">
+          <div className="landing-platform-switcher fixed top-[14%] left-1/2 -translate-x-1/2 pointer-events-auto">
             <AnimatedDiv
               style={{
                 opacity: tabBarHideSpring.opacity,
@@ -879,11 +879,11 @@ export default function Leaderboard() {
               }}
             >
               <AnimatedDiv
-                className="relative isolate flex items-center"
+                className="landing-platform-switcher-row relative isolate flex items-center"
                 style={{ gap: tryAppearSpring.tryGap }}
               >
                 <AnimatedDiv
-                  className="absolute z-1 h-12 rounded-full border border-white/60 bg-white/30 backdrop-blur-sm"
+                  className="absolute z-1 h-[48px] rounded-full border border-white/60 bg-white/30 backdrop-blur-sm"
                   style={{
                     ...indicatorSpring,
                     top: 7,
@@ -898,7 +898,7 @@ export default function Leaderboard() {
                   }}
                 />
                 <AnimatedDiv
-                  className="relative flex items-center gap-1 rounded-full border border-transparent py-1.5"
+                  className="relative flex items-center gap-1 rounded-full border border-transparent py-[6px]"
                   style={barSpring}
                 >
                   <AnimatedDiv
@@ -928,20 +928,20 @@ export default function Leaderboard() {
                               : "Discord"
                         }
                         aria-pressed={platform === p}
-                        className="relative z-20 flex size-12 cursor-pointer items-center justify-center rounded-full"
+                        className="relative z-20 flex size-[48px] cursor-pointer items-center justify-center rounded-full"
                         style={{
                           opacity: iconSprings[i].opacity,
                           scale: iconSprings[i].scale,
                         }}
                       >
                         {p === "imessage" && (
-                          <IMessageIcon className="w-7 h-7 text-[#34C759]" />
+                          <IMessageIcon className="size-[28px] text-[#34C759]" />
                         )}
                         {p === "telegram" && (
-                          <TelegramIcon className="w-7 h-7 text-[#2AABEE]" />
+                          <TelegramIcon className="size-[28px] text-[#2AABEE]" />
                         )}
                         {p === "discord" && (
-                          <DiscordIcon className="w-7 h-7 text-[#5865F2]" />
+                          <DiscordIcon className="size-[28px] text-[#5865F2]" />
                         )}
                       </AnimatedButton>
                     ),
