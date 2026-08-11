@@ -7,9 +7,9 @@ import {
 
 function isOwnedAddress(
   address: string | null,
-  ownedAddresses: readonly string[],
+  ownedAddresses: ReadonlySet<string>,
 ): boolean {
-  return address !== null && ownedAddresses.includes(address);
+  return address !== null && ownedAddresses.has(address);
 }
 
 export function analyzeWalletFunding(
@@ -24,8 +24,14 @@ export function analyzeWalletFunding(
   firstTransaction: ParsedWalletTransaction | null,
   nativeSymbol: string,
 ): WalletFundingSummary {
-  const walletAddresses =
-    typeof walletAddress === "string" ? [walletAddress] : walletAddress;
+  // A Set, not an array - isOwnedAddress is called per-transfer below, and
+  // for a Bitcoin xpub with many derived addresses an array .includes()
+  // scan here would make this linear-per-check instead of O(1) (found via
+  // the cross-chain unbounded-fetch audit, alongside the same array-vs-Set
+  // gap in relationships.ts).
+  const walletAddresses = new Set(
+    typeof walletAddress === "string" ? [walletAddress] : walletAddress,
+  );
 
   if (!firstTransaction) {
     const confidenceAnalysis = buildConfidenceAnalysis([]);

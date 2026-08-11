@@ -1421,8 +1421,9 @@ warnings: investigationWarnings,
         // transfer, not a heuristic - see parsers/bitcoinTransaction.ts)
         // and for the multi-address funding/relationships/exposure match
         // (passed as addressSet to runWalletPipeline further down).
-        const derivedAddresses =
+        const derivedAddressesResult =
           await bitcoinBlockchainConnector.deriveAddresses(walletAddress);
+        const derivedAddresses = derivedAddressesResult.addresses;
         const ownedAddresses = new Set(derivedAddresses);
 
         // Unlike Ethereum/Solana, calling connector.getTransactions()
@@ -1549,6 +1550,12 @@ warnings: investigationWarnings,
         investigationWarnings.push(
           ...oldestTransactionResult.warnings.map((warning) => warning.message),
         );
+
+        if (derivedAddressesResult.truncated) {
+          investigationWarnings.push(
+            `This xpub's gap-limit address scan found more derived addresses than could be used - funding/relationships/exposure matching only covers the first ${derivedAddresses.length.toLocaleString()} addresses, not the full set.`,
+          );
+        }
 
         const tokenHoldings: WalletTokenHolding[] =
           (tokenBalancesResult.data?.balances ?? []).map((tokenBalance) => ({
