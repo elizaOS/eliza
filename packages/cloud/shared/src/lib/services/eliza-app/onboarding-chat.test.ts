@@ -1620,6 +1620,7 @@ describe("runOnboardingChat", () => {
         sessionId: continuationToken(gatewayTurn),
         platform: "web",
         authenticatedUser: { userId: "user-1", organizationId: "org-1" },
+        confirmPlatformLink: true,
       });
       expect(continued.session.userId).toBe("user-1");
 
@@ -1638,6 +1639,7 @@ describe("runOnboardingChat", () => {
         sessionId: continuationToken(gatewayTurn),
         platform: "web",
         authenticatedUser: { userId: "user-1", organizationId: "org-1" },
+        confirmPlatformLink: true,
         statusOnly: true,
       });
       expect(peekLocalGreetingQueue()).toHaveLength(1);
@@ -1661,6 +1663,7 @@ describe("runOnboardingChat", () => {
         sessionId: continuationToken(gatewayTurn),
         platform: "web",
         authenticatedUser: { userId: "user-1", organizationId: "org-1" },
+        confirmPlatformLink: true,
       });
       // Commit-ordering handoff is internal: the greeting was enqueued, but
       // the field must not cross the service boundary in the result.
@@ -1688,6 +1691,7 @@ describe("runOnboardingChat", () => {
           sessionId: continuationToken(gatewayTurn),
           platform: "web",
           authenticatedUser: { userId: "user-1", organizationId: "org-1" },
+          confirmPlatformLink: true,
         }),
       ).rejects.toThrow("transient provisioning outage");
       expect(peekLocalGreetingQueue()).toHaveLength(0);
@@ -1704,6 +1708,7 @@ describe("runOnboardingChat", () => {
         sessionId: continuationToken(gatewayTurn),
         platform: "web",
         authenticatedUser: { userId: "user-1", organizationId: "org-1" },
+        confirmPlatformLink: true,
       });
       const queued = peekLocalGreetingQueue();
       expect(queued).toHaveLength(1);

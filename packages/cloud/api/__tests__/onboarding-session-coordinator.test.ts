@@ -26,6 +26,14 @@ mock.module("../../shared/src/lib/cache/client", () => ({
 
 let provisioningFailure: Error | undefined;
 
+mock.module("../../shared/src/lib/services/eliza-app/user-service", () => ({
+  elizaAppUserService: {
+    findOrCreateByPhone: mock(async () => ({ success: true })),
+    linkPhoneToUser: mock(async () => ({ success: true })),
+    linkDiscordToUser: mock(async () => ({ success: true })),
+  },
+}));
+
 mock.module("../../shared/src/lib/services/eliza-app/provisioning", () => ({
   ensureElizaAppProvisioning: mock(async () => {
     if (provisioningFailure) throw provisioningFailure;
@@ -1013,6 +1021,7 @@ describe("OnboardingSessionCoordinator", () => {
                 sessionId,
                 platform: "web",
                 idempotencyKey: "web:greet-commit",
+                confirmPlatformLink: true,
                 authenticatedUser: {
                   userId: "user-1",
                   organizationId: "org-1",
