@@ -1,14 +1,14 @@
 /**
  * Verifies app development entrypoints share one Node-backed Vite command,
- * including dashboard flags and fail-fast dependency diagnostics.
+ * including dashboard flags, child lifecycle, and dependency diagnostics.
  */
 
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, it } from "node:test";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { resolveViteCommand } from "../../../app-core/scripts/lib/dev-ui-vite.mjs";
 
 const appDir = path.resolve(
@@ -17,9 +17,84 @@ const appDir = path.resolve(
 );
 const repoRoot = path.resolve(appDir, "../..");
 const viteCli = path.join(appDir, "node_modules", "vite", "bin", "vite.js");
+const mirroredChildUrl = pathToFileURL(
+  path.join(appDir, "scripts", "lib", "spawn-mirrored-child.mjs"),
+).href;
 const appPackage = JSON.parse(
   readFileSync(path.join(appDir, "package.json"), "utf8"),
 );
+
+async function runMirroredChildProbe({ childSource, wrapperSignal }) {
+  const wrapperSource = `
+    import { spawnMirroredChild } from ${JSON.stringify(mirroredChildUrl)};
+    const child = spawnMirroredChild(
+      process.execPath,
+      ["--input-type=module", "--eval", ${JSON.stringify(childSource)}],
+      { stdio: ["ignore", "pipe", "inherit"] },
+    );
+    child.stdout.pipe(process.stdout);
+  `;
+  const wrapper = spawn(
+    process.execPath,
+    ["--input-type=module", "--eval", wrapperSource],
+    { cwd: repoRoot, stdio: ["ignore", "pipe", "pipe"] },
+  );
+  let stdout = "";
+  let stderr = "";
+  let ready;
+  const readyPromise = new Promise((resolve) => {
+    ready = resolve;
+  });
+  wrapper.stdout.setEncoding("utf8");
+  wrapper.stderr.setEncoding("utf8");
+  wrapper.stdout.on("data", (chunk) => {
+    stdout += chunk;
+    if (stdout.includes("ready\n")) ready();
+  });
+  wrapper.stderr.on("data", (chunk) => {
+    stderr += chunk;
+  });
+
+  const exitPromise = new Promise((resolve, reject) => {
+    wrapper.once("error", reject);
+    wrapper.once("exit", (code, signal) => resolve({ code, signal }));
+  });
+  let timeout;
+  const timeoutPromise = new Promise((_, reject) => {
+    timeout = setTimeout(() => {
+      if (wrapper.exitCode === null && wrapper.signalCode === null) {
+        wrapper.kill("SIGTERM");
+      }
+      reject(
+        new Error(
+          `mirrored child probe timed out\nstdout:\n${stdout}\nstderr:\n${stderr}`,
+        ),
+      );
+    }, 5_000);
+  });
+
+  try {
+    if (wrapperSignal) {
+      await Promise.race([
+        readyPromise,
+        exitPromise.then(({ code, signal }) => {
+          throw new Error(
+            `probe exited before ready: code=${code} signal=${signal}\n${stderr}`,
+          );
+        }),
+        timeoutPromise,
+      ]);
+      wrapper.kill(wrapperSignal);
+    }
+    return {
+      ...(await Promise.race([exitPromise, timeoutPromise])),
+      stderr,
+      stdout,
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
 
 describe("development Vite process commands", () => {
   it("runs the shared server through Node with source import support", () => {
@@ -106,7 +181,40 @@ describe("development Vite process commands", () => {
     );
     assert.match(directDevSource, /resolveViteCommand\(\{/);
     assert.match(directDevSource, /viteArgs: process\.argv\.slice\(2\)/);
+    assert.match(directDevSource, /spawnMirroredChild\(/);
   });
+
+  for (const exitCode of [0, 23]) {
+    it(`preserves ordinary child exit code ${exitCode}`, async () => {
+      const result = await runMirroredChildProbe({
+        childSource: `process.exit(${exitCode})`,
+      });
+
+      assert.deepEqual(
+        { code: result.code, signal: result.signal },
+        { code: exitCode, signal: null },
+        result.stderr,
+      );
+    });
+  }
+
+  for (const signal of ["SIGINT", "SIGTERM"]) {
+    it(`preserves ${signal} as a signal termination`, {
+      skip: process.platform === "win32",
+    }, async () => {
+      const result = await runMirroredChildProbe({
+        childSource:
+          'process.stdout.write("ready\\n"); setInterval(() => {}, 1_000)',
+        wrapperSignal: signal,
+      });
+
+      assert.deepEqual(
+        { code: result.code, signal: result.signal },
+        { code: null, signal },
+        `${result.stderr}\n${result.stdout}`,
+      );
+    });
+  }
 
   it("loads NodeNext workspace source with the production child argv", () => {
     const viteCommand = resolveViteCommand({
