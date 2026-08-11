@@ -377,12 +377,18 @@ export function useDataLoaders(deps: DataLoadersDeps) {
         autonomousStoreRef.current,
       ).slice(0, 4);
 
-      for (const request of gapReplays) {
-        const gapReplay = await client.getAgentEvents({
-          runId: request.runId,
-          fromSeq: request.fromSeq,
-          limit: 300,
-        });
+      // All gap requests are independent — run them in parallel to collapse the
+      // serial round-trips into a single wall-clock wait.
+      const gapResults = await Promise.all(
+        gapReplays.map((request) =>
+          client.getAgentEvents({
+            runId: request.runId,
+            fromSeq: request.fromSeq,
+            limit: 300,
+          }),
+        ),
+      );
+      for (const gapReplay of gapResults) {
         if (gapReplay.events.length > 0) {
           applyAutonomyEventMerge(gapReplay.events);
         }
