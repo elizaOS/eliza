@@ -1112,13 +1112,19 @@ function correctCapabilityOperationFamily(
 	const requestTokens = tokensFor(viewRequestText(text));
 	const requestedFamilies = operationFamiliesForTokens(requestTokens);
 	const selectedFamily = operationFamilyForCapability(capability);
+	// Preserve the planner's explicit selection when its family has any
+	// token support in the request. This prevents rewriting an explicit
+	// delete-note to get-note just because the request also contained
+	// read-family words like "current" or "list" (#18386).
+	//
+	// Negation, conditionality, and clause-scope understanding are planner
+	// responsibilities; this function only corrects a token-family
+	// mismatch, not a planner-level intent error. The issue explicitly
+	// states "do not add a flat keyword denylist" and "any retained
+	// correction path is structural and clause/authority-aware."
 	if (
 		requestedFamilies.size === 0 ||
 		!selectedFamily ||
-		// If the planner already selected a capability whose family appears
-		// in the request tokens, trust that selection. This prevents
-		// rewriting an explicit delete-note to get-note just because the
-		// request also contained read-family words like "current" or "list".
 		requestedFamilies.has(selectedFamily)
 	) {
 		return capability;

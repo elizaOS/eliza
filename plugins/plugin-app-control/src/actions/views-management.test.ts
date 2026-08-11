@@ -3426,6 +3426,89 @@ describe("view management actions", () => {
 		);
 	});
 
+	it("preserves a destructive capability even when read-family words coexist — negation is a planner concern (#18386)", async () => {
+		// This documents the design decision: mixed-family overlap
+		// preserves the planner's explicit selection. If the planner
+		// selected delete-note, the request containing "show" or "current"
+		// does not cause a rewrite. Negation ("do not delete") is the
+		// planner's responsibility — this function does not parse negation,
+		// conditionality, or clause scope, per the issue's requirement to
+		// "not add a flat keyword denylist."
+		const { runtime } = createRuntime();
+		const callback = vi.fn();
+		const action = createViewsAction({
+			client: {
+				listViews: vi.fn(async () => [
+					view({
+						id: "notes",
+						label: "Notes",
+						path: "/notes",
+						tags: ["notes", "sticky notes"],
+						capabilities: [
+							{
+								id: "get-note",
+								description: "Read one note by title or query.",
+								params: {
+									title: {
+										type: "string",
+										description: "Exact note title.",
+									},
+								},
+							},
+							{
+								id: "delete-note",
+								description: "Delete one note by title or query.",
+								params: {
+									title: {
+										type: "string",
+										description: "Exact note title.",
+									},
+								},
+							},
+						],
+					}),
+				]),
+				getCurrentView: vi.fn(async () => ({
+					viewId: "notes",
+					viewLabel: "Notes",
+					viewType: "gui" as const,
+					viewPath: "/notes",
+				})),
+			},
+			hasOwnerAccess: vi.fn(async () => true),
+		});
+		vi.mocked(globalThis.fetch).mockResolvedValueOnce({
+			ok: true,
+			status: 200,
+			json: async () => ({
+				success: true,
+				result: { success: true, text: "Deleted." },
+			}),
+		} as Response);
+
+		// Both "show" (read) and "delete" (delete) families present.
+		// The planner selected delete-note. The correction function must
+		// NOT rewrite it to get-note. If the planner made a wrong selection
+		// (user said "show, do not delete"), that is a planner-level error
+		// outside this function's scope.
+		const result = await action.handler(
+			runtime as never,
+			message("Show the current note then delete note titled X") as never,
+			undefined,
+			{ action: "interact", view: "notes", capability: "delete-note" },
+			callback,
+		);
+
+		expect(result?.success).toBe(true);
+		expect(globalThis.fetch).toHaveBeenCalledWith(
+			"http://127.0.0.1:3456/api/views/notes/interact?viewType=gui",
+			expect.objectContaining({
+				method: "POST",
+				body: expect.stringContaining('"capability":"delete-note"'),
+			}),
+		);
+	});
+
 	it("summarizes structured interaction results without dumping JSON into chat", async () => {
 		const { runtime } = createRuntime();
 		const callback = vi.fn();
