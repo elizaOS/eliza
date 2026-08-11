@@ -94,6 +94,28 @@ function attachmentAnswerTokenBudget(content: string): number {
 	);
 }
 
+function isMediaAttachment(record: AttachmentRecord): boolean {
+	return (
+		record.attachment.contentType === ContentType.AUDIO ||
+		record.attachment.contentType === ContentType.VIDEO
+	);
+}
+
+/**
+ * True when a media record's transcript is missing because transcription
+ * itself was unavailable (ingest or on-demand), not because nobody has asked
+ * yet. `notProcessed` carries the raw provider error; the user-facing message
+ * must stay a clean sentence, never that internal prose.
+ */
+function mediaTranscriptionUnavailable(records: AttachmentRecord[]): boolean {
+	return records.some(
+		(record) =>
+			isMediaAttachment(record) &&
+			typeof record.attachment.notProcessed === "string" &&
+			/transcription unavailable/i.test(record.attachment.notProcessed),
+	);
+}
+
 function missingReadableContentMessage(records: AttachmentRecord[]): string {
 	const hasOnlyImages = records.every(
 		(record) => record.attachment.contentType === ContentType.IMAGE,
@@ -103,12 +125,17 @@ function missingReadableContentMessage(records: AttachmentRecord[]): string {
 			? "I couldn't generate a readable description for that image."
 			: "I couldn't generate readable descriptions for those images.";
 	}
-	const hasOnlyMedia = records.every(
-		(record) =>
-			record.attachment.contentType === ContentType.AUDIO ||
-			record.attachment.contentType === ContentType.VIDEO,
-	);
+	const hasOnlyMedia = records.every(isMediaAttachment);
 	if (hasOnlyMedia) {
+		// Honest unavailability beats an open-ended "yet": when no TRANSCRIPTION
+		// provider can serve (observed live: cloud STT gated off with no local
+		// fallback), "yet" reads as "ask me again later" and the retry dead-ends
+		// on the same reply.
+		if (mediaTranscriptionUnavailable(records)) {
+			return records.length === 1
+				? "I can't transcribe that attachment — speech-to-text isn't enabled on this deployment."
+				: "I can't transcribe those attachments — speech-to-text isn't enabled on this deployment.";
+		}
 		return records.length === 1
 			? "I don't have a transcript for that attachment yet."
 			: "I don't have transcripts for those attachments yet.";
@@ -116,6 +143,52 @@ function missingReadableContentMessage(records: AttachmentRecord[]): string {
 	return records.length === 1
 		? "I don't have readable text for that attachment yet."
 		: "I don't have readable text for those attachments yet.";
+}
+
+/**
+ * Live retry for media records whose ingest-time transcription produced
+ * nothing (observed live: a video posted while cloud STT was gated off has no
+ * transcript, and every later "can you get one?" dead-ended on the canned
+ * missing-transcript reply even after STT came back). Re-runs the
+ * TRANSCRIPTION model against the stored attachment URL — conversation media
+ * the ingest path already fetched, not a new URL from chat text (that still
+ * routes to WEB_FETCH) — and fills the record in place so read/save answer
+ * from the fresh transcript. Failure keeps the explicit unavailable state.
+ */
+async function transcribeMediaOnDemand(
+	runtime: IAgentRuntime,
+	records: AttachmentRecord[],
+): Promise<boolean> {
+	let transcribedAny = false;
+	for (const record of records) {
+		const { attachment } = record;
+		if (!isMediaAttachment(record) || record.content.trim()) continue;
+		if (typeof attachment.url !== "string" || !attachment.url.trim()) continue;
+		try {
+			const transcript = await runtime.useModel(ModelType.TRANSCRIPTION, {
+				audioUrl: attachment.url,
+			});
+			if (typeof transcript === "string" && transcript.trim()) {
+				const text = transcript.trim();
+				record.content = text;
+				attachment.text = text;
+				attachment.description = `Transcript: ${text}`;
+				attachment.notProcessed = undefined;
+				transcribedAny = true;
+			}
+		} catch (err) {
+			// error-policy:J4 the attachment stays readable-as-absent with an
+			// explicit transcription-unavailable state; the caller's fallback
+			// message reports it honestly. Expected whenever no TRANSCRIPTION
+			// provider is enabled, so log at debug, not warn.
+			attachment.notProcessed ??= `Transcription unavailable: ${err instanceof Error ? err.message : String(err)}`;
+			logger.debug(
+				{ attachmentId: attachment.id, err },
+				"[ReadAttachment] On-demand transcription unavailable",
+			);
+		}
+	}
+	return transcribedAny;
 }
 
 function titleForRecord(record: AttachmentRecord): string {
@@ -477,7 +550,12 @@ export const readAttachmentAction: Action = {
 				};
 			}
 
-			const hasContent = hasReadableContent(records);
+			let hasContent = hasReadableContent(records);
+			// Media with no stored transcript gets one live attempt before the
+			// missing-content fallback, covering both read and save_as_document.
+			if (!hasContent && (await transcribeMediaOnDemand(runtime, records))) {
+				hasContent = hasReadableContent(records);
+			}
 			const storedContent = hasContent ? contentForRecords(records) : "";
 			if (action === "save_as_document") {
 				return saveAttachmentAsDocument({
