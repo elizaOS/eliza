@@ -62,10 +62,15 @@ export interface AutoscalePolicy {
 export const DEFAULT_AUTOSCALE_POLICY: AutoscalePolicy = {
   minFreeSlotsBuffer: containersEnv.autoscaleMinFreeSlotsBuffer(),
   minHotAvailableSlots: containersEnv.autoscaleMinHotAvailableSlots(),
-  // Launch capacity bump 12 → 14 (#18052): the launch chain enables the warm
-  // pool, whose standing replenishment consumes slots the old ceiling had
-  // reserved for on-demand provisioning headroom.
-  maxNodes: 14,
+  // Launch capacity: 12 → 14 (#18052) enabled the warm pool but left the cap
+  // equal to the enabled-node count, so `enabled.length < maxNodes` (the
+  // scale-up gate) was already false — zero proactive headroom (#18413).
+  // 14 → 16 restores a real 2-node buffer so the pool can provision ahead of
+  // demand and absorb one node flapping without immediately re-capping.
+  // Only effective if provisionable `docker_nodes` capacity is >= 16; if the
+  // authoritative provisionable count is lower, that is the true ceiling and
+  // physical nodes must be added first (see #18413).
+  maxNodes: 16,
   scaleUpCooldownMs: 5 * 60 * 1000,
   idleNodeMinAgeMs: 30 * 60 * 1000,
   defaultServerType: containersEnv.defaultHcloudServerType(),
