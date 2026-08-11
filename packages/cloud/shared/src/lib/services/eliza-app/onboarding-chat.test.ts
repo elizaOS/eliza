@@ -20,6 +20,7 @@ const getElizaAppProvisioningStatus = mock();
 const findOrCreateByPhone = mock();
 const linkPhoneToUser = mock();
 const linkDiscordToUser = mock();
+const linkTelegramToUser = mock();
 const launchManagedElizaAgent = mock();
 const loggerWarn = mock();
 let cloudEnv: Record<string, string | undefined> = {};
@@ -75,6 +76,7 @@ mock.module("./user-service", () => ({
     findOrCreateByPhone,
     linkPhoneToUser,
     linkDiscordToUser,
+    linkTelegramToUser,
   },
 }));
 
@@ -92,6 +94,8 @@ describe("runOnboardingChat", () => {
     linkPhoneToUser.mockResolvedValue({ success: true });
     linkDiscordToUser.mockReset();
     linkDiscordToUser.mockResolvedValue({ success: true });
+    linkTelegramToUser.mockReset();
+    linkTelegramToUser.mockResolvedValue({ success: true });
     launchManagedElizaAgent.mockReset();
     loggerWarn.mockReset();
     cloudEnv = {};
@@ -151,7 +155,7 @@ describe("runOnboardingChat", () => {
     expect(findOrCreateByPhone).not.toHaveBeenCalled();
   });
 
-  test("requires Telegram OAuth when continuing a trusted Telegram session", async () => {
+  test("a trusted Telegram session hands out the same opaque continuation URL as Discord", async () => {
     const result = await runOnboardingChat({
       message: "My name is Sam",
       platform: "telegram",
@@ -162,8 +166,10 @@ describe("runOnboardingChat", () => {
 
     const loginUrl = new URL(result.loginUrl);
     expect(loginUrl.origin).toBe("https://eliza.app");
-    expect(loginUrl.searchParams.get("method")).toBe("telegram");
-    expect(loginUrl.searchParams.get("link")).toBe("true");
+    // No legacy method/link hints: those forced the homepage's Telegram
+    // widget + phone-number flow instead of the Steward continuation.
+    expect(loginUrl.searchParams.get("method")).toBeNull();
+    expect(loginUrl.searchParams.get("link")).toBeNull();
     expect(loginUrl.searchParams.get("onboardingSession")).toMatch(
       /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
     );
@@ -367,7 +373,7 @@ describe("runOnboardingChat", () => {
     });
   });
 
-  test("rejects an authenticated continuation without the gateway Telegram identity", async () => {
+  test("rejects an authenticated continuation whose signed Telegram identity mismatches the session", async () => {
     const gatewayTurn = await runOnboardingChat({
       message: "My name is Sam",
       platform: "telegram",
@@ -383,11 +389,97 @@ describe("runOnboardingChat", () => {
         authenticatedUser: {
           userId: "user-1",
           organizationId: "org-1",
+          telegramId: "987654321",
         },
       }),
     ).rejects.toMatchObject({
       code: "ONBOARDING_PLATFORM_IDENTITY_MISMATCH",
     });
+    expect(ensureElizaAppProvisioning).not.toHaveBeenCalled();
+  });
+
+  test("a Steward continuation without a signed Telegram identity requires explicit confirmation", async () => {
+    const gatewayTurn = await runOnboardingChat({
+      message: "My name is Sam",
+      platform: "telegram",
+      platformUserId: "123456789",
+      sessionId: "platform:telegram:123456789",
+      trustedPlatformIdentity: true,
+    });
+
+    await expect(
+      runOnboardingChat({
+        sessionId: continuationToken(gatewayTurn),
+        platform: "web",
+        authenticatedUser: {
+          userId: "steward-user",
+          organizationId: "steward-org",
+        },
+      }),
+    ).rejects.toMatchObject({
+      code: "ONBOARDING_PLATFORM_LINK_CONFIRMATION_REQUIRED",
+    });
+    expect(linkTelegramToUser).not.toHaveBeenCalled();
+    expect(ensureElizaAppProvisioning).not.toHaveBeenCalled();
+  });
+
+  test("a confirmed Steward continuation links the attested Telegram identity and provisions", async () => {
+    ensureElizaAppProvisioning.mockResolvedValue({
+      status: "provisioning",
+      agentId: "agent-t",
+      bridgeUrl: null,
+      sandbox: null,
+    });
+    const gatewayTurn = await runOnboardingChat({
+      message: "My name is Sam",
+      platform: "telegram",
+      platformUserId: "123456789",
+      platformDisplayName: "SamTG",
+      sessionId: "platform:telegram:123456789",
+      trustedPlatformIdentity: true,
+    });
+
+    const continued = await runOnboardingChat({
+      sessionId: continuationToken(gatewayTurn),
+      platform: "web",
+      authenticatedUser: { userId: "steward-user", organizationId: "steward-org" },
+      confirmPlatformLink: true,
+    });
+
+    expect(continued.session.platform).toBe("telegram");
+    expect(continued.session.platformUserId).toBe("123456789");
+    expect(linkTelegramToUser).toHaveBeenCalledWith("steward-user", {
+      id: "123456789",
+      username: "SamTG",
+    });
+    expect(linkPhoneToUser).not.toHaveBeenCalled();
+    expect(ensureElizaAppProvisioning).toHaveBeenCalledWith({
+      userId: "steward-user",
+      organizationId: "steward-org",
+    });
+  });
+
+  test("a Telegram tenant-safety decline (identity owned by another account) fails the turn", async () => {
+    linkTelegramToUser.mockResolvedValue({
+      success: false,
+      error: "This Telegram account is already linked to another account",
+    });
+    const gatewayTurn = await runOnboardingChat({
+      message: "My name is Sam",
+      platform: "telegram",
+      platformUserId: "123456789",
+      sessionId: "platform:telegram:123456789",
+      trustedPlatformIdentity: true,
+    });
+
+    await expect(
+      runOnboardingChat({
+        sessionId: continuationToken(gatewayTurn),
+        platform: "web",
+        authenticatedUser: { userId: "second-user", organizationId: "second-org" },
+        confirmPlatformLink: true,
+      }),
+    ).rejects.toMatchObject({ code: "ONBOARDING_PLATFORM_IDENTITY_CONFLICT" });
     expect(ensureElizaAppProvisioning).not.toHaveBeenCalled();
   });
 
