@@ -4806,6 +4806,7 @@ export const tasksAction: Action & {
     "GITHUB_ISSUE",
     "GITHUB_ISSUES",
     "GITHUB_CREATE_ISSUE",
+    "CREATE_GITHUB_ISSUE",
     // Complete the GITHUB_<verb>_ISSUE(S) permutation family: live 2026-08-11
     // ("any open github issues?") nominated GITHUB_LIST_ISSUES — LIST_ISSUES
     // and GITHUB_ISSUE were both present but the exact guess matched nothing
@@ -4814,8 +4815,11 @@ export const tasksAction: Action & {
     "GITHUB_LIST_ISSUES",
     "LIST_GITHUB_ISSUES",
     "GITHUB_CLOSE_ISSUE",
+    "CLOSE_GITHUB_ISSUE",
     "GITHUB_UPDATE_ISSUE",
+    "UPDATE_GITHUB_ISSUE",
     "GITHUB_GET_ISSUE",
+    "GET_GITHUB_ISSUE",
     "GITHUB_ADD_COMMENT",
     "GITHUB_COMMENT_ISSUE",
     "ADD_COMMENT",
