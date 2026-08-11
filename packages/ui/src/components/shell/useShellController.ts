@@ -1849,6 +1849,18 @@ export function useShellController(): ShellController {
   };
   stopRealtimeVoiceRef.current = stopRealtimeVoice;
 
+  const stopRecording = React.useCallback(() => {
+    if (
+      realtimeVoiceWantedRef.current ||
+      realtimeVoiceRef.current.active ||
+      realtimeVoiceRef.current.connecting
+    ) {
+      stopRealtimeVoice();
+      return;
+    }
+    stopCapture();
+  }, [stopCapture, stopRealtimeVoice]);
+
   // A LIVE Talk session that dies past the client's reconnect budget (network
   // outage longer than the recovery window, terminal server error) must park
   // Talk visibly OFF: restore the persisted mode, clear hands-free, and
@@ -2411,7 +2423,7 @@ export function useShellController(): ShellController {
     visionCapturing,
     toggleRecording,
     startRecording: startCapture,
-    stopRecording: stopCapture,
+    stopRecording,
     handsFree,
     realtimeVoice: {
       enabled: realtimeVoiceEnabled,
