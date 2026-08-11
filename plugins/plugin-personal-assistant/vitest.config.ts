@@ -757,6 +757,20 @@ export default defineConfig({
         ),
       },
       {
+        // CalendarService imports the dependency-light runtime error classes
+        // from this subpath. The src-integration lane does not build workspace
+        // dist first, so resolve the subpath to source just as the bare package
+        // is resolved to its test stub below.
+        find: /^@elizaos\/plugin-google-workspace\/calendar$/,
+        replacement: path.join(
+          elizaRoot,
+          "plugins",
+          "plugin-google-workspace",
+          "src",
+          "calendar.ts",
+        ),
+      },
+      {
         find: /^@elizaos\/plugin-google-workspace$/,
         replacement: path.join(
           lifeopsTestStubsRoot,

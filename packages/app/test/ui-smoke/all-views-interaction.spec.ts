@@ -617,6 +617,35 @@ async function installInteractionAuditRoutes(page: Page): Promise<void> {
     });
   });
 
+  await page.route(/\/api\/plugins\/[^/?]+(?:\?.*)?$/, async (route) => {
+    const request = route.request();
+    if (request.method() !== "PUT") {
+      await route.fallback();
+      return;
+    }
+
+    const pluginId = decodeURIComponent(
+      new URL(request.url()).pathname.split("/").filter(Boolean).at(-1) ?? "",
+    );
+    const payload = request.postDataJSON() as {
+      enabled?: boolean;
+      config?: Record<string, string>;
+    };
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        success: true,
+        plugin: {
+          id: pluginId,
+          enabled: payload.enabled ?? true,
+          config: payload.config ?? {},
+        },
+        restartRequired: false,
+      }),
+    });
+  });
+
   await page.route("**/api/pendant/sessions/current", async (route) => {
     if (route.request().method() !== "GET") {
       await route.fallback();

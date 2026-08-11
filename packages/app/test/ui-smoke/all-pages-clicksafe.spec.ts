@@ -162,6 +162,9 @@ const CORE_ROUTE_PROBES: readonly RouteProbe[] = [
   {
     name: "connectors",
     path: "/connectors",
+    // The legacy top-level URL enters the Settings connectors subview. Boot
+    // timing may preserve the alias or add its canonical settings hash.
+    expectedUrl: /\/connectors(?:#connectors)?$/,
     readyChecks: [{ selector: "#root" }],
   },
   {

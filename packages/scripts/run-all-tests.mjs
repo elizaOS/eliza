@@ -411,6 +411,9 @@ const ADDITIONAL_PACKAGE_DIRS = [
   path.join(repoRoot, "packages", "app-core", "platforms", "electrobun"),
 ];
 const NO_CLOUD_PACKAGE_DIRS = new Set([path.join("packages", "cloud", "e2e")]);
+const ROOT_PR_E2E_EXCLUDED_PACKAGE_DIRS = new Set([
+  path.join("packages", "homepage"),
+]);
 
 // Combine --filter, --pattern, --lane, and TEST_PACKAGE_FILTER. All (when set)
 // must match a task's label for it to run — they intersect rather than override
@@ -1313,6 +1316,18 @@ for (const packageJsonPath of packageJsonPaths) {
       } else {
         continue;
       }
+    }
+    // Homepage screenshot baselines, contact sheets, and functional browser
+    // flows are authoritative in the dedicated homepage deployment lane. The
+    // root PR job still protects every other deterministic E2E package; running
+    // homepage here repeats that gate and regularly consumes the entire two-hour
+    // job budget before later integration packages can report a result.
+    if (
+      TEST_LANE === "pr" &&
+      scriptName === "test:e2e" &&
+      ROOT_PR_E2E_EXCLUDED_PACKAGE_DIRS.has(relativeDir)
+    ) {
+      continue;
     }
     if (packageFilters.some((rx) => !rx.test(label))) {
       continue;

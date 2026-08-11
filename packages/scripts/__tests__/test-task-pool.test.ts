@@ -279,7 +279,6 @@ describe("plugin test command contract", () => {
     expect(script).toContain("--no-cloud");
     expect(script).toContain("--concurrency=3");
   });
-
 });
 
 describe("run-all-tests plan mode", () => {
@@ -336,6 +335,16 @@ describe("run-all-tests plan mode", () => {
       },
     ]);
     expect(plan.cloudStep).toBeNull();
+  });
+
+  test("routes homepage e2e to its dedicated deployment lane instead of root PR smoke", () => {
+    const prResult = runPlan([
+      "--plan=json",
+      "--only=e2e",
+      "--filter=^eliza-app \\(packages/homepage\\)#test:e2e$",
+    ]);
+    expect(prResult.status).toBe(0);
+    expect(JSON.parse(prResult.stdout).tasks).toEqual([]);
   });
 
   test("bare --plan prints text and keeps the cloud step visible", () => {
