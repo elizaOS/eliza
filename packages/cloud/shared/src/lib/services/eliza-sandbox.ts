@@ -519,11 +519,13 @@ const RECONCILE_SSH_CMD_TIMEOUT_MS = 15_000;
 // still fires — an unreachable paid agent must never look "running" forever.
 const IP_RECONCILE_MAX_UNRESOLVED_CYCLES = 3;
 const DB_LIVENESS_RESTART_MARKER = "[db-liveness-restart]";
-// TTL for the server-side routing key fallback written during heartbeat.
-// Matches the SandboxRegistry container-side default (90s); the ~30s
-// heartbeat cycle refreshes it well within the window so one missed tick
-// does not expire a healthy agent's routing entry.
-const ROUTING_KEY_FALLBACK_TTL_SECONDS = 90;
+// TTLs for the server-side routing key fallback written during heartbeat.
+// The agent→server mapping is long-lived (30 days) to match the gateway
+// contract in server-router.ts:154-159 (a booted container writes it with a
+// 30-day TTL). The server→URL key is heartbeat-backed and short so a dead
+// pod's URL expires quickly (the ~30s heartbeat cycle refreshes it).
+const ROUTING_AGENT_KEY_TTL_SECONDS = 30 * 24 * 60 * 60; // 30 days = 2592000
+const ROUTING_SERVER_URL_KEY_TTL_SECONDS = 90;
 const DB_LIVENESS_RESTART_BUDGET = 3;
 const DB_LIVENESS_RESTART_COOLDOWN_MS = 10 * 60_000;
 const DB_LIVENESS_RESTART_BUDGET_WINDOW_MS = 60 * 60_000;
@@ -998,18 +1000,21 @@ class ManagedLaunchOwnershipLost extends Error {
 }
 
 /**
- * Atomically SET multiple keys with a shared TTL using a Redis pipeline.
- * Used by the server-side routing key fallback so both keys (server:url and
- * agent:server) land together — a partial write would let the gateway resolve
- * one half but not the other.
+ * Set multiple keys with individual TTLs via a Redis pipeline. The pipeline
+ * batches the commands in one round-trip but is NOT a transaction (no
+ * MULTI/EXEC) — concurrent writers from another process could interleave. For
+ * the routing-registry fallback this is acceptable: the keys are idempotent,
+ * and the agent key uses SET NX so a self-registering container wins the race
+ * rather than being clobbered. A partial pipeline failure would at worst leave
+ * the agent temporarily registered without a URL, which the next heartbeat
+ * cycle repairs.
  */
-async function pipelineSet(
+async function pipelineSetTtls(
   redis: NonNullable<ReturnType<typeof buildRedisClient>>,
-  entries: Array<[key: string, value: string]>,
-  ttlSeconds: number,
+  entries: Array<[key: string, value: string, ttlSeconds: number]>,
 ): Promise<void> {
   const pipe = redis.pipeline();
-  for (const [key, value] of entries) {
+  for (const [key, value, ttlSeconds] of entries) {
     pipe.setex(key, ttlSeconds, value);
   }
   await pipe.exec();
@@ -6495,10 +6500,11 @@ export class ElizaSandboxService {
    * every message even though the agent is alive and heartbeating (#18277).
    *
    * This method writes the keys from the control-plane side when the heartbeat
-   * confirms the container is reachable. It only writes when the keys are
-   * absent, so it never clobbers the container's own registration (which may
-   * carry a different bridge URL or server name). Best-effort: failures are
-   * logged and swallowed so a Redis outage does not abort the heartbeat cycle.
+   * confirms the container is reachable. The agent→server mapping is written
+   * with SET NX (set-if-not-exists) so a container that self-registers between
+   * our check and our write is never clobbered. The server→URL key uses a short
+   * TTL since it is refreshed by each heartbeat cycle. Best-effort: failures
+   * are logged and swallowed so a Redis outage does not abort the heartbeat.
    */
   private async ensureRoutingRegistryKeys(
     rec: Pick<AgentSandbox, "id" | "bridge_url">,
@@ -6514,25 +6520,30 @@ export class ElizaSandboxService {
       const serverName = `sandbox-${rec.id}`;
       const serverUrlKey = `server:${serverName}:url`;
 
-      // Only write when the container hasn't self-registered. A GET-first
-      // check avoids clobbering keys the container owns (it may use a
-      // different server name or a public-proxy URL that differs from the
-      // internal bridge URL).
-      const existing = await redis.get<string>(agentServerKey);
-      if (existing) return;
+      // SET NX: only set the agent key if it does not already exist. This is
+      // atomic in Redis — unlike a GET-then-SET, there is no window for a
+      // self-registering container to write between our check and our write.
+      // If the key already exists (container self-registered), SET NX returns
+      // null and we skip the URL key too: the container owns the full pair.
+      const claimed = await redis.set(agentServerKey, serverName, {
+        ex: ROUTING_AGENT_KEY_TTL_SECONDS,
+        nx: true,
+      });
+      if (!claimed) return;
 
-      await pipelineSet(
-        redis,
-        [
-          [serverUrlKey, rec.bridge_url],
-          [agentServerKey, serverName],
-        ],
-        ROUTING_KEY_FALLBACK_TTL_SECONDS,
-      );
+      // We won the agent-key claim; write the URL key with the short TTL so a
+      // dead pod's URL expires before the agent mapping does.
+      await pipelineSetTtls(redis, [
+        [serverUrlKey, rec.bridge_url, ROUTING_SERVER_URL_KEY_TTL_SECONDS],
+      ]);
       logger.info(
         `[agent-sandbox] Wrote routing registry fallback for agent ${rec.id} -> ${rec.bridge_url}`,
       );
     } catch (err) {
+      // error-policy:J6 — best-effort teardown-adjacent: the routing fallback
+      // is a non-critical optimization layered on the heartbeat cycle. A Redis
+      // outage or transient failure here must not abort the heartbeat or mark
+      // the agent unhealthy; the next heartbeat cycle retries the write.
       logger.warn(
         `[agent-sandbox] Routing registry fallback failed for agent ${rec.id}: ${err instanceof Error ? err.message : String(err)}`,
       );
