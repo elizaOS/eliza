@@ -177,14 +177,14 @@ export default function LoginPage() {
           })}{" "}
           <Link
             to="/terms-of-service"
-            className="inline-flex min-h-touch min-w-touch items-center justify-center rounded-sm border border-transparent px-2 font-medium text-txt underline-offset-4 transition-[opacity,background-color,border-color,color] hover:underline hover:opacity-80 focus-visible:border-accent focus-visible:bg-accent-subtle focus-visible:text-txt-strong"
+            className="hosted-signin-focus-emphasis inline-flex min-h-touch min-w-touch items-center justify-center rounded-sm border border-transparent px-2 font-medium text-txt underline-offset-4 transition-[opacity,background-color,border-color,color] hover:underline hover:opacity-80"
           >
             {t("cloud.login.termsLink", { defaultValue: "Terms" })}
           </Link>{" "}
           {t("cloud.login.and", { defaultValue: "and" })}{" "}
           <Link
             to="/privacy-policy"
-            className="inline-flex min-h-touch min-w-touch items-center justify-center rounded-sm border border-transparent px-2 font-medium text-txt underline-offset-4 transition-[opacity,background-color,border-color,color] hover:underline hover:opacity-80 focus-visible:border-accent focus-visible:bg-accent-subtle focus-visible:text-txt-strong"
+            className="hosted-signin-focus-emphasis inline-flex min-h-touch min-w-touch items-center justify-center rounded-sm border border-transparent px-2 font-medium text-txt underline-offset-4 transition-[opacity,background-color,border-color,color] hover:underline hover:opacity-80"
           >
             {t("cloud.login.privacyPolicy", { defaultValue: "Privacy Policy" })}
           </Link>
