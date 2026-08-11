@@ -3875,9 +3875,23 @@ async function ensureToolTurnFinalMessage(
 			{ iteration, synthesizedUsable },
 			"[planner-loop] tool work finished without a usable reply; forced a no-tools synthesis pass",
 		);
-		return synthesizedUsable
-			? { ...result, trajectory: synthesized.trajectory, finalMessage }
-			: result;
+		if (synthesizedUsable) {
+			return { ...result, trajectory: synthesized.trajectory, finalMessage };
+		}
+		const rescued = await rescueReplyFromSuccessfulResults(
+			params,
+			result.trajectory,
+		);
+		if (rescued) {
+			result.trajectory.steps.push({
+				iteration: iteration + 1,
+				thought: "rescue synthesis from successful tool results",
+				terminalMessage: rescued,
+				terminalOnly: true,
+			});
+			return { ...result, finalMessage: rescued };
+		}
+		return result;
 	} catch (err) {
 		// error-policy:J4 explicit user-facing degrade — the synthesis pass is a
 		// best-effort upgrade of an already-finished turn; a model failure here
@@ -3950,9 +3964,23 @@ async function ensureFailedTurnFinalMessage(
 			{ iteration, failedTool: failedStep.toolCall.name, synthesizedUsable },
 			"[planner-loop] turn ended on a failed step with no user-safe failure text; forced a failure-aware synthesis pass",
 		);
-		return synthesizedUsable
-			? { ...result, trajectory: synthesized.trajectory, finalMessage }
-			: result;
+		if (synthesizedUsable) {
+			return { ...result, trajectory: synthesized.trajectory, finalMessage };
+		}
+		const rescued = await rescueReplyFromSuccessfulResults(
+			params,
+			result.trajectory,
+		);
+		if (rescued) {
+			result.trajectory.steps.push({
+				iteration: iteration + 1,
+				thought: "rescue synthesis from successful tool results",
+				terminalMessage: rescued,
+				terminalOnly: true,
+			});
+			return { ...result, finalMessage: rescued };
+		}
+		return result;
 	} catch (err) {
 		// error-policy:J4 explicit user-facing degrade — the failure synthesis is
 		// a best-effort upgrade of an already-finished failed turn; a model
@@ -3963,6 +3991,62 @@ async function ensureFailedTurnFinalMessage(
 			"[planner-loop] failure-aware synthesis pass failed; keeping the generic failed-step reply",
 		);
 		return result;
+	}
+}
+
+/**
+ * Last-resort rescue when the planner-path forced synthesis itself returns
+ * unusable text. Observed live (2026-08-11 sub-agent report failures):
+ * reasoning-heavy planner models can burn the entire completion budget and
+ * yield a blank synthesis, which discarded a turn's eleven successful web
+ * searches into the generic failure sentence — and, relayed through the
+ * sub-agent completion path, shipped that sentence to the user as "the
+ * result". One plain TEXT_LARGE call with an explicit token budget and no
+ * tools: a deliberately different failure profile from the planner slot.
+ * Successful results' diagnostic text is model INPUT only; the output ships
+ * through {@link userSafeFinalMessage}, so the raw-tool-text leak contract
+ * holds unchanged. Returns undefined when there is nothing to rescue or the
+ * call fails — callers keep their existing reply in that case.
+ */
+async function rescueReplyFromSuccessfulResults(
+	params: PlannerLoopParams,
+	trajectory: PlannerTrajectory,
+): Promise<string | undefined> {
+	const excerpts: string[] = [];
+	for (const step of trajectory.steps) {
+		if (!step.toolCall || isTerminalToolCall(step.toolCall)) continue;
+		if (step.result?.success !== true) continue;
+		const text =
+			getNonEmptyString(step.result.userFacingText) ??
+			getNonEmptyString(step.result.text);
+		if (!text) continue;
+		excerpts.push(`[${step.toolCall.name}] ${text.slice(0, 1500)}`);
+		if (excerpts.length >= 6) break;
+	}
+	if (excerpts.length === 0) return undefined;
+	try {
+		const raw = await params.runtime.useModel(ModelType.TEXT_LARGE, {
+			prompt: [
+				"You are finishing a chat turn. Compose the final reply to the user from these tool results.",
+				"Answer the user's request directly from the material; be concise and human.",
+				"Never include file paths, internal ids, session or task uuids, or raw logs.",
+				"",
+				excerpts.join("\n\n"),
+			].join("\n"),
+			maxTokens: 1024,
+			temperature: 0.3,
+		});
+		const text =
+			typeof raw === "string" ? raw : (raw as { text?: string })?.text;
+		return userSafeFinalMessage(getNonEmptyString(text), trajectory);
+	} catch (err) {
+		// error-policy:J4 the rescue is a best-effort upgrade of an
+		// already-finished turn; a model failure here keeps the existing reply.
+		params.runtime.logger?.warn?.(
+			{ err: err instanceof Error ? err.message : String(err) },
+			"[planner-loop] rescue synthesis from successful tool results failed",
+		);
+		return undefined;
 	}
 }
 

@@ -485,3 +485,139 @@ describe("honest failed-turn replies (#17948)", () => {
 		expect(result.finalMessage).toBe(FAILED_TOOL_FALLBACK_MESSAGE);
 	});
 });
+
+describe("rescue synthesis from successful tool results (2026-08-11 sub-agent report failures)", () => {
+	it("blank failure-synthesis falls back to a TEXT_LARGE rescue composed from successful results", async () => {
+		const useModel = vi
+			.fn()
+			// 1: planner runs the research tool (succeeds).
+			.mockResolvedValueOnce({
+				text: "",
+				toolCalls: [
+					{
+						id: "call-1",
+						name: "WEB_SEARCH",
+						arguments: { query: "standujar contributions elizaOS" },
+					},
+				],
+			})
+			// 2: planner runs a second step (fails).
+			.mockResolvedValueOnce({
+				text: "",
+				toolCalls: [
+					{
+						id: "call-2",
+						name: "SHELL",
+						arguments: { command: "gh pr list" },
+					},
+				],
+			})
+			// 3: silent-failed-finish retry — the model recovers with a REPLY,
+			// but the tool-owned failure stays authoritative.
+			.mockResolvedValueOnce({
+				text: "",
+				toolCalls: [
+					{
+						id: "call-3",
+						name: "REPLY",
+						arguments: { text: "hit a snag." },
+					},
+				],
+			})
+			// 4: failure-aware synthesis returns BLANK (the reasoning-burn shape
+			// observed live: completion budget consumed, zero visible text).
+			.mockResolvedValueOnce({ text: "", toolCalls: [] })
+			// 5: the TEXT_LARGE rescue call composes from the successful results.
+			.mockResolvedValueOnce(
+				"standujar reviewed 85 pull requests over the last four days and filed 46 issues.",
+			);
+		const executeToolCall = vi
+			.fn()
+			.mockResolvedValueOnce({
+				success: true,
+				text: "search results: standujar reviewed 85 pull requests, filed 46 issues",
+			})
+			.mockResolvedValueOnce({
+				success: false,
+				text: "command_failed: exit 3",
+			});
+		const evaluate = vi
+			.fn()
+			.mockResolvedValueOnce({
+				success: true,
+				decision: "CONTINUE" as const,
+				thought: "Got the research, need the PR list.",
+			})
+			.mockResolvedValueOnce({
+				success: false,
+				decision: "FINISH" as const,
+				thought: "The step failed.",
+			});
+
+		const result = await runPlannerLoop({
+			runtime: { useModel },
+			context: { id: "ctx" },
+			tools: [
+				{ name: "WEB_SEARCH", description: "Search the web." },
+				{ name: "SHELL", description: "Run a shell command." },
+			],
+			executeToolCall,
+			evaluate,
+		});
+
+		expect(result.finalMessage).toBe(
+			"standujar reviewed 85 pull requests over the last four days and filed 46 issues.",
+		);
+		expect(result.finalMessage).not.toBe(FAILED_TOOL_FALLBACK_MESSAGE);
+		// The rescue prompt carried the successful result as input material.
+		const rescueParams = useModel.mock.calls[4]?.[1] as
+			| { prompt?: string }
+			| undefined;
+		expect(rescueParams?.prompt).toContain("[WEB_SEARCH]");
+		expect(rescueParams?.prompt).toContain("85 pull requests");
+	});
+
+	it("keeps the generic sentence when there are no successful results to rescue from", async () => {
+		const useModel = vi
+			.fn()
+			.mockResolvedValueOnce({
+				text: "",
+				toolCalls: [
+					{
+						id: "call-1",
+						name: "SHELL",
+						arguments: { command: "false" },
+					},
+				],
+			})
+			.mockResolvedValueOnce({
+				text: "",
+				toolCalls: [
+					{ id: "call-2", name: "REPLY", arguments: { text: "hm." } },
+				],
+			})
+			// Failure synthesis blank; NO rescue call should follow (nothing to
+			// rescue from), so no fifth mock is provided.
+			.mockResolvedValueOnce({ text: "", toolCalls: [] });
+		const executeToolCall = vi.fn(async () => ({
+			success: false,
+			text: "command_failed: exit 1",
+		}));
+		const evaluate = vi.fn(async () => ({
+			success: false,
+			decision: "FINISH" as const,
+			thought: "The step failed.",
+		}));
+
+		const result = await runPlannerLoop({
+			runtime: { useModel },
+			context: { id: "ctx" },
+			tools: [{ name: "SHELL", description: "Run a shell command." }],
+			executeToolCall,
+			evaluate,
+		});
+
+		expect(useModel).toHaveBeenCalledTimes(3);
+		expect(result.finalMessage).toBe(FAILED_TOOL_FALLBACK_MESSAGE);
+	});
+});
