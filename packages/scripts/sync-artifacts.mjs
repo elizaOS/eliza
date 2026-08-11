@@ -111,11 +111,22 @@ function progressStatus(received, total, startedAt) {
 }
 
 function cleanupStaleTempArchives() {
+  const tempDirectory = tmpdir();
+  let entries;
+  try {
+    entries = readdirSync(tempDirectory);
+  } catch (err) {
+    // error-policy:J6 best-effort temp cleanup; an unavailable temp directory must not block install.
+    warn(
+      `could not enumerate artifact temp directory ${tempDirectory}: ${err.message}`,
+    );
+    return;
+  }
   const now = Date.now();
   let removed = 0;
-  for (const entry of readdirSync(tmpdir())) {
+  for (const entry of entries) {
     if (!/^eliza-artifacts-\d+\.tar\.gz$/.test(entry)) continue;
-    const file = join(tmpdir(), entry);
+    const file = join(tempDirectory, entry);
     let stat;
     try {
       stat = statSync(file);
