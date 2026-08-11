@@ -745,10 +745,42 @@ export type WalletRelationship = {
   evidenceReasons?: string[];
 
   limitations?: string[];
+
+  // True when this address matched the protocol registry (any category -
+  // DEX/bridge/lending/staking/etc.) or a known-infrastructure category in
+  // the label registry (centralized_exchange, decentralized_exchange,
+  // bridge, defi_protocol, nft_marketplace, staking, token_program,
+  // system_program, burn_address). Deliberately does NOT reuse the
+  // "exchange"/"bridge"/"known_wallet" values already in `relationship`
+  // above - those are never assigned by analyzeWalletRelationships and
+  // stay that way; this is a separate field so existing consumers of
+  // `relationship` are unaffected. Still present in `relationships` below
+  // for display/context, but excluded from relationshipCount and from the
+  // confidence signals computed in this file - shared infrastructure
+  // (millions of wallets touch the same DEX router or exchange hot
+  // wallet) is not clustering evidence the way a shared unknown private
+  // wallet is. suspicious/scam/rug_pull labels are deliberately NOT
+  // infrastructure - a shared connection to a known-bad address is exactly
+  // the signal worth surfacing, not suppressing.
+  isKnownInfrastructure?: boolean;
+
+  // Human-readable name of the matched registry entry (e.g. "Uniswap V2
+  // Router02", "Binance 14") when isKnownInfrastructure is true - distinct
+  // from `label` above, which reflects lookupWalletLabel only and stays
+  // "Unknown Wallet" for a protocol-registry-only match.
+  infrastructureLabel?: string | null;
 };
 
 export type WalletRelationshipSummary = {
+  // Count of non-infrastructure relationships only - what scoring/
+  // confidence should use. relationships.length may be larger than this;
+  // see knownInfrastructureCount.
   relationshipCount: number;
+
+  // Known-infrastructure relationships present in `relationships` below
+  // but excluded from relationshipCount and from this summary's own
+  // confidence computation - kept for transparency, not scoring.
+  knownInfrastructureCount: number;
 
   evidenceConfidence: "low" | "medium" | "high";
 
