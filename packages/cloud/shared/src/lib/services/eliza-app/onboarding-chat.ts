@@ -96,7 +96,6 @@ export interface OnboardingContinuationPreview {
   platformDisplayName: string;
 }
 
-
 export interface OnboardingChatCta {
   label: string;
   url: string;
@@ -360,7 +359,6 @@ export async function inspectOnboardingContinuation(
     platformDisplayName: session.platformDisplayName?.trim() || session.platformUserId,
   };
 }
-
 
 /**
  * A mutating confirmation must still resolve the exact trusted session
