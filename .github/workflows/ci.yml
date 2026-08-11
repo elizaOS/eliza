@@ -121,7 +121,7 @@ jobs:
   # job-level `if:`. A skipped job reports `skipped`, which `required` treats as
   # failure by design; gating the steps keeps every lane reporting `success`
   # while an unaffected lane costs only its checkout.
-  tests_scripts:
+  tests:
     name: Tests (scripts)
     needs: changes
     runs-on: ubuntu-24.04
@@ -479,7 +479,7 @@ jobs:
       [
         changes,
         quality,
-        tests_scripts,
+        tests,
         tests_server,
         tests_client,
         tests_plugins,
@@ -494,7 +494,7 @@ jobs:
           RESULTS: >-
             changes=${{ needs.changes.result }}
             quality=${{ needs.quality.result }}
-            tests-scripts=${{ needs.tests_scripts.result }}
+            tests-scripts=${{ needs.tests.result }}
             tests-server=${{ needs.tests_server.result }}
             tests-client=${{ needs.tests_client.result }}
             tests-plugins=${{ needs.tests_plugins.result }}
