@@ -143,7 +143,6 @@ export interface MessagingContinuationPreview {
   platformDisplayName: string;
 }
 
-
 export async function previewPendingOnboardingContinuation(
   token: string,
   transport: OnboardingContinuationTransport = defaultTransport,
