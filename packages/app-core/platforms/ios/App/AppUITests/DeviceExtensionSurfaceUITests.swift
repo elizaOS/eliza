@@ -113,15 +113,28 @@ final class DeviceExtensionSurfaceUITests: XCTestCase {
     /// Based on NubsCarson:c21d9237 — do not silently substitute a canonical
     /// brand when the label is unavailable; fail fast per the repository's
     /// unavailable-state policy.
-    private var widgetAppDisplayName: String {
-        let label = XCUIApplication().label.trimmingCharacters(in: .whitespacesAndNewlines)
-        XCTAssertFalse(label.isEmpty, "Installed app must have a non-empty display label (CFBundleDisplayName/ELIZA_DISPLAY_NAME)")
-        return label
+    private func widgetAppDisplayName() throws -> String {
+        let app = XCUIApplication()
+        app.launch()
+        XCTAssertTrue(
+            app.wait(for: .runningForeground, timeout: 15),
+            "Installed app must be running before XCUITest can read its display label."
+        )
+
+        let label = app.label.trimmingCharacters(in: .whitespacesAndNewlines)
+        return try XCTUnwrap(
+            label.isEmpty ? nil : label,
+            "Installed app must have a non-empty display label (CFBundleDisplayName/ELIZA_DISPLAY_NAME)."
+        )
     }
 
     // MARK: - Home/Lock Screen widget
 
     private func installHomeScreenWidgetFromGallery() throws {
+        // XCUIApplication.label cannot be snapshotted after SpringBoard sends
+        // the app to the background, so resolve the required build identity
+        // while the installed target is running and carry it into the flow.
+        let displayName = try widgetAppDisplayName()
         goHome()
         attachScreenshot(named: "widget-assert-00-home-screen")
 
@@ -147,7 +160,6 @@ final class DeviceExtensionSurfaceUITests: XCTestCase {
         let search = springboard.searchFields.firstMatch
         XCTAssertTrue(search.waitForExistence(timeout: 8), "Widget gallery must expose a search field")
         search.tap()
-        let displayName = widgetAppDisplayName
         search.typeText(displayName)
         Thread.sleep(forTimeInterval: 2.0)
         attachScreenshot(named: "widget-assert-02-gallery-search-eliza")

@@ -35,10 +35,19 @@ final class WidgetGalleryCaptureUITests: XCTestCase {
     /// Based on NubsCarson:c21d9237 — do not silently substitute a canonical
     /// brand when the label is unavailable; fail fast per the repository's
     /// unavailable-state policy.
-    private var widgetAppDisplayName: String {
-        let label = XCUIApplication().label.trimmingCharacters(in: .whitespacesAndNewlines)
-        XCTAssertFalse(label.isEmpty, "Installed app must have a non-empty display label (CFBundleDisplayName/ELIZA_DISPLAY_NAME)")
-        return label
+    private func widgetAppDisplayName() throws -> String {
+        let app = XCUIApplication()
+        app.launch()
+        XCTAssertTrue(
+            app.wait(for: .runningForeground, timeout: 15),
+            "Installed app must be running before XCUITest can read its display label."
+        )
+
+        let label = app.label.trimmingCharacters(in: .whitespacesAndNewlines)
+        return try XCTUnwrap(
+            label.isEmpty ? nil : label,
+            "Installed app must have a non-empty display label (CFBundleDisplayName/ELIZA_DISPLAY_NAME)."
+        )
     }
 
     override func setUpWithError() throws {
@@ -46,6 +55,10 @@ final class WidgetGalleryCaptureUITests: XCTestCase {
     }
 
     func testCaptureHomeScreenWidgetGallery() throws {
+        // XCUIApplication.label cannot be snapshotted after SpringBoard sends
+        // the app to the background, so resolve the required build identity
+        // while the installed target is running and carry it into the flow.
+        let displayName = try widgetAppDisplayName()
         goHome()
         attachScreenshot(named: "widget-00-home-screen")
 
@@ -75,7 +88,6 @@ final class WidgetGalleryCaptureUITests: XCTestCase {
         let search = springboard.searchFields.firstMatch
         if search.waitForExistence(timeout: 5) {
             search.tap()
-            let displayName = widgetAppDisplayName
             search.typeText(displayName)
             Thread.sleep(forTimeInterval: 2)
             attachScreenshot(named: "widget-03-gallery-search-eliza")
