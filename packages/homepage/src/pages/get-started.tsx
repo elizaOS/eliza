@@ -40,6 +40,7 @@ const ShaderBackground = lazy(
   () => import("@/components/ShaderBackground/ShaderBackground"),
 );
 
+import { elizacloudAuthFetch } from "@/lib/api/client";
 import {
   buildElizaSmsHref,
   buildElizaTelegramHref,
@@ -122,6 +123,7 @@ type OnboardingMethod =
 type OnboardingStep =
   | "SELECT_METHOD"
   | "ONBOARDING_SIGN_IN"
+  | "CONTINUATION_LINK"
   | "TELEGRAM_DIRECT"
   | "TELEGRAM_OAUTH"
   | "PHONE_INPUT"
@@ -154,6 +156,230 @@ const PASTEL_FALLBACK: CSSProperties = {
 
 /** Landing-page glass tile language: white hairline + frosted fill. */
 const GLASS_TILE = "border border-white/60 bg-white/35 backdrop-blur-md";
+
+/**
+ * Post-auth identity-link handoff for platform onboarding continuations.
+ *
+ * Mirrors the #18161 preview/confirm contract already served by the cloud-app
+ * hosts: GET the continuation preview (read-only), require an explicit,
+ * informed confirmation, then POST the redemption with
+ * `confirmPlatformLink: true` — the turn that binds the session, links the
+ * Discord identity, starts provisioning, and (once the proactive-greeting
+ * path is live) enqueues the first Discord DM. The terminal state prompts the
+ * user BACK to Discord instead of a web chat: their conversation lives there,
+ * and authenticated web turns on a Discord-trusted session require the
+ * confirm flag, so a generic web chat is not a valid continuation surface.
+ *
+ * Non-Discord sessions (for example SMS-originated ones, which auto-link by
+ * phone) fail the Discord preview and fall back to the provisioning chat —
+ * the exact pre-existing behavior for those platforms.
+ */
+function ContinuationLinkStep({
+  onboardingSessionId,
+  onFallbackToChat,
+}: {
+  onboardingSessionId: string;
+  onFallbackToChat: () => void;
+}) {
+  const t = useT();
+  const [phase, setPhase] = useState<
+    "checking" | "confirm" | "linking" | "done" | "error"
+  >("checking");
+  const [error, setError] = useState<string | null>(null);
+  const [identity, setIdentity] = useState<{
+    platformUserId: string;
+    platformDisplayName: string;
+  } | null>(null);
+  // StrictMode double-mount guard: the read-only preview should run once.
+  const startedRef = useRef(false);
+
+  const confirmLink = useCallback(async () => {
+    setPhase("linking");
+    setError(null);
+    try {
+      await elizacloudAuthFetch("/api/eliza-app/onboarding/chat", {
+        method: "POST",
+        body: JSON.stringify({
+          sessionId: onboardingSessionId,
+          platform: "web",
+          confirmPlatformLink: true,
+        }),
+      });
+      setPhase("done");
+    } catch (err) {
+      setError(
+        err instanceof Error && err.message.trim()
+          ? err.message
+          : t("homepage_eliza.getStarted.continuationLinkError", {
+              defaultValue:
+                "Could not finish connecting your account. Try again.",
+            }),
+      );
+      setPhase("error");
+    }
+  }, [onboardingSessionId, t]);
+
+  useEffect(() => {
+    if (startedRef.current) return;
+    startedRef.current = true;
+    (async () => {
+      try {
+        const res = await elizacloudAuthFetch<{
+          success?: boolean;
+          data?: {
+            platform?: string;
+            platformUserId?: string;
+            platformDisplayName?: string;
+          };
+        }>("/api/eliza-app/onboarding/chat", {
+          params: { sessionId: onboardingSessionId },
+        });
+        const preview = res?.data;
+        if (
+          preview?.platform === "discord" &&
+          preview.platformUserId &&
+          preview.platformDisplayName
+        ) {
+          setIdentity({
+            platformUserId: preview.platformUserId,
+            platformDisplayName: preview.platformDisplayName,
+          });
+          setPhase("confirm");
+          return;
+        }
+        onFallbackToChat();
+      } catch {
+        // Not a Discord continuation this account can preview (for example a
+        // phone-originated session, which auto-links inside the chat turn).
+        // Fall back to the pre-existing provisioning-chat behavior.
+        onFallbackToChat();
+      }
+    })();
+  }, [onboardingSessionId, onFallbackToChat]);
+
+  if (phase === "confirm" && identity) {
+    return (
+      <div
+        className="w-full flex flex-col items-center"
+        data-testid="continuation-confirm"
+      >
+        <div className="w-16 h-16 rounded-xs bg-[#5865F2]/20 flex items-center justify-center mb-6">
+          <DiscordIcon className="size-8 text-[#5865F2]" />
+        </div>
+        <h1 className="text-xl font-medium text-neutral-900 text-center mb-2">
+          {t("homepage_eliza.getStarted.continuationConfirmTitle", {
+            defaultValue: "Connect your Discord account?",
+          })}
+        </h1>
+        <p className="text-sm text-neutral-500 text-center mb-8">
+          {t("homepage_eliza.getStarted.continuationConfirmBody", {
+            defaultValue: "Continue as",
+          })}{" "}
+          <strong className="text-neutral-900">
+            {identity.platformDisplayName}
+          </strong>
+          <span className="block text-xs text-neutral-400 mt-1">
+            Discord ID {identity.platformUserId}
+          </span>
+        </p>
+        <Button
+          type="button"
+          data-testid="continuation-confirm-button"
+          onClick={() => void confirmLink()}
+          className="w-full h-[52px] rounded-xs bg-[#5865F2] text-white font-medium hover:bg-black"
+        >
+          {t("homepage_eliza.getStarted.continuationConfirmCta", {
+            defaultValue: "Connect this Discord account",
+          })}
+        </Button>
+      </div>
+    );
+  }
+
+  if (phase === "done") {
+    return (
+      <div
+        className="w-full flex flex-col items-center"
+        data-testid="continuation-done"
+      >
+        <div className="w-16 h-16 rounded-xs bg-[#5865F2]/20 flex items-center justify-center mb-6">
+          <Check className="size-8 text-[#5865F2]" />
+        </div>
+        <h1 className="text-xl font-medium text-neutral-900 text-center mb-2">
+          {t("homepage_eliza.getStarted.continuationDoneTitle", {
+            defaultValue: "You're connected",
+          })}
+        </h1>
+        <p className="text-sm text-neutral-500 text-center mb-8">
+          {t("homepage_eliza.getStarted.continuationDoneBody", {
+            defaultValue:
+              "Head back to Discord — Eliza is getting your agent ready and will pick up right where you left off.",
+          })}
+        </p>
+        <Button
+          asChild
+          className="w-full h-[52px] rounded-xs bg-[#5865F2] hover:bg-black text-white font-medium gap-2"
+        >
+          <a
+            href="https://discord.com/channels/@me"
+            target="_blank"
+            rel="noopener noreferrer"
+            data-testid="continuation-open-discord"
+          >
+            <DiscordIcon className="size-5" />
+            {t("homepage_eliza.getStarted.continuationOpenDiscord", {
+              defaultValue: "Open Discord",
+            })}
+          </a>
+        </Button>
+      </div>
+    );
+  }
+
+  if (phase === "error") {
+    return (
+      <div
+        className="w-full flex flex-col items-center"
+        data-testid="continuation-error"
+      >
+        <h1 className="text-xl font-medium text-neutral-900 text-center mb-2">
+          {t("homepage_eliza.getStarted.continuationErrorTitle", {
+            defaultValue: "Couldn't connect your account",
+          })}
+        </h1>
+        <p className="text-sm text-red-600 text-center mb-8">{error}</p>
+        <Button
+          type="button"
+          onClick={() => void confirmLink()}
+          className="w-full h-[52px] rounded-xs bg-neutral-900 text-white font-medium hover:bg-black"
+        >
+          {t("homepage_eliza.getStarted.tryAgain", {
+            defaultValue: "Try Again",
+          })}
+        </Button>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className="w-full flex flex-col items-center"
+      role="status"
+      aria-busy="true"
+      data-testid="continuation-checking"
+    >
+      <div className="text-neutral-500 animate-pulse text-sm">
+        {phase === "linking"
+          ? t("homepage_eliza.getStarted.continuationLinking", {
+              defaultValue: "Connecting your account...",
+            })
+          : t("homepage_eliza.getStarted.continuationChecking", {
+              defaultValue: "Checking your connection...",
+            })}
+      </div>
+    </div>
+  );
+}
 
 function ProvisioningChatStep({
   onboardingSessionId,
@@ -556,8 +782,9 @@ export default function GetStartedPage() {
 
     // Platform continuations (Discord DM "Connect" button, SMS link) never
     // see the connector picker — the visitor already came FROM a platform.
-    // Signed-in visitors resume the chat; signed-out visitors go straight to
-    // sign-in. Telegram continuations carry method=telegram (handled below).
+    // Signed-in visitors continue into the identity-link handoff; signed-out
+    // visitors go straight to sign-in. Telegram continuations carry
+    // method=telegram (handled below).
     const continuationStep = resolveOnboardingEntryStep({
       onboardingSessionId,
       isAuthenticated,
@@ -567,7 +794,7 @@ export default function GetStartedPage() {
     });
     if (continuationStep) {
       setInitialMethodHandled(true);
-      if (continuationStep === "PROVISIONING_CHAT") {
+      if (continuationStep === "CONTINUATION_LINK") {
         setSuppressRedirect(true);
       }
       setStep(continuationStep);
@@ -667,10 +894,10 @@ export default function GetStartedPage() {
       const result = await loginWithSolana();
       if (result.success) {
         if (onboardingSessionId && !isLinkMode) {
-          // Platform continuation: resume the onboarding chat with the new
-          // credentials instead of bouncing to the generic dashboard.
+          // Platform continuation: continue into the identity-link handoff
+          // with the new credentials instead of bouncing to the dashboard.
           setSuppressRedirect(true);
-          setStep("PROVISIONING_CHAT");
+          setStep("CONTINUATION_LINK");
           return;
         }
         clearRememberedReturnTo();
@@ -752,7 +979,7 @@ export default function GetStartedPage() {
       }
     } else if (step === "DISCORD_SETUP_GUIDE") {
       navigate("/connected");
-    } else if (step === "ONBOARDING_SIGN_IN") {
+    } else if (step === "ONBOARDING_SIGN_IN" || step === "CONTINUATION_LINK") {
       navigate("/");
     }
   };
@@ -921,6 +1148,11 @@ export default function GetStartedPage() {
         sessionStorage.removeItem(ONBOARDING_SESSION_STORAGE_KEY);
         if (isLinkMode) {
           navigate("/connected", { replace: true });
+        } else if (onboardingSessionId) {
+          // Platform continuation: the login itself does not redeem the
+          // session — continue into the preview/confirm identity-link
+          // handoff, whose terminal state prompts the user back to Discord.
+          setStep("CONTINUATION_LINK");
         } else {
           setStep("PROVISIONING_CHAT");
         }
@@ -965,6 +1197,7 @@ export default function GetStartedPage() {
       loginWithDiscord,
       isLinkMode,
       navigate,
+      onboardingSessionId,
       t,
     ],
   );
@@ -1600,6 +1833,13 @@ export default function GetStartedPage() {
                 })}
               </button>
             </>
+          )}
+
+          {step === "CONTINUATION_LINK" && onboardingSessionId && (
+            <ContinuationLinkStep
+              onboardingSessionId={onboardingSessionId}
+              onFallbackToChat={() => setStep("PROVISIONING_CHAT")}
+            />
           )}
 
           {step === "PROVISIONING_CHAT" && (

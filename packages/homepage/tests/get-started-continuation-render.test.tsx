@@ -40,14 +40,33 @@ const authMock = {
 };
 mock.module("@/lib/context/auth-context", () => authMock);
 
-// Network guard: the provisioning-chat hook must not reach the real API.
-const chatFetch = mock(async () => ({
-  success: true,
-  data: {
-    provisioning: { status: "pending", agentId: null, bridgeUrl: null },
-    messages: [],
-  },
-}));
+// Network guard: neither the provisioning-chat hook nor the continuation
+// link step may reach the real API. GET (params, no method) serves the
+// Discord continuation preview; POST serves both the provisioning chat and
+// the confirmPlatformLink redemption.
+let previewResult: {
+  platform: string;
+  platformUserId: string;
+  platformDisplayName: string;
+} | null = {
+  platform: "discord",
+  platformUserId: "555001122334455667",
+  platformDisplayName: "shadow#0001",
+};
+const chatFetch = mock(async (_path: string, init?: RequestInit) => {
+  const isPreview = !init?.method || init.method === "GET";
+  if (isPreview && !init?.body) {
+    if (!previewResult) throw new Error("continuation invalid");
+    return { success: true, data: previewResult };
+  }
+  return {
+    success: true,
+    data: {
+      provisioning: { status: "pending", agentId: null, bridgeUrl: null },
+      messages: [],
+    },
+  };
+});
 mock.module("@/lib/api/client", () => ({
   elizacloudAuthFetch: chatFetch,
   elizacloudFetch: chatFetch,
@@ -74,7 +93,14 @@ mock.module("@elizaos/shared/brand", () => ({
   BRAND_COLORS: new Proxy({}, { get: () => "#000000" }),
 }));
 mock.module("@elizaos/ui/button", () => ({
-  Button: ({ children, ...rest }: { children?: unknown }) =>
+  Button: ({
+    children,
+    asChild: _asChild,
+    ...rest
+  }: {
+    children?: unknown;
+    asChild?: boolean;
+  }) =>
     ReactForStubs.createElement(
       "button",
       { type: "button", ...rest },
@@ -191,6 +217,11 @@ async function renderPage(url: string): Promise<{
 describe("GetStartedPage platform continuation", () => {
   beforeEach(() => {
     authState = { isAuthenticated: false, isLoading: false };
+    previewResult = {
+      platform: "discord",
+      platformUserId: "555001122334455667",
+      platformDisplayName: "shadow#0001",
+    };
     chatFetch.mockClear();
   });
 
@@ -210,7 +241,7 @@ describe("GetStartedPage platform continuation", () => {
     page.unmount();
   });
 
-  test("onboardingSession + authenticated resumes the provisioning chat", async () => {
+  test("onboardingSession + authenticated shows the Discord link confirmation, not a web chat", async () => {
     authState = { isAuthenticated: true, isLoading: false };
     const page = await renderPage(
       "/get-started?onboardingSession=0f5f9f9a-72cf-45e1-b1a1-2b7f9b1de111",
@@ -218,8 +249,59 @@ describe("GetStartedPage platform continuation", () => {
 
     expect(page.html()).not.toContain(PICKER_HEADER);
     expect(page.html()).not.toContain(SIGN_IN_HEADER);
-    // The provisioning chat hook fires its mount request.
-    expect(chatFetch).toHaveBeenCalled();
+    // Preview/confirm handoff (#18161 contract): informed confirmation first.
+    expect(page.query("continuation-confirm")).not.toBeNull();
+    expect(page.html()).toContain("shadow#0001");
+
+    page.unmount();
+  });
+
+  test("confirming the link lands on the 'head back to Discord' terminal state", async () => {
+    authState = { isAuthenticated: true, isLoading: false };
+    const page = await renderPage(
+      "/get-started?onboardingSession=0f5f9f9a-72cf-45e1-b1a1-2b7f9b1de111",
+    );
+
+    const confirmButton = page.query("continuation-confirm-button");
+    expect(confirmButton).not.toBeNull();
+    (confirmButton as HTMLButtonElement).click();
+    await new Promise((resolve) => setTimeout(resolve, 150));
+
+    // The redemption POST carried the explicit confirmation flag.
+    const confirmCall = chatFetch.mock.calls.find(([, init]) => {
+      if (!init || typeof (init as RequestInit).body !== "string") {
+        return false;
+      }
+      try {
+        const body = JSON.parse((init as RequestInit).body as string);
+        return body.confirmPlatformLink === true;
+      } catch {
+        return false;
+      }
+    });
+    expect(confirmCall).toBeDefined();
+
+    // Terminal state prompts back to Discord — no web chat.
+    expect(page.query("continuation-done")).not.toBeNull();
+    expect(page.html()).toContain("Head back to Discord");
+    expect(page.query("continuation-open-discord")).not.toBeNull();
+
+    page.unmount();
+  });
+
+  test("a non-Discord continuation falls back to the provisioning chat", async () => {
+    authState = { isAuthenticated: true, isLoading: false };
+    previewResult = null; // preview rejects (e.g. phone-originated session)
+    const page = await renderPage(
+      "/get-started?onboardingSession=0f5f9f9a-72cf-45e1-b1a1-2b7f9b1de111",
+    );
+
+    expect(page.query("continuation-confirm")).toBeNull();
+    // Fallback mounts the provisioning chat, which fires its POST.
+    const chatPost = chatFetch.mock.calls.find(
+      ([, init]) => typeof (init as RequestInit)?.body === "string",
+    );
+    expect(chatPost).toBeDefined();
 
     page.unmount();
   });

@@ -26,7 +26,7 @@ describe("resolveOnboardingEntryStep", () => {
     ).toBe("ONBOARDING_SIGN_IN");
   });
 
-  test("authenticated continuation resumes the provisioning chat", () => {
+  test("authenticated continuation continues into the identity-link handoff", () => {
     expect(
       resolveOnboardingEntryStep({
         onboardingSessionId: SESSION,
@@ -35,7 +35,7 @@ describe("resolveOnboardingEntryStep", () => {
         discordCode: null,
         methodParam: null,
       }),
-    ).toBe("PROVISIONING_CHAT");
+    ).toBe("CONTINUATION_LINK");
   });
 
   test("no continuation id keeps the default flow (picker)", () => {

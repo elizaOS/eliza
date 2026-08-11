@@ -4,12 +4,14 @@
  * A visitor who lands with an `onboardingSession` query parameter came from a
  * platform chat (Discord DM "Connect" button, SMS link). They already chose
  * their platform, so the connector picker is never the right destination:
- * signed-in visitors resume the provisioning chat, signed-out visitors go
+ * signed-in visitors continue into the identity-link handoff (Discord
+ * sessions confirm the link and are prompted back to Discord; other platform
+ * sessions fall back to the web provisioning chat), signed-out visitors go
  * straight to sign-in. Kept as a pure function so the routing contract is
  * directly unit-testable outside the page component.
  */
 
-export type OnboardingEntryStep = "PROVISIONING_CHAT" | "ONBOARDING_SIGN_IN";
+export type OnboardingEntryStep = "CONTINUATION_LINK" | "ONBOARDING_SIGN_IN";
 
 export interface OnboardingEntryInput {
   /** `onboardingSession` query parameter (or restored continuation). */
@@ -32,7 +34,7 @@ export function resolveOnboardingEntryStep(
   input: OnboardingEntryInput,
 ): OnboardingEntryStep | null {
   if (!input.onboardingSessionId || input.isLinkMode) return null;
-  if (input.isAuthenticated) return "PROVISIONING_CHAT";
+  if (input.isAuthenticated) return "CONTINUATION_LINK";
   if (input.discordCode || input.methodParam) return null;
   return "ONBOARDING_SIGN_IN";
 }
