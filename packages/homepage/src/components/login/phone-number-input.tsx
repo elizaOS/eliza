@@ -54,7 +54,7 @@ export function buildFullPhoneNumber(
   return `+${dialCode}${cleanPhone}`;
 }
 
-type PhoneInputVariant = "light" | "dark";
+type PhoneInputVariant = "light" | "dark" | "glass";
 
 interface PhoneNumberInputProps {
   selectedCountry: string;
@@ -74,6 +74,18 @@ const variantStyles = {
     label:
       "relative flex h-14 shrink-0 cursor-pointer items-center gap-2 pl-3 pr-2 text-neutral-600 hover:text-neutral-900",
     flag: "size-6 rounded-xs overflow-hidden shrink-0 pointer-events-none",
+    chevron: "size-4 shrink-0 pointer-events-none text-neutral-400",
+    select:
+      "absolute inset-0 cursor-pointer appearance-none bg-transparent opacity-0",
+    input:
+      "rounded-none border-0 bg-transparent text-neutral-900 placeholder:text-neutral-400 focus-visible:ring-0 focus-visible:ring-offset-0 h-14 px-4 text-base flex-1 min-w-0",
+  },
+  glass: {
+    wrapper:
+      "w-full flex items-center rounded-full border border-white/60 bg-white/40 backdrop-blur-md overflow-hidden focus-within:bg-white/60 focus-within:border-white/80 transition-colors",
+    label:
+      "relative flex h-14 shrink-0 cursor-pointer items-center gap-2 pl-4 pr-2 text-neutral-600 hover:text-neutral-900",
+    flag: "size-6 rounded-full overflow-hidden shrink-0 pointer-events-none",
     chevron: "size-4 shrink-0 pointer-events-none text-neutral-400",
     select:
       "absolute inset-0 cursor-pointer appearance-none bg-transparent opacity-0",
