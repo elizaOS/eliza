@@ -40,8 +40,10 @@ import {
 	MobileDeviceBridgeService,
 	type MobileDeviceBridgeStatus,
 	ModelType,
+	type Plugin,
 	resolveBackgroundInferenceBudget,
 	resolveStateDir,
+	ServiceType,
 	type TextEmbeddingParams,
 } from "@elizaos/core";
 import { resolveStoredModelPath } from "./shared/local-inference-stored-path.ts";
@@ -54,6 +56,8 @@ const DEFAULT_CALL_TIMEOUT_MS = DEFAULT_NATIVE_REQUEST_TIMEOUT_MS;
 const DEFAULT_LOAD_TIMEOUT_MS = DEFAULT_NATIVE_REQUEST_TIMEOUT_MS;
 const SERVICE_ENABLED = process.env.ELIZA_DEVICE_BRIDGE_ENABLED?.trim() === "1";
 const registeredRuntimes = new WeakSet<AgentRuntime>();
+let registeredRuntimeCount = 0;
+const deviceAttachUnsubscribers = new WeakMap<AgentRuntime, () => void>();
 /**
  * The trigger that actually bound the capacitor-llama handlers, or null while
  * nothing registered them. "bionic-host" is the true in-process serving signal
@@ -167,6 +171,7 @@ interface MinimalWebSocket {
 	readyState: number;
 	send(data: string): void;
 	close(code?: number, reason?: string): void;
+	terminate?(): void;
 	on(event: "message", listener: (data: Buffer | string) => void): unknown;
 	on(event: "close", listener: () => void): unknown;
 	on(event: "error", listener: (err: Error) => void): unknown;
@@ -184,7 +189,14 @@ interface WssInstance {
 		cb: (ws: MinimalWebSocket) => void,
 	): void;
 	on(event: "error", listener: (err: Error) => void): unknown;
+	close(callback?: (error?: Error) => void): void;
 }
+
+type UpgradeHandler = (
+	request: IncomingMessage,
+	socket: Duplex,
+	head: Buffer,
+) => void;
 
 interface WsModule {
 	WebSocketServer: new (options: {
@@ -340,6 +352,15 @@ export type { MobileDeviceBridgeStatus };
 
 class MobileDeviceBridge {
 	private wss: WssInstance | null = null;
+	private lifecycleGeneration = 0;
+	private attachedServer: HttpServer | null = null;
+	private upgradeHandler: UpgradeHandler | null = null;
+	private serverCloseHandler: (() => void) | null = null;
+	private readonly sockets = new Set<MinimalWebSocket>();
+	private readonly heartbeatTimers = new Map<
+		MinimalWebSocket,
+		ReturnType<typeof setInterval>
+	>();
 	private readonly devices = new Map<string, ConnectedDevice>();
 	private readonly attachListeners = new Set<() => void>();
 	private readonly pendingLoads = new Map<string, Pending<void>>();
@@ -371,7 +392,8 @@ class MobileDeviceBridge {
 				this.pendingLoads.size +
 				this.pendingUnloads.size +
 				this.pendingGenerates.size +
-				this.pendingEmbeds.size,
+				this.pendingEmbeds.size +
+				this.pendingFormatChats.size,
 			modelPath: resolveLocalModelPath("TEXT_LARGE"),
 		};
 	}
@@ -384,8 +406,33 @@ class MobileDeviceBridge {
 			);
 			return;
 		}
-		const wsModule = await import("ws");
+		const serverCloseHandler = () => {
+			// error-policy:J6 the server close is already committed; transport
+			// teardown failures are logged after every release path has been attempted.
+			void this.close().catch((error) => {
+				logger.warn(
+					"[mobile-device-bridge] Server-owned transport teardown failed:",
+					error instanceof Error ? error.message : String(error),
+				);
+			});
+		};
+		server.once("close", serverCloseHandler);
+		const generation = this.lifecycleGeneration;
+		let wsModule: unknown;
+		try {
+			wsModule = await import("ws");
+		} catch (error) {
+			// error-policy:J6 the provisional close listener is attach-attempt
+			// teardown; release it before preserving the import failure for the caller.
+			server.off("close", serverCloseHandler);
+			throw error;
+		}
+		if (generation !== this.lifecycleGeneration || this.wss) {
+			server.off("close", serverCloseHandler);
+			return;
+		}
 		if (!isWsModule(wsModule)) {
+			server.off("close", serverCloseHandler);
 			throw new Error("ws module did not expose WebSocketServer/WebSocket");
 		}
 		const ws = wsModule;
@@ -399,13 +446,17 @@ class MobileDeviceBridge {
 			logger.warn("[mobile-device-bridge] WSS error:", err.message);
 		});
 
-		server.on("upgrade", (request, socket, head) => {
+		const upgradeHandler: UpgradeHandler = (request, socket, head) => {
 			const url = new URL(request.url ?? "/", "http://localhost");
 			if (url.pathname !== DEVICE_BRIDGE_PATH) return;
 			wss.handleUpgrade(request, socket, head, (client: MinimalWebSocket) => {
 				this.handleConnection(client, ws.WebSocket, url);
 			});
-		});
+		};
+		this.attachedServer = server;
+		this.upgradeHandler = upgradeHandler;
+		this.serverCloseHandler = serverCloseHandler;
+		server.on("upgrade", upgradeHandler);
 
 		logger.info(
 			`[mobile-device-bridge] Listening for Capacitor device bridge at ${DEVICE_BRIDGE_PATH}`,
@@ -417,6 +468,13 @@ class MobileDeviceBridge {
 		WsCtor: WsConstructor,
 		url: URL,
 	) {
+		this.sockets.add(socket);
+		socket.on("close", () => {
+			this.sockets.delete(socket);
+			const heartbeat = this.heartbeatTimers.get(socket);
+			if (heartbeat) clearInterval(heartbeat);
+			this.heartbeatTimers.delete(socket);
+		});
 		const queryToken = url.searchParams.get("token")?.trim();
 		if (
 			!this.expectedPairingToken ||
@@ -507,6 +565,7 @@ class MobileDeviceBridge {
 		if (typeof heartbeat === "object" && "unref" in heartbeat) {
 			(heartbeat as { unref(): void }).unref();
 		}
+		this.heartbeatTimers.set(socket, heartbeat);
 	}
 
 	private handleDeviceMessage(msg: DeviceOutbound): void {
@@ -587,8 +646,9 @@ class MobileDeviceBridge {
 	 * bootstrap defers registration through this hook when neither the bionic
 	 * host nor a connected device is available at boot.
 	 */
-	onDeviceAttached(listener: () => void): void {
+	onDeviceAttached(listener: () => void): () => void {
 		this.attachListeners.add(listener);
+		return () => this.attachListeners.delete(listener);
 	}
 
 	private notifyDeviceAttached(): void {
@@ -599,6 +659,83 @@ class MobileDeviceBridge {
 
 	private primaryDevice(): ConnectedDevice | null {
 		return this.devices.values().next().value ?? null;
+	}
+
+	private rejectPending<T>(
+		pending: Map<string, Pending<T>>,
+		error: Error,
+	): void {
+		for (const item of pending.values()) {
+			clearTimeout(item.timeout);
+			item.reject(error);
+		}
+		pending.clear();
+	}
+
+	/** Release the server-owned upgrade hook, clients, timers, and outstanding RPCs. */
+	async close(): Promise<void> {
+		const closeErrors: Error[] = [];
+		this.lifecycleGeneration += 1;
+		const server = this.attachedServer;
+		const upgradeHandler = this.upgradeHandler;
+		const serverCloseHandler = this.serverCloseHandler;
+		this.attachedServer = null;
+		this.upgradeHandler = null;
+		this.serverCloseHandler = null;
+		if (server && upgradeHandler) server.off("upgrade", upgradeHandler);
+		if (server && serverCloseHandler) server.off("close", serverCloseHandler);
+
+		this.attachListeners.clear();
+		const stopped = new Error(
+			"DEVICE_BRIDGE_STOPPED: mobile device bridge runtime stopped",
+		);
+		this.rejectPending(this.pendingLoads, stopped);
+		this.rejectPending(this.pendingUnloads, stopped);
+		this.rejectPending(this.pendingGenerates, stopped);
+		this.rejectPending(this.pendingEmbeds, stopped);
+		this.rejectPending(this.pendingFormatChats, stopped);
+
+		for (const heartbeat of this.heartbeatTimers.values()) {
+			clearInterval(heartbeat);
+		}
+		this.heartbeatTimers.clear();
+		for (const socket of this.sockets) {
+			try {
+				if (socket.terminate) socket.terminate();
+				else socket.close(1001, "runtime-stopped");
+			} catch (error) {
+				// error-policy:J6 every remaining transport resource still receives
+				// its teardown opportunity before the aggregate reaches runtime stop.
+				closeErrors.push(
+					error instanceof Error ? error : new Error(String(error)),
+				);
+			}
+		}
+		this.sockets.clear();
+		this.devices.clear();
+		registeredModelTrigger = null;
+
+		const wss = this.wss;
+		this.wss = null;
+		if (wss) {
+			try {
+				await new Promise<void>((resolve, reject) => {
+					wss.close((error) => (error ? reject(error) : resolve()));
+				});
+			} catch (error) {
+				// error-policy:J6 socket cleanup above is complete; preserve the WSS
+				// close failure for the runtime's teardown diagnostics.
+				closeErrors.push(
+					error instanceof Error ? error : new Error(String(error)),
+				);
+			}
+		}
+		if (closeErrors.length > 0) {
+			throw new AggregateError(
+				closeErrors,
+				"Mobile device bridge transport teardown failed",
+			);
+		}
 	}
 
 	private sendToPrimary<T>(
@@ -1922,8 +2059,29 @@ export class CapacitorMobileDeviceBridgeService extends MobileDeviceBridgeServic
 		await unloadMobileDeviceBridgeModel();
 	}
 
-	async stop(): Promise<void> {}
+	async stop(): Promise<void> {
+		const runtime = this.runtime as AgentRuntime;
+		deviceAttachUnsubscribers.get(runtime)?.();
+		deviceAttachUnsubscribers.delete(runtime);
+		if (registeredRuntimes.delete(runtime)) {
+			registeredRuntimeCount = Math.max(0, registeredRuntimeCount - 1);
+		}
+		if (registeredRuntimeCount === 0) registeredModelTrigger = null;
+	}
 }
+
+/**
+ * Mobile-host plugin owning the canonical bridge service. The pre-initialize
+ * bootstrap registers this plugin, rather than its service class directly, so
+ * a later character-plugin pass sees the same plugin name and cannot duplicate
+ * the singleton service instance or its teardown call.
+ */
+export const mobileDeviceBridgePlugin: Plugin = {
+	name: "capacitor-bridge",
+	description:
+		"Registers the mobile device inference bridge as a runtime service.",
+	services: [CapacitorMobileDeviceBridgeService],
+};
 
 export async function attachMobileDeviceBridgeToServer(
 	server: HttpServer,
@@ -2142,6 +2300,7 @@ function registerMobileDeviceBridgeModels(
 		`[mobile-device-bridge] Registered ${PROVIDER} handlers for TEXT_SMALL / TEXT_LARGE${embeddingModelPath ? " / TEXT_EMBEDDING" : ""} at priority ${LOCAL_INFERENCE_PRIORITY} (via ${trigger})`,
 	);
 	registeredRuntimes.add(runtime);
+	registeredRuntimeCount += 1;
 	registeredModelTrigger = trigger;
 	return true;
 }
@@ -2153,6 +2312,9 @@ export async function ensureMobileDeviceBridgeInferenceHandlers(
 	if (!SERVICE_ENABLED || process.env.ELIZA_LOCAL_LLAMA?.trim() === "1") {
 		logger.debug("[mobile-device-bridge] Disabled or AOSP local llama active");
 		return false;
+	}
+	if (!runtime.hasService(ServiceType.MOBILE_DEVICE_BRIDGE)) {
+		await runtime.registerPlugin(mobileDeviceBridgePlugin);
 	}
 	if (registeredRuntimes.has(runtime)) {
 		logger.debug("[mobile-device-bridge] Handlers already registered");
@@ -2184,8 +2346,17 @@ export async function ensureMobileDeviceBridgeInferenceHandlers(
 		"[mobile-device-bridge] No bionic host delegation and no device bridge attached — " +
 			`${PROVIDER} TEXT handlers stay unregistered until a device bridge connects`,
 	);
-	mobileDeviceBridge.onDeviceAttached(() => {
-		registerMobileDeviceBridgeModels(runtime, "device-bridge");
-	});
-	return false;
+	if (!deviceAttachUnsubscribers.has(runtime)) {
+		const registerOnAttach = () => {
+			registerMobileDeviceBridgeModels(runtime, "device-bridge");
+		};
+		deviceAttachUnsubscribers.set(
+			runtime,
+			mobileDeviceBridge.onDeviceAttached(registerOnAttach),
+		);
+		// Close the status-check/subscription race: if registration landed after
+		// the earlier check, bind the handlers now through the same callback.
+		if (mobileDeviceBridge.status().connected) registerOnAttach();
+	}
+	return registeredRuntimes.has(runtime);
 }
