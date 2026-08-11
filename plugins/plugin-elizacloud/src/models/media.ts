@@ -203,29 +203,56 @@ export async function handleAudioGeneration(
     numberValue(params.durationSeconds) ?? numberValue(params.duration);
 
   logger.log("[ELIZAOS_CLOUD] Using AUDIO model via /generate-music");
-  const response = await retryMediaWarming(
-    () =>
-      cloudMediaClientFactory(
-        runtime,
-      ).routes.postApiV1GenerateMusic<CloudMusicResponse>({
-        json: cleanRecord({
-          prompt,
-          model: stringValue(params.model),
-          provider: stringValue(params.provider),
-          durationSeconds,
-          referenceUrl: stringValue(params.referenceUrl ?? params.audioUrl),
-          seed: numberValue(params.seed),
-          outputFormat: stringValue(params.outputFormat),
-          instrumental: booleanValue(params.instrumental),
-          extraInput: params.genre ? { genre: params.genre } : undefined,
-        }),
-        timeoutMs: resolveCloudTimeoutMs(
-          "ELIZAOS_CLOUD_MUSIC_TIMEOUT_MS",
-          300_000,
-        ),
-      }),
-    "Music generation",
+  const requestJson = cleanRecord({
+    prompt,
+    model: stringValue(params.model),
+    provider: stringValue(params.provider),
+    durationSeconds,
+    referenceUrl: stringValue(params.referenceUrl ?? params.audioUrl),
+    seed: numberValue(params.seed),
+    outputFormat: stringValue(params.outputFormat),
+    instrumental: booleanValue(params.instrumental),
+    extraInput: params.genre ? { genre: params.genre } : undefined,
+  });
+  const timeoutMs = resolveCloudTimeoutMs(
+    "ELIZAOS_CLOUD_MUSIC_TIMEOUT_MS",
+    300_000,
   );
+  const postMusic = (json: Record<string, JsonValue>) =>
+    retryMediaWarming(
+      () =>
+        cloudMediaClientFactory(
+          runtime,
+        ).routes.postApiV1GenerateMusic<CloudMusicResponse>({
+          json,
+          timeoutMs,
+        }),
+      "Music generation",
+    );
+  let response: CloudMusicResponse;
+  try {
+    response = await postMusic(requestJson);
+  } catch (err) {
+    // error-policy:J2 fixed-price music models 400 with an explicitly
+    // machine-actionable hint ("...omit durationSeconds and bill it as a
+    // fixed-price generation" — generate-music route). Observed live: "make
+    // me a 10 second synthwave loop" set durationSeconds=10 against the
+    // default fal-ai/minimax-music model and the whole turn failed. Honour
+    // the server's instruction with ONE retry minus the param; any other
+    // failure rethrows unchanged.
+    const message = err instanceof Error ? err.message : String(err);
+    if (
+      requestJson.durationSeconds === undefined ||
+      !/does not support durationSeconds/i.test(message)
+    ) {
+      throw err;
+    }
+    logger.warn(
+      "[ELIZAOS_CLOUD] Music model rejects durationSeconds; retrying as a fixed-price generation",
+    );
+    const { durationSeconds: _omitted, ...fixedPriceJson } = requestJson;
+    response = await postMusic(fixedPriceJson);
+  }
 
   const audioUrl = response.music?.url;
   if (!audioUrl) {
