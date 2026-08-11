@@ -32,6 +32,7 @@ import {
 	type State,
 	type UUID,
 } from "../../types/index.ts";
+import { getLocalServerUrl } from "../../utils.ts";
 import { DocumentService } from "../documents/service.ts";
 import {
 	createDocumentNoteFilename,
@@ -148,6 +149,8 @@ function missingReadableContentMessage(records: AttachmentRecord[]): string {
 
 /** Same cap the ingest path enforces (`ATTACHMENT_FETCH_MAX_BYTES`). */
 const ON_DEMAND_TRANSCRIPTION_MAX_BYTES = 50 * 1024 * 1024;
+/** Same bound the pre-rework provider-side transcription fetch enforced. */
+const ON_DEMAND_TRANSCRIPTION_TIMEOUT_MS = 30_000;
 
 /**
  * True when a TRANSCRIPTION failure means no provider can serve at all —
@@ -158,6 +161,13 @@ const ON_DEMAND_TRANSCRIPTION_MAX_BYTES = 50 * 1024 * 1024;
  */
 function isTranscriptionUnavailableError(err: unknown): err is Error {
 	if (!(err instanceof Error)) return false;
+	// Fetch-layer failures are NEVER unavailability evidence: MediaFetchError
+	// messages embed up to ~200 chars of the REMOTE response body
+	// (media/fetch.ts throwIfHttpError), so a hostile host could plant
+	// "TRANSCRIPTION not available" prose there and forge the disabled reply.
+	// Matched by name rather than instanceof so the exclusion survives module
+	// duplication across the multi-target build and test module mocks.
+	if (err.name === "MediaFetchError") return false;
 	if (err.name.endsWith("UnavailableError")) return true;
 	return /falling through to next TRANSCRIPTION handler|no (?:model )?handler.*TRANSCRIPTION|TRANSCRIPTION.*not (?:available|enabled|registered)/i.test(
 		err.message,
@@ -165,17 +175,113 @@ function isTranscriptionUnavailableError(err: unknown): err is Error {
 }
 
 /**
+ * Fetches a conversation attachment's bytes for transcription, mirroring the
+ * ingest split in `MessageService.fetchAttachmentBytes`: remote
+ * (attacker-influenceable) http(s) URLs go through the SSRF-guarded,
+ * size-capped, time-bounded media fetch, while relative media-store URLs
+ * (`/api/media/<sha256>.<ext>`, the canonical stored shape — they cannot pass
+ * remote-only URL parsing) resolve against the local server and use the
+ * trusted runtime fetch with the same size cap.
+ */
+async function fetchTranscribableBytes(
+	runtime: IAgentRuntime,
+	url: string,
+): Promise<Buffer> {
+	if (/^(http|https):\/\//.test(url)) {
+		const { buffer } = await fetchRemoteMedia({
+			url,
+			maxBytes: ON_DEMAND_TRANSCRIPTION_MAX_BYTES,
+			timeoutMs: ON_DEMAND_TRANSCRIPTION_TIMEOUT_MS,
+		});
+		return buffer;
+	}
+	const runtimeFetch = runtime.fetch ?? globalThis.fetch;
+	const res = await runtimeFetch(getLocalServerUrl(url));
+	if (!res.ok) {
+		throw new Error(`Failed to fetch attachment: ${res.statusText}`);
+	}
+	const buffer = Buffer.from(await res.arrayBuffer());
+	if (buffer.length > ON_DEMAND_TRANSCRIPTION_MAX_BYTES) {
+		throw new Error(
+			`Attachment exceeds ${ON_DEMAND_TRANSCRIPTION_MAX_BYTES} bytes`,
+		);
+	}
+	return buffer;
+}
+
+/**
+ * Persists a fresh on-demand transcript into the stored message memory that
+ * owns the attachment — the same `updateMemory` write ingest performs after
+ * `processAttachments` — so later reads answer from storage instead of
+ * re-downloading the bytes and re-billing the STT provider. Only the matching
+ * attachment entry changes: its stale `notProcessed` marker is dropped, every
+ * other stored field survives, and the gathering layer's underscore transport
+ * fields never reach storage. Never throws — the in-memory transcript already
+ * serves this reply, so a lost write only costs one future re-transcription.
+ */
+async function persistTranscript(
+	runtime: IAgentRuntime,
+	record: AttachmentRecord,
+	transcript: string,
+): Promise<void> {
+	const { attachment } = record;
+	const messageId = attachment._messageId;
+	// Without a known owning row (e.g. an unsaved in-flight message) there is
+	// nothing to update; the next read simply retries transcription.
+	if (!messageId) return;
+	try {
+		const stored = await runtime.getMemoryById(messageId);
+		const storedAttachments = stored?.content.attachments;
+		if (!stored || !Array.isArray(storedAttachments)) return;
+		let found = false;
+		const attachments = storedAttachments.map((entry) => {
+			if (entry.id !== attachment.id) return entry;
+			found = true;
+			const { notProcessed: _stale, ...rest } = entry;
+			return {
+				...rest,
+				text: transcript,
+				description: `Transcript: ${transcript}`,
+			};
+		});
+		if (!found) return;
+		const persisted = await runtime.updateMemory({
+			id: messageId,
+			content: { ...stored.content, attachments },
+		});
+		if (!persisted) {
+			logger.warn(
+				{ attachmentId: attachment.id, messageId },
+				"[ReadAttachment] updateMemory declined to persist the on-demand transcript",
+			);
+		}
+	} catch (err) {
+		// error-policy:J7 persistence is bookkeeping for future reads; its
+		// failure must not break the reply the transcript already serves.
+		logger.warn(
+			{ attachmentId: attachment.id, messageId, err },
+			"[ReadAttachment] Failed to persist the on-demand transcript",
+		);
+		runtime.reportError("ReadAttachmentAction.persistTranscript", err, {
+			attachmentId: attachment.id,
+			messageId,
+		});
+	}
+}
+
+/**
  * Live retry for media records whose ingest-time transcription produced
  * nothing (observed live: a video posted while cloud STT was gated off has no
  * transcript, and every later "can you get one?" dead-ended on the canned
  * missing-transcript reply even after STT came back). Fetches the stored
- * attachment bytes through core's SSRF-guarded, size-capped media fetch —
- * conversation media the ingest path already fetched once, not a new URL from
- * chat text (that still routes to WEB_FETCH) — and hands the provider a
- * buffer, mirroring the ingest call shape. Success fills the record in place
- * so read/save answer from the fresh transcript; unavailability keeps the
- * explicit unavailable state; a transient failure changes nothing so the
- * user-facing reply stays the honest open-ended "yet".
+ * attachment bytes with ingest's remote/local split — conversation media the
+ * ingest path already fetched once, not a new URL from chat text (that still
+ * routes to WEB_FETCH) — and hands the provider a buffer, mirroring the
+ * ingest call shape. Success fills the record in place so read/save answer
+ * from the fresh transcript and persists it to the owning message so later
+ * reads stop re-billing STT; unavailability keeps the explicit unavailable
+ * state; a transient failure (remote or local fetch, provider blip) changes
+ * nothing so the user-facing reply stays the honest open-ended "yet".
  */
 async function transcribeMediaOnDemand(
 	runtime: IAgentRuntime,
@@ -187,10 +293,7 @@ async function transcribeMediaOnDemand(
 		if (!isMediaAttachment(record) || record.content.trim()) continue;
 		if (typeof attachment.url !== "string" || !attachment.url.trim()) continue;
 		try {
-			const { buffer } = await fetchRemoteMedia({
-				url: attachment.url,
-				maxBytes: ON_DEMAND_TRANSCRIPTION_MAX_BYTES,
-			});
+			const buffer = await fetchTranscribableBytes(runtime, attachment.url);
 			const transcript = await runtime.useModel(
 				ModelType.TRANSCRIPTION,
 				buffer,
@@ -202,6 +305,7 @@ async function transcribeMediaOnDemand(
 				attachment.description = `Transcript: ${text}`;
 				attachment.notProcessed = undefined;
 				transcribedAny = true;
+				await persistTranscript(runtime, record, text);
 			}
 		} catch (err) {
 			// error-policy:J4 the attachment stays readable-as-absent and the
