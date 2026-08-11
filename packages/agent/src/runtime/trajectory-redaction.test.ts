@@ -51,6 +51,44 @@ describe("normalizeLlmCallPayload redaction", () => {
   });
 });
 
+describe("normalizeLlmCallPayload tool-call-only response coercion", () => {
+  // A tool-call-only completion (finishReason=tool-calls) has no assistant
+  // text, so producers pass response=undefined; the recorder must coerce it to
+  // "" instead of rejecting the whole capture (TRAJECTORY_CAPTURE_INVALID) and
+  // dropping the llm evidence for tool-heavy turns.
+  const base = {
+    model: "test-model",
+    purpose: "planner",
+    actionType: "tool-call",
+    userPrompt: "check the CI on your PRs",
+  };
+
+  it("coerces a missing response to '' (object payload shape)", () => {
+    const result = normalizeLlmCallPayload([
+      { stepId: "s-1", ...base, finishReason: "tool-calls" },
+    ]);
+    expect(result?.params.response).toBe("");
+  });
+
+  it("coerces a missing response to '' (stepId + details shape)", () => {
+    const result = normalizeLlmCallPayload(["s-1", { ...base }]);
+    expect(result?.params.response).toBe("");
+  });
+
+  it("still rejects a present-but-non-string response", () => {
+    expect(() =>
+      normalizeLlmCallPayload([{ stepId: "s-1", ...base, response: 42 }]),
+    ).toThrow();
+  });
+
+  it("preserves a real response unchanged", () => {
+    const result = normalizeLlmCallPayload([
+      { stepId: "s-1", ...base, response: "on it." },
+    ]);
+    expect(result?.params.response).toBe("on it.");
+  });
+});
+
 describe("shouldEnableTrajectoryLoggingByDefault", () => {
   it("returns false in NODE_ENV=production without explicit opt-in", () => {
     expect(
