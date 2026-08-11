@@ -198,13 +198,14 @@ describe("media generation cold-cache warming retry", () => {
       routes: { postApiV1GenerateVideo: vi.fn(), postApiV1GenerateMusic },
     }));
 
-    await expect(
-      handleAudioGeneration(runtime(), {
-        prompt: "synthwave loop",
-        audioKind: "music",
-        durationSeconds: 10,
-      })
-    ).resolves.toMatchObject({ url: "https://cdn/m2.mp3" });
+    const result = await handleAudioGeneration(runtime(), {
+      prompt: "synthwave loop",
+      audioKind: "music",
+      durationSeconds: 10,
+    });
+
+    expect(result).toMatchObject({ url: "https://cdn/m2.mp3" });
+    expect(result).not.toHaveProperty("duration");
     expect(postApiV1GenerateMusic).toHaveBeenCalledTimes(2);
     // The retry dropped the rejected param.
     expect(postApiV1GenerateMusic.mock.calls[0]?.[0]?.json?.durationSeconds).toBe(10);
