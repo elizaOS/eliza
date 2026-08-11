@@ -102,6 +102,7 @@ Set these as environment variables or in your character's `settings` object.
 | Variable | Default | Description |
 |---|---|---|
 | `OPENAI_BROWSER_BASE_URL` | — | Proxy URL for browser builds (keeps key server-side) |
+| `OPENAI_BROWSER_UPSTREAM_BASE_URL` | — | Actual proxy upstream used for endpoint-specific capability checks |
 | `OPENAI_BROWSER_EMBEDDING_URL` | — | Proxy URL for browser embedding requests |
 | `OPENAI_ALLOW_BROWSER_API_KEY` | `false` | Send auth header in browser builds (opt-in) |
 
