@@ -65,6 +65,19 @@ describe("resolveShutdownDrainWindowMs", () => {
       ).toBe(DEFAULT_SHUTDOWN_DRAIN_WINDOW_MS);
     }
   });
+
+  it("accepts the timer-safe boundaries as-is", () => {
+    // Guards the range staying inclusive: 1 is the smallest schedulable
+    // window and 2147483647 the largest before Node's 32-bit overflow.
+    expect(
+      resolveShutdownDrainWindowMs({ [SHUTDOWN_DRAIN_WINDOW_ENV]: "1" }),
+    ).toBe(1);
+    expect(
+      resolveShutdownDrainWindowMs({
+        [SHUTDOWN_DRAIN_WINDOW_ENV]: "2147483647",
+      }),
+    ).toBe(2_147_483_647);
+  });
 });
 
 describe("drainSpawnedChildren (deterministic)", () => {
