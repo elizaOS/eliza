@@ -23,6 +23,12 @@ export function analyzeWalletSmartMoney(
   const limitations: string[] = [];
   let smartMoneyScore = 0;
 
+  // See whale.ts's identical flag - token holdings were truncated/timed
+  // out, so portfolio.diversityLevel and whale.estimatedPortfolioUsdValue
+  // (itself derived from the same incomplete portfolio) are not usable
+  // evidence, not genuinely "low."
+  const portfolioDataIncomplete = portfolio.dataCompleteness === "incomplete";
+
   if (age.classification === "veteran") {
     smartMoneyScore += 20;
     positiveSignals.push(
@@ -67,7 +73,11 @@ export function analyzeWalletSmartMoney(
     );
   }
 
-  if (portfolio.diversityLevel === "high") {
+  if (portfolioDataIncomplete) {
+    limitations.push(
+      "Token holdings could not be fully retrieved, so portfolio diversity is unknown rather than genuinely limited.",
+    );
+  } else if (portfolio.diversityLevel === "high") {
     smartMoneyScore += 15;
     positiveSignals.push(
       "Wallet has high portfolio diversity.",
@@ -154,7 +164,8 @@ export function analyzeWalletSmartMoney(
     },
     {
       condition:
-        typeof portfolio.tokenCount === "number",
+        typeof portfolio.tokenCount === "number" &&
+        !portfolioDataIncomplete,
       score: 15,
       reason:
         "Portfolio composition data was available.",
@@ -162,7 +173,8 @@ export function analyzeWalletSmartMoney(
     {
       condition:
         whale.estimatedPortfolioUsdValue !== null &&
-        whale.estimatedPortfolioUsdValue !== undefined,
+        whale.estimatedPortfolioUsdValue !== undefined &&
+        !portfolioDataIncomplete,
       score: 20,
       reason:
         "Estimated portfolio USD value was available.",
@@ -183,8 +195,9 @@ export function analyzeWalletSmartMoney(
     },
   ]);
 
-  const confidence =
-    positiveSignals.length >= 4
+  const confidence = portfolioDataIncomplete
+    ? "low"
+    : positiveSignals.length >= 4
       ? "high"
       : positiveSignals.length >= 2
         ? "medium"

@@ -27,6 +27,7 @@ import {
  */
 type WhaleReasonCode =
   | "usd_value_unavailable"
+  | "usd_value_incomplete_data"
   | "usd_value_at_least_1m"
   | "usd_value_at_least_250k"
   | "usd_value_at_least_50k"
@@ -43,6 +44,7 @@ type WhaleReasonCode =
   | "diversity_medium"
   | "diversity_low"
   | "diversity_none"
+  | "diversity_incomplete_data"
   | "funded_by_exchange"
   | "funded_by_bridge"
   | "funded_by_wallet"
@@ -69,6 +71,14 @@ export function analyzeWalletWhaleStatus(
       ? portfolio.estimatedTotalUsdValue
       : null;
 
+  // True when the underlying token-holdings fetch was truncated/timed out
+  // (see WalletPortfolioSummary.dataCompleteness) - estimatedPortfolioUsdValue
+  // and diversityLevel below are still real numbers, just computed from a
+  // partial holdings list, not the wallet's true full portfolio. Scoring
+  // them at face value would make an incomplete-data wallet look
+  // confidently small/non-diverse instead of genuinely unknown.
+  const portfolioDataIncomplete = portfolio.dataCompleteness === "incomplete";
+
   const reasons: WhaleReason[] = [];
   const limitations: string[] = [];
 
@@ -82,7 +92,16 @@ export function analyzeWalletWhaleStatus(
    * The scoring remains capped so valuation cannot determine the
    * entire whale classification by itself.
    */
-  if (estimatedPortfolioUsdValue === null) {
+  if (portfolioDataIncomplete) {
+    reasons.push({
+      code: "usd_value_incomplete_data",
+      text: "Token holdings could not be fully retrieved, so the estimated USD portfolio value is based on partial data - it is not treated as evidence of wallet size either way.",
+    });
+
+    limitations.push(
+      "The wallet's token holdings could not be fully retrieved (the fetch was truncated or timed out) - USD portfolio value is not usable evidence for this investigation.",
+    );
+  } else if (estimatedPortfolioUsdValue === null) {
     reasons.push({
       code: "usd_value_unavailable",
       text: "USD portfolio value is unavailable, so wallet size confidence is limited.",
@@ -206,7 +225,12 @@ export function analyzeWalletWhaleStatus(
    * controls a broader portfolio, although diversity alone does
    * not prove substantial monetary value.
    */
-  if (portfolio.diversityLevel === "high") {
+  if (portfolioDataIncomplete) {
+    reasons.push({
+      code: "diversity_incomplete_data",
+      text: "Token holdings could not be fully retrieved, so portfolio diversity is unknown rather than genuinely low.",
+    });
+  } else if (portfolio.diversityLevel === "high") {
     whaleScore += 10;
 
     reasons.push({
@@ -357,7 +381,8 @@ export function analyzeWalletWhaleStatus(
 
       {
         condition:
-          typeof portfolio.tokenCount === "number",
+          typeof portfolio.tokenCount === "number" &&
+          !portfolioDataIncomplete,
 
         score: 15,
 
@@ -396,9 +421,10 @@ export function analyzeWalletWhaleStatus(
       },
     ]);
 
-  const confidence =
-    estimatedPortfolioUsdValue !== null &&
-    confidenceAnalysis.level === "high"
+  const confidence = portfolioDataIncomplete
+    ? "low"
+    : estimatedPortfolioUsdValue !== null &&
+        confidenceAnalysis.level === "high"
       ? "high"
       : confidenceAnalysis.level === "low"
         ? "low"

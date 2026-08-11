@@ -414,6 +414,19 @@ export type WalletPortfolioSummary = {
   topTokenHoldings: WalletPortfolioToken[];
   estimatedTotalUsdValue?: number | null;
   concentrationLevel: "none" | "low" | "medium" | "high";
+  // "incomplete" when the underlying token-holdings fetch was truncated or
+  // timed out (Solana's SOLANA_TOKEN_HOLDINGS_TRUNCATED, EVM's
+  // *_TOKEN_BALANCE_COUNT_EXCEEDS_PROVIDER_LIMIT) - every field above is
+  // still computed from whatever holdings WERE retrieved, but tokenCount/
+  // diversityLevel/estimatedTotalUsdValue reflect a partial wallet, not the
+  // true total. Downstream analyzers that read this summary (whale.ts,
+  // smartMoney.ts, alpha.ts, conviction.ts, profitability.ts) must not
+  // treat "low diversity"/"low value" at face value when this is
+  // "incomplete" - it may just mean the data wasn't fully retrievable, not
+  // that the wallet is actually small. NFT-holdings truncation does NOT
+  // affect this - nothing in WalletPortfolioSummary or its consumers reads
+  // nftHoldings, confirmed by grep before wiring this in.
+  dataCompleteness: "complete" | "incomplete";
   notes: string[];
 };
 

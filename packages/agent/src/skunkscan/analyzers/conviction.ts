@@ -27,6 +27,11 @@ export function analyzeWalletConviction(
   const conflictingSignals: string[] = [];
   const limitations: string[] = [];
 
+  // See whale.ts's identical flag - token holdings were truncated/timed
+  // out, so portfolio.diversityLevel is not usable evidence.
+  const portfolioDataIncomplete =
+    input.portfolio.dataCompleteness === "incomplete";
+
   if (
     input.strategy.primaryStrategy === "holding"
   ) {
@@ -47,7 +52,11 @@ export function analyzeWalletConviction(
     );
   }
 
-  if (
+  if (portfolioDataIncomplete) {
+    limitations.push(
+      "Token holdings could not be fully retrieved, so portfolio diversity was excluded from this score rather than treated as genuinely low.",
+    );
+  } else if (
     input.portfolio.diversityLevel === "medium"
   ) {
     score += 15;
@@ -55,9 +64,7 @@ export function analyzeWalletConviction(
     supportingSignals.push(
       "Portfolio shows balanced diversification.",
     );
-  }
-
-  if (
+  } else if (
     input.portfolio.diversityLevel === "high"
   ) {
     score += 20;
@@ -114,8 +121,9 @@ export function analyzeWalletConviction(
     convictionLevel = "very_low";
   }
 
-  const confidence =
-    score >= 70
+  const confidence = portfolioDataIncomplete
+    ? "low"
+    : score >= 70
       ? "high"
       : score >= 40
       ? "medium"

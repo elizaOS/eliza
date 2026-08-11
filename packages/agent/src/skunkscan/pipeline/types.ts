@@ -68,6 +68,12 @@ export interface WalletPipelineInput {
   // analyzer downstream consumes.
   normalizedRecentParsedTransactions: ParsedWalletTransaction[];
   tokenPrices: Record<string, TokenPrice>;
+  // True when tokenHoldings above is a truncated/timed-out partial list,
+  // not the wallet's real full holdings - Solana's SOLANA_TOKEN_HOLDINGS_
+  // TRUNCATED or EVM's *_TOKEN_BALANCE_COUNT_EXCEEDS_PROVIDER_LIMIT.
+  // Threaded into WalletPortfolioSummary.dataCompleteness. Defaults to
+  // false (every other chain/case) when omitted.
+  tokenHoldingsIncomplete?: boolean;
 }
 
 export type WalletActivityPipelineResult =

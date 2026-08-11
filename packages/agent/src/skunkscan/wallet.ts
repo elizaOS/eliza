@@ -393,6 +393,9 @@ const investigationWarnings: string[] = [
   firstParsedTransaction,
   normalizedRecentParsedTransactions,
   tokenPrices,
+  tokenHoldingsIncomplete: tokenBalancesResult.warnings.some(
+    (warning) => warning.code === "SOLANA_TOKEN_HOLDINGS_TRUNCATED",
+  ),
 });
 
 const {
@@ -692,6 +695,7 @@ warnings: investigationWarnings,
           firstParsedTransaction,
           normalizedRecentParsedTransactions,
           tokenPrices,
+          tokenHoldingsIncomplete: tokenBalanceCountExceedsProviderLimit,
         });
 
         const {
@@ -988,6 +992,7 @@ warnings: investigationWarnings,
           firstParsedTransaction,
           normalizedRecentParsedTransactions,
           tokenPrices,
+          tokenHoldingsIncomplete: tokenBalanceCountExceedsProviderLimit,
         });
 
         const {
@@ -1282,6 +1287,7 @@ warnings: investigationWarnings,
           firstParsedTransaction,
           normalizedRecentParsedTransactions,
           tokenPrices,
+          tokenHoldingsIncomplete: tokenBalanceCountExceedsProviderLimit,
         });
 
         const {
