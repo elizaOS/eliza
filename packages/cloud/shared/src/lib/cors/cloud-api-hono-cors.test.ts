@@ -74,6 +74,13 @@ describe("isFirstPartyOrigin", () => {
     // the browser preflight (the 2026-08-11 "phone number step fails" QA).
     expect(isFirstPartyOrigin("https://eliza.app")).toBe(true);
     expect(isFirstPartyOrigin("https://www.eliza.app")).toBe(true);
+    // The staging homepage (deploy-homepage-staging.yml -> staging.eliza.app)
+    // runs the same auth flows against staging.elizacloud.ai, which serves
+    // this same allowlist.
+    expect(isFirstPartyOrigin("https://staging.eliza.app")).toBe(true);
+    // Never a broad suffix match: sibling lookalikes stay third-party.
+    expect(isFirstPartyOrigin("https://evil-eliza.app")).toBe(false);
+    expect(isFirstPartyOrigin("https://eliza.app.evil.example")).toBe(false);
     expect(isFirstPartyOrigin("http://localhost:5173")).toBe(true);
     expect(isFirstPartyOrigin("https://supakan.nubs.site")).toBe(false);
     expect(isFirstPartyOrigin("https://evil.example.com")).toBe(false);

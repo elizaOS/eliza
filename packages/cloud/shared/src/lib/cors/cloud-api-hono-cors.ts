@@ -62,6 +62,12 @@ const STATIC_ALLOWED_ORIGINS = new Set<string>([
   // legacy allowlist in lib/utils/cors.ts, which always included eliza.app.
   "https://eliza.app",
   "https://www.eliza.app",
+  // staging.eliza.app (CF Pages project eliza-home-staging, deployed by
+  // .github/workflows/deploy-homepage-staging.yml) is the same homepage built
+  // against staging.elizacloud.ai. The staging worker runs this same
+  // allowlist, so without this entry every staging auth POST dies in
+  // preflight exactly like the prod outage this PR fixes.
+  "https://staging.eliza.app",
 ]);
 const PAGES_PREVIEW_SUFFIX = ".eliza-cloud-enq.pages.dev";
 
