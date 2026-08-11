@@ -180,6 +180,7 @@ export function CloudAgentsSection() {
       upsertAndActivateAgentProfile({
         kind: "cloud",
         label,
+        cloudAgentId: agentId,
         ...(persisted.apiBase !== undefined
           ? { apiBase: persisted.apiBase }
           : {}),

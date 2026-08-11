@@ -116,7 +116,10 @@ describe("runAgentSessionRecovery", () => {
       .fn()
       .mockResolvedValue(jsonResponse(200, { data: { redirectUrl } }));
     const navigate = vi.fn();
-    const exchangePairToken = vi.fn().mockResolvedValue("agent-api-key");
+    const exchangePairToken = vi.fn().mockResolvedValue({
+      agentId: "23766030-0000-0000-0000-000000000000",
+      apiKey: "agent-api-key",
+    });
     const persistPairApiToken = vi.fn();
     const onPairedInProcess = vi.fn();
 
@@ -144,13 +147,43 @@ describe("runAgentSessionRecovery", () => {
     expect(onPairedInProcess).toHaveBeenCalledWith("agent-api-key");
   });
 
+  it("rejects an exchanged bearer bound to a different agent", async () => {
+    const redirectUrl = "https://agent.elizacloud.ai/pair?token=one-time";
+    const persistPairApiToken = vi.fn();
+    const onPairedInProcess = vi.fn();
+
+    const result = await runAgentSessionRecovery({
+      ...baseDeps,
+      fetchFn: vi
+        .fn()
+        .mockResolvedValue(
+          jsonResponse(200, { data: { redirectUrl } }),
+        ) as unknown as typeof fetch,
+      navigate: vi.fn(),
+      consumeRedirectInProcess: true,
+      exchangePairToken: vi.fn().mockResolvedValue({
+        agentId: "8dba1b08-03be-4f9a-8f63-bd5de03f91e8",
+        apiKey: "wrong-agent-key",
+      }),
+      persistPairApiToken,
+      onPairedInProcess,
+    });
+
+    expect(result).toMatchObject({ ok: false, reason: "manage-required" });
+    expect(persistPairApiToken).not.toHaveBeenCalled();
+    expect(onPairedInProcess).not.toHaveBeenCalled();
+  });
+
   it("delegates native credential persistence to one caller-owned commit", async () => {
     const redirectUrl = "https://agent.elizacloud.ai/pair?token=one-time";
     const controller = new AbortController();
     const persistPairApiToken = vi.fn();
     const onPairedInProcess = vi.fn();
     const commitPairedInProcess = vi.fn();
-    const exchangePairToken = vi.fn().mockResolvedValue("agent-api-key");
+    const exchangePairToken = vi.fn().mockResolvedValue({
+      agentId: "23766030-0000-0000-0000-000000000000",
+      apiKey: "agent-api-key",
+    });
 
     const result = await runAgentSessionRecovery({
       ...baseDeps,
@@ -218,7 +251,10 @@ describe("runAgentSessionRecovery", () => {
     const onPairedInProcess = vi.fn();
     const exchangePairToken = vi.fn(async () => {
       current = false;
-      return "late-agent-api-key";
+      return {
+        agentId: "23766030-0000-0000-0000-000000000000",
+        apiKey: "late-agent-api-key",
+      };
     });
 
     const result = await runAgentSessionRecovery({

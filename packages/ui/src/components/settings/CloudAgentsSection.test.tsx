@@ -19,6 +19,7 @@ import {
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CloudCompatAgent } from "../../api/client-types-cloud";
+import { loadAgentProfileRegistry } from "../../state/agent-profiles";
 
 const appMock = vi.hoisted(() => ({
   value: {} as {
@@ -79,7 +80,8 @@ vi.mock("../../api", () => ({
 }));
 
 vi.mock("../../api/client-cloud", () => ({
-  resolveCloudAgentApiBase: () => "https://agent.example.test",
+  resolveCloudAgentApiBase: (args: { agentId: string }) =>
+    `https://api.elizacloud.ai/api/v1/eliza/agents/${args.agentId}`,
   // currentCloudToken now resolves Steward-first via getCloudAuthToken; return
   // null so it falls through to the persisted active-server token these tests set.
   getCloudAuthToken: () => null,
@@ -300,6 +302,7 @@ describe("CloudAgentsSection rename", () => {
 
 /** Shared mock setup for the lifecycle / load-state suites below. */
 function resetClientMocks() {
+  window.localStorage.clear();
   clientMock.getCloudCompatAgents.mockReset();
   clientMock.deleteCloudCompatAgent.mockReset();
   clientMock.suspendCloudCompatAgent.mockReset();
@@ -537,13 +540,31 @@ describe("CloudAgentsSection waking on switch", () => {
   });
 
   it("does not wake (resume) a running agent on switch — binds directly", async () => {
-    await renderWithAgents([agent({ status: "running" })]);
+    const agentId = "23766030-c096-4a14-932a-a4e43c562432";
+    await renderWithAgents([
+      agent({
+        agent_id: agentId,
+        agent_name: "Bound Agent",
+        status: "running",
+      }),
+    ]);
 
     fireEvent.click(screen.getByText("Use"));
 
     await waitFor(() => expect(reloadSpy).toHaveBeenCalled());
     expect(clientMock.resumeCloudCompatAgent).not.toHaveBeenCalled();
     expect(clientMock.getCloudCompatAgentStatus).not.toHaveBeenCalled();
+    const bound = loadAgentProfileRegistry().profiles.find(
+      (profile) => profile.cloudAgentId === agentId,
+    );
+    expect(bound).toEqual(
+      expect.objectContaining({
+        kind: "cloud",
+        cloudAgentId: agentId,
+        apiBase: `https://api.elizacloud.ai/api/v1/eliza/agents/${agentId}`,
+        accessToken: "tok",
+      }),
+    );
   });
 
   it("surfaces an error and does not bind when the resume call is rejected", async () => {

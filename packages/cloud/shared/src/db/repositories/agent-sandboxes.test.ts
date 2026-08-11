@@ -760,7 +760,13 @@ describe("AgentSandboxesRepository", () => {
     });
 
     test("a valid (non-null-node) pool row IS claimed — guard does not over-filter", async () => {
-      userRowForClaim = pendingUserRow();
+      userRowForClaim = {
+        ...pendingUserRow(),
+        environment_vars: {
+          ELIZA_CLOUD_PAIR_DIRECT_RELAY: "1",
+          USER_SETTING: "preserved",
+        },
+      };
       warmClaimUpdateSet.mockClear();
       warmClaimDeleteWhere.mockClear();
       const validPool = {
@@ -780,6 +786,10 @@ describe("AgentSandboxesRepository", () => {
         sandbox_id: "agent-pool-1",
         database_uri: "postgres://pool-db",
         database_status: "ready",
+        environment_vars: {
+          ELIZA_API_TOKEN: "pool-live-token",
+          ELIZA_CLOUD_PAIR_DIRECT_RELAY: "1",
+        },
       };
       executeHandler = (sqlText: string) => {
         if (sqlText.includes("FOR UPDATE SKIP LOCKED")) {
@@ -801,12 +811,18 @@ describe("AgentSandboxesRepository", () => {
         node_id?: string;
         status?: string;
         image_digest?: string;
+        environment_vars?: Record<string, string>;
         warm_claim_credential_state?: string;
         warm_claim_source_pool_id?: string;
       };
       expect(setArg.status).toBe("provisioning");
       expect(setArg.node_id).toBe("node-1");
       expect(setArg.image_digest).toBe(validPool.image_digest);
+      expect(setArg.environment_vars).toMatchObject({
+        ELIZA_API_TOKEN: "pool-live-token",
+        ELIZA_CLOUD_PAIR_DIRECT_RELAY: "0",
+        USER_SETTING: "preserved",
+      });
       expect(setArg.warm_claim_credential_state).toBe("pending");
       expect(setArg.warm_claim_source_pool_id).toBe("pool-1");
       // Pool row deleted on claim (single record now the user's).
