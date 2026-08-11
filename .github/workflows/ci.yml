@@ -111,13 +111,21 @@ jobs:
       - name: Formatting
         run: bun run format:check
 
+  # The unit-test lanes were four steps on one runner, so their durations added
+  # up: 22.4 + 18.3 + 28.4 min on run 31504110080, a 71.8-minute job that set
+  # the whole run's wall clock. They share no state and each already had its own
+  # path gate, so they are four jobs and the run waits for the longest, not the
+  # sum.
+  #
+  # Each job is unconditional and gates its own steps instead of carrying a
+  # job-level `if:`. A skipped job reports `skipped`, which `required` treats as
+  # failure by design; gating the steps keeps every lane reporting `success`
+  # while an unaffected lane costs only its checkout.
   tests:
-    name: Tests
+    name: Tests (scripts)
     needs: changes
     runs-on: ubuntu-24.04
-    # The four sequential lanes (scripts, server, client, plugins) legitimately
-    # total ~95-110 minutes on a cache-cold PR runner; 90 killed healthy runs.
-    timeout-minutes: 120
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -137,21 +145,89 @@ jobs:
           E2E_COVERAGE_GATE_ENFORCE: "1"
         run: bun run test:scripts
 
+  tests_server:
+    name: Tests (server)
+    needs: changes
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          submodules: false
+
+      - uses: ./.github/actions/setup-bun-workspace
+        if: needs.changes.outputs.server == 'true'
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+          node-version: ${{ env.NODE_VERSION }}
+          install-command: bun install --frozen-lockfile --ignore-scripts
+          install-native-deps: "false"
+          skip-avatar-clone: "true"
+          no-vision-deps: "true"
+
       - name: Server tests
         if: needs.changes.outputs.server == 'true'
         run: bun run test:server
+
+      - name: No affected server lane
+        if: needs.changes.outputs.server != 'true'
+        run: echo "No server test lane is affected."
+
+  tests_client:
+    name: Tests (client)
+    needs: changes
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          submodules: false
+
+      - uses: ./.github/actions/setup-bun-workspace
+        if: needs.changes.outputs.client == 'true'
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+          node-version: ${{ env.NODE_VERSION }}
+          install-command: bun install --frozen-lockfile --ignore-scripts
+          install-native-deps: "false"
+          skip-avatar-clone: "true"
+          no-vision-deps: "true"
 
       - name: Client tests
         if: needs.changes.outputs.client == 'true'
         run: bun run test:client
 
+      - name: No affected client lane
+        if: needs.changes.outputs.client != 'true'
+        run: echo "No client test lane is affected."
+
+  tests_plugins:
+    name: Tests (plugins)
+    needs: changes
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          submodules: false
+
+      - uses: ./.github/actions/setup-bun-workspace
+        if: needs.changes.outputs.plugins == 'true'
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+          node-version: ${{ env.NODE_VERSION }}
+          install-command: bun install --frozen-lockfile --ignore-scripts
+          install-native-deps: "false"
+          skip-avatar-clone: "true"
+          no-vision-deps: "true"
+
       - name: Plugin tests
         if: needs.changes.outputs.plugins == 'true'
         run: bun run test:plugins
 
-      - name: No affected unit-test lane
-        if: needs.changes.outputs.server != 'true' && needs.changes.outputs.client != 'true' && needs.changes.outputs.plugins != 'true'
-        run: echo "No server, client, or plugin test lane is affected."
+      - name: No affected plugin lane
+        if: needs.changes.outputs.plugins != 'true'
+        run: echo "No plugin test lane is affected."
 
   smoke:
     name: Smoke
@@ -479,7 +555,19 @@ jobs:
   required:
     name: Required
     if: always()
-    needs: [changes, quality, tests, smoke, smoke_lanes, android_aab, secrets]
+    needs:
+      [
+        changes,
+        quality,
+        tests,
+        tests_server,
+        tests_client,
+        tests_plugins,
+        smoke,
+        smoke_lanes,
+        android_aab,
+        secrets,
+      ]
     runs-on: ubuntu-24.04
     steps:
       - name: Require every CI job to succeed
@@ -487,7 +575,10 @@ jobs:
           RESULTS: >-
             changes=${{ needs.changes.result }}
             quality=${{ needs.quality.result }}
-            tests=${{ needs.tests.result }}
+            tests-scripts=${{ needs.tests.result }}
+            tests-server=${{ needs.tests_server.result }}
+            tests-client=${{ needs.tests_client.result }}
+            tests-plugins=${{ needs.tests_plugins.result }}
             smoke=${{ needs.smoke.result }}
             smoke-lanes=${{ needs.smoke_lanes.result }}
             android-aab=${{ needs.android_aab.result }}
