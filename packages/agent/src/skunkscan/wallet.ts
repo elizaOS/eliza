@@ -659,6 +659,12 @@ warnings: investigationWarnings,
         const nftHoldings: UniversalNftHolding[] =
           nftHoldingsResult?.data?.holdings ?? [];
 
+        investigationWarnings.push(
+          ...(nftHoldingsResult?.warnings ?? []).map(
+            (warning) => warning.message,
+          ),
+        );
+
         const nativeAssetId = WRAPPED_NATIVE_ASSET_ID[chain];
         const priceProvider = getTokenPriceProvider(chain);
         const tokenPrices = priceProvider
@@ -949,6 +955,12 @@ warnings: investigationWarnings,
         const nftHoldings: UniversalNftHolding[] =
           nftHoldingsResult?.data?.holdings ?? [];
 
+        investigationWarnings.push(
+          ...(nftHoldingsResult?.warnings ?? []).map(
+            (warning) => warning.message,
+          ),
+        );
+
         const nativeAssetId = WRAPPED_NATIVE_ASSET_ID[chain];
         const priceProvider = getTokenPriceProvider(chain);
         const tokenPrices = priceProvider
@@ -1236,6 +1248,12 @@ warnings: investigationWarnings,
 
         const nftHoldings: UniversalNftHolding[] =
           nftHoldingsResult?.data?.holdings ?? [];
+
+        investigationWarnings.push(
+          ...(nftHoldingsResult?.warnings ?? []).map(
+            (warning) => warning.message,
+          ),
+        );
 
         const nativeAssetId = WRAPPED_NATIVE_ASSET_ID[chain];
         const priceProvider = getTokenPriceProvider(chain);
