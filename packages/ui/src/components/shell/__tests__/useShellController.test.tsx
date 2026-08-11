@@ -2145,6 +2145,44 @@ describe("useShellController — mounted Cartesia Talk ownership", () => {
     expect(result.current.handsFree).toBe(true);
   });
 
+  it("programmatic converse stopRecording tears down realtime exactly once with no legacy capture and is idempotent", async () => {
+    const { result } = renderHook(() => useShellController());
+
+    await act(async () => {
+      result.current.startRecording("converse");
+      await Promise.resolve();
+    });
+
+    expect(realtimeVoiceMock.start).toHaveBeenCalledTimes(1);
+    expect(realtimeVoiceMock.startedConversationIds).toEqual([conversationId]);
+    expect(createVoiceCaptureMock).not.toHaveBeenCalled();
+    expect(result.current.handsFree).toBe(true);
+
+    // Simulate the session reaching live so stop has a visible session to tear down
+    await act(async () => {
+      realtimeVoiceMock.state.active = true;
+      realtimeVoiceMock.state.status = "listening";
+    });
+
+    await act(async () => {
+      result.current.stopRecording();
+      result.current.stopRecording();
+      await Promise.resolve();
+    });
+
+    expect(realtimeVoiceMock.stop).toHaveBeenCalledTimes(1);
+    expect(createVoiceCaptureMock).not.toHaveBeenCalled();
+    expect(result.current.handsFree).toBe(false);
+
+    // A third duplicate stop must remain idempotent
+    await act(async () => {
+      result.current.stopRecording();
+      await Promise.resolve();
+    });
+
+    expect(realtimeVoiceMock.stop).toHaveBeenCalledTimes(1);
+  });
+
   it("parks Talk visibly OFF when a LIVE session dies past the client's recovery budget", async () => {
     const { result, rerender } = renderHook(() => useShellController());
 

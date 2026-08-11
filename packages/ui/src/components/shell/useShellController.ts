@@ -521,6 +521,7 @@ export function useShellController(): ShellController {
   // mid-session death (parked by the effect below startRealtimeVoice) from an
   // initial start failure (owned by startRealtimeVoice's outcome handling).
   const realtimeVoiceWasActiveRef = React.useRef(false);
+  const realtimeVoiceTeardownPendingRef = React.useRef(false);
   const startRealtimeVoiceRef = React.useRef<() => void>(() => {});
   const stopRealtimeVoiceRef = React.useRef<() => void>(() => {});
   const [realtimeVoiceBoundaryError, setRealtimeVoiceBoundaryError] =
@@ -1769,6 +1770,15 @@ export function useShellController(): ShellController {
   }, [chatSending, handleChatStop, voiceOutput.stopSpeaking]);
 
   const stopRealtimeVoice = React.useCallback(() => {
+    if (realtimeVoiceTeardownPendingRef.current) return;
+    if (
+      !realtimeVoiceWantedRef.current &&
+      !realtimeVoiceRef.current.active &&
+      !realtimeVoiceRef.current.connecting
+    ) {
+      return;
+    }
+    realtimeVoiceTeardownPendingRef.current = true;
     realtimeVoiceWantedRef.current = false;
     realtimeVoiceWasActiveRef.current = false;
     saveContinuousChatMode(priorContinuousModeRef.current);
@@ -1794,6 +1804,7 @@ export function useShellController(): ShellController {
     saveContinuousChatMode("always-on");
     realtimeVoiceWantedRef.current = true;
     realtimeVoiceWasActiveRef.current = false;
+    realtimeVoiceTeardownPendingRef.current = false;
     setRealtimeVoiceBoundaryError(null);
     setHandsFree(true);
     handsFreeRef.current = true;
@@ -1860,6 +1871,15 @@ export function useShellController(): ShellController {
   React.useEffect(() => {
     if (realtimeVoice.active) realtimeVoiceWasActiveRef.current = true;
   }, [realtimeVoice.active]);
+  React.useEffect(() => {
+    if (
+      !realtimeVoiceWantedRef.current &&
+      !realtimeVoice.active &&
+      !realtimeVoice.connecting
+    ) {
+      realtimeVoiceTeardownPendingRef.current = false;
+    }
+  }, [realtimeVoice.active, realtimeVoice.connecting]);
   React.useEffect(() => {
     if (!realtimeVoiceEnabled) return;
     if (!realtimeVoice.error) return;
@@ -2392,6 +2412,18 @@ export function useShellController(): ShellController {
     if (visionCapturing && responding) setVisionCapturing(false);
   }, [visionCapturing, responding]);
 
+  const stopRecording = React.useCallback(() => {
+    if (
+      realtimeVoiceWantedRef.current ||
+      realtimeVoiceRef.current.active ||
+      realtimeVoiceRef.current.connecting
+    ) {
+      stopRealtimeVoice();
+    } else {
+      stopCapture();
+    }
+  }, [stopCapture, stopRealtimeVoice]);
+
   return {
     phase,
     bootProgressSignal,
@@ -2411,7 +2443,7 @@ export function useShellController(): ShellController {
     visionCapturing,
     toggleRecording,
     startRecording: startCapture,
-    stopRecording: stopCapture,
+    stopRecording,
     handsFree,
     realtimeVoice: {
       enabled: realtimeVoiceEnabled,

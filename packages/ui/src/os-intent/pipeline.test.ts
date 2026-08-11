@@ -139,4 +139,28 @@ describe("os-intent pipeline", () => {
     expect(status).toBe("decode:unrecognized-launch");
     expect(calls).toEqual([]);
   });
+
+  it("drives stop-voice through the pipeline to exactly one controller stop", () => {
+    const store = new IntentDedupeStore();
+    const { controller, calls } = spyController();
+    const status = launch(
+      "elizaos://voice?source=ios-app-shortcuts&action=stop-voice",
+      healthyContext(),
+      store,
+      controller,
+    );
+    expect(status).toBe("routed");
+    expect(calls).toEqual(["stopRecording"]);
+
+    // A second delivery with a different intentId must still only drive one stop
+    // when deduped; the controller-level idempotency covers same-id redelivery
+    const secondStatus = launch(
+      "elizaos://voice?source=ios-app-shortcuts&action=stop-voice&assistant.launchId=stop-2",
+      healthyContext({ now: 2_000 }),
+      store,
+      controller,
+    );
+    expect(secondStatus).toBe("routed");
+    expect(calls).toEqual(["stopRecording", "stopRecording"]);
+  });
 });
