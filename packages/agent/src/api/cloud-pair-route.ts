@@ -92,13 +92,7 @@ function canUseManagedDirectRelay(req: http.IncomingMessage): boolean {
 
 function escapeHtml(value: string): string {
   return value.replace(/[<>&"]/g, (c) =>
-    c === "<"
-      ? "&lt;"
-      : c === ">"
-        ? "&gt;"
-        : c === "&"
-          ? "&amp;"
-          : "&quot;",
+    c === "<" ? "&lt;" : c === ">" ? "&gt;" : c === "&" ? "&amp;" : "&quot;",
   );
 }
 
@@ -116,7 +110,9 @@ const STAGING_CLOUD_HOSTS: ReadonlySet<string> = new Set([
 
 function isStagingCloudHostname(hostname: string): boolean {
   const host = hostname.toLowerCase();
-  return STAGING_CLOUD_HOSTS.has(host) || host.endsWith(".staging.elizacloud.ai");
+  return (
+    STAGING_CLOUD_HOSTS.has(host) || host.endsWith(".staging.elizacloud.ai")
+  );
 }
 
 /**

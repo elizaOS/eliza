@@ -3,13 +3,13 @@
 import http from "node:http";
 import { Socket } from "node:net";
 import { runInNewContext } from "node:vm";
+import { logger } from "@elizaos/core";
 import {
   CLOUD_PAIR_LEGACY_STORAGE_KEY,
   CLOUD_PAIR_LOCAL_OWNER_HINT_KEY,
   cloudPairTokenKeyForAgent,
 } from "@elizaos/shared/contracts";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { logger } from "@elizaos/core";
 import {
   __resetCloudPairRateLimitForTests,
   handleStandaloneCloudPairRoute,
@@ -391,7 +391,9 @@ describe("handleStandaloneCloudPairRoute", () => {
         "fetch",
         vi
           .fn()
-          .mockResolvedValue(new Response(JSON.stringify({}), { status: rejectStatus })),
+          .mockResolvedValue(
+            new Response(JSON.stringify({}), { status: rejectStatus }),
+          ),
       );
 
       const harness = fakeRes();
@@ -532,8 +534,7 @@ describe("handleStandaloneCloudPairRoute", () => {
   });
 
   it("resolves the recovery link to staging for the bare staging apex", async () => {
-    process.env.ELIZAOS_CLOUD_BASE_URL =
-      "https://staging.elizacloud.ai/api/v1";
+    process.env.ELIZAOS_CLOUD_BASE_URL = "https://staging.elizacloud.ai/api/v1";
     vi.stubGlobal(
       "fetch",
       vi
