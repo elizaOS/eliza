@@ -68,6 +68,12 @@ describe("isFirstPartyOrigin", () => {
     expect(isFirstPartyOrigin("https://app-staging.elizacloud.ai")).toBe(true);
     expect(isFirstPartyOrigin("https://develop.eliza-app.pages.dev")).toBe(true);
     expect(isFirstPartyOrigin("https://random.eliza-app.pages.dev")).toBe(false);
+    // The eliza.app homepage runs the get-started auth flows (Telegram widget
+    // phone step, Discord OAuth callback) against /api/eliza-app/* on
+    // elizacloud.ai. Without first-party CORS every one of those POSTs dies in
+    // the browser preflight (the 2026-08-11 "phone number step fails" QA).
+    expect(isFirstPartyOrigin("https://eliza.app")).toBe(true);
+    expect(isFirstPartyOrigin("https://www.eliza.app")).toBe(true);
     expect(isFirstPartyOrigin("http://localhost:5173")).toBe(true);
     expect(isFirstPartyOrigin("https://supakan.nubs.site")).toBe(false);
     expect(isFirstPartyOrigin("https://evil.example.com")).toBe(false);
