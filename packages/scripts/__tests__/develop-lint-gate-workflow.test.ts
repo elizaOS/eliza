@@ -1,8 +1,7 @@
 /**
  * Contract tests for the always-completing develop lint/format gate.
- * The gate must have its own concurrency group with cancel-in-progress:
- * false so that rapid develop pushes cannot supersede it — the entire
- * purpose of #18360.
+ * The gate uses a per-run concurrency group (github.run_id) so every push
+ * gets its own group and cannot be superseded — the entire purpose of #18360.
  */
 
 import { describe, expect, test } from "bun:test";
@@ -52,29 +51,31 @@ describe("develop-lint-gate.yml contract", () => {
       };
     };
     expect(workflow.concurrency).toBeTruthy();
-    expect(workflow.concurrency?.group).toBe("develop-lint-gate");
+    // Per-run group prefix — the full value includes a run_id expression.
+    expect(workflow.concurrency?.group).toMatch(/^develop-lint-gate/);
     expect(workflow.concurrency?.["cancel-in-progress"]).toBe(false);
   });
 
-  test("guarantees every push completes via queue: max", () => {
-    // cancel-in-progress: false alone only protects the running job.
-    // GitHub's default queue: single replaces an older pending run when a
-    // newer push arrives — so the older pending run never executes.
-    // queue: max allows up to 100 pending runs to queue sequentially,
-    // guaranteeing every develop push completes. This is the core fix
-    // for tokenmaxxor's CHANGES_REQUESTED finding.
+  test("guarantees every push completes via per-run concurrency group", () => {
+    // A static concurrency group (even with queue: max) has bounded capacity
+    // (100 pending runs) and can still cause older runs to be canceled.
+    // A per-run group using github.run_id gives every push its own group,
+    // so no push can ever be superseded, queued, or canceled by another.
+    // This is the strongest guarantee for a read-only diagnostic gate.
     // Ref: https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/control-workflow-concurrency
     const workflow = Bun.YAML.parse(source) as {
       concurrency?: {
-        queue?: string;
+        group?: string;
         "cancel-in-progress"?: boolean;
       };
     };
-    expect(workflow.concurrency?.queue).toBe("max");
+    expect(workflow.concurrency).toBeTruthy();
+    // The group must contain a unique-per-run identifier so concurrent
+    // pushes don't share a concurrency slot.
+    expect(workflow.concurrency?.group).toMatch(
+      /develop-lint-gate-\$\{\{.*github\.run_id.*\}\}/,
+    );
     expect(workflow.concurrency?.["cancel-in-progress"]).toBe(false);
-    // queue: max and cancel-in-progress: true is not allowed by GitHub
-    // Actions, so verify this combination is valid.
-    expect(workflow.concurrency?.["cancel-in-progress"]).not.toBe(true);
   });
 
   test("runs biome format:check and lint:check", () => {

@@ -5,10 +5,10 @@ name: Develop Lint Gate
 # `cancel-in-progress: true` on push events, so a rapid series of develop
 # pushes cancels their Quality / lint jobs mid-run — leaving lint/format
 # reds invisible until a release pin or merged-base check surfaces them
-# (#18326, #18338, #18360). This workflow has its own concurrency group
-# with `cancel-in-progress: false`, so the develop tip's biome format +
-# lint state is always known within minutes, regardless of push velocity.
-# The static group name is unique repo-wide — distinct from the
+# (#18326, #18338, #18360). This workflow uses a per-run concurrency group
+# (`github.run_id`), so every push gets its own group and runs independently
+# — no push can ever be superseded, queued, or canceled by another.
+# The group prefix is unique repo-wide — distinct from the
 # `develop-lint-gate` *job* in quality.yml (which IS cancellable).
 #
 # The gate runs `bun run format:check` (biome format check across all
@@ -22,16 +22,14 @@ on:
   workflow_dispatch:
 
 concurrency:
-  # Unique group so this workflow is never superseded by another push.
-  # cancel-in-progress: false protects the running job; queue: max allows
-  # up to 100 pending runs to queue rather than be superseded by a newer
-  # push (GitHub's default queue: single replaces the older pending run).
-  # Together they guarantee EVERY develop push completes — the entire
-  # purpose of this gate.
+  # Per-run group so EVERY develop push gets its own concurrency slot and
+  # runs to completion. Unlike a static group (which queues), a unique
+  # group per run_id means no push can ever be superseded, queued, or
+  # canceled — every push completes independently in parallel. This is the
+  # strongest guarantee for a read-only diagnostic gate.
   # Ref: https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/control-workflow-concurrency
-  group: develop-lint-gate
+  group: develop-lint-gate-${{ github.run_id }}
   cancel-in-progress: false
-  queue: max
 
 permissions:
   contents: read
