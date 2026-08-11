@@ -238,8 +238,19 @@ jobs:
       # --ignore-scripts install never builds them. Turbo builds core plus its
       # dependency graph, matching the prelude in dev-smoke.yml.
       - name: Build @elizaos/core and workspace deps
-        if: needs.changes.outputs.desktop == 'true'
+        if: needs.changes.outputs.desktop == 'true' && needs.changes.outputs.cloud != 'true'
         run: bunx turbo run build --filter=@elizaos/core --filter=@elizaos/shared
+
+      # test:cloud reaches further than the desktop prelude: cloud service suites
+      # import @elizaos/plugin-sql and @elizaos/plugin-workflow from their built
+      # dist/, which the core+shared filter never produces. Run 31489483093 is
+      # what surfaced it -- the step had been skipped on develop long enough that
+      # "Cannot find module '@elizaos/plugin-sql'" read as a new failure.
+      # build:core is a superset of the desktop prelude, so it replaces the
+      # narrow build rather than running alongside it.
+      - name: Build core contract
+        if: needs.changes.outputs.cloud == 'true'
+        run: bun run build:core
 
       - name: Desktop startup smoke
         if: needs.changes.outputs.desktop == 'true'
