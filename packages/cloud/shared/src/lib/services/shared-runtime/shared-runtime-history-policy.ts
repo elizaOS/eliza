@@ -12,6 +12,13 @@ export interface SharedRuntimeHistoryMessageLike {
   content: string;
   createdAt?: number;
   interrupted?: boolean;
+  actionResults?: Array<{
+    actionName?: string;
+    success: boolean;
+    text?: string;
+    error?: string;
+    values?: Record<string, unknown>;
+  }>;
 }
 
 function isPersistedMessage(value: unknown): value is SharedRuntimeHistoryMessageLike {

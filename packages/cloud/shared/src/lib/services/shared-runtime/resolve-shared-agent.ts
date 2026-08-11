@@ -47,6 +47,7 @@ export type ResolvedSharedAgent =
   | {
       error: string;
       status: 400 | 401 | 403 | 404 | 503;
+      code?: "agent_cache_warming";
       refusal?: SharedAgentRefusal;
     }
   | { agent: AgentSandbox; agentId: string; orgId: string; agentName: string };
@@ -533,6 +534,7 @@ export async function resolveSharedAgent(
     executionCtx.waitUntil(hydration);
     return {
       error: "Agent authorization cache is warming. Retry shortly.",
+      code: "agent_cache_warming",
       status: 503,
     };
   }

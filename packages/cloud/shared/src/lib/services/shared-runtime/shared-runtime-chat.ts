@@ -154,12 +154,17 @@ function completedTurn(
 function replayStream(
   assistant: SharedTurnMessage,
   ids: { user: string; assistant: string },
+  agentName: string,
 ): Response {
   return new Response(
     `event: done\ndata: ${JSON.stringify({
+      type: "done",
       messageId: ids.assistant,
       userMessageId: ids.user,
       text: assistant.content,
+      fullText: assistant.content,
+      agentName,
+      ...(assistant.actionResults?.length ? { actionResults: assistant.actionResults } : {}),
     })}\n\n`,
     { headers: { "Content-Type": "text/event-stream; charset=utf-8" } },
   );
@@ -214,6 +219,28 @@ async function mergeHistory(
     valid,
     MAX_HISTORY_MESSAGES,
   )) as SharedTurnMessage[];
+}
+
+function persistProviderDispatch(
+  agentId: string,
+  roomId: string,
+  text: string,
+  messageId: string,
+  billing: BillingTurn | null,
+  store?: SharedRuntimeHistoryStore,
+): () => Promise<void> {
+  const userMessage: SharedTurnMessage = {
+    id: messageId,
+    role: "user",
+    content: text,
+    createdAt: Date.now(),
+  };
+  return async () => {
+    // Persist the logical turn before the irreversible provider handoff. If a
+    // worker exits after generation but before the completion merge, a retry
+    await mergeHistory(agentId, roomId, [userMessage], store);
+    await billing?.markProviderDispatched?.();
+  };
 }
 
 async function characterFor(
@@ -363,13 +390,14 @@ async function admitTurn(
   history: SharedTurnMessage[],
   text: string,
   roomId: string,
+  turnId: string,
   executionCtx?: BridgeExecutionContext,
 ): Promise<BillingTurn | null> {
   const model = resolveSharedAgentTurnModel(character.model);
   if (!model) return null;
   const estimatedInputTokens = estimateInputTokens(billingPrompt(character, history, text));
-  const requestId = `shared-runtime-${crypto.randomUUID()}`;
-  const idempotencyKey = `shared-runtime:${agent.id}:${roomId}:${crypto.randomUUID()}`;
+  const requestId = `shared-runtime-${turnId}`;
+  const idempotencyKey = `shared-runtime:${agent.id}:${roomId}:${turnId}`;
   const context = {
     organizationId: agent.organization_id,
     userId: agent.user_id,
@@ -644,6 +672,7 @@ export class SharedRuntimeChatService {
           channelId: roomId,
           runtime: "shared",
           transport: "shared-runtime",
+          ...(replay.actionResults?.length ? { actionResults: replay.actionResults } : {}),
         },
       };
     }
@@ -653,7 +682,15 @@ export class SharedRuntimeChatService {
     });
     let billing: BillingTurn | null;
     try {
-      billing = await admitTurn(agent, character, history, text, roomId, options.executionCtx);
+      billing = await admitTurn(
+        agent,
+        character,
+        history,
+        text,
+        roomId,
+        messageIds.user,
+        options.executionCtx,
+      );
     } catch (error) {
       // error-policy:J1 translate the money boundary to the JSON-RPC protocol.
       if (error instanceof InsufficientCreditsError) {
@@ -676,7 +713,14 @@ export class SharedRuntimeChatService {
         history,
         message: text,
         messageIds,
-        onProviderDispatch: billing?.markProviderDispatched,
+        onProviderDispatch: persistProviderDispatch(
+          agent.id,
+          roomId,
+          text,
+          messageIds.user,
+          billing,
+          options.historyStore,
+        ),
       });
     } catch (error) {
       await settleFailedProviderWorkOffPath(
@@ -696,12 +740,19 @@ export class SharedRuntimeChatService {
       if (turn.degraded) {
         await billing?.settle(0);
       } else {
+        const actionResults = turn.navIntent ? [navIntentActionResult(turn.navIntent)] : undefined;
         await mergeHistory(
           agent.id,
           roomId,
-          turn.history.filter(
-            (message) => message.id === messageIds.user || message.id === messageIds.assistant,
-          ),
+          turn.history
+            .filter(
+              (message) => message.id === messageIds.user || message.id === messageIds.assistant,
+            )
+            .map((message) =>
+              message.id === messageIds.assistant && actionResults
+                ? { ...message, actionResults }
+                : message,
+            ),
           options.historyStore,
         );
         if (turn.navIntent) {
@@ -764,7 +815,7 @@ export class SharedRuntimeChatService {
         roomId,
         turnId: rpcTurnIdentity(rpc),
       });
-      return replayStream(replay, messageIds);
+      return replayStream(replay, messageIds, agent.agent_name ?? "Eliza agent");
     }
     const character = await characterFor(agent, {
       cacheOnly: Boolean(options.historyStore),
@@ -772,7 +823,15 @@ export class SharedRuntimeChatService {
     });
     let billing: BillingTurn | null;
     try {
-      billing = await admitTurn(agent, character, history, text, roomId, options.executionCtx);
+      billing = await admitTurn(
+        agent,
+        character,
+        history,
+        text,
+        roomId,
+        messageIds.user,
+        options.executionCtx,
+      );
     } catch (error) {
       // error-policy:J1 translate the money boundary to the HTTP stream boundary.
       if (error instanceof InsufficientCreditsError) {
@@ -803,7 +862,14 @@ export class SharedRuntimeChatService {
         history,
         message: text,
         messageIds,
-        onProviderDispatch: billing?.markProviderDispatched,
+        onProviderDispatch: persistProviderDispatch(
+          agent.id,
+          roomId,
+          text,
+          messageIds.user,
+          billing,
+          options.historyStore,
+        ),
       });
     } catch (error) {
       detachRequestAbort();
@@ -853,7 +919,11 @@ export class SharedRuntimeChatService {
     }
 
     const encoder = new TextEncoder();
-    const makeTurnMessages = (reply: string, interrupted: boolean): SharedTurnMessage[] => {
+    const makeTurnMessages = (
+      reply: string,
+      interrupted: boolean,
+      actionResults?: SharedTurnMessage["actionResults"],
+    ): SharedTurnMessage[] => {
       const sentAt = Date.now();
       const messages: SharedTurnMessage[] = [
         { id: messageIds.user, role: "user", content: text, createdAt: sentAt },
@@ -866,6 +936,7 @@ export class SharedRuntimeChatService {
           content: assistantText,
           createdAt: sentAt + 1,
           interrupted,
+          ...(actionResults?.length ? { actionResults } : {}),
         });
       }
       return messages;
@@ -888,6 +959,7 @@ export class SharedRuntimeChatService {
       reply: string,
       interrupted: boolean,
       afterWrite?: () => Promise<void>,
+      actionResults?: SharedTurnMessage["actionResults"],
     ): Promise<void> => {
       if (finalized) return finalizationPromise ?? Promise.resolve();
       if (finalizationPromise) return finalizationPromise;
@@ -895,7 +967,7 @@ export class SharedRuntimeChatService {
         await mergeHistory(
           agent.id,
           roomId,
-          makeTurnMessages(reply, interrupted),
+          makeTurnMessages(reply, interrupted, actionResults),
           options.historyStore,
         );
         await afterWrite?.();
@@ -950,31 +1022,34 @@ export class SharedRuntimeChatService {
               );
               continue;
             }
-            await finalizeMessages(finalReply, false, async () => {
-              if (turn.navIntent) {
-                terminalSettlementStarted = true;
-                await billing?.settle(0);
-              } else if (billing) {
-                terminalSettlementStarted = true;
-                await settleOffResponsePath(options.executionCtx, () =>
-                  finishBilling(agent, billing, finalReply, text, part.usage),
-                );
-              }
-            });
-            const done = turn.navIntent
-              ? {
-                  messageId: messageIds.assistant,
-                  userMessageId: messageIds.user,
-                  text: finalReply,
-                  fullText: finalReply,
-                  actionResults: [navIntentActionResult(turn.navIntent)],
+            const actionResults = turn.navIntent
+              ? [navIntentActionResult(turn.navIntent)]
+              : undefined;
+            await finalizeMessages(
+              finalReply,
+              false,
+              async () => {
+                if (turn.navIntent) {
+                  terminalSettlementStarted = true;
+                  await billing?.settle(0);
+                } else if (billing) {
+                  terminalSettlementStarted = true;
+                  await settleOffResponsePath(options.executionCtx, () =>
+                    finishBilling(agent, billing, finalReply, text, part.usage),
+                  );
                 }
-              : {
-                  messageId: messageIds.assistant,
-                  userMessageId: messageIds.user,
-                  text: finalReply,
-                  fullText: finalReply,
-                };
+              },
+              actionResults,
+            );
+            const done = {
+              type: "done",
+              messageId: messageIds.assistant,
+              userMessageId: messageIds.user,
+              text: finalReply,
+              fullText: finalReply,
+              agentName: character.name,
+              ...(actionResults ? { actionResults } : {}),
+            };
             controller.enqueue(encoder.encode(chatSseFrame("done", done)));
           }
           if (!finished) {

@@ -217,6 +217,7 @@ describe("resolveSharedAgent", () => {
       }),
     ).resolves.toEqual({
       error: "Agent authorization cache is warming. Retry shortly.",
+      code: "agent_cache_warming",
       status: 503,
     });
     expect(waited).toHaveLength(1);

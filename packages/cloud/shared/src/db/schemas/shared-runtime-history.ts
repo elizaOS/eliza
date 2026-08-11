@@ -11,6 +11,14 @@ export type SharedRuntimeHistoryMessage = {
   createdAt?: number;
   /** True when an assistant message is a partial interrupted response. */
   interrupted?: boolean;
+  /** Structured terminal handoffs retained for idempotent completion replay. */
+  actionResults?: Array<{
+    actionName?: string;
+    success: boolean;
+    text?: string;
+    error?: string;
+    values?: Record<string, unknown>;
+  }>;
 };
 
 /**

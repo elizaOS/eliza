@@ -120,13 +120,18 @@ describe("ElizaClient shared-agent warming retry", () => {
   });
   afterEach(() => vi.useRealTimers());
 
-  it("retries only the two structured warming codes with the same body", async () => {
+  it("retries resolver and coordinator warming route payloads with the same body", async () => {
     const request = vi
       .fn<AgentRequestTransport["request"]>()
       .mockResolvedValueOnce(
         jsonResponse(
           503,
-          { code: "agent_cache_warming" },
+          {
+            success: false,
+            error: "Agent authorization cache is warming. Retry shortly.",
+            code: "agent_cache_warming",
+            retryable: true,
+          },
           { "retry-after": "1" },
         ),
       )

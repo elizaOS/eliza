@@ -22,6 +22,7 @@ const settleCalls: number[] = [];
 let settleUnknownCalls = 0;
 const billCalls: unknown[] = [];
 let characterReads = 0;
+let providerDispatchCalls = 0;
 const loggerInfo = mock(() => undefined);
 
 class ApiInsufficientCreditsError extends Error {}
@@ -97,7 +98,7 @@ mock.module("../inference-admission-snapshot", () => ({
 
 const admitOrganizationInference = mock(
   async (params: {
-    context?: { metadata?: Record<string, unknown> };
+    context?: { requestId?: string; metadata?: Record<string, unknown> };
     executionCtx?: { waitUntil(promise: Promise<unknown>): void };
   }) => {
     if (admissionError) throw admissionError;
@@ -111,6 +112,9 @@ const admitOrganizationInference = mock(
       settleUnknown: async () => {
         settleUnknownCalls++;
         return null;
+      },
+      markProviderDispatched: async () => {
+        providerDispatchCalls++;
       },
       reservation: payoutAwareReservation,
     };
@@ -154,7 +158,11 @@ mock.module("../../../db/repositories/characters", () => ({
 }));
 mock.module("./run-shared-agent-turn", () => ({
   resolveSharedAgentTurnModel: () => "openai/gpt-oss-120b",
-  runSharedAgentTurn: async (input: { messageIds?: { user: string; assistant: string } }) => {
+  runSharedAgentTurn: async (input: {
+    messageIds?: { user: string; assistant: string };
+    onProviderDispatch?: () => Promise<void>;
+  }) => {
+    if (!turn.degraded) await input.onProviderDispatch?.();
     if (turnError) throw turnError;
     const history = Array.isArray(turn.history)
       ? turn.history.map((message, index) =>
@@ -167,7 +175,11 @@ mock.module("./run-shared-agent-turn", () => ({
       : turn.history;
     return { ...turn, history };
   },
-  runSharedAgentTurnStream: async (input: { abortSignal?: AbortSignal }) => {
+  runSharedAgentTurnStream: async (input: {
+    abortSignal?: AbortSignal;
+    onProviderDispatch?: () => Promise<void>;
+  }) => {
+    if (!streamTurn.degraded) await input.onProviderDispatch?.();
     if (streamTurnError) throw streamTurnError;
     streamAbortSignal = input.abortSignal;
     return streamTurn;
@@ -277,6 +289,12 @@ type TestMessage = {
   content: string;
   createdAt?: number;
   interrupted?: boolean;
+  actionResults?: Array<{
+    actionName?: string;
+    success: boolean;
+    text?: string;
+    values?: Record<string, unknown>;
+  }>;
 };
 
 function harness() {
@@ -321,6 +339,7 @@ beforeEach(() => {
   turnError = null;
   streamTurnError = null;
   characterReads = 0;
+  providerDispatchCalls = 0;
   loggerInfo.mockClear();
   enforceOrgRateLimit.mockClear();
   getInferenceAdmissionSnapshotCacheOnly.mockClear();
@@ -430,6 +449,100 @@ describe("SharedRuntimeChatService", () => {
     expect(loggerInfo).toHaveBeenCalledWith(
       "[SharedRuntimeChatService] replaying completed idempotent turn",
       expect.objectContaining({ agentId: agent.id, turnId: rpc.id }),
+    );
+  });
+
+  test("replays the canonical completed stream with ids and structured results", async () => {
+    const service = new SharedRuntimeChatService();
+    const h = harness();
+    turn = {
+      degraded: false,
+      reply: "Opening Settings for you.",
+      history: [
+        { role: "user", content: "hello" },
+        { role: "assistant", content: "Opening Settings for you." },
+      ],
+      model: "nav-intent",
+      navIntent: {
+        viewId: "settings",
+        label: "Settings",
+        reply: "Opening Settings for you.",
+      },
+    };
+
+    const first = await service.bridge(agent, rpc, h);
+    const admissions = admitOrganizationInference.mock.calls.length;
+    const response = await service.stream(agent, rpc, h);
+    const body = await response.text();
+    const payload = JSON.parse(body.split("data: ")[1]!.trim()) as Record<string, unknown>;
+
+    expect(payload).toMatchObject({
+      type: "done",
+      text: first.result?.text,
+      fullText: first.result?.text,
+      agentName: "Nova",
+      messageId: first.result?.messageId,
+      userMessageId: first.result?.userMessageId,
+      actionResults: [
+        {
+          actionName: "VIEWS",
+          success: true,
+          values: { mode: "show", viewId: "settings", source: "agent" },
+        },
+      ],
+    });
+    expect(admitOrganizationInference).toHaveBeenCalledTimes(admissions);
+  });
+
+  test("uses stable admission identities when the pre-dispatch marker cannot persist", async () => {
+    const service = new SharedRuntimeChatService();
+    const historyStore = {
+      load: async () => [{ role: "assistant" as const, content: "prior" }],
+      merge: async () => {
+        throw new Error("durable marker write failed");
+      },
+    };
+
+    await expect(service.bridge(agent, rpc, { historyStore })).rejects.toThrow(
+      "durable marker write failed",
+    );
+    await expect(service.bridge(agent, rpc, { historyStore })).rejects.toThrow(
+      "durable marker write failed",
+    );
+
+    expect(admitOrganizationInference).toHaveBeenCalledTimes(2);
+    const firstContext = admitOrganizationInference.mock.calls[0]![0].context;
+    const secondContext = admitOrganizationInference.mock.calls[1]![0].context;
+    expect(secondContext?.requestId).toBe(firstContext?.requestId);
+    expect(secondContext?.metadata?.idempotencyKey).toBe(firstContext?.metadata?.idempotencyKey);
+    expect(providerDispatchCalls).toBe(0);
+  });
+
+  test("a failed completion write leaves a durable marker that blocks redispatch", async () => {
+    const service = new SharedRuntimeChatService();
+    let history: TestMessage[] = [{ role: "assistant", content: "prior" }];
+    let merges = 0;
+    const historyStore = {
+      load: async () => history,
+      merge: async (_agentId: string, _channelId: string, messages: TestMessage[]) => {
+        merges++;
+        if (merges === 2) throw new Error("completion write failed");
+        history = [...history, ...messages];
+        return history;
+      },
+    };
+
+    await expect(service.bridge(agent, rpc, { historyStore })).rejects.toThrow(
+      "completion write failed",
+    );
+    await expect(service.bridge(agent, rpc, { historyStore })).rejects.toMatchObject({
+      code: "SHARED_RUNTIME_IDEMPOTENCY_CONFLICT",
+    });
+
+    expect(admitOrganizationInference).toHaveBeenCalledTimes(1);
+    expect(providerDispatchCalls).toBe(1);
+    expect(history).toContainEqual(
+      expect.objectContaining({ role: "user", content: "hello", id: expect.any(String) }),
     );
   });
 
@@ -603,6 +716,7 @@ describe("SharedRuntimeChatService", () => {
     const body = await response.text();
     expect(body).toContain("event: chunk");
     expect(body).toContain("event: done");
+    expect(body).toContain('"type":"done"');
     expect(h.history()).toHaveLength(3);
     await Promise.all(h.background);
     expect(settleCalls).toEqual([0.004]);
@@ -763,7 +877,7 @@ describe("SharedRuntimeChatService", () => {
         },
         merge: async (_agentId: string, _channelId: string, messages: TestMessage[]) => {
           attempts++;
-          if (attempts === 1) throw new Error("durable put failed");
+          if (attempts === 2) throw new Error("durable put failed");
           history = [...history, ...messages];
           return history;
         },
@@ -789,13 +903,14 @@ describe("SharedRuntimeChatService", () => {
     const reader = response.body!.getReader();
     await reader.read();
     await expect(reader.cancel("first cancel")).rejects.toThrow("durable put failed");
-    expect(history).toHaveLength(1);
+    expect(history).toHaveLength(2);
+    expect(history.at(-1)).toMatchObject({ role: "user", content: "hello" });
 
     releaseProvider();
     await new Promise((resolve) => setTimeout(resolve, 0));
     await Promise.all(h.background);
 
-    expect(attempts).toBe(2);
+    expect(attempts).toBe(3);
     expect(history.at(-2)).toMatchObject({ role: "user", content: "hello" });
     expect(history.at(-1)).toMatchObject({
       role: "assistant",

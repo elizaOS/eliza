@@ -40,6 +40,16 @@ export interface SharedTurnMessage {
    * stream. Model history keeps the text but annotates it as incomplete.
    */
   interrupted?: boolean;
+  /** Structured terminal handoffs replayed with a completed assistant turn. */
+  actionResults?: SharedTurnActionResult[];
+}
+
+export interface SharedTurnActionResult {
+  actionName?: string;
+  success: boolean;
+  text?: string;
+  error?: string;
+  values?: Record<string, unknown>;
 }
 
 export interface SharedAgentCharacter {

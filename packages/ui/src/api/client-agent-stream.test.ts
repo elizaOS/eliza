@@ -155,12 +155,12 @@ describe("ElizaClient agent streaming transport", () => {
     expect(result.text).toContain("available_views:");
   });
 
-  it("surfaces done event action results for page handoffs", async () => {
+  it("parses a canonical replay completion with ids and structured action results", async () => {
     const encoder = new TextEncoder();
     const read = vi.fn().mockResolvedValueOnce({
       done: false,
       value: encoder.encode(
-        'data: {"type":"done","fullText":"Created.","agentName":"Eliza","actionResults":[{"actionName":"WORKFLOW","success":true,"values":{"workflowId":"workflow-1"}}]}\n\n',
+        'event: done\ndata: {"type":"done","text":"Created.","fullText":"Created.","agentName":"Eliza","messageId":"assistant-1","userMessageId":"user-1","actionResults":[{"actionName":"WORKFLOW","success":true,"values":{"workflowId":"workflow-1"}}]}\n\n',
       ),
     });
     const request = vi.fn(async () => {
@@ -188,6 +188,12 @@ describe("ElizaClient agent streaming transport", () => {
         values: { workflowId: "workflow-1" },
       },
     ]);
+    expect(result).toMatchObject({
+      completed: true,
+      text: "Created.",
+      messageId: "assistant-1",
+      userMessageId: "user-1",
+    });
   });
 
   it("preserves structured terminal error events as StreamGenerationError", async () => {

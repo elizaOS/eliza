@@ -828,6 +828,7 @@ describe("shared agent messages/stream", () => {
   test("scope warming is explicitly retryable and never reaches the coordinator", async () => {
     resolveSharedAgent.mockResolvedValue({
       error: "Agent authorization cache is warming. Retry shortly.",
+      code: "agent_cache_warming",
       status: 503,
     });
 
@@ -838,6 +839,7 @@ describe("shared agent messages/stream", () => {
     await expect(res.json()).resolves.toEqual({
       success: false,
       error: "Agent authorization cache is warming. Retry shortly.",
+      code: "agent_cache_warming",
       retryable: true,
     });
     expect(coordinatorFetch).not.toHaveBeenCalled();
