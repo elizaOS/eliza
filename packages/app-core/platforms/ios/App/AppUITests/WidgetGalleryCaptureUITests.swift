@@ -27,20 +27,18 @@ final class WidgetGalleryCaptureUITests: XCTestCase {
 
     // MARK: - Brand-aware display name
 
-    /// The installed target application's real accessibility label, mirroring
-    /// `CFBundleDisplayName` / `ELIZA_DISPLAY_NAME` from `app.config.ts`.
+    /// The installed target application's real accessibility label.
+    ///
+    /// Reads the host app's `label` (which mirrors `CFBundleDisplayName` /
+    /// `ELIZA_DISPLAY_NAME` from `app.config.ts`) so the test stays aligned
+    /// with the build's actual display name and preserves white-label support.
+    /// Based on NubsCarson:c21d9237 — do not silently substitute a canonical
+    /// brand when the label is unavailable; fail fast per the repository's
+    /// unavailable-state policy.
     private var widgetAppDisplayName: String {
-        let app = XCUIApplication()
-        let label = app.label.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !label.isEmpty {
-            return label
-        }
-        let sbApp = XCUIApplication(bundleIdentifier: "ai.elizaos.app")
-        let sbLabel = sbApp.label.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !sbLabel.isEmpty {
-            return sbLabel
-        }
-        return "Eliza"
+        let label = XCUIApplication().label.trimmingCharacters(in: .whitespacesAndNewlines)
+        XCTAssertFalse(label.isEmpty, "Installed app must have a non-empty display label (CFBundleDisplayName/ELIZA_DISPLAY_NAME)")
+        return label
     }
 
     override func setUpWithError() throws {

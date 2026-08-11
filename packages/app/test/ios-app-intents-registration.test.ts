@@ -364,6 +364,18 @@ describe("native assistant entry contracts", () => {
     expect(deviceExtensionSurfaceUITestsSwift).toContain(
       "and custom\n/// keyboard enablement still require the provisioned-device lane",
     );
+    // Brand-aware widget gallery: stale hard-coded display name must be gone.
+    expect(deviceExtensionSurfaceUITestsSwift).toContain("widgetAppDisplayName");
+    expect(deviceExtensionSurfaceUITestsSwift).not.toContain('staticTexts["elizaOS"]');
+    expect(deviceExtensionSurfaceUITestsSwift).toContain(
+      'XCTAssertFalse(label.isEmpty',
+    );
+    const widgetGalleryCaptureUITestsSwift = readFileSync(
+      path.join(iosAppRoot, "AppUITests/WidgetGalleryCaptureUITests.swift"),
+      "utf8",
+    );
+    expect(widgetGalleryCaptureUITestsSwift).toContain("widgetAppDisplayName");
+    expect(widgetGalleryCaptureUITestsSwift).not.toContain('staticTexts["elizaOS"]');
   });
 
   it("aligns the iOS audio background mode and Live Activities plist keys", () => {
