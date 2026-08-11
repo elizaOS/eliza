@@ -14,6 +14,7 @@ import {
 import { resolveElizaWorkspaceRootFromImportMeta } from "./repo-root.mjs";
 import {
   rendererDistMatchesPlaywrightTestAuth,
+  resolvePlaywrightTestAuth,
   viteRendererBuildNeeded,
 } from "./vite-renderer-dist-stale.mjs";
 
@@ -83,45 +84,68 @@ describe("Playwright test-auth renderer reuse", () => {
     },
   );
 
-  it.each(["legacy", "absent", "malformed", "partial"])(
-    "fails closed when test-auth manifest metadata is %s",
-    (manifestState) => {
-      const { appDir, distDir } = makeRenderer();
-      const manifestPath = path.join(distDir, RENDERER_BUILD_MANIFEST_FILENAME);
-      if (manifestState === "legacy") {
-        const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
-        delete manifest.playwrightTestAuth;
-        fs.writeFileSync(manifestPath, JSON.stringify(manifest));
-      } else if (manifestState === "absent") {
-        fs.unlinkSync(manifestPath);
-      } else if (manifestState === "partial") {
-        fs.writeFileSync(
-          manifestPath,
-          JSON.stringify({ playwrightTestAuth: false }),
-        );
-      } else {
-        fs.writeFileSync(manifestPath, "{not-json");
-      }
-
-      expect(rendererDistMatchesPlaywrightTestAuth(appDir, false)).toBe(false);
-      expect(
-        viteRendererBuildNeeded(appDir, tmp, {
-          expectedPlaywrightTestAuth: false,
+  it.each([
+    "legacy",
+    "absent",
+    "malformed",
+    "partial",
+    "wrong-schema",
+    "wrong-fingerprint",
+  ])("fails closed when test-auth manifest metadata is %s", (manifestState) => {
+    const { appDir, distDir } = makeRenderer();
+    const manifestPath = path.join(distDir, RENDERER_BUILD_MANIFEST_FILENAME);
+    const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+    if (manifestState === "legacy") {
+      delete manifest.playwrightTestAuth;
+      fs.writeFileSync(manifestPath, JSON.stringify(manifest));
+    } else if (manifestState === "absent") {
+      fs.unlinkSync(manifestPath);
+    } else if (manifestState === "partial") {
+      fs.writeFileSync(
+        manifestPath,
+        JSON.stringify({
+          buildId: manifest.buildId,
+          playwrightTestAuth: false,
         }),
-      ).toBe(true);
-    },
-  );
+      );
+    } else if (manifestState === "wrong-schema") {
+      manifest.schema = "elizaos.renderer.build/v0";
+      fs.writeFileSync(manifestPath, JSON.stringify(manifest));
+    } else if (manifestState === "wrong-fingerprint") {
+      manifest.buildId = "0".repeat(64);
+      fs.writeFileSync(manifestPath, JSON.stringify(manifest));
+    } else {
+      fs.writeFileSync(manifestPath, "{not-json");
+    }
 
-  it("treats a normal invocation as test auth disabled", () => {
+    expect(rendererDistMatchesPlaywrightTestAuth(appDir, false)).toBe(false);
+    expect(
+      viteRendererBuildNeeded(appDir, tmp, {
+        expectedPlaywrightTestAuth: false,
+      }),
+    ).toBe(true);
+  });
+
+  it("uses Vite production env precedence for the expected variant", () => {
     const previousPlaywrightTestAuth = process.env.VITE_PLAYWRIGHT_TEST_AUTH;
     delete process.env.VITE_PLAYWRIGHT_TEST_AUTH;
     try {
-      const { appDir } = makeRenderer(false);
-
-      expect(viteRendererBuildNeeded(appDir, tmp)).toBe(false);
-
+      const appDir = path.join(tmp, "app");
+      fs.mkdirSync(appDir, { recursive: true });
+      fs.writeFileSync(
+        path.join(appDir, ".env.production"),
+        "VITE_PLAYWRIGHT_TEST_AUTH=true\n",
+      );
       makeRenderer(true);
-      expect(viteRendererBuildNeeded(appDir, tmp)).toBe(true);
+
+      const expectedPlaywrightTestAuth = resolvePlaywrightTestAuth(appDir);
+
+      expect(expectedPlaywrightTestAuth).toBe(true);
+      expect(
+        viteRendererBuildNeeded(appDir, tmp, {
+          expectedPlaywrightTestAuth,
+        }),
+      ).toBe(false);
     } finally {
       if (previousPlaywrightTestAuth === undefined) {
         delete process.env.VITE_PLAYWRIGHT_TEST_AUTH;
@@ -129,5 +153,36 @@ describe("Playwright test-auth renderer reuse", () => {
         process.env.VITE_PLAYWRIGHT_TEST_AUTH = previousPlaywrightTestAuth;
       }
     }
+  });
+
+  it("rebuilds when a production env file changes the requested variant", () => {
+    const previousPlaywrightTestAuth = process.env.VITE_PLAYWRIGHT_TEST_AUTH;
+    delete process.env.VITE_PLAYWRIGHT_TEST_AUTH;
+    try {
+      const { appDir } = makeRenderer(false);
+      fs.writeFileSync(
+        path.join(appDir, ".env.production"),
+        "VITE_PLAYWRIGHT_TEST_AUTH=true\n",
+      );
+
+      expect(
+        viteRendererBuildNeeded(appDir, tmp, {
+          expectedPlaywrightTestAuth: resolvePlaywrightTestAuth(appDir),
+        }),
+      ).toBe(true);
+    } finally {
+      if (previousPlaywrightTestAuth === undefined) {
+        delete process.env.VITE_PLAYWRIGHT_TEST_AUTH;
+      } else {
+        process.env.VITE_PLAYWRIGHT_TEST_AUTH = previousPlaywrightTestAuth;
+      }
+    }
+  });
+
+  it("lets generic desktop callers reuse renderers without a manifest", () => {
+    const { appDir, distDir } = makeRenderer();
+    fs.unlinkSync(path.join(distDir, RENDERER_BUILD_MANIFEST_FILENAME));
+
+    expect(viteRendererBuildNeeded(appDir, tmp)).toBe(false);
   });
 });

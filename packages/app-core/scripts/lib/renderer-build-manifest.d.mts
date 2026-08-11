@@ -49,6 +49,11 @@ export function readRendererBuildManifest(
   dir: string,
 ): RendererBuildManifest | null;
 
+export function rendererBuildManifestMatchesDist(
+  distDir: string,
+  manifest: unknown,
+): manifest is RendererBuildManifest;
+
 export function assertStagedRendererMatchesBuild(
   freshDistDir: string,
   stagedDir: string,
