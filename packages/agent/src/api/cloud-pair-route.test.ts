@@ -402,7 +402,9 @@ describe("handleStandaloneCloudPairRoute", () => {
 
       expect(harness.status()).toBe(403);
       expect(harness.body()).toContain("Sign-in link could not be verified");
-      expect(harness.body()).not.toContain("Sign-in link expired");
+      // The word "expired" must not appear anywhere — the relay cannot know
+      // the cause, so it must not assert it. See issue #18184.
+      expect(harness.body().toLowerCase()).not.toContain("expired");
       expect(harness.body()).not.toContain('window.location.replace("/")');
     }
   });
@@ -436,7 +438,7 @@ describe("handleStandaloneCloudPairRoute", () => {
     }
   });
 
-  it("emits a structured warning with status, exchangeUrl, and requestOrigin on rejection", async () => {
+  it("emits exactly one structured warning with status, exchangeUrl, and requestOrigin on rejection", async () => {
     vi.stubGlobal(
       "fetch",
       vi
@@ -457,11 +459,10 @@ describe("handleStandaloneCloudPairRoute", () => {
       harness.res,
     );
 
-    const rejectionWarn = vi
-      .mocked(logger.warn)
-      .mock.calls.find((c) => String(c[0]).includes("pairing link rejected"));
-    expect(rejectionWarn).toBeDefined();
-    const logLine = String(rejectionWarn![0]);
+    // Exactly one warning — not two (no generic non-2xx log for 401/403/410).
+    expect(vi.mocked(logger.warn)).toHaveBeenCalledTimes(1);
+    const logLine = String(vi.mocked(logger.warn).mock.calls[0][0]);
+    expect(logLine).toContain("pairing link rejected");
     expect(logLine).toContain("status=410");
     expect(logLine).toContain("exchangeUrl=");
     expect(logLine).toContain("requestOrigin=http://127.0.0.1:43123");
@@ -507,5 +508,26 @@ describe("handleStandaloneCloudPairRoute", () => {
       "https://staging.elizacloud.ai/dashboard/agents",
     );
     expect(harness.body()).not.toContain("www.elizacloud.ai");
+  });
+
+  it("resolves the recovery link to staging for wildcard staging hostnames", async () => {
+    process.env.ELIZAOS_CLOUD_BASE_URL =
+      "https://us-east.staging.elizacloud.ai/api/v1";
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValue(new Response(JSON.stringify({}), { status: 410 })),
+    );
+
+    const harness = fakeRes();
+    await handleStandaloneCloudPairRoute(
+      fakeReq({ pathname: "/pair", search: "?token=pair-token" }),
+      harness.res,
+    );
+
+    expect(harness.body()).toContain(
+      "https://staging.elizacloud.ai/dashboard/agents",
+    );
   });
 });

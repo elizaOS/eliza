@@ -91,8 +91,14 @@ function canUseManagedDirectRelay(req: http.IncomingMessage): boolean {
 }
 
 function escapeHtml(value: string): string {
-  return value.replace(/[<>&]/g, (c) =>
-    c === "<" ? "&lt;" : c === ">" ? "&gt;" : "&amp;",
+  return value.replace(/[<>&"]/g, (c) =>
+    c === "<"
+      ? "&lt;"
+      : c === ">"
+        ? "&gt;"
+        : c === "&"
+          ? "&amp;"
+          : "&quot;",
   );
 }
 
@@ -265,7 +271,9 @@ export async function handleStandaloneCloudPairRoute(
       // malformed JSON or missing bearer ownership becomes an explicit 502.
       const body: unknown = await response.json().catch(() => null);
       exchanged = parseCloudPairRelaySession(body);
-    } else {
+    } else if (status !== 401 && status !== 403 && status !== 410) {
+      // 401/403/410 are logged separately as pairing-link rejections below;
+      // only unexpected non-2xx statuses get the generic warning here.
       logger.warn(
         `[cloud-pair] exchange returned non-2xx status=${status} exchangeUrl=${exchangeUrl} requestOrigin=${origin}`,
       );
@@ -301,7 +309,7 @@ export async function handleStandaloneCloudPairRoute(
       403,
       renderErrorHtml(
         "Sign-in link could not be verified",
-        "Your pairing link was rejected by Eliza Cloud. This can happen if the link was already used, has expired, or does not match this agent. Open your agent again from Eliza Cloud to get a fresh link.",
+        "Eliza Cloud could not verify this pairing link. It may have already been used, or does not match this agent. Open your agent again from Eliza Cloud to get a fresh link.",
       ),
     );
     return true;
