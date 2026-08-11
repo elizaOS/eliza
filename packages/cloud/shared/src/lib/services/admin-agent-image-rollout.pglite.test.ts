@@ -2237,16 +2237,21 @@ describe("admin agent image rollout on primary PGlite", () => {
     }
   });
 
-  test("a second canary accepts the immutable demo image as its exact source pair", async () => {
+  test("a reentrant canary rolls back to its recorded demo source pair", async () => {
     const seeded = await seedAgents(1);
     const firstTarget = seeded.targets[0]!;
     const nextImage = `ghcr.io/elizaos/eliza-demo@${NEXT_DIGEST}`;
-    await dbWrite
-      .update(agentSandboxes)
-      .set({ docker_image: TARGET_IMAGE, image_digest: TARGET_DIGEST })
-      .where(eq(agentSandboxes.id, firstTarget.agentId));
+    const first = await executeUpgradeCanary({
+      actorUserId: seeded.actorUserId,
+      targets: seeded.targets,
+    });
+    const [firstJob] = await dbWrite
+      .select()
+      .from(jobs)
+      .where(eq(jobs.id, first.targets[0]!.jobId!));
+    await completeUpgradeJob(firstJob!);
 
-    const result = await executeUpgradeCanary({
+    const second = await executeUpgradeCanary({
       actorUserId: seeded.actorUserId,
       targetImage: nextImage,
       targets: [
@@ -2258,7 +2263,7 @@ describe("admin agent image rollout on primary PGlite", () => {
       ],
     });
 
-    expect(result.targets).toEqual([
+    expect(second.targets).toEqual([
       expect.objectContaining({
         sourceImage: TARGET_IMAGE,
         sourceDigest: TARGET_DIGEST,
@@ -2266,16 +2271,32 @@ describe("admin agent image rollout on primary PGlite", () => {
         targetDigest: NEXT_DIGEST,
       }),
     ]);
-    const [job] = await dbWrite
+    const [secondJob] = await dbWrite
       .select()
       .from(jobs)
-      .where(eq(jobs.type, JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE));
-    expect(readAdminCanaryImageJobData(job!)).toMatchObject({
+      .where(eq(jobs.id, second.targets[0]!.jobId!));
+    expect(readAdminCanaryImageJobData(secondJob!)).toMatchObject({
       sourceImage: TARGET_IMAGE,
       sourceDigest: TARGET_DIGEST,
       targetImage: nextImage,
       targetDigest: NEXT_DIGEST,
     });
+    await completeUpgradeJob(secondJob!);
+
+    const rollback = await executeRollbackCanary({
+      actorUserId: seeded.actorUserId,
+      source: { jobId: secondJob!.id },
+    });
+
+    expect(rollback.targets).toEqual([
+      expect.objectContaining({
+        operation: "rollback",
+        sourceImage: nextImage,
+        sourceDigest: NEXT_DIGEST,
+        targetImage: TARGET_IMAGE,
+        targetDigest: TARGET_DIGEST,
+      }),
+    ]);
   });
 
   test("one conflicting fifth target rolls back every canary insert", async () => {
