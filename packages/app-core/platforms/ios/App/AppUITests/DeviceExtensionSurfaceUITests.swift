@@ -103,6 +103,28 @@ final class DeviceExtensionSurfaceUITests: XCTestCase {
         attachScreenshot(named: "control-assert-03-gallery-search-eliza")
     }
 
+    // MARK: - Brand-aware display name
+
+    /// The installed target application's real accessibility label.
+    ///
+    /// Reads the host app's `label` (which mirrors `CFBundleDisplayName` /
+    /// `ELIZA_DISPLAY_NAME` from `app.config.ts`) so the test stays aligned
+    /// with the build's actual display name and preserves white-label support
+    /// without hardcoding stale aliases.
+    private var widgetAppDisplayName: String {
+        let app = XCUIApplication()
+        let label = app.label.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !label.isEmpty {
+            return label
+        }
+        let springboardApp = XCUIApplication(bundleIdentifier: "ai.elizaos.app")
+        let sbLabel = springboardApp.label.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !sbLabel.isEmpty {
+            return sbLabel
+        }
+        return "Eliza"
+    }
+
     // MARK: - Home/Lock Screen widget
 
     private func installHomeScreenWidgetFromGallery() throws {
@@ -131,12 +153,13 @@ final class DeviceExtensionSurfaceUITests: XCTestCase {
         let search = springboard.searchFields.firstMatch
         XCTAssertTrue(search.waitForExistence(timeout: 8), "Widget gallery must expose a search field")
         search.tap()
-        search.typeText("Eliza")
+        let displayName = widgetAppDisplayName
+        search.typeText(displayName)
         Thread.sleep(forTimeInterval: 2.0)
         attachScreenshot(named: "widget-assert-02-gallery-search-eliza")
 
-        let appRow = springboard.staticTexts["elizaOS"].firstMatch
-        XCTAssertTrue(appRow.waitForExistence(timeout: 8), "Widget gallery search must list elizaOS")
+        let appRow = springboard.staticTexts[displayName].firstMatch
+        XCTAssertTrue(appRow.waitForExistence(timeout: 8), "Widget gallery search must list \(displayName)")
         appRow.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
         Thread.sleep(forTimeInterval: 1.5)
         attachScreenshot(named: "widget-assert-03-detail")
