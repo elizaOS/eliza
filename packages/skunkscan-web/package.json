@@ -1,0 +1,24 @@
+{
+  "name": "@elizaos/skunkscan-web",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "description": "Minimal single-page SkunkScan Trust Check UI: one address input, one button, the free Trust Check card. Served same-origin by @elizaos/agent (see server.ts) - not a standalone deployable service.",
+  "scripts": {
+    "dev": "bun --bun vite",
+    "build": "bun --bun vite build",
+    "typecheck": "tsc --noEmit",
+    "preview": "bun --bun vite preview --port 4466"
+  },
+  "dependencies": {
+    "react": "19.2.5",
+    "react-dom": "19.2.5"
+  },
+  "devDependencies": {
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "@vitejs/plugin-react": "^6.0.0",
+    "typescript": "^6.0.3",
+    "vite": "^8.0.0"
+  }
+}
