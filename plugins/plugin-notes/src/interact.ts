@@ -214,17 +214,6 @@ async function dispatchCapability(
   }
   if (capability === "get-note") {
     assertOnlyParams(params, ["id", "title", "query"]);
-    // content is create/update-only payload; delete/read selectors are id|title|query
-    if (Object.hasOwn(params, "content")) {
-      throw new ElizaError(
-        `Capability "${capability}" does not accept parameter "content".`,
-        {
-          code: "NOTES_VALIDATION_FAILED",
-          context: { field: "content" },
-          severity: "ephemeral",
-        },
-      );
-    }
     const target = parseLookupTarget(params, capability, [
       "id",
       "title",
@@ -282,16 +271,6 @@ async function dispatchCapability(
   }
   if (capability === "delete-note") {
     assertOnlyParams(params, ["id", "title", "query"]);
-    if (Object.hasOwn(params, "content")) {
-      throw new ElizaError(
-        `Capability "${capability}" does not accept parameter "content".`,
-        {
-          code: "NOTES_VALIDATION_FAILED",
-          context: { field: "content" },
-          severity: "ephemeral",
-        },
-      );
-    }
     const target = parseLookupTarget(params, capability, [
       "id",
       "title",
@@ -313,13 +292,42 @@ async function dispatchCapability(
     );
   }
   if (capability === "clear-notes") {
-    assertOnlyParams(params, ["confirm"]);
+    assertOnlyParams(params, ["confirm", "revision"]);
     if (params.confirm !== true) {
       throw new ElizaError("clear-notes requires { confirm: true }.", {
         code: "NOTES_VALIDATION_FAILED",
         context: { field: "confirm", provided: params.confirm },
         severity: "ephemeral",
       });
+    }
+    if (
+      typeof params.revision !== "number" ||
+      !Number.isSafeInteger(params.revision) ||
+      params.revision < 0
+    ) {
+      throw new ElizaError(
+        "clear-notes requires { revision: <current integer revision> }.",
+        {
+          code: "NOTES_VALIDATION_FAILED",
+          context: { field: "revision", provided: params.revision },
+          severity: "ephemeral",
+        },
+      );
+    }
+    const currentRevision = service.snapshot().revision;
+    if (params.revision !== currentRevision) {
+      throw new ElizaError(
+        `clear-notes revision ${params.revision} is stale; current revision is ${currentRevision}.`,
+        {
+          code: "NOTES_VALIDATION_FAILED",
+          context: {
+            field: "revision",
+            provided: params.revision,
+            current: currentRevision,
+          },
+          severity: "ephemeral",
+        },
+      );
     }
     const { value: cleared, snapshot } = await service.clearNotesWithCommit();
     return mutationSuccess(

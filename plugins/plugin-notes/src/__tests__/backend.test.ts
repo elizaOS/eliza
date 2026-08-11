@@ -478,7 +478,8 @@ describe("Notes capabilities", () => {
 
     await interact("create-note", { content: "One", color: "slate" }, service);
     await interact("create-note", { content: "Two", color: "rose" }, service);
-    const clearedNotes = await interact("clear-notes", { confirm: true }, service);
+    const revision = service.snapshot().revision;
+    const clearedNotes = await interact("clear-notes", { confirm: true, revision }, service);
     expect(clearedNotes).toMatchObject({
       success: true,
       data: { cleared: 2 },

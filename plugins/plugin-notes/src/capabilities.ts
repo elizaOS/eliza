@@ -120,9 +120,15 @@ export const NOTES_CAPABILITIES: ViewCapability[] = [
   },
   {
     id: "clear-notes",
-    description: "Delete every sticky note. Requires explicit confirmation.",
+    description: "Delete every sticky note. Requires explicit structural confirmation bound to the current revision.",
     params: {
       confirm: { ...CONFIRM_PARAM, required: true },
+      revision: {
+        type: "integer",
+        description:
+          "Current Notes revision from the latest snapshot; must match the durable state to prove the user saw it before clearing.",
+        minimum: 0,
+      },
     },
   },
 ];
