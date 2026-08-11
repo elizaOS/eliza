@@ -4804,7 +4804,18 @@ export const tasksAction: Action & {
     "UPDATE_ISSUE",
     "GET_ISSUE",
     "GITHUB_ISSUE",
+    "GITHUB_ISSUES",
     "GITHUB_CREATE_ISSUE",
+    // Complete the GITHUB_<verb>_ISSUE(S) permutation family: live 2026-08-11
+    // ("any open github issues?") nominated GITHUB_LIST_ISSUES — LIST_ISSUES
+    // and GITHUB_ISSUE were both present but the exact guess matched nothing
+    // and the planner declined a capability it has (same class as the
+    // GITHUB_ADD_COMMENT incident above).
+    "GITHUB_LIST_ISSUES",
+    "LIST_GITHUB_ISSUES",
+    "GITHUB_CLOSE_ISSUE",
+    "GITHUB_UPDATE_ISSUE",
+    "GITHUB_GET_ISSUE",
     "GITHUB_ADD_COMMENT",
     "GITHUB_COMMENT_ISSUE",
     "ADD_COMMENT",
