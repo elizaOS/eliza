@@ -25,7 +25,13 @@
  *   5. a successful transcript persists into the owning message memory with
  *      `notProcessed` cleared, and a persistence failure never breaks the
  *      reply — but a redacted-disclosure variant never persists at all, and a
- *      stored entry that already has a transcript is never overwritten.
+ *      stored entry that already has a transcript is never overwritten;
+ *   6. (#18429) the local branch rejects an oversize attachment on the
+ *      declared content-length BEFORE allocating the body (post-read check as
+ *      backstop), its errors are always transient-class (never
+ *      STT-unavailability evidence, whatever the statusText says), and a
+ *      re-attempt supersedes a stale transient failure note — latest outcome
+ *      wins.
  */
 import { v4 as uuidv4 } from "uuid";
 import { describe, expect, it, vi } from "vitest";
@@ -263,6 +269,8 @@ describe("ATTACHMENT read on-demand transcription", () => {
 					localSignals.push(init?.signal);
 					return {
 						ok: true,
+						status: 200,
+						headers: new Headers(),
 						arrayBuffer: async () => Uint8Array.from(VIDEO_BYTES).buffer,
 					} as unknown as Response;
 				},
@@ -311,6 +319,8 @@ describe("ATTACHMENT read on-demand transcription", () => {
 					localCalls.push(String(input));
 					return {
 						ok: true,
+						status: 200,
+						headers: new Headers(),
 						arrayBuffer: async () => Uint8Array.from(VIDEO_BYTES).buffer,
 					} as unknown as Response;
 				},
@@ -327,6 +337,101 @@ describe("ATTACHMENT read on-demand transcription", () => {
 			expect(callbackTexts).toEqual([
 				"I don't have a transcript for that attachment yet.",
 			]);
+		},
+	);
+
+	it("rejects an oversize local attachment on content-length before reading the body", async () => {
+		const arrayBufferSpy = vi.fn(
+			async () => Uint8Array.from(VIDEO_BYTES).buffer,
+		);
+		const { callbackTexts, calls } = await runRead({
+			attachment: makeVideoAttachment({
+				url: `/api/media/${STORED_SHA}.mp4`,
+				title: "stored_clip.mp4",
+			}),
+			transcription: async () => TRANSCRIPT,
+			localFetch: async () =>
+				({
+					ok: true,
+					status: 200,
+					headers: new Headers({
+						"content-length": String(50 * 1024 * 1024 + 1),
+					}),
+					arrayBuffer: arrayBufferSpy,
+				}) as unknown as Response,
+		});
+
+		// The declared size alone rejects the fetch — the body is NEVER
+		// allocated (remote-branch parity: fetchRemoteMedia also refuses on the
+		// content-length header before reading).
+		expect(arrayBufferSpy).not.toHaveBeenCalled();
+		expect(
+			calls.filter((c) => c.modelType === ModelType.TRANSCRIPTION),
+		).toHaveLength(0);
+		// The rejection is transient-class: the reply stays the honest "yet".
+		expect(callbackTexts).toEqual([
+			"I don't have a transcript for that attachment yet.",
+		]);
+	});
+
+	it("still rejects an oversize local body when content-length is absent (post-read backstop)", async () => {
+		const { callbackTexts, calls } = await runRead({
+			attachment: makeVideoAttachment({
+				url: `/api/media/${STORED_SHA}.mp4`,
+				title: "stored_clip.mp4",
+			}),
+			transcription: async () => TRANSCRIPT,
+			localFetch: async () =>
+				({
+					ok: true,
+					status: 200,
+					headers: new Headers(),
+					arrayBuffer: async () => new ArrayBuffer(50 * 1024 * 1024 + 1),
+				}) as unknown as Response,
+		});
+
+		expect(
+			calls.filter((c) => c.modelType === ModelType.TRANSCRIPTION),
+		).toHaveLength(0);
+		expect(callbackTexts).toEqual([
+			"I don't have a transcript for that attachment yet.",
+		]);
+	});
+
+	// The local branch's non-ok error must be static: statusText is dynamic
+	// prose, and echoing it (pre-#18429 `Failed to fetch attachment:
+	// ${res.statusText}`) would let an unavailability-looking statusText forge
+	// the "isn't enabled" reply through isTranscriptionUnavailableError.
+	it.each([
+		[404, "Not Found"],
+		[503, "TRANSCRIPTION not available"],
+	])(
+		"keeps the retryable 'yet' reply on a non-ok local fetch (HTTP %s, statusText %j)",
+		async (status, statusText) => {
+			const { callbackTexts, calls } = await runRead({
+				attachment: makeVideoAttachment({
+					url: `/api/media/${STORED_SHA}.mp4`,
+					title: "stored_clip.mp4",
+				}),
+				transcription: async () => TRANSCRIPT,
+				localFetch: async () =>
+					({
+						ok: false,
+						status,
+						statusText,
+						headers: new Headers(),
+						arrayBuffer: async () => Uint8Array.from(VIDEO_BYTES).buffer,
+					}) as unknown as Response,
+			});
+
+			expect(
+				calls.filter((c) => c.modelType === ModelType.TRANSCRIPTION),
+			).toHaveLength(0);
+			expect(callbackTexts).toHaveLength(1);
+			expect(callbackTexts[0]).toBe(
+				"I don't have a transcript for that attachment yet.",
+			);
+			expect(callbackTexts[0]).not.toContain("isn't enabled");
 		},
 	);
 
@@ -539,6 +644,57 @@ describe("ATTACHMENT read on-demand transcription", () => {
 			"I don't have a transcript for that attachment yet.",
 		);
 		expect(callbackTexts[0]).not.toContain("isn't enabled");
+	});
+
+	it("lets the latest failure win: live unavailability supersedes a stale transient note", async () => {
+		// Pre-#18429 the catch used `??=`, so a stored transient marker (first
+		// failure) masked live proof that no provider can serve (second
+		// failure) and the reply dead-ended on the retryable "yet".
+		const unavailable = new Error(
+			"second failure: Eliza Cloud STT is not available — falling through to next TRANSCRIPTION handler",
+		);
+		unavailable.name = "CloudSttUnavailableError";
+		const { result, callbackTexts } = await runRead({
+			attachment: makeVideoAttachment({
+				notProcessed: "Video attachment could not be fetched: first failure",
+			}),
+			transcription: async () => {
+				throw unavailable;
+			},
+		});
+
+		expect(result?.success).toBe(true);
+		expect(callbackTexts).toHaveLength(1);
+		expect(callbackTexts[0]).toContain("speech-to-text isn't enabled");
+		// The record's note (planner-facing via data) carries the SECOND
+		// failure as an anchored on-demand marker; the first is gone.
+		const latestNote = (result?.data as { attachments?: Media[] } | undefined)
+			?.attachments?.[0]?.notProcessed;
+		expect(latestNote).toMatch(/^Transcription unavailable:/);
+		expect(latestNote).toContain("second failure");
+		expect(latestNote).not.toContain("first failure");
+	});
+
+	it("clears a stale transient note when the re-attempt fails transiently again", async () => {
+		// The re-attempt supersedes the old note: after another transient
+		// failure the record is note-free, so nothing downstream can show the
+		// stale first-failure prose as if it described the current state.
+		const { result, callbackTexts } = await runRead({
+			attachment: makeVideoAttachment({
+				notProcessed: "Video attachment could not be fetched: first failure",
+			}),
+			transcription: async () => {
+				throw new Error("provider returned 502");
+			},
+		});
+
+		expect(result?.success).toBe(true);
+		expect(callbackTexts).toEqual([
+			"I don't have a transcript for that attachment yet.",
+		]);
+		const attachments = (result?.data as { attachments?: Media[] } | undefined)
+			?.attachments;
+		expect(attachments?.[0]?.notProcessed).toBeUndefined();
 	});
 
 	it("reports honest unavailability from an ingest-time failure marker", async () => {

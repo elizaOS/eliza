@@ -104,23 +104,28 @@ function isMediaAttachment(record: AttachmentRecord): boolean {
 }
 
 /**
+ * Anchored writer-controlled unavailability marker prefix ("Transcription
+ * unavailable:" on-demand, "Audio/Video transcription unavailable:" ingest).
+ * The appended error prose can echo a hostile remote body (media/fetch.ts
+ * embeds up to ~200 chars of it), so mid-string matches must never count as
+ * unavailability evidence. Notes that do NOT match are transient-class and a
+ * re-attempt supersedes them (transcribeMediaOnDemand).
+ */
+const TRANSCRIPTION_UNAVAILABLE_MARKER =
+	/^(?:(?:audio|video)\s+)?transcription unavailable/i;
+
+/**
  * True when a media record's transcript is missing because transcription
  * itself was unavailable (ingest or on-demand), not because nobody has asked
  * yet. `notProcessed` carries the raw provider error; the user-facing message
- * must stay a clean sentence, never that internal prose. Anchored to the
- * writer-controlled marker prefix ("Transcription unavailable:" on-demand,
- * "Audio/Video transcription unavailable:" ingest) — the appended error prose
- * can echo a hostile remote body (media/fetch.ts embeds up to ~200 chars of
- * it), so mid-string matches must never count as unavailability evidence.
+ * must stay a clean sentence, never that internal prose.
  */
 function mediaTranscriptionUnavailable(records: AttachmentRecord[]): boolean {
 	return records.some(
 		(record) =>
 			isMediaAttachment(record) &&
 			typeof record.attachment.notProcessed === "string" &&
-			/^(?:(?:audio|video)\s+)?transcription unavailable/i.test(
-				record.attachment.notProcessed,
-			),
+			TRANSCRIPTION_UNAVAILABLE_MARKER.test(record.attachment.notProcessed),
 	);
 }
 
@@ -227,11 +232,33 @@ async function fetchTranscribableBytes(
 		);
 	}
 	const runtimeFetch = runtime.fetch ?? globalThis.fetch;
-	const res = await runtimeFetch(localUrl.href, {
-		signal: AbortSignal.timeout(ON_DEMAND_TRANSCRIPTION_TIMEOUT_MS),
-	});
+	let res: Response;
+	try {
+		res = await runtimeFetch(localUrl.href, {
+			signal: AbortSignal.timeout(ON_DEMAND_TRANSCRIPTION_TIMEOUT_MS),
+		});
+	} catch (err) {
+		// error-policy:J2 static transient-class rethrow: whatever the fetch
+		// layer threw, the local branch must never surface prose that
+		// isTranscriptionUnavailableError could mistake for STT being disabled.
+		throw new Error("Could not fetch attachment locally", { cause: err });
+	}
 	if (!res.ok) {
-		throw new Error(`Failed to fetch attachment: ${res.statusText}`);
+		// Only the numeric status: statusText is dynamic prose and must never
+		// feed the unavailability classifier.
+		throw new Error(`Could not fetch attachment locally (HTTP ${res.status})`);
+	}
+	// Reject on the declared size BEFORE allocating the body (parity with the
+	// remote branch's enforceContentLengthLimit in media/fetch.ts); the
+	// post-read check stays as the backstop for an absent or lying header.
+	const declaredLength = Number(res.headers.get("content-length"));
+	if (
+		Number.isFinite(declaredLength) &&
+		declaredLength > ON_DEMAND_TRANSCRIPTION_MAX_BYTES
+	) {
+		throw new Error(
+			`Attachment exceeds ${ON_DEMAND_TRANSCRIPTION_MAX_BYTES} bytes`,
+		);
 	}
 	const buffer = Buffer.from(await res.arrayBuffer());
 	if (buffer.length > ON_DEMAND_TRANSCRIPTION_MAX_BYTES) {
@@ -338,6 +365,16 @@ async function transcribeMediaOnDemand(
 		const { attachment } = record;
 		if (!isMediaAttachment(record) || record.content.trim()) continue;
 		if (typeof attachment.url !== "string" || !attachment.url.trim()) continue;
+		// A fresh attempt supersedes a stale TRANSIENT failure note (e.g. an
+		// ingest fetch-failure marker): clear it so this attempt's outcome, not
+		// last time's, decides the reply. An anchored unavailability marker is
+		// durable evidence and survives unless this attempt resolves it.
+		if (
+			typeof attachment.notProcessed === "string" &&
+			!TRANSCRIPTION_UNAVAILABLE_MARKER.test(attachment.notProcessed)
+		) {
+			attachment.notProcessed = undefined;
+		}
 		try {
 			const buffer = await fetchTranscribableBytes(runtime, attachment.url);
 			const transcript = await runtime.useModel(
@@ -357,11 +394,13 @@ async function transcribeMediaOnDemand(
 			// error-policy:J4 the attachment stays readable-as-absent and the
 			// caller's fallback message reports the state honestly. Only a
 			// no-provider-can-serve failure marks the record unavailable (and
-			// thus the "isn't enabled" reply); a transient fetch/provider error
-			// leaves the record untouched so the reply stays the retryable
-			// "yet". Expected whenever STT is disabled, so debug, not warn.
+			// thus the "isn't enabled" reply) — plain assignment so the LATEST
+			// failure's note wins over any stale marker; a transient
+			// fetch/provider error leaves the record note-free so the reply
+			// stays the retryable "yet". Expected whenever STT is disabled, so
+			// debug, not warn.
 			if (isTranscriptionUnavailableError(err)) {
-				attachment.notProcessed ??= `Transcription unavailable: ${err.message}`;
+				attachment.notProcessed = `Transcription unavailable: ${err.message}`;
 			}
 			logger.debug(
 				{ attachmentId: attachment.id, err },
