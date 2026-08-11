@@ -14,6 +14,7 @@
  * inference so routing stays language-agnostic (#10471).
  */
 
+import { fetchRemoteMedia } from "../../media/fetch.ts";
 import {
 	linkShareOwnText,
 	looksLikeBareLinkShare,
@@ -145,15 +146,36 @@ function missingReadableContentMessage(records: AttachmentRecord[]): string {
 		: "I don't have readable text for those attachments yet.";
 }
 
+/** Same cap the ingest path enforces (`ATTACHMENT_FETCH_MAX_BYTES`). */
+const ON_DEMAND_TRANSCRIPTION_MAX_BYTES = 50 * 1024 * 1024;
+
+/**
+ * True when a TRANSCRIPTION failure means no provider can serve at all —
+ * a provider's *UnavailableError fall-through (e.g. `CloudSttUnavailableError`)
+ * or the runtime having no registered handler — as opposed to a transient
+ * failure (network blip, provider 5xx) that a later retry could clear. Only
+ * the former may claim "speech-to-text isn't enabled" to the user.
+ */
+function isTranscriptionUnavailableError(err: unknown): err is Error {
+	if (!(err instanceof Error)) return false;
+	if (err.name.endsWith("UnavailableError")) return true;
+	return /falling through to next TRANSCRIPTION handler|no (?:model )?handler.*TRANSCRIPTION|TRANSCRIPTION.*not (?:available|enabled|registered)/i.test(
+		err.message,
+	);
+}
+
 /**
  * Live retry for media records whose ingest-time transcription produced
  * nothing (observed live: a video posted while cloud STT was gated off has no
  * transcript, and every later "can you get one?" dead-ended on the canned
- * missing-transcript reply even after STT came back). Re-runs the
- * TRANSCRIPTION model against the stored attachment URL — conversation media
- * the ingest path already fetched, not a new URL from chat text (that still
- * routes to WEB_FETCH) — and fills the record in place so read/save answer
- * from the fresh transcript. Failure keeps the explicit unavailable state.
+ * missing-transcript reply even after STT came back). Fetches the stored
+ * attachment bytes through core's SSRF-guarded, size-capped media fetch —
+ * conversation media the ingest path already fetched once, not a new URL from
+ * chat text (that still routes to WEB_FETCH) — and hands the provider a
+ * buffer, mirroring the ingest call shape. Success fills the record in place
+ * so read/save answer from the fresh transcript; unavailability keeps the
+ * explicit unavailable state; a transient failure changes nothing so the
+ * user-facing reply stays the honest open-ended "yet".
  */
 async function transcribeMediaOnDemand(
 	runtime: IAgentRuntime,
@@ -165,9 +187,14 @@ async function transcribeMediaOnDemand(
 		if (!isMediaAttachment(record) || record.content.trim()) continue;
 		if (typeof attachment.url !== "string" || !attachment.url.trim()) continue;
 		try {
-			const transcript = await runtime.useModel(ModelType.TRANSCRIPTION, {
-				audioUrl: attachment.url,
+			const { buffer } = await fetchRemoteMedia({
+				url: attachment.url,
+				maxBytes: ON_DEMAND_TRANSCRIPTION_MAX_BYTES,
 			});
+			const transcript = await runtime.useModel(
+				ModelType.TRANSCRIPTION,
+				buffer,
+			);
 			if (typeof transcript === "string" && transcript.trim()) {
 				const text = transcript.trim();
 				record.content = text;
@@ -177,14 +204,18 @@ async function transcribeMediaOnDemand(
 				transcribedAny = true;
 			}
 		} catch (err) {
-			// error-policy:J4 the attachment stays readable-as-absent with an
-			// explicit transcription-unavailable state; the caller's fallback
-			// message reports it honestly. Expected whenever no TRANSCRIPTION
-			// provider is enabled, so log at debug, not warn.
-			attachment.notProcessed ??= `Transcription unavailable: ${err instanceof Error ? err.message : String(err)}`;
+			// error-policy:J4 the attachment stays readable-as-absent and the
+			// caller's fallback message reports the state honestly. Only a
+			// no-provider-can-serve failure marks the record unavailable (and
+			// thus the "isn't enabled" reply); a transient fetch/provider error
+			// leaves the record untouched so the reply stays the retryable
+			// "yet". Expected whenever STT is disabled, so debug, not warn.
+			if (isTranscriptionUnavailableError(err)) {
+				attachment.notProcessed ??= `Transcription unavailable: ${err.message}`;
+			}
 			logger.debug(
 				{ attachmentId: attachment.id, err },
-				"[ReadAttachment] On-demand transcription unavailable",
+				"[ReadAttachment] On-demand transcription did not produce a transcript",
 			);
 		}
 	}
