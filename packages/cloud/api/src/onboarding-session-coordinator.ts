@@ -563,6 +563,7 @@ export class OnboardingSessionCoordinator {
     // bootstrap boundary used by the main Hono application.
     const {
       assertTrustedTelegramContinuation,
+      deliverCommittedProactiveGreeting,
       loadCachedOnboardingSession,
       runOnboardingChatWithStore,
     } = await import("@/lib/services/eliza-app/onboarding-chat");
@@ -619,8 +620,14 @@ export class OnboardingSessionCoordinator {
     );
 
     const writes = storedSessionEntries(scope, result.session);
+    // The replay ledger stores the COMMITTED shape of the result: the
+    // greeting handoff is stripped below before this turn returns, and a
+    // replayed turn must never re-enqueue a greeting.
     const replay = request.input.idempotencyKey
-      ? storedReplay(request.input.idempotencyKey, result)
+      ? storedReplay(request.input.idempotencyKey, {
+          ...result,
+          proactiveGreeting: undefined,
+        })
       : undefined;
     if (replay) {
       writes[replayStorageKey(scope, replay.key, request.input)] = replay;
@@ -645,8 +652,15 @@ export class OnboardingSessionCoordinator {
       }
     });
     await this.bindContinuation(result.session);
-    await this.mirrorSessionBestEffort(result.session);
-    return result;
+    // Commit ordering for the false-success DM hazard: the storage
+    // transaction above is the turn's durable commit. Only now — with the
+    // userId binding persisted — may the recorded greeting enqueue. A turn
+    // that threw before this point (for example a provisioning outage) never
+    // reaches here, so the user is never told "you're all set" for a sign-in
+    // that did not durably complete. Enqueue itself stays best-effort.
+    const committed = await deliverCommittedProactiveGreeting(result);
+    await this.mirrorSessionBestEffort(committed.session);
+    return committed;
   }
 
   async alarm(): Promise<void> {

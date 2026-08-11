@@ -17,7 +17,11 @@ import {
 } from "../../runtime/cloud-bindings";
 import { logger } from "../../utils/logger";
 import { launchManagedElizaAgent } from "../eliza-managed-launch";
-import { enqueueDiscordProactiveGreeting } from "./onboarding-proactive-greeting";
+import {
+  enqueueDiscordProactiveGreeting,
+  PROACTIVE_GREETING_QUEUE_PREFIX,
+  type ProactiveGreetingRequest,
+} from "./onboarding-proactive-greeting";
 import {
   type ElizaAppProvisioningStatus,
   ensureElizaAppProvisioning,
@@ -118,6 +122,15 @@ export interface OnboardingChatResult {
    * null here. Same loginUrl either way - presentation only.
    */
   cta?: OnboardingChatCta | null;
+  /**
+   * Commit-ordering handoff: the proactive greeting this turn produced, if
+   * any. The state machine only RECORDS it; the caller that owns the turn's
+   * durable commit (coordinator transaction or local store) enqueues it
+   * strictly AFTER the commit lands and strips this field before the result
+   * crosses the service boundary. A turn that fails to persist therefore can
+   * never DM "you're all set" for a sign-in that did not durably complete.
+   */
+  proactiveGreeting?: ProactiveGreetingRequest | null;
 }
 
 const SESSION_TTL_SECONDS = 14 * 24 * 60 * 60;
@@ -182,6 +195,17 @@ export function createOnboardingSessionId(input?: {
 const SESSION_ID_PATTERN = /^[a-zA-Z0-9:+_-]{8,180}$/;
 const PLATFORM_SESSION_PREFIX = "platform:";
 
+/**
+ * The proactive-greeting queues live in the same Durable Object namespace as
+ * per-session coordinators under a reserved, well-known name. No caller may
+ * ever address a queue instance as a chat session: a chat turn landing there
+ * would contend the queue's serialize lock and write chat state into queue
+ * storage.
+ */
+function isReservedSessionId(value: string): boolean {
+  return value.startsWith(PROACTIVE_GREETING_QUEUE_PREFIX);
+}
+
 function redactSessionIdForLog(sessionId: string): string {
   return sessionId.replace(/\d(?=\d{4})/g, "*");
 }
@@ -195,7 +219,11 @@ function redactSessionIdForLog(sessionId: string): string {
  */
 function sanitizeSessionId(value: string | undefined, input: OnboardingChatInput): string {
   const trimmed = value?.trim();
-  if (trimmed && SESSION_ID_PATTERN.test(trimmed)) {
+  if (trimmed && isReservedSessionId(trimmed)) {
+    logger.warn("[eliza-app onboarding] rejected reserved queue instance name as session id", {
+      sessionId: redactSessionIdForLog(trimmed),
+    });
+  } else if (trimmed && SESSION_ID_PATTERN.test(trimmed)) {
     if (!trimmed.startsWith(PLATFORM_SESSION_PREFIX)) {
       return trimmed;
     }
@@ -248,7 +276,11 @@ function isOnboardingContinuation(value: unknown): value is OnboardingContinuati
 
 async function resolveContinuationToken(token: string): Promise<string | null> {
   const trimmed = token.trim();
-  if (!SESSION_ID_PATTERN.test(trimmed) || trimmed.startsWith(PLATFORM_SESSION_PREFIX)) {
+  if (
+    !SESSION_ID_PATTERN.test(trimmed) ||
+    trimmed.startsWith(PLATFORM_SESSION_PREFIX) ||
+    isReservedSessionId(trimmed)
+  ) {
     return null;
   }
 
@@ -459,7 +491,7 @@ export async function claimTelegramOnboardingContinuation(
 ): Promise<TelegramOnboardingContinuationClaim> {
   const token = input.continuationToken.trim();
   const coordinator = onboardingCoordinator();
-  if (!coordinator || !SESSION_ID_PATTERN.test(token)) {
+  if (!coordinator || !SESSION_ID_PATTERN.test(token) || isReservedSessionId(token)) {
     throw trustedContinuationError(null);
   }
   const response = await coordinator.getByName(token).fetch("https://onboarding.internal/claim", {
@@ -1132,13 +1164,17 @@ export async function runOnboardingChatWithStore(
 
   // The exact moment a trusted Discord DM session becomes account-bound from
   // a BROWSER turn (not the DM transport itself) is the user completing the
-  // sign-in handoff. Their Discord chat is silent right now; queue the
-  // one-shot proactive greeting the gateway delivers there. Bot-transport
-  // turns (trustedPlatformIdentity) are excluded: on those the user just
-  // messaged and gets a synchronous reply. Enqueue is best-effort and keyed
-  // by session id (set semantics) so retried or replayed authenticated turns
+  // sign-in handoff. Their Discord chat is silent right now; RECORD the
+  // one-shot proactive greeting for the gateway to deliver there. The
+  // greeting is only recorded on the result here — the caller that owns the
+  // turn's durable commit enqueues it AFTER the commit lands, so a turn that
+  // fails mid-flight (for example a provisioning outage below) never DMs
+  // "you're all set" for a sign-in that did not durably complete.
+  // Bot-transport turns (trustedPlatformIdentity) are excluded: on those the
+  // user just messaged and gets a synchronous reply. Enqueue is keyed by
+  // session id (set semantics) so retried or replayed authenticated turns
   // cannot duplicate the greeting.
-  if (
+  const proactiveGreeting: ProactiveGreetingRequest | null =
     wasUnboundBeforeThisTurn &&
     session.userId &&
     input.authenticatedUser &&
@@ -1146,13 +1182,12 @@ export async function runOnboardingChatWithStore(
     session.platform === "discord" &&
     session.platformIdentityTrusted === true &&
     session.platformUserId
-  ) {
-    await enqueueDiscordProactiveGreeting({
-      sessionId: session.id,
-      platformUserId: session.platformUserId,
-      name: hasPreferredName(session) ? session.name : undefined,
-    });
-  }
+      ? {
+          sessionId: session.id,
+          platformUserId: session.platformUserId,
+          name: hasPreferredName(session) ? session.name : undefined,
+        }
+      : null;
 
   // statusOnly is a read-only poll: skip all user-message processing so it
   // can never mutate session history, name, or preferred-name state, even if
@@ -1263,7 +1298,24 @@ export async function runOnboardingChatWithStore(
     provisioning,
     handoffComplete,
     cta,
+    proactiveGreeting,
   };
+}
+
+/**
+ * Enqueues the turn's recorded proactive greeting (if any) and strips the
+ * commit-ordering field from the result. Called by the turn's durable-commit
+ * owner strictly AFTER persistence succeeds — never before — so a failed turn
+ * cannot produce a false-success DM. Enqueue itself remains best-effort.
+ */
+export async function deliverCommittedProactiveGreeting(
+  result: OnboardingChatResult,
+): Promise<OnboardingChatResult> {
+  const { proactiveGreeting, ...committed } = result;
+  if (proactiveGreeting) {
+    await enqueueDiscordProactiveGreeting(proactiveGreeting);
+  }
+  return committed;
 }
 
 const localQueues = new Map<string, Promise<void>>();
@@ -1343,10 +1395,16 @@ export async function runOnboardingChat(input: OnboardingChatInput): Promise<Onb
       );
       if (replay) return replay;
     }
-    const result = await runOnboardingChatWithStore(normalizedInput, sessionId, {
-      load: loadCachedOnboardingSession,
-      save: mirrorOnboardingSessionToCache,
-    });
+    // In the local path the store's save IS the durable commit, so once
+    // runOnboardingChatWithStore returns the session has persisted and the
+    // recorded greeting may enqueue (commit ordering: greeting only after a
+    // durably committed turn).
+    const result = await deliverCommittedProactiveGreeting(
+      await runOnboardingChatWithStore(normalizedInput, sessionId, {
+        load: loadCachedOnboardingSession,
+        save: mirrorOnboardingSessionToCache,
+      }),
+    );
     if (normalizedInput.idempotencyKey) {
       await cache.set(
         resultCacheKey(sessionId, normalizedInput.idempotencyKey, normalizedInput),

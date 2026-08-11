@@ -24,8 +24,13 @@ mock.module("../../shared/src/lib/cache/client", () => ({
   },
 }));
 
+let provisioningFailure: Error | undefined;
+
 mock.module("../../shared/src/lib/services/eliza-app/provisioning", () => ({
-  ensureElizaAppProvisioning: mock(async () => noProvisioning),
+  ensureElizaAppProvisioning: mock(async () => {
+    if (provisioningFailure) throw provisioningFailure;
+    return noProvisioning;
+  }),
   getElizaAppProvisioningStatus: mock(async () => noProvisioning),
 }));
 
@@ -981,6 +986,65 @@ describe("OnboardingSessionCoordinator", () => {
       for (const body of cases) {
         expect((await enqueue(queue, body)).status).toBe(400);
       }
+      expect(await greetingsOf(await drain(queue))).toEqual([]);
+    });
+
+    test("greeting enqueues only after the turn's durable commit (no false-success DM)", async () => {
+      const harness = createCoordinatorHarness();
+      const { coordinator, sessionId } = harness;
+      const queue = harness.objectByName(QUEUE);
+
+      await turn(
+        coordinator,
+        sessionId,
+        "My name is Sam",
+        "discord:greet-commit-1",
+      );
+      expect(await greetingsOf(await drain(queue))).toEqual([]);
+
+      const browserTurn = () =>
+        coordinator.fetch(
+          new Request("https://onboarding.test/turn", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              sessionId,
+              input: {
+                sessionId,
+                platform: "web",
+                idempotencyKey: "web:greet-commit",
+                authenticatedUser: {
+                  userId: "user-1",
+                  organizationId: "org-1",
+                },
+              },
+            }),
+          }),
+        );
+
+      // The browser continuation binds the account in memory, then
+      // provisioning throws BEFORE the durable transaction commits. The turn
+      // fails and the greeting must not exist anywhere: the user would be
+      // DMed "you're all set" for a sign-in that did not persist.
+      provisioningFailure = new Error("transient provisioning outage");
+      try {
+        expect((await browserTurn()).status).toBe(500);
+      } finally {
+        provisioningFailure = undefined;
+      }
+      expect(await greetingsOf(await drain(queue))).toEqual([]);
+
+      // Retrying after the outage commits the turn and enqueues exactly one
+      // greeting; the committed result never exposes the internal handoff.
+      const retried = await browserTurn();
+      expect(retried.status).toBe(200);
+      const committed = (await retried.json()) as Record<string, unknown>;
+      expect("proactiveGreeting" in committed).toBe(false);
+      const claimed = await greetingsOf(await drain(queue));
+      expect(claimed.map((entry) => entry.sessionId)).toEqual([sessionId]);
+
+      // A transport replay of the committed turn must not re-enqueue.
+      expect((await browserTurn()).status).toBe(200);
       expect(await greetingsOf(await drain(queue))).toEqual([]);
     });
 

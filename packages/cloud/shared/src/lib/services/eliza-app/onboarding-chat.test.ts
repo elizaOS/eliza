@@ -1643,6 +1643,99 @@ describe("runOnboardingChat", () => {
       expect(peekLocalGreetingQueue()).toHaveLength(1);
     });
 
+    test("the committed result never exposes the greeting handoff field", async () => {
+      getElizaAppProvisioningStatus.mockResolvedValue({
+        status: "provisioning",
+        agentId: null,
+        bridgeUrl: null,
+        sandbox: null,
+      });
+      ensureElizaAppProvisioning.mockResolvedValue({
+        status: "provisioning",
+        agentId: null,
+        bridgeUrl: null,
+        sandbox: null,
+      });
+      const gatewayTurn = await runTrustedDiscordHandoff("discord-user-strip");
+      const continued = await runOnboardingChat({
+        sessionId: continuationToken(gatewayTurn),
+        platform: "web",
+        authenticatedUser: { userId: "user-1", organizationId: "org-1" },
+      });
+      // Commit-ordering handoff is internal: the greeting was enqueued, but
+      // the field must not cross the service boundary in the result.
+      expect(peekLocalGreetingQueue()).toHaveLength(1);
+      expect("proactiveGreeting" in continued).toBe(false);
+    });
+
+    test("a turn that fails after binding never queues a greeting (no false-success DM)", async () => {
+      getElizaAppProvisioningStatus.mockResolvedValue({
+        status: "provisioning",
+        agentId: null,
+        bridgeUrl: null,
+        sandbox: null,
+      });
+      ensureElizaAppProvisioning.mockRejectedValue(new Error("transient provisioning outage"));
+      const gatewayTurn = await runTrustedDiscordHandoff("discord-user-fail");
+      expect(peekLocalGreetingQueue()).toHaveLength(0);
+
+      // The browser continuation binds the account in memory, then
+      // provisioning throws before the turn's durable save. The greeting must
+      // NOT be queued: the user would be told "you're all set" for a sign-in
+      // turn that failed.
+      await expect(
+        runOnboardingChat({
+          sessionId: continuationToken(gatewayTurn),
+          platform: "web",
+          authenticatedUser: { userId: "user-1", organizationId: "org-1" },
+        }),
+      ).rejects.toThrow("transient provisioning outage");
+      expect(peekLocalGreetingQueue()).toHaveLength(0);
+
+      // Once the outage clears, the retried turn commits and queues exactly
+      // one greeting.
+      ensureElizaAppProvisioning.mockResolvedValue({
+        status: "provisioning",
+        agentId: null,
+        bridgeUrl: null,
+        sandbox: null,
+      });
+      await runOnboardingChat({
+        sessionId: continuationToken(gatewayTurn),
+        platform: "web",
+        authenticatedUser: { userId: "user-1", organizationId: "org-1" },
+      });
+      const queued = peekLocalGreetingQueue();
+      expect(queued).toHaveLength(1);
+      expect(queued[0]?.platformUserId).toBe("discord-user-fail");
+    });
+
+    test("the reserved greeting queue name is never adopted as a session id", async () => {
+      // An anonymous caller addressing the well-known queue instance must be
+      // re-keyed to a fresh session: a chat turn landing on the queue DO
+      // would contend its serialize lock and write chat state into queue
+      // storage.
+      const result = await runOnboardingChat({
+        message: "hello",
+        sessionId: "proactive-greetings:discord",
+      });
+      expect(result.session.id).not.toBe("proactive-greetings:discord");
+      expect(loggerWarn).toHaveBeenCalledWith(
+        "[eliza-app onboarding] rejected reserved queue instance name as session id",
+        expect.anything(),
+      );
+
+      // A trusted transport presenting the reserved name is re-keyed too.
+      const trusted = await runOnboardingChat({
+        message: "hello",
+        sessionId: "proactive-greetings:discord",
+        platform: "discord",
+        platformUserId: "queue-squatter",
+        trustedPlatformIdentity: true,
+      });
+      expect(trusted.session.id).toBe("platform:discord:queue-squatter");
+    });
+
     test("bot-transport turns never queue a greeting (the user just got a live reply)", async () => {
       ensureElizaAppProvisioning.mockResolvedValue({
         status: "provisioning",

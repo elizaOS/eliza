@@ -23,6 +23,12 @@
  * itself already succeeded). Drain failures propagate to the caller (the
  * internal route), which fails closed; unclaimed entries survive for the next
  * poll until they expire.
+ *
+ * Commit ordering: the onboarding state machine only RECORDS a pending
+ * greeting on its result; the caller that owns the turn's durable commit (the
+ * session coordinator's storage transaction, or the local store save)
+ * enqueues it strictly AFTER that commit. A turn that fails to persist can
+ * therefore never produce a "you're all set" DM.
  */
 
 import type { RuntimeDurableObjectNamespace } from "../../../types/cloud-worker-env";
@@ -50,8 +56,30 @@ export const GREETING_TTL_MS = 15 * 60 * 1000;
 /** Upper bound on entries returned by a single drain. */
 export const MAX_GREETING_DRAIN = 20;
 
+/**
+ * Reserved instance-name prefix for the well-known greeting queues. The
+ * queues share the ONBOARDING_SESSIONS namespace with per-session
+ * coordinators, so session-id validation must refuse to adopt any id under
+ * this prefix as a chat session: a chat turn landing on a queue instance
+ * would contend its serialize lock and write chat state into queue storage.
+ */
+export const PROACTIVE_GREETING_QUEUE_PREFIX = "proactive-greetings:";
+
 /** Well-known Durable Object instance name holding the Discord queue. */
-export const DISCORD_GREETING_QUEUE_NAME = "proactive-greetings:discord";
+export const DISCORD_GREETING_QUEUE_NAME = `${PROACTIVE_GREETING_QUEUE_PREFIX}discord`;
+
+/**
+ * Commit-ordering handoff describing a greeting that should enqueue once the
+ * turn that produced it has durably persisted.
+ */
+export interface ProactiveGreetingRequest {
+  /** Platform-scoped onboarding session id whose sign-in just completed. */
+  sessionId: string;
+  /** Discord user id to DM. */
+  platformUserId: string;
+  /** Preferred name to address in the greeting, when known. */
+  name?: string;
+}
 
 function greetingCoordinator(): RuntimeDurableObjectNamespace | undefined {
   return getCloudBinding<RuntimeDurableObjectNamespace>("ONBOARDING_SESSIONS");
@@ -87,11 +115,9 @@ function isEntryFresh(entry: ProactiveGreetingEntry, now: number): boolean {
  * Records a pending proactive greeting for a freshly bound Discord onboarding
  * session. Never throws: the greeting is a courtesy, the turn is not.
  */
-export async function enqueueDiscordProactiveGreeting(input: {
-  sessionId: string;
-  platformUserId: string;
-  name?: string;
-}): Promise<void> {
+export async function enqueueDiscordProactiveGreeting(
+  input: ProactiveGreetingRequest,
+): Promise<void> {
   const entry: ProactiveGreetingEntry = {
     sessionId: input.sessionId,
     platformUserId: input.platformUserId,
