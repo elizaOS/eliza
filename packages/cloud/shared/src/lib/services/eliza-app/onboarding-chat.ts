@@ -86,6 +86,14 @@ export interface OnboardingChatInput {
    * cannot grow the durable transcript with duplicate status copy.
    */
   statusOnly?: boolean;
+  /** Explicit, informed browser confirmation of a trusted platform link. */
+  confirmPlatformLink?: boolean;
+}
+
+export interface DiscordOnboardingContinuationPreview {
+  platform: "discord";
+  platformUserId: string;
+  platformDisplayName: string;
 }
 
 export interface OnboardingChatCta {
@@ -287,6 +295,69 @@ async function loadOnboardingSessionForValidation(
     }
   }
   return loadCachedOnboardingSession(sessionId);
+}
+
+function trustedDiscordContinuationError(session: OnboardingSession | null): ElizaError {
+  return new ElizaError("Invalid Discord onboarding continuation", {
+    code: "ONBOARDING_TRUSTED_CONTINUATION_INVALID",
+    context: { platform: "discord", sessionFound: Boolean(session) },
+    severity: "ephemeral",
+  });
+}
+
+function isDiscordContinuationForAccount(
+  session: OnboardingSession | null,
+  authenticatedAccount: { userId: string; organizationId: string },
+): session is OnboardingSession & { platform: "discord"; platformUserId: string } {
+  const hasUserBinding = session?.userId !== undefined;
+  const hasOrganizationBinding = session?.organizationId !== undefined;
+  return Boolean(
+    session &&
+      session.platform === "discord" &&
+      session.platformIdentityTrusted === true &&
+      session.platformUserId &&
+      isFreshOnboardingSession(session) &&
+      hasUserBinding === hasOrganizationBinding &&
+      (session.userId === undefined || session.userId === authenticatedAccount.userId) &&
+      (session.organizationId === undefined ||
+        session.organizationId === authenticatedAccount.organizationId),
+  );
+}
+
+/** Resolve an opaque Discord continuation without mutating or binding it. */
+export async function inspectDiscordOnboardingContinuation(
+  continuationToken: string,
+  authenticatedAccount: { userId: string; organizationId: string },
+): Promise<DiscordOnboardingContinuationPreview> {
+  const sessionId = await resolveContinuationToken(continuationToken);
+  const session = sessionId ? await loadOnboardingSessionForValidation(sessionId) : null;
+  if (!isDiscordContinuationForAccount(session, authenticatedAccount)) {
+    throw trustedDiscordContinuationError(session);
+  }
+  return {
+    platform: "discord",
+    platformUserId: session.platformUserId,
+    platformDisplayName: session.platformDisplayName?.trim() || session.platformUserId,
+  };
+}
+
+/**
+ * A mutating Discord confirmation must still resolve the exact trusted session
+ * previewed by this account. This closes expiry/binding TOCTOU windows between
+ * GET preview and POST confirmation and refuses direct forged confirmations.
+ */
+function assertConfirmedDiscordContinuation(
+  session: OnboardingSession | null,
+  input: OnboardingChatInput,
+): void {
+  if (input.confirmPlatformLink !== true) return;
+  if (
+    !input.authenticatedUser ||
+    input.trustedPlatformIdentity === true ||
+    !isDiscordContinuationForAccount(session, input.authenticatedUser)
+  ) {
+    throw trustedDiscordContinuationError(session);
+  }
 }
 
 function isFreshOnboardingSession(session: OnboardingSession): boolean {
@@ -602,15 +673,58 @@ async function maybeLinkAuthenticatedPlatformIdentity(
   session: OnboardingSession,
   input: OnboardingChatInput,
 ): Promise<OnboardingSession> {
-  // Phone linking requires a platform identity attested by a trusted
+  // Identity linking requires a platform identity attested by a trusted
   // transport — either this turn or a previous gateway turn on the session.
-  // An authenticated web caller claiming an arbitrary phone number in the
-  // request body must never bind that phone to their account.
+  // An authenticated web caller claiming an arbitrary phone number or Discord
+  // id in the request body must never bind that identity to their account.
   const platformIdentityTrusted =
     input.trustedPlatformIdentity === true || session.platformIdentityTrusted === true;
+  if (!input.authenticatedUser || !platformIdentityTrusted) {
+    return session;
+  }
+
+  // Discord: a PRIOR gateway turn attested "this session belongs to discord
+  // user X"; the user then authenticated (e.g. Steward email login) via the
+  // opaque continuation credential. Bind the Discord identity so
+  // routeDiscordMessage resolves their DMs to the provisioned agent instead of
+  // onboarding forever. Skipped on gateway turns themselves
+  // (input.trustedPlatformIdentity): there the authenticated account was
+  // RESOLVED FROM user_identities.discord_id, so the link already exists and
+  // re-linking would just add a DB round trip to every DM turn.
   if (
-    !input.authenticatedUser ||
-    !platformIdentityTrusted ||
+    session.platform === "discord" &&
+    session.platformUserId &&
+    input.trustedPlatformIdentity !== true
+  ) {
+    if (input.confirmPlatformLink !== true) {
+      throw new ElizaError("Discord identity linking requires explicit confirmation", {
+        code: "ONBOARDING_PLATFORM_LINK_CONFIRMATION_REQUIRED",
+        context: { platform: "discord" },
+        severity: "ephemeral",
+      });
+    }
+    // Same error policy as the phone link below: success:false is the designed
+    // tenant-safety decline (identity owned by another account) and onboarding
+    // continues; a genuine infra failure throws and propagates — it reruns on
+    // every eligible turn, so a transient throw self-heals on the next attempt.
+    const discordLink = await elizaAppUserService.linkDiscordToUser(
+      input.authenticatedUser.userId,
+      {
+        discordId: session.platformUserId,
+        username: session.platformDisplayName?.trim() || session.platformUserId,
+      },
+    );
+    if (!discordLink.success) {
+      throw new ElizaError(discordLink.error || "Discord identity could not be linked", {
+        code: "ONBOARDING_PLATFORM_IDENTITY_CONFLICT",
+        context: { platform: "discord" },
+        severity: "ephemeral",
+      });
+    }
+    return session;
+  }
+
+  if (
     !isPhoneLikePlatformIdentity({
       trustedPlatformIdentity: true,
       platform: session.platform,
@@ -947,6 +1061,7 @@ export async function runOnboardingChatWithStore(
   // an existing trusted session and match its signed Telegram identity before
   // any new session, account binding, or provisioning work can occur.
   assertTrustedTelegramContinuation(session, input);
+  assertConfirmedDiscordContinuation(session, input);
 
   // An untrusted caller must never create a platform-scoped session. Opaque
   // browser credentials resolve to an existing platform session above.
