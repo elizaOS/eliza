@@ -1,14 +1,66 @@
 import {
   SupportedChain,
   WalletFundingSummary,
+  WalletLabel,
+  WalletLabelCategory,
   WalletRelationship,
   WalletRelationshipSummary,
 } from "../types";
 import { ParsedWalletTransaction } from "../parsers/transaction";
 import { lookupWalletLabel } from "../labels/labelEngine";
+import { lookupProtocol } from "../protocols/registry";
 import {
   createConfidenceResponse,
 } from "../confidence/framework";
+
+// Label categories treated as "known infrastructure" - shared by enough
+// unrelated wallets that a connection to one isn't clustering evidence.
+// Deliberately excludes "suspicious"/"scam"/"rug_pull" (the opposite case -
+// a shared connection to a known-bad address IS worth surfacing) and
+// "unknown"/"personal_wallet" (not infrastructure at all). burn_address is
+// included even though it's not literally infrastructure, for the same
+// "millions of wallets touch this same address" reason.
+const INFRASTRUCTURE_LABEL_CATEGORIES: ReadonlySet<WalletLabelCategory> =
+  new Set([
+    "centralized_exchange",
+    "decentralized_exchange",
+    "bridge",
+    "defi_protocol",
+    "nft_marketplace",
+    "staking",
+    "token_program",
+    "system_program",
+    "burn_address",
+  ]);
+
+// Checks the protocol registry (primary - any match means a recognized
+// program/contract, not a private wallet) and the label registry (for the
+// centralized-exchange case protocols/registry.ts doesn't cover). Returns
+// a display name when infrastructure is detected, or null when the address
+// is a genuinely unknown counterparty (real relationship/clustering
+// evidence) or matches a suspicious/scam/rug_pull label (also real
+// evidence, deliberately not excluded).
+function detectKnownInfrastructure(
+  chain: SupportedChain,
+  address: string,
+): string | null {
+  const protocol = lookupProtocol(chain, address);
+
+  if (protocol) {
+    return protocol.name;
+  }
+
+  const walletLabel: WalletLabel | null = lookupWalletLabel(chain, address);
+
+  if (
+    walletLabel &&
+    INFRASTRUCTURE_LABEL_CATEGORIES.has(walletLabel.category)
+  ) {
+    return walletLabel.label;
+  }
+
+  return null;
+}
 
 type RelationshipAccumulator = {
   address: string;
@@ -231,6 +283,11 @@ export function analyzeWalletRelationships(
           counterparty.address,
         );
 
+        const infrastructureLabel = detectKnownInfrastructure(
+          chain,
+          counterparty.address,
+        );
+
         const confidence =
           direction === "bidirectional" ||
           interactionCount >= 5
@@ -259,6 +316,12 @@ export function analyzeWalletRelationships(
           );
         }
 
+        if (infrastructureLabel) {
+          evidenceReasons.push(
+            `Recognized as known infrastructure (${infrastructureLabel}) - shared by many unrelated wallets, so this connection is not treated as clustering evidence.`,
+          );
+        }
+
         return {
           address: counterparty.address,
           relationship: relationshipType,
@@ -266,6 +329,8 @@ export function analyzeWalletRelationships(
           confidence,
           direction,
           interactionCount,
+          isKnownInfrastructure: infrastructureLabel !== null,
+          infrastructureLabel,
           incomingTransferCount:
             counterparty.incomingTransferCount,
           outgoingTransferCount:
@@ -318,6 +383,11 @@ export function analyzeWalletRelationships(
         "The address was identified as the wallet's funding source.",
       ];
     } else {
+      const fundingInfrastructureLabel = detectKnownInfrastructure(
+        chain,
+        funding.fundingWallet,
+      );
+
       relationships.push({
         address: funding.fundingWallet,
         relationship: "funder",
@@ -339,8 +409,15 @@ export function analyzeWalletRelationships(
           funding.firstFundingTransaction
             ? [funding.firstFundingTransaction]
             : [],
+        isKnownInfrastructure: fundingInfrastructureLabel !== null,
+        infrastructureLabel: fundingInfrastructureLabel,
         evidenceReasons: [
           "The address was identified as the wallet's funding source.",
+          ...(fundingInfrastructureLabel
+            ? [
+                `Recognized as known infrastructure (${fundingInfrastructureLabel}) - being funded by widely-shared infrastructure is not treated as clustering evidence.`,
+              ]
+            : []),
         ],
         limitations: [
           "The funding relationship is based on the earliest parsed funding evidence.",
@@ -355,6 +432,17 @@ export function analyzeWalletRelationships(
       (second.interactionCount ?? 0) -
       (first.interactionCount ?? 0),
   );
+
+  // Known infrastructure (DEX routers, exchange hot wallets, bridges, etc.)
+  // stays in `relationships` above for display/context, but is excluded
+  // here - shared by millions of unrelated wallets, so it isn't clustering
+  // evidence the way a shared unknown private wallet is. See
+  // detectKnownInfrastructure's doc comment.
+  const nonInfrastructureRelationships = relationships.filter(
+    (relationship) => !relationship.isKnownInfrastructure,
+  );
+  const knownInfrastructureCount =
+    relationships.length - nonInfrastructureRelationships.length;
 
   const confidenceAnalysis = createConfidenceResponse([
     {
@@ -373,12 +461,12 @@ export function analyzeWalletRelationships(
       reason: "Parsed transaction evidence was available.",
     },
     {
-      condition: relationships.length > 0,
+      condition: nonInfrastructureRelationships.length > 0,
       score: 25,
       reason: "At least one direct relationship was identified.",
     },
     {
-      condition: relationships.some(
+      condition: nonInfrastructureRelationships.some(
         (relationship) =>
           relationship.direction === "bidirectional",
       ),
@@ -388,24 +476,33 @@ export function analyzeWalletRelationships(
   ]);
 
   const confidence =
-    relationships.length === 0
+    nonInfrastructureRelationships.length === 0
       ? "low"
       : confidenceAnalysis.level;
 
+  const notes: string[] =
+    nonInfrastructureRelationships.length === 0
+      ? [
+          "No direct wallet relationships were identified from the available transaction sample.",
+        ]
+      : [
+          "Relationships were derived from funding, native-transfer, and token-transfer evidence.",
+          "Results represent the parsed transaction sample and may not include the wallet's complete history.",
+        ];
+
+  if (knownInfrastructureCount > 0) {
+    notes.push(
+      `${knownInfrastructureCount} of the connections shown are known infrastructure (exchanges, DEX routers, bridges, etc.) - shown for context, but not counted as clustering evidence since they're shared by many unrelated wallets.`,
+    );
+  }
+
   return {
-    relationshipCount: relationships.length,
+    relationshipCount: nonInfrastructureRelationships.length,
+    knownInfrastructureCount,
     evidenceConfidence: confidenceAnalysis.level,
     confidenceAnalysis,
     relationships,
     confidence,
-    notes:
-      relationships.length === 0
-        ? [
-            "No direct wallet relationships were identified from the available transaction sample.",
-          ]
-        : [
-            "Relationships were derived from funding, native-transfer, and token-transfer evidence.",
-            "Results represent the parsed transaction sample and may not include the wallet's complete history.",
-          ],
+    notes,
   };
 }
