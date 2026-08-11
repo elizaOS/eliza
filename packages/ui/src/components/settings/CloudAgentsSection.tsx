@@ -98,6 +98,7 @@ export function CloudAgentsSection() {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState("");
+  const [createError, setCreateError] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
   // The agent currently being woken (resumed + readiness-polled) before we
@@ -276,18 +277,19 @@ export function CloudAgentsSection() {
   const createAgent = useCallback(async () => {
     const name = newName.trim();
     if (!name) {
-      setActionNotice("Give your agent a name first.", "error", 3000);
+      const message = "Give your agent a name first.";
+      setCreateError(message);
+      setActionNotice(message, "error", 3000);
       return;
     }
     const token = currentCloudToken();
     if (!token) {
-      setActionNotice(
-        "Sign in to Eliza Cloud before creating an agent.",
-        "error",
-        4000,
-      );
+      const message = "Sign in to Eliza Cloud before creating an agent.";
+      setCreateError(message);
+      setActionNotice(message, "error", 4000);
       return;
     }
+    setCreateError(null);
     setCreating(true);
     try {
       const result = await client.selectOrProvisionCloudAgent({
@@ -298,21 +300,20 @@ export function CloudAgentsSection() {
         onProgress: () => {},
       });
       if (result.created !== true) {
-        setActionNotice(
-          "Eliza Cloud did not confirm that a new agent was created. No agent was opened; refresh your session and try again.",
-          "error",
-          7000,
-        );
+        const message =
+          "Eliza Cloud did not confirm that a new agent was created. No agent was opened; refresh your session and try again.";
+        setCreateError(message);
+        setActionNotice(message, "error", 7000);
+        setCreating(false);
         return;
       } else {
         bindAndReload(result.agentId, result.apiBase, name);
       }
     } catch (err) {
-      setActionNotice(
-        err instanceof Error ? err.message : "Failed to create agent.",
-        "error",
-        4000,
-      );
+      const message =
+        err instanceof Error ? err.message : "Failed to create agent.";
+      setCreateError(message);
+      setActionNotice(message, "error", 4000);
       setCreating(false);
     }
   }, [newName, cloudApiBase, bindAndReload, setActionNotice]);
@@ -750,7 +751,10 @@ export function CloudAgentsSection() {
         <div className="flex flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center">
           <Input
             value={newName}
-            onChange={(e) => setNewName(e.target.value)}
+            onChange={(e) => {
+              setNewName(e.target.value);
+              setCreateError(null);
+            }}
             placeholder={`Agent name (e.g. ${appName})`}
             className="flex-1"
             maxLength={AGENT_NAME_MAX_LENGTH}
@@ -768,6 +772,15 @@ export function CloudAgentsSection() {
             {creating ? "Creating…" : "Create"}
           </Button>
         </div>
+        {createError && (
+          <p
+            role="alert"
+            data-testid="cloud-agent-create-error"
+            className="px-4 pb-3 text-sm text-destructive"
+          >
+            {createError}
+          </p>
+        )}
       </SettingsGroup>
     </SettingsStack>
   );

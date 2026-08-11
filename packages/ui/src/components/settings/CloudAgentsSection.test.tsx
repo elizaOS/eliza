@@ -951,6 +951,9 @@ describe("CloudAgentsSection create credential boundary", () => {
       ),
     );
     expect(clientMock.selectOrProvisionCloudAgent).not.toHaveBeenCalled();
+    expect(screen.getByTestId("cloud-agent-create-error").textContent).toBe(
+      "Sign in to Eliza Cloud before creating an agent.",
+    );
   });
 
   it("does not bind an ambiguous force-create response", async () => {
@@ -962,7 +965,8 @@ describe("CloudAgentsSection create credential boundary", () => {
     });
     await renderWithAgents([agent({ agent_name: "Existing" })]);
 
-    fireEvent.change(screen.getByPlaceholderText(/Agent name/), {
+    const input = screen.getByPlaceholderText(/Agent name/) as HTMLInputElement;
+    fireEvent.change(input, {
       target: { value: "Disposable" },
     });
     fireEvent.click(screen.getByText("Create"));
@@ -974,7 +978,19 @@ describe("CloudAgentsSection create credential boundary", () => {
         7000,
       ),
     );
+    const alert = screen.getByTestId("cloud-agent-create-error");
+    expect(alert.textContent).toContain(
+      "did not confirm that a new agent was created",
+    );
+    expect(input.value).toBe("Disposable");
+    expect(
+      (screen.getByText("Create", { selector: "button" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(false);
     expect(persistenceMock.savePersistedActiveServer).not.toHaveBeenCalled();
+
+    fireEvent.change(input, { target: { value: "Another disposable" } });
+    expect(screen.queryByTestId("cloud-agent-create-error")).toBeNull();
   });
 });
 
