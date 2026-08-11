@@ -5,10 +5,11 @@
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import {
   registerAllCloudSurfaces,
   registerPublicCloudSurfaces,
+  resetPrivateCloudRegistrationForTests,
 } from "./register-all";
 import { getCloudRoute, listCloudRoutes } from "./shell/cloud-route-registry";
 
@@ -16,6 +17,10 @@ const registerAllSource = readFileSync(
   join(dirname(fileURLToPath(import.meta.url)), "register-all.ts"),
   "utf8",
 );
+
+afterEach(() => {
+  resetPrivateCloudRegistrationForTests();
+});
 
 /**
  * Guards the boot-time wiring: every cloud domain must register its routes when
@@ -34,20 +39,18 @@ describe("registerAllCloudSurfaces", () => {
     expect(registerAllSource).not.toMatch(
       /import\s+\{\s*registerPublicPages\s*\}\s+from\s+"\.\/public-pages"/,
     );
-    expect(registerAllSource).not.toMatch(/^import "\.\/instances"/m);
-    expect(registerAllSource).not.toMatch(/^import "\.\/analytics"/m);
-    expect(registerAllSource).toContain('import("./instances")');
+    expect(registerAllSource).toContain("ensurePrivateCloudSurfaces");
     expect(registerAllSource).toContain(
       "export function registerPublicCloudSurfaces",
-    );
-    expect(registerAllSource).toContain(
-      "export function registerPrivateCloudSurfaces",
     );
 
     registerPublicCloudSurfaces();
     const paths = new Set(listCloudRoutes().map((r) => r.path));
     expect(paths).toContain("login");
     expect(paths).toContain("join");
+    // Public-only registration must not pull private console routes.
+    expect(paths.has("dashboard/analytics")).toBe(false);
+    expect(paths.has("dashboard/billing")).toBe(false);
   });
 
   it(

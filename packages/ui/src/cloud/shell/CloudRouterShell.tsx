@@ -25,6 +25,7 @@ import {
   lazy,
   type ReactNode,
   Suspense,
+  useEffect,
   useSyncExternalStore,
 } from "react";
 import {
@@ -38,6 +39,13 @@ import {
 import { isAppModeHost } from "../app-mode/app-mode";
 import { queryClient } from "../lib/query-client";
 import { useSessionAuth } from "../lib/use-session-auth";
+import {
+  ensurePrivateCloudSurfaces,
+  getPrivateCloudRegistrationSnapshot,
+  pathNeedsPrivateCloudSurfaces,
+  retryPrivateCloudSurfaces,
+  subscribePrivateCloudRegistration,
+} from "../private-cloud-registration";
 import { isApexControlPlaneHost } from "./apex-host";
 import {
   CloudI18nProvider,
@@ -192,6 +200,79 @@ function CloudNotFound(): React.JSX.Element {
   );
 }
 
+function PrivateCloudUnavailable({
+  onRetry,
+}: {
+  onRetry: () => void;
+}): React.JSX.Element {
+  return (
+    <div className="theme-cloud min-h-dvh bg-black text-white">
+      <div className="mx-auto max-w-prose p-8 text-sm text-white/62">
+        <h1 className="mb-3 text-lg font-semibold text-white">
+          Console unavailable
+        </h1>
+        <p className="mb-4">
+          Dashboard surfaces could not be loaded. Check your connection and try
+          again.
+        </p>
+        <button
+          type="button"
+          className="rounded-md border border-white/20 px-3 py-1.5 text-white hover:bg-white/10"
+          onClick={onRetry}
+        >
+          Retry
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Starts private domain registration only when the active location needs
+ * dashboard/console surfaces (#18056). Idle `/login` must not call this.
+ */
+function PrivateCloudRegistrationCoordinator(): null {
+  const location = useLocation();
+  useEffect(() => {
+    if (pathNeedsPrivateCloudSurfaces(location.pathname)) {
+      void ensurePrivateCloudSurfaces();
+    }
+  }, [location.pathname]);
+  return null;
+}
+
+/**
+ * `/dashboard/*` catch-all: pending private load, designed failure/retry, or
+ * true 404 only after private registration has completed successfully.
+ */
+function DashboardCatchAll(): React.JSX.Element {
+  const snapshot = useSyncExternalStore(
+    subscribePrivateCloudRegistration,
+    getPrivateCloudRegistrationSnapshot,
+    getPrivateCloudRegistrationSnapshot,
+  );
+
+  useEffect(() => {
+    if (snapshot.status === "idle") {
+      void ensurePrivateCloudSurfaces();
+    }
+  }, [snapshot.status]);
+
+  if (snapshot.status === "idle" || snapshot.status === "pending") {
+    return <RouteChunkFallback />;
+  }
+  if (snapshot.status === "error") {
+    return (
+      <PrivateCloudUnavailable
+        onRetry={() => {
+          void retryPrivateCloudSurfaces();
+        }}
+      />
+    );
+  }
+  return <CloudNotFound />;
+}
+
 /**
  * Cloud-side providers shared by every registered cloud / auth / payment route.
  * The tab/view App (catch-all) brings its own `AppProvider`, so these never
@@ -337,8 +418,8 @@ const AppModeEntryRoute = lazy(() => import("../app-mode/AppModeEntryRoute"));
 export function CloudRouterShell({
   appElement,
 }: CloudRouterShellProps): React.JSX.Element {
-  // Re-render when private domains finish dynamic registration after public
-  // routes have already painted (#18056).
+  // Re-render when private domains finish dynamic registration so newly
+  // registered dashboard routes replace the catch-all (#18056).
   useSyncExternalStore(
     subscribeCloudRoutes,
     getCloudRouteRegistryVersion,
@@ -356,6 +437,7 @@ export function CloudRouterShell({
        * token routes never load the @stwd/* runtime.
        */}
       <CloudProviders>
+        <PrivateCloudRegistrationCoordinator />
         <Routes>
           {cloudRoutes.map((route) => (
             <Route
@@ -378,12 +460,11 @@ export function CloudRouterShell({
           />
 
           {/*
-           * Any /dashboard/* path not registered and not redirected is a cloud
-           * 404 (it must not fall through to the tab/view app, which would try
-           * to resolve it as a tab). Keep this AFTER the redirects so the
-           * explicit entries above win.
+           * Any /dashboard/* path not registered and not redirected is handled
+           * by the private-registration state machine: loading while pending,
+           * designed retry on failure, true 404 only after ready.
            */}
-          <Route path="dashboard/*" element={<CloudNotFound />} />
+          <Route path="dashboard/*" element={<DashboardCatchAll />} />
 
           {/* Catch-all: the existing tab/view app (chat is home) — except on
               apex control-plane hosts, where the agent app never boots:
