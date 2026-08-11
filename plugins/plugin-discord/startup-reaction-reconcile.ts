@@ -1,0 +1,185 @@
+/**
+ * Startup reconciliation of status reactions stranded by an unclean shutdown
+ * (elizaOS/eliza#16318).
+ *
+ * The shutdown drain (#17749) reconciles reactions for turns it can observe,
+ * but a hard-killed process (SIGKILL, OOM) never runs that path: the bot's
+ * ⏳/🤔 stays on the message forever and the bot looks stuck. This scan runs
+ * once per account after the client is ready and removes the bot's own
+ * in-progress markers from recent messages. It removes rather than swaps to
+ * ❌: by the time the process is back, the message may already have been
+ * re-sent and answered, and stamping a retroactive error onto an old message
+ * misleads more than a quiet cleanup.
+ *
+ * Every dimension is hard-capped (channels, messages per channel, message
+ * age, wall-clock budget) so the scan completes quickly on large guilds, and
+ * every failure is counted and logged with channel context, never thrown:
+ * this runs detached from the ready path, where a rejection would be treated
+ * as a terminal login failure.
+ */
+import type { Client, Message, TextBasedChannel } from "discord.js";
+import { IN_PROGRESS_STATUS_EMOJIS } from "./status-reactions";
+
+/** Setting/env name; set to "0" or "false" to disable the scan entirely. */
+export const STARTUP_REACTION_SCAN_SETTING = "DISCORD_STARTUP_REACTION_SCAN";
+
+/** Hard cap on channels inspected across all guilds plus cached DMs. */
+export const STARTUP_SCAN_MAX_CHANNELS = 50;
+
+/** Recent messages fetched per channel (one fetch per channel). */
+export const STARTUP_SCAN_MESSAGES_PER_CHANNEL = 25;
+
+/** Messages older than this are left alone even if a marker survives. */
+export const STARTUP_SCAN_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Wall-clock budget for the whole scan. When it elapses the scan stops
+ * between channels and reports `timedOut: true` — a partial cleanup that
+ * says so beats an unbounded crawl of a large guild.
+ */
+export const STARTUP_SCAN_TIME_BUDGET_MS = 30_000;
+
+export interface StartupReconcileSummary {
+	channelsScanned: number;
+	messagesInspected: number;
+	reactionsCleared: number;
+	/** Fetch/remove failures — counted and logged, never thrown. */
+	failures: number;
+	/** True when the time budget elapsed before all channels were scanned. */
+	timedOut: boolean;
+}
+
+interface ScanLogger {
+	info: (message: string) => void;
+	warn: (message: string) => void;
+}
+
+interface ReconcileOptions {
+	client: Client;
+	logger: ScanLogger;
+	/** Injected clock for tests. */
+	now?: () => number;
+	maxChannels?: number;
+	messagesPerChannel?: number;
+	maxAgeMs?: number;
+	timeBudgetMs?: number;
+}
+
+function channelLabel(channel: { id?: string }): string {
+	return typeof channel?.id === "string" ? channel.id : "unknown-channel";
+}
+
+/** Collect scannable channels: guild text channels the bot can read, then cached DMs. */
+function collectChannels(client: Client, cap: number): TextBasedChannel[] {
+	const channels: TextBasedChannel[] = [];
+	const seen = new Set<string>();
+	const push = (channel: unknown) => {
+		if (channels.length >= cap) return;
+		const candidate = channel as TextBasedChannel & {
+			viewable?: boolean;
+			isTextBased?: () => boolean;
+			id: string;
+		};
+		if (!candidate || typeof candidate.isTextBased !== "function") return;
+		if (!candidate.isTextBased()) return;
+		if (candidate.viewable === false) return;
+		if (seen.has(candidate.id)) return;
+		seen.add(candidate.id);
+		channels.push(candidate);
+	};
+	for (const guild of client.guilds.cache.values()) {
+		for (const channel of guild.channels.cache.values()) {
+			push(channel);
+			if (channels.length >= cap) return channels;
+		}
+	}
+	for (const channel of client.channels.cache.values()) {
+		const dm = channel as { isDMBased?: () => boolean };
+		if (typeof dm.isDMBased === "function" && dm.isDMBased()) push(channel);
+		if (channels.length >= cap) break;
+	}
+	return channels;
+}
+
+export async function reconcileStrandedStatusReactions(
+	options: ReconcileOptions,
+): Promise<StartupReconcileSummary> {
+	const {
+		client,
+		logger,
+		now = Date.now,
+		maxChannels = STARTUP_SCAN_MAX_CHANNELS,
+		messagesPerChannel = STARTUP_SCAN_MESSAGES_PER_CHANNEL,
+		maxAgeMs = STARTUP_SCAN_MAX_AGE_MS,
+		timeBudgetMs = STARTUP_SCAN_TIME_BUDGET_MS,
+	} = options;
+
+	const summary: StartupReconcileSummary = {
+		channelsScanned: 0,
+		messagesInspected: 0,
+		reactionsCleared: 0,
+		failures: 0,
+		timedOut: false,
+	};
+	const botId = client.user?.id;
+	if (!botId) {
+		logger.warn(
+			"[DiscordService] Startup reaction scan skipped: client has no user id.",
+		);
+		return summary;
+	}
+
+	const startedAt = now();
+	const channels = collectChannels(client, maxChannels);
+
+	for (const channel of channels) {
+		if (now() - startedAt > timeBudgetMs) {
+			summary.timedOut = true;
+			break;
+		}
+		summary.channelsScanned += 1;
+		let messages: Iterable<Message>;
+		try {
+			const fetched = await channel.messages.fetch({
+				limit: messagesPerChannel,
+			});
+			messages = fetched.values();
+		} catch (error) {
+			summary.failures += 1;
+			logger.warn(
+				`[DiscordService] Startup reaction scan could not fetch messages in channel ${channelLabel(channel)}: ${
+					error instanceof Error ? error.message : String(error)
+				}`,
+			);
+			continue;
+		}
+		for (const message of messages) {
+			summary.messagesInspected += 1;
+			const age = now() - message.createdTimestamp;
+			if (age > maxAgeMs) continue;
+			for (const emoji of IN_PROGRESS_STATUS_EMOJIS) {
+				const reaction = message.reactions?.resolve(emoji);
+				// `me` is populated on fetched messages; only the bot's own
+				// marker is crash residue — other users' identical emojis are
+				// their reactions, not ours to remove.
+				if (reaction?.me !== true) continue;
+				try {
+					await reaction.users.remove(botId);
+					summary.reactionsCleared += 1;
+				} catch (error) {
+					summary.failures += 1;
+					logger.warn(
+						`[DiscordService] Startup reaction scan could not remove ${emoji} in channel ${channelLabel(channel)}: ${
+							error instanceof Error ? error.message : String(error)
+						}`,
+					);
+				}
+			}
+		}
+	}
+
+	logger.info(
+		`[DiscordService] Startup reaction scan: ${summary.reactionsCleared} stranded marker(s) cleared across ${summary.channelsScanned} channel(s), ${summary.messagesInspected} message(s) inspected, ${summary.failures} failure(s)${summary.timedOut ? ", stopped at time budget" : ""}.`,
+	);
+	return summary;
+}
