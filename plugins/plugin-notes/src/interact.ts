@@ -104,12 +104,13 @@ function summarizeNotes(notes: StickyNote[]): string {
 
 type NoteSelector =
   | { selector: "id"; value: string }
+  | { selector: "title"; value: string }
   | { selector: "query"; value: string };
 
 function parseLookupTarget(
   params: Record<string, unknown>,
   capability: string,
-  selectorNames: readonly ("id" | "query")[],
+  selectorNames: readonly ("id" | "title" | "query")[],
 ): NoteSelector {
   const providedSelectors = selectorNames.filter((name) =>
     Object.hasOwn(params, name),
@@ -212,8 +213,23 @@ async function dispatchCapability(
     return success(service, summarizeNotes(notes), { notes });
   }
   if (capability === "get-note") {
-    assertOnlyParams(params, ["id", "query"]);
-    const target = parseLookupTarget(params, capability, ["id", "query"]);
+    assertOnlyParams(params, ["id", "title", "query"]);
+    // content is create/update-only payload; delete/read selectors are id|title|query
+    if (Object.hasOwn(params, "content")) {
+      throw new ElizaError(
+        `Capability "${capability}" does not accept parameter "content".`,
+        {
+          code: "NOTES_VALIDATION_FAILED",
+          context: { field: "content" },
+          severity: "ephemeral",
+        },
+      );
+    }
+    const target = parseLookupTarget(params, capability, [
+      "id",
+      "title",
+      "query",
+    ]);
     const note =
       target.selector === "id"
         ? service.getNote(target.value)
@@ -236,8 +252,12 @@ async function dispatchCapability(
     );
   }
   if (capability === "update-note") {
-    assertOnlyParams(params, ["id", "query", "content", "color"]);
-    const target = parseLookupTarget(params, capability, ["id", "query"]);
+    assertOnlyParams(params, ["id", "title", "query", "content", "color"]);
+    const target = parseLookupTarget(params, capability, [
+      "id",
+      "title",
+      "query",
+    ]);
     const patch: Record<string, unknown> = {
       ...(Object.hasOwn(params, "content")
         ? parseNoteContent(params.content)
@@ -261,8 +281,22 @@ async function dispatchCapability(
     );
   }
   if (capability === "delete-note") {
-    assertOnlyParams(params, ["id", "query"]);
-    const target = parseLookupTarget(params, capability, ["id", "query"]);
+    assertOnlyParams(params, ["id", "title", "query"]);
+    if (Object.hasOwn(params, "content")) {
+      throw new ElizaError(
+        `Capability "${capability}" does not accept parameter "content".`,
+        {
+          code: "NOTES_VALIDATION_FAILED",
+          context: { field: "content" },
+          severity: "ephemeral",
+        },
+      );
+    }
+    const target = parseLookupTarget(params, capability, [
+      "id",
+      "title",
+      "query",
+    ]);
     const { value: note, snapshot } =
       target.selector === "id"
         ? await service.deleteNoteWithCommit(target.value)
@@ -279,7 +313,14 @@ async function dispatchCapability(
     );
   }
   if (capability === "clear-notes") {
-    assertOnlyParams(params, []);
+    assertOnlyParams(params, ["confirm"]);
+    if (params.confirm !== true) {
+      throw new ElizaError("clear-notes requires { confirm: true }.", {
+        code: "NOTES_VALIDATION_FAILED",
+        context: { field: "confirm", provided: params.confirm },
+        severity: "ephemeral",
+      });
+    }
     const { value: cleared, snapshot } = await service.clearNotesWithCommit();
     return mutationSuccess(
       snapshot,

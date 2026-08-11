@@ -23,6 +23,20 @@ const QUERY_PARAM: ViewCapabilityParameter = {
   pattern: "\\S",
 };
 
+const TITLE_PARAM: ViewCapabilityParameter = {
+  type: "string",
+  description:
+    "Exact first-line label of the note (strict, case-insensitive, whitespace-normalized).",
+  minLength: 1,
+  maxLength: 200,
+  pattern: "\\S",
+};
+
+const CONFIRM_PARAM: ViewCapabilityParameter = {
+  type: "boolean",
+  description: "Must be true to confirm clearing every sticky note.",
+};
+
 const COLOR_PARAM: ViewCapabilityParameter = {
   type: "string",
   description: "Optional color: yellow, green, rose, or slate.",
@@ -51,10 +65,12 @@ export const NOTES_CAPABILITIES: ViewCapability[] = [
   },
   {
     id: "get-note",
-    description: "Read one note by id or unique text it contains.",
+    description:
+      "Read one note by id, exact title, or unique text it contains.",
     params: {
       id: { ...ID_PARAM.id, required: false },
-      query: QUERY_PARAM,
+      title: { ...TITLE_PARAM, required: false },
+      query: { ...QUERY_PARAM, required: false },
     },
   },
   {
@@ -69,12 +85,18 @@ export const NOTES_CAPABILITIES: ViewCapability[] = [
   {
     id: "update-note",
     description:
-      "Replace a note's complete user-authored content, change its color, or both. Identify it by id or unique existing text; never synthesize a separate title.",
+      "Replace a note's complete user-authored content, change its color, or both. Identify it by id, exact title, or unique existing text; never synthesize a separate title.",
     params: {
       id: { ...ID_PARAM.id, description: "Stable note id.", required: false },
+      title: {
+        ...TITLE_PARAM,
+        description: "Exact title identifying the note to update.",
+        required: false,
+      },
       query: {
         ...QUERY_PARAM,
         description: "Unique existing text identifying the note to update.",
+        required: false,
       },
       content: {
         ...CONTENT_PARAM,
@@ -88,14 +110,19 @@ export const NOTES_CAPABILITIES: ViewCapability[] = [
   },
   {
     id: "delete-note",
-    description: "Delete one note by id or unique text it contains.",
+    description:
+      "Delete one note by id, exact title, or unique text it contains.",
     params: {
       id: { ...ID_PARAM.id, description: "Stable note id.", required: false },
-      query: QUERY_PARAM,
+      title: { ...TITLE_PARAM, required: false },
+      query: { ...QUERY_PARAM, required: false },
     },
   },
   {
     id: "clear-notes",
-    description: "Delete every sticky note.",
+    description: "Delete every sticky note. Requires explicit confirmation.",
+    params: {
+      confirm: { ...CONFIRM_PARAM, required: true },
+    },
   },
 ];
