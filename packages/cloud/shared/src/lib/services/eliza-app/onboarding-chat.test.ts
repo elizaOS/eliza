@@ -632,6 +632,117 @@ describe("runOnboardingChat", () => {
     expect(result.reply).toMatch(/what should I call you\?/i);
   });
 
+  test("first-contact greeting gets a greeting-shaped reply that still asks for a name", async () => {
+    getElizaAppProvisioningStatus.mockResolvedValue({
+      status: "none",
+      agentId: null,
+      bridgeUrl: null,
+      sandbox: null,
+    });
+    const result = await runOnboardingChat({
+      message: "hey",
+      platform: "discord",
+      platformUserId: "discord-user-greet",
+      sessionId: "platform:discord:discord-user-greet",
+      trustedPlatformIdentity: true,
+    });
+
+    expect(result.session.name).toBeUndefined();
+    expect(result.reply).toMatch(/^hey!/);
+    expect(result.reply).toMatch(/what should I call you\?/i);
+    expect(result.reply).toContain("$5");
+  });
+
+  test("keeps steering to the connect CTA when the user asks a question instead of connecting", async () => {
+    await runOnboardingChat({
+      message: "call me Sam",
+      platform: "discord",
+      platformUserId: "discord-user-steer",
+      sessionId: "platform:discord:discord-user-steer",
+      trustedPlatformIdentity: true,
+    });
+    const result = await runOnboardingChat({
+      message: "what does connecting actually do?",
+      platform: "discord",
+      platformUserId: "discord-user-steer",
+      sessionId: "platform:discord:discord-user-steer",
+      trustedPlatformIdentity: true,
+    });
+
+    expect(result.requiresLogin).toBe(true);
+    expect(result.cta).toEqual({ label: "Connect", url: result.loginUrl });
+    expect(result.reply).toContain("good question, Sam");
+    expect(result.reply).toContain("$5");
+    // The button carries the URL; the message body must not repeat it.
+    expect(result.reply).not.toContain(result.loginUrl);
+  });
+
+  test("responds to hesitation without pressure and keeps the CTA as the next step", async () => {
+    await runOnboardingChat({
+      message: "call me Sam",
+      platform: "discord",
+      platformUserId: "discord-user-hesitant",
+      sessionId: "platform:discord:discord-user-hesitant",
+      trustedPlatformIdentity: true,
+    });
+    const result = await runOnboardingChat({
+      message: "hmm not sure about this",
+      platform: "discord",
+      platformUserId: "discord-user-hesitant",
+      sessionId: "platform:discord:discord-user-hesitant",
+      trustedPlatformIdentity: true,
+    });
+
+    expect(result.requiresLogin).toBe(true);
+    expect(result.cta).toEqual({ label: "Connect", url: result.loginUrl });
+    expect(result.reply).toContain("no pressure, Sam");
+    expect(result.reply).not.toContain(result.loginUrl);
+  });
+
+  test("any other chatter after the name still ends on the connect steer", async () => {
+    await runOnboardingChat({
+      message: "call me Sam",
+      platform: "discord",
+      platformUserId: "discord-user-chatter",
+      sessionId: "platform:discord:discord-user-chatter",
+      trustedPlatformIdentity: true,
+    });
+    const result = await runOnboardingChat({
+      message: "cool cool",
+      platform: "discord",
+      platformUserId: "discord-user-chatter",
+      sessionId: "platform:discord:discord-user-chatter",
+      trustedPlatformIdentity: true,
+    });
+
+    expect(result.requiresLogin).toBe(true);
+    expect(result.cta).toEqual({ label: "Connect", url: result.loginUrl });
+    expect(result.reply).toContain("still here, Sam");
+    expect(result.reply).not.toContain(result.loginUrl);
+  });
+
+  test("follow-up steers keep the inline URL on platforms without buttons", async () => {
+    await runOnboardingChat({
+      message: "My name is Sam",
+      platform: "blooio",
+      platformUserId: "+14155550123",
+      sessionId: "platform:blooio:+14155550123",
+      trustedPlatformIdentity: true,
+    });
+    const result = await runOnboardingChat({
+      message: "is this safe?",
+      platform: "blooio",
+      platformUserId: "+14155550123",
+      sessionId: "platform:blooio:+14155550123",
+      trustedPlatformIdentity: true,
+    });
+
+    expect(result.requiresLogin).toBe(true);
+    expect(result.cta).toBeNull();
+    expect(result.reply).toContain("no pressure, Sam");
+    expect(result.reply).toContain(result.loginUrl);
+  });
+
   test("stays deterministic and model-free even when a Cerebras key is configured", async () => {
     cloudEnv = {
       CEREBRAS_API_KEY: "test-key",

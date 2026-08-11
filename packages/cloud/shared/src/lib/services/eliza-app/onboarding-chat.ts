@@ -873,6 +873,30 @@ function buildLoginCta(loginUrl: string): OnboardingChatCta | null {
   return { label: ONBOARDING_CTA_LABEL, url: loginUrl };
 }
 
+/**
+ * Deterministic classification of the user's latest message so the reply can
+ * respond to what they actually said (greeting vs question vs hesitation)
+ * without an open-ended model call. Order matters: an explicit question mark
+ * or interrogative beats a greeting prefix ("hi, what is this?" is a
+ * question), and hesitation words beat both.
+ */
+type OnboardingUserIntent = "greeting" | "question" | "hesitation" | "other";
+
+const HESITATION_PATTERN =
+  /\b(not sure|no thanks|nah\b|hmm+|maybe later|why should|why would|do i (have|need) to|is (this|it) (safe|legit|free|a scam)|scam|sketchy|suspicious|don'?t trust)\b/i;
+const QUESTION_PATTERN =
+  /\?|^\s*(what|how|why|who|when|where|which|can|could|does|do|did|is|are|will|would|should)\b/i;
+const GREETING_PATTERN =
+  /^\s*(hi+|hey+|hello+|yo+|sup|hiya|howdy|gm|good\s+(morning|afternoon|evening)|greetings|wass?up)\b[\s!,.]*$/i;
+
+function classifyUserIntent(message: string | undefined): OnboardingUserIntent {
+  if (!message?.trim()) return "other";
+  if (HESITATION_PATTERN.test(message)) return "hesitation";
+  if (QUESTION_PATTERN.test(message)) return "question";
+  if (GREETING_PATTERN.test(message)) return "greeting";
+  return "other";
+}
+
 function fallbackReply(args: {
   session: OnboardingSession;
   provisioning: ElizaAppProvisioningStatus;
@@ -880,19 +904,54 @@ function fallbackReply(args: {
   loginUrl: string;
   handoffComplete: boolean;
   cta: OnboardingChatCta | null;
+  userMessage?: string;
+  preferredNameProvidedThisTurn?: boolean;
 }): string {
   const name = hasPreferredName(args.session) ? args.session.name : undefined;
+  const intent = classifyUserIntent(args.userMessage);
   if (!name) {
+    // Every no-name variant keeps the same product facts and always ends on
+    // the name ask, so downstream name-capture logic sees a consistent state.
+    if (intent === "hesitation") {
+      return `fair to ask. I'm Eliza - I set you up with your own private agent, no card needed, and your first ${ELIZA_APP_INITIAL_CREDIT_USD} is on me. if it's not for you, just stop replying. if you're curious - what should I call you?`;
+    }
+    if (intent === "question") {
+      return `good question - I'm Eliza, and this is where you get your own agent. it lives in this chat, remembers everything you talk about, and can do real work for you. your first ${ELIZA_APP_INITIAL_CREDIT_USD} is on me. what should I call you?`;
+    }
+    if (intent === "greeting") {
+      return `hey! I'm Eliza. I can set you up with your own agent - it chats right here, remembers everything you talk about, and your first ${ELIZA_APP_INITIAL_CREDIT_USD} is on me. what should I call you?`;
+    }
     return `hey, I'm Eliza. I can get you set up with your own agent. it chats right here, remembers everything you talk about, and your first ${ELIZA_APP_INITIAL_CREDIT_USD} is on me. what should I call you?`;
   }
   if (args.requiresLogin) {
     // "tap below" copy only when a CTA will actually render; otherwise the
     // URL stays inline (SMS/iMessage, or a button-capable platform whose
     // login URL could not become a valid button - see buildLoginCta).
-    if (args.cta) {
-      return `nice to meet you, ${name}. tap below to connect your account and I'll spin up your agent. your first ${ELIZA_APP_INITIAL_CREDIT_USD} is on me.`;
+    if (args.preferredNameProvidedThisTurn !== false) {
+      if (args.cta) {
+        return `nice to meet you, ${name}. tap below to connect your account and I'll spin up your agent. your first ${ELIZA_APP_INITIAL_CREDIT_USD} is on me.`;
+      }
+      return `nice to meet you, ${name}. connect your account here and I'll spin up your agent, first ${ELIZA_APP_INITIAL_CREDIT_USD} on me: ${args.loginUrl}`;
     }
-    return `nice to meet you, ${name}. connect your account here and I'll spin up your agent, first ${ELIZA_APP_INITIAL_CREDIT_USD} on me: ${args.loginUrl}`;
+    // The user kept chatting instead of connecting. Respond to what they
+    // said, then steer back to the connect handoff - every turn ends on the
+    // CTA so the next step is never ambiguous.
+    if (intent === "question") {
+      if (args.cta) {
+        return `good question, ${name}. connecting takes about ten seconds - it links this chat to your own agent so it remembers everything we've talked about. tap below and I'll spin it up, first ${ELIZA_APP_INITIAL_CREDIT_USD} on me.`;
+      }
+      return `good question, ${name}. connecting takes about ten seconds - it links this chat to your own agent so it remembers everything we've talked about. here's your link, first ${ELIZA_APP_INITIAL_CREDIT_USD} on me: ${args.loginUrl}`;
+    }
+    if (intent === "hesitation") {
+      if (args.cta) {
+        return `no pressure, ${name}. nothing happens until you connect, and your first ${ELIZA_APP_INITIAL_CREDIT_USD} is on me - no card. whenever you're ready, the button below is the way in.`;
+      }
+      return `no pressure, ${name}. nothing happens until you connect, and your first ${ELIZA_APP_INITIAL_CREDIT_USD} is on me - no card. whenever you're ready: ${args.loginUrl}`;
+    }
+    if (args.cta) {
+      return `still here, ${name}! one step left: tap below to connect and I'll spin up your agent. your first ${ELIZA_APP_INITIAL_CREDIT_USD} is on me.`;
+    }
+    return `still here, ${name}! one step left: connect your account and I'll spin up your agent, first ${ELIZA_APP_INITIAL_CREDIT_USD} on me: ${args.loginUrl}`;
   }
   if (args.handoffComplete) {
     return `you're in, ${name}. your agent is live and already knows everything from this chat. just keep talking here.`;
@@ -933,10 +992,15 @@ function generateOnboardingReply(args: {
   loginUrl: string;
   handoffComplete: boolean;
   cta: OnboardingChatCta | null;
+  userMessage?: string;
+  preferredNameProvidedThisTurn?: boolean;
 }): string {
   // This is a finite product state machine, not an open-ended generation task.
   // Deterministic copy prevents model latency, cost amplification, invented
-  // billing claims, and non-repeatable responses on transport replay.
+  // billing claims, and non-repeatable responses on transport replay. The
+  // copy still responds to the user's latest message via a deterministic
+  // intent classifier (greeting / question / hesitation), so the same input
+  // always produces the same reply while feeling conversational.
   return sanitizeReplyText(fallbackReply(args));
 }
 
@@ -1220,6 +1284,8 @@ export async function runOnboardingChatWithStore(
     loginUrl,
     handoffComplete,
     cta,
+    userMessage,
+    preferredNameProvidedThisTurn,
   });
 
   if (shouldAppendReply) {
