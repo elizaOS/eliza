@@ -40,6 +40,15 @@ const ID_PARAM = {
   },
 } satisfies NonNullable<ViewCapability["params"]>;
 
+const TITLE_PARAM: ViewCapabilityParameter = {
+  type: "string",
+  description:
+    "Exact first-line label of a note to identify it for deletion. Must match a known note label exactly.",
+  minLength: 1,
+  maxLength: 500,
+  pattern: "\\S",
+};
+
 export const NOTES_CAPABILITIES: ViewCapability[] = [
   {
     id: "get-notes",
@@ -88,10 +97,12 @@ export const NOTES_CAPABILITIES: ViewCapability[] = [
   },
   {
     id: "delete-note",
-    description: "Delete one note by id or unique text it contains.",
+    description:
+      "Delete one note by stable id, unique contained text, or exact first-line label.",
     params: {
       id: { ...ID_PARAM.id, description: "Stable note id.", required: false },
       query: QUERY_PARAM,
+      title: TITLE_PARAM,
     },
   },
   {

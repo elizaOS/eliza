@@ -528,6 +528,86 @@ describe("Notes capabilities", () => {
     ]);
   });
 
+  it("delete-note with title selector deletes by exact first-line label", async () => {
+    const service = await serviceFor(await temporaryStateFile());
+    await interact(
+      "create-note",
+      { content: "Shopping list\nMilk and eggs", color: "yellow" },
+      service,
+    );
+    await interact(
+      "create-note",
+      { content: "Todo\nFix the bug", color: "rose" },
+      service,
+    );
+
+    // Exact title match deletes the right note.
+    const deleted = await interact(
+      "delete-note",
+      { title: "Shopping list" },
+      service,
+    );
+    expect(deleted).toMatchObject({
+      success: true,
+      data: { note: { title: "Shopping list" } },
+    });
+    // Only "Todo" remains.
+    expect(service.listNotes().map((n) => n.title)).toEqual(["Todo"]);
+  });
+
+  it("delete-note with title selector fails on ambiguous or unknown label", async () => {
+    const service = await serviceFor(await temporaryStateFile());
+    await interact(
+      "create-note",
+      { content: "Meeting notes\nMorning sync", color: "yellow" },
+      service,
+    );
+    await interact(
+      "create-note",
+      { content: "Meeting notes\nAfternoon review", color: "rose" },
+      service,
+    );
+
+    // Two notes share the same first-line label -> ambiguous.
+    await expect(
+      interact("delete-note", { title: "Meeting notes" }, service),
+    ).resolves.toMatchObject({
+      success: false,
+      error: { code: "NOTES_AMBIGUOUS_NOTE" },
+    });
+
+    // No note has this label -> not found.
+    await expect(
+      interact("delete-note", { title: "Nonexistent" }, service),
+    ).resolves.toMatchObject({
+      success: false,
+      error: { code: "NOTES_NOT_FOUND" },
+    });
+
+    // Nothing was deleted.
+    expect(service.listNotes()).toHaveLength(2);
+  });
+
+  it("delete-note rejects content parameter (fail-closed for payload contract)", async () => {
+    const service = await serviceFor(await temporaryStateFile());
+    await interact(
+      "create-note",
+      { content: "Test note\nBody", color: "yellow" },
+      service,
+    );
+
+    // content is not a declared delete selector — the boundary rejects
+    // it with NOTES_VALIDATION_FAILED (fail-closed).
+    await expect(
+      interact("delete-note", { content: "Test note" }, service),
+    ).resolves.toMatchObject({
+      success: false,
+      error: { code: "NOTES_VALIDATION_FAILED" },
+    });
+
+    expect(service.listNotes()).toHaveLength(1);
+  });
+
   it("returns explicit failures for invalid input and rejects undeclared capabilities", async () => {
     const service = await serviceFor(await temporaryStateFile());
     await expect(
