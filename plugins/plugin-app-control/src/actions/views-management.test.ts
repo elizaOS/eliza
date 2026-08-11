@@ -3267,6 +3267,165 @@ describe("view management actions", () => {
 		);
 	});
 
+	it("does not rewrite an explicit delete-note from incidental read-family words (#18386)", async () => {
+		const { runtime } = createRuntime();
+		const callback = vi.fn();
+		const action = createViewsAction({
+			client: {
+				listViews: vi.fn(async () => [
+					view({
+						id: "notes",
+						label: "Notes",
+						path: "/notes",
+						tags: ["notes", "sticky notes"],
+						capabilities: [
+							{
+								id: "get-note",
+								description: "Read one note by title or query.",
+								params: {
+									title: {
+										type: "string",
+										description: "Exact note title.",
+									},
+								},
+							},
+							{
+								id: "delete-note",
+								description: "Delete one note by title or query.",
+								params: {
+									title: {
+										type: "string",
+										description: "Exact note title.",
+									},
+								},
+							},
+						],
+					}),
+				]),
+				getCurrentView: vi.fn(async () => ({
+					viewId: "notes",
+					viewLabel: "Notes",
+					viewType: "gui" as const,
+					viewPath: "/notes",
+				})),
+			},
+			hasOwnerAccess: vi.fn(async () => true),
+		});
+		vi.mocked(globalThis.fetch).mockResolvedValueOnce({
+			ok: true,
+			status: 200,
+			json: async () => ({
+				success: true,
+				result: { success: true, text: "Deleted." },
+			}),
+		} as Response);
+
+		// "Delete the current note titled GAUSS NOTES QA" contains the
+		// read-family word "current", which previously caused the explicit
+		// delete-note to be rewritten to get-note. The planner declared
+		// delete-note explicitly; the incidental read word must not override it.
+		const result = await action.handler(
+			runtime as never,
+			message("Delete the current note titled GAUSS NOTES QA") as never,
+			undefined,
+			{ action: "interact", view: "notes", capability: "delete-note" },
+			callback,
+		);
+
+		expect(result?.success).toBe(true);
+		expect(globalThis.fetch).toHaveBeenCalledWith(
+			"http://127.0.0.1:3456/api/views/notes/interact?viewType=gui",
+			expect.objectContaining({
+				method: "POST",
+				body: JSON.stringify({
+					capability: "delete-note",
+					params: { title: "current note titled GAUSS NOTES QA" },
+					timeoutMs: 5_000,
+					viewType: "gui",
+				}),
+			}),
+		);
+	});
+
+	it("still corrects a genuine planner mismatch when the request family has no overlap with the selected capability family (#18386)", async () => {
+		const { runtime } = createRuntime();
+		const callback = vi.fn();
+		const action = createViewsAction({
+			client: {
+				listViews: vi.fn(async () => [
+					view({
+						id: "notes",
+						label: "Notes",
+						path: "/notes",
+						tags: ["notes", "sticky notes"],
+						capabilities: [
+							{
+								id: "get-note",
+								description: "Read one note by title or query.",
+								params: {
+									title: {
+										type: "string",
+										description: "Exact note title.",
+									},
+								},
+							},
+							{
+								id: "delete-note",
+								description: "Delete one note by title or query.",
+								params: {
+									title: {
+										type: "string",
+										description: "Exact note title.",
+									},
+								},
+							},
+						],
+					}),
+				]),
+				getCurrentView: vi.fn(async () => ({
+					viewId: "notes",
+					viewLabel: "Notes",
+					viewType: "gui" as const,
+					viewPath: "/notes",
+				})),
+			},
+			hasOwnerAccess: vi.fn(async () => true),
+		});
+		vi.mocked(globalThis.fetch).mockResolvedValueOnce({
+			ok: true,
+			status: 200,
+			json: async () => ({
+				success: true,
+				result: { success: true, text: "Deleted." },
+			}),
+		} as Response);
+
+		// Planner selected get-note but the user said "delete" with zero
+		// read-family words. This is a genuine mismatch and must still be
+		// corrected to delete-note.
+		const result = await action.handler(
+			runtime as never,
+			message("Delete note titled GAUSS MARKER") as never,
+			undefined,
+			{ action: "interact", view: "notes", capability: "get-note" },
+			callback,
+		);
+
+		expect(result?.success).toBe(true);
+		expect(globalThis.fetch).toHaveBeenCalledWith(
+			"http://127.0.0.1:3456/api/views/notes/interact?viewType=gui",
+			expect.objectContaining({
+				method: "POST",
+				body: JSON.stringify({
+					capability: "delete-note",
+					params: { title: "titled GAUSS MARKER" },
+					timeoutMs: 5_000,
+					viewType: "gui",
+				}),
+			}),
+		);
+	});
+
 	it("summarizes structured interaction results without dumping JSON into chat", async () => {
 		const { runtime } = createRuntime();
 		const callback = vi.fn();

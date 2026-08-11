@@ -811,14 +811,29 @@ function tokensFor(value: string | null | undefined): Set<string> {
 }
 
 function operationFamilyForTokens(tokens: Set<string>): OperationFamily | null {
+	const families = operationFamiliesForTokens(tokens);
+	return families.size > 0 ? ([...families][0] ?? null) : null;
+}
+
+/**
+ * Returns every operation family that has at least one token in the request.
+ * Unlike the single-family resolver, this does not silently prefer an
+ * incidental read-family word ("current", "list") over a destructive-family
+ * word ("delete") that the planner already committed to.
+ */
+function operationFamiliesForTokens(tokens: Set<string>): Set<OperationFamily> {
+	const result = new Set<OperationFamily>();
 	for (const [family, familyTokens] of Object.entries(
 		OPERATION_TOKEN_FAMILIES,
 	) as [OperationFamily, Set<string>][]) {
 		for (const token of tokens) {
-			if (familyTokens.has(token)) return family;
+			if (familyTokens.has(token)) {
+				result.add(family);
+				break;
+			}
 		}
 	}
-	return null;
+	return result;
 }
 
 function operationFamilyForCapability(
@@ -1095,15 +1110,24 @@ function correctCapabilityOperationFamily(
 	text: string,
 ): ViewCapability {
 	const requestTokens = tokensFor(viewRequestText(text));
-	const requestedFamily = operationFamilyForTokens(requestTokens);
+	const requestedFamilies = operationFamiliesForTokens(requestTokens);
 	const selectedFamily = operationFamilyForCapability(capability);
 	if (
-		!requestedFamily ||
+		requestedFamilies.size === 0 ||
 		!selectedFamily ||
-		requestedFamily === selectedFamily
+		// If the planner already selected a capability whose family appears
+		// in the request tokens, trust that selection. This prevents
+		// rewriting an explicit delete-note to get-note just because the
+		// request also contained read-family words like "current" or "list".
+		requestedFamilies.has(selectedFamily)
 	) {
 		return capability;
 	}
+
+	// Only correct when the selected capability's family has NO token
+	// support in the request — a genuine planner mismatch.
+	const requestedFamily = [...requestedFamilies][0];
+	if (!requestedFamily) return capability;
 
 	const familyMatches = (view.capabilities ?? []).filter(
 		(candidate) => operationFamilyForCapability(candidate) === requestedFamily,
