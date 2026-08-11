@@ -9,6 +9,7 @@
     "build": "bun --bun vite build",
     "postbuild": "node scripts/prune-unused-static-assets.mjs",
     "deploy:preview": "bun run build && bunx wrangler@4.116.0 pages deploy dist --project-name eliza-app-home",
+    "deploy:staging": "node scripts/deploy-staging.mjs",
     "deploy:production": "bun run build && bunx wrangler@4.116.0 pages deploy dist --project-name eliza-app-home --branch main",
     "clean": "node ../scripts/rm-path-recursive.mjs dist",
     "check:release-data": "node ../app-core/scripts/check-homepage-release-data.mjs",

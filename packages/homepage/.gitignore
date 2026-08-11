@@ -38,6 +38,9 @@ yarn-error.log*
 # env files (can opt-in for committing if needed)
 .env*
 !.env.example
+# Committed on purpose: canonical non-secret staging build config (see the
+# file header). Vite inlines these into the public bundle anyway.
+!.env.staging
 
 # vercel
 .vercel
