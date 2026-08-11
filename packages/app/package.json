@@ -71,6 +71,8 @@
     "devices:status": "node scripts/devices-status.mjs",
     "test:e2e:ios:onboarding": "node scripts/ios-onboarding-smoke.mjs",
     "test:e2e:ios:voice": "node scripts/ios-voice-selftest-smoke.mjs",
+    "test:e2e:ios:voice:local": "node scripts/ios-voice-selftest-smoke.mjs --mode local",
+    "test:e2e:ios:voice:remote": "node scripts/ios-voice-selftest-smoke.mjs --mode remote",
     "test:sim:local-chat": "node scripts/mobile-local-chat-smoke.mjs --platform ios --require-installed",
     "test:sim:local-chat:android": "node scripts/mobile-local-chat-smoke.mjs --platform android --require-installed",
     "test:sim:local-chat:android:live": "node scripts/mobile-local-chat-smoke.mjs --platform android --require-installed --live --android-select-local --android-stage-smoke-model",

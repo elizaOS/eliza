@@ -2,11 +2,25 @@
 /**
  * iOS Simulator voice round-trip lane (#13688). WKWebView is not CDP-drivable,
  * so this mirrors ios-attachment-smoke: seed Capacitor Preferences, launch the
- * installed app, let the in-app onboarding verifier connect it to a real host
- * agent, then let the in-app voice verifier drive the SAME production
+ * installed app, then let the in-app voice verifier drive the SAME production
  * `runVoiceSelfTest` harness — bundled speech clip ("what time is it") -> real
  * on-device/local ASR -> real agent over SSE -> real TTS decode+playback — and
  * report the machine-readable per-stage verdict back through Preferences.
+ *
+ * ## Modes (#18313)
+ *
+ * `--mode local` (default): exercises the REAL on-device voice pipeline. Seeds
+ * `eliza:mobile-runtime-mode=local`, `eliza:first-run-complete=1`, and the
+ * canonical `eliza-local-agent://ipc` active-server record so the app boots
+ * straight into the on-device IPC agent. Does NOT start a remote host or arm
+ * remote onboarding — the deterministic host agent lacks plugin-local-inference
+ * and ASR/TTS, so it could never satisfy this acceptance contract.
+ *
+ * `--mode remote`: preserves the original behavior for remote-agent
+ * compatibility. Starts the deterministic host agent (or uses `--api-base`),
+ * arms remote onboarding, and runs the voice round-trip against that backend.
+ * This mode is only a valid voice proof if the remote host actually exposes the
+ * real ASR/TTS backend.
  *
  * The host-side gate is `evaluateVoiceSelfTestReport`: overall must be `pass`
  * AND asr/send/tts must each be `pass` (a `skipped` stage — e.g. local ASR not
@@ -26,9 +40,17 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { evaluateVoiceSelfTestReport } from "./ios-voice-selftest-lib.mjs";
 import {
+  localRuntimePreferenceWrites,
+  onboardingRequestJson,
+  parseVoiceSelfTestMode,
+  shouldStartRemoteHost,
+  voiceRequestJson,
+} from "./ios-voice-selftest-mode.mjs";
+import {
   DEFAULT_HOST_AGENT_PORT,
   startDeviceE2eHostAgent,
 } from "./lib/host-agent.mjs";
+import { assertInstalledIosAppRendererFresh } from "./lib/ios-renderer-stamp.mjs";
 import {
   captureIosSimulatorScreenshot,
   startIosSimulatorVideo,
@@ -418,13 +440,19 @@ async function pollResult(udid, appId) {
 
 async function main() {
   const { appId } = readAppIdentity();
+  const mode = parseVoiceSelfTestMode(process.argv);
   let apiBase = val("--api-base");
   const udid = ensureSimulatorBooted();
   removePathRecursive(resultDir);
   fs.mkdirSync(resultDir, { recursive: true });
-  const hostAgent = apiBase
-    ? null
-    : await startDeviceE2eHostAgent({
+  log(`mode: ${mode}`);
+
+  // Only remote mode (without an explicit --api-base) starts the deterministic
+  // host agent. Local mode never does — the on-device agent owns the pipeline,
+  // and the host agent does NOT register plugin-local-inference or ASR/TTS, so
+  // it can never satisfy the real voice acceptance contract (#18313).
+  const hostAgent = shouldStartRemoteHost({ mode, apiBase })
+    ? await startDeviceE2eHostAgent({
         repoRoot,
         artifactDir: resultDir,
         requestedPort: val("--host-agent-port"),
@@ -432,8 +460,9 @@ async function main() {
           process.env.ELIZA_IOS_HOST_AGENT_PORT ??
           DEFAULT_HOST_AGENT_PORT_STRING,
         log,
-      });
-  apiBase = apiBase ?? hostAgent.apiBase;
+      })
+    : null;
+  apiBase = apiBase ?? hostAgent?.apiBase ?? null;
   let recording = null;
 
   try {
@@ -442,28 +471,44 @@ async function main() {
     installLatestApp(udid, appId);
     tryRun("xcrun", ["simctl", "terminate", udid, appId]);
     clearState(udid, appId);
-    defaultsWriteString(
-      udid,
-      appId,
-      ONBOARDING_REQUEST_KEY,
-      JSON.stringify({ apiBase }),
-    );
-    defaultsWriteString(
-      udid,
-      appId,
-      ONBOARDING_RESULT_KEY,
-      JSON.stringify({
-        ok: false,
-        phase: "requested",
-        apiBase,
-        updatedAt: new Date().toISOString(),
-      }),
-    );
+
+    // Local mode: seed the iOS simulator preferences for local runtime before
+    // launch — same triple as mobile-local-chat-smoke --ios-select-local. This
+    // puts the app straight into the on-device IPC agent, bypassing first-run
+    // onboarding so the in-app voice verifier hits the real ASR/TTS backend.
+    // Remote mode: arm the remote onboarding request so the in-app verifier
+    // connects to the host agent.
+    const runtimePrefs = localRuntimePreferenceWrites({ mode });
+    for (const { key, value } of runtimePrefs) {
+      defaultsWriteString(udid, appId, key, value);
+    }
+
+    const onboardingRequest = onboardingRequestJson({ mode, apiBase });
+    if (onboardingRequest !== null) {
+      defaultsWriteString(
+        udid,
+        appId,
+        ONBOARDING_REQUEST_KEY,
+        onboardingRequest,
+      );
+      defaultsWriteString(
+        udid,
+        appId,
+        ONBOARDING_RESULT_KEY,
+        JSON.stringify({
+          ok: false,
+          phase: "requested",
+          apiBase,
+          updatedAt: new Date().toISOString(),
+        }),
+      );
+    }
+
     defaultsWriteString(
       udid,
       appId,
       VOICE_REQUEST_KEY,
-      JSON.stringify({ apiBase }),
+      voiceRequestJson({ mode, apiBase }),
     );
     defaultsWriteString(
       udid,
@@ -478,14 +523,30 @@ async function main() {
     );
     flushPreferences(udid);
 
+    // Validate that the installed app is a fresh full-Bun local build before
+    // collecting voice evidence, so a stale or cloud-only (thin-client) install
+    // fails with an actionable error instead of a confusing ASR-not-ready skip.
+    if (mode === "local") {
+      assertInstalledIosAppRendererFresh({
+        udid,
+        bundleId: appId,
+        repoRoot,
+        log: (message) => log(message),
+      });
+    }
+
     recording = startVideo(udid);
     log(`launching ${appId} on ${udid}`);
     simctl(["launch", udid, appId]);
     await sleep(1500);
     takeScreenshot(udid, "fresh-launch");
-    log(
-      `armed in-app first-run remote connect + voice self-test for ${apiBase}`,
-    );
+    if (mode === "local") {
+      log("armed in-app local voice self-test (on-device ASR/TTS pipeline)");
+    } else {
+      log(
+        `armed in-app first-run remote connect + voice self-test for ${apiBase}`,
+      );
+    }
 
     const result = await pollResult(udid, appId);
     const screenshot = takeScreenshot(udid, "voice-selftest-result");
@@ -493,7 +554,7 @@ async function main() {
 
     fs.writeFileSync(
       path.join(resultDir, "result.json"),
-      `${JSON.stringify({ ...result, screenshot, video }, null, 2)}\n`,
+      `${JSON.stringify({ ...result, mode, screenshot, video }, null, 2)}\n`,
     );
 
     const verdict = evaluateVoiceSelfTestReport(result.report ?? result);
