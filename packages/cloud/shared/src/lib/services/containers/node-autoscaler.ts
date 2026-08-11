@@ -62,7 +62,10 @@ export interface AutoscalePolicy {
 export const DEFAULT_AUTOSCALE_POLICY: AutoscalePolicy = {
   minFreeSlotsBuffer: containersEnv.autoscaleMinFreeSlotsBuffer(),
   minHotAvailableSlots: containersEnv.autoscaleMinHotAvailableSlots(),
-  maxNodes: 12,
+  // Launch capacity bump 12 → 14 (#18052): the launch chain enables the warm
+  // pool, whose standing replenishment consumes slots the old ceiling had
+  // reserved for on-demand provisioning headroom.
+  maxNodes: 14,
   scaleUpCooldownMs: 5 * 60 * 1000,
   idleNodeMinAgeMs: 30 * 60 * 1000,
   defaultServerType: containersEnv.defaultHcloudServerType(),
