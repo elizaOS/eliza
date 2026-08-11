@@ -193,12 +193,15 @@ function isDirectCloudBase(client: ElizaClient): boolean {
   }
 }
 
+function isDedicatedCloudAgentClient(client: ElizaClient): boolean {
+  return isDedicatedCloudAgentBase(client.getBaseUrl());
+}
+
 function resolveCloudPageApiBaseForDedicatedAgent(
   client: ElizaClient,
 ): string | null {
   if (typeof window === "undefined") return null;
-  const baseUrl = client.getBaseUrl().trim();
-  if (!isDedicatedCloudAgentBase(baseUrl)) return null;
+  if (!isDedicatedCloudAgentClient(client)) return null;
   return (
     DIRECT_ELIZA_CLOUD_API_BY_HOST.get(
       window.location.hostname.toLowerCase(),
@@ -494,11 +497,12 @@ export function getCloudAuthToken(client?: ElizaClient): string | null {
 }
 
 function readDirectCloudToken(client: ElizaClient): string | null {
-  // A managed app may be connected to a dedicated agent while rendering its
-  // account settings. Control-plane calls then resolve from the trusted page
-  // host, but only the independently stored Steward session may cross that
-  // boundary; the client's REST token belongs to the agent container.
-  if (resolveCloudPageApiBaseForDedicatedAgent(client)) {
+  // A managed app may be connected to a dedicated agent while rendering
+  // account settings from hosted web, Capacitor, Electrobun, or localhost.
+  // The agent base owns the client's REST token regardless of the page host;
+  // only the independently stored Steward session may cross to the control
+  // plane.
+  if (isDedicatedCloudAgentClient(client)) {
     return readStoredStewardToken()?.trim() || null;
   }
   return getCloudAuthToken(client);
@@ -3517,7 +3521,7 @@ ElizaClient.prototype.selectOrProvisionCloudAgent = async function (
   // before a Cloud agent connection exists: once the app is bound to a
   // dedicated agent, the caller's fallback may be that agent's bearer, which
   // must never be relabeled as a control-plane credential.
-  if (authToken && !resolveCloudPageApiBaseForDedicatedAgent(this)) {
+  if (authToken && !isDedicatedCloudAgentClient(this)) {
     writeStoredStewardToken(authToken);
   }
 

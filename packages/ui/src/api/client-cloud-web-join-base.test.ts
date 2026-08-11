@@ -218,6 +218,47 @@ describe("Cloud account management while connected to a dedicated Cloud agent", 
     expect(localStorage.getItem("steward_session_token")).toBeNull();
   });
 
+  it("does not relabel a dedicated agent bearer as Steward on a localhost renderer", async () => {
+    setHostname("localhost", "http:");
+    localStorage.removeItem("steward_session_token");
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    const client = new ElizaClient(dedicatedStagingBase, "agent-bearer");
+
+    const selected = await client.selectOrProvisionCloudAgent({
+      cloudApiBase: "https://staging.elizacloud.ai",
+      authToken: "agent-bearer",
+      name: "Existing",
+      knownAgents: [
+        {
+          agent_id: "11111111-1111-4111-8111-111111111111",
+          agent_name: "Existing",
+          node_id: null,
+          container_id: null,
+          headscale_ip: null,
+          status: "running",
+          execution_tier: "dedicated-always",
+          bridge_url: dedicatedStagingBase,
+          web_ui_url: dedicatedStagingBase,
+          agent_config: {},
+          created_at: "2026-08-11T00:00:00.000Z",
+          updated_at: "2026-08-11T00:00:00.000Z",
+          containerUrl: "",
+          webUiUrl: dedicatedStagingBase,
+          database_status: "ok",
+          error_message: null,
+          last_heartbeat_at: null,
+        },
+      ],
+    });
+
+    expect(selected).toMatchObject({
+      agentId: "11111111-1111-4111-8111-111111111111",
+      created: false,
+    });
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(localStorage.getItem("steward_session_token")).toBeNull();
+  });
+
   it.each(["warm_pool", "warm_pool_recovery"])(
     "accepts authoritative %s freshness when the backend omits created",
     async (source) => {
