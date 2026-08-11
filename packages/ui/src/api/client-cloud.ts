@@ -193,17 +193,50 @@ function isDirectCloudBase(client: ElizaClient): boolean {
   }
 }
 
-function resolveCloudPageApiBaseForDedicatedAgent(
+function isDedicatedCloudAgentClient(client: ElizaClient): boolean {
+  return isDedicatedCloudAgentBase(client.getBaseUrl());
+}
+
+function resolveConfiguredDirectCloudApiBase(): string {
+  return resolveDirectCloudAuthApiBase(
+    getBootConfig().cloudApiBase?.trim() || DEFAULT_DIRECT_CLOUD_BASE_URL,
+  );
+}
+
+function isTrustedLocalCloudPage(): boolean {
+  if (typeof window === "undefined") return false;
+  const protocol = window.location.protocol.toLowerCase();
+  if (protocol !== "http:" && protocol !== "https:") return false;
+  const hostname = window.location.hostname.toLowerCase();
+  return (
+    hostname === "localhost" ||
+    hostname === "127.0.0.1" ||
+    hostname === "[::1]" ||
+    hostname === "::1"
+  );
+}
+
+function resolveDedicatedCloudAgentControlPlaneApiBase(
   client: ElizaClient,
 ): string | null {
-  if (typeof window === "undefined") return null;
-  const baseUrl = client.getBaseUrl().trim();
-  if (!isDedicatedCloudAgentBase(baseUrl)) return null;
-  return (
-    DIRECT_ELIZA_CLOUD_API_BY_HOST.get(
+  if (!isDedicatedCloudAgentClient(client)) return null;
+  if (typeof window !== "undefined") {
+    const pageApiBase = DIRECT_ELIZA_CLOUD_API_BY_HOST.get(
       window.location.hostname.toLowerCase(),
-    ) ?? null
-  );
+    );
+    if (pageApiBase) return pageApiBase;
+  }
+  // Native app shells, packaged desktop, and local app development are all
+  // first-party Cloud CORS origins. They have no Cloud page hostname to map,
+  // so their configured environment is the authoritative control plane.
+  if (
+    shouldUseNativeCloudHttp() ||
+    isElectrobunRuntime() ||
+    isTrustedLocalCloudPage()
+  ) {
+    return resolveConfiguredDirectCloudApiBase();
+  }
+  return null;
 }
 
 function stringOrNull(value: unknown): string | null {
@@ -443,13 +476,12 @@ function resolveDirectCloudClientApiBase(client: ElizaClient): string | null {
   if (baseUrl && isDirectCloudBase(client)) {
     return resolveDirectCloudAuthApiBase(baseUrl);
   }
+  const dedicatedControlPlaneApiBase =
+    resolveDedicatedCloudAgentControlPlaneApiBase(client);
+  if (dedicatedControlPlaneApiBase) return dedicatedControlPlaneApiBase;
   if (shouldUseNativeCloudHttp()) {
-    return resolveDirectCloudAuthApiBase(
-      getBootConfig().cloudApiBase?.trim() || DEFAULT_DIRECT_CLOUD_BASE_URL,
-    );
+    return resolveConfiguredDirectCloudApiBase();
   }
-  const cloudPageApiBase = resolveCloudPageApiBaseForDedicatedAgent(client);
-  if (cloudPageApiBase) return cloudPageApiBase;
   // Web SPA served from a cloud host with no agent baseUrl yet — exactly the
   // /join flow's state (selectOrProvisionCloudAgent runs BEFORE any agent
   // connection exists). Resolve the control plane from the page host so the
@@ -494,11 +526,12 @@ export function getCloudAuthToken(client?: ElizaClient): string | null {
 }
 
 function readDirectCloudToken(client: ElizaClient): string | null {
-  // A managed app may be connected to a dedicated agent while rendering its
-  // account settings. Control-plane calls then resolve from the trusted page
-  // host, but only the independently stored Steward session may cross that
-  // boundary; the client's REST token belongs to the agent container.
-  if (resolveCloudPageApiBaseForDedicatedAgent(client)) {
+  // A managed app may be connected to a dedicated agent while rendering
+  // account settings from hosted web, Capacitor, Electrobun, or localhost.
+  // The agent base owns the client's REST token regardless of the page host;
+  // only the independently stored Steward session may cross to the control
+  // plane.
+  if (isDedicatedCloudAgentClient(client)) {
     return readStoredStewardToken()?.trim() || null;
   }
   return getCloudAuthToken(client);
@@ -586,7 +619,7 @@ export async function refreshCloudStewardSession(opts?: {
 function isDirectCloudAuthMissing(client: ElizaClient): boolean {
   return (
     (shouldUseNativeCloudHttp() ||
-      Boolean(resolveCloudPageApiBaseForDedicatedAgent(client))) &&
+      Boolean(resolveDedicatedCloudAgentControlPlaneApiBase(client))) &&
     Boolean(resolveDirectCloudClientApiBase(client)) &&
     !readDirectCloudToken(client)
   );
@@ -3517,7 +3550,7 @@ ElizaClient.prototype.selectOrProvisionCloudAgent = async function (
   // before a Cloud agent connection exists: once the app is bound to a
   // dedicated agent, the caller's fallback may be that agent's bearer, which
   // must never be relabeled as a control-plane credential.
-  if (authToken && !resolveCloudPageApiBaseForDedicatedAgent(this)) {
+  if (authToken && !isDedicatedCloudAgentClient(this)) {
     writeStoredStewardToken(authToken);
   }
 
