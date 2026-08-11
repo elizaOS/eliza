@@ -9,4 +9,8 @@ export function registerPrivateCloudSurfaces(): Promise<void> {
   return Promise.resolve();
 }
 
+export function ensurePrivateCloudSurfaces(): Promise<void> {
+  return Promise.resolve();
+}
+
 export async function registerAllCloudSurfaces(): Promise<void> {}

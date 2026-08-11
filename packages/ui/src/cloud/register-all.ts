@@ -1,32 +1,16 @@
 /**
- * Boot-time registration aggregator for every app-hosted Eliza Cloud surface.
+ * Progressive cloud-surface registration for public web boot (#18056).
  *
- * The `CloudRouterShell` renders whatever {@link listCloudRoutes} returns, and
- * the Settings view renders whatever the settings-section registry holds. Every
- * cloud domain registers itself either as an import side effect (top-level
- * `registerCloudRoute(...)` / `registerSettingsSection(...)` calls) or via an
- * explicit `registerX()` function. None of those run unless the modules are
- * imported and the functions are called once at boot.
+ * Public boot (`packages/app` shell factory) imports only
+ * {@link registerPublicCloudSurfaces} from this module so private dashboard
+ * domains never enter the anonymous `/login` critical graph.
  *
- * Split for anonymous-login performance (#18056):
- * - {@link registerPublicCloudSurfaces} only loads the public/auth/join graph
- *   (login, payment, legal, …). It must not static-import private dashboard
- *   domains or the public-pages *barrel* (which eagerly re-exports LoginPage
- *   and collapses the login route into the registration chunk).
- * - {@link ensurePrivateCloudSurfaces} (see `private-cloud-registration.ts`)
- *   loads authenticated console domains only when a private path is visited.
- * - {@link registerAllCloudSurfaces} registers public surfaces then awaits
- *   private registration. Prefer this in tests/fixtures that need the full
- *   route table. Production web boot uses public-only registration and lets
- *   the shell own private loading.
+ * For the **legacy synchronous full-table contract**, use
+ * `./register-all-sync` — that module is intentionally not part of public boot.
  *
- * Account-management surfaces (account, security, plugin grants, billing,
- * API keys, monetization, connectors) are mounted twice on purpose: as in-app
- * Settings sections (the app's own settings hub) AND as standalone
- * `dashboard/*` console pages. The standalone mounts are what make the apex
- * console (elizacloud.ai) work — the agent app never boots there (see
- * `AppCatchAllRoute`), so the console pages are the only reachable home for
- * add-funds / API keys / account on a control-plane host.
+ * {@link registerAllCloudSurfaces} here is async (awaits private dynamic
+ * imports). Prefer `register-all-sync` for fixtures/tests that need a complete
+ * table before the next statement runs.
  */
 
 import { registerJoinFlow } from "./join/register";
@@ -41,6 +25,7 @@ export {
   pathNeedsPrivateCloudSurfaces,
   resetPrivateCloudRegistrationForTests,
   retryPrivateCloudSurfaces,
+  setPrivateCloudLoadForTests,
   subscribePrivateCloudRegistration,
 } from "./private-cloud-registration";
 
@@ -68,12 +53,11 @@ export function registerPrivateCloudSurfaces(): Promise<void> {
 }
 
 /**
- * Register every cloud route + settings section against the shared registries.
+ * Register public surfaces then await private dynamic registration.
  *
- * Async on purpose: private domains are dynamic imports. Callers that need a
- * complete private route table must await this promise (tests/fixtures do).
- * Production web boot should call {@link registerPublicCloudSurfaces} only and
- * let the shell load private domains on demand.
+ * **Async.** Callers that need a complete private route table before the next
+ * statement must either `await` this function or use the synchronous
+ * `./register-all-sync` entrypoint.
  */
 export async function registerAllCloudSurfaces(): Promise<void> {
   registerPublicCloudSurfaces();
