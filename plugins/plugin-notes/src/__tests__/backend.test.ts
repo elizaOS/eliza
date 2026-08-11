@@ -608,6 +608,192 @@ describe("Notes capabilities", () => {
     expect(service.listNotes()).toHaveLength(1);
   });
 
+  it("get-note with title selector reads by exact first-line label", async () => {
+    const service = await serviceFor(await temporaryStateFile());
+    await interact(
+      "create-note",
+      { content: "Shopping list\nMilk and eggs", color: "yellow" },
+      service,
+    );
+    await interact(
+      "create-note",
+      { content: "Todo\nFix the bug", color: "rose" },
+      service,
+    );
+
+    // Exact title match reads the right note.
+    const read = await interact("get-note", { title: "Shopping list" }, service);
+    expect(read).toMatchObject({
+      success: true,
+      data: { note: { title: "Shopping list" } },
+    });
+  });
+
+  it("get-note with title selector fails on ambiguous or unknown label", async () => {
+    const service = await serviceFor(await temporaryStateFile());
+    await interact(
+      "create-note",
+      { content: "Meeting notes\nMorning sync", color: "yellow" },
+      service,
+    );
+    await interact(
+      "create-note",
+      { content: "Meeting notes\nAfternoon review", color: "rose" },
+      service,
+    );
+
+    // Two notes share the same first-line label -> ambiguous.
+    await expect(
+      interact("get-note", { title: "Meeting notes" }, service),
+    ).resolves.toMatchObject({
+      success: false,
+      error: { code: "NOTES_AMBIGUOUS_NOTE" },
+    });
+
+    // No note has this label -> not found.
+    await expect(
+      interact("get-note", { title: "Nonexistent" }, service),
+    ).resolves.toMatchObject({
+      success: false,
+      error: { code: "NOTES_NOT_FOUND" },
+    });
+  });
+
+  it("get-note enforces exactly-one-of id/title/query", async () => {
+    const service = await serviceFor(await temporaryStateFile());
+    await interact(
+      "create-note",
+      { content: "Test\nBody", color: "yellow" },
+      service,
+    );
+
+    // Providing both title and query must fail validation.
+    await expect(
+      interact(
+        "get-note",
+        { title: "Test", query: "Body" },
+        service,
+      ),
+    ).resolves.toMatchObject({
+      success: false,
+      error: { code: "NOTES_VALIDATION_FAILED" },
+    });
+
+    // Providing zero selectors must fail validation.
+    await expect(
+      interact("get-note", {}, service),
+    ).resolves.toMatchObject({
+      success: false,
+      error: { code: "NOTES_VALIDATION_FAILED" },
+    });
+  });
+
+  it("update-note with title selector updates by exact first-line label", async () => {
+    const service = await serviceFor(await temporaryStateFile());
+    await interact(
+      "create-note",
+      { content: "Shopping list\nMilk and eggs", color: "yellow" },
+      service,
+    );
+    await interact(
+      "create-note",
+      { content: "Todo\nFix the bug", color: "rose" },
+      service,
+    );
+
+    // Exact title match updates the right note.
+    const updated = await interact(
+      "update-note",
+      { title: "Shopping list", content: "Shopping list\nDone shopping" },
+      service,
+    );
+    expect(updated).toMatchObject({
+      success: true,
+      data: { note: { title: "Shopping list", body: "Done shopping" } },
+    });
+    // "Todo" remains unchanged; order may shift after update.
+    expect(
+      service.listNotes().map((n) => ({ title: n.title, body: n.body })),
+    ).toEqual(
+      expect.arrayContaining([
+        { title: "Shopping list", body: "Done shopping" },
+        { title: "Todo", body: "Fix the bug" },
+      ]),
+    );
+  });
+
+  it("update-note with title selector fails on ambiguous or unknown label", async () => {
+    const service = await serviceFor(await temporaryStateFile());
+    await interact(
+      "create-note",
+      { content: "Meeting notes\nMorning sync", color: "yellow" },
+      service,
+    );
+    await interact(
+      "create-note",
+      { content: "Meeting notes\nAfternoon review", color: "rose" },
+      service,
+    );
+
+    // Two notes share the same first-line label -> ambiguous.
+    await expect(
+      interact(
+        "update-note",
+        { title: "Meeting notes", content: "Changed" },
+        service,
+      ),
+    ).resolves.toMatchObject({
+      success: false,
+      error: { code: "NOTES_AMBIGUOUS_NOTE" },
+    });
+
+    // No note has this label -> not found.
+    await expect(
+      interact(
+        "update-note",
+        { title: "Nonexistent", content: "Changed" },
+        service,
+      ),
+    ).resolves.toMatchObject({
+      success: false,
+      error: { code: "NOTES_NOT_FOUND" },
+    });
+
+    // Nothing was mutated.
+    expect(service.listNotes().map((n) => n.body)).toEqual(
+      expect.arrayContaining(["Morning sync", "Afternoon review"]),
+    );
+  });
+
+  it("update-note enforces exactly-one-of id/title/query for selector", async () => {
+    const service = await serviceFor(await temporaryStateFile());
+    await interact(
+      "create-note",
+      { content: "Test\nBody", color: "yellow" },
+      service,
+    );
+
+    // Providing both title and query must fail validation.
+    await expect(
+      interact(
+        "update-note",
+        { title: "Test", query: "Body", content: "Changed" },
+        service,
+      ),
+    ).resolves.toMatchObject({
+      success: false,
+      error: { code: "NOTES_VALIDATION_FAILED" },
+    });
+
+    // No selector with content must fail validation.
+    await expect(
+      interact("update-note", { content: "Changed" }, service),
+    ).resolves.toMatchObject({
+      success: false,
+      error: { code: "NOTES_VALIDATION_FAILED" },
+    });
+  });
+
   it("returns explicit failures for invalid input and rejects undeclared capabilities", async () => {
     const service = await serviceFor(await temporaryStateFile());
     await expect(

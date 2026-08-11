@@ -213,8 +213,12 @@ async function dispatchCapability(
     return success(service, summarizeNotes(notes), { notes });
   }
   if (capability === "get-note") {
-    assertOnlyParams(params, ["id", "query"]);
-    const target = parseLookupTarget(params, capability, ["id", "query"]);
+    assertOnlyParams(params, ["id", "title", "query"]);
+    const target = parseLookupTarget(params, capability, [
+      "id",
+      "title",
+      "query",
+    ]);
     const note =
       target.selector === "id"
         ? service.getNote(target.value)
@@ -237,8 +241,12 @@ async function dispatchCapability(
     );
   }
   if (capability === "update-note") {
-    assertOnlyParams(params, ["id", "query", "content", "color"]);
-    const target = parseLookupTarget(params, capability, ["id", "query"]);
+    assertOnlyParams(params, ["id", "title", "query", "content", "color"]);
+    const target = parseLookupTarget(params, capability, [
+      "id",
+      "title",
+      "query",
+    ]);
     const patch: Record<string, unknown> = {
       ...(Object.hasOwn(params, "content")
         ? parseNoteContent(params.content)
