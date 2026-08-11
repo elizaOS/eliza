@@ -530,4 +530,48 @@ describe("handleStandaloneCloudPairRoute", () => {
       "https://staging.elizacloud.ai/dashboard/agents",
     );
   });
+
+  it("resolves the recovery link to staging for the bare staging apex", async () => {
+    process.env.ELIZAOS_CLOUD_BASE_URL =
+      "https://staging.elizacloud.ai/api/v1";
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValue(new Response(JSON.stringify({}), { status: 410 })),
+    );
+
+    const harness = fakeRes();
+    await handleStandaloneCloudPairRoute(
+      fakeReq({ pathname: "/pair", search: "?token=pair-token" }),
+      harness.res,
+    );
+
+    expect(harness.body()).toContain(
+      "https://staging.elizacloud.ai/dashboard/agents",
+    );
+    expect(harness.body()).not.toContain("www.elizacloud.ai");
+  });
+
+  it("resolves the recovery link to staging for the app-staging host", async () => {
+    process.env.ELIZAOS_CLOUD_BASE_URL =
+      "https://app-staging.elizacloud.ai/api/v1";
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValue(new Response(JSON.stringify({}), { status: 410 })),
+    );
+
+    const harness = fakeRes();
+    await handleStandaloneCloudPairRoute(
+      fakeReq({ pathname: "/pair", search: "?token=pair-token" }),
+      harness.res,
+    );
+
+    expect(harness.body()).toContain(
+      "https://staging.elizacloud.ai/dashboard/agents",
+    );
+    expect(harness.body()).not.toContain("www.elizacloud.ai");
+  });
 });

@@ -103,19 +103,33 @@ function escapeHtml(value: string): string {
 }
 
 /**
+ * Canonical staging hostnames — mirrors `STAGING_CONSOLE_HOSTS` in
+ * `packages/ui/src/utils/cloud-agent-base.ts` plus the wildcard subdomain.
+ * Kept local (not imported) to preserve the agent→UI dependency boundary.
+ * Update both if the canonical staging host set changes.
+ */
+const STAGING_CLOUD_HOSTS: ReadonlySet<string> = new Set([
+  "staging.elizacloud.ai",
+  "api-staging.elizacloud.ai",
+  "app-staging.elizacloud.ai",
+]);
+
+function isStagingCloudHostname(hostname: string): boolean {
+  const host = hostname.toLowerCase();
+  return STAGING_CLOUD_HOSTS.has(host) || host.endsWith(".staging.elizacloud.ai");
+}
+
+/**
  * Resolve the Eliza Cloud console dashboard URL for the environment the agent
- * is provisioned against. A staging agent (`api-staging.elizacloud.ai`) gets
- * the staging console; everything else gets the production console. This
- * prevents staging users from being bounced to a production dashboard where
- * their account/org/agent does not exist.
+ * is provisioned against. A staging agent (any canonical staging alias or
+ * wildcard subdomain) gets the staging console; everything else gets the
+ * production console. This prevents staging users from being bounced to a
+ * production dashboard where their account/org/agent does not exist.
  */
 function resolveCloudConsoleUrl(): string {
   try {
     const hostname = new URL(resolveCloudAuthRoot()).hostname.toLowerCase();
-    if (
-      hostname === "api-staging.elizacloud.ai" ||
-      hostname.endsWith(".staging.elizacloud.ai")
-    ) {
+    if (isStagingCloudHostname(hostname)) {
       return "https://staging.elizacloud.ai/dashboard/agents";
     }
   } catch {
