@@ -1510,10 +1510,13 @@ function deriveParamsFromMessageText(
 		}
 		const target = extractDeleteTargetText(trimmed);
 		if (target) {
-			if (capabilityParamKeys.has("query")) {
-				derived.query = target;
-			} else if (capabilityParamKeys.has("title")) {
+			// Prefer title (exact first-line label) for delete operations when
+			// the capability declares it — reinterpreting free-form text as a
+			// query selector can match unintended notes (#18377 accepted design).
+			if (capabilityParamKeys.has("title")) {
 				derived.title = target;
+			} else if (capabilityParamKeys.has("query")) {
+				derived.query = target;
 			} else if (capabilityParamKeys.has("name")) {
 				derived.name = target;
 			}

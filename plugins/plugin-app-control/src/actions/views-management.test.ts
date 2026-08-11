@@ -3259,7 +3259,7 @@ describe("view management actions", () => {
 				method: "POST",
 				body: JSON.stringify({
 					capability: "delete-note",
-					params: { query: noteText },
+					params: { title: noteText },
 					timeoutMs: 5_000,
 					viewType: "gui",
 				}),
