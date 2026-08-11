@@ -316,6 +316,10 @@ TUNNEL_AUTH_KEY_COST_USD = "0.01"
 #   CDP_API_KEY_ID / CDP_API_KEY_SECRET / CDP_WALLET_SECRET   x402
 #   DISCORD_BOT_TOKEN / DISCORD_CHANNEL_ID
 #   GATEWAY_BOOTSTRAP_SECRET / GATEWAY_INTERNAL_SECRET
+#   ELIZA_APP_WEBHOOK_GATEWAY_URL       Internal gateway-webhook service URL (Railway).
+#                                      Required for staging+prod webhook flows; without
+#                                      it, webhook routes 503 WEBHOOK_GATEWAY_NOT_CONFIGURED.
+#   ELIZA_APP_WEBHOOK_GATEWAY_SECRET    Shared secret for BFF→gateway forwarding (L3).
 #   JWT_SIGNING_PRIVATE_KEY / JWT_SIGNING_PUBLIC_KEY
 #   OIDC_SIGNING_JWKS                  OIDC provider key ring: JSON array of PRIVATE JWKs
 #                                      (element 0 signs, all published at jwks_uri).
