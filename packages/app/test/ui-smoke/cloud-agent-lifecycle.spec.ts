@@ -158,6 +158,12 @@ async function installAgentStoreRoutes(
         store.agents.push(agent);
         await fulfillJson(route, 200, {
           success: true,
+          // The UI's forced-create path requires the server's explicit
+          // fresh-creation confirmation (client-cloud.ts
+          // requireConfirmedFreshCloudAgentCreate rejects
+          // `forceCreate && created !== true`); omit it and createAgent
+          // treats the response as idempotent reuse and never binds.
+          created: true,
           data: {
             id,
             agentId: id,
