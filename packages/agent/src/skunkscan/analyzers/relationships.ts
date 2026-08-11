@@ -68,9 +68,9 @@ function recordTransactionEvidence(
 
 function isInvestigatedAddress(
   address: string | undefined,
-  investigatedAddresses: readonly string[],
+  investigatedAddresses: ReadonlySet<string>,
 ): boolean {
-  return address !== undefined && investigatedAddresses.includes(address);
+  return address !== undefined && investigatedAddresses.has(address);
 }
 
 export function analyzeWalletRelationships(
@@ -83,11 +83,17 @@ export function analyzeWalletRelationships(
   parsedTransactions: ParsedWalletTransaction[],
   chain: SupportedChain,
 ): WalletRelationshipSummary {
-  const normalizedInvestigatedAddresses = (
-    typeof investigatedAddress === "string"
+  // A Set, not an array - isInvestigatedAddress is called up to 4x per
+  // transfer, across every parsed transaction, so an array .includes() scan
+  // here is O(transactions x transfers x addresses) for a Bitcoin xpub with
+  // many derived addresses (found via the cross-chain unbounded-fetch
+  // audit, alongside the same array-vs-Set gap in funding.ts).
+  const normalizedInvestigatedAddresses = new Set(
+    (typeof investigatedAddress === "string"
       ? [investigatedAddress]
       : investigatedAddress
-  ).map((address) => address.trim());
+    ).map((address) => address.trim()),
+  );
 
   const counterpartyMap =
     new Map<string, RelationshipAccumulator>();

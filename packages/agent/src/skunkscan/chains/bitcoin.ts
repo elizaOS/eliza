@@ -46,6 +46,12 @@ const SATOSHIS_PER_BTC = 100_000_000;
 // downstream-parsing cost of routinely asking for the raw maximum.
 const MAX_TRANSACTION_LIMIT = 1000;
 
+// Ceiling on deriveAddresses()'s xpub gap-limit-scan output - see that
+// method's doc comment. 2,000 matches this session's other holdings caps
+// (Solana token holdings, EVM token/NFT holdings) for consistency, not a
+// Bitcoin-specific derivation.
+const MAX_DERIVED_ADDRESSES = 2000;
+
 const BITCOIN_NATIVE_ASSET: UniversalAssetIdentifier = {
   chainId: BITCOIN_CHAIN_ID,
   assetType: "native",
@@ -455,15 +461,35 @@ export class BitcoinBlockchainConnector implements BlockchainConnector {
   // return already-aggregated data. For a single address, returns that one
   // address unchanged so callers don't need to branch on input type
   // themselves.
-  async deriveAddresses(input: string): Promise<string[]> {
+  //
+  // Blockchair's gap-limit scan (getBitcoinXpubDashboard) has no cap this
+  // codebase controls - a heavily-reused xpub (e.g. an exchange
+  // consolidation key) can return a very large address set. Downstream
+  // lookups against it are now O(1) Set-backed (see analyzers/funding.ts,
+  // analyzers/relationships.ts), but analyzers/exposure.ts still does one
+  // pass PER address, and an unbounded address list still means unbounded
+  // memory for the Set/array itself - found via the cross-chain unbounded-
+  // fetch audit. MAX_DERIVED_ADDRESSES caps it the same way this session's
+  // other holdings caps do.
+  async deriveAddresses(
+    input: string,
+  ): Promise<{ addresses: string[]; truncated: boolean }> {
     const trimmedInput = input.trim();
 
     if (isBitcoinXpub(trimmedInput)) {
       const dashboard = await getBitcoinXpubDashboard(trimmedInput);
-      return Object.keys(dashboard.addresses);
+      const allAddresses = Object.keys(dashboard.addresses);
+      const truncated = allAddresses.length > MAX_DERIVED_ADDRESSES;
+
+      return {
+        addresses: truncated
+          ? allAddresses.slice(0, MAX_DERIVED_ADDRESSES)
+          : allAddresses,
+        truncated,
+      };
     }
 
-    return [trimmedInput];
+    return { addresses: [trimmedInput], truncated: false };
   }
 }
 
