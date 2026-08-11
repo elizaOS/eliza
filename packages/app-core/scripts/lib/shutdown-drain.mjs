@@ -9,10 +9,10 @@
  * exits (`plugins/plugin-discord/shutdown-drain.ts`), so the drain that merged
  * in #17749 could never finish under the dev supervisor (elizaOS/eliza#16318).
  *
- * This module inverts that contract. Children that exit promptly release the
- * supervisor immediately, sooner than the old fixed fuse ever did; only a
- * child that outlives the window is escalated to SIGKILL, per straggler and
- * loudly, so a drain timeout is an observable event instead of a silent kill.
+ * This module inverts that contract. Supervisor exit follows child exit
+ * directly instead of a fixed schedule; only a child that outlives the window
+ * is escalated to SIGKILL, per straggler and loudly, so a drain timeout is an
+ * observable event instead of a silent kill.
  * The wait stays bounded end to end (window + kill grace): a child that
  * survives even SIGKILL delivery cannot wedge supervisor exit.
  */
