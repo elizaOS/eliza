@@ -1,4 +1,6 @@
-/** Validates Taskmarket's public task-list boundary and exposes typed discovery results. */
+/** Validates Taskmarket's public task-list boundary and exposes bounded discovery results. */
+
+import { fetchWithSsrfGuard } from "@elizaos/core";
 
 export const DEFAULT_TASKMARKET_API_URL = "https://api.taskmarket.dev";
 
@@ -45,6 +47,18 @@ export interface TaskmarketTaskPage {
 
 type FetchLike = typeof fetch;
 
+const TASKMARKET_REQUEST_TIMEOUT_MS = 10_000;
+const TASK_TEXT_LIMITS = {
+  id: 128,
+  description: 180,
+  status: 32,
+  mode: 32,
+  expiryTime: 64,
+  tag: 64,
+  cursor: 256,
+} as const;
+const MAX_TASK_TAGS = 10;
+
 function requireRecord(value: unknown, label: string): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new TypeError(`Taskmarket returned an invalid ${label}`);
@@ -58,6 +72,29 @@ function requireString(record: Record<string, unknown>, key: string): string {
     throw new TypeError(`Taskmarket task is missing ${key}`);
   }
   return value;
+}
+
+function sanitizeRemoteText(value: string, maxLength: number): string {
+  return Array.from(value, (character) => {
+    const codePoint = character.codePointAt(0) ?? 0;
+    return codePoint < 32 || codePoint === 127 ? " " : character;
+  })
+    .join("")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, maxLength);
+}
+
+function requireSanitizedString(
+  record: Record<string, unknown>,
+  key: keyof typeof TASK_TEXT_LIMITS,
+): string {
+  const sanitized = sanitizeRemoteText(
+    requireString(record, key),
+    TASK_TEXT_LIMITS[key],
+  );
+  if (!sanitized) throw new TypeError(`Taskmarket task is missing ${key}`);
+  return sanitized;
 }
 
 function requireNonNegativeInteger(
@@ -89,16 +126,19 @@ function parseTask(value: unknown): TaskmarketTask {
     throw new TypeError("Taskmarket task has invalid tags");
   }
   return {
-    id: requireString(task, "id"),
-    description: requireString(task, "description"),
+    id: requireSanitizedString(task, "id"),
+    description: requireSanitizedString(task, "description"),
     rewardBaseUnits,
     rewardUsdc: formatUsdc(rewardBaseUnits),
     netRewardBaseUnits,
     netRewardUsdc: formatUsdc(netRewardBaseUnits),
-    status: requireString(task, "status"),
-    mode: requireString(task, "mode"),
-    expiryTime: requireString(task, "expiryTime"),
-    tags,
+    status: requireSanitizedString(task, "status"),
+    mode: requireSanitizedString(task, "mode"),
+    expiryTime: requireSanitizedString(task, "expiryTime"),
+    tags: tags
+      .slice(0, MAX_TASK_TAGS)
+      .map((tag) => sanitizeRemoteText(tag, TASK_TEXT_LIMITS.tag))
+      .filter(Boolean),
     submissionCount: requireNonNegativeInteger(task, "submissionCount"),
   };
 }
@@ -106,7 +146,7 @@ function parseTask(value: unknown): TaskmarketTask {
 export class TaskmarketClient {
   constructor(
     private readonly baseUrl = DEFAULT_TASKMARKET_API_URL,
-    private readonly fetcher: FetchLike = fetch,
+    private readonly fetcher?: FetchLike,
   ) {}
 
   async listTasks(options: ListTasksOptions = {}): Promise<TaskmarketTaskPage> {
@@ -114,8 +154,11 @@ export class TaskmarketClient {
     if (!Number.isInteger(limit) || limit < 1 || limit > 50) {
       throw new RangeError("Taskmarket result limit must be between 1 and 50");
     }
-    const url = new URL("/api/tasks", this.baseUrl);
-    url.searchParams.set("status", options.status ?? "open");
+    const requestedStatus = options.status ?? "open";
+    const baseUrl = new URL(this.baseUrl);
+    if (!baseUrl.pathname.endsWith("/")) baseUrl.pathname += "/";
+    const url = new URL("api/tasks", baseUrl);
+    url.searchParams.set("status", requestedStatus);
     url.searchParams.set("sort", options.sort ?? "reward_desc");
     url.searchParams.set("limit", String(limit));
     if (options.mode) url.searchParams.set("mode", options.mode);
@@ -131,23 +174,52 @@ export class TaskmarketClient {
       url.searchParams.set("deadlineHours", String(options.deadlineHours));
     }
 
-    const response = await this.fetcher(url, {
-      headers: { accept: "application/json" },
+    const guarded = await fetchWithSsrfGuard({
+      url: url.toString(),
+      ...(this.fetcher ? { fetchImpl: this.fetcher } : {}),
+      init: { headers: { accept: "application/json" } },
+      timeoutMs: TASKMARKET_REQUEST_TIMEOUT_MS,
     });
-    if (!response.ok) {
-      throw new Error(`Taskmarket request failed with HTTP ${response.status}`);
+    try {
+      if (!guarded.response.ok) {
+        throw new Error(
+          `Taskmarket request failed with HTTP ${guarded.response.status}`,
+        );
+      }
+      const payload = requireRecord(await guarded.response.json(), "task page");
+      if (
+        !Array.isArray(payload.tasks) ||
+        typeof payload.hasMore !== "boolean"
+      ) {
+        throw new TypeError("Taskmarket returned an invalid task page");
+      }
+      if (
+        payload.nextCursor !== null &&
+        typeof payload.nextCursor !== "string"
+      ) {
+        throw new TypeError("Taskmarket returned an invalid cursor");
+      }
+      const tasks = payload.tasks.map(parseTask);
+      if (tasks.some((task) => task.status !== requestedStatus)) {
+        throw new TypeError(
+          `Taskmarket returned tasks outside requested status ${requestedStatus}`,
+        );
+      }
+      if (options.mode && tasks.some((task) => task.mode !== options.mode)) {
+        throw new TypeError(
+          `Taskmarket returned tasks outside requested mode ${options.mode}`,
+        );
+      }
+      return {
+        tasks,
+        hasMore: payload.hasMore,
+        nextCursor:
+          typeof payload.nextCursor === "string"
+            ? sanitizeRemoteText(payload.nextCursor, TASK_TEXT_LIMITS.cursor)
+            : null,
+      };
+    } finally {
+      await guarded.release();
     }
-    const payload = requireRecord(await response.json(), "task page");
-    if (!Array.isArray(payload.tasks) || typeof payload.hasMore !== "boolean") {
-      throw new TypeError("Taskmarket returned an invalid task page");
-    }
-    if (payload.nextCursor !== null && typeof payload.nextCursor !== "string") {
-      throw new TypeError("Taskmarket returned an invalid cursor");
-    }
-    return {
-      tasks: payload.tasks.map(parseTask),
-      hasMore: payload.hasMore,
-      nextCursor: payload.nextCursor as string | null,
-    };
   }
 }
