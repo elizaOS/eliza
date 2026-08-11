@@ -794,6 +794,80 @@ const OPERATION_TOKEN_FAMILIES: Record<OperationFamily, Set<string>> = {
 	select: new Set(["select", "choose", "pick"]),
 };
 
+/**
+ * Tokens that negate or condition a subsequent destructive verb. When any of
+ * these precede a delete-family token within a short window, the destructive
+ * token is treated as negated/conditional, not as affirmative authority.
+ *
+ * This is a structural safeguard, not a full NLU pipeline — it catches the
+ * common English negation/conditional patterns NubsCarson identified as
+ * false-green risks. Non-English input is handled by fail-closed logic in
+ * the correction function, not by this list.
+ */
+const NEGATION_TOKENS = new Set([
+	"not",
+	"don't",
+	"dont",
+	"never",
+	"without",
+	"no",
+	"instead",
+	"rather",
+	"cancel",
+	"undo",
+	"abort",
+]);
+
+const CONDITIONAL_TOKENS = new Set([
+	"if",
+	"when",
+	"should",
+	"might",
+	"may",
+	"could",
+	"would",
+	"unless",
+	"whether",
+	"after",
+]);
+
+/**
+ * Returns true when a destructive-family token appears within a negation or
+ * conditional context. Negation uses a ±3 token window (covers "do not
+ * delete"). Conditionals are checked across the entire message up to the
+ * destructive token, since conditional clauses ("if X then ... delete")
+ * can span many words.
+ *
+ * The token array is the already-split, normalized request text. This only
+ * fires for destructive tokens because the asymmetric risk (silent data
+ * loss) justifies special-case handling. Read/update/create families are
+ * unaffected.
+ */
+function isDestructiveTokenNegatedOrConditional(
+	tokens: string[],
+	destructiveTokenSet: Set<string>,
+): boolean {
+	const negationWindow = 3;
+	for (let i = 0; i < tokens.length; i++) {
+		if (!destructiveTokenSet.has(tokens[i])) continue;
+		// Negation: short window — "not delete", "don't remove", "never destroy"
+		for (let j = Math.max(0, i - negationWindow); j < i; j++) {
+			if (NEGATION_TOKENS.has(tokens[j])) {
+				return true;
+			}
+		}
+		// Conditional: full backward scan — "if X ... then delete",
+		// "when X ... delete", "should ... delete". Conditionals introduce
+		// a clause that can span many words.
+		for (let j = 0; j < i; j++) {
+			if (CONDITIONAL_TOKENS.has(tokens[j])) {
+				return true;
+			}
+		}
+	}
+	return false;
+}
+
 function normalizeCapabilityKey(value: string | null | undefined): string {
 	return (value ?? "")
 		.trim()
@@ -1104,41 +1178,97 @@ function resolveViewCapability({
 	return best?.candidate ?? null;
 }
 
+/**
+ * Result of the destructive-authority gate. The correction path can either
+ * return a corrected capability or — when a destructive capability would be
+ * authorized on insufficient evidence — return a rejection so the caller
+ * can refuse the request rather than silently execute a data-destroying
+ * action.
+ */
+type CapabilityCorrection =
+	| { kind: "capability"; capability: ViewCapability }
+	| { kind: "reject"; reason: string };
+
 function correctCapabilityOperationFamily(
 	view: ViewSummary,
 	capability: ViewCapability,
 	text: string,
-): ViewCapability {
-	const requestTokens = tokensFor(viewRequestText(text));
+): CapabilityCorrection {
+	const requestText = viewRequestText(text);
+	const normalizedRequest = normalizeCapabilityKey(requestText);
+	const requestTokenArray = normalizedRequest.split(" ").filter(Boolean);
+	const requestTokens = new Set(requestTokenArray);
 	const requestedFamilies = operationFamiliesForTokens(requestTokens);
 	const selectedFamily = operationFamilyForCapability(capability);
+	const selectedIsDestructive = selectedFamily === "delete";
+
+	// Destructive-authority gate: verify that the request structurally
+	// authorizes a destructive capability before preserving or correcting
+	// to one. This prevents negated ("do not delete"), conditional ("if X
+	// then delete"), unsupported-language (no family detected), or ambiguous
+	// requests from carrying or escalating into a destructive action.
+	if (selectedIsDestructive) {
+		// Fail-closed for unsupported languages: if no operation family at
+		// all was detected from the request tokens, the input is likely
+		// non-English or otherwise outside this function's lexical scope.
+		// A destructive planner selection must not be silently trusted.
+		if (requestedFamilies.size === 0) {
+			return {
+				kind: "reject",
+				reason:
+					"destructive capability selected but no operation family detected in the request — possible unsupported language or ambiguous intent; refusing to execute without affirmative authority",
+			};
+		}
+
+		// Negation/conditional gate: if a destructive token appears within
+		// a negation or conditional window, it does not constitute
+		// affirmative authority for the destructive capability.
+		if (
+			isDestructiveTokenNegatedOrConditional(
+				requestTokenArray,
+				OPERATION_TOKEN_FAMILIES.delete,
+			)
+		) {
+			return {
+				kind: "reject",
+				reason:
+					"destructive token is negated or conditional in the request — cannot confirm affirmative authority for destructive capability",
+			};
+		}
+	}
+
 	// Preserve the planner's explicit selection when its family has any
 	// token support in the request. This prevents rewriting an explicit
 	// delete-note to get-note just because the request also contained
 	// read-family words like "current" or "list" (#18386).
-	//
-	// Negation, conditionality, and clause-scope understanding are planner
-	// responsibilities; this function only corrects a token-family
-	// mismatch, not a planner-level intent error. The issue explicitly
-	// states "do not add a flat keyword denylist" and "any retained
-	// correction path is structural and clause/authority-aware."
 	if (
 		requestedFamilies.size === 0 ||
 		!selectedFamily ||
 		requestedFamilies.has(selectedFamily)
 	) {
-		return capability;
+		return { kind: "capability", capability };
 	}
 
-	// Only correct when the selected capability's family has NO token
-	// support in the request — a genuine planner mismatch.
+	// The selected capability's family has NO token support in the
+	// request — a potential mismatch. Before correcting, enforce the
+	// asymmetric-risk rule: never lexically escalate read→delete.
+	// Silently upgrading a read into a destructive action destroys data;
+	// a missed correction on a non-destructive family is at worst a
+	// retryable action.
 	const requestedFamily = [...requestedFamilies][0];
-	if (!requestedFamily) return capability;
+	const correctedIsDestructive = requestedFamily === "delete";
+	if (correctedIsDestructive && !selectedIsDestructive) {
+		// Read→delete (or create/update/select→delete) escalation is
+		// prohibited. Return the original capability unchanged rather
+		// than guessing destructive intent from lexical tokens.
+		return { kind: "capability", capability };
+	}
 
 	const familyMatches = (view.capabilities ?? []).filter(
 		(candidate) => operationFamilyForCapability(candidate) === requestedFamily,
 	);
-	if (familyMatches.length === 1 && familyMatches[0]) return familyMatches[0];
+	if (familyMatches.length === 1 && familyMatches[0])
+		return { kind: "capability", capability: familyMatches[0] };
 
 	const ranked = familyMatches
 		.map((candidate) => ({
@@ -1149,9 +1279,11 @@ function correctCapabilityOperationFamily(
 	// Multiple semantic siblings are corrected only when the user's nouns make
 	// one a unique best match; a tie preserves the planner decision rather than
 	// guessing between collection and single-record reads.
-	return ranked[0] && ranked[0].score > (ranked[1]?.score ?? -1)
-		? ranked[0].candidate
-		: capability;
+	const resolved =
+		ranked[0] && ranked[0].score > (ranked[1]?.score ?? -1)
+			? ranked[0].candidate
+			: capability;
+	return { kind: "capability", capability: resolved };
 }
 
 type CapabilityParamsResolution =
@@ -3142,17 +3274,24 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 						if (!resolvedCapability && standardCapability)
 							capability = standardCapability;
 						if (resolvedCapability) {
-							const correctedCapability = correctCapabilityOperationFamily(
+							const correction = correctCapabilityOperationFamily(
 								resolvedCapability.view,
 								resolvedCapability.capability,
 								text,
 							);
-							if (correctedCapability.id !== resolvedCapability.capability.id) {
+							if (correction.kind === "reject") {
+								const reply = `Refusing destructive capability on view "${viewId}": ${correction.reason}. Please rephrase with explicit, unambiguous intent.`;
+								await callback?.({ text: reply });
+								return { success: false, text: reply };
+							}
+							if (
+								correction.capability.id !== resolvedCapability.capability.id
+							) {
 								resolvedCapability = {
 									...resolvedCapability,
-									capability: correctedCapability,
+									capability: correction.capability,
 								};
-								capability = correctedCapability.id;
+								capability = correction.capability.id;
 							}
 						}
 						const paramsResolution = readCapabilityParams(

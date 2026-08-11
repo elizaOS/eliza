@@ -3347,7 +3347,12 @@ describe("view management actions", () => {
 		);
 	});
 
-	it("still corrects a genuine planner mismatch when the request family has no overlap with the selected capability family (#18386)", async () => {
+	it("does NOT escalate read→delete even when the request family has only delete tokens (#18386 P1)", async () => {
+		// NubsCarson Blocking 1: the correction path must never lexically
+		// escalate read→delete. Even when the planner selected get-note
+		// (read) and the message says "delete" with zero read-family
+		// words, the correction must NOT rewrite to delete-note — silent
+		// upgrade destroys data. The original capability is preserved.
 		const { runtime } = createRuntime();
 		const callback = vi.fn();
 		const action = createViewsAction({
@@ -3396,13 +3401,12 @@ describe("view management actions", () => {
 			status: 200,
 			json: async () => ({
 				success: true,
-				result: { success: true, text: "Deleted." },
+				result: { success: true, text: "Note retrieved." },
 			}),
 		} as Response);
 
-		// Planner selected get-note but the user said "delete" with zero
-		// read-family words. This is a genuine mismatch and must still be
-		// corrected to delete-note.
+		// Planner selected get-note (read). Message says "delete" but the
+		// correction path must NOT escalate to delete-note.
 		const result = await action.handler(
 			runtime as never,
 			message("Delete note titled GAUSS MARKER") as never,
@@ -3412,28 +3416,23 @@ describe("view management actions", () => {
 		);
 
 		expect(result?.success).toBe(true);
+		// The fetch must invoke get-note (the planner's original selection),
+		// NOT delete-note. Read→delete escalation is prohibited.
 		expect(globalThis.fetch).toHaveBeenCalledWith(
 			"http://127.0.0.1:3456/api/views/notes/interact?viewType=gui",
 			expect.objectContaining({
 				method: "POST",
-				body: JSON.stringify({
-					capability: "delete-note",
-					params: { title: "titled GAUSS MARKER" },
-					timeoutMs: 5_000,
-					viewType: "gui",
-				}),
+				body: expect.stringContaining('"capability":"get-note"'),
 			}),
 		);
 	});
 
-	it("preserves a destructive capability even when read-family words coexist — negation is a planner concern (#18386)", async () => {
-		// This documents the design decision: mixed-family overlap
-		// preserves the planner's explicit selection. If the planner
-		// selected delete-note, the request containing "show" or "current"
-		// does not cause a rewrite. Negation ("do not delete") is the
-		// planner's responsibility — this function does not parse negation,
-		// conditionality, or clause scope, per the issue's requirement to
-		// "not add a flat keyword denylist."
+	it("preserves a destructive capability when read-family words coexist affirmatively (#18386)", async () => {
+		// This documents the affirmative multi-action case: mixed-family
+		// overlap preserves the planner's explicit selection. If the planner
+		// selected delete-note and the request says "show then delete",
+		// the "show" (read) token does not cause a rewrite to get-note.
+		// True negation is covered by adversarial tests below.
 		const { runtime } = createRuntime();
 		const callback = vi.fn();
 		const action = createViewsAction({
@@ -3488,9 +3487,8 @@ describe("view management actions", () => {
 
 		// Both "show" (read) and "delete" (delete) families present.
 		// The planner selected delete-note. The correction function must
-		// NOT rewrite it to get-note. If the planner made a wrong selection
-		// (user said "show, do not delete"), that is a planner-level error
-		// outside this function's scope.
+		// NOT rewrite it to get-note. This is the affirmative multi-action
+		// case — negation is tested separately below.
 		const result = await action.handler(
 			runtime as never,
 			message("Show the current note then delete note titled X") as never,
@@ -3507,6 +3505,305 @@ describe("view management actions", () => {
 				body: expect.stringContaining('"capability":"delete-note"'),
 			}),
 		);
+	});
+
+	// ── Adversarial zero-mutation coverage (#18386 P1) ──────────────
+	// These tests prove the destructive-authority gate catches the cases
+	// NubsCarson identified: negation, conditional, unsupported-language
+	// fail-closed, and read→delete escalation. Each must assert zero
+	// fetch (no mutation request sent) and unchanged state.
+	// ────────────────────────────────────────────────────────────────
+
+	it("rejects negated destructive request with zero fetch/mutation (#18386 P1)", async () => {
+		const { runtime } = createRuntime();
+		const callback = vi.fn();
+		const action = createViewsAction({
+			client: {
+				listViews: vi.fn(async () => [
+					view({
+						id: "notes",
+						label: "Notes",
+						path: "/notes",
+						tags: ["notes"],
+						capabilities: [
+							{
+								id: "get-note",
+								description: "Read one note by title or query.",
+								params: {
+									title: { type: "string", description: "Exact note title." },
+								},
+							},
+							{
+								id: "delete-note",
+								description: "Delete one note by title or query.",
+								params: {
+									title: { type: "string", description: "Exact note title." },
+								},
+							},
+						],
+					}),
+				]),
+				getCurrentView: vi.fn(async () => ({
+					viewId: "notes",
+					viewLabel: "Notes",
+					viewType: "gui" as const,
+					viewPath: "/notes",
+				})),
+			},
+			hasOwnerAccess: vi.fn(async () => true),
+		});
+
+		// "do not delete" — the negation must prevent destructive authority.
+		const result = await action.handler(
+			runtime as never,
+			message("Show the current note; do not delete note titled X") as never,
+			undefined,
+			{ action: "interact", view: "notes", capability: "delete-note" },
+			callback,
+		);
+
+		expect(result?.success).toBe(false);
+		expect(result?.text).toContain("Refusing destructive capability");
+		// Zero fetch — no mutation request was sent.
+		expect(globalThis.fetch).not.toHaveBeenCalled();
+	});
+
+	it("rejects conditional destructive request with zero fetch/mutation (#18386 P1)", async () => {
+		const { runtime } = createRuntime();
+		const callback = vi.fn();
+		const action = createViewsAction({
+			client: {
+				listViews: vi.fn(async () => [
+					view({
+						id: "notes",
+						label: "Notes",
+						path: "/notes",
+						tags: ["notes"],
+						capabilities: [
+							{
+								id: "get-note",
+								description: "Read one note by title or query.",
+								params: {
+									title: { type: "string", description: "Exact note title." },
+								},
+							},
+							{
+								id: "delete-note",
+								description: "Delete one note by title or query.",
+								params: {
+									title: { type: "string", description: "Exact note title." },
+								},
+							},
+						],
+					}),
+				]),
+				getCurrentView: vi.fn(async () => ({
+					viewId: "notes",
+					viewLabel: "Notes",
+					viewType: "gui" as const,
+					viewPath: "/notes",
+				})),
+			},
+			hasOwnerAccess: vi.fn(async () => true),
+		});
+
+		// "if X then delete" — the conditional must prevent destructive authority.
+		const result = await action.handler(
+			runtime as never,
+			message("If the note is empty then delete note titled X") as never,
+			undefined,
+			{ action: "interact", view: "notes", capability: "delete-note" },
+			callback,
+		);
+
+		expect(result?.success).toBe(false);
+		expect(result?.text).toContain("Refusing destructive capability");
+		// Zero fetch — no mutation request was sent.
+		expect(globalThis.fetch).not.toHaveBeenCalled();
+	});
+
+	it("rejects destructive capability with unsupported-language (no family detected) input — fail-closed (#18386 P1)", async () => {
+		const { runtime } = createRuntime();
+		const callback = vi.fn();
+		const action = createViewsAction({
+			client: {
+				listViews: vi.fn(async () => [
+					view({
+						id: "notes",
+						label: "Notes",
+						path: "/notes",
+						tags: ["notes"],
+						capabilities: [
+							{
+								id: "get-note",
+								description: "Read one note by title or query.",
+								params: {
+									title: { type: "string", description: "Exact note title." },
+								},
+							},
+							{
+								id: "delete-note",
+								description: "Delete one note by title or query.",
+								params: {
+									title: { type: "string", description: "Exact note title." },
+								},
+							},
+						],
+					}),
+				]),
+				getCurrentView: vi.fn(async () => ({
+					viewId: "notes",
+					viewLabel: "Notes",
+					viewType: "gui" as const,
+					viewPath: "/notes",
+				})),
+			},
+			hasOwnerAccess: vi.fn(async () => true),
+		});
+
+		// Non-English input that doesn't match any operation family token.
+		// A destructive capability must fail-closed, not be silently trusted.
+		const result = await action.handler(
+			runtime as never,
+			message("削除しないでください") as never,
+			undefined,
+			{ action: "interact", view: "notes", capability: "delete-note" },
+			callback,
+		);
+
+		expect(result?.success).toBe(false);
+		expect(result?.text).toContain("no operation family detected");
+		expect(globalThis.fetch).not.toHaveBeenCalled();
+	});
+
+	it("never lexically escalates read→delete from read-family + incidental delete wording (#18386 P1)", async () => {
+		const { runtime } = createRuntime();
+		const callback = vi.fn();
+		const action = createViewsAction({
+			client: {
+				listViews: vi.fn(async () => [
+					view({
+						id: "notes",
+						label: "Notes",
+						path: "/notes",
+						tags: ["notes"],
+						capabilities: [
+							{
+								id: "get-note",
+								description: "Read one note by title or query.",
+								params: {
+									title: { type: "string", description: "Exact note title." },
+								},
+							},
+							{
+								id: "delete-note",
+								description: "Delete one note by title or query.",
+								params: {
+									title: { type: "string", description: "Exact note title." },
+								},
+							},
+						],
+					}),
+				]),
+				getCurrentView: vi.fn(async () => ({
+					viewId: "notes",
+					viewLabel: "Notes",
+					viewType: "gui" as const,
+					viewPath: "/notes",
+				})),
+			},
+			hasOwnerAccess: vi.fn(async () => true),
+		});
+		vi.mocked(globalThis.fetch).mockResolvedValueOnce({
+			ok: true,
+			status: 200,
+			json: async () => ({
+				success: true,
+				result: { success: true, text: "Note retrieved." },
+			}),
+		} as Response);
+
+		// Planner selected get-note (read). The message contains "delete"
+		// as incidental wording ("show me the note, not delete"). The
+		// correction path must NOT escalate read→delete.
+		const result = await action.handler(
+			runtime as never,
+			message("Show me the note titled X, not delete it") as never,
+			undefined,
+			{ action: "interact", view: "notes", capability: "get-note" },
+			callback,
+		);
+
+		// The fetch must invoke get-note, NOT delete-note.
+		expect(result?.success).toBe(true);
+		expect(globalThis.fetch).toHaveBeenCalledWith(
+			"http://127.0.0.1:3456/api/views/notes/interact?viewType=gui",
+			expect.objectContaining({
+				method: "POST",
+				body: expect.stringContaining('"capability":"get-note"'),
+			}),
+		);
+		expect(globalThis.fetch).not.toHaveBeenCalledWith(
+			"http://127.0.0.1:3456/api/views/notes/interact?viewType=gui",
+			expect.objectContaining({
+				method: "POST",
+				body: expect.stringContaining('"capability":"delete-note"'),
+			}),
+		);
+	});
+
+	it("rejects destructive capability when multi-clause negation appears (#18386 P1)", async () => {
+		const { runtime } = createRuntime();
+		const callback = vi.fn();
+		const action = createViewsAction({
+			client: {
+				listViews: vi.fn(async () => [
+					view({
+						id: "notes",
+						label: "Notes",
+						path: "/notes",
+						tags: ["notes"],
+						capabilities: [
+							{
+								id: "get-note",
+								description: "Read one note by title or query.",
+								params: {
+									title: { type: "string", description: "Exact note title." },
+								},
+							},
+							{
+								id: "delete-note",
+								description: "Delete one note by title or query.",
+								params: {
+									title: { type: "string", description: "Exact note title." },
+								},
+							},
+						],
+					}),
+				]),
+				getCurrentView: vi.fn(async () => ({
+					viewId: "notes",
+					viewLabel: "Notes",
+					viewType: "gui" as const,
+					viewPath: "/notes",
+				})),
+			},
+			hasOwnerAccess: vi.fn(async () => true),
+		});
+
+		// Multi-clause: "Show the note; never delete it" — the "never"
+		// negation within 3 tokens of "delete" must trigger rejection.
+		const result = await action.handler(
+			runtime as never,
+			message("Show the note; never delete it") as never,
+			undefined,
+			{ action: "interact", view: "notes", capability: "delete-note" },
+			callback,
+		);
+
+		expect(result?.success).toBe(false);
+		expect(result?.text).toContain("Refusing destructive capability");
+		expect(globalThis.fetch).not.toHaveBeenCalled();
 	});
 
 	it("summarizes structured interaction results without dumping JSON into chat", async () => {
