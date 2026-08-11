@@ -526,57 +526,173 @@ function resolveEffective(
 }
 
 /**
- * The chat provider actually serving inference right now, resolved from the
- * canonical serviceRouting topology — the same signal the plugin-collector
- * uses to decide which model plugin loads. `endpoint` is the host that
- * answers, so operator surfaces (/model show, the settings panel) can name
- * what ACTUALLY serves instead of guessing from OPENAI_BASE_URL, which stays
- * pinned in the environment even when cloud-proxy routing makes it inert.
+ * The configured chat provider and its effective serving endpoint. `provider`
+ * is the catalog backend selected by canonical serviceRouting — the same
+ * signal model writes and plugin collection use. `endpoint` follows the
+ * selected provider plugin's wire-mode precedence, so a shared OpenAI plugin
+ * can honestly report an OpenAI- or EvoLink-compatible host without changing
+ * which model catalog the configured Cerebras backend owns.
  */
 export interface ActiveChatInfo {
+  /** Catalog backend selected by serviceRouting. */
   provider: string;
   family: ChatKeyFamily;
+  /** Validated HTTP(S) hostname selected by the serving plugin. */
   endpoint: string;
 }
 
-function hostOf(value: string | undefined): string | null {
-  if (!value) return null;
-  try {
-    return new URL(value).hostname;
-  } catch {
-    // error-policy:J3 a non-URL base value can't name a host; callers fall
-    // back to the provider's canonical endpoint.
-    return null;
-  }
+interface SelectedEndpointBase {
+  key: string;
+  value: string;
 }
 
-export function resolveActiveChat(
+function endpointHost(
+  selected: SelectedEndpointBase | null,
+  canonicalHost: string,
+): string {
+  if (!selected) return canonicalHost;
+  let parsed: URL;
+  try {
+    parsed = new URL(selected.value);
+  } catch {
+    // error-policy:J3 malformed endpoint input becomes a typed, redacted error.
+    throw invalid(
+      `${selected.key} must be an absolute HTTP(S) URL with a hostname`,
+      { key: selected.key },
+    );
+  }
+  if (
+    (parsed.protocol !== "http:" && parsed.protocol !== "https:") ||
+    !parsed.hostname
+  ) {
+    throw invalid(
+      `${selected.key} must be an absolute HTTP(S) URL with a hostname`,
+      { key: selected.key },
+    );
+  }
+  return parsed.hostname;
+}
+
+function resolveConfiguredChatProvider(
   config: ElizaConfig,
-  processEnv: NodeJS.ProcessEnv,
-): ActiveChatInfo | null {
+): string | undefined {
   const routing = resolveServiceRoutingInConfig(
     config as Record<string, unknown>,
   );
   const llmText = routing?.llmText;
   const backend =
     typeof llmText?.backend === "string" ? llmText.backend : undefined;
-  const provider =
-    llmText?.transport === "cloud-proxy" && backend === "elizacloud"
-      ? "elizacloud"
-      : llmText?.transport === "direct" && backend !== undefined
-        ? LLM_BACKEND_TO_CHAT_PROVIDER[backend]
-        : undefined;
+  return llmText?.transport === "cloud-proxy" && backend === "elizacloud"
+    ? "elizacloud"
+    : llmText?.transport === "direct" && backend !== undefined
+      ? LLM_BACKEND_TO_CHAT_PROVIDER[backend]
+      : undefined;
+}
+
+export function resolveActiveChat(
+  config: ElizaConfig,
+  processEnv: NodeJS.ProcessEnv,
+): ActiveChatInfo | null {
+  const provider = resolveConfiguredChatProvider(config);
   const family =
     provider !== undefined ? CHAT_PROVIDER_KEY_FAMILY[provider] : undefined;
   if (provider === undefined || family === undefined) return null;
-  const baseFor = (key: string): string | undefined =>
-    resolveEffective(config, processEnv, key)?.value;
+  const configRawFor = (key: string): string | undefined => {
+    const env = (config as Record<string, unknown>).env;
+    if (env && typeof env === "object" && !Array.isArray(env)) {
+      const direct = (env as Record<string, unknown>)[key];
+      if (typeof direct === "string" && direct.trim()) return direct;
+      const vars = (env as Record<string, unknown>).vars;
+      if (vars && typeof vars === "object" && !Array.isArray(vars)) {
+        const nested = (vars as Record<string, unknown>)[key];
+        if (typeof nested === "string" && nested) return nested;
+      }
+    }
+    return undefined;
+  };
+  const rawFor = (key: string): string | undefined => {
+    const configValue = configRawFor(key);
+    if (configValue !== undefined) return configValue;
+    const processValue = processEnv[key];
+    return typeof processValue === "string" ? processValue : undefined;
+  };
+  const selectedBase = (...keys: string[]): SelectedEndpointBase | null => {
+    for (const key of keys) {
+      const value = rawFor(key);
+      if (value !== undefined) return { key, value };
+    }
+    return null;
+  };
+  const selectedCloudBase = (): SelectedEndpointBase | null => {
+    const value = resolveEffective(
+      config,
+      processEnv,
+      "ELIZAOS_CLOUD_BASE_URL",
+    )?.value;
+    return value === undefined
+      ? null
+      : { key: "ELIZAOS_CLOUD_BASE_URL", value };
+  };
+  const selectedAnthropicBase = (): SelectedEndpointBase | null => {
+    const configValue = configRawFor("ANTHROPIC_BASE_URL");
+    if (configValue !== undefined) {
+      return { key: "ANTHROPIC_BASE_URL", value: configValue };
+    }
+    const processValue = processEnv.ANTHROPIC_BASE_URL;
+    return typeof processValue === "string" && processValue.length > 0
+      ? { key: "ANTHROPIC_BASE_URL", value: processValue }
+      : null;
+  };
+  const openAiBase = rawFor("OPENAI_BASE_URL");
+  const explicitProvider = rawFor("ELIZA_PROVIDER")?.toLowerCase();
+  const cerebrasMode =
+    provider === "cerebras" &&
+    (explicitProvider === "cerebras" ||
+      (openAiBase !== undefined &&
+        /(^|\.)cerebras\.ai(\/|$)/i.test(openAiBase)) ||
+      (Boolean(rawFor("CEREBRAS_API_KEY")) &&
+        !rawFor("OPENAI_API_KEY") &&
+        openAiBase === undefined));
+  const evolinkMode =
+    family === "OPENAI" &&
+    !cerebrasMode &&
+    (explicitProvider === "evolink" ||
+      (openAiBase !== undefined &&
+        /(^|\.)evolink\.ai(\/|$)/i.test(openAiBase)) ||
+      (Boolean(rawFor("EVOLINK_API_KEY")) &&
+        !rawFor("OPENAI_API_KEY") &&
+        openAiBase === undefined));
+  const mockBase = processEnv.ELIZA_MOCK_OPENAI_BASE?.trim();
+  const anthropicMockBase = processEnv.ELIZA_MOCK_ANTHROPIC_BASE;
   const endpoint =
-    family === "ELIZAOS_CLOUD"
-      ? (hostOf(baseFor("ELIZAOS_CLOUD_BASE_URL")) ?? "elizacloud.ai")
-      : family === "ANTHROPIC"
-        ? (hostOf(baseFor("ANTHROPIC_BASE_URL")) ?? "api.anthropic.com")
-        : (hostOf(baseFor("OPENAI_BASE_URL")) ?? "api.openai.com");
+    family === "OPENAI" && mockBase
+      ? endpointHost(
+          { key: "ELIZA_MOCK_OPENAI_BASE", value: mockBase },
+          "api.openai.com",
+        )
+      : cerebrasMode
+        ? endpointHost(
+            selectedBase("OPENAI_BASE_URL", "CEREBRAS_BASE_URL"),
+            "api.cerebras.ai",
+          )
+        : evolinkMode
+          ? endpointHost(
+              selectedBase("OPENAI_BASE_URL", "EVOLINK_BASE_URL"),
+              "direct.evolink.ai",
+            )
+          : family === "ELIZAOS_CLOUD"
+            ? endpointHost(selectedCloudBase(), "elizacloud.ai")
+            : family === "ANTHROPIC"
+              ? endpointHost(
+                  anthropicMockBase
+                    ? {
+                        key: "ELIZA_MOCK_ANTHROPIC_BASE",
+                        value: anthropicMockBase,
+                      }
+                    : selectedAnthropicBase(),
+                  "api.anthropic.com",
+                )
+              : endpointHost(selectedBase("OPENAI_BASE_URL"), "api.openai.com");
   return { provider, family, endpoint };
 }
 
@@ -645,11 +761,22 @@ export async function handleModelConfigRoutes(
   const processEnv = ctx.processEnv ?? process.env;
 
   if (method === "GET") {
-    const activeChat = resolveActiveChat(state.config, processEnv);
-    json(res, {
-      targets: buildEffectiveConfig(state.config, processEnv, activeChat),
-      ...(activeChat ? { activeChat } : {}),
-    });
+    try {
+      const activeChat = resolveActiveChat(state.config, processEnv);
+      json(res, {
+        targets: buildEffectiveConfig(state.config, processEnv, activeChat),
+        ...(activeChat ? { activeChat } : {}),
+      });
+    } catch (err) {
+      // error-policy:J1 GET transport boundary — invalid endpoint metadata is
+      // an observable configuration error, never a fabricated canonical host.
+      if (!(err instanceof ElizaError)) throw err;
+      json(
+        res,
+        { error: err.message, code: err.code, context: err.context },
+        400,
+      );
+    }
     return true;
   }
 
@@ -692,7 +819,7 @@ export async function handleModelConfigRoutes(
     const writes = resolveChatWrites(
       catalog,
       body,
-      resolveActiveChat(state.config, processEnv)?.provider,
+      resolveConfiguredChatProvider(state.config),
     );
     const conflicts: string[] = [];
     const outcome = await ctx.runtimeOperationManager.start({
