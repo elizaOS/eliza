@@ -35,6 +35,31 @@ const originalLocationDescriptor = Object.getOwnPropertyDescriptor(
 
 type ElectrobunWindow = Window & { __electrobunWindowId?: number };
 
+const TRUSTED_SHELL_CASES = [
+  {
+    label: "native",
+    hostname: "localhost",
+    native: true,
+    electrobun: false,
+  },
+  {
+    label: "Electrobun",
+    hostname: "127.0.0.1",
+    native: false,
+    electrobun: true,
+  },
+  {
+    label: "localhost dev",
+    hostname: "localhost",
+    native: false,
+    electrobun: false,
+  },
+] as const;
+
+const PRESERVED_HTTP_CASES = TRUSTED_SHELL_CASES.flatMap((shell) =>
+  [403, 500].map((status) => ({ ...shell, status })),
+);
+
 function setPageLocation(
   hostname: string,
   protocol: "http:" | "https:" = "http:",
@@ -73,6 +98,27 @@ function jsonResponse(body: unknown, status = 200): Response {
   });
 }
 
+function configureTrustedShell(shell: (typeof TRUSTED_SHELL_CASES)[number]) {
+  platform.native = shell.native;
+  setPageLocation(shell.hostname);
+  setElectrobunRuntime(shell.electrobun);
+}
+
+function mockTrustedShellResponse(
+  body: unknown,
+  status = 200,
+  beforeResponse?: () => void,
+) {
+  platform.request.mockImplementationOnce(async () => {
+    beforeResponse?.();
+    return { status, data: body };
+  });
+  return vi.spyOn(globalThis, "fetch").mockImplementationOnce(async () => {
+    beforeResponse?.();
+    return jsonResponse(body, status);
+  });
+}
+
 function assertStewardRequests(
   calls: ReadonlyArray<readonly [RequestInfo | URL, RequestInit?]>,
 ): void {
@@ -108,6 +154,207 @@ afterEach(() => {
 });
 
 describe("dedicated Cloud account boundary on trusted app shells", () => {
+  it.each(TRUSTED_SHELL_CASES)(
+    "preserves a healthy $label Steward session when the dedicated client mirrors the same token",
+    async (shell) => {
+      configureTrustedShell(shell);
+      localStorage.setItem(STEWARD_TOKEN_KEY, "shared-steward-token");
+      const fetchSpy = mockTrustedShellResponse({
+        id: "user-1",
+        organization_id: "org-1",
+      });
+      const client = new ElizaClient(
+        DEDICATED_STAGING_BASE,
+        "shared-steward-token",
+      );
+
+      await expect(client.getCloudStatus()).resolves.toMatchObject({
+        connected: true,
+        userId: "user-1",
+        organizationId: "org-1",
+      });
+      expect(localStorage.getItem(STEWARD_TOKEN_KEY)).toBe(
+        "shared-steward-token",
+      );
+
+      if (shell.native) {
+        expect(platform.request).toHaveBeenCalledTimes(1);
+        expect(platform.request.mock.calls[0]?.[0].headers.Authorization).toBe(
+          "Bearer shared-steward-token",
+        );
+        expect(fetchSpy).not.toHaveBeenCalled();
+      } else {
+        expect(fetchSpy).toHaveBeenCalledTimes(1);
+        expect(
+          new Headers(fetchSpy.mock.calls[0]?.[1]?.headers).get(
+            "authorization",
+          ),
+        ).toBe("Bearer shared-steward-token");
+      }
+    },
+  );
+
+  it.each(TRUSTED_SHELL_CASES)(
+    "clears only the rejected current $label token after a control-plane 401",
+    async (shell) => {
+      configureTrustedShell(shell);
+      localStorage.setItem(STEWARD_TOKEN_KEY, "  rejected-token  ");
+      const fetchSpy = mockTrustedShellResponse({ error: "unauthorized" }, 401);
+      const syncListener = vi.fn();
+      window.addEventListener("steward-token-sync", syncListener);
+      const client = new ElizaClient(DEDICATED_STAGING_BASE, "rejected-token");
+
+      await expect(client.getCloudStatus()).resolves.toMatchObject({
+        connected: false,
+        reason: "auth-rejected",
+      });
+      expect(localStorage.getItem(STEWARD_TOKEN_KEY)).toBeNull();
+      expect(syncListener).toHaveBeenCalledTimes(1);
+
+      await expect(client.getCloudCompatAgents()).resolves.toMatchObject({
+        success: false,
+        error: "Eliza Cloud login session is missing. Sign in again.",
+      });
+      if (shell.native) {
+        expect(platform.request).toHaveBeenCalledTimes(1);
+        expect(fetchSpy).not.toHaveBeenCalled();
+      } else {
+        expect(fetchSpy).toHaveBeenCalledTimes(1);
+      }
+      window.removeEventListener("steward-token-sync", syncListener);
+    },
+  );
+
+  it.each([
+    {
+      label: "dedicated request switched to self-host",
+      initialBase: DEDICATED_STAGING_BASE,
+      switchedBase: "https://agent.example.test",
+      expectedToken: null,
+    },
+    {
+      label: "direct account request switched to dedicated",
+      initialBase: STAGING_CONTROL_PLANE,
+      switchedBase: DEDICATED_STAGING_BASE,
+      expectedToken: "rejected-token",
+    },
+  ])(
+    "uses the request-time client scope for a $label 401",
+    async ({ initialBase, switchedBase, expectedToken }) => {
+      setPageLocation("localhost");
+      localStorage.setItem(STEWARD_TOKEN_KEY, "rejected-token");
+      let client: ElizaClient;
+      vi.spyOn(globalThis, "fetch").mockImplementationOnce(async () => {
+        client.setBaseUrl(switchedBase, { persist: false });
+        return jsonResponse({ error: "unauthorized" }, 401);
+      });
+      client = new ElizaClient(initialBase, "rejected-token");
+
+      await expect(client.getCloudStatus()).resolves.toMatchObject({
+        connected: false,
+        reason: "auth-rejected",
+      });
+
+      expect(localStorage.getItem(STEWARD_TOKEN_KEY)).toBe(expectedToken);
+    },
+  );
+
+  it.each([
+    {
+      label: "ordinary canonical direct client",
+      baseUrl: STAGING_CONTROL_PLANE,
+      native: false,
+    },
+    {
+      label: "arbitrary native self-host",
+      baseUrl: "https://agent.example.test",
+      native: true,
+    },
+  ])(
+    "keeps Steward storage outside the dedicated-client cleanup scope for an $label 401",
+    async ({ baseUrl, native }) => {
+      platform.native = native;
+      setPageLocation("localhost");
+      localStorage.setItem(STEWARD_TOKEN_KEY, "preserved-token");
+      const fetchSpy = vi
+        .spyOn(globalThis, "fetch")
+        .mockResolvedValueOnce(jsonResponse({ error: "unauthorized" }, 401));
+      const client = new ElizaClient(baseUrl, "client-token");
+
+      await client.getCloudStatus().catch(() => undefined);
+
+      expect(fetchSpy).toHaveBeenCalledTimes(1);
+      expect(localStorage.getItem(STEWARD_TOKEN_KEY)).toBe("preserved-token");
+    },
+  );
+
+  it.each(TRUSTED_SHELL_CASES)(
+    "preserves a refreshed $label token when an older in-flight request returns 401",
+    async (shell) => {
+      configureTrustedShell(shell);
+      localStorage.setItem(STEWARD_TOKEN_KEY, "old-token");
+      const fetchSpy = mockTrustedShellResponse(
+        { error: "unauthorized" },
+        401,
+        () => localStorage.setItem(STEWARD_TOKEN_KEY, "fresh-token"),
+      );
+      const syncListener = vi.fn();
+      window.addEventListener("steward-token-sync", syncListener);
+      const client = new ElizaClient(DEDICATED_STAGING_BASE, "old-token");
+
+      await expect(client.getCloudStatus()).resolves.toMatchObject({
+        connected: false,
+        reason: "auth-rejected",
+      });
+      expect(localStorage.getItem(STEWARD_TOKEN_KEY)).toBe("fresh-token");
+      expect(syncListener).not.toHaveBeenCalled();
+
+      if (shell.native) {
+        expect(platform.request).toHaveBeenCalledTimes(1);
+        expect(fetchSpy).not.toHaveBeenCalled();
+      } else {
+        expect(fetchSpy).toHaveBeenCalledTimes(1);
+      }
+      window.removeEventListener("steward-token-sync", syncListener);
+    },
+  );
+
+  it.each(PRESERVED_HTTP_CASES)(
+    "preserves the stored token after $label HTTP $status",
+    async (shell) => {
+      configureTrustedShell(shell);
+      localStorage.setItem(STEWARD_TOKEN_KEY, "preserved-token");
+      mockTrustedShellResponse({ error: "request rejected" }, shell.status);
+      const client = new ElizaClient(DEDICATED_STAGING_BASE, "preserved-token");
+
+      if (shell.status === 403) {
+        await expect(client.getCloudStatus()).resolves.toMatchObject({
+          connected: false,
+          reason: "auth-rejected",
+        });
+      } else {
+        await expect(client.getCloudStatus()).rejects.toMatchObject({
+          status: shell.status,
+        });
+      }
+      expect(localStorage.getItem(STEWARD_TOKEN_KEY)).toBe("preserved-token");
+    },
+  );
+
+  it.each(TRUSTED_SHELL_CASES)(
+    "preserves the stored $label token after a network failure",
+    async (shell) => {
+      configureTrustedShell(shell);
+      localStorage.setItem(STEWARD_TOKEN_KEY, "preserved-token");
+      platform.request.mockRejectedValueOnce(new Error("offline"));
+      vi.spyOn(globalThis, "fetch").mockRejectedValueOnce(new Error("offline"));
+      const client = new ElizaClient(DEDICATED_STAGING_BASE, "preserved-token");
+
+      await expect(client.getCloudStatus()).rejects.toThrow("offline");
+      expect(localStorage.getItem(STEWARD_TOKEN_KEY)).toBe("preserved-token");
+    },
+  );
+
   it("uses only the stored Steward session for native list, create, and lifecycle requests", async () => {
     platform.native = true;
     localStorage.setItem(STEWARD_TOKEN_KEY, "steward-jwt");
