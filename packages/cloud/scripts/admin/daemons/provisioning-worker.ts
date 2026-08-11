@@ -1430,12 +1430,13 @@ async function runBoundedPhase<T>(
   label: string,
   phase: () => Promise<T>,
   onResult: (result: T) => void,
+  timeoutMs: number = PHASE_TIMEOUT_MS,
 ): Promise<void> {
   const { withTimeout } = await loadDeps();
   try {
     const result = await withTimeout(
       phase(),
-      PHASE_TIMEOUT_MS,
+      timeoutMs,
       `[provisioning-worker] ${label}`,
     );
     onResult(result);
@@ -1834,6 +1835,14 @@ async function runInfraMaintenanceCycle(
         );
       }
     },
+    // A warm container creation takes ~70s end-to-end (image start + Steward
+    // registration + readiness), so the default 60s wedge budget expired every
+    // cycle while the entry then completed seconds later (observed live on
+    // cp-prod: "cycle timed out after 60000ms" followed by "pool entry
+    // ready"). Maintenance phases are off the watchdog-critical WORK group,
+    // so a 2-minute budget is invariant-safe and stops the false alarm
+    // without unbounding a genuinely wedged replenish.
+    2 * 60_000,
   );
 
   // FIX 3: orphan-container reconciliation. Runs LAST so it sees the fresh
