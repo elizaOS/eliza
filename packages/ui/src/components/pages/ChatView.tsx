@@ -498,20 +498,26 @@ export function ChatView({
   // never prepend into the newly active one.
   const loadOlderConversationIdRef = useRef(activeConversationId);
   loadOlderConversationIdRef.current = activeConversationId;
+  // Keep a ref to conversationMessages so fetchOlder reads the latest value at
+  // call-time without carrying it as a dep. conversationMessages changes on
+  // every streaming token, which would give fetchOlder a new identity every
+  // token and disturb useConversationRenderWindow's memoization.
+  const conversationMessagesRef = useRef(conversationMessages);
+  conversationMessagesRef.current = conversationMessages;
   const fetchOlder = useCallback(async () => {
     const conversationId = activeConversationId;
     if (!conversationId) return { hasMore: false, prependedCount: 0 };
     return await loadOlderConversationMessages({
       client,
       conversationId,
-      currentMessages: conversationMessages,
+      currentMessages: conversationMessagesRef.current,
       prependMessages: (older) => {
         if (loadOlderConversationIdRef.current === conversationId) {
           prependConversationMessages(older);
         }
       },
     });
-  }, [activeConversationId, conversationMessages, prependConversationMessages]);
+  }, [activeConversationId, prependConversationMessages]);
 
   // Bound the mounted DOM to the newest window of loaded turns (#15281): the
   // window opens lean and grows a page per scroll-to-top (reveal-before-fetch),
@@ -856,6 +862,36 @@ export function ChatView({
   const continuousChatToggleVisible =
     voice.supported && continuousChatMode !== "off";
 
+  // Stable composer callbacks — inline arrows would create new function
+  // identities on every render, busting ChatComposer's memo boundary.
+  const handleAttachImage = useCallback(() => {
+    fileInputRef.current?.click();
+  }, []);
+  const handleChatInputChange = useCallback(
+    (value: string) => {
+      setState("chatInput", value);
+    },
+    [setState],
+  );
+  const handleSend = useCallback(() => {
+    void handleChatSend();
+  }, [handleChatSend]);
+  const handleToggleAgentVoice = useCallback(() => {
+    setState("chatAgentVoiceMuted", !agentVoiceMuted);
+  }, [setState, agentVoiceMuted]);
+
+  const chatAttachmentStripItems = useMemo(
+    () =>
+      chatPendingImages.map((img, imgIdx) => ({
+        id: String(imgIdx),
+        alt: img.name,
+        name: img.name,
+        src: `data:${img.mimeType};base64,${img.data}`,
+        kind: chatUploadKind(img.mimeType),
+      })),
+    [chatPendingImages],
+  );
+
   const auxiliaryNode = (
     <>
       {voiceStatusBarVisible || voiceSession.ttsError ? (
@@ -905,13 +941,7 @@ export function ChatView({
       ) : null}
       <ChatAttachmentStrip
         variant={variant}
-        items={chatPendingImages.map((img, imgIdx) => ({
-          id: String(imgIdx),
-          alt: img.name,
-          name: img.name,
-          src: `data:${img.mimeType};base64,${img.data}`,
-          kind: chatUploadKind(img.mimeType),
-        }))}
+        items={chatAttachmentStripItems}
         removeLabel={(item) =>
           t("chat.removeImage", {
             defaultValue: "Remove {{name}}",
@@ -1025,15 +1055,13 @@ export function ChatView({
         agentVoiceEnabled={!agentVoiceMuted}
         showAgentVoiceToggle={showComposerVoiceToggle}
         t={t}
-        onAttachImage={() => fileInputRef.current?.click()}
-        onChatInputChange={(value) => setState("chatInput", value)}
+        onAttachImage={handleAttachImage}
+        onChatInputChange={handleChatInputChange}
         pasteAttachments={pasteAttachments}
-        onSend={() => void handleChatSend()}
+        onSend={handleSend}
         onStop={handleChatStop}
         onStopSpeaking={stopSpeaking}
-        onToggleAgentVoice={() =>
-          setState("chatAgentVoiceMuted", !agentVoiceMuted)
-        }
+        onToggleAgentVoice={handleToggleAgentVoice}
       />
     </ChatComposerShell>
   ) : (
@@ -1097,15 +1125,13 @@ export function ChatView({
         agentVoiceEnabled={!agentVoiceMuted}
         showAgentVoiceToggle={showComposerVoiceToggle}
         t={t}
-        onAttachImage={() => fileInputRef.current?.click()}
-        onChatInputChange={(value) => setState("chatInput", value)}
+        onAttachImage={handleAttachImage}
+        onChatInputChange={handleChatInputChange}
         pasteAttachments={pasteAttachments}
-        onSend={() => void handleChatSend()}
+        onSend={handleSend}
         onStop={handleChatStop}
         onStopSpeaking={stopSpeaking}
-        onToggleAgentVoice={() =>
-          setState("chatAgentVoiceMuted", !agentVoiceMuted)
-        }
+        onToggleAgentVoice={handleToggleAgentVoice}
       />
     </ChatComposerShell>
   );

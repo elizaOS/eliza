@@ -42,14 +42,7 @@ const LOG_INITIAL_SKELETON_ROWS = 4;
 const LOG_INITIAL_SKELETON_ROW_CLASS = "h-[11.375rem]";
 
 function logEntryKey(entry: LogEntry, index: number): string {
-  return [
-    entry.timestamp,
-    entry.source,
-    entry.level,
-    entry.message,
-    entry.tags.join(","),
-    index,
-  ].join("|");
+  return `${entry.timestamp}|${entry.source}|${entry.level}|${index}`;
 }
 
 /**
