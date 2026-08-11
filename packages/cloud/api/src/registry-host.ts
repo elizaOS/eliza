@@ -78,10 +78,19 @@ export async function serveRegistryHostRequest(
   const upstreamUrl = REGISTRY_ARTIFACTS[url.pathname];
   if (!upstreamUrl) return notFound();
 
-  const upstream = await fetch(upstreamUrl, {
-    method: request.method,
-    cf: { cacheTtl: CACHE_TTL_SECONDS, cacheEverything: true },
-  } as RequestInit);
+  let upstream: Response;
+  try {
+    upstream = await fetch(upstreamUrl, {
+      method: request.method,
+      cf: { cacheTtl: CACHE_TTL_SECONDS, cacheEverything: true },
+    } as RequestInit);
+  } catch {
+    // error-policy:J1 boundary translation — a rejected upstream fetch (DNS
+    // failure, connection reset to raw GitHub) fails closed as this host's own
+    // JSON 404; the worker entry has no other catch on this path, so letting it
+    // escape would surface a Cloudflare 1101 exception page instead.
+    return notFound();
+  }
   if (!upstream.ok) {
     // Fail closed with this host's own 404 shape — never leak the upstream
     // response through as if it were the artifact.

@@ -98,6 +98,19 @@ describe("serveRegistryHostRequest", () => {
     expect(body?.code).toBe("resource_not_found");
   });
 
+  test("fails closed when the upstream fetch rejects outright", async () => {
+    stubUpstream(() => {
+      throw new TypeError("fetch failed: connection reset");
+    });
+    const [request, url] = req(
+      "https://plugins.elizacloud.ai/generated-registry.json",
+    );
+    const response = await serveRegistryHostRequest(request, url, ENV);
+    expect(response?.status).toBe(404);
+    const body = (await response?.json()) as { code?: string };
+    expect(body?.code).toBe("resource_not_found");
+  });
+
   test("rejects writes with 405", async () => {
     stubUpstream(() => new Response("{}"));
     const [request, url] = req(
