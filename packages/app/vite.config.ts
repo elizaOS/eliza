@@ -2175,6 +2175,30 @@ export default defineConfig(({ command }) => ({
   plugins: [
     forcedHostModeFlagGuardPlugin(),
     productionBuildStampGuardPlugin(),
+    // #18056: shared HTTP helpers re-export bare `@elizaos/core` for Node.
+    // In the renderer that re-export pulls the prebuilt browser blob; rewrite
+    // any resolution of the shared module onto the throw-on-call facade.
+    {
+      name: "eliza-shared-http-helpers-browser",
+      enforce: "pre" as const,
+      resolveId(id: string) {
+        const normalized = id.split(path.sep).join("/");
+        if (
+          /(?:^|\/)packages\/shared\/src\/api\/http-helpers(?:\.ts|\.js)?$/.test(
+            normalized,
+          ) ||
+          /(?:^|\/)@elizaos\/shared\/src\/api\/http-helpers(?:\.ts|\.js)?$/.test(
+            normalized,
+          )
+        ) {
+          return path.join(
+            elizaRoot,
+            "packages/shared/src/api/http-helpers.browser.ts",
+          );
+        }
+        return null;
+      },
+    },
     bufferEsmShimPlugin(),
     // Manifest-driven renderer side-effect plugin registration (#9178): resolves
     // the `virtual:eliza-side-effect-app-modules` import in plugin-registrations.ts
@@ -2957,7 +2981,6 @@ export const INVALID_TRACER_PROVIDER = {};
               "packages/core/src/client-public.ts",
             ),
           },
-
           {
             find: /^@elizaos\/core\/errors$/,
             replacement: path.join(elizaRoot, "packages/core/src/errors.ts"),
@@ -2967,6 +2990,16 @@ export const INVALID_TRACER_PROVIDER = {};
             replacement: path.join(
               elizaRoot,
               "packages/core/src/roles-rank.ts",
+            ),
+          },
+          // #18056: Node keeps real `@elizaos/shared` HTTP helpers (re-export
+          // of core). The renderer must not evaluate that re-export — bare core
+          // is the prebuilt blob. Force the throw-on-call browser facade here.
+          {
+            find: /(?:^|[\\/])packages[\\/]shared[\\/]src[\\/]api[\\/]http-helpers(?:\.ts|\.js)?$/,
+            replacement: path.join(
+              elizaRoot,
+              "packages/shared/src/api/http-helpers.browser.ts",
             ),
           },
           // @elizaos/core — force ALL copies (including nested ones in plugins

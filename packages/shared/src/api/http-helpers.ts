@@ -1,19 +1,16 @@
 /**
- * Shared HTTP helpers surface.
+ * Re-exports the core HTTP request/response helpers (body reading, JSON send)
+ * so shared Node/API consumers avoid a direct `@elizaos/core` import path in
+ * call sites.
  *
- * #18056: this package entry used to re-export bare `@elizaos/core`, which the
- * app Vite config aliases to the prebuilt ~2.4 MB browser blob. Any import of
- * these names from `@elizaos/shared` (including via the package barrel) then
- * dragged that blob into cold `/login`.
- *
- * Browser/renderer consumers get throw-on-call facades. Node/API code that
- * needs real body-reading helpers should import them from `@elizaos/core`
- * (or the agent route helpers that already wrap them).
+ * #18056: the app Vite config aliases this module to `http-helpers.browser.ts`
+ * for the *renderer only*, so the prebuilt core browser blob is not pulled into
+ * cold `/login`. Node runtimes keep these real re-exports.
  */
 export type {
   ReadJsonBodyOptions,
   RequestBodyOptions,
-} from "./http-helpers.browser.js";
+} from "@elizaos/core";
 export {
   DEFAULT_MAX_BODY_BYTES,
   readJsonBody,
@@ -21,4 +18,4 @@ export {
   readRequestBodyBuffer,
   sendJson,
   sendJsonError,
-} from "./http-helpers.browser.js";
+} from "@elizaos/core";

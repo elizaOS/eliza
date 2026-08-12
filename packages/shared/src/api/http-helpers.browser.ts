@@ -1,12 +1,12 @@
 /**
- * Browser-safe facade for shared HTTP helpers (#18056).
+ * Browser-only facade for shared HTTP helpers (#18056).
  *
- * Node/API code must use `http-helpers.ts` (re-export of `@elizaos/core`).
- * The app Vite config aliases this module in for renderer builds so bare core
- * is never pulled into cold `/login`.
+ * Selected exclusively by the app Vite alias — never the default Node export.
+ * Signatures match `@elizaos/core` so typecheck of renderer graphs stays honest;
+ * every call throws because these APIs require `node:http`.
  */
 
-export type ReadJsonBodyOptions = {
+export type RequestBodyOptions = {
   maxBytes?: number;
   encoding?: BufferEncoding;
   tooLargeMessage?: string;
@@ -15,7 +15,15 @@ export type ReadJsonBodyOptions = {
   destroyOnTooLarge?: boolean;
 };
 
-export type RequestBodyOptions = ReadJsonBodyOptions;
+export type ReadJsonBodyOptions = RequestBodyOptions & {
+  requireObject?: boolean;
+  readErrorStatus?: number;
+  nonObjectStatus?: number;
+  parseErrorStatus?: number;
+  readErrorMessage?: string;
+  nonObjectMessage?: string;
+  parseErrorMessage?: string;
+};
 
 export const DEFAULT_MAX_BODY_BYTES = 1_048_576;
 
@@ -43,18 +51,20 @@ export async function readJsonBody<T = Record<string, unknown>>(
   return browserUnavailable("readJsonBody");
 }
 
+/** Matches core: `(res, body, status?)`. */
 export function sendJson(
   _res: unknown,
-  _status: number,
   _body: unknown,
+  _status = 200,
 ): void {
   browserUnavailable("sendJson");
 }
 
+/** Matches core: `(res, message, status?)`. */
 export function sendJsonError(
   _res: unknown,
-  _status: number,
   _message: string,
+  _status = 400,
 ): void {
   browserUnavailable("sendJsonError");
 }

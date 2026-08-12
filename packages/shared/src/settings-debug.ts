@@ -2,11 +2,13 @@
  * Opt-in verbose logging for settings load / change / save flows.
  *
  * Canonical semantics match `@elizaos/core` `settings-debug.ts` (enable with
- * `ELIZA_SETTINGS_DEBUG=1` / `VITE_ELIZA_SETTINGS_DEBUG=1`). Implemented here
- * rather than re-exported from bare `@elizaos/core` so the app renderer does
- * not pull the prebuilt ~2.4 MB browser blob on cold `/login` (#18056).
+ * `ELIZA_SETTINGS_DEBUG=1` / `VITE_ELIZA_SETTINGS_DEBUG=1`, including branded
+ * boot-config aliases such as `MILADY_SETTINGS_DEBUG`). Implemented here rather
+ * than re-exported from bare `@elizaos/core` so the app renderer does not pull
+ * the prebuilt ~2.4 MB browser blob on cold `/login` (#18056).
  */
 
+import { resolveAliasedEnvValue } from "./config/boot-config-store.js";
 import { isTruthyEnvValue } from "./env-utils.js";
 
 /** Keys whose values are always redacted in debug dumps. */
@@ -39,8 +41,11 @@ export function isElizaSettingsDebugEnabled(options?: {
     if (isTruthyEnvValue(e.VITE_ELIZA_SETTINGS_DEBUG)) return true;
   }
   if (typeof process !== "undefined" && process.env) {
-    if (isTruthyEnvValue(process.env.ELIZA_SETTINGS_DEBUG)) return true;
-    if (isTruthyEnvValue(process.env.VITE_ELIZA_SETTINGS_DEBUG)) return true;
+    // Honor boot-config brand↔ELIZA aliases (e.g. MILADY_SETTINGS_DEBUG).
+    if (isTruthyEnvValue(resolveAliasedEnvValue("ELIZA_SETTINGS_DEBUG")))
+      return true;
+    if (isTruthyEnvValue(resolveAliasedEnvValue("VITE_ELIZA_SETTINGS_DEBUG")))
+      return true;
   }
   return false;
 }
