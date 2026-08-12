@@ -79,16 +79,22 @@ describe("Biome version consistency", () => {
     expect(collectBiomeVersionProblems(REPO_ROOT)).toEqual([]);
   });
 
-  it("accepts an aligned synthetic repository", () => {
-    const root = makeFixture();
-    expect(
-      collectBiomeVersionProblems(root, {
-        packageFiles: ["package.json", "nested/package.json"],
-        configFiles: ["biome.json"],
-        lockFiles: ["bun.lock", "nested/bun.lock"],
-      }),
-    ).toEqual([]);
-  });
+  it(
+    "accepts an aligned synthetic repository",
+    () => {
+      const root = makeFixture();
+      expect(
+        collectBiomeVersionProblems(root, {
+          packageFiles: ["package.json", "nested/package.json"],
+          configFiles: ["biome.json"],
+          lockFiles: ["bun.lock", "nested/bun.lock"],
+        }),
+      ).toEqual([]);
+    },
+    // Fixture writes hit real disk; a loaded CI host has pushed this past the
+    // 5s default (11.7s observed on the scenario-runner lane).
+    60_000,
+  );
 
   it("accepts a CRLF lockfile from a Windows checkout", () => {
     const root = makeFixture();
