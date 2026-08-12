@@ -776,7 +776,8 @@ export function DiscordGatewayConnection() {
                                   placeholder={t(
                                     "cloud.discord.ownerDiscordUserIdPlaceholder",
                                     {
-                                      defaultValue: "Your Discord user snowflake",
+                                      defaultValue:
+                                        "Your Discord user snowflake",
                                     },
                                   )}
                                   value={edit.ownerDiscordUserId}
