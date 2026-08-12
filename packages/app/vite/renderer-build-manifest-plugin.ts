@@ -8,6 +8,7 @@ import {
   RENDERER_BUILD_MANIFEST_FILENAME,
   writeRendererBuildManifest,
 } from "../../app-core/scripts/lib/renderer-build-manifest.mjs";
+import { resolveIosFullBunAvailable } from "../src/ios-runtime";
 
 /**
  * Emits `dist/eliza-renderer-build.json` at the end of EVERY production renderer
@@ -39,6 +40,7 @@ function resolveCommit(): string | null {
 export function rendererBuildManifestPlugin(): Plugin {
   let outDir = "dist";
   let playwrightTestAuth = false;
+  let fullBunAvailable = false;
   return {
     name: "renderer-build-manifest",
     apply: "build",
@@ -47,6 +49,7 @@ export function rendererBuildManifestPlugin(): Plugin {
       // Use Vite's resolved env so values loaded from `.env*` match the
       // `import.meta.env` value compiled into the renderer.
       playwrightTestAuth = config.env.VITE_PLAYWRIGHT_TEST_AUTH === "true";
+      fullBunAvailable = resolveIosFullBunAvailable(config.env);
     },
     closeBundle() {
       // Model-tester and other secondary single-file builds emit no index.html;
@@ -61,6 +64,7 @@ export function rendererBuildManifestPlugin(): Plugin {
             process.env.VITE_ELIZA_ANDROID_RUNTIME_MODE ??
             process.env.ELIZA_RUNTIME_MODE ??
             null,
+          fullBunAvailable,
           playwrightTestAuth,
         });
         this.info?.(

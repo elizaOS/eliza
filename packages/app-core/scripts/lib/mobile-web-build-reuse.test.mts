@@ -40,6 +40,7 @@ function makeAppDist(
     variant?: string;
     capacitorTarget?: string;
     runtimeMode?: string;
+    fullBunAvailable?: boolean;
     playwrightTestAuth?: boolean;
   } = {},
 ) {
@@ -67,6 +68,7 @@ describe("mobileWebDistReuseStatus", () => {
       repoRoot: tmp,
       expectedVariant: "direct",
       expectedTarget: "android",
+      expectedFullBunAvailable: false,
     });
 
     expect(status.reusable).toBe(true);
@@ -82,6 +84,7 @@ describe("mobileWebDistReuseStatus", () => {
       repoRoot: tmp,
       expectedVariant: "direct",
       expectedTarget: "ios",
+      expectedFullBunAvailable: false,
     });
 
     expect(status.reusable).toBe(false);
@@ -104,6 +107,7 @@ describe("mobileWebDistReuseStatus", () => {
       repoRoot: tmp,
       expectedVariant: "store",
       expectedTarget: "android",
+      expectedFullBunAvailable: false,
     });
 
     expect(status.reusable).toBe(false);
@@ -131,6 +135,7 @@ describe("mobileWebDistReuseStatus", () => {
       repoRoot: tmp,
       expectedVariant: "direct",
       expectedTarget: "android",
+      expectedFullBunAvailable: false,
     });
 
     expect(status.reusable).toBe(false);
@@ -152,6 +157,7 @@ describe("mobileWebDistReuseStatus", () => {
       expectedVariant: "direct",
       expectedTarget: "ios",
       expectedRuntimeMode: "local",
+      expectedFullBunAvailable: false,
     });
 
     expect(status.reusable).toBe(false);
@@ -173,6 +179,7 @@ describe("mobileWebDistReuseStatus", () => {
       expectedVariant: "direct",
       expectedTarget: "android",
       expectedRuntimeMode: "cloud-hybrid",
+      expectedFullBunAvailable: false,
     });
 
     expect(status.reusable).toBe(false);
@@ -193,6 +200,7 @@ describe("mobileWebDistReuseStatus", () => {
       expectedVariant: "direct",
       expectedTarget: "ios",
       expectedRuntimeMode: "local",
+      expectedFullBunAvailable: false,
     });
 
     expect(status.reusable).toBe(false);
@@ -215,6 +223,7 @@ describe("mobileWebDistReuseStatus", () => {
         expectedVariant: "direct",
         expectedTarget: "ios",
         expectedRuntimeMode: "local",
+        expectedFullBunAvailable: false,
       }).reusable,
     ).toBe(true);
 
@@ -226,6 +235,7 @@ describe("mobileWebDistReuseStatus", () => {
         repoRoot: tmp,
         expectedVariant: "direct",
         expectedTarget: "ios",
+        expectedFullBunAvailable: false,
       }).reusable,
     ).toBe(true);
   });
@@ -243,11 +253,72 @@ describe("mobileWebDistReuseStatus", () => {
       expectedVariant: "direct",
       expectedTarget: "ios",
       expectedRuntimeMode: null,
+      expectedFullBunAvailable: false,
     });
 
     expect(status.reusable).toBe(false);
     expect(status.problems).toContain(
       "dist built for runtime mode 'cloud-hybrid' but this build targets an unset runtime mode",
+    );
+  });
+
+  it("does not reuse a full-Bun renderer in an engine-less lane with the same other identity", () => {
+    const { appDir } = makeAppDist({
+      variant: "store",
+      capacitorTarget: "ios",
+      runtimeMode: "cloud",
+      fullBunAvailable: true,
+    });
+
+    expect(
+      mobileWebDistReuseStatus({
+        appDir,
+        repoRoot: tmp,
+        expectedVariant: "store",
+        expectedTarget: "ios",
+        expectedRuntimeMode: "cloud",
+        expectedFullBunAvailable: true,
+      }).reusable,
+    ).toBe(true);
+
+    const status = mobileWebDistReuseStatus({
+      appDir,
+      repoRoot: tmp,
+      expectedVariant: "store",
+      expectedTarget: "ios",
+      expectedRuntimeMode: "cloud",
+      expectedFullBunAvailable: false,
+    });
+
+    expect(status.reusable).toBe(false);
+    expect(status.problems).toContain(
+      "dist full-Bun capability is true but this build targets false",
+    );
+  });
+
+  it("fails closed when a legacy manifest omits fullBunAvailable", () => {
+    const { appDir, distDir } = makeAppDist({
+      variant: "store",
+      capacitorTarget: "ios",
+      runtimeMode: "cloud",
+    });
+    const manifestPath = path.join(distDir, RENDERER_BUILD_MANIFEST_FILENAME);
+    const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+    delete manifest.fullBunAvailable;
+    fs.writeFileSync(manifestPath, `${JSON.stringify(manifest)}\n`);
+
+    const status = mobileWebDistReuseStatus({
+      appDir,
+      repoRoot: tmp,
+      expectedVariant: "store",
+      expectedTarget: "ios",
+      expectedRuntimeMode: "cloud",
+      expectedFullBunAvailable: false,
+    });
+
+    expect(status.reusable).toBe(false);
+    expect(status.problems).toContain(
+      "dist manifest is missing required fullBunAvailable capability",
     );
   });
 
@@ -262,6 +333,7 @@ describe("mobileWebDistReuseStatus", () => {
       repoRoot: tmp,
       expectedVariant: "direct",
       expectedTarget: "android",
+      expectedFullBunAvailable: false,
       buildNeeded: () => true,
     });
 

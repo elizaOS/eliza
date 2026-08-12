@@ -112,4 +112,24 @@ describe("verifyStagedArtifact", () => {
     expect(result.ok).toBe(false);
     expect(result.problems.join("\n")).toMatch(/no renderer build stamp/);
   });
+
+  it("fails presence-only for a legacy stamp missing capability metadata", () => {
+    const staged = path.join(tmp, "public");
+    makeDist(staged);
+    const manifest = writeRendererBuildManifest(staged) as Record<
+      string,
+      unknown
+    >;
+    delete manifest.fullBunAvailable;
+    fs.writeFileSync(
+      path.join(staged, "eliza-renderer-build.json"),
+      `${JSON.stringify(manifest)}\n`,
+    );
+
+    const result = verifyStagedArtifact({ rendererDir: staged });
+    expect(result.ok).toBe(false);
+    expect(result.problems.join("\n")).toMatch(
+      /missing required capability metadata/,
+    );
+  });
 });

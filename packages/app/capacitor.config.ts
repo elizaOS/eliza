@@ -178,12 +178,9 @@ const config: CapacitorConfig = {
     },
     Agent: {
       runtimeMode: iosRuntimeMode,
-      fullBunAvailable:
-        process.env.VITE_ELIZA_IOS_FULL_BUN_AVAILABLE ??
-        process.env.VITE_ELIZA_IOS_FULL_BUN_STRICT ??
-        process.env.ELIZA_IOS_FULL_BUN_ENGINE ??
-        process.env.ELIZA_IOS_BUN_ENGINE_XCFRAMEWORK ??
-        "",
+      // The build orchestrator generates this only after resolving the native
+      // engine payload; mode and strictness flags are not capability evidence.
+      fullBunAvailable: process.env.VITE_ELIZA_IOS_FULL_BUN_AVAILABLE ?? "",
       apiBase: iosApiBase,
     },
     // Native launch screen color. Matches the default home background base

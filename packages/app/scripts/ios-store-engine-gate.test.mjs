@@ -211,6 +211,25 @@ describe("canonical iOS runtime build scripts", () => {
     expect(config.ios.webContentsDebuggingEnabled).toBe(false);
   });
 
+  it("uses only generated availability in the actual Capacitor config", () => {
+    const withoutGeneratedCapability = loadCapacitorConfigWithEnv({
+      ...process.env,
+      VITE_ELIZA_IOS_RUNTIME_MODE: "local",
+      VITE_ELIZA_IOS_FULL_BUN_AVAILABLE: "",
+      VITE_ELIZA_IOS_FULL_BUN_STRICT: "1",
+      ELIZA_IOS_FULL_BUN_ENGINE: "1",
+      ELIZA_IOS_BUN_ENGINE_XCFRAMEWORK: "/tmp/engine.xcframework",
+    });
+    expect(withoutGeneratedCapability.plugins.Agent.fullBunAvailable).toBe("");
+
+    const withGeneratedCapability = loadCapacitorConfigWithEnv({
+      ...process.env,
+      VITE_ELIZA_IOS_RUNTIME_MODE: "local",
+      VITE_ELIZA_IOS_FULL_BUN_AVAILABLE: "1",
+    });
+    expect(withGeneratedCapability.plugins.Agent.fullBunAvailable).toBe("1");
+  });
+
   it("rejects a hybrid runtime override on the pure-cloud target", () => {
     expect(() =>
       resolveIosBuildEnvironment("ios-cloud", {

@@ -1154,6 +1154,7 @@ async function buildWeb(platform) {
       // bundle left behind by an ios cloud build) must never be reused into
       // this lane — it falls through to a fresh rebuild instead (#11030).
       expectedRuntimeMode: laneExpected.runtimeMode,
+      expectedFullBunAvailable: laneExpected.fullBunAvailable,
     });
     if (autoStatus.reusable) {
       console.log(
@@ -1178,6 +1179,7 @@ async function buildWeb(platform) {
       expectedVariant: laneExpected.variant,
       expectedTarget: laneExpected.capacitorTarget,
       expectedRuntimeMode: laneExpected.runtimeMode,
+      expectedFullBunAvailable: laneExpected.fullBunAvailable,
     });
     if (!fs.existsSync(status.indexPath)) {
       throw new Error(
@@ -1359,7 +1361,7 @@ async function ensureRendererDistMatchesLane(platform) {
       if (mismatches.length > 0) {
         throw new Error(
           `[mobile-build] packages/app/dist still does not match the '${platform}' lane after a rebuild:\n${formatMobileWebDistProblems(mismatches)}\n` +
-            `An env override (ELIZA_BUILD_VARIANT / VITE_ELIZA_IOS_RUNTIME_MODE / VITE_ELIZA_ANDROID_RUNTIME_MODE / ELIZA_RUNTIME_MODE) ` +
+            `An env override (ELIZA_BUILD_VARIANT / VITE_ELIZA_IOS_RUNTIME_MODE / VITE_ELIZA_ANDROID_RUNTIME_MODE / VITE_ELIZA_IOS_FULL_BUN_AVAILABLE / ELIZA_RUNTIME_MODE) ` +
             `is forcing a different stamp than this lane expects — unset it or use the matching build lane.`,
         );
       }

@@ -69,4 +69,20 @@ describe("resolveIosRuntimeConfig", () => {
       fullBun: true,
     });
   });
+
+  it("uses only the generated availability flag as immutable capability", () => {
+    expect(
+      resolveIosRuntimeConfig({
+        VITE_ELIZA_IOS_RUNTIME_MODE: "local",
+        VITE_ELIZA_IOS_FULL_BUN_STRICT: "1",
+        VITE_ELIZA_IOS_FULL_BUN_SMOKE: "1",
+      }).fullBun,
+    ).toBe(false);
+    expect(
+      resolveIosRuntimeConfig({
+        VITE_ELIZA_IOS_RUNTIME_MODE: "cloud",
+        VITE_ELIZA_IOS_FULL_BUN_AVAILABLE: "1",
+      }).fullBun,
+    ).toBe(true);
+  });
 });

@@ -10,6 +10,7 @@ import { build } from "vite";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { readRendererBuildManifest } from "../../app-core/scripts/lib/renderer-build-manifest.mjs";
 import { rendererBuildManifestPlugin } from "../vite/renderer-build-manifest-plugin.ts";
+import { resolveIosRuntimeConfig } from "./ios-runtime";
 
 const cleanupHelperScript = path.resolve(
   import.meta.dirname,
@@ -18,11 +19,14 @@ const cleanupHelperScript = path.resolve(
 
 let tmp: string;
 let previousPlaywrightTestAuth: string | undefined;
+let previousFullBunAvailable: string | undefined;
 
 beforeEach(() => {
   tmp = fs.mkdtempSync(path.join(os.tmpdir(), "renderer-manifest-plugin-"));
   previousPlaywrightTestAuth = process.env.VITE_PLAYWRIGHT_TEST_AUTH;
+  previousFullBunAvailable = process.env.VITE_ELIZA_IOS_FULL_BUN_AVAILABLE;
   delete process.env.VITE_PLAYWRIGHT_TEST_AUTH;
+  delete process.env.VITE_ELIZA_IOS_FULL_BUN_AVAILABLE;
 });
 
 afterEach(() => {
@@ -30,6 +34,11 @@ afterEach(() => {
     delete process.env.VITE_PLAYWRIGHT_TEST_AUTH;
   } else {
     process.env.VITE_PLAYWRIGHT_TEST_AUTH = previousPlaywrightTestAuth;
+  }
+  if (previousFullBunAvailable === undefined) {
+    delete process.env.VITE_ELIZA_IOS_FULL_BUN_AVAILABLE;
+  } else {
+    process.env.VITE_ELIZA_IOS_FULL_BUN_AVAILABLE = previousFullBunAvailable;
   }
   execFileSync(process.execPath, [cleanupHelperScript, tmp], {
     stdio: "inherit",
@@ -49,7 +58,7 @@ describe("rendererBuildManifestPlugin", () => {
     );
     fs.writeFileSync(
       path.join(tmp, ".env.production"),
-      "VITE_PLAYWRIGHT_TEST_AUTH=true\n",
+      "VITE_PLAYWRIGHT_TEST_AUTH=true\nVITE_ELIZA_IOS_FULL_BUN_AVAILABLE=1\n",
     );
 
     await build({
@@ -66,6 +75,13 @@ describe("rendererBuildManifestPlugin", () => {
       .map((name) => fs.readFileSync(path.join(outDir, "assets", name), "utf8"))
       .join("\n");
     expect(bundleSource).toMatch(/globalThis\.testAuth\s*=\s*["']true["']/);
-    expect(readRendererBuildManifest(outDir)?.playwrightTestAuth).toBe(true);
+    const manifest = readRendererBuildManifest(outDir);
+    expect(manifest?.playwrightTestAuth).toBe(true);
+    expect(manifest?.fullBunAvailable).toBe(true);
+    expect(manifest?.fullBunAvailable).toBe(
+      resolveIosRuntimeConfig({
+        VITE_ELIZA_IOS_FULL_BUN_AVAILABLE: "1",
+      }).fullBun,
+    );
   });
 });
