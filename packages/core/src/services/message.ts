@@ -144,6 +144,7 @@ import {
 } from "../runtime/model-input-budget";
 import {
 	actionResultToPlannerToolResult,
+	allSteps,
 	cacheProviderOptions,
 	FAILED_TOOL_FALLBACK_MESSAGE,
 	isTerminalPlannerToolName,
@@ -155,6 +156,7 @@ import {
 	type PlannerTrajectory,
 	PROGRESS_ONLY_ANSWER_REJECT,
 	PROGRESS_ONLY_REPLY_OPENERS_PATTERN,
+	plannerLoopResultMachineSuccess,
 	runPlannerLoop,
 	summarizeActionResultForPlanner,
 } from "../runtime/planner-loop";
@@ -6464,29 +6466,26 @@ function renderSubStepDiagnosticText(subSteps: SubPlannerSubStep[]): string {
 
 /**
  * Collapses a nested planner run into the parent planner's tool-result shape.
- * The latest explicit terminal step owns user-facing text, while the latest
- * completed nonterminal tool owns machine result fields; both authorities are
- * selected chronologically across archived and live steps.
+ * The inner loop's unresolved-failure and terminal-evaluator authority owns
+ * overall success, the latest completed nonterminal tool owns payload/effect
+ * fields, and the latest explicit terminal step owns user-facing text. Every
+ * selection spans archived and live steps chronologically.
  */
 export function subPlannerResultToPlannerToolResult(
 	subResult: Awaited<ReturnType<typeof runSubPlanner>>,
 ): PlannerToolResult {
-	const allSteps = [
-		...(subResult.trajectory.archivedSteps ?? []),
-		...subResult.trajectory.steps,
-	];
-	const completedSubActionSteps = allSteps.filter(
+	const chronologicalSteps = allSteps(subResult.trajectory);
+	const completedSubActionSteps = chronologicalSteps.filter(
 		(step) =>
 			step.toolCall !== undefined &&
 			!isTerminalPlannerToolName(step.toolCall.name) &&
 			step.result !== undefined,
 	);
 	const latestSubActionResult = completedSubActionSteps.at(-1)?.result;
-	const terminalStep = [...allSteps]
+	const terminalStep = [...chronologicalSteps]
 		.reverse()
 		.find((step) => step.terminalOnly === true);
-	const success =
-		latestSubActionResult?.success ?? subResult.evaluator?.success ?? true;
+	const success = plannerLoopResultMachineSuccess(subResult);
 	const userFacingText = subResult.endedWithDeliberateSilence
 		? undefined
 		: terminalStep?.terminalMessage;

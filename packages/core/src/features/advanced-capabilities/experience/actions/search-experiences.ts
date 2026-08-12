@@ -214,6 +214,8 @@ export const searchExperiencesAction: Action = {
 		return {
 			success: true,
 			text,
+			userFacingText: text,
+			verifiedUserFacing: true,
 			data: {
 				query: queryLogView(query),
 				experiences,

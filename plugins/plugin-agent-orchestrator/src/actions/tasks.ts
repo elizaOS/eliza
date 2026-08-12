@@ -1963,6 +1963,8 @@ async function runSpawnAgent(
         return {
           success: true,
           text: replyText,
+          userFacingText: replyText,
+          verifiedUserFacing: true,
           continueChain: false,
           data: { actionName: "TASKS", spawnCapped: true },
         };
@@ -2058,11 +2060,9 @@ async function runSpawnAgent(
     };
   } catch (error) {
     // error-policy:J1 spawn action boundary → structured failure to the
-    // planner; no visible callback (see runSend's catch) — the evaluator
-    // reports the failure in voice instead of a raw canned bubble. The
-    // planner echoes `text` toward chat, so producers must keep their
-    // messages human (ElizaError with technical fields in `context`);
-    // that context is preserved here in the action's error data.
+    // planner. `text` remains diagnostic-only; the terminal failure authority
+    // chooses a safe user projection instead of promoting raw spawn details.
+    // ElizaError context is preserved separately in the action's error data.
     const messageTextValue = failureMessage(error);
     const code = isAuthError(error)
       ? "INVALID_CREDENTIALS"

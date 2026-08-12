@@ -2,8 +2,9 @@
  * SEARCH_EXPERIENCES envelope regression: a hardened message (content.text
  * wrapped in core's external-content security envelope) driving the free-text
  * query fallback must never echo the envelope into the user-facing callback
- * text, and the machine-facing query fields stay single-line and
- * length-bounded. Deterministic — fake EXPERIENCE service, no model.
+ * text. Empty-result chain stops preserve those exact bytes as typed canonical
+ * output, while machine-facing query fields stay single-line and length-bounded.
+ * Deterministic — fake EXPERIENCE service, no model.
  */
 import { describe, expect, it } from "vitest";
 import { hardenIncomingUserMessage } from "../../../../security/incoming-message-security.ts";
@@ -73,6 +74,9 @@ describe("SEARCH_EXPERIENCES hardened-message fallback (envelope echo regression
 		expect(visible).not.toContain("SECURITY NOTICE");
 		expect(visible).toContain('"solana wallet bugs"');
 		expect((result.data as { query: string }).query).toBe("solana wallet bugs");
+		expect(result.userFacingText).toBe(visible);
+		expect(result.verifiedUserFacing).toBe(true);
+		expect(result.continueChain).toBe(false);
 	});
 
 	it("clamps a blob-shaped query in machine fields and neutralizes the echo", async () => {
@@ -104,5 +108,8 @@ describe("SEARCH_EXPERIENCES hardened-message fallback (envelope echo regression
 		const data = result.data as { query: string };
 		expect(data.query).not.toContain("\n");
 		expect(data.query.length).toBeLessThanOrEqual(121);
+		expect(result.userFacingText).toBe(visible);
+		expect(result.verifiedUserFacing).toBe(true);
+		expect(result.continueChain).toBe(false);
 	});
 });

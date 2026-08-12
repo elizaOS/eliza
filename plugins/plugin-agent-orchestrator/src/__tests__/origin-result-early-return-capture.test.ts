@@ -20,7 +20,8 @@
  *  2. lineage dedupe still lets a LONGER late completion win (longest-wins);
  *  3. the spawn-cap fallback is an honest "attempted N times" message, not
  *     the misleading "still working" that conflates capped-and-failed with
- *     in-flight — and relays the captured deliverable when one exists.
+ *     in-flight — and relays the captured deliverable through explicit
+ *     canonical user-facing result fields when one exists.
  */
 
 import type { IAgentRuntime, Memory, State } from "@elizaos/core";
@@ -287,6 +288,13 @@ describe("spawn-cap fallback message (TASKS spawn_agent)", () => {
     expect(replyText).toBe(
       "I attempted this task 3 times but couldn't complete it. Try giving me more specific instructions, or breaking it into smaller steps.",
     );
+    expect(result).toMatchObject({
+      success: true,
+      text: replyText,
+      userFacingText: replyText,
+      verifiedUserFacing: true,
+      continueChain: false,
+    });
   });
 
   it("relays the captured deliverable at the cap when one exists", async () => {
@@ -302,7 +310,14 @@ describe("spawn-cap fallback message (TASKS spawn_agent)", () => {
       deliverable: "479001600",
     });
 
-    const { replyText } = await runCappedSpawn(router, msgId);
+    const { replyText, result } = await runCappedSpawn(router, msgId);
     expect(replyText).toBe("479001600");
+    expect(result).toMatchObject({
+      success: true,
+      text: "479001600",
+      userFacingText: "479001600",
+      verifiedUserFacing: true,
+      continueChain: false,
+    });
   });
 });

@@ -246,8 +246,32 @@ export async function runPlannerLoop(
  * canonical-result selection. Rendering and compaction mutation deliberately
  * continue to use `trajectory.steps` as their bounded live window.
  */
-function allSteps(trajectory: PlannerTrajectory): PlannerStep[] {
+export function allSteps(trajectory: PlannerTrajectory): PlannerStep[] {
 	return [...trajectory.archivedSteps, ...trajectory.steps];
+}
+
+/**
+ * Overall machine outcome of a completed planner run. An unresolved operation
+ * or a terminal evaluator failure remains authoritative even when a later,
+ * unrelated tool succeeded; otherwise the latest actual tool result supplies
+ * the outcome for evaluator-free chain stops. A run with no actual tool result
+ * succeeds unless its terminal evaluator explicitly failed.
+ */
+export function plannerLoopResultMachineSuccess(
+	result: PlannerLoopResult,
+): boolean {
+	if (latestUnresolvedFailedNonTerminalToolStep(result.trajectory))
+		return false;
+	if (result.evaluator?.success === false) return false;
+	const latestToolResult = allSteps(result.trajectory)
+		.reverse()
+		.find(
+			(step) =>
+				step.toolCall !== undefined &&
+				!isTerminalToolCall(step.toolCall) &&
+				step.result !== undefined,
+		)?.result;
+	return latestToolResult?.success !== false;
 }
 
 /**

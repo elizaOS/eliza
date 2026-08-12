@@ -454,6 +454,144 @@ describe("sub-planner helpers", () => {
 		expect(outerEvaluate).not.toHaveBeenCalled();
 	});
 
+	it("keeps an archived unresolved child failure authoritative after a later child succeeds", async () => {
+		const childA = makeAction({ name: "CHILD_A" });
+		const childB = makeAction({ name: "CHILD_B" });
+		const parent = makeAction({
+			name: "PARENT",
+			subActions: ["CHILD_A", "CHILD_B"],
+			subPlanner: true,
+		});
+		const innerUseModel = vi
+			.fn()
+			.mockResolvedValueOnce({
+				text: "",
+				toolCalls: [{ id: "child-a", name: "CHILD_A", arguments: {} }],
+			})
+			.mockResolvedValueOnce({
+				text: "",
+				toolCalls: [{ id: "child-b", name: "CHILD_B", arguments: {} }],
+			});
+		const innerEvaluate = vi
+			.fn()
+			.mockResolvedValueOnce({
+				success: false,
+				decision: "CONTINUE" as const,
+				thought: "CHILD_A failed; run the independent CHILD_B step.",
+			})
+			.mockResolvedValueOnce({
+				success: false,
+				decision: "FINISH" as const,
+				thought: "CHILD_B succeeded, but CHILD_A is still unresolved.",
+				messageToUser: "The nested workflow failed.",
+			});
+		const observedAt = "2026-08-12T07:00:00.000Z";
+		const execute = vi.fn(
+			async (
+				_runtime: IAgentRuntime,
+				_ctx: unknown,
+				toolCall: { name: string },
+			): Promise<ActionResult> =>
+				toolCall.name === "CHILD_A"
+					? {
+							success: false,
+							text: `CHILD_A_PRIVATE_DIAGNOSTIC ${"failure detail ".repeat(500)}`,
+							error: "child A exploded",
+							data: { code: "CHILD_A_BOOM" },
+						}
+					: {
+							success: true,
+							text: "CHILD_B_PRIVATE_DIAGNOSTIC",
+							data: { taskId: "task-b" },
+							effectReceipts: [
+								{
+									receiptId: "receipt-child-b",
+									operation: "child_b.finish",
+									resource: { kind: "child_b", id: "task-b" },
+									artifacts: [],
+									idempotency: { key: "task-b", replayed: false },
+									observedAt,
+									outcome: "applied" as const,
+									commit: {
+										kind: "durable" as const,
+										id: "commit-child-b",
+										committedAt: observedAt,
+									},
+								},
+							],
+						},
+		);
+		let subResult: PlannerLoopResult | undefined;
+		let collapsed: PlannerToolResult | undefined;
+		const outerEvaluate = vi.fn(async () => ({
+			success: true,
+			decision: "FINISH" as const,
+			thought:
+				"The later child succeeded, so claim the whole parent succeeded.",
+			messageToUser: "Everything succeeded.",
+		}));
+
+		const result = await runPlannerLoop({
+			runtime: {
+				useModel: vi.fn(async () => ({
+					text: "",
+					toolCalls: [{ id: "parent", name: "PARENT", arguments: {} }],
+				})),
+			},
+			context: { id: "outer-failure-authority", events: [] },
+			tools: [{ name: "PARENT", description: "Run both child operations." }],
+			evaluate: outerEvaluate,
+			executeToolCall: async () => {
+				subResult = await runSubPlanner({
+					runtime: makeRuntime([parent, childA, childB], innerUseModel),
+					action: parent,
+					context: { id: "inner-failure-authority", events: [] },
+					ctx: { message: makeMessage() },
+					execute,
+					evaluate: innerEvaluate,
+					config: {
+						contextWindowTokens: 1_200,
+						compactionReserveTokens: 1_000,
+						compactionKeepSteps: 0,
+					},
+				});
+				collapsed = subPlannerResultToPlannerToolResult(subResult);
+				return collapsed;
+			},
+		});
+
+		if (!subResult || !collapsed) {
+			throw new Error("Nested planner did not produce a collapsed result");
+		}
+		expect(subResult.trajectory.archivedSteps).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({
+					toolCall: expect.objectContaining({ name: "CHILD_A" }),
+					result: expect.objectContaining({ success: false }),
+				}),
+			]),
+		);
+		expect(subResult.evaluator?.success).toBe(false);
+		expect(collapsed).toMatchObject({
+			success: false,
+			userFacingText: "The nested workflow failed.",
+			data: { taskId: "task-b" },
+		});
+		expect(collapsed.text).toContain("FAIL CHILD_A");
+		expect(collapsed.text).toContain("OK CHILD_B");
+		expect(collapsed.effectReceipts).toEqual([
+			expect.objectContaining({ receiptId: "receipt-child-b" }),
+		]);
+		expect(outerEvaluate).toHaveBeenCalledTimes(1);
+		expect(result.finalMessage).toBe("The nested workflow failed.");
+		expect(result.finalMessage).not.toContain("Everything succeeded");
+		expect(result.finalMessage).not.toContain("PRIVATE_DIAGNOSTIC");
+		expect(result.trajectory.steps.at(-1)).toMatchObject({
+			terminalOnly: true,
+			terminalMessage: result.finalMessage,
+		});
+	});
+
 	it.each(["STOP", "IGNORE"] as const)(
 		"propagates an archived nested %s as authoritative parent silence",
 		async (silentTerminal) => {

@@ -2,9 +2,9 @@
  * Exercises the message service's planner-action de-duplication
  * (stripReplyWhenActionOwnsTurn) and sub-planner result collapse
  * (subPlannerResultToPlannerToolResult): REPLY/alias dedupe, continueChain
- * propagation from a terminal sub-action, and multi-step aggregation into the
- * umbrella result. Runs against a stub runtime (actions + logger) — fully
- * deterministic.
+ * propagation from a terminal sub-action, unresolved-failure correlation, and
+ * multi-step aggregation into the umbrella result. Runs against a stub runtime
+ * (actions + logger) — fully deterministic.
  */
 import { describe, expect, it, vi } from "vitest";
 import { projectActionResultForClipboard } from "../runtime/execute-planned-tool-call.ts";
@@ -27,6 +27,7 @@ function subResult(
 		status: "finished",
 		finalMessage,
 		trajectory: {
+			archivedSteps: [],
 			steps: [
 				...(lastStepResult
 					? [
@@ -47,6 +48,9 @@ function subResult(
 						]
 					: []),
 			],
+			plannedQueue: [],
+			evaluatorOutputs: [],
+			context: { id: "ctx", events: [] },
 		},
 	} as unknown as SubResult;
 }
@@ -89,6 +93,7 @@ describe("subPlannerResultToPlannerToolResult", () => {
 			status: "finished",
 			finalMessage: inventory,
 			trajectory: {
+				archivedSteps: [],
 				steps: [
 					{
 						iteration: 1,
@@ -105,6 +110,9 @@ describe("subPlannerResultToPlannerToolResult", () => {
 						terminalOnly: true,
 					},
 				],
+				plannedQueue: [],
+				evaluatorOutputs: [],
+				context: { id: "ctx", events: [] },
 			},
 		} as unknown as SubResult);
 		expect(result.transcriptVisibility).toBe("internal");
@@ -125,6 +133,7 @@ describe("subPlannerResultToPlannerToolResult", () => {
 			status: "finished",
 			finalMessage: summary,
 			trajectory: {
+				archivedSteps: [],
 				steps: [
 					{
 						iteration: 1,
@@ -141,6 +150,9 @@ describe("subPlannerResultToPlannerToolResult", () => {
 						terminalOnly: true,
 					},
 				],
+				plannedQueue: [],
+				evaluatorOutputs: [],
+				context: { id: "ctx", events: [] },
 			},
 		} as unknown as SubResult);
 
@@ -322,6 +334,117 @@ describe("subPlannerResultToPlannerToolResult", () => {
 		});
 	});
 
+	it("keeps an unresolved child failure over an unrelated success and optimistic evaluator", () => {
+		const result = subPlannerResultToPlannerToolResult({
+			status: "finished",
+			evaluator: {
+				success: true,
+				decision: "FINISH",
+				thought: "The unrelated later child succeeded.",
+			},
+			trajectory: {
+				archivedSteps: [
+					{
+						iteration: 1,
+						toolCall: { name: "CHILD_A", params: { taskId: "a" } },
+						result: { success: false, error: "child A failed" },
+					},
+				],
+				steps: [
+					{
+						iteration: 2,
+						toolCall: { name: "CHILD_B", params: { taskId: "b" } },
+						result: {
+							success: true,
+							text: "child B succeeded",
+							data: { taskId: "b" },
+						},
+					},
+					{
+						iteration: 3,
+						terminalOnly: true,
+						terminalMessage: "Child A is still unresolved.",
+					},
+				],
+				plannedQueue: [],
+				evaluatorOutputs: [],
+				context: { id: "ctx", events: [] },
+			},
+		} as unknown as SubResult);
+
+		expect(result).toMatchObject({
+			success: false,
+			userFacingText: "Child A is still unresolved.",
+			data: { taskId: "b" },
+		});
+	});
+
+	it("keeps a terminal evaluator failure over a successful latest child", () => {
+		const result = subPlannerResultToPlannerToolResult({
+			...subResult(
+				{ success: true, text: "child succeeded", data: { taskId: "b" } },
+				"The nested workflow failed validation.",
+			),
+			evaluator: {
+				success: false,
+				decision: "FINISH",
+				thought: "The terminal validation failed.",
+				messageToUser: "The nested workflow failed validation.",
+			},
+		});
+
+		expect(result).toMatchObject({
+			success: false,
+			userFacingText: "The nested workflow failed validation.",
+			data: { taskId: "b" },
+		});
+	});
+
+	it("lets a successful retry resolve the same failed child operation", () => {
+		const result = subPlannerResultToPlannerToolResult({
+			status: "finished",
+			evaluator: {
+				success: true,
+				decision: "FINISH",
+				thought: "The exact failed operation succeeded on retry.",
+			},
+			trajectory: {
+				archivedSteps: [
+					{
+						iteration: 1,
+						toolCall: { name: "CHILD", params: { taskId: "same-task" } },
+						result: { success: false, error: "transient failure" },
+					},
+				],
+				steps: [
+					{
+						iteration: 2,
+						toolCall: { name: "CHILD", params: { taskId: "same-task" } },
+						result: {
+							success: true,
+							text: "retry succeeded",
+							data: { taskId: "same-task", attempt: 2 },
+						},
+					},
+					{
+						iteration: 3,
+						terminalOnly: true,
+						terminalMessage: "The retry succeeded.",
+					},
+				],
+				plannedQueue: [],
+				evaluatorOutputs: [],
+				context: { id: "ctx", events: [] },
+			},
+		} as unknown as SubResult);
+
+		expect(result).toMatchObject({
+			success: true,
+			userFacingText: "The retry succeeded.",
+			data: { taskId: "same-task", attempt: 2 },
+		});
+	});
+
 	// Regression for elizaOS/eliza#8007: a multi-step sub-planner collapse must
 	// surface EVERY executed sub-step to the parent loop, not only the terminal
 	// one, so the outer planner can see which ops already succeeded and advance
@@ -331,6 +454,7 @@ describe("subPlannerResultToPlannerToolResult", () => {
 			status: "finished",
 			finalMessage: "Opened a PR for hello-world.",
 			trajectory: {
+				archivedSteps: [],
 				steps: [
 					{
 						iteration: 1,
@@ -353,6 +477,9 @@ describe("subPlannerResultToPlannerToolResult", () => {
 						terminalOnly: true,
 					},
 				],
+				plannedQueue: [],
+				evaluatorOutputs: [],
+				context: { id: "ctx", events: [] },
 			},
 		} as unknown as SubResult;
 

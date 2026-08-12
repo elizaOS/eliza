@@ -360,6 +360,8 @@ export const sendDraftAction: Action = {
 			return {
 				success: false,
 				text,
+				userFacingText: text,
+				verifiedUserFacing: true,
 				continueChain: false,
 				data: {
 					requiresConfirmation: true,
