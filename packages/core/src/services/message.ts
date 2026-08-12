@@ -50,11 +50,7 @@ import {
 } from "../inference-timing";
 import { logger } from "../logger";
 import { describeImageCached } from "../media";
-import {
-	fetchRemoteMedia,
-	MediaFetchError,
-	readResponseWithLimit,
-} from "../media/fetch";
+import { fetchAttachmentMediaBytes } from "../media/attachment-bytes.ts";
 import {
 	classifyTranscriptionFailure,
 	type TranscriptionMediaKind,
@@ -296,7 +292,6 @@ import type {
 } from "../types/streaming";
 import {
 	composePrompt,
-	getLocalServerUrl,
 	parseBooleanFromText,
 	parseJSONObjectFromText,
 	truncateToCompleteSentence,
@@ -1385,13 +1380,6 @@ type MediaWithInlineData = Media & {
 	_mimeType?: unknown;
 };
 
-/**
- * Hard cap on bytes fetched while enriching a single attachment (description /
- * transcription / text extraction). Bounds memory and is enforced by the
- * SSRF-guarded fetcher for remote URLs and explicitly for local ones.
- */
-const ATTACHMENT_FETCH_MAX_BYTES = 50 * 1024 * 1024;
-
 function sanitizeAttachmentsForStorage(
 	attachments: Media[] | undefined,
 ): Media[] | undefined {
@@ -1872,32 +1860,6 @@ export function preservedSettledToolResult(
 	return undefined;
 }
 
-/** Zerollama/OpenAI-style async media endpoints should be delivered as attachments, not echoed as chat copy. */
-const MEDIA_CONTENT_URL_RE =
-	/<?\s*https?:\/\/[^\s<>]+\/v1\/(?:videos|images|audio)\/[^\s<>/]+\/content\s*>?/gi;
-
-function collectMediaDeliveryUrls(actionResults: ActionResult[]): string[] {
-	const urls = new Set<string>();
-	for (const result of actionResults) {
-		if (!result.success) continue;
-		const data = result.data;
-		if (!data || typeof data !== "object") continue;
-		for (const key of [
-			"videoUrl",
-			"mediaUrl",
-			"imageUrl",
-			"audioUrl",
-			"url",
-		] as const) {
-			const value = data[key];
-			if (typeof value === "string" && value.trim()) {
-				urls.add(value.trim());
-			}
-		}
-	}
-	return [...urls];
-}
-
 export function sanitizeReplyTextAfterMediaDelivery(
 	text: string,
 	deliveredUrls: readonly string[],
@@ -1913,10 +1875,7 @@ export function sanitizeReplyTextAfterMediaDelivery(
 	// `\s{2,}` matches `\n` + indentation (observed: every HumanEval
 	// completion through the eliza harness lost its newlines and failed with
 	// SyntaxError).
-	const hasEmbeddedMediaUrl = new RegExp(MEDIA_CONTENT_URL_RE.source, "i").test(
-		cleaned,
-	);
-	if (deliveredUrls.length === 0 && !hasEmbeddedMediaUrl) {
+	if (deliveredUrls.length === 0) {
 		return cleaned;
 	}
 
@@ -1924,7 +1883,6 @@ export function sanitizeReplyTextAfterMediaDelivery(
 		const escaped = url.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 		cleaned = cleaned.replace(new RegExp(`<?\\s*${escaped}\\s*>?`, "gi"), "");
 	}
-	cleaned = cleaned.replace(MEDIA_CONTENT_URL_RE, "");
 	cleaned = cleaned
 		.replace(
 			/^\s*(?:here(?:'s| is| you go)?(?:\s+it\s+is)?|done(?:\.|\s+video'?s?\s+(?:up|live|ready))?|your video(?: is ready)?)\s*:?\s*/i,
@@ -7071,6 +7029,7 @@ export async function runV5MessageRuntimeStage1(args: {
 	responseId: UUID;
 	callback?: HandlerCallback;
 	deliveredVisibleTexts?: Set<string>;
+	deliveredMediaUrls?: ReadonlySet<string>;
 	plannerLoopConfig?: PlannerLoopParams["config"];
 	onSettledActionResult?: (result: ActionResult) => void;
 	roomHandlerLease?: RoomHandlerLease;
@@ -8663,7 +8622,7 @@ export async function runV5MessageRuntimeStage1(args: {
 				? withActionResultsForPrompt(plannerState, actionResults)
 				: plannerState;
 		const plannedTextRaw = String(plannerResult.finalMessage ?? "").trim();
-		const deliveredMediaUrls = collectMediaDeliveryUrls(actionResults);
+		const deliveredMediaUrls = [...(args.deliveredMediaUrls ?? [])];
 		const plannedText = sanitizeReplyTextAfterMediaDelivery(
 			plannedTextRaw,
 			deliveredMediaUrls,
@@ -10501,6 +10460,7 @@ export function wrapSingleTurnVisibleCallback(
 	message: Pick<Memory, "id" | "roomId" | "entityId">,
 	callback?: HandlerCallback,
 	recordDeliveredVisibleText?: (text: string) => void,
+	recordDeliveredMediaUrls?: (urls: readonly string[]) => void,
 ): HandlerCallback | undefined {
 	if (!callback) return callback;
 	const fullRuntime = runtime as IAgentRuntime;
@@ -10569,6 +10529,14 @@ export function wrapSingleTurnVisibleCallback(
 			actionName,
 		);
 		const delivered = await callback(response, actionName);
+		if (Array.isArray(delivered) && delivered.length > 0) {
+			const attachmentUrls = (response.attachments ?? [])
+				.map((attachment) => attachment.url.trim())
+				.filter((url) => url.length > 0);
+			if (attachmentUrls.length > 0) {
+				recordDeliveredMediaUrls?.(attachmentUrls);
+			}
+		}
 		if (rawUnsanitizedText) {
 			recordDeliveredVisibleText?.(rawUnsanitizedText);
 		}
@@ -11416,6 +11384,7 @@ export class DefaultMessageService implements IMessageService {
 				};
 
 				const deliveredVisibleTexts = new Set<string>();
+				const deliveredMediaUrls = new Set<string>();
 				const recordDeliveredVisibleText = (text: string) => {
 					deliveredVisibleTexts.add(
 						normalizeVisibleTextForDuplicateCheck(text),
@@ -11426,6 +11395,9 @@ export class DefaultMessageService implements IMessageService {
 					message,
 					callback,
 					recordDeliveredVisibleText,
+					(urls) => {
+						for (const url of urls) deliveredMediaUrls.add(url);
+					},
 				);
 
 				// A host route may open the timer before calling the message service so
@@ -11609,6 +11581,7 @@ export class DefaultMessageService implements IMessageService {
 										message,
 										instrumentedCallback,
 										deliveredVisibleTexts,
+										deliveredMediaUrls,
 										responseId,
 										runId,
 										opts,
@@ -11740,6 +11713,7 @@ export class DefaultMessageService implements IMessageService {
 		message: Memory,
 		callback: HandlerCallback | undefined,
 		deliveredVisibleTexts: Set<string>,
+		deliveredMediaUrls: Set<string>,
 		responseId: UUID,
 		runId: UUID,
 		opts: ResolvedMessageOptions,
@@ -12312,6 +12286,7 @@ export class DefaultMessageService implements IMessageService {
 							responseId,
 							...(callback ? { callback } : {}),
 							deliveredVisibleTexts,
+							deliveredMediaUrls,
 							...(opts.roomHandlerLease
 								? { roomHandlerLease: opts.roomHandlerLease }
 								: {}),
@@ -13294,9 +13269,6 @@ export class DefaultMessageService implements IMessageService {
 				const processedAttachment: Media = { ...attachment };
 
 				const isRemote = /^(http|https):\/\//.test(attachment.url);
-				const url = isRemote
-					? attachment.url
-					: getLocalServerUrl(attachment.url);
 
 				try {
 					// Only process images that don't already have descriptions
@@ -13318,7 +13290,7 @@ export class DefaultMessageService implements IMessageService {
 							"Generating image description",
 						);
 
-						let imageUrl = url;
+						let imageUrl = attachment.url;
 						const inlineData = attachment as MediaWithInlineData;
 
 						if (
@@ -13333,11 +13305,9 @@ export class DefaultMessageService implements IMessageService {
 							// an attacker-controlled URL itself. Remote bytes go through the
 							// SSRF-guarded fetcher (blocks private/loopback hosts); local
 							// media-store URLs use the trusted runtime fetch.
-							const { buffer, contentType } = await this.fetchAttachmentBytes(
+							const { buffer, contentType } = await fetchAttachmentMediaBytes(
 								runtime,
 								attachment.url,
-								url,
-								isRemote,
 							);
 							imageUrl = `data:${contentType};base64,${buffer.toString("base64")}`;
 						}
@@ -13379,11 +13349,9 @@ export class DefaultMessageService implements IMessageService {
 						attachment.contentType === ContentType.DOCUMENT &&
 						!attachment.text
 					) {
-						const { buffer, contentType } = await this.fetchAttachmentBytes(
+						const { buffer, contentType } = await fetchAttachmentMediaBytes(
 							runtime,
 							attachment.url,
-							url,
-							isRemote,
 						);
 						// Any text/* document (plain, csv, markdown) and application/json —
 						// all on the chat upload allow-list — is readable as UTF-8 text;
@@ -13449,13 +13417,7 @@ export class DefaultMessageService implements IMessageService {
 							attachment.contentType === ContentType.AUDIO ? "Audio" : "Video";
 						Object.assign(
 							processedAttachment,
-							await this.transcribeAttachment(
-								runtime,
-								attachment,
-								url,
-								isRemote,
-								mediaKind,
-							),
+							await this.transcribeAttachment(runtime, attachment, mediaKind),
 						);
 					}
 
@@ -13493,8 +13455,6 @@ export class DefaultMessageService implements IMessageService {
 	private async transcribeAttachment(
 		runtime: IAgentRuntime,
 		attachment: Media,
-		resolvedLocalUrl: string,
-		isRemote: boolean,
 		mediaKind: TranscriptionMediaKind,
 	): Promise<Partial<Media>> {
 		runtime.logger.debug(
@@ -13504,12 +13464,7 @@ export class DefaultMessageService implements IMessageService {
 
 		let buffer: Buffer;
 		try {
-			({ buffer } = await this.fetchAttachmentBytes(
-				runtime,
-				attachment.url,
-				resolvedLocalUrl,
-				isRemote,
-			));
+			({ buffer } = await fetchAttachmentMediaBytes(runtime, attachment.url));
 		} catch (error) {
 			// error-policy:J4 The stored attachment remains available with a typed,
 			// retryable fetch diagnostic; no provider ran, so this cannot mark STT
@@ -13564,83 +13519,6 @@ export class DefaultMessageService implements IMessageService {
 				{ url: attachment.url, phase: "provider", failure: failure.kind },
 			);
 			return { notProcessed: transcriptionFailureNote(failure, mediaKind) };
-		}
-	}
-
-	/**
-	 * Fetch an attachment's bytes for enrichment with a hard size cap. Remote
-	 * (attacker-influenceable) URLs go through the SSRF-guarded fetcher, which
-	 * blocks private/loopback/link-local hosts; trusted local media-store URLs
-	 * (built from a path-validated relative URL) use the runtime fetch. This is
-	 * the ONLY place a raw fetch is used during attachment enrichment. Both
-	 * branches fail only with typed MediaFetchError carrying static prose
-	 * (numeric HTTP status, never statusText), so the shared transcription
-	 * classifier always treats them as retryable fetch failures. The unavailable
-	 * marker can never be forged before a TRANSCRIPTION provider runs. Bodies are read
-	 * through the shared streaming cap, cancelling at the limit instead of
-	 * materializing an oversize payload first.
-	 */
-	private async fetchAttachmentBytes(
-		runtime: IAgentRuntime,
-		rawUrl: string,
-		resolvedLocalUrl: string,
-		isRemote: boolean,
-	): Promise<{ buffer: Buffer; contentType: string }> {
-		if (isRemote) {
-			const { buffer, contentType } = await fetchRemoteMedia({
-				url: rawUrl,
-				maxBytes: ATTACHMENT_FETCH_MAX_BYTES,
-			});
-			return {
-				buffer,
-				contentType: contentType ?? "application/octet-stream",
-			};
-		}
-		const runtimeFetch = runtime.fetch ?? globalThis.fetch;
-		try {
-			const res = await runtimeFetch(resolvedLocalUrl);
-			if (!res.ok) {
-				// Only the numeric status: statusText is dynamic prose (a local
-				// 503 could carry "TRANSCRIPTION not available") and must never
-				// reach the catch blocks that key on unavailability wording.
-				throw new MediaFetchError(
-					"http_error",
-					`Failed to fetch attachment locally (HTTP ${res.status})`,
-				);
-			}
-			// Reject on the declared size before reading; the streamed read below
-			// cancels at the cap when the header is absent or lying.
-			const declaredLength = Number(res.headers.get("content-length"));
-			if (
-				Number.isFinite(declaredLength) &&
-				declaredLength > ATTACHMENT_FETCH_MAX_BYTES
-			) {
-				throw new MediaFetchError(
-					"max_bytes",
-					`Attachment exceeds ${ATTACHMENT_FETCH_MAX_BYTES} bytes`,
-				);
-			}
-			const contentType =
-				res.headers.get("content-type") || "application/octet-stream";
-			const buffer = await readResponseWithLimit(
-				res,
-				ATTACHMENT_FETCH_MAX_BYTES,
-			);
-			return { buffer, contentType };
-		} catch (err) {
-			// error-policy:J2 typed transient-class rethrow covering the whole
-			// local read boundary (fetch, header reads, body read): every local
-			// byte-fetch failure surfaces as MediaFetchError so the audio/video
-			// catch blocks write the transient could-not-fetch marker, never the
-			// transcription-unavailable one. Matched by name rather than
-			// instanceof so the pass-through survives module duplication across
-			// the multi-target build and test mocks.
-			if (err instanceof Error && err.name === "MediaFetchError") throw err;
-			throw new MediaFetchError(
-				"fetch_failed",
-				"Failed to fetch attachment locally",
-				err,
-			);
 		}
 	}
 

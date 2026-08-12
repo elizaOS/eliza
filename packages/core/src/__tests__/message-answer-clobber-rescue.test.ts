@@ -189,6 +189,7 @@ async function runTurn(opts: {
 }): Promise<{
 	finalText: string | undefined;
 	earlyReplies: string[];
+	deliveredMediaUrls: string[];
 	kind: string;
 }> {
 	const earlyReplies: string[] = [];
@@ -197,6 +198,7 @@ async function runTurn(opts: {
 	// deliveredVisibleTexts through the instrumented callback, which is what the
 	// action-echo suppression reads.
 	const deliveredVisibleTexts = new Set<string>();
+	const deliveredMediaUrls = new Set<string>();
 	const instrumentedCallback = opts.callback
 		? wrapSingleTurnVisibleCallback(
 				opts.runtime,
@@ -206,6 +208,9 @@ async function runTurn(opts: {
 					deliveredVisibleTexts.add(
 						normalizeVisibleTextForDuplicateCheck(text),
 					),
+				(urls) => {
+					for (const url of urls) deliveredMediaUrls.add(url);
+				},
 			)
 		: undefined;
 	const result = await runV5MessageRuntimeStage1({
@@ -215,6 +220,7 @@ async function runTurn(opts: {
 		responseId: RESPONSE_ID,
 		...(instrumentedCallback ? { callback: instrumentedCallback } : {}),
 		deliveredVisibleTexts,
+		deliveredMediaUrls,
 		...(opts.noEarlyReply
 			? {}
 			: {
@@ -227,7 +233,12 @@ async function runTurn(opts: {
 		result.kind === "planned_reply"
 			? result.result.responseContent?.text
 			: undefined;
-	return { finalText, earlyReplies, kind: result.kind };
+	return {
+		finalText,
+		earlyReplies,
+		deliveredMediaUrls: [...deliveredMediaUrls],
+		kind: result.kind,
+	};
 }
 
 describe("answer-clobber rescue", () => {
@@ -592,7 +603,9 @@ describe("answer-clobber rescue", () => {
 describe("media deliverable suppresses the trailing progress ack", () => {
 	const IMAGE_URL = "https://example.test/neon-cat.png";
 
-	function generateMediaAction(): Action {
+	function generateMediaAction(
+		options: { turnComplete?: boolean; userFacingText?: string | false } = {},
+	): Action {
 		const attachment: Media = {
 			id: "generated-image",
 			url: IMAGE_URL,
@@ -608,9 +621,8 @@ describe("media deliverable suppresses the trailing progress ack", () => {
 			parameters: [],
 			validate: async () => true,
 			// Mirrors the real GENERATE_MEDIA delivery shape: an attachment-only,
-			// text:"" callback posts the image, and the result carries mediaUrl in
-			// data (which collectMediaDeliveryUrls reads) plus a userFacingText the
-			// media-delivery sanitizer strips to empty.
+			// text:"" callback posts the image while result metadata also carries
+			// URLs. Only a nonempty callback receipt may establish delivery.
 			handler: async (_rt, _msg, _state, _opts, cb) => {
 				await cb?.({
 					attachments: [attachment],
@@ -621,7 +633,13 @@ describe("media deliverable suppresses the trailing progress ack", () => {
 				return {
 					success: true,
 					text: "Generated image",
-					userFacingText: "Here's your image.",
+					...(options.turnComplete ? { turnComplete: true } : {}),
+					...(options.userFacingText === false
+						? {}
+						: {
+								userFacingText: options.userFacingText ?? "Here's your image.",
+								...(options.turnComplete ? { verifiedUserFacing: true } : {}),
+							}),
 					data: {
 						actionName: "GENERATE_MEDIA_TEST",
 						mediaUrl: IMAGE_URL,
@@ -640,7 +658,13 @@ describe("media deliverable suppresses the trailing progress ack", () => {
 		const delivered: Content[] = [];
 		const callback: HandlerCallback = async (content) => {
 			delivered.push(content);
-			return [];
+			return [
+				{
+					...makeMessage(),
+					id: "00000000-0000-0000-0000-000000000099" as UUID,
+					content,
+				},
+			];
 		};
 		const runtime = makeRuntime({
 			responses: [
@@ -683,7 +707,7 @@ describe("media deliverable suppresses the trailing progress ack", () => {
 			actions: [generateMediaAction()],
 		});
 
-		const { finalText } = await runTurn({
+		const { deliveredMediaUrls, finalText } = await runTurn({
 			runtime,
 			callback,
 			noEarlyReply: true,
@@ -695,11 +719,160 @@ describe("media deliverable suppresses the trailing progress ack", () => {
 				content.attachments?.some((media) => media.url === IMAGE_URL),
 			),
 		).toBe(true);
+		expect(deliveredMediaUrls).toEqual([IMAGE_URL]);
 		// No trailing ack after the image.
 		expect(finalText ?? "").toBe("");
 		expect(delivered.map((content) => content.text)).not.toContain(
 			PROGRESS_ACK,
 		);
+	});
+
+	it("keeps the progress ack when an attachment callback returns no receipt", async () => {
+		const attempted: Content[] = [];
+		const runtime = makeRuntime({
+			responses: [
+				{
+					expectModelType: String(ModelType.RESPONSE_HANDLER),
+					body: stage1Response({
+						contexts: ["general"],
+						replyText: PROGRESS_ACK,
+						extra: { candidateActionNames: ["GENERATE_MEDIA_TEST"] },
+					}),
+				},
+				{
+					expectModelType: String(ModelType.ACTION_PLANNER),
+					body: {
+						text: "",
+						toolCalls: [
+							{
+								id: "gen-media-no-receipt",
+								name: "GENERATE_MEDIA_TEST",
+								arguments: {},
+							},
+						],
+					},
+				},
+			],
+			evaluators: [],
+			actions: [
+				generateMediaAction({
+					turnComplete: true,
+					userFacingText: PROGRESS_ACK,
+				}),
+			],
+		});
+
+		const { deliveredMediaUrls, finalText } = await runTurn({
+			runtime,
+			callback: async (content) => {
+				attempted.push(content);
+				return [];
+			},
+			noEarlyReply: true,
+		});
+
+		expect(attempted).toHaveLength(1);
+		expect(deliveredMediaUrls).toEqual([]);
+		expect(finalText).toBe(PROGRESS_ACK);
+	});
+
+	it("keeps the progress ack when no attachment callback exists", async () => {
+		const runtime = makeRuntime({
+			responses: [
+				{
+					expectModelType: String(ModelType.RESPONSE_HANDLER),
+					body: stage1Response({
+						contexts: ["general"],
+						replyText: PROGRESS_ACK,
+						extra: { candidateActionNames: ["GENERATE_MEDIA_TEST"] },
+					}),
+				},
+				{
+					expectModelType: String(ModelType.ACTION_PLANNER),
+					body: {
+						text: "",
+						toolCalls: [
+							{
+								id: "gen-media-no-callback",
+								name: "GENERATE_MEDIA_TEST",
+								arguments: {},
+							},
+						],
+					},
+				},
+			],
+			evaluators: [],
+			actions: [
+				generateMediaAction({
+					turnComplete: true,
+					userFacingText: PROGRESS_ACK,
+				}),
+			],
+		});
+
+		const { deliveredMediaUrls, finalText } = await runTurn({
+			runtime,
+			noEarlyReply: true,
+		});
+
+		expect(deliveredMediaUrls).toEqual([]);
+		expect(finalText).toBe(PROGRESS_ACK);
+	});
+
+	it("does not treat an unrelated successful data.url as delivery", async () => {
+		const metadataAction: Action = {
+			name: "URL_METADATA_TEST",
+			description: "returns a resource locator as internal result metadata",
+			similes: [],
+			examples: [],
+			parameters: [],
+			validate: async () => true,
+			handler: async () => ({
+				success: true,
+				text: "Stored resource locator",
+				turnComplete: true,
+				userFacingText: "Done.",
+				verifiedUserFacing: true,
+				data: {
+					actionName: "URL_METADATA_TEST",
+					url: "https://example.test/not-delivered",
+				},
+			}),
+		} as unknown as Action;
+		const runtime = makeRuntime({
+			responses: [
+				{
+					expectModelType: String(ModelType.RESPONSE_HANDLER),
+					body: stage1Response({
+						contexts: ["general"],
+						replyText: PROGRESS_ACK,
+						extra: { candidateActionNames: ["URL_METADATA_TEST"] },
+					}),
+				},
+				{
+					expectModelType: String(ModelType.ACTION_PLANNER),
+					body: {
+						text: "",
+						toolCalls: [
+							{
+								id: "url-metadata",
+								name: "URL_METADATA_TEST",
+								arguments: {},
+							},
+						],
+					},
+				},
+			],
+			evaluators: [],
+			actions: [metadataAction],
+		});
+
+		const { finalText } = await runTurn({
+			runtime,
+			noEarlyReply: true,
+		});
+
+		expect(finalText).toBe("Done.");
 	});
 
 	it("does not suppress a non-media action's own reply (the gate keys on media, not on 'an action ran')", async () => {

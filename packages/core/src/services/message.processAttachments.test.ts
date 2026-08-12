@@ -27,6 +27,7 @@ vi.mock("../media/fetch", async (importActual) => ({
 }));
 
 const { DefaultMessageService } = await import("./message");
+const MEDIA_HASH = "a".repeat(64);
 
 function mockRuntime(
 	fetchImpl?: (input: unknown) => Promise<unknown>,
@@ -118,7 +119,7 @@ describe("DefaultMessageService.processAttachments", () => {
 		const out = await svc.processAttachments(runtime, [
 			{
 				id: "doc",
-				url: "/api/media/abc.txt",
+				url: `/api/media/${MEDIA_HASH}.txt`,
 				contentType: ContentType.DOCUMENT,
 			},
 		]);
@@ -149,7 +150,7 @@ describe("DefaultMessageService.processAttachments", () => {
 		const out = await svc.processAttachments(runtime, [
 			{
 				id: "doc",
-				url: `/api/media/abc.${ext}`,
+				url: `/api/media/${MEDIA_HASH}.${ext}`,
 				contentType: ContentType.DOCUMENT,
 			},
 		]);
@@ -170,7 +171,7 @@ describe("DefaultMessageService.processAttachments", () => {
 		const out = await svc.processAttachments(runtime, [
 			{
 				id: "doc",
-				url: "/api/media/abc.json",
+				url: `/api/media/${MEDIA_HASH}.json`,
 				contentType: ContentType.DOCUMENT,
 			},
 		]);
@@ -191,7 +192,7 @@ describe("DefaultMessageService.processAttachments", () => {
 		const out = await svc.processAttachments(runtime, [
 			{
 				id: "doc",
-				url: "/api/media/abc.zip",
+				url: `/api/media/${MEDIA_HASH}.zip`,
 				contentType: ContentType.DOCUMENT,
 			},
 		]);
@@ -213,7 +214,7 @@ describe("DefaultMessageService.processAttachments", () => {
 		const out = await svc.processAttachments(runtime, [
 			{
 				id: "aud",
-				url: "/api/media/abc.mp3",
+				url: `/api/media/${MEDIA_HASH}.mp3`,
 				contentType: ContentType.AUDIO,
 			},
 		]);
@@ -239,7 +240,7 @@ describe("DefaultMessageService.processAttachments", () => {
 		const out = await svc.processAttachments(runtime, [
 			{
 				id: "aud",
-				url: "/api/media/abc.mp3",
+				url: `/api/media/${MEDIA_HASH}.mp3`,
 				contentType: ContentType.AUDIO,
 			},
 		]);
@@ -247,7 +248,7 @@ describe("DefaultMessageService.processAttachments", () => {
 		// Bytes stay stored + served (URL preserved); the failure is explicit, not
 		// a fabricated empty transcript.
 		expect(out[0].text).toBeUndefined();
-		expect(out[0].url).toBe("/api/media/abc.mp3");
+		expect(out[0].url).toBe(`/api/media/${MEDIA_HASH}.mp3`);
 		expect(out[0].notProcessed).toMatch(/audio transcription unavailable/i);
 		expect(out[0].notProcessed).toContain("Eliza Cloud STT");
 	});
@@ -266,7 +267,7 @@ describe("DefaultMessageService.processAttachments", () => {
 		const [audio] = await svc.processAttachments(runtime, [
 			{
 				id: "aud",
-				url: "/api/media/abc.mp3",
+				url: `/api/media/${MEDIA_HASH}.mp3`,
 				contentType: ContentType.AUDIO,
 			},
 		]);
@@ -290,7 +291,7 @@ describe("DefaultMessageService.processAttachments", () => {
 		const out = await svc.processAttachments(runtime, [
 			{
 				id: "aud",
-				url: "/api/media/abc.mp3",
+				url: `/api/media/${MEDIA_HASH}.mp3`,
 				contentType: ContentType.AUDIO,
 			},
 		]);
@@ -360,7 +361,7 @@ describe("DefaultMessageService.processAttachments", () => {
 			const runtime = mockRuntime(localFetch as unknown as typeof fetch);
 
 			const out = await svc.processAttachments(runtime, [
-				{ id, url: `/api/media/abc.${ext}`, contentType },
+				{ id, url: `/api/media/${MEDIA_HASH}.${ext}`, contentType },
 			]);
 
 			expect(out[0].text).toBeUndefined();
@@ -396,7 +397,7 @@ describe("DefaultMessageService.processAttachments", () => {
 			const runtime = mockRuntime(localFetch as unknown as typeof fetch);
 
 			const out = await svc.processAttachments(runtime, [
-				{ id, url: `/api/media/abc.${ext}`, contentType },
+				{ id, url: `/api/media/${MEDIA_HASH}.${ext}`, contentType },
 			]);
 
 			// The declared size alone rejects the fetch; the body is never read.
@@ -438,7 +439,11 @@ describe("DefaultMessageService.processAttachments", () => {
 		const runtime = mockRuntime(localFetch as unknown as typeof fetch);
 
 		const out = await svc.processAttachments(runtime, [
-			{ id: "aud", url: "/api/media/abc.mp3", contentType: ContentType.AUDIO },
+			{
+				id: "aud",
+				url: `/api/media/${MEDIA_HASH}.mp3`,
+				contentType: ContentType.AUDIO,
+			},
 		]);
 
 		// Reading stopped once the byte counter crossed 50 MiB (the 7th 8 MiB
@@ -466,7 +471,7 @@ describe("DefaultMessageService.processAttachments", () => {
 		const out = await svc.processAttachments(runtime, [
 			{
 				id: "vid",
-				url: "/api/media/abc.mp4",
+				url: `/api/media/${MEDIA_HASH}.mp4`,
 				contentType: ContentType.VIDEO,
 			},
 		]);
@@ -508,7 +513,7 @@ describe("DefaultMessageService.processAttachments", () => {
 		const out = await svc.processAttachments(runtime, [
 			{
 				id: "doc",
-				url: "/api/media/abc.pdf",
+				url: `/api/media/${MEDIA_HASH}.pdf`,
 				contentType: ContentType.DOCUMENT,
 			},
 		]);

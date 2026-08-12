@@ -30,6 +30,33 @@ describe("fetchRemoteMedia", () => {
 		expect(result.contentType).toBe("image/png");
 	});
 
+	it("aborts a remote transport that stalls past its timeout", async () => {
+		let aborted = false;
+		await expect(
+			fetchRemoteMedia({
+				url: "https://example.com/stalled.wav",
+				timeoutMs: 5,
+				lookupFn: async () => [{ address: "93.184.216.34", family: 4 }],
+				pinnedFetchImpl: async ({ init }) =>
+					new Promise<Response>((_resolve, reject) => {
+						const signal = init?.signal;
+						signal?.addEventListener(
+							"abort",
+							() => {
+								aborted = true;
+								reject(signal.reason);
+							},
+							{ once: true },
+						);
+					}),
+			}),
+		).rejects.toMatchObject({
+			name: "MediaFetchError",
+			code: "fetch_failed",
+		});
+		expect(aborted).toBe(true);
+	});
+
 	it("cancels a 4 MiB 503 body as soon as the caller's 1 KiB cap is crossed", async () => {
 		const chunk = new Uint8Array(1024);
 		let pulls = 0;

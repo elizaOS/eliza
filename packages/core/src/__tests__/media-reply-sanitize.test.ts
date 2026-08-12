@@ -35,6 +35,11 @@ describe("sanitizeReplyTextAfterMediaDelivery", () => {
 		const prose =
 			"First paragraph.\n\nSecond paragraph:\n- item one\n- item two";
 		expect(sanitizeReplyTextAfterMediaDelivery(prose, [])).toBe(prose);
+
+		const unreceiptedMediaUrl = `Here it is: ${url}`;
+		expect(sanitizeReplyTextAfterMediaDelivery(unreceiptedMediaUrl, [])).toBe(
+			unreceiptedMediaUrl,
+		);
 	});
 
 	it("keeps newlines away from the URL when stripping a delivered URL", () => {

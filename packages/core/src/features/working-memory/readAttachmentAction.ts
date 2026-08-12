@@ -15,11 +15,7 @@
  */
 
 import { ElizaError } from "../../errors.ts";
-import {
-	fetchRemoteMedia,
-	MediaFetchError,
-	readResponseWithLimit,
-} from "../../media/fetch.ts";
+import { fetchAttachmentMediaBytes } from "../../media/attachment-bytes.ts";
 import {
 	classifyTranscriptionFailure,
 	isTranscriptionUnavailableNote,
@@ -44,7 +40,6 @@ import {
 	type State,
 	type UUID,
 } from "../../types/index.ts";
-import { getLocalServerUrl } from "../../utils.ts";
 import { DocumentService } from "../documents/service.ts";
 import {
 	createDocumentNoteFilename,
@@ -156,107 +151,6 @@ function missingReadableContentMessage(records: AttachmentRecord[]): string {
 	return records.length === 1
 		? "I don't have readable text for that attachment yet."
 		: "I don't have readable text for those attachments yet.";
-}
-
-/** Same cap the ingest path enforces (`ATTACHMENT_FETCH_MAX_BYTES`). */
-const ON_DEMAND_TRANSCRIPTION_MAX_BYTES = 50 * 1024 * 1024;
-/** Same bound the pre-rework provider-side transcription fetch enforced. */
-const ON_DEMAND_TRANSCRIPTION_TIMEOUT_MS = 30_000;
-/**
- * The only local shape the content-addressed media store serves
- * (`packages/agent/src/api/media-store.ts`: `MEDIA_URL_PREFIX` + the strict
- * `MEDIA_FILE_NAME` of a 64-hex sha256 and short alphanumeric extension).
- * Anything else must never reach the trusted local fetch.
- */
-const LOCAL_MEDIA_STORE_URL = /^\/api\/media\/[a-f0-9]{64}\.[a-z0-9]{1,8}$/;
-
-/**
- * Fetches a conversation attachment's bytes for transcription, mirroring the
- * ingest split in `MessageService.fetchAttachmentBytes`: remote
- * (attacker-influenceable) http(s) URLs go through the SSRF-guarded,
- * size-capped, time-bounded media fetch, while local URLs must be exactly the
- * canonical media-store shape (`/api/media/<sha256>.<ext>`) before resolving
- * against the local server with the same size cap and timeout. Anything else
- * is rejected before any fetch: `getLocalServerUrl` is a bare string concat,
- * so an unvalidated `@attacker.example/x` would become
- * `http://localhost:PORT@attacker.example/x` (userinfo trick) and hand the
- * trusted local fetch to an attacker host. Rejections throw transient-class
- * errors with static messages (never echoing the attacker-influenceable url or
- * dynamic response prose) so the reply degrades to the honest "yet" path; the
- * whole local response read (fetch, headers, body) surfaces failures only as
- * typed MediaFetchError, which the unavailability classifier refuses as
- * evidence. The body is read through the shared streaming cap so an absent or
- * lying Content-Length can never force materializing an oversize payload.
- */
-async function fetchTranscribableBytes(
-	runtime: IAgentRuntime,
-	url: string,
-): Promise<Buffer> {
-	if (/^(http|https):\/\//.test(url)) {
-		const { buffer } = await fetchRemoteMedia({
-			url,
-			maxBytes: ON_DEMAND_TRANSCRIPTION_MAX_BYTES,
-			timeoutMs: ON_DEMAND_TRANSCRIPTION_TIMEOUT_MS,
-		});
-		return buffer;
-	}
-	if (!LOCAL_MEDIA_STORE_URL.test(url)) {
-		throw new Error(
-			"Attachment URL is not a canonical media-store path; refusing local fetch",
-		);
-	}
-	// Defence in depth on top of the shape check: the resolved origin must be
-	// the local server itself before the trusted fetch runs.
-	const localUrl = new URL(getLocalServerUrl(url));
-	if (localUrl.hostname !== "localhost" && localUrl.hostname !== "127.0.0.1") {
-		throw new Error(
-			"Local media fetch resolved to a non-local host; refusing local fetch",
-		);
-	}
-	const runtimeFetch = runtime.fetch ?? globalThis.fetch;
-	try {
-		const res = await runtimeFetch(localUrl.href, {
-			signal: AbortSignal.timeout(ON_DEMAND_TRANSCRIPTION_TIMEOUT_MS),
-		});
-		if (!res.ok) {
-			// Only the numeric status: statusText is dynamic prose and must never
-			// feed the unavailability classifier.
-			throw new MediaFetchError(
-				"http_error",
-				`Could not fetch attachment locally (HTTP ${res.status})`,
-			);
-		}
-		// Reject on the declared size BEFORE reading the body (parity with the
-		// remote branch's enforceContentLengthLimit in media/fetch.ts); the
-		// streamed read below cancels at the cap when the header is absent or
-		// lying, so an oversize body is never materialized either way.
-		const declaredLength = Number(res.headers.get("content-length"));
-		if (
-			Number.isFinite(declaredLength) &&
-			declaredLength > ON_DEMAND_TRANSCRIPTION_MAX_BYTES
-		) {
-			throw new MediaFetchError(
-				"max_bytes",
-				`Attachment exceeds ${ON_DEMAND_TRANSCRIPTION_MAX_BYTES} bytes`,
-			);
-		}
-		return await readResponseWithLimit(res, ON_DEMAND_TRANSCRIPTION_MAX_BYTES);
-	} catch (err) {
-		// error-policy:J2 typed transient-class rethrow covering the WHOLE local
-		// response read boundary (fetch, header reads, body read): whatever the
-		// fetch or stream layer threw — including a body read rejecting with
-		// unavailability-looking prose — the local branch surfaces only
-		// MediaFetchError with a static message, which
-		// isTranscriptionUnavailableError refuses as STT-disabled evidence.
-		// Matched by name rather than instanceof so the pass-through survives
-		// module duplication across the multi-target build and test mocks.
-		if (err instanceof Error && err.name === "MediaFetchError") throw err;
-		throw new MediaFetchError(
-			"fetch_failed",
-			"Could not fetch attachment locally",
-			err,
-		);
-	}
 }
 
 /**
@@ -430,7 +324,8 @@ async function transcribeMediaOnDemand(
 		let failure: ReturnType<typeof classifyTranscriptionFailure> | undefined;
 		let buffer: Buffer | undefined;
 		try {
-			buffer = await fetchTranscribableBytes(runtime, attachment.url);
+			buffer = (await fetchAttachmentMediaBytes(runtime, attachment.url))
+				.buffer;
 		} catch (error) {
 			// error-policy:J4 A current byte-fetch failure becomes explicit
 			// retryable attachment state; it never fabricates a transcript.
