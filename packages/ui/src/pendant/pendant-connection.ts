@@ -25,7 +25,8 @@
  * both paths.
  */
 
-import { ElizaError, logger } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core/client-public";
+import { logger } from "@elizaos/logger";
 import {
   createLocalAsrAutoStopDetector,
   encodeMonoPcm16Wav,

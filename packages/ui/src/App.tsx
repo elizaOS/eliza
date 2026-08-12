@@ -15,7 +15,7 @@ import {
   resolveSurfaceManifest,
   type SurfaceManifestBearer,
   type ViewKind,
-} from "@elizaos/core";
+} from "@elizaos/core/client-public";
 import { X } from "lucide-react";
 import "./components/chat/chat-source-registration";
 import {

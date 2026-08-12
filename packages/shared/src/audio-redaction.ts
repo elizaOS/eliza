@@ -34,7 +34,7 @@
  * acceptance note on #14807).
  */
 
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core/errors";
 import type { TranscriptWord } from "./transcripts.js";
 
 /** One redaction window, ms from audio start (same clock as word timings). */

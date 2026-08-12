@@ -20,7 +20,7 @@ import {
   isViewVisible,
   type ViewKind,
 } from "@elizaos/core/client-public";
-import { dedupeModalities } from "@elizaos/core";
+import { dedupeModalities } from "@elizaos/core/client-public";
 import type { RegistryAppInfo } from "../api";
 import { resolveViewIconId } from "../components/views/view-icon-aliases";
 import { viewIconDataUri } from "../components/views/view-icons.generated";

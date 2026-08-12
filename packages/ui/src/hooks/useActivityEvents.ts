@@ -6,7 +6,7 @@
  * moving rail layer — then flushed once on settle.
  */
 
-import { activityEventToPlaintext } from "@elizaos/core";
+import { activityEventToPlaintext } from "@elizaos/core/client-public";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { client } from "../api";
 import { parseProactiveMessageEvent } from "../state/parsers";

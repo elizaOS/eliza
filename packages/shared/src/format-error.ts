@@ -11,7 +11,21 @@
  * logs, plugin crash diagnostics).
  */
 
-export { formatError } from "@elizaos/core";
+/**
+ * Canonical message extractor (mirrors `@elizaos/core` `formatError`).
+ * Kept local so browser/shared imports never pull the prebuilt core blob (#18056).
+ */
+export function formatError(error: unknown): string {
+  try {
+    return error instanceof Error ? error.message : String(error);
+  } catch {
+    try {
+      return Object.prototype.toString.call(error);
+    } catch {
+      return "[unstringifiable error]";
+    }
+  }
+}
 
 export function formatErrorWithStack(err: unknown): string {
   return err instanceof Error ? (err.stack ?? err.message) : String(err);

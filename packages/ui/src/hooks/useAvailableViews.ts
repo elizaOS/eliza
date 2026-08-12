@@ -12,7 +12,7 @@ import {
   type SurfaceManifest,
   type ViewHeaderPolicy,
   type ViewKind,
-} from "@elizaos/core";
+} from "@elizaos/core/client-public";
 import { useEffect, useMemo, useSyncExternalStore } from "react";
 import { client } from "../api";
 import { supportsFullAppShellRoutes } from "../api/app-shell-capabilities";

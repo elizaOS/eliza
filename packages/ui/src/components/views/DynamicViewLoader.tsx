@@ -24,7 +24,7 @@ import {
   type ResolvedSurfaceManifest,
   resolveSurfaceManifest,
   type SurfaceManifest,
-} from "@elizaos/core";
+} from "@elizaos/core/client-public";
 import {
   HOST_EXTERNAL_RUNTIME_PARAM,
   HOST_EXTERNAL_SPECIFIERS_PARAM,

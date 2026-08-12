@@ -22,7 +22,7 @@
  *    never a vacuous pass; a transcriber that throws mid-run fails the run.
  */
 
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core/errors";
 import { normalizeSpokenText } from "./audio-redaction.js";
 import type { TranscriptWord } from "./transcripts.js";
 

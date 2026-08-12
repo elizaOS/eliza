@@ -16,6 +16,10 @@ export {
 	type ReportedError,
 } from "./errors.ts";
 
+export { isTruthyEnvValue } from "./env-utils.ts";
+
+export { formatError } from "./utils/format-error.ts";
+
 export {
 	CANONICAL_ROLE_RANK,
 	ROLE_RANK,
@@ -65,11 +69,28 @@ export {
 } from "./types/view-kind.ts";
 
 export {
+	IMMERSIVE_WALLPAPER_SURFACE,
+	SURFACE_CAPABILITIES,
+	SURFACE_ISOLATION_LEVELS,
+	resolveSurfaceBackgroundPolicy,
+	resolveSurfaceManifest,
 	surfaceGrants,
-	type SurfaceCapability,
 	type ResolvedSurfaceManifest,
+	type SurfaceCapability,
+	type SurfaceIsolationLevel,
+	type SurfaceLifecyclePolicy,
 	type SurfaceManifest,
+	type SurfaceManifestBearer,
 } from "./types/surface-manifest.ts";
+
+export type {
+	AppShellBackgroundPolicy,
+	ViewHeaderPolicy,
+	ViewModality,
+	ViewType,
+} from "./types/plugin.ts";
+
+export { dedupeModalities } from "./types/plugin.ts";
 
 export {
 	DEFAULT_NOTIFICATION_CATEGORY,
@@ -81,3 +102,34 @@ export {
 	type NotificationPriority,
 	type NotificationTier,
 } from "./types/notification.ts";
+
+export {
+	SHORTCUT_AMBIGUITY_EPSILON,
+	SHORTCUT_CONFIDENCE_FLOOR,
+	matchShortcut,
+	normalizeForMatch,
+} from "./runtime/shortcut-registry.ts";
+
+export type {
+	ShortcutDefinition,
+	ShortcutKind,
+	ShortcutMatch,
+	ShortcutMatchContext,
+	ShortcutPattern,
+	ShortcutTarget,
+} from "./types/shortcut.ts";
+
+export {
+	activityEventToPlaintext,
+	type ActivityPlaintextOptions,
+	type ActivityPlaintextSummary,
+} from "./activity-plaintext.ts";
+
+export {
+	toSwarmActivity,
+	type SwarmActivityEnvelope,
+	type SwarmActivityPlanEntry,
+	type SwarmActivityStatus,
+	type SwarmActivityTool,
+	type SwarmEvent,
+} from "./types/swarm-coordinator.ts";

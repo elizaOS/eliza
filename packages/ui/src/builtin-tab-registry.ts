@@ -10,7 +10,7 @@ import {
   resolveSurfaceBackgroundPolicy,
   resolveSurfaceManifest,
   type SurfaceManifest,
-} from "@elizaos/core";
+} from "@elizaos/core/client-public";
 
 /**
  * Declarative registry for the app's builtin (host-owned) tab surfaces.

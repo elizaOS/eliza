@@ -23,7 +23,7 @@ import {
   type ResolvedSurfaceManifest,
   resolveSurfaceManifest,
   type SurfaceManifest,
-} from "@elizaos/core";
+} from "@elizaos/core/client-public";
 import { logger } from "@elizaos/logger";
 import { dispatchNavigateViewEvent } from "@elizaos/shared/events";
 import { useEffect, useMemo, useRef } from "react";

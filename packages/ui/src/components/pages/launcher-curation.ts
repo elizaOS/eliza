@@ -27,7 +27,7 @@ import {
   type EnabledViewKinds,
   isViewKindEnabled,
   resolveViewKind,
-} from "@elizaos/core";
+} from "@elizaos/core/client-public";
 import type { ViewEntry } from "../../hooks/view-catalog";
 import { LAUNCHER_AOSP_ONLY_VIEW_IDS, pathForTab } from "../../navigation";
 import { getInternalToolAppTargetTab } from "../apps/internal-tool-apps";

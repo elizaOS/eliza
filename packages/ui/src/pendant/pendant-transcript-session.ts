@@ -6,7 +6,7 @@
  * server-backed session source while defaulting to browser localStorage.
  */
 
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core/client-public";
 import type {
   PendantAsrWord,
   PendantTranscriptSegmentDetail,
