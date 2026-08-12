@@ -184,6 +184,25 @@ describe("development Vite process commands", () => {
     assert.match(directDevSource, /spawnMirroredChild\(/);
   });
 
+  it("keeps every desktop renderer Vite entrypoint on the canonical source-aware command", () => {
+    const desktopDevSource = readFileSync(
+      path.join(repoRoot, "packages", "app-core", "scripts", "dev-platform.mjs"),
+      "utf8",
+    );
+
+    assert.match(desktopDevSource, /import \{ resolveViteCommand \}/);
+    assert.equal(
+      desktopDevSource.match(/resolveViteCommand\(\{/g)?.length,
+      3,
+      "initial build, HMR, and Rollup watch must share the command resolver",
+    );
+    assert.doesNotMatch(
+      desktopDevSource,
+      /\["--bun", "run", "vite"/,
+      "desktop startup must not bypass source-aware Vite config loading",
+    );
+  });
+
   for (const exitCode of [0, 23]) {
     it(`preserves ordinary child exit code ${exitCode}`, async () => {
       const result = await runMirroredChildProbe({
