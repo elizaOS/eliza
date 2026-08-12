@@ -17,6 +17,7 @@
 
 import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
+import { Button } from "../../../../components/primitives";
 import { useCloudT } from "../../../shell/CloudI18nProvider";
 import {
   buildOidcResumeTarget,
@@ -57,31 +58,62 @@ export default function OidcContinuePage() {
   }, [requestId]);
 
   return (
-    <div className="theme-cloud relative flex min-h-[100dvh] items-center justify-center bg-bg p-4">
+    <main className="theme-cloud relative flex min-h-[100dvh] items-center justify-center bg-bg p-4">
       <div className="relative w-full max-w-md bg-card border border-border p-8 text-center">
         {failure === "issuer_unconfigured" ? (
-          <p className="text-fg">
-            {t("cloud.oidcContinue.issuerUnconfigured", {
-              defaultValue:
-                "Single sign-on is not configured for this deployment: {{envVar}} is unset, so there is no identity provider to return to.",
-              envVar: OIDC_ISSUER_ENV_VAR,
-            })}
-          </p>
+          <RecoveryPanel>
+            <p className="text-fg">
+              {t("cloud.oidcContinue.issuerUnconfigured", {
+                defaultValue:
+                  "Single sign-on is not configured for this deployment: {{envVar}} is unset, so there is no identity provider to return to.",
+                envVar: OIDC_ISSUER_ENV_VAR,
+              })}
+            </p>
+            <RecoveryAction />
+          </RecoveryPanel>
         ) : failure ? (
-          <p className="text-fg">
-            {t("cloud.oidcContinue.expired", {
-              defaultValue:
-                "This sign-in request is no longer valid. Return to the application and start sign-in again.",
-            })}
-          </p>
+          <RecoveryPanel>
+            <p className="text-fg">
+              {t("cloud.oidcContinue.expired", {
+                defaultValue:
+                  "This sign-in request is no longer valid. Return to the application and start sign-in again.",
+              })}
+            </p>
+            <RecoveryAction />
+          </RecoveryPanel>
         ) : (
-          <p className="text-muted-fg">
+          <h1 className="text-lg font-semibold text-muted-fg">
             {t("cloud.oidcContinue.redirecting", {
               defaultValue: "Completing sign-in…",
             })}
-          </p>
+          </h1>
         )}
       </div>
-    </div>
+    </main>
   );
+
+  function RecoveryPanel({ children }: { children: React.ReactNode }) {
+    return (
+      <div className="flex flex-col items-center gap-6">
+        <h1 className="text-lg font-semibold text-txt">
+          {t("cloud.cliLogin.authError", {
+            defaultValue: "Authentication Error",
+          })}
+        </h1>
+        {children}
+      </div>
+    );
+  }
+
+  function RecoveryAction() {
+    return (
+      <Button asChild>
+        <a href="/login">
+          {t("cloud.cliLogin.signInAgain", {
+            defaultValue: "Sign In Again",
+          })}
+        </a>
+      </Button>
+    );
+  }
 }
