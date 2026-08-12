@@ -4,6 +4,7 @@
  */
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { publicPaymentRequestActiveExpiry } from "@elizaos/cloud-shared/testing/payment-request-public-response-fixture";
 import { Hono } from "hono";
 import type { PaymentRequestRow } from "@/lib/services/payment-requests";
 
@@ -75,7 +76,7 @@ const paymentRequest: PaymentRequestRow = {
   settledAt: null,
   settlementTxRef: "provider-tx-ref",
   settlementProof: { signature: "proof-secret" },
-  expiresAt: new Date("2026-08-12T12:00:00.000Z"),
+  expiresAt: new Date(publicPaymentRequestActiveExpiry),
   createdAt: new Date("2026-08-12T11:00:00.000Z"),
   updatedAt: new Date("2026-08-12T11:00:00.000Z"),
   metadata: { internal: "do-not-expose" },
@@ -106,7 +107,7 @@ describe("GET /api/v1/payment-requests/:id", () => {
         reason: "Premium plan",
         status: "pending",
         hostedUrl: "https://checkout.example.test/session",
-        expiresAt: "2026-08-12T12:00:00.000Z",
+        expiresAt: paymentRequest.expiresAt.toISOString(),
       },
     });
     expect(requireUserOrApiKeyWithOrg).not.toHaveBeenCalled();

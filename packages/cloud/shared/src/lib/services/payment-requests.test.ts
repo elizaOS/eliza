@@ -74,7 +74,23 @@ describe("toPublicPaymentRequest", () => {
       reason: "Premium plan",
       status: "expired",
       hostedUrl: "https://checkout.example.test/session",
-      expiresAt: new Date(0),
+      expiresAt: "1970-01-01T00:00:00.000Z",
+    });
+  });
+
+  test("derives an overdue active request as expired without waiting for the janitor", () => {
+    const row = {
+      ...fakeRow("pr-overdue", "org-1"),
+      status: "delivered" as const,
+      expiresAt: new Date("2026-08-13T00:00:00.000Z"),
+      hostedUrl: "https://checkout.example.test/session",
+    };
+
+    expect(toPublicPaymentRequest(row, new Date("2026-08-13T00:00:00.000Z"))).toMatchObject({
+      status: "expired",
+    });
+    expect(toPublicPaymentRequest(row, new Date("2026-08-12T23:59:59.999Z"))).toMatchObject({
+      status: "delivered",
     });
   });
 });
@@ -104,9 +120,16 @@ class ExpireScopingRepository extends PaymentRequestsRepository {
     now: Date,
   ): Promise<string[]> {
     this.forOrgCalls.push({ organizationId, now });
-    return Object.entries(this.orgById)
+    const ids = Object.entries(this.orgById)
       .filter(([, org]) => org === organizationId)
       .map(([id]) => id);
+    this.events.push(
+      ...ids.map((paymentRequestId) => ({
+        paymentRequestId,
+        eventName: "payment.expired" as const,
+      })),
+    );
+    return ids;
   }
 
   override async getPaymentRequest(id: string): Promise<PaymentRequestRow | null> {
@@ -196,20 +219,98 @@ class SettlementRepository extends PaymentRequestsRepository {
     return this.row.id === id ? this.row : null;
   }
 
-  override async updatePaymentRequestStatus(
+  override async settlePaymentRequest(
     id: string,
-    status: Parameters<PaymentRequestsRepository["updatePaymentRequestStatus"]>[1],
-    patch: Parameters<PaymentRequestsRepository["updatePaymentRequestStatus"]>[2] = {},
+    settledAt: Date,
+    settlementTxRef: string,
+    settlementProof: Record<string, unknown>,
   ): Promise<PaymentRequestRow | null> {
     if (this.row.id !== id) return null;
+    if (
+      (this.row.status !== "pending" && this.row.status !== "delivered") ||
+      this.row.expiresAt.getTime() <= settledAt.getTime()
+    ) {
+      return null;
+    }
     this.updateCalls += 1;
     this.row = {
       ...this.row,
-      ...(status ? { status } : {}),
-      ...(patch?.settledAt !== undefined ? { settledAt: patch.settledAt } : {}),
-      ...(patch?.settlementTxRef !== undefined ? { settlementTxRef: patch.settlementTxRef } : {}),
-      ...(patch?.settlementProof !== undefined ? { settlementProof: patch.settlementProof } : {}),
+      status: "settled",
+      settledAt,
+      settlementTxRef,
+      settlementProof,
     };
+    this.events.push({
+      paymentRequestId: id,
+      eventName: "payment.settled",
+    });
+    return this.row;
+  }
+
+  override async initializePaymentRequest(
+    id: string,
+    providerIntent: Record<string, unknown>,
+    hostedUrl: string | null,
+    initializedAt: Date,
+  ): Promise<PaymentRequestRow | null> {
+    if (this.row.id !== id) return null;
+    if (this.row.status !== "pending" || this.row.expiresAt.getTime() <= initializedAt.getTime()) {
+      return null;
+    }
+    this.updateCalls += 1;
+    this.row = {
+      ...this.row,
+      status: "delivered",
+      providerIntent,
+      hostedUrl,
+    };
+    this.events.push({
+      paymentRequestId: id,
+      eventName: "payment.delivered",
+    });
+    return this.row;
+  }
+
+  override async failPaymentRequest(
+    id: string,
+    _error: string,
+    failedAt: Date,
+  ): Promise<PaymentRequestRow | null> {
+    if (this.row.id !== id) return null;
+    if (
+      (this.row.status !== "pending" && this.row.status !== "delivered") ||
+      this.row.expiresAt.getTime() <= failedAt.getTime()
+    ) {
+      return null;
+    }
+    this.updateCalls += 1;
+    this.row = {
+      ...this.row,
+      status: "failed",
+    };
+    this.events.push({
+      paymentRequestId: id,
+      eventName: "payment.failed",
+    });
+    return this.row;
+  }
+
+  override async cancelPaymentRequest(
+    id: string,
+    organizationId: string,
+    _reason: string | undefined,
+    canceledAt: Date,
+  ): Promise<PaymentRequestRow | null> {
+    if (this.row.id !== id || this.row.organizationId !== organizationId) return null;
+    if (
+      (this.row.status !== "pending" && this.row.status !== "delivered") ||
+      this.row.expiresAt.getTime() <= canceledAt.getTime()
+    ) {
+      return null;
+    }
+    this.updateCalls += 1;
+    this.row = { ...this.row, status: "canceled" };
+    this.events.push({ paymentRequestId: id, eventName: "payment.canceled" });
     return this.row;
   }
 
@@ -222,10 +323,34 @@ class SettlementRepository extends PaymentRequestsRepository {
 }
 
 function pendingRow(id: string): PaymentRequestRow {
-  return { ...fakeRow(id, "org-1"), status: "pending" };
+  return {
+    ...fakeRow(id, "org-1"),
+    status: "pending",
+    expiresAt: new Date(Date.now() + 60_000),
+  };
 }
 
 describe("settlement idempotency under webhook replay (#10732)", () => {
+  test("markInitialized replays only an identical delivered transition", async () => {
+    const repository = new SettlementRepository(pendingRow("pr-initialize"));
+    const service = createPaymentRequestsService({ repository, adapters: [] });
+    const intent = { sessionId: "session-1" };
+    const hostedUrl = "https://checkout.example.test/session-1";
+
+    const first = await service.markInitialized("pr-initialize", intent, hostedUrl);
+    expect(first.status).toBe("delivered");
+    const replay = await service.markInitialized("pr-initialize", intent, hostedUrl);
+    expect(replay).toEqual(first);
+    expect(repository.updateCalls).toBe(1);
+    expect(repository.events.map((event) => event.eventName)).toEqual(["payment.delivered"]);
+
+    await expect(
+      service.markInitialized("pr-initialize", { sessionId: "different-session" }, hostedUrl),
+    ).rejects.toThrow('state changed concurrently to "delivered"');
+    expect(repository.updateCalls).toBe(1);
+    expect(repository.events).toHaveLength(1);
+  });
+
   test("markSettled replay with the same txRef is a no-op: one update, one settled event", async () => {
     const repository = new SettlementRepository(pendingRow("pr-settle"));
     const service = createPaymentRequestsService({ repository, adapters: [] });
@@ -255,6 +380,18 @@ describe("settlement idempotency under webhook replay (#10732)", () => {
     expect(repository.updateCalls).toBe(1);
   });
 
+  test("markSettled fails closed at and after the exact request deadline", async () => {
+    const repository = new SettlementRepository({
+      ...pendingRow("pr-late"),
+      expiresAt: new Date(Date.now() - 1),
+    });
+    const service = createPaymentRequestsService({ repository, adapters: [] });
+
+    await expect(service.markSettled("pr-late", "trk-late", {})).rejects.toThrow(/expired at/);
+    expect(repository.row.status).toBe("pending");
+    expect(repository.events).toHaveLength(0);
+  });
+
   test("a late failure callback cannot clobber a settled request", async () => {
     const repository = new SettlementRepository(pendingRow("pr-settle-3"));
     const service = createPaymentRequestsService({ repository, adapters: [] });
@@ -281,5 +418,17 @@ describe("settlement idempotency under webhook replay (#10732)", () => {
     await expect(service.markSettled("pr-fail", "trk-x", {})).rejects.toThrow(
       'already in terminal status "failed"',
     );
+  });
+
+  test("cancel replay is a no-op with one transition and event", async () => {
+    const repository = new SettlementRepository(pendingRow("pr-cancel"));
+    const service = createPaymentRequestsService({ repository, adapters: [] });
+
+    const first = await service.cancel("pr-cancel", "org-1", "payer canceled");
+    expect(first.status).toBe("canceled");
+    const replay = await service.cancel("pr-cancel", "org-1", "payer canceled");
+    expect(replay.status).toBe("canceled");
+    expect(repository.updateCalls).toBe(1);
+    expect(repository.events.map((event) => event.eventName)).toEqual(["payment.canceled"]);
   });
 });

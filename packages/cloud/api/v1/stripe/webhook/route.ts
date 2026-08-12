@@ -68,6 +68,42 @@ app.post("/", rateLimit(RateLimitPresets.AGGRESSIVE), async (c) => {
     typeof parsed.proof.stripe_event_id === "string"
       ? parsed.proof.stripe_event_id
       : null;
+  const service = getPaymentRequestsService(c.env);
+  const failureReason =
+    parsed.status === "settled"
+      ? null
+      : typeof parsed.proof.stripe_failure_message === "string"
+        ? parsed.proof.stripe_failure_message
+        : "Stripe payment failed";
+
+  // Persist before recording the in-process publish key. Otherwise a transient
+  // or deadline rejection poisons Stripe's retry and can silently drop money.
+  try {
+    if (parsed.status === "settled") {
+      await service.markSettled(
+        parsed.paymentRequestId,
+        parsed.txRef ?? providerEventId ?? "stripe:settled",
+        parsed.proof,
+      );
+    } else {
+      await service.markFailed(
+        parsed.paymentRequestId,
+        failureReason ?? "Stripe payment failed",
+      );
+    }
+  } catch (error) {
+    // error-policy:J1 a rejected transition is never published or acknowledged.
+    logger.error("[StripeWebhook API] Settlement persistence failed", {
+      paymentRequestId: parsed.paymentRequestId,
+      status: parsed.status,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return c.json(
+      { success: false, error: "Settlement persistence failed" },
+      500,
+    );
+  }
+
   if (providerEventId) {
     const recorded = paymentCallbackBus.recordProviderEvent(
       "stripe",
@@ -81,14 +117,7 @@ app.post("/", rateLimit(RateLimitPresets.AGGRESSIVE), async (c) => {
     }
   }
 
-  const service = getPaymentRequestsService(c.env);
-
   if (parsed.status === "settled") {
-    await service.markSettled(
-      parsed.paymentRequestId,
-      parsed.txRef ?? providerEventId ?? "stripe:settled",
-      parsed.proof,
-    );
     await paymentCallbackBus.publish({
       name: "PaymentSettled",
       paymentRequestId: parsed.paymentRequestId,
@@ -98,18 +127,13 @@ app.post("/", rateLimit(RateLimitPresets.AGGRESSIVE), async (c) => {
       settledAt: new Date(),
     });
   } else {
-    const error =
-      typeof parsed.proof.stripe_failure_message === "string"
-        ? parsed.proof.stripe_failure_message
-        : "Stripe payment failed";
-    await service.markFailed(parsed.paymentRequestId, error);
     await paymentCallbackBus.publish({
       name: "PaymentFailed",
       paymentRequestId: parsed.paymentRequestId,
       provider: "stripe",
       txRef: parsed.txRef,
       providerEventId: providerEventId ?? undefined,
-      error,
+      error: failureReason ?? "Stripe payment failed",
       failedAt: new Date(),
     });
   }

@@ -17,6 +17,24 @@ import { isOxaPayConfigured, oxaPayService } from "../oxapay";
 import { type PaymentProviderAdapter, type PaymentRequestRow } from "../payment-requests";
 import { IgnoredWebhookEvent } from "../payment-webhook-errors";
 
+const OXAPAY_MIN_INVOICE_LIFETIME_MINUTES = 15;
+const OXAPAY_MAX_INVOICE_LIFETIME_MINUTES = 2880;
+// One minute of headroom preserves OxaPay's 15-minute minimum after the row is
+// persisted while still rounding the provider invoice down to our deadline.
+export const OXAPAY_MIN_REQUEST_LIFETIME_MS = (OXAPAY_MIN_INVOICE_LIFETIME_MINUTES + 1) * 60 * 1000;
+export const OXAPAY_MAX_REQUEST_LIFETIME_MS = OXAPAY_MAX_INVOICE_LIFETIME_MINUTES * 60 * 1000;
+
+export function oxaPayLifetimeSeconds(expiresAt: Date, nowMs: number = Date.now()): number {
+  const minutes = Math.floor((expiresAt.getTime() - nowMs) / 60_000);
+  if (minutes < OXAPAY_MIN_INVOICE_LIFETIME_MINUTES) {
+    throw new Error("OxaPay invoices require at least 15 whole minutes before expiry");
+  }
+  if (minutes > OXAPAY_MAX_INVOICE_LIFETIME_MINUTES) {
+    throw new Error("OxaPay invoices cannot expire more than 2880 minutes from creation");
+  }
+  return minutes * 60;
+}
+
 function readMetaString(request: PaymentRequestRow, key: string): string | undefined {
   const meta = (request.metadata ?? {}) as Record<string, unknown>;
   const value = meta[key];
@@ -50,6 +68,8 @@ function constantTimeEqualHex(a: string, b: string): boolean {
 export function createOxaPayPaymentAdapter(): PaymentProviderAdapter {
   return {
     provider: "oxapay",
+    minimumRequestLifetimeMs: OXAPAY_MIN_REQUEST_LIFETIME_MS,
+    maximumRequestLifetimeMs: OXAPAY_MAX_REQUEST_LIFETIME_MS,
 
     async createIntent({ request }) {
       if (request.provider !== "oxapay") {
@@ -83,6 +103,7 @@ export function createOxaPayPaymentAdapter(): PaymentProviderAdapter {
       }
 
       const returnUrl = request.successUrl ?? readMetaString(request, "success_url");
+      const lifetime = oxaPayLifetimeSeconds(request.expiresAt);
       const invoice = await oxaPayService.createInvoice({
         amount: amountUsd,
         currency: (request.currency || "usd").toUpperCase(),
@@ -91,6 +112,7 @@ export function createOxaPayPaymentAdapter(): PaymentProviderAdapter {
         description: request.reason ?? readMetaString(request, "product_description"),
         callbackUrl,
         returnUrl,
+        lifetime,
       });
 
       logger.info("[OxaPayPaymentAdapter] Created invoice", {

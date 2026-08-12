@@ -1,7 +1,8 @@
 // Exercises oxapay behavior with deterministic cloud-shared lib fixtures.
-import { beforeAll, describe, expect, test } from "bun:test";
+import { afterEach, beforeAll, describe, expect, mock, setSystemTime, test } from "bun:test";
+import type { PaymentRequestRow } from "../payment-requests";
 import { IgnoredWebhookEvent } from "../payment-webhook-errors";
-import { createOxaPayPaymentAdapter } from "./oxapay";
+import { createOxaPayPaymentAdapter, oxaPayLifetimeSeconds } from "./oxapay";
 
 const SECRET = "test-oxapay-merchant-key";
 
@@ -22,6 +23,12 @@ async function sign(body: string): Promise<string> {
 
 beforeAll(() => {
   process.env.OXAPAY_MERCHANT_API_KEY = SECRET;
+});
+
+const originalFetch = globalThis.fetch;
+afterEach(() => {
+  globalThis.fetch = originalFetch;
+  setSystemTime();
 });
 
 const adapter = createOxaPayPaymentAdapter();
@@ -85,5 +92,54 @@ describe("OxaPay payment adapter", () => {
         request: { id: "x", provider: "stripe", amountCents: 100n } as never,
       }),
     ).rejects.toThrow(/non-oxapay/i);
+  });
+
+  test("createIntent rounds the provider lifetime down to the request deadline", async () => {
+    const now = new Date("2026-08-13T00:00:00.000Z");
+    const deadline = new Date("2026-08-13T00:16:59.999Z");
+    setSystemTime(now);
+    process.env.NEXT_PUBLIC_APP_URL = "https://api.example.test";
+    const fetchMock = mock(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body)) as { lifeTime: number };
+      expect(body.lifeTime).toBe(16);
+      return new Response(
+        JSON.stringify({
+          result: 100,
+          trackId: "trk-deadline",
+          payLink: "https://pay.oxapay.example.test/invoice",
+        }),
+        { status: 200 },
+      );
+    });
+    globalThis.fetch = fetchMock as typeof fetch;
+
+    const request = {
+      id: "00000000-0000-0000-0000-000000000001",
+      provider: "oxapay",
+      amountCents: 500,
+      currency: "USD",
+      reason: "Synthetic payment",
+      expiresAt: deadline,
+      metadata: {},
+    } as PaymentRequestRow;
+    const result = await adapter.createIntent({ request });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(result.providerIntent.oxapay_expires_at).toBe(
+      new Date(now.getTime() + 16 * 60_000).toISOString(),
+    );
+    expect(new Date(String(result.providerIntent.oxapay_expires_at)).getTime()).toBeLessThanOrEqual(
+      deadline.getTime(),
+    );
+  });
+
+  test("rejects provider lifetimes outside OxaPay's supported window", () => {
+    const now = Date.parse("2026-08-13T00:00:00.000Z");
+    expect(() => oxaPayLifetimeSeconds(new Date(now + 15 * 60_000 - 1), now)).toThrow(
+      /at least 15 whole minutes/,
+    );
+    expect(() => oxaPayLifetimeSeconds(new Date(now + 2881 * 60_000), now)).toThrow(
+      /more than 2880 minutes/,
+    );
   });
 });

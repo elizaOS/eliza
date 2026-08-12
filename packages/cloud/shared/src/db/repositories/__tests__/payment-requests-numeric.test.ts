@@ -36,6 +36,7 @@ process.env.NODE_ENV ||= "test";
 process.env.MOCK_REDIS = "1";
 
 import { pushSchema } from "drizzle-kit/api";
+import { eq } from "drizzle-orm";
 import { closeDatabaseConnectionsForTests, dbWrite } from "../../client";
 import {
   appDeploymentStatusEnum,
@@ -44,7 +45,7 @@ import {
   userDatabaseStatusEnum,
 } from "../../schemas/apps";
 import { organizations } from "../../schemas/organizations";
-import { paymentRequests } from "../../schemas/payment-requests";
+import { paymentRequestEvents, paymentRequests } from "../../schemas/payment-requests";
 import { users } from "../../schemas/users";
 import { PaymentRequestsRepository } from "../payment-requests";
 import { parsePaymentAmountCents } from "../payment-requests-numeric";
@@ -148,6 +149,7 @@ describe("PaymentRequestsRepository.getPaymentRequest fail-closed wiring", () =>
         users,
         apps,
         paymentRequests,
+        paymentRequestEvents,
         appDeploymentStatusEnum,
         appReviewStatusEnum,
         userDatabaseStatusEnum,
@@ -165,6 +167,7 @@ describe("PaymentRequestsRepository.getPaymentRequest fail-closed wiring", () =>
 
   beforeEach(async () => {
     expect(pgliteReady).toBe(true);
+    await dbWrite.delete(paymentRequestEvents);
     await dbWrite.delete(paymentRequests);
     await dbWrite.delete(organizations);
   });
@@ -238,5 +241,344 @@ describe("PaymentRequestsRepository.getPaymentRequest fail-closed wiring", () =>
 
     const fetched = await repo.getPaymentRequest(created.id);
     expect(fetched?.amountCents).toBe(0);
+  });
+
+  test("settlement wins before the deadline and commits exactly one terminal event", async () => {
+    const orgId = await seedOrg();
+    const deadline = new Date("2030-01-01T00:00:00.000Z");
+    const decisionTime = new Date("2029-12-31T23:59:59.999Z");
+    const created = await repo.createPaymentRequest({
+      organizationId: orgId,
+      provider: "stripe",
+      amountCents: 500,
+      currency: "usd",
+      paymentContext: { kind: "any_payer" },
+      expiresAt: deadline,
+    });
+
+    const [expired, settled] = await Promise.all([
+      repo.expirePastPaymentRequest(created.id, decisionTime),
+      repo.settlePaymentRequest(created.id, decisionTime, "pi-winner", {
+        event: "synthetic",
+      }),
+    ]);
+
+    expect(expired).toBe(false);
+    expect(settled?.status).toBe("settled");
+    expect((await repo.getPaymentRequest(created.id))?.status).toBe("settled");
+    const events = await dbWrite
+      .select()
+      .from(paymentRequestEvents)
+      .where(eq(paymentRequestEvents.payment_request_id, created.id));
+    expect(events.map((event) => event.event_name)).toEqual(["payment.settled"]);
+  });
+
+  test("expiry wins at the exact deadline and a late settlement cannot commit", async () => {
+    const orgId = await seedOrg();
+    const deadline = new Date("2030-01-01T00:00:00.000Z");
+    const created = await repo.createPaymentRequest({
+      organizationId: orgId,
+      provider: "oxapay",
+      amountCents: 500,
+      currency: "usd",
+      paymentContext: { kind: "any_payer" },
+      expiresAt: deadline,
+    });
+
+    const [settled, expired] = await Promise.all([
+      repo.settlePaymentRequest(created.id, deadline, "trk-too-late", {
+        event: "synthetic",
+      }),
+      repo.expirePastPaymentRequest(created.id, deadline),
+    ]);
+
+    expect(settled).toBeNull();
+    expect(expired).toBe(true);
+    expect((await repo.getPaymentRequest(created.id))?.status).toBe("expired");
+    const events = await dbWrite
+      .select()
+      .from(paymentRequestEvents)
+      .where(eq(paymentRequestEvents.payment_request_id, created.id));
+    expect(events.map((event) => event.event_name)).toEqual(["payment.expired"]);
+  });
+
+  test("concurrent duplicate settlement callbacks create one transition and event", async () => {
+    const orgId = await seedOrg();
+    const decisionTime = new Date("2029-12-31T23:59:59.999Z");
+    const created = await repo.createPaymentRequest({
+      organizationId: orgId,
+      provider: "stripe",
+      amountCents: 500,
+      currency: "usd",
+      paymentContext: { kind: "any_payer" },
+      expiresAt: new Date("2030-01-01T00:00:00.000Z"),
+    });
+
+    const results = await Promise.all([
+      repo.settlePaymentRequest(created.id, decisionTime, "pi-same", {}),
+      repo.settlePaymentRequest(created.id, decisionTime, "pi-same", {}),
+    ]);
+    expect(results.filter(Boolean)).toHaveLength(1);
+    const events = await dbWrite
+      .select()
+      .from(paymentRequestEvents)
+      .where(eq(paymentRequestEvents.payment_request_id, created.id));
+    expect(events.map((event) => event.event_name)).toEqual(["payment.settled"]);
+  });
+
+  test("concurrent settle and fail commit one terminal state without mixed settlement fields", async () => {
+    const orgId = await seedOrg();
+    const decisionTime = new Date("2029-12-31T23:59:59.999Z");
+    const created = await repo.createPaymentRequest({
+      organizationId: orgId,
+      provider: "stripe",
+      amountCents: 500,
+      currency: "usd",
+      paymentContext: { kind: "any_payer" },
+      expiresAt: new Date("2030-01-01T00:00:00.000Z"),
+    });
+
+    const [settled, failed] = await Promise.all([
+      repo.settlePaymentRequest(created.id, decisionTime, "pi-race", { event: "synthetic" }),
+      repo.failPaymentRequest(created.id, "synthetic failure", decisionTime),
+    ]);
+    expect([settled, failed].filter(Boolean)).toHaveLength(1);
+
+    const row = await repo.getPaymentRequest(created.id);
+    const events = await dbWrite
+      .select()
+      .from(paymentRequestEvents)
+      .where(eq(paymentRequestEvents.payment_request_id, created.id));
+    if (row?.status === "settled") {
+      expect(row.settlementTxRef).toBe("pi-race");
+      expect(events.map((event) => event.event_name)).toEqual(["payment.settled"]);
+    } else {
+      expect(row?.status).toBe("failed");
+      expect(row?.settledAt).toBeNull();
+      expect(row?.settlementTxRef).toBeNull();
+      expect(row?.settlementProof).toBeNull();
+      expect(events.map((event) => event.event_name)).toEqual(["payment.failed"]);
+      expect(events[0]?.redacted_payload).toMatchObject({
+        paymentRequestId: created.id,
+        status: "failed",
+        txRef: null,
+      });
+    }
+  });
+
+  test("failure before the deadline commits no settlement residue and one matching event", async () => {
+    const orgId = await seedOrg();
+    const decisionTime = new Date("2029-12-31T23:59:59.999Z");
+    const created = await repo.createPaymentRequest({
+      organizationId: orgId,
+      provider: "stripe",
+      amountCents: 500,
+      currency: "usd",
+      paymentContext: { kind: "any_payer" },
+      expiresAt: new Date("2030-01-01T00:00:00.000Z"),
+    });
+
+    const failed = await repo.failPaymentRequest(created.id, "synthetic failure", decisionTime);
+    expect(failed).toMatchObject({
+      status: "failed",
+      settledAt: null,
+      settlementTxRef: null,
+      settlementProof: null,
+    });
+    const events = await dbWrite
+      .select()
+      .from(paymentRequestEvents)
+      .where(eq(paymentRequestEvents.payment_request_id, created.id));
+    expect(events.map((event) => event.event_name)).toEqual(["payment.failed"]);
+    expect(events[0]?.redacted_payload).toMatchObject({
+      paymentRequestId: created.id,
+      status: "failed",
+      txRef: null,
+      error: "synthetic failure",
+    });
+  });
+
+  test("expiry at the exact deadline cannot be overwritten by initialization", async () => {
+    const orgId = await seedOrg();
+    const deadline = new Date("2030-01-01T00:00:00.000Z");
+    const created = await repo.createPaymentRequest({
+      organizationId: orgId,
+      provider: "stripe",
+      amountCents: 500,
+      currency: "usd",
+      paymentContext: { kind: "any_payer" },
+      expiresAt: deadline,
+    });
+
+    const [initialized, expired] = await Promise.all([
+      repo.initializePaymentRequest(
+        created.id,
+        { stripe_session_id: "cs_too_late" },
+        "https://checkout.example.test/too-late",
+        deadline,
+      ),
+      repo.expirePastPaymentRequest(created.id, deadline),
+    ]);
+    expect(initialized).toBeNull();
+    expect(expired).toBe(true);
+
+    const row = await repo.getPaymentRequest(created.id);
+    expect(row?.status).toBe("expired");
+    expect(row?.hostedUrl).toBeNull();
+    expect(row?.providerIntent).toEqual({});
+    const events = await dbWrite
+      .select()
+      .from(paymentRequestEvents)
+      .where(eq(paymentRequestEvents.payment_request_id, created.id));
+    expect(events.map((event) => event.event_name)).toEqual(["payment.expired"]);
+  });
+
+  test("concurrent settle and cancel commit one terminal state and one matching event", async () => {
+    const orgId = await seedOrg();
+    const decisionTime = new Date("2029-12-31T23:59:59.999Z");
+    const created = await repo.createPaymentRequest({
+      organizationId: orgId,
+      provider: "stripe",
+      amountCents: 500,
+      currency: "usd",
+      paymentContext: { kind: "any_payer" },
+      expiresAt: new Date("2030-01-01T00:00:00.000Z"),
+    });
+
+    const [settled, canceled] = await Promise.all([
+      repo.settlePaymentRequest(created.id, decisionTime, "pi-cancel-race", {}),
+      repo.cancelPaymentRequest(created.id, orgId, "synthetic cancel", decisionTime),
+    ]);
+    expect([settled, canceled].filter(Boolean)).toHaveLength(1);
+
+    const row = await repo.getPaymentRequest(created.id);
+    const events = await dbWrite
+      .select()
+      .from(paymentRequestEvents)
+      .where(eq(paymentRequestEvents.payment_request_id, created.id));
+    if (row?.status === "settled") {
+      expect(row.settlementTxRef).toBe("pi-cancel-race");
+      expect(events.map((event) => event.event_name)).toEqual(["payment.settled"]);
+    } else {
+      expect(row?.status).toBe("canceled");
+      expect(row?.settledAt).toBeNull();
+      expect(row?.settlementTxRef).toBeNull();
+      expect(row?.settlementProof).toBeNull();
+      expect(events.map((event) => event.event_name)).toEqual(["payment.canceled"]);
+      expect(events[0]?.redacted_payload).toMatchObject({
+        paymentRequestId: created.id,
+        status: "canceled",
+        txRef: null,
+      });
+    }
+  });
+
+  test("cancel before the deadline commits no settlement residue and one matching event", async () => {
+    const orgId = await seedOrg();
+    const decisionTime = new Date("2029-12-31T23:59:59.999Z");
+    const created = await repo.createPaymentRequest({
+      organizationId: orgId,
+      provider: "stripe",
+      amountCents: 500,
+      currency: "usd",
+      paymentContext: { kind: "any_payer" },
+      expiresAt: new Date("2030-01-01T00:00:00.000Z"),
+    });
+
+    const canceled = await repo.cancelPaymentRequest(
+      created.id,
+      orgId,
+      "synthetic cancel",
+      decisionTime,
+    );
+    expect(canceled).toMatchObject({
+      status: "canceled",
+      settledAt: null,
+      settlementTxRef: null,
+      settlementProof: null,
+    });
+    const events = await dbWrite
+      .select()
+      .from(paymentRequestEvents)
+      .where(eq(paymentRequestEvents.payment_request_id, created.id));
+    expect(events.map((event) => event.event_name)).toEqual(["payment.canceled"]);
+    expect(events[0]?.redacted_payload).toMatchObject({
+      paymentRequestId: created.id,
+      status: "canceled",
+      txRef: null,
+      error: "synthetic cancel",
+    });
+  });
+
+  test("failure and cancellation both fail closed at the exact deadline", async () => {
+    const orgId = await seedOrg();
+    const deadline = new Date("2030-01-01T00:00:00.000Z");
+    const failedCandidate = await repo.createPaymentRequest({
+      organizationId: orgId,
+      provider: "stripe",
+      amountCents: 500,
+      currency: "usd",
+      paymentContext: { kind: "any_payer" },
+      expiresAt: deadline,
+    });
+    const canceledCandidate = await repo.createPaymentRequest({
+      organizationId: orgId,
+      provider: "stripe",
+      amountCents: 500,
+      currency: "usd",
+      paymentContext: { kind: "any_payer" },
+      expiresAt: deadline,
+    });
+
+    const [failed, failedExpired, canceled, canceledExpired] = await Promise.all([
+      repo.failPaymentRequest(failedCandidate.id, "too late", deadline),
+      repo.expirePastPaymentRequest(failedCandidate.id, deadline),
+      repo.cancelPaymentRequest(canceledCandidate.id, orgId, "too late", deadline),
+      repo.expirePastPaymentRequest(canceledCandidate.id, deadline),
+    ]);
+    expect(failed).toBeNull();
+    expect(canceled).toBeNull();
+    expect(failedExpired).toBe(true);
+    expect(canceledExpired).toBe(true);
+    expect((await repo.getPaymentRequest(failedCandidate.id))?.status).toBe("expired");
+    expect((await repo.getPaymentRequest(canceledCandidate.id))?.status).toBe("expired");
+  });
+
+  test("initialization before the deadline commits its fields and event atomically", async () => {
+    const orgId = await seedOrg();
+    const initializedAt = new Date("2029-12-31T23:59:59.999Z");
+    const created = await repo.createPaymentRequest({
+      organizationId: orgId,
+      provider: "stripe",
+      amountCents: 500,
+      currency: "usd",
+      paymentContext: { kind: "any_payer" },
+      expiresAt: new Date("2030-01-01T00:00:00.000Z"),
+    });
+
+    const initialized = await repo.initializePaymentRequest(
+      created.id,
+      { stripe_session_id: "cs_atomic" },
+      "https://checkout.example.test/atomic",
+      initializedAt,
+    );
+    expect(initialized).toMatchObject({
+      status: "delivered",
+      hostedUrl: "https://checkout.example.test/atomic",
+      providerIntent: { stripe_session_id: "cs_atomic" },
+      settledAt: null,
+      settlementTxRef: null,
+      settlementProof: null,
+    });
+    const events = await dbWrite
+      .select()
+      .from(paymentRequestEvents)
+      .where(eq(paymentRequestEvents.payment_request_id, created.id));
+    expect(events.map((event) => event.event_name)).toEqual(["payment.delivered"]);
+    expect(events[0]?.redacted_payload).toMatchObject({
+      paymentRequestId: created.id,
+      status: "delivered",
+      txRef: null,
+    });
   });
 });

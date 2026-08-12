@@ -1,5 +1,5 @@
 // Persists payment requests records for cloud services through the shared DB boundary.
-import { and, desc, eq, gte, inArray, lt, lte, sql } from "drizzle-orm";
+import { and, desc, eq, gt, gte, inArray, lte, sql } from "drizzle-orm";
 import { dbWrite as db } from "../client";
 import {
   type NewPaymentRequest as NewPaymentRequestDbRow,
@@ -112,31 +112,6 @@ function toDbInsert(input: NewPaymentRequest): NewPaymentRequestDbRow {
   };
 }
 
-function toDbPatch(input: Partial<NewPaymentRequest>): Partial<NewPaymentRequestDbRow> {
-  const patch: Partial<NewPaymentRequestDbRow> = {};
-  if (input.organizationId !== undefined) patch.organization_id = input.organizationId;
-  if (input.agentId !== undefined) patch.agent_id = input.agentId;
-  if (input.appId !== undefined) patch.app_id = input.appId;
-  if (input.provider !== undefined) patch.provider = input.provider;
-  if (input.amountCents !== undefined) patch.amount_cents = BigInt(input.amountCents);
-  if (input.currency !== undefined) patch.currency = input.currency;
-  if (input.reason !== undefined) patch.reason = input.reason;
-  if (input.paymentContext !== undefined) patch.payment_context = input.paymentContext;
-  if (input.payerIdentityId !== undefined) patch.payer_identity_id = input.payerIdentityId;
-  if (input.payerUserId !== undefined) patch.payer_user_id = input.payerUserId;
-  if (input.status !== undefined) patch.status = input.status;
-  if (input.hostedUrl !== undefined) patch.hosted_url = input.hostedUrl;
-  if (input.callbackUrl !== undefined) patch.callback_url = input.callbackUrl;
-  if (input.callbackSecret !== undefined) patch.callback_secret = input.callbackSecret;
-  if (input.providerIntent !== undefined) patch.provider_intent = input.providerIntent;
-  if (input.settledAt !== undefined) patch.settled_at = input.settledAt;
-  if (input.settlementTxRef !== undefined) patch.settlement_tx_ref = input.settlementTxRef;
-  if (input.settlementProof !== undefined) patch.settlement_proof = input.settlementProof;
-  if (input.expiresAt !== undefined) patch.expires_at = input.expiresAt;
-  if (input.metadata !== undefined) patch.metadata = input.metadata;
-  return patch;
-}
-
 function toDomain(row: PaymentRequestDbRow): PaymentRequestRow {
   return {
     id: row.id,
@@ -171,6 +146,23 @@ function toDbEvent(input: NewPaymentRequestEvent): NewPaymentRequestEventDbRow {
     payment_request_id: input.paymentRequestId,
     event_name: input.eventName,
     redacted_payload: input.redactedPayload ?? {},
+  };
+}
+
+function lifecycleEventPayload(
+  row: PaymentRequestDbRow,
+  status: "delivered" | "settled" | "failed" | "expired" | "canceled",
+  detail?: { error?: string; txRef?: string },
+): Record<string, unknown> {
+  return {
+    paymentRequestId: row.id,
+    organizationId: row.organization_id,
+    provider: row.provider,
+    amountCents: parsePaymentAmountCents(row.amount_cents, "amount_cents"),
+    currency: row.currency,
+    status,
+    txRef: detail?.txRef ?? null,
+    error: detail?.error,
   };
 }
 
@@ -210,18 +202,149 @@ export class PaymentRequestsRepository {
     return rows.map(toDomain);
   }
 
-  async updatePaymentRequestStatus(
+  async updatePaymentRequestIntent(
     id: string,
-    status: PaymentRequestStatus | null,
-    patch: Partial<NewPaymentRequest> = {},
+    providerIntent: Record<string, unknown>,
+    hostedUrl: string | null,
   ): Promise<PaymentRequestRow | null> {
-    const dbPatch = toDbPatch(patch);
     const [row] = await db
       .update(paymentRequests)
-      .set({ ...dbPatch, ...(status ? { status } : {}), updated_at: new Date() })
+      .set({ provider_intent: providerIntent, hosted_url: hostedUrl, updated_at: new Date() })
       .where(eq(paymentRequests.id, id))
       .returning();
     return row ? toDomain(row) : null;
+  }
+
+  async initializePaymentRequest(
+    id: string,
+    providerIntent: Record<string, unknown>,
+    hostedUrl: string | null,
+    initializedAt: Date,
+  ): Promise<PaymentRequestRow | null> {
+    return db.transaction(async (tx) => {
+      const [row] = await tx
+        .update(paymentRequests)
+        .set({
+          status: "delivered",
+          provider_intent: providerIntent,
+          hosted_url: hostedUrl,
+          updated_at: initializedAt,
+        })
+        .where(
+          and(
+            eq(paymentRequests.id, id),
+            eq(paymentRequests.status, "pending"),
+            gt(paymentRequests.expires_at, initializedAt),
+          ),
+        )
+        .returning();
+      if (!row) return null;
+      await tx.insert(paymentRequestEvents).values({
+        payment_request_id: row.id,
+        event_name: "payment.delivered",
+        redacted_payload: lifecycleEventPayload(row, "delivered"),
+      });
+      return toDomain(row);
+    });
+  }
+
+  async failPaymentRequest(
+    id: string,
+    error: string,
+    failedAt: Date,
+  ): Promise<PaymentRequestRow | null> {
+    const failable: PaymentRequestStatus[] = ["pending", "delivered"];
+    return db.transaction(async (tx) => {
+      const [row] = await tx
+        .update(paymentRequests)
+        .set({ status: "failed", updated_at: failedAt })
+        .where(
+          and(
+            eq(paymentRequests.id, id),
+            inArray(paymentRequests.status, failable),
+            gt(paymentRequests.expires_at, failedAt),
+          ),
+        )
+        .returning();
+      if (!row) return null;
+      await tx.insert(paymentRequestEvents).values({
+        payment_request_id: row.id,
+        event_name: "payment.failed",
+        redacted_payload: lifecycleEventPayload(row, "failed", { error }),
+      });
+      return toDomain(row);
+    });
+  }
+
+  async cancelPaymentRequest(
+    id: string,
+    organizationId: string,
+    reason: string | undefined,
+    canceledAt: Date,
+  ): Promise<PaymentRequestRow | null> {
+    const cancelable: PaymentRequestStatus[] = ["pending", "delivered"];
+    return db.transaction(async (tx) => {
+      const [row] = await tx
+        .update(paymentRequests)
+        .set({ status: "canceled", updated_at: canceledAt })
+        .where(
+          and(
+            eq(paymentRequests.id, id),
+            eq(paymentRequests.organization_id, organizationId),
+            inArray(paymentRequests.status, cancelable),
+            gt(paymentRequests.expires_at, canceledAt),
+          ),
+        )
+        .returning();
+      if (!row) return null;
+      await tx.insert(paymentRequestEvents).values({
+        payment_request_id: row.id,
+        event_name: "payment.canceled",
+        redacted_payload: lifecycleEventPayload(row, "canceled", { error: reason }),
+      });
+      return toDomain(row);
+    });
+  }
+
+  /**
+   * Atomically wins settlement only while the request is payable. The strict
+   * `expires_at > settledAt` predicate makes the database authoritative at the
+   * exact deadline; the event is committed with the terminal transition.
+   */
+  async settlePaymentRequest(
+    id: string,
+    settledAt: Date,
+    settlementTxRef: string,
+    settlementProof: Record<string, unknown>,
+  ): Promise<PaymentRequestRow | null> {
+    const payable: PaymentRequestStatus[] = ["pending", "delivered"];
+    return db.transaction(async (tx) => {
+      const [row] = await tx
+        .update(paymentRequests)
+        .set({
+          status: "settled",
+          settled_at: settledAt,
+          settlement_tx_ref: settlementTxRef,
+          settlement_proof: settlementProof,
+          updated_at: settledAt,
+        })
+        .where(
+          and(
+            eq(paymentRequests.id, id),
+            inArray(paymentRequests.status, payable),
+            gt(paymentRequests.expires_at, settledAt),
+          ),
+        )
+        .returning();
+
+      if (!row) return null;
+      await tx.insert(paymentRequestEvents).values({
+        payment_request_id: row.id,
+        event_name: "payment.settled",
+        redacted_payload: lifecycleEventPayload(row, "settled", { txRef: settlementTxRef }),
+      });
+      return toDomain(row);
+    });
   }
 
   async recordPaymentRequestEvent(input: NewPaymentRequestEvent): Promise<PaymentRequestEventRow> {
@@ -231,12 +354,25 @@ export class PaymentRequestsRepository {
 
   async expirePastPaymentRequests(now: Date): Promise<string[]> {
     const expirable: PaymentRequestStatus[] = ["pending", "delivered"];
-    const rows = await db
-      .update(paymentRequests)
-      .set({ status: "expired", updated_at: now })
-      .where(and(inArray(paymentRequests.status, expirable), lt(paymentRequests.expires_at, now)))
-      .returning({ id: paymentRequests.id });
-    return rows.map((r) => r.id);
+    return db.transaction(async (tx) => {
+      const rows = await tx
+        .update(paymentRequests)
+        .set({ status: "expired", updated_at: now })
+        .where(
+          and(inArray(paymentRequests.status, expirable), lte(paymentRequests.expires_at, now)),
+        )
+        .returning();
+      if (rows.length > 0) {
+        await tx.insert(paymentRequestEvents).values(
+          rows.map((row) => ({
+            payment_request_id: row.id,
+            event_name: "payment.expired" as const,
+            redacted_payload: lifecycleEventPayload(row, "expired"),
+          })),
+        );
+      }
+      return rows.map((row) => row.id);
+    });
   }
 
   /**
@@ -246,18 +382,29 @@ export class PaymentRequestsRepository {
    */
   async expirePastPaymentRequestsForOrg(organizationId: string, now: Date): Promise<string[]> {
     const expirable: PaymentRequestStatus[] = ["pending", "delivered"];
-    const rows = await db
-      .update(paymentRequests)
-      .set({ status: "expired", updated_at: now })
-      .where(
-        and(
-          eq(paymentRequests.organization_id, organizationId),
-          inArray(paymentRequests.status, expirable),
-          lt(paymentRequests.expires_at, now),
-        ),
-      )
-      .returning({ id: paymentRequests.id });
-    return rows.map((r) => r.id);
+    return db.transaction(async (tx) => {
+      const rows = await tx
+        .update(paymentRequests)
+        .set({ status: "expired", updated_at: now })
+        .where(
+          and(
+            eq(paymentRequests.organization_id, organizationId),
+            inArray(paymentRequests.status, expirable),
+            lte(paymentRequests.expires_at, now),
+          ),
+        )
+        .returning();
+      if (rows.length > 0) {
+        await tx.insert(paymentRequestEvents).values(
+          rows.map((row) => ({
+            payment_request_id: row.id,
+            event_name: "payment.expired" as const,
+            redacted_payload: lifecycleEventPayload(row, "expired"),
+          })),
+        );
+      }
+      return rows.map((row) => row.id);
+    });
   }
 
   /**
@@ -268,18 +415,26 @@ export class PaymentRequestsRepository {
    */
   async expirePastPaymentRequest(id: string, now: Date): Promise<boolean> {
     const expirable: PaymentRequestStatus[] = ["pending", "delivered"];
-    const rows = await db
-      .update(paymentRequests)
-      .set({ status: "expired", updated_at: now })
-      .where(
-        and(
-          eq(paymentRequests.id, id),
-          inArray(paymentRequests.status, expirable),
-          lt(paymentRequests.expires_at, now),
-        ),
-      )
-      .returning({ id: paymentRequests.id });
-    return rows.length > 0;
+    return db.transaction(async (tx) => {
+      const [row] = await tx
+        .update(paymentRequests)
+        .set({ status: "expired", updated_at: now })
+        .where(
+          and(
+            eq(paymentRequests.id, id),
+            inArray(paymentRequests.status, expirable),
+            lte(paymentRequests.expires_at, now),
+          ),
+        )
+        .returning();
+      if (!row) return false;
+      await tx.insert(paymentRequestEvents).values({
+        payment_request_id: row.id,
+        event_name: "payment.expired",
+        redacted_payload: lifecycleEventPayload(row, "expired"),
+      });
+      return true;
+    });
   }
 
   async findPaymentRequestByProviderIntentKey(

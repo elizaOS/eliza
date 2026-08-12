@@ -6,8 +6,12 @@
  * Renders WITHOUT the app shell chrome.
  */
 
+import type {
+  PaymentProvider,
+  PublicPaymentRequest,
+} from "@elizaos/cloud-shared/lib/services/payment-requests";
 import { AlertCircle, CreditCard, Loader2 } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { Button } from "../../../../components/ui/button";
 import { ApiError, api } from "../../../lib/api-client";
@@ -16,29 +20,49 @@ import { usePageTitle } from "../../lib/use-page-title";
 
 type TFn = ReturnType<typeof useCloudT>;
 
-type PaymentProvider = "stripe" | "oxapay" | "x402" | "wallet_native";
-type PaymentRequestStatus =
-  | "pending"
-  | "delivered"
-  | "settled"
-  | "expired"
-  | "canceled"
-  | "failed";
-
-interface PublicPaymentRequest {
-  id: string;
-  provider: PaymentProvider;
-  amountCents: number;
-  currency: string;
-  status: PaymentRequestStatus;
-  reason: string | null;
-  expiresAt: string | null;
-  hostedUrl: string | null;
+interface PaymentRequestPageProps {
+  navigateToCheckout?: (url: string) => void;
 }
 
 interface PublicResponse {
   success: boolean;
   paymentRequest: PublicPaymentRequest;
+}
+
+const PROVIDER_LABELS: Record<PaymentProvider, string> = {
+  stripe: "Stripe",
+  oxapay: "OxaPay",
+  x402: "x402",
+  wallet_native: "Wallet",
+};
+
+function paymentRequestPath(id: string): string {
+  return `/api/v1/payment-requests/${encodeURIComponent(id)}?public=1`;
+}
+
+function expiryTime(value: string | null): number | null {
+  if (!value) return null;
+  const timestamp = Date.parse(value);
+  return Number.isFinite(timestamp) ? timestamp : null;
+}
+
+function isPayable(request: PublicPaymentRequest, now: number): boolean {
+  const expiresAt = expiryTime(request.expiresAt);
+  return (
+    (request.status === "pending" || request.status === "delivered") &&
+    Boolean(request.hostedUrl) &&
+    expiresAt !== null &&
+    expiresAt > now
+  );
+}
+
+function isAbortError(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "name" in error &&
+    error.name === "AbortError"
+  );
 }
 
 function formatAmount(amountCents: number, currency: string): string {
@@ -53,13 +77,14 @@ function formatAmount(amountCents: number, currency: string): string {
 }
 
 function formatDate(value: string | null): string | null {
-  if (!value) return null;
+  const timestamp = expiryTime(value);
+  if (timestamp === null) return null;
   return new Intl.DateTimeFormat("en-US", {
     month: "short",
     day: "numeric",
     hour: "numeric",
     minute: "2-digit",
-  }).format(new Date(value));
+  }).format(new Date(timestamp));
 }
 
 function normalizeError(error: unknown, t: TFn): string {
@@ -70,7 +95,9 @@ function normalizeError(error: unknown, t: TFn): string {
   });
 }
 
-export default function PaymentRequestPage() {
+export function PaymentRequestPageView({
+  navigateToCheckout = (url) => window.location.assign(url),
+}: PaymentRequestPageProps) {
   const t = useCloudT();
   const { paymentRequestId } = useParams<{ paymentRequestId: string }>();
   const [paymentRequest, setPaymentRequest] =
@@ -78,6 +105,9 @@ export default function PaymentRequestPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isPaying, setIsPaying] = useState(false);
+  const [now, setNow] = useState(0);
+  const generationRef = useRef(0);
+  const checkoutAbortRef = useRef<AbortController | null>(null);
 
   usePageTitle(
     t("cloud.paymentRequest.metaTitle", {
@@ -85,7 +115,14 @@ export default function PaymentRequestPage() {
     }),
   );
 
-  const load = useCallback(async () => {
+  useEffect(() => {
+    const generation = ++generationRef.current;
+    const controller = new AbortController();
+    checkoutAbortRef.current?.abort();
+    checkoutAbortRef.current = null;
+    setPaymentRequest(null);
+    setIsPaying(false);
+
     if (!paymentRequestId) {
       setError(
         t("cloud.paymentRequest.missingId", {
@@ -93,40 +130,122 @@ export default function PaymentRequestPage() {
         }),
       );
       setIsLoading(false);
-      return;
+      return () => controller.abort();
     }
+
     setIsLoading(true);
     setError(null);
-    try {
-      const response = await api<PublicResponse>(
-        `/api/v1/payment-requests/${encodeURIComponent(paymentRequestId)}?public=1`,
-        { skipAuth: true },
-      );
-      setPaymentRequest(response.paymentRequest);
-    } catch (loadError) {
-      setError(normalizeError(loadError, t));
-    } finally {
-      setIsLoading(false);
-    }
+
+    void (async () => {
+      try {
+        const response = await api<PublicResponse>(
+          paymentRequestPath(paymentRequestId),
+          { skipAuth: true, signal: controller.signal },
+        );
+        if (generationRef.current !== generation) return;
+        setPaymentRequest(response.paymentRequest);
+        setNow(Date.now());
+      } catch (loadError) {
+        if (generationRef.current !== generation || isAbortError(loadError)) {
+          return;
+        }
+        setError(normalizeError(loadError, t));
+      } finally {
+        if (generationRef.current === generation) {
+          setIsLoading(false);
+        }
+      }
+    })();
+
+    return () => {
+      controller.abort();
+      checkoutAbortRef.current?.abort();
+      checkoutAbortRef.current = null;
+      if (generationRef.current === generation) {
+        generationRef.current += 1;
+      }
+    };
   }, [paymentRequestId, t]);
 
   useEffect(() => {
-    load();
-  }, [load]);
+    const deadline = expiryTime(paymentRequest?.expiresAt ?? null);
+    if (deadline === null) return;
 
-  const beginCheckout = () => {
-    if (!paymentRequest) return;
-    const url = paymentRequest.hostedUrl;
-    if (!url) {
+    let timer: number | undefined;
+    const scheduleDeadline = () => {
+      const remaining = deadline - Date.now();
+      if (remaining <= 0) {
+        setNow(Date.now());
+        return;
+      }
+      timer = window.setTimeout(
+        scheduleDeadline,
+        Math.min(remaining, 2_147_483_647),
+      );
+    };
+    scheduleDeadline();
+    return () => {
+      if (timer !== undefined) window.clearTimeout(timer);
+    };
+  }, [paymentRequest?.expiresAt]);
+
+  const beginCheckout = async () => {
+    if (!paymentRequest || !paymentRequestId) return;
+    if (!isPayable(paymentRequest, Date.now())) {
       setError(
-        t("cloud.paymentRequest.noCheckoutUrl", {
-          defaultValue: "This payment request has no hosted checkout URL yet.",
+        t("cloud.paymentRequest.noLongerPayable", {
+          defaultValue: "This payment request is no longer payable.",
         }),
       );
       return;
     }
+
+    const generation = generationRef.current;
+    const controller = new AbortController();
+    checkoutAbortRef.current?.abort();
+    checkoutAbortRef.current = controller;
     setIsPaying(true);
-    window.location.assign(url);
+    setError(null);
+
+    try {
+      const response = await api<PublicResponse>(
+        paymentRequestPath(paymentRequestId),
+        { skipAuth: true, signal: controller.signal },
+      );
+      if (generationRef.current !== generation || controller.signal.aborted) {
+        return;
+      }
+
+      const authoritative = response.paymentRequest;
+      const currentTime = Date.now();
+      if (
+        authoritative.id !== paymentRequestId ||
+        !isPayable(authoritative, currentTime) ||
+        !authoritative.hostedUrl
+      ) {
+        setPaymentRequest(authoritative);
+        setNow(currentTime);
+        setError(
+          t("cloud.paymentRequest.noLongerPayable", {
+            defaultValue: "This payment request is no longer payable.",
+          }),
+        );
+        return;
+      }
+
+      setPaymentRequest(authoritative);
+      setNow(currentTime);
+      navigateToCheckout(authoritative.hostedUrl);
+    } catch (checkoutError) {
+      if (generationRef.current !== generation || isAbortError(checkoutError)) {
+        return;
+      }
+      setError(normalizeError(checkoutError, t));
+    } finally {
+      if (generationRef.current === generation) {
+        setIsPaying(false);
+      }
+    }
   };
 
   if (isLoading) {
@@ -171,16 +290,17 @@ export default function PaymentRequestPage() {
   }
 
   const isPaid = paymentRequest.status === "settled";
+  const deadline = expiryTime(paymentRequest.expiresAt);
+  const isPastDeadline = deadline === null || deadline <= now;
   const isExpired =
     paymentRequest.status === "expired" ||
     paymentRequest.status === "canceled" ||
-    paymentRequest.status === "failed";
-  const canPay =
-    (paymentRequest.status === "pending" ||
-      paymentRequest.status === "delivered") &&
-    Boolean(paymentRequest.hostedUrl);
+    paymentRequest.status === "failed" ||
+    isPastDeadline;
+  const canPay = isPayable(paymentRequest, now);
   const expiresLabel = formatDate(paymentRequest.expiresAt);
   const shortId = paymentRequest.id.slice(0, 8);
+  const providerLabel = PROVIDER_LABELS[paymentRequest.provider];
 
   return (
     <div className="theme-cloud min-h-[100dvh] bg-bg px-4 py-8 text-txt sm:px-6 lg:px-8">
@@ -242,7 +362,7 @@ export default function PaymentRequestPage() {
               variant="ghost"
               type="button"
               disabled={!canPay || isPaying}
-              onClick={beginCheckout}
+              onClick={() => void beginCheckout()}
               className="flex w-full items-center justify-center gap-3 bg-accent-subtle px-4 py-4 text-txt transition hover:bg-bg-hover disabled:pointer-events-none disabled:opacity-30"
             >
               {isPaying ? (
@@ -256,7 +376,7 @@ export default function PaymentRequestPage() {
                       defaultValue: "Already paid",
                     })
                   : t("cloud.paymentRequest.payWith", {
-                      provider: paymentRequest.provider,
+                      provider: providerLabel,
                       defaultValue: "Pay with {{provider}}",
                     })}
               </span>
@@ -265,10 +385,14 @@ export default function PaymentRequestPage() {
 
           <div className="mt-6 flex items-center justify-between border-t border-border pt-4 text-xs text-muted">
             <span>#{shortId}</span>
-            <span>{paymentRequest.provider}</span>
+            <span>{providerLabel}</span>
           </div>
         </section>
       </main>
     </div>
   );
+}
+
+export default function PaymentRequestPage() {
+  return <PaymentRequestPageView />;
 }

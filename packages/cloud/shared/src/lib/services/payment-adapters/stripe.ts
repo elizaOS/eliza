@@ -26,6 +26,28 @@ interface RequestMetadata {
   customerEmail?: string;
 }
 
+const STRIPE_MIN_CHECKOUT_LIFETIME_MS = 30 * 60 * 1000;
+const STRIPE_MAX_CHECKOUT_LIFETIME_MS = 24 * 60 * 60 * 1000;
+// One minute of headroom keeps Stripe's 30-minute minimum valid while the row
+// is persisted and an existing customer is resolved.
+export const STRIPE_MIN_REQUEST_LIFETIME_MS = STRIPE_MIN_CHECKOUT_LIFETIME_MS + 60 * 1000;
+export const STRIPE_MAX_REQUEST_LIFETIME_MS = STRIPE_MAX_CHECKOUT_LIFETIME_MS;
+
+export function stripeCheckoutExpiresAtSeconds(
+  expiresAt: Date,
+  nowMs: number = Date.now(),
+): number {
+  const expiresAtSeconds = Math.floor(expiresAt.getTime() / 1000);
+  const remainingMs = expiresAtSeconds * 1000 - nowMs;
+  if (remainingMs < STRIPE_MIN_CHECKOUT_LIFETIME_MS) {
+    throw new Error("Stripe Checkout requires at least 30 minutes before expiry");
+  }
+  if (remainingMs > STRIPE_MAX_CHECKOUT_LIFETIME_MS) {
+    throw new Error("Stripe Checkout cannot expire more than 24 hours from creation");
+  }
+  return expiresAtSeconds;
+}
+
 function readMetadata(request: PaymentRequestRow): RequestMetadata {
   const meta = (request.metadata ?? {}) as Record<string, unknown>;
   const pickString = (key: string): string | undefined => {
@@ -60,9 +82,13 @@ async function resolveCustomerId(request: PaymentRequestRow): Promise<string | u
   return undefined;
 }
 
-export function createStripePaymentAdapter(): PaymentProviderAdapter {
+export function createStripePaymentAdapter(
+  getStripe: () => ReturnType<typeof requireStripe> = requireStripe,
+): PaymentProviderAdapter {
   return {
     provider: "stripe",
+    minimumRequestLifetimeMs: STRIPE_MIN_REQUEST_LIFETIME_MS,
+    maximumRequestLifetimeMs: STRIPE_MAX_REQUEST_LIFETIME_MS,
 
     async createIntent({ request }) {
       if (request.provider !== "stripe") {
@@ -79,7 +105,7 @@ export function createStripePaymentAdapter(): PaymentProviderAdapter {
         throw new Error("Stripe payment requires success_url and cancel_url in request metadata");
       }
 
-      const stripe = requireStripe();
+      const stripe = getStripe();
       const customerId = await resolveCustomerId(request);
 
       const sharedMetadata = {
@@ -93,6 +119,7 @@ export function createStripePaymentAdapter(): PaymentProviderAdapter {
       } satisfies Stripe.MetadataParam;
 
       const productName = meta.productName ?? request.reason ?? "Payment";
+      const expiresAt = stripeCheckoutExpiresAtSeconds(request.expiresAt);
 
       const session = await stripe.checkout.sessions.create({
         mode: "payment",
@@ -113,6 +140,7 @@ export function createStripePaymentAdapter(): PaymentProviderAdapter {
         success_url: meta.successUrl,
         cancel_url: meta.cancelUrl,
         client_reference_id: request.id,
+        expires_at: expiresAt,
         ...(customerId ? { customer: customerId } : {}),
         ...(!customerId && meta.customerEmail ? { customer_email: meta.customerEmail } : {}),
         metadata: sharedMetadata,
