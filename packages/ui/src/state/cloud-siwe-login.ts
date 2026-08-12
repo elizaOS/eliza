@@ -141,7 +141,8 @@ export function buildSiweMessage(args: {
     `Nonce: ${args.nonce}`,
     `Issued At: ${args.issuedAt}`,
   );
-  if (args.expirationTime) lines.push(`Expiration Time: ${args.expirationTime}`);
+  if (args.expirationTime)
+    lines.push(`Expiration Time: ${args.expirationTime}`);
   return lines.join("\n");
 }
 
@@ -240,9 +241,13 @@ async function fetchSiweNonce(
  * or it exposes no account (both mean "SIWE is not available here — fall
  * through to the other sign-in paths"). Throws on a real handshake failure
  * (user rejection, server error) so the caller can surface it.
+ *
+ * `chainSwitchRetriesLeft` bounds the mid-prompt supported-chain-switch
+ * rebuild (see the pre-sign re-read below); callers use the default.
  */
 export async function siweLoginWithInjectedWallet(
   cloudApiBase: string,
+  chainSwitchRetriesLeft = 1,
 ): Promise<string | null> {
   const provider = getInjectedEthereumProvider();
   if (!provider) return null;
@@ -322,7 +327,17 @@ export async function siweLoginWithInjectedWallet(
     }
     // Chain switched to another supported login chain mid-prompt — rebuild the
     // nonce + message for the new chain so the signed authority matches it.
-    return siweLoginWithInjectedWallet(cloudApiBase);
+    // Bounded to a single rebuild: a wallet that keeps flipping chains during
+    // the handshake must fail closed, not recurse indefinitely.
+    if (chainSwitchRetriesLeft <= 0) {
+      throw new Error(
+        `Eliza Cloud SIWE login: the wallet kept switching chains during the handshake (now ${chainBeforeSign}); aborting instead of retrying.`,
+      );
+    }
+    return siweLoginWithInjectedWallet(
+      cloudApiBase,
+      chainSwitchRetriesLeft - 1,
+    );
   }
 
   const signature = (await provider.request({

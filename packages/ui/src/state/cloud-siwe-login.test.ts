@@ -49,11 +49,11 @@ import {
   isE2eWalletWebHostnameAllowed,
 } from "../platform/e2e-wallet";
 import {
-  SUPPORTED_SIWE_LOGIN_CHAIN_IDS,
   buildSiweMessage,
   getInjectedEthereumProvider,
   isSupportedLoginChainId,
   readWalletChainId,
+  SUPPORTED_SIWE_LOGIN_CHAIN_IDS,
   siweLoginWithInjectedWallet,
 } from "./cloud-siwe-login";
 
@@ -413,28 +413,29 @@ describe("SIWE chain binding (#18458)", () => {
 
   function fakeProvider(chainIdHex: string | null, account = ACCOUNT.address) {
     let currentChain = chainIdHex;
-    const request = vi.fn(async (args: {
-      method: string;
-      params?: readonly unknown[];
-    }) => {
-      switch (args.method) {
-        case "eth_requestAccounts":
-        case "eth_accounts":
-          return [account];
-        case "eth_chainId":
-          if (currentChain === null) throw new Error("chain not ready");
-          return currentChain;
-        case "personal_sign": {
-          const [data] = args.params ?? [];
-          if (typeof data !== "string") {
-            throw new Error("personal_sign requires hex message data");
+    const request = vi.fn(
+      async (args: { method: string; params?: readonly unknown[] }) => {
+        switch (args.method) {
+          case "eth_requestAccounts":
+          case "eth_accounts":
+            return [account];
+          case "eth_chainId":
+            if (currentChain === null) throw new Error("chain not ready");
+            return currentChain;
+          case "personal_sign": {
+            const [data] = args.params ?? [];
+            if (typeof data !== "string") {
+              throw new Error("personal_sign requires hex message data");
+            }
+            return ACCOUNT.signMessage({
+              message: { raw: data as `0x${string}` },
+            });
           }
-          return ACCOUNT.signMessage({ message: { raw: data as `0x${string}` } });
+          default:
+            throw new Error(`unhandled method ${args.method}`);
         }
-        default:
-          throw new Error(`unhandled method ${args.method}`);
-      }
-    });
+      },
+    );
     return {
       provider: { request, isElizaE2eWallet: true },
       setChain: (hex: string | null) => {
@@ -593,5 +594,99 @@ describe("SIWE chain binding (#18458)", () => {
     await expect(
       siweLoginWithInjectedWallet("https://api.test/"),
     ).rejects.toThrow(/switched to unsupported chain 137/);
+  });
+
+  /** Nonce mock that echoes back whatever chainId the request asked for. */
+  function nonceEchoMock() {
+    return vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/api/auth/siwe/nonce")) {
+        const chainId = Number(new URL(url).searchParams.get("chainId"));
+        return new Response(
+          JSON.stringify({
+            ...NONCE_RESPONSE,
+            nonce: `nonce-${chainId}`,
+            chainId,
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }
+      if (url.includes("/api/auth/siwe/verify")) {
+        return new Response(
+          JSON.stringify({ apiKey: "eliza_test_api_key", address: "0x" }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }
+      return new Response("not found", { status: 404 });
+    });
+  }
+
+  it("rebuilds once and completes when the wallet settles on another supported chain mid-prompt", async () => {
+    const { provider, setChain } = fakeProvider("0x2105"); // starts on Base
+    (window as { ethereum?: unknown }).ethereum = provider;
+    let nonceSeen = false;
+    const fetchMock = nonceEchoMock();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        if (String(input).includes("/api/auth/siwe/nonce")) nonceSeen = true;
+        return fetchMock(input);
+      }),
+    );
+
+    // After the first nonce, flip the wallet to BSC (supported) permanently so
+    // the pre-sign re-read detects the switch exactly once.
+    const origRequest = provider.request;
+    let flipped = false;
+    provider.request = vi.fn(async (args: { method: string }) => {
+      if (args.method === "eth_chainId" && nonceSeen && !flipped) {
+        flipped = true;
+        setChain("0x38"); // BSC 56
+      }
+      return origRequest(args);
+    }) as typeof provider.request;
+
+    const apiKey = await siweLoginWithInjectedWallet("https://api.test/");
+    expect(apiKey).toBe("eliza_test_api_key");
+
+    // Two nonce fetches: the abandoned Base attempt and the completed BSC one.
+    const nonceUrls = fetchMock.mock.calls
+      .map((c) => String(c[0]))
+      .filter((u) => u.includes("/api/auth/siwe/nonce"));
+    expect(nonceUrls).toHaveLength(2);
+    expect(nonceUrls[0]).toContain("chainId=8453");
+    expect(nonceUrls[1]).toContain("chainId=56");
+  });
+
+  it("fails closed instead of recursing when the wallet keeps flipping between supported chains", async () => {
+    const { provider, setChain } = fakeProvider("0x2105"); // starts on Base
+    (window as { ethereum?: unknown }).ethereum = provider;
+    let nonceSeen = false;
+    const fetchMock = nonceEchoMock();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        if (String(input).includes("/api/auth/siwe/nonce")) nonceSeen = true;
+        return fetchMock(input);
+      }),
+    );
+
+    // A pathological wallet that toggles Base <-> BSC on every chain read
+    // after the first nonce: every pre-sign re-read sees a different
+    // supported chain, so an unbounded rebuild would never terminate.
+    let toggle = false;
+    const origRequest = provider.request;
+    provider.request = vi.fn(async (args: { method: string }) => {
+      if (args.method === "eth_chainId" && nonceSeen) {
+        toggle = !toggle;
+        setChain(toggle ? "0x38" : "0x2105");
+      }
+      return origRequest(args);
+    }) as typeof provider.request;
+
+    await expect(
+      siweLoginWithInjectedWallet("https://api.test/"),
+    ).rejects.toThrow(/kept switching chains/);
+    expect(window.localStorage.getItem("steward_session_token")).toBeNull();
   });
 });
