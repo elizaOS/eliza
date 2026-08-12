@@ -769,6 +769,18 @@ export type WalletRelationship = {
   // from `label` above, which reflects lookupWalletLabel only and stays
   // "Unknown Wallet" for a protocol-registry-only match.
   infrastructureLabel?: string | null;
+
+  // Narrower than isKnownInfrastructure - true only for a
+  // centralized_exchange label match, not any infrastructure category.
+  // A wallet swapping on a DEX or bridging doesn't inform hosted-vs-
+  // unhosted custody the way exchange interaction does, so this is a
+  // separate, more specific signal for analyzers/custody.ts (which uses
+  // it alongside funding.fundingSourceType === "exchange" - the same
+  // signal, but for any relationship, not just the wallet's original
+  // funder). The protocol registry can never produce this - centralized
+  // exchanges aren't on-chain programs, so a centralized_exchange match
+  // only ever comes from the label registry.
+  isKnownExchange?: boolean;
 };
 
 export type WalletRelationshipSummary = {

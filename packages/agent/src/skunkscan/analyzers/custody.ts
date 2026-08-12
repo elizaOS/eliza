@@ -25,11 +25,23 @@ export function analyzeWalletCustodyProfile(
   let confidence: WalletCustodyProfile["confidence"] =
     "medium";
 
+  // Two distinct signals, both real: was this wallet's ORIGINAL funding
+  // traced to a known exchange (funding.fundingSourceType), or does it
+  // have an ONGOING relationship (not just its first funder) with one
+  // (relationship.isKnownExchange, from analyzers/relationships.ts's
+  // infrastructure detection - deliberately narrower than
+  // isKnownInfrastructure, since DEX/bridge/staking interaction says
+  // nothing about hosted-vs-unhosted custody the way exchange interaction
+  // does). Previously this second check compared
+  // relationship.relationship === "exchange", a value
+  // analyzeWalletRelationships never actually assigns - always false,
+  // silently doing nothing. Found and left as a flagged TODO during the
+  // relationship-infrastructure-exclusion work; fixed here by wiring to
+  // the real field that work introduced, rather than deleted as dead code.
   if (
     funding.fundingSourceType === "exchange" ||
     relationships.relationships.some(
-      (relationship) =>
-        relationship.relationship === "exchange",
+      (relationship) => relationship.isKnownExchange,
     )
   ) {
     custodyType = "likely_hosted";
