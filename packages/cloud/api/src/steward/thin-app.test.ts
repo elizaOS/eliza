@@ -5,9 +5,11 @@
 import { beforeEach, describe, expect, test } from "bun:test";
 import type { AppEnv } from "@/types/cloud-worker-env";
 import {
+  ageProvidersResponseCacheForTests,
   expireProvidersResponseCacheForTests,
   PROVIDERS_BROWSER_CACHE_CONTROL,
   PROVIDERS_CACHE_TTL_MS,
+  providersCacheControlForAgeMs,
   resetProvidersResponseCacheForTests,
 } from "./embedded";
 import { isThinStewardPublicPath } from "./public-paths";
@@ -78,10 +80,48 @@ describe("providers cache policy (#18049 staleness)", () => {
     expect(PROVIDERS_BROWSER_CACHE_CONTROL).not.toContain(
       "stale-while-revalidate",
     );
-    const maxAgeMatch = PROVIDERS_BROWSER_CACHE_CONTROL.match(/max-age=(\d+)/i);
-    expect(maxAgeMatch).toBeTruthy();
-    const maxAgeSeconds = Number(maxAgeMatch![1]);
-    expect(maxAgeSeconds * 1000).toBeLessThanOrEqual(PROVIDERS_CACHE_TTL_MS);
+    expect(providersCacheControlForAgeMs(0)).toBe("public, max-age=60");
+    expect(providersCacheControlForAgeMs(59_000)).toBe("public, max-age=1");
+    expect(providersCacheControlForAgeMs(60_000)).toBe("public, max-age=0");
+  });
+
+  test("cache hit near TTL emits remaining max-age so total age never exceeds 60s", async () => {
+    let upstreamCalls = 0;
+    stubFetch(async () => {
+      upstreamCalls += 1;
+      return providersUpstreamResponse();
+    });
+
+    const app = createStewardThinApp();
+    const miss = await app.request(
+      "https://api.elizacloud.ai/steward/auth/providers",
+      { method: "GET" },
+      stewardEnv,
+    );
+    expect(miss.status).toBe(200);
+    expect(miss.headers.get("x-eliza-providers-cache")).toBe("miss");
+    expect(miss.headers.get("cache-control")).toBe("public, max-age=60");
+    expect(miss.headers.get("age")).toBe("0");
+
+    // Age the isolate entry by 59s (same clock the reader uses via fetchedAt).
+    ageProvidersResponseCacheForTests(59_000);
+
+    const hit = await app.request(
+      "https://api.elizacloud.ai/steward/auth/providers",
+      { method: "GET" },
+      stewardEnv,
+    );
+    expect(hit.status).toBe(200);
+    expect(hit.headers.get("x-eliza-providers-cache")).toBe("hit");
+    expect(hit.headers.get("cache-control")).toBe("public, max-age=1");
+    expect(hit.headers.get("age")).toBe("59");
+    // Isolate age (59) + remaining max-age (1) = 60 — never a fresh max-age=60.
+    const maxAge = Number(
+      hit.headers.get("cache-control")?.match(/max-age=(\d+)/i)?.[1],
+    );
+    const age = Number(hit.headers.get("age"));
+    expect(age + maxAge).toBeLessThanOrEqual(60);
+    expect(upstreamCalls).toBe(1);
   });
 });
 
