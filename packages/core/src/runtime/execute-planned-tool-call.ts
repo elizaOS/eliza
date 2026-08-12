@@ -110,6 +110,7 @@ function actionResultToContentRecord(
 ): Record<string, ContentValue> {
 	const record: Record<string, ContentValue> = {};
 	for (const [key, value] of Object.entries(result)) {
+		if (key === "plannerObservation") continue;
 		if (options.suppressData && (key === "data" || key === "values")) {
 			record[key] = sensitiveActionResultMarker(value);
 			continue;
@@ -179,6 +180,9 @@ export function projectActionResultForClipboard(
 		...(result.text !== undefined ? { text: result.text } : {}),
 		...(result.transcriptVisibility !== undefined
 			? { transcriptVisibility: result.transcriptVisibility }
+			: {}),
+		...(result.plannerObservation !== undefined
+			? { plannerObservation: result.plannerObservation }
 			: {}),
 		...(result.userFacingText !== undefined
 			? { userFacingText: result.userFacingText }

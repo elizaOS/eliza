@@ -83,7 +83,11 @@ vi.mock("../../src/services/acp-native-transport.js", () => {
       agentSessionId: "agent-session",
     }));
     prompt = vi.fn(async () => ({ stopReason: "end_turn" }));
-    cancel = vi.fn(async () => undefined);
+    cancel = vi.fn(async (protocolSessionId: string) => ({
+      requestId: "cancel",
+      acceptedAt: "2026-05-03T10:00:00.000Z",
+      protocolSessionId,
+    }));
     closeSession = vi.fn(async () => undefined);
     close = vi.fn(async () => undefined);
     constructor(opts: NativeOptions) {

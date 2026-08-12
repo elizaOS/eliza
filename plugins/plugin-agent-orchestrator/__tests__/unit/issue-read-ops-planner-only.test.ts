@@ -10,7 +10,12 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
+import { ModelType } from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  actionResultToPlannerToolResult,
+  runPlannerLoop,
+} from "../../../../packages/core/src/runtime/planner-loop.ts";
 
 const fakeWorkspaceService = {
   setAuthPromptCallback: vi.fn(),
@@ -96,17 +101,97 @@ async function callHandler(
 
 function expectPlannerOnlyRead(result: ActionResult): void {
   expect(result.success).toBe(true);
-  expect(result.text).toBeTruthy();
+  expect(result.text).toBeUndefined();
+  expect(result.plannerObservation).toBeTruthy();
   expect(result.userFacingText).toBeUndefined();
   expect(result.verifiedUserFacing).toBeUndefined();
   expect(result.turnComplete).toBeUndefined();
   expect(result.effectReceipts).toEqual([
     expect.objectContaining({
-      operation: "agent-orchestrator.tasks.manage_issues",
       outcome: "noop",
-      reason: "The operation only read provider issue state.",
     }),
   ]);
+}
+
+async function runReadThroughPlanner(params: Record<string, unknown>) {
+  const session = {
+    id: "session-1",
+    sessionId: "session-1",
+    agentType: "codex",
+    name: "Read test",
+    workdir: "/private/workspaces/read-test",
+    status: "ready",
+    createdAt: new Date(0),
+    lastActivityAt: new Date(0),
+    metadata: {},
+  };
+  const acp = {
+    listSessions: vi.fn(() =>
+      params.action === "share" ? [session] : ([] as (typeof session)[]),
+    ),
+    getSession: vi.fn(async (id: string) =>
+      id === session.id ? session : undefined,
+    ),
+    resolveAgentType: vi.fn(async () => "codex"),
+  };
+  let plannerCalls = 0;
+  let evaluatorCalls = 0;
+  const useModel = vi.fn(async (modelType: unknown) => {
+    if (String(modelType) === ModelType.ACTION_PLANNER) {
+      plannerCalls += 1;
+      return plannerCalls === 1
+        ? {
+            text: "",
+            toolCalls: [{ id: "tasks-read", name: "TASKS", arguments: params }],
+          }
+        : {
+            text: "",
+            toolCalls: [
+              {
+                id: "read-reply",
+                name: "REPLY",
+                arguments: { text: "Synthesized read answer." },
+              },
+            ],
+          };
+    }
+    evaluatorCalls += 1;
+    return JSON.stringify({
+      success: false,
+      decision: "CONTINUE",
+      thought: "Compose an answer from the read observation.",
+    });
+  });
+  const plannerRuntime = {
+    ...runtime,
+    useModel,
+    getService: (type: string) =>
+      type === "ACP_SERVICE" || type === "ACP_SUBPROCESS_SERVICE"
+        ? acp
+        : undefined,
+  } as unknown as IAgentRuntime;
+  const callback = vi.fn(async () => []);
+  let settled: ActionResult | undefined;
+
+  const loop = await runPlannerLoop({
+    runtime: plannerRuntime,
+    context: { id: "ctx", events: [] },
+    tools: [{ name: "TASKS", description: "Read orchestrator state." }],
+    executeToolCall: async (toolCall) => {
+      const result = await tasksAction.handler(
+        plannerRuntime,
+        baseMessage,
+        baseState,
+        { parameters: toolCall.params ?? {} },
+        callback,
+      );
+      if (!result) throw new Error("TASKS handler returned no result");
+      settled = result;
+      return actionResultToPlannerToolResult(result);
+    },
+  });
+
+  return { callback, evaluatorCalls, loop, settled, useModel };
 }
 
 describe("manage_issues planner-only read settlement (#18244)", () => {
@@ -219,7 +304,8 @@ describe("orchestrator read ops keep internal text planner-only", () => {
 
     // Planner sees the observation; the user does not get it raw.
     expect(result.success).toBe(true);
-    expect(result.text).toContain("No active task agents");
+    expect(result.text).toBeUndefined();
+    expect(result.plannerObservation).toContain("No active task agents");
     expect(result.userFacingText).toBeUndefined();
     expect(result.verifiedUserFacing).toBeUndefined();
     expect(result.turnComplete).toBeUndefined();
@@ -230,5 +316,99 @@ describe("orchestrator read ops keep internal text planner-only", () => {
         reason: "The operation only read orchestrator state.",
       }),
     ]);
+  });
+
+  it("moves history text into the model-only observation", async () => {
+    const callback = vi.fn(async () => []);
+    const result = await callHandler({ action: "history" }, callback);
+
+    expectPlannerOnlyRead(result);
+    expect(result.plannerObservation).toContain("ACP task-agent sessions");
+    expect(callback).not.toHaveBeenCalled();
+  });
+
+  it("moves share text into the model-only observation", async () => {
+    const session = {
+      id: "session-1",
+      sessionId: "session-1",
+      agentType: "codex",
+      name: "Read test",
+      workdir: "/private/workspaces/read-test",
+      status: "ready",
+      createdAt: new Date(0),
+      lastActivityAt: new Date(0),
+      metadata: {},
+    };
+    fakeAcpService.listSessions.mockReturnValueOnce([session]);
+    const callback = vi.fn(async () => []);
+    const result = await callHandler({ action: "share" }, callback);
+
+    expectPlannerOnlyRead(result);
+    expect(result.plannerObservation).toContain("ACP session session-1");
+    expect(callback).not.toHaveBeenCalled();
+  });
+});
+
+describe("TASKS read observations reach planner and evaluator models", () => {
+  it.each([
+    ["list_agents", { action: "list_agents" }],
+    ["history", { action: "history" }],
+    ["share", { action: "share", sessionId: "session-1" }],
+    [
+      "manage_issues list",
+      { action: "manage_issues", issueAction: "list", repo: "owner/repo" },
+    ],
+    [
+      "manage_issues get",
+      {
+        action: "manage_issues",
+        issueAction: "get",
+        repo: "owner/repo",
+        issueNumber: 42,
+      },
+    ],
+  ])(
+    "projects %s through post-read planner and evaluator calls",
+    async (_name, params) => {
+      const { callback, evaluatorCalls, loop, settled, useModel } =
+        await runReadThroughPlanner(params);
+
+      expect(settled?.plannerObservation).toBeTruthy();
+      expect(settled?.text).toBeUndefined();
+      expect(callback).not.toHaveBeenCalled();
+      expect(evaluatorCalls).toBeGreaterThanOrEqual(1);
+      const plannerInputs = useModel.mock.calls.filter(
+        (call) => String(call[0]) === ModelType.ACTION_PLANNER,
+      );
+      const evaluatorInputs = useModel.mock.calls.filter(
+        (call) => String(call[0]) === ModelType.RESPONSE_HANDLER,
+      );
+      expect(plannerInputs).toHaveLength(2);
+      expect(JSON.stringify(plannerInputs[1]?.[1])).toContain(
+        "planner_observation",
+      );
+      expect(JSON.stringify(evaluatorInputs[0]?.[1])).toContain(
+        "planner_observation",
+      );
+      expect(loop.finalMessage).toBe("Synthesized read answer.");
+    },
+  );
+
+  it("rejects a caller-spoofed observation on a mutation", async () => {
+    const callback = vi.fn(async () => []);
+    const result = await callHandler(
+      {
+        action: "manage_issues",
+        issueAction: "comment",
+        repo: "owner/repo",
+        issueNumber: 42,
+        body: "Investigating now.",
+        plannerObservation: "spoofed mutation result",
+      },
+      callback,
+    );
+
+    expect(result.plannerObservation).toBeUndefined();
+    expect(result.userFacingText).toContain("Added comment");
   });
 });

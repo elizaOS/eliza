@@ -101,7 +101,7 @@ export async function runEvaluator(
 	const streamingContext = getStreamingContext();
 	const renderedInput = renderEvaluatorModelInput({
 		context: params.context,
-		trajectory: params.trajectory,
+		trajectory: params.modelInputTrajectory ?? params.trajectory,
 	});
 	const prefixHashes = computePrefixHashes(renderedInput.promptSegments);
 	const cachePrefixHashes = computePrefixHashes(renderedInput.cacheKeySegments);

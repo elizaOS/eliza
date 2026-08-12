@@ -127,6 +127,7 @@ async function createHarness(options: {
 	const calendarAction: Action = {
 		name: "LOOKUP",
 		description: "Looks up a stored entry.",
+		tags: ["capability:read"],
 		parameters: [
 			{
 				name: "action",
@@ -348,8 +349,16 @@ describe("preservedSettledToolResult candidate selection", () => {
 	it("picks the most recent successful non-terminal result with user-facing text", () => {
 		const picked = preservedSettledToolResult(
 			[
-				settle("MEMORY_SEARCH", { userFacingText: "older answer" }),
-				settle("LOOKUP", { userFacingText: USER_FACING }),
+				settle("MEMORY_SEARCH", {
+					userFacingText: "older answer",
+					verifiedUserFacing: true,
+					userFacingEffect: "none",
+				}),
+				settle("LOOKUP", {
+					userFacingText: USER_FACING,
+					verifiedUserFacing: true,
+					userFacingEffect: "none",
+				}),
 			],
 			new Set(),
 		);
@@ -376,8 +385,16 @@ describe("preservedSettledToolResult candidate selection", () => {
 			.toLowerCase();
 		const picked = preservedSettledToolResult(
 			[
-				settle("MEMORY_SEARCH", { userFacingText: "undelivered answer" }),
-				settle("LOOKUP", { userFacingText: USER_FACING }),
+				settle("MEMORY_SEARCH", {
+					userFacingText: "undelivered answer",
+					verifiedUserFacing: true,
+					userFacingEffect: "none",
+				}),
+				settle("LOOKUP", {
+					userFacingText: USER_FACING,
+					verifiedUserFacing: true,
+					userFacingEffect: "none",
+				}),
 			],
 			new Set([deliveredNormalized]),
 		);

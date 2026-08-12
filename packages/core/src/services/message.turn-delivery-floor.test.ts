@@ -32,7 +32,7 @@ import {
 	type Content,
 	type UUID,
 } from "../types/primitives";
-import type { IAgentRuntime } from "../types/runtime";
+import type { IAgentRuntime, ModelCallProvenance } from "../types/runtime";
 import type { State } from "../types/state";
 import {
 	DefaultMessageService,
@@ -151,10 +151,23 @@ function createHarness(
 		getModel: vi.fn(() => async () => {
 			throw RATE_LIMIT_ERROR;
 		}),
-		useModel: vi.fn(async (modelType: unknown) => {
-			useModelCalls += 1;
-			return useModelImpl(() => harness, String(modelType), useModelCalls);
-		}),
+		useModel: vi.fn(
+			async (
+				modelType: unknown,
+				_params: unknown,
+				_provider: string | undefined,
+				provenance: ModelCallProvenance | undefined,
+			) => {
+				useModelCalls += 1;
+				const result = await useModelImpl(
+					() => harness,
+					String(modelType),
+					useModelCalls,
+				);
+				if (provenance) provenance.resolvedProvider = "test-provider";
+				return result;
+			},
+		),
 		composeState: vi.fn(
 			async (): Promise<State> => ({ values: {}, data: {}, text: "" }),
 		),
@@ -492,12 +505,14 @@ describe("race-superseded turns keep addressed responses", () => {
 			success: true,
 			text: firstReply,
 			userFacingText: firstReply,
+			verifiedUserFacing: true,
 			continueChain: false,
 			data: { actionName },
 		}));
 		h.runtime.actions = [
 			{
 				name: actionName,
+				tags: ["capability:read"],
 				similes: [],
 				description: "Exercise addressed action-mode race delivery.",
 				examples: [],

@@ -1352,6 +1352,52 @@ describe("executePlannedToolCall", () => {
 		);
 	});
 
+	it("keeps planner observations out of action events and streaming results", async () => {
+		const plannerObservation =
+			"Internal read at /private/runtime with Authorization: Bearer never-show";
+		const receipt: EffectReceipt = {
+			receiptId: "receipt-read",
+			operation: "tasks.history",
+			resource: { kind: "orchestrator.read", id: "history" },
+			artifacts: [],
+			idempotency: { key: null, replayed: false },
+			observedAt: "2026-08-12T18:00:00.000Z",
+			outcome: "noop",
+			reason: "The operation only read orchestrator state.",
+		};
+		const emitEvent = vi.fn(async () => {});
+		const onToolResult = vi.fn();
+		const action = makeAction({
+			name: "TASKS",
+			tags: ["effect:receipt-required"],
+			handler: async () => ({
+				success: true,
+				plannerObservation,
+				userFacingEffect: "none" as const,
+				effectReceipts: [receipt],
+			}),
+		});
+		const runtime = makeRuntime([action], { emitEvent });
+
+		const result = await runWithStreamingContext(
+			{ onStreamChunk: vi.fn(), onToolResult },
+			() =>
+				executePlannedToolCall(
+					runtime,
+					{ message: makeMessage() },
+					{ name: "TASKS", params: {} },
+				),
+		);
+
+		expect(result.plannerObservation).toBe(plannerObservation);
+		expect(JSON.stringify(emitEvent.mock.calls)).not.toContain(
+			plannerObservation,
+		);
+		expect(JSON.stringify(onToolResult.mock.calls)).not.toContain(
+			plannerObservation,
+		);
+	});
+
 	it("suppresses sensitive action result data in ACTION_COMPLETED events", async () => {
 		const emitEvent = vi.fn(async () => {});
 		const onToolResult = vi.fn();

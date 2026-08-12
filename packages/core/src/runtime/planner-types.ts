@@ -131,6 +131,8 @@ export interface PlannerToolResult {
 	 * shown to the user verbatim must set `userFacingText` separately.
 	 */
 	text?: string;
+	/** Receipt-backed read output admitted only to planner/evaluator models. */
+	plannerObservation?: string;
 	/** Machine-only raw output that must not render as assistant prose. */
 	transcriptVisibility?: "internal";
 	/**
@@ -345,6 +347,12 @@ export interface RunEvaluatorParams {
 	runtime: EvaluatorRuntime;
 	context: ContextObject;
 	trajectory: PlannerTrajectory;
+	/**
+	 * Receipt-bearing source used only by the model projection. The evaluator's
+	 * ordinary trajectory stays receipt-free while the model boundary can still
+	 * revalidate planner-only read observations before rendering them.
+	 */
+	modelInputTrajectory?: PlannerTrajectory;
 	modelType?: TextGenerationModelType;
 	effects?: EvaluatorEffects;
 	provider?: string;

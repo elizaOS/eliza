@@ -62,7 +62,8 @@ describe("TASKS:list_agents", () => {
       success: true,
       data: { sessions: [] },
     });
-    expect(result?.text).toContain("No active task agents");
+    expect(result?.plannerObservation).toContain("No active task agents");
+    expect(result?.text).toBeUndefined();
     expect(listCallback).not.toHaveBeenCalled();
   });
   it("reports SERVICE_UNAVAILABLE when ACP is missing", async () => {

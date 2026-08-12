@@ -108,6 +108,7 @@ describe("TASKS effect receipts", () => {
     expect(
       result?.effectReceipts?.some((receipt) => receipt.outcome === "applied"),
     ).toBe(false);
+    expect(result?.plannerObservation).toBeUndefined();
     // Receipt settlement provides canonical planner input without leaking a
     // raw tool callback; the turn evaluator remains the sole visible voice.
     expect(replies).toEqual([]);
@@ -131,7 +132,8 @@ describe("TASKS effect receipts", () => {
     // list_agents is a planner-only read (#18315): its text is planner
     // observation, never a verbatim user reply, so no user-facing projection
     // or do-not-paraphrase license is attached.
-    expect(result?.text?.trim()).toBeTruthy();
+    expect(result?.text).toBeUndefined();
+    expect(result?.plannerObservation?.trim()).toBeTruthy();
     expect(result?.userFacingText).toBeUndefined();
     expect(result?.verifiedUserFacing).toBeUndefined();
     expect(result?.effectReceipts).toEqual([

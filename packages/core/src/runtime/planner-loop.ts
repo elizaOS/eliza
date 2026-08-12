@@ -87,6 +87,7 @@ import {
 	plannerToolCallDigest,
 	projectEvaluatorVisibleTrajectory,
 	projectModelVisibleTrajectory,
+	projectPlannerObservationForModel,
 	resolvePlannerSubstepAuthority,
 } from "./planner-trajectory";
 import type {
@@ -2658,6 +2659,7 @@ async function evaluateTrajectory(
 		runtime: params.runtime,
 		context: evaluatorTrajectory.context,
 		trajectory: evaluatorTrajectory,
+		modelInputTrajectory: trajectory,
 		effects: params.evaluatorEffects,
 		recorder: params.recorder,
 		trajectoryId: params.trajectoryId,
@@ -3745,15 +3747,16 @@ function normalizeForEchoComparison(text: string): string {
 
 /**
  * Structural gate keeping typed tool data non-user-facing at the
- * evaluator/planner boundary. `result.text` is planner-facing by contract
- * (planner-types.ts): only the opt-in `userFacingText` — or a structural
+ * evaluator/planner boundary. Ordinary `result.text` is planner-facing by
+ * contract (planner-types.ts): only the opt-in `userFacingText` — or a structural
  * marker whose deterministic relay deliberately surfaces `text`
  * (requiresConfirmation / awaitingUserInput / noop) — licenses tool output
- * for the user channel. A weak model repeats the raw text verbatim after a
+ * for the user channel. Planner observations have no such relay license. A weak
+ * model repeats model-visible tool text verbatim after a
  * protocol-failure replan (live tj-f730d907139bb2), and because an explicit
  * model reply outranks tool text in the final-message precedence, that echo
  * would promote planner-facing material into chat. The gate byte-compares
- * the candidate against every unlicensed `result.text` in the trajectory,
+ * the candidate against every unlicensed tool text in the trajectory,
  * rejecting head-anchored reproduction: the exact text, an exact head of it
  * (truncated echo), or the exact text plus a trailing addendum — so the
  * caller falls through to typed user-facing data or ends the turn. Verbatim,
@@ -3777,48 +3780,58 @@ function isEchoOfPlannerFacingToolText(
 		if (!step.toolCall || isTerminalToolCall(step.toolCall)) continue;
 		const result = step.result;
 		if (!result) continue;
-		const rawText = getNonEmptyString(result.text);
-		if (!rawText) continue;
-		if (
-			hasRequiresConfirmationMarker(result) ||
-			hasAwaitingUserInputMarker(result) ||
-			hasNoopMarker(result) ||
-			// Internal-transcript results are DESIGNED to pass through the reply
-			// channel byte-exact: the delivery boundary matches the reply against
-			// the result text and stamps the outgoing message
-			// transcriptVisibility:"internal" (resolveActionResultTranscript-
-			// Visibility), so it never renders as assistant prose. Gating the
-			// echo here would break that stamping match.
-			result.transcriptVisibility === "internal"
-		) {
-			continue;
-		}
-		const normalizedRaw = normalizeForEchoComparison(rawText);
-		if (normalizedRaw.length < RAW_TOOL_TEXT_ECHO_MIN_CHARS) continue;
-		// When the tool's own userFacingText carries the raw text, the raw text
-		// IS the sanctioned user projection — repeating it is not a leak.
-		const userFacing =
-			canonicalUserFacingText(result, {
-				allTurnReceipts: receipts,
-				includeTerminalFailure: true,
-			}) ??
-			(hasRequiresConfirmationMarker(result) ||
-			hasAwaitingUserInputMarker(result) ||
-			(effectiveMachineSuccess(result, receipts) && hasNoopMarker(result))
-				? getNonEmptyString(result.userFacingText)
-				: undefined);
-		if (
-			userFacing &&
-			normalizeForEchoComparison(userFacing).includes(normalizedRaw)
-		) {
-			continue;
-		}
-		if (
-			normalizedCandidate === normalizedRaw ||
-			normalizedRaw.startsWith(normalizedCandidate) ||
-			normalizedCandidate.startsWith(normalizedRaw)
-		) {
-			return true;
+		for (const source of [
+			{ text: getNonEmptyString(result.text), userLicensable: true },
+			{
+				text: projectPlannerObservationForModel(result, receipts),
+				userLicensable: false,
+			},
+		]) {
+			if (!source.text) continue;
+			if (
+				source.userLicensable &&
+				(hasRequiresConfirmationMarker(result) ||
+					hasAwaitingUserInputMarker(result) ||
+					hasNoopMarker(result) ||
+					// Internal-transcript results are DESIGNED to pass through the reply
+					// channel byte-exact: the delivery boundary matches the reply against
+					// the result text and stamps the outgoing message
+					// transcriptVisibility:"internal" (resolveActionResultTranscript-
+					// Visibility), so it never renders as assistant prose. Gating the
+					// echo here would break that stamping match.
+					result.transcriptVisibility === "internal")
+			) {
+				continue;
+			}
+			const normalizedRaw = normalizeForEchoComparison(source.text);
+			if (normalizedRaw.length < RAW_TOOL_TEXT_ECHO_MIN_CHARS) continue;
+			// When the tool's own userFacingText carries ordinary result text, that
+			// text IS the sanctioned user projection. Planner observations never gain
+			// this license: the evaluator must synthesize a fresh answer from them.
+			const userFacing = source.userLicensable
+				? (canonicalUserFacingText(result, {
+						allTurnReceipts: receipts,
+						includeTerminalFailure: true,
+					}) ??
+					(hasRequiresConfirmationMarker(result) ||
+					hasAwaitingUserInputMarker(result) ||
+					(effectiveMachineSuccess(result, receipts) && hasNoopMarker(result))
+						? getNonEmptyString(result.userFacingText)
+						: undefined))
+				: undefined;
+			if (
+				userFacing &&
+				normalizeForEchoComparison(userFacing).includes(normalizedRaw)
+			) {
+				continue;
+			}
+			if (
+				normalizedCandidate === normalizedRaw ||
+				normalizedRaw.startsWith(normalizedCandidate) ||
+				normalizedCandidate.startsWith(normalizedRaw)
+			) {
+				return true;
+			}
 		}
 	}
 	return false;
@@ -5216,6 +5229,7 @@ export function actionResultToPlannerToolResult(
 	const plannerResult: PlannerToolResult = {
 		success: effectiveMachineSuccess(result),
 		text: result.text,
+		plannerObservation: result.plannerObservation,
 		transcriptVisibility: result.transcriptVisibility,
 		userFacingText: result.userFacingText,
 		verifiedUserFacing: result.verifiedUserFacing,

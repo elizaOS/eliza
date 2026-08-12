@@ -5386,12 +5386,19 @@ async function settleTasksOperation(args: {
     isIssueReadOperation(args.operation, args.params, args.content);
   const { receipt, outcomeUnknown } = tasksEffectReceipt(args);
   const {
+    plannerObservation: _untrustedPlannerObservation,
+    ...observationFreeResult
+  } = args.result;
+  const {
+    text: readObservation,
     userFacingText: _readUserFacingText,
     verifiedUserFacing: _readVerifiedUserFacing,
     turnComplete: _readTurnComplete,
     ...plannerOnlyResult
-  } = args.result;
-  let result: ActionResult = plannerOnlyRead ? plannerOnlyResult : args.result;
+  } = observationFreeResult;
+  let result: ActionResult = plannerOnlyRead
+    ? plannerOnlyResult
+    : observationFreeResult;
   if (
     result.success === true &&
     receipt.outcome === "noop" &&
@@ -5482,9 +5489,21 @@ async function settleTasksOperation(args: {
   // narrow exception because its callback is the complete actionable ask; the
   // producer supplies that verified license. Failed receipts still bind no
   // completion claim to either form.
+  const plannerObservation = effectString(readObservation);
   const effectResult: ActionResult = {
     ...result,
     effectReceipts: [receipt],
+    ...(plannerOnlyRead &&
+    result.success === true &&
+    result.userFacingEffect === "none" &&
+    receipt.outcome === "noop" &&
+    !receipt.idempotency.replayed &&
+    effectiveMachineSuccess({ ...result, effectReceipts: [receipt] }, [
+      receipt,
+    ]) &&
+    plannerObservation
+      ? { plannerObservation }
+      : {}),
     ...(canonical?.response.text
       ? result.success !== false
         ? {

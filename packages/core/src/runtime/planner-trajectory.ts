@@ -17,15 +17,18 @@ import {
 	hasAppliedUserFacingEffectProof,
 	mergeEffectReceipts,
 } from "../types/effects";
+import { MAX_ACTION_RESULT_TEXT_CHARS } from "../utils/action-results";
 import { isPlainObject } from "../utils/type-guards";
 import { hashStableJson } from "./context-hash";
 import { appendContextEvent } from "./context-object";
+import { truncateToolResultText } from "./planner-rendering";
 import type {
 	ContextObject,
 	PlannerStep,
 	PlannerSubstepDigest,
 	PlannerSubstepStatus,
 	PlannerToolCall,
+	PlannerToolResult,
 	PlannerTrajectory,
 } from "./planner-types";
 
@@ -184,9 +187,12 @@ export function canonicalUserFacingText(
  * headers are removed as whole forms so even their labels cannot become model
  * instructions. The ordinary security redactor still handles bare token shapes.
  */
-function projectModelSafeValue<T>(value: T): T {
+function projectModelSafeValue<T>(
+	value: T,
+	options: { omitOperationalReferences?: boolean } = {},
+): T {
 	if (typeof value === "string") {
-		const withoutCredentialForms = value
+		let withoutCredentialForms = value
 			.replace(
 				/\bAuthorization\s*[:=]\s*(?:Bearer|Basic)\s+[^\s,;]+/giu,
 				"[credential omitted]",
@@ -199,22 +205,69 @@ function projectModelSafeValue<T>(value: T): T {
 				/\b(?:Bearer|Basic)\s+[A-Za-z0-9._+/=-]{8,}/giu,
 				"[credential omitted]",
 			);
+		if (options.omitOperationalReferences) {
+			withoutCredentialForms = withoutCredentialForms
+				.replace(
+					/\b(?:AKIA|ASIA|AROA|AIDA|AGPA|ANPA|ANVA|AIPA)[0-9A-Z]{16}\b/gu,
+					"[credential omitted]",
+				)
+				.replace(
+					/\b[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\b/giu,
+					"[identifier omitted]",
+				)
+				.replace(
+					/(^|[\s("'=:[])\/(?!\/)(?:[^/\s,;)"'\]]+\/)*[^/\s,;)"'\]]+/gu,
+					"$1[path omitted]",
+				)
+				.replace(
+					/\b[A-Za-z]:\\(?:[^\\\s,;)"'\]]+\\)*[^\\\s,;)"'\]]+/gu,
+					"[path omitted]",
+				);
+		}
 		return redactObjectSecrets(withoutCredentialForms, {}) as T;
 	}
 	if (Array.isArray(value)) {
-		return value.map((entry) => projectModelSafeValue(entry)) as T;
+		return value.map((entry) => projectModelSafeValue(entry, options)) as T;
 	}
 	if (value !== null && typeof value === "object") {
 		const projected = Object.fromEntries(
 			Object.entries(value).flatMap(([key, entry]) =>
 				isSensitiveKeyName(key)
 					? []
-					: [[key, projectModelSafeValue(entry)] as const],
+					: [[key, projectModelSafeValue(entry, options)] as const],
 			),
 		);
 		return projected as T;
 	}
 	return value;
+}
+
+/** Receipt-revalidated, scrubbed, bounded read authority for model boundaries. */
+export function projectPlannerObservationForModel(
+	result: PlannerToolResult,
+	allTurnReceipts: readonly EffectReceipt[],
+): string | undefined {
+	const observation =
+		typeof result.plannerObservation === "string"
+			? result.plannerObservation.trim()
+			: undefined;
+	if (
+		!observation ||
+		result.userFacingEffect !== "none" ||
+		!Array.isArray(result.effectReceipts) ||
+		result.effectReceipts.length === 0 ||
+		!effectiveMachineSuccess(result, allTurnReceipts) ||
+		result.effectReceipts.some(
+			(receipt) =>
+				receipt.outcome !== "noop" || receipt.idempotency.replayed === true,
+		)
+	) {
+		return undefined;
+	}
+	return truncateToolResultText(
+		projectModelSafeValue(observation, { omitOperationalReferences: true }),
+		MAX_ACTION_RESULT_TEXT_CHARS,
+	);
 }
 
 /**
@@ -238,11 +291,18 @@ export function projectModelVisibleTrajectory(
 				allTurnReceipts: receipts,
 			});
 			const subSteps = renderPlannerSubsteps(step.result.subSteps, receipts);
+			const plannerObservation = projectPlannerObservationForModel(
+				step.result,
+				receipts,
+			);
 			return [
 				[
 					`tool_name: ${JSON.stringify(step.toolCall.name)}`,
 					`machine_status: ${success ? "success" : "failed"}`,
 					...(subSteps ? [`substeps: ${subSteps}`] : []),
+					...(plannerObservation
+						? [`planner_observation: ${JSON.stringify(plannerObservation)}`]
+						: []),
 					userFacingText
 						? `canonical_user_facing_text: ${JSON.stringify(userFacingText)}`
 						: "canonical_user_facing_text: unavailable",
@@ -302,12 +362,17 @@ export function projectEvaluatorVisibleTrajectory(
 			allTurnReceipts: receipts,
 		});
 		const subSteps = renderPlannerSubsteps(step.result.subSteps, receipts);
+		const plannerObservation = projectPlannerObservationForModel(
+			step.result,
+			receipts,
+		);
 		return [
 			{
 				iteration: step.iteration,
 				toolCall: { name: step.toolCall.name },
 				result: {
 					success,
+					...(plannerObservation ? { plannerObservation } : {}),
 					...(subSteps ? { text: `substeps: ${subSteps}` } : {}),
 					...(userFacingText
 						? {

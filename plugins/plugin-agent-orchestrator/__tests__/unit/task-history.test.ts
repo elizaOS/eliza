@@ -122,9 +122,10 @@ describe("TASKS:history", () => {
       search: "billing",
     });
     expect(result?.success).toBe(true);
-    expect(result?.text).toContain("Billing gateway [blocked]");
-    expect(result?.text).not.toContain("Billing cleanup");
-    expect(result?.text).not.toContain("Auth gateway");
+    expect(result?.plannerObservation).toContain("Billing gateway [blocked]");
+    expect(result?.plannerObservation).not.toContain("Billing cleanup");
+    expect(result?.plannerObservation).not.toContain("Auth gateway");
+    expect(result?.text).toBeUndefined();
     expect(result?.data?.taskIds).toEqual(["task-blocked"]);
     expect(result?.data?.filters).toMatchObject({
       statuses: ["blocked"],
@@ -173,14 +174,16 @@ describe("TASKS:history", () => {
       includeArchived: false,
     });
     expect(result?.success).toBe(true);
-    expect(result?.text).toContain(
+    expect(result?.plannerObservation).toContain(
       'The orchestrator task for that session is "Long-running migration" [active].',
     );
-    // The raw session uuid is planner/log detail — user-bound text never
-    // carries it (it stays in data.filters below).
-    expect(result?.text).not.toContain("session-older");
-    expect(result?.text).toContain("Latest session: newest-agent");
-    expect(result?.text).not.toContain("Unrelated work");
+    // The raw session uuid remains structural filter data rather than prose.
+    expect(result?.plannerObservation).not.toContain("session-older");
+    expect(result?.plannerObservation).toContain(
+      "Latest session: newest-agent",
+    );
+    expect(result?.plannerObservation).not.toContain("Unrelated work");
+    expect(result?.text).toBeUndefined();
     expect(result?.data?.taskIds).toEqual(["task-target"]);
     expect(result?.data?.filters).toMatchObject({
       sessionId: "session-older",
@@ -222,8 +225,9 @@ describe("TASKS:history", () => {
       includeArchived: false,
     });
     expect(result?.success).toBe(true);
-    expect(result?.text).not.toContain("project none");
-    expect(result?.text).not.toContain("that session");
+    expect(result?.plannerObservation).not.toContain("project none");
+    expect(result?.plannerObservation).not.toContain("that session");
+    expect(result?.text).toBeUndefined();
     expect(result?.data?.filters).not.toHaveProperty("projectId");
     expect(result?.data?.filters).not.toHaveProperty("sessionId");
   });
@@ -253,12 +257,12 @@ describe("TASKS:history", () => {
     );
     expect(taskService.listTasks).not.toHaveBeenCalled();
     expect(result?.success).toBe(true);
-    expect(result?.text).toContain(
+    expect(result?.plannerObservation).toContain(
       "I did not find any orchestrator task threads matching that session.",
     );
-    // The raw session uuid stays out of user-bound text; the structural
-    // filter value remains available in the action data.
-    expect(result?.text).not.toContain("session-missing");
+    // The raw session uuid remains structural filter data rather than prose.
+    expect(result?.plannerObservation).not.toContain("session-missing");
+    expect(result?.text).toBeUndefined();
     expect(result?.data?.filters).toMatchObject({
       sessionId: "session-missing",
     });
@@ -293,8 +297,11 @@ describe("TASKS:history", () => {
     );
 
     expect(result?.success).toBe(true);
-    expect(result?.text).toContain('still working on "color-pop"');
-    expect(result?.text).not.toContain("did not find");
+    expect(result?.plannerObservation).toContain(
+      'still working on "color-pop"',
+    );
+    expect(result?.plannerObservation).not.toContain("did not find");
+    expect(result?.text).toBeUndefined();
     expect(result?.data?.count).toBe(0);
     expect(result?.data?.inFlight).toEqual({ taskId: "task-building" });
   });
@@ -335,11 +342,14 @@ describe("TASKS:history", () => {
 
     expect(taskService.listTasks).not.toHaveBeenCalled();
     expect(result?.success).toBe(true);
-    expect(result?.text).toContain('still working on "color-pop"');
-    // Neither the queried session uuid nor the running session's uuid may
-    // reach user-bound text; the running session id rides the action data.
-    expect(result?.text).not.toContain("session-missing");
-    expect(result?.text).not.toContain("01234567-89ab-cdef");
+    expect(result?.plannerObservation).toContain(
+      'still working on "color-pop"',
+    );
+    // Neither the queried session uuid nor the running session's uuid belongs
+    // in planner prose; the running session id rides the action data.
+    expect(result?.plannerObservation).not.toContain("session-missing");
+    expect(result?.plannerObservation).not.toContain("01234567-89ab-cdef");
+    expect(result?.text).toBeUndefined();
     expect(result?.data?.inFlight).toEqual({
       sessionId: "01234567-89ab-cdef-0123-456789abcdef",
     });
@@ -369,9 +379,12 @@ describe("TASKS:history", () => {
     );
 
     expect(result?.success).toBe(true);
-    expect(result?.text).toContain("I found 2 orchestrator tasks");
-    expect(result?.text).toContain("Active task [active]");
-    expect(result?.text).not.toContain("Open task");
+    expect(result?.plannerObservation).toContain(
+      "I found 2 orchestrator tasks",
+    );
+    expect(result?.plannerObservation).toContain("Active task [active]");
+    expect(result?.plannerObservation).not.toContain("Open task");
+    expect(result?.text).toBeUndefined();
     expect(result?.data?.count).toBe(2);
     expect(result?.data?.taskIds).toEqual(["task-active"]);
     expect(result?.data?.filters).toMatchObject({
@@ -436,9 +449,10 @@ describe("TASKS:history", () => {
     );
 
     expect(result?.success).toBe(true);
-    expect(result?.text).toContain("billing");
-    expect(result?.text).not.toContain("session-b");
-    expect(result?.text).not.toContain("session-c");
+    expect(result?.plannerObservation).toContain("billing");
+    expect(result?.plannerObservation).not.toContain("session-b");
+    expect(result?.plannerObservation).not.toContain("session-c");
+    expect(result?.text).toBeUndefined();
     expect(result?.data?.sessionIds).toEqual(["session-a"]);
     expect(acpService.listSessions).toHaveBeenCalledTimes(1);
     expect(historyCallback).not.toHaveBeenCalled();

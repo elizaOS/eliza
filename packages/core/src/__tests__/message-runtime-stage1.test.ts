@@ -221,13 +221,14 @@ function makeRuntime(
 				_provider: unknown,
 				provenance?: ModelCallProvenance,
 			) => {
-				if (provenance && stageOneProvider) {
-					provenance.resolvedProvider = stageOneProvider;
-				}
 				if (queue.length === 0) {
 					throw new Error("Unexpected useModel call");
 				}
-				return queue.shift();
+				const response = queue.shift();
+				if (provenance && stageOneProvider) {
+					provenance.resolvedProvider = stageOneProvider;
+				}
+				return response;
 			},
 		),
 		getSetting: vi.fn((key: string) => settings?.[key]),
@@ -2315,7 +2316,7 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(useModelCalls(runtime)).toHaveLength(1);
 	});
 
-	it("fails closed before planning when runtime provider provenance is unavailable", async () => {
+	it("fails closed before planning when the model harness omits provider provenance", async () => {
 		const runtime = makeRuntime(
 			[
 				stage1Response({

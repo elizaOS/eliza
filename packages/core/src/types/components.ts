@@ -919,6 +919,14 @@ export interface ActionResult {
 	/** Optional text description of the result */
 	text?: string;
 
+	/**
+	 * Model-only observation from a canonically settled effect-free read. The
+	 * planner projection revalidates the read receipt and sanitizes this value;
+	 * callbacks, action events, previous-result clipboards, and user replies must
+	 * not expose it directly.
+	 */
+	plannerObservation?: string;
+
 	/** Marks raw machine-only output that must not render as assistant prose. */
 	transcriptVisibility?: "internal";
 

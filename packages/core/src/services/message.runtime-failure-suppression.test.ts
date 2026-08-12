@@ -34,7 +34,7 @@ import {
 	type Content,
 	type UUID,
 } from "../types/primitives";
-import type { IAgentRuntime } from "../types/runtime";
+import type { IAgentRuntime, ModelCallProvenance } from "../types/runtime";
 import type { State } from "../types/state";
 import { DefaultMessageService } from "./message";
 
@@ -276,33 +276,42 @@ describe("planner failure after a promoted stage-1 answer", () => {
 			}),
 			// Stage 1 succeeds with the substantive answer; every later model call
 			// (the planner) hits the provider rate limit.
-			useModel: vi.fn(async (modelType: unknown) => {
-				modelCallTypes.push(String(modelType));
-				if (String(modelType) === "RESPONSE_HANDLER" && !stage1Served) {
-					stage1Served = true;
-					return {
-						text: "",
-						toolCalls: [
-							{
-								id: "handle-response-1",
-								name: "HANDLE_RESPONSE",
-								arguments: {
-									shouldRespond: "RESPOND",
-									thought: "",
-									contexts: ["general"],
-									intents: [],
-									candidateActionNames: [],
-									replyText: SUBSTANTIVE,
-									facts: [],
-									relationships: [],
-									addressedTo: [],
+			useModel: vi.fn(
+				async (
+					modelType: unknown,
+					_params: unknown,
+					_provider: string | undefined,
+					provenance: ModelCallProvenance | undefined,
+				) => {
+					modelCallTypes.push(String(modelType));
+					if (String(modelType) === "RESPONSE_HANDLER" && !stage1Served) {
+						stage1Served = true;
+						const result = {
+							text: "",
+							toolCalls: [
+								{
+									id: "handle-response-1",
+									name: "HANDLE_RESPONSE",
+									arguments: {
+										shouldRespond: "RESPOND",
+										thought: "",
+										contexts: ["general"],
+										intents: [],
+										candidateActionNames: [],
+										replyText: SUBSTANTIVE,
+										facts: [],
+										relationships: [],
+										addressedTo: [],
+									},
 								},
-							},
-						],
-					};
-				}
-				throw RATE_LIMIT_ERROR;
-			}),
+							],
+						};
+						if (provenance) provenance.resolvedProvider = "test-provider";
+						return result;
+					}
+					throw RATE_LIMIT_ERROR;
+				},
+			),
 			composeState: vi.fn(async () => makeState()),
 			runActionsByMode: vi.fn(async () => undefined),
 			applyPipelineHooks: vi.fn(async () => undefined),
