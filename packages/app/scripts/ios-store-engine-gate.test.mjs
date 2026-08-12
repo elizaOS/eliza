@@ -1,6 +1,7 @@
 /**
  * iOS store packaging policy and canonical build-command regressions.
  */
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -19,6 +20,20 @@ const appRoot = path.resolve(
 const packageJson = JSON.parse(
   fs.readFileSync(path.join(appRoot, "package.json"), "utf8"),
 );
+
+function loadCapacitorConfigWithEnv(environment) {
+  const probe = [
+    'import config from "./capacitor.config.ts";',
+    "process.stdout.write(JSON.stringify(config));",
+  ].join("\n");
+  return JSON.parse(
+    execFileSync(process.execPath, ["--eval", probe], {
+      cwd: appRoot,
+      env: environment,
+      encoding: "utf8",
+    }),
+  );
+}
 
 /** Build an env with the iOS engine-gate vars unset, then apply overrides. */
 const env = (overrides = {}) => ({
@@ -143,8 +158,12 @@ describe("canonical iOS runtime build scripts", () => {
     });
 
     expect(resolved).toMatchObject({
+      ELIZA_CAPACITOR_BUILD_TARGET: "ios",
       ELIZA_BUILD_VARIANT: "store",
       ELIZA_RELEASE_AUTHORITY: "apple-app-store",
+      ELIZA_MOBILE_SKIP_WEB_BUILD_ALLOW_STALE: "0",
+      ELIZA_IOS_SKIP_CAPACITOR_SYNC: "0",
+      ELIZA_IOS_SKIP_POD_INSTALL: "0",
       VITE_ELIZA_IOS_RUNTIME_MODE: "cloud",
       ELIZA_IOS_RUNTIME_MODE: "cloud",
       ELIZA_IOS_APP_STORE_LOCAL_RUNTIME: "0",
@@ -165,6 +184,31 @@ describe("canonical iOS runtime build scripts", () => {
       engineForced: false,
       engineWillEmbed: false,
     });
+  });
+
+  it("loads the actual Capacitor config as an iOS cloud store build despite polluted shell env", () => {
+    const resolved = resolveIosBuildEnvironment("ios-cloud", {
+      ...process.env,
+      ELIZA_CAPACITOR_BUILD_TARGET: "android",
+      ELIZA_BUILD_VARIANT: "direct",
+      ELIZA_RELEASE_AUTHORITY: "developer-toolchain",
+      ELIZA_WEBVIEW_DEBUG: "1",
+      ELIZA_CAPACITOR_SERVER_URL: "http://127.0.0.1:5173",
+      VITE_ELIZA_IOS_API_BASE: "http://127.0.0.1:31337",
+      VITE_ELIZA_IOS_RUNTIME_MODE: "cloud",
+      VITE_ELIZA_IOS_FULL_BUN_AVAILABLE: "1",
+    });
+    const config = loadCapacitorConfigWithEnv(resolved);
+
+    expect(config.server.url).toBeUndefined();
+    expect(config.server.allowNavigation).not.toContain("localhost");
+    expect(config.server.allowNavigation).not.toContain("127.0.0.1");
+    expect(config.plugins.Agent).toMatchObject({
+      runtimeMode: "cloud",
+      fullBunAvailable: "0",
+      apiBase: "",
+    });
+    expect(config.ios.webContentsDebuggingEnabled).toBe(false);
   });
 
   it("rejects a hybrid runtime override on the pure-cloud target", () => {

@@ -5,8 +5,8 @@
  * against the local agent (health, the local-inference hub/providers/device,
  * model activation, then a real chat + streamed reply), and persists each step's
  * result back into Preferences so the simulator host can poll it. The probe runs
- * once per page load and stays inactive when the flag is absent or the runtime
- * is in cloud / cloud-hybrid mode.
+ * once per page load and stays inactive when the immutable renderer build lacks
+ * the engine, the request flag is absent, or the runtime is cloud/cloud-hybrid.
  */
 import { Preferences } from "@capacitor/preferences";
 import { formatError } from "@elizaos/shared";
@@ -289,12 +289,22 @@ async function withIosFullBunSmokeTimeout<T>(
 }
 
 /**
- * If the host has requested the iOS full-Bun smoke (via localStorage or
- * Capacitor Preferences), boot the in-process Bun runtime and drive the
- * canonical probe sequence. Returns true when the smoke ran (whether it
- * passed or failed) so the caller can short-circuit the normal React boot.
+ * If this build can host full Bun and the host requested the smoke (via
+ * localStorage or Capacitor Preferences), boot the runtime and drive the
+ * canonical probe sequence. A build without the immutable capability clears
+ * stale requests before persisted runtime-mode state can select the Bun path.
+ * Returns true when the smoke ran (whether it passed or failed) so the caller
+ * can short-circuit the normal React boot.
  */
-export async function runIosFullBunSmokeIfRequested(): Promise<boolean> {
+export async function runIosFullBunSmokeIfRequested({
+  fullBunAvailable,
+}: {
+  fullBunAvailable: boolean;
+}): Promise<boolean> {
+  if (!fullBunAvailable) {
+    await clearIosFullBunSmokeRequest();
+    return false;
+  }
   if (iosFullBunSmokeStarted) return true;
   let requested = false;
   try {

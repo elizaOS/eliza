@@ -41,6 +41,7 @@ beforeEach(() => {
   vi.mocked(Capacitor.getPlatform).mockReturnValue("ios");
   vi.mocked(Capacitor.isNativePlatform).mockReturnValue(true);
   vi.mocked(runIosFullBunSmokeIfRequested).mockResolvedValue(true);
+  vi.stubEnv("VITE_ELIZA_IOS_FULL_BUN_AVAILABLE", "1");
   vi.stubGlobal("__ELIZA_BUILD_VARIANT__", "local");
   vi.stubGlobal("__ELIZA_WEB_SHELL__", false);
   vi.stubGlobal("__ELIZA_CHAT_UI_HARNESS__", false);
@@ -54,7 +55,9 @@ describe("renderer iOS full-Bun composition", () => {
     }
 
     await vi.waitFor(() => {
-      expect(runIosFullBunSmokeIfRequested).toHaveBeenCalledOnce();
+      expect(runIosFullBunSmokeIfRequested).toHaveBeenCalledWith({
+        fullBunAvailable: true,
+      });
     });
 
     expect(main.isIOS).toBe(true);

@@ -141,9 +141,13 @@ export function resolveIosBuildEnvironment(targetName, env = {}) {
   }
 
   const resolved = { ...env };
+  resolved.ELIZA_CAPACITOR_BUILD_TARGET = target.capacitorTarget;
   if (targetOwnsEnvironment) {
     resolved.ELIZA_BUILD_VARIANT = target.buildVariant;
     resolved.ELIZA_RELEASE_AUTHORITY = target.releaseAuthority;
+    resolved.ELIZA_MOBILE_SKIP_WEB_BUILD_ALLOW_STALE = "0";
+    resolved.ELIZA_IOS_SKIP_CAPACITOR_SYNC = "0";
+    resolved.ELIZA_IOS_SKIP_POD_INSTALL = "0";
   } else {
     setDefaultEnv(resolved, "ELIZA_BUILD_VARIANT", target.buildVariant);
     setDefaultEnv(resolved, "ELIZA_RELEASE_AUTHORITY", target.releaseAuthority);
