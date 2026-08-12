@@ -34,6 +34,11 @@ describe("normalizeCommandBody", () => {
 		expect(normalizeCommandBody("@Bot  /status", "bot")).toBe("/status");
 	});
 
+	it("strips a leading bot mention when botMention parameter includes a leading @", () => {
+		expect(normalizeCommandBody("@Bot  /status", "@bot")).toBe("/status");
+		expect(normalizeCommandBody("@eliza /help", "@eliza")).toBe("/help");
+	});
+
 	it("rewrites a colon command separator to a space", () => {
 		expect(normalizeCommandBody("/think: high")).toBe("/think high");
 		expect(normalizeCommandBody("!mode:fast")).toBe("!mode fast");
@@ -188,5 +193,10 @@ describe("parseCommand", () => {
 	it("uses the first alias as the canonical form", () => {
 		const help = define({ key: "help", textAliases: ["/help", "/h", "/?"] });
 		expect(parseCommand("/h", help)?.canonical).toBe("/help");
+	});
+
+	it("safely handles command definitions with missing textAliases", () => {
+		const bare = define({ key: "bare", textAliases: undefined as unknown as string[] });
+		expect(parseCommand("/bare", bare)).toBeNull();
 	});
 });

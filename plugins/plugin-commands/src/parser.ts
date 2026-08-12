@@ -73,7 +73,7 @@ export function parseCommand(
 
 	// Find the matching alias
 	let matchedAlias: string | null = null;
-	for (const alias of definition.textAliases) {
+	for (const alias of definition.textAliases ?? []) {
 		const normalized = alias.toLowerCase();
 		if (trimmed.toLowerCase() === normalized) {
 			matchedAlias = alias;
@@ -106,7 +106,7 @@ export function parseCommand(
 
 	const parsed: ParsedCommand = {
 		key: definition.key,
-		canonical: definition.textAliases[0] ?? `/${definition.key}`,
+		canonical: definition.textAliases?.[0] ?? `/${definition.key}`,
 		args,
 	};
 	if (rawArgs) {
@@ -206,8 +206,16 @@ export function normalizeCommandBody(
 
 	// Remove textual bot mention prefix (e.g., "@bot /status" -> "/status")
 	if (botMention) {
-		const mentionPattern = new RegExp(`^@${escapeRegExp(botMention)}\\s*`, "i");
-		normalized = normalized.replace(mentionPattern, "");
+		const cleanMention = botMention.startsWith("@")
+			? botMention.slice(1)
+			: botMention;
+		if (cleanMention) {
+			const mentionPattern = new RegExp(
+				`^@${escapeRegExp(cleanMention)}\\s*`,
+				"i",
+			);
+			normalized = normalized.replace(mentionPattern, "");
+		}
 	}
 
 	// Handle colon in command (e.g., "/command: args" -> "/command args")
