@@ -655,6 +655,17 @@ export default function StewardLoginSection() {
     );
   }
 
+  function isNoCredentialError(e: unknown): boolean {
+    const message = getErrorMessage(e, "").toLowerCase();
+    return (
+      message.includes("no credential") ||
+      message.includes("no passkey") ||
+      message.includes("credential not found") ||
+      message.includes("passkey not found") ||
+      message.includes("404")
+    );
+  }
+
   async function handlePasskey() {
     if (!showPasskey) {
       if (providers.email !== false) {
@@ -680,14 +691,22 @@ export default function StewardLoginSection() {
     } catch (e: unknown) {
       if (isUserVerificationError(e)) {
         setError(
+          "Passkey sign-in requires device verification (PIN or biometric). Your device may not support this — try Magic Link instead.",
+        );
+        setLoading(null);
+      } else if (isUserCancelled(e)) {
+        setError("Passkey sign-in was cancelled.");
+        setLoading(null);
+      } else if (isNoCredentialError(e)) {
+        await startPasskeySignup();
+      } else {
+        setError(
           getErrorMessage(
             e,
-            "Passkey sign-in requires device verification (PIN or biometric). Your device may not support this — try Magic Link instead.",
+            "Passkey sign-in failed. Try again or use Magic Link.",
           ),
         );
         setLoading(null);
-      } else {
-        await startPasskeySignup();
       }
     }
   }
