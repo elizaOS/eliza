@@ -10,6 +10,7 @@ import { Plus } from "lucide-react";
 import { useEffect, useMemo } from "react";
 import type {
   ConnectorAccountCreateInput,
+  ConnectorAccountOAuthStartInput,
   ConnectorAccountRecord,
   ConnectorAccountRole,
 } from "../../api/client-agent";
@@ -69,6 +70,10 @@ export interface ConnectorAccountListProps {
    * before, preserving the legacy single-list behavior.
    */
   externalAccounts?: UseConnectorAccountsResult;
+  /** When false, the OAuth add-account button is disabled. */
+  canStartOAuth?: boolean;
+  /** Optional OAuth body factory merged into the start request. */
+  resolveOAuthStartInput?: () => ConnectorAccountOAuthStartInput;
 }
 
 function sortConnectorAccounts(
@@ -126,6 +131,8 @@ export function ConnectorAccountList({
   onAddAccount,
   accountRole,
   externalAccounts,
+  canStartOAuth = true,
+  resolveOAuthStartInput,
 }: ConnectorAccountListProps) {
   // When the caller hoists the accounts hook (e.g. `OwnerAgentConnectorSetupPanel`),
   // skip the internal polling instance — Rules of Hooks require the call
@@ -181,8 +188,11 @@ export function ConnectorAccountList({
       accountRole && accountRole !== CONNECTOR_UNKNOWN_ROLE_BUCKET
         ? accountRole
         : "OWNER";
+    const oauthStart = resolveOAuthStartInput?.() ?? {};
     const result = await connectorAccounts.startOAuth({
+      ...oauthStart,
       metadata: {
+        ...oauthStart.metadata,
         requestedRole,
         privacy: requestedRole === "OWNER" ? "owner_only" : "team_visible",
       },
@@ -193,6 +203,7 @@ export function ConnectorAccountList({
   const addBusy =
     connectorAccounts.saving.has(`add:${provider}:${connectorId}`) ||
     connectorAccounts.saving.has(`oauth:${provider}:${connectorId}:new`);
+  const addDisabled = addBusy || !canStartOAuth;
 
   return (
     <div
@@ -210,7 +221,7 @@ export function ConnectorAccountList({
             type="button"
             variant="default"
             size="sm"
-            disabled={addBusy}
+            disabled={addDisabled}
             onClick={() => void handleAdd()}
             className="h-8 gap-1 px-2.5 text-xs"
           >

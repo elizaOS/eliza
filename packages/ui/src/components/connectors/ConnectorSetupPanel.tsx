@@ -20,6 +20,7 @@ import {
 import { useConnectorChannelMode } from "./connector-channel-mode";
 import { resolveConnectorSetupPanelToken } from "./connector-setup-panel-registry";
 import { DiscordLocalConnectorPanel } from "./DiscordLocalConnectorPanel";
+import { GoogleConnectorSetupPanel } from "./GoogleConnectorSetupPanel";
 import { IMessageStatusPanel } from "./IMessageStatusPanel";
 import { OwnerAgentConnectorSetupPanel } from "./OwnerAgentConnectorSetupPanel";
 import { SignalQrOverlay } from "./SignalQrOverlay";
@@ -35,6 +36,17 @@ function ConnectorAccountManagementPanel({
   connectorId: string;
 }) {
   const channelMode = useConnectorChannelMode();
+  const isGoogle = provider === "google" || connectorId === "google";
+
+  if (isGoogle) {
+    return (
+      <GoogleConnectorSetupPanel
+        provider={provider}
+        connectorId={connectorId}
+      />
+    );
+  }
+
   const option =
     getConnectorPluginManagedAccountOption(connectorId) ??
     getConnectorPluginManagedAccountOption(provider);

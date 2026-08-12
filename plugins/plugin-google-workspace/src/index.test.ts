@@ -153,6 +153,98 @@ describe("google plugin", () => {
     );
   });
 
+  it.each([
+    {
+      label: "omitted scopes",
+      scopes: undefined,
+    },
+    {
+      label: "empty scopes",
+      scopes: [],
+    },
+  ])("fails closed when OAuth start receives $label", async ({ scopes }) => {
+    const runtime = {
+      getSetting: (key: string) =>
+        ({
+          GOOGLE_CLIENT_ID: "google-client",
+          GOOGLE_CLIENT_SECRET: "google-secret",
+          GOOGLE_REDIRECT_URI: "http://localhost/oauth/google/callback",
+        })[key],
+      getService: () => null,
+    } as never;
+    const provider = createGoogleConnectorAccountProvider(runtime);
+
+    await expect(
+      provider.startOAuth?.(
+        {
+          provider: "google",
+          scopes,
+          flow: {
+            id: "flow-missing-capabilities",
+            provider: "google",
+            state: "state-missing-capabilities",
+            status: "pending",
+            createdAt: Date.now(),
+            updatedAt: Date.now(),
+          },
+        },
+        {} as never
+      )
+    ).rejects.toThrow(
+      "Google OAuth requires an explicit Gmail, Calendar, Drive, or Meet capability selection."
+    );
+  });
+
+  it("derives a least-privilege connector OAuth URL from gmail.read and calendar.read", async () => {
+    const runtime = {
+      getSetting: (key: string) =>
+        ({
+          GOOGLE_CLIENT_ID: "google-client",
+          GOOGLE_CLIENT_SECRET: "google-secret",
+          GOOGLE_REDIRECT_URI: "http://localhost/oauth/google/callback",
+        })[key],
+      getService: () => null,
+    } as never;
+    const provider = createGoogleConnectorAccountProvider(runtime);
+
+    const result = await provider.startOAuth?.(
+      {
+        provider: "google",
+        scopes: ["gmail.read", "calendar.read"],
+        flow: {
+          id: "flow-gmail-calendar-read",
+          provider: "google",
+          state: "state-gmail-calendar-read",
+          status: "pending",
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+        },
+      },
+      {} as never
+    );
+    const url = new URL(result?.authUrl ?? "");
+    const requestedScopes = new Set(
+      (url.searchParams.get("scope") ?? "").split(" ").filter(Boolean)
+    );
+
+    expect(requestedScopes).toEqual(
+      new Set([
+        GOOGLE_OAUTH_SCOPES.profile.openid,
+        GOOGLE_OAUTH_SCOPES.profile.email,
+        GOOGLE_OAUTH_SCOPES.profile.profile,
+        GOOGLE_OAUTH_SCOPES.gmail.read,
+        GOOGLE_OAUTH_SCOPES.calendar.read,
+      ])
+    );
+    expect(requestedScopes).not.toContain(GOOGLE_OAUTH_SCOPES.drive.read);
+    expect(requestedScopes).not.toContain(GOOGLE_OAUTH_SCOPES.drive.write);
+    expect(requestedScopes).not.toContain(GOOGLE_OAUTH_SCOPES.meet.create);
+    expect(requestedScopes).not.toContain(GOOGLE_OAUTH_SCOPES.meet.read);
+    expect(result?.metadata).toMatchObject({
+      requestedCapabilities: ["gmail.read", "calendar.read"],
+    });
+  });
+
   it("derives a least-privilege connector OAuth URL from calendar.read", async () => {
     const runtime = {
       getSetting: (key: string) =>
