@@ -33,12 +33,26 @@ import {
   dockerNodesRepository,
   stampDockerNodeEnvironmentMetadata,
 } from "@/db/repositories/docker-nodes";
+import { containersEnv } from "@/lib/config/containers-env";
+import { resolveNodeCapacity } from "@/lib/services/docker-node-manager";
 import { logger } from "@/lib/utils/logger";
+
+/**
+ * Used only when the node reports neither a capacity nor its RAM. Preserves the
+ * historical default rather than guessing, and the create path logs the skip.
+ */
+const DEFAULT_CALLBACK_CAPACITY = 8;
 
 const callbackSchema = z.object({
   nodeId: z.string().min(1).max(64),
   hostname: z.string().min(1).max(255),
-  capacity: z.number().int().min(1).max(64).optional().default(8),
+  // No default: an absent capacity means "derive it from the machine", which
+  // is not the same request as an explicit 8.
+  capacity: z.number().int().min(1).max(64).optional(),
+  /** MemTotal reported by the node itself, in MiB. */
+  memTotalMb: z.number().int().min(1).optional(),
+  /** vCPU the node reports, from nproc. */
+  vCpuCount: z.number().int().min(1).max(512).optional(),
   sshPort: z.number().int().min(1).max(65535).optional().default(22),
   sshUser: z.string().min(1).max(32).optional().default("root"),
   hostKeyFingerprint: z.string().min(1).max(128),
@@ -90,8 +104,16 @@ async function __hono_POST(request: Request) {
     );
   }
 
-  const { nodeId, hostname, capacity, sshPort, sshUser, hostKeyFingerprint } =
-    parsed.data;
+  const {
+    nodeId,
+    hostname,
+    capacity,
+    memTotalMb,
+    vCpuCount,
+    sshPort,
+    sshUser,
+    hostKeyFingerprint,
+  } = parsed.data;
 
   try {
     const existing = await dockerNodesRepository.findByNodeId(nodeId);
@@ -188,12 +210,36 @@ async function __hono_POST(request: Request) {
       });
     }
 
+    const resolved = resolveNodeCapacity({
+      requestedCapacity: capacity,
+      memTotalMb,
+      vCpuCount,
+      agentMemoryLimitMb: containersEnv.agentContainerMemoryLimitMb(),
+      fallbackCapacity: DEFAULT_CALLBACK_CAPACITY,
+    });
+    if (memTotalMb === undefined) {
+      logger.warn(
+        "[admin/docker-nodes/bootstrap-callback] node did not report its RAM; capacity not derived",
+        { nodeId, capacity: resolved.capacity },
+      );
+    } else if (resolved.clampedFrom !== undefined) {
+      logger.error(
+        "[admin/docker-nodes/bootstrap-callback] requested capacity exceeds what this node's RAM can hold",
+        {
+          nodeId,
+          requested: resolved.clampedFrom,
+          capacity: resolved.capacity,
+          memTotalMb,
+        },
+      );
+    }
+
     const created = await dockerNodesRepository.create({
       node_id: nodeId,
       hostname,
       ssh_port: sshPort,
       ssh_user: sshUser,
-      capacity,
+      capacity: resolved.capacity,
       enabled: true,
       status: "unknown",
       allocated_count: 0,
@@ -201,6 +247,10 @@ async function __hono_POST(request: Request) {
       metadata: stampDockerNodeEnvironmentMetadata({
         provider: "operator-provisioned",
         bootstrappedAt: new Date().toISOString(),
+        ...(memTotalMb === undefined ? {} : { memTotalMb }),
+        ...(vCpuCount === undefined ? {} : { vCpuCount }),
+        capacityBoundBy: resolved.boundBy,
+        capacityDerivedFromMemory: resolved.derived,
       }),
     });
     logger.info("[admin/docker-nodes/bootstrap-callback] registered new node", {
