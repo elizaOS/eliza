@@ -10,12 +10,12 @@ import { defineConfig, devices } from "@playwright/test";
 // (a real omnivoice.cpp speech clip). Binary .wav fixtures are gitignored, so
 // derive the on-disk WAV from it for Chromium's --use-file-for-fake-audio-capture.
 import { KNOWN_PHRASE_WAV_DATA_URL } from "../ui/src/voice/voice-selftest/fixtures/known-phrase";
-import { resolvePlaywrightNodeRuntime } from "./scripts/lib/playwright-node-runtime.mjs";
 import {
   resolveRequestedAuditProjects,
   UI_SMOKE_AUDIT_PROJECTS_ENV,
   writeAuditProjectPropagation,
 } from "./scripts/lib/playwright-audit-projects.mjs";
+import { resolvePlaywrightNodeRuntime } from "./scripts/lib/playwright-node-runtime.mjs";
 import {
   parseUiSmokeShard,
   UI_SMOKE_SHARD_ENV,
