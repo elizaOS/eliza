@@ -173,6 +173,31 @@ describe("gh-check-run-triage", () => {
     expect(classified.actionableFailures.map((run) => run.id)).toEqual([1]);
   });
 
+  test("slug-only records without app.id keep the legacy name-only fallback", () => {
+    const classified = triage.classifyCheckRuns([
+      {
+        id: 1,
+        name: "Build",
+        app: { slug: "app-a" },
+        status: "completed",
+        conclusion: "failure",
+        completed_at: "2026-08-12T00:00:00Z",
+      },
+      {
+        id: 2,
+        name: "Build",
+        app: { slug: "app-b" },
+        status: "completed",
+        conclusion: "success",
+        completed_at: "2026-08-12T00:01:00Z",
+      },
+    ]);
+
+    expect(classified.current.map((run) => run.id)).toEqual([2]);
+    expect(classified.superseded.map((run) => run.id)).toEqual([1]);
+    expect(classified.actionableFailures).toEqual([]);
+  });
+
   test("same-named current runs order deterministically by App identity", () => {
     const runs = [
       {

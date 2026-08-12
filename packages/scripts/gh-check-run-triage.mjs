@@ -129,12 +129,14 @@ function checkIdentity(checkRun) {
  * Supersession grouping key: the producing GitHub App plus the display
  * identity. Only a later attempt from the same App may supersede a run, since
  * a required status check can be pinned to one App and each App reports its
- * own history. Runs without an `app` payload (hand-authored `--input`
- * fixtures) share one distinct "none" bucket, so they keep collapsing by name
- * among themselves without ever merging into a real App's history.
+ * own history. Only `app.id` qualifies a group — it is the identity branch
+ * protection pins (`integration_id`). Inputs without it, including slug-only
+ * captures and hand-authored `--input` fixtures, share one distinct "no-id"
+ * bucket so they keep the legacy name-only collapsing among themselves
+ * (#18568) without ever merging into a real App's history.
  */
 function checkGroupKey(checkRun) {
-  const appIdentity = checkRun.app?.id ?? checkRun.app?.slug ?? "none";
+  const appIdentity = checkRun.app?.id ?? "none";
   return `${appIdentity}::${checkIdentity(checkRun)}`;
 }
 
