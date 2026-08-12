@@ -486,6 +486,34 @@ app.post("/", async (c) => {
     });
 
     if (executionTier === "shared") {
+      // Provision-time cache prewarm: hydrate every cache the cache-only first
+      // turn consults (admission snapshot, pricing, character, conversation
+      // Durable Object) NOW, off the response path, so the user's first message
+      // doesn't bounce off the 13-27s retryable-503 warming wall
+      // (CHAT-CORE-LATENCY §6 item 1). Best-effort: a failed prewarm only means
+      // the turn path's existing warming 503s remain the fallback.
+      let createExecutionCtx:
+        | { waitUntil(promise: Promise<unknown>): void }
+        | undefined;
+      try {
+        const candidate = c.executionCtx;
+        if (candidate && typeof candidate.waitUntil === "function") {
+          createExecutionCtx = candidate;
+        }
+      } catch {
+        // Hono throws outside Workers (tests, node runtimes); skip the prewarm.
+        createExecutionCtx = undefined;
+      }
+      if (createExecutionCtx) {
+        createExecutionCtx.waitUntil(
+          import("@/lib/services/shared-runtime/prewarm-shared-agent").then(
+            ({ prewarmSharedAgentTurnCaches }) =>
+              prewarmSharedAgentTurnCaches(agent, {
+                namespace: c.env?.SHARED_RUNTIME_CONVERSATIONS,
+              }),
+          ),
+        );
+      }
       return c.json(
         {
           success: true,
