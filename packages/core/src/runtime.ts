@@ -1412,8 +1412,10 @@ export class AgentRuntime implements IAgentRuntime {
 	private currentRoomId?: UUID; // Track the current room for logging
 	public messageService: IMessageService | null = null; // Lazily initialized
 	public companionUrl?: string;
-	/** Set when stop() has been called; prevents new service starts and use-after-stop. */
+	/** Set when stop() has completed service teardown. */
 	private stopped = false;
+	/** Set synchronously at stop entry, before any drain can yield. */
+	private stopping = false;
 
 	constructor(opts: {
 		conversationLength?: number;
@@ -2599,12 +2601,36 @@ export class AgentRuntime implements IAgentRuntime {
 	 * For full teardown (including DB/adapter connection), call close() after stop().
 	 */
 	async stop(options?: RuntimeStopOptions): Promise<void> {
-		if (this.stopped) {
+		if (this.stopped || this.stopping) {
 			this.logger.debug(
 				{ src: "agent", agentId: this.agentId },
-				"Runtime already stopped",
+				"Runtime already stopping or stopped",
 			);
 			return;
+		}
+		this.stopping = true;
+		// Freeze connector/service ingress before the first shutdown await. Without
+		// this phase, a gateway delivery can begin a new turn while the runtime is
+		// already waiting for its room-owner drain, behind the eventual service-stop
+		// snapshot. Hooks are synchronous by contract to make that boundary atomic.
+		for (const [serviceType, services] of this.services) {
+			for (const service of services) {
+				try {
+					service?.prepareStop?.("runtime-stop");
+				} catch (err) {
+					// error-policy:J6 admission preparation is best-effort so one broken
+					// connector cannot deny every service its teardown opportunity.
+					this.logger.warn(
+						{
+							src: "agent",
+							agentId: this.agentId,
+							serviceType,
+							error: err instanceof Error ? err.message : String(err),
+						},
+						"Service prepareStop() threw; continuing",
+					);
+				}
+			}
 		}
 		this.roomHandlerQueue.closeAdmissions("runtime-stop");
 		this.turnControllers.abortAllTurns("runtime-stop");
@@ -2632,6 +2658,7 @@ export class AgentRuntime implements IAgentRuntime {
 					pendingRooms: this.roomHandlerQueue.pendingTotal(),
 					timeoutMs,
 				});
+				this.stopping = false;
 				throw error;
 			}
 		} else {
@@ -5658,7 +5685,7 @@ export class AgentRuntime implements IAgentRuntime {
 			});
 		}
 		try {
-			if (this.stopped) {
+			if (this.stopped || this.stopping) {
 				throw new Error(
 					`Runtime stopped before service ${String(serviceType)} could start`,
 				);
@@ -5671,7 +5698,7 @@ export class AgentRuntime implements IAgentRuntime {
 					context: { serviceType },
 				});
 			}
-			if (this.stopped) {
+			if (this.stopped || this.stopping) {
 				await this._stopServiceInstance(
 					key,
 					serviceInstance,

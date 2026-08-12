@@ -5911,10 +5911,10 @@ export async function startEliza(
 
   bootContext.enterPhase("attach-host");
   const processLifecycle = createAgentProcessLifecycle({
-    disposeRuntime: (reason) =>
-      shutdownRuntime(runtime, reason, {
-        fast: true,
-      }),
+    // Signal shutdown must honor connector drain contracts. The supervisor's
+    // bounded escalation remains the hard ceiling; using the runtime's 500 ms
+    // fast service-stop cap here cut Discord's 10 s in-flight drain short.
+    disposeRuntime: (reason) => shutdownRuntime(runtime, reason),
     disposeSandbox: sandboxManager
       ? async () => {
           await sandboxManager?.stop();
