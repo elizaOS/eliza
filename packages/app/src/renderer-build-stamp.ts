@@ -24,6 +24,7 @@ export interface RendererBuildStamp {
   variant: string | null;
   capacitorTarget: string | null;
   runtimeMode: string | null;
+  playwrightTestAuth: boolean | null;
 }
 
 declare global {
