@@ -108,7 +108,11 @@ export async function installE2eWalletIfRequested(): Promise<boolean> {
         case "eth_accounts":
           return [account.address];
         case "eth_chainId":
-          return "0x1";
+          // Base mainnet (8453 = 0x2105). The harness wallet must report a
+          // supported login chain or siweLoginWithInjectedWallet fails closed
+          // (#18458). Base is the default because the cloud login UI lists it
+          // first.
+          return "0x2105";
         case "personal_sign": {
           const [data] = args.params ?? [];
           if (typeof data !== "string") {

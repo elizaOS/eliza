@@ -2167,6 +2167,7 @@ export default defineConfig(({ command }) => ({
   },
   plugins: [
     forcedHostModeFlagGuardPlugin(),
+    forcedWalletConnectProjectIdGuardPlugin(),
     productionBuildStampGuardPlugin(),
     bufferEsmShimPlugin(),
     // Manifest-driven renderer side-effect plugin registration (#9178): resolves
