@@ -22,6 +22,11 @@ export {
 	setCachedImageDescription,
 } from "./image-description-cache.js";
 export {
+	trustedLocalMediaUrl,
+	VISION_IMAGE_FETCH_TIMEOUT_MS,
+	VISION_IMAGE_MAX_BYTES,
+} from "./local-store.js";
+export {
 	detectMime,
 	extensionForMime,
 	getFileExtension,

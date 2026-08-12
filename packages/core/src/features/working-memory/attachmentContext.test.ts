@@ -4,7 +4,15 @@
  * text or original URLs. The harness stubs runtime memory/world access; no live
  * model or database is involved.
  */
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { fetchRemoteMedia } from "../../media/fetch.ts";
+import { getLocalServerUrl } from "../../utils/node.ts";
+
+vi.mock("../../media/fetch.ts", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("../../media/fetch.ts")>();
+	return { ...actual, fetchRemoteMedia: vi.fn(actual.fetchRemoteMedia) };
+});
+
 import type { IAgentRuntime, Memory, UUID } from "../../types/index.ts";
 import {
 	listConversationAttachments,
@@ -186,5 +194,196 @@ describe("current-message attachment wins over a stale explicit id", () => {
 		expect(records).toHaveLength(1);
 		expect(records[0]?.attachment.id).toBe("eliza-pic");
 		expect(records[0]?.autoSelected).toBe(false);
+	});
+});
+
+describe("image attachments without stored text inline bytes before describing (#18760)", () => {
+	const PNG_BYTES = Buffer.from([0x89, 0x50, 0x4e, 0x47]);
+	const CANONICAL_NAME = `${"a".repeat(64)}.png`;
+
+	beforeEach(() => {
+		vi.mocked(fetchRemoteMedia).mockClear();
+	});
+
+	function imageMessage(url: string): Memory {
+		return {
+			id: "00000000-0000-0000-0000-000000000010" as UUID,
+			entityId: userId,
+			roomId,
+			createdAt: 2,
+			content: {
+				text: "what's in this image?",
+				attachments: [
+					{ id: "img-1", url, title: "Image", contentType: "image" },
+				],
+			},
+		} as Memory;
+	}
+
+	function makeVisionRuntime(fetchImpl?: (url: string) => Promise<Response>) {
+		const useModelParams: Array<Record<string, unknown>> = [];
+		const fetchedUrls: string[] = [];
+		const reported: unknown[] = [];
+		const runtime = {
+			agentId,
+			getConversationLength: () => 20,
+			getMemories: async () => [],
+			getRoom: async () => null,
+			logger: { warn: () => undefined, debug: () => undefined },
+			getCache: async () => undefined,
+			setCache: async () => undefined,
+			reportError: (...args: unknown[]) => {
+				reported.push(args);
+			},
+			useModel: async (_type: unknown, params: Record<string, unknown>) => {
+				useModelParams.push(params);
+				return "described!";
+			},
+			fetch: fetchImpl
+				? (url: string) => {
+						fetchedUrls.push(String(url));
+						return fetchImpl(String(url));
+					}
+				: undefined,
+		} as unknown as IAgentRuntime;
+		return { runtime, useModelParams, fetchedUrls, reported };
+	}
+
+	function pngResponse(status = 200): Response {
+		return new Response(status === 200 ? new Uint8Array(PNG_BYTES) : null, {
+			status,
+			headers: { "content-type": "image/png" },
+		});
+	}
+
+	const UNAVAILABLE = "An image attachment (image bytes unavailable)";
+
+	it("resolves a canonical relative own-store handle via the local server and passes a data URL to the model", async () => {
+		const { runtime, useModelParams, fetchedUrls } = makeVisionRuntime(
+			async () => pngResponse(),
+		);
+		const records = await readAttachmentRecords(
+			runtime,
+			imageMessage(`/api/media/${CANONICAL_NAME}`),
+			"img-1",
+		);
+
+		expect(records[0]?.content).toBe("described!");
+		expect(fetchedUrls).toHaveLength(1);
+		expect(fetchedUrls[0]).toBe(
+			`http://localhost:3000/api/media/${CANONICAL_NAME}`,
+		);
+		expect(vi.mocked(fetchRemoteMedia)).not.toHaveBeenCalled();
+		expect(useModelParams[0]?.imageUrl).toBe(
+			`data:image/png;base64,${PNG_BYTES.toString("base64")}`,
+		);
+	});
+
+	it("treats a canonical absolute handle on the agent's own server origin as trusted-local", async () => {
+		const { runtime, useModelParams, fetchedUrls } = makeVisionRuntime(
+			async () => pngResponse(),
+		);
+		const ownUrl = getLocalServerUrl(`/api/media/${CANONICAL_NAME}`);
+		const records = await readAttachmentRecords(
+			runtime,
+			imageMessage(ownUrl),
+			"img-1",
+		);
+
+		expect(records[0]?.content).toBe("described!");
+		expect(fetchedUrls).toEqual([ownUrl]);
+		expect(vi.mocked(fetchRemoteMedia)).not.toHaveBeenCalled();
+		expect(String(useModelParams[0]?.imageUrl)).toMatch(
+			/^data:image\/png;base64,/,
+		);
+	});
+
+	it("fetches genuinely remote URLs through the SSRF-guarded fetcher", async () => {
+		vi.mocked(fetchRemoteMedia).mockResolvedValueOnce({
+			buffer: PNG_BYTES,
+			contentType: "image/png",
+			fileName: "cat.png",
+		});
+		const { runtime, useModelParams, fetchedUrls } = makeVisionRuntime(
+			async () => pngResponse(),
+		);
+		const records = await readAttachmentRecords(
+			runtime,
+			imageMessage("https://example.test/cat.png"),
+			"img-1",
+		);
+
+		expect(records[0]?.content).toBe("described!");
+		expect(fetchedUrls).toHaveLength(0);
+		expect(vi.mocked(fetchRemoteMedia)).toHaveBeenCalledTimes(1);
+		expect(String(useModelParams[0]?.imageUrl)).toMatch(
+			/^data:image\/png;base64,/,
+		);
+	});
+
+	it("rejects a non-canonical relative path without acquiring runtime fetch authority", async () => {
+		const { runtime, useModelParams, fetchedUrls, reported } =
+			makeVisionRuntime(async () => pngResponse());
+		const records = await readAttachmentRecords(
+			runtime,
+			imageMessage("/api/agents/secret-admin-view"),
+			"img-1",
+		);
+
+		expect(records[0]?.content).toBe(UNAVAILABLE);
+		expect(fetchedUrls).toHaveLength(0);
+		expect(vi.mocked(fetchRemoteMedia)).not.toHaveBeenCalled();
+		expect(useModelParams).toHaveLength(0);
+		expect(reported).toHaveLength(1);
+	});
+
+	it("rejects an own-origin URL that is not a canonical store handle", async () => {
+		const { runtime, useModelParams, fetchedUrls, reported } =
+			makeVisionRuntime(async () => pngResponse());
+		const records = await readAttachmentRecords(
+			runtime,
+			imageMessage(
+				getLocalServerUrl(`/api/media/${CANONICAL_NAME}`) + "?token=x",
+			),
+			"img-1",
+		);
+
+		expect(records[0]?.content).toBe(UNAVAILABLE);
+		expect(fetchedUrls).toHaveLength(0);
+		expect(useModelParams).toHaveLength(0);
+		expect(reported).toHaveLength(1);
+	});
+
+	it("degrades to the visible bytes-unavailable state on a non-2xx local fetch", async () => {
+		const { runtime, useModelParams, reported } = makeVisionRuntime(async () =>
+			pngResponse(503),
+		);
+		const records = await readAttachmentRecords(
+			runtime,
+			imageMessage(`/api/media/${CANONICAL_NAME}`),
+			"img-1",
+		);
+
+		expect(records[0]?.content).toBe(UNAVAILABLE);
+		expect(useModelParams).toHaveLength(0);
+		expect(reported).toHaveLength(1);
+	});
+
+	it("degrades to the visible bytes-unavailable state and reports when the guarded fetch rejects", async () => {
+		vi.mocked(fetchRemoteMedia).mockRejectedValueOnce(
+			new Error("SSRF policy denied host"),
+		);
+		const { runtime, useModelParams, reported } = makeVisionRuntime(async () =>
+			pngResponse(),
+		);
+		const records = await readAttachmentRecords(
+			runtime,
+			imageMessage("https://10.0.0.1/internal.png"),
+			"img-1",
+		);
+
+		expect(records[0]?.content).toBe(UNAVAILABLE);
+		expect(useModelParams).toHaveLength(0);
+		expect(reported).toHaveLength(1);
 	});
 });
