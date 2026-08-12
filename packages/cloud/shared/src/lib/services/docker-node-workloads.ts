@@ -178,10 +178,8 @@ export async function loadSandboxStatusesByIds(
       containerName: agentSandboxes.container_name,
       status: agentSandboxes.status,
       nodeId: agentSandboxes.node_id,
-      updatedAt: agentSandboxes.updated_at,
       replacementNodeId: agentSandboxes.replacement_cleanup_node_id,
       replacementContainerName: agentSandboxes.replacement_cleanup_container_name,
-      replacementCreatedAt: agentSandboxes.replacement_cleanup_created_at,
     })
     .from(agentSandboxes)
     .where(
@@ -211,7 +209,6 @@ export async function loadSandboxStatusesByIds(
         key: row.key,
         status: row.status,
         nodeId: row.nodeId ?? undefined,
-        updatedAtMs: row.updatedAt ? new Date(row.updatedAt).getTime() : undefined,
       },
       row.containerName,
     );
@@ -221,9 +218,6 @@ export async function loadSandboxStatusesByIds(
           key: row.key,
           status: "replacement_cleanup_owned",
           nodeId: row.replacementNodeId,
-          updatedAtMs: row.replacementCreatedAt
-            ? new Date(row.replacementCreatedAt).getTime()
-            : undefined,
         },
         row.replacementContainerName,
       );
