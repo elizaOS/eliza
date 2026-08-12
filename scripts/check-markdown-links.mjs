@@ -3,8 +3,9 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 
-const ROOT = path.resolve(import.meta.dirname, "..");
+const DEFAULT_ROOT = path.resolve(import.meta.dirname, "..");
 const RETIRED_REPO_EVIDENCE_PREFIX = `${[".github", ["issue", "evidence"].join("-")].join("/")}/`;
 
 // Historical evidence, fixture, vendored, and prototype documentation contains
@@ -36,37 +37,39 @@ const EXCLUDED_PREFIXES = [
 
 const EXCLUDED_NAMES = new Set(["CHANGELOG.md"]);
 
-function trackedMarkdownFiles() {
-  return execFileSync("git", ["ls-files", "*.md"], {
-    cwd: ROOT,
-    encoding: "utf8",
-  })
-    .split("\n")
-    .filter(Boolean)
-    // `git ls-files` includes index entries deleted in the current worktree.
-    // Audit the documentation that would actually ship from this checkout.
-    .filter((file) => existsSync(path.join(ROOT, file)))
-    .filter((file) => !EXCLUDED_NAMES.has(path.basename(file)))
-    .filter(
-      (file) => !EXCLUDED_PREFIXES.some((prefix) => file.startsWith(prefix)),
-    );
+export function trackedMarkdownFiles(root = DEFAULT_ROOT) {
+  try {
+    return execFileSync("git", ["ls-files", "*.md"], {
+      cwd: root,
+      encoding: "utf8",
+    })
+      .split("\n")
+      .filter(Boolean)
+      .filter((file) => existsSync(path.join(root, file)))
+      .filter((file) => !EXCLUDED_NAMES.has(path.basename(file)))
+      .filter(
+        (file) => !EXCLUDED_PREFIXES.some((prefix) => file.startsWith(prefix)),
+      );
+  } catch {
+    return [];
+  }
 }
 
-function stripAnchor(href) {
+export function stripAnchor(href) {
   const hashIndex = href.indexOf("#");
   return hashIndex === -1 ? href : href.slice(0, hashIndex);
 }
 
-function candidateTargets(sourceFile, href) {
+export function candidateTargets(root, sourceFile, href) {
   const withoutQuery = href.split("?")[0];
   if (withoutQuery.startsWith("/")) {
     const docsTarget = path.join(
-      ROOT,
+      root,
       "packages/docs",
       withoutQuery.replace(/^\/+/, ""),
     );
     return [
-      path.join(ROOT, withoutQuery),
+      path.join(root, withoutQuery),
       docsTarget,
       `${docsTarget}.md`,
       `${docsTarget}.mdx`,
@@ -76,7 +79,7 @@ function candidateTargets(sourceFile, href) {
     ];
   }
 
-  const target = path.resolve(ROOT, path.dirname(sourceFile), withoutQuery);
+  const target = path.resolve(root, path.dirname(sourceFile), withoutQuery);
   return [
     target,
     `${target}.md`,
@@ -87,7 +90,7 @@ function candidateTargets(sourceFile, href) {
   ];
 }
 
-function isRelativeLink(href) {
+export function isRelativeLink(href) {
   return (
     href &&
     !href.startsWith("#") &&
@@ -101,7 +104,7 @@ function isRelativeLink(href) {
   );
 }
 
-function decodeHref(href) {
+export function decodeHref(href) {
   try {
     return decodeURIComponent(href);
   } catch {
@@ -109,12 +112,12 @@ function decodeHref(href) {
   }
 }
 
-function targetExists(sourceFile, rawHref) {
+export function targetExists(root, sourceFile, rawHref) {
   const href = decodeHref(stripAnchor(rawHref).trim());
   if (!isRelativeLink(href)) return true;
 
-  for (const target of candidateTargets(sourceFile, href)) {
-    if (!target.startsWith(ROOT)) continue;
+  for (const target of candidateTargets(root, sourceFile, href)) {
+    if (!target.startsWith(root)) continue;
     if (!existsSync(target)) continue;
     if (statSync(target).isDirectory()) {
       if (
@@ -131,14 +134,14 @@ function targetExists(sourceFile, rawHref) {
   return false;
 }
 
-function stripCode(markdown) {
+export function stripCode(markdown) {
   return markdown
     .replace(/```[\s\S]*?```/g, "")
     .replace(/~~~[\s\S]*?~~~/g, "")
     .replace(/`[^`\n]+`/g, "");
 }
 
-function markdownLinks(markdown) {
+export function markdownLinks(markdown) {
   const links = [];
   const searchable = stripCode(markdown);
   const inlinePattern = /!?\[[^\]\n]*\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g;
@@ -152,24 +155,120 @@ function markdownLinks(markdown) {
   return links;
 }
 
-const failures = [];
-for (const file of trackedMarkdownFiles()) {
-  const markdown = readFileSync(path.join(ROOT, file), "utf8");
-  for (const href of markdownLinks(markdown)) {
-    if (!targetExists(file, href)) {
-      failures.push(`${file}: missing relative link target ${href}`);
+export function checkMarkdownLinks({ root = DEFAULT_ROOT } = {}) {
+  const resolvedRoot = path.resolve(root);
+  if (!existsSync(resolvedRoot) || !statSync(resolvedRoot).isDirectory()) {
+    throw new TypeError(
+      `[check-markdown-links] --root directory does not exist: ${root}`,
+    );
+  }
+
+  const files = trackedMarkdownFiles(resolvedRoot);
+  const failures = [];
+  for (const file of files) {
+    const markdown = readFileSync(path.join(resolvedRoot, file), "utf8");
+    for (const href of markdownLinks(markdown)) {
+      if (!targetExists(resolvedRoot, file, href)) {
+        failures.push(`${file}: missing relative link target ${href}`);
+      }
     }
   }
+
+  return {
+    ok: failures.length === 0,
+    failures,
+    scannedFiles: files.length,
+  };
 }
 
-if (failures.length > 0) {
-  console.error(
-    `[check-markdown-links] ${failures.length} missing relative link target(s):`,
-  );
-  for (const failure of failures) {
-    console.error(`- ${failure}`);
+export function parseArgs(argv) {
+  const options = {
+    help: false,
+    json: false,
+    quiet: false,
+    root: DEFAULT_ROOT,
+  };
+
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index];
+    if (arg === "--help" || arg === "-h") {
+      options.help = true;
+    } else if (arg === "--json") {
+      options.json = true;
+    } else if (arg === "--quiet") {
+      options.quiet = true;
+    } else if (arg.startsWith("--root=")) {
+      const val = arg.slice("--root=".length).trim();
+      if (!val) {
+        throw new Error(
+          "[check-markdown-links] --root requires a directory path",
+        );
+      }
+      options.root = val;
+    } else if (arg === "--root") {
+      const next = argv[index + 1];
+      if (!next || next.startsWith("-")) {
+        throw new Error(
+          "[check-markdown-links] --root requires a directory path",
+        );
+      }
+      options.root = next;
+      index += 1;
+    } else {
+      throw new Error(`[check-markdown-links] Unknown option: ${arg}`);
+    }
   }
-  process.exit(1);
+
+  return options;
 }
 
-console.log("[check-markdown-links] PASS: relative Markdown links resolve.");
+export function printHelp() {
+  console.log(`Usage: node scripts/check-markdown-links.mjs [options]
+
+Options:
+  --root=<path>   Repository root directory (default: workspace root)
+  --json          Output scan results as JSON
+  --quiet         Suppress PASS output on success
+  --help, -h      Show this help message`);
+}
+
+export function runCli(argv = process.argv.slice(2)) {
+  const options = parseArgs(argv);
+  if (options.help) {
+    printHelp();
+    return 0;
+  }
+
+  const result = checkMarkdownLinks({ root: options.root });
+
+  if (options.json) {
+    console.log(JSON.stringify(result, null, 2));
+  } else if (!result.ok) {
+    console.error(
+      `[check-markdown-links] ${result.failures.length} missing relative link target(s):`,
+    );
+    for (const failure of result.failures) {
+      console.error(`- ${failure}`);
+    }
+  } else if (!options.quiet) {
+    console.log(
+      "[check-markdown-links] PASS: relative Markdown links resolve.",
+    );
+  }
+
+  return result.ok ? 0 : 1;
+}
+
+if (
+  process.argv[1] &&
+  import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href
+) {
+  try {
+    process.exitCode = runCli();
+  } catch (error) {
+    console.error(
+      error instanceof Error ? error.message : "[check-markdown-links] failed",
+    );
+    process.exitCode = 2;
+  }
+}

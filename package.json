@@ -100,6 +100,7 @@
     "check:agents-claude": "node scripts/assert-agents-claude-identical.mjs",
     "check:biome-version": "node packages/scripts/check-biome-version-consistency.mjs",
     "check:comment-only": "node scripts/assert-comment-only-diff.mjs",
+    "check:markdown-links": "node scripts/check-markdown-links.mjs",
     "check:pr-evidence": "node scripts/check-pr-evidence.mjs",
     "pre-commit": "bun run packages/scripts/pre-commit-lint.js",
     "release": "bunx lerna publish from-package --dist-tag latest --force-publish --yes --no-verify-access --no-sort",
