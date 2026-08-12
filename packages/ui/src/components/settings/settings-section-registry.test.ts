@@ -6,13 +6,15 @@
  */
 
 import { Cog } from "lucide-react";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { resetUiRegistryHostForTests } from "../../registry-host";
 import {
   getSettingsSection,
+  getSettingsSectionRegistryVersion,
   listSettingsSections,
   registerSettingsSection,
   type SettingsSectionDef,
+  subscribeSettingsSections,
 } from "./settings-section-registry";
 
 function makeSection(
@@ -63,5 +65,25 @@ describe("settings-section-registry", () => {
     expect(ordered.indexOf("order-early")).toBeLessThan(
       ordered.indexOf("order-late"),
     );
+  });
+
+  it("publishes a new snapshot version for registrations and overrides", () => {
+    const onStoreChange = vi.fn();
+    const unsubscribe = subscribeSettingsSections(onStoreChange);
+    const initialVersion = getSettingsSectionRegistryVersion();
+
+    registerSettingsSection(makeSection("late-section"));
+    expect(getSettingsSectionRegistryVersion()).toBe(initialVersion + 1);
+    expect(onStoreChange).toHaveBeenCalledTimes(1);
+
+    registerSettingsSection(
+      makeSection("late-section", { defaultLabel: "overridden" }),
+    );
+    expect(getSettingsSectionRegistryVersion()).toBe(initialVersion + 2);
+    expect(onStoreChange).toHaveBeenCalledTimes(2);
+
+    unsubscribe();
+    registerSettingsSection(makeSection("after-unsubscribe"));
+    expect(onStoreChange).toHaveBeenCalledTimes(2);
   });
 });

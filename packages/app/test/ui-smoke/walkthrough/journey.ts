@@ -699,7 +699,28 @@ async function pullChatSheetToFull(page: Page): Promise<void> {
     timeout: 15_000,
   });
   for (let attempt = 0; attempt < 4; attempt += 1) {
-    if ((await sheet.getAttribute("data-detent")) === "full") return;
+    const currentDetent = await sheet.getAttribute("data-detent");
+    if (currentDetent === "full") return;
+    if (currentDetent === "half") {
+      // The detent commits before the spring paints HALF. A second real drag
+      // during that spring can be dropped on a loaded CI renderer, so use the
+      // rendered thread height as the transition boundary between flicks.
+      await page.waitForFunction(
+        () => {
+          const thread = document.querySelector('[data-testid="chat-thread"]');
+          if (!thread) return false;
+          const viewportH = window.visualViewport?.height ?? window.innerHeight;
+          return (
+            Math.abs(
+              thread.getBoundingClientRect().height -
+                Math.round(viewportH * 0.46),
+            ) <= 36
+          );
+        },
+        undefined,
+        { timeout: 5_000, polling: 100 },
+      );
+    }
     const box = await page.getByTestId("chat-sheet-grabber").boundingBox();
     if (!box) throw new Error("no bounding box for chat-sheet-grabber");
     const cx = box.x + box.width / 2;

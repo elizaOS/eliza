@@ -1478,6 +1478,13 @@ async function openSheetToFull(p, pointer) {
       steps: 1,
     });
     await p.waitForTimeout(SETTLE);
+    if ((await detent(p)) === "half") {
+      // The detent attribute commits before its spring reaches HALF. Starting
+      // another real gesture during that spring can lose the flick on a loaded
+      // renderer, so use rendered geometry as the retry boundary.
+      const halfH = Math.round((await viewportH(p)) * 0.46);
+      await waitForSheetHeightNear(p, halfH, 36);
+    }
   }
   await settleDetent(p, "full");
   assert((await detent(p)) === "full", `[${pointer}] AUTOSCROLL opens the sheet to FULL`);

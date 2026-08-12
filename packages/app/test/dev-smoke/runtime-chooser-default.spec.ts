@@ -4,7 +4,14 @@
  */
 
 import { mkdir } from "node:fs/promises";
-import { expect, type Page, type Route, test } from "@playwright/test";
+import {
+  expect,
+  type Locator,
+  type Page,
+  type Request,
+  type Route,
+  test,
+} from "@playwright/test";
 import {
   expectNoRenderTelemetryErrors,
   installDefaultAppRoutes,
@@ -41,6 +48,35 @@ async function routeFreshFirstRun(page: Page): Promise<void> {
     if (route.request().method() !== "GET") return route.fallback();
     await fulfillJson(route, 200, { complete: false, cloudProvisioned: false });
   });
+}
+
+async function reloadWithTransientNetworkRecovery(
+  page: Page,
+  ready: Locator,
+): Promise<void> {
+  let sawNetworkChange = false;
+  const recordRequestFailure = (request: Request): void => {
+    if (request.failure()?.errorText === "net::ERR_NETWORK_CHANGED") {
+      sawNetworkChange = true;
+    }
+  };
+
+  page.on("requestfailed", recordRequestFailure);
+  try {
+    await page.reload({ waitUntil: "domcontentloaded" });
+    try {
+      await expect(ready).toBeVisible();
+    } catch (error) {
+      // error-policy:J1 The Playwright boundary retries only the browser's
+      // explicit transient network-change failure, then asserts normally.
+      if (!sawNetworkChange) throw error;
+
+      await page.reload({ waitUntil: "domcontentloaded" });
+      await expect(ready).toBeVisible();
+    }
+  } finally {
+    page.off("requestfailed", recordRequestFailure);
+  }
 }
 
 test("Vite development offers cloud, local, and remote without an override", async ({
@@ -91,7 +127,10 @@ test("Vite development offers cloud, local, and remote without an override", asy
   await capture("runtime-chooser-vite-development-desktop-hover");
 
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.reload({ waitUntil: "domcontentloaded" });
+  await reloadWithTransientNetworkRecovery(
+    page,
+    page.getByTestId("choice-__first_run__:runtime:cloud"),
+  );
   for (const runtime of ["cloud", "local", "remote"]) {
     await expect(
       page.getByTestId(`choice-__first_run__:runtime:${runtime}`),
@@ -103,7 +142,10 @@ test("Vite development offers cloud, local, and remote without an override", asy
   await page.addInitScript(() =>
     localStorage.setItem("eliza:enable-runtime-chooser", "0"),
   );
-  await page.reload({ waitUntil: "domcontentloaded" });
+  await reloadWithTransientNetworkRecovery(
+    page,
+    page.getByText("Sign in to Eliza Cloud", { exact: true }),
+  );
   await expect(
     page.getByText("Sign in to Eliza Cloud", { exact: true }),
   ).toBeVisible();

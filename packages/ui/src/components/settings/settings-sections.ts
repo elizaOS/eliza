@@ -161,8 +161,10 @@ const MyRuntimesContainer = lazy(() =>
 export {
   getAllSettingsSections,
   getSettingsSection,
+  getSettingsSectionRegistryVersion,
   listSettingsSections,
   registerSettingsSection,
+  subscribeSettingsSections,
 } from "./settings-section-registry";
 export type {
   SettingsSectionDef,

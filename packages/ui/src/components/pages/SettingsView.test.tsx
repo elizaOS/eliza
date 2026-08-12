@@ -7,6 +7,7 @@
 // and state barrel are stubbed.
 
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -40,6 +41,11 @@ const permissionPrimingMock = vi.hoisted(() => ({
 // Controls whether the deliberately-throwing "crash" section throws on render,
 // so a single test can flip it off and assert the per-section retry recovers.
 const crashControl = vi.hoisted(() => ({ shouldThrow: true }));
+const settingsRegistryMock = vi.hoisted(() => ({
+  includeLateSection: false,
+  version: 0,
+  listeners: new Set<() => void>(),
+}));
 const stubSections = vi.hoisted(() => [
   {
     id: "identity",
@@ -137,6 +143,22 @@ vi.mock("../settings/settings-sections", async () => {
             </div>
           ),
   }));
+  const lateSection = {
+    id: "late-cloud",
+    label: "settings.sections.lateCloud.label",
+    defaultLabel: "Late Cloud",
+    icon: Settings,
+    tone: "neutral" as const,
+    hue: "slate" as const,
+    group: "system",
+    titleKey: "settings.sections.lateCloud.label",
+    defaultTitle: "Late Cloud",
+    Component: () => <div data-testid="stub-late-cloud">Late Cloud body</div>,
+  };
+  const registeredSections = () =>
+    settingsRegistryMock.includeLateSection
+      ? [...sections, lateSection]
+      : sections;
   const groupLabels: Record<string, string> = {
     agent: "Agent",
     system: "System",
@@ -163,7 +185,8 @@ vi.mock("../settings/settings-sections", async () => {
     SETTINGS_GROUP_ORDER: groupOrder,
     SETTINGS_SECTIONS: sections,
     backFromConnectorDetail,
-    getAllSettingsSections: () => sections,
+    getAllSettingsSections: registeredSections,
+    getSettingsSectionRegistryVersion: () => settingsRegistryMock.version,
     // Group the stub sections the way the real helper does (bucket by group,
     // ordered by SETTINGS_GROUP_ORDER) so the folded section-nav renders.
     groupSettingsSections: (input: typeof sections) => {
@@ -188,7 +211,12 @@ vi.mock("../settings/settings-sections", async () => {
     readSettingsHashRoute,
     readSettingsHashSection: () => {
       const route = readSettingsHashRoute();
-      return route.kind === "hub" ? null : route.sectionId;
+      if (route.kind === "hub") return null;
+      return registeredSections().some(
+        (section) => section.id === route.sectionId,
+      )
+        ? route.sectionId
+        : null;
     },
     replaceConnectorDetailHash,
     replaceSettingsHash: vi.fn(),
@@ -196,6 +224,10 @@ vi.mock("../settings/settings-sections", async () => {
       section.defaultLabel,
     settingsSectionTitle: (section: { defaultTitle: string }) =>
       section.defaultTitle,
+    subscribeSettingsSections: (listener: () => void) => {
+      settingsRegistryMock.listeners.add(listener);
+      return () => settingsRegistryMock.listeners.delete(listener);
+    },
   };
 });
 
@@ -230,6 +262,9 @@ beforeEach(() => {
   appMock.value = makeContext();
   permissionPrimingMock.calls = [];
   crashControl.shouldThrow = true;
+  settingsRegistryMock.includeLateSection = false;
+  settingsRegistryMock.version = 0;
+  settingsRegistryMock.listeners.clear();
 });
 
 afterEach(() => cleanup());
@@ -323,6 +358,25 @@ describe("SettingsView", () => {
 
     expect(screen.getByTestId("stub-runtime")).toBeTruthy();
     expect(screen.queryByTestId("stub-identity")).toBeNull();
+  });
+
+  it("resolves a retained deep-link when its section registers after mount", () => {
+    window.history.replaceState(null, "", "/settings#late-cloud");
+    render(<SettingsView />);
+
+    expect(screen.getByTestId("settings-hub-list")).toBeTruthy();
+    expect(screen.queryByTestId("stub-late-cloud")).toBeNull();
+
+    act(() => {
+      settingsRegistryMock.includeLateSection = true;
+      settingsRegistryMock.version += 1;
+      for (const listener of settingsRegistryMock.listeners) listener();
+    });
+
+    expect(screen.getByTestId("stub-late-cloud")).toBeTruthy();
+    expect(screen.getByTestId("view-header").textContent).toContain(
+      "Late Cloud",
+    );
   });
 
   it("opens a targeted permission priming modal from a settings navigate payload", async () => {

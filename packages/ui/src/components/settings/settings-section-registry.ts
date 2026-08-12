@@ -99,15 +99,42 @@ export interface SettingsSectionDef {
 interface SettingsSectionRegistryStore {
   entries: Map<string, SettingsSectionDef>;
   seq: number;
+  listeners: Set<() => void>;
 }
 
 const SETTINGS_SECTION_REGISTRY_STORE = "settings-sections";
 
 function getStore(): SettingsSectionRegistryStore {
-  return getUiRegistryStore(SETTINGS_SECTION_REGISTRY_STORE, () => ({
+  const store = getUiRegistryStore(SETTINGS_SECTION_REGISTRY_STORE, () => ({
     entries: new Map<string, SettingsSectionDef>(),
     seq: 0,
+    listeners: new Set<() => void>(),
   }));
+  // A dev HMR session may retain the pre-subscription store shape.
+  if (!store.listeners) store.listeners = new Set();
+  return store;
+}
+
+function notifySettingsSectionListeners(): void {
+  for (const listener of getStore().listeners) {
+    listener();
+  }
+}
+
+/** Subscribe to late section registrations and host/plugin overrides. */
+export function subscribeSettingsSections(
+  onStoreChange: () => void,
+): () => void {
+  const store = getStore();
+  store.listeners.add(onStoreChange);
+  return () => {
+    store.listeners.delete(onStoreChange);
+  };
+}
+
+/** Snapshot version for `useSyncExternalStore`; increments on each mutation. */
+export function getSettingsSectionRegistryVersion(): number {
+  return getStore().seq;
 }
 
 /**
@@ -119,6 +146,7 @@ export function registerSettingsSection(section: SettingsSectionDef): void {
   const order = section.order ?? store.seq;
   store.seq += 1;
   store.entries.set(section.id, { ...section, order });
+  notifySettingsSectionListeners();
 }
 
 /** All registered sections, sorted by `order` then registration sequence. */

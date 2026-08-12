@@ -135,12 +135,14 @@ const stubElizaCore = {
     }));
   },
 };
-// Swap ONLY the app-state barrel for the translator stub. The api barrel — the
-// network layer under test — stays real.
+// Swap ONLY the narrow app-store module for the translator stub. The api
+// barrel — the network layer under test — stays real. Keep the legacy state
+// barrel match so this fixture remains valid across compatible account-package
+// releases that still import the broader path.
 const stubStateBarrel = {
   name: "stub-state-barrel",
   setup(b) {
-    b.onResolve({ filter: /^(\.\.\/)+state$/ }, () => ({
+    b.onResolve({ filter: /^(\.\.\/)+state(?:\/app-store)?$/ }, () => ({
       path: join(here, "accounts-fixture-state-stub.ts"),
     }));
   },
