@@ -29,7 +29,13 @@
  */
 
 import { execSync } from "node:child_process";
-import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  readFileSync,
+  realpathSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { createServer } from "node:http";
 import { dirname, extname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -436,11 +442,20 @@ async function main(argv = process.argv) {
   process.exit(0);
 }
 
-const isMain =
-  process.argv[1] &&
-  resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+function isDirectRun(entryPath) {
+  if (!entryPath) return false;
+  try {
+    return (
+      realpathSync(resolve(entryPath)) ===
+      realpathSync(fileURLToPath(import.meta.url))
+    );
+  } catch {
+    // error-policy:J3 an unresolved argv entry is not this module's CLI path
+    return false;
+  }
+}
 
-if (isMain) {
+if (isDirectRun(process.argv[1])) {
   // error-policy:J1 CLI boundary — invalid flags and measure failures exit
   // non-zero with a legible message instead of an unhandled rejection.
   main().catch((err) => {
