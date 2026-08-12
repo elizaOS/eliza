@@ -3911,12 +3911,12 @@ async function handleIssueAction(
             text: "Missing the issue number or labels; ask the user for both.",
           };
         }
-        await service.addLabels(repo, issueNumber, labels);
+        const issue = await service.addLabels(repo, issueNumber, labels);
         if (callback)
           await callback({
             text: `Added labels [${labels.join(", ")}] to issue #${issueNumber}`,
           });
-        return { success: true };
+        return { success: true, data: { issue } };
       }
 
       default:
@@ -4286,7 +4286,7 @@ function issueEffectProof(
   data: Record<string, unknown>,
 ): TasksEffectProof | undefined {
   const op = issueOperation(params, content);
-  if (op === "list" || op === "get" || op === "add_labels") return undefined;
+  if (op === "list" || op === "get") return undefined;
   const repo = effectString(params.repo) ?? effectString(content.repo);
   const issue = objectValue(data.issue);
   const issueRecords = [
