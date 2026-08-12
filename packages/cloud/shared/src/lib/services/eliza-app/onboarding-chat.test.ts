@@ -20,6 +20,7 @@ const getElizaAppProvisioningStatus = mock();
 const findOrCreateByPhone = mock();
 const linkPhoneToUser = mock();
 const linkDiscordToUser = mock();
+const linkTelegramToUser = mock();
 const launchManagedElizaAgent = mock();
 const loggerWarn = mock();
 let cloudEnv: Record<string, string | undefined> = {};
@@ -75,11 +76,15 @@ mock.module("./user-service", () => ({
     findOrCreateByPhone,
     linkPhoneToUser,
     linkDiscordToUser,
+    linkTelegramToUser,
   },
 }));
 
 const { runOnboardingChat, validateTelegramOnboardingContinuation } = await import(
   `./onboarding-chat.ts?test=onboarding-chat-${Date.now()}`
+);
+const { peekLocalGreetingQueue, clearLocalGreetingQueue } = await import(
+  "./onboarding-proactive-greeting"
 );
 
 describe("runOnboardingChat", () => {
@@ -92,9 +97,12 @@ describe("runOnboardingChat", () => {
     linkPhoneToUser.mockResolvedValue({ success: true });
     linkDiscordToUser.mockReset();
     linkDiscordToUser.mockResolvedValue({ success: true });
+    linkTelegramToUser.mockReset();
+    linkTelegramToUser.mockResolvedValue({ success: true });
     launchManagedElizaAgent.mockReset();
     loggerWarn.mockReset();
     cloudEnv = {};
+    clearLocalGreetingQueue();
   });
 
   afterEach(() => {
@@ -151,7 +159,7 @@ describe("runOnboardingChat", () => {
     expect(findOrCreateByPhone).not.toHaveBeenCalled();
   });
 
-  test("requires Telegram OAuth when continuing a trusted Telegram session", async () => {
+  test("a trusted Telegram session hands out the same opaque continuation URL as Discord", async () => {
     const result = await runOnboardingChat({
       message: "My name is Sam",
       platform: "telegram",
@@ -162,8 +170,10 @@ describe("runOnboardingChat", () => {
 
     const loginUrl = new URL(result.loginUrl);
     expect(loginUrl.origin).toBe("https://eliza.app");
-    expect(loginUrl.searchParams.get("method")).toBe("telegram");
-    expect(loginUrl.searchParams.get("link")).toBe("true");
+    // No legacy method/link hints: those forced the homepage's Telegram
+    // widget + phone-number flow instead of the Steward continuation.
+    expect(loginUrl.searchParams.get("method")).toBeNull();
+    expect(loginUrl.searchParams.get("link")).toBeNull();
     expect(loginUrl.searchParams.get("onboardingSession")).toMatch(
       /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
     );
@@ -367,7 +377,7 @@ describe("runOnboardingChat", () => {
     });
   });
 
-  test("rejects an authenticated continuation without the gateway Telegram identity", async () => {
+  test("rejects an authenticated continuation whose signed Telegram identity mismatches the session", async () => {
     const gatewayTurn = await runOnboardingChat({
       message: "My name is Sam",
       platform: "telegram",
@@ -383,11 +393,97 @@ describe("runOnboardingChat", () => {
         authenticatedUser: {
           userId: "user-1",
           organizationId: "org-1",
+          telegramId: "987654321",
         },
       }),
     ).rejects.toMatchObject({
       code: "ONBOARDING_PLATFORM_IDENTITY_MISMATCH",
     });
+    expect(ensureElizaAppProvisioning).not.toHaveBeenCalled();
+  });
+
+  test("a Steward continuation without a signed Telegram identity requires explicit confirmation", async () => {
+    const gatewayTurn = await runOnboardingChat({
+      message: "My name is Sam",
+      platform: "telegram",
+      platformUserId: "123456789",
+      sessionId: "platform:telegram:123456789",
+      trustedPlatformIdentity: true,
+    });
+
+    await expect(
+      runOnboardingChat({
+        sessionId: continuationToken(gatewayTurn),
+        platform: "web",
+        authenticatedUser: {
+          userId: "steward-user",
+          organizationId: "steward-org",
+        },
+      }),
+    ).rejects.toMatchObject({
+      code: "ONBOARDING_PLATFORM_LINK_CONFIRMATION_REQUIRED",
+    });
+    expect(linkTelegramToUser).not.toHaveBeenCalled();
+    expect(ensureElizaAppProvisioning).not.toHaveBeenCalled();
+  });
+
+  test("a confirmed Steward continuation links the attested Telegram identity and provisions", async () => {
+    ensureElizaAppProvisioning.mockResolvedValue({
+      status: "provisioning",
+      agentId: "agent-t",
+      bridgeUrl: null,
+      sandbox: null,
+    });
+    const gatewayTurn = await runOnboardingChat({
+      message: "My name is Sam",
+      platform: "telegram",
+      platformUserId: "123456789",
+      platformDisplayName: "SamTG",
+      sessionId: "platform:telegram:123456789",
+      trustedPlatformIdentity: true,
+    });
+
+    const continued = await runOnboardingChat({
+      sessionId: continuationToken(gatewayTurn),
+      platform: "web",
+      authenticatedUser: { userId: "steward-user", organizationId: "steward-org" },
+      confirmPlatformLink: true,
+    });
+
+    expect(continued.session.platform).toBe("telegram");
+    expect(continued.session.platformUserId).toBe("123456789");
+    expect(linkTelegramToUser).toHaveBeenCalledWith("steward-user", {
+      id: "123456789",
+      username: "SamTG",
+    });
+    expect(linkPhoneToUser).not.toHaveBeenCalled();
+    expect(ensureElizaAppProvisioning).toHaveBeenCalledWith({
+      userId: "steward-user",
+      organizationId: "steward-org",
+    });
+  });
+
+  test("a Telegram tenant-safety decline (identity owned by another account) fails the turn", async () => {
+    linkTelegramToUser.mockResolvedValue({
+      success: false,
+      error: "This Telegram account is already linked to another account",
+    });
+    const gatewayTurn = await runOnboardingChat({
+      message: "My name is Sam",
+      platform: "telegram",
+      platformUserId: "123456789",
+      sessionId: "platform:telegram:123456789",
+      trustedPlatformIdentity: true,
+    });
+
+    await expect(
+      runOnboardingChat({
+        sessionId: continuationToken(gatewayTurn),
+        platform: "web",
+        authenticatedUser: { userId: "second-user", organizationId: "second-org" },
+        confirmPlatformLink: true,
+      }),
+    ).rejects.toMatchObject({ code: "ONBOARDING_PLATFORM_IDENTITY_CONFLICT" });
     expect(ensureElizaAppProvisioning).not.toHaveBeenCalled();
   });
 
@@ -630,6 +726,117 @@ describe("runOnboardingChat", () => {
     expect(result.session.name).toBeUndefined();
     expect(result.cta).toBeNull();
     expect(result.reply).toMatch(/what should I call you\?/i);
+  });
+
+  test("first-contact greeting gets a greeting-shaped reply that still asks for a name", async () => {
+    getElizaAppProvisioningStatus.mockResolvedValue({
+      status: "none",
+      agentId: null,
+      bridgeUrl: null,
+      sandbox: null,
+    });
+    const result = await runOnboardingChat({
+      message: "hey",
+      platform: "discord",
+      platformUserId: "discord-user-greet",
+      sessionId: "platform:discord:discord-user-greet",
+      trustedPlatformIdentity: true,
+    });
+
+    expect(result.session.name).toBeUndefined();
+    expect(result.reply).toMatch(/^hey!/);
+    expect(result.reply).toMatch(/what should I call you\?/i);
+    expect(result.reply).toContain("$5");
+  });
+
+  test("keeps steering to the connect CTA when the user asks a question instead of connecting", async () => {
+    await runOnboardingChat({
+      message: "call me Sam",
+      platform: "discord",
+      platformUserId: "discord-user-steer",
+      sessionId: "platform:discord:discord-user-steer",
+      trustedPlatformIdentity: true,
+    });
+    const result = await runOnboardingChat({
+      message: "what does connecting actually do?",
+      platform: "discord",
+      platformUserId: "discord-user-steer",
+      sessionId: "platform:discord:discord-user-steer",
+      trustedPlatformIdentity: true,
+    });
+
+    expect(result.requiresLogin).toBe(true);
+    expect(result.cta).toEqual({ label: "Connect", url: result.loginUrl });
+    expect(result.reply).toContain("good question, Sam");
+    expect(result.reply).toContain("$5");
+    // The button carries the URL; the message body must not repeat it.
+    expect(result.reply).not.toContain(result.loginUrl);
+  });
+
+  test("responds to hesitation without pressure and keeps the CTA as the next step", async () => {
+    await runOnboardingChat({
+      message: "call me Sam",
+      platform: "discord",
+      platformUserId: "discord-user-hesitant",
+      sessionId: "platform:discord:discord-user-hesitant",
+      trustedPlatformIdentity: true,
+    });
+    const result = await runOnboardingChat({
+      message: "hmm not sure about this",
+      platform: "discord",
+      platformUserId: "discord-user-hesitant",
+      sessionId: "platform:discord:discord-user-hesitant",
+      trustedPlatformIdentity: true,
+    });
+
+    expect(result.requiresLogin).toBe(true);
+    expect(result.cta).toEqual({ label: "Connect", url: result.loginUrl });
+    expect(result.reply).toContain("no pressure, Sam");
+    expect(result.reply).not.toContain(result.loginUrl);
+  });
+
+  test("any other chatter after the name still ends on the connect steer", async () => {
+    await runOnboardingChat({
+      message: "call me Sam",
+      platform: "discord",
+      platformUserId: "discord-user-chatter",
+      sessionId: "platform:discord:discord-user-chatter",
+      trustedPlatformIdentity: true,
+    });
+    const result = await runOnboardingChat({
+      message: "cool cool",
+      platform: "discord",
+      platformUserId: "discord-user-chatter",
+      sessionId: "platform:discord:discord-user-chatter",
+      trustedPlatformIdentity: true,
+    });
+
+    expect(result.requiresLogin).toBe(true);
+    expect(result.cta).toEqual({ label: "Connect", url: result.loginUrl });
+    expect(result.reply).toContain("still here, Sam");
+    expect(result.reply).not.toContain(result.loginUrl);
+  });
+
+  test("follow-up steers keep the inline URL on platforms without buttons", async () => {
+    await runOnboardingChat({
+      message: "My name is Sam",
+      platform: "blooio",
+      platformUserId: "+14155550123",
+      sessionId: "platform:blooio:+14155550123",
+      trustedPlatformIdentity: true,
+    });
+    const result = await runOnboardingChat({
+      message: "is this safe?",
+      platform: "blooio",
+      platformUserId: "+14155550123",
+      sessionId: "platform:blooio:+14155550123",
+      trustedPlatformIdentity: true,
+    });
+
+    expect(result.requiresLogin).toBe(true);
+    expect(result.cta).toBeNull();
+    expect(result.reply).toContain("no pressure, Sam");
+    expect(result.reply).toContain(result.loginUrl);
   });
 
   test("stays deterministic and model-free even when a Cerebras key is configured", async () => {
@@ -1582,6 +1789,196 @@ describe("runOnboardingChat", () => {
       } finally {
         globalThis.fetch = originalFetch;
       }
+    });
+  });
+
+  describe("proactive post-sign-in greeting (Discord)", () => {
+    async function runTrustedDiscordHandoff(discordUserId: string) {
+      return runOnboardingChat({
+        message: "call me Sam",
+        platform: "discord",
+        platformUserId: discordUserId,
+        sessionId: `platform:discord:${discordUserId}`,
+        trustedPlatformIdentity: true,
+      });
+    }
+
+    test("queues exactly one greeting when a browser turn binds a trusted discord session", async () => {
+      getElizaAppProvisioningStatus.mockResolvedValue({
+        status: "provisioning",
+        agentId: null,
+        bridgeUrl: null,
+        sandbox: null,
+      });
+      ensureElizaAppProvisioning.mockResolvedValue({
+        status: "provisioning",
+        agentId: null,
+        bridgeUrl: null,
+        sandbox: null,
+      });
+      const gatewayTurn = await runTrustedDiscordHandoff("discord-user-greet");
+      expect(peekLocalGreetingQueue()).toHaveLength(0);
+
+      const continued = await runOnboardingChat({
+        sessionId: continuationToken(gatewayTurn),
+        platform: "web",
+        authenticatedUser: { userId: "user-1", organizationId: "org-1" },
+        confirmPlatformLink: true,
+      });
+      expect(continued.session.userId).toBe("user-1");
+
+      const queued = peekLocalGreetingQueue();
+      expect(queued).toHaveLength(1);
+      const entry = queued[0];
+      if (!entry) throw new Error("expected a queued greeting");
+      expect(entry.platformUserId).toBe("discord-user-greet");
+      expect(entry.sessionId).toBe("platform:discord:discord-user-greet");
+      expect(entry.message).toContain("Sam");
+      expect(entry.message).toContain("you're all set");
+
+      // A replayed/repeated authenticated turn must not queue a second
+      // greeting: the session is already bound.
+      await runOnboardingChat({
+        sessionId: continuationToken(gatewayTurn),
+        platform: "web",
+        authenticatedUser: { userId: "user-1", organizationId: "org-1" },
+        confirmPlatformLink: true,
+        statusOnly: true,
+      });
+      expect(peekLocalGreetingQueue()).toHaveLength(1);
+    });
+
+    test("the committed result never exposes the greeting handoff field", async () => {
+      getElizaAppProvisioningStatus.mockResolvedValue({
+        status: "provisioning",
+        agentId: null,
+        bridgeUrl: null,
+        sandbox: null,
+      });
+      ensureElizaAppProvisioning.mockResolvedValue({
+        status: "provisioning",
+        agentId: null,
+        bridgeUrl: null,
+        sandbox: null,
+      });
+      const gatewayTurn = await runTrustedDiscordHandoff("discord-user-strip");
+      const continued = await runOnboardingChat({
+        sessionId: continuationToken(gatewayTurn),
+        platform: "web",
+        authenticatedUser: { userId: "user-1", organizationId: "org-1" },
+        confirmPlatformLink: true,
+      });
+      // Commit-ordering handoff is internal: the greeting was enqueued, but
+      // the field must not cross the service boundary in the result.
+      expect(peekLocalGreetingQueue()).toHaveLength(1);
+      expect("proactiveGreeting" in continued).toBe(false);
+    });
+
+    test("a turn that fails after binding never queues a greeting (no false-success DM)", async () => {
+      getElizaAppProvisioningStatus.mockResolvedValue({
+        status: "provisioning",
+        agentId: null,
+        bridgeUrl: null,
+        sandbox: null,
+      });
+      ensureElizaAppProvisioning.mockRejectedValue(new Error("transient provisioning outage"));
+      const gatewayTurn = await runTrustedDiscordHandoff("discord-user-fail");
+      expect(peekLocalGreetingQueue()).toHaveLength(0);
+
+      // The browser continuation binds the account in memory, then
+      // provisioning throws before the turn's durable save. The greeting must
+      // NOT be queued: the user would be told "you're all set" for a sign-in
+      // turn that failed.
+      await expect(
+        runOnboardingChat({
+          sessionId: continuationToken(gatewayTurn),
+          platform: "web",
+          authenticatedUser: { userId: "user-1", organizationId: "org-1" },
+          confirmPlatformLink: true,
+        }),
+      ).rejects.toThrow("transient provisioning outage");
+      expect(peekLocalGreetingQueue()).toHaveLength(0);
+
+      // Once the outage clears, the retried turn commits and queues exactly
+      // one greeting.
+      ensureElizaAppProvisioning.mockResolvedValue({
+        status: "provisioning",
+        agentId: null,
+        bridgeUrl: null,
+        sandbox: null,
+      });
+      await runOnboardingChat({
+        sessionId: continuationToken(gatewayTurn),
+        platform: "web",
+        authenticatedUser: { userId: "user-1", organizationId: "org-1" },
+        confirmPlatformLink: true,
+      });
+      const queued = peekLocalGreetingQueue();
+      expect(queued).toHaveLength(1);
+      expect(queued[0]?.platformUserId).toBe("discord-user-fail");
+    });
+
+    test("the reserved greeting queue name is never adopted as a session id", async () => {
+      // An anonymous caller addressing the well-known queue instance must be
+      // re-keyed to a fresh session: a chat turn landing on the queue DO
+      // would contend its serialize lock and write chat state into queue
+      // storage.
+      const result = await runOnboardingChat({
+        message: "hello",
+        sessionId: "proactive-greetings:discord",
+      });
+      expect(result.session.id).not.toBe("proactive-greetings:discord");
+      expect(loggerWarn).toHaveBeenCalledWith(
+        "[eliza-app onboarding] rejected reserved queue instance name as session id",
+        expect.anything(),
+      );
+
+      // A trusted transport presenting the reserved name is re-keyed too.
+      const trusted = await runOnboardingChat({
+        message: "hello",
+        sessionId: "proactive-greetings:discord",
+        platform: "discord",
+        platformUserId: "queue-squatter",
+        trustedPlatformIdentity: true,
+      });
+      expect(trusted.session.id).toBe("platform:discord:queue-squatter");
+    });
+
+    test("bot-transport turns never queue a greeting (the user just got a live reply)", async () => {
+      ensureElizaAppProvisioning.mockResolvedValue({
+        status: "provisioning",
+        agentId: null,
+        bridgeUrl: null,
+        sandbox: null,
+      });
+      await runTrustedDiscordHandoff("discord-user-live");
+      // Simulate the DM transport delivering an authenticated turn (e.g. a
+      // trusted gateway continuation): trustedPlatformIdentity excludes it.
+      await runOnboardingChat({
+        message: "hi again",
+        platform: "discord",
+        platformUserId: "discord-user-live",
+        sessionId: "platform:discord:discord-user-live",
+        trustedPlatformIdentity: true,
+        authenticatedUser: { userId: "user-2", organizationId: "org-2" },
+      });
+      expect(peekLocalGreetingQueue()).toHaveLength(0);
+    });
+
+    test("non-discord platforms never queue a greeting", async () => {
+      ensureElizaAppProvisioning.mockResolvedValue({
+        status: "provisioning",
+        agentId: null,
+        bridgeUrl: null,
+        sandbox: null,
+      });
+      const named = await runTrustedPhoneTurn("My name is Sam");
+      await runOnboardingChat({
+        sessionId: continuationToken(named),
+        platform: "web",
+        authenticatedUser: { userId: "user-1", organizationId: "org-1" },
+      });
+      expect(peekLocalGreetingQueue()).toHaveLength(0);
     });
   });
 

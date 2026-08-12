@@ -12,6 +12,7 @@ import { Hono } from "hono";
 import { deleteCookie, setCookie } from "hono/cookie";
 import { getAuditDispatcher } from "@/api-app/services/audit-dispatcher-singleton";
 import { cookieDomainForHost } from "@/lib/auth/cookie-domain";
+import { loadVerifiedStagingSessionUser } from "@/lib/auth/staging-session-binding";
 import {
   type StewardVerifyEnv,
   verifyStewardTokenCached,
@@ -51,6 +52,7 @@ const PERMITTED_ORIGIN_HOSTS = new Set<string>([
   "www.elizacloud.ai",
   "dev.elizacloud.ai",
   "staging.elizacloud.ai",
+  "app-staging.elizacloud.ai",
   "elizaos.ai",
   "www.elizaos.ai",
 ]);
@@ -268,25 +270,37 @@ app.post("/", async (c) => {
     }
 
     let cloudUser: Awaited<ReturnType<typeof syncUserFromSteward>>;
-    try {
-      cloudUser = await syncUserFromSteward({
+    if (claims.stagingSessionBinding) {
+      const boundCloudUser = await loadVerifiedStagingSessionUser({
+        binding: claims.stagingSessionBinding,
         stewardUserId: claims.userId,
-        email: claims.email,
-        walletAddress: claims.walletAddress ?? claims.address,
-        walletChainType: claims.walletChain,
       });
-    } catch (error) {
-      logStewardAuth("sync-failed", null);
-      // Workers Logs indexes only the message STRING — an Error passed in the
-      // context object is dropped entirely. Inline everything (same fix as the
-      // steward-nonce-exchange twin catch).
-      logger.error(
-        `[steward-auth] Failed to sync Steward user before setting cookie (stewardUserId=${claims.userId}): ${describeSyncError(error)}`,
-      );
-      return c.json(
-        errorBody("Could not sync Steward user", "steward_user_sync_failed"),
-        500,
-      );
+      if (!boundCloudUser) {
+        logStewardAuth("invalid-bound-subject", null);
+        return c.json(errorBody("Invalid token", "invalid_token"), 401);
+      }
+      cloudUser = boundCloudUser;
+    } else {
+      try {
+        cloudUser = await syncUserFromSteward({
+          stewardUserId: claims.userId,
+          email: claims.email,
+          walletAddress: claims.walletAddress ?? claims.address,
+          walletChainType: claims.walletChain,
+        });
+      } catch (error) {
+        logStewardAuth("sync-failed", null);
+        // Workers Logs indexes only the message STRING — an Error passed in the
+        // context object is dropped entirely. Inline everything (same fix as the
+        // steward-nonce-exchange twin catch).
+        logger.error(
+          `[steward-auth] Failed to sync Steward user before setting cookie (stewardUserId=${claims.userId}): ${describeSyncError(error)}`,
+        );
+        return c.json(
+          errorBody("Could not sync Steward user", "steward_user_sync_failed"),
+          500,
+        );
+      }
     }
 
     const ttl = claims.expiration
@@ -307,7 +321,15 @@ app.post("/", async (c) => {
       ...(typeof ttl === "number" ? { maxAge: ttl } : {}),
     });
 
-    if (typeof refreshToken === "string" && refreshToken.length > 0) {
+    if (claims.stagingSessionBinding) {
+      // QA sessions have a signed absolute expiry and are deliberately not
+      // renewable. Remove any older refresh cookie so it cannot silently
+      // replace the QA session with an ordinary long-lived Steward session.
+      deleteCookie(c, cookieNames.refreshToken, {
+        path: "/",
+        ...(domain ? { domain } : {}),
+      });
+    } else if (typeof refreshToken === "string" && refreshToken.length > 0) {
       setCookie(c, cookieNames.refreshToken, refreshToken, {
         httpOnly: true,
         secure,
@@ -324,7 +346,10 @@ app.post("/", async (c) => {
       sameSite: "Lax",
       path: "/",
       ...(domain ? { domain } : {}),
-      maxAge: STEWARD_REFRESH_COOKIE_MAX_AGE,
+      maxAge:
+        claims.stagingSessionBinding && typeof ttl === "number"
+          ? ttl
+          : STEWARD_REFRESH_COOKIE_MAX_AGE,
     });
 
     logStewardAuth("ok", ttl);

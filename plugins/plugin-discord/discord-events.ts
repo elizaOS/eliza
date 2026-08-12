@@ -72,6 +72,8 @@ export interface DiscordServiceInternals {
 	slashCommands: DiscordSlashCommand[];
 	timeouts: ReturnType<typeof setTimeout>[];
 	clientReadyPromise?: Promise<void> | null;
+	/** Atomically accept an inbound delivery or record its shutdown drop. */
+	admitInboundMessage?(messageId: string, channelId: string): boolean;
 
 	// Methods
 	isChannelAllowed(channelId: string): boolean;
@@ -214,6 +216,12 @@ export function setupDiscordEventListeners(service: DiscordServiceInternals): {
 
 			const botAddressed = anchor !== undefined;
 			anchor ??= messages[messages.length - 1];
+			if (
+				!anchor ||
+				service.admitInboundMessage?.(anchor.id, anchor.channel.id) === false
+			) {
+				return;
+			}
 			if (messageCoalesce.enabled) {
 				const combined = makeCoalescedDiscordMessage(
 					messages,
@@ -298,6 +306,12 @@ export function setupDiscordEventListeners(service: DiscordServiceInternals): {
 		const run = prior
 			.catch(() => undefined)
 			.then(() => {
+				if (
+					service.admitInboundMessage?.(message.id, message.channel.id) ===
+					false
+				) {
+					return;
+				}
 				// Re-read at dispatch time: the manager can be torn down between
 				// enqueue and this deferred run (service stop). If it's gone, skip
 				// rather than throw.
@@ -324,6 +338,14 @@ export function setupDiscordEventListeners(service: DiscordServiceInternals): {
 
 	// ── messageCreate ──────────────────────────────────────────────────
 	service.client.on("messageCreate", async (message) => {
+		// This must be the first gate in the listener: `stop()` closes admissions
+		// synchronously before taking its drain snapshot. Deliveries arriving after
+		// that point are designed-ignore drops, not new turns racing teardown.
+		if (
+			service.admitInboundMessage?.(message.id, message.channel.id) === false
+		) {
+			return;
+		}
 		const clientUser = service.client?.user;
 		if (
 			(clientUser && message.author.id === clientUser.id) ||
@@ -357,6 +379,14 @@ export function setupDiscordEventListeners(service: DiscordServiceInternals): {
 					channelId: message.channel.id,
 				},
 			);
+			return;
+		}
+		// Readiness and every later policy lookup cross await boundaries. Recheck
+		// here, and again at dispatch below, so a message accepted just before the
+		// cordon cannot start a turn behind the shutdown snapshot.
+		if (
+			service.admitInboundMessage?.(message.id, message.channel.id) === false
+		) {
 			return;
 		}
 
@@ -436,6 +466,11 @@ export function setupDiscordEventListeners(service: DiscordServiceInternals): {
 		}
 
 		if (listenCids.includes(message.channel.id) && message) {
+			if (
+				service.admitInboundMessage?.(message.id, message.channel.id) === false
+			) {
+				return;
+			}
 			const newMessage = await service.buildMemoryFromMessage(message);
 
 			if (!newMessage) {
@@ -462,8 +497,19 @@ export function setupDiscordEventListeners(service: DiscordServiceInternals): {
 			);
 		}
 
-		// Skip if channel restrictions are set and this channel is not allowed
+		const channelType = message.channel.type as DiscordChannelType;
+		const isDm =
+			channelType === DiscordChannelType.DM ||
+			channelType === DiscordChannelType.GroupDM;
+
+		// Skip if channel restrictions are set and this channel is not allowed.
+		// DMs (and group DMs) are exempt: CHANNEL_IDS scopes which *guild*
+		// surfaces the bot participates in, while DM access is governed by the
+		// DM policy (dmPolicy/allowFrom, enforced in the message manager via
+		// dm-access.ts). Without this exemption any CHANNEL_IDS deployment
+		// silently drops every DM before the DM policy ever runs.
 		if (
+			!isDm &&
 			service.allowedChannelIds &&
 			!service.isChannelAllowed(message.channel.id)
 		) {
@@ -528,11 +574,11 @@ export function setupDiscordEventListeners(service: DiscordServiceInternals): {
 			if (!service.messageManager) {
 				return;
 			}
-
-			const channelType = message.channel.type as DiscordChannelType;
-			const isDm =
-				channelType === DiscordChannelType.DM ||
-				channelType === DiscordChannelType.GroupDM;
+			if (
+				service.admitInboundMessage?.(message.id, message.channel.id) === false
+			) {
+				return;
+			}
 
 			if (isDm) {
 				// DMs are 1:1 and gain nothing from channel-style debouncing.

@@ -5559,6 +5559,8 @@ describe("runV5MessageRuntimeStage1", () => {
 // reply, and byte-identical echoes stay deduped without `turnComplete`.
 describe("verified read actions own the turn's single user-facing message", () => {
 	const CALENDAR_ANSWER = "clear tomorrow.";
+	const CLOUD_EMPTY_ANSWER =
+		"You don't have any agents hosted on Eliza Cloud yet. You can provision one from the Cloud console, or ask me to create one.";
 
 	function makeCalendarReadAction(handler: Action["handler"]): Action {
 		return {
@@ -5643,6 +5645,85 @@ describe("verified read actions own the turn's single user-facing message", () =
 		expect(delivered).toEqual([CALENDAR_ANSWER]);
 		// The gated evaluator skips the paraphrase-capable model call outright:
 		// Stage 1 + planner only, no in-loop evaluator call remains queued.
+		expect(useModelCalls(runtime).map((call) => call[0])).toEqual([
+			ModelType.RESPONSE_HANDLER,
+			ModelType.ACTION_PLANNER,
+		]);
+		expect(result.kind).toBe("planned_reply");
+		if (result.kind === "planned_reply") {
+			expect(result.result.responseContent).toBeNull();
+			expect(result.result.responseMessages).toEqual([]);
+		}
+	});
+
+	it("delivers the CLOUD_LIST_AGENTS zero-agent answer exactly once with no evaluator call", async () => {
+		const runtime = makeRuntime([
+			stage1Response({
+				contexts: ["cloud", "settings"],
+				candidateActionNames: ["CLOUD_LIST_AGENTS"],
+				replyText: "",
+				extra: { requiresTool: true },
+			}),
+			{
+				thought: "Read the owner's hosted agent inventory.",
+				toolCalls: [
+					{
+						id: "cloud-list-agents-1",
+						name: "CLOUD_LIST_AGENTS",
+						args: {},
+					},
+				],
+			},
+		]);
+		const cloudListHandler = vi.fn(
+			async (_runtime, _message, _state, _options, callback) => {
+				await callback?.({
+					text: CLOUD_EMPTY_ANSWER,
+					source: "action",
+					action: "CLOUD_LIST_AGENTS",
+				});
+				return {
+					success: true,
+					text: "User has no hosted Eliza Cloud agents.",
+					userFacingText: CLOUD_EMPTY_ANSWER,
+					verifiedUserFacing: true,
+					turnComplete: true,
+					data: { count: 0, agents: [] },
+				};
+			},
+		);
+		runtime.actions = [
+			{
+				name: "CLOUD_LIST_AGENTS",
+				similes: ["MY_CLOUD_AGENTS"],
+				tags: ["domain:cloud", "capability:read"],
+				description: "List the owner's hosted Eliza Cloud agents.",
+				contexts: ["cloud", "settings"],
+				suppressPostActionContinuation: true,
+				validate: async () => true,
+				handler: cloudListHandler,
+			} as Action,
+		] as never;
+		const deliveredVisibleTexts = new Set<string>();
+		const delivered: string[] = [];
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({ text: "what cloud agents do I have?" }),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+			deliveredVisibleTexts,
+			callback: async (content) => {
+				if (content.text) {
+					delivered.push(content.text);
+					deliveredVisibleTexts.add(content.text.toLowerCase());
+				}
+				return [];
+			},
+		});
+
+		expect(cloudListHandler).toHaveBeenCalledTimes(1);
+		expect(delivered).toEqual([CLOUD_EMPTY_ANSWER]);
 		expect(useModelCalls(runtime).map((call) => call[0])).toEqual([
 			ModelType.RESPONSE_HANDLER,
 			ModelType.ACTION_PLANNER,

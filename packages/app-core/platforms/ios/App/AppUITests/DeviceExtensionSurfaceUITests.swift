@@ -1,14 +1,16 @@
+/**
+ Assert-level lane for iOS extension surfaces (#13695).
+
+ This suite is intentionally separate from WidgetGalleryCaptureUITests: the
+ capture harness keeps `continueAfterFailure = true` and only produces
+ screenshots, while this suite fails when an expected simulator-reachable
+ surface disappears. Hardware-only verification remains out of scope here:
+ Action Button physical press, device signing/profile faults, and custom
+ keyboard enablement still require the provisioned-device lane called out in
+ #13567/#13563.
+ */
 import XCTest
 
-/// Assert-level lane for iOS extension surfaces (#13695).
-///
-/// This suite is intentionally separate from WidgetGalleryCaptureUITests:
-/// the capture harness keeps `continueAfterFailure = true` and only produces
-/// screenshots, while this suite fails when an expected simulator-reachable
-/// surface disappears. Hardware-only verification remains out of scope here:
-/// Action Button physical press, device signing/profile faults, and custom
-/// keyboard enablement still require the provisioned-device lane called out in
-/// #13567/#13563.
 final class DeviceExtensionSurfaceUITests: XCTestCase {
 
     private let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
@@ -38,13 +40,7 @@ final class DeviceExtensionSurfaceUITests: XCTestCase {
     }
 
     func testHomeScreenWidgetTapForegroundsApp() throws {
-        let app = XCUIApplication()
-        let appDisplayName = app.label
-        XCTAssertFalse(
-            appDisplayName.isEmpty,
-            "The installed target application must expose a display label to the widget-gallery test."
-        )
-        try installHomeScreenWidgetFromGallery(appDisplayName: appDisplayName)
+        try installHomeScreenWidgetFromGallery()
 
         let ask = springboard.staticTexts["Ask Eliza"].firstMatch
         XCTAssertTrue(
@@ -55,6 +51,7 @@ final class DeviceExtensionSurfaceUITests: XCTestCase {
         attachScreenshot(named: "widget-assert-00-home-with-widget")
         ask.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
 
+        let app = XCUIApplication()
         XCTAssertTrue(
             app.wait(for: .runningForeground, timeout: 15),
             "Tapping the Ask quick action must foreground the container app via elizaos://assistant?source=ios-widget&action=ask."
@@ -108,9 +105,38 @@ final class DeviceExtensionSurfaceUITests: XCTestCase {
         attachScreenshot(named: "control-assert-03-gallery-search-eliza")
     }
 
+    // MARK: - Brand-aware display name
+
+    /// The installed target application's real accessibility label.
+    ///
+    /// Reads the host app's `label` (which mirrors `CFBundleDisplayName` /
+    /// `ELIZA_DISPLAY_NAME` from `app.config.ts`) so the test stays aligned
+    /// with the build's actual display name and preserves white-label support.
+    /// Based on NubsCarson:c21d9237 — do not silently substitute a canonical
+    /// brand when the label is unavailable; fail fast per the repository's
+    /// unavailable-state policy.
+    private func widgetAppDisplayName() throws -> String {
+        let app = XCUIApplication()
+        app.launch()
+        XCTAssertTrue(
+            app.wait(for: .runningForeground, timeout: 15),
+            "Installed app must be running before XCUITest can read its display label."
+        )
+
+        let label = app.label.trimmingCharacters(in: .whitespacesAndNewlines)
+        return try XCTUnwrap(
+            label.isEmpty ? nil : label,
+            "Installed app must have a non-empty display label (CFBundleDisplayName/ELIZA_DISPLAY_NAME)."
+        )
+    }
+
     // MARK: - Home/Lock Screen widget
 
-    private func installHomeScreenWidgetFromGallery(appDisplayName: String) throws {
+    private func installHomeScreenWidgetFromGallery() throws {
+        // XCUIApplication.label cannot be snapshotted after SpringBoard sends
+        // the app to the background, so resolve the required build identity
+        // while the installed target is running and carry it into the flow.
+        let displayName = try widgetAppDisplayName()
         goHome()
         attachScreenshot(named: "widget-assert-00-home-screen")
 
@@ -136,15 +162,12 @@ final class DeviceExtensionSurfaceUITests: XCTestCase {
         let search = springboard.searchFields.firstMatch
         XCTAssertTrue(search.waitForExistence(timeout: 8), "Widget gallery must expose a search field")
         search.tap()
-        search.typeText(appDisplayName)
+        search.typeText(displayName)
         Thread.sleep(forTimeInterval: 2.0)
-        attachScreenshot(named: "widget-assert-02-gallery-search-app")
+        attachScreenshot(named: "widget-assert-02-gallery-search-eliza")
 
-        let appRow = springboard.staticTexts[appDisplayName].firstMatch
-        XCTAssertTrue(
-            appRow.waitForExistence(timeout: 8),
-            "Widget gallery search must list the installed app (\(appDisplayName))."
-        )
+        let appRow = springboard.staticTexts[displayName].firstMatch
+        XCTAssertTrue(appRow.waitForExistence(timeout: 8), "Widget gallery search must list \(displayName)")
         appRow.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
         Thread.sleep(forTimeInterval: 1.5)
         attachScreenshot(named: "widget-assert-03-detail")

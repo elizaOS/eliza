@@ -16,6 +16,10 @@
  *   surface's REAL registered settings section (the exact zero-prop component
  *   `registerCloudSettingsSections` hands to the settings registry), fetching
  *   real data from the mock cloud stack proxied on the page origin.
+ *
+ * Bundled as IIFE for the e2e harness — no top-level await. Full registration
+ * uses the synchronous {@link registerAllCloudSurfaces} from `../register-all`
+ * (the preserved develop contract).
  */
 
 import { useEffect, useState } from "react";
@@ -33,6 +37,7 @@ import { CloudRouterShell } from "../shell/CloudRouterShell";
 // uses to open a section from `/settings#<hash>`.
 import { readSettingsHashSection } from "../../components/settings/settings-sections";
 
+// Synchronous full registration — required for IIFE output format (no TLA).
 registerAllCloudSurfaces();
 
 /**

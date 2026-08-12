@@ -4,7 +4,7 @@
  * process boundaries are substituted by the shared jsdom bridge mocks.
  */
 import { Capacitor } from "@capacitor/core";
-import { runIosFullBunSmokeIfRequested } from "@elizaos/app-core";
+import { runIosFullBunSmokeIfRequested } from "@elizaos/app-core/desktop-shell";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const entrypoint = vi.hoisted(() => ({

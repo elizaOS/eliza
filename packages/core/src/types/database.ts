@@ -17,8 +17,11 @@ import type {
 import type { Memory, MemoryMetadata, MemoryScope } from "./memory";
 import type {
 	PairingAllowlistEntry,
+	PairingAllowlistQuery,
 	PairingChannel,
+	PairingPageInfo,
 	PairingRequest,
+	PairingRequestQuery,
 } from "./pairing";
 import type { JsonValue, Metadata, UUID } from "./primitives";
 import type { Task } from "./task";
@@ -373,6 +376,8 @@ export type PairingRequestsResult = Array<{
 	channel: PairingChannel;
 	agentId: UUID;
 	requests: PairingRequest[];
+	/** Present when the corresponding query requested a bounded page. */
+	pageInfo?: PairingPageInfo;
 }>;
 
 /** Result of getPairingAllowlists batch: one entry per (channel, agentId) query, same order. */
@@ -380,6 +385,8 @@ export type PairingAllowlistsResult = Array<{
 	channel: PairingChannel;
 	agentId: UUID;
 	entries: PairingAllowlistEntry[];
+	/** Present when the corresponding query requested a bounded page. */
+	pageInfo?: PairingPageInfo;
 }>;
 
 export type ConnectorAccountJsonObject = { [key: string]: JsonValue };
@@ -1569,7 +1576,7 @@ export interface IDatabaseAdapter<DB extends object = object> {
 
 	/** Get pairing requests for multiple (channel, agentId) queries. One entry per query, same order. */
 	getPairingRequests(
-		queries: Array<{ channel: PairingChannel; agentId: UUID }>,
+		queries: PairingRequestQuery[],
 	): Promise<PairingRequestsResult>;
 
 	// ── Pairing request CRUD (batch-only) ────────────────────────────────
@@ -1579,7 +1586,7 @@ export interface IDatabaseAdapter<DB extends object = object> {
 
 	/** Get pairing allowlists for multiple (channel, agentId) queries. One entry per query, same order. */
 	getPairingAllowlists(
-		queries: Array<{ channel: PairingChannel; agentId: UUID }>,
+		queries: PairingAllowlistQuery[],
 	): Promise<PairingAllowlistsResult>;
 
 	// ── Pairing allowlist CRUD (batch-only) ──────────────────────────────

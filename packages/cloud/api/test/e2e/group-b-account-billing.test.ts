@@ -217,11 +217,12 @@ describeE2E("POST /api/v1/api-keys/:id/regenerate", () => {
     expect(regen.plainKey).not.toBe(created.plainKey);
   });
 
-  test("validation: 404 for an unknown id", async () => {
+  testSession("validation: 404 for an unknown id", async () => {
+    if (!sessionCookie) throw new Error("session cookie missing");
     const res = await api.post(
       "/api/v1/api-keys/00000000-0000-0000-0000-000000000000/regenerate",
       undefined,
-      { headers: bearerHeaders() },
+      { headers: { Cookie: sessionCookie } },
     );
     // Well-formed UUID that misses the lookup → 404.
     expect(res.status).toBe(404);
@@ -279,11 +280,12 @@ describeE2E("PATCH /api/v1/api-keys/:id", () => {
     },
   );
 
-  test("validation: 404 for an unknown id", async () => {
+  testSession("validation: 404 for an unknown id", async () => {
+    if (!sessionCookie) throw new Error("session cookie missing");
     const res = await api.patch(
       "/api/v1/api-keys/00000000-0000-0000-0000-000000000000",
       { is_active: false },
-      { headers: bearerHeaders() },
+      { headers: { Cookie: sessionCookie } },
     );
     expect(res.status).toBe(404);
   });

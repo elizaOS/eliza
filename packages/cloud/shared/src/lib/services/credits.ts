@@ -446,6 +446,11 @@ export class CreditsService {
           UPDATE organizations AS o
           SET
             credit_balance = org.current_balance + ${String(amount)}::numeric,
+            settings = CASE
+              WHEN ${transactionType} = 'credit'
+                THEN COALESCE(o.settings, '{}'::jsonb) - 'welcomeBonusWithheld'
+              ELSE o.settings
+            END,
             updated_at = NOW()
           FROM org
           WHERE o.id = org.id

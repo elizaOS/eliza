@@ -70,10 +70,6 @@ const deviceExtensionSurfaceUITestsSwift = readFileSync(
   path.join(iosAppRoot, "AppUITests/DeviceExtensionSurfaceUITests.swift"),
   "utf8",
 );
-const widgetGalleryCaptureUITestsSwift = readFileSync(
-  path.join(iosAppRoot, "AppUITests/WidgetGalleryCaptureUITests.swift"),
-  "utf8",
-);
 const iosDeviceLib = readFileSync(
   path.join(repoRoot, "packages/app/scripts/ios-device-lib.mjs"),
   "utf8",
@@ -360,34 +356,43 @@ describe("native assistant entry contracts", () => {
     expect(deviceExtensionSurfaceUITestsSwift).toContain(
       "elizaos://assistant?source=ios-widget&action=ask",
     );
-    expect(deviceExtensionSurfaceUITestsSwift).toContain(
-      "let appDisplayName = app.label",
-    );
-    expect(deviceExtensionSurfaceUITestsSwift).toContain(
-      "search.typeText(appDisplayName)",
-    );
-    expect(widgetGalleryCaptureUITestsSwift).toContain(
-      "let appDisplayName = XCUIApplication().label",
-    );
-    expect(widgetGalleryCaptureUITestsSwift).toContain(
-      "guard !appDisplayName.isEmpty else",
-    );
-    expect(widgetGalleryCaptureUITestsSwift).toContain(
-      "springboard.staticTexts[appDisplayName]",
-    );
-    expect(deviceExtensionSurfaceUITestsSwift).not.toContain(
-      'springboard.staticTexts["elizaOS"]',
-    );
-    expect(widgetGalleryCaptureUITestsSwift).not.toContain(
-      'springboard.staticTexts["elizaOS"]',
-    );
     // The custom keyboard and hardware Action Button pieces are documented as
     // device-lane only instead of being faked in simulator evidence.
     expect(deviceExtensionSurfaceUITestsSwift).toContain(
       "Action Button physical press",
     );
     expect(deviceExtensionSurfaceUITestsSwift).toContain(
-      "and custom\n/// keyboard enablement still require the provisioned-device lane",
+      "custom keyboard requires a provisioned device lane",
+    );
+    // Brand-aware widget gallery: stale hard-coded display name must be gone.
+    expect(deviceExtensionSurfaceUITestsSwift).toContain(
+      "widgetAppDisplayName",
+    );
+    expect(deviceExtensionSurfaceUITestsSwift).not.toContain(
+      'staticTexts["elizaOS"]',
+    );
+    expect(deviceExtensionSurfaceUITestsSwift).toContain(
+      "let displayName = try widgetAppDisplayName()",
+    );
+    expect(deviceExtensionSurfaceUITestsSwift).toContain(
+      "app.wait(for: .runningForeground",
+    );
+    expect(deviceExtensionSurfaceUITestsSwift).toContain(
+      "label.isEmpty ? nil : label",
+    );
+    const widgetGalleryCaptureUITestsSwift = readFileSync(
+      path.join(iosAppRoot, "AppUITests/WidgetGalleryCaptureUITests.swift"),
+      "utf8",
+    );
+    expect(widgetGalleryCaptureUITestsSwift).toContain("widgetAppDisplayName");
+    expect(widgetGalleryCaptureUITestsSwift).not.toContain(
+      'staticTexts["elizaOS"]',
+    );
+    expect(widgetGalleryCaptureUITestsSwift).toContain(
+      "let displayName = try widgetAppDisplayName()",
+    );
+    expect(widgetGalleryCaptureUITestsSwift).toContain(
+      "app.wait(for: .runningForeground",
     );
   });
 

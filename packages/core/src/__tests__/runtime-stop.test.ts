@@ -97,8 +97,41 @@ describe("AgentRuntime.stop", () => {
 		);
 	});
 
+	it("rejects a service whose start settles after the shutdown cordon", async () => {
+		const runtime = new AgentRuntime({ logLevel: "fatal" });
+		await runtime.initialize({ allowNoDatabase: true, skipMigrations: true });
+		const start = createDeferred<LateService>();
+		let stopCalls = 0;
+
+		class LateService extends Service {
+			static override serviceType = "shutdown-late-service";
+			capabilityDescription = "service that settles during shutdown";
+
+			static override async start(): Promise<LateService> {
+				return start.promise;
+			}
+
+			override async stop(): Promise<void> {
+				stopCalls += 1;
+			}
+		}
+
+		await runtime.registerService(LateService);
+		const load = runtime
+			.getServiceLoadPromise(LateService.serviceType)
+			.catch((error: unknown) => error);
+		await Promise.resolve();
+		const stop = runtime.stop();
+		start.resolve(new LateService());
+
+		await stop;
+		expect(await load).toMatchObject({ code: "SERVICE_START_FAILED" });
+		expect(stopCalls).toBe(1);
+		expect(runtime.getService(LateService.serviceType)).toBeNull();
+	});
+
 	it("fast shutdown caps already-started service stop waits", async () => {
-		process.env.ELIZA_SHUTDOWN_SERVICE_STOP_TIMEOUT_MS = "5";
+		process.env.ELIZA_SHUTDOWN_SERVICE_STOP_TIMEOUT_MS = "500";
 		const runtime = new AgentRuntime({ logLevel: "fatal" });
 		await runtime.initialize({ allowNoDatabase: true, skipMigrations: true });
 		let stopCalls = 0;
@@ -121,13 +154,97 @@ describe("AgentRuntime.stop", () => {
 		await runtime.getServiceLoadPromise(HangingStopService.serviceType);
 
 		const stopResult = await Promise.race([
-			runtime.stop({ fast: true }).then(() => "stopped"),
+			runtime
+				.stop({ fast: true, serviceStopTimeoutMs: 5 })
+				.then(() => "stopped"),
 			delay(500),
 		]);
 
 		expect(stopResult).toBe("stopped");
 		expect(stopCalls).toBe(1);
 		expect(process.env.ELIZA_FAST_SHUTDOWN).toBe(previousFastShutdown);
+	});
+
+	it("cordons service admissions before waiting for the room drain", async () => {
+		process.env.ELIZA_FAST_ROOM_DRAIN_TIMEOUT_MS = "50";
+		const runtime = new AgentRuntime({ logLevel: "fatal" });
+		await runtime.initialize({ allowNoDatabase: true, skipMigrations: true });
+		const events: string[] = [];
+
+		class AdmissionAwareService extends Service {
+			static override serviceType = "shutdown-admission-aware-service";
+			capabilityDescription = "observes the pre-drain shutdown cordon";
+
+			static override async start(): Promise<AdmissionAwareService> {
+				return new AdmissionAwareService();
+			}
+
+			override prepareStop(reason: string): void {
+				events.push(`prepare:${reason}`);
+			}
+
+			override async stop(): Promise<void> {
+				events.push("stop");
+			}
+		}
+
+		await runtime.registerService(AdmissionAwareService);
+		await runtime.getServiceLoadPromise(AdmissionAwareService.serviceType);
+		const lease = await runtime.roomHandlerQueue.acquire(
+			"00000000-0000-4000-8000-000000000098",
+		);
+
+		const stop = runtime.stop();
+		await Promise.resolve();
+		expect(events).toEqual(["prepare:runtime-stop"]);
+		await lease.release();
+		await stop;
+		expect(events).toEqual(["prepare:runtime-stop", "stop"]);
+	});
+
+	it("makes reentrant and concurrent stop callers await one teardown", async () => {
+		const runtime = new AgentRuntime({ logLevel: "fatal" });
+		await runtime.initialize({ allowNoDatabase: true, skipMigrations: true });
+		const stopStarted = createDeferred<void>();
+		const finishStop = createDeferred<void>();
+		let stopCalls = 0;
+		let reentrantStop: Promise<void> | null = null;
+
+		class DeferredStopService extends Service {
+			static override serviceType = "shutdown-concurrent-stop-service";
+			capabilityDescription = "service that exposes concurrent stop ordering";
+
+			static override async start(): Promise<DeferredStopService> {
+				return new DeferredStopService();
+			}
+
+			override prepareStop(): void {
+				reentrantStop = runtime.stop();
+			}
+
+			override async stop(): Promise<void> {
+				stopCalls += 1;
+				stopStarted.resolve();
+				await finishStop.promise;
+			}
+		}
+
+		await runtime.registerService(DeferredStopService);
+		await runtime.getServiceLoadPromise(DeferredStopService.serviceType);
+		const first = runtime.stop();
+		await stopStarted.promise;
+		expect(reentrantStop).not.toBeNull();
+		let secondSettled = false;
+		const second = runtime.stop().then(() => {
+			secondSettled = true;
+		});
+		await Promise.resolve();
+		expect(secondSettled).toBe(false);
+
+		finishStop.resolve();
+		await Promise.all([first, second, reentrantStop]);
+		expect(stopCalls).toBe(1);
+		expect(secondSettled).toBe(true);
 	});
 
 	it("fails fast without stopping resources beneath a noncooperative room owner", async () => {

@@ -1457,6 +1457,19 @@ export function createScheduledTaskRunner(
     // dispatch failure) routes this attempt through its recorded ladder
     // step; a fresh fire starts at the initial channel (cursor -1).
     const pending = readPendingDispatch(claimed);
+    if (!pending && !recoveryClaim) {
+      // A fresh occurrence owns a new durable dispatch identity. Persist it
+      // before rendering/provider egress so retries and crash recovery reuse
+      // the same connector dedupe key and exact prepared payload. Never trust
+      // caller-supplied values in these internal metadata fields.
+      claimed.metadata = {
+        ...(claimed.metadata ?? {}),
+        dispatchIdempotencyKey: `${claimed.taskId}:${fireAtIso}`,
+      };
+      delete claimed.metadata.dispatchPreparedMessage;
+      delete claimed.metadata.dispatchAttempt;
+      delete claimed.metadata.recoveredDispatchAtIso;
+    }
     const ladder = resolveEffectiveLadder(claimed, deps.ladders);
     const pendingStep =
       pending && pending.stepIndex >= 0

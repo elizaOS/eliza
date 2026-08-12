@@ -75,6 +75,7 @@ import {
 } from "./ai-billing";
 import { aiBillingRecordsService } from "./ai-billing-records";
 import { apiKeysService } from "./api-keys";
+import { chatSseFrame, normalizeChatSseDonePayload } from "./chat-sse-frames";
 import { imageRequiresDigestPin, isCodingContainerImageAllowed } from "./coding-containers";
 import type { CreditReconciliationResult, CreditReservation } from "./credits";
 import { holdsCountedNodeSlot, isDeletionContinuation } from "./docker-node-workload-queries";
@@ -3793,13 +3794,13 @@ export class ElizaSandboxService {
                 reply += part.text;
                 controller.enqueue(
                   encoder.encode(
-                    `event: chunk\ndata: ${JSON.stringify({
+                    chatSseFrame("chunk", {
                       messageId,
                       chunk: part.text,
                       text: part.text,
                       fullText: reply,
                       timestamp: Date.now(),
-                    })}\n\n`,
+                    }),
                   ),
                 );
                 continue;
@@ -3902,24 +3903,24 @@ export class ElizaSandboxService {
               }
               // Attach a VIEWS navigation handoff for a deterministic nav turn so
               // the PWA opens the view (findViewActionHandoff → navigate event in
-              // packages/ui/src/view-action-handoff.ts). Non-nav turns omit it,
-              // so the `done` frame is byte-identical to before for normal chat.
+              // packages/ui/src/view-action-handoff.ts). Non-nav turns omit it.
               const doneData = turn.navIntent
                 ? {
                     messageId,
                     text: finalReply,
+                    fullText: finalReply,
                     actionResults: [navIntentActionResult(turn.navIntent)],
                   }
-                : { messageId, text: finalReply };
-              controller.enqueue(
-                encoder.encode(`event: done\ndata: ${JSON.stringify(doneData)}\n\n`),
-              );
+                : { messageId, text: finalReply, fullText: finalReply };
+              controller.enqueue(encoder.encode(chatSseFrame("done", doneData)));
             }
             if (!finished) {
               await settleReservation(0);
               controller.enqueue(
                 encoder.encode(
-                  `event: error\ndata: ${JSON.stringify({ message: "Shared runtime stream ended without completion" })}\n\n`,
+                  chatSseFrame("error", {
+                    message: "Shared runtime stream ended without completion",
+                  }),
                 ),
               );
             }
@@ -3936,9 +3937,7 @@ export class ElizaSandboxService {
               agentId: rec.id,
             });
             controller.enqueue(
-              encoder.encode(
-                `event: error\ndata: ${JSON.stringify({ message: "Shared runtime stream failed" })}\n\n`,
-              ),
+              encoder.encode(chatSseFrame("error", { message: "Shared runtime stream failed" })),
             );
           } finally {
             controller.close();
@@ -6146,10 +6145,11 @@ export class ElizaSandboxService {
       messageId,
       chunk: text,
       text,
+      fullText: text,
       timestamp: Date.now(),
     };
     return new Response(
-      `event: chunk\ndata: ${JSON.stringify(chunk)}\n\nevent: done\ndata: ${JSON.stringify({ messageId, text })}\n\n`,
+      chatSseFrame("chunk", chunk) + chatSseFrame("done", { messageId, text, fullText: text }),
       {
         status: 200,
         headers: {
@@ -6194,22 +6194,25 @@ export class ElizaSandboxService {
           const delta = typeof data.text === "string" ? data.text : "";
           accumulated = typeof data.fullText === "string" ? data.fullText : accumulated + delta;
           controller.enqueue(
-            `event: chunk\ndata: ${JSON.stringify({
+            chatSseFrame("chunk", {
               messageId,
               chunk: delta,
               text: delta,
               fullText: accumulated,
               timestamp: Date.now(),
-            })}\n\n`,
+            }),
           );
           return;
         }
         if (data?.type === "done") {
           controller.enqueue(
-            `event: done\ndata: ${JSON.stringify({
-              messageId,
-              text: typeof data.fullText === "string" ? data.fullText : accumulated,
-            })}\n\n`,
+            chatSseFrame(
+              "done",
+              normalizeChatSseDonePayload(data, {
+                messageId,
+                fullText: accumulated,
+              }),
+            ),
           );
           return;
         }
@@ -6247,7 +6250,7 @@ export class ElizaSandboxService {
   }
 
   private createBridgeSseErrorResponse(message: string): Response {
-    return new Response(`event: error\ndata: ${JSON.stringify({ message })}\n\n`, {
+    return new Response(chatSseFrame("error", { message }), {
       status: 200,
       headers: {
         "Content-Type": "text/event-stream; charset=utf-8",

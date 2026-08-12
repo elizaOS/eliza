@@ -16,6 +16,10 @@ import {
   writeAuditProjectPropagation,
 } from "./scripts/lib/playwright-audit-projects.mjs";
 import {
+  parseUiSmokeShard,
+  UI_SMOKE_SHARD_ENV,
+} from "./scripts/lib/playwright-shard.mjs";
+import {
   ASSERTION_GRADE_DASHBOARD_SPECS,
   DASHBOARD_E2E_DEVICE_MATRIX,
 } from "./test/ui-smoke/device-matrix";
@@ -151,6 +155,11 @@ if (!process.env.ELIZA_API_PORT) {
   process.env.ELIZA_API_PORT = String(uiSmokeApiPort);
 }
 
+// CI splits this lane across runners because `workers: 1` is a suite invariant
+// (one live stack per process). Playwright assigns whole spec files while
+// `fullyParallel` is false, so a file's internal order survives the split.
+const shard = parseUiSmokeShard(process.env[UI_SMOKE_SHARD_ENV]);
+
 export default defineConfig({
   testDir: "./test/ui-smoke",
   timeout: 180_000,
@@ -160,6 +169,7 @@ export default defineConfig({
   fullyParallel: false,
   retries: 0,
   workers: 1,
+  ...(shard ? { shard } : {}),
   reporter: "list",
   outputDir: recording
     ? path.resolve(appDir, "../../e2e-recordings/app/test-results")
@@ -314,8 +324,8 @@ export default defineConfig({
             // Cloud-surface aesthetic audit (#10725/#11342) — run with `audit:cloud`
             // (`--project=audit-cloud`). Walks every registered cloud route at
             // desktop + mobile internally. Requires a renderer built with
-            // VITE_PLAYWRIGHT_TEST_AUTH=true; the runner invalidates dist for this
-            // project so a cached non-auth build cannot skip the local auth shell.
+            // VITE_PLAYWRIGHT_TEST_AUTH=true; the renderer manifest check applies
+            // to every project so a cached non-auth build cannot skip the shell.
             name: "audit-cloud",
             testMatch: [AUDIT_CLOUD_SPEC, AUDIT_PROJECT_WORKER_CONTRACT_SPEC],
             use: {
