@@ -30,12 +30,9 @@ import {
   logger,
 } from "@elizaos/core";
 import { GOOGLE_OAUTH_PROVIDER_METADATA } from "./auth.js";
-import {
-  assertCanonicalGoogleOAuthRedirectUri,
-  resolveGoogleConnectorOAuthCallbackUrl,
-} from "./google-oauth-callback.js";
 import { persistConnectorCredentialRefs } from "./connector-credential-refs.js";
 import { createGmailMessageConnector } from "./gmail-message-connector.js";
+import { resolveGoogleConnectorOAuthCallbackUrl } from "./google-oauth-callback.js";
 import {
   GOOGLE_CAPABILITIES,
   GOOGLE_IDENTITY_SCOPES,
@@ -419,10 +416,6 @@ export function createGoogleConnectorAccountProvider(
       _manager: ConnectorAccountManager
     ): Promise<ConnectorOAuthStartResult> => {
       const config = readClientConfig(runtime);
-      assertCanonicalGoogleOAuthRedirectUri(
-        config.redirectUri,
-        request.redirectUri,
-      );
       const redirectUri = config.redirectUri;
       const capabilities = normalizeRequestedCapabilities(request.scopes);
       const oauthScopes = scopesForGoogleCapabilities(capabilities);
@@ -444,6 +437,7 @@ export function createGoogleConnectorAccountProvider(
 
       return {
         authUrl: `${GOOGLE_OAUTH_PROVIDER_METADATA.authorizationEndpoint}?${params.toString()}`,
+        redirectUri,
         codeVerifier,
         metadata: {
           ...request.metadata,

@@ -113,6 +113,8 @@ export interface ConnectorOAuthStartRequest {
 
 export interface ConnectorOAuthStartResult {
 	authUrl: string;
+	/** Canonical callback selected by the provider when callers do not own it. */
+	redirectUri?: string;
 	expiresAt?: number;
 	codeVerifier?: string;
 	metadata?: Metadata;
@@ -1603,11 +1605,18 @@ export class ConnectorAccountManager extends Service {
 		}
 		const updated = await this.storage.updateOAuthFlow(providerId, flow.id, {
 			authUrl: result.authUrl,
+			redirectUri: result.redirectUri ?? flow.redirectUri,
 			expiresAt: result.expiresAt,
 			codeVerifier: result.codeVerifier,
 			metadata: result.metadata ?? flow.metadata,
 		});
-		return updated ?? { ...flow, authUrl: result.authUrl };
+		return (
+			updated ?? {
+				...flow,
+				authUrl: result.authUrl,
+				redirectUri: result.redirectUri ?? flow.redirectUri,
+			}
+		);
 	}
 
 	async getOAuthFlow(

@@ -17,7 +17,6 @@ import { Service } from "@elizaos/core";
 
 export {
   assessGoogleOAuthCallbackConfig,
-  assertCanonicalGoogleOAuthRedirectUri,
   GOOGLE_CONNECTOR_OAUTH_CALLBACK_PATH,
   isPortlessLoopbackRedirectUrl,
   resolveGoogleConnectorOAuthCallbackUrl,

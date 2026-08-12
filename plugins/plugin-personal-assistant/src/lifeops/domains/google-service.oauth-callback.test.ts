@@ -5,17 +5,14 @@
 import { describe, expect, it, vi } from "vitest";
 import { GoogleDomain } from "./google-service.js";
 
-const CANONICAL =
-  "http://127.0.0.1:31437/api/connectors/google/oauth/callback";
+const CANONICAL = "http://127.0.0.1:31437/api/connectors/google/oauth/callback";
 
 describe("GoogleDomain OAuth callback parity", () => {
   it("starts OAuth with GOOGLE_REDIRECT_URI, not a portless INTERNAL_URL origin", async () => {
-    const startOAuth = vi.fn(
-      async (_provider: string, input: { redirectUri?: string }) => ({
-        redirectUri: input.redirectUri,
-        authUrl: "https://accounts.google.com/o/oauth2/v2/auth?client_id=test",
-      }),
-    );
+    const startOAuth = vi.fn(async () => ({
+      redirectUri: CANONICAL,
+      authUrl: "https://accounts.google.com/o/oauth2/v2/auth?client_id=test",
+    }));
     const runtime = {
       getSetting: (key: string) =>
         ({
@@ -51,7 +48,7 @@ describe("GoogleDomain OAuth callback parity", () => {
 
     expect(startOAuth).toHaveBeenCalledWith(
       "google",
-      expect.objectContaining({ redirectUri: CANONICAL }),
+      expect.not.objectContaining({ redirectUri: expect.anything() }),
     );
     expect(response.redirectUri).toBe(CANONICAL);
   });

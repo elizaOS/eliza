@@ -6,15 +6,13 @@
  */
 import type { IAgentRuntime } from "@elizaos/core";
 
-export const GOOGLE_CONNECTOR_OAUTH_CALLBACK_PATH =
-  "/api/connectors/google/oauth/callback";
+export const GOOGLE_CONNECTOR_OAUTH_CALLBACK_PATH = "/api/connectors/google/oauth/callback";
 
 export type GoogleOAuthCallbackConfigIssueCode =
   | "missing"
   | "malformed"
   | "portless_loopback"
-  | "wrong_path"
-  | "mismatch";
+  | "wrong_path";
 
 export interface GoogleOAuthCallbackConfigIssue {
   code: GoogleOAuthCallbackConfigIssueCode;
@@ -55,7 +53,7 @@ export function isPortlessLoopbackRedirectUrl(url: URL): boolean {
 }
 
 export function assessGoogleOAuthCallbackConfig(
-  runtime: RuntimeWithSettings,
+  runtime: RuntimeWithSettings
 ): GoogleOAuthCallbackConfigAssessment {
   const raw = readRedirectUriSetting(runtime);
   if (!raw) {
@@ -122,31 +120,14 @@ export function assessGoogleOAuthCallbackConfig(
   };
 }
 
-export function resolveGoogleConnectorOAuthCallbackUrl(
-  runtime: RuntimeWithSettings,
-): string {
+export function resolveGoogleConnectorOAuthCallbackUrl(runtime: RuntimeWithSettings): string {
   const assessment = assessGoogleOAuthCallbackConfig(runtime);
   if (!assessment.configured || !assessment.redirectUri) {
     const detail = assessment.issues.map((issue) => issue.message).join(" ");
     throw new Error(
       detail ||
-        "Google OAuth requires GOOGLE_REDIRECT_URI to be configured for /api/connectors/google/oauth/callback.",
+        "Google OAuth requires GOOGLE_REDIRECT_URI to be configured for /api/connectors/google/oauth/callback."
     );
   }
   return assessment.redirectUri;
-}
-
-export function assertCanonicalGoogleOAuthRedirectUri(
-  canonicalRedirectUri: string,
-  requestedRedirectUri: string | undefined,
-): void {
-  const requested = nonEmptyString(requestedRedirectUri);
-  if (!requested) return;
-  const canonical = new URL(canonicalRedirectUri).toString();
-  const normalizedRequested = new URL(requested).toString();
-  if (canonical !== normalizedRequested) {
-    throw new Error(
-      `Google OAuth redirect URI mismatch. Use the configured GOOGLE_REDIRECT_URI (${canonical}) instead of ${normalizedRequested}.`,
-    );
-  }
 }

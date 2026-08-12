@@ -91,7 +91,7 @@ describe("google plugin", () => {
         ({
           GOOGLE_CLIENT_ID: "google-client",
           GOOGLE_CLIENT_SECRET: "google-secret",
-          GOOGLE_REDIRECT_URI: "http://localhost/oauth/google/callback",
+          GOOGLE_REDIRECT_URI: "http://localhost:31437/api/connectors/google/oauth/callback",
         })[key],
       getService: () => null,
     } as never;
@@ -122,7 +122,7 @@ describe("google plugin", () => {
         ({
           GOOGLE_CLIENT_ID: "google-client",
           GOOGLE_CLIENT_SECRET: "google-secret",
-          GOOGLE_REDIRECT_URI: "http://localhost/oauth/google/callback",
+          GOOGLE_REDIRECT_URI: "http://localhost:31437/api/connectors/google/oauth/callback",
         })[key],
       getService: () => null,
     } as never;
@@ -159,7 +159,7 @@ describe("google plugin", () => {
         ({
           GOOGLE_CLIENT_ID: "google-client",
           GOOGLE_CLIENT_SECRET: "google-secret",
-          GOOGLE_REDIRECT_URI: "http://localhost/oauth/google/callback",
+          GOOGLE_REDIRECT_URI: "http://localhost:31437/api/connectors/google/oauth/callback",
         })[key],
       getService: () => null,
     } as never;
@@ -265,7 +265,7 @@ describe("google plugin", () => {
       credentialStore,
       clientId: "google-client",
       clientSecret: "google-secret",
-      redirectUri: "http://localhost/oauth/google/callback",
+      redirectUri: "http://localhost:31437/api/connectors/google/oauth/callback",
     });
 
     const request = {
@@ -405,7 +405,7 @@ describe("google plugin", () => {
         ({
           GOOGLE_CLIENT_ID: "google-client",
           GOOGLE_CLIENT_SECRET: "google-secret",
-          GOOGLE_REDIRECT_URI: "http://localhost/oauth/google/callback",
+          GOOGLE_REDIRECT_URI: "http://localhost:31437/api/connectors/google/oauth/callback",
         })[key],
       getService: (serviceType: string) =>
         serviceType === "vault"
@@ -493,7 +493,7 @@ describe("google plugin", () => {
         ({
           GOOGLE_CLIENT_ID: "google-client",
           GOOGLE_CLIENT_SECRET: "google-secret",
-          GOOGLE_REDIRECT_URI: "http://localhost/oauth/google/callback",
+          GOOGLE_REDIRECT_URI: "http://localhost:31437/api/connectors/google/oauth/callback",
         })[key],
       getService: (serviceType: string) =>
         serviceType === "vault"
@@ -580,7 +580,7 @@ describe("google plugin", () => {
         ({
           GOOGLE_CLIENT_ID: "google-client",
           GOOGLE_CLIENT_SECRET: "google-secret",
-          GOOGLE_REDIRECT_URI: "http://localhost/oauth/google/callback",
+          GOOGLE_REDIRECT_URI: "http://localhost:31437/api/connectors/google/oauth/callback",
         })[key],
       getService: () => null,
     } as never;
@@ -668,7 +668,7 @@ describe("google plugin", () => {
         ({
           GOOGLE_CLIENT_ID: "google-client",
           GOOGLE_CLIENT_SECRET: "google-secret",
-          GOOGLE_REDIRECT_URI: "http://localhost/oauth/google/callback",
+          GOOGLE_REDIRECT_URI: "http://localhost:31437/api/connectors/google/oauth/callback",
         })[key],
       getService: () => null,
     } as never;
@@ -727,7 +727,7 @@ describe("google plugin", () => {
         ({
           GOOGLE_CLIENT_ID: "google-client",
           GOOGLE_CLIENT_SECRET: "google-secret",
-          GOOGLE_REDIRECT_URI: "http://localhost/oauth/google/callback",
+          GOOGLE_REDIRECT_URI: "http://localhost:31437/api/connectors/google/oauth/callback",
         })[key],
       getService: () => null,
     } as never;

@@ -23,7 +23,6 @@ import { GoogleWorkspaceService } from "./service.js";
 import { GOOGLE_SERVICE_NAME } from "./types.js";
 
 export * from "./auth.js";
-export * from "./google-oauth-callback.js";
 export * from "./calendar.js";
 export * from "./chat/accounts.js";
 export type {
@@ -41,6 +40,7 @@ export * from "./credential-resolver.js";
 export * from "./drive.js";
 export * from "./gmail.js";
 export * from "./gmail-message-connector.js";
+export * from "./google-oauth-callback.js";
 export { GoogleGmailAdapter } from "./lifeops-message-adapter.js";
 export * from "./meet.js";
 export * from "./scopes.js";

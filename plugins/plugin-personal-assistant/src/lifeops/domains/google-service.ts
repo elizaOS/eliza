@@ -7,7 +7,7 @@ import {
   type ConnectorAccount,
   getConnectorAccountManager,
 } from "@elizaos/core";
-import { assessGoogleOAuthCallbackConfig, resolveGoogleConnectorOAuthCallbackUrl } from "@elizaos/plugin-google-workspace";
+import { assessGoogleOAuthCallbackConfig } from "@elizaos/plugin-google-workspace";
 import type {
   DisconnectLifeOpsGoogleConnectorRequest,
   LifeOpsConnectorGrant,
@@ -369,7 +369,9 @@ export class GoogleDomain {
     if (!manager?.getProvider?.("google")) {
       return googlePluginUnavailableStatus(side);
     }
-    const callbackAssessment = assessGoogleOAuthCallbackConfig(this.ctx.runtime);
+    const callbackAssessment = assessGoogleOAuthCallbackConfig(
+      this.ctx.runtime,
+    );
     if (!callbackAssessment.configured) {
       return googleOAuthCallbackMisconfigStatus(side, callbackAssessment);
     }
@@ -422,7 +424,7 @@ export class GoogleDomain {
 
   async startGoogleConnector(
     request: StartLifeOpsGoogleConnectorRequest,
-    requestUrl: URL,
+    _requestUrl: URL,
   ): Promise<StartLifeOpsGoogleConnectorResponse> {
     const mode = normalizeOptionalConnectorMode(request.mode, "mode");
     assertLocalMode(mode);
@@ -440,9 +442,7 @@ export class GoogleDomain {
     }
 
     const requestedAccountId = googleAccountIdFromGrantId(request.grantId);
-    const redirectUri = resolveGoogleConnectorOAuthCallbackUrl(this.ctx.runtime);
     const flow = await manager.startOAuth("google", {
-      redirectUri,
       accountId: requestedAccountId ?? undefined,
       scopes: requestedScopesForCapabilities(requestedCapabilities),
       metadata: {
@@ -460,7 +460,9 @@ export class GoogleDomain {
       side: requestedSide,
       mode: "local",
       requestedCapabilities: requestedCapabilities ?? [],
-      redirectUri: flow.redirectUri ?? redirectUri,
+      redirectUri:
+        flow.redirectUri ??
+        fail(500, "Google OAuth provider did not select a callback URI."),
       authUrl: flow.authUrl ?? "",
     };
   }
