@@ -63,6 +63,30 @@ if (process.env.RUN_TURBO_LOCKFILE_CHECK_ONLY === "1") {
 }
 
 const rawTurboArgs = process.argv.slice(2);
+
+function readConcurrencyOverride() {
+  const raw = process.env.RUN_TURBO_CONCURRENCY;
+  if (raw === undefined || raw === "") return null;
+
+  const parsed = Number(raw);
+  if (!/^\d+$/u.test(raw) || !Number.isSafeInteger(parsed) || parsed < 1) {
+    throw new Error(
+      `RUN_TURBO_CONCURRENCY must be a positive safe-integer decimal; received ${JSON.stringify(raw)}`,
+    );
+  }
+
+  return raw;
+}
+
+let concurrencyOverride;
+try {
+  concurrencyOverride = readConcurrencyOverride();
+} catch (error) {
+  // error-policy:J1 This CLI boundary translates invalid environment input into a clear non-zero exit.
+  console.error(`[run-turbo] ${error.message}`);
+  process.exit(1);
+}
+
 // Turbo accepts tasks as `turbo run <task>` or bare `turbo <task>`, with flags
 // anywhere in between (`run --filter=x typecheck`), and forwards everything
 // after a bare `--` to the tasks themselves. Collect every non-flag argument
@@ -156,11 +180,11 @@ if (
 // tsc processes on a full-workspace cone — the VM itself is OOM-killed and the
 // job exits 143 (#15140) — so CI lanes set this to 4 without forking the
 // `verify`/`typecheck` script definitions.
-if (process.env.RUN_TURBO_CONCURRENCY) {
+if (concurrencyOverride !== null) {
   const idx = turboArgs.findIndex(
     (arg) => arg === "--concurrency" || arg.startsWith("--concurrency="),
   );
-  const override = `--concurrency=${process.env.RUN_TURBO_CONCURRENCY}`;
+  const override = `--concurrency=${concurrencyOverride}`;
   if (idx === -1) {
     if (runIndex !== -1) turboArgs.splice(runIndex + 1, 0, override);
     else turboArgs.push(override);
