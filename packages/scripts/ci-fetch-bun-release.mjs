@@ -14,11 +14,10 @@
 import { execFileSync } from "node:child_process";
 import {
   appendFileSync,
-  chmodSync,
-  copyFileSync,
   createReadStream,
   existsSync,
   mkdirSync,
+  mkdtempSync,
   readdirSync,
   readFileSync,
   writeFileSync,
@@ -27,6 +26,7 @@ import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
+import { crc32 } from "node:zlib";
 
 const BUN_VERSION = "1.3.14";
 const ZIP_NAME = "bun.zip";
@@ -138,11 +138,11 @@ export function probeHost(env = process.env, cpuInfo = "") {
 }
 
 function zipLooksValid(bytes) {
-  return bytes.length > 1024 && bytes[0] === 0x50 && bytes[1] === 0x4b;
+  return bytes.length > 32 && bytes[0] === 0x50 && bytes[1] === 0x4b;
 }
 
 function tgzLooksValid(bytes) {
-  return bytes.length > 1024 && bytes[0] === 0x1f && bytes[1] === 0x8b;
+  return bytes.length > 20 && bytes[0] === 0x1f && bytes[1] === 0x8b;
 }
 
 async function downloadBytes(
@@ -157,7 +157,7 @@ async function downloadBytes(
         throw new Error(`${url} -> HTTP ${response.status}`);
       }
       const bytes = Buffer.from(await response.arrayBuffer());
-      if (bytes.length < 1024) {
+      if (bytes.length < 32) {
         throw new Error(`${url} returned ${bytes.length} bytes`);
       }
       return bytes;
@@ -173,24 +173,75 @@ async function downloadBytes(
   throw lastError instanceof Error ? lastError : new Error(String(lastError));
 }
 
-function packDirectoryZip(sourceDir, zipPath) {
-  if (process.platform === "win32") {
-    execFileSync("tar", ["-a", "-c", "-f", zipPath, "-C", sourceDir, "."], {
-      stdio: "inherit",
-    });
-    return;
+/**
+ * Writes a STORE-method zip. Self-hosted runners do not ship a `zip` binary,
+ * and the npm fallback has to reshape a tarball into the GitHub release layout
+ * that oven-sh/setup-bun expects (`<zipRoot>/bun`).
+ *
+ * @param {string} zipPath
+ * @param {Array<{ name: string, data: Buffer, executable?: boolean }>} entries
+ */
+export function writeStoredZip(zipPath, entries) {
+  const locals = [];
+  const centrals = [];
+  let offset = 0;
+  for (const entry of entries) {
+    const name = Buffer.from(entry.name.replaceAll("\\", "/"), "utf8");
+    const data = entry.data;
+    const crc = crc32(data) >>> 0;
+    const local = Buffer.alloc(30);
+    local.writeUInt32LE(0x04034b50, 0);
+    local.writeUInt16LE(20, 4);
+    local.writeUInt16LE(0, 6);
+    local.writeUInt16LE(0, 8);
+    local.writeUInt16LE(0, 10);
+    local.writeUInt16LE(0, 12);
+    local.writeUInt32LE(crc, 14);
+    local.writeUInt32LE(data.length, 18);
+    local.writeUInt32LE(data.length, 22);
+    local.writeUInt16LE(name.length, 26);
+    local.writeUInt16LE(0, 28);
+    const localHeader = Buffer.concat([local, name, data]);
+    const central = Buffer.alloc(46);
+    central.writeUInt32LE(0x02014b50, 0);
+    central.writeUInt16LE(0x0314, 4);
+    central.writeUInt16LE(20, 6);
+    central.writeUInt16LE(0, 8);
+    central.writeUInt16LE(0, 10);
+    central.writeUInt16LE(0, 12);
+    central.writeUInt16LE(0, 14);
+    central.writeUInt32LE(crc, 16);
+    central.writeUInt32LE(data.length, 20);
+    central.writeUInt32LE(data.length, 24);
+    central.writeUInt16LE(name.length, 28);
+    central.writeUInt16LE(0, 30);
+    central.writeUInt16LE(0, 32);
+    central.writeUInt16LE(0, 34);
+    central.writeUInt16LE(0, 36);
+    const mode = entry.executable ? 0o100755 : 0o100644;
+    central.writeUInt32LE((mode << 16) >>> 0, 38);
+    central.writeUInt32LE(offset, 42);
+    locals.push(localHeader);
+    centrals.push(Buffer.concat([central, name]));
+    offset += localHeader.length;
   }
-  execFileSync("zip", ["-r", "-q", zipPath, "."], {
-    cwd: sourceDir,
-    stdio: "inherit",
-  });
+  const centralDir = Buffer.concat(centrals);
+  const eocd = Buffer.alloc(22);
+  eocd.writeUInt32LE(0x06054b50, 0);
+  eocd.writeUInt16LE(0, 4);
+  eocd.writeUInt16LE(0, 6);
+  eocd.writeUInt16LE(entries.length, 8);
+  eocd.writeUInt16LE(entries.length, 10);
+  eocd.writeUInt32LE(centralDir.length, 12);
+  eocd.writeUInt32LE(offset, 16);
+  eocd.writeUInt16LE(0, 20);
+  writeFileSync(zipPath, Buffer.concat([...locals, centralDir, eocd]));
 }
 
 function npmTgzToGithubZip(tgzPath, zipPath, zipRoot) {
-  const extractRoot = join(tmpdir(), `eliza-bun-npm-${process.pid}`);
-  mkdirSync(extractRoot, { recursive: true });
+  const extractRoot = mkdtempSync(join(tmpdir(), "eliza-bun-npm-"));
   execFileSync("tar", ["-xzf", tgzPath, "-C", extractRoot], {
-    stdio: "inherit",
+    stdio: "pipe",
   });
   const bunName = process.platform === "win32" ? "bun.exe" : "bun";
   const found = readdirSync(extractRoot, { recursive: true, encoding: "utf8" })
@@ -199,14 +250,13 @@ function npmTgzToGithubZip(tgzPath, zipPath, zipRoot) {
   if (!found) {
     throw new Error(`npm tarball at ${tgzPath} did not contain ${bunName}`);
   }
-  const staging = join(tmpdir(), `eliza-bun-zip-${process.pid}`);
-  const nested = join(staging, zipRoot);
-  mkdirSync(nested, { recursive: true });
-  copyFileSync(found, join(nested, bunName));
-  if (process.platform !== "win32") {
-    chmodSync(join(nested, bunName), 0o755);
-  }
-  packDirectoryZip(staging, zipPath);
+  writeStoredZip(zipPath, [
+    {
+      name: `${zipRoot}/${bunName}`,
+      data: readFileSync(found),
+      executable: process.platform !== "win32",
+    },
+  ]);
 }
 
 export async function ensureBunReleaseZip(options) {
@@ -331,6 +381,7 @@ export async function main(argv = process.argv.slice(2)) {
     const { url } = await serveBunZip(zipPath, args.urlFile);
     process.stdout.write(`bun zip url ${url}\n`);
     if (args.serveOnly) {
+      process.on("SIGHUP", () => {});
       await new Promise(() => {});
     }
   }
