@@ -1165,28 +1165,13 @@ jobs:
   # ---------------------------------------------------------------------------
   # Pages build — one prepared workspace emits both canonical-origin variants.
   # ---------------------------------------------------------------------------
-  build-pages:
+  build-pages-pr:
     name: Build Pages artifacts
     needs: migrate-db
-    if: ${{ !cancelled() && (needs.migrate-db.result == 'success' || (github.event_name == 'pull_request' && needs.migrate-db.result == 'skipped')) }}
+    if: ${{ !cancelled() && github.event_name == 'pull_request' && needs.migrate-db.result == 'skipped' }}
     runs-on: ubuntu-latest
-    # The realtime flag is environment-scoped. Build the renderer under the
-    # same staging/production authority as the Worker so its advertised
-    # capability cannot drift from the route deployed in this run.
-    # Repository settings own admission to that environment: the release
-    # readback must confirm intended source-owned PR merge refs are admitted,
-    # while the trusted preview consumer keeps its independent same-repo gate.
-    environment: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'production' || 'staging' }}
     timeout-minutes: 30
-    # GitHub preserves outputs from successful jobs when only failed jobs are
-    # rerun. Consumers must therefore use the producer's attempt, not their own
-    # newer github.run_attempt. A full rerun executes this job again and emits
-    # the new attempt, so its deploy jobs consume the newly built artifacts.
-    outputs:
-      artifact_run_id: ${{ steps.pages-artifact.outputs.run_id }}
-      artifact_run_attempt: ${{ steps.pages-artifact.outputs.run_attempt }}
-      artifact_source_sha: ${{ steps.pages-artifact.outputs.source_sha }}
-    steps:
+    steps: &pages_build_steps
       - name: Validate PR preview identity
         if: github.event_name == 'pull_request'
         env:
@@ -1293,6 +1278,29 @@ jobs:
             packages/app/wrangler.toml
           if-no-files-found: error
           retention-days: 1
+
+  build-pages:
+    name: Build canonical Pages artifacts
+    needs: migrate-db
+    if: ${{ !cancelled() && github.event_name != 'pull_request' && needs.migrate-db.result == 'success' }}
+    runs-on: ubuntu-latest
+    # The realtime flag is environment-scoped. Build the renderer under the
+    # same staging/production authority as the Worker so its advertised
+    # capability cannot drift from the route deployed in this run.
+    # Repository settings own admission to this environment. Pull-request
+    # artifacts are built by build-pages-pr without any environment authority;
+    # its trusted preview consumer keeps an independent same-repository gate.
+    environment: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'production' || 'staging' }}
+    timeout-minutes: 30
+    # GitHub preserves outputs from successful jobs when only failed jobs are
+    # rerun. Consumers must therefore use the producer's attempt, not their own
+    # newer github.run_attempt. A full rerun executes this job again and emits
+    # the new attempt, so its deploy jobs consume the newly built artifacts.
+    outputs:
+      artifact_run_id: ${{ steps.pages-artifact.outputs.run_id }}
+      artifact_run_attempt: ${{ steps.pages-artifact.outputs.run_attempt }}
+      artifact_source_sha: ${{ steps.pages-artifact.outputs.source_sha }}
+    steps: *pages_build_steps
 
   # ---------------------------------------------------------------------------
   # Console frontend (Cloudflare Pages) — packages/app at the elizacloud.ai apex.

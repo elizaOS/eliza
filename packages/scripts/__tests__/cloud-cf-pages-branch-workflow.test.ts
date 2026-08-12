@@ -34,6 +34,7 @@ interface WorkflowStep {
 }
 
 interface WorkflowJob {
+  environment?: unknown;
   if?: string;
   needs?: string | string[];
   steps?: WorkflowStep[];
@@ -164,15 +165,27 @@ describe("Cloud CF PR preview workflow contract", () => {
   });
 
   test("keeps PR builds reachable and gates canonical Pages on the API", () => {
-    const buildJob = producer.jobs?.["build-pages"];
-    expect(buildJob?.needs).toBe("migrate-db");
-    expect(buildJob?.if).toContain(
-      "github.event_name == 'pull_request' && needs.migrate-db.result == 'skipped'",
+    const previewBuild = producer.jobs?.["build-pages-pr"];
+    const canonicalBuild = producer.jobs?.["build-pages"];
+    expect(previewBuild?.needs).toBe("migrate-db");
+    expect(previewBuild?.if).toBe(
+      "$" +
+        "{{ !cancelled() && github.event_name == 'pull_request' && needs.migrate-db.result == 'skipped' }}",
     );
+    expect(previewBuild?.environment).toBeUndefined();
     expect(
-      namedStep(producer, "build-pages", "Validate PR preview identity").if,
+      namedStep(producer, "build-pages-pr", "Validate PR preview identity").if,
     ).toBe("github.event_name == 'pull_request'");
-    expect(JSON.stringify(buildJob)).not.toContain("secrets.");
+    expect(JSON.stringify(previewBuild)).not.toContain("secrets.");
+
+    expect(canonicalBuild?.needs).toBe("migrate-db");
+    expect(canonicalBuild?.if).toBe(
+      "$" +
+        "{{ !cancelled() && github.event_name != 'pull_request' && needs.migrate-db.result == 'success' }}",
+    );
+    expect(canonicalBuild?.environment).toContain("'production'");
+    expect(canonicalBuild?.environment).toContain("'staging'");
+    expect(canonicalBuild?.steps).toEqual(previewBuild?.steps);
 
     for (const jobId of deployJobs) {
       const job = producer.jobs?.[jobId];

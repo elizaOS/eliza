@@ -444,6 +444,7 @@ describe("Cloud CF realtime voice deploy contract", () => {
     for (const jobName of ["build-pages", "deploy-console", "deploy-app"]) {
       expect(workflow.jobs?.[jobName]?.environment).toBe(deployEnvironment);
     }
+    expect(workflow.jobs?.["build-pages-pr"]?.environment).toBeUndefined();
     const previewWorkflow = read(
       ".github/workflows/cloud-cf-pr-preview-deploy.yml",
     );
@@ -451,7 +452,7 @@ describe("Cloud CF realtime voice deploy contract", () => {
       "github.event.workflow_run.head_repository.full_name == github.repository",
     );
     expect(workflowSource).toContain(
-      "readback must confirm intended source-owned PR merge refs are admitted",
+      "Pull-request\n    # artifacts are built by build-pages-pr without any environment authority",
     );
     expect(deployStep.run).toContain(
       '--var VOICE_REALTIME_CARTESIA_VOICE_ID:"$PRODUCTION_REALTIME_CARTESIA_VOICE_ID"',
