@@ -425,6 +425,102 @@ describe("app plugin compatibility routes", () => {
     });
   });
 
+  it("migrates allow aliases during a config-only update", () => {
+    currentConfig = {
+      env: {},
+      plugins: {
+        allow: ["google", "@elizaos/plugin-openai"],
+        entries: { google: { enabled: true } },
+      },
+    };
+    const google = makePlugin({
+      id: "google",
+      name: "Google Workspace",
+      category: "feature",
+      npmName: "@elizaos/plugin-google-workspace",
+      enabled: true,
+      parameters: [
+        {
+          key: "GOOGLE_CLIENT_ID",
+          required: false,
+          sensitive: false,
+          type: "string",
+        },
+      ],
+    });
+
+    const result = persistCompatPluginMutation(
+      "google",
+      { config: { GOOGLE_CLIENT_ID: "client-id" } },
+      google,
+    );
+
+    expect(result.status).toBe(200);
+    expect(savedConfig?.plugins).toEqual({
+      allow: ["@elizaos/plugin-openai", "@elizaos/plugin-google-workspace"],
+      entries: {
+        "google-workspace": {
+          enabled: true,
+          config: { GOOGLE_CLIENT_ID: "client-id" },
+        },
+      },
+    });
+    const savedPlugins = savedConfig?.plugins as {
+      allow: string[];
+      entries: Record<string, { enabled?: unknown }>;
+    };
+    expect(
+      analyzePluginStateDrift(
+        [google],
+        {},
+        savedPlugins.entries,
+        new Set(savedPlugins.allow),
+      ).plugins[0]?.drift_flags,
+    ).not.toContain("entries_vs_allowlist");
+  });
+
+  it("preserves the registry id for config-only bundled feature updates", () => {
+    currentConfig = {
+      env: {},
+      plugins: {
+        allow: ["@elizaos/core"],
+        entries: { core: { enabled: true } },
+      },
+    };
+    const orchestrator = makePlugin({
+      id: "agent-orchestrator",
+      name: "Agent Orchestrator",
+      category: "feature",
+      npmName: "@elizaos/core",
+      enabled: true,
+      parameters: [
+        {
+          key: "ORCHESTRATOR_MODE",
+          required: false,
+          sensitive: false,
+          type: "string",
+        },
+      ],
+    });
+
+    const result = persistCompatPluginMutation(
+      "agent-orchestrator",
+      { config: { ORCHESTRATOR_MODE: "enabled" } },
+      orchestrator,
+    );
+
+    expect(result.status).toBe(200);
+    expect(savedConfig?.plugins).toEqual({
+      allow: ["agent-orchestrator"],
+      entries: {
+        "agent-orchestrator": {
+          enabled: true,
+          config: { ORCHESTRATOR_MODE: "enabled" },
+        },
+      },
+    });
+  });
+
   it("falls back to the registry id for non-plugin package metadata", () => {
     currentConfig = {
       env: {},
