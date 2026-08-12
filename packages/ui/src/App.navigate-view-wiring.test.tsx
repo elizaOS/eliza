@@ -295,6 +295,18 @@ vi.mock("./hooks/useAuthStatus", () => ({
   // export both seams. Auth phase is static in these tests, so the re-arm
   // subscription never fires — returning a no-op unsubscribe is faithful.
   isAuthenticatedNow: () => authStatusMock.phase === "authenticated",
+  // notification-store also keys its inbox authority off the full snapshot
+  // (computeAuthorityKey in initNotifications, #18495), so the mock exposes the
+  // same static phase in AuthStatusState shape.
+  getAuthStatusSnapshot: () =>
+    authStatusMock.phase === "authenticated"
+      ? {
+          phase: "authenticated",
+          identity: { id: "test-user" },
+          session: { id: "test-session" },
+          access: {},
+        }
+      : { phase: "unauthenticated" },
   subscribeAuthStatus: () => vi.fn(),
 }));
 

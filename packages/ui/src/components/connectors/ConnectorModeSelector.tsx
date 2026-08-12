@@ -17,18 +17,22 @@ export function ConnectorModeSelector({
   selectedMode,
   onModeChange,
   elizaCloudConnected,
+  cloudProvisioned,
   channelMode,
 }: {
   connectorId: string;
   selectedMode: string;
   onModeChange: (modeId: string) => void;
   elizaCloudConnected?: boolean;
+  /** Whether the agent host is a managed Eliza Cloud container. */
+  cloudProvisioned?: boolean;
   /** Global channel-mode lens; filters out modes classified into the other lens. */
   channelMode?: ConnectorChannelMode;
 }) {
   const t = useAppSelector((s) => s.t);
   const modes = getConnectorModes(connectorId, {
     elizaCloudConnected,
+    cloudProvisioned,
     channelMode,
   });
 
