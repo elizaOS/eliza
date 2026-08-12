@@ -1,0 +1,18 @@
+{
+  "package": "plugin-pulsenetwork",
+  "repository": "github:GTCC777/plugin-pulsenetwork",
+  "kind": "plugin",
+  "description": "Pulse Network paid data for agents: free catalog search across the x402 fleet (finance, crypto, macro, travel, sports, health, legal), pre-trade token safety scans ($0.015), and capped pay-per-call fetches — USDC on Base, no API keys. Spend caps and recipient/asset pins enforced in code.",
+  "homepage": "https://pulse.theaslangroupllc.com",
+  "version": "0.1.0",
+  "tags": [
+    "x402",
+    "micropayments",
+    "paid-data",
+    "token-safety",
+    "usdc",
+    "base",
+    "finance",
+    "crypto-data"
+  ]
+}
