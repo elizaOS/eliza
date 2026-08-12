@@ -9,6 +9,7 @@ import {
   resolveCloudTimeoutMs,
 } from "../utils/config";
 import { webStreamToNodeStream } from "../utils/helpers";
+import { warmingRetryWaitSeconds } from "../utils/warming";
 import { createElizaCloudClient } from "../utils/sdk-client";
 
 /**
@@ -135,17 +136,36 @@ async function fetchTextToSpeech(
   const voiceId = resolveVoiceId(options);
 
   try {
-    const res = (await cloudTtsClientFactory(runtime).routes.postApiV1VoiceTts({
-      headers: {
-        ...(format === "mp3" ? { Accept: "audio/mpeg" } : {}),
-      },
-      json: {
-        text: options.text,
-        ...(voiceId ? { voiceId } : {}),
-        ...(modelId ? { modelId } : {}),
-      },
-      timeoutMs: resolveCloudTimeoutMs("ELIZAOS_CLOUD_TTS_TIMEOUT_MS", 60_000),
-    })) as Response;
+    // Ride through the cloud's transient cold-cache warming 503 — the
+    // raw-Response companion to the throw-shaped retries in image/video/music
+    // (#18323/#18325/#18333). A non-warming failure still throws immediately.
+    let res: Response;
+    let warmingRetries = 0;
+    for (;;) {
+      res = (await cloudTtsClientFactory(runtime).routes.postApiV1VoiceTts({
+        headers: {
+          ...(format === "mp3" ? { Accept: "audio/mpeg" } : {}),
+        },
+        json: {
+          text: options.text,
+          ...(voiceId ? { voiceId } : {}),
+          ...(modelId ? { modelId } : {}),
+        },
+        timeoutMs: resolveCloudTimeoutMs("ELIZAOS_CLOUD_TTS_TIMEOUT_MS", 60_000),
+      })) as Response;
+      if (warmingRetries < 2) {
+        const waitSeconds = await warmingRetryWaitSeconds(res);
+        if (waitSeconds !== null) {
+          warmingRetries++;
+          logger.warn(
+            `[ELIZAOS_CLOUD] TTS cold-cache warming (503), retry ${warmingRetries}/2 after ${waitSeconds}s...`,
+          );
+          await new Promise((r) => setTimeout(r, waitSeconds * 1000));
+          continue;
+        }
+      }
+      break;
+    }
 
     if (!res.ok) {
       const err = await res.text();

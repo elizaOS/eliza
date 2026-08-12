@@ -39,6 +39,12 @@ function dbChain(rows: unknown[]) {
 
 mock.module("@/db/helpers", () => ({
   dbRead: { select: mock(() => dbChain([])) },
+  // Keep the named-export surface complete for later files in Bun's shared
+  // test batch. This route never performs a write on the denied path.
+  dbWrite: {},
+  writeTransaction: async () => {
+    throw new Error("transaction is outside this denied billing path");
+  },
 }));
 mock.module("@/lib/services/users", () => ({
   usersService: { getWithOrganization: mock(async () => null) },

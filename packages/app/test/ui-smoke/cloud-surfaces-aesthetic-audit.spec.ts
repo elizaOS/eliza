@@ -199,6 +199,14 @@ const CLOUD_AUDIT_CASES: CloudAuditCase[] = [
   // audit the signed-in flow; agent provisioning POSTs fall through to the
   // stub backend's 501, landing on the designed "couldn't connect" error card.
   { slug: "join", path: "/join", route: "join", auth: AUTH },
+  // get-started/ — a continuation token is required to exercise the real
+  // messaging handoff page instead of its missing-token redirect.
+  {
+    slug: "get-started",
+    path: "/get-started?onboardingSession=audit-continuation-token",
+    route: "get-started",
+    auth: AUTH,
+  },
   // public-pages/ — payment + approval + governance token pages
   {
     slug: "payment-request",
@@ -614,6 +622,24 @@ test.describe("cloud-surfaces aesthetic audit (#10725/#11342)", () => {
           await seedStewardToken(page);
         }
         await installCloudApiStubs(page);
+        if (auditCase.slug === "join") {
+          await page.route("**/api/cloud/compat/agents**", async (route) => {
+            await route.fulfill({
+              status: 402,
+              contentType: "application/json",
+              body: JSON.stringify({
+                success: false,
+                code: "insufficient_credits",
+                error:
+                  "Welcome credit unavailable because this network reached the daily free-credit limit. Add funds to start an agent.",
+                requiredBalance: 0.1,
+                currentBalance: 0,
+                welcomeBonusWithheld: true,
+                welcomeBonusWithheldReason: "ip_daily_cap",
+              }),
+            });
+          });
+        }
         await page.goto(auditCase.path, { waitUntil: "domcontentloaded" });
 
         // Routes with expectedFinalPath always redirect on localhost (the

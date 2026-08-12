@@ -16,6 +16,13 @@ import {
 } from "@testing-library/react";
 import { Settings } from "lucide-react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  backFromConnectorDetail,
+  openConnectorsIndexHash,
+  parseSettingsHash,
+  readSettingsHashRoute,
+  replaceConnectorDetailHash,
+} from "../settings/settings-route";
 import { SettingsView } from "./SettingsView";
 
 // SettingsView's own responsibility is hub → section navigation + a loadPlugins
@@ -143,6 +150,7 @@ vi.mock("../settings/settings-sections", async () => {
     SETTINGS_GROUP_LABEL: groupLabels,
     SETTINGS_GROUP_ORDER: groupOrder,
     SETTINGS_SECTIONS: sections,
+    backFromConnectorDetail,
     getAllSettingsSections: () => sections,
     // Group the stub sections the way the real helper does (bucket by group,
     // ordered by SETTINGS_GROUP_ORDER) so the folded section-nav renders.
@@ -163,8 +171,14 @@ vi.mock("../settings/settings-sections", async () => {
         .sort((a, b) => a.order - b.order)
         .map(({ group, label, items }) => ({ group, label, items }));
     },
-    readSettingsHashSection: () =>
-      window.location.hash.length > 1 ? window.location.hash.slice(1) : null,
+    openConnectorsIndexHash,
+    parseSettingsHash,
+    readSettingsHashRoute,
+    readSettingsHashSection: () => {
+      const route = readSettingsHashRoute();
+      return route.kind === "hub" ? null : route.sectionId;
+    },
+    replaceConnectorDetailHash,
     replaceSettingsHash: vi.fn(),
     settingsSectionLabel: (section: { defaultLabel: string }) =>
       section.defaultLabel,

@@ -17,13 +17,9 @@
  * to `drain` — without the shared lifetime (#17749 review, @wtfsayo then
  * @lalalune).
  *
- * Scope note: this registry drains turns that were already in flight when
- * `drain` is called. It does not stop new inbound messages from starting a
- * new turn while the drain is in progress — discord.js keeps delivering
- * gateway events until the client is destroyed, and this connector has no
- * ingress cordon (elizaOS/eliza#16318 scopes an inbound cordon to the
- * runtime-level shutdown path, outside this plugin). A turn that starts
- * after `drain` begins is not covered by that call.
+ * `DiscordService#stop` closes the gateway admission gate before calling
+ * `drain`, so the snapshot is stable: already-admitted turns may finish while
+ * later messageCreate deliveries are rejected observably (#16318).
  */
 import type { StatusReactionController } from "./status-reactions";
 

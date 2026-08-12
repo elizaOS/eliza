@@ -1,3 +1,8 @@
+/**
+ * Exercises the app-core compatibility routes against persisted plugin state,
+ * including the invariants shared with the canonical core toggle surface.
+ */
+
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -77,6 +82,7 @@ vi.mock("@elizaos/vault", () => ({
 }));
 
 import {
+  analyzePluginStateDrift,
   buildPluginListResponse,
   handlePluginsCompatRoutes,
   persistCompatPluginMutation,
@@ -219,6 +225,7 @@ describe("app plugin compatibility routes", () => {
 
     expect(result.status).toBe(200);
     expect(savedConfig?.plugins).toEqual({
+      allow: ["@elizaos/plugin-discord"],
       entries: {
         discord: {
           enabled: true,
@@ -228,6 +235,385 @@ describe("app plugin compatibility routes", () => {
     expect(savedConfig?.connectors).toEqual({
       discord: {
         enabled: true,
+      },
+    });
+  });
+
+  it("removes every plugin alias from the allowlist when disabling", () => {
+    currentConfig = {
+      env: {},
+      plugins: {
+        allow: ["discord", "@elizaos/plugin-discord", "@elizaos/plugin-openai"],
+        entries: {
+          discord: { enabled: true },
+        },
+      },
+    };
+
+    const result = persistCompatPluginMutation(
+      "discord",
+      { enabled: false },
+      makePlugin(),
+    );
+
+    expect(result.status).toBe(200);
+    expect(savedConfig?.plugins).toEqual({
+      allow: ["@elizaos/plugin-openai"],
+      entries: {
+        discord: {
+          enabled: false,
+        },
+      },
+    });
+    expect(savedConfig?.connectors).toEqual({
+      discord: {
+        enabled: false,
+      },
+    });
+  });
+
+  it("keeps app plugin entries and the canonical allowlist aligned", () => {
+    const personalAssistant = makePlugin({
+      id: "personal-assistant",
+      name: "Personal Assistant",
+      category: "app",
+      npmName: "@elizaos/plugin-personal-assistant",
+    });
+    const result = persistCompatPluginMutation(
+      "personal-assistant",
+      { enabled: true },
+      personalAssistant,
+    );
+
+    expect(result.status).toBe(200);
+    expect(savedConfig?.plugins).toEqual({
+      allow: ["@elizaos/plugin-personal-assistant"],
+      entries: {
+        "personal-assistant": {
+          enabled: true,
+        },
+      },
+    });
+    expect(savedConfig?.connectors).toBeUndefined();
+
+    const drift = analyzePluginStateDrift(
+      [{ ...personalAssistant, enabled: true }],
+      savedConfig ?? {},
+      { "personal-assistant": { enabled: true } },
+      new Set(["@elizaos/plugin-personal-assistant"]),
+    );
+    expect(drift.plugins[0]?.drift_flags).not.toContain("entries_vs_allowlist");
+  });
+
+  it("canonicalizes mismatched runtime and package identities when disabling", () => {
+    currentConfig = {
+      env: {},
+      plugins: {
+        allow: [
+          "google",
+          "@elizaos/plugin-google-workspace",
+          "@elizaos/plugin-openai",
+        ],
+        entries: {
+          google: { enabled: true },
+          "google-workspace": { enabled: true },
+        },
+      },
+    };
+    const google = makePlugin({
+      id: "google",
+      name: "Google Workspace",
+      category: "feature",
+      npmName: "@elizaos/plugin-google-workspace",
+      enabled: false,
+    });
+
+    const result = persistCompatPluginMutation(
+      "google",
+      { enabled: false },
+      google,
+    );
+
+    expect(result.status).toBe(200);
+    expect(savedConfig?.plugins).toEqual({
+      allow: ["@elizaos/plugin-openai"],
+      entries: {
+        "google-workspace": { enabled: false },
+      },
+    });
+
+    const savedPlugins = savedConfig?.plugins as {
+      allow: string[];
+      entries: Record<string, { enabled?: unknown }>;
+    };
+    const drift = analyzePluginStateDrift(
+      [google],
+      {},
+      savedPlugins.entries,
+      new Set(savedPlugins.allow),
+    );
+    expect(drift.plugins[0]?.drift_flags).not.toContain("entries_vs_allowlist");
+  });
+
+  it("keeps a canonical disabled entry disabled when the runtime plugin is loaded", () => {
+    currentConfig = {
+      env: {},
+      plugins: {
+        allow: [],
+        entries: {
+          "google-workspace": { enabled: false },
+        },
+      },
+    };
+    const googleEntry = {
+      id: "google",
+      name: "Google Workspace",
+      npmName: "@elizaos/plugin-google-workspace",
+      description: "",
+      tags: [],
+      kind: "connector",
+      subtype: "email",
+      config: {},
+      render: {},
+      resources: {},
+      version: "1.0.0",
+    };
+    mocks.loadRegistry.mockReturnValue({
+      all: [googleEntry],
+      byId: new Map([["google", googleEntry]]),
+    });
+
+    const response = buildPluginListResponse({
+      plugins: [{ name: "google" }],
+    } as never);
+
+    expect(response.plugins.find((plugin) => plugin.id === "google")).toEqual(
+      expect.objectContaining({ enabled: false, isActive: true }),
+    );
+  });
+
+  it("replaces a stale compatibility alias with the canonical package on enable", () => {
+    currentConfig = {
+      env: {},
+      plugins: {
+        allow: ["google", "@elizaos/plugin-openai"],
+        entries: {
+          google: { enabled: false },
+        },
+      },
+    };
+    const google = makePlugin({
+      id: "google",
+      name: "Google Workspace",
+      category: "feature",
+      npmName: "@elizaos/plugin-google-workspace",
+      enabled: true,
+    });
+
+    const result = persistCompatPluginMutation(
+      "google",
+      { enabled: true },
+      google,
+    );
+
+    expect(result.status).toBe(200);
+    expect(savedConfig?.plugins).toEqual({
+      allow: ["@elizaos/plugin-openai", "@elizaos/plugin-google-workspace"],
+      entries: {
+        "google-workspace": { enabled: true },
+      },
+    });
+  });
+
+  it("migrates allow aliases during a config-only update", () => {
+    currentConfig = {
+      env: {},
+      plugins: {
+        allow: ["google", "@elizaos/plugin-openai"],
+        entries: { google: { enabled: true } },
+      },
+    };
+    const google = makePlugin({
+      id: "google",
+      name: "Google Workspace",
+      category: "feature",
+      npmName: "@elizaos/plugin-google-workspace",
+      enabled: true,
+      parameters: [
+        {
+          key: "GOOGLE_CLIENT_ID",
+          required: false,
+          sensitive: false,
+          type: "string",
+        },
+      ],
+    });
+
+    const result = persistCompatPluginMutation(
+      "google",
+      { config: { GOOGLE_CLIENT_ID: "client-id" } },
+      google,
+    );
+
+    expect(result.status).toBe(200);
+    expect(savedConfig?.plugins).toEqual({
+      allow: ["@elizaos/plugin-openai", "@elizaos/plugin-google-workspace"],
+      entries: {
+        "google-workspace": {
+          enabled: true,
+          config: { GOOGLE_CLIENT_ID: "client-id" },
+        },
+      },
+    });
+    const savedPlugins = savedConfig?.plugins as {
+      allow: string[];
+      entries: Record<string, { enabled?: unknown }>;
+    };
+    expect(
+      analyzePluginStateDrift(
+        [google],
+        {},
+        savedPlugins.entries,
+        new Set(savedPlugins.allow),
+      ).plugins[0]?.drift_flags,
+    ).not.toContain("entries_vs_allowlist");
+  });
+
+  it("preserves the registry id for config-only bundled feature updates", () => {
+    currentConfig = {
+      env: {},
+      plugins: {
+        allow: ["@elizaos/core"],
+        entries: { core: { enabled: true } },
+      },
+    };
+    const orchestrator = makePlugin({
+      id: "agent-orchestrator",
+      name: "Agent Orchestrator",
+      category: "feature",
+      npmName: "@elizaos/core",
+      enabled: true,
+      parameters: [
+        {
+          key: "ORCHESTRATOR_MODE",
+          required: false,
+          sensitive: false,
+          type: "string",
+        },
+      ],
+    });
+
+    const result = persistCompatPluginMutation(
+      "agent-orchestrator",
+      { config: { ORCHESTRATOR_MODE: "enabled" } },
+      orchestrator,
+    );
+
+    expect(result.status).toBe(200);
+    expect(savedConfig?.plugins).toEqual({
+      allow: ["agent-orchestrator"],
+      entries: {
+        "agent-orchestrator": {
+          enabled: true,
+          config: { ORCHESTRATOR_MODE: "enabled" },
+        },
+      },
+    });
+  });
+
+  it("falls back to the registry id for non-plugin package metadata", () => {
+    currentConfig = {
+      env: {},
+      plugins: {
+        allow: ["@elizaos/core"],
+        entries: {
+          core: { enabled: false },
+        },
+      },
+    };
+    const orchestrator = makePlugin({
+      id: "agent-orchestrator",
+      name: "Agent Orchestrator",
+      category: "feature",
+      npmName: "@elizaos/core",
+      enabled: true,
+    });
+
+    const result = persistCompatPluginMutation(
+      "agent-orchestrator",
+      { enabled: true },
+      orchestrator,
+    );
+
+    expect(result.status).toBe(200);
+    expect(savedConfig?.plugins).toEqual({
+      allow: ["agent-orchestrator"],
+      entries: {
+        "agent-orchestrator": { enabled: true },
+      },
+    });
+
+    currentConfig = clone(savedConfig ?? {});
+    savedConfig = undefined;
+    const disabled = persistCompatPluginMutation(
+      "agent-orchestrator",
+      { enabled: false },
+      orchestrator,
+    );
+
+    expect(disabled.status).toBe(200);
+    expect(savedConfig?.plugins).toEqual({
+      allow: [],
+      entries: {
+        "agent-orchestrator": { enabled: false },
+      },
+    });
+  });
+
+  it("canonicalizes legacy app-package identities in both directions", () => {
+    currentConfig = {
+      env: {},
+      plugins: {
+        allow: ["log-viewer", "@elizaos/plugin-openai"],
+        entries: {
+          "log-viewer": { enabled: false },
+        },
+      },
+    };
+    const logViewer = makePlugin({
+      id: "log-viewer",
+      name: "Log Viewer",
+      category: "app",
+      npmName: "@elizaos/app-log-viewer",
+      enabled: false,
+    });
+
+    const enabledResult = persistCompatPluginMutation(
+      "log-viewer",
+      { enabled: true },
+      logViewer,
+    );
+
+    expect(enabledResult.status).toBe(200);
+    expect(savedConfig?.plugins).toEqual({
+      allow: ["@elizaos/plugin-openai", "@elizaos/app-log-viewer"],
+      entries: {
+        "app-log-viewer": { enabled: true },
+      },
+    });
+
+    currentConfig = savedConfig ?? {};
+    const disabledResult = persistCompatPluginMutation(
+      "log-viewer",
+      { enabled: false },
+      logViewer,
+    );
+
+    expect(disabledResult.status).toBe(200);
+    expect(savedConfig?.plugins).toEqual({
+      allow: ["@elizaos/plugin-openai"],
+      entries: {
+        "app-log-viewer": { enabled: false },
       },
     });
   });

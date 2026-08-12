@@ -39,6 +39,8 @@ const firstRunBootstrapMock = vi.hoisted(() => ({
 vi.mock("../bridge", () => bridgeMock);
 vi.mock("./first-run-bootstrap", () => firstRunBootstrapMock);
 
+const CLOUD_AGENT_ID = "11111111-1111-4111-8111-111111111111";
+
 function makeDeps(): RestoringSessionDeps {
   return {
     setStartupError: vi.fn(),
@@ -176,10 +178,10 @@ describe("runRestoringSession desktop bridge startup calls", () => {
     window.history.replaceState(null, "", "/chat?onboarding-replay=1");
     savePersistedFirstRunComplete(true);
     savePersistedActiveServer({
-      id: "cloud:agent-123",
+      id: `cloud:${CLOUD_AGENT_ID}`,
       kind: "cloud",
       label: "Eliza Cloud",
-      apiBase: "https://agent-123.elizacloud.ai",
+      apiBase: `https://${CLOUD_AGENT_ID}.elizacloud.ai`,
       accessToken: "agent-token",
     });
     const deps = makeDeps();

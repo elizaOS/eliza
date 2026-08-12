@@ -1,7 +1,10 @@
-/** Verifies isTrustedRestoreApiBaseUrl through the package's configured test harness. */
+/** Verifies persisted remote and Cloud runtime URL trust gates. */
 // @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
-import { isTrustedRestoreApiBaseUrl } from "./runtime-url-trust";
+import {
+  isTrustedCloudApiBaseUrl,
+  isTrustedRestoreApiBaseUrl,
+} from "./runtime-url-trust";
 
 /**
  * The persisted active-server / agent-profile record is localStorage-backed and
@@ -73,5 +76,109 @@ describe("isTrustedRestoreApiBaseUrl", () => {
     expect(isTrustedRestoreApiBaseUrl("eliza-local-agent://attacker.com")).toBe(
       false,
     );
+  });
+});
+
+describe("isTrustedCloudApiBaseUrl", () => {
+  const AGENT = "11111111-1111-4111-8111-111111111111";
+  const OTHER_AGENT = "22222222-2222-4222-8222-222222222222";
+
+  it("binds production and staging dedicated hosts to one agent label", () => {
+    expect(
+      isTrustedCloudApiBaseUrl(`https://${AGENT}.elizacloud.ai`, AGENT),
+    ).toBe(true);
+    expect(
+      isTrustedCloudApiBaseUrl(
+        `https://${AGENT}.staging.elizacloud.ai/`,
+        AGENT,
+      ),
+    ).toBe(true);
+    expect(
+      isTrustedCloudApiBaseUrl(`https://${AGENT}.elizacloud.ai`, OTHER_AGENT),
+    ).toBe(false);
+    expect(
+      isTrustedCloudApiBaseUrl(`https://nested.${AGENT}.elizacloud.ai`, AGENT),
+    ).toBe(false);
+    expect(
+      isTrustedCloudApiBaseUrl(
+        `https://${AGENT}.elizacloud.ai/api/status`,
+        AGENT,
+      ),
+    ).toBe(false);
+    expect(
+      isTrustedCloudApiBaseUrl(`https://${AGENT}.elizacloud.ai`, "bad/id"),
+    ).toBe(false);
+    expect(isTrustedCloudApiBaseUrl("https://not-an-agent.elizacloud.ai")).toBe(
+      false,
+    );
+  });
+
+  it("binds shared Cloud adapter paths to the expected agent", () => {
+    const base = "https://api-staging.elizacloud.ai/api/v1/eliza/agents";
+    expect(isTrustedCloudApiBaseUrl(`${base}/${AGENT}`, AGENT)).toBe(true);
+    expect(isTrustedCloudApiBaseUrl(`${base}/${AGENT}/bridge`, AGENT)).toBe(
+      true,
+    );
+    expect(isTrustedCloudApiBaseUrl(`${base}/${AGENT}`, OTHER_AGENT)).toBe(
+      false,
+    );
+    expect(
+      isTrustedCloudApiBaseUrl(`${base}/${encodeURIComponent(`${AGENT}/x`)}`),
+    ).toBe(false);
+    expect(isTrustedCloudApiBaseUrl(`${base}/not-an-agent`)).toBe(false);
+  });
+
+  it("allows agentless control-plane roots only before an owner is selected", () => {
+    expect(isTrustedCloudApiBaseUrl("https://elizacloud.ai")).toBe(true);
+    expect(
+      isTrustedCloudApiBaseUrl("https://api.elizacloud.ai/api/v1/eliza/agents"),
+    ).toBe(true);
+    expect(isTrustedCloudApiBaseUrl("https://elizacloud.ai", AGENT)).toBe(
+      false,
+    );
+    expect(isTrustedCloudApiBaseUrl("https://docs.elizacloud.ai")).toBe(false);
+  });
+
+  it("allows strict loopback roots without widening to arbitrary paths", () => {
+    expect(isTrustedCloudApiBaseUrl("http://127.0.0.1:31337", AGENT)).toBe(
+      true,
+    );
+    expect(isTrustedCloudApiBaseUrl("https://localhost:2138/", AGENT)).toBe(
+      true,
+    );
+    expect(isTrustedCloudApiBaseUrl("http://[::1]:31337", AGENT)).toBe(true);
+    expect(isTrustedCloudApiBaseUrl("http://127.0.0.1:31337/api", AGENT)).toBe(
+      false,
+    );
+    expect(isTrustedCloudApiBaseUrl("http://127.0.0.1.evil.test", AGENT)).toBe(
+      false,
+    );
+  });
+
+  it("rejects public sinks and URL components that can change authority", () => {
+    expect(
+      isTrustedCloudApiBaseUrl("https://credential-sink.example", AGENT),
+    ).toBe(false);
+    expect(
+      isTrustedCloudApiBaseUrl(`http://${AGENT}.elizacloud.ai`, AGENT),
+    ).toBe(false);
+    expect(
+      isTrustedCloudApiBaseUrl(`https://${AGENT}.elizacloud.ai:444`, AGENT),
+    ).toBe(false);
+    expect(
+      isTrustedCloudApiBaseUrl(
+        `https://user:pass@${AGENT}.elizacloud.ai`,
+        AGENT,
+      ),
+    ).toBe(false);
+    expect(
+      isTrustedCloudApiBaseUrl(
+        `https://${AGENT}.elizacloud.ai?next=evil`,
+        AGENT,
+      ),
+    ).toBe(false);
+    expect(
+      isTrustedCloudApiBaseUrl(`https://${AGENT}.elizacloud.ai#evil`, AGENT),
+    ).toBe(false);
   });
 });

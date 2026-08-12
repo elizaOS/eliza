@@ -61,8 +61,19 @@ export interface AppBootConfig {
   cloudApiBase?: string;
   vrmAssets?: BundledVrmAsset[];
   firstRunStyles?: unknown[];
-  /** Default-on shared cloud tier; false is the dedicated-direct kill-switch. */
+  /**
+   * Default-on shared cloud tier; false is the dedicated-direct kill-switch.
+   * When true, onboarding lands on a shared agent with zero billable dedicated
+   * mutation until the user explicitly chooses an upgrade (#18204).
+   */
   preferSharedCloudTier?: boolean;
+  /**
+   * Explicit opt-in to automatically upgrade a shared-first onboarding agent
+   * to a billed dedicated container in the background. Default OFF (#18204) so
+   * the shared-first path stays shared-only. Set true only when the host
+   * accepts the automatic credit burn from the #15518 handoff design.
+   */
+  autoUpgradeSharedToDedicated?: boolean;
   characterCatalog?: CharacterCatalogData;
   envAliases?: readonly (readonly [string, string])[];
   clientMiddleware?: ClientMiddleware;
@@ -73,6 +84,9 @@ export const DEFAULT_BOOT_CONFIG: AppBootConfig = {
   branding: {},
   cloudApiBase: "https://elizacloud.ai",
   preferSharedCloudTier: true,
+  // Default OFF: shared-first onboarding stays shared-only; no billed dedicated
+  // mutation without explicit opt-in (#18204).
+  autoUpgradeSharedToDedicated: false,
 };
 
 const BOOT_CONFIG_STORE_KEY = Symbol.for("elizaos.app.boot-config");

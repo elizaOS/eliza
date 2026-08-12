@@ -65,11 +65,23 @@ mock.module("@/lib/services/eliza-app/eliza-managed-launch", () => ({
   })),
 }));
 
+const linkDiscordToUser = mock(async () => ({ success: true }));
 mock.module("@/lib/services/eliza-app/user-service", () => ({
   elizaAppUserService: {
     findOrCreateByPhone: mock(async () => null),
     linkPhoneToUser: mock(async () => ({ success: true })),
+    linkDiscordToUser,
   },
+}));
+
+// Steward auth is substituted at the module seam: the route imports only
+// `getCurrentUser`, and the real implementation would reach for KV caches and
+// the Steward verify env. Every other export passes through unchanged.
+const realWorkersHonoAuth = await import("@/lib/auth/workers-hono-auth");
+const getCurrentUser = mock(async () => null as unknown);
+mock.module("@/lib/auth/workers-hono-auth", () => ({
+  ...realWorkersHonoAuth,
+  getCurrentUser,
 }));
 
 const route = (await import("../eliza-app/onboarding/chat/route")).default;
@@ -107,6 +119,17 @@ async function post(
   );
 }
 
+async function get(
+  sessionId: string,
+  authorization: string,
+): Promise<Response> {
+  return await route.request(
+    `/?sessionId=${encodeURIComponent(sessionId)}`,
+    { method: "GET", headers: { authorization } },
+    { INTERNAL_SECRET },
+  );
+}
+
 async function dataOf(response: Response): Promise<Record<string, unknown>> {
   const body = (await response.json()) as { data: Record<string, unknown> };
   return body.data;
@@ -133,6 +156,9 @@ describe("onboarding chat — trusted platform gateway caller", () => {
     spyOn(elizaAppSessionService, "validateAuthHeader").mockResolvedValue(null);
     resolveIdentity = spyOn(usersRepository, "resolveIdentity");
     resolveIdentity.mockClear();
+    getCurrentUser.mockReset();
+    getCurrentUser.mockResolvedValue(null);
+    linkDiscordToUser.mockClear();
   });
 
   test("provisions for the account that owns the attested platform identity", async () => {
@@ -472,5 +498,161 @@ describe("onboarding chat — trusted platform gateway caller", () => {
         .map((m) => m.content);
       expect(userContents).not.toContain("This should be ignored");
     });
+  });
+
+  const STEWARD_JWT = "Bearer aGVhZGVy.cGF5bG9hZA.c2ln";
+  const activeStewardUser = () => ({
+    id: "steward-user-1",
+    organization_id: "steward-org-1",
+    is_active: true,
+    organization: {
+      id: "steward-org-1",
+      name: "Steward Org",
+      is_active: true,
+    },
+  });
+
+  test("accepts a Steward bearer session as an authenticated (untrusted-platform) caller", async () => {
+    getCurrentUser.mockResolvedValue(activeStewardUser());
+
+    const data = await dataOf(
+      await post({ message: "My name is Ada", platform: "web" }, STEWARD_JWT),
+    );
+
+    // Authenticated with a name → provisioning starts for the steward account.
+    expect(ensureElizaAppProvisioning).toHaveBeenCalledWith({
+      userId: "steward-user-1",
+      organizationId: "steward-org-1",
+    });
+    // Full browser payload — a steward caller is a browser, not a gateway.
+    expect(data).toHaveProperty("loginUrl");
+    expect(data).toHaveProperty("messages");
+  });
+
+  test("previews the gateway-attested Discord identity and requires explicit confirmation", async () => {
+    resolveIdentity.mockResolvedValue(null);
+    await dataOf(
+      await post({
+        sessionId: "platform:discord:1234567890",
+        message: "My name is Ada",
+        platform: "discord",
+        platformUserId: "1234567890",
+        platformDisplayName: "attested-discord-user",
+      }),
+    );
+    const storedSession = sessionCache.get(
+      "eliza-app:onboarding:platform:discord:1234567890",
+    ) as { continuationToken?: string };
+    const continuation = storedSession.continuationToken;
+    expect(continuation).toBeTruthy();
+    getCurrentUser.mockResolvedValue(activeStewardUser());
+
+    const preview = await get(continuation as string, STEWARD_JWT);
+    expect(preview.status).toBe(200);
+    expect(await dataOf(preview)).toEqual({
+      platform: "discord",
+      platformUserId: "1234567890",
+      platformDisplayName: "attested-discord-user",
+    });
+    expect(linkDiscordToUser).not.toHaveBeenCalled();
+    expect(ensureElizaAppProvisioning).not.toHaveBeenCalled();
+
+    const unconfirmed = await post(
+      { sessionId: continuation as string, platform: "web" },
+      STEWARD_JWT,
+    );
+    expect(unconfirmed.status).toBe(409);
+    expect(await unconfirmed.json()).toMatchObject({
+      success: false,
+      code: "session_not_ready",
+    });
+    expect(linkDiscordToUser).not.toHaveBeenCalled();
+    expect(ensureElizaAppProvisioning).not.toHaveBeenCalled();
+  });
+
+  test("a Steward caller can never mint a platform-scoped session or act as a trusted transport", async () => {
+    getCurrentUser.mockResolvedValue(activeStewardUser());
+
+    const data = await dataOf(
+      await post(
+        {
+          sessionId: "platform:discord:1234567890",
+          message: "My name is Eve",
+          platform: "discord",
+          platformUserId: "1234567890",
+        },
+        STEWARD_JWT,
+      ),
+    );
+
+    // The forged platform session id is regenerated, and the attested-identity
+    // account resolution path (gateway-only) never runs.
+    expect(data.sessionId).not.toBe("platform:discord:1234567890");
+    expect(resolveIdentity).not.toHaveBeenCalled();
+  });
+
+  test("rejects an inactive Steward user before linking or provisioning", async () => {
+    getCurrentUser.mockResolvedValue({
+      ...activeStewardUser(),
+      is_active: false,
+    });
+
+    const response = await post(
+      { message: "My name is Ada", platform: "web" },
+      STEWARD_JWT,
+    );
+
+    expect(response.status).toBe(403);
+    expect(ensureElizaAppProvisioning).not.toHaveBeenCalled();
+  });
+
+  test("rejects an inactive Steward organization before linking or provisioning", async () => {
+    getCurrentUser.mockResolvedValue({
+      ...activeStewardUser(),
+      organization: {
+        ...activeStewardUser().organization,
+        is_active: false,
+      },
+    });
+
+    const response = await post(
+      { message: "My name is Ada", platform: "web" },
+      STEWARD_JWT,
+    );
+
+    expect(response.status).toBe(403);
+    expect(ensureElizaAppProvisioning).not.toHaveBeenCalled();
+  });
+
+  test("treats an orgless Steward session as unauthenticated instead of erroring", async () => {
+    getCurrentUser.mockResolvedValue({
+      id: "steward-user-2",
+      organization_id: null,
+      is_active: true,
+      organization: null,
+    });
+
+    const data = await dataOf(
+      await post({ message: "My name is Ada", platform: "web" }, STEWARD_JWT),
+    );
+
+    expect(ensureElizaAppProvisioning).not.toHaveBeenCalled();
+    expect(data.requiresLogin).toBe(true);
+  });
+
+  test("never consults Steward auth for a non-JWT bearer (cookie fallback stays out)", async () => {
+    resolveIdentity.mockResolvedValue({ user: userRow(), identity: undefined });
+
+    await post(
+      {
+        sessionId: "platform:telegram:9911",
+        message: "Hello",
+        platform: "telegram",
+        platformUserId: "9911",
+      },
+      `Bearer ${INTERNAL_SECRET}`,
+    );
+
+    expect(getCurrentUser).not.toHaveBeenCalled();
   });
 });

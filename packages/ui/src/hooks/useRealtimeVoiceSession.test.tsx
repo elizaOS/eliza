@@ -196,7 +196,13 @@ describe("useRealtimeVoiceSession", () => {
   });
 
   it("full flow: start → listening → partial → final → speaking → barge-in → stop through the REAL client", async () => {
-    const { options, ws, micCtx, pbCtx, getConsentNonce } = makeOptions();
+    const stopTrack = vi.fn();
+    const { options, ws, micCtx, pbCtx, getConsentNonce } = makeOptions({
+      getUserMedia: async () =>
+        ({
+          getTracks: () => [{ stop: stopTrack }],
+        }) as unknown as MediaStream,
+    });
     const { result } = renderHook(() => useRealtimeVoiceSession(options));
 
     // Flag on + ids present + not-yet-disabled ⇒ available for the batch caller
@@ -278,8 +284,13 @@ describe("useRealtimeVoiceSession", () => {
     // Clean stop → bye + teardown.
     await act(async () => {
       await result.current.stop();
+      await result.current.stop();
     });
     expect(sock.sentControls().some((c) => c.t === "bye")).toBe(true);
+    expect(sock.closed?.code).toBe(1000);
+    expect(stopTrack).toHaveBeenCalledTimes(1);
+    expect(micCtx.closed).toBe(true);
+    expect(pbCtx.closed).toBe(true);
     expect(result.current.active).toBe(false);
     expect(result.current.status).toBe("idle");
   });

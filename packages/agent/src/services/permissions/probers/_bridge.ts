@@ -21,6 +21,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
+import { ElizaError } from "@elizaos/core";
 
 import type {
   PermissionId,
@@ -243,7 +244,7 @@ export function hasEmbeddedProvisioningEntitlement(
 }
 
 /* --------------------------------------------------------------------------
- * FFI loader for the existing native permissions dylib.
+ * FFI loader for the native permissions dylib.
  *
  * The Electrobun runtime ships `libMacWindowEffects.dylib` which exposes:
  *   - checkAccessibilityPermission / requestAccessibilityPermission
@@ -254,10 +255,9 @@ export function hasEmbeddedProvisioningEntitlement(
  *   - EventKit/CNContactStore privacy probes for Reminders, Calendar,
  *     and Contacts
  *
- * We re-use it rather than ship a parallel implementation. If the dylib
- * isn't present (e.g. running in CI or a tree where the native build hasn't
- * happened) we fall back to TCC.db reads / AVCaptureDevice via osascript /
- * not-determined.
+ * Source runs resolve the worktree build while packaged Electrobun runs load
+ * the copy sealed beside the application resources. Individual probers decide
+ * whether an unavailable native bridge has a truthful fallback.
  * -------------------------------------------------------------------------- */
 
 interface NativePermissionsLib {
@@ -284,9 +284,21 @@ interface NativePermissionsLib {
 let nativeLib: NativePermissionsLib | null = null;
 let nativeLibResolved = false;
 
+/** Resolve the dylib copied into an Electrobun application bundle. */
+export function resolvePackagedNativePermissionsDylib(
+  execPath = process.execPath,
+): string {
+  return path.resolve(
+    path.dirname(execPath),
+    "../Resources/app/libMacWindowEffects.dylib",
+  );
+}
+
 const DYLIB_CANDIDATES = [
   // Absolute env override
   process.env.ELIZA_NATIVE_PERMISSIONS_DYLIB ?? "",
+  // Packaged Electrobun layout — the permission caller is Contents/MacOS/bun.
+  resolvePackagedNativePermissionsDylib(),
   // Source worktree layout — relative to this prober file
   "../../../../../app-core/platforms/electrobun/src/libMacWindowEffects.dylib",
   // Worktree layout — relative to the agent package
@@ -353,6 +365,16 @@ export function mapAVAuthStatus(value: number): PermissionStatus {
 
 /** Map native UNUserNotificationCenter status values to PermissionStatus. */
 export function mapUNAuthStatus(value: number): PermissionStatus {
+  if (value < 0) {
+    throw new ElizaError(
+      "macOS rejected the notification authorization request",
+      {
+        code: "NOTIFICATION_AUTHORIZATION_FAILED",
+        context: { nativeStatus: value },
+        severity: "fatal",
+      },
+    );
+  }
   if (value === 2) return "granted";
   if (value === 1) return "denied";
   if (value === 3) return "restricted";

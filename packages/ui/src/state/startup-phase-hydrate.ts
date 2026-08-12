@@ -562,6 +562,16 @@ export function bindReadyPhase(
             `Refused to switch to "${profile.label}" — untrusted remote address.`,
             "error",
           );
+        } else if (result.reason === "untrusted-cloud") {
+          depsRef.current?.setActionNotice(
+            `Refused to switch to "${profile.label}" — invalid Cloud agent address.`,
+            "error",
+          );
+        } else if (result.reason === "persistence-failed") {
+          depsRef.current?.setActionNotice(
+            `Couldn't switch to "${profile.label}" because browser storage is unavailable.`,
+            "error",
+          );
         }
         return;
       }

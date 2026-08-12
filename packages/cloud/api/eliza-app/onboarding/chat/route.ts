@@ -11,12 +11,15 @@ import { type Context, Hono } from "hono";
 import { z } from "zod";
 import { providerForPlatform, usersRepository } from "@/db/repositories/users";
 import {
+  ApiError,
   ForbiddenError,
   failureResponse,
   ValidationError,
 } from "@/lib/api/cloud-worker-errors";
+import { getCurrentUser } from "@/lib/auth/workers-hono-auth";
 import { elizaAppSessionService } from "@/lib/services/eliza-app";
 import {
+  inspectOnboardingContinuation,
   type OnboardingPlatform,
   runOnboardingChat,
 } from "@/lib/services/eliza-app/onboarding-chat";
@@ -36,6 +39,20 @@ const platformSchema = z.enum([
   "blooio",
 ]);
 
+/**
+ * A steward session JWT on the Authorization header: three non-empty dot-parts.
+ * The internal gateway secret is a flat string and eliza-app JWTs are already
+ * consumed above, so this gates exactly the steward branch — and, critically,
+ * keeps `getCurrentUser`'s cookie fallback out of this route (see the CSRF
+ * rationale at the call site).
+ */
+function looksLikeStewardBearer(authHeader: string): boolean {
+  if (!authHeader.startsWith("Bearer ")) return false;
+  const token = authHeader.slice(7).trim();
+  const parts = token.split(".");
+  return parts.length === 3 && parts.every((part) => part.length > 0);
+}
+
 const chatSchema = z.object({
   sessionId: z.string().trim().min(8).max(180).optional(),
   message: z.string().trim().max(4000).optional(),
@@ -43,6 +60,34 @@ const chatSchema = z.object({
   platformUserId: z.string().trim().max(256).optional(),
   platformDisplayName: z.string().trim().max(120).optional(),
   statusOnly: z.boolean().optional(),
+  confirmPlatformLink: z.boolean().optional(),
+});
+
+app.get("/", async (c) => {
+  try {
+    const token = c.req.query("sessionId")?.trim();
+    if (!token) throw ValidationError("Missing onboarding session");
+    const caller = await resolveCaller(c, {});
+    if (!caller.authenticatedUser || caller.trustedPlatformIdentity) {
+      throw ForbiddenError("Browser authentication required");
+    }
+    const preview = await inspectOnboardingContinuation(
+      token,
+      caller.authenticatedUser,
+    );
+    return c.json({ success: true, data: preview });
+  } catch (error) {
+    if (
+      isElizaError(error) &&
+      error.code === "ONBOARDING_TRUSTED_CONTINUATION_INVALID"
+    ) {
+      return failureResponse(
+        c,
+        ForbiddenError("This connection link is invalid or expired"),
+      );
+    }
+    return failureResponse(c, error);
+  }
 });
 
 /**
@@ -82,6 +127,50 @@ async function resolveCaller(
       },
       trustedPlatformIdentity: false,
     };
+  }
+
+  // Steward session — the branded email/OAuth login on *.elizacloud.ai —
+  // accepted by BEARER ONLY, never the steward-token cookie: this POST binds
+  // sessions, links identities and starts provisioning, and Hono's
+  // `req.json()` parses a cross-site text/plain simple request, so a
+  // cookie-authenticated call would be a CSRF surface (an attacker holding
+  // their own Discord continuation token could drive a victim's browser into
+  // binding the attacker's messaging identity to the victim's account). The
+  // SPA transport always attaches the localStorage bearer, which no other
+  // origin can send.
+  //
+  // A steward caller is a browser continuation, NEVER a trusted platform
+  // transport: trustedPlatformIdentity stays false, so it cannot mint
+  // platform-scoped sessions or claim platform identities from the request
+  // body. Identity linking still happens because the SESSION carries
+  // platformIdentityTrusted from the gateway turn that created it, and the
+  // opaque continuation token proves ownership.
+  if (looksLikeStewardBearer(authHeader)) {
+    const stewardUser = await getCurrentUser(c);
+    if (stewardUser) {
+      if (stewardUser.is_active === false) {
+        throw ForbiddenError("User account is inactive");
+      }
+      if (stewardUser.organization_id) {
+        if (!stewardUser.organization) {
+          throw ForbiddenError("Organization membership is unavailable");
+        }
+        if (stewardUser.organization.is_active === false) {
+          throw ForbiddenError("Organization is inactive");
+        }
+        return {
+          authenticatedUser: {
+            userId: stewardUser.id,
+            organizationId: stewardUser.organization_id,
+          },
+          trustedPlatformIdentity: false,
+        };
+      }
+      // A steward user without an organization has nothing to provision into;
+      // treat as unauthenticated rather than falling through to internal auth
+      // (which would reject their valid-but-orgless session as a bad header).
+      return { authenticatedUser: null, trustedPlatformIdentity: false };
+    }
   }
 
   const internal = await requireInternalAuth(c);
@@ -147,6 +236,7 @@ app.post("/", async (c) => {
       trustedPlatformIdentity: caller.trustedPlatformIdentity,
       idempotencyKey: idempotencyKey || undefined,
       statusOnly: parsed.data.statusOnly ?? false,
+      confirmPlatformLink: parsed.data.confirmPlatformLink,
     });
 
     // A platform gateway relays a reply back over the connector; it reads
@@ -191,6 +281,32 @@ app.post("/", async (c) => {
         c,
         ForbiddenError(
           "Authenticate with the same messaging account that started this onboarding session",
+        ),
+      );
+    }
+    if (
+      isElizaError(error) &&
+      error.code === "ONBOARDING_PLATFORM_LINK_CONFIRMATION_REQUIRED"
+    ) {
+      return failureResponse(
+        c,
+        new ApiError(
+          409,
+          "session_not_ready",
+          "Confirm the Discord account before connecting it",
+        ),
+      );
+    }
+    if (
+      isElizaError(error) &&
+      error.code === "ONBOARDING_PLATFORM_IDENTITY_CONFLICT"
+    ) {
+      return failureResponse(
+        c,
+        new ApiError(
+          409,
+          "identity_conflict",
+          "This Discord account is already linked to another account",
         ),
       );
     }

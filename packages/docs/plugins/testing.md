@@ -21,9 +21,9 @@ The maintained reference is
 
 | Script | Scope |
 | --- | --- |
-| `bun run test:component` | Fast deterministic tests under `src/__tests__`. |
-| `bun run test:e2e` | Plugin behavior through the generated agent/runtime harness. |
-| `bun run test` | Both lanes, in that order. |
+| `test:component` | Fast deterministic tests under `src/__tests__`. |
+| `test:e2e` | Plugin behavior through the generated agent/runtime harness. |
+| `test` | Both lanes, in that order. |
 
 The generated package also exposes `test:e2e:manual` as an explicit alias for
 the E2E lane.

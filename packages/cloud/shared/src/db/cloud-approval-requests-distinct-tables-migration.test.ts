@@ -1,5 +1,5 @@
 /**
- * Applies migration 0196 against real PGlite rows and proves Cloud identity
+ * Applies migration 0197 against real PGlite rows and proves Cloud identity
  * approval relocates onto distinct tables without touching the plugin-sql
  * owner-approval queue (#18074).
  */
@@ -11,7 +11,7 @@ import { PGlite } from "@electric-sql/pglite";
 
 const MIGRATION_PATH = join(
   import.meta.dir,
-  "migrations/0196_cloud_approval_requests_distinct_tables.sql",
+  "migrations/0197_cloud_approval_requests_distinct_tables.sql",
 );
 const MIGRATION_SQL = readFileSync(MIGRATION_PATH, "utf8");
 
@@ -48,7 +48,7 @@ async function seedPrereqs(db: PGlite): Promise<void> {
   `);
 }
 
-describe("0196 cloud approval requests distinct tables (#18074)", () => {
+describe("0197 cloud approval requests distinct tables (#18074)", () => {
   test("copies Cloud-shaped rows, leaves plugin-sql rows, and is idempotent", async () => {
     client = new PGlite();
     await seedPrereqs(client);

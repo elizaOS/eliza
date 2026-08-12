@@ -44,6 +44,10 @@ const publicPathPrefixes = [
   "/api/auth/steward-session",
   "/api/auth/steward-nonce-exchange",
   "/api/auth/steward-refresh",
+  // Disabled-by-default staging QA bridge. Both legs self-authenticate: mint
+  // requires a strongly revalidated allowlisted API key, while exchange burns
+  // a 60-second Postgres-backed PKCE code before every subsequent check.
+  "/api/auth/staging-session-exchange",
   // Cross-host SSO bridge: /mint self-authenticates (Bearer verified in the
   // handler — the global gate's cookie acceptance must NOT vouch for it, see
   // the route's plant-a-cookie rationale), /exchange is authenticated by the
@@ -192,9 +196,10 @@ function isPublicOutOfBandTokenPath(pathname: string): boolean {
 }
 
 export function isPublicPath(pathname: string): boolean {
-  // The browser pair relay is public because its one-time token is
-  // origin-bound by the route. Native pairing is a distinct authenticated
-  // sibling and must still pass through this global auth boundary.
+  // Local Docker's loopback browser relay is public because its one-time token
+  // and loopback Origin are both checked by the route. Remote managed pairing
+  // terminates on the agent-subdomain edge. Native pairing is a distinct
+  // authenticated sibling and must still pass through this auth boundary.
   if (pathname === "/api/auth/pair" || pathname === "/api/auth/pair/") {
     return true;
   }

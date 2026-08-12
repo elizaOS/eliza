@@ -24,8 +24,21 @@ mock.module("../../shared/src/lib/cache/client", () => ({
   },
 }));
 
+let provisioningFailure: Error | undefined;
+
+mock.module("../../shared/src/lib/services/eliza-app/user-service", () => ({
+  elizaAppUserService: {
+    findOrCreateByPhone: mock(async () => ({ success: true })),
+    linkPhoneToUser: mock(async () => ({ success: true })),
+    linkDiscordToUser: mock(async () => ({ success: true })),
+  },
+}));
+
 mock.module("../../shared/src/lib/services/eliza-app/provisioning", () => ({
-  ensureElizaAppProvisioning: mock(async () => noProvisioning),
+  ensureElizaAppProvisioning: mock(async () => {
+    if (provisioningFailure) throw provisioningFailure;
+    return noProvisioning;
+  }),
   getElizaAppProvisioningStatus: mock(async () => noProvisioning),
 }));
 
@@ -857,5 +870,349 @@ describe("OnboardingSessionCoordinator", () => {
           message.content === "this changed payload must not execute",
       ),
     ).toBe(false);
+  });
+
+  describe("proactive greeting queue", () => {
+    const QUEUE = "proactive-greetings:discord";
+
+    function greeting(sessionId: string, overrides?: Record<string, unknown>) {
+      return {
+        sessionId,
+        platformUserId: sessionId.slice("platform:discord:".length) || "u",
+        message: "you're all set",
+        createdAt: new Date().toISOString(),
+        deliveryNonce: `nonce-${sessionId.replaceAll(/[^A-Za-z0-9_-]/g, "").slice(-12)}`,
+        ...overrides,
+      };
+    }
+
+    function enqueue(
+      coordinator: OnboardingSessionCoordinator,
+      body: unknown,
+    ): Promise<Response> {
+      return coordinator.fetch(
+        new Request("https://onboarding.test/enqueue-greeting", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(body),
+        }),
+      );
+    }
+
+    function drain(
+      coordinator: OnboardingSessionCoordinator,
+      limit?: number,
+    ): Promise<Response> {
+      return coordinator.fetch(
+        new Request("https://onboarding.test/drain-greetings", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(limit === undefined ? {} : { limit }),
+        }),
+      );
+    }
+
+    function acknowledge(
+      coordinator: OnboardingSessionCoordinator,
+      acknowledgements: Array<{ sessionId: string; leaseId: string }>,
+    ): Promise<Response> {
+      return coordinator.fetch(
+        new Request("https://onboarding.test/ack-greetings", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ acknowledgements }),
+        }),
+      );
+    }
+
+    async function greetingsOf(
+      response: Response,
+    ): Promise<Array<{ sessionId: string; leaseId: string }>> {
+      const body = (await response.json()) as {
+        greetings: Array<{ sessionId: string; leaseId: string }>;
+      };
+      return body.greetings;
+    }
+
+    test("a live lease hides greetings until matching acknowledgement", async () => {
+      const harness = createCoordinatorHarness();
+      const queue = harness.objectByName(QUEUE);
+
+      expect(
+        (await enqueue(queue, greeting("platform:discord:greet-1"))).status,
+      ).toBe(200);
+      expect(
+        (await enqueue(queue, greeting("platform:discord:greet-2"))).status,
+      ).toBe(200);
+
+      const first = await greetingsOf(await drain(queue));
+      expect(first.map((entry) => entry.sessionId).sort()).toEqual([
+        "platform:discord:greet-1",
+        "platform:discord:greet-2",
+      ]);
+
+      // A concurrent poll cannot claim an actively leased entry.
+      expect(await greetingsOf(await drain(queue))).toEqual([]);
+
+      const wrongAck = await acknowledge(queue, [
+        { sessionId: first[0]?.sessionId ?? "", leaseId: "wrong-lease" },
+      ]);
+      expect((await wrongAck.json()) as unknown).toEqual({ acknowledged: 0 });
+      expect(await greetingsOf(await drain(queue))).toEqual([]);
+
+      const ackResponse = await acknowledge(
+        queue,
+        first.map(({ sessionId, leaseId }) => ({ sessionId, leaseId })),
+      );
+      expect((await ackResponse.json()) as unknown).toEqual({
+        acknowledged: 2,
+      });
+      expect(await greetingsOf(await drain(queue))).toEqual([]);
+    });
+
+    test("an unacknowledged greeting is reclaimable after lease expiry", async () => {
+      const harness = createCoordinatorHarness();
+      const queue = harness.objectByName(QUEUE);
+      const sessionId = "platform:discord:recover";
+      await enqueue(queue, greeting(sessionId));
+
+      const first = await greetingsOf(await drain(queue));
+      expect(first).toHaveLength(1);
+
+      const storage = harness.storageFor(QUEUE);
+      const key = `greeting:${encodeURIComponent(sessionId)}`;
+      const stored = await storage.get<Record<string, unknown>>(key);
+      if (!stored) throw new Error("leased greeting was not stored");
+      await storage.put(key, {
+        ...stored,
+        lease: { id: first[0]?.leaseId, expiresAt: Date.now() - 1 },
+      });
+
+      const reclaimed = await greetingsOf(await drain(queue));
+      expect(reclaimed).toHaveLength(1);
+      expect(reclaimed[0]?.sessionId).toBe(sessionId);
+      expect(reclaimed[0]?.leaseId).not.toBe(first[0]?.leaseId);
+
+      // A delayed acknowledgement from the old delivery cannot delete the
+      // newly leased entry.
+      const staleAck = await acknowledge(queue, [
+        { sessionId, leaseId: first[0]?.leaseId ?? "" },
+      ]);
+      expect((await staleAck.json()) as unknown).toEqual({ acknowledged: 0 });
+      expect(await greetingsOf(await drain(queue))).toEqual([]);
+
+      const currentAck = await acknowledge(queue, [
+        { sessionId, leaseId: reclaimed[0]?.leaseId ?? "" },
+      ]);
+      expect((await currentAck.json()) as unknown).toEqual({ acknowledged: 1 });
+    });
+
+    test("re-enqueueing the same session id preserves the original work", async () => {
+      const harness = createCoordinatorHarness();
+      const queue = harness.objectByName(QUEUE);
+
+      await enqueue(queue, greeting("platform:discord:dup"));
+      await enqueue(
+        queue,
+        greeting("platform:discord:dup", { message: "second write" }),
+      );
+
+      const claimed = (await greetingsOf(await drain(queue))) as Array<{
+        sessionId: string;
+        message?: string;
+      }>;
+      expect(claimed).toHaveLength(1);
+      expect(claimed[0]?.message).toBe("you're all set");
+    });
+
+    test("expired greetings are dropped at drain time, never delivered", async () => {
+      const harness = createCoordinatorHarness();
+      const queue = harness.objectByName(QUEUE);
+
+      await enqueue(
+        queue,
+        greeting("platform:discord:stale", {
+          createdAt: new Date(Date.now() - 16 * 60 * 1000).toISOString(),
+        }),
+      );
+      await enqueue(queue, greeting("platform:discord:fresh"));
+
+      const claimed = await greetingsOf(await drain(queue));
+      expect(claimed.map((entry) => entry.sessionId)).toEqual([
+        "platform:discord:fresh",
+      ]);
+      // The stale entry was deleted, not left behind.
+      expect(await greetingsOf(await drain(queue))).toEqual([]);
+    });
+
+    test("malformed enqueue payloads are rejected with 400", async () => {
+      const harness = createCoordinatorHarness();
+      const queue = harness.objectByName(QUEUE);
+
+      const cases: unknown[] = [
+        {},
+        greeting("platform:discord:x", { platformUserId: "" }),
+        greeting("platform:discord:x", { message: "" }),
+        greeting("platform:discord:x", { message: "y".repeat(2001) }),
+        greeting("platform:discord:x", { createdAt: "not-a-date" }),
+        greeting("short", {}),
+      ];
+      for (const body of cases) {
+        expect((await enqueue(queue, body)).status).toBe(400);
+      }
+      expect(await greetingsOf(await drain(queue))).toEqual([]);
+    });
+
+    test("greeting enqueues only after the turn's durable commit (no false-success DM)", async () => {
+      const harness = createCoordinatorHarness();
+      const { coordinator, sessionId } = harness;
+      const queue = harness.objectByName(QUEUE);
+
+      await turn(
+        coordinator,
+        sessionId,
+        "My name is Sam",
+        "discord:greet-commit-1",
+      );
+      expect(await greetingsOf(await drain(queue))).toEqual([]);
+
+      const browserTurn = () =>
+        coordinator.fetch(
+          new Request("https://onboarding.test/turn", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              sessionId,
+              input: {
+                sessionId,
+                platform: "web",
+                idempotencyKey: "web:greet-commit",
+                confirmPlatformLink: true,
+                authenticatedUser: {
+                  userId: "user-1",
+                  organizationId: "org-1",
+                },
+              },
+            }),
+          }),
+        );
+
+      // The browser continuation binds the account in memory, then
+      // provisioning throws BEFORE the durable transaction commits. The turn
+      // fails and the greeting must not exist anywhere: the user would be
+      // DMed "you're all set" for a sign-in that did not persist.
+      provisioningFailure = new Error("transient provisioning outage");
+      try {
+        expect((await browserTurn()).status).toBe(500);
+      } finally {
+        provisioningFailure = undefined;
+      }
+      expect(await greetingsOf(await drain(queue))).toEqual([]);
+
+      // Retrying after the outage commits the turn and enqueues exactly one
+      // greeting; the committed result never exposes the internal handoff.
+      const retried = await browserTurn();
+      expect(retried.status).toBe(200);
+      const committed = (await retried.json()) as Record<string, unknown>;
+      expect("proactiveGreeting" in committed).toBe(false);
+      const claimed = await greetingsOf(await drain(queue));
+      expect(claimed.map((entry) => entry.sessionId)).toEqual([sessionId]);
+
+      // A transport replay of the committed turn must not re-enqueue.
+      expect((await browserTurn()).status).toBe(200);
+      expect(await greetingsOf(await drain(queue))).toEqual([]);
+    });
+
+    test("a post-commit continuation-bind failure does not lose the greeting", async () => {
+      // Regression (PR #18353 review): the transaction commits, then the
+      // fallible cross-DO /bind runs. When the greeting enqueued only after a
+      // successful bind, a transient /bind outage permanently suppressed it —
+      // the same-key retry hits the replay branch (stripped, committed shape;
+      // must never re-enqueue) and a fresh-key retry sees an already-bound
+      // session and records no handoff. The enqueue therefore runs after the
+      // durable commit but BEFORE the bind; this pins that ordering.
+      const harness = createCoordinatorHarness();
+      const { coordinator, sessionId } = harness;
+      const queue = harness.objectByName(QUEUE);
+
+      const first = await readResult(
+        await turn(
+          coordinator,
+          sessionId,
+          "My name is Sam",
+          "discord:bind-fail-1",
+        ),
+      );
+      const token = first.session.continuationToken;
+      if (!token) throw new Error("expected a continuation token");
+
+      // Sabotage exactly the /bind endpoint on the token's DO, once.
+      const tokenObject = harness.objectByName(token);
+      const realFetch = tokenObject.fetch.bind(tokenObject);
+      let bindFailures = 1;
+      tokenObject.fetch = async (request: Request) => {
+        if (new URL(request.url).pathname === "/bind" && bindFailures > 0) {
+          bindFailures -= 1;
+          return new Response("bind outage", { status: 503 });
+        }
+        return realFetch(request);
+      };
+
+      const browserTurn = () =>
+        coordinator.fetch(
+          new Request("https://onboarding.test/turn", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              sessionId,
+              input: {
+                sessionId,
+                platform: "web",
+                idempotencyKey: "web:bind-fail",
+                confirmPlatformLink: true,
+                authenticatedUser: {
+                  userId: "user-1",
+                  organizationId: "org-1",
+                },
+              },
+            }),
+          }),
+        );
+
+      // The turn fails on the bind — but the sign-in itself durably
+      // committed, so the greeting must already be claimable.
+      expect((await browserTurn()).status).toBe(500);
+      const afterFailure = await greetingsOf(await drain(queue));
+      expect(afterFailure.map((entry) => entry.sessionId)).toEqual([sessionId]);
+
+      // The retry replays the committed turn, re-binds successfully, and
+      // must not enqueue a duplicate greeting.
+      expect((await browserTurn()).status).toBe(200);
+      expect(await greetingsOf(await drain(queue))).toEqual([]);
+    });
+
+    test("greeting keys never collide with session or replay storage", async () => {
+      const harness = createCoordinatorHarness();
+      const { coordinator, sessionId } = harness;
+
+      // A real onboarding turn and a greeting in the SAME durable object
+      // instance must not interfere.
+      await turn(coordinator, sessionId, "My name is Sam", "discord:msg-1");
+      await enqueue(coordinator, greeting(sessionId));
+
+      const claimed = await greetingsOf(await drain(coordinator));
+      expect(claimed.map((entry) => entry.sessionId)).toEqual([sessionId]);
+
+      // The session survives the drain untouched.
+      const followUp = await readResult(
+        await turn(coordinator, sessionId, "still here?", "discord:msg-2"),
+      );
+      expect(
+        followUp.session.history.some(
+          (message: { content: string }) =>
+            message.content === "My name is Sam",
+        ),
+      ).toBe(true);
+    });
   });
 });

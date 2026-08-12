@@ -90,6 +90,16 @@
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     },
+    "./desktop-shell": {
+      "types": "./dist/desktop-shell.d.ts",
+      "eliza-source": {
+        "types": "./src/desktop-shell.ts",
+        "import": "./src/desktop-shell.ts",
+        "default": "./src/desktop-shell.ts"
+      },
+      "import": "./dist/desktop-shell.js",
+      "default": "./dist/desktop-shell.js"
+    },
     "./entry": {
       "types": "./dist/entry.d.ts",
       "import": "./dist/entry.js",

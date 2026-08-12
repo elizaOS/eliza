@@ -17,6 +17,7 @@ import { getClientIp } from "../runtime/request-context";
 import { logger } from "../utils/logger";
 import { creditsService } from "./credits";
 import {
+  recordWelcomeBonusWithheldOnOrg,
   runWithSignupGrantIpCapDetailed,
   type SignupGrantWithheldReason,
 } from "./signup-grant-guard";
@@ -95,6 +96,16 @@ async function grantWalletSignupCredits(params: {
       },
       params.db,
     );
+    if (decision.withheldReason) {
+      // Record the withheld decision on the org (inside the signup transaction
+      // when one is open) so the agent credit gate can explain the $0-balance
+      // 402 this signup will hit later — see steward-sync's twin write.
+      await recordWelcomeBonusWithheldOnOrg(
+        params.organizationId,
+        { withheldReason: decision.withheldReason, withheldMessage: decision.withheldMessage },
+        params.db,
+      );
+    }
     return {
       initialCreditsGranted: decision.granted,
       initialFreeCreditsUsd: decision.granted ? params.amount : 0,

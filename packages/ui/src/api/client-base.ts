@@ -304,11 +304,46 @@ function findSseEventBreak(
     : { index: crlfBreak, length: 4 };
 }
 
-function parseStreamChatDataLine(line: string): StreamChatEvent | null {
+// Producers that predate the canonical JSON `type` (shared-runtime, sandbox,
+// bridge, and control-plane fallback chat) classify frames only through their
+// SSE event name. Map those names when `type` is absent so a terminal `done`
+// or `error` frame is never misread as another token (#17122). An explicit
+// JSON `type` always wins over the event name.
+const LEGACY_SSE_EVENT_TYPES: Record<string, string> = {
+  chunk: "token",
+  done: "done",
+  error: "error",
+};
+
+// Per the SSE spec the `event:` field names the whole event block regardless
+// of field order, and a later `event:` line overwrites an earlier one.
+function sseEventName(lines: readonly string[]): string | undefined {
+  let name: string | undefined;
+  for (const line of lines) {
+    if (line.startsWith("event:")) name = line.slice(6).trim() || undefined;
+  }
+  return name;
+}
+
+function parseStreamChatDataLine(
+  line: string,
+  eventName?: string,
+): StreamChatEvent | null {
   const payload = line.startsWith("data:") ? line.slice(5).trim() : "";
   if (!payload) return null;
   try {
     const parsed = JSON.parse(payload) as StreamChatEvent;
+    if (!parsed.type && eventName && LEGACY_SSE_EVENT_TYPES[eventName]) {
+      parsed.type = LEGACY_SSE_EVENT_TYPES[eventName];
+      if (
+        parsed.type === "done" &&
+        typeof parsed.fullText !== "string" &&
+        typeof parsed.text === "string"
+      ) {
+        // Legacy named done frames carried the authoritative reply in `text`.
+        parsed.fullText = parsed.text;
+      }
+    }
     if (!parsed.type && typeof parsed.text === "string") parsed.type = "token";
     return parsed;
   } catch {
@@ -411,8 +446,9 @@ function applyStreamChatDataLine(
   ) => void,
   onStatus?: (status: ChatTurnStatus) => void,
   onToolEvent?: (event: ChatToolCallEvent) => void,
+  eventName?: string,
 ): boolean {
-  const parsed = parseStreamChatDataLine(line);
+  const parsed = parseStreamChatDataLine(line, eventName);
   if (!parsed) return false;
   if (parsed.type === "token") {
     return applyStreamChatTokenEvent(parsed, state, onToken);
@@ -863,6 +899,16 @@ export class ElizaClient {
   }
 
   setToken(token: string | null): void {
+    this.installToken(token, true);
+  }
+
+  /**
+   * Update credential state without exposing an intermediate cross-target
+   * event. Atomic base swaps use the silent form, reconnect synchronously, and
+   * publish the established token-sync signal only after the new target owns
+   * the credential.
+   */
+  private installToken(token: string | null, notify: boolean): void {
     this._token = token?.trim() || null;
     // Boot config is the canonical source. fetchWithCsrf and authBase read here.
     const config = getBootConfig();
@@ -872,7 +918,7 @@ export class ElizaClient {
     // Apps tab — without a remount. `steward-token-sync` is the established
     // "re-read your token" signal that use-session-auth already listens for.
     // (#12046 Nit 2)
-    if (typeof window !== "undefined") {
+    if (notify && typeof window !== "undefined") {
       window.dispatchEvent(new CustomEvent("steward-token-sync"));
     }
   }
@@ -951,7 +997,7 @@ export class ElizaClient {
    * The "invisible" wins (no `disconnected` flap, no `StartupScreen`, no draft
    * clear) hold independent of whether a socket is involved.
    */
-  repointBaseUrl(baseUrl: string): void {
+  repointBaseUrl(baseUrl: string, token?: string | null): void {
     const normalized = normalizeBaseUrl(baseUrl);
     if (!normalized) return;
     // Quietly drop the old socket. We intentionally do NOT call disconnectWs():
@@ -980,6 +1026,8 @@ export class ElizaClient {
     this.wsSendQueue = [];
     this.wsEventBacklog.clear();
 
+    const installsToken = token !== undefined;
+    if (installsToken) this.installToken(token ?? null, false);
     this._userSetBase = normalized.length > 0;
     this._baseUrl = normalized;
     this.persistBaseUrl(normalized);
@@ -992,6 +1040,9 @@ export class ElizaClient {
     this.reconnectAttempt = 0;
     this.disconnectedAt = null;
     this.connectWs();
+    if (installsToken && typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("steward-token-sync"));
+    }
   }
 
   /** True when we have a usable HTTP(S) API endpoint. */
@@ -1139,6 +1190,9 @@ export class ElizaClient {
         message,
         code,
         retryAfter,
+        // Structured consumers (the /join credit-gate classifier) read fields
+        // the flattened message/code drop, e.g. `welcomeBonusWithheld`.
+        data: body,
       });
       // Structural agent-gone from a bound cloud agent host: drop the dead
       // binding at the request choke point so background callers (lifeops
@@ -2180,7 +2234,9 @@ export class ElizaClient {
       while (eventBreak) {
         const rawEvent = buffer.slice(0, eventBreak.index);
         buffer = buffer.slice(eventBreak.index + eventBreak.length);
-        for (const line of rawEvent.split(/\r?\n/)) {
+        const eventLines = rawEvent.split(/\r?\n/);
+        const eventName = sseEventName(eventLines);
+        for (const line of eventLines) {
           if (!line.startsWith("data:")) continue;
           if (
             applyStreamChatDataLine(
@@ -2189,6 +2245,7 @@ export class ElizaClient {
               onToken,
               onStatus,
               onToolEvent,
+              eventName,
             )
           ) {
             buffer = "";
@@ -2206,7 +2263,9 @@ export class ElizaClient {
     }
 
     if (!streamState.receivedDone && buffer.trim()) {
-      for (const line of buffer.split(/\r?\n/)) {
+      const trailingLines = buffer.split(/\r?\n/);
+      const trailingEventName = sseEventName(trailingLines);
+      for (const line of trailingLines) {
         if (line.startsWith("data:")) {
           applyStreamChatDataLine(
             line,
@@ -2214,6 +2273,7 @@ export class ElizaClient {
             onToken,
             onStatus,
             onToolEvent,
+            trailingEventName,
           );
         }
       }

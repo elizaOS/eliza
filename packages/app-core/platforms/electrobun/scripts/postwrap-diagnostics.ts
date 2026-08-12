@@ -274,9 +274,10 @@ function xmlEscape(value: string): string {
     .replaceAll(">", "&gt;");
 }
 
-export function ensureMacPermissionUsageDescriptions(
+function ensureMacInfoPlistStrings(
   wrapperBundlePath: string,
   osName: string,
+  entries: Record<string, string>,
 ): string[] {
   if (osName !== "macos") return [];
   const plistPath = joinPortable(wrapperBundlePath, "Contents", "Info.plist");
@@ -284,9 +285,7 @@ export function ensureMacPermissionUsageDescriptions(
 
   let plist = fs.readFileSync(plistPath, "utf8");
   const inserted: string[] = [];
-  for (const [key, value] of Object.entries(
-    MAC_PERMISSION_USAGE_DESCRIPTIONS,
-  )) {
+  for (const [key, value] of Object.entries(entries)) {
     if (plist.includes(`<key>${key}</key>`)) continue;
     inserted.push(key);
     const entry = `\t<key>${key}</key>\n\t<string>${xmlEscape(value)}</string>\n`;
@@ -299,6 +298,17 @@ export function ensureMacPermissionUsageDescriptions(
     fs.writeFileSync(plistPath, plist, "utf8");
   }
   return inserted;
+}
+
+export function ensureMacPermissionUsageDescriptions(
+  wrapperBundlePath: string,
+  osName: string,
+): string[] {
+  return ensureMacInfoPlistStrings(
+    wrapperBundlePath,
+    osName,
+    MAC_PERMISSION_USAGE_DESCRIPTIONS,
+  );
 }
 
 export function ensureMacAppIcon(

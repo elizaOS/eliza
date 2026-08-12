@@ -40,6 +40,10 @@ import { resolveViteCommand } from "./lib/dev-ui-vite.mjs";
 import { signalSpawnedProcessTree } from "./lib/kill-process-tree.mjs";
 import { resolveMacNativeEffectsDevPlan } from "./lib/macos-native-effects-dev.mjs";
 import { extendNodePathEnv } from "./lib/node-path-env.mjs";
+import {
+  drainSpawnedChildren,
+  resolveShutdownDrainWindowMs,
+} from "./lib/shutdown-drain.mjs";
 import { syncElizaEnvAliases } from "./lib/sync-eliza-env-aliases.mjs";
 import {
   chooseElizaRuntime,
@@ -864,6 +868,13 @@ let viteReady = false;
 const VITE_READY_BUDGET_MS =
   Number(process.env.ELIZA_DEV_VITE_READY_BUDGET_MS) || 120_000;
 
+// Shutdown drain window: children get a bounded window to finish their own
+// graceful teardown (the Discord connector alone is entitled to 10 s of turn
+// drain + 2 s of reaction reconcile — plugins/plugin-discord/shutdown-drain.ts,
+// elizaOS/eliza#16318) before any SIGKILL escalation. Override via
+// ELIZA_DEV_SHUTDOWN_DRAIN_MS for CI or impatient local loops.
+const SHUTDOWN_DRAIN_WINDOW_MS = resolveShutdownDrainWindowMs(process.env);
+
 function terminateChild(proc, signal = "SIGTERM") {
   if (!proc) return;
   const sig = signal === "SIGKILL" ? "SIGKILL" : "SIGTERM";
@@ -882,9 +893,6 @@ function cleanup(exitCode = 0) {
     sourceWatcher.close();
     sourceWatcher = null;
   }
-  terminateChild(viteProcess, "SIGTERM");
-  terminateChild(apiProcess, "SIGTERM");
-  terminateChild(visionDepsProcess, "SIGTERM");
   if (viteRestartTimer) {
     clearTimeout(viteRestartTimer);
     viteRestartTimer = null;
@@ -894,15 +902,26 @@ function cleanup(exitCode = 0) {
     viteHealthTimer = null;
   }
 
-  setTimeout(() => {
-    terminateChild(viteProcess, "SIGKILL");
-    terminateChild(apiProcess, "SIGKILL");
-    terminateChild(visionDepsProcess, "SIGKILL");
-  }, 1500).unref();
-
-  setTimeout(() => {
+  // SIGTERM the children and wait — bounded — for them to finish their own
+  // graceful teardown, instead of SIGKILLing every tree on a fixed 1.5 s
+  // fuse that was shorter than the teardown children are entitled to
+  // perform (elizaOS/eliza#16318). Children that exit promptly release the
+  // supervisor immediately; only a straggler that outlives the window is
+  // escalated, and loudly. A second Ctrl-C still force-exits at once via
+  // the `shuttingDown` branch above.
+  void drainSpawnedChildren({
+    children: [
+      { name: "vite", child: viteProcess },
+      { name: "api", child: apiProcess },
+      { name: "vision-deps", child: visionDepsProcess },
+    ],
+    drainWindowMs: SHUTDOWN_DRAIN_WINDOW_MS,
+    signalTree: signalSpawnedProcessTree,
+    log: (message) => console.log(message),
+    warn: (message) => console.error(message),
+  }).then(() => {
     process.exit(exitCode);
-  }, 1800).unref();
+  });
 }
 
 process.on("SIGINT", () => cleanup(0));

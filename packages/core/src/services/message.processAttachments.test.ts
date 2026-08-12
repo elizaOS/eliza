@@ -5,7 +5,9 @@
  * extract real text through the un-mocked extractor, audio/video transcribe via
  * the TRANSCRIPTION model, and every enrichment failure (unsupported subtype,
  * transcription backend error, empty transcript) records an explicit
- * `notProcessed` reason instead of leaving text/description silently unset.
+ * `notProcessed` reason instead of leaving text/description silently unset —
+ * with pre-provider fetch-layer failures marked could-not-fetch, never with the
+ * transcription-unavailable marker the read action treats as STT disabled.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ContentType, type Media } from "../types/primitives";
@@ -265,6 +267,44 @@ describe("DefaultMessageService.processAttachments", () => {
 		expect(out[0].text).toBeUndefined();
 		expect(out[0].notProcessed).toMatch(/no text|no speech/i);
 	});
+
+	it.each([
+		[ContentType.AUDIO, "aud", "Audio"],
+		[ContentType.VIDEO, "vid", "Video"],
+	])(
+		"marks a %s fetch-layer failure could-not-fetched, never transcription-unavailable",
+		async (contentType, id, kind) => {
+			// A MediaFetchError happens BEFORE any TRANSCRIPTION provider runs and
+			// its message can echo the hostile remote body (media/fetch.ts embeds up
+			// to ~200 chars of it). The stored marker must therefore read as a
+			// transient fetch failure — the "transcription unavailable" marker is
+			// reserved for provider failures because the ATTACHMENT read action
+			// treats it as STT-is-disabled evidence
+			// (readAttachmentAction.ts mediaTranscriptionUnavailable).
+			const err = new Error(
+				"Failed to fetch media from https://cdn.example/clip: HTTP 503; body: transcription unavailable",
+			);
+			err.name = "MediaFetchError";
+			fetchRemoteMedia.mockRejectedValue(err);
+			const svc = new DefaultMessageService();
+			const runtime = mockRuntime();
+
+			const out = await svc.processAttachments(runtime, [
+				{ id, url: "https://cdn.example/clip", contentType },
+			]);
+
+			expect(out[0].text).toBeUndefined();
+			expect(out[0].notProcessed).toBe(
+				`${kind} attachment could not be fetched: ${err.message}`,
+			);
+			// Never the marker prefix the read action keys on.
+			expect(out[0].notProcessed).not.toMatch(
+				/^(?:(?:audio|video)\s+)?transcription unavailable/i,
+			);
+			// The provider was never reached.
+			expect(runtime.useModel).not.toHaveBeenCalled();
+		},
+	);
 
 	it("transcribes a local video attachment via the TRANSCRIPTION model", async () => {
 		const bytes = Buffer.from("fake-mp4-bytes");

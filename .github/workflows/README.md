@@ -37,9 +37,11 @@ the `pr.yaml` title check cover narrower contracts. None replaces the
 ## Manual operations
 
 - `live-smoke.yml` is the general credential-backed dispatcher. Its input
-  selects `app`, `scenarios`, `cloud`, `voice`, or `all`. Specialized app and
-  voice evidence also flows through `app-live-e2e.yml` and
-  `voice-live-e2e.yml`, which run on schedule or dispatch.
+  selects `app`, `scenarios`, `cloud`, `voice`, `dedicated`, or `all`. The
+  `dedicated` suite owns the managed dedicated staging canary and exact
+  stale-canary recovery. Specialized app and voice evidence also flows through
+  `app-live-e2e.yml` and `voice-live-e2e.yml`, which run on schedule or
+  dispatch.
 - `release.yaml` is the npm, canonical Git tag, and GitHub Release authority.
   It creates the release as the final step of its npm/version transaction.
   The stable tag then triggers `release-electrobun.yml`, which resolves and

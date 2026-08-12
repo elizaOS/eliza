@@ -1092,6 +1092,51 @@
       "registryKind": "plugin",
       "directory": null
     },
+    "elizaos-plugin-adanos": {
+      "git": {
+        "repo": "adanos-software/elizaos-plugin-adanos",
+        "v0": {
+          "branch": null
+        },
+        "v1": {
+          "branch": null
+        },
+        "v2": {
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "elizaos-plugin-adanos",
+        "v0": null,
+        "v1": null,
+        "v2": "0.1.0"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Read-only Adanos stock and crypto market sentiment for elizaOS agents.",
+      "homepage": "https://adanos.org/",
+      "topics": [
+        "market-sentiment",
+        "stocks",
+        "crypto",
+        "alternative-data",
+        "adanos"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "origin": "third-party",
+      "source": "community",
+      "support": "community",
+      "builtIn": false,
+      "firstParty": false,
+      "thirdParty": true,
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": null
+    },
     "elizaos-plugin-coinrailz": {
       "git": {
         "repo": "tdnupe3/elizaos-plugin-coinrailz",
