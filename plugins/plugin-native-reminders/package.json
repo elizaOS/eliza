@@ -54,7 +54,7 @@
   "devDependencies": {
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
-    "vitest": "^4.0.0"
+    "vitest": "^4.1.10"
   },
   "author": "elizaOS",
   "license": "MIT",

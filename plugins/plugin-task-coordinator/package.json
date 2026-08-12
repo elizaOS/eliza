@@ -73,7 +73,7 @@
   ],
   "devDependencies": {
     "@typescript/native": "npm:typescript@^7.0.2",
-    "playwright": "^1.61.0",
+    "playwright": "^1.62.1",
     "tsup": "^8.5.1",
     "vite": "^8.0.0"
   }

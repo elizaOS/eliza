@@ -42,7 +42,7 @@
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.7",
-    "vitest": "^4.0.0"
+    "vitest": "^4.1.10"
   },
   "scripts": {
     "build": "bun run build.ts",

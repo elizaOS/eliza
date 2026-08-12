@@ -70,7 +70,7 @@
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
     "uuid": "^14.0.0",
-    "vitest": "^4.0.0"
+    "vitest": "^4.1.10"
   },
   "peerDependencies": {
     "@elizaos/core": "workspace:*",

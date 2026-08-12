@@ -42,7 +42,7 @@
         "tsup": "^8.5.1",
         "@typescript/native": "npm:typescript@^7.0.2",
         "typescript": "^6.0.3",
-        "vitest": "^4.1.7"
+        "vitest": "^4.1.10"
     },
     "scripts": {
         "test": "vitest run --config ./vitest.config.ts",

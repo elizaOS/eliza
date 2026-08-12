@@ -40,7 +40,7 @@
     "@types/node": "^25.0.6",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
-    "vitest": "^4.1.7"
+    "vitest": "^4.1.10"
   },
   "elizaos": {
     "plugin": {
