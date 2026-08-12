@@ -2317,7 +2317,7 @@ async function handleRequest(
         pathname,
         json,
         readJsonBody,
-        state: { config: state.config },
+        state: { config: state.config, runtime: state.runtime },
         saveElizaConfig,
         runtimeOperationManager: getOrCreateRuntimeOperationManager(
           state,

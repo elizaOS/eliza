@@ -25,13 +25,20 @@
  * `GET /api/models/config` reports the current effective value for every key
  * this route owns, with the source that won (`config.env` → `config.env.vars`
  * → `process.env`, mirroring the orchestrator's direct-section-first read).
+ * Its active-chat endpoint is resolved separately through the live runtime's
+ * per-agent setting authority, which is the source the serving plugins use.
  */
 import {
   ElizaError,
+  type IAgentRuntime,
   logger,
   type RouteHelpers,
   type RouteRequestMeta,
+  resolveSetting,
 } from "@elizaos/core";
+import { resolveAnthropicBaseURL } from "@elizaos/plugin-anthropic";
+import { resolveElizaCloudBaseURL } from "@elizaos/plugin-elizacloud";
+import { resolveOpenAIBaseURL } from "@elizaos/plugin-openai";
 import {
   DEFAULT_ELIZA_CLOUD_LARGE_TEXT_MODEL,
   DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
@@ -63,7 +70,7 @@ export interface ModelConfigWriteBody {
 export interface ModelConfigRouteContext
   extends RouteRequestMeta,
     Pick<RouteHelpers, "json" | "readJsonBody"> {
-  state: { config: ElizaConfig };
+  state: { config: ElizaConfig; runtime: IAgentRuntime | null };
   saveElizaConfig: (config: ElizaConfig) => void;
   runtimeOperationManager: RuntimeOperationManager;
   /** Injectable catalog for tests; defaults to the live buildModelCatalog(). */
@@ -539,48 +546,75 @@ export interface ActiveChatInfo {
   endpoint: string;
 }
 
-function hostOf(value: string | undefined): string | null {
-  if (!value) return null;
+function endpointHost(provider: string, value: string): string {
+  let parsed: URL;
   try {
-    return new URL(value).hostname;
+    parsed = new URL(value);
   } catch {
-    // error-policy:J3 a non-URL base value can't name a host; callers fall
-    // back to the provider's canonical endpoint.
-    return null;
+    // error-policy:J3 malformed endpoint input becomes a typed, redacted error.
+    throw invalid(
+      `The ${provider} serving endpoint must be an absolute HTTP(S) URL with a hostname`,
+      { provider },
+    );
   }
+  if (
+    (parsed.protocol !== "http:" && parsed.protocol !== "https:") ||
+    !parsed.hostname
+  ) {
+    throw invalid(
+      `The ${provider} serving endpoint must be an absolute HTTP(S) URL with a hostname`,
+      { provider },
+    );
+  }
+  return parsed.hostname;
 }
 
-export function resolveActiveChat(
+function resolveConfiguredChatProvider(
   config: ElizaConfig,
-  processEnv: NodeJS.ProcessEnv,
-): ActiveChatInfo | null {
+): string | undefined {
   const routing = resolveServiceRoutingInConfig(
     config as Record<string, unknown>,
   );
   const llmText = routing?.llmText;
   const backend =
     typeof llmText?.backend === "string" ? llmText.backend : undefined;
-  const provider =
-    llmText?.transport === "cloud-proxy" && backend === "elizacloud"
-      ? "elizacloud"
-      : llmText?.transport === "direct" && backend !== undefined
-        ? LLM_BACKEND_TO_CHAT_PROVIDER[backend]
-        : undefined;
+  return llmText?.transport === "cloud-proxy" && backend === "elizacloud"
+    ? "elizacloud"
+    : llmText?.transport === "direct" && backend !== undefined
+      ? LLM_BACKEND_TO_CHAT_PROVIDER[backend]
+      : undefined;
+}
+
+function resolveCloudEndpointBase(
+  runtime: IAgentRuntime,
+  config: ElizaConfig,
+): string {
+  const canonicalSetting = resolveSetting(runtime, "ELIZAOS_CLOUD_BASE_URL");
+  const configBase = config.cloud?.baseUrl?.trim();
+  return canonicalSetting === undefined && configBase
+    ? configBase
+    : resolveElizaCloudBaseURL(runtime);
+}
+
+export function resolveActiveChat(
+  runtime: IAgentRuntime | null | undefined,
+  config: ElizaConfig,
+): ActiveChatInfo | null {
+  const provider = resolveConfiguredChatProvider(config);
   const family =
     provider !== undefined ? CHAT_PROVIDER_KEY_FAMILY[provider] : undefined;
-  if (provider === undefined || family === undefined) return null;
-  const baseFor = (key: string): string | undefined =>
-    resolveEffective(config, processEnv, key)?.value;
-  const endpoint =
-    provider === "cerebras"
-      ? (hostOf(baseFor("OPENAI_BASE_URL")) ??
-        hostOf(baseFor("CEREBRAS_BASE_URL")) ??
-        "api.cerebras.ai")
-      : family === "ELIZAOS_CLOUD"
-        ? (hostOf(baseFor("ELIZAOS_CLOUD_BASE_URL")) ?? "elizacloud.ai")
-        : family === "ANTHROPIC"
-          ? (hostOf(baseFor("ANTHROPIC_BASE_URL")) ?? "api.anthropic.com")
-          : (hostOf(baseFor("OPENAI_BASE_URL")) ?? "api.openai.com");
+  if (provider === undefined || family === undefined || !runtime) return null;
+  let endpoint: string;
+  if (family === "ELIZAOS_CLOUD") {
+    endpoint = endpointHost(
+      provider,
+      resolveCloudEndpointBase(runtime, config),
+    );
+  } else if (family === "ANTHROPIC") {
+    endpoint = endpointHost(provider, resolveAnthropicBaseURL(runtime));
+  } else {
+    endpoint = endpointHost(provider, resolveOpenAIBaseURL(runtime));
+  }
   return { provider, family, endpoint };
 }
 
@@ -649,11 +683,24 @@ export async function handleModelConfigRoutes(
   const processEnv = ctx.processEnv ?? process.env;
 
   if (method === "GET") {
-    const activeChat = resolveActiveChat(state.config, processEnv);
-    json(res, {
-      targets: buildEffectiveConfig(state.config, processEnv, activeChat),
-      ...(activeChat ? { activeChat } : {}),
-    });
+    try {
+      const activeChat = resolveActiveChat(state.runtime, state.config);
+      json(res, {
+        targets: buildEffectiveConfig(state.config, processEnv, activeChat),
+        ...(activeChat ? { activeChat } : {}),
+      });
+    } catch (err) {
+      // error-policy:J1 GET transport boundary — invalid endpoint metadata is
+      // an observable configuration error, never a fabricated canonical host.
+      if (!(err instanceof ElizaError) || err.code !== "MODEL_CONFIG_INVALID") {
+        throw err;
+      }
+      json(
+        res,
+        { error: err.message, code: err.code, context: err.context },
+        400,
+      );
+    }
     return true;
   }
 
@@ -696,7 +743,7 @@ export async function handleModelConfigRoutes(
     const writes = resolveChatWrites(
       catalog,
       body,
-      resolveActiveChat(state.config, processEnv)?.provider,
+      resolveConfiguredChatProvider(state.config),
     );
     const conflicts: string[] = [];
     const outcome = await ctx.runtimeOperationManager.start({

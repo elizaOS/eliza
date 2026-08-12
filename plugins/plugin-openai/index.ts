@@ -54,6 +54,8 @@ import {
   isCerebrasMode,
 } from "./utils/config";
 
+export { getBaseURL as resolveOpenAIBaseURL } from "./utils/config";
+
 function getProcessEnv(): ProcessEnvLike {
   if (typeof process === "undefined") {
     return {};

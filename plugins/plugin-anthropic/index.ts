@@ -38,6 +38,7 @@ import {
 import { getApiKeyOptional } from "./utils/config";
 
 export type { PluginConfig } from "./init";
+export { getBaseURL as resolveAnthropicBaseURL } from "./utils/config";
 
 const pluginTests = [
   {

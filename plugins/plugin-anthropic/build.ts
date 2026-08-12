@@ -6,7 +6,9 @@
 import { buildPlugin } from "../plugin-build";
 
 const reexport = "export * from '../index';\nexport { default } from '../index';\n";
-const rootDeclaration = `import type { Plugin } from "@elizaos/core";
+const rootDeclaration = `import type { IAgentRuntime, Plugin } from "@elizaos/core";
+
+export declare function resolveAnthropicBaseURL(runtime: IAgentRuntime): string;
 
 export declare const anthropicPlugin: Plugin;
 declare const _default: Plugin;

@@ -49,6 +49,8 @@ import {
   getSetting,
   getSmallModel,
 } from "./utils/config";
+
+export { getBaseURL as resolveElizaCloudBaseURL } from "./utils/config";
 import { createCloudApiClient } from "./utils/sdk-client";
 import { createWaifuMeteringHandler } from "./utils/waifu-metering";
 
