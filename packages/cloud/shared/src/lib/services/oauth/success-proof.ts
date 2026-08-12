@@ -8,15 +8,14 @@
  * cannot succeed after the first verify.
  */
 
-import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
-import { cache } from "../../cache/client";
+import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
+import { oauthSuccessProofTicketsRepository } from "../../../db/repositories/oauth-success-proof-tickets";
 import { getCloudAwareEnv } from "../../runtime/cloud-bindings";
 import { getAllProviderIds } from "./provider-registry";
 
 const DEFAULT_TTL_MS = 10 * 60 * 1000;
 /** Reject absurd query-string proofs before HMAC work (payload.sig base64url). */
 const MAX_PROOF_CHARS = 2_048;
-const TICKET_KEY_PREFIX = "oauth_success_proof:v1:";
 
 /** Connector-native providers that emit `*_connected` but are outside OAUTH_PROVIDERS. */
 const EXTRA_CONNECTED_MARKERS = new Set(["discord"]);
@@ -82,19 +81,14 @@ export interface OAuthSuccessProofTicket {
 
 /**
  * Pluggable ticket store so unit tests can hermetically exercise mint/consume
- * without a live Redis. Production uses {@link cache}.
+ * without a live database. Production uses Postgres because the deployed
+ * Worker cache is Cloudflare KV and cannot atomically consume a nonce.
  *
  * Contract:
- * - {@link put} MUST report whether the backend acknowledged the write AND
- *   whether the backend supports atomic consume. Callers fail closed when `put`
- *   resolves `false` (no atomic backend, write rejected, or backend error): no
- *   proof is signed/returned. This is the atomicity gate — see
- *   {@link defaultTicketStore}.
+ * - {@link put} MUST report whether durable storage acknowledged the write.
+ *   Callers fail closed when it resolves `false`.
  * - {@link take} MUST be an atomic get-and-delete (single one-time consume).
- *   The default implementation assumes the backend was already gated to atomic
- *   at mint time; a production store behind a non-atomic backend (Cloudflare
- *   KV) must move tickets to a strongly consistent primitive (Postgres
- *   `DELETE … RETURNING`, an atomic Redis backend, …) before put() reports true.
+ *   The default implementation uses Postgres `DELETE … RETURNING`.
  */
 export interface OAuthSuccessProofTicketStore {
   /** Returns true only when the backend acknowledged a durable write. */
@@ -104,27 +98,28 @@ export interface OAuthSuccessProofTicketStore {
 }
 
 const defaultTicketStore: OAuthSuccessProofTicketStore = {
-  async put(nonce, ticket, ttlSeconds) {
-    // Gate atomicity at MINT time, not consume time. Cloudflare KV (and any
-    // other eventually-consistent backend) reports supportsAtomicOperations()
-    // === false: its getdel is a two-step read/delete that lets two concurrent
-    // verifications both receive the same ticket. Waiting until take() to
-    // refuse is a dead-proof bug: put() succeeds (setWithOutcome reports
-    // "written"), a proof is minted and returned, but take() then yields null
-    // and the proof can never be consumed. Failing closed here ensures no
-    // unconsumable proof is ever signed (#18331).
-    if (!cache.supportsAtomicOperations()) return false;
-    // Use the outcome-bearing setter so an unavailable/error backend is NOT
-    // indistinguishable from a successful write. The legacy `cache.set` wrapper
-    // discards the outcome (#18114).
-    const outcome = await cache.setWithOutcome(`${TICKET_KEY_PREFIX}${nonce}`, ticket, ttlSeconds);
-    return outcome.kind === "written";
+  async put(nonce, ticket, _ttlSeconds) {
+    await oauthSuccessProofTicketsRepository.purgeExpired();
+    await oauthSuccessProofTicketsRepository.insert({
+      nonce_hash: hashNonce(nonce),
+      platform: ticket.platform,
+      connection_id: ticket.connectionId,
+      organization_id: ticket.organizationId,
+      user_id: ticket.userId,
+      expires_at: new Date(ticket.exp),
+    });
+    return true;
   },
   async take(nonce) {
-    // Atomic get-and-delete via GETDEL. The atomicity gate lives in put(); a
-    // proof cannot have been minted against a non-atomic backend, so by the
-    // time we reach take() the backend is guaranteed atomic (#18331).
-    return cache.getAndDelete<OAuthSuccessProofTicket>(`${TICKET_KEY_PREFIX}${nonce}`);
+    const claimed = await oauthSuccessProofTicketsRepository.claim(hashNonce(nonce));
+    if (!claimed) return null;
+    return {
+      platform: claimed.platform,
+      connectionId: claimed.connection_id,
+      organizationId: claimed.organization_id,
+      userId: claimed.user_id,
+      exp: claimed.expires_at.getTime(),
+    };
   },
 };
 
@@ -193,6 +188,10 @@ function safeEqual(a: string, b: string): boolean {
   const bb = Buffer.from(b);
   if (ab.length !== bb.length) return false;
   return timingSafeEqual(ab, bb);
+}
+
+function hashNonce(nonce: string): string {
+  return createHash("sha256").update(nonce).digest("hex");
 }
 
 function ticketKeyTtlSeconds(expMs: number): number {
