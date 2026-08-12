@@ -23,6 +23,37 @@
 			"help": "Discord application ID for the bot (auto-resolved from bot token if omitted)",
 			"advanced": false
 		},
+		"ELIZA_DISCORD_OWNER_USER_IDS_JSON": {
+			"type": "json",
+			"required": false,
+			"sensitive": false,
+			"label": "Owner Discord user IDs",
+			"help": "JSON array of Discord user IDs that intentionally alias to the canonical Eliza owner entity.",
+			"advanced": false
+		},
+		"DISCORD_DM_POLICY": {
+			"type": "select",
+			"required": false,
+			"sensitive": false,
+			"default": "pairing",
+			"label": "DM policy",
+			"help": "Choose who may send direct messages to this agent.",
+			"advanced": false,
+			"options": [
+				{ "value": "pairing", "label": "Pairing" },
+				{ "value": "allowlist", "label": "Allowlist" },
+				{ "value": "open", "label": "Open" },
+				{ "value": "disabled", "label": "Disabled" }
+			]
+		},
+		"DISCORD_ALLOW_FROM": {
+			"type": "string",
+			"required": false,
+			"sensitive": false,
+			"label": "DM allowlist",
+			"help": "Comma-separated Discord user IDs allowed under the allowlist or pairing policy.",
+			"advanced": false
+		},
 		"CHANNEL_IDS": {
 			"type": "string",
 			"required": false,

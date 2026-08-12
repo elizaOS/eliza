@@ -78,6 +78,12 @@ DISCORD_SHOULD_IGNORE_DIRECT_MESSAGES=true
 # If true, only respond when explicitly @mentioned (default: true)
 DISCORD_SHOULD_RESPOND_ONLY_TO_MENTIONS=true
 
+# Direct-message access controls (Optional)
+# pairing (default), allowlist, open, or disabled.
+DISCORD_DM_POLICY=pairing
+# Comma-separated Discord user IDs allowed by allowlist/pairing.
+DISCORD_ALLOW_FROM=123456789012345678
+
 # Generation Timeout (Optional)
 # Wall-clock budget for generating a single reply before the bot gives up and
 # posts "I timed out while generating that reply." On timeout the underlying
@@ -101,6 +107,12 @@ DISCORD_TEST_CHANNEL_ID=123456789012345678
 # they stay auditable as separate connector-admin identities.
 ELIZA_DISCORD_OWNER_USER_IDS_JSON='["123456789012345678"]'
 ```
+
+The agent's Discord plugin configuration form exposes **Owner Discord user
+IDs**, **DM policy**, and **DM allowlist** under its access settings. The Eliza
+Cloud **Discord Gateway Bot** create/edit form exposes **Discord Owner ID** plus
+the same DM controls and persists them with the connection metadata, so they do
+not need to be entered as raw environment variables.
 
 Settings can also be configured in your character file under `settings.discord`:
 

@@ -86,11 +86,21 @@ async function fetchRuntimeCharacters(
 interface DiscordConnectionPatch {
   characterId: string | null;
   isActive: boolean;
-  metadata: {
-    responseMode: "always" | "mention" | "keyword";
-    ownerDiscordUserId?: string;
-  };
+  metadata: DiscordConnectionMetadata;
   botToken?: string;
+}
+
+type DiscordResponseMode = "always" | "mention" | "keyword";
+type DiscordDmPolicy = "pairing" | "allowlist" | "open" | "disabled";
+
+interface DiscordConnectionMetadata {
+  responseMode?: DiscordResponseMode;
+  ownerDiscordUserId?: string;
+  dmPolicy?: DiscordDmPolicy;
+  allowFrom?: string[];
+  keywords?: string[];
+  enabledChannels?: string[];
+  disabledChannels?: string[];
 }
 
 interface DiscordGatewayConnection {
@@ -104,13 +114,7 @@ interface DiscordGatewayConnection {
   eventsReceived: number;
   eventsRouted: number;
   isActive: boolean;
-  metadata: {
-    responseMode?: "always" | "mention" | "keyword";
-    keywords?: string[];
-    enabledChannels?: string[];
-    disabledChannels?: string[];
-    ownerDiscordUserId?: string;
-  } | null;
+  metadata: DiscordConnectionMetadata | null;
   connectedAt: string | null;
   lastHeartbeat: string | null;
   createdAt: string;
@@ -126,6 +130,41 @@ function apiErrorMessage(error: unknown, fallback: string): string {
     return error.message || fallback;
   }
   return fallback;
+}
+
+function parseDiscordUserIds(value: string): string[] {
+  return [
+    ...new Set(
+      value
+        .split(",")
+        .map((entry) => entry.trim())
+        .filter(Boolean),
+    ),
+  ];
+}
+
+function buildConnectionMetadata({
+  responseMode,
+  ownerDiscordUserId,
+  dmPolicy,
+  allowFrom,
+}: {
+  responseMode: DiscordResponseMode;
+  ownerDiscordUserId: string;
+  dmPolicy: DiscordDmPolicy;
+  allowFrom: string;
+}): DiscordConnectionMetadata {
+  const normalizedAllowFrom = parseDiscordUserIds(allowFrom);
+  return {
+    responseMode,
+    dmPolicy,
+    ...(ownerDiscordUserId.trim()
+      ? { ownerDiscordUserId: ownerDiscordUserId.trim() }
+      : {}),
+    ...(normalizedAllowFrom.length > 0
+      ? { allowFrom: normalizedAllowFrom }
+      : {}),
+  };
 }
 
 function getStatusBadge(status: DiscordGatewayConnection["status"], t: TFn) {
@@ -193,6 +232,8 @@ export function DiscordGatewayConnection() {
     "always" | "mention" | "keyword"
   >("always");
   const [ownerDiscordUserId, setOwnerDiscordUserId] = useState("");
+  const [dmPolicy, setDmPolicy] = useState<DiscordDmPolicy>("pairing");
+  const [allowFrom, setAllowFrom] = useState("");
 
   // Edit state for existing connections
   const [editState, setEditState] = useState<
@@ -202,6 +243,9 @@ export function DiscordGatewayConnection() {
         characterId: string;
         responseMode: "always" | "mention" | "keyword";
         ownerDiscordUserId: string;
+        dmPolicy: DiscordDmPolicy;
+        allowFrom: string;
+        baseMetadata: DiscordConnectionMetadata;
         botToken: string;
         isActive: boolean;
       }
@@ -339,12 +383,12 @@ export function DiscordGatewayConnection() {
             applicationId: applicationId.trim(),
             botToken: botToken.trim(),
             characterId,
-            metadata: {
+            metadata: buildConnectionMetadata({
               responseMode,
-              ...(ownerDiscordUserId.trim()
-                ? { ownerDiscordUserId: ownerDiscordUserId.trim() }
-                : {}),
-            },
+              ownerDiscordUserId,
+              dmPolicy,
+              allowFrom,
+            }),
           },
         },
       );
@@ -361,6 +405,8 @@ export function DiscordGatewayConnection() {
         setCharacterId("");
         setResponseMode("always");
         setOwnerDiscordUserId("");
+        setDmPolicy("pairing");
+        setAllowFrom("");
         setShowForm(false);
         void fetchConnections();
       } else {
@@ -410,10 +456,21 @@ export function DiscordGatewayConnection() {
         characterId: edit.characterId || null,
         isActive: edit.isActive,
         metadata: {
-          responseMode: edit.responseMode,
-          ...(edit.ownerDiscordUserId.trim()
-            ? { ownerDiscordUserId: edit.ownerDiscordUserId.trim() }
+          ...(edit.baseMetadata.keywords
+            ? { keywords: edit.baseMetadata.keywords }
             : {}),
+          ...(edit.baseMetadata.enabledChannels
+            ? { enabledChannels: edit.baseMetadata.enabledChannels }
+            : {}),
+          ...(edit.baseMetadata.disabledChannels
+            ? { disabledChannels: edit.baseMetadata.disabledChannels }
+            : {}),
+          ...buildConnectionMetadata({
+            responseMode: edit.responseMode,
+            ownerDiscordUserId: edit.ownerDiscordUserId,
+            dmPolicy: edit.dmPolicy,
+            allowFrom: edit.allowFrom,
+          }),
         },
       };
 
@@ -500,6 +557,9 @@ export function DiscordGatewayConnection() {
           characterId: conn.characterId || "",
           responseMode: conn.metadata?.responseMode || "always",
           ownerDiscordUserId: conn.metadata?.ownerDiscordUserId || "",
+          dmPolicy: conn.metadata?.dmPolicy || "pairing",
+          allowFrom: conn.metadata?.allowFrom?.join(", ") || "",
+          baseMetadata: conn.metadata || {},
           botToken: "",
           isActive: conn.isActive,
         },
@@ -767,16 +827,20 @@ export function DiscordGatewayConnection() {
                               </div>
 
                               <div className="space-y-2">
-                                <Label>
+                                <Label
+                                  htmlFor={`ownerDiscordUserId-${conn.id}`}
+                                >
                                   {t("cloud.discord.ownerDiscordUserId", {
                                     defaultValue: "Discord Owner ID",
                                   })}
                                 </Label>
                                 <Input
+                                  id={`ownerDiscordUserId-${conn.id}`}
                                   placeholder={t(
                                     "cloud.discord.ownerDiscordUserIdPlaceholder",
                                     {
-                                      defaultValue: "Your Discord user snowflake",
+                                      defaultValue:
+                                        "Your Discord user snowflake",
                                     },
                                   )}
                                   value={edit.ownerDiscordUserId}
@@ -789,6 +853,72 @@ export function DiscordGatewayConnection() {
                                   }
                                 />
                               </div>
+                            </div>
+
+                            {/* Direct-message access */}
+                            <div className="space-y-2">
+                              <Label htmlFor={`dmPolicy-${conn.id}`}>
+                                {t("cloud.discord.dmPolicy", {
+                                  defaultValue: "DM policy",
+                                })}
+                              </Label>
+                              <Select
+                                value={edit.dmPolicy}
+                                onValueChange={(value) =>
+                                  updateEditState(conn.id, "dmPolicy", value)
+                                }
+                              >
+                                <SelectTrigger id={`dmPolicy-${conn.id}`}>
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="pairing">
+                                    {t("cloud.discord.dmPolicyPairing", {
+                                      defaultValue: "Pairing",
+                                    })}
+                                  </SelectItem>
+                                  <SelectItem value="allowlist">
+                                    {t("cloud.discord.dmPolicyAllowlist", {
+                                      defaultValue: "Allowlist",
+                                    })}
+                                  </SelectItem>
+                                  <SelectItem value="open">
+                                    {t("cloud.discord.dmPolicyOpen", {
+                                      defaultValue: "Open",
+                                    })}
+                                  </SelectItem>
+                                  <SelectItem value="disabled">
+                                    {t("cloud.discord.dmPolicyDisabled", {
+                                      defaultValue: "Disabled",
+                                    })}
+                                  </SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            <div className="space-y-2">
+                              <Label htmlFor={`allowFrom-${conn.id}`}>
+                                {t("cloud.discord.dmAllowlist", {
+                                  defaultValue: "DM allowlist",
+                                })}
+                              </Label>
+                              <Input
+                                id={`allowFrom-${conn.id}`}
+                                placeholder="234567890123456789"
+                                value={edit.allowFrom}
+                                onChange={(event) =>
+                                  updateEditState(
+                                    conn.id,
+                                    "allowFrom",
+                                    event.target.value,
+                                  )
+                                }
+                              />
+                              <p className="text-xs text-muted-foreground">
+                                {t("cloud.discord.dmAllowlistHint", {
+                                  defaultValue:
+                                    "Comma-separated sender IDs allowed by pairing or allowlist policy.",
+                                })}
+                              </p>
                             </div>
 
                             {/* Bot Token Update */}
@@ -1301,6 +1431,60 @@ export function DiscordGatewayConnection() {
             value={ownerDiscordUserId}
             onChange={(e) => setOwnerDiscordUserId(e.target.value)}
           />
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="dmPolicy">
+            {t("cloud.discord.dmPolicy", { defaultValue: "DM policy" })}
+          </Label>
+          <Select
+            value={dmPolicy}
+            onValueChange={(value) => setDmPolicy(value as DiscordDmPolicy)}
+          >
+            <SelectTrigger id="dmPolicy">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="pairing">
+                {t("cloud.discord.dmPolicyPairing", {
+                  defaultValue: "Pairing",
+                })}
+              </SelectItem>
+              <SelectItem value="allowlist">
+                {t("cloud.discord.dmPolicyAllowlist", {
+                  defaultValue: "Allowlist",
+                })}
+              </SelectItem>
+              <SelectItem value="open">
+                {t("cloud.discord.dmPolicyOpen", { defaultValue: "Open" })}
+              </SelectItem>
+              <SelectItem value="disabled">
+                {t("cloud.discord.dmPolicyDisabled", {
+                  defaultValue: "Disabled",
+                })}
+              </SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="allowFrom">
+            {t("cloud.discord.dmAllowlist", {
+              defaultValue: "DM allowlist",
+            })}
+          </Label>
+          <Input
+            id="allowFrom"
+            placeholder="234567890123456789"
+            value={allowFrom}
+            onChange={(event) => setAllowFrom(event.target.value)}
+          />
+          <p className="text-xs text-muted-foreground">
+            {t("cloud.discord.dmAllowlistHint", {
+              defaultValue:
+                "Comma-separated sender IDs allowed by pairing or allowlist policy.",
+            })}
+          </p>
         </div>
 
         <Button

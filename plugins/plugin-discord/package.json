@@ -121,6 +121,31 @@
 				"required": true,
 				"sensitive": false
 			},
+			"ELIZA_DISCORD_OWNER_USER_IDS_JSON": {
+				"type": "string",
+				"description": "JSON array of Discord user IDs that intentionally alias to the canonical Eliza owner entity.",
+				"required": false,
+				"sensitive": false
+			},
+			"DISCORD_DM_POLICY": {
+				"type": "string",
+				"description": "Direct-message access policy: pairing, allowlist, open, or disabled.",
+				"required": false,
+				"sensitive": false,
+				"default": "pairing",
+				"options": [
+					"pairing",
+					"allowlist",
+					"open",
+					"disabled"
+				]
+			},
+			"DISCORD_ALLOW_FROM": {
+				"type": "string",
+				"description": "Comma-separated Discord user IDs allowed to send direct messages under the allowlist or pairing policy.",
+				"required": false,
+				"sensitive": false
+			},
 			"CHANNEL_IDS": {
 				"type": "string",
 				"description": "Comma-separated list of Discord channel IDs that will be parsed into an array if provided.",
@@ -180,6 +205,25 @@
 				"label": "Application ID",
 				"order": 2,
 				"group": "connection"
+			},
+			"ELIZA_DISCORD_OWNER_USER_IDS_JSON": {
+				"label": "Owner Discord user IDs",
+				"order": 17,
+				"group": "access",
+				"type": "json",
+				"requires": "DISCORD_API_TOKEN"
+			},
+			"DISCORD_DM_POLICY": {
+				"label": "DM policy",
+				"order": 18,
+				"group": "access",
+				"requires": "DISCORD_API_TOKEN"
+			},
+			"DISCORD_ALLOW_FROM": {
+				"label": "DM allowlist",
+				"order": 19,
+				"group": "access",
+				"requires": "DISCORD_API_TOKEN"
 			},
 			"CHANNEL_IDS": {
 				"label": "Respond in channels",
