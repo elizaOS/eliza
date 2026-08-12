@@ -16,6 +16,13 @@
  * every failure is counted and logged with channel context, never thrown:
  * this runs detached from the ready path, where a rejection would be treated
  * as a terminal login failure.
+ *
+ * The scan must never eat a marker the CURRENT process just placed: message
+ * listeners bind before login resolves, so a turn can start (and stamp ⏳/🤔)
+ * before this scan runs. Two guards enforce that: messages created at or
+ * after the scan started (minus a small clock-skew allowance) are skipped,
+ * and the caller may pass `isTurnActive` so message ids tracked in the live
+ * turn-drain registry are excluded regardless of timestamp.
  */
 import type { Client, Message, TextBasedChannel } from "discord.js";
 import { IN_PROGRESS_STATUS_EMOJIS } from "./status-reactions";
@@ -39,6 +46,14 @@ export const STARTUP_SCAN_MAX_AGE_MS = 24 * 60 * 60 * 1000;
  */
 export const STARTUP_SCAN_TIME_BUDGET_MS = 30_000;
 
+/**
+ * Messages created at or after `startedAt - skew` are never touched: they
+ * postdate this process's message listeners, so any in-progress marker on
+ * them belongs to a live turn, not a crashed predecessor. The skew absorbs
+ * drift between the local clock and Discord's snowflake timestamps.
+ */
+export const STARTUP_SCAN_STARTED_AT_SKEW_MS = 5_000;
+
 export interface StartupReconcileSummary {
 	channelsScanned: number;
 	messagesInspected: number;
@@ -59,10 +74,17 @@ interface ReconcileOptions {
 	logger: ScanLogger;
 	/** Injected clock for tests. */
 	now?: () => number;
+	/**
+	 * Live-turn probe (the service passes the turn-drain registry). A message
+	 * id reported active belongs to a turn this process is running right now;
+	 * its marker is current state, not crash residue, and is skipped.
+	 */
+	isTurnActive?: (messageId: string) => boolean;
 	maxChannels?: number;
 	messagesPerChannel?: number;
 	maxAgeMs?: number;
 	timeBudgetMs?: number;
+	startedAtSkewMs?: number;
 }
 
 function channelLabel(channel: { id?: string }): string {
@@ -108,10 +130,12 @@ export async function reconcileStrandedStatusReactions(
 		client,
 		logger,
 		now = Date.now,
+		isTurnActive,
 		maxChannels = STARTUP_SCAN_MAX_CHANNELS,
 		messagesPerChannel = STARTUP_SCAN_MESSAGES_PER_CHANNEL,
 		maxAgeMs = STARTUP_SCAN_MAX_AGE_MS,
 		timeBudgetMs = STARTUP_SCAN_TIME_BUDGET_MS,
+		startedAtSkewMs = STARTUP_SCAN_STARTED_AT_SKEW_MS,
 	} = options;
 
 	const summary: StartupReconcileSummary = {
@@ -145,6 +169,9 @@ export async function reconcileStrandedStatusReactions(
 			});
 			messages = fetched.values();
 		} catch (error) {
+			// error-policy:J6 best-effort residue cleanup; a channel we cannot
+			// read is counted, warned with its id, and skipped — one revoked
+			// channel must not abort the scan of the rest.
 			summary.failures += 1;
 			logger.warn(
 				`[DiscordService] Startup reaction scan could not fetch messages in channel ${channelLabel(channel)}: ${
@@ -157,6 +184,12 @@ export async function reconcileStrandedStatusReactions(
 			summary.messagesInspected += 1;
 			const age = now() - message.createdTimestamp;
 			if (age > maxAgeMs) continue;
+			// Never touch a message this process could have marked itself:
+			// listeners bind before login, so a turn (and its ⏳/🤔) can exist
+			// before this scan runs. Crash residue is by definition older than
+			// this process.
+			if (message.createdTimestamp >= startedAt - startedAtSkewMs) continue;
+			if (isTurnActive?.(message.id) === true) continue;
 			for (const emoji of IN_PROGRESS_STATUS_EMOJIS) {
 				const reaction = message.reactions?.resolve(emoji);
 				// `me` is populated on fetched messages; only the bot's own
@@ -167,6 +200,9 @@ export async function reconcileStrandedStatusReactions(
 					await reaction.users.remove(botId);
 					summary.reactionsCleared += 1;
 				} catch (error) {
+					// error-policy:J6 best-effort residue cleanup; a failed removal
+					// (deleted message, revoked permission) is counted and warned,
+					// and the scan keeps going — the marker simply stays stranded.
 					summary.failures += 1;
 					logger.warn(
 						`[DiscordService] Startup reaction scan could not remove ${emoji} in channel ${channelLabel(channel)}: ${

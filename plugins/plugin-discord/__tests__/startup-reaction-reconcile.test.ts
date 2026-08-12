@@ -2,13 +2,16 @@
  * Covers the startup stranded-reaction scan (elizaOS/eliza#16318): the bot's
  * own in-progress markers (⏳/🤔) left by a hard kill are removed from recent
  * messages, terminal/others' reactions are untouched, every dimension of the
- * scan is hard-capped, and failures are counted and logged, never thrown.
- * Uses plain-object discord.js fakes, matching service-shutdown-drain.test.ts.
+ * scan is hard-capped, failures are counted and logged, never thrown, and the
+ * scan never eats a marker belonging to the CURRENT process (post-scan-start
+ * messages and registry-active turns are excluded). Uses plain-object
+ * discord.js fakes, matching service-shutdown-drain.test.ts.
  */
 import { describe, expect, it, vi } from "vitest";
 import {
 	reconcileStrandedStatusReactions,
 	STARTUP_SCAN_MAX_AGE_MS,
+	STARTUP_SCAN_STARTED_AT_SKEW_MS,
 } from "../startup-reaction-reconcile.ts";
 
 const BOT_ID = "bot-user-1";
@@ -25,8 +28,10 @@ function makeReaction(me: boolean) {
 function makeMessage({
 	ageMs = 60_000,
 	reactions = {} as Record<string, ReturnType<typeof makeReaction>>,
+	id = `message-${Math.random().toString(36).slice(2, 8)}`,
 } = {}) {
 	return {
+		id,
 		createdTimestamp: NOW - ageMs,
 		reactions: {
 			resolve: (emoji: string) => reactions[emoji],
@@ -123,12 +128,69 @@ describe("reconcileStrandedStatusReactions", () => {
 
 	it("never asks for the terminal ❌ marker", async () => {
 		const resolve = vi.fn(() => undefined);
-		const message = { createdTimestamp: NOW - 1000, reactions: { resolve } };
+		const message = {
+			id: "message-terminal",
+			createdTimestamp: NOW - STARTUP_SCAN_STARTED_AT_SKEW_MS - 1000,
+			reactions: { resolve },
+		};
 		await scan(makeClient([makeChannel([message as never])]));
 
 		const askedFor = resolve.mock.calls.map((call) => call[0]);
 		expect(askedFor).not.toContain("❌");
 		expect(askedFor).toEqual(expect.arrayContaining(["⏳", "🤔"]));
+	});
+
+	it("never removes a marker from a message created at or after scan start", async () => {
+		// The current process's listeners bind before login: a marker on a
+		// message newer than the scan's start is live state, not crash residue.
+		const liveExact = makeReaction(true);
+		const liveWithinSkew = makeReaction(true);
+		const residue = makeReaction(true);
+		const atScanStart = makeMessage({
+			ageMs: 0,
+			reactions: { "🤔": liveExact },
+		});
+		const withinSkew = makeMessage({
+			ageMs: STARTUP_SCAN_STARTED_AT_SKEW_MS - 1,
+			reactions: { "⏳": liveWithinSkew },
+		});
+		const beforeSkew = makeMessage({
+			ageMs: STARTUP_SCAN_STARTED_AT_SKEW_MS + 1,
+			reactions: { "🤔": residue },
+		});
+		const summary = await scan(
+			makeClient([makeChannel([atScanStart, withinSkew, beforeSkew])]),
+		);
+
+		expect(liveExact.users.remove).not.toHaveBeenCalled();
+		expect(liveWithinSkew.users.remove).not.toHaveBeenCalled();
+		expect(residue.users.remove).toHaveBeenCalledWith(BOT_ID);
+		expect(summary.reactionsCleared).toBe(1);
+	});
+
+	it("leaves markers whose message id is active in the turn-drain registry", async () => {
+		const live = makeReaction(true);
+		const residue = makeReaction(true);
+		const activeMessage = makeMessage({
+			id: "message-active-turn",
+			reactions: { "🤔": live },
+		});
+		const idleMessage = makeMessage({
+			id: "message-idle",
+			reactions: { "🤔": residue },
+		});
+		const isTurnActive = vi.fn(
+			(messageId: string) => messageId === "message-active-turn",
+		);
+		const summary = await scan(
+			makeClient([makeChannel([activeMessage, idleMessage])]),
+			{ isTurnActive },
+		);
+
+		expect(isTurnActive).toHaveBeenCalledWith("message-active-turn");
+		expect(live.users.remove).not.toHaveBeenCalled();
+		expect(residue.users.remove).toHaveBeenCalledWith(BOT_ID);
+		expect(summary.reactionsCleared).toBe(1);
 	});
 
 	it("skips messages older than the age cap", async () => {
