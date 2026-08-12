@@ -211,6 +211,14 @@ export interface SendOptions {
   silent?: boolean;
   env?: Record<string, string>;
   model?: string;
+  /**
+   * Optional explicit producing-task id for this turn (#18490). When omitted,
+   * `sendPrompt` falls back to the session's immutable `metadata.taskId`; the
+   * captured value is stamped onto terminal events so a completion is
+   * attributed to the task it was produced for, not the session's current
+   * binding owner.
+   */
+  producingTaskId?: string;
 }
 
 export interface PromptResult {

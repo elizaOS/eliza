@@ -1108,6 +1108,11 @@ async function runCreateLegacy(
         metadata: {
           ...extraMetadata,
           ...(originConnectorMessageId ? { originConnectorMessageId } : {}),
+          // Durable orchestrator task id (#18490). Immutable on the ACP session;
+          // AcpService captures it at prompt start and stamps it onto terminal
+          // events so a completion is attributed to THIS task even if the
+          // session's mutable binding is later re-homed under slot pressure.
+          ...(threadId ? { taskId: threadId } : {}),
           requestedType: baseAgentType,
           messageId: message.id,
           roomId: swarmRoomMetadata.taskRoomId,
@@ -1760,6 +1765,13 @@ async function runSpawnAgent(
   try {
     const text = requestText(message);
     const task = pickString(params, content, "task") ?? text;
+    // Durable orchestrator task id for this spawn (#18490). Stamped immutably on
+    // the ACP session metadata below so AcpService can attribute the session's
+    // terminal completion to THIS task, not to whatever task the session's
+    // mutable binding is re-homed to under worker-slot pressure.
+    const spawnTaskId =
+      pickString(params, content, "taskId") ??
+      pickString(params, content, "threadId");
     // Route matching must see the genuine user request, not the planner's
     // (possibly terse) rephrasing or an empty content.text. Without this, a
     // request like "build me a … web page" routes correctly under a verbose
@@ -1817,8 +1829,7 @@ async function runSpawnAgent(
     // resolver logs loudly instead of silently substituting.
     const boundProjectId = await resolveTaskProjectBinding(
       runtime,
-      pickString(params, content, "taskId") ??
-        pickString(params, content, "threadId"),
+      spawnTaskId,
     );
     const explicitWorkdir = pickString(params, content, "workdir");
     const resolvedTaskWorkdir = resolveTaskSpawnWorkdir({
@@ -1985,6 +1996,10 @@ async function runSpawnAgent(
       metadata: {
         ...extraMetadata,
         ...(originConnectorMessageId ? { originConnectorMessageId } : {}),
+        // Durable orchestrator task id (#18490). Immutable on the ACP session so
+        // AcpService stamps terminal events with the producing task, keeping a
+        // completion attributed to THIS task across any session re-home.
+        ...(spawnTaskId ? { taskId: spawnTaskId } : {}),
         // Persist the stable root id so SubAgentRouter re-stamps it onto the
         // next synthetic re-spawn inbound (keeping the per-origin spawn cap
         // anchored to ONE user request across the whole loop, on every

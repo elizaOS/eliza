@@ -1553,7 +1553,19 @@ export class OrchestratorTaskService extends Service {
     data: unknown,
   ): Promise<void> {
     try {
-      const taskId = await this.resolveTaskId(sessionId);
+      // Prefer the producing-task id stamped on the event by AcpService
+      // (#18490). A terminal event carries the task it was PRODUCED for, so it
+      // routes correctly even when `sessionTaskIndex` was re-homed to another
+      // task or the session is transiently dual-homed across task docs. Older
+      // in-flight events (pre-deploy) or non-stamped events fall back to the
+      // session→task binding so nothing regresses to "event dropped".
+      const stamped =
+        isRecord(data) && typeof data.producingTaskId === "string"
+          ? data.producingTaskId
+          : undefined;
+      const taskId =
+        (stamped && (await this.store.getTask(stamped)) ? stamped : undefined) ??
+        (await this.resolveTaskId(sessionId));
       if (!taskId) return;
       await this.store.addEvent({
         id: randomUUID(),
@@ -5271,6 +5283,25 @@ export class OrchestratorTaskService extends Service {
       );
       if (existing) return true;
     }
+    // Non-repoint invariant (#18490). Refuse to steal a session away from a
+    // still-live owner task: that is the erroneous cross-task re-home whose
+    // dual-homed session row makes `resolveTaskId`/`findSession` return the
+    // wrong task and moves the wrong doc to `validating`. The ONE legitimate
+    // cross-task attach — Smithers recovery after a restart, where the prior
+    // owner is already terminal/gone — is preserved. Starvation-free:
+    // `reclaimIdleSession` gives a queued task a FRESH session, so no task
+    // needs another's live session to make progress.
+    const prior = this.sessionTaskIndex.get(input.sessionId);
+    if (prior && prior !== taskId) {
+      const priorDoc = await this.store.getTask(prior);
+      if (priorDoc && !TERMINAL_TASK_STATUSES.has(priorDoc.task.status)) {
+        this.runtime.logger.warn(
+          { sessionId: input.sessionId, prior, taskId },
+          "attachSession refused: session already owned by a live task",
+        );
+        return false;
+      }
+    }
     const account = accountMetaFromSessionMetadata(input.metadata);
     const ts = nowIso();
     const now = Date.now();
@@ -5324,6 +5355,17 @@ export class OrchestratorTaskService extends Service {
     };
     await this.store.addSession(session);
     this.sessionTaskIndex.set(input.sessionId, taskId);
+    // Make a recovered/attached session self-identifying (#18490): push the
+    // owning task id onto its immutable ACP metadata so AcpService can stamp
+    // terminal events with the producing task even for sessions that were
+    // attached (Smithers recovery, boot re-link) rather than spawned here.
+    // Best-effort; a metadata write failure must not fail the attach.
+    const acp = this.acp();
+    if (acp && typeof acp.updateSessionMetadata === "function") {
+      void acp
+        .updateSessionMetadata(input.sessionId, { taskId })
+        .catch(() => {});
+    }
     // Pin the durable workdir/repo binding at first spawn so follow-up spawns of
     // this task reuse it instead of re-resolving from routing env (#13776).
     await this.bindTaskWorkdir(taskId, doc.task, input.workdir, input.repo, {

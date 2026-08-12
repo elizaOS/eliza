@@ -828,6 +828,12 @@ export class AcpService extends Service {
   // what still tells the state-lost forensics WHAT the agent was doing when it
   // died. Recorded at the emitSessionEvent choke point (both transports).
   private readonly eventTrails = new Map<string, SessionEventTrailEntry[]>();
+  // Producing-task id per session, captured at prompt start from the session's
+  // immutable `metadata.taskId` (#18490). Stamped onto terminal events so the
+  // orchestrator attributes a completion to the task it was produced FOR, not
+  // to whatever task the session's mutable binding currently points at. Cleared
+  // on session teardown alongside the other per-session satellite maps.
+  private readonly sessionTaskId = new Map<string, string>();
   // Sessions whose raw stdout has been teed to disk at least once. Drives the
   // `task_complete` stdoutLogPath reference: only sessions that actually wrote a
   // file get the path attached, so the task document never points at a
@@ -2068,6 +2074,18 @@ export class AcpService extends Service {
   ): Promise<PromptResult> {
     this.ensureStarted();
     const session = await this.requireSession(sessionId);
+    // Capture the producing-task id for this turn (#18490). Session metadata is
+    // stamped once at spawn and never re-homed, and the native busy-guard below
+    // serializes turns, so "the task this output is being produced for" is
+    // unambiguous. Terminal emits stamp it so attribution survives a later
+    // re-home of the session's mutable task binding. `opts.producingTaskId` is
+    // an optional explicit override; otherwise fall back to the metadata stamp.
+    const metaTaskId =
+      typeof session.metadata?.taskId === "string"
+        ? session.metadata.taskId
+        : undefined;
+    const producingTaskId = opts.producingTaskId ?? metaTaskId;
+    if (producingTaskId) this.sessionTaskId.set(sessionId, producingTaskId);
     const transportMode = sessionTransportMode(session, this.transportMode);
     if (
       transportMode !== "native" &&
@@ -2345,6 +2363,7 @@ export class AcpService extends Service {
     this.outputBuffers.delete(sessionId);
     this.turnOutputBuffers.delete(sessionId);
     this.eventTrails.delete(sessionId);
+    this.sessionTaskId.delete(sessionId);
     this.changedPathsBySession.delete(sessionId);
     this.orchestratorOwnedArtifactsBySession.delete(sessionId);
     this.persistedStdoutSessions.delete(sessionId);
@@ -3501,11 +3520,13 @@ export class AcpService extends Service {
               response: finalText,
               exitCode: code,
               signal,
+              ...this.producingTaskStamp(opts.sessionId),
             });
           } else if (stopReason === "error" && !finalText?.trim()) {
             this.emitSessionEvent(opts.sessionId, "error", {
               message: "acpx prompt ended with stopReason error",
               stopReason,
+              ...this.producingTaskStamp(opts.sessionId),
             });
           } else if (cleanCompletion) {
             // Emit exactly one terminal event per session-exit. Listeners
@@ -3517,6 +3538,7 @@ export class AcpService extends Service {
               durationMs: Date.now() - startedAt,
               stopReason: stopReason ?? "exit",
               exitCode: code,
+              ...this.producingTaskStamp(opts.sessionId),
               ...this.stdoutLogRef(opts.sessionId),
             });
           } else if (!isIncompletePromptStopReason(stopReason)) {
@@ -3525,6 +3547,7 @@ export class AcpService extends Service {
               response: finalText,
               exitCode: code,
               signal,
+              ...this.producingTaskStamp(opts.sessionId),
             });
           }
         }
@@ -3871,23 +3894,27 @@ export class AcpService extends Service {
               response: finalText,
               durationMs: Date.now() - startedAt,
               stopReason,
+              ...this.producingTaskStamp(sessionId),
             });
           } else if (stopReason === "stopped") {
             this.emitSessionEvent(sessionId, "stopped", {
               response: finalText,
               durationMs: Date.now() - startedAt,
               stopReason,
+              ...this.producingTaskStamp(sessionId),
             });
           } else if (stopReason === "error" && !finalText?.trim()) {
             this.emitSessionEvent(sessionId, "error", {
               message: "acpx prompt ended with stopReason error",
               stopReason,
+              ...this.producingTaskStamp(sessionId),
             });
           } else {
             this.emitSessionEvent(sessionId, "task_complete", {
               response: finalText,
               durationMs: Date.now() - startedAt,
               stopReason,
+              ...this.producingTaskStamp(sessionId),
               ...this.stdoutLogRef(sessionId),
             });
           }
@@ -4522,6 +4549,16 @@ export class AcpService extends Service {
     return this.persistedStdoutSessions.has(sessionId)
       ? { stdoutLogPath: subagentStdoutLogPath(sessionId) }
       : {};
+  }
+
+  // Producing-task stamp for terminal events (#18490). Spread into every
+  // terminal emit so the orchestrator can route the completion to the task it
+  // was produced for even after the session's mutable binding is re-homed.
+  private producingTaskStamp(
+    sessionId: string,
+  ): { producingTaskId: string } | Record<string, never> {
+    const producingTaskId = this.sessionTaskId.get(sessionId);
+    return producingTaskId ? { producingTaskId } : {};
   }
 
   private async flushRawStdout(sessionId: string): Promise<void> {
