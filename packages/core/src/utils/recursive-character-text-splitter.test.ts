@@ -1,17 +1,18 @@
 /**
- * Deterministic unit coverage for {@link RecursiveCharacterTextSplitter}. The
- * splitter is pure — no clock, no I/O — so every case is an exact
- * input/output assertion.
+ * Deterministic unit and regression coverage for
+ * {@link RecursiveCharacterTextSplitter}. The harness uses exact input/output
+ * assertions and spies only on the structured warning boundary.
  *
  * The invariants worth guarding are the ones a refactor can silently break:
- * separators are consumed coarsest-first and only fall through when the current
- * one is absent; a separator is embedded in a `RegExp` when `keepSeparator` is
- * set, so one containing regex metacharacters must still split literally; no
- * chunk may exceed `chunkSize` while the text is still divisible; and merging
- * must neither drop nor duplicate content beyond the requested overlap.
+ * separators are selected coarsest-first and oversized pieces recurse through
+ * progressively finer separators; a retained separator is embedded in a
+ * `RegExp`, so metacharacters must still split literally; custom length metrics
+ * apply to separators as well as content; and merging must neither drop content
+ * nor carry more than the requested overlap.
  */
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import logger from "../logger";
 import { RecursiveCharacterTextSplitter } from "./recursive-character-text-splitter";
 
 /** Space-separated atoms, each far shorter than any chunkSize used below. */
@@ -91,7 +92,9 @@ describe("splitText", () => {
 			keepSeparator: false,
 		});
 		const text = "aaaa\n\nbbbb\n\ncccc";
-		expect(await kept.splitText(text)).toEqual(await dropped.splitText(text));
+		const expected = ["aaaa", "bbbb", "cccc"];
+		expect(await kept.splitText(text)).toEqual(expected);
+		expect(await dropped.splitText(text)).toEqual(expected);
 	});
 
 	it("falls through separators coarsest to finest", async () => {
@@ -129,7 +132,20 @@ describe("splitText", () => {
 			chunkOverlap: 0,
 			separators: ["\n\n"],
 		});
-		expect(await splitter.splitText("abcdefghijkl")).toEqual(["abcdefghijkl"]);
+		const warnSpy = vi
+			.spyOn(logger, "warn")
+			.mockImplementation(() => undefined);
+		try {
+			expect(await splitter.splitText("abcdefghijkl")).toEqual([
+				"abcdefghijkl",
+			]);
+			expect(warnSpy).toHaveBeenCalledOnce();
+			expect(warnSpy).toHaveBeenCalledWith(
+				"[RecursiveCharacterTextSplitter] Created a chunk of size 12, which is longer than the specified 5",
+			);
+		} finally {
+			warnSpy.mockRestore();
+		}
 	});
 
 	it("honours an async lengthFunction instead of raw character count", async () => {
@@ -141,6 +157,38 @@ describe("splitText", () => {
 		});
 		// Every atom counts double, so "aa bb" (10 by that measure) fills a chunk.
 		expect(await splitter.splitText("aa bb cc")).toEqual(["aa bb", "cc"]);
+	});
+
+	it("measures dropped separators with the custom length function", async () => {
+		const weightedLength = async (text: string) =>
+			Array.from(text).reduce(
+				(total, character) => total + (character === "|" ? 4 : 1),
+				0,
+			);
+		const splitter = new RecursiveCharacterTextSplitter({
+			chunkSize: 7,
+			chunkOverlap: 0,
+			separators: ["|", ""],
+			keepSeparator: false,
+			lengthFunction: weightedLength,
+		});
+
+		const chunks = await splitter.splitText("aa|bb|cc");
+		expect(chunks).toEqual(["aa", "bb", "cc"]);
+		for (const chunk of chunks) {
+			expect(await weightedLength(chunk)).toBeLessThanOrEqual(7);
+		}
+	});
+
+	it("counts dropped separators toward the requested overlap", async () => {
+		const splitter = new RecursiveCharacterTextSplitter({
+			chunkSize: 5,
+			chunkOverlap: 2,
+			separators: ["-", ""],
+			keepSeparator: false,
+		});
+
+		expect(await splitter.splitText("a-b-c-d")).toEqual(["a-b-c", "c-d"]);
 	});
 
 	describe("separators containing regex metacharacters", () => {
