@@ -192,7 +192,8 @@ function applyConcurrencyOverride(args, concurrency) {
     const arg = turboOwnArgs[index];
     if (arg.startsWith("--concurrency=")) continue;
     if (arg === "--concurrency") {
-      if (index + 1 < turboOwnArgs.length) index += 1;
+      const value = turboOwnArgs[index + 1];
+      if (value !== undefined && !value.startsWith("-")) index += 1;
       continue;
     }
     normalizedTurboOwnArgs.push(arg);
