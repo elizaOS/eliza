@@ -199,6 +199,14 @@ const CLOUD_AUDIT_CASES: CloudAuditCase[] = [
   // audit the signed-in flow; agent provisioning POSTs fall through to the
   // stub backend's 501, landing on the designed "couldn't connect" error card.
   { slug: "join", path: "/join", route: "join", auth: AUTH },
+  // get-started/ — a continuation token is required to exercise the real
+  // messaging handoff page instead of its missing-token redirect.
+  {
+    slug: "get-started",
+    path: "/get-started?onboardingSession=audit-continuation-token",
+    route: "get-started",
+    auth: AUTH,
+  },
   // public-pages/ — payment + approval + governance token pages
   {
     slug: "payment-request",
