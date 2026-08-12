@@ -1,5 +1,6 @@
 /**
- * Fail-closed contract for the real Eliza Cloud job in app-live-e2e.yml.
+ * Fail-closed contracts for the real Cloud and packaged-desktop jobs in
+ * app-live-e2e.yml.
  *
  * The Playwright spec intentionally remains self-skipping in keyless contexts
  * so PR lanes cannot spend Cloud credits. The secret-gated workflow job must
@@ -39,6 +40,7 @@ const workflow = Bun.YAML.parse(
   read(".github/workflows/app-live-e2e.yml"),
 ) as Workflow;
 const cloudJob = workflow.jobs?.["cloud-live"];
+const desktopJob = workflow.jobs?.["desktop-packaged"];
 const notificationJob = workflow.jobs?.["notify-on-failure"];
 
 function namedStep(name: string): WorkflowStep {
@@ -136,5 +138,23 @@ describe("App Live E2E red-nightly notification (#13681)", () => {
     expect(step?.with?.script).toContain("github.rest.issues.createComment");
     expect(step?.with?.script).toContain("issue_number: 13681");
     expect(step?.with?.script).not.toContain("gh issue comment");
+  });
+});
+
+describe("App Live E2E packaged desktop display ownership", () => {
+  test("reuses the workflow xvfb display for every native harness launch", () => {
+    const runStep = desktopJob?.steps?.find(
+      (candidate) => candidate.name === "Run packaged desktop e2e (xvfb)",
+    );
+
+    expect(desktopJob?.env?.ELIZA_ELECTROBUN_PACKAGED_USE_CURRENT_DISPLAY).toBe(
+      "1",
+    );
+    expect(runStep?.run).toContain(
+      'xvfb-run -a --server-args="-screen 0 1920x1080x24"',
+    );
+    expect(runStep?.run).toContain(
+      "bun run --cwd packages/app test:desktop:packaged",
+    );
   });
 });

@@ -1048,8 +1048,11 @@ test("packaged desktop shortcut bridge summons the main window", async ({
 
     await harness.closeMainWindow();
     await harness.waitForState(
-      (state) => !state.mainWindow.present && state.shell.trayPresent,
-      "Expected closing the main window to leave the tray active before shortcut summon.",
+      (state) =>
+        state.mainWindow.present &&
+        !state.shell.windowVisible &&
+        state.shell.trayPresent,
+      "Expected closing the main window to hide the retained window and leave the tray active before shortcut summon.",
       30_000,
     );
 
@@ -1187,8 +1190,11 @@ test("packaged macOS desktop keeps the tray alive and preserves vibrancy through
     await harness.closeMainWindow();
 
     await harness.waitForState(
-      (state) => !state.mainWindow.present && state.shell.trayPresent,
-      "Expected closing the main window to leave the tray active.",
+      (state) =>
+        state.mainWindow.present &&
+        !state.shell.windowVisible &&
+        state.shell.trayPresent,
+      "Expected closing the main window to hide the retained window and leave the tray active.",
       30000,
     );
 

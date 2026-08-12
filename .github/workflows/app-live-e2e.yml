@@ -368,6 +368,10 @@ jobs:
     timeout-minutes: 60
     env:
       PGLITE_WASM_MODE: node
+      # This job already owns one xvfb-run display around the complete suite.
+      # Reuse it for every harness launch instead of nesting a new X server per
+      # spec/relaunch, which can terminate later native children with signal 5.
+      ELIZA_ELECTROBUN_PACKAGED_USE_CURRENT_DISPLAY: "1"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:

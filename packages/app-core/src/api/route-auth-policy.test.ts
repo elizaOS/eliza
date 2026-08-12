@@ -82,6 +82,36 @@ describe("compat route auth policy table", () => {
       resolveCompatRouteAuthPolicy("POST", "/api/tts/cloud"),
     ).toMatchObject({ id: "tts.cloud", tier: "session" });
     expect(
+      resolveCompatRouteAuthPolicy("GET", "/api/tts/local-inference/status"),
+    ).toMatchObject({ id: "tts.local-inference", tier: "session" });
+    expect(
+      resolveCompatRouteAuthPolicy("POST", "/api/tts/local-inference"),
+    ).toMatchObject({ id: "tts.local-inference", tier: "session" });
+    expect(
+      resolveCompatRouteAuthPolicy("GET", "/api/asr/local-inference/status"),
+    ).toMatchObject({ id: "asr.local-inference", tier: "session" });
+    expect(
+      resolveCompatRouteAuthPolicy("POST", "/api/asr/local-inference"),
+    ).toMatchObject({ id: "asr.local-inference", tier: "session" });
+    for (const [method, pathname] of [
+      ["POST", "/api/local-inference/downloads"],
+      ["DELETE", "/api/local-inference/downloads/download-1"],
+      ["POST", "/api/local-inference/routing/preferred"],
+      ["POST", "/api/local-inference/routing/policy"],
+      ["POST", "/api/local-inference/assignments"],
+      ["POST", "/api/local-inference/active"],
+      ["DELETE", "/api/local-inference/active"],
+      ["DELETE", "/api/local-inference/installed/model-1"],
+    ] as const) {
+      expect(
+        resolveCompatRouteAuthPolicy(method, pathname),
+        `${method} ${pathname}`,
+      ).toMatchObject({ tier: "OWNER" });
+    }
+    expect(
+      resolveCompatRouteAuthPolicy("GET", "/api/local-inference/active"),
+    ).toMatchObject({ id: "local-inference", tier: "session" });
+    expect(
       resolveCompatRouteAuthPolicy("POST", "/api/background/upload-image"),
     ).toMatchObject({ id: "background.upload-image", tier: "session" });
     expect(
@@ -176,6 +206,22 @@ describe("compat route auth policy table", () => {
     expect(res.json()).toEqual({ error: "Unauthorized" });
   });
 
+  it("keeps unauthenticated local speech probes fail-closed", async () => {
+    for (const pathname of [
+      "/api/tts/local-inference/status",
+      "/api/asr/local-inference/status",
+    ]) {
+      const req = fakeReq({ method: "GET", pathname });
+      const res = fakeRes();
+
+      await expect(
+        enforceCompatRouteAuthPolicy(req, res.res, STATE, "GET", pathname),
+      ).resolves.toBe("denied");
+      expect(res.status()).toBe(401);
+      expect(res.json()).toEqual({ error: "Unauthorized" });
+    }
+  });
+
   it("does not let prefix policies bleed into sibling path names", () => {
     expect(resolveCompatRouteAuthPolicy("GET", "/api/pluginsx")).toBeNull();
     expect(isCompatManagedRoute("/api/pluginsx")).toBe(false);
@@ -191,6 +237,20 @@ describe("compat route auth policy table", () => {
     expect(isCompatManagedRoute("/api/device-e2e/upload-image")).toBe(false);
     await expect(
       enforceCompatRouteAuthPolicy(req, res.res, STATE, "GET", "/api/messages"),
+    ).resolves.toBe("unmanaged");
+    expect(res.status()).toBe(200);
+    expect(res.json()).toBeNull();
+  });
+
+  it("leaves cloud ASR owned by the upstream plugin route", async () => {
+    const pathname = "/api/asr/cloud";
+    const req = fakeReq({ method: "POST", pathname });
+    const res = fakeRes();
+
+    expect(resolveCompatRouteAuthPolicy("POST", pathname)).toBeNull();
+    expect(isCompatManagedRoute(pathname)).toBe(false);
+    await expect(
+      enforceCompatRouteAuthPolicy(req, res.res, STATE, "POST", pathname),
     ).resolves.toBe("unmanaged");
     expect(res.status()).toBe(200);
     expect(res.json()).toBeNull();

@@ -1,11 +1,9 @@
 /**
- * Browser fallback for the Desktop Capacitor plugin — implements every
- * `DesktopPlugin` method with Web APIs (Notifications, Clipboard, Fullscreen,
- * Battery, `navigator.permissions`) or an explicit unavailable/no-op result
- * where no browser equivalent exists. Loaded via `registerPlugin`'s `web`
- * handler in `index.ts` whenever the Electrobun native bridge
- * (`__ELIZA_ELECTROBUN_RPC__`) is absent, so every device capability this
- * plugin exposes must degrade gracefully here rather than throw.
+ * Web-platform implementation for the Desktop Capacitor plugin. It delegates
+ * shell-native operations and incoming tray events to Electrobun's direct RPC
+ * bridge when present; ordinary browsers use Web APIs (Notifications,
+ * Clipboard, Fullscreen, Battery, `navigator.permissions`) or an explicit
+ * unavailable/no-op result where no equivalent exists.
  */
 import { WebPlugin } from "@capacitor/core";
 
@@ -34,12 +32,36 @@ type DesktopEventData =
   | undefined;
 
 type ElectrobunRequestHandler = (params?: unknown) => Promise<unknown>;
+type ElectrobunMessageListener = (payload: unknown) => void;
 type ElectrobunRendererRpc = {
   request?: Record<string, ElectrobunRequestHandler>;
+  onMessage?: (
+    messageName: string,
+    listener: ElectrobunMessageListener,
+  ) => void;
+  offMessage?: (
+    messageName: string,
+    listener: ElectrobunMessageListener,
+  ) => void;
+};
+
+type DesktopVersion = {
+  version: string;
+  name: string;
+  runtime: string;
 };
 
 interface DesktopBridgeWindow extends Window {
   __ELIZA_ELECTROBUN_RPC__?: ElectrobunRendererRpc;
+}
+
+interface DesktopWebListenerEntry {
+  eventName: string;
+  callback: (event: DesktopEventData) => void;
+  windowListener?: () => void;
+  rpc?: ElectrobunRendererRpc;
+  rpcMessage?: string;
+  rpcListener?: ElectrobunMessageListener;
 }
 
 const BROWSER_PERMISSION_IDS = new Set<DesktopPermissionId>([
@@ -78,6 +100,41 @@ function getDesktopRpc(): ElectrobunRendererRpc | undefined {
   return g.window?.__ELIZA_ELECTROBUN_RPC__ ?? g.__ELIZA_ELECTROBUN_RPC__;
 }
 
+function getDesktopRpcRequest(
+  method: string,
+): ElectrobunRequestHandler | undefined {
+  const requestGroup = getDesktopRpc()?.request;
+  const request = requestGroup?.[method];
+  return request ? request.bind(requestGroup) : undefined;
+}
+
+function requireBooleanResult<K extends string>(
+  value: unknown,
+  field: K,
+  method: string,
+): Record<K, boolean> {
+  if (!isRecord(value) || typeof value[field] !== "boolean") {
+    throw new Error(`${method} returned an invalid ${field} result`);
+  }
+  return value as Record<K, boolean>;
+}
+
+function requireDesktopVersion(value: unknown): DesktopVersion {
+  if (
+    !isRecord(value) ||
+    typeof value.version !== "string" ||
+    typeof value.name !== "string" ||
+    typeof value.runtime !== "string"
+  ) {
+    throw new Error("desktopGetVersion returned an invalid version result");
+  }
+  return {
+    version: value.version,
+    name: value.name,
+    runtime: value.runtime,
+  };
+}
+
 function currentPlatform(): DesktopPermissionState["platform"] {
   const proc = (globalThis as { process?: { platform?: string } }).process;
   const p = proc?.platform;
@@ -92,6 +149,14 @@ function currentPlatform(): DesktopPermissionState["platform"] {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object";
+}
+
+function isTrayMenuClickEvent(value: unknown): value is TrayMenuClickEvent {
+  return (
+    isRecord(value) &&
+    typeof value.itemId === "string" &&
+    (value.checked === undefined || typeof value.checked === "boolean")
+  );
 }
 
 function isDesktopPermissionState(
@@ -221,29 +286,47 @@ async function requestBrowserPermission(
 }
 
 export class DesktopWeb extends WebPlugin {
-  private pluginListeners: Array<{
-    eventName: string;
-    callback: (event: DesktopEventData) => void;
-    windowListener?: () => void;
-  }> = [];
+  private pluginListeners: DesktopWebListenerEntry[] = [];
 
   // System Tray - Not available in browser
   async createTray(_options: TrayOptions): Promise<void> {}
   async updateTray(_options: Partial<TrayOptions>): Promise<void> {}
   async destroyTray(): Promise<void> {}
-  async setTrayMenu(_options: { menu: TrayMenuItem[] }): Promise<void> {}
+  async setTrayMenu(options: { menu: TrayMenuItem[] }): Promise<void> {
+    await getDesktopRpcRequest("desktopSetTrayMenu")?.(options);
+  }
 
-  // Global Shortcuts - Not available in browser
+  // Global Shortcuts - bridged in Electrobun, unavailable in a browser
   async registerShortcut(
-    _options: GlobalShortcut,
+    options: GlobalShortcut,
   ): Promise<{ success: boolean }> {
+    const request = getDesktopRpcRequest("desktopRegisterShortcut");
+    if (request) {
+      return requireBooleanResult(
+        await request(options),
+        "success",
+        "desktopRegisterShortcut",
+      );
+    }
     return { success: false };
   }
-  async unregisterShortcut(_options: { id: string }): Promise<void> {}
-  async unregisterAllShortcuts(): Promise<void> {}
-  async isShortcutRegistered(_options: {
+  async unregisterShortcut(options: { id: string }): Promise<void> {
+    await getDesktopRpcRequest("desktopUnregisterShortcut")?.(options);
+  }
+  async unregisterAllShortcuts(): Promise<void> {
+    await getDesktopRpcRequest("desktopUnregisterAllShortcuts")?.();
+  }
+  async isShortcutRegistered(options: {
     accelerator: string;
   }): Promise<{ registered: boolean }> {
+    const request = getDesktopRpcRequest("desktopIsShortcutRegistered");
+    if (request) {
+      return requireBooleanResult(
+        await request(options),
+        "registered",
+        "desktopIsShortcutRegistered",
+      );
+    }
     return { registered: false };
   }
 
@@ -274,10 +357,22 @@ export class DesktopWeb extends WebPlugin {
     window.close();
   }
   async showWindow(): Promise<void> {
+    const request = getDesktopRpcRequest("desktopShowWindow");
+    if (request) {
+      await request();
+      return;
+    }
     window.focus();
   }
-  async hideWindow(): Promise<void> {}
+  async hideWindow(): Promise<void> {
+    await getDesktopRpcRequest("desktopHideWindow")?.();
+  }
   async focusWindow(): Promise<void> {
+    const request = getDesktopRpcRequest("desktopFocusWindow");
+    if (request) {
+      await request();
+      return;
+    }
     window.focus();
   }
   async isWindowMaximized(): Promise<{ maximized: boolean }> {
@@ -287,9 +382,25 @@ export class DesktopWeb extends WebPlugin {
     return { minimized: document.hidden };
   }
   async isWindowVisible(): Promise<{ visible: boolean }> {
+    const request = getDesktopRpcRequest("desktopIsWindowVisible");
+    if (request) {
+      return requireBooleanResult(
+        await request(),
+        "visible",
+        "desktopIsWindowVisible",
+      );
+    }
     return { visible: !document.hidden };
   }
   async isWindowFocused(): Promise<{ focused: boolean }> {
+    const request = getDesktopRpcRequest("desktopIsWindowFocused");
+    if (request) {
+      return requireBooleanResult(
+        await request(),
+        "focused",
+        "desktopIsWindowFocused",
+      );
+    }
     return { focused: document.hasFocus() };
   }
   async setAlwaysOnTop(_options: { flag: boolean }): Promise<void> {}
@@ -397,6 +508,11 @@ export class DesktopWeb extends WebPlugin {
     chrome: string;
     node: string;
   }> {
+    const request = getDesktopRpcRequest("desktopGetVersion");
+    if (request) {
+      const version = requireDesktopVersion(await request());
+      return { ...version, chrome: "N/A", node: "N/A" };
+    }
     return {
       version: "unknown", // App version not available on web - would need to be injected at build time
       name: "unknown", // App name not available on web - would need to be injected at build time
@@ -467,11 +583,10 @@ export class DesktopWeb extends WebPlugin {
     eventName: string,
     listenerFunc: (event: DesktopEventData) => void,
   ): Promise<{ remove: () => Promise<void> }> {
-    const entry: {
-      eventName: string;
-      callback: (event: DesktopEventData) => void;
-      windowListener?: () => void;
-    } = { eventName, callback: listenerFunc };
+    const entry: DesktopWebListenerEntry = {
+      eventName,
+      callback: listenerFunc,
+    };
 
     // Create and track window event listeners to avoid memory leaks
     if (eventName === "windowFocus") {
@@ -480,6 +595,18 @@ export class DesktopWeb extends WebPlugin {
     } else if (eventName === "windowBlur") {
       entry.windowListener = () => listenerFunc(undefined);
       window.addEventListener("blur", entry.windowListener);
+    } else if (eventName === "trayMenuClick") {
+      const rpc = getDesktopRpc();
+      if (rpc?.onMessage && rpc.offMessage) {
+        const rpcMessage = "desktopTrayMenuClick";
+        const rpcListener: ElectrobunMessageListener = (payload) => {
+          if (isTrayMenuClickEvent(payload)) listenerFunc(payload);
+        };
+        entry.rpc = rpc;
+        entry.rpcMessage = rpcMessage;
+        entry.rpcListener = rpcListener;
+        rpc.onMessage(rpcMessage, rpcListener);
+      }
     }
 
     this.pluginListeners.push(entry);
@@ -488,12 +615,7 @@ export class DesktopWeb extends WebPlugin {
       remove: async () => {
         const i = this.pluginListeners.indexOf(entry);
         if (i >= 0) {
-          if (entry.windowListener) {
-            if (entry.eventName === "windowFocus")
-              window.removeEventListener("focus", entry.windowListener);
-            else if (entry.eventName === "windowBlur")
-              window.removeEventListener("blur", entry.windowListener);
-          }
+          this.detachListenerSources(entry);
           this.pluginListeners.splice(i, 1);
         }
       },
@@ -501,16 +623,23 @@ export class DesktopWeb extends WebPlugin {
   }
 
   async removeAllListeners(): Promise<void> {
-    // Clean up all window event listeners before clearing
+    // Clean up all DOM and Electrobun listeners before clearing.
     for (const entry of this.pluginListeners) {
-      if (entry.windowListener) {
-        if (entry.eventName === "windowFocus")
-          window.removeEventListener("focus", entry.windowListener);
-        else if (entry.eventName === "windowBlur")
-          window.removeEventListener("blur", entry.windowListener);
-      }
+      this.detachListenerSources(entry);
     }
     this.pluginListeners = [];
+  }
+
+  private detachListenerSources(entry: DesktopWebListenerEntry): void {
+    if (entry.windowListener) {
+      if (entry.eventName === "windowFocus")
+        window.removeEventListener("focus", entry.windowListener);
+      else if (entry.eventName === "windowBlur")
+        window.removeEventListener("blur", entry.windowListener);
+    }
+    if (entry.rpc && entry.rpcMessage && entry.rpcListener) {
+      entry.rpc.offMessage?.(entry.rpcMessage, entry.rpcListener);
+    }
   }
 
   protected notifyListeners(eventName: string, data: DesktopEventData): void {

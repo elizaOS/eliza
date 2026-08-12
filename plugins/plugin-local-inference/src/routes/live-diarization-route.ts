@@ -50,7 +50,7 @@ import {
 } from "../services/voice/live-diarization-session.js";
 import {
 	type CompatRuntimeState,
-	ensureCompatApiAuthorized,
+	ensureRouteAuthorized,
 	readCompatJsonBody,
 	sendJson,
 	sendJsonError,
@@ -154,7 +154,7 @@ export async function handleLiveDiarizationRoute(
 	const method = req.method ?? "GET";
 
 	if (url.pathname === "/api/voice/audio-frames/status" && method === "GET") {
-		if (!ensureCompatApiAuthorized(req, res)) return true;
+		if (!(await ensureRouteAuthorized(req, res, state))) return true;
 		const current = getSession(state);
 		if (!current) {
 			sendJsonError(res, 503, "Runtime not ready");
@@ -165,7 +165,7 @@ export async function handleLiveDiarizationRoute(
 	}
 
 	if (url.pathname === "/api/voice/audio-frames" && method === "POST") {
-		if (!ensureCompatApiAuthorized(req, res)) return true;
+		if (!(await ensureRouteAuthorized(req, res, state))) return true;
 		const current = getSession(state);
 		if (!current) {
 			sendJsonError(res, 503, "Runtime not ready");
@@ -200,7 +200,7 @@ export async function handleLiveDiarizationRoute(
 	}
 
 	if (url.pathname === "/api/voice/aec-capture" && method === "POST") {
-		if (!ensureCompatApiAuthorized(req, res)) return true;
+		if (!(await ensureRouteAuthorized(req, res, state))) return true;
 		const current = getSession(state);
 		if (!current) {
 			sendJsonError(res, 503, "Runtime not ready");
@@ -227,7 +227,7 @@ export async function handleLiveDiarizationRoute(
 	}
 
 	if (url.pathname === "/api/voice/aec-capture" && method === "GET") {
-		if (!ensureCompatApiAuthorized(req, res)) return true;
+		if (!(await ensureRouteAuthorized(req, res, state))) return true;
 		const current = getSession(state);
 		if (!current) {
 			sendJsonError(res, 503, "Runtime not ready");
@@ -250,7 +250,7 @@ export async function handleLiveDiarizationRoute(
 	}
 
 	if (url.pathname === "/api/voice/playback-frames" && method === "POST") {
-		if (!ensureCompatApiAuthorized(req, res)) return true;
+		if (!(await ensureRouteAuthorized(req, res, state))) return true;
 		const current = getSession(state);
 		if (!current) {
 			sendJsonError(res, 503, "Runtime not ready");

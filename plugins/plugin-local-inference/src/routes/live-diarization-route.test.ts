@@ -149,6 +149,22 @@ describe("handleLiveDiarizationRoute", () => {
 		expect(res.statusCode).toBe(401);
 	});
 
+	it("accepts the owning host's completed session authorization", async () => {
+		const res = new FakeRes();
+		const handled = await handleLiveDiarizationRoute(
+			makeReq({
+				method: "GET",
+				url: "/api/voice/audio-frames/status",
+				remoteAddress: "203.0.113.9",
+				host: "dashboard.example.test",
+			}),
+			res as unknown as http.ServerResponse,
+			{ ...runtimeState(), requestAuthorizedByHost: true },
+		);
+		expect(handled).toBe(true);
+		expect(res.statusCode).toBe(200);
+	});
+
 	it("status route surfaces model/lib resolution (blocker on a host without device GGUFs)", async () => {
 		const res = new FakeRes();
 		const handled = await handleLiveDiarizationRoute(

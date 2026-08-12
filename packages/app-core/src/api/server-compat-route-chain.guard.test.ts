@@ -96,6 +96,11 @@ describe("compat-route registry drift guard (#12089 item 5)", () => {
     const chainRegion = serverSrc.slice(chainStart);
     expect(chainRegion).toContain('id: "local-inference"');
     expect(chainRegion).toContain("getLocalInferenceRoutes()");
+    // Plugin compat guards cannot resolve app-core's DB-backed browser cookie.
+    // The host gate therefore hands its completed authorization to all four
+    // handlers on a fresh per-request state object (never shared mutable state).
+    expect(chainRegion).toContain("requestAuthorizedByHost: true as const");
+    expect(chainRegion).toContain("const authorizedState = {");
     // All four local-inference sub-handlers still dispatch, preserving behavior.
     for (const fn of [
       "handleLocalInferenceCompatRoutes",
@@ -104,6 +109,9 @@ describe("compat-route registry drift guard (#12089 item 5)", () => {
       "handleLiveDiarizationRoute",
     ]) {
       expect(chainRegion, `${fn} missing from registry`).toContain(fn);
+      expect(chainRegion, `${fn} must receive the host auth handoff`).toMatch(
+        new RegExp(`${fn}\\(req, res, authorizedState\\)`),
+      );
     }
   });
 

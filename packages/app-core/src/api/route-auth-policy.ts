@@ -32,6 +32,7 @@ export interface CompatRouteAuthPolicy {
 }
 
 const METHODS = {
+  DELETE: ["DELETE"],
   GET: ["GET"],
   POST: ["POST"],
   PUT: ["PUT"],
@@ -104,6 +105,17 @@ const sessionRegex = (
 ): CompatRouteAuthPolicy => ({
   id,
   tier: "session",
+  methods: METHODS[method],
+  matcher: { kind: "regex", pattern },
+});
+
+const ownerRegex = (
+  id: string,
+  method: keyof typeof METHODS,
+  pattern: RegExp,
+): CompatRouteAuthPolicy => ({
+  id,
+  tier: "OWNER",
   methods: METHODS[method],
   matcher: { kind: "regex", pattern },
 });
@@ -190,11 +202,56 @@ export const COMPAT_ROUTE_AUTH_POLICIES: readonly CompatRouteAuthPolicy[] = [
     "/api/background/upload-image",
   ),
   sessionPrefix("sensitive-requests", "/api/sensitive-requests"),
+  // Model-management mutations retain their historical owner/token authority.
+  // These must precede the generic local-inference session prefix so a paired
+  // machine identity cannot install, activate, reroute, or remove host models.
+  ownerExact(
+    "local-inference.download.start",
+    "POST",
+    "/api/local-inference/downloads",
+  ),
+  ownerRegex(
+    "local-inference.download.cancel",
+    "DELETE",
+    /^\/api\/local-inference\/downloads\/[^/]+$/,
+  ),
+  ownerExact(
+    "local-inference.routing.preferred",
+    "POST",
+    "/api/local-inference/routing/preferred",
+  ),
+  ownerExact(
+    "local-inference.routing.policy",
+    "POST",
+    "/api/local-inference/routing/policy",
+  ),
+  ownerExact(
+    "local-inference.assignments.write",
+    "POST",
+    "/api/local-inference/assignments",
+  ),
+  ownerExact(
+    "local-inference.active.write",
+    "POST",
+    "/api/local-inference/active",
+  ),
+  ownerExact(
+    "local-inference.active.clear",
+    "DELETE",
+    "/api/local-inference/active",
+  ),
+  ownerRegex(
+    "local-inference.installed.uninstall",
+    "DELETE",
+    /^\/api\/local-inference\/installed\/[^/]+$/,
+  ),
   sessionPrefix("local-inference", "/api/local-inference/"),
+  sessionPrefix("asr.local-inference", "/api/asr/local-inference"),
   sessionPrefix("voice.local-inference", "/api/voice/"),
   sessionPrefix("voice.v1-local-inference", "/v1/voice/"),
   sessionPrefix("automations", "/api/automations"),
   sessionExact("tts.cloud", "POST", "/api/tts/cloud"),
+  sessionPrefix("tts.local-inference", "/api/tts/local-inference"),
   sessionPrefix("workbench", "/api/workbench"),
   sessionPrefix("plugins.management", "/api/plugins"),
   sessionPrefix("catalog", "/api/catalog"),

@@ -67,7 +67,6 @@ function fakeRes(): {
 	const req = new http.IncomingMessage(new Socket());
 	const res = new http.ServerResponse(req);
 	let body = Buffer.alloc(0);
-	let status = 200;
 	const headers = new Map<string, string>();
 	res.setHeader = ((
 		name: string,
@@ -77,7 +76,6 @@ function fakeRes(): {
 		return res;
 	}) as typeof res.setHeader;
 	res.writeHead = ((code: number, values?: http.OutgoingHttpHeaders) => {
-		status = code;
 		res.statusCode = code;
 		if (values) {
 			for (const [key, value] of Object.entries(values)) {
@@ -97,7 +95,7 @@ function fakeRes(): {
 	return {
 		res,
 		bodyBuffer: () => body,
-		status: () => status,
+		status: () => res.statusCode,
 		header: (name) => headers.get(name.toLowerCase()),
 	};
 }
@@ -193,6 +191,46 @@ describe("local inference TTS route", () => {
 			ready: true,
 			provider: "local-inference",
 		});
+	});
+
+	it("accepts one host session handoff while a cookie alone stays unauthorized", async () => {
+		const getModel = vi.fn((type: string) =>
+			type === ModelType.TEXT_TO_SPEECH ? () => new Uint8Array() : undefined,
+		);
+		const req = fakeStatusReq();
+		req.headers = {
+			host: "dashboard.example.test",
+			cookie: "eliza_session=valid-host-session",
+		};
+		Object.defineProperty(req.socket, "remoteAddress", {
+			value: "203.0.113.9",
+			configurable: true,
+		});
+
+		const direct = fakeRes();
+		await expect(
+			handleLocalInferenceTtsRoute(req, direct.res, {
+				current: { getModel } as unknown as CompatRuntimeState["current"],
+			}),
+		).resolves.toBe(true);
+		expect(direct.status()).toBe(401);
+		expect(JSON.parse(direct.bodyBuffer().toString())).toEqual({
+			error: "Unauthorized",
+		});
+
+		const delegated = fakeRes();
+		await expect(
+			handleLocalInferenceTtsRoute(req, delegated.res, {
+				current: { getModel } as unknown as CompatRuntimeState["current"],
+				requestAuthorizedByHost: true,
+			}),
+		).resolves.toBe(true);
+		expect(delegated.status()).toBe(200);
+		expect(JSON.parse(delegated.bodyBuffer().toString())).toEqual({
+			ready: true,
+			provider: "local-inference",
+		});
+		expect(getModel).toHaveBeenCalledOnce();
 	});
 
 	it("status reports not-ready when no TEXT_TO_SPEECH handler exists", async () => {

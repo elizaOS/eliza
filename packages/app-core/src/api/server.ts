@@ -725,17 +725,33 @@ const COMPAT_ROUTE_CHAIN: readonly CompatRouteChainEntry[] = [
     // directly in the dispatcher body (#12089 item 5).
     id: "local-inference",
     handler: async ({ req, res, state }) => {
+      // The dispatcher reaches this entry only after the canonical app-core
+      // session/CSRF policy succeeds. Hand that result to the plugin on a fresh
+      // per-request object so its compatibility guard does not reject an opaque
+      // browser session or perform a second authorization pass. Every path
+      // handled by this entry has an explicit session or OWNER declaration in
+      // route-auth-policy; mutating requests also pass the host's CSRF gate.
+      const authorizedState = {
+        ...state,
+        requestAuthorizedByHost: true as const,
+      };
       const {
         handleLiveDiarizationRoute,
         handleLocalInferenceAsrRoute,
         handleLocalInferenceCompatRoutes,
         handleLocalInferenceTtsRoute,
       } = await getLocalInferenceRoutes();
-      if (await handleLocalInferenceCompatRoutes(req, res, state)) return true;
-      if (await handleLocalInferenceAsrRoute(req, res, state)) return true;
-      if (await handleLocalInferenceTtsRoute(req, res, state)) return true;
+      if (await handleLocalInferenceCompatRoutes(req, res, authorizedState)) {
+        return true;
+      }
+      if (await handleLocalInferenceAsrRoute(req, res, authorizedState)) {
+        return true;
+      }
+      if (await handleLocalInferenceTtsRoute(req, res, authorizedState)) {
+        return true;
+      }
       // WebView -> agent PCM transport for live on-device speaker diarization.
-      return handleLiveDiarizationRoute(req, res, state);
+      return handleLiveDiarizationRoute(req, res, authorizedState);
     },
   },
   {

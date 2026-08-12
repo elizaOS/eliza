@@ -110,15 +110,36 @@ let handleLocalInferenceCompatRoutes: typeof import("./local-inference-compat-ro
 interface FakeRes {
 	res: http.ServerResponse;
 	body(): unknown;
+	header(name: string): string | undefined;
 	status(): number;
 }
 
 function fakeRes(): FakeRes {
 	let bodyText = "";
+	const headers = new Map<string, string>();
 	const req = new http.IncomingMessage(new Socket());
 	const res = new http.ServerResponse(req);
 	res.statusCode = 200;
-	res.setHeader = () => res;
+	res.setHeader = ((
+		name: string,
+		value: string | number | readonly string[],
+	) => {
+		headers.set(name.toLowerCase(), String(value));
+		return res;
+	}) as typeof res.setHeader;
+	res.writeHead = ((
+		statusCode: number,
+		reasonOrHeaders?: string | http.OutgoingHttpHeaders,
+		maybeHeaders?: http.OutgoingHttpHeaders,
+	) => {
+		res.statusCode = statusCode;
+		const values =
+			typeof reasonOrHeaders === "string" ? maybeHeaders : reasonOrHeaders;
+		for (const [name, value] of Object.entries(values ?? {})) {
+			if (value !== undefined) headers.set(name.toLowerCase(), String(value));
+		}
+		return res;
+	}) as typeof res.writeHead;
 	res.end = ((chunk?: string | Buffer) => {
 		if (typeof chunk === "string") bodyText += chunk;
 		else if (chunk) bodyText += chunk.toString("utf8");
@@ -128,6 +149,9 @@ function fakeRes(): FakeRes {
 		res,
 		body() {
 			return bodyText.length > 0 ? JSON.parse(bodyText) : null;
+		},
+		header(name) {
+			return headers.get(name.toLowerCase());
 		},
 		status() {
 			return res.statusCode;
@@ -139,13 +163,15 @@ function fakeReq(opts: {
 	method: string;
 	pathname: string;
 	body?: unknown;
+	remoteAddress?: string;
+	host?: string;
 }): http.IncomingMessage {
 	const req = new http.IncomingMessage(new Socket());
 	req.method = opts.method;
 	req.url = opts.pathname;
-	req.headers = { host: "localhost:2138" };
+	req.headers = { host: opts.host ?? "localhost:2138" };
 	Object.defineProperty(req.socket, "remoteAddress", {
-		value: "127.0.0.1",
+		value: opts.remoteAddress ?? "127.0.0.1",
 		configurable: true,
 	});
 	if (opts.body !== undefined) {
@@ -153,6 +179,32 @@ function fakeReq(opts: {
 	}
 	return req;
 }
+
+describe("local-inference stream authorization", () => {
+	beforeAll(async () => {
+		handleLocalInferenceCompatRoutes = (
+			await import("./local-inference-compat-routes")
+		).handleLocalInferenceCompatRoutes;
+	}, 120_000);
+
+	it("accepts a completed host session handoff for a remote SSE request", async () => {
+		const res = fakeRes();
+		const handled = await handleLocalInferenceCompatRoutes(
+			fakeReq({
+				method: "GET",
+				pathname: "/api/local-inference/downloads/stream",
+				remoteAddress: "203.0.113.9",
+				host: "dashboard.example.test",
+			}),
+			res.res,
+			{ ...STATE, requestAuthorizedByHost: true },
+		);
+
+		expect(handled).toBe(true);
+		expect(res.status()).toBe(200);
+		expect(res.header("content-type")).toBe("text/event-stream");
+	});
+});
 
 // ── tests ──────────────────────────────────────────────────────────────
 
@@ -165,6 +217,31 @@ describe("POST /api/local-inference/active", () => {
 
 	afterEach(() => {
 		setActiveMock.mockReset();
+	});
+
+	it("accepts the host-approved owner handoff for a remote mutation", async () => {
+		setActiveMock.mockResolvedValue({
+			modelId: "eliza-1-2b",
+			loadedAt: "2026-05-09T00:00:00.000Z",
+			status: "ready",
+		});
+		const res = fakeRes();
+
+		const handled = await handleLocalInferenceCompatRoutes(
+			fakeReq({
+				method: "POST",
+				pathname: "/api/local-inference/active",
+				body: { modelId: "eliza-1-2b" },
+				remoteAddress: "203.0.113.9",
+				host: "dashboard.example.test",
+			}),
+			res.res,
+			{ ...STATE, requestAuthorizedByHost: true },
+		);
+
+		expect(handled).toBe(true);
+		expect(res.status()).toBe(200);
+		expect(setActiveMock).toHaveBeenCalledWith(null, "eliza-1-2b", undefined);
 	});
 
 	it("accepts the legacy { modelId } body shape (no overrides)", async () => {

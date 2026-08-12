@@ -7,8 +7,8 @@
  *   - Regular reads use `ensureCompatApiAuthorized`.
  *   - Mutating routes (download start/cancel, active switch, uninstall)
  *     use `ensureCompatSensitiveRouteAuthorized`.
- *   - SSE allows `?token=...` as an alternative to the auth header, via
- *     `isStreamAuthorized`.
+ *   - SSE accepts the owning host's completed session gate or `?token=...` as
+ *     an alternative to the auth header, via `isStreamAuthorized`.
  */
 
 import type http from "node:http";
@@ -56,7 +56,9 @@ function isStreamAuthorized(
 	req: http.IncomingMessage,
 	res: http.ServerResponse,
 	url: URL,
+	state: CompatRuntimeState,
 ): boolean {
+	if (state.requestAuthorizedByHost === true) return true;
 	const expected = getCompatApiToken();
 	if (!expected) return true;
 
@@ -230,7 +232,7 @@ export async function handleLocalInferenceCompatRoutes(
 		method === "GET" &&
 		pathname === "/api/local-inference/downloads/stream"
 	) {
-		if (!isStreamAuthorized(req, res, url)) return true;
+		if (!isStreamAuthorized(req, res, url, state)) return true;
 
 		res.writeHead(200, {
 			"Content-Type": "text/event-stream",
@@ -376,7 +378,7 @@ export async function handleLocalInferenceCompatRoutes(
 	// ── POST: start download ────────────────────────────────────────────
 	// Body: `{ modelId }` for a curated Eliza-1 entry.
 	if (method === "POST" && pathname === "/api/local-inference/downloads") {
-		if (!ensureCompatSensitiveRouteAuthorized(req, res)) return true;
+		if (!ensureCompatSensitiveRouteAuthorized(req, res, state)) return true;
 		const body = await readCompatJsonBody(req, res);
 		if (!body) return true;
 		const modelId = stringBody(body, "modelId");
@@ -460,7 +462,7 @@ export async function handleLocalInferenceCompatRoutes(
 		method === "POST" &&
 		pathname === "/api/local-inference/routing/preferred"
 	) {
-		if (!ensureCompatSensitiveRouteAuthorized(req, res)) return true;
+		if (!ensureCompatSensitiveRouteAuthorized(req, res, state)) return true;
 		const body = await readCompatJsonBody(req, res);
 		if (!body) return true;
 		const slot = stringBody(body, "slot") as AgentModelSlot | null;
@@ -496,7 +498,7 @@ export async function handleLocalInferenceCompatRoutes(
 
 	// ── POST: set routing policy for a slot ─────────────────────────────
 	if (method === "POST" && pathname === "/api/local-inference/routing/policy") {
-		if (!ensureCompatSensitiveRouteAuthorized(req, res)) return true;
+		if (!ensureCompatSensitiveRouteAuthorized(req, res, state)) return true;
 		const body = await readCompatJsonBody(req, res);
 		if (!body) return true;
 		const slot = stringBody(body, "slot") as AgentModelSlot | null;
@@ -549,7 +551,7 @@ export async function handleLocalInferenceCompatRoutes(
 
 	// ── POST: set / clear a model-type assignment ───────────────────────
 	if (method === "POST" && pathname === "/api/local-inference/assignments") {
-		if (!ensureCompatSensitiveRouteAuthorized(req, res)) return true;
+		if (!ensureCompatSensitiveRouteAuthorized(req, res, state)) return true;
 		const body = await readCompatJsonBody(req, res);
 		if (!body) return true;
 		const slot = stringBody(body, "slot") as AgentModelSlot | null;
@@ -601,7 +603,7 @@ export async function handleLocalInferenceCompatRoutes(
 
 	// ── SSE: device bridge status stream ────────────────────────────────
 	if (method === "GET" && pathname === "/api/local-inference/device/stream") {
-		if (!isStreamAuthorized(req, res, url)) return true;
+		if (!isStreamAuthorized(req, res, url, state)) return true;
 
 		res.writeHead(200, {
 			"Content-Type": "text/event-stream",
@@ -644,7 +646,7 @@ export async function handleLocalInferenceCompatRoutes(
 	{
 		const match = /^\/api\/local-inference\/downloads\/([^/]+)$/.exec(pathname);
 		if (method === "DELETE" && match) {
-			if (!ensureCompatSensitiveRouteAuthorized(req, res)) return true;
+			if (!ensureCompatSensitiveRouteAuthorized(req, res, state)) return true;
 			const cancelled = localInferenceService.cancelDownload(match[1] ?? "");
 			sendJsonResponse(res, cancelled ? 200 : 404, { cancelled });
 			return true;
@@ -668,7 +670,7 @@ export async function handleLocalInferenceCompatRoutes(
 	// default; AOSP / paired-device callers route through their own
 	// adapter and bypass this path).
 	if (method === "POST" && pathname === "/api/local-inference/active") {
-		if (!ensureCompatSensitiveRouteAuthorized(req, res)) return true;
+		if (!ensureCompatSensitiveRouteAuthorized(req, res, state)) return true;
 		const body = await readCompatJsonBody(req, res);
 		if (!body) return true;
 		const modelId = stringBody(body, "modelId");
@@ -719,7 +721,7 @@ export async function handleLocalInferenceCompatRoutes(
 
 	// ── DELETE: clear active model ──────────────────────────────────────
 	if (method === "DELETE" && pathname === "/api/local-inference/active") {
-		if (!ensureCompatSensitiveRouteAuthorized(req, res)) return true;
+		if (!ensureCompatSensitiveRouteAuthorized(req, res, state)) return true;
 		try {
 			const active = await localInferenceService.clearActive(state.current);
 			sendJsonResponse(res, 200, active);
@@ -758,7 +760,7 @@ export async function handleLocalInferenceCompatRoutes(
 	{
 		const id = matchInstalledId(pathname);
 		if (method === "DELETE" && id) {
-			if (!ensureCompatSensitiveRouteAuthorized(req, res)) return true;
+			if (!ensureCompatSensitiveRouteAuthorized(req, res, state)) return true;
 			try {
 				const result = await localInferenceService.uninstall(id);
 				if (result.removed) {

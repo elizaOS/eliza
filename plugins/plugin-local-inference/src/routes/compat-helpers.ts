@@ -25,6 +25,12 @@ export interface CompatRuntimeState {
 	current: AgentRuntime | null;
 	pendingAgentName?: string | null;
 	pendingRestartReasons?: string[];
+	/**
+	 * Set only on a fresh per-request state object after the owning HTTP host has
+	 * completed its canonical session/CSRF gate. Browser session cookies are
+	 * intentionally opaque to this plugin's standalone token/local classifier.
+	 */
+	requestAuthorizedByHost?: true;
 }
 
 function firstHeaderValue(value: string | string[] | undefined): string | null {
@@ -225,7 +231,9 @@ export function ensureCompatApiAuthorized(
 export function ensureCompatSensitiveRouteAuthorized(
 	req: Pick<http.IncomingMessage, "headers" | "socket">,
 	res: http.ServerResponse,
+	state?: CompatRuntimeState,
 ): boolean {
+	if (state?.requestAuthorizedByHost === true) return true;
 	if (!getCompatApiToken()) {
 		if (isTrustedLocalRequest(req)) return true;
 		sendJsonError(
@@ -241,8 +249,9 @@ export function ensureCompatSensitiveRouteAuthorized(
 export async function ensureRouteAuthorized(
 	req: Pick<http.IncomingMessage, "headers" | "socket" | "method">,
 	res: http.ServerResponse,
-	_state: CompatRuntimeState,
+	state: CompatRuntimeState,
 ): Promise<boolean> {
+	if (state.requestAuthorizedByHost === true) return true;
 	return ensureCompatApiAuthorized(req, res);
 }
 
