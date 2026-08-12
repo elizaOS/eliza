@@ -4,16 +4,18 @@ function describeRelativeTime(
 	timestamp: number,
 	style: "compact" | "verbose",
 ): string {
-	// Non-finite inputs (NaN, ±Infinity) make every unit magnitude NaN and
-	// fall through to toLocaleDateString → the browser string "Invalid Date".
-	// Fail closed to the same sub-minute sentinel used for valid near-now
-	// offsets (and matching packages/ui's formatRelativeTime guard).
-	if (!Number.isFinite(timestamp)) {
+	// Match packages/ui formatRelativeTime: construct the Date first and
+	// require a finite getTime(). That rejects NaN/±Infinity and finite
+	// values outside the ±8.64e15 Date range (which still pass
+	// Number.isFinite but yield "Invalid Date" from toLocaleDateString or
+	// absurd multi-million-day relative strings).
+	const time = new Date(timestamp).getTime();
+	if (!Number.isFinite(time)) {
 		return "just now";
 	}
 
 	const now = Date.now();
-	const diff = now - timestamp;
+	const diff = now - time;
 	const future = diff < 0;
 	const absDiff = Math.abs(diff);
 
@@ -68,7 +70,7 @@ function describeRelativeTime(
 	if (days < 7) {
 		return tense(`${days}d`);
 	}
-	return new Date(timestamp).toLocaleDateString(undefined, {
+	return new Date(time).toLocaleDateString(undefined, {
 		month: "short",
 		day: "numeric",
 	});
