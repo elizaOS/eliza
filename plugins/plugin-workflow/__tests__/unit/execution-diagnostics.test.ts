@@ -17,7 +17,7 @@ const exec = (over: Partial<WorkflowExecution>): WorkflowExecution =>
   ({ status: 'success', data: { resultData: {} }, ...over }) as unknown as WorkflowExecution;
 
 describe('formatWorkflowExecutionDuration', () => {
-  it('picks ms/s/min units, Unknown on missing/invalid', () => {
+  it('picks ms/s/min units, Unknown on missing and Invalid date on invalid', () => {
     expect(formatWorkflowExecutionDuration(undefined)).toBe('Unknown');
     expect(
       formatWorkflowExecutionDuration('2026-06-23T00:00:00.000Z', '2026-06-23T00:00:00.500Z')
@@ -31,6 +31,7 @@ describe('formatWorkflowExecutionDuration', () => {
     expect(formatWorkflowExecutionDuration('not-a-date', '2026-06-23T00:00:00Z')).toBe(
       'Invalid date'
     );
+    expect(formatWorkflowExecutionDuration('2026-06-23T00:00:00.000Z', 'bad')).toBe('Invalid date');
   });
 });
 

@@ -118,6 +118,16 @@ describe("workflow execution helpers", () => {
     ).toBe("3 min");
   });
 
+  it("distinguishes missing from invalid dates", () => {
+    expect(formatWorkflowExecutionDuration(undefined)).toBe("Unknown");
+    expect(
+      formatWorkflowExecutionDuration("not-a-date", "2026-06-23T00:00:00Z"),
+    ).toBe("Invalid date");
+    expect(
+      formatWorkflowExecutionDuration("2026-06-23T00:00:00.000Z", "bad"),
+    ).toBe("Invalid date");
+  });
+
   it("builds copyable diagnostics for chat-assisted troubleshooting", () => {
     const diagnostics = buildWorkflowExecutionDiagnostics(SUCCESS_EXECUTION);
 
