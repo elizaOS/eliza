@@ -366,4 +366,21 @@ function hasFinding(report, fragment) {
   );
 }
 
+// 19. A script named from a composite action is a CI caller, not an orphan.
+{
+  const report = runAudit({
+    root: { build: "tsc -b" },
+    files: {
+      "packages/scripts/ci-fetch-bun-release.mjs":
+        "export async function main() {}\n",
+      ".github/actions/setup-bun-workspace/action.yml":
+        "runs:\n  using: composite\n  steps:\n    - run: node packages/scripts/ci-fetch-bun-release.mjs --print-variant\n",
+    },
+  });
+  assert(
+    report.ok,
+    `composite-action caller should pass, got ${JSON.stringify(report.failures)}`,
+  );
+}
+
 console.log("audit-scripts self-test passed");

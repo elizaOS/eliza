@@ -394,6 +394,8 @@ export type DeleteAgentResult =
     }
   | { success: false; error: string };
 
+export type DeleteAuthorization = "user_request" | "billing_request";
+
 /**
  * Outcome of the bounded container teardown attempted during `deleteAgent`:
  * `null` = stop succeeded; `{ error }` = stop failed within the cap (classified
@@ -484,6 +486,22 @@ export interface SnapshotResult {
 }
 
 /**
+ * Outcome of carrying an agent's state onto a replacement container.
+ *
+ * `capture-unsupported` is not a failure to retry: the running image has no
+ * snapshot endpoint, so the agent cannot be relocated at all and must be left
+ * where it is. Every other reason describes a move that did not happen and can
+ * be attempted again.
+ */
+export type StateTransferOutcome =
+  | { transferred: true; snapshotId: string; sizeBytes: number }
+  | {
+      transferred: false;
+      reason: "capture-unsupported" | "capture-failed" | "reconstruct-failed" | "push-failed";
+      detail: string;
+    };
+
+/**
  * Sentinel error for "the running agent image does not serve POST /api/snapshot".
  * The deployed elizaOS (V2) agent image binds its API to ELIZA_PORT/PORT and
  * does not expose the bridge `/api/snapshot` route — only the cloud-agent
@@ -514,6 +532,7 @@ const HEARTBEAT_PROBE_RETRY_MS = 2_000;
 // on success) is the downtime clock. The ~30s heartbeat itself keeps the
 // WireGuard NAT mapping warm, so a reachable agent never trips this.
 const HEARTBEAT_DISCONNECT_AFTER_MS = 120_000;
+
 // IP reconciliation (heartbeat + recovery): agent containers do not persist
 // tailscale node state, so a container restart mints a fresh node key and
 // headscale hands out the NEXT sequential IP — the stored headscale_ip /
@@ -1902,7 +1921,11 @@ export class ElizaSandboxService {
     return agentSandboxesRepository.listByOrganization(orgId);
   }
 
-  async deleteAgent(agentId: string, orgId: string): Promise<DeleteAgentResult> {
+  async deleteAgent(
+    agentId: string,
+    orgId: string,
+    options: { authorization?: DeleteAuthorization } = {},
+  ): Promise<DeleteAgentResult> {
     // Phase 1 — short transaction: take the lifecycle lock, validate
     // preconditions, and capture the fields needed for teardown. We deliberately
     // do NOT run the container teardown inside this transaction:
@@ -1911,7 +1934,7 @@ export class ElizaSandboxService {
     // + write transaction + a pooled connection for the full teardown cap (up to
     // SANDBOX_DELETE_STOP_TIMEOUT_MS) would wedge concurrent lifecycle ops on the
     // same agent/org. The lock + transaction are released the moment this returns.
-    const precheck = await this.prepareAgentDelete(agentId, orgId);
+    const precheck = await this.prepareAgentDelete(agentId, orgId, options.authorization);
 
     if (!precheck.ok) {
       return { success: false, error: precheck.error };
@@ -2081,6 +2104,7 @@ export class ElizaSandboxService {
   private async prepareAgentDelete(
     agentId: string,
     orgId: string,
+    authorization?: DeleteAuthorization,
   ): Promise<
     | {
         ok: true;
@@ -2115,6 +2139,20 @@ export class ElizaSandboxService {
       const hasActiveReplacementJob = await this.hasActiveReplacementJobTx(tx, agentId, orgId);
       if (rec.status === "provisioning" || hasActiveProvisionJob || hasActiveReplacementJob) {
         return { ok: false as const, error: "Agent provisioning is in progress" };
+      }
+      const isSharedRuntime = rec.execution_tier === "shared";
+      const isUnclaimedWarmPoolEntry =
+        rec.organization_id === WARM_POOL_ORG_ID && rec.pool_status === "unclaimed";
+      if (
+        rec.status === "running" &&
+        !isSharedRuntime &&
+        !isUnclaimedWarmPoolEntry &&
+        !authorization
+      ) {
+        return {
+          ok: false as const,
+          error: "Agent is running; suspend it before deletion",
+        };
       }
       const deletionAttemptId = rec.deletion_attempt_id ?? crypto.randomUUID();
       // A retry preserves the original audit timestamp while taking a fresh
@@ -2387,13 +2425,14 @@ export class ElizaSandboxService {
   async executeDeletion(
     agentId: string,
     orgId: string,
+    authorization?: DeleteAuthorization,
   ): Promise<{
     success: boolean;
     containerStopped: boolean;
     rowDeleted: boolean;
     error?: string;
   }> {
-    const result = await this.deleteAgent(agentId, orgId);
+    const result = await this.deleteAgent(agentId, orgId, { authorization });
     if (!result.success) {
       // If the row is already gone, treat as success. This covers the retry
       // case where a prior attempt deleted the row but failed before updating
@@ -6395,10 +6434,15 @@ export class ElizaSandboxService {
       throw error;
     }
 
-    if (type === "pre-upgrade" && !stateData.manifest) {
+    // Both labels gate a destructive follow-up — a rollback replays the
+    // `pre-upgrade` point, and a relocation destroys the source container once
+    // the `pre-move` capture is restored elsewhere. A partial capture would
+    // survive either as silent data loss, so neither is accepted without a
+    // full-agent manifest.
+    if ((type === "pre-upgrade" || type === "pre-move") && !stateData.manifest) {
       return {
         success: false,
-        error: "Pre-upgrade snapshot did not include a full-agent manifest",
+        error: `${type} snapshot did not include a full-agent manifest`,
       };
     }
 
@@ -6417,6 +6461,82 @@ export class ElizaSandboxService {
       bytes: backup.size_bytes,
     });
     return { success: true, backup };
+  }
+
+  /**
+   * Carry an agent's durable state from the container it runs on today onto a
+   * replacement container on another node.
+   *
+   * This exists because a blue/green replacement moves the CONTAINER, not the
+   * state. Agent volumes are host bind-mounts (`/data/agents/<id>` mounted at
+   * `/root/.eliza`), so the pglite data directory does not follow a container
+   * to a new machine, and the `pre-upgrade` snapshot the upgrade path takes is
+   * only a rollback point — it is never pushed into the new container. A
+   * relocation built on the upgrade sequence alone would therefore start the
+   * agent on an empty database and destroy the old one on cutover.
+   *
+   * The only cross-node transport is the application-level snapshot/restore
+   * rail, which is node-agnostic by construction. This method is that rail,
+   * with the ordering that makes it safe:
+   *
+   *   1. capture from the OLD container while it is still live and serving;
+   *   2. reconstruct, so a backup that cannot be replayed is caught here;
+   *   3. push onto the new container.
+   *
+   * It never reports success without a completed push, so the caller may only
+   * retire the old placement once this resolves `transferred: true`. An image
+   * that cannot snapshot is reported as `capture-unsupported` rather than as a
+   * failure: such an agent is not relocatable, and the caller must leave it
+   * where it is instead of moving it without its data.
+   */
+  async transferStateForRelocation(opts: {
+    agentId: string;
+    orgId: string;
+    targetBridgeUrl: string;
+    /** Carries the agent's API token so the restore is not rejected (#15261). */
+    authRec: Pick<AgentSandbox, "id" | "environment_vars">;
+  }): Promise<StateTransferOutcome> {
+    const captured = await this.snapshot(opts.agentId, opts.orgId, "pre-move");
+    if (!captured.success || !captured.backup) {
+      const detail = captured.error ?? "unknown snapshot failure";
+      return {
+        transferred: false,
+        reason: detail === SNAPSHOT_ENDPOINT_UNSUPPORTED ? "capture-unsupported" : "capture-failed",
+        detail,
+      };
+    }
+
+    const restoreState = await agentSandboxesRepository.getReconstructedBackupState(
+      captured.backup.id,
+    );
+    if (!restoreState) {
+      return {
+        transferred: false,
+        reason: "reconstruct-failed",
+        detail: `pre-move backup ${captured.backup.id} could not be reconstructed`,
+      };
+    }
+
+    try {
+      await this.pushState(opts.targetBridgeUrl, restoreState, {
+        trusted: true,
+        authRec: opts.authRec,
+      });
+    } catch (error) {
+      // error-policy:J2 the caller decides what to do with a half-moved agent,
+      // and it can only decide correctly if the reason survives.
+      return {
+        transferred: false,
+        reason: "push-failed",
+        detail: error instanceof Error ? error.message : String(error),
+      };
+    }
+
+    return {
+      transferred: true,
+      snapshotId: captured.backup.id,
+      sizeBytes: captured.backup.size_bytes ?? 0,
+    };
   }
 
   /**

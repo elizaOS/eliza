@@ -19,6 +19,29 @@
 /** localStorage key for the Steward access token (JWT). */
 export const STEWARD_TOKEN_KEY = "steward_session_token";
 
+/** Typed browser event emitted after a canonical Steward token mutation. */
+export const STEWARD_SESSION_CHANGE_EVENT = "steward-session-change";
+
+export interface StewardSessionChangeDetail {
+  state: "present" | "cleared";
+  sessionEpoch: number;
+}
+
+let sessionEpoch = 0;
+
+/** Publish a credential-domain-specific transition without exposing the token. */
+export function dispatchStewardSessionChange(
+  state: StewardSessionChangeDetail["state"],
+): void {
+  if (typeof window === "undefined") return;
+  sessionEpoch += 1;
+  window.dispatchEvent(
+    new CustomEvent<StewardSessionChangeDetail>(STEWARD_SESSION_CHANGE_EVENT, {
+      detail: { state, sessionEpoch },
+    }),
+  );
+}
+
 /**
  * localStorage key for the Steward refresh token.
  *
@@ -165,7 +188,9 @@ export function writeStoredStewardToken(token: string): void {
   } catch {
     // localStorage may be disabled (private mode, quota, sandboxed iframe);
     // callers that need durability should detect this themselves.
+    return;
   }
+  dispatchStewardSessionChange("present");
 }
 
 export function clearStoredStewardToken(): void {
@@ -175,7 +200,9 @@ export function clearStoredStewardToken(): void {
     window.localStorage.removeItem(STEWARD_REFRESH_TOKEN_KEY);
   } catch {
     // ignore
+    return;
   }
+  dispatchStewardSessionChange("cleared");
 }
 
 /**

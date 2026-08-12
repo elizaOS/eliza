@@ -49,6 +49,25 @@ describe("remote capability router", () => {
     });
   });
 
+  it.each([
+    ["absent", undefined],
+    ["zero", "0"],
+    ["negative", "-1"],
+    ["decimal", "1.5"],
+    ["suffix garbage", "1234ms"],
+    ["unsafe integer", "9007199254740992"],
+  ])("uses the default timeout for %s input", (_description, value) => {
+    const config = resolveRemoteCapabilityRouterConfig(
+      makeRuntime(
+        value === undefined
+          ? {}
+          : { ELIZA_CAPABILITY_ROUTER_TIMEOUT_MS: value },
+      ),
+    );
+
+    expect(config.requestTimeoutMs).toBe(60_000);
+  });
+
   it("resolves multiple canonical remote endpoint URLs", () => {
     const config = resolveRemoteCapabilityRouterConfig(
       makeRuntime({

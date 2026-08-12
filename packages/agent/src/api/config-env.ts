@@ -29,6 +29,8 @@ import fsSync from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 
+import { isBlockedSpawnEnvKey } from "@elizaos/core";
+
 import { resolveStateDir } from "../config/paths.ts";
 
 const CONFIG_ENV_FILENAME = "config.env";
@@ -42,6 +44,24 @@ const KEY_PATTERN = /^[A-Z][A-Z0-9_]*$/;
  * escape hatch for sensitive process-env-only material. These are
  * shell/runtime hijack vectors — they must never be set from the
  * application layer, regardless of provenance.
+ *
+ * `validateKey` checks this set *in addition to* `isBlockedSpawnEnvKey`,
+ * which carries the core spawn denylist and its prefix families. Two
+ * deliberate choices there:
+ *
+ * 1. It is a union, not a replacement. This list is not a subset of core's:
+ *    `DYLD_FALLBACK_FRAMEWORK_PATH` and `DYLD_FALLBACK_LIBRARY_PATH` are
+ *    blocked here and absent from core, so deferring entirely to the shared
+ *    predicate would silently unblock them.
+ * 2. It uses core's spawn predicate rather than the agent's
+ *    `isBlockedEnvKey`. The agent set is the spawn set plus thirteen agent
+ *    step-up secrets, and those secrets are exactly what `vault-bootstrap`
+ *    migrates *through this function* — it scans `config.env` for keys
+ *    matching `_TOKEN` / `_API_KEY` / `_PRIVATE_KEY` and rewrites each as a
+ *    vault reference. Ten of the thirteen match that heuristic
+ *    (`ELIZA_API_TOKEN`, `EVM_PRIVATE_KEY`, `GITHUB_TOKEN`, ...), so using the
+ *    agent predicate here would reject the very migration the vault bootstrap
+ *    exists to perform. Only injection primitives belong on this gate.
  */
 const BLOCKED_CONFIG_ENV_KEYS: ReadonlySet<string> = new Set([
   "NODE_OPTIONS",
@@ -127,7 +147,7 @@ function validateKey(key: string): void {
       `persistConfigEnv: invalid key "${key}" — must match /^[A-Z][A-Z0-9_]*$/`,
     );
   }
-  if (BLOCKED_CONFIG_ENV_KEYS.has(key)) {
+  if (BLOCKED_CONFIG_ENV_KEYS.has(key) || isBlockedSpawnEnvKey(key)) {
     throw new Error(
       `persistConfigEnv: key "${key}" is a shell/runtime hijack vector and cannot be written`,
     );

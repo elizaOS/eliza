@@ -141,11 +141,10 @@ const MAX_HISTORY_MESSAGES = 200;
  * raw connector payloads, so the session store enforces its own bound.
  */
 const MAX_MESSAGE_LENGTH = 4000;
+// The Cloud app host. Serves the authenticated `/get-started` continuation
+// landing (Steward login -> identity confirm -> back-to-Discord handoff) that
+// the messaging Connect CTA now targets directly, plus dashboard/billing links.
 const DEFAULT_ONBOARDING_APP_URL = "https://app.elizacloud.ai";
-// `/get-started` belongs to the homepage, while dashboard and billing links
-// belong to the Cloud app. Keep these origins separate so fixing one route
-// cannot silently break the other surface.
-const DEFAULT_ONBOARDING_LOGIN_APP_URL = "https://eliza.app";
 const ELIZA_APP_INITIAL_CREDIT_USD = "$5";
 /** Label for platforms that render the login link as a UI affordance. */
 const ONBOARDING_CTA_LABEL = "Connect";
@@ -920,11 +919,27 @@ function onboardingAppPath(path: string): string {
   return `${getOnboardingAppUrl()}${path.startsWith("/") ? path : `/${path}`}`;
 }
 
-function onboardingLoginAppPath(path: string): string {
-  const configured =
-    getCloudAwareEnv().ELIZA_ONBOARDING_LOGIN_APP_URL || DEFAULT_ONBOARDING_LOGIN_APP_URL;
-  const baseUrl = configured.replace(/\/+$/, "");
-  return `${baseUrl}${path.startsWith("/") ? path : `/${path}`}`;
+/**
+ * The messaging-continuation Connect CTA target: the Cloud app's own
+ * `/get-started` (ELIZA_ONBOARDING_APP_URL — app.elizacloud.ai /
+ * app-staging.elizacloud.ai), NOT the homepage.
+ *
+ * That Cloud-app route is authenticated, so a signed-out visitor is bounced
+ * straight to `/login?returnTo=/get-started` (the Steward auth flow) with the
+ * continuation token preserved in storage, and after auth lands on the
+ * identity preview -> confirm redeem -> "head back to Discord" handoff
+ * (packages/ui/src/cloud/join/GetStartedPage.tsx). Sending the CTA here instead
+ * of the homepage removes the intermediate homepage sign-in card so the DM
+ * Connect button opens ElizaCloud/Steward login with zero detours, per Shadow's
+ * spec (2026-08-11/12). The Cloud-app page resolves the platform identity
+ * server-side from the gateway-attested session, so no URL method hints are
+ * needed for any platform.
+ *
+ * The homepage `/get-started` route (eliza.app) stays intact for organic,
+ * non-continuation visitors; only the messaging CTA moves.
+ */
+function onboardingContinuationLoginPath(path: string): string {
+  return onboardingAppPath(path);
 }
 
 /**
@@ -1341,7 +1356,10 @@ export async function runOnboardingChatWithStore(
   };
 
   if (!requiresLogin && session.userId && session.organizationId) {
-    provisioning = preferredNameCaptured
+    // statusOnly polls are read-only — never trigger provisioning, even if
+    // preferredNameCaptured is true. A read-only poll must not provision.
+    const shouldProvision = preferredNameCaptured && !input.statusOnly;
+    provisioning = shouldProvision
       ? await ensureElizaAppProvisioning({
           userId: session.userId,
           organizationId: session.organizationId,
@@ -1368,7 +1386,8 @@ export async function runOnboardingChatWithStore(
   const loginParams = new URLSearchParams({
     onboardingSession: session.continuationToken ?? session.id,
   });
-  const loginUrl = onboardingLoginAppPath(`/get-started/?${loginParams.toString()}`);
+  // Cloud-app route is `/get-started` (no trailing slash), query appended.
+  const loginUrl = onboardingContinuationLoginPath(`/get-started?${loginParams.toString()}`);
   const panelUrl = controlPanelUrl(session.agentId);
   // The CTA is derived FIRST and the copy chosen from whether it exists, so
   // "tap below" text without a button is unrepresentable: the button CTA is

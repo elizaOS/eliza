@@ -23,16 +23,36 @@ function looksLikeSkillsDir(dir: string): boolean {
     return false;
   }
 
-  const entries = readdirSync(dir, { withFileTypes: true });
+  let entries: import("node:fs").Dirent[];
+  try {
+    entries = readdirSync(dir, { withFileTypes: true });
+  } catch {
+    // error-policy:J3 unreadable candidate directory on untrusted filesystem is explicitly not a skills dir
+    return false;
+  }
+
   for (const entry of entries) {
     if (entry.name.startsWith(".")) {
       continue;
     }
     const fullPath = join(dir, entry.name);
-    if (entry.isFile() && entry.name.endsWith(".md")) {
+    let isFile = entry.isFile();
+    let isDirectory = entry.isDirectory();
+    if (entry.isSymbolicLink()) {
+      try {
+        const stats = statSync(fullPath);
+        isFile = stats.isFile();
+        isDirectory = stats.isDirectory();
+      } catch {
+        // error-policy:J3 dangling or inaccessible symlink is treated as neither file nor directory
+        isFile = false;
+        isDirectory = false;
+      }
+    }
+    if (isFile && entry.name.endsWith(".md")) {
       return true;
     }
-    if (entry.isDirectory()) {
+    if (isDirectory) {
       if (existsSync(join(fullPath, "SKILL.md"))) {
         return true;
       }

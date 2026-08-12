@@ -11,6 +11,7 @@ export {
 	fetchRemoteMedia,
 	MediaFetchError,
 	type MediaFetchErrorCode,
+	readResponseWithLimit,
 } from "./fetch.js";
 export {
 	type CachedImageDescription,

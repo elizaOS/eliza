@@ -84,6 +84,10 @@ import { extendNodePathEnv } from "./lib/node-path-env.mjs";
 import { formatOrchestratorDesktopDevBanner } from "./lib/orchestrator-desktop-dev-banner.mjs";
 import { appIdentityEnv } from "./lib/read-app-identity.mjs";
 import { resolveRendererBuildAction } from "./lib/renderer-build-action.mjs";
+import {
+  drainSpawnedChildren,
+  resolveShutdownDrainWindowMs,
+} from "./lib/shutdown-drain.mjs";
 import { viteRendererBuildNeeded } from "./lib/vite-renderer-dist-stale.mjs";
 
 // Linux WebKitGTK: the dmabuf renderer can emit a benign but noisy
@@ -638,6 +642,11 @@ async function warmApiRoutes(port) {
 }
 
 const children = [];
+// Human names for shutdown logging; keyed weakly so tracking stays an array.
+const childNames = new WeakMap();
+// Same bounded window as dev-ui.mjs (#18435): covers the longest bounded
+// child-side teardown (Discord 10 s drain + 2 s reconcile) with margin.
+const SHUTDOWN_DRAIN_WINDOW_MS = resolveShutdownDrainWindowMs(process.env);
 
 /** First Ctrl-C starts graceful shutdown; second exits immediately (pipes keep the process alive until then). */
 let shuttingDown = false;
@@ -719,6 +728,7 @@ function pushChild(name, cmd, args, cwd, extraEnv = {}) {
       });
     }
   });
+  childNames.set(child, name);
   children.push(child);
   return child;
 }
@@ -910,6 +920,7 @@ async function launch() {
     onSpawn: (child) => {
       if (child.stdout) prefixStream("api", child.stdout);
       if (child.stderr) prefixStream("api", child.stderr);
+      childNames.set(child, "api");
       children.push(child);
       child.on("exit", (code, signal) => {
         const reason = signal ? `signal ${signal}` : `exit ${code}`;
@@ -1144,11 +1155,15 @@ async function launch() {
 }
 
 /**
- * SIGTERM still-running children, wait for `exit` (or force SIGKILL), then `process.exit`.
+ * SIGTERM still-running children, await their exits up to the bounded drain
+ * window, SIGKILL only stragglers, then `process.exit`.
  *
- * Skips PIDs that already exited so we do not signal stale trees after app Quit.
- * `checkAllExited` + short timeout **why:** piped stdio keeps the event loop alive until
- * every child is gone; exiting early avoids staring at a hung terminal after children die.
+ * Skips PIDs that already exited so we do not signal stale trees after app
+ * Quit. Exit follows child exit directly **why:** piped stdio keeps the event
+ * loop alive until every child is gone; exiting as soon as they are reaped
+ * avoids staring at a hung terminal, while the window keeps a child mid
+ * graceful teardown (e.g. the Discord drain, #17749) from being SIGKILLed the
+ * way the old fixed 1.5 s fuse did (#16318).
  */
 function shutdownDesktopDev({
   exitCode = 0,
@@ -1159,39 +1174,24 @@ function shutdownDesktopDev({
 
   console.log(message);
 
-  let exitScheduled = false;
-  const finish = () => {
-    if (exitScheduled) return;
-    exitScheduled = true;
+  // Bounded drain instead of a fixed 1.5 s SIGKILL fuse (#16318, matching the
+  // dev-ui supervisor fixed in #18435): children that exit promptly release
+  // the supervisor as soon as they are reaped, only a straggler that outlives
+  // the window is escalated (loudly, per child), and a bounded kill grace
+  // keeps exit from racing the escalation. Already-exited children are
+  // skipped inside the drain, preserving the no-stale-tree-signal behavior.
+  void drainSpawnedChildren({
+    children: children.map((child, index) => ({
+      name: childNames.get(child) ?? `child-${index + 1}`,
+      child,
+    })),
+    drainWindowMs: SHUTDOWN_DRAIN_WINDOW_MS,
+    signalTree: signalSpawnedProcessTree,
+    log: (line) => console.log(line),
+    warn: (line) => console.error(line),
+  }).then(() => {
     process.exit(exitCode);
-  };
-
-  const checkAllExited = () => {
-    const anyRunning = children.some(
-      (c) => c.exitCode === null && c.signalCode === null,
-    );
-    if (!anyRunning) {
-      finish();
-    }
-  };
-
-  for (const child of children) {
-    child.once("exit", checkAllExited);
-    child.once("error", checkAllExited);
-    if (child.exitCode === null && child.signalCode === null) {
-      signalSpawnedProcessTree(child, "SIGTERM");
-    }
-  }
-  checkAllExited();
-
-  setTimeout(() => {
-    for (const child of children) {
-      if (child.exitCode === null && child.signalCode === null) {
-        signalSpawnedProcessTree(child, "SIGKILL");
-      }
-    }
-    finish();
-  }, 1500).unref();
+  });
 }
 
 function cleanup() {

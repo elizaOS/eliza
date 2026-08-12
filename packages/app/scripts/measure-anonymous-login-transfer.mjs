@@ -17,16 +17,25 @@
  *
  *   --url          full login URL (required unless --serve-dist)
  *   --serve-dist   serve packages/app/dist on an ephemeral port and measure /login
- *   --settle-ms    wait after load before sampling (default 6000)
+ *   --settle-ms    wait after load before sampling (default 6000; 0..2^31-1)
+ *   --timeout      navigation timeout in ms (default 90000; 1..2^31-1)
  *   --out          write JSON report
  *   --headed       visible browser
  *   --label        label for this run (e.g. head-sha or develop)
  *
  * Desktop (1280x720) and mobile (390x844) viewports are measured by default.
+ * Numeric overrides must be complete decimal integers; malformed values fail
+ * closed before Chromium launches.
  */
 
 import { execSync } from "node:child_process";
-import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  readFileSync,
+  realpathSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { createServer } from "node:http";
 import { dirname, extname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -36,6 +45,9 @@ import { chromium } from "@playwright/test";
 const here = dirname(fileURLToPath(import.meta.url));
 const appDir = resolve(here, "..");
 let distDir = join(appDir, "dist");
+
+/** Node clamps `setTimeout` delays above this to 1 ms; Playwright waits share that bound. */
+export const MAX_TIMER_DELAY_MS = 2_147_483_647;
 
 const MIME = {
   ".html": "text/html; charset=utf-8",
@@ -59,7 +71,48 @@ const VIEWPORTS = [
   { id: "mobile", width: 390, height: 844 },
 ];
 
-function parseArgs(argv) {
+/**
+ * Parse a non-negative decimal integer CLI override (allows 0).
+ * Full-string match only: bare `Number("10junk")` is NaN and previously
+ * launched Chromium under an unintended settle/timeout budget.
+ *
+ * @param {string | undefined} raw
+ * @param {string} flag flag name for error messages (e.g. `--settle-ms`)
+ * @param {{ max?: number, min?: number }} [opts]
+ * @returns {number}
+ */
+export function parseDecimalInt(raw, flag, opts = {}) {
+  const min = opts.min ?? 0;
+  const max = opts.max ?? Number.MAX_SAFE_INTEGER;
+  if (typeof raw !== "string" || raw.length === 0 || raw.startsWith("--")) {
+    throw new Error(`${flag} requires a decimal integer from ${min} to ${max}`);
+  }
+  if (!/^\d+$/.test(raw)) {
+    throw new Error(
+      `${flag} must be a decimal integer from ${min} to ${max}, got "${raw}"`,
+    );
+  }
+  // Leading zeros like "08" are rejected so the canonical decimal form is
+  // unambiguous (matches other CLI gates in packages/app scripts).
+  if (raw.length > 1 && raw.startsWith("0")) {
+    throw new Error(
+      `${flag} must be a decimal integer from ${min} to ${max}, got "${raw}"`,
+    );
+  }
+  const value = Number(raw);
+  if (!Number.isSafeInteger(value) || value < min || value > max) {
+    throw new Error(
+      `${flag} must be a decimal integer from ${min} to ${max}, got "${raw}"`,
+    );
+  }
+  return value;
+}
+
+/**
+ * Parse CLI argv for the login-transfer harness. Exported for focused unit tests.
+ * @param {string[]} argv process.argv-style array (index 0-1 ignored)
+ */
+export function parseArgs(argv) {
   const args = {
     url: null,
     serveDist: false,
@@ -69,31 +122,79 @@ function parseArgs(argv) {
     headed: false,
     label: null,
     timeout: 90_000,
+    help: false,
   };
   for (let i = 2; i < argv.length; i += 1) {
     const a = argv[i];
-    if (a === "--url") args.url = argv[++i];
-    else if (a === "--serve-dist") args.serveDist = true;
-    else if (a === "--dist-dir") args.distDir = argv[++i];
-    else if (a === "--settle-ms") args.settleMs = Number(argv[++i]);
-    else if (a === "--out") args.out = argv[++i];
-    else if (a === "--timeout") args.timeout = Number(argv[++i]);
-    else if (a === "--label") args.label = argv[++i];
-    else if (a === "--headed") args.headed = true;
+    if (a === "--url") {
+      const next = argv[++i];
+      if (
+        typeof next !== "string" ||
+        next.length === 0 ||
+        next.startsWith("--")
+      ) {
+        throw new Error("--url requires a login URL value");
+      }
+      args.url = next;
+    } else if (a === "--serve-dist") args.serveDist = true;
+    else if (a === "--dist-dir") {
+      const next = argv[++i];
+      if (
+        typeof next !== "string" ||
+        next.length === 0 ||
+        next.startsWith("--")
+      ) {
+        throw new Error("--dist-dir requires a path value");
+      }
+      args.distDir = next;
+    } else if (a === "--settle-ms") {
+      args.settleMs = parseDecimalInt(argv[++i], "--settle-ms", {
+        min: 0,
+        max: MAX_TIMER_DELAY_MS,
+      });
+    } else if (a === "--out") {
+      const next = argv[++i];
+      if (
+        typeof next !== "string" ||
+        next.length === 0 ||
+        next.startsWith("--")
+      ) {
+        throw new Error("--out requires a file path value");
+      }
+      args.out = next;
+    } else if (a === "--timeout") {
+      args.timeout = parseDecimalInt(argv[++i], "--timeout", {
+        min: 1,
+        max: MAX_TIMER_DELAY_MS,
+      });
+    } else if (a === "--label") {
+      const next = argv[++i];
+      if (
+        typeof next !== "string" ||
+        next.length === 0 ||
+        next.startsWith("--")
+      ) {
+        throw new Error("--label requires a name value");
+      }
+      args.label = next;
+    } else if (a === "--headed") args.headed = true;
     else if (a === "--help" || a === "-h") {
-      console.log(`Usage: node scripts/measure-anonymous-login-transfer.mjs [options]
-  --url <url>       Login URL (default with --serve-dist: http://127.0.0.1:<port>/login)
-  --serve-dist      Serve packages/app/dist and measure /login
-  --dist-dir <path> Override dist directory (default: packages/app/dist)
-  --settle-ms <n>   Settle time after navigation (default 6000)
-  --out <path>      Write JSON report
-  --label <name>    Label this measurement (e.g. git sha)
-  --headed          Visible browser
-  --timeout <ms>    Navigation timeout (default 90000)`);
-      process.exit(0);
+      args.help = true;
     }
   }
   return args;
+}
+
+function printHelp() {
+  console.log(`Usage: node scripts/measure-anonymous-login-transfer.mjs [options]
+  --url <url>       Login URL (default with --serve-dist: http://127.0.0.1:<port>/login)
+  --serve-dist      Serve packages/app/dist and measure /login
+  --dist-dir <path> Override dist directory (default: packages/app/dist)
+  --settle-ms <n>   Settle time after navigation (default 6000; 0..${MAX_TIMER_DELAY_MS})
+  --out <path>      Write JSON report
+  --label <name>    Label this measurement (e.g. git sha)
+  --headed          Visible browser
+  --timeout <ms>    Navigation timeout (default 90000; 1..${MAX_TIMER_DELAY_MS})`);
 }
 
 function gitHead() {
@@ -249,8 +350,12 @@ function printSample(sample) {
   }
 }
 
-async function main() {
-  const args = parseArgs(process.argv);
+async function main(argv = process.argv) {
+  const args = parseArgs(argv);
+  if (args.help) {
+    printHelp();
+    process.exit(0);
+  }
   let server = null;
   let baseUrl = null;
   let loginUrl = args.url;
@@ -337,7 +442,26 @@ async function main() {
   process.exit(0);
 }
 
-main().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+function isDirectRun(entryPath) {
+  if (!entryPath) return false;
+  try {
+    return (
+      realpathSync(resolve(entryPath)) ===
+      realpathSync(fileURLToPath(import.meta.url))
+    );
+  } catch {
+    // error-policy:J3 an unresolved argv entry is not this module's CLI path
+    return false;
+  }
+}
+
+if (isDirectRun(process.argv[1])) {
+  // error-policy:J1 CLI boundary — invalid flags and measure failures exit
+  // non-zero with a legible message instead of an unhandled rejection.
+  main().catch((err) => {
+    console.error(
+      `[login-transfer] ${err instanceof Error ? err.message : err}`,
+    );
+    process.exit(1);
+  });
+}

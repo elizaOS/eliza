@@ -1,7 +1,9 @@
 version: 2
 updates:
-  # JS/TS workspace (root). Bun monorepo — pulls all workspace package.json files.
-  - package-ecosystem: "npm"
+  # JS/TS workspace (root). Bun monorepo — use bun ecosystem so dependabot
+  # commits bun.lock with package.json bumps (npm ecosystem was leaving
+  # frozen-lockfile CI red). See elizaOS/eliza#18756.
+  - package-ecosystem: "bun"
     directory: "/"
     schedule:
       interval: "weekly"

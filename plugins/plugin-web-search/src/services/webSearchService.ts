@@ -5,11 +5,20 @@
  * news / images / videos / suggestions / trending / page-info), normalizing
  * Tavily's responses to core's shared shape. Degrades gracefully: without
  * `TAVILY_API_KEY` it boots inert and throws a descriptive error on first use
- * rather than crashing boot. `getPageInfo` is a raw fetch + regex scrape (not
- * Tavily-backed); videos reuse web search since Tavily has no video endpoint.
+ * rather than crashing boot. `getPageInfo` scrapes title, description, meta
+ * tags, images, and links from untrusted HTML; the page bytes are always
+ * fetched through `fetchWithSsrfGuard` so private / loopback / link-local
+ * targets fail closed and redirect hops are revalidated. Videos reuse web
+ * search since Tavily has no video endpoint.
  */
 
-import { type IAgentRuntime, IWebSearchService, logger, ServiceType } from "@elizaos/core";
+import {
+    fetchWithSsrfGuard,
+    type IAgentRuntime,
+    IWebSearchService,
+    logger,
+    ServiceType,
+} from "@elizaos/core";
 import { tavily } from "@tavily/core";
 
 import type {
@@ -21,6 +30,32 @@ import type {
 } from "../types";
 
 export type TavilyClient = ReturnType<typeof tavily>;
+
+/** Bound how long a remote page-info endpoint may hang the action. */
+const PAGE_INFO_HTTP_TIMEOUT_MS = 15_000;
+/** Cap redirect hops so a hostile chain cannot spin the guard forever. */
+const PAGE_INFO_HTTP_MAX_REDIRECTS = 5;
+
+/**
+ * Deterministic-test seam for the SSRF-guarded page-info transport.
+ * Production leaves this unset so the guard uses Node-pinned defaults.
+ */
+export type PageInfoHttpTransport = Pick<
+    Parameters<typeof fetchWithSsrfGuard>[0],
+    "fetchImpl" | "lookupFn" | "pinnedFetchImpl"
+>;
+
+let pageInfoHttpTransportOverride: PageInfoHttpTransport | undefined;
+
+/**
+ * Override the SSRF-guarded HTTP transport used by {@link WebSearchService.getPageInfo}.
+ * Intended for unit tests only; production must leave this unset.
+ */
+export function setPageInfoHttpTransportForTests(
+    transport: PageInfoHttpTransport | undefined
+): void {
+    pageInfoHttpTransportOverride = transport;
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
     return Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -167,6 +202,125 @@ function freshnessToDays(freshness: NewsSearchOptions["freshness"]): number {
     }
 }
 
+function decodeHtmlEntities(text: string): string {
+    return text
+        .replace(/&amp;/g, "&")
+        .replace(/&lt;/g, "<")
+        .replace(/&gt;/g, ">")
+        .replace(/&quot;/g, '"')
+        .replace(/&#39;/g, "'")
+        .replace(/&apos;/g, "'")
+        .replace(/&#(\d+);/g, (_, code) => {
+            const num = Number(code);
+            return Number.isFinite(num) ? String.fromCharCode(num) : _;
+        })
+        .replace(/&#x([0-9a-fA-F]+);/g, (_, hex) => {
+            const num = parseInt(hex, 16);
+            return Number.isFinite(num) ? String.fromCharCode(num) : _;
+        });
+}
+
+function extractTitle(content: string, fallbackUrl: string): string {
+    const match = content.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+    if (!match?.[1]) return fallbackUrl;
+    const cleanText = match[1].replace(/<[^>]+>/g, "").trim();
+    return cleanText ? decodeHtmlEntities(cleanText) : fallbackUrl;
+}
+
+function extractMetaTags(content: string): {
+    description: string;
+    metadata: Record<string, string>;
+} {
+    const metadata: Record<string, string> = {};
+    let description = "";
+
+    const metaRegex = /<meta\s+([^>]+)>/gi;
+    let match = metaRegex.exec(content);
+    while (match !== null) {
+        const attrString = match[1];
+        const keyMatch = attrString.match(/(?:name|property)=["']([^"']+)["']/i);
+        const contentMatch = attrString.match(/content=["']([^"']*)["']/i);
+        if (keyMatch && contentMatch) {
+            const key = keyMatch[1].trim();
+            const val = decodeHtmlEntities(contentMatch[1].trim());
+            metadata[key] = val;
+            const lowerKey = key.toLowerCase();
+            if (
+                !description &&
+                (lowerKey === "description" ||
+                    lowerKey === "og:description" ||
+                    lowerKey === "twitter:description")
+            ) {
+                description = val;
+            }
+        }
+        match = metaRegex.exec(content);
+    }
+    return { description, metadata };
+}
+
+function resolveHttpUrl(raw: string, baseUrl: URL): string | null {
+    try {
+        const resolved = new URL(raw, baseUrl);
+        if (resolved.protocol !== "http:" && resolved.protocol !== "https:") {
+            return null;
+        }
+        return resolved.toString();
+    } catch {
+        // error-policy:J3 untrusted HTML may contain unparseable URL candidates
+        return null;
+    }
+}
+
+function extractImages(content: string, baseUrl: URL): string[] {
+    const images: string[] = [];
+    const seen = new Set<string>();
+    const imgRegex = /<img\s+[^>]*src=["']([^"']+)["']/gi;
+    let match = imgRegex.exec(content);
+    while (match !== null) {
+        const rawSrc = match[1].trim();
+        if (!rawSrc || rawSrc.startsWith("data:")) {
+            match = imgRegex.exec(content);
+            continue;
+        }
+        const resolved = resolveHttpUrl(rawSrc, baseUrl);
+        if (resolved && !seen.has(resolved)) {
+            seen.add(resolved);
+            images.push(resolved);
+            if (images.length >= 20) break;
+        }
+        match = imgRegex.exec(content);
+    }
+    return images;
+}
+
+function extractLinks(content: string, baseUrl: URL): string[] {
+    const links: string[] = [];
+    const seen = new Set<string>();
+    const anchorRegex = /<a\s+[^>]*href=["']([^"']+)["']/gi;
+    let match = anchorRegex.exec(content);
+    while (match !== null) {
+        const rawHref = match[1].trim();
+        if (
+            !rawHref ||
+            rawHref.startsWith("#") ||
+            rawHref.startsWith("javascript:") ||
+            rawHref.startsWith("mailto:")
+        ) {
+            match = anchorRegex.exec(content);
+            continue;
+        }
+        const resolved = resolveHttpUrl(rawHref, baseUrl);
+        if (resolved && !seen.has(resolved)) {
+            seen.add(resolved);
+            links.push(resolved);
+            if (links.length >= 50) break;
+        }
+        match = anchorRegex.exec(content);
+    }
+    return links;
+}
+
 export class WebSearchService extends IWebSearchService {
     static override serviceType = ServiceType.WEB_SEARCH;
     override capabilityDescription = "Web search and content discovery capabilities" as const;
@@ -290,27 +444,56 @@ export class WebSearchService extends IWebSearchService {
         try {
             parsedUrl = new URL(url);
         } catch {
+            // error-policy:J3 invalid caller URL is an explicit input failure
             throw new Error("Invalid page info URL");
         }
         if (parsedUrl.protocol !== "http:" && parsedUrl.protocol !== "https:") {
             throw new Error("Page info URL must use http or https");
         }
 
-        const response = await fetch(parsedUrl.toString());
-        if (!response.ok) {
-            throw new Error(`Failed to fetch page info: ${response.status} ${response.statusText}`);
+        // Caller-supplied page URLs are untrusted; never use raw fetch with
+        // automatic redirect following. The shared guard blocks private /
+        // loopback / link-local targets and revalidates every redirect hop.
+        const guarded = await fetchWithSsrfGuard({
+            url: parsedUrl.toString(),
+            timeoutMs: PAGE_INFO_HTTP_TIMEOUT_MS,
+            maxRedirects: PAGE_INFO_HTTP_MAX_REDIRECTS,
+            init: {
+                method: "GET",
+                redirect: "manual",
+            },
+            ...pageInfoHttpTransportOverride,
+        });
+        try {
+            if (!guarded.response.ok) {
+                throw new Error(
+                    `Failed to fetch page info: ${guarded.response.status} ${guarded.response.statusText}`
+                );
+            }
+            const content = await guarded.response.text();
+            // Prefer the post-redirect URL for relative image/link resolution.
+            let baseUrl = parsedUrl;
+            try {
+                baseUrl = new URL(guarded.finalUrl || parsedUrl.toString());
+            } catch {
+                // error-policy:J3 finalUrl is transport-reported; keep the
+                // pre-validated request URL if it is not a valid absolute URL.
+                baseUrl = parsedUrl;
+            }
+            const title = extractTitle(content, url);
+            const { description, metadata } = extractMetaTags(content);
+            const images = extractImages(content, baseUrl);
+            const links = extractLinks(content, baseUrl);
+            return {
+                title,
+                description,
+                content,
+                metadata,
+                images,
+                links,
+            };
+        } finally {
+            await guarded.release();
         }
-        const content = await response.text();
-        const title = content.match(/<title[^>]*>(.*?)<\/title>/i)?.[1] ?? url;
-        const description =
-            content.match(/<meta\s+name=["']description["']\s+content=["']([^"']+)/i)?.[1] ?? "";
-        return {
-            title,
-            description,
-            content,
-            metadata: {},
-            images: [],
-            links: [],
-        };
     }
 }

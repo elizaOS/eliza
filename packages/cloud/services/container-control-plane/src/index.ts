@@ -18,7 +18,10 @@ import { ApiError } from "@elizaos/cloud-shared/lib/api/errors";
 import { containersEnv } from "@elizaos/cloud-shared/lib/config/containers-env";
 import { runWithCloudBindingsAsync } from "@elizaos/cloud-shared/lib/runtime/cloud-bindings";
 import { chatSseFrame } from "@elizaos/cloud-shared/lib/services/chat-sse-frames";
-import { WarmPoolManager } from "@elizaos/cloud-shared/lib/services/containers/agent-warm-pool";
+import {
+  envWarmPoolPolicy,
+  WarmPoolManager,
+} from "@elizaos/cloud-shared/lib/services/containers/agent-warm-pool";
 import { getHetznerPoolContainerCreator } from "@elizaos/cloud-shared/lib/services/containers/agent-warm-pool-creator";
 import { evaluateForwardedDatabaseUrl } from "@elizaos/cloud-shared/lib/services/containers/forwarded-database-url-guard";
 import {
@@ -43,8 +46,13 @@ import { type Context, Hono } from "hono";
 let cachedWarmPoolManager: WarmPoolManager | null = null;
 function getWarmPoolManager(): WarmPoolManager {
   if (!cachedWarmPoolManager) {
+    // envWarmPoolPolicy, not the constructor default: the bare default pins
+    // minPoolSize to 1 and leaves WARM_POOL_MIN_SIZE/WARM_POOL_MAX_SIZE inert
+    // on the HTTP replenish/drainIdle/healthCheck path, which would let this
+    // control-plane instance flap against the env-configured daemon policy.
     cachedWarmPoolManager = new WarmPoolManager(
       getHetznerPoolContainerCreator(),
+      envWarmPoolPolicy(),
     );
   }
   return cachedWarmPoolManager;
@@ -1051,12 +1059,14 @@ app.delete("/api/compat/agents/:id", (c) =>
     const deleted = await elizaSandboxService.deleteAgent(
       agentId,
       auth.organizationId,
+      { authorization: "user_request" },
     );
     if (!deleted.success) {
       const status =
         deleted.error === "Agent not found"
           ? 404
-          : deleted.error === "Agent provisioning is in progress"
+          : deleted.error === "Agent provisioning is in progress" ||
+              deleted.error === "Agent is running; suspend it before deletion"
             ? 409
             : 500;
       return c.json(errorEnvelope(deleted.error), status);

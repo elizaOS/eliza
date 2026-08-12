@@ -128,6 +128,23 @@ export function decideRollout(
 // Pool manager (I/O — runs in container-control-plane).
 // ---------------------------------------------------------------------------
 
+/**
+ * The deployed policy: `DEFAULT_WARM_POOL_POLICY` with the operator-tunable
+ * floor/ceiling read from `WARM_POOL_MIN_SIZE` / `WARM_POOL_MAX_SIZE` (via
+ * `containersEnv`). Every production `WarmPoolManager` must be constructed
+ * with this — constructing with the bare default silently pins the floor to 1
+ * and makes the env vars inert.
+ *
+ * The ceiling is the hard cost cap, so a floor configured above it clamps
+ * down to the ceiling instead of tripping the `computeForecast`
+ * min<=max invariant.
+ */
+export function envWarmPoolPolicy(): WarmPoolPolicy {
+  const maxPoolSize = containersEnv.warmPoolMaxSize();
+  const minPoolSize = Math.min(containersEnv.warmPoolMinSize(), maxPoolSize);
+  return { ...DEFAULT_WARM_POOL_POLICY, minPoolSize, maxPoolSize };
+}
+
 export interface PoolContainerCreator {
   /**
    * Create a new pre-warmed agent container. Implementation lives in the
