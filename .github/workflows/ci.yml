@@ -322,7 +322,7 @@ jobs:
       # --ignore-scripts install never builds them. Turbo builds core plus its
       # dependency graph, matching the prelude in dev-smoke.yml.
       - name: Build @elizaos/core and workspace deps
-        if: needs.changes.outputs.desktop == 'true' && needs.changes.outputs.cloud != 'true'
+        if: needs.changes.outputs.desktop == 'true' && needs.changes.outputs.cloud != 'true' && needs.changes.outputs.zero_key != 'true'
         run: bunx turbo run build --filter=@elizaos/core --filter=@elizaos/shared
 
       # test:cloud reaches further than the desktop prelude: cloud service suites
@@ -333,7 +333,7 @@ jobs:
       # build:core is a superset of the desktop prelude, so it replaces the
       # narrow build rather than running alongside it.
       - name: Build core contract
-        if: needs.changes.outputs.cloud == 'true'
+        if: needs.changes.outputs.cloud == 'true' || needs.changes.outputs.zero_key == 'true'
         run: bun run build:core
 
       - name: Desktop startup smoke

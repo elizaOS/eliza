@@ -647,6 +647,19 @@ export default function StewardLoginSection() {
     );
   }
 
+  // UV errors surface when the Steward server or browser WebAuthn layer requires
+  // user verification (PIN/biometric) but the assertion didn't satisfy it. They
+  // must NOT silently fall through to startPasskeySignup() — the user already
+  // has a passkey; sending a setup OTP and re-running addPasskey() hits the same
+  // UV constraint and loops. See #18468.
+  function isUserVerificationError(e: unknown): boolean {
+    const msg = getErrorMessage(e, "").toLowerCase();
+    return (
+      msg.includes("user verification") ||
+      msg.includes("user could not be verified")
+    );
+  }
+
   async function handlePasskey() {
     if (!showPasskey) {
       if (providers.email !== false) {
@@ -669,8 +682,18 @@ export default function StewardLoginSection() {
         await auth.signInWithPasskey(email.trim()),
       );
       await handleSuccess(result.token, result.refreshToken);
-    } catch {
-      await startPasskeySignup();
+    } catch (e: unknown) {
+      if (isUserVerificationError(e)) {
+        setError(
+          getErrorMessage(
+            e,
+            "Passkey sign-in requires device verification (PIN or biometric). Your device may not support this — try Magic Link instead.",
+          ),
+        );
+        setLoading(null);
+      } else {
+        await startPasskeySignup();
+      }
     }
   }
 
