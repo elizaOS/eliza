@@ -1,4 +1,4 @@
-// Exercises payment requests behavior with deterministic cloud-shared lib fixtures.
+/** Exercises payment-request state and projection behavior with deterministic fixtures. */
 import { describe, expect, test } from "bun:test";
 import {
   type NewPaymentRequest,
@@ -7,7 +7,7 @@ import {
   type PaymentRequestRow,
   PaymentRequestsRepository,
 } from "../../db/repositories/payment-requests";
-import { createPaymentRequestsService } from "./payment-requests";
+import { createPaymentRequestsService, toPublicPaymentRequest } from "./payment-requests";
 
 class GuardedPaymentRequestsRepository extends PaymentRequestsRepository {
   createCalls = 0;
@@ -46,6 +46,38 @@ function fakeRow(id: string, organizationId: string): PaymentRequestRow {
     metadata: {},
   };
 }
+
+describe("toPublicPaymentRequest", () => {
+  test("returns an explicit checkout DTO and excludes every internal field", () => {
+    const row: PaymentRequestRow = {
+      ...fakeRow("pr-public", "org-secret"),
+      agentId: "agent-secret",
+      appId: "app-secret",
+      reason: "Premium plan",
+      payerIdentityId: "identity-secret",
+      payerUserId: "user-secret",
+      payerOrganizationId: "payer-org-secret",
+      hostedUrl: "https://checkout.example.test/session",
+      callbackUrl: "https://merchant.example.test/callback",
+      callbackSecret: "callback-secret",
+      providerIntent: { sessionSecret: "provider-secret" },
+      settlementTxRef: "settlement-secret",
+      settlementProof: { signature: "proof-secret" },
+      metadata: { internal: "metadata-secret" },
+    };
+
+    expect(toPublicPaymentRequest(row)).toEqual({
+      id: "pr-public",
+      provider: "stripe",
+      amountCents: 100,
+      currency: "USD",
+      reason: "Premium plan",
+      status: "expired",
+      hostedUrl: "https://checkout.example.test/session",
+      expiresAt: new Date(0),
+    });
+  });
+});
 
 /**
  * Records which expire path the service took. The GLOBAL sweep throws so any
