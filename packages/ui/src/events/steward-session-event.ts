@@ -1,22 +1,7 @@
-/** Publishes typed Steward session transitions without exposing credentials. */
+/** Re-exports the canonical typed Steward session transition contract. */
 
-export const STEWARD_SESSION_CHANGE_EVENT = "steward-session-change";
-
-export interface StewardSessionChangeDetail {
-  state: "present" | "cleared";
-  sessionEpoch: number;
-}
-
-let sessionEpoch = 0;
-
-export function dispatchStewardSessionChange(
-  state: StewardSessionChangeDetail["state"],
-): void {
-  if (typeof window === "undefined") return;
-  sessionEpoch += 1;
-  window.dispatchEvent(
-    new CustomEvent<StewardSessionChangeDetail>(STEWARD_SESSION_CHANGE_EVENT, {
-      detail: { state, sessionEpoch },
-    }),
-  );
-}
+export {
+  dispatchStewardSessionChange,
+  STEWARD_SESSION_CHANGE_EVENT,
+  type StewardSessionChangeDetail,
+} from "@elizaos/shared/steward-session-client";

@@ -9,7 +9,6 @@ import {
   STEWARD_TOKEN_KEY,
 } from "@elizaos/shared/steward-session-client";
 import { createContext } from "react";
-import { dispatchStewardSessionChange } from "../../events/steward-session-event";
 import { scrubPersistedAgentProfileTokens } from "../../state/agent-profiles";
 import { scrubPersistedActiveServerToken } from "../../state/persistence";
 import { decodeJwtPayload } from "../lib/jwt";
@@ -177,7 +176,6 @@ export function clearStaleStewardSession(): void {
   scrubPersistedActiveServerToken();
   scrubPersistedAgentProfileTokens();
   clearServerStewardSessionCookies();
-  dispatchStewardSessionChange("cleared");
   try {
     window.dispatchEvent(new CustomEvent("steward-token-sync"));
   } catch {
