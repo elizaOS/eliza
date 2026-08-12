@@ -173,6 +173,12 @@ export interface PlannerToolResult {
 	 * results. It is distinct from the conservative `turnComplete` fast path.
 	 */
 	continueChain?: boolean;
+	/**
+	 * Nested STOP/IGNORE authority carried through an umbrella tool result. The
+	 * parent loop treats this as deliberate silence and records the same terminal
+	 * identity; ordinary action results do not map into this field.
+	 */
+	silentTerminalAction?: "IGNORE" | "STOP";
 }
 
 export interface PlannerStep {

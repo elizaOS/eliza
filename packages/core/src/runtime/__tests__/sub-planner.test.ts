@@ -2,13 +2,19 @@
  * Exercises the sub-planner helpers (`actionHasSubActions`,
  * `detectSubActionCycles`, `resolveSubActions`, `runSubPlanner`): child-action
  * resolution and simile matching, native-tool exposure, context propagation,
- * role/context gating, and parent-result collapse after terminal persistence or
- * compaction. Mocked runtime with stubbed useModel/execute/evaluate; deterministic.
+ * role/context gating, and real nested-to-parent result collapse after terminal
+ * persistence or compaction. Scripted model/executor/evaluator doubles make the
+ * planner loops deterministic.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { subPlannerResultToPlannerToolResult } from "../../services/message";
-import type { Action, IAgentRuntime, Memory } from "../../types";
+import type { Action, ActionResult, IAgentRuntime, Memory } from "../../types";
 import { _resetActionRolePolicyCacheForTests } from "../action-role-policy";
+import {
+	type PlannerLoopResult,
+	type PlannerToolResult,
+	runPlannerLoop,
+} from "../planner-loop";
 import {
 	actionHasSubActions,
 	detectSubActionCycles,
@@ -50,6 +56,94 @@ function makeMessage(): Memory {
 		roomId: "room-id",
 		content: { text: "hello" },
 	} as Memory;
+}
+
+async function runNestedParent(args: {
+	childResult: ActionResult;
+	silentTerminal?: "IGNORE" | "STOP";
+}): Promise<{
+	result: PlannerLoopResult;
+	subResult: PlannerLoopResult;
+	collapsed: PlannerToolResult;
+	outerEvaluate: ReturnType<typeof vi.fn>;
+}> {
+	const child = makeAction({ name: "CHILD" });
+	const parent = makeAction({
+		name: "PARENT",
+		subActions: ["CHILD"],
+		subPlanner: true,
+	});
+	const innerUseModel = args.silentTerminal
+		? vi
+				.fn()
+				.mockResolvedValueOnce({
+					text: "",
+					toolCalls: [{ id: "child", name: "CHILD", arguments: {} }],
+				})
+				.mockResolvedValueOnce({
+					text: "",
+					toolCalls: [
+						{
+							id: "silent-terminal",
+							name: args.silentTerminal,
+							arguments: {},
+						},
+					],
+				})
+		: vi.fn(async () => ({
+				text: "",
+				toolCalls: [{ id: "child", name: "CHILD", arguments: {} }],
+			}));
+	const innerRuntime = makeRuntime([parent, child], innerUseModel);
+	let subResult: PlannerLoopResult | undefined;
+	let collapsed: PlannerToolResult | undefined;
+	const outerEvaluate = vi.fn(async () => ({
+		success: true,
+		decision: "FINISH" as const,
+		thought: "Revive a reply after the nested planner stopped.",
+		messageToUser: "REVIVED OUTER REPLY",
+	}));
+	const result = await runPlannerLoop({
+		runtime: {
+			useModel: vi.fn(async () => ({
+				text: "",
+				toolCalls: [{ id: "parent", name: "PARENT", arguments: {} }],
+			})),
+		},
+		context: { id: "outer", events: [] },
+		tools: [{ name: "PARENT", description: "Run the nested planner." }],
+		evaluate: outerEvaluate,
+		executeToolCall: async () => {
+			subResult = await runSubPlanner({
+				runtime: innerRuntime,
+				action: parent,
+				context: { id: "inner", events: [] },
+				ctx: { message: makeMessage() },
+				execute: vi.fn(async () => args.childResult),
+				...(args.silentTerminal
+					? {
+							evaluate: vi.fn(async () => ({
+								success: true,
+								decision: "CONTINUE" as const,
+								thought: "Let the nested planner choose its terminal.",
+							})),
+							config: {
+								contextWindowTokens: 1_200,
+								compactionReserveTokens: 1_000,
+								compactionKeepSteps: 0,
+							},
+						}
+					: {}),
+			});
+			collapsed = subPlannerResultToPlannerToolResult(subResult);
+			return collapsed;
+		},
+	});
+
+	if (!subResult || !collapsed) {
+		throw new Error("Nested planner did not produce a collapsed result");
+	}
+	return { result, subResult, collapsed, outerEvaluate };
 }
 
 describe("sub-planner helpers", () => {
@@ -271,6 +365,126 @@ describe("sub-planner helpers", () => {
 			data: { taskId: "task-archive" },
 		});
 	});
+
+	it.each([
+		{ name: "without a mutation receipt", withReceipt: false },
+		{ name: "with an applied mutation receipt", withReceipt: true },
+	])(
+		"keeps raw nested diagnostics out of the parent reply $name",
+		async ({ withReceipt }) => {
+			const observedAt = "2026-08-12T06:00:00.000Z";
+			const { result, collapsed, outerEvaluate } = await runNestedParent({
+				childResult: {
+					success: true,
+					text: "K9_SECRET",
+					userFacingText: "Canonical only.",
+					verifiedUserFacing: true,
+					...(withReceipt
+						? {
+								effectReceipts: [
+									{
+										receiptId: "receipt-nested-1",
+										operation: "nested.apply",
+										resource: { kind: "nested", id: "nested-1" },
+										artifacts: [],
+										idempotency: { key: "nested-1", replayed: false },
+										observedAt,
+										outcome: "applied" as const,
+										commit: {
+											kind: "durable" as const,
+											id: "nested-commit-1",
+											committedAt: observedAt,
+										},
+									},
+								],
+								userFacingEffectReceiptIds: ["receipt-nested-1"],
+							}
+						: {}),
+					data: { nestedId: "nested-1" },
+					continueChain: false,
+				},
+			});
+
+			// The aggregate remains available to planner/trajectory consumers, but
+			// the exact nested terminal is the only user-visible authority.
+			expect(collapsed.text).toContain("K9_SECRET");
+			expect(collapsed.userFacingText).toBe("Canonical only.");
+			expect(collapsed.continueChain).toBe(false);
+			expect(collapsed.data).toMatchObject({ nestedId: "nested-1" });
+			expect(result.finalMessage).toBe("Canonical only.");
+			expect(result.finalMessage).not.toContain("K9_SECRET");
+			expect(result.trajectory.steps.at(-1)?.terminalMessage).toBe(
+				result.finalMessage,
+			);
+			expect(outerEvaluate).not.toHaveBeenCalled();
+			if (withReceipt) {
+				expect(collapsed.verifiedUserFacing).toBe(true);
+				expect(collapsed.userFacingEffectReceiptIds).toEqual([
+					"receipt-nested-1",
+				]);
+			} else {
+				expect(collapsed.verifiedUserFacing).toBeUndefined();
+				expect(collapsed.userFacingEffectReceiptIds).toBeUndefined();
+			}
+		},
+	);
+
+	it("keeps a nested failure and its canonical failure text authoritative", async () => {
+		const { result, collapsed, outerEvaluate } = await runNestedParent({
+			childResult: {
+				success: false,
+				text: "FAILURE_DIAGNOSTIC_SECRET",
+				userFacingText: "The nested operation failed.",
+				verifiedUserFacing: true,
+				error: "nested failure",
+				data: { code: "NESTED_FAILURE" },
+				continueChain: false,
+			},
+		});
+
+		expect(collapsed).toMatchObject({
+			success: false,
+			userFacingText: "The nested operation failed.",
+			error: "nested failure",
+			data: { code: "NESTED_FAILURE" },
+			continueChain: false,
+		});
+		expect(result.finalMessage).toBe("The nested operation failed.");
+		expect(result.finalMessage).not.toContain("FAILURE_DIAGNOSTIC_SECRET");
+		expect(outerEvaluate).not.toHaveBeenCalled();
+	});
+
+	it.each(["STOP", "IGNORE"] as const)(
+		"propagates an archived nested %s as authoritative parent silence",
+		async (silentTerminal) => {
+			const { result, subResult, collapsed, outerEvaluate } =
+				await runNestedParent({
+					childResult: {
+						success: true,
+						text: `ARCHIVED_SECRET ${"private diagnostics ".repeat(500)}`,
+						userFacingText: "Do not revive this child answer.",
+					},
+					silentTerminal,
+				});
+
+			expect(subResult.trajectory.archivedSteps).toEqual([
+				expect.objectContaining({
+					toolCall: expect.objectContaining({ name: "CHILD" }),
+				}),
+			]);
+			expect(subResult.endedWithDeliberateSilence).toBe(true);
+			expect(subResult.silentTerminalAction).toBe(silentTerminal);
+			expect(collapsed.text).toContain("ARCHIVED_SECRET");
+			expect(collapsed.userFacingText).toBeUndefined();
+			expect(collapsed.continueChain).toBe(false);
+			expect(collapsed.silentTerminalAction).toBe(silentTerminal);
+			expect(result.endedWithDeliberateSilence).toBe(true);
+			expect(result.silentTerminalAction).toBe(silentTerminal);
+			expect(result.finalMessage).toBe("");
+			expect(result.trajectory.steps.at(-1)?.terminalOnly).not.toBe(true);
+			expect(outerEvaluate).not.toHaveBeenCalled();
+		},
+	);
 
 	it("resolves child action similes before rejecting sub-planner tool calls", async () => {
 		const child = makeAction({

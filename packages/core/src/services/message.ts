@@ -6555,13 +6555,18 @@ export function subPlannerResultToPlannerToolResult(
 		...(terminalVerifiedUserFacing ? { verifiedUserFacing: true } : {}),
 		data,
 		error: latestSubActionResult?.error,
+		...(subResult.endedWithDeliberateSilence && subResult.silentTerminalAction
+			? { silentTerminalAction: subResult.silentTerminalAction }
+			: {}),
 		// Propagate the terminal sub-action's chain signal to the parent
 		// loop. A sub-action that returns `continueChain: false` (e.g.
 		// TASKS_SPAWN_AGENT, fire-and-forget) terminates the sub-planner,
 		// but without this the parent planner loop never sees the flag,
 		// evaluates CONTINUE, and re-runs the umbrella action, producing
 		// duplicate spawns on a single user turn.
-		continueChain: latestSubActionResult?.continueChain,
+		continueChain: subResult.endedWithDeliberateSilence
+			? false
+			: latestSubActionResult?.continueChain,
 	};
 }
 

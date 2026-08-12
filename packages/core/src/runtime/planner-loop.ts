@@ -1111,30 +1111,30 @@ async function runPlannerLoopIterations(
 
 		const latestResult = allSteps(trajectory).at(-1)?.result;
 		if (latestResult?.continueChain === false) {
-			// `suppressPlannerReply` from terminal actions blanks finalMessage so a
-			// same-turn hallucinated `messageToUser` cannot leak past the transient
-			// filter (which only masks it on the *next* turn).
+			// Action-owned suppression and a nested silent terminal both blank the
+			// parent result so no same-turn fallback can revive a reply.
 			const suppressReply =
+				latestResult.silentTerminalAction !== undefined ||
 				(latestResult.data as { suppressPlannerReply?: unknown } | undefined)
 					?.suppressPlannerReply === true;
 			return {
 				status: "finished",
 				trajectory,
 				...(suppressReply ? { endedWithDeliberateSilence: true } : {}),
+				...(latestResult.silentTerminalAction
+					? { silentTerminalAction: latestResult.silentTerminalAction }
+					: {}),
 				finalMessage: suppressReply
 					? ""
 					: userSafeFinalMessage(
 							terminalMessageWithFailureAuthority(
 								trajectory,
-								// Coding mode: drop a junk/empty terminal reply and fall back to
-								// a synthesized "what I did" summary so the sub-agent never
-								// relays garbage or an empty reply after doing real work.
+								// `text` is diagnostic by contract. A chain stop selects only
+								// typed user-facing authority; coding mode may additionally use
+								// the action-owned summary already present in the trajectory.
 								codingDrainQueue
-									? codingFinalMessage(trajectory, latestResult.text)
-									: preferredFinalMessageFromToolOrModel(
-											trajectory,
-											latestResult.text,
-										),
+									? codingFinalMessage(trajectory)
+									: preferredFinalMessageFromToolOrModel(trajectory),
 							),
 							trajectory,
 						),
@@ -4481,7 +4481,7 @@ function stripReasoningArtifacts(text: string): string {
  */
 function codingFinalMessage(
 	trajectory: PlannerTrajectory,
-	modelMessage: unknown,
+	modelMessage?: unknown,
 ): string | undefined {
 	const cleaned =
 		typeof modelMessage === "string"
