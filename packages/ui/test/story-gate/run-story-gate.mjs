@@ -52,7 +52,7 @@ const rmRecursiveScript = resolve(pkgRoot, "../scripts/rm-path-recursive.mjs");
 // ---------------------------------------------------------------------------
 // args
 // ---------------------------------------------------------------------------
-function parseArgs(argv) {
+export function parseArgs(argv) {
   const a = {
     staticDir: "storybook-static",
     out: "test/story-gate/output",
@@ -71,8 +71,16 @@ function parseArgs(argv) {
     const next = () => argv[++i];
     if (arg === "--static-dir") a.staticDir = next();
     else if (arg === "--out") a.out = next();
-    else if (arg === "--concurrency") a.concurrency = Number(next());
-    else if (arg === "--shard") a.shard = next();
+    else if (arg === "--concurrency") {
+      const raw = next();
+      const concurrency = Number(raw);
+      if (!Number.isInteger(concurrency) || concurrency < 1) {
+        throw new Error(
+          `story-gate: --concurrency must be a positive integer (received ${raw === undefined ? "no value" : JSON.stringify(raw)})`,
+        );
+      }
+      a.concurrency = concurrency;
+    } else if (arg === "--shard") a.shard = next();
     else if (arg === "--section") a.section = next();
     else if (arg === "--grep") a.grep = next();
     else if (arg === "--limit") a.limit = Number(next());
