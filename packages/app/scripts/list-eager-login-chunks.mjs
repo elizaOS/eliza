@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+
 /**
  * List JS chunks eagerly reachable from packages/app/dist/index.html.
  * Complements #18056 cold transfer measurement with a static closure list.
@@ -7,10 +8,10 @@
  *   node scripts/list-eager-login-chunks.mjs [--out report.json]
  */
 
+import { execSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { execSync } from "node:child_process";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const appDir = resolve(here, "..");
@@ -64,16 +65,16 @@ function collectReferencedJsFiles() {
       if (!normalized.includes("/")) normalized = `assets/${normalized}`;
       else return;
     }
-    const file = normalized.slice(normalized.indexOf("assets/") + "assets/".length);
+    const file = normalized.slice(
+      normalized.indexOf("assets/") + "assets/".length,
+    );
     if (!file.endsWith(".js") || referenced.has(file)) return;
     if (!existsSync(join(distAssets, file))) return;
     referenced.add(file);
     pending.push(file);
   };
 
-  for (const m of indexHtml.matchAll(
-    /(?:src|href)=["']([^"']+\.js)["']/gi,
-  )) {
+  for (const m of indexHtml.matchAll(/(?:src|href)=["']([^"']+\.js)["']/gi)) {
     addAssetRef(m[1]);
   }
   for (const m of indexHtml.matchAll(
@@ -106,7 +107,11 @@ function collectReferencedJsFiles() {
 
 function classify(name) {
   const n = name.toLowerCase();
-  if (/vendor-crypto|vendor-wallet|vendor-solana|wagmi|viem|rainbow|walletconnect|solana/.test(n))
+  if (
+    /vendor-crypto|vendor-wallet|vendor-solana|wagmi|viem|rainbow|walletconnect|solana/.test(
+      n,
+    )
+  )
     return "wallet-crypto";
   if (/steward|stwd/.test(n)) return "steward";
   if (/cloud|login|register|router/.test(n)) return "cloud-shell";

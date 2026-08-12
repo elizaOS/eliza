@@ -40,7 +40,11 @@ function evaluateSample(sample, budget) {
   const findings = [];
   const checks = [
     ["maxTotalTransferBytes", "transferBytes", "baselineTotalTransferBytes"],
-    ["maxScriptTransferBytes", "scriptTransferBytes", "baselineScriptTransferBytes"],
+    [
+      "maxScriptTransferBytes",
+      "scriptTransferBytes",
+      "baselineScriptTransferBytes",
+    ],
     ["maxScriptCount", "scripts", "baselineScriptCount"],
   ];
   for (const [maxKey, valueKey, baselineKey] of checks) {
@@ -133,13 +137,12 @@ function main() {
   for (const block of allFindings) {
     console.log(`\n[${block.viewport}]`);
     for (const f of block.findings) {
-      console.log(`  ${f.status.padEnd(16)} ${f.metric} value=${f.value ?? "n/a"}${f.max != null ? ` max=${f.max}` : ""}`);
+      console.log(
+        `  ${f.status.padEnd(16)} ${f.metric} value=${f.value ?? "n/a"}${f.max != null ? ` max=${f.max}` : ""}`,
+      );
       if (f.status === "missing-budget") {
         /* not calibrated yet */
-      } else if (
-        f.status === "over-budget" ||
-        f.status === "missing-metric"
-      ) {
+      } else if (f.status === "over-budget" || f.status === "missing-metric") {
         hardFail = true;
       }
       if (f.status === "pass" || f.status === "over-budget") anyCeiling = true;
