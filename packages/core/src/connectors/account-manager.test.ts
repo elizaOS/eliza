@@ -270,6 +270,25 @@ describe("ConnectorAccountManager", () => {
 		).rejects.toThrow(/already used|unknown|expired/i);
 	});
 
+	it("persists the canonical redirect URI selected by an OAuth provider", async () => {
+		const runtime = makeRuntime();
+		const manager = getConnectorAccountManager(runtime);
+		manager.registerProvider({
+			provider: "oauth-canonical",
+			startOAuth: () => ({
+				authUrl: "https://auth.example/start",
+				redirectUri:
+					"http://127.0.0.1:31437/api/connectors/example/oauth/callback",
+			}),
+		});
+
+		const flow = await manager.startOAuth("oauth-canonical");
+
+		expect(flow.redirectUri).toBe(
+			"http://127.0.0.1:31437/api/connectors/example/oauth/callback",
+		);
+	});
+
 	it("requires a verified owner-binding lookup for owner-bound policies", async () => {
 		const runtime = makeRuntime();
 		const manager = getConnectorAccountManager(runtime);
