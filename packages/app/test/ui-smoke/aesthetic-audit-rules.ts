@@ -125,6 +125,12 @@ export interface VerdictFinding {
   renderStateIssues?: string[];
   /** Readable text length in the view root; ~0 means the view never painted. */
   readableChars: number;
+  /**
+   * Whether the view's closed OCR semantic expectation matched. `null` means
+   * the caller has no declared expectation, so the generic readable-character
+   * floor remains the only available content signal.
+   */
+  semanticReady: boolean | null;
   /** Border/divider edges per 1M viewport pixels. */
   borderDividerDensity: number;
   /** Visible text characters per 10K viewport pixels. */
@@ -551,8 +557,10 @@ export function computeVerdict(finding: VerdictFinding): AestheticVerdict {
   if (
     finding.consoleErrors.length > 0 ||
     (finding.renderStateIssues?.length ?? 0) > 0 ||
+    finding.semanticReady === false ||
     (!exempt &&
-      (finding.qualityIssues.length > 0 || finding.readableChars < 10))
+      (finding.qualityIssues.length > 0 ||
+        (finding.semanticReady === null && finding.readableChars < 10)))
   ) {
     return "broken";
   }
