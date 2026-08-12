@@ -2470,6 +2470,7 @@ export type {
   AgentType,
   ApprovalPreset,
   AvailableAgentInfo,
+  PromptProviderDisposition,
   PromptResult,
   SendOptions,
   SessionEventCallback,

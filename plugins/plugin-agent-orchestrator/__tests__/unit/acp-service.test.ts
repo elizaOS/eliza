@@ -1735,6 +1735,17 @@ describe("AcpService", () => {
     expect(result.response).not.toContain('"metadata"');
     expect(taskCompletePayloads[0]?.response).toBe(result.response);
     expect(result.stopReason).toBe("end_turn");
+    expect(result.providerDisposition).toMatchObject({
+      kind: "accepted",
+      receipt: {
+        receiptId: expect.stringMatching(
+          new RegExp(`^cli:${sessionId}:[^:]+:req-1$`),
+        ),
+        transport: "cli",
+        protocolSessionId: sessionId,
+        requestId: expect.stringMatching(/^[^:]+:req-1$/),
+      },
+    });
     expect(toolPayloads).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -1802,10 +1813,83 @@ describe("AcpService", () => {
     expect(result).toMatchObject({
       stopReason: "max_tokens",
       finalText: "partial output",
+      providerDisposition: {
+        kind: "unknown",
+        code: "ACP_PROMPT_MAX_TOKENS_UNSETTLED",
+        effectsMayHaveOccurred: true,
+      },
     });
     expect(events).not.toContain("task_complete");
     expect(events).not.toContain("stopped");
     expect((await service.getSession(sessionId))?.status).toBe("ready");
+  });
+
+  it("keeps a clean CLI exit without a terminal ACP result unaccepted", async () => {
+    const create = nextProc();
+    const service = new AcpService(runtime());
+    await service.start();
+    const spawned = service.spawnSession({
+      name: "cli-no-terminal-result",
+      agentType: "codex",
+      workdir: "/tmp/acp-test",
+    });
+    await waitForSpawn(create);
+    closeOk(create);
+    const { sessionId } = await spawned;
+
+    const prompt = nextProc();
+    const sent = service.sendPrompt(sessionId, "continue the task");
+    await waitForSpawn(prompt);
+    prompt.proc.stdout.emit(
+      "data",
+      Buffer.from(
+        `{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"${sessionId}","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"local clean output"}}}}\n`,
+      ),
+    );
+    closeOk(prompt);
+
+    const result = await sent;
+    expect(result).toMatchObject({
+      stopReason: "end_turn",
+      finalText: "local clean output",
+      providerDisposition: {
+        kind: "unknown",
+        code: "ACP_PROMPT_RESPONSE_UNOBSERVED",
+        effectsMayHaveOccurred: true,
+      },
+    });
+  });
+
+  it("keeps a CLI terminal result without protocol-session correlation unaccepted", async () => {
+    const create = nextProc();
+    const service = new AcpService(runtime());
+    await service.start();
+    const spawned = service.spawnSession({
+      name: "cli-uncorrelated-result",
+      agentType: "codex",
+      workdir: "/tmp/acp-test",
+    });
+    await waitForSpawn(create);
+    closeOk(create);
+    const { sessionId } = await spawned;
+
+    const prompt = nextProc();
+    const sent = service.sendPrompt(sessionId, "continue the task");
+    await waitForSpawn(prompt);
+    prompt.proc.stdout.emit(
+      "data",
+      Buffer.from(
+        '{"jsonrpc":"2.0","id":"req-uncorrelated","result":{"stopReason":"end_turn"}}\n',
+      ),
+    );
+    closeOk(prompt);
+
+    const result = await sent;
+    expect(result.providerDisposition).toEqual({
+      kind: "unknown",
+      code: "ACP_PROMPT_RESPONSE_UNCORRELATED",
+      effectsMayHaveOccurred: true,
+    });
   });
 
   it("flushes raw stdout before advertising stdoutLogPath on task_complete", async () => {
@@ -2292,6 +2376,11 @@ describe("AcpService", () => {
     expect(client.cancel).toHaveBeenCalledWith("protocol-session");
     expect(result.stopReason).toBe("cancelled");
     expect(result.error).toBeUndefined();
+    expect(result.providerDisposition).toEqual({
+      kind: "unknown",
+      code: "ACP_PROMPT_CANCELLED",
+      effectsMayHaveOccurred: true,
+    });
     expect((await service.getSession(sessionId))?.status).toBe("cancelled");
   });
 
@@ -2648,6 +2737,11 @@ describe("AcpService", () => {
     const result = await sent;
     expect(result.stopReason).toBe("cancelled");
     expect(result.error).toBeUndefined();
+    expect(result.providerDisposition).toEqual({
+      kind: "unknown",
+      code: "ACP_PROMPT_CANCELLED",
+      effectsMayHaveOccurred: true,
+    });
     expect((await service.getSession(sessionId))?.status).toBe("cancelled");
     expect(events).toContain("cancelled");
     expect(events).not.toContain("error");
@@ -2730,7 +2824,12 @@ describe("AcpService", () => {
       Buffer.from("401 unauthorized authenticate failed"),
     );
     setImmediate(() => prompt.proc.emit("close", 1, null));
-    await sent;
+    const result = await sent;
+    expect(result.providerDisposition).toEqual({
+      kind: "unknown",
+      code: "ACP_PROMPT_NONZERO_EXIT",
+      effectsMayHaveOccurred: true,
+    });
     expect(errors).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ failureKind: "auth" }),

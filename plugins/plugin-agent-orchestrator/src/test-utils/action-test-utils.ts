@@ -42,6 +42,18 @@ export function serviceMock(overrides: Record<string, unknown> = {}) {
       finalText: "done",
       stopReason: "end_turn",
       durationMs: 12,
+      exitCode: 0,
+      signal: null,
+      providerDisposition: {
+        kind: "accepted" as const,
+        receipt: {
+          receiptId: `native:${sid}:1`,
+          acceptedAt: "2026-05-03T10:00:00.000Z",
+          transport: "native" as const,
+          protocolSessionId: sid,
+          requestId: "1",
+        },
+      },
     })),
     sendToSession: vi.fn(async (sid: string) => ({
       sessionId: sid,
@@ -49,6 +61,18 @@ export function serviceMock(overrides: Record<string, unknown> = {}) {
       finalText: "ok",
       stopReason: "end_turn",
       durationMs: 5,
+      exitCode: 0,
+      signal: null,
+      providerDisposition: {
+        kind: "accepted" as const,
+        receipt: {
+          receiptId: `native:${sid}:2`,
+          acceptedAt: "2026-05-03T10:00:00.000Z",
+          transport: "native" as const,
+          protocolSessionId: sid,
+          requestId: "2",
+        },
+      },
     })),
     sendKeysToSession: vi.fn(async () => undefined),
     stopSession: vi.fn(async () => undefined),

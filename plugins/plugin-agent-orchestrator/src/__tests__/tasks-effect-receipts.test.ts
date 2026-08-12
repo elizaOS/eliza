@@ -85,7 +85,7 @@ describe("TASKS effect receipts", () => {
     expect(sendToSession).toHaveBeenCalledOnce();
     expect(result).toMatchObject({
       success: false,
-      error: "AUTHORITATIVE_RECEIPT_MISSING",
+      error: "ACP_SEND_ACCEPTANCE_UNKNOWN",
       turnComplete: true,
       continueChain: false,
       data: {
@@ -97,8 +97,9 @@ describe("TASKS effect receipts", () => {
     expect(result?.effectReceipts).toEqual([
       expect.objectContaining({
         outcome: "failed",
+        resource: { kind: "acp.session", id: SESSION_ID },
         failure: {
-          code: "AUTHORITATIVE_RECEIPT_MISSING",
+          code: "ACP_SEND_ACCEPTANCE_UNKNOWN",
           retryable: false,
           acceptance: "unknown",
         },
@@ -110,7 +111,7 @@ describe("TASKS effect receipts", () => {
     // Receipt settlement provides canonical planner input without leaking a
     // raw tool callback; the turn evaluator remains the sole visible voice.
     expect(replies).toEqual([]);
-    expect(result?.userFacingText).toContain("no authoritative commit receipt");
+    expect(result?.userFacingText).toContain("outcome is unknown");
     expect(result?.verifiedUserFacing).toBeUndefined();
     expect(result?.userFacingEffectReceiptIds).toBeUndefined();
   });

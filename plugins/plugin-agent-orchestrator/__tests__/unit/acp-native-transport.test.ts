@@ -223,6 +223,73 @@ describe("NativeAcpClient JSON-RPC lifecycle", () => {
     );
   });
 
+  it("binds provider acceptance to the correlated session/prompt response", async () => {
+    const { client, p } = await startClient();
+    const prompted = client.prompt("protocol-session", "continue");
+    await waitForWrites(p, 2);
+    const requestId = writeAt(p, 1).id as number;
+
+    emitJson(p, {
+      jsonrpc: "2.0",
+      id: requestId,
+      result: { stopReason: "end_turn" },
+    });
+
+    await expect(prompted).resolves.toMatchObject({
+      stopReason: "end_turn",
+      providerDisposition: {
+        kind: "accepted",
+        receipt: {
+          receiptId: `native:protocol-session:${requestId}`,
+          transport: "native",
+          protocolSessionId: "protocol-session",
+          requestId: String(requestId),
+          acceptedAt: expect.any(String),
+        },
+      },
+    });
+  });
+
+  it("does not synthesize acceptance when a prompt response omits stopReason", async () => {
+    const { client, p } = await startClient();
+    const prompted = client.prompt("protocol-session", "continue");
+    await waitForWrites(p, 2);
+
+    emitJson(p, { jsonrpc: "2.0", id: writeAt(p, 1).id, result: {} });
+
+    await expect(prompted).resolves.toEqual({
+      stopReason: "unknown",
+      providerDisposition: {
+        kind: "unknown",
+        code: "ACP_PROMPT_RESPONSE_INVALID",
+        effectsMayHaveOccurred: true,
+      },
+    });
+  });
+
+  it.each(["refusal", "content_filter"])(
+    "records an explicit %s prompt response as provider rejection",
+    async (stopReason) => {
+      const { client, p } = await startClient();
+      const prompted = client.prompt("protocol-session", "continue");
+      await waitForWrites(p, 2);
+
+      emitJson(p, {
+        jsonrpc: "2.0",
+        id: writeAt(p, 1).id,
+        result: { stopReason },
+      });
+
+      await expect(prompted).resolves.toMatchObject({
+        stopReason,
+        providerDisposition: {
+          kind: "rejected",
+          code: "ACP_PROMPT_REJECTED",
+        },
+      });
+    },
+  );
+
   it("falls back from session/cancel request to notification when rejected", async () => {
     const { client, p } = await startClient();
 

@@ -63,6 +63,7 @@ import {
 import { requireTaskAgentAccess } from "../services/task-policy.js";
 import {
   type AgentType,
+  type PromptProviderDisposition,
   type SessionInfo,
   type SpawnResult,
   TERMINAL_SESSION_STATUSES,
@@ -159,6 +160,85 @@ const RUNTIME_LANE_FAILURE_TEXT =
 
 const TASK_AGENT_LAUNCH_FAILURE_TEXT =
   "I couldn't start every requested task agent. Review the created task and session state before retrying.";
+
+const TASK_AGENT_SEND_ACCEPTANCE_UNKNOWN_TEXT =
+  "The coding-agent follow-up did not reach an accepted provider result. Its outcome is unknown; inspect the session before retrying.";
+
+const TASK_AGENT_SEND_REJECTED_TEXT =
+  "The coding-agent provider declined the follow-up. No accepted provider result was recorded.";
+
+function settlePromptResult(
+  expectedSessionId: string,
+  value: unknown,
+): PromptProviderDisposition {
+  const result = objectValue(value);
+  if (!result || result.sessionId !== expectedSessionId) {
+    return {
+      kind: "unknown",
+      code: result
+        ? "ACP_PROMPT_SESSION_MISMATCH"
+        : "ACP_PROMPT_RESULT_MISSING",
+      effectsMayHaveOccurred: true,
+    };
+  }
+  const disposition = objectValue(result.providerDisposition);
+  if (!disposition || typeof disposition.kind !== "string") {
+    return {
+      kind: "unknown",
+      code: "ACP_PROMPT_DISPOSITION_MISSING",
+      effectsMayHaveOccurred: true,
+    };
+  }
+  if (disposition.kind === "rejected") {
+    return {
+      kind: "rejected",
+      code: effectString(disposition.code) ?? "ACP_PROMPT_REJECTED",
+      message: TASK_AGENT_SEND_REJECTED_TEXT,
+    };
+  }
+  if (disposition.kind === "unknown") {
+    return {
+      kind: "unknown",
+      code: effectString(disposition.code) ?? "ACP_PROMPT_OUTCOME_UNKNOWN",
+      effectsMayHaveOccurred: disposition.effectsMayHaveOccurred !== false,
+    };
+  }
+  const receipt = objectValue(disposition.receipt);
+  const receiptId = effectString(receipt?.receiptId);
+  const acceptedAt = effectString(receipt?.acceptedAt);
+  const transport = receipt?.transport;
+  const protocolSessionId = effectString(receipt?.protocolSessionId);
+  const requestId = effectString(receipt?.requestId);
+  if (
+    disposition.kind !== "accepted" ||
+    result.stopReason !== "end_turn" ||
+    result.exitCode !== 0 ||
+    result.signal !== null ||
+    result.error !== undefined ||
+    !receiptId ||
+    !acceptedAt ||
+    Number.isNaN(Date.parse(acceptedAt)) ||
+    (transport !== "native" && transport !== "cli") ||
+    !protocolSessionId ||
+    !requestId
+  ) {
+    return {
+      kind: "unknown",
+      code: "ACP_PROMPT_DISPOSITION_INCONSISTENT",
+      effectsMayHaveOccurred: true,
+    };
+  }
+  return {
+    kind: "accepted",
+    receipt: {
+      receiptId,
+      acceptedAt,
+      transport,
+      protocolSessionId,
+      requestId,
+    },
+  };
+}
 
 const LANE_PLAN_SAFETY_GUIDANCE: Readonly<Record<string, string>> = {
   LANE_PLAN_TOO_MANY:
@@ -2389,9 +2469,42 @@ async function runSend(
         target.session.id,
         textInput,
       );
-      const providerAccepted =
-        effectString(objectValue(promptResult)?.sessionId) ===
-        target.session.id;
+      const settlement = settlePromptResult(target.session.id, promptResult);
+      if (settlement.kind !== "accepted") {
+        logger(runtime).warn(
+          {
+            src: "tasks",
+            operation: "send",
+            targetSessionId: target.session.id,
+            providerSettlement: settlement.kind,
+            providerCode: settlement.code,
+          },
+          "[TASKS:send] provider acceptance could not be established",
+        );
+        const rejected = settlement.kind === "rejected";
+        const publicText = rejected
+          ? TASK_AGENT_SEND_REJECTED_TEXT
+          : TASK_AGENT_SEND_ACCEPTANCE_UNKNOWN_TEXT;
+        return {
+          success: false,
+          error: rejected
+            ? "ACP_PROMPT_REJECTED"
+            : "ACP_SEND_ACCEPTANCE_UNKNOWN",
+          text: publicText,
+          userFacingText: publicText,
+          turnComplete: true,
+          continueChain: false,
+          data: {
+            sessionId: target.session.id,
+            input: textInput,
+            providerAccepted: false,
+            providerAcceptance: settlement.kind,
+            reconciliationRequired: !rejected,
+            retryable: false,
+            ...(task ? { task } : {}),
+          },
+        };
+      }
       const text = task ? "Assigned new task to agent" : "Sent input to agent";
       return {
         success: true,
@@ -2399,7 +2512,10 @@ async function runSend(
         data: {
           sessionId: target.session.id,
           input: textInput,
-          providerAccepted,
+          providerAccepted: true,
+          providerReceiptId: settlement.receipt.receiptId,
+          providerAcceptedAt: settlement.receipt.acceptedAt,
+          providerTransport: settlement.receipt.transport,
           ...(task ? { task } : {}),
         },
       };
@@ -4407,6 +4523,7 @@ async function runReopen(
 type TasksEffectProof = {
   commitId: string;
   commitKind: "durable" | "provider_accepted";
+  committedAt?: string;
   resource: { kind: string; id: string };
   artifacts?: Array<{ kind: string; id: string }>;
 };
@@ -4423,6 +4540,7 @@ const TASKS_READ_ONLY_OPERATIONS: ReadonlySet<TaskOp> = new Set([
 ]);
 
 const TASKS_REJECTED_FAILURE_CODES: ReadonlySet<string> = new Set([
+  "ACP_PROMPT_REJECTED",
   "EMPTY_TASK_PROMPT",
   "FORBIDDEN",
   "INVALID_CREDENTIALS",
@@ -4719,10 +4837,17 @@ function tasksEffectProof(
   }
   if (operation === "send") {
     const sessionId = effectString(data.sessionId);
-    return sessionId && data.providerAccepted === true
+    const providerReceiptId = effectString(data.providerReceiptId);
+    const providerAcceptedAt = effectString(data.providerAcceptedAt);
+    return sessionId &&
+      providerReceiptId &&
+      providerAcceptedAt &&
+      !Number.isNaN(Date.parse(providerAcceptedAt)) &&
+      data.providerAccepted === true
       ? {
-          commitId: sessionId,
+          commitId: providerReceiptId,
           commitKind: "provider_accepted",
+          committedAt: providerAcceptedAt,
           resource: { kind: "acp.session", id: sessionId },
         }
       : undefined;
@@ -4796,7 +4921,11 @@ function tasksEffectReceipt(args: {
       receipt: {
         ...tasksReceiptBase(
           args.operation,
-          proof?.resource ?? { kind: "orchestrator.request", id: requestId },
+          proof?.resource ??
+            tasksFailedEffectResource(args.operation, resultData) ?? {
+              kind: "orchestrator.request",
+              id: requestId,
+            },
         ),
         artifacts: proof?.artifacts ?? [],
         outcome: "failed",
@@ -4826,7 +4955,7 @@ function tasksEffectReceipt(args: {
         commit: {
           kind: proof.commitKind,
           id: proof.commitId,
-          committedAt: observedAt,
+          committedAt: proof.committedAt ?? observedAt,
         },
       },
       outcomeUnknown: false,
@@ -4848,6 +4977,15 @@ function tasksEffectReceipt(args: {
     },
     outcomeUnknown: true,
   };
+}
+
+function tasksFailedEffectResource(
+  operation: TaskOp,
+  data: Record<string, unknown>,
+): { kind: string; id: string } | undefined {
+  if (operation !== "send") return undefined;
+  const sessionId = effectString(data.sessionId);
+  return sessionId ? { kind: "acp.session", id: sessionId } : undefined;
 }
 
 function unverifiedTasksText(operation: TaskOp): string {

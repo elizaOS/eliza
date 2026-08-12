@@ -215,6 +215,28 @@ export interface SendOptions {
   model?: string;
 }
 
+export type PromptProviderDisposition =
+  | {
+      kind: "accepted";
+      receipt: {
+        receiptId: string;
+        acceptedAt: string;
+        transport: "native" | "cli";
+        protocolSessionId: string;
+        requestId: string;
+      };
+    }
+  | {
+      kind: "rejected";
+      code: string;
+      message: string;
+    }
+  | {
+      kind: "unknown";
+      code: string;
+      effectsMayHaveOccurred: boolean;
+    };
+
 export interface PromptResult {
   sessionId: string;
   response: string;
@@ -224,6 +246,7 @@ export interface PromptResult {
   exitCode?: number | null;
   signal?: NodeJS.Signals | null;
   error?: string;
+  providerDisposition: PromptProviderDisposition;
 }
 
 export interface AvailableAgentInfo {

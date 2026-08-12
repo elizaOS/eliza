@@ -94,6 +94,10 @@ import {
   PARENT_AGENT_BROKER_MANIFEST_ENTRY,
 } from "./parent-agent-broker.js";
 import {
+  classifyPromptProviderResponse,
+  unknownPromptProviderDisposition,
+} from "./prompt-provider-disposition.js";
+import {
   AcpSessionStore,
   InMemorySessionStore,
   type SessionStoreBackend,
@@ -121,6 +125,7 @@ import {
   type AgentType,
   type ApprovalPreset,
   type AvailableAgentInfo,
+  type PromptProviderDisposition,
   type PromptResult,
   type SendOptions,
   SessionCapError,
@@ -209,6 +214,7 @@ type RunResult = {
   stopReason?: string;
   cancelled?: boolean;
   durationMs: number;
+  providerDisposition: PromptProviderDisposition;
 };
 
 const STDERR_CAP_BYTES = 64 * 1024;
@@ -2200,6 +2206,9 @@ export class AcpService extends Service {
       activeForSession: true,
     });
 
+    // Preserve the historical display reason for clean CLI adapters that exit
+    // without a terminal ACP envelope. `providerDisposition` remains unknown in
+    // that case, so this local label can never authorize an effect receipt.
     const stopReason =
       result.stopReason ??
       (result.cancelled
@@ -2207,6 +2216,13 @@ export class AcpService extends Service {
         : result.code === 0
           ? "end_turn"
           : "error");
+    const providerDisposition = result.cancelled
+      ? unknownPromptProviderDisposition("ACP_PROMPT_CANCELLED", true)
+      : result.signal !== null
+        ? unknownPromptProviderDisposition("ACP_PROMPT_SIGNALED", true)
+        : result.code !== 0
+          ? unknownPromptProviderDisposition("ACP_PROMPT_NONZERO_EXIT", true)
+          : result.providerDisposition;
     const promptResult: PromptResult = {
       sessionId,
       response: result.finalText,
@@ -2215,6 +2231,7 @@ export class AcpService extends Service {
       durationMs: result.durationMs || Date.now() - startedAt,
       exitCode: result.code,
       signal: result.signal,
+      providerDisposition,
       ...(result.code !== 0 && !result.cancelled
         ? { error: this.classifyExitError(result.code, result.stderr) }
         : {}),
@@ -3110,6 +3127,13 @@ export class AcpService extends Service {
         durationMs: Date.now() - startedAt,
         exitCode: 0,
         signal: null,
+        providerDisposition:
+          stopped || cancelled
+            ? unknownPromptProviderDisposition(
+                stopped ? "ACP_PROMPT_STOPPED" : "ACP_PROMPT_CANCELLED",
+                true,
+              )
+            : result.providerDisposition,
         ...(finalStopReason === "error" && !finalText?.trim()
           ? { error: "ACP prompt ended with stopReason error" }
           : {}),
@@ -3154,6 +3178,10 @@ export class AcpService extends Service {
           durationMs: Date.now() - startedAt,
           exitCode: null,
           signal: null,
+          providerDisposition: unknownPromptProviderDisposition(
+            "ACP_PROMPT_STOPPED",
+            true,
+          ),
         };
       }
       if (this.nativeCancelledPromptSessionIds.has(session.id)) {
@@ -3167,6 +3195,10 @@ export class AcpService extends Service {
           durationMs: Date.now() - startedAt,
           exitCode: null,
           signal: null,
+          providerDisposition: unknownPromptProviderDisposition(
+            "ACP_PROMPT_CANCELLED",
+            true,
+          ),
         };
       }
       await this.store.updateStatus(session.id, "errored", message);
@@ -3180,6 +3212,10 @@ export class AcpService extends Service {
         exitCode: 1,
         signal: null,
         error: message,
+        providerDisposition: unknownPromptProviderDisposition(
+          "ACP_PROMPT_TRANSPORT_ERROR",
+          true,
+        ),
       };
     } finally {
       client.setEventHandler((event, protocolSessionId) => {
@@ -3341,8 +3377,12 @@ export class AcpService extends Service {
 
   private runAcpx(opts: RunOptions): Promise<RunResult> {
     const startedAt = Date.now();
+    const providerInvocationId = opts.activeForSession
+      ? randomUUID()
+      : undefined;
     let finalText = "";
     let stopReason: string | undefined;
+    let providerDisposition: PromptProviderDisposition | undefined;
     const capturedToolOutputs = new Set<string>();
     const missingCliMessage = this.missingCliMessage();
     if (missingCliMessage) {
@@ -3355,6 +3395,10 @@ export class AcpService extends Service {
         stderr: missingCliMessage,
         finalText: "",
         durationMs: Date.now() - startedAt,
+        providerDisposition: unknownPromptProviderDisposition(
+          "ACP_PROMPT_TRANSPORT_UNAVAILABLE",
+          false,
+        ),
       });
     }
     return new Promise((resolveRun) => {
@@ -3410,9 +3454,13 @@ export class AcpService extends Service {
                 opts.activeForSession === true,
                 capturedToolOutputs,
                 opts.activeForSession === true,
+                "cli",
+                providerInvocationId,
               );
               finalText = handled.finalText;
               stopReason = handled.stopReason ?? stopReason;
+              providerDisposition =
+                handled.providerDisposition ?? providerDisposition;
             }
           }
           newlineIndex = record.stdoutBuffer.indexOf("\n");
@@ -3452,9 +3500,13 @@ export class AcpService extends Service {
               opts.activeForSession === true,
               capturedToolOutputs,
               opts.activeForSession === true,
+              "cli",
+              providerInvocationId,
             );
             finalText = handled.finalText;
             stopReason = handled.stopReason ?? stopReason;
+            providerDisposition =
+              handled.providerDisposition ?? providerDisposition;
           }
         }
         if (
@@ -3572,6 +3624,12 @@ export class AcpService extends Service {
           stopReason: record.cancelled ? "cancelled" : stopReason,
           cancelled: record.cancelled,
           durationMs: Date.now() - startedAt,
+          providerDisposition:
+            providerDisposition ??
+            unknownPromptProviderDisposition(
+              "ACP_PROMPT_RESPONSE_UNOBSERVED",
+              true,
+            ),
         });
       });
 
@@ -3608,7 +3666,13 @@ export class AcpService extends Service {
     emitPromptTerminalEvents: boolean,
     capturedToolOutputs: Set<string>,
     deferPromptTerminalEvent = false,
-  ): { finalText: string; stopReason?: string } {
+    providerTransport?: "cli",
+    providerInvocationId?: string,
+  ): {
+    finalText: string;
+    stopReason?: string;
+    providerDisposition?: PromptProviderDisposition;
+  } {
     const protocolSessionId = extractSessionId(event);
     const sessionId = localSessionId ?? protocolSessionId;
     if (
@@ -3645,6 +3709,7 @@ export class AcpService extends Service {
     const result = asRecord(event.result);
     let finalText = currentFinalText;
     let stopReason: string | undefined;
+    let providerDisposition: PromptProviderDisposition | undefined;
 
     // Real ACP wraps session/update payload under params.update.{sessionUpdate,...}
     // Some adapters put fields at params.* directly. Look in both places.
@@ -3868,6 +3933,22 @@ export class AcpService extends Service {
 
     if (sessionId && result && typeof result.stopReason === "string") {
       stopReason = result.stopReason;
+      const responseId =
+        typeof event.id === "string" || typeof event.id === "number"
+          ? String(event.id)
+          : undefined;
+      if (providerTransport) {
+        providerDisposition = classifyPromptProviderResponse({
+          transport: providerTransport,
+          protocolSessionId,
+          requestId:
+            providerInvocationId && responseId
+              ? `${providerInvocationId}:${responseId}`
+              : undefined,
+          stopReason,
+          acceptedAt: new Date().toISOString(),
+        });
+      }
       if (emitPromptTerminalEvents) {
         // Per-turn token usage rides on the terminal result (claude-agent-acp
         // reports it under `result.usage` / `result._meta.usage`). Emit it once
@@ -3899,7 +3980,7 @@ export class AcpService extends Service {
         // NO captured output is a true, user-facing failure — otherwise the user
         // gets a false "hit a snag" for a build that actually succeeded.
         if (deferPromptTerminalEvent) {
-          return { finalText, stopReason };
+          return { finalText, stopReason, providerDisposition };
         }
         if (!isIncompletePromptStopReason(stopReason)) {
           if (stopReason === "cancelled") {
@@ -3938,7 +4019,7 @@ export class AcpService extends Service {
       this.emitSessionEvent(sessionId, "error", { message });
     }
 
-    return { finalText, stopReason };
+    return { finalText, stopReason, providerDisposition };
   }
 
   emitSessionEvent(

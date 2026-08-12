@@ -9,7 +9,15 @@
 import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import { lstat, mkdir, readFile, realpath, writeFile } from "node:fs/promises";
 import path from "node:path";
-import type { AcpJsonRpcMessage, ApprovalPreset } from "./types.js";
+import {
+  classifyPromptProviderResponse,
+  unknownPromptProviderDisposition,
+} from "./prompt-provider-disposition.js";
+import type {
+  AcpJsonRpcMessage,
+  ApprovalPreset,
+  PromptProviderDisposition,
+} from "./types.js";
 
 export type NativeAcpEventCallback = (
   event: AcpJsonRpcMessage,
@@ -91,6 +99,7 @@ export type NativeAcpSession = {
 
 export type NativeAcpPromptResult = {
   stopReason: string;
+  providerDisposition: PromptProviderDisposition;
 };
 
 type JsonRpcId = string | number | null;
@@ -99,6 +108,7 @@ type PendingRequest = {
   resolve: (value: unknown) => void;
   reject: (error: unknown) => void;
   timer?: ReturnType<typeof setTimeout>;
+  onResponse?: (response: { requestId: string; receivedAt: string }) => void;
 };
 
 type TerminalRecord = {
@@ -234,6 +244,7 @@ export class NativeAcpClient {
     sessionId: string,
     text: string,
   ): Promise<NativeAcpPromptResult> {
+    let responseIdentity: { requestId: string; receivedAt: string } | undefined;
     const result = asRecord(
       await this.request(
         "session/prompt",
@@ -247,10 +258,26 @@ export class NativeAcpClient {
           // prompt; a cancel that itself fails cannot rescue the turn.
           void this.cancel(sessionId).catch(() => undefined);
         },
+        (response) => {
+          responseIdentity = response;
+        },
       ),
     );
+    const stopReason = stringValue(result?.stopReason);
     return {
-      stopReason: stringValue(result?.stopReason) ?? "end_turn",
+      stopReason: stopReason ?? "unknown",
+      providerDisposition: responseIdentity
+        ? classifyPromptProviderResponse({
+            transport: "native",
+            protocolSessionId: sessionId,
+            requestId: responseIdentity.requestId,
+            stopReason,
+            acceptedAt: responseIdentity.receivedAt,
+          })
+        : unknownPromptProviderDisposition(
+            "ACP_PROMPT_RESPONSE_UNOBSERVED",
+            true,
+          ),
     };
   }
 
@@ -298,6 +325,7 @@ export class NativeAcpClient {
     params: unknown,
     timeoutMs = DEFAULT_TIMEOUT_MS,
     onTimeout?: () => void,
+    onResponse?: (response: { requestId: string; receivedAt: string }) => void,
   ): Promise<unknown> {
     if (this.closed) throw new Error("ACP client is closed");
     const id = this.nextId++;
@@ -314,7 +342,7 @@ export class NativeAcpClient {
               reject(new Error(`ACP request timed out: ${method}`));
             }, timeoutMs)
           : undefined;
-      this.pending.set(id, { resolve, reject, timer });
+      this.pending.set(id, { resolve, reject, timer, onResponse });
     });
   }
 
@@ -378,6 +406,10 @@ export class NativeAcpClient {
       if ("error" in message && message.error) {
         pending.reject(jsonRpcError(message.error));
       } else {
+        pending.onResponse?.({
+          requestId: String(id),
+          receivedAt: new Date().toISOString(),
+        });
         pending.resolve((message as { result?: unknown }).result);
       }
       return;
