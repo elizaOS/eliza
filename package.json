@@ -308,7 +308,6 @@
     "@elizaos/app-core": "workspace:*",
     "@elizaos/agent": "workspace:*",
     "@elizaos/plugin-solana": "2.0.0-alpha.3",
-    "@biomejs/biome": "2.5.6",
     "playwright": "1.61.1",
     "playwright-core": "1.61.1",
     "@playwright/test": "1.61.1",
