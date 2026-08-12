@@ -6,7 +6,9 @@
  * Tavily's responses to core's shared shape. Degrades gracefully: without
  * `TAVILY_API_KEY` it boots inert and throws a descriptive error on first use
  * rather than crashing boot. `getPageInfo` is a raw fetch + regex scrape (not
- * Tavily-backed); videos reuse web search since Tavily has no video endpoint.
+ * Tavily-backed) that populates title, description, meta tags, images, and
+ * links from untrusted HTML; videos reuse web search since Tavily has no
+ * video endpoint.
  */
 
 import { type IAgentRuntime, IWebSearchService, logger, ServiceType } from "@elizaos/core";
@@ -224,6 +226,19 @@ function extractMetaTags(content: string): {
     return { description, metadata };
 }
 
+function resolveHttpUrl(raw: string, baseUrl: URL): string | null {
+    try {
+        const resolved = new URL(raw, baseUrl);
+        if (resolved.protocol !== "http:" && resolved.protocol !== "https:") {
+            return null;
+        }
+        return resolved.toString();
+    } catch {
+        // error-policy:J3 untrusted HTML may contain unparseable URL candidates
+        return null;
+    }
+}
+
 function extractImages(content: string, baseUrl: URL): string[] {
     const images: string[] = [];
     const seen = new Set<string>();
@@ -235,18 +250,11 @@ function extractImages(content: string, baseUrl: URL): string[] {
             match = imgRegex.exec(content);
             continue;
         }
-        try {
-            const resolved = new URL(rawSrc, baseUrl).toString();
-            if (
-                (resolved.startsWith("http://") || resolved.startsWith("https://")) &&
-                !seen.has(resolved)
-            ) {
-                seen.add(resolved);
-                images.push(resolved);
-                if (images.length >= 20) break;
-            }
-        } catch {
-            // Ignore malformed image URLs
+        const resolved = resolveHttpUrl(rawSrc, baseUrl);
+        if (resolved && !seen.has(resolved)) {
+            seen.add(resolved);
+            images.push(resolved);
+            if (images.length >= 20) break;
         }
         match = imgRegex.exec(content);
     }
@@ -269,18 +277,11 @@ function extractLinks(content: string, baseUrl: URL): string[] {
             match = anchorRegex.exec(content);
             continue;
         }
-        try {
-            const resolved = new URL(rawHref, baseUrl).toString();
-            if (
-                (resolved.startsWith("http://") || resolved.startsWith("https://")) &&
-                !seen.has(resolved)
-            ) {
-                seen.add(resolved);
-                links.push(resolved);
-                if (links.length >= 50) break;
-            }
-        } catch {
-            // Ignore malformed hrefs
+        const resolved = resolveHttpUrl(rawHref, baseUrl);
+        if (resolved && !seen.has(resolved)) {
+            seen.add(resolved);
+            links.push(resolved);
+            if (links.length >= 50) break;
         }
         match = anchorRegex.exec(content);
     }
@@ -410,6 +411,7 @@ export class WebSearchService extends IWebSearchService {
         try {
             parsedUrl = new URL(url);
         } catch {
+            // error-policy:J3 invalid caller URL is an explicit input failure
             throw new Error("Invalid page info URL");
         }
         if (parsedUrl.protocol !== "http:" && parsedUrl.protocol !== "https:") {
