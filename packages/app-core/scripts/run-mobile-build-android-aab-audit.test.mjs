@@ -752,6 +752,140 @@ describe("pinned bundletool provisioning", () => {
     );
   });
 
+  it("retries transient transport and server failures with bounded backoff", async () => {
+    const bytes = Buffer.from("official bundletool fixture", "utf8");
+    const fetchImpl = vi
+      .fn()
+      .mockRejectedValueOnce(
+        new TypeError("fetch failed", {
+          cause: Object.assign(new Error("other side closed"), {
+            code: "UND_ERR_SOCKET",
+          }),
+        }),
+      )
+      .mockResolvedValueOnce({
+        arrayBuffer: async () => Buffer.from("unavailable"),
+        ok: false,
+        status: 503,
+        statusText: "Service Unavailable",
+      })
+      .mockResolvedValueOnce({
+        arrayBuffer: async () => bytes,
+        ok: true,
+        status: 200,
+        statusText: "OK",
+      });
+    const delays = [];
+
+    await expect(
+      ensureAndroidBundletoolJar(
+        { cacheDir: "/cache/bundletool", env: {} },
+        {
+          digestBuffer: () => ANDROID_BUNDLETOOL_SHA256,
+          existsSync: () => false,
+          fetchImpl,
+          mkdirSync: vi.fn(),
+          renameSync: vi.fn(),
+          rmSync: vi.fn(),
+          sleepImpl: async (delayMs) => delays.push(delayMs),
+          writeFileSync: vi.fn(),
+        },
+      ),
+    ).resolves.toContain(`bundletool-all-${ANDROID_BUNDLETOOL_VERSION}`);
+    expect(fetchImpl).toHaveBeenCalledTimes(3);
+    expect(delays).toEqual([1_000, 2_000]);
+  });
+
+  it.each([408, 425, 429, 500, 599])(
+    "retries retryable HTTP %i responses",
+    async (status) => {
+      const bytes = Buffer.from("official bundletool fixture", "utf8");
+      const fetchImpl = vi
+        .fn()
+        .mockResolvedValueOnce({
+          arrayBuffer: async () => Buffer.from("transient"),
+          ok: false,
+          status,
+          statusText: "Transient",
+        })
+        .mockResolvedValueOnce({
+          arrayBuffer: async () => bytes,
+          ok: true,
+          status: 200,
+          statusText: "OK",
+        });
+      const sleepImpl = vi.fn(async () => {});
+
+      await expect(
+        ensureAndroidBundletoolJar(
+          { cacheDir: "/cache/bundletool", env: {} },
+          {
+            digestBuffer: () => ANDROID_BUNDLETOOL_SHA256,
+            existsSync: () => false,
+            fetchImpl,
+            mkdirSync: vi.fn(),
+            renameSync: vi.fn(),
+            rmSync: vi.fn(),
+            sleepImpl,
+            writeFileSync: vi.fn(),
+          },
+        ),
+      ).resolves.toContain(`bundletool-all-${ANDROID_BUNDLETOOL_VERSION}`);
+      expect(fetchImpl).toHaveBeenCalledTimes(2);
+      expect(sleepImpl).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it("does not retry nontransient HTTP failures", async () => {
+    const fetchImpl = vi.fn(async () => ({
+      arrayBuffer: async () => Buffer.from("missing"),
+      ok: false,
+      status: 404,
+      statusText: "Not Found",
+    }));
+    const sleepImpl = vi.fn(async () => {});
+
+    await expect(
+      ensureAndroidBundletoolJar(
+        { cacheDir: "/cache/bundletool", env: {} },
+        {
+          existsSync: () => false,
+          fetchImpl,
+          sleepImpl,
+        },
+      ),
+    ).rejects.toMatchObject({
+      context: expect.objectContaining({ attempts: 1, status: 404 }),
+    });
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    expect(sleepImpl).not.toHaveBeenCalled();
+  });
+
+  it("stops after three transient download attempts", async () => {
+    const fetchImpl = vi.fn(async () => ({
+      arrayBuffer: async () => Buffer.from("unavailable"),
+      ok: false,
+      status: 503,
+      statusText: "Service Unavailable",
+    }));
+    const sleepImpl = vi.fn(async () => {});
+
+    await expect(
+      ensureAndroidBundletoolJar(
+        { cacheDir: "/cache/bundletool", env: {} },
+        {
+          existsSync: () => false,
+          fetchImpl,
+          sleepImpl,
+        },
+      ),
+    ).rejects.toMatchObject({
+      context: expect.objectContaining({ attempts: 3, status: 503 }),
+    });
+    expect(fetchImpl).toHaveBeenCalledTimes(3);
+    expect(sleepImpl).toHaveBeenCalledTimes(2);
+  });
+
   it("rejects downloaded bytes that do not match the pinned checksum", async () => {
     const fetchImpl = vi.fn(async () => ({
       arrayBuffer: async () => Buffer.from("tampered"),
@@ -759,6 +893,7 @@ describe("pinned bundletool provisioning", () => {
       status: 200,
       statusText: "OK",
     }));
+    const sleepImpl = vi.fn(async () => {});
 
     await expect(
       ensureAndroidBundletoolJar(
@@ -767,9 +902,12 @@ describe("pinned bundletool provisioning", () => {
           digestBuffer: () => "bad-digest",
           existsSync: () => false,
           fetchImpl,
+          sleepImpl,
         },
       ),
     ).rejects.toThrow(`expected ${ANDROID_BUNDLETOOL_SHA256}`);
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    expect(sleepImpl).not.toHaveBeenCalled();
   });
 
   it("re-hashes the configured JAR immediately before execution", () => {

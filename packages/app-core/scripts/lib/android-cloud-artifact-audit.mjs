@@ -54,6 +54,8 @@ const MANIFEST_COMPONENT_ELEMENTS = Object.freeze([
   "service",
 ]);
 const MAX_TOOL_OUTPUT_BYTES = 16 * 1024 * 1024;
+const ANDROID_BUNDLETOOL_DOWNLOAD_MAX_ATTEMPTS = 3;
+const ANDROID_BUNDLETOOL_DOWNLOAD_RETRY_BASE_DELAY_MS = 1_000;
 export const ANDROID_BUNDLETOOL_TIMEOUT_MS = 120_000;
 export const ANDROID_AAB_AUDIT_TIMEOUT_MS = 300_000;
 export const ANDROID_AAB_MAX_MANIFEST_MODULES = 128;
@@ -154,6 +156,95 @@ function sha256(buffer) {
   return crypto.createHash("sha256").update(buffer).digest("hex");
 }
 
+function isRetryableBundletoolHttpStatus(status) {
+  return (
+    status === 408 ||
+    status === 425 ||
+    status === 429 ||
+    (status >= 500 && status <= 599)
+  );
+}
+
+function bundletoolDownloadRetryDelayMs(attempt) {
+  return ANDROID_BUNDLETOOL_DOWNLOAD_RETRY_BASE_DELAY_MS * 2 ** (attempt - 1);
+}
+
+function errorMessage(error) {
+  return error instanceof Error ? error.message : String(error);
+}
+
+async function downloadPinnedBundletoolBytes({ fetchImpl, sleepImpl }) {
+  for (
+    let attempt = 1;
+    attempt <= ANDROID_BUNDLETOOL_DOWNLOAD_MAX_ATTEMPTS;
+    attempt += 1
+  ) {
+    let response;
+    try {
+      response = await fetchImpl(ANDROID_BUNDLETOOL_URL, {
+        redirect: "follow",
+        signal: AbortSignal.timeout(ANDROID_BUNDLETOOL_TIMEOUT_MS),
+      });
+    } catch (error) {
+      // error-policy:J1 retry transport failures at the download boundary, then surface the final cause
+      if (attempt < ANDROID_BUNDLETOOL_DOWNLOAD_MAX_ATTEMPTS) {
+        await sleepImpl(bundletoolDownloadRetryDelayMs(attempt));
+        continue;
+      }
+      throw androidAabAuditError(
+        `[mobile-build] Could not download pinned bundletool ${ANDROID_BUNDLETOOL_VERSION} after ${attempt} attempts: ${errorMessage(error)}`,
+        {
+          cause: error,
+          context: { attempts: attempt, source: ANDROID_BUNDLETOOL_URL },
+        },
+      );
+    }
+
+    if (!response.ok) {
+      if (
+        isRetryableBundletoolHttpStatus(response.status) &&
+        attempt < ANDROID_BUNDLETOOL_DOWNLOAD_MAX_ATTEMPTS
+      ) {
+        await sleepImpl(bundletoolDownloadRetryDelayMs(attempt));
+        continue;
+      }
+      throw androidAabAuditError(
+        `[mobile-build] Could not download pinned bundletool ${ANDROID_BUNDLETOOL_VERSION}: HTTP ${response.status} ${response.statusText} after ${attempt} attempt${attempt === 1 ? "" : "s"}`.trim(),
+        {
+          context: {
+            attempts: attempt,
+            source: ANDROID_BUNDLETOOL_URL,
+            status: response.status,
+          },
+        },
+      );
+    }
+
+    let downloaded;
+    try {
+      downloaded = await response.arrayBuffer();
+    } catch (error) {
+      // error-policy:J1 a rejected response body is an incomplete transport; retry before accepting any bytes
+      if (attempt < ANDROID_BUNDLETOOL_DOWNLOAD_MAX_ATTEMPTS) {
+        await sleepImpl(bundletoolDownloadRetryDelayMs(attempt));
+        continue;
+      }
+      throw androidAabAuditError(
+        `[mobile-build] Could not read pinned bundletool ${ANDROID_BUNDLETOOL_VERSION} download after ${attempt} attempts: ${errorMessage(error)}`,
+        {
+          cause: error,
+          context: { attempts: attempt, source: ANDROID_BUNDLETOOL_URL },
+        },
+      );
+    }
+    return Buffer.from(downloaded);
+  }
+
+  throw androidAabAuditError(
+    `[mobile-build] Could not download pinned bundletool ${ANDROID_BUNDLETOOL_VERSION}: retry loop exhausted unexpectedly.`,
+  );
+}
+
 function verifyPinnedBundletoolJar(
   bundletoolJar,
   { digestBuffer = sha256, readFileSync = fs.readFileSync } = {},
@@ -240,6 +331,8 @@ export async function ensureAndroidBundletoolJar(
     readFileSync = fs.readFileSync,
     renameSync = fs.renameSync,
     rmSync = fs.rmSync,
+    sleepImpl = (delayMs) =>
+      new Promise((resolve) => setTimeout(resolve, delayMs)),
     writeFileSync = fs.writeFileSync,
   } = {},
 ) {
@@ -277,35 +370,7 @@ export async function ensureAndroidBundletoolJar(
     return target;
   }
 
-  let response;
-  try {
-    response = await fetchImpl(ANDROID_BUNDLETOOL_URL, {
-      redirect: "follow",
-      signal: AbortSignal.timeout(120_000),
-    });
-  } catch (error) {
-    // error-policy:J2 identify the pinned dependency that could not be fetched
-    throw androidAabAuditError(
-      `[mobile-build] Could not download pinned bundletool ${ANDROID_BUNDLETOOL_VERSION}: ${error.message}`,
-      { cause: error },
-    );
-  }
-  if (!response.ok) {
-    throw androidAabAuditError(
-      `[mobile-build] Could not download pinned bundletool ${ANDROID_BUNDLETOOL_VERSION}: HTTP ${response.status} ${response.statusText}`.trim(),
-    );
-  }
-
-  let bytes;
-  try {
-    bytes = Buffer.from(await response.arrayBuffer());
-  } catch (error) {
-    // error-policy:J2 identify the pinned dependency whose response was unreadable
-    throw androidAabAuditError(
-      `[mobile-build] Could not read pinned bundletool ${ANDROID_BUNDLETOOL_VERSION} download: ${error.message}`,
-      { cause: error },
-    );
-  }
+  const bytes = await downloadPinnedBundletoolBytes({ fetchImpl, sleepImpl });
   let digest;
   try {
     digest = digestBuffer(bytes);
