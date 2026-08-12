@@ -714,6 +714,19 @@ describe("watchdog configuration", () => {
     child.pid = 321;
     child.stdout = new PassThrough();
     child.stderr = new PassThrough();
+    const supervisorStatus = new PassThrough();
+    const supervisorControl = new PassThrough();
+    child.stdio = [
+      null,
+      child.stdout,
+      child.stderr,
+      supervisorStatus,
+      supervisorControl,
+    ];
+    let supervisorRelease = "";
+    supervisorControl.on("data", (chunk) => {
+      supervisorRelease += chunk.toString("utf8");
+    });
     let spawned;
     const resultPromise = runCommandWithWatchdog("bun", ["test", "a.ts"], {
       timeoutMs: 10_000,
@@ -728,6 +741,13 @@ describe("watchdog configuration", () => {
       },
     });
 
+    supervisorStatus.end("0\n");
+    child.stdout.end();
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(supervisorRelease).toBe("");
+    child.stderr.end();
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(supervisorRelease).toBe("release\n");
     child.emit("close", 0, null);
     const result = await resultPromise;
 
@@ -735,7 +755,9 @@ describe("watchdog configuration", () => {
     expect(spawned.args.slice(-3)).toEqual(["bun", "test", "a.ts"]);
     expect(spawned.args[0]).toBe("-c");
     expect(spawned.args[1]).toContain("trap 'terminating=1' TERM INT");
+    expect(spawned.args[1]).toContain("read -r release <&4");
     expect(spawned.options.detached).toBe(true);
+    expect(spawned.options.stdio).toHaveLength(5);
     expect(result.status).toBe(0);
   });
 
@@ -852,14 +874,25 @@ describe("watchdog configuration", () => {
     expect(result.timedOut).toBe(false);
   });
 
-  it("terminates a POSIX group when an exited leader leaves descendant stdio open", async () => {
+  it("retains the POSIX supervisor until completed-command output drains", async () => {
     const signalSource = new EventEmitter();
     const child = new EventEmitter();
     child.pid = 321;
-    child.exitCode = 0;
-    child.signalCode = null;
     child.stdout = new PassThrough();
     child.stderr = new PassThrough();
+    const supervisorStatus = new PassThrough();
+    const supervisorControl = new PassThrough();
+    child.stdio = [
+      null,
+      child.stdout,
+      child.stderr,
+      supervisorStatus,
+      supervisorControl,
+    ];
+    let supervisorRelease = "";
+    supervisorControl.on("data", (chunk) => {
+      supervisorRelease += chunk.toString("utf8");
+    });
     let terminationCalls = 0;
     const resultPromise = runCommandWithWatchdog("bun", ["test"], {
       timeoutMs: 1,
@@ -870,15 +903,19 @@ describe("watchdog configuration", () => {
       spawnFn: () => child,
       terminateTree: async () => {
         terminationCalls += 1;
-        child.emit("close", 0, null);
+        child.emit("close", null, "SIGKILL");
       },
     });
 
+    supervisorStatus.end("0\n");
+    child.stdout.end();
     const result = await resultPromise;
 
     expect(terminationCalls).toBe(1);
     expect(result.timedOut).toBe(true);
-    expect(result.status).toBe(0);
+    expect(result.status).toBeNull();
+    expect(result.signal).toBe("SIGKILL");
+    expect(supervisorRelease).toBe("");
   });
 
   it("fails closed instead of taskkilling a reused Windows leader PID", async () => {

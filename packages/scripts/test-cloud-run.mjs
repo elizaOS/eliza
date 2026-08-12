@@ -64,10 +64,16 @@ const MAX_TIMER_MS = 2_147_483_647;
 const POSIX_PROCESS_GROUP_SUPERVISOR = `
 terminating=0
 trap 'terminating=1' TERM INT
-"$@" &
+"$@" 3>&- 4>&- &
 child_pid=$!
 wait "$child_pid"
 status=$?
+printf '%s\\n' "$status" >&3
+exec 3>&- 1>&- 2>&-
+if [ "$terminating" -eq 0 ]; then
+  IFS= read -r release <&4 || true
+fi
+exec 4>&-
 if [ "$terminating" -ne 0 ]; then
   while :; do
     sleep 3600 &
@@ -577,10 +583,13 @@ export function runCommandWithWatchdog(
       child = spawnFn(spawnCommand, spawnArgs, {
         cwd,
         env,
-        shell,
+        shell: platform === "win32" ? shell : false,
         detached: true,
         windowsHide: platform === "win32",
-        stdio: ["ignore", "pipe", "pipe"],
+        stdio:
+          platform === "win32"
+            ? ["ignore", "pipe", "pipe"]
+            : ["ignore", "pipe", "pipe", "pipe", "pipe"],
       });
     } catch (error) {
       resolve({ error, stdout: "", stderr: "", streamed: true });
@@ -607,6 +616,15 @@ export function runCommandWithWatchdog(
     let settled = false;
     let forceSettleTimer;
     let watchdog;
+    const supervisorStatus =
+      platform === "win32" ? undefined : child.stdio?.[3];
+    const supervisorControl =
+      platform === "win32" ? undefined : child.stdio?.[4];
+    let supervisorStatusOutput = "";
+    let commandCompletionObserved = platform === "win32";
+    let stdoutEnded = !child.stdout;
+    let stderrEnded = !child.stderr;
+    let supervisorReleased = false;
 
     const parentSignalHandlers = new Map();
     const removeParentSignalHandlers = () => {
@@ -614,6 +632,21 @@ export function runCommandWithWatchdog(
         signalSource.removeListener(signal, handler);
       }
       parentSignalHandlers.clear();
+    };
+
+    const releaseDrainedSupervisor = () => {
+      if (
+        platform === "win32" ||
+        supervisorReleased ||
+        terminationReason ||
+        !commandCompletionObserved ||
+        !stdoutEnded ||
+        !stderrEnded
+      ) {
+        return;
+      }
+      supervisorReleased = true;
+      supervisorControl?.end("release\n");
     };
 
     const finish = (result) => {
@@ -705,6 +738,10 @@ export function runCommandWithWatchdog(
       stdout = appendClassificationOutput(stdout, text);
       writeOut(text);
     });
+    child.stdout?.once("end", () => {
+      stdoutEnded = true;
+      releaseDrainedSupervisor();
+    });
     child.stderr?.on("data", (chunk) => {
       const text = chunk.toString("utf8");
       if (stderr.length + text.length > MAX_CLASSIFICATION_OUTPUT_CHARS) {
@@ -712,6 +749,20 @@ export function runCommandWithWatchdog(
       }
       stderr = appendClassificationOutput(stderr, text);
       writeErr(text);
+    });
+    child.stderr?.once("end", () => {
+      stderrEnded = true;
+      releaseDrainedSupervisor();
+    });
+    supervisorStatus?.on("data", (chunk) => {
+      supervisorStatusOutput += chunk.toString("utf8");
+    });
+    supervisorStatus?.once("end", () => {
+      commandCompletionObserved = /^\d+\n$/.test(supervisorStatusOutput);
+      releaseDrainedSupervisor();
+    });
+    supervisorControl?.once("error", (error) => {
+      terminationError ??= error;
     });
     child.once("error", (error) => finish({ error }));
     child.once("close", (status, signal) => {

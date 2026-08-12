@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 
 /**
- * Exercises the Cloud batch watchdog against a real parent and descendant.
- * The parent exits on graceful termination while the descendant resists it;
- * the watchdog must anchor the group and remove the complete tree promptly.
+ * Exercises the Cloud batch watchdog against real parent/descendant trees.
+ * It covers both a parent that exits on graceful termination and a command
+ * that exits before timeout while a resistant descendant retains its pipes.
  */
 
 import assert from "node:assert/strict";
@@ -26,12 +26,23 @@ process.on("SIGTERM", () => {
 });
 setInterval(() => {}, 1000);
 `;
+const exitedParentSource = `
+import { spawn } from "node:child_process";
+const descendant = spawn(process.execPath, ["--input-type=module", "-e", ${JSON.stringify(descendantSource)}], {
+  stdio: ["ignore", "inherit", "inherit"],
+});
+process.stdout.write("EXITED_PARENT_PID=" + process.pid + "\\n");
+process.stdout.write("RETAINING_DESCENDANT_PID=" + descendant.pid + "\\n", () => process.exit(0));
+`;
 
 let stdout = "";
 let timeoutObserved = false;
 let supervisorPid;
 let parentPid;
 let descendantPid;
+let exitedSupervisorPid;
+let exitedParentPid;
+let retainingDescendantPid;
 
 function isAlive(pid) {
   if (!Number.isInteger(pid)) return false;
@@ -145,10 +156,113 @@ try {
   );
 
   console.log(
-    `[test-cloud-run-watchdog] self-test passed (${elapsedMs} ms, platform=${process.platform})`,
+    `[test-cloud-run-watchdog] TERM-exit scenario passed (${elapsedMs} ms, platform=${process.platform})`,
   );
+
+  if (process.platform !== "win32") {
+    let exitedStdout = "";
+    let exitedTimeoutObserved = false;
+    let exitedParentGoneAtTimeout = false;
+    const exitedStartedAt = Date.now();
+    const exitedResult = await runCommandWithWatchdog(
+      process.execPath,
+      ["--input-type=module", "-e", exitedParentSource],
+      {
+        timeoutMs: 250,
+        terminationGraceMs: 400,
+        forceKillSettleMs: 500,
+        writeOut: (text) => {
+          exitedStdout += text;
+        },
+        writeErr: () => {},
+        onTimeout: () => {
+          exitedTimeoutObserved = true;
+          const reportedParentPid = Number(
+            exitedStdout.match(/EXITED_PARENT_PID=(\d+)/)?.[1],
+          );
+          exitedParentGoneAtTimeout =
+            Number.isInteger(reportedParentPid) && !isAlive(reportedParentPid);
+        },
+      },
+    );
+    const exitedElapsedMs = Date.now() - exitedStartedAt;
+    exitedSupervisorPid = exitedResult.pid;
+    exitedParentPid = Number(
+      exitedStdout.match(/EXITED_PARENT_PID=(\d+)/)?.[1],
+    );
+    retainingDescendantPid = Number(
+      exitedStdout.match(/RETAINING_DESCENDANT_PID=(\d+)/)?.[1],
+    );
+
+    assert.equal(
+      exitedTimeoutObserved,
+      true,
+      "retained descendant pipes must keep the watchdog armed",
+    );
+    assert.equal(
+      exitedResult.timedOut,
+      true,
+      "an exited command with retained descendant pipes must time out",
+    );
+    assert.equal(
+      exitedParentGoneAtTimeout,
+      true,
+      "the command must already be gone when the watchdog fires",
+    );
+    assert.equal(
+      exitedResult.terminationError,
+      undefined,
+      "the retained supervisor anchor must make teardown provable",
+    );
+    assert.ok(
+      Number.isInteger(exitedSupervisorPid),
+      "watchdog must retain the second supervisor PID",
+    );
+    assert.ok(
+      Number.isInteger(exitedParentPid),
+      "exited command must report its PID",
+    );
+    assert.ok(
+      Number.isInteger(retainingDescendantPid),
+      "pipe-retaining descendant must report its PID",
+    );
+    assert.equal(
+      isAlive(exitedParentPid),
+      false,
+      "command must have exited before watchdog teardown",
+    );
+
+    const retainedPipeDeadline = Date.now() + 1500;
+    while (
+      (isAlive(exitedSupervisorPid) || isAlive(retainingDescendantPid)) &&
+      Date.now() < retainedPipeDeadline
+    ) {
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+    assert.equal(
+      isAlive(exitedSupervisorPid),
+      false,
+      "watchdog must terminate the retained supervisor anchor",
+    );
+    assert.equal(
+      isAlive(retainingDescendantPid),
+      false,
+      "watchdog must terminate the pipe-retaining descendant",
+    );
+    assert.ok(
+      exitedElapsedMs < 5000,
+      `retained-pipe watchdog took too long (${exitedElapsedMs} ms)`,
+    );
+
+    console.log(
+      `[test-cloud-run-watchdog] exited-command scenario passed (${exitedElapsedMs} ms, platform=${process.platform})`,
+    );
+  }
 } finally {
   bestEffortKillTree(supervisorPid, { processGroup: true });
   bestEffortKillTree(parentPid);
   bestEffortKillTree(descendantPid);
+  bestEffortKillTree(exitedSupervisorPid, { processGroup: true });
+  bestEffortKillTree(exitedParentPid);
+  bestEffortKillTree(retainingDescendantPid);
 }
