@@ -36,9 +36,12 @@ import type { ReactNode } from "react";
 import { useMemo } from "react";
 import { type Config, http, WagmiProvider } from "wagmi";
 import { base, bsc } from "wagmi/chains";
+import {
+  resolveWalletConnectProjectId,
+  walletConnectProjectIdRejectionReason,
+} from "./walletconnect-project-id";
 
 const DEFAULT_SOLANA_RPC_URL = "https://api.mainnet-beta.solana.com";
-const FALLBACK_WALLETCONNECT_PROJECT_ID = "YOUR_WC_PROJECT_ID";
 
 export function StewardWalletProviders({ children }: { children: ReactNode }) {
   const appUrl =
@@ -46,9 +49,17 @@ export function StewardWalletProviders({ children }: { children: ReactNode }) {
     (typeof window !== "undefined"
       ? window.location.origin
       : "http://localhost:3000");
-  const walletConnectProjectId =
-    process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID?.trim() ||
-    FALLBACK_WALLETCONNECT_PROJECT_ID;
+  const resolvedProjectId = resolveWalletConnectProjectId(
+    process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID,
+  );
+  if (!resolvedProjectId) {
+    throw new Error(
+      walletConnectProjectIdRejectionReason(
+        process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID,
+      ) ?? "NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID is invalid",
+    );
+  }
+  const walletConnectProjectId = resolvedProjectId;
   const alchemyKey = process.env.NEXT_PUBLIC_ALCHEMY_API_KEY?.trim();
   const heliusKey = process.env.NEXT_PUBLIC_HELIUS_API_KEY?.trim();
   const solanaEndpoint =
