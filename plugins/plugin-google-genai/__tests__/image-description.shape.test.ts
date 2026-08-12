@@ -25,6 +25,11 @@ vi.mock("@elizaos/core", () => ({
     warn: vi.fn(),
   },
   recordLlmCall: mocks.recordLlmCall,
+}));
+
+// The handler loads `fetchRemoteMedia` lazily from the node entry so the
+// browser bundle never pulls it in; mock that entry, not `@elizaos/core`.
+vi.mock("@elizaos/core/node", () => ({
   fetchRemoteMedia: mocks.fetchRemoteMedia,
 }));
 

@@ -16,7 +16,7 @@ import type {
   ImageDescriptionParams,
   RecordLlmCallDetails,
 } from "@elizaos/core";
-import { fetchRemoteMedia, logger, recordLlmCall } from "@elizaos/core";
+import { logger, recordLlmCall } from "@elizaos/core";
 import type { ImageDescriptionResponse } from "../types";
 import {
   createGoogleGenAI,
@@ -61,6 +61,9 @@ export async function handleImageDescription(
 
   try {
     // Untrusted agent/tool image URLs must not hit private or metadata hosts.
+    // `fetchRemoteMedia` is Node-only, and the browser entry re-exports this
+    // module, so it must load lazily from the node entry rather than statically.
+    const { fetchRemoteMedia } = await import("@elizaos/core/node");
     const media = await fetchRemoteMedia({
       url: imageUrl,
       maxBytes: IMAGE_DESCRIPTION_MAX_BYTES,
