@@ -21,6 +21,13 @@ describe("formatUptime", () => {
     expect(formatUptime(90000)).toBe("1d 1h");
   });
 
+  it.each([Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY])(
+    "falls back for non-finite uptime %s",
+    (seconds) => {
+      expect(formatUptime(seconds)).toBe("—");
+    },
+  );
+
   it("verbose mode lists each non-zero unit", () => {
     expect(formatUptime(3661, true)).toBe("1h 1m");
     expect(formatUptime(30, true)).toBe("30s");
