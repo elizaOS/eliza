@@ -36,20 +36,22 @@ const MONTH_MS = 30 * 24 * 60 * 60 * 1000;
  * @param {NodeJS.ProcessEnv} [env]
  */
 export function parseArgs(argv, env = process.env) {
+  if (argv.includes("--help") || argv.includes("-h")) {
+    printHelp();
+    process.exit(0);
+  }
   const options = {
-    apiPort: resolveApiPortFromEnv(env),
+    apiPort: undefined,
     host: env.ELIZA_API_HOST || "127.0.0.1",
     body: {},
   };
   for (const arg of argv) {
-    if (arg === "--help" || arg === "-h") {
-      printHelp();
-      process.exit(0);
-    }
-    const [key, value] = arg.split("=", 2);
-    if (value === undefined) {
+    const separatorIndex = arg.indexOf("=");
+    if (separatorIndex === -1) {
       throw new Error(`Expected --key=value, got ${arg}`);
     }
+    const key = arg.slice(0, separatorIndex);
+    const value = arg.slice(separatorIndex + 1);
     switch (key) {
       case "--api-port":
         options.apiPort = parseTcpPort(value, "--api-port");
@@ -76,6 +78,7 @@ export function parseArgs(argv, env = process.env) {
         throw new Error(`Unknown flag ${key}`);
     }
   }
+  options.apiPort ??= resolveApiPortFromEnv(env);
   return options;
 }
 
@@ -101,7 +104,7 @@ export function resolveApiPortFromEnv(env = process.env) {
  * @param {string} label
  */
 export function parseTcpPort(value, label) {
-  const raw = String(value ?? "").trim();
+  const raw = String(value ?? "");
   if (!/^\d+$/.test(raw)) {
     throw new Error(
       `${label} must be a TCP port integer from 1 to 65535 (received ${JSON.stringify(String(value ?? ""))})`,
