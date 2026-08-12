@@ -4,6 +4,15 @@
  */
 
 import { describe, expect, test } from "bun:test";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { spawnSync } from "../lib/spawn-sync-captured.mjs";
+
+const SCRIPT = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "..",
+  "ci-autoheal-context.mjs",
+);
 
 const autoheal = await import(
   new URL("../ci-autoheal-context.mjs", import.meta.url).href
@@ -34,17 +43,15 @@ describe("parsePositiveSafeInteger", () => {
   test("accepts complete positive safe-integer decimals", () => {
     expect(parsePositiveSafeInteger("1", "X")).toBe(1);
     expect(parsePositiveSafeInteger("3", "X")).toBe(3);
+    expect(parsePositiveSafeInteger("0003", "X")).toBe(3);
     expect(parsePositiveSafeInteger(42, "X")).toBe(42);
   });
 
-  test("accepts surrounding whitespace after trim", () => {
-    expect(parsePositiveSafeInteger(" 4 ", "X")).toBe(4);
-  });
-
-  test("rejects malformed, signed, fractional, zero, and non-finite values", () => {
+  test("rejects malformed, padded, signed, fractional, zero, and non-finite values", () => {
     for (const value of [
       "abc",
       "3junk",
+      " 4 ",
       "1.5",
       "+2",
       "-1",
@@ -63,7 +70,7 @@ describe("parsePositiveSafeInteger", () => {
 });
 
 describe("resolveAutohealPolicy", () => {
-  test("keeps historical defaults when overrides are unset or blank", () => {
+  test("keeps historical defaults when overrides are unset or empty", () => {
     expect(resolveAutohealPolicy({})).toEqual({
       maxAttempts: DEFAULT_MAX_ATTEMPTS,
       logBudget: DEFAULT_LOG_BUDGET,
@@ -71,7 +78,7 @@ describe("resolveAutohealPolicy", () => {
     expect(
       resolveAutohealPolicy({
         AUTOHEAL_MAX_ATTEMPTS: "",
-        AUTOHEAL_LOG_BUDGET: "   ",
+        AUTOHEAL_LOG_BUDGET: "",
       }),
     ).toEqual({
       maxAttempts: DEFAULT_MAX_ATTEMPTS,
@@ -82,8 +89,8 @@ describe("resolveAutohealPolicy", () => {
   test("accepts valid explicit overrides", () => {
     expect(
       resolveAutohealPolicy({
-        AUTOHEAL_MAX_ATTEMPTS: "5",
-        AUTOHEAL_LOG_BUDGET: "50000",
+        AUTOHEAL_MAX_ATTEMPTS: "0005",
+        AUTOHEAL_LOG_BUDGET: "00050000",
       }),
     ).toEqual({ maxAttempts: 5, logBudget: 50000 });
   });
@@ -113,6 +120,34 @@ describe("resolveAutohealPolicy", () => {
     expect(() => resolveAutohealPolicy({ AUTOHEAL_LOG_BUDGET: "0" })).toThrow(
       /AUTOHEAL_LOG_BUDGET/,
     );
+  });
+
+  test("rejects whitespace-padded overrides for both policy knobs", () => {
+    expect(() =>
+      resolveAutohealPolicy({ AUTOHEAL_MAX_ATTEMPTS: " 4 " }),
+    ).toThrow(/AUTOHEAL_MAX_ATTEMPTS/);
+    expect(() =>
+      resolveAutohealPolicy({ AUTOHEAL_LOG_BUDGET: " 50000 " }),
+    ).toThrow(/AUTOHEAL_LOG_BUDGET/);
+    expect(() =>
+      resolveAutohealPolicy({ AUTOHEAL_MAX_ATTEMPTS: "   " }),
+    ).toThrow(/AUTOHEAL_MAX_ATTEMPTS/);
+  });
+
+  test("real CLI rejects padded overrides before required GitHub configuration", () => {
+    for (const [name, value] of [
+      ["AUTOHEAL_MAX_ATTEMPTS", " 4 "],
+      ["AUTOHEAL_LOG_BUDGET", " 50000 "],
+    ]) {
+      const result = spawnSync(process.execPath, [SCRIPT], {
+        encoding: "utf8",
+        env: { [name]: value },
+        timeout: 5_000,
+      });
+      expect(result.status).not.toBe(0);
+      expect(result.stderr).toContain(name);
+      expect(result.stderr).not.toContain("GITHUB_REPOSITORY");
+    }
   });
 });
 
