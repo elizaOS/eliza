@@ -478,7 +478,11 @@ describe("Notes capabilities", () => {
 
     await interact("create-note", { content: "One", color: "slate" }, service);
     await interact("create-note", { content: "Two", color: "rose" }, service);
-    const clearedNotes = await interact("clear-notes", {}, service);
+    const clearedNotes = await interact(
+      "clear-notes",
+      { confirm: true, expectedRevision: service.snapshot().revision },
+      service,
+    );
     expect(clearedNotes).toMatchObject({
       success: true,
       data: { cleared: 2 },
@@ -487,6 +491,143 @@ describe("Notes capabilities", () => {
       kind: "notes.note-collection",
       id: "notes",
     });
+  });
+
+  it("requires structural confirmation before clear-notes mutates the collection", async () => {
+    const service = await serviceFor(await temporaryStateFile());
+    await interact(
+      "create-note",
+      { content: "Keep me", color: "yellow" },
+      service,
+    );
+    const revision = service.snapshot().revision;
+
+    await expect(interact("clear-notes", {}, service)).resolves.toMatchObject({
+      success: false,
+      error: { code: "NOTES_VALIDATION_FAILED" },
+    });
+    await expect(
+      interact(
+        "clear-notes",
+        { confirm: false, expectedRevision: revision },
+        service,
+      ),
+    ).resolves.toMatchObject({
+      success: false,
+      error: { code: "NOTES_VALIDATION_FAILED" },
+    });
+    await expect(
+      interact(
+        "clear-notes",
+        { confirm: "true", expectedRevision: revision },
+        service,
+      ),
+    ).resolves.toMatchObject({
+      success: false,
+      error: { code: "NOTES_VALIDATION_FAILED" },
+    });
+    await expect(
+      interact("clear-notes", { confirm: true }, service),
+    ).resolves.toMatchObject({
+      success: false,
+      error: { code: "NOTES_VALIDATION_FAILED" },
+    });
+    await expect(
+      interact(
+        "clear-notes",
+        { confirm: true, expectedRevision: revision - 1 },
+        service,
+      ),
+    ).resolves.toMatchObject({
+      success: false,
+      error: { code: "NOTES_VALIDATION_FAILED" },
+    });
+    await expect(
+      interact(
+        "clear-notes",
+        { confirm: true, expectedRevision: revision, query: "Keep" },
+        service,
+      ),
+    ).resolves.toMatchObject({
+      success: false,
+      error: { code: "NOTES_VALIDATION_FAILED" },
+    });
+    expect(service.listNotes()).toHaveLength(1);
+
+    const cleared = await interact(
+      "clear-notes",
+      { confirm: true, expectedRevision: revision },
+      service,
+    );
+    expect(cleared).toMatchObject({
+      success: true,
+      data: { cleared: 1 },
+    });
+    expectAppliedMutationReceipt(cleared, "clear-notes", {
+      kind: "notes.note-collection",
+      id: "notes",
+    });
+    expect(service.listNotes()).toEqual([]);
+  });
+
+  it("rejects stale clear-notes confirmation after another mutation", async () => {
+    const service = await serviceFor(await temporaryStateFile());
+    await interact(
+      "create-note",
+      { content: "First", color: "yellow" },
+      service,
+    );
+    const staleRevision = service.snapshot().revision;
+    await interact(
+      "create-note",
+      { content: "Second", color: "green" },
+      service,
+    );
+
+    await expect(
+      interact(
+        "clear-notes",
+        { confirm: true, expectedRevision: staleRevision },
+        service,
+      ),
+    ).resolves.toMatchObject({
+      success: false,
+      error: { code: "NOTES_VALIDATION_FAILED" },
+    });
+    expect(service.listNotes()).toHaveLength(2);
+
+    const cleared = await interact(
+      "clear-notes",
+      { confirm: true, expectedRevision: service.snapshot().revision },
+      service,
+    );
+    expect(cleared).toMatchObject({
+      success: true,
+      data: { cleared: 2 },
+    });
+    expect(service.listNotes()).toEqual([]);
+  });
+
+  it("persists intentional clear-notes across service restart", async () => {
+    const filePath = await temporaryStateFile();
+    const first = await serviceFor(filePath);
+    await interact(
+      "create-note",
+      { content: "Persisted", color: "slate" },
+      first,
+    );
+    const revision = first.snapshot().revision;
+    await interact(
+      "clear-notes",
+      { confirm: true, expectedRevision: revision },
+      first,
+    );
+    await first.stop();
+
+    const restarted = await serviceFor(filePath);
+    expect(restarted.snapshot()).toMatchObject({ revision: revision + 1 });
+    expect(restarted.listNotes()).toEqual([]);
+    await restarted.stop();
   });
 
   it("fails closed when a title lookup is missing or ambiguous", async () => {

@@ -106,6 +106,66 @@ type NoteSelector =
   | { selector: "id"; value: string }
   | { selector: "query"; value: string };
 
+function parseClearNotesConfirmation(
+  params: Record<string, unknown>,
+  currentRevision: number,
+): void {
+  assertOnlyParams(params, ["confirm", "expectedRevision"]);
+  if (!Object.hasOwn(params, "confirm")) {
+    throw new ElizaError("clear-notes requires confirm: true.", {
+      code: "NOTES_VALIDATION_FAILED",
+      context: { field: "confirm" },
+      severity: "ephemeral",
+    });
+  }
+  if (params.confirm !== true) {
+    throw new ElizaError("clear-notes confirm must be the boolean true.", {
+      code: "NOTES_VALIDATION_FAILED",
+      context: { field: "confirm", value: params.confirm },
+      severity: "ephemeral",
+    });
+  }
+  if (!Object.hasOwn(params, "expectedRevision")) {
+    throw new ElizaError(
+      "clear-notes requires expectedRevision matching the current notes revision.",
+      {
+        code: "NOTES_VALIDATION_FAILED",
+        context: { field: "expectedRevision" },
+        severity: "ephemeral",
+      },
+    );
+  }
+  const expectedRevision = params.expectedRevision;
+  if (
+    typeof expectedRevision !== "number" ||
+    !Number.isSafeInteger(expectedRevision) ||
+    expectedRevision < 0
+  ) {
+    throw new ElizaError(
+      "clear-notes expectedRevision must be a non-negative integer.",
+      {
+        code: "NOTES_VALIDATION_FAILED",
+        context: { field: "expectedRevision", value: expectedRevision },
+        severity: "ephemeral",
+      },
+    );
+  }
+  if (expectedRevision !== currentRevision) {
+    throw new ElizaError(
+      "clear-notes expectedRevision is stale; refresh the notes snapshot and try again.",
+      {
+        code: "NOTES_VALIDATION_FAILED",
+        context: {
+          field: "expectedRevision",
+          expectedRevision,
+          currentRevision,
+        },
+        severity: "ephemeral",
+      },
+    );
+  }
+}
+
 function parseLookupTarget(
   params: Record<string, unknown>,
   capability: string,
@@ -279,7 +339,7 @@ async function dispatchCapability(
     );
   }
   if (capability === "clear-notes") {
-    assertOnlyParams(params, []);
+    parseClearNotesConfirmation(params, service.snapshot().revision);
     const { value: cleared, snapshot } = await service.clearNotesWithCommit();
     return mutationSuccess(
       snapshot,
