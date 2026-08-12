@@ -15,6 +15,14 @@ import type {
 } from "@elizaos/core";
 import { Service } from "@elizaos/core";
 
+export {
+  assessGoogleOAuthCallbackConfig,
+  assertCanonicalGoogleOAuthRedirectUri,
+  GOOGLE_CONNECTOR_OAUTH_CALLBACK_PATH,
+  isPortlessLoopbackRedirectUrl,
+  resolveGoogleConnectorOAuthCallbackUrl,
+} from "../../../plugin-google-workspace/src/google-oauth-callback.ts";
+
 export class GoogleWorkspaceTestService extends Service {
   static serviceType = "google";
 

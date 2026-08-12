@@ -23,6 +23,7 @@ import { GoogleWorkspaceService } from "./service.js";
 import { GOOGLE_SERVICE_NAME } from "./types.js";
 
 export * from "./auth.js";
+export * from "./google-oauth-callback.js";
 export * from "./calendar.js";
 export * from "./chat/accounts.js";
 export type {
