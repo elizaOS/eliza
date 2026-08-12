@@ -10,17 +10,23 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 const appMock = vi.hoisted(() => ({
   value: {
-    t: (key: string, opts?: { defaultValue?: string }) => opts?.defaultValue ?? key,
+    t: (key: string, opts?: { defaultValue?: string }) =>
+      opts?.defaultValue ?? key,
   },
 }));
 
 vi.mock("../../state", () => ({
-  useAppSelector: (selector: (s: typeof appMock.value) => unknown) => selector(appMock.value),
-  useAppSelectorShallow: (selector: (s: typeof appMock.value) => unknown) => selector(appMock.value),
+  useAppSelector: (selector: (s: typeof appMock.value) => unknown) =>
+    selector(appMock.value),
+  useAppSelectorShallow: (selector: (s: typeof appMock.value) => unknown) =>
+    selector(appMock.value),
 }));
 
 vi.mock("../../api", async () => {
-  const actual = await vi.importActual("../../api") as Record<string, unknown>;
+  const actual = (await vi.importActual("../../api")) as Record<
+    string,
+    unknown
+  >;
   return {
     ...actual,
     client: {
@@ -38,7 +44,9 @@ describe("BlueBubblesStatusPanel", () => {
   afterEach(() => cleanup());
 
   it("renders unavailable state for inactive plugin (404→unavailable)", async () => {
-    const mock = client.getBlueBubblesStatus as unknown as ReturnType<typeof vi.fn>;
+    const mock = client.getBlueBubblesStatus as unknown as ReturnType<
+      typeof vi.fn
+    >;
     mock.mockResolvedValue({
       available: false,
       connected: false,
@@ -49,13 +57,19 @@ describe("BlueBubblesStatusPanel", () => {
     render(<BlueBubblesStatusPanel />);
 
     await waitFor(() => {
-      expect(screen.getByText("BlueBubbles is not connected yet. Save the server URL and password above, then refresh.")).toBeTruthy();
+      expect(
+        screen.getByText(
+          "BlueBubbles is not connected yet. Save the server URL and password above, then refresh.",
+        ),
+      ).toBeTruthy();
     });
     expect(screen.getByText("bluebubbles service not registered")).toBeTruthy();
   });
 
   it("renders connected state with webhook target", async () => {
-    const mock = client.getBlueBubblesStatus as unknown as ReturnType<typeof vi.fn>;
+    const mock = client.getBlueBubblesStatus as unknown as ReturnType<
+      typeof vi.fn
+    >;
     mock.mockResolvedValue({
       available: true,
       connected: true,
@@ -67,6 +81,8 @@ describe("BlueBubblesStatusPanel", () => {
     await waitFor(() => {
       expect(screen.getByText("BlueBubbles is connected.")).toBeTruthy();
     });
-    expect(screen.getByText(/http:\/\/localhost:3000\/webhooks\/bluebubbles/)).toBeTruthy();
+    expect(
+      screen.getByText(/http:\/\/localhost:3000\/webhooks\/bluebubbles/),
+    ).toBeTruthy();
   });
 });
