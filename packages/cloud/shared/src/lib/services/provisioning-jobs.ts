@@ -91,6 +91,7 @@ import {
 import {
   AdminCanaryCleanupExpectationError,
   elizaSandboxService,
+  hasRecentAgentHeartbeat,
   SNAPSHOT_ENDPOINT_UNSUPPORTED,
 } from "./eliza-sandbox";
 import {
@@ -1250,6 +1251,7 @@ export class ProvisioningJobService {
         replacement_cleanup_sandbox_id: agentSandboxes.replacement_cleanup_sandbox_id,
         deletion_attempt_id: agentSandboxes.deletion_attempt_id,
         deletion_started_at: agentSandboxes.deletion_started_at,
+        last_heartbeat_at: agentSandboxes.last_heartbeat_at,
       })
       .from(agentSandboxes)
       .where(
@@ -1295,6 +1297,14 @@ export class ProvisioningJobService {
     }
 
     opts.validateSandbox?.(sandbox);
+
+    if (
+      opts.jobType === JOB_TYPES.AGENT_DELETE &&
+      sandbox.status === "running" &&
+      hasRecentAgentHeartbeat(sandbox.last_heartbeat_at)
+    ) {
+      throw new ApiError(409, "session_not_ready", "Agent is running with a recent heartbeat");
+    }
 
     const configuredConflicts = opts.mutuallyExclusiveJobTypes ?? [];
     const symmetricConflicts =

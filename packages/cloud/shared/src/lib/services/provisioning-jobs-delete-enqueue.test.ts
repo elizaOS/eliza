@@ -61,12 +61,17 @@ const txExecute = mock(async () => ({ rows: [] }));
 // returns cannot move before the enqueue commits, so `for` is part of the
 // chain the enqueue actually walks.
 let txSelectCall = 0;
+let selectedSandbox: Record<string, unknown> = {
+  id: "agent",
+  status: "running",
+  lifecycle_revision: 0,
+  updated_at: new Date(),
+  last_heartbeat_at: null,
+};
 const txSelect = mock(() => {
   txSelectCall += 1;
   const isSandboxLookup = txSelectCall === 1;
-  const rows = isSandboxLookup
-    ? [{ id: "agent", status: "running", lifecycle_revision: 0, updated_at: new Date() }]
-    : [];
+  const rows = isSandboxLookup ? [selectedSandbox] : [];
   const chain = {
     from: () => chain,
     where: () => chain,
@@ -150,6 +155,13 @@ afterEach(() => {
   selectRows = [];
   cancelledReturning = [];
   txSelectCall = 0;
+  selectedSandbox = {
+    id: "agent",
+    status: "running",
+    lifecycle_revision: 0,
+    updated_at: new Date(),
+    last_heartbeat_at: null,
+  };
 });
 
 afterAll(() => {
@@ -159,6 +171,27 @@ afterAll(() => {
 });
 
 describe("enqueueAgentDeleteOnce.beforeInsert — cancels other pending jobs", () => {
+  test("rejects a running agent with a recent heartbeat before flipping deletion_pending", async () => {
+    selectedSandbox = {
+      ...selectedSandbox,
+      last_heartbeat_at: new Date(Date.now() - 30_000),
+    };
+    const { provisioningJobService } = await import("./provisioning-jobs");
+
+    await expect(
+      provisioningJobService.enqueueAgentDeleteOnce({
+        agentId: "agent",
+        organizationId: "22222222-2222-4222-8222-222222222222",
+        userId: "33333333-3333-4333-8333-333333333333",
+      }),
+    ).rejects.toThrow("Agent is running with a recent heartbeat");
+    expect(
+      txUpdateSet.mock.calls.some(
+        ([values]) => (values as { status?: string }).status === "deletion_pending",
+      ),
+    ).toBe(false);
+  });
+
   test("marks only the agent's quiescent non-delete pending jobs cancelled", async () => {
     cancelledReturning = [{ id: "j-restart" }, { id: "j-snapshot" }];
     const orgId = "22222222-2222-4222-8222-222222222222";

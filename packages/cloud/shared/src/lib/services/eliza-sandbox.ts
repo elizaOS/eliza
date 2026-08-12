@@ -514,6 +514,15 @@ const HEARTBEAT_PROBE_RETRY_MS = 2_000;
 // on success) is the downtime clock. The ~30s heartbeat itself keeps the
 // WireGuard NAT mapping warm, so a reachable agent never trips this.
 const HEARTBEAT_DISCONNECT_AFTER_MS = 120_000;
+
+/** Returns whether a heartbeat timestamp proves the agent was recently live. */
+export function hasRecentAgentHeartbeat(lastHeartbeatAt: Date | string | null): boolean {
+  if (!lastHeartbeatAt) return false;
+  const heartbeatMs = new Date(lastHeartbeatAt).getTime();
+  const ageMs = Date.now() - heartbeatMs;
+  return Number.isFinite(ageMs) && ageMs >= 0 && ageMs < HEARTBEAT_DISCONNECT_AFTER_MS;
+}
+
 // IP reconciliation (heartbeat + recovery): agent containers do not persist
 // tailscale node state, so a container restart mints a fresh node key and
 // headscale hands out the NEXT sequential IP — the stored headscale_ip /
@@ -2115,6 +2124,9 @@ export class ElizaSandboxService {
       const hasActiveReplacementJob = await this.hasActiveReplacementJobTx(tx, agentId, orgId);
       if (rec.status === "provisioning" || hasActiveProvisionJob || hasActiveReplacementJob) {
         return { ok: false as const, error: "Agent provisioning is in progress" };
+      }
+      if (rec.status === "running" && hasRecentAgentHeartbeat(rec.last_heartbeat_at)) {
+        return { ok: false as const, error: "Agent is running with a recent heartbeat" };
       }
       const deletionAttemptId = rec.deletion_attempt_id ?? crypto.randomUUID();
       // A retry preserves the original audit timestamp while taking a fresh

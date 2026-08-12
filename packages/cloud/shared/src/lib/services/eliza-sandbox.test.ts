@@ -3736,6 +3736,46 @@ describe("ElizaSandboxService.deleteAgent teardown cap (#9066)", () => {
     return new ElizaSandboxService() as unknown as Svc;
   }
 
+  test("prepareAgentDelete refuses a running agent with a fresh heartbeat", async () => {
+    const svc = await makeSvc();
+    const live = {
+      ...customSandbox(),
+      id: AGENT,
+      organization_id: ORG,
+      last_heartbeat_at: new Date(Date.now() - 30_000),
+    };
+    const lockLifecycle = spyOn(svc, "lockLifecycle").mockResolvedValue(undefined);
+    const getForMutation = spyOn(svc, "getAgentForLifecycleMutation").mockResolvedValue(live);
+    const activeProvision = spyOn(svc, "hasActiveProvisionJobTx").mockResolvedValue(false);
+    const activeReplacement = spyOn(svc, "hasActiveReplacementJobTx").mockResolvedValue(false);
+    const update = mock(() => ({
+      set: mock(() => ({
+        where: mock(() => ({
+          returning: mock(async () => [{ ...live, status: "deletion_pending" }]),
+        })),
+      })),
+    }));
+    upgradeTransactionImpl = async (fn) =>
+      fn({
+        execute: async () => ({ rows: [] }),
+        update,
+      });
+
+    try {
+      await expect(svc.prepareAgentDelete(AGENT, ORG)).resolves.toEqual({
+        ok: false,
+        error: "Agent is running with a recent heartbeat",
+      });
+      expect(update).not.toHaveBeenCalled();
+    } finally {
+      upgradeTransactionImpl = null;
+      lockLifecycle.mockRestore();
+      getForMutation.mockRestore();
+      activeProvision.mockRestore();
+      activeReplacement.mockRestore();
+    }
+  });
+
   test("linked character cleanup waits until the reconciliation tombstone is removed", async () => {
     const svc = await makeSvc();
     const characterId = "44444444-4444-4444-8444-444444444444";
