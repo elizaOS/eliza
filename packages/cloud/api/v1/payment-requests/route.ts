@@ -13,12 +13,13 @@
 
 import { Hono } from "hono";
 import { z } from "zod";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
+import { failureResponse, NotFoundError } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import {
   RateLimitPresets,
   rateLimit,
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
+import { elizaSandboxService } from "@/lib/services/eliza-sandbox";
 import { getPaymentRequestsService } from "@/lib/services/payment-requests-default";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
@@ -106,6 +107,16 @@ app.post("/", async (c) => {
         },
         400,
       );
+    }
+
+    if (parsed.data.agentId) {
+      const agent = await elizaSandboxService.getAgentForWrite(
+        parsed.data.agentId,
+        user.organization_id,
+      );
+      if (!agent) {
+        throw NotFoundError("Agent not found");
+      }
     }
 
     const { successUrl, cancelUrl, metadata } = paymentMetadata(parsed.data);

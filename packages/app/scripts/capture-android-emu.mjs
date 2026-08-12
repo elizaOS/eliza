@@ -22,6 +22,7 @@ import {
   logFor,
   mirrorToRecordings,
   parseFlags,
+  resolveCaptureDurationSeconds,
   skip,
 } from "./lib/capture-output.mjs";
 
@@ -183,7 +184,7 @@ async function main() {
     slug: flags.slug,
     platform: PLATFORM,
   });
-  const durationSec = Number(flags.duration ?? 6);
+  const durationSec = resolveCaptureDurationSeconds(flags);
 
   const pngPath = evidencePath(base, "png");
   if (captureScreenshot(adb, serial, pngPath)) {

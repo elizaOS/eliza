@@ -9,6 +9,20 @@
 import type { AgentNotification } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "../../api/client-types-core";
+import {
+  STEWARD_SESSION_CHANGE_EVENT,
+  type StewardSessionChangeDetail,
+} from "../../events/steward-session-event";
+
+let stewardSessionEpoch = 0;
+function publishStewardSession(state: "present" | "cleared"): void {
+  stewardSessionEpoch += 1;
+  window.dispatchEvent(
+    new CustomEvent<StewardSessionChangeDetail>(STEWARD_SESSION_CHANGE_EVENT, {
+      detail: { state, sessionEpoch: stewardSessionEpoch },
+    }),
+  );
+}
 
 const listNotifications = vi.fn();
 const markNotificationReadApi = vi.fn();
@@ -787,15 +801,17 @@ describe("notification-store", () => {
     expect(__getStateForTests().unreadCount).toBe(1);
   });
 
-  it("restores an entire producer batch when one delete rejects", async () => {
+  it("restores only the failed member of a partially successful producer batch", async () => {
     removeNotificationApi
       .mockResolvedValueOnce({ ok: true })
       .mockRejectedValueOnce(new Error("network"));
     __ingestNotificationForTests(makeNotification({ id: "batch-1" }), 1);
     __ingestNotificationForTests(makeNotification({ id: "batch-2" }), 2);
     await removeNotifications(["batch-1", "batch-2"]);
-    expect(__getStateForTests().notifications).toHaveLength(2);
-    expect(__getStateForTests().unreadCount).toBe(2);
+    expect(__getStateForTests().notifications.map((n) => n.id)).toEqual([
+      "batch-2",
+    ]);
+    expect(__getStateForTests().unreadCount).toBe(1);
   });
 
   it("restores the inbox when clear rejects", async () => {
@@ -1158,8 +1174,7 @@ describe("notification-store — authority isolation (#18391)", () => {
     initNotifications();
     await vi.waitFor(() => expect(listNotifications).toHaveBeenCalledTimes(1));
 
-    hasToken.mockReturnValue(false);
-    window.dispatchEvent(new Event("steward-token-sync"));
+    publishStewardSession("cleared");
     expect(rotateConnection).toHaveBeenCalledTimes(1);
   });
 
@@ -1185,8 +1200,7 @@ describe("notification-store — authority isolation (#18391)", () => {
       // updated yet — this is exactly the gap useAuthStatus leaves open.
       // Invalidation deliberately does not fetch (identity is unknown), so
       // no response needs to be queued for it.
-      hasToken.mockReturnValue(false);
-      window.dispatchEvent(new Event("steward-token-sync"));
+      publishStewardSession("cleared");
 
       // Synchronous: no await before this assertion.
       expect(__getStateForTests().notifications).toHaveLength(0);
@@ -1213,8 +1227,7 @@ describe("notification-store — authority isolation (#18391)", () => {
       await vi.waitFor(() => expect(agentEventHandlers()).toHaveLength(1));
       const handlerA = agentEventHandlers()[0];
 
-      hasToken.mockReturnValue(false);
-      window.dispatchEvent(new Event("steward-token-sync"));
+      publishStewardSession("cleared");
 
       handlerA({
         stream: "notification",
@@ -1244,8 +1257,7 @@ describe("notification-store — authority isolation (#18391)", () => {
       );
       rotateConnection.mockClear();
 
-      hasToken.mockReturnValue(true);
-      window.dispatchEvent(new Event("steward-token-sync"));
+      publishStewardSession("present");
       await Promise.resolve();
 
       // No extra clear/refetch/rotation beyond what the base change already did.
@@ -1283,6 +1295,7 @@ describe("notification-store mutations — authority-scoped rollback (#18542)", 
     rotateConnection.mockReset();
     markNotificationReadApi.mockReset();
     invokeDesktopBridgeRequest.mockReset().mockResolvedValue(null);
+    stewardSessionEpoch = 0;
   });
 
   afterEach(() => {
@@ -1346,5 +1359,71 @@ describe("notification-store mutations — authority-scoped rollback (#18542)", 
     await markNotificationRead("a-row");
 
     expect(__getStateForTests().notifications[0]?.readAt).toBeNull();
+  });
+
+  it("does not let an older failed mutation erase a newer confirmed mutation", async () => {
+    __setAuthStatusForTests(authenticated("user-a", "session-a"));
+    const notif = makeNotification({ id: "same-row", readAt: null });
+    listNotifications.mockResolvedValueOnce({
+      notifications: [notif],
+      unreadCount: 1,
+    });
+    initNotifications();
+    await vi.waitFor(() =>
+      expect(__getStateForTests().notifications).toHaveLength(1),
+    );
+
+    let rejectFirst!: (error: unknown) => void;
+    markNotificationReadApi
+      .mockReturnValueOnce(
+        new Promise((_resolve, reject) => {
+          rejectFirst = reject;
+        }),
+      )
+      .mockResolvedValueOnce({ ok: true });
+    const first = markNotificationRead("same-row");
+    await markNotificationRead("same-row");
+    rejectFirst(new Error("late failure"));
+    await first;
+
+    expect(__getStateForTests().notifications[0]?.readAt).not.toBeNull();
+  });
+
+  it("discards a rollback after an A-to-X-to-A authority round trip", async () => {
+    __setAuthStatusForTests(authenticated("user-a", "session-a"));
+    const original = makeNotification({ id: "a-row", readAt: null });
+    listNotifications.mockResolvedValueOnce({
+      notifications: [original],
+      unreadCount: 1,
+    });
+    initNotifications();
+    await vi.waitFor(() =>
+      expect(__getStateForTests().notifications).toHaveLength(1),
+    );
+    let rejectMutation!: (error: unknown) => void;
+    markNotificationReadApi.mockReturnValueOnce(
+      new Promise((_resolve, reject) => {
+        rejectMutation = reject;
+      }),
+    );
+    const mutation = markNotificationRead("a-row");
+
+    listNotifications
+      .mockResolvedValueOnce({ notifications: [], unreadCount: 0 })
+      .mockResolvedValueOnce({
+        notifications: [{ ...original, title: "fresh A" }],
+        unreadCount: 1,
+      });
+    __setAuthStatusForTests(authenticated("user-x", "session-x"));
+    await vi.waitFor(() =>
+      expect(__getStateForTests().notifications).toHaveLength(0),
+    );
+    __setAuthStatusForTests(authenticated("user-a", "session-a"));
+    await vi.waitFor(() =>
+      expect(__getStateForTests().notifications[0]?.title).toBe("fresh A"),
+    );
+    rejectMutation(new Error("late failure"));
+    await mutation;
+    expect(__getStateForTests().notifications[0]?.title).toBe("fresh A");
   });
 });

@@ -9,6 +9,10 @@
  * - Logs do not contain fatal/error/timeout signatures
  * - The dev process does not exit before the observation window completes
  *
+ * Port overrides (`--ui-port`, `--api-port`, and the matching environment
+ * variables) must be canonical TCP ports in `1..65535`. Explicit invalid
+ * environment values fail closed rather than silently selecting a default.
+ *
  * Usage:
  *   node packages/scripts/dev-health-check.mjs
  *   node packages/scripts/dev-health-check.mjs --seconds=120
@@ -26,23 +30,27 @@ import {
 import { homedir } from "node:os";
 import path from "node:path";
 import process from "node:process";
+import { pathToFileURL } from "node:url";
 
 const DEFAULT_SECONDS = 90;
-const DEFAULT_UI_PORT = 2138;
-const DEFAULT_API_PORT = 31337;
+export const DEFAULT_UI_PORT = 2138;
+export const DEFAULT_API_PORT = 31337;
 const DEFAULT_INITIAL_PROBE_DELAY_MS = 8000;
 const POLL_INTERVAL_MS = 1000;
 const FETCH_TIMEOUT_MS = 10000;
 const FINAL_PROBE_RETRIES = 3;
 const FINAL_PROBE_RETRY_DELAY_MS = 1000;
 
-function parseArgs(argv) {
+/**
+ * Parse CLI argv and optional env into health-check options.
+ * @param {string[]} argv
+ * @param {NodeJS.ProcessEnv} [env]
+ */
+export function parseArgs(argv, env = process.env) {
   const options = {
     seconds: DEFAULT_SECONDS,
-    uiPort:
-      Number(process.env.ELIZA_UI_PORT || process.env.ELIZA_PORT) ||
-      DEFAULT_UI_PORT,
-    apiPort: Number(process.env.ELIZA_API_PORT) || DEFAULT_API_PORT,
+    uiPort: resolveUiPortFromEnv(env),
+    apiPort: resolveApiPortFromEnv(env),
     initialProbeDelayMs: DEFAULT_INITIAL_PROBE_DELAY_MS,
     logDir: path.join(process.cwd(), "logs"),
   };
@@ -61,9 +69,9 @@ function parseArgs(argv) {
     } else if (key === "--duration-ms") {
       options.seconds = parsePositiveNumber(value, "--duration-ms") / 1000;
     } else if (key === "--ui-port") {
-      options.uiPort = parsePositiveInteger(value, "--ui-port");
+      options.uiPort = parseTcpPort(value, "--ui-port");
     } else if (key === "--api-port") {
-      options.apiPort = parsePositiveInteger(value, "--api-port");
+      options.apiPort = parseTcpPort(value, "--api-port");
     } else if (key === "--initial-probe-delay-ms") {
       options.initialProbeDelayMs = parsePositiveNumber(
         value,
@@ -77,6 +85,65 @@ function parseArgs(argv) {
   }
 
   return options;
+}
+
+/**
+ * Resolve UI port: `ELIZA_UI_PORT` wins over `ELIZA_PORT`; unset/empty keeps
+ * the default. Any other explicit value must be a canonical TCP port.
+ * @param {NodeJS.ProcessEnv} env
+ */
+export function resolveUiPortFromEnv(env = process.env) {
+  const uiRaw = env.ELIZA_UI_PORT;
+  if (uiRaw !== undefined && uiRaw !== "") {
+    return parseTcpPort(uiRaw, "ELIZA_UI_PORT");
+  }
+  const portRaw = env.ELIZA_PORT;
+  if (portRaw !== undefined && portRaw !== "") {
+    return parseTcpPort(portRaw, "ELIZA_PORT");
+  }
+  return DEFAULT_UI_PORT;
+}
+
+/**
+ * Resolve `ELIZA_API_PORT`: unset/empty keeps the default; any other explicit
+ * value must be a canonical TCP port or the command fails closed.
+ * @param {NodeJS.ProcessEnv} env
+ */
+export function resolveApiPortFromEnv(env = process.env) {
+  const raw = env.ELIZA_API_PORT;
+  if (raw === undefined || raw === "") {
+    return DEFAULT_API_PORT;
+  }
+  return parseTcpPort(raw, "ELIZA_API_PORT");
+}
+
+/**
+ * Accept only canonical decimal TCP ports in the range 1..65535.
+ * Rejects partial numbers, signed values, fractions, leading zeros, and
+ * out-of-range integers so the health check never probes a different port
+ * than the operator requested.
+ * @param {string} value
+ * @param {string} label
+ */
+export function parseTcpPort(value, label) {
+  const raw = String(value ?? "").trim();
+  if (!/^\d+$/.test(raw)) {
+    throw new Error(
+      `${label} must be a TCP port integer from 1 to 65535 (received ${JSON.stringify(String(value ?? ""))})`,
+    );
+  }
+  const port = Number.parseInt(raw, 10);
+  if (
+    !Number.isSafeInteger(port) ||
+    port < 1 ||
+    port > 65535 ||
+    String(port) !== raw
+  ) {
+    throw new Error(
+      `${label} must be a TCP port integer from 1 to 65535 (received ${JSON.stringify(String(value ?? ""))})`,
+    );
+  }
+  return port;
 }
 
 function prependPath(env, entries) {
@@ -131,29 +198,22 @@ function printHelp() {
 Options:
   --seconds=N       Observation window in seconds, default ${DEFAULT_SECONDS}
   --duration-ms=N   Observation window in milliseconds
-  --ui-port=N       UI port to probe, default ${DEFAULT_UI_PORT}
-  --api-port=N      API port to probe, default ${DEFAULT_API_PORT}
+  --ui-port=N       UI port to probe (1-65535), default ${DEFAULT_UI_PORT}
+  --api-port=N      API port to probe (1-65535), default ${DEFAULT_API_PORT}
   --initial-probe-delay-ms=N
                     Startup delay before probing, default ${DEFAULT_INITIAL_PROBE_DELAY_MS}
-  --log-dir=PATH    Directory for captured logs, default ./logs`);
+  --log-dir=PATH    Directory for captured logs, default ./logs
+
+Environment:
+  ELIZA_UI_PORT / ELIZA_PORT  UI probe port when --ui-port is omitted
+                              (ELIZA_UI_PORT takes precedence)
+  ELIZA_API_PORT              API probe port when --api-port is omitted`);
 }
 
 function parsePositiveNumber(value, label) {
   const parsed = Number(value);
   if (!Number.isFinite(parsed) || parsed <= 0) {
     throw new Error(`${label} must be a positive number`);
-  }
-  return parsed;
-}
-
-function parsePositiveInteger(value, label) {
-  const parsed = Number.parseInt(value, 10);
-  if (
-    !Number.isFinite(parsed) ||
-    parsed <= 0 ||
-    String(parsed) !== String(value)
-  ) {
-    throw new Error(`${label} must be a positive integer`);
   }
   return parsed;
 }
@@ -749,7 +809,14 @@ async function run() {
   console.log("[dev-health-check] PASS");
 }
 
-run().catch((error) => {
-  console.error(`[dev-health-check] ${error?.stack || error}`);
-  process.exit(1);
-});
+const isDirectRun =
+  import.meta.main === true ||
+  (typeof process.argv[1] === "string" &&
+    import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href);
+
+if (isDirectRun) {
+  run().catch((error) => {
+    console.error(`[dev-health-check] ${error?.stack || error}`);
+    process.exit(1);
+  });
+}

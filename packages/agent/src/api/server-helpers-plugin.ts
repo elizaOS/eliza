@@ -32,6 +32,21 @@ const PLUGIN_PARAMS: Record<
       label: "Application ID (optional, auto-resolved when omitted)",
       secret: false,
     },
+    {
+      key: "ELIZA_DISCORD_OWNER_USER_IDS_JSON",
+      label: 'Owner Discord user IDs (JSON array, e.g. ["123456789012345678"])',
+      secret: false,
+    },
+    {
+      key: "DISCORD_DM_POLICY",
+      label: "DM policy (open | allowlist | pairing | disabled)",
+      secret: false,
+    },
+    {
+      key: "DISCORD_ALLOW_FROM",
+      label: "DM allowlist (comma-separated Discord user IDs)",
+      secret: false,
+    },
   ],
   twitter: [
     { key: "TWITTER_USERNAME", label: "Username", secret: false },

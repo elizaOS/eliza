@@ -158,14 +158,18 @@ export function parseShardSpec(spec) {
     return null;
   }
   const parts = String(spec).split("/");
-  if (parts.length !== 2) {
+  if (
+    parts.length !== 2 ||
+    !/^\d+$/.test(parts[0]) ||
+    !/^\d+$/.test(parts[1])
+  ) {
     return null;
   }
-  const index = Number.parseInt(parts[0], 10);
-  const total = Number.parseInt(parts[1], 10);
+  const index = Number(parts[0]);
+  const total = Number(parts[1]);
   if (
-    !Number.isInteger(index) ||
-    !Number.isInteger(total) ||
+    !Number.isSafeInteger(index) ||
+    !Number.isSafeInteger(total) ||
     total <= 0 ||
     index < 1 ||
     index > total

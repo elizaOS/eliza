@@ -87,7 +87,19 @@ function loadSkillFromFile(
 ): { skill: Skill | null; diagnostics: SkillDiagnostic[] } {
   const diagnostics: SkillDiagnostic[] = [];
 
-  const rawContent = readFileSync(filePath, "utf-8");
+  let rawContent: string;
+  try {
+    rawContent = readFileSync(filePath, "utf-8");
+  } catch (err: unknown) {
+    // error-policy:J3 unreadable skill file on untrusted filesystem becomes a warning diagnostic, never a fake skill
+    diagnostics.push({
+      type: "warning",
+      message: `Failed to read skill file: ${err instanceof Error ? err.message : String(err)}`,
+      path: filePath,
+    });
+    return { skill: null, diagnostics };
+  }
+
   const { frontmatter } = parseFrontmatter<SkillFrontmatter>(rawContent);
   const skillDir = dirname(filePath);
   const parentDirName = basename(skillDir);
@@ -136,7 +148,18 @@ function loadSkillsFromDirInternal(
     return { skills, diagnostics };
   }
 
-  const entries = readdirSync(dir, { withFileTypes: true });
+  let entries: import("node:fs").Dirent[];
+  try {
+    entries = readdirSync(dir, { withFileTypes: true });
+  } catch (err: unknown) {
+    // error-policy:J3 unreadable skills directory on untrusted filesystem becomes a warning diagnostic with no skills
+    diagnostics.push({
+      type: "warning",
+      message: `Failed to read directory "${dir}": ${err instanceof Error ? err.message : String(err)}`,
+      path: dir,
+    });
+    return { skills, diagnostics };
+  }
 
   for (const entry of entries) {
     if (entry.name.startsWith(".")) {
@@ -152,9 +175,20 @@ function loadSkillsFromDirInternal(
     let isDirectory = entry.isDirectory();
     let isFile = entry.isFile();
     if (entry.isSymbolicLink()) {
-      const stats = statSync(fullPath);
-      isDirectory = stats.isDirectory();
-      isFile = stats.isFile();
+      try {
+        const stats = statSync(fullPath);
+        isDirectory = stats.isDirectory();
+        isFile = stats.isFile();
+      } catch (err: unknown) {
+        // error-policy:J3 dangling or inaccessible symlink becomes a warning diagnostic and the entry is skipped
+        diagnostics.push({
+          type: "warning",
+          message: `Dangling or inaccessible symlink "${entry.name}": ${err instanceof Error ? err.message : String(err)}`,
+          path: fullPath,
+        });
+        isDirectory = false;
+        isFile = false;
+      }
     }
 
     if (isDirectory) {

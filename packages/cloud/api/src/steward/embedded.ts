@@ -1,11 +1,14 @@
 // Boots cloud API src steward embedded Worker infrastructure under Cloudflare runtime constraints.
 import type { MiddlewareHandler } from "hono";
-import { STEWARD_AUTH_UPSTREAM_TIMEOUT_MS } from "@/lib/auth/steward-client";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 const MUTATING_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 const REQUEST_TTL_SECONDS = 60;
+// Keep in lockstep with STEWARD_AUTH_UPSTREAM_TIMEOUT_MS in
+// packages/cloud/shared/src/lib/auth/steward-client.ts. Inlined so this module
+// (and the thin login path that loads it) does not pull the JWT/jose graph.
+const STEWARD_AUTH_UPSTREAM_TIMEOUT_MS = 25_000;
 
 function bytesToHex(bytes: Uint8Array): string {
   let out = "";
@@ -181,6 +184,125 @@ function hasOAuthCreds(
 }
 
 /**
+ * Isolate-local cache for GET /auth/providers (#18049).
+ *
+ * The enabled provider set changes at deploy/config time (OAuth env + Steward
+ * config), not per request. A short TTL cuts warm multi-sample p95 when the
+ * upstream leg is still material after the thin entry path removes cold
+ * bootstrap.
+ *
+ * Staleness bound (hard ceiling **60s from original fetch**):
+ * - Isolate entry expires after PROVIDERS_CACHE_TTL_MS (60s), or sooner when
+ *   `ELIZA_DEPLOY_COMMIT` changes (new deploy / key mismatch).
+ * - Browser/shared `Cache-Control` is `public, max-age=<remaining>` only —
+ *   **no** `stale-while-revalidate`. On hits we emit the *remaining* lifetime
+ *   so isolate age + downstream max-age never compose past 60s from fetch
+ *   (a hit at t=59s gets max-age=1, not a fresh max-age=60).
+ * - No cross-isolate shared store; each Worker isolate has its own entry.
+ */
+export const PROVIDERS_CACHE_TTL_MS = 60_000;
+/** Fresh-miss browser policy (full remaining budget at t=0). */
+export const PROVIDERS_BROWSER_CACHE_CONTROL = "public, max-age=60";
+
+type ProvidersCacheEntry = {
+  body: ArrayBuffer;
+  status: number;
+  contentType: string;
+  /** Absolute epoch ms when the isolate entry becomes unusable. */
+  expiresAt: number;
+  /** Absolute epoch ms of the upstream fetch that produced this body. */
+  fetchedAt: number;
+  deployCommit: string | null;
+};
+
+let providersResponseCache: ProvidersCacheEntry | null = null;
+
+function providersCacheKey(env: AppEnv["Bindings"]): string | null {
+  return env.ELIZA_DEPLOY_COMMIT?.trim() || null;
+}
+
+/**
+ * Cache-Control for a response whose origin fetch was `ageMs` ago.
+ * Always `public, max-age=<remaining>` with remaining ∈ [0, 60] seconds and
+ * no stale-while-revalidate, so total age from fetch cannot exceed 60s.
+ */
+export function providersCacheControlForAgeMs(ageMs: number): string {
+  const remainingMs = Math.max(0, PROVIDERS_CACHE_TTL_MS - Math.max(0, ageMs));
+  const maxAgeSec = Math.ceil(remainingMs / 1000);
+  return `public, max-age=${maxAgeSec}`;
+}
+
+function readProvidersCache(env: AppEnv["Bindings"]): Response | null {
+  const entry = providersResponseCache;
+  if (!entry) return null;
+  const now = Date.now();
+  if (entry.expiresAt <= now) return null;
+  if (entry.deployCommit !== providersCacheKey(env)) return null;
+  const ageMs = now - entry.fetchedAt;
+  if (ageMs >= PROVIDERS_CACHE_TTL_MS) return null;
+  return new Response(entry.body.slice(0), {
+    status: entry.status,
+    headers: {
+      "content-type": entry.contentType,
+      "cache-control": providersCacheControlForAgeMs(ageMs),
+      age: String(Math.floor(ageMs / 1000)),
+      "x-eliza-providers-cache": "hit",
+    },
+  });
+}
+
+async function writeProvidersCache(
+  response: Response,
+  env: AppEnv["Bindings"],
+): Promise<Response> {
+  if (!response.ok) return response;
+  const contentType = response.headers.get("content-type") || "";
+  if (!contentType.includes("application/json")) return response;
+
+  const body = await response.clone().arrayBuffer();
+  const fetchedAt = Date.now();
+  providersResponseCache = {
+    body,
+    status: response.status,
+    contentType,
+    fetchedAt,
+    expiresAt: fetchedAt + PROVIDERS_CACHE_TTL_MS,
+    deployCommit: providersCacheKey(env),
+  };
+
+  const headers = new Headers(response.headers);
+  headers.set("cache-control", providersCacheControlForAgeMs(0));
+  headers.set("age", "0");
+  headers.set("x-eliza-providers-cache", "miss");
+  return new Response(body.slice(0), {
+    status: response.status,
+    headers,
+  });
+}
+
+/** Test helper — clears the isolate providers cache between cases. */
+export function resetProvidersResponseCacheForTests(): void {
+  providersResponseCache = null;
+}
+
+/** Test helper — force the current isolate entry past its expiry. */
+export function expireProvidersResponseCacheForTests(): void {
+  if (providersResponseCache) {
+    providersResponseCache.expiresAt = Date.now() - 1;
+  }
+}
+
+/**
+ * Test helper — rewind/advance the isolate entry's clocks by `deltaMs`
+ * (positive = age the entry as if that many ms already elapsed).
+ */
+export function ageProvidersResponseCacheForTests(deltaMs: number): void {
+  if (!providersResponseCache) return;
+  providersResponseCache.fetchedAt -= deltaMs;
+  providersResponseCache.expiresAt -= deltaMs;
+}
+
+/**
  * The deployed Steward 0.3.9 image's `/auth/providers` returns `false` for
  * google/discord/github even when the OAuth env vars are populated, while the
  * `/auth/oauth/<provider>/authorize` flow still works. Patch the proxied
@@ -226,6 +348,11 @@ export const embeddedStewardHandler: MiddlewareHandler<AppEnv> = async (c) => {
   const url = new URL(c.req.url);
   if (c.req.method === "GET" && isPublicStewardTenantConfigPath(url.pathname)) {
     return c.json({ ok: true, data: PUBLIC_STEWARD_TENANT_CONFIG });
+  }
+
+  if (c.req.method === "GET" && isAuthProvidersPath(url.pathname)) {
+    const cached = readProvidersCache(c.env);
+    if (cached) return cached;
   }
 
   const upstream = resolveStewardUpstream(c.env, url);
@@ -353,7 +480,8 @@ export const embeddedStewardHandler: MiddlewareHandler<AppEnv> = async (c) => {
     );
   }
   if (c.req.method === "GET" && isAuthProvidersPath(url.pathname)) {
-    return patchProvidersResponse(response, c.env);
+    const patched = await patchProvidersResponse(response, c.env);
+    return writeProvidersCache(patched, c.env);
   }
   return response;
 };
