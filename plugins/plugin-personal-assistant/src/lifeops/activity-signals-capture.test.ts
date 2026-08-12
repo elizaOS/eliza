@@ -765,6 +765,24 @@ describe("startLifeOpsActivitySignalCapture", () => {
     expect(h.dispatchStatus).not.toHaveBeenCalled();
   });
 
+  it("treats a 404 status-probe response as expected (no status endpoint at this base — cloud console)", async () => {
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+    h.isApiError.mockImplementation(
+      (error) => typeof error === "object" && error !== null && "kind" in error,
+    );
+    h.getStatus.mockRejectedValue({ kind: "http", status: 404 });
+
+    stop = startLifeOpsActivitySignalCapture(true);
+    await settle();
+
+    expect(h.captureLifeOpsActivitySignal).not.toHaveBeenCalled();
+    expect(h.dispatchStatus).not.toHaveBeenCalled();
+    expect(consoleError).not.toHaveBeenCalled();
+    consoleError.mockRestore();
+  });
+
   it("treats a 401 status-probe response as the expected signed-out state (no console error, no status event)", async () => {
     vi.useFakeTimers();
     const consoleError = vi
