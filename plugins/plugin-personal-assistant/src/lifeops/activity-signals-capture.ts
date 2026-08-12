@@ -563,6 +563,13 @@ export function startLifeOpsActivitySignalCapture(
   let mobileSignalsHandle: { remove: () => Promise<void> } | null = null;
   let mobileSignalsStarted = false;
   let mobileSignalsStarting = false;
+  // The whole native startup run (permissions → listener → startMonitoring →
+  // snapshots → background refresh), including every unmounted-rollback path
+  // inside it, is owned teardown work: stop() awaits it so a predecessor's
+  // late rollback (listener removal, stopMonitoring of a just-engaged
+  // monitor, re-cancel of a late-scheduled refresh) always lands before the
+  // renderer-service registry may start a successor (#17110).
+  let mobileSignalsInFlight: Promise<void> | null = null;
   let mobileHealthPoller: number | null = null;
 
   const refreshMobileHealthSnapshot = async (reason: string): Promise<void> => {
@@ -583,12 +590,12 @@ export function startLifeOpsActivitySignalCapture(
     }
   };
 
-  const startMobileSignals = async (): Promise<void> => {
+  const startMobileSignals = (): Promise<void> => {
     // The starting flag closes the concurrency window two callers (initial
     // ready check + ready poller + resume) would otherwise race through: the
     // handle/started guards below are only assigned after awaits.
     if (mobileSignalsStarting || mobileSignalsHandle || mobileSignalsStarted) {
-      return;
+      return Promise.resolve();
     }
     if (
       !mobileSignals ||
@@ -597,10 +604,28 @@ export function startLifeOpsActivitySignalCapture(
       typeof mobileSignals.startMonitoring !== "function" ||
       typeof mobileSignals.stopMonitoring !== "function"
     ) {
-      return;
+      return Promise.resolve();
     }
 
     mobileSignalsStarting = true;
+    const run = runMobileSignalsStartup();
+    mobileSignalsInFlight = run;
+    const clearInFlight = (): void => {
+      if (mobileSignalsInFlight === run) {
+        mobileSignalsInFlight = null;
+      }
+    };
+    // error-policy:J5 a startup rejection is observed by every call site's
+    // `.catch(reportCaptureError)` on the returned promise; this derived
+    // promise exists only to clear the in-flight slot on settlement.
+    void run.then(clearInFlight, clearInFlight);
+    return run;
+  };
+
+  const runMobileSignalsStartup = async (): Promise<void> => {
+    if (!mobileSignals) {
+      return;
+    }
     try {
       const permissions = await mobileSignals.checkPermissions();
       if (!mounted) return;
@@ -669,6 +694,23 @@ export function startLifeOpsActivitySignalCapture(
       if (typeof mobileSignals.scheduleBackgroundRefresh === "function") {
         try {
           const result = await mobileSignals.scheduleBackgroundRefresh();
+          if (!mounted) {
+            // Stopped while scheduling was in flight: stop()'s
+            // cancelBackgroundRefresh may have raced ahead of this schedule,
+            // so a successful late schedule must be cancelled again — no
+            // background job may outlive its generation. stop() awaits this
+            // whole startup run, so the re-cancel lands before cleanup
+            // resolves (#17110).
+            if (
+              result.scheduled &&
+              typeof mobileSignals.cancelBackgroundRefresh === "function"
+            ) {
+              await mobileSignals
+                .cancelBackgroundRefresh()
+                .catch(reportTeardownFailure);
+            }
+            return;
+          }
           if (!result.scheduled && result.reason) {
             dispatchLifeOpsActivitySignalsStatus({
               status: "background_refresh_unavailable",
@@ -789,6 +831,15 @@ export function startLifeOpsActivitySignalCapture(
     window.removeEventListener("blur", handleBlur);
 
     const pending: Promise<unknown>[] = [];
+    if (mobileSignalsInFlight) {
+      // The in-flight startup run performs its own unmounted rollback
+      // (listener removal, stopMonitoring, background-refresh re-cancel)
+      // once each pending native call settles; owning it here is what keeps
+      // that rollback ahead of a successor's start.
+      // error-policy:J5 a startup rejection is observed by the launch call
+      // sites' `.catch(reportCaptureError)`; stop() needs only settlement.
+      pending.push(mobileSignalsInFlight.catch(() => {}));
+    }
     if (mobileSignalsHandle) {
       const handle = mobileSignalsHandle;
       mobileSignalsHandle = null;

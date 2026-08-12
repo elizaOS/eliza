@@ -1096,6 +1096,87 @@ describe("startLifeOpsActivitySignalCapture", () => {
     expect(h.mobile.cancelBackgroundRefresh).toHaveBeenCalledTimes(1);
   });
 
+  it("stop() awaits an in-flight native startup's rollback before resolving (#17110)", async () => {
+    mockNativeMobile();
+    const remove = vi.fn(async () => {});
+    h.mobile.addListener.mockImplementation(
+      async (_event: string, cb: (signal: unknown) => void) => {
+        h.mobile.listenerCb = cb;
+        return { remove };
+      },
+    );
+    let releaseStartMonitoring: ((value: unknown) => void) | undefined;
+    h.mobile.startMonitoring.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          releaseStartMonitoring = resolve;
+        }),
+    );
+
+    const stopFn = startLifeOpsActivitySignalCapture(true);
+    stop = stopFn;
+    await settle();
+    expect(h.mobile.startMonitoring).toHaveBeenCalledTimes(1);
+
+    let stopSettled = false;
+    const stopPromise = Promise.resolve(stopFn()).then(() => {
+      stopSettled = true;
+    });
+    stop = undefined;
+    await settle();
+    // The in-flight startup (startMonitoring pending) is owned teardown
+    // work: stop() must not resolve until its rollback has completed, or the
+    // registry would start a successor the late rollback can then disable.
+    expect(stopSettled).toBe(false);
+
+    releaseStartMonitoring?.({
+      enabled: true,
+      supported: true,
+      platform: "ios",
+      snapshot: null,
+      healthSnapshot: null,
+    });
+    await settle();
+    await stopPromise;
+    expect(remove).toHaveBeenCalledTimes(1);
+    expect(h.mobile.stopMonitoring).toHaveBeenCalledTimes(1);
+  });
+
+  it("re-cancels a background refresh that resolves after stop (#17110)", async () => {
+    mockNativeMobile();
+    let releaseSchedule: ((value: unknown) => void) | undefined;
+    h.mobile.scheduleBackgroundRefresh.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          releaseSchedule = resolve;
+        }),
+    );
+
+    const stopFn = startLifeOpsActivitySignalCapture(true);
+    stop = stopFn;
+    await settle();
+    expect(h.mobile.scheduleBackgroundRefresh).toHaveBeenCalledTimes(1);
+
+    let stopSettled = false;
+    const stopPromise = Promise.resolve(stopFn()).then(() => {
+      stopSettled = true;
+    });
+    stop = undefined;
+    await settle();
+    expect(h.mobile.cancelBackgroundRefresh).toHaveBeenCalledTimes(1);
+    // The pending schedule is owned work: stop() may not resolve while a
+    // late `{ scheduled: true }` can still create a background job that no
+    // live generation owns.
+    expect(stopSettled).toBe(false);
+
+    releaseSchedule?.({ scheduled: true });
+    await settle();
+    await stopPromise;
+    // The late schedule landed after stop's cancel — it must be cancelled
+    // again before cleanup resolves.
+    expect(h.mobile.cancelBackgroundRefresh).toHaveBeenCalledTimes(2);
+  });
+
   it("discards a late in-flight capture-signal failure after stop instead of publishing it (#17110)", async () => {
     let rejectCapture: ((error: unknown) => void) | undefined;
     h.captureLifeOpsActivitySignal.mockImplementation(

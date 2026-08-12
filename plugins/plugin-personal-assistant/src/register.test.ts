@@ -185,6 +185,12 @@ describe("personal-assistant renderer registration entry", () => {
         remove: vi.fn(async () => {}),
       }),
     );
+    // vi.clearAllMocks() clears calls but not implementations, so a test
+    // that pauses a native call must not leak its unreleased promise into
+    // the next test.
+    h.mobile.stopMonitoring.mockImplementation(async () => ({
+      stopped: true,
+    }));
     h.mobile.startMonitoring.mockResolvedValue({
       enabled: true,
       supported: true,
@@ -362,6 +368,53 @@ describe("personal-assistant renderer registration entry", () => {
       await settle();
     }
     expect(h.mobile.startMonitoring).toHaveBeenCalledTimes(2);
+  });
+
+  it("serializes host replacement behind an in-flight native startup's rollback (#17110)", async () => {
+    h.capacitorIsNative.mockReturnValue(true);
+    h.capacitorGetPlatform.mockReturnValue("ios");
+
+    let releaseStartMonitoring: ((value: unknown) => void) | undefined;
+    h.mobile.startMonitoring.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          releaseStartMonitoring = resolve;
+        }),
+    );
+
+    host = startRendererServiceHost({ shell: "main" });
+    await settleRendererServices();
+    for (let i = 0; i < 8; i += 1) {
+      await settle();
+    }
+    expect(h.mobile.startMonitoring).toHaveBeenCalledTimes(1);
+
+    // Replace the host while the predecessor's startMonitoring is still in
+    // flight — nothing is committed yet, so a stop() that only awaits
+    // committed resources would resolve immediately and let the successor's
+    // monitor race the predecessor's late rollback.
+    host = startRendererServiceHost({ shell: "main" });
+    for (let i = 0; i < 12; i += 1) {
+      await settle();
+    }
+    expect(h.mobile.startMonitoring).toHaveBeenCalledTimes(1);
+
+    releaseStartMonitoring?.({
+      enabled: true,
+      supported: true,
+      platform: "ios",
+      snapshot: null,
+      healthSnapshot: null,
+    });
+    await settleRendererServices();
+    for (let i = 0; i < 12; i += 1) {
+      await settle();
+    }
+    // Predecessor rollback (stopMonitoring) completed, then — and only
+    // then — the successor engaged its own monitor.
+    expect(h.mobile.stopMonitoring).toHaveBeenCalled();
+    expect(h.mobile.startMonitoring).toHaveBeenCalledTimes(2);
+    expect(isLifeOpsActivitySignalCaptureActive()).toBe(true);
   });
 
   it("register.ts threads the host's per-instance context (shell + abort signal) into the capture's start()", async () => {
