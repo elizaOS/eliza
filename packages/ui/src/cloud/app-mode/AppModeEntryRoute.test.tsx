@@ -1,13 +1,19 @@
 /** Verifies the AppModeEntryRoute gate — auth gating and the chat-floor routing table (any agents → the same-origin chat app with ZERO pairing traffic; empty org → /join) — through the package's configured test harness (jsdom, real render, hand-rolled fetch stub; no Steward provider mounted, sessions come from the persisted localStorage JWT). */
 // @vitest-environment jsdom
 
+import type { AgentListItemDto } from "@elizaos/cloud-shared/lib/types/cloud-api";
 import { STEWARD_TOKEN_KEY } from "@elizaos/shared/steward-session-client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { afterEach, describe, expect, it } from "vitest";
+import {
+  hostedAgent,
+  hostedAgentsResponse,
+} from "../../../test/hosted-agent-api-fixtures";
+import { AGENTS_QUERY_KEY } from "../instances/lib/data/eliza-agents";
 import { AppModeEntryRoute } from "./AppModeEntryRoute";
-import { type AppModeAgent, appModeNavigation } from "./app-mode";
+import { appModeNavigation } from "./app-mode";
 
 function base64url(value: unknown): string {
   return btoa(JSON.stringify(value))
@@ -32,19 +38,6 @@ function stewardToken(): string {
 
 function signIn(): void {
   localStorage.setItem(STEWARD_TOKEN_KEY, stewardToken());
-}
-
-function agent(
-  overrides: Partial<AppModeAgent> & { id: string },
-): AppModeAgent {
-  return {
-    agentName: overrides.id,
-    status: "running",
-    executionTier: "dedicated-always",
-    lastHeartbeatAt: null,
-    updatedAt: "2026-08-01T00:00:00.000Z",
-    ...overrides,
-  };
 }
 
 interface StubRoutes {
@@ -91,8 +84,8 @@ function jsonResponse(status: number, body: unknown): Response {
   });
 }
 
-function agentsOk(list: AppModeAgent[]): () => Response {
-  return () => jsonResponse(200, { success: true, data: list });
+function agentsOk(list: readonly AgentListItemDto[]): () => Response {
+  return () => jsonResponse(200, hostedAgentsResponse(list));
 }
 
 function LoginProbe(): React.JSX.Element {
@@ -100,7 +93,7 @@ function LoginProbe(): React.JSX.Element {
   return <div data-testid="login-page">{location.search}</div>;
 }
 
-function renderEntry(initialPath = "/"): void {
+function renderEntry(initialPath = "/"): QueryClient {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
@@ -124,6 +117,7 @@ function renderEntry(initialPath = "/"): void {
       </MemoryRouter>
     </QueryClientProvider>,
   );
+  return queryClient;
 }
 
 afterEach(() => {
@@ -166,10 +160,15 @@ describe("AppModeEntryRoute — chat-floor routing table", () => {
     // "Sign-in link expired" page. Entry must render the chat app instead and
     // issue zero pairing traffic.
     signIn();
-    stubNetwork({ agents: agentsOk([agent({ id: "agent-1" })]) });
-    renderEntry();
+    stubNetwork({ agents: agentsOk([hostedAgent({ id: "agent-1" })]) });
+    const queryClient = renderEntry();
 
     expect(await screen.findByTestId("agent-app")).toBeTruthy();
+    const agentsQuery = queryClient
+      .getQueryCache()
+      .find({ queryKey: AGENTS_QUERY_KEY, exact: false });
+    expect(agentsQuery?.state.status).toBe("success");
+    expect(agentsQuery?.state.error).toBeNull();
     expect(fetchLog.filter((line) => line.includes("pairing-token"))).toEqual(
       [],
     );
@@ -180,8 +179,14 @@ describe("AppModeEntryRoute — chat-floor routing table", () => {
     signIn();
     stubNetwork({
       agents: agentsOk([
-        agent({ id: "stale", lastHeartbeatAt: "2026-08-01T00:00:00.000Z" }),
-        agent({ id: "fresh", lastHeartbeatAt: "2026-08-05T00:00:00.000Z" }),
+        hostedAgent({
+          id: "stale",
+          lastHeartbeatAt: "2026-08-01T00:00:00.000Z",
+        }),
+        hostedAgent({
+          id: "fresh",
+          lastHeartbeatAt: "2026-08-05T00:00:00.000Z",
+        }),
       ]),
     });
     renderEntry();
@@ -196,7 +201,7 @@ describe("AppModeEntryRoute — chat-floor routing table", () => {
   it("dedicated agents exist but none running → the same-origin chat app (never the console)", async () => {
     signIn();
     stubNetwork({
-      agents: agentsOk([agent({ id: "agent-1", status: "stopped" })]),
+      agents: agentsOk([hostedAgent({ id: "agent-1", status: "stopped" })]),
     });
     renderEntry();
 
@@ -207,7 +212,7 @@ describe("AppModeEntryRoute — chat-floor routing table", () => {
   it("an errored dedicated agent (failed provision) → the same-origin chat app, not a dashboard bounce", async () => {
     signIn();
     stubNetwork({
-      agents: agentsOk([agent({ id: "agent-1", status: "error" })]),
+      agents: agentsOk([hostedAgent({ id: "agent-1", status: "error" })]),
     });
     renderEntry();
 
@@ -218,7 +223,9 @@ describe("AppModeEntryRoute — chat-floor routing table", () => {
   it("a provisioning (cold-starting) dedicated agent → the chat app, no doomed pairing hop", async () => {
     signIn();
     stubNetwork({
-      agents: agentsOk([agent({ id: "agent-1", status: "provisioning" })]),
+      agents: agentsOk([
+        hostedAgent({ id: "agent-1", status: "provisioning" }),
+      ]),
     });
     renderEntry();
 
@@ -232,15 +239,21 @@ describe("AppModeEntryRoute — chat-floor routing table", () => {
   it("no agents at all → the /join deploy-first-agent flow", async () => {
     signIn();
     stubNetwork({ agents: agentsOk([]) });
-    renderEntry();
+    const queryClient = renderEntry();
 
     expect(await screen.findByTestId("join-page")).toBeTruthy();
+    expect(screen.queryByTestId("agent-app")).toBeNull();
+    const agentsQuery = queryClient
+      .getQueryCache()
+      .find({ queryKey: AGENTS_QUERY_KEY, exact: false });
+    expect(agentsQuery?.state.status).toBe("success");
+    expect(agentsQuery?.state.error).toBeNull();
   });
 
   it("shared-tier-only org → the same-origin chat app, unchanged", async () => {
     signIn();
     stubNetwork({
-      agents: agentsOk([agent({ id: "s1", executionTier: "shared" })]),
+      agents: agentsOk([hostedAgent({ id: "s1", executionTier: "shared" })]),
     });
     renderEntry();
 
@@ -258,13 +271,29 @@ describe("AppModeEntryRoute — chat-floor routing table", () => {
     expect(await screen.findByTestId("agent-app")).toBeTruthy();
   });
 
+  it("a rolling-old response missing hostingSummary → explicit query error and the same-origin fallback", async () => {
+    signIn();
+    stubNetwork({
+      agents: () => jsonResponse(200, { success: true, data: [] }),
+    });
+    const queryClient = renderEntry();
+
+    expect(await screen.findByTestId("agent-app")).toBeTruthy();
+    expect(screen.queryByTestId("join-page")).toBeNull();
+    const agentsQuery = queryClient
+      .getQueryCache()
+      .find({ queryKey: AGENTS_QUERY_KEY, exact: false });
+    expect(agentsQuery?.state.status).toBe("error");
+    expect(agentsQuery?.state.error).toBeTruthy();
+  });
+
   it("never renders the instances console from entry, in any state", async () => {
     signIn();
     stubNetwork({
       agents: agentsOk([
-        agent({ id: "e1", status: "error" }),
-        agent({ id: "r1", status: "running" }),
-        agent({ id: "s1", status: "stopped" }),
+        hostedAgent({ id: "e1", status: "error" }),
+        hostedAgent({ id: "r1", status: "running" }),
+        hostedAgent({ id: "s1", status: "stopped" }),
       ]),
     });
     renderEntry();

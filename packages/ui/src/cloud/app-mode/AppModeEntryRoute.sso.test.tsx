@@ -7,6 +7,8 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { hostedAgentsResponse } from "../../../test/hosted-agent-api-fixtures";
+import { AGENTS_QUERY_KEY } from "../instances/lib/data/eliza-agents";
 import { AppModeEntryRoute } from "./AppModeEntryRoute";
 import { appModeNavigation } from "./app-mode";
 
@@ -54,7 +56,7 @@ function stubNetwork(): void {
     fetchLog.push(`${init?.method ?? "GET"} ${url}`);
     if (url === "/api/v1/eliza/agents") {
       return Promise.resolve(
-        new Response(JSON.stringify({ success: true, data: [] }), {
+        new Response(JSON.stringify(hostedAgentsResponse([])), {
           status: 200,
           headers: { "content-type": "application/json" },
         }),
@@ -78,7 +80,7 @@ function LoginProbe(): React.JSX.Element {
   return <div data-testid="login-page">{location.search}</div>;
 }
 
-function renderEntry(initialPath = "/"): void {
+function renderEntry(initialPath = "/"): QueryClient {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
@@ -98,6 +100,7 @@ function renderEntry(initialPath = "/"): void {
       </MemoryRouter>
     </QueryClientProvider>,
   );
+  return queryClient;
 }
 
 beforeEach(() => {
@@ -167,8 +170,14 @@ describe("AppModeEntryRoute — SSO auto-bridge (app host origin)", () => {
   it("a real sign-in clears the logged-out marker (logout suppression ends at the next login)", async () => {
     localStorage.setItem(SSO_LOGGED_OUT_KEY, "1");
     signIn();
-    renderEntry("/");
+    const queryClient = renderEntry("/");
     expect(await screen.findByTestId("join-page")).toBeTruthy();
+    expect(screen.queryByTestId("agent-app")).toBeNull();
+    const agentsQuery = queryClient
+      .getQueryCache()
+      .find({ queryKey: AGENTS_QUERY_KEY, exact: false });
+    expect(agentsQuery?.state.status).toBe("success");
+    expect(agentsQuery?.state.error).toBeNull();
     expect(localStorage.getItem(SSO_LOGGED_OUT_KEY)).toBeNull();
     expect(replacedUrls).toEqual([]);
   });

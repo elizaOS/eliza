@@ -5,8 +5,9 @@
  * until each reaches a terminal state, and fires `onComplete` / `onFailed`.
  * When `autoRefresh` is set it does a hard `window.location.reload()` once a job
  * resolves — the agent detail page relies on this for the after-action refresh.
- * The agents *table* passes its own `onComplete`/`onFailed` and re-fetches via
- * react-query-style local merge instead, so it never triggers the reload.
+ * The agents table disables the reload and its terminal callbacks refetch the
+ * one validated React Query agent-list result, advancing rows and their hosting
+ * summary atomically.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";

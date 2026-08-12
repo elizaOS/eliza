@@ -5,7 +5,12 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, describe, expect, it } from "vitest";
+import {
+  hostedAgent,
+  hostedAgentsResponse,
+} from "../../../test/hosted-agent-api-fixtures";
 import { appModeNavigation } from "../app-mode/app-mode";
+import { AGENTS_QUERY_KEY } from "../instances/lib/data/eliza-agents";
 import {
   resetPrivateCloudRegistrationForTests,
   setPrivateCloudLoadForTests,
@@ -73,7 +78,7 @@ function renderCatchAll(initialPath = "/"): void {
 /** Same catch-all render, plus the query provider + route markers the lazy
  * app-mode gate needs. Used by the app-host tests; the apex tests keep the
  * bare render above, proving the apex path needs none of this. */
-function renderCatchAllWithAppModeMarkers(initialPath = "/"): void {
+function renderCatchAllWithAppModeMarkers(initialPath = "/"): QueryClient {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
@@ -101,6 +106,7 @@ function renderCatchAllWithAppModeMarkers(initialPath = "/"): void {
       </MemoryRouter>
     </QueryClientProvider>,
   );
+  return queryClient;
 }
 
 const realFetch = globalThis.fetch;
@@ -118,7 +124,7 @@ function installFetchRecorder(
     return Promise.resolve(
       respond
         ? respond(url, init)
-        : new Response(JSON.stringify({ success: true, data: [] }), {
+        : new Response(JSON.stringify(hostedAgentsResponse([])), {
             status: 200,
             headers: { "content-type": "application/json" },
           }),
@@ -300,19 +306,11 @@ describe("CloudRouterShell app-mode catch-all (app.elizacloud.ai)", () => {
     installFetchRecorder((url, init) => {
       if (url === "/api/v1/eliza/agents" && (init?.method ?? "GET") === "GET") {
         return new Response(
-          JSON.stringify({
-            success: true,
-            data: [
-              {
-                id: "agent-1",
-                agentName: "Eliza",
-                status: "running",
-                executionTier: "dedicated-always",
-                lastHeartbeatAt: "2026-08-05T00:00:00.000Z",
-                updatedAt: "2026-08-05T00:00:00.000Z",
-              },
-            ],
-          }),
+          JSON.stringify(
+            hostedAgentsResponse([
+              hostedAgent({ id: "agent-1", agentName: "Eliza" }),
+            ]),
+          ),
           { status: 200, headers: { "content-type": "application/json" } },
         );
       }
@@ -329,9 +327,14 @@ describe("CloudRouterShell app-mode catch-all (app.elizacloud.ai)", () => {
       assignedUrls.push(url);
     };
     localStorage.setItem(STEWARD_TOKEN_KEY, stewardToken(FUTURE_EXP));
-    renderCatchAllWithAppModeMarkers();
+    const queryClient = renderCatchAllWithAppModeMarkers();
 
     expect(await screen.findByTestId("agent-app")).toBeTruthy();
+    const agentsQuery = queryClient
+      .getQueryCache()
+      .find({ queryKey: AGENTS_QUERY_KEY, exact: false });
+    expect(agentsQuery?.state.status).toBe("success");
+    expect(agentsQuery?.state.error).toBeNull();
     await waitFor(() => {
       expect(privateLoads).toBe(1);
     });
