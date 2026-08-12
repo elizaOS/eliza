@@ -188,6 +188,15 @@ const ANSWERLESS_FINISH: CannedResponse = {
 		messageToUser: "",
 	}),
 };
+const PROGRESS_FINISH: CannedResponse = {
+	expectModelType: String(ModelType.RESPONSE_HANDLER),
+	body: JSON.stringify({
+		success: true,
+		decision: "FINISH",
+		thought: "Media delivery is not proven.",
+		messageToUser: PROGRESS_ACK,
+	}),
+};
 
 async function runTurn(opts: {
 	runtime: IAgentRuntime;
@@ -769,6 +778,7 @@ describe("media deliverable suppresses the trailing progress ack", () => {
 						],
 					},
 				},
+				PROGRESS_FINISH,
 			],
 			evaluators: [],
 			actions: [
@@ -817,6 +827,7 @@ describe("media deliverable suppresses the trailing progress ack", () => {
 						],
 					},
 				},
+				PROGRESS_FINISH,
 			],
 			evaluators: [],
 			actions: [
@@ -934,6 +945,7 @@ describe("media deliverable suppresses the trailing progress ack", () => {
 						],
 					},
 				},
+				PROGRESS_FINISH,
 			],
 			evaluators: [],
 			actions: [
@@ -957,6 +969,7 @@ describe("media deliverable suppresses the trailing progress ack", () => {
 		const metadataAction: Action = {
 			name: "URL_METADATA_TEST",
 			description: "returns a resource locator as internal result metadata",
+			tags: ["capability:read"],
 			similes: [],
 			examples: [],
 			parameters: [],
@@ -1019,6 +1032,7 @@ describe("media deliverable suppresses the trailing progress ack", () => {
 		const noMediaAction: Action = {
 			name: "SUMMARIZE_TEST",
 			description: "produces a text summary, no media",
+			tags: ["capability:read"],
 			similes: [],
 			examples: [],
 			parameters: [],
@@ -1027,6 +1041,7 @@ describe("media deliverable suppresses the trailing progress ack", () => {
 				success: true,
 				text: "Summarized",
 				userFacingText: summary,
+				verifiedUserFacing: true,
 				data: { actionName: "SUMMARIZE_TEST" },
 			}),
 		} as unknown as Action;
