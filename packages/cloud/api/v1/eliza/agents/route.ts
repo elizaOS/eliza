@@ -21,6 +21,11 @@ import { getElizaAgentPublicWebUiUrl } from "@/lib/eliza-agent-web-ui";
 import { checkAgentCreditGate } from "@/lib/services/agent-billing-gate";
 import { insufficientCredits402 } from "@/lib/services/agent-billing-gate-402";
 import {
+  deriveAgentHostingCost,
+  summarizeAgentHosting,
+} from "@/lib/services/agent-hosting-presentation";
+import { getCreditBalanceResponse } from "@/lib/services/credit-balance-response";
+import {
   stripReservedElizaConfigKeys,
   withReusedElizaCharacterOwnership,
 } from "@/lib/services/eliza-agent-config";
@@ -214,6 +219,12 @@ function toAgentListItemDto(
       stringConfigValue(agent.agent_config, "tokenTicker"),
     dockerImage: agent.docker_image,
     executionTier: agent.execution_tier,
+    hostingCost: deriveAgentHostingCost({
+      executionTier: agent.execution_tier,
+      status: agent.status,
+      billingStatus: agent.billing_status,
+      lastBackupAt: agent.last_backup_at,
+    }),
     webUiUrl: resolvePublicWebUiUrl(agent),
   };
 }
@@ -261,7 +272,10 @@ async function withOrphanCleanup<T>(
 
 app.get("/", async (c) => {
   const user = await requireUserOrApiKeyWithOrg(c);
-  const agents = await elizaSandboxService.listAgents(user.organization_id);
+  const [agents, { balance }] = await Promise.all([
+    elizaSandboxService.listAgents(user.organization_id),
+    getCreditBalanceResponse(user.organization_id),
+  ]);
 
   const characterIds = Array.from(
     new Set(
@@ -279,13 +293,18 @@ app.get("/", async (c) => {
       : [];
   const charMap = new Map(characters.map((ch) => [ch.id, ch]));
 
+  const data = agents.map((agent) =>
+    toAgentListItemDto(
+      agent,
+      agent.character_id ? charMap.get(agent.character_id) : undefined,
+    ),
+  );
   const response: AgentsResponse = {
     success: true,
-    data: agents.map((agent) =>
-      toAgentListItemDto(
-        agent,
-        agent.character_id ? charMap.get(agent.character_id) : undefined,
-      ),
+    data,
+    hostingSummary: summarizeAgentHosting(
+      data.map((agent) => agent.hostingCost),
+      balance,
     ),
   };
 

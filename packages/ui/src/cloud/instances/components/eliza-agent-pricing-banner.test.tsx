@@ -30,8 +30,20 @@ describe("ElizaAgentPricingBanner", () => {
           sharedCount: 3,
           dedicatedRunningCount: 0,
           dedicatedIdleCount: 0,
+          hasAgents: true,
+          hasDedicatedHosting: false,
+          hourlyHostingCostUsd: 0,
+          monthlyHostingCostUsd: 0,
+          creditBalanceUsd: 0.25,
+          hoursRemaining: null,
+          lowBalance: false,
+          dedicatedRunningHourlyRateUsd: 0.01,
+          dedicatedRunningMonthlyEstimateUsd: 7.2,
+          dedicatedIdleHourlyRateUsd: 0.0025,
+          dedicatedIdleMonthlyEstimateUsd: 1.8,
+          minimumDepositUsd: 0.1,
+          lowCreditWarningUsd: 2,
         }}
-        creditBalance={0.25}
       />,
     );
 
@@ -56,8 +68,20 @@ describe("ElizaAgentPricingBanner", () => {
           sharedCount: 1,
           dedicatedRunningCount: 1,
           dedicatedIdleCount: 1,
+          hasAgents: true,
+          hasDedicatedHosting: true,
+          hourlyHostingCostUsd: 0.0125,
+          monthlyHostingCostUsd: 9,
+          creditBalanceUsd: 1,
+          hoursRemaining: 80,
+          lowBalance: true,
+          dedicatedRunningHourlyRateUsd: 0.01,
+          dedicatedRunningMonthlyEstimateUsd: 7.2,
+          dedicatedIdleHourlyRateUsd: 0.0025,
+          dedicatedIdleMonthlyEstimateUsd: 1.8,
+          minimumDepositUsd: 0.1,
+          lowCreditWarningUsd: 2,
         }}
-        creditBalance={1}
       />,
     );
 

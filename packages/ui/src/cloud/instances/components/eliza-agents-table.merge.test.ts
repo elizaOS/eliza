@@ -25,6 +25,11 @@ function row(id: string, status: string): ElizaAgentRow {
     headscale_ip: null,
     docker_image: null,
     execution_tier: undefined,
+    hosting_cost: {
+      rateClass: "unavailable",
+      hourlyRateUsd: null,
+      monthlyEstimateUsd: null,
+    },
     sandbox_id: null,
     bridge_url: null,
     error_message: null,

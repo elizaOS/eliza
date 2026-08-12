@@ -54,6 +54,11 @@ const sharedAgent: AgentDetailDto = {
   token_ticker: null,
   dockerImage: null,
   executionTier: "shared",
+  hostingCost: {
+    rateClass: "shared-usage",
+    hourlyRateUsd: 0,
+    monthlyEstimateUsd: 0,
+  },
   webUiUrl: null,
   bridgeUrl: null,
   errorCount: 0,

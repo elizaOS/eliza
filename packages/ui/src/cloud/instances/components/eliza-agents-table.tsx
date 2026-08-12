@@ -6,6 +6,7 @@
 
 import { AGENT_PRICING } from "@elizaos/cloud-shared/lib/constants/agent-pricing";
 import { formatHourlyRate } from "@elizaos/cloud-shared/lib/constants/agent-pricing-display";
+import type { AgentHostingCostDto } from "@elizaos/cloud-shared/lib/types/cloud-api";
 import {
   AlertDialog,
   AlertDialogCancel,
@@ -98,6 +99,7 @@ export interface ElizaAgentRow {
   headscale_ip: string | null;
   docker_image: string | null;
   execution_tier?: "shared" | "dedicated-lazy" | "dedicated-always" | "custom";
+  hosting_cost: AgentHostingCostDto;
   sandbox_id: string | null;
   bridge_url: string | null;
   error_message: string | null;
@@ -138,6 +140,7 @@ function mergeSandboxRow(
       agent.executionTier === undefined
         ? existing?.execution_tier
         : agent.executionTier,
+    hosting_cost: agent.hostingCost,
     sandbox_id: existing?.sandbox_id ?? null,
     bridge_url: existing?.bridge_url ?? null,
     canonical_web_ui_url:
@@ -1288,7 +1291,7 @@ export function ElizaAgentsTable({
                             </a>
                             <AgentCostBadge
                               status={displayStatus}
-                              executionTier={sb.execution_tier}
+                              hostingCost={sb.hosting_cost}
                             />
                           </div>
                           <RowBackingMeta vm={vm} />
@@ -1551,7 +1554,7 @@ export function ElizaAgentsTable({
                       </a>
                       <AgentCostBadge
                         status={displayStatus}
-                        executionTier={sb.execution_tier}
+                        hostingCost={sb.hosting_cost}
                       />
                       <RowBackingMeta vm={vm} />
                     </div>

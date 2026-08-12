@@ -38,6 +38,11 @@ function row(overrides: Partial<ElizaAgentRow>): ElizaAgentRow {
     headscale_ip: null,
     docker_image: null,
     execution_tier: "dedicated-lazy",
+    hosting_cost: {
+      rateClass: "running",
+      hourlyRateUsd: 0.01,
+      monthlyEstimateUsd: 7.2,
+    },
     sandbox_id: "sb-1",
     bridge_url: null,
     error_message: null,
@@ -187,10 +192,23 @@ describe("ElizaAgentsTable per-row view model", () => {
       <QueryClientProvider client={queryClient}>
         <ElizaAgentsTable
           sandboxes={[
-            row({ status: "sleeping", canonical_web_ui_url: null }),
+            row({
+              status: "sleeping",
+              canonical_web_ui_url: null,
+              hosting_cost: {
+                rateClass: "deactivated",
+                hourlyRateUsd: 0,
+                monthlyEstimateUsd: 0,
+              },
+            }),
             row({
               id: "00000000-1111-2222-3333-555555555555",
               status: "stopped",
+              hosting_cost: {
+                rateClass: "idle",
+                hourlyRateUsd: 0.0025,
+                monthlyEstimateUsd: 1.8,
+              },
             }),
           ]}
         />
@@ -225,7 +243,14 @@ describe("ElizaAgentsTable per-row view model", () => {
       <QueryClientProvider client={queryClient}>
         <ElizaAgentsTable
           sandboxes={[
-            row({ execution_tier: "shared" }),
+            row({
+              execution_tier: "shared",
+              hosting_cost: {
+                rateClass: "shared-usage",
+                hourlyRateUsd: 0,
+                monthlyEstimateUsd: 0,
+              },
+            }),
             row({
               id: "00000000-1111-2222-3333-666666666666",
               agent_name: "Grace",

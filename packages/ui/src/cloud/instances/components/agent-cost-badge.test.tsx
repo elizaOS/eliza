@@ -19,7 +19,14 @@ describe("AgentCostBadge", () => {
     const user = userEvent.setup();
     render(
       <TooltipProvider>
-        <AgentCostBadge status="running" executionTier="shared" />
+        <AgentCostBadge
+          status="running"
+          hostingCost={{
+            rateClass: "shared-usage",
+            hourlyRateUsd: 0,
+            monthlyEstimateUsd: 0,
+          }}
+        />
       </TooltipProvider>,
     );
 
@@ -38,7 +45,14 @@ describe("AgentCostBadge", () => {
   it("keeps shared provisioning visually active without projecting hosting", () => {
     render(
       <TooltipProvider>
-        <AgentCostBadge status="provisioning" executionTier="shared" />
+        <AgentCostBadge
+          status="provisioning"
+          hostingCost={{
+            rateClass: "shared-usage",
+            hourlyRateUsd: 0,
+            monthlyEstimateUsd: 0,
+          }}
+        />
       </TooltipProvider>,
     );
 
@@ -50,7 +64,14 @@ describe("AgentCostBadge", () => {
   it("preserves the dedicated running hosting rate", () => {
     render(
       <TooltipProvider>
-        <AgentCostBadge status="running" executionTier="dedicated-always" />
+        <AgentCostBadge
+          status="running"
+          hostingCost={{
+            rateClass: "running",
+            hourlyRateUsd: 0.01,
+            monthlyEstimateUsd: 7.2,
+          }}
+        />
       </TooltipProvider>,
     );
 

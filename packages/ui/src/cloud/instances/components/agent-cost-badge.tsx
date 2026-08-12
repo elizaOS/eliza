@@ -10,16 +10,15 @@
 
 import {
   formatHourlyRate,
-  formatMonthlyEstimate,
+  formatUSD,
 } from "@elizaos/cloud-shared/lib/constants/agent-pricing-display";
-import type { AgentExecutionTier } from "@elizaos/cloud-shared/lib/types/cloud-api";
+import type { AgentHostingCostDto } from "@elizaos/cloud-shared/lib/types/cloud-api";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@elizaos/ui/cloud-ui";
-import { getAgentHostingCost } from "../lib/agent-hosting-cost";
 import { useT } from "../lib/i18n";
 
 interface AgentCostBadgeProps {
   status: string;
-  executionTier: AgentExecutionTier | undefined;
+  hostingCost: AgentHostingCostDto;
 }
 
 function formatBadgeHourlyRate(rate: number, isIdle: boolean) {
@@ -27,19 +26,22 @@ function formatBadgeHourlyRate(rate: number, isIdle: boolean) {
   return formatHourlyRate(rate);
 }
 
-export function AgentCostBadge({ status, executionTier }: AgentCostBadgeProps) {
+export function AgentCostBadge({ status, hostingCost }: AgentCostBadgeProps) {
   const t = useT();
-  const cost = getAgentHostingCost({ executionTier, status });
-  const isShared = cost.rateClass === "shared-usage";
-  const isRunning =
-    cost.rateClass === "running" || cost.rateClass === "provisioning";
-  const isIdle = cost.rateClass === "idle";
-  const isSleeping = cost.rateClass === "deactivated";
+  const isShared = hostingCost.rateClass === "shared-usage";
+  const isRunning = hostingCost.rateClass === "running";
+  const isIdle = hostingCost.rateClass === "idle";
+  const isSleeping = hostingCost.rateClass === "deactivated";
   const isActiveState = status === "running" || status === "provisioning";
 
-  if (cost.rateClass === "unavailable" || cost.hourlyRate === null) return null;
+  if (
+    hostingCost.rateClass === "unavailable" ||
+    hostingCost.hourlyRateUsd === null ||
+    hostingCost.monthlyEstimateUsd === null
+  )
+    return null;
 
-  const rate = cost.hourlyRate;
+  const rate = hostingCost.hourlyRateUsd;
   const hourlyRateLabel = isShared
     ? t("cloud.containers.costBadge.usageBased", {
         defaultValue: "Usage-based",
@@ -98,7 +100,8 @@ export function AgentCostBadge({ status, executionTier }: AgentCostBadgeProps) {
               {t("cloud.containers.costBadge.agent", { defaultValue: "agent" })}
             </p>
             <p className="text-white/60">
-              {hourlyRateLabel} · {formatMonthlyEstimate(rate)}
+              {hourlyRateLabel} · ~{formatUSD(hostingCost.monthlyEstimateUsd)}
+              /mo
             </p>
           </>
         )}

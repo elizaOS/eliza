@@ -23,7 +23,7 @@ export function useAgents() {
     queryKey: authenticatedQueryKey(["agent", "agents"], gate),
     queryFn: async () => {
       const res = await api<AgentsResponse>("/api/v1/eliza/agents");
-      return res.data;
+      return { agents: res.data, hostingSummary: res.hostingSummary };
     },
     enabled: gate.enabled,
     refetchInterval: gate.enabled ? 15_000 : false,

@@ -115,7 +115,7 @@ export function AppModeEntryRoute({
     return <EntryNotice label="Loading your agent" />;
   }
 
-  const route = decideAppModeRoute(agentsQuery.data);
+  const route = decideAppModeRoute(agentsQuery.data.agents);
   if (route.kind === "create") {
     return <Navigate to={route.to} replace />;
   }

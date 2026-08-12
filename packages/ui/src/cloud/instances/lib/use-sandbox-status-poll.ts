@@ -8,6 +8,7 @@
  *   (no page reload) and firing a "now running" callback on transitions.
  */
 
+import type { AgentHostingCostDto } from "@elizaos/cloud-shared/lib/types/cloud-api";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 export type SandboxStatus =
@@ -156,6 +157,7 @@ export interface SandboxListAgent {
   errorMessage?: string;
   dockerImage?: string | null;
   executionTier?: "shared" | "dedicated-lazy" | "dedicated-always" | "custom";
+  hostingCost: AgentHostingCostDto;
   webUiUrl?: string | null;
   lastHeartbeatAt?: string | null;
   createdAt?: string;

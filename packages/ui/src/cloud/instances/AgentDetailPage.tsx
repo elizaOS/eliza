@@ -4,7 +4,7 @@
 
 import {
   formatHourlyRate,
-  formatMonthlyEstimate,
+  formatUSD,
 } from "@elizaos/cloud-shared/lib/constants/agent-pricing-display";
 import {
   Badge,
@@ -29,7 +29,6 @@ import { ElizaAgentBackupsPanel } from "./components/eliza-agent-backups-panel";
 import { ElizaAgentLogsViewer } from "./components/eliza-agent-logs-viewer";
 import { ElizaAgentTabs } from "./components/eliza-agent-tabs";
 import { ElizaConnectButton } from "./components/eliza-connect-button";
-import { getAgentHostingCost } from "./lib/agent-hosting-cost";
 import { useAgent } from "./lib/data/eliza-agents";
 import { useT } from "./lib/i18n";
 import { statusBadgeColor, statusDotColor } from "./lib/sandbox-status";
@@ -118,10 +117,7 @@ export default function AgentDetailPage() {
 
   const badgeColor = statusBadgeColor(agent.status);
   const dotColor = statusDotColor(agent.status);
-  const hostingCost = getAgentHostingCost({
-    executionTier: agent.executionTier,
-    status: agent.status,
-  });
+  const hostingCost = agent.hostingCost;
   const adminDetails = agent.adminDetails;
   const isDockerBacked = adminDetails?.isDockerBacked ?? false;
   const showConnect = !!agent.webUiUrl && agent.status === "running";
@@ -222,15 +218,14 @@ export default function AgentDetailPage() {
               ? t("cloud.agents.detail.usageBased", {
                   defaultValue: "Usage-based",
                 })
-              : hostingCost.hourlyRate === null
+              : hostingCost.hourlyRateUsd === null
                 ? "—"
-                : formatHourlyRate(hostingCost.hourlyRate)}
+                : formatHourlyRate(hostingCost.hourlyRateUsd)}
           </p>
           {(hostingCost.rateClass === "running" ||
-            hostingCost.rateClass === "provisioning" ||
             hostingCost.rateClass === "idle") && (
             <p className="text-2xs text-muted tabular-nums">
-              {formatMonthlyEstimate(hostingCost.hourlyRate)}
+              ~{formatUSD(hostingCost.monthlyEstimateUsd)}/mo
             </p>
           )}
           {hostingCost.rateClass === "shared-usage" && (

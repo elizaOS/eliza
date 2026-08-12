@@ -19,6 +19,7 @@ import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import { containersEnv } from "@/lib/config/containers-env";
 import { getElizaAgentPublicWebUiUrl } from "@/lib/eliza-agent-web-ui";
 import { adminService } from "@/lib/services/admin";
+import { deriveAgentHostingCost } from "@/lib/services/agent-hosting-presentation";
 import { elizaSandboxService } from "@/lib/services/eliza-sandbox";
 import { provisioningJobService } from "@/lib/services/provisioning-jobs";
 import { getStewardAgent } from "@/lib/services/steward-client";
@@ -208,6 +209,12 @@ app.get("/", async (c) => {
       token_ticker: tokenTicker,
       dockerImage: agent.docker_image,
       executionTier: agent.execution_tier,
+      hostingCost: deriveAgentHostingCost({
+        executionTier: agent.execution_tier,
+        status: agent.status,
+        billingStatus: agent.billing_status,
+        lastBackupAt: agent.last_backup_at,
+      }),
       webUiUrl,
       walletAddress,
       walletProvider,

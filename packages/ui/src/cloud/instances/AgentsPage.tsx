@@ -2,7 +2,6 @@
  * Agents page (`/dashboard/agents`) — the hosted agent management table.
  */
 
-import type { AgentListItemDto } from "@elizaos/cloud-shared/lib/types/cloud-api";
 import {
   ContainersSkeleton,
   DashboardErrorState,
@@ -17,8 +16,6 @@ import {
   type ElizaAgentRow,
   ElizaAgentsTable,
 } from "./components/eliza-agents-table";
-import { summarizeAgentHosting } from "./lib/agent-hosting-cost";
-import { useCreditsBalance } from "./lib/data/credits";
 import { type AgentListItem, useAgents } from "./lib/data/eliza-agents";
 import { useT } from "./lib/i18n";
 
@@ -35,6 +32,7 @@ function toAgentRow(a: AgentListItem): ElizaAgentRow {
     headscale_ip: null,
     docker_image: a.dockerImage,
     execution_tier: a.executionTier,
+    hosting_cost: a.hostingCost,
     sandbox_id: null,
     bridge_url: null,
     error_message: a.errorMessage,
@@ -49,7 +47,6 @@ export default function AgentsPage() {
   const session = useSessionAuth();
   const enabled = session.ready && session.authenticated;
   const agentsQuery = useAgents();
-  const credits = useCreditsBalance();
 
   useDocumentTitle(t("cloud.agents.metaTitle", { defaultValue: "Agents" }));
 
@@ -63,11 +60,9 @@ export default function AgentsPage() {
     );
   }
 
-  const agents: AgentListItemDto[] = agentsQuery.data ?? [];
+  const agents = agentsQuery.data?.agents ?? [];
   const sandboxes = agents.map(toAgentRow);
-  const hostingSummary = summarizeAgentHosting(agents);
-  const creditBalance =
-    typeof credits.data?.balance === "number" ? credits.data.balance : null;
+  const hostingSummary = agentsQuery.data?.hostingSummary;
   const showSkeleton = enabled && agentsQuery.isLoading;
   const showAgentsError = enabled && agentsQuery.isError;
 
@@ -92,10 +87,9 @@ export default function AgentsPage() {
           />
         ) : (
           <>
-            <ElizaAgentPricingBanner
-              hostingSummary={hostingSummary}
-              creditBalance={creditBalance}
-            />
+            {hostingSummary && (
+              <ElizaAgentPricingBanner hostingSummary={hostingSummary} />
+            )}
             <ElizaAgentsTable sandboxes={sandboxes} />
           </>
         )}

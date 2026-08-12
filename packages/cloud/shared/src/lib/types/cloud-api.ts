@@ -389,6 +389,42 @@ export type AgentSandboxStatus =
 export type AgentDatabaseStatus = "none" | "provisioning" | "ready" | "error";
 export type AgentExecutionTier = "shared" | "dedicated-lazy" | "dedicated-always" | "custom";
 
+export type AgentHostingCostDto =
+  | {
+      rateClass: "shared-usage" | "deactivated";
+      hourlyRateUsd: 0;
+      monthlyEstimateUsd: 0;
+    }
+  | {
+      rateClass: "running" | "idle";
+      hourlyRateUsd: number;
+      monthlyEstimateUsd: number;
+    }
+  | {
+      rateClass: "unavailable";
+      hourlyRateUsd: null;
+      monthlyEstimateUsd: null;
+    };
+
+export interface AgentHostingSummaryDto {
+  sharedCount: number;
+  dedicatedRunningCount: number;
+  dedicatedIdleCount: number;
+  hasAgents: boolean;
+  hasDedicatedHosting: boolean;
+  hourlyHostingCostUsd: number;
+  monthlyHostingCostUsd: number;
+  creditBalanceUsd: number;
+  hoursRemaining: number | null;
+  lowBalance: boolean;
+  dedicatedRunningHourlyRateUsd: number;
+  dedicatedRunningMonthlyEstimateUsd: number;
+  dedicatedIdleHourlyRateUsd: number;
+  dedicatedIdleMonthlyEstimateUsd: number;
+  minimumDepositUsd: number;
+  lowCreditWarningUsd: number;
+}
+
 export interface AgentListItemDto {
   id: string;
   agentName: string | null;
@@ -405,6 +441,7 @@ export interface AgentListItemDto {
   token_ticker: string | null;
   dockerImage: string | null;
   executionTier: AgentExecutionTier;
+  hostingCost: AgentHostingCostDto;
   webUiUrl: string | null;
 }
 
@@ -431,7 +468,9 @@ export interface AgentDetailDto extends AgentListItemDto {
   adminDetails: AgentAdminDetailsDto | null;
 }
 
-export type AgentsResponse = ApiSuccessEnvelope<AgentListItemDto[]>;
+export interface AgentsResponse extends ApiSuccessEnvelope<AgentListItemDto[]> {
+  hostingSummary: AgentHostingSummaryDto;
+}
 export type AgentResponse = ApiSuccessEnvelope<AgentDetailDto>;
 
 export type AdminRole = "super_admin" | "moderator" | "viewer";
