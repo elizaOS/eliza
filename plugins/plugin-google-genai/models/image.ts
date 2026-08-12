@@ -4,9 +4,11 @@
  * model's JSON output and falls back to regex title extraction from prose. The
  * call is wrapped in `recordLlmCall` for trajectory capture.
  *
- * Provider failures (image fetch error, bad key, model-not-found, rate-limit,
- * timeout, safety block, empty completion) surface as typed errors so the caller
- * and model see a real failure — they are never fabricated into a
+ * Image bytes are loaded only through `fetchRemoteMedia` so caller-supplied URLs
+ * cannot reach loopback, link-local, or private network targets (SSRF). Provider
+ * failures (image fetch error, bad key, model-not-found, rate-limit, timeout,
+ * safety block, empty completion) surface as typed errors so the caller and
+ * model see a real failure — they are never fabricated into a
  * `{ title, description }` result the runtime would read as a real description.
  */
 import type {
@@ -14,7 +16,7 @@ import type {
   ImageDescriptionParams,
   RecordLlmCallDetails,
 } from "@elizaos/core";
-import { logger, recordLlmCall } from "@elizaos/core";
+import { fetchRemoteMedia, logger, recordLlmCall } from "@elizaos/core";
 import type { ImageDescriptionResponse } from "../types";
 import {
   createGoogleGenAI,
@@ -22,6 +24,11 @@ import {
   getSafetySettings,
 } from "../utils/config";
 import { countTokens } from "../utils/tokenization";
+
+/** Cap inline image payloads so a hostile host cannot force unbounded memory. */
+const IMAGE_DESCRIPTION_MAX_BYTES = 20 * 1024 * 1024;
+const IMAGE_DESCRIPTION_FETCH_TIMEOUT_MS = 15_000;
+const IMAGE_DESCRIPTION_MAX_REDIRECTS = 5;
 
 export async function handleImageDescription(
   runtime: IAgentRuntime,
@@ -48,16 +55,20 @@ export async function handleImageDescription(
       "Please analyze this image and provide a title and detailed description.";
   }
 
-  try {
-    const imageResponse = await fetch(imageUrl);
-    if (!imageResponse.ok) {
-      throw new Error(`Failed to fetch image: ${imageResponse.statusText}`);
-    }
+  if (!imageUrl || imageUrl.trim().length === 0) {
+    throw new Error("IMAGE_DESCRIPTION requires a valid image URL");
+  }
 
-    const imageData = await imageResponse.arrayBuffer();
-    const base64Image = Buffer.from(imageData).toString("base64");
-    const contentType =
-      imageResponse.headers.get("content-type") || "image/jpeg";
+  try {
+    // Untrusted agent/tool image URLs must not hit private or metadata hosts.
+    const media = await fetchRemoteMedia({
+      url: imageUrl,
+      maxBytes: IMAGE_DESCRIPTION_MAX_BYTES,
+      timeoutMs: IMAGE_DESCRIPTION_FETCH_TIMEOUT_MS,
+      maxRedirects: IMAGE_DESCRIPTION_MAX_REDIRECTS,
+    });
+    const base64Image = media.buffer.toString("base64");
+    const contentType = media.contentType || "image/jpeg";
 
     const details: RecordLlmCallDetails = {
       model: modelName,

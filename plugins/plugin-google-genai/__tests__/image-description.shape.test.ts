@@ -2,9 +2,9 @@
  * Unit tests for `handleImageDescription`: the JSON and prose parse paths plus
  * the failure paths that must surface as typed errors instead of a fabricated
  * `{ title, description }` result — uninitialized client, image fetch failure,
- * provider (`generateContent`) rejection, and an empty model completion. The
- * config, tokenization, `recordLlmCall`, and global `fetch` layers are mocked;
- * no live model or network call is made.
+ * SSRF-blocked private hosts, provider (`generateContent`) rejection, and an
+ * empty model completion. Config, tokenization, `recordLlmCall`, and
+ * `fetchRemoteMedia` are mocked; no live model or network call is made.
  */
 import type { IAgentRuntime } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => ({
   generateContent: vi.fn(),
   countTokens: vi.fn(),
   recordLlmCall: vi.fn(),
+  fetchRemoteMedia: vi.fn(),
 }));
 
 vi.mock("@elizaos/core", () => ({
@@ -24,6 +25,7 @@ vi.mock("@elizaos/core", () => ({
     warn: vi.fn(),
   },
   recordLlmCall: mocks.recordLlmCall,
+  fetchRemoteMedia: mocks.fetchRemoteMedia,
 }));
 
 vi.mock("../utils/config", () => ({
@@ -44,15 +46,12 @@ function createRuntime(): IAgentRuntime {
   } as unknown as IAgentRuntime;
 }
 
-function mockFetchOk() {
-  const fetchMock = vi.fn(async () => ({
-    ok: true,
-    statusText: "OK",
-    headers: { get: () => "image/png" },
-    arrayBuffer: async () => new ArrayBuffer(8),
-  }));
-  vi.stubGlobal("fetch", fetchMock);
-  return fetchMock;
+function mockMediaOk(contentType = "image/png") {
+  mocks.fetchRemoteMedia.mockResolvedValue({
+    buffer: Buffer.from([1, 2, 3, 4, 5, 6, 7, 8]),
+    contentType,
+    fileName: "cat.png",
+  });
 }
 
 describe("Google GenAI image description", () => {
@@ -73,7 +72,7 @@ describe("Google GenAI image description", () => {
   });
 
   it("returns the model's JSON title/description on success", async () => {
-    mockFetchOk();
+    mockMediaOk();
     mocks.generateContent.mockResolvedValue({
       text: JSON.stringify({
         title: "A cat",
@@ -90,10 +89,19 @@ describe("Google GenAI image description", () => {
       title: "A cat",
       description: "A ginger cat on a sofa.",
     });
+    expect(mocks.fetchRemoteMedia).toHaveBeenCalledWith(
+      expect.objectContaining({
+        url: "https://example.com/cat.png",
+        maxBytes: 20 * 1024 * 1024,
+        timeoutMs: 15_000,
+        maxRedirects: 5,
+      }),
+    );
+    expect(mocks.generateContent).toHaveBeenCalledTimes(1);
   });
 
   it("parses a title/description out of prose when the model returns non-JSON", async () => {
-    mockFetchOk();
+    mockMediaOk();
     mocks.generateContent.mockResolvedValue({
       text: "Title: Sunset\nA warm orange sunset over the ocean.",
     });
@@ -108,38 +116,70 @@ describe("Google GenAI image description", () => {
   });
 
   it("throws when the client is not initialized instead of fabricating a result", async () => {
-    mockFetchOk();
+    mockMediaOk();
     mocks.createGoogleGenAI.mockReturnValue(null);
 
     await expect(
       handleImageDescription(createRuntime(), "https://example.com/x.png"),
     ).rejects.toThrow("Google Generative AI client not initialized");
 
+    expect(mocks.fetchRemoteMedia).not.toHaveBeenCalled();
     expect(mocks.generateContent).not.toHaveBeenCalled();
   });
 
-  it("throws when the image fetch fails instead of fabricating a result", async () => {
-    const fetchMock = vi.fn(async () => ({
-      ok: false,
-      statusText: "Not Found",
-      headers: { get: () => null },
-      arrayBuffer: async () => new ArrayBuffer(0),
-    }));
-    vi.stubGlobal("fetch", fetchMock);
+  it("throws when the image URL is empty instead of fetching", async () => {
+    await expect(
+      handleImageDescription(createRuntime(), { imageUrl: "" }),
+    ).rejects.toThrow("IMAGE_DESCRIPTION requires a valid image URL");
+
+    expect(mocks.fetchRemoteMedia).not.toHaveBeenCalled();
+    expect(mocks.generateContent).not.toHaveBeenCalled();
+  });
+
+  it("throws when the guarded image fetch fails instead of fabricating a result", async () => {
+    mocks.fetchRemoteMedia.mockRejectedValue(
+      new Error(
+        "Failed to fetch media from https://example.com/missing.png: HTTP 404 Not Found",
+      ),
+    );
 
     const result = handleImageDescription(
       createRuntime(),
       "https://example.com/missing.png",
     );
 
-    await expect(result).rejects.toThrow("Failed to fetch image: Not Found");
+    await expect(result).rejects.toThrow(/Failed to fetch media/);
     // Must not swallow into a { title: "Failed to analyze image", ... } object.
     await expect(result).rejects.not.toHaveProperty("title");
     expect(mocks.generateContent).not.toHaveBeenCalled();
   });
 
+  it("fails closed on loopback and private image URLs without calling the model", async () => {
+    const blocked = [
+      "http://127.0.0.1/secret.png",
+      "http://169.254.169.254/latest/meta-data/",
+      "http://localhost/internal.png",
+      "http://10.0.0.5/intranet.png",
+    ];
+
+    for (const url of blocked) {
+      mocks.fetchRemoteMedia.mockRejectedValueOnce(
+        new Error(`Failed to fetch media from ${url}: blocked by SSRF policy`),
+      );
+      mocks.generateContent.mockClear();
+
+      await expect(
+        handleImageDescription(createRuntime(), url),
+      ).rejects.toThrow(/Failed to fetch media|SSRF|blocked/i);
+      expect(mocks.fetchRemoteMedia).toHaveBeenCalledWith(
+        expect.objectContaining({ url }),
+      );
+      expect(mocks.generateContent).not.toHaveBeenCalled();
+    }
+  });
+
   it("propagates a provider rejection instead of fabricating a result", async () => {
-    mockFetchOk();
+    mockMediaOk();
     mocks.generateContent.mockRejectedValue(
       new Error("429 rate limit exceeded"),
     );
@@ -156,7 +196,7 @@ describe("Google GenAI image description", () => {
   });
 
   it("throws on an empty model completion instead of returning an empty description", async () => {
-    mockFetchOk();
+    mockMediaOk();
     mocks.generateContent.mockResolvedValue({ text: "   " });
 
     await expect(
