@@ -219,6 +219,38 @@ describe("InferenceIdleUnloader", () => {
     expect(harness.state.loaded).toBe(true);
   });
 
+  it("stops the timer and joins an active unload before teardown continues", async () => {
+    const clock = { t: 0 };
+    let releaseUnload: (() => void) | null = null;
+    let unloaded = false;
+    const unloader = new InferenceIdleUnloader({
+      idleUnloadMs: IDLE_MS,
+      isLoaded: () => !unloaded,
+      unload: () =>
+        new Promise<void>((resolve) => {
+          releaseUnload = () => {
+            unloaded = true;
+            resolve();
+          };
+        }),
+      now: () => clock.t,
+    });
+
+    clock.t = IDLE_MS;
+    const tick = unloader.tick();
+    let stopped = false;
+    const stop = unloader.stop().then(() => {
+      stopped = true;
+    });
+    await Promise.resolve();
+    expect(stopped).toBe(false);
+    if (!releaseUnload) throw new Error("idle unload never started");
+    releaseUnload();
+    await expect(tick).resolves.toBe("unloaded");
+    await stop;
+    expect(stopped).toBe(true);
+  });
+
   it("tolerates a double-ended use handle", async () => {
     const harness = makeModelHarness();
     const clock = { t: 0 };
