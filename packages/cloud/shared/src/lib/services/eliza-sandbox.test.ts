@@ -7184,7 +7184,7 @@ describe("ElizaSandboxService.executeUpgrade blue/green rollback + CAS guard (LA
 
   test("admin canary requires reported blue digest and uses the primary exact-pair read", async () => {
     const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
-    const SOURCE_IMAGE = "ghcr.io/elizaos/eliza:sha-production";
+    const SOURCE_IMAGE = `ghcr.io/elizaos/eliza-demo@${FROM_DIGEST}`;
     const TARGET_IMAGE = `ghcr.io/elizaos/eliza-demo@${TO_DIGEST}`;
     const agent: AgentSandbox = { ...liveAgentRow(), docker_image: SOURCE_IMAGE };
     const primarySpy = spyOn(agentSandboxesRepository, "findByIdAndOrgForWrite").mockResolvedValue(
@@ -7628,10 +7628,13 @@ describe("ElizaSandboxService.executeDowngrade rollback onto previous_image_dige
     runtimeStatus?: (input: RequestInfo | URL, init?: RequestInit) => Response | Promise<Response>;
     runtimeHealth?: (input: RequestInfo | URL, init?: RequestInit) => Response | Promise<Response>;
     environmentVars?: Record<string, string>;
+    targetImage?: string;
+    targetDigest?: string;
   }) {
     const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
     const SOURCE_IMAGE = `ghcr.io/elizaos/eliza-demo@${CURRENT_DIGEST}`;
-    const TARGET_IMAGE = "ghcr.io/elizaos/eliza:sha-production";
+    const TARGET_IMAGE = options.targetImage ?? "ghcr.io/elizaos/eliza:sha-production";
+    const TARGET_DIGEST = options.targetDigest ?? PREV_DIGEST;
     const agent: AgentSandbox = {
       ...upgradedAgentRow(),
       docker_image: SOURCE_IMAGE,
@@ -7657,7 +7660,7 @@ describe("ElizaSandboxService.executeDowngrade rollback onto previous_image_dige
     const lifecycleEvents: string[] = [];
     const { provider, stop, stopOnSpecificNode, runtimeFetch } = await makeDockerProvider({
       create: async () =>
-        blueHandle(PREV_DIGEST, options.failPostCutoverCleanup ? "vpn-old-rollback" : undefined),
+        blueHandle(TARGET_DIGEST, options.failPostCutoverCleanup ? "vpn-old-rollback" : undefined),
       checkHealth: async () => true,
       runtimeStatus: async (input, init) => {
         lifecycleEvents.push("status");
@@ -7711,7 +7714,7 @@ describe("ElizaSandboxService.executeDowngrade rollback onto previous_image_dige
         sourceImage: SOURCE_IMAGE,
         sourceDigest: CURRENT_DIGEST,
         targetImage: TARGET_IMAGE,
-        targetDigest: PREV_DIGEST,
+        targetDigest: TARGET_DIGEST,
         onCutoverInTx: options.onCutoverInTx,
         onConvergedInTx: async () => {},
       });
@@ -8376,6 +8379,18 @@ describe("ElizaSandboxService.executeDowngrade rollback onto previous_image_dige
       }),
     );
     expect(stop).not.toHaveBeenCalled();
+  });
+
+  test("admin canary rollback restores an immutable demo target from a prior canary", async () => {
+    const targetImage = `ghcr.io/elizaos/eliza-demo@${PREV_DIGEST}`;
+    const { result, transactionCalled } = await runAdminCanaryRollback({
+      onCutoverInTx: async () => {},
+      targetImage,
+      targetDigest: PREV_DIGEST,
+    });
+
+    expect(result.success).toBe(true);
+    expect(transactionCalled).toBe(true);
   });
 });
 

@@ -51,7 +51,7 @@ import { logger } from "../utils/logger";
 import { settleOffResponsePath } from "../utils/settle-off-response-path";
 import { withTimeout } from "../utils/with-timeout";
 import {
-  assertCanonicalSourceImage,
+  assertAdminCanaryCanonicalOrDemoPair,
   assertDemoSourceImage,
   assertSha256Digest,
   parseAdminCanaryDemoImage,
@@ -7987,8 +7987,8 @@ export class ElizaSandboxService {
     onCutoverInTx: AdminCanaryImageExecutionPolicy["onCutoverInTx"];
     onConvergedInTx: AdminCanaryImageExecutionPolicy["onConvergedInTx"];
   }): Promise<ImageSwapResult> {
-    assertCanonicalSourceImage(params.sourceImage, "sourceImage");
     assertSha256Digest(params.sourceDigest, "sourceDigest");
+    assertAdminCanaryCanonicalOrDemoPair(params.sourceImage, params.sourceDigest, "sourceImage");
     const target = parseAdminCanaryDemoImage(params.targetImage);
     if (target.digest !== params.targetDigest) {
       return { success: false, error: "Canary target image and digest do not match" };
@@ -8495,12 +8495,12 @@ export class ElizaSandboxService {
     onConvergedInTx: AdminCanaryImageExecutionPolicy["onConvergedInTx"];
   }): Promise<ImageSwapResult> {
     assertDemoSourceImage(params.sourceImage, "sourceImage");
-    const source = parseAdminCanaryDemoImage(params.sourceImage);
+    const source = parseAdminCanaryDemoImage(params.sourceImage, "sourceImage");
     if (source.digest !== params.sourceDigest) {
       return { success: false, error: "Canary rollback source image and digest do not match" };
     }
-    assertCanonicalSourceImage(params.targetImage, "targetImage");
     assertSha256Digest(params.targetDigest, "targetDigest");
+    assertAdminCanaryCanonicalOrDemoPair(params.targetImage, params.targetDigest, "targetImage");
     return await this.executeDowngradeWithPolicy(
       params.agentId,
       params.organizationId,
