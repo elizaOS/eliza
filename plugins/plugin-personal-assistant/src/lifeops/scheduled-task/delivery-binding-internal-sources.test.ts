@@ -11,8 +11,8 @@
 import {
   attestDeliveryAudienceFromCanonicalRoom,
   ChannelType,
-  MESSAGE_SOURCES,
   type IAgentRuntime,
+  MESSAGE_SOURCES,
   type Memory,
   type Room,
   type UUID,
@@ -167,6 +167,20 @@ describe("bindScheduledTaskToInboundChat provenance guards", () => {
         ? message.metadata
         : {}),
       source: "sub_agent",
+    };
+    await expect(
+      bindScheduledTaskToInboundChat(runtime, message),
+    ).resolves.toBeNull();
+  });
+
+  it("does not let connector metadata mask internal content provenance", async () => {
+    const runtime = connectorRuntime({ roomSource: "discord" });
+    const message = await attestedMessage(runtime, "sub_agent");
+    message.metadata = {
+      ...(typeof message.metadata === "object" && message.metadata
+        ? message.metadata
+        : {}),
+      source: "discord",
     };
     await expect(
       bindScheduledTaskToInboundChat(runtime, message),

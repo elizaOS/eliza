@@ -1,8 +1,12 @@
+/**
+ * Captures and validates the canonical connector destination used by scheduled
+ * LifeOps delivery, keeping internal and synthetic turns on the in-app path.
+ */
 import {
   evaluateOwnerExclusiveDisclosure,
   getTrustedDeliveryAudience,
-  MESSAGE_SOURCES,
   type IAgentRuntime,
+  MESSAGE_SOURCES,
   type Memory,
   type MessageSourceSentinel,
 } from "@elizaos/core";
@@ -43,9 +47,7 @@ const API_TRANSPORT_SOURCE = "api";
  * Returns a plain boolean (not a type predicate): a false result means
  * "not internal", not "not a string".
  */
-export function isInternalMessageSource(
-  source: string | undefined,
-): boolean {
+export function isInternalMessageSource(source: string | undefined): boolean {
   if (!source) return false;
   return (
     source === API_TRANSPORT_SOURCE ||
@@ -115,10 +117,15 @@ export async function bindScheduledTaskToInboundChat(
   // inbound envelope before consulting that room. Otherwise internal scenario
   // and API turns are rewritten into unavailable outbound connector sends and
   // planner idempotency keys leak a synthetic room suffix.
-  const inboundSource =
-    stringField(message.metadata?.source) ??
-    stringField(message.content.source);
-  if (isInternalMessageSource(inboundSource)) {
+  const metadataSource = stringField(message.metadata?.source);
+  const contentSource = stringField(message.content.source);
+  // Either envelope field can carry the real provenance. Do not let a
+  // connector-looking metadata value mask an internal content sentinel (or
+  // vice versa) through nullish-coalescing precedence.
+  if (
+    isInternalMessageSource(metadataSource) ||
+    isInternalMessageSource(contentSource)
+  ) {
     return null;
   }
 
