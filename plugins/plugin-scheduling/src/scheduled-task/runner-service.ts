@@ -44,6 +44,7 @@ import {
   createCompletionCheckRegistry,
   registerBuiltInCompletionChecks,
 } from "./completion-check-registry.js";
+import { dispatchViaMessageConnector } from "./connector-dispatch.js";
 import {
   type AnchorRegistry,
   type ConsolidationRegistry,
@@ -208,10 +209,13 @@ function getNotifier(runtime: IAgentRuntime): NotificationEmitter | null {
 }
 
 /**
- * Default dispatcher with no channel registry: routes everything through a
- * local NOTIFICATION emit (when a notification service is present) and reports
- * delivered. This is the honest "no connector wired" behavior — the in_app
- * notification reaches the device even on a stock mobile boot.
+ * Default dispatcher with no channel registry: channel-destination dispatches
+ * whose channel key matches a live message connector go out through the
+ * runtime's connector transport (`sendMessageToTarget`); everything else
+ * routes through a local NOTIFICATION emit (when a notification service is
+ * present) and reports delivered. The notification path remains the honest
+ * "no connector wired" behavior — the in_app notification reaches the device
+ * even on a stock mobile boot.
  */
 function createDefaultScheduledTaskDispatcher(
   runtime: IAgentRuntime,
@@ -241,6 +245,16 @@ function createDefaultScheduledTaskDispatcher(
         );
         return renderFailureDispatchResult(error);
       }
+      // Channel-destination dispatch through a live message connector (e.g.
+      // `output: { destination: "channel", target: "discord:user:<id>" }` on
+      // a standalone runtime with plugin-discord). Falls through to the
+      // notification surface when the path does not apply.
+      const connectorResult = await dispatchViaMessageConnector(
+        runtime,
+        record,
+        body,
+      );
+      if (connectorResult) return connectorResult;
       const isUrgent = record.intensity === "urgent";
       void getNotifier(runtime)
         ?.notify({
