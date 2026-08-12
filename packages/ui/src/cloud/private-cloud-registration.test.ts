@@ -136,7 +136,7 @@ describe("ensurePrivateCloudSurfaces", () => {
     }
   });
 
-  it("does not let an obsolete failure overwrite a later success (generation guard)", async () => {
+  it("does not let a pre-reset failure overwrite a later success", async () => {
     type Gate = {
       resolve: () => void;
       reject: (e: Error) => void;
@@ -159,62 +159,28 @@ describe("ensurePrivateCloudSurfaces", () => {
       await gate.promise;
     });
 
-    const first = ensurePrivateCloudSurfaces();
+    const stale = ensurePrivateCloudSurfaces();
     expect(getPrivateCloudRegistrationSnapshot().status).toBe("pending");
     expect(gates).toHaveLength(1);
 
-    // Force a second generation by simulating error then retry while first is
-    // still mid-flight: complete first as failure after second already ready.
-    // Direct approach: start first, then bump generation via error path:
-    // Reject first after second succeeds.
-    // Clear to error with a short-lived ensure:
-    // Actually: start attempt A (gate0), fail it conceptually by rejecting after
-    // we start B via retry which only works from error.
-    // So: reject A first, then start B (retry), resolve B, then reject A late
-    // is impossible once A already rejected.
-    //
-    // Instead: custom loader that only uses gate by attempt index; start A,
-    // then call ensure again while pending (shares A). To get two generations
-    // we need to leave A pending, force error on A, start B, resolve B, reject A.
-    gates[0].reject(new Error("stale failure"));
-    await expect(first).rejects.toThrow("stale failure");
-    expect(getPrivateCloudRegistrationSnapshot().status).toBe("error");
-
-    const second = retryPrivateCloudSurfaces();
-    expect(gates).toHaveLength(2);
-    // Resolve B successfully.
-    gates[1].resolve();
-    await second;
-    expect(getPrivateCloudRegistrationSnapshot().status).toBe("ready");
-
-    // A late double-reject of generation 1 must not demote ready → error.
-    // (generation 1 already settled; start C that fails after D succeeds)
+    // Reset while the first loader is unresolved, as a test teardown can do
+    // after an early assertion failure, then start a fresh generation.
     resetPrivateCloudRegistrationForTests();
     setPrivateCloudLoadForTests(async () => {
       const gate = makeGate();
       gates.push(gate);
       await gate.promise;
     });
-    // Clear gates for clarity
-    gates.length = 0;
-
-    const attemptC = ensurePrivateCloudSurfaces();
-    expect(gates).toHaveLength(1);
-    // Cannot start D while C pending via ensure (shares).
-    // Mark C as error, start D, resolve D, then if C's catch somehow re-ran...
-    // Generation guard test: two overlapping generations via inject:
-    // We'll start C, force internal generation bump by error+retry:
-    gates[0].reject(new Error("C failed"));
-    await expect(attemptC).rejects.toThrow("C failed");
-
-    const attemptD = retryPrivateCloudSurfaces();
+    const fresh = ensurePrivateCloudSurfaces();
     expect(gates).toHaveLength(2);
-    // Resolve D first.
     gates[1].resolve();
-    await attemptD;
+    await fresh;
     expect(getPrivateCloudRegistrationSnapshot().status).toBe("ready");
-    // Snapshot must stay ready even if something tries setSnapshot error late —
-    // covered by generation !== loadGeneration in catch of ensure.
+
+    // The stale completion is deliberately last. It is quarantined and its
+    // promise resolves without demoting the fresh ready snapshot.
+    gates[0].reject(new Error("stale failure"));
+    await expect(stale).resolves.toBeUndefined();
     expect(getPrivateCloudRegistrationSnapshot().status).toBe("ready");
   });
 

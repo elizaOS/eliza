@@ -184,7 +184,9 @@ export function ensurePrivateCloudSurfaces(): Promise<void> {
     }
   })();
 
-  // Silent observer so fire-and-forget never surfaces unhandledrejection.
+  // error-policy:J5 The returned rejection remains observable to explicit
+  // callers; fire-and-forget shell calls render snapshot.error in
+  // DashboardCatchAll instead of surfacing an unhandled rejection.
   void privateRegistration.catch(() => {});
 
   return privateRegistration;
@@ -215,7 +217,10 @@ export function retryPrivateCloudSurfaces(): Promise<void> {
 export function resetPrivateCloudRegistrationForTests(): void {
   privateRegistered = false;
   privateRegistration = null;
-  loadGeneration = 0;
+  // Invalidate any loader that was still pending when the test reset the
+  // singleton. Resetting to zero can reuse its generation on the next ensure,
+  // allowing that stale completion to overwrite the fresh test state.
+  loadGeneration += 1;
   snapshot = IDLE_SNAPSHOT;
   privateLoadImpl = loadPrivateCloudDomains;
   notify();
