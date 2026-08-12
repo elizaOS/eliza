@@ -49,6 +49,7 @@ import {
   installIosLocalAgentFetchBridge,
   installIosLocalAgentNativeRequestBridge,
 } from "@elizaos/app-core/api/ios-local-agent-transport";
+import type { DetachedShellRootProps } from "@elizaos/app-core/desktop-shell";
 import { Agent } from "@elizaos/capacitor-agent";
 import { Desktop } from "@elizaos/capacitor-desktop";
 import type { DeviceBridgeClient } from "@elizaos/capacitor-llama";
@@ -313,16 +314,18 @@ const DesktopTrayRuntime = lazyNamedComponent<Record<string, never>>(
     return mod.DesktopTrayRuntime;
   },
 );
-const DetachedShellRoot = lazyNamedComponent<{ route: unknown }>(async () => {
-  const mod = await import("@elizaos/app-core/desktop-shell");
-  return mod.DetachedShellRoot;
-});
+const DetachedShellRoot = lazyNamedComponent<DetachedShellRootProps>(
+  async () => {
+    const mod = await import("@elizaos/app-core/desktop-shell");
+    return mod.DetachedShellRoot;
+  },
+);
 
 const PhoneCompanionApp = lazyNamedComponent<Record<string, never>>(
   async () => (await importAppPhone()).PhoneCompanionApp,
 );
 
-async function runIosFullBunSmokeFromDesktopShell(): Promise<void> {
+async function runIosFullBunSmokeFromDesktopShell(): Promise<boolean> {
   const mod = await import("@elizaos/app-core/desktop-shell");
   return mod.runIosFullBunSmokeIfRequested();
 }
