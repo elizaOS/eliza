@@ -1433,11 +1433,25 @@ function extractIntentTextAfter(
 	return null;
 }
 
+// ASCII and typographic quote delimiters accepted in NL view-intent parsing.
+const VIEW_INTENT_QUOTE_OPEN = `["'“‘]`;
+const VIEW_INTENT_QUOTE_CLOSE = `["'”’]`;
+const VIEW_INTENT_QUOTED_SPAN = `[^"'“”‘’]{1,240}`;
+
+function extractQuotedSpanAfterKeyword(
+	intent: string,
+	keywordPattern: string,
+): string | null {
+	const quoted = new RegExp(
+		`\\b${keywordPattern}\\s+${VIEW_INTENT_QUOTE_OPEN}(${VIEW_INTENT_QUOTED_SPAN})${VIEW_INTENT_QUOTE_CLOSE}`,
+		"i",
+	).exec(intent)?.[1];
+	return quoted?.trim() || null;
+}
+
 function extractReferencedTitle(intent: string): string | null {
-	const quoted = /\b(?:titled?|named)\s+["']([^"']{1,240})["']/i.exec(
-		intent,
-	)?.[1];
-	if (quoted?.trim()) return quoted.trim();
+	const quoted = extractQuotedSpanAfterKeyword(intent, "(?:titled?|named)");
+	if (quoted) return quoted;
 
 	const unquoted =
 		/\b(?:titled?|named)\s+(.+?)(?=\s*(?:[.,;]|\b(?:and|then|with|on|at|rename|change|update|move|delete|remove)\b|$))/i.exec(
@@ -1532,10 +1546,10 @@ function deriveParamsFromMessageText(
 }
 
 function extractDeleteTargetText(text: string): string | null {
-	const quoted =
-		/\b(?:delete|remove|drop|destroy)\s+(?:the\s+)?(?:(?:sticky\s+note|calendar\s+event|note|notes|event|events|record|records|item|items)\s+)?["“'‘]([^"”'’]{1,240})["”'’]/i.exec(
-			text,
-		)?.[1];
+	const quoted = new RegExp(
+		`\\b(?:delete|remove|drop|destroy)\\s+(?:the\\s+)?(?:(?:sticky\\s+note|calendar\\s+event|note|notes|event|events|record|records|item|items)\\s+)?${VIEW_INTENT_QUOTE_OPEN}(${VIEW_INTENT_QUOTED_SPAN})${VIEW_INTENT_QUOTE_CLOSE}`,
+		"i",
+	).exec(text)?.[1];
 	if (quoted?.trim()) return quoted.trim();
 
 	const match = /\b(?:delete|remove|drop|destroy)\s+(?:the\s+)?(.+?)\s*$/i.exec(
