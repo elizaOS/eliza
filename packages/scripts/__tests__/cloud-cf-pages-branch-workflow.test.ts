@@ -34,6 +34,7 @@ interface WorkflowStep {
 }
 
 interface WorkflowJob {
+  environment?: unknown;
   if?: string;
   needs?: string | string[];
   steps?: WorkflowStep[];
@@ -169,6 +170,7 @@ describe("Cloud CF PR preview workflow contract", () => {
     expect(buildJob?.if).toContain(
       "github.event_name == 'pull_request' && needs.migrate-db.result == 'skipped'",
     );
+    expect(buildJob?.environment).toBeUndefined();
     expect(
       namedStep(producer, "build-pages", "Validate PR preview identity").if,
     ).toBe("github.event_name == 'pull_request'");
