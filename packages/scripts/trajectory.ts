@@ -320,6 +320,8 @@ async function cmdList(opts: ListOptions): Promise<void> {
     return;
   }
 
+  const limit = opts.limit ?? 20;
+
   const rows: Array<{
     id: string;
     started: string;
@@ -331,7 +333,9 @@ async function cmdList(opts: ListOptions): Promise<void> {
     agent: string;
   }> = [];
 
-  for (const file of files.slice(0, opts.limit ?? 20)) {
+  for (const file of files) {
+    if (rows.length >= limit) break;
+
     try {
       const raw = await fs.readFile(file.filePath, "utf8");
       const traj = JSON.parse(raw) as RecordedTrajectory;
