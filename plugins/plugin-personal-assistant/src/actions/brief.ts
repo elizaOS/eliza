@@ -33,11 +33,15 @@ import {
 } from "@elizaos/core";
 import { FinancesService } from "@elizaos/plugin-finances/finances-service";
 import { hasLifeOpsAccess } from "../lifeops/access.js";
-import { buildBriefEditorialContract } from "../lifeops/briefing/editorial-judgment.js";
+import {
+  buildBriefEditorialContract,
+  type LifeOpsBriefItemEngagementSummary,
+} from "../lifeops/briefing/editorial-judgment.js";
 import {
   BRIEF_NARRATIVE_INSTRUCTIONS,
   MEETING_PREP_INSTRUCTIONS,
 } from "../lifeops/optimized-prompt-instructions.js";
+import { LifeOpsRepository } from "../lifeops/repository.js";
 import type {
   LifeOpsBriefing,
   LifeOpsBriefingCalendarItem,
@@ -370,6 +374,24 @@ async function loadMoneyFromPayments(args: {
   }
 }
 
+async function loadEngagementSummariesFromLifeOps(args: {
+  runtime: IAgentRuntime;
+}): Promise<readonly LifeOpsBriefItemEngagementSummary[]> {
+  try {
+    return await new LifeOpsRepository(
+      args.runtime,
+    ).summarizeBriefItemEngagements(args.runtime.agentId);
+  } catch (error) {
+    // error-policy:J4 engagement history improves editorial ranking but is not
+    // required to render a brief. Keep the degradation observable instead of
+    // presenting the missing history as a successful database read.
+    args.runtime.reportError("Brief.loadEngagementSummaries", error, {
+      surface: "brief-editorial-engagement",
+    });
+    return [];
+  }
+}
+
 /**
  * Composer hooks — overridable for tests. Defaults compose from LifeOps'
  * structural services: calendar feed, MESSAGE triage, overview reminders, and
@@ -396,6 +418,10 @@ export interface BriefComposers {
   loadCompletedToday: (args: {
     runtime: IAgentRuntime;
   }) => Promise<readonly LifeOpsBriefingLifeItem[]>;
+  /** Persisted owner response signals that influence editorial ranking. */
+  loadEngagementSummaries: (args: {
+    runtime: IAgentRuntime;
+  }) => Promise<readonly LifeOpsBriefItemEngagementSummary[]>;
 }
 
 const defaultComposers: BriefComposers = {
@@ -404,6 +430,7 @@ const defaultComposers: BriefComposers = {
   loadLife: loadLifeFromOverview,
   loadMoney: loadMoneyFromPayments,
   loadCompletedToday: loadCompletedTodayFromService,
+  loadEngagementSummaries: loadEngagementSummariesFromLifeOps,
 };
 
 let activeComposers: BriefComposers = defaultComposers;
@@ -610,7 +637,13 @@ async function assembleBriefing(args: {
   optimizationTask: BriefOptimizationTask;
 }): Promise<LifeOpsBriefing> {
   const composers = activeComposers;
-  const [calendarItems, inboxItems, lifeItems, moneyItems] = await Promise.all([
+  const [
+    calendarItems,
+    inboxItems,
+    lifeItems,
+    moneyItems,
+    engagementSummaries,
+  ] = await Promise.all([
     args.include.calendar
       ? composers.loadCalendar({ runtime: args.runtime, period: args.period })
       : Promise.resolve([] as readonly LifeOpsBriefingCalendarItem[]),
@@ -623,6 +656,7 @@ async function assembleBriefing(args: {
     args.include.money
       ? composers.loadMoney({ runtime: args.runtime, period: args.period })
       : Promise.resolve([] as readonly LifeOpsBriefingMoneyItem[]),
+    composers.loadEngagementSummaries({ runtime: args.runtime }),
   ]);
 
   const kind = SUBACTION_TO_KIND[args.subaction];
@@ -642,7 +676,10 @@ async function assembleBriefing(args: {
     ...(args.include.money ? { money: moneyItems } : {}),
   };
 
-  const editorial = buildBriefEditorialContract({ sections });
+  const editorial = buildBriefEditorialContract({
+    sections,
+    engagementSummaries,
+  });
   let narrative: string | undefined;
   if (args.format === "narrative") {
     narrative = await composeNarrative({
