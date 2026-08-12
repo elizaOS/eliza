@@ -3,8 +3,10 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-
+import { resolveExpectedRendererStamp } from "./lib/mobile-lane-stamp.mjs";
+import { mobileWebDistReuseStatus } from "./lib/mobile-web-build-reuse.mjs";
 import {
+  IOS_BUILD_TARGETS,
   isIosAppStoreBuild,
   removeIosLocalExecutionAssets,
   resolveIosBuildEnvironment,
@@ -26,13 +28,27 @@ import {
 // is embedded; these tests lock that contract on the build script's own gate.
 
 describe("iOS full-Bun engine embed gate", () => {
+  it("forces the Capacitor target for every named iOS lane", () => {
+    for (const targetName of Object.keys(IOS_BUILD_TARGETS)) {
+      const inherited = { ELIZA_CAPACITOR_BUILD_TARGET: "android" };
+      expect(resolveIosBuildEnvironment(targetName, inherited)).toMatchObject({
+        ELIZA_CAPACITOR_BUILD_TARGET: "ios",
+      });
+      expect(inherited.ELIZA_CAPACITOR_BUILD_TARGET).toBe("android");
+    }
+  });
+
   it("makes the named pure-cloud target authoritative over a contaminated parent environment", () => {
     const env = resolveIosBuildEnvironment("ios-cloud", {
+      ELIZA_CAPACITOR_BUILD_TARGET: "android",
       ELIZA_BUILD_VARIANT: "direct",
       ELIZA_RELEASE_AUTHORITY: "developer-toolchain",
       ELIZA_IOS_APP_STORE_LOCAL_RUNTIME: "1",
       ELIZA_IOS_FULL_BUN_ENGINE: "1",
       ELIZA_IOS_INCLUDE_MOBILE_AGENT_BRIDGE: "1",
+      ELIZA_MOBILE_SKIP_WEB_BUILD_ALLOW_STALE: "1",
+      ELIZA_IOS_SKIP_CAPACITOR_SYNC: "1",
+      ELIZA_IOS_SKIP_POD_INSTALL: "1",
     });
     const targetPolicy = resolveIosBuildTargetPolicy("ios-cloud");
     const payload = resolveIosLocalPayloadDecision(targetPolicy, env);
@@ -45,11 +61,15 @@ describe("iOS full-Bun engine embed gate", () => {
       releaseAuthority: "apple-app-store",
     });
     expect(env).toMatchObject({
+      ELIZA_CAPACITOR_BUILD_TARGET: "ios",
       ELIZA_BUILD_VARIANT: "store",
       ELIZA_RELEASE_AUTHORITY: "apple-app-store",
       ELIZA_IOS_APP_STORE_LOCAL_RUNTIME: "0",
       ELIZA_IOS_FULL_BUN_ENGINE: "0",
       ELIZA_IOS_INCLUDE_MOBILE_AGENT_BRIDGE: "0",
+      ELIZA_MOBILE_SKIP_WEB_BUILD_ALLOW_STALE: "0",
+      ELIZA_IOS_SKIP_CAPACITOR_SYNC: "0",
+      ELIZA_IOS_SKIP_POD_INSTALL: "0",
       VITE_ELIZA_IOS_RUNTIME_MODE: "cloud",
     });
     expect(isIosAppStoreBuild(env)).toBe(true);
@@ -69,6 +89,84 @@ describe("iOS full-Bun engine embed gate", () => {
         }),
       ).has("ElizaosCapacitorMobileAgentBridge"),
     ).toBe(false);
+  });
+
+  it("permits only an exact fresh store/ios/cloud renderer when cloud reuse is requested", () => {
+    const fixtureRoot = fs.mkdtempSync(
+      path.join(os.tmpdir(), "eliza-ios-cloud-renderer-"),
+    );
+    const appDir = path.join(fixtureRoot, "app");
+    fs.mkdirSync(path.join(appDir, "dist"), { recursive: true });
+    fs.writeFileSync(path.join(appDir, "dist", "index.html"), "<main></main>");
+
+    try {
+      const environment = resolveIosBuildEnvironment("ios-cloud", {
+        ELIZA_MOBILE_SKIP_WEB_BUILD: "1",
+        ELIZA_MOBILE_SKIP_WEB_BUILD_ALLOW_STALE: "1",
+      });
+      const expected = resolveExpectedRendererStamp({
+        policy: resolveMobileBuildPolicy("ios-cloud"),
+        env: environment,
+      });
+      const status = (manifest, buildNeeded = () => false) =>
+        mobileWebDistReuseStatus({
+          appDir,
+          repoRoot: fixtureRoot,
+          expectedVariant: expected.variant,
+          expectedTarget: expected.capacitorTarget,
+          expectedRuntimeMode: expected.runtimeMode,
+          readManifest: () => manifest,
+          buildNeeded,
+        });
+
+      expect(environment.ELIZA_MOBILE_SKIP_WEB_BUILD).toBe("1");
+      expect(environment.ELIZA_MOBILE_SKIP_WEB_BUILD_ALLOW_STALE).toBe("0");
+      expect(expected).toEqual({
+        variant: "store",
+        capacitorTarget: "ios",
+        runtimeMode: "cloud",
+      });
+      expect(
+        status({
+          buildId: "direct-local",
+          variant: "direct",
+          capacitorTarget: "ios",
+          runtimeMode: "local",
+        }).reusable,
+      ).toBe(false);
+      expect(
+        status({
+          buildId: "store-hybrid",
+          variant: "store",
+          capacitorTarget: "ios",
+          runtimeMode: "cloud-hybrid",
+        }).reusable,
+      ).toBe(false);
+      const exactManifest = {
+        buildId: "store-cloud",
+        variant: "store",
+        capacitorTarget: "ios",
+        runtimeMode: "cloud",
+      };
+      expect(status(exactManifest).reusable).toBe(true);
+      expect(status(exactManifest, () => true).reusable).toBe(false);
+    } finally {
+      fs.rmSync(fixtureRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("preserves incremental-build operator controls outside the pure-cloud lane", () => {
+    const operatorControls = {
+      ELIZA_MOBILE_SKIP_WEB_BUILD_ALLOW_STALE: "1",
+      ELIZA_IOS_SKIP_CAPACITOR_SYNC: "1",
+      ELIZA_IOS_SKIP_POD_INSTALL: "1",
+    };
+    expect(resolveIosBuildEnvironment("ios", operatorControls)).toMatchObject(
+      operatorControls,
+    );
+    expect(
+      resolveIosBuildEnvironment("ios-local", operatorControls),
+    ).toMatchObject(operatorControls);
   });
 
   it("removes every stale local payload path from a dirty pure-cloud tree", () => {

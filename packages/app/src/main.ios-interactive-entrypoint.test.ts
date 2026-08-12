@@ -121,6 +121,7 @@ beforeEach(() => {
   vi.mocked(Capacitor.getPlatform).mockReturnValue("ios");
   vi.mocked(Capacitor.isNativePlatform).mockReturnValue(true);
   vi.mocked(runIosFullBunSmokeIfRequested).mockResolvedValue(false);
+  vi.stubEnv("VITE_ELIZA_IOS_FULL_BUN_AVAILABLE", "0");
   vi.stubGlobal("__ELIZA_BUILD_VARIANT__", "local");
   vi.stubGlobal("__ELIZA_WEB_SHELL__", false);
   vi.stubGlobal("__ELIZA_CHAT_UI_HARNESS__", false);
@@ -147,8 +148,11 @@ describe("renderer interactive iOS composition", () => {
 
     expect(main.isIOS).toBe(true);
     expect(main.isNative).toBe(true);
-    expect(iosBoot.installNativeRequest).toHaveBeenCalledTimes(2);
-    expect(iosBoot.installFetch).toHaveBeenCalledTimes(2);
+    expect(runIosFullBunSmokeIfRequested).toHaveBeenCalledWith({
+      fullBunAvailable: false,
+    });
+    expect(iosBoot.installNativeRequest).toHaveBeenCalledOnce();
+    expect(iosBoot.installFetch).toHaveBeenCalledOnce();
 
     iosBoot.keyboardListeners.get("keyboardWillShow")?.({
       keyboardHeight: 321,

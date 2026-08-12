@@ -139,6 +139,12 @@ import {
 } from "./mobile/android-manifest.mjs";
 import { escapeRegExp, escapeXmlText } from "./mobile/escape.mjs";
 import {
+  assertIosCloudNativeGraph,
+  IOS_LOCAL_EXECUTION_NATIVE_IDENTIFIERS,
+  IOS_LOCAL_EXECUTION_PLUGIN_CLASSES,
+  reconcileIosCapacitorPluginClasses,
+} from "./mobile/ios-cloud-native-graph.mjs";
+import {
   mergeIosInfoPlist,
   removePbxListEntries,
   replaceIosAppGroupPlaceholders,
@@ -3869,7 +3875,7 @@ function shouldEnforceIosBunEngineAppStoreRuntime(buildTarget) {
   );
 }
 
-function ensureIosCapacitorPluginClass(pluginClass) {
+function reconcileIosRuntimePluginClasses() {
   const configPath = path.join(
     appDir,
     "ios",
@@ -3877,36 +3883,38 @@ function ensureIosCapacitorPluginClass(pluginClass) {
     "App",
     "capacitor.config.json",
   );
-  if (!fs.existsSync(configPath)) return;
-
-  let parsed;
-  try {
-    parsed = JSON.parse(fs.readFileSync(configPath, "utf8"));
-  } catch (error) {
-    throw new Error(
-      `[mobile-build] Failed to parse iOS capacitor.config.json: ${error.message}`,
+  const includeFullBunEngine = shouldIncludeIosFullBunEngine();
+  const includeMobileAgentBridge =
+    !isIosAppStoreBuild() &&
+    (includeFullBunEngine || shouldIncludeIosMobileAgentBridge());
+  const requirements = new Map([
+    [
+      "ElizaBunRuntimePlugin",
+      includeFullBunEngine || process.env.ELIZA_IOS_RUNTIME_MODE === "local",
+    ],
+    ["MobileAgentBridgePlugin", includeMobileAgentBridge],
+    ["LlamaCppPlugin", shouldIncludeIosLlama()],
+  ]);
+  const required = IOS_LOCAL_EXECUTION_PLUGIN_CLASSES.filter((pluginClass) =>
+    requirements.get(pluginClass),
+  );
+  const forbidden = IOS_LOCAL_EXECUTION_PLUGIN_CLASSES.filter(
+    (pluginClass) => !requirements.get(pluginClass),
+  );
+  if (reconcileIosCapacitorPluginClasses(configPath, { required, forbidden })) {
+    console.log(
+      `[mobile-build] Reconciled iOS Capacitor runtime plugins (required: ${required.join(", ") || "none"}).`,
     );
   }
-
-  const classList = Array.isArray(parsed.packageClassList)
-    ? parsed.packageClassList
-    : [];
-  if (classList.includes(pluginClass)) return;
-
-  parsed.packageClassList = [...classList, pluginClass];
-  fs.writeFileSync(configPath, `${JSON.stringify(parsed, null, "\t")}\n`);
-  console.log(`[mobile-build] Registered iOS Capacitor plugin ${pluginClass}.`);
 }
 
-export function prepareIosOverlay({ buildTarget = null } = {}) {
+export function prepareIosOverlay({
+  buildTarget = null,
+  forbidLocalExecution = false,
+} = {}) {
   const syncedFiles = syncPlatformTemplateFiles("ios");
   overlayIos();
-  if (
-    shouldIncludeIosFullBunEngine() ||
-    process.env.ELIZA_IOS_RUNTIME_MODE === "local"
-  ) {
-    ensureIosCapacitorPluginClass("ElizaBunRuntimePlugin");
-  }
+  reconcileIosRuntimePluginClasses();
   stripSpmIncompatiblePlugins();
   const includeLlama = shouldIncludeIosLlama();
   if (isIosSimulatorBuildTarget(buildTarget) || !includeLlama) {
@@ -3916,6 +3924,11 @@ export function prepareIosOverlay({ buildTarget = null } = {}) {
     // (cloud-only / App Store thin client).
     stripSpmPlugins(IOS_COCOAPODS_OWNED_SPM_PLUGINS, {
       reason: includeLlama ? "CocoaPods-owned" : "llama excluded",
+    });
+  }
+  if (forbidLocalExecution) {
+    stripSpmPlugins(new Set(IOS_LOCAL_EXECUTION_NATIVE_IDENTIFIERS), {
+      reason: "forbidden by the ios-cloud target",
     });
   }
   return syncedFiles;
@@ -8519,10 +8532,6 @@ async function buildIos(target = "ios") {
 
   const targetPolicy = resolveIosBuildTargetPolicy(target);
   const local = target === "ios-local";
-  setDefaultProcessEnv(
-    "ELIZA_CAPACITOR_BUILD_TARGET",
-    targetPolicy.capacitorTarget,
-  );
 
   const buildTarget = resolveIosBuildTarget();
   const {
@@ -8594,7 +8603,10 @@ async function buildIos(target = "ios") {
   console.log(
     `[mobile-build] iOS build target: ${buildTarget.destination} (${buildTarget.sdk}; ${buildTarget.reason})`,
   );
-  const syncedFiles = prepareIosOverlay({ buildTarget });
+  const syncedFiles = prepareIosOverlay({
+    buildTarget,
+    forbidLocalExecution: targetPolicy.localEngine === "forbidden",
+  });
   await generateIosBrandAssets();
   await ensureIosLlamaCppVendoredFramework({ buildTarget });
 
@@ -8622,6 +8634,10 @@ async function buildIos(target = "ios") {
           : "en_US.UTF-8",
       }),
     });
+  }
+
+  if (targetPolicy.localEngine === "forbidden") {
+    assertIosCloudNativeGraph(iosDir);
   }
 
   const wsPath = path.join(iosDir, "App.xcworkspace");

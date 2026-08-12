@@ -2,20 +2,24 @@
 import { describe, expect, it, vi } from "vitest";
 import { runIosFullBunEntrypoint } from "./ios-full-bun-entrypoint";
 
-function dependencies(isIOS: boolean, runResult = true) {
+function dependencies(
+  isIOS: boolean,
+  { fullBunAvailable = true, runResult = true } = {},
+) {
   const calls: string[] = [];
   return {
     calls,
     value: {
       isIOS,
+      fullBunAvailable,
       initializeStorageBridge: vi.fn(async () => {
         calls.push("storage");
       }),
       initializeCapacitorBridge: vi.fn(() => calls.push("capacitor")),
       installNativeRequestBridge: vi.fn(() => calls.push("native-request")),
       installFetchBridge: vi.fn(() => calls.push("fetch")),
-      runSmoke: vi.fn(async () => {
-        calls.push("smoke");
+      runSmoke: vi.fn(async ({ fullBunAvailable: available }) => {
+        calls.push(`smoke:${String(available)}`);
         return runResult;
       }),
     },
@@ -31,7 +35,7 @@ describe("iOS full-Bun entrypoint", () => {
       "capacitor",
       "native-request",
       "fetch",
-      "smoke",
+      "smoke:true",
     ]);
   });
 
@@ -42,8 +46,21 @@ describe("iOS full-Bun entrypoint", () => {
   });
 
   it("returns false when no smoke request takes ownership", async () => {
-    const fixture = dependencies(true, false);
+    const fixture = dependencies(true, { runResult: false });
     await expect(runIosFullBunEntrypoint(fixture.value)).resolves.toBe(false);
-    expect(fixture.calls.at(-1)).toBe("smoke");
+    expect(fixture.calls.at(-1)).toBe("smoke:true");
+  });
+
+  it("clears the request before storage can hydrate persisted local mode in a no-engine build", async () => {
+    const fixture = dependencies(true, {
+      fullBunAvailable: false,
+      runResult: true,
+    });
+
+    await expect(runIosFullBunEntrypoint(fixture.value)).resolves.toBe(false);
+    expect(fixture.calls).toEqual(["smoke:false"]);
+    expect(fixture.value.runSmoke).toHaveBeenCalledWith({
+      fullBunAvailable: false,
+    });
   });
 });

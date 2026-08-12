@@ -178,6 +178,26 @@ beforeEach(() => {
 });
 
 describe("iOS full-Bun browser smoke", () => {
+  it("clears a persisted local-mode request without importing Bun when the build has no engine", async () => {
+    window.localStorage.setItem(REQUEST_KEY, "1");
+    window.localStorage.setItem(RUNTIME_MODE_KEY, "local");
+    harness.preferences.set(REQUEST_KEY, "1");
+    harness.preferences.set(RUNTIME_MODE_KEY, "local");
+    const { runIosFullBunSmokeIfRequested } = await import(
+      "./ios-runtime-bridge"
+    );
+
+    await expect(
+      runIosFullBunSmokeIfRequested({ fullBunAvailable: false }),
+    ).resolves.toBe(false);
+
+    expect(window.localStorage.getItem(REQUEST_KEY)).toBeNull();
+    expect(harness.preferences.has(REQUEST_KEY)).toBe(false);
+    expect(harness.primeRuntime).not.toHaveBeenCalled();
+    expect(harness.start).not.toHaveBeenCalled();
+    expect(document.body.textContent).toBe("normal app");
+  });
+
   it("drives the complete semantic nonstream and stream contract", async () => {
     const fetchMock = installHappyFetch();
     const setTimeoutSpy = vi.spyOn(window, "setTimeout");
@@ -188,7 +208,9 @@ describe("iOS full-Bun browser smoke", () => {
       "./ios-runtime-bridge"
     );
 
-    await expect(runIosFullBunSmokeIfRequested()).resolves.toBe(true);
+    await expect(
+      runIosFullBunSmokeIfRequested({ fullBunAvailable: true }),
+    ).resolves.toBe(true);
 
     expect(harness.primeRuntime).toHaveBeenCalledOnce();
     expect(harness.start).toHaveBeenCalledWith(
@@ -250,7 +272,9 @@ describe("iOS full-Bun browser smoke", () => {
       "./ios-runtime-bridge"
     );
 
-    await expect(runIosFullBunSmokeIfRequested()).resolves.toBe(true);
+    await expect(
+      runIosFullBunSmokeIfRequested({ fullBunAvailable: true }),
+    ).resolves.toBe(true);
 
     const result = JSON.parse(harness.preferences.get(RESULT_KEY) ?? "null");
     expect(result).toMatchObject({ ok: true, phase: "complete" });
@@ -264,7 +288,9 @@ describe("iOS full-Bun browser smoke", () => {
       "./ios-runtime-bridge"
     );
 
-    await expect(runIosFullBunSmokeIfRequested()).resolves.toBe(true);
+    await expect(
+      runIosFullBunSmokeIfRequested({ fullBunAvailable: true }),
+    ).resolves.toBe(true);
 
     const result = JSON.parse(harness.preferences.get(RESULT_KEY) ?? "null");
     expect(result).toMatchObject({
@@ -290,7 +316,9 @@ describe("iOS full-Bun browser smoke", () => {
       "./ios-runtime-bridge"
     );
 
-    await expect(runIosFullBunSmokeIfRequested()).resolves.toBe(false);
+    await expect(
+      runIosFullBunSmokeIfRequested({ fullBunAvailable: true }),
+    ).resolves.toBe(false);
 
     expect(harness.start).not.toHaveBeenCalled();
     expect(harness.preferences.has(REQUEST_KEY)).toBe(false);

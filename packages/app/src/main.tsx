@@ -325,9 +325,11 @@ const PhoneCompanionApp = lazyNamedComponent<Record<string, never>>(
   async () => (await importAppPhone()).PhoneCompanionApp,
 );
 
-async function runIosFullBunSmokeFromDesktopShell(): Promise<boolean> {
+async function runIosFullBunSmokeFromDesktopShell(options: {
+  fullBunAvailable: boolean;
+}): Promise<boolean> {
   const mod = await import("@elizaos/app-core/desktop-shell");
-  return mod.runIosFullBunSmokeIfRequested();
+  return mod.runIosFullBunSmokeIfRequested(options);
 }
 
 async function buildLocalizedTrayMenuAsync(
@@ -1755,7 +1757,9 @@ async function initializePlatform(): Promise<void> {
   await initializeStorageBridge();
   initializeCapacitorBridge();
   installNativeTranscriptPlatformBridge();
-  void runIosFullBunSmokeFromDesktopShell();
+  void runIosFullBunSmokeFromDesktopShell({
+    fullBunAvailable: IOS_RUNTIME_ENV_CONFIG.fullBun,
+  });
   void runIosOnboardingSmokeIfRequested();
   void runIosCloudOnboardingSmokeIfRequested();
   void runIosOnboardingRelaunchSmokeIfRequested();
@@ -3272,6 +3276,7 @@ async function main(): Promise<void> {
   if (
     await runIosFullBunEntrypoint({
       isIOS,
+      fullBunAvailable: IOS_RUNTIME_ENV_CONFIG.fullBun,
       initializeStorageBridge,
       initializeCapacitorBridge,
       installNativeRequestBridge: installIosLocalAgentNativeRequestBridge,
