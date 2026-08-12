@@ -84,6 +84,30 @@ export function analyzeWalletAlpha(
     weaknesses.push("High calculated wallet risk.");
   }
 
+  // The four blended inputs above (smartMoney 25%, conviction 20%, trust
+  // 20%, whale 15% - 80% of the total score) previously had zero
+  // explanatory coverage in `weaknesses` - only risk.level === "high" (a
+  // separate malus, not even one of the blend terms) ever pushed anything.
+  // A mid-to-low alphaScore driven by, say, a weak smartMoney or trust
+  // reading had no visible reason why. These mirror each summary's own
+  // lowest/weakest categorical level, the same way "risk.level === 'high'"
+  // above matches risk's own extreme.
+  if (input.smartMoney.level === "none") {
+    weaknesses.push("No smart-money characteristics detected.");
+  }
+
+  if (input.conviction.convictionLevel === "very_low") {
+    weaknesses.push("Very low conviction in current positioning.");
+  }
+
+  if (input.trust.trustLevel === "very_low") {
+    weaknesses.push("Very low wallet trust signals.");
+  }
+
+  if (input.whale.whaleLevel === "none") {
+    weaknesses.push("No whale-level portfolio characteristics detected.");
+  }
+
   score = Math.max(0, Math.min(100, Math.round(score)));
 
   let alphaLevel:
