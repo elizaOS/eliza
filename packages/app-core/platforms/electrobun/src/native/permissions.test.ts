@@ -20,6 +20,7 @@ import {
   buildPermissionSettingsCommand,
   PermissionManager,
   runSettingsCommand,
+  waitForNativeNotificationStatus,
 } from "./permissions";
 
 function settingsProcess(exitCode: number, stderr = "") {
@@ -32,6 +33,28 @@ function settingsProcess(exitCode: number, stderr = "") {
 const describeMac = process.platform === "darwin" ? describe : describe.skip;
 
 describe("permission Settings commands", () => {
+  it.each([
+    ["check", -2],
+    ["request", 0],
+  ] as const)(
+    "times out a pending notification %s",
+    async (operation, status) => {
+      vi.useFakeTimers();
+      const pending = waitForNativeNotificationStatus(status, () => status, {
+        operation,
+        timeoutMs: 500,
+        pollIntervalMs: 250,
+      });
+      const rejection = expect(pending).rejects.toMatchObject({
+        code: "NOTIFICATION_AUTHORIZATION_TIMEOUT",
+        context: { operation, timeoutMs: 500 },
+      });
+      await vi.advanceTimersByTimeAsync(750);
+      await rejection;
+      vi.useRealTimers();
+    },
+  );
+
   it("uses a detached Linux handoff rather than waiting for the Settings window", () => {
     expect(buildPermissionSettingsCommand("notifications", "linux")).toEqual([
       "sh",

@@ -28,6 +28,8 @@ import {
 const platform = process.platform as "darwin" | "win32" | "linux";
 const DEFAULT_CACHE_TIMEOUT_MS = 30000;
 const NOTIFICATION_AUTHORIZATION_POLL_INTERVAL_MS = 250;
+const NOTIFICATION_AUTHORIZATION_CHECK_TIMEOUT_MS = 2_000;
+const NOTIFICATION_AUTHORIZATION_REQUEST_TIMEOUT_MS = 30_000;
 const NATIVE_NOTIFICATION_QUERY_PENDING = -2;
 
 interface DesktopPermissionProber {
@@ -180,30 +182,72 @@ function notificationStateFromNativeStatus(
   });
 }
 
-async function checkMacNotificationPermission(): Promise<PermissionState> {
-  let status = checkNativeNotificationPermission();
-  if (status === null) throw nativeNotificationBridgeUnavailable();
-  while (status === NATIVE_NOTIFICATION_QUERY_PENDING) {
-    await new Promise((resolve) =>
-      setTimeout(resolve, NOTIFICATION_AUTHORIZATION_POLL_INTERVAL_MS),
-    );
-    status = checkNativeNotificationPermission();
-    if (status === null) throw nativeNotificationBridgeUnavailable();
+export async function waitForNativeNotificationStatus(
+  initialStatus: number,
+  readStatus: () => number | null,
+  options: {
+    operation: "check" | "request";
+    timeoutMs: number;
+    pollIntervalMs?: number;
+  },
+): Promise<number> {
+  const pollIntervalMs =
+    options.pollIntervalMs ?? NOTIFICATION_AUTHORIZATION_POLL_INTERVAL_MS;
+  const deadline = Date.now() + options.timeoutMs;
+  let status = initialStatus;
+  const isPending = (value: number) =>
+    value === NATIVE_NOTIFICATION_QUERY_PENDING ||
+    (options.operation === "request" && value === 0);
+  while (isPending(status)) {
+    if (Date.now() >= deadline) {
+      throw new ElizaError(
+        options.operation === "request"
+          ? "Timed out waiting for macOS notification authorization"
+          : "Timed out reading macOS notification authorization",
+        {
+          code: "NOTIFICATION_AUTHORIZATION_TIMEOUT",
+          context: {
+            operation: options.operation,
+            timeoutMs: options.timeoutMs,
+          },
+          severity: "ephemeral",
+        },
+      );
+    }
+    await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
+    const nextStatus = readStatus();
+    if (nextStatus === null) throw nativeNotificationBridgeUnavailable();
+    status = nextStatus;
   }
+  return status;
+}
+
+async function checkMacNotificationPermission(): Promise<PermissionState> {
+  const initialStatus = checkNativeNotificationPermission();
+  if (initialStatus === null) throw nativeNotificationBridgeUnavailable();
+  const status = await waitForNativeNotificationStatus(
+    initialStatus,
+    checkNativeNotificationPermission,
+    {
+      operation: "check",
+      timeoutMs: NOTIFICATION_AUTHORIZATION_CHECK_TIMEOUT_MS,
+    },
+  );
   return notificationStateFromNativeStatus(status);
 }
 
 async function requestMacNotificationPermission(): Promise<PermissionState> {
   const lastRequested = Date.now();
-  let status = requestNativeNotificationPermission();
-  if (status === null) throw nativeNotificationBridgeUnavailable();
-  while (status === 0 || status === NATIVE_NOTIFICATION_QUERY_PENDING) {
-    await new Promise((resolve) =>
-      setTimeout(resolve, NOTIFICATION_AUTHORIZATION_POLL_INTERVAL_MS),
-    );
-    status = checkNativeNotificationPermission();
-    if (status === null) throw nativeNotificationBridgeUnavailable();
-  }
+  const initialStatus = requestNativeNotificationPermission();
+  if (initialStatus === null) throw nativeNotificationBridgeUnavailable();
+  const status = await waitForNativeNotificationStatus(
+    initialStatus,
+    checkNativeNotificationPermission,
+    {
+      operation: "request",
+      timeoutMs: NOTIFICATION_AUTHORIZATION_REQUEST_TIMEOUT_MS,
+    },
+  );
   return notificationStateFromNativeStatus(status, lastRequested);
 }
 

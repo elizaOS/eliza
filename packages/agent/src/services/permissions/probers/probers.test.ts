@@ -230,6 +230,25 @@ describe("permission probers", () => {
     expect(bridge.checkNotificationPermission).toHaveBeenCalledTimes(2);
   });
 
+  it("times out when the notification prompt never reaches a decision", async () => {
+    vi.useFakeTimers();
+    const bridge = {
+      requestNotificationPermission: vi.fn(() => 0),
+      checkNotificationPermission: vi.fn(() => -2),
+    };
+
+    const pending = waitForAuthorizationDecision(bridge, {
+      timeoutMs: 500,
+      pollIntervalMs: 250,
+    });
+    const rejection = expect(pending).rejects.toMatchObject({
+      code: "NOTIFICATION_AUTHORIZATION_TIMEOUT",
+      context: { operation: "request", timeoutMs: 500 },
+    });
+    await vi.advanceTimersByTimeAsync(750);
+    await rejection;
+  });
+
   it("maps the native EventKit/Contacts status contract", () => {
     expect(mapNativePrivacyAuthStatus(0)).toBe("not-determined");
     expect(mapNativePrivacyAuthStatus(1)).toBe("denied");

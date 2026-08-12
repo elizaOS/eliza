@@ -21,6 +21,9 @@ const PERMISSION_PRIMING_RECOVERY_MESSAGES = {
   "permissionpriming.requestFailedDescription":
     "The system request failed. Try again, or open Settings and re-check.",
   "permissionpriming.requestFailedTitle": "Couldn’t request permission",
+  "permissionpriming.openingSettings": "Opening…",
+  "permissionpriming.settingsOpenFailed":
+    "Couldn’t open Settings. Open System Settings manually, then re-check.",
 } as const;
 
 describe("i18n messages", () => {

@@ -314,6 +314,16 @@ function PrimingCard({
                     defaultValue: "I've enabled it",
                   })
           }
+          settingsErrorLabel={t("permissionpriming.settingsOpenFailed", {
+            defaultValue:
+              "Couldn’t open Settings. Open System Settings manually, then re-check.",
+          })}
+          openingLabel={t("permissionpriming.openingSettings", {
+            defaultValue: "Opening…",
+          })}
+          checkingLabel={t("permissionpriming.checking", {
+            defaultValue: "Checking permissions…",
+          })}
           onOpenSettings={onOpenSettings}
           onRetry={
             requestError || (canRequest && !recheckError) ? onEnable : onRecheck

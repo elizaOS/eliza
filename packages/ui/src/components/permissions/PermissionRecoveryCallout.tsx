@@ -20,6 +20,9 @@ export interface PermissionRecoveryCalloutProps {
   description: string;
   retryLabel?: string;
   settingsLabel?: string;
+  settingsErrorLabel?: string;
+  openingLabel?: string;
+  checkingLabel?: string;
   onOpenSettings?: () => void | Promise<void>;
   onRetry?: () => void | Promise<void>;
   className?: string;
@@ -42,6 +45,9 @@ export function PermissionRecoveryCallout({
   description,
   retryLabel = "Try again",
   settingsLabel = "Open Settings",
+  settingsErrorLabel = "Couldn’t open Settings. Open System Settings manually, then re-check.",
+  openingLabel = "Opening…",
+  checkingLabel = "Checking…",
   onOpenSettings,
   onRetry,
   className,
@@ -97,8 +103,7 @@ export function PermissionRecoveryCallout({
           className="mt-2 text-sm leading-snug text-danger"
           data-testid={`${testId}-settings-error`}
         >
-          Couldn&apos;t open Settings. Open System Settings manually, then
-          re-check.
+          {settingsErrorLabel}
         </p>
       ) : null}
       <div className="mt-3 flex flex-wrap gap-2">
@@ -110,7 +115,7 @@ export function PermissionRecoveryCallout({
           disabled={opening}
           data-testid={`${testId}-settings`}
         >
-          {opening ? "Opening..." : settingsLabel}
+          {opening ? openingLabel : settingsLabel}
         </Button>
         {onRetry ? (
           <Button
@@ -121,7 +126,7 @@ export function PermissionRecoveryCallout({
             disabled={retrying}
             data-testid={`${testId}-retry`}
           >
-            {retrying ? "Checking..." : retryLabel}
+            {retrying ? checkingLabel : retryLabel}
           </Button>
         ) : null}
       </div>

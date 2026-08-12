@@ -24,6 +24,8 @@ import {
 
 const ID = "notifications" as const;
 const AUTHORIZATION_POLL_INTERVAL_MS = 250;
+const AUTHORIZATION_CHECK_TIMEOUT_MS = 2_000;
+const AUTHORIZATION_REQUEST_TIMEOUT_MS = 30_000;
 const NATIVE_NOTIFICATION_QUERY_PENDING = -2;
 
 type NativeNotificationPermissionBridge = Pick<
@@ -40,12 +42,28 @@ function nativeBridgeUnavailable(): ElizaError {
 
 export async function waitForAuthorizationDecision(
   lib: NativeNotificationPermissionBridge,
+  options: {
+    timeoutMs?: number;
+    pollIntervalMs?: number;
+  } = {},
 ): Promise<number> {
+  const timeoutMs = options.timeoutMs ?? AUTHORIZATION_REQUEST_TIMEOUT_MS;
+  const pollIntervalMs =
+    options.pollIntervalMs ?? AUTHORIZATION_POLL_INTERVAL_MS;
+  const deadline = Date.now() + timeoutMs;
   let status = lib.requestNotificationPermission();
   while (status === 0 || status === NATIVE_NOTIFICATION_QUERY_PENDING) {
-    await new Promise((resolve) =>
-      setTimeout(resolve, AUTHORIZATION_POLL_INTERVAL_MS),
-    );
+    if (Date.now() >= deadline) {
+      throw new ElizaError(
+        "Timed out waiting for macOS notification authorization",
+        {
+          code: "NOTIFICATION_AUTHORIZATION_TIMEOUT",
+          context: { operation: "request", timeoutMs },
+          severity: "ephemeral",
+        },
+      );
+    }
+    await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
     status = lib.checkNotificationPermission();
   }
   return status;
@@ -54,8 +72,22 @@ export async function waitForAuthorizationDecision(
 async function readAuthorizationStatus(
   lib: NativeNotificationPermissionBridge,
 ): Promise<number> {
+  const deadline = Date.now() + AUTHORIZATION_CHECK_TIMEOUT_MS;
   let status = lib.checkNotificationPermission();
   while (status === NATIVE_NOTIFICATION_QUERY_PENDING) {
+    if (Date.now() >= deadline) {
+      throw new ElizaError(
+        "Timed out reading macOS notification authorization",
+        {
+          code: "NOTIFICATION_AUTHORIZATION_TIMEOUT",
+          context: {
+            operation: "check",
+            timeoutMs: AUTHORIZATION_CHECK_TIMEOUT_MS,
+          },
+          severity: "ephemeral",
+        },
+      );
+    }
     await new Promise((resolve) =>
       setTimeout(resolve, AUTHORIZATION_POLL_INTERVAL_MS),
     );
