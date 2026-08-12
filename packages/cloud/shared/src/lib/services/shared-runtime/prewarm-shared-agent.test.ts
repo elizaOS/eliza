@@ -4,9 +4,12 @@
  * External cache, character, and Durable Object boundaries are deterministic mocks.
  */
 
-import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
 import type { AgentSandbox } from "../../../db/repositories/agent-sandboxes";
 import type { UserCharacter } from "../../../db/repositories/characters";
+import * as realLoggerNs from "../../utils/logger";
+
+const realLogger = { ...realLoggerNs };
 
 const calls: string[] = [];
 const calculateCost = mock(
@@ -19,6 +22,8 @@ const getById = mock(async (_id: string): Promise<UserCharacter | undefined> => 
 const warmInferenceAdmissionSnapshot = mock(async () => {
   calls.push("admission");
 });
+const coordinateSharedHistory = mock(async () => [] as unknown[]);
+const loggerWarn = mock(() => {});
 
 mock.module("../../pricing", () => ({
   calculateCost,
@@ -28,13 +33,20 @@ mock.module("../../pricing", () => ({
 mock.module("../characters/characters", () => ({ charactersService: { getById } }));
 mock.module("../inference-admission-snapshot", () => ({ warmInferenceAdmissionSnapshot }));
 mock.module("./conversation-coordinator", () => ({
-  coordinateSharedHistory: async () => [],
+  coordinateSharedHistory,
+}));
+mock.module("../../utils/logger", () => ({
+  logger: { debug: mock(), error: mock(), info: mock(), warn: loggerWarn },
 }));
 mock.module("./run-shared-agent-turn", () => ({
   resolveSharedAgentTurnModel: (preferred?: string) => preferred?.trim() || null,
 }));
 
 const { prewarmSharedAgentTurnCaches } = await import("./prewarm-shared-agent");
+
+afterAll(() => {
+  mock.module("../../utils/logger", () => realLogger);
+});
 
 function agent(config: Record<string, unknown>, characterId: string | null = null): AgentSandbox {
   return {
@@ -53,6 +65,9 @@ beforeEach(() => {
   getById.mockClear();
   getById.mockImplementation(async () => undefined);
   warmInferenceAdmissionSnapshot.mockClear();
+  coordinateSharedHistory.mockClear();
+  coordinateSharedHistory.mockImplementation(async () => []);
+  loggerWarn.mockClear();
 });
 
 describe("prewarmSharedAgentTurnCaches model pricing", () => {
@@ -91,5 +106,24 @@ describe("prewarmSharedAgentTurnCaches model pricing", () => {
     expect(getById).toHaveBeenCalledWith("character-1");
     expect(calculateCost).toHaveBeenCalledWith("gpt-oss-120b", "cerebras", 1, 1, "bitrouter");
     expect(calls.indexOf("character")).toBeLessThan(calls.indexOf("pricing:cerebras:gpt-oss-120b"));
+  });
+
+  test("logs a conversation hydration rejection observed by allSettled", async () => {
+    const error = new Error("conversation cache is warming");
+    coordinateSharedHistory.mockRejectedValue(error);
+
+    await expect(
+      prewarmSharedAgentTurnCaches(agent({}), { namespace: {} as never }),
+    ).resolves.toBeUndefined();
+
+    expect(loggerWarn).toHaveBeenCalledWith(
+      "[shared-runtime prewarm] leg failed; first turn falls back to warming 503s",
+      expect.objectContaining({
+        agentId: "agent-1",
+        organizationId: "org-1",
+        leg: "conversation-object",
+        error: error.message,
+      }),
+    );
   });
 });
