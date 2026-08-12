@@ -5,13 +5,20 @@
  * news / images / videos / suggestions / trending / page-info), normalizing
  * Tavily's responses to core's shared shape. Degrades gracefully: without
  * `TAVILY_API_KEY` it boots inert and throws a descriptive error on first use
- * rather than crashing boot. `getPageInfo` is a raw fetch + regex scrape (not
- * Tavily-backed) that populates title, description, meta tags, images, and
- * links from untrusted HTML; videos reuse web search since Tavily has no
- * video endpoint.
+ * rather than crashing boot. `getPageInfo` scrapes title, description, meta
+ * tags, images, and links from untrusted HTML; the page bytes are always
+ * fetched through `fetchWithSsrfGuard` so private / loopback / link-local
+ * targets fail closed and redirect hops are revalidated. Videos reuse web
+ * search since Tavily has no video endpoint.
  */
 
-import { type IAgentRuntime, IWebSearchService, logger, ServiceType } from "@elizaos/core";
+import {
+    fetchWithSsrfGuard,
+    type IAgentRuntime,
+    IWebSearchService,
+    logger,
+    ServiceType,
+} from "@elizaos/core";
 import { tavily } from "@tavily/core";
 
 import type {
@@ -23,6 +30,32 @@ import type {
 } from "../types";
 
 export type TavilyClient = ReturnType<typeof tavily>;
+
+/** Bound how long a remote page-info endpoint may hang the action. */
+const PAGE_INFO_HTTP_TIMEOUT_MS = 15_000;
+/** Cap redirect hops so a hostile chain cannot spin the guard forever. */
+const PAGE_INFO_HTTP_MAX_REDIRECTS = 5;
+
+/**
+ * Deterministic-test seam for the SSRF-guarded page-info transport.
+ * Production leaves this unset so the guard uses Node-pinned defaults.
+ */
+export type PageInfoHttpTransport = Pick<
+    Parameters<typeof fetchWithSsrfGuard>[0],
+    "fetchImpl" | "lookupFn" | "pinnedFetchImpl"
+>;
+
+let pageInfoHttpTransportOverride: PageInfoHttpTransport | undefined;
+
+/**
+ * Override the SSRF-guarded HTTP transport used by {@link WebSearchService.getPageInfo}.
+ * Intended for unit tests only; production must leave this unset.
+ */
+export function setPageInfoHttpTransportForTests(
+    transport: PageInfoHttpTransport | undefined
+): void {
+    pageInfoHttpTransportOverride = transport;
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
     return Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -418,22 +451,49 @@ export class WebSearchService extends IWebSearchService {
             throw new Error("Page info URL must use http or https");
         }
 
-        const response = await fetch(parsedUrl.toString());
-        if (!response.ok) {
-            throw new Error(`Failed to fetch page info: ${response.status} ${response.statusText}`);
+        // Caller-supplied page URLs are untrusted; never use raw fetch with
+        // automatic redirect following. The shared guard blocks private /
+        // loopback / link-local targets and revalidates every redirect hop.
+        const guarded = await fetchWithSsrfGuard({
+            url: parsedUrl.toString(),
+            timeoutMs: PAGE_INFO_HTTP_TIMEOUT_MS,
+            maxRedirects: PAGE_INFO_HTTP_MAX_REDIRECTS,
+            init: {
+                method: "GET",
+                redirect: "manual",
+            },
+            ...pageInfoHttpTransportOverride,
+        });
+        try {
+            if (!guarded.response.ok) {
+                throw new Error(
+                    `Failed to fetch page info: ${guarded.response.status} ${guarded.response.statusText}`
+                );
+            }
+            const content = await guarded.response.text();
+            // Prefer the post-redirect URL for relative image/link resolution.
+            let baseUrl = parsedUrl;
+            try {
+                baseUrl = new URL(guarded.finalUrl || parsedUrl.toString());
+            } catch {
+                // error-policy:J3 finalUrl is transport-reported; keep the
+                // pre-validated request URL if it is not a valid absolute URL.
+                baseUrl = parsedUrl;
+            }
+            const title = extractTitle(content, url);
+            const { description, metadata } = extractMetaTags(content);
+            const images = extractImages(content, baseUrl);
+            const links = extractLinks(content, baseUrl);
+            return {
+                title,
+                description,
+                content,
+                metadata,
+                images,
+                links,
+            };
+        } finally {
+            await guarded.release();
         }
-        const content = await response.text();
-        const title = extractTitle(content, url);
-        const { description, metadata } = extractMetaTags(content);
-        const images = extractImages(content, parsedUrl);
-        const links = extractLinks(content, parsedUrl);
-        return {
-            title,
-            description,
-            content,
-            metadata,
-            images,
-            links,
-        };
     }
 }

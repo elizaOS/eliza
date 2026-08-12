@@ -1,8 +1,14 @@
-import type { IAgentRuntime } from "@elizaos/core";
+/**
+ * Deterministic unit suite for `WebSearchService`: Tavily option mapping,
+ * graceful degradation without a key, HTML page-info extraction, and
+ * SSRF-closed page fetches via the real shared guard with an injected
+ * transport (never stub the guard away).
+ */
+import { type IAgentRuntime, SsrfBlockedError } from "@elizaos/core";
 import fc from "fast-check";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { SearchOptions } from "../types";
-import { WebSearchService } from "./webSearchService";
+import { setPageInfoHttpTransportForTests, WebSearchService } from "./webSearchService";
 
 const searchMock = vi.hoisted(() => vi.fn());
 const tavilyMock = vi.hoisted(() => vi.fn(() => ({ search: searchMock })));
@@ -23,6 +29,7 @@ describe("WebSearchService", () => {
         vi.unstubAllGlobals();
         searchMock.mockReset();
         tavilyMock.mockClear();
+        setPageInfoHttpTransportForTests(undefined);
     });
 
     it("starts inert without TAVILY_API_KEY and trims configured keys", async () => {
@@ -297,10 +304,9 @@ describe("WebSearchService", () => {
             </body>
             </html>
         `;
-        vi.stubGlobal(
-            "fetch",
-            vi.fn(async () => new Response(html))
-        );
+        const fetchImpl = vi.fn(async () => new Response(html));
+        // Inject transport so the real SSRF policy still runs against public hosts.
+        setPageInfoHttpTransportForTests({ fetchImpl });
         const service = await WebSearchService.start(runtime({ TAVILY_API_KEY: "tvly-test" }));
 
         const pageInfo = await service.getPageInfo("https://example.test/page");
@@ -319,14 +325,14 @@ describe("WebSearchService", () => {
             "https://example.test/docs/guide.html",
             "https://other.test/about",
         ]);
+        expect(fetchImpl).toHaveBeenCalledOnce();
     });
 
     it("falls back to og:description when standard description meta tag is absent", async () => {
         const html = `<html><head><title>Test</title><meta property="og:description" content="Fallback Og Desc"></head></html>`;
-        vi.stubGlobal(
-            "fetch",
-            vi.fn(async () => new Response(html))
-        );
+        setPageInfoHttpTransportForTests({
+            fetchImpl: vi.fn(async () => new Response(html)),
+        });
         const service = await WebSearchService.start(runtime({ TAVILY_API_KEY: "tvly-test" }));
 
         const pageInfo = await service.getPageInfo("https://example.test/og");
@@ -334,10 +340,11 @@ describe("WebSearchService", () => {
     });
 
     it("fails page info requests on non-ok HTTP responses", async () => {
-        vi.stubGlobal(
-            "fetch",
-            vi.fn(async () => new Response("missing", { status: 404, statusText: "Not Found" }))
-        );
+        setPageInfoHttpTransportForTests({
+            fetchImpl: vi.fn(
+                async () => new Response("missing", { status: 404, statusText: "Not Found" })
+            ),
+        });
         const service = await WebSearchService.start(runtime({ TAVILY_API_KEY: "tvly-test" }));
 
         await expect(service.getPageInfo("https://example.test/missing")).rejects.toThrow(
@@ -346,8 +353,8 @@ describe("WebSearchService", () => {
     });
 
     it("rejects malformed and non-http page info URLs before fetch", async () => {
-        const fetchMock = vi.fn();
-        vi.stubGlobal("fetch", fetchMock);
+        const fetchImpl = vi.fn();
+        setPageInfoHttpTransportForTests({ fetchImpl });
         const service = await WebSearchService.start(runtime({ TAVILY_API_KEY: "tvly-test" }));
 
         await expect(service.getPageInfo("not a url")).rejects.toThrow("Invalid page info URL");
@@ -357,6 +364,25 @@ describe("WebSearchService", () => {
         await expect(service.getPageInfo("file:///etc/passwd")).rejects.toThrow(
             "Page info URL must use http or https"
         );
-        expect(fetchMock).not.toHaveBeenCalled();
+        expect(fetchImpl).not.toHaveBeenCalled();
+    });
+
+    it("fails closed on private, loopback, and link-local page info URLs", async () => {
+        const fetchImpl = vi.fn(async () => new Response("<title>should not load</title>"));
+        setPageInfoHttpTransportForTests({ fetchImpl });
+        const service = await WebSearchService.start(runtime({ TAVILY_API_KEY: "tvly-test" }));
+
+        await expect(service.getPageInfo("http://127.0.0.1/secret")).rejects.toBeInstanceOf(
+            SsrfBlockedError
+        );
+        await expect(
+            service.getPageInfo("http://169.254.169.254/latest/meta-data/")
+        ).rejects.toBeInstanceOf(SsrfBlockedError);
+        await expect(service.getPageInfo("http://localhost/admin")).rejects.toBeInstanceOf(
+            SsrfBlockedError
+        );
+        await expect(service.getPageInfo("http://[::1]/")).rejects.toBeInstanceOf(SsrfBlockedError);
+        // Policy must reject before the injected transport is invoked.
+        expect(fetchImpl).not.toHaveBeenCalled();
     });
 });
