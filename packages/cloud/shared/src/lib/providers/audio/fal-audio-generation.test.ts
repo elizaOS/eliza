@@ -2,18 +2,21 @@
  * fal audio provider — REAL queue pipeline against a local mock upstream:
  * music input mapping (lyrics optimizer defaulting, duration fan-out), SFX
  * input mapping (seconds_total), hosted-URL normalization across response
- * shapes, and no-audio rejection.
+ * shapes, no-audio rejection, and poll-timeout → pending (#18436).
  */
 
 import { afterAll, beforeEach, describe, expect, test } from "bun:test";
 import { generateFalAudio } from "./fal-audio-generation";
+import { AudioGenerationPendingError } from "./types";
 
 interface MockState {
   submitBodies: Array<Record<string, unknown>>;
   responseBody: Record<string, unknown>;
+  /** When true, status stays IN_PROGRESS so the sync poll times out. */
+  hang: boolean;
 }
 
-const state: MockState = { submitBodies: [], responseBody: {} };
+const state: MockState = { submitBodies: [], responseBody: {}, hang: false };
 
 const server = Bun.serve({
   port: 0,
@@ -28,6 +31,9 @@ const server = Bun.serve({
       });
     }
     if (url.pathname.endsWith("/status")) {
+      if (state.hang) {
+        return Response.json({ status: "IN_PROGRESS" });
+      }
       return Response.json({ status: "COMPLETED" });
     }
     return Response.json(state.responseBody);
@@ -41,6 +47,7 @@ afterAll(() => {
 
 beforeEach(() => {
   state.submitBodies = [];
+  state.hang = false;
   state.responseBody = {
     audio: {
       url: `${base}/media/out.mp3`,
@@ -95,6 +102,27 @@ describe("generateFalAudio — music", () => {
 
     expect(state.submitBodies[0]).toMatchObject({ is_instrumental: true });
     expect(state.submitBodies[0]).not.toHaveProperty("lyrics_optimizer");
+  });
+
+  test("sync poll timeout with live upstream job throws AudioGenerationPendingError (#18436)", async () => {
+    state.hang = true;
+    let error: unknown;
+    try {
+      await generateFalAudio({
+        kind: "music",
+        model: "fal-ai/minimax-music/v2.6",
+        prompt: "slow render",
+        apiKeys: {
+          ...apiKeys,
+          FAL_QUEUE_TIMEOUT_MS: "40",
+          FAL_QUEUE_POLL_INTERVAL_MS: "5",
+        },
+      });
+    } catch (e) {
+      error = e;
+    }
+    expect(error).toBeInstanceOf(AudioGenerationPendingError);
+    expect((error as AudioGenerationPendingError).requestId).toBe("req-7");
   });
 });
 

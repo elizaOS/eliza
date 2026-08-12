@@ -1,6 +1,21 @@
 // Defines cloud shared fal audio generation behavior for backend service consumers.
-import { falQueueOptionsFromApiKeys, runFalQueueJob } from "../fal-queue";
-import type { AudioGenRequest, AudioProvider, GeneratedAudio } from "./types";
+import {
+  FalQueueTimeoutError,
+  falQueueOptionsFromApiKeys,
+  getFalQueueJobStatus,
+  runFalQueueJob,
+} from "../fal-queue";
+import type {
+  AudioGenRequest,
+  AudioJobStatus,
+  AudioJobStatusRequest,
+  AudioProvider,
+  GeneratedAudio,
+} from "./types";
+import { AudioGenerationPendingError } from "./types";
+
+/** Cap the synchronous poll so music routes return pending instead of multi-minute holds (#18436). */
+export const DEFAULT_MUSIC_SYNC_TIMEOUT_MS = 45_000;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -118,14 +133,89 @@ export function buildFalSfxInput(request: AudioGenRequest): Record<string, unkno
   return { ...input, ...(request.extraInput ?? {}) };
 }
 
+function resolveSyncTimeoutMs(
+  options: ReturnType<typeof falQueueOptionsFromApiKeys>,
+  kind: AudioGenRequest["kind"],
+): number {
+  // Music generation is the hang surface in #18436 — keep the sync window short
+  // so the route can return 202 pending while the reconcile sweep finishes work.
+  // Explicit FAL_QUEUE_TIMEOUT_MS is honored when set, but still capped so a
+  // misconfigured 300s/10m timeout cannot recreate multi-minute HTTP holds.
+  const configured = options.timeoutMs;
+  if (kind === "music") {
+    const cap = 90_000;
+    if (typeof configured === "number" && Number.isFinite(configured) && configured > 0) {
+      return Math.min(configured, cap);
+    }
+    return DEFAULT_MUSIC_SYNC_TIMEOUT_MS;
+  }
+  return configured ?? 10 * 60_000;
+}
+
+/**
+ * Verifies the upstream state of an enqueued fal audio request. Only reports
+ * `failed` on a definitive provider verdict; transport errors propagate so
+ * callers keep the credit hold instead of refunding blind.
+ */
+export async function getFalAudioJobStatus(
+  req: AudioJobStatusRequest,
+): Promise<AudioJobStatus> {
+  const options = falQueueOptionsFromApiKeys(req.apiKeys);
+  const status = await getFalQueueJobStatus({
+    model: req.model,
+    requestId: req.requestId,
+    options,
+  });
+  if (status.state === "pending") return { state: "pending" };
+  if (status.state === "failed") return { state: "failed", error: status.error };
+  return {
+    state: "succeeded",
+    result: normalizeFalAudioResult(status.payload, status.requestId),
+  };
+}
+
 export async function generateFalAudio(request: AudioGenRequest): Promise<GeneratedAudio> {
-  const options = falQueueOptionsFromApiKeys(request.apiKeys);
+  const baseOptions = falQueueOptionsFromApiKeys(request.apiKeys);
+  const options = {
+    ...baseOptions,
+    timeoutMs: resolveSyncTimeoutMs(baseOptions, request.kind),
+  };
   const input = request.kind === "sfx" ? buildFalSfxInput(request) : buildFalMusicInput(request);
-  const { requestId, payload } = await runFalQueueJob(request.model, input, options);
-  return normalizeFalAudioResult(payload, requestId);
+
+  try {
+    const { requestId, payload } = await runFalQueueJob(request.model, input, options);
+    return normalizeFalAudioResult(payload, requestId);
+  } catch (error) {
+    // Typed timeout after enqueue: verify terminal state before letting the
+    // route refund. A still-live job becomes AudioGenerationPendingError so
+    // credits stay reserved for the reconcile sweep (#18436).
+    if (!(error instanceof FalQueueTimeoutError)) {
+      throw error;
+    }
+
+    let probe: AudioJobStatus;
+    try {
+      probe = await getFalAudioJobStatus({
+        model: request.model,
+        requestId: error.requestId,
+        apiKeys: request.apiKeys,
+      });
+    } catch {
+      throw new AudioGenerationPendingError(error.requestId, error.message);
+    }
+    if (probe.state === "succeeded") {
+      return probe.result;
+    }
+    if (probe.state === "failed") {
+      // Verified terminal failure — refunding is safe.
+      throw error;
+    }
+    throw new AudioGenerationPendingError(error.requestId, error.message);
+  }
 }
 
 export const falAudioProvider: AudioProvider = {
   billingSource: "fal",
   generate: generateFalAudio,
+  getJobStatus: getFalAudioJobStatus,
 };

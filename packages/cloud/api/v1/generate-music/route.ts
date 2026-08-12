@@ -1,4 +1,4 @@
-/** Handles authenticated music generation, billing, and generation history persistence. */
+/** Handles authenticated music generation, billing, pending-job reconciliation. */
 import { Hono } from "hono";
 import { z } from "zod";
 import {
@@ -9,8 +9,15 @@ import {
   requireGenerativeRouteCaller,
 } from "@/api-app/lib/generative-route-auth";
 import { failureResponse, jsonError } from "@/lib/api/cloud-worker-errors";
-import { getAudioProvider } from "@/lib/providers/audio/registry";
-import type { GeneratedAudio } from "@/lib/providers/audio/types";
+import {
+  collectAudioProviderApiKeys,
+  getAudioProvider,
+} from "@/lib/providers/audio/registry";
+import {
+  AudioGenerationPendingError,
+  type GeneratedAudio,
+  MUSIC_PENDING_SETTLEMENT_MARKER,
+} from "@/lib/providers/audio/types";
 import { type BillingContext, billFlatUsage } from "@/lib/services/ai-billing";
 import { calculateMusicGenerationCostFromCatalog } from "@/lib/services/ai-pricing";
 import {
@@ -20,6 +27,7 @@ import {
 import { contentSafetyService } from "@/lib/services/content-safety";
 import { InsufficientCreditsError } from "@/lib/services/credits";
 import { generationsService } from "@/lib/services/generations";
+import { persistPendingMusicSettlement } from "@/lib/services/pending-music-settlement";
 import { putPublicObject } from "@/lib/storage/r2-public-object";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv, Bindings } from "@/types/cloud-worker-env";
@@ -131,6 +139,19 @@ async function storeGeneratedAudio(
   };
 }
 
+/** Everything the catch needs to persist a pending settlement (#18436). */
+interface PendingSettlementContext {
+  organizationId: string;
+  userId: string;
+  model: string;
+  prompt: string;
+  provider: string;
+  billingSource: string;
+  totalCost: number;
+  durationSeconds?: number;
+  parameters: Record<string, unknown>;
+}
+
 app.post("/", async (c) => {
   let admission:
     | Awaited<ReturnType<typeof admitFlatGenerativeOperation>>
@@ -139,6 +160,7 @@ app.post("/", async (c) => {
   // NOT hit the catch's reconcile(0) — which is non-idempotent and would refund
   // the already-correct charge, giving free music. Mirrors generate-image.
   let chargeSettled = false;
+  let pendingContext: PendingSettlementContext | null = null;
 
   try {
     const { user, apiKeyId, admissionSnapshot } =
@@ -263,9 +285,35 @@ app.post("/", async (c) => {
       throw error;
     }
 
+    const parameters = {
+      ...(request.durationSeconds !== undefined
+        ? { requestedDurationSeconds: request.durationSeconds }
+        : {}),
+      ...(durationSeconds ? { durationSeconds } : {}),
+      durationControl: definition.durationControl,
+      hasLyrics: Boolean(request.lyrics),
+      lyricsOptimizer: request.lyricsOptimizer,
+      instrumental: request.instrumental,
+      referenceUrl: request.referenceUrl,
+      outputFormat: request.outputFormat,
+    };
+
+    pendingContext = {
+      organizationId: user.organization_id,
+      userId: user.id,
+      model: request.model,
+      prompt: request.prompt,
+      provider: definition.provider,
+      billingSource: definition.billingSource,
+      totalCost: cost.totalCost,
+      durationSeconds,
+      parameters,
+    };
+
     await admission.markProviderDispatched?.();
-    const generated = await getAudioProvider(definition.billingSource).generate(
-      {
+    let generated: GeneratedAudio;
+    try {
+      generated = await getAudioProvider(definition.billingSource).generate({
         kind: "music",
         model: request.model,
         prompt: request.prompt,
@@ -278,22 +326,12 @@ app.post("/", async (c) => {
         outputFormat: request.outputFormat,
         audioSettings: request.audio,
         extraInput: request.extraInput,
-        apiKeys: {
-          FAL_KEY: envString(c.env, "FAL_KEY"),
-          FAL_API_KEY: envString(c.env, "FAL_API_KEY"),
-          FAL_QUEUE_BASE_URL: envString(c.env, "FAL_QUEUE_BASE_URL"),
-          FAL_QUEUE_POLL_INTERVAL_MS: envString(
-            c.env,
-            "FAL_QUEUE_POLL_INTERVAL_MS",
-          ),
-          FAL_QUEUE_TIMEOUT_MS: envString(c.env, "FAL_QUEUE_TIMEOUT_MS"),
-          ELEVENLABS_API_KEY: envString(c.env, "ELEVENLABS_API_KEY"),
-          ELEVENLABS_BASE_URL: envString(c.env, "ELEVENLABS_BASE_URL"),
-          SUNO_API_KEY: envString(c.env, "SUNO_API_KEY"),
-          SUNO_BASE_URL: envString(c.env, "SUNO_BASE_URL"),
-        },
-      },
-    );
+        apiKeys: collectAudioProviderApiKeys(c.env),
+      });
+    } catch (error) {
+      if (error instanceof AudioGenerationPendingError) throw error;
+      throw error;
+    }
 
     const music = await storeGeneratedAudio(
       c.env,
@@ -334,18 +372,7 @@ app.post("/", async (c) => {
         thumbnail_url: null,
         file_size: music.file_size ? BigInt(music.file_size) : undefined,
         mime_type: music.content_type ?? "audio/mpeg",
-        parameters: {
-          ...(request.durationSeconds !== undefined
-            ? { requestedDurationSeconds: request.durationSeconds }
-            : {}),
-          ...(durationSeconds ? { durationSeconds } : {}),
-          durationControl: definition.durationControl,
-          hasLyrics: Boolean(request.lyrics),
-          lyricsOptimizer: request.lyricsOptimizer,
-          instrumental: request.instrumental,
-          referenceUrl: request.referenceUrl,
-          outputFormat: request.outputFormat,
-        },
+        parameters,
         dimensions: {
           ...(durationSeconds ? { duration: durationSeconds } : {}),
         },
@@ -375,6 +402,70 @@ app.post("/", async (c) => {
       cost,
     });
   } catch (error) {
+    // Poll timeout with the upstream job still live (#18436): the render may
+    // still complete and bill the platform, so the hold must NOT be refunded.
+    // Persist the job for the reconcile sweep, which verifies the upstream
+    // terminal state — charging on late success, refunding once on failure.
+    if (
+      error instanceof AudioGenerationPendingError &&
+      admission &&
+      !chargeSettled &&
+      pendingContext
+    ) {
+      const pendingAdmission = admission;
+      const pending = pendingContext;
+      const pendingGenerationId = crypto.randomUUID();
+      const persistPendingSettlement = persistPendingMusicSettlement({
+        generationId: pendingGenerationId,
+        requestId: error.requestId,
+        ...pending,
+        settlementMarker: MUSIC_PENDING_SETTLEMENT_MARKER,
+        existingReservation:
+          pendingAdmission.mode === "synchronous_reservation"
+            ? pendingAdmission.reservation
+            : undefined,
+        releaseDeferredAdmission: () => pendingAdmission.settle(0),
+      })
+        .then(() => {
+          logger.warn(
+            "[GenerateMusic] Upstream job still pending after poll window — holding credits for reconcile",
+            {
+              generationId: pendingGenerationId,
+              requestId: error.requestId,
+              organizationId: pending.organizationId,
+              billedCost: pending.totalCost,
+            },
+          );
+        })
+        .catch((persistError) => {
+          // error-policy:J7 the upstream job may still bill us, so a failed
+          // detached persistence must retain the admitted hold for the sweep.
+          logger.error(
+            "[GenerateMusic] Failed to persist pending settlement — leaving hold for the reservation sweep",
+            {
+              requestId: error.requestId,
+              error:
+                persistError instanceof Error
+                  ? persistError.message
+                  : String(persistError),
+            },
+          );
+        });
+      const executionCtx = getGenerativeExecutionContext(c);
+      if (executionCtx) executionCtx.waitUntil(persistPendingSettlement);
+      else await persistPendingSettlement;
+      return c.json(
+        {
+          success: false,
+          status: "pending",
+          id: pendingGenerationId,
+          requestId: error.requestId,
+          error:
+            "Music generation is still running upstream. Credits stay reserved and settle automatically: charged if the track completes, refunded if it fails.",
+        },
+        202,
+      );
+    }
     if (admission && !chargeSettled) {
       const release = admission.settle(0);
       const executionCtx = getGenerativeExecutionContext(c);

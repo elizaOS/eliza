@@ -76,6 +76,9 @@ export const CRON_FANOUT: Record<string, string[]> = {
     // #11862: settle poll-timeout video holds against the upstream terminal
     // state — charge on late success, refund once on verified failure.
     "/api/cron/reconcile-video-generations",
+    // #18436: settle poll-timeout music holds against the upstream terminal
+    // state — charge on late success, refund once on verified failure.
+    "/api/cron/reconcile-music-generations",
   ],
   "0 */6 * * *": [
     "/api/cron/cleanup-anonymous-sessions",

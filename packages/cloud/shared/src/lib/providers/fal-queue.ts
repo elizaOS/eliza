@@ -32,6 +32,39 @@ export interface FalQueueResult {
   payload: Record<string, unknown>;
 }
 
+/**
+ * Thrown when a job was enqueued on fal but the local poll window expired
+ * before a terminal status arrived. The upstream job may still complete and
+ * bill the platform, so callers must not refund credit holds blindly.
+ */
+export class FalQueueTimeoutError extends Error {
+  readonly requestId: string;
+  readonly timeoutMs: number;
+
+  constructor(requestId: string, timeoutMs: number) {
+    super(`fal queue job timed out after ${timeoutMs}ms (request ${requestId})`);
+    this.name = "FalQueueTimeoutError";
+    this.requestId = requestId;
+    this.timeoutMs = timeoutMs;
+  }
+}
+
+/**
+ * Upstream job state as verified against the fal queue status API.
+ * `failed` is only for definitive provider verdicts (unknown request id, or a
+ * COMPLETED job whose result endpoint rejects the render).
+ */
+export type FalQueueJobStatus =
+  | { state: "pending" }
+  | { state: "succeeded"; payload: Record<string, unknown>; requestId: string }
+  | { state: "failed"; error: string };
+
+export interface FalQueueJobStatusRequest {
+  model: string;
+  requestId: string;
+  options: FalQueueOptions;
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -135,7 +168,12 @@ export async function runFalQueueJob(
       throw new Error(`fal queue job ended in unexpected status: ${status ?? "unknown"}`);
     }
     if (Date.now() + pollIntervalMs > deadline) {
-      throw new Error(`fal queue job timed out after ${timeoutMs}ms (request ${requestId ?? "?"})`);
+      // Job is already live upstream — surface a typed timeout so callers can
+      // keep credit holds and reconcile later instead of refunding blind (#18436).
+      if (requestId) {
+        throw new FalQueueTimeoutError(requestId, timeoutMs);
+      }
+      throw new Error(`fal queue job timed out after ${timeoutMs}ms (request unknown)`);
     }
     await sleep(pollIntervalMs);
   }
@@ -147,6 +185,77 @@ export async function runFalQueueJob(
   }
 
   return { requestId, payload };
+}
+
+/**
+ * Probe an already-enqueued fal queue job without re-submitting. Used by
+ * generate-music pending recovery and the music reconcile cron.
+ */
+export async function getFalQueueJobStatus(
+  req: FalQueueJobStatusRequest,
+): Promise<FalQueueJobStatus> {
+  const base = new URL(req.options.baseUrl ?? DEFAULT_QUEUE_BASE_URL);
+  const modelPath = req.model.replace(/^\/+/, "");
+  const requestId = req.requestId.trim();
+  if (!requestId) {
+    return { state: "failed", error: "fal queue status probe requires a request id" };
+  }
+
+  const statusUrl = new URL(
+    `${base.pathname.replace(/\/+$/, "")}/${modelPath}/requests/${encodeURIComponent(requestId)}/status`.replace(
+      /^\/+/,
+      "/",
+    ),
+    base.origin,
+  );
+  const responseUrl = new URL(
+    `${base.pathname.replace(/\/+$/, "")}/${modelPath}/requests/${encodeURIComponent(requestId)}`.replace(
+      /^\/+/,
+      "/",
+    ),
+    base.origin,
+  );
+
+  const statusResponse = await queueFetch(statusUrl, req.options.apiKey);
+  if (statusResponse.status === 404) {
+    return {
+      state: "failed",
+      error: `fal.ai does not know request ${requestId}`,
+    };
+  }
+  const statusPayload = await readJson(statusResponse, "status");
+  if (!statusResponse.ok) {
+    throw new Error(`fal queue status failed (${statusResponse.status})`);
+  }
+
+  const status = stringField(statusPayload, "status");
+  if (status !== "COMPLETED") {
+    if (status === "IN_QUEUE" || status === "IN_PROGRESS" || !status) {
+      return { state: "pending" };
+    }
+    return {
+      state: "failed",
+      error: `fal queue job ended in unexpected status: ${status}`,
+    };
+  }
+
+  const resultResponse = await queueFetch(responseUrl, req.options.apiKey);
+  const payload = await readJson(resultResponse, "response");
+  if (!resultResponse.ok) {
+    // COMPLETED + client error on the result endpoint is a terminal render
+    // failure; transport/server faults must propagate so holds stay open.
+    if (resultResponse.status >= 400 && resultResponse.status < 500) {
+      const detail =
+        stringField(payload, "detail") ?? stringField(payload, "message") ?? resultResponse.statusText;
+      return {
+        state: "failed",
+        error: detail || `fal queue response fetch failed (${resultResponse.status})`,
+      };
+    }
+    throw new Error(`fal queue response fetch failed (${resultResponse.status})`);
+  }
+
+  return { state: "succeeded", payload, requestId };
 }
 
 /** Resolve the fal credentials + queue endpoints from a provider apiKeys record. */
