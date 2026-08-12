@@ -49,12 +49,12 @@ import {
   type RegistryEntry,
 } from "@elizaos/registry/first-party";
 import { asRecord, CONNECTOR_PLUGINS } from "@elizaos/shared";
+import { VaultMissError } from "@elizaos/vault";
 import {
   bridgePluginParamsToRuntime,
   clearPluginParamValues,
   collectAgentScopedPluginParamValues,
 } from "./bridge-plugin-settings.ts";
-import { VaultMissError } from "@elizaos/vault";
 
 const require = createRequire(import.meta.url);
 

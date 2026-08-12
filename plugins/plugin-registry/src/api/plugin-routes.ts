@@ -31,11 +31,6 @@ import type { AgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import type { PluginParamDef, ReadJsonBodyOptions } from "@elizaos/shared";
 import {
-  bridgePluginParamsToRuntime,
-  clearPluginParamValues,
-  collectAgentScopedPluginParamValues,
-} from "./bridge-plugin-settings.ts";
-import {
   asRecord,
   isElizaSettingsDebugEnabled,
   PostPluginCoreToggleRequestSchema,
@@ -47,6 +42,11 @@ import {
   sanitizeForSettingsDebug,
   settingsDebugCloudSummary,
 } from "@elizaos/shared";
+import {
+  bridgePluginParamsToRuntime,
+  clearPluginParamValues,
+  collectAgentScopedPluginParamValues,
+} from "./bridge-plugin-settings.ts";
 
 /** Normalize npm names to list/toggle ids. Handles both `@elizaos/plugin-*` (current) and legacy `@elizaos/app-*`. */
 function optionalPluginListId(npmName: string): string {

@@ -10,6 +10,14 @@
       "!src/**/__e2e__"
     ]
   },
+  "overrides": [
+    {
+      "includes": ["src/cloud/connectors/discord-gateway-connection.tsx"],
+      "formatter": {
+        "enabled": false
+      }
+    }
+  ],
   "linter": {
     "rules": {
       "style": {
