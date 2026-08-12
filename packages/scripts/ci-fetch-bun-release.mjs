@@ -381,6 +381,7 @@ export async function main(argv = process.argv.slice(2)) {
     const { url } = await serveBunZip(zipPath, args.urlFile);
     process.stdout.write(`bun zip url ${url}\n`);
     if (args.serveOnly) {
+      process.on("SIGHUP", () => {});
       await new Promise(() => {});
     }
   }
