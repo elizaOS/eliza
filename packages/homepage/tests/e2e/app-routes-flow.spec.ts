@@ -231,6 +231,11 @@ test("get-started preserves touch targets and exposes glass phone-input focus", 
     .toBeGreaterThanOrEqual(44);
 
   await seedAuthenticatedSession(page);
+  // In link mode the page injects the real telegram.org widget script, which
+  // (whenever the network wins the race) overwrites this mock and leaves the
+  // flow stuck on the real popup at "Connecting...". Abort the widget request
+  // so the deterministic mock always answers.
+  await page.route("https://telegram.org/**", (route) => route.abort());
   await page.addInitScript(() => {
     Reflect.set(window, "Telegram", {
       Login: {
