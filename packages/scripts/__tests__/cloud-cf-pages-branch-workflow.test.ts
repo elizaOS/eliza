@@ -163,7 +163,7 @@ describe("Cloud CF PR preview workflow contract", () => {
     expect(producer.permissions).toEqual({ contents: "read" });
   });
 
-  test("keeps PR builds reachable while excluding every credentialed deploy job", () => {
+  test("keeps PR builds reachable and gates canonical Pages on the API", () => {
     const buildJob = producer.jobs?.["build-pages"];
     expect(buildJob?.needs).toBe("migrate-db");
     expect(buildJob?.if).toContain(
@@ -176,10 +176,10 @@ describe("Cloud CF PR preview workflow contract", () => {
 
     for (const jobId of deployJobs) {
       const job = producer.jobs?.[jobId];
-      expect(job?.needs).toEqual(["migrate-db", "build-pages"]);
+      expect(job?.needs).toEqual(["deploy-api", "build-pages"]);
       expect(job?.if).toBe(
         "$" +
-          "{{ !cancelled() && github.event_name != 'pull_request' && needs.build-pages.result == 'success' }}",
+          "{{ !cancelled() && github.event_name != 'pull_request' && needs.deploy-api.result == 'success' && needs.build-pages.result == 'success' }}",
       );
     }
   });

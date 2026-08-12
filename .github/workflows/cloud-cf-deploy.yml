@@ -1225,12 +1225,12 @@ jobs:
     # Hosted unconditionally to preserve CI/placement workload separation.
     runs-on: ubuntu-latest
     timeout-minutes: 75
-    # Schema gate (#11208): canonical deploys only run after migrate-db
-    # succeeded, so the frontend never goes live ahead of the schema its API
-    # features expect. Pull requests build artifacts above, but credentialed
-    # deployment occurs only in the trusted workflow_run consumer.
-    needs: [migrate-db, build-pages]
-    if: ${{ !cancelled() && github.event_name != 'pull_request' && needs.build-pages.result == 'success' }}
+    # Release gate (#11208/#18088): build the Pages artifacts in parallel with
+    # the API, but do not move a canonical Pages alias until both the artifact
+    # and the matching API deployment have succeeded. Pull requests publish
+    # only through the separate trusted workflow_run consumer.
+    needs: [deploy-api, build-pages]
+    if: ${{ !cancelled() && github.event_name != 'pull_request' && needs.deploy-api.result == 'success' && needs.build-pages.result == 'success' }}
     env:
       CHECKOUT_DIR: /tmp/eliza-checkout-${{ github.run_id }}-${{ github.run_attempt }}-deploy-console
       CHECKOUT_MATERIALIZE_TIMEOUT_SECONDS: ${{ vars.CLOUD_CF_CHECKOUT_MATERIALIZE_TIMEOUT_SECONDS || '600' }}
@@ -1672,11 +1672,11 @@ jobs:
     # Hosted unconditionally to preserve CI/placement workload separation.
     runs-on: ubuntu-latest
     timeout-minutes: 75
-    # Schema gate (#11208): same contract as deploy-console — canonical deploys
-    # require a successful migrate-db. PR artifacts are consumed only by the
-    # separate trusted preview workflow.
-    needs: [migrate-db, build-pages]
-    if: ${{ !cancelled() && github.event_name != 'pull_request' && needs.build-pages.result == 'success' }}
+    # Release gate (#11208/#18088): same contract as deploy-console. Canonical
+    # Pages aliases wait for the matching API deployment; pull-request artifacts
+    # are consumed only by the separate trusted preview workflow.
+    needs: [deploy-api, build-pages]
+    if: ${{ !cancelled() && github.event_name != 'pull_request' && needs.deploy-api.result == 'success' && needs.build-pages.result == 'success' }}
     env:
       CHECKOUT_DIR: /tmp/eliza-checkout-${{ github.run_id }}-${{ github.run_attempt }}-deploy-app
       CHECKOUT_MATERIALIZE_TIMEOUT_SECONDS: ${{ vars.CLOUD_CF_CHECKOUT_MATERIALIZE_TIMEOUT_SECONDS || '600' }}
