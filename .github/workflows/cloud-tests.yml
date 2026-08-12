@@ -17,6 +17,8 @@ on:
       - "packages/cloud/routing/**"
       - "packages/cloud/infra/**"
       - "packages/cloud/scripts/**"
+      - "packages/cloud/e2e/**"
+      - "packages/cloud/test-mocks/**"
       - "packages/scripts/test-cloud-run.mjs"
       - "packages/scripts/test-cloud-run-helpers.mjs"
       - "packages/scripts/test-cloud-run-flush.self-test.mjs"
@@ -36,6 +38,8 @@ on:
       - "packages/cloud/routing/**"
       - "packages/cloud/infra/**"
       - "packages/cloud/scripts/**"
+      - "packages/cloud/e2e/**"
+      - "packages/cloud/test-mocks/**"
       - "packages/scripts/test-cloud-run.mjs"
       - "packages/scripts/test-cloud-run-helpers.mjs"
       - "packages/scripts/test-cloud-run-flush.self-test.mjs"
@@ -162,5 +166,42 @@ jobs:
         run: >-
           bun test --config=/dev/null --isolate
           packages/cloud/shared/src/db/repositories/__tests__/agent-sandboxes-stuck-provisioning-lock.integration.test.ts
-      - name: Run cloud e2e tests
+      # `test:cloud:e2e` is the packages/cloud/api lane, NOT the Playwright stack
+      # in packages/cloud/e2e. The two were easy to confuse while this job was
+      # the only thing named "e2e", which is how 31 of that stack's 33 specs
+      # went unrun; `stack-e2e-tests` below owns them.
+      - name: Run cloud API e2e tests
         run: bun run test:cloud:e2e
+
+  # The packages/cloud/e2e Playwright suite: it boots the real local stack —
+  # PGlite over a TCP bridge, the in-process control-plane mock, the cloud-api
+  # Worker as a subprocess — and drives real flows through it. Every proof of
+  # the shared-to-dedicated funnel lives here, and until now none of it ran:
+  # the smoke lane passes --no-cloud, the job above runs a different suite, and
+  # the nightly names only two specs (#18474).
+  stack-e2e-tests:
+    runs-on: ubuntu-24.04
+    # Measured, not estimated: the full suite is 3.9 min locally (72 specs,
+    # workers:1, one stack boot). 25 leaves room for a cold CI runner and the
+    # config's `retries: 1`, which re-runs only what failed.
+    timeout-minutes: 25
+    needs: [lint-and-types]
+    env:
+      NODE_ENV: test
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: ./.github/actions/cloud-setup-test-env
+      - name: Install Playwright browsers
+        run: PLAYWRIGHT_INSTALL_CWD=packages/cloud/e2e .github/scripts/install-playwright-browsers.sh chromium
+      - name: Run cloud stack e2e suite
+        run: bun run cloud:e2e
+      - name: Upload stack logs and Playwright artifacts
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: cloud-stack-e2e
+          path: |
+            packages/cloud/e2e/.logs
+            packages/cloud/e2e/test-results
+          if-no-files-found: warn
+          retention-days: 7
