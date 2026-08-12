@@ -1,17 +1,11 @@
 #!/usr/bin/env node
 
-// Cross-platform replacement for the previous `test:cloud` shell pipeline,
-// which used `printf '...\n'` (broken under bun's embedded shell on Windows
-// — outputs literal `n` instead of newlines) and required POSIX-shell
-// `$OLDPWD` semantics.
-//
-// The pure helpers below (walkTests, chunkByBudget, formatBatchFiles,
-// writeSyncAll, ensureCloudTestRuntime) are exported so
-// test-cloud-run.test.mjs and the *.self-test.mjs files can exercise them
-// directly; the batch-orchestration side effects (spawning `bun test`,
-// writing bunfig.toml, building missing runtime artifacts) only run when this
-// file is invoked as the entry script, guarded by the `main()` call at the
-// bottom.
+/**
+ * Runs the cross-platform Cloud test batches with bounded process lifetimes,
+ * streamed diagnostics, and whole-tree teardown. Pure helpers are exported
+ * for unit and self-test coverage; spawning tests and preparing runtime
+ * artifacts occur only when this module is invoked as the entry script.
+ */
 
 import { spawn, spawnSync } from "node:child_process";
 import {
@@ -67,6 +61,21 @@ export const DEFAULT_BATCH_TIMEOUT_MS = 10 * 60 * 1000;
 export const DEFAULT_BATCH_KILL_GRACE_MS = 2000;
 export const MAX_CLASSIFICATION_OUTPUT_CHARS = 1024 * 1024;
 const MAX_TIMER_MS = 2_147_483_647;
+const POSIX_PROCESS_GROUP_SUPERVISOR = `
+terminating=0
+trap 'terminating=1' TERM INT
+"$@" &
+child_pid=$!
+wait "$child_pid"
+status=$?
+if [ "$terminating" -ne 0 ]; then
+  while :; do
+    sleep 3600 &
+    wait $!
+  done
+fi
+exit "$status"
+`;
 
 export function chunkByBudget(files, maxFilesPerBatch, maxArgsChars) {
   const batches = [];
@@ -238,6 +247,40 @@ function readPosixProcessIdentity(pid, spawnSyncFn) {
   return startTime ? `ps-start:${startTime}` : undefined;
 }
 
+function readPosixProcessGroup(pid, spawnSyncFn) {
+  try {
+    const stat = readFileSync(`/proc/${pid}/stat`, "utf8");
+    const endOfCommand = stat.lastIndexOf(")");
+    if (endOfCommand > 0) {
+      const fields = stat
+        .slice(endOfCommand + 1)
+        .trim()
+        .split(/\s+/);
+      const processGroup = Number(fields[2]);
+      if (Number.isInteger(processGroup) && processGroup > 0) {
+        return processGroup;
+      }
+    }
+  } catch {
+    // macOS and other POSIX systems do not expose Linux's /proc stat file.
+  }
+
+  let result;
+  try {
+    result = spawnSyncFn("ps", ["-p", String(pid), "-o", "pgid="], {
+      encoding: "utf8",
+      maxBuffer: 4096,
+    });
+  } catch {
+    return undefined;
+  }
+  if (result?.error || result?.status !== 0) return undefined;
+  const processGroup = Number(result.stdout?.trim());
+  return Number.isInteger(processGroup) && processGroup > 0
+    ? processGroup
+    : undefined;
+}
+
 function readWindowsProcessIdentity(pid, spawnSyncFn) {
   const command = [
     `$process = Get-CimInstance Win32_Process -Filter "ProcessId = ${pid}"`,
@@ -274,6 +317,16 @@ export function readProcessIdentity(
     : readPosixProcessIdentity(pid, spawnSyncFn);
 }
 
+export function readProcessGroup(
+  pid,
+  { platform = process.platform, spawnSyncFn = spawnSync } = {},
+) {
+  if (!Number.isInteger(pid) || pid <= 0 || platform === "win32") {
+    return undefined;
+  }
+  return readPosixProcessGroup(pid, spawnSyncFn);
+}
+
 function processIdentityError(pid, platform, expected, actual) {
   const error = new Error(
     `${platform === "win32" ? "Windows PID" : "POSIX process-group"} ${pid} ` +
@@ -283,6 +336,18 @@ function processIdentityError(pid, platform, expected, actual) {
   error.pid = pid;
   error.expectedIdentity = expected;
   error.actualIdentity = actual;
+  return error;
+}
+
+function processGroupError(pid, actual) {
+  const error = new Error(
+    `POSIX process ${pid} no longer owns detached process group ${pid} ` +
+      "before forced termination",
+  );
+  error.code = "PROCESS_GROUP_UNPROVEN";
+  error.pid = pid;
+  error.expectedProcessGroup = pid;
+  error.actualProcessGroup = actual;
   return error;
 }
 
@@ -331,6 +396,7 @@ export async function terminateProcessTree(
     delayFn = delay,
     identityFn = (identityPid) =>
       readProcessIdentity(identityPid, { platform }),
+    processGroupFn = (groupPid) => readProcessGroup(groupPid, { platform }),
     expectedIdentity,
     identityCaptured = false,
   } = {},
@@ -420,6 +486,27 @@ export async function terminateProcessTree(
     return forceResult;
   }
 
+  const requireOwnedProcessGroup = async () => {
+    const actualProcessGroup = await processGroupFn(pid);
+    if (actualProcessGroup !== pid) {
+      throw processGroupError(pid, actualProcessGroup);
+    }
+  };
+
+  // runCommandWithWatchdog makes an owned supervisor the detached group
+  // leader. Stop that supervisor before signaling its group, then recheck its
+  // immutable identity and group ownership. SIGSTOP is uncatchable, so the
+  // supervisor pins the original PGID while the actual command and descendants
+  // remain runnable and receive TERM. Recheck the stopped anchor before KILL so
+  // the forced negative-PID target can never silently become a reused group.
+  await requireOwnedProcessGroup();
+  try {
+    signalFn(pid, "SIGSTOP");
+  } catch (error) {
+    throw processIdentityError(pid, platform, stableIdentity, error);
+  }
+  await requireStableProcessIdentity(pid, platform, stableIdentity, identityFn);
+  await requireOwnedProcessGroup();
   let softError;
   try {
     signalPosixProcessGroup(pid, "SIGTERM", signalFn);
@@ -428,6 +515,7 @@ export async function terminateProcessTree(
   }
   await delayFn(graceMs);
   await requireStableProcessIdentity(pid, platform, stableIdentity, identityFn);
+  await requireOwnedProcessGroup();
   try {
     signalPosixProcessGroup(pid, "SIGKILL", signalFn);
   } catch (forceError) {
@@ -475,7 +563,18 @@ export function runCommandWithWatchdog(
   return new Promise((resolve) => {
     let child;
     try {
-      child = spawnFn(command, args, {
+      const spawnCommand = platform === "win32" ? command : "/bin/sh";
+      const spawnArgs =
+        platform === "win32"
+          ? args
+          : [
+              "-c",
+              POSIX_PROCESS_GROUP_SUPERVISOR,
+              "test-cloud-run-supervisor",
+              command,
+              ...args,
+            ];
+      child = spawnFn(spawnCommand, spawnArgs, {
         cwd,
         env,
         shell,

@@ -565,8 +565,10 @@ describe("watchdog configuration", () => {
       signalFn: (pid, signal) => signals.push([pid, signal]),
       delayFn: async () => {},
       identityFn: () => "original-process",
+      processGroupFn: () => 321,
     });
     expect(signals).toEqual([
+      [321, "SIGSTOP"],
       [-321, "SIGTERM"],
       [-321, "SIGKILL"],
     ]);
@@ -617,8 +619,12 @@ describe("watchdog configuration", () => {
     expect(invocations).toEqual([["taskkill", ["/PID", "321", "/T"]]]);
   });
 
-  it("does not force-kill a replacement POSIX process group after TERM", async () => {
-    const identities = ["original-group", "replacement-group"];
+  it("does not force-kill a POSIX group after the supervisor identity changes", async () => {
+    const identities = [
+      "original-group",
+      "original-group",
+      "replacement-group",
+    ];
     const signals = [];
     await expect(
       terminateProcessTree(321, {
@@ -626,10 +632,111 @@ describe("watchdog configuration", () => {
         graceMs: 1,
         delayFn: async () => {},
         identityFn: () => identities.shift(),
+        processGroupFn: () => 321,
         signalFn: (pid, signal) => signals.push([pid, signal]),
       }),
     ).rejects.toMatchObject({ code: "PROCESS_IDENTITY_UNPROVEN" });
-    expect(signals).toEqual([[-321, "SIGTERM"]]);
+    expect(signals).toEqual([
+      [321, "SIGSTOP"],
+      [-321, "SIGTERM"],
+    ]);
+  });
+
+  it("fails closed when supervisor PGID ownership changes during grace", async () => {
+    const processGroups = [321, 321, 999];
+    const signals = [];
+    await expect(
+      terminateProcessTree(321, {
+        platform: "darwin",
+        graceMs: 1,
+        delayFn: async () => {},
+        identityFn: () => "original-process",
+        processGroupFn: () => processGroups.shift(),
+        signalFn: (pid, signal) => signals.push([pid, signal]),
+      }),
+    ).rejects.toMatchObject({ code: "PROCESS_GROUP_UNPROVEN" });
+    expect(signals).toEqual([
+      [321, "SIGSTOP"],
+      [-321, "SIGTERM"],
+    ]);
+  });
+
+  it("fails closed when supervisor identity changes as it is stopped", async () => {
+    const identities = ["original-process", "replacement-process"];
+    const signals = [];
+    await expect(
+      terminateProcessTree(321, {
+        platform: "darwin",
+        graceMs: 1,
+        delayFn: async () => {},
+        identityFn: () => identities.shift(),
+        processGroupFn: () => 321,
+        signalFn: (pid, signal) => signals.push([pid, signal]),
+      }),
+    ).rejects.toMatchObject({ code: "PROCESS_IDENTITY_UNPROVEN" });
+    expect(signals).toEqual([[321, "SIGSTOP"]]);
+  });
+
+  it("fails closed when supervisor PGID ownership changes as it is stopped", async () => {
+    const processGroups = [321, 999];
+    const signals = [];
+    await expect(
+      terminateProcessTree(321, {
+        platform: "darwin",
+        graceMs: 1,
+        delayFn: async () => {},
+        identityFn: () => "original-process",
+        processGroupFn: () => processGroups.shift(),
+        signalFn: (pid, signal) => signals.push([pid, signal]),
+      }),
+    ).rejects.toMatchObject({ code: "PROCESS_GROUP_UNPROVEN" });
+    expect(signals).toEqual([[321, "SIGSTOP"]]);
+  });
+
+  it("never stops a process that is not the detached group leader", async () => {
+    const signals = [];
+    await expect(
+      terminateProcessTree(321, {
+        platform: "darwin",
+        graceMs: 1,
+        delayFn: async () => {},
+        identityFn: () => "original-process",
+        processGroupFn: () => 999,
+        signalFn: (pid, signal) => signals.push([pid, signal]),
+      }),
+    ).rejects.toMatchObject({ code: "PROCESS_GROUP_UNPROVEN" });
+    expect(signals).toEqual([]);
+  });
+
+  it("spawns POSIX commands behind an owned process-group supervisor", async () => {
+    const signalSource = new EventEmitter();
+    const child = new EventEmitter();
+    child.pid = 321;
+    child.stdout = new PassThrough();
+    child.stderr = new PassThrough();
+    let spawned;
+    const resultPromise = runCommandWithWatchdog("bun", ["test", "a.ts"], {
+      timeoutMs: 10_000,
+      writeOut: () => {},
+      writeErr: () => {},
+      platform: "darwin",
+      signalSource,
+      identityFn: () => "supervisor",
+      spawnFn: (command, args, options) => {
+        spawned = { command, args, options };
+        return child;
+      },
+    });
+
+    child.emit("close", 0, null);
+    const result = await resultPromise;
+
+    expect(spawned.command).toBe("/bin/sh");
+    expect(spawned.args.slice(-3)).toEqual(["bun", "test", "a.ts"]);
+    expect(spawned.args[0]).toBe("-c");
+    expect(spawned.args[1]).toContain("trap 'terminating=1' TERM INT");
+    expect(spawned.options.detached).toBe(true);
+    expect(result.status).toBe(0);
   });
 
   it("fails closed when forced Windows tree termination fails", async () => {

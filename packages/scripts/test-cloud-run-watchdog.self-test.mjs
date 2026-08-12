@@ -1,8 +1,10 @@
 #!/usr/bin/env node
 
-// End-to-end regression proof for #17245. A parent and its descendant both
-// ignore graceful termination and keep native event-loop handles open. The
-// batch watchdog must still return promptly and remove the whole process tree.
+/**
+ * Exercises the Cloud batch watchdog against a real parent and descendant.
+ * The parent exits on graceful termination while the descendant resists it;
+ * the watchdog must anchor the group and remove the complete tree promptly.
+ */
 
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
@@ -17,14 +19,18 @@ import { spawn } from "node:child_process";
 const descendant = spawn(process.execPath, ["--input-type=module", "-e", ${JSON.stringify(descendantSource)}], {
   stdio: "ignore",
 });
+process.stdout.write("PARENT_PID=" + process.pid + "\\n");
 process.stdout.write("DESCENDANT_PID=" + descendant.pid + "\\n");
-process.on("SIGTERM", () => {});
+process.on("SIGTERM", () => {
+  process.stdout.write("PARENT_TERM_EXIT\\n", () => process.exit(0));
+});
 setInterval(() => {}, 1000);
 `;
 
 let stdout = "";
 let timeoutObserved = false;
-let childPid;
+let supervisorPid;
+let parentPid;
 let descendantPid;
 
 function isAlive(pid) {
@@ -82,7 +88,8 @@ try {
     },
   );
   const elapsedMs = Date.now() - startedAt;
-  childPid = result.pid;
+  supervisorPid = result.pid;
+  parentPid = Number(stdout.match(/PARENT_PID=(\d+)/)?.[1]);
   descendantPid = Number(stdout.match(/DESCENDANT_PID=(\d+)/)?.[1]);
 
   assert.equal(timeoutObserved, true, "watchdog must announce the deadline");
@@ -105,18 +112,32 @@ try {
     "child must report its descendant PID live",
   );
   assert.ok(
-    Number.isInteger(childPid),
-    "watchdog result must retain the child PID",
+    Number.isInteger(supervisorPid),
+    "watchdog result must retain the supervisor PID",
+  );
+  assert.ok(
+    Number.isInteger(parentPid),
+    "supervised command must report its PID live",
+  );
+  assert.match(
+    stdout,
+    /PARENT_TERM_EXIT/,
+    "parent must handle TERM and exit before forced group teardown",
   );
 
   const descendantDeadline = Date.now() + 1500;
   while (
-    (isAlive(childPid) || isAlive(descendantPid)) &&
+    (isAlive(supervisorPid) || isAlive(parentPid) || isAlive(descendantPid)) &&
     Date.now() < descendantDeadline
   ) {
     await new Promise((resolve) => setTimeout(resolve, 25));
   }
-  assert.equal(isAlive(childPid), false, "watchdog must terminate the child");
+  assert.equal(
+    isAlive(supervisorPid),
+    false,
+    "watchdog must terminate the supervisor",
+  );
+  assert.equal(isAlive(parentPid), false, "watchdog must terminate the parent");
   assert.equal(
     isAlive(descendantPid),
     false,
@@ -127,6 +148,7 @@ try {
     `[test-cloud-run-watchdog] self-test passed (${elapsedMs} ms, platform=${process.platform})`,
   );
 } finally {
-  bestEffortKillTree(childPid, { processGroup: true });
+  bestEffortKillTree(supervisorPid, { processGroup: true });
+  bestEffortKillTree(parentPid);
   bestEffortKillTree(descendantPid);
 }
