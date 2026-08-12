@@ -11,6 +11,7 @@ import {
   evaluateOcrContent,
   normalize,
   type OcrResult,
+  positiveExpectationMatches,
 } from "../ui-smoke/ocr-content-rules";
 import {
   resolveViewOcrPolicy,
@@ -68,6 +69,24 @@ describe("normalize", () => {
   it("lowercases and canonicalizes punctuation and whitespace", () => {
     expect(normalize("  Ask   Eliza\n\n")).toBe("ask eliza");
     expect(normalize("Fine-Tuning")).toBe("fine tuning");
+  });
+});
+
+describe("positiveExpectationMatches", () => {
+  it.each([
+    ["builtin-apps", "Loading… Ask Eliza", false],
+    ["builtin-tasks", "Projects Ask Eliza", false],
+    [
+      "builtin-apps",
+      "My Apps Install, create, and run your elizaOS apps.",
+      true,
+    ],
+    ["builtin-tasks", "Tasks No coding tasks yet.", true],
+    ["builtin-automations", "Automations Nothing scheduled yet", true],
+  ])("matches %s semantic readiness for %j", (slug, text, expected) => {
+    expect(
+      positiveExpectationMatches(normalize(text), expectationFor(slug)),
+    ).toBe(expected);
   });
 });
 
