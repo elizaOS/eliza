@@ -275,6 +275,14 @@ function startInstance(
     if (waitFor) {
       await waitFor;
     }
+    // Check supersession BEFORE consulting pendingCleanup: a stop that landed
+    // while this instance awaited the prior generation's disposal parked this
+    // instance's own `settled` there, and awaiting it from inside itself
+    // would deadlock the id (and every later host generation) forever.
+    // Nothing started yet, so resolving immediately is the correct teardown.
+    if (host.instances.get(definition.id) !== instance) {
+      return;
+    }
     const pendingSameId = host.pendingCleanup.get(definition.id);
     if (pendingSameId) {
       await pendingSameId;

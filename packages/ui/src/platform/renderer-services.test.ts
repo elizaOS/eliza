@@ -372,6 +372,42 @@ describe("async cleanup serialization (#17110)", () => {
     expect(stateOf("a.async-reject-cleanup")).toBe("running");
   });
 
+  it("a stop during a disposal-gated start cannot poison the id's teardown queue (self-await)", async () => {
+    // Host A's instance has a slow async cleanup, so host B's replacement
+    // instance parks awaiting A's disposal. Re-registering the id then stops
+    // that still-waiting B instance, parking its own `settled` as the id's
+    // pending teardown. When A's disposal finally resolves, the stopped B
+    // instance must resolve promptly instead of awaiting its own parked
+    // promise — a self-await would deadlock this id (and every later host
+    // generation) forever.
+    let releaseCleanup: (() => void) | undefined;
+    registerRendererService({
+      id: "a.self-await",
+      shells: ["main"],
+      start: () => () =>
+        new Promise<void>((resolve) => {
+          releaseCleanup = resolve;
+        }),
+    });
+    startRendererServiceHost({ shell: "main" });
+    await settleRendererServices();
+
+    // Replace the host while A's cleanup is pending: B's instance now waits
+    // on A's full disposal before it may start.
+    startRendererServiceHost({ shell: "main" });
+
+    // Stop the waiting B instance via re-registration and enqueue a successor.
+    const successor = makeService("a.self-await");
+    registerRendererService(successor.definition);
+
+    releaseCleanup?.();
+    for (let i = 0; i < 12; i += 1) {
+      await Promise.resolve();
+    }
+    expect(successor.start).toHaveBeenCalledTimes(1);
+    expect(stateOf("a.self-await")).toBe("running");
+  });
+
   it("a late-completing predecessor cleanup cannot stop the running successor", async () => {
     let releaseCleanup: (() => void) | undefined;
     registerRendererService({
