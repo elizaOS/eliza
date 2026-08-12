@@ -11,6 +11,9 @@ const mocks = vi.hoisted(() => ({
 vi.mock("@elizaos/agent", () => ({
   applyAdvancedCapabilitiesConfig: vi.fn(),
   applyPluginRuntimeMutation: mocks.applyPluginRuntimeMutation,
+  CONNECTOR_ENV_MAP: {
+    discord: { token: "DISCORD_API_TOKEN" },
+  },
   CORE_PLUGINS: [],
   getPluginWidgets: vi.fn(() => []),
   isAdvancedCapabilityPluginId: vi.fn(() => false),
@@ -163,6 +166,11 @@ describe("handlePluginRoutes config persistence", () => {
 
     expect(handled).toBe(true);
     expect(config).toEqual({
+      connectors: {
+        discord: {
+          token: "abc123",
+        },
+      },
       env: { DISCORD_API_TOKEN: "abc123" },
       plugins: {
         entries: {
@@ -263,6 +271,9 @@ describe("handlePluginRoutes config persistence", () => {
     await handlePluginRoutes(ctx);
 
     expect(config).toEqual({
+      connectors: {
+        discord: {},
+      },
       env: {},
       plugins: {
         entries: {
@@ -275,6 +286,55 @@ describe("handlePluginRoutes config persistence", () => {
     });
     expect(process.env.DISCORD_API_TOKEN).toBeUndefined();
     expect(setSetting).toHaveBeenCalledWith("DISCORD_API_TOKEN", null, true);
+  });
+
+  it("preserves saved entry config when toggling plugin enabled state", async () => {
+    const config = {
+      env: { DISCORD_API_TOKEN: "abc123" },
+      plugins: {
+        allow: ["@elizaos/plugin-discord"],
+        entries: {
+          discord: {
+            enabled: false,
+            config: { DISCORD_API_TOKEN: "abc123" },
+          },
+        },
+      },
+    };
+    const ctx = makeContext({ enabled: true }, config);
+
+    const handled = await handlePluginRoutes(ctx);
+
+    expect(handled).toBe(true);
+    expect(config.plugins.entries.discord).toEqual({
+      enabled: true,
+      config: { DISCORD_API_TOKEN: "abc123" },
+    });
+  });
+
+  it("seeds runtime.setSetting when plugin config values are updated", async () => {
+    const config = { env: {}, plugins: { entries: {} } };
+    const mockRuntime = {
+      setSetting: vi.fn(),
+    };
+    const ctx = makeContext(
+      { config: { DISCORD_API_TOKEN: "secret-token" } },
+      config,
+    );
+    ctx.state.runtime = mockRuntime as never;
+
+    await handlePluginRoutes(ctx);
+
+    expect(mockRuntime.setSetting).toHaveBeenCalledWith(
+      "DISCORD_API_TOKEN",
+      "secret-token",
+      true,
+    );
+    expect(mockRuntime.setSetting).toHaveBeenCalledWith(
+      "DISCORD_BOT_TOKEN",
+      "secret-token",
+      true,
+    );
   });
 
   it.each(["../../evil", "@scope/../evil", "plugin name", "", "   "])(

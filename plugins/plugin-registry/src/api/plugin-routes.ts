@@ -9,6 +9,7 @@ import {
   type AdvancedCapabilityPluginId,
   applyAdvancedCapabilitiesConfig,
   applyPluginRuntimeMutation,
+  CONNECTOR_ENV_MAP,
   CORE_PLUGINS,
   type CoreManagerLike,
   type ElizaConfig,
@@ -54,6 +55,152 @@ function optionalPluginListId(npmName: string): string {
     return npmName.slice("@elizaos/".length);
   }
   return npmName.replace("@elizaos/plugin-", "");
+}
+
+/**
+ * Mirror connector plugin env keys into `config.connectors.<id>` so cold boot
+ * projection (`collectConnectorEnvVars`) and live `getSetting` stay aligned.
+ * Discord is canonicalized onto `token` (not the legacy `botToken` alias).
+ */
+function syncConnectorConfigFromPluginValues(
+  config: Record<string, unknown>,
+  pluginId: string,
+  values: Record<string, string>,
+): void {
+  const envMap = CONNECTOR_ENV_MAP[pluginId as keyof typeof CONNECTOR_ENV_MAP];
+  if (!envMap) {
+    return;
+  }
+
+  const connectors = asRecord(config.connectors) ?? {};
+  const connectorEntry = asRecord(connectors[pluginId]) ?? {};
+  const envToField = new Map<string, string>();
+  for (const [field, envKey] of Object.entries(envMap)) {
+    if (!envToField.has(envKey)) {
+      envToField.set(envKey, field);
+    }
+  }
+
+  let touched = false;
+  for (const [envKey, field] of envToField.entries()) {
+    if (!(envKey in values)) {
+      continue;
+    }
+    touched = true;
+    const value = values[envKey];
+    if (value.trim()) {
+      connectorEntry[field] = value;
+    } else {
+      delete connectorEntry[field];
+    }
+  }
+
+  if (pluginId === "discord" && "DISCORD_API_TOKEN" in values) {
+    touched = true;
+    const tokenValue = values.DISCORD_API_TOKEN.trim();
+    if (tokenValue) {
+      connectorEntry.token = tokenValue;
+    } else {
+      delete connectorEntry.token;
+    }
+    delete connectorEntry.botToken;
+  }
+
+  if (!touched) {
+    return;
+  }
+
+  connectors[pluginId] = connectorEntry;
+  config.connectors = connectors;
+}
+
+/**
+ * Seed `runtime.getSetting()` from values written via Settings PUT. Core
+ * deliberately never reads `process.env` in `getSetting`; hot-reload must
+ * push secrets into character.secrets before the plugin re-inits.
+ */
+function applyPluginValuesToRuntimeSettings(
+  runtime: AgentRuntime | null | undefined,
+  values: Record<string, string>,
+  parameters: ReadonlyArray<{ key: string; sensitive?: boolean }>,
+): void {
+  if (!runtime || typeof runtime.setSetting !== "function") {
+    return;
+  }
+
+  const sensitiveByKey = new Map(
+    parameters.map((param) => [param.key, param.sensitive === true] as const),
+  );
+
+  const writeSetting = (key: string, value: string, sensitive: boolean) => {
+    runtime.setSetting(key, value, sensitive);
+    // Discord plugins across versions read either alias.
+    if (key === "DISCORD_API_TOKEN") {
+      runtime.setSetting("DISCORD_BOT_TOKEN", value, true);
+    }
+  };
+
+  for (const [key, value] of Object.entries(values)) {
+    if (typeof value !== "string") {
+      continue;
+    }
+    const trimmed = value.trim();
+    if (!trimmed) {
+      continue;
+    }
+    const sensitive =
+      sensitiveByKey.get(key) === true ||
+      /(?:_API_KEY|_SECRET|_TOKEN|_PASSWORD|_PRIVATE_KEY)$/i.test(key);
+    writeSetting(key, trimmed, sensitive);
+  }
+}
+
+/**
+ * Collect already-persisted plugin parameter values so enable/hot-reload can
+ * seed `getSetting` even when this request only toggles `enabled`.
+ */
+function collectPersistedPluginParamValues(
+  config: Record<string, unknown>,
+  pluginId: string,
+  parameters: ReadonlyArray<{ key: string }>,
+): Record<string, string> {
+  const env = asRecord(config.env) ?? {};
+  const plugins = asRecord(config.plugins);
+  const entries = asRecord(plugins?.entries);
+  const entry = asRecord(entries?.[pluginId]);
+  const entryConfig = asRecord(entry?.config) ?? {};
+  const connectors = asRecord(config.connectors);
+  const connectorEntry = asRecord(connectors?.[pluginId]) ?? {};
+
+  const values: Record<string, string> = {};
+  for (const param of parameters) {
+    const key = param.key;
+    const fromEntry = entryConfig[key];
+    const fromEnv = env[key];
+    const fromProcess = process.env[key];
+    const candidates = [fromEntry, fromEnv, fromProcess];
+    for (const candidate of candidates) {
+      if (typeof candidate === "string" && candidate.trim()) {
+        values[key] = candidate;
+        break;
+      }
+    }
+  }
+
+  // Connector field form (e.g. connectors.discord.token) when env key is empty.
+  if (pluginId === "discord" && !values.DISCORD_API_TOKEN) {
+    const token =
+      (typeof connectorEntry.token === "string" &&
+        connectorEntry.token.trim()) ||
+      (typeof connectorEntry.botToken === "string" &&
+        connectorEntry.botToken.trim()) ||
+      "";
+    if (token) {
+      values.DISCORD_API_TOKEN = token;
+    }
+  }
+
+  return values;
 }
 
 const ADVANCED_CAPABILITY_SERVICE_BY_PLUGIN_ID: Partial<
@@ -917,6 +1064,29 @@ export async function handlePluginRoutes(
           bridgedValues,
           { isBlockedKey: isBlockedEnvKey },
         );
+        if (plugin.category === "connector") {
+          const connectorValues: Record<string, string> = {};
+          for (const [key, value] of Object.entries(nextPluginConfig)) {
+            if (typeof value === "string") {
+              connectorValues[key] = value;
+            }
+          }
+          // Include cleared keys so connector fields are deleted too.
+          for (const [key, value] of Object.entries(body.config)) {
+            if (
+              allowedParamKeys.has(key) &&
+              typeof value === "string" &&
+              !(key in connectorValues)
+            ) {
+              connectorValues[key] = value;
+            }
+          }
+          syncConnectorConfigFromPluginValues(
+            state.config as Record<string, unknown>,
+            pluginId,
+            connectorValues,
+          );
+        }
       }
       plugin.configured = true;
 
@@ -1051,6 +1221,30 @@ export async function handlePluginRoutes(
         );
       }
     }
+
+    // Core getSetting never reads process.env. Seed character secrets before
+    // hot-reload/init so connector plugins (Discord, Telegram, …) see tokens
+    // without a full process restart. Include persisted values when this
+    // request only toggles enabled after a prior config save.
+    const liveSettingValues: Record<string, string> = {
+      ...collectPersistedPluginParamValues(
+        state.config as Record<string, unknown>,
+        pluginId,
+        plugin.parameters,
+      ),
+    };
+    if (body.config) {
+      for (const [key, value] of Object.entries(body.config)) {
+        if (typeof value === "string" && value.trim()) {
+          liveSettingValues[key] = value;
+        }
+      }
+    }
+    applyPluginValuesToRuntimeSettings(
+      state.runtime,
+      liveSettingValues,
+      plugin.parameters,
+    );
 
     const runtimeApply = await applyPluginRuntimeMutation({
       runtime: state.runtime,
