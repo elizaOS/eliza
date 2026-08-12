@@ -28,7 +28,9 @@ describe('formatWorkflowExecutionDuration', () => {
     expect(
       formatWorkflowExecutionDuration('2026-06-23T00:00:00.000Z', '2026-06-23T00:02:00.000Z')
     ).toBe('2 min');
-    expect(formatWorkflowExecutionDuration('not-a-date', '2026-06-23T00:00:00Z')).toBe('Unknown');
+    expect(formatWorkflowExecutionDuration('not-a-date', '2026-06-23T00:00:00Z')).toBe(
+      'Invalid date'
+    );
   });
 });
 
