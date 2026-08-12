@@ -22,7 +22,7 @@ export const MAX_TCP_PORT = 65535;
  * @returns {number}
  */
 export function parsePlaywrightPort(value, label) {
-  const raw = String(value ?? "").trim();
+  const raw = String(value ?? "");
   if (!/^\d+$/.test(raw)) {
     throw new Error(
       `${label} must be a TCP port integer from ${MIN_TCP_PORT} to ${MAX_TCP_PORT} (received ${JSON.stringify(String(value ?? ""))})`,
@@ -53,7 +53,7 @@ export function parsePlaywrightPort(value, label) {
  */
 export function resolvePlaywrightPortEnv(env, envName, defaultPort) {
   const raw = env?.[envName];
-  if (raw === undefined || raw === null || String(raw).trim() === "") {
+  if (raw === undefined || raw === null || raw === "") {
     return defaultPort;
   }
   return parsePlaywrightPort(raw, envName);

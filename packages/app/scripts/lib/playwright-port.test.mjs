@@ -4,6 +4,8 @@
  * invalid override that must abort before webServer or baseURL wiring.
  */
 import { describe, expect, it } from "bun:test";
+import { spawnSync } from "node:child_process";
+import path from "node:path";
 import {
   MAX_TCP_PORT,
   MIN_TCP_PORT,
@@ -21,10 +23,6 @@ describe("parsePlaywrightPort", () => {
     expect(parsePlaywrightPort("31337", "ELIZA_UI_SMOKE_API_PORT")).toBe(31337);
   });
 
-  it("trims surrounding whitespace from operator env interpolation", () => {
-    expect(parsePlaywrightPort("  2138\n", "PORT")).toBe(2138);
-  });
-
   it("rejects partial parses, fractions, signed values, and non-digits", () => {
     for (const bad of [
       "2138junk",
@@ -35,6 +33,8 @@ describe("parsePlaywrightPort", () => {
       "0x84a",
       "2e3",
       "1_000",
+      " 2138 ",
+      "\t31337\n",
     ]) {
       expect(() => parsePlaywrightPort(bad, "PORT")).toThrow(
         /must be a TCP port integer from 1 to 65535/,
@@ -60,20 +60,13 @@ describe("parsePlaywrightPort", () => {
 describe("resolvePlaywrightPortEnv", () => {
   const DEFAULT = 2138;
 
-  it("keeps the documented default when the env var is unset or empty", () => {
+  it("keeps the documented default only when the env var is unset or empty", () => {
     expect(resolvePlaywrightPortEnv({}, "ELIZA_UI_SMOKE_PORT", DEFAULT)).toBe(
       DEFAULT,
     );
     expect(
       resolvePlaywrightPortEnv(
         { ELIZA_UI_SMOKE_PORT: "" },
-        "ELIZA_UI_SMOKE_PORT",
-        DEFAULT,
-      ),
-    ).toBe(DEFAULT);
-    expect(
-      resolvePlaywrightPortEnv(
-        { ELIZA_UI_SMOKE_PORT: "   " },
         "ELIZA_UI_SMOKE_PORT",
         DEFAULT,
       ),
@@ -91,6 +84,13 @@ describe("resolvePlaywrightPortEnv", () => {
   });
 
   it("fails closed on an explicit invalid override instead of falling back", () => {
+    expect(() =>
+      resolvePlaywrightPortEnv(
+        { ELIZA_UI_SMOKE_PORT: "   " },
+        "ELIZA_UI_SMOKE_PORT",
+        DEFAULT,
+      ),
+    ).toThrow(/ELIZA_UI_SMOKE_PORT/);
     expect(() =>
       resolvePlaywrightPortEnv(
         { ELIZA_UI_SMOKE_API_PORT: "31337junk" },
@@ -118,4 +118,56 @@ describe("resolvePlaywrightPortEnv", () => {
     expect(MIN_TCP_PORT).toBe(1);
     expect(MAX_TCP_PORT).toBe(65535);
   });
+});
+
+describe("Playwright lane boundaries", () => {
+  const appDir = path.resolve(import.meta.dir, "../..");
+
+  it.each([
+    ["playwright.ui-smoke.config.ts", "ELIZA_UI_SMOKE_PORT"],
+    ["playwright.android-browser.config.ts", "ELIZA_UI_SMOKE_API_PORT"],
+    ["playwright.hmr.config.ts", "ELIZA_HMR_UI_PORT"],
+    ["playwright.dev-smoke.config.ts", "ELIZA_DEV_SMOKE_API_PORT"],
+  ])("rejects a padded %s override through %s", (config, envName) => {
+    const result = spawnSync(
+      process.execPath,
+      ["-e", `await import(${JSON.stringify(path.join(appDir, config))})`],
+      {
+        cwd: appDir,
+        encoding: "utf8",
+        env: { ...process.env, [envName]: " 2138 " },
+      },
+    );
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(
+      `${envName} must be a TCP port integer from 1 to 65535`,
+    );
+  });
+
+  it.each(["ELIZA_UI_SMOKE_API_PORT", "ELIZA_UI_SMOKE_PORT"])(
+    "rejects whitespace-only %s before the Playwright runner launches",
+    (envName) => {
+      const result = spawnSync(
+        process.execPath,
+        [
+          path.join(appDir, "scripts/run-ui-playwright.mjs"),
+          "--config",
+          "playwright.ui-smoke.config.ts",
+          "--list",
+        ],
+        {
+          cwd: appDir,
+          encoding: "utf8",
+          env: { ...process.env, [envName]: "   " },
+        },
+      );
+
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain(
+        `${envName} must be a TCP port integer from 1 to 65535`,
+      );
+      expect(result.stdout).not.toContain("Listing tests:");
+    },
+  );
 });
