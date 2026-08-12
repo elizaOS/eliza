@@ -35,6 +35,31 @@ describe("workspace package resolution", () => {
     expect(buildConfig.resolve?.conditions).toBeUndefined();
   });
 
+  test("resolves the shared terminal palette from workspace source while serving", async () => {
+    const serveConfig = await resolveAppViteConfig("serve");
+    const server = await createServer({
+      configFile: false,
+      root: appRoot,
+      logLevel: "silent",
+      optimizeDeps: { noDiscovery: true },
+      resolve: { conditions: serveConfig.resolve?.conditions },
+      server: { middlewareMode: true },
+    });
+
+    try {
+      const resolved =
+        await server.environments.client.pluginContainer.resolveId(
+          "@elizaos/shared/terminal/palette",
+          path.resolve(appRoot, "../ui/src/terminal/palette.ts"),
+        );
+      expect(resolved?.id).toBe(
+        path.resolve(appRoot, "../shared/src/terminal/palette.ts"),
+      );
+    } finally {
+      await server.close();
+    }
+  });
+
   test("keeps browser conditional exports on their browser entry", async () => {
     const serveConfig = await resolveAppViteConfig("serve");
     const server = await createServer({
