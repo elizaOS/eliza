@@ -134,6 +134,8 @@ export interface GeneratedVoiceCorpus {
  * returns mono PCM at the requested sample rate.
  */
 export interface CorpusTtsSynthesizer {
+	/** Fail before synthesis when a scenario cannot produce valid real evidence. */
+	validateScenario?(scenario: VoiceScenario): Promise<void> | void;
 	synthesize(args: {
 		text: string;
 		voiceId?: string;
@@ -212,6 +214,7 @@ export async function generateVoiceCorpus(
 		sampleRate,
 	);
 	const synthesizer = options.synthesizer;
+	await synthesizer?.validateScenario?.(scenario);
 
 	const participantByLabel = new Map(
 		scenario.participants.map((p) => [p.label, p]),

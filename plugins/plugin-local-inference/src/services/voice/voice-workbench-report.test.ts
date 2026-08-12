@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
 	scoreBargeInGating,
 	scoreDiarization,
+	scoreDiarizationSegments,
 	scoreEotDecision,
 	scoreErle,
 	scoreMeasurementCoverage,
@@ -159,6 +160,69 @@ describe("buildVoiceWorkbenchReport", () => {
 		expect(formatVoiceWorkbenchMarkdown(report)).toContain(
 			"first-audio-latency=0!",
 		);
+	});
+
+	it("publishes transcript-free turn identity and DER failure evidence additively", () => {
+		const report = buildVoiceWorkbenchReport([
+			{
+				scenarioId: "identity-diagnostics",
+				classes: ["diarization", "voice-recognition", "owner-security"],
+				status: "ran",
+				cases: [
+					scoreTtsAsrRoundTrip({
+						referenceText: "fixture utterance must remain redacted",
+						hypothesisText: "different words",
+						maxWer: 0.1,
+					}),
+					scoreDiarizationSegments(
+						[
+							{ speaker: "alice", startMs: 0, endMs: 1000 },
+							{ speaker: "bob", startMs: 1000, endMs: 2000 },
+						],
+						[{ speaker: "cluster-one", startMs: 0, endMs: 2000 }],
+						{ maxDer: 0.2 },
+					),
+				],
+				turnEvidence: [
+					{
+						turnIndex: 0,
+						expectedSpeakerLabel: "alice",
+						predictedSpeakerLabel: "bob",
+						expectedEntityId: "entity-alice",
+						matchedEntityId: "entity-bob",
+						expectedOwner: true,
+						predictedOwner: false,
+						expectRespond: true,
+						responded: true,
+						synthesizedVoiceId: "af_bella",
+						speakerSimilarity: 0.61,
+						speakerAcceptThreshold: 0.78,
+					},
+				],
+			},
+		]);
+
+		expect(report.schemaVersion).toBe(1);
+		expect(report.scenarios[0].turnEvidence?.[0]).toMatchObject({
+			synthesizedVoiceId: "af_bella",
+			expectedEntityId: "entity-alice",
+			matchedEntityId: "entity-bob",
+		});
+		const serialized = JSON.stringify(report);
+		expect(serialized).not.toContain("fixture utterance");
+		expect(serialized).not.toContain("different words");
+		const diarization = report.scenarios[0].failedCaseEvidence?.find(
+			(entry) => entry.kind === "diarization",
+		);
+		expect(diarization).toMatchObject({
+			der: 0.5,
+			mapping: { "cluster-one": "alice" },
+		});
+		const markdown = formatVoiceWorkbenchMarkdown(report);
+		expect(markdown).toContain("## Diarization failure evidence");
+		expect(markdown).toContain("cluster-one→alice");
+		expect(markdown).toContain("## Identity mismatch evidence");
+		expect(markdown).not.toContain("fixture utterance");
 	});
 });
 

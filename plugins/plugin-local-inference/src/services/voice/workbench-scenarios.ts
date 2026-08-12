@@ -404,7 +404,9 @@ export const VOICE_WORKBENCH_SCENARIOS: VoiceScenario[] = [
 		],
 		knownSpeakerEntityIds: ["entity-pam", "entity-mia", "entity-maya"],
 		participants: [
-			{ label: "pam", entityId: "entity-pam" },
+			// Pin Pam away from Maya's hashed bm_george pack: co-present
+			// participants must be acoustically distinct for identity evidence.
+			{ label: "pam", entityId: "entity-pam", ttsVoiceId: "bm_lewis" },
 			{ label: "mia", entityId: "entity-mia" },
 			{ label: "maya", entityId: "entity-maya" },
 		],

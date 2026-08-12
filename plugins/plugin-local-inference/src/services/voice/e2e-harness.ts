@@ -554,6 +554,8 @@ export interface DiarizationResult {
 	missedMs?: number;
 	falseAlarmMs?: number;
 	totalReferenceMs?: number;
+	/** Provider cluster → reference-speaker mapping chosen by the DER scorer. */
+	mapping?: Record<string, string>;
 	maxDer: number;
 	passed: boolean;
 }
@@ -641,6 +643,7 @@ export function scoreDiarizationTimeline(
 		missedMs: result.missedMs,
 		falseAlarmMs: result.falseAlarmMs,
 		totalReferenceMs: result.totalReferenceMs,
+		mapping: result.mapping,
 		maxDer,
 		passed: turns.length > 0 && result.der <= maxDer,
 	};
@@ -686,6 +689,7 @@ export function scoreDiarizationSegments(
 		missedMs: result.missedMs,
 		falseAlarmMs: result.falseAlarmMs,
 		totalReferenceMs: result.totalReferenceMs,
+		mapping: result.mapping,
 		maxDer,
 		passed: reference.length > 0 && result.der <= maxDer,
 	};

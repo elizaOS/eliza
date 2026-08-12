@@ -4,12 +4,15 @@
  */
 
 import { describe, expect, it } from "vitest";
+import type { VoiceScenario } from "../voice-scenario";
+import { VOICE_WORKBENCH_SCENARIOS } from "../workbench-scenarios";
 import {
 	KOKORO_AGENT_VOICE,
 	KOKORO_HUMAN_VOICE_IDS,
 	KOKORO_VOICE_ALIASES,
 	labelHash,
 	resolveKokoroVoicePack,
+	validateKokoroScenarioVoiceAssignments,
 } from "../workbench-voice-packs";
 
 describe("resolveKokoroVoicePack", () => {
@@ -59,6 +62,58 @@ describe("resolveKokoroVoicePack", () => {
 		for (const pack of Object.values(KOKORO_VOICE_ALIASES)) {
 			expect(KOKORO_HUMAN_VOICE_IDS).toContain(pack);
 		}
+	});
+});
+
+describe("validateKokoroScenarioVoiceAssignments", () => {
+	it("keeps every built-in scenario participant acoustically distinct", () => {
+		for (const scenario of VOICE_WORKBENCH_SCENARIOS) {
+			const validation = validateKokoroScenarioVoiceAssignments(scenario);
+			expect(validation.errors, scenario.id).toEqual([]);
+			expect(
+				new Set(validation.assignments.map((entry) => entry.resolvedVoiceId))
+					.size,
+				scenario.id,
+			).toBe(scenario.participants.length);
+		}
+	});
+
+	it("reports a duplicate pack instead of accepting invalid identity evidence", () => {
+		const scenario: VoiceScenario = {
+			id: "duplicate-pack",
+			classes: ["voice-recognition"],
+			participants: [{ label: "pam" }, { label: "maya" }],
+			turns: [
+				{ speaker: "pam", text: "hello", expectRespond: true },
+				{ speaker: "maya", text: "hello", expectRespond: true },
+			],
+		};
+		const validation = validateKokoroScenarioVoiceAssignments(scenario);
+		expect(validation.valid).toBe(false);
+		expect(validation.errors).toContain(
+			"participants pam, maya resolve to duplicate voice bm_george",
+		);
+	});
+
+	it("reports a scored-turn voice that differs from enrollment", () => {
+		const scenario: VoiceScenario = {
+			id: "enrollment-drift",
+			classes: ["voice-recognition"],
+			participants: [{ label: "owner", ttsVoiceId: "af_bella" }],
+			turns: [
+				{
+					speaker: "owner",
+					text: "hello",
+					ttsVoiceId: "am_adam",
+					expectRespond: true,
+				},
+			],
+		};
+		const validation = validateKokoroScenarioVoiceAssignments(scenario);
+		expect(validation.valid).toBe(false);
+		expect(validation.errors).toContain(
+			"turn[0] speaker owner uses am_adam, but enrollment uses af_bella",
+		);
 	});
 });
 

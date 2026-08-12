@@ -12,7 +12,7 @@
  * skipped; one ran-and-failed scenario makes the whole report `fail`.
  */
 
-import type { VoiceE2eCaseResult } from "./e2e-harness";
+import type { TtsAsrRoundTripResult, VoiceE2eCaseResult } from "./e2e-harness";
 import { percentile, round4 } from "./metric-math";
 import type { VoiceScenarioClass } from "./voice-scenario";
 
@@ -37,6 +37,38 @@ export interface VoiceAudioArtifact {
 	speakerLabel?: string;
 }
 
+/**
+ * Compact per-turn identity evidence. It intentionally excludes transcript and
+ * audio content; the scheduled artifact needs assignment/match diagnostics,
+ * not a second copy of potentially sensitive speech.
+ */
+export interface VoiceWorkbenchTurnEvidence {
+	turnIndex: number;
+	expectedSpeakerLabel: string;
+	predictedSpeakerLabel: string | null;
+	expectedEntityId?: string;
+	matchedEntityId: string | null;
+	expectedOwner?: boolean;
+	predictedOwner?: boolean;
+	expectRespond: boolean;
+	responded: boolean;
+	synthesizedVoiceId?: string;
+	speakerSimilarity?: number | null;
+	speakerAcceptThreshold?: number;
+	selfVoiceSimilarity?: number | null;
+	firstAudioMs?: number;
+}
+
+type TranscriptFreeRoundTripEvidence = Pick<
+	TtsAsrRoundTripResult,
+	"kind" | "wer" | "maxWer" | "passed"
+>;
+
+/** Full failed metric payloads, except transcript-bearing round-trip fields. */
+export type VoiceWorkbenchFailureEvidence =
+	| Exclude<VoiceE2eCaseResult, TtsAsrRoundTripResult>
+	| TranscriptFreeRoundTripEvidence;
+
 /** One scenario's outcome in a workbench run. */
 export interface VoiceWorkbenchScenarioRun {
 	scenarioId: string;
@@ -47,6 +79,8 @@ export interface VoiceWorkbenchScenarioRun {
 	cases: VoiceE2eCaseResult[];
 	/** Why the scenario was skipped (artifact/backend absence), if it was. */
 	skipReason?: string;
+	/** Per-turn speaker/entity/owner evidence, without transcript or audio data. */
+	turnEvidence?: VoiceWorkbenchTurnEvidence[];
 	/** `.wav` artifacts written when a capture sink was active (else absent). */
 	audioArtifacts?: VoiceAudioArtifact[];
 }
@@ -63,6 +97,10 @@ export interface VoiceWorkbenchScenarioReport {
 		count: number;
 		passed: boolean;
 	}>;
+	/** Quantitative details for every failed case, with transcript text removed. */
+	failedCaseEvidence?: VoiceWorkbenchFailureEvidence[];
+	/** Per-turn speaker/entity/owner evidence, without transcript or audio data. */
+	turnEvidence?: VoiceWorkbenchTurnEvidence[];
 	skipReason?: string;
 }
 
@@ -146,6 +184,20 @@ function scenarioVerdict(
 	return run.cases.every((c) => c.passed) ? "pass" : "fail";
 }
 
+function failureEvidence(
+	entry: VoiceE2eCaseResult,
+): VoiceWorkbenchFailureEvidence {
+	if (entry.kind === "tts-asr-roundtrip") {
+		return {
+			kind: entry.kind,
+			wer: entry.wer,
+			maxWer: entry.maxWer,
+			passed: entry.passed,
+		};
+	}
+	return entry;
+}
+
 /**
  * Aggregate per-scenario scorer results into one gating report. `overall` is
  * `fail` if any scenario ran and failed, else `pass` if any scenario ran and
@@ -170,6 +222,10 @@ export function buildVoiceWorkbenchReport(
 					count: entry.count,
 					passed: entry.passed,
 				})),
+			failedCaseEvidence: run.cases
+				.filter((entry) => !entry.passed)
+				.map(failureEvidence),
+			...(run.turnEvidence ? { turnEvidence: run.turnEvidence } : {}),
 			skipReason: run.skipReason,
 		};
 	});
@@ -333,6 +389,64 @@ export function formatVoiceWorkbenchMarkdown(
 		lines.push(
 			`| ${s.scenarioId} | ${s.classes.join(", ")} | ${s.verdict}${skip} | ${s.caseCount} | ${coverage} | ${failed} |`,
 		);
+	}
+
+	const diarizationFailures = report.scenarios.flatMap((scenario) =>
+		(scenario.failedCaseEvidence ?? []).flatMap((entry) =>
+			entry.kind === "diarization" ? [{ scenario, entry }] : [],
+		),
+	);
+	if (diarizationFailures.length > 0) {
+		lines.push(
+			"",
+			"## Diarization failure evidence",
+			"",
+			"| Scenario | DER / max | Missed ms | Confusion ms | False-alarm ms | Cluster mapping |",
+			"| --- | --- | --- | --- | --- | --- |",
+		);
+		for (const { scenario, entry } of diarizationFailures) {
+			const mapping = entry.mapping
+				? Object.entries(entry.mapping)
+						.map(([cluster, speaker]) => `${cluster}→${speaker}`)
+						.join(", ")
+				: "—";
+			lines.push(
+				`| ${scenario.scenarioId} | ${entry.der} / ${entry.maxDer} | ${entry.missedMs ?? "—"} | ${entry.confusionMs ?? "—"} | ${entry.falseAlarmMs ?? "—"} | ${mapping} |`,
+			);
+		}
+	}
+
+	const identityMismatches = report.scenarios.flatMap((scenario) =>
+		(scenario.turnEvidence ?? []).flatMap((turn) => {
+			const speakerMismatch =
+				turn.predictedSpeakerLabel !== turn.expectedSpeakerLabel;
+			const entityMismatch =
+				turn.expectedEntityId !== undefined &&
+				turn.matchedEntityId !== turn.expectedEntityId;
+			const ownerMismatch =
+				turn.expectedOwner !== undefined &&
+				turn.predictedOwner !== turn.expectedOwner;
+			return speakerMismatch || entityMismatch || ownerMismatch
+				? [{ scenario, turn }]
+				: [];
+		}),
+	);
+	if (identityMismatches.length > 0) {
+		lines.push(
+			"",
+			"## Identity mismatch evidence",
+			"",
+			"| Scenario | Turn | Voice | Expected speaker / entity / owner | Observed speaker / entity / owner | Similarity / threshold |",
+			"| --- | --- | --- | --- | --- | --- |",
+		);
+		for (const { scenario, turn } of identityMismatches) {
+			const expected = `${turn.expectedSpeakerLabel} / ${turn.expectedEntityId ?? "—"} / ${turn.expectedOwner ?? "—"}`;
+			const observed = `${turn.predictedSpeakerLabel ?? "—"} / ${turn.matchedEntityId ?? "—"} / ${turn.predictedOwner ?? "—"}`;
+			const similarity = `${turn.speakerSimilarity ?? "—"} / ${turn.speakerAcceptThreshold ?? "—"}`;
+			lines.push(
+				`| ${scenario.scenarioId} | ${turn.turnIndex} | ${turn.synthesizedVoiceId ?? "—"} | ${expected} | ${observed} | ${similarity} |`,
+			);
+		}
 	}
 	return lines.join("\n");
 }

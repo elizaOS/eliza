@@ -85,6 +85,9 @@ describe("runVoiceScenarioHeadless — scoring", () => {
 					responded: true, // wrong for the bystander turn
 					inferredEntities: [],
 					matchedEntityId: label.entityId ?? null,
+					synthesizedVoiceId: "af_bella",
+					speakerSimilarity: 0.5,
+					speakerAcceptThreshold: 0.78,
 				};
 			},
 		};
@@ -99,6 +102,16 @@ describe("runVoiceScenarioHeadless — scoring", () => {
 		);
 		expect(failed.has("diarization")).toBe(true);
 		expect(failed.has("respond-decision")).toBe(true);
+		expect(run.turnEvidence?.[1]).toMatchObject({
+			turnIndex: 1,
+			expectedSpeakerLabel: "bob",
+			predictedSpeakerLabel: "alice",
+			expectedEntityId: "entity-bob",
+			matchedEntityId: "entity-bob",
+			synthesizedVoiceId: "af_bella",
+			speakerSimilarity: 0.5,
+			speakerAcceptThreshold: 0.78,
+		});
 	});
 
 	it("scores real diarizer spans instead of copying per-turn reference boundaries", async () => {

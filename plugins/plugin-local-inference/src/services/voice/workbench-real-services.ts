@@ -45,7 +45,10 @@ import { FusedDiarizer } from "./speaker/diarizer-fused";
 import { averageEmbeddings } from "./speaker/encoder";
 import { FusedSpeakerEncoder } from "./speaker/encoder-fused";
 import { SPEAKER_GGML_MIN_SAMPLES } from "./speaker/encoder-ggml";
-import { cosineSimilarity } from "./speaker-imprint";
+import {
+	cosineSimilarity,
+	DEFAULT_VOICE_IMPRINT_MATCH_THRESHOLD,
+} from "./speaker-imprint";
 import {
 	StabilizedStreamingTranscriber,
 	StreamingAsrFeeder,
@@ -65,15 +68,20 @@ import {
 	KOKORO_AGENT_VOICE,
 	labelHash,
 	resolveKokoroVoicePack,
+	validateScenarioVoiceAssignments,
 } from "./workbench-voice-packs";
 
 const SAMPLE_RATE = 16_000;
 const EOT_COMMIT_THRESHOLD = 0.5;
-const DEFAULT_OWNER_THRESHOLD = 0.78;
+export const VOICE_WORKBENCH_OWNER_THRESHOLD =
+	DEFAULT_VOICE_IMPRINT_MATCH_THRESHOLD;
 const MAX_AGENT_TTS_SECONDS = 12;
 const STREAMING_ASR_FRAME_SAMPLES = SAMPLE_RATE / 5;
-const SPEAKER_ENROLLMENT_PHRASE =
-	"This is my voice enrollment sample for reliable speaker recognition.";
+export const VOICE_WORKBENCH_ENROLLMENT_PHRASES = [
+	"Silver lanterns shimmer while gentle rain crosses the quiet valley.",
+	"Pack five bright boxes beside the old wooden gate before sunrise.",
+	"Could you remember my calm voice when numbers change from seven to forty two?",
+] as const;
 
 const ELEVENLABS_MODEL_ID = "eleven_turbo_v2_5";
 const ELEVENLABS_VOICE_IDS = [
@@ -91,6 +99,7 @@ const VOICE_ID_ALIASES: Record<string, string> = {
 	af_nicole: "MF3mGyEYCl7XYWbV9V6O",
 	am_adam: "pNInz6obpgDQGcFmaJgB",
 	am_michael: "ErXwobaYiN019PkySvjV",
+	bm_lewis: "ErXwobaYiN019PkySvjV",
 	owner: "21m00Tcm4TlvDq8ikWAM",
 	alice: "21m00Tcm4TlvDq8ikWAM",
 	jill: "21m00Tcm4TlvDq8ikWAM",
@@ -99,9 +108,29 @@ const VOICE_ID_ALIASES: Record<string, string> = {
 	intruder: "pNInz6obpgDQGcFmaJgB",
 	marcus: "ErXwobaYiN019PkySvjV",
 	priya: "EXAVITQu4vr4xnSDxMaL",
+	mia: "EXAVITQu4vr4xnSDxMaL",
 	eliza: "MF3mGyEYCl7XYWbV9V6O",
 	aria: "TxGEqnHWrfWFTfGW9XjX",
 };
+
+/** Resolve the concrete ElevenLabs voice used for enrollment and scored turns. */
+export function resolveElevenLabsWorkbenchVoiceId(
+	voiceId: string | undefined,
+	speakerLabel: string,
+	voiceMap: Readonly<Record<string, string>> = {},
+): string {
+	const keys = [voiceId, speakerLabel].filter(
+		(value): value is string => typeof value === "string" && value.length > 0,
+	);
+	for (const key of keys) {
+		const mapped =
+			voiceMap[key.toLowerCase()] ?? VOICE_ID_ALIASES[key.toLowerCase()];
+		if (mapped) return mapped;
+	}
+	return ELEVENLABS_VOICE_IDS[
+		labelHash(speakerLabel) % ELEVENLABS_VOICE_IDS.length
+	];
+}
 
 // Keyless mode (#9577): human turns are synthesized with distinct fused Kokoro
 // voice packs instead of ElevenLabs voices. The pack constants and the
@@ -274,6 +303,47 @@ function ensureMinSpeakerSamples(pcm: Float32Array): Float32Array {
 	const out = new Float32Array(SPEAKER_GGML_MIN_SAMPLES);
 	out.set(pcm);
 	return out;
+}
+
+/** Build the workbench profile exactly like multi-capture product enrollment. */
+export async function buildVoiceWorkbenchEnrollmentCentroid(args: {
+	voiceId: string;
+	synthesize(input: { text: string; voiceId: string }): Promise<Float32Array>;
+	encode(pcm: Float32Array): Promise<Float32Array>;
+}): Promise<Float32Array> {
+	const embeddings: Float32Array[] = [];
+	for (
+		let sampleIndex = 0;
+		sampleIndex < VOICE_WORKBENCH_ENROLLMENT_PHRASES.length;
+		sampleIndex += 1
+	) {
+		const pcm = await args.synthesize({
+			text: VOICE_WORKBENCH_ENROLLMENT_PHRASES[sampleIndex],
+			voiceId: args.voiceId,
+		});
+		if (pcm.length === 0) {
+			throw new Error(
+				`[voice:workbench --real] enrollment sample ${sampleIndex + 1} produced no audio`,
+			);
+		}
+		const embedding = await args.encode(ensureMinSpeakerSamples(pcm));
+		let magnitudeSquared = 0;
+		for (const value of embedding) {
+			if (!Number.isFinite(value)) {
+				throw new Error(
+					`[voice:workbench --real] enrollment sample ${sampleIndex + 1} produced a non-finite embedding`,
+				);
+			}
+			magnitudeSquared += value * value;
+		}
+		if (embedding.length === 0 || magnitudeSquared === 0) {
+			throw new Error(
+				`[voice:workbench --real] enrollment sample ${sampleIndex + 1} produced an empty embedding`,
+			);
+		}
+		embeddings.push(embedding);
+	}
+	return averageEmbeddings(embeddings);
 }
 
 function concatPcm(parts: ReadonlyArray<Float32Array>): Float32Array {
@@ -480,6 +550,8 @@ class RealVoiceWorkbenchAdapter implements RealVoiceWorkbenchRuntime {
 		this.voiceMap = args.voiceMap;
 		this.artifacts = args.artifacts;
 		this.synthesizer = {
+			validateScenario: (scenario) =>
+				this.validateScenarioVoiceEvidence(scenario),
 			synthesize: (input) => this.synthesizeCorpusTurn(input),
 		};
 		this.services = {
@@ -542,7 +614,8 @@ class RealVoiceWorkbenchAdapter implements RealVoiceWorkbenchRuntime {
 				diarizer,
 				kokoroBackend,
 				apiKey: options.elevenLabsApiKey,
-				ownerThreshold: options.ownerAcceptThreshold ?? DEFAULT_OWNER_THRESHOLD,
+				ownerThreshold:
+					options.ownerAcceptThreshold ?? VOICE_WORKBENCH_OWNER_THRESHOLD,
 				voiceMap: options.voiceMap ?? {},
 				artifacts: {
 					bundle: options.bundle,
@@ -575,28 +648,29 @@ class RealVoiceWorkbenchAdapter implements RealVoiceWorkbenchRuntime {
 			// The enrollment sample must come from the SAME voice that speaks the
 			// participant's scored turns, so both modes resolve the voice with the
 			// same keys the corpus synthesizer uses.
-			const enrollment = this.apiKey
-				? await elevenLabsPcm({
-						text: SPEAKER_ENROLLMENT_PHRASE,
-						voiceId: this.resolveElevenLabsVoiceId(
-							participant.ttsVoiceId,
-							participant.label,
-						),
-						apiKey: this.apiKey,
-						sampleRate: SAMPLE_RATE,
-					})
-				: await this.synthesizeKokoro(
-						SPEAKER_ENROLLMENT_PHRASE,
-						resolveKokoroVoicePack(participant.ttsVoiceId, participant.label),
-					);
-			const embedding = await this.encoder.encode(
-				ensureMinSpeakerSamples(enrollment),
+			const voiceId = this.resolveHumanVoiceId(
+				participant.ttsVoiceId,
+				participant.label,
 			);
+			const apiKey = this.apiKey;
+			const centroid = await buildVoiceWorkbenchEnrollmentCentroid({
+				voiceId,
+				synthesize: ({ text, voiceId: enrollmentVoiceId }) =>
+					apiKey
+						? elevenLabsPcm({
+								text,
+								voiceId: enrollmentVoiceId,
+								apiKey,
+								sampleRate: SAMPLE_RATE,
+							})
+						: this.synthesizeKokoro(text, enrollmentVoiceId),
+				encode: (pcm) => this.encoder.encode(pcm),
+			});
 			this.profiles.set(participant.label, {
 				label: participant.label,
 				entityId: participant.entityId ?? null,
 				isOwner: participant.isOwner === true,
-				centroid: embedding,
+				centroid,
 			});
 		}
 	}
@@ -697,12 +771,18 @@ class RealVoiceWorkbenchAdapter implements RealVoiceWorkbenchRuntime {
 		return {
 			hypothesisTranscript: transcript,
 			predictedSpeakerLabel: speakerMatch?.profile.label ?? null,
+			synthesizedVoiceId: args.label.isAgentEcho
+				? KOKORO_AGENT_VOICE
+				: this.resolveHumanVoiceId(args.label.ttsVoiceId, args.label.speaker),
+			speakerSimilarity: bestMatch?.similarity ?? null,
+			speakerAcceptThreshold: this.ownerThreshold,
 			eotDecided,
 			responded,
 			inferredEntities,
 			matchedEntityId,
 			...(firstAudioMs !== undefined ? { firstAudioMs } : {}),
 			predictedOwner,
+			selfVoiceSimilarity,
 			...(streamingResult
 				? { partialTranscripts: streamingResult.partials }
 				: {}),
@@ -736,10 +816,7 @@ class RealVoiceWorkbenchAdapter implements RealVoiceWorkbenchRuntime {
 			);
 		}
 		if (this.apiKey) {
-			const voiceId = this.resolveElevenLabsVoiceId(
-				args.voiceId,
-				args.speakerLabel,
-			);
+			const voiceId = this.resolveHumanVoiceId(args.voiceId, args.speakerLabel);
 			return elevenLabsPcm({
 				text: args.text,
 				voiceId,
@@ -749,26 +826,42 @@ class RealVoiceWorkbenchAdapter implements RealVoiceWorkbenchRuntime {
 		}
 		// Keyless (#9577): distinct fused Kokoro packs stand in for the human
 		// voices, resolved deterministically from the same label/voiceId keys.
-		const pack = resolveKokoroVoicePack(args.voiceId, args.speakerLabel);
+		const pack = this.resolveHumanVoiceId(args.voiceId, args.speakerLabel);
 		const pcm = await this.synthesizeKokoro(args.text, pack);
 		return ensureSampleRate(pcm, SAMPLE_RATE, args.sampleRate);
+	}
+
+	private resolveHumanVoiceId(
+		voiceId: string | undefined,
+		speakerLabel: string,
+	): string {
+		return this.apiKey
+			? this.resolveElevenLabsVoiceId(voiceId, speakerLabel)
+			: resolveKokoroVoicePack(voiceId, speakerLabel);
+	}
+
+	private validateScenarioVoiceEvidence(scenario: VoiceScenario): void {
+		const validation = validateScenarioVoiceAssignments(
+			scenario,
+			(voiceId, speakerLabel) =>
+				this.resolveHumanVoiceId(voiceId, speakerLabel),
+		);
+		if (!validation.valid) {
+			throw new Error(
+				`[voice:workbench --real] invalid voice evidence for ${scenario.id}: ${validation.errors.join("; ")}`,
+			);
+		}
 	}
 
 	private resolveElevenLabsVoiceId(
 		voiceId: string | undefined,
 		speakerLabel: string,
 	): string {
-		const keys = [voiceId, speakerLabel].filter(
-			(value): value is string => typeof value === "string" && value.length > 0,
+		return resolveElevenLabsWorkbenchVoiceId(
+			voiceId,
+			speakerLabel,
+			this.voiceMap,
 		);
-		for (const key of keys) {
-			const mapped =
-				this.voiceMap[key.toLowerCase()] ?? VOICE_ID_ALIASES[key.toLowerCase()];
-			if (mapped) return mapped;
-		}
-		return ELEVENLABS_VOICE_IDS[
-			labelHash(speakerLabel) % ELEVENLABS_VOICE_IDS.length
-		];
 	}
 
 	/**
@@ -962,7 +1055,7 @@ export async function createRealVoiceWorkbenchRuntimeFromEnv(
 		ownerAcceptThreshold: finiteNumberEnv(
 			env,
 			"ELIZA_VOICE_OWNER_ACCEPT_THRESHOLD",
-			DEFAULT_OWNER_THRESHOLD,
+			VOICE_WORKBENCH_OWNER_THRESHOLD,
 		),
 		voiceMap: parseVoiceMap(env.ELIZA_WORKBENCH_ELEVENLABS_VOICE_MAP),
 	});

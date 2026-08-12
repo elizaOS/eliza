@@ -48,6 +48,7 @@ import type { VoiceScenario } from "./voice-scenario";
 import type {
 	VoiceAudioArtifact,
 	VoiceWorkbenchScenarioRun,
+	VoiceWorkbenchTurnEvidence,
 } from "./voice-workbench-report";
 import { encodeMonoPcm16Wav } from "./wav-codec";
 
@@ -57,6 +58,14 @@ export interface VoiceTurnObservation {
 	hypothesisTranscript: string;
 	/** Diarized speaker label, or null when the diarizer missed the turn. */
 	predictedSpeakerLabel: string | null;
+	/** Exact TTS voice/pack that produced this consumed turn, when known. */
+	synthesizedVoiceId?: string;
+	/** Best enrolled-speaker cosine similarity, including rejected matches. */
+	speakerSimilarity?: number | null;
+	/** Acceptance threshold applied to {@link speakerSimilarity}. */
+	speakerAcceptThreshold?: number;
+	/** Similarity to the agent's recent self-voice imprint, when available. */
+	selfVoiceSimilarity?: number | null;
 	/** The EOT classifier decided end-of-turn at this turn's boundary. */
 	eotDecided: boolean;
 	/** EOT decision latency (ms) from the true boundary, when measured. */
@@ -256,6 +265,7 @@ export async function runVoiceScenarioHeadless(
 	const erleSamples: Array<{ erleDb: number }> = [];
 	const partialCases: VoiceE2eCaseResult[] = [];
 	const wantsOwnerScoring = scenario.classes.includes("owner-security");
+	const turnEvidence: VoiceWorkbenchTurnEvidence[] = [];
 
 	for (const label of corpus.groundTruth.turns) {
 		const audio = corpus.pcm.subarray(
@@ -281,6 +291,40 @@ export async function runVoiceScenarioHeadless(
 			sampleRate: corpus.sampleRate,
 			label,
 			groundTruth: corpus.groundTruth,
+		});
+		turnEvidence.push({
+			turnIndex: label.index,
+			expectedSpeakerLabel: label.speaker,
+			predictedSpeakerLabel: obs.predictedSpeakerLabel,
+			...(label.entityId ? { expectedEntityId: label.entityId } : {}),
+			matchedEntityId: obs.matchedEntityId,
+			...(wantsOwnerScoring
+				? {
+						expectedOwner: label.isOwner === true,
+						...(typeof obs.predictedOwner === "boolean"
+							? { predictedOwner: obs.predictedOwner }
+							: {}),
+					}
+				: {}),
+			expectRespond: label.expectRespond,
+			responded: obs.responded,
+			...(obs.synthesizedVoiceId
+				? { synthesizedVoiceId: obs.synthesizedVoiceId }
+				: label.ttsVoiceId
+					? { synthesizedVoiceId: label.ttsVoiceId }
+					: {}),
+			...(obs.speakerSimilarity !== undefined
+				? { speakerSimilarity: obs.speakerSimilarity }
+				: {}),
+			...(obs.speakerAcceptThreshold !== undefined
+				? { speakerAcceptThreshold: obs.speakerAcceptThreshold }
+				: {}),
+			...(obs.selfVoiceSimilarity !== undefined
+				? { selfVoiceSimilarity: obs.selfVoiceSimilarity }
+				: {}),
+			...(obs.firstAudioMs !== undefined
+				? { firstAudioMs: obs.firstAudioMs }
+				: {}),
 		});
 
 		// WER — one round-trip case per turn (referenceTranscript vs ASR hypothesis).
@@ -537,6 +581,7 @@ export async function runVoiceScenarioHeadless(
 		classes: scenario.classes,
 		status: "ran",
 		cases,
+		turnEvidence,
 		...(audioArtifacts.length > 0 ? { audioArtifacts } : {}),
 	};
 }

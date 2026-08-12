@@ -9,6 +9,8 @@
  * construction — `resolveKokoroVoicePack` can only ever return a human pack.
  */
 
+import type { VoiceScenario } from "./voice-scenario";
+
 /** Reserved pack for agent turns; never handed to a human speaker. */
 export const KOKORO_AGENT_VOICE = "af_nicole";
 
@@ -75,4 +77,78 @@ export function resolveKokoroVoicePack(
 	return KOKORO_HUMAN_VOICE_IDS[
 		labelHash(speakerLabel) % KOKORO_HUMAN_VOICE_IDS.length
 	];
+}
+
+export interface WorkbenchVoiceAssignment {
+	participantLabel: string;
+	resolvedVoiceId: string;
+}
+
+export interface WorkbenchVoiceAssignmentValidation {
+	valid: boolean;
+	assignments: WorkbenchVoiceAssignment[];
+	errors: string[];
+}
+
+/**
+ * Validate that a real-TTS scenario preserves one acoustically distinct voice
+ * per participant and uses that same voice for enrollment and scored turns.
+ * A collision makes speaker/entity metrics invalid by construction, while a
+ * turn-level override different from enrollment guarantees false rejects.
+ */
+export function validateScenarioVoiceAssignments(
+	scenario: VoiceScenario,
+	resolveVoiceId: (voiceId: string | undefined, speakerLabel: string) => string,
+): WorkbenchVoiceAssignmentValidation {
+	const assignments = scenario.participants.map((participant) => ({
+		participantLabel: participant.label,
+		resolvedVoiceId: resolveVoiceId(participant.ttsVoiceId, participant.label),
+	}));
+	const assignmentByLabel = new Map(
+		assignments.map((assignment) => [
+			assignment.participantLabel,
+			assignment.resolvedVoiceId,
+		]),
+	);
+	const participantsByVoice = new Map<string, string[]>();
+	for (const assignment of assignments) {
+		const labels = participantsByVoice.get(assignment.resolvedVoiceId) ?? [];
+		labels.push(assignment.participantLabel);
+		participantsByVoice.set(assignment.resolvedVoiceId, labels);
+	}
+
+	const errors: string[] = [];
+	for (const [voiceId, labels] of participantsByVoice) {
+		if (labels.length > 1) {
+			errors.push(
+				`participants ${labels.join(", ")} resolve to duplicate voice ${voiceId}`,
+			);
+		}
+	}
+	for (const [turnIndex, turn] of scenario.turns.entries()) {
+		if (turn.isAgentEcho) continue;
+		const participant = scenario.participants.find(
+			(candidate) => candidate.label === turn.speaker,
+		);
+		const enrolledVoiceId = assignmentByLabel.get(turn.speaker);
+		if (!participant || !enrolledVoiceId) continue;
+		const turnVoiceId = resolveVoiceId(
+			turn.ttsVoiceId ?? participant.ttsVoiceId,
+			turn.speaker,
+		);
+		if (turnVoiceId !== enrolledVoiceId) {
+			errors.push(
+				`turn[${turnIndex}] speaker ${turn.speaker} uses ${turnVoiceId}, but enrollment uses ${enrolledVoiceId}`,
+			);
+		}
+	}
+
+	return { valid: errors.length === 0, assignments, errors };
+}
+
+/** Validate the keyless fused-Kokoro assignment used by the scheduled lane. */
+export function validateKokoroScenarioVoiceAssignments(
+	scenario: VoiceScenario,
+): WorkbenchVoiceAssignmentValidation {
+	return validateScenarioVoiceAssignments(scenario, resolveKokoroVoicePack);
 }

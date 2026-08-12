@@ -152,6 +152,23 @@ describe("generateVoiceCorpus (real-TTS path)", () => {
 		expect(corpus.groundTruth.synthetic).toBe(false);
 		expect(corpus.groundTruth.turns.every((t) => !t.synthetic)).toBe(true);
 	});
+
+	it("validates real voice evidence before synthesizing any turn", async () => {
+		let synthesisCalls = 0;
+		const synthesizer: CorpusTtsSynthesizer = {
+			validateScenario() {
+				throw new Error("duplicate participant voice evidence");
+			},
+			async synthesize({ sampleRate }) {
+				synthesisCalls += 1;
+				return new Float32Array(sampleRate);
+			},
+		};
+		await expect(
+			generateVoiceCorpus(scenario(), { synthesizer }),
+		).rejects.toThrow("duplicate participant voice evidence");
+		expect(synthesisCalls).toBe(0);
+	});
 });
 
 describe("writeVoiceCorpus / readVoiceCorpusGroundTruth", () => {
