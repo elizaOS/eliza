@@ -9,6 +9,7 @@
 
 import { Hono } from "hono";
 import type { NewUserCharacter } from "@/db/repositories";
+import { userCharactersRepository } from "@/db/repositories/characters";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import { charactersService } from "@/lib/services/characters/characters";
@@ -44,54 +45,25 @@ app.get("/", async (c) => {
       limit,
     });
 
-    let characters = await charactersService.listByUser(user.id);
-
-    if (search) {
-      const query = search.toLowerCase();
-      characters = characters.filter(
-        (char) =>
-          char.name.toLowerCase().includes(query) ||
-          (typeof char.bio === "string" &&
-            char.bio.toLowerCase().includes(query)) ||
-          // bio is caller-supplied jsonb (the POST below stores the body
-          // verbatim), so array entries are not guaranteed to be strings —
-          // one non-string entry must not 500 every search for the user.
-          // Non-string entries simply can't match a text query.
-          (Array.isArray(char.bio) &&
-            char.bio.some(
-              (b) => typeof b === "string" && b.toLowerCase().includes(query),
-            )),
-      );
-    }
-    if (category) {
-      characters = characters.filter((char) => char.category === category);
-    }
-
-    characters.sort((a, b) => {
-      switch (sortBy) {
-        case "name": {
-          const result = a.name.localeCompare(b.name);
-          return order === "desc" ? -result : result;
-        }
-        case "newest": {
-          const dateA = a.created_at ? new Date(a.created_at).getTime() : 0;
-          const dateB = b.created_at ? new Date(b.created_at).getTime() : 0;
-          return order === "desc" ? dateB - dateA : dateA - dateB;
-        }
-        case "updated": {
-          const updA = a.updated_at ? new Date(a.updated_at).getTime() : 0;
-          const updB = b.updated_at ? new Date(b.updated_at).getTime() : 0;
-          return order === "desc" ? updB - updA : updA - updB;
-        }
-        default:
-          return 0;
-      }
-    });
-
-    const totalCount = characters.length;
-    const totalPages = Math.ceil(totalCount / limit);
     const offset = (page - 1) * limit;
-    const paginatedCharacters = characters.slice(offset, offset + limit);
+    const filters = { search, category, source: "cloud" as const };
+    // my-agents listing sorted only by the requested field — not featured-first
+    // (unlike marketplace/public search). See elizaOS/eliza#18339 review.
+    const sortOptions = { sortBy, order, pinFeatured: false as const };
+
+    const [totalCount, paginatedCharacters] = await Promise.all([
+      userCharactersRepository.count(filters, user.id, user.organization_id),
+      userCharactersRepository.search(
+        filters,
+        user.id,
+        user.organization_id,
+        sortOptions,
+        limit,
+        offset,
+      ),
+    ]);
+
+    const totalPages = Math.ceil(totalCount / limit);
 
     return c.json({
       success: true,
