@@ -113,7 +113,7 @@ export function formatWorkflowExecutionDuration(
   if (!startedAt) return 'Unknown';
   const startMs = Date.parse(startedAt);
   const stopMs = stoppedAt ? Date.parse(stoppedAt) : Date.now();
-  if (!Number.isFinite(startMs) || !Number.isFinite(stopMs)) return 'Unknown';
+  if (!Number.isFinite(startMs) || !Number.isFinite(stopMs)) return 'Invalid date';
   const durationMs = Math.max(0, stopMs - startMs);
   if (durationMs < 1000) return `${durationMs} ms`;
   if (durationMs < 60_000) return `${(durationMs / 1000).toFixed(1)} s`;
