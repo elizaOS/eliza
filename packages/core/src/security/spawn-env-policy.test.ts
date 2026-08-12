@@ -84,6 +84,32 @@ describe("isBlockedSpawnEnvKey (runtime/loader hijacks on sudo's env_delete list
 	});
 });
 
+describe("isBlockedSpawnEnvKey (git config injection)", () => {
+	it.each([
+		"GIT_CONFIG_COUNT",
+		"GIT_CONFIG_GLOBAL",
+		"GIT_CONFIG_SYSTEM",
+		"git_config_global",
+		"GIT_CONFIG_KEY_0",
+		"GIT_CONFIG_VALUE_0",
+		"GIT_CONFIG_KEY_17",
+		"GIT_CONFIG_VALUE_17",
+	])("blocks %s", (key) => {
+		expect(isBlockedSpawnEnvKey(key)).toBe(true);
+	});
+
+	it("leaves benign git keys and prefix lookalikes alone", () => {
+		expect(isBlockedSpawnEnvKey("GIT_AUTHOR_NAME")).toBe(false);
+		expect(isBlockedSpawnEnvKey("GIT_COMMITTER_NAME")).toBe(false);
+		expect(isBlockedSpawnEnvKey("GIT_TERMINAL_PROMPT")).toBe(false);
+		// Shares ten characters with the prefix; the trailing underscore is what
+		// makes GIT_CONFIG_ a namespace, so this must not match.
+		expect(isBlockedSpawnEnvKey("GIT_CONFIGURATION")).toBe(false);
+		// Bare GIT_CONFIG does not resolve aliases, so it is not listed.
+		expect(isBlockedSpawnEnvKey("GIT_CONFIG")).toBe(false);
+	});
+});
+
 describe("sanitizeSpawnEnv", () => {
 	it("drops LD_AUDIT / PYTHONPATH but keeps benign keys", () => {
 		const out = sanitizeSpawnEnv({
@@ -109,6 +135,19 @@ describe("sanitizeSpawnEnv", () => {
 			LANG: "en_US.UTF-8",
 		});
 		expect(out).toEqual({ MY_APP_SETTING: "ok", LANG: "en_US.UTF-8" });
+	});
+
+	it("drops the git config injection family but keeps benign git keys", () => {
+		const out = sanitizeSpawnEnv({
+			GIT_CONFIG_COUNT: "1",
+			GIT_CONFIG_KEY_0: "core.sshCommand",
+			GIT_CONFIG_VALUE_0: "sh -c 'id>/tmp/pwned'",
+			GIT_CONFIG_GLOBAL: "/tmp/evil.gitconfig",
+			GIT_CONFIG_SYSTEM: "/tmp/evil.gitconfig",
+			GIT_AUTHOR_NAME: "ok",
+			LANG: "en_US.UTF-8",
+		});
+		expect(out).toEqual({ GIT_AUTHOR_NAME: "ok", LANG: "en_US.UTF-8" });
 	});
 
 	it("still allows ordinary application keys that only look shell-adjacent", () => {

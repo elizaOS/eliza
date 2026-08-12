@@ -88,6 +88,19 @@ export const BLOCKED_SPAWN_ENV_KEYS: ReadonlySet<string> = new Set([
 	// arbitrary execution.
 	"GIT_SSH_COMMAND",
 	"GIT_EXTERNAL_DIFF",
+	// The GIT_CONFIG_* family reaches the same primitives indirectly: it injects
+	// configuration, and configuration carries commands — alias.*, core.pager,
+	// core.sshCommand, diff.external, credential.helper, core.fsmonitor,
+	// uploadpack.packObjectsHook. GIT_CONFIG_GLOBAL and GIT_CONFIG_SYSTEM each
+	// point git at an attacker-written config file; GIT_CONFIG_COUNT enables the
+	// indexed GIT_CONFIG_KEY_<n> / GIT_CONFIG_VALUE_<n> pairs handled by prefix
+	// below. Without these, the two entries above are reproducible through
+	// core.sshCommand and diff.external, so blocking only those raises the bar by
+	// roughly nothing. Bare GIT_CONFIG is deliberately not listed: it does not
+	// resolve aliases and is not an execution primitive (verified, git 2.50.1).
+	"GIT_CONFIG_COUNT",
+	"GIT_CONFIG_GLOBAL",
+	"GIT_CONFIG_SYSTEM",
 ]);
 
 export const BLOCKED_SPAWN_ENV_PREFIXES = [
@@ -103,6 +116,10 @@ export const BLOCKED_SPAWN_ENV_PREFIXES = [
 	"DOCKER_",
 	"PODMAN_",
 	"BASH_FUNC_",
+	// Indexed git config injection; <n> is unbounded so these cannot be enumerated
+	// as exact keys.
+	"GIT_CONFIG_KEY_",
+	"GIT_CONFIG_VALUE_",
 ] as const;
 
 export function isBlockedSpawnEnvKey(key: string): boolean {
