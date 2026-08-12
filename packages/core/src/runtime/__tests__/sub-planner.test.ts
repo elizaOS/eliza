@@ -11,6 +11,7 @@ import { subPlannerResultToPlannerToolResult } from "../../services/message";
 import type { Action, ActionResult, IAgentRuntime, Memory } from "../../types";
 import { _resetActionRolePolicyCacheForTests } from "../action-role-policy";
 import {
+	FAILED_TOOL_FALLBACK_MESSAGE,
 	type PlannerLoopResult,
 	type PlannerToolResult,
 	runPlannerLoop,
@@ -574,7 +575,7 @@ describe("sub-planner helpers", () => {
 		expect(subResult.evaluator?.success).toBe(false);
 		expect(collapsed).toMatchObject({
 			success: false,
-			userFacingText: "The nested workflow failed.",
+			userFacingText: FAILED_TOOL_FALLBACK_MESSAGE,
 			data: { taskId: "task-b" },
 		});
 		expect(collapsed.text).toContain("FAIL CHILD_A");
@@ -583,7 +584,7 @@ describe("sub-planner helpers", () => {
 			expect.objectContaining({ receiptId: "receipt-child-b" }),
 		]);
 		expect(outerEvaluate).toHaveBeenCalledTimes(1);
-		expect(result.finalMessage).toBe("The nested workflow failed.");
+		expect(result.finalMessage).toBe(FAILED_TOOL_FALLBACK_MESSAGE);
 		expect(result.finalMessage).not.toContain("Everything succeeded");
 		expect(result.finalMessage).not.toContain("PRIVATE_DIAGNOSTIC");
 		expect(result.trajectory.steps.at(-1)).toMatchObject({

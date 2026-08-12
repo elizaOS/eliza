@@ -2768,12 +2768,9 @@ describe("v5 planner loop skeleton", () => {
 		});
 
 		expect(executeToolCall).toHaveBeenCalledTimes(2);
-		// A FINISH that declares success:false is a structural failure
-		// acknowledgment, so the evaluator's own diagnosis ships instead of
-		// being replaced by the generic failed-step sentence (#17948).
-		expect(result.finalMessage).toBe(
-			"I could not retrieve that from the available sources.",
-		);
+		// Different failed operations remain distinct for loop limits, but neither
+		// licenses model-authored terminal authority.
+		expect(result.finalMessage).toBe(FAILED_TOOL_FALLBACK_MESSAGE);
 	});
 
 	it("collapses repeated parameter-validation failures on the same tool even when args vary", async () => {

@@ -601,6 +601,10 @@ describe("TASKS create lane planner integration", () => {
     expect(result?.verifiedUserFacing).toBe(true);
     expect(result?.data).toEqual({
       awaitingUserInput: true,
+      dependencyFailure: {
+        phase: "pre_effect",
+        acceptance: "rejected",
+      },
     });
     expect(result?.effectReceipts).toEqual([
       expect.objectContaining({
@@ -691,6 +695,128 @@ describe("TASKS create lane planner integration", () => {
         awaitingUserInput: true,
       },
     });
+    expect(result.trajectory.steps.at(-1)?.terminalMessage).toBe(guidance);
+  });
+
+  it("retains task and session effects while relaying a safe runtime dependency failure", async () => {
+    const diagnostic =
+      "dependency executor failed at /private/runtime/task.ts for 3f2504e0-4f89-11d3-9a0c-0305e82c3301; API_TOKEN=never-show; Authorization: Bearer bearer-never-show";
+    const guidance =
+      "I started part of the task, but its dependency plan could not continue safely. I stopped the remaining lanes. Review the created task and session state before retrying.";
+    const acp = makeAcp();
+    acp.sendPrompt.mockRejectedValueOnce(new Error(diagnostic));
+    const taskService = makeTaskService();
+    const runtime = makeRuntime(
+      { ELIZA_ORCHESTRATOR_LANE_PLANNER: "1" },
+      acp,
+      taskService,
+    );
+    const useModel = vi.fn(async () => ({
+      text: "",
+      toolCalls: [
+        {
+          id: "tasks",
+          name: "TASKS",
+          arguments: {
+            action: "create",
+            maxParallel: 1,
+            dependencies: { "lane-2": ["lane-1"] },
+            agents: [
+              "Update plugins/plugin-agent-orchestrator/src/services/lane-planner.ts",
+              "Update packages/core/src/runtime.ts",
+            ].join(" | "),
+          },
+        },
+      ],
+    }));
+    runtime.useModel = useModel as IAgentRuntime["useModel"];
+    const callback = vi.fn(async () => []) as unknown as HandlerCallback;
+    const evaluate = vi.fn(async () => ({
+      success: true,
+      decision: "FINISH" as const,
+      thought: "A generic evaluator must not replace typed failure authority.",
+      messageToUser: "GENERIC_FALLBACK",
+    }));
+    const message = makeMessage("split dependent work");
+
+    const result = await runPlannerLoop({
+      runtime,
+      context: { id: "ctx" },
+      tools: [{ name: "TASKS", description: "Manage coding tasks." }],
+      executeToolCall: async (toolCall) => {
+        const actionResult = await tasksAction.handler(
+          runtime,
+          message,
+          {} as State,
+          { parameters: toolCall.params ?? {} },
+          callback,
+        );
+        if (!actionResult) throw new Error("TASKS returned no action result");
+        return actionResultToPlannerToolResult(actionResult);
+      },
+      evaluate,
+    });
+
+    expect(useModel).toHaveBeenCalledTimes(1);
+    expect(evaluate).not.toHaveBeenCalled();
+    expect(acp.spawnSession).toHaveBeenCalledTimes(1);
+    expect(taskService.createTask).toHaveBeenCalledTimes(1);
+    expect(callback).toHaveBeenCalledTimes(1);
+    expect(callback.mock.calls[0]?.[0]).toEqual({ text: guidance });
+    expect(JSON.stringify(useModel.mock.calls)).not.toMatch(
+      /private\/runtime|3f2504e0|API_TOKEN|Authorization|Bearer|never-show/iu,
+    );
+    expect(JSON.stringify(callback.mock.calls)).not.toMatch(
+      /private\/runtime|3f2504e0|API_TOKEN|Authorization|Bearer|never-show/iu,
+    );
+    expect(result.finalMessage).toBe(guidance);
+    expect(result.finalMessage).not.toBe("GENERIC_FALLBACK");
+    expect(result.finalMessage).not.toMatch(
+      /private\/runtime|3f2504e0|API_TOKEN|Authorization|Bearer|never-show/iu,
+    );
+    const toolResult = result.trajectory.steps[0]?.result;
+    expect(toolResult).toMatchObject({
+      success: false,
+      error: "LANE_DEPENDENCY_FAILED",
+      userFacingText: guidance,
+      verifiedUserFacing: true,
+      turnComplete: true,
+      continueChain: false,
+      data: {
+        dependencyFailure: {
+          phase: "post_effect",
+          acceptance: "unknown",
+        },
+        outcomeUnknown: true,
+        retryable: false,
+        reconciliationRequired: true,
+        agents: [
+          expect.objectContaining({
+            id: "sess-1",
+            sessionId: "sess-1",
+            status: "failed",
+            error: diagnostic,
+          }),
+        ],
+        lanes: [
+          expect.objectContaining({ id: "lane-1", taskId: "task-1" }),
+          expect.objectContaining({ id: "lane-2" }),
+        ],
+      },
+      effectReceipts: [
+        expect.objectContaining({
+          outcome: "failed",
+          resource: { kind: "orchestrator.task", id: "task-1" },
+          artifacts: [{ kind: "acp.session", id: "sess-1" }],
+          failure: {
+            code: "LANE_DEPENDENCY_FAILED",
+            retryable: false,
+            acceptance: "unknown",
+          },
+        }),
+      ],
+    });
+    expect(toolResult?.data?.awaitingUserInput).toBeUndefined();
     expect(result.trajectory.steps.at(-1)?.terminalMessage).toBe(guidance);
   });
 

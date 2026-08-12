@@ -15,6 +15,7 @@ routes:
 
 rules:
 - judge latest action result against user goal
+- tool_authority is the complete model-visible record of tool work: use its tool_name, machine_status, and canonical_user_facing_text only; unavailable means no cause, parameters, identifiers, or diagnostic detail is licensed for inference
 - success=true needs completed tool result evidence; planning/read/search alone do not satisfy write/send/save/create/update/delete/payment/transfer
 - confirmation/owner approval/missing input/MFA/human handoff => FINISH success=false; never bypass with lower-level tool
 - terminal planner text that narrates work, exposes tool/function syntax, or says tool needed without executed result => CONTINUE; do not reuse as messageToUser

@@ -33,6 +33,7 @@ import {
 	cacheProviderOptions,
 	trajectoryStepsToMessages,
 } from "./planner-rendering";
+import { projectModelVisibleTrajectory } from "./planner-trajectory";
 import type {
 	ContextObject,
 	EvaluatorEffects,
@@ -380,12 +381,16 @@ function renderEvaluatorModelInput(params: {
 	promptSegments: PromptSegment[];
 	cacheKeySegments: PromptSegment[];
 } {
-	const renderedContext = renderContextObject(params.context);
+	const modelTrajectory = projectModelVisibleTrajectory(
+		params.trajectory,
+		params.context,
+	);
+	const renderedContext = renderContextObject(modelTrajectory.context);
 	const template = params.template ?? evaluatorTemplate;
 	const instructions = (
 		template.split("context_object:")[0] ?? template
 	).trim();
-	const stepMessages = trajectoryStepsToMessages(params.trajectory.steps);
+	const stepMessages = trajectoryStepsToMessages(modelTrajectory.steps);
 	// Mirrors planner-loop: the evaluator stage instructions are template-derived
 	// (`evaluatorTemplate`) and structurally identical across calls. Marking
 	// the segment `stable: true` makes them cacheable on Anthropic's wire path.

@@ -25,14 +25,7 @@ import type {
 	ActionResult,
 	ProviderDataRecord,
 } from "../types/components";
-import type {
-	ContextEvent,
-	ContextInstructionEvent,
-	ContextMessageEvent,
-	ContextObjectTool,
-	ContextProviderEvent,
-	ContextSegmentEvent,
-} from "../types/context-object";
+import type { ContextEvent, ContextObjectTool } from "../types/context-object";
 import { hasAppliedUserFacingEffectProof } from "../types/effects";
 import {
 	type ChatMessage,
@@ -86,6 +79,7 @@ import {
 	toolMessageContent,
 	trajectoryStepsToMessages,
 } from "./planner-rendering";
+import { allSteps, projectModelVisibleTrajectory } from "./planner-trajectory";
 import type {
 	ContextObject,
 	EvaluatorOutput,
@@ -119,6 +113,7 @@ export {
 	cacheProviderOptions,
 	trajectoryStepsToMessages,
 } from "./planner-rendering";
+export { allSteps } from "./planner-trajectory";
 export {
 	looksLikeActionEnvelopeJson,
 	looksLikeEvaluatorEnvelopeJson,
@@ -239,16 +234,6 @@ export async function runPlannerLoop(
 }
 
 /**
- * Chronological semantic history for the turn. Compaction may move every live
- * step into `archivedSteps`, but it must never reset authority, limits, or
- * canonical-result selection. Rendering and compaction mutation deliberately
- * continue to use `trajectory.steps` as their bounded live window.
- */
-export function allSteps(trajectory: PlannerTrajectory): PlannerStep[] {
-	return [...trajectory.archivedSteps, ...trajectory.steps];
-}
-
-/**
  * Overall machine outcome of a completed planner run. An unresolved operation
  * or a terminal evaluator failure remains authoritative even when a later,
  * unrelated tool succeeded; otherwise the latest actual tool result supplies
@@ -284,16 +269,8 @@ function writeTerminalResult(result: PlannerLoopResult): PlannerLoopResult {
 	if (result.endedWithDeliberateSilence) {
 		return { ...result, finalMessage: undefined };
 	}
-	const failureReport =
-		result.evaluator?.success === false
-			? userSafeFailureReport(result.finalMessage, result.trajectory)
-			: undefined;
 	const finalMessage = userSafeFinalMessage(
-		terminalMessageWithFailureAuthority(
-			result.trajectory,
-			result.finalMessage,
-			failureReport,
-		),
+		terminalMessageWithFailureAuthority(result.trajectory, result.finalMessage),
 		result.trajectory,
 	);
 	const iteration =
@@ -713,12 +690,6 @@ async function runPlannerLoopIterations(
 										trajectory,
 										evaluator.messageToUser ?? plannerOutput.messageToUser,
 									),
-									// Same structural failure acknowledgment as the post-tool
-									// FINISH path: success:false licenses the evaluator's own
-									// diagnosis over the generic failed-step sentence (#17948).
-									evaluator.success === false
-										? userSafeFailureReport(evaluator.messageToUser, trajectory)
-										: undefined,
 								),
 								trajectory,
 							),
@@ -1353,13 +1324,6 @@ async function runPlannerLoopIterations(
 								? failedToolFallbackMessage(trajectory)
 								: undefined,
 						),
-						// A FINISH that declares success:false is a structural failure
-						// acknowledgment; its messageToUser is the evaluator's diagnosis
-						// of the failed step (it saw the failed result in its context)
-						// and must not be discarded for the generic sentence (#17948).
-						evaluator.success === false
-							? userSafeFailureReport(evaluator.messageToUser, trajectory)
-							: undefined,
 					),
 					trajectory,
 				),
@@ -2657,6 +2621,7 @@ async function evaluateTrajectory(
 			runtime: params.runtime,
 			context: trajectory.context,
 			trajectory,
+			provider: params.provider,
 		});
 	}
 
@@ -2669,6 +2634,7 @@ async function evaluateTrajectory(
 		trajectoryId: params.trajectoryId,
 		parentStageId: params.parentStageId,
 		iteration,
+		provider: params.provider,
 	});
 }
 
@@ -3449,17 +3415,13 @@ function latestUnresolvedFailedNonTerminalToolStep(
  * unrelated VIEWS/SHELL work from laundering an unhandled failure into a
  * healthy-looking completion.
  *
- * `failureReport` is a model-authored diagnosis of the failure whose producing
- * output STRUCTURALLY declared the turn failed (evaluator `success:false`, or
- * a synthesis pass explicitly instructed about the failure). It is not
- * laundering by construction — the deciding output admitted failure — so it
- * may stand in for the generic fallback when the failed tool owns no
- * user-safe text of its own (#17948).
+ * Model-authored diagnoses never override unresolved failure authority. The
+ * tool may provide a typed user-facing failure projection; otherwise the
+ * machine-owned generic failure is the only terminal output.
  */
 function terminalMessageWithFailureAuthority(
 	trajectory: PlannerTrajectory,
 	candidate: string | undefined,
-	failureReport?: string,
 ): string | undefined {
 	const unresolvedFailure =
 		latestUnresolvedFailedNonTerminalToolStep(trajectory);
@@ -3482,7 +3444,7 @@ function terminalMessageWithFailureAuthority(
 		return pendingInteraction;
 	}
 
-	return groundedFailedToolMessage(unresolvedFailure, failureReport);
+	return groundedFailedToolMessage(unresolvedFailure);
 }
 
 /**
@@ -3683,8 +3645,7 @@ async function finishWithForcedSynthesis(params: {
 	instruction?: string;
 }): Promise<PlannerLoopResult> {
 	const { loop, config, trajectory, iteration } = params;
-	let synthesisContext = forcedSynthesisBaseContext(loop.context);
-	synthesisContext = appendContextEvent(synthesisContext, {
+	const synthesisContext = appendContextEvent(loop.context, {
 		id: `force-synthesis:${iteration}`,
 		type: "instruction",
 		source: "planner-loop",
@@ -3696,51 +3657,10 @@ async function finishWithForcedSynthesis(params: {
 				"user now from the tool results already in this trajectory; if they do not " +
 				"contain the answer, say plainly what you found and what was missing.",
 	});
-	const authority = allSteps(trajectory)
-		.filter(
-			(
-				step,
-			): step is PlannerStep & {
-				toolCall: PlannerToolCall;
-				result: PlannerToolResult;
-			} => step.toolCall !== undefined && step.result !== undefined,
-		)
-		.map((step) => {
-			const userFacingText = getNonEmptyString(step.result.userFacingText);
-			return [
-				`tool_name: ${JSON.stringify(step.toolCall.name)}`,
-				`machine_status: ${step.result.success === true ? "success" : "failed"}`,
-				userFacingText
-					? `canonical_user_facing_text: ${JSON.stringify(userFacingText)}`
-					: "canonical_user_facing_text: unavailable",
-			].join("\n");
-		});
-	if (authority.length > 0) {
-		synthesisContext = appendContextEvent(synthesisContext, {
-			id: `force-synthesis-authority:${iteration}`,
-			type: "segment",
-			source: "planner-loop",
-			createdAt: Date.now(),
-			segment: {
-				id: `force-synthesis-authority:${iteration}`,
-				label: "tool_authority",
-				content: authority.join("\n\n"),
-				stable: false,
-			},
-		});
-	}
-	// Forced synthesis is a user-output boundary, not another reasoning turn.
-	// Its fresh context carries the original request, providers, reply reference,
-	// and instructions plus the projection above. No planner thought, call id,
-	// params, diagnostic result, compaction summary, terminal candidate, or
-	// evaluator output reaches this model boundary.
-	const synthesisTrajectory: PlannerTrajectory = {
-		context: synthesisContext,
-		steps: [],
-		archivedSteps: [],
-		plannedQueue: [],
-		evaluatorOutputs: [],
-	};
+	const synthesisTrajectory = projectModelVisibleTrajectory(
+		trajectory,
+		synthesisContext,
+	);
 	const synthOutput = await callPlanner({
 		runtime: loop.runtime,
 		context: synthesisTrajectory.context,
@@ -3776,127 +3696,6 @@ async function finishWithForcedSynthesis(params: {
 		trajectory,
 		finalMessage,
 	};
-}
-
-function forcedSynthesisBaseContext(context: ContextObject): ContextObject {
-	const original = normalizePlannerContext(context);
-	const events = original.events.flatMap((event): ContextEvent[] => {
-		if (isSynthesisMessageEvent(event)) {
-			return [
-				{
-					id: event.id,
-					type: "message",
-					source: event.source,
-					createdAt: event.createdAt,
-					message: {
-						id: event.message.id,
-						role: event.message.role,
-						content: event.message.content,
-						name: event.message.name,
-					},
-				},
-			];
-		}
-		if (isSynthesisProviderEvent(event)) {
-			return [
-				{
-					id: event.id,
-					type: "provider",
-					source: event.source,
-					createdAt: event.createdAt,
-					name: event.name,
-					text: event.text,
-					cacheStable: event.cacheStable,
-				},
-			];
-		}
-		if (isSynthesisInstructionEvent(event)) {
-			return [
-				{
-					id: event.id,
-					type: "instruction",
-					source: event.source,
-					createdAt: event.createdAt,
-					content: event.content,
-					role: event.role,
-					stable: event.stable,
-				},
-			];
-		}
-		if (isSynthesisReplyReferenceEvent(event)) {
-			return [
-				{
-					id: event.id,
-					type: "segment",
-					source: event.source,
-					createdAt: event.createdAt,
-					segment: {
-						id: event.segment.id,
-						label: "reply_reference",
-						content: event.segment.content,
-						stable: event.segment.stable,
-					},
-				},
-			];
-		}
-		return [];
-	});
-	return {
-		id: original.id,
-		version: original.version,
-		createdAt: original.createdAt,
-		staticPrefix: original.staticPrefix
-			? {
-					systemPrompt: original.staticPrefix.systemPrompt,
-					characterPrompt: original.staticPrefix.characterPrompt,
-					staticProviders: original.staticPrefix.staticProviders,
-				}
-			: undefined,
-		trajectoryPrefix: original.trajectoryPrefix
-			? {
-					selectedContexts: original.trajectoryPrefix.selectedContexts,
-					contextDefinitions: original.trajectoryPrefix.contextDefinitions,
-					contextProviders: original.trajectoryPrefix.contextProviders,
-				}
-			: undefined,
-		events,
-	};
-}
-
-function isSynthesisMessageEvent(
-	event: ContextEvent,
-): event is ContextMessageEvent {
-	return (
-		event.type === "message" &&
-		"message" in event &&
-		isPlainObject(event.message) &&
-		typeof event.message.role === "string" &&
-		"content" in event.message
-	);
-}
-
-function isSynthesisProviderEvent(
-	event: ContextEvent,
-): event is ContextProviderEvent {
-	return event.type === "provider" && "name" in event;
-}
-
-function isSynthesisInstructionEvent(
-	event: ContextEvent,
-): event is ContextInstructionEvent {
-	return event.type === "instruction" && "content" in event;
-}
-
-function isSynthesisReplyReferenceEvent(
-	event: ContextEvent,
-): event is ContextSegmentEvent {
-	return (
-		event.type === "segment" &&
-		"segment" in event &&
-		isPlainObject(event.segment) &&
-		event.segment.label === "reply_reference" &&
-		typeof event.segment.content === "string"
-	);
 }
 
 function terminalMessageFromToolCalls(
@@ -5058,10 +4857,7 @@ const TERMINAL_TOOL_CALL_FINISH_THOUGHT =
 const TERMINAL_AFTER_FAILED_TOOL_THOUGHT =
 	"Terminal FINISH: planner ended the loop after a failed tool; the tool-owned failure remains authoritative.";
 
-function groundedFailedToolMessage(
-	step: PlannerStep,
-	failureReport?: string,
-): string {
+function groundedFailedToolMessage(step: PlannerStep): string {
 	const result = step.result;
 	const toolOwnedText =
 		result &&
@@ -5071,31 +4867,7 @@ function groundedFailedToolMessage(
 			: result?.userFacingText;
 	const candidate = sanitizePlannerMessage(toolOwnedText);
 	if (candidate && !isUnsafeUserVisibleText(candidate)) return candidate;
-	// The tool owns no user-safe text. A structurally failure-acknowledging
-	// model diagnosis beats the generic fallback: the model saw the failed
-	// result in its context, so its words describe the actual cause (#17948).
-	if (failureReport) return failureReport;
 	return FAILED_TOOL_FALLBACK_MESSAGE;
-}
-
-/**
- * User-safe projection of a model-authored failure diagnosis. Callers must
- * only pass messages whose producing output structurally declared failure
- * (evaluator `success:false`, failure-instructed synthesis) — this helper
- * enforces the text-safety half of that contract: leaked tool syntax,
- * meta-narration, and raw-tool-text echoes are rejected so the caller falls
- * back to the tool-owned message or the generic placeholder.
- */
-function userSafeFailureReport(
-	message: unknown,
-	trajectory: PlannerTrajectory,
-): string | undefined {
-	const candidate = sanitizePlannerMessage(message);
-	if (!candidate) return undefined;
-	if (isUnsafeUserVisibleText(candidate)) return undefined;
-	if (isToolMetaNarration(candidate)) return undefined;
-	if (isEchoOfPlannerFacingToolText(candidate, trajectory)) return undefined;
-	return candidate;
 }
 
 function terminalToolCallFinish(

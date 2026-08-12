@@ -14,6 +14,7 @@ import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "../runtime/builtin-fi
 import type { CandidateActionBackstopRule } from "../runtime/candidate-action-backstop";
 import { ContextRegistry } from "../runtime/context-registry";
 import { registerDirectActionRoutingRule } from "../runtime/direct-action-routing";
+import { TOOL_RESULT_UNAVAILABLE_MESSAGE } from "../runtime/planner-loop";
 import type { ResponseHandlerEvaluator } from "../runtime/response-handler-evaluators";
 import type { ResponseHandlerFieldEvaluator } from "../runtime/response-handler-field-evaluator";
 import { ResponseHandlerFieldRegistry } from "../runtime/response-handler-field-registry";
@@ -2000,6 +2001,9 @@ describe("runV5MessageRuntimeStage1", () => {
 			return {
 				success: true,
 				text: "Spawned coding agent.",
+				userFacingText: "Spawned coding agent.",
+				verifiedUserFacing: true,
+				turnComplete: true,
 				continueChain: false,
 				data: { actionName: "TASKS" },
 			};
@@ -3558,7 +3562,7 @@ describe("runV5MessageRuntimeStage1", () => {
 		}
 	});
 
-	it("keeps the planner prompt byte-identical on an addressed group turn (no ambient policy, no terminal conversion)", async () => {
+	it("keeps the planner prompt byte-identical while preserving addressed IGNORE silence", async () => {
 		// Addressed branch pin (same pattern as the memory-surface branch
 		// tests): a platform mention makes the turn addressed, so the
 		// ambient-turn policy must not render and a planner IGNORE keeps
@@ -3594,10 +3598,9 @@ describe("runV5MessageRuntimeStage1", () => {
 			.map((entry) => entry.content ?? "")
 			.join("\n");
 		expect(plannerContent).not.toContain("ambient_turn_policy");
-		expect(result.kind).toBe("planned_reply");
-		if (result.kind === "planned_reply") {
-			expect(result.result.responseContent).toBeNull();
-			expect(result.result.mode).toBe("none");
+		expect(result.kind).toBe("terminal");
+		if (result.kind === "terminal") {
+			expect(result.action).toBe("IGNORE");
 		}
 	});
 
@@ -4344,7 +4347,7 @@ describe("runV5MessageRuntimeStage1", () => {
 		}
 	});
 
-	it("uses the Stage 1 ack when an async action finishes without planner prose", async () => {
+	it("does not revive a Stage 1 ack after an async action returns no typed prose", async () => {
 		const runtime = makeRuntime([
 			stage1Response({
 				thought: "Spawn the coding task.",
@@ -4387,7 +4390,10 @@ describe("runV5MessageRuntimeStage1", () => {
 
 		expect(result.kind).toBe("planned_reply");
 		if (result.kind === "planned_reply") {
-			expect(result.result.responseContent?.text).toBe("On it.");
+			expect(result.result.responseContent?.text).toBe(
+				TOOL_RESULT_UNAVAILABLE_MESSAGE,
+			);
+			expect(result.result.responseContent?.text).not.toBe("On it.");
 		}
 	});
 

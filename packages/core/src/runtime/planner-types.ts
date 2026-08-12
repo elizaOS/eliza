@@ -242,6 +242,7 @@ export interface PlannerLoopParams {
 		runtime: PlannerRuntime;
 		context: ContextObject;
 		trajectory: PlannerTrajectory;
+		provider?: string;
 	}) => Promise<EvaluatorOutput> | EvaluatorOutput;
 	onToolCallEnqueued?: (
 		toolCall: PlannerToolCall,

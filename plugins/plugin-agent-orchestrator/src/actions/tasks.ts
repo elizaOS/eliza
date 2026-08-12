@@ -122,6 +122,23 @@ type TaskOp =
   | "archive"
   | "reopen";
 
+type LaneDependencyFailureAuthority =
+  | { phase: "pre_effect"; acceptance: "rejected" }
+  | { phase: "post_effect"; acceptance: "unknown" };
+
+type LaneDependencyActionResult = ActionResult & {
+  success: false;
+  error: string;
+  text: string;
+  userFacingText: string;
+  verifiedUserFacing: true;
+  continueChain: false;
+  data: NonNullable<ActionResult["data"]>;
+};
+
+const RUNTIME_LANE_DEPENDENCY_FAILURE_TEXT =
+  "I started part of the task, but its dependency plan could not continue safely. I stopped the remaining lanes. Review the created task and session state before retrying.";
+
 const SUPPORTED_OPS: readonly TaskOp[] = [
   "create",
   "spawn_agent",
@@ -1053,6 +1070,7 @@ async function runCreateLegacy(
     return errorResult("SMITHERS_DURABLE_TASK_UNAVAILABLE", textOut);
   }
 
+  const attemptedSessions = new Map<number, SpawnResult>();
   const settled = await Promise.allSettled(
     tasks.map(async (part, index) => {
       const parsed = parseAgentPrefix(part, baseAgentType);
@@ -1130,6 +1148,7 @@ async function runCreateLegacy(
           ...(durableRun ? smithersDurableRunMetadata(durableRun) : {}),
         },
       });
+      attemptedSessions.set(index, session);
 
       // Link the already-durable ACP record to its task before the first
       // prompt. If this write fails on the Smithers path, do not execute: boot
@@ -1275,6 +1294,7 @@ async function runCreateLegacy(
     const agentType = parsed.agentType as AgentType;
     const label = baseLabel ?? labelFrom(parsed.task, index);
     const msg = failureMessage(outcome.reason);
+    const attemptedSession = attemptedSessions.get(index);
     logger(runtime).error(
       `TASKS:create launch failed: ${JSON.stringify({
         error: msg,
@@ -1283,10 +1303,10 @@ async function runCreateLegacy(
       })}`,
     );
     results.push({
-      sessionId: "",
-      id: "",
-      agentType,
-      workdir: fallbackWorkdir,
+      sessionId: attemptedSession?.sessionId ?? "",
+      id: attemptedSession?.sessionId ?? "",
+      agentType: attemptedSession?.agentType ?? agentType,
+      workdir: attemptedSession?.workdir ?? fallbackWorkdir,
       label,
       status: "failed",
       error: msg,
@@ -1301,7 +1321,11 @@ async function runCreateLegacy(
     return {
       success: false,
       text: textOut,
-      data: { agents: results, suppressActionResultClipboard: true },
+      data: {
+        ...(threadId ? { taskId: threadId } : {}),
+        agents: results,
+        suppressActionResultClipboard: true,
+      },
     };
   }
 
@@ -1325,6 +1349,89 @@ async function runCreateLegacy(
       taskId: threadId,
       suppressActionResultClipboard: true,
     },
+  };
+}
+
+function laneDependencyFailureResult(
+  args:
+    | { phase: "pre_effect"; error: unknown }
+    | {
+        phase: "post_effect";
+        error: unknown;
+        effectData: NonNullable<ActionResult["data"]>;
+      },
+): LaneDependencyActionResult | undefined {
+  const code =
+    args.error instanceof ElizaError
+      ? String(args.error.code)
+      : typeof args.error === "string"
+        ? args.error
+        : undefined;
+  if (
+    !code ||
+    (!code.startsWith("LANE_DEPENDENCY_") && code !== "LANE_PLAN_DEADLOCK")
+  ) {
+    return undefined;
+  }
+
+  const authority: LaneDependencyFailureAuthority =
+    args.phase === "pre_effect"
+      ? { phase: "pre_effect", acceptance: "rejected" }
+      : { phase: "post_effect", acceptance: "unknown" };
+  if (args.phase === "pre_effect") {
+    const text = failureMessage(args.error);
+    return {
+      success: false,
+      error: code,
+      text,
+      userFacingText: text,
+      verifiedUserFacing: true,
+      continueChain: false,
+      data: {
+        awaitingUserInput: true,
+        dependencyFailure: authority,
+      },
+    };
+  }
+
+  return {
+    success: false,
+    error: code,
+    text: RUNTIME_LANE_DEPENDENCY_FAILURE_TEXT,
+    userFacingText: RUNTIME_LANE_DEPENDENCY_FAILURE_TEXT,
+    verifiedUserFacing: true,
+    turnComplete: true,
+    continueChain: false,
+    data: {
+      ...args.effectData,
+      dependencyFailure: authority,
+      outcomeUnknown: true,
+      retryable: false,
+      reconciliationRequired: true,
+    },
+  };
+}
+
+function lanePlanEffectData(
+  plan: Awaited<ReturnType<LanePlannerService["plan"]>>,
+  results: Array<ActionResult | undefined>,
+): NonNullable<ActionResult["data"]> {
+  return {
+    waveId: plan.waveId,
+    agents: results.flatMap((result) =>
+      effectRecords(objectValue(result?.data)?.agents),
+    ),
+    lanes: plan.lanes.map((lane, index) => ({
+      id: lane.id,
+      title: lane.title,
+      taskId: effectString(objectValue(results[index]?.data)?.taskId),
+      scopePaths: lane.scopePaths,
+      forbiddenPaths: lane.forbiddenPaths,
+      branchName: lane.branchName,
+      dependencies: lane.dependencies,
+      collisions: lane.collisions,
+    })),
+    suppressActionResultClipboard: true,
   };
 }
 
@@ -1388,22 +1495,13 @@ async function runCreate(
       workdir: explicitWorkdir,
     });
   } catch (error) {
-    if (
-      error instanceof ElizaError &&
-      (String(error.code).startsWith("LANE_DEPENDENCY_") ||
-        error.code === "LANE_PLAN_DEADLOCK")
-    ) {
-      const msg = failureMessage(error);
-      await callbackText(callback, msg);
-      return {
-        success: false,
-        error: error.code,
-        text: msg,
-        userFacingText: msg,
-        verifiedUserFacing: true,
-        continueChain: false,
-        data: { awaitingUserInput: true },
-      };
+    const dependencyFailure = laneDependencyFailureResult({
+      phase: "pre_effect",
+      error,
+    });
+    if (dependencyFailure) {
+      await callbackText(callback, dependencyFailure.userFacingText);
+      return dependencyFailure;
     }
     logger(runtime).warn(
       `[TASKS:create] lane planner failed, falling back to legacy single-task behavior: ${
@@ -1436,28 +1534,20 @@ async function runCreate(
     callback,
     plan,
   );
-  if (!laneOutcome.success) return laneOutcome.result;
+  if (!laneOutcome.success) {
+    if (
+      laneOutcome.result.verifiedUserFacing === true &&
+      laneOutcome.result.userFacingText
+    ) {
+      await callbackText(callback, laneOutcome.result.userFacingText);
+    }
+    return laneOutcome.result;
+  }
   const successfulResults = laneOutcome.results;
   return {
     success: true,
     text: `Created ${successfulResults.length} task-agent lanes.`,
-    data: {
-      waveId: plan.waveId,
-      agents: successfulResults.flatMap((result) =>
-        effectRecords(objectValue(result.data)?.agents),
-      ),
-      lanes: plan.lanes.map((lane, index) => ({
-        id: lane.id,
-        title: lane.title,
-        taskId: successfulResults[index]?.data?.taskId,
-        scopePaths: lane.scopePaths,
-        forbiddenPaths: lane.forbiddenPaths,
-        branchName: lane.branchName,
-        dependencies: lane.dependencies,
-        collisions: lane.collisions,
-      })),
-      suppressActionResultClipboard: true,
-    },
+    data: lanePlanEffectData(plan, successfulResults),
   };
 }
 
@@ -1518,7 +1608,8 @@ async function runLanePlan(
           return;
         }
       }
-      results[index] = await runCreateLegacy(
+      const laneCallbacks: CapturedCallback[] = [];
+      const actionResult = await runCreateLegacy(
         runtime,
         message,
         state,
@@ -1537,8 +1628,19 @@ async function runLanePlan(
           },
         },
         laneExecutionContent(content),
-        callback,
+        callback
+          ? async (response, actionName) => {
+              laneCallbacks.push({ response, actionName });
+              return [];
+            }
+          : undefined,
       );
+      results[index] = actionResult;
+      if (actionResult.success && callback) {
+        for (const emitted of laneCallbacks) {
+          await callback(emitted.response, emitted.actionName);
+        }
+      }
     })()
       .then((result) => {
         const actionResult = result ?? results[index];
@@ -1567,11 +1669,18 @@ async function runLanePlan(
         blocker.endsWith(": failed"),
       );
       if (failedBlocker) {
-        dependencyFailure = {
-          success: false,
+        dependencyFailure = laneDependencyFailureResult({
+          phase: "post_effect",
           error: "LANE_DEPENDENCY_FAILED",
-          text: `Lane ${entry.lane.id} blocked by ${failedBlocker}.`,
-        };
+          effectData: lanePlanEffectData(plan, results),
+        });
+        if (!dependencyFailure) {
+          throw new ElizaError("Dependency failure classification was lost", {
+            code: "LANE_DEPENDENCY_CLASSIFICATION_MISSING",
+            context: { laneId: entry.lane.id, failedBlocker },
+            severity: "fatal",
+          });
+        }
         pending.clear();
         break;
       }
@@ -1591,17 +1700,31 @@ async function runLanePlan(
         laneId: lane.id,
         blockers: laneReadiness(lane, completed, failed).blockers,
       }));
-      throw new ElizaError("No lane is ready to launch", {
+      const deadlock = new ElizaError("No lane is ready to launch", {
         code: "LANE_PLAN_DEADLOCK",
         context: { blocked },
         severity: "ephemeral",
       });
+      const classified = laneDependencyFailureResult({
+        phase: "post_effect",
+        error: deadlock,
+        effectData: lanePlanEffectData(plan, results),
+      });
+      if (!classified) throw deadlock;
+      return { success: false, result: classified };
     }
     if (active.size > 0) await Promise.race(active);
   }
 
   for (const result of results) {
-    if (!result.success) return { success: false, result };
+    if (!result.success) {
+      const classified = laneDependencyFailureResult({
+        phase: "post_effect",
+        error: result.error,
+        effectData: lanePlanEffectData(plan, results),
+      });
+      return { success: false, result: classified ?? result };
+    }
   }
   return { success: true, results };
 }
@@ -4323,6 +4446,39 @@ function issueEffectProof(
   };
 }
 
+function tasksCreateEffectProof(
+  data: Record<string, unknown>,
+  includeFailedSessions = false,
+): TasksEffectProof | undefined {
+  const taskRefs = [
+    effectString(data.taskId),
+    ...effectRecords(data.lanes).map((lane) => effectString(lane.taskId)),
+  ]
+    .filter((id): id is string => Boolean(id))
+    .map((id) => ({ kind: "orchestrator.task", id }));
+  const sessionRefs = effectRecords(data.agents)
+    .filter(
+      (agent) =>
+        (includeFailedSessions || agent.status !== "failed") &&
+        agent.reused !== true,
+    )
+    .map((agent) => effectString(agent.sessionId) ?? effectString(agent.id))
+    .filter((id): id is string => Boolean(id))
+    .map((id) => ({ kind: "acp.session", id }));
+  const refs = uniqueEffectRefs([...taskRefs, ...sessionRefs]);
+  if (refs.length === 0) return undefined;
+  const durable = refs.find((ref) => ref.kind === "orchestrator.task");
+  const resource = durable ?? refs[0];
+  return {
+    commitId: resource.id,
+    commitKind: durable ? "durable" : "provider_accepted",
+    resource,
+    artifacts: refs.filter(
+      (ref) => ref.kind !== resource.kind || ref.id !== resource.id,
+    ),
+  };
+}
+
 function tasksEffectProof(
   operation: TaskOp,
   params: Record<string, unknown>,
@@ -4405,29 +4561,7 @@ function tasksEffectProof(
       : undefined;
   }
   if (operation === "create") {
-    const taskRefs = [
-      effectString(data.taskId),
-      ...effectRecords(data.lanes).map((lane) => effectString(lane.taskId)),
-    ]
-      .filter((id): id is string => Boolean(id))
-      .map((id) => ({ kind: "orchestrator.task", id }));
-    const sessionRefs = effectRecords(data.agents)
-      .filter((agent) => agent.status !== "failed" && agent.reused !== true)
-      .map((agent) => effectString(agent.sessionId) ?? effectString(agent.id))
-      .filter((id): id is string => Boolean(id))
-      .map((id) => ({ kind: "acp.session", id }));
-    const refs = uniqueEffectRefs([...taskRefs, ...sessionRefs]);
-    if (refs.length === 0) return undefined;
-    const durable = refs.find((ref) => ref.kind === "orchestrator.task");
-    const resource = durable ?? refs[0];
-    return {
-      commitId: resource.id,
-      commitKind: durable ? "durable" : "provider_accepted",
-      resource,
-      artifacts: refs.filter(
-        (ref) => ref.kind !== resource.kind || ref.id !== resource.id,
-      ),
-    };
+    return tasksCreateEffectProof(data);
   }
   return undefined;
 }
@@ -4473,6 +4607,38 @@ function tasksEffectReceipt(args: {
       outcomeUnknown: false,
     };
   }
+  const resultData = objectValue(args.result.data) ?? {};
+  const dependencyFailure = objectValue(resultData.dependencyFailure);
+  const preEffectDependencyFailure =
+    dependencyFailure?.phase === "pre_effect" &&
+    dependencyFailure.acceptance === "rejected";
+  const postEffectDependencyFailure =
+    dependencyFailure?.phase === "post_effect" &&
+    dependencyFailure.acceptance === "unknown";
+  if (preEffectDependencyFailure || postEffectDependencyFailure) {
+    const proof =
+      args.operation === "create"
+        ? tasksCreateEffectProof(resultData, postEffectDependencyFailure)
+        : undefined;
+    const errorCode =
+      effectString(args.result.error) ?? "LANE_DEPENDENCY_FAILED";
+    return {
+      receipt: {
+        ...tasksReceiptBase(
+          args.operation,
+          proof?.resource ?? { kind: "orchestrator.request", id: requestId },
+        ),
+        artifacts: proof?.artifacts ?? [],
+        outcome: "failed",
+        failure: {
+          code: errorCode,
+          retryable: false,
+          acceptance: preEffectDependencyFailure ? "rejected" : "unknown",
+        },
+      },
+      outcomeUnknown: postEffectDependencyFailure,
+    };
+  }
   const proof = tasksEffectProof(
     args.operation,
     args.params,
@@ -4500,9 +4666,7 @@ function tasksEffectReceipt(args: {
     effectString(args.result.error) ?? "AUTHORITATIVE_RECEIPT_MISSING";
   const rejected =
     args.result.success === false &&
-    (TASKS_REJECTED_FAILURE_CODES.has(errorCode) ||
-      errorCode.startsWith("LANE_DEPENDENCY_") ||
-      errorCode === "LANE_PLAN_DEADLOCK");
+    TASKS_REJECTED_FAILURE_CODES.has(errorCode);
   return {
     receipt: {
       ...tasksReceiptBase(args.operation, {

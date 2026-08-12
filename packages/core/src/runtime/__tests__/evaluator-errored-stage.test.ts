@@ -37,17 +37,28 @@ const TRAJECTORY = {
 	context: { id: "ctx" },
 	steps: [
 		{
-			iteration: 1,
-			thought: "",
-			toolCall: {
-				id: "tool-1-0",
-				name: "MEMORY_CREATE",
-				params: { text: "favorite color is teal" },
-			},
-			result: { success: true, text: "Stored memory abc." },
+			iteration: 2,
+			terminalOnly: true,
+			terminalMessage: "EVALUATOR_STAGE_TERMINAL_NEVER_SHOW",
 		},
 	],
-	archivedSteps: [],
+	archivedSteps: [
+		{
+			iteration: 1,
+			thought: "EVALUATOR_STAGE_THOUGHT_NEVER_SHOW",
+			toolCall: {
+				id: "EVALUATOR_STAGE_ID_NEVER_SHOW",
+				name: "MEMORY_CREATE",
+				params: { text: "EVALUATOR_STAGE_PARAM_NEVER_SHOW" },
+			},
+			result: {
+				success: true,
+				text: "EVALUATOR_STAGE_RESULT_NEVER_SHOW",
+				data: { secret: "EVALUATOR_STAGE_DATA_NEVER_SHOW" },
+				error: "EVALUATOR_STAGE_ERROR_NEVER_SHOW",
+			},
+		},
+	],
 	plannedQueue: [],
 	evaluatorOutputs: [],
 };
@@ -82,14 +93,18 @@ describe("runEvaluator — errored evaluation stage evidence", () => {
 		const stage = recorded[0]?.stage;
 		expect(recorded[0]?.trajectoryId).toBe("tj-test");
 		expect(stage?.kind).toBe("evaluation");
-		// The REQUEST is the evidence: system/user context plus the
-		// assistant/tool step pair the failing call carried.
+		// The recorded REQUEST is exactly what the provider received: original
+		// context plus typed machine authority, never the process-local envelope.
 		const messages = stage?.model?.messages ?? [];
-		expect(messages.length).toBeGreaterThanOrEqual(4);
-		expect(messages[0]?.role).toBe("system");
+		expect(messages).toHaveLength(2);
 		const roles = messages.map((m) => m.role);
-		expect(roles).toContain("assistant");
-		expect(roles).toContain("tool");
+		expect(roles).toEqual(["system", "user"]);
+		const request = JSON.stringify(messages);
+		expect(request).toContain("tool_authority");
+		expect(request).toContain("machine_status: success");
+		expect(request).not.toMatch(
+			/EVALUATOR_STAGE_(?:THOUGHT|ID|PARAM|RESULT|DATA|ERROR|TERMINAL)_NEVER_SHOW/,
+		);
 		// The provider's real diagnostic (recovered from responseBody) is on the
 		// recorded response, not just the masked statusText.
 		expect(String(stage?.model?.response ?? "")).toContain(

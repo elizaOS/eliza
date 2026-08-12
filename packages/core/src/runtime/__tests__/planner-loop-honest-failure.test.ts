@@ -2,9 +2,9 @@
  * Honest failed-turn replies (#17948): a planner turn that ends on a failed
  * step keeps the machine-recorded failure authoritative across exec failures,
  * thrown timeouts, validation rejects, structural retryable:false results,
- * and multi-step turns that fail late. Model-authored explanations may enrich
- * structurally acknowledged evaluator failures, but unresolved operations
- * bypass dead post-turn inference. The suite also pins prompt hygiene and
+ * and multi-step turns that fail late. Unresolved operations remain
+ * machine-owned even when an evaluator invents a diagnosis. The suite pins
+ * the shared model projection, provider routing, prompt hygiene, and
  * deterministic terminal persistence.
  * Deterministic — `useModel`, `executeToolCall`, and `evaluate` are vitest
  * mocks; no live model.
@@ -101,7 +101,7 @@ describe("honest failed-turn replies (#17948)", () => {
 		expect(retryInstruction).not.toContain("/home/milady");
 	});
 
-	it("thrown timeout: the evaluator's success:false diagnosis ships directly with no extra model call", async () => {
+	it("thrown timeout: machine failure authority outranks the evaluator's diagnosis", async () => {
 		const useModel = vi.fn().mockResolvedValueOnce({
 			text: "",
 			toolCalls: [
@@ -132,12 +132,10 @@ describe("honest failed-turn replies (#17948)", () => {
 		});
 
 		expect(useModel).toHaveBeenCalledTimes(1);
-		expect(result.finalMessage).toBe(
-			"I tried to fetch that page, but the request timed out before anything came back.",
-		);
+		expect(result.finalMessage).toBe(FAILED_TOOL_FALLBACK_MESSAGE);
 	});
 
-	it("validation reject: the producer's human text reaches the retry context and the evaluator's diagnosis ships from the terminal-text path", async () => {
+	it("validation reject: diagnostic text remains retry context, not terminal authority", async () => {
 		const useModel = vi
 			.fn()
 			.mockResolvedValueOnce({
@@ -193,9 +191,7 @@ describe("honest failed-turn replies (#17948)", () => {
 		expect(retryInstruction).toContain(
 			"failed_tool_cause: I need a trigger (once, cron, or every)",
 		);
-		expect(result.finalMessage).toBe(
-			"I couldn't schedule that — I still need to know when it should run (once, on a cron, or repeating).",
-		);
+		expect(result.finalMessage).toBe(FAILED_TOOL_FALLBACK_MESSAGE);
 	});
 
 	it("retryable:false structured failure skips unresolved-failure synthesis", async () => {
@@ -326,7 +322,7 @@ describe("honest failed-turn replies (#17948)", () => {
 		);
 	});
 
-	it("multi-step turn: a late failure after earlier successes ships the evaluator's diagnosis, not the canned sentence", async () => {
+	it("multi-step turn: a late failure cannot be laundered by evaluator prose", async () => {
 		const useModel = vi.fn().mockResolvedValueOnce({
 			text: "",
 			toolCalls: [
@@ -378,9 +374,7 @@ describe("honest failed-turn replies (#17948)", () => {
 
 		expect(executeToolCall).toHaveBeenCalledTimes(2);
 		expect(useModel).toHaveBeenCalledTimes(1);
-		expect(result.finalMessage).toBe(
-			"I pulled the view list, but the follow-up search failed — nothing matched that pattern.",
-		);
+		expect(result.finalMessage).toBe(FAILED_TOOL_FALLBACK_MESSAGE);
 	});
 
 	it("rejects an unsafe evaluator diagnosis without an extra model call", async () => {
@@ -475,9 +469,7 @@ describe("honest failed-turn replies (#17948)", () => {
 		);
 		expect(retryInstruction).not.toContain("/var/lib");
 		expect(retryInstruction).not.toContain("deadbeef");
-		expect(result.finalMessage).toBe(
-			"I couldn't fetch that — the workspace reference it needs is missing.",
-		);
+		expect(result.finalMessage).toBe(FAILED_TOOL_FALLBACK_MESSAGE);
 	});
 
 	it("does not reach the synthesis provider for an unresolved failure", async () => {
@@ -622,40 +614,115 @@ describe("deterministic post-turn relay", () => {
 		);
 	});
 
-	it("never sends unresolved credential, path, or id diagnostics to another model call", async () => {
+	it("projects the default evaluator call without unresolved credentials, params, paths, or ids", async () => {
 		const diagnostic =
 			"command_failed at /private/ops for job 3f2504e0-4f89-11d3-9a0c-0305e82c3301; API_TOKEN=never-show; Authorization: Bearer bearer-never-show";
-		const useModel = vi.fn().mockResolvedValueOnce({
-			text: "",
-			toolCalls: [
-				{ id: "call-1", name: "SHELL", arguments: { command: "deploy" } },
-			],
-		});
+		const useModel = vi
+			.fn()
+			.mockResolvedValueOnce({
+				text: "PLANNER_THOUGHT_NEVER_SHOW",
+				toolCalls: [
+					{
+						id: "CALL_ID_NEVER_SHOW",
+						name: "SHELL",
+						arguments: {
+							command: "deploy",
+							token: "PARAM_TOKEN_NEVER_SHOW",
+						},
+					},
+				],
+			})
+			.mockResolvedValueOnce({
+				object: {
+					success: false,
+					decision: "FINISH",
+					thought: "I should not infer a cause from hidden diagnostics.",
+					messageToUser: "The credentials were definitely rejected.",
+				},
+			});
 		const executeToolCall = vi.fn(async () => ({
 			success: false,
 			text: diagnostic,
 			error: diagnostic,
-		}));
-		const evaluate = vi.fn(async () => ({
-			success: false,
-			decision: "FINISH" as const,
-			thought: "The step failed.",
-			messageToUser: "call:SHELL{token:never-show}",
+			data: { secret: "RESULT_DATA_NEVER_SHOW" },
 		}));
 
 		const result = await runPlannerLoop({
 			runtime: { useModel },
-			context: { id: "ctx" },
+			context: {
+				id: "ctx",
+				events: [
+					{
+						id: "request",
+						type: "message",
+						message: { role: "user", content: "Deploy the release." },
+					},
+					{
+						id: "provider",
+						type: "provider",
+						name: "SAFE_PROVIDER",
+						text: "SAFE_PROVIDER_CONTEXT",
+					},
+					{
+						id: "instruction",
+						type: "instruction",
+						content: "SAFE_ORIGINAL_INSTRUCTION",
+					},
+					{
+						id: "reply-reference",
+						type: "segment",
+						segment: {
+							label: "reply_reference",
+							content: "SAFE_REPLY_REFERENCE",
+							stable: false,
+						},
+					},
+					{
+						id: "terminal-output",
+						type: "terminal_planner_output",
+						metadata: { text: "TERMINAL_OUTPUT_NEVER_SHOW" },
+					},
+					{
+						id: "evaluation",
+						type: "evaluation",
+						metadata: { thought: "EVALUATOR_OUTPUT_NEVER_SHOW" },
+					},
+					{
+						id: "compaction",
+						type: "segment",
+						segment: {
+							label: "compaction",
+							content: "COMPACTION_OUTPUT_NEVER_SHOW",
+							stable: false,
+						},
+					},
+				],
+			},
+			provider: "pinned-provider",
 			tools: [{ name: "SHELL", description: "Run a shell command." }],
 			executeToolCall,
-			evaluate,
 		});
 
-		expect(useModel).toHaveBeenCalledTimes(1);
-		expect(JSON.stringify(useModel.mock.calls)).not.toMatch(
-			/private\/ops|3f2504e0|API_TOKEN|Authorization|Bearer|bearer-never-show/iu,
+		expect(useModel).toHaveBeenCalledTimes(2);
+		expect(
+			useModel.mock.calls.every((call) => call[2] === "pinned-provider"),
+		).toBe(true);
+		const evaluatorInput = JSON.stringify(useModel.mock.calls[1]?.[1]);
+		expect(evaluatorInput).toContain("tool_authority");
+		expect(evaluatorInput).toContain("Deploy the release.");
+		expect(evaluatorInput).toContain("SAFE_PROVIDER_CONTEXT");
+		expect(evaluatorInput).toContain("SAFE_ORIGINAL_INSTRUCTION");
+		expect(evaluatorInput).toContain("SAFE_REPLY_REFERENCE");
+		expect(evaluatorInput).toContain('tool_name: \\"SHELL\\"');
+		expect(evaluatorInput).toContain("machine_status: failed");
+		expect(evaluatorInput).toContain("canonical_user_facing_text: unavailable");
+		expect(evaluatorInput).not.toMatch(
+			/private\/ops|3f2504e0|API_TOKEN|Authorization|Bearer|bearer-never-show|PLANNER_THOUGHT_NEVER_SHOW|CALL_ID_NEVER_SHOW|PARAM_TOKEN_NEVER_SHOW|RESULT_DATA_NEVER_SHOW|TERMINAL_OUTPUT_NEVER_SHOW|EVALUATOR_OUTPUT_NEVER_SHOW|COMPACTION_OUTPUT_NEVER_SHOW/iu,
 		);
 		expect(result.finalMessage).toBe(FAILED_TOOL_FALLBACK_MESSAGE);
+		expect(result.finalMessage).not.toBe(
+			"The credentials were definitely rejected.",
+		);
 		expect(result.finalMessage).not.toMatch(
 			/private\/ops|3f2504e0|API_TOKEN|never-show/iu,
 		);
@@ -665,6 +732,58 @@ describe("deterministic post-turn relay", () => {
 		);
 		expect(terminalSteps).toHaveLength(1);
 		expect(terminalSteps[0]?.terminalMessage).toBe(result.finalMessage);
+	});
+
+	it("preserves verified success authority and provider routing through the default evaluator", async () => {
+		const canonical = "Release receipt: twelve plugins verified.";
+		const useModel = vi
+			.fn()
+			.mockResolvedValueOnce({
+				text: "SUCCESS_THOUGHT_NEVER_SHOW",
+				toolCalls: [
+					{
+						id: "SUCCESS_CALL_ID_NEVER_SHOW",
+						name: "LOOKUP",
+						arguments: { token: "SUCCESS_PARAM_NEVER_SHOW" },
+					},
+				],
+			})
+			.mockResolvedValueOnce({
+				object: {
+					success: true,
+					decision: "FINISH",
+					thought: "The verified result completes the request.",
+				},
+			});
+
+		const result = await runPlannerLoop({
+			runtime: { useModel },
+			context: { id: "ctx" },
+			provider: "pinned-provider",
+			tools: [{ name: "LOOKUP", description: "Look up records." }],
+			executeToolCall: async () => ({
+				success: true,
+				text: "stdout: /private/release API_TOKEN=success-never-show",
+				data: { secret: "SUCCESS_DATA_NEVER_SHOW" },
+				userFacingText: canonical,
+				verifiedUserFacing: true,
+				turnComplete: false,
+			}),
+		});
+
+		expect(useModel).toHaveBeenCalledTimes(2);
+		expect(
+			useModel.mock.calls.every((call) => call[2] === "pinned-provider"),
+		).toBe(true);
+		const evaluatorInput = JSON.stringify(useModel.mock.calls[1]?.[1]);
+		expect(evaluatorInput).toContain(
+			`canonical_user_facing_text: \\"${canonical}\\"`,
+		);
+		expect(evaluatorInput).not.toMatch(
+			/private\/release|API_TOKEN|success-never-show|SUCCESS_THOUGHT_NEVER_SHOW|SUCCESS_CALL_ID_NEVER_SHOW|SUCCESS_PARAM_NEVER_SHOW|SUCCESS_DATA_NEVER_SHOW/iu,
+		);
+		expect(result.finalMessage).toBe(canonical);
+		expect(result.trajectory.steps.at(-1)?.terminalMessage).toBe(canonical);
 	});
 
 	it("recovers exact canonical userFacingText without exposing diagnostics", async () => {

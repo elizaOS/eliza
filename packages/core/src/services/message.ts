@@ -8487,12 +8487,18 @@ export async function runV5MessageRuntimeStage1(args: {
 								),
 							{ tool: toolCall.name },
 						),
-					evaluate: ({ runtime: plannerRuntimeForEval, context, trajectory }) =>
+					evaluate: ({
+						runtime: plannerRuntimeForEval,
+						context,
+						trajectory,
+						provider,
+					}) =>
 						timeInferenceSpan("evaluators:planner", () =>
 							runEvaluator({
 								runtime: plannerRuntimeForEval,
 								context,
 								trajectory,
+								provider,
 								effects: evaluatorEffects,
 								recorder,
 								trajectoryId,
