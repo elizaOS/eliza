@@ -693,6 +693,9 @@ describe("enqueueAgentDeleteOnce initializes ownership from the pre-delete state
         agentId,
         organizationId: orgId,
         userId,
+        // #18573's admission guard refuses an unqualified delete of a running
+        // dedicated agent; this first enqueue models an authorized user request.
+        authorization: "user_request",
       });
       expect(await ownership(agentId)).toBe(true);
 
