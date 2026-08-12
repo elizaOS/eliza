@@ -1,9 +1,10 @@
 /** Exercises run node runtime behavior with deterministic app-core test fixtures. */
 import { describe, expect, test } from "vitest";
 import {
-  buildNodeProbeEnv,
   chooseElizaRuntime,
+  findProbeMarkers,
   parseNodeMajor,
+  probeEnv,
   resolveNodeExecPath,
   resolveNodeExecPathFromCandidates,
   validateNodeExecutable,
@@ -117,7 +118,7 @@ describe("run-node-runtime node validation", () => {
     });
   });
 
-  test("accepts probe markers when stdout includes preload or warning noise", () => {
+  test("accepts Node 24 markers when stdout includes preload banners or trailing chatter", () => {
     expect(
       validateNodeProbeOutput(
         "[apm-bootstrap] instrumenting process\nnode:24.4.0",
@@ -131,13 +132,68 @@ describe("run-node-runtime node validation", () => {
     ).toEqual({ ok: true, reason: null });
   });
 
-  test("strips NODE_OPTIONS from the shared probe env without removing PATH", () => {
-    const env = buildNodeProbeEnv({
+  test("reports the version reason for an old Node behind noisy probe stdout", () => {
+    const result = validateNodeProbeOutput(
+      "[apm-bootstrap] instrumenting process\nnode:22.23.0",
+    );
+    expect(result.ok).toBe(false);
+    expect(result.reason).toContain("Node.js 22.23.0 is too old");
+    expect(result.reason).not.toContain("did not report a Node.js runtime");
+  });
+
+  test("rejects bun when preceded by shim or preload output", () => {
+    expect(validateNodeProbeOutput("[nvm-shim] loading\nbun")).toEqual({
+      ok: false,
+      reason: "resolved to Bun, not Node.js",
+    });
+  });
+
+  test("rejects disagreeing node: markers as ambiguous rather than picking one", () => {
+    const result = validateNodeProbeOutput("node:24.4.0\nnode:22.23.0");
+    expect(result.ok).toBe(false);
+    expect(result.reason).toMatch(
+      /reported more than one Node\.js runtime \(24\.4\.0, 22\.23\.0\)/,
+    );
+  });
+
+  test("accepts repeated identical node: markers", () => {
+    expect(validateNodeProbeOutput("node:24.4.0\nnode:24.4.0")).toEqual({
+      ok: true,
+      reason: null,
+    });
+  });
+
+  test("still rejects junk-only probe output with no marker", () => {
+    expect(validateNodeProbeOutput("[apm-bootstrap] only noise")).toEqual({
+      ok: false,
+      reason: "did not report a Node.js runtime",
+    });
+  });
+
+  test("strips NODE_OPTIONS from probeEnv without removing PATH", () => {
+    const env = probeEnv({
       PATH: "/usr/bin",
       NODE_OPTIONS: "--require ./apm-bootstrap.js",
+      HOME: "/home/eliza",
     });
     expect(env.NODE_OPTIONS).toBeUndefined();
     expect(env.PATH).toBe("/usr/bin");
+    expect(env.HOME).toBe("/home/eliza");
+  });
+
+  test("findProbeMarkers collects exact line markers only", () => {
+    expect(
+      findProbeMarkers(
+        "[apm-bootstrap] instrumenting process\nnode:24.4.0\nbun\n",
+      ),
+    ).toEqual({
+      sawBun: true,
+      nodeVersions: ["24.4.0"],
+    });
+    expect(findProbeMarkers("(node:123) DeprecationWarning: x")).toEqual({
+      sawBun: false,
+      nodeVersions: [],
+    });
   });
 
   test("rejects Codex-bundled macOS Node", () => {

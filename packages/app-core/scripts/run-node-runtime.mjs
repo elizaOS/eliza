@@ -8,34 +8,6 @@ import { spawnSync } from "node:child_process";
 
 const KNOWN_UNSTABLE_BUN_LINUX = /^1\.3\.9(?:$|[-+].*)/;
 const MIN_NODE_MAJOR = 24;
-/** Matches a Node version token emitted by the runtime probe anywhere in stdout. */
-const NODE_PROBE_VERSION_PATTERN = /(?:^|[\s\r\n])node:([0-9][^\s\r\n]*)/g;
-
-/**
- * Builds the child-process env for the Node runtime probe. Inherits PATH and
- * other discovery-related vars, but strips NODE_OPTIONS so caller preloads
- * cannot write to stdout and corrupt version detection.
- */
-export function buildNodeProbeEnv(parentEnv = process.env) {
-  const env = { ...parentEnv };
-  delete env.NODE_OPTIONS;
-  return env;
-}
-
-function extractNodeProbeVersion(text) {
-  const trimmed = text.trim();
-  if (!trimmed) {
-    return null;
-  }
-  for (const line of trimmed.split(/\r?\n/)) {
-    const exact = /^node:(.+)$/.exec(line.trim());
-    if (exact) {
-      return exact[1];
-    }
-  }
-  const matches = [...trimmed.matchAll(NODE_PROBE_VERSION_PATTERN)];
-  return matches.at(-1)?.[1] ?? null;
-}
 
 /**
  * Bun 1.3.9 has known Linux segfault reports in long-running workloads.
@@ -152,15 +124,63 @@ export function parseNodeMajor(version) {
   return major ? Number.parseInt(major, 10) : null;
 }
 
+/**
+ * Probe child env: inherit caller discovery vars (PATH, etc.) but drop
+ * NODE_OPTIONS so preloads cannot write banners onto the probe stdout channel.
+ */
+export function probeEnv(env = process.env) {
+  const { NODE_OPTIONS: _dropped, ...rest } = env ?? {};
+  return rest;
+}
+
+/**
+ * Collect exact probe markers from non-empty trimmed stdout lines.
+ * A line must be exactly `bun` or `node:<version>` — partial or decorated
+ * lines (preload banners, deprecation notices) are ignored.
+ */
+export function findProbeMarkers(text) {
+  const lines = (text ?? "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+
+  let sawBun = false;
+  /** @type {string[]} */
+  const nodeVersions = [];
+  for (const line of lines) {
+    if (line === "bun") {
+      sawBun = true;
+      continue;
+    }
+    const match = /^node:(.+)$/.exec(line);
+    if (match) {
+      nodeVersions.push(match[1]);
+    }
+  }
+  return { sawBun, nodeVersions };
+}
+
 export function validateNodeProbeOutput(output) {
   const text = output?.trim() ?? "";
-  if (text === "bun") {
+  const { sawBun, nodeVersions } = findProbeMarkers(text);
+
+  // Bun keeps priority so a shimmed Bun behind banner lines is still rejected.
+  if (sawBun) {
     return { ok: false, reason: "resolved to Bun, not Node.js" };
   }
-  const version = extractNodeProbeVersion(text);
-  if (!version) {
+  if (nodeVersions.length === 0) {
     return { ok: false, reason: "did not report a Node.js runtime" };
   }
+
+  const uniqueVersions = [...new Set(nodeVersions)];
+  if (uniqueVersions.length > 1) {
+    return {
+      ok: false,
+      reason: `reported more than one Node.js runtime (${uniqueVersions.join(", ")})`,
+    };
+  }
+
+  const version = uniqueVersions[0];
   const major = parseNodeMajor(version);
   if (major === null) {
     return { ok: false, reason: `could not parse Node.js version ${version}` };
@@ -211,7 +231,7 @@ export function probeNodeExecutable(candidate) {
         "-e",
         "process.stdout.write(process.versions.bun ? 'bun' : 'node:' + (process.versions.node || ''))",
       ],
-      { encoding: "utf8", env: buildNodeProbeEnv() },
+      { encoding: "utf8", env: probeEnv(process.env) },
     );
     return {
       status: result.status ?? 1,
