@@ -1058,7 +1058,7 @@
         "@fontsource/poppins": "^5.2.7",
         "@json-render/core": "0.19.0",
         "@json-render/react": "0.19.0",
-        "@metamask/connect-evm": "2.1.0",
+        "@metamask/connect-evm": "2.1.1",
         "@pixiv/three-vrm": "^3.4.5",
         "@radix-ui/react-accordion": "^1.2.12",
         "@radix-ui/react-alert-dialog": "^1.1.15",
@@ -4541,7 +4541,7 @@
 
     "@metamask/analytics": ["@metamask/analytics@0.6.0", "", { "dependencies": { "openapi-fetch": "^0.13.5" } }, "sha512-L250lV3PANTcKqhZkmRV1Obkyddm6JDQvDBuUVAi+7TmPdOVdpavWNXyEh7ErscjwG0z2wiF9Ne0ihK/nCdX0w=="],
 
-    "@metamask/connect-evm": ["@metamask/connect-evm@2.1.0", "", { "dependencies": { "@metamask/analytics": "^0.6.0", "@metamask/connect-multichain": "^1.1.0", "@metamask/utils": "^11.8.1", "semver": "^7.7.4" } }, "sha512-u0eYWPGWOk9w7ne+dAynO0saN2mCXfkt1QLGo829kiDLO0YGuFSNXWpRxnIygm6j9s9NOVLkL7+tkyZCR755Jw=="],
+    "@metamask/connect-evm": ["@metamask/connect-evm@2.1.1", "", { "dependencies": { "@metamask/analytics": "^0.6.0", "@metamask/connect-multichain": "^1.2.0", "@metamask/utils": "^11.8.1", "semver": "^7.7.4" } }, "sha512-pkaY0EslsWHe1slSsFSFMAHTqwSa1Twd4hBMe2KLuf+D01h0Al8X7YOYZnT6Zd2Ck0KmQGLSTUh7hZyHT4n0nw=="],
 
     "@metamask/connect-multichain": ["@metamask/connect-multichain@1.2.0", "", { "dependencies": { "@metamask/analytics": "^0.6.0", "@metamask/mobile-wallet-protocol-core": "^0.4.0", "@metamask/mobile-wallet-protocol-dapp-client": "^0.3.0", "@metamask/multichain-api-client": "^0.10.1", "@metamask/multichain-ui": "^0.4.1", "@metamask/onboarding": "^1.0.1", "@metamask/rpc-errors": "^7.0.3", "@metamask/utils": "^11.8.1", "@paulmillr/qr": "^0.2.1", "bowser": "^2.11.0", "buffer": "^6.0.3", "cross-fetch": "^4.1.0", "eciesjs": "0.4.17", "eventemitter3": "^5.0.1", "pako": "^2.1.0", "uuid": "^11.1.0", "ws": "^8.18.3" }, "peerDependencies": { "@react-native-async-storage/async-storage": "^1.23" }, "optionalPeers": ["@react-native-async-storage/async-storage"] }, "sha512-EoRXtP8cpLhY/YRlQ8rSjzYrc+ykJjMYPL6sF2U9b8Ron9yAVjZCPfSftBjee/tXxQDJ8BupmZbkv4af/vVuSQ=="],
 
