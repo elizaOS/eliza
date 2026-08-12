@@ -35,6 +35,10 @@
 import { existsSync, promises as fs } from "node:fs";
 import { fetchRemoteMedia } from "@elizaos/core";
 import { resolveImageBytes } from "./hash";
+import {
+	VISION_IMAGE_FETCH_TIMEOUT_MS,
+	VISION_IMAGE_MAX_BYTES,
+} from "./image-input.js";
 import type {
 	VisionDescribeBackend,
 	VisionDescribeBackendOptions,
@@ -237,8 +241,8 @@ async function imageInputToDataUrl(
 			// shared SSRF media guard rather than bare `fetch`.
 			const media = await fetchRemoteMedia({
 				url,
-				maxBytes: 20 * 1024 * 1024,
-				timeoutMs: 15_000,
+				maxBytes: VISION_IMAGE_MAX_BYTES,
+				timeoutMs: VISION_IMAGE_FETCH_TIMEOUT_MS,
 				maxRedirects: 5,
 			});
 			const mimeType = input.mimeType ?? media.contentType ?? "image/png";
