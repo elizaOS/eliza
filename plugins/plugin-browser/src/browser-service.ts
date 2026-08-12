@@ -314,9 +314,11 @@ export class BrowserService extends Service {
    * navigation / upload may have partially or fully completed before the error
    * was observed. The original failure is surfaced to the caller. If the target
    * throws a {@link BrowserDispatchFailure} with `UNCERTAIN_OUTCOME`, that kind
-   * is preserved so callers can branch on it. For idempotent (read-only)
-   * subactions, pre-dispatch fallback still applies but post-dispatch replay
-   * remains forbidden by default.
+   * is preserved so callers can branch on it. Post-dispatch replay is
+   * forbidden for read-only subactions too — targets are distinct browser
+   * sessions, so a fallback read would answer from a different browser.
+   * Idempotency only selects the error shape: reads rethrow the original
+   * cause, opaque mutation failures become `UNCERTAIN_OUTCOME`.
    *
    * `targetId` pins the target: no fallback is attempted, and capability is
    * still checked (an `UNSUPPORTED` pin returns a typed failure rather than

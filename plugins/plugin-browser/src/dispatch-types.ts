@@ -12,18 +12,22 @@
  *
  * 1. **Typed failures** ({@link BrowserDispatchFailureKind}) replace opaque
  *    thrown errors so the dispatcher can decide whether fallback is legal.
- * 2. **Capability manifests** ({@link BrowserTargetCapabilities}) let a target
- *    declare which subactions it supports *before* dispatch, so unsupported
- *    commands never reach `execute()`.
- * 3. **Idempotency classification** ({@link isIdempotentBrowserSubaction})
- *    separates safe-to-retry read-only commands from side-effecting commands
- *    that must never be replayed once execution begins.
+ * 2. **Idempotency classification** ({@link isIdempotentBrowserSubaction})
+ *    separates read-only commands from side-effecting commands so a
+ *    post-dispatch failure can be typed accurately.
+ *
+ * Replay is forbidden for ALL subactions once execution begins — even
+ * read-only ones. Registered targets are distinct browser sessions (the
+ * embedded workspace vs. the user's real Chrome/Safari via the bridge), so
+ * retrying a failed read against a different target would silently answer
+ * from a different browser. The classification only controls error shape: a
+ * failed read rethrows its original cause, while an opaquely failed mutation
+ * is wrapped as `UNCERTAIN_OUTCOME`. The availability tradeoff is deliberate —
+ * a transient read failure surfaces to the caller instead of being masked by
+ * a cross-session fallback.
  */
 
-import type {
-  BrowserWorkspaceCommand,
-  BrowserWorkspaceSubaction,
-} from "./workspace/browser-workspace-types.js";
+import type { BrowserWorkspaceSubaction } from "./workspace/browser-workspace-types.js";
 
 /**
  * The canonical typed failure kinds for a browser dispatch attempt.
@@ -87,10 +91,11 @@ export function isBrowserDispatchFailure(
 }
 
 /**
- * Read-only subactions that are safe to retry across targets because they have
- * no side effect on the page or session. Anything not in this set is treated as
- * potentially side-effecting (click, type, navigate, open, submit, upload,
- * etc.) and is never replayed after execution has begun.
+ * Read-only subactions with no side effect on the page or session. Anything
+ * not in this set is treated as potentially side-effecting (click, type,
+ * navigate, open, submit, upload, etc.). Membership does not permit replay —
+ * no subaction is replayed post-dispatch — it only determines how a
+ * post-dispatch failure is typed.
  */
 const IDEMPOTENT_SUBACTIONS: ReadonlySet<BrowserWorkspaceSubaction> = new Set([
   "list",
@@ -106,42 +111,14 @@ const IDEMPOTENT_SUBACTIONS: ReadonlySet<BrowserWorkspaceSubaction> = new Set([
 ]);
 
 /**
- * Returns `true` when a subaction is read-only and therefore safe to retry on a
- * different target. Side-effecting commands (click, type, fill, navigate, open,
- * close, submit, upload, drag, scroll, press, set, cookies, storage, etc.)
- * return `false` — once `execute()` has been called on any target the command
- * must not be dispatched to another.
+ * Returns `true` when a subaction is read-only. The dispatcher uses this after
+ * a post-dispatch failure to pick the error shape: read-only failures rethrow
+ * the original cause, while opaque side-effecting failures (click, type, fill,
+ * navigate, open, close, submit, upload, etc.) become `UNCERTAIN_OUTCOME`.
+ * In neither case is the command replayed against another target.
  */
 export function isIdempotentBrowserSubaction(
   subaction: BrowserWorkspaceSubaction,
 ): boolean {
   return IDEMPOTENT_SUBACTIONS.has(subaction);
-}
-
-/**
- * Capability manifest for a {@link CapabilityAwareBrowserTarget}. A target
- * returns this from {@link CapabilityAwareBrowserTarget.capabilities} to declare
- * which subactions it can execute *before* dispatch. The dispatcher uses it to
- * skip targets that cannot handle the command, returning `UNSUPPORTED` instead
- * of throwing.
- *
- * `subactions` is optional for backward compatibility — a target that does not
- * declare a manifest is assumed to support everything (legacy behavior).
- */
-export interface BrowserTargetCapabilities {
-  /**
-   * Set of supported subaction strings. When omitted, the target claims support
-   * for all subactions (legacy `workspace`-style target).
-   */
-  subactions?: ReadonlySet<string>;
-}
-
-/**
- * A target id (opaque session/profile/tab identity) plus the kind of action a
- * command represents, so a capability check can be done generically.
- */
-export function classifySubactionSideEffects(
-  command: BrowserWorkspaceCommand,
-): "read" | "mutate" {
-  return isIdempotentBrowserSubaction(command.subaction) ? "read" : "mutate";
 }
