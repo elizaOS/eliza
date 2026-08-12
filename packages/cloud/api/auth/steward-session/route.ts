@@ -17,11 +17,7 @@ import {
   type StewardVerifyEnv,
   verifyStewardTokenCached,
 } from "@/lib/auth/steward-client";
-import {
-  canMutateLegacyStewardCookies,
-  LEGACY_STEWARD_COOKIES,
-  stewardCookieNames,
-} from "@/lib/auth/steward-cookies";
+import { stewardCookieNames } from "@/lib/auth/steward-cookies";
 import {
   getIpKey,
   RateLimitPresets,
@@ -401,19 +397,13 @@ app.delete("/", (c) => {
   }
   const domain = cookieDomainForHost(c.req.header("host"));
   const opts = domain ? { path: "/", domain } : { path: "/" };
-  // Non-production must not clear the unsuffixed legacy names: on the shared
-  // parent domain those names are production's live cookies. Production/unset
-  // still owns and clears them; non-production clears only its suffixed names
-  // and lets the bounded legacy read fallback expire naturally (#13728).
+  // Production's cookieNames resolve to the same unsuffixed names as
+  // LEGACY_STEWARD_COOKIES, so a single set of deleteCookie calls covers both
+  // eras. The separate legacy clear block was redundant (#14130).
   const names = stewardCookieNames(c.env.ENVIRONMENT);
   deleteCookie(c, names.token, opts);
   deleteCookie(c, names.refreshToken, opts);
   deleteCookie(c, names.authed, opts);
-  if (canMutateLegacyStewardCookies(c.env.ENVIRONMENT)) {
-    deleteCookie(c, LEGACY_STEWARD_COOKIES.token, opts);
-    deleteCookie(c, LEGACY_STEWARD_COOKIES.refreshToken, opts);
-    deleteCookie(c, LEGACY_STEWARD_COOKIES.authed, opts);
-  }
   logStewardAuth("deleted", null);
   return c.json({ ok: true });
 });
