@@ -1,3 +1,7 @@
+/**
+ * Exercises strict document numeric-setting schemas and the real
+ * validateModelConfig boundary with deterministic environment inputs.
+ */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { validateModelConfig } from "./config.ts";
 import { ModelConfigSchema } from "./types.ts";
@@ -100,6 +104,18 @@ describe("ModelConfigSchema numeric settings", () => {
 			ModelConfigSchema.parse({ ...baseConfig, BATCH_DELAY_MS: 0 })
 				.BATCH_DELAY_MS,
 		).toBe(0);
+		expect(
+			ModelConfigSchema.parse({
+				...baseConfig,
+				BATCH_DELAY_MS: 2_147_483_647,
+			}).BATCH_DELAY_MS,
+		).toBe(2_147_483_647);
+		expect(
+			ModelConfigSchema.safeParse({
+				...baseConfig,
+				BATCH_DELAY_MS: 2_147_483_648,
+			}).success,
+		).toBe(false);
 	});
 });
 
@@ -120,4 +136,17 @@ describe("validateModelConfig numeric boundary", () => {
 			);
 		},
 	);
+
+	it("enforces the runtime timer ceiling for batch delays", () => {
+		vi.stubEnv("EMBEDDING_PROVIDER", "local");
+		vi.stubEnv("TEXT_EMBEDDING_MODEL", "local-embedding");
+		vi.stubEnv("BATCH_DELAY_MS", "2147483647");
+
+		expect(validateModelConfig().BATCH_DELAY_MS).toBe(2_147_483_647);
+
+		vi.stubEnv("BATCH_DELAY_MS", "2147483648");
+		expect(() => validateModelConfig()).toThrow(
+			/Model configuration validation failed: BATCH_DELAY_MS:/,
+		);
+	});
 });

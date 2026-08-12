@@ -17,7 +17,11 @@ import type {
 } from "../../types";
 import type { ServiceTypeRegistry } from "../../types/service.ts";
 
-const safeIntegerSetting = (minimum: 0 | 1, defaultValue?: number) => {
+const safeIntegerSetting = (
+	minimum: 0 | 1,
+	defaultValue?: number,
+	maximum = Number.MAX_SAFE_INTEGER,
+) => {
 	const schema = z
 		.union([z.string(), z.number()])
 		.transform((value, context) => {
@@ -40,14 +44,14 @@ const safeIntegerSetting = (minimum: 0 | 1, defaultValue?: number) => {
 			if (
 				!Number.isSafeInteger(parsed) ||
 				Object.is(parsed, -0) ||
-				parsed < minimum
+				parsed < minimum ||
+				parsed > maximum
 			) {
 				context.addIssue({
 					code: "custom",
-					message:
-						minimum === 0
-							? "must be a nonnegative safe integer"
-							: "must be a positive safe integer",
+					message: `must be a ${
+						minimum === 0 ? "nonnegative" : "positive"
+					} safe integer no greater than ${maximum}`,
 				});
 				return z.NEVER;
 			}
@@ -60,8 +64,8 @@ const safeIntegerSetting = (minimum: 0 | 1, defaultValue?: number) => {
 
 const positiveSafeIntegerSetting = (defaultValue?: number) =>
 	safeIntegerSetting(1, defaultValue);
-const nonnegativeSafeIntegerSetting = (defaultValue?: number) =>
-	safeIntegerSetting(0, defaultValue);
+const timerDelaySetting = (defaultValue?: number) =>
+	safeIntegerSetting(0, defaultValue, 2_147_483_647);
 
 /**
  * Local metadata type for stored document items.
@@ -118,7 +122,7 @@ export const ModelConfigSchema = z.object({
 
 	TOKENS_PER_MINUTE: positiveSafeIntegerSetting(750000),
 
-	BATCH_DELAY_MS: nonnegativeSafeIntegerSetting(100),
+	BATCH_DELAY_MS: timerDelaySetting(100),
 });
 
 export type ModelConfig = z.infer<typeof ModelConfigSchema>;
