@@ -169,6 +169,10 @@ function normalizeBoundedString(value: string, maxLength: number, label: string)
   return normalized;
 }
 
+function canWriteMarketplaceResponse(res: http.ServerResponse): boolean {
+  return !res.destroyed && !res.writableEnded;
+}
+
 // ---------------------------------------------------------------------------
 // Route handler
 // ---------------------------------------------------------------------------
@@ -182,6 +186,7 @@ export async function handleMcpRoutes(ctx: McpRouteContext): Promise<boolean> {
 
   if (method === "GET" && pathname === "/api/mcp/marketplace/search") {
     let query: string;
+    // error-policy:J1 route input failures are translated to a 400 response.
     try {
       query = normalizeBoundedString(
         url.searchParams.get("q") ?? "",
@@ -195,17 +200,18 @@ export async function handleMcpRoutes(ctx: McpRouteContext): Promise<boolean> {
     const limitStr = url.searchParams.get("limit");
     const limit = limitStr ? parseClampedInteger(limitStr, { min: 1, max: 50, fallback: 30 }) : 30;
     const abortTracker = createRequestAbortTracker(req, res, "MCP marketplace search");
+    // error-policy:J1 marketplace boundary failures are translated to a 502 response.
     try {
       const result = await searchMcpMarketplace(query || undefined, limit, {
         signal: abortTracker.signal,
       });
-      if (abortTracker.isAborted()) return true;
-      abortTracker.markCompleted();
+      if (abortTracker.isAborted() || !canWriteMarketplaceResponse(res)) return true;
       json(res, { ok: true, results: result.results });
-    } catch (err) {
-      if (abortTracker.isAborted()) return true;
       abortTracker.markCompleted();
+    } catch (err) {
+      if (abortTracker.isAborted() || !canWriteMarketplaceResponse(res)) return true;
       error(res, `MCP marketplace search failed: ${err instanceof Error ? err.message : err}`, 502);
+      abortTracker.markCompleted();
     } finally {
       abortTracker.dispose();
     }
@@ -225,6 +231,7 @@ export async function handleMcpRoutes(ctx: McpRouteContext): Promise<boolean> {
     );
     if (serverName === null) return true;
     let normalizedServerName: string;
+    // error-policy:J1 route input failures are translated to a 400 response.
     try {
       normalizedServerName = normalizeBoundedString(
         serverName,
@@ -240,25 +247,27 @@ export async function handleMcpRoutes(ctx: McpRouteContext): Promise<boolean> {
       return true;
     }
     const abortTracker = createRequestAbortTracker(req, res, "MCP marketplace details");
+    // error-policy:J1 marketplace boundary failures are translated to a 502 response.
     try {
       const details = await getMcpServerDetails(normalizedServerName, {
         signal: abortTracker.signal,
       });
-      if (abortTracker.isAborted()) return true;
-      abortTracker.markCompleted();
+      if (abortTracker.isAborted() || !canWriteMarketplaceResponse(res)) return true;
       if (!details) {
         error(res, `MCP server "${normalizedServerName}" not found`, 404);
+        abortTracker.markCompleted();
         return true;
       }
       json(res, { ok: true, server: details });
-    } catch (err) {
-      if (abortTracker.isAborted()) return true;
       abortTracker.markCompleted();
+    } catch (err) {
+      if (abortTracker.isAborted() || !canWriteMarketplaceResponse(res)) return true;
       error(
         res,
         `Failed to fetch server details: ${err instanceof Error ? err.message : err}`,
         502
       );
+      abortTracker.markCompleted();
     } finally {
       abortTracker.dispose();
     }
@@ -332,6 +341,7 @@ export async function handleMcpRoutes(ctx: McpRouteContext): Promise<boolean> {
       NonNullable<typeof state.config.mcp>["servers"]
     >[string];
 
+    // error-policy:J4 a config write failure is visible in logs while the in-memory update remains usable.
     try {
       ctx.saveElizaConfig(state.config);
     } catch (err) {
@@ -360,6 +370,7 @@ export async function handleMcpRoutes(ctx: McpRouteContext): Promise<boolean> {
 
     if (state.config.mcp?.servers?.[serverName]) {
       delete state.config.mcp.servers[serverName];
+      // error-policy:J4 a config write failure is visible in logs while the in-memory update remains usable.
       try {
         ctx.saveElizaConfig(state.config);
       } catch (err) {
@@ -420,6 +431,7 @@ export async function handleMcpRoutes(ctx: McpRouteContext): Promise<boolean> {
       >;
     }
 
+    // error-policy:J4 a config write failure is visible in logs while the in-memory update remains usable.
     try {
       ctx.saveElizaConfig(state.config);
     } catch (err) {
@@ -443,6 +455,7 @@ export async function handleMcpRoutes(ctx: McpRouteContext): Promise<boolean> {
     }> = [];
 
     if (state.runtime) {
+      // error-policy:J4 service lookup failure degrades to an empty status response.
       try {
         const mcpService = state.runtime.getService(MCP_SERVICE_NAME) as {
           getServers?: () => Array<{

@@ -8,6 +8,7 @@ export const DEFAULT_MCP_MARKETPLACE_TIMEOUT_MS = 10_000;
 export const DEFAULT_MCP_MARKETPLACE_MAX_RESPONSE_BYTES = 2 * 1024 * 1024;
 const MAX_MCP_MARKETPLACE_TIMEOUT_MS = 2 * 60_000;
 const MAX_MCP_MARKETPLACE_RESPONSE_BYTES = 8 * 1024 * 1024;
+const MAX_MCP_MARKETPLACE_RESULTS = 50;
 
 export type McpMarketplaceErrorCode =
   | "aborted"
@@ -39,12 +40,12 @@ export interface McpMarketplaceRequestOptions {
 }
 
 export interface McpRegistryRemote extends Record<string, unknown> {
-  type?: string;
+  type: "streamable-http" | "sse";
   url: string;
 }
 
 export interface McpRegistryPackageTransport extends Record<string, unknown> {
-  type: string;
+  type: "stdio" | "streamable-http" | "sse";
   url?: string;
 }
 
@@ -52,7 +53,7 @@ export interface McpRegistryPackage extends Record<string, unknown> {
   registryType: string;
   identifier: string;
   version?: string;
-  transport?: McpRegistryPackageTransport;
+  transport: McpRegistryPackageTransport;
 }
 
 export interface McpRegistryServer extends Record<string, unknown> {
@@ -94,11 +95,15 @@ interface McpRegistryEntry {
   official?: McpRegistryOfficialMetadata;
 }
 
+interface McpRegistryListResponse {
+  entries: McpRegistryEntry[];
+  nextCursor?: string;
+}
+
 interface ResolvedRequestOptions {
   signal: AbortSignal;
-  timeoutSignal: AbortSignal;
-  callerSignal?: AbortSignal;
-  maxResponseBytes: number;
+  abortKind?: "caller" | "timeout";
+  remainingResponseBytes: number;
 }
 
 function invalidResponse(message: string, cause?: unknown): never {
@@ -162,9 +167,13 @@ function optionalBoolean(
 
 function parseRemote(value: unknown, label: string): McpRegistryRemote {
   const source = requireRecord(value, label);
+  const type = requireString(source, "type", label);
+  if (type !== "streamable-http" && type !== "sse") {
+    invalidResponse(`MCP registry ${label}.type must be streamable-http or sse`);
+  }
   return {
     ...source,
-    type: optionalString(source, "type", label),
+    type,
     url: requireString(source, "url", label),
   };
 }
@@ -173,6 +182,9 @@ function parsePackageTransport(value: unknown, label: string): McpRegistryPackag
   const source = requireRecord(value, label);
   const type = requireString(source, "type", label);
   const url = optionalString(source, "url", label);
+  if (type !== "stdio" && type !== "streamable-http" && type !== "sse") {
+    invalidResponse(`MCP registry ${label}.type is unsupported`);
+  }
   if (type !== "stdio" && !url) {
     invalidResponse(`MCP registry ${label}.url is required for ${type}`);
   }
@@ -181,10 +193,7 @@ function parsePackageTransport(value: unknown, label: string): McpRegistryPackag
 
 function parsePackage(value: unknown, label: string): McpRegistryPackage {
   const source = requireRecord(value, label);
-  const transport =
-    source.transport === undefined
-      ? undefined
-      : parsePackageTransport(source.transport, `${label}.transport`);
+  const transport = parsePackageTransport(source.transport, `${label}.transport`);
   return {
     ...source,
     registryType: requireString(source, "registryType", label),
@@ -253,9 +262,14 @@ function parseOfficialMetadata(value: unknown, label: string): McpRegistryOffici
   };
 }
 
-function parseListResponse(value: unknown): McpRegistryEntry[] {
+function parseListResponse(value: unknown): McpRegistryListResponse {
   const root = requireRecord(value, "response");
-  return requireArray(root.servers, "response.servers").map((entry, index) => {
+  const metadata =
+    root.metadata === undefined ? undefined : requireRecord(root.metadata, "response.metadata");
+  const nextCursor = metadata
+    ? optionalString(metadata, "nextCursor", "response.metadata")
+    : undefined;
+  const entries = requireArray(root.servers, "response.servers").map((entry, index) => {
     const source = requireRecord(entry, `response.servers[${index}]`);
     const metadata =
       source._meta === undefined
@@ -273,6 +287,7 @@ function parseListResponse(value: unknown): McpRegistryEntry[] {
             ),
     };
   });
+  return { entries, nextCursor };
 }
 
 function parseDetailsResponse(value: unknown): McpRegistryServer {
@@ -306,12 +321,33 @@ function resolveRequestOptions(options: McpMarketplaceRequestOptions): ResolvedR
   }
 
   const timeoutSignal = AbortSignal.timeout(timeoutMs);
-  return {
-    signal: options.signal ? AbortSignal.any([options.signal, timeoutSignal]) : timeoutSignal,
-    timeoutSignal,
-    callerSignal: options.signal,
-    maxResponseBytes,
+  const controller = new AbortController();
+  const resolved: ResolvedRequestOptions = {
+    signal: controller.signal,
+    remainingResponseBytes: maxResponseBytes,
   };
+  const abort = (kind: "caller" | "timeout", reason: unknown) => {
+    if (!controller.signal.aborted) {
+      resolved.abortKind = kind;
+      controller.abort(reason);
+    }
+  };
+
+  if (options.signal?.aborted) {
+    abort("caller", options.signal.reason);
+  } else {
+    options.signal?.addEventListener("abort", () => abort("caller", options.signal?.reason), {
+      once: true,
+    });
+  }
+  if (timeoutSignal.aborted) {
+    abort("timeout", timeoutSignal.reason);
+  } else {
+    timeoutSignal.addEventListener("abort", () => abort("timeout", timeoutSignal.reason), {
+      once: true,
+    });
+  }
+  return resolved;
 }
 
 function classifyRequestError(
@@ -319,13 +355,13 @@ function classifyRequestError(
   options: ResolvedRequestOptions
 ): McpMarketplaceError {
   if (error instanceof McpMarketplaceError) return error;
-  if (options.callerSignal?.aborted) {
-    return new McpMarketplaceError("MCP marketplace request was aborted", "aborted", {
+  if (options.abortKind === "timeout") {
+    return new McpMarketplaceError("MCP marketplace request timed out", "timeout", {
       cause: error,
     });
   }
-  if (options.timeoutSignal.aborted) {
-    return new McpMarketplaceError("MCP marketplace request timed out", "timeout", {
+  if (options.signal.aborted) {
+    return new McpMarketplaceError("MCP marketplace request was aborted", "aborted", {
       cause: error,
     });
   }
@@ -335,6 +371,7 @@ function classifyRequestError(
 }
 
 async function cancelBodyQuietly(body: ReadableStream<Uint8Array> | null): Promise<void> {
+  // error-policy:J6 best-effort cancellation preserves the primary boundary error.
   try {
     await body?.cancel();
   } catch {
@@ -342,7 +379,11 @@ async function cancelBodyQuietly(body: ReadableStream<Uint8Array> | null): Promi
   }
 }
 
-async function readBoundedJson(response: Response, maxResponseBytes: number): Promise<unknown> {
+async function readBoundedJson(
+  response: Response,
+  options: ResolvedRequestOptions
+): Promise<unknown> {
+  const maxResponseBytes = options.remainingResponseBytes;
   const declaredBytes = Number(response.headers.get("content-length"));
   if (Number.isFinite(declaredBytes) && declaredBytes > maxResponseBytes) {
     await cancelBodyQuietly(response.body);
@@ -363,6 +404,7 @@ async function readBoundedJson(response: Response, maxResponseBytes: number): Pr
     if (done) break;
     totalBytes += value.byteLength;
     if (totalBytes > maxResponseBytes) {
+      // error-policy:J6 best-effort reader cancellation preserves the size error.
       try {
         await reader.cancel();
       } catch {
@@ -375,6 +417,7 @@ async function readBoundedJson(response: Response, maxResponseBytes: number): Pr
     }
     chunks.push(value);
   }
+  options.remainingResponseBytes -= totalBytes;
 
   const body = new Uint8Array(totalBytes);
   let offset = 0;
@@ -382,6 +425,7 @@ async function readBoundedJson(response: Response, maxResponseBytes: number): Pr
     body.set(chunk, offset);
     offset += chunk.byteLength;
   }
+  // error-policy:J3 invalid untrusted JSON becomes an explicit boundary error.
   try {
     return JSON.parse(new TextDecoder().decode(body));
   } catch (error) {
@@ -392,13 +436,13 @@ async function readBoundedJson(response: Response, maxResponseBytes: number): Pr
 async function fetchRegistryJson<T>(
   url: string,
   parse: (value: unknown) => T,
-  options: McpMarketplaceRequestOptions
+  options: ResolvedRequestOptions
 ): Promise<T> {
-  const resolved = resolveRequestOptions(options);
+  // error-policy:J2 transport failures are wrapped with a stable typed error and cause.
   try {
     const response = await fetch(url, {
       headers: { Accept: "application/json" },
-      signal: resolved.signal,
+      signal: options.signal,
     });
     if (!response.ok) {
       await cancelBodyQuietly(response.body);
@@ -408,10 +452,29 @@ async function fetchRegistryJson<T>(
         { status: response.status }
       );
     }
-    return parse(await readBoundedJson(response, resolved.maxResponseBytes));
+    return parse(await readBoundedJson(response, options));
   } catch (error) {
-    throw classifyRequestError(error, resolved);
+    throw classifyRequestError(error, options);
   }
+}
+
+function resolveSearchLimit(limit: number): number {
+  if (!Number.isSafeInteger(limit) || limit < 1 || limit > MAX_MCP_MARKETPLACE_RESULTS) {
+    throw new McpMarketplaceError(
+      `MCP marketplace limit must be an integer from 1 to ${MAX_MCP_MARKETPLACE_RESULTS}`,
+      "invalid_options"
+    );
+  }
+  return limit;
+}
+
+function createSearchUrl(query: string | undefined, limit: number, cursor?: string): string {
+  const url = new URL("/v0/servers", MCP_REGISTRY_BASE_URL);
+  url.searchParams.set("version", "latest");
+  url.searchParams.set("limit", String(limit));
+  if (query) url.searchParams.set("search", query);
+  if (cursor) url.searchParams.set("cursor", cursor);
+  return url.toString();
 }
 
 export async function searchMcpMarketplace(
@@ -419,53 +482,64 @@ export async function searchMcpMarketplace(
   limit = 30,
   options: McpMarketplaceRequestOptions = {}
 ): Promise<{ results: McpMarketplaceSearchItem[] }> {
-  const entries = await fetchRegistryJson(
-    `${MCP_REGISTRY_BASE_URL}/v0/servers`,
-    parseListResponse,
-    options
-  );
+  const requestedLimit = resolveSearchLimit(limit);
+  const resolved = resolveRequestOptions(options);
   const results: McpMarketplaceSearchItem[] = [];
   const seenNames = new Set<string>();
   const normalizedQuery = query?.toLowerCase();
+  let cursor: string | undefined;
+  const seenCursors = new Set<string>();
 
-  for (const { server, official } of entries) {
-    if (!official?.isLatest || seenNames.has(server.name)) continue;
-    seenNames.add(server.name);
-    if (
-      normalizedQuery &&
-      !server.name.toLowerCase().includes(normalizedQuery) &&
-      !server.title?.toLowerCase().includes(normalizedQuery) &&
-      !server.description.toLowerCase().includes(normalizedQuery)
-    ) {
-      continue;
+  do {
+    const page = await fetchRegistryJson(
+      createSearchUrl(query, requestedLimit, cursor),
+      parseListResponse,
+      resolved
+    );
+    cursor = page.nextCursor;
+    if (cursor && seenCursors.has(cursor)) {
+      invalidResponse("MCP registry response repeated a pagination cursor");
     }
+    if (cursor) seenCursors.add(cursor);
+    for (const { server, official } of page.entries) {
+      if (!official?.isLatest || seenNames.has(server.name)) continue;
+      seenNames.add(server.name);
+      if (
+        normalizedQuery &&
+        !server.name.toLowerCase().includes(normalizedQuery) &&
+        !server.title?.toLowerCase().includes(normalizedQuery) &&
+        !server.description.toLowerCase().includes(normalizedQuery)
+      ) {
+        continue;
+      }
 
-    const remote = server.remotes?.[0];
-    const pkg = server.packages?.[0];
-    const packageRemote =
-      pkg?.transport && pkg.transport.type !== "stdio" ? pkg.transport.url : undefined;
-    const connectionType = remote || packageRemote ? "remote" : "stdio";
+      const remote = server.remotes?.[0];
+      const pkg = server.packages?.[0];
+      const packageRemote =
+        pkg?.transport && pkg.transport.type !== "stdio" ? pkg.transport.url : undefined;
+      const connectionType = remote || packageRemote ? "remote" : "stdio";
 
-    results.push({
-      id: `${server.name}@${server.version}`,
-      name: server.name,
-      title: server.title || server.name.split("/").pop() || server.name,
-      description: server.description || "No description",
-      version: server.version,
-      connectionType,
-      connectionUrl: remote?.url ?? packageRemote,
-      npmPackage:
-        connectionType === "stdio" && pkg?.registryType === "npm" ? pkg.identifier : undefined,
-      dockerImage:
-        connectionType === "stdio" && pkg?.registryType === "oci" ? pkg.identifier : undefined,
-      repositoryUrl: server.repository?.url,
-      websiteUrl: server.websiteUrl,
-      iconUrl: server.icons?.[0]?.src,
-      publishedAt: official.publishedAt,
-      isLatest: true,
-    });
-    if (results.length >= limit) break;
-  }
+      results.push({
+        id: `${server.name}@${server.version}`,
+        name: server.name,
+        title: server.title || server.name.split("/").pop() || server.name,
+        description: server.description || "No description",
+        version: server.version,
+        connectionType,
+        connectionUrl: remote?.url ?? packageRemote,
+        npmPackage:
+          connectionType === "stdio" && pkg?.registryType === "npm" ? pkg.identifier : undefined,
+        dockerImage:
+          connectionType === "stdio" && pkg?.registryType === "oci" ? pkg.identifier : undefined,
+        repositoryUrl: server.repository?.url,
+        websiteUrl: server.websiteUrl,
+        iconUrl: server.icons?.[0]?.src,
+        publishedAt: official.publishedAt,
+        isLatest: true,
+      });
+      if (results.length >= requestedLimit) break;
+    }
+  } while (cursor && results.length < requestedLimit);
 
   return { results };
 }
@@ -474,11 +548,13 @@ export async function getMcpServerDetails(
   name: string,
   options: McpMarketplaceRequestOptions = {}
 ): Promise<McpRegistryServer | null> {
+  const resolved = resolveRequestOptions(options);
+  // error-policy:J4 a documented missing Registry record maps to a distinct null result.
   try {
     return await fetchRegistryJson(
       `${MCP_REGISTRY_BASE_URL}/v0/servers/${encodeURIComponent(name)}/versions/latest`,
       parseDetailsResponse,
-      options
+      resolved
     );
   } catch (error) {
     if (

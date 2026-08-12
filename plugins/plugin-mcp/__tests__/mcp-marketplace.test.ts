@@ -36,6 +36,16 @@ function registryList(...servers: Array<Record<string, unknown>>): Record<string
   };
 }
 
+function registryPage(
+  servers: Array<Record<string, unknown>>,
+  nextCursor?: string
+): Record<string, unknown> {
+  return {
+    ...registryList(...servers),
+    ...(nextCursor ? { metadata: { nextCursor } } : {}),
+  };
+}
+
 describe("MCP marketplace client", () => {
   beforeEach(() => {
     fetchMock.mockReset();
@@ -97,7 +107,7 @@ describe("MCP marketplace client", () => {
     });
 
     expect(fetchMock).toHaveBeenCalledWith(
-      "https://registry.modelcontextprotocol.io/v0/servers",
+      "https://registry.modelcontextprotocol.io/v0/servers?version=latest&limit=10",
       expect.objectContaining({ signal: expect.any(AbortSignal) })
     );
     const forwardedSignal = fetchMock.mock.calls[0]?.[1]?.signal;
@@ -137,6 +147,107 @@ describe("MCP marketplace client", () => {
 
     await expect(searchMcpMarketplace()).rejects.toMatchObject({
       code: "invalid_response",
+    });
+  });
+
+  it("fails closed on missing or unsupported consumed transport fields", async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(
+        registryList({
+          name: "io.example/remote",
+          description: "Remote",
+          version: "1.0.0",
+          remotes: [{ url: "https://mcp.example.test" }],
+        })
+      )
+    );
+    await expect(searchMcpMarketplace()).rejects.toMatchObject({ code: "invalid_response" });
+
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(
+        registryList({
+          name: "io.example/package",
+          description: "Package",
+          version: "1.0.0",
+          packages: [{ registryType: "npm", identifier: "pkg", transport: { type: "bogus" } }],
+        })
+      )
+    );
+    await expect(searchMcpMarketplace()).rejects.toMatchObject({ code: "invalid_response" });
+
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(
+        registryList({
+          name: "io.example/missing-transport",
+          description: "Package",
+          version: "1.0.0",
+          packages: [{ registryType: "npm", identifier: "pkg" }],
+        })
+      )
+    );
+    await expect(searchMcpMarketplace()).rejects.toMatchObject({ code: "invalid_response" });
+  });
+
+  it("uses Registry search pagination and preserves the overall byte budget", async () => {
+    const firstPage = registryPage(
+      [
+        {
+          name: "io.example/other",
+          description: "Other",
+          version: "1.0.0",
+        },
+      ],
+      "next-page"
+    );
+    fetchMock.mockResolvedValueOnce(jsonResponse(firstPage)).mockResolvedValueOnce(
+      jsonResponse(
+        registryPage([
+          {
+            name: "io.example/needle",
+            description: "Needle",
+            version: "1.0.0",
+          },
+        ]),
+        { headers: { "content-length": "2" } }
+      )
+    );
+
+    await expect(
+      searchMcpMarketplace("needle", 1, {
+        maxResponseBytes: JSON.stringify(firstPage).length + 1,
+      })
+    ).rejects.toMatchObject({ code: "response_too_large" });
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      "https://registry.modelcontextprotocol.io/v0/servers?version=latest&limit=1&search=needle",
+      expect.any(Object)
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "https://registry.modelcontextprotocol.io/v0/servers?version=latest&limit=1&search=needle&cursor=next-page",
+      expect.any(Object)
+    );
+  });
+
+  it("returns a later Registry page when the first page has no query match", async () => {
+    fetchMock
+      .mockResolvedValueOnce(
+        jsonResponse(
+          registryPage(
+            [{ name: "io.example/other", description: "Other", version: "1.0.0" }],
+            "next-page"
+          )
+        )
+      )
+      .mockResolvedValueOnce(
+        jsonResponse(
+          registryPage([{ name: "io.example/needle", description: "Needle", version: "1.0.0" }])
+        )
+      );
+
+    await expect(searchMcpMarketplace("needle", 1)).resolves.toEqual({
+      results: [expect.objectContaining({ name: "io.example/needle" })],
     });
   });
 
@@ -194,6 +305,51 @@ describe("MCP marketplace client", () => {
     });
   });
 
+  it("preserves the first abort cause when timeout and caller cancellation race", async () => {
+    let rejectFetch: (reason: unknown) => void = () => {};
+    let requestSignal: AbortSignal | undefined;
+    let observeAbort: () => void = () => {};
+    let abortObserved = new Promise<void>((resolve) => {
+      observeAbort = resolve;
+    });
+    fetchMock.mockImplementationOnce(
+      async (_input, init) =>
+        await new Promise<never>((_resolve, reject) => {
+          requestSignal = init?.signal;
+          rejectFetch = reject;
+          requestSignal?.addEventListener("abort", observeAbort, { once: true });
+        })
+    );
+
+    const caller = new AbortController();
+    const timedOut = searchMcpMarketplace(undefined, 1, { signal: caller.signal, timeoutMs: 10 });
+    await abortObserved;
+    caller.abort(new Error("late caller abort"));
+    rejectFetch(requestSignal?.reason);
+    await expect(timedOut).rejects.toMatchObject({ code: "timeout" });
+
+    abortObserved = new Promise<void>((resolve) => {
+      observeAbort = resolve;
+    });
+    fetchMock.mockImplementationOnce(
+      async (_input, init) =>
+        await new Promise<never>((_resolve, reject) => {
+          requestSignal = init?.signal;
+          rejectFetch = reject;
+          requestSignal?.addEventListener("abort", observeAbort, { once: true });
+        })
+    );
+    const callerFirst = new AbortController();
+    const callerFirstRequest = searchMcpMarketplace(undefined, 1, {
+      signal: callerFirst.signal,
+      timeoutMs: 10,
+    });
+    callerFirst.abort(new Error("caller abort"));
+    await new Promise((resolve) => setTimeout(resolve, 15));
+    rejectFetch(requestSignal?.reason);
+    await expect(callerFirstRequest).rejects.toMatchObject({ code: "aborted" });
+  });
+
   it("rejects invalid request options before issuing a network request", async () => {
     await expect(searchMcpMarketplace(undefined, 30, { timeoutMs: 0 })).rejects.toEqual(
       expect.any(McpMarketplaceError)
@@ -201,6 +357,9 @@ describe("MCP marketplace client", () => {
     await expect(
       searchMcpMarketplace(undefined, 30, { maxResponseBytes: Number.MAX_VALUE })
     ).rejects.toMatchObject({ code: "invalid_options" });
+    await expect(searchMcpMarketplace(undefined, 0)).rejects.toMatchObject({
+      code: "invalid_options",
+    });
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
