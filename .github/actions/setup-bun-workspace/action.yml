@@ -335,7 +335,7 @@ runs:
       id: bun-zip-cache
       uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
       with:
-        path: ${{ runner.temp }}/eliza-bun-release
+        path: ${{ runner.temp }}/eliza-bun-release/bun.zip
         key: bun-release-${{ steps.bun-variant.outputs.variant }}-${{ inputs.bun-version }}
 
     - name: Fetch and serve Bun release zip
@@ -346,13 +346,23 @@ runs:
       run: |
         set -euo pipefail
         out="${RUNNER_TEMP}/eliza-bun-release"
+        url_file="${RUNNER_TEMP}/eliza-bun-download-url"
         mkdir -p "$out"
+        rm -f "$url_file" "$out/download-url"
         node packages/scripts/ci-fetch-bun-release.mjs --out-dir "$out"
-        node packages/scripts/ci-fetch-bun-release.mjs --out-dir "$out" --serve-only --url-file "$out/download-url" &
+        # Cache restores only bun.zip. A previous job's download-url (dead
+        # localhost port) must not be published as bun-download-url. Detach
+        # the server so bash exiting this step does not SIGHUP it.
+        nohup node packages/scripts/ci-fetch-bun-release.mjs \
+          --out-dir "$out" --serve-only --url-file "$url_file" \
+          >/dev/null 2>&1 &
+        disown || true
         i=0
         while [ "$i" -lt 50 ]; do
-          if [ -s "$out/download-url" ]; then
-            echo "url=$(tr -d '[:space:]' < "$out/download-url")" >> "$GITHUB_OUTPUT"
+          if [ -s "$url_file" ]; then
+            url="$(tr -d '[:space:]' < "$url_file")"
+            echo "serving Bun zip at $url"
+            echo "url=$url" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           i=$((i + 1))
