@@ -3079,6 +3079,12 @@ export const INVALID_TRACER_PROVIDER = {};
     minify: desktopFastDist ? false : undefined,
     cssMinify: desktopFastDist ? false : undefined,
     reportCompressedSize: !desktopFastDist,
+    // #18056: do not inject <link rel="modulepreload"> for the entire static
+    // import graph of main. That was ~350 preloads (~1.7–2.5 MB transfer on
+    // cold /login before the user interacts). Browser still fetches modules
+    // on demand when they are actually imported (public login only pulls the
+    // CloudRouterShell + login chunk tree).
+    modulePreload: false,
     rolldownOptions: {
       plugins: [
         // Rolldown build-phase resolver for @opentelemetry/api.

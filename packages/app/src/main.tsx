@@ -69,7 +69,6 @@ import {
   isCloudPairAgentId,
   isCloudPairLoopbackOrigin,
 } from "@elizaos/shared/contracts";
-import { App } from "@elizaos/ui/App";
 import { client } from "@elizaos/ui/api";
 import { installAndroidNativeAgentFetchBridge } from "@elizaos/ui/api/android-native-agent-transport";
 import {
@@ -290,6 +289,17 @@ function lazyNamedComponent<TProps>(
 ): ComponentType<TProps> {
   return lazy(async () => ({ default: await load() })) as ComponentType<TProps>;
 }
+
+/**
+ * Tab/view App is dynamically imported so anonymous `/login` (CloudRouterShell
+ * public routes) does not static-import the full agent dashboard graph into the
+ * entry modulepreload list (#18056). Native / non-shell paths still mount it
+ * under the same Suspense boundary as the rest of the tree.
+ */
+const App = lazy(async () => {
+  const mod = await import("@elizaos/ui/App");
+  return { default: mod.App };
+});
 
 const PhoneCompanionApp = lazyNamedComponent<Record<string, never>>(
   async () => (await importAppPhone()).PhoneCompanionApp,

@@ -34,7 +34,7 @@ import { chromium } from "@playwright/test";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const appDir = resolve(here, "..");
-const distDir = join(appDir, "dist");
+let distDir = join(appDir, "dist");
 
 const MIME = {
   ".html": "text/html; charset=utf-8",
@@ -62,6 +62,7 @@ function parseArgs(argv) {
   const args = {
     url: null,
     serveDist: false,
+    distDir: null,
     settleMs: 6000,
     out: null,
     headed: false,
@@ -72,6 +73,7 @@ function parseArgs(argv) {
     const a = argv[i];
     if (a === "--url") args.url = argv[++i];
     else if (a === "--serve-dist") args.serveDist = true;
+    else if (a === "--dist-dir") args.distDir = argv[++i];
     else if (a === "--settle-ms") args.settleMs = Number(argv[++i]);
     else if (a === "--out") args.out = argv[++i];
     else if (a === "--timeout") args.timeout = Number(argv[++i]);
@@ -81,6 +83,7 @@ function parseArgs(argv) {
       console.log(`Usage: node scripts/measure-anonymous-login-transfer.mjs [options]
   --url <url>       Login URL (default with --serve-dist: http://127.0.0.1:<port>/login)
   --serve-dist      Serve packages/app/dist and measure /login
+  --dist-dir <path> Override dist directory (default: packages/app/dist)
   --settle-ms <n>   Settle time after navigation (default 6000)
   --out <path>      Write JSON report
   --label <name>    Label this measurement (e.g. git sha)
@@ -104,12 +107,13 @@ function gitHead() {
 }
 
 /** Minimal static SPA server for dist/ (history-fallback to index.html). */
-function startDistServer() {
-  if (!existsSync(join(distDir, "index.html"))) {
+function startDistServer(root) {
+  if (!existsSync(join(root, "index.html"))) {
     throw new Error(
-      `packages/app/dist/index.html missing — run: bun run --cwd packages/app build`,
+      `${root}/index.html missing — run a production vite build first`,
     );
   }
+  distDir = root;
   const server = createServer((req, res) => {
     try {
       const url = new URL(req.url || "/", "http://127.0.0.1");
@@ -247,11 +251,12 @@ async function main() {
   let loginUrl = args.url;
 
   if (args.serveDist) {
-    const started = await startDistServer();
+    const root = args.distDir ? resolve(args.distDir) : distDir;
+    const started = await startDistServer(root);
     server = started.server;
     baseUrl = started.baseUrl;
     loginUrl = `${baseUrl}/login`;
-    console.log(`Serving dist at ${baseUrl}`);
+    console.log(`Serving dist at ${baseUrl} (root=${root})`);
   }
 
   if (!loginUrl) {
