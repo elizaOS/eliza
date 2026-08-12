@@ -60,12 +60,12 @@ describe('resolveSmithersDbConfig', () => {
     expect(config.connectionString).toBe('postgresql://user:pass@localhost:5432/db');
   });
 
-  it('returns provider=pglite and dataDir when SMITHERS_DB_PROVIDER=pglite', () => {
+  it('fails closed while Smithers PGlite packages require incompatible versions', () => {
     process.env.SMITHERS_DB_PROVIDER = 'pglite';
     process.env.SMITHERS_DB_DATA_DIR = '/tmp/pglite-data';
-    const config = resolveSmithersDbConfig();
-    expect(config.provider).toBe('pglite');
-    expect(config.dataDir).toBe('/tmp/pglite-data');
+    expect(() => resolveSmithersDbConfig()).toThrow(
+      'disabled until its engine and socket packages agree'
+    );
   });
 
   it('rejects an unknown SMITHERS_DB_PROVIDER value', () => {
@@ -79,10 +79,12 @@ describe('resolveSmithersDbConfig', () => {
     expect(() => resolveSmithersDbConfig()).toThrow('SMITHERS_DB_URL is required');
   });
 
-  it('requires a data directory for pglite', () => {
+  it('reports package incompatibility before accepting PGlite configuration', () => {
     process.env.SMITHERS_DB_PROVIDER = 'pglite';
     delete process.env.SMITHERS_DB_DATA_DIR;
-    expect(() => resolveSmithersDbConfig()).toThrow('SMITHERS_DB_DATA_DIR is required');
+    expect(() => resolveSmithersDbConfig()).toThrow(
+      'disabled until its engine and socket packages agree'
+    );
   });
 });
 

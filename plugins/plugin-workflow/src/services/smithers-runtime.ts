@@ -161,14 +161,13 @@ export function resolveSmithersDbConfig(): {
     return { provider, connectionString };
   }
   if (provider === 'pglite') {
-    const dataDir = process.env.SMITHERS_DB_DATA_DIR?.trim();
-    if (!dataDir) {
-      throw new ElizaError('SMITHERS_DB_DATA_DIR is required for the pglite backend', {
-        code: 'SMITHERS_DB_DATA_DIR_REQUIRED',
+    throw new ElizaError(
+      'The Smithers PGlite backend is disabled until its engine and socket packages agree on one PGlite version',
+      {
+        code: 'SMITHERS_PGLITE_VERSION_INCOMPATIBLE',
         context: { provider },
-      });
-    }
-    return { provider, dataDir };
+      }
+    );
   }
   return { provider };
 }

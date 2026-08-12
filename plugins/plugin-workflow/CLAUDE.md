@@ -133,9 +133,9 @@ The Smithers execution runtime also reads these optional environment variables (
 
 | Env var | Default | Description |
 |---|---|---|
-| `SMITHERS_DB_PROVIDER` | `sqlite` | Database backend for the Smithers orchestrator (`sqlite`, `postgres`, or `pglite`). Invalid or unavailable backends fail fast. |
+| `SMITHERS_DB_PROVIDER` | `sqlite` | Database backend for the Smithers orchestrator (`sqlite` or `postgres`). `pglite` fails closed until Smithers' engine and socket dependencies support the same PGlite version. Invalid or unavailable backends fail fast. |
 | `SMITHERS_DB_URL` | — | Required connection string when `SMITHERS_DB_PROVIDER=postgres`. |
-| `SMITHERS_DB_DATA_DIR` | — | Required data directory when `SMITHERS_DB_PROVIDER=pglite`. |
+| `SMITHERS_DB_DATA_DIR` | — | Reserved for a future compatible Smithers PGlite backend; currently rejected. |
 | `ELIZA_SMITHERS_TIMEOUT_MS` | `300000` | Maximum wall-clock time for one Smithers workflow or durable task run. |
 | `BUN_BIN` | `bun` | Bun executable fallback for Node-hosted dev/test processes; Smithers workers still run under Bun for `bun:sqlite`. |
 
