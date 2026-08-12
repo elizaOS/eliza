@@ -31,7 +31,7 @@
     "@upstash/redis": "^1.37.0",
     "discord.js": "^14.26.4",
     "hashring": "^3.2.0",
-    "hono": "4.12.34",
+    "hono": "4.13.1",
     "ioredis": "^5.10.1"
   },
   "devDependencies": {
