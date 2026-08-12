@@ -394,6 +394,8 @@ export type DeleteAgentResult =
     }
   | { success: false; error: string };
 
+export type DeleteAuthorization = "user_request" | "billing_request";
+
 /**
  * Outcome of the bounded container teardown attempted during `deleteAgent`:
  * `null` = stop succeeded; `{ error }` = stop failed within the cap (classified
@@ -530,6 +532,7 @@ const HEARTBEAT_PROBE_RETRY_MS = 2_000;
 // on success) is the downtime clock. The ~30s heartbeat itself keeps the
 // WireGuard NAT mapping warm, so a reachable agent never trips this.
 const HEARTBEAT_DISCONNECT_AFTER_MS = 120_000;
+
 // IP reconciliation (heartbeat + recovery): agent containers do not persist
 // tailscale node state, so a container restart mints a fresh node key and
 // headscale hands out the NEXT sequential IP — the stored headscale_ip /
@@ -1918,7 +1921,11 @@ export class ElizaSandboxService {
     return agentSandboxesRepository.listByOrganization(orgId);
   }
 
-  async deleteAgent(agentId: string, orgId: string): Promise<DeleteAgentResult> {
+  async deleteAgent(
+    agentId: string,
+    orgId: string,
+    options: { authorization?: DeleteAuthorization } = {},
+  ): Promise<DeleteAgentResult> {
     // Phase 1 — short transaction: take the lifecycle lock, validate
     // preconditions, and capture the fields needed for teardown. We deliberately
     // do NOT run the container teardown inside this transaction:
@@ -1927,7 +1934,7 @@ export class ElizaSandboxService {
     // + write transaction + a pooled connection for the full teardown cap (up to
     // SANDBOX_DELETE_STOP_TIMEOUT_MS) would wedge concurrent lifecycle ops on the
     // same agent/org. The lock + transaction are released the moment this returns.
-    const precheck = await this.prepareAgentDelete(agentId, orgId);
+    const precheck = await this.prepareAgentDelete(agentId, orgId, options.authorization);
 
     if (!precheck.ok) {
       return { success: false, error: precheck.error };
@@ -2097,6 +2104,7 @@ export class ElizaSandboxService {
   private async prepareAgentDelete(
     agentId: string,
     orgId: string,
+    authorization?: DeleteAuthorization,
   ): Promise<
     | {
         ok: true;
@@ -2131,6 +2139,20 @@ export class ElizaSandboxService {
       const hasActiveReplacementJob = await this.hasActiveReplacementJobTx(tx, agentId, orgId);
       if (rec.status === "provisioning" || hasActiveProvisionJob || hasActiveReplacementJob) {
         return { ok: false as const, error: "Agent provisioning is in progress" };
+      }
+      const isSharedRuntime = rec.execution_tier === "shared";
+      const isUnclaimedWarmPoolEntry =
+        rec.organization_id === WARM_POOL_ORG_ID && rec.pool_status === "unclaimed";
+      if (
+        rec.status === "running" &&
+        !isSharedRuntime &&
+        !isUnclaimedWarmPoolEntry &&
+        !authorization
+      ) {
+        return {
+          ok: false as const,
+          error: "Agent is running; suspend it before deletion",
+        };
       }
       const deletionAttemptId = rec.deletion_attempt_id ?? crypto.randomUUID();
       // A retry preserves the original audit timestamp while taking a fresh
@@ -2403,13 +2425,14 @@ export class ElizaSandboxService {
   async executeDeletion(
     agentId: string,
     orgId: string,
+    authorization?: DeleteAuthorization,
   ): Promise<{
     success: boolean;
     containerStopped: boolean;
     rowDeleted: boolean;
     error?: string;
   }> {
-    const result = await this.deleteAgent(agentId, orgId);
+    const result = await this.deleteAgent(agentId, orgId, { authorization });
     if (!result.success) {
       // If the row is already gone, treat as success. This covers the retry
       // case where a prior attempt deleted the row but failed before updating

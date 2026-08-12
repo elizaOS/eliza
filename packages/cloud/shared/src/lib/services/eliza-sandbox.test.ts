@@ -20,6 +20,7 @@ import { PgDialect } from "drizzle-orm/pg-core";
 
 import { decryptField, encryptField } from "../../db/crypto/field-crypto";
 import { resetKmsClientForTests } from "../../db/crypto/kms-client";
+import * as realEnsureSchemaNs from "../../db/ensure-agent-sandbox-schema";
 import * as realHelpersNs from "../../db/helpers";
 import { agentBillingRepository } from "../../db/repositories/agent-billing";
 import type { AgentSandbox, AgentSandboxBackup } from "../../db/repositories/agent-sandboxes";
@@ -100,6 +101,12 @@ type UpgradeTransactionOutcome =
 // patch the SHARED live binding — building the restore (or this override's
 // spread) from the live namespace after a mock landed would capture the mock.
 const realHelpers = { ...realHelpersNs };
+// Same VALUE-snapshot rule for the self-healing DDL guard: prepareAgentDelete
+// awaits ensureAgentSandboxSchema() before its transaction, and this file's
+// swapped `dbWrite` forwards `.execute` to the real connection — so the real
+// guard would attempt live DDL here. This is a mocked-database suite; the
+// guard itself is covered by the PGlite tests.
+const realEnsureSchema = { ...realEnsureSchemaNs };
 let upgradeTransactionImpl: (<T>(fn: (tx: UpgradeTx) => Promise<T>) => Promise<T>) | null = null;
 let upgradeTransactionOutcome: UpgradeTransactionOutcome = null;
 const realDbWrite = realHelpers.dbWrite as unknown as object;
@@ -346,6 +353,10 @@ beforeAll(async () => {
     ...realHelpers,
     dbWrite: upgradeDbWrite,
   }));
+  mock.module("../../db/ensure-agent-sandbox-schema", () => ({
+    ...realEnsureSchema,
+    ensureAgentSandboxSchema: async () => {},
+  }));
 
   const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
   const prototype = ElizaSandboxService.prototype as unknown as ReplacementLifecycleHarnessService;
@@ -516,6 +527,7 @@ beforeAll(async () => {
 afterAll(() => {
   restoreReplacementLifecycleHarness?.();
   mock.module("../../db/helpers", () => realHelpers);
+  mock.module("../../db/ensure-agent-sandbox-schema", () => realEnsureSchema);
 });
 
 // provision()'s success path now re-enters the billable set via
@@ -3708,6 +3720,7 @@ describe("ElizaSandboxService.deleteAgent teardown cap (#9066)", () => {
     executeDeletion(
       agentId: string,
       orgId: string,
+      authorization?: "user_request" | "billing_request",
     ): Promise<{
       success: boolean;
       containerStopped: boolean;
@@ -3717,6 +3730,7 @@ describe("ElizaSandboxService.deleteAgent teardown cap (#9066)", () => {
     prepareAgentDelete(
       agentId: string,
       orgId: string,
+      authorization?: "user_request" | "billing_request",
     ): Promise<
       | {
           ok: true;
@@ -3735,6 +3749,88 @@ describe("ElizaSandboxService.deleteAgent teardown cap (#9066)", () => {
     const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
     return new ElizaSandboxService() as unknown as Svc;
   }
+
+  test("prepareAgentDelete refuses an unauthorized running agent before deletion intent", async () => {
+    const svc = await makeSvc();
+    const live = {
+      ...customSandbox(),
+      id: AGENT,
+      organization_id: ORG,
+      last_heartbeat_at: new Date(Date.now() - 30_000),
+    };
+    const lockLifecycle = spyOn(svc, "lockLifecycle").mockResolvedValue(undefined);
+    const getForMutation = spyOn(svc, "getAgentForLifecycleMutation").mockResolvedValue(live);
+    const activeProvision = spyOn(svc, "hasActiveProvisionJobTx").mockResolvedValue(false);
+    const activeReplacement = spyOn(svc, "hasActiveReplacementJobTx").mockResolvedValue(false);
+    const update = mock(() => ({
+      set: mock(() => ({
+        where: mock(() => ({
+          returning: mock(async () => [{ ...live, status: "deletion_pending" }]),
+        })),
+      })),
+    }));
+    upgradeTransactionImpl = async (fn) =>
+      fn({
+        execute: async () => ({ rows: [] }),
+        update,
+      });
+
+    try {
+      await expect(svc.prepareAgentDelete(AGENT, ORG)).resolves.toEqual({
+        ok: false,
+        error: "Agent is running; suspend it before deletion",
+      });
+      expect(update).not.toHaveBeenCalled();
+    } finally {
+      upgradeTransactionImpl = null;
+      lockLifecycle.mockRestore();
+      getForMutation.mockRestore();
+      activeProvision.mockRestore();
+      activeReplacement.mockRestore();
+    }
+  });
+
+  test("prepareAgentDelete allows an explicitly authorized running agent", async () => {
+    const svc = await makeSvc();
+    const live = {
+      ...customSandbox(),
+      id: AGENT,
+      organization_id: ORG,
+      last_heartbeat_at: null,
+    };
+    const lockLifecycle = spyOn(svc, "lockLifecycle").mockResolvedValue(undefined);
+    const getForMutation = spyOn(svc, "getAgentForLifecycleMutation").mockResolvedValue(live);
+    const activeProvision = spyOn(svc, "hasActiveProvisionJobTx").mockResolvedValue(false);
+    const activeReplacement = spyOn(svc, "hasActiveReplacementJobTx").mockResolvedValue(false);
+    const update = mock(() => ({
+      set: mock(() => ({
+        where: mock(() => ({
+          returning: mock(async () => [
+            {
+              id: AGENT,
+              deletionAttemptId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+              deletionStartedAt: new Date("2026-06-04T12:00:00.000Z"),
+              lifecycleRevision: 1,
+            },
+          ]),
+        })),
+      })),
+    }));
+    upgradeTransactionImpl = async (fn) => fn({ execute: async () => ({ rows: [] }), update });
+
+    try {
+      await expect(svc.prepareAgentDelete(AGENT, ORG, "user_request")).resolves.toMatchObject({
+        ok: true,
+      });
+      expect(update).toHaveBeenCalled();
+    } finally {
+      upgradeTransactionImpl = null;
+      lockLifecycle.mockRestore();
+      getForMutation.mockRestore();
+      activeProvision.mockRestore();
+      activeReplacement.mockRestore();
+    }
+  });
 
   test("linked character cleanup waits until the reconciliation tombstone is removed", async () => {
     const svc = await makeSvc();
