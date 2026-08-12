@@ -141,6 +141,26 @@ describe("logger", () => {
     }
   });
 
+  it("skips a later listener removed during the current delivery", () => {
+    const logger = bufferLogger();
+    const laterListener = vi.fn<(entry: LogEntry) => void>();
+    const removingListener = vi.fn<(entry: LogEntry) => void>(() => {
+      removeLogListener(laterListener);
+    });
+    addLogListener(removingListener);
+    addLogListener(laterListener);
+
+    try {
+      logger.info("removed-before-turn");
+
+      expect(removingListener.mock.calls.length).toBeGreaterThan(0);
+      expect(laterListener).not.toHaveBeenCalled();
+    } finally {
+      removeLogListener(removingListener);
+      removeLogListener(laterListener);
+    }
+  });
+
   it("does not reset warning suppression for a duplicate active listener", () => {
     const logger = bufferLogger();
     const consoleError = vi

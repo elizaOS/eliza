@@ -729,6 +729,10 @@ function createInMemoryDestination(maxLogs = 100): InMemoryDestination {
       // Snapshot so registration changes during a callback apply only to the
       // next entry and cannot revisit the current listener indefinitely.
       for (const listener of [...logListeners]) {
+        // A listener earlier in the snapshot may unsubscribe a later one.
+        // Honor that removal immediately without letting new registrations
+        // join the current delivery.
+        if (!logListeners.has(listener)) continue;
         try {
           listener(entry);
         } catch {
