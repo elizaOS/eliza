@@ -8,8 +8,9 @@ import { spawnSync } from "node:child_process";
 
 const KNOWN_UNSTABLE_BUN_LINUX = /^1\.3\.9(?:$|[-+].*)/;
 const MIN_NODE_MAJOR = 24;
-/** Matches a Node version token emitted by the runtime probe anywhere in stdout. */
-const NODE_PROBE_VERSION_PATTERN = /(?:^|[\s\r\n])node:([0-9][^\s\r\n]*)/g;
+/** Exact per-line probe markers only — never mid-line noise such as `(node:123)`. */
+const EXACT_NODE_PROBE_LINE = /^node:(.+)$/;
+const EXACT_BUN_PROBE_LINE = /^bun$/;
 
 /**
  * Builds the child-process env for the Node runtime probe. Inherits PATH and
@@ -22,19 +23,30 @@ export function buildNodeProbeEnv(parentEnv = process.env) {
   return env;
 }
 
-function extractNodeProbeVersion(text) {
-  const trimmed = text.trim();
-  if (!trimmed) {
-    return null;
-  }
-  for (const line of trimmed.split(/\r?\n/)) {
-    const exact = /^node:(.+)$/.exec(line.trim());
-    if (exact) {
-      return exact[1];
+/**
+ * Collect exact `bun` / `node:<version>` markers from probe stdout, one token
+ * per non-empty line. Mid-line chatter (deprecation banners, PID tags) is
+ * ignored so a valid marker cannot be mistaken for noise or vice versa.
+ *
+ * @param {string} text
+ * @returns {{ bun: boolean, nodeVersions: string[] }}
+ */
+export function collectProbeMarkers(text) {
+  let bun = false;
+  const nodeVersions = [];
+  for (const rawLine of String(text ?? "").split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line) continue;
+    if (EXACT_BUN_PROBE_LINE.test(line)) {
+      bun = true;
+      continue;
+    }
+    const nodeMatch = EXACT_NODE_PROBE_LINE.exec(line);
+    if (nodeMatch) {
+      nodeVersions.push(nodeMatch[1]);
     }
   }
-  const matches = [...trimmed.matchAll(NODE_PROBE_VERSION_PATTERN)];
-  return matches.at(-1)?.[1] ?? null;
+  return { bun, nodeVersions };
 }
 
 /**
@@ -154,13 +166,27 @@ export function parseNodeMajor(version) {
 
 export function validateNodeProbeOutput(output) {
   const text = output?.trim() ?? "";
-  if (text === "bun") {
+  const { bun, nodeVersions } = collectProbeMarkers(text);
+
+  // Bun detection stays priority: a shimmed Bun that also prints node-looking
+  // chatter must still fail as Bun, not as a missing/ambiguous Node marker.
+  if (bun) {
     return { ok: false, reason: "resolved to Bun, not Node.js" };
   }
-  const version = extractNodeProbeVersion(text);
-  if (!version) {
+
+  if (nodeVersions.length === 0) {
     return { ok: false, reason: "did not report a Node.js runtime" };
   }
+
+  const uniqueVersions = [...new Set(nodeVersions)];
+  if (uniqueVersions.length > 1) {
+    return {
+      ok: false,
+      reason: `reported more than one Node.js runtime (${uniqueVersions.join(", ")})`,
+    };
+  }
+
+  const version = uniqueVersions[0];
   const major = parseNodeMajor(version);
   if (major === null) {
     return { ok: false, reason: `could not parse Node.js version ${version}` };

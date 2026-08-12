@@ -24,7 +24,10 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { evaluateVoiceSelfTestReport } from "./ios-voice-selftest-lib.mjs";
+import {
+  evaluateVoiceSelfTestReport,
+  resolveVoiceSelfTestPollPolicy,
+} from "./ios-voice-selftest-lib.mjs";
 import {
   DEFAULT_HOST_AGENT_PORT,
   startDeviceE2eHostAgent,
@@ -373,15 +376,7 @@ async function stopVideo(recording) {
   return recording.stop();
 }
 
-async function pollResult(udid, appId) {
-  const attempts = Number.parseInt(
-    process.env.IOS_VOICE_SELFTEST_ATTEMPTS ?? "300",
-    10,
-  );
-  const delayMs = Number.parseInt(
-    process.env.IOS_VOICE_SELFTEST_DELAY_MS ?? "1000",
-    10,
-  );
+async function pollResult(udid, appId, { attempts, delayMs }) {
   let lastRaw = "";
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
     lastRaw = defaultsReadString(udid, appId, VOICE_RESULT_KEY) ?? "";
@@ -417,6 +412,10 @@ async function pollResult(udid, appId) {
 }
 
 async function main() {
+  // Validate poll knobs before simulator boot or host-agent spawn so a typo
+  // cannot silently shrink the Preferences wait budget via partial parseInt.
+  const pollPolicy = resolveVoiceSelfTestPollPolicy({ env: process.env });
+
   const { appId } = readAppIdentity();
   let apiBase = val("--api-base");
   const udid = ensureSimulatorBooted();
@@ -487,7 +486,7 @@ async function main() {
       `armed in-app first-run remote connect + voice self-test for ${apiBase}`,
     );
 
-    const result = await pollResult(udid, appId);
+    const result = await pollResult(udid, appId, pollPolicy);
     const screenshot = takeScreenshot(udid, "voice-selftest-result");
     const video = await stopVideo(recording);
 

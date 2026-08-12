@@ -64,6 +64,12 @@ describe("links", () => {
     expect(formatSlackLink("https://x.com")).toBe("<https://x.com>");
     expect(formatSlackLink("https://x.com", "X")).toBe("<https://x.com|X>");
     expect(extractUrlFromSlackLink("<https://x.com|X>")).toBe("https://x.com");
+    expect(extractUrlFromSlackLink("<slack://channel?id=C123|Channel>")).toBe(
+      "slack://channel?id=C123",
+    );
+    expect(extractUrlFromSlackLink("<mailto:alice@example.com>")).toBe(
+      "mailto:alice@example.com",
+    );
     expect(extractUrlFromSlackLink("nope")).toBeNull();
   });
 });
@@ -80,6 +86,9 @@ describe("stripSlackFormatting", () => {
     expect(stripSlackFormatting("see <https://a.com> ok")).toBe(
       "see https://a.com ok",
     );
+    expect(stripSlackFormatting("open <slack://channel?id=C1> ok")).toBe(
+      "open slack://channel?id=C1 ok",
+    );
   });
 
   it("strips every link, not just the first", () => {
@@ -89,6 +98,9 @@ describe("stripSlackFormatting", () => {
     expect(stripSlackFormatting("<https://a.com> and <https://b.com>")).toBe(
       "https://a.com and https://b.com",
     );
+    expect(
+      stripSlackFormatting("<mailto:alice@ex.com|Email> and <tel:+1234567>"),
+    ).toBe("Email and tel:+1234567");
   });
 });
 
@@ -139,5 +151,35 @@ describe("permalink build/parse round-trip", () => {
       messageTs: "1234567890.123456",
     });
     expect(parseSlackMessagePermalink("https://acme.example.com/x")).toBeNull();
+  });
+
+  it("parses user DM channel permalinks and non-fractional 10-digit timestamps", () => {
+    expect(
+      parseSlackMessagePermalink(
+        "https://acme.slack.com/archives/U1234567/p1700000000123456",
+      ),
+    ).toEqual({
+      workspaceDomain: "acme",
+      channelId: "U1234567",
+      messageTs: "1700000000.123456",
+    });
+
+    expect(
+      parseSlackMessagePermalink(
+        "https://acme.slack.com/archives/C0ABCDE/p1700000000",
+      ),
+    ).toEqual({
+      workspaceDomain: "acme",
+      channelId: "C0ABCDE",
+      messageTs: "1700000000",
+    });
+  });
+
+  it("returns null for malformed short timestamps", () => {
+    expect(
+      parseSlackMessagePermalink(
+        "https://acme.slack.com/archives/C0ABCDE/p12345",
+      ),
+    ).toBeNull();
   });
 });

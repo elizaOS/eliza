@@ -6,11 +6,15 @@
  * runtime service or connector-account manager is needed) and a fake in-memory
  * repository, then assert: List-Unsubscribe header parsing → sender scan, the
  * two-phase authorization gate, the HTTP one-click / mailto branches, the Gmail
- * manage capability gate for block/trash, and that the outcome is persisted.
+ * manage capability gate for block/trash, SSRF-closed HTTP unsubscribe against
+ * private/metadata targets, and that the outcome is persisted.
+ *
+ * HTTP paths inject a deterministic `fetchImpl` into the real shared SSRF guard
+ * so policy still runs; tests never stub the guard away.
  */
 
 import type { IAgentRuntime, UUID } from "@elizaos/core";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   EmailUnsubscribeRecord,
   EmailUnsubscribeRequest,
@@ -151,23 +155,25 @@ function makeGateway(
   };
 }
 
-function makeService(gmail: InboxGmailGateway) {
+function makeService(
+  gmail: InboxGmailGateway,
+  options: { httpTransport?: { fetchImpl: typeof fetch } } = {},
+) {
   const { repository, records } = fakeRepository();
   const service = new InboxUnsubscribeService(makeRuntime(), {
     gmail,
     repository,
+    // Always inject the test wire so the Node-pinned production transport is
+    // not used; the real SSRF policy still runs on the injected fetchImpl.
+    httpTransport: options.httpTransport ?? { fetchImpl: fetchSpy },
   });
   return { service, records };
 }
 
-describe("InboxUnsubscribeService", () => {
-  const fetchSpy = vi.fn();
+const fetchSpy = vi.fn();
 
+describe("InboxUnsubscribeService", () => {
   beforeEach(() => {
-    vi.stubGlobal("fetch", fetchSpy);
-  });
-  afterEach(() => {
-    vi.unstubAllGlobals();
     fetchSpy.mockReset();
   });
 
@@ -246,11 +252,15 @@ describe("InboxUnsubscribeService", () => {
 
   describe("unsubscribeEmailSender execution", () => {
     it("performs an HTTP one-click POST and records success", async () => {
-      fetchSpy.mockResolvedValue({
-        ok: true,
-        status: 200,
-        url: "https://brand.com/unsub/done",
-      } as Response);
+      fetchSpy.mockImplementation(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        expect(url).toBe("https://brand.com/unsub");
+        return new Response(null, {
+          status: 200,
+          // Guard reports finalUrl from the request URL; response.url is not
+          // always populated by the Response constructor.
+        });
+      });
       const gateway = makeGateway({
         messages: [
           gmailMessage({
@@ -275,7 +285,7 @@ describe("InboxUnsubscribeService", () => {
       expect(record.method).toBe("http_one_click");
       expect(record.status).toBe("succeeded");
       expect(record.httpStatusCode).toBe(200);
-      expect(record.httpFinalUrl).toBe("https://brand.com/unsub/done");
+      expect(record.httpFinalUrl).toBe("https://brand.com/unsub");
       expect(records).toHaveLength(1);
       expect(records[0]?.metadata.connectorAccountId).toBe("acct-1");
     });
@@ -322,11 +332,9 @@ describe("InboxUnsubscribeService", () => {
       });
       const { service, records } = makeService(gateway);
 
-      fetchSpy.mockResolvedValue({
-        ok: true,
-        status: 200,
-        url: "https://brand.com/unsub",
-      } as Response);
+      fetchSpy.mockImplementation(
+        async () => new Response(null, { status: 200 }),
+      );
 
       const { record } = await service.unsubscribeEmailSender({
         senderEmail: "news@brand.com",
@@ -359,11 +367,9 @@ describe("InboxUnsubscribeService", () => {
       });
       const { service } = makeService(gateway);
 
-      fetchSpy.mockResolvedValue({
-        ok: true,
-        status: 202,
-        url: "https://brand.com/unsub",
-      } as Response);
+      fetchSpy.mockImplementation(
+        async () => new Response(null, { status: 202 }),
+      );
 
       const { record } = await service.unsubscribeEmailSender({
         senderEmail: "news@brand.com",
@@ -393,6 +399,60 @@ describe("InboxUnsubscribeService", () => {
 
       expect(record.status).toBe("blocked_no_mechanism");
       expect(fetchSpy).not.toHaveBeenCalled();
+    });
+
+    it("fails closed on a literal metadata List-Unsubscribe URL without calling fetch", async () => {
+      const gateway = makeGateway({
+        messages: [
+          gmailMessage({
+            id: "m1",
+            fromEmail: "evil@attacker.test",
+            listUnsubscribe: "<http://169.254.169.254/latest/meta-data/>",
+            listUnsubscribePost: "List-Unsubscribe=One-Click",
+          }),
+        ],
+      });
+      const { service, records } = makeService(gateway);
+
+      const { record } = await service.unsubscribeEmailSender({
+        senderEmail: "evil@attacker.test",
+        userAuthorization: true,
+      });
+
+      expect(fetchSpy).not.toHaveBeenCalled();
+      expect(record.status).toBe("failed");
+      expect(record.errorMessage).toMatch(/private|internal|blocked/i);
+      expect(records).toHaveLength(1);
+    });
+
+    it("fails closed when a public unsubscribe URL redirects to a loopback target", async () => {
+      fetchSpy.mockImplementation(async () => {
+        return new Response(null, {
+          status: 302,
+          headers: { location: "http://127.0.0.1/secret" },
+        });
+      });
+      const gateway = makeGateway({
+        messages: [
+          gmailMessage({
+            id: "m1",
+            fromEmail: "news@brand.com",
+            listUnsubscribe: "<https://brand.com/unsub>",
+            listUnsubscribePost: "List-Unsubscribe=One-Click",
+          }),
+        ],
+      });
+      const { service, records } = makeService(gateway);
+
+      const { record } = await service.unsubscribeEmailSender({
+        senderEmail: "news@brand.com",
+        userAuthorization: true,
+      });
+
+      expect(fetchSpy).toHaveBeenCalledTimes(1);
+      expect(record.status).toBe("failed");
+      expect(record.errorMessage).toMatch(/blocked/i);
+      expect(records).toHaveLength(1);
     });
   });
 

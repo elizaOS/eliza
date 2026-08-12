@@ -2,7 +2,12 @@
 
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { type ConfigEnv, createServer, defaultClientConditions } from "vite";
+import {
+  type ConfigEnv,
+  createServer,
+  defaultClientConditions,
+  normalizePath,
+} from "vite";
 import { describe, expect, test } from "vitest";
 import appViteConfig from "../vite.config";
 
@@ -33,6 +38,33 @@ describe("workspace package resolution", () => {
       ...defaultClientConditions,
     ]);
     expect(buildConfig.resolve?.conditions).toBeUndefined();
+  });
+
+  test("resolves the shared terminal palette from workspace source while serving", async () => {
+    const serveConfig = await resolveAppViteConfig("serve");
+    const server = await createServer({
+      configFile: false,
+      root: appRoot,
+      logLevel: "silent",
+      optimizeDeps: { noDiscovery: true },
+      resolve: { conditions: serveConfig.resolve?.conditions },
+      server: { middlewareMode: true },
+    });
+
+    try {
+      const resolved =
+        await server.environments.client.pluginContainer.resolveId(
+          "@elizaos/shared/terminal/palette",
+          path.resolve(appRoot, "../ui/src/terminal/palette.ts"),
+        );
+      expect(resolved?.id).toBe(
+        normalizePath(
+          path.resolve(appRoot, "../shared/src/terminal/palette.ts"),
+        ),
+      );
+    } finally {
+      await server.close();
+    }
   });
 
   test("keeps browser conditional exports on their browser entry", async () => {

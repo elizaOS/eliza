@@ -46,6 +46,24 @@ Flags:
   --help                print this usage
 `;
 
+const PORT_FLAG_KEYS = new Map([
+  ["--port-frontend", "portFrontend"],
+  ["--port-api", "portApi"],
+  ["--port-cp", "portCp"],
+  ["--port-hetzner", "portHetzner"],
+]);
+
+function parsePortOverride(flag, value) {
+  if (typeof value !== "string" || !/^\d+$/.test(value)) {
+    return { error: `${flag} requires a decimal port between 1 and 65535` };
+  }
+  const port = Number(value);
+  if (!Number.isSafeInteger(port) || port < 1 || port > 65_535) {
+    return { error: `${flag} requires a decimal port between 1 and 65535` };
+  }
+  return { port };
+}
+
 function parseFlags(argv) {
   const flags = {
     noFrontend: false,
@@ -62,6 +80,14 @@ function parseFlags(argv) {
   };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
+    const portKey = PORT_FLAG_KEYS.get(a);
+    if (portKey) {
+      const parsed = parsePortOverride(a, argv[i + 1]);
+      if (parsed.error) return parsed;
+      flags[portKey] = parsed.port;
+      i += 1;
+      continue;
+    }
     switch (a) {
       case "--no-frontend":
         flags.noFrontend = true;
@@ -84,18 +110,6 @@ function parseFlags(argv) {
       case "--help":
       case "-h":
         flags.help = true;
-        break;
-      case "--port-frontend":
-        flags.portFrontend = Number.parseInt(argv[++i], 10);
-        break;
-      case "--port-api":
-        flags.portApi = Number.parseInt(argv[++i], 10);
-        break;
-      case "--port-cp":
-        flags.portCp = Number.parseInt(argv[++i], 10);
-        break;
-      case "--port-hetzner":
-        flags.portHetzner = Number.parseInt(argv[++i], 10);
         break;
       default:
         return { error: `Unknown flag: ${a}` };

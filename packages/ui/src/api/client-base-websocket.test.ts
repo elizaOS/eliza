@@ -325,6 +325,7 @@ describe("ElizaClient websocket connection policy", () => {
       client.connectWs();
       for (let i = 0; i < 15; i++) {
         instances[instances.length - 1].onclose?.();
+        if (i < 14) vi.runOnlyPendingTimers();
       }
       expect(client.getConnectionState().state).toBe("failed");
     } finally {
@@ -533,5 +534,36 @@ describe("ElizaClient websocket connection policy", () => {
 
     expect(instances).toHaveLength(1);
     expect(client.getConnectionState().state).toBe("disconnected");
+  });
+
+  it("drops a queued frame from a socket closed by setBaseUrl", () => {
+    const instances = stubWebSocketWithInstances();
+    const client = new ElizaClient("https://agent-a.example.test", "token");
+    const handler = vi.fn();
+    client.onWsEvent("agent_event", handler);
+    client.connectWs();
+    const staleMessage = instances[0].onmessage;
+
+    client.setBaseUrl("https://agent-b.example.test");
+    staleMessage?.({
+      data: JSON.stringify({ type: "agent_event", payload: "stale" }),
+    });
+
+    expect(handler).not.toHaveBeenCalled();
+    expect(instances[0].onmessage).toBeNull();
+  });
+
+  it("rotates an open anonymous socket when an API token is installed", () => {
+    const instances = stubWebSocketWithInstances();
+    const client = new ElizaClient("https://agent.example.test");
+    client.connectWs();
+    instances[0].readyState = 1;
+    instances[0].onopen?.();
+
+    client.setToken("new-token");
+
+    expect(instances).toHaveLength(2);
+    expect(instances[0].onmessage).toBeNull();
+    expect(instances[1].url).toContain("token=new-token");
   });
 });

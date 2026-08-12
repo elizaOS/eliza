@@ -913,7 +913,9 @@ export class ElizaClient {
    * the credential.
    */
   private installToken(token: string | null, notify: boolean): void {
-    this._token = token?.trim() || null;
+    const nextToken = token?.trim() || null;
+    const tokenChanged = nextToken !== this._token;
+    this._token = nextToken;
     // Boot config is the canonical source. fetchWithCsrf and authBase read here.
     const config = getBootConfig();
     setBootConfig({ ...config, apiToken: this._token ?? undefined });
@@ -925,6 +927,7 @@ export class ElizaClient {
     if (notify && typeof window !== "undefined") {
       window.dispatchEvent(new CustomEvent("steward-token-sync"));
     }
+    if (tokenChanged && this.ws) this.rotateConnection();
   }
 
   getBaseUrl(): string {
@@ -1752,9 +1755,11 @@ export class ElizaClient {
     if (token) params.set("token", token);
     url += `?${params.toString()}`;
 
-    this.ws = new WebSocket(url);
+    const socket = new WebSocket(url);
+    this.ws = socket;
 
-    this.ws.onopen = () => {
+    socket.onopen = () => {
+      if (this.ws !== socket) return;
       const token = this.apiToken;
       if (token && this.ws?.readyState === WebSocket.OPEN) {
         this.ws.send(JSON.stringify({ type: "auth", token }));
@@ -1802,7 +1807,8 @@ export class ElizaClient {
       }
     };
 
-    this.ws.onmessage = (event) => {
+    socket.onmessage = (event) => {
+      if (this.ws !== socket) return;
       try {
         const data = JSON.parse(event.data as string) as Record<
           string,
@@ -1815,7 +1821,8 @@ export class ElizaClient {
       }
     };
 
-    this.ws.onclose = () => {
+    socket.onclose = () => {
+      if (this.ws !== socket) return;
       this.ws = null;
       // Track disconnection time if not already set
       if (this.disconnectedAt === null) {
@@ -1847,7 +1854,8 @@ export class ElizaClient {
       this.scheduleReconnect();
     };
 
-    this.ws.onerror = () => {
+    socket.onerror = () => {
+      if (this.ws !== socket) return;
       // close handler will fire
     };
   }
@@ -2116,8 +2124,19 @@ export class ElizaClient {
       this.networkStatusUnsubscribe();
       this.networkStatusUnsubscribe = null;
     }
-    this.ws?.close();
-    this.ws = null;
+    const socket = this.ws;
+    if (socket) {
+      socket.onopen = null;
+      socket.onclose = null;
+      socket.onerror = null;
+      socket.onmessage = null;
+      try {
+        socket.close();
+      } catch {
+        // error-policy:J6 intentional teardown of an already-closing socket.
+      }
+      if (this.ws === socket) this.ws = null;
+    }
     this.wsSendQueue = [];
     this.wsEventBacklog.clear();
     // Reset connection state on intentional disconnect

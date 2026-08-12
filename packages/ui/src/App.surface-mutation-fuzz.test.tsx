@@ -174,6 +174,15 @@ vi.mock("./hooks/useAuthStatus", () => ({
   // probe from the mounted App's notifications-boot effect; the mock must
   // provide them or the probe throws mid-effect. Authenticated => probe on.
   isAuthenticatedNow: () => true,
+  // notification-store also keys its inbox authority off the full snapshot
+  // (computeAuthorityKey in initNotifications, #18495), so the mock exposes a
+  // static authenticated AuthStatusState alongside the boolean seam.
+  getAuthStatusSnapshot: () => ({
+    phase: "authenticated",
+    identity: { id: "test-user" },
+    session: { id: "test-session" },
+    access: {},
+  }),
   subscribeAuthStatus: () => vi.fn(),
 }));
 vi.mock("./hooks/useActivityEvents", () => ({

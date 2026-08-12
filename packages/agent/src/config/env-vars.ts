@@ -37,6 +37,12 @@ export const CONNECTOR_ENV_MAP: Readonly<
     token: "DISCORD_API_TOKEN",
     botToken: "DISCORD_API_TOKEN",
     applicationId: "DISCORD_APPLICATION_ID",
+    dmPolicy: "DISCORD_DM_POLICY",
+    allowFrom: "DISCORD_ALLOW_FROM",
+    // String form of ELIZA_DISCORD_OWNER_USER_IDS_JSON (JSON array text).
+    // Array `ownerUserIds` is handled specially below — must JSON.stringify,
+    // not comma-join, for parseDiscordOwnerUserIds.
+    ownerUserIdsJson: "ELIZA_DISCORD_OWNER_USER_IDS_JSON",
     syncProfile: "DISCORD_SYNC_PROFILE",
     profileName: "DISCORD_PROFILE_NAME",
     profileAvatar: "DISCORD_PROFILE_AVATAR",
@@ -172,7 +178,8 @@ export function collectConnectorEnvVars(
     const configObj = connectorConfig as Record<string, unknown>;
 
     // Mirror Discord token aliases so older plugins and settings surfaces
-    // agree on a single configured state.
+    // agree on a single configured state. Owner snowflakes must stay JSON
+    // (not comma-joined) for ELIZA_DISCORD_OWNER_USER_IDS_JSON.
     if (connectorName === "discord") {
       const tokenValue =
         (typeof configObj.token === "string" && configObj.token.trim()) ||
@@ -182,15 +189,34 @@ export function collectConnectorEnvVars(
         entries.DISCORD_API_TOKEN = tokenValue;
         entries.DISCORD_BOT_TOKEN = tokenValue;
       }
+
+      const ownerUserIds = configObj.ownerUserIds;
+      if (Array.isArray(ownerUserIds)) {
+        const snowflakes = ownerUserIds
+          .map((entry) => {
+            if (typeof entry === "string") return entry.trim();
+            if (typeof entry === "number" && Number.isFinite(entry)) {
+              return String(entry);
+            }
+            return "";
+          })
+          .filter((entry) => entry.length > 0);
+        if (snowflakes.length > 0) {
+          entries.ELIZA_DISCORD_OWNER_USER_IDS_JSON =
+            JSON.stringify(snowflakes);
+        }
+      }
     }
 
     for (const [configField, envKey] of Object.entries(envMap)) {
       // Discord token/botToken are handled above with token-first precedence; the
       // env map maps both fields to DISCORD_API_TOKEN, so applying them here would
-      // let botToken overwrite token.
+      // let botToken overwrite token. ownerUserIds is handled above as JSON.
       if (
         connectorName === "discord" &&
-        (configField === "token" || configField === "botToken")
+        (configField === "token" ||
+          configField === "botToken" ||
+          configField === "ownerUserIds")
       ) {
         continue;
       }

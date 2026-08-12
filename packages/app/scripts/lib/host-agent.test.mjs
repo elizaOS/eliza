@@ -1,3 +1,8 @@
+/**
+ * Deterministic unit coverage for the device-e2e host-agent helper: port
+ * selection exclusivity, readiness knob validation, health wait + stop lifecycle,
+ * and spawn failure cleanup.
+ */
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import http from "node:http";
@@ -7,9 +12,14 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   chooseHostAgentPort,
   DEFAULT_HOST_AGENT_PORT,
+  DEFAULT_READY_ATTEMPTS,
+  DEFAULT_READY_DELAY_MS,
   hostAgentApiBase,
   isPortAvailable,
+  parseNonNegativeSafeInteger,
   parsePort,
+  parsePositiveSafeInteger,
+  resolveReadyOptions,
   startDeviceE2eHostAgent,
 } from "./host-agent.mjs";
 
@@ -64,6 +74,76 @@ describe("host-agent helper", () => {
     for (const value of ["", "0", "-1", "123abc", "70000"]) {
       expect(() => parsePort(value)).toThrow(/Invalid/);
     }
+  });
+
+  it("parses positive and non-negative safe integers without partial coercion", () => {
+    expect(parsePositiveSafeInteger("90", "attempts")).toBe(90);
+    expect(parsePositiveSafeInteger(50, "attempts")).toBe(50);
+    expect(parseNonNegativeSafeInteger("0", "delay")).toBe(0);
+    expect(parseNonNegativeSafeInteger(2000, "delay")).toBe(2000);
+
+    for (const value of ["", "abc", "10abc", "1.5", "-1", "0", NaN, 1.5]) {
+      expect(() => parsePositiveSafeInteger(value, "attempts")).toThrow(
+        /Invalid attempts/,
+      );
+    }
+    for (const value of ["", "abc", "10abc", "1.5", "-1", NaN, -3]) {
+      expect(() => parseNonNegativeSafeInteger(value, "delay")).toThrow(
+        /Invalid delay/,
+      );
+    }
+  });
+
+  it("resolves readiness knobs from options and env, failing closed on typos", () => {
+    expect(resolveReadyOptions({})).toEqual({
+      readyAttempts: DEFAULT_READY_ATTEMPTS,
+      readyDelayMs: DEFAULT_READY_DELAY_MS,
+    });
+    expect(
+      resolveReadyOptions({
+        readyAttempts: 12,
+        readyDelayMs: 0,
+      }),
+    ).toEqual({ readyAttempts: 12, readyDelayMs: 0 });
+    expect(
+      resolveReadyOptions({
+        env: {
+          ELIZA_HOST_AGENT_READY_ATTEMPTS: "7",
+          ELIZA_HOST_AGENT_READY_DELAY_MS: "25",
+        },
+      }),
+    ).toEqual({ readyAttempts: 7, readyDelayMs: 25 });
+
+    expect(() =>
+      resolveReadyOptions({
+        env: { ELIZA_HOST_AGENT_READY_ATTEMPTS: "abc" },
+      }),
+    ).toThrow(/Invalid host-agent readyAttempts/);
+    expect(() =>
+      resolveReadyOptions({
+        env: { ELIZA_HOST_AGENT_READY_DELAY_MS: "10ms" },
+      }),
+    ).toThrow(/Invalid host-agent readyDelayMs/);
+    expect(() => resolveReadyOptions({ readyAttempts: "0" })).toThrow(
+      /Invalid host-agent readyAttempts/,
+    );
+  });
+
+  it("rejects invalid readyAttempts before spawning a host agent child", async () => {
+    const artifactDir = makeTmpDir();
+    await expect(
+      startDeviceE2eHostAgent({
+        repoRoot: process.cwd(),
+        artifactDir,
+        requestedPort: await chooseHostAgentPort(),
+        readyAttempts: "10abc",
+        readyDelayMs: 20,
+        command: process.execPath,
+        args: ["-e", "process.exit(0)"],
+        env: {},
+      }),
+    ).rejects.toThrow(/Invalid host-agent readyAttempts/);
+    expect(fs.existsSync(path.join(artifactDir, "host-agent.log"))).toBe(false);
   });
 
   it("keeps explicit requested ports exclusive", async () => {

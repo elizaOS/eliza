@@ -16,10 +16,15 @@
  * Authorization: `unsubscribeEmailSender` requires `userAuthorization === true`.
  * The two-phase confirmation gate (`requireConfirmation`) lives in the PA route
  * layer that owns the HTTP surface; this service trusts the pre-confirmed flag.
+ *
+ * HTTP List-Unsubscribe targets come from untrusted email headers, so
+ * `performHttpUnsubscribe` always goes through `fetchWithSsrfGuard` (private /
+ * loopback / link-local blocked; redirects revalidated per hop). Tests inject a
+ * deterministic transport via {@link InboxUnsubscribeServiceDeps.httpTransport}.
  */
 
 import crypto from "node:crypto";
-import type { IAgentRuntime } from "@elizaos/core";
+import { fetchWithSsrfGuard, type IAgentRuntime } from "@elizaos/core";
 import {
   fail,
   type LifeOpsGmailMessageSummary,
@@ -44,6 +49,16 @@ import { InboxUnsubscribeRepository } from "./unsubscribe-repository.ts";
 
 const DEFAULT_SCAN_MAX_MESSAGES = 200;
 const MAX_SENDERS_RETURNED = 200;
+/** Bound how long a remote List-Unsubscribe endpoint may hang the action. */
+const UNSUBSCRIBE_HTTP_TIMEOUT_MS = 15_000;
+/** Cap redirect hops so a hostile chain cannot spin the guard forever. */
+const UNSUBSCRIBE_HTTP_MAX_REDIRECTS = 5;
+
+/** Deterministic-test seam for the SSRF-guarded unsubscribe transport. */
+export type UnsubscribeHttpTransport = Pick<
+  Parameters<typeof fetchWithSsrfGuard>[0],
+  "fetchImpl" | "lookupFn" | "pinnedFetchImpl"
+>;
 
 function headerValue(
   headers: Record<string, unknown> | undefined,
@@ -139,30 +154,51 @@ function parseMailtoUnsubscribe(value: string): {
 async function performHttpUnsubscribe(args: {
   url: string;
   oneClick: boolean;
+  transport?: UnsubscribeHttpTransport;
 }): Promise<{
   ok: boolean;
   status: number;
   finalUrl: string;
   method: Extract<EmailUnsubscribeMethod, "http_one_click" | "http_get">;
 }> {
-  const parsed = new URL(args.url);
+  let parsed: URL;
+  try {
+    parsed = new URL(args.url);
+  } catch {
+    // error-policy:J3 List-Unsubscribe URL text is untrusted header input.
+    fail(400, "Unsubscribe URL is not a valid absolute URL.");
+  }
   if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
     fail(400, "Unsubscribe URL must be http or https.");
   }
-  const response = await fetch(parsed.toString(), {
-    method: args.oneClick ? "POST" : "GET",
-    headers: args.oneClick
-      ? { "Content-Type": "application/x-www-form-urlencoded" }
-      : undefined,
-    body: args.oneClick ? "List-Unsubscribe=One-Click" : undefined,
-    redirect: "follow",
+
+  // Headers are attacker-influenced; never use raw fetch with automatic
+  // redirect following. The shared guard blocks private/loopback targets and
+  // revalidates every redirect hop before connecting.
+  const guarded = await fetchWithSsrfGuard({
+    url: parsed.toString(),
+    timeoutMs: UNSUBSCRIBE_HTTP_TIMEOUT_MS,
+    maxRedirects: UNSUBSCRIBE_HTTP_MAX_REDIRECTS,
+    init: {
+      method: args.oneClick ? "POST" : "GET",
+      headers: args.oneClick
+        ? { "Content-Type": "application/x-www-form-urlencoded" }
+        : undefined,
+      body: args.oneClick ? "List-Unsubscribe=One-Click" : undefined,
+      redirect: "manual",
+    },
+    ...args.transport,
   });
-  return {
-    ok: response.ok,
-    status: response.status,
-    finalUrl: response.url || parsed.toString(),
-    method: args.oneClick ? "http_one_click" : "http_get",
-  };
+  try {
+    return {
+      ok: guarded.response.ok,
+      status: guarded.response.status,
+      finalUrl: guarded.finalUrl || parsed.toString(),
+      method: args.oneClick ? "http_one_click" : "http_get",
+    };
+  } finally {
+    await guarded.release();
+  }
 }
 
 function headersOf(
@@ -178,11 +214,18 @@ export interface InboxUnsubscribeServiceDeps {
   gmail?: InboxGmailGateway;
   /** Override the persistence repository (tests inject a fake or PGlite-backed one). */
   repository?: InboxUnsubscribeRepository;
+  /**
+   * Override the SSRF-guarded HTTP transport used for List-Unsubscribe fetches.
+   * Production leaves this unset so the guard uses Node-pinned defaults; unit
+   * tests inject a deterministic `fetchImpl` so the real policy still runs.
+   */
+  httpTransport?: UnsubscribeHttpTransport;
 }
 
 export class InboxUnsubscribeService {
   private readonly gmail: InboxGmailGateway;
   private readonly repository: InboxUnsubscribeRepository;
+  private readonly httpTransport: UnsubscribeHttpTransport | undefined;
 
   constructor(
     private readonly runtime: IAgentRuntime,
@@ -192,6 +235,7 @@ export class InboxUnsubscribeService {
       deps.gmail ?? createInboxGmailGateway(runtime, runtime.agentId);
     this.repository =
       deps.repository ?? new InboxUnsubscribeRepository(runtime);
+    this.httpTransport = deps.httpTransport;
   }
 
   private get agentId(): string {
@@ -351,6 +395,7 @@ export class InboxUnsubscribeService {
         const http = await performHttpUnsubscribe({
           url: sender.unsubscribeHttpUrl,
           oneClick: sender.unsubscribeMethod === "http_one_click",
+          transport: this.httpTransport,
         });
         method = http.method;
         httpStatusCode = http.status;
