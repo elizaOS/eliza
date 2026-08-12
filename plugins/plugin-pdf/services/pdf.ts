@@ -28,7 +28,6 @@ function isTextItem(item: unknown): item is PdfTextItem {
 
 function collectTextStrings(items: readonly unknown[]): string[] {
   const textItems: string[] = [];
-  if (!items || !Array.isArray(items)) return textItems;
   for (const item of items) {
     if (isTextItem(item)) {
       textItems.push(item.str);
@@ -201,8 +200,8 @@ export class PdfService extends Service {
     const pdf = await getDocumentProxy(uint8Array);
     const numPages = pdf.numPages;
 
-    const metadataResult = (await pdf.getMetadata()) ?? {};
-    const info = (metadataResult.info || {}) as Record<string, string | Date | undefined | null>;
+    const metadataResult = await pdf.getMetadata();
+    const info = (metadataResult.info ?? {}) as Record<string, string | Date | undefined | null>;
 
     const metadata: PdfMetadata = {
       title: typeof info.Title === "string" ? info.Title : undefined,

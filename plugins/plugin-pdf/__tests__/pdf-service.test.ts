@@ -2,10 +2,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { IAgentRuntime } from "@elizaos/core";
 import { MAX_PDF_BUFFER_BYTES, PdfService } from "../services/pdf";
 
-const getDocumentProxyMock = vi.fn();
+const getDocumentProxyMock = vi.hoisted(() => vi.fn());
 
 vi.mock("unpdf", () => ({
-	getDocumentProxy: (...args: unknown[]) => getDocumentProxyMock(...args),
+	getDocumentProxy: getDocumentProxyMock,
 }));
 
 interface MockPageInput {
