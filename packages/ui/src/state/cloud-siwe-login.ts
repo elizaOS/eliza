@@ -16,9 +16,13 @@
  *    harnesses seed with a throwaway key so onboarding can be exercised end to
  *    end on simulators and phones with zero human interaction (#13377).
  *
- * Gotcha: the nonce request must carry NO query string — the production
- * deployment 500s on `?chainId=`; the response's own chainId/domain/uri are
- * authoritative for the message.
+ * Chain binding (#18458): the SIWE message's `chainId` must match the wallet's
+ * actual connected chain, not a stale default. The wallet's chain is read from
+ * the EIP-1193 `eth_chainId` result, validated against the configured supported
+ * login chains, passed to the nonce request so the server binds the same
+ * `chainId` to the nonce, and re-read immediately before the signature so a
+ * mid-prompt chain switch is detected and the handshake rebuilds or fails
+ * closed — never signing a stale mainnet (1) default for a Base/BSC wallet.
  */
 import { logger } from "@elizaos/logger";
 import { writeStoredStewardToken } from "@elizaos/shared/steward-session-client";
@@ -50,6 +54,42 @@ export function getInjectedEthereumProvider(): InjectedEthereumProvider | null {
     return provider as InjectedEthereumProvider;
   }
   return null;
+}
+
+/**
+ * The EVM chains Eliza Cloud wallet login permits. The login UI supports Base
+ * (8453) and BSC (56); Ethereum mainnet (1) is deliberately NOT a supported
+ * login chain here, so an absent/stale mainnet-default `chainId` fails closed
+ * rather than signing authority on the wrong network.
+ */
+export const SUPPORTED_SIWE_LOGIN_CHAIN_IDS = Object.freeze([8453, 56]);
+
+export function isSupportedLoginChainId(chainId: number): boolean {
+  return SUPPORTED_SIWE_LOGIN_CHAIN_IDS.includes(chainId);
+}
+
+/**
+ * Read the wallet's currently connected chain id via the EIP-1193
+ * `eth_chainId` call. Returns the numeric chain id, or null when the provider
+ * omits/rejects the call or returns a non-hex value. Per EIP-1193, `eth_chainId`
+ * returns a 0x-prefixed hex string (e.g. "0x2105" for Base).
+ */
+export async function readWalletChainId(
+  provider: InjectedEthereumProvider,
+): Promise<number | null> {
+  let raw: unknown;
+  try {
+    raw = await provider.request({ method: "eth_chainId" });
+  } catch {
+    // Provider rejected the call — treat the chain as unknown, fail closed.
+    return null;
+  }
+  if (typeof raw !== "string") return null;
+  const trimmed = raw.trim();
+  if (!trimmed.startsWith("0x")) return null;
+  const parsed = Number.parseInt(trimmed.slice(2), 16);
+  if (!Number.isSafeInteger(parsed) || parsed <= 0) return null;
+  return parsed;
 }
 
 interface SiweNonceResponse {
@@ -139,12 +179,18 @@ const NONCE_RETRY_BASE_DELAY_MS = 500;
  * Runs entirely before any wallet signature, so retrying is side-effect free;
  * each attempt consumes a fresh server nonce.
  */
-async function fetchSiweNonce(base: string): Promise<SiweNonceResponse> {
+async function fetchSiweNonce(
+  base: string,
+  chainId: number,
+): Promise<SiweNonceResponse> {
   let lastError: Error | null = null;
+  const nonceUrl = `${base}/api/auth/siwe/nonce?chainId=${encodeURIComponent(
+    String(chainId),
+  )}`;
   for (let attempt = 1; attempt <= NONCE_MAX_ATTEMPTS; attempt += 1) {
     let nonceRes: Response;
     try {
-      nonceRes = await fetch(`${base}/api/auth/siwe/nonce`, {
+      nonceRes = await fetch(nonceUrl, {
         headers: { accept: "application/json" },
       });
     } catch (error) {
@@ -213,8 +259,35 @@ export async function siweLoginWithInjectedWallet(
   const { getAddress } = await import("viem");
   const address = getAddress(rawAddress);
 
+  // Bind the SIWE message to the wallet's ACTUAL connected chain (#18458), not
+  // a stale mainnet (1) default. Read eth_chainId, validate it is a supported
+  // login chain, and fail closed on absent/unsupported/stale state.
+  const walletChainId = await readWalletChainId(provider);
+  if (walletChainId === null) {
+    throw new Error(
+      "Eliza Cloud SIWE login requires the wallet's connected chain, but eth_chainId was unavailable.",
+    );
+  }
+  if (!isSupportedLoginChainId(walletChainId)) {
+    throw new Error(
+      `Eliza Cloud SIWE login requires a supported chain (${SUPPORTED_SIWE_LOGIN_CHAIN_IDS.join(
+        ", ",
+      )}), but the wallet is on chain ${walletChainId}.`,
+    );
+  }
+
   const base = cloudApiBase.replace(/\/+$/, "");
-  const nonce = await fetchSiweNonce(base);
+  const nonce = await fetchSiweNonce(base, walletChainId);
+
+  // The server echoes the chainId it bound to the nonce; if it disagrees with
+  // the wallet chain (e.g. an unsupported value was silently coerced), refuse
+  // to sign rather than trusting the response.
+  const boundChainId = nonce.chainId ?? walletChainId;
+  if (boundChainId !== walletChainId) {
+    throw new Error(
+      `Eliza Cloud SIWE nonce bound chain ${boundChainId}, but the wallet is on chain ${walletChainId}.`,
+    );
+  }
 
   const message = buildSiweMessage({
     domain: nonce.domain,
@@ -222,10 +295,32 @@ export async function siweLoginWithInjectedWallet(
     ...(nonce.statement ? { statement: nonce.statement } : {}),
     uri: nonce.uri,
     version: nonce.version || "1",
-    chainId: nonce.chainId || 1,
+    chainId: walletChainId,
     nonce: nonce.nonce,
     issuedAt: new Date().toISOString(),
   });
+
+  // Re-read the chain immediately before requesting the signature: a wallet
+  // switch between the nonce fetch and the personal_sign prompt would bind the
+  // signature to a different chain than the message advertises. If the chain
+  // changed, rebuild the nonce+message for the new chain rather than signing a
+  // stale message; if the new chain is unsupported, fail closed.
+  const chainBeforeSign = await readWalletChainId(provider);
+  if (chainBeforeSign === null) {
+    throw new Error(
+      "Eliza Cloud SIWE login could not confirm the wallet's chain before signing.",
+    );
+  }
+  if (chainBeforeSign !== walletChainId) {
+    if (!isSupportedLoginChainId(chainBeforeSign)) {
+      throw new Error(
+        `Eliza Cloud SIWE login: wallet switched to unsupported chain ${chainBeforeSign} before signing.`,
+      );
+    }
+    // Chain switched to another supported login chain mid-prompt — rebuild the
+    // nonce + message for the new chain so the signed authority matches it.
+    return siweLoginWithInjectedWallet(cloudApiBase);
+  }
 
   const signature = (await provider.request({
     method: "personal_sign",
@@ -253,7 +348,7 @@ export async function siweLoginWithInjectedWallet(
   writeStoredStewardToken(verified.apiKey);
   window.dispatchEvent(new CustomEvent("steward-token-sync"));
   logger.info(
-    `[CloudSiweLogin] SIWE login verified for ${address.slice(0, 6)}…${address.slice(-4)}`,
+    `[CloudSiweLogin] SIWE login verified for ${address.slice(0, 6)}…${address.slice(-4)} on chain ${walletChainId}`,
   );
   return verified.apiKey;
 }
