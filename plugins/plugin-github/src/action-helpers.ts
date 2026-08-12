@@ -105,23 +105,86 @@ export function optionalStringArray(
   return requireStringArray(options, key) ?? undefined;
 }
 
-/** Splits "owner/repo" (or GitHub repository URLs and .git references) into owner and repo name. Returns null on malformed input. */
+const GITHUB_OWNER_PATTERN = /^(?=.{1,39}$)[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*$/;
+const GITHUB_REPO_PATTERN = /^[A-Za-z0-9._-]{1,100}$/;
+
+/**
+ * Parses a GitHub repository locator into its owner and repository name.
+ *
+ * Absolute URLs must use HTTP(S), target exactly `github.com`, and omit
+ * credentials and non-default ports. WHATWG URL parsing normalizes explicit
+ * default ports, so `:80` on HTTP and `:443` on HTTPS remain valid. Alternate
+ * hosts are rejected because this plugin's Octokit client has no GHE base URL.
+ */
 export function splitRepo(
   repo: string,
 ): { owner: string; name: string } | null {
-  let cleaned = repo.trim();
-  if (cleaned.endsWith(".git")) {
-    cleaned = cleaned.slice(0, -4);
-  }
-  cleaned = cleaned
-    .replace(/^https?:\/\/github\.com\//i, "")
-    .replace(/^github\.com\//i, "");
-
-  const parts = cleaned.split("/");
-  if (parts.length !== 2 || !parts[0] || !parts[1]) {
+  const cleaned = repo.trim();
+  if (!cleaned || cleaned.includes("\\")) {
     return null;
   }
-  return { owner: parts[0], name: parts[1] };
+
+  const isHttpUrl = /^https?:\/\//i.test(cleaned);
+  const isBareGitHubUrl = /^github\.com\//i.test(cleaned);
+  const hasScheme = /^[A-Za-z][A-Za-z\d+.-]*:/.test(cleaned);
+  let path = cleaned;
+
+  if (isHttpUrl || isBareGitHubUrl) {
+    const authority = cleaned.match(/^(?:https?:\/\/)?([^/?#]*)/i)?.[1];
+    if (!authority || authority.includes("@")) {
+      return null;
+    }
+
+    let parsed: URL;
+    try {
+      parsed = new URL(isBareGitHubUrl ? `https://${cleaned}` : cleaned);
+    } catch {
+      return null;
+    }
+
+    if (
+      (parsed.protocol !== "http:" && parsed.protocol !== "https:") ||
+      parsed.hostname !== "github.com" ||
+      parsed.username !== "" ||
+      parsed.password !== "" ||
+      parsed.port !== ""
+    ) {
+      return null;
+    }
+
+    path = parsed.pathname;
+    if (path.endsWith("/")) {
+      path = path.slice(0, -1);
+    }
+    if (!path.startsWith("/")) {
+      return null;
+    }
+    path = path.slice(1);
+  } else if (hasScheme) {
+    return null;
+  }
+
+  const parts = path.split("/");
+  if (parts.length !== 2) {
+    return null;
+  }
+
+  const owner = parts[0];
+  let name = parts[1];
+  if (name.endsWith(".git")) {
+    name = name.slice(0, -4);
+  }
+
+  if (
+    !GITHUB_OWNER_PATTERN.test(owner) ||
+    !GITHUB_REPO_PATTERN.test(name) ||
+    name === "." ||
+    name === ".."
+  ) {
+    return null;
+  }
+
+  return { owner, name };
 }
 
 /** @deprecated LLM `confirmed` is never authoritative — use {@link requireConfirmation}. */
