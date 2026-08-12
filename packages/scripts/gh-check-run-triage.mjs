@@ -122,6 +122,26 @@ function checkIdentity(checkRun) {
   return checkRun.name ?? checkRun.external_id ?? String(checkRun.id);
 }
 
+/** Treat only GitHub's explicit success-like terminal outcomes as ignorable. */
+export function isActionableCheckRun(checkRun) {
+  if (checkRun.status !== "completed") return false;
+  switch (checkRun.conclusion) {
+    case "success":
+    case "neutral":
+    case "skipped":
+    case "cancelled":
+      return false;
+    case "failure":
+    case "timed_out":
+    case "action_required":
+    case "startup_failure":
+    case "stale":
+      return true;
+    default:
+      return true;
+  }
+}
+
 export function normalizeCheckRuns(payload) {
   if (Array.isArray(payload)) {
     if (
@@ -165,9 +185,7 @@ export function classifyCheckRuns(checkRuns) {
   const current = latest.sort((a, b) =>
     String(checkIdentity(a)).localeCompare(String(checkIdentity(b))),
   );
-  const actionableFailures = current.filter(
-    (run) => run.status === "completed" && run.conclusion === "failure",
-  );
+  const actionableFailures = current.filter(isActionableCheckRun);
 
   return {
     actionableFailures,
