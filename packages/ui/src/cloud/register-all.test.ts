@@ -100,9 +100,7 @@ describe("progressive register-public (anonymous /login boot)", () => {
     expect(registerPublicSource).toContain('from "./join/register"');
     expect(registerPublicSource).not.toMatch(/^import "\.\/instances"/m);
     expect(registerPublicSource).not.toMatch(/^import "\.\/analytics"/m);
-    expect(registerPublicSource).not.toMatch(
-      /from\s+["']\.\/register-all["']/,
-    );
+    expect(registerPublicSource).not.toMatch(/from\s+["']\.\/register-all["']/);
     expect(registerPublicSource).not.toMatch(
       /from\s+["']\.\/register-all-sync["']/,
     );
