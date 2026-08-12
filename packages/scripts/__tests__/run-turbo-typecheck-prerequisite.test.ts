@@ -206,6 +206,14 @@ describe("filtered build generated outputs", () => {
     tempDirs.push(dir);
 
     const copiedRunTurbo = join(dir, "packages/scripts/run-turbo.mjs");
+    const concurrencyHelper = join(
+      repoRoot,
+      "packages/scripts/lib/run-turbo-concurrency.mjs",
+    );
+    const copiedConcurrencyHelper = join(
+      dir,
+      "packages/scripts/lib/run-turbo-concurrency.mjs",
+    );
     const copiedGenerator = join(
       dir,
       "packages/shared/scripts/generate-keywords.mjs",
@@ -219,9 +227,10 @@ describe("filtered build generated outputs", () => {
       "packages/core/src/i18n/generated/validation-keyword-data.ts",
     ];
 
-    await mkdir(join(dir, "packages/scripts"), { recursive: true });
+    await mkdir(join(dir, "packages/scripts/lib"), { recursive: true });
     await mkdir(join(dir, "packages/shared/scripts"), { recursive: true });
     await copyFile(runTurbo, copiedRunTurbo);
+    await copyFile(concurrencyHelper, copiedConcurrencyHelper);
     await copyFile(keywordGenerator, copiedGenerator);
     await cp(keywordSources, copiedKeywords, { recursive: true });
     await writeFile(

@@ -10,6 +10,10 @@ import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  applyTurboConcurrency,
+  resolveTurboConcurrency,
+} from "./lib/run-turbo-concurrency.mjs";
 
 const repoRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -155,20 +159,19 @@ if (
 // runners (4 vCPU / 16 GB) die at the package-script default of 8 concurrent
 // tsc processes on a full-workspace cone — the VM itself is OOM-killed and the
 // job exits 143 (#15140) — so CI lanes set this to 4 without forking the
-// `verify`/`typecheck` script definitions.
-if (process.env.RUN_TURBO_CONCURRENCY) {
-  const idx = turboArgs.findIndex(
-    (arg) => arg === "--concurrency" || arg.startsWith("--concurrency="),
-  );
-  const override = `--concurrency=${process.env.RUN_TURBO_CONCURRENCY}`;
-  if (idx === -1) {
-    if (runIndex !== -1) turboArgs.splice(runIndex + 1, 0, override);
-    else turboArgs.push(override);
-  } else if (turboArgs[idx] === "--concurrency") {
-    turboArgs.splice(idx, 2, override);
-  } else {
-    turboArgs.splice(idx, 1, override);
-  }
+// `verify`/`typecheck` script definitions. Fail closed on typos before Turbo
+// starts so a malformed override cannot disable or corrupt that cap.
+let resolvedConcurrency;
+try {
+  resolvedConcurrency = resolveTurboConcurrency(process.env);
+} catch (error) {
+  console.error(`[run-turbo] ${error.message}`);
+  process.exit(1);
+}
+if (resolvedConcurrency != null) {
+  const withConcurrency = applyTurboConcurrency(turboArgs, resolvedConcurrency);
+  turboArgs.length = 0;
+  turboArgs.push(...withConcurrency);
 }
 
 // Test seam: RUN_TURBO_BIN points at a Node script that stands in for the
