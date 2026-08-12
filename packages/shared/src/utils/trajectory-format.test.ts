@@ -1,4 +1,4 @@
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it } from "vitest";
 import {
   formatTrajectoryDuration,
   formatTrajectoryTimestamp,
@@ -10,6 +10,23 @@ const EMPTY = { emptyLabel: "—" };
 describe("formatTrajectoryDuration", () => {
   it("formats null as the placeholder", () => {
     expect(formatTrajectoryDuration(null)).toBe("—");
+  });
+
+  it("fails closed on non-finite values", () => {
+    expect(formatTrajectoryDuration(Number.NaN)).toBe("—");
+    expect(formatTrajectoryDuration(Number.POSITIVE_INFINITY)).toBe("—");
+    expect(formatTrajectoryDuration(Number.NEGATIVE_INFINITY)).toBe("—");
+  });
+
+  it("fails closed on negative durations while preserving 0ms", () => {
+    // Negative integer / fractional durations are impossible trajectory
+    // durations and fall in the same corrupt-input class. formatDurationMs
+    // in format.ts rejects ms < 0; this helper now does too.
+    expect(formatTrajectoryDuration(-1)).toBe("—");
+    expect(formatTrajectoryDuration(-0.5)).toBe("—");
+    expect(formatTrajectoryDuration(-1000)).toBe("—");
+    // 0ms is a valid zero-length duration and must still render, not "—".
+    expect(formatTrajectoryDuration(0)).toBe("0ms");
   });
 
   it("formats sub-second durations in ms", () => {
@@ -55,6 +72,18 @@ describe("formatTrajectoryTokenCount", () => {
     expect(formatTrajectoryTokenCount(0, EMPTY)).toBe("—");
   });
 
+  it("fails closed on non-finite or negative values", () => {
+    expect(formatTrajectoryTokenCount(Number.NaN, EMPTY)).toBe("—");
+    expect(
+      formatTrajectoryTokenCount(Number.POSITIVE_INFINITY, EMPTY),
+    ).toBe("—");
+    expect(formatTrajectoryTokenCount(-1, EMPTY)).toBe("—");
+    // emptyLabel is honored, not hardcoded to "—"
+    expect(formatTrajectoryTokenCount(Number.NaN, { emptyLabel: "n/a" })).toBe(
+      "n/a",
+    );
+  });
+
   it("formats raw counts below 1000 without a suffix", () => {
     expect(formatTrajectoryTokenCount(1, EMPTY)).toBe("1");
     expect(formatTrajectoryTokenCount(999, EMPTY)).toBe("999");
@@ -80,6 +109,13 @@ describe("formatTrajectoryTokenCount", () => {
 });
 
 describe("formatTrajectoryTimestamp", () => {
+  it("fails closed on empty or unparseable timestamps", () => {
+    expect(formatTrajectoryTimestamp("", "smart")).toBe("—");
+    expect(formatTrajectoryTimestamp("", "detailed")).toBe("—");
+    expect(formatTrajectoryTimestamp("not-a-date", "smart")).toBe("—");
+    expect(formatTrajectoryTimestamp("not-a-date", "detailed")).toBe("—");
+  });
+
   it("formats today in smart mode as a local time", () => {
     const date = new Date();
     const out = formatTrajectoryTimestamp(date.toISOString(), "smart");

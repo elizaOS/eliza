@@ -107,7 +107,7 @@ jobs:
 
       - name: Heal the failure
         if: steps.context.outputs.proceed == 'true'
-        uses: anthropics/claude-code-action@be7b93b1907a4abad570368f3c74b6fe3807510b
+        uses: anthropics/claude-code-action@6b082c41935b4c8a3b8b0ef85ba4ba4d9eeb8975
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           github_token: ${{ secrets.GH_PAT }}

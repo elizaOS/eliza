@@ -1,8 +1,17 @@
-// Exercises the run-with-deadline wrapper against real child processes: exit-code passthrough, deadline group kill, and usage validation.
+/**
+ * Exercises the run-with-deadline wrapper against real child processes: exit-
+ * code passthrough, deadline group kill, usage validation, and Node timer
+ * ceiling rejection before spawn.
+ */
 import { describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  MAX_TIMER_DELAY_MS,
+  parseArgs,
+  parseDeadlineMs,
+} from "../run-with-deadline.mjs";
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const WRAPPER = path.resolve(SCRIPT_DIR, "..", "run-with-deadline.mjs");
@@ -14,6 +23,69 @@ function runWrapper(args: string[], timeoutMs = 30_000) {
     timeout: timeoutMs,
   });
 }
+
+describe("parseDeadlineMs", () => {
+  test("accepts positive integers through the Node timer ceiling", () => {
+    expect(parseDeadlineMs("1")).toBe(1);
+    expect(parseDeadlineMs("500")).toBe(500);
+    expect(parseDeadlineMs(String(MAX_TIMER_DELAY_MS))).toBe(
+      MAX_TIMER_DELAY_MS,
+    );
+  });
+
+  test("rejects zero, fractional, signed, partial, and non-decimal forms", () => {
+    for (const value of [
+      "0",
+      "-1",
+      "+1",
+      "1.5",
+      "1e3",
+      "0x10",
+      "500ms",
+      "500junk",
+      "",
+      " ",
+      "NaN",
+      "Infinity",
+      "08",
+    ]) {
+      expect(() => parseDeadlineMs(value)).toThrow(
+        `deadline-ms must be a positive decimal integer from 1 to ${MAX_TIMER_DELAY_MS}`,
+      );
+    }
+  });
+
+  test("rejects values Node would clamp to one millisecond", () => {
+    for (const value of [
+      String(MAX_TIMER_DELAY_MS + 1),
+      "9007199254740992",
+      "9".repeat(400),
+    ]) {
+      expect(() => parseDeadlineMs(value)).toThrow(
+        `deadline-ms must be a positive decimal integer from 1 to ${MAX_TIMER_DELAY_MS}`,
+      );
+    }
+  });
+});
+
+describe("parseArgs", () => {
+  test("returns deadline and command for valid argv", () => {
+    expect(parseArgs(["1200", "--", "node", "-e", "0"])).toEqual({
+      deadlineMs: 1200,
+      command: "node",
+      args: ["-e", "0"],
+    });
+  });
+
+  test("rejects missing separator or command", () => {
+    expect(() => parseArgs(["1000", "node", "-e", "0"])).toThrow(/usage:/);
+    expect(() => parseArgs(["1000", "--"])).toThrow(/usage:/);
+    expect(() => parseArgs(["--", "node", "-e", "0"])).toThrow(/usage:/);
+    expect(() => parseArgs(["", "--", "node", "-e", "0"])).toThrow(
+      /deadline-ms must be a positive decimal integer/,
+    );
+  });
+});
 
 describe("run-with-deadline", () => {
   test("passes through the child's exit code when it finishes in time", () => {
@@ -58,5 +130,33 @@ describe("run-with-deadline", () => {
       "definitely-not-a-real-binary-xyz",
     ]);
     expect(result.status).toBe(127);
+  });
+
+  test("rejects an overflowing deadline before spawning the child", () => {
+    const result = runWrapper([
+      String(MAX_TIMER_DELAY_MS + 1),
+      "--",
+      NODE_BIN,
+      "-e",
+      "console.log('should-not-run')",
+    ]);
+    expect(result.status).toBe(2);
+    expect(result.stderr).toContain(
+      `deadline-ms must be a positive decimal integer from 1 to ${MAX_TIMER_DELAY_MS}`,
+    );
+    expect(result.stderr).not.toContain("TimeoutOverflowWarning");
+    expect(result.stdout).not.toContain("should-not-run");
+  });
+
+  test("accepts the exact Node timer ceiling without overflow warnings", () => {
+    const result = runWrapper([
+      String(MAX_TIMER_DELAY_MS),
+      "--",
+      NODE_BIN,
+      "-e",
+      "process.exit(0)",
+    ]);
+    expect(result.status).toBe(0);
+    expect(result.stderr).not.toContain("TimeoutOverflowWarning");
   });
 });

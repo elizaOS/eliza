@@ -795,7 +795,7 @@ jobs:
         run: .github/scripts/install-playwright-browsers.sh chromium
 
       - name: Install ffmpeg (recording stitch)
-        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+        run: .github/scripts/install-apt-packages.sh ffmpeg
 
       # Drives the REAL in-chat onboarding (greeting → runtime CHOICE →
       # provider → one POST /api/first-run) and all 8 tutorial frames, then

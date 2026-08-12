@@ -18,6 +18,7 @@ import {
   resolveExecutableFromPath,
   resolvePlaywrightNodeRuntime,
 } from "./lib/playwright-node-runtime.mjs";
+import { parsePlaywrightPort } from "./lib/playwright-port.mjs";
 
 const appDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const repoRoot = path.resolve(appDir, "..", "..");
@@ -360,13 +361,23 @@ if (hasPlaywrightConfig("playwright.ui-smoke.config.ts")) {
     const apiPort = await getDistinctFreePort(reservedPorts);
     env.ELIZA_UI_SMOKE_API_PORT = String(apiPort);
     env.ELIZA_API_PORT = env.ELIZA_API_PORT || String(apiPort);
+    reservedPorts.add(apiPort);
+  } else {
+    // Pre-set overrides must be canonical ports before reservation/spawn.
+    reservedPorts.add(
+      parsePlaywrightPort(
+        env.ELIZA_UI_SMOKE_API_PORT,
+        "ELIZA_UI_SMOKE_API_PORT",
+      ),
+    );
   }
-  reservedPorts.add(Number(env.ELIZA_UI_SMOKE_API_PORT));
 
   if (!env.ELIZA_UI_SMOKE_PORT) {
     const uiPort = await getDistinctFreePort(reservedPorts);
     env.ELIZA_UI_SMOKE_PORT = String(uiPort);
     env.ELIZA_PORT = env.ELIZA_PORT || String(uiPort);
+  } else {
+    parsePlaywrightPort(env.ELIZA_UI_SMOKE_PORT, "ELIZA_UI_SMOKE_PORT");
   }
 }
 

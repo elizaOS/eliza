@@ -57,6 +57,7 @@ import {
   dedicatedCloudAgentIdFromBase,
   isDedicatedCloudAgentBase,
   isElizaCloudControlPlaneAgentlessBase,
+  resolveCloudEnvironmentBase,
 } from "../utils/cloud-agent-base";
 import { getElizaApiBase, getElizaApiToken } from "../utils/eliza-globals";
 import {
@@ -129,8 +130,15 @@ async function reconcileLegacyDedicatedCloudApiBase(
   if (!stewardToken || !isDedicatedCloudAgentBase(active.apiBase)) return null;
   const agentId = recoverCloudAgentId(active);
   if (!agentId) return null;
+  const pageHostname =
+    typeof window !== "undefined" ? window.location.hostname : "";
   const cloudApiBase = resolveDirectCloudAuthApiBase(
-    getBootConfig().cloudApiBase || RESTORE_DEFAULT_DIRECT_CLOUD_BASE_URL,
+    resolveCloudEnvironmentBase({
+      pageHostname,
+      apiBase: active.apiBase,
+      bootCloudApiBase: getBootConfig().cloudApiBase,
+      fallback: RESTORE_DEFAULT_DIRECT_CLOUD_BASE_URL,
+    }),
   );
   try {
     const response = await fetch(
@@ -164,6 +172,12 @@ async function reconcileLegacyDedicatedCloudApiBase(
 /**
  * Repair a restored managed-cloud target using the current environment and,
  * for legacy dedicated-looking records, the server-authoritative runtime tier.
+ *
+ * Environment priority for dedicated ingress rebuild:
+ * live Cloud page host → already-staging persisted base → boot config → prod
+ * default. Agent-subdomain UI bundles ship the production boot default, so
+ * trusting boot alone rewrote staging dedicated hosts onto production and
+ * CORS-wedged `/api/*` probes during restore.
  */
 function backfillCloudApiBase(
   active: PersistedActiveServer,
@@ -171,14 +185,27 @@ function backfillCloudApiBase(
   if (active.kind !== "cloud") return active;
   const agentId = recoverCloudAgentId(active);
   if (!agentId) return active;
-  const cloudApiBase =
-    getBootConfig().cloudApiBase ||
-    active.apiBase ||
-    RESTORE_DEFAULT_DIRECT_CLOUD_BASE_URL;
-  const dedicatedApiBase = buildDedicatedCloudAgentApiBase(
-    agentId,
-    cloudApiBase,
-  );
+  const pageHostname =
+    typeof window !== "undefined" ? window.location.hostname : "";
+  const cloudApiBase = resolveCloudEnvironmentBase({
+    pageHostname,
+    apiBase: active.apiBase,
+    bootCloudApiBase: getBootConfig().cloudApiBase,
+    fallback: RESTORE_DEFAULT_DIRECT_CLOUD_BASE_URL,
+  });
+  // When the user is already on this agent's dedicated ingress, keep that
+  // origin — do not rebuild through a mismatched boot-config environment.
+  const pageOrigin =
+    typeof window !== "undefined"
+      ? `${window.location.protocol}//${window.location.host}`
+      : "";
+  const pageAgentId = pageOrigin
+    ? dedicatedCloudAgentIdFromBase(pageOrigin)
+    : null;
+  const dedicatedApiBase =
+    pageAgentId && pageAgentId.toLowerCase() === agentId.toLowerCase()
+      ? pageOrigin
+      : buildDedicatedCloudAgentApiBase(agentId, cloudApiBase);
   if (!dedicatedApiBase) return active;
   const sharedApiBase = buildCloudSharedAgentApiBase(
     resolveDirectCloudAuthApiBase(cloudApiBase),

@@ -18,6 +18,7 @@ import {
   logFor,
   mirrorToRecordings,
   parseFlags,
+  resolveCaptureDurationSeconds,
   skip,
 } from "./lib/capture-output.mjs";
 import { resolveRequiredFfmpeg } from "./lib/ffmpeg.mjs";
@@ -74,7 +75,7 @@ async function main() {
     slug: flags.slug,
     platform: PLATFORM,
   });
-  const durationSec = Number(flags.duration ?? 6);
+  const durationSec = resolveCaptureDurationSeconds(flags);
   log("capturing windows desktop via gdigrab");
 
   const pngPath = evidencePath(base, "png");

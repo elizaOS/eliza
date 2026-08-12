@@ -96,11 +96,58 @@ export const ELIZA_CLOUD_CONTROL_PLANE_HOSTS = new Set([
   ...STAGING_CONSOLE_HOSTS,
 ]);
 
-function isStagingCloudHostname(hostname: string): boolean {
+export function isStagingCloudHostname(hostname: string): boolean {
   const host = hostname.toLowerCase();
   return (
     STAGING_CONSOLE_HOSTS.has(host) || host.endsWith(".staging.elizacloud.ai")
   );
+}
+
+const PROD_CLOUD_ENVIRONMENT_BASE = "https://elizacloud.ai";
+const STAGING_CLOUD_ENVIRONMENT_BASE = "https://staging.elizacloud.ai";
+
+/**
+ * Choose the Cloud environment origin used when rebuilding a dedicated-agent
+ * ingress. Prefer the live page host and an already-staging persisted base
+ * over boot config: agent-subdomain bundles ship with the production default
+ * `cloudApiBase`, so trusting boot alone rewrote
+ * `*.staging.elizacloud.ai` → `*.elizacloud.ai` and CORS-wedged boot (#16163
+ * follow-up).
+ */
+export function resolveCloudEnvironmentBase(options: {
+  pageHostname?: string | null;
+  apiBase?: string | null;
+  bootCloudApiBase?: string | null;
+  fallback?: string;
+}): string {
+  const pageHost = options.pageHostname?.trim().toLowerCase() ?? "";
+  if (pageHost && isStagingCloudHostname(pageHost)) {
+    return STAGING_CLOUD_ENVIRONMENT_BASE;
+  }
+  if (
+    pageHost?.endsWith(".elizacloud.ai") &&
+    !ELIZA_CLOUD_CONTROL_PLANE_HOSTS.has(pageHost)
+  ) {
+    return PROD_CLOUD_ENVIRONMENT_BASE;
+  }
+
+  const activeUrl = options.apiBase
+    ? normalizeHttpUrl(options.apiBase.trim())
+    : null;
+  if (activeUrl && isStagingCloudHostname(activeUrl.hostname)) {
+    return STAGING_CLOUD_ENVIRONMENT_BASE;
+  }
+
+  const boot = options.bootCloudApiBase?.trim() ?? "";
+  const bootUrl = boot ? normalizeHttpUrl(boot) : null;
+  if (bootUrl && isStagingCloudHostname(bootUrl.hostname)) {
+    return STAGING_CLOUD_ENVIRONMENT_BASE;
+  }
+  if (bootUrl) {
+    return stripTrailingSlash(bootUrl.toString());
+  }
+
+  return options.fallback?.trim() || PROD_CLOUD_ENVIRONMENT_BASE;
 }
 
 /**

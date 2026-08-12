@@ -16,6 +16,7 @@ import {
   directCloudSharedAgentIdFromBase,
   isCloudAgentsCollectionBase,
   isElizaCloudControlPlaneAgentlessBase,
+  resolveCloudEnvironmentBase,
 } from "../utils/cloud-agent-base";
 import { resolveCloudAgentApiBase } from "./client-cloud";
 
@@ -165,6 +166,32 @@ describe("cloud-agent-base helpers", () => {
         "https://agent-123.staging.elizacloud.ai",
       );
     }
+  });
+
+  it("resolveCloudEnvironmentBase prefers page/staging-persisted over prod boot default", () => {
+    expect(
+      resolveCloudEnvironmentBase({
+        pageHostname: "agent-123.staging.elizacloud.ai",
+        apiBase: "https://agent-123.staging.elizacloud.ai",
+        bootCloudApiBase: "https://elizacloud.ai",
+      }),
+    ).toBe("https://staging.elizacloud.ai");
+
+    expect(
+      resolveCloudEnvironmentBase({
+        pageHostname: "localhost",
+        apiBase: "https://agent-123.staging.elizacloud.ai",
+        bootCloudApiBase: "https://elizacloud.ai",
+      }),
+    ).toBe("https://staging.elizacloud.ai");
+
+    expect(
+      resolveCloudEnvironmentBase({
+        pageHostname: "localhost",
+        apiBase: "https://agent-123.elizacloud.ai",
+        bootCloudApiBase: "https://staging.elizacloud.ai",
+      }),
+    ).toBe("https://staging.elizacloud.ai");
   });
 
   it("dedicatedCloudAgentIdFromBase extracts production and staging ids", () => {

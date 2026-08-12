@@ -81,6 +81,32 @@ describe("AgentRuntime.getSetting", () => {
 		expect(runtime.getSetting("ROUTE_POLICY")).toBe('{"default":"owner"}');
 	});
 
+	it("clears secrets and settings when setSetting receives null", () => {
+		const runtime = new AgentRuntime({
+			character: {
+				name: "set-setting-clear-test",
+				secrets: {
+					DISCORD_API_TOKEN: "old-token",
+				},
+				settings: {
+					DISCORD_APPLICATION_ID: "old-app",
+				},
+			} as Character,
+			settings: {
+				DISCORD_API_TOKEN: "constructor-token",
+				DISCORD_APPLICATION_ID: "constructor-app",
+			},
+		});
+
+		expect(runtime.getSetting("DISCORD_API_TOKEN")).toBe("old-token");
+		runtime.setSetting("DISCORD_API_TOKEN", null, true);
+		expect(runtime.getSetting("DISCORD_API_TOKEN")).toBeNull();
+
+		expect(runtime.getSetting("DISCORD_APPLICATION_ID")).toBe("old-app");
+		runtime.setSetting("DISCORD_APPLICATION_ID", null, false);
+		expect(runtime.getSetting("DISCORD_APPLICATION_ID")).toBeNull();
+	});
+
 	it("uses fresh constructor settings over DB-persisted agent settings on restart", async () => {
 		const adapter = new InMemoryDatabaseAdapter();
 		const characterName = "runtime-settings-restart-test";

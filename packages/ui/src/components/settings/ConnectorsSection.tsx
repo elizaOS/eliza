@@ -268,6 +268,9 @@ function ConnectorListRow({
 function ConnectorConfigurationSurface({ plugin }: { plugin: PluginInfo }) {
   const t = useAppSelector((s) => s.t);
   const elizaCloudConnected = useAppSelector((s) => s.elizaCloudConnected);
+  const cloudProvisioned = useAppSelector(
+    (s) => s.firstRunCloudProvisionedContainer,
+  );
   const handlePluginConfigSave = useAppSelector(
     (s) => s.handlePluginConfigSave,
   );
@@ -281,6 +284,7 @@ function ConnectorConfigurationSurface({ plugin }: { plugin: PluginInfo }) {
   const channelMode = useConnectorChannelMode();
   const connectorMode = useConnectorMode(plugin.id, {
     elizaCloudConnected,
+    cloudProvisioned,
     channelMode,
   });
   const setupPluginId = connectorMode.setupPluginId;
@@ -377,6 +381,7 @@ function ConnectorConfigurationSurface({ plugin }: { plugin: PluginInfo }) {
             selectedMode={connectorMode.selectedMode}
             onModeChange={connectorMode.setSelectedMode}
             elizaCloudConnected={elizaCloudConnected}
+            cloudProvisioned={cloudProvisioned}
             channelMode={channelMode}
           />
         </div>

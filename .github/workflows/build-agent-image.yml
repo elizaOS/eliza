@@ -436,7 +436,7 @@ jobs:
 
       - name: Generate artifact attestation
         if: ${{ steps.push.outputs.digest != '' }}
-        uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8
         with:
           subject-name: ${{ steps.image.outputs.name }}
           subject-digest: ${{ steps.push.outputs.digest }}
@@ -487,7 +487,7 @@ jobs:
 
       - name: Generate demo artifact attestation
         if: ${{ steps.image.outputs.publication_target == 'demo' }}
-        uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8
         with:
           subject-name: ${{ steps.promote-demo.outputs.name }}
           subject-digest: ${{ steps.promote-demo.outputs.digest }}

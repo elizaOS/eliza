@@ -14,20 +14,31 @@
  * operator can see that a relevant hit older than any recency window is still
  * found and that the `since`/`until` window narrows the result set.
  *
+ * Port overrides (`--api-port`, `ELIZA_API_PORT`) must be canonical TCP ports
+ * in `1..65535`. Explicit invalid environment values fail closed rather than
+ * silently selecting the default.
+ *
  * Usage:
  *   node packages/scripts/seed-message-corpus.mjs
  *   node packages/scripts/seed-message-corpus.mjs --conversations=24 --messages=60 --span-months=18
  *   node packages/scripts/seed-message-corpus.mjs --api-port=31337 --seed=99
  */
+import path from "node:path";
 import process from "node:process";
+import { pathToFileURL } from "node:url";
 
-const DEFAULT_API_PORT = 31337;
+export const DEFAULT_API_PORT = 31337;
 const MONTH_MS = 30 * 24 * 60 * 60 * 1000;
 
-function parseArgs(argv) {
+/**
+ * Parse CLI argv and optional env into seed options.
+ * @param {string[]} argv
+ * @param {NodeJS.ProcessEnv} [env]
+ */
+export function parseArgs(argv, env = process.env) {
   const options = {
-    apiPort: Number(process.env.ELIZA_API_PORT) || DEFAULT_API_PORT,
-    host: process.env.ELIZA_API_HOST || "127.0.0.1",
+    apiPort: resolveApiPortFromEnv(env),
+    host: env.ELIZA_API_HOST || "127.0.0.1",
     body: {},
   };
   for (const arg of argv) {
@@ -41,7 +52,7 @@ function parseArgs(argv) {
     }
     switch (key) {
       case "--api-port":
-        options.apiPort = parsePositiveInt(value, key);
+        options.apiPort = parseTcpPort(value, "--api-port");
         break;
       case "--host":
         options.host = value;
@@ -66,6 +77,48 @@ function parseArgs(argv) {
     }
   }
   return options;
+}
+
+/**
+ * Resolve `ELIZA_API_PORT`: unset/empty keeps the default; any other explicit
+ * value must be a canonical TCP port or the command fails closed.
+ * @param {NodeJS.ProcessEnv} env
+ */
+export function resolveApiPortFromEnv(env = process.env) {
+  const raw = env.ELIZA_API_PORT;
+  if (raw === undefined || raw === "") {
+    return DEFAULT_API_PORT;
+  }
+  return parseTcpPort(raw, "ELIZA_API_PORT");
+}
+
+/**
+ * Accept only canonical decimal TCP ports in the range 1..65535.
+ * Rejects partial numbers, signed values, fractions, leading zeros, and
+ * out-of-range integers so the seeder never probes a different port than the
+ * operator requested.
+ * @param {string} value
+ * @param {string} label
+ */
+export function parseTcpPort(value, label) {
+  const raw = String(value ?? "").trim();
+  if (!/^\d+$/.test(raw)) {
+    throw new Error(
+      `${label} must be a TCP port integer from 1 to 65535 (received ${JSON.stringify(String(value ?? ""))})`,
+    );
+  }
+  const port = Number.parseInt(raw, 10);
+  if (
+    !Number.isSafeInteger(port) ||
+    port < 1 ||
+    port > 65535 ||
+    String(port) !== raw
+  ) {
+    throw new Error(
+      `${label} must be a TCP port integer from 1 to 65535 (received ${JSON.stringify(String(value ?? ""))})`,
+    );
+  }
+  return port;
 }
 
 function parseIntStrict(value, flag) {
@@ -94,7 +147,7 @@ Usage:
   node packages/scripts/seed-message-corpus.mjs [flags]
 
 Flags:
-  --api-port=N        Agent API port (default ${DEFAULT_API_PORT}; env ELIZA_API_PORT)
+  --api-port=N        Agent API TCP port 1-65535 (default ${DEFAULT_API_PORT}; env ELIZA_API_PORT)
   --host=HOST         Agent API host (default 127.0.0.1; env ELIZA_API_HOST)
   --conversations=N   Conversations to generate (1-200, default 12)
   --messages=N        Messages per conversation (1-500, default 40)
@@ -211,7 +264,16 @@ async function main() {
   process.stdout.write("Time window honored by the store. Done.\n");
 }
 
-main().catch((err) => {
-  process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
-  process.exitCode = 1;
-});
+const isDirectRun =
+  import.meta.main === true ||
+  (typeof process.argv[1] === "string" &&
+    import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href);
+
+if (isDirectRun) {
+  main().catch((err) => {
+    process.stderr.write(
+      `${err instanceof Error ? err.message : String(err)}\n`,
+    );
+    process.exitCode = 1;
+  });
+}

@@ -6,11 +6,21 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig, devices } from "@playwright/test";
+import { resolvePlaywrightPortEnv } from "./scripts/lib/playwright-port.mjs";
 
 const appDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(appDir, "../..");
-const apiPort = Number(process.env.ELIZA_HMR_API_PORT || "41337");
-const uiPort = Number(process.env.ELIZA_HMR_UI_PORT || "42138");
+// Fail closed on explicit port typos before baseURL/webServer wiring.
+const apiPort = resolvePlaywrightPortEnv(
+  process.env,
+  "ELIZA_HMR_API_PORT",
+  41337,
+);
+const uiPort = resolvePlaywrightPortEnv(
+  process.env,
+  "ELIZA_HMR_UI_PORT",
+  42138,
+);
 const stateDir =
   process.env.ELIZA_HMR_STATE_DIR ||
   path.join(os.tmpdir(), `eliza-hmr-${process.pid}`);

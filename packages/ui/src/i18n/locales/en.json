@@ -6415,6 +6415,8 @@
   "cloud.discord.modeEveryMessage": "Every message",
   "cloud.discord.modeMention": "Only when @mentioned",
   "cloud.discord.modeKeyword": "On keywords",
+  "cloud.discord.ownerDiscordUserId": "Discord Owner ID",
+  "cloud.discord.ownerDiscordUserIdPlaceholder": "Your Discord user snowflake",
   "cloud.discord.updateBotToken": "Update Bot Token (optional)",
   "cloud.discord.keepCurrentToken": "Leave empty to keep current token",
   "cloud.discord.tokenChangeHint": "Only fill this if you need to change the bot token. The bot will reconnect after saving.",
