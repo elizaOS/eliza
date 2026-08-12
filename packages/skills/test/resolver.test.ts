@@ -8,7 +8,13 @@ import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, it } from "node:test";
-import { clearSkillsDirCache, getSkillsDir } from "../src/resolver.js";
+import {
+  clearSkillsDirCache,
+  getCuratedActiveDir,
+  getProposedSkillsDir,
+  getSkillsDir,
+  promoteSkill,
+} from "../src/resolver.js";
 
 function makeSkillDir(prefix: string): string {
   const dir = join(tmpdir(), `${prefix}-${Date.now()}`);
@@ -90,5 +96,107 @@ describe("clearSkillsDirCache", () => {
     assert.notStrictEqual(overriddenDir, defaultDir);
 
     rmSync(tempDir, { recursive: true, force: true });
+  });
+});
+
+describe("getCuratedActiveDir and getProposedSkillsDir", () => {
+  const originalStateDir = process.env.ELIZA_STATE_DIR;
+
+  afterEach(() => {
+    if (originalStateDir !== undefined) {
+      process.env.ELIZA_STATE_DIR = originalStateDir;
+    } else {
+      delete process.env.ELIZA_STATE_DIR;
+    }
+  });
+
+  it("resolves curated active and proposed directories relative to state dir", () => {
+    const tempDir = join(tmpdir(), `test-curated-dirs-${Date.now()}`);
+    process.env.ELIZA_STATE_DIR = tempDir;
+
+    const activeDir = getCuratedActiveDir();
+    const proposedDir = getProposedSkillsDir();
+
+    assert.strictEqual(activeDir, join(tempDir, "skills", "curated", "active"));
+    assert.strictEqual(
+      proposedDir,
+      join(tempDir, "skills", "curated", "proposed"),
+    );
+  });
+});
+
+describe("promoteSkill", () => {
+  const originalStateDir = process.env.ELIZA_STATE_DIR;
+  let tempStateDir: string;
+
+  beforeEach(() => {
+    tempStateDir = join(tmpdir(), `test-skills-promote-${Date.now()}`);
+    process.env.ELIZA_STATE_DIR = tempStateDir;
+  });
+
+  afterEach(() => {
+    if (tempStateDir && existsSync(tempStateDir)) {
+      rmSync(tempStateDir, { recursive: true, force: true });
+    }
+    if (originalStateDir !== undefined) {
+      process.env.ELIZA_STATE_DIR = originalStateDir;
+    } else {
+      delete process.env.ELIZA_STATE_DIR;
+    }
+  });
+
+  it("rejects invalid skill names", () => {
+    assert.throws(
+      () => promoteSkill("Invalid_Name"),
+      /Invalid skill name "Invalid_Name"/,
+    );
+    assert.throws(() => promoteSkill("skill!"), /Invalid skill name "skill!"/);
+    assert.throws(
+      () => promoteSkill("CamelCaseSkill"),
+      /Invalid skill name "CamelCaseSkill"/,
+    );
+  });
+
+  it("throws when proposed skill directory does not exist", () => {
+    assert.throws(
+      () => promoteSkill("nonexistent-skill"),
+      /Proposed skill "nonexistent-skill" not found/,
+    );
+  });
+
+  it("atomically promotes a proposed skill to active", () => {
+    const skillName = "test-skill-promo";
+    const proposedDir = join(getProposedSkillsDir(), skillName);
+    mkdirSync(proposedDir, { recursive: true });
+    writeFileSync(
+      join(proposedDir, "SKILL.md"),
+      "---\nname: test-skill-promo\ndescription: A test skill\n---\n# Test",
+    );
+
+    assert.strictEqual(existsSync(proposedDir), true);
+
+    const activeDir = promoteSkill(skillName);
+
+    assert.strictEqual(existsSync(proposedDir), false);
+    assert.strictEqual(existsSync(activeDir), true);
+    assert.strictEqual(activeDir, join(getCuratedActiveDir(), skillName));
+    assert.strictEqual(existsSync(join(activeDir, "SKILL.md")), true);
+  });
+
+  it("throws when active skill already exists", () => {
+    const skillName = "duplicate-skill";
+    const proposedDir = join(getProposedSkillsDir(), skillName);
+    const activeDir = join(getCuratedActiveDir(), skillName);
+
+    mkdirSync(proposedDir, { recursive: true });
+    mkdirSync(activeDir, { recursive: true });
+
+    writeFileSync(join(proposedDir, "SKILL.md"), "proposed");
+    writeFileSync(join(activeDir, "SKILL.md"), "active");
+
+    assert.throws(
+      () => promoteSkill(skillName),
+      /Active skill "duplicate-skill" already exists/,
+    );
   });
 });
