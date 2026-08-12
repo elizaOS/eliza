@@ -223,15 +223,15 @@ export function validateNodeExecutable({
   return validateNodeProbeOutput(probe.stdout);
 }
 
-export function probeNodeExecutable(candidate) {
+export function probeNodeExecutable(candidate, env = process.env) {
   try {
     const result = spawnSync(
       candidate,
       [
         "-e",
-        "process.stdout.write(process.versions.bun ? 'bun' : 'node:' + (process.versions.node || ''))",
+        "process.stdout.write('\\n' + (process.versions.bun ? 'bun' : 'node:' + (process.versions.node || '')) + '\\n')",
       ],
-      { encoding: "utf8", env: probeEnv(process.env) },
+      { encoding: "utf8", env: probeEnv(env) },
     );
     return {
       status: result.status ?? 1,

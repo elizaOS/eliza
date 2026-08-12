@@ -1,10 +1,15 @@
 /** Exercises run node runtime behavior with deterministic app-core test fixtures. */
+import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { pathToFileURL } from "node:url";
 import { describe, expect, test } from "vitest";
 import {
   chooseElizaRuntime,
   findProbeMarkers,
   parseNodeMajor,
   probeEnv,
+  probeNodeExecutable,
   resolveNodeExecPath,
   resolveNodeExecPathFromCandidates,
   validateNodeExecutable,
@@ -180,6 +185,67 @@ describe("run-node-runtime node validation", () => {
     expect(env.PATH).toBe("/usr/bin");
     expect(env.HOME).toBe("/home/eliza");
   });
+
+  test("strips NODE_OPTIONS from the real probe child", () => {
+    const tempDir = mkdtempSync(path.join(os.tmpdir(), "eliza-node-probe-"));
+    const preloadPath = path.join(tempDir, "stdout-preload.mjs");
+    writeFileSync(
+      preloadPath,
+      'process.stdout.write("unexpected preload banner");\n',
+    );
+
+    try {
+      const result = probeNodeExecutable(process.execPath, {
+        ...process.env,
+        NODE_OPTIONS: `--import=${pathToFileURL(preloadPath).href}`,
+      });
+      expect(result).toMatchObject({
+        status: 0,
+        stdout: `node:${process.versions.node}`,
+      });
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  const testPosix = process.platform === "win32" ? test.skip : test;
+  testPosix(
+    "isolates the marker from a PATH shim banner without a newline",
+    () => {
+      const tempDir = mkdtempSync(path.join(os.tmpdir(), "eliza-node-shim-"));
+      const shimPath = path.join(tempDir, "node-shim.cjs");
+      writeFileSync(
+        shimPath,
+        `#!/usr/bin/env node
+const { spawnSync } = require("node:child_process");
+process.stdout.write("[shim-without-newline]");
+const child = spawnSync(process.execPath, process.argv.slice(2), {
+  encoding: "utf8",
+  env: process.env,
+});
+process.stdout.write(child.stdout ?? "");
+process.stderr.write(child.stderr ?? "");
+process.exit(child.status ?? 1);
+`,
+      );
+      chmodSync(shimPath, 0o755);
+
+      try {
+        expect(probeNodeExecutable(shimPath)).toMatchObject({
+          status: 0,
+          stdout: `[shim-without-newline]\nnode:${process.versions.node}`,
+        });
+        expect(
+          validateNodeExecutable({
+            candidate: shimPath,
+            platform: process.platform,
+          }),
+        ).toEqual({ ok: true, reason: null });
+      } finally {
+        rmSync(tempDir, { recursive: true, force: true });
+      }
+    },
+  );
 
   test("findProbeMarkers collects exact line markers only", () => {
     expect(
