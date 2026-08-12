@@ -101,10 +101,12 @@ description: Valid skill description
       // Create a dangling symlink pointing to a missing target
       const brokenTarget = join(tempDir, "non-existent-target.md");
       const brokenSymlink = join(tempDir, "dangling-link.md");
+      let symlinksSupported = true;
       try {
         symlinkSync(brokenTarget, brokenSymlink);
       } catch {
-        // Fallback if symlink creation is unsupported on OS
+        // error-policy:J3 symlink creation unsupported on this OS; skip the diagnostic assertion below
+        symlinksSupported = false;
       }
 
       const result = loadSkillsFromDir({ dir: tempDir, source: "test" });
@@ -112,10 +114,12 @@ description: Valid skill description
       assert.ok(validSkill);
 
       // Verify that the dangling symlink produced a diagnostic without crashing
-      const symlinkDiag = result.diagnostics.find(
-        (d) => d.message.includes("Dangling or inaccessible symlink") || d.message.includes("dangling"),
-      );
-      // On OS supporting symlinks, symlinkDiag will be recorded
+      if (symlinksSupported) {
+        const symlinkDiag = result.diagnostics.find((d) =>
+          d.message.includes("Dangling or inaccessible symlink"),
+        );
+        assert.ok(symlinkDiag);
+      }
       assert.ok(result.skills.length >= 1);
     } finally {
       rmSync(tempDir, { recursive: true, force: true });

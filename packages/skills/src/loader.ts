@@ -91,6 +91,7 @@ function loadSkillFromFile(
   try {
     rawContent = readFileSync(filePath, "utf-8");
   } catch (err: unknown) {
+    // error-policy:J3 unreadable skill file on untrusted filesystem becomes a warning diagnostic, never a fake skill
     diagnostics.push({
       type: "warning",
       message: `Failed to read skill file: ${err instanceof Error ? err.message : String(err)}`,
@@ -151,6 +152,7 @@ function loadSkillsFromDirInternal(
   try {
     entries = readdirSync(dir, { withFileTypes: true });
   } catch (err: unknown) {
+    // error-policy:J3 unreadable skills directory on untrusted filesystem becomes a warning diagnostic with no skills
     diagnostics.push({
       type: "warning",
       message: `Failed to read directory "${dir}": ${err instanceof Error ? err.message : String(err)}`,
@@ -178,6 +180,7 @@ function loadSkillsFromDirInternal(
         isDirectory = stats.isDirectory();
         isFile = stats.isFile();
       } catch (err: unknown) {
+        // error-policy:J3 dangling or inaccessible symlink becomes a warning diagnostic and the entry is skipped
         diagnostics.push({
           type: "warning",
           message: `Dangling or inaccessible symlink "${entry.name}": ${err instanceof Error ? err.message : String(err)}`,

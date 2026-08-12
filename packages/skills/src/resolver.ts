@@ -27,6 +27,7 @@ function looksLikeSkillsDir(dir: string): boolean {
   try {
     entries = readdirSync(dir, { withFileTypes: true });
   } catch {
+    // error-policy:J3 unreadable candidate directory on untrusted filesystem is explicitly not a skills dir
     return false;
   }
 
@@ -43,6 +44,7 @@ function looksLikeSkillsDir(dir: string): boolean {
         isFile = stats.isFile();
         isDirectory = stats.isDirectory();
       } catch {
+        // error-policy:J3 dangling or inaccessible symlink is treated as neither file nor directory
         isFile = false;
         isDirectory = false;
       }
