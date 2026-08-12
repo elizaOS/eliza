@@ -14,6 +14,7 @@ import {
   type StewardNonceExchangeResponse,
   StewardSessionError,
 } from "@elizaos/shared/steward-session-client";
+import { dispatchStewardSessionChange } from "../../../events/steward-session-event";
 import { ELIZA_CLOUD_DIRECT_API_BY_HOST } from "../../shell/steward-url";
 
 export function resolveStewardAuthEndpoint(
@@ -73,6 +74,7 @@ export async function syncStewardSessionCookie(
   }
 
   if (typeof window !== "undefined") {
+    dispatchStewardSessionChange("present");
     window.dispatchEvent(
       new CustomEvent("steward-token-sync", { detail: { token } }),
     );
@@ -256,6 +258,7 @@ async function clearRejectedCookieSession(): Promise<void> {
     );
   }
   clearStoredStewardToken();
+  dispatchStewardSessionChange("cleared");
 }
 
 /**

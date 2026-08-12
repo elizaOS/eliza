@@ -7,7 +7,8 @@
  *
  * Surfaces only when `registry.pending()` is non-empty so we never bloat the
  * prompt for the steady state. Each line names the permission, current status,
- * and the most recent feature that was blocked.
+ * and the most recent feature that was blocked. Denied-age labels fail closed
+ * on non-finite timestamps so provider text never shows "NaN days ago".
  */
 
 import type {
@@ -53,7 +54,12 @@ const RELATIVE_TIME_MIN = 60_000;
 const RELATIVE_TIME_HOUR = 60 * RELATIVE_TIME_MIN;
 const RELATIVE_TIME_DAY = 24 * RELATIVE_TIME_HOUR;
 
+/**
+ * Coarse English age for a denied-feature stamp. Non-finite `now` or `then`
+ * return empty so callers can omit the age clause rather than emit "NaN days ago".
+ */
 function formatRelativeTime(now: number, then: number): string {
+  if (!Number.isFinite(now) || !Number.isFinite(then)) return "";
   const delta = Math.max(0, now - then);
   if (delta < RELATIVE_TIME_MIN) return "just now";
   if (delta < RELATIVE_TIME_HOUR) {
@@ -76,7 +82,12 @@ export function formatPendingPermissionLine(
   const block = state.lastBlockedFeature;
   if (state.status === "denied" && block) {
     const when = formatRelativeTime(now, block.at);
-    return `- ${id}: denied ${when} (${block.app}.${block.action})`;
+    const feature = `${block.app}.${block.action}`;
+    // Omit the age clause when the stamp is non-finite; still name the feature.
+    if (when) {
+      return `- ${id}: denied ${when} (${feature})`;
+    }
+    return `- ${id}: denied (${feature})`;
   }
   if (state.status === "denied") {
     return `- ${id}: denied`;

@@ -66,6 +66,9 @@ mock.module("@/db/repositories/agent-billing", () => ({
 }));
 
 mock.module("@/db/repositories", () => ({
+  // Preserve exports consumed by later files in Bun's shared test batch.
+  appsRepository: {},
+  apiKeysRepository: {},
   usersRepository: {
     listByOrganization: mock(async () => []),
   },

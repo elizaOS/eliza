@@ -15,6 +15,12 @@ import {
   UI_SMOKE_AUDIT_PROJECTS_ENV,
   writeAuditProjectPropagation,
 } from "./scripts/lib/playwright-audit-projects.mjs";
+import { resolvePlaywrightNodeRuntime } from "./scripts/lib/playwright-node-runtime.mjs";
+import { resolvePlaywrightPortEnv } from "./scripts/lib/playwright-port.mjs";
+import {
+  parseUiSmokeShard,
+  UI_SMOKE_SHARD_ENV,
+} from "./scripts/lib/playwright-shard.mjs";
 import {
   ASSERTION_GRADE_DASHBOARD_SPECS,
   DASHBOARD_E2E_DEVICE_MATRIX,
@@ -29,13 +35,22 @@ const uiSmokeLiveStack = path.join(
   "scripts",
   "playwright-ui-live-stack.ts",
 );
-const uiSmokeApiPort = Number(process.env.ELIZA_UI_SMOKE_API_PORT || "31337");
-const uiSmokePort = Number(process.env.ELIZA_UI_SMOKE_PORT || "2138");
+// Fail closed on explicit port typos before baseURL/webServer wiring.
+const uiSmokeApiPort = resolvePlaywrightPortEnv(
+  process.env,
+  "ELIZA_UI_SMOKE_API_PORT",
+  31337,
+);
+const uiSmokePort = resolvePlaywrightPortEnv(
+  process.env,
+  "ELIZA_UI_SMOKE_PORT",
+  2138,
+);
 const reuseExistingServer = process.env.ELIZA_UI_SMOKE_REUSE_SERVER === "1";
-const nodeExecutable =
-  process.env.ELIZA_NODE_PATH?.trim() ||
-  process.env.npm_node_execpath?.trim() ||
-  process.execPath;
+// Fail-fast Node runtime resolution: the shared app-core validator throws at
+// config load — before the webServer command spawns — when ELIZA_NODE_PATH is
+// invalid or no real Node.js 24+ executable can be found.
+const nodeExecutable = resolvePlaywrightNodeRuntime();
 const chromiumExecutablePath =
   process.env.ELIZA_UI_SMOKE_CHROMIUM_EXECUTABLE?.trim();
 // Real audio fed to the browser mic for the voice button-press e2e: Chromium
@@ -151,6 +166,11 @@ if (!process.env.ELIZA_API_PORT) {
   process.env.ELIZA_API_PORT = String(uiSmokeApiPort);
 }
 
+// CI splits this lane across runners because `workers: 1` is a suite invariant
+// (one live stack per process). Playwright assigns whole spec files while
+// `fullyParallel` is false, so a file's internal order survives the split.
+const shard = parseUiSmokeShard(process.env[UI_SMOKE_SHARD_ENV]);
+
 export default defineConfig({
   testDir: "./test/ui-smoke",
   timeout: 180_000,
@@ -160,6 +180,7 @@ export default defineConfig({
   fullyParallel: false,
   retries: 0,
   workers: 1,
+  ...(shard ? { shard } : {}),
   reporter: "list",
   outputDir: recording
     ? path.resolve(appDir, "../../e2e-recordings/app/test-results")
@@ -314,8 +335,8 @@ export default defineConfig({
             // Cloud-surface aesthetic audit (#10725/#11342) — run with `audit:cloud`
             // (`--project=audit-cloud`). Walks every registered cloud route at
             // desktop + mobile internally. Requires a renderer built with
-            // VITE_PLAYWRIGHT_TEST_AUTH=true; the runner invalidates dist for this
-            // project so a cached non-auth build cannot skip the local auth shell.
+            // VITE_PLAYWRIGHT_TEST_AUTH=true; the renderer manifest check applies
+            // to every project so a cached non-auth build cannot skip the shell.
             name: "audit-cloud",
             testMatch: [AUDIT_CLOUD_SPEC, AUDIT_PROJECT_WORKER_CONTRACT_SPEC],
             use: {

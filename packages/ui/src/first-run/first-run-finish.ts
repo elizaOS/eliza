@@ -657,14 +657,23 @@ export async function bindCloudAgent(
     clearPendingCloudHandoff();
   }
 
-  // Seamless shared→dedicated cloud-agent handoff (background). Flag OFF →
-  // `selectedAgent` is the dedicated agent itself and this branch is skipped.
+  // Shared→dedicated cloud-agent handoff (background) — only fires when the
+  // host has EXPLICITLY opted in via `autoUpgradeSharedToDedicated` (#18204).
   //
-  // Fires for a NEWLY created shared agent AND for a REUSED one
-  // (`created:false`, e.g. re-login after a failed first run) — #15310 #3: the
-  // old `created`-only gate meant a reused shared agent never re-entered the
-  // upgrade path, stranding the user on the shared adapter with the
-  // provisioning tile forever. Two reuse cases must NOT start a fresh handoff:
+  // The default shared-first onboarding path (`preferSharedCloudTier: true`
+  // with `autoUpgradeSharedToDedicated` left at its default `false`) lands the
+  // user on a shared agent and creates ZERO billable dedicated mutation. The
+  // user upgrades to a dedicated container only through the explicit Settings
+  // confirmation flow with pricing/credit guard (#15355). This restores the
+  // price/confirmation contract and the #18076 staging boundary that dedicated
+  // provisioning must remain separately opt-in.
+  //
+  // When the host does opt in, the handoff fires for a NEWLY created shared
+  // agent AND for a REUSED one (`created:false`, e.g. re-login after a failed
+  // first run) — #15310 #3: the old `created`-only gate meant a reused shared
+  // agent never re-entered the upgrade path, stranding the user on the shared
+  // adapter with the provisioning tile forever. Two reuse cases must NOT start
+  // a fresh handoff:
   //  - an interrupted-but-live one (a pending marker FOR THIS AGENT):
   //    resumePendingCloudHandoff owns it below — it verifies the target and
   //    re-arms a fresh create itself when the target is dead; double-firing
@@ -677,6 +686,7 @@ export async function bindCloudAgent(
   // bearer even when the local server already has a healthy Cloud connection.
   if (
     getBootConfig().preferSharedCloudTier &&
+    getBootConfig().autoUpgradeSharedToDedicated &&
     !selectedAgent.bridgeUrl &&
     (selectedAgent.created || pendingHandoffForThisAgent === null) &&
     isDirectCloudSharedAgentBase(cloudAgentApiBase)

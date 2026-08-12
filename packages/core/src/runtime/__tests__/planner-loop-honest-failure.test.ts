@@ -10,7 +10,11 @@
  * mocks; no live model.
  */
 import { describe, expect, it, vi } from "vitest";
-import { FAILED_TOOL_FALLBACK_MESSAGE, runPlannerLoop } from "../planner-loop";
+import {
+	FAILED_TOOL_FALLBACK_MESSAGE,
+	HANDLED_STEP_FALLBACK_MESSAGE,
+	runPlannerLoop,
+} from "../planner-loop";
 
 type MockedMessages = {
 	messages?: Array<{ role?: string; content?: unknown }>;
@@ -483,5 +487,543 @@ describe("honest failed-turn replies (#17948)", () => {
 
 		expect(useModel).toHaveBeenCalledTimes(3);
 		expect(result.finalMessage).toBe(FAILED_TOOL_FALLBACK_MESSAGE);
+	});
+});
+
+describe("rescue synthesis from successful tool results (2026-08-11 sub-agent report failures)", () => {
+	it("blank failure-synthesis falls back to a TEXT_LARGE rescue composed from successful results", async () => {
+		const useModel = vi
+			.fn()
+			// 1: planner runs the research tool (succeeds).
+			.mockResolvedValueOnce({
+				text: "",
+				toolCalls: [
+					{
+						id: "call-1",
+						name: "WEB_SEARCH",
+						arguments: { query: "standujar contributions elizaOS" },
+					},
+				],
+			})
+			// 2: planner runs a second step (fails).
+			.mockResolvedValueOnce({
+				text: "",
+				toolCalls: [
+					{
+						id: "call-2",
+						name: "SHELL",
+						arguments: { command: "gh pr list" },
+					},
+				],
+			})
+			// 3: silent-failed-finish retry — the model recovers with a REPLY,
+			// but the tool-owned failure stays authoritative.
+			.mockResolvedValueOnce({
+				text: "",
+				toolCalls: [
+					{
+						id: "call-3",
+						name: "REPLY",
+						arguments: { text: "hit a snag." },
+					},
+				],
+			})
+			// 4: failure-aware synthesis returns BLANK (the reasoning-burn shape
+			// observed live: completion budget consumed, zero visible text).
+			.mockResolvedValueOnce({ text: "", toolCalls: [] })
+			// 5: the TEXT_LARGE rescue call composes from the successful results.
+			.mockResolvedValueOnce(
+				"standujar reviewed 85 pull requests over the last four days and filed 46 issues.",
+			);
+		const executeToolCall = vi
+			.fn()
+			.mockResolvedValueOnce({
+				success: true,
+				text: "search results: standujar reviewed 85 pull requests, filed 46 issues",
+			})
+			.mockResolvedValueOnce({
+				success: false,
+				text: "command_failed: exit 3",
+			});
+		const evaluate = vi
+			.fn()
+			.mockResolvedValueOnce({
+				success: true,
+				decision: "CONTINUE" as const,
+				thought: "Got the research, need the PR list.",
+			})
+			.mockResolvedValueOnce({
+				success: false,
+				decision: "FINISH" as const,
+				thought: "The step failed.",
+			});
+
+		const result = await runPlannerLoop({
+			runtime: { useModel },
+			context: { id: "ctx" },
+			tools: [
+				{ name: "WEB_SEARCH", description: "Search the web." },
+				{ name: "SHELL", description: "Run a shell command." },
+			],
+			executeToolCall,
+			evaluate,
+		});
+
+		expect(result.finalMessage).toBe(
+			"standujar reviewed 85 pull requests over the last four days and filed 46 issues.",
+		);
+		expect(result.finalMessage).not.toBe(FAILED_TOOL_FALLBACK_MESSAGE);
+		// The rescue call carried the successful result as input material
+		// (native chat `messages`, the only shape PlannerRuntime.useModel
+		// accepts), fenced as untrusted tool output.
+		const rescueParams = useModel.mock.calls[4]?.[1] as
+			| MockedMessages
+			| undefined;
+		const rescueText = (rescueParams?.messages ?? [])
+			.map((message) =>
+				typeof message.content === "string" ? message.content : "",
+			)
+			.join("\n");
+		expect(rescueText).toContain('<tool_result name="WEB_SEARCH">');
+		expect(rescueText).toContain("85 pull requests");
+	});
+
+	it("keeps the generic sentence when there are no successful results to rescue from", async () => {
+		const useModel = vi
+			.fn()
+			.mockResolvedValueOnce({
+				text: "",
+				toolCalls: [
+					{
+						id: "call-1",
+						name: "SHELL",
+						arguments: { command: "false" },
+					},
+				],
+			})
+			.mockResolvedValueOnce({
+				text: "",
+				toolCalls: [
+					{ id: "call-2", name: "REPLY", arguments: { text: "hm." } },
+				],
+			})
+			// Failure synthesis blank; NO rescue call should follow (nothing to
+			// rescue from), so no fifth mock is provided.
+			.mockResolvedValueOnce({ text: "", toolCalls: [] });
+		const executeToolCall = vi.fn(async () => ({
+			success: false,
+			text: "command_failed: exit 1",
+		}));
+		const evaluate = vi.fn(async () => ({
+			success: false,
+			decision: "FINISH" as const,
+			thought: "The step failed.",
+		}));
+
+		const result = await runPlannerLoop({
+			runtime: { useModel },
+			context: { id: "ctx" },
+			tools: [{ name: "SHELL", description: "Run a shell command." }],
+			executeToolCall,
+			evaluate,
+		});
+
+		expect(useModel).toHaveBeenCalledTimes(3);
+		expect(result.finalMessage).toBe(FAILED_TOOL_FALLBACK_MESSAGE);
+	});
+
+	it("rescues archived successes: mid-turn compaction must not blind the rescue to completed work", async () => {
+		const searchResultA =
+			"search results A: archived-fact-alpha — the fleet release shipped with twelve plugins. " +
+			"padding ".repeat(400);
+		const searchResultB =
+			"search results B: archived-fact-beta — the shipwright tail closed out last week. " +
+			"padding ".repeat(400);
+		const useModel = vi
+			.fn()
+			// 1-2: two research steps succeed; the tiny compaction budget below
+			// moves both into archivedSteps before the turn ends.
+			.mockResolvedValueOnce({
+				text: "",
+				toolCalls: [
+					{
+						id: "call-1",
+						name: "WEB_SEARCH",
+						arguments: { query: "fleet release plugins" },
+					},
+				],
+			})
+			.mockResolvedValueOnce({
+				text: "",
+				toolCalls: [
+					{
+						id: "call-2",
+						name: "WEB_SEARCH",
+						arguments: { query: "shipwright tail status" },
+					},
+				],
+			})
+			// 3: the follow-up step fails.
+			.mockResolvedValueOnce({
+				text: "",
+				toolCalls: [
+					{
+						id: "call-3",
+						name: "SHELL",
+						arguments: { command: "gh pr list" },
+					},
+				],
+			})
+			// 4: silent-failed-finish retry recovers with a REPLY; the tool-owned
+			// failure stays authoritative.
+			.mockResolvedValueOnce({
+				text: "",
+				toolCalls: [
+					{ id: "call-4", name: "REPLY", arguments: { text: "hit a snag." } },
+				],
+			})
+			// 5: failure-aware synthesis returns blank.
+			.mockResolvedValueOnce({ text: "", toolCalls: [] })
+			// 6: the TEXT_LARGE rescue composes from the ARCHIVED successes.
+			.mockResolvedValueOnce(
+				"The fleet release shipped with twelve plugins and the shipwright tail closed out, though the PR listing step failed.",
+			);
+		const executeToolCall = vi
+			.fn()
+			.mockResolvedValueOnce({ success: true, text: searchResultA })
+			.mockResolvedValueOnce({ success: true, text: searchResultB })
+			.mockResolvedValueOnce({
+				success: false,
+				text: "command_failed: exit 3",
+			});
+		const evaluate = vi
+			.fn()
+			.mockResolvedValueOnce({
+				success: true,
+				decision: "CONTINUE" as const,
+				thought: "More research needed.",
+			})
+			.mockResolvedValueOnce({
+				success: true,
+				decision: "CONTINUE" as const,
+				thought: "Now list the PRs.",
+			})
+			.mockResolvedValueOnce({
+				success: false,
+				decision: "FINISH" as const,
+				thought: "The step failed.",
+			});
+
+		const result = await runPlannerLoop({
+			runtime: { useModel },
+			context: { id: "ctx" },
+			tools: [
+				{ name: "WEB_SEARCH", description: "Search the web." },
+				{ name: "SHELL", description: "Run a shell command." },
+			],
+			executeToolCall,
+			evaluate,
+			// Deliberately tiny input budget: compaction fires before every model
+			// call (threshold = 1200 - 1000 = 200 estimated tokens) and
+			// keepSteps: 1 archives each success as soon as a newer step lands —
+			// the live long-turn shape where every completed search has left
+			// `trajectory.steps` by the time the rescue runs.
+			config: {
+				contextWindowTokens: 1200,
+				compactionReserveTokens: 1000,
+				compactionKeepSteps: 1,
+			},
+		});
+
+		// The successes really were compacted out of the live window.
+		expect(
+			result.trajectory.archivedSteps.filter(
+				(step) => step.result?.success === true,
+			).length,
+		).toBeGreaterThanOrEqual(2);
+		expect(
+			result.trajectory.steps.some(
+				(step) =>
+					step.toolCall?.name === "WEB_SEARCH" && step.result?.success === true,
+			),
+		).toBe(false);
+		// The rescue still surfaced them instead of no-opping into the canned
+		// failure sentence.
+		expect(result.finalMessage).toBe(
+			"The fleet release shipped with twelve plugins and the shipwright tail closed out, though the PR listing step failed.",
+		);
+		const rescueParams = useModel.mock.calls[5]?.[1] as
+			| MockedMessages
+			| undefined;
+		const rescueText = (rescueParams?.messages ?? [])
+			.map((message) =>
+				typeof message.content === "string" ? message.content : "",
+			)
+			.join("\n");
+		expect(rescueText).toContain("archived-fact-alpha");
+		expect(rescueText).toContain("archived-fact-beta");
+	});
+
+	it("never ships the handled-step placeholder as a rescue: a canned synthesis falls through to the honest failure", async () => {
+		const useModel = vi
+			.fn()
+			.mockResolvedValueOnce({
+				text: "",
+				toolCalls: [
+					{
+						id: "call-1",
+						name: "WEB_SEARCH",
+						arguments: { query: "release notes" },
+					},
+				],
+			})
+			.mockResolvedValueOnce({
+				text: "",
+				toolCalls: [
+					{
+						id: "call-2",
+						name: "SHELL",
+						arguments: { command: "gh pr list" },
+					},
+				],
+			})
+			.mockResolvedValueOnce({
+				text: "",
+				toolCalls: [
+					{ id: "call-3", name: "REPLY", arguments: { text: "hit a snag." } },
+				],
+			})
+			// Failure-aware synthesis blank, then the rescue model parrots the
+			// canned placeholder instead of composing a real answer.
+			.mockResolvedValueOnce({ text: "", toolCalls: [] })
+			.mockResolvedValueOnce(HANDLED_STEP_FALLBACK_MESSAGE);
+		const executeToolCall = vi
+			.fn()
+			.mockResolvedValueOnce({
+				success: true,
+				text: "search results: the release notes list forty-two changes",
+			})
+			.mockResolvedValueOnce({
+				success: false,
+				text: "command_failed: exit 3",
+			});
+		const evaluate = vi
+			.fn()
+			.mockResolvedValueOnce({
+				success: true,
+				decision: "CONTINUE" as const,
+				thought: "Now list the PRs.",
+			})
+			.mockResolvedValueOnce({
+				success: false,
+				decision: "FINISH" as const,
+				thought: "The step failed.",
+			});
+
+		const result = await runPlannerLoop({
+			runtime: { useModel },
+			context: { id: "ctx" },
+			tools: [
+				{ name: "WEB_SEARCH", description: "Search the web." },
+				{ name: "SHELL", description: "Run a shell command." },
+			],
+			executeToolCall,
+			evaluate,
+		});
+
+		// A canned non-answer must not ship as a successful rescue; the caller
+		// keeps its honest failure reply instead.
+		expect(result.finalMessage).not.toBe(HANDLED_STEP_FALLBACK_MESSAGE);
+		expect(result.finalMessage).toBe(FAILED_TOOL_FALLBACK_MESSAGE);
+	});
+
+	it("frames the rescued reply as a partial failure: the compose prompt names the failed step with a scrubbed cause", async () => {
+		const useModel = vi
+			.fn()
+			.mockResolvedValueOnce({
+				text: "",
+				toolCalls: [
+					{
+						id: "call-1",
+						name: "WEB_SEARCH",
+						arguments: { query: "quarterly numbers" },
+					},
+				],
+			})
+			.mockResolvedValueOnce({
+				text: "",
+				toolCalls: [
+					{
+						id: "call-2",
+						name: "SHELL",
+						arguments: { command: "gh pr list" },
+					},
+				],
+			})
+			.mockResolvedValueOnce({
+				text: "",
+				toolCalls: [
+					{ id: "call-3", name: "REPLY", arguments: { text: "hit a snag." } },
+				],
+			})
+			.mockResolvedValueOnce({ text: "", toolCalls: [] })
+			.mockResolvedValueOnce(
+				"Revenue grew nine percent last quarter, though the PR listing part of this did not complete.",
+			);
+		const executeToolCall = vi
+			.fn()
+			.mockResolvedValueOnce({
+				success: true,
+				text: "search results: revenue grew nine percent last quarter",
+			})
+			.mockResolvedValueOnce({
+				success: false,
+				text: "command_failed: exit 128 in /home/milady/workspace/repo: gh not authenticated",
+			});
+		const evaluate = vi
+			.fn()
+			.mockResolvedValueOnce({
+				success: true,
+				decision: "CONTINUE" as const,
+				thought: "Now list the PRs.",
+			})
+			.mockResolvedValueOnce({
+				success: false,
+				decision: "FINISH" as const,
+				thought: "The step failed.",
+			});
+
+		const result = await runPlannerLoop({
+			runtime: { useModel },
+			context: { id: "ctx" },
+			tools: [
+				{ name: "WEB_SEARCH", description: "Search the web." },
+				{ name: "SHELL", description: "Run a shell command." },
+			],
+			executeToolCall,
+			evaluate,
+		});
+
+		expect(result.finalMessage).toBe(
+			"Revenue grew nine percent last quarter, though the PR listing part of this did not complete.",
+		);
+		// The compose prompt is honest about the partial failure — it names the
+		// failed step and carries the scrubbed cause — instead of presenting
+		// only the successful excerpts as a clean turn.
+		const rescueParams = useModel.mock.calls[4]?.[1] as
+			| MockedMessages
+			| undefined;
+		const rescueText = (rescueParams?.messages ?? [])
+			.map((message) =>
+				typeof message.content === "string" ? message.content : "",
+			)
+			.join("\n");
+		expect(rescueText).toContain("SHELL step did not complete");
+		expect(rescueText).toContain("<path>");
+		expect(rescueText).not.toContain("/home/milady");
+		expect(rescueText).toContain("untrusted");
+		// The failed step stays recorded in the trajectory — the turn is not
+		// relabeled a clean success.
+		expect(
+			[...result.trajectory.archivedSteps, ...result.trajectory.steps].some(
+				(step) => step.result?.success === false,
+			),
+		).toBe(true);
+	});
+
+	it("prefers the most recent successful results when more than six are available", async () => {
+		const searchCount = 7;
+		const plannerResponses: Array<unknown> = [
+			...Array.from({ length: searchCount }, (_, index) => ({
+				text: "",
+				toolCalls: [
+					{
+						id: `call-${index + 1}`,
+						name: "WEB_SEARCH",
+						arguments: { query: `q0${index + 1}` },
+					},
+				],
+			})),
+			{
+				text: "",
+				toolCalls: [
+					{
+						id: `call-${searchCount + 1}`,
+						name: "SHELL",
+						arguments: { command: "gh pr list" },
+					},
+				],
+			},
+			{
+				text: "",
+				toolCalls: [
+					{
+						id: `call-${searchCount + 2}`,
+						name: "REPLY",
+						arguments: { text: "hit a snag." },
+					},
+				],
+			},
+			// Failure-aware synthesis blank, then the rescue composes the reply.
+			{ text: "", toolCalls: [] },
+			"The latest refinements settled it: the final numbers are in, though the last step failed.",
+		];
+		const useModel = vi.fn(async () => {
+			const next = plannerResponses.shift();
+			if (next === undefined) {
+				throw new Error("unexpected extra model call");
+			}
+			return next;
+		});
+		const executeToolCall = vi.fn(
+			async (toolCall: { name: string; params?: Record<string, unknown> }) =>
+				toolCall.name === "WEB_SEARCH"
+					? {
+							success: true,
+							text: `search results: unique-fact-${String(toolCall.params?.query)}`,
+						}
+					: { success: false, text: "command_failed: exit 3" },
+		);
+		const evaluate = vi.fn();
+		for (let index = 0; index < searchCount; index++) {
+			evaluate.mockResolvedValueOnce({
+				success: true,
+				decision: "CONTINUE" as const,
+				thought: `Refinement ${index + 1} captured.`,
+			});
+		}
+		evaluate.mockResolvedValueOnce({
+			success: false,
+			decision: "FINISH" as const,
+			thought: "The step failed.",
+		});
+
+		const result = await runPlannerLoop({
+			runtime: { useModel },
+			context: { id: "ctx" },
+			tools: [
+				{ name: "WEB_SEARCH", description: "Search the web." },
+				{ name: "SHELL", description: "Run a shell command." },
+			],
+			executeToolCall,
+			evaluate,
+		});
+
+		expect(result.finalMessage).toBe(
+			"The latest refinements settled it: the final numbers are in, though the last step failed.",
+		);
+		// The excerpt budget keeps the NEWEST six results — the refined,
+		// answer-bearing ones — dropping the oldest, not the newest.
+		const rescueParams = useModel.mock.calls[10]?.[1] as
+			| MockedMessages
+			| undefined;
+		const rescueText = (rescueParams?.messages ?? [])
+			.map((message) =>
+				typeof message.content === "string" ? message.content : "",
+			)
+			.join("\n");
+		expect(rescueText).toContain("unique-fact-q07");
+		expect(rescueText).toContain("unique-fact-q02");
+		expect(rescueText).not.toContain("unique-fact-q01");
 	});
 });

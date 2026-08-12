@@ -121,28 +121,30 @@ app.post("/", async (c) => {
       ? normalizeTokenAddress(validationResult.data.tokenAddress, tokenChain)
       : undefined;
 
-    const org = await dbRead.query.organizations.findFirst({
-      where: eq(organizations.id, user.organization_id),
-      columns: {
-        id: true,
-        credit_balance: true,
-        settings: true,
-      },
-    });
+    // Org lookup and agent count are independent — run in parallel.
+    const [org, [{ count }]] = await Promise.all([
+      dbRead.query.organizations.findFirst({
+        where: eq(organizations.id, user.organization_id),
+        columns: {
+          id: true,
+          credit_balance: true,
+          settings: true,
+        },
+      }),
+      dbRead
+        .select({ count: sql<number>`count(*)::int` })
+        .from(userCharacters)
+        .where(
+          and(
+            eq(userCharacters.organization_id, user.organization_id),
+            eq(userCharacters.source, "cloud"),
+          ),
+        ),
+    ]);
 
     if (!org) {
       return c.json({ success: false, error: "Organization not found" }, 404);
     }
-
-    const [{ count }] = await dbRead
-      .select({ count: sql<number>`count(*)::int` })
-      .from(userCharacters)
-      .where(
-        and(
-          eq(userCharacters.organization_id, user.organization_id),
-          eq(userCharacters.source, "cloud"),
-        ),
-      );
 
     const maxAgents = getMaxAgentsForOrg(
       Number(org.credit_balance),

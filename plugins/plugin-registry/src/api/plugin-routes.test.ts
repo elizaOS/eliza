@@ -110,7 +110,7 @@ function makeContext(
     readJsonBody: vi.fn(() => Promise.resolve(body)),
     scheduleRuntimeRestart: vi.fn(),
     restartRuntime: vi.fn(),
-    BLOCKED_ENV_KEYS: new Set(),
+    isBlockedEnvKey: () => false,
     discoverInstalledPlugins: vi.fn(() => []),
     maskValue: vi.fn((value: string) => `***${value.length}`),
     aggregateSecrets: vi.fn(() => []),
@@ -152,10 +152,12 @@ describe("handlePluginRoutes config persistence", () => {
 
   it("persists submitted config to env and plugins.entries", async () => {
     const config = { env: {}, plugins: { entries: {} } };
+    const setSetting = vi.fn();
     const ctx = makeContext(
       { config: { DISCORD_API_TOKEN: "abc123" } },
       config,
     );
+    ctx.state.runtime = { setSetting } as never;
 
     const handled = await handlePluginRoutes(ctx);
 
@@ -173,11 +175,72 @@ describe("handlePluginRoutes config persistence", () => {
       },
     });
     expect(process.env.DISCORD_API_TOKEN).toBe("abc123");
+    expect(setSetting).toHaveBeenCalledWith(
+      "DISCORD_API_TOKEN",
+      "abc123",
+      true,
+    );
     expect(mocks.saveElizaConfig).toHaveBeenCalledWith(config);
     expect(ctx.json).toHaveBeenCalledWith(
       ctx.res,
       expect.objectContaining({ ok: true }),
     );
+  });
+
+  it("preserves entry config when enabling a plugin", async () => {
+    const config = {
+      env: { DISCORD_API_TOKEN: "keep-me" },
+      plugins: {
+        entries: {
+          discord: {
+            config: { DISCORD_API_TOKEN: "keep-me" },
+          },
+        },
+      },
+    };
+    const setSetting = vi.fn();
+    // Poison process.env with a different value — enable must fold from
+    // agent-scoped config, not host env.
+    process.env.DISCORD_API_TOKEN = "host-poison";
+    const ctx = makeContext({ enabled: true }, config);
+    ctx.state.runtime = { setSetting } as never;
+
+    await handlePluginRoutes(ctx);
+
+    expect(config.plugins.entries.discord).toEqual({
+      config: { DISCORD_API_TOKEN: "keep-me" },
+      enabled: true,
+    });
+    expect(setSetting).toHaveBeenCalledWith(
+      "DISCORD_API_TOKEN",
+      "keep-me",
+      true,
+    );
+  });
+
+  it("clears folded credentials when disabling a plugin", async () => {
+    const config = {
+      env: { DISCORD_API_TOKEN: "keep-me" },
+      plugins: {
+        entries: {
+          discord: {
+            enabled: true,
+            config: { DISCORD_API_TOKEN: "keep-me" },
+          },
+        },
+      },
+    };
+    const setSetting = vi.fn();
+    const ctx = makeContext({ enabled: false }, config);
+    ctx.state.runtime = { setSetting } as never;
+
+    await handlePluginRoutes(ctx);
+
+    expect(config.plugins.entries.discord).toEqual({
+      enabled: false,
+      config: { DISCORD_API_TOKEN: "keep-me" },
+    });
+    expect(setSetting).toHaveBeenCalledWith("DISCORD_API_TOKEN", null, true);
   });
 
   it("removes blank optional config values from persisted and process env", async () => {
@@ -193,7 +256,9 @@ describe("handlePluginRoutes config persistence", () => {
         },
       },
     };
+    const setSetting = vi.fn();
     const ctx = makeContext({ config: { DISCORD_API_TOKEN: " " } }, config);
+    ctx.state.runtime = { setSetting } as never;
 
     await handlePluginRoutes(ctx);
 
@@ -209,6 +274,7 @@ describe("handlePluginRoutes config persistence", () => {
       },
     });
     expect(process.env.DISCORD_API_TOKEN).toBeUndefined();
+    expect(setSetting).toHaveBeenCalledWith("DISCORD_API_TOKEN", null, true);
   });
 
   it.each(["../../evil", "@scope/../evil", "plugin name", "", "   "])(

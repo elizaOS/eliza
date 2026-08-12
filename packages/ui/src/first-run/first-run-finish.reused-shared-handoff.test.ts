@@ -86,11 +86,14 @@ vi.mock("../cloud/handoff/resume-pending-handoff", () => ({
   resumePendingCloudHandoff: resumePendingCloudHandoffMock,
 }));
 
+const bootConfigMock = vi.hoisted(() => ({
+  cloudApiBase: "https://staging.elizacloud.ai",
+  preferSharedCloudTier: true,
+  autoUpgradeSharedToDedicated: false,
+}));
+
 vi.mock("../config/boot-config", () => ({
-  getBootConfig: () => ({
-    cloudApiBase: "https://staging.elizacloud.ai",
-    preferSharedCloudTier: true,
-  }),
+  getBootConfig: () => bootConfigMock,
 }));
 
 vi.mock("../state", () => ({
@@ -157,6 +160,8 @@ beforeEach(() => {
   window.localStorage.clear();
   clientMock.getCloudStatus.mockResolvedValue(null);
   clientMock.getRestAuthToken.mockReturnValue(null);
+  // Default boot config: shared-first with NO auto-upgrade (#18204).
+  bootConfigMock.autoUpgradeSharedToDedicated = false;
 });
 
 afterEach(() => {
@@ -164,6 +169,13 @@ afterEach(() => {
 });
 
 describe("shared→dedicated handoff firing on shared-agent completion", () => {
+  // These tests exercise the EXPLICIT opt-in path: autoUpgradeSharedToDedicated
+  // is set to true so the background handoff fires. The default (false) path is
+  // covered by the "shared-only onboarding" describe below.
+  beforeEach(() => {
+    bootConfigMock.autoUpgradeSharedToDedicated = true;
+  });
+
   it("fires for a newly created shared agent (unchanged behavior)", async () => {
     mockSelection(true);
     const outcome = await bindCloudAgent(draft(), "steward-token", {}, ports());
@@ -206,6 +218,42 @@ describe("shared→dedicated handoff firing on shared-agent completion", () => {
     expect(outcome.kind).toBe("done");
     expect(runCloudAgentHandoffMock).not.toHaveBeenCalled();
     expect(clientMock.createCloudCompatAgent).not.toHaveBeenCalled();
+  });
+});
+
+describe("shared-only onboarding: no billed dedicated mutation without opt-in (#18204)", () => {
+  // The DEFAULT boot config is preferSharedCloudTier: true with
+  // autoUpgradeSharedToDedicated: false (left at default by the top-level
+  // beforeEach). No background dedicated create may fire on this path — the
+  // user stays on the shared agent until they explicitly choose an upgrade
+  // through Settings (#15355 confirmation flow).
+
+  it("does NOT fire the handoff for a newly created shared agent", async () => {
+    mockSelection(true);
+    const outcome = await bindCloudAgent(draft(), "steward-token", {}, ports());
+    expect(outcome.kind).toBe("done");
+    expect(runCloudAgentHandoffMock).not.toHaveBeenCalled();
+    expect(clientMock.createCloudCompatAgent).not.toHaveBeenCalled();
+  });
+
+  it("does NOT fire the handoff for a reused shared agent with no pending marker", async () => {
+    mockSelection(false);
+    const outcome = await bindCloudAgent(draft(), "steward-token", {}, ports());
+    expect(outcome.kind).toBe("done");
+    expect(runCloudAgentHandoffMock).not.toHaveBeenCalled();
+    expect(clientMock.createCloudCompatAgent).not.toHaveBeenCalled();
+  });
+
+  it("does NOT fire the handoff when a stale marker for a different agent exists", async () => {
+    seedMarker("some-other-shared-agent");
+    mockSelection(false);
+    const outcome = await bindCloudAgent(draft(), "steward-token", {}, ports());
+    expect(outcome.kind).toBe("done");
+    expect(runCloudAgentHandoffMock).not.toHaveBeenCalled();
+    expect(clientMock.createCloudCompatAgent).not.toHaveBeenCalled();
+    // The stale marker is still cleared — it just does not trigger a fresh
+    // dedicated mutation without explicit opt-in.
+    expect(loadPendingCloudHandoff()).toBeNull();
   });
 });
 

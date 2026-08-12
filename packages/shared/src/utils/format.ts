@@ -9,7 +9,7 @@
  * Otherwise the two most-significant units are returned (e.g. "2d 3h").
  */
 export function formatUptime(seconds?: number, verbose?: boolean): string {
-  if (seconds == null || seconds < 0) return "—";
+  if (seconds == null || !Number.isFinite(seconds) || seconds < 0) return "—";
   const d = Math.floor(seconds / 86400);
   const h = Math.floor((seconds % 86400) / 3600);
   const m = Math.floor((seconds % 3600) / 60);
@@ -91,17 +91,26 @@ export function formatByteSize(
   if (bytes == null || !Number.isFinite(bytes) || bytes < 0) {
     return unknownLabel;
   }
-  if (bytes >= 1024 ** 4) {
-    return `${(bytes / 1024 ** 4).toFixed(tbPrecision)} TB`;
-  }
-  if (bytes >= 1024 ** 3) {
-    return `${(bytes / 1024 ** 3).toFixed(gbPrecision)} GB`;
-  }
-  if (bytes >= 1024 ** 2) {
-    return `${(bytes / 1024 ** 2).toFixed(mbPrecision)} MB`;
-  }
-  if (bytes >= 1024) {
-    return `${(bytes / 1024).toFixed(kbPrecision)} KB`;
+  // Largest unit first. A value just under a boundary can ROUND across it —
+  // 1024**2 - 1 bytes is 1023.999… KB, which toFixed renders as the impossible
+  // "1024.0 KB" — so when the rounded magnitude reaches 1024 the value is
+  // promoted to the next-larger unit instead (same defect class the duration
+  // formatter below guards against). TB, having no larger unit, legitimately
+  // displays magnitudes of 1024 and above.
+  const units = [
+    { size: 1024 ** 4, suffix: "TB", precision: tbPrecision },
+    { size: 1024 ** 3, suffix: "GB", precision: gbPrecision },
+    { size: 1024 ** 2, suffix: "MB", precision: mbPrecision },
+    { size: 1024, suffix: "KB", precision: kbPrecision },
+  ];
+  for (const [index, unit] of units.entries()) {
+    if (bytes < unit.size) continue;
+    const rounded = (bytes / unit.size).toFixed(unit.precision);
+    const larger = units[index - 1];
+    if (larger && Number(rounded) >= 1024) {
+      return `${(bytes / larger.size).toFixed(larger.precision)} ${larger.suffix}`;
+    }
+    return `${rounded} ${unit.suffix}`;
   }
   return `${bytes} B`;
 }

@@ -647,6 +647,19 @@ export default function StewardLoginSection() {
     );
   }
 
+  // UV errors surface when the Steward server or browser WebAuthn layer requires
+  // user verification (PIN/biometric) but the assertion didn't satisfy it. They
+  // must NOT silently fall through to startPasskeySignup() — the user already
+  // has a passkey; sending a setup OTP and re-running addPasskey() hits the same
+  // UV constraint and loops. See #18468.
+  function isUserVerificationError(e: unknown): boolean {
+    const msg = getErrorMessage(e, "").toLowerCase();
+    return (
+      msg.includes("user verification") ||
+      msg.includes("user could not be verified")
+    );
+  }
+
   async function handlePasskey() {
     if (!showPasskey) {
       if (providers.email !== false) {
@@ -669,8 +682,18 @@ export default function StewardLoginSection() {
         await auth.signInWithPasskey(email.trim()),
       );
       await handleSuccess(result.token, result.refreshToken);
-    } catch {
-      await startPasskeySignup();
+    } catch (e: unknown) {
+      if (isUserVerificationError(e)) {
+        setError(
+          getErrorMessage(
+            e,
+            "Passkey sign-in requires device verification (PIN or biometric). Your device may not support this — try Magic Link instead.",
+          ),
+        );
+        setLoading(null);
+      } else {
+        await startPasskeySignup();
+      }
     }
   }
 
@@ -1175,7 +1198,7 @@ export default function StewardLoginSection() {
             }
           }}
           disabled={isLoading}
-          className="w-full min-h-touch rounded-md border border-input bg-bg-elevated px-4 py-3 text-txt outline-none transition-colors placeholder:text-muted hover:border-border-strong disabled:opacity-50"
+          className="hosted-signin-focus-emphasis w-full min-h-touch rounded-md border border-input bg-bg-elevated px-4 py-3 text-txt outline-none transition-colors placeholder:text-muted hover:border-border-strong disabled:opacity-50"
           autoComplete={showPasskey ? "email webauthn" : "email"}
         />
       </div>
@@ -1199,7 +1222,7 @@ export default function StewardLoginSection() {
             type="button"
             onClick={handleEmail}
             disabled={isLoading}
-            className="flex min-h-touch flex-1 items-center justify-center gap-2 rounded-md border border-border-strong bg-bg-elevated px-4 py-3 font-semibold text-txt transition-[background-color,border-color,transform] hover:border-border-hover hover:bg-bg-hover active:scale-[0.99] disabled:pointer-events-none disabled:opacity-50"
+            className="hosted-signin-focus-emphasis flex min-h-touch flex-1 items-center justify-center gap-2 rounded-md border border-border-strong bg-bg-elevated px-4 py-3 font-semibold text-txt transition-[background-color,border-color,transform] hover:border-border-hover hover:bg-bg-hover active:scale-[0.99] disabled:pointer-events-none disabled:opacity-50"
           >
             {loading === "email" ? <Spinner /> : <EmailIcon />}{" "}
             {t("cloud.login.button.magicLink", { defaultValue: "Magic Link" })}
@@ -1249,7 +1272,7 @@ export default function StewardLoginSection() {
               type="button"
               onClick={() => handleOAuth("google")}
               disabled={isLoading}
-              className="flex min-h-touch items-center justify-center gap-2 rounded-md border border-border-strong bg-bg-elevated px-4 py-2.5 text-sm font-semibold text-txt transition-[background-color,border-color,transform] hover:border-border-hover hover:bg-bg-hover active:scale-[0.99] disabled:pointer-events-none disabled:opacity-50"
+              className="hosted-signin-focus-emphasis flex min-h-touch items-center justify-center gap-2 rounded-md border border-border-strong bg-bg-elevated px-4 py-2.5 text-sm font-semibold text-txt transition-[background-color,border-color,transform] hover:border-border-hover hover:bg-bg-hover active:scale-[0.99] disabled:pointer-events-none disabled:opacity-50"
             >
               {loading === "google" ? <Spinner /> : <GoogleIcon />}{" "}
               {t("cloud.login.button.google", { defaultValue: "Google" })}
@@ -1261,7 +1284,7 @@ export default function StewardLoginSection() {
               type="button"
               onClick={() => handleOAuth("discord")}
               disabled={isLoading}
-              className="flex min-h-touch items-center justify-center gap-2 rounded-md border border-border-strong bg-bg-elevated px-4 py-2.5 text-sm font-semibold text-txt transition-[background-color,border-color,transform] hover:border-border-hover hover:bg-bg-hover active:scale-[0.99] disabled:pointer-events-none disabled:opacity-50"
+              className="hosted-signin-focus-emphasis flex min-h-touch items-center justify-center gap-2 rounded-md border border-border-strong bg-bg-elevated px-4 py-2.5 text-sm font-semibold text-txt transition-[background-color,border-color,transform] hover:border-border-hover hover:bg-bg-hover active:scale-[0.99] disabled:pointer-events-none disabled:opacity-50"
             >
               {loading === "discord" ? (
                 <Spinner />
@@ -1277,7 +1300,7 @@ export default function StewardLoginSection() {
               type="button"
               onClick={() => handleOAuth("github")}
               disabled={isLoading}
-              className="flex min-h-touch items-center justify-center gap-2 rounded-md border border-border-strong bg-bg-elevated px-4 py-2.5 text-sm font-semibold text-txt transition-[background-color,border-color,transform] hover:border-border-hover hover:bg-bg-hover active:scale-[0.99] disabled:pointer-events-none disabled:opacity-50 sm:col-span-2"
+              className="hosted-signin-focus-emphasis flex min-h-touch items-center justify-center gap-2 rounded-md border border-border-strong bg-bg-elevated px-4 py-2.5 text-sm font-semibold text-txt transition-[background-color,border-color,transform] hover:border-border-hover hover:bg-bg-hover active:scale-[0.99] disabled:pointer-events-none disabled:opacity-50 sm:col-span-2"
             >
               {loading === "github" ? (
                 <Spinner />
@@ -1344,7 +1367,7 @@ export default function StewardLoginSection() {
                   type="button"
                   onClick={() => handleWalletIntent("ethereum")}
                   disabled={isLoading}
-                  className="flex min-h-touch items-center justify-center gap-2 rounded-md border border-border-strong bg-bg-elevated px-4 py-2.5 text-sm font-semibold text-txt transition-[background-color,border-color,transform] hover:border-border-hover hover:bg-bg-hover active:scale-[0.99] disabled:pointer-events-none disabled:opacity-50"
+                  className="hosted-signin-focus-emphasis flex min-h-touch items-center justify-center gap-2 rounded-md border border-border-strong bg-bg-elevated px-4 py-2.5 text-sm font-semibold text-txt transition-[background-color,border-color,transform] hover:border-border-hover hover:bg-bg-hover active:scale-[0.99] disabled:pointer-events-none disabled:opacity-50"
                 >
                   {t("cloud.login.wallet.evm", { defaultValue: "EVM wallet" })}
                 </Button>
@@ -1355,7 +1378,7 @@ export default function StewardLoginSection() {
                   type="button"
                   onClick={() => handleWalletIntent("solana")}
                   disabled={isLoading}
-                  className="flex min-h-touch items-center justify-center gap-2 rounded-md border border-border-strong bg-bg-elevated px-4 py-2.5 text-sm font-semibold text-txt transition-[background-color,border-color,transform] hover:border-border-hover hover:bg-bg-hover active:scale-[0.99] disabled:pointer-events-none disabled:opacity-50"
+                  className="hosted-signin-focus-emphasis flex min-h-touch items-center justify-center gap-2 rounded-md border border-border-strong bg-bg-elevated px-4 py-2.5 text-sm font-semibold text-txt transition-[background-color,border-color,transform] hover:border-border-hover hover:bg-bg-hover active:scale-[0.99] disabled:pointer-events-none disabled:opacity-50"
                 >
                   {t("cloud.login.wallet.solana", {
                     defaultValue: "Solana wallet",

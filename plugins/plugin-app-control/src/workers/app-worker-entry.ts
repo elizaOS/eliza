@@ -245,6 +245,38 @@ function callRuntimeBridge(
 
 const actionRegistry = new Map<string, LoadedAction>();
 
+/**
+ * Checks whether a module export is a valid plugin shape. Mirrors the
+ * acceptance logic of core's `isValidPluginShape` but is duplicated here
+ * because this worker entry is intentionally self-contained — it runs
+ * inside a `node:worker_threads` Worker and must not import the full
+ * `@elizaos/core` dependency tree. If core's gate changes, update both.
+ *
+ * One intentional addition over core: this also accepts `routes` as a
+ * valid surface (core's gate omits it, but `routes` is a real `Plugin`
+ * field and apps can be routes-only).
+ */
+function isValidPluginExport(c: unknown): c is {
+	name: string;
+	actions?: LoadedAction[];
+} {
+	if (!c || typeof c !== "object" || Array.isArray(c)) return false;
+	const obj = c as Record<string, unknown>;
+	if (typeof obj.name !== "string" || obj.name.length === 0) return false;
+	// Validate actions shape before the type predicate narrows it —
+	// a non-array `actions` (e.g. `{}` or `"bad"`) must not pass.
+	if (obj.actions !== undefined && !Array.isArray(obj.actions)) return false;
+	return !!(
+		obj.init ||
+		obj.services ||
+		obj.providers ||
+		obj.actions ||
+		obj.evaluators ||
+		obj.routes ||
+		obj.description
+	);
+}
+
 async function loadPlugin(entryPath: string): Promise<{
 	loaded: number;
 	error?: string;
@@ -270,21 +302,30 @@ async function loadPlugin(entryPath: string): Promise<{
 			mod.appPlugin,
 			mod.sandboxPlugin,
 		];
-		let plugin: { actions?: LoadedAction[] } | null = null;
-		for (const c of candidates) {
-			if (
-				c &&
-				typeof c === "object" &&
-				Array.isArray((c as { actions?: unknown }).actions)
-			) {
-				plugin = c as { actions: LoadedAction[] };
-				break;
-			}
-		}
+		// Prefer the actions-bearing export: a metadata-only default export
+		// (valid shape, zero actions) must not shadow a sibling export that
+		// actually contributes actions, or the zero-action gate below would
+		// reject a module the worker could serve.
+		const valid = candidates.filter(isValidPluginExport);
+		const plugin = valid.find((p) => p.actions?.length) ?? valid[0] ?? null;
 		if (!plugin) {
 			return { loaded: 0, error: "no plugin export found in module" };
 		}
 		const actions = plugin.actions ?? [];
+		// The worker sandbox only bridges actions via invokeAction. A
+		// plugin that contributes only providers, routes, or services has
+		// no reachable surface inside the worker — booting it successfully
+		// would produce a healthy-looking but inert worker (false success).
+		// Fail explicitly so a misconfigured isolation:"worker" app is
+		// surfaced as a configuration error, not a silent no-op.
+		// error-policy:J3 invalid plugin shape for the worker sandbox →
+		// explicit invalid result, never a fake-valid success.
+		if (actions.length === 0) {
+			return {
+				loaded: 0,
+				error: `plugin "${plugin.name}" contributes no actions; the worker sandbox only exposes actions (invokeAction), not providers/routes/services`,
+			};
+		}
 		for (const action of actions) {
 			if (
 				action &&

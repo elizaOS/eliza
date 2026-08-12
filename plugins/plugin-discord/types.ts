@@ -238,6 +238,8 @@ export interface IDiscordService {
 		message: Message,
 		options?: BuildMemoryFromMessageOptions,
 	) => Promise<Memory | null>;
+	/** Synchronous inbound admission check used by every turn-start path. */
+	admitInboundMessage?: (messageId: string, channelId: string) => boolean;
 	getVoiceTargets?: (query?: {
 		accountId?: string | null;
 		guildId?: string | null;

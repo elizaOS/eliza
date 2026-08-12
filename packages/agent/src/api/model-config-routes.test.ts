@@ -607,6 +607,59 @@ describe("GET /api/models/config activeChat", () => {
     expect(targets.large?.ELIZAOS_CLOUD_LARGE_MODEL).toBeNull();
   });
 
+  it("reports the Cerebras serving default when no base URL is configured", async () => {
+    const { ctx, json } = makeHarness("GET", null, {
+      config: {
+        serviceRouting: {
+          llmText: {
+            backend: "cerebras",
+            transport: "direct",
+            accountId: "cerebras",
+          },
+        },
+      } as never,
+      processEnv: {},
+    });
+    await handleModelConfigRoutes(ctx as never);
+    expect(responseOf(json).body.activeChat).toEqual({
+      provider: "cerebras",
+      family: "OPENAI",
+      endpoint: "api.cerebras.ai",
+    });
+  });
+
+  it("uses Cerebras base URL unless the shared OpenAI override is configured", async () => {
+    const config = {
+      serviceRouting: {
+        llmText: {
+          backend: "cerebras",
+          transport: "direct",
+          accountId: "cerebras",
+        },
+      },
+    } as never;
+    const cerebras = makeHarness("GET", null, {
+      config,
+      processEnv: { CEREBRAS_BASE_URL: "https://inference.example/v1" },
+    });
+    await handleModelConfigRoutes(cerebras.ctx as never);
+    expect(responseOf(cerebras.json).body.activeChat).toMatchObject({
+      endpoint: "inference.example",
+    });
+
+    const openAiOverride = makeHarness("GET", null, {
+      config,
+      processEnv: {
+        CEREBRAS_BASE_URL: "https://inference.example/v1",
+        OPENAI_BASE_URL: "https://gateway.example/v1",
+      },
+    });
+    await handleModelConfigRoutes(openAiOverride.ctx as never);
+    expect(responseOf(openAiOverride.json).body.activeChat).toMatchObject({
+      endpoint: "gateway.example",
+    });
+  });
+
   it("omits activeChat when no routing is configured", async () => {
     const { ctx, json } = makeHarness("GET", null);
     await handleModelConfigRoutes(ctx as never);

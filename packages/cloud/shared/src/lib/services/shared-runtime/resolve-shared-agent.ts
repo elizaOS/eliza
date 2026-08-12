@@ -13,6 +13,7 @@ import type { AppEnv, RuntimeDurableObjectNamespace } from "../../../types/cloud
 import { ApiError } from "../../api/cloud-worker-errors";
 import {
   apiKeyScopeHashPrefix,
+  isStagingSessionScopeCandidate,
   requireUserOrApiKeyWithOrgLookup,
   revalidateSessionScope,
   sessionScopeHashPrefix,
@@ -289,6 +290,7 @@ export async function resolveSharedAgent(
   const apiKeyPrefix = await apiKeyScopeHashPrefix(c);
   const sessionPrefix = apiKeyPrefix ? null : await sessionScopeHashPrefix(c);
   const isSessionScope = apiKeyPrefix == null && sessionPrefix != null;
+  const isStagingSessionScope = isSessionScope && isStagingSessionScopeCandidate(c);
   const scopeKeyPrefix = apiKeyPrefix ?? (sessionPrefix ? `s:${sessionPrefix}` : null);
   const scopeCacheKey = scopeKeyPrefix
     ? CacheKeys.sharedAgentScope.resolve(scopeKeyPrefix, agentId)
@@ -328,8 +330,9 @@ export async function resolveSharedAgent(
     try {
       stillAuthorized = isSessionScope
         ? cached.stewardUserId != null &&
-          (await revalidateSessionScope(c, cached.stewardUserId)) &&
-          (await revalidateSessionUserState(cached.orgId, cached.stewardUserId))
+          (await revalidateSessionScope(c, cached.stewardUserId, cached.orgId)) &&
+          (isStagingSessionScope ||
+            (await revalidateSessionUserState(cached.orgId, cached.stewardUserId)))
         : await revalidateCachedScope(c, cached.orgId, options.cacheOnly === true);
     } catch (error) {
       // error-policy:J4 a cache credential dependency failure cannot authorize

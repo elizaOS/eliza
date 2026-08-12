@@ -111,13 +111,21 @@ jobs:
       - name: Formatting
         run: bun run format:check
 
+  # The unit-test lanes were four steps on one runner, so their durations added
+  # up: 22.4 + 18.3 + 28.4 min on run 31504110080, a 71.8-minute job that set
+  # the whole run's wall clock. They share no state and each already had its own
+  # path gate, so they are four jobs and the run waits for the longest, not the
+  # sum.
+  #
+  # Each job is unconditional and gates its own steps instead of carrying a
+  # job-level `if:`. A skipped job reports `skipped`, which `required` treats as
+  # failure by design; gating the steps keeps every lane reporting `success`
+  # while an unaffected lane costs only its checkout.
   tests:
-    name: Tests
+    name: Tests (scripts)
     needs: changes
     runs-on: ubuntu-24.04
-    # The four sequential lanes (scripts, server, client, plugins) legitimately
-    # total ~95-110 minutes on a cache-cold PR runner; 90 killed healthy runs.
-    timeout-minutes: 120
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -137,36 +145,168 @@ jobs:
           E2E_COVERAGE_GATE_ENFORCE: "1"
         run: bun run test:scripts
 
-      - name: Server tests
-        if: needs.changes.outputs.server == 'true'
-        run: bun run test:server
-
-      - name: Client tests
-        if: needs.changes.outputs.client == 'true'
-        run: bun run test:client
-
-      - name: Plugin tests
-        if: needs.changes.outputs.plugins == 'true'
-        run: bun run test:plugins
-
-      - name: No affected unit-test lane
-        if: needs.changes.outputs.server != 'true' && needs.changes.outputs.client != 'true' && needs.changes.outputs.plugins != 'true'
-        run: echo "No server, client, or plugin test lane is affected."
-
-  smoke:
-    name: Smoke
+  tests_server:
+    name: Tests (server)
     needs: changes
     runs-on: ubuntu-24.04
-    # The zero-key deterministic e2e suite alone runs 450+ Playwright tests
-    # (~55 min after setup + core build); 60 minutes cancels it mid-run.
-    timeout-minutes: 120
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           submodules: false
 
       - uses: ./.github/actions/setup-bun-workspace
-        if: needs.changes.outputs.desktop == 'true' || needs.changes.outputs.zero_key == 'true' || needs.changes.outputs.cloud == 'true'
+        if: needs.changes.outputs.server == 'true'
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+          node-version: ${{ env.NODE_VERSION }}
+          install-command: bun install --frozen-lockfile --ignore-scripts
+          install-native-deps: "false"
+          skip-avatar-clone: "true"
+          no-vision-deps: "true"
+
+      - name: Server tests
+        if: needs.changes.outputs.server == 'true'
+        run: bun run test:server
+
+      - name: No affected server lane
+        if: needs.changes.outputs.server != 'true'
+        run: echo "No server test lane is affected."
+
+  tests_client:
+    name: Tests (client)
+    needs: changes
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          submodules: false
+
+      - uses: ./.github/actions/setup-bun-workspace
+        if: needs.changes.outputs.client == 'true'
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+          node-version: ${{ env.NODE_VERSION }}
+          install-command: bun install --frozen-lockfile --ignore-scripts
+          install-native-deps: "false"
+          skip-avatar-clone: "true"
+          no-vision-deps: "true"
+
+      - name: Client tests
+        if: needs.changes.outputs.client == 'true'
+        run: bun run test:client
+
+      - name: No affected client lane
+        if: needs.changes.outputs.client != 'true'
+        run: echo "No client test lane is affected."
+
+  tests_plugins:
+    name: Tests (plugins)
+    needs: changes
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          submodules: false
+
+      - uses: ./.github/actions/setup-bun-workspace
+        if: needs.changes.outputs.plugins == 'true'
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+          node-version: ${{ env.NODE_VERSION }}
+          install-command: bun install --frozen-lockfile --ignore-scripts
+          install-native-deps: "false"
+          skip-avatar-clone: "true"
+          no-vision-deps: "true"
+
+      - name: Plugin tests
+        if: needs.changes.outputs.plugins == 'true'
+        run: bun run test:plugins
+
+      - name: No affected plugin lane
+        if: needs.changes.outputs.plugins != 'true'
+        run: echo "No plugin test lane is affected."
+
+  smoke:
+    name: Smoke
+    needs: changes
+    runs-on: ubuntu-24.04
+    # 725 Playwright tests that the suite's one-live-stack-per-process
+    # invariant pins to a single worker. Measured on run 31489483093: six
+    # shards land between 22.8 and 34.4 minutes of test time against ~96 on one
+    # machine. The spread is Playwright balancing by test count rather than
+    # duration, and roughly 13 minutes per shard is fixed setup that does not
+    # divide -- which is why more shards stop paying past this point.
+    timeout-minutes: 60
+    strategy:
+      # One shard's product failure must not hide the other five: a shard that
+      # cancels its siblings reports a partial suite as the lane's verdict.
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4, 5, 6]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          submodules: false
+
+      - uses: ./.github/actions/setup-bun-workspace
+        if: needs.changes.outputs.zero_key == 'true'
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+          node-version: ${{ env.NODE_VERSION }}
+          install-command: bun install --frozen-lockfile --ignore-scripts
+          install-native-deps: "false"
+          install-protoc: "false"
+          setup-python: "false"
+          skip-avatar-clone: "true"
+          no-vision-deps: "true"
+
+      # The zero-key e2e suite drives chromium (desktop + mobile projects) and
+      # webkit; without this the whole lane fails at browserType.launch.
+      - name: Install Playwright browsers
+        if: needs.changes.outputs.zero_key == 'true'
+        run: PLAYWRIGHT_INSTALL_CWD=packages/app .github/scripts/install-playwright-browsers.sh chromium webkit
+
+      # Playwright is the only shardable task in the e2e lane; its other 16
+      # tasks run once in `smoke_lanes`. Measured on run 31504110080, replaying
+      # them here cost 8.6 min on EVERY shard -- plugin-personal-assistant alone
+      # is 5.8 -- for about 52 min of duplicate runner time per lane.
+      #
+      # Invoked directly rather than through run-all-tests: that orchestrator's
+      # --require-work guard certifies work from reconciled JUnit reports, and
+      # Playwright produces none. With the vitest tasks filtered away it has
+      # nothing left to observe and exits 3 on a suite that passed (run
+      # 31512602909: "87 passed" followed by VACUOUS-GREEN GUARD). The guard is
+      # right to refuse to certify what it cannot see, so this step does not ask
+      # it to.
+      - name: Deterministic end-to-end smoke
+        if: needs.changes.outputs.zero_key == 'true'
+        env:
+          ELIZA_UI_SMOKE_SHARD: ${{ matrix.shard }}/6
+        run: bun run --cwd packages/app test:e2e
+
+      - name: No affected e2e shard
+        if: needs.changes.outputs.zero_key != 'true'
+        run: echo "No deterministic E2E lane is affected."
+
+  # The desktop and cloud lanes are whole-lane work that does not shard. Held
+  # off the matrix so no shard carries them: on run 31489483093 the cloud step
+  # alone added 15.2 minutes to shard 1 and made it the straggler at 45.5
+  # minutes while every sibling finished under 37.
+  smoke_lanes:
+    name: Smoke lanes
+    needs: changes
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          submodules: false
+
+      - uses: ./.github/actions/setup-bun-workspace
+        if: needs.changes.outputs.desktop == 'true' || needs.changes.outputs.cloud == 'true' || needs.changes.outputs.zero_key == 'true'
         with:
           bun-version: ${{ env.BUN_VERSION }}
           node-version: ${{ env.NODE_VERSION }}
@@ -182,30 +322,46 @@ jobs:
       # --ignore-scripts install never builds them. Turbo builds core plus its
       # dependency graph, matching the prelude in dev-smoke.yml.
       - name: Build @elizaos/core and workspace deps
-        if: needs.changes.outputs.desktop == 'true'
+        if: needs.changes.outputs.desktop == 'true' && needs.changes.outputs.cloud != 'true' && needs.changes.outputs.zero_key != 'true'
         run: bunx turbo run build --filter=@elizaos/core --filter=@elizaos/shared
+
+      # test:cloud reaches further than the desktop prelude: cloud service suites
+      # import @elizaos/plugin-sql and @elizaos/plugin-workflow from their built
+      # dist/, which the core+shared filter never produces. Run 31489483093 is
+      # what surfaced it -- the step had been skipped on develop long enough that
+      # "Cannot find module '@elizaos/plugin-sql'" read as a new failure.
+      # build:core is a superset of the desktop prelude, so it replaces the
+      # narrow build rather than running alongside it.
+      - name: Build core contract
+        if: needs.changes.outputs.cloud == 'true' || needs.changes.outputs.zero_key == 'true'
+        run: bun run build:core
 
       - name: Desktop startup smoke
         if: needs.changes.outputs.desktop == 'true'
         run: bun run test:dev-startup
 
-      # The zero-key e2e suite drives chromium (desktop + mobile projects) and
-      # webkit; without this the whole lane fails at browserType.launch.
-      - name: Install Playwright browsers
-        if: needs.changes.outputs.zero_key == 'true'
-        run: PLAYWRIGHT_INSTALL_CWD=packages/app .github/scripts/install-playwright-browsers.sh chromium webkit
-
-      - name: Deterministic end-to-end smoke
-        if: needs.changes.outputs.zero_key == 'true'
-        run: bun run test:e2e
-
       - name: Cloud tests
         if: needs.changes.outputs.cloud == 'true'
         run: bun run test:cloud
 
+      # @elizaos/ui#test:e2e launches a real Chromium. It used to inherit the
+      # browsers the shard job installs for packages/app; now that it runs here
+      # it needs its own, or it dies at browserType.launch (run 31516767405).
+      # packages/ui is the install cwd its own gates use (ui-e2e-gate.yml).
+      - name: Install Playwright browsers
+        if: needs.changes.outputs.zero_key == 'true'
+        run: PLAYWRIGHT_INSTALL_CWD=packages/ui .github/scripts/install-playwright-browsers.sh chromium
+
+      # The complement of the shard job's work: the 16 e2e tasks that cannot be
+      # sharded, run once instead of once per shard. These are vitest-backed, so
+      # --require-work has real reports to reconcile here.
+      - name: Deterministic end-to-end smoke (unshardable tasks)
+        if: needs.changes.outputs.zero_key == 'true'
+        run: bun run test:e2e --filter='^(?!.*packages/app\)#test:e2e)'
+
       - name: No affected smoke lane
-        if: needs.changes.outputs.desktop != 'true' && needs.changes.outputs.zero_key != 'true' && needs.changes.outputs.cloud != 'true'
-        run: echo "No desktop, deterministic E2E, or cloud smoke lane is affected."
+        if: needs.changes.outputs.desktop != 'true' && needs.changes.outputs.cloud != 'true' && needs.changes.outputs.zero_key != 'true'
+        run: echo "No desktop, cloud, or deterministic E2E lane is affected."
 
   android_aab:
     name: Android release AAB
@@ -239,7 +395,7 @@ jobs:
 
       - name: Setup Java 21
         if: steps.selection.outputs.selected == 'true'
-        uses: actions/setup-java@ad2b38190b15e4d6bdf0c97fb4fca8412226d287
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
         with:
           distribution: temurin
           java-version: 21
@@ -399,7 +555,19 @@ jobs:
   required:
     name: Required
     if: always()
-    needs: [changes, quality, tests, smoke, android_aab, secrets]
+    needs:
+      [
+        changes,
+        quality,
+        tests,
+        tests_server,
+        tests_client,
+        tests_plugins,
+        smoke,
+        smoke_lanes,
+        android_aab,
+        secrets,
+      ]
     runs-on: ubuntu-24.04
     steps:
       - name: Require every CI job to succeed
@@ -407,8 +575,12 @@ jobs:
           RESULTS: >-
             changes=${{ needs.changes.result }}
             quality=${{ needs.quality.result }}
-            tests=${{ needs.tests.result }}
+            tests-scripts=${{ needs.tests.result }}
+            tests-server=${{ needs.tests_server.result }}
+            tests-client=${{ needs.tests_client.result }}
+            tests-plugins=${{ needs.tests_plugins.result }}
             smoke=${{ needs.smoke.result }}
+            smoke-lanes=${{ needs.smoke_lanes.result }}
             android-aab=${{ needs.android_aab.result }}
             secrets=${{ needs.secrets.result }}
         run: |

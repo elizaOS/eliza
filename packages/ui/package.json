@@ -183,6 +183,11 @@
       "import": "./dist/api/index.js",
       "default": "./dist/api/index.js"
     },
+    "./auth-status": {
+      "types": "./dist/auth-status.d.ts",
+      "import": "./dist/auth-status.js",
+      "default": "./dist/auth-status.js"
+    },
     "./bridge": {
       "types": "./dist/bridge/index.d.ts",
       "import": "./dist/bridge/index.js",

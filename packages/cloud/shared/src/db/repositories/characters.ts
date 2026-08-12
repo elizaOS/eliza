@@ -509,10 +509,16 @@ export class UserCharactersRepository {
     const conditions = this.buildSearchConditions(filters, userId);
     const secondaryOrderBy = this.buildSortOrder(sortOptions);
 
-    return await dbRead
+    const baseQuery = dbRead
       .select()
       .from(userCharacters)
-      .where(conditions.length > 0 ? and(...conditions) : undefined)
+      .where(conditions.length > 0 ? and(...conditions) : undefined);
+
+    if (sortOptions.pinFeatured === false) {
+      return await baseQuery.orderBy(secondaryOrderBy).limit(limit).offset(offset);
+    }
+
+    return await baseQuery
       .orderBy(desc(userCharacters.featured), secondaryOrderBy)
       .limit(limit)
       .offset(offset);

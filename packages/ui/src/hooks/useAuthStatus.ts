@@ -251,6 +251,16 @@ export function isAuthenticatedNow(): boolean {
 }
 
 /**
+ * Non-hook read of the full shared auth-status snapshot, for module seams
+ * that need the resolved identity/session (not just the authenticated
+ * boolean) to key state per authority — e.g. the notification store
+ * isolating its inbox per user/agent (#18391). Mirrors {@link isAuthenticatedNow}.
+ */
+export function getAuthStatusSnapshot(): AuthStatusState {
+  return authStatusSnapshot;
+}
+
+/**
  * Subscribe to auth-status changes outside React (companion to
  * {@link isAuthenticatedNow}). The listener fires on every publish with the new
  * snapshot; returns an unsubscribe. Lets a module seam re-arm work it deferred

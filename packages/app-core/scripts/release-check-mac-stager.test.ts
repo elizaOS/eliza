@@ -13,6 +13,8 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
   containsContiguousBlock,
+  requiredMacAppIdentifierReadBlock,
+  requiredMacPermissionHostIdentityBlock,
   requiredMacStaplerFailureBlock,
 } from "./release-check";
 
@@ -22,6 +24,40 @@ const stagerPath = path.join(
   "../platforms/electrobun/scripts/stage-macos-release-artifacts.sh",
 );
 const stager = readFileSync(stagerPath, "utf8");
+
+describe("macOS stager permission-host identity gate", () => {
+  it("derives the permission-host identity from the staged app bundle", () => {
+    expect(
+      containsContiguousBlock(stager, requiredMacAppIdentifierReadBlock),
+    ).toBe(true);
+  });
+
+  it("assigns the app identifier only to the top-level Bun permission host and verifies it", () => {
+    expect(
+      containsContiguousBlock(stager, requiredMacPermissionHostIdentityBlock),
+    ).toBe(true);
+  });
+
+  it("fails when explicit permission-host signing is removed", () => {
+    const signingLine = requiredMacPermissionHostIdentityBlock[5];
+    const mutated = stager.replace(signingLine, "");
+
+    expect(mutated).not.toBe(stager);
+    expect(
+      containsContiguousBlock(mutated, requiredMacPermissionHostIdentityBlock),
+    ).toBe(false);
+  });
+
+  it("fails when the signed identifier is no longer verified", () => {
+    const verificationLine = requiredMacPermissionHostIdentityBlock[6];
+    const mutated = stager.replace(verificationLine, "");
+
+    expect(mutated).not.toBe(stager);
+    expect(
+      containsContiguousBlock(mutated, requiredMacPermissionHostIdentityBlock),
+    ).toBe(false);
+  });
+});
 
 /**
  * Index of `trimmed` INSIDE the guarded block, not merely the first in the file.

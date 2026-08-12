@@ -48,7 +48,7 @@ const oauthState = vi.hoisted(() => ({
 }));
 
 vi.mock("../../api", () => ({ client: api }));
-vi.mock("../../state", () => ({
+vi.mock("../../state/app-store", () => ({
   useAppSelector: (
     selector: (state: {
       t: (key: string, vars?: Record<string, unknown>) => string;

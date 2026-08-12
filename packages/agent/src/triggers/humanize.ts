@@ -203,8 +203,14 @@ export function describeOnceAt(
  * Describe a repeat interval ("every 12 hours", "every 90 minutes"). Picks
  * the largest unit that divides evenly; sub-second remainders round to
  * seconds so raw millisecond counts never surface.
+ *
+ * Non-finite and non-positive values return `null` so chat copy never shows
+ * `NaN`/`Infinity` (or a fabricated "every second") for corrupt trigger state.
  */
-export function describeIntervalMs(intervalMs: number): string {
+export function describeIntervalMs(intervalMs: number): string | null {
+  if (!Number.isFinite(intervalMs) || intervalMs <= 0) {
+    return null;
+  }
   const every = (n: number, unit: string) =>
     n === 1 ? `every ${unit}` : `every ${n} ${unit}s`;
   if (intervalMs >= DAY_MS && intervalMs % DAY_MS === 0) {

@@ -24,6 +24,7 @@
 import { sql } from "drizzle-orm";
 import type { DbTransaction } from "../../db/client";
 import { dbWrite } from "../../db/client";
+import { organizations } from "../../db/schemas/organizations";
 import { logger } from "../utils/logger";
 
 type SignupGrantIpLimitEnv = {
@@ -47,6 +48,92 @@ export function resolveSignupGrantIpLimits(env: SignupGrantIpLimitEnv = process.
 export const FREE_GRANT_IP_LIMITS = resolveSignupGrantIpLimits();
 
 export type SignupGrantWithheldReason = "ip_daily_cap" | "count_unavailable";
+
+/**
+ * `organizations.settings` key recording that this org's signup welcome bonus
+ * was withheld by this guard. Persisted at signup time so the agent credit
+ * gate (`agent-billing-gate.ts`) can later explain a $0-balance 402 with the
+ * real reason ("this network hit the daily free-credit limit") instead of the
+ * generic insufficient-credits copy — the auth response is the only other
+ * carrier of this decision and the client has long discarded it by the time
+ * /join provisioning 402s (a genuine CGNAT user reads that as a broken app).
+ */
+export const WELCOME_BONUS_WITHHELD_SETTINGS_KEY = "welcomeBonusWithheld";
+
+export interface WelcomeBonusWithheldRecord {
+  reason: SignupGrantWithheldReason;
+  message?: string;
+}
+
+const WITHHELD_REASONS: ReadonlySet<string> = new Set(["ip_daily_cap", "count_unavailable"]);
+
+/**
+ * The `organizations.settings` patch recording a withheld welcome bonus, or
+ * `null` when the decision granted the bonus.
+ */
+export function welcomeBonusWithheldSettingsPatch(
+  decision: Pick<SignupGrantDecision, "withheldReason" | "withheldMessage">,
+): Record<string, unknown> | null {
+  if (!decision.withheldReason) return null;
+  return {
+    [WELCOME_BONUS_WITHHELD_SETTINGS_KEY]: {
+      reason: decision.withheldReason,
+      ...(decision.withheldMessage ? { message: decision.withheldMessage } : {}),
+    },
+  };
+}
+
+/**
+ * Persist the withheld-bonus decision onto the org's settings so
+ * the agent credit gate can explain the resulting $0-balance 402 later. No-op
+ * when the bonus was granted (or when the degrade path produced a message
+ * without a reason). Runs on `tx` when the caller's signup transaction is
+ * still open (wallet signup), else on the primary. Wallet signup can adopt an
+ * org created by a prior top-up or a concurrent request, so this merges one
+ * JSONB key and preserves every unrelated setting.
+ */
+export async function recordWelcomeBonusWithheldOnOrg(
+  organizationId: string,
+  decision: Pick<SignupGrantDecision, "withheldReason" | "withheldMessage">,
+  tx?: DbTransaction,
+): Promise<void> {
+  const patch = welcomeBonusWithheldSettingsPatch(decision);
+  if (!patch) return;
+  const db = tx ?? dbWrite;
+  await db
+    .update(organizations)
+    .set({
+      settings: sql`COALESCE(${organizations.settings}, '{}'::jsonb) || ${JSON.stringify(patch)}::jsonb`,
+      updated_at: new Date(),
+    })
+    .where(sql`${organizations.id} = ${organizationId}
+      AND NOT EXISTS (
+        SELECT 1
+        FROM credit_transactions
+        WHERE organization_id = ${organizationId}
+          AND type = 'credit'
+          AND amount > 0
+      )`);
+}
+
+/**
+ * Fail-closed read of the withheld-bonus record from an org's settings jsonb.
+ * Returns `null` for absent/malformed shapes — a messaging enhancement must
+ * never throw out of the billing gate.
+ */
+export function readWelcomeBonusWithheldSettings(
+  settings: unknown,
+): WelcomeBonusWithheldRecord | null {
+  if (typeof settings !== "object" || settings === null) return null;
+  const raw = (settings as Record<string, unknown>)[WELCOME_BONUS_WITHHELD_SETTINGS_KEY];
+  if (typeof raw !== "object" || raw === null) return null;
+  const { reason, message } = raw as { reason?: unknown; message?: unknown };
+  if (typeof reason !== "string" || !WITHHELD_REASONS.has(reason)) return null;
+  return {
+    reason: reason as SignupGrantWithheldReason,
+    ...(typeof message === "string" && message.trim() ? { message } : {}),
+  };
+}
 
 export interface SignupGrantDecision {
   granted: boolean;

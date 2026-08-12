@@ -43,7 +43,8 @@ export default function GetStartedPage(): React.JSX.Element {
   const [searchParams] = useSearchParams();
   const [phase, setPhase] = useState<GetStartedPhase>("checking");
   const [error, setError] = useState<string | null>(null);
-  const [discordIdentity, setDiscordIdentity] = useState<{
+  const [platformIdentity, setPlatformIdentity] = useState<{
+    platform: "discord" | "telegram";
     platformUserId: string;
     platformDisplayName: string;
   } | null>(null);
@@ -97,7 +98,7 @@ export default function GetStartedPage(): React.JSX.Element {
     setError(null);
     try {
       const identity = await previewPendingOnboardingContinuation(token);
-      setDiscordIdentity(identity);
+      setPlatformIdentity(identity);
       setPhase("confirm");
     } catch (err) {
       setError(describeContinuationError(err));
@@ -138,16 +139,23 @@ export default function GetStartedPage(): React.JSX.Element {
           draggable={false}
         />
 
-        {phase === "confirm" && discordIdentity ? (
+        {phase === "confirm" && platformIdentity ? (
           <div className="flex flex-col items-center gap-4">
             <h1 className="font-poppins text-lg font-semibold text-white">
-              Connect your Discord account?
+              Connect your{" "}
+              {platformIdentity.platform === "telegram"
+                ? "Telegram"
+                : "Discord"}{" "}
+              account?
             </h1>
             <p className="text-sm text-white/70">
               Continue with{" "}
-              <strong>{discordIdentity.platformDisplayName}</strong>
+              <strong>{platformIdentity.platformDisplayName}</strong>
               <span className="block text-xs text-white/50">
-                Discord ID {discordIdentity.platformUserId}
+                {platformIdentity.platform === "telegram"
+                  ? "Telegram ID"
+                  : "Discord ID"}{" "}
+                {platformIdentity.platformUserId}
               </span>
             </p>
             <Button
@@ -158,7 +166,11 @@ export default function GetStartedPage(): React.JSX.Element {
               }}
               className="bg-txt px-6 py-2.5 font-semibold text-bg"
             >
-              Connect this Discord account
+              Connect this{" "}
+              {platformIdentity.platform === "telegram"
+                ? "Telegram"
+                : "Discord"}{" "}
+              account
             </Button>
           </div>
         ) : phase === "done" ? (
@@ -199,7 +211,7 @@ export default function GetStartedPage(): React.JSX.Element {
               onClick={() => {
                 const token = peekPendingOnboardingSession();
                 if (!token) return;
-                if (discordIdentity) void redeem(token);
+                if (platformIdentity) void redeem(token);
                 else void preview(token);
               }}
               className="bg-txt px-6 py-2.5 font-semibold text-bg transition-colors hover:bg-txt/90"

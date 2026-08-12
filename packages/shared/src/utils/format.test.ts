@@ -21,6 +21,13 @@ describe("formatUptime", () => {
     expect(formatUptime(90000)).toBe("1d 1h");
   });
 
+  it.each([Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY])(
+    "falls back for non-finite uptime %s",
+    (seconds) => {
+      expect(formatUptime(seconds)).toBe("—");
+    },
+  );
+
   it("verbose mode lists each non-zero unit", () => {
     expect(formatUptime(3661, true)).toBe("1h 1m");
     expect(formatUptime(30, true)).toBe("30s");
@@ -38,6 +45,26 @@ describe("formatByteSize", () => {
     expect(formatByteSize(1024 ** 3)).toBe("1.0 GB");
     expect(formatByteSize(1024 ** 4)).toBe("1.0 TB");
     expect(formatByteSize(1536, { precision: 2 })).toBe("1.50 KB");
+  });
+
+  it("promotes a value that rounds across a unit boundary instead of rendering an impossible magnitude", () => {
+    // 1024**2 - 1 bytes is 1023.999… KB; toFixed used to render "1024.0 KB",
+    // a magnitude the KB unit can never legitimately display.
+    expect(formatByteSize(1024 ** 2 - 1)).toBe("1.0 MB");
+    expect(formatByteSize(1024 ** 3 - 1)).toBe("1.0 GB");
+    expect(formatByteSize(1024 ** 4 - 1)).toBe("1.0 TB");
+    expect(formatByteSize(1024 ** 2 - 1, { precision: 2 })).toBe("1.00 MB");
+  });
+
+  it("keeps values that round below the boundary in their own unit", () => {
+    // 1023.94 KB rounds to "1023.9 KB" — no promotion.
+    expect(formatByteSize(Math.floor(1023.94 * 1024))).toBe("1023.9 KB");
+    // At precision 0 the KB threshold for promotion is 1023.5 KB.
+    expect(formatByteSize(1023 * 1024, { precision: 0 })).toBe("1023 KB");
+  });
+
+  it("lets TB display 1024 and above because there is no larger unit", () => {
+    expect(formatByteSize(1024 ** 5)).toBe("1024.0 TB");
   });
 });
 

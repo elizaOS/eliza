@@ -58,6 +58,7 @@ let dbWrite: typeof import("../../../db/client").dbWrite;
 let closeDb: typeof import("../../../db/client").closeDatabaseConnectionsForTests | undefined;
 let creditsService: typeof import("../credits").creditsService;
 let InsufficientCreditsError: typeof import("../credits").InsufficientCreditsError;
+let recordWelcomeBonusWithheldOnOrg: typeof import("../signup-grant-guard").recordWelcomeBonusWithheldOnOrg;
 let pgliteReady = true;
 
 async function seedOrg(balance: string): Promise<void> {
@@ -76,6 +77,11 @@ async function readBalance(): Promise<number> {
   return Number((rows.rows[0] as { credit_balance: string }).credit_balance);
 }
 
+async function readSettings(): Promise<Record<string, unknown>> {
+  const rows = await dbWrite.execute(`SELECT settings FROM organizations WHERE id = '${ORG_ID}';`);
+  return (rows.rows[0] as { settings: Record<string, unknown> }).settings;
+}
+
 async function listDebits(): Promise<{ amount: number; type: string }[]> {
   const rows = await dbWrite.execute(
     `SELECT amount, type FROM credit_transactions WHERE organization_id = '${ORG_ID}' ORDER BY created_at ASC;`,
@@ -90,6 +96,7 @@ beforeAll(async () => {
   try {
     ({ closeDatabaseConnectionsForTests: closeDb, dbWrite } = await import("../../../db/client"));
     ({ creditsService, InsufficientCreditsError } = await import("../credits"));
+    ({ recordWelcomeBonusWithheldOnOrg } = await import("../signup-grant-guard"));
 
     // The columns the real credit-deduct SQL + the auto-top-up findById
     // relational read touch. Full organizations shape so the success-path
@@ -332,6 +339,80 @@ describe("reserveAndDeductCredits — atomic debit", () => {
     },
     PGLITE_TIMEOUT,
   );
+});
+
+describe("welcome-bonus marker lifecycle", () => {
+  beforeEach(async () => {
+    if (!pgliteReady) return;
+    await seedOrg("0.000000");
+  });
+
+  test("recording a withheld bonus preserves existing organization settings", async () => {
+    if (!pgliteReady) return;
+    await dbWrite.execute(
+      `UPDATE organizations SET settings = '{"theme":"dark","nested":{"keep":true}}'::jsonb WHERE id = '${ORG_ID}'`,
+    );
+
+    await recordWelcomeBonusWithheldOnOrg(ORG_ID, {
+      withheldReason: "ip_daily_cap",
+      withheldMessage: "daily cap",
+    });
+
+    expect(await readSettings()).toEqual({
+      theme: "dark",
+      nested: { keep: true },
+      welcomeBonusWithheld: {
+        reason: "ip_daily_cap",
+        message: "daily cap",
+      },
+    });
+  });
+
+  test("a committed credit clears the marker permanently before later spend-down", async () => {
+    if (!pgliteReady) return;
+    await recordWelcomeBonusWithheldOnOrg(ORG_ID, {
+      withheldReason: "ip_daily_cap",
+    });
+
+    await creditsService.addCredits({
+      organizationId: ORG_ID,
+      amount: 5,
+      description: "customer top-up",
+      metadata: { type: "stripe_topup" },
+      stripePaymentIntentId: "pi_marker_lifecycle",
+    });
+    expect(await readSettings()).not.toHaveProperty("welcomeBonusWithheld");
+
+    await creditsService.reserveAndDeductCredits({
+      organizationId: ORG_ID,
+      amount: 5,
+      description: "spend down",
+    });
+    expect(await readBalance()).toBe(0);
+    expect(await readSettings()).not.toHaveProperty("welcomeBonusWithheld");
+  });
+
+  test("signup cannot attach a stale marker to an org that was funded earlier", async () => {
+    if (!pgliteReady) return;
+    await creditsService.addCredits({
+      organizationId: ORG_ID,
+      amount: 1,
+      description: "pre-signup top-up",
+      stripePaymentIntentId: "pi_before_signup",
+    });
+    await creditsService.reserveAndDeductCredits({
+      organizationId: ORG_ID,
+      amount: 1,
+      description: "spent before signup",
+    });
+
+    await recordWelcomeBonusWithheldOnOrg(ORG_ID, {
+      withheldReason: "ip_daily_cap",
+    });
+
+    expect(await readBalance()).toBe(0);
+    expect(await readSettings()).not.toHaveProperty("welcomeBonusWithheld");
+  });
 });
 
 describe("reserve() — high-level reservation gate", () => {

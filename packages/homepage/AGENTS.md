@@ -111,7 +111,7 @@ All vars use the `VITE_` prefix (browser-exposed). Set in `.env.local`.
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `VITE_ELIZACLOUD_API_URL` | `https://www.elizacloud.ai` | Eliza Cloud backend base URL |
+| `VITE_ELIZACLOUD_API_URL` | `https://elizacloud.ai` | Eliza Cloud backend base URL |
 | `VITE_TELEGRAM_BOT_USERNAME` | — | Telegram bot username (from @BotFather) |
 | `VITE_TELEGRAM_BOT_ID` | — | Numeric Telegram bot ID |
 | `VITE_DISCORD_CLIENT_ID` | — | Discord Application ID for OAuth2 |

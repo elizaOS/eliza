@@ -668,6 +668,33 @@ describe("executeJob dispatch — type-specific disposition rules", () => {
     }
   });
 
+  test("agent_restart transient snapshot failure → requeued without burning an attempt", async () => {
+    const ctx = harness(makeJob(JOB_TYPES.AGENT_RESTART));
+    stub("executeRestart", {
+      success: false,
+      retryable: true,
+      containerStopped: false,
+      containerStarted: false,
+      error: "Refusing to stop without a current backup: Snapshot capture temporarily unavailable",
+    });
+    try {
+      const res = await run(JOB_TYPES.AGENT_RESTART);
+      expect(res).toMatchObject({ retried: 1, failed: 0 });
+      expect(ctx.retryLaterSpy).toHaveBeenCalledTimes(1);
+      expect(ctx.retryLaterSpy.mock.calls[0]?.[1]).toContain(
+        "Snapshot capture temporarily unavailable",
+      );
+      expect(ctx.incrementSpy).not.toHaveBeenCalled();
+    } finally {
+      ctx.claimSpy.mockRestore();
+      ctx.recoverSpy.mockRestore();
+      ctx.updateStatusSpy.mockRestore();
+      ctx.updateSpy.mockRestore();
+      ctx.incrementSpy.mockRestore();
+      ctx.retryLaterSpy.mockRestore();
+    }
+  });
+
   test("retryable transport lost to another worker is not reported as requeued", async () => {
     const ctx = harness(makeJob(JOB_TYPES.AGENT_PROVISION));
     ctx.retryLaterSpy.mockResolvedValue(undefined);
@@ -734,6 +761,33 @@ describe("executeJob dispatch — type-specific disposition rules", () => {
         skipped: true,
         reason: "Sandbox is not running",
       });
+      expect(ctx.incrementSpy).not.toHaveBeenCalled();
+    } finally {
+      disarmGate();
+      ctx.claimSpy.mockRestore();
+      ctx.recoverSpy.mockRestore();
+      ctx.updateStatusSpy.mockRestore();
+      ctx.updateSpy.mockRestore();
+      ctx.incrementSpy.mockRestore();
+      ctx.retryLaterSpy.mockRestore();
+    }
+  });
+
+  test("agent_snapshot transient capture failure → requeued without burning an attempt", async () => {
+    const ctx = harness(makeJob(JOB_TYPES.AGENT_SNAPSHOT, { snapshotType: "auto" }));
+    const disarmGate = armSnapshotGateFor(JOB_TYPES.AGENT_SNAPSHOT);
+    stub("executeSnapshot", {
+      success: false,
+      retryable: true,
+      error: "Snapshot capture temporarily unavailable",
+    });
+    try {
+      const res = await run(JOB_TYPES.AGENT_SNAPSHOT);
+      expect(res).toMatchObject({ retried: 1, failed: 0 });
+      expect(ctx.retryLaterSpy).toHaveBeenCalledTimes(1);
+      expect(ctx.retryLaterSpy.mock.calls[0]?.[1]).toContain(
+        "Snapshot capture temporarily unavailable",
+      );
       expect(ctx.incrementSpy).not.toHaveBeenCalled();
     } finally {
       disarmGate();

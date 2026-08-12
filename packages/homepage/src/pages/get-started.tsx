@@ -5,8 +5,8 @@
 import { BRAND_COLORS } from "@elizaos/shared/brand";
 import { Button } from "@elizaos/ui/button";
 import {
-  AppleMessagesIcon,
   DiscordIcon,
+  IMessageIcon,
   TelegramIcon,
   WhatsAppIcon,
 } from "@elizaos/ui/cloud-ui/components/icons";
@@ -32,6 +32,7 @@ import {
   peekReturnTo,
   rememberReturnTo,
 } from "@/lib/auth-return";
+import { resolveOnboardingEntryStep } from "@/lib/onboarding-continuation";
 import { useT } from "@/providers/I18nProvider";
 
 // Defer the WebGL shader background so the form UI is interactive immediately.
@@ -39,6 +40,7 @@ const ShaderBackground = lazy(
   () => import("@/components/ShaderBackground/ShaderBackground"),
 );
 
+import { elizacloudAuthFetch } from "@/lib/api/client";
 import {
   buildElizaSmsHref,
   buildElizaTelegramHref,
@@ -54,8 +56,6 @@ import {
   useAuth,
 } from "@/lib/context/auth-context";
 import { getTelegramLinkDestination } from "@/lib/telegram-onboarding";
-
-const SOLANA_GRADIENT = "linear-gradient(135deg, #9945FF 0%, #14F195 100%)";
 
 function SolanaIcon({ className }: { className?: string }) {
   return (
@@ -98,6 +98,14 @@ declare global {
 
 const DISCORD_OAUTH_STATE_KEY = "eliza_discord_oauth_state";
 const DISCORD_LINK_MODE_KEY = "eliza_discord_link_mode";
+/**
+ * Preserves a platform onboarding continuation across the Discord OAuth
+ * round-trip. Discord requires an exact-match redirect_uri, so the
+ * onboardingSession query parameter cannot survive the redirect on the URL
+ * itself; without this the DM session is orphaned after login and the user's
+ * platform chat never continues into their provisioned agent.
+ */
+const ONBOARDING_SESSION_STORAGE_KEY = "eliza_onboarding_session_continuation";
 
 function generateOAuthState(): string {
   const array = new Uint8Array(32);
@@ -114,6 +122,8 @@ type OnboardingMethod =
 
 type OnboardingStep =
   | "SELECT_METHOD"
+  | "ONBOARDING_SIGN_IN"
+  | "CONTINUATION_LINK"
   | "TELEGRAM_DIRECT"
   | "TELEGRAM_OAUTH"
   | "PHONE_INPUT"
@@ -131,7 +141,278 @@ function getDiscordClientId(): string {
   return (import.meta.env.VITE_DISCORD_CLIENT_ID || "").trim();
 }
 
-const MONO = "Geist, system-ui, sans-serif";
+const SANS = "Geist, system-ui, sans-serif";
+
+/**
+ * Static fallback that echoes the landing-page shader palette so pre-shader
+ * frames (loading / redirect states) feel like the same surface instead of
+ * flashing a different brand color.
+ */
+const PASTEL_FALLBACK: CSSProperties = {
+  background:
+    "linear-gradient(160deg, #efedf7 0%, #e4e2f1 40%, #eadfe9 75%, #e7e9ef 100%)",
+  fontFamily: SANS,
+};
+
+const SOLANA_GRADIENT = "linear-gradient(135deg, #9945ff 0%, #14f195 100%)";
+
+/** Landing-page glass tile language: white hairline + frosted fill. */
+const GLASS_TILE = "border border-white/60 bg-white/35 backdrop-blur-md";
+
+/**
+ * Post-auth identity-link handoff for platform onboarding continuations.
+ *
+ * Mirrors the #18161 preview/confirm contract already served by the cloud-app
+ * hosts: GET the continuation preview (read-only), require an explicit,
+ * informed confirmation, then POST the redemption with
+ * `confirmPlatformLink: true` — the turn that binds the session, links the
+ * messaging identity, and starts provisioning. The terminal state prompts the
+ * user back to the originating platform instead of a web chat: their
+ * conversation lives there, and authenticated browser turns on a trusted
+ * messaging session require the confirm flag.
+ *
+ * Non-linkable sessions (for example SMS-originated ones, which auto-link by
+ * phone) fail the preview and fall back to the provisioning chat —
+ * the exact pre-existing behavior for those platforms.
+ */
+function ContinuationLinkStep({
+  onboardingSessionId,
+  onFallbackToChat,
+}: {
+  onboardingSessionId: string;
+  onFallbackToChat: () => void;
+}) {
+  const t = useT();
+  const [phase, setPhase] = useState<
+    "checking" | "confirm" | "linking" | "done" | "error"
+  >("checking");
+  const [error, setError] = useState<string | null>(null);
+  const [identity, setIdentity] = useState<{
+    platform: "discord" | "telegram";
+    platformUserId: string;
+    platformDisplayName: string;
+  } | null>(null);
+  // StrictMode double-mount guard: the read-only preview should run once.
+  const startedRef = useRef(false);
+
+  const loadPreview = useCallback(async () => {
+    setPhase("checking");
+    setError(null);
+    try {
+      const res = await elizacloudAuthFetch<{
+        success?: boolean;
+        data?: {
+          platform?: string;
+          platformUserId?: string;
+          platformDisplayName?: string;
+        };
+      }>("/api/eliza-app/onboarding/chat", {
+        params: { sessionId: onboardingSessionId },
+      });
+      const preview = res?.data;
+      if (
+        (preview?.platform === "discord" || preview?.platform === "telegram") &&
+        preview.platformUserId &&
+        preview.platformDisplayName
+      ) {
+        setIdentity({
+          platform: preview.platform,
+          platformUserId: preview.platformUserId,
+          platformDisplayName: preview.platformDisplayName,
+        });
+        setPhase("confirm");
+        return;
+      }
+      throw new Error("The connection preview returned an invalid response.");
+    } catch (err) {
+      if (
+        err instanceof Error &&
+        /^elizacloud API error (403|404):/.test(err.message)
+      ) {
+        // The API uses a deliberate forbidden/not-found response when this is
+        // a phone-shaped continuation rather than a browser-linkable account.
+        onFallbackToChat();
+        return;
+      }
+      setError(
+        t("homepage_eliza.getStarted.continuationPreviewError", {
+          defaultValue:
+            "We couldn't check this connection. Try again without leaving this page.",
+        }),
+      );
+      setPhase("error");
+    }
+  }, [onboardingSessionId, onFallbackToChat, t]);
+
+  const confirmLink = useCallback(async () => {
+    setPhase("linking");
+    setError(null);
+    try {
+      await elizacloudAuthFetch("/api/eliza-app/onboarding/chat", {
+        method: "POST",
+        body: JSON.stringify({
+          sessionId: onboardingSessionId,
+          platform: "web",
+          confirmPlatformLink: true,
+        }),
+      });
+      setPhase("done");
+    } catch (err) {
+      setError(
+        err instanceof Error && err.message.trim()
+          ? err.message
+          : t("homepage_eliza.getStarted.continuationLinkError", {
+              defaultValue:
+                "Could not finish connecting your account. Try again.",
+            }),
+      );
+      setPhase("error");
+    }
+  }, [onboardingSessionId, t]);
+
+  useEffect(() => {
+    if (startedRef.current) return;
+    startedRef.current = true;
+    void loadPreview();
+  }, [loadPreview]);
+
+  if (phase === "confirm" && identity) {
+    const platformLabel =
+      identity.platform === "telegram" ? "Telegram" : "Discord";
+    const PlatformIcon =
+      identity.platform === "telegram" ? TelegramIcon : DiscordIcon;
+    return (
+      <div
+        className="w-full flex flex-col items-center rounded-xs border border-white/80 bg-white/85 backdrop-blur-xl p-8 shadow-xl"
+        data-testid="continuation-confirm"
+      >
+        <div className="w-16 h-16 rounded-xs bg-orange-500/15 flex items-center justify-center mb-6">
+          <PlatformIcon className="size-8 text-orange-800" />
+        </div>
+        <h1 className="text-xl font-medium text-neutral-900 text-center mb-2">
+          {t("homepage_eliza.getStarted.continuationConfirmTitle", {
+            platform: platformLabel,
+            defaultValue: `Connect your ${platformLabel} account?`,
+          })}
+        </h1>
+        <p className="text-sm text-neutral-500 text-center mb-8">
+          {t("homepage_eliza.getStarted.continuationConfirmBody", {
+            defaultValue: "Continue as",
+          })}{" "}
+          <strong className="text-neutral-900">
+            {identity.platformDisplayName}
+          </strong>
+          <span className="block text-xs text-neutral-400 mt-1">
+            {platformLabel} ID {identity.platformUserId}
+          </span>
+        </p>
+        <Button
+          type="button"
+          data-testid="continuation-confirm-button"
+          onClick={() => void confirmLink()}
+          className="w-full min-h-11 h-[52px] rounded-xs bg-orange-700 text-white font-medium hover:bg-orange-800"
+        >
+          {t("homepage_eliza.getStarted.continuationConfirmCta", {
+            platform: platformLabel,
+            defaultValue: `Connect this ${platformLabel} account`,
+          })}
+        </Button>
+      </div>
+    );
+  }
+
+  if (phase === "done") {
+    const platform = identity?.platform ?? "discord";
+    const platformLabel = platform === "telegram" ? "Telegram" : "Discord";
+    const PlatformIcon = platform === "telegram" ? TelegramIcon : DiscordIcon;
+    const platformHref =
+      platform === "telegram"
+        ? buildElizaTelegramHref()
+        : "https://discord.com/channels/@me";
+    return (
+      <div
+        className="w-full flex flex-col items-center rounded-xs border border-white/80 bg-white/85 backdrop-blur-xl p-8 shadow-xl"
+        data-testid="continuation-done"
+      >
+        <div className="w-16 h-16 rounded-xs bg-orange-500/15 flex items-center justify-center mb-6">
+          <Check className="size-8 text-orange-800" />
+        </div>
+        <h1 className="text-xl font-medium text-neutral-900 text-center mb-2">
+          {t("homepage_eliza.getStarted.continuationDoneTitle", {
+            defaultValue: "You're connected",
+          })}
+        </h1>
+        <p className="text-sm text-neutral-500 text-center mb-8">
+          {t("homepage_eliza.getStarted.continuationDoneBody", {
+            platform: platformLabel,
+            defaultValue: `Head back to ${platformLabel} — Eliza is getting your agent ready and will pick up right where you left off.`,
+          })}
+        </p>
+        <Button
+          asChild
+          className="w-full min-h-11 h-[52px] rounded-xs bg-orange-700 hover:bg-orange-800 text-white font-medium gap-2"
+        >
+          <a
+            href={platformHref}
+            target="_blank"
+            rel="noopener noreferrer"
+            data-testid={`continuation-open-${platform}`}
+          >
+            <PlatformIcon className="size-5" />
+            {t("homepage_eliza.getStarted.continuationOpenPlatform", {
+              platform: platformLabel,
+              defaultValue: `Open ${platformLabel}`,
+            })}
+          </a>
+        </Button>
+      </div>
+    );
+  }
+
+  if (phase === "error") {
+    return (
+      <div
+        className="w-full flex flex-col items-center rounded-xs border border-white/80 bg-white/85 backdrop-blur-xl p-8 shadow-xl"
+        data-testid="continuation-error"
+      >
+        <h1 className="text-xl font-medium text-neutral-900 text-center mb-2">
+          {t("homepage_eliza.getStarted.continuationErrorTitle", {
+            defaultValue: "Couldn't connect your account",
+          })}
+        </h1>
+        <p className="text-sm text-red-600 text-center mb-8">{error}</p>
+        <Button
+          type="button"
+          onClick={() => void (identity ? confirmLink() : loadPreview())}
+          className="w-full min-h-11 h-[52px] rounded-xs bg-orange-700 text-white font-medium hover:bg-orange-800"
+        >
+          {t("homepage_eliza.getStarted.tryAgain", {
+            defaultValue: "Try Again",
+          })}
+        </Button>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className="w-full flex flex-col items-center rounded-xs border border-white/80 bg-white/85 backdrop-blur-xl p-8 shadow-xl"
+      role="status"
+      aria-busy="true"
+      data-testid="continuation-checking"
+    >
+      <div className="text-neutral-500 animate-pulse text-sm">
+        {phase === "linking"
+          ? t("homepage_eliza.getStarted.continuationLinking", {
+              defaultValue: "Connecting your account...",
+            })
+          : t("homepage_eliza.getStarted.continuationChecking", {
+              defaultValue: "Checking your connection...",
+            })}
+      </div>
+    </div>
+  );
+}
 
 function ProvisioningChatStep({
   onboardingSessionId,
@@ -141,8 +422,14 @@ function ProvisioningChatStep({
   onContinue: () => void;
 }) {
   const t = useT();
-  const { messages, sendMessage, containerStatus, isLoading, isReady } =
-    useElizaAppProvisioningChat(true, onboardingSessionId);
+  const {
+    messages,
+    sendMessage,
+    containerStatus,
+    isLoading,
+    isReady,
+    provisioningError,
+  } = useElizaAppProvisioningChat(true, onboardingSessionId);
   const [input, setInput] = useState("");
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -160,26 +447,29 @@ function ProvisioningChatStep({
     inputRef.current?.focus();
   }, [input, isLoading, sendMessage]);
 
+  const provisioningFailed =
+    provisioningError !== null || containerStatus === "error";
   const statusLabel = isReady
     ? t("homepage_eliza.getStarted.statusReady", {
         defaultValue: "Ready! Connecting...",
       })
-    : containerStatus === "error"
-      ? t("homepage_eliza.getStarted.statusFailed", {
+    : provisioningFailed
+      ? (provisioningError ??
+        t("homepage_eliza.getStarted.statusFailed", {
           defaultValue: "Setup failed — please refresh.",
-        })
+        }))
       : t("homepage_eliza.getStarted.statusSettingUp", {
           defaultValue: "Setting up your AI space...",
         });
 
   const statusColor = isReady
     ? "#4ade80"
-    : containerStatus === "error"
+    : provisioningFailed
       ? "#f87171"
       : "#229ED9";
 
   return (
-    <div style={{ width: "100%", maxWidth: "420px", fontFamily: MONO }}>
+    <div style={{ width: "100%", maxWidth: "420px", fontFamily: SANS }}>
       <div className="flex items-center gap-2 mb-4">
         <span
           style={{
@@ -188,7 +478,10 @@ function ProvisioningChatStep({
             height: 8,
             borderRadius: "50%",
             backgroundColor: statusColor,
-            animation: isReady ? "none" : "gs-pulse 2s ease-in-out infinite",
+            animation:
+              isReady || provisioningFailed
+                ? "none"
+                : "gs-pulse 2s ease-in-out infinite",
             flexShrink: 0,
           }}
         />
@@ -222,8 +515,8 @@ function ProvisioningChatStep({
           padding: 12,
           background: "rgba(255,255,255,0.38)",
           backdropFilter: "blur(8px)",
-          border: "1.5px solid rgba(255,255,255,0.55)",
-          borderRadius: 12,
+          border: "1px solid rgba(255,255,255,0.6)",
+          borderRadius: 20,
           marginBottom: 10,
         }}
       >
@@ -300,13 +593,13 @@ function ProvisioningChatStep({
           style={{
             flex: 1,
             height: 44,
-            padding: "0 14px",
-            borderRadius: 10,
-            border: "1.5px solid rgba(0,0,0,0.15)",
-            background: "rgba(255,255,255,0.6)",
+            padding: "0 18px",
+            borderRadius: 22,
+            border: "1px solid rgba(255,255,255,0.6)",
+            background: "rgba(255,255,255,0.5)",
             backdropFilter: "blur(8px)",
             fontSize: 14,
-            fontFamily: MONO,
+            fontFamily: SANS,
             outline: "none",
           }}
         />
@@ -317,7 +610,7 @@ function ProvisioningChatStep({
           style={{
             width: 44,
             height: 44,
-            borderRadius: 10,
+            borderRadius: 22,
             border: "none",
             background:
               isLoading || !input.trim() ? "rgba(0,0,0,0.15)" : "#1a1a1a",
@@ -336,7 +629,7 @@ function ProvisioningChatStep({
       {isReady && (
         <Button
           onClick={onContinue}
-          className="w-full h-[52px] rounded-xs bg-black text-white font-medium hover:bg-white hover:text-black transition-colors mt-4"
+          className="w-full h-[52px] rounded-full bg-neutral-900 text-white font-medium hover:bg-neutral-800 transition-colors mt-4"
         >
           <Check className="size-4 mr-2" />
           {t("homepage_eliza.getStarted.continueToDashboard", {
@@ -362,9 +655,24 @@ export default function GetStartedPage() {
   } = useAuth();
 
   const methodParam = searchParams.get("method") as OnboardingMethod | null;
-  const onboardingSessionId = searchParams.get("onboardingSession");
+  const urlOnboardingSessionId = searchParams.get("onboardingSession");
   const discordCode = searchParams.get("code");
   const discordState = searchParams.get("state");
+  const discordOAuthError = searchParams.get("error");
+  // Restore a continuation stashed before the Discord OAuth redirect. Read
+  // once into state so clearing the storage key later cannot drop the session
+  // id out from under an in-progress PROVISIONING_CHAT render.
+  const [restoredOnboardingSession] = useState<string | null>(() =>
+    typeof window !== "undefined" &&
+    (discordCode ||
+      (discordOAuthError &&
+        discordState &&
+        discordState === sessionStorage.getItem(DISCORD_OAUTH_STATE_KEY)))
+      ? sessionStorage.getItem(ONBOARDING_SESSION_STORAGE_KEY)
+      : null,
+  );
+  const onboardingSessionId =
+    urlOnboardingSessionId ?? restoredOnboardingSession;
   const guideParam = searchParams.get("guide");
   const returnTo = searchParams.get("returnTo");
   const postAuthDestination = peekReturnTo(returnTo);
@@ -453,6 +761,18 @@ export default function GetStartedPage() {
     sessionStorage.setItem(DISCORD_OAUTH_STATE_KEY, state);
     rememberReturnTo(returnTo);
 
+    // Discord's exact-match redirect_uri drops query parameters, so an
+    // in-flight platform onboarding continuation must survive the OAuth
+    // round-trip via storage or the DM session is orphaned after login.
+    if (onboardingSessionId && !isLinkMode) {
+      sessionStorage.setItem(
+        ONBOARDING_SESSION_STORAGE_KEY,
+        onboardingSessionId,
+      );
+    } else {
+      sessionStorage.removeItem(ONBOARDING_SESSION_STORAGE_KEY);
+    }
+
     if (isLinkMode) {
       sessionStorage.setItem(DISCORD_LINK_MODE_KEY, "true");
     } else {
@@ -470,7 +790,7 @@ export default function GetStartedPage() {
 
     window.location.href = `https://discord.com/oauth2/authorize?${params.toString()}`;
     return true;
-  }, [isLinkMode, returnTo, t]);
+  }, [isLinkMode, onboardingSessionId, returnTo, t]);
 
   useEffect(() => {
     if (
@@ -510,10 +830,24 @@ export default function GetStartedPage() {
       return;
     }
 
-    if (onboardingSessionId && isAuthenticated && !isLinkMode) {
+    // Platform continuations (Discord DM "Connect" button, SMS link) never
+    // see the connector picker — the visitor already came FROM a platform.
+    // Signed-in visitors continue into the identity-link handoff; signed-out
+    // visitors go straight to sign-in. Telegram continuations carry
+    // method=telegram (handled below).
+    const continuationStep = resolveOnboardingEntryStep({
+      onboardingSessionId,
+      isAuthenticated,
+      isLinkMode,
+      discordCode,
+      methodParam,
+    });
+    if (continuationStep) {
       setInitialMethodHandled(true);
-      setSuppressRedirect(true);
-      setStep("PROVISIONING_CHAT");
+      if (continuationStep === "CONTINUATION_LINK") {
+        setSuppressRedirect(true);
+      }
+      setStep(continuationStep);
       return;
     }
 
@@ -609,6 +943,13 @@ export default function GetStartedPage() {
     try {
       const result = await loginWithSolana();
       if (result.success) {
+        if (onboardingSessionId && !isLinkMode) {
+          // Platform continuation: continue into the identity-link handoff
+          // with the new credentials instead of bouncing to the dashboard.
+          setSuppressRedirect(true);
+          setStep("CONTINUATION_LINK");
+          return;
+        }
         clearRememberedReturnTo();
         navigate(postAuthDestination, { replace: true });
       } else {
@@ -624,7 +965,14 @@ export default function GetStartedPage() {
     } finally {
       setIsSolanaLoading(false);
     }
-  }, [loginWithSolana, navigate, postAuthDestination, t]);
+  }, [
+    isLinkMode,
+    loginWithSolana,
+    navigate,
+    onboardingSessionId,
+    postAuthDestination,
+    t,
+  ]);
 
   const handleMethodSelect = (method: OnboardingMethod) => {
     setSelectedMethod(method);
@@ -681,6 +1029,8 @@ export default function GetStartedPage() {
       }
     } else if (step === "DISCORD_SETUP_GUIDE") {
       navigate("/connected");
+    } else if (step === "ONBOARDING_SIGN_IN" || step === "CONTINUATION_LINK") {
+      navigate("/");
     }
   };
 
@@ -843,8 +1193,16 @@ export default function GetStartedPage() {
       sessionStorage.removeItem(DISCORD_LINK_MODE_KEY);
 
       if (result.success) {
+        // The continuation id (if any) already lives in component state; the
+        // storage copy has served its purpose across the OAuth round-trip.
+        sessionStorage.removeItem(ONBOARDING_SESSION_STORAGE_KEY);
         if (isLinkMode) {
           navigate("/connected", { replace: true });
+        } else if (onboardingSessionId) {
+          // Platform continuation: the login itself does not redeem the
+          // session — continue into the preview/confirm identity-link
+          // handoff, whose terminal state prompts the user back to Discord.
+          setStep("CONTINUATION_LINK");
         } else {
           setStep("PROVISIONING_CHAT");
         }
@@ -889,6 +1247,7 @@ export default function GetStartedPage() {
       loginWithDiscord,
       isLinkMode,
       navigate,
+      onboardingSessionId,
       t,
     ],
   );
@@ -948,10 +1307,10 @@ export default function GetStartedPage() {
   if (authLoading) {
     return (
       <main
-        className="theme-app brand-section brand-section--orange min-h-screen flex flex-col items-center justify-center px-4"
-        style={{ fontFamily: "Geist, system-ui, sans-serif" }}
+        className="min-h-screen flex flex-col items-center justify-center px-4"
+        style={PASTEL_FALLBACK}
       >
-        <div className="text-black/70 animate-pulse font-semibold">
+        <div className="text-neutral-600 animate-pulse font-medium">
           {t("homepage_eliza.common.loading", { defaultValue: "Loading…" })}
         </div>
       </main>
@@ -969,10 +1328,10 @@ export default function GetStartedPage() {
   ) {
     return (
       <main
-        className="theme-app brand-section brand-section--orange min-h-screen flex flex-col items-center justify-center px-4"
-        style={{ fontFamily: "Geist, system-ui, sans-serif" }}
+        className="min-h-screen flex flex-col items-center justify-center px-4"
+        style={PASTEL_FALLBACK}
       >
-        <div className="text-black/70 animate-pulse font-semibold">
+        <div className="text-neutral-600 animate-pulse font-medium">
           {t("homepage_eliza.common.redirecting", {
             defaultValue: "Redirecting…",
           })}
@@ -984,10 +1343,10 @@ export default function GetStartedPage() {
   if (isRedirectingToOAuth) {
     return (
       <main
-        className="theme-app brand-section brand-section--orange min-h-screen flex flex-col items-center justify-center px-4"
-        style={{ fontFamily: "Geist, system-ui, sans-serif" }}
+        className="min-h-screen flex flex-col items-center justify-center px-4"
+        style={PASTEL_FALLBACK}
       >
-        <div className="text-black/70 animate-pulse font-semibold">
+        <div className="text-neutral-600 animate-pulse font-medium">
           {t("homepage_eliza.getStarted.redirectingToDiscord", {
             defaultValue: "Redirecting to Discord…",
           })}
@@ -997,64 +1356,158 @@ export default function GetStartedPage() {
   }
 
   return (
-    <main className="min-h-screen flex flex-col relative">
+    <main
+      className="min-h-screen flex flex-col relative"
+      style={{ fontFamily: SANS }}
+    >
       <Suspense fallback={null}>
         <ShaderBackground />
       </Suspense>
       <div
-        className="fixed inset-0 pointer-events-none mix-blend-overlay z-0"
-        style={{
-          backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.7' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E")`,
-          backgroundRepeat: "repeat",
-          backgroundSize: "256px 256px",
-        }}
+        aria-hidden="true"
+        className="fixed inset-0 pointer-events-none mix-blend-overlay bg-[url('/grain.webp')] z-0"
       />
       <header
         className="relative z-10 p-4 flex items-center justify-between"
         style={headerStyle}
       >
-        <div className="w-16">
+        <div className="w-24">
           {step === "DISCORD_SETUP_GUIDE" ? null : step !== "SELECT_METHOD" ? (
             <button
               type="button"
               onClick={handleBack}
-              className="inline-flex min-h-11 items-center gap-2 text-neutral-600 hover:text-neutral-900 transition-colors cursor-pointer"
+              className={`inline-flex min-h-11 items-center gap-1.5 rounded-full ${GLASS_TILE} hover:bg-white/60 px-4 text-neutral-700 hover:text-neutral-900 transition-colors cursor-pointer`}
             >
               <ArrowLeft className="size-4" />
-              <span className="text-sm">
+              <span className="text-sm font-medium">
                 {t("homepage_eliza.getStarted.back", { defaultValue: "Back" })}
               </span>
             </button>
           ) : (
             <Link
               to="/"
-              className="inline-flex min-h-11 items-center gap-2 text-neutral-600 hover:text-neutral-900 transition-colors"
+              className={`inline-flex min-h-11 items-center gap-1.5 rounded-full ${GLASS_TILE} hover:bg-white/60 px-4 text-neutral-700 hover:text-neutral-900 transition-colors`}
             >
               <ArrowLeft className="size-4" />
-              <span className="text-sm">
+              <span className="text-sm font-medium">
                 {t("homepage_eliza.getStarted.home", { defaultValue: "Home" })}
               </span>
             </Link>
           )}
         </div>
+
         <ElizaLogo variant="svg" className="h-8 w-auto" />
-        <div className="w-16" />
+        <div className="w-24" />
       </header>
 
       <div className="relative z-10 flex-1 flex flex-col items-center justify-center px-4 pb-20">
         <div className="w-full max-w-[400px] flex flex-col items-center">
+          {step === "ONBOARDING_SIGN_IN" && (
+            <>
+              <div style={titleStyle}>
+                <h1 className="text-2xl sm:text-3xl font-bold text-neutral-900 text-center mb-2">
+                  {t("homepage_eliza.getStarted.onboardingSignInTitle", {
+                    defaultValue: "Sign in to continue",
+                  })}
+                </h1>
+                <p className="text-sm text-neutral-500 text-center mb-8">
+                  {t("homepage_eliza.getStarted.onboardingSignInSubtitle", {
+                    defaultValue:
+                      "Your chat is waiting — sign in and it picks up right where you left off.",
+                  })}
+                </p>
+              </div>
+
+              {(discordError || solanaError) && (
+                <div className="w-full mb-4 p-3 rounded-xs bg-red-50 border border-red-200">
+                  <p className="text-sm text-red-600 text-center">
+                    {discordError || solanaError}
+                  </p>
+                </div>
+              )}
+
+              <div className="w-full flex flex-col gap-3">
+                <button
+                  type="button"
+                  data-testid="onboarding-signin-discord"
+                  onClick={() => handleMethodSelect("discord")}
+                  className="w-full min-h-11 h-[72px] bg-orange-600 hover:bg-orange-700 text-white rounded-xs transition-colors flex items-center gap-4 px-5 cursor-pointer"
+                  style={cardStyle(0)}
+                >
+                  <div className="w-12 h-12 rounded-xs bg-white/15 flex items-center justify-center shrink-0">
+                    <DiscordIcon className="size-6 text-white" />
+                  </div>
+                  <div className="flex-1 text-left">
+                    <p className="font-medium">
+                      {t("homepage_eliza.getStarted.onboardingSignInDiscord", {
+                        defaultValue: "Continue with Discord",
+                      })}
+                    </p>
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  aria-label={t("homepage_eliza.getStarted.solanaAria", {
+                    defaultValue: "Sign in with Solana",
+                  })}
+                  data-testid="onboarding-signin-solana"
+                  disabled={isSolanaLoading}
+                  onClick={() => handleMethodSelect("solana")}
+                  className="w-full h-[72px] bg-white hover:bg-black text-black hover:text-white rounded-xs transition-colors flex items-center gap-4 px-5 cursor-pointer disabled:opacity-60"
+                  style={cardStyle(1)}
+                >
+                  <div
+                    className="w-12 h-12 rounded-xs flex items-center justify-center shrink-0"
+                    style={{ background: SOLANA_GRADIENT }}
+                  >
+                    <SolanaIcon className="size-6 text-white" />
+                  </div>
+                  <div className="flex-1 text-left">
+                    <p className="font-medium">
+                      {isSolanaLoading
+                        ? t("homepage_eliza.getStarted.btnSolanaLoading", {
+                            defaultValue: "Connecting…",
+                          })
+                        : t("homepage_eliza.getStarted.btnSolana", {
+                            defaultValue: "Solana Wallet",
+                          })}
+                    </p>
+                  </div>
+                </button>
+              </div>
+
+              <button
+                type="button"
+                data-testid="onboarding-signin-more"
+                onClick={() => setStep("SELECT_METHOD")}
+                className="w-full mt-6 text-sm text-neutral-500 hover:text-neutral-700 cursor-pointer"
+                style={cardStyle(2)}
+              >
+                {t("homepage_eliza.getStarted.onboardingSignInMore", {
+                  defaultValue: "More ways to connect",
+                })}
+              </button>
+            </>
+          )}
+
           {step === "SELECT_METHOD" && (
             <>
               <div style={titleStyle}>
-                <h1 className="text-2xl sm:text-3xl font-bold text-neutral-900 text-center mb-8 whitespace-nowrap">
+                <h1 className="text-2xl sm:text-[1.75rem] font-medium tracking-tight text-neutral-900 text-center mb-2 text-balance">
                   {t("homepage_eliza.getStarted.selectHeader", {
                     defaultValue: "Anywhere you want her to be.",
                   })}
                 </h1>
+                <p className="text-sm font-medium text-neutral-700 text-center mb-10 text-balance">
+                  {t("homepage_eliza.getStarted.selectSubheader", {
+                    defaultValue: "Pick where you want to talk to Eliza.",
+                  })}
+                </p>
               </div>
 
               {(discordError || telegramError) && (
-                <div className="w-full mb-4 p-3 rounded-xs bg-red-50 border border-red-200">
+                <div className="w-full mb-4 p-3 rounded-2xl bg-red-50/80 border border-red-200">
                   <p className="text-sm text-red-600 text-center">
                     {discordError || telegramError}
                   </p>
@@ -1065,14 +1518,14 @@ export default function GetStartedPage() {
                 <button
                   type="button"
                   onClick={() => handleMethodSelect("telegram")}
-                  className="w-full h-[72px] bg-white hover:bg-black text-black hover:text-white rounded-xs transition-colors flex items-center gap-4 px-5 cursor-pointer"
+                  className={`w-full h-16 ${GLASS_TILE} hover:bg-white/60 rounded-full transition-colors flex items-center gap-4 pl-2.5 pr-6 cursor-pointer`}
                   style={cardStyle(0)}
                 >
-                  <div className="w-12 h-12 rounded-xs bg-[#229ED9]/20 flex items-center justify-center shrink-0">
-                    <TelegramIcon className="size-6 text-[#229ED9]" />
+                  <div className="size-11 rounded-full bg-white/60 flex items-center justify-center shrink-0">
+                    <TelegramIcon className="size-6 text-[#2AABEE]" />
                   </div>
                   <div className="flex-1 text-left">
-                    <p className="font-medium">
+                    <p className="font-medium text-neutral-900">
                       {t("homepage_eliza.getStarted.btnTelegram", {
                         defaultValue: "Telegram",
                       })}
@@ -1083,14 +1536,14 @@ export default function GetStartedPage() {
                 <button
                   type="button"
                   onClick={() => handleMethodSelect("imessage")}
-                  className="w-full h-[72px] bg-white hover:bg-black text-black hover:text-white rounded-xs transition-colors flex items-center gap-4 px-5 cursor-pointer"
+                  className={`w-full h-16 ${GLASS_TILE} hover:bg-white/60 rounded-full transition-colors flex items-center gap-4 pl-2.5 pr-6 cursor-pointer`}
                   style={cardStyle(1)}
                 >
-                  <div className="w-12 h-12 shrink-0 flex items-center justify-center">
-                    <AppleMessagesIcon className="size-12" />
+                  <div className="size-11 rounded-full bg-white/60 flex items-center justify-center shrink-0">
+                    <IMessageIcon className="size-6 text-[#34C759]" />
                   </div>
                   <div className="flex-1 text-left">
-                    <p className="font-medium">
+                    <p className="font-medium text-neutral-900">
                       {t("homepage_eliza.getStarted.btnImessage", {
                         defaultValue: "iMessage",
                       })}
@@ -1101,14 +1554,14 @@ export default function GetStartedPage() {
                 <button
                   type="button"
                   onClick={() => handleMethodSelect("whatsapp")}
-                  className="w-full h-[72px] bg-white hover:bg-black text-black hover:text-white rounded-xs transition-colors flex items-center gap-4 px-5 cursor-pointer"
+                  className={`w-full h-16 ${GLASS_TILE} hover:bg-white/60 rounded-full transition-colors flex items-center gap-4 pl-2.5 pr-6 cursor-pointer`}
                   style={cardStyle(2)}
                 >
-                  <div className="w-12 h-12 rounded-xs bg-[#25D366]/20 flex items-center justify-center shrink-0">
+                  <div className="size-11 rounded-full bg-white/60 flex items-center justify-center shrink-0">
                     <WhatsAppIcon className="size-6 text-[#25D366]" />
                   </div>
                   <div className="flex-1 text-left">
-                    <p className="font-medium">
+                    <p className="font-medium text-neutral-900">
                       {t("homepage_eliza.getStarted.btnWhatsapp", {
                         defaultValue: "WhatsApp",
                       })}
@@ -1119,14 +1572,14 @@ export default function GetStartedPage() {
                 <button
                   type="button"
                   onClick={() => handleMethodSelect("discord")}
-                  className="w-full h-[72px] bg-white hover:bg-black text-black hover:text-white rounded-xs transition-colors flex items-center gap-4 px-5 cursor-pointer"
+                  className={`w-full h-16 ${GLASS_TILE} hover:bg-white/60 rounded-full transition-colors flex items-center gap-4 pl-2.5 pr-6 cursor-pointer`}
                   style={cardStyle(3)}
                 >
-                  <div className="w-12 h-12 rounded-xs bg-[#5865F2]/20 flex items-center justify-center shrink-0">
+                  <div className="size-11 rounded-full bg-white/60 flex items-center justify-center shrink-0">
                     <DiscordIcon className="size-6 text-[#5865F2]" />
                   </div>
                   <div className="flex-1 text-left">
-                    <p className="font-medium">
+                    <p className="font-medium text-neutral-900">
                       {t("homepage_eliza.getStarted.btnDiscord", {
                         defaultValue: "Discord",
                       })}
@@ -1142,17 +1595,14 @@ export default function GetStartedPage() {
                   data-testid="solana-signin"
                   disabled={isSolanaLoading}
                   onClick={() => handleMethodSelect("solana")}
-                  className="w-full h-[72px] bg-white hover:bg-black text-black hover:text-white rounded-xs transition-colors flex items-center gap-4 px-5 cursor-pointer disabled:opacity-60"
+                  className={`w-full h-16 ${GLASS_TILE} hover:bg-white/60 rounded-full transition-colors flex items-center gap-4 pl-2.5 pr-6 cursor-pointer disabled:opacity-60`}
                   style={cardStyle(4)}
                 >
-                  <div
-                    className="w-12 h-12 rounded-xs flex items-center justify-center shrink-0"
-                    style={{ background: SOLANA_GRADIENT }}
-                  >
-                    <SolanaIcon className="size-6 text-white" />
+                  <div className="size-11 rounded-full bg-white/60 flex items-center justify-center shrink-0">
+                    <SolanaIcon className="size-5" />
                   </div>
                   <div className="flex-1 text-left">
-                    <p className="font-medium">
+                    <p className="font-medium text-neutral-900">
                       {isSolanaLoading
                         ? t("homepage_eliza.getStarted.btnSolanaLoading", {
                             defaultValue: "Connecting…",
@@ -1178,11 +1628,13 @@ export default function GetStartedPage() {
 
           {step === "TELEGRAM_DIRECT" && (
             <>
-              <div className="w-16 h-16 rounded-xs bg-[#229ED9]/20 flex items-center justify-center mb-6">
-                <TelegramIcon className="size-8 text-[#229ED9]" />
+              <div
+                className={`w-16 h-16 rounded-full ${GLASS_TILE} flex items-center justify-center mb-6`}
+              >
+                <TelegramIcon className="size-8 text-[#2AABEE]" />
               </div>
 
-              <h1 className="text-xl font-medium text-neutral-900 text-center mb-2">
+              <h1 className="text-xl font-semibold tracking-tight text-neutral-900 text-center mb-2">
                 {t("homepage_eliza.getStarted.telegramDirectTitle", {
                   defaultValue: "Message Eliza on Telegram",
                 })}
@@ -1196,7 +1648,7 @@ export default function GetStartedPage() {
 
               <Button
                 asChild
-                className="w-full h-[52px] rounded-xs bg-[#229ED9] hover:bg-[#1b7fae] text-white font-medium gap-2"
+                className="w-full h-[52px] rounded-full bg-neutral-900 hover:bg-neutral-800 text-white font-medium gap-2"
               >
                 <a
                   href={buildElizaTelegramHref()}
@@ -1215,11 +1667,13 @@ export default function GetStartedPage() {
 
           {step === "TELEGRAM_OAUTH" && (
             <>
-              <div className="w-16 h-16 rounded-xs bg-[#229ED9]/20 flex items-center justify-center mb-6">
-                <TelegramIcon className="size-8 text-[#229ED9]" />
+              <div
+                className={`w-16 h-16 rounded-full ${GLASS_TILE} flex items-center justify-center mb-6`}
+              >
+                <TelegramIcon className="size-8 text-[#2AABEE]" />
               </div>
 
-              <h1 className="text-xl font-medium text-neutral-900 text-center mb-2">
+              <h1 className="text-xl font-semibold tracking-tight text-neutral-900 text-center mb-2">
                 {t("homepage_eliza.getStarted.telegramTitle", {
                   defaultValue: "Connect with Telegram",
                 })}
@@ -1240,7 +1694,7 @@ export default function GetStartedPage() {
               <Button
                 onClick={handleTelegramClick}
                 disabled={isTelegramLoading}
-                className="w-full h-[52px] rounded-xs bg-[#ff5800] hover:bg-[#cc4600] text-white font-medium gap-2"
+                className="w-full h-[52px] rounded-full bg-neutral-900 hover:bg-neutral-800 text-white font-medium gap-2"
               >
                 {isTelegramLoading ? (
                   t("homepage_eliza.getStarted.telegramConnecting", {
@@ -1260,11 +1714,13 @@ export default function GetStartedPage() {
 
           {step === "PHONE_INPUT" && (
             <>
-              <div className="w-12 h-12 rounded-xs bg-[#229ED9]/20 flex items-center justify-center mb-6">
-                <TelegramIcon className="size-6 text-[#229ED9]" />
+              <div
+                className={`w-12 h-12 rounded-full ${GLASS_TILE} flex items-center justify-center mb-6`}
+              >
+                <TelegramIcon className="size-6 text-[#2AABEE]" />
               </div>
 
-              <h1 className="text-xl font-medium text-neutral-900 text-center mb-2">
+              <h1 className="text-xl font-semibold tracking-tight text-neutral-900 text-center mb-2">
                 {t("homepage_eliza.getStarted.phoneTitle", {
                   defaultValue: "Almost there!",
                 })}
@@ -1283,7 +1739,7 @@ export default function GetStartedPage() {
                   phoneValue={phoneValue}
                   onPhoneChange={setPhoneValue}
                   onSubmit={handlePhoneSubmit}
-                  variant="light"
+                  variant="glass"
                   autoFocus
                   countryOptions={countryOptions}
                 />
@@ -1298,10 +1754,10 @@ export default function GetStartedPage() {
               <Button
                 onClick={handlePhoneSubmit}
                 disabled={!hasPhoneNumber || isSubmittingPhone}
-                className={`w-full h-[52px] rounded-xs font-medium transition-colors ${
+                className={`w-full h-[52px] rounded-full font-medium transition-colors ${
                   hasPhoneNumber
                     ? "bg-neutral-900 text-white hover:bg-neutral-800"
-                    : "bg-neutral-300 text-neutral-500 cursor-not-allowed"
+                    : "bg-white/40 border border-white/60 text-neutral-400 cursor-not-allowed"
                 }`}
               >
                 {isSubmittingPhone
@@ -1317,11 +1773,13 @@ export default function GetStartedPage() {
 
           {step === "IMESSAGE_DIRECT" && (
             <>
-              <div className="w-16 h-16 flex items-center justify-center mb-6">
-                <AppleMessagesIcon className="size-16" />
+              <div
+                className={`w-16 h-16 rounded-full ${GLASS_TILE} flex items-center justify-center mb-6`}
+              >
+                <IMessageIcon className="size-8 text-[#34C759]" />
               </div>
 
-              <h1 className="text-xl font-medium text-neutral-900 text-center mb-2">
+              <h1 className="text-xl font-semibold tracking-tight text-neutral-900 text-center mb-2">
                 {t("homepage_eliza.getStarted.imessageReady", {
                   defaultValue: "Ready to chat!",
                 })}
@@ -1333,9 +1791,9 @@ export default function GetStartedPage() {
                 })}
               </p>
 
-              <div className="w-full p-4 bg-white border border-black rounded-xs mb-6">
+              <div className={`w-full p-4 ${GLASS_TILE} rounded-2xl mb-6`}>
                 <div className="flex items-center justify-between gap-3">
-                  <span className="text-lg font-mono text-neutral-900">
+                  <span className="text-lg font-medium tabular-nums tracking-wide text-neutral-900">
                     {ELIZA_PHONE_FORMATTED}
                   </span>
                   <Button
@@ -1355,9 +1813,9 @@ export default function GetStartedPage() {
 
               <Button
                 onClick={handleOpenMessages}
-                className="w-full h-[52px] rounded-xs bg-[#34C759] hover:bg-black text-white font-medium gap-2"
+                className="w-full h-[52px] rounded-full bg-neutral-900 hover:bg-neutral-800 text-white font-medium gap-2"
               >
-                <AppleMessagesIcon className="size-5" />
+                <IMessageIcon className="size-5 text-[#34C759]" />
                 {t("homepage_eliza.getStarted.openImessage", {
                   defaultValue: "Open iMessage",
                 })}
@@ -1380,11 +1838,13 @@ export default function GetStartedPage() {
 
           {step === "WHATSAPP_DIRECT" && (
             <>
-              <div className="w-16 h-16 rounded-xs bg-[#25D366]/20 flex items-center justify-center mb-6">
+              <div
+                className={`w-16 h-16 rounded-full ${GLASS_TILE} flex items-center justify-center mb-6`}
+              >
                 <WhatsAppIcon className="size-8 text-[#25D366]" />
               </div>
 
-              <h1 className="text-xl font-medium text-neutral-900 text-center mb-2">
+              <h1 className="text-xl font-semibold tracking-tight text-neutral-900 text-center mb-2">
                 {t("homepage_eliza.getStarted.whatsappTitle", {
                   defaultValue: "Chat on WhatsApp!",
                 })}
@@ -1401,9 +1861,9 @@ export default function GetStartedPage() {
                   const waNumber = getWhatsAppNumber().replace(/\D/g, "");
                   window.open(`https://wa.me/${waNumber}`, "_blank");
                 }}
-                className="w-full h-[52px] rounded-xs bg-[#25D366] hover:bg-black text-white font-medium gap-2"
+                className="w-full h-[52px] rounded-full bg-neutral-900 hover:bg-neutral-800 text-white font-medium gap-2"
               >
-                <WhatsAppIcon className="size-5" />
+                <WhatsAppIcon className="size-5 text-[#25D366]" />
                 {t("homepage_eliza.getStarted.openWhatsapp", {
                   defaultValue: "Open WhatsApp",
                 })}
@@ -1425,6 +1885,13 @@ export default function GetStartedPage() {
             </>
           )}
 
+          {step === "CONTINUATION_LINK" && onboardingSessionId && (
+            <ContinuationLinkStep
+              onboardingSessionId={onboardingSessionId}
+              onFallbackToChat={() => setStep("PROVISIONING_CHAT")}
+            />
+          )}
+
           {step === "PROVISIONING_CHAT" && (
             <ProvisioningChatStep
               onboardingSessionId={onboardingSessionId}
@@ -1438,14 +1905,14 @@ export default function GetStartedPage() {
           {step === "DISCORD_CALLBACK" && (
             <>
               <div
-                className={`w-16 h-16 rounded-xs ${discordError ? "bg-red-100" : "bg-[#5865F2]/20"} flex items-center justify-center mb-6`}
+                className={`w-16 h-16 rounded-full ${discordError ? "border border-red-200 bg-red-100/70 backdrop-blur-md" : GLASS_TILE} flex items-center justify-center mb-6`}
               >
                 <DiscordIcon
                   className={`size-8 ${discordError ? "text-red-500" : "text-[#5865F2]"}`}
                 />
               </div>
 
-              <h1 className="text-xl font-medium text-neutral-900 text-center mb-2">
+              <h1 className="text-xl font-semibold tracking-tight text-neutral-900 text-center mb-2">
                 {discordError
                   ? t("homepage_eliza.getStarted.discordCbConnectionFailed", {
                       defaultValue: "Connection Failed",
@@ -1475,7 +1942,7 @@ export default function GetStartedPage() {
               </p>
 
               {discordError && (
-                <div className="w-full mb-4 p-3 rounded-xs bg-red-50 border border-red-200">
+                <div className="w-full mb-4 p-3 rounded-2xl bg-red-50/80 border border-red-200">
                   <p className="text-sm text-red-600 text-center">
                     {discordError}
                   </p>
@@ -1486,7 +1953,7 @@ export default function GetStartedPage() {
                 <>
                   <Button
                     onClick={() => handleMethodSelect("discord")}
-                    className="w-full h-[52px] rounded-xs bg-[#5865F2] text-white font-medium hover:bg-black"
+                    className="w-full h-[52px] rounded-full bg-neutral-900 text-white font-medium hover:bg-neutral-800"
                   >
                     {t("homepage_eliza.getStarted.tryAgain", {
                       defaultValue: "Try Again",
@@ -1519,7 +1986,7 @@ export default function GetStartedPage() {
                       phoneValue={phoneValue}
                       onPhoneChange={setPhoneValue}
                       onSubmit={handleDiscordPhoneSubmit}
-                      variant="light"
+                      variant="glass"
                       autoFocus
                       countryOptions={countryOptions}
                     />
@@ -1536,10 +2003,10 @@ export default function GetStartedPage() {
                     disabled={
                       !hasPhoneNumber || isSubmittingPhone || isDiscordLoading
                     }
-                    className={`w-full h-[52px] rounded-xs font-medium transition-colors ${
+                    className={`w-full h-[52px] rounded-full font-medium transition-colors ${
                       hasPhoneNumber
-                        ? "bg-[#5865F2] text-white hover:bg-black"
-                        : "bg-neutral-300 text-neutral-500 cursor-not-allowed"
+                        ? "bg-neutral-900 text-white hover:bg-neutral-800"
+                        : "bg-white/40 border border-white/60 text-neutral-400 cursor-not-allowed"
                     }`}
                   >
                     {isSubmittingPhone || isDiscordLoading
@@ -1581,10 +2048,12 @@ export default function GetStartedPage() {
             <>
               {guideParam ? (
                 <>
-                  <div className="w-16 h-16 rounded-xs bg-[#5865F2]/20 flex items-center justify-center mb-6">
+                  <div
+                    className={`w-16 h-16 rounded-full ${GLASS_TILE} flex items-center justify-center mb-6`}
+                  >
                     <Info className="size-8 text-[#5865F2]" />
                   </div>
-                  <h1 className="text-xl font-medium text-neutral-900 text-center mb-2">
+                  <h1 className="text-xl font-semibold tracking-tight text-neutral-900 text-center mb-2">
                     {t("homepage_eliza.getStarted.guideTitleGuide", {
                       defaultValue: "Discord Setup Guide",
                     })}
@@ -1592,10 +2061,12 @@ export default function GetStartedPage() {
                 </>
               ) : (
                 <>
-                  <div className="w-16 h-16 rounded-xs bg-[#5865F2]/20 flex items-center justify-center mb-6">
+                  <div
+                    className={`w-16 h-16 rounded-full ${GLASS_TILE} flex items-center justify-center mb-6`}
+                  >
                     <Check className="size-8 text-[#5865F2]" />
                   </div>
-                  <h1 className="text-xl font-medium text-neutral-900 text-center mb-2">
+                  <h1 className="text-xl font-semibold tracking-tight text-neutral-900 text-center mb-2">
                     {t("homepage_eliza.getStarted.guideTitleAllSet", {
                       defaultValue: "You’re all set!",
                     })}
@@ -1603,10 +2074,10 @@ export default function GetStartedPage() {
                 </>
               )}
               <div className="w-full flex flex-col gap-4">
-                <div className="w-full p-4 bg-white border border-black rounded-xs">
+                <div className={`w-full p-4 ${GLASS_TILE} rounded-2xl`}>
                   <div className="flex items-start gap-3">
-                    <div className="w-7 h-7 rounded-xs bg-[#5865F2]/20 flex items-center justify-center shrink-0 mt-0.5">
-                      <span className="text-xs font-bold text-[#5865F2]">
+                    <div className="w-7 h-7 rounded-full bg-white/60 flex items-center justify-center shrink-0 mt-0.5">
+                      <span className="text-xs font-semibold text-neutral-700">
                         1
                       </span>
                     </div>
@@ -1626,7 +2097,7 @@ export default function GetStartedPage() {
                             "_blank",
                           );
                         }}
-                        className="mt-3 text-[#5865F2] border-[#5865F2]/30 hover:bg-black hover:text-white gap-1.5"
+                        className="mt-3 rounded-full border-neutral-300 bg-white/50 text-neutral-800 hover:bg-neutral-900 hover:text-white gap-1.5"
                       >
                         <ExternalLink className="size-3.5" />
                         {t("homepage_eliza.getStarted.guideInviteToServer", {
@@ -1637,10 +2108,10 @@ export default function GetStartedPage() {
                   </div>
                 </div>
 
-                <div className="w-full p-4 bg-white border border-black rounded-xs">
+                <div className={`w-full p-4 ${GLASS_TILE} rounded-2xl`}>
                   <div className="flex items-start gap-3">
-                    <div className="w-7 h-7 rounded-xs bg-[#5865F2]/20 flex items-center justify-center shrink-0 mt-0.5">
-                      <span className="text-xs font-bold text-[#5865F2]">
+                    <div className="w-7 h-7 rounded-full bg-white/60 flex items-center justify-center shrink-0 mt-0.5">
+                      <span className="text-xs font-semibold text-neutral-700">
                         2
                       </span>
                     </div>
@@ -1660,7 +2131,7 @@ export default function GetStartedPage() {
                             "_blank",
                           );
                         }}
-                        className="mt-3 text-[#5865F2] border-[#5865F2]/30 hover:bg-black hover:text-white gap-1.5"
+                        className="mt-3 rounded-full border-neutral-300 bg-white/50 text-neutral-800 hover:bg-neutral-900 hover:text-white gap-1.5"
                       >
                         <ExternalLink className="size-3.5" />
                         {t("homepage_eliza.getStarted.guideOpenDm", {
@@ -1671,10 +2142,10 @@ export default function GetStartedPage() {
                   </div>
                 </div>
 
-                <div className="w-full p-4 bg-white border border-black rounded-xs">
+                <div className={`w-full p-4 ${GLASS_TILE} rounded-2xl`}>
                   <div className="flex items-start gap-3">
-                    <div className="w-7 h-7 rounded-xs bg-[#5865F2]/20 flex items-center justify-center shrink-0 mt-0.5">
-                      <span className="text-xs font-bold text-[#5865F2]">
+                    <div className="w-7 h-7 rounded-full bg-white/60 flex items-center justify-center shrink-0 mt-0.5">
+                      <span className="text-xs font-semibold text-neutral-700">
                         3
                       </span>
                     </div>
@@ -1684,8 +2155,8 @@ export default function GetStartedPage() {
                           defaultValue: "Start chatting",
                         })}
                       </p>
-                      <div className="mt-2 px-3 py-2 bg-[#5865F2]/10 border border-[#5865F2]/20 rounded-xs">
-                        <p className="text-sm text-[#5865F2] font-medium">
+                      <div className="mt-2 px-3 py-2 bg-white/50 border border-white/60 rounded-xl">
+                        <p className="text-sm text-neutral-700 font-medium">
                           {t("homepage_eliza.getStarted.guideSampleQuote", {
                             defaultValue: '"Hey Eliza, what can you do?"',
                           })}
@@ -1698,7 +2169,7 @@ export default function GetStartedPage() {
 
               <Button
                 onClick={handleContinueToConnected}
-                className="w-full h-[52px] rounded-xs bg-[#5865F2] hover:bg-black text-white font-medium mt-6"
+                className="w-full h-[52px] rounded-full bg-neutral-900 hover:bg-neutral-800 text-white font-medium mt-6"
               >
                 {t("homepage_eliza.getStarted.guideContinue", {
                   defaultValue: "Continue",
@@ -1710,7 +2181,7 @@ export default function GetStartedPage() {
       </div>
 
       <footer className="relative z-10 p-4 text-center">
-        <p className="text-[10px] text-neutral-400">
+        <p className="text-[11px] font-medium tracking-wide text-neutral-600">
           {t("homepage_eliza.common.year", {
             defaultValue: "ElizaCloud Inc. {{year}}",
             year: new Date().getFullYear(),

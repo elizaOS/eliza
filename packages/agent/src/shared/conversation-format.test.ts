@@ -1,0 +1,63 @@
+/**
+ * Unit tests for conversation presentation helpers used by recent/relevant
+ * conversation providers. Covers relative-timestamp fail-closed behavior for
+ * non-finite and out-of-range createdAt values, plus the healthy finite buckets.
+ */
+
+import { describe, expect, it } from "vitest";
+
+import {
+  formatRelativeTimestamp,
+  roomSourceTag,
+} from "./conversation-format.ts";
+
+describe("formatRelativeTimestamp", () => {
+  it("returns empty for missing, zero, and non-finite timestamps", () => {
+    expect(formatRelativeTimestamp(undefined)).toBe("");
+    expect(formatRelativeTimestamp(0)).toBe("");
+    expect(formatRelativeTimestamp(Number.NaN)).toBe("");
+    expect(formatRelativeTimestamp(Number.POSITIVE_INFINITY)).toBe("");
+    expect(formatRelativeTimestamp(Number.NEGATIVE_INFINITY)).toBe("");
+    // Outside the Date range: getTime() is NaN even though the number is finite.
+    expect(formatRelativeTimestamp(Number.MAX_VALUE)).toBe("");
+  });
+
+  it("does not emit NaN-based garbage labels", () => {
+    for (const value of [
+      Number.NaN,
+      Number.POSITIVE_INFINITY,
+      Number.NEGATIVE_INFINITY,
+      Number.MAX_VALUE,
+    ]) {
+      const label = formatRelativeTimestamp(value);
+      expect(label).not.toMatch(/NaN/i);
+      expect(label).toBe("");
+    }
+  });
+
+  it("formats finite recent past timestamps into coarse buckets", () => {
+    const now = Date.now();
+    expect(formatRelativeTimestamp(now - 5_000)).toBe("just now");
+    expect(formatRelativeTimestamp(now - 2 * 60_000)).toBe("2m ago");
+    expect(formatRelativeTimestamp(now - 3 * 3_600_000)).toBe("3h ago");
+    expect(formatRelativeTimestamp(now - 4 * 86_400_000)).toBe("4d ago");
+  });
+
+  it("treats near-future timestamps as just now (clock skew)", () => {
+    expect(formatRelativeTimestamp(Date.now() + 15_000)).toBe("just now");
+  });
+});
+
+describe("roomSourceTag", () => {
+  it("renders source and name, with fallbacks for missing room", () => {
+    expect(roomSourceTag(null)).toBe("[unknown]");
+    expect(
+      roomSourceTag({
+        id: "11111111-1111-1111-1111-111111111111",
+        source: "discord",
+        name: "general",
+        type: "GROUP",
+      } as never),
+    ).toBe("[discord] general");
+  });
+});

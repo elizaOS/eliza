@@ -1,6 +1,8 @@
 /**
  * Verifies that Notes is a read-only projection of authoritative capability
  * state across loading, empty, populated, and error conditions.
+ *
+ * @vitest-environment jsdom
  */
 
 import { cleanup, render, screen } from "@testing-library/react";

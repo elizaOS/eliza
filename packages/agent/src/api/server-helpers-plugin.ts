@@ -2,7 +2,7 @@
  * Plugin config/form helpers extracted from server.ts.
  */
 
-import { BLOCKED_ENV_KEYS } from "./plugin-discovery-helpers.ts";
+import { isBlockedEnvKey } from "./plugin-discovery-helpers.ts";
 import type { ServerState } from "./server-types.ts";
 
 // ---------------------------------------------------------------------------
@@ -30,6 +30,21 @@ const PLUGIN_PARAMS: Record<
     {
       key: "DISCORD_APPLICATION_ID",
       label: "Application ID (optional, auto-resolved when omitted)",
+      secret: false,
+    },
+    {
+      key: "ELIZA_DISCORD_OWNER_USER_IDS_JSON",
+      label: 'Owner Discord user IDs (JSON array, e.g. ["123456789012345678"])',
+      secret: false,
+    },
+    {
+      key: "DISCORD_DM_POLICY",
+      label: "DM policy (open | allowlist | pairing | disabled)",
+      secret: false,
+    },
+    {
+      key: "DISCORD_ALLOW_FROM",
+      label: "DM allowlist (comma-separated Discord user IDs)",
       secret: false,
     },
   ],
@@ -183,7 +198,7 @@ export function resolvePluginConfigMutationRejections(
       continue;
     }
 
-    if (BLOCKED_ENV_KEYS.has(normalized)) {
+    if (isBlockedEnvKey(normalized)) {
       rejections.push({
         field: key,
         message: `${key} is blocked for security reasons`,

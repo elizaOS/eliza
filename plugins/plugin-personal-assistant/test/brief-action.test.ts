@@ -24,7 +24,8 @@ const mocks = vi.hoisted(() => ({
   hasOwnerAccess: vi.fn(async () => true),
 }));
 
-vi.mock("@elizaos/agent", () => ({
+vi.mock("@elizaos/agent", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@elizaos/agent")>()),
   hasOwnerAccess: mocks.hasOwnerAccess,
 }));
 
@@ -33,6 +34,8 @@ import {
   briefAction,
   setBriefComposers,
 } from "../src/actions/brief.js";
+import { LifeOpsRepository } from "../src/lifeops/repository.js";
+import { createLifeOpsTestRuntime } from "./helpers/runtime.ts";
 
 function makeRuntime(
   options: {
@@ -87,6 +90,7 @@ async function callBrief(
 describe("BRIEF umbrella action — Daily Operations", () => {
   beforeEach(() => {
     __resetBriefComposersForTests();
+    setBriefComposers({ loadEngagementSummaries: async () => [] });
     mocks.hasOwnerAccess.mockReset().mockResolvedValue(true);
   });
 
@@ -133,6 +137,108 @@ describe("BRIEF umbrella action — Daily Operations", () => {
   });
 
   describe("compose_morning", () => {
+    it("uses persisted ignored-item history to demote that class in the next brief", async () => {
+      const runtimeResult = await createLifeOpsTestRuntime();
+      try {
+        await LifeOpsRepository.bootstrapSchema(runtimeResult.runtime);
+        const repository = new LifeOpsRepository(runtimeResult.runtime);
+        for (let day = 1; day <= 5; day += 1) {
+          await repository.recordBriefItemEngagement({
+            agentId: runtimeResult.runtime.agentId,
+            briefingId: `brief-${day}`,
+            itemId: "inbox:newsletter-1",
+            source: "inbox",
+            kind: "message",
+            sourceId: "newsletter-1",
+            itemClass: "inbox:newsletter-digest",
+            eventType: "ignored",
+            eventAt: `2026-07-0${day}T12:00:00.000Z`,
+            weight: -1,
+            metadata: { scenario: "ignore-pattern" },
+          });
+        }
+
+        // Restore the production engagement loader while keeping unrelated
+        // source reads deterministic for this action-level database contract.
+        __resetBriefComposersForTests();
+        setBriefComposers({
+          loadCalendar: async () => [],
+          loadInbox: async () => [
+            {
+              id: "newsletter-1",
+              channel: "gmail",
+              senderName: "Weekly Digest",
+              snippet: "Your weekly newsletter roundup",
+              urgency: "low",
+              classification: "unread",
+            },
+          ],
+          loadLife: async () => [],
+          loadMoney: async () => [],
+          loadCompletedToday: async () => [],
+        });
+
+        const result = await callBrief(runtimeResult.runtime, makeMessage(), {
+          subaction: "compose_morning",
+          format: "json",
+        });
+
+        expect(result.success).toBe(true);
+        const data = result.data as {
+          briefing: {
+            editorial: {
+              demotedItemClasses: readonly string[];
+              decisions: readonly {
+                itemId: string;
+                action: string;
+                reason: string;
+              }[];
+            };
+          };
+        };
+        expect(data.briefing.editorial.demotedItemClasses).toEqual([
+          "inbox:newsletter-digest",
+        ]);
+        expect(data.briefing.editorial.decisions).toContainEqual({
+          itemId: "inbox:newsletter-1",
+          action: "demote",
+          reason:
+            "inbox:newsletter-digest has repeated ignore history with no acted-on signal",
+        });
+      } finally {
+        await runtimeResult.cleanup();
+      }
+    });
+
+    it("reports unavailable engagement history without blocking the structured brief", async () => {
+      const reportError = vi.fn();
+      __resetBriefComposersForTests();
+      setBriefComposers({
+        loadCalendar: async () => [],
+        loadInbox: async () => [],
+        loadLife: async () => [],
+        loadMoney: async () => [],
+        loadCompletedToday: async () => [],
+      });
+
+      const result = await callBrief(
+        makeRuntime({ reportError }),
+        makeMessage(),
+        {
+          subaction: "compose_morning",
+          format: "json",
+        },
+      );
+
+      expect(result.success).toBe(true);
+      expect(reportError).toHaveBeenCalledTimes(1);
+      expect(reportError).toHaveBeenCalledWith(
+        "Brief.loadEngagementSummaries",
+        expect.anything(),
+        { surface: "brief-editorial-engagement" },
+      );
+    });
+
     it("feeds the loader payload to the model and returns the trimmed narrative", async () => {
       // Padded model reply: the pipeline must return the TRIMMED narrative,
       // so a straight echo of the stub cannot satisfy the assertion.

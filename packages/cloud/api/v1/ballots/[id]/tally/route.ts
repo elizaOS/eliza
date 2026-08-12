@@ -18,6 +18,7 @@ import {
 import { createSecretBallotsService } from "@/lib/services/secret-ballots";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
+import { parseBallotIdParam } from "../../ballot-id";
 
 const app = new Hono<AppEnv>();
 app.use("*", rateLimit(RateLimitPresets.STANDARD));
@@ -25,10 +26,11 @@ app.use("*", rateLimit(RateLimitPresets.STANDARD));
 app.post("/", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
-    const id = c.req.param("id");
-    if (!id) {
-      return c.json({ success: false, error: "Missing ballot id" }, 400);
+    const parsedId = parseBallotIdParam(c.req.param("id"));
+    if (!parsedId.ok) {
+      return c.json({ success: false, error: parsedId.error }, 400);
     }
+    const { id } = parsedId;
     const service = createSecretBallotsService({
       repository: secretBallotsRepository,
     });
