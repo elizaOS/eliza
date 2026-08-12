@@ -49,9 +49,11 @@ import {
   getMegaModel,
   getNanoModel,
   getResponseHandlerModel,
+  getSetting,
   getSmallModel,
   getUsageProvider,
   isCerebrasMode,
+  isProxyMode,
 } from "../utils/config";
 import { emitModelUsageEvent, type ModelRetryTelemetry } from "../utils/events";
 
@@ -328,10 +330,10 @@ function isCerebrasReasoningModel(modelName: string | undefined): boolean {
   return id === "gpt-oss-120b" || id === "zai-glm-4.7";
 }
 
-/** Detects OpenCode Go only when it is the effective request endpoint. */
-function isOpenCodeGoMode(runtime: IAgentRuntime): boolean {
+function isOpenCodeGoEndpoint(value: string | undefined): boolean {
+  if (!value) return false;
   try {
-    const url = new URL(getBaseURL(runtime));
+    const url = new URL(value);
     return (
       url.protocol === "https:" &&
       url.hostname.toLowerCase() === "opencode.ai" &&
@@ -341,6 +343,21 @@ function isOpenCodeGoMode(runtime: IAgentRuntime): boolean {
     // error-policy:J3 Malformed configuration is not a matching provider URL.
     return false;
   }
+}
+
+/**
+ * Detects the endpoint contract that translates `reasoning_effort: "none"`.
+ *
+ * Browser requests terminate at an opaque proxy, so the direct base URL is not
+ * proof of the proxy's upstream. Proxy deployments must declare their actual
+ * upstream explicitly before this provider-specific wire value is emitted.
+ */
+function isOpenCodeGoMode(runtime: IAgentRuntime): boolean {
+  if (isOpenCodeGoEndpoint(getBaseURL(runtime))) return true;
+  return (
+    isProxyMode(runtime) &&
+    isOpenCodeGoEndpoint(getSetting(runtime, "OPENAI_BROWSER_UPSTREAM_BASE_URL"))
+  );
 }
 
 /** Maps thinking suppression only for exact model ids on proven endpoints. */

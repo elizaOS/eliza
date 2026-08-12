@@ -2,9 +2,7 @@
  * Payment requests — single resource.
  *
  * GET   /api/v1/payment-requests/:id            Authed creator view (full row).
- * GET   /api/v1/payment-requests/:id?public=1   Redacted public view (no auth required):
- *                                               strips callbackSecret, settlementProof, and
- *                                               payerIdentityId for any_payer requests.
+ * GET   /api/v1/payment-requests/:id?public=1   Allowlisted checkout view (no auth required).
  */
 
 import { Hono } from "hono";
@@ -14,7 +12,7 @@ import {
   RateLimitPresets,
   rateLimit,
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
-import { redactPaymentRequestForPublic } from "@/lib/services/payment-requests";
+import { toPublicPaymentRequest } from "@/lib/services/payment-requests";
 import { getPaymentRequestsService } from "@/lib/services/payment-requests-default";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
@@ -37,7 +35,7 @@ app.get("/", async (c) => {
     const service = getPaymentRequestsService(c.env);
 
     if (isPublic) {
-      // Public path: lookup by id alone, redact, return.
+      // Public path: lookup by id alone, then construct an explicit DTO.
       const row = await service.getPublic(id);
       if (!row) {
         return c.json(
@@ -47,7 +45,7 @@ app.get("/", async (c) => {
       }
       return c.json({
         success: true,
-        paymentRequest: redactPaymentRequestForPublic(row),
+        paymentRequest: toPublicPaymentRequest(row),
       });
     }
 
@@ -62,6 +60,7 @@ app.get("/", async (c) => {
 
     return c.json({ success: true, paymentRequest: row });
   } catch (error) {
+    // error-policy:J1 route boundary - translate failures into a structured HTTP response.
     logger.error("[PaymentRequests API] Failed to get payment request", {
       error,
     });

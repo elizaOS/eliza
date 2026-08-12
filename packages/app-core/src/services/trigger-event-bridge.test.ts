@@ -91,7 +91,12 @@ function makeRuntime(
   >();
   const settings = new Map<string, unknown>();
   const plugins = options.lifeOpsPluginLoaded
-    ? [{ name: "@elizaos/plugin-personal-assistant" }]
+    ? [
+        {
+          name: "@elizaos/plugin-personal-assistant",
+          passiveConnectorsByDefault: true,
+        },
+      ]
     : [];
 
   const runtime = {

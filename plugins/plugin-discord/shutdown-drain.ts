@@ -77,6 +77,12 @@ export interface DiscordTurnDrainRegistry {
 	/** Count of message ids with either half still outstanding. */
 	pendingCount: () => number;
 	/**
+	 * True while either half (turn promise or reaction controller) of this
+	 * message id is still outstanding. The startup reaction scan uses this to
+	 * leave live turns' markers alone (startup-reaction-reconcile.ts).
+	 */
+	isPending: (messageId: string) => boolean;
+	/**
 	 * Wait for every turn tracked at call time to settle, bounded by
 	 * `timeoutMs`. Turns still pending when the bound elapses are abandoned:
 	 * their status-reaction controller (if any) is forced to its terminal
@@ -132,6 +138,9 @@ export function createTurnDrainRegistry(): DiscordTurnDrainRegistry {
 	];
 
 	const pendingCount = (): number => pendingIds().length;
+
+	const isPending = (messageId: string): boolean =>
+		handlers.has(messageId) || reactions.has(messageId);
 
 	const drain = async (timeoutMs: number): Promise<DiscordDrainResult> => {
 		// Snapshot both halves per id. Holding the promise and controller
@@ -236,5 +245,5 @@ export function createTurnDrainRegistry(): DiscordTurnDrainRegistry {
 		};
 	};
 
-	return { trackTurn, trackStatusReaction, pendingCount, drain };
+	return { trackTurn, trackStatusReaction, pendingCount, isPending, drain };
 }

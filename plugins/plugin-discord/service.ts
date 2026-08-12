@@ -158,6 +158,10 @@ import {
 	registerDiscordSlashCommands,
 	type SlashCommandRegistrationHost,
 } from "./slash-command-registration";
+import {
+	reconcileStrandedStatusReactions,
+	STARTUP_REACTION_SCAN_SETTING,
+} from "./startup-reaction-reconcile";
 import type { StatusReactionController } from "./status-reactions";
 import type {
 	BuildMemoryFromMessageOptions,
@@ -3365,6 +3369,32 @@ export class DiscordService extends Service implements IDiscordService {
 	) {
 		const state = this.requireAccountState(accountId);
 		await onReadyExtracted(this.createAccountServiceFacade(state), readyClient);
+		// Detached: a stranded-reaction cleanup must never reject the ready
+		// path (a post-ready throw is treated as a terminal login failure),
+		// and it needs no result — it logs its own summary (#16318).
+		const scanSetting = String(
+			this.runtime.getSetting(STARTUP_REACTION_SCAN_SETTING) ?? "",
+		).toLowerCase();
+		if (scanSetting !== "0" && scanSetting !== "false") {
+			void reconcileStrandedStatusReactions({
+				client: readyClient,
+				logger: this.runtime.logger,
+				// Listeners bind before login, so a turn started by THIS process
+				// can already be in flight (with a live ⏳/🤔) when the scan runs;
+				// the registry marks those markers as current, not crash residue.
+				isTurnActive: (messageId) =>
+					this.turnDrainRegistry.isPending(messageId),
+			}).catch((error) => {
+				// error-policy:J7 the scan is detached diagnostics/cleanup off the
+				// ready path; a failure is warned here and must never surface as a
+				// terminal login failure for the account.
+				this.runtime.logger.warn(
+					`[DiscordService] Startup reaction scan failed for account ${accountId}: ${
+						error instanceof Error ? error.message : String(error)
+					}`,
+				);
+			});
+		}
 		const voiceChannelIds = String(
 			this.runtime.getSetting("DISCORD_VOICE_CHANNEL_ID") ?? "",
 		)

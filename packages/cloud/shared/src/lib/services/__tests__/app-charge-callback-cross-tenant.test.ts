@@ -37,7 +37,7 @@ const CHAR_A = "00000000-0000-0000-0000-0000000000a3";
 const CHAR_B = "00000000-0000-0000-0000-0000000000b3";
 const ROOM_A = "00000000-0000-0000-0000-0000000000a4";
 const ROOM_B = "00000000-0000-0000-0000-0000000000b4";
-const AGENT_A = "00000000-0000-0000-0000-0000000000a5";
+const WRONG_AGENT = "00000000-0000-0000-0000-0000000000a5";
 const APP_ID = "00000000-0000-0000-0000-00000000ff01";
 const CHARGE_ID = "00000000-0000-0000-0000-00000000ff02";
 const UNMAPPED_ROOM = "00000000-0000-0000-0000-00000000dead";
@@ -50,14 +50,14 @@ let memoriesRepository: typeof import("../../../db/repositories/agents/memories"
 let createSpy: ReturnType<typeof spyOn> | undefined;
 let pgliteReady = true;
 
-async function seedCharge(creatorOrg: string, roomId: string): Promise<void> {
+async function seedCharge(creatorOrg: string, roomId: string, agentId = CHAR_A): Promise<void> {
   await dbWrite.execute(`DELETE FROM crypto_payments WHERE id = '${CHARGE_ID}';`);
   const metadata = JSON.stringify({
     kind: "app_charge_request",
     app_id: APP_ID,
     amount_usd: 5,
     payment_context: "any_payer",
-    callback_channel: { roomId, agentId: AGENT_A, source: "payment" },
+    callback_channel: { roomId, agentId, source: "payment" },
   }).replace(/'/g, "''");
   await dbWrite.execute(
     `INSERT INTO crypto_payments
@@ -145,6 +145,7 @@ describe("callbackRoomBelongsToOrganization — room→org authority", () => {
     expect(
       await callbackRoomBelongsToOrganization({
         roomId: ROOM_A,
+        agentId: CHAR_A,
         chargeOrganizationId: ORG_A,
         logContext: "test",
       }),
@@ -156,6 +157,7 @@ describe("callbackRoomBelongsToOrganization — room→org authority", () => {
     expect(
       await callbackRoomBelongsToOrganization({
         roomId: ROOM_A,
+        agentId: CHAR_A,
         chargeOrganizationId: ORG_B,
         logContext: "test",
       }),
@@ -167,6 +169,19 @@ describe("callbackRoomBelongsToOrganization — room→org authority", () => {
     expect(
       await callbackRoomBelongsToOrganization({
         roomId: UNMAPPED_ROOM,
+        agentId: CHAR_A,
+        chargeOrganizationId: ORG_A,
+        logContext: "test",
+      }),
+    ).toBe(false);
+  });
+
+  test("same-tenant room with a different agent → refused", async () => {
+    if (!pgliteReady) return;
+    expect(
+      await callbackRoomBelongsToOrganization({
+        roomId: ROOM_A,
+        agentId: WRONG_AGENT,
         chargeOrganizationId: ORG_A,
         logContext: "test",
       }),
@@ -199,7 +214,23 @@ describe("appChargeCallbacksService.dispatch — settlement memory write is gate
     expect(createSpy).toHaveBeenCalledTimes(1);
     const [memory] = createSpy.mock.calls[0] as [{ roomId: string; agentId: string }];
     expect(memory.roomId).toBe(ROOM_A);
-    expect(memory.agentId).toBe(AGENT_A);
+    expect(memory.agentId).toBe(CHAR_A);
+  });
+
+  test("same-tenant room with a mismatched callback agent → NO memory is written", async () => {
+    if (!pgliteReady) return;
+    await seedCharge(ORG_A, ROOM_A, WRONG_AGENT);
+
+    const result = await appChargeCallbacksService.dispatch({
+      appId: APP_ID,
+      chargeRequestId: CHARGE_ID,
+      status: "paid",
+      provider: "stripe",
+      providerPaymentId: "pi_wrong_agent",
+    });
+
+    expect(result.roomMessageCreated).toBe(false);
+    expect(createSpy).not.toHaveBeenCalled();
   });
 
   test("cross-tenant charge → NO memory is written into the victim's room", async () => {

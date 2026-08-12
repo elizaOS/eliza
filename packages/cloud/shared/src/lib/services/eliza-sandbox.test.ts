@@ -1601,6 +1601,42 @@ describe("ElizaSandboxService shutdown fails closed without a current capture (#
       fetchSnap.mockRestore();
     }
   });
+
+  test("a transient capture refusal is retryable and leaves the agent running", async () => {
+    const { ElizaSandboxService, SNAPSHOT_CAPTURE_TRANSIENT } = await import(
+      "./eliza-sandbox.ts?actual"
+    );
+    const rec = customSandbox();
+    const provider: SandboxProvider = {
+      create: mock(async () => {
+        throw new Error("must not create");
+      }),
+      stopForDeletion: mock(async () => ({ kind: "not-running-proven" as const })),
+      stopForReplacement: mock(async () => {}),
+      checkHealth: mock(async () => true),
+    };
+    const svc = new ElizaSandboxService(provider);
+    const getForWrite = spyOn(
+      svc as unknown as { getAgentForWrite: () => Promise<unknown> },
+      "getAgentForWrite",
+    ).mockResolvedValue(rec);
+    const fetchSnap = spyOn(
+      svc as unknown as { fetchSnapshotState: () => Promise<never> },
+      "fetchSnapshotState",
+    ).mockRejectedValue(new Error(SNAPSHOT_CAPTURE_TRANSIENT));
+    try {
+      await expect(svc.shutdown(rec.id, rec.organization_id)).resolves.toEqual({
+        success: false,
+        retryable: true,
+        error: `Refusing to stop without a current backup: ${SNAPSHOT_CAPTURE_TRANSIENT}`,
+      });
+      expect(provider.stopForDeletion).not.toHaveBeenCalled();
+      expect(provider.stopForReplacement).not.toHaveBeenCalled();
+    } finally {
+      getForWrite.mockRestore();
+      fetchSnap.mockRestore();
+    }
+  });
 });
 
 describe("ElizaSandboxService sleep refuses an unproven fallback backup (#17180 §3)", () => {
@@ -1969,6 +2005,62 @@ describe("ElizaSandboxService snapshot — endpoint capability", () => {
     } finally {
       findRunningSpy.mockRestore();
       createBackupSpy.mockRestore();
+    }
+  });
+
+  test("a 503 from /api/snapshot remains a retryable transient sentinel", async () => {
+    const { ElizaSandboxService, SNAPSHOT_CAPTURE_TRANSIENT } = await import(
+      "./eliza-sandbox.ts?actual"
+    );
+    const rec = customSandbox();
+    const findRunningSpy = spyOn(agentSandboxesRepository, "findRunningSandbox").mockResolvedValue(
+      rec,
+    );
+    const createBackupSpy = spyOn(agentSandboxesRepository, "createBackup");
+    globalThis.fetch = mock(
+      async () =>
+        new Response(
+          JSON.stringify({
+            error: "PGlite snapshot temporarily unavailable (connection closing)",
+            code: "PGLITE_SNAPSHOT_UNAVAILABLE_TRANSIENT",
+          }),
+          { status: 503, headers: { "Content-Type": "application/json" } },
+        ),
+    );
+    try {
+      await expect(
+        new ElizaSandboxService().snapshot(rec.id, rec.organization_id, "auto"),
+      ).resolves.toEqual({
+        success: false,
+        error: SNAPSHOT_CAPTURE_TRANSIENT,
+        retryable: true,
+      });
+      expect(createBackupSpy).not.toHaveBeenCalled();
+    } finally {
+      findRunningSpy.mockRestore();
+      createBackupSpy.mockRestore();
+    }
+  });
+
+  test("an unrelated 503 remains an ordinary snapshot failure", async () => {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const rec = customSandbox();
+    const findRunningSpy = spyOn(agentSandboxesRepository, "findRunningSandbox").mockResolvedValue(
+      rec,
+    );
+    globalThis.fetch = mock(
+      async () =>
+        new Response(JSON.stringify({ error: "Runtime not ready" }), {
+          status: 503,
+          headers: { "Content-Type": "application/json" },
+        }),
+    );
+    try {
+      await expect(
+        new ElizaSandboxService().snapshot(rec.id, rec.organization_id, "auto"),
+      ).rejects.toThrow("Snapshot fetch failed: HTTP 503");
+    } finally {
+      findRunningSpy.mockRestore();
     }
   });
 });
@@ -3054,6 +3146,36 @@ describe("ElizaSandboxService deletion-state guards (resume/wake/restart)", () =
       }
     });
   }
+
+  test("executeRestart propagates a transient fail-closed snapshot result", async () => {
+    const { ElizaSandboxService, SNAPSHOT_CAPTURE_TRANSIENT } = await import(
+      "./eliza-sandbox.ts?actual"
+    );
+    const svc = new ElizaSandboxService();
+    const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrgForWrite").mockResolvedValue(
+      row("running"),
+    );
+    const shutdownSpy = spyOn(svc, "shutdown").mockResolvedValue({
+      success: false,
+      retryable: true,
+      error: `Refusing to stop without a current backup: ${SNAPSHOT_CAPTURE_TRANSIENT}`,
+    });
+    const provisionSpy = spyOn(svc, "provision");
+    try {
+      const res = await svc.executeRestart(AGENT, ORG);
+      expect(res).toMatchObject({
+        success: false,
+        retryable: true,
+        containerStopped: false,
+        containerStarted: false,
+      });
+      expect(provisionSpy).not.toHaveBeenCalled();
+    } finally {
+      findSpy.mockRestore();
+      shutdownSpy.mockRestore();
+      provisionSpy.mockRestore();
+    }
+  });
 });
 
 describe("replacement lifecycle teardown is absence-proof", () => {

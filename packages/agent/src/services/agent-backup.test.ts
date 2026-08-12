@@ -16,6 +16,7 @@ import {
   createLocalAgentBackup,
   fetchAgentScopedRowsBatched,
   listLocalAgentBackups,
+  PGLITE_SNAPSHOT_UNAVAILABLE_TRANSIENT,
   restoreAgentSnapshot,
   restoreLocalAgentBackup,
   SnapshotBudget,
@@ -307,6 +308,61 @@ describe("agent backup manifest", () => {
       dumpBytes,
     );
     expect(snapshot.manifest.components.database.pglite).toBeUndefined();
+  });
+
+  test("captures through the adapter's lifecycle-serialized PGlite operation", async () => {
+    const root = await fs.mkdtemp(
+      path.join(os.tmpdir(), "eliza-agent-backup-"),
+    );
+    process.env.ELIZA_STATE_DIR = root;
+    delete process.env.POSTGRES_URL;
+    delete process.env.DATABASE_URL;
+
+    let captures = 0;
+    const runtime = {
+      ...runtimeStub("55555555-5555-4555-8555-555555555555"),
+      adapter: {
+        close: async () => undefined,
+        dumpPgliteDataDir: async () => {
+          captures += 1;
+          return new Blob(["captured"], { type: "application/gzip" });
+        },
+      },
+    } as unknown as AgentRuntime;
+
+    const snapshot = await createAgentSnapshot(runtime, {} as never);
+
+    expect(captures).toBe(1);
+    expect(snapshot.manifest.components.database.kind).toBe("pglite-dump");
+  });
+
+  test("surfaces repeated closing errors as transient without masking other failures", async () => {
+    const root = await fs.mkdtemp(
+      path.join(os.tmpdir(), "eliza-agent-backup-"),
+    );
+    process.env.ELIZA_STATE_DIR = root;
+    delete process.env.POSTGRES_URL;
+    delete process.env.DATABASE_URL;
+
+    const snapshotWithError = (message: string) => {
+      const runtime = {
+        ...runtimeStub("66666666-6666-4666-8666-666666666666"),
+        adapter: {
+          close: async () => undefined,
+          dumpPgliteDataDir: async () => {
+            throw new Error(message);
+          },
+        },
+      } as unknown as AgentRuntime;
+      return createAgentSnapshot(runtime, {} as never);
+    };
+
+    await expect(snapshotWithError("connection is closing")).rejects.toThrow(
+      PGLITE_SNAPSHOT_UNAVAILABLE_TRANSIENT,
+    );
+    await expect(
+      snapshotWithError("failed while closing corrupted WAL segment"),
+    ).rejects.toThrow("failed while closing corrupted WAL segment");
   });
 
   test("writes encrypted local backup files and restores them", async () => {

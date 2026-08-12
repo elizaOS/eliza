@@ -19,6 +19,8 @@ const seedDevNotificationsApi = vi.fn();
 const onWsEvent = vi.fn();
 const getBaseUrl = vi.fn((..._args: unknown[]) => "http://mock.local");
 const onBaseUrlChange = vi.fn((..._args: unknown[]) => () => {});
+const hasToken = vi.fn((..._args: unknown[]) => true);
+const rotateConnection = vi.fn((..._args: unknown[]) => {});
 
 vi.mock("../../api/client", () => ({
   client: {
@@ -34,6 +36,8 @@ vi.mock("../../api/client", () => ({
     onWsEvent: (...args: unknown[]) => onWsEvent(...args),
     getBaseUrl: (...args: unknown[]) => getBaseUrl(...args),
     onBaseUrlChange: (...args: unknown[]) => onBaseUrlChange(...args),
+    hasToken: (...args: unknown[]) => hasToken(...args),
+    rotateConnection: (...args: unknown[]) => rotateConnection(...args),
   },
 }));
 
@@ -960,6 +964,8 @@ describe("notification-store — authority isolation (#18391)", () => {
     onWsEvent.mockReset().mockReturnValue(() => {});
     getBaseUrl.mockReset().mockReturnValue("http://agent-a.local");
     onBaseUrlChange.mockReset().mockReturnValue(() => {});
+    hasToken.mockReset().mockReturnValue(true);
+    rotateConnection.mockReset();
     invokeDesktopBridgeRequest.mockReset().mockResolvedValue(null);
   });
 
@@ -1065,7 +1071,14 @@ describe("notification-store — authority isolation (#18391)", () => {
     expect(__getStateForTests().notifications[0]?.id).toBe("b-row");
   });
 
-  it("drops a stale WS event captured before the authority switched", async () => {
+  // A defense-in-depth guard, not the primary protection: real dispatch
+  // always calls whichever handler is currently bound, so this only
+  // matters if something holds and invokes an orphaned handler reference
+  // directly (client-base.ts never does, for "agent_event" today). The real
+  // protection against a message delivered through the CURRENT handler
+  // after an auth-only switch is the connection rotation covered by the
+  // "rotates the connection" tests below (#18542, review finding 2).
+  it("an orphaned handler reference self-drops after rebind, even if invoked directly", async () => {
     initNotifications();
     await vi.waitFor(() => expect(agentEventHandlers()).toHaveLength(1));
     const handlerA = agentEventHandlers()[0];
@@ -1113,5 +1126,225 @@ describe("notification-store — authority isolation (#18391)", () => {
     expect(listNotifications).toHaveBeenCalledTimes(1);
     expect(__getStateForTests().notifications).toHaveLength(1);
     expect(__getStateForTests().notifications[0]?.id).toBe("a-row");
+  });
+
+  // #18542 review finding 2: neither setBaseUrl nor repointBaseUrl runs for
+  // an auth-only switch, so nothing else closes the socket that could still
+  // deliver a message from the outgoing authority through the freshly-bound
+  // (and therefore current-looking) handler. rotateConnection() closes it.
+  it("rotates the connection on a subsequent auth-only switch (same base)", async () => {
+    __setAuthStatusForTests(authenticated("user-a", "session-a"));
+    initNotifications();
+    await vi.waitFor(() => expect(listNotifications).toHaveBeenCalledTimes(1));
+    expect(rotateConnection).not.toHaveBeenCalled();
+
+    __setAuthStatusForTests(authenticated("user-b", "session-b"));
+    expect(rotateConnection).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not rotate the connection on the first resolution from boot", async () => {
+    // No auth status set before init: the store seeds from the boot-time
+    // "anon" snapshot, which never hydrated anything worth protecting.
+    initNotifications();
+    await vi.waitFor(() => expect(listNotifications).toHaveBeenCalledTimes(1));
+
+    __setAuthStatusForTests(authenticated("user-a", "session-a"));
+    await vi.waitFor(() => expect(listNotifications).toHaveBeenCalledTimes(2));
+    expect(rotateConnection).not.toHaveBeenCalled();
+  });
+
+  it("rotates the connection on logout even though the base is unchanged", async () => {
+    __setAuthStatusForTests(authenticated("user-a", "session-a"));
+    initNotifications();
+    await vi.waitFor(() => expect(listNotifications).toHaveBeenCalledTimes(1));
+
+    hasToken.mockReturnValue(false);
+    window.dispatchEvent(new Event("steward-token-sync"));
+    expect(rotateConnection).toHaveBeenCalledTimes(1);
+  });
+
+  // #18542 review finding 3: useAuthStatus intentionally keeps the previous
+  // authenticated snapshot until the async /api/auth/me probe resolves, so a
+  // real logout would otherwise be invisible to reconcileAuthority (which
+  // only reacts to that eventual publish) for the whole round-trip.
+  // steward-token-sync fires synchronously on the token clear itself.
+  describe("credential-sync invalidation ahead of the async auth probe", () => {
+    it("clears immediately on a cleared token, before the auth-status probe catches up", async () => {
+      __setAuthStatusForTests(authenticated("user-a", "session-a"));
+      const notifA = makeNotification({ id: "a-row", title: "A's row" });
+      listNotifications.mockResolvedValueOnce({
+        notifications: [notifA],
+        unreadCount: 1,
+      });
+      initNotifications();
+      await vi.waitFor(() =>
+        expect(__getStateForTests().notifications).toHaveLength(1),
+      );
+
+      // The token is cleared, but the auth-status snapshot has NOT been
+      // updated yet — this is exactly the gap useAuthStatus leaves open.
+      // Invalidation deliberately does not fetch (identity is unknown), so
+      // no response needs to be queued for it.
+      hasToken.mockReturnValue(false);
+      window.dispatchEvent(new Event("steward-token-sync"));
+
+      // Synchronous: no await before this assertion.
+      expect(__getStateForTests().notifications).toHaveLength(0);
+      expect(__getStateForTests().hydrationStatus).toBe("idle");
+      // Identity is unknown at this point, so no fetch is started yet.
+      expect(listNotifications).toHaveBeenCalledTimes(1);
+
+      // The probe eventually resolves — the real reconcile runs normally.
+      const notifB = makeNotification({ id: "b-row", title: "B's row" });
+      listNotifications.mockResolvedValueOnce({
+        notifications: [notifB],
+        unreadCount: 1,
+      });
+      __setAuthStatusForTests({ phase: "unauthenticated" });
+      await vi.waitFor(() =>
+        expect(__getStateForTests().notifications).toHaveLength(1),
+      );
+      expect(__getStateForTests().notifications[0]?.id).toBe("b-row");
+    });
+
+    it("drops a stale WS event delivered during the credential-invalidated window", async () => {
+      __setAuthStatusForTests(authenticated("user-a", "session-a"));
+      initNotifications();
+      await vi.waitFor(() => expect(agentEventHandlers()).toHaveLength(1));
+      const handlerA = agentEventHandlers()[0];
+
+      hasToken.mockReturnValue(false);
+      window.dispatchEvent(new Event("steward-token-sync"));
+
+      handlerA({
+        stream: "notification",
+        payload: {
+          notification: makeNotification({ id: "stale", title: "Stale" }),
+          unreadCount: 9,
+        },
+      });
+      expect(__getStateForTests().notifications).toHaveLength(0);
+    });
+
+    it("a token install (login/refresh/handoff) is a harmless no-op when the base already reconciled", async () => {
+      __setAuthStatusForTests(authenticated("user-a", "session-a"));
+      initNotifications();
+      await vi.waitFor(() =>
+        expect(listNotifications).toHaveBeenCalledTimes(1),
+      );
+
+      // Simulates repointBaseUrl: onBaseUrlChange fires first (same tick, a
+      // real handoff) and already reconciles to the new base correctly;
+      // steward-token-sync fires afterward with a present token.
+      getBaseUrl.mockReturnValue("http://agent-b.local");
+      const baseUrlHandler = onBaseUrlChange.mock.calls[0][0] as () => void;
+      baseUrlHandler();
+      await vi.waitFor(() =>
+        expect(listNotifications).toHaveBeenCalledTimes(2),
+      );
+      rotateConnection.mockClear();
+
+      hasToken.mockReturnValue(true);
+      window.dispatchEvent(new Event("steward-token-sync"));
+      await Promise.resolve();
+
+      // No extra clear/refetch/rotation beyond what the base change already did.
+      expect(listNotifications).toHaveBeenCalledTimes(2);
+      expect(rotateConnection).not.toHaveBeenCalled();
+    });
+  });
+});
+
+describe("notification-store mutations — authority-scoped rollback (#18542)", () => {
+  function authenticated(userId: string, sessionId: string): AuthStatusState {
+    return {
+      phase: "authenticated",
+      identity: { id: userId, displayName: userId, kind: "owner" },
+      session: { id: sessionId, kind: "browser", expiresAt: null },
+      access: {
+        mode: "session",
+        passwordConfigured: true,
+        ownerConfigured: true,
+        role: "OWNER",
+      },
+    };
+  }
+
+  beforeEach(() => {
+    __resetNotificationStoreForTests();
+    __resetAuthStatusForTests();
+    listNotifications
+      .mockReset()
+      .mockResolvedValue({ notifications: [], unreadCount: 0 });
+    onWsEvent.mockReset().mockReturnValue(() => {});
+    getBaseUrl.mockReset().mockReturnValue("http://agent-a.local");
+    onBaseUrlChange.mockReset().mockReturnValue(() => {});
+    hasToken.mockReset().mockReturnValue(true);
+    rotateConnection.mockReset();
+    markNotificationReadApi.mockReset();
+    invokeDesktopBridgeRequest.mockReset().mockResolvedValue(null);
+  });
+
+  afterEach(() => {
+    __resetNotificationStoreForTests();
+    __resetAuthStatusForTests();
+  });
+
+  it("discards a stale-authority optimistic rollback instead of overwriting the new authority's rows", async () => {
+    __setAuthStatusForTests(authenticated("user-a", "session-a"));
+    const notifA = makeNotification({ id: "a-row", title: "A's row" });
+    listNotifications.mockResolvedValueOnce({
+      notifications: [notifA],
+      unreadCount: 1,
+    });
+    initNotifications();
+    await vi.waitFor(() =>
+      expect(__getStateForTests().notifications).toHaveLength(1),
+    );
+
+    // Start a mutation against A's row, but hold its HTTP response open.
+    let rejectMarkRead!: (err: unknown) => void;
+    markNotificationReadApi.mockReturnValueOnce(
+      new Promise((_resolve, reject) => {
+        rejectMarkRead = reject;
+      }),
+    );
+    const mutationPromise = markNotificationRead("a-row");
+
+    // Authority switches to B before the mutation settles.
+    const notifB = makeNotification({ id: "b-row", title: "B's row" });
+    listNotifications.mockResolvedValueOnce({
+      notifications: [notifB],
+      unreadCount: 1,
+    });
+    __setAuthStatusForTests(authenticated("user-b", "session-b"));
+    await vi.waitFor(() =>
+      expect(__getStateForTests().notifications[0]?.id).toBe("b-row"),
+    );
+
+    // A's mutation now fails — its optimistic-rollback snapshot belongs to a
+    // superseded authority and must not overwrite B's freshly-hydrated rows.
+    rejectMarkRead(new Error("network"));
+    await mutationPromise;
+    expect(__getStateForTests().notifications).toHaveLength(1);
+    expect(__getStateForTests().notifications[0]?.id).toBe("b-row");
+  });
+
+  it("still reverts normally when the mutation fails within the same authority", async () => {
+    __setAuthStatusForTests(authenticated("user-a", "session-a"));
+    const notifA = makeNotification({ id: "a-row", title: "A's row" });
+    listNotifications.mockResolvedValueOnce({
+      notifications: [notifA],
+      unreadCount: 1,
+    });
+    initNotifications();
+    await vi.waitFor(() =>
+      expect(__getStateForTests().notifications).toHaveLength(1),
+    );
+
+    markNotificationReadApi.mockRejectedValueOnce(new Error("network"));
+    await markNotificationRead("a-row");
+
+    expect(__getStateForTests().notifications[0]?.readAt).toBeNull();
   });
 });

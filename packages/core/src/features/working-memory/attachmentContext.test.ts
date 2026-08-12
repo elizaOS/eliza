@@ -101,3 +101,90 @@ describe("attachmentContext disclosure", () => {
 		expect(records[0]?.content).toBe("");
 	});
 });
+
+function neonCatMessage(): Memory {
+	return {
+		id: "00000000-0000-0000-0000-000000000008" as UUID,
+		entityId: agentId,
+		roomId,
+		createdAt: 1,
+		content: {
+			text: "here's your image",
+			attachments: [
+				{
+					id: "neon-cat",
+					url: "https://example.test/cat.png",
+					title: "Neon Cat",
+					source: "media-generation",
+					contentType: "image",
+					text: "a neon cat sitting on a synthwave grid.",
+				},
+			],
+		},
+	} as Memory;
+}
+
+function currentImageQuestion(): Memory {
+	return {
+		id: "00000000-0000-0000-0000-000000000009" as UUID,
+		entityId: userId,
+		roomId,
+		createdAt: 2,
+		content: {
+			text: "what's in this image? describe it",
+			attachments: [
+				{
+					id: "eliza-pic",
+					url: "https://example.test/eliza.png",
+					title: "Eliza",
+					source: "Image",
+					contentType: "image",
+					text: "an eliza profile picture",
+				},
+			],
+		},
+	} as Memory;
+}
+
+describe("current-message attachment wins over a stale explicit id", () => {
+	it("reads the freshly-attached image, not a prior attachment's cached text", async () => {
+		// BUG 1: the planner named the PRIOR generated image's id (the cheapest
+		// readable candidate — it already carried cached .text). The current
+		// message carries its OWN freshly-attached image, so that attachment must
+		// win over the stale id resolved against room history.
+		const records = await readAttachmentRecords(
+			makeRuntime([neonCatMessage()]),
+			currentImageQuestion(),
+			"neon-cat",
+		);
+
+		expect(records).toHaveLength(1);
+		expect(records[0]?.attachment.id).toBe("eliza-pic");
+		expect(records[0]?.content).toBe("an eliza profile picture");
+		expect(records[0]?.autoSelected).toBe(true);
+	});
+
+	it("still honors a genuine recent read when the current message carries no attachment", async () => {
+		const records = await readAttachmentRecords(
+			makeRuntime([neonCatMessage()]),
+			viewerMessage(),
+			"neon-cat",
+		);
+
+		expect(records).toHaveLength(1);
+		expect(records[0]?.attachment.id).toBe("neon-cat");
+		expect(records[0]?.autoSelected).toBe(false);
+	});
+
+	it("honors an explicit id that names one of the current-message attachments", async () => {
+		const records = await readAttachmentRecords(
+			makeRuntime([neonCatMessage()]),
+			currentImageQuestion(),
+			"eliza-pic",
+		);
+
+		expect(records).toHaveLength(1);
+		expect(records[0]?.attachment.id).toBe("eliza-pic");
+		expect(records[0]?.autoSelected).toBe(false);
+	});
+});

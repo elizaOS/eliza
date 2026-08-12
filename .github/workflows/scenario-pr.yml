@@ -165,7 +165,7 @@ jobs:
         run: node packages/app-core/scripts/ensure-shared-i18n-data.mjs
 
       - name: Install Playwright browsers
-        run: bunx playwright install --with-deps chromium
+        run: .github/scripts/install-playwright-browsers.sh chromium
 
       - name: Actual app onboarding-to-home browser coverage
         run: bun run --cwd packages/app test:e2e test/ui-smoke/onboarding-to-home.spec.ts --project=chromium
@@ -226,7 +226,7 @@ jobs:
         run: node packages/app-core/scripts/ensure-shared-i18n-data.mjs
 
       - name: Install Playwright browsers
-        run: bunx playwright install --with-deps chromium
+        run: .github/scripts/install-playwright-browsers.sh chromium
 
       - name: Actual app plugin view browser coverage
         run: bun run --cwd packages/app test:e2e test/ui-smoke/plugin-views-visual.spec.ts test/ui-smoke/plugin-views-interaction.spec.ts --project=chromium
@@ -286,7 +286,7 @@ jobs:
         run: node packages/app-core/scripts/ensure-shared-i18n-data.mjs
 
       - name: Install Playwright browsers
-        run: bunx playwright install --with-deps chromium
+        run: .github/scripts/install-playwright-browsers.sh chromium
 
       - name: Actual app all-pages render + click-safety browser coverage
         run: bun run --cwd packages/app test:e2e test/ui-smoke/all-pages-clicksafe.spec.ts test/ui-smoke/builtin-views-visual.spec.ts test/ui-smoke/documents-view.spec.ts --project=chromium
@@ -331,7 +331,7 @@ jobs:
         run: node packages/app-core/scripts/ensure-shared-i18n-data.mjs
 
       - name: Install Playwright browsers
-        run: bunx playwright install --with-deps chromium
+        run: .github/scripts/install-playwright-browsers.sh chromium
 
       - name: Actual app feature interaction browser coverage
         run: bun run --cwd packages/app test:e2e test/ui-smoke/apps-utility-interactions.spec.ts test/ui-smoke/apps-model-training-interactions.spec.ts test/ui-smoke/apps-comms-device-interactions.spec.ts test/ui-smoke/apps-diagnostics-interactions.spec.ts test/ui-smoke/apps-builtin-pages-interactions.spec.ts test/ui-smoke/settings-sections-interactions.spec.ts test/ui-smoke/settings-mobile-load.spec.ts test/ui-smoke/apps-personal-assistant-decomposed-interactions.spec.ts test/ui-smoke/vault-modal-interactions.spec.ts test/ui-smoke/desktop-workspace-interactions.spec.ts test/ui-smoke/settings-chat-control.spec.ts test/ui-smoke/routing-matrix-dispatch.spec.ts test/ui-smoke/chat-overlay-controls-interactions.spec.ts test/ui-smoke/task-widget-in-chat.spec.ts test/ui-smoke/chat-attachment.spec.ts test/ui-smoke/chat-3d-model.spec.ts test/ui-smoke/chat-large-paste.spec.ts test/ui-smoke/chat-clear-swipe.spec.ts test/ui-smoke/files-view.spec.ts test/ui-smoke/files-view-crud.spec.ts test/ui-smoke/conversation-management.spec.ts test/ui-smoke/chat-cloud-routed.spec.ts test/ui-smoke/slash-commands.spec.ts test/ui-smoke/model-download-deferral.spec.ts test/ui-smoke/home-widget-priority.spec.ts test/ui-smoke/settings-background.spec.ts --project=chromium
@@ -376,7 +376,7 @@ jobs:
         run: node packages/app-core/scripts/ensure-shared-i18n-data.mjs
 
       - name: Install Playwright browsers
-        run: bunx playwright install --with-deps chromium
+        run: .github/scripts/install-playwright-browsers.sh chromium
 
       - name: Actual app cloud keyless browser coverage
         run: bun run --cwd packages/app test:e2e test/ui-smoke/cloud-provisioning-startup.spec.ts test/ui-smoke/cloud-agent-lifecycle.spec.ts test/ui-smoke/cloud-wallet-import.spec.ts test/ui-smoke/live-agent-chat.spec.ts test/ui-smoke/remote-capability-view.spec.ts --project=chromium
@@ -421,7 +421,7 @@ jobs:
         run: node packages/app-core/scripts/ensure-shared-i18n-data.mjs
 
       - name: Install Playwright browsers
-        run: bunx playwright install --with-deps chromium
+        run: .github/scripts/install-playwright-browsers.sh chromium
 
       - name: Actual app ratcheted keyless browser coverage
         run: bun run --cwd packages/app test:e2e test/ui-smoke/ai-qa-capture.spec.ts test/ui-smoke/android-system-apps.spec.ts test/ui-smoke/apps-session.spec.ts test/ui-smoke/apps-session-direct-a.spec.ts test/ui-smoke/apps-session-direct-b.spec.ts test/ui-smoke/auth-startup.spec.ts test/ui-smoke/automations.spec.ts test/ui-smoke/browser-workspace.spec.ts test/ui-smoke/character-editor.spec.ts test/ui-smoke/wallet-inventory.spec.ts test/ui-smoke/workflow-editor.spec.ts test/ui-smoke/computer-use.spec.ts test/ui-smoke/connectors.spec.ts test/ui-smoke/first-run-startup.spec.ts test/ui-smoke/model-download-deferral.spec.ts test/ui-smoke/history-navigation.spec.ts test/ui-smoke/orchestrator-gui-workbench.spec.ts test/ui-smoke/reset-returns-to-onboarding.spec.ts test/ui-smoke/tutorial-chat.spec.ts test/ui-smoke/warming-shell-startup.spec.ts test/ui-smoke/runtime-configurability.spec.ts test/ui-smoke/perf-load-kpi.spec.ts test/ui-smoke/perf-reduced-motion.spec.ts test/ui-smoke/task-coordinator-gui-interactions.spec.ts test/ui-smoke/titlebar-navigation.spec.ts test/ui-smoke/ui-smoke.spec.ts --project=chromium
@@ -473,7 +473,7 @@ jobs:
         run: node packages/app-core/scripts/ensure-shared-i18n-data.mjs
 
       - name: Install Playwright browsers
-        run: bunx playwright install --with-deps chromium
+        run: .github/scripts/install-playwright-browsers.sh chromium
 
       - name: Actual app interaction frame-rate KPI browser coverage
         run: bun run --cwd packages/app test:e2e test/ui-smoke/perf-interaction-kpi.spec.ts --project=chromium
@@ -526,7 +526,7 @@ jobs:
         run: node packages/app-core/scripts/ensure-shared-i18n-data.mjs
 
       - name: Install Playwright browsers
-        run: bunx playwright install --with-deps chromium
+        run: .github/scripts/install-playwright-browsers.sh chromium
 
       - name: Actual app auto-discovered ui-smoke browser coverage
         run: |
@@ -586,7 +586,7 @@ jobs:
         run: node packages/app-core/scripts/ensure-shared-i18n-data.mjs
 
       - name: Install Playwright browsers
-        run: bunx playwright install --with-deps chromium
+        run: .github/scripts/install-playwright-browsers.sh chromium
 
       # The assertion-grade dashboard specs (browser-workspace, character-editor,
       # wallet-inventory, workflow-editor) across mobile-portrait/-landscape,
@@ -634,7 +634,7 @@ jobs:
         run: node packages/app-core/scripts/ensure-shared-i18n-data.mjs
 
       - name: Install Playwright browsers
-        run: bunx playwright install --with-deps chromium
+        run: .github/scripts/install-playwright-browsers.sh chromium
 
       # Pixel 7 (hasTouch, isMobile) lane: the decomposed personal-assistant
       # views + the real-CDP-touch chat gesture/fuzz specs at the WebView
@@ -692,7 +692,7 @@ jobs:
         run: node packages/app-core/scripts/ensure-shared-i18n-data.mjs
 
       - name: Install Playwright browsers (WebKit)
-        run: bunx playwright install --with-deps webkit
+        run: .github/scripts/install-playwright-browsers.sh webkit
 
       - name: Real-WebKit dashboard + shell + input-modality browser coverage
         run: bun run --cwd packages/app test:e2e --project=desktop-webkit
@@ -744,7 +744,7 @@ jobs:
         run: node packages/app-core/scripts/ensure-shared-i18n-data.mjs
 
       - name: Install Playwright browsers (Chromium)
-        run: bunx playwright install --with-deps chromium
+        run: .github/scripts/install-playwright-browsers.sh chromium
 
       - name: Accounts UI browser e2e — real AccountList + real accounts routes + real AccountPool
         env:
@@ -792,7 +792,7 @@ jobs:
         run: node packages/app-core/scripts/ensure-shared-i18n-data.mjs
 
       - name: Install Playwright browsers
-        run: bunx playwright install --with-deps chromium
+        run: .github/scripts/install-playwright-browsers.sh chromium
 
       - name: Install ffmpeg (recording stitch)
         run: sudo apt-get update && sudo apt-get install -y ffmpeg

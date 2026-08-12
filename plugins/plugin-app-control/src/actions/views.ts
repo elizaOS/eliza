@@ -794,6 +794,46 @@ const OPERATION_TOKEN_FAMILIES: Record<OperationFamily, Set<string>> = {
 	select: new Set(["select", "choose", "pick"]),
 };
 
+/**
+ * Genuine negation tokens for a subsequent destructive verb. When one of
+ * these immediately precedes a delete-family token (within a three-token
+ * window), the destructive token is treated as negated, not as affirmative
+ * authority. Apostrophes are stripped before tokenization, so "don't"
+ * arrives here as "dont".
+ *
+ * Deliberately narrow: modal/conditional words ("could", "would", "when")
+ * are NOT negation — they appear in polite imperatives ("Could you delete
+ * note X") that must still execute. Semantic disambiguation beyond simple
+ * adjacent negation belongs to the LLM planner, not this lexical guard.
+ */
+const NEGATION_TOKENS = new Set(["not", "dont", "never"]);
+
+/**
+ * Returns true when a destructive-family token is preceded by a genuine
+ * negation token within a three-token window (covers "not delete",
+ * "don't remove", "never destroy", "do not ever delete").
+ *
+ * The token array is the already-split, normalized request text. This only
+ * fires for destructive tokens because the asymmetric risk (silent data
+ * loss) justifies special-case handling. Read/update/create families are
+ * unaffected.
+ */
+function isDestructiveTokenNegated(
+	tokens: string[],
+	destructiveTokenSet: Set<string>,
+): boolean {
+	const negationWindow = 3;
+	for (let i = 0; i < tokens.length; i++) {
+		if (!destructiveTokenSet.has(tokens[i])) continue;
+		for (let j = Math.max(0, i - negationWindow); j < i; j++) {
+			if (NEGATION_TOKENS.has(tokens[j])) {
+				return true;
+			}
+		}
+	}
+	return false;
+}
+
 function normalizeCapabilityKey(value: string | null | undefined): string {
 	return (value ?? "")
 		.trim()
@@ -811,14 +851,29 @@ function tokensFor(value: string | null | undefined): Set<string> {
 }
 
 function operationFamilyForTokens(tokens: Set<string>): OperationFamily | null {
+	const families = operationFamiliesForTokens(tokens);
+	return families.size > 0 ? ([...families][0] ?? null) : null;
+}
+
+/**
+ * Returns every operation family that has at least one token in the request.
+ * Unlike the single-family resolver, this does not silently prefer an
+ * incidental read-family word ("current", "list") over a destructive-family
+ * word ("delete") that the planner already committed to.
+ */
+function operationFamiliesForTokens(tokens: Set<string>): Set<OperationFamily> {
+	const result = new Set<OperationFamily>();
 	for (const [family, familyTokens] of Object.entries(
 		OPERATION_TOKEN_FAMILIES,
 	) as [OperationFamily, Set<string>][]) {
 		for (const token of tokens) {
-			if (familyTokens.has(token)) return family;
+			if (familyTokens.has(token)) {
+				result.add(family);
+				break;
+			}
 		}
 	}
-	return null;
+	return result;
 }
 
 function operationFamilyForCapability(
@@ -1089,26 +1144,84 @@ function resolveViewCapability({
 	return best?.candidate ?? null;
 }
 
+/**
+ * Result of the capability correction path. It either returns a (possibly
+ * corrected) capability or — when the request lexically negates the
+ * destructive verb the planner selected ("do not delete X") — returns a
+ * rejection so the caller refuses rather than silently destroying data.
+ */
+type CapabilityCorrection =
+	| { kind: "capability"; capability: ViewCapability }
+	| { kind: "reject"; reason: string };
+
 function correctCapabilityOperationFamily(
 	view: ViewSummary,
 	capability: ViewCapability,
 	text: string,
-): ViewCapability {
-	const requestTokens = tokensFor(viewRequestText(text));
-	const requestedFamily = operationFamilyForTokens(requestTokens);
+): CapabilityCorrection {
+	// Strip apostrophes before normalization so "don't" tokenizes as "dont"
+	// instead of splitting into meaningless "don" / "t" fragments.
+	const requestText = viewRequestText(text).replace(/['‘’]/g, "");
+	const normalizedRequest = normalizeCapabilityKey(requestText);
+	const requestTokenArray = normalizedRequest.split(" ").filter(Boolean);
+	const requestTokens = new Set(requestTokenArray);
+	const requestedFamilies = operationFamiliesForTokens(requestTokens);
 	const selectedFamily = operationFamilyForCapability(capability);
+	const selectedIsDestructive = selectedFamily === "delete";
+
+	// Negation gate: an explicitly negated destructive verb ("do not
+	// delete", "never remove") is not affirmative authority for the
+	// destructive capability the planner selected. This is deliberately the
+	// ONLY lexical veto over the planner: broader guesses (conditionals,
+	// requests with no recognizable English verbs) stay with the planner,
+	// which is the semantic authority — otherwise polite imperatives
+	// ("Could you delete note X") and non-English requests would be broken.
 	if (
-		!requestedFamily ||
-		!selectedFamily ||
-		requestedFamily === selectedFamily
+		selectedIsDestructive &&
+		isDestructiveTokenNegated(
+			requestTokenArray,
+			OPERATION_TOKEN_FAMILIES.delete,
+		)
 	) {
-		return capability;
+		return {
+			kind: "reject",
+			reason:
+				"the destructive verb is negated in the request — cannot confirm affirmative authority for a destructive capability",
+		};
+	}
+
+	// Preserve the planner's explicit selection when its family has any
+	// token support in the request. This prevents rewriting an explicit
+	// delete-note to get-note just because the request also contained
+	// read-family words like "current" or "list" (#18386).
+	if (
+		requestedFamilies.size === 0 ||
+		!selectedFamily ||
+		requestedFamilies.has(selectedFamily)
+	) {
+		return { kind: "capability", capability };
+	}
+
+	// The selected capability's family has NO token support in the
+	// request — a potential mismatch. Before correcting, enforce the
+	// asymmetric-risk rule: never lexically escalate read→delete.
+	// Silently upgrading a read into a destructive action destroys data;
+	// a missed correction on a non-destructive family is at worst a
+	// retryable action.
+	const requestedFamily = [...requestedFamilies][0];
+	const correctedIsDestructive = requestedFamily === "delete";
+	if (correctedIsDestructive && !selectedIsDestructive) {
+		// Read→delete (or create/update/select→delete) escalation is
+		// prohibited. Return the original capability unchanged rather
+		// than guessing destructive intent from lexical tokens.
+		return { kind: "capability", capability };
 	}
 
 	const familyMatches = (view.capabilities ?? []).filter(
 		(candidate) => operationFamilyForCapability(candidate) === requestedFamily,
 	);
-	if (familyMatches.length === 1 && familyMatches[0]) return familyMatches[0];
+	if (familyMatches.length === 1 && familyMatches[0])
+		return { kind: "capability", capability: familyMatches[0] };
 
 	const ranked = familyMatches
 		.map((candidate) => ({
@@ -1119,9 +1232,11 @@ function correctCapabilityOperationFamily(
 	// Multiple semantic siblings are corrected only when the user's nouns make
 	// one a unique best match; a tie preserves the planner decision rather than
 	// guessing between collection and single-record reads.
-	return ranked[0] && ranked[0].score > (ranked[1]?.score ?? -1)
-		? ranked[0].candidate
-		: capability;
+	const resolved =
+		ranked[0] && ranked[0].score > (ranked[1]?.score ?? -1)
+			? ranked[0].candidate
+			: capability;
+	return { kind: "capability", capability: resolved };
 }
 
 type CapabilityParamsResolution =
@@ -3134,17 +3249,24 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 						if (!resolvedCapability && standardCapability)
 							capability = standardCapability;
 						if (resolvedCapability) {
-							const correctedCapability = correctCapabilityOperationFamily(
+							const correction = correctCapabilityOperationFamily(
 								resolvedCapability.view,
 								resolvedCapability.capability,
 								text,
 							);
-							if (correctedCapability.id !== resolvedCapability.capability.id) {
+							if (correction.kind === "reject") {
+								const reply = `Refusing destructive capability on view "${viewId}": ${correction.reason}. Please rephrase with explicit, unambiguous intent.`;
+								await callback?.({ text: reply });
+								return { success: false, text: reply };
+							}
+							if (
+								correction.capability.id !== resolvedCapability.capability.id
+							) {
 								resolvedCapability = {
 									...resolvedCapability,
-									capability: correctedCapability,
+									capability: correction.capability,
 								};
-								capability = correctedCapability.id;
+								capability = correction.capability.id;
 							}
 						}
 						const paramsResolution = readCapabilityParams(

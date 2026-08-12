@@ -5,10 +5,16 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { lifeOpsPassiveConnectorsEnabled } from "../lifeops-passive-connectors";
 
-const LIFEOPS_PLUGIN = "@elizaos/plugin-personal-assistant";
-const OTHER_PLUGIN = "@elizaos/plugin-discord";
+const LIFEOPS_PLUGIN = {
+	name: "@elizaos/plugin-personal-assistant",
+	passiveConnectorsByDefault: true,
+};
+const OTHER_PLUGIN = { name: "@elizaos/plugin-discord" };
 
-function makeRuntime(opts: { setting?: string | boolean; plugins?: string[] }) {
+function makeRuntime(opts: {
+	setting?: string | boolean;
+	plugins?: Array<{ name: string; passiveConnectorsByDefault?: boolean }>;
+}) {
 	return {
 		getSetting: (key: string) => {
 			if (
@@ -20,7 +26,7 @@ function makeRuntime(opts: { setting?: string | boolean; plugins?: string[] }) {
 			}
 			return undefined;
 		},
-		plugins: (opts.plugins ?? []).map((name) => ({ name })),
+		plugins: opts.plugins ?? [],
 	};
 }
 
@@ -69,7 +75,7 @@ describe("lifeOpsPassiveConnectorsEnabled", () => {
 			).toBe(false);
 		});
 
-		it("returns true when plugin-personal-assistant is loaded", () => {
+		it("returns true when a plugin declares passiveConnectorsByDefault", () => {
 			expect(
 				lifeOpsPassiveConnectorsEnabled(
 					makeRuntime({ plugins: [LIFEOPS_PLUGIN] }),
@@ -77,7 +83,7 @@ describe("lifeOpsPassiveConnectorsEnabled", () => {
 			).toBe(true);
 		});
 
-		it("returns true when plugin-personal-assistant is among other plugins", () => {
+		it("returns true when a passive-declaring plugin is among other plugins", () => {
 			expect(
 				lifeOpsPassiveConnectorsEnabled(
 					makeRuntime({ plugins: [OTHER_PLUGIN, LIFEOPS_PLUGIN] }),
@@ -86,7 +92,7 @@ describe("lifeOpsPassiveConnectorsEnabled", () => {
 		});
 	});
 
-	describe("explicit runtime setting overrides plugin detection", () => {
+	describe("explicit runtime setting overrides capability detection", () => {
 		it("returns false when setting is 'false' even with LifeOps plugin loaded", () => {
 			expect(
 				lifeOpsPassiveConnectorsEnabled(
@@ -116,7 +122,7 @@ describe("lifeOpsPassiveConnectorsEnabled", () => {
 		});
 	});
 
-	describe("env var overrides plugin detection", () => {
+	describe("env var overrides capability detection", () => {
 		it("returns false when env ELIZA_LIFEOPS_PASSIVE_CONNECTORS=false even with plugin loaded", () => {
 			expect(
 				lifeOpsPassiveConnectorsEnabled(

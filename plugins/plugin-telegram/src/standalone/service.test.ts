@@ -38,7 +38,10 @@ function fakeRuntime(
 ): Parameters<typeof TelegramStandaloneService.start>[0] {
   return {
     agentId: "agent-standalone",
-    plugins: plugins.map((name) => ({ name })),
+    plugins: plugins.map((name) => ({
+      name,
+      passiveConnectorsByDefault: name === "@elizaos/plugin-personal-assistant",
+    })),
     getService: vi.fn(() => null),
     reportError: vi.fn(),
   } as unknown as Parameters<typeof TelegramStandaloneService.start>[0];
