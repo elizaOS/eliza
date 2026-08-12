@@ -3,6 +3,11 @@
  * endpoint (sniffing the container via `detectAudioMimeType` to pick an upload
  * filename), and `handleTextToSpeech` synthesizes speech via the TTS endpoint.
  * Both accept the core param shapes as well as raw Blob/File/Buffer input.
+ *
+ * Caller-supplied audio URLs load only through `fetchRemoteMedia` so agents and
+ * tools cannot aim transcription at loopback, link-local, or private hosts.
+ * Provider endpoint calls (OpenAI-compatible base URL) stay on the configured
+ * API path and are not remote-media fetches.
  */
 import type {
   TextToSpeechParams as CoreTextToSpeechParams,
@@ -10,7 +15,7 @@ import type {
   IAgentRuntime,
   RecordLlmCallDetails,
 } from "@elizaos/core";
-import { logger, recordLlmCall } from "@elizaos/core";
+import { fetchRemoteMedia, logger, recordLlmCall } from "@elizaos/core";
 import type {
   TextToSpeechParams as LocalTextToSpeechParams,
   TranscriptionParams as LocalTranscriptionParams,
@@ -27,6 +32,11 @@ import {
   getTTSModel,
   getTTSVoice,
 } from "../utils/config";
+
+/** OpenAI Whisper/upload limit is 25 MB; keep the same hard cap server-side. */
+const TRANSCRIPTION_AUDIO_MAX_BYTES = 25 * 1024 * 1024;
+const TRANSCRIPTION_AUDIO_FETCH_TIMEOUT_MS = 30_000;
+const TRANSCRIPTION_AUDIO_MAX_REDIRECTS = 5;
 
 type AudioInput = Blob | File | Buffer;
 type TranscriptionInput = AudioInput | LocalTranscriptionParams | CoreTranscriptionParams | string;
@@ -60,12 +70,21 @@ function isCoreTranscriptionParams(value: unknown): value is CoreTranscriptionPa
 }
 
 async function fetchAudioFromUrl(url: string): Promise<Blob> {
-  // @trajectory-allow Fetches caller-provided audio bytes; no model inference happens here.
-  const response = await fetch(url);
-  if (!response.ok) {
-    throw new Error(`Failed to fetch audio from URL: ${response.status}`);
+  if (!url || url.trim().length === 0) {
+    throw new Error("TRANSCRIPTION requires a valid audio URL");
   }
-  return response.blob();
+  // Untrusted agent/tool audio URLs must not hit private or metadata hosts.
+  // @trajectory-allow Fetches caller-provided audio bytes; no model inference happens here.
+  const media = await fetchRemoteMedia({
+    url,
+    maxBytes: TRANSCRIPTION_AUDIO_MAX_BYTES,
+    timeoutMs: TRANSCRIPTION_AUDIO_FETCH_TIMEOUT_MS,
+    maxRedirects: TRANSCRIPTION_AUDIO_MAX_REDIRECTS,
+  });
+  const mimeType = media.contentType?.startsWith("audio/")
+    ? media.contentType
+    : detectAudioMimeType(media.buffer);
+  return new Blob([new Uint8Array(media.buffer)], { type: mimeType });
 }
 export async function handleTranscription(
   runtime: IAgentRuntime,
