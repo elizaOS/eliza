@@ -938,7 +938,7 @@ export class ElizaClient {
     this._baseUrl = normalized;
     this.disconnectWs();
     if (persist) {
-      this.persistBaseUrl(normalized);
+      this.persistBaseUrlFailClosed(normalized);
     }
     this.notifyBaseUrlChange();
   }
@@ -955,9 +955,40 @@ export class ElizaClient {
     };
   }
 
+  /**
+   * Isolate each listener so one throwing observer cannot swallow the base
+   * change for the rest — critical in {@link repointBaseUrl}, where this
+   * notification runs before `connectWs()` and the token-sync dispatch; an
+   * unguarded throw there would silently break reconnection (#18542).
+   */
   private notifyBaseUrlChange(): void {
     for (const listener of this.baseUrlChangeListeners) {
-      listener(this._baseUrl);
+      try {
+        listener(this._baseUrl);
+      } catch (err) {
+        logger.error(
+          { err },
+          "[ElizaClient] onBaseUrlChange listener threw; other listeners still notified",
+        );
+      }
+    }
+  }
+
+  /**
+   * Persist the base URL, but never let a storage failure (quota, disabled
+   * localStorage, private-mode restrictions) suppress {@link
+   * notifyBaseUrlChange}: `_baseUrl` is already mutated in memory and is the
+   * authoritative value, so dependent per-authority observers must still
+   * learn about the change even when persistence itself failed (#18542).
+   */
+  private persistBaseUrlFailClosed(normalized: string): void {
+    try {
+      this.persistBaseUrl(normalized);
+    } catch (err) {
+      // error-policy:J6 best-effort persistence — the in-memory base is
+      // already authoritative for this process; a storage failure must not
+      // block downstream notification of the change that already happened.
+      logger.warn({ err }, "[ElizaClient] persistBaseUrl failed");
     }
   }
 
@@ -1055,7 +1086,7 @@ export class ElizaClient {
     if (installsToken) this.installToken(token ?? null, false);
     this._userSetBase = normalized.length > 0;
     this._baseUrl = normalized;
-    this.persistBaseUrl(normalized);
+    this.persistBaseUrlFailClosed(normalized);
     this.notifyBaseUrlChange();
 
     // Reconnect immediately against the new base. connectWs() derives the WS
@@ -1913,6 +1944,45 @@ export class ElizaClient {
     return () => {
       this.resyncListeners.delete(listener);
     };
+  }
+
+  /**
+   * Force-close and immediately re-establish the live WebSocket against the
+   * SAME base — `_baseUrl`, persistence, and the token are untouched. Unlike
+   * {@link resetConnection}, which leaves an already-open socket alone, this
+   * always tears the socket down first, nulling its handlers before `close()`
+   * exactly like {@link repointBaseUrl}'s teardown, so nothing already in
+   * flight on it can be delivered afterward.
+   *
+   * For an authority-scoped observer (e.g. the notification store, #18542)
+   * whose authority changed WITHOUT a base URL change (an in-place identity
+   * switch or logout), neither {@link setBaseUrl} nor {@link repointBaseUrl}
+   * runs, so the socket would otherwise stay open across the switch — the one
+   * transport gap {@link onBaseUrlChange} does not cover. This closes it.
+   */
+  rotateConnection(): void {
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+    if (this.ws) {
+      this.ws.onopen = null;
+      this.ws.onclose = null;
+      this.ws.onerror = null;
+      this.ws.onmessage = null;
+      try {
+        this.ws.close();
+      } catch {
+        /* already closing */
+      }
+      this.ws = null;
+    }
+    this.wsSendQueue = [];
+    this.wsEventBacklog.clear();
+    this.backoffMs = 500;
+    this.reconnectAttempt = 0;
+    this.disconnectedAt = null;
+    this.connectWs();
   }
 
   /** Reset connection state and restart reconnection attempts. */

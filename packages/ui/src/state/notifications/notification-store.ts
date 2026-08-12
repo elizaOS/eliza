@@ -94,6 +94,11 @@ const notificationCleanups: Array<() => void> = [];
 // so an agent/base switch is still isolated even with nobody signed in (e.g.
 // a local, non-Cloud origin). Null until initNotifications() seeds it.
 let currentAuthorityKey: string | null = null;
+// The base URL component of currentAuthorityKey, tracked separately so
+// reconcileAuthority can tell an auth-only switch (base unchanged) from a
+// base switch (already handled by client.onBaseUrlChange's own transport
+// teardown) — see reconcileAuthority (#18542).
+let currentAuthorityBaseUrl: string | null = null;
 // Unsubscribes the currently-bound live WS notification handler; rebound on
 // every authority change so a handler closure from a superseded authority can
 // never reach ingest(), even if a message is somehow still in flight.
@@ -394,20 +399,17 @@ function computeAuthorityKey(
   return `${baseUrl}::${identityPart}`;
 }
 
-/**
- * Re-key the store to the authority implied by the latest auth status and the
- * client's current base URL. A no-op when the authority is unchanged (e.g. a
- * same-session background auth refresh). On a real change: rebind the live WS
- * handler, cancel retry/hydration ownership so a stale in-flight response is
- * discarded by {@link runHydrationAttempt}'s generation check, synchronously
- * clear rows/unread state, and hydrate fresh for the new authority.
- */
-function reconcileAuthority(authStatus: AuthStatusState): void {
-  const nextKey = computeAuthorityKey(authStatus, client.getBaseUrl());
-  if (nextKey === currentAuthorityKey) return;
-  currentAuthorityKey = nextKey;
-  bindLiveNotificationStream(nextKey);
+/** Whether a computed authority key's identity component is the "anon"
+ *  placeholder — i.e. nothing was ever confirmed-authenticated under it, so
+ *  there is no real prior data a leaving message could leak (#18542). */
+function isAnonAuthorityKey(key: string | null): boolean {
+  return Boolean(key?.endsWith("::anon"));
+}
 
+/** Cancel retry/hydration ownership and clear rows/unread state for a new
+ *  authority. Shared by {@link reconcileAuthority} and {@link
+ *  invalidateAuthorityForCredentialChange} (#18542). */
+function clearForAuthorityChange(): void {
   if (hydrationRetryTimer) {
     clearTimeout(hydrationRetryTimer);
     hydrationRetryTimer = null;
@@ -425,8 +427,81 @@ function reconcileAuthority(authStatus: AuthStatusState): void {
     hydrationError: null,
   });
   ephemeralNotificationIds.clear();
+}
 
+/**
+ * Re-key the store to the authority implied by the latest auth status and the
+ * client's current base URL. A no-op when the authority is unchanged (e.g. a
+ * same-session background auth refresh). On a real change: rebind the live WS
+ * handler, cancel retry/hydration ownership so a stale in-flight response is
+ * discarded by {@link runHydrationAttempt}'s generation check, synchronously
+ * clear rows/unread state, and hydrate fresh for the new authority.
+ *
+ * A subsequent switch that keeps the same base URL (an in-place identity
+ * change) rotates the underlying connection too: `setBaseUrl`/
+ * `repointBaseUrl` already close-before-reopen for a base change, but nothing
+ * else touches the transport for an auth-only one, so a message already in
+ * flight on the still-open socket could otherwise reach the freshly-rebound
+ * (and therefore current-looking) WS handler and be accepted as the new
+ * authority's data (#18542).
+ */
+function reconcileAuthority(authStatus: AuthStatusState): void {
+  const baseUrl = client.getBaseUrl();
+  const nextKey = computeAuthorityKey(authStatus, baseUrl);
+  if (nextKey === currentAuthorityKey) return;
+  // Only rotate when the authority being LEFT had a real, hydration-worthy
+  // identity — not the boot-time "anon" seed or placeholder, which never
+  // held anything worth protecting — and the base is unchanged (a base
+  // change already gets its own transport teardown from setBaseUrl /
+  // repointBaseUrl, so rotating again here would be redundant).
+  const isSubsequentAuthOnlySwitch =
+    !isAnonAuthorityKey(currentAuthorityKey) &&
+    currentAuthorityBaseUrl === baseUrl;
+  currentAuthorityKey = nextKey;
+  currentAuthorityBaseUrl = baseUrl;
+  bindLiveNotificationStream(nextKey);
+  clearForAuthorityChange();
+  if (isSubsequentAuthOnlySwitch) {
+    client.rotateConnection();
+  }
   void requestHydration();
+}
+
+// Cannot equal any real `computeAuthorityKey` result (those are always
+// `<baseUrl>::<identityPart>`), so it always compares unequal and forces a
+// real reconcile once the next authority is confirmed.
+const INVALIDATED_AUTHORITY_KEY = "credential-invalidated";
+
+/**
+ * `useAuthStatus` deliberately keeps the previous authenticated snapshot
+ * until the async `/api/auth/me` probe resolves, so a real logout is
+ * invisible to {@link reconcileAuthority} for the duration of that
+ * round-trip — the inbox and live delivery would keep serving the outgoing
+ * authority's data (#18542). `client`'s synchronous `steward-token-sync`
+ * event fires immediately on any credential change; when it reflects a
+ * cleared token (`!client.hasToken()`), that is logout-shaped and cannot wait
+ * for the probe, so invalidate to a sentinel that can never equal a real
+ * computed key — clearing rows/unread and unbinding live delivery — without
+ * hydrating (identity is unknown until the probe's eventual publish runs the
+ * real reconcile). A non-empty token (login, refresh, or an agent handoff's
+ * repointBaseUrl token swap) is not logout-shaped: recompute from whatever
+ * the auth snapshot currently says, which is a no-op if a same-tick base
+ * change already reconciled correctly (e.g. the handoff path) and otherwise
+ * catches up once the snapshot is fresh.
+ */
+function onCredentialSync(): void {
+  if (client.hasToken()) {
+    reconcileAuthority(getAuthStatusSnapshot());
+    return;
+  }
+  if (currentAuthorityKey === INVALIDATED_AUTHORITY_KEY) return;
+  currentAuthorityKey = INVALIDATED_AUTHORITY_KEY;
+  bindLiveNotificationStream(currentAuthorityKey);
+  clearForAuthorityChange();
+  // Logout is a same-base identity change, so nothing else rotates the
+  // socket; do it here for the same reason reconcileAuthority does for a
+  // subsequent auth-only switch (#18542).
+  client.rotateConnection();
 }
 
 function mergeHydratedNotifications(
@@ -621,9 +696,10 @@ export function retryNotificationHydration(): Promise<void> {
 export function initNotifications(): void {
   if (initialized) return;
   initialized = true;
+  currentAuthorityBaseUrl = client.getBaseUrl();
   currentAuthorityKey = computeAuthorityKey(
     getAuthStatusSnapshot(),
-    client.getBaseUrl(),
+    currentAuthorityBaseUrl,
   );
   bindLiveNotificationStream(currentAuthorityKey);
   notificationCleanups.push(
@@ -635,6 +711,10 @@ export function initNotifications(): void {
     client.onBaseUrlChange(() => reconcileAuthority(getAuthStatusSnapshot())),
   );
   if (typeof window !== "undefined") {
+    window.addEventListener("steward-token-sync", onCredentialSync);
+    notificationCleanups.push(() =>
+      window.removeEventListener("steward-token-sync", onCredentialSync),
+    );
     const retryOnline = () => void retryNotificationHydration();
     window.addEventListener("online", retryOnline);
     notificationCleanups.push(() =>
@@ -685,27 +765,51 @@ export async function seedDevNotificationsIfEmpty(): Promise<void> {
 
 // ── Mutations (optimistic; backed by the HTTP API) ──────────────────────────
 
+/** An optimistic mutation's pre-write state, tagged with the authority it was
+ *  captured under so a response that settles after an authority switch can
+ *  recognize its snapshot is stale (#18542). */
+interface MutationSnapshot {
+  authorityKey: string | null;
+  state: NotificationState;
+}
+
+function snapshotForMutation(): MutationSnapshot {
+  return { authorityKey: currentAuthorityKey, state };
+}
+
 /**
- * Roll the optimistic state back to `previous` and log at error level when a
+ * Roll the optimistic state back to the snapshot and log at error level when a
  * mutation's HTTP write fails. Reverting is the user-visible surfacing: a
  * failed "mark read" returns the item to unread and a failed delete makes it
  * reappear, so the inbox never silently diverges from server truth. Callers
  * fire-and-forget (`void`), so this never rethrows.
+ *
+ * If the authority has changed since the snapshot was captured (the request
+ * that failed belonged to a prior authority A, but the store has since
+ * switched to and hydrated authority B), applying the snapshot would overwrite
+ * B's rows with A's — discard the rollback instead (#18542).
  */
 function revertMutation(
-  previous: NotificationState,
+  snapshot: MutationSnapshot,
   op: string,
   err: unknown,
 ): void {
+  if (snapshot.authorityKey !== currentAuthorityKey) {
+    logger.warn(
+      { err },
+      `[notification-store] ${op} failed after an authority switch; stale rollback discarded`,
+    );
+    return;
+  }
   setState({
-    notifications: previous.notifications,
-    unreadCount: previous.unreadCount,
+    notifications: snapshot.state.notifications,
+    unreadCount: snapshot.state.unreadCount,
   });
   logger.error({ err }, `[notification-store] ${op} failed; reverted`);
 }
 
 export async function markNotificationRead(id: string): Promise<void> {
-  const previous = state;
+  const snapshot = snapshotForMutation();
   const now = Date.now();
   const notifications = state.notifications.map((n) =>
     n.id === id && !n.readAt ? { ...n, readAt: now } : n,
@@ -714,12 +818,12 @@ export async function markNotificationRead(id: string): Promise<void> {
   try {
     await client.markNotificationRead(id);
   } catch (err) {
-    revertMutation(previous, "markNotificationRead", err);
+    revertMutation(snapshot, "markNotificationRead", err);
   }
 }
 
 export async function markAllNotificationsRead(): Promise<void> {
-  const previous = state;
+  const snapshot = snapshotForMutation();
   const now = Date.now();
   const notifications = state.notifications.map((n) =>
     n.readAt ? n : { ...n, readAt: now },
@@ -728,19 +832,19 @@ export async function markAllNotificationsRead(): Promise<void> {
   try {
     await client.markAllNotificationsRead();
   } catch (err) {
-    revertMutation(previous, "markAllNotificationsRead", err);
+    revertMutation(snapshot, "markAllNotificationsRead", err);
   }
 }
 
 export async function removeNotification(id: string): Promise<void> {
-  const previous = state;
+  const snapshot = snapshotForMutation();
   const notifications = state.notifications.filter((n) => n.id !== id);
   setState({ notifications, unreadCount: countUnread(notifications) });
   if (ephemeralNotificationIds.delete(id)) return;
   try {
     await client.removeNotification(id);
   } catch (err) {
-    revertMutation(previous, "removeNotification", err);
+    revertMutation(snapshot, "removeNotification", err);
   }
 }
 
@@ -750,7 +854,7 @@ export async function removeNotifications(
 ): Promise<void> {
   if (ids.length === 0) return;
   const idSet = new Set(ids);
-  const previous = state;
+  const snapshot = snapshotForMutation();
   const notifications = state.notifications.filter((n) => !idSet.has(n.id));
   setState({ notifications, unreadCount: countUnread(notifications) });
   const ephemeralIds = ids.filter((id) => ephemeralNotificationIds.delete(id));
@@ -760,21 +864,28 @@ export async function removeNotifications(
   try {
     await Promise.all(persistedIds.map((id) => client.removeNotification(id)));
   } catch (err) {
-    for (const id of ephemeralIds) ephemeralNotificationIds.add(id);
-    revertMutation(previous, "removeNotifications", err);
+    // Re-adding these ephemeral IDs into a superseded authority's set would
+    // let its stray local-only rows resurface under the new authority — only
+    // restore them when the authority that owned them is still current.
+    if (snapshot.authorityKey === currentAuthorityKey) {
+      for (const id of ephemeralIds) ephemeralNotificationIds.add(id);
+    }
+    revertMutation(snapshot, "removeNotifications", err);
   }
 }
 
 export async function clearNotifications(): Promise<void> {
-  const previous = state;
+  const snapshot = snapshotForMutation();
   const previousEphemeralIds = [...ephemeralNotificationIds];
   setState({ notifications: [], unreadCount: 0 });
   ephemeralNotificationIds.clear();
   try {
     await client.clearNotifications();
   } catch (err) {
-    for (const id of previousEphemeralIds) ephemeralNotificationIds.add(id);
-    revertMutation(previous, "clearNotifications", err);
+    if (snapshot.authorityKey === currentAuthorityKey) {
+      for (const id of previousEphemeralIds) ephemeralNotificationIds.add(id);
+    }
+    revertMutation(snapshot, "clearNotifications", err);
   }
 }
 
@@ -802,6 +913,7 @@ export function __resetNotificationStoreForTests(): void {
   hydrationInFlight = null;
   hydrationReadinessDeadlineAt = 0;
   currentAuthorityKey = null;
+  currentAuthorityBaseUrl = null;
   notificationEventUnsub?.();
   notificationEventUnsub = null;
   liveEventRevision = 0;
