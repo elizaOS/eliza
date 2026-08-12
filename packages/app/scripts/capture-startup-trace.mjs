@@ -31,9 +31,50 @@
  */
 
 import { writeFileSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { chromium } from "@playwright/test";
 
-function parseArgs(argv) {
+/** Node clamps `setTimeout` delays above this to 1 ms; Playwright waits share that bound. */
+export const MAX_TIMER_DELAY_MS = 2_147_483_647;
+
+/**
+ * Parse a positive decimal integer CLI override.
+ * Full-string match only: `Number("10junk")` is NaN and previously fell through
+ * so `--runs` / `--timeout` typos launched Chromium under a different budget
+ * than the operator requested (or skipped all runs silently).
+ *
+ * @param {string | undefined} raw
+ * @param {string} flag flag name for error messages (e.g. `--runs`)
+ * @param {{ max?: number }} [opts]
+ * @returns {number}
+ */
+export function parsePositiveInt(raw, flag, opts = {}) {
+  const max = opts.max ?? Number.MAX_SAFE_INTEGER;
+  if (typeof raw !== "string" || raw.length === 0 || raw.startsWith("--")) {
+    throw new Error(
+      `${flag} requires a positive decimal integer from 1 to ${max}`,
+    );
+  }
+  if (!/^[1-9]\d*$/.test(raw)) {
+    throw new Error(
+      `${flag} must be a positive decimal integer from 1 to ${max}, got "${raw}"`,
+    );
+  }
+  const value = Number(raw);
+  if (!Number.isSafeInteger(value) || value < 1 || value > max) {
+    throw new Error(
+      `${flag} must be a positive decimal integer from 1 to ${max}, got "${raw}"`,
+    );
+  }
+  return value;
+}
+
+/**
+ * Parse CLI argv for the startup-trace harness. Exported for focused unit tests.
+ * @param {string[]} argv process.argv-style array (index 0-1 ignored)
+ */
+export function parseArgs(argv) {
   const args = {
     url:
       process.env.ELIZA_STARTUP_TRACE_URL ||
@@ -46,11 +87,33 @@ function parseArgs(argv) {
   };
   for (let i = 2; i < argv.length; i += 1) {
     const a = argv[i];
-    if (a === "--url") args.url = argv[++i];
-    else if (a === "--runs") args.runs = Number(argv[++i]);
-    else if (a === "--out") args.out = argv[++i];
-    else if (a === "--timeout") args.timeout = Number(argv[++i]);
-    else if (a === "--wait-ready") args.waitReady = true;
+    if (a === "--url") {
+      const next = argv[++i];
+      if (
+        typeof next !== "string" ||
+        next.length === 0 ||
+        next.startsWith("--")
+      ) {
+        throw new Error("--url requires a renderer URL value");
+      }
+      args.url = next;
+    } else if (a === "--runs") {
+      args.runs = parsePositiveInt(argv[++i], "--runs");
+    } else if (a === "--out") {
+      const next = argv[++i];
+      if (
+        typeof next !== "string" ||
+        next.length === 0 ||
+        next.startsWith("--")
+      ) {
+        throw new Error("--out requires a file path value");
+      }
+      args.out = next;
+    } else if (a === "--timeout") {
+      args.timeout = parsePositiveInt(argv[++i], "--timeout", {
+        max: MAX_TIMER_DELAY_MS,
+      });
+    } else if (a === "--wait-ready") args.waitReady = true;
     else if (a === "--headed") args.headed = true;
   }
   return args;
@@ -140,8 +203,8 @@ function printRun(run) {
   }
 }
 
-async function main() {
-  const args = parseArgs(process.argv);
+async function main(argv = process.argv) {
+  const args = parseArgs(argv);
   // Renderer-only default: first-paint is gated behind STARTUP_SPLASH_DELAY_MS
   // and never fires on boots faster than the gate, so the unconditional
   // startup-shell:mounted mark also satisfies the wait. --wait-ready still
@@ -190,7 +253,17 @@ async function main() {
   process.exit(anyOk ? 0 : 1);
 }
 
-main().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+const isMain =
+  process.argv[1] &&
+  path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+
+if (isMain) {
+  // error-policy:J1 CLI boundary — invalid flags and capture failures exit
+  // non-zero with a legible message instead of an unhandled rejection.
+  main().catch((err) => {
+    console.error(
+      `[startup-trace] ${err instanceof Error ? err.message : err}`,
+    );
+    process.exit(1);
+  });
+}
