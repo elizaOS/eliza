@@ -145,7 +145,28 @@ jobs:
           bun-version: ${{ env.BUN_VERSION }}
 
       - name: Install contract dependencies
-        run: bun install --frozen-lockfile --ignore-scripts
+        shell: bash
+        env:
+          # This lightweight guard does not need the full workspace setup
+          # action, but it still runs beside many installs on persistent
+          # self-hosted runners. Keep its cache private so a retry cannot race
+          # another job's extraction or cleanup.
+          BUN_INSTALL_CACHE_DIR: ${{ runner.temp }}/bun-install-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}
+        run: |
+          install_status=0
+          for attempt in 1 2; do
+            if bun install --frozen-lockfile --ignore-scripts; then
+              exit 0
+            else
+              install_status=$?
+            fi
+            if [ "$attempt" -eq 2 ]; then
+              exit "$install_status"
+            fi
+            echo "Contract dependency install failed; retrying once after cleaning this job's Bun install cache."
+            node packages/scripts/rm-path-recursive.mjs "$BUN_INSTALL_CACHE_DIR"
+            sleep 5
+          done
 
       - name: Test-runner vacuous-green guard
         run: bun test packages/scripts/__tests__/run-all-tests-vacuous-green-guard.test.ts

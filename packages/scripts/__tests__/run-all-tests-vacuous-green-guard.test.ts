@@ -145,7 +145,7 @@ describe("root test lane require-work wiring (#13620)", () => {
     );
   });
 
-  test("the standalone guard installs the Bun contract dependency first", () => {
+  test("the standalone guard installs dependencies with an isolated bounded retry", () => {
     const workflow = readFileSync(
       join(repoRoot, ".github", "workflows", "test.yml"),
       "utf8",
@@ -158,11 +158,24 @@ describe("root test lane require-work wiring (#13620)", () => {
     const install = job.indexOf(
       "bun install --frozen-lockfile --ignore-scripts",
     );
+    const cache = job.search(
+      /BUN_INSTALL_CACHE_DIR: \$\{\{ runner\.temp \}\}\/bun-install-\$\{\{ github\.run_id \}\}-\$\{\{ github\.run_attempt \}\}-\$\{\{ github\.job \}\}/,
+    );
+    const retry = job.indexOf("for attempt in 1 2; do");
+    const repair = job.indexOf(
+      'node packages/scripts/rm-path-recursive.mjs "$BUN_INSTALL_CACHE_DIR"',
+    );
+    const failClosed = job.indexOf('exit "$install_status"');
     const contract = job.indexOf(
       "node packages/scripts/ci-bun-version-contract.mjs",
     );
+    expect(cache).toBeGreaterThan(-1);
+    expect(retry).toBeGreaterThan(cache);
     expect(install).toBeGreaterThan(-1);
-    expect(contract).toBeGreaterThan(install);
+    expect(install).toBeGreaterThan(retry);
+    expect(failClosed).toBeGreaterThan(install);
+    expect(repair).toBeGreaterThan(failClosed);
+    expect(contract).toBeGreaterThan(repair);
   });
 });
 
