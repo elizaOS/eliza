@@ -101,14 +101,14 @@ describe("VideoService deterministic behavior", () => {
       "Line 2 text.",
     ].join("\r\n");
 
-    const parsed = service["parseSRT"](srtContent);
+    const parsed = service.parseSRT(srtContent);
     expect(parsed).toBe("Hello world! This is a test. Line 2 text.");
   });
 
   it("handles empty or non-string SRT input", () => {
     const { service } = createServiceWithYtDlp([]);
-    expect(service["parseSRT"]("")).toBe("");
-    expect(service["parseSRT"](null as unknown as string)).toBe("");
+    expect(service.parseSRT("")).toBe("");
+    expect(service.parseSRT(null as unknown as string)).toBe("");
   });
 
   it("parses caption JSON and replaces all linebreaks globally", () => {
@@ -120,17 +120,17 @@ describe("VideoService deterministic behavior", () => {
       ],
     });
 
-    const parsed = service["parseCaption"](captionJson);
+    const parsed = service.parseCaption(captionJson);
     expect(parsed).toBe("First line second line Third line ");
   });
 
   it("handles invalid or malformed caption JSON gracefully", () => {
     const { service } = createServiceWithYtDlp([]);
-    expect(service["parseCaption"]("")).toBe("");
-    expect(service["parseCaption"]("not-json")).toBe(
+    expect(service.parseCaption("")).toBe("");
+    expect(service.parseCaption("not-json")).toBe(
       "Error: Unable to parse captions",
     );
-    expect(service["parseCaption"](JSON.stringify({ events: "invalid" }))).toBe(
+    expect(service.parseCaption(JSON.stringify({ events: "invalid" }))).toBe(
       "Error: Unable to parse captions",
     );
   });
