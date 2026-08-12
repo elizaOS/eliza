@@ -21,6 +21,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Navigate } from "react-router-dom";
 import { client } from "../../api";
 import { Button } from "../../components/ui/button";
+import { getBootConfig } from "../../config/boot-config-store";
 import {
   clearPersistedActiveServer,
   savePersistedActiveServer,
@@ -95,6 +96,7 @@ export default function JoinPage(): React.JSX.Element {
         agentName: DEFAULT_AGENT_NAME,
         bio: DEFAULT_AGENT_BIO,
         preferAgentId: readLastActiveCloudAgentId(),
+        preferSharedTier: getBootConfig().preferSharedCloudTier ?? undefined,
         onProgress: (_status, progressDetail) => {
           if (progressDetail) setDetail(progressDetail);
         },
