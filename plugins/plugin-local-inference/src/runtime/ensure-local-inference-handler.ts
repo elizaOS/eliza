@@ -24,6 +24,7 @@
 import {
 	type AgentRuntime,
 	applyBackgroundInferenceBudget,
+	fetchRemoteMedia,
 	type GenerateTextParams,
 	getInferencePriorityGate,
 	type IAgentRuntime,
@@ -1176,6 +1177,11 @@ export function float32ToBase64LE(pcm: Float32Array): string {
 	return buf.toString("base64");
 }
 
+/** Cap remote vision image downloads so a malicious URL cannot force unbounded memory. */
+const IMAGE_DESCRIPTION_MAX_BYTES = 20 * 1024 * 1024;
+/** Bound remote image fetch time for IMAGE_DESCRIPTION URL inputs. */
+const IMAGE_DESCRIPTION_FETCH_TIMEOUT_MS = 15_000;
+
 /** Resolve a vision request to base64 image bytes for the bionic host. */
 export async function imageRequestToBase64(image: {
 	kind: "dataUrl" | "url";
@@ -1186,14 +1192,32 @@ export async function imageRequestToBase64(image: {
 		const comma = image.dataUrl.indexOf(",");
 		return comma >= 0 ? image.dataUrl.slice(comma + 1) : image.dataUrl;
 	}
-	if (image.kind === "url" && image.url) {
-		const resp = await fetch(image.url);
-		if (!resp.ok) {
+	if (image.kind === "url") {
+		const url = typeof image.url === "string" ? image.url.trim() : "";
+		if (!url) {
 			throw new Error(
-				`[local-inference] IMAGE_DESCRIPTION failed to fetch ${image.url}: ${resp.status}`,
+				"[local-inference] IMAGE_DESCRIPTION requires a valid image URL",
 			);
 		}
-		return Buffer.from(await resp.arrayBuffer()).toString("base64");
+		try {
+			// Caller-supplied image URLs must go through the shared SSRF media
+			// guard; bare `fetch` would let vision describe internal hosts.
+			const media = await fetchRemoteMedia({
+				url,
+				maxBytes: IMAGE_DESCRIPTION_MAX_BYTES,
+				timeoutMs: IMAGE_DESCRIPTION_FETCH_TIMEOUT_MS,
+				maxRedirects: 5,
+			});
+			return media.buffer.toString("base64");
+		} catch (err) {
+			// error-policy:J2 context-adding rethrow — preserve guarded-fetch cause
+			throw new Error(
+				`[local-inference] IMAGE_DESCRIPTION failed to fetch ${url}: ${
+					err instanceof Error ? err.message : String(err)
+				}`,
+				{ cause: err },
+			);
+		}
 	}
 	throw new Error(
 		"[local-inference] IMAGE_DESCRIPTION could not resolve image bytes",

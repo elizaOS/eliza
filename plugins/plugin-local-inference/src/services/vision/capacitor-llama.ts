@@ -33,6 +33,7 @@
  */
 
 import { existsSync, promises as fs } from "node:fs";
+import { fetchRemoteMedia } from "@elizaos/core";
 import { resolveImageBytes } from "./hash";
 import type {
 	VisionDescribeBackend,
@@ -232,16 +233,16 @@ async function imageInputToDataUrl(
 				const mimeType = input.mimeType ?? guessMimeFromPath(filePath);
 				return `data:${mimeType};base64,${bytes.toString("base64")}`;
 			}
-			const res = await fetch(url);
-			if (!res.ok) {
-				throw new Error(
-					`[vision/capacitor-llama] failed to fetch image: ${res.status} ${res.statusText}`,
-				);
-			}
-			const buf = new Uint8Array(await res.arrayBuffer());
-			const mimeType =
-				input.mimeType ?? res.headers.get("content-type") ?? "image/png";
-			return `data:${mimeType};base64,${Buffer.from(buf).toString("base64")}`;
+			// Remote http(s) URLs are caller-controlled — route through the
+			// shared SSRF media guard rather than bare `fetch`.
+			const media = await fetchRemoteMedia({
+				url,
+				maxBytes: 20 * 1024 * 1024,
+				timeoutMs: 15_000,
+				maxRedirects: 5,
+			});
+			const mimeType = input.mimeType ?? media.contentType ?? "image/png";
+			return `data:${mimeType};base64,${media.buffer.toString("base64")}`;
 		}
 	}
 }
