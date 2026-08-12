@@ -24,7 +24,7 @@ import type {
   StewardMfaRequiredResult,
   StewardProviders,
 } from "@stwd/sdk";
-import { StewardAuth } from "@stwd/sdk";
+import { StewardApiError, StewardAuth } from "@stwd/sdk";
 import { AlertCircle } from "lucide-react";
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -681,20 +681,25 @@ export default function StewardLoginSection() {
     setError(null);
     try {
       const result = requireCompletedAuth(
-        await auth.signInWithPasskey(email.trim()),
+        await auth.signInWithPasskey(email.trim(), {
+          fallbackToRegistration: false,
+        }),
       );
       await handleSuccess(result.token, result.refreshToken);
     } catch (e: unknown) {
-      if (isUserVerificationError(e)) {
+      if (e instanceof StewardApiError && e.status === 404) {
+        await startPasskeySignup();
+      } else if (isUserVerificationError(e)) {
         setError(
-          getErrorMessage(
-            e,
-            "Passkey sign-in requires device verification (PIN or biometric). Your device may not support this — try Magic Link instead.",
-          ),
+          "Passkey sign-in requires device verification (PIN or biometric). Your device may not support this — try Magic Link instead.",
         );
         setLoading(null);
+      } else if (isUserCancelled(e)) {
+        setError("Passkey sign-in was cancelled. Try again when ready.");
+        setLoading(null);
       } else {
-        await startPasskeySignup();
+        setError(getErrorMessage(e, "Passkey sign-in failed. Try again."));
+        setLoading(null);
       }
     }
   }
@@ -1216,7 +1221,7 @@ export default function StewardLoginSection() {
             type="button"
             onClick={handlePasskey}
             disabled={isLoading}
-            className="flex min-h-touch flex-1 items-center justify-center gap-2 rounded-md border border-transparent bg-accent px-4 py-3 font-semibold text-accent-foreground transition-[background-color,border-color,transform] hover:bg-accent-hover active:scale-[0.99] disabled:pointer-events-none disabled:opacity-50"
+            className="flex min-h-touch flex-1 items-center justify-center gap-2 rounded-md border border-transparent bg-accent px-4 py-3 font-semibold text-accent-foreground transition-[background-color,border-color,transform] hover:bg-accent-hover hover:text-accent-foreground active:scale-[0.99] disabled:pointer-events-none disabled:opacity-50"
           >
             {loading === "passkey" ? <Spinner /> : <PasskeyIcon />}{" "}
             {t("cloud.login.button.passkey", { defaultValue: "Passkey" })}

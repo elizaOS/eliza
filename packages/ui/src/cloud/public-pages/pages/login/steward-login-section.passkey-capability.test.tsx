@@ -59,6 +59,14 @@ vi.mock("@elizaos/shared/steward-session-client", async (importOriginal) => {
 });
 
 vi.mock("@stwd/sdk", () => ({
+  StewardApiError: class StewardApiError extends Error {
+    status: number;
+    constructor(message: string, status: number) {
+      super(message);
+      this.name = "StewardApiError";
+      this.status = status;
+    }
+  },
   StewardAuth: class {
     getProviders = stewardAuthSpies.getProviders;
     getSession = stewardAuthSpies.getSession;
@@ -116,6 +124,7 @@ vi.mock("../../lib/login-return-to", () => ({
   storePendingOAuthReturnTo: () => undefined,
 }));
 
+import { StewardApiError } from "@stwd/sdk";
 import StewardLoginSection from "./steward-login-section";
 
 function renderSection() {
@@ -222,6 +231,7 @@ describe("StewardLoginSection passkey capability gating", () => {
     await waitFor(() =>
       expect(stewardAuthSpies.signInWithPasskey).toHaveBeenCalledWith(
         "person@example.com",
+        { fallbackToRegistration: false },
       ),
     );
     expect(emailLoginSpies.start).not.toHaveBeenCalled();
@@ -242,11 +252,11 @@ describe("StewardLoginSection passkey capability gating", () => {
     expect(stewardAuthSpies.signInWithPasskey).not.toHaveBeenCalled();
   });
 
-  it("falls back to email-OTP passkey signup when passkey sign-in fails, then completes registration", async () => {
+  it("falls back to email-OTP passkey signup only when the login probe reports no credential", async () => {
     capabilityRef.usable = true;
     capabilityRef.reason = "available";
     stewardAuthSpies.signInWithPasskey.mockRejectedValue(
-      new Error("no credential for this email"),
+      new StewardApiError("No passkey registered", 404),
     );
     stewardAuthSpies.sendEmailOtp.mockResolvedValue(undefined);
     stewardAuthSpies.verifyEmailOtp.mockResolvedValue({
@@ -263,12 +273,16 @@ describe("StewardLoginSection passkey capability gating", () => {
     fireEvent.change(input, { target: { value: "person@example.com" } });
     fireEvent.click(screen.getByRole("button", { name: /Passkey/i }));
 
-    // Sign-in failure routes into the OTP signup step, not an error dead-end.
+    // A typed 404 from the login-options probe alone routes into OTP signup.
     expect(await screen.findByText("Set up your passkey")).toBeTruthy();
     await waitFor(() =>
-      expect(stewardAuthSpies.sendEmailOtp).toHaveBeenCalledWith(
+      expect(stewardAuthSpies.signInWithPasskey).toHaveBeenCalledWith(
         "person@example.com",
+        { fallbackToRegistration: false },
       ),
+    );
+    expect(stewardAuthSpies.sendEmailOtp).toHaveBeenCalledWith(
+      "person@example.com",
     );
 
     const codeInput = screen.getByPlaceholderText("123456");
@@ -308,22 +322,76 @@ describe("StewardLoginSection passkey capability gating", () => {
     fireEvent.change(input, { target: { value: "person@example.com" } });
     fireEvent.click(screen.getByRole("button", { name: /Passkey/i }));
 
-    // Error is surfaced; no OTP email is sent, no signup flow is entered.
+    // Designed recovery guidance is reachable; raw server diagnostics stay hidden.
     await waitFor(() =>
       expect(stewardAuthSpies.signInWithPasskey).toHaveBeenCalledWith(
         "person@example.com",
+        { fallbackToRegistration: false },
       ),
     );
-    expect(await screen.findByText(/user could not be verified/i)).toBeTruthy();
+    expect(
+      await screen.findByText(
+        "Passkey sign-in requires device verification (PIN or biometric). Your device may not support this — try Magic Link instead.",
+      ),
+    ).toBeTruthy();
     expect(stewardAuthSpies.sendEmailOtp).not.toHaveBeenCalled();
     expect(screen.queryByText("Set up your passkey")).toBeNull();
   });
+
+  it.each([
+    {
+      label: "browser cancellation",
+      error: new StewardApiError(
+        "WebAuthn authentication cancelled or failed: NotAllowedError",
+        0,
+      ),
+      expectedMessage: "Passkey sign-in was cancelled. Try again when ready.",
+    },
+    {
+      label: "network failure",
+      error: new StewardApiError("Network request failed", 0),
+      expectedMessage: "Network request failed",
+    },
+    {
+      label: "server failure",
+      error: new StewardApiError("Request failed with status 500", 500),
+      expectedMessage: "Request failed with status 500",
+    },
+    {
+      label: "additional-authentication requirement",
+      error: new StewardApiError("MFA verification required", 401),
+      expectedMessage: "MFA verification required",
+    },
+  ])(
+    "surfaces $label without entering passkey signup",
+    async ({ error, expectedMessage }) => {
+      capabilityRef.usable = true;
+      capabilityRef.reason = "available";
+      stewardAuthSpies.signInWithPasskey.mockRejectedValue(error);
+
+      renderSection();
+
+      const input = await screen.findByPlaceholderText("you@example.com");
+      fireEvent.change(input, { target: { value: "person@example.com" } });
+      fireEvent.click(screen.getByRole("button", { name: /Passkey/i }));
+
+      await waitFor(() =>
+        expect(stewardAuthSpies.signInWithPasskey).toHaveBeenCalledWith(
+          "person@example.com",
+          { fallbackToRegistration: false },
+        ),
+      );
+      expect(stewardAuthSpies.sendEmailOtp).not.toHaveBeenCalled();
+      expect(screen.queryByText("Set up your passkey")).toBeNull();
+      expect(await screen.findByText(expectedMessage)).toBeTruthy();
+    },
+  );
 
   it("rejects a too-short OTP code without calling the API and reports a cancelled passkey setup", async () => {
     capabilityRef.usable = true;
     capabilityRef.reason = "available";
     stewardAuthSpies.signInWithPasskey.mockRejectedValue(
-      new Error("no credential"),
+      new StewardApiError("No passkey registered", 404),
     );
     stewardAuthSpies.sendEmailOtp.mockResolvedValue(undefined);
     stewardAuthSpies.verifyEmailOtp.mockResolvedValue({
