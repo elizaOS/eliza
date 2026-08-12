@@ -1,4 +1,7 @@
-// Exercises workflow engine unit behavior and credential handling.
+/**
+ * Exercises workflow execution diagnostics with deterministic unit inputs,
+ * including invalid timestamp handling and status presentation contracts.
+ */
 import { describe, expect, it } from 'bun:test';
 import type { WorkflowExecution } from '../../src/types/index';
 import {
@@ -7,18 +10,13 @@ import {
   summarizeWorkflowExecution,
 } from '../../src/utils/execution-diagnostics';
 
-/**
- * Workflow execution diagnostics drive the run UI. Duration formatting picks the
- * right unit, error extraction surfaces the first failure, and status → tone/
- * label mapping must match the engine states a run can be in.
- */
-
 const exec = (over: Partial<WorkflowExecution>): WorkflowExecution =>
   ({ status: 'success', data: { resultData: {} }, ...over }) as unknown as WorkflowExecution;
 
 describe('formatWorkflowExecutionDuration', () => {
   it('picks ms/s/min units; Unknown when missing, Invalid date when unparseable', () => {
     expect(formatWorkflowExecutionDuration(undefined)).toBe('Unknown');
+    expect(formatWorkflowExecutionDuration('', undefined)).toBe('Invalid date');
     expect(
       formatWorkflowExecutionDuration('2026-06-23T00:00:00.000Z', '2026-06-23T00:00:00.500Z')
     ).toBe('500 ms');
@@ -31,6 +29,7 @@ describe('formatWorkflowExecutionDuration', () => {
     expect(formatWorkflowExecutionDuration('not-a-date', '2026-06-23T00:00:00Z')).toBe(
       'Invalid date'
     );
+    expect(formatWorkflowExecutionDuration('2026-06-23T00:00:00Z', '')).toBe('Invalid date');
     expect(formatWorkflowExecutionDuration('2026-06-23T00:00:00Z', 'not-a-date')).toBe(
       'Invalid date'
     );

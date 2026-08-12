@@ -58,6 +58,8 @@ function previewMainData(data: unknown): string {
       const preview = JSON.stringify(json);
       return preview.length > 160 ? `${preview.slice(0, 157)}...` : preview;
     } catch {
+      // error-policy:J4 malformed or cyclic node output is rendered as an
+      // explicit preview-unavailable state while the rest of the run stays usable.
       return "Output could not be previewed";
     }
   }
@@ -117,9 +119,9 @@ export function formatWorkflowExecutionDuration(
   startedAt?: string,
   stoppedAt?: string | null,
 ): string {
-  if (!startedAt) return "Unknown";
+  if (startedAt === undefined) return "Unknown";
   const startMs = Date.parse(startedAt);
-  const stopMs = stoppedAt ? Date.parse(stoppedAt) : Date.now();
+  const stopMs = stoppedAt == null ? Date.now() : Date.parse(stoppedAt);
   if (!Number.isFinite(startMs) || !Number.isFinite(stopMs))
     return "Invalid date";
   const durationMs = Math.max(0, stopMs - startMs);

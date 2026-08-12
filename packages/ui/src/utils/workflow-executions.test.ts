@@ -120,9 +120,13 @@ describe("workflow execution helpers", () => {
 
   it("distinguishes missing start from invalid ISO dates", () => {
     expect(formatWorkflowExecutionDuration(undefined)).toBe("Unknown");
+    expect(formatWorkflowExecutionDuration("", undefined)).toBe("Invalid date");
     expect(
       formatWorkflowExecutionDuration("not-a-date", "2026-06-23T00:00:00Z"),
     ).toBe("Invalid date");
+    expect(formatWorkflowExecutionDuration("2026-06-23T00:00:00Z", "")).toBe(
+      "Invalid date",
+    );
     expect(
       formatWorkflowExecutionDuration("2026-06-23T00:00:00Z", "not-a-date"),
     ).toBe("Invalid date");

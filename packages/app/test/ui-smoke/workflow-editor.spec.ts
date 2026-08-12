@@ -1,4 +1,11 @@
+/**
+ * Exercises the workflow editor against deterministic HTTP fixtures, including
+ * persistence, graph rendering, and invalid execution timestamps at desktop and
+ * mobile sizes. The route fixtures are the system boundary under test here.
+ */
 // @eliza-live-audit allow-route-fixtures
+
+import { writeFile } from "node:fs/promises";
 import { expect, type Page, test } from "@playwright/test";
 import {
   installDefaultAppRoutes,
@@ -34,6 +41,29 @@ type WorkflowDefinition = WorkflowWriteRequest & {
   nodeCount: number;
 };
 
+const SAVED_WORKFLOW: WorkflowDefinition = {
+  ...workflowDraft(),
+  id: "workflow-matrix-digest",
+  active: false,
+  versionId: "version-1",
+  nodeCount: 2,
+};
+
+const INVALID_DATE_EXECUTION = {
+  id: "execution-invalid-stop",
+  workflowId: SAVED_WORKFLOW.id,
+  status: "success",
+  startedAt: "2026-06-23T00:00:00.000Z",
+  stoppedAt: "",
+  mode: "manual",
+  data: {
+    resultData: {
+      lastNodeExecuted: "Add Summary Param",
+      runData: {},
+    },
+  },
+};
+
 function workflowDraft(): WorkflowWriteRequest {
   return {
     name: "Matrix message digest",
@@ -64,11 +94,14 @@ function workflowDraft(): WorkflowWriteRequest {
   };
 }
 
-async function installWorkflowApi(page: Page): Promise<{
+async function installWorkflowApi(
+  page: Page,
+  initialWorkflow: WorkflowDefinition | null = null,
+): Promise<{
   getSavedWorkflow: () => WorkflowDefinition | null;
   getLastSaveBody: () => WorkflowWriteRequest | null;
 }> {
-  let savedWorkflow: WorkflowDefinition | null = null;
+  let savedWorkflow: WorkflowDefinition | null = initialWorkflow;
   let lastSaveBody: WorkflowWriteRequest | null = null;
 
   await page.route("**/api/lifeops/scheduled-tasks**", async (route) => {
@@ -140,7 +173,7 @@ async function installWorkflowApi(page: Page): Promise<{
       await route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify({ executions: [] }),
+        body: JSON.stringify({ executions: [INVALID_DATE_EXECUTION] }),
       });
       return;
     }
@@ -170,6 +203,8 @@ test.beforeEach(async ({ page }) => {
   await seedAppStorage(page);
   await installDefaultAppRoutes(page);
 });
+
+test.use({ video: { mode: "on", size: { width: 1440, height: 900 } } });
 
 test("workflow editor saves a connected graph and reloads the persisted definition", async ({
   page,
@@ -263,4 +298,80 @@ test("workflow editor saves a connected graph and reloads the persisted definiti
       timeout: 15_000,
     },
   );
+});
+
+test("workflow run renders an explicit invalid-date state on desktop and mobile", async ({
+  page,
+}, testInfo) => {
+  await installWorkflowApi(page, SAVED_WORKFLOW);
+  const consoleErrors: string[] = [];
+  const failedRequests: string[] = [];
+  page.on("console", (message) => {
+    if (message.type() === "error") consoleErrors.push(message.text());
+  });
+  page.on("requestfailed", (request) => {
+    if (new URL(request.url()).pathname.startsWith("/api/")) {
+      failedRequests.push(`${request.method()} ${request.url()}`);
+    }
+  });
+
+  await openAppPath(page, `/automations#automations/${SAVED_WORKFLOW.id}`);
+  await expect(page.getByTestId("workflow-editor-json")).toHaveValue(
+    /Matrix message digest/,
+    { timeout: 60_000 },
+  );
+  const desktopPath = testInfo.outputPath("workflow-invalid-date-desktop.jpg");
+  await page.screenshot({
+    path: desktopPath,
+    fullPage: true,
+    type: "jpeg",
+    quality: 88,
+  });
+  await testInfo.attach("workflow-invalid-date-desktop.jpg", {
+    path: desktopPath,
+    contentType: "image/jpeg",
+  });
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page
+    .getByText("Invalid date", { exact: false })
+    .first()
+    .scrollIntoViewIfNeeded();
+  const mobilePath = testInfo.outputPath("workflow-invalid-date-mobile.jpg");
+  await page.screenshot({
+    path: mobilePath,
+    fullPage: true,
+    type: "jpeg",
+    quality: 88,
+  });
+  await testInfo.attach("workflow-invalid-date-mobile.jpg", {
+    path: mobilePath,
+    contentType: "image/jpeg",
+  });
+  const mobileRunsPath = testInfo.outputPath(
+    "workflow-invalid-date-mobile-runs.jpg",
+  );
+  await page
+    .getByText("Runs", { exact: true })
+    .locator("../../..")
+    .screenshot({ path: mobileRunsPath, type: "jpeg", quality: 88 });
+  await testInfo.attach("workflow-invalid-date-mobile-runs.jpg", {
+    path: mobileRunsPath,
+    contentType: "image/jpeg",
+  });
+
+  const logsPath = testInfo.outputPath(
+    "workflow-invalid-date-frontend-logs.json",
+  );
+  await writeFile(
+    logsPath,
+    `${JSON.stringify({ consoleErrors, failedRequests }, null, 2)}\n`,
+  );
+  await testInfo.attach("workflow-invalid-date-frontend-logs.json", {
+    path: logsPath,
+    contentType: "application/json",
+  });
+  await expect(page.getByText("Invalid date", { exact: false })).toHaveCount(2);
+  expect(consoleErrors).toEqual([]);
+  expect(failedRequests).toEqual([]);
 });
