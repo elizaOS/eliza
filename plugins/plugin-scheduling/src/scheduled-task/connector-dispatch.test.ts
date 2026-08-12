@@ -7,11 +7,12 @@
  * everything else).
  */
 
-import type { IAgentRuntime } from "@elizaos/core";
+import { type IAgentRuntime, ServiceType } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 
 import {
   dispatchViaMessageConnector,
+  isConnectorDispatchIntent,
   resolveConnectorDispatchTarget,
   runtimeHasMessageConnector,
 } from "./connector-dispatch.js";
@@ -40,12 +41,27 @@ function makeRuntime(opts: {
   connectors?: string[];
   sendResult?: unknown;
   sendError?: Error;
-}): IAgentRuntime & { sends: Array<{ target: unknown; content: unknown }> } {
+  notification?: boolean;
+  notificationError?: Error;
+}): IAgentRuntime & {
+  sends: Array<{ target: unknown; content: unknown }>;
+  notifications: unknown[];
+} {
   const sends: Array<{ target: unknown; content: unknown }> = [];
+  const notifications: unknown[] = [];
   return {
     agentId: "00000000-0000-0000-0000-00000000beef",
     sends,
-    getService: () => null,
+    notifications,
+    getService: (serviceType: string) =>
+      opts.notification && serviceType === ServiceType.NOTIFICATION
+        ? {
+            async notify(input: unknown) {
+              notifications.push(input);
+              if (opts.notificationError) throw opts.notificationError;
+            },
+          }
+        : null,
     useModel: async () => "Rendered dispatch message.",
     reportError: () => undefined,
     getMessageConnectors: () =>
@@ -57,6 +73,7 @@ function makeRuntime(opts: {
     },
   } as unknown as IAgentRuntime & {
     sends: Array<{ target: unknown; content: unknown }>;
+    notifications: unknown[];
   };
 }
 
@@ -97,6 +114,20 @@ describe("resolveConnectorDispatchTarget — target grammar", () => {
     expect(
       resolveConnectorDispatchTarget(
         makeRecord({ output: { destination: "in_app_card" } }),
+      ),
+    ).toBeNull();
+    expect(
+      isConnectorDispatchIntent(
+        makeRecord({
+          output: { destination: "channel", target: "telegram:user:123" },
+        }),
+      ),
+    ).toBe(true);
+    expect(
+      resolveConnectorDispatchTarget(
+        makeRecord({
+          output: { destination: "channel", target: "telegram:user:123" },
+        }),
       ),
     ).toBeNull();
     expect(
@@ -224,6 +255,63 @@ describe("dispatchViaMessageConnector — disposition translation", () => {
     });
   });
 
+  it("does not fabricate success for a partially delivered provider send", async () => {
+    const reportError = vi.fn();
+    const runtime = makeRuntime({
+      connectors: ["discord"],
+      sendResult: {
+        kind: "partially_delivered",
+        receipt: {
+          providerMessageIds: ["mid-partial"],
+          acceptedAt: Date.now(),
+          persistence: { status: "persisted", memoryIds: ["m-partial"] },
+        },
+        memories: [],
+        code: "CHUNK_SEND_FAILED",
+        message: "Only the first chunk was accepted.",
+      },
+    });
+    (runtime as unknown as { reportError: unknown }).reportError = reportError;
+    await expect(
+      dispatchViaMessageConnector(runtime, makeRecord(), "body"),
+    ).resolves.toMatchObject({
+      ok: false,
+      reason: "transport_error",
+      acceptance: "unknown",
+    });
+    expect(reportError).toHaveBeenCalledWith(
+      "scheduling:scheduled-task:partial-delivery",
+      expect.any(Error),
+      expect.objectContaining({ providerMessageId: "mid-partial" }),
+    );
+  });
+
+  it("reuses a persisted dispatch key when a retry has a new firedAt", async () => {
+    const runtime = makeRuntime({
+      connectors: ["discord"],
+      sendResult: { kind: "duplicate", priorDelivery: "in_flight" },
+    });
+    const record = makeRecord({
+      metadata: { dispatchIdempotencyKey: "st_test_1:original-occurrence" },
+    });
+    await dispatchViaMessageConnector(runtime, record, "body");
+    await dispatchViaMessageConnector(
+      runtime,
+      { ...record, firedAtIso: "2026-08-12T09:05:00.000Z" },
+      "body",
+    );
+    expect(
+      runtime.sends.map(
+        ({ content }) =>
+          (content as { metadata: { scheduledDispatchKey: string } }).metadata
+            .scheduledDispatchKey,
+      ),
+    ).toEqual([
+      "st_test_1:original-occurrence",
+      "st_test_1:original-occurrence",
+    ]);
+  });
+
   it("maps an unknown/no-evidence outcome to a non-retryable-by-default transport error", async () => {
     const runtime = makeRuntime({
       connectors: ["discord"],
@@ -306,13 +394,20 @@ describe("default dispatcher routing — connector path before notification fall
       messageId: "mid-2",
       channelKey: "discord",
     });
+    expect(fired.metadata).toMatchObject({
+      dispatchPreparedMessage: "Rendered dispatch message.",
+      dispatchIdempotencyKey: expect.stringContaining(task.taskId),
+    });
     // The delivered text is the model rendering, not the raw instruction.
     const sent = runtime.sends[0] as { content: { text: string } };
     expect(sent.content.text).toBe("Rendered dispatch message.");
   });
 
   it("keeps the in_app notification fallback for non-connector dispatches", async () => {
-    const runtime = makeRuntime({ connectors: ["discord"] });
+    const runtime = makeRuntime({
+      connectors: ["discord"],
+      notification: true,
+    });
     const service = await ScheduledTaskRunnerService.start(runtime);
     const runner = service.getRunner({ agentId: runtime.agentId });
     const task = await runner.schedule({
@@ -329,9 +424,76 @@ describe("default dispatcher routing — connector path before notification fall
     const fired = await runner.fire(task.taskId);
     expect(fired.state.status).toBe("fired");
     expect(runtime.sends).toHaveLength(0);
+    expect(runtime.notifications).toHaveLength(1);
     expect(fired.metadata?.lastDispatchResult).toMatchObject({
       ok: true,
       messageId: expect.stringContaining("in_app:"),
     });
+  });
+
+  it("returns an honest failure when an explicit connector is unavailable", async () => {
+    const runtime = makeRuntime({
+      connectors: ["telegram"],
+      notification: true,
+    });
+    const service = await ScheduledTaskRunnerService.start(runtime);
+    const runner = service.getRunner({ agentId: runtime.agentId });
+    const task = await runner.schedule({
+      kind: "reminder",
+      promptInstructions: "Discord-only nudge.",
+      trigger: { kind: "manual" },
+      priority: "low",
+      respectsGlobalPause: false,
+      source: "plugin",
+      createdBy: runtime.agentId,
+      ownerVisible: true,
+      output: {
+        destination: "channel",
+        target: "discord:user:308276393450668032",
+      },
+    });
+    const fired = await runner.fire(task.taskId);
+    expect(fired.state.status).toBe("failed");
+    expect(fired.metadata?.lastDispatchResult).toMatchObject({
+      ok: false,
+      reason: "disconnected",
+      acceptance: "not_accepted",
+    });
+    expect(runtime.notifications).toHaveLength(0);
+  });
+
+  it("rejects a connector/target mismatch instead of misrouting or falling back", async () => {
+    const runtime = makeRuntime({
+      connectors: ["discord", "telegram"],
+      notification: true,
+    });
+    const service = await ScheduledTaskRunnerService.start(runtime);
+    const runner = service.getRunner({ agentId: runtime.agentId });
+    const task = await runner.schedule({
+      kind: "reminder",
+      promptInstructions: "Do not misroute this.",
+      trigger: { kind: "manual" },
+      priority: "low",
+      respectsGlobalPause: false,
+      source: "plugin",
+      createdBy: runtime.agentId,
+      ownerVisible: true,
+      output: {
+        destination: "channel",
+        target: "telegram:user:123",
+      },
+      escalation: { steps: [{ delayMinutes: 0, channelKey: "discord" }] },
+    });
+    const first = await runner.fire(task.taskId);
+    expect(first.state.status).toBe("scheduled");
+    const escalated = await runner.fire(task.taskId);
+    expect(escalated.state.status).toBe("failed");
+    expect(escalated.metadata?.lastDispatchResult).toMatchObject({
+      ok: false,
+      reason: "unknown_recipient",
+      acceptance: "not_accepted",
+    });
+    expect(runtime.sends).toHaveLength(1);
+    expect(runtime.notifications).toHaveLength(0);
   });
 });

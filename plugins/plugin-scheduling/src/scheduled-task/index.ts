@@ -22,6 +22,7 @@ export {
 export {
   type ConnectorDispatchTarget,
   dispatchViaMessageConnector,
+  isConnectorDispatchIntent,
   resolveConnectorDispatchTarget,
   runtimeHasMessageConnector,
 } from "./connector-dispatch.js";
