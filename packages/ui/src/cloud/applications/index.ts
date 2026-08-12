@@ -21,6 +21,10 @@ import {
   type CloudRouteDef,
   registerCloudRoute,
 } from "../shell/cloud-route-registry";
+import {
+  APPLICATIONS_DETAIL_ROUTE_PATH,
+  APPLICATIONS_LIST_ROUTE_PATH,
+} from "./register-moved-routes";
 
 export { default as ApplicationDetailPage } from "./ApplicationDetailPage";
 export { default as ApplicationsPage } from "./ApplicationsPage";
@@ -37,11 +41,15 @@ export {
   useApp,
   useApps,
 } from "./lib/apps";
+export {
+  APPLICATIONS_DETAIL_ROUTE_PATH,
+  APPLICATIONS_LEGACY_DETAIL_ROUTE_PATH,
+  APPLICATIONS_LEGACY_LIST_ROUTE_PATH,
+  APPLICATIONS_LIST_ROUTE_PATH,
+} from "./register-moved-routes";
 
 /** Stable surface label + URL path slugs for the Applications surface. */
 export const APPLICATIONS_SURFACE_LABEL = "Applications";
-export const APPLICATIONS_LIST_ROUTE_PATH = "dashboard/apps";
-export const APPLICATIONS_DETAIL_ROUTE_PATH = "dashboard/apps/:id";
 
 /** Lazy route elements (code-split) for the Applications surfaces. */
 const ApplicationsRouteLazy = lazy(() => import("./ApplicationsPage"));

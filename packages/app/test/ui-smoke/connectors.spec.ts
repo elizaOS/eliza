@@ -2,7 +2,7 @@
  * Playwright UI-smoke spec for the Connectors app flow using the real renderer
  * fixture.
  */
-import { expect, type Page, test } from "@playwright/test";
+import { expect, type Locator, type Page, test } from "@playwright/test";
 import {
   installDefaultAppRoutes,
   openAppPath,
@@ -222,6 +222,7 @@ async function openConnectors(page: Page): Promise<void> {
   await expect(
     page.getByRole("heading", { name: "Connectors", level: 1 }),
   ).toBeVisible();
+  await ensureBotChannelMode(page);
 }
 
 // The connectors settings surface is a list of rows that navigate to a
@@ -260,8 +261,30 @@ async function backToConnectorList(page: Page): Promise<void> {
   await expect(page.getByTestId("connector-detail")).toHaveCount(0);
 }
 
+async function ensureBotChannelMode(page: Page): Promise<void> {
+  const botLens = page.getByTestId("connector-channel-mode-bot");
+  await expect(botLens).toBeVisible({ timeout: 15_000 });
+  await botLens.click();
+}
+
+async function expectDiscordBotTokenSetup(
+  discordDetail: Locator,
+): Promise<void> {
+  // Bot Token is the local Discord setup that remains on a managed-cloud
+  // fixture (`hideOnManagedCloud` drops Desktop App). Prefer the mode test id
+  // when a selector is shown; otherwise the single applicable mode renders
+  // the token field directly.
+  const botModeButton = discordDetail.getByTestId("connector-mode-discord-bot");
+  const tokenField = discordDetail.locator("#field-discord-DISCORD_API_TOKEN");
+  await botModeButton.or(tokenField).first().waitFor({ timeout: 15_000 });
+  if (await botModeButton.isVisible()) {
+    await botModeButton.click();
+  }
+  await expect(tokenField).toBeVisible({ timeout: 15_000 });
+}
+
 test.beforeEach(async ({ page }) => {
-  await seedAppStorage(page);
+  await seedAppStorage(page, { "eliza:connectors:channelMode": "bot" });
   await installDefaultAppRoutes(page);
 });
 
@@ -280,18 +303,7 @@ test("connector settings list enabled connectors and expand setup panels", async
   await backToConnectorList(page);
   await openConnectorDetail(page, "discord");
   const discordDetail = page.getByTestId("connector-detail");
-  // In the default Delegate lens Discord has a single applicable mode
-  // (Desktop App), so the mode selector is omitted and the desktop-IPC setup
-  // panel renders directly; click the mode button only when a selector exists.
-  const desktopModeButton = discordDetail.getByRole("button", {
-    name: "Desktop App",
-  });
-  if (await desktopModeButton.isVisible()) {
-    await desktopModeButton.click();
-  }
-  await expect(
-    discordDetail.getByRole("button", { name: "Authorize Discord desktop" }),
-  ).toBeVisible();
+  await expectDiscordBotTokenSetup(discordDetail);
 });
 
 test("cloud-connected connector settings keep local setup controls available", async ({
@@ -302,16 +314,5 @@ test("cloud-connected connector settings keep local setup controls available", a
 
   await openConnectorDetail(page, "discord");
   const discordDetail = page.getByTestId("connector-detail");
-  // In the default Delegate lens Discord has a single applicable mode
-  // (Desktop App), so the mode selector is omitted and the desktop-IPC setup
-  // panel renders directly; click the mode button only when a selector exists.
-  const desktopModeButton = discordDetail.getByRole("button", {
-    name: "Desktop App",
-  });
-  if (await desktopModeButton.isVisible()) {
-    await desktopModeButton.click();
-  }
-  await expect(
-    discordDetail.getByRole("button", { name: "Authorize Discord desktop" }),
-  ).toBeVisible();
+  await expectDiscordBotTokenSetup(discordDetail);
 });
