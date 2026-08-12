@@ -17,7 +17,6 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import restartExitCodeDefinition from "../../shared/src/restart-exit-code.json" with {
   type: "json",
 };
-import { readSpawnCountForSupervisorTest } from "./lib/run-node-supervisor-spawn-count.mjs";
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const RUN_NODE = path.join(SCRIPT_DIR, "run-node.mjs");
@@ -83,24 +82,33 @@ function runSupervisor(restartUntil) {
     });
     child.on("error", reject);
     child.on("exit", (code) => {
+      // The fake child writes spawn-count.txt on every launch. If the
+      // supervisor aborted before spawning, the file does not exist; an
+      // unguarded read would throw inside this EventEmitter callback and leave
+      // the promise unsettled until vitest's timeout, hiding the real failure.
+      let spawnCount;
       try {
-        const spawnCount = readSpawnCountForSupervisorTest(counterFile, {
-          code,
-          stderr,
-        });
-        resolve({ code, spawnCount, stdout, stderr });
-      } catch (error) {
-        reject(error);
+        spawnCount = Number(fs.readFileSync(counterFile, "utf8").trim() || "0");
+      } catch {
+        reject(
+          new Error(
+            `supervisor exited with code ${code} without spawning the child ` +
+              `(spawn-count.txt was never written).\n` +
+              `--- supervisor stderr ---\n${stderr || "(empty)"}`,
+          ),
+        );
+        return;
       }
+      resolve({ code, spawnCount, stdout, stderr });
     });
   });
 }
 
 // Windows-ci only: when the supervisor aborts before spawning, the fake child
-// never writes `spawn-count.txt`. The exit handler now rejects immediately with
-// captured stderr via `readSpawnCountForSupervisorTest` instead of hanging on a
-// missing-file `ENOENT` inside the `exit` callback. Gated on Windows pending a
-// runner-specific root-cause for why the child never runs there.
+// never writes `spawn-count.txt`; the exit handler rejects immediately with
+// captured stderr instead of hanging on a missing-file ENOENT inside the
+// `exit` callback. Gated on Windows pending a runner-specific root-cause for
+// why the child never runs there.
 describe.skipIf(process.platform === "win32")(
   "run-node.mjs supervisor (real processes)",
   () => {
