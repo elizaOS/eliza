@@ -5,9 +5,9 @@
  * collectConfigEnvVars flattens config.env (nested vars + top-level) and
  * collectConnectorEnvVars walks the configured connectors, normalizing
  * string/number/boolean/array values and mirroring the Discord token aliases.
- * Both drop any key in the BLOCKED_ENV_KEYS secret denylist.
+ * Both drop any key that the config-write env denylist blocks (isBlockedEnvKey).
  */
-import { BLOCKED_ENV_KEYS } from "./blocked-env-keys.ts";
+import { isBlockedEnvKey } from "./blocked-env-keys.ts";
 import type { ElizaConfig } from "./types.ts";
 
 /**
@@ -119,7 +119,7 @@ export function collectConfigEnvVars(
       if (!value) {
         continue;
       }
-      if (BLOCKED_ENV_KEYS.has(key.toUpperCase())) {
+      if (isBlockedEnvKey(key)) {
         continue;
       }
       entries[key] = value;
@@ -133,7 +133,7 @@ export function collectConfigEnvVars(
     if (typeof value !== "string" || !value.trim()) {
       continue;
     }
-    if (BLOCKED_ENV_KEYS.has(key.toUpperCase())) {
+    if (isBlockedEnvKey(key)) {
       continue;
     }
     entries[key] = value;
@@ -217,7 +217,7 @@ export function collectConnectorEnvVars(
       if (!normalized) {
         continue;
       }
-      if (BLOCKED_ENV_KEYS.has(envKey.toUpperCase())) {
+      if (isBlockedEnvKey(envKey)) {
         continue;
       }
       entries[envKey] = normalized;
