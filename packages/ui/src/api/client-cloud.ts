@@ -56,6 +56,7 @@ import type {
   CloudCompatManagedDiscordStatus,
   CloudCompatManagedGithubStatus,
   CloudCredits,
+  CloudJobPollTarget,
   CloudLoginPersistResponse,
   CloudLoginPollResponse,
   CloudLoginResponse,
@@ -168,8 +169,28 @@ function requireConfirmedFreshCloudAgentCreate(
   }
 }
 
-/** Async-job envelope returned by the restart/suspend/resume lifecycle routes. */
-type LifecycleResult = { jobId: string; status: string; message: string };
+/** Async lifecycle envelope with the producer-selected job polling namespace. */
+type LifecycleResult = {
+  jobId: string;
+  status: string;
+  message: string;
+  pollTarget: CloudJobPollTarget | null;
+};
+
+function v1JobPollTarget(jobId: string): CloudJobPollTarget | null {
+  const id = jobId.trim();
+  return id ? { kind: "v1-job", jobId: id } : null;
+}
+
+function compatAgentPollTarget(agentId: string): CloudJobPollTarget {
+  return { kind: "compat-agent", agentId };
+}
+
+function cloudJobPollTargetId(
+  target: CloudJobPollTarget | null,
+): string | null {
+  return target?.kind === "v1-job" ? target.jobId : (target?.agentId ?? null);
+}
 
 function isCloudRouteNotFound(error: unknown): error is ApiError {
   return (
@@ -1020,7 +1041,9 @@ function toCloudCompatAgent(input: DirectCloudAgent): CloudCompatAgent {
 }
 
 function normalizeCloudCompatProvisionResponse(
-  input: CloudCompatAgentProvisionResponse,
+  input: Omit<CloudCompatAgentProvisionResponse, "pollTarget"> & {
+    pollTarget?: CloudJobPollTarget | null;
+  },
   agentId: string,
 ): CloudCompatAgentProvisionResponse {
   const root = recordOrNull(input) ?? {};
@@ -1136,6 +1159,7 @@ function normalizeCloudCompatProvisionResponse(
     ...input,
     success,
     ...(explicitError && !input.error ? { error: explicitError } : {}),
+    pollTarget: jobId ? v1JobPollTarget(jobId) : null,
     data: normalizedData,
     ...(polling ? { polling } : {}),
   };
@@ -1329,6 +1353,7 @@ declare module "./client-base" {
       created?: boolean;
       /** Backend path that fulfilled a fresh create (warm/shared/cold). */
       source?: string;
+      pollTarget: CloudJobPollTarget | null;
       data: {
         agentId: string;
         agentName: string;
@@ -1473,17 +1498,17 @@ declare module "./client-base" {
     }>;
     suspendCloudCompatAgent(agentId: string): Promise<{
       success: boolean;
-      data: { jobId: string; status: string; message: string };
+      data: LifecycleResult;
     }>;
     resumeCloudCompatAgent(agentId: string): Promise<{
       success: boolean;
       error?: string;
-      data: { jobId: string; status: string; message: string };
+      data: LifecycleResult;
     }>;
     wakeCloudCompatAgent(agentId: string): Promise<{
       success: boolean;
       error?: string;
-      data: { jobId: string; status: string; message: string };
+      data: LifecycleResult;
     }>;
     launchCloudCompatAgent(agentId: string): Promise<{
       success: boolean;
@@ -1500,6 +1525,11 @@ declare module "./client-base" {
       };
     }>;
     getCloudCompatJobStatus(jobId: string): Promise<{
+      success: boolean;
+      data: CloudCompatJob;
+    }>;
+    /** Poll an async result through the namespace declared by its mutation. */
+    getCloudJobStatus(target: CloudJobPollTarget): Promise<{
       success: boolean;
       data: CloudCompatJob;
     }>;
@@ -2133,6 +2163,7 @@ ElizaClient.prototype.createCloudCompatAgent = async function (
       success: direct.success,
       created: opts.forceCreate ? true : direct.created,
       ...(direct.source ? { source: direct.source } : {}),
+      pollTarget: v1JobPollTarget(data.jobId),
       data: {
         agentId: data.id,
         agentName: data.agentName,
@@ -2147,6 +2178,7 @@ ElizaClient.prototype.createCloudCompatAgent = async function (
   if (isDirectCloudAuthMissing(this)) {
     return {
       success: false,
+      pollTarget: null,
       data: {
         agentId: "",
         agentName: opts.agentName,
@@ -2198,6 +2230,7 @@ ElizaClient.prototype.createCloudCompatAgent = async function (
       success: response.success,
       created: opts.forceCreate ? true : response.created,
       ...(response.source ? { source: response.source } : {}),
+      pollTarget: v1JobPollTarget(data.jobId),
       data: {
         agentId: data.id,
         agentName: data.agentName,
@@ -2215,7 +2248,19 @@ ElizaClient.prototype.createCloudCompatAgent = async function (
     );
   }
 
-  return this.fetch(
+  const response = await this.fetch<{
+    success: boolean;
+    created?: boolean;
+    source?: string;
+    data: {
+      agentId: string;
+      agentName: string;
+      jobId: string;
+      status: string;
+      nodeId: string | null;
+      message: string;
+    };
+  }>(
     "/api/cloud/compat/agents",
     {
       method: "POST",
@@ -2223,6 +2268,12 @@ ElizaClient.prototype.createCloudCompatAgent = async function (
     },
     { skipResume: true },
   );
+  return {
+    ...response,
+    pollTarget: response.data.jobId
+      ? compatAgentPollTarget(response.data.agentId)
+      : null,
+  };
 };
 
 ElizaClient.prototype.ensureCloudCompatManagedDiscordAgent = async function (
@@ -2237,11 +2288,11 @@ ElizaClient.prototype.provisionCloudCompatAgent = async function (
   this: ElizaClient,
   agentId,
 ) {
-  const direct = await directCloudRequest<CloudCompatAgentProvisionResponse>(
-    this,
-    `/api/v1/eliza/agents/${encodeURIComponent(agentId)}/provision`,
-    { method: "POST" },
-  );
+  const direct = await directCloudRequest<
+    Omit<CloudCompatAgentProvisionResponse, "pollTarget">
+  >(this, `/api/v1/eliza/agents/${encodeURIComponent(agentId)}/provision`, {
+    method: "POST",
+  });
   if (direct) {
     return normalizeCloudCompatProvisionResponse(direct, agentId);
   }
@@ -2250,12 +2301,15 @@ ElizaClient.prototype.provisionCloudCompatAgent = async function (
     return {
       success: false,
       error: directCloudAuthMissingMessage(),
+      pollTarget: null,
       data: { agentId, status: "auth-missing" },
     };
   }
 
   if (isDirectCloudBase(this)) {
-    const response = await this.fetch<CloudCompatAgentProvisionResponse>(
+    const response = await this.fetch<
+      Omit<CloudCompatAgentProvisionResponse, "pollTarget">
+    >(
       `/api/v1/eliza/agents/${encodeURIComponent(agentId)}/provision`,
       { method: "POST" },
       { allowNonOk: true, skipResume: true },
@@ -2269,7 +2323,9 @@ ElizaClient.prototype.provisionCloudCompatAgent = async function (
   // cloud/apps/api/v1/eliza/agents/[agentId]/provision/route.ts). The
   // earlier proxy path `/api/cloud/v1/app/agents/{id}/provision` returned
   // 405 because cloud has no provision sub-route under `/v1/app/agents`.
-  const response = await this.fetch<CloudCompatAgentProvisionResponse>(
+  const response = await this.fetch<
+    Omit<CloudCompatAgentProvisionResponse, "pollTarget">
+  >(
     `/api/cloud/v1/eliza/agents/${encodeURIComponent(agentId)}/provision`,
     { method: "POST" },
     { allowNonOk: true, skipResume: true },
@@ -2717,13 +2773,16 @@ function normalizeCloudLifecycleResponse(
     error?: string;
   },
   fallbackVerb: string,
+  pollKind: "compat-agent" | "v1-job",
+  agentId: string,
 ): { success: boolean; error?: string; data: LifecycleResult } {
   const success = response.success === true;
+  const jobId = response.data?.jobId?.trim() ?? "";
   return {
     success,
     ...(response.error ? { error: response.error } : {}),
     data: {
-      jobId: response.data?.jobId ?? "",
+      jobId,
       status: response.data?.status ?? (success ? "queued" : "error"),
       message:
         response.data?.message ??
@@ -2731,6 +2790,12 @@ function normalizeCloudLifecycleResponse(
         (success
           ? `Agent ${fallbackVerb} enqueued`
           : (response.error ?? `Agent ${fallbackVerb} failed`)),
+      pollTarget:
+        jobId.length === 0
+          ? null
+          : pollKind === "v1-job"
+            ? v1JobPollTarget(jobId)
+            : compatAgentPollTarget(agentId),
     },
   };
 }
@@ -2760,7 +2825,9 @@ async function runCloudLifecycleAction(
     data?: { jobId?: string; status?: string; message?: string };
     error?: string;
   }>(client, directPath, { method: "POST" });
-  if (direct) return normalizeCloudLifecycleResponse(direct, action);
+  if (direct) {
+    return normalizeCloudLifecycleResponse(direct, action, "v1-job", agentId);
+  }
 
   if (isDirectCloudAuthMissing(client)) {
     return {
@@ -2770,6 +2837,7 @@ async function runCloudLifecycleAction(
         jobId: "",
         status: "auth-missing",
         message: directCloudAuthMissingMessage(),
+        pollTarget: null,
       },
     };
   }
@@ -2780,7 +2848,7 @@ async function runCloudLifecycleAction(
       data?: { jobId?: string; status?: string; message?: string };
       error?: string;
     }>(directPath, { method: "POST" }, { allowNonOk: true, skipResume: true });
-    return normalizeCloudLifecycleResponse(response, action);
+    return normalizeCloudLifecycleResponse(response, action, "v1-job", agentId);
   }
 
   // Wake has no legacy compat handler. It must retain the canonical Cloud v1
@@ -2791,10 +2859,16 @@ async function runCloudLifecycleAction(
     action === "wake"
       ? `/api/cloud/v1/eliza/agents/${encoded}/wake`
       : `/api/cloud/compat/agents/${encoded}/${action}`;
-  return client.fetch(
-    proxyPath,
-    { method: "POST" },
-    { allowNonOk: true, skipResume: true },
+  const response = await client.fetch<{
+    success: boolean;
+    data?: { jobId?: string; status?: string; message?: string };
+    error?: string;
+  }>(proxyPath, { method: "POST" }, { allowNonOk: true, skipResume: true });
+  return normalizeCloudLifecycleResponse(
+    response,
+    action,
+    action === "wake" ? "v1-job" : "compat-agent",
+    agentId,
   );
 }
 
@@ -2871,6 +2945,69 @@ ElizaClient.prototype.getCloudCompatAvailability = async function (
   this: ElizaClient,
 ) {
   return this.fetch("/api/cloud/compat/availability");
+};
+
+/**
+ * Poll an async lifecycle result through its producer-declared namespace.
+ * Compat operations synthesize progress from an agent row, while v1 operations
+ * return a persisted job id; neither identifier shape can distinguish them.
+ */
+ElizaClient.prototype.getCloudJobStatus = async function (
+  this: ElizaClient,
+  target,
+) {
+  if (target.kind === "compat-agent") {
+    return this.fetch(
+      `/api/cloud/compat/jobs/${encodeURIComponent(target.agentId)}`,
+    );
+  }
+
+  const jobId = target.jobId;
+  const direct = await directCloudRequest<{
+    success: boolean;
+    data?: DirectCloudJob;
+    error?: string;
+  }>(this, `/api/v1/jobs/${encodeURIComponent(jobId)}`);
+  if (direct) {
+    return {
+      success: direct.success,
+      data: toCloudCompatJob(direct.data ?? { id: jobId }),
+    };
+  }
+
+  if (isDirectCloudAuthMissing(this)) {
+    return {
+      success: false,
+      data: toCloudCompatJob({
+        id: jobId,
+        status: "failed",
+        error: directCloudAuthMissingMessage(),
+      }),
+      error: directCloudAuthMissingMessage(),
+    };
+  }
+
+  if (isDirectCloudBase(this)) {
+    const response = await this.fetch<{
+      success: boolean;
+      data?: DirectCloudJob;
+      error?: string;
+    }>(`/api/v1/jobs/${encodeURIComponent(jobId)}`);
+    return {
+      success: response.success,
+      data: toCloudCompatJob(response.data ?? { id: jobId }),
+    };
+  }
+
+  const response = await this.fetch<{
+    success: boolean;
+    data?: DirectCloudJob;
+    error?: string;
+  }>(`/api/cloud/v1/jobs/${encodeURIComponent(jobId)}`);
+  return {
+    success: response.success,
+    data: toCloudCompatJob(response.data ?? { id: jobId }),
+  };
 };
 
 ElizaClient.prototype.getCloudCompatJobStatus = async function (
@@ -3516,7 +3653,7 @@ interface CloudAgentJoinWaitResult {
 
 interface CloudAgentJoinWaitOptions {
   agentId: string;
-  initialJobId?: string | null;
+  initialPollTarget?: CloudJobPollTarget | null;
   initialStatus?: string;
   onProgress?: CloudAgentJoinProgressHandler;
   phase: CloudAgentJoinActivePhase;
@@ -3629,7 +3766,7 @@ async function waitOneCloudAgentJoinTick(
 
 /**
  * Drive one idempotent lifecycle operation to a running control-plane record.
- * A returned job id is authoritative and is polled before agent detail; the
+ * A returned poll target is authoritative and is read before agent detail; the
  * detail read remains the final source for post-start URLs and execution tier.
  */
 async function waitForCloudAgentJoin(
@@ -3646,8 +3783,9 @@ async function waitForCloudAgentJoin(
   );
   const startedAt = options.startedAt ?? Date.now();
   const deadline = startedAt + timeoutMs;
-  let jobId = options.initialJobId?.trim() || null;
-  let jobCompleted = jobId === null;
+  let pollTarget = options.initialPollTarget ?? null;
+  let jobId = cloudJobPollTargetId(pollTarget);
+  let jobCompleted = pollTarget === null;
   let source = options.source;
   let lastStatus = normalizeCloudAgentStatus(options.initialStatus);
 
@@ -3686,8 +3824,15 @@ async function waitForCloudAgentJoin(
                 `Eliza Cloud could not ${options.trigger} this agent.`,
             );
           }
-          jobId = response.data.jobId?.trim() || null;
-          jobCompleted = jobId === null;
+          const responseJobId = response.data.jobId?.trim() || null;
+          if (responseJobId && !response.data.pollTarget) {
+            throw new Error(
+              `Eliza Cloud returned a ${options.trigger} job without a polling route.`,
+            );
+          }
+          pollTarget = response.data.pollTarget;
+          jobId = responseJobId;
+          jobCompleted = pollTarget === null;
           lastStatus = normalizeCloudAgentStatus(response.data.status);
         } else {
           const response = await client.provisionCloudCompatAgent(
@@ -3700,8 +3845,15 @@ async function waitForCloudAgentJoin(
                 "Eliza Cloud could not provision this agent.",
             );
           }
-          jobId = response.data?.jobId?.trim() || null;
-          jobCompleted = jobId === null;
+          const responseJobId = response.data?.jobId?.trim() || null;
+          if (responseJobId && !response.pollTarget) {
+            throw new Error(
+              "Eliza Cloud returned a provision job without a polling route.",
+            );
+          }
+          pollTarget = response.pollTarget ?? null;
+          jobId = responseJobId;
+          jobCompleted = pollTarget === null;
           lastStatus = normalizeCloudAgentStatus(response.data?.status);
           source = normalizedJoinSource(response.source, source);
         }
@@ -3736,9 +3888,9 @@ async function waitForCloudAgentJoin(
     }
   }
 
-  while (jobId) {
+  while (pollTarget) {
     try {
-      const response = await client.getCloudCompatJobStatus(jobId);
+      const response = await client.getCloudJobStatus(pollTarget);
       if (!response.success) {
         throw new Error(
           response.data.error || "Eliza Cloud could not read the startup job.",
@@ -3791,7 +3943,7 @@ async function waitForCloudAgentJoin(
     await waitOneCloudAgentJoinTick(pollIntervalMs, deadline);
   }
 
-  if (jobId && !jobCompleted) {
+  if (pollTarget && !jobCompleted) {
     const elapsedMs = Math.max(0, Date.now() - startedAt);
     throw cloudAgentJoinFailure(
       `Your cloud agent startup job is still "${lastStatus}" after ${Math.round(
@@ -4313,6 +4465,19 @@ ElizaClient.prototype.selectOrProvisionCloudAgent = async function (
     );
   }
   const initialJobId = created.data.jobId?.trim() || null;
+  if (initialJobId && !created.pollTarget) {
+    throw cloudAgentJoinFailure(
+      "Eliza Cloud returned a startup job without a polling route.",
+      {
+        agentId,
+        jobId: initialJobId,
+        phase: "provisioning",
+        source,
+        startedAt: joinStartedAt,
+        status: createdStatus,
+      },
+    );
+  }
   let detailAgent: CloudCompatAgent;
   let finalProgress: CloudAgentJoinProgress;
   let finalJobId = initialJobId;
@@ -4325,7 +4490,7 @@ ElizaClient.prototype.selectOrProvisionCloudAgent = async function (
     // queued start into a false 404 or an ambiguous retry.
     const waiting = await waitForCloudAgentJoin(this, {
       agentId,
-      initialJobId,
+      initialPollTarget: created.pollTarget,
       initialStatus: created.data.status,
       ...(typeof options.wakePollIntervalMs === "number"
         ? { pollIntervalMs: options.wakePollIntervalMs }

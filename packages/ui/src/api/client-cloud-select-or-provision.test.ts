@@ -17,6 +17,7 @@ import type {
   CloudAgentJoinProgress,
   CloudCompatAgent,
   CloudCompatJob,
+  CloudJobPollTarget,
 } from "./client-types-cloud";
 import { isCloudAgentGoneError } from "./client-types-core";
 import { cloudAgentJoinProgressFromError } from "./cloud-agent-join-progress";
@@ -84,13 +85,14 @@ function fakeClient() {
   const getCloudCompatAgents = vi.fn();
   const createCloudCompatAgent = vi.fn();
   const getCloudCompatAgent = vi.fn();
-  const getCloudCompatJobStatus = vi.fn(async (jobId: string) => ({
+  const getCloudJobStatus = vi.fn(async (target: CloudJobPollTarget) => ({
     success: true,
-    data: makeJob(jobId),
+    data: makeJob(target.kind === "v1-job" ? target.jobId : target.agentId),
   }));
   const provisionCloudCompatAgent = vi.fn(async (agentId: string) => ({
     success: true,
     alreadyInProgress: true,
+    pollTarget: { kind: "v1-job" as const, jobId: `provision-${agentId}` },
     data: {
       agentId,
       jobId: `provision-${agentId}`,
@@ -103,6 +105,10 @@ function fakeClient() {
       jobId: `resume-${agentId}`,
       status: "queued",
       message: "Agent resume enqueued",
+      pollTarget: {
+        kind: "v1-job" as const,
+        jobId: `resume-${agentId}`,
+      },
     },
   }));
   const wakeCloudCompatAgent = vi.fn(async (agentId: string) => ({
@@ -111,6 +117,7 @@ function fakeClient() {
       jobId: `wake-${agentId}`,
       status: "queued",
       message: "Agent wake enqueued",
+      pollTarget: { kind: "v1-job" as const, jobId: `wake-${agentId}` },
     },
   }));
   const client = Object.create(ElizaClient.prototype) as ElizaClient;
@@ -118,7 +125,7 @@ function fakeClient() {
     getCloudCompatAgents,
     createCloudCompatAgent,
     getCloudCompatAgent,
-    getCloudCompatJobStatus,
+    getCloudJobStatus,
     provisionCloudCompatAgent,
     resumeCloudCompatAgent,
     wakeCloudCompatAgent,
@@ -128,7 +135,7 @@ function fakeClient() {
     getCloudCompatAgents,
     createCloudCompatAgent,
     getCloudCompatAgent,
-    getCloudCompatJobStatus,
+    getCloudJobStatus,
     provisionCloudCompatAgent,
     resumeCloudCompatAgent,
     wakeCloudCompatAgent,
@@ -212,7 +219,7 @@ describe("selectOrProvisionCloudAgent — never duplicate on a failed lookup", (
       createCloudCompatAgent,
       getCloudCompatAgent,
       getCloudCompatAgents,
-      getCloudCompatJobStatus,
+      getCloudJobStatus,
       provisionCloudCompatAgent,
       resumeCloudCompatAgent,
       wakeCloudCompatAgent,
@@ -234,7 +241,10 @@ describe("selectOrProvisionCloudAgent — never duplicate on a failed lookup", (
 
     expect(wakeCloudCompatAgent).toHaveBeenCalledOnce();
     expect(wakeCloudCompatAgent).toHaveBeenCalledWith("agent-existing");
-    expect(getCloudCompatJobStatus).toHaveBeenCalledWith("wake-agent-existing");
+    expect(getCloudJobStatus).toHaveBeenCalledWith({
+      kind: "v1-job",
+      jobId: "wake-agent-existing",
+    });
     expect(resumeCloudCompatAgent).not.toHaveBeenCalled();
     expect(provisionCloudCompatAgent).not.toHaveBeenCalled();
     expect(createCloudCompatAgent).not.toHaveBeenCalled();
@@ -257,7 +267,7 @@ describe("selectOrProvisionCloudAgent — never duplicate on a failed lookup", (
       createCloudCompatAgent,
       getCloudCompatAgent,
       getCloudCompatAgents,
-      getCloudCompatJobStatus,
+      getCloudJobStatus,
       provisionCloudCompatAgent,
       resumeCloudCompatAgent,
       wakeCloudCompatAgent,
@@ -269,6 +279,10 @@ describe("selectOrProvisionCloudAgent — never duplicate on a failed lookup", (
     provisionCloudCompatAgent.mockResolvedValue({
       success: true,
       alreadyInProgress: true,
+      pollTarget: {
+        kind: "v1-job",
+        jobId: "provision-agent-existing",
+      },
       data: {
         agentId: "agent-existing",
         jobId: "provision-agent-existing",
@@ -288,9 +302,10 @@ describe("selectOrProvisionCloudAgent — never duplicate on a failed lookup", (
 
     expect(provisionCloudCompatAgent).toHaveBeenCalledOnce();
     expect(provisionCloudCompatAgent).toHaveBeenCalledWith("agent-existing");
-    expect(getCloudCompatJobStatus).toHaveBeenCalledWith(
-      "provision-agent-existing",
-    );
+    expect(getCloudJobStatus).toHaveBeenCalledWith({
+      kind: "v1-job",
+      jobId: "provision-agent-existing",
+    });
     expect(resumeCloudCompatAgent).not.toHaveBeenCalled();
     expect(wakeCloudCompatAgent).not.toHaveBeenCalled();
     expect(createCloudCompatAgent).not.toHaveBeenCalled();
@@ -633,6 +648,7 @@ describe("selectOrProvisionCloudAgent — never duplicate on a failed lookup", (
     getCloudCompatAgents.mockResolvedValue({ success: true, data: [] });
     createCloudCompatAgent.mockResolvedValue({
       success: true,
+      pollTarget: { kind: "v1-job", jobId: "job-1" },
       data: {
         agentId: "agent-new",
         agentName: "Eliza",
@@ -689,6 +705,7 @@ describe("selectOrProvisionCloudAgent — never duplicate on a failed lookup", (
     createCloudCompatAgent.mockResolvedValue({
       success: true,
       created: true,
+      pollTarget: { kind: "v1-job", jobId: "job-1" },
       data: {
         agentId: "agent-replacement",
         agentName: "Eliza",
@@ -783,6 +800,7 @@ describe("selectOrProvisionCloudAgent — never duplicate on a failed lookup", (
     createCloudCompatAgent.mockResolvedValue({
       success: true,
       created: true,
+      pollTarget: { kind: "v1-job", jobId: "job-1" },
       data: {
         agentId: "agent-forced-new",
         agentName: "Demo Fresh",
@@ -882,12 +900,13 @@ describe("selectOrProvisionCloudAgent — never duplicate on a failed lookup", (
       getCloudCompatAgents,
       createCloudCompatAgent,
       getCloudCompatAgent,
-      getCloudCompatJobStatus,
+      getCloudJobStatus,
       resumeCloudCompatAgent,
     } = fakeClient();
     getCloudCompatAgents.mockResolvedValue({ success: true, data: [] });
     createCloudCompatAgent.mockResolvedValue({
       success: true,
+      pollTarget: { kind: "v1-job", jobId: "job-1" },
       data: {
         agentId: "agent-new",
         agentName: "Eliza",
@@ -928,7 +947,10 @@ describe("selectOrProvisionCloudAgent — never duplicate on a failed lookup", (
     expect(result.agentId).toBe("agent-new");
     expect(result.apiBase).toBe("https://agent-new.elizacloud.ai");
     expect(result.requiresAgentPairing).toBe(false);
-    expect(getCloudCompatJobStatus).toHaveBeenCalledWith("job-1");
+    expect(getCloudJobStatus).toHaveBeenCalledWith({
+      kind: "v1-job",
+      jobId: "job-1",
+    });
     expect(resumeCloudCompatAgent).not.toHaveBeenCalled();
   });
 
@@ -1008,7 +1030,7 @@ describe("selectOrProvisionCloudAgent — never duplicate on a failed lookup", (
       createCloudCompatAgent,
       getCloudCompatAgent,
       getCloudCompatAgents,
-      getCloudCompatJobStatus,
+      getCloudJobStatus,
       provisionCloudCompatAgent,
       resumeCloudCompatAgent,
     } = fakeClient();
@@ -1016,6 +1038,7 @@ describe("selectOrProvisionCloudAgent — never duplicate on a failed lookup", (
     createCloudCompatAgent.mockResolvedValue({
       success: true,
       created: true,
+      pollTarget: { kind: "v1-job", jobId: "job-cold" },
       data: {
         agentId: "agent-cold",
         agentName: "Eliza",
@@ -1025,7 +1048,7 @@ describe("selectOrProvisionCloudAgent — never duplicate on a failed lookup", (
         message: "",
       },
     });
-    getCloudCompatJobStatus
+    getCloudJobStatus
       .mockResolvedValueOnce({
         success: true,
         data: makeJob("job-cold", {
@@ -1065,11 +1088,14 @@ describe("selectOrProvisionCloudAgent — never duplicate on a failed lookup", (
       wakeTimeoutMs: 100,
     });
 
-    expect(getCloudCompatJobStatus).toHaveBeenCalledTimes(2);
-    expect(getCloudCompatJobStatus).toHaveBeenNthCalledWith(1, "job-cold");
-    expect(
-      getCloudCompatJobStatus.mock.invocationCallOrder.at(-1),
-    ).toBeLessThan(getCloudCompatAgent.mock.invocationCallOrder[0] ?? 0);
+    expect(getCloudJobStatus).toHaveBeenCalledTimes(2);
+    expect(getCloudJobStatus).toHaveBeenNthCalledWith(1, {
+      kind: "v1-job",
+      jobId: "job-cold",
+    });
+    expect(getCloudJobStatus.mock.invocationCallOrder.at(-1)).toBeLessThan(
+      getCloudCompatAgent.mock.invocationCallOrder[0] ?? 0,
+    );
     expect(provisionCloudCompatAgent).not.toHaveBeenCalled();
     expect(resumeCloudCompatAgent).not.toHaveBeenCalled();
     expect(result).toMatchObject({
@@ -1093,7 +1119,7 @@ describe("selectOrProvisionCloudAgent — never duplicate on a failed lookup", (
       createCloudCompatAgent,
       getCloudCompatAgent,
       getCloudCompatAgents,
-      getCloudCompatJobStatus,
+      getCloudJobStatus,
       provisionCloudCompatAgent,
       resumeCloudCompatAgent,
     } = fakeClient();
@@ -1125,7 +1151,7 @@ describe("selectOrProvisionCloudAgent — never duplicate on a failed lookup", (
 
     expect(result.source).toBe("warm_pool");
     expect(result.jobId).toBeNull();
-    expect(getCloudCompatJobStatus).not.toHaveBeenCalled();
+    expect(getCloudJobStatus).not.toHaveBeenCalled();
     expect(provisionCloudCompatAgent).not.toHaveBeenCalled();
     expect(resumeCloudCompatAgent).not.toHaveBeenCalled();
   });
@@ -1146,6 +1172,7 @@ describe("selectOrProvisionCloudAgent — never duplicate on a failed lookup", (
     provisionCloudCompatAgent.mockResolvedValue({
       success: true,
       alreadyInProgress: true,
+      pollTarget: { kind: "v1-job", jobId: "job-existing" },
       data: {
         agentId: "agent-existing",
         jobId: "job-existing",
@@ -1183,7 +1210,7 @@ describe("selectOrProvisionCloudAgent — never duplicate on a failed lookup", (
         createCloudCompatAgent,
         getCloudCompatAgent,
         getCloudCompatAgents,
-        getCloudCompatJobStatus,
+        getCloudJobStatus,
         resumeCloudCompatAgent,
       } = fakeClient();
       getCloudCompatAgents.mockResolvedValue({
@@ -1207,7 +1234,7 @@ describe("selectOrProvisionCloudAgent — never duplicate on a failed lookup", (
       expect(rejection).toBeInstanceOf(ElizaError);
       expect(rejection).toMatchObject({ code: "CLOUD_AGENT_JOIN_FAILED" });
       expect(resumeCloudCompatAgent).toHaveBeenCalledTimes(1);
-      expect(getCloudCompatJobStatus).not.toHaveBeenCalled();
+      expect(getCloudJobStatus).not.toHaveBeenCalled();
       expect(getCloudCompatAgent).not.toHaveBeenCalled();
       expect(createCloudCompatAgent).not.toHaveBeenCalled();
       expect(cloudAgentJoinProgressFromError(rejection)).toMatchObject({
@@ -1228,7 +1255,7 @@ describe("selectOrProvisionCloudAgent — never duplicate on a failed lookup", (
         createCloudCompatAgent,
         getCloudCompatAgent,
         getCloudCompatAgents,
-        getCloudCompatJobStatus,
+        getCloudJobStatus,
         resumeCloudCompatAgent,
       } = fakeClient();
       getCloudCompatAgents.mockResolvedValue({
@@ -1249,7 +1276,7 @@ describe("selectOrProvisionCloudAgent — never duplicate on a failed lookup", (
         .catch((error: unknown) => error);
 
       expect(rejection).toBeInstanceOf(Error);
-      expect(getCloudCompatJobStatus).toHaveBeenCalledTimes(1);
+      expect(getCloudJobStatus).toHaveBeenCalledTimes(1);
       expect(getCloudCompatAgent).toHaveBeenCalledTimes(1);
       expect(resumeCloudCompatAgent).toHaveBeenCalledTimes(1);
       expect(createCloudCompatAgent).not.toHaveBeenCalled();
@@ -1316,7 +1343,7 @@ describe("selectOrProvisionCloudAgent — never duplicate on a failed lookup", (
         client,
         createCloudCompatAgent,
         getCloudCompatAgents,
-        getCloudCompatJobStatus,
+        getCloudJobStatus,
         provisionCloudCompatAgent,
         resumeCloudCompatAgent,
         wakeCloudCompatAgent,
@@ -1347,7 +1374,7 @@ describe("selectOrProvisionCloudAgent — never duplicate on a failed lookup", (
       expect(provisionCloudCompatAgent).toHaveBeenCalledTimes(
         testCase.action === "provision" ? 1 : 0,
       );
-      expect(getCloudCompatJobStatus).not.toHaveBeenCalled();
+      expect(getCloudJobStatus).not.toHaveBeenCalled();
       expect(createCloudCompatAgent).not.toHaveBeenCalled();
     });
   }
@@ -1358,12 +1385,13 @@ describe("selectOrProvisionCloudAgent — never duplicate on a failed lookup", (
       createCloudCompatAgent,
       getCloudCompatAgent,
       getCloudCompatAgents,
-      getCloudCompatJobStatus,
+      getCloudJobStatus,
     } = fakeClient();
     getCloudCompatAgents.mockResolvedValue({ success: true, data: [] });
     createCloudCompatAgent.mockResolvedValue({
       success: true,
       created: true,
+      pollTarget: { kind: "v1-job", jobId: "job-timeout" },
       data: {
         agentId: "agent-timeout",
         agentName: "Eliza",
@@ -1373,7 +1401,7 @@ describe("selectOrProvisionCloudAgent — never duplicate on a failed lookup", (
         message: "",
       },
     });
-    getCloudCompatJobStatus.mockResolvedValue({
+    getCloudJobStatus.mockResolvedValue({
       success: true,
       data: makeJob("job-timeout", {
         status: "processing",
@@ -1418,12 +1446,13 @@ describe("selectOrProvisionCloudAgent — never duplicate on a failed lookup", (
       createCloudCompatAgent,
       getCloudCompatAgent,
       getCloudCompatAgents,
-      getCloudCompatJobStatus,
+      getCloudJobStatus,
     } = fakeClient();
     getCloudCompatAgents.mockResolvedValue({ success: true, data: [] });
     createCloudCompatAgent.mockResolvedValue({
       success: true,
       created: true,
+      pollTarget: { kind: "v1-job", jobId: "job-failed" },
       data: {
         agentId: "agent-failed-job",
         agentName: "Eliza",
@@ -1442,7 +1471,7 @@ describe("selectOrProvisionCloudAgent — never duplicate on a failed lookup", (
         webUiUrl: "https://agent-failed-job.elizacloud.ai",
       }),
     });
-    getCloudCompatJobStatus.mockResolvedValue({
+    getCloudJobStatus.mockResolvedValue({
       success: true,
       data: makeJob("job-failed", {
         status: "failed",
