@@ -70,6 +70,75 @@ interface ParseClampedIntegerOptions {
 
 const MCP_MARKETPLACE_QUERY_MAX_LENGTH = 200;
 const MCP_MARKETPLACE_SERVER_NAME_MAX_LENGTH = 200;
+const MCP_MARKETPLACE_DETAILS_PREFIX = "/api/mcp/marketplace/details/";
+const MCP_MARKETPLACE_DIRECT_DETAILS_PREFIX = "/api/mcp/marketplace/";
+
+interface RequestAbortTracker {
+  signal: AbortSignal;
+  isAborted: () => boolean;
+  markCompleted: () => void;
+  dispose: () => void;
+}
+
+type AbortEventSource = {
+  on?: (event: string, listener: () => void) => unknown;
+  off?: (event: string, listener: () => void) => unknown;
+};
+
+function createRequestAbortTracker(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  operation: string
+): RequestAbortTracker {
+  const controller = new AbortController();
+  const registrations: Array<{
+    source: AbortEventSource;
+    event: string;
+    listener: () => void;
+  }> = [];
+  let completed = false;
+
+  const abort = () => {
+    if (!completed && !controller.signal.aborted) {
+      controller.abort(new Error(`${operation} client disconnected`));
+    }
+  };
+  const register = (
+    source: AbortEventSource | null | undefined,
+    event: string,
+    listener: () => void
+  ) => {
+    if (typeof source?.on !== "function") return;
+    source.on(event, listener);
+    registrations.push({ source, event, listener });
+  };
+  const onResponseClose = () => {
+    if (!res.writableEnded) abort();
+  };
+
+  register(req, "aborted", abort);
+  register(req, "error", abort);
+  register(res, "close", onResponseClose);
+  register(res, "error", abort);
+  register(req.socket, "close", abort);
+  register(req.socket, "error", abort);
+
+  if (req.aborted || req.destroyed || res.destroyed) abort();
+
+  return {
+    signal: controller.signal,
+    isAborted: () => controller.signal.aborted,
+    markCompleted: () => {
+      completed = true;
+    },
+    dispose: () => {
+      for (const { source, event, listener } of registrations) {
+        source.off?.(event, listener);
+      }
+      registrations.length = 0;
+    },
+  };
+}
 
 function parseClampedInteger(
   value: string | null | undefined,
@@ -125,18 +194,32 @@ export async function handleMcpRoutes(ctx: McpRouteContext): Promise<boolean> {
     }
     const limitStr = url.searchParams.get("limit");
     const limit = limitStr ? parseClampedInteger(limitStr, { min: 1, max: 50, fallback: 30 }) : 30;
+    const abortTracker = createRequestAbortTracker(req, res, "MCP marketplace search");
     try {
-      const result = await searchMcpMarketplace(query || undefined, limit);
+      const result = await searchMcpMarketplace(query || undefined, limit, {
+        signal: abortTracker.signal,
+      });
+      if (abortTracker.isAborted()) return true;
+      abortTracker.markCompleted();
       json(res, { ok: true, results: result.results });
     } catch (err) {
+      if (abortTracker.isAborted()) return true;
+      abortTracker.markCompleted();
       error(res, `MCP marketplace search failed: ${err instanceof Error ? err.message : err}`, 502);
+    } finally {
+      abortTracker.dispose();
     }
     return true;
   }
 
-  if (method === "GET" && pathname.startsWith("/api/mcp/marketplace/details/")) {
+  const marketplaceDetailsPrefix = pathname.startsWith(MCP_MARKETPLACE_DETAILS_PREFIX)
+    ? MCP_MARKETPLACE_DETAILS_PREFIX
+    : pathname.startsWith(MCP_MARKETPLACE_DIRECT_DETAILS_PREFIX)
+      ? MCP_MARKETPLACE_DIRECT_DETAILS_PREFIX
+      : null;
+  if (method === "GET" && marketplaceDetailsPrefix) {
     const serverName = ctx.decodePathComponent(
-      pathname.slice("/api/mcp/marketplace/details/".length),
+      pathname.slice(marketplaceDetailsPrefix.length),
       res,
       "server name"
     );
@@ -156,19 +239,28 @@ export async function handleMcpRoutes(ctx: McpRouteContext): Promise<boolean> {
       error(res, "Server name is required", 400);
       return true;
     }
+    const abortTracker = createRequestAbortTracker(req, res, "MCP marketplace details");
     try {
-      const details = await getMcpServerDetails(normalizedServerName);
+      const details = await getMcpServerDetails(normalizedServerName, {
+        signal: abortTracker.signal,
+      });
+      if (abortTracker.isAborted()) return true;
+      abortTracker.markCompleted();
       if (!details) {
         error(res, `MCP server "${normalizedServerName}" not found`, 404);
         return true;
       }
       json(res, { ok: true, server: details });
     } catch (err) {
+      if (abortTracker.isAborted()) return true;
+      abortTracker.markCompleted();
       error(
         res,
         `Failed to fetch server details: ${err instanceof Error ? err.message : err}`,
         502
       );
+    } finally {
+      abortTracker.dispose();
     }
     return true;
   }
