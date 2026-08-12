@@ -26,6 +26,7 @@ import {
 import { homedir } from "node:os";
 import path from "node:path";
 import process from "node:process";
+import { fileURLToPath } from "node:url";
 
 const DEFAULT_SECONDS = 90;
 const DEFAULT_UI_PORT = 2138;
@@ -36,13 +37,21 @@ const FETCH_TIMEOUT_MS = 10000;
 const FINAL_PROBE_RETRIES = 3;
 const FINAL_PROBE_RETRY_DELAY_MS = 1000;
 
-function parseArgs(argv) {
+function parseArgs(argv, env = process.env) {
+  let [uiPortValue, uiPortLabel] =
+    env.ELIZA_UI_PORT !== undefined
+      ? [env.ELIZA_UI_PORT, "ELIZA_UI_PORT"]
+      : env.ELIZA_PORT !== undefined
+        ? [env.ELIZA_PORT, "ELIZA_PORT"]
+        : [DEFAULT_UI_PORT, "--ui-port"];
+  let [apiPortValue, apiPortLabel] =
+    env.ELIZA_API_PORT !== undefined
+      ? [env.ELIZA_API_PORT, "ELIZA_API_PORT"]
+      : [DEFAULT_API_PORT, "--api-port"];
   const options = {
     seconds: DEFAULT_SECONDS,
-    uiPort:
-      Number(process.env.ELIZA_UI_PORT || process.env.ELIZA_PORT) ||
-      DEFAULT_UI_PORT,
-    apiPort: Number(process.env.ELIZA_API_PORT) || DEFAULT_API_PORT,
+    uiPort: DEFAULT_UI_PORT,
+    apiPort: DEFAULT_API_PORT,
     initialProbeDelayMs: DEFAULT_INITIAL_PROBE_DELAY_MS,
     logDir: path.join(process.cwd(), "logs"),
   };
@@ -61,9 +70,11 @@ function parseArgs(argv) {
     } else if (key === "--duration-ms") {
       options.seconds = parsePositiveNumber(value, "--duration-ms") / 1000;
     } else if (key === "--ui-port") {
-      options.uiPort = parsePositiveInteger(value, "--ui-port");
+      uiPortValue = value;
+      uiPortLabel = "--ui-port";
     } else if (key === "--api-port") {
-      options.apiPort = parsePositiveInteger(value, "--api-port");
+      apiPortValue = value;
+      apiPortLabel = "--api-port";
     } else if (key === "--initial-probe-delay-ms") {
       options.initialProbeDelayMs = parsePositiveNumber(
         value,
@@ -76,6 +87,8 @@ function parseArgs(argv) {
     }
   }
 
+  options.uiPort = parsePort(uiPortValue, uiPortLabel);
+  options.apiPort = parsePort(apiPortValue, apiPortLabel);
   return options;
 }
 
@@ -146,14 +159,14 @@ function parsePositiveNumber(value, label) {
   return parsed;
 }
 
-function parsePositiveInteger(value, label) {
-  const parsed = Number.parseInt(value, 10);
-  if (
-    !Number.isFinite(parsed) ||
-    parsed <= 0 ||
-    String(parsed) !== String(value)
-  ) {
-    throw new Error(`${label} must be a positive integer`);
+function parsePort(value, label) {
+  const raw = String(value);
+  if (!/^[1-9]\d*$/.test(raw)) {
+    throw new Error(`${label} must be a decimal TCP port from 1 to 65535`);
+  }
+  const parsed = Number(raw);
+  if (!Number.isSafeInteger(parsed) || parsed > 65535) {
+    throw new Error(`${label} must be a decimal TCP port from 1 to 65535`);
   }
   return parsed;
 }
@@ -749,7 +762,14 @@ async function run() {
   console.log("[dev-health-check] PASS");
 }
 
-run().catch((error) => {
-  console.error(`[dev-health-check] ${error?.stack || error}`);
-  process.exit(1);
-});
+export { parseArgs, parsePort };
+
+if (
+  process.argv[1] &&
+  fileURLToPath(import.meta.url) === path.resolve(process.argv[1])
+) {
+  run().catch((error) => {
+    console.error(`[dev-health-check] ${error?.stack || error}`);
+    process.exit(1);
+  });
+}
