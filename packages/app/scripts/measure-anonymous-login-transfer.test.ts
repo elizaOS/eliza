@@ -5,6 +5,8 @@
  * browser.
  */
 import { spawnSync } from "node:child_process";
+import { mkdtempSync, rmSync, symlinkSync } from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
@@ -217,5 +219,40 @@ describe("measure-anonymous-login-transfer CLI", () => {
     expect(result.status).toBe(0);
     expect(result.stdout).toMatch(/--settle-ms/);
     expect(result.stdout).toMatch(/--timeout/);
+  });
+
+  it("enters the CLI through a symlink for invalid and valid arguments", () => {
+    const directory = mkdtempSync(path.join(tmpdir(), "login-transfer-link-"));
+    const linkedScript = path.join(directory, "measure-login.mjs");
+    try {
+      symlinkSync(SCRIPT_PATH, linkedScript);
+
+      const invalid = spawnSync(
+        process.execPath,
+        [linkedScript, "--settle-ms", "abc"],
+        { encoding: "utf8", timeout: 15_000 },
+      );
+      expect(invalid.status).toBe(1);
+      expect(invalid.stderr).toMatch(/--settle-ms/);
+
+      const valid = spawnSync(
+        process.execPath,
+        [
+          linkedScript,
+          "--settle-ms",
+          "0",
+          "--timeout",
+          "1",
+          "--url",
+          "http://127.0.0.1:9/login",
+        ],
+        { encoding: "utf8", timeout: 15_000 },
+      );
+      expect(valid.status).not.toBe(0);
+      expect(valid.stdout).toMatch(/Measuring cold \/login/);
+      expect(valid.stderr).not.toMatch(/--settle-ms|--timeout/);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
   });
 });
