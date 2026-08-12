@@ -492,6 +492,14 @@ export interface SnapshotResult {
  */
 export const SNAPSHOT_ENDPOINT_UNSUPPORTED = "Snapshot endpoint not supported by agent image";
 
+/**
+ * Transient pre-stop snapshot failure (agent returned 503 because its PGlite
+ * connection was closing while dumpDataDir() ran). Distinct from a hard 500 so
+ * a state-preserving restart can defer rather than permanently refuse to stop
+ * (2026-08-11 fleet incident: a 500 here wedged healthy agent restarts).
+ */
+export const SNAPSHOT_CAPTURE_TRANSIENT = "Snapshot capture temporarily unavailable";
+
 const MAX_BACKUPS = 10;
 const SHARED_RUNTIME_HISTORY_MAX_MESSAGES = 40;
 // Heartbeat probes the agent over the headscale tailnet. When idle the path
@@ -7264,7 +7272,10 @@ export class ElizaSandboxService {
 
   // Shutdown
 
-  async shutdown(agentId: string, orgId: string): Promise<{ success: boolean; error?: string }> {
+  async shutdown(
+    agentId: string,
+    orgId: string,
+  ): Promise<{ success: boolean; error?: string; retryable?: boolean }> {
     let snapshotAgentId: string | null = null;
     let captureUnsupported = false;
     let preShutdownSnapshot: {
@@ -7289,6 +7300,22 @@ export class ElizaSandboxService {
             "[agent-sandbox] Shutdown proceeding without capture: image has no snapshot endpoint",
             { agentId },
           );
+        } else if (message === SNAPSHOT_CAPTURE_TRANSIENT) {
+          // TRANSIENT (PGlite closing race): do NOT weaken the fail-closed
+          // guarantee — still refuse to stop — but mark the failure RETRYABLE so
+          // the restart/shutdown job re-attempts instead of treating a healthy
+          // agent as permanently un-capturable. On the next attempt PGlite is no
+          // longer mid-close and the capture succeeds (2026-08-11 fleet
+          // incident: opaque 500 here wedged healthy agents indefinitely).
+          logger.warn(
+            "[agent-sandbox] Shutdown deferred: pre-stop capture transiently unavailable, will retry",
+            { agentId },
+          );
+          return {
+            success: false,
+            retryable: true,
+            error: `Refusing to stop without a current backup: ${message}`,
+          };
         } else {
           // Fail CLOSED: stopping the container without a current capture
           // silently discards everything since the last backup. A shutdown
@@ -7894,6 +7921,7 @@ export class ElizaSandboxService {
     bridgeUrl?: string;
     healthUrl?: string;
     error?: string;
+    retryable?: boolean;
   }> {
     // Bail before shutdown()+provision() if the row is being deleted — restart
     // would otherwise flip a deletion_pending row to `stopped` and rebuild a
@@ -7920,6 +7948,10 @@ export class ElizaSandboxService {
         success: false,
         containerStopped: false,
         containerStarted: false,
+        // Propagate retryability: a transient pre-stop capture failure (PGlite
+        // closing race) must re-queue the restart, not permanently wedge a
+        // healthy agent (2026-08-11 fleet incident).
+        retryable: shutdownResult.retryable,
         error: shutdownResult.error ?? "Failed to stop sandbox before restart",
       };
     }
@@ -9956,6 +9988,14 @@ export class ElizaSandboxService {
       // cloud-agent template image does). Surface a recognizable sentinel so an
       // auto snapshot is skipped, not hard-failed-and-retried.
       throw new Error(SNAPSHOT_ENDPOINT_UNSUPPORTED);
+    }
+    if (res.status === 503) {
+      // TRANSIENT: the agent's PGlite was closing while dumpDataDir() ran (a
+      // teardown race, not corruption). Surface a recognizable sentinel so a
+      // state-preserving restart DEFERS instead of tripping the fail-closed
+      // "Refusing to stop without a current backup" gate on an opaque 500 and
+      // wedging a healthy agent (2026-08-11 fleet incident).
+      throw new Error(SNAPSHOT_CAPTURE_TRANSIENT);
     }
     if (!res.ok) {
       // #18228: the snapshot transfer failed somewhere between the agent's HTTP

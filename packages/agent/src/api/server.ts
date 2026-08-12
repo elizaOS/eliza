@@ -345,6 +345,7 @@ import {
   createAgentSnapshot,
   createLocalAgentBackup,
   listLocalAgentBackups,
+  PGLITE_SNAPSHOT_UNAVAILABLE_TRANSIENT,
   restoreAgentSnapshot,
   restoreLocalAgentBackup,
 } from "../services/agent-backup.ts";
@@ -1834,13 +1835,20 @@ async function handleRequest(
       const snapshot = await createAgentSnapshot(state.runtime, state.config);
       json(res, snapshot);
     } catch (err) {
-      logger.error(
-        {
-          err: err instanceof Error ? err.message : String(err),
-        },
-        "[agent-backup] Snapshot failed",
-      );
-      error(res, err instanceof Error ? err.message : "Snapshot failed", 500);
+      const message = err instanceof Error ? err.message : String(err);
+      if (message === PGLITE_SNAPSHOT_UNAVAILABLE_TRANSIENT) {
+        // Transient teardown race (PGlite closing) — 503 so the caller retries
+        // or defers instead of tripping the fail-closed restart gate on a 500
+        // (2026-08-11 fleet incident: 500 here wedged healthy agent restarts).
+        logger.warn(
+          { err: message },
+          "[agent-backup] Snapshot temporarily unavailable",
+        );
+        error(res, message, 503);
+        return;
+      }
+      logger.error({ err: message }, "[agent-backup] Snapshot failed");
+      error(res, message, 500);
     }
     return;
   }
