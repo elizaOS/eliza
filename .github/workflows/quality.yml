@@ -34,13 +34,19 @@ on:
 # github.run_id on push, so every develop push got a unique group and
 # nothing ever superseded. A 37-merge wave queued thousands of push runs
 # and starved the self-hosted fleet. Fall back to github.ref (all develop
-# pushes share a group) and cancel superseded runs on push too. PR behavior
-# is unchanged (pull_request.number still wins the key); merge_group and
-# schedule events are not in the cancel set, so the merge queue and nightly
-# runs always complete.
+# pushes share a group). PR runs cancel superseded work, but push runs must
+# NOT cancel in progress: during rapid merge waves the cancel meant no
+# quality run ever completed, so develop lint/format reds landed invisibly
+# until a release pin surfaced them (#18326, #18338, #18360). With a shared
+# ref group GitHub keeps at most one pending run (newer pushes supersede the
+# pending one), so the in-progress run always completes and the final tree of
+# every wave always gets a full quality run — bounded at one running plus one
+# pending, which cannot starve the fleet. merge_group and schedule events are
+# also not in the cancel set, so the merge queue and nightly runs always
+# complete.
 concurrency:
   group: quality-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'push' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   BUN_VERSION: "1.3.14"
