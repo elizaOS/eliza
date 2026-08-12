@@ -39,10 +39,9 @@ test.describe("app onboarding client ↔ real cloud-api", () => {
     const cloudApiBase = stack.urls.api;
     const authToken = seededUser.apiKey;
 
-    // Make the app client treat the mock cloud-api as the canonical direct-cloud
-    // base. `isDirectCloudBase` matches the client base against
-    // getBootConfig().cloudApiBase, and the compat fetch reads the cloud token
-    // from the global the controller normally sets at sign-in.
+    // Make the app client treat the mock cloud-api as a canonical direct-cloud
+    // base. Direct routing is host-allowlisted; the compat fetch reads the cloud
+    // token from the global the controller normally sets at sign-in.
     const prevBoot = getBootConfig();
     const prevToken = readStoredStewardToken();
     const cloudApiHost = new URL(cloudApiBase).hostname.toLowerCase();
@@ -52,11 +51,11 @@ test.describe("app onboarding client ↔ real cloud-api", () => {
     // planes. This local stack is intentionally equivalent, so register its
     // ephemeral host for the duration of the test instead of letting the real
     // client fall through to the agent-proxy `/api/cloud/compat/*` route.
-    DIRECT_ELIZA_CLOUD_API_BY_HOST.set(cloudApiHost, cloudApiBase);
-    setBootConfig({ ...prevBoot, cloudApiBase });
-    writeStoredStewardToken(authToken);
-
     try {
+      DIRECT_ELIZA_CLOUD_API_BY_HOST.set(cloudApiHost, cloudApiBase);
+      setBootConfig({ ...prevBoot, cloudApiBase });
+      writeStoredStewardToken(authToken);
+
       const client = new ElizaClient(cloudApiBase, authToken);
 
       // 1) New user with no agents → provision a fresh cloud agent.
