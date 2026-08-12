@@ -782,6 +782,10 @@ export class ElizaClient {
   // Fired exactly once per successful reconnect (never on the first connect)
   // so consumers can reconcile state that drifted during the network gap.
   private resyncListeners = new Set<() => void>();
+  // Fired synchronously on every setBaseUrl/repointBaseUrl, including the
+  // socket-less Cloud repoint path where ws-reconnected never fires — the
+  // only observable signal for "the active agent/server target changed".
+  private baseUrlChangeListeners = new Set<(baseUrl: string) => void>();
 
   // UI language propagation — set by AppContext so the backend can
   // localise responses when needed.
@@ -933,10 +937,28 @@ export class ElizaClient {
     this._userSetBase = normalized.length > 0;
     this._baseUrl = normalized;
     this.disconnectWs();
-    if (!persist) {
-      return;
+    if (persist) {
+      this.persistBaseUrl(normalized);
     }
-    this.persistBaseUrl(normalized);
+    this.notifyBaseUrlChange();
+  }
+
+  /** Subscribe to base-URL changes from {@link setBaseUrl} or {@link
+   * repointBaseUrl}. Fires synchronously with the resulting base URL after
+   * every change, including a Cloud repoint that never opens a socket and so
+   * never fires `ws-reconnected` — the only base-change signal that does not
+   * depend on the WebSocket transport. Returns an unsubscribe function. */
+  onBaseUrlChange(listener: (baseUrl: string) => void): () => void {
+    this.baseUrlChangeListeners.add(listener);
+    return () => {
+      this.baseUrlChangeListeners.delete(listener);
+    };
+  }
+
+  private notifyBaseUrlChange(): void {
+    for (const listener of this.baseUrlChangeListeners) {
+      listener(this._baseUrl);
+    }
   }
 
   /**
@@ -994,6 +1016,9 @@ export class ElizaClient {
    * REST/SSE keyed off the new `baseUrl`. The socket teardown + reconnect path
    * (steps 1 and 3, where `onopen` fires `ws-reconnected`) is exercised only for
    * non-cloud hosts — it is forward-cover for when a base actually uses `/ws`.
+   * {@link onBaseUrlChange} fires unconditionally regardless of transport, so
+   * a per-authority cache (e.g. the notification store, #18391) can observe
+   * this swap even when no socket is involved.
    * The "invisible" wins (no `disconnected` flap, no `StartupScreen`, no draft
    * clear) hold independent of whether a socket is involved.
    */
@@ -1031,6 +1056,7 @@ export class ElizaClient {
     this._userSetBase = normalized.length > 0;
     this._baseUrl = normalized;
     this.persistBaseUrl(normalized);
+    this.notifyBaseUrlChange();
 
     // Reconnect immediately against the new base. connectWs() derives the WS
     // host from this.baseUrl, so the socket comes up on the dedicated host; its
