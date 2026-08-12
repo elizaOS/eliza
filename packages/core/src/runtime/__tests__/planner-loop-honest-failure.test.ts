@@ -738,13 +738,16 @@ describe("deterministic post-synthesis relay", () => {
 
 		expect(useModel).toHaveBeenCalledTimes(2);
 		const synthesisParams = useModel.mock.calls[1]?.[1] as MockedMessages;
-		const synthesisToolMessages = JSON.stringify(
-			(synthesisParams.messages ?? []).filter(
-				(message) => message.role === "tool",
-			),
+		const synthesisPayload = (synthesisParams.messages ?? [])
+			.filter((message) => message.role === "user")
+			.map((message) => String(message.content))
+			.join("\n");
+		expect(synthesisPayload).toContain("tool_authority");
+		expect(synthesisPayload).toContain("machine_status: success");
+		expect(synthesisPayload).toContain(
+			"canonical_user_facing_text: unavailable",
 		);
-		expect(synthesisToolMessages).toContain('"value":"ok"');
-		expect(synthesisToolMessages).not.toMatch(
+		expect(synthesisPayload).not.toMatch(
 			/stdout|private\/ops|AWS_SECRET_ACCESS_KEY|Authorization|Bearer|3f2504e0/iu,
 		);
 		expect(useModel.mock.results[1]?.type).toBe("return");
@@ -874,17 +877,9 @@ describe("deterministic post-synthesis relay", () => {
 					event.segment.label === "compaction",
 			),
 		).toBe(true);
-		expect(useModel).toHaveBeenCalledTimes(4);
-		const synthesisPayload = JSON.stringify(useModel.mock.calls[3]?.[1]);
-		expect(synthesisPayload).toContain("Summarize the release inventory.");
-		expect(synthesisPayload).toContain("reply_reference: release-thread-17");
-		expect(synthesisPayload).toContain("archived_tool_authority");
-		expect(synthesisPayload).toContain(
-			"Release inventory contains twelve plugins.",
-		);
-		expect(synthesisPayload).not.toMatch(
-			/private\/ops|RAW_DIAGNOSTIC_MARKER|AWS_SECRET_ACCESS_KEY|data-never-show|Authorization|Bearer|error-never-show|3f2504e0/iu,
-		);
+		// Compaction does not revoke a canonical receipt or make another model
+		// boundary necessary: the archived userFacingText is selected directly.
+		expect(useModel).toHaveBeenCalledTimes(3);
 		expect(result.finalMessage).toBe(
 			"Release inventory contains twelve plugins.",
 		);

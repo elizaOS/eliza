@@ -25,7 +25,14 @@ import type {
 	ActionResult,
 	ProviderDataRecord,
 } from "../types/components";
-import type { ContextEvent, ContextObjectTool } from "../types/context-object";
+import type {
+	ContextEvent,
+	ContextInstructionEvent,
+	ContextMessageEvent,
+	ContextObjectTool,
+	ContextProviderEvent,
+	ContextSegmentEvent,
+} from "../types/context-object";
 import { hasAppliedUserFacingEffectProof } from "../types/effects";
 import {
 	type ChatMessage,
@@ -229,7 +236,52 @@ export async function runPlannerLoop(
 ): Promise<PlannerLoopResult> {
 	const result = await runPlannerLoopIterations(params);
 	const honest = await ensureFailedTurnFinalMessage(params, result);
-	return ensureToolTurnFinalMessage(params, honest);
+	const guaranteed = await ensureToolTurnFinalMessage(params, honest);
+	return writeTerminalResult(guaranteed);
+}
+
+/**
+ * Chronological semantic history for the turn. Compaction may move every live
+ * step into `archivedSteps`, but it must never reset authority, limits, or
+ * canonical-result selection. Rendering and compaction mutation deliberately
+ * continue to use `trajectory.steps` as their bounded live window.
+ */
+function allSteps(trajectory: PlannerTrajectory): PlannerStep[] {
+	return [...trajectory.archivedSteps, ...trajectory.steps];
+}
+
+/**
+ * The sole terminal persistence boundary. Failure authority and user-output
+ * safety are resolved before the exact returned bytes are appended, so storage
+ * can never retain a raw planner/evaluator candidate that differs from the
+ * reply. STOP/IGNORE and action-owned suppression are explicit silence and do
+ * not manufacture a terminal message.
+ */
+function writeTerminalResult(result: PlannerLoopResult): PlannerLoopResult {
+	if (result.status !== "finished" || result.endedWithDeliberateSilence) {
+		return result;
+	}
+	const failureReport =
+		result.evaluator?.success === false
+			? userSafeFailureReport(result.finalMessage, result.trajectory)
+			: undefined;
+	const finalMessage = userSafeFinalMessage(
+		terminalMessageWithFailureAuthority(
+			result.trajectory,
+			result.finalMessage,
+			failureReport,
+		),
+		result.trajectory,
+	);
+	const iteration =
+		Math.max(0, ...allSteps(result.trajectory).map((step) => step.iteration)) +
+		1;
+	result.trajectory.steps.push({
+		iteration,
+		terminalMessage: finalMessage,
+		terminalOnly: true,
+	});
+	return { ...result, finalMessage };
 }
 
 async function runPlannerLoopIterations(
@@ -497,12 +549,11 @@ async function runPlannerLoopIterations(
 								) ?? userSafeWidgetReplyCandidate(plannerOutput.messageToUser))
 							: undefined;
 					if (widgetCandidate && widgetCandidate === lastMissWidgetText) {
-						return finishWithCapturedRefusal({
+						return {
+							status: "finished",
 							trajectory,
-							iteration,
-							thought: plannerOutput.thought,
-							refusal: widgetCandidate,
-						});
+							finalMessage: widgetCandidate,
+						};
 					}
 					lastMissWidgetText = widgetCandidate;
 					const captured = refusalCandidate ?? widgetCandidate;
@@ -520,12 +571,11 @@ async function runPlannerLoopIterations(
 						rejectedAnswerCandidate,
 					);
 					if (repeatedAnswer !== undefined) {
-						return finishWithCapturedRefusal({
+						return {
+							status: "finished",
 							trajectory,
-							iteration,
-							thought: plannerOutput.thought,
-							refusal: repeatedAnswer,
-						});
+							finalMessage: repeatedAnswer,
+						};
 					}
 					if (rejectedAnswerCandidate) {
 						lastRejectedTerminalAnswerText = rejectedAnswerCandidate;
@@ -539,12 +589,11 @@ async function runPlannerLoopIterations(
 						requiredToolMisses > effectiveMaxRequiredToolMisses &&
 						capturedFinishText
 					) {
-						return finishWithCapturedRefusal({
+						return {
+							status: "finished",
 							trajectory,
-							iteration,
-							thought: plannerOutput.thought,
-							refusal: capturedFinishText,
-						});
+							finalMessage: capturedFinishText,
+						};
 					}
 					assertTrajectoryLimit({
 						kind: "required_tool_misses",
@@ -571,7 +620,7 @@ async function runPlannerLoopIterations(
 					iteration,
 					message: plannerOutput.messageToUser,
 				});
-				if (trajectory.steps.some((step) => step.toolCall)) {
+				if (allSteps(trajectory).some((step) => step.toolCall)) {
 					// Coding mode: the model emitted a final text summary AFTER
 					// executing build tools — it's signalling completion. Finish with
 					// that message instead of running the chat completion-evaluator,
@@ -723,10 +772,7 @@ async function runPlannerLoopIterations(
 				return {
 					status: "finished",
 					trajectory,
-					finalMessage: userSafeFinalMessage(
-						plannerOutput.messageToUser,
-						trajectory,
-					),
+					finalMessage: plannerOutput.messageToUser,
 				};
 			}
 
@@ -748,12 +794,11 @@ async function runPlannerLoopIterations(
 							? userSafeWidgetReplyCandidate(terminalText)
 							: undefined;
 					if (widgetCandidate && widgetCandidate === lastMissWidgetText) {
-						return finishWithCapturedRefusal({
+						return {
+							status: "finished",
 							trajectory,
-							iteration,
-							thought: plannerOutput.thought,
-							refusal: widgetCandidate,
-						});
+							finalMessage: widgetCandidate,
+						};
 					}
 					lastMissWidgetText = widgetCandidate;
 					const captured = refusalCandidate ?? widgetCandidate;
@@ -774,12 +819,11 @@ async function runPlannerLoopIterations(
 						rejectedAnswerCandidate,
 					);
 					if (repeatedAnswer !== undefined) {
-						return finishWithCapturedRefusal({
+						return {
+							status: "finished",
 							trajectory,
-							iteration,
-							thought: plannerOutput.thought,
-							refusal: repeatedAnswer,
-						});
+							finalMessage: repeatedAnswer,
+						};
 					}
 					if (rejectedAnswerCandidate) {
 						lastRejectedTerminalAnswerText = rejectedAnswerCandidate;
@@ -793,12 +837,11 @@ async function runPlannerLoopIterations(
 						requiredToolMisses > effectiveMaxRequiredToolMisses &&
 						capturedFinishText
 					) {
-						return finishWithCapturedRefusal({
+						return {
+							status: "finished",
 							trajectory,
-							iteration,
-							thought: plannerOutput.thought,
-							refusal: capturedFinishText,
-						});
+							finalMessage: capturedFinishText,
+						};
 					}
 					assertTrajectoryLimit({
 						kind: "required_tool_misses",
@@ -1066,7 +1109,7 @@ async function runPlannerLoopIterations(
 			plannerCompleted: lastPlannerExplicitCompleted,
 		});
 
-		const latestResult = trajectory.steps[trajectory.steps.length - 1]?.result;
+		const latestResult = allSteps(trajectory).at(-1)?.result;
 		if (latestResult?.continueChain === false) {
 			// `suppressPlannerReply` from terminal actions blanks finalMessage so a
 			// same-turn hallucinated `messageToUser` cannot leak past the transient
@@ -2790,7 +2833,7 @@ async function executeQueuedToolCall(params: {
 		kind: "tool_calls",
 		max: params.config.maxToolCalls,
 		observed:
-			params.trajectory.steps.filter((step) => step.toolCall).length + 1,
+			allSteps(params.trajectory).filter((step) => step.toolCall).length + 1,
 	});
 
 	const streamingContext = getStreamingContext();
@@ -3330,7 +3373,7 @@ function hasExposedNonTerminalTool(
 }
 
 function hasExecutedNonTerminalTool(trajectory: PlannerTrajectory): boolean {
-	return trajectory.steps.some(
+	return allSteps(trajectory).some(
 		(step) => step.toolCall && !isTerminalToolCall(step.toolCall),
 	);
 }
@@ -3339,7 +3382,7 @@ function latestUnresolvedFailedNonTerminalToolStep(
 	trajectory: PlannerTrajectory,
 ): PlannerStep | undefined {
 	const unresolvedByOperation = new Map<string, PlannerStep>();
-	for (const step of [...trajectory.archivedSteps, ...trajectory.steps]) {
+	for (const step of allSteps(trajectory)) {
 		if (
 			step.toolCall === undefined ||
 			isTerminalToolCall(step.toolCall) ||
@@ -3418,7 +3461,7 @@ function latestActionablePendingInteractionAfter(
 	trajectory: PlannerTrajectory,
 	unresolvedFailure: PlannerStep,
 ): string | undefined {
-	const steps = [...trajectory.archivedSteps, ...trajectory.steps];
+	const steps = allSteps(trajectory);
 	const failureIndex = steps.lastIndexOf(unresolvedFailure);
 	if (failureIndex < 0) return undefined;
 
@@ -3568,7 +3611,7 @@ export function partitionRedundantSucceededCalls(
 } {
 	const succeeded = new Set<string>();
 	const failedNonRetryable = new Set<string>();
-	for (const step of [...trajectory.archivedSteps, ...trajectory.steps]) {
+	for (const step of allSteps(trajectory)) {
 		if (!step.toolCall || !step.result) continue;
 		const identity = toolCallIdentity(step.toolCall);
 		if (step.result.success === true) {
@@ -3606,7 +3649,8 @@ async function finishWithForcedSynthesis(params: {
 	instruction?: string;
 }): Promise<PlannerLoopResult> {
 	const { loop, config, trajectory, iteration } = params;
-	trajectory.context = appendContextEvent(trajectory.context, {
+	let synthesisContext = forcedSynthesisBaseContext(loop.context);
+	synthesisContext = appendContextEvent(synthesisContext, {
 		id: `force-synthesis:${iteration}`,
 		type: "instruction",
 		source: "planner-loop",
@@ -3618,30 +3662,7 @@ async function finishWithForcedSynthesis(params: {
 				"user now from the tool results already in this trajectory; if they do not " +
 				"contain the answer, say plainly what you found and what was missing.",
 	});
-	const canonicalSteps = (steps: PlannerStep[]): PlannerStep[] =>
-		steps.map((step) => {
-			if (!step.result) return step;
-			const userFacingText = getNonEmptyString(step.result.userFacingText);
-			return {
-				...step,
-				result: {
-					success: step.result.success,
-					...(userFacingText ? { text: userFacingText, userFacingText } : {}),
-				},
-			};
-		});
-	const canonicalArchivedSteps = canonicalSteps(trajectory.archivedSteps);
-	const synthesisContextEvents = trajectory.context.events.filter(
-		(event) =>
-			!(
-				event.type === "segment" &&
-				event.source === "planner-loop" &&
-				"segment" in event &&
-				isPlainObject(event.segment) &&
-				event.segment.label === "compaction"
-			),
-	);
-	const archivedAuthority = canonicalArchivedSteps
+	const authority = allSteps(trajectory)
 		.filter(
 			(
 				step,
@@ -3653,44 +3674,38 @@ async function finishWithForcedSynthesis(params: {
 		.map((step) => {
 			const userFacingText = getNonEmptyString(step.result.userFacingText);
 			return [
-				`iteration: ${step.iteration}`,
-				`tool: ${step.toolCall.name}`,
-				`status: ${step.result.success === true ? "success" : "failed"}`,
+				`tool_name: ${JSON.stringify(step.toolCall.name)}`,
+				`machine_status: ${step.result.success === true ? "success" : "failed"}`,
 				userFacingText
-					? `user_facing_text: ${JSON.stringify(compactText(userFacingText, 360))}`
-					: "user_facing_text: unavailable",
+					? `canonical_user_facing_text: ${JSON.stringify(userFacingText)}`
+					: "canonical_user_facing_text: unavailable",
 			].join("\n");
 		});
-	const synthesisContext =
-		archivedAuthority.length > 0
-			? appendContextEvent(
-					{ ...trajectory.context, events: synthesisContextEvents },
-					{
-						id: `force-synthesis-archived-authority:${iteration}`,
-						type: "segment",
-						source: "planner-loop",
-						createdAt: Date.now(),
-						segment: {
-							id: `force-synthesis-archived-authority:${iteration}`,
-							label: "archived_tool_authority",
-							content: archivedAuthority.join("\n\n"),
-							stable: false,
-						},
-					},
-				)
-			: { ...trajectory.context, events: synthesisContextEvents };
+	if (authority.length > 0) {
+		synthesisContext = appendContextEvent(synthesisContext, {
+			id: `force-synthesis-authority:${iteration}`,
+			type: "segment",
+			source: "planner-loop",
+			createdAt: Date.now(),
+			segment: {
+				id: `force-synthesis-authority:${iteration}`,
+				label: "tool_authority",
+				content: authority.join("\n\n"),
+				stable: false,
+			},
+		});
+	}
 	// Forced synthesis is a user-output boundary, not another reasoning turn.
-	// Give it only action-owned user-facing projections and machine-owned status.
-	// Compaction summaries stay in the authoritative context for replay, but their
-	// diagnostic result payloads are replaced here with the same canonical
-	// projection used by the live tool messages.
+	// Its fresh context carries the original request, providers, reply reference,
+	// and instructions plus the projection above. No planner thought, call id,
+	// params, diagnostic result, compaction summary, terminal candidate, or
+	// evaluator output reaches this model boundary.
 	const synthesisTrajectory: PlannerTrajectory = {
-		...trajectory,
 		context: synthesisContext,
-		steps: canonicalSteps(trajectory.steps),
-		archivedSteps: canonicalArchivedSteps,
-		plannedQueue: [...trajectory.plannedQueue],
-		evaluatorOutputs: [...trajectory.evaluatorOutputs],
+		steps: [],
+		archivedSteps: [],
+		plannedQueue: [],
+		evaluatorOutputs: [],
 	};
 	const synthOutput = await callPlanner({
 		runtime: loop.runtime,
@@ -3718,19 +3733,10 @@ async function finishWithForcedSynthesis(params: {
 				canonicalSuccess,
 			)
 		: TOOL_RESULT_UNAVAILABLE_MESSAGE;
-	// Machine failure state owns every terminal projection. Compute the exact
-	// user-safe message before appending it so the persisted trajectory and the
-	// returned reply cannot disagree about whether an operation succeeded.
 	const finalMessage = userSafeFinalMessage(
 		terminalMessageWithFailureAuthority(trajectory, synthesisCandidate),
 		trajectory,
 	);
-	trajectory.steps.push({
-		iteration,
-		thought: synthOutput.thought,
-		terminalMessage: finalMessage,
-		terminalOnly: true,
-	});
 	return {
 		status: "finished",
 		trajectory,
@@ -3738,30 +3744,125 @@ async function finishWithForcedSynthesis(params: {
 	};
 }
 
-function finishWithCapturedRefusal(params: {
-	trajectory: PlannerTrajectory;
-	iteration: number;
-	thought: string | undefined;
-	refusal: string;
-}): {
-	status: "finished";
-	trajectory: PlannerTrajectory;
-	finalMessage: string | undefined;
-} {
-	params.trajectory.steps.push({
-		iteration: params.iteration,
-		thought: params.thought,
-		terminalMessage: params.refusal,
-		terminalOnly: true,
+function forcedSynthesisBaseContext(context: ContextObject): ContextObject {
+	const original = normalizePlannerContext(context);
+	const events = original.events.flatMap((event): ContextEvent[] => {
+		if (isSynthesisMessageEvent(event)) {
+			return [
+				{
+					id: event.id,
+					type: "message",
+					source: event.source,
+					createdAt: event.createdAt,
+					message: {
+						id: event.message.id,
+						role: event.message.role,
+						content: event.message.content,
+						name: event.message.name,
+					},
+				},
+			];
+		}
+		if (isSynthesisProviderEvent(event)) {
+			return [
+				{
+					id: event.id,
+					type: "provider",
+					source: event.source,
+					createdAt: event.createdAt,
+					name: event.name,
+					text: event.text,
+					cacheStable: event.cacheStable,
+				},
+			];
+		}
+		if (isSynthesisInstructionEvent(event)) {
+			return [
+				{
+					id: event.id,
+					type: "instruction",
+					source: event.source,
+					createdAt: event.createdAt,
+					content: event.content,
+					role: event.role,
+					stable: event.stable,
+				},
+			];
+		}
+		if (isSynthesisReplyReferenceEvent(event)) {
+			return [
+				{
+					id: event.id,
+					type: "segment",
+					source: event.source,
+					createdAt: event.createdAt,
+					segment: {
+						id: event.segment.id,
+						label: "reply_reference",
+						content: event.segment.content,
+						stable: event.segment.stable,
+					},
+				},
+			];
+		}
+		return [];
 	});
 	return {
-		status: "finished",
-		trajectory: params.trajectory,
-		finalMessage: userSafeFinalMessage(
-			terminalMessageWithFailureAuthority(params.trajectory, params.refusal),
-			params.trajectory,
-		),
+		id: original.id,
+		version: original.version,
+		createdAt: original.createdAt,
+		staticPrefix: original.staticPrefix
+			? {
+					systemPrompt: original.staticPrefix.systemPrompt,
+					characterPrompt: original.staticPrefix.characterPrompt,
+					staticProviders: original.staticPrefix.staticProviders,
+				}
+			: undefined,
+		trajectoryPrefix: original.trajectoryPrefix
+			? {
+					selectedContexts: original.trajectoryPrefix.selectedContexts,
+					contextDefinitions: original.trajectoryPrefix.contextDefinitions,
+					contextProviders: original.trajectoryPrefix.contextProviders,
+				}
+			: undefined,
+		events,
 	};
+}
+
+function isSynthesisMessageEvent(
+	event: ContextEvent,
+): event is ContextMessageEvent {
+	return (
+		event.type === "message" &&
+		"message" in event &&
+		isPlainObject(event.message) &&
+		typeof event.message.role === "string" &&
+		"content" in event.message
+	);
+}
+
+function isSynthesisProviderEvent(
+	event: ContextEvent,
+): event is ContextProviderEvent {
+	return event.type === "provider" && "name" in event;
+}
+
+function isSynthesisInstructionEvent(
+	event: ContextEvent,
+): event is ContextInstructionEvent {
+	return event.type === "instruction" && "content" in event;
+}
+
+function isSynthesisReplyReferenceEvent(
+	event: ContextEvent,
+): event is ContextSegmentEvent {
+	return (
+		event.type === "segment" &&
+		"segment" in event &&
+		isPlainObject(event.segment) &&
+		event.segment.label === "reply_reference" &&
+		typeof event.segment.content === "string"
+	);
 }
 
 function terminalMessageFromToolCalls(
@@ -3796,7 +3897,7 @@ function terminalMessageFromToolCalls(
 function latestToolResultText(
 	trajectory: PlannerTrajectory,
 ): string | undefined {
-	for (const step of [...trajectory.steps].reverse()) {
+	for (const step of allSteps(trajectory).reverse()) {
 		const text = step.result?.userFacingText?.trim();
 		if (text) {
 			return text;
@@ -3849,7 +3950,7 @@ function isEchoOfPlannerFacingToolText(
 	// to `archivedSteps`, and archived planner-facing text is exactly as
 	// unlicensed for the user channel as live text. A later planner pass can
 	// still echo an archived result, so the structural gate covers both stores.
-	for (const step of [...trajectory.archivedSteps, ...trajectory.steps]) {
+	for (const step of allSteps(trajectory)) {
 		if (!step.toolCall || isTerminalToolCall(step.toolCall)) continue;
 		const result = step.result;
 		if (!result) continue;
@@ -3897,7 +3998,7 @@ function hasSuccessfulNonTerminalToolStep(
 	// Archived steps count: on long turns compaction can move EVERY completed
 	// success out of `steps`, and a reply guarantee that only checks the live
 	// window would silently skip exactly the turns with the most tool work.
-	return [...trajectory.archivedSteps, ...trajectory.steps].some(
+	return allSteps(trajectory).some(
 		(step) =>
 			step.toolCall !== undefined &&
 			!isTerminalToolCall(step.toolCall) &&
@@ -3930,7 +4031,7 @@ async function ensureToolTurnFinalMessage(
 		message === HANDLED_STEP_FALLBACK_MESSAGE;
 	if (!unusable) return result;
 	if (!hasSuccessfulNonTerminalToolStep(result.trajectory)) return result;
-	const iteration = result.trajectory.steps.length + 1;
+	const iteration = allSteps(result.trajectory).length + 1;
 	try {
 		const synthesized = await finishWithForcedSynthesis({
 			loop: params,
@@ -3967,12 +4068,6 @@ async function ensureToolTurnFinalMessage(
 	const relay =
 		deterministicSuccessfulToolRelay(result.trajectory) ??
 		TOOL_RESULT_UNAVAILABLE_MESSAGE;
-	result.trajectory.steps.push({
-		iteration: iteration + 1,
-		thought: "deterministic relay of canonical successful tool output",
-		terminalMessage: relay,
-		terminalOnly: true,
-	});
 	return { ...result, finalMessage: relay };
 }
 
@@ -4003,7 +4098,7 @@ async function ensureFailedTurnFinalMessage(
 		latestFailedToolStep(result.trajectory);
 	if (!failedStep?.toolCall) return result;
 	const cause = failedStepCauseForPrompt(failedStep);
-	const iteration = result.trajectory.steps.length + 1;
+	const iteration = allSteps(result.trajectory).length + 1;
 	const instruction = [
 		`The ${failedStep.toolCall.name} step failed and the turn is ending without a usable result.`,
 		cause ? `Recorded failure cause: ${cause}` : null,
@@ -4081,10 +4176,7 @@ export const TOOL_RESULT_UNAVAILABLE_MESSAGE =
 function deterministicSuccessfulToolRelay(
 	trajectory: PlannerTrajectory,
 ): string | undefined {
-	for (const step of [
-		...trajectory.archivedSteps,
-		...trajectory.steps,
-	].reverse()) {
+	for (const step of allSteps(trajectory).reverse()) {
 		if (!step.toolCall || step.result?.success !== true) continue;
 		if (isTerminalToolCall(step.toolCall)) continue;
 		const candidate = getNonEmptyString(step.result.userFacingText);
@@ -4101,7 +4193,7 @@ function deterministicEvaluatorProtocolFailureRelay(
 	const unresolvedFailure =
 		latestUnresolvedFailedNonTerminalToolStep(trajectory);
 	if (unresolvedFailure) {
-		const latestExecutedTool = [...trajectory.steps]
+		const latestExecutedTool = allSteps(trajectory)
 			.reverse()
 			.find(
 				(step) =>
@@ -4157,9 +4249,10 @@ function deterministicMissingInputPlannerClarificationRelay(
 function missingInputPlannerTerminalCandidates(
 	trajectory: PlannerTrajectory,
 ): Array<string | undefined> {
+	const steps = allSteps(trajectory);
 	let latestToolResultIndex = -1;
-	for (let index = trajectory.steps.length - 1; index >= 0; index--) {
-		const step = trajectory.steps[index];
+	for (let index = steps.length - 1; index >= 0; index--) {
+		const step = steps[index];
 		if (!step?.toolCall || isTerminalToolCall(step.toolCall) || !step.result) {
 			continue;
 		}
@@ -4169,7 +4262,7 @@ function missingInputPlannerTerminalCandidates(
 	}
 	if (latestToolResultIndex < 0) return [];
 
-	return trajectory.steps
+	return steps
 		.slice(latestToolResultIndex + 1)
 		.filter((step) => step.terminalOnly === true)
 		.map((step) => step.terminalMessage)
@@ -4179,7 +4272,7 @@ function missingInputPlannerTerminalCandidates(
 function deterministicRequiresConfirmationRelay(
 	trajectory: PlannerTrajectory,
 ): string | undefined {
-	for (const step of [...trajectory.steps].reverse()) {
+	for (const step of allSteps(trajectory).reverse()) {
 		if (!step.toolCall || isTerminalToolCall(step.toolCall)) continue;
 		const result = step.result;
 		if (!result) continue;
@@ -4196,7 +4289,7 @@ function deterministicRequiresConfirmationRelay(
 function deterministicNoopClarificationRelay(
 	trajectory: PlannerTrajectory,
 ): string | undefined {
-	for (const step of [...trajectory.steps].reverse()) {
+	for (const step of allSteps(trajectory).reverse()) {
 		if (!step.toolCall || step.result?.success !== true) continue;
 		if (isTerminalToolCall(step.toolCall)) continue;
 		if (!hasNoopMarker(step.result)) continue;
@@ -4279,7 +4372,7 @@ function plannerResultValues(
 export function singleVerifiedUserFacingToolResultText(
 	trajectory: PlannerTrajectory,
 ): string | undefined {
-	for (const step of [...trajectory.steps].reverse()) {
+	for (const step of allSteps(trajectory).reverse()) {
 		const result = step.result;
 		if (
 			result?.verifiedUserFacing === true &&
@@ -4294,7 +4387,7 @@ export function singleVerifiedUserFacingToolResultText(
 		}
 	}
 
-	const successfulToolSteps = trajectory.steps.filter(
+	const successfulToolSteps = allSteps(trajectory).filter(
 		(step) => step.toolCall && step.result?.success === true,
 	);
 	if (successfulToolSteps.length !== 1) return undefined;
@@ -4324,7 +4417,7 @@ function codingActionSummary(
 	trajectory: PlannerTrajectory,
 ): string | undefined {
 	const parts: string[] = [];
-	for (const step of trajectory.steps) {
+	for (const step of allSteps(trajectory)) {
 		if (step.result?.success === false) continue;
 		const summary = step.result?.summary?.trim();
 		if (summary) {
@@ -4489,7 +4582,7 @@ function combinedVerifiedToolTextAndProse(
 	modelText: string | undefined,
 ): string | undefined {
 	if (!verifiedToolText || !modelText) return undefined;
-	const hasVerifiedConfirmationPreview = trajectory.steps.some(
+	const hasVerifiedConfirmationPreview = allSteps(trajectory).some(
 		(step) =>
 			step.result?.verifiedUserFacing === true &&
 			hasRequiresConfirmationMarker(step.result),
@@ -4518,7 +4611,7 @@ function combinedVerifiedToolTextAndProse(
 }
 
 function latestToolResultIsGenericNoop(trajectory: PlannerTrajectory): boolean {
-	for (const step of [...trajectory.steps].reverse()) {
+	for (const step of allSteps(trajectory).reverse()) {
 		if (!step.toolCall || isTerminalToolCall(step.toolCall) || !step.result) {
 			continue;
 		}
@@ -4532,7 +4625,7 @@ function latestToolResultIsGenericNoop(trajectory: PlannerTrajectory): boolean {
 function latestToolResultAwaitsUserInput(
 	trajectory: PlannerTrajectory,
 ): boolean {
-	for (const step of [...trajectory.steps].reverse()) {
+	for (const step of allSteps(trajectory).reverse()) {
 		if (!step.toolCall || isTerminalToolCall(step.toolCall) || !step.result) {
 			continue;
 		}
@@ -4562,7 +4655,7 @@ function isToolMetaNarration(text: string): boolean {
 function latestFailedToolStep(
 	trajectory: PlannerTrajectory,
 ): PlannerStep | undefined {
-	return [...trajectory.steps]
+	return allSteps(trajectory)
 		.reverse()
 		.find((step) => step.result && step.result.success === false);
 }
@@ -4804,7 +4897,7 @@ function tryGateEvaluator(args: {
 	lastPlannerExplicitMessageToUser: string | undefined;
 	lastPlannerExplicitCompleted: boolean | undefined;
 }): GatedEvaluatorDecision | null {
-	const latestStep = args.trajectory.steps[args.trajectory.steps.length - 1];
+	const latestStep = allSteps(args.trajectory).at(-1);
 	const latestResult = latestStep?.result;
 	if (latestResult?.success !== true) {
 		return tryGateVerifiedFailure(latestResult, args);
@@ -4827,9 +4920,8 @@ function tryGateEvaluator(args: {
 }
 
 function completedToolStepCount(trajectory: PlannerTrajectory): number {
-	return [...trajectory.archivedSteps, ...trajectory.steps].filter(
-		(step) => step.toolCall && step.result,
-	).length;
+	return allSteps(trajectory).filter((step) => step.toolCall && step.result)
+		.length;
 }
 
 /**
