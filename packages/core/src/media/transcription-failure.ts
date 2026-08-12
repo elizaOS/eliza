@@ -22,10 +22,6 @@ const NO_TRANSCRIPTION_HANDLER =
 const TRANSCRIPTION_UNAVAILABLE_NOTE =
 	/^(?:(?:audio|video)\s+)?transcription unavailable:/i;
 
-function failureMessage(error: unknown): string {
-	return error instanceof Error ? error.message : String(error);
-}
-
 /**
  * Fetch failures are always retryable because no provider ran. Provider
  * failures are definitive only when they carry a canonical typed unavailable
@@ -36,7 +32,7 @@ export function classifyTranscriptionFailure(
 	error: unknown,
 	phase: TranscriptionFailurePhase,
 ): TranscriptionFailure {
-	const message = failureMessage(error);
+	const message = error instanceof Error ? error.message : String(error);
 	if (phase === "fetch") {
 		return { kind: "fetch_retryable", error, message };
 	}

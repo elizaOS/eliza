@@ -432,6 +432,8 @@ async function transcribeMediaOnDemand(
 		try {
 			buffer = await fetchTranscribableBytes(runtime, attachment.url);
 		} catch (error) {
+			// error-policy:J4 A current byte-fetch failure becomes explicit
+			// retryable attachment state; it never fabricates a transcript.
 			failure = classifyTranscriptionFailure(error, "fetch");
 		}
 		if (!buffer) {
@@ -441,6 +443,8 @@ async function transcribeMediaOnDemand(
 			try {
 				transcript = await runtime.useModel(ModelType.TRANSCRIPTION, buffer);
 			} catch (error) {
+				// error-policy:J4 A provider failure becomes explicit retryable or
+				// unavailable state according to the shared definitive classifier.
 				failure = classifyTranscriptionFailure(error, "provider");
 			}
 			if (failure?.kind === "provider_unavailable") {
