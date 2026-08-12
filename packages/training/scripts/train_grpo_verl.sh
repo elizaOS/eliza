@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Stage-2 GRPO training with ByteDance verl.
+# Stage-2 GRPO training with ByteDance verl and its vLLM rollout backend.
 #
 # Per RL_STRATEGY.md: input = SFT-then-DPO checkpoint, output = -rl-v1
 # checkpoint, reward = scripts/eliza_reward_fn.py:compute_score (verl's
@@ -11,7 +11,7 @@
 #   27b  → 8× H200 (4 train + 4 rollout)            ~48h
 #
 # Usage:
-#   bash scripts/train_grpo_verl.sh \
+#   uv run --locked --extra rl bash scripts/train_grpo_verl.sh \
 #       --registry-key gemma4-e4b \
 #       --dpo-checkpoint checkpoints/eliza-1-4b-dpo/final \
 #       --output-dir checkpoints/eliza-1-4b-grpo \
@@ -90,6 +90,20 @@ if [[ ! -f "$TRAIN_FILE" ]]; then
   exit 1
 fi
 
+PYTHON_BIN="$(command -v python3 || true)"
+if [[ -z "$PYTHON_BIN" ]] || ! "$PYTHON_BIN" -c "import ray, verl, vllm" >/dev/null 2>&1; then
+  echo "ERROR: the locked verl/vLLM RL runtime is not active." >&2
+  echo "Run this launcher through uv from $TRAIN_ROOT:" >&2
+  echo "  uv run --locked --extra rl bash scripts/train_grpo_verl.sh ..." >&2
+  exit 1
+fi
+
+# Resolve every path without creating the output directory. Config composition
+# and verl's own validator must succeed before this launcher writes run state.
+DPO_CKPT="$("$PYTHON_BIN" -c 'from pathlib import Path; import sys; print(Path(sys.argv[1]).resolve())' "$DPO_CKPT")"
+TRAIN_FILE="$("$PYTHON_BIN" -c 'from pathlib import Path; import sys; print(Path(sys.argv[1]).resolve())' "$TRAIN_FILE")"
+OUTPUT_DIR="$("$PYTHON_BIN" -c 'from pathlib import Path; import sys; print(Path(sys.argv[1]).resolve())' "$OUTPUT_DIR")"
+
 if [[ -z "$GPUS" ]]; then
   if command -v nvidia-smi >/dev/null 2>&1; then
     GPUS="$(nvidia-smi --query-gpu=name --format=csv,noheader | wc -l)"
@@ -98,13 +112,91 @@ if [[ -z "$GPUS" ]]; then
   fi
 fi
 
-mkdir -p "$OUTPUT_DIR"
 CFG_PATH="$OUTPUT_DIR/verl_config.yaml"
 INSTR_PATH="$OUTPUT_DIR/instrumentation.jsonl"
+VERL_DATASET_PATH="$OUTPUT_DIR/verl_train.jsonl"
+REWARD_FUNCTION_PATH="$TRAIN_ROOT/scripts/eliza_reward_fn.py"
+
+CONFIG_WORK_DIR="$(mktemp -d)"
+cleanup_config_work_dir() {
+  rm -rf "$CONFIG_WORK_DIR"
+}
+trap cleanup_config_work_dir EXIT
+TEMP_DATASET="$CONFIG_WORK_DIR/verl_train.jsonl"
+TEMP_CONFIG="$CONFIG_WORK_DIR/verl_config.yaml"
+
+"$PYTHON_BIN" "$TRAIN_ROOT/scripts/prepare_grpo_verl_dataset.py" \
+  --source "$TRAIN_FILE" \
+  --output "$TEMP_DATASET"
+
+# Ask the installed pinned verl entry point to compose its complete Hydra tree.
+# The resulting file includes upstream actor/critic/reward/Ray defaults plus our
+# explicit GRPO overrides, so the exact config validated here is the one run.
+VERL_OVERRIDES=(
+  "algorithm.adv_estimator=grpo"
+  "algorithm.use_kl_in_reward=False"
+  "data.train_files=[\"$VERL_DATASET_PATH\"]"
+  "data.val_files=[\"$VERL_DATASET_PATH\"]"
+  "data.prompt_key=prompt"
+  "data.max_prompt_length=2048"
+  "data.max_response_length=$MAX_RESPONSE_LEN"
+  "data.train_batch_size=$ROLLOUT_BATCH"
+  "data.filter_overlong_prompts=True"
+  "actor_rollout_ref.model.path=$DPO_CKPT"
+  "actor_rollout_ref.model.use_remove_padding=True"
+  "actor_rollout_ref.model.enable_gradient_checkpointing=True"
+  "actor_rollout_ref.actor.optim.lr=1e-6"
+  "actor_rollout_ref.actor.ppo_mini_batch_size=$ROLLOUT_BATCH"
+  "actor_rollout_ref.actor.ppo_micro_batch_size_per_gpu=1"
+  "actor_rollout_ref.actor.use_dynamic_bsz=True"
+  "actor_rollout_ref.actor.use_kl_loss=True"
+  "actor_rollout_ref.actor.kl_loss_coef=$KL_COEF"
+  "actor_rollout_ref.actor.fsdp_config.param_offload=False"
+  "actor_rollout_ref.actor.fsdp_config.optimizer_offload=False"
+  "actor_rollout_ref.rollout.name=vllm"
+  "actor_rollout_ref.rollout.n=$ROLLOUTS"
+  "actor_rollout_ref.rollout.gpu_memory_utilization=0.6"
+  "actor_rollout_ref.rollout.tensor_model_parallel_size=1"
+  "actor_rollout_ref.rollout.log_prob_micro_batch_size_per_gpu=1"
+  "actor_rollout_ref.ref.fsdp_config.param_offload=True"
+  "actor_rollout_ref.ref.log_prob_micro_batch_size_per_gpu=1"
+  "critic.enable=False"
+  "reward.reward_model.enable=False"
+  "reward.custom_reward_function.path=$REWARD_FUNCTION_PATH"
+  "reward.custom_reward_function.name=compute_score"
+  "trainer.total_epochs=$EPOCHS"
+  "trainer.project_name=eliza-1-grpo"
+  "trainer.experiment_name=$(basename "$OUTPUT_DIR")"
+  "trainer.default_local_dir=$OUTPUT_DIR"
+  "trainer.n_gpus_per_node=$GPUS"
+  "trainer.nnodes=1"
+  "trainer.save_freq=100"
+  "trainer.test_freq=50"
+  "trainer.val_before_train=False"
+  "trainer.logger=[console]"
+)
+
+"$PYTHON_BIN" -m verl.trainer.main_ppo --cfg job --resolve \
+  "${VERL_OVERRIDES[@]}" > "$TEMP_CONFIG"
+"$PYTHON_BIN" "$TRAIN_ROOT/scripts/validate_grpo_verl_config.py" \
+  --config "$TEMP_CONFIG" \
+  --prepared-dataset "$TEMP_DATASET" \
+  --configured-dataset "$VERL_DATASET_PATH" \
+  --checkpoint "$DPO_CKPT" \
+  --reward-function "$REWARD_FUNCTION_PATH" \
+  --rollouts "$ROLLOUTS" \
+  --rollout-batch "$ROLLOUT_BATCH" \
+  --epochs "$EPOCHS" \
+  --kl-coef "$KL_COEF" \
+  --gpus "$GPUS"
+
+mkdir -p "$OUTPUT_DIR"
+mv "$TEMP_DATASET" "$VERL_DATASET_PATH"
+mv "$TEMP_CONFIG" "$CFG_PATH"
 
 # Dump environment record matching the SFT/DPO instrumentation schema so the
 # UI's plot pipeline consumes all three stages uniformly.
-python3 - <<PY > /dev/null
+"$PYTHON_BIN" - <<PY > /dev/null
 import json, os, platform, time
 from pathlib import Path
 out = Path("$OUTPUT_DIR")
@@ -138,68 +230,8 @@ with (out / "instrumentation.jsonl").open("a") as f:
     }) + "\n")
 PY
 
-# Write the verl Hydra YAML. We hand-roll the minimum subset of verl's
-# GRPO config — the upstream defaults under `verl/trainer/config/ppo_trainer.yaml`
-# fill in the rest. The reward function is registered via the python-callable
-# path: verl imports `scripts.eliza_reward_fn:compute_score` per rollout.
-cat > "$CFG_PATH" <<YAML
-# verl GRPO config for $REGISTRY_KEY
-# Auto-generated by train_grpo_verl.sh
-algorithm:
-  adv_estimator: grpo
-  kl_ctrl:
-    kl_coef: $KL_COEF
-
-data:
-  train_files: ["$TRAIN_FILE"]
-  prompt_key: prompt
-  max_prompt_length: 2048
-  max_response_length: $MAX_RESPONSE_LEN
-  train_batch_size: $ROLLOUT_BATCH
-
-actor_rollout_ref:
-  model:
-    path: "$DPO_CKPT"
-    use_remove_padding: true
-  actor:
-    optim:
-      lr: 1e-6
-    ppo_mini_batch_size: $ROLLOUT_BATCH
-    ppo_micro_batch_size_per_gpu: 1
-    use_dynamic_bsz: true
-    fsdp_config:
-      param_offload: false
-      optimizer_offload: false
-  rollout:
-    name: vllm
-    n: $ROLLOUTS
-    gpu_memory_utilization: 0.6
-    tensor_model_parallel_size: 1
-    response_length: $MAX_RESPONSE_LEN
-  ref:
-    fsdp_config:
-      param_offload: true
-
-reward_model:
-  enable: false
-
-custom_reward_function:
-  path: "$TRAIN_ROOT/scripts/eliza_reward_fn.py"
-  name: compute_score
-
-trainer:
-  total_epochs: $EPOCHS
-  project_name: eliza-1-grpo
-  experiment_name: $(basename "$OUTPUT_DIR")
-  default_local_dir: "$OUTPUT_DIR"
-  n_gpus_per_node: $GPUS
-  nnodes: 1
-  save_freq: 100
-  test_freq: 50
-  logger: ["console"]
-YAML
-
-echo "verl config written: $CFG_PATH"
+echo "validated verl config written: $CFG_PATH"
+echo "prepared verl dataset: $VERL_DATASET_PATH"
 echo "instrumentation jsonl: $INSTR_PATH"
 echo "GPUs detected/used: $GPUS"
 
@@ -208,18 +240,9 @@ echo "GPUs detected/used: $GPUS"
 # for the data-loader workers.
 export PYTHONPATH="$TRAIN_ROOT/scripts:${PYTHONPATH:-}"
 
-if ! python3 -c "import verl" 2>/dev/null; then
-  echo ""
-  echo "WARN: verl not installed in the active environment."
-  echo "      Install with:  uv sync --extra rl"
-  echo "      (rl conflicts with train/serve on torch ABI — pick one per stage)"
-  echo "      (or pip install 'verl>=0.5.0,<0.8.0')"
-  echo ""
-  echo "Config written. Re-run after install:"
-  echo "  python3 -m verl.trainer.main_ppo --config-path $(dirname "$CFG_PATH") --config-name $(basename "$CFG_PATH" .yaml)"
-  exit 0
-fi
+trap - EXIT
+cleanup_config_work_dir
 
-exec python3 -m verl.trainer.main_ppo \
+exec "$PYTHON_BIN" -m verl.trainer.main_ppo \
   --config-path "$(dirname "$CFG_PATH")" \
   --config-name "$(basename "$CFG_PATH" .yaml)"

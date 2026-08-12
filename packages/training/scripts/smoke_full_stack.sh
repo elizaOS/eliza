@@ -84,30 +84,28 @@ mark_skip_tooling()  { SKIPPED_TOOLING_STEPS+=("$1"); }
 mark_fail()   { FAILED_STEPS+=("$1"); }
 SUMMARY_PATH="$CKPT_ROOT/smoke_summary.json"
 
-# Prefer the existing `.venv/bin/python` over `uv run` — `uv run` re-resolves
-# the lockfile every invocation and can re-install torch underneath you when
-# extras conflict, which corrupts the venv mid-run. The venv is built once
-# via `uv sync --extra train --extra serve` (smoke needs both for SFT + vLLM).
-if [[ -x "$TRAIN_ROOT/.venv/bin/python" ]]; then
-    PY_RUN=("$TRAIN_ROOT/.venv/bin/python")
-elif command -v uv >/dev/null 2>&1; then
-    PY_RUN=(uv run --extra train --extra serve python)
-else
-    PY_RUN=(python)
+# Training and serving deliberately remain separate stages even though both
+# currently resolve torch 2.13. This keeps experimental training kernels out
+# of the serving runtime while both environments share checkpoint paths.
+if ! command -v uv >/dev/null 2>&1; then
+    echo "[smoke] ERROR: uv is required for locked train/serve isolation" >&2
+    exit 1
 fi
+TRAIN_PY_RUN=(env UV_PROJECT_ENVIRONMENT="$TRAIN_ROOT/.venv-smoke-train" uv run --locked --extra train python)
+SERVE_PY_RUN=(env UV_PROJECT_ENVIRONMENT="$TRAIN_ROOT/.venv-smoke-serve" uv run --locked --extra serve python)
 
 cd "$TRAIN_ROOT"
 export PYTHONPATH="$TRAIN_ROOT/scripts:${PYTHONPATH:-}"
 
 # Resolve the registry entry once so every step gets the same hf_id.
-BASE_HF_ID="$("${PY_RUN[@]}" -c "import sys; sys.path.insert(0, 'scripts'); from training.model_registry import get; print(get('$REGISTRY_KEY').hf_id)")"
+BASE_HF_ID="$("${TRAIN_PY_RUN[@]}" -c "import sys; sys.path.insert(0, 'scripts'); from training.model_registry import get; print(get('$REGISTRY_KEY').hf_id)")"
 echo "[smoke] config: registry=$REGISTRY_KEY base=$BASE_HF_ID run=$RUN_NAME port=$VLLM_PORT"
 
 # ---------- STEP 1/9: deps ----------
 echo "[smoke] STEP 1/9: verify python deps"
-"${PY_RUN[@]}" - <<'PY'
+"${TRAIN_PY_RUN[@]}" - <<'PY'
 import importlib, sys
-need = ["apollo_torch", "liger_kernel", "turboquant", "vllm", "transformers"]
+need = ["apollo_torch", "liger_kernel", "turboquant", "transformers"]
 missing = []
 for m in need:
     try:
@@ -119,11 +117,14 @@ if missing:
     for m, e in missing:
         print(f"  - {m}: {e}")
     print("\n[smoke] install hint:")
-    print("  cd training && uv sync --extra train")
-    print("  # or, ad hoc:")
-    print("  pip install apollo-torch liger-kernel turbokv vllm transformers")
+    print("  cd training && uv sync --locked --extra train")
     sys.exit(1)
 print("[smoke] deps OK:", ", ".join(need))
+PY
+"${SERVE_PY_RUN[@]}" - <<'PY'
+import vllm
+
+print("[smoke] serve deps OK: vllm", vllm.__version__)
 PY
 mark_pass "deps"
 
@@ -145,7 +146,7 @@ else
         echo "[smoke] python dev headers (Python.h) missing — forcing --use-liger off (Triton can't JIT)"
         LIGER_FLAG="off"
     fi
-    "${PY_RUN[@]}" scripts/train_local.py \
+    "${TRAIN_PY_RUN[@]}" scripts/train_local.py \
         --registry-key "$REGISTRY_KEY" \
         --train-file "$TRAIN_DATA" \
         --val-file "$VAL_DATA" \
@@ -176,7 +177,7 @@ run_bench() {
     # native_tool_call_bench uses --model / --test-file / --out-dir (writes summary.json).
     # We point it at smoke val.jsonl with a tight per-bucket cap.
     # shellcheck disable=SC2086
-    "${PY_RUN[@]}" scripts/benchmark/native_tool_call_bench.py \
+    "${TRAIN_PY_RUN[@]}" scripts/benchmark/native_tool_call_bench.py \
         --model "$model_arg" \
         $extra_arg \
         --test-file "$VAL_DATA" \
@@ -197,7 +198,7 @@ mark_pass "bench-sft"
 
 # ---------- STEP 4/9: PolarQuant ----------
 echo "[smoke] STEP 4/9: PolarQuant (4-bit weights)"
-"${PY_RUN[@]}" scripts/quantization/polarquant_apply.py \
+"${TRAIN_PY_RUN[@]}" scripts/quantization/polarquant_apply.py \
     --model "$SFT_DIR" \
     --output "$POLAR_DIR" \
     --bits 4 \
@@ -229,7 +230,7 @@ if [[ $HAS_PYTHON_H -eq 1 ]]; then
     #       has_previous_state for linear-attention layers. SKIP.
     #   other → operational failure (stop the smoke).
     set +e
-    "${PY_RUN[@]}" scripts/quantization/fused_turboquant_apply.py \
+    "${TRAIN_PY_RUN[@]}" scripts/quantization/fused_turboquant_apply.py \
         --model "$SFT_DIR" \
         --output "$FUSED_DIR" \
         --bits 4 \
@@ -262,7 +263,7 @@ fi
 # ---------- STEP 6/9: QJL (skip if no nvcc OR no Python.h) ----------
 echo "[smoke] STEP 6/9: QJL (1-bit K-cache)"
 if command -v nvcc >/dev/null 2>&1 && [[ $HAS_PYTHON_H -eq 1 ]]; then
-    "${PY_RUN[@]}" scripts/quantization/qjl_apply.py \
+    "${TRAIN_PY_RUN[@]}" scripts/quantization/qjl_apply.py \
         --model "$SFT_DIR" \
         --output "$QJL_DIR" \
         --calibration "$VAL_DATA" \
@@ -291,7 +292,7 @@ if [[ -n "${LLAMA_CPP_DIR:-}" && -x "${LLAMA_CPP_DIR}/llama-quantize" ]]; then
     HAS_LLAMA_CPP=1
 fi
 if [[ $HAS_LLAMA_CPP -eq 1 ]]; then
-    "${PY_RUN[@]}" scripts/quantization/gguf-q4_k_m_apply.py \
+    "${TRAIN_PY_RUN[@]}" scripts/quantization/gguf-q4_k_m_apply.py \
         --model "$SFT_DIR" \
         --output "$GGUF_DIR" \
         2>&1 | tee "$LOG_DIR/05-gguf.log"
@@ -316,7 +317,7 @@ else
 # is not registered, vLLM aborts at engine-init and the smoke fails for
 # reasons unrelated to the recipe pipeline. Mark the step SKIPPED with
 # an architecture-incompatibility tag so Gate 5 doesn't penalize it.
-ARCH_CHECK="$(SFT_DIR="$SFT_DIR" "${PY_RUN[@]}" - <<'PY'
+ARCH_CHECK="$(SFT_DIR="$SFT_DIR" "${SERVE_PY_RUN[@]}" - <<'PY'
 import json, os, sys
 cfg_path = os.path.join(os.environ["SFT_DIR"], "config.json")
 arch = (json.load(open(cfg_path)).get("architectures") or [""])[0]
@@ -348,7 +349,7 @@ VLLM_LOG="$LOG_DIR/06-vllm.log"
 : > "$VLLM_LOG"
 # Serve the SFT checkpoint via vLLM. --gpu-target single is the local-debug
 # profile; --model overrides the registry hf_id with our local SFT dir.
-"${PY_RUN[@]}" scripts/inference/serve_vllm.py \
+"${SERVE_PY_RUN[@]}" scripts/inference/serve_vllm.py \
     --registry-key "$REGISTRY_KEY" \
     --model "$SFT_DIR" \
     --port "$VLLM_PORT" \
@@ -388,7 +389,7 @@ echo "[smoke]   vLLM ready"
 
 # Discover served model id from /v1/models so we don't hardcode it.
 SERVED_MODEL="$(curl -fsS "http://127.0.0.1:$VLLM_PORT/v1/models" \
-    | "${PY_RUN[@]}" -c 'import json,sys; d=json.load(sys.stdin); print(d["data"][0]["id"])')"
+    | "${TRAIN_PY_RUN[@]}" -c 'import json,sys; d=json.load(sys.stdin); print(d["data"][0]["id"])')"
 echo "[smoke]   served model: $SERVED_MODEL"
 
 TOOLCALL_DIR="$LOG_DIR/toolcalls"
@@ -429,7 +430,7 @@ JSON
         echo "[smoke]   tool-call $i: HTTP failure"
         continue
     fi
-    if "${PY_RUN[@]}" -c "import json,sys; json.load(open(sys.argv[1])); print('parsed')" "$RESP" >/dev/null 2>&1; then
+    if "${TRAIN_PY_RUN[@]}" -c "import json,sys; json.load(open(sys.argv[1])); print('parsed')" "$RESP" >/dev/null 2>&1; then
         TOOLCALL_OK=$((TOOLCALL_OK + 1))
     else
         echo "[smoke]   tool-call $i: response not parseable JSON"
@@ -471,7 +472,7 @@ PASSED_JSON="$PASSED_JSON" \
 SKIPPED_INCOMPAT_JSON="$SKIPPED_INCOMPAT_JSON" \
 SKIPPED_TOOLING_JSON="$SKIPPED_TOOLING_JSON" \
 FAILED_JSON="$FAILED_JSON" \
-"${PY_RUN[@]}" - <<'PY'
+"${TRAIN_PY_RUN[@]}" - <<'PY'
 import json, os, sys, time
 from pathlib import Path
 

@@ -47,7 +47,7 @@ def _has_trl() -> bool:
 
 def _has_python_headers() -> bool:
     """Triton JIT-compiles a CUDA utility module on first use, which
-    requires Python.h. On stripped boxes (no python3-dev / python3.12-dev)
+    requires Python.h. On stripped boxes (no python3-dev / python3.11-dev)
     Triton fails before training even starts. Skip rather than fail."""
     import sysconfig
     inc = sysconfig.get_path("include")

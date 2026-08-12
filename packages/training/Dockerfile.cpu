@@ -5,10 +5,10 @@
 # (no nvcc), and Triton stays JIT-only — anything that touches a real
 # Triton kernel is expected to skip cleanly when no GPU is visible.
 #
-# Base: python:3.12-slim. Matches the train extra's Python pin
-# (>=3.11,<3.13) and keeps the image small (~2 GB target).
+# Base: python:3.11-slim. Matches the project Python pin and keeps the image
+# small (~2 GB target).
 
-FROM python:3.12-slim
+FROM python:3.11-slim
 
 ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONDONTWRITEBYTECODE=1 \
@@ -45,10 +45,10 @@ WORKDIR /workspace
 COPY pyproject.toml ./
 COPY uv.lock ./
 
-# Train extra only. `serve` requires CUDA-bound vllm and would fail on
-# CPU. We rely on torch's CPU wheel auto-selection here; the cu126 wheel
-# pin only matters for the GPU image.
-RUN uv venv --python 3.12 /workspace/.venv \
+# Train extra only. `serve` requires CUDA-bound vLLM and would fail on
+# CPU. The Linux torch wheel carries CUDA 13 libraries but imports and runs
+# CPU-only checks without a GPU; real training uses the GPU image contract.
+RUN uv venv --python 3.11 /workspace/.venv \
  && . /workspace/.venv/bin/activate \
  && uv sync --extra train --locked --no-install-project
 

@@ -51,11 +51,24 @@ shape on the held-out trajectory split.
 
 ## Cloning the pipeline on a fresh machine
 
+Use Python 3.11. The secure vLLM serving line currently caps setuptools on
+Python 3.12, so the authoritative uv lock intentionally excludes 3.12. The
+`train`, `rl`, and `serve` extras use CUDA 13 wheels that require an NVIDIA
+580-series driver or newer. Keep these extras in separate stage-specific
+environments as declared by the uv conflict contract.
+
 ```bash
 hf download elizaos/eliza-1-training pipeline --repo-type dataset --local-dir ./training
 cd training
-uv sync --extra train
+uv sync --locked --extra train
 ```
+
+Offline corpus translation is disabled pending a safe backend. The previous
+backend requires an advisory-affected dependency with no safe compatible
+release, so it is absent from both `pyproject.toml` and `uv.lock`.
+`scripts/translate_corpus.py` exits immediately with this unsupported status.
+Use the existing pre-generated `translated-*` rows cataloged in
+`datasets.yaml` and published under `data/synthesized/translated/`.
 
 ## Pipeline
 
@@ -173,7 +186,28 @@ HF_TOKEN=hf_xxx uv run python -m scripts.publish.publish_model \
     --bundle-dir checkpoints/gemma4-e4b-apollo/final
 ```
 
-See `RL_STRATEGY.md` for the post-SFT plan (DPO + GRPO via verl).
+Post-SFT GRPO uses verl's vLLM rollout backend in the isolated `rl` stack:
+
+```bash
+uv run --locked --extra rl bash scripts/train_grpo_verl.sh \
+    --registry-key gemma4-e4b \
+    --dpo-checkpoint checkpoints/eliza-1-4b-dpo/final \
+    --output-dir checkpoints/eliza-1-4b-grpo
+```
+
+The `rl` extra temporarily pins verl to the full, verified upstream commit
+[`668baad`](https://github.com/verl-project/verl/commit/668baad7455453eac8ab863f1b2d6fecaec746ed),
+which added support for vLLM 0.18 and newer. The current PyPI release caps
+vLLM below this repository's security floor. uv records the immutable commit
+in `uv.lock`, but Dependabot does not advance Git-source revisions; review and
+update that SHA manually until a stable verl release includes the support.
+The direct vLLM requirement remains registry-backed so its patch line stays
+independently updateable. Do not combine `rl` with `train` or `serve`.
+Before writing a run directory, the launcher converts the canonical held-out
+rows into verl's prompt/reward schema, composes verl's installed Hydra defaults,
+and runs both the repository contract checks and verl's own config validator.
+An invalid source revision, dataset row, reward import, or composed config fails
+before the paid training run creates artifacts.
 
 ### Renting GPUs
 
@@ -263,7 +297,7 @@ have their own build requirements when you run those experimental paths:
 One-shot install on Debian/Ubuntu:
 
 ```bash
-sudo apt install build-essential python3.12-dev nvidia-cuda-toolkit
+sudo apt install build-essential python3.11-dev nvidia-cuda-toolkit
 # Then build QJL:
 cd scripts/quantization/qjl && python setup.py build_ext --inplace
 # For Blackwell (sm_120, RTX 50-series + RTX Pro Blackwell):

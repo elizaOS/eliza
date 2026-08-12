@@ -61,6 +61,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import shlex
 import subprocess
@@ -91,9 +92,9 @@ from typing import Any
 #     that, so the launcher exposes ``VAST_MIN_DISK_GB`` to override and
 #     callers can re-search if the cheap pick is too small.
 #   * ``cuda_max_good``/``cuda_vers``/``duration`` are *not* used as
-#     filters — the API rejects ``cuda_max_good`` outright, ``cuda_vers``
-#     comes back null on Blackwell offers, and ``duration`` filtering
-#     erases all hits. We re-validate cuda + duration in the response.
+#     query filters — the API rejects ``cuda_max_good`` outright,
+#     ``cuda_vers`` comes back null on Blackwell offers, and ``duration``
+#     filtering erases all hits. We re-validate CUDA + duration client-side.
 TARGETS: dict[str, dict[str, Any]] = {
     # ─── single-GPU targets (2B / 9B) ───
     "blackwell6000-1x": {
@@ -198,6 +199,17 @@ DEFAULT_MIN_RELIABILITY = 0.97
 DEFAULT_MIN_INET_DOWN_MBPS = 500.0
 DEFAULT_MIN_DISK_GB = 500.0
 DEFAULT_MIN_DURATION_DAYS = 3.0
+MIN_CUDA_MAX_GOOD = 13.0
+
+
+def _finite_float(value: Any) -> float | None:
+    """Return a finite API number, or None for absent/malformed values."""
+
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):  # error-policy:J3 Reject malformed API fields.
+        return None
+    return parsed if math.isfinite(parsed) else None
 
 
 @dataclass(frozen=True)
@@ -263,8 +275,8 @@ def search(
     """Return all offers matching the target's filter, sorted by dph_total asc.
 
     Server-side filters: gpu_name, num_gpus, gpu_ram, reliability,
-    inet_down, disk_space. Client-side filter: duration (the API rejects
-    duration as a query field).
+    inet_down, disk_space. Client-side filters: duration and CUDA 13 driver
+    compatibility (the API rejects both as query fields).
     """
     if target not in TARGETS:
         raise SystemExit(
@@ -283,12 +295,14 @@ def search(
     )
     min_duration_s = min_duration_days * 86400.0
     for gpu_name in spec["gpu_names"]:
-        query = (
-            f"gpu_name={gpu_name} num_gpus={spec['num_gpus']} {server_query_extra}"
-        )
+        query = f"gpu_name={gpu_name} num_gpus={spec['num_gpus']} {server_query_extra}"
         out = _vastai("search", "offers", query, "--raw")
         for raw in json.loads(out):
-            if float(raw.get("duration", 0.0)) < min_duration_s:
+            duration = _finite_float(raw.get("duration"))
+            cuda_max_good = _finite_float(raw.get("cuda_max_good"))
+            if duration is None or duration < min_duration_s:
+                continue
+            if cuda_max_good is None or cuda_max_good < MIN_CUDA_MAX_GOOD:
                 continue
             offers.append(Offer.from_raw(raw))
     # Dedup by id, then sort by hourly price.
@@ -339,7 +353,9 @@ def show_instance(instance_id: int) -> dict[str, Any]:
     return json.loads(out)
 
 
-def ssh_endpoint(instance_id: int, *, retries: int = 6, retry_delay_s: int = 5) -> tuple[str, str, int]:
+def ssh_endpoint(
+    instance_id: int, *, retries: int = 6, retry_delay_s: int = 5
+) -> tuple[str, str, int]:
     """Return (user, host, port) for SSH'ing into the instance.
 
     Vast offers two SSH endpoints per instance:
@@ -373,7 +389,7 @@ def ssh_endpoint(instance_id: int, *, retries: int = 6, retry_delay_s: int = 5) 
             last_err = exc.stderr or exc.stdout or str(exc)
             out = ""
         if out.startswith("ssh://"):
-            rest = out[len("ssh://"):]
+            rest = out[len("ssh://") :]
             user, _, hostport = rest.partition("@")
             host, _, port_s = hostport.partition(":")
             port = int(port_s) if port_s else 22
@@ -405,7 +421,9 @@ def is_alive(instance_id: int) -> bool:
     return status not in {"", "exited", "stopped", "destroyed"}
 
 
-def wait_running(instance_id: int, timeout_s: int = 900, poll_s: int = 10) -> dict[str, Any]:
+def wait_running(
+    instance_id: int, timeout_s: int = 900, poll_s: int = 10
+) -> dict[str, Any]:
     """Block until the instance reports ``actual_status == 'running'``.
 
     Vast instances move through created → loading → running. Most ready
@@ -488,7 +506,11 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if args.cmd == "wait":
         info = wait_running(args.instance_id, timeout_s=args.timeout)
-        print(json.dumps({"id": info.get("id"), "actual_status": info.get("actual_status")}))
+        print(
+            json.dumps(
+                {"id": info.get("id"), "actual_status": info.get("actual_status")}
+            )
+        )
         return 0
     if args.cmd == "alive":
         return 0 if is_alive(args.instance_id) else 1

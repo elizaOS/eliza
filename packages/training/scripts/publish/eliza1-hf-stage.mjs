@@ -79,7 +79,7 @@ function pickPython() {
   }
   process.stderr.write(
     "eliza1-hf-stage: neither python3 nor python is on PATH. " +
-      "Install Python 3.12+ (the publish module is Python).\n",
+      "Install Python 3.11 (the publish module is Python).\n",
   );
   process.exit(127);
 }

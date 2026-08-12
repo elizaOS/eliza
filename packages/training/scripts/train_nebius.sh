@@ -13,8 +13,8 @@
 # Flow: provision a Nebius VM (single H200 SXM `gpu-h200-sxm` / `1gpu-16vcpu-200gb`
 # for the active 2b/4b/9b tiers; the 8×H200 `8gpu-128vcpu-1600gb` preset + FSDP
 # for 27b — that preset is expensive, see the note below), boot-disk from the
-# `mk8s-worker-node-v-1-31-ubuntu24.04-cuda12.8` public image (NVIDIA 570.x +
-# CUDA 12.8 preinstalled), rsync `packages/training/` + the training corpus,
+# `ubuntu24.04-cuda13.0` public image (NVIDIA 580.x + CUDA 13 preinstalled),
+# rsync `packages/training/` + the training corpus,
 # `run_pipeline.py` (full chain: APOLLO SFT → gate bench → PolarQuant/QJL/
 # quantization smoke/evals), fetch results, teardown.
 #
@@ -41,7 +41,7 @@
 #                              #   preset exists; only used for 27b, expensive).
 #   FSDP_WORLD_SIZE            # default 1 (single GPU) / 8 (gpu-h200x2)
 #   NEBIUS_SUBNET_ID           # default: auto-discover the project's subnet
-#   NEBIUS_IMAGE_FAMILY        # default: mk8s-worker-node-v-1-31-ubuntu24.04-cuda12.8
+#   NEBIUS_IMAGE_FAMILY        # default: ubuntu24.04-cuda13.0
 #   NEBIUS_VM_DISK_GB          # default: 512
 #   TRAIN_FILE / VAL_FILE / TEST_FILE
 #                              # corpus paths (relative to packages/training/) the
@@ -88,7 +88,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 : "${NEBIUS_VM_PRESET:=gpu-h200x1}"
 : "${NEBIUS_VM_DISK_GB:=512}"
 : "${NEBIUS_SSH_USER:=ubuntu}"
-: "${NEBIUS_IMAGE_FAMILY:=mk8s-worker-node-v-1-31-ubuntu24.04-cuda12.8}"
+: "${NEBIUS_IMAGE_FAMILY:=ubuntu24.04-cuda13.0}"
 : "${NEBIUS_IMAGE_PARENT:=project-e00public-images}"
 
 REMOTE_TRAIN_DIR="/opt/training"
@@ -285,7 +285,8 @@ sync_tree() {
   # killing the whole launcher under `set -e` (2026-05-12 incident).
   local rsync_rc=0
   rsync -avhz --delete \
-    --exclude '.venv/' --exclude '.git/' --exclude 'wandb/' \
+    --exclude '.venv/' --exclude '.venv-smoke-train/' --exclude '.venv-smoke-serve/' \
+    --exclude '.git/' --exclude 'wandb/' \
     --exclude 'data/raw/' --exclude 'data/normalized/' --exclude 'data/synthesized/' \
     --exclude 'data/final/' --exclude 'data/final-eliza1-fullcorpus/' --exclude 'datasets/' \
     --exclude 'checkpoints/' --exclude '.hypothesis/' --exclude '.logs/' --exclude '.pytest_cache/' \
@@ -391,45 +392,17 @@ export HF_HOME=/opt/hf-cache
 sudo mkdir -p \$HF_HOME && sudo chown -R \$USER \$HF_HOME || true
 ${hf_tok:+export HUGGING_FACE_HUB_TOKEN='$hf_tok'; export HF_TOKEN='$hf_tok'}
 export ELIZA1_FULLCORPUS_UPSAMPLE='$upsample'
-uv sync --extra train
-# The pinned torch (2.11+cu130) needs an NVIDIA driver >=580; the Nebius
-# cuda12.8 public image ships 570.x (CUDA 12.8 only) so torch.cuda.is_available()
-# is False. Swap to torch 2.11.0+cu128 (same torch version → ABI-compatible with
-# liger/bitsandbytes/apollo; just a cu12 backend the 570 driver supports), drop
-# the leftover cu13 nvidia stack, and force-refresh nvidia-cusparselt-cu12 (uv's
-# uninstall can leave a stale dist-info without the .so). REMOTE_TORCH_OVERRIDE=skip
-# disables this on an image whose driver is >=580.
-# torch_swap_cu128 — idempotent: swaps the venv to torch 2.11.0+cu128 if the
-# installed torch can't see CUDA (cu130 needs driver >=580; the Nebius cuda12.8
-# image ships 570.x). Callable both at boot AND right before train_local.py: a
-# bare \`uv run --extra train …\` re-syncs the env from the cu130-pinned lockfile,
-# silently clobbering the swap and forcing CPU training — so after the first swap
-# we set UV_NO_SYNC=1 (every later \`uv run\`, incl. the ones run_pipeline.py spawns
-# internally, then uses .venv as-is) AND re-swap defensively if it still drifted.
-torch_swap_cu128() {
-  .venv/bin/python -c 'import torch,sys; sys.exit(0 if torch.cuda.is_available() else 1)' 2>/dev/null && return 0
-  echo "[remote] torch can't see CUDA (cu130 needs driver >=580; have 570.x) — swapping to torch 2.11.0+cu128"
-  uv pip uninstall --python .venv/bin/python torch torchvision triton 2>/dev/null || true
-  cu13pkgs="\$(uv pip list --python .venv/bin/python 2>/dev/null | awk '/^nvidia-[a-z0-9-]+ /{print \$1}')"
-  [ -n "\$cu13pkgs" ] && uv pip uninstall --python .venv/bin/python \$cu13pkgs 2>/dev/null || true
-  uv pip install --python .venv/bin/python 'torch==2.11.0' --index-url https://download.pytorch.org/whl/cu128
-  uv pip install --python .venv/bin/python --reinstall nvidia-cusparselt-cu12
-  .venv/bin/python -c 'import torch; assert torch.cuda.is_available(), "still no CUDA after torch swap"; x=torch.randn(64,64,device="cuda"); _=(x@x).sum().item(); print("[remote] torch", torch.__version__, "cuda OK on", torch.cuda.get_device_name(0))'
-}
-if [ "${REMOTE_TORCH_OVERRIDE:-cu128}" != "skip" ]; then
-  torch_swap_cu128
-  # Freeze the env: no later \`uv run\` may re-sync away the cu128 torch.
-  export UV_NO_SYNC=1 UV_FROZEN=1
-fi
-${hf_tok:+uv run hf auth login --token "\$HUGGING_FACE_HUB_TOKEN" --add-to-git-credential || true}
+uv sync --locked --extra train
+# Fail before starting the paid training path if the image/host cannot run the
+# locked torch 2.13 CUDA 13 stack. Downgrading to an affected torch line is not
+# an accepted compatibility fallback.
+.venv/bin/python -c 'import torch; assert torch.cuda.is_available(), "CUDA 13 / NVIDIA 580+ runtime unavailable"; assert torch.version.cuda and int(torch.version.cuda.split(".")[0]) >= 13, torch.version.cuda; x=torch.randn(64,64,device="cuda"); _=(x@x).sum().item(); print("[remote] torch", torch.__version__, "cuda", torch.version.cuda, "on", torch.cuda.get_device_name(0))'
+${hf_tok:+uv run --locked --extra train hf auth login --token "\$HUGGING_FACE_HUB_TOKEN" --add-to-git-credential || true}
 if [ "$SYNC_FULLCORPUS_SOURCES" = "1" ]; then
   echo "[remote] rebuilding data/final-eliza1-fullcorpus/ (upsample=\$ELIZA1_FULLCORPUS_UPSAMPLE)"
-  uv run --extra train python scripts/build_eliza1_fullcorpus.py
+  uv run --locked --extra train python scripts/build_eliza1_fullcorpus.py
 fi
-# Defensive re-check: if anything above re-synced the env (it shouldn't with
-# UV_NO_SYNC=1), swap torch back to cu128 before run_pipeline.py spawns SFT.
-[ "${REMOTE_TORCH_OVERRIDE:-cu128}" != "skip" ] && torch_swap_cu128
-uv run --extra train $launch scripts/run_pipeline.py \\
+uv run --locked --extra train $launch scripts/run_pipeline.py \\
   --registry-key $REGISTRY_KEY --run-name $RUN_NAME \\
   --epochs 1 --lr 1e-5 --use-liger on \\
   $max_steps_flag \\

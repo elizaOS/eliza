@@ -380,12 +380,12 @@ The Triton-kernel path is more constrained than the pure-PyTorch
 
 ### Blackwell / RTX 5080 Laptop notes
 
-The 5080 Laptop is **sm_120** (Blackwell), CUDA 13.0, torch 2.11. Triton
-3.6.0 supports this architecture. The build does, however, require Python
+The 5080 Laptop is **sm_120** (Blackwell), CUDA 13.0, torch 2.13. Triton
+3.7.1 supports this architecture. The build does, however, require Python
 development headers to compile its `cuda_utils.so` shim on first use:
 
 ```bash
-sudo apt install python3.12-dev
+sudo apt install python3.11-dev
 ```
 
 If the headers are missing the kernel raises a confusing error nested
@@ -429,7 +429,7 @@ fatal error: Python.h: No such file or directory
 Triton's CUDA utility helper can compile:
 
 ```bash
-sudo apt install python3.12-dev
+sudo apt install python3.11-dev
 ```
 
 After installing, re-run the test — the same script will exercise the
@@ -565,7 +565,7 @@ Prerequisites (verified missing on the local 5080 dev box at the time
 this was vendored):
 
 ```bash
-sudo apt install nvidia-cuda-toolkit python3.12-dev
+sudo apt install nvidia-cuda-toolkit python3.11-dev
 ```
 
 The first installs `nvcc` (PyTorch wheels ship `ptxas` and `nvrtc` but
@@ -638,7 +638,7 @@ text-only stand-in for `google/gemma-4-E2B` — see caveat above):
 
 1. Attempts to build the vendored CUDA extension. If `nvcc` or
    `Python.h` is missing it records the exact remediation command
-   (`sudo apt install nvidia-cuda-toolkit python3.12-dev`) and skips
+   (`sudo apt install nvidia-cuda-toolkit python3.11-dev`) and skips
    the runtime-kernel path.
 2. Runs a baseline bf16 generation and records peak VRAM, tok/s, and
    sample outputs.
@@ -668,7 +668,7 @@ gemma-4-E2B / 5080 (bf16 baseline cache, projection_dim=256, seed=42):
 | metric | value | notes |
 |---|---|---|
 | nvcc present | **No** | system blocker; `sudo apt install nvidia-cuda-toolkit` |
-| Python.h present | **No** | system blocker; `sudo apt install python3.12-dev` |
+| Python.h present | **No** | system blocker; `sudo apt install python3.11-dev` |
 | QJL CUDA kernel built | **No** | both blockers above must be fixed first |
 | K-side ratio (proj_dim=256, real activations) | **7.53×** | head_dim=128, per-token bf16 norm |
 | K-side ratio (proj_dim=128, real activations) | 14.22× | smaller sketch — quality tradeoff |
@@ -686,8 +686,8 @@ gemma-4-E2B / 5080 (bf16 baseline cache, projection_dim=256, seed=42):
   `nvrtc` and `ptxas` but no full `nvcc` driver, and the
   `nvidia-cuda-nvcc-cu12` PyPI wheel only ships `ptxas` (verified). Fix:
   `sudo apt install nvidia-cuda-toolkit`.
-- **`Python.h` is not present** (no `python3.12-dev` package
-  installed). Fix: `sudo apt install python3.12-dev`.
+- **`Python.h` is not present** (no `python3.11-dev` package
+  installed). Fix: `sudo apt install python3.11-dev`.
 - **Blackwell (sm_120) is not in the upstream test matrix.** The
   kernel sources are written against Ampere/Hopper. After the two
   `apt install`s above, the recommended build command is

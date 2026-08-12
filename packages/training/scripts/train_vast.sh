@@ -70,8 +70,8 @@
 #                                subcommands read this. Persisted to
 #                                .vast_instance_id in the repo root so you
 #                                can re-source it across shell sessions.
-#   VAST_DOCKER_IMAGE          # default: pytorch/pytorch:2.6.0-cuda12.6-cudnn9-devel
-#                                (CUDA 12.6 covers Blackwell sm_120 + SXM6)
+#   VAST_DOCKER_IMAGE          # default: pytorch/pytorch:2.13.0-cuda13.0-cudnn9-devel
+#                                (matches the locked torch 2.13 / CUDA 13 stack)
 #   VAST_DISK_GB               # default: 2048
 #   VAST_MIN_DISK_GB           # default: 500 — search filter floor
 #   VAST_MIN_INET_DOWN_MBPS    # default: 500
@@ -318,7 +318,7 @@ case "$PIPELINE" in
 esac
 
 VAST_INSTANCE_LABEL="${VAST_INSTANCE_LABEL:-eliza-train-vast-${REGISTRY_KEY//./-}}"
-VAST_DOCKER_IMAGE="${VAST_DOCKER_IMAGE:-pytorch/pytorch:2.6.0-cuda12.6-cudnn9-devel}"
+VAST_DOCKER_IMAGE="${VAST_DOCKER_IMAGE:-pytorch/pytorch:2.13.0-cuda13.0-cudnn9-devel}"
 VAST_DISK_GB="${VAST_DISK_GB:-2048}"
 
 # QUANTIZE_AFTER default is read from model_registry.py so the registry stays
@@ -327,7 +327,7 @@ VAST_DISK_GB="${VAST_DISK_GB:-2048}"
 # Fallback is the original literal default if the registry import fails (e.g.
 # when running this script outside `uv run`); the literal still references
 # only quants whose apply.py exists.
-DEFAULT_QUANTIZE_AFTER="$(cd "$ROOT" && uv run python -c "from scripts.training.model_registry import get; print(','.join(get('${REGISTRY_KEY}').quantization_after))" 2>/dev/null || echo "polarquant,fused_turboquant,qjl,gguf-q4_k_m")"
+DEFAULT_QUANTIZE_AFTER="$(cd "$ROOT" && uv run --locked python -c "from scripts.training.model_registry import get; print(','.join(get('${REGISTRY_KEY}').quantization_after))" 2>/dev/null || echo "polarquant,fused_turboquant,qjl,gguf-q4_k_m")"
 QUANTIZE_AFTER="${QUANTIZE_AFTER:-${DEFAULT_QUANTIZE_AFTER}}"
 BENCHMARK_AFTER="${BENCHMARK_AFTER:-1}"
 
@@ -456,13 +456,14 @@ search_offers() {
 
 preflight_gate() {
   # Refuse to provision unless scripts/preflight.sh succeeded within the
-  # current calendar hour. The gate catches uv lock drift, broken unit
-  # tests, schema corruption, memory-budget overshoot, stale local smoke,
-  # and CUDA capability mismatches BEFORE we pay for cloud hardware.
+  # current calendar hour for this exact registry key and GPU target. The
+  # gate catches uv lock drift, broken unit tests, schema corruption,
+  # memory-budget overshoot, stale local smoke, and CUDA capability
+  # mismatches BEFORE we pay for cloud hardware.
   if [ "${ELIZA_SKIP_PREFLIGHT:-0}" = "1" ]; then
     log_warn "ELIZA_SKIP_PREFLIGHT=1 — bypassing scripts/preflight.sh gate."
     log_warn "This is an emergency override; expect provisioning failures if"
-    log_warn "any of the six pre-flight checks would have failed."
+    log_warn "any of the eight pre-flight checks would have failed."
     return 0
   fi
 
@@ -489,7 +490,77 @@ preflight_gate() {
     exit 2
   fi
 
-  log "[provision] pre-flight gate $gate_file fresh (within current hour)"
+  if ! python3 - "$gate_file" "$REGISTRY_KEY" "$VAST_GPU_TARGET" <<'PY'
+"""Reject a fresh preflight receipt issued for a different paid launch."""
+
+from __future__ import annotations
+
+import json
+import sys
+from pathlib import Path
+
+receipt_path = Path(sys.argv[1])
+expected_registry = sys.argv[2]
+expected_target = sys.argv[3]
+
+try:
+    receipt = json.loads(receipt_path.read_text())
+except (OSError, json.JSONDecodeError) as exc:  # error-policy:J1 Reject an invalid paid-launch receipt.
+    print(f"invalid pre-flight receipt {receipt_path}: {exc}", file=sys.stderr)
+    sys.exit(1)
+
+if not isinstance(receipt, dict):
+    print("invalid pre-flight receipt: top level must be an object", file=sys.stderr)
+    sys.exit(1)
+
+actual_registry = receipt.get("registry_key")
+actual_target = receipt.get("gpu_target")
+if actual_registry != expected_registry or actual_target != expected_target:
+    print(
+        "pre-flight receipt mismatch: "
+        f"expected registry_key={expected_registry!r}, gpu_target={expected_target!r}; "
+        f"receipt has registry_key={actual_registry!r}, gpu_target={actual_target!r}",
+        file=sys.stderr,
+    )
+    sys.exit(1)
+
+expected_checks = {
+    "uv_lock",
+    "pytest",
+    "schema",
+    "memory",
+    "smoke",
+    "cuda_capability",
+    "format_ceiling",
+    "default_thought_leak",
+}
+checks = receipt.get("checks")
+if not isinstance(checks, dict):
+    print("invalid pre-flight receipt: checks must be an object", file=sys.stderr)
+    sys.exit(1)
+
+missing = sorted(expected_checks - checks.keys())
+non_pass = sorted(
+    name
+    for name in expected_checks & checks.keys()
+    if not isinstance(checks[name], dict) or checks[name].get("status") != "pass"
+)
+if missing or non_pass:
+    print(
+        "pre-flight receipt does not prove all eight gates passed: "
+        f"missing={missing!r}, non_pass={non_pass!r}",
+        file=sys.stderr,
+    )
+    sys.exit(1)
+PY
+  then
+    log_err "pre-flight receipt does not authorize this registry/GPU combination."
+    log_err "Re-run:  bash scripts/preflight.sh --registry-key '$REGISTRY_KEY' --gpu-target '$VAST_GPU_TARGET'"
+    log_err "(or ELIZA_SKIP_PREFLIGHT=1 to bypass — emergency only)"
+    exit 2
+  fi
+
+  log "[provision] pre-flight gate $gate_file fresh and matched (registry=$REGISTRY_KEY target=$VAST_GPU_TARGET)"
 }
 
 provision() {
@@ -551,7 +622,7 @@ provision() {
 
   # `--ssh --direct` puts an OpenSSH server in the container and exposes
   # a direct port (no bouncer hop) — that's what makes rsync fast enough
-  # for multi-GB dataset transfers. The PyTorch CUDA 12.6 image already
+  # for multi-GB dataset transfers. The PyTorch CUDA 13 image already
   # has python, torch, and the build toolchain; we add tmux/jq/rsync via
   # apt.
   echo "[train_vast] [provision] creating instance label=$VAST_INSTANCE_LABEL image=$VAST_DOCKER_IMAGE disk=${VAST_DISK_GB}GB"
@@ -600,6 +671,8 @@ sync_tree() {
   rsync_remote to "$ROOT/" "$REMOTE_TRAIN_DIR/" \
     --delete \
     --exclude '.venv/' \
+    --exclude '.venv-smoke-train/' \
+    --exclude '.venv-smoke-serve/' \
     --exclude 'data/raw/' \
     --exclude 'checkpoints/' \
     --exclude 'wandb/' \
@@ -697,12 +770,13 @@ run_remote() {
     export PATH=\$HOME/.local/bin:\$PATH
     export HF_HOME=/workspace/hf-cache
     mkdir -p \$HF_HOME
-    uv sync --extra train
+    uv sync --locked --extra train
+    .venv/bin/python -c \"import torch; assert torch.cuda.is_available(), 'CUDA 13 / NVIDIA 580+ runtime unavailable'; assert torch.version.cuda and int(torch.version.cuda.split('.')[0]) >= 13, torch.version.cuda\"
     if [ -n \"\${HUGGING_FACE_HUB_TOKEN:-}\" ]; then
       # hf is the supported HuggingFace CLI in huggingface_hub 1.x.
-      uv run hf auth login --token \"\$HUGGING_FACE_HUB_TOKEN\" --add-to-git-credential
+      uv run --locked --extra train hf auth login --token \"\$HUGGING_FACE_HUB_TOKEN\" --add-to-git-credential
     fi
-    uv run --extra train accelerate launch \\
+    uv run --locked --extra train accelerate launch \\
       --num_processes $FSDP_WORLD_SIZE \\
       --mixed_precision bf16 \\
       --use_fsdp \\
@@ -756,22 +830,20 @@ run_grpo_remote() {
   log "[run-grpo] verl GRPO (registry=$REGISTRY_KEY dpo_ckpt=$dpo_checkpoint world=$FSDP_WORLD_SIZE)"
   log "[run-grpo] rollouts=$rollouts rollout_batch=$rollout_batch epochs=$epochs max_response_len=$max_response_len"
 
-  # verl pulls in a different torch ABI than the SFT/train extra (vllm
-  # pins torch.cuda differently), so we sync the `rl` extra rather than
-  # `train`. train_grpo_verl.sh tolerates a missing verl install — it
-  # writes the config + exits with a clear message — so the launcher
-  # still functions when the remote venv hasn't been bootstrapped yet.
+  # RL is an explicit stage boundary: sync and launch only its locked
+  # verl/vLLM environment. The launcher fails before it writes artifacts if
+  # this environment is unavailable or incomplete.
   ssh_run "bash -lc '
     set -euo pipefail
     cd $REMOTE_TRAIN_DIR
     export PATH=\$HOME/.local/bin:\$PATH
     export HF_HOME=/workspace/hf-cache
     mkdir -p \$HF_HOME
-    uv sync --extra rl
+    uv sync --locked --extra rl
     if [ -n \"\${HUGGING_FACE_HUB_TOKEN:-}\" ]; then
-      uv run hf auth login --token \"\$HUGGING_FACE_HUB_TOKEN\" --add-to-git-credential
+      uv run --locked --extra rl hf auth login --token \"\$HUGGING_FACE_HUB_TOKEN\" --add-to-git-credential
     fi
-    uv run --extra rl bash scripts/train_grpo_verl.sh \\
+    uv run --locked --extra rl bash scripts/train_grpo_verl.sh \\
       --registry-key $REGISTRY_KEY \\
       --dpo-checkpoint $dpo_checkpoint \\
       --output-dir $output_dir \\
@@ -808,7 +880,7 @@ quantize_remote() {
       set -euo pipefail
       cd $REMOTE_TRAIN_DIR
       export PATH=\$HOME/.local/bin:\$PATH
-      uv run --extra train python scripts/quantization/${q}_apply.py \\
+      uv run --locked --extra train python scripts/quantization/${q}_apply.py \\
         --model checkpoints/$RUN_NAME/final \\
         --output checkpoints/$RUN_NAME/final-${q} \\
         --calibration data/final/val.jsonl \\
@@ -828,12 +900,12 @@ bench_remote() {
     set -euo pipefail
     cd $REMOTE_TRAIN_DIR
     export PATH=\$HOME/.local/bin:\$PATH
-    base_id=\$(uv run --extra train python -c \"from scripts.training.model_registry import get; print(get(\\\"$REGISTRY_KEY\\\").hf_id)\")
-    uv run --extra train python scripts/benchmark/native_tool_call_bench.py \\
+    base_id=\$(uv run --locked --extra train python -c \"from scripts.training.model_registry import get; print(get(\\\"$REGISTRY_KEY\\\").hf_id)\")
+    uv run --locked --extra train python scripts/benchmark/native_tool_call_bench.py \\
         --model \$base_id \\
         --out-dir benchmarks/$RUN_NAME/base \\
         --max-per-bucket $BENCH_MAX_PER_BUCKET
-    uv run --extra train python scripts/benchmark/native_tool_call_bench.py \\
+    uv run --locked --extra train python scripts/benchmark/native_tool_call_bench.py \\
         --model checkpoints/$RUN_NAME/final \\
         --out-dir benchmarks/$RUN_NAME/finetuned \\
         --max-per-bucket $BENCH_MAX_PER_BUCKET
@@ -845,7 +917,7 @@ bench_remote() {
       cd $REMOTE_TRAIN_DIR
       export PATH=\$HOME/.local/bin:\$PATH
       if [ -d checkpoints/$RUN_NAME/final-${q} ]; then
-        uv run --extra train python scripts/benchmark/native_tool_call_bench.py \\
+        uv run --locked --extra train python scripts/benchmark/native_tool_call_bench.py \\
           --model checkpoints/$RUN_NAME/final-${q} \\
           --out-dir benchmarks/$RUN_NAME/${q} \\
           --max-per-bucket $BENCH_MAX_PER_BUCKET
@@ -877,9 +949,9 @@ publish_remote() {
     cd $REMOTE_TRAIN_DIR
     export PATH=\$HOME/.local/bin:\$PATH
     if [ -n \"\${HUGGING_FACE_HUB_TOKEN:-}\" ]; then
-      uv run hf auth login --token \"\$HUGGING_FACE_HUB_TOKEN\" --add-to-git-credential
+      uv run --locked --extra train hf auth login --token \"\$HUGGING_FACE_HUB_TOKEN\" --add-to-git-credential
     fi
-    uv run --extra train python -m scripts.publish.publish_model \\
+    uv run --locked --extra train python -m scripts.publish.publish_model \\
       --mode bundle \\
       --bundle-dir $bundle_dir \\
       --tier $tier
@@ -1093,7 +1165,7 @@ EOF
       --local-dir $REMOTE_TRAIN_DIR/data/final \\
       --include 'train.jsonl' --include 'val.jsonl' --include 'test.jsonl' --include 'manifest.json'
     cd $REMOTE_TRAIN_DIR
-    uv sync --extra train
+    uv sync --locked --extra train
     echo '[bootstrap-from-hf] done'
   "
 }

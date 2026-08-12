@@ -2,7 +2,7 @@
 # Pre-flight gate for Vast.ai provisioning.
 #
 # Run this BEFORE `bash scripts/train_vast.sh provision`. It catches the
-# seven classes of failure that have actually burned smoke runs / paid GPU
+# eight classes of failure that have actually burned smoke runs / paid GPU
 # time in this repo:
 #
 #   1. uv lock drift             → ancient pin (e.g. pandas==1.0.5) gets
@@ -20,20 +20,20 @@
 #                                   applicable_passed_pct < 80 — operator
 #                                   must re-run smoke before paying for cloud
 #                                   hardware.
-#   6. CUDA capability mismatch  → torch wheels need cu126/cu130 floor and
-#                                   the picked GPU target's driver / sm level
-#                                   must support it.
+#   6. CUDA capability mismatch  → torch 2.13 needs a CUDA 13-capable driver,
+#                                   and the picked GPU target must report it.
 #   7. format ceiling violations → per-task_type schema (planner envelope,
 #                                   native JSON-decoded routing tokens, tool-call
-#                                   action shape, default-thought leaks) —
-#                                   things `eliza_record.is_valid()` doesn't
-#                                   catch. Trainer ingests the data anyway
-#                                   and the model learns the wrong shape.
+#                                   action shape) that `eliza_record.is_valid()`
+#                                   does not catch.
+#   8. default-thought leaks      → canned reasoning literals survive formatting
+#                                   and teach the model fabricated rationale.
 #
 # On full success the script writes `.preflight.ok` at the repo root with
-# a JSON summary and current timestamp. `train_vast.sh provision` reads
-# the mtime of that file and refuses to provision unless it was updated
-# within the current calendar hour.
+# a JSON summary and current timestamp. `train_vast.sh provision` verifies
+# that the receipt names the exact registry key and GPU target being launched,
+# then refuses to provision unless it was updated within the current calendar
+# hour.
 #
 # Bypass with ELIZA_SKIP_PREFLIGHT=1 (loud warning printed). Use only
 # in operator emergencies — the gate exists because every check here
@@ -327,7 +327,12 @@ TARGET_TO_HW: dict[str, tuple[str, int]] = {
     "h100-2x":          ("h100-80",                2),
     "h200-1x":          ("h200-141",               1),
     "h200-2x":          ("h200-141",               2),
+    "h200-4x":          ("h200-141",               4),
+    "h200-8x":          ("h200-141",               8),
+    "b200-1x":          ("b200-180",               1),
     "b200-2x":          ("b200-180",               2),
+    "b200-4x":          ("b200-180",               4),
+    "b200-8x":          ("b200-180",               8),
 }
 if GPU_TARGET not in TARGET_TO_HW:
     msg = (
@@ -469,11 +474,10 @@ trap 'rm -f "$SUMMARY_TMP" "$SCHEMA_DETAIL_FILE" "$MEM_DETAIL_FILE" "$SMOKE_DETA
 if uv run --extra train python - "$VAST_GPU_TARGET" "$CUDA_DETAIL_FILE" <<'PY'
 """Assert the picked Vast GPU target meets torch's CUDA capability floor.
 
-torch>=2.10 wheels on this repo's `train` extra are built against cu126
-(sm_90 compute capability minimum for FA3 on Hopper, sm_120 for the
-Blackwell consumer line). torch>=2.11 wheels (auto-pulled when `serve`
-extra is also active) need cu130, which adds Blackwell datacenter sm_100
-(B200) support.
+torch 2.13 wheels on this repo's supported GPU extras use CUDA 13. The Vast
+offer picker rejects hosts whose driver reports ``cuda_max_good < 13.0``;
+this declaration keeps preflight and the picker on the same fail-closed
+contract for Hopper, Ampere, and Blackwell targets.
 
 Mapping below is the empirically-verified set — Vast offers a
 `cuda_max_good` field per host, and torch+cu13x demands cuda_max_good
@@ -490,17 +494,20 @@ GPU_TARGET = sys.argv[1]
 DETAIL_OUT = Path(sys.argv[2])
 
 # Per-target SM compute capability + minimum driver-reported cuda_max_good.
-# cu126 → cuda_max_good ≥ 12.6; cu130 → cuda_max_good ≥ 13.0.
-# Blackwell consumer (sm_120) ships on cu128+; Blackwell datacenter B200
-# (sm_100) needs cu130. H100/H200 (sm_90) are fine on cu126.
+# torch 2.13 / CUDA 13 requires cuda_max_good ≥ 13.0 for every target.
 TARGET_CAPS: dict[str, dict] = {
-    "blackwell6000-1x": {"sm": 120, "cuda_max_good_min": 12.8},
-    "blackwell6000-2x": {"sm": 120, "cuda_max_good_min": 12.8},
-    "h100-1x":          {"sm":  90, "cuda_max_good_min": 12.6},
-    "h100-2x":          {"sm":  90, "cuda_max_good_min": 12.6},
-    "h200-1x":          {"sm":  90, "cuda_max_good_min": 12.6},
-    "h200-2x":          {"sm":  90, "cuda_max_good_min": 12.6},
+    "blackwell6000-1x": {"sm": 120, "cuda_max_good_min": 13.0},
+    "blackwell6000-2x": {"sm": 120, "cuda_max_good_min": 13.0},
+    "h100-1x":          {"sm":  90, "cuda_max_good_min": 13.0},
+    "h100-2x":          {"sm":  90, "cuda_max_good_min": 13.0},
+    "h200-1x":          {"sm":  90, "cuda_max_good_min": 13.0},
+    "h200-2x":          {"sm":  90, "cuda_max_good_min": 13.0},
+    "h200-4x":          {"sm":  90, "cuda_max_good_min": 13.0},
+    "h200-8x":          {"sm":  90, "cuda_max_good_min": 13.0},
+    "b200-1x":          {"sm": 100, "cuda_max_good_min": 13.0},
     "b200-2x":          {"sm": 100, "cuda_max_good_min": 13.0},
+    "b200-4x":          {"sm": 100, "cuda_max_good_min": 13.0},
+    "b200-8x":          {"sm": 100, "cuda_max_good_min": 13.0},
 }
 
 if GPU_TARGET not in TARGET_CAPS:
@@ -516,7 +523,7 @@ detail = {
     "cuda_max_good_min": cap["cuda_max_good_min"],
     # We don't query a live offer here — that costs an API call and
     # belongs to the `vast pick` stage. We *declare* the contract; the
-    # picker enforces it server-side via the search filter.
+    # picker enforces it client-side over the returned offers.
     "status": "pass",
 }
 DETAIL_OUT.write_text(json.dumps(detail))
@@ -529,7 +536,7 @@ then
   record cuda_capability pass "$(cat "$CUDA_DETAIL_FILE")"
 else
   log_err "CUDA capability gate failed for $VAST_GPU_TARGET"
-  log_err "Fix:  set VAST_GPU_TARGET to one of {blackwell6000-1x, blackwell6000-2x, h100-1x, h100-2x, h200-1x, h200-2x, b200-2x}"
+  log_err "Fix:  set VAST_GPU_TARGET to a target declared in scripts/lib/vast.py"
   detail_json="$(cat "$CUDA_DETAIL_FILE" 2>/dev/null || echo '{}')"
   record cuda_capability fail "$detail_json"
   exit 1

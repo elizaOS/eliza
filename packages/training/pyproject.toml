@@ -3,7 +3,10 @@ name = "eliza-training"
 version = "0.1.0"
 description = "Fine-tuning pipeline for Eliza-1 on Eliza-native Vercel AI SDK trajectory rows."
 readme = "README.md"
-requires-python = ">=3.11,<3.13"
+# vLLM's Python 3.12 wheels cap setuptools below the security-supported line.
+# Keep the reproducible training/serving lock on Python 3.11 until that
+# upstream build constraint is removed.
+requires-python = ">=3.11,<3.12"
 
 dependencies = [
   # 1.13.0 has a one-file LFS upload typo in _upload_lfs_files
@@ -20,10 +23,6 @@ dependencies = [
   # scripts/eliza_reward_fn.py path never imports anthropic unless asked.
   "anthropic>=0.40.0",
   "tiktoken>=0.8.0",
-  "argostranslate>=1.11.0",
-  # Argos Translate 1.11.0 requires this exact Stanza release. Declaring the
-  # transitive pin keeps uv/Dependabot from proposing an unsatisfiable upgrade.
-  "stanza==1.10.1",
   "httpx>=0.27.0",
   # PolarQuant's Lloyd-Max centroid generation imports scipy.stats.norm
   # directly; keep it in the base training environment so smoke tests and
@@ -33,15 +32,17 @@ dependencies = [
   # pure-Python dep; pinned only at the floor to match the rest of the
   # test stack (pytest>=8).
   "hypothesis>=6.100.0",
+  # Several GPU packages import setuptools at runtime. Keep the lock above
+  # the repository's security floor instead of accepting their stale caps.
+  "setuptools>=83.0.0",
 ]
 
 [project.optional-dependencies]
 train = [
-  # torch>=2.5,<2.12 — uv picks the wheel matching whatever vllm 0.20.x
-  # resolves to (torch 2.11+cu130 in practice) when --extra serve is
-  # also selected (smoke), and 2.10+cu126 when train is alone (Vast
-  # SFT path). Both wheels run on Vast Blackwell driver 570.x.
-  "torch>=2.5.0,<2.13",
+  # torch 2.13 is the first release outside both active torch advisory ranges.
+  # Its Linux wheel uses CUDA 13, so training requires a 580-series NVIDIA
+  # driver and remains isolated from the vLLM-backed environments below.
+  "torch>=2.13.0,<2.14.0",
   "transformers>=4.46.0",
   "accelerate>=1.1.0",
   "peft>=0.14.0",
@@ -66,7 +67,7 @@ train = [
   # pip-installable — the user must run
   #   `cd scripts/quantization/qjl && python setup.py build_ext --inplace`
   # after installing nvcc + python-dev system packages
-  # (`sudo apt install nvidia-cuda-toolkit python3.12-dev`). pybind11
+  # (`sudo apt install nvidia-cuda-toolkit python3.11-dev`). pybind11
   # is needed at C++ template-binding time. There is no pyqjl package
   # on PyPI; do not add one.
   "pybind11>=2.12.0",
@@ -100,18 +101,21 @@ train = [
   "pytest-asyncio>=1.0.0",
 ]
 rl = [
-  # ByteDance verl — GRPO trainer with bundled vLLM/SGLang rollout server,
+  # ByteDance verl — GRPO trainer with its vLLM rollout server,
   # FSDP+Megatron training backends, and verifiable-reward registry. Stage 2
   # of RL_STRATEGY.md uses the python-callable reward path
   # (`custom_reward_function`) to invoke scripts/eliza_reward_fn.py:compute_score
-  # per rollout. Keep the RL stack on the 0.8 line so the rollout server can
-  # move past the old vLLM 0.7.2 / torch 2.5.1 lock pair.
-  "verl>=0.8.0,<0.9.0",
-  # GRPO trainer needs vLLM for rollouts; pin separately so users running RL
-  # without serving don't have to install the full `serve` extra (which has
-  # an incompatible torch ABI). vLLM 0.8.5 is the latest 0.8-series wheel and
-  # avoids the older 0.7.2 / torch 2.5.1 pair flagged by dependency scanning.
-  "vllm>=0.8.5,<0.9.0",
+  # per rollout. PyPI's verl 0.8 caps vLLM below the security-supported line,
+  # so use the verified upstream commit that raised support to vLLM >=0.18.
+  # The exact source revision below is a temporary bridge until that support
+  # is included in a stable verl release.
+  "verl[vllm]",
+  # Keep vLLM direct so Dependabot can update the advisory floor independently
+  # of the manually reviewed verl Git revision.
+  "vllm>=0.27.1,<0.28.0",
+  # Make the security floor explicit: the rollout scheduler needs Ray's
+  # dashboard/default services, and older releases are advisory-affected.
+  "ray[default]>=2.56.0,<3.0.0",
   # Atropos — continuous RL environment server. Drives the GRPO loop in
   # scripts/rl/atropos_trainer.py against eliza-native trajectory JSONL
   # exports under $ELIZA_STATE_DIR/trajectories. Config:
@@ -119,8 +123,9 @@ rl = [
   "atroposlib>=0.1.0",
   # LiteLLM — OpenAI-compatible client used by the RLAIF judge path to talk
   # to cerebras/gpt-oss-120b and the Nebius testing harness from a single
-  # surface.
-  "litellm>=1.0.0",
+  # surface. Keep the floor above the patched releases for its proxy/request
+  # validation advisory family.
+  "litellm>=1.84.0,<2.0.0",
   # Kondo-gate selective backprop kernel — referenced by atropos.yaml
   # (use_kondo: true). Pinned independent of the train/serve torch line.
   "kondo-gate>=0.1.0",
@@ -146,14 +151,14 @@ reward = [
 # resolution graph; install with `uv tool install vastai` and
 # `pip install heretic-llm` on the abliteration box.
 serve = [
-  # vLLM 0.21+ ships EAGLE-3 speculative decoding (PR #38280 era), the
+  # vLLM 0.27+ ships EAGLE-3 speculative decoding (PR #38280 era), the
   # TurboQuant K/V quantization plugin, FP8 KV cache via FlashAttention 3
   # on sm_90, and continuous batching needed by the Gemma-era serve harness.
   # Pin a minor floor that captures all of these. See
   # scripts/inference/serve_vllm.py for the canonical flag set per model +
   # GPU target.
-  "vllm>=0.21.0,<0.22.0",
-  # `vllm-flash-attn` is bundled with vLLM 0.20+; add explicitly so the
+  "vllm>=0.27.1,<0.28.0",
+  # `vllm-flash-attn` is bundled with modern vLLM; add explicitly so the
   # constraint solver doesn't pull a stale wheel from a transitive dep.
   "transformers>=4.46.0",
   # OpenAI client used by scripts/inference/test_apc_mtp_tool_calls.py to
@@ -178,13 +183,11 @@ markers = [
 
 [tool.uv]
 package = false
-# `rl` (verl) pulls a vllm whose torch pin window conflicts with both
-# `train` and `serve`, so keep `rl` isolated. `train` and `serve` are
-# NOT declared as conflicting — they share a single torch 2.11+cu130
-# wheel in practice (vllm 0.20.x ships that, train deps float to it).
-# The local end-to-end smoke (smoke_full_stack.sh) needs both extras
-# in one venv; declaring them conflicting breaks that. The Vast SFT
-# path installs only `--extra train` and is unaffected.
+# These GPU extras currently converge on torch 2.13; the conflicts are a
+# deliberate stage-isolation invariant, not a solver workaround. Keep the
+# experimental SFT kernels out of serving, the Git-sourced verl/Ray control
+# plane out of SFT and serving, and run each stage from its own locked export.
+# smoke_full_stack.sh shares checkpoints across separate train/serve venvs.
 conflicts = [
   [
     { extra = "train" },
@@ -194,11 +197,21 @@ conflicts = [
     { extra = "serve" },
     { extra = "rl" },
   ],
-  # rl-tinker (cloud SDK) and the local verl/vllm RL path target the same
-  # config surface but should not coexist in a single venv — Tinker brings
-  # its own torch ABI assumptions and its rollouts are remote.
+  [
+    { extra = "train" },
+    { extra = "serve" },
+  ],
+  # rl-tinker (cloud SDK) and local verl/vLLM are mutually exclusive execution
+  # modes for the same RL stage. Keep the remote client out of local workers
+  # and the local trainer/control plane out of Tinker client environments.
   [
     { extra = "rl" },
     { extra = "rl-tinker" },
   ],
 ]
+
+[tool.uv.sources]
+# Dependabot's uv updater intentionally excludes Git sources. Advance this
+# full, verified commit SHA manually after reviewing upstream vLLM E2E results,
+# or remove the source once a stable verl release supports the secure vLLM line.
+verl = { git = "https://github.com/verl-project/verl.git", rev = "668baad7455453eac8ab863f1b2d6fecaec746ed" }

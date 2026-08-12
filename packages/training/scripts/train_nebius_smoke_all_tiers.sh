@@ -237,32 +237,12 @@ export HF_HOME=/opt/hf-cache
 sudo mkdir -p \$HF_HOME && sudo chown -R \$USER \$HF_HOME || true
 ${hf_tok:+export HUGGING_FACE_HUB_TOKEN='$hf_tok'; export HF_TOKEN='$hf_tok'}
 
-# Same cu130→cu128 torch swap as train_nebius.sh — the Nebius cuda12.8 image
-# ships driver 570.x which can't see cu130 torch. Skip if a previous tier on
-# this VM already swapped (UV_NO_SYNC=1 stays sticky in the venv, but we
-# re-probe defensively).
-torch_swap_cu128() {
-  .venv/bin/python -c 'import torch,sys; sys.exit(0 if torch.cuda.is_available() else 1)' 2>/dev/null && return 0
-  uv pip uninstall --python .venv/bin/python torch torchvision triton 2>/dev/null || true
-  cu13pkgs="\$(uv pip list --python .venv/bin/python 2>/dev/null | awk '/^nvidia-[a-z0-9-]+ /{print \$1}')"
-  [ -n "\$cu13pkgs" ] && uv pip uninstall --python .venv/bin/python \$cu13pkgs 2>/dev/null || true
-  uv pip install --python .venv/bin/python 'torch==2.11.0' --index-url https://download.pytorch.org/whl/cu128
-  uv pip install --python .venv/bin/python --reinstall nvidia-cusparselt-cu12
-}
-if [ ! -d .venv ]; then
-  uv sync --extra train
-fi
-torch_swap_cu128
-export UV_NO_SYNC=1 UV_FROZEN=1
+uv sync --locked --extra train
+.venv/bin/python -c 'import torch; assert torch.cuda.is_available(), "CUDA 13 / NVIDIA 580+ runtime unavailable"; assert torch.version.cuda and int(torch.version.cuda.split(".")[0]) >= 13, torch.version.cuda'
 
-# --use-liger auto (not 'on'): on the smoke loop the cu128 torch swap above
-# can leave liger-kernel's compiled extension bound to the pre-swap torch
-# ABI; `auto` falls back to the HF default chunked-CE path with just a
-# warning, while `on` raises SystemExit (train_local.py:468-472) — that was
-# the 2026-05-14 smoke crash mode (4/4 SFT tiers exited 1 in ~8s after the
-# pipeline reached `apply_liger_kernel`). The smoke is for *pipeline*
-# validation; the Liger memory savings only matter at full seq_len.
-uv run --extra train python scripts/run_pipeline.py \\
+# `auto` lets this pipeline smoke report an optional Liger integration failure
+# while still exercising the base trainer; full paid runs use the strict path.
+uv run --locked --extra train python scripts/run_pipeline.py \\
   --registry-key $rk --run-name $run_name \\
   --epochs 1 --lr 1e-5 --use-liger auto \\
   $max_steps_flag $extra $skip_finetune_flag \\

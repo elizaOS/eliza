@@ -1,4 +1,4 @@
-"""Unit tests for scripts.lib.backends.vast.VastBackend.
+"""Unit tests for the Vast.ai backend adapter and offer filter.
 
 Mocks ``subprocess.run`` and the ``scripts.lib.vast`` low-level shim so
 the adapter contract can be verified without touching the real
@@ -48,7 +48,9 @@ def handle() -> InstanceHandle:
     )
 
 
-def _raw_vast_offer(*, oid: int = 12345, dph: float = 1.07) -> dict[str, Any]:
+def _raw_vast_offer(
+    *, oid: int = 12345, dph: float = 1.07, cuda_max_good: Any = 13.0
+) -> dict[str, Any]:
     return {
         "id": oid,
         "gpu_name": "RTX_PRO_6000_S",
@@ -62,7 +64,7 @@ def _raw_vast_offer(*, oid: int = 12345, dph: float = 1.07) -> dict[str, Any]:
         "disk_space": 1500.0,
         "duration": 7 * 86400.0,
         "geolocation": "US-CA",
-        "cuda_max_good": 12.6,
+        "cuda_max_good": cuda_max_good,
     }
 
 
@@ -81,15 +83,49 @@ def test_vast_backend_is_registered() -> None:
 # ---------------------------------------------------------------------------
 
 
+def test_low_level_search_rejects_pre_cuda_13_driver() -> None:
+    raw = [
+        _raw_vast_offer(oid=111, cuda_max_good=12.9),
+        _raw_vast_offer(oid=222, cuda_max_good=13.0),
+    ]
+    with mock.patch.object(_vast_cli, "_vastai", return_value=json.dumps(raw)):
+        offers = _vast_cli.search("blackwell6000-1x")
+
+    assert [offer.id for offer in offers] == [222]
+
+
+@pytest.mark.parametrize("cuda_max_good", [None, "unknown", float("nan")])
+def test_low_level_search_skips_malformed_cuda_driver_rows(
+    cuda_max_good: Any,
+) -> None:
+    raw = [
+        _raw_vast_offer(oid=111, cuda_max_good=cuda_max_good),
+        _raw_vast_offer(oid=222, cuda_max_good=13.0),
+    ]
+    with mock.patch.object(_vast_cli, "_vastai", return_value=json.dumps(raw)):
+        offers = _vast_cli.search("blackwell6000-1x")
+
+    assert [offer.id for offer in offers] == [222]
+
+
+def test_low_level_search_skips_missing_cuda_driver_row() -> None:
+    missing_cuda = _raw_vast_offer(oid=111)
+    del missing_cuda["cuda_max_good"]
+    raw = [missing_cuda, _raw_vast_offer(oid=222)]
+
+    with mock.patch.object(_vast_cli, "_vastai", return_value=json.dumps(raw)):
+        offers = _vast_cli.search("blackwell6000-1x")
+
+    assert [offer.id for offer in offers] == [222]
+
+
 def test_search_offers_parses_vastai_json_into_offer(
     backend: VastBackend,
 ) -> None:
     raw = [_raw_vast_offer(oid=111, dph=0.95), _raw_vast_offer(oid=222, dph=1.50)]
     parsed = [_vast_cli.Offer.from_raw(r) for r in raw]
     with mock.patch.object(_vast_cli, "search", return_value=parsed):
-        offers = backend.search_offers(
-            OfferConstraints(gpu_target="blackwell6000-1x")
-        )
+        offers = backend.search_offers(OfferConstraints(gpu_target="blackwell6000-1x"))
 
     assert len(offers) == 2
     first = offers[0]
@@ -108,9 +144,7 @@ def test_search_offers_parses_vastai_json_into_offer(
 def test_search_offers_raises_no_offers_when_empty(backend: VastBackend) -> None:
     with mock.patch.object(_vast_cli, "search", return_value=[]):
         with pytest.raises(NoOffersError) as exc:
-            backend.search_offers(
-                OfferConstraints(gpu_target="blackwell6000-1x")
-            )
+            backend.search_offers(OfferConstraints(gpu_target="blackwell6000-1x"))
     assert "no vast offers match" in str(exc.value)
 
 
@@ -177,9 +211,7 @@ def test_provision_returns_instance_handle_on_success(
     pubkey.write_text("ssh-ed25519 AAAA test\n")
     create_payload = json.dumps({"new_contract": 12345678, "success": True})
 
-    def fake_run(
-        cmd: list[str], **kwargs: Any
-    ) -> "subprocess.CompletedProcess[str]":
+    def fake_run(cmd: list[str], **kwargs: Any) -> "subprocess.CompletedProcess[str]":
         if "create" in cmd:
             return subprocess.CompletedProcess(
                 args=cmd, returncode=0, stdout=create_payload, stderr=""
@@ -213,7 +245,9 @@ def test_teardown_succeeds_on_first_call(
 ) -> None:
     ok = subprocess.CompletedProcess(
         args=["vastai", "destroy", "instance", "42"],
-        returncode=0, stdout="ok\n", stderr="",
+        returncode=0,
+        stdout="ok\n",
+        stderr="",
     )
     with mock.patch.object(subprocess, "run", return_value=ok) as run:
         backend.teardown(handle)
@@ -233,9 +267,7 @@ def test_teardown_is_idempotent_when_instance_already_gone(
         # Must NOT raise — second teardowns are expected to leave state unchanged.
         backend.teardown(handle)
     # Warning must be logged so operators see the idempotent teardown.
-    assert any(
-        "already destroyed" in rec.getMessage() for rec in caplog.records
-    )
+    assert any("already destroyed" in rec.getMessage() for rec in caplog.records)
 
 
 def test_teardown_raises_on_unrelated_failure(

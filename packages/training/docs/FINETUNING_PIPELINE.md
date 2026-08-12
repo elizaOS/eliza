@@ -23,8 +23,9 @@ five tiers in one command) is `finetune_all_tiers.py`.
 
 ## Prerequisites
 
-- **Python 3.11+** (3.12 recommended; tested on 3.11 and 3.12)
-- **CUDA 12.1+** and NVIDIA driver 570+ (H100/H200/A100 for 9B/27B tiers)
+- **Python 3.11** (the locked secure vLLM toolchain does not support 3.12)
+- **CUDA 13 and NVIDIA driver 580+** for the locked `train`, `rl`, and
+  `serve` extras (H100/H200/A100 for 9B/27B training tiers)
 - **uv** package manager: `curl -LsSf https://astral.sh/uv/install.sh | sh`
 - **bun install** from the repo root (for the Electrobun/app-core parts)
 - **HF_TOKEN** — HuggingFace write token; required for publish steps
@@ -35,7 +36,7 @@ Install Python dependencies:
 
 ```bash
 cd packages/training
-uv sync --extra train
+uv sync --locked --extra train
 ```
 
 ---
@@ -391,16 +392,15 @@ bash scripts/train_nebius.sh teardown
 
 ### `torch.cuda.is_available()` returns False on Nebius
 
-The Nebius `cuda12.8` public image ships driver 570.x; the pinned torch
-(`cu130`) requires driver ≥580. The launcher auto-detects and swaps to
-`torch==2.11.0+cu128`, which the 570.x driver supports.
+The locked torch 2.13 stack requires the Nebius `ubuntu24.04-cuda13.0` image
+and its 580-series driver. The launcher fails closed when that runtime is not
+available; do not downgrade torch or swap in a CUDA 12 wheel because that
+would reintroduce the advisory-affected dependency line.
 
-If you hit this manually:
+Check the remote runtime before training:
+
 ```bash
-.venv/bin/python -c 'import torch; print(torch.cuda.is_available())'
-# If False:
-uv pip uninstall torch torchvision triton
-uv pip install torch==2.11.0 --index-url https://download.pytorch.org/whl/cu128
+.venv/bin/python -c 'import torch; assert torch.cuda.is_available(); print(torch.__version__, torch.version.cuda)'
 ```
 
 ### OOM during SFT

@@ -49,7 +49,7 @@ on this box. We measure what we *can* measure (the analytic and
 pure-PyTorch ratios on real activations) and emit the exact build
 command the user needs. See ``scripts/quantization/README.md`` for the
 full build prereqs (``sudo apt install nvidia-cuda-toolkit
-python3.12-dev``) and the Blackwell ``TORCH_CUDA_ARCH_LIST`` workaround.
+python3.11-dev``) and the Blackwell ``TORCH_CUDA_ARCH_LIST`` workaround.
 """
 
 from __future__ import annotations
@@ -97,7 +97,6 @@ def attempt_qjl_kernel_build() -> dict:
     """
     nvcc = shutil.which("nvcc")
     python_h_paths = [
-        Path("/usr/include/python3.12/Python.h"),
         Path("/usr/include/python3.11/Python.h"),
         Path(sys.prefix) / "include" / f"python{sys.version_info.major}.{sys.version_info.minor}" / "Python.h",
     ]
@@ -117,7 +116,7 @@ def attempt_qjl_kernel_build() -> dict:
             f" python.h={'OK' if python_h else 'MISSING'})"
         )
         info["remediation"] = (
-            "sudo apt install nvidia-cuda-toolkit python3.12-dev   # then:\n"
+            "sudo apt install nvidia-cuda-toolkit python3.11-dev   # then:\n"
             "cd scripts/quantization/qjl && "
             "TORCH_CUDA_ARCH_LIST='12.0+PTX' "
             "python setup.py build_ext --inplace"

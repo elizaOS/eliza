@@ -39,7 +39,7 @@ if [[ -z "${TORCH_CUDA_ARCH_LIST:-}" ]]; then
     fi
     # If any GPU is sm_120 (Blackwell consumer), keep PTX so PyTorch's
     # CUDA runtime can JIT-compile from PTX on systems that lack a SASS
-    # compiler for sm_120 (e.g. CUDA 12.x toolchains).
+    # compiler for sm_120 (the supported image uses a CUDA 13 toolchain).
     if [[ "${caps}" == *"12.0"* ]]; then
       caps="${caps//12.0/12.0+PTX}"
     fi

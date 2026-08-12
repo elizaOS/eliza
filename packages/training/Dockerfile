@@ -4,13 +4,13 @@
 #   - scripts/quantization/qjl/                   (vendored CUDA kernels, nvcc)
 #   - scripts/quantization/fused_turboquant_*     (Triton JIT at import time)
 #   - scripts/training/                           (APOLLO, Liger, FA2/3)
-#   - scripts/inference/serve_vllm.py             (vllm 0.20+, optional `serve`)
+#   - scripts/inference/serve_vllm.py             (vLLM 0.27+, separate env)
 #
 # CUDA / torch alignment
 # ----------------------
-# training/pyproject.toml pins torch>=2.5.0,<2.11 in the `train` extra.
-# uv.lock currently resolves torch 2.10.0 + triton 3.6.0. Torch 2.10 ships
-# `cu126` wheels by default, so the toolchain image is CUDA 12.6.
+# training/pyproject.toml pins torch>=2.13.0,<2.14.0 in the `train` extra.
+# uv.lock resolves torch 2.13.0 + triton 3.7.1. The Linux torch wheel uses
+# CUDA 13, so the image and host driver contract is CUDA 13 / NVIDIA 580+.
 #
 # Image goal: build QJL extensions at *image-build* time so the first
 # `docker run` does not pay for a 5+ minute nvcc compile. fused-turboquant's
@@ -21,7 +21,7 @@
 # compile artifacts; `runtime` keeps the venv + compiled .so files but
 # drops apt caches and -dev headers we no longer need at runtime.
 
-ARG CUDA_IMAGE=nvidia/cuda:12.6.3-devel-ubuntu22.04
+ARG CUDA_IMAGE=nvidia/cuda:13.0.2-devel-ubuntu22.04
 
 # -------------------------------------------------------------------
 # Stage 1: builder — system deps, uv, python venv, QJL nvcc compile
@@ -36,7 +36,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
     UV_COMPILE_BYTECODE=1 \
     UV_PYTHON_PREFERENCE=only-managed
 
-# python3.12-dev is required by QJL's torch.utils.cpp_extension build
+# python3.11-dev is required by QJL's torch.utils.cpp_extension build
 # (Python.h). build-essential brings gcc/g++/make. ninja-build is what
 # torch.utils.cpp_extension prefers as a backend.
 RUN apt-get update \
@@ -51,9 +51,9 @@ RUN apt-get update \
  && add-apt-repository -y ppa:deadsnakes/ppa \
  && apt-get update \
  && apt-get install -y --no-install-recommends \
-        python3.12 \
-        python3.12-dev \
-        python3.12-venv \
+        python3.11 \
+        python3.11-dev \
+        python3.11-venv \
  && rm -rf /var/lib/apt/lists/*
 
 # Install uv from the upstream installer; pin the install dir so the
@@ -69,12 +69,12 @@ WORKDIR /workspace
 COPY pyproject.toml ./
 COPY uv.lock ./
 
-# Create the venv with python 3.12 (uv-managed) and install the train
-# extra. We deliberately do NOT install `--extra serve` here because vllm
-# pulls a different torch ABI and conflicts with the train extra (see
-# pyproject.toml [tool.uv].conflicts). serve is intentionally a separate
-# image.
-RUN uv venv --python 3.12 /workspace/.venv \
+# Create the venv with Python 3.11 and install the train
+# extra. We deliberately do NOT install `--extra serve`: the uv conflict
+# contract keeps experimental training kernels out of the serving runtime,
+# even though both stacks currently resolve torch 2.13. Serving uses a
+# separate environment or image.
+RUN uv venv --python 3.11 /workspace/.venv \
  && . /workspace/.venv/bin/activate \
  && uv sync --extra train --locked --no-install-project
 
@@ -122,9 +122,9 @@ RUN apt-get update \
  && add-apt-repository -y ppa:deadsnakes/ppa \
  && apt-get update \
  && apt-get install -y --no-install-recommends \
-        python3.12 \
-        python3.12-dev \
-        python3.12-venv \
+        python3.11 \
+        python3.11-dev \
+        python3.11-venv \
  && apt-get purge -y --auto-remove software-properties-common \
  && rm -rf /var/lib/apt/lists/*
 

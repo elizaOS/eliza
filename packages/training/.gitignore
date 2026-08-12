@@ -1,6 +1,8 @@
 __pycache__/
 *.pyc
 .venv/
+.venv-smoke-train/
+.venv-smoke-serve/
 data/*
 # Smoke corpus: 20-row synthetic end-to-end-pipeline validator. Kept in
 # git so the e2e SFT pipeline can be smoke-tested from a fresh clone.
