@@ -1522,8 +1522,10 @@ function stageIosAgentRuntime({
   );
 }
 
-function removeIosLocalExecutionAssets() {
-  const publicDir = path.join(iosDir, "App", "public");
+/** Removes stale on-device agent resources and reports how many paths existed. */
+export function removeIosLocalExecutionAssets(
+  publicDir = path.join(iosDir, "App", "public"),
+) {
   const targets = [
     path.join(publicDir, "agent"),
     path.join(publicDir, "vector.tar.gz"),
@@ -1537,9 +1539,10 @@ function removeIosLocalExecutionAssets() {
   }
   if (removed > 0) {
     console.log(
-      `[mobile-build] Removed ${removed} stale iOS local execution asset path(s) for App Store build.`,
+      `[mobile-build] Removed ${removed} stale iOS local execution asset path(s) from an engine-less build.`,
     );
   }
+  return removed;
 }
 
 // ── Phase 3: Capacitor sync ────────────────────────────────────────────
@@ -3795,6 +3798,31 @@ export function shouldIncludeIosFullBunEngine(env = process.env) {
   );
 }
 
+/**
+ * Resolves local payload work from the named target's engine contract. Release
+ * classifier variables cannot grant a forbidden target an on-device runtime.
+ *
+ * @param {ReturnType<typeof resolveIosBuildTargetPolicy>} targetPolicy
+ * @param {Record<string, string|undefined>} [env]
+ */
+export function resolveIosLocalPayloadDecision(
+  targetPolicy,
+  env = process.env,
+) {
+  const includesFullBunRuntime =
+    targetPolicy.localEngine !== "forbidden" &&
+    shouldIncludeIosFullBunEngine(env);
+  const includesLocalAgentPayload =
+    targetPolicy.localEngine === "forbidden"
+      ? false
+      : targetPolicy.localEngine === "required" || includesFullBunRuntime;
+  return {
+    includesFullBunRuntime,
+    includesLocalAgentPayload,
+    removeStaleLocalExecutionAssets: !includesLocalAgentPayload,
+  };
+}
+
 export function resolveIosCapacitorSyncEnv(env = process.env) {
   if (!shouldIncludeIosFullBunEngine(env)) return { ...env };
 
@@ -3809,6 +3837,14 @@ export function isIosAppStoreBuild(env = process.env) {
   return (
     env.ELIZA_RELEASE_AUTHORITY === "apple-app-store" ||
     env.ELIZA_BUILD_VARIANT?.toLowerCase() === "store"
+  );
+}
+
+/** Keeps the tunnel bridge out of release-authority builds. */
+export function shouldIncludeIosMobileAgentBridge(env = process.env) {
+  return (
+    !isIosAppStoreBuild(env) &&
+    isTruthyEnv(env.ELIZA_IOS_INCLUDE_MOBILE_AGENT_BRIDGE)
   );
 }
 
@@ -3903,9 +3939,7 @@ function generatePodfile() {
   const includeFullBunEngine = shouldIncludeIosFullBunEngine();
   const includeCompatBunRuntime =
     !includeFullBunEngine && process.env.ELIZA_IOS_RUNTIME_MODE === "local";
-  const includeMobileAgentBridge =
-    !appStoreBuild &&
-    isTruthyEnv(process.env.ELIZA_IOS_INCLUDE_MOBILE_AGENT_BRIDGE);
+  const includeMobileAgentBridge = shouldIncludeIosMobileAgentBridge();
   const customPods = resolveIosCustomPods({
     includeLlama,
     includeCompatBunRuntime,
@@ -8483,21 +8517,19 @@ async function buildIos(target = "ios") {
   if (process.platform !== "darwin")
     throw new Error("iOS builds require macOS and Xcode.");
 
+  const targetPolicy = resolveIosBuildTargetPolicy(target);
   const local = target === "ios-local";
-  const iosBuildPolicy = resolveMobileBuildPolicy(target);
   setDefaultProcessEnv(
     "ELIZA_CAPACITOR_BUILD_TARGET",
-    iosBuildPolicy.capacitorTarget,
-  );
-  setDefaultProcessEnv("ELIZA_BUILD_VARIANT", iosBuildPolicy.buildVariant);
-  setDefaultProcessEnv(
-    "ELIZA_RELEASE_AUTHORITY",
-    iosBuildPolicy.releaseAuthority,
+    targetPolicy.capacitorTarget,
   );
 
   const buildTarget = resolveIosBuildTarget();
-  const includesFullBunRuntime = shouldIncludeIosFullBunEngine();
-  const includesLocalAgentPayload = local || includesFullBunRuntime;
+  const {
+    includesFullBunRuntime,
+    includesLocalAgentPayload,
+    removeStaleLocalExecutionAssets,
+  } = resolveIosLocalPayloadDecision(targetPolicy);
   if (includesFullBunRuntime) {
     setDefaultProcessEnv("VITE_ELIZA_IOS_FULL_BUN_AVAILABLE", "1");
   }
@@ -8528,7 +8560,7 @@ async function buildIos(target = "ios") {
       appStoreBuild: isIosAppStoreBuild() && !local,
       includeFullBunEngine: includesFullBunRuntime,
     });
-  } else if (isIosAppStoreBuild()) {
+  } else if (removeStaleLocalExecutionAssets) {
     removeIosLocalExecutionAssets();
   }
   if (fs.existsSync(cocoapodsScript)) {
@@ -8555,7 +8587,7 @@ async function buildIos(target = "ios") {
       appStoreBuild: isIosAppStoreBuild() && !local,
       includeFullBunEngine: includesFullBunRuntime,
     });
-  } else if (isIosAppStoreBuild()) {
+  } else if (removeStaleLocalExecutionAssets) {
     removeIosLocalExecutionAssets();
   }
 

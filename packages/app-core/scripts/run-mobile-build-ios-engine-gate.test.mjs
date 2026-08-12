@@ -1,12 +1,20 @@
 /** Exercises run mobile build ios engine gate behavior with deterministic app-core test fixtures. */
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 import {
   isIosAppStoreBuild,
+  removeIosLocalExecutionAssets,
   resolveIosBuildEnvironment,
+  resolveIosBuildTargetPolicy,
   resolveIosCapacitorSyncEnv,
+  resolveIosCustomPods,
+  resolveIosLocalPayloadDecision,
   resolveMobileBuildPolicy,
   shouldIncludeIosFullBunEngine,
+  shouldIncludeIosMobileAgentBridge,
 } from "./run-mobile-build.mjs";
 
 // Regression coverage for the prod iOS local-agent failure: an App Store /
@@ -18,11 +26,16 @@ import {
 // is embedded; these tests lock that contract on the build script's own gate.
 
 describe("iOS full-Bun engine embed gate", () => {
-  it("keeps the named pure-cloud target internally consistent under inherited local flags", () => {
+  it("makes the named pure-cloud target authoritative over a contaminated parent environment", () => {
     const env = resolveIosBuildEnvironment("ios-cloud", {
+      ELIZA_BUILD_VARIANT: "direct",
+      ELIZA_RELEASE_AUTHORITY: "developer-toolchain",
       ELIZA_IOS_APP_STORE_LOCAL_RUNTIME: "1",
       ELIZA_IOS_FULL_BUN_ENGINE: "1",
+      ELIZA_IOS_INCLUDE_MOBILE_AGENT_BRIDGE: "1",
     });
+    const targetPolicy = resolveIosBuildTargetPolicy("ios-cloud");
+    const payload = resolveIosLocalPayloadDecision(targetPolicy, env);
 
     expect(resolveMobileBuildPolicy("ios-cloud")).toMatchObject({
       capacitorTarget: "ios",
@@ -32,11 +45,95 @@ describe("iOS full-Bun engine embed gate", () => {
       releaseAuthority: "apple-app-store",
     });
     expect(env).toMatchObject({
+      ELIZA_BUILD_VARIANT: "store",
+      ELIZA_RELEASE_AUTHORITY: "apple-app-store",
       ELIZA_IOS_APP_STORE_LOCAL_RUNTIME: "0",
       ELIZA_IOS_FULL_BUN_ENGINE: "0",
+      ELIZA_IOS_INCLUDE_MOBILE_AGENT_BRIDGE: "0",
       VITE_ELIZA_IOS_RUNTIME_MODE: "cloud",
     });
+    expect(isIosAppStoreBuild(env)).toBe(true);
     expect(shouldIncludeIosFullBunEngine(env)).toBe(false);
+    expect(shouldIncludeIosMobileAgentBridge(env)).toBe(false);
+    expect(payload).toEqual({
+      includesFullBunRuntime: false,
+      includesLocalAgentPayload: false,
+      removeStaleLocalExecutionAssets: true,
+    });
+    expect(
+      new Map(
+        resolveIosCustomPods({
+          appStoreBuild: isIosAppStoreBuild(env),
+          includeFullBunEngine: payload.includesFullBunRuntime,
+          includeMobileAgentBridge: shouldIncludeIosMobileAgentBridge(env),
+        }),
+      ).has("ElizaosCapacitorMobileAgentBridge"),
+    ).toBe(false);
+  });
+
+  it("removes every stale local payload path from a dirty pure-cloud tree", () => {
+    const fixtureRoot = fs.mkdtempSync(
+      path.join(os.tmpdir(), "eliza-ios-cloud-assets-"),
+    );
+    const publicDir = path.join(fixtureRoot, "public");
+    const agentDir = path.join(publicDir, "agent");
+    fs.mkdirSync(agentDir, { recursive: true });
+    fs.writeFileSync(path.join(agentDir, "agent-bundle.js"), "stale");
+    fs.writeFileSync(path.join(publicDir, "vector.tar.gz"), "stale");
+    fs.writeFileSync(path.join(publicDir, "fuzzystrmatch.tar.gz"), "stale");
+
+    try {
+      const payload = resolveIosLocalPayloadDecision(
+        resolveIosBuildTargetPolicy("ios-cloud"),
+        {
+          ELIZA_BUILD_VARIANT: "direct",
+          ELIZA_RELEASE_AUTHORITY: "developer-toolchain",
+          ELIZA_IOS_FULL_BUN_ENGINE: "1",
+        },
+      );
+      expect(payload.removeStaleLocalExecutionAssets).toBe(true);
+      expect(removeIosLocalExecutionAssets(publicDir)).toBe(3);
+      expect(fs.readdirSync(publicDir)).toEqual([]);
+    } finally {
+      fs.rmSync(fixtureRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("retains the supported hybrid engine and local compatibility payloads", () => {
+    expect(
+      resolveIosLocalPayloadDecision(
+        resolveIosBuildTargetPolicy("ios"),
+        resolveIosBuildEnvironment("ios"),
+      ),
+    ).toEqual({
+      includesFullBunRuntime: true,
+      includesLocalAgentPayload: true,
+      removeStaleLocalExecutionAssets: false,
+    });
+    expect(
+      resolveIosLocalPayloadDecision(
+        resolveIosBuildTargetPolicy("ios-local"),
+        resolveIosBuildEnvironment("ios-local", {
+          ELIZA_IOS_FULL_BUN_ENGINE: "0",
+        }),
+      ),
+    ).toEqual({
+      includesFullBunRuntime: false,
+      includesLocalAgentPayload: true,
+      removeStaleLocalExecutionAssets: false,
+    });
+    expect(
+      resolveIosLocalPayloadDecision(
+        resolveIosBuildTargetPolicy("ios"),
+        resolveIosBuildEnvironment("ios", {
+          ELIZA_IOS_APP_STORE_LOCAL_RUNTIME: "0",
+        }),
+      ),
+    ).toEqual({
+      includesFullBunRuntime: false,
+      includesLocalAgentPayload: false,
+      removeStaleLocalExecutionAssets: true,
+    });
   });
 
   it("default/empty env does NOT embed the engine (the prod-regression default)", () => {
