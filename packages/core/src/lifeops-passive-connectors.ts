@@ -8,9 +8,9 @@
  *
  * Explicit env vars (`ELIZA_LIFEOPS_PASSIVE_CONNECTORS` / `LIFEOPS_PASSIVE_CONNECTORS`)
  * and runtime settings always take precedence over plugin-presence detection.
- * Passing `null` as the runtime is the pre-runtime signal (plugin list not yet
- * available); it conservatively enables passive mode so the standalone Telegram
- * polling bot does not start for LifeOps deployments before the runtime exists.
+ * Callers that run before `AgentRuntime` construction must supply the plugin
+ * set they have resolved from configuration. An absent runtime or plugin list
+ * means no LifeOps deployment was identified and therefore defaults active.
  */
 
 type SettingsReader = {
@@ -80,16 +80,6 @@ function isLifeOpsPluginLoaded(
 /**
  * Returns whether LifeOps passive-connector mode is active for this runtime.
  *
- * **`null` vs `undefined` are intentionally different:**
- * - `null`      → caller is pre-runtime (e.g. `shouldStartTelegramStandaloneBot`
- *                 in `app-core/src/runtime/telegram-standalone-policy.ts`); the
- *                 plugin list does not exist yet, so we conservatively return
- *                 `true` (passive on) to avoid starting connectors before the
- *                 runtime is initialized.
- * - `undefined` → no runtime provided (standalone call / test); falls through to
- *                 plugin-presence detection, which returns `false` (active-reply)
- *                 because `isLifeOpsPluginLoaded(undefined)` → `false`.
- *
  * **Default flip:** prior to this function the default was always `true` (passive).
  * It is now `false` for agents that do not load `plugin-personal-assistant` and
  * do not set either env var. Any existing deployment without that plugin will
@@ -103,11 +93,6 @@ export function lifeOpsPassiveConnectorsEnabled(
 	if (value !== undefined) {
 		// Explicit setting always wins — higher priority than plugin detection.
 		return !isExplicitFalse(value);
-	}
-	// null = pre-runtime signal; plugin list unavailable; stay passive.
-	// undefined = no runtime; falls through to plugin detection below.
-	if (runtime === null) {
-		return true;
 	}
 	return isLifeOpsPluginLoaded(runtime);
 }

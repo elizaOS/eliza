@@ -1,3 +1,7 @@
+/**
+ * Exercises passive-connector policy with deterministic runtime plugin sets
+ * and settings, including the pre-runtime fallback used by host collection.
+ */
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { lifeOpsPassiveConnectorsEnabled } from "../lifeops-passive-connectors";
 
@@ -139,12 +143,9 @@ describe("lifeOpsPassiveConnectorsEnabled", () => {
 		});
 	});
 
-	describe("null / undefined runtime", () => {
-		it("returns true for null runtime — pre-runtime conservative default (shouldStartTelegramStandaloneBot path)", () => {
-			// null is the explicit pre-runtime signal: plugin list is not available,
-			// so passive mode stays on to avoid starting connectors for LifeOps
-			// deployments before the runtime exists.
-			expect(lifeOpsPassiveConnectorsEnabled(null)).toBe(true);
+	describe("absent runtime", () => {
+		it("returns false for null runtime when no LifeOps plugin set is available", () => {
+			expect(lifeOpsPassiveConnectorsEnabled(null)).toBe(false);
 		});
 
 		it("null runtime is overridden by explicit env false (operator opt-out)", () => {

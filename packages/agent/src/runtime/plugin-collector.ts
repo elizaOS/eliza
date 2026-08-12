@@ -143,15 +143,18 @@ function gitpathologistRequested(config: ElizaConfig): boolean {
 
 /**
  * The opt-in standalone Telegram polling bot (the standalone mode of
- * `@elizaos/plugin-telegram`) only runs when LifeOps passive connectors are
- * explicitly disabled AND `ELIZA_TELEGRAM_STANDALONE_BOT` is truthy — the same
- * gate the `TelegramStandaloneService` self-checks. In the default
- * passive-connectors-on posture the passive telegram connector owns the
- * long-poll; this gate only ensures the Telegram plugin is loaded so its
- * standalone service can start.
+ * `@elizaos/plugin-telegram`) runs when `ELIZA_TELEGRAM_STANDALONE_BOT` is
+ * truthy and the resolved plugin set is not in LifeOps passive mode. The same
+ * runtime-time gate is enforced by `TelegramStandaloneService`; this host gate
+ * ensures the plugin is present for that service to start.
  */
-function telegramStandaloneRequested(): boolean {
-  if (lifeOpsPassiveConnectorsEnabled(null, process.env)) {
+function telegramStandaloneRequested(
+  pluginNames: ReadonlySet<string>,
+): boolean {
+  const resolvedPlugins = Array.from(pluginNames, (name) => ({ name }));
+  if (
+    lifeOpsPassiveConnectorsEnabled({ plugins: resolvedPlugins }, process.env)
+  ) {
     return false;
   }
   const raw = process.env.ELIZA_TELEGRAM_STANDALONE_BOT?.trim().toLowerCase();
@@ -599,17 +602,6 @@ export function collectPluginNames(
       "gitpathologist (auto-on when .git/ present; gate ELIZA_GITPATHOLOGIST)",
     );
   }
-  // Opt-in standalone Telegram polling bot. When passive connectors are
-  // disabled and ELIZA_TELEGRAM_STANDALONE_BOT is set, load the Telegram
-  // plugin so its self-gating TelegramStandaloneService owns the Telegraf
-  // long-poll lifecycle.
-  if (telegramStandaloneRequested()) {
-    pluginsToLoad.add("@elizaos/plugin-telegram");
-    track(
-      "@elizaos/plugin-telegram",
-      "telegram standalone bot (gate ELIZA_TELEGRAM_STANDALONE_BOT)",
-    );
-  }
   // Allow list is additive — extra plugins on top of auto-detection,
   // not an exclusive whitelist that blocks everything else.
   if (allowList && allowList.length > 0) {
@@ -939,6 +931,19 @@ export function collectPluginNames(
       }
       pluginsToLoad.delete(name);
     }
+  }
+
+  // Decide standalone Telegram only after every config, install, companion,
+  // and platform filter has produced the actual pre-runtime plugin set. This
+  // keeps host collection consistent with the service's runtime-time gate:
+  // LifeOps stays passive, while a plain standalone agent can opt into its
+  // poller without an unrelated passive-connectors override.
+  if (!onMobile && !leanChat && telegramStandaloneRequested(pluginsToLoad)) {
+    pluginsToLoad.add("@elizaos/plugin-telegram");
+    track(
+      "@elizaos/plugin-telegram",
+      "telegram standalone bot (gate ELIZA_TELEGRAM_STANDALONE_BOT)",
+    );
   }
 
   return pluginsToLoad;
