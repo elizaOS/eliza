@@ -126,6 +126,7 @@ export function buildSiweMessage(args: {
   chainId: number;
   nonce: string;
   issuedAt: string;
+  expirationTime?: string;
 }): string {
   const lines = [
     `${args.domain} wants you to sign in with your Ethereum account:`,
@@ -140,6 +141,7 @@ export function buildSiweMessage(args: {
     `Nonce: ${args.nonce}`,
     `Issued At: ${args.issuedAt}`,
   );
+  if (args.expirationTime) lines.push(`Expiration Time: ${args.expirationTime}`);
   return lines.join("\n");
 }
 
@@ -298,6 +300,7 @@ export async function siweLoginWithInjectedWallet(
     chainId: walletChainId,
     nonce: nonce.nonce,
     issuedAt: new Date().toISOString(),
+    expirationTime: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
   });
 
   // Re-read the chain immediately before requesting the signature: a wallet
