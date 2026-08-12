@@ -2957,6 +2957,7 @@ export const INVALID_TRACER_PROVIDER = {};
               "packages/core/src/client-public.ts",
             ),
           },
+
           {
             find: /^@elizaos\/core\/errors$/,
             replacement: path.join(elizaRoot, "packages/core/src/errors.ts"),
@@ -2972,9 +2973,14 @@ export const INVALID_TRACER_PROVIDER = {};
           // that bundle their own older core) to the
           // main workspace copy's browser entry.  The browser entry has all
           // needed exports and avoids pulling in createRequire/node:fs/etc.
+          // ELIZA_18056_CORE_STUB=1 points bare core at client-public for
+          // diagnosing residual blob edges (missing-export build errors).
           {
             find: /^@elizaos\/core$/,
-            replacement: resolveElizaCoreBundlePath(),
+            replacement:
+              process.env.ELIZA_18056_CORE_STUB === "1"
+                ? path.join(elizaRoot, "packages/core/src/client-public.ts")
+                : resolveElizaCoreBundlePath(),
           },
         ];
       })(),

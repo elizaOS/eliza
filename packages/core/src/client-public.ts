@@ -133,3 +133,28 @@ export {
 	type SwarmActivityTool,
 	type SwarmEvent,
 } from "./types/swarm-coordinator.ts";
+
+export { resolveAliasedEnvValue } from "./boot-env.ts";
+
+export {
+	isConnectorConfigured,
+	isWechatConfigured,
+} from "./connectors/connector-config.ts";
+
+export {
+	expandConnectorSourceFilter,
+	getConnectorIdentityMetadataMapping,
+	getConnectorSourceAliases,
+	getConnectorSourceMetadata,
+	getConnectorWorldIdMetadataKeys,
+	isPassiveConnectorSource,
+	normalizeConnectorSource,
+	registerConnectorSourceAliases,
+	registerConnectorSourceDefinitions,
+	registerConnectorSourceMetadata,
+	unregisterConnectorSourceMetadataOwner,
+	type ConnectorIdentityMetadataMapping,
+	type ConnectorSourceDefinition,
+	type ConnectorSourceKind,
+	type ConnectorSourceMetadata,
+} from "./connectors.ts";

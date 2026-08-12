@@ -14,6 +14,10 @@ import channelPluginMap from "@elizaos/registry/first-party/channel-plugin-map.j
   type: "json",
 };
 
-export { isConnectorConfigured, isWechatConfigured } from "@elizaos/core";
+// #18056: pure helpers via client-public — avoid bare core blob edge.
+export {
+  isConnectorConfigured,
+  isWechatConfigured,
+} from "@elizaos/core/client-public";
 
 export const CONNECTOR_PLUGINS: Record<string, string> = channelPluginMap;

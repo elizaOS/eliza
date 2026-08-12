@@ -1,4 +1,9 @@
-/** Re-exports the core connector-source registry helpers (normalize, alias, metadata lookup) so shared consumers avoid a direct `@elizaos/core` import. */
+/**
+ * Re-exports connector-source registry helpers.
+ *
+ * #18056: use `@elizaos/core/client-public` (tree-shakeable pure modules), not
+ * bare `@elizaos/core` (prebuilt ~2.4 MB browser blob under the app Vite alias).
+ */
 export {
   type ConnectorIdentityMetadataMapping,
   type ConnectorSourceDefinition,
@@ -15,4 +20,4 @@ export {
   registerConnectorSourceDefinitions,
   registerConnectorSourceMetadata,
   unregisterConnectorSourceMetadataOwner,
-} from "@elizaos/core";
+} from "@elizaos/core/client-public";
