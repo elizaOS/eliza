@@ -322,7 +322,7 @@ const PhoneCompanionApp = lazyNamedComponent<Record<string, never>>(
   async () => (await importAppPhone()).PhoneCompanionApp,
 );
 
-async function runIosFullBunSmokeIfRequested(): Promise<void> {
+async function runIosFullBunSmokeFromDesktopShell(): Promise<void> {
   const mod = await import("@elizaos/app-core/desktop-shell");
   return mod.runIosFullBunSmokeIfRequested();
 }
@@ -1752,7 +1752,7 @@ async function initializePlatform(): Promise<void> {
   await initializeStorageBridge();
   initializeCapacitorBridge();
   installNativeTranscriptPlatformBridge();
-  void runIosFullBunSmokeIfRequested();
+  void runIosFullBunSmokeFromDesktopShell();
   void runIosOnboardingSmokeIfRequested();
   void runIosCloudOnboardingSmokeIfRequested();
   void runIosOnboardingRelaunchSmokeIfRequested();
@@ -2390,9 +2390,7 @@ async function initializeDesktopShell(): Promise<void> {
   });
 
   await Desktop.setTrayMenu({
-    menu: await buildLocalizedTrayMenuAsync(
-      createTranslator(loadUiLanguage()),
-    ),
+    menu: await buildLocalizedTrayMenuAsync(createTranslator(loadUiLanguage())),
   });
 
   await Desktop.addListener(
@@ -3275,7 +3273,7 @@ async function main(): Promise<void> {
       initializeCapacitorBridge,
       installNativeRequestBridge: installIosLocalAgentNativeRequestBridge,
       installFetchBridge: installIosLocalAgentFetchBridge,
-      runSmoke: runIosFullBunSmokeIfRequested,
+      runSmoke: runIosFullBunSmokeFromDesktopShell,
     })
   ) {
     return;
