@@ -3997,6 +3997,11 @@ export class ProvisioningJobService {
           error: result.error,
         }),
       });
+      if (result.retryable) {
+        throw new RetryableProvisionTransportError(
+          result.error ?? "Snapshot capture temporarily unavailable",
+        );
+      }
       throw new Error(result.error ?? "Unknown agent_restart failure");
     }
 
@@ -4793,6 +4798,11 @@ export class ProvisioningJobService {
           error: result.error,
         }),
       });
+      if (result.retryable) {
+        throw new RetryableProvisionTransportError(
+          result.error ?? "Snapshot capture temporarily unavailable",
+        );
+      }
       throw new Error(result.error ?? "Unknown agent_snapshot failure");
     }
 

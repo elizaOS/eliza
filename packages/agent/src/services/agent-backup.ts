@@ -936,6 +936,8 @@ function isBlobLike(value: unknown): value is {
  */
 export const PGLITE_SNAPSHOT_UNAVAILABLE_TRANSIENT =
   "PGlite snapshot temporarily unavailable (connection closing)";
+export const PGLITE_SNAPSHOT_UNAVAILABLE_TRANSIENT_CODE =
+  "PGLITE_SNAPSHOT_UNAVAILABLE_TRANSIENT";
 
 /**
  * A PGlite handle that is mid-close throws with these shapes. Kept narrow so a
@@ -943,68 +945,46 @@ export const PGLITE_SNAPSHOT_UNAVAILABLE_TRANSIENT =
  * silently treated as transient.
  */
 function isPgliteClosingError(err: unknown): boolean {
-  const message = (
-    err instanceof Error ? err.message : String(err)
-  ).toLowerCase();
+  const message = (err instanceof Error ? err.message : String(err))
+    .trim()
+    .toLowerCase();
   return (
-    message.includes("pglite is closed") ||
-    message.includes("database is closed") ||
-    message.includes("connection is closed") ||
-    message.includes("closing")
+    message === "closing" ||
+    /\b(?:pglite|database|connection)\s+(?:is\s+)?(?:closed|closing)\b/.test(
+      message,
+    )
   );
-}
-
-async function runDumpDataDir(connection: {
-  dumpDataDir?: (compression?: "gzip") => Promise<unknown>;
-  runExclusive?: <T>(operation: () => Promise<T>) => Promise<T>;
-}): Promise<unknown> {
-  const dumpDataDir = connection.dumpDataDir;
-  if (typeof dumpDataDir !== "function") {
-    throw new Error("PGlite connection does not expose dumpDataDir()");
-  }
-  // runExclusive serializes against an in-flight close, so routing the dump
-  // through it both avoids and detects the teardown race deterministically.
-  return connection.runExclusive
-    ? connection.runExclusive(() => dumpDataDir.call(connection, "gzip"))
-    : dumpDataDir.call(connection, "gzip");
 }
 
 async function capturePgliteDump(
   runtime: IAgentRuntime | AgentRuntime,
   budget?: SnapshotBudget,
 ): Promise<AgentBackupPgliteDump | null> {
-  const raw = (
-    runtime.adapter as
-      | {
-          getRawConnection?: () => unknown;
-        }
-      | undefined
-  )?.getRawConnection?.();
-  if (!raw || typeof raw !== "object") return null;
-  const connection = raw as {
-    dumpDataDir?: (compression?: "gzip") => Promise<unknown>;
-    runExclusive?: <T>(operation: () => Promise<T>) => Promise<T>;
-  };
-  if (typeof connection.dumpDataDir !== "function") return null;
+  const adapter = runtime.adapter as
+    | {
+        dumpPgliteDataDir?: (compression?: "gzip") => Promise<unknown>;
+        getRawConnection?: () => unknown;
+      }
+    | undefined;
+  const managedDump = adapter?.dumpPgliteDataDir;
+  const raw = adapter?.getRawConnection?.();
+  const rawDump =
+    raw && typeof raw === "object"
+      ? (raw as { dumpDataDir?: (compression?: "gzip") => Promise<unknown> })
+          .dumpDataDir
+      : undefined;
+  if (typeof managedDump !== "function" && typeof rawDump !== "function") {
+    return null;
+  }
 
   let dump: unknown;
   try {
-    dump = await runDumpDataDir(connection);
+    dump = managedDump
+      ? await managedDump.call(adapter, "gzip")
+      : await rawDump?.call(raw, "gzip");
   } catch (err) {
     if (isPgliteClosingError(err)) {
-      // Transient teardown race: re-check once through runExclusive (serialized
-      // behind the close), then surface a recognizable sentinel so the snapshot
-      // endpoint returns a retryable/deferrable condition instead of an opaque
-      // 500 that wedges restarts (2026-08-11 fleet incident). Fail-closed on any
-      // NON-transient dump error still applies (rethrown below).
-      try {
-        dump = await runDumpDataDir(connection);
-      } catch (retryErr) {
-        if (isPgliteClosingError(retryErr)) {
-          throw new Error(PGLITE_SNAPSHOT_UNAVAILABLE_TRANSIENT);
-        }
-        throw retryErr;
-      }
+      throw new Error(PGLITE_SNAPSHOT_UNAVAILABLE_TRANSIENT);
     } else {
       throw err;
     }

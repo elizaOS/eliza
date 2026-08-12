@@ -346,6 +346,7 @@ import {
   createLocalAgentBackup,
   listLocalAgentBackups,
   PGLITE_SNAPSHOT_UNAVAILABLE_TRANSIENT,
+  PGLITE_SNAPSHOT_UNAVAILABLE_TRANSIENT_CODE,
   restoreAgentSnapshot,
   restoreLocalAgentBackup,
 } from "../services/agent-backup.ts";
@@ -1844,7 +1845,14 @@ async function handleRequest(
           { err: message },
           "[agent-backup] Snapshot temporarily unavailable",
         );
-        error(res, message, 503);
+        json(
+          res,
+          {
+            error: message,
+            code: PGLITE_SNAPSHOT_UNAVAILABLE_TRANSIENT_CODE,
+          },
+          503,
+        );
         return;
       }
       logger.error({ err: message }, "[agent-backup] Snapshot failed");

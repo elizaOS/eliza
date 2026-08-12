@@ -480,6 +480,7 @@ export interface SnapshotResult {
   success: boolean;
   backup?: AgentSandboxBackup;
   error?: string;
+  retryable?: boolean;
 }
 
 /**
@@ -499,6 +500,7 @@ export const SNAPSHOT_ENDPOINT_UNSUPPORTED = "Snapshot endpoint not supported by
  * (2026-08-11 fleet incident: a 500 here wedged healthy agent restarts).
  */
 export const SNAPSHOT_CAPTURE_TRANSIENT = "Snapshot capture temporarily unavailable";
+const AGENT_SNAPSHOT_CAPTURE_TRANSIENT_CODE = "PGLITE_SNAPSHOT_UNAVAILABLE_TRANSIENT";
 
 const MAX_BACKUPS = 10;
 const SHARED_RUNTIME_HISTORY_MAX_MESSAGES = 40;
@@ -6383,6 +6385,13 @@ export class ElizaSandboxService {
       if (message === SNAPSHOT_ENDPOINT_UNSUPPORTED) {
         return { success: false, error: SNAPSHOT_ENDPOINT_UNSUPPORTED };
       }
+      if (message === SNAPSHOT_CAPTURE_TRANSIENT) {
+        return {
+          success: false,
+          error: SNAPSHOT_CAPTURE_TRANSIENT,
+          retryable: true,
+        };
+      }
       throw error;
     }
 
@@ -9990,12 +9999,20 @@ export class ElizaSandboxService {
       throw new Error(SNAPSHOT_ENDPOINT_UNSUPPORTED);
     }
     if (res.status === 503) {
-      // TRANSIENT: the agent's PGlite was closing while dumpDataDir() ran (a
-      // teardown race, not corruption). Surface a recognizable sentinel so a
-      // state-preserving restart DEFERS instead of tripping the fail-closed
-      // "Refusing to stop without a current backup" gate on an opaque 500 and
-      // wedging a healthy agent (2026-08-11 fleet incident).
-      throw new Error(SNAPSHOT_CAPTURE_TRANSIENT);
+      let payload: { code?: unknown } | null = null;
+      try {
+        payload = (await res.clone().json()) as { code?: unknown };
+      } catch {
+        // error-policy:J3 an invalid upstream error body is not the structured
+        // transient signal and therefore follows the ordinary HTTP failure.
+        payload = null;
+      }
+      if (payload?.code === AGENT_SNAPSHOT_CAPTURE_TRANSIENT_CODE) {
+        // TRANSIENT: only the agent's structured PGlite-closing code defers a
+        // state-preserving restart. Unrelated runtime/proxy 503 responses keep
+        // the ordinary failure path and bounded attempt policy.
+        throw new Error(SNAPSHOT_CAPTURE_TRANSIENT);
+      }
     }
     if (!res.ok) {
       // #18228: the snapshot transfer failed somewhere between the agent's HTTP
