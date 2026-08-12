@@ -23,6 +23,7 @@ import {
   ChannelType,
   logger as coreLogger,
   ElizaError,
+  effectiveMachineSuccess,
   looksLikeBareLinkShare,
   MESSAGE_SOURCE_SUB_AGENT,
   stringToUuid,
@@ -2375,7 +2376,7 @@ async function runSend(
       return {
         success: true,
         text: "Sent key sequence",
-        data: { sessionId: target.session.id, keys },
+        data: { sessionId: target.session.id, keys, providerAccepted: true },
       };
     }
 
@@ -2384,7 +2385,13 @@ async function runSend(
       ? buildSubAgentCompletionFollowUp(routedCompletion, plannerInput)
       : plannerInput;
     if (textInput) {
-      await service.sendToSession(target.session.id, textInput);
+      const promptResult = await service.sendToSession(
+        target.session.id,
+        textInput,
+      );
+      const providerAccepted =
+        effectString(objectValue(promptResult)?.sessionId) ===
+        target.session.id;
       const text = task ? "Assigned new task to agent" : "Sent input to agent";
       return {
         success: true,
@@ -2392,6 +2399,7 @@ async function runSend(
         data: {
           sessionId: target.session.id,
           input: textInput,
+          providerAccepted,
           ...(task ? { task } : {}),
         },
       };
@@ -4709,6 +4717,16 @@ function tasksEffectProof(
         }
       : undefined;
   }
+  if (operation === "send") {
+    const sessionId = effectString(data.sessionId);
+    return sessionId && data.providerAccepted === true
+      ? {
+          commitId: sessionId,
+          commitKind: "provider_accepted",
+          resource: { kind: "acp.session", id: sessionId },
+        }
+      : undefined;
+  }
   if (operation === "create") {
     return tasksCreateEffectProof(data);
   }
@@ -4865,7 +4883,14 @@ async function settleTasksOperation(args: {
     turnComplete: _readTurnComplete,
     ...plannerOnlyResult
   } = args.result;
-  let result = plannerOnlyRead ? plannerOnlyResult : args.result;
+  let result: ActionResult = plannerOnlyRead ? plannerOnlyResult : args.result;
+  if (
+    result.success === true &&
+    receipt.outcome === "noop" &&
+    !receipt.idempotency.replayed
+  ) {
+    result = { ...result, userFacingEffect: "none" };
+  }
   const helperEmittedCallback =
     !plannerOnlyRead && args.capturedCallbacks.length > 0;
   const authoritativeFailureText =
@@ -4896,11 +4921,36 @@ async function settleTasksOperation(args: {
       actionName: canonical?.actionName,
     };
   }
-  if (result.success && receipt.outcome === "failed") {
+  if (
+    result.success === true &&
+    !effectiveMachineSuccess({ ...result, effectReceipts: [receipt] }, [
+      receipt,
+    ])
+  ) {
     const text = unverifiedTasksText(args.operation);
+    const {
+      verifiedUserFacing: _invalidVerifiedUserFacing,
+      userFacingEffect: _invalidUserFacingEffect,
+      userFacingEffectReceiptIds: _invalidReceiptBindings,
+      ...failedResult
+    } = result;
     result = {
-      ...result,
+      ...failedResult,
+      success: false,
+      error:
+        receipt.outcome === "failed"
+          ? receipt.failure.code
+          : "TASKS_EFFECT_NOT_APPLIED",
       text,
+      userFacingText: text,
+      turnComplete: true,
+      continueChain: false,
+      data: {
+        ...(objectValue(result.data) ?? {}),
+        outcomeUnknown,
+        retryable: false,
+        reconciliationRequired: outcomeUnknown,
+      },
     };
     canonical = {
       response: { ...(canonical?.response ?? {}), text },

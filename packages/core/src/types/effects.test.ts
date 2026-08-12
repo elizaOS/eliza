@@ -7,6 +7,7 @@
 import { describe, expect, it } from "vitest";
 import type { EffectReceipt } from "./effects";
 import {
+	effectiveMachineSuccess,
 	hasAppliedUserFacingEffectProof,
 	mergeEffectReceipts,
 	normalizeEffectReceipt,
@@ -152,6 +153,82 @@ describe("effect receipt validation", () => {
 });
 
 describe("effect receipt proof resolution", () => {
+	it("derives machine success from active receipt outcomes", () => {
+		const applied = appliedReceipt();
+		const failed = {
+			...applied,
+			outcome: "failed",
+			commit: undefined,
+			failure: {
+				code: "PROVIDER_TIMEOUT",
+				retryable: false,
+				acceptance: "unknown",
+			},
+		} as EffectReceipt;
+		const rollback = {
+			...applied,
+			receiptId: "receipt-rollback",
+			operation: "lifeops.reminder.rollback",
+			outcome: "rolled_back",
+			commit: undefined,
+			rollback: {
+				receiptId: "rollback-transaction-1",
+				revertedReceiptIds: [applied.receiptId],
+				rolledBackAt: "2026-07-27T18:01:00.000Z",
+			},
+		} as EffectReceipt;
+		const replayedNoop = {
+			...applied,
+			receiptId: "receipt-replayed",
+			outcome: "noop",
+			commit: undefined,
+			reason: "The desired state already exists.",
+			idempotency: { key: "request-1", replayed: true },
+		} as EffectReceipt;
+		const readNoop = {
+			...replayedNoop,
+			receiptId: "receipt-read-noop",
+			operation: "lifeops.reminder.read",
+			idempotency: { key: null, replayed: false },
+		} as EffectReceipt;
+
+		expect(
+			effectiveMachineSuccess({ success: true, userFacingEffect: "none" }),
+		).toBe(true);
+		expect(
+			effectiveMachineSuccess({
+				success: true,
+				userFacingEffect: "none",
+				effectReceipts: [],
+			}),
+		).toBe(true);
+		expect(
+			effectiveMachineSuccess({
+				success: true,
+				userFacingEffect: "none",
+				effectReceipts: [readNoop],
+			}),
+		).toBe(true);
+		expect(
+			effectiveMachineSuccess({ success: true, effectReceipts: [applied] }),
+		).toBe(true);
+		expect(
+			effectiveMachineSuccess({
+				success: true,
+				effectReceipts: [replayedNoop],
+			}),
+		).toBe(true);
+		expect(
+			effectiveMachineSuccess({ success: true, effectReceipts: [failed] }),
+		).toBe(false);
+		expect(
+			effectiveMachineSuccess(
+				{ success: true, effectReceipts: [applied] },
+				mergeEffectReceipts([applied], [rollback]),
+			),
+		).toBe(false);
+	});
+
 	it("requires exact verified text and every referenced applied receipt", () => {
 		const receipt = appliedReceipt();
 		const result = {

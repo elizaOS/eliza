@@ -26,6 +26,7 @@ import type {
 	ProviderDataRecord,
 } from "../types/components";
 import type { ContextEvent, ContextObjectTool } from "../types/context-object";
+import { effectiveMachineSuccess } from "../types/effects";
 import {
 	type ChatMessage,
 	type GenerateTextResult,
@@ -251,6 +252,7 @@ export function plannerLoopResultMachineSuccess(
 	if (latestUnresolvedFailedNonTerminalToolStep(result.trajectory))
 		return false;
 	if (result.evaluator?.success === false) return false;
+	const receipts = allEffectReceipts(result.trajectory);
 	const latestToolResult = allSteps(result.trajectory)
 		.reverse()
 		.find(
@@ -259,7 +261,9 @@ export function plannerLoopResultMachineSuccess(
 				!isTerminalToolCall(step.toolCall) &&
 				step.result !== undefined,
 		)?.result;
-	return latestToolResult?.success !== false;
+	return latestToolResult === undefined
+		? true
+		: effectiveMachineSuccess(latestToolResult, receipts);
 }
 
 /**
@@ -2328,7 +2332,7 @@ function buildCompactionSummary(args: {
 function summarizePlannerStep(step: PlannerStep): string {
 	const name = step.toolCall?.name ?? (step.terminalOnly ? "terminal" : "step");
 	const status = step.result
-		? step.result.success
+		? effectiveMachineSuccess(step.result)
 			? "success"
 			: "failed"
 		: "no_result";
@@ -2859,6 +2863,10 @@ async function executeQueuedToolCall(params: {
 		};
 	}
 	const endedAt = Date.now();
+	const machineSuccess = effectiveMachineSuccess(
+		result,
+		allEffectReceipts(params.trajectory),
+	);
 
 	// Parameter-validation rejections from `validateToolArgs` set
 	// `result.data.parameterErrors`. A model that keeps the same tool but
@@ -2875,7 +2883,7 @@ async function executeQueuedToolCall(params: {
 	);
 	const failure = {
 		toolName: params.toolCall.name,
-		success: result.success,
+		success: machineSuccess,
 		error: isParameterValidationFailure
 			? "parameter_validation_failed"
 			: (result.error ?? diagnosticFailureReason(result)),
@@ -2883,7 +2891,7 @@ async function executeQueuedToolCall(params: {
 			? "parameter_validation"
 			: toolFailureRepeatKey(params.toolCall),
 	};
-	if (!result.success || result.error != null) {
+	if (!machineSuccess) {
 		params.failures.push(failure);
 		assertRepeatedFailureLimit({
 			failures: params.failures,
@@ -2904,7 +2912,7 @@ async function executeQueuedToolCall(params: {
 			(!entry.id && entry.name === params.toolCall.name)
 				? {
 						...entry,
-						status: result.success ? "completed" : "failed",
+						status: machineSuccess ? "completed" : "failed",
 					}
 				: entry,
 		),
@@ -2921,7 +2929,7 @@ async function executeQueuedToolCall(params: {
 			name: params.toolCall.name,
 			params: stringifyForModel(params.toolCall.params ?? {}),
 			result: stringifyForModel(result),
-			status: result.success ? "completed" : "failed",
+			status: machineSuccess ? "completed" : "failed",
 		},
 	});
 
@@ -2973,7 +2981,7 @@ async function recordToolStage(args: {
 				name: args.toolCall.name,
 				args: inputParams,
 				result: args.result,
-				success: args.result.success,
+				success: effectiveMachineSuccess(args.result),
 				durationMs: args.endedAt - args.startedAt,
 				description: args.description,
 				input: io.input,
@@ -3371,6 +3379,7 @@ function latestUnresolvedFailedNonTerminalToolStep(
 	trajectory: PlannerTrajectory,
 ): PlannerStep | undefined {
 	const unresolvedByOperation = new Map<string, PlannerStep>();
+	const receipts = allEffectReceipts(trajectory);
 	for (const step of allSteps(trajectory)) {
 		if (
 			step.toolCall === undefined ||
@@ -3388,10 +3397,10 @@ function latestUnresolvedFailedNonTerminalToolStep(
 			continue;
 		}
 		const operationKey = plannerToolOperationKey(step.toolCall, step.result);
-		if (step.result.success === false || step.result.error != null) {
+		if (!effectiveMachineSuccess(step.result, receipts)) {
 			unresolvedByOperation.delete(operationKey);
 			unresolvedByOperation.set(operationKey, step);
-		} else if (step.result.success === true) {
+		} else {
 			unresolvedByOperation.delete(operationKey);
 		}
 	}
@@ -3597,10 +3606,11 @@ export function partitionRedundantSucceededCalls(
 } {
 	const succeeded = new Set<string>();
 	const failedNonRetryable = new Set<string>();
+	const receipts = allEffectReceipts(trajectory);
 	for (const step of allSteps(trajectory)) {
 		if (!step.toolCall || !step.result) continue;
 		const identity = toolCallIdentity(step.toolCall);
-		if (step.result.success === true) {
+		if (effectiveMachineSuccess(step.result, receipts)) {
 			succeeded.add(identity);
 		} else if (step.result.data?.retryable === false) {
 			failedNonRetryable.add(identity);
@@ -3763,6 +3773,7 @@ function isEchoOfPlannerFacingToolText(
 ): boolean {
 	const normalizedCandidate = normalizeForEchoComparison(candidate);
 	if (normalizedCandidate.length < RAW_TOOL_TEXT_ECHO_MIN_CHARS) return false;
+	const receipts = allEffectReceipts(trajectory);
 	// Compacted steps stay in scope: mid-turn compaction moves settled results
 	// to `archivedSteps`, and archived planner-facing text is exactly as
 	// unlicensed for the user channel as live text. A later planner pass can
@@ -3793,12 +3804,12 @@ function isEchoOfPlannerFacingToolText(
 		// IS the sanctioned user projection — repeating it is not a leak.
 		const userFacing =
 			canonicalUserFacingText(result, {
-				allTurnReceipts: allEffectReceipts(trajectory),
+				allTurnReceipts: receipts,
 				includeTerminalFailure: true,
 			}) ??
 			(hasRequiresConfirmationMarker(result) ||
 			hasAwaitingUserInputMarker(result) ||
-			(result.success === true && hasNoopMarker(result))
+			(effectiveMachineSuccess(result, receipts) && hasNoopMarker(result))
 				? getNonEmptyString(result.userFacingText)
 				: undefined);
 		if (
@@ -3824,11 +3835,12 @@ function hasSuccessfulNonTerminalToolStep(
 	// Archived steps count: on long turns compaction can move EVERY completed
 	// success out of `steps`, and a reply guarantee that only checks the live
 	// window would silently skip exactly the turns with the most tool work.
+	const receipts = allEffectReceipts(trajectory);
 	return allSteps(trajectory).some(
 		(step) =>
 			step.toolCall !== undefined &&
 			!isTerminalToolCall(step.toolCall) &&
-			step.result?.success === true,
+			effectiveMachineSuccess(step.result, receipts),
 	);
 }
 
@@ -4008,7 +4020,12 @@ function deterministicSuccessfulToolRelay(
 ): string | undefined {
 	const receipts = allEffectReceipts(trajectory);
 	for (const step of allSteps(trajectory).reverse()) {
-		if (!step.toolCall || step.result?.success !== true) continue;
+		if (
+			!step.toolCall ||
+			!step.result ||
+			!effectiveMachineSuccess(step.result, receipts)
+		)
+			continue;
 		if (isTerminalToolCall(step.toolCall)) continue;
 		const candidate = canonicalUserFacingText(step.result, {
 			allTurnReceipts: receipts,
@@ -4135,8 +4152,14 @@ function deterministicRequiresConfirmationRelay(
 function deterministicNoopClarificationRelay(
 	trajectory: PlannerTrajectory,
 ): string | undefined {
+	const receipts = allEffectReceipts(trajectory);
 	for (const step of allSteps(trajectory).reverse()) {
-		if (!step.toolCall || step.result?.success !== true) continue;
+		if (
+			!step.toolCall ||
+			!step.result ||
+			!effectiveMachineSuccess(step.result, receipts)
+		)
+			continue;
 		if (isTerminalToolCall(step.toolCall)) continue;
 		if (!hasNoopMarker(step.result)) continue;
 
@@ -4218,6 +4241,7 @@ function plannerResultValues(
 export function singleVerifiedUserFacingToolResultText(
 	trajectory: PlannerTrajectory,
 ): string | undefined {
+	const receipts = allEffectReceipts(trajectory);
 	for (const step of allSteps(trajectory).reverse()) {
 		const result = step.result;
 		if (
@@ -4234,12 +4258,12 @@ export function singleVerifiedUserFacingToolResultText(
 	}
 
 	const successfulToolSteps = allSteps(trajectory).filter(
-		(step) => step.toolCall && step.result?.success === true,
+		(step) => step.toolCall && effectiveMachineSuccess(step.result, receipts),
 	);
 	if (successfulToolSteps.length !== 1) return undefined;
 	const result = successfulToolSteps[0]?.result;
 	return canonicalUserFacingText(result, {
-		allTurnReceipts: allEffectReceipts(trajectory),
+		allTurnReceipts: receipts,
 	});
 }
 
@@ -4256,8 +4280,9 @@ function codingActionSummary(
 	trajectory: PlannerTrajectory,
 ): string | undefined {
 	const parts: string[] = [];
+	const receipts = allEffectReceipts(trajectory);
 	for (const step of allSteps(trajectory)) {
-		if (step.result?.success === false) continue;
+		if (!effectiveMachineSuccess(step.result, receipts)) continue;
 		const summary = step.result?.summary?.trim();
 		if (summary) {
 			parts.push(summary);
@@ -4495,9 +4520,14 @@ function isToolMetaNarration(text: string): boolean {
 function latestFailedToolStep(
 	trajectory: PlannerTrajectory,
 ): PlannerStep | undefined {
+	const receipts = allEffectReceipts(trajectory);
 	return allSteps(trajectory)
 		.reverse()
-		.find((step) => step.result && step.result.success === false);
+		.find(
+			(step) =>
+				step.result !== undefined &&
+				!effectiveMachineSuccess(step.result, receipts),
+		);
 }
 
 function shouldRecoverSilentFailedFinish(args: {
@@ -4735,7 +4765,10 @@ function tryGateEvaluator(args: {
 }): GatedEvaluatorDecision | null {
 	const latestStep = allSteps(args.trajectory).at(-1);
 	const latestResult = latestStep?.result;
-	if (latestResult?.success !== true) {
+	if (
+		!latestResult ||
+		!effectiveMachineSuccess(latestResult, allEffectReceipts(args.trajectory))
+	) {
 		return tryGateVerifiedFailure(latestResult, args);
 	}
 	// #16983 allows a verified terminal action to skip the evaluator, but that
@@ -5186,7 +5219,7 @@ export function actionResultToPlannerToolResult(
 		data.values = result.values;
 	}
 	const plannerResult: PlannerToolResult = {
-		success: result.success,
+		success: effectiveMachineSuccess(result),
 		text: result.text,
 		transcriptVisibility: result.transcriptVisibility,
 		userFacingText: result.userFacingText,
@@ -5210,7 +5243,10 @@ export function summarizeActionResultForPlanner(
 	result: ActionResult,
 	params: Record<string, unknown> = {},
 ): string | undefined {
-	if (result.success !== true || typeof action?.summarize !== "function") {
+	if (
+		!effectiveMachineSuccess(result) ||
+		typeof action?.summarize !== "function"
+	) {
 		return undefined;
 	}
 	const summary = action.summarize(result, params)?.trim();

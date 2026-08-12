@@ -245,8 +245,24 @@ describe("honest failed-turn replies (#17948)", () => {
 		const executeToolCall = vi
 			.fn()
 			.mockResolvedValueOnce({
-				success: false,
+				success: true,
 				text: "temporary deployment lock",
+				effectReceipts: [
+					{
+						receiptId: "receipt-release-failed",
+						operation: "deploy",
+						resource: { kind: "release", id: "release-42" },
+						artifacts: [],
+						idempotency: { key: "release-42", replayed: false },
+						observedAt: "2026-08-12T00:00:00.000Z",
+						outcome: "failed" as const,
+						failure: {
+							code: "DEPLOY_LOCKED",
+							retryable: true,
+							acceptance: "rejected" as const,
+						},
+					},
+				],
 			})
 			.mockResolvedValueOnce({
 				success: true,
@@ -793,7 +809,7 @@ describe("deterministic post-turn relay", () => {
 		expect(result.finalMessage).toBe(FAILED_TOOL_FALLBACK_MESSAGE);
 	});
 
-	it("rejects verified completion text bound to a failed effect receipt", async () => {
+	it("treats nominal TASKS success with an unknown receipt as terminal failure", async () => {
 		const falseCompletion = "Deployment completed with receipt deploy-42.";
 		const useModel = vi
 			.fn()
@@ -801,8 +817,8 @@ describe("deterministic post-turn relay", () => {
 				text: "",
 				toolCalls: [
 					{
-						id: "deploy",
-						name: "DEPLOY",
+						id: "tasks",
+						name: "TASKS",
 						arguments: {},
 					},
 				],
@@ -811,15 +827,15 @@ describe("deterministic post-turn relay", () => {
 				object: {
 					success: true,
 					decision: "FINISH",
-					thought: "The receipt does not prove completion.",
-					messageToUser: "The deployment could not be verified.",
+					thought: "The operation finished successfully.",
+					messageToUser: "Deployment completed successfully.",
 				},
 			});
 
 		const result = await runPlannerLoop({
 			runtime: { useModel },
 			context: { id: "ctx" },
-			tools: [{ name: "DEPLOY", description: "Deploy an application." }],
+			tools: [{ name: "TASKS", description: "Run an orchestrator task." }],
 			executeToolCall: async () => ({
 				success: true,
 				userFacingText: falseCompletion,
@@ -833,9 +849,9 @@ describe("deterministic post-turn relay", () => {
 						artifacts: [],
 						idempotency: { key: null, replayed: false },
 						failure: {
-							code: "DEPLOY_FAILED",
+							code: "AUTHORITATIVE_RECEIPT_MISSING",
 							retryable: false,
-							acceptance: "rejected" as const,
+							acceptance: "unknown" as const,
 						},
 						observedAt: "2026-08-12T00:00:00.000Z",
 					},
@@ -845,10 +861,19 @@ describe("deterministic post-turn relay", () => {
 		});
 
 		const evaluatorInput = JSON.stringify(useModel.mock.calls[1]?.[1]);
+		expect(evaluatorInput).toContain('tool_name: \\"TASKS\\"');
+		expect(evaluatorInput).toContain("machine_status: failed");
 		expect(evaluatorInput).toContain("canonical_user_facing_text: unavailable");
 		expect(evaluatorInput).not.toContain(falseCompletion);
-		expect(result.finalMessage).toBe("The deployment could not be verified.");
+		expect(result.finalMessage).toBe(FAILED_TOOL_FALLBACK_MESSAGE);
 		expect(result.finalMessage).not.toBe(falseCompletion);
+		expect(result.finalMessage).not.toBe("Deployment completed successfully.");
+		const terminalSteps = [
+			...result.trajectory.archivedSteps,
+			...result.trajectory.steps,
+		].filter((step) => step.terminalOnly === true);
+		expect(terminalSteps).toHaveLength(1);
+		expect(terminalSteps[0]?.terminalMessage).toBe(result.finalMessage);
 	});
 
 	it("does not canonicalize receiptless mutation-capable completion text", async () => {
@@ -987,7 +1012,94 @@ describe("deterministic post-turn relay", () => {
 				(step) => step.toolCall?.name === "ROLLBACK",
 			),
 		).toBe(true);
-		expect(result.finalMessage).toBe("The deployment was rolled back.");
+		expect(result.finalMessage).toBe(FAILED_TOOL_FALLBACK_MESSAGE);
+	});
+
+	it("keeps rollback authority above a false evaluator FINISH", async () => {
+		const applied = {
+			receiptId: "deploy-applied-terminal",
+			operation: "deploy",
+			resource: { kind: "app", id: "release-terminal" },
+			outcome: "applied" as const,
+			artifacts: [],
+			idempotency: { key: "release-terminal", replayed: false },
+			commit: {
+				kind: "provider_accepted" as const,
+				id: "provider-deploy-terminal",
+				committedAt: "2026-08-12T00:00:00.000Z",
+			},
+			observedAt: "2026-08-12T00:00:00.000Z",
+		};
+		const rollback = {
+			receiptId: "deploy-rollback-terminal",
+			operation: "deploy.rollback",
+			resource: { kind: "app", id: "release-terminal" },
+			outcome: "rolled_back" as const,
+			artifacts: [],
+			idempotency: { key: "release-terminal", replayed: false },
+			rollback: {
+				receiptId: "provider-rollback-terminal",
+				revertedReceiptIds: [applied.receiptId],
+				rolledBackAt: "2026-08-12T00:01:00.000Z",
+			},
+			observedAt: "2026-08-12T00:01:00.000Z",
+		};
+		const useModel = vi
+			.fn()
+			.mockResolvedValueOnce({
+				text: "",
+				toolCalls: [
+					{ id: "deploy", name: "DEPLOY", arguments: {} },
+					{ id: "rollback", name: "ROLLBACK", arguments: {} },
+				],
+			})
+			.mockResolvedValueOnce({
+				object: {
+					success: true,
+					decision: "NEXT_RECOMMENDED",
+					thought: "Run the queued rollback.",
+					recommendedToolCallId: "rollback",
+				},
+			})
+			.mockResolvedValueOnce({
+				object: {
+					success: true,
+					decision: "FINISH",
+					thought: "Everything completed.",
+					messageToUser: "Deployment completed successfully.",
+				},
+			});
+
+		const result = await runPlannerLoop({
+			runtime: { useModel },
+			context: { id: "ctx" },
+			tools: [
+				{ name: "DEPLOY", description: "Deploy an application." },
+				{ name: "ROLLBACK", description: "Roll back an application." },
+			],
+			executeToolCall: async (call) =>
+				call.name === "DEPLOY"
+					? {
+							success: true,
+							userFacingText: "Deployment completed.",
+							verifiedUserFacing: true,
+							effectReceipts: [applied],
+							userFacingEffectReceiptIds: [applied.receiptId],
+						}
+					: {
+							success: true,
+							effectReceipts: [rollback],
+						},
+		});
+
+		const finalEvaluatorInput = JSON.stringify(useModel.mock.calls[2]?.[1]);
+		expect(finalEvaluatorInput).toContain("machine_status: failed");
+		expect(finalEvaluatorInput).not.toContain("Deployment completed.");
+		expect(result.finalMessage).toBe(FAILED_TOOL_FALLBACK_MESSAGE);
+		expect(result.finalMessage).not.toBe("Deployment completed successfully.");
+		expect(result.trajectory.steps.at(-1)?.terminalMessage).toBe(
+			result.finalMessage,
+		);
 	});
 
 	it("preserves verified success authority and provider routing through the default evaluator", async () => {

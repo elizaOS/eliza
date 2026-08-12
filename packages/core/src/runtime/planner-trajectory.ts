@@ -13,6 +13,7 @@ import type {
 } from "../types/context-object";
 import {
 	type EffectReceipt,
+	effectiveMachineSuccess,
 	hasAppliedUserFacingEffectProof,
 	mergeEffectReceipts,
 } from "../types/effects";
@@ -83,7 +84,7 @@ export function canonicalUserFacingText(
 	}
 	const text = result.userFacingText?.trim();
 	if (!text) return undefined;
-	if (result.success !== true) {
+	if (!effectiveMachineSuccess(result, options.allTurnReceipts)) {
 		return options.includeTerminalFailure === true &&
 			result.success === false &&
 			result.turnComplete === true
@@ -152,13 +153,14 @@ export function projectModelVisibleTrajectory(
 	const authority = [
 		...allSteps(trajectory).flatMap((step) => {
 			if (!step.toolCall || !step.result) return [];
+			const success = effectiveMachineSuccess(step.result, receipts);
 			const userFacingText = canonicalUserFacingText(step.result, {
 				allTurnReceipts: receipts,
 			});
 			return [
 				[
 					`tool_name: ${JSON.stringify(step.toolCall.name)}`,
-					`machine_status: ${step.result.success === true ? "success" : "failed"}`,
+					`machine_status: ${success ? "success" : "failed"}`,
 					userFacingText
 						? `canonical_user_facing_text: ${JSON.stringify(userFacingText)}`
 						: "canonical_user_facing_text: unavailable",
@@ -213,6 +215,7 @@ export function projectEvaluatorVisibleTrajectory(
 			return [{ iteration: step.iteration, terminalOnly: true }];
 		}
 		if (!step.toolCall || !step.result) return [];
+		const success = effectiveMachineSuccess(step.result, receipts);
 		const userFacingText = canonicalUserFacingText(step.result, {
 			allTurnReceipts: receipts,
 		});
@@ -221,7 +224,7 @@ export function projectEvaluatorVisibleTrajectory(
 				iteration: step.iteration,
 				toolCall: { name: step.toolCall.name },
 				result: {
-					success: step.result.success,
+					success,
 					...(userFacingText
 						? {
 								userFacingText,

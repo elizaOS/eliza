@@ -244,6 +244,8 @@ import type {
 import type { ContextEvent, ContextObject } from "../types/context-object";
 import type { ContextDefinition, RoleGateRole } from "../types/contexts";
 import {
+	type EffectReceipt,
+	effectiveMachineSuccess,
 	mergeEffectReceipts,
 	resolveAppliedUserFacingEffectReceipts,
 } from "../types/effects";
@@ -3542,6 +3544,9 @@ export function plannedReplyHasClaimGroundingReceipt(args: {
 	results: readonly ActionResult[];
 	actions: readonly Action[];
 }): boolean {
+	const receipts = mergeEffectReceipts(
+		...args.results.map((result) => result.effectReceipts),
+	);
 	const actionsByName = new Map(
 		args.actions.map((action) => [
 			normalizeActionIdentifier(action.name),
@@ -3562,7 +3567,7 @@ export function plannedReplyHasClaimGroundingReceipt(args: {
 				appliedEffectReceiptIdsForReply(args.reply, args.results).length > 0
 			);
 		}
-		if (result.success !== true) return false;
+		if (!effectiveMachineSuccess(result, receipts)) return false;
 		const actionName =
 			typeof result.data?.actionName === "string" ? result.data.actionName : "";
 		const action = actionsByName.get(normalizeActionIdentifier(actionName));
@@ -6422,6 +6427,7 @@ function truncateSubStepText(text: string): string {
 
 function collectSubPlannerSubSteps(
 	steps: readonly PlannerStep[],
+	receipts: readonly EffectReceipt[],
 ): SubPlannerSubStep[] {
 	const subSteps: SubPlannerSubStep[] = [];
 	for (const step of steps) {
@@ -6441,7 +6447,7 @@ function collectSubPlannerSubSteps(
 					: undefined;
 		subSteps.push({
 			action: step.toolCall.name,
-			success: result.success,
+			success: effectiveMachineSuccess(result, receipts),
 			...(summarySource ? { summary: truncateSubStepText(summarySource) } : {}),
 			...(result.transcriptVisibility === "internal" &&
 			typeof result.text === "string"
@@ -6496,6 +6502,7 @@ export function subPlannerResultToPlannerToolResult(
 		.reverse()
 		.find((step) => step.terminalOnly === true);
 	const success = plannerLoopResultMachineSuccess(subResult);
+	const effectReceipts = allEffectReceipts(subResult.trajectory);
 	const userFacingText = subResult.endedWithDeliberateSilence
 		? undefined
 		: terminalStep?.terminalMessage;
@@ -6512,13 +6519,15 @@ export function subPlannerResultToPlannerToolResult(
 	// the outer LLM through `text` (the diagnostic tool-result projection) and
 	// to downstream action context through `data.subSteps` /
 	// `data.completedSubActions`.
-	const subSteps = collectSubPlannerSubSteps(completedSubActionSteps);
+	const subSteps = collectSubPlannerSubSteps(
+		completedSubActionSteps,
+		effectReceipts,
+	);
 	const diagnosticText = renderSubStepDiagnosticText(subSteps);
 	const completedSubActions = subSteps
 		.filter((step) => step.success)
 		.map((step) => step.action);
 	const terminalData = latestSubActionResult?.data;
-	const effectReceipts = allEffectReceipts(subResult.trajectory);
 	const terminalUserFacingEffectReceiptIds =
 		typeof latestSubActionResult?.userFacingText === "string" &&
 		typeof userFacingText === "string" &&
@@ -6721,6 +6730,7 @@ function collectPreviousActionResults(
 	trajectory: PlannerTrajectory,
 	actions: readonly Action[] = [],
 ): ActionResult[] {
+	const receipts = allEffectReceipts(trajectory);
 	const actionsByName = new Map<string, Action>();
 	for (const action of [
 		...collectActionsFromContext(trajectory.context),
@@ -6737,7 +6747,7 @@ function collectPreviousActionResults(
 		const action = actionsByName.get(normalizeActionIdentifier(actionName));
 		if (shouldSuppressActionResultClipboard(action, step.result)) {
 			results.push({
-				success: step.result.success,
+				success: effectiveMachineSuccess(step.result, receipts),
 				...(step.result.text !== undefined ? { text: step.result.text } : {}),
 				...(step.result.transcriptVisibility !== undefined
 					? { transcriptVisibility: step.result.transcriptVisibility }
@@ -6799,7 +6809,7 @@ function collectPreviousActionResults(
 					? step.result.error.message
 					: undefined;
 		results.push({
-			success: step.result.success,
+			success: effectiveMachineSuccess(step.result, receipts),
 			...(step.result.text !== undefined ? { text: step.result.text } : {}),
 			...(step.result.transcriptVisibility !== undefined
 				? { transcriptVisibility: step.result.transcriptVisibility }

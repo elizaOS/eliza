@@ -658,6 +658,56 @@ describe("executePlannedToolCall", () => {
 		expect(callback).not.toHaveBeenCalled();
 	});
 
+	it("accepts mutation-capable umbrella results with explicit no-effect proof", async () => {
+		const callback: HandlerCallback = vi.fn(async () => []);
+		const canonicalText = "No matching tasks need an update.";
+		const receipt: EffectReceipt = {
+			receiptId: "receipt-task-search-none",
+			operation: "tasks.plan",
+			resource: { kind: "task_query", id: "query-none" },
+			artifacts: [],
+			idempotency: { key: "request-task-search-none", replayed: false },
+			observedAt: "2026-08-12T18:00:00.000Z",
+			outcome: "noop",
+			reason: "No durable mutation was requested.",
+		};
+		const action = makeAction({
+			name: "TASKS",
+			tags: ["capability:write", "effect:receipt-required"],
+			handler: async (_runtime, _message, _state, _options, actionCallback) => {
+				await actionCallback?.({ text: canonicalText });
+				return {
+					success: true,
+					userFacingText: canonicalText,
+					verifiedUserFacing: true,
+					userFacingEffect: "none" as const,
+					effectReceipts: [receipt],
+					userFacingEffectReceiptIds: [receipt.receiptId],
+				};
+			},
+		});
+
+		const result = await executePlannedToolCall(
+			makeRuntime([action]),
+			{ message: makeMessage(), callback },
+			{ name: "TASKS", params: {} },
+		);
+
+		expect(result).toMatchObject({
+			success: true,
+			userFacingText: canonicalText,
+			verifiedUserFacing: true,
+			userFacingEffect: "none",
+		});
+		expect(callback).toHaveBeenCalledWith(
+			expect.objectContaining({
+				text: canonicalText,
+				effectReceiptIds: [receipt.receiptId],
+			}),
+			"TASKS",
+		);
+	});
+
 	it("keeps unmigrated mutation callbacks visible and reports the missing contract", async () => {
 		const callback: HandlerCallback = vi.fn(async () => []);
 		const warn = vi.fn();

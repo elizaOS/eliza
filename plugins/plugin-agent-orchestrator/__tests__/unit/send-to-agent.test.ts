@@ -36,7 +36,14 @@ describe("TASKS:send", () => {
     expect(result?.data).toMatchObject({
       sessionId: "abcdef123456",
       input: "continue",
+      providerAccepted: true,
     });
+    expect(result?.effectReceipts).toEqual([
+      expect.objectContaining({
+        outcome: "applied",
+        resource: { kind: "acp.session", id: "abcdef123456" },
+      }),
+    ]);
     expect(svc.sendToSession).toHaveBeenCalledWith("abcdef123456", "continue");
   });
 

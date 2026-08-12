@@ -3,9 +3,9 @@
  * return these after persistence or provider acceptance; the message runtime
  * binds user-facing confirmation text to their stable IDs and never treats a
  * generic action success, preview, failure, or rollback as proof that a
- * requested change was applied. A no-op counts only when it is replayed —
- * the handler verified this turn that an earlier committed result already
- * satisfies the request (the idempotent "already exists" outcome).
+ * requested change was applied. A replayed no-op proves an earlier committed
+ * result still satisfies the request; a non-replayed no-op proves only an
+ * explicitly classified effect-free operation.
  */
 
 import { ElizaError } from "../errors";
@@ -128,6 +128,8 @@ export type CommittedEffectReceipt =
  * back into this leaf module.
  */
 export interface EffectBearingResult {
+	success?: boolean;
+	error?: unknown;
 	verifiedUserFacing?: boolean;
 	userFacingText?: string;
 	/**
@@ -596,6 +598,33 @@ export function revertedEffectReceiptIds(
 				? [...receipt.rollback.revertedReceiptIds]
 				: [],
 		),
+	);
+}
+
+/**
+ * Machine outcome after effect authority is applied. A nominally successful
+ * result remains successful when it has no effect contract, explicitly proves
+ * an effect-free result, or carries only active committed receipts. Failed,
+ * preview, and rollback outcomes are incomplete; a later rollback also revokes
+ * the earlier applied/replayed result it names. Unrelated receipts from other
+ * operations do not change this result's status.
+ */
+export function effectiveMachineSuccess(
+	result: EffectBearingResult | undefined,
+	allTurnReceipts: readonly EffectReceipt[] = result?.effectReceipts ?? [],
+): boolean {
+	if (result?.success !== true || result.error != null) return false;
+	if (result.effectReceipts === undefined) return true;
+	const resultReceipts = normalizeEffectReceipts(result.effectReceipts);
+	if (resultReceipts.length === 0) return result.userFacingEffect === "none";
+	const receipts = mergeEffectReceipts(resultReceipts, allTurnReceipts);
+	const reverted = revertedEffectReceiptIds(receipts);
+	return resultReceipts.every(
+		(receipt) =>
+			!reverted.has(receipt.receiptId) &&
+			(result.userFacingEffect === "none"
+				? receipt.outcome === "noop" && !receipt.idempotency.replayed
+				: isCommittedEffectReceipt(receipt)),
 	);
 }
 

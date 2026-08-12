@@ -12,6 +12,7 @@ import {
 	runWithStreamingContext,
 } from "../streaming-context";
 import type { EvaluationResult } from "../types/components";
+import { effectiveMachineSuccess } from "../types/effects";
 import {
 	type ChatMessage,
 	ModelType,
@@ -632,7 +633,9 @@ function repairMissingEvaluatorSuccess(
 	const latestStep = allSteps(trajectory)
 		.reverse()
 		.find((step) => step.toolCall && step.result);
-	if (latestStep?.result?.success !== true) {
+	if (
+		!effectiveMachineSuccess(latestStep?.result, allEffectReceipts(trajectory))
+	) {
 		return output;
 	}
 	return {
@@ -684,7 +687,9 @@ function repairFinishedToolTurnWithoutUserMessage(
 		.reverse()
 		.find((step) => step.toolCall && step.result);
 	const latestResult = latestStep?.result;
-	if (latestResult?.success !== true) return output;
+	if (!effectiveMachineSuccess(latestResult, allEffectReceipts(trajectory))) {
+		return output;
+	}
 	if (
 		canonicalUserFacingText(latestResult, {
 			allTurnReceipts: allEffectReceipts(trajectory),
@@ -926,7 +931,10 @@ function rawText(raw: string | { text?: string; object?: unknown }): string {
 }
 
 function hasSuccessfulToolResult(trajectory: PlannerTrajectory): boolean {
-	return allSteps(trajectory).some((step) => step.result?.success === true);
+	const receipts = allEffectReceipts(trajectory);
+	return allSteps(trajectory).some((step) =>
+		effectiveMachineSuccess(step.result, receipts),
+	);
 }
 
 /**

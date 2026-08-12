@@ -18,6 +18,7 @@ import type {
 	Memory,
 } from "../types";
 import {
+	effectiveMachineSuccess,
 	normalizeEffectReceipts,
 	normalizeUserFacingEffectReceiptIds,
 	resolveAppliedUserFacingEffectReceipts,
@@ -372,10 +373,15 @@ export async function settleActionHandler(
 			) === true && !tagsMayProduceEffects(options.action.tags);
 		if (
 			settledResult.userFacingEffect === "none" &&
-			tagsMayProduceEffects(options.action.tags)
+			tagsMayProduceEffects(options.action.tags) &&
+			!(
+				settledResult.effectReceipts !== undefined &&
+				settledResult.effectReceipts.length > 0 &&
+				effectiveMachineSuccess(settledResult)
+			)
 		) {
 			return invalidActionResult(
-				"Mutation-capable actions cannot classify user-facing completion text as no-effect.",
+				"Mutation-capable actions must prove a no-effect result with a non-replayed no-op receipt.",
 			);
 		}
 		if (

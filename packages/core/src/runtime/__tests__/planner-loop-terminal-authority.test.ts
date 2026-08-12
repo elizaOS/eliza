@@ -71,8 +71,8 @@ describe("terminal authority survives compaction (#18466)", () => {
 			data: {
 				awaitingUserInput: true,
 				privateData: "RESULT_DATA_SECRET",
+				privateError: "RESULT_ERROR_SECRET",
 			},
-			error: "RESULT_ERROR_SECRET",
 		}));
 		const evaluatorTrajectories: PlannerTrajectory[] = [];
 		const evaluate = vi.fn(

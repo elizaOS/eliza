@@ -84,8 +84,15 @@ describe("TASKS effect receipts", () => {
 
     expect(sendToSession).toHaveBeenCalledOnce();
     expect(result).toMatchObject({
-      success: true,
-      verifiedUserFacing: true,
+      success: false,
+      error: "AUTHORITATIVE_RECEIPT_MISSING",
+      turnComplete: true,
+      continueChain: false,
+      data: {
+        outcomeUnknown: true,
+        retryable: false,
+        reconciliationRequired: true,
+      },
     });
     expect(result?.effectReceipts).toEqual([
       expect.objectContaining({
@@ -104,9 +111,8 @@ describe("TASKS effect receipts", () => {
     // raw tool callback; the turn evaluator remains the sole visible voice.
     expect(replies).toEqual([]);
     expect(result?.userFacingText).toContain("no authoritative commit receipt");
-    expect(result?.userFacingEffectReceiptIds).toEqual([
-      result?.effectReceipts?.[0]?.receiptId,
-    ]);
+    expect(result?.verifiedUserFacing).toBeUndefined();
+    expect(result?.userFacingEffectReceiptIds).toBeUndefined();
   });
 
   it("binds non-empty action text without inventing a direct callback", async () => {
