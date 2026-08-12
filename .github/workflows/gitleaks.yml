@@ -31,6 +31,10 @@ permissions:
 jobs:
   gitleaks:
     name: gitleaks
+    # ci.yml owns the same diff-scoped scan for untrusted PRs. Dependabot heads
+    # are same-repository branches but receive GitHub's fork-equivalent trust.
+    # Protected pushes and trusted PRs retain this visible SOC2 lane.
+    if: github.event_name != 'pull_request' || (github.event.pull_request.head.repo.fork == false && github.actor != 'dependabot[bot]')
     runs-on: ${{ fromJSON(github.event_name == 'pull_request' && '["ubuntu-24.04"]' || vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     steps:
       - name: Checkout
