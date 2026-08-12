@@ -3,6 +3,7 @@
 /**
  * Log viewer with copy/download and follow-tail, used by the cloud agent-logs surface.
  */
+import { formatTime } from "@elizaos/shared/utils/format";
 import {
   Copy,
   Download,
@@ -26,7 +27,6 @@ import {
 import { Skeleton } from "../../components/ui/skeleton";
 import { cn } from "../lib/utils";
 import { BrandButton, BrandCard } from "./brand";
-import { formatTimestamp } from "./log-viewer-format";
 
 type BadgeVariant = React.ComponentProps<typeof Badge>["variant"];
 
@@ -255,9 +255,9 @@ export function LogViewer({
               ))}
             </div>
             {subtitle && <p className="text-sm text-white/60">{subtitle}</p>}
-            {fetchedAt && (
+            {fetchedAt != null && fetchedAt !== "" && (
               <p className="mt-1 text-xs text-white/60">
-                Refreshed at {formatTimestamp(fetchedAt)}
+                Refreshed at {formatTime(fetchedAt)}
               </p>
             )}
           </div>
@@ -497,9 +497,9 @@ export function LogViewer({
                       {entry.level.toUpperCase()}
                     </Badge>
                   )}
-                  {entry.timestamp && (
+                  {entry.timestamp != null && entry.timestamp !== "" && (
                     <span className="min-w-[70px] shrink-0 text-xs text-white/60">
-                      {formatTimestamp(entry.timestamp)}
+                      {formatTime(entry.timestamp)}
                     </span>
                   )}
                   <span className="flex-1 whitespace-pre-wrap break-all text-white/80">
