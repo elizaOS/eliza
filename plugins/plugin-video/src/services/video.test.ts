@@ -73,4 +73,65 @@ describe("VideoService deterministic behavior", () => {
     const keys = vi.mocked(runtime.setCache).mock.calls.map(([key]) => key);
     expect(new Set(keys).size).toBe(2);
   });
+
+  it("handles invalid compact upload_date strings by returning undefined", async () => {
+    const { service } = createServiceWithYtDlp([
+      {
+        title: "Invalid Date Video",
+        upload_date: "20249999",
+        formats: null,
+      },
+    ]);
+
+    const info = await service.getVideoInfo("https://youtu.be/invalid-date");
+    expect(info.uploadDate).toBeUndefined();
+    expect(info.formats).toEqual([]);
+  });
+
+  it("parses SRT subtitles with CRLF line endings cleanly", () => {
+    const { service } = createServiceWithYtDlp([]);
+    const srtContent = [
+      "1",
+      "00:00:01,000 --> 00:00:04,000",
+      "Hello world!",
+      "",
+      "2",
+      "00:00:04,500 --> 00:00:07,000",
+      "This is a test.",
+      "Line 2 text.",
+    ].join("\r\n");
+
+    const parsed = service["parseSRT"](srtContent);
+    expect(parsed).toBe("Hello world! This is a test. Line 2 text.");
+  });
+
+  it("handles empty or non-string SRT input", () => {
+    const { service } = createServiceWithYtDlp([]);
+    expect(service["parseSRT"]("")).toBe("");
+    expect(service["parseSRT"](null as unknown as string)).toBe("");
+  });
+
+  it("parses caption JSON and replaces all linebreaks globally", () => {
+    const { service } = createServiceWithYtDlp([]);
+    const captionJson = JSON.stringify({
+      events: [
+        { segs: [{ utf8: "First line\n" }, { utf8: "second line\n" }] },
+        { segs: [{ utf8: "Third line\n" }] },
+      ],
+    });
+
+    const parsed = service["parseCaption"](captionJson);
+    expect(parsed).toBe("First line second line Third line ");
+  });
+
+  it("handles invalid or malformed caption JSON gracefully", () => {
+    const { service } = createServiceWithYtDlp([]);
+    expect(service["parseCaption"]("")).toBe("");
+    expect(service["parseCaption"]("not-json")).toBe(
+      "Error: Unable to parse captions",
+    );
+    expect(service["parseCaption"](JSON.stringify({ events: "invalid" }))).toBe(
+      "Error: Unable to parse captions",
+    );
+  });
 });
