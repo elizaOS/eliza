@@ -10,7 +10,7 @@ import { spawn } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { ElizaError } from "@elizaos/core";
+import { ElizaError, logger } from "@elizaos/core";
 import type { OAuthCredentials } from "./types.ts";
 
 // biome-ignore lint/suspicious/noControlCharactersInRegex: strips terminal ANSI color sequences from CLI output.
@@ -87,6 +87,7 @@ export function startCodexDeviceLogin(): Promise<CodexDeviceFlow> {
   });
 
   let output = "";
+  let spawned = false;
   let settledStart = false;
   let settledTerminal = false;
   let cleanedUp = false;
@@ -143,11 +144,12 @@ export function startCodexDeviceLogin(): Promise<CodexDeviceFlow> {
       rejectCredentials(terminalError);
     };
     const inspect = (chunk: Buffer | string) => {
-      output += String(chunk).replace(ANSI_RE, "");
       if (settledStart) return;
+      output += String(chunk).replace(ANSI_RE, "");
       const url = output.match(DEVICE_URL_RE)?.[0];
       const userCode = output.match(DEVICE_CODE_RE)?.[0];
       if (!url || !userCode) return;
+      output = "";
       settledStart = true;
       resolve({
         authUrl: url,
@@ -158,8 +160,20 @@ export function startCodexDeviceLogin(): Promise<CodexDeviceFlow> {
     };
     child.stdout.on("data", inspect);
     child.stderr.on("data", inspect);
-    child.once("error", (err) => {
+    child.once("spawn", () => {
+      spawned = true;
+    });
+    child.on("error", (err) => {
       if (settledTerminal) return;
+      if (spawned) {
+        // error-policy:J6 a running child can emit `error` when SIGTERM delivery
+        // fails. It is still live, so retain CODEX_HOME and wait for `close`
+        // instead of misclassifying teardown as a failed spawn.
+        logger.debug(
+          "[auth] Codex device login termination signal failed; waiting for process close",
+        );
+        return;
+      }
       settledTerminal = true;
       fail(
         codexDeviceError(

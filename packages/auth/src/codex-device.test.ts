@@ -89,6 +89,7 @@ describe("startCodexDeviceLogin", () => {
     const start = startCodexDeviceLogin();
     const codexHome = spawnedCodexHome();
 
+    child.process.emit("spawn");
     child.process.emit("close", 0, null);
 
     await expect(start).rejects.toThrow(
@@ -112,6 +113,7 @@ describe("startCodexDeviceLogin", () => {
     const start = startCodexDeviceLogin();
     const codexHome = spawnedCodexHome();
 
+    child.process.emit("spawn");
     child.process.emit("close", 7, null);
 
     await expect(start).rejects.toThrow("exited with code 7");
@@ -149,6 +151,7 @@ describe("startCodexDeviceLogin", () => {
       throw cleanupFailure;
     });
 
+    child.process.emit("spawn");
     expect(() => child.process.emit("close", 0, null)).not.toThrow();
 
     const error = await start.catch((cause: unknown) => cause);
@@ -171,6 +174,7 @@ describe("startCodexDeviceLogin", () => {
     const start = startCodexDeviceLogin();
     const codexHome = spawnedCodexHome();
 
+    child.process.emit("spawn");
     child.process.emit("exit", 0, null);
     emitPrompt(child);
     const flow = await start;
@@ -206,6 +210,7 @@ describe("startCodexDeviceLogin", () => {
     const child = mockChild();
     const start = startCodexDeviceLogin();
     const codexHome = spawnedCodexHome();
+    child.process.emit("spawn");
     emitPrompt(child);
     const flow = await start;
     const exp = 2_000_000_000;
@@ -245,6 +250,7 @@ describe("startCodexDeviceLogin", () => {
     const child = mockChild();
     const start = startCodexDeviceLogin();
     const codexHome = spawnedCodexHome();
+    child.process.emit("spawn");
     emitPrompt(child);
     const flow = await start;
 
@@ -253,6 +259,46 @@ describe("startCodexDeviceLogin", () => {
 
     expect(child.kill).toHaveBeenCalledWith("SIGTERM");
     await expect(flow.credentials).rejects.toThrow("exited with SIGTERM");
+    await expect(flow.credentials).rejects.toMatchObject({
+      code: "codex_device.process_failed",
+      context: { exitCode: null, signal: "SIGTERM" },
+    });
+    expect(existsSync(codexHome)).toBe(false);
+    expect(rmSyncMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("waits for close when cancellation emits a post-spawn kill error", async () => {
+    const child = mockChild();
+    const start = startCodexDeviceLogin();
+    const codexHome = spawnedCodexHome();
+    child.process.emit("spawn");
+    emitPrompt(child);
+    const flow = await start;
+    const killError = Object.assign(new Error("operation not permitted"), {
+      code: "EPERM",
+    });
+    child.kill.mockImplementationOnce(() => {
+      child.process.emit("error", killError);
+      return false;
+    });
+
+    flow.close();
+
+    expect(child.kill).toHaveBeenCalledWith("SIGTERM");
+    expect(rmSyncMock).not.toHaveBeenCalled();
+    expect(existsSync(codexHome)).toBe(true);
+    await expect(
+      Promise.race([
+        flow.credentials.then(
+          () => "fulfilled",
+          () => "rejected",
+        ),
+        Promise.resolve("pending"),
+      ]),
+    ).resolves.toBe("pending");
+
+    child.process.emit("close", null, "SIGTERM");
+
     await expect(flow.credentials).rejects.toMatchObject({
       code: "codex_device.process_failed",
       context: { exitCode: null, signal: "SIGTERM" },
