@@ -87,6 +87,7 @@ import {
 	plannerToolCallDigest,
 	projectEvaluatorVisibleTrajectory,
 	projectModelVisibleTrajectory,
+	resolvePlannerSubstepAuthority,
 } from "./planner-trajectory";
 import type {
 	ContextObject,
@@ -3592,9 +3593,20 @@ export function partitionRedundantSucceededCalls(
 	for (const step of allSteps(trajectory)) {
 		if (!step.toolCall || !step.result) continue;
 		const identity = plannerToolCallDigest(step.toolCall);
-		if (effectiveMachineSuccess(step.result, receipts)) {
+		const nestedAuthority = step.result.subSteps;
+		const nestedCompleted = nestedAuthority?.some(
+			(substep) =>
+				substep.callDigest === identity &&
+				resolvePlannerSubstepAuthority(substep, receipts).status ===
+					"completed",
+		);
+		if (
+			nestedAuthority
+				? nestedCompleted === true
+				: effectiveMachineSuccess(step.result, receipts)
+		) {
 			succeeded.add(identity);
-		} else if (step.result.data?.retryable === false) {
+		} else if (!nestedAuthority && step.result.data?.retryable === false) {
 			failedNonRetryable.add(identity);
 		}
 	}

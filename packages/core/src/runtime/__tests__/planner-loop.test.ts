@@ -27,6 +27,7 @@ import {
 	TURN_SCOPE_MORE_WORK_PENDING,
 	withTurnScopeToolArg,
 } from "../planner-loop";
+import { plannerToolCallDigest } from "../planner-trajectory";
 import type { RecordedStage, TrajectoryRecorder } from "../trajectory-recorder";
 
 function appliedEffectReceipt(
@@ -1773,6 +1774,69 @@ describe("v5 planner loop skeleton", () => {
 		expect(partitioned.nonRetryable).toEqual([archivedDeadEnd]);
 		expect(partitioned.fresh).toEqual([freshCall]);
 	});
+
+	it.each([false, true])(
+		"retries unknown nested authority while skipping exact effect-free completion (archived=%s)",
+		(archived) => {
+			const unknownCall = {
+				name: "PROVISION_WORKSPACE",
+				params: { repo: "org/project" },
+			};
+			const completedCall = {
+				name: "LIST_WORKSPACES",
+				params: { repo: "org/project" },
+			};
+			const steps = [
+				{
+					iteration: 1,
+					toolCall: unknownCall,
+					result: {
+						success: true,
+						subSteps: [
+							{
+								operation: unknownCall.name,
+								callDigest: plannerToolCallDigest(unknownCall),
+								nominalSuccess: true,
+								effect: { kind: "unproven" as const },
+								retryable: true,
+							},
+						],
+					},
+				},
+				{
+					iteration: 2,
+					toolCall: completedCall,
+					result: {
+						success: true,
+						subSteps: [
+							{
+								operation: completedCall.name,
+								callDigest: plannerToolCallDigest(completedCall),
+								nominalSuccess: true,
+								effect: { kind: "none" as const },
+								retryable: true,
+							},
+						],
+					},
+				},
+			];
+			const trajectory = {
+				context: { id: "ctx" },
+				steps: archived ? [] : steps,
+				archivedSteps: archived ? steps : [],
+				plannedQueue: [],
+				evaluatorOutputs: [],
+			};
+
+			const partitioned = partitionRedundantSucceededCalls(
+				[unknownCall, completedCall],
+				trajectory,
+			);
+			expect(partitioned.fresh).toEqual([unknownCall]);
+			expect(partitioned.redundant).toEqual([completedCall]);
+			expect(partitioned.nonRetryable).toEqual([]);
+		},
+	);
 
 	it("does not capture native text fallback as a required-tool refusal", async () => {
 		const runtime = {

@@ -313,13 +313,27 @@ describe("#8007 planner multi-step advance", () => {
 			}),
 		};
 
-		const executeToolCall = vi.fn(async () =>
-			completedNestedResult(
-				"provision_workspace",
-				{ subaction: "provision_workspace", repo: "org/hello-world" },
-				{ rawText: "Created workspace w1" },
-			),
-		);
+		const exactParams = {
+			subaction: "provision_workspace",
+			repo: "org/hello-world",
+		};
+		const executeToolCall = vi.fn(async () => ({
+			...completedNestedResult("TASKS", exactParams, {
+				rawText: "Created workspace w1",
+			}),
+			subSteps: [
+				{
+					operation: "provision_workspace",
+					callDigest: plannerToolCallDigest({
+						name: "TASKS",
+						params: exactParams,
+					}),
+					nominalSuccess: true,
+					effect: { kind: "none" as const },
+					retryable: true,
+				},
+			],
+		}));
 
 		const evaluate = vi.fn(async () => ({
 			success: false,
