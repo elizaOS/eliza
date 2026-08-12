@@ -1399,7 +1399,10 @@ async function runCreate(
         success: false,
         error: error.code,
         text: msg,
+        userFacingText: msg,
+        verifiedUserFacing: true,
         continueChain: false,
+        data: { awaitingUserInput: true },
       };
     }
     logger(runtime).warn(
@@ -4497,7 +4500,9 @@ function tasksEffectReceipt(args: {
     effectString(args.result.error) ?? "AUTHORITATIVE_RECEIPT_MISSING";
   const rejected =
     args.result.success === false &&
-    TASKS_REJECTED_FAILURE_CODES.has(errorCode);
+    (TASKS_REJECTED_FAILURE_CODES.has(errorCode) ||
+      errorCode.startsWith("LANE_DEPENDENCY_") ||
+      errorCode === "LANE_PLAN_DEADLOCK");
   return {
     receipt: {
       ...tasksReceiptBase(args.operation, {
@@ -4592,13 +4597,12 @@ async function settleTasksOperation(args: {
     };
   }
 
-  // A failed op keeps its canonical text as a plain user-facing projection but
-  // never the `verifiedUserFacing` do-not-paraphrase license: that license
-  // outranks the evaluator's own reply at the terminal boundary, and granting
-  // it to an undelivered failure shipped the LINK_SHARE_NOT_A_TASK redirect
-  // envelope to chat word-for-word OVER the evaluator's correct human line
-  // (live tj-f1e0716132eb14). Receipt binding follows the license: a failed
-  // receipt proves nothing the exact text is entitled to claim.
+  // A failed op normally keeps its canonical text as a plain projection: the
+  // do-not-paraphrase license would let an undelivered diagnostic outrank the
+  // evaluator's human reply. An explicitly marked awaiting-input pause is the
+  // narrow exception because its callback is the complete actionable ask; the
+  // producer supplies that verified license. Failed receipts still bind no
+  // completion claim to either form.
   const effectResult: ActionResult = {
     ...result,
     effectReceipts: [receipt],

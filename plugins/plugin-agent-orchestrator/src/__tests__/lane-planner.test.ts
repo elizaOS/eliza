@@ -11,6 +11,10 @@ import type {
   State,
 } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  actionResultToPlannerToolResult,
+  runPlannerLoop,
+} from "../../../../packages/core/src/runtime/planner-loop.ts";
 
 vi.mock("@octokit/rest", () => ({
   Octokit: class Octokit {},
@@ -591,8 +595,103 @@ describe("TASKS create lane planner integration", () => {
 
     expect(result?.success).toBe(false);
     expect(result?.error).toBe("LANE_DEPENDENCY_CYCLE");
+    expect(result?.userFacingText).toBe(
+      "Lane dependency cycle: lane-1 -> lane-2 -> lane-1",
+    );
+    expect(result?.verifiedUserFacing).toBe(true);
+    expect(result?.data).toEqual({
+      awaitingUserInput: true,
+    });
+    expect(result?.effectReceipts).toEqual([
+      expect.objectContaining({
+        outcome: "failed",
+        failure: {
+          code: "LANE_DEPENDENCY_CYCLE",
+          retryable: false,
+          acceptance: "rejected",
+        },
+      }),
+    ]);
     expect(acp.spawnSession).not.toHaveBeenCalled();
     expect(taskService.createTask).not.toHaveBeenCalled();
+  });
+
+  it("relays dependency guidance exactly through planner chain stop and callback", async () => {
+    const guidance = "Lane dependency cycle: lane-1 -> lane-2 -> lane-1";
+    const acp = makeAcp();
+    const taskService = makeTaskService();
+    const runtime = makeRuntime(
+      { ELIZA_ORCHESTRATOR_LANE_PLANNER: "1" },
+      acp,
+      taskService,
+    );
+    const useModel = vi.fn(async () => ({
+      text: "",
+      toolCalls: [
+        {
+          id: "tasks",
+          name: "TASKS",
+          arguments: {
+            action: "create",
+            dependencies: {
+              "lane-1": ["lane-2"],
+              "lane-2": ["lane-1"],
+            },
+            agents: [
+              "Update plugins/plugin-agent-orchestrator/src/services/lane-planner.ts",
+              "Update packages/core/src/runtime.ts",
+            ].join(" | "),
+          },
+        },
+      ],
+    }));
+    runtime.useModel = useModel as IAgentRuntime["useModel"];
+    const callback = vi.fn(async () => []) as unknown as HandlerCallback;
+    const evaluate = vi.fn(async () => ({
+      success: true,
+      decision: "FINISH" as const,
+      thought: "A generic evaluator answer must not replace the action.",
+      messageToUser: "GENERIC_FALLBACK",
+    }));
+    const message = makeMessage("split work");
+
+    const result = await runPlannerLoop({
+      runtime,
+      context: { id: "ctx" },
+      tools: [{ name: "TASKS", description: "Manage coding tasks." }],
+      executeToolCall: async (toolCall) => {
+        const actionResult = await tasksAction.handler(
+          runtime,
+          message,
+          {} as State,
+          { parameters: toolCall.params ?? {} },
+          callback,
+        );
+        if (!actionResult) throw new Error("TASKS returned no action result");
+        return actionResultToPlannerToolResult(actionResult);
+      },
+      evaluate,
+    });
+
+    expect(useModel).toHaveBeenCalledTimes(1);
+    expect(evaluate).not.toHaveBeenCalled();
+    expect(callback).toHaveBeenCalledTimes(1);
+    expect(callback.mock.calls[0]?.[0]).toEqual({ text: guidance });
+    expect(acp.spawnSession).not.toHaveBeenCalled();
+    expect(taskService.createTask).not.toHaveBeenCalled();
+    expect(result.finalMessage).toBe(guidance);
+    expect(result.finalMessage).not.toBe("GENERIC_FALLBACK");
+    expect(result.trajectory.steps[0]?.result).toMatchObject({
+      success: false,
+      error: "LANE_DEPENDENCY_CYCLE",
+      continueChain: false,
+      userFacingText: guidance,
+      verifiedUserFacing: true,
+      data: {
+        awaitingUserInput: true,
+      },
+    });
+    expect(result.trajectory.steps.at(-1)?.terminalMessage).toBe(guidance);
   });
 
   it("reuses the active session via CodingWorkspaceService.findActiveSessionForTask", async () => {

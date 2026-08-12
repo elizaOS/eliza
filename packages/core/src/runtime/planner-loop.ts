@@ -219,12 +219,10 @@ interface RawPlannerOutput {
 
 /**
  * Public planner-loop entry: runs the iteration loop, then enforces two reply
- * guarantees. Failed turns get the honest-failure guarantee — a turn that
- * would ship the generic failed-step sentence gets ONE forced no-tools
- * synthesis pass for bounded diagnostic context, while the unresolved tool's
- * machine-owned failure projection remains the terminal user-facing authority
- * regardless of what that model pass says. Successful tool turns get the
- * tool-turn reply guarantee —
+ * guarantees. Unresolved failures end immediately with deterministic
+ * machine-owned failure authority; a previously resolved failed step may use a
+ * bounded no-tools synthesis pass when the turn still lacks a usable reply.
+ * Successful tool turns get the tool-turn reply guarantee —
  * real tool work must end with a user-facing reply, not silence or the
  * generic handled-step placeholder; junk evaluator output after a successful
  * tool converts into ONE forced no-tools synthesis call grounded in the tool
@@ -4108,15 +4106,13 @@ async function ensureToolTurnFinalMessage(
 }
 
 /**
- * Honest-failure reply guarantee (post-pass of {@link runPlannerLoop}). A
- * finished turn whose final message is the generic failed-step sentence —
- * every model-side candidate was discarded or missing and the failed tool
- * owned no user-safe text — gets ONE forced no-tools synthesis pass whose
- * instruction names the failed step and its scrubbed human-readable cause.
- * The synthesis remains diagnostic only while an operation is unresolved:
- * neither a plausible diagnosis nor a contradictory success claim may replace
- * the machine-owned tool failure projection. A model failure keeps that same
- * projection rather than discarding the finished turn.
+ * Honest-failure reply guarantee (post-pass of {@link runPlannerLoop}). An
+ * unresolved failed operation returns its deterministic machine-owned
+ * projection without another model boundary: raw failure diagnostics cannot
+ * improve that authority and therefore never enter a dead synthesis prompt. A
+ * failed step already resolved by later authoritative work may still receive a
+ * bounded no-tools synthesis pass when the turn otherwise has only the generic
+ * failed-step sentence. A model failure keeps the deterministic projection.
  */
 async function ensureFailedTurnFinalMessage(
 	params: PlannerLoopParams,
@@ -4129,24 +4125,26 @@ async function ensureFailedTurnFinalMessage(
 	// step would be pure overhead there.
 	if (isCodingFullSurfaceMode()) return result;
 	if (result.finalMessage !== FAILED_TOOL_FALLBACK_MESSAGE) return result;
-	const failedStep =
-		latestUnresolvedFailedNonTerminalToolStep(result.trajectory) ??
-		latestFailedToolStep(result.trajectory);
+	const unresolvedFailure = latestUnresolvedFailedNonTerminalToolStep(
+		result.trajectory,
+	);
+	if (unresolvedFailure) {
+		return {
+			...result,
+			finalMessage: groundedFailedToolMessage(unresolvedFailure),
+		};
+	}
+	const failedStep = latestFailedToolStep(result.trajectory);
 	if (!failedStep?.toolCall) return result;
-	const cause = failedStepCauseForPrompt(failedStep);
+	const resolvedAuthority = deterministicSuccessfulToolRelay(result.trajectory);
+	if (!resolvedAuthority) {
+		return { ...result, finalMessage: TOOL_RESULT_UNAVAILABLE_MESSAGE };
+	}
 	const iteration = allSteps(result.trajectory).length + 1;
 	const instruction = [
-		`The ${failedStep.toolCall.name} step failed and the turn is ending without a usable result.`,
-		cause ? `Recorded failure cause: ${cause}` : null,
-		"Do not call any tool and do not claim the failed step succeeded. " +
-			"Write the final reply to the user now, in your own conversational " +
-			"voice: state plainly what was attempted and why it did not work, " +
-			"and include any genuine results from steps that did succeed. " +
-			"Summarize the cause in everyday terms; never include file paths, " +
-			"internal ids, or raw logs.",
-	]
-		.filter((line): line is string => line !== null)
-		.join(" ");
+		`An earlier ${failedStep.toolCall.name} attempt failed, but later authoritative tool results resolved every operation and the turn still lacks a usable reply.`,
+		"Do not call any tool. Write the final reply from the canonical tool authority already provided. Describe only machine-proven outcomes; never include file paths, internal ids, raw logs, or earlier diagnostic causes.",
+	].join(" ");
 	try {
 		const synthesized = await finishWithForcedSynthesis({
 			loop: params,
@@ -4163,23 +4161,23 @@ async function ensureFailedTurnFinalMessage(
 			finalMessage !== FAILED_TOOL_FALLBACK_MESSAGE;
 		params.runtime.logger?.warn?.(
 			{ iteration, failedTool: failedStep.toolCall.name, synthesizedUsable },
-			"[planner-loop] turn ended on a failed step with no user-safe failure text; forced a failure-aware synthesis pass",
+			"[planner-loop] a resolved failure left no usable reply; forced a canonical-authority synthesis pass",
 		);
 		if (synthesizedUsable) {
 			return { ...result, trajectory: synthesized.trajectory, finalMessage };
 		}
 	} catch (err) {
-		// error-policy:J4 explicit user-facing degrade — the failure synthesis is
-		// diagnostic-only for an unresolved turn. A provider failure must not
-		// discard or replace the machine-owned failed-step projection.
+		// error-policy:J4 explicit user-facing degrade — this best-effort upgrade
+		// runs only after later authority resolved the failed operation. A provider
+		// failure keeps that later tool's deterministic canonical projection.
 		params.runtime.logger?.warn?.(
 			{ err: err instanceof Error ? err.message : String(err) },
-			"[planner-loop] failure-aware synthesis pass failed; keeping machine failure authority",
+			"[planner-loop] resolved-failure synthesis failed; keeping the deterministic fallback",
 		);
 	}
 	return {
 		...result,
-		finalMessage: groundedFailedToolMessage(failedStep),
+		finalMessage: resolvedAuthority,
 	};
 }
 

@@ -1,18 +1,22 @@
 /**
- * Deterministic unit coverage for `outboundDraftOptionsFromMessage`, the MESSAGE
- * action's outbound-field extraction. Stubs `runtime.useModel` (no live model)
- * to prove the model is consulted only when structured params are incomplete,
- * its XML is parsed into the draft, and a model failure degrades to no guessed
- * fields.
+ * Deterministic MESSAGE draft coverage spans structured extraction and the real
+ * action-result boundary into planner terminal authority; no live model runs.
  */
 import { describe, expect, it, vi } from "vitest";
-
+import {
+	actionResultToPlannerToolResult,
+	runPlannerLoop,
+} from "../../../../runtime/planner-loop.ts";
 import type {
+	HandlerCallback,
 	HandlerOptions,
 	IAgentRuntime,
 	Memory,
 } from "../../../../types/index.ts";
-import { outboundDraftOptionsFromMessage } from "./sendDraft.ts";
+import {
+	outboundDraftOptionsFromMessage,
+	sendDraftAction,
+} from "./sendDraft.ts";
 
 /**
  * #10470: the `MESSAGE` action extracts the outbound platform/recipient/body via
@@ -108,5 +112,76 @@ describe("sendDraft outboundDraftOptionsFromMessage — structured extraction wi
 		).rejects.toThrow("model unavailable");
 
 		expect(useModel).toHaveBeenCalledTimes(1);
+	});
+
+	it("relays missing-draft guidance exactly and stops the planner awaiting input", async () => {
+		const guidance = "Could not create outbound draft: body is required.";
+		const useModel = vi
+			.fn()
+			.mockResolvedValueOnce({
+				text: "",
+				toolCalls: [
+					{
+						id: "draft",
+						name: "MESSAGE",
+						arguments: { source: "telegram" },
+					},
+				],
+			})
+			.mockResolvedValueOnce(
+				"<response><source>telegram</source><recipient></recipient><body></body></response>",
+			);
+		const runtime = { useModel } as unknown as IAgentRuntime;
+		const callback = vi.fn(async () => []) as unknown as HandlerCallback;
+		const evaluate = vi.fn(async () => ({
+			success: true,
+			decision: "FINISH" as const,
+			thought: "The missing-input action owns the reply.",
+			messageToUser: "GENERIC_FALLBACK",
+		}));
+
+		const result = await runPlannerLoop({
+			runtime,
+			context: { id: "ctx" },
+			tools: [
+				{
+					name: "MESSAGE",
+					description: "Create or send an outbound message draft.",
+				},
+			],
+			executeToolCall: async (toolCall) => {
+				const actionResult = await sendDraftAction.handler(
+					runtime,
+					msg("Send a Telegram message"),
+					undefined,
+					params(toolCall.params ?? {}),
+					callback,
+				);
+				if (!actionResult) throw new Error("MESSAGE returned no action result");
+				return actionResultToPlannerToolResult(actionResult);
+			},
+			evaluate,
+		});
+
+		expect(useModel).toHaveBeenCalledTimes(2);
+		expect(evaluate).not.toHaveBeenCalled();
+		expect(callback).toHaveBeenCalledExactlyOnceWith({
+			text: guidance,
+			action: "MESSAGE",
+		});
+		expect(result.finalMessage).toBe(guidance);
+		expect(result.finalMessage).not.toBe("GENERIC_FALLBACK");
+		expect(result.trajectory.steps[0]?.result).toMatchObject({
+			success: false,
+			continueChain: false,
+			userFacingText: guidance,
+			verifiedUserFacing: true,
+			data: {
+				actionName: "MESSAGE",
+				error: "MISSING_DRAFT_DETAILS",
+				awaitingUserInput: true,
+			},
+		});
+		expect(result.trajectory.steps.at(-1)?.terminalMessage).toBe(guidance);
 	});
 });

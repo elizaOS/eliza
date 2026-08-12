@@ -303,15 +303,20 @@ export const sendDraftAction: Action = {
 			if ("error" in draftParsed) {
 				const text = `Could not create outbound draft: ${draftParsed.error}.`;
 				logger.warn(`[SendDraft] ${text}`);
+				if (callback) {
+					await callback({ text, action: "MESSAGE" });
+				}
 				return {
 					success: false,
 					text,
+					userFacingText: text,
+					verifiedUserFacing: true,
 					error: draftParsed.error,
 					continueChain: false,
 					data: {
 						actionName: "MESSAGE",
 						error: "MISSING_DRAFT_DETAILS",
-						requiresInput: true,
+						awaitingUserInput: true,
 					},
 				};
 			}

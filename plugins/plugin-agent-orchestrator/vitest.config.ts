@@ -8,6 +8,15 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
   resolve: {
     alias: {
+      "@elizaos/core/testing": fileURLToPath(
+        new URL("../../packages/core/src/testing/index.ts", import.meta.url),
+      ),
+      "@elizaos/core": fileURLToPath(
+        new URL("../../packages/core/src/index.node.ts", import.meta.url),
+      ),
+      "@elizaos/logger": fileURLToPath(
+        new URL("../../packages/logger/src/index.ts", import.meta.url),
+      ),
       "@elizaos/auth/token-expiry": fileURLToPath(
         new URL("../../packages/auth/src/token-expiry.ts", import.meta.url),
       ),
