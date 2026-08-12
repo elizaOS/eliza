@@ -94,7 +94,7 @@ describe("PaymentRequestPage public DTO contract", () => {
     const button = await screen.findByRole("button", {
       name: /pay with wallet_native/i,
     });
-    expect(button).toBeEnabled();
+    expect((button as HTMLButtonElement).disabled).toBe(false);
   });
 
   it("renders canceled requests as terminal and keeps checkout disabled", async () => {
@@ -110,7 +110,11 @@ describe("PaymentRequestPage public DTO contract", () => {
 
     expect(await screen.findByText("Cancelled")).toBeTruthy();
     expect(
-      screen.getByRole("button", { name: /pay with wallet_native/i }),
-    ).toBeDisabled();
+      (
+        screen.getByRole("button", {
+          name: /pay with wallet_native/i,
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(true);
   });
 });
