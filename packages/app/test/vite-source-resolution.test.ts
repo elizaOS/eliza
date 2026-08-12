@@ -2,7 +2,12 @@
 
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { type ConfigEnv, createServer, defaultClientConditions } from "vite";
+import {
+  type ConfigEnv,
+  createServer,
+  defaultClientConditions,
+  normalizePath,
+} from "vite";
 import { describe, expect, test } from "vitest";
 import appViteConfig from "../vite.config";
 
@@ -53,7 +58,9 @@ describe("workspace package resolution", () => {
           path.resolve(appRoot, "../ui/src/terminal/palette.ts"),
         );
       expect(resolved?.id).toBe(
-        path.resolve(appRoot, "../shared/src/terminal/palette.ts"),
+        normalizePath(
+          path.resolve(appRoot, "../shared/src/terminal/palette.ts"),
+        ),
       );
     } finally {
       await server.close();
