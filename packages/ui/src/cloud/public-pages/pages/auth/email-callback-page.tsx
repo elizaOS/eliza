@@ -24,6 +24,60 @@ import { usePageTitle } from "../../lib/use-page-title";
 
 type CallbackStatus = "verifying" | "success" | "error";
 
+type EmailVerificationResult = {
+  token: string;
+  refreshToken?: string;
+};
+
+const pendingEmailVerifications = new Map<
+  string,
+  Promise<EmailVerificationResult>
+>();
+
+function verifyEmailCallbackSingleFlight(
+  verify: (token: string, email: string) => Promise<EmailVerificationResult>,
+  token: string,
+  email: string,
+): Promise<EmailVerificationResult> {
+  const key = `${email}\0${token}`;
+  const pending = pendingEmailVerifications.get(key);
+  if (pending) return pending;
+
+  // Deferring the call lets us publish the promise before a non-conforming
+  // verifier can throw synchronously. Entries live only while the upstream
+  // consume is in flight, so a later deliberate replay still reaches Steward.
+  const verification = Promise.resolve()
+    .then(() => verify(token, email))
+    .finally(() => {
+      if (pendingEmailVerifications.get(key) === verification) {
+        pendingEmailVerifications.delete(key);
+      }
+    });
+  pendingEmailVerifications.set(key, verification);
+  return verification;
+}
+
+function describeVerificationError(
+  error: unknown,
+  t: ReturnType<typeof useCloudT>,
+): string {
+  const status =
+    error !== null && typeof error === "object" && "status" in error
+      ? Reflect.get(error, "status")
+      : undefined;
+  if (status === 401 || status === 403 || status === 410) {
+    return t("cloud.login.callback.codeRejected", {
+      defaultValue:
+        "That sign-in link expired or was already used. Please sign in again.",
+    });
+  }
+  return error instanceof Error
+    ? error.message
+    : t("cloud.emailCallback.verifyFailed", {
+        defaultValue: "Could not verify this sign-in link.",
+      });
+}
+
 // `public: true` routes render WITHOUT the per-route Steward wrapper (see
 // `CloudRouteElement` / `app-authorize-page` #9881), so this page must mount the
 // shell's `StewardAuthProvider` itself. Otherwise the magic-link verify has no
@@ -104,18 +158,21 @@ function EmailCallbackContent() {
       try {
         // The Steward context's verifyEmailCallback already throws on MFA, so
         // the result here is always a completed { token, refreshToken? }.
-        const result = await auth.verifyEmailCallback(token, email);
+        // The module-level single-flight survives StrictMode/provider remounts;
+        // a component-local ref does not, and two concurrent POSTs can consume
+        // the same one-time link before either mount observes authentication.
+        const result = await verifyEmailCallbackSingleFlight(
+          auth.verifyEmailCallback,
+          token,
+          email,
+        );
         await syncStewardSessionCookie(result.token, result.refreshToken);
         finishSuccess();
       } catch (err) {
+        // error-policy:J4 expected rejected/expired one-time links render a
+        // distinct recovery message; unexpected failures retain their detail.
         setStatus("error");
-        setError(
-          err instanceof Error
-            ? err.message
-            : t("cloud.emailCallback.verifyFailed", {
-                defaultValue: "Could not verify this sign-in link.",
-              }),
-        );
+        setError(describeVerificationError(err, t));
       }
     })();
 
