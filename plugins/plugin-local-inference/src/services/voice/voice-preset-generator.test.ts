@@ -1,4 +1,8 @@
-/** Covers the default voice-preset build script's preset format output. Deterministic. */
+/**
+ * Covers the default voice-preset build script: format-valid placeholder
+ * output and fail-closed CLI parsing for --dim / --concurrency. Real
+ * subprocess harness (deterministic; no network or model load).
+ */
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -27,6 +31,34 @@ function runGenerator(args: string[]): string {
 		encoding: "utf8",
 		stdio: ["ignore", "pipe", "pipe"],
 	});
+}
+
+type CliFailure = {
+	status: number | null;
+	stdout: string;
+	stderr: string;
+};
+
+function runGeneratorExpectFailure(args: string[]): CliFailure {
+	try {
+		const stdout = execFileSync("bun", [SCRIPT, ...args], {
+			cwd: APP_CORE_ROOT,
+			encoding: "utf8",
+			stdio: ["ignore", "pipe", "pipe"],
+		});
+		return { status: 0, stdout, stderr: "" };
+	} catch (err) {
+		const e = err as {
+			status?: number | null;
+			stdout?: string;
+			stderr?: string;
+		};
+		return {
+			status: e.status ?? null,
+			stdout: e.stdout ?? "",
+			stderr: e.stderr ?? "",
+		};
+	}
 }
 
 describe("build-default-voice-preset.mjs", () => {
@@ -63,6 +95,21 @@ describe("build-default-voice-preset.mjs", () => {
 		expect(parsed.embedding.length).toBe(64);
 	});
 
+	it("accepts explicit valid --concurrency with --placeholder (unused but validated)", () => {
+		const out = path.join(dir, "c.bin");
+		const stdout = runGenerator([
+			"--placeholder",
+			"--concurrency",
+			"4",
+			"--out",
+			out,
+		]);
+		expect(stdout).toMatch(/PLACEHOLDER/);
+		expect(existsSync(out)).toBe(true);
+		const parsed = readVoicePresetFile(new Uint8Array(readFileSync(out)));
+		expect(parsed.embedding.length).toBe(256);
+	});
+
 	it("refuses to build a real preset without an embedding (exit 2, guidance message)", () => {
 		let threw = false;
 		try {
@@ -86,5 +133,138 @@ describe("build-default-voice-preset.mjs", () => {
 		expect(() => readVoicePresetFile(new Uint8Array([1, 2, 3]))).toThrow(
 			VoicePresetFormatError,
 		);
+	});
+
+	describe("fail-closed --dim / --concurrency (issue #18613)", () => {
+		const malformedCases: Array<{
+			name: string;
+			/** Full argv after SCRIPT; must include --out pointing at a nested path. */
+			buildArgs: (out: string) => string[];
+			flag: "--dim" | "--concurrency";
+		}> = [
+			{
+				name: "suffix on --dim",
+				buildArgs: (out) => ["--placeholder", "--dim", "1junk", "--out", out],
+				flag: "--dim",
+			},
+			{
+				name: "suffix on --concurrency",
+				buildArgs: (out) => [
+					"--placeholder",
+					"--concurrency",
+					"2junk",
+					"--out",
+					out,
+				],
+				flag: "--concurrency",
+			},
+			{
+				name: "fraction on --dim",
+				buildArgs: (out) => ["--placeholder", "--dim", "2.5", "--out", out],
+				flag: "--dim",
+			},
+			{
+				name: "fraction on --concurrency",
+				buildArgs: (out) => [
+					"--placeholder",
+					"--concurrency",
+					"1.5",
+					"--out",
+					out,
+				],
+				flag: "--concurrency",
+			},
+			{
+				name: "signed --dim",
+				buildArgs: (out) => ["--placeholder", "--dim", "-4", "--out", out],
+				flag: "--dim",
+			},
+			{
+				name: "zero --dim",
+				buildArgs: (out) => ["--placeholder", "--dim", "0", "--out", out],
+				flag: "--dim",
+			},
+			{
+				name: "zero --concurrency",
+				buildArgs: (out) => [
+					"--placeholder",
+					"--concurrency",
+					"0",
+					"--out",
+					out,
+				],
+				flag: "--concurrency",
+			},
+			{
+				name: "leading zeros on --dim",
+				buildArgs: (out) => ["--placeholder", "--dim", "08", "--out", out],
+				flag: "--dim",
+			},
+			{
+				name: "non-numeric --dim",
+				buildArgs: (out) => ["--placeholder", "--dim", "abc", "--out", out],
+				flag: "--dim",
+			},
+			{
+				name: "unsafe integer --dim",
+				buildArgs: (out) => [
+					"--placeholder",
+					"--dim",
+					"9007199254740992",
+					"--out",
+					out,
+				],
+				flag: "--dim",
+			},
+			{
+				name: "missing --dim value (trailing)",
+				// --out first so the missing --dim is truly at argv end.
+				buildArgs: (out) => ["--placeholder", "--out", out, "--dim"],
+				flag: "--dim",
+			},
+			{
+				name: "flag-shaped --dim value",
+				buildArgs: (out) => [
+					"--placeholder",
+					"--out",
+					out,
+					"--dim",
+					"--no-phrases",
+				],
+				flag: "--dim",
+			},
+			{
+				name: "missing --concurrency value (trailing)",
+				buildArgs: (out) => ["--placeholder", "--out", out, "--concurrency"],
+				flag: "--concurrency",
+			},
+			{
+				name: "flag-shaped --concurrency value",
+				buildArgs: (out) => [
+					"--placeholder",
+					"--out",
+					out,
+					"--concurrency",
+					"--no-phrases",
+				],
+				flag: "--concurrency",
+			},
+		];
+
+		for (const { name, buildArgs, flag } of malformedCases) {
+			it(`rejects ${name} before creating output`, () => {
+				const nested = path.join(dir, "nested-out");
+				const out = path.join(nested, "malformed.bin");
+				const result = runGeneratorExpectFailure(buildArgs(out));
+				expect(result.status, result.stderr || result.stdout).not.toBe(0);
+				expect(result.status).toBe(1);
+				const combined = `${result.stderr}\n${result.stdout}`;
+				expect(combined).toMatch(new RegExp(flag));
+				expect(combined).toMatch(/positive safe integer/i);
+				// Rejection must happen before mkdirSync / writeFileSync.
+				expect(existsSync(out)).toBe(false);
+				expect(existsSync(nested)).toBe(false);
+			});
+		}
 	});
 });
