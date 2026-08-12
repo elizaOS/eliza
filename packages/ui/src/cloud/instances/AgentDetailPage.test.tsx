@@ -131,7 +131,7 @@ describe("AgentDetailPage date formatting", () => {
     });
 
     expect(container.textContent).not.toContain("Invalid Date");
-    expect(screen.getAllByText("—")).toHaveLength(2);
+    expect(screen.getAllByText("—")).toHaveLength(3);
     expect(screen.getByText("Never")).toBeTruthy();
   });
 
@@ -146,7 +146,7 @@ describe("AgentDetailPage date formatting", () => {
     });
 
     expect(container.textContent).not.toContain("Invalid Date");
-    expect(screen.getAllByText("—")).toHaveLength(2);
+    expect(screen.getAllByText("—")).toHaveLength(3);
     expect(screen.getByText("Never")).toBeTruthy();
   });
 
