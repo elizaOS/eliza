@@ -48,6 +48,13 @@ export const BLOCKED_SPAWN_ENV_KEYS: ReadonlySet<string> = new Set([
 	// expands message filters that can embed arbitrary module references.
 	"PYTHONINSPECT",
 	"PYTHONWARNINGS",
+	// PYTHONBREAKPOINT names the callable that builtins.breakpoint() invokes, so
+	// a script that calls breakpoint() runs whatever it names — e.g. os.system.
+	// This is MORE conditional than PYTHONINSPECT above, which fires on any
+	// script: it needs the target to reach a breakpoint() call. Listed anyway
+	// because python/python3 are both on ALLOWED_MCP_COMMANDS and a stray debug
+	// call is a realistic trigger.
+	"PYTHONBREAKPOINT",
 	"PERL5OPT",
 	"PERL5LIB",
 	"PERLIO_DEBUG",
@@ -95,12 +102,28 @@ export const BLOCKED_SPAWN_ENV_KEYS: ReadonlySet<string> = new Set([
 	// GIT_SSH substitutes the SSH binary just like GIT_SSH_COMMAND;
 	// GIT_ASKPASS executes an arbitrary external program for credential prompts;
 	// GIT_CONFIG_COUNT + indexed GIT_CONFIG_KEY_n / GIT_CONFIG_VALUE_n inject
-	// command-bearing git configuration (e.g. core.sshCommand, core.editor).
+	// command-bearing git configuration (e.g. core.sshCommand, core.editor);
+	// GIT_CONFIG_GLOBAL / GIT_CONFIG_SYSTEM point git at an attacker-written
+	// config file, which carries the same command-bearing settings in bulk and
+	// needs no indexed pairs.
+	// GIT_EDITOR and GIT_SEQUENCE_EDITOR are spawned verbatim by commit and by
+	// rebase -i; GIT_PAGER is spawned whenever output is paged; GIT_TEMPLATE_DIR
+	// seeds .git/hooks at init time, so an attacker-supplied template directory
+	// plants a pre-commit hook that runs on the next commit.
+	// Bare GIT_CONFIG is deliberately absent: it does not resolve aliases and is
+	// not an execution primitive. VISUAL is absent because git does not consult
+	// it. Both verified against git 2.50.1.
 	"GIT_SSH_COMMAND",
 	"GIT_EXTERNAL_DIFF",
 	"GIT_SSH",
 	"GIT_ASKPASS",
 	"GIT_CONFIG_COUNT",
+	"GIT_CONFIG_GLOBAL",
+	"GIT_CONFIG_SYSTEM",
+	"GIT_EDITOR",
+	"GIT_SEQUENCE_EDITOR",
+	"GIT_PAGER",
+	"GIT_TEMPLATE_DIR",
 
 	"NODE_OPTIONS",
 	"NODE_EXTRA_CA_CERTS",
