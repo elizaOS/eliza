@@ -1,4 +1,12 @@
-/** Display formatters for trajectory logs: human-readable durations (ms/s/m) and timestamps, for the trajectory viewer UI. */
+/**
+ * Display formatters for trajectory logs: human-readable durations (ms/s/m)
+ * and timestamps for the trajectory viewer UI. Non-finite numbers and
+ * unparseable ISO timestamps fail closed to the designed unavailable
+ * placeholder so callers never render browser garbage such as "Invalid Date"
+ * or "NaNh".
+ */
+
+const TRAJECTORY_UNAVAILABLE = "—";
 
 /**
  * Formats a duration in milliseconds as a human-readable string. The value is
@@ -6,9 +14,13 @@
  * over to the next unit when rounding crosses a boundary (e.g. 59.99s rounds
  * to "1.0m", 59.99m rounds to "1.0h"), so impossible values like "60.0s" or
  * "60.0m" never render.
+ *
+ * Null, non-finite, and negative inputs fail closed to "—".
  */
 export function formatTrajectoryDuration(ms: number | null): string {
-  if (ms === null) return "—";
+  if (ms === null || !Number.isFinite(ms) || ms < 0) {
+    return TRAJECTORY_UNAVAILABLE;
+  }
   if (ms < 1000) return `${ms}ms`;
   const seconds = ms / 1000;
   if (seconds < 60) {
@@ -31,12 +43,21 @@ export function formatTrajectoryDuration(ms: number | null): string {
  * Formats a token count as a human-readable string, promoting to "k" at 1,000
  * and "M" at 1,000,000, including when rounding crosses the boundary
  * (e.g. 999,500 rounds to "1.0M", 1,000,000 -> "1.0M").
+ *
+ * Undefined, zero, non-finite, and negative counts fail closed to `emptyLabel`.
  */
 export function formatTrajectoryTokenCount(
   count: number | undefined,
   options: { emptyLabel: string },
 ): string {
-  if (count === undefined || count === 0) return options.emptyLabel;
+  if (
+    count === undefined ||
+    count === 0 ||
+    !Number.isFinite(count) ||
+    count < 0
+  ) {
+    return options.emptyLabel;
+  }
   if (count < 1000) return String(count);
   const thousands = count / 1000;
   if (thousands < 1000) {
@@ -48,11 +69,18 @@ export function formatTrajectoryTokenCount(
   return `${(count / 1_000_000).toFixed(1)}M`;
 }
 
+/**
+ * Formats an ISO timestamp for the trajectory list/detail title.
+ * Empty strings and values that do not parse as a finite Date fail closed to
+ * "—" so the viewer never shows the browser's "Invalid Date" string.
+ */
 export function formatTrajectoryTimestamp(
   iso: string,
   mode: "smart" | "detailed",
 ): string {
+  if (iso === "") return TRAJECTORY_UNAVAILABLE;
   const date = new Date(iso);
+  if (!Number.isFinite(date.getTime())) return TRAJECTORY_UNAVAILABLE;
 
   if (mode === "smart") {
     const now = new Date();

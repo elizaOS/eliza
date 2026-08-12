@@ -1,4 +1,9 @@
-import { describe, expect, it } from "bun:test";
+/**
+ * Trajectory display formatters (duration / token count / timestamp). Pins
+ * unit thresholds, boundary rollover, and fail-closed placeholders so the
+ * trajectory viewer never renders browser garbage for corrupt inputs.
+ */
+import { describe, expect, it } from "vitest";
 import {
   formatTrajectoryDuration,
   formatTrajectoryTimestamp,
@@ -10,6 +15,13 @@ const EMPTY = { emptyLabel: "—" };
 describe("formatTrajectoryDuration", () => {
   it("formats null as the placeholder", () => {
     expect(formatTrajectoryDuration(null)).toBe("—");
+  });
+
+  it("fails closed on non-finite and negative durations", () => {
+    expect(formatTrajectoryDuration(Number.NaN)).toBe("—");
+    expect(formatTrajectoryDuration(Number.POSITIVE_INFINITY)).toBe("—");
+    expect(formatTrajectoryDuration(Number.NEGATIVE_INFINITY)).toBe("—");
+    expect(formatTrajectoryDuration(-1)).toBe("—");
   });
 
   it("formats sub-second durations in ms", () => {
@@ -55,6 +67,17 @@ describe("formatTrajectoryTokenCount", () => {
     expect(formatTrajectoryTokenCount(0, EMPTY)).toBe("—");
   });
 
+  it("fails closed on non-finite and negative token counts", () => {
+    expect(formatTrajectoryTokenCount(Number.NaN, EMPTY)).toBe("—");
+    expect(formatTrajectoryTokenCount(Number.POSITIVE_INFINITY, EMPTY)).toBe(
+      "—",
+    );
+    expect(formatTrajectoryTokenCount(Number.NEGATIVE_INFINITY, EMPTY)).toBe(
+      "—",
+    );
+    expect(formatTrajectoryTokenCount(-1, EMPTY)).toBe("—");
+  });
+
   it("formats raw counts below 1000 without a suffix", () => {
     expect(formatTrajectoryTokenCount(1, EMPTY)).toBe("1");
     expect(formatTrajectoryTokenCount(999, EMPTY)).toBe("999");
@@ -80,6 +103,13 @@ describe("formatTrajectoryTokenCount", () => {
 });
 
 describe("formatTrajectoryTimestamp", () => {
+  it("fails closed on empty and unparseable timestamps", () => {
+    expect(formatTrajectoryTimestamp("", "smart")).toBe("—");
+    expect(formatTrajectoryTimestamp("not-a-date", "smart")).toBe("—");
+    expect(formatTrajectoryTimestamp("not-a-date", "detailed")).toBe("—");
+    expect(formatTrajectoryTimestamp("2020-13-40", "smart")).toBe("—");
+  });
+
   it("formats today in smart mode as a local time", () => {
     const date = new Date();
     const out = formatTrajectoryTimestamp(date.toISOString(), "smart");
