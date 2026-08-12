@@ -18,7 +18,7 @@
 
 import { BRAND_PATHS, LOGO_FILES } from "@elizaos/shared/brand";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Navigate, useNavigate } from "react-router-dom";
+import { Navigate } from "react-router-dom";
 import { client } from "../../api";
 import type { CloudAgentJoinProgress } from "../../api/client-types-cloud";
 import { cloudAgentJoinProgressFromError } from "../../api/cloud-agent-join-progress";
@@ -74,11 +74,11 @@ function describeJoinError(err: unknown): string {
 
 export default function JoinPage(): React.JSX.Element {
   const t = useCloudT();
-  const navigate = useNavigate();
   const session = useJoinSessionAuth();
   const [phase, setPhase] = useState<JoinPhase>("connecting");
   const [detail, setDetail] = useState<string>("");
   const [error, setError] = useState<string | null>(null);
+  const [signOutRequested, setSignOutRequested] = useState(false);
   const [creditGateWithheldReason, setCreditGateWithheldReason] = useState<
     "ip_daily_cap" | "count_unavailable" | null
   >(null);
@@ -236,11 +236,11 @@ export default function JoinPage(): React.JSX.Element {
     void start();
   }, [start]);
 
-  const handleSignOut = useCallback(() => {
+  const handleSignOut = useCallback(async () => {
     attemptRef.current += 1;
-    void signOutFromSsoBridgedHost();
-    navigate("/login", { replace: true });
-  }, [navigate]);
+    await signOutFromSsoBridgedHost();
+    setSignOutRequested(true);
+  }, []);
 
   const displayedElapsedMs = Math.max(elapsedMs, progress?.elapsedMs ?? 0);
   const displayedElapsedSeconds = Math.floor(displayedElapsedMs / 1_000);
@@ -249,6 +249,9 @@ export default function JoinPage(): React.JSX.Element {
     : "connecting";
 
   // Signed out → send to login, returning here once authenticated.
+  if (signOutRequested) {
+    return <Navigate to="/login" replace />;
+  }
   if (session.ready && !session.authenticated) {
     return <Navigate to="/login?returnTo=/join" replace />;
   }
