@@ -1,9 +1,20 @@
 /** Exercises voice latency report behavior with deterministic app-core test fixtures. */
+import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
   fetchAndRenderVoiceLatency,
   renderVoiceLatencyReport,
 } from "./lib/voice-latency-report.mjs";
+import {
+  MAX_LIMIT,
+  parseArgs,
+  parsePositiveLimit,
+} from "./voice-latency-report.mjs";
+
+const SCRIPT_PATH = fileURLToPath(
+  new URL("./voice-latency-report.mjs", import.meta.url),
+);
 
 const SAMPLE_PAYLOAD = {
   generatedAtEpochMs: 1_700_000_000_000,
@@ -173,5 +184,55 @@ describe("fetchAndRenderVoiceLatency", () => {
     });
     expect(seenUrl).toContain("limit=7");
     expect(seenUrl).toContain("/api/dev/voice-latency");
+  });
+});
+
+describe("voice-latency-report CLI --limit validation", () => {
+  it("omitting --limit leaves limit undefined", () => {
+    expect(parseArgs([])).toEqual({
+      json: false,
+      limit: undefined,
+      base: undefined,
+    });
+    expect(parseArgs(["--json"])).toMatchObject({
+      json: true,
+      limit: undefined,
+    });
+  });
+
+  it("parses valid --limit", () => {
+    expect(parseArgs(["--limit", "5"])).toMatchObject({ limit: 5 });
+    expect(parsePositiveLimit("1")).toBe(1);
+    expect(parsePositiveLimit(String(MAX_LIMIT))).toBe(MAX_LIMIT);
+  });
+
+  it.each(["", "0", "-3", "1.5", "10junk", "NaN", "Infinity", "+1"])(
+    "rejects invalid limit %p",
+    (value) => {
+      expect(() => parsePositiveLimit(value)).toThrow(/--limit/);
+      expect(() => parseArgs(["--limit", value])).toThrow(/--limit/);
+    },
+  );
+
+  it("rejects missing --limit value without consuming the next flag", () => {
+    expect(() => parseArgs(["--limit", "--json"])).toThrow(
+      /--limit requires a positive integer/,
+    );
+  });
+
+  it("real CLI rejects before contacting the API", () => {
+    const result = spawnSync(
+      process.execPath,
+      [SCRIPT_PATH, "--limit", "junk"],
+      {
+        encoding: "utf8",
+        env: { PATH: process.env.PATH ?? "" },
+      },
+    );
+    expect(result.status).toBe(1);
+    expect(result.stderr).toMatch(/--limit/);
+    expect(result.stdout + result.stderr).not.toMatch(
+      /could not fetch|is the API running/,
+    );
   });
 });
