@@ -13,6 +13,16 @@
   },
   "exports": {
     "./package.json": "./package.json",
+    "./endpoint-config": {
+      "types": "./dist/utils/config.d.ts",
+      "eliza-source": {
+        "types": "./src/utils/config.ts",
+        "import": "./src/utils/config.ts",
+        "default": "./src/utils/config.ts"
+      },
+      "import": "./dist/utils/config.js",
+      "default": "./dist/utils/config.js"
+    },
     ".": {
       "types": "./dist/index.node.d.ts",
       "eliza-source": {

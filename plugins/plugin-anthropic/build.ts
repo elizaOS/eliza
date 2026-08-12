@@ -12,6 +12,12 @@ export declare const anthropicPlugin: Plugin;
 declare const _default: Plugin;
 export default _default;
 `;
+const endpointDeclaration = `export type EndpointSettingReader = (key: string) => string | undefined;
+export declare function resolveAnthropicBaseURL(
+  readSetting: EndpointSettingReader,
+  options?: { browser?: boolean },
+): string;
+`;
 
 await buildPlugin({
   name: "@elizaos/plugin-anthropic",
@@ -32,6 +38,14 @@ await buildPlugin({
       format: "cjs",
       renames: [["index.node.js", "index.node.cjs"]],
     },
+    {
+      label: "Endpoint config",
+      entry: "utils/config.ts",
+      outSubdir: "",
+      target: "node",
+      format: "esm",
+      naming: { entry: "endpoint-config.[ext]" },
+    },
   ],
   dtsProject: "tsconfig.build.json",
   dtsShims: [
@@ -39,5 +53,6 @@ await buildPlugin({
     { path: "node/index.d.ts", content: reexport },
     { path: "browser/index.d.ts", content: reexport },
     { path: "cjs/index.d.ts", content: reexport },
+    { path: "endpoint-config.d.ts", content: endpointDeclaration },
   ],
 });

@@ -7,6 +7,12 @@ import { buildPlugin } from "../plugin-build";
 
 // Single-quoted re-export to keep the emitted .d.ts byte-stable.
 const reexport = "export * from '../index';\nexport { default } from '../index';\n";
+const endpointDeclaration = `export type EndpointSettingReader = (key: string) => string | undefined;
+export declare function resolveOpenAIBaseURL(
+  readSetting: EndpointSettingReader,
+  options?: { browser?: boolean },
+): string;
+`;
 
 await buildPlugin({
   name: "@elizaos/plugin-openai",
@@ -20,10 +26,19 @@ await buildPlugin({
       format: "esm",
       minify: true,
     },
+    {
+      label: "Endpoint config",
+      entry: "utils/config.ts",
+      outSubdir: "",
+      target: "node",
+      format: "esm",
+      naming: { entry: "endpoint-config.[ext]" },
+    },
   ],
   dtsProject: "tsconfig.build.json",
   dtsShims: [
     { path: "node/index.d.ts", content: reexport },
     { path: "browser/index.d.ts", content: reexport },
+    { path: "endpoint-config.d.ts", content: endpointDeclaration },
   ],
 });

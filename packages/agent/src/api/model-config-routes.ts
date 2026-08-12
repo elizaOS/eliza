@@ -32,6 +32,9 @@ import {
   type RouteHelpers,
   type RouteRequestMeta,
 } from "@elizaos/core";
+import { resolveAnthropicBaseURL } from "@elizaos/plugin-anthropic/endpoint-config";
+import { resolveElizaCloudBaseURL } from "@elizaos/plugin-elizacloud/endpoint-config";
+import { resolveOpenAIBaseURL } from "@elizaos/plugin-openai/endpoint-config";
 import {
   DEFAULT_ELIZA_CLOUD_LARGE_TEXT_MODEL,
   DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
@@ -100,6 +103,7 @@ const LLM_BACKEND_TO_CHAT_PROVIDER: Record<string, string> = {
   cerebras: "cerebras",
   elizacloud: "elizacloud",
   anthropic: "claude-chat",
+  openai: "openai",
 };
 
 interface CodingBackendSeam {
@@ -567,20 +571,35 @@ export function resolveActiveChat(
         ? LLM_BACKEND_TO_CHAT_PROVIDER[backend]
         : undefined;
   const family =
-    provider !== undefined ? CHAT_PROVIDER_KEY_FAMILY[provider] : undefined;
+    provider === "openai"
+      ? "OPENAI"
+      : provider !== undefined
+        ? CHAT_PROVIDER_KEY_FAMILY[provider]
+        : undefined;
   if (provider === undefined || family === undefined) return null;
-  const baseFor = (key: string): string | undefined =>
+  const readSetting = (key: string): string | undefined =>
     resolveEffective(config, processEnv, key)?.value;
+  const baseURL =
+    family === "ELIZAOS_CLOUD"
+      ? resolveElizaCloudBaseURL(readSetting)
+      : family === "ANTHROPIC"
+        ? resolveAnthropicBaseURL(readSetting)
+        : resolveOpenAIBaseURL((key) =>
+            key === "ELIZA_PROVIDER" && provider === "cerebras"
+              ? "cerebras"
+              : readSetting(key),
+          );
   const endpoint =
-    provider === "cerebras"
-      ? (hostOf(baseFor("OPENAI_BASE_URL")) ??
-        hostOf(baseFor("CEREBRAS_BASE_URL")) ??
-        "api.cerebras.ai")
-      : family === "ELIZAOS_CLOUD"
-        ? (hostOf(baseFor("ELIZAOS_CLOUD_BASE_URL")) ?? "elizacloud.ai")
+    hostOf(baseURL) ??
+    new URL(
+      family === "ELIZAOS_CLOUD"
+        ? "https://elizacloud.ai/api/v1"
         : family === "ANTHROPIC"
-          ? (hostOf(baseFor("ANTHROPIC_BASE_URL")) ?? "api.anthropic.com")
-          : (hostOf(baseFor("OPENAI_BASE_URL")) ?? "api.openai.com");
+          ? "https://api.anthropic.com/v1"
+          : provider === "cerebras"
+            ? "https://api.cerebras.ai/v1"
+            : "https://api.openai.com/v1",
+    ).hostname;
   return { provider, family, endpoint };
 }
 

@@ -197,38 +197,64 @@ function authHeaderForKey(runtime: IAgentRuntime, key: string | undefined): Reco
   return key ? { Authorization: `Bearer ${key}` } : {};
 }
 
+/** Provides setting values to the pure endpoint resolver. */
+export type EndpointSettingReader = (key: string) => string | undefined;
+
+function normalizeEndpointSetting(value: string | undefined): string | undefined {
+  const normalized = value?.trim();
+  return normalized ? normalized : undefined;
+}
+
 /**
- * Route to the wire-level mock server when one is running. `ELIZA_MOCK_OPENAI_BASE`
- * is set only by the in-process mock runner (`packages/scenario-runner/test/mocks`) and never in
- * production — honoring it directly mirrors how LifeOps consumes its sibling
- * `ELIZA_MOCK_*_BASE` vars (`mockoon-redirect.ts`). It is authoritative when set
- * (a deliberate test action), so it wins over any configured base or provider
- * mode; in production it is unset and has no effect.
+ * Resolve the text API endpoint from an injected setting reader. Keeping this
+ * pure lets diagnostics use the exact provider policy without constructing a
+ * runtime or depending on the ambient process environment. The scenario
+ * runner's `ELIZA_MOCK_OPENAI_BASE` remains authoritative when present.
  */
-function getMockBaseURL(): string | undefined {
-  const base = getEnvValue("ELIZA_MOCK_OPENAI_BASE")?.trim();
-  return base ? base : undefined;
+export function resolveOpenAIBaseURL(
+  readSetting: EndpointSettingReader,
+  options: { browser?: boolean } = {}
+): string {
+  const read = (key: string): string | undefined => normalizeEndpointSetting(readSetting(key));
+  const explicitProvider = read("ELIZA_PROVIDER")?.toLowerCase();
+  const openAIBaseURL = read("OPENAI_BASE_URL");
+  const cerebrasMode =
+    explicitProvider === "cerebras" ||
+    (openAIBaseURL !== undefined && /(^|\.)cerebras\.ai(\/|$)/i.test(openAIBaseURL)) ||
+    (read("CEREBRAS_API_KEY") !== undefined &&
+      read("OPENAI_API_KEY") === undefined &&
+      openAIBaseURL === undefined);
+  const evolinkMode =
+    explicitProvider === "evolink" ||
+    (openAIBaseURL !== undefined && /(^|\.)evolink\.ai(\/|$)/i.test(openAIBaseURL)) ||
+    (read("EVOLINK_API_KEY") !== undefined &&
+      read("OPENAI_API_KEY") === undefined &&
+      openAIBaseURL === undefined);
+
+  if (options.browser) {
+    const browserURL = read("OPENAI_BROWSER_BASE_URL");
+    if (browserURL) return browserURL;
+  }
+  return (
+    read("ELIZA_MOCK_OPENAI_BASE") ??
+    openAIBaseURL ??
+    (cerebrasMode ? (read("CEREBRAS_BASE_URL") ?? "https://api.cerebras.ai/v1") : undefined) ??
+    (evolinkMode ? (read("EVOLINK_BASE_URL") ?? "https://direct.evolink.ai/v1") : undefined) ??
+    "https://api.openai.com/v1"
+  );
 }
 
 export function getBaseURL(runtime: IAgentRuntime): string {
-  const browserURL = getSetting(runtime, "OPENAI_BROWSER_BASE_URL");
-  const mockBaseURL = getMockBaseURL();
-  const cerebrasBaseURL =
-    isCerebrasMode(runtime) && !getSetting(runtime, "OPENAI_BASE_URL")
-      ? (getSetting(runtime, "CEREBRAS_BASE_URL") ?? "https://api.cerebras.ai/v1")
-      : undefined;
-  const evolinkBaseURL =
-    isEvoLinkMode(runtime) && !getSetting(runtime, "OPENAI_BASE_URL")
-      ? (getSetting(runtime, "EVOLINK_BASE_URL") ?? "https://direct.evolink.ai/v1")
-      : undefined;
-  const baseURL =
-    isBrowser() && browserURL
-      ? browserURL
-      : (mockBaseURL ??
-        getSetting(runtime, "OPENAI_BASE_URL") ??
-        cerebrasBaseURL ??
-        evolinkBaseURL ??
-        "https://api.openai.com/v1");
+  const baseURL = resolveOpenAIBaseURL(
+    (key) => {
+      const runtimeValue = runtime.getSetting(key);
+      const normalizedRuntime = normalizeEndpointSetting(
+        runtimeValue === undefined || runtimeValue === null ? undefined : String(runtimeValue)
+      );
+      return normalizedRuntime ?? getEnvValue(key);
+    },
+    { browser: isBrowser() }
+  );
   logger.debug(`[OpenAI] Base URL: ${baseURL}`);
   return baseURL;
 }
