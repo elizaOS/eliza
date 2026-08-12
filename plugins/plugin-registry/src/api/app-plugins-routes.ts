@@ -15,6 +15,7 @@ import {
   discoverPluginsFromManifest,
   findPrimaryEnvKey,
   isAdvancedCapabilityPluginId,
+  isBlockedEnvKey,
   isVaultRef,
   loadElizaConfig,
   type PluginRuntimeApplyResult,
@@ -48,6 +49,11 @@ import {
   type RegistryEntry,
 } from "@elizaos/registry/first-party";
 import { asRecord, CONNECTOR_PLUGINS } from "@elizaos/shared";
+import {
+  bridgePluginParamsToRuntime,
+  clearPluginParamValues,
+  collectAgentScopedPluginParamValues,
+} from "./bridge-plugin-settings.ts";
 import { VaultMissError } from "@elizaos/vault";
 
 const require = createRequire(import.meta.url);
@@ -1666,6 +1672,52 @@ export async function handlePluginsCompatRoutes(
     const result = persistCompatPluginMutation(pluginId, body, plugin);
     if (result.status === 200) {
       const nextConfig = loadElizaConfig();
+      // Fold agent-scoped config into runtime.getSetting before hot reload —
+      // catalog isSet reads env, connectors read getSetting (#18713).
+      if (
+        body.config &&
+        typeof body.config === "object" &&
+        !Array.isArray(body.config)
+      ) {
+        const bridgedValues: Record<string, string | undefined> = {};
+        for (const [key, value] of Object.entries(
+          body.config as Record<string, unknown>,
+        )) {
+          if (typeof value !== "string") continue;
+          if (isBlockedEnvKey(key)) continue;
+          bridgedValues[key] = value.trim() ? value : undefined;
+        }
+        bridgePluginParamsToRuntime(
+          state.current,
+          plugin.parameters ?? [],
+          bridgedValues,
+          { isBlockedKey: isBlockedEnvKey },
+        );
+      } else if (typeof body.enabled === "boolean") {
+        if (body.enabled) {
+          const entry = asRecord(nextConfig.plugins?.entries?.[pluginId]);
+          const agentScoped = collectAgentScopedPluginParamValues(
+            plugin.parameters ?? [],
+            {
+              entryConfig: asRecord(entry?.config),
+              configEnv: asRecord(nextConfig.env),
+            },
+          );
+          bridgePluginParamsToRuntime(
+            state.current,
+            plugin.parameters ?? [],
+            agentScoped,
+            { isBlockedKey: isBlockedEnvKey },
+          );
+        } else {
+          bridgePluginParamsToRuntime(
+            state.current,
+            plugin.parameters ?? [],
+            clearPluginParamValues(plugin.parameters ?? []),
+            { isBlockedKey: isBlockedEnvKey },
+          );
+        }
+      }
       const runtimeApply = await applyCompatRuntimeMutation({
         state,
         pluginId,

@@ -54,6 +54,8 @@ export interface ConnectorModeDeclaration {
   setupPluginId: string;
   /** Mode is only offered when Eliza Cloud is connected. */
   cloudOnly?: boolean;
+  /** Mode is unavailable inside a managed Eliza Cloud agent container. */
+  hideOnManagedCloud?: boolean;
   /**
    * Which global channel-mode lens this setup mode belongs to: `"delegate"`
    * when the agent acts through the owner's own account on the platform, or
@@ -322,6 +324,7 @@ registerConnectorModes("discord", [
     managementMode: "local-setup",
     setupPluginId: "discordlocal",
     channelMode: "delegate",
+    hideOnManagedCloud: true,
   },
   {
     id: "bot",
@@ -523,6 +526,7 @@ registerConnectorModes("imessage", [
     managementMode: "local-setup",
     setupPluginId: "imessage",
     channelMode: "delegate",
+    hideOnManagedCloud: true,
     defaultPriority: 2,
   },
   {

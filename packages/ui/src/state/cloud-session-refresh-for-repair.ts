@@ -32,9 +32,11 @@
 import {
   hasStewardAuthedCookie,
   readStoredStewardToken,
+  STEWARD_REFRESH_ENDPOINT,
   writeStoredStewardToken,
 } from "@elizaos/shared/steward-session-client";
 import { refreshCloudStewardSession } from "../api/client-cloud";
+import { DIRECT_ELIZA_CLOUD_API_BY_HOST } from "../api/direct-cloud-endpoints";
 
 /** Bounded so the recovery gate can never hang on a slow refresh. */
 export const CLOUD_REPAIR_REFRESH_TIMEOUT_MS = 6_000;
@@ -62,6 +64,14 @@ function defaultRaceTimeout<T>(p: Promise<T>, ms: number): Promise<T | null> {
   return Promise.race([p, timeout]).finally(() => {
     if (timer) clearTimeout(timer);
   });
+}
+
+function resolveRepairRefreshEndpoint(): string | undefined {
+  if (typeof window === "undefined") return undefined;
+  const apiBase = DIRECT_ELIZA_CLOUD_API_BY_HOST.get(
+    window.location.hostname.toLowerCase(),
+  );
+  return apiBase ? `${apiBase}${STEWARD_REFRESH_ENDPOINT}` : undefined;
 }
 
 /**
@@ -103,7 +113,7 @@ export async function ensureCloudSessionForRepair(
     // error-policy:J4 a failed/absent cookie refresh yields null → the caller
     // keeps the wall; it NEVER fabricates a session.
     recovered = await raceTimeout(
-      refreshFn().catch(() => null),
+      refreshFn({ endpoint: resolveRepairRefreshEndpoint() }).catch(() => null),
       timeoutMs,
     );
   } catch {

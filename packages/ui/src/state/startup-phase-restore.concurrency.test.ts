@@ -83,6 +83,7 @@ function makeDeps(): RestoringSessionDeps {
 describe("cloud restore routes the client without waiting on the Steward refresh", () => {
   let fetchMock: ReturnType<typeof vi.fn>;
   const realFetch = globalThis.fetch;
+  const realLocation = window.location;
   const pendingRequests: Array<{
     url: string;
     resolve: (r: Response) => void;
@@ -111,6 +112,10 @@ describe("cloud restore routes the client without waiting on the Steward refresh
 
   afterEach(() => {
     globalThis.fetch = realFetch;
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      value: realLocation,
+    });
     setBootConfig(DEFAULT_BOOT_CONFIG);
     localStorage.clear();
     vi.restoreAllMocks();
@@ -295,6 +300,60 @@ describe("cloud restore routes the client without waiting on the Steward refresh
     expect(clientRef.setBaseUrl).toHaveBeenCalledWith(
       `https://${STAGING_AGENT_ID}.staging.elizacloud.ai`,
     );
+    expect(clientRef.setToken).toHaveBeenCalledWith("paired-token");
+  });
+
+  it("keeps staging dedicated ingress when the page is staging but boot defaults to prod", async () => {
+    // Regression: agent-subdomain bundles ship cloudApiBase=https://elizacloud.ai.
+    // Restore must not rewrite *.staging.elizacloud.ai onto production.
+    setBootConfig({
+      ...DEFAULT_BOOT_CONFIG,
+      cloudApiBase: "https://elizacloud.ai",
+    });
+    const stagingOrigin = `https://${STAGING_AGENT_ID}.staging.elizacloud.ai`;
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      value: new URL(`${stagingOrigin}/`),
+    });
+    const restored: PersistedActiveServer = {
+      id: `cloud:${STAGING_AGENT_ID}`,
+      kind: "cloud",
+      label: "Eliza Cloud",
+      apiBase: stagingOrigin,
+      accessToken: "paired-token",
+    };
+    const clientRef = { setBaseUrl: vi.fn(), setToken: vi.fn() };
+
+    await applyRestoredConnection({
+      restoredActiveServer: restored,
+      clientRef,
+    });
+
+    expect(clientRef.setBaseUrl).toHaveBeenCalledWith(stagingOrigin);
+    expect(clientRef.setToken).toHaveBeenCalledWith("paired-token");
+  });
+
+  it("does not demote a persisted staging dedicated base under the prod boot default", async () => {
+    setBootConfig({
+      ...DEFAULT_BOOT_CONFIG,
+      cloudApiBase: "https://elizacloud.ai",
+    });
+    const stagingOrigin = `https://${STAGING_AGENT_ID}.staging.elizacloud.ai`;
+    const restored: PersistedActiveServer = {
+      id: `cloud:${STAGING_AGENT_ID}`,
+      kind: "cloud",
+      label: "Eliza Cloud",
+      apiBase: stagingOrigin,
+      accessToken: "paired-token",
+    };
+    const clientRef = { setBaseUrl: vi.fn(), setToken: vi.fn() };
+
+    await applyRestoredConnection({
+      restoredActiveServer: restored,
+      clientRef,
+    });
+
+    expect(clientRef.setBaseUrl).toHaveBeenCalledWith(stagingOrigin);
     expect(clientRef.setToken).toHaveBeenCalledWith("paired-token");
   });
 });
