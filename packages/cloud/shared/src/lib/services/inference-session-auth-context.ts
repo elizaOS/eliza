@@ -15,6 +15,7 @@
  */
 
 import { AuthenticationError, ForbiddenError } from "../api/cloud-worker-errors";
+import { loadVerifiedStagingSessionUser } from "../auth/staging-session-binding";
 import { verifyStewardTokenCached } from "../auth/steward-client";
 import { readStewardAccessCookieFromHeader } from "../auth/steward-cookies";
 import { cache } from "../cache/client";
@@ -201,9 +202,21 @@ export async function resolveInferenceSessionAuthContext(
   const env = getCloudAwareEnv();
   const claims = await verifyStewardTokenCached(
     {
+      NODE_ENV: env.NODE_ENV,
+      ENVIRONMENT: env.ENVIRONMENT,
       STEWARD_SESSION_SECRET: env.STEWARD_SESSION_SECRET,
       STEWARD_JWT_SECRET: env.STEWARD_JWT_SECRET,
+      ELIZA_SERVICE_JWT_SECRET: env.ELIZA_SERVICE_JWT_SECRET,
       STEWARD_TENANT_ID: env.STEWARD_TENANT_ID,
+      STAGING_SESSION_EXCHANGE_ENABLED: env.STAGING_SESSION_EXCHANGE_ENABLED,
+      STAGING_SESSION_EXCHANGE_VERSION: env.STAGING_SESSION_EXCHANGE_VERSION,
+      STAGING_SESSION_EXCHANGE_SIGNING_SECRET: env.STAGING_SESSION_EXCHANGE_SIGNING_SECRET,
+      STAGING_SESSION_EXCHANGE_SIGNING_KEY_ID: env.STAGING_SESSION_EXCHANGE_SIGNING_KEY_ID,
+      STAGING_SESSION_EXCHANGE_ALLOWED_API_KEY_IDS:
+        env.STAGING_SESSION_EXCHANGE_ALLOWED_API_KEY_IDS,
+      STAGING_SESSION_EXCHANGE_ALLOWED_USER_IDS: env.STAGING_SESSION_EXCHANGE_ALLOWED_USER_IDS,
+      STAGING_SESSION_EXCHANGE_ALLOWED_ORGANIZATION_IDS:
+        env.STAGING_SESSION_EXCHANGE_ALLOWED_ORGANIZATION_IDS,
     },
     token,
     {
@@ -212,6 +225,34 @@ export async function resolveInferenceSessionAuthContext(
     },
   );
   if (!claims) return { kind: "rejected", status: 401 };
+
+  if (claims.stagingSessionBinding) {
+    // QA bindings are continuously primary-store-authorized and must never be
+    // translated through the Steward-subject inference cache or JIT hydration.
+    const user = await loadVerifiedStagingSessionUser({
+      binding: claims.stagingSessionBinding,
+      stewardUserId: claims.userId,
+    });
+    if (!user?.organization_id || !user.organization) {
+      return { kind: "rejected", status: 401 };
+    }
+    if (await adminService.shouldBlockUser(user.id)) {
+      return { kind: "suspended", userId: user.id };
+    }
+    return {
+      kind: "authorized",
+      source: "origin",
+      ctx: {
+        v: INFERENCE_AUTH_CONTEXT_VERSION,
+        cachedAt: Date.now(),
+        userId: user.id,
+        orgId: user.organization_id,
+        apiKeyId: null,
+        stewardUserId: claims.userId,
+        admission: await loadInferenceAdmissionSnapshot(user.organization_id),
+      },
+    };
+  }
 
   if (options.useAuthCache && cache.isAvailable()) {
     const cached = await readInferenceSessionAuthDecision(claims.userId).catch((error) => {

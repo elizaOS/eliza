@@ -168,10 +168,13 @@ const audio = await runtime.useModel(ModelType.TEXT_TO_SPEECH, {
 });
 
 // Deep research (may take minutes)
+const researchController = new AbortController();
 const report = await runtime.useModel(ModelType.RESEARCH, {
   input: "What are the latest advances in fusion energy?",
   tools: [{ type: "web_search_preview" }],
+  signal: researchController.signal,
 });
+// Call researchController.abort() when the result is no longer needed.
 console.log(report.text, report.annotations);
 ```
 

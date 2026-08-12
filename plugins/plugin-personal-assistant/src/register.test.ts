@@ -21,6 +21,8 @@ const h = vi.hoisted(() => ({
     signal: { id: "sig-1" },
   })),
   isApiError: vi.fn((_error: unknown) => false),
+  isAuthenticatedNow: vi.fn(() => true),
+  subscribeAuthStatus: vi.fn(() => () => undefined),
   isElectrobunRuntime: vi.fn(() => false),
   loadDesktopWorkspaceSnapshot: vi.fn(async () => ({ supported: false })),
 }));
@@ -31,6 +33,8 @@ const h = vi.hoisted(() => ({
 // registered for the shared file wins.
 vi.mock("@elizaos/ui/api", () => ({
   isApiError: h.isApiError,
+  isAuthenticatedNow: h.isAuthenticatedNow,
+  subscribeAuthStatus: h.subscribeAuthStatus,
   ElizaClient: h.ElizaClient,
   isElectrobunRuntime: h.isElectrobunRuntime,
   loadDesktopWorkspaceSnapshot: h.loadDesktopWorkspaceSnapshot,
@@ -50,6 +54,8 @@ vi.mock("@elizaos/ui/bridge", () => ({
   },
   isElectrobunRuntime: h.isElectrobunRuntime,
   isApiError: h.isApiError,
+  isAuthenticatedNow: h.isAuthenticatedNow,
+  subscribeAuthStatus: h.subscribeAuthStatus,
   ElizaClient: h.ElizaClient,
   loadDesktopWorkspaceSnapshot: h.loadDesktopWorkspaceSnapshot,
 }));
@@ -62,6 +68,8 @@ vi.mock("@elizaos/ui/events", () => ({
   },
   isElectrobunRuntime: h.isElectrobunRuntime,
   isApiError: h.isApiError,
+  isAuthenticatedNow: h.isAuthenticatedNow,
+  subscribeAuthStatus: h.subscribeAuthStatus,
   ElizaClient: h.ElizaClient,
   loadDesktopWorkspaceSnapshot: h.loadDesktopWorkspaceSnapshot,
 }));
@@ -69,6 +77,8 @@ vi.mock("@elizaos/ui/browser", () => ({
   loadDesktopWorkspaceSnapshot: h.loadDesktopWorkspaceSnapshot,
   isElectrobunRuntime: h.isElectrobunRuntime,
   isApiError: h.isApiError,
+  isAuthenticatedNow: h.isAuthenticatedNow,
+  subscribeAuthStatus: h.subscribeAuthStatus,
   ElizaClient: h.ElizaClient,
   APP_PAUSE_EVENT: "eliza:app-pause",
   APP_RESUME_EVENT: "eliza:app-resume",

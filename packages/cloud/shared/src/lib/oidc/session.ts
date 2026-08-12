@@ -62,6 +62,11 @@ export async function resolveOidcSession(c: AppContext): Promise<OidcSessionOutc
   const claims = await verifyStewardTokenCached(c.env, token);
   if (!claims) return { status: "signed_out" };
 
+  // The staging QA session is intentionally non-transferable. Letting it
+  // authorize an OIDC client would mint ordinary OIDC tokens that no longer
+  // carry or continuously revalidate the source-key/user/org binding.
+  if (claims.stagingSessionBinding) return { status: "signed_out" };
+
   if (await isBlockedBySsoBridgeLogout(claims.userId, claims.issuedAt)) {
     // The user explicitly signed out after this token was issued. Honoring the
     // still-unexpired cookie would mint a brand-new relying-party session out

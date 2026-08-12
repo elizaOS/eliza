@@ -15,7 +15,7 @@ afterEach(() => {
   cleanup();
 });
 
-vi.mock("../../state", () => ({
+vi.mock("../../state/app-store", () => ({
   useAppSelector: (selector: (state: unknown) => unknown) =>
     selector({
       t: (_key: string, options?: { defaultValue?: string }) =>

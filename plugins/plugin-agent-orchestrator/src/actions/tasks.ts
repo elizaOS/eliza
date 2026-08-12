@@ -4792,10 +4792,9 @@ export const tasksAction: Action & {
     "CREATE_PR",
     "SUBMIT_CHANGES",
     "FINISH_WORKSPACE",
-    // manage_issues — includes the GITHUB_-prefixed and ADD_-shaped names
-    // Stage-1 actually guesses (live 2026-08-10: "add a comment to that
-    // issue" nominated GITHUB_ADD_COMMENT/GITHUB_ADD_LABEL, matched nothing,
-    // and the planner declined a capability it has).
+    // Stage-1 nominates provider-prefixed issue aliases before the child is
+    // exposed, so the parent must own them for issue management to remain
+    // reachable.
     "MANAGE_ISSUES",
     "CREATE_ISSUE",
     "LIST_ISSUES",
@@ -4807,15 +4806,12 @@ export const tasksAction: Action & {
     "GITHUB_ISSUES",
     "GITHUB_CREATE_ISSUE",
     "CREATE_GITHUB_ISSUE",
-    // Complete the GITHUB_<verb>_ISSUE(S) permutation family: live 2026-08-11
-    // ("any open github issues?") nominated GITHUB_LIST_ISSUES — LIST_ISSUES
-    // and GITHUB_ISSUE were both present but the exact guess matched nothing
-    // and the planner declined a capability it has (same class as the
-    // GITHUB_ADD_COMMENT incident above).
     "GITHUB_LIST_ISSUES",
     "LIST_GITHUB_ISSUES",
     "GITHUB_CLOSE_ISSUE",
     "CLOSE_GITHUB_ISSUE",
+    "GITHUB_REOPEN_ISSUE",
+    "REOPEN_GITHUB_ISSUE",
     "GITHUB_UPDATE_ISSUE",
     "UPDATE_GITHUB_ISSUE",
     "GITHUB_GET_ISSUE",

@@ -4,6 +4,12 @@
  * arrival to an OS notification when the host provides one. The persistent
  * Home notification center is the only in-app surface. Subscribed via
  * useSyncExternalStore.
+ *
+ * The store is keyed to a live "authority" (active agent-base + authenticated
+ * identity/session, #18391): switching agent, base URL, or user, or logging
+ * out, synchronously clears the inbox, invalidates in-flight hydration and
+ * the live WS binding, and re-hydrates fresh for the new authority. A refresh
+ * that resolves to the same authority is a no-op.
  */
 import {
   type AgentNotification,
@@ -24,6 +30,8 @@ import {
 } from "../../bridge/native-notifications";
 import { APP_RESUME_EVENT } from "../../events";
 import {
+  type AuthStatusState,
+  getAuthStatusSnapshot,
   isAuthenticatedNow,
   subscribeAuthStatus,
 } from "../../hooks/useAuthStatus";
@@ -81,11 +89,15 @@ let hydrationReadinessDeadlineAt = 0;
 let hydrationGeneration = 0;
 let liveEventRevision = 0;
 const notificationCleanups: Array<() => void> = [];
-// One-shot re-arm: on a fresh, unauthenticated shared Cloud app there is no
-// session yet, so the protected GET /api/notifications hydrate is held to avoid
-// a 401 (#16242). This unsubscribe is set while waiting for a session and
-// cleared once hydration is re-triggered post-sign-in.
-let hydrationAuthRearmUnsub: (() => void) | null = null;
+// Identifies the active agent-base + authenticated identity/session (#18391).
+// "anon" stands in for the identity/session component while unauthenticated,
+// so an agent/base switch is still isolated even with nobody signed in (e.g.
+// a local, non-Cloud origin). Null until initNotifications() seeds it.
+let currentAuthorityKey: string | null = null;
+// Unsubscribes the currently-bound live WS notification handler; rebound on
+// every authority change so a handler closure from a superseded authority can
+// never reach ingest(), even if a message is somehow still in flight.
+let notificationEventUnsub: (() => void) | null = null;
 
 /**
  * Whether the inbox hydrate may hit the protected `GET /api/notifications` now.
@@ -342,6 +354,81 @@ function handleWsAgentEvent(data: Record<string, unknown>): void {
   ingest(notification, unreadCount, { deliver: deliverUpdate });
 }
 
+/**
+ * Bind the live WS notification handler to one authority. The returned
+ * closure captures `authorityKey` and self-drops if the store has since moved
+ * on — a defense-in-depth guard alongside the unsubscribe/resubscribe in
+ * {@link bindLiveNotificationStream}, so a handler reference obtained before a
+ * switch can never apply a stale event even if invoked directly.
+ */
+function createWsAgentEventHandler(
+  authorityKey: string,
+): (data: Record<string, unknown>) => void {
+  return (data) => {
+    if (authorityKey !== currentAuthorityKey) return;
+    handleWsAgentEvent(data);
+  };
+}
+
+function bindLiveNotificationStream(authorityKey: string): void {
+  notificationEventUnsub?.();
+  notificationEventUnsub = client.onWsEvent(
+    "agent_event",
+    createWsAgentEventHandler(authorityKey),
+  );
+}
+
+/**
+ * Non-secret identity for the active authority: the agent-base plus the
+ * authenticated identity/session when present, or a fixed "anon" placeholder
+ * otherwise. Never derived from a bearer token or other credential material.
+ */
+function computeAuthorityKey(
+  authStatus: AuthStatusState,
+  baseUrl: string,
+): string {
+  const identityPart =
+    authStatus.phase === "authenticated"
+      ? `${authStatus.identity.id}::${authStatus.session.id}`
+      : "anon";
+  return `${baseUrl}::${identityPart}`;
+}
+
+/**
+ * Re-key the store to the authority implied by the latest auth status and the
+ * client's current base URL. A no-op when the authority is unchanged (e.g. a
+ * same-session background auth refresh). On a real change: rebind the live WS
+ * handler, cancel retry/hydration ownership so a stale in-flight response is
+ * discarded by {@link runHydrationAttempt}'s generation check, synchronously
+ * clear rows/unread state, and hydrate fresh for the new authority.
+ */
+function reconcileAuthority(authStatus: AuthStatusState): void {
+  const nextKey = computeAuthorityKey(authStatus, client.getBaseUrl());
+  if (nextKey === currentAuthorityKey) return;
+  currentAuthorityKey = nextKey;
+  bindLiveNotificationStream(nextKey);
+
+  if (hydrationRetryTimer) {
+    clearTimeout(hydrationRetryTimer);
+    hydrationRetryTimer = null;
+  }
+  hydrationInFlight = null;
+  hydrationReadinessDeadlineAt = 0;
+  hydrationGeneration += 1;
+
+  setState({
+    notifications: [],
+    unreadCount: 0,
+    hydrated: false,
+    hydrationStatus: "idle",
+    hydrationAttempts: 0,
+    hydrationError: null,
+  });
+  ephemeralNotificationIds.clear();
+
+  void requestHydration();
+}
+
 function mergeHydratedNotifications(
   persisted: AgentNotification[],
 ): AgentNotification[] {
@@ -500,16 +587,9 @@ async function runHydrationAttempt(generation: number): Promise<void> {
 function requestHydration(): Promise<void> {
   if (!notificationProbesEnabled()) {
     // No session yet on the shared Cloud app — skip the protected fetch (it
-    // would 401 and Chromium logs the console error) and re-arm once, so the
-    // inbox hydrates the moment a session lands post-sign-in (#16242).
-    if (!hydrationAuthRearmUnsub) {
-      hydrationAuthRearmUnsub = subscribeAuthStatus(() => {
-        if (!notificationProbesEnabled()) return;
-        hydrationAuthRearmUnsub?.();
-        hydrationAuthRearmUnsub = null;
-        void requestHydration();
-      });
-    }
+    // would 401 and Chromium logs the console error). initNotifications()'s
+    // persistent auth-status subscription re-triggers this once a session
+    // lands post-sign-in via reconcileAuthority() (#16242).
     return Promise.resolve();
   }
   if (hydrationInFlight) return hydrationInFlight;
@@ -541,11 +621,18 @@ export function retryNotificationHydration(): Promise<void> {
 export function initNotifications(): void {
   if (initialized) return;
   initialized = true;
+  currentAuthorityKey = computeAuthorityKey(
+    getAuthStatusSnapshot(),
+    client.getBaseUrl(),
+  );
+  bindLiveNotificationStream(currentAuthorityKey);
   notificationCleanups.push(
-    client.onWsEvent("agent_event", handleWsAgentEvent),
+    () => notificationEventUnsub?.(),
     client.onWsEvent("ws-reconnected", () => {
       void retryNotificationHydration();
     }),
+    subscribeAuthStatus(reconcileAuthority),
+    client.onBaseUrlChange(() => reconcileAuthority(getAuthStatusSnapshot())),
   );
   if (typeof window !== "undefined") {
     const retryOnline = () => void retryNotificationHydration();
@@ -714,8 +801,9 @@ export function __resetNotificationStoreForTests(): void {
   hydrationRetryTimer = null;
   hydrationInFlight = null;
   hydrationReadinessDeadlineAt = 0;
-  hydrationAuthRearmUnsub?.();
-  hydrationAuthRearmUnsub = null;
+  currentAuthorityKey = null;
+  notificationEventUnsub?.();
+  notificationEventUnsub = null;
   liveEventRevision = 0;
   state = {
     notifications: [],

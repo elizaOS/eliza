@@ -504,6 +504,17 @@ async function gesture(
     else if (stepDelayMs != null && stepDelayMs > 0)
       await p.waitForTimeout(stepDelayMs);
   }
+  if (slow && up !== 0) {
+    // End a deliberate drag with a sub-slop sample after the finger has come
+    // to rest. Chromium may coalesce adjacent CDP mouse moves on a loaded CI
+    // renderer and give the last two delivered samples the same timestamp;
+    // usePullGesture correctly treats that apparent final burst as a flick.
+    // A real slow release has this stationary tail, and the one-pixel sample
+    // makes the fixture express it without changing the tested distance band.
+    await p.waitForTimeout(80);
+    await p.mouse.move(cx, targetY(steps) + Math.sign(up));
+    await p.waitForTimeout(28);
+  }
   if (!hold) await p.mouse.up();
 }
 async function release(p, pointer, up = 0) {

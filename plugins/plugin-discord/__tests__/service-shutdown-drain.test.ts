@@ -77,6 +77,53 @@ describe("DiscordService#stop shutdown drain", () => {
 		);
 	});
 
+	it("cordons new ingress before waiting for an admitted turn to drain", async () => {
+		const runtime = makeRuntime();
+		const service = makeService(runtime);
+		let finishTurn: () => void = () => {};
+		const turn = new Promise<void>((resolve) => {
+			finishTurn = resolve;
+		});
+		service.trackInFlightTurn("msg-admitted", turn);
+
+		const stopPromise = service.stop();
+		expect(
+			service.admitInboundMessage("msg-after-cordon", "channel-1", "test"),
+		).toBe(false);
+		const directCaller = {
+			client: { user: { id: "bot" } },
+			discordSettings: { shouldIgnoreBotMessages: false },
+			admitInboundMessage: (messageId: string, channelId: string): boolean =>
+				service.admitInboundMessage(messageId, channelId, "test"),
+			trackInFlightTurn: vi.fn(),
+		};
+		const { MessageManager } = await import("../messages.ts");
+		const manager = Object.create(MessageManager.prototype) as {
+			discordService: typeof directCaller;
+			runMessageTurn: ReturnType<typeof vi.fn>;
+			handleMessage: (message: unknown) => Promise<void>;
+		};
+		manager.discordService = directCaller;
+		manager.runMessageTurn = vi.fn();
+		await manager.handleMessage({
+			id: "msg-direct-after-cordon",
+			channel: { id: "channel-1" },
+		});
+		expect(manager.runMessageTurn).not.toHaveBeenCalled();
+		expect(directCaller.trackInFlightTurn).not.toHaveBeenCalled();
+		expect(runtime.logger.info).toHaveBeenCalledWith(
+			expect.objectContaining({
+				messageId: "msg-after-cordon",
+				channelId: "channel-1",
+				reason: "shutdown-cordon",
+			}),
+			"discord: drop shutdown-cordon target=channel-1",
+		);
+
+		finishTurn();
+		await stopPromise;
+	});
+
 	it("drains an in-flight turn before completing, without abandoning its reaction", async () => {
 		const runtime = makeRuntime();
 		const service = makeService(runtime);

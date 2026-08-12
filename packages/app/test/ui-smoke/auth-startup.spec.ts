@@ -302,12 +302,35 @@ test("cloud bootstrap exchange stores the session bearer and resumes startup", a
   await expect(chatComposer(page)).toBeVisible();
 });
 
-test("remote pairing redeem persists token and resumes startup", async ({
+test("remote pairing redeem persists token, resumes startup, and arms LifeOps capture", async ({
   page,
   baseURL,
 }) => {
   const apiBase = apiBaseFromTest(baseURL);
   let pairRequests = 0;
+  let runtimeStatusRequests = 0;
+  let activitySignalCaptures = 0;
+  let signedOutPollingWindowActive = false;
+  let sessionAuthenticated = false;
+  const signedOutConsoleErrors: string[] = [];
+
+  page.on("request", (request) => {
+    const pathname = new URL(request.url()).pathname;
+    if (request.method() === "GET" && pathname === "/api/status") {
+      runtimeStatusRequests += 1;
+    }
+    if (
+      request.method() === "POST" &&
+      pathname === "/api/lifeops/activity-signals"
+    ) {
+      activitySignalCaptures += 1;
+    }
+  });
+  page.on("console", (message) => {
+    if (message.type() === "error") {
+      signedOutConsoleErrors.push(message.text());
+    }
+  });
 
   await seedAppStorage(page, {
     "elizaos:active-server": JSON.stringify({
@@ -318,6 +341,23 @@ test("remote pairing redeem persists token and resumes startup", async ({
     }),
   });
   await installDefaultAppRoutes(page);
+  await page.route("**/api/status", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    if (signedOutPollingWindowActive && !sessionAuthenticated) {
+      await fulfillJson(route, 401, { error: "Unauthorized" });
+      return;
+    }
+    await fulfillJson(route, 200, {
+      state: "running",
+      agentName: "Playwright Smoke",
+      model: "ui-smoke",
+      startedAt: Date.now() - 60_000,
+      uptime: 60_000,
+    });
+  });
   await page.route("**/api/auth/status", async (route) => {
     if (route.request().method() !== "GET") {
       await route.fallback();
@@ -344,6 +384,7 @@ test("remote pairing redeem persists token and resumes startup", async ({
       return;
     }
     pairRequests += 1;
+    sessionAuthenticated = true;
     expect(route.request().postDataJSON()).toEqual({
       code: "ABCD EFGH IJKL",
     });
@@ -386,12 +427,32 @@ test("remote pairing redeem persists token and resumes startup", async ({
   });
 
   await openAppPath(page, "/chat");
+  await expect(page.getByText("Pairing Required")).toBeVisible();
+
+  // Real browser/network regression for #16504: the registration module is
+  // loaded on this fresh signed-out renderer, but canonical auth must hold its
+  // self-starting readiness loop for more than two former 5s poll windows.
+  // Startup owns a bounded pair of one-shot status probes before the gate
+  // settles, so freeze that baseline here; any later status request receives a
+  // real 401 and would create the Chromium console noise this test guards.
+  const settledStartupStatusRequests = runtimeStatusRequests;
+  signedOutConsoleErrors.length = 0;
+  signedOutPollingWindowActive = true;
+  await page.waitForTimeout(10_500);
+  expect(runtimeStatusRequests).toBe(settledStartupStatusRequests);
+  expect(activitySignalCaptures).toBe(0);
+  expect(signedOutConsoleErrors).toEqual([]);
+
   await page.getByPlaceholder("Enter pairing code").fill("ABCD EFGH IJKL");
   await page.getByRole("button", { name: "Submit" }).click();
 
   await expect.poll(() => pairRequests).toBe(1);
   await expect(page.getByText("Pairing Required")).toHaveCount(0);
   await expect(chatComposer(page)).toBeVisible();
+  await expect
+    .poll(() => runtimeStatusRequests)
+    .toBeGreaterThan(settledStartupStatusRequests);
+  await expect.poll(() => activitySignalCaptures).toBeGreaterThan(0);
   await expect
     .poll(() =>
       page.evaluate(() => {

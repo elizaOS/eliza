@@ -1138,6 +1138,42 @@ function scanDockerfile({ rel, text, canonical, record, violate }) {
     }
   }
 
+  // A base image also reaches FROM through an ARG/ENV of any name:
+  //   ARG BUN_BASE=oven/bun:canary-alpine
+  //   FROM ${BUN_BASE}
+  // The FROM matcher below requires a literal `oven/bun:` on the FROM line, and
+  // the declaration scan above reads only BUN_VERSION, so this shape cleared
+  // both while pinning nothing. That is how a floating canary became the
+  // runtime of three deployed cloud service images without a single violation
+  // (#17044). The reference is a runtime declaration wherever it is written.
+  for (let i = 0; i < lines.length; i++) {
+    const decl = lines[i].match(
+      /^\s*(ARG|ENV)\s+([A-Za-z_][A-Za-z0-9_]*)[= ]["']?oven\/bun:([A-Za-z0-9._-]+)["']?/,
+    );
+    if (!decl) continue;
+    const [, kind, name, tag] = decl;
+    // Variant suffixes (-alpine, -slim, -distroless) are a base-image choice;
+    // only the version prefix must match the canonical pin.
+    const tagVersion = tag.match(/^(\d+\.\d+\.\d+)(?:-[A-Za-z0-9.-]+)?$/)?.[1];
+    const pinned = tagVersion === canonical;
+    record({
+      surface: "dockerfile-base-image-arg",
+      file: rel,
+      line: i + 1,
+      value: tag,
+      classification: pinned
+        ? "canonical"
+        : /^(canary|latest)(?:-|$)/.test(tag)
+          ? "floating"
+          : "divergent",
+    });
+    if (!pinned) {
+      violate(
+        `${rel}:${i + 1}: ${kind} ${name}=oven/bun:${tag} — a base image reached through ${kind} ${name} must be the canonical ${canonical} (${VERSION_FILE}) (variant suffixes allowed). Pass an out-of-tree image with --build-arg rather than defaulting to a floating tag.`,
+      );
+    }
+  }
+
   for (let i = 0; i < lines.length; i++) {
     const from = lines[i].match(
       /^\s*FROM\s+(?:--platform=\S+\s+)?oven\/bun:([^\s]+)/i,

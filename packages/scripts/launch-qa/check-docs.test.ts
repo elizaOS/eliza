@@ -12,6 +12,9 @@ async function makeRepo() {
   tempRoots.push(repoRoot);
   await fs.mkdir(path.join(repoRoot, "docs"), { recursive: true });
   await fs.mkdir(path.join(repoRoot, "packages", "demo"), { recursive: true });
+  await fs.mkdir(path.join(repoRoot, ".github", "ISSUE_TEMPLATE"), {
+    recursive: true,
+  });
   await fs.writeFile(
     path.join(repoRoot, "package.json"),
     JSON.stringify({ scripts: { dev: "echo dev" } }),
@@ -19,6 +22,15 @@ async function makeRepo() {
   await fs.writeFile(
     path.join(repoRoot, "packages", "demo", "package.json"),
     JSON.stringify({ scripts: { test: "echo test" } }),
+  );
+  await fs.writeFile(path.join(repoRoot, "SECURITY.md"), "# Security Policy\n");
+  await fs.writeFile(
+    path.join(repoRoot, ".github", "ISSUE_TEMPLATE", "config.yml"),
+    `contact_links:
+  - name: Security vulnerability
+    url: https://github.com/elizaOS/eliza/blob/develop/SECURITY.md
+    about: Report privately.
+`,
   );
   return repoRoot;
 }
@@ -166,6 +178,47 @@ describe("docs gate", () => {
     expect(result.ok).toBe(true);
     expect(result.checkedFiles).toContain("README.md");
     expect(result.checkedFiles).not.toContain("packages/demo/README.md");
+  });
+
+  it("fails when the root security policy is missing", async () => {
+    const repoRoot = await makeRepo();
+    await fs.rm(path.join(repoRoot, "SECURITY.md"));
+
+    const result = checkDocs({ repoRoot });
+
+    expect(result.ok).toBe(false);
+    expect(result.errors).toContainEqual(
+      expect.objectContaining({
+        type: "missing-security-policy",
+        file: "SECURITY.md",
+      }),
+    );
+  });
+
+  it("fails when the issue template security contact is stale", async () => {
+    const repoRoot = await makeRepo();
+    await fs.mkdir(path.join(repoRoot, ".github", "ISSUE_TEMPLATE"), {
+      recursive: true,
+    });
+    await fs.writeFile(path.join(repoRoot, "SECURITY.md"), "# Security Policy\n");
+    await fs.writeFile(
+      path.join(repoRoot, ".github", "ISSUE_TEMPLATE", "config.yml"),
+      `contact_links:
+  - name: Security vulnerability
+    url: https://github.com/elizaOS/eliza/blob/develop/packages/docs/security.md
+    about: stale
+`,
+    );
+
+    const result = checkDocs({ repoRoot });
+
+    expect(result.ok).toBe(false);
+    expect(result.errors).toContainEqual(
+      expect.objectContaining({
+        type: "stale-security-contact",
+        file: ".github/ISSUE_TEMPLATE/config.yml",
+      }),
+    );
   });
 
   it("resolves moved relative docs links under packages/docs", async () => {
