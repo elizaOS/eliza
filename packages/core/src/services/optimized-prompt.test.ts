@@ -164,7 +164,7 @@ describe("OptimizedPromptService — symlink-based versioning", () => {
 		});
 	});
 
-	it("strict parser preserves a valid contextConfig channel", () => {
+	it("rejects the orphaned contextConfig channel", () => {
 		const parsed = parseOptimizedPromptArtifact({
 			...makeArtifact(1),
 			contextConfig: {
@@ -181,16 +181,7 @@ describe("OptimizedPromptService — symlink-based versioning", () => {
 			},
 		});
 
-		expect(parsed?.contextConfig).toEqual({
-			providerSet: ["RECENT_MESSAGES", "FACTS"],
-			providerOrder: ["FACTS", "RECENT_MESSAGES"],
-			renderTemplates: {
-				RECENT_MESSAGES: "{{role}}: {{text}}",
-			},
-			budgetVector: {
-				RECENT_MESSAGES: 1200,
-			},
-		});
+		expect(parsed).toBeNull();
 	});
 
 	it("retains the most recent OPTIMIZED_PROMPT_RETAIN_VERSIONS artifacts", async () => {
