@@ -73,7 +73,8 @@ function parseYtDlpUploadDate(value: string | undefined): Date | undefined {
   const compact = value.match(/^(\d{4})(\d{2})(\d{2})$/);
   if (compact) {
     const [, year, month, day] = compact;
-    return new Date(`${year}-${month}-${day}T00:00:00.000Z`);
+    const parsed = new Date(`${year}-${month}-${day}T00:00:00.000Z`);
+    return Number.isNaN(parsed.getTime()) ? undefined : parsed;
   }
   const parsed = new Date(value);
   return Number.isNaN(parsed.getTime()) ? undefined : parsed;
@@ -128,7 +129,10 @@ export class VideoService extends IVideoService {
   // Required abstract methods from IVideoService
   async getVideoInfo(url: string): Promise<VideoInfo> {
     const videoInfo = await this.fetchVideoInfo(url);
-    const formats: VideoFormat[] = (videoInfo.formats ?? []).map(
+    const rawFormats = Array.isArray(videoInfo?.formats)
+      ? videoInfo.formats
+      : [];
+    const formats: VideoFormat[] = rawFormats.map(
       (f: YtDlpFormatRow) => ({
         formatId: f.format_id ?? "",
         url: f.url ?? "",
@@ -146,14 +150,14 @@ export class VideoService extends IVideoService {
       }),
     );
     return {
-      title: videoInfo.title,
-      duration: videoInfo.duration,
+      title: videoInfo?.title,
+      duration: videoInfo?.duration,
       url: url,
-      thumbnail: videoInfo.thumbnail,
-      description: videoInfo.description,
-      uploader: videoInfo.channel,
-      viewCount: videoInfo.view_count,
-      uploadDate: parseYtDlpUploadDate(videoInfo.upload_date),
+      thumbnail: videoInfo?.thumbnail,
+      description: videoInfo?.description,
+      uploader: videoInfo?.channel,
+      viewCount: videoInfo?.view_count,
+      uploadDate: parseYtDlpUploadDate(videoInfo?.upload_date),
       formats,
     };
   }
@@ -331,7 +335,7 @@ export class VideoService extends IVideoService {
         "formats" in result
       ) {
         const parsed = result as YtDlpJson;
-        if (parsed.formats?.length) {
+        if (Array.isArray(parsed.formats) && parsed.formats.length) {
           return parsed.formats.map((format: YtDlpFormatRow) => ({
             formatId: format.format_id ?? "",
             url: format.url ?? "",
@@ -364,6 +368,9 @@ export class VideoService extends IVideoService {
   }
 
   public isVideoUrl(url: string): boolean {
+    if (!url || typeof url !== "string") {
+      return false;
+    }
     try {
       const { hostname } = new URL(url);
       return (
@@ -545,18 +552,23 @@ export class VideoService extends IVideoService {
     return await response.text();
   }
 
-  private parseCaption(captionContent: string): string {
+  public parseCaption(captionContent: string): string {
     elizaLogger.log("Parsing caption");
+    if (!captionContent || typeof captionContent !== "string") {
+      return "";
+    }
     try {
       const jsonContent = JSON.parse(captionContent) as CaptionJson;
-      if (Array.isArray(jsonContent.events)) {
+      if (Array.isArray(jsonContent?.events)) {
         return jsonContent.events
           .filter((event): event is { segs: CaptionSegment[] } =>
-            Array.isArray(event.segs),
+            Array.isArray(event?.segs),
           )
-          .map((event) => event.segs.map((seg) => seg.utf8 ?? "").join(""))
+          .map((event) =>
+            event.segs.map((seg) => (typeof seg?.utf8 === "string" ? seg.utf8 : "")).join(""),
+          )
           .join("")
-          .replace("\n", " ");
+          .replace(/\n/g, " ");
       } else {
         elizaLogger.log(
           "Unexpected caption format:",
@@ -570,11 +582,22 @@ export class VideoService extends IVideoService {
     }
   }
 
-  private parseSRT(srtContent: string): string {
-    // Simple SRT parser (replace with a more robust solution if needed)
-    return srtContent
+  public parseSRT(srtContent: string): string {
+    if (!srtContent || typeof srtContent !== "string") {
+      return "";
+    }
+    const normalized = srtContent.replace(/\r\n/g, "\n");
+    return normalized
       .split("\n\n")
-      .map((block) => block.split("\n").slice(2).join(" "))
+      .map((block) =>
+        block
+          .split("\n")
+          .map((line) => line.trim())
+          .filter((line) => line.length > 0)
+          .slice(2)
+          .join(" "),
+      )
+      .filter((text) => text.trim().length > 0)
       .join(" ");
   }
 
