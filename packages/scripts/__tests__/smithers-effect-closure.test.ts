@@ -17,9 +17,38 @@ const PLUGIN_WORKSPACES = [
   "plugins/plugin-agent-orchestrator",
   "plugins/plugin-workflow",
 ];
+const EFFECT_RANGE_FIELDS = [
+  "dependencies",
+  "optionalDependencies",
+  "peerDependencies",
+] as const;
 
 type JsonObject = Record<string, unknown>;
-type LockPackage = readonly [string, string, JsonObject?];
+type LockPackage = {
+  metadata?: JsonObject;
+  resolution: string;
+};
+
+const EFFECT_CLOSURE_FIXTURE: JsonObject = {
+  effect: [`effect@${EFFECT_VERSION}`, "", {}],
+  "@effect/platform-bun": [
+    `@effect/platform-bun@${EFFECT_VERSION}`,
+    "",
+    {
+      dependencies: {
+        "@effect/platform-node-shared": `^${EFFECT_VERSION}`,
+      },
+      peerDependencies: { effect: `^${EFFECT_VERSION}` },
+    },
+  ],
+  "@effect/platform-node-shared": [
+    `@effect/platform-node-shared@${EFFECT_VERSION}`,
+    "",
+    { peerDependencies: { effect: `^${EFFECT_VERSION}` } },
+  ],
+  "legacy/effect/fast-check": ["fast-check@3.23.2", "", {}],
+  "legacy/@effect/platform-node-shared/ws": ["ws@8.18.0", "", {}],
+};
 
 function objectValue(value: unknown, label: string): JsonObject {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
@@ -48,29 +77,107 @@ function packageEntry(packages: JsonObject, name: string): LockPackage {
   if (
     !Array.isArray(value) ||
     typeof value[0] !== "string" ||
-    typeof value[1] !== "string"
+    (value[1] !== undefined && typeof value[1] !== "string")
   ) {
     throw new TypeError(`bun.lock packages.${name} must be a package tuple`);
   }
   const metadata = value[2];
   return metadata === undefined
-    ? [value[0], value[1]]
-    : [
-        value[0],
-        value[1],
-        objectValue(metadata, `bun.lock packages.${name} metadata`),
-      ];
+    ? { resolution: value[0] }
+    : {
+        metadata: objectValue(metadata, `bun.lock packages.${name} metadata`),
+        resolution: value[0],
+      };
+}
+
+function resolvedPackage(
+  resolution: string,
+  label: string,
+): { name: string; version: string } {
+  const versionSeparator = resolution.indexOf(
+    "@",
+    resolution[0] === "@" ? 1 : 0,
+  );
+  if (versionSeparator <= 0 || versionSeparator === resolution.length - 1) {
+    throw new TypeError(`${label} has invalid resolution ${resolution}`);
+  }
+  return {
+    name: resolution.slice(0, versionSeparator),
+    version: resolution.slice(versionSeparator + 1),
+  };
 }
 
 function resolvedVersion(packages: JsonObject, name: string): string {
-  const resolution = packageEntry(packages, name)[0];
-  const prefix = `${name}@`;
-  if (!resolution.startsWith(prefix)) {
+  const resolution = packageEntry(packages, name).resolution;
+  const resolved = resolvedPackage(resolution, `bun.lock packages.${name}`);
+  if (resolved.name !== name) {
     throw new TypeError(
       `bun.lock packages.${name} has invalid resolution ${resolution}`,
     );
   }
-  return resolution.slice(prefix.length);
+  return resolved.version;
+}
+
+function isEffectPackage(name: string): boolean {
+  return name === "effect" || name.startsWith("@effect/");
+}
+
+function effectAliasName(name: string): string | undefined {
+  if (name === "effect" || name.endsWith("/effect")) return "effect";
+  return name.match(/(?:^|\/)(@effect\/[^/]+)$/)?.[1];
+}
+
+function assertEffectClosure(packages: JsonObject): void {
+  let effectPackageCount = 0;
+
+  for (const name of Object.keys(packages)) {
+    const label = `bun.lock packages.${name}`;
+    const entry = packageEntry(packages, name);
+    const resolved = resolvedPackage(entry.resolution, label);
+    const aliasName = effectAliasName(name);
+    const resolvedEffectName = isEffectPackage(resolved.name)
+      ? resolved.name
+      : undefined;
+
+    if (aliasName && aliasName !== resolvedEffectName) {
+      throw new Error(
+        `${label} identifies ${aliasName} but resolves ${entry.resolution}`,
+      );
+    }
+
+    if (resolvedEffectName) {
+      effectPackageCount += 1;
+      if (resolved.version !== EFFECT_VERSION) {
+        throw new Error(
+          `${label} resolves ${entry.resolution}; expected ${resolvedEffectName}@${EFFECT_VERSION}`,
+        );
+      }
+    }
+
+    if (!entry.metadata) continue;
+    for (const field of EFFECT_RANGE_FIELDS) {
+      const value = entry.metadata[field];
+      if (value === undefined) continue;
+      const ranges = objectValue(value, `${label}.${field}`);
+      for (const [dependencyName, range] of Object.entries(ranges)) {
+        if (!isEffectPackage(dependencyName)) continue;
+        if (typeof range !== "string") {
+          throw new TypeError(
+            `${label}.${field}.${dependencyName} must be a string`,
+          );
+        }
+        if (!Bun.semver.satisfies(EFFECT_VERSION, range)) {
+          throw new Error(
+            `${label}.${field}.${dependencyName} requires ${range}, which excludes ${EFFECT_VERSION}`,
+          );
+        }
+      }
+    }
+  }
+
+  if (effectPackageCount === 0) {
+    throw new Error("bun.lock packages must resolve the Effect family");
+  }
 }
 
 test("Smithers resolves one peer-compatible Effect prerelease", () => {
@@ -133,61 +240,52 @@ test("Smithers resolves one peer-compatible Effect prerelease", () => {
     ).toBe(SMITHERS_VERSION);
   }
 
-  const coreVersion = resolvedVersion(packages, "effect");
+  assertEffectClosure(packages);
+  expect(resolvedVersion(packages, "effect")).toBe(EFFECT_VERSION);
   expect(resolvedVersion(packages, "@smithers-orchestrator/engine")).toBe(
     SMITHERS_VERSION,
   );
-  const platformBunVersion = resolvedVersion(packages, "@effect/platform-bun");
-  const platformNodeVersion = resolvedVersion(
-    packages,
-    "@effect/platform-node-shared",
-  );
-  expect(coreVersion).toBe(EFFECT_VERSION);
-  expect(platformBunVersion).toBe(coreVersion);
-  expect(platformNodeVersion).toBe(platformBunVersion);
+});
 
-  const platformBunMetadata = objectValue(
-    packageEntry(packages, "@effect/platform-bun")[2],
-    "bun.lock packages.@effect/platform-bun metadata",
-  );
-  const platformBunDependencies = objectValue(
-    platformBunMetadata.dependencies,
-    "bun.lock packages.@effect/platform-bun.dependencies",
-  );
-  const platformNodeRange = stringField(
-    platformBunDependencies,
-    "@effect/platform-node-shared",
-    "bun.lock packages.@effect/platform-bun.dependencies",
-  );
-  expect(Bun.semver.satisfies(platformNodeVersion, platformNodeRange)).toBe(
-    true,
+test("nested package aliases cannot hide a second Effect closure", () => {
+  expect(() => assertEffectClosure(EFFECT_CLOSURE_FIXTURE)).not.toThrow();
+
+  expect(() =>
+    assertEffectClosure({
+      ...EFFECT_CLOSURE_FIXTURE,
+      "legacy/effect": ["effect@3.22.1", "", {}],
+    }),
+  ).toThrow(
+    `bun.lock packages.legacy/effect resolves effect@3.22.1; expected effect@${EFFECT_VERSION}`,
   );
 
-  const effectPeerPackages = Object.keys(packages)
-    .filter((name) => name.startsWith("@effect/"))
-    .map((name) => {
-      const metadata = packageEntry(packages, name)[2];
-      if (!metadata) return undefined;
-      const peerDependencies = metadata.peerDependencies;
-      if (
-        typeof peerDependencies !== "object" ||
-        peerDependencies === null ||
-        Array.isArray(peerDependencies)
-      ) {
-        return undefined;
-      }
-      const effectRange = peerDependencies.effect;
-      return typeof effectRange === "string"
-        ? { effectRange, name }
-        : undefined;
-    })
-    .filter((entry) => entry !== undefined);
+  expect(() =>
+    assertEffectClosure({
+      ...EFFECT_CLOSURE_FIXTURE,
+      "legacy/@effect/platform-node-shared": [
+        "@effect/platform-node-shared@4.0.0-beta.107",
+        "",
+        {},
+      ],
+    }),
+  ).toThrow(
+    `bun.lock packages.legacy/@effect/platform-node-shared resolves @effect/platform-node-shared@4.0.0-beta.107; expected @effect/platform-node-shared@${EFFECT_VERSION}`,
+  );
+});
 
-  expect(effectPeerPackages.length).toBeGreaterThan(0);
-  for (const { effectRange, name } of effectPeerPackages) {
-    expect(
-      Bun.semver.satisfies(coreVersion, effectRange),
-      `${name} requires effect ${effectRange}, resolved ${coreVersion}`,
-    ).toBe(true);
+test("every Effect dependency range accepts the exact closure", () => {
+  for (const field of EFFECT_RANGE_FIELDS) {
+    expect(() =>
+      assertEffectClosure({
+        ...EFFECT_CLOSURE_FIXTURE,
+        "range-holder": [
+          "range-holder@1.0.0",
+          "",
+          { [field]: { effect: "^4.0.0-beta.107" } },
+        ],
+      }),
+    ).toThrow(
+      `bun.lock packages.range-holder.${field}.effect requires ^4.0.0-beta.107, which excludes ${EFFECT_VERSION}`,
+    );
   }
 });
