@@ -564,6 +564,7 @@ describe("watchdog configuration", () => {
       graceMs: 1,
       signalFn: (pid, signal) => signals.push([pid, signal]),
       delayFn: async () => {},
+      identityFn: () => "original-process",
     });
     expect(signals).toEqual([
       [-321, "SIGTERM"],
@@ -578,6 +579,7 @@ describe("watchdog configuration", () => {
         platform: "win32",
         graceMs: 1,
         delayFn: async () => {},
+        identityFn: () => "original-process",
         spawnFn: (command, args) => {
           invocations.push([command, args]);
           const killer = new EventEmitter();
@@ -594,6 +596,42 @@ describe("watchdog configuration", () => {
     expect(await runWithCodes([5, 0])).toHaveLength(2);
   });
 
+  it("does not force-kill a replacement Windows PID after a soft pass", async () => {
+    const identities = ["original-process", "replacement-process"];
+    const invocations = [];
+    await expect(
+      terminateProcessTree(321, {
+        platform: "win32",
+        graceMs: 1,
+        delayFn: async () => {},
+        identityFn: () => identities.shift(),
+        spawnFn: (command, args) => {
+          invocations.push([command, args]);
+          const killer = new EventEmitter();
+          killer.kill = () => {};
+          queueMicrotask(() => killer.emit("close", 0, null));
+          return killer;
+        },
+      }),
+    ).rejects.toMatchObject({ code: "PROCESS_IDENTITY_UNPROVEN" });
+    expect(invocations).toEqual([["taskkill", ["/PID", "321", "/T"]]]);
+  });
+
+  it("does not force-kill a replacement POSIX process group after TERM", async () => {
+    const identities = ["original-group", "replacement-group"];
+    const signals = [];
+    await expect(
+      terminateProcessTree(321, {
+        platform: "darwin",
+        graceMs: 1,
+        delayFn: async () => {},
+        identityFn: () => identities.shift(),
+        signalFn: (pid, signal) => signals.push([pid, signal]),
+      }),
+    ).rejects.toMatchObject({ code: "PROCESS_IDENTITY_UNPROVEN" });
+    expect(signals).toEqual([[-321, "SIGTERM"]]);
+  });
+
   it("fails closed when forced Windows tree termination fails", async () => {
     const codes = [0, 5];
     await expect(
@@ -601,6 +639,7 @@ describe("watchdog configuration", () => {
         platform: "win32",
         graceMs: 1,
         delayFn: async () => {},
+        identityFn: () => "original-process",
         spawnFn: () => {
           const killer = new EventEmitter();
           killer.kill = () => {};

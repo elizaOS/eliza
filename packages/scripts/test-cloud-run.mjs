@@ -18,6 +18,7 @@ import {
   existsSync,
   mkdirSync,
   readdirSync,
+  readFileSync,
   statSync,
   writeFileSync,
   writeSync,
@@ -179,16 +180,16 @@ function runTreeKillCommand(pid, force, spawnFn, commandTimeoutMs) {
     }
     let settled = false;
     let timer;
-    const finish = (error) => {
+    const finish = (error, result) => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
       if (error) reject(error);
-      else resolve();
+      else resolve(result);
     };
     killer.once("error", finish);
     killer.once("close", (code, signal) => {
-      if (code === 0) finish();
+      if (code === 0) finish(undefined, { exitCode: code, signal });
       else {
         const error = new Error(
           `taskkill ${force ? "/F " : ""}/T failed ` +
@@ -205,6 +206,101 @@ function runTreeKillCommand(pid, force, spawnFn, commandTimeoutMs) {
       );
     }, commandTimeoutMs);
   });
+}
+
+function readPosixProcessIdentity(pid, spawnSyncFn) {
+  try {
+    const stat = readFileSync(`/proc/${pid}/stat`, "utf8");
+    const endOfCommand = stat.lastIndexOf(")");
+    if (endOfCommand > 0) {
+      const fields = stat
+        .slice(endOfCommand + 1)
+        .trim()
+        .split(/\s+/);
+      const startTime = fields[19];
+      if (startTime) return `proc-start:${startTime}`;
+    }
+  } catch {
+    // macOS and other POSIX systems do not expose Linux's /proc stat file.
+  }
+
+  let result;
+  try {
+    result = spawnSyncFn("ps", ["-p", String(pid), "-o", "lstart="], {
+      encoding: "utf8",
+      maxBuffer: 4096,
+    });
+  } catch {
+    return undefined;
+  }
+  if (result?.error || result?.status !== 0) return undefined;
+  const startTime = result.stdout?.trim();
+  return startTime ? `ps-start:${startTime}` : undefined;
+}
+
+function readWindowsProcessIdentity(pid, spawnSyncFn) {
+  const command = [
+    `$process = Get-CimInstance Win32_Process -Filter "ProcessId = ${pid}"`,
+    "if ($null -eq $process) { exit 3 }",
+    "[Console]::Write($process.CreationDate.ToUniversalTime().Ticks)",
+  ].join("; ");
+  let result;
+  try {
+    result = spawnSyncFn(
+      "powershell.exe",
+      ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", command],
+      {
+        encoding: "utf8",
+        windowsHide: true,
+        timeout: 1000,
+        maxBuffer: 4096,
+      },
+    );
+  } catch {
+    return undefined;
+  }
+  if (result?.error || result?.status !== 0) return undefined;
+  const creationTicks = result.stdout?.trim();
+  return creationTicks ? `win-creation:${creationTicks}` : undefined;
+}
+
+export function readProcessIdentity(
+  pid,
+  { platform = process.platform, spawnSyncFn = spawnSync } = {},
+) {
+  if (!Number.isInteger(pid) || pid <= 0) return undefined;
+  return platform === "win32"
+    ? readWindowsProcessIdentity(pid, spawnSyncFn)
+    : readPosixProcessIdentity(pid, spawnSyncFn);
+}
+
+function processIdentityError(pid, platform, expected, actual) {
+  const error = new Error(
+    `${platform === "win32" ? "Windows PID" : "POSIX process-group"} ${pid} ` +
+      "identity changed or could not be proven before forced termination",
+  );
+  error.code = "PROCESS_IDENTITY_UNPROVEN";
+  error.pid = pid;
+  error.expectedIdentity = expected;
+  error.actualIdentity = actual;
+  return error;
+}
+
+async function requireStableProcessIdentity(
+  pid,
+  platform,
+  expectedIdentity,
+  identityFn,
+) {
+  const actualIdentity = await identityFn(pid);
+  if (
+    !expectedIdentity ||
+    !actualIdentity ||
+    actualIdentity !== expectedIdentity
+  ) {
+    throw processIdentityError(pid, platform, expectedIdentity, actualIdentity);
+  }
+  return actualIdentity;
 }
 
 function signalPosixProcessGroup(pid, signal, signalFn) {
@@ -233,20 +329,77 @@ export async function terminateProcessTree(
     spawnFn = spawn,
     signalFn = process.kill,
     delayFn = delay,
+    identityFn = (identityPid) =>
+      readProcessIdentity(identityPid, { platform }),
+    expectedIdentity,
+    identityCaptured = false,
   } = {},
 ) {
   if (!Number.isInteger(pid) || pid <= 0) return;
+
+  // A numeric PID/PGID is not an ownership handle. Capture a stable process
+  // creation identity before the graceful pass so a reused identifier can
+  // never receive the forced escalation below. If the platform cannot prove
+  // identity, fail closed before sending any destructive signal.
+  const stableIdentity = identityCaptured
+    ? expectedIdentity
+    : await identityFn(pid);
+  if (!stableIdentity) {
+    throw processIdentityError(pid, platform, stableIdentity, undefined);
+  }
+  if (identityCaptured) {
+    await requireStableProcessIdentity(
+      pid,
+      platform,
+      stableIdentity,
+      identityFn,
+    );
+  }
+
   if (platform === "win32") {
     let softError;
+    let softResult;
     try {
-      await runTreeKillCommand(pid, false, spawnFn, graceMs);
+      softResult = await runTreeKillCommand(pid, false, spawnFn, graceMs);
     } catch (error) {
       softError = error;
     }
+
+    // taskkill reports success (0) or an already-gone process (128) when a
+    // forced pass may be unnecessary. Wait through the same bounded grace and
+    // re-check identity for every result: if the original process is still
+    // present, force escalation is safe; if it disappeared, never issue a
+    // second PID-only command because the number may already be reusable.
+    const softExitCode = softResult?.exitCode ?? softError?.exitCode;
     await delayFn(graceMs);
-    let forceError;
+    let currentIdentity;
     try {
-      await runTreeKillCommand(pid, true, spawnFn, graceMs);
+      currentIdentity = await identityFn(pid);
+    } catch (error) {
+      throw processIdentityError(pid, platform, stableIdentity, error);
+    }
+    if (currentIdentity !== stableIdentity) {
+      // A successful/already-gone soft pass plus an absent PID proves there is
+      // no safe forced target. A different live identity is an active reuse
+      // race and must fail closed so the replacement is never touched.
+      if (
+        currentIdentity === undefined &&
+        (softExitCode === 0 || softExitCode === 128)
+      ) {
+        return;
+      }
+      throw processIdentityError(
+        pid,
+        platform,
+        stableIdentity,
+        currentIdentity,
+      );
+    }
+
+    let forceError;
+    let forceResult;
+    try {
+      forceResult = await runTreeKillCommand(pid, true, spawnFn, graceMs);
     } catch (error) {
       forceError = error;
     }
@@ -264,7 +417,7 @@ export async function terminateProcessTree(
     }
     // A soft-pass error followed by a successful forced pass still proves the
     // complete tree was removed, so it is not a teardown failure.
-    return;
+    return forceResult;
   }
 
   let softError;
@@ -274,6 +427,7 @@ export async function terminateProcessTree(
     softError = error;
   }
   await delayFn(graceMs);
+  await requireStableProcessIdentity(pid, platform, stableIdentity, identityFn);
   try {
     signalPosixProcessGroup(pid, "SIGKILL", signalFn);
   } catch (forceError) {
@@ -314,6 +468,8 @@ export function runCommandWithWatchdog(
     spawnFn = spawn,
     terminateTree = terminateProcessTree,
     signalSource = process,
+    identityFn = (identityPid) =>
+      readProcessIdentity(identityPid, { platform }),
   },
 ) {
   return new Promise((resolve) => {
@@ -330,6 +486,13 @@ export function runCommandWithWatchdog(
     } catch (error) {
       resolve({ error, stdout: "", stderr: "", streamed: true });
       return;
+    }
+
+    let childIdentity;
+    try {
+      childIdentity = identityFn(child.pid);
+    } catch {
+      childIdentity = undefined;
     }
 
     let stdout = "";
@@ -423,6 +586,9 @@ export function runCommandWithWatchdog(
         terminationPromise = terminateTree(child.pid, {
           platform,
           graceMs: terminationGraceMs,
+          expectedIdentity: childIdentity,
+          identityCaptured: true,
+          identityFn,
         })
           .catch((error) => {
             terminationError = error;
@@ -916,7 +1082,9 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   try {
     await main();
   } catch (error) {
-    console.error(error instanceof Error ? error.message : String(error));
+    const message =
+      error instanceof Error ? (error.stack ?? error.message) : String(error);
+    writeSyncAll(2, `${message}\n`);
     process.exitCode = 1;
   }
 }
