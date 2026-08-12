@@ -10,6 +10,7 @@ import { defineConfig, devices } from "@playwright/test";
 // (a real omnivoice.cpp speech clip). Binary .wav fixtures are gitignored, so
 // derive the on-disk WAV from it for Chromium's --use-file-for-fake-audio-capture.
 import { KNOWN_PHRASE_WAV_DATA_URL } from "../ui/src/voice/voice-selftest/fixtures/known-phrase";
+import { resolvePlaywrightNodeRuntime } from "./scripts/lib/playwright-node-runtime.mjs";
 import {
   resolveRequestedAuditProjects,
   UI_SMOKE_AUDIT_PROJECTS_ENV,
@@ -36,10 +37,10 @@ const uiSmokeLiveStack = path.join(
 const uiSmokeApiPort = Number(process.env.ELIZA_UI_SMOKE_API_PORT || "31337");
 const uiSmokePort = Number(process.env.ELIZA_UI_SMOKE_PORT || "2138");
 const reuseExistingServer = process.env.ELIZA_UI_SMOKE_REUSE_SERVER === "1";
-const nodeExecutable =
-  process.env.ELIZA_NODE_PATH?.trim() ||
-  process.env.npm_node_execpath?.trim() ||
-  process.execPath;
+// Fail-fast Node runtime resolution: the shared app-core validator throws at
+// config load — before the webServer command spawns — when ELIZA_NODE_PATH is
+// invalid or no real Node.js 24+ executable can be found.
+const nodeExecutable = resolvePlaywrightNodeRuntime();
 const chromiumExecutablePath =
   process.env.ELIZA_UI_SMOKE_CHROMIUM_EXECUTABLE?.trim();
 // Real audio fed to the browser mic for the voice button-press e2e: Chromium
