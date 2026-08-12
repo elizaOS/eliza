@@ -3591,10 +3591,10 @@ export function partitionRedundantSucceededCalls(
 
 /**
  * Terminal escape hatch for a planner stuck re-issuing an identical successful
- * call. Makes one `toolChoice: "none"` planner call so the model MUST answer in
- * prose — synthesizing from the tool results already gathered — then returns
- * that as the final message. Bounded (one extra call, no tools) so it cannot
- * itself loop.
+ * call. Makes one `toolChoice: "none"` planner call from canonical user-facing
+ * tool projections only, then returns either that synthesis or a deterministic
+ * fail-closed status. Bounded (one extra call, no tools) so it cannot itself
+ * loop.
  */
 async function finishWithForcedSynthesis(params: {
 	loop: PlannerLoopParams;
@@ -3604,12 +3604,6 @@ async function finishWithForcedSynthesis(params: {
 	onUsage?: (usage: { promptTokens: number; completionTokens: number }) => void;
 	/** Overrides the repeated-call framing when a caller forces synthesis for a different reason. */
 	instruction?: string;
-	/**
-	 * Marks this synthesis as failure-instructed. An unresolved tool failure
-	 * remains authoritative even if the model ignores that instruction; model
-	 * prose is never trusted as machine status.
-	 */
-	failureAware?: boolean;
 }): Promise<PlannerLoopResult> {
 	const { loop, config, trajectory, iteration } = params;
 	trajectory.context = appendContextEvent(trajectory.context, {
@@ -3624,10 +3618,33 @@ async function finishWithForcedSynthesis(params: {
 				"user now from the tool results already in this trajectory; if they do not " +
 				"contain the answer, say plainly what you found and what was missing.",
 	});
+	const canonicalSteps = (steps: PlannerStep[]): PlannerStep[] =>
+		steps.map((step) => {
+			if (!step.result) return step;
+			const userFacingText = getNonEmptyString(step.result.userFacingText);
+			return {
+				...step,
+				result: {
+					success: step.result.success,
+					...(userFacingText ? { text: userFacingText, userFacingText } : {}),
+				},
+			};
+		});
+	// Forced synthesis is a user-output boundary, not another reasoning turn.
+	// Give it only action-owned user-facing projections; diagnostic text, raw
+	// data, errors, and internal transcript payloads remain in the authoritative
+	// trajectory for replay and observability but never enter this model call.
+	const synthesisTrajectory: PlannerTrajectory = {
+		...trajectory,
+		steps: canonicalSteps(trajectory.steps),
+		archivedSteps: canonicalSteps(trajectory.archivedSteps),
+		plannedQueue: [...trajectory.plannedQueue],
+		evaluatorOutputs: [...trajectory.evaluatorOutputs],
+	};
 	const synthOutput = await callPlanner({
 		runtime: loop.runtime,
-		context: trajectory.context,
-		trajectory,
+		context: synthesisTrajectory.context,
+		trajectory: synthesisTrajectory,
 		config,
 		modelType: loop.modelType,
 		provider: loop.provider,
@@ -3642,22 +3659,21 @@ async function finishWithForcedSynthesis(params: {
 		iteration,
 		onUsage: params.onUsage,
 	});
-	const unresolvedFailure = params.failureAware
-		? latestUnresolvedFailedNonTerminalToolStep(trajectory)
-		: undefined;
-	const modelMessage = unresolvedFailure
-		? undefined
-		: preferredFinalMessageFromToolOrModel(
+	const canonicalSuccess = deterministicSuccessfulToolRelay(trajectory);
+	const synthesisCandidate = canonicalSuccess
+		? preferredFinalMessageFromToolOrModel(
 				trajectory,
 				synthOutput.messageToUser,
-			);
-	// Failure-aware synthesis records the attempted diagnosis but cannot authorize
-	// completion status. Store and return only the machine-owned projection while
-	// an operation remains failed so trajectory consumers cannot mistake model
-	// prose for the terminal outcome.
-	const finalMessage = unresolvedFailure
-		? groundedFailedToolMessage(unresolvedFailure)
-		: modelMessage;
+				canonicalSuccess,
+			)
+		: TOOL_RESULT_UNAVAILABLE_MESSAGE;
+	// Machine failure state owns every terminal projection. Compute the exact
+	// user-safe message before appending it so the persisted trajectory and the
+	// returned reply cannot disagree about whether an operation succeeded.
+	const finalMessage = userSafeFinalMessage(
+		terminalMessageWithFailureAuthority(trajectory, synthesisCandidate),
+		trajectory,
+	);
 	trajectory.steps.push({
 		iteration,
 		thought: synthOutput.thought,
@@ -3667,10 +3683,7 @@ async function finishWithForcedSynthesis(params: {
 	return {
 		status: "finished",
 		trajectory,
-		finalMessage: userSafeFinalMessage(
-			terminalMessageWithFailureAuthority(trajectory, finalMessage),
-			trajectory,
-		),
+		finalMessage,
 	};
 }
 
@@ -3959,7 +3972,6 @@ async function ensureFailedTurnFinalMessage(
 			trajectory: result.trajectory,
 			iteration,
 			instruction,
-			failureAware: true,
 		});
 		const finalMessage = synthesized.finalMessage;
 		const synthesizedUsable =

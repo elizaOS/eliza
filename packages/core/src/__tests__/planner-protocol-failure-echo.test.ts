@@ -14,6 +14,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "../runtime/builtin-field-evaluators";
+import { TOOL_RESULT_UNAVAILABLE_MESSAGE } from "../runtime/planner-loop";
 import { ResponseHandlerFieldRegistry } from "../runtime/response-handler-field-registry";
 import { runV5MessageRuntimeStage1 } from "../services/message";
 import type { Action, ActionResult } from "../types/components";
@@ -326,11 +327,12 @@ describe("protocol-failure recovery never promotes raw result.text", () => {
 		expect(modelCallTypes(runtime)).toHaveLength(3);
 	});
 
-	it("evaluator prose echo: recovered raw-text prose is refused and the turn re-synthesizes", async () => {
+	it("evaluator prose echo: recovered raw-text prose and unlicensed synthesis fail closed", async () => {
 		// The weak model can also echo by dumping the tool text as its whole
 		// evaluator response. The prose-recovery path promotes that text to
 		// messageToUser — the echo gate must refuse it there too, and the
-		// forced synthesis pass (here: a genuine paraphrase) ships instead.
+		// forced synthesis pass cannot promote even a plausible paraphrase because
+		// the action exposed no canonical user-facing projection.
 		const paraphrase =
 			"Three orchestrator tasks ran today — login flow and billing are still active, the homepage deploy finished.";
 		const runtime = makeRuntime({
@@ -367,7 +369,9 @@ describe("protocol-failure recovery never promotes raw result.text", () => {
 
 		expect(result.kind).toBe("planned_reply");
 		if (result.kind !== "planned_reply") return;
-		expect(result.result.responseContent?.text).toBe(paraphrase);
+		expect(result.result.responseContent?.text).toBe(
+			TOOL_RESULT_UNAVAILABLE_MESSAGE,
+		);
 		expect(result.result.responseContent?.text).not.toContain("fix login flow");
 	});
 });

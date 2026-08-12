@@ -705,6 +705,8 @@ describe("deterministic post-synthesis relay", () => {
 	});
 
 	it("fails closed when successful work exposes only raw shell diagnostics", async () => {
+		const leaked =
+			"Successful results: stdout:\n/private/ops/raw.log\nAWS_SECRET_ACCESS_KEY=never-show\nAuthorization: Bearer secret\njob 3f2504e0-4f89-11d3-9a0c-0305e82c3301";
 		const useModel = vi
 			.fn()
 			.mockResolvedValueOnce({
@@ -713,13 +715,10 @@ describe("deterministic post-synthesis relay", () => {
 					{ id: "call-1", name: "SHELL", arguments: { command: "env" } },
 				],
 			})
-			.mockResolvedValueOnce({ text: "", toolCalls: [] })
-			.mockResolvedValueOnce({
-				text: "Successful results: stdout:\n/private/ops/raw.log\nAWS_SECRET_ACCESS_KEY=never-show",
-			});
+			.mockResolvedValueOnce({ text: leaked, toolCalls: [] });
 		const executeToolCall = vi.fn(async () => ({
 			success: true,
-			text: "stdout:\n/private/ops/raw.log\nAWS_SECRET_ACCESS_KEY=never-show\nAuthorization: Bearer secret",
+			text: "stdout:\n/private/ops/raw.log\nAWS_SECRET_ACCESS_KEY=never-show\nAuthorization: Bearer secret\njob 3f2504e0-4f89-11d3-9a0c-0305e82c3301",
 			transcriptVisibility: "internal" as const,
 		}));
 		const evaluate = vi.fn(async () => ({
@@ -738,9 +737,23 @@ describe("deterministic post-synthesis relay", () => {
 		});
 
 		expect(useModel).toHaveBeenCalledTimes(2);
+		const synthesisParams = useModel.mock.calls[1]?.[1] as MockedMessages;
+		const synthesisToolMessages = JSON.stringify(
+			(synthesisParams.messages ?? []).filter(
+				(message) => message.role === "tool",
+			),
+		);
+		expect(synthesisToolMessages).toContain('"value":"ok"');
+		expect(synthesisToolMessages).not.toMatch(
+			/stdout|private\/ops|AWS_SECRET_ACCESS_KEY|Authorization|Bearer|3f2504e0/iu,
+		);
+		expect(useModel.mock.results[1]?.type).toBe("return");
 		expect(result.finalMessage).toBe(TOOL_RESULT_UNAVAILABLE_MESSAGE);
 		expect(result.finalMessage).not.toMatch(
-			/stdout|private\/ops|AWS_SECRET_ACCESS_KEY|Authorization|Bearer/iu,
+			/stdout|private\/ops|AWS_SECRET_ACCESS_KEY|Authorization|Bearer|3f2504e0/iu,
+		);
+		expect(result.trajectory.steps.at(-1)?.terminalMessage).toBe(
+			TOOL_RESULT_UNAVAILABLE_MESSAGE,
 		);
 	});
 

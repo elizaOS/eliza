@@ -768,6 +768,47 @@ describe("planner-loop failed-operation correlation", () => {
 		expect(runtime.useModel).toHaveBeenCalledTimes(3);
 	});
 
+	it("stores the unresolved A failure when repeated successful B forces contradictory synthesis", async () => {
+		const runtime = {
+			useModel: vi
+				.fn()
+				.mockResolvedValueOnce(viewsUpdateCall("note-a", "A"))
+				.mockResolvedValueOnce(viewsUpdateCall("note-b", "B"))
+				.mockResolvedValueOnce(viewsUpdateCall("note-b", "B"))
+				.mockResolvedValueOnce({
+					text: "Everything completed successfully.",
+					toolCalls: [],
+				}),
+		};
+		const executeToolCall = executeFailureAThenSuccessB();
+		const result = await runPlannerLoop({
+			runtime,
+			context: { id: "ctx" },
+			executeToolCall,
+			evaluate: vi
+				.fn()
+				.mockResolvedValueOnce({
+					success: false,
+					decision: "CONTINUE",
+					thought: "Continue with the second requested mutation.",
+				})
+				.mockResolvedValueOnce({
+					success: true,
+					decision: "CONTINUE",
+					thought: "Return both outcomes.",
+				}),
+			config: { maxRepeatedToolCalls: 0 },
+		});
+
+		expect(runtime.useModel).toHaveBeenCalledTimes(4);
+		expect(executeToolCall).toHaveBeenCalledTimes(2);
+		expect(result.finalMessage).toBe(failureA);
+		expect(result.trajectory.steps.at(-1)).toMatchObject({
+			terminalOnly: true,
+			terminalMessage: failureA,
+		});
+	});
+
 	it("keeps the unresolved failure receipt authoritative over a fenced action-envelope reply", async () => {
 		const leakedEnvelope =
 			'```json\n{"action":"VIEWS","parameters":{"action":"interact","view":"notes","capability":"update-note","params":{"id":"note-a","title":"A"}}}\n```';

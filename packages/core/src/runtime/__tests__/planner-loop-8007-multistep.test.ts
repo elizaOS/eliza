@@ -21,7 +21,10 @@
  *     running the turn to the trajectory/token limit.
  */
 import { describe, expect, it, vi } from "vitest";
-import { runPlannerLoop } from "../planner-loop";
+import {
+	runPlannerLoop,
+	TOOL_RESULT_UNAVAILABLE_MESSAGE,
+} from "../planner-loop";
 
 describe("v5 planner #8007 - multi-step orchestrator advance", () => {
 	const REPO = "acme/hello-world";
@@ -156,9 +159,11 @@ describe("v5 planner #8007 - multi-step orchestrator advance", () => {
 		});
 
 		// Provision ran exactly once; the identical repeats were skipped, not
-		// re-executed 8x.
+		// re-executed 8x. Its real result shape has no canonical user-facing
+		// projection, so the loop terminates fail-closed instead of trusting the
+		// model's paraphrase of diagnostic text.
 		expect(executeToolCall).toHaveBeenCalledTimes(1);
 		expect(result.status).toBe("finished");
-		expect(result.finalMessage).toContain("ready");
+		expect(result.finalMessage).toBe(TOOL_RESULT_UNAVAILABLE_MESSAGE);
 	});
 });

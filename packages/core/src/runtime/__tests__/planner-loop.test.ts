@@ -14,11 +14,13 @@ import { TrajectoryLimitExceeded } from "../limits";
 import {
 	__renderRoutingHintsBlockForTests,
 	actionResultToPlannerToolResult,
+	FAILED_TOOL_FALLBACK_MESSAGE,
 	PROGRESS_ONLY_ANSWER_REJECT,
 	PROGRESS_ONLY_REPLY_OPENERS_PATTERN,
 	parsePlannerOutput,
 	partitionRedundantSucceededCalls,
 	runPlannerLoop,
+	TOOL_RESULT_UNAVAILABLE_MESSAGE,
 	TURN_SCOPE_ARG,
 	TURN_SCOPE_FINAL,
 	TURN_SCOPE_MORE_WORK_PENDING,
@@ -1585,9 +1587,11 @@ describe("v5 planner loop skeleton", () => {
 		});
 
 		// The identical call ran exactly once; the repeats were skipped, not re-run.
+		// WEB_FETCH exposed diagnostics only, so the forced synthesis cannot promote
+		// the model's paraphrase into a user-facing result.
 		expect(executeToolCall).toHaveBeenCalledTimes(1);
 		expect(result.status).toBe("finished");
-		expect(result.finalMessage).toContain("42");
+		expect(result.finalMessage).toBe(TOOL_RESULT_UNAVAILABLE_MESSAGE);
 	});
 
 	it("does not re-execute an identical call that failed with retryable:false and forces a terminal synthesis", async () => {
@@ -2380,10 +2384,8 @@ describe("v5 planner loop skeleton", () => {
 						},
 					],
 				})
-				// Failure-aware synthesis pass (#17948): the evaluator's
-				// success-claiming reply was discarded by the failure authority, so
-				// the loop asks the model for an honest failure reply instead of
-				// shipping the generic failed-step sentence.
+				// The failure-aware synthesis call remains diagnostic-only: even an
+				// honest-looking model explanation cannot replace machine failure state.
 				.mockResolvedValueOnce({
 					text: "The primary lookup failed on a DNS error; the backup source did return a result.",
 					toolCalls: [],
@@ -2437,9 +2439,8 @@ describe("v5 planner loop skeleton", () => {
 			},
 			expect.objectContaining({ iteration: 2 }),
 		);
-		// The uncorrelated success still cannot launder the failure — but the
-		// reply is now the model's own failure-aware synthesis, primed with the
-		// failed step and its cause, not the fixed canned sentence (#17948).
+		// The uncorrelated success still cannot launder the failure. The model sees
+		// the scrubbed cause, but its prose cannot become machine status.
 		const synthesisParams = runtime.useModel.mock.calls[2]?.[1] as {
 			messages?: Array<{ role?: string; content?: string | null }>;
 		};
@@ -2450,8 +2451,9 @@ describe("v5 planner loop skeleton", () => {
 			.join("\n");
 		expect(synthesisPrompt).toContain("The SHELL step failed");
 		expect(synthesisPrompt).toContain("DNS lookup failed");
-		expect(result.finalMessage).toBe(
-			"The primary lookup failed on a DNS error; the backup source did return a result.",
+		expect(result.finalMessage).toBe(FAILED_TOOL_FALLBACK_MESSAGE);
+		expect(result.trajectory.steps.at(-1)?.terminalMessage).toBe(
+			FAILED_TOOL_FALLBACK_MESSAGE,
 		);
 	});
 
@@ -4191,9 +4193,9 @@ describe("verified widget payloads stay pure in the combine path", () => {
 describe("tool-turn reply guarantee (#16935)", () => {
 	// A read tool succeeds (no userFacingText), the evaluator FINISHes with a
 	// serialized tool-call literal as its "reply" — the exact live shape that
-	// ended read-then-summarize turns replyless. The post-pass must spend ONE
-	// extra no-tools model call and ship its grounded prose instead.
-	it("synthesizes a final reply when tool work finished without a usable message", async () => {
+	// ended read-then-summarize turns replyless. The post-pass still consumes one
+	// bounded synthesis response, but raw diagnostics cannot license that prose.
+	it("fails closed when tool work has no canonical user-facing result", async () => {
 		const runtime = {
 			useModel: vi
 				.fn()
@@ -4228,8 +4230,9 @@ describe("tool-turn reply guarantee (#16935)", () => {
 
 		expect(result.status).toBe("finished");
 		expect(runtime.useModel).toHaveBeenCalledTimes(2);
-		expect(result.finalMessage).toBe(
-			"You finished two things today: the receipts and Jordan's reply.",
+		expect(result.finalMessage).toBe(TOOL_RESULT_UNAVAILABLE_MESSAGE);
+		expect(result.trajectory.steps.at(-1)?.terminalMessage).toBe(
+			TOOL_RESULT_UNAVAILABLE_MESSAGE,
 		);
 	});
 
