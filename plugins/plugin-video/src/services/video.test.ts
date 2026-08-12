@@ -70,7 +70,9 @@ describe("VideoService deterministic behavior", () => {
     expect(first.title).toBe("First Vimeo");
     expect(second.title).toBe("Second Vimeo");
     expect(runtime.setCache).toHaveBeenCalledTimes(2);
-    const keys = (runtime.setCache as unknown as { mock: { calls: Array<[string]> } }).mock.calls.map(([key]) => key);
+    const keys = (
+      runtime.setCache as unknown as { mock: { calls: Array<[string]> } }
+    ).mock.calls.map(([key]) => key);
     expect(new Set(keys).size).toBe(2);
   });
 
@@ -119,8 +121,12 @@ describe("VideoService deterministic behavior", () => {
   it("handles invalid or malformed caption JSON gracefully", () => {
     const { service } = createServiceWithYtDlp([]);
     expect(service.parseCaption("")).toBe("");
-    expect(service.parseCaption("not-json")).toBe("Error: Unable to parse captions");
-    expect(service.parseCaption(JSON.stringify({ events: "invalid" }))).toBe("Error: Unable to parse captions");
+    expect(service.parseCaption("not-json")).toBe(
+      "Error: Unable to parse captions",
+    );
+    expect(service.parseCaption(JSON.stringify({ events: "invalid" }))).toBe(
+      "Error: Unable to parse captions",
+    );
   });
 
   it("safely handles non-string or empty URLs in isVideoUrl", () => {
@@ -131,4 +137,3 @@ describe("VideoService deterministic behavior", () => {
     expect(service.isVideoUrl("https://youtube.com/watch?v=123")).toBe(true);
   });
 });
-

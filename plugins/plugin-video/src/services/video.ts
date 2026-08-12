@@ -132,23 +132,21 @@ export class VideoService extends IVideoService {
     const rawFormats = Array.isArray(videoInfo?.formats)
       ? videoInfo.formats
       : [];
-    const formats: VideoFormat[] = rawFormats.map(
-      (f: YtDlpFormatRow) => ({
-        formatId: f.format_id ?? "",
-        url: f.url ?? "",
-        extension: f.ext ?? "",
-        quality:
-          f.quality !== undefined && f.quality !== ""
-            ? String(f.quality)
-            : "unknown",
-        fileSize: f.filesize,
-        videoCodec: f.vcodec,
-        audioCodec: f.acodec,
-        resolution: f.resolution,
-        fps: f.fps,
-        bitrate: f.tbr,
-      }),
-    );
+    const formats: VideoFormat[] = rawFormats.map((f: YtDlpFormatRow) => ({
+      formatId: f.format_id ?? "",
+      url: f.url ?? "",
+      extension: f.ext ?? "",
+      quality:
+        f.quality !== undefined && f.quality !== ""
+          ? String(f.quality)
+          : "unknown",
+      fileSize: f.filesize,
+      videoCodec: f.vcodec,
+      audioCodec: f.acodec,
+      resolution: f.resolution,
+      fps: f.fps,
+      bitrate: f.tbr,
+    }));
     return {
       title: videoInfo?.title,
       duration: videoInfo?.duration,
@@ -565,7 +563,9 @@ export class VideoService extends IVideoService {
             Array.isArray(event?.segs),
           )
           .map((event) =>
-            event.segs.map((seg) => (typeof seg?.utf8 === "string" ? seg.utf8 : "")).join(""),
+            event.segs
+              .map((seg) => (typeof seg?.utf8 === "string" ? seg.utf8 : ""))
+              .join(""),
           )
           .join("")
           .replace(/\n/g, " ");
