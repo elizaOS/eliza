@@ -33,21 +33,31 @@ const INFRASTRUCTURE_LABEL_CATEGORIES: ReadonlySet<WalletLabelCategory> =
     "burn_address",
   ]);
 
+type KnownInfrastructureMatch = {
+  label: string;
+  // Narrower than "is this infrastructure at all" - true only when the
+  // match is specifically a centralized_exchange label. See
+  // WalletRelationship.isKnownExchange's doc comment in types.ts for why
+  // this is a separate field from the general infrastructure flag.
+  isExchange: boolean;
+};
+
 // Checks the protocol registry (primary - any match means a recognized
 // program/contract, not a private wallet) and the label registry (for the
-// centralized-exchange case protocols/registry.ts doesn't cover). Returns
-// a display name when infrastructure is detected, or null when the address
-// is a genuinely unknown counterparty (real relationship/clustering
-// evidence) or matches a suspicious/scam/rug_pull label (also real
-// evidence, deliberately not excluded).
+// centralized-exchange case protocols/registry.ts doesn't cover - CEXs
+// aren't on-chain programs, so a centralized_exchange match only ever
+// comes from here, never from the protocol registry). Returns null when
+// the address is a genuinely unknown counterparty (real relationship/
+// clustering evidence) or matches a suspicious/scam/rug_pull label (also
+// real evidence, deliberately not excluded).
 function detectKnownInfrastructure(
   chain: SupportedChain,
   address: string,
-): string | null {
+): KnownInfrastructureMatch | null {
   const protocol = lookupProtocol(chain, address);
 
   if (protocol) {
-    return protocol.name;
+    return { label: protocol.name, isExchange: false };
   }
 
   const walletLabel: WalletLabel | null = lookupWalletLabel(chain, address);
@@ -56,7 +66,10 @@ function detectKnownInfrastructure(
     walletLabel &&
     INFRASTRUCTURE_LABEL_CATEGORIES.has(walletLabel.category)
   ) {
-    return walletLabel.label;
+    return {
+      label: walletLabel.label,
+      isExchange: walletLabel.category === "centralized_exchange",
+    };
   }
 
   return null;
@@ -283,10 +296,11 @@ export function analyzeWalletRelationships(
           counterparty.address,
         );
 
-        const infrastructureLabel = detectKnownInfrastructure(
+        const infrastructureMatch = detectKnownInfrastructure(
           chain,
           counterparty.address,
         );
+        const infrastructureLabel = infrastructureMatch?.label ?? null;
 
         const confidence =
           direction === "bidirectional" ||
@@ -329,8 +343,9 @@ export function analyzeWalletRelationships(
           confidence,
           direction,
           interactionCount,
-          isKnownInfrastructure: infrastructureLabel !== null,
+          isKnownInfrastructure: infrastructureMatch !== null,
           infrastructureLabel,
+          isKnownExchange: infrastructureMatch?.isExchange ?? false,
           incomingTransferCount:
             counterparty.incomingTransferCount,
           outgoingTransferCount:
@@ -383,10 +398,11 @@ export function analyzeWalletRelationships(
         "The address was identified as the wallet's funding source.",
       ];
     } else {
-      const fundingInfrastructureLabel = detectKnownInfrastructure(
+      const fundingInfrastructureMatch = detectKnownInfrastructure(
         chain,
         funding.fundingWallet,
       );
+      const fundingInfrastructureLabel = fundingInfrastructureMatch?.label ?? null;
 
       relationships.push({
         address: funding.fundingWallet,
@@ -409,8 +425,9 @@ export function analyzeWalletRelationships(
           funding.firstFundingTransaction
             ? [funding.firstFundingTransaction]
             : [],
-        isKnownInfrastructure: fundingInfrastructureLabel !== null,
+        isKnownInfrastructure: fundingInfrastructureMatch !== null,
         infrastructureLabel: fundingInfrastructureLabel,
+        isKnownExchange: fundingInfrastructureMatch?.isExchange ?? false,
         evidenceReasons: [
           "The address was identified as the wallet's funding source.",
           ...(fundingInfrastructureLabel
