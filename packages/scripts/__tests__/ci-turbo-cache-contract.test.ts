@@ -1,15 +1,11 @@
-// Pins the GitHub-native Turbo cache contract (#12341) against synthetic repo
-// trees: the canonical shared setup passes, re-adding the Vercel SaaS cache
-// anywhere fails, and an unpinned/floating actions/cache ref fails. Also runs
-// the shipped contract against the real repo. Deterministic — no workflow runs.
+/**
+ * Pins the GitHub-native Turbo and Bun install cache contracts against
+ * synthetic repository trees and the real checkout. The deterministic harness
+ * covers remote-cache regressions, mutable action refs, and shared-host races;
+ * it runs no workflows or network operations.
+ */
 import { describe, expect, test } from "bun:test";
-import {
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -43,6 +39,15 @@ runs:
       with:
         bun-version: 1.3.14
         no-cache: true
+    - name: Cache Bun install
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      with:
+        path: .cache/bun-install
+    - name: Install dependencies
+      shell: bash
+      run: node packages/scripts/rm-path-recursive.mjs "$BUN_INSTALL_CACHE_DIR"
+      env:
+        BUN_INSTALL_CACHE_DIR: .cache/bun-install
 `;
 
 const CLEAN_WORKFLOW = `name: Clean workflow
@@ -69,10 +74,7 @@ jobs:
       - run: bun run build
 `;
 
-function buildRepo({
-  workspaceSetup = WORKSPACE_SETUP_YAML,
-  workflows = {},
-}) {
+function buildRepo({ workspaceSetup = WORKSPACE_SETUP_YAML, workflows = {} }) {
   const root = mkdtempSync(join(tmpdir(), "turbo-cache-contract-"));
   mkdirSync(join(root, ".github", "actions", "setup-bun-workspace"), {
     recursive: true,
@@ -224,6 +226,21 @@ describe("ci-turbo-cache-contract", () => {
     try {
       expect(() => runContract(root)).toThrow(
         /without caching the ephemeral executable path/,
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("fails when concurrent installs share the host Bun cache", () => {
+    const sharedInstallCacheSetup = WORKSPACE_SETUP_YAML.replaceAll(
+      ".cache/bun-install",
+      "~/.bun/install/cache",
+    );
+    const root = buildRepo({ workspaceSetup: sharedInstallCacheSetup });
+    try {
+      expect(() => runContract(root)).toThrow(
+        /Bun install cache restore, install, and retry cleanup must share one checkout-local path/,
       );
     } finally {
       rmSync(root, { recursive: true, force: true });

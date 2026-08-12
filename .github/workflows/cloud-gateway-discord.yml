@@ -63,12 +63,20 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
 
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+      # Use the repository setup boundary so dependency downloads get its
+      # isolated cache and bounded retry. A bare bun install here previously
+      # failed the whole gateway lane on one ffmpeg-static ECONNRESET.
+      - uses: ./.github/actions/setup-bun-workspace
         with:
           bun-version: ${{ env.BUN_VERSION }}
+          setup-python: "false"
+          install-protoc: "false"
+          install-native-deps: "false"
+          install-command: bun install --frozen-lockfile --no-save --ignore-scripts
 
-      - name: Install root dependencies
-        run: bun install --frozen-lockfile --no-save && git diff --exit-code -- bun.lock
+      - name: Verify dependency install preserved the lockfile
+        working-directory: .
+        run: git diff --exit-code -- bun.lock
 
       - name: Run fork-safe messaging gateway preflight
         if: github.event_name == 'pull_request'

@@ -24,6 +24,9 @@ jobs:
   gitleaks:
     name: gitleaks
     runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    env:
+      GITLEAKS_VERSION: "8.30.1"
+      GITLEAKS_LINUX_X64_SHA256: "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb"
     steps:
       - name: Checkout
         # actions/checkout@v4
@@ -32,26 +35,68 @@ jobs:
           # Full history so gitleaks can scan the protected-branch push range.
           fetch-depth: 0
 
+      - name: Restore gitleaks archive
+        # actions/cache@v4
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: ${{ runner.temp }}/gitleaks-download-cache
+          key: gitleaks-${{ runner.os }}-${{ runner.arch }}-${{ env.GITLEAKS_VERSION }}-${{ env.GITLEAKS_LINUX_X64_SHA256 }}
+
       - name: Install gitleaks (OSS binary — no license required)
+        id: gitleaks-install
         # gitleaks/gitleaks-action@v2 requires a paid license for org repos.
         # We download the OSS CLI directly so the scan remains free and
         # honors our .gitleaks.toml allowlist + custom rules.
         run: |
           set -euo pipefail
-          GITLEAKS_VERSION=8.30.1
-          curl -sSL -o /tmp/gitleaks.tar.gz \
-            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
-          tar -xzf /tmp/gitleaks.tar.gz -C /tmp gitleaks
-          # Install without sudo so this works on any runner (github-hosted or
-          # self-hosted, which has no passwordless sudo): write to a user-writable
-          # dir and add it to PATH for the run step, not `sudo install /usr/local/bin`.
-          mkdir -p "$HOME/.local/bin"
-          install -m 0755 /tmp/gitleaks "$HOME/.local/bin/gitleaks"
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-          "$HOME/.local/bin/gitleaks" version
+          cache_dir="$RUNNER_TEMP/gitleaks-download-cache"
+          archive="$cache_dir/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          mkdir -p "$cache_dir"
+
+          verify_archive() {
+            printf '%s  %s\n' "$GITLEAKS_LINUX_X64_SHA256" "$archive" | sha256sum --check --status
+          }
+
+          if [[ -f "$archive" ]] && ! verify_archive; then
+            echo "gitleaks: cached archive failed SHA-256 verification; downloading a clean copy" >&2
+            rm -f "$archive"
+          fi
+
+          if [[ ! -f "$archive" ]]; then
+            download="$(mktemp "$cache_dir/.gitleaks-download.XXXXXX")"
+            trap 'rm -f "$download"' EXIT
+            curl --fail --location --silent --show-error \
+              --retry 5 --retry-all-errors --retry-delay 2 \
+              --connect-timeout 30 --max-time 300 --retry-max-time 300 \
+              --output "$download" \
+              "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+            if ! printf '%s  %s\n' "$GITLEAKS_LINUX_X64_SHA256" "$download" | sha256sum --check --status; then
+              echo "gitleaks: downloaded archive failed SHA-256 verification" >&2
+              exit 1
+            fi
+            mv "$download" "$archive"
+            trap - EXIT
+          fi
+
+          verify_archive
+          extract_dir="$(mktemp -d "$RUNNER_TEMP/gitleaks-install.XXXXXX")"
+          tar -xzf "$archive" -C "$extract_dir" gitleaks
+          gitleaks_bin="$extract_dir/gitleaks"
+          chmod 0755 "$gitleaks_bin"
+          installed_version="$("$gitleaks_bin" version)"
+          if [[ "$installed_version" != "$GITLEAKS_VERSION" ]]; then
+            echo "gitleaks: expected version $GITLEAKS_VERSION, got $installed_version" >&2
+            exit 1
+          fi
+          # Export the exact verified, per-job binary. Never copy it through the
+          # shared runner account's HOME or resolve it from PATH: another job can
+          # mutate those locations between this check and the scan.
+          printf 'binary=%s\n' "$gitleaks_bin" >> "$GITHUB_OUTPUT"
+          echo "gitleaks: verified version $installed_version"
 
       - name: Run gitleaks
         env:
+          GITLEAKS_BIN: ${{ steps.gitleaks-install.outputs.binary }}
           BEFORE_SHA: ${{ github.event.before }}
           CURRENT_SHA: ${{ github.sha }}
         run: |
@@ -83,7 +128,7 @@ jobs:
             RANGE_ARGS=(--log-opts "-1 ${CURRENT_SHA}")
           fi
 
-          gitleaks detect \
+          "$GITLEAKS_BIN" detect \
             --config .gitleaks.toml \
             --source . \
             --verbose \

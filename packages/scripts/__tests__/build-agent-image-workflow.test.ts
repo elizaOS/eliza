@@ -17,6 +17,10 @@ const workflowText = readFileSync(
   new URL("../../../.github/workflows/build-agent-image.yml", import.meta.url),
   "utf8",
 );
+const dockerfileText = readFileSync(
+  new URL("../../app-core/deploy/Dockerfile.ci", import.meta.url),
+  "utf8",
+);
 
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -164,6 +168,60 @@ function runDemoPromotion(overrides: Partial<Record<string, string>> = {}): {
 }
 
 describe("build-agent-image workflow", () => {
+  test("pins, retries, and verifies every yt-dlp architecture asset", () => {
+    expect(dockerfileText).toContain("ARG YTDLP_VERSION=2026.07.04");
+    expect(dockerfileText).not.toContain(
+      "yt-dlp/yt-dlp/releases/latest/download",
+    );
+    expect(dockerfileText).toContain(
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: Dockerfile ARG interpolation, not a JS template
+      '"https://github.com/yt-dlp/yt-dlp/releases/download/${YTDLP_VERSION}/${YTDLP_ASSET}"',
+    );
+
+    const releaseAssets = [
+      [
+        "yt-dlp_linux",
+        "6bbb3d314cde4febe36e5fa1d55462e29c974f63444e707871834f6d8cc210ae",
+      ],
+      [
+        "yt-dlp_linux_aarch64",
+        "b6ce97646773070d7a7ffd6bbbdcaecb47c48483909c54c915bf08a7a9b5e0b1",
+      ],
+      [
+        "yt-dlp_linux_armv7l.zip",
+        "fffda96ded8e7a51c5364d6d03fe76dae0ebc65258ed2d9660d9df1c71bb9c60",
+      ],
+    ] as const;
+    for (const [asset, sha256] of releaseAssets) {
+      expect(dockerfileText).toContain(`YTDLP_ASSET=${asset};`);
+      expect(dockerfileText).toContain(`YTDLP_SHA256=${sha256};`);
+    }
+
+    expect(dockerfileText).toContain(
+      "--retry 5 --retry-all-errors --retry-delay 2 --retry-max-time 600",
+    );
+    expect(dockerfileText).toContain("--connect-timeout 20 --max-time 300");
+    const checksumCommand = `printf '%s  %s\\n' "$YTDLP_SHA256" "$YTDLP_DOWNLOAD" | sha256sum -c -;`;
+    const checksumIndex = dockerfileText.indexOf(checksumCommand);
+    const rawInstallIndex = dockerfileText.indexOf(
+      'install -m 0755 "$YTDLP_DOWNLOAD" /usr/local/bin/yt-dlp;',
+    );
+    const archiveInstallIndex = dockerfileText.indexOf(
+      'unzip -q "$YTDLP_DOWNLOAD" -d /opt/yt-dlp;',
+    );
+    const versionCheckIndex = dockerfileText.indexOf(
+      'test "$(yt-dlp --version)" = "$YTDLP_VERSION"',
+    );
+    expect(checksumIndex).toBeGreaterThanOrEqual(0);
+    expect(rawInstallIndex).toBeGreaterThan(checksumIndex);
+    expect(archiveInstallIndex).toBeGreaterThan(checksumIndex);
+    expect(versionCheckIndex).toBeGreaterThan(rawInstallIndex);
+    expect(versionCheckIndex).toBeGreaterThan(archiveInstallIndex);
+    expect(dockerfileText).toMatch(
+      /apt-get install[^\n]*\bca-certificates\b[^\n]*\bcurl\b[^\n]*\bunzip\b/,
+    );
+  });
+
   test("exposes only canonical and demo as closed manual publication targets", () => {
     expect(workflowText).toContain(`  workflow_dispatch:
     inputs:

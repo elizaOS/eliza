@@ -20,6 +20,7 @@ ARG VERSION=""
 ARG VERSION_CLEAN=""
 ARG REVISION=""
 ARG TAILSCALE_VERSION=1.90.8
+ARG YTDLP_VERSION=2026.07.04
 
 # Some relinked local packages expect their third-party (non-@elizaos) runtime
 # dependencies to be resolvable from /app/node_modules. Host node_modules is
@@ -173,6 +174,7 @@ ARG VERSION
 ARG VERSION_CLEAN
 ARG REVISION
 ARG TAILSCALE_VERSION
+ARG YTDLP_VERSION
 LABEL org.opencontainers.image.title="${OCI_TITLE}" \
       org.opencontainers.image.description="${OCI_DESCRIPTION}" \
       org.opencontainers.image.source="${OCI_SOURCE}" \
@@ -180,7 +182,7 @@ LABEL org.opencontainers.image.title="${OCI_TITLE}" \
       org.opencontainers.image.version="${VERSION_CLEAN}" \
       org.opencontainers.image.revision="${REVISION}" \
       org.opencontainers.image.licenses="${OCI_LICENSES}"
-RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl ffmpeg libopus-dev \
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl ffmpeg libopus-dev unzip \
   && rm -rf /var/lib/apt/lists/*
 
 # Install tailscale so Cloud-managed agent sandboxes can join Headscale/Tailscale
@@ -202,18 +204,45 @@ RUN set -eux; \
   install -m 0755 "/tmp/tailscale_${TAILSCALE_VERSION}_${TAILSCALE_ARCH}/tailscaled" /usr/local/bin/tailscaled; \
   rm -rf /tmp/tailscale.tgz /tmp/tailscale.tgz.sha256 "/tmp/tailscale_${TAILSCALE_VERSION}_${TAILSCALE_ARCH}"
 
-# Install yt-dlp from the upstream GitHub release (latest), not the lagging distro package.
-RUN ARCH="$(dpkg --print-architecture)" \
-  && case "$ARCH" in \
-       amd64)  YTDLP_ASSET=yt-dlp_linux ;; \
-       arm64)  YTDLP_ASSET=yt-dlp_linux_aarch64 ;; \
-       armhf)  YTDLP_ASSET=yt-dlp_linux_armv7l ;; \
-       *) echo "Unsupported architecture for yt-dlp: $ARCH" >&2; exit 1 ;; \
-     esac \
-  && curl -fsSL "https://github.com/yt-dlp/yt-dlp/releases/latest/download/${YTDLP_ASSET}" \
-       -o /usr/local/bin/yt-dlp \
-  && chmod +x /usr/local/bin/yt-dlp \
-  && yt-dlp --version
+# Install the pinned upstream yt-dlp release. These SHA-256 values come from
+# that release's published SHA2-256SUMS asset; every download is verified before
+# anything becomes executable. Upstream publishes armv7l as a directory bundle.
+RUN set -eux; \
+  ARCH="$(dpkg --print-architecture)"; \
+  case "$ARCH" in \
+    amd64) \
+      YTDLP_ASSET=yt-dlp_linux; \
+      YTDLP_SHA256=6bbb3d314cde4febe36e5fa1d55462e29c974f63444e707871834f6d8cc210ae; \
+      YTDLP_ARCHIVE=raw \
+      ;; \
+    arm64) \
+      YTDLP_ASSET=yt-dlp_linux_aarch64; \
+      YTDLP_SHA256=b6ce97646773070d7a7ffd6bbbdcaecb47c48483909c54c915bf08a7a9b5e0b1; \
+      YTDLP_ARCHIVE=raw \
+      ;; \
+    armhf) \
+      YTDLP_ASSET=yt-dlp_linux_armv7l.zip; \
+      YTDLP_SHA256=fffda96ded8e7a51c5364d6d03fe76dae0ebc65258ed2d9660d9df1c71bb9c60; \
+      YTDLP_ARCHIVE=zip \
+      ;; \
+    *) echo "Unsupported architecture for yt-dlp: $ARCH" >&2; exit 1 ;; \
+  esac; \
+  YTDLP_DOWNLOAD=/tmp/yt-dlp.asset; \
+  curl --fail --location --silent --show-error \
+    --retry 5 --retry-all-errors --retry-delay 2 --retry-max-time 600 \
+    --connect-timeout 20 --max-time 300 \
+    "https://github.com/yt-dlp/yt-dlp/releases/download/${YTDLP_VERSION}/${YTDLP_ASSET}" \
+    --output "$YTDLP_DOWNLOAD"; \
+  printf '%s  %s\n' "$YTDLP_SHA256" "$YTDLP_DOWNLOAD" | sha256sum -c -; \
+  if [ "$YTDLP_ARCHIVE" = zip ]; then \
+    mkdir -p /opt/yt-dlp; \
+    unzip -q "$YTDLP_DOWNLOAD" -d /opt/yt-dlp; \
+    ln -s /opt/yt-dlp/yt-dlp_linux_armv7l /usr/local/bin/yt-dlp; \
+  else \
+    install -m 0755 "$YTDLP_DOWNLOAD" /usr/local/bin/yt-dlp; \
+  fi; \
+  rm -f "$YTDLP_DOWNLOAD"; \
+  test "$(yt-dlp --version)" = "$YTDLP_VERSION"
 
 WORKDIR /app
 COPY --from=pruner /app /app

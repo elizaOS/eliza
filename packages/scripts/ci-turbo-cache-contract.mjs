@@ -1,16 +1,20 @@
 #!/usr/bin/env node
 /**
- * Contract for the GitHub-native Turbo cache migration (#12341). Guards the
- * one-way move off the Vercel remote cache (TURBO_TOKEN / TURBO_TEAM /
- * TURBO_CACHE: remote:rw) to the cache embedded in setup-bun-workspace.
+ * Contract for the GitHub-native CI caches owned by setup-bun-workspace. It
+ * guards the one-way move off the Vercel remote cache (TURBO_TOKEN /
+ * TURBO_TEAM / TURBO_CACHE: remote:rw) and isolates Bun's mutable install
+ * cache across concurrent jobs on shared self-hosted runners.
  *
- * Two invariants, checked statically against the checked-in YAML:
+ * Three invariants, checked statically against the checked-in YAML:
  *
  *   1. setup-bun-workspace is a composite action, keys off the deterministic
  *      `turbo-cache-key.mjs` hash, and references `actions/cache` by a full
  *      commit SHA (never a floating tag).
  *
  *   2. No workflow or the shared setup action wires the SaaS remote-cache env.
+ *
+ *   3. actions/cache restores Bun packages into the same checkout-local
+ *      directory used and cleaned by `bun install`, never the shared host cache.
  */
 import { readdirSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
@@ -24,6 +28,7 @@ const DEFAULT_REPO_ROOT = resolve(
 
 const SETUP_WORKSPACE_PATH = ".github/actions/setup-bun-workspace/action.yml";
 const WORKFLOW_DIR = ".github/workflows";
+const ISOLATED_BUN_INSTALL_CACHE = ".cache/bun-install";
 
 // Match the SaaS remote-cache env as actual YAML wiring — a key followed by a
 // value — not prose that merely names it. `TURBO_TOKEN: ${{ secrets... }}`,
@@ -97,6 +102,14 @@ export function runContract(repoRoot = DEFAULT_REPO_ROOT) {
       workspaceSetup,
     ),
     `${SETUP_WORKSPACE_PATH}: setup-bun home must be isolated by run, attempt, job, matrix entry, and OS without caching the ephemeral executable path or using space-bearing runner metadata`,
+  );
+  assert(
+    workspaceSetup.includes(`path: ${ISOLATED_BUN_INSTALL_CACHE}`) &&
+      workspaceSetup.includes(
+        `BUN_INSTALL_CACHE_DIR: ${ISOLATED_BUN_INSTALL_CACHE}`,
+      ) &&
+      workspaceSetup.includes('rm-path-recursive.mjs "$BUN_INSTALL_CACHE_DIR"'),
+    `${SETUP_WORKSPACE_PATH}: Bun install cache restore, install, and retry cleanup must share one checkout-local path`,
   );
 
   const workflowFiles = readdirSync(resolve(repoRoot, WORKFLOW_DIR)).filter(

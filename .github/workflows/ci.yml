@@ -384,6 +384,14 @@ jobs:
         with:
           packages: "platform-tools platforms;android-36 build-tools;36.0.0"
 
+      # The wrapper has no built-in retry for a transient 5xx while fetching
+      # its distribution. Bootstrap it separately so only that network boundary
+      # gets a bounded retry; Gradle tasks still execute exactly once below.
+      - name: Bootstrap Gradle wrapper distribution
+        if: steps.selection.outputs.selected == 'true'
+        shell: bash
+        run: .github/scripts/bootstrap-gradle-wrapper.sh packages/app-core/platforms/android/gradlew --version
+
       - uses: ./.github/actions/setup-bun-workspace
         if: steps.selection.outputs.selected == 'true'
         with:

@@ -7,6 +7,7 @@ import { describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
+  chmodSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -50,6 +51,10 @@ const workflowSource = readFileSync(
 );
 const workflow = Bun.YAML.parse(workflowSource) as Workflow;
 const classifier = join(repoRoot, "packages/scripts/ci-path-gate.mjs");
+const gradleBootstrap = join(
+  repoRoot,
+  ".github/scripts/bootstrap-gradle-wrapper.sh",
+);
 
 function requireJob(id: string): WorkflowJob {
   const job = workflow.jobs?.[id];
@@ -155,6 +160,107 @@ describe("consolidated Android release AAB authority", () => {
     expect(
       requireStep(required, "Require every CI job to succeed").env?.RESULTS,
     ).toContain("needs.android_aab.result");
+  });
+
+  test("bootstraps only the wrapper distribution before running Gradle tasks", () => {
+    const android = requireJob("android_aab");
+    const bootstrap = requireStep(
+      android,
+      "Bootstrap Gradle wrapper distribution",
+    );
+    const build = requireStep(
+      android,
+      "Build and audit canonical Android Cloud release AAB",
+    );
+    const bootstrapIndex = android.steps?.indexOf(bootstrap) ?? -1;
+    const buildIndex = android.steps?.indexOf(build) ?? -1;
+
+    expect(bootstrap.if).toBe("steps.selection.outputs.selected == 'true'");
+    expect(bootstrap.shell).toBe("bash");
+    expect(bootstrap.run).toBe(
+      ".github/scripts/bootstrap-gradle-wrapper.sh packages/app-core/platforms/android/gradlew --version",
+    );
+    expect(bootstrapIndex).toBeGreaterThan(-1);
+    expect(buildIndex).toBeGreaterThan(bootstrapIndex);
+    expect(build.run).not.toContain("bootstrap-gradle-wrapper");
+  });
+
+  test("retries the observed transient distribution failure and then succeeds", () => {
+    const sandbox = mkdtempSync(join(tmpdir(), "eliza-gradle-bootstrap-"));
+    const counter = join(sandbox, "attempts");
+    const wrapper = join(sandbox, "gradlew");
+    writeFileSync(
+      wrapper,
+      `#!/usr/bin/env bash
+set -euo pipefail
+printf x >>${JSON.stringify(counter)}
+if [ "$(wc -c <${JSON.stringify(counter)})" -eq 1 ]; then
+  echo 'Exception in thread "main" java.io.IOException: Server returned HTTP response code: 503 for URL: https://github.com/gradle/gradle-distributions/releases/download/v9.5.0/gradle-9.5.0-all.zip' >&2
+  exit 1
+fi
+echo 'Gradle 9.5.0'
+`,
+    );
+    chmodSync(wrapper, 0o755);
+
+    try {
+      const result = spawnSync(
+        "bash",
+        [gradleBootstrap, wrapper, "--version"],
+        {
+          encoding: "utf8",
+          env: {
+            ...process.env,
+            GRADLE_WRAPPER_BOOTSTRAP_RETRY_DELAY_SECONDS: "0",
+            RUNNER_TEMP: sandbox,
+          },
+        },
+      );
+
+      expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
+      expect(readFileSync(counter, "utf8")).toBe("xx");
+      expect(result.stderr).toContain("hit a transient HTTP failure");
+    } finally {
+      rmSync(sandbox, { recursive: true, force: true });
+    }
+  });
+
+  test("does not retry a Gradle configuration or task failure", () => {
+    const sandbox = mkdtempSync(join(tmpdir(), "eliza-gradle-bootstrap-"));
+    const counter = join(sandbox, "attempts");
+    const wrapper = join(sandbox, "gradlew");
+    writeFileSync(
+      wrapper,
+      `#!/usr/bin/env bash
+set -euo pipefail
+printf x >>${JSON.stringify(counter)}
+echo 'FAILURE: Build failed with an exception.' >&2
+echo 'Could not compile settings file.' >&2
+exit 37
+`,
+    );
+    chmodSync(wrapper, 0o755);
+
+    try {
+      const result = spawnSync(
+        "bash",
+        [gradleBootstrap, wrapper, "--version"],
+        {
+          encoding: "utf8",
+          env: {
+            ...process.env,
+            GRADLE_WRAPPER_BOOTSTRAP_RETRY_DELAY_SECONDS: "0",
+            RUNNER_TEMP: sandbox,
+          },
+        },
+      );
+
+      expect(result.status).toBe(37);
+      expect(readFileSync(counter, "utf8")).toBe("x");
+      expect(result.stderr).not.toContain("retrying");
+    } finally {
+      rmSync(sandbox, { recursive: true, force: true });
+    }
   });
 
   test("accepts exact booleans and rejects failed, missing, or malformed selectors", () => {

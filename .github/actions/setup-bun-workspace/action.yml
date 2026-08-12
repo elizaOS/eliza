@@ -36,9 +36,9 @@ inputs:
     default: "true"
   cache-bun-install:
     description: >-
-      Whether to restore/save the global Bun install cache. Disable this for
-      cold-path jobs when a broad multi-gigabyte fallback restore costs more
-      than fetching the lockfile's actual dependency set.
+      Whether to restore/save the checkout-local Bun install cache. Disable
+      this for cold-path jobs when a broad multi-gigabyte fallback restore
+      costs more than fetching the lockfile's actual dependency set.
     required: false
     default: "true"
   skip-avatar-clone:
@@ -386,7 +386,12 @@ runs:
         no-cache: true
 
     - name: Cache Bun install
-      # Cache the Bun install store on every OS, Linux included (#12338). Long
+      # Cache the Bun install store on every OS, Linux included (#12338). The
+      # restore target is private to this checkout because self-hosted lanes
+      # run in parallel under one host account; sharing ~/.bun/install/cache
+      # lets one lane's retry delete another lane's in-flight extraction. Keep
+      # the input path relative and stable so actions/cache can reuse its cache
+      # version across runner installations and later workflow runs. Long
       # cold-path jobs can opt out: attempt 1 on #16657 missed the exact key,
       # then spent 2m50s (Type Check) / 2m04s (Build) restoring a stale 1.6 GiB
       # fallback before a sub-minute install. Pinned by SHA (no floating @v5)
@@ -394,7 +399,7 @@ runs:
       if: ${{ inputs.cache-bun-install == 'true' }}
       uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
       with:
-        path: ~/.bun/install/cache
+        path: .cache/bun-install
         key: bun-${{ runner.os }}-${{ inputs.bun-version }}-${{ hashFiles('bun.lock') }}
         restore-keys: |
           bun-${{ runner.os }}-${{ inputs.bun-version }}-
@@ -418,11 +423,15 @@ runs:
           if [ "$attempt" -eq 2 ]; then
             exit "$install_status"
           fi
-          echo "Dependency install failed; retrying once after cleaning Bun's install cache."
-          node packages/scripts/rm-path-recursive.mjs ~/.bun/install/cache
+          echo "Dependency install failed; retrying once after cleaning this job's Bun install cache."
+          node packages/scripts/rm-path-recursive.mjs "$BUN_INSTALL_CACHE_DIR"
           sleep 5
         done
       env:
+        # Bun honors this for package downloads and extraction. Keep it aligned
+        # with the checkout-local actions/cache target above so concurrent
+        # self-hosted jobs never mutate one live directory.
+        BUN_INSTALL_CACHE_DIR: .cache/bun-install
         # When the system-Python guard above found a usable interpreter,
         # `pythonLocation` is never set (actions/setup-python@v6 was skipped),
         # so prefer the probed binary and only fall back to the downloaded
