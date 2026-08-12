@@ -40,6 +40,7 @@ interface CapturedHandler {
     event: string,
     data: unknown,
     sessionSnapshot?: SessionInfo,
+    turnId?: string,
   ) => void;
 }
 
@@ -938,6 +939,74 @@ describe("SubAgentRouter", () => {
     expect(posted.content?.text).toContain("task A");
     expect(posted.content?.text).toContain("task A result");
     expect(posted.content?.text).not.toContain("task B");
+    await router.stop();
+  });
+
+  it("dedupes a replay within one turn but delivers identical results for two tasks", async () => {
+    const taskASnapshot = makeSession({
+      metadata: {
+        taskId: "task-a",
+        label: "task A",
+        roomId: ROOM,
+        taskRoomId: ROOM,
+        messageId: PARENT_MSG,
+      },
+    });
+    const taskBRoom = "77777777-7777-4777-8777-777777777777";
+    const taskBSnapshot = makeSession({
+      metadata: {
+        taskId: "task-b",
+        label: "task B",
+        roomId: taskBRoom,
+        taskRoomId: taskBRoom,
+        messageId: "88888888-8888-4888-8888-888888888888",
+      },
+    });
+    const captured: CapturedHandler = {};
+    const service = {
+      onSessionEvent: vi.fn((handler: typeof captured.fn) => {
+        captured.fn = handler;
+        return () => {
+          captured.fn = undefined;
+        };
+      }),
+      getSession: vi.fn(async () => taskBSnapshot),
+      listSessions: vi.fn(async () => [taskBSnapshot]),
+      getChangedPaths: vi.fn(() => [] as string[]),
+      updateSessionMetadata: vi.fn(async () => undefined),
+    };
+    const { runtime, handleMessage } = makeRuntime({ acp: service });
+    const router = await SubAgentRouter.start(runtime);
+    const payload = { response: "done" };
+
+    captured.fn?.(
+      SESSION_ID,
+      "task_complete",
+      payload,
+      taskASnapshot,
+      "turn-a",
+    );
+    captured.fn?.(
+      SESSION_ID,
+      "task_complete",
+      payload,
+      taskASnapshot,
+      "turn-a",
+    );
+    captured.fn?.(
+      SESSION_ID,
+      "task_complete",
+      payload,
+      taskBSnapshot,
+      "turn-b",
+    );
+    await new Promise((resolve) => setImmediate(resolve));
+
+    expect(handleMessage).toHaveBeenCalledTimes(2);
+    expect(handleMessage.mock.calls.map((call) => call[1].roomId)).toEqual([
+      ROOM,
+      taskBRoom,
+    ]);
     await router.stop();
   });
 

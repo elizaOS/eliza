@@ -3146,4 +3146,131 @@ describe("AcpService.runHealthCheck state_lost guards", () => {
     release?.();
     await p1;
   });
+
+  it("keeps native prompt A routing when re-homed prompt B is rejected", async () => {
+    const service = new AcpService(runtime({ ELIZA_ACP_TRANSPORT: "native" }));
+    const terminal: Array<{
+      snapshot?: SessionInfo;
+      turnId?: string;
+    }> = [];
+    service.onSessionEvent((_sid, event, _data, sessionSnapshot, turnId) => {
+      if (event === "task_complete") {
+        terminal.push({ snapshot: sessionSnapshot, turnId });
+      }
+    });
+    await service.start();
+    const { sessionId } = await service.spawnSession({
+      name: "native-rehome-overlap",
+      agentType: "codex",
+      workdir: "/tmp/acp-test",
+      metadata: { taskId: "task-a" },
+    });
+    const client = firstNativeClient();
+    let finishA: (() => void) | undefined;
+    client.prompt.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finishA = () => {
+            client.emit({
+              jsonrpc: "2.0",
+              id: "prompt-a",
+              sessionId: "protocol-session",
+              result: {
+                stopReason: "end_turn",
+                content: [{ type: "text", text: "task A result" }],
+              },
+            } as AcpJsonRpcMessage);
+            resolve({ stopReason: "end_turn" });
+          };
+        }),
+    );
+
+    const promptA = service.sendPrompt(sessionId, "task A");
+    await vi.waitFor(() => expect(client.prompt).toHaveBeenCalledTimes(1));
+    await service.updateSessionMetadata(sessionId, { taskId: "task-b" });
+    await expect(service.sendPrompt(sessionId, "task B")).rejects.toThrow(
+      /already busy/,
+    );
+    finishA?.();
+    await promptA;
+
+    expect(terminal).toHaveLength(1);
+    expect(terminal[0]?.snapshot?.metadata?.taskId).toBe("task-a");
+    expect(terminal[0]?.turnId).toMatch(/^[0-9a-f-]{36}$/);
+  });
+
+  it("rejects overlapping CLI prompts without replacing prompt A routing", async () => {
+    const spawnReg = nextProc();
+    const service = new AcpService(runtime({ ELIZA_ACP_TRANSPORT: "cli" }));
+    let terminalSnapshot: SessionInfo | undefined;
+    service.onSessionEvent((_sid, event, _data, sessionSnapshot) => {
+      if (event === "task_complete") terminalSnapshot = sessionSnapshot;
+    });
+    await service.start();
+    const spawning = service.spawnSession({
+      name: "cli-rehome-overlap",
+      agentType: "codex",
+      workdir: "/tmp/acp-test",
+      metadata: { taskId: "task-a" },
+    });
+    await waitForSpawn(spawnReg);
+    closeOk(spawnReg);
+    const { sessionId } = await spawning;
+
+    const promptReg = nextProc();
+    const promptA = service.sendPrompt(sessionId, "task A");
+    await waitForSpawn(promptReg);
+    await service.updateSessionMetadata(sessionId, { taskId: "task-b" });
+    await expect(service.sendPrompt(sessionId, "task B")).rejects.toThrow(
+      /already busy/,
+    );
+    promptReg.proc.stdout.emit(
+      "data",
+      Buffer.from(
+        `${JSON.stringify({
+          jsonrpc: "2.0",
+          id: "prompt-a",
+          sessionId,
+          result: {
+            stopReason: "end_turn",
+            content: [{ type: "text", text: "task A result" }],
+          },
+        })}\n`,
+      ),
+    );
+    closeOk(promptReg);
+    await promptA;
+
+    expect(terminalSnapshot?.metadata?.taskId).toBe("task-a");
+    expect(spawnMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not attach a completed prompt snapshot to later lifecycle events", async () => {
+    const service = new AcpService(runtime({ ELIZA_ACP_TRANSPORT: "native" }));
+    let stoppedSnapshot: SessionInfo | undefined;
+    let stoppedTurnId: string | undefined;
+    service.onSessionEvent((_sid, event, _data, sessionSnapshot, turnId) => {
+      if (event === "stopped") {
+        stoppedSnapshot = sessionSnapshot;
+        stoppedTurnId = turnId;
+      }
+    });
+    await service.start();
+    const { sessionId } = await service.spawnSession({
+      name: "lifecycle-after-turn",
+      agentType: "codex",
+      workdir: "/tmp/acp-test",
+      metadata: { taskId: "task-a" },
+    });
+
+    await service.sendPrompt(sessionId, "task A");
+    await service.updateSessionMetadata(sessionId, { taskId: "task-b" });
+    await service.closeSession(sessionId);
+
+    expect(stoppedSnapshot).toBeUndefined();
+    expect(stoppedTurnId).toBeUndefined();
+    expect((await service.getSession(sessionId))?.metadata?.taskId).toBe(
+      "task-b",
+    );
+  });
 });

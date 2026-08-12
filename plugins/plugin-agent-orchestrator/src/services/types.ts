@@ -69,6 +69,7 @@ export type SessionEventCallback = (
   event: SessionEventName,
   data: unknown,
   sessionSnapshot?: SessionInfo,
+  turnId?: string,
 ) => void;
 
 export type AcpEventCallback = (

@@ -816,7 +816,10 @@ export class AcpService extends Service {
   // async event subscribers are still draining the terminal event. Passing
   // this snapshot with every event prevents those subscribers from resolving
   // the completed turn through the session's next task metadata (#18490).
-  private readonly promptSessionSnapshots = new Map<string, SessionInfo>();
+  private readonly promptTurns = new Map<
+    string,
+    { id: string; sessionSnapshot: SessionInfo }
+  >();
   private readonly acpCallbacks: AcpEventCallback[] = [];
   private readonly activeProcesses = new Map<string, ProcessRecord>();
   private readonly nativeClients = new Map<string, NativeAcpClient>();
@@ -2074,10 +2077,32 @@ export class AcpService extends Service {
   ): Promise<PromptResult> {
     this.ensureStarted();
     const session = await this.requireSession(sessionId);
-    this.promptSessionSnapshots.set(sessionId, {
-      ...session,
-      metadata: session.metadata ? { ...session.metadata } : undefined,
-    });
+    if (this.promptTurns.has(sessionId)) {
+      throw new Error(`ACP session is already busy: ${sessionId}`);
+    }
+    const turn = {
+      id: randomUUID(),
+      sessionSnapshot: {
+        ...session,
+        metadata: session.metadata ? { ...session.metadata } : undefined,
+      },
+    };
+    this.promptTurns.set(sessionId, turn);
+    try {
+      return await this.sendPromptTurn(session, text, opts);
+    } finally {
+      if (this.promptTurns.get(sessionId)?.id === turn.id) {
+        this.promptTurns.delete(sessionId);
+      }
+    }
+  }
+
+  private async sendPromptTurn(
+    session: SessionInfo,
+    text: string,
+    opts: SendOptions,
+  ): Promise<PromptResult> {
+    const sessionId = session.id;
     const transportMode = sessionTransportMode(session, this.transportMode);
     if (
       transportMode !== "native" &&
@@ -2352,7 +2377,7 @@ export class AcpService extends Service {
     await this.removeOwnedScratchWorkdir(session);
     await this.removeOwnedGitIndex(session);
     await this.store.delete(sessionId);
-    this.promptSessionSnapshots.delete(sessionId);
+    this.promptTurns.delete(sessionId);
     this.outputBuffers.delete(sessionId);
     this.turnOutputBuffers.delete(sessionId);
     this.eventTrails.delete(sessionId);
@@ -3922,10 +3947,10 @@ export class AcpService extends Service {
     data: unknown,
   ): void {
     this.recordEventTrail(sessionId, event, data);
-    const sessionSnapshot = this.promptSessionSnapshots.get(sessionId);
+    const turn = this.promptTurns.get(sessionId);
     for (const callback of [...this.sessionCallbacks]) {
       try {
-        callback(sessionId, event, data, sessionSnapshot);
+        callback(sessionId, event, data, turn?.sessionSnapshot, turn?.id);
       } catch (err) {
         // error-policy:J7 isolate a throwing subscriber so the remaining session
         // callbacks still run; the failure is warn-logged.

@@ -788,16 +788,18 @@ export class SubAgentRouter extends Service {
       if (acp && typeof acp.onSessionEvent === "function") {
         this.acp = acp;
         this.unsubscribe = acp.onSessionEvent(
-          (sid, event, data, sessionSnapshot) => {
-            this.handleEvent(sid, event, data, sessionSnapshot).catch((err) => {
-              // error-policy:J1 outermost handler for the ACP session-event stream
-              // (a transport boundary); logs the event failure at error level.
-              this.log("error", "router event failed", {
-                sessionId: sid,
-                event,
-                error: err instanceof Error ? err.message : String(err),
-              });
-            });
+          (sid, event, data, sessionSnapshot, turnId) => {
+            this.handleEvent(sid, event, data, sessionSnapshot, turnId).catch(
+              (err) => {
+                // error-policy:J1 outermost handler for the ACP session-event stream
+                // (a transport boundary); logs the event failure at error level.
+                this.log("error", "router event failed", {
+                  sessionId: sid,
+                  event,
+                  error: err instanceof Error ? err.message : String(err),
+                });
+              },
+            );
           },
         );
       }
@@ -928,6 +930,7 @@ export class SubAgentRouter extends Service {
     event: SessionEventName,
     data: unknown,
     sessionSnapshot?: SessionInfo,
+    turnId?: string,
   ): Promise<void> {
     // Streamed child output: intercept `USE_SKILL parent-agent <json>` and
     // bridge it to the parent-agent broker. `message` chunks are not injected
@@ -998,7 +1001,7 @@ export class SubAgentRouter extends Service {
       return;
     }
 
-    const dedupKey = computeDedupKey(sessionId, event, session, data);
+    const dedupKey = computeDedupKey(sessionId, event, session, data, turnId);
     if (this.delivered.has(dedupKey)) return;
     this.delivered.add(dedupKey);
     pruneDelivered(this.delivered, 256);
@@ -4124,13 +4127,20 @@ function computeDedupKey(
   event: SessionEventName,
   session: SessionInfo,
   data: unknown,
+  turnId?: string,
 ): string {
   const fingerprint =
     pickPayloadString(data, "response") ??
     pickPayloadString(data, "finalText") ??
     pickPayloadString(data, "message") ??
     "";
-  return `${sessionId}|${event}|${session.status}|${shortHash(fingerprint)}`;
+  const metadata = session.metadata as Record<string, unknown> | undefined;
+  const taskIdentity =
+    pickPlainString(metadata?.taskId) ??
+    pickUuid(metadata?.taskRoomId) ??
+    pickUuid(metadata?.originRoomId) ??
+    "unscoped";
+  return `${sessionId}|${turnId ?? taskIdentity}|${event}|${session.status}|${shortHash(fingerprint)}`;
 }
 
 function shortHash(input: string): string {

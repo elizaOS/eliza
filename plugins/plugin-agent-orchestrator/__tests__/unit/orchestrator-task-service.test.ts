@@ -82,6 +82,7 @@ class FakeAcp {
         event: string,
         data: unknown,
         sessionSnapshot?: SessionInfo,
+        turnId?: string,
       ) => void)
     | null = null;
   private counter = 0;
@@ -99,6 +100,7 @@ class FakeAcp {
       event: string,
       data: unknown,
       sessionSnapshot?: SessionInfo,
+      turnId?: string,
     ) => void,
   ): () => void {
     this.handler = cb;
@@ -112,8 +114,9 @@ class FakeAcp {
     event: string,
     data: unknown = {},
     sessionSnapshot?: SessionInfo,
+    turnId?: string,
   ): void {
-    this.handler?.(sessionId, event, data, sessionSnapshot);
+    this.handler?.(sessionId, event, data, sessionSnapshot, turnId);
   }
 
   spawnSession(opts: Record<string, unknown>): Promise<SpawnResult> {
@@ -852,7 +855,7 @@ describe("OrchestratorTaskService — lifecycle", () => {
 
   it("records a reused session's completion against its prompt task snapshot", async () => {
     const acp = new FakeAcp();
-    const { service } = makeServiceWithStore(acp);
+    const { service, store } = makeServiceWithStore(acp);
     await service.start();
     const taskA = await service.createTask(
       createInput({ title: "Task A", goal: "Build task A" }),
@@ -888,9 +891,80 @@ describe("OrchestratorTaskService — lifecycle", () => {
 
     acp.emit(
       sessionId,
+      "usage_update",
+      {
+        provider: "openai",
+        inputTokens: 10,
+        outputTokens: 2,
+        reasoningTokens: 0,
+        cacheTokens: 0,
+        sourceEventId: "usage-a",
+      },
+      snapshot,
+    );
+    await flush();
+
+    acp.emit(
+      sessionId,
       "task_complete",
       { response: "task A result" },
       snapshot,
+      "turn-a",
+    );
+    await flush();
+
+    const taskBSnapshot: SessionInfo = {
+      ...snapshot,
+      metadata: { taskId: taskB.id },
+    };
+    acp.emit(
+      sessionId,
+      "usage_update",
+      {
+        provider: "openai",
+        inputTokens: 20,
+        outputTokens: 4,
+        reasoningTokens: 0,
+        cacheTokens: 0,
+        sourceEventId: "usage-b",
+      },
+      taskBSnapshot,
+      "turn-b-usage",
+    );
+    await flush();
+    acp.emit(
+      sessionId,
+      "error",
+      { message: "task B failed once", failureKind: "runtime" },
+      taskBSnapshot,
+      "turn-b-error",
+    );
+    await flush();
+
+    const docAfterErrorA = must(await store.getTask(taskA.id), "task A");
+    const docAfterErrorB = must(await store.getTask(taskB.id), "task B");
+    expect(docAfterErrorA.sessions[0]).toMatchObject({
+      status: "completed",
+      currentOwner: false,
+      inputTokens: 10,
+      outputTokens: 2,
+    });
+    expect(docAfterErrorB.sessions[0]).toMatchObject({
+      status: "errored",
+      currentOwner: true,
+      inputTokens: 20,
+      outputTokens: 4,
+    });
+    expect(docAfterErrorB.events.map((event) => event.eventType)).not.toContain(
+      "task_complete",
+    );
+
+    acp.emit(
+      sessionId,
+      "task_complete",
+      { response: "task B result" },
+      taskBSnapshot,
+      "turn-b-complete",
     );
     await flush();
 
@@ -903,7 +977,77 @@ describe("OrchestratorTaskService — lifecycle", () => {
       must(await service.getTask(taskB.id), "task B").events.map(
         (event) => event.eventType,
       ),
-    ).not.toContain("task_complete");
+    ).toContain("task_complete");
+    expect((await store.findSession(sessionId))?.taskId).toBe(taskB.id);
+    expect(
+      must(await store.getTask(taskA.id), "task A").events.find(
+        (event) => event.eventType === "task_complete",
+      )?.turnId,
+    ).toBe("turn-a");
+
+    await service.stop();
+    const restarted = new OrchestratorTaskService(runtime(acp), { store });
+    await restarted.start();
+    expect((await restarted.getTaskForSession(sessionId))?.id).toBe(taskB.id);
+    await restarted.stop();
+  });
+
+  it("routes an out-of-turn stop to the current owner after task A completes", async () => {
+    const acp = new FakeAcp();
+    const { service, store } = makeServiceWithStore(acp);
+    await service.start();
+    const taskA = await service.createTask(
+      createInput({ title: "Task A", goal: "Build task A" }),
+    );
+    const taskB = await service.createTask(
+      createInput({ title: "Task B", goal: "Audit task B" }),
+    );
+    const sessionId = "reused-stop-session";
+    await service.attachSession(taskA.id, {
+      sessionId,
+      agentType: "codex",
+      workdir: "/repo",
+      status: "ready",
+      metadata: { taskId: taskA.id },
+    });
+    const taskASnapshot: SessionInfo = {
+      id: sessionId,
+      agentType: "codex",
+      workdir: "/repo",
+      status: "ready",
+      approvalPreset: "standard",
+      createdAt: new Date(0),
+      lastActivityAt: new Date(0),
+      metadata: { taskId: taskA.id },
+    };
+    acp.emit(
+      sessionId,
+      "task_complete",
+      { response: "task A result" },
+      taskASnapshot,
+      "turn-a",
+    );
+    await flush();
+    await service.attachSession(taskB.id, {
+      sessionId,
+      agentType: "codex",
+      workdir: "/repo",
+      status: "ready",
+      metadata: { taskId: taskB.id },
+    });
+
+    acp.emit(sessionId, "stopped", { response: "closed before B prompt" });
+    await flush();
+
+    expect((await store.findSession(sessionId, taskA.id))?.session.status).toBe(
+      "completed",
+    );
+    expect((await store.findSession(sessionId, taskB.id))?.session.status).toBe(
+      "stopped",
+    );
+    expect(
+      must(await service.getTask(taskB.id), "task B").events.at(-1)?.eventType,
+    ).toBe("stopped");
   });
 
   it("reports room message delivery failures instead of claiming success", async () => {

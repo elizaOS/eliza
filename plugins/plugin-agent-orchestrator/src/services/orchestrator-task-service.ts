@@ -1141,8 +1141,14 @@ export class OrchestratorTaskService extends Service {
 
   private subscribeToAcp(acp: AcpService): void {
     this.unsubscribe = acp.onSessionEvent(
-      (sessionId, event, data, sessionSnapshot) => {
-        void this.onSessionEvent(sessionId, event, data, sessionSnapshot);
+      (sessionId, event, data, sessionSnapshot, turnId) => {
+        void this.onSessionEvent(
+          sessionId,
+          event,
+          data,
+          sessionSnapshot,
+          turnId,
+        );
       },
     );
   }
@@ -1554,6 +1560,7 @@ export class OrchestratorTaskService extends Service {
     event: string,
     data: unknown,
     sessionSnapshot?: SessionInfo,
+    turnId?: string,
   ): Promise<void> {
     try {
       const snapshotTaskId = sessionSnapshot?.metadata?.taskId;
@@ -1566,6 +1573,7 @@ export class OrchestratorTaskService extends Service {
         id: randomUUID(),
         taskId,
         sessionId,
+        ...(turnId ? { turnId } : {}),
         eventType: event,
         summary: describeEvent(event, data),
         data: isRecord(data) ? data : { value: data },
@@ -1606,15 +1614,19 @@ export class OrchestratorTaskService extends Service {
     switch (event) {
       case "ready":
       case "reconnected":
-        await this.store.updateSession(sessionId, { status: "ready" });
+        await this.store.updateSession(sessionId, { status: "ready" }, taskId);
         await this.advanceTaskStatus(taskId, "session_active");
         break;
       case "tool_running": {
         const toolCall = isRecord(record.toolCall) ? record.toolCall : {};
-        await this.store.updateSession(sessionId, {
-          status: "tool_running",
-          activeTool: str(toolCall.title) ?? str(toolCall.kind),
-        });
+        await this.store.updateSession(
+          sessionId,
+          {
+            status: "tool_running",
+            activeTool: str(toolCall.title) ?? str(toolCall.kind),
+          },
+          taskId,
+        );
         await this.advanceTaskStatus(taskId, "session_active");
         break;
       }
@@ -1649,27 +1661,40 @@ export class OrchestratorTaskService extends Service {
         break;
       }
       case "blocked":
-        await this.store.updateSession(sessionId, { status: "blocked" });
+        await this.store.updateSession(
+          sessionId,
+          { status: "blocked" },
+          taskId,
+        );
         await this.advanceTaskStatus(taskId, "session_blocked");
         break;
       case "login_required":
-        await this.store.updateSession(sessionId, { status: "blocked" });
+        await this.store.updateSession(
+          sessionId,
+          { status: "blocked" },
+          taskId,
+        );
         await this.advanceTaskStatus(taskId, "awaiting_user");
         await this.markSessionAccountUnhealthy(
           sessionId,
           "auth",
           "login_required",
+          taskId,
         );
         break;
       case "task_complete": {
         const summary = str(record.response);
-        await this.store.updateSession(sessionId, {
-          status: "completed",
-          taskDelivered: true,
-          completionSummary: summary ? truncate(summary) : undefined,
-          stoppedAt: Date.now(),
-        });
-        await this.mirrorChangeSetToStore(sessionId);
+        await this.store.updateSession(
+          sessionId,
+          {
+            status: "completed",
+            taskDelivered: true,
+            completionSummary: summary ? truncate(summary) : undefined,
+            stoppedAt: Date.now(),
+          },
+          taskId,
+        );
+        await this.mirrorChangeSetToStore(taskId, sessionId);
         // Completion metadata is written before validation advances so clients
         // never observe a successful completion without its associated PR.
         await this.mirrorPullRequestToStore(taskId, summary ?? "");
@@ -1742,7 +1767,12 @@ export class OrchestratorTaskService extends Service {
           (failureKind === "auth" ||
             /401|403|invalid api key|unauthor/i.test(message))
         ) {
-          await this.markSessionAccountUnhealthy(sessionId, "auth", message);
+          await this.markSessionAccountUnhealthy(
+            sessionId,
+            "auth",
+            message,
+            taskId,
+          );
         } else if (/429|rate.?limit|quota/i.test(message)) {
           // A 529 "overloaded" is a server-wide transient condition, not an
           // account quota — deliberately excluded so a healthy account isn't
@@ -1751,6 +1781,7 @@ export class OrchestratorTaskService extends Service {
             sessionId,
             "rate-limit",
             message,
+            taskId,
           );
         }
         // A late error for a session that already delivered its result is a
@@ -1762,12 +1793,17 @@ export class OrchestratorTaskService extends Service {
         // `active` mid-verification (that aborts validateTask — status is no
         // longer `validating` — and wedges the task with no live worker). The
         // raw event is already on the task timeline via recordSessionEvent.
-        const prior = (await this.store.findSession(sessionId))?.session;
+        const prior = (await this.store.findSession(sessionId, taskId))
+          ?.session;
         if (prior?.status === "completed") break;
-        await this.store.updateSession(sessionId, {
-          status: "errored",
-          stoppedAt: Date.now(),
-        });
+        await this.store.updateSession(
+          sessionId,
+          {
+            status: "errored",
+            stoppedAt: Date.now(),
+          },
+          taskId,
+        );
         await this.advanceTaskOnSessionError(taskId, sessionId, {
           failureKind,
           message,
@@ -1780,12 +1816,17 @@ export class OrchestratorTaskService extends Service {
         // guard above): the completion pipeline — validating status, verify
         // gate, completion summary — keys off that status, and the keepAlive
         // subprocess closing AFTER task_complete is normal teardown, not news.
-        const stoppedPrior = (await this.store.findSession(sessionId))?.session;
+        const stoppedPrior = (await this.store.findSession(sessionId, taskId))
+          ?.session;
         if (stoppedPrior?.status === "completed") break;
-        await this.store.updateSession(sessionId, {
-          status: "stopped",
-          stoppedAt: Date.now(),
-        });
+        await this.store.updateSession(
+          sessionId,
+          {
+            status: "stopped",
+            stoppedAt: Date.now(),
+          },
+          taskId,
+        );
         break;
       }
       case "usage_update": {
@@ -1801,11 +1842,15 @@ export class OrchestratorTaskService extends Service {
         const providerId = str(record.providerId);
         const accountId = str(record.accountId);
         if (providerId && accountId) {
-          await this.store.updateSession(sessionId, {
-            accountProviderId: providerId,
-            accountId,
-            accountLabel: str(record.label) ?? accountId,
-          });
+          await this.store.updateSession(
+            sessionId,
+            {
+              accountProviderId: providerId,
+              accountId,
+              accountLabel: str(record.label) ?? accountId,
+            },
+            taskId,
+          );
         }
         break;
       }
@@ -1836,7 +1881,10 @@ export class OrchestratorTaskService extends Service {
    * Additive and null-safe: when there is no change set (unchanged completion,
    * non-git workdir), nothing is written and the DTO simply omits it.
    */
-  private async mirrorChangeSetToStore(sessionId: string): Promise<void> {
+  private async mirrorChangeSetToStore(
+    taskId: string,
+    sessionId: string,
+  ): Promise<void> {
     try {
       const acp = this.acp();
       if (!acp) return;
@@ -1859,14 +1907,18 @@ export class OrchestratorTaskService extends Service {
       }
       if (!changeSet) return;
 
-      const found = await this.store.findSession(sessionId);
+      const found = await this.store.findSession(sessionId, taskId);
       if (!found) return;
-      await this.store.updateSession(sessionId, {
-        metadata: {
-          ...(found.session.metadata ?? {}),
-          lastChangeSet: changeSet,
+      await this.store.updateSession(
+        sessionId,
+        {
+          metadata: {
+            ...(found.session.metadata ?? {}),
+            lastChangeSet: changeSet,
+          },
         },
-      });
+        taskId,
+      );
     } catch (err) {
       // error-policy:J7 best-effort mirror on the task_complete path; debug-logged
       // and must not break the event-bridge write. The DTO simply omits the diff.
@@ -2168,7 +2220,7 @@ export class OrchestratorTaskService extends Service {
     withMtime.sort((a, b) => b.mtimeMs - a.mtimeMs);
     const capped = withMtime.slice(0, MAX_CHILD_TRAJECTORY_ARTIFACTS);
 
-    const session = (await this.store.findSession(sessionId))?.session;
+    const session = (await this.store.findSession(sessionId, taskId))?.session;
     const ingested: string[] = [];
     for (const { path } of capped) {
       // The recorder names files `<trajectoryId>.json`.
@@ -2202,9 +2254,11 @@ export class OrchestratorTaskService extends Service {
       const existing = session?.childTrajectoryIds ?? [];
       const merged = [...new Set([...existing, ...ingested])];
       if (merged.length !== existing.length) {
-        await this.store.updateSession(sessionId, {
-          childTrajectoryIds: merged,
-        });
+        await this.store.updateSession(
+          sessionId,
+          { childTrajectoryIds: merged },
+          taskId,
+        );
       }
     }
     return ingested;
@@ -2689,7 +2743,11 @@ export class OrchestratorTaskService extends Service {
     // The just-errored session's status was written to `errored` before this
     // runs, so it is already counted. Stamp that lineage position onto the
     // canonical typed counter.
-    await this.store.updateSession(sessionId, { retryCount: erroredSessions });
+    await this.store.updateSession(
+      sessionId,
+      { retryCount: erroredSessions },
+      taskId,
+    );
 
     const respawnable = this.routerWillRespawn(
       doc.sessions.find((s) => s.sessionId === sessionId),
@@ -2769,8 +2827,9 @@ export class OrchestratorTaskService extends Service {
     sessionId: string,
     reason: "auth" | "rate-limit",
     detail?: string,
+    taskId?: string,
   ): Promise<void> {
-    const found = await this.store.findSession(sessionId);
+    const found = await this.store.findSession(sessionId, taskId);
     const session = found?.session;
     if (!session?.accountProviderId || !session.accountId) return;
     const bridge = getCodingAccountBridge();
@@ -2822,7 +2881,7 @@ export class OrchestratorTaskService extends Service {
         return;
       }
     }
-    const found = await this.store.findSession(sessionId);
+    const found = await this.store.findSession(sessionId, taskId);
     const session = found?.session;
     // The terminal result often omits provider/model; the session record knows
     // which framework/model produced the turn, so fill the gaps from there.
@@ -2848,14 +2907,18 @@ export class OrchestratorTaskService extends Service {
       createdAt: nowIso(),
     });
     if (!session) return;
-    await this.store.updateSession(sessionId, {
-      inputTokens: session.inputTokens + usage.inputTokens,
-      outputTokens: session.outputTokens + usage.outputTokens,
-      reasoningTokens: session.reasoningTokens + usage.reasoningTokens,
-      cacheTokens: session.cacheTokens + usage.cacheTokens,
-      costUsd: session.costUsd + (usage.costUsd ?? 0),
-      usageState: usage.state,
-    });
+    await this.store.updateSession(
+      sessionId,
+      {
+        inputTokens: session.inputTokens + usage.inputTokens,
+        outputTokens: session.outputTokens + usage.outputTokens,
+        reasoningTokens: session.reasoningTokens + usage.reasoningTokens,
+        cacheTokens: session.cacheTokens + usage.cacheTokens,
+        costUsd: session.costUsd + (usage.costUsd ?? 0),
+        usageState: usage.state,
+      },
+      taskId,
+    );
     if (session.accountProviderId && session.accountId) {
       const turnTokens =
         usage.inputTokens +
@@ -5078,6 +5141,7 @@ export class OrchestratorTaskService extends Service {
       id: randomUUID(),
       taskId,
       sessionId: result.sessionId,
+      currentOwner: true,
       framework: result.agentType,
       providerSource: opts.providerSource ?? policy.providerSource,
       model: opts.model ?? policy.model,
@@ -5286,6 +5350,7 @@ export class OrchestratorTaskService extends Service {
       id: randomUUID(),
       taskId,
       sessionId: input.sessionId,
+      currentOwner: true,
       framework: input.agentType,
       ...(input.providerSource ? { providerSource: input.providerSource } : {}),
       ...(input.model ? { model: input.model } : {}),
@@ -5329,6 +5394,14 @@ export class OrchestratorTaskService extends Service {
       createdAt: ts,
       updatedAt: ts,
     };
+    const previousOwner = await this.store.findSession(input.sessionId);
+    if (previousOwner && previousOwner.taskId !== taskId) {
+      await this.store.updateSession(
+        input.sessionId,
+        { currentOwner: false },
+        previousOwner.taskId,
+      );
+    }
     await this.store.addSession(session);
     this.sessionTaskIndex.set(input.sessionId, taskId);
     // Pin the durable workdir/repo binding at first spawn so follow-up spawns of
