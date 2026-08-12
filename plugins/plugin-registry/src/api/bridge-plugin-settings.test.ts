@@ -1,10 +1,39 @@
 /**
- * Unit coverage for bridging plugin Settings values into runtime.setSetting
+ * Unit coverage for folding plugin Settings values into runtime.setSetting
  * so connector plugins can observe credentials via getSetting without a full
  * process restart. Deterministic mocks only — no live Discord/Telegram.
  */
 import { describe, expect, it, vi } from "vitest";
-import { bridgePluginParamsToRuntime } from "./bridge-plugin-settings.ts";
+import {
+  bridgePluginParamsToRuntime,
+  clearPluginParamValues,
+  collectAgentScopedPluginParamValues,
+} from "./bridge-plugin-settings.ts";
+
+describe("collectAgentScopedPluginParamValues", () => {
+  it("prefers entry.config over config.env and skips blanks", () => {
+    expect(
+      collectAgentScopedPluginParamValues(
+        [
+          { key: "DISCORD_API_TOKEN", sensitive: true },
+          { key: "DISCORD_APPLICATION_ID", sensitive: false },
+          { key: "MISSING", sensitive: false },
+        ],
+        {
+          entryConfig: { DISCORD_API_TOKEN: " from-entry " },
+          configEnv: {
+            DISCORD_API_TOKEN: "from-env",
+            DISCORD_APPLICATION_ID: "app-id",
+            MISSING: "   ",
+          },
+        },
+      ),
+    ).toEqual({
+      DISCORD_API_TOKEN: "from-entry",
+      DISCORD_APPLICATION_ID: "app-id",
+    });
+  });
+});
 
 describe("bridgePluginParamsToRuntime", () => {
   it("writes trimmed values through setSetting with sensitive flag", () => {
@@ -35,34 +64,45 @@ describe("bridgePluginParamsToRuntime", () => {
     );
   });
 
-  it("hydrates from process.env when values map is omitted", () => {
-    const previous = process.env.DISCORD_API_TOKEN;
-    process.env.DISCORD_API_TOKEN = "from-env";
-    try {
-      const setSetting = vi.fn();
-      bridgePluginParamsToRuntime(
-        { setSetting },
-        [{ key: "DISCORD_API_TOKEN", sensitive: true }],
-      );
-      expect(setSetting).toHaveBeenCalledWith(
-        "DISCORD_API_TOKEN",
-        "from-env",
-        true,
-      );
-    } finally {
-      if (previous === undefined) {
-        delete process.env.DISCORD_API_TOKEN;
-      } else {
-        process.env.DISCORD_API_TOKEN = previous;
-      }
-    }
+  it("skips non-empty writes for blocked keys but still clears them", () => {
+    const setSetting = vi.fn();
+    const isBlockedKey = (key: string) => key === "ELIZA_API_TOKEN";
+    bridgePluginParamsToRuntime(
+      { setSetting },
+      [
+        { key: "ELIZA_API_TOKEN", sensitive: true },
+        { key: "DISCORD_API_TOKEN", sensitive: true },
+      ],
+      {
+        ELIZA_API_TOKEN: "host-token",
+        DISCORD_API_TOKEN: "bot-token",
+      },
+      { isBlockedKey },
+    );
+    expect(setSetting).toHaveBeenCalledTimes(1);
+    expect(setSetting).toHaveBeenCalledWith(
+      "DISCORD_API_TOKEN",
+      "bot-token",
+      true,
+    );
+
+    setSetting.mockClear();
+    bridgePluginParamsToRuntime(
+      { setSetting },
+      [{ key: "ELIZA_API_TOKEN", sensitive: true }],
+      clearPluginParamValues([{ key: "ELIZA_API_TOKEN", sensitive: true }]),
+      { isBlockedKey },
+    );
+    expect(setSetting).toHaveBeenCalledWith("ELIZA_API_TOKEN", null, true);
   });
 
   it("is a no-op without a runtime setSetting", () => {
     expect(() =>
-      bridgePluginParamsToRuntime(null, [
-        { key: "DISCORD_API_TOKEN", sensitive: true },
-      ], { DISCORD_API_TOKEN: "x" }),
+      bridgePluginParamsToRuntime(
+        null,
+        [{ key: "DISCORD_API_TOKEN", sensitive: true }],
+        { DISCORD_API_TOKEN: "x" },
+      ),
     ).not.toThrow();
   });
 });

@@ -30,7 +30,11 @@ import {
 import type { AgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import type { PluginParamDef, ReadJsonBodyOptions } from "@elizaos/shared";
-import { bridgePluginParamsToRuntime } from "./bridge-plugin-settings.ts";
+import {
+  bridgePluginParamsToRuntime,
+  clearPluginParamValues,
+  collectAgentScopedPluginParamValues,
+} from "./bridge-plugin-settings.ts";
 import {
   asRecord,
   isElizaSettingsDebugEnabled,
@@ -905,12 +909,13 @@ export async function handlePluginRoutes(
         pluginEntry.config = nextPluginConfig;
         entries[pluginId] = pluginEntry;
         // Catalog isSet reads process.env; Discord/Telegram init read
-        // runtime.getSetting(). Bridge before the hot reload so the live
-        // runtime secrets match what the UI just saved (#18713).
+        // runtime.getSetting(). Fold agent-scoped values before hot reload
+        // so live secrets match what the UI just saved (#18713).
         bridgePluginParamsToRuntime(
           state.runtime,
           plugin.parameters,
           bridgedValues,
+          { isBlockedKey: isBlockedEnvKey },
         );
       }
       plugin.configured = true;
@@ -987,13 +992,32 @@ export async function handlePluginRoutes(
           if (!allow.includes(pluginId) && !allow.includes(packageName)) {
             allow.push(pluginId);
           }
-          // Token may already be in process.env from an earlier save that
-          // never reached getSetting (pre-fix UI path). Hydrate secrets
-          // before the plugin graph reload so Discord init sees the token.
-          bridgePluginParamsToRuntime(state.runtime, plugin.parameters);
+          // Fold previously saved agent-scoped credentials into getSetting
+          // before the plugin graph reload (never bare process.env).
+          const agentScoped = collectAgentScopedPluginParamValues(
+            plugin.parameters,
+            {
+              entryConfig: asRecord(entries[pluginId]?.config),
+              configEnv: asRecord(state.config.env),
+            },
+          );
+          bridgePluginParamsToRuntime(
+            state.runtime,
+            plugin.parameters,
+            agentScoped,
+            { isBlockedKey: isBlockedEnvKey },
+          );
         } else {
           state.config.plugins.allow = allow.filter(
             (p: string) => p !== pluginId && p !== packageName,
+          );
+          // Revoke folded credentials so getSetting cannot keep serving a
+          // token after the plugin is disabled (#18713).
+          bridgePluginParamsToRuntime(
+            state.runtime,
+            plugin.parameters,
+            clearPluginParamValues(plugin.parameters),
+            { isBlockedKey: isBlockedEnvKey },
           );
         }
 

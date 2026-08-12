@@ -199,7 +199,9 @@ describe("handlePluginRoutes config persistence", () => {
       },
     };
     const setSetting = vi.fn();
-    process.env.DISCORD_API_TOKEN = "keep-me";
+    // Poison process.env with a different value — enable must fold from
+    // agent-scoped config, not host env.
+    process.env.DISCORD_API_TOKEN = "host-poison";
     const ctx = makeContext({ enabled: true }, config);
     ctx.state.runtime = { setSetting } as never;
 
@@ -214,6 +216,31 @@ describe("handlePluginRoutes config persistence", () => {
       "keep-me",
       true,
     );
+  });
+
+  it("clears folded credentials when disabling a plugin", async () => {
+    const config = {
+      env: { DISCORD_API_TOKEN: "keep-me" },
+      plugins: {
+        entries: {
+          discord: {
+            enabled: true,
+            config: { DISCORD_API_TOKEN: "keep-me" },
+          },
+        },
+      },
+    };
+    const setSetting = vi.fn();
+    const ctx = makeContext({ enabled: false }, config);
+    ctx.state.runtime = { setSetting } as never;
+
+    await handlePluginRoutes(ctx);
+
+    expect(config.plugins.entries.discord).toEqual({
+      enabled: false,
+      config: { DISCORD_API_TOKEN: "keep-me" },
+    });
+    expect(setSetting).toHaveBeenCalledWith("DISCORD_API_TOKEN", null, true);
   });
 
   it("removes blank optional config values from persisted and process env", async () => {
