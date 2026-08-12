@@ -34,6 +34,10 @@
  *                    if `--bundle` is given, else `./voice-preset-default.bin`.
  *   --concurrency N  Parallel TTS dispatches when synthesizing phrases. Default 2.
  *
+ * `--dim` and `--concurrency` accept only complete positive safe-integer
+ * decimals. Suffixes, fractions, signs, zero, and missing/flag-shaped values
+ * fail at the CLI boundary before any output path is created.
+ *
  * Run with `bun` (it resolves the `.ts` imports):
  *   bun packages/app-core/scripts/voice-preset/build-default-voice-preset.mjs --placeholder
  */
@@ -43,7 +47,58 @@ import path from "node:path";
 
 const PLACEHOLDER_DEFAULT_DIM = 256;
 
-function parseArgs(argv) {
+/**
+ * Accept only complete positive safe-integer decimals (1..MAX_SAFE_INTEGER).
+ * Rejects suffixes (`1junk`), fractions, signs, zero, leading zeros, whitespace,
+ * empty values, and non-decimal forms so the CLI never silently truncates or
+ * falls back to a different dimension/concurrency than the operator requested.
+ *
+ * @param {unknown} value
+ * @param {string} flag
+ * @returns {number}
+ */
+export function parsePositiveSafeInteger(value, flag) {
+  if (value === undefined || value === null) {
+    throw new Error(`${flag} requires a positive safe integer value`);
+  }
+  const raw = String(value);
+  if (!/^[1-9]\d*$/.test(raw)) {
+    throw new Error(
+      `${flag} must be a positive safe integer (received ${JSON.stringify(raw)})`,
+    );
+  }
+  const n = Number.parseInt(raw, 10);
+  if (!Number.isSafeInteger(n) || n < 1 || String(n) !== raw) {
+    throw new Error(
+      `${flag} must be a positive safe integer (received ${JSON.stringify(raw)})`,
+    );
+  }
+  return n;
+}
+
+/**
+ * Read the next argv token for a value-taking flag. Missing values and the next
+ * flag (tokens starting with `-` that are not a pure decimal) fail closed.
+ *
+ * @param {string[]} argv
+ * @param {number} index current flag index; advanced to the value index
+ * @param {string} flag
+ * @returns {{ value: string, nextIndex: number }}
+ */
+function takeFlagValue(argv, index, flag) {
+  const nextIndex = index + 1;
+  const value = argv[nextIndex];
+  // Missing, empty, or another long option — not a value for this flag.
+  if (value === undefined || value === "" || value.startsWith("--")) {
+    throw new Error(`${flag} requires a positive safe integer value`);
+  }
+  return { value, nextIndex };
+}
+
+/**
+ * @param {string[]} argv
+ */
+export function parseArgs(argv) {
   const args = {
     placeholder: false,
     embeddingPath: null,
@@ -71,12 +126,21 @@ function parseArgs(argv) {
       case "--out":
         args.out = argv[++i];
         break;
-      case "--dim":
-        args.dim = Number.parseInt(argv[++i], 10);
+      case "--dim": {
+        const taken = takeFlagValue(argv, i, "--dim");
+        i = taken.nextIndex;
+        args.dim = parsePositiveSafeInteger(taken.value, "--dim");
         break;
-      case "--concurrency":
-        args.concurrency = Number.parseInt(argv[++i], 10);
+      }
+      case "--concurrency": {
+        const taken = takeFlagValue(argv, i, "--concurrency");
+        i = taken.nextIndex;
+        args.concurrency = parsePositiveSafeInteger(
+          taken.value,
+          "--concurrency",
+        );
         break;
+      }
       case "-h":
       case "--help":
         printUsageAndExit(0);
@@ -95,6 +159,9 @@ function printUsageAndExit(code) {
       "  build-default-voice-preset.mjs --placeholder [--dim N] [--out PATH]",
       "  build-default-voice-preset.mjs --embedding PATH [--bundle ROOT] [--no-phrases]",
       "                                 [--out PATH] [--concurrency N]",
+      "",
+      "  --dim N           Placeholder embedding dimension (positive safe integer, default 256).",
+      "  --concurrency N   Parallel TTS phrase synthesis workers (positive safe integer, default 2).",
       "",
     ].join("\n"),
   );
@@ -202,14 +269,11 @@ async function main() {
   let phrases = [];
 
   if (args.placeholder) {
-    const dim =
-      Number.isFinite(args.dim) && args.dim > 0
-        ? args.dim
-        : PLACEHOLDER_DEFAULT_DIM;
-    embedding = new Float32Array(dim); // all zeros
+    // args.dim is always a validated positive safe integer (or the default).
+    embedding = new Float32Array(args.dim); // all zeros
     phrases = []; // N=0 — a placeholder preset carries no audio
     process.stdout.write(
-      `[voice-preset] PLACEHOLDER mode: zero embedding dim=${dim}, 0 phrases. This is a dev placeholder, NOT the default voice.\n`,
+      `[voice-preset] PLACEHOLDER mode: zero embedding dim=${args.dim}, 0 phrases. This is a dev placeholder, NOT the default voice.\n`,
     );
   } else {
     embedding = readFloat32Vector(args.embeddingPath);
