@@ -1,5 +1,5 @@
-// Persists eliza room characters records for cloud services through the shared DB boundary.
-import { and, count, eq, inArray } from "drizzle-orm";
+/** Persists room-to-character authority mappings for Cloud services. */
+import { and, count, eq, inArray, sql } from "drizzle-orm";
 import { logger } from "../../lib/utils/logger";
 import { sqlRows } from "../execute-helpers";
 import { dbRead, dbWrite } from "../helpers";

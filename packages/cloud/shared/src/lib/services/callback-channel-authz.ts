@@ -1,4 +1,4 @@
-// Coordinates cloud service callback channel authz behavior behind route handlers.
+/** Authorizes payment callback room and agent pairs before message projection. */
 import { elizaRoomCharactersRepository } from "../../db/repositories/eliza-room-characters";
 import { logger } from "../utils/logger";
 

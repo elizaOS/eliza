@@ -1,4 +1,4 @@
-// Coordinates cloud service x402 payment requests behavior behind route handlers.
+/** Coordinates x402 payment-request creation, settlement, and callback projection. */
 import {
   SOLANA_DEVNET_CAIP2,
   SOLANA_MAINNET_CAIP2,
