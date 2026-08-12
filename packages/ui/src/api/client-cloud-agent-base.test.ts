@@ -171,10 +171,8 @@ describe("cloud-agent-base helpers", () => {
   it("resolveCloudEnvironmentBase prefers page/staging-persisted over prod boot default", () => {
     expect(
       resolveCloudEnvironmentBase({
-        pageHostname:
-          "27bdefac-03d1-4cde-baec-1d018190b298.staging.elizacloud.ai",
-        apiBase:
-          "https://27bdefac-03d1-4cde-baec-1d018190b298.staging.elizacloud.ai",
+        pageHostname: "agent-123.staging.elizacloud.ai",
+        apiBase: "https://agent-123.staging.elizacloud.ai",
         bootCloudApiBase: "https://elizacloud.ai",
       }),
     ).toBe("https://staging.elizacloud.ai");
@@ -182,8 +180,7 @@ describe("cloud-agent-base helpers", () => {
     expect(
       resolveCloudEnvironmentBase({
         pageHostname: "localhost",
-        apiBase:
-          "https://27bdefac-03d1-4cde-baec-1d018190b298.staging.elizacloud.ai",
+        apiBase: "https://agent-123.staging.elizacloud.ai",
         bootCloudApiBase: "https://elizacloud.ai",
       }),
     ).toBe("https://staging.elizacloud.ai");
