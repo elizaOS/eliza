@@ -603,14 +603,24 @@ async function installAutomationsApi(
         updatedAt: NOW_ISO,
       };
       conversations.set(conversation.id, conversation);
-      const draftId =
-        typeof body.metadata?.draftId === "string"
-          ? body.metadata.draftId
-          : `draft-${conversations.size}`;
-      automations = [
-        ...automations,
-        draftWorkflowItem(draftId, conversation.id),
-      ];
+      // Only a workflow-draft conversation materializes an automation row.
+      // The chat shell also POSTs /api/conversations (greeting bootstrap when
+      // hydration finds zero conversations); on the real backend that plain
+      // chat conversation never surfaces in /api/automations, so the mock
+      // must not fabricate a draft for it.
+      const isWorkflowDraft =
+        body.metadata?.scope === "automation-workflow-draft" ||
+        typeof body.metadata?.draftId === "string";
+      if (isWorkflowDraft) {
+        const draftId =
+          typeof body.metadata?.draftId === "string"
+            ? body.metadata.draftId
+            : `draft-${conversations.size}`;
+        automations = [
+          ...automations,
+          draftWorkflowItem(draftId, conversation.id),
+        ];
+      }
       await fulfillJson(route, { conversation });
       return;
     }
