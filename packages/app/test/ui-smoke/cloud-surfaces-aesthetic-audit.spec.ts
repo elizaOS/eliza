@@ -614,6 +614,24 @@ test.describe("cloud-surfaces aesthetic audit (#10725/#11342)", () => {
           await seedStewardToken(page);
         }
         await installCloudApiStubs(page);
+        if (auditCase.slug === "join") {
+          await page.route("**/api/cloud/compat/agents**", async (route) => {
+            await route.fulfill({
+              status: 402,
+              contentType: "application/json",
+              body: JSON.stringify({
+                success: false,
+                code: "insufficient_credits",
+                error:
+                  "Welcome credit unavailable because this network reached the daily free-credit limit. Add funds to start an agent.",
+                requiredBalance: 0.1,
+                currentBalance: 0,
+                welcomeBonusWithheld: true,
+                welcomeBonusWithheldReason: "ip_daily_cap",
+              }),
+            });
+          });
+        }
         await page.goto(auditCase.path, { waitUntil: "domcontentloaded" });
 
         // Routes with expectedFinalPath always redirect on localhost (the
