@@ -26,6 +26,7 @@ import {
 import { Skeleton } from "../../components/ui/skeleton";
 import { cn } from "../lib/utils";
 import { BrandButton, BrandCard } from "./brand";
+import { formatTimestamp } from "./log-viewer-format";
 
 type BadgeVariant = React.ComponentProps<typeof Badge>["variant"];
 
@@ -117,11 +118,6 @@ export interface LogViewerProps {
   entryLevelBorderColor?: (level: string) => string;
   onCopyEntry?: (entry: LogViewerStructuredEntry) => void;
   className?: string;
-}
-
-function formatTimestamp(value: LogViewerStructuredEntry["timestamp"]): string {
-  if (!value) return "";
-  return new Date(value).toLocaleTimeString();
 }
 
 function getDefaultLineClassName(line: string): string {
@@ -261,7 +257,7 @@ export function LogViewer({
             {subtitle && <p className="text-sm text-white/60">{subtitle}</p>}
             {fetchedAt && (
               <p className="mt-1 text-xs text-white/60">
-                Refreshed at {new Date(fetchedAt).toLocaleTimeString()}
+                Refreshed at {formatTimestamp(fetchedAt)}
               </p>
             )}
           </div>
