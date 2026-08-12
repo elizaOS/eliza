@@ -113,6 +113,52 @@ describe("compat route auth policy table", () => {
     });
   });
 
+  it("passes per-agent message/event routes through to the agent server's own auth gate", async () => {
+    // Regression (sol-dev cutover QA 2026-08-11): the "/api/agents" managed
+    // prefix fail-closed 401'd POST /api/agents/:id/message for EVERY caller,
+    // including a valid ELIZA_API_TOKEN bearer, because the route was never
+    // declared. The owning handler (packages/agent chat-routes.ts) enforces
+    // its own bearer/loopback/X-Server-Token auth, so the dispatcher must
+    // pass these through rather than pre-empt with its session vocabulary.
+    expect(
+      resolveCompatRouteAuthPolicy(
+        "POST",
+        "/api/agents/df5d4664-7631-07ce-b4e6-45da0f27a0a5/message",
+      ),
+    ).toMatchObject({ id: "agents.message", tier: "public" });
+    expect(
+      resolveCompatRouteAuthPolicy(
+        "POST",
+        "/api/agents/df5d4664-7631-07ce-b4e6-45da0f27a0a5/event",
+      ),
+    ).toMatchObject({ id: "agents.event", tier: "public" });
+
+    const req = fakeReq({
+      method: "POST",
+      pathname: "/api/agents/some-agent/message",
+    });
+    const res = fakeRes();
+    await expect(
+      enforceCompatRouteAuthPolicy(
+        req,
+        res.res,
+        STATE,
+        "POST",
+        "/api/agents/some-agent/message",
+      ),
+    ).resolves.toBe("allowed");
+
+    // Non-message/event sub-paths under /api/agents stay fail-closed.
+    expect(
+      resolveCompatRouteAuthPolicy("POST", "/api/agents/some-agent/delete"),
+    ).toBeNull();
+    expect(isCompatManagedRoute("/api/agents/some-agent/delete")).toBe(true);
+    // GET on message stays undeclared (the handler only serves POST).
+    expect(
+      resolveCompatRouteAuthPolicy("GET", "/api/agents/some-agent/message"),
+    ).toBeNull();
+  });
+
   it("fails closed for undeclared app-core-managed routes", async () => {
     const req = fakeReq({ method: "GET", pathname: "/api/dev/not-declared" });
     const res = fakeRes();
