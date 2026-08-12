@@ -1516,6 +1516,59 @@
       "registryKind": "plugin",
       "directory": null
     },
+    "plugin-gblin": {
+      "git": {
+        "repo": "gblinproject/GBLIN_PLUGIN",
+        "v0": {
+          "branch": null
+        },
+        "v1": {
+          "branch": null
+        },
+        "v2": {
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "plugin-gblin",
+        "v0": null,
+        "v1": null,
+        "v2": "0.3.0"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "ElizaOS plugin for GBLIN on Base — a gasless treasury rail for AI agents. Routes surplus agent capital into the MEV-protected GBLIN index (cbBTC/WETH/USDC, mint/redeem at NAV — managed crypto exposure, not a USDC substitute) and JIT-swaps back to USDC for x402 invoices. GBLIN is a discoverable ERC-8004 agent (#59286) on Base.",
+      "homepage": "https://gblin.digital/agents",
+      "topics": [
+        "gblin",
+        "x402",
+        "base",
+        "usdc",
+        "cbbtc",
+        "weth",
+        "treasury",
+        "defi",
+        "mev-protection",
+        "jit-swap",
+        "ai-agent",
+        "index",
+        "erc-8004"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "origin": "third-party",
+      "source": "community",
+      "support": "community",
+      "builtIn": false,
+      "firstParty": false,
+      "thirdParty": true,
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": null
+    },
     "plugin-pulsenetwork": {
       "git": {
         "repo": "GTCC777/plugin-pulsenetwork",
