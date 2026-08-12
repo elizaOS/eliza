@@ -1878,7 +1878,17 @@ export class DiscordService extends Service implements IDiscordService {
 				typeof targetChannel.parentId === "string" &&
 				targetChannel.parentId.length > 0 &&
 				this.isChannelAllowed(targetChannel.parentId, accountId);
+			// DMs (and group DMs) are exempt from the guild-channel allowlist,
+			// mirroring the inbound gate (#18419): CHANNEL_IDS scopes which *guild*
+			// surfaces the bot participates in, while DM access is governed by the
+			// DM policy. A DM channel id is by definition never in CHANNEL_IDS, so
+			// without this exemption an allowlisted deployment could receive DMs
+			// but never send them (including scheduled/proactive owner DMs).
+			const isDmTarget =
+				targetChannel.type === DiscordChannelType.DM ||
+				targetChannel.type === DiscordChannelType.GroupDM;
 			if (
+				!isDmTarget &&
 				state?.allowedChannelIds &&
 				!this.isChannelAllowed(targetChannel.id, accountId) &&
 				!allowedByParentThread
