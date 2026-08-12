@@ -188,7 +188,7 @@ describe("MCP marketplace client", () => {
     await expect(searchMcpMarketplace()).rejects.toMatchObject({ code: "invalid_response" });
   });
 
-  it("uses Registry search pagination and preserves the overall byte budget", async () => {
+  it("paginates the latest Registry catalog and preserves the overall byte budget", async () => {
     const firstPage = registryPage(
       [
         {
@@ -220,17 +220,17 @@ describe("MCP marketplace client", () => {
 
     expect(fetchMock).toHaveBeenNthCalledWith(
       1,
-      "https://registry.modelcontextprotocol.io/v0/servers?version=latest&limit=1&search=needle",
+      "https://registry.modelcontextprotocol.io/v0/servers?version=latest&limit=50",
       expect.any(Object)
     );
     expect(fetchMock).toHaveBeenNthCalledWith(
       2,
-      "https://registry.modelcontextprotocol.io/v0/servers?version=latest&limit=1&search=needle&cursor=next-page",
+      "https://registry.modelcontextprotocol.io/v0/servers?version=latest&limit=50&cursor=next-page",
       expect.any(Object)
     );
   });
 
-  it("returns a later Registry page when the first page has no query match", async () => {
+  it("returns a later-page title match without narrowing the Registry request to names", async () => {
     fetchMock
       .mockResolvedValueOnce(
         jsonResponse(
@@ -242,13 +242,30 @@ describe("MCP marketplace client", () => {
       )
       .mockResolvedValueOnce(
         jsonResponse(
-          registryPage([{ name: "io.example/needle", description: "Needle", version: "1.0.0" }])
+          registryPage([
+            {
+              name: "io.example/portfolio",
+              title: "Aether Wealth",
+              description: "Macro calendar and indicators",
+              version: "1.0.0",
+            },
+          ])
         )
       );
 
-    await expect(searchMcpMarketplace("needle", 1)).resolves.toEqual({
-      results: [expect.objectContaining({ name: "io.example/needle" })],
+    await expect(searchMcpMarketplace("wealth", 1)).resolves.toEqual({
+      results: [expect.objectContaining({ name: "io.example/portfolio", title: "Aether Wealth" })],
     });
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      "https://registry.modelcontextprotocol.io/v0/servers?version=latest&limit=50",
+      expect.any(Object)
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "https://registry.modelcontextprotocol.io/v0/servers?version=latest&limit=50&cursor=next-page",
+      expect.any(Object)
+    );
   });
 
   it("rejects declared and streamed responses over the configured byte cap", async () => {
