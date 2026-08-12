@@ -334,10 +334,7 @@ describe("live report parsing", () => {
         '{"number":1,"body":"first\\nrecord"}\n{"number":2}\n',
         "repos/elizaOS/eliza/issues",
       ),
-      [
-        { number: 1, body: "first\nrecord" },
-        { number: 2 },
-      ],
+      [{ number: 1, body: "first\nrecord" }, { number: 2 }],
     );
     assert.deepStrictEqual(parsePaginatedJson("\n\r\n"), []);
   });
@@ -732,9 +729,54 @@ describe("live report behavior", () => {
       ".[]",
       "repos/elizaOS/eliza/issues?state=open&per_page=100",
     ]);
+    assert.deepStrictEqual(invocation?.options, {
+      encoding: "utf8",
+      killSignal: "SIGKILL",
+      maxBuffer: 64 * 1024 * 1024,
+      timeout: 15_000,
+      windowsHide: true,
+    });
     assert.ok(
       !invocation?.args.some((argument) => /POST|PATCH|DELETE/.test(argument)),
     );
+  });
+
+  it("fails timed-out reads once with endpoint and attempt context", () => {
+    const endpoint = "repos/elizaOS/eliza/issues/1/comments?per_page=100";
+    const timeoutError = Object.assign(new Error("spawnSync gh ETIMEDOUT"), {
+      code: "ETIMEDOUT",
+    });
+    let invocations = 0;
+    const delays: number[] = [];
+
+    assert.throws(
+      () =>
+        readGhPages(
+          endpoint,
+          (_command, _args, options) => {
+            invocations += 1;
+            assert.strictEqual(options.timeout, 15_000);
+            assert.strictEqual(options.killSignal, "SIGKILL");
+            return {
+              error: timeoutError,
+              signal: "SIGKILL",
+              status: null,
+              stderr: "",
+              stdout: '{"number":999,"partial":true}\n',
+            };
+          },
+          (durationMs) => delays.push(durationMs),
+        ),
+      (error: unknown) =>
+        error instanceof Error &&
+        error.message.includes(`timed out for ${endpoint}`) &&
+        error.message.includes("on attempt 1") &&
+        error.message.includes("after 15000ms") &&
+        error.message.includes("partial output was discarded") &&
+        error.cause === timeoutError,
+    );
+    assert.strictEqual(invocations, 1);
+    assert.deepStrictEqual(delays, []);
   });
 
   it("fails command and spawn errors with endpoint context", () => {
