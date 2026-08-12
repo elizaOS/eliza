@@ -162,6 +162,15 @@ const speech = await runtime.useModel(ModelType.TEXT_TO_SPEECH, {
 // core TranscriptionParams ({ audioUrl }). URL fetches go through the
 // SSRF guard. Requires ELIZAOS_CLOUD_ENABLED=true or ELIZAOS_CLOUD_USE_STT=true.
 const transcript = await runtime.useModel(ModelType.TRANSCRIPTION, audioBuffer);
+
+// Cancel a long-running research request without disabling its provider timeout.
+const researchController = new AbortController();
+const report = await runtime.useModel(ModelType.RESEARCH, {
+  input: "Compare current grid-scale energy storage approaches.",
+  tools: [{ type: "web_search_preview" }],
+  signal: researchController.signal,
+});
+// Call researchController.abort() when the result is no longer needed.
 ```
 
 ## Adding Cloud Calls
