@@ -26,11 +26,12 @@
 
 import type { AgentSandbox } from "../../../db/repositories/agent-sandboxes";
 import type { RuntimeDurableObjectNamespace } from "../../../types/cloud-worker-env";
-import { calculateCost, getProviderFromModel } from "../../pricing";
+import { calculateCost, getProviderFromModel, normalizeModelName } from "../../pricing";
 import { logger } from "../../utils/logger";
 import { warmInferenceAdmissionSnapshot } from "../inference-admission-snapshot";
 import { coordinateSharedHistory } from "./conversation-coordinator";
 import { resolveSharedAgentTurnModel } from "./run-shared-agent-turn";
+import { projectSharedAgentCharacter } from "./shared-agent-character";
 
 export interface PrewarmSharedAgentOptions {
   /**
@@ -39,13 +40,6 @@ export interface PrewarmSharedAgentOptions {
    * it only the conversation-object leg is skipped.
    */
   namespace?: RuntimeDurableObjectNamespace;
-}
-
-function configuredModel(agent: AgentSandbox): string | undefined {
-  const config = agent.agent_config;
-  if (!config || typeof config !== "object") return undefined;
-  const model = (config as Record<string, unknown>).model;
-  return typeof model === "string" && model.trim() ? model.trim() : undefined;
 }
 
 /**
@@ -67,30 +61,32 @@ export async function prewarmSharedAgentTurnCaches(
     run: warmInferenceAdmissionSnapshot(agent.organization_id),
   });
 
-  // 2. Pricing rates for the model the first turn will bill. The authoritative
-  //    (non-cache-only) read populates the durable pricing cache that the
-  //    cache-only admission path consults ("AI pricing cache is warming").
-  const model = resolveSharedAgentTurnModel(configuredModel(agent));
-  if (model) {
-    legs.push({
-      leg: "pricing",
-      run: calculateCost(model, getProviderFromModel(model), 1, 1, "bitrouter"),
-    });
-  }
+  // 2. Hydrate the linked character before resolving pricing. The live turn's
+  //    canonical projection gives linked settings.model precedence over the
+  //    nested and top-level agent config, so pricing cannot be selected safely
+  //    until this authoritative read completes. getById also writes the exact
+  //    `character:data:<id>` entry the cache-only turn reads.
+  const pricingAndCharacter = (async () => {
+    const linked = agent.character_id
+      ? await import("../characters/characters").then(({ charactersService }) =>
+          charactersService.getById(agent.character_id!),
+        )
+      : undefined;
+    const character = projectSharedAgentCharacter(agent, linked);
+    const model = resolveSharedAgentTurnModel(character.model);
+    if (model) {
+      await calculateCost(
+        normalizeModelName(model),
+        getProviderFromModel(model),
+        1,
+        1,
+        "bitrouter",
+      );
+    }
+  })();
+  legs.push({ leg: "character-and-pricing", run: pricingAndCharacter });
 
-  // 3. Linked character projection ("Character cache is warming"). getById
-  //    writes the same `character:data:<id>` entry the cache-only turn reads.
-  if (agent.character_id) {
-    const characterId = agent.character_id;
-    legs.push({
-      leg: "character",
-      run: import("../characters/characters").then(({ charactersService }) =>
-        charactersService.getById(characterId),
-      ),
-    });
-  }
-
-  // 4. Conversation Durable Object hydration ("Conversation cache is
+  // 3. Conversation Durable Object hydration ("Conversation cache is
   //    warming"). The first history read on a cold object starts its
   //    authoritative Postgres hydration under the object's own waitUntil and
   //    reports warming; swallowing that expected rejection leaves the object
