@@ -22,6 +22,8 @@
  * sizes. Two different source states therefore produce two different buildIds,
  * which is exactly the freshness signal the issue asks for ("a real freshness
  * check that fails the build when an input changed but the artifact didn't").
+ * `fullBunAvailable` records the immutable renderer capability generated for
+ * the build, so byte-fresh bundles cannot cross an incompatible engine lane.
  */
 import crypto from "node:crypto";
 import fs from "node:fs";
@@ -75,6 +77,7 @@ export function computeRendererFingerprint(distDir) {
  * @param {string} distDir
  * @param {{ builtAt?: string, commit?: string|null, variant?: string|null,
  *           capacitorTarget?: string|null, runtimeMode?: string|null,
+ *           fullBunAvailable?: boolean,
  *           playwrightTestAuth?: boolean|null }} [meta]
  */
 export function buildRendererManifest(distDir, meta = {}) {
@@ -89,6 +92,7 @@ export function buildRendererManifest(distDir, meta = {}) {
     variant: meta.variant ?? null,
     capacitorTarget: meta.capacitorTarget ?? null,
     runtimeMode: meta.runtimeMode ?? null,
+    fullBunAvailable: meta.fullBunAvailable ?? false,
     playwrightTestAuth: meta.playwrightTestAuth ?? null,
   };
 }
@@ -126,24 +130,11 @@ function isNullableString(value) {
   return value === null || typeof value === "string";
 }
 
-/**
- * Return whether a parsed manifest has the v1 shape and matches the renderer
- * bytes beside it. This is the reuse boundary; a copied or partial stamp must
- * not make a stale renderer look current.
- *
- * @param {string} distDir
- * @param {unknown} manifest
- */
-export function rendererBuildManifestMatchesDist(distDir, manifest) {
-  if (
+function rendererBuildManifestHasRequiredShape(manifest) {
+  return !(
     manifest === null ||
     typeof manifest !== "object" ||
-    Array.isArray(manifest)
-  ) {
-    return false;
-  }
-
-  if (
+    Array.isArray(manifest) ||
     manifest.schema !== RENDERER_BUILD_MANIFEST_SCHEMA ||
     typeof manifest.buildId !== "string" ||
     !/^[a-f0-9]{64}$/.test(manifest.buildId) ||
@@ -157,11 +148,22 @@ export function rendererBuildManifestMatchesDist(distDir, manifest) {
     !isNullableString(manifest.variant) ||
     !isNullableString(manifest.capacitorTarget) ||
     !isNullableString(manifest.runtimeMode) ||
+    typeof manifest.fullBunAvailable !== "boolean" ||
     (manifest.playwrightTestAuth !== null &&
       typeof manifest.playwrightTestAuth !== "boolean")
-  ) {
-    return false;
-  }
+  );
+}
+
+/**
+ * Return whether a parsed manifest has the v1 shape and matches the renderer
+ * bytes beside it. This is the reuse boundary; a copied or partial stamp must
+ * not make a stale renderer look current.
+ *
+ * @param {string} distDir
+ * @param {unknown} manifest
+ */
+export function rendererBuildManifestMatchesDist(distDir, manifest) {
+  if (!rendererBuildManifestHasRequiredShape(manifest)) return false;
 
   try {
     const fingerprint = computeRendererFingerprint(distDir);
@@ -198,6 +200,13 @@ export function assertStagedRendererMatchesBuild(
         `did not run — refusing to ship an unverifiable bundle.`,
     );
   }
+  if (!rendererBuildManifestHasRequiredShape(fresh)) {
+    throw new Error(
+      `[renderer-build-manifest] ${label}: the freshly built renderer in ${freshDistDir} ` +
+        `has an invalid ${RENDERER_BUILD_MANIFEST_FILENAME}, including a missing immutable ` +
+        `fullBunAvailable capability. Refusing to ship an unverifiable bundle.`,
+    );
+  }
   const staged = readRendererBuildManifest(stagedDir);
   if (!staged) {
     throw new Error(
@@ -206,12 +215,26 @@ export function assertStagedRendererMatchesBuild(
         `built bundle — the device would boot stale or missing UI. Failing the build.`,
     );
   }
+  if (!rendererBuildManifestHasRequiredShape(staged)) {
+    throw new Error(
+      `[renderer-build-manifest] ${label}: staged renderer at ${stagedDir} has an invalid ` +
+        `${RENDERER_BUILD_MANIFEST_FILENAME}, including a missing immutable ` +
+        `fullBunAvailable capability. Refusing to ship an unverifiable bundle.`,
+    );
+  }
   if (staged.buildId !== fresh.buildId) {
     throw new Error(
       `[renderer-build-manifest] ${label}: STALE RENDERER staged. ` +
         `staged buildId=${staged.buildId} (built ${staged.builtAt}) != ` +
         `freshly built buildId=${fresh.buildId} (built ${fresh.builtAt}). ` +
         `The device would boot an OLD UI — failing the build instead of shipping it.`,
+    );
+  }
+  if (staged.fullBunAvailable !== fresh.fullBunAvailable) {
+    throw new Error(
+      `[renderer-build-manifest] ${label}: staged renderer fullBunAvailable=${String(staged.fullBunAvailable)} ` +
+        `does not match freshly built fullBunAvailable=${String(fresh.fullBunAvailable)}. ` +
+        `The device would boot a renderer for an incompatible native engine capability — failing the build.`,
     );
   }
   // A copied manifest paired with a partial/old index.html would pass the buildId
@@ -288,6 +311,13 @@ export function assertRendererRebuiltSince(
     throw new Error(
       `[renderer-build-manifest] ${label}: no ${RENDERER_BUILD_MANIFEST_FILENAME} in ${distDir} ` +
         `after the renderer build. The build did not produce a verifiable renderer.`,
+    );
+  }
+  if (!rendererBuildManifestHasRequiredShape(manifest)) {
+    throw new Error(
+      `[renderer-build-manifest] ${label}: ${RENDERER_BUILD_MANIFEST_FILENAME} in ${distDir} ` +
+        `is invalid or missing the immutable fullBunAvailable capability. ` +
+        `The renderer must be rebuilt during this invocation.`,
     );
   }
   const builtAtMs = Date.parse(manifest.builtAt);

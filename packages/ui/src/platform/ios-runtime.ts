@@ -112,6 +112,11 @@ export function apiBaseToDeviceBridgeUrl(apiBase: string): string {
   return parsed.toString();
 }
 
+/** Reads the generated renderer capability without inferring it from mode. */
+export function resolveIosFullBunAvailable(env: RuntimeEnv): boolean {
+  return readBool(env, ["VITE_ELIZA_IOS_FULL_BUN_AVAILABLE"]);
+}
+
 export function resolveIosRuntimeConfig(env: RuntimeEnv): IosRuntimeConfig {
   const mode = normalizeMode(
     readString(env, mobileEnvKeys("ios", "RUNTIME_MODE")),
@@ -132,14 +137,7 @@ export function resolveIosRuntimeConfig(env: RuntimeEnv): IosRuntimeConfig {
 
   return {
     mode,
-    fullBun: readBool(env, [
-      "VITE_ELIZA_IOS_FULL_BUN_AVAILABLE",
-      "VITE_ELIZA_IOS_FULL_BUN_STRICT",
-      "VITE_ELIZA_IOS_FULL_BUN_SMOKE",
-      "VITE_ELIZA_IOS_FULL_BUN_AVAILABLE",
-      "VITE_ELIZA_IOS_FULL_BUN_STRICT",
-      "VITE_ELIZA_IOS_FULL_BUN_SMOKE",
-    ]),
+    fullBun: resolveIosFullBunAvailable(env),
     ...(apiBase ? { apiBase } : {}),
     ...(apiToken ? { apiToken } : {}),
     cloudApiBase: resolveCloudApiBase(env),

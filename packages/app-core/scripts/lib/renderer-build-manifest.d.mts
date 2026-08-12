@@ -17,6 +17,7 @@ export interface RendererBuildManifest {
   variant: string | null;
   capacitorTarget: string | null;
   runtimeMode: string | null;
+  fullBunAvailable: boolean;
   playwrightTestAuth: boolean | null;
 }
 
@@ -26,6 +27,7 @@ export interface RendererBuildManifestMeta {
   variant?: string | null;
   capacitorTarget?: string | null;
   runtimeMode?: string | null;
+  fullBunAvailable?: boolean;
   playwrightTestAuth?: boolean | null;
 }
 

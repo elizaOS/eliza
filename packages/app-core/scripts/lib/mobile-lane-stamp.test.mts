@@ -72,6 +72,7 @@ describe("resolveExpectedRendererStamp", () => {
       variant: "direct",
       capacitorTarget: "ios",
       runtimeMode: "local",
+      fullBunAvailable: false,
     });
   });
 
@@ -82,6 +83,7 @@ describe("resolveExpectedRendererStamp", () => {
       variant: "store",
       capacitorTarget: "ios",
       runtimeMode: "cloud-hybrid",
+      fullBunAvailable: false,
     });
   });
 
@@ -122,6 +124,7 @@ describe("resolveExpectedRendererStamp", () => {
       variant: "direct",
       capacitorTarget: "android",
       runtimeMode: "cloud-hybrid",
+      fullBunAvailable: false,
     });
   });
 
@@ -155,6 +158,24 @@ describe("resolveExpectedRendererStamp", () => {
     expect(
       resolveExpectedRendererStamp({ policy: noModes, env: {} }).runtimeMode,
     ).toBeNull();
+  });
+
+  it("uses only the generated full-Bun capability flag", () => {
+    expect(
+      resolveExpectedRendererStamp({
+        policy: POLICIES.ios,
+        env: {
+          VITE_ELIZA_IOS_RUNTIME_MODE: "cloud",
+          VITE_ELIZA_IOS_FULL_BUN_AVAILABLE: "1",
+        },
+      }).fullBunAvailable,
+    ).toBe(true);
+    expect(
+      resolveExpectedRendererStamp({
+        policy: POLICIES.ios,
+        env: { VITE_ELIZA_IOS_FULL_BUN_STRICT: "1" },
+      }).fullBunAvailable,
+    ).toBe(false);
   });
 });
 
@@ -234,12 +255,18 @@ describe("rendererLaneStampMismatches", () => {
     variant: "direct",
     capacitorTarget: "ios",
     runtimeMode: "local",
+    fullBunAvailable: false,
   };
 
   it("returns no mismatches for an exact match", () => {
     expect(
       rendererLaneStampMismatches(
-        { variant: "direct", capacitorTarget: "ios", runtimeMode: "local" },
+        {
+          variant: "direct",
+          capacitorTarget: "ios",
+          runtimeMode: "local",
+          fullBunAvailable: false,
+        },
         expected,
       ),
     ).toEqual([]);
@@ -257,6 +284,7 @@ describe("rendererLaneStampMismatches", () => {
         variant: "store",
         capacitorTarget: "ios",
         runtimeMode: "cloud-hybrid",
+        fullBunAvailable: false,
       },
       expected,
     );
@@ -268,7 +296,11 @@ describe("rendererLaneStampMismatches", () => {
 
   it("flags a manifest with no runtime mode when the lane bakes one", () => {
     const mismatches = rendererLaneStampMismatches(
-      { variant: "direct", capacitorTarget: "ios" },
+      {
+        variant: "direct",
+        capacitorTarget: "ios",
+        fullBunAvailable: false,
+      },
       expected,
     );
     expect(mismatches).toEqual([
@@ -279,8 +311,17 @@ describe("rendererLaneStampMismatches", () => {
   it("treats null and missing as equal when the lane bakes no mode", () => {
     expect(
       rendererLaneStampMismatches(
-        { variant: "direct", capacitorTarget: null },
-        { variant: "direct", capacitorTarget: null, runtimeMode: null },
+        {
+          variant: "direct",
+          capacitorTarget: null,
+          fullBunAvailable: false,
+        },
+        {
+          variant: "direct",
+          capacitorTarget: null,
+          runtimeMode: null,
+          fullBunAvailable: false,
+        },
       ),
     ).toEqual([]);
   });
@@ -288,10 +329,43 @@ describe("rendererLaneStampMismatches", () => {
   it("flags a wrong capacitor target", () => {
     expect(
       rendererLaneStampMismatches(
-        { variant: "direct", capacitorTarget: "android", runtimeMode: "local" },
+        {
+          variant: "direct",
+          capacitorTarget: "android",
+          runtimeMode: "local",
+          fullBunAvailable: false,
+        },
         expected,
       ),
     ).toEqual(["dist capacitor target is 'android' but this lane bakes 'ios'"]);
+  });
+
+  it("flags incompatible and missing immutable full-Bun capability", () => {
+    expect(
+      rendererLaneStampMismatches(
+        {
+          variant: "direct",
+          capacitorTarget: "ios",
+          runtimeMode: "local",
+          fullBunAvailable: true,
+        },
+        expected,
+      ),
+    ).toEqual([
+      "dist full Bun capability is 'true' but this lane bakes 'false'",
+    ]);
+    expect(
+      rendererLaneStampMismatches(
+        {
+          variant: "direct",
+          capacitorTarget: "ios",
+          runtimeMode: "local",
+        },
+        expected,
+      ),
+    ).toEqual([
+      "dist full Bun capability is (unset) but this lane bakes 'false'",
+    ]);
   });
 });
 

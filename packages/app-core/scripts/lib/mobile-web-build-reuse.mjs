@@ -1,7 +1,7 @@
 /**
  * Decides whether a mobile lane can reuse the existing Vite renderer dist by
- * checking the renderer build manifest's variant, target, and runtime mode
- * against what the lane expects.
+ * checking the renderer build manifest's variant, target, runtime mode, and
+ * immutable full-Bun capability against what the lane expects.
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -30,6 +30,7 @@ export function mobileWebDistReuseStatus({
   expectedVariant,
   expectedTarget,
   expectedRuntimeMode,
+  expectedFullBunAvailable,
   readManifest = readRendererBuildManifest,
   buildNeeded = viteRendererBuildNeeded,
 } = {}) {
@@ -38,6 +39,11 @@ export function mobileWebDistReuseStatus({
   }
   if (!repoRoot) {
     throw new Error("mobileWebDistReuseStatus: repoRoot is required");
+  }
+  if (typeof expectedFullBunAvailable !== "boolean") {
+    throw new Error(
+      "mobileWebDistReuseStatus: expectedFullBunAvailable is required",
+    );
   }
 
   const distDir = path.join(appDir, "dist");
@@ -85,6 +91,15 @@ export function mobileWebDistReuseStatus({
             : `dist built for runtime mode '${manifestRuntimeMode}' but this build targets ${wantedLabel}`,
         );
       }
+    }
+    if (typeof manifest.fullBunAvailable !== "boolean") {
+      problems.push(
+        "dist manifest is missing required fullBunAvailable capability",
+      );
+    } else if (manifest.fullBunAvailable !== expectedFullBunAvailable) {
+      problems.push(
+        `dist full-Bun capability is ${String(manifest.fullBunAvailable)} but this build targets ${String(expectedFullBunAvailable)}`,
+      );
     }
   }
 

@@ -24,6 +24,7 @@ export interface RendererBuildStamp {
   variant: string | null;
   capacitorTarget: string | null;
   runtimeMode: string | null;
+  fullBunAvailable: boolean;
   playwrightTestAuth: boolean | null;
 }
 
@@ -65,7 +66,7 @@ export async function loadRendererBuildStamp(): Promise<RendererBuildStamp | nul
     window.__ELIZA_RENDERER_BUILD__ = stamp;
     console.info(
       `[renderer-build] ${stamp.buildId.slice(0, 12)} built ${stamp.builtAt}` +
-        ` (variant=${stamp.variant ?? "?"}, target=${stamp.capacitorTarget ?? "web/desktop"})`,
+        ` (variant=${stamp.variant ?? "?"}, target=${stamp.capacitorTarget ?? "web/desktop"}, fullBun=${String(stamp.fullBunAvailable)})`,
     );
     return stamp;
   } catch {

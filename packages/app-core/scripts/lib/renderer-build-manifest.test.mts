@@ -12,6 +12,7 @@ import {
   overlayFreshRendererIntoPublic,
   RENDERER_BUILD_MANIFEST_FILENAME,
   readRendererBuildManifest,
+  rendererBuildManifestMatchesDist,
   writeRendererBuildManifest,
 } from "./renderer-build-manifest.mjs";
 import { resolveElizaWorkspaceRootFromImportMeta } from "./repo-root.mjs";
@@ -108,6 +109,7 @@ describe("writeRendererBuildManifest / readRendererBuildManifest", () => {
       commit: "deadbeef",
       variant: "store",
       capacitorTarget: "ios",
+      fullBunAvailable: true,
       playwrightTestAuth: true,
     });
     expect(
@@ -117,6 +119,7 @@ describe("writeRendererBuildManifest / readRendererBuildManifest", () => {
     expect(read).toEqual(written);
     expect(read?.variant).toBe("store");
     expect(read?.capacitorTarget).toBe("ios");
+    expect(read?.fullBunAvailable).toBe(true);
     expect(read?.playwrightTestAuth).toBe(true);
     expect(read?.buildId).toBe(computeRendererFingerprint(dist).buildId);
   });
@@ -125,6 +128,18 @@ describe("writeRendererBuildManifest / readRendererBuildManifest", () => {
     const dist = path.join(tmp, "dist");
     makeDist(dist);
     expect(readRendererBuildManifest(dist)).toBeNull();
+  });
+
+  it("rejects a legacy manifest missing immutable capability metadata", () => {
+    const dist = path.join(tmp, "dist");
+    makeDist(dist);
+    writeRendererBuildManifest(dist);
+    const manifest = readRendererBuildManifest(dist);
+    if (!manifest) throw new Error("expected renderer manifest");
+    const legacyManifest = { ...manifest } as Record<string, unknown>;
+    delete legacyManifest.fullBunAvailable;
+
+    expect(rendererBuildManifestMatchesDist(dist, legacyManifest)).toBe(false);
   });
 });
 
@@ -189,6 +204,37 @@ describe("assertStagedRendererMatchesBuild", () => {
     fs.writeFileSync(path.join(staged, "index.html"), "partial");
     expect(() => assertStagedRendererMatchesBuild(dist, staged)).toThrow(
       /partial or stale copy/,
+    );
+  });
+
+  it("fails when identical renderer bytes carry different full-Bun capability", () => {
+    const dist = path.join(tmp, "dist");
+    const staged = path.join(tmp, "public");
+    makeDist(dist);
+    writeRendererBuildManifest(dist, { fullBunAvailable: false });
+    fs.cpSync(dist, staged, { recursive: true });
+    writeRendererBuildManifest(staged, { fullBunAvailable: true });
+
+    expect(() => assertStagedRendererMatchesBuild(dist, staged)).toThrow(
+      /incompatible native engine capability/,
+    );
+  });
+
+  it("fails when copied legacy stamps omit full-Bun capability", () => {
+    const dist = path.join(tmp, "dist");
+    const staged = path.join(tmp, "public");
+    makeDist(dist);
+    writeRendererBuildManifest(dist);
+    fs.cpSync(dist, staged, { recursive: true });
+    for (const dir of [dist, staged]) {
+      const manifestPath = path.join(dir, RENDERER_BUILD_MANIFEST_FILENAME);
+      const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+      delete manifest.fullBunAvailable;
+      fs.writeFileSync(manifestPath, `${JSON.stringify(manifest)}\n`);
+    }
+
+    expect(() => assertStagedRendererMatchesBuild(dist, staged)).toThrow(
+      /missing immutable fullBunAvailable capability/,
     );
   });
 });
@@ -280,6 +326,20 @@ describe("assertRendererRebuiltSince", () => {
       assertRendererRebuiltSince(dist, { notBefore: Date.now() - 1000 }),
     ).toThrow(/no eliza-renderer-build\.json/);
   });
+
+  it("fails when a fresh legacy manifest omits full-Bun capability", () => {
+    const dist = path.join(tmp, "dist");
+    makeDist(dist);
+    writeRendererBuildManifest(dist);
+    const manifestPath = path.join(dist, RENDERER_BUILD_MANIFEST_FILENAME);
+    const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+    delete manifest.fullBunAvailable;
+    fs.writeFileSync(manifestPath, `${JSON.stringify(manifest)}\n`);
+
+    expect(() =>
+      assertRendererRebuiltSince(dist, { notBefore: Date.now() - 1000 }),
+    ).toThrow(/missing the immutable fullBunAvailable capability/);
+  });
 });
 
 describe("buildRendererManifest", () => {
@@ -292,6 +352,7 @@ describe("buildRendererManifest", () => {
     expect(manifest.commit).toBeNull();
     expect(manifest.variant).toBeNull();
     expect(manifest.capacitorTarget).toBeNull();
+    expect(manifest.fullBunAvailable).toBe(false);
     expect(manifest.playwrightTestAuth).toBeNull();
   });
 });

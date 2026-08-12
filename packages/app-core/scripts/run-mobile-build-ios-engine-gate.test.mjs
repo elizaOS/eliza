@@ -115,6 +115,7 @@ describe("iOS full-Bun engine embed gate", () => {
           expectedVariant: expected.variant,
           expectedTarget: expected.capacitorTarget,
           expectedRuntimeMode: expected.runtimeMode,
+          expectedFullBunAvailable: expected.fullBunAvailable,
           readManifest: () => manifest,
           buildNeeded,
         });
@@ -125,6 +126,7 @@ describe("iOS full-Bun engine embed gate", () => {
         variant: "store",
         capacitorTarget: "ios",
         runtimeMode: "cloud",
+        fullBunAvailable: false,
       });
       expect(
         status({
@@ -132,6 +134,7 @@ describe("iOS full-Bun engine embed gate", () => {
           variant: "direct",
           capacitorTarget: "ios",
           runtimeMode: "local",
+          fullBunAvailable: true,
         }).reusable,
       ).toBe(false);
       expect(
@@ -140,13 +143,25 @@ describe("iOS full-Bun engine embed gate", () => {
           variant: "store",
           capacitorTarget: "ios",
           runtimeMode: "cloud-hybrid",
+          fullBunAvailable: true,
         }).reusable,
       ).toBe(false);
-      const exactManifest = {
+      const legacyManifest = {
         buildId: "store-cloud",
         variant: "store",
         capacitorTarget: "ios",
         runtimeMode: "cloud",
+      };
+      expect(status(legacyManifest).reusable).toBe(false);
+      expect(status(legacyManifest).problems).toContain(
+        "dist manifest is missing required fullBunAvailable capability",
+      );
+      expect(
+        status({ ...legacyManifest, fullBunAvailable: true }).reusable,
+      ).toBe(false);
+      const exactManifest = {
+        ...legacyManifest,
+        fullBunAvailable: false,
       };
       expect(status(exactManifest).reusable).toBe(true);
       expect(status(exactManifest, () => true).reusable).toBe(false);

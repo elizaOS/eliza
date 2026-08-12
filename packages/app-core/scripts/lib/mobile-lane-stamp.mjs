@@ -4,11 +4,12 @@
  *
  * The renderer bundle carries a machine-readable build stamp
  * (`dist/eliza-renderer-build.json`, written by the vite
- * `renderer-build-manifest` plugin) with `variant`, `capacitorTarget`, and
- * `runtimeMode`. Issue #11030's root operational cause: a cloud/store renderer
- * left in `packages/app/dist` by one lane was cap-synced into a DIFFERENT lane
- * (`build:ios:local`), so the device booted a cloud-mode bundle with no agent
- * endpoint and hung at "Booting up…".
+ * `renderer-build-manifest` plugin) with `variant`, `capacitorTarget`,
+ * `runtimeMode`, and immutable `fullBunAvailable` capability. Issue #11030's
+ * root operational cause: a cloud/store renderer left in `packages/app/dist`
+ * by one lane was cap-synced into a DIFFERENT lane (`build:ios:local`), so the
+ * device booted a cloud-mode bundle with no agent endpoint and hung at
+ * "Booting up…".
  *
  * This module answers four questions without touching the filesystem, so all
  * are unit-testable:
@@ -43,7 +44,8 @@
  *           iosRuntimeMode: string|null, androidRuntimeMode: string|null,
  *           runtimeExecutionMode: string|null },
  *           env?: Record<string, string|undefined> }} opts
- * @returns {{ variant: string, capacitorTarget: string|null, runtimeMode: string|null }}
+ * @returns {{ variant: string, capacitorTarget: string|null,
+ *             runtimeMode: string|null, fullBunAvailable: boolean }}
  */
 export function resolveExpectedRendererStamp({ policy, env = {} }) {
   if (!policy || typeof policy !== "object") {
@@ -69,7 +71,12 @@ export function resolveExpectedRendererStamp({ policy, env = {} }) {
       : env.ELIZA_RUNTIME_MODE;
   const runtimeMode =
     viteIosRuntimeMode ?? viteAndroidRuntimeMode ?? executionMode ?? null;
-  return { variant, capacitorTarget, runtimeMode };
+  // This Vite flag is generated only after the native engine decision. Never
+  // infer immutable renderer capability from runtime mode or release variant.
+  const fullBunAvailable = /^(1|true|yes|on)$/i.test(
+    String(env.VITE_ELIZA_IOS_FULL_BUN_AVAILABLE ?? "").trim(),
+  );
+  return { variant, capacitorTarget, runtimeMode, fullBunAvailable };
 }
 
 function normalizeEnvMode(value) {
@@ -150,9 +157,9 @@ function describeStampValue(value) {
  * carries exactly the stamp this lane should bake.
  *
  * @param {{ variant?: string|null, capacitorTarget?: string|null,
- *           runtimeMode?: string|null } | null} manifest
+ *           runtimeMode?: string|null, fullBunAvailable?: boolean } | null} manifest
  * @param {{ variant: string|null, capacitorTarget: string|null,
- *           runtimeMode: string|null }} expected
+ *           runtimeMode: string|null, fullBunAvailable: boolean }} expected
  * @returns {string[]}
  */
 export function rendererLaneStampMismatches(manifest, expected) {
@@ -166,6 +173,7 @@ export function rendererLaneStampMismatches(manifest, expected) {
     ["variant", "variant"],
     ["capacitorTarget", "capacitor target"],
     ["runtimeMode", "runtime mode"],
+    ["fullBunAvailable", "full Bun capability"],
   ];
   for (const [key, label] of fields) {
     const actual = manifest[key] ?? null;

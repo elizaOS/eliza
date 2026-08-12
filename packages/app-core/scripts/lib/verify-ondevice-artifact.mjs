@@ -13,6 +13,7 @@ import path from "node:path";
 import {
   assertStagedRendererMatchesBuild,
   readRendererBuildManifest,
+  rendererBuildManifestMatchesDist,
 } from "./renderer-build-manifest.mjs";
 
 /**
@@ -46,6 +47,10 @@ export function verifyStagedArtifact({
     if (!manifest) {
       problems.push(
         `${label}: no renderer build stamp in ${rendererDir} — unverifiable renderer.`,
+      );
+    } else if (!rendererBuildManifestMatchesDist(rendererDir, manifest)) {
+      problems.push(
+        `${label}: renderer build stamp in ${rendererDir} is invalid, missing required capability metadata, or does not match the renderer bytes.`,
       );
     }
   }
