@@ -14,7 +14,7 @@ import type {
   ImageDescriptionParams,
   RecordLlmCallDetails,
 } from "@elizaos/core";
-import { fetchRemoteMedia, logger, recordLlmCall } from "@elizaos/core";
+import { logger, recordLlmCall } from "@elizaos/core";
 import type { ImageDescriptionResponse } from "../types";
 import {
   createGoogleGenAI,
@@ -49,6 +49,14 @@ export async function handleImageDescription(
   }
 
   try {
+    // fetchRemoteMedia uses the SSRF guard (DNS-based host validation) which is
+    // a Node-only API. Use dynamic import so the plugin's browser bundle does
+    // not statically pull it in (#18699).
+    const core = await import("@elizaos/core");
+    const { fetchRemoteMedia } = core;
+    if (!fetchRemoteMedia) {
+      throw new Error("fetchRemoteMedia is not available in this runtime.");
+    }
     const { buffer: imageBuffer, contentType } = await fetchRemoteMedia({
       url: imageUrl,
       maxBytes: 10_000_000, // 10 MB image cap
