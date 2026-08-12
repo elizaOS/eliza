@@ -33,22 +33,11 @@ import {
   imageBlock,
   parseVisionVerdict,
 } from "./review-lib.mjs";
+import { parseReviewerArgs } from "./reviewer-args.mjs";
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const MODEL = process.env.AI_QA_VISION_MODEL || "claude-haiku-4-5-20251001";
 const ANTHROPIC_VERSION = "2023-06-01";
-
-function parseArgs(argv) {
-  const a = { runDir: null, concurrency: 4, strict: false, updateDebt: false };
-  for (let i = 0; i < argv.length; i++) {
-    const arg = argv[i];
-    if (arg === "--run-dir") a.runDir = argv[++i];
-    else if (arg === "--concurrency") a.concurrency = Number(argv[++i]);
-    else if (arg === "--strict") a.strict = true;
-    else if (arg === "--update-debt") a.updateDebt = true;
-  }
-  return a;
-}
 
 async function latestRunDir() {
   const base = join(REPO_ROOT, "reports", "ai-qa");
@@ -148,7 +137,7 @@ async function mapPool(items, n, fn) {
 }
 
 async function main() {
-  const args = parseArgs(process.argv.slice(2));
+  const args = parseReviewerArgs(process.argv.slice(2));
   if (!process.env.ANTHROPIC_API_KEY) {
     console.log(
       "[vision-review] ANTHROPIC_API_KEY not set — skipping (CI-safe no-op). Set it to run the content review.",
