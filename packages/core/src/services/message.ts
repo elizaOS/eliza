@@ -8732,10 +8732,17 @@ export async function runV5MessageRuntimeStage1(args: {
 		// ran NO action must not "fix" its silence into a work-is-underway ack:
 		// no work follows this turn, so the ack would be a lie. Prefer the
 		// preserved stage-0 answer over any ack in every case.
+		// A media deliverable delivered through an action's own callback
+		// (GENERATE_MEDIA posts an attachment-only, text:"" callback) IS the turn's
+		// answer. The answerless-final floor must not then resurrect the Stage-1
+		// "on it" ack behind the image — a redundant, out-of-order second bubble.
+		// deliveredMediaUrls is non-empty only for a SYNCHRONOUSLY delivered media
+		// attachment, so a slow/async generation (nothing delivered yet) still acks.
+		const mediaDeliverableShipped = deliveredMediaUrls.length > 0;
 		const ackFallback =
 			!plannedText && !earlyReplySent && !suppressesPlannerReply
 				? preservedAnswerFallback ||
-					(ranNonSilentAction
+					(ranNonSilentAction && !mediaDeliverableShipped
 						? stageOneAck || "on it, working on that now."
 						: "")
 				: preservedAnswerFallback;
