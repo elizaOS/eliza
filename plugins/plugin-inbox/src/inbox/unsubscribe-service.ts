@@ -19,7 +19,7 @@
  */
 
 import crypto from "node:crypto";
-import type { IAgentRuntime } from "@elizaos/core";
+import { fetchWithSsrfGuard, type IAgentRuntime } from "@elizaos/core";
 import {
   fail,
   type LifeOpsGmailMessageSummary,
@@ -139,6 +139,7 @@ function parseMailtoUnsubscribe(value: string): {
 async function performHttpUnsubscribe(args: {
   url: string;
   oneClick: boolean;
+  fetchImpl?: typeof fetch;
 }): Promise<{
   ok: boolean;
   status: number;
@@ -149,20 +150,28 @@ async function performHttpUnsubscribe(args: {
   if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
     fail(400, "Unsubscribe URL must be http or https.");
   }
-  const response = await fetch(parsed.toString(), {
-    method: args.oneClick ? "POST" : "GET",
-    headers: args.oneClick
-      ? { "Content-Type": "application/x-www-form-urlencoded" }
-      : undefined,
-    body: args.oneClick ? "List-Unsubscribe=One-Click" : undefined,
-    redirect: "follow",
+  const guarded = await fetchWithSsrfGuard({
+    url: parsed.toString(),
+    fetchImpl: args.fetchImpl,
+    init: {
+      method: args.oneClick ? "POST" : "GET",
+      headers: args.oneClick
+        ? { "Content-Type": "application/x-www-form-urlencoded" }
+        : undefined,
+      body: args.oneClick ? "List-Unsubscribe=One-Click" : undefined,
+    },
   });
-  return {
-    ok: response.ok,
-    status: response.status,
-    finalUrl: response.url || parsed.toString(),
-    method: args.oneClick ? "http_one_click" : "http_get",
-  };
+  try {
+    const { response, finalUrl } = guarded;
+    return {
+      ok: response.ok,
+      status: response.status,
+      finalUrl: response.url || finalUrl || parsed.toString(),
+      method: args.oneClick ? "http_one_click" : "http_get",
+    };
+  } finally {
+    await guarded.release?.();
+  }
 }
 
 function headersOf(
@@ -178,11 +187,14 @@ export interface InboxUnsubscribeServiceDeps {
   gmail?: InboxGmailGateway;
   /** Override the persistence repository (tests inject a fake or PGlite-backed one). */
   repository?: InboxUnsubscribeRepository;
+  /** Optional custom fetch implementation (passed to fetchWithSsrfGuard). */
+  fetchImpl?: typeof fetch;
 }
 
 export class InboxUnsubscribeService {
   private readonly gmail: InboxGmailGateway;
   private readonly repository: InboxUnsubscribeRepository;
+  private readonly fetchImpl?: typeof fetch;
 
   constructor(
     private readonly runtime: IAgentRuntime,
@@ -192,6 +204,7 @@ export class InboxUnsubscribeService {
       deps.gmail ?? createInboxGmailGateway(runtime, runtime.agentId);
     this.repository =
       deps.repository ?? new InboxUnsubscribeRepository(runtime);
+    this.fetchImpl = deps.fetchImpl;
   }
 
   private get agentId(): string {
@@ -351,6 +364,7 @@ export class InboxUnsubscribeService {
         const http = await performHttpUnsubscribe({
           url: sender.unsubscribeHttpUrl,
           oneClick: sender.unsubscribeMethod === "http_one_click",
+          fetchImpl: this.fetchImpl ?? (globalThis.fetch as typeof fetch),
         });
         method = http.method;
         httpStatusCode = http.status;

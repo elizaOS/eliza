@@ -280,6 +280,65 @@ describe("InboxUnsubscribeService", () => {
       expect(records[0]?.metadata.connectorAccountId).toBe("acct-1");
     });
 
+    it("blocks private/loopback targets via SSRF guard", async () => {
+      const gateway = makeGateway({
+        messages: [
+          gmailMessage({
+            id: "m1",
+            fromEmail: "attacker@malicious.com",
+            listUnsubscribe: "<http://127.0.0.1/unsub>",
+            listUnsubscribePost: "List-Unsubscribe=One-Click",
+          }),
+        ],
+      });
+      const { service, records } = makeService(gateway);
+
+      const { record } = await service.unsubscribeEmailSender({
+        senderEmail: "attacker@malicious.com",
+        userAuthorization: true,
+      });
+
+      expect(record.status).toBe("failed");
+      expect(record.errorMessage).toMatch(
+        /SSRF|blocked|private|loopback|localhost/i,
+      );
+      expect(fetchSpy).not.toHaveBeenCalled();
+      expect(records).toHaveLength(1);
+    });
+
+    it("blocks redirect to private host via SSRF guard", async () => {
+      fetchSpy.mockResolvedValue({
+        ok: false,
+        status: 302,
+        headers: new Headers({
+          location: "http://169.254.169.254/latest/meta-data",
+        }),
+        url: "https://public-redirector.com/unsub",
+      } as unknown as Response);
+
+      const gateway = makeGateway({
+        messages: [
+          gmailMessage({
+            id: "m1",
+            fromEmail: "attacker@malicious.com",
+            listUnsubscribe: "<https://public-redirector.com/unsub>",
+          }),
+        ],
+      });
+      const { service, records } = makeService(gateway);
+
+      const { record } = await service.unsubscribeEmailSender({
+        senderEmail: "attacker@malicious.com",
+        userAuthorization: true,
+      });
+
+      expect(record.status).toBe("failed");
+      expect(record.errorMessage).toMatch(
+        /SSRF|blocked|private|loopback|link-local/i,
+      );
+      expect(records).toHaveLength(1);
+    });
+
     it("sends a mailto unsubscribe through the Gmail gateway", async () => {
       const sendMailto = vi.fn(async () => undefined);
       const gateway = makeGateway({
