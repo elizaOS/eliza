@@ -3,7 +3,9 @@ import { describe, expect, it } from "vitest";
 
 import {
   isIosAppStoreBuild,
+  resolveIosBuildEnvironment,
   resolveIosCapacitorSyncEnv,
+  resolveMobileBuildPolicy,
   shouldIncludeIosFullBunEngine,
 } from "./run-mobile-build.mjs";
 
@@ -16,6 +18,27 @@ import {
 // is embedded; these tests lock that contract on the build script's own gate.
 
 describe("iOS full-Bun engine embed gate", () => {
+  it("keeps the named pure-cloud target internally consistent under inherited local flags", () => {
+    const env = resolveIosBuildEnvironment("ios-cloud", {
+      ELIZA_IOS_APP_STORE_LOCAL_RUNTIME: "1",
+      ELIZA_IOS_FULL_BUN_ENGINE: "1",
+    });
+
+    expect(resolveMobileBuildPolicy("ios-cloud")).toMatchObject({
+      capacitorTarget: "ios",
+      buildVariant: "store",
+      iosRuntimeMode: "cloud",
+      runtimeExecutionMode: "cloud",
+      releaseAuthority: "apple-app-store",
+    });
+    expect(env).toMatchObject({
+      ELIZA_IOS_APP_STORE_LOCAL_RUNTIME: "0",
+      ELIZA_IOS_FULL_BUN_ENGINE: "0",
+      VITE_ELIZA_IOS_RUNTIME_MODE: "cloud",
+    });
+    expect(shouldIncludeIosFullBunEngine(env)).toBe(false);
+  });
+
   it("default/empty env does NOT embed the engine (the prod-regression default)", () => {
     // This is exactly the state the apple-store-release.yml build job shipped
     // before the fix: no variant, no engine flag → a cloud-only thin client.

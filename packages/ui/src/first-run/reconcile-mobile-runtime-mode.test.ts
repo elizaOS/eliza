@@ -129,8 +129,37 @@ describe("planMobileRuntimeModeReconcile — the unusability predicate", () => {
       action: "adopt-build-mode",
       from: "local",
       to: "cloud",
-      reason: "persisted-local-mode-has-no-engine-in-this-build",
+      reason: "persisted-on-device-mode-has-no-engine-in-this-build",
     });
+  });
+
+  it("downgrades stale cloud-hybrid to cloud when the build has no local engine regardless of cloud connectivity", () => {
+    expect(
+      planMobileRuntimeModeReconcile({
+        persistedMode: "cloud-hybrid",
+        build: { ...cloudOnlyBuild, hasBuildApiBase: true },
+        hasUsableCloudSession: true,
+      }),
+    ).toEqual({
+      action: "adopt-build-mode",
+      from: "cloud-hybrid",
+      to: "cloud",
+      reason: "persisted-on-device-mode-has-no-engine-in-this-build",
+    });
+  });
+
+  it("keeps cloud-hybrid when a cloud build contains the local engine", () => {
+    expect(
+      planMobileRuntimeModeReconcile({
+        persistedMode: "cloud-hybrid",
+        build: {
+          ...cloudOnlyBuild,
+          hasBuildApiBase: true,
+          hasLocalEngine: true,
+        },
+        hasUsableCloudSession: true,
+      }),
+    ).toEqual({ action: "keep" });
   });
 
   it("keeps a persisted local mode when the build can host the on-device agent", () => {
@@ -286,7 +315,7 @@ describe("reconcilePersistedMobileRuntimeModeAtBoot", () => {
     });
   });
 
-  it("corrects a stale local mode on a cloud-only build (no engine) to cloud", () => {
+  it("corrects a stale local mode on a cloud-only build through both stores", async () => {
     installNativeCapacitorGlobal("ios");
     window.localStorage.setItem(MOBILE_RUNTIME_MODE_STORAGE_KEY, "local");
 
@@ -301,6 +330,61 @@ describe("reconcilePersistedMobileRuntimeModeAtBoot", () => {
     expect(window.localStorage.getItem(MOBILE_RUNTIME_MODE_STORAGE_KEY)).toBe(
       "cloud",
     );
+    await vi.waitFor(() => {
+      expect(preferencesSetMock).toHaveBeenCalledWith({
+        key: MOBILE_RUNTIME_MODE_STORAGE_KEY,
+        value: "cloud",
+      });
+    });
+  });
+
+  it("downgrades stale cloud-hybrid despite cloud session/apiBase and persists both stores", async () => {
+    installNativeCapacitorGlobal("ios");
+    window.localStorage.setItem(
+      MOBILE_RUNTIME_MODE_STORAGE_KEY,
+      "cloud-hybrid",
+    );
+    window.localStorage.setItem(STEWARD_TOKEN_KEY, "live-session-token");
+
+    const applied = reconcilePersistedMobileRuntimeModeAtBoot({
+      env: {
+        VITE_ELIZA_IOS_RUNTIME_MODE: "cloud",
+        VITE_ELIZA_IOS_API_BASE: "https://agent.example",
+      },
+    });
+
+    expect(applied).toEqual({ from: "cloud-hybrid", to: "cloud" });
+    expect(window.localStorage.getItem(MOBILE_RUNTIME_MODE_STORAGE_KEY)).toBe(
+      "cloud",
+    );
+    await vi.waitFor(() => {
+      expect(preferencesSetMock).toHaveBeenCalledWith({
+        key: MOBILE_RUNTIME_MODE_STORAGE_KEY,
+        value: "cloud",
+      });
+    });
+  });
+
+  it("retains cloud-hybrid when the stamped full-Bun engine supports it", () => {
+    installNativeCapacitorGlobal("ios");
+    window.localStorage.setItem(
+      MOBILE_RUNTIME_MODE_STORAGE_KEY,
+      "cloud-hybrid",
+    );
+
+    const applied = reconcilePersistedMobileRuntimeModeAtBoot({
+      env: {
+        VITE_ELIZA_IOS_RUNTIME_MODE: "cloud",
+        VITE_ELIZA_IOS_API_BASE: "https://agent.example",
+        VITE_ELIZA_IOS_FULL_BUN_AVAILABLE: "1",
+      },
+    });
+
+    expect(applied).toBeNull();
+    expect(window.localStorage.getItem(MOBILE_RUNTIME_MODE_STORAGE_KEY)).toBe(
+      "cloud-hybrid",
+    );
+    expect(preferencesSetMock).not.toHaveBeenCalled();
   });
 
   it("does NOT clobber a cloud mode backed by a live Steward session on a local build", () => {

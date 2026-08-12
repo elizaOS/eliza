@@ -1,11 +1,14 @@
 /**
  * iOS store packaging policy and canonical build-command regressions.
  */
-import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import {
+  resolveIosBuildEnvironment,
+  resolveIosBuildTargetPolicy,
+} from "../../app-core/scripts/mobile/targets/ios.mjs";
 import { resolveIosRuntimeConfig } from "../src/ios-runtime.ts";
 import { evaluateIosStoreEngineGate } from "./ios-store-engine-gate.mjs";
 
@@ -16,30 +19,6 @@ const appRoot = path.resolve(
 const packageJson = JSON.parse(
   fs.readFileSync(path.join(appRoot, "package.json"), "utf8"),
 );
-
-const runnerCommand =
-  "node ../../packages/app-core/scripts/run-mobile-build.mjs ios";
-const probeCommand =
-  "node -e 'process.stdout.write(JSON.stringify({runtimeMode:process.env.VITE_ELIZA_IOS_RUNTIME_MODE??null,localRuntime:process.env.ELIZA_IOS_APP_STORE_LOCAL_RUNTIME??null,fullBun:process.env.ELIZA_IOS_FULL_BUN_ENGINE??null}))'";
-
-function probeBuildScript(scriptName, overrides = {}) {
-  const script = packageJson.scripts[scriptName];
-  expect(script).toBeTypeOf("string");
-  expect(script.endsWith(runnerCommand)).toBe(true);
-
-  const env = { PATH: process.env.PATH, ...overrides };
-  const result = spawnSync(
-    "/bin/sh",
-    ["-c", script.replace(runnerCommand, probeCommand)],
-    {
-      cwd: appRoot,
-      encoding: "utf8",
-      env,
-    },
-  );
-  expect(result.status, result.stderr).toBe(0);
-  return JSON.parse(result.stdout);
-}
 
 /** Build an env with the iOS engine-gate vars unset, then apply overrides. */
 const env = (overrides = {}) => ({
@@ -136,53 +115,86 @@ describe("evaluateIosStoreEngineGate (#8861)", () => {
 });
 
 describe("canonical iOS runtime build scripts", () => {
-  it.each(["build:ios:cloud:sim", "build:ios:cloud:device"])(
-    "%s bakes pure cloud mode without a local runtime payload",
-    (scriptName) => {
-      const resolved = probeBuildScript(scriptName);
+  it("routes both named Cloud commands through the strict ios-cloud target", () => {
+    expect(packageJson.scripts["build:ios:cloud:sim"]).toBe(
+      "ELIZA_IOS_BUILD_DESTINATION='generic/platform=iOS Simulator' ELIZA_IOS_BUILD_SDK=iphonesimulator node ../../packages/app-core/scripts/run-mobile-build.mjs ios-cloud",
+    );
+    expect(packageJson.scripts["build:ios:cloud:device"]).toBe(
+      "ELIZA_IOS_CODE_SIGNING_ALLOWED=YES ELIZA_IOS_ALLOW_PROVISIONING_UPDATES=1 ELIZA_IOS_BUILD_DESTINATION='generic/platform=iOS' ELIZA_IOS_BUILD_SDK=iphoneos node ../../packages/app-core/scripts/run-mobile-build.mjs ios-cloud",
+    );
+    expect(resolveIosBuildTargetPolicy("ios-cloud")).toMatchObject({
+      iosRuntimeMode: "cloud",
+      runtimeExecutionMode: "cloud",
+      runtimeModeAuthority: "target",
+      localEngine: "forbidden",
+    });
+  });
 
-      expect(resolved).toEqual({
-        runtimeMode: "cloud",
-        localRuntime: "0",
-        fullBun: null,
-      });
-      expect(
-        resolveIosRuntimeConfig({
-          VITE_ELIZA_IOS_RUNTIME_MODE: resolved.runtimeMode,
-        }),
-      ).toMatchObject({ mode: "cloud", fullBun: false });
-      expect(
-        evaluateIosStoreEngineGate({
-          ELIZA_BUILD_VARIANT: "store",
-          ELIZA_IOS_APP_STORE_LOCAL_RUNTIME: resolved.localRuntime,
-          ELIZA_IOS_FULL_BUN_ENGINE: resolved.fullBun,
-        }),
-      ).toMatchObject({
-        localRuntimeDisabled: true,
-        engineWillEmbed: false,
-      });
-    },
-  );
+  it("forces inherited local-engine flags off before payload decisions", () => {
+    const resolved = resolveIosBuildEnvironment("ios-cloud", {
+      ELIZA_IOS_APP_STORE_LOCAL_RUNTIME: "1",
+      ELIZA_IOS_FULL_BUN_ENGINE: "1",
+      VITE_ELIZA_IOS_FULL_BUN_AVAILABLE: "1",
+      VITE_ELIZA_IOS_FULL_BUN_STRICT: "1",
+      VITE_ELIZA_IOS_FULL_BUN_SMOKE: "1",
+    });
 
-  it.each(["build:ios:cloud:sim", "build:ios:cloud:device"])(
-    "%s preserves an explicit operator runtime-mode override",
-    (scriptName) => {
-      expect(
-        probeBuildScript(scriptName, {
-          VITE_ELIZA_IOS_RUNTIME_MODE: "cloud-hybrid",
-        }).runtimeMode,
-      ).toBe("cloud-hybrid");
-    },
-  );
+    expect(resolved).toMatchObject({
+      VITE_ELIZA_IOS_RUNTIME_MODE: "cloud",
+      ELIZA_IOS_RUNTIME_MODE: "cloud",
+      ELIZA_IOS_APP_STORE_LOCAL_RUNTIME: "0",
+      ELIZA_IOS_FULL_BUN_ENGINE: "0",
+      VITE_ELIZA_IOS_FULL_BUN_AVAILABLE: "0",
+      VITE_ELIZA_IOS_FULL_BUN_STRICT: "0",
+      VITE_ELIZA_IOS_FULL_BUN_SMOKE: "0",
+      ELIZA_RUNTIME_MODE: "cloud",
+      ELIZA_IOS_INCLUDE_LLAMA: "0",
+    });
+    expect(resolveIosRuntimeConfig(resolved)).toMatchObject({
+      mode: "cloud",
+      fullBun: false,
+    });
+    expect(evaluateIosStoreEngineGate(resolved)).toMatchObject({
+      localRuntimeDisabled: true,
+      engineForced: false,
+      engineWillEmbed: false,
+    });
+  });
+
+  it("rejects a hybrid runtime override on the pure-cloud target", () => {
+    expect(() =>
+      resolveIosBuildEnvironment("ios-cloud", {
+        VITE_ELIZA_IOS_RUNTIME_MODE: "cloud-hybrid",
+      }),
+    ).toThrow(
+      "ios-cloud requires VITE_ELIZA_IOS_RUNTIME_MODE=cloud; received cloud-hybrid",
+    );
+  });
 
   it("leaves the App Store hybrid and local-runtime routes unchanged", () => {
-    expect(packageJson.scripts["build:ios"]).toBe(runnerCommand);
+    expect(packageJson.scripts["build:ios"]).toBe(
+      "node ../../packages/app-core/scripts/run-mobile-build.mjs ios",
+    );
     expect(packageJson.scripts["build:ios:chat-harness"]).toBe(
       "ELIZA_CHAT_UI_HARNESS=1 ELIZA_IOS_APP_STORE_LOCAL_RUNTIME=0 ELIZA_IOS_BUILD_DESTINATION='generic/platform=iOS Simulator' ELIZA_IOS_BUILD_SDK=iphonesimulator node ../../packages/app-core/scripts/run-mobile-build.mjs ios",
     );
     expect(packageJson.scripts["build:ios:local"]).toBe(
       "ELIZA_IOS_FULL_BUN_ENGINE=1 node ../../packages/app-core/scripts/run-mobile-build.mjs ios-local",
     );
+    expect(
+      resolveIosBuildEnvironment("ios", {
+        VITE_ELIZA_IOS_RUNTIME_MODE: "cloud-hybrid",
+      }).VITE_ELIZA_IOS_RUNTIME_MODE,
+    ).toBe("cloud-hybrid");
+    expect(
+      resolveIosBuildEnvironment("ios-local", {
+        VITE_ELIZA_IOS_RUNTIME_MODE: "local",
+        ELIZA_IOS_FULL_BUN_ENGINE: "1",
+      }),
+    ).toMatchObject({
+      VITE_ELIZA_IOS_RUNTIME_MODE: "local",
+      ELIZA_IOS_FULL_BUN_ENGINE: "1",
+    });
     expect(packageJson.scripts["build:ios:local:sim"]).toContain(
       "ELIZA_IOS_FULL_BUN_ENGINE=1",
     );

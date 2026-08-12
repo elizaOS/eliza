@@ -6,7 +6,7 @@
  * Reads app identity from the host's app.config.ts so web, desktop, and
  * native builds share one canonical app contract.
  *
- * Usage: node scripts/run-mobile-build.mjs <android|android-cloud-hybrid|android-sms-gateway|android-cloud|android-cloud-audit [aab-path]|android-cloud-debug|android-system|ios|ios-local|ios-overlay>
+ * Usage: node scripts/run-mobile-build.mjs <android|android-cloud-hybrid|android-sms-gateway|android-cloud|android-cloud-audit [aab-path]|android-cloud-debug|android-system|ios|ios-cloud|ios-local|ios-overlay>
  *
  * Android targets:
  *   - android         Sideload-only debug APK with the on-device agent runtime
@@ -44,6 +44,8 @@
  *   - ios         App Store iOS cloud-hybrid build. Keeps the App Store-safe
  *                 no-JIT local runtime path when available, but strips
  *                 local-yolo bridges and native model runtimes.
+ *   - ios-cloud   App Store iOS pure-cloud build. Rejects local/hybrid runtime
+ *                 overrides and strips every on-device agent payload.
  *   - ios-local   Dev/sideload iOS build. Bakes runtimeMode=local with
  *                 ELIZA_RUNTIME_MODE=local-safe, stages the agent payload,
  *                 and defaults to JSContext/compat unless full Bun is
@@ -149,6 +151,11 @@ import {
   resolveIosCustomPods,
 } from "./mobile/ios-pods.mjs";
 import { resolveAndroidBuildTarget } from "./mobile/targets/android.mjs";
+import {
+  IOS_BUILD_TARGETS,
+  resolveIosBuildEnvironment,
+  resolveIosBuildTargetPolicy,
+} from "./mobile/targets/ios.mjs";
 
 export {
   androidUsesAppDirFor,
@@ -191,6 +198,11 @@ export {
   ANDROID_BUILD_TARGETS,
   resolveAndroidBuildTarget,
 } from "./mobile/targets/android.mjs";
+export {
+  IOS_BUILD_TARGETS,
+  resolveIosBuildEnvironment,
+  resolveIosBuildTargetPolicy,
+} from "./mobile/targets/ios.mjs";
 
 function mobileBuildError(
   message,
@@ -1025,15 +1037,25 @@ export function applyIosAppIdentity({
 // ── Phase 2: Build web bundle ───────────────────────────────────────────
 
 export function resolveMobileBuildPolicy(platform) {
+  if (Object.hasOwn(IOS_BUILD_TARGETS, platform)) {
+    const target = resolveIosBuildTargetPolicy(platform);
+    return {
+      capacitorTarget: target.capacitorTarget,
+      buildVariant: target.buildVariant,
+      androidRuntimeMode: null,
+      iosRuntimeMode: target.iosRuntimeMode,
+      runtimeExecutionMode: target.runtimeExecutionMode,
+      releaseAuthority: target.releaseAuthority,
+      appControlledOta: target.appControlledOta,
+    };
+  }
   const capacitorTarget =
     platform === "android-system" ||
     platform === "android-cloud" ||
     platform === "android-cloud-debug" ||
     platform === "android-cloud-hybrid"
       ? "android"
-      : platform === "ios-overlay" || platform === "ios-local"
-        ? "ios"
-        : platform;
+      : platform;
   // Android runtime mode mirrors the iOS runtime mode pattern: `cloud`
   // means the renderer should treat Eliza Cloud as the only hosting target
   // (Play-Store-compliant thin client; no on-device agent), while `local`
@@ -1047,14 +1069,6 @@ export function resolveMobileBuildPolicy(platform) {
         : platform === "android" || platform === "android-system"
           ? "local"
           : null;
-  const iosRuntimeMode =
-    platform === "ios-local"
-      ? "local"
-      : platform === "ios"
-        ? "cloud-hybrid"
-        : platform === "ios-overlay"
-          ? "cloud"
-          : null;
   const runtimeExecutionMode =
     platform === "android-cloud" || platform === "android-cloud-debug"
       ? "cloud"
@@ -1062,15 +1076,8 @@ export function resolveMobileBuildPolicy(platform) {
           platform === "android-system" ||
           platform === "android-cloud-hybrid"
         ? "local-yolo"
-        : platform === "ios-local"
-          ? "local-safe"
-          : platform === "ios"
-            ? "local-safe"
-            : platform === "ios-overlay"
-              ? "cloud"
-              : null;
-  const buildVariant =
-    platform === "android-cloud" || platform === "ios" ? "store" : "direct";
+        : null;
+  const buildVariant = platform === "android-cloud" ? "store" : "direct";
   const releaseAuthority =
     platform === "android-cloud"
       ? "google-play"
@@ -1078,18 +1085,14 @@ export function resolveMobileBuildPolicy(platform) {
         ? "github-release-android-package-installer"
         : platform === "android-system"
           ? "aosp-ota"
-          : platform === "ios"
-            ? "apple-app-store"
-            : platform === "ios-local"
-              ? "developer-toolchain"
-              : platform === "android-cloud-debug"
-                ? "developer-debug"
-                : "developer-toolchain";
+          : platform === "android-cloud-debug"
+            ? "developer-debug"
+            : "developer-toolchain";
   return {
     capacitorTarget,
     buildVariant,
     androidRuntimeMode,
-    iosRuntimeMode,
+    iosRuntimeMode: null,
     runtimeExecutionMode,
     releaseAuthority,
     appControlledOta: false,
@@ -8475,48 +8478,13 @@ function withCocoaPodsEnv(baseEnv = process.env) {
   };
 }
 
-function configureIosLocalBuildDefaults() {
-  setDefaultProcessEnv("ELIZA_IOS_RUNTIME_MODE", "local");
-  setDefaultProcessEnv("VITE_ELIZA_IOS_RUNTIME_MODE", "local");
-  setDefaultProcessEnv("ELIZA_RUNTIME_MODE", "local-safe");
-  setDefaultProcessEnv("RUNTIME_MODE", "local-safe");
-  setDefaultProcessEnv("LOCAL_RUNTIME_MODE", "local-safe");
-  setDefaultProcessEnv("VITE_ELIZA_RUNTIME_MODE", "local-safe");
-  if (isIosAppStoreBuild()) {
-    process.env.ELIZA_IOS_INCLUDE_LLAMA = "0";
-  } else {
-    setDefaultProcessEnv("ELIZA_IOS_INCLUDE_LLAMA", "1");
-  }
-  setDefaultProcessEnv(
-    "ELIZA_IOS_BUILD_DESTINATION",
-    "generic/platform=iOS Simulator",
-  );
-  setDefaultProcessEnv("ELIZA_IOS_BUILD_SDK", "iphonesimulator");
-}
-
-export function configureIosAppStoreBuildDefaults() {
-  setDefaultProcessEnv("ELIZA_BUILD_VARIANT", "store");
-  setDefaultProcessEnv("ELIZA_RELEASE_AUTHORITY", "apple-app-store");
-  setDefaultProcessEnv("ELIZA_IOS_RUNTIME_MODE", "cloud-hybrid");
-  setDefaultProcessEnv("VITE_ELIZA_IOS_RUNTIME_MODE", "cloud-hybrid");
-  setDefaultProcessEnv("ELIZA_RUNTIME_MODE", "local-safe");
-  setDefaultProcessEnv("RUNTIME_MODE", "local-safe");
-  setDefaultProcessEnv("LOCAL_RUNTIME_MODE", "local-safe");
-  setDefaultProcessEnv("VITE_ELIZA_RUNTIME_MODE", "local-safe");
-  process.env.ELIZA_IOS_INCLUDE_LLAMA = "0";
-}
-
-async function buildIos({ local = false } = {}) {
+async function buildIos(target = "ios") {
+  Object.assign(process.env, resolveIosBuildEnvironment(target, process.env));
   if (process.platform !== "darwin")
     throw new Error("iOS builds require macOS and Xcode.");
 
-  if (local) {
-    configureIosLocalBuildDefaults();
-  } else {
-    configureIosAppStoreBuildDefaults();
-  }
-
-  const iosBuildPolicy = resolveMobileBuildPolicy(local ? "ios-local" : "ios");
+  const local = target === "ios-local";
+  const iosBuildPolicy = resolveMobileBuildPolicy(target);
   setDefaultProcessEnv(
     "ELIZA_CAPACITOR_BUILD_TARGET",
     iosBuildPolicy.capacitorTarget,
@@ -8549,7 +8517,7 @@ async function buildIos({ local = false } = {}) {
     "prepare-ios-cocoapods.sh",
   );
 
-  await buildWeb(local ? "ios-local" : "ios");
+  await buildWeb(target);
   await ensurePlatform("ios");
   if (includesLocalAgentPayload) {
     // Stage once before CocoaPods/Capacitor native dependency work so a
@@ -8569,7 +8537,7 @@ async function buildIos({ local = false } = {}) {
   // Whether sync runs or is skipped, dist is about to be staged into
   // ios/App/App/public (cap sync webDir copy and/or the mirror overlay just
   // below) — verify it matches this lane first (#11030).
-  await ensureRendererDistMatchesLane(local ? "ios-local" : "ios");
+  await ensureRendererDistMatchesLane(target);
   if (shouldSkipIosCapacitorSync()) {
     console.log("[mobile-build] Skipping Capacitor iOS sync.");
   } else {
@@ -8666,6 +8634,8 @@ async function buildIos({ local = false } = {}) {
 
 export async function main(argv = process.argv.slice(2)) {
   const target = argv[0];
+  const isIosTarget =
+    typeof target === "string" && Object.hasOwn(IOS_BUILD_TARGETS, target);
   if (
     target !== "android" &&
     target !== "android-cloud-hybrid" &&
@@ -8674,12 +8644,10 @@ export async function main(argv = process.argv.slice(2)) {
     target !== "android-cloud-audit" &&
     target !== "android-cloud-debug" &&
     target !== "android-system" &&
-    target !== "ios" &&
-    target !== "ios-local" &&
-    target !== "ios-overlay"
+    !isIosTarget
   ) {
     console.error(
-      "Usage: node scripts/run-mobile-build.mjs <android|android-cloud-hybrid|android-sms-gateway|android-cloud|android-cloud-audit [aab-path]|android-cloud-debug|android-system|ios|ios-local|ios-overlay>",
+      "Usage: node scripts/run-mobile-build.mjs <android|android-cloud-hybrid|android-sms-gateway|android-cloud|android-cloud-audit [aab-path]|android-cloud-debug|android-system|ios|ios-cloud|ios-local|ios-overlay>",
     );
     process.exit(1);
   }
@@ -8706,11 +8674,7 @@ export async function main(argv = process.argv.slice(2)) {
     await buildAndroidCloud({ debug: true });
   } else if (target === "android-system") {
     await buildAndroidSystem();
-  } else if (target === "ios") {
-    await buildIos();
-  } else if (target === "ios-local") {
-    await buildIos({ local: true });
-  } else {
+  } else if (target === "ios-overlay") {
     prepareIosOverlay();
     await generateIosBrandAssets();
     // The App Store release pipeline splits the build into `bun run build`
@@ -8727,6 +8691,8 @@ export async function main(argv = process.argv.slice(2)) {
         includeFullBunEngine: true,
       });
     }
+  } else {
+    await buildIos(target);
   }
 }
 
