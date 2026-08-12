@@ -99,6 +99,7 @@ export * from "./api/index.ts";
 export { setOwnerContact } from "./api/owner-contact-helpers.ts";
 export {
   findPrimaryEnvKey,
+  isBlockedEnvKey,
   readBundledPluginPackageMetadata,
 } from "./api/plugin-discovery-helpers.ts";
 export * from "./api/plugin-runtime-apply.ts";

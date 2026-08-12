@@ -25,6 +25,11 @@ export const DiscordConnectionMetadataSchema = z
     disabledChannels: z.array(z.string()).optional(),
     responseMode: z.enum(["always", "mention", "keyword"]).optional(),
     keywords: z.array(z.string()).optional(),
+    /** Discord user snowflake treated as the bot owner. */
+    ownerDiscordUserId: z
+      .string()
+      .regex(/^\d{15,20}$/)
+      .optional(),
   })
   .refine(
     (data) => {
