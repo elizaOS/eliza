@@ -199,6 +199,211 @@ describe("google plugin", () => {
     });
   });
 
+  it("re-auth with accountId and omitted scopes reuses the account's granted capabilities", async () => {
+    const runtime = {
+      getSetting: (key: string) =>
+        ({
+          GOOGLE_CLIENT_ID: "google-client",
+          GOOGLE_CLIENT_SECRET: "google-secret",
+          GOOGLE_REDIRECT_URI: "http://localhost/oauth/google/callback",
+        })[key],
+      getService: () => null,
+    } as never;
+    const provider = createGoogleConnectorAccountProvider(runtime);
+    const manager = {
+      getAccount: vi.fn(async () => ({
+        id: "acct_google_reauth",
+        provider: "google",
+        role: "OWNER",
+        purpose: ["calendar"],
+        accessGate: "open",
+        status: "connected",
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        metadata: {
+          grantedCapabilities: ["calendar.read", "gmail.read"],
+        },
+      })),
+    };
+
+    const result = await provider.startOAuth?.(
+      {
+        provider: "google",
+        accountId: "acct_google_reauth",
+        flow: {
+          id: "flow-reauth-granted",
+          provider: "google",
+          state: "state-reauth-granted",
+          status: "pending",
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+        },
+      },
+      manager as never
+    );
+
+    expect(manager.getAccount).toHaveBeenCalledWith("google", "acct_google_reauth");
+    const url = new URL(result?.authUrl ?? "");
+    const requestedScopes = new Set(
+      (url.searchParams.get("scope") ?? "").split(" ").filter(Boolean)
+    );
+    expect(requestedScopes).toEqual(
+      new Set([
+        GOOGLE_OAUTH_SCOPES.profile.openid,
+        GOOGLE_OAUTH_SCOPES.profile.email,
+        GOOGLE_OAUTH_SCOPES.profile.profile,
+        GOOGLE_OAUTH_SCOPES.calendar.read,
+        GOOGLE_OAUTH_SCOPES.gmail.read,
+      ])
+    );
+    expect(requestedScopes).not.toContain(GOOGLE_OAUTH_SCOPES.calendar.write);
+    expect(requestedScopes).not.toContain(GOOGLE_OAUTH_SCOPES.gmail.send);
+    expect(requestedScopes).not.toContain(GOOGLE_OAUTH_SCOPES.drive.read);
+    expect(result?.metadata).toMatchObject({
+      requestedCapabilities: ["calendar.read", "gmail.read"],
+    });
+  });
+
+  it("re-auth fails closed when the account is missing", async () => {
+    const runtime = {
+      getSetting: (key: string) =>
+        ({
+          GOOGLE_CLIENT_ID: "google-client",
+          GOOGLE_CLIENT_SECRET: "google-secret",
+          GOOGLE_REDIRECT_URI: "http://localhost/oauth/google/callback",
+        })[key],
+      getService: () => null,
+    } as never;
+    const provider = createGoogleConnectorAccountProvider(runtime);
+    const manager = {
+      getAccount: vi.fn(async () => null),
+    };
+
+    await expect(
+      provider.startOAuth?.(
+        {
+          provider: "google",
+          accountId: "acct_missing",
+          flow: {
+            id: "flow-reauth-missing",
+            provider: "google",
+            state: "state-reauth-missing",
+            status: "pending",
+            createdAt: Date.now(),
+            updatedAt: Date.now(),
+          },
+        },
+        manager as never
+      )
+    ).rejects.toThrow("could not find account acct_missing");
+  });
+
+  it("re-auth fails closed when the account has no recorded granted capabilities", async () => {
+    const runtime = {
+      getSetting: (key: string) =>
+        ({
+          GOOGLE_CLIENT_ID: "google-client",
+          GOOGLE_CLIENT_SECRET: "google-secret",
+          GOOGLE_REDIRECT_URI: "http://localhost/oauth/google/callback",
+        })[key],
+      getService: () => null,
+    } as never;
+    const provider = createGoogleConnectorAccountProvider(runtime);
+    const manager = {
+      getAccount: vi.fn(async () => ({
+        id: "acct_empty_grant",
+        provider: "google",
+        role: "OWNER",
+        purpose: ["messaging"],
+        accessGate: "open",
+        status: "connected",
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        metadata: {},
+      })),
+    };
+
+    await expect(
+      provider.startOAuth?.(
+        {
+          provider: "google",
+          accountId: "acct_empty_grant",
+          flow: {
+            id: "flow-reauth-empty",
+            provider: "google",
+            state: "state-reauth-empty",
+            status: "pending",
+            createdAt: Date.now(),
+            updatedAt: Date.now(),
+          },
+        },
+        manager as never
+      )
+    ).rejects.toThrow("none are recorded");
+  });
+
+  it("explicit scopes still override re-auth account grants", async () => {
+    const runtime = {
+      getSetting: (key: string) =>
+        ({
+          GOOGLE_CLIENT_ID: "google-client",
+          GOOGLE_CLIENT_SECRET: "google-secret",
+          GOOGLE_REDIRECT_URI: "http://localhost/oauth/google/callback",
+        })[key],
+      getService: () => null,
+    } as never;
+    const provider = createGoogleConnectorAccountProvider(runtime);
+    const manager = {
+      getAccount: vi.fn(async () => ({
+        id: "acct_override",
+        provider: "google",
+        role: "OWNER",
+        purpose: ["messaging"],
+        accessGate: "open",
+        status: "connected",
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        metadata: {
+          grantedCapabilities: ["gmail.read", "gmail.send"],
+        },
+      })),
+    };
+
+    const result = await provider.startOAuth?.(
+      {
+        provider: "google",
+        accountId: "acct_override",
+        scopes: ["calendar.read"],
+        flow: {
+          id: "flow-reauth-override",
+          provider: "google",
+          state: "state-reauth-override",
+          status: "pending",
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+        },
+      },
+      manager as never
+    );
+
+    expect(manager.getAccount).not.toHaveBeenCalled();
+    const url = new URL(result?.authUrl ?? "");
+    const requestedScopes = new Set(
+      (url.searchParams.get("scope") ?? "").split(" ").filter(Boolean)
+    );
+    expect(requestedScopes).toEqual(
+      new Set([
+        GOOGLE_OAUTH_SCOPES.profile.openid,
+        GOOGLE_OAUTH_SCOPES.profile.email,
+        GOOGLE_OAUTH_SCOPES.profile.profile,
+        GOOGLE_OAUTH_SCOPES.calendar.read,
+      ])
+    );
+    expect(result?.metadata).toMatchObject({
+      requestedCapabilities: ["calendar.read"],
+    });
+  });
+
   it("keeps account auth resolution explicit", async () => {
     const service = new GoogleWorkspaceService();
     const metadata = service.getOAuthProviderMetadata();

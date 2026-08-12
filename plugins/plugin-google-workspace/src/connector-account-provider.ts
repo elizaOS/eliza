@@ -11,6 +11,11 @@
  * capabilities (gmail.read+send+manage, calendar.read+write, drive.read+write,
  * meet.create+read) are requested; granted capabilities are recorded on the
  * returned account so downstream consumers know which surfaces are usable.
+ *
+ * Re-auth (`accountId` set, scopes omitted) reuses that account's stored
+ * `grantedCapabilities` so a reconnect never expands privilege beyond the
+ * prior grant. New-account starts without scopes keep the all-capability
+ * default until a caller supplies an explicit subset.
  */
 
 import { createHash, randomBytes } from "node:crypto";
@@ -165,6 +170,66 @@ function normalizeRequestedCapabilities(scopes: readonly string[] | undefined): 
     );
   }
   return [...requested];
+}
+
+/**
+ * Reads recognized capability IDs from account metadata. Unknown entries are
+ * dropped rather than expanded so a re-auth cannot invent new privileges.
+ */
+function grantedCapabilitiesFromMetadata(metadata: unknown): GoogleCapability[] {
+  if (!isRecord(metadata)) return [];
+  const raw = metadata.grantedCapabilities;
+  if (!Array.isArray(raw)) return [];
+  const capabilities: GoogleCapability[] = [];
+  for (const value of raw) {
+    if (typeof value === "string" && isGoogleCapability(value)) {
+      capabilities.push(value);
+    }
+  }
+  return capabilities;
+}
+
+/**
+ * Resolves the capability list for startOAuth. Explicit `scopes` always win.
+ * When scopes are omitted and `accountId` names an existing account, re-auth
+ * reuses that account's stored grant (least privilege). Missing accounts and
+ * empty grants fail closed.
+ */
+async function resolveStartOAuthCapabilities(
+  request: ConnectorOAuthStartRequest,
+  manager: ConnectorAccountManager
+): Promise<GoogleCapability[]> {
+  const hasExplicitScopes = Array.isArray(request.scopes) && request.scopes.length > 0;
+  if (hasExplicitScopes) {
+    return normalizeRequestedCapabilities(request.scopes);
+  }
+
+  const accountId = nonEmptyString(request.accountId);
+  if (!accountId) {
+    return normalizeRequestedCapabilities(request.scopes);
+  }
+
+  const account = await manager.getAccount(GOOGLE_SERVICE_NAME, accountId);
+  if (!account) {
+    throw new ElizaError(`Google OAuth re-auth could not find account ${accountId}.`, {
+      code: "GOOGLE_OAUTH_ACCOUNT_NOT_FOUND",
+      context: { accountId, provider: GOOGLE_SERVICE_NAME },
+      severity: "fatal",
+    });
+  }
+
+  const granted = grantedCapabilitiesFromMetadata(account.metadata);
+  if (granted.length === 0) {
+    throw new ElizaError(
+      "Google OAuth re-auth requires the account's granted capabilities; none are recorded.",
+      {
+        code: "GOOGLE_OAUTH_CAPABILITY_REQUIRED",
+        context: { accountId, provider: GOOGLE_SERVICE_NAME },
+        severity: "fatal",
+      }
+    );
+  }
+  return granted;
 }
 
 function normalizeGrantedCapabilities(scopes: readonly string[]): {
@@ -412,11 +477,11 @@ export function createGoogleConnectorAccountProvider(
 
     startOAuth: async (
       request: ConnectorOAuthStartRequest,
-      _manager: ConnectorAccountManager
+      manager: ConnectorAccountManager
     ): Promise<ConnectorOAuthStartResult> => {
       const config = readClientConfig(runtime);
       const redirectUri = request.redirectUri ?? config.redirectUri;
-      const capabilities = normalizeRequestedCapabilities(request.scopes);
+      const capabilities = await resolveStartOAuthCapabilities(request, manager);
       const oauthScopes = scopesForGoogleCapabilities(capabilities);
       const codeVerifier = createCodeVerifier();
       const codeChallenge = createCodeChallenge(codeVerifier);
