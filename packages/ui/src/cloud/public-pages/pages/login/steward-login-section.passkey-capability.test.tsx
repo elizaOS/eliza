@@ -289,6 +289,36 @@ describe("StewardLoginSection passkey capability gating", () => {
     );
   });
 
+  it("surfaces UV error and does not enter passkey signup when sign-in fails with user-verification required", async () => {
+    // Reproduces #18468: signInWithPasskey failing with a UV error was silently
+    // swallowed by the bare catch, which called startPasskeySignup() instead —
+    // sending the user a "Set up your passkey" OTP email and then hitting the
+    // same UV constraint again during addPasskey().
+    capabilityRef.usable = true;
+    capabilityRef.reason = "available";
+    stewardAuthSpies.signInWithPasskey.mockRejectedValue(
+      new Error(
+        "User verification was required, but user could not be verified",
+      ),
+    );
+
+    renderSection();
+
+    const input = await screen.findByPlaceholderText("you@example.com");
+    fireEvent.change(input, { target: { value: "person@example.com" } });
+    fireEvent.click(screen.getByRole("button", { name: /Passkey/i }));
+
+    // Error is surfaced; no OTP email is sent, no signup flow is entered.
+    await waitFor(() =>
+      expect(stewardAuthSpies.signInWithPasskey).toHaveBeenCalledWith(
+        "person@example.com",
+      ),
+    );
+    expect(await screen.findByText(/user could not be verified/i)).toBeTruthy();
+    expect(stewardAuthSpies.sendEmailOtp).not.toHaveBeenCalled();
+    expect(screen.queryByText("Set up your passkey")).toBeNull();
+  });
+
   it("rejects a too-short OTP code without calling the API and reports a cancelled passkey setup", async () => {
     capabilityRef.usable = true;
     capabilityRef.reason = "available";

@@ -3,7 +3,8 @@
  * fallback, and zip cache hits. Network is a deterministic fetch stub.
  */
 import { describe, expect, it } from "bun:test";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -12,6 +13,7 @@ import {
   ensureBunReleaseZip,
   resolveBunAsset,
   serveBunZip,
+  writeStoredZip,
 } from "../ci-fetch-bun-release.mjs";
 
 const BUN_VERSION = "1.3.14";
@@ -138,6 +140,57 @@ describe("ensureBunReleaseZip", () => {
     expect(result.cacheHit).toBe(false);
     expect(seen[0]).toContain("github.com/oven-sh/bun/releases/download");
     expect(result.source).toContain("registry.npmjs.org/@oven/bun-linux-x64");
+  });
+
+  it("converts an npm tarball into a GitHub-layout zip without the zip CLI", async () => {
+    const staging = mkdtempSync(join(tmpdir(), "bun-npm-src-"));
+    mkdirSync(join(staging, "package"), { recursive: true });
+    writeFileSync(join(staging, "package", "bun"), Buffer.alloc(2048, 0x61));
+    const tgzPath = join(staging, "bun.tgz");
+    execFileSync("tar", ["-czf", tgzPath, "-C", staging, "package"]);
+    const tgz = readFileSync(tgzPath);
+    expect(tgz[0]).toBe(0x1f);
+    expect(tgz[1]).toBe(0x8b);
+
+    const outDir = mkdtempSync(join(tmpdir(), "bun-zip-tgz-"));
+    const result = await ensureBunReleaseZip({
+      outDir,
+      host: { platform: "linux", arch: "x64", hasAvx2: true },
+      attempts: 1,
+      fetchImpl: async (url) => {
+        if (String(url).includes("github.com")) {
+          return {
+            ok: false,
+            status: 503,
+            arrayBuffer: async () => Buffer.alloc(0),
+          };
+        }
+        return { ok: true, arrayBuffer: async () => tgz };
+      },
+    });
+    expect(result.source).toContain("registry.npmjs.org/@oven/bun-linux-x64");
+    const zip = readFileSync(result.zipPath);
+    expect(zip[0]).toBe(0x50);
+    expect(zip[1]).toBe(0x4b);
+    expect(zip.includes(Buffer.from("bun-linux-x64/bun"))).toBe(true);
+  });
+});
+
+describe("writeStoredZip", () => {
+  it("writes a PK zip that contains the GitHub release path", () => {
+    const outDir = mkdtempSync(join(tmpdir(), "bun-stored-zip-"));
+    const zipPath = join(outDir, "bun.zip");
+    writeStoredZip(zipPath, [
+      {
+        name: "bun-linux-x64/bun",
+        data: Buffer.alloc(2048, 0x62),
+        executable: true,
+      },
+    ]);
+    const zip = readFileSync(zipPath);
+    expect(zip[0]).toBe(0x50);
+    expect(zip[1]).toBe(0x4b);
+    expect(zip.includes(Buffer.from("bun-linux-x64/bun"))).toBe(true);
   });
 });
 
