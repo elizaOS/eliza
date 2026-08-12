@@ -1903,6 +1903,58 @@ describe("AcpService", () => {
     expect((await service.getSession(sessionId))?.status).toBe("ready");
   });
 
+  it("attaches the prompt-start session snapshot to terminal events", async () => {
+    const service = new AcpService(runtime({ ELIZA_ACP_TRANSPORT: "native" }));
+    let terminalSnapshot: SessionInfo | undefined;
+    service.onSessionEvent((_sid, event, _payload, sessionSnapshot) => {
+      if (event === "task_complete") terminalSnapshot = sessionSnapshot;
+    });
+    await service.start();
+    const { sessionId } = await service.spawnSession({
+      name: "native-routing-snapshot",
+      agentType: "codex",
+      workdir: "/tmp/acp-test",
+      metadata: {
+        taskId: "task-a",
+        originRoomId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        taskRoomId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+        label: "task-a-label",
+      },
+    });
+    const client = firstNativeClient();
+    client.prompt.mockImplementationOnce(async () => {
+      client.emit({
+        jsonrpc: "2.0",
+        id: "prompt",
+        sessionId: "protocol-session",
+        result: {
+          stopReason: "end_turn",
+          content: [{ type: "text", text: "task A result" }],
+        },
+      } as AcpJsonRpcMessage);
+      await service.updateSessionMetadata(sessionId, {
+        taskId: "task-b",
+        originRoomId: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+        taskRoomId: "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+        label: "task-b-label",
+      });
+      return { stopReason: "end_turn" };
+    });
+
+    await service.sendPrompt(sessionId, "finish task A");
+
+    expect(terminalSnapshot?.metadata).toMatchObject({
+      taskId: "task-a",
+      originRoomId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      taskRoomId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+      label: "task-a-label",
+    });
+    expect((await service.getSession(sessionId))?.metadata).toMatchObject({
+      taskId: "task-b",
+      label: "task-b-label",
+    });
+  });
+
   it.each(["max_tokens", "interrupted"])(
     "native sendPrompt does not advertise an incomplete %s turn as task_complete",
     async (stopReason) => {

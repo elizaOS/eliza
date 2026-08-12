@@ -811,6 +811,12 @@ export class AcpService extends Service {
   private spawnReservationLock: Promise<void> = Promise.resolve();
   private readonly sessionTimeoutMs?: number;
   private readonly sessionCallbacks: SessionEventCallback[] = [];
+  // The immutable session identity at the start of the active prompt turn.
+  // A keepAlive session may be re-homed as soon as its prompt returns, while
+  // async event subscribers are still draining the terminal event. Passing
+  // this snapshot with every event prevents those subscribers from resolving
+  // the completed turn through the session's next task metadata (#18490).
+  private readonly promptSessionSnapshots = new Map<string, SessionInfo>();
   private readonly acpCallbacks: AcpEventCallback[] = [];
   private readonly activeProcesses = new Map<string, ProcessRecord>();
   private readonly nativeClients = new Map<string, NativeAcpClient>();
@@ -2068,6 +2074,10 @@ export class AcpService extends Service {
   ): Promise<PromptResult> {
     this.ensureStarted();
     const session = await this.requireSession(sessionId);
+    this.promptSessionSnapshots.set(sessionId, {
+      ...session,
+      metadata: session.metadata ? { ...session.metadata } : undefined,
+    });
     const transportMode = sessionTransportMode(session, this.transportMode);
     if (
       transportMode !== "native" &&
@@ -2342,6 +2352,7 @@ export class AcpService extends Service {
     await this.removeOwnedScratchWorkdir(session);
     await this.removeOwnedGitIndex(session);
     await this.store.delete(sessionId);
+    this.promptSessionSnapshots.delete(sessionId);
     this.outputBuffers.delete(sessionId);
     this.turnOutputBuffers.delete(sessionId);
     this.eventTrails.delete(sessionId);
@@ -3911,9 +3922,10 @@ export class AcpService extends Service {
     data: unknown,
   ): void {
     this.recordEventTrail(sessionId, event, data);
+    const sessionSnapshot = this.promptSessionSnapshots.get(sessionId);
     for (const callback of [...this.sessionCallbacks]) {
       try {
-        callback(sessionId, event, data);
+        callback(sessionId, event, data, sessionSnapshot);
       } catch (err) {
         // error-policy:J7 isolate a throwing subscriber so the remaining session
         // callbacks still run; the failure is warn-logged.

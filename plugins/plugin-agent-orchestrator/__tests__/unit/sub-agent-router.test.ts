@@ -35,7 +35,12 @@ const SESSION_ID = "01234567-89ab-cdef-0123-456789abcdef";
 const BRIDGE_SYMBOL = Symbol.for("eliza.account-pool.coding-agent.v1");
 
 interface CapturedHandler {
-  fn?: (sessionId: string, event: string, data: unknown) => void;
+  fn?: (
+    sessionId: string,
+    event: string,
+    data: unknown,
+    sessionSnapshot?: SessionInfo,
+  ) => void;
 }
 
 const stubbedGlobals = new Map<PropertyKey, unknown>();
@@ -875,6 +880,65 @@ describe("SubAgentRouter", () => {
     await new Promise((r) => setImmediate(r));
 
     expect(handleMessage).toHaveBeenCalledTimes(2);
+  });
+
+  it("routes a terminal event with its prompt snapshot after session re-home", async () => {
+    const taskASnapshot = makeSession({
+      metadata: {
+        taskId: "task-a",
+        label: "task A",
+        roomId: ROOM,
+        taskRoomId: ROOM,
+        messageId: PARENT_MSG,
+        source: "telegram",
+        initialTask: "build task A",
+      },
+    });
+    const taskBRoom = "77777777-7777-4777-8777-777777777777";
+    const taskBSession = makeSession({
+      metadata: {
+        taskId: "task-b",
+        label: "task B",
+        roomId: taskBRoom,
+        taskRoomId: taskBRoom,
+        messageId: "88888888-8888-4888-8888-888888888888",
+        source: "telegram",
+        initialTask: "audit task B",
+      },
+    });
+    const captured: CapturedHandler = {};
+    const service = {
+      onSessionEvent: vi.fn((handler: typeof captured.fn) => {
+        captured.fn = handler;
+        return () => {
+          captured.fn = undefined;
+        };
+      }),
+      getSession: vi.fn(async () => taskBSession),
+      listSessions: vi.fn(async () => [taskBSession]),
+      getChangedPaths: vi.fn(() => [] as string[]),
+      updateSessionMetadata: vi.fn(async () => undefined),
+    };
+    const { runtime, handleMessage } = makeRuntime({ acp: service });
+    const router = await SubAgentRouter.start(runtime);
+
+    captured.fn?.(
+      SESSION_ID,
+      "task_complete",
+      { response: "task A result" },
+      taskASnapshot,
+    );
+    await new Promise((resolve) => setImmediate(resolve));
+
+    expect(handleMessage).toHaveBeenCalledTimes(1);
+    const posted = handleMessage.mock.calls[0]?.[1];
+    if (!posted) throw new Error("expected task A completion memory");
+    expect(posted.roomId).toBe(ROOM);
+    expect(posted.roomId).not.toBe(taskBRoom);
+    expect(posted.content?.text).toContain("task A");
+    expect(posted.content?.text).toContain("task A result");
+    expect(posted.content?.text).not.toContain("task B");
+    await router.stop();
   });
 
   it("skips sessions without origin metadata (no roomId)", async () => {

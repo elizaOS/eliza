@@ -43,6 +43,7 @@ import {
   createRouterLoopState,
   routerLoopTransition,
 } from "../../src/services/router-loop-guard.js";
+import type { SessionInfo } from "../../src/services/types.js";
 import { CodingWorkspaceService } from "../../src/services/workspace-service.js";
 
 // This suite pins the status state machine and the ACP→task event bridge — NOT
@@ -76,7 +77,12 @@ interface SpawnResult {
  */
 class FakeAcp {
   private handler:
-    | ((sessionId: string, event: string, data: unknown) => void)
+    | ((
+        sessionId: string,
+        event: string,
+        data: unknown,
+        sessionSnapshot?: SessionInfo,
+      ) => void)
     | null = null;
   private counter = 0;
   readonly spawnArgs: Record<string, unknown>[] = [];
@@ -88,7 +94,12 @@ class FakeAcp {
   failSpawn = false;
 
   onSessionEvent(
-    cb: (sessionId: string, event: string, data: unknown) => void,
+    cb: (
+      sessionId: string,
+      event: string,
+      data: unknown,
+      sessionSnapshot?: SessionInfo,
+    ) => void,
   ): () => void {
     this.handler = cb;
     return () => {
@@ -96,8 +107,13 @@ class FakeAcp {
     };
   }
 
-  emit(sessionId: string, event: string, data: unknown = {}): void {
-    this.handler?.(sessionId, event, data);
+  emit(
+    sessionId: string,
+    event: string,
+    data: unknown = {},
+    sessionSnapshot?: SessionInfo,
+  ): void {
+    this.handler?.(sessionId, event, data, sessionSnapshot);
   }
 
   spawnSession(opts: Record<string, unknown>): Promise<SpawnResult> {
@@ -832,6 +848,62 @@ describe("OrchestratorTaskService — lifecycle", () => {
       accountLabel: "Work",
     });
     expect(detail.sessions[0]?.stoppedAt).toBeTruthy();
+  });
+
+  it("records a reused session's completion against its prompt task snapshot", async () => {
+    const acp = new FakeAcp();
+    const { service } = makeServiceWithStore(acp);
+    await service.start();
+    const taskA = await service.createTask(
+      createInput({ title: "Task A", goal: "Build task A" }),
+    );
+    const taskB = await service.createTask(
+      createInput({ title: "Task B", goal: "Audit task B" }),
+    );
+    const sessionId = "reused-session";
+    await service.attachSession(taskA.id, {
+      sessionId,
+      agentType: "codex",
+      workdir: "/repo",
+      status: "ready",
+      metadata: { taskId: taskA.id },
+    });
+    await service.attachSession(taskB.id, {
+      sessionId,
+      agentType: "codex",
+      workdir: "/repo",
+      status: "ready",
+      metadata: { taskId: taskB.id },
+    });
+    const snapshot: SessionInfo = {
+      id: sessionId,
+      agentType: "codex",
+      workdir: "/repo",
+      status: "ready",
+      approvalPreset: "standard",
+      createdAt: new Date(0),
+      lastActivityAt: new Date(0),
+      metadata: { taskId: taskA.id },
+    };
+
+    acp.emit(
+      sessionId,
+      "task_complete",
+      { response: "task A result" },
+      snapshot,
+    );
+    await flush();
+
+    expect(
+      must(await service.getTask(taskA.id), "task A").events.map(
+        (event) => event.eventType,
+      ),
+    ).toContain("task_complete");
+    expect(
+      must(await service.getTask(taskB.id), "task B").events.map(
+        (event) => event.eventType,
+      ),
+    ).not.toContain("task_complete");
   });
 
   it("reports room message delivery failures instead of claiming success", async () => {

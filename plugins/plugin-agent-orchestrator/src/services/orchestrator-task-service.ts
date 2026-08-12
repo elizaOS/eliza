@@ -1140,9 +1140,11 @@ export class OrchestratorTaskService extends Service {
   }
 
   private subscribeToAcp(acp: AcpService): void {
-    this.unsubscribe = acp.onSessionEvent((sessionId, event, data) => {
-      void this.onSessionEvent(sessionId, event, data);
-    });
+    this.unsubscribe = acp.onSessionEvent(
+      (sessionId, event, data, sessionSnapshot) => {
+        void this.onSessionEvent(sessionId, event, data, sessionSnapshot);
+      },
+    );
   }
 
   private async bindToAcpWhenReady(): Promise<void> {
@@ -1551,9 +1553,14 @@ export class OrchestratorTaskService extends Service {
     sessionId: string,
     event: string,
     data: unknown,
+    sessionSnapshot?: SessionInfo,
   ): Promise<void> {
     try {
-      const taskId = await this.resolveTaskId(sessionId);
+      const snapshotTaskId = sessionSnapshot?.metadata?.taskId;
+      const taskId =
+        typeof snapshotTaskId === "string" && snapshotTaskId.trim()
+          ? snapshotTaskId
+          : await this.resolveTaskId(sessionId);
       if (!taskId) return;
       await this.store.addEvent({
         id: randomUUID(),
