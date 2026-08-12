@@ -49,6 +49,7 @@ import { pipeline } from "node:stream/promises";
 import {
   type AgentRuntime,
   applyBackgroundInferenceBudget,
+  createService,
   type GenerateTextParams,
   getInferencePriorityGate,
   type IAgentRuntime,
@@ -57,6 +58,7 @@ import {
   ModelType,
   resolveBackgroundInferenceBudget,
   resolveStateDir,
+  Service,
   type TextEmbeddingParams,
   type TextToSpeechParams,
   type TranscriptionParams,
@@ -88,6 +90,10 @@ import {
 const SERVICE_NAME = "localInferenceLoader";
 const PROVIDER = "eliza-aosp-llama";
 const registeredRuntimes = new WeakSet<AgentRuntime>();
+const aospOwnerPromises = new WeakMap<
+  IAgentRuntime,
+  Promise<AospLoaderOwner | null>
+>();
 const AOSP_ACTIVE_MODEL_STATE_FILE = "aosp-active.json";
 let routeActivationLoader: AospLoader | null = null;
 
@@ -125,6 +131,8 @@ export interface AospLoader {
     embedding: number[];
     tokens: number;
   }>;
+  /** Release the loader's native library handle after its model is unloaded. */
+  close?(): Promise<void>;
 }
 
 /**
@@ -154,6 +162,9 @@ export function instrumentLoaderForIdleTracking(
     unloadModel: () => loader.unloadModel(),
     generate: track(loader.generate.bind(loader)),
     embed: track(loader.embed.bind(loader)),
+    ...(loader.close
+      ? { close: () => loader.close?.() ?? Promise.resolve() }
+      : {}),
   };
 }
 
@@ -952,8 +963,66 @@ function findCloudCandidate(
   return null;
 }
 
-interface RuntimeWithRegisterService {
-  registerService?: (name: string, impl: unknown) => unknown;
+/** Runtime service that owns one fused AOSP loader and releases it on stop. */
+export class AospLoaderRuntimeService extends Service implements AospLoader {
+  override capabilityDescription =
+    "Owns the fused AOSP local-inference loader for this agent runtime.";
+
+  constructor(
+    runtime: IAgentRuntime,
+    private readonly loader: AospLoader,
+    private readonly stopLoader: () => Promise<void>,
+  ) {
+    super(runtime);
+  }
+
+  async loadModel(args: AospLoadModelArgs): Promise<void> {
+    await this.loader.loadModel(args);
+  }
+
+  async unloadModel(): Promise<void> {
+    await this.loader.unloadModel();
+  }
+
+  currentModelPath(): string | null {
+    return this.loader.currentModelPath();
+  }
+
+  async generate(args: Parameters<AospLoader["generate"]>[0]): Promise<string> {
+    return this.loader.generate(args);
+  }
+
+  async embed(
+    args: Parameters<AospLoader["embed"]>[0],
+  ): ReturnType<AospLoader["embed"]> {
+    return this.loader.embed(args);
+  }
+
+  override async stop(): Promise<void> {
+    await this.stopLoader();
+  }
+}
+
+/** Register the class without waiting on the runtime initialization barrier. */
+export async function registerAospLoaderService(
+  runtime: Pick<IAgentRuntime, "registerService">,
+  loader: AospLoader,
+  options: {
+    start?: () => void;
+    stop?: () => Promise<void>;
+  } = {},
+): Promise<void> {
+  const stopLoader = options.stop ?? (() => loader.unloadModel());
+  const serviceClass = createService<AospLoaderRuntimeService>(SERVICE_NAME)
+    .withDescription(
+      "Owns the fused AOSP local-inference loader for this agent runtime.",
+    )
+    .withStart(async (serviceRuntime) => {
+      options.start?.();
+      return new AospLoaderRuntimeService(serviceRuntime, loader, stopLoader);
+    })
+    .build();
+  await runtime.registerService(serviceClass);
 }
 
 /**
@@ -973,18 +1042,17 @@ interface RuntimeWithRegisterService {
  * dynamically import it to wire the `localInferenceLoader` service.
  */
 export async function registerAospLlamaLoader(
-  runtime: RuntimeWithRegisterService,
+  runtime: IAgentRuntime,
+  options: AospLocalInferenceBootstrapOptions = {},
 ): Promise<boolean> {
   if (!isAospEnabled()) return false;
-  if (typeof runtime.registerService !== "function") return false;
-  const loader = await tryBuildAospFusedTextLoader();
-  if (!loader) {
+  const owner = await ensureAospLoaderOwner(runtime, options);
+  if (!owner) {
     logger.error(
       "[aosp-local-inference] fused libelizainference text loader unavailable (lib absent or pre-ABI-v9); localInferenceLoader NOT registered.",
     );
     return false;
   }
-  runtime.registerService(SERVICE_NAME, loader);
   logger.info(
     "[aosp-local-inference] Registered fused libelizainference localInferenceLoader (ELIZA_LOCAL_LLAMA=1)",
   );
@@ -1656,6 +1724,176 @@ function makeLoaderLifecycle(loader: AospLoader): {
   };
 }
 
+export interface AospLocalInferenceBootstrapOptions {
+  /** Deterministic builder injection for boot-order ownership tests. */
+  buildLoader?: () => Promise<AospLoader | null>;
+  /** Disable latency-only prewarm tasks while retaining production lifecycle. */
+  prewarm?: boolean;
+}
+
+interface AospLoaderOwner {
+  readonly loader: AospLoader;
+  readonly lifecycle: ReturnType<typeof makeLoaderLifecycle>;
+  registerTtsPrewarm(start: () => () => Promise<void>): void;
+  start(): void;
+  stop(): Promise<void>;
+}
+
+async function buildAospLoaderOwner(
+  runtime: IAgentRuntime,
+  options: AospLocalInferenceBootstrapOptions,
+): Promise<AospLoaderOwner | null> {
+  const rawLoader = await (
+    options.buildLoader ?? tryBuildAospFusedTextLoader
+  )();
+  if (!rawLoader) return null;
+
+  const inferenceRamClass = classifyInferenceRamClass();
+  const idleUnloadMs = resolveInferenceIdleUnloadMs(inferenceRamClass);
+  let markLifecycleEvicted: () => void = () => {};
+  const idleUnloader = new InferenceIdleUnloader({
+    idleUnloadMs,
+    // The bun agent never receives onTrimMemory (it is not an Android
+    // component), so /proc/meminfo MemAvailable is its pressure signal.
+    pressureCheck: makeProcMeminfoPressureCheck(inferenceRamClass),
+    isLoaded: () => rawLoader.currentModelPath() !== null,
+    unload: async () => {
+      await rawLoader.unloadModel();
+      markLifecycleEvicted();
+      writeAospLlamaDebugLog("bootstrap:idleUnload:released", {
+        idleUnloadMs,
+        ramClass: inferenceRamClass,
+      });
+    },
+    logger: {
+      info: (msg) => logger.info(msg),
+      warn: (msg) => logger.warn(msg),
+    },
+  });
+  const loader = instrumentLoaderForIdleTracking(rawLoader, idleUnloader);
+  const lifecycle = makeLoaderLifecycle(loader);
+  markLifecycleEvicted = lifecycle.markEvicted;
+
+  let started = false;
+  let stopped = false;
+  let chatPrewarm: Promise<void> | null = null;
+  let startTtsPrewarm: (() => () => Promise<void>) | null = null;
+  let stopTtsPrewarm: (() => Promise<void>) | null = null;
+  let stopPromise: Promise<void> | null = null;
+  const shouldPrewarm = options.prewarm !== false;
+
+  const owner: AospLoaderOwner = {
+    loader,
+    lifecycle,
+    registerTtsPrewarm(start) {
+      startTtsPrewarm = start;
+      if (started && !stopped && shouldPrewarm && !stopTtsPrewarm) {
+        stopTtsPrewarm = start();
+      }
+    },
+    start() {
+      if (started || stopped) return;
+      started = true;
+      idleUnloader.start();
+      logger.info(
+        `[aosp-local-inference] inference memory policy: ramClass=${inferenceRamClass} idleUnloadMs=${idleUnloadMs} (#11760)`,
+      );
+      if (!shouldPrewarm) return;
+      chatPrewarm = lifecycle.ensureChatLoaded().catch((err) => {
+        // error-policy:J7 chat prewarm is a latency optimization; the first
+        // real TEXT request retries through the same lifecycle.
+        logger.warn(
+          "[aosp-local-inference] Chat model pre-warm failed (will retry on first request): " +
+            (err instanceof Error ? err.message : String(err)),
+        );
+      });
+      if (startTtsPrewarm) stopTtsPrewarm = startTtsPrewarm();
+    },
+    stop() {
+      if (stopPromise) return stopPromise;
+      stopped = true;
+      const idleStopped = idleUnloader.stop();
+      stopPromise = (async () => {
+        await idleStopped;
+        await stopTtsPrewarm?.();
+        await chatPrewarm;
+
+        let unloadError: unknown;
+        try {
+          if (loader.currentModelPath() !== null) {
+            await loader.unloadModel();
+          }
+        } catch (error) {
+          // error-policy:J6 teardown still closes the dlopen handle before the
+          // original unload failure is rethrown to the runtime boundary.
+          unloadError = error;
+        }
+        try {
+          await loader.close?.();
+        } catch (closeError) {
+          // error-policy:J6 report both native teardown failures without
+          // skipping either release operation.
+          if (unloadError) {
+            throw new AggregateError(
+              [unloadError, closeError],
+              "AOSP local-inference unload and library close both failed",
+            );
+          }
+          throw closeError;
+        } finally {
+          if (routeActivationLoader === loader) routeActivationLoader = null;
+          registeredRuntimes.delete(runtime as AgentRuntime);
+          aospOwnerPromises.delete(runtime);
+        }
+        if (unloadError) throw unloadError;
+      })();
+      return stopPromise;
+    },
+  };
+
+  try {
+    await registerAospLoaderService(runtime, loader, {
+      start: owner.start,
+      stop: owner.stop,
+    });
+  } catch (registrationError) {
+    // error-policy:J6 service registration owns the native handle transfer;
+    // construction rollback releases it before preserving the primary failure.
+    try {
+      await owner.stop();
+    } catch (cleanupError) {
+      // error-policy:J6 rollback attempted every owner release operation; keep
+      // both the primary registration and teardown failures observable.
+      throw new AggregateError(
+        [registrationError, cleanupError],
+        "AOSP local-inference service registration and rollback both failed",
+        { cause: registrationError },
+      );
+    }
+    throw registrationError;
+  }
+  routeActivationLoader = loader;
+  return owner;
+}
+
+async function ensureAospLoaderOwner(
+  runtime: IAgentRuntime,
+  options: AospLocalInferenceBootstrapOptions,
+): Promise<AospLoaderOwner | null> {
+  const existing = aospOwnerPromises.get(runtime);
+  if (existing) return existing;
+
+  const pending = buildAospLoaderOwner(runtime, options);
+  aospOwnerPromises.set(runtime, pending);
+  let owner: AospLoaderOwner | null = null;
+  try {
+    owner = await pending;
+    return owner;
+  } finally {
+    if (!owner) aospOwnerPromises.delete(runtime);
+  }
+}
+
 /**
  * Route one text generation through the process-wide interactive-over-
  * background lane (elizaOS/eliza#11914). The fused context runs one decode at
@@ -1913,8 +2151,10 @@ function encodeWavPcm16(pcm: Float32Array, sampleRate: number): Uint8Array {
 export function prewarmAospKokoroTextToSpeechHandler(
   handler: TextToSpeechHandler,
   opts: AospKokoroPrewarmOptions = {},
-): void {
-  if (readBooleanEnv("ELIZA_AOSP_TTS_PREWARM") !== true) return;
+): () => Promise<void> {
+  if (readBooleanEnv("ELIZA_AOSP_TTS_PREWARM") !== true) {
+    return () => Promise.resolve();
+  }
 
   const delayMs = readPositiveIntEnv("ELIZA_AOSP_TTS_PREWARM_DELAY_MS", 5_000);
   const timeoutMs = readPositiveIntEnv(
@@ -1924,7 +2164,9 @@ export function prewarmAospKokoroTextToSpeechHandler(
   const text =
     process.env.ELIZA_AOSP_TTS_PREWARM_TEXT?.trim() || "Hello from Eliza.";
 
-  setTimeout(() => {
+  let activeController: AbortController | null = null;
+  let activeTask: Promise<void> | null = null;
+  const delay = setTimeout(() => {
     if (opts.shouldSkip?.()) {
       logger.info(
         "[aosp-local-inference] Kokoro TEXT_TO_SPEECH pre-warm skipped; foreground TTS already warmed the backend",
@@ -1933,8 +2175,9 @@ export function prewarmAospKokoroTextToSpeechHandler(
     }
     const started = Date.now();
     const abortController = new AbortController();
+    activeController = abortController;
     const timeout = setTimeout(() => abortController.abort(), timeoutMs);
-    void handler({} as never, {
+    activeTask = handler({} as never, {
       text,
       signal: abortController.signal,
     })
@@ -1953,8 +2196,18 @@ export function prewarmAospKokoroTextToSpeechHandler(
       })
       .finally(() => {
         clearTimeout(timeout);
+        activeController = null;
       });
   }, delayMs);
+  if (typeof delay === "object" && "unref" in delay) delay.unref();
+
+  return async () => {
+    clearTimeout(delay);
+    activeController?.abort(
+      new Error("AOSP local-inference runtime stopped during TTS pre-warm"),
+    );
+    await activeTask;
+  };
 }
 
 function resolveAssignedChatBundleRoot(): string {
@@ -2770,7 +3023,6 @@ interface AospFusedTextLoaderState {
   ffi: BunFfiModule;
   symbols: Record<string, (...args: unknown[]) => unknown>;
   helpers: AospFfiPointerHelpers;
-  close: () => void;
   ctx: bigint;
   binding: AospFusedStreamingLlmBinding;
   bundleRoot: string;
@@ -2989,6 +3241,7 @@ export async function tryBuildAospFusedTextLoader(): Promise<AospLoader | null> 
   }
 
   let state: AospFusedTextLoaderState | null = null;
+  let libraryClosed = false;
 
   const destroyState = (): void => {
     if (!state) return;
@@ -3000,10 +3253,22 @@ export async function tryBuildAospFusedTextLoader(): Promise<AospLoader | null> 
     state = null;
   };
 
+  const closeLibrary = (): void => {
+    if (libraryClosed) return;
+    destroyState();
+    lib.close();
+    libraryClosed = true;
+  };
+
   const loader: AospLoader = {
     currentModelPath: () => state?.modelPath ?? null,
 
     async loadModel(args: AospLoadModelArgs): Promise<void> {
+      if (libraryClosed) {
+        throw new Error(
+          "[aosp-local-inference] fused text loader used after runtime teardown",
+        );
+      }
       // One EliInferenceContext per bundle: the C side resolves text vs
       // embedding regions per call (`llm_stream_*` vs `embed`), so chat and
       // embedding loads SHARE the context — we never destroy + recreate when
@@ -3031,7 +3296,6 @@ export async function tryBuildAospFusedTextLoader(): Promise<AospLoader | null> 
           ffi,
           symbols,
           helpers,
-          close: lib.close,
           ctx,
           binding: createAospStreamingLlmBinding({
             ctx,
@@ -3095,6 +3359,10 @@ export async function tryBuildAospFusedTextLoader(): Promise<AospLoader | null> 
 
     async unloadModel(): Promise<void> {
       destroyState();
+    },
+
+    async close(): Promise<void> {
+      closeLibrary();
     },
 
     async generate(args): Promise<string> {
@@ -3200,6 +3468,7 @@ export async function tryBuildAospFusedTextLoader(): Promise<AospLoader | null> 
  */
 export async function ensureAospLocalInferenceHandlers(
   runtime: AgentRuntime,
+  options: AospLocalInferenceBootstrapOptions = {},
 ): Promise<boolean> {
   // console.log because logger.info routing in the mobile agent process
   // sometimes hides early bootstrap output behind the pino transport,
@@ -3240,59 +3509,19 @@ export async function ensureAospLocalInferenceHandlers(
   // cloud-fallback handler at priority -1 then routes recoverable failures to
   // a cloud provider via the local-unavailable classifier).
   console.log("[aosp-local-inference] building fused text loader…");
-  const fusedTextLoader = await tryBuildAospFusedTextLoader();
+  const owner = await ensureAospLoaderOwner(runtime, options);
   console.log(
-    `[aosp-local-inference] fused text loader ${fusedTextLoader ? "ready" : "unavailable"}`,
+    `[aosp-local-inference] fused text loader ${owner ? "ready" : "unavailable"}`,
   );
-  if (!fusedTextLoader) {
+  if (!owner) {
     console.error("[aosp-local-inference] fused text loader unavailable");
     logger.error(
       "[aosp-local-inference] fused libelizainference text loader unavailable (lib absent or pre-ABI-v9); TEXT_* handlers NOT wired. Local text inference is unavailable.",
     );
     return false;
   }
-
-  // Inference memory policy (#11760): free the loaded model after a RAM-class
-  // idle window so the pinned weights don't keep this process at the top of
-  // lmkd's kill list between conversations. Every loader use routes through the
-  // instrumented wrapper so the idle clock is accurate; the unload flows
-  // through the same lifecycle plumbing the voice handlers' out-of-band
-  // eviction already uses (`unloadModel` + `markEvicted` → the next request
-  // reloads via `ensureChatLoaded`).
-  const inferenceRamClass = classifyInferenceRamClass();
-  const idleUnloadMs = resolveInferenceIdleUnloadMs(inferenceRamClass);
-  let markLifecycleEvicted: () => void = () => {};
-  const idleUnloader = new InferenceIdleUnloader({
-    idleUnloadMs,
-    // The bun agent never receives onTrimMemory (it is not an Android
-    // component), so /proc/meminfo MemAvailable is its pressure signal.
-    pressureCheck: makeProcMeminfoPressureCheck(inferenceRamClass),
-    isLoaded: () => fusedTextLoader.currentModelPath() !== null,
-    unload: async () => {
-      await fusedTextLoader.unloadModel();
-      markLifecycleEvicted();
-      writeAospLlamaDebugLog("bootstrap:idleUnload:released", {
-        idleUnloadMs,
-        ramClass: inferenceRamClass,
-      });
-    },
-    logger: {
-      info: (msg) => logger.info(msg),
-      warn: (msg) => logger.warn(msg),
-    },
-  });
-  const textLoader = instrumentLoaderForIdleTracking(
-    fusedTextLoader,
-    idleUnloader,
-  );
-  routeActivationLoader = textLoader;
-
-  const lifecycle = makeLoaderLifecycle(textLoader);
-  markLifecycleEvicted = lifecycle.markEvicted;
-  idleUnloader.start();
-  logger.info(
-    `[aosp-local-inference] inference memory policy: ramClass=${inferenceRamClass} idleUnloadMs=${idleUnloadMs} (#11760)`,
-  );
+  const textLoader = owner.loader;
+  const lifecycle = owner.lifecycle;
   // TEXT_EMBEDDING is wired unconditionally: chat + embedding loads share one
   // fused EliInferenceContext, and the C side resolves the text vs embedding
   // region per call (`llm_stream_*` vs `embed`), so there is no cross-mode
@@ -3362,25 +3591,13 @@ export async function ensureAospLocalInferenceHandlers(
     );
   }
 
-  // Pre-warm the chat model so the first incoming chat request doesn't
-  // pay the fused context-create + first-load cost inside the request
-  // handler. The load is best-effort: if the bundled chat file is missing
-  // we let the
-  // request handler bubble up a clear error instead of crashing the
-  // boot. ensureChatLoaded is also memoized at the lifecycle layer, so
-  // calling it here doesn't conflict with the first real request.
-  // error-policy:J7 chat pre-warm is a latency optimization; a failure is logged
-  // and the first real TEXT request re-attempts the load (makeGenerateHandler ->
-  // lifecycle.ensureChatLoaded). Not a request path.
-  void lifecycle.ensureChatLoaded().catch((err) => {
-    logger.warn(
-      "[aosp-local-inference] Chat model pre-warm failed (will retry on first request): " +
-        (err instanceof Error ? err.message : String(err)),
-    );
-  });
-  prewarmAospKokoroTextToSpeechHandler(baseKokoroTextToSpeechHandler, {
-    shouldSkip: () => foregroundKokoroTextToSpeechUsed,
-  });
+  // Runtime service start owns both prewarm tasks; service stop cancels/joins
+  // them before unloading and closing the exact loader used by these handlers.
+  owner.registerTtsPrewarm(() =>
+    prewarmAospKokoroTextToSpeechHandler(baseKokoroTextToSpeechHandler, {
+      shouldSkip: () => foregroundKokoroTextToSpeechUsed,
+    }),
+  );
 
   const registeredList = `TEXT_SMALL / TEXT_LARGE / TEXT_EMBEDDING / TEXT_TO_SPEECH${
     asrAssetsPresent ? " / TRANSCRIPTION" : ""

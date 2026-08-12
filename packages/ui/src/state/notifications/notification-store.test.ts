@@ -17,6 +17,8 @@ const removeNotificationApi = vi.fn();
 const clearNotificationsApi = vi.fn();
 const seedDevNotificationsApi = vi.fn();
 const onWsEvent = vi.fn();
+const getBaseUrl = vi.fn((..._args: unknown[]) => "http://mock.local");
+const onBaseUrlChange = vi.fn((..._args: unknown[]) => () => {});
 
 vi.mock("../../api/client", () => ({
   client: {
@@ -30,6 +32,8 @@ vi.mock("../../api/client", () => ({
     seedDevNotifications: (...args: unknown[]) =>
       seedDevNotificationsApi(...args),
     onWsEvent: (...args: unknown[]) => onWsEvent(...args),
+    getBaseUrl: (...args: unknown[]) => getBaseUrl(...args),
+    onBaseUrlChange: (...args: unknown[]) => onBaseUrlChange(...args),
   },
 }));
 
@@ -50,6 +54,7 @@ vi.mock("../../bridge/native-notifications", () => ({
 import {
   __resetAuthStatusForTests,
   __setAuthStatusForTests,
+  type AuthStatusState,
 } from "../../hooks/useAuthStatus";
 import {
   __getStateForTests,
@@ -920,5 +925,193 @@ describe("notification-store — protected hydrate gate (#16242)", () => {
     setOrigin("http://localhost:2138/");
     initNotifications();
     await vi.waitFor(() => expect(listNotifications).toHaveBeenCalledTimes(1));
+  });
+});
+
+describe("notification-store — authority isolation (#18391)", () => {
+  function authenticated(userId: string, sessionId: string): AuthStatusState {
+    return {
+      phase: "authenticated",
+      identity: { id: userId, displayName: userId, kind: "owner" },
+      session: { id: sessionId, kind: "browser", expiresAt: null },
+      access: {
+        mode: "session",
+        passwordConfigured: true,
+        ownerConfigured: true,
+        role: "OWNER",
+      },
+    };
+  }
+
+  function agentEventHandlers(): Array<
+    (data: Record<string, unknown>) => void
+  > {
+    return onWsEvent.mock.calls
+      .filter((call) => call[0] === "agent_event")
+      .map((call) => call[1] as (data: Record<string, unknown>) => void);
+  }
+
+  beforeEach(() => {
+    __resetNotificationStoreForTests();
+    __resetAuthStatusForTests();
+    listNotifications
+      .mockReset()
+      .mockResolvedValue({ notifications: [], unreadCount: 0 });
+    onWsEvent.mockReset().mockReturnValue(() => {});
+    getBaseUrl.mockReset().mockReturnValue("http://agent-a.local");
+    onBaseUrlChange.mockReset().mockReturnValue(() => {});
+    invokeDesktopBridgeRequest.mockReset().mockResolvedValue(null);
+  });
+
+  afterEach(() => {
+    __resetNotificationStoreForTests();
+    __resetAuthStatusForTests();
+  });
+
+  it("Agent A -> Agent B: clears A's rows synchronously and hydrates fresh B rows", async () => {
+    const notifA = makeNotification({ id: "from-a", title: "From A" });
+    const notifB = makeNotification({ id: "from-b", title: "From B" });
+    listNotifications.mockResolvedValueOnce({
+      notifications: [notifA],
+      unreadCount: 1,
+    });
+    initNotifications();
+    await vi.waitFor(() =>
+      expect(__getStateForTests().notifications).toHaveLength(1),
+    );
+    expect(__getStateForTests().notifications[0]?.id).toBe("from-a");
+
+    const baseUrlHandler = onBaseUrlChange.mock.calls[0][0] as () => void;
+    getBaseUrl.mockReturnValue("http://agent-b.local");
+    listNotifications.mockResolvedValueOnce({
+      notifications: [notifB],
+      unreadCount: 1,
+    });
+    baseUrlHandler();
+
+    // Synchronous clear happens before the fresh fetch resolves.
+    expect(__getStateForTests().notifications).toHaveLength(0);
+
+    await vi.waitFor(() =>
+      expect(__getStateForTests().notifications).toHaveLength(1),
+    );
+    expect(__getStateForTests().notifications[0]?.id).toBe("from-b");
+  });
+
+  it("User A -> logout -> User B: isolates rows across the switch", async () => {
+    __setAuthStatusForTests(authenticated("user-a", "session-a"));
+    const notifA = makeNotification({ id: "a-row", title: "A's row" });
+    listNotifications.mockResolvedValueOnce({
+      notifications: [notifA],
+      unreadCount: 1,
+    });
+    initNotifications();
+    await vi.waitFor(() =>
+      expect(__getStateForTests().notifications).toHaveLength(1),
+    );
+
+    listNotifications.mockResolvedValueOnce({
+      notifications: [],
+      unreadCount: 0,
+    });
+    __setAuthStatusForTests({ phase: "unauthenticated" });
+    // Synchronous clear on logout, before the anon-authority refetch resolves.
+    expect(__getStateForTests().notifications).toHaveLength(0);
+
+    const notifB = makeNotification({ id: "b-row", title: "B's row" });
+    listNotifications.mockResolvedValueOnce({
+      notifications: [notifB],
+      unreadCount: 1,
+    });
+    __setAuthStatusForTests(authenticated("user-b", "session-b"));
+    await vi.waitFor(() =>
+      expect(__getStateForTests().notifications).toHaveLength(1),
+    );
+    expect(__getStateForTests().notifications[0]?.id).toBe("b-row");
+  });
+
+  it("discards a stale in-flight hydration completion from the prior authority", async () => {
+    __setAuthStatusForTests(authenticated("user-a", "session-a"));
+    type HydrationResponse = {
+      notifications: AgentNotification[];
+      unreadCount: number;
+    };
+    let resolveA!: (value: HydrationResponse) => void;
+    listNotifications.mockReturnValueOnce(
+      new Promise<HydrationResponse>((resolve) => {
+        resolveA = resolve;
+      }),
+    );
+    initNotifications();
+    await vi.waitFor(() => expect(listNotifications).toHaveBeenCalledTimes(1));
+
+    const notifB = makeNotification({ id: "b-row", title: "B's row" });
+    listNotifications.mockResolvedValueOnce({
+      notifications: [notifB],
+      unreadCount: 1,
+    });
+    __setAuthStatusForTests(authenticated("user-b", "session-b"));
+    await vi.waitFor(() =>
+      expect(__getStateForTests().notifications).toHaveLength(1),
+    );
+    expect(__getStateForTests().notifications[0]?.id).toBe("b-row");
+
+    // The stale A response resolves after B has already hydrated.
+    const notifA = makeNotification({ id: "a-row", title: "A's row" });
+    resolveA({ notifications: [notifA], unreadCount: 1 });
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(__getStateForTests().notifications).toHaveLength(1);
+    expect(__getStateForTests().notifications[0]?.id).toBe("b-row");
+  });
+
+  it("drops a stale WS event captured before the authority switched", async () => {
+    initNotifications();
+    await vi.waitFor(() => expect(agentEventHandlers()).toHaveLength(1));
+    const handlerA = agentEventHandlers()[0];
+
+    getBaseUrl.mockReturnValue("http://agent-b.local");
+    const baseUrlHandler = onBaseUrlChange.mock.calls[0][0] as () => void;
+    baseUrlHandler();
+    await vi.waitFor(() => expect(agentEventHandlers()).toHaveLength(2));
+    const handlerB = agentEventHandlers()[1];
+
+    handlerA({
+      stream: "notification",
+      payload: {
+        notification: makeNotification({ id: "stale", title: "Stale" }),
+        unreadCount: 9,
+      },
+    });
+    expect(__getStateForTests().notifications).toHaveLength(0);
+
+    handlerB({
+      stream: "notification",
+      payload: {
+        notification: makeNotification({ id: "fresh", title: "Fresh" }),
+        unreadCount: 1,
+      },
+    });
+    expect(__getStateForTests().notifications).toHaveLength(1);
+    expect(__getStateForTests().notifications[0]?.id).toBe("fresh");
+  });
+
+  it("a same-authority auth refresh does not clear or refetch", async () => {
+    __setAuthStatusForTests(authenticated("user-a", "session-a"));
+    const notifA = makeNotification({ id: "a-row", title: "A's row" });
+    listNotifications.mockResolvedValueOnce({
+      notifications: [notifA],
+      unreadCount: 1,
+    });
+    initNotifications();
+    await vi.waitFor(() =>
+      expect(__getStateForTests().notifications).toHaveLength(1),
+    );
+
+    __setAuthStatusForTests(authenticated("user-a", "session-a"));
+    await Promise.resolve();
+    expect(listNotifications).toHaveBeenCalledTimes(1);
+    expect(__getStateForTests().notifications).toHaveLength(1);
+    expect(__getStateForTests().notifications[0]?.id).toBe("a-row");
   });
 });

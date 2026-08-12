@@ -50,7 +50,7 @@ async function prepareProfileAuth(page: Page) {
   await page.addInitScript(() => {
     window.localStorage.setItem("eliza_app_session", "homepage-visual-token");
   });
-  await page.route("https://www.elizacloud.ai/api/eliza-app/**", (route) =>
+  await page.route("https://elizacloud.ai/api/eliza-app/**", (route) =>
     route.fulfill({
       json: {
         user: {

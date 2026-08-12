@@ -30,6 +30,7 @@ import {
 } from "@/lib/services/identity-verification-gatekeeper";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
+import { parseApprovalRequestIdParam } from "../../approval-request-id";
 
 const DenySchema = z.object({
   signature: z.string().min(1).max(4096),
@@ -58,13 +59,11 @@ app.use("*", rateLimit(RateLimitPresets.STANDARD));
 
 app.post("/", async (c) => {
   try {
-    const id = c.req.param("id");
-    if (!id) {
-      return c.json(
-        { success: false, error: "Missing approval request id" },
-        400,
-      );
+    const parsedId = parseApprovalRequestIdParam(c.req.param("id"));
+    if (!parsedId.ok) {
+      return c.json({ success: false, error: parsedId.error }, 400);
     }
+    const { id } = parsedId;
 
     const body = await c.req.json().catch(() => null);
     const parsed = DenySchema.safeParse(body);
@@ -108,6 +107,7 @@ app.post("/", async (c) => {
 
     return c.json({ success: true, approvalRequest });
   } catch (error) {
+    // error-policy:J1 boundary translation — failureResponse maps typed/unknown errors to structured JSON.
     logger.error("[ApprovalRequests API] Failed to deny approval request", {
       error,
     });

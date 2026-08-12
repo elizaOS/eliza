@@ -269,7 +269,7 @@ export interface PluginRouteContext {
   scheduleRuntimeRestart: (reason: string) => void;
   restartRuntime?: (reason: string) => Promise<boolean>;
   // Server.ts internal helpers
-  BLOCKED_ENV_KEYS: Set<string>;
+  isBlockedEnvKey: (key: string) => boolean;
   discoverInstalledPlugins: (
     config: ElizaConfig,
     bundledIds: Set<string>,
@@ -405,7 +405,7 @@ export async function handlePluginRoutes(
     readJsonBody,
     scheduleRuntimeRestart,
     restartRuntime,
-    BLOCKED_ENV_KEYS,
+    isBlockedEnvKey,
     discoverInstalledPlugins,
     maskValue,
     aggregateSecrets,
@@ -882,7 +882,7 @@ export async function handlePluginRoutes(
       for (const [key, value] of Object.entries(body.config)) {
         if (
           allowedParamKeys.has(key) &&
-          !BLOCKED_ENV_KEYS.has(key.toUpperCase()) &&
+          !isBlockedEnvKey(key) &&
           typeof value === "string"
         ) {
           touchedPluginConfig = true;
@@ -1107,7 +1107,7 @@ export async function handlePluginRoutes(
     for (const [key, value] of Object.entries(body.secrets)) {
       if (typeof value !== "string" || !value.trim()) continue;
       if (!allowedKeys.has(key)) continue;
-      if (BLOCKED_ENV_KEYS.has(key.toUpperCase())) continue;
+      if (isBlockedEnvKey(key)) continue;
       process.env[key] = value;
       updatedKeys.push(key);
     }

@@ -1,4 +1,5 @@
 /** Builds the container control-plane mock HTTP app: route handlers over the in-memory mock store. */
+import { chatSseFrame } from "@elizaos/cloud-shared/lib/services/chat-sse-frames";
 import { type Context, Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import {
@@ -1070,7 +1071,7 @@ export function buildControlPlaneApp(options: ControlPlaneMockOptions): {
     };
     if (body?.jsonrpc !== "2.0" || typeof body.method !== "string") {
       return new Response(
-        `event: error\ndata: ${JSON.stringify({ message: "Invalid JSON-RPC stream request" })}\n\n`,
+        chatSseFrame("error", { message: "Invalid JSON-RPC stream request" }),
         { status: 400, headers: streamHeaders },
       );
     }

@@ -17,7 +17,7 @@ import type {
 import { ACCOUNT_PROVIDER_OPTIONS } from "./account-provider-options";
 import { ProviderAccountRow } from "./ProviderAccountRow";
 
-vi.mock("../../state", () => ({
+vi.mock("../../state/app-store", () => ({
   useAppSelector: (
     selector: (state: {
       t: (key: string, vars?: Record<string, unknown>) => string;

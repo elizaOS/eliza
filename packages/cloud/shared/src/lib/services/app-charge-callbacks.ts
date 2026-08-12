@@ -1,4 +1,4 @@
-// Coordinates cloud service app charge callbacks behavior behind route handlers.
+/** Coordinates app-charge callback delivery and authorized room-message projection. */
 import { MemoryType } from "@elizaos/core";
 import { randomUUID } from "crypto";
 import { eq } from "drizzle-orm";
@@ -323,6 +323,7 @@ export class AppChargeCallbacksService {
     // otherwise a forged settlement message could be injected cross-tenant.
     const authorized = await callbackRoomBelongsToOrganization({
       roomId,
+      agentId,
       chargeOrganizationId,
       logContext: "AppChargeCallbacks",
     });

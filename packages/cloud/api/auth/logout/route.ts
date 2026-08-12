@@ -10,11 +10,7 @@ import { getAuditDispatcher } from "@/api-app/services/audit-dispatcher-singleto
 import { invalidateSessionCaches } from "@/lib/auth";
 import { cookieDomainForHost } from "@/lib/auth/cookie-domain";
 import { verifyStewardTokenCached } from "@/lib/auth/steward-client";
-import {
-  canMutateLegacyStewardCookies,
-  LEGACY_STEWARD_COOKIES,
-  stewardCookieNames,
-} from "@/lib/auth/steward-cookies";
+import { stewardCookieNames } from "@/lib/auth/steward-cookies";
 import { getCurrentUser } from "@/lib/auth/workers-hono-auth";
 import {
   RateLimitPresets,
@@ -31,10 +27,12 @@ app.use("*", rateLimit(RateLimitPresets.STANDARD));
 
 app.post("/", async (c) => {
   const cookieNames = stewardCookieNames(c.env.ENVIRONMENT);
-  const canMutateLegacy = canMutateLegacyStewardCookies(c.env.ENVIRONMENT);
-  const stewardToken =
-    getCookie(c, cookieNames.token) ??
-    (canMutateLegacy ? getCookie(c, LEGACY_STEWARD_COOKIES.token) : undefined);
+  // Each environment reads only its own scoped cookie. The bounded read-only
+  // migration window that let non-production fall back to the historical
+  // unsuffixed cookie closed on 2026-08-04 (#14130); in production the scoped
+  // names already ARE the unsuffixed names, so `cookieNames.token` covers both
+  // eras and no separate legacy read is needed.
+  const stewardToken = getCookie(c, cookieNames.token);
 
   // Clear cookies FIRST. Clearing them is what actually logs the user out, and
   // it must happen even if the server-side teardown below fails (a transient DB
@@ -47,14 +45,12 @@ app.post("/", async (c) => {
   // Non-production clears only its suffixed pair. The unsuffixed legacy names
   // are production's live cookies on the shared parent domain; deleting them
   // from staging/dev signs the user out of production.
+  // In production the scoped names already ARE the historical unsuffixed names,
+  // so a single set of deleteCookie calls covers both eras. The separate legacy
+  // clear block was redundant (#14130).
   deleteCookie(c, cookieNames.token, stewardOpts);
   deleteCookie(c, cookieNames.refreshToken, stewardOpts);
   deleteCookie(c, cookieNames.authed, stewardOpts);
-  if (canMutateLegacy) {
-    deleteCookie(c, LEGACY_STEWARD_COOKIES.token, stewardOpts);
-    deleteCookie(c, LEGACY_STEWARD_COOKIES.refreshToken, stewardOpts);
-    deleteCookie(c, LEGACY_STEWARD_COOKIES.authed, stewardOpts);
-  }
   deleteCookie(c, "eliza-anon-session", { path: "/" });
 
   // Stamp the cross-host SSO logout marker FIRST and in its own guarded block:
@@ -96,9 +92,10 @@ app.post("/", async (c) => {
   }
 
   try {
-    // Non-production may still read legacy access cookies elsewhere during the
-    // migration window, but logout must not use that fallback to mutate
-    // production-side sessions unless this environment-owned token was present.
+    // Only tear down caches/sessions when this environment owned the token that
+    // was actually presented. The non-production legacy read fallback closed on
+    // 2026-08-04 (#14130), so stewardToken here is always this environment's own
+    // scoped cookie.
     if (stewardToken) {
       await invalidateSessionCaches(stewardToken);
       logger.debug("[Logout] Invalidated session caches for token");

@@ -304,11 +304,46 @@ function findSseEventBreak(
     : { index: crlfBreak, length: 4 };
 }
 
-function parseStreamChatDataLine(line: string): StreamChatEvent | null {
+// Producers that predate the canonical JSON `type` (shared-runtime, sandbox,
+// bridge, and control-plane fallback chat) classify frames only through their
+// SSE event name. Map those names when `type` is absent so a terminal `done`
+// or `error` frame is never misread as another token (#17122). An explicit
+// JSON `type` always wins over the event name.
+const LEGACY_SSE_EVENT_TYPES: Record<string, string> = {
+  chunk: "token",
+  done: "done",
+  error: "error",
+};
+
+// Per the SSE spec the `event:` field names the whole event block regardless
+// of field order, and a later `event:` line overwrites an earlier one.
+function sseEventName(lines: readonly string[]): string | undefined {
+  let name: string | undefined;
+  for (const line of lines) {
+    if (line.startsWith("event:")) name = line.slice(6).trim() || undefined;
+  }
+  return name;
+}
+
+function parseStreamChatDataLine(
+  line: string,
+  eventName?: string,
+): StreamChatEvent | null {
   const payload = line.startsWith("data:") ? line.slice(5).trim() : "";
   if (!payload) return null;
   try {
     const parsed = JSON.parse(payload) as StreamChatEvent;
+    if (!parsed.type && eventName && LEGACY_SSE_EVENT_TYPES[eventName]) {
+      parsed.type = LEGACY_SSE_EVENT_TYPES[eventName];
+      if (
+        parsed.type === "done" &&
+        typeof parsed.fullText !== "string" &&
+        typeof parsed.text === "string"
+      ) {
+        // Legacy named done frames carried the authoritative reply in `text`.
+        parsed.fullText = parsed.text;
+      }
+    }
     if (!parsed.type && typeof parsed.text === "string") parsed.type = "token";
     return parsed;
   } catch {
@@ -411,8 +446,9 @@ function applyStreamChatDataLine(
   ) => void,
   onStatus?: (status: ChatTurnStatus) => void,
   onToolEvent?: (event: ChatToolCallEvent) => void,
+  eventName?: string,
 ): boolean {
-  const parsed = parseStreamChatDataLine(line);
+  const parsed = parseStreamChatDataLine(line, eventName);
   if (!parsed) return false;
   if (parsed.type === "token") {
     return applyStreamChatTokenEvent(parsed, state, onToken);
@@ -746,6 +782,10 @@ export class ElizaClient {
   // Fired exactly once per successful reconnect (never on the first connect)
   // so consumers can reconcile state that drifted during the network gap.
   private resyncListeners = new Set<() => void>();
+  // Fired synchronously on every setBaseUrl/repointBaseUrl, including the
+  // socket-less Cloud repoint path where ws-reconnected never fires — the
+  // only observable signal for "the active agent/server target changed".
+  private baseUrlChangeListeners = new Set<(baseUrl: string) => void>();
 
   // UI language propagation — set by AppContext so the backend can
   // localise responses when needed.
@@ -897,10 +937,28 @@ export class ElizaClient {
     this._userSetBase = normalized.length > 0;
     this._baseUrl = normalized;
     this.disconnectWs();
-    if (!persist) {
-      return;
+    if (persist) {
+      this.persistBaseUrl(normalized);
     }
-    this.persistBaseUrl(normalized);
+    this.notifyBaseUrlChange();
+  }
+
+  /** Subscribe to base-URL changes from {@link setBaseUrl} or {@link
+   * repointBaseUrl}. Fires synchronously with the resulting base URL after
+   * every change, including a Cloud repoint that never opens a socket and so
+   * never fires `ws-reconnected` — the only base-change signal that does not
+   * depend on the WebSocket transport. Returns an unsubscribe function. */
+  onBaseUrlChange(listener: (baseUrl: string) => void): () => void {
+    this.baseUrlChangeListeners.add(listener);
+    return () => {
+      this.baseUrlChangeListeners.delete(listener);
+    };
+  }
+
+  private notifyBaseUrlChange(): void {
+    for (const listener of this.baseUrlChangeListeners) {
+      listener(this._baseUrl);
+    }
   }
 
   /**
@@ -958,6 +1016,9 @@ export class ElizaClient {
    * REST/SSE keyed off the new `baseUrl`. The socket teardown + reconnect path
    * (steps 1 and 3, where `onopen` fires `ws-reconnected`) is exercised only for
    * non-cloud hosts — it is forward-cover for when a base actually uses `/ws`.
+   * {@link onBaseUrlChange} fires unconditionally regardless of transport, so
+   * a per-authority cache (e.g. the notification store, #18391) can observe
+   * this swap even when no socket is involved.
    * The "invisible" wins (no `disconnected` flap, no `StartupScreen`, no draft
    * clear) hold independent of whether a socket is involved.
    */
@@ -995,6 +1056,7 @@ export class ElizaClient {
     this._userSetBase = normalized.length > 0;
     this._baseUrl = normalized;
     this.persistBaseUrl(normalized);
+    this.notifyBaseUrlChange();
 
     // Reconnect immediately against the new base. connectWs() derives the WS
     // host from this.baseUrl, so the socket comes up on the dedicated host; its
@@ -1154,6 +1216,9 @@ export class ElizaClient {
         message,
         code,
         retryAfter,
+        // Structured consumers (the /join credit-gate classifier) read fields
+        // the flattened message/code drop, e.g. `welcomeBonusWithheld`.
+        data: body,
       });
       // Structural agent-gone from a bound cloud agent host: drop the dead
       // binding at the request choke point so background callers (lifeops
@@ -2195,7 +2260,9 @@ export class ElizaClient {
       while (eventBreak) {
         const rawEvent = buffer.slice(0, eventBreak.index);
         buffer = buffer.slice(eventBreak.index + eventBreak.length);
-        for (const line of rawEvent.split(/\r?\n/)) {
+        const eventLines = rawEvent.split(/\r?\n/);
+        const eventName = sseEventName(eventLines);
+        for (const line of eventLines) {
           if (!line.startsWith("data:")) continue;
           if (
             applyStreamChatDataLine(
@@ -2204,6 +2271,7 @@ export class ElizaClient {
               onToken,
               onStatus,
               onToolEvent,
+              eventName,
             )
           ) {
             buffer = "";
@@ -2221,7 +2289,9 @@ export class ElizaClient {
     }
 
     if (!streamState.receivedDone && buffer.trim()) {
-      for (const line of buffer.split(/\r?\n/)) {
+      const trailingLines = buffer.split(/\r?\n/);
+      const trailingEventName = sseEventName(trailingLines);
+      for (const line of trailingLines) {
         if (line.startsWith("data:")) {
           applyStreamChatDataLine(
             line,
@@ -2229,6 +2299,7 @@ export class ElizaClient {
             onToken,
             onStatus,
             onToolEvent,
+            trailingEventName,
           );
         }
       }

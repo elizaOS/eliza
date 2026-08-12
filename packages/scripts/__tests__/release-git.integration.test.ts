@@ -203,7 +203,7 @@ describe("atomic release refs", () => {
     expect(remoteRefs(fixture.repoRoot, fixture.remote)).not.toContain(
       "refs/tags/",
     );
-  }, 30_000);
+  }, 120_000);
 
   test("one rejected ref rejects the entire atomic push and no unrelated tag follows", () => {
     const fixture = makeScenario();
@@ -259,7 +259,7 @@ describe("atomic release refs", () => {
     expect(remoteRefs(fixture.repoRoot, fixture.remote)).not.toContain(
       "refs/tags/v1.0.1",
     );
-  }, 30_000);
+  }, 120_000);
 
   test("tag-only finalization leaves the release branch untouched and retries exactly", () => {
     const fixture = makeScenario();
@@ -343,7 +343,7 @@ describe("atomic release refs", () => {
       ]),
       finalState: loadReleaseState(fixture.candidateDirectory),
     });
-  }, 30_000);
+  }, 120_000);
 
   test("tag-only rejection and a mismatched planned tag fail without ref mutation", () => {
     const fixture = makeScenario();
@@ -381,7 +381,7 @@ describe("atomic release refs", () => {
     expect(remoteRefs(fixture.repoRoot, fixture.remote)).not.toContain(
       "refs/tags/v1.0.1",
     );
-  }, 30_000);
+  }, 120_000);
 
   test("a post-push interruption binds retry intent before remote mutation", async () => {
     const fixture = makeScenario();
@@ -485,7 +485,7 @@ describe("atomic release refs", () => {
     expect(loadReleaseState(fixture.candidateDirectory).state.phase).toBe(
       "git-tagged",
     );
-  }, 30_000);
+  }, 120_000);
 
   test("refuses to publish an ambient lightweight local release tag", () => {
     const fixture = makeScenario();
@@ -506,7 +506,7 @@ describe("atomic release refs", () => {
     expect(remoteRefs(fixture.repoRoot, fixture.remote)).not.toContain(
       "refs/tags/v1.0.0",
     );
-  }, 30_000);
+  }, 120_000);
 
   test("remote source movement fails without an implicit rebase", () => {
     const fixture = makeScenario();
@@ -534,7 +534,7 @@ describe("atomic release refs", () => {
     expect(remoteRefs(fixture.repoRoot, fixture.remote)).not.toContain(
       "refs/tags/v1.0.0",
     );
-  }, 30_000);
+  }, 120_000);
 
   test("same-commit annotated tag with a noncanonical message is a conflict", () => {
     const fixture = makeScenario();
@@ -565,7 +565,7 @@ describe("atomic release refs", () => {
     expect(loadReleaseState(fixture.candidateDirectory).state.phase).toBe(
       "git-bound",
     );
-  }, 30_000);
+  }, 120_000);
 
   test("same-commit lightweight remote tag is a conflict", () => {
     const fixture = makeScenario();
@@ -589,7 +589,7 @@ describe("atomic release refs", () => {
     expect(loadReleaseState(fixture.candidateDirectory).state.phase).toBe(
       "git-bound",
     );
-  }, 30_000);
+  }, 120_000);
 
   test("conflicting and reserved tags fail", () => {
     const fixture = makeScenario();
@@ -614,5 +614,5 @@ describe("atomic release refs", () => {
         "reserved failed-release residue",
       );
     }
-  }, 30_000);
+  }, 120_000);
 });

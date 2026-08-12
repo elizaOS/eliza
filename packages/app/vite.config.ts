@@ -16,6 +16,7 @@ import react from "@vitejs/plugin-react";
 import { visualizer } from "rollup-plugin-visualizer";
 import {
   createLogger,
+  defaultClientConditions,
   defineConfig,
   loadEnv,
   type Plugin,
@@ -2100,7 +2101,7 @@ const optimizerNodePolyfills: Readonly<Record<string, string>> = (() => {
   return resolved;
 })();
 
-export default defineConfig({
+export default defineConfig(({ command }) => ({
   root: here,
   customLogger: viteLogger,
   // Native shells (Electrobun `views://`, Capacitor `file://`) load assets
@@ -2385,6 +2386,13 @@ export const INVALID_TRACER_PROVIDER = {};
     target: "es2022",
   },
   resolve: {
+    // Development serves workspace source before any package dist exists.
+    // Retain Vite's browser/development conditions so packages without a
+    // source export keep resolving to their browser entry points. Production
+    // builds intentionally retain Vite's untouched default condition set.
+    ...(command === "serve"
+      ? { conditions: ["eliza-source", ...defaultClientConditions] }
+      : {}),
     dedupe: [
       "react",
       "react-dom",
@@ -2691,6 +2699,13 @@ export const INVALID_TRACER_PROVIDER = {};
                 "src/shims/cloud-register-all-stub.ts",
               ),
             },
+            {
+              find: /^@elizaos\/ui\/cloud\/register-public$/,
+              replacement: path.join(
+                here,
+                "src/shims/cloud-register-all-stub.ts",
+              ),
+            },
           ]
         : []),
       // Force local @elizaos/ui source paths when the app bundles linked
@@ -2879,6 +2894,13 @@ export const INVALID_TRACER_PROVIDER = {};
               "api/ios-local-agent-transport.ts",
             ),
           },
+          // #18056: thin desktop shell — avoids app-core/browser.ts star-export
+          // of @elizaos/ui/browser on the packages/app main entry.
+          {
+            find: /^@elizaos\/app-core\/desktop-shell$/,
+            replacement: path.join(appCoreSrcRoot, "desktop-shell.ts"),
+          },
+
           {
             find: /^@elizaos\/agent$/,
             replacement: path.join(
@@ -3072,6 +3094,12 @@ export const INVALID_TRACER_PROVIDER = {};
     minify: desktopFastDist ? false : undefined,
     cssMinify: desktopFastDist ? false : undefined,
     reportCompressedSize: !desktopFastDist,
+    // #18056: do not inject <link rel="modulepreload"> for the entire static
+    // import graph of main. That was ~350 preloads (~1.7–2.5 MB transfer on
+    // cold /login before the user interacts). Browser still fetches modules
+    // on demand when they are actually imported (public login only pulls the
+    // CloudRouterShell + login chunk tree).
+    modulePreload: false,
     rolldownOptions: {
       plugins: [
         // Rolldown build-phase resolver for @opentelemetry/api.
@@ -3354,4 +3382,4 @@ export const INVALID_TRACER_PROVIDER = {};
       ],
     },
   },
-});
+}));

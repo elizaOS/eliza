@@ -97,6 +97,7 @@
   "homepage_eliza.getStarted.back": "뒤로",
   "homepage_eliza.getStarted.home": "홈",
   "homepage_eliza.getStarted.selectHeader": "당신이 원하는 어디든.",
+  "homepage_eliza.getStarted.selectSubheader": "Eliza와 대화할 곳을 선택하세요.",
   "homepage_eliza.getStarted.btnTelegram": "Telegram",
   "homepage_eliza.getStarted.btnImessage": "iMessage",
   "homepage_eliza.getStarted.btnWhatsapp": "WhatsApp",
