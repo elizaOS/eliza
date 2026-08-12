@@ -273,26 +273,64 @@ describe("WebSearchService", () => {
         );
     });
 
-    it("extracts page title and description from fetched HTML", async () => {
+    it("extracts page title, description, metadata, images, and links from fetched HTML", async () => {
+        const html = `
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <title>
+                    Example &amp; Demo &#39;Page&#39;
+                </title>
+                <meta content="A &quot;great&quot; description" name="description">
+                <meta property="og:title" content="OG Example">
+                <meta property="og:image" content="/images/og.png">
+            </head>
+            <body>
+                <h1>Hello</h1>
+                <img src="/assets/hero.jpg" alt="Hero">
+                <img src="https://external.test/logo.svg">
+                <img src="data:image/png;base64,12345">
+                <a href="/docs/guide.html">Guide</a>
+                <a href="https://other.test/about">About</a>
+                <a href="#top">Anchor</a>
+                <a href="javascript:void(0)">JS</a>
+            </body>
+            </html>
+        `;
         vi.stubGlobal(
             "fetch",
-            vi.fn(
-                async () =>
-                    new Response(
-                        '<html><head><title>Example</title><meta name="description" content="Desc"></head></html>'
-                    )
-            )
+            vi.fn(async () => new Response(html))
         );
         const service = await WebSearchService.start(runtime({ TAVILY_API_KEY: "tvly-test" }));
 
-        await expect(service.getPageInfo("https://example.test/page")).resolves.toMatchObject({
-            title: "Example",
-            description: "Desc",
-            content: expect.stringContaining("<title>Example</title>"),
-            metadata: {},
-            images: [],
-            links: [],
+        const pageInfo = await service.getPageInfo("https://example.test/page");
+        expect(pageInfo.title).toBe("Example & Demo 'Page'");
+        expect(pageInfo.description).toBe('A "great" description');
+        expect(pageInfo.metadata).toEqual({
+            description: 'A "great" description',
+            "og:title": "OG Example",
+            "og:image": "/images/og.png",
         });
+        expect(pageInfo.images).toEqual([
+            "https://example.test/assets/hero.jpg",
+            "https://external.test/logo.svg",
+        ]);
+        expect(pageInfo.links).toEqual([
+            "https://example.test/docs/guide.html",
+            "https://other.test/about",
+        ]);
+    });
+
+    it("falls back to og:description when standard description meta tag is absent", async () => {
+        const html = `<html><head><title>Test</title><meta property="og:description" content="Fallback Og Desc"></head></html>`;
+        vi.stubGlobal(
+            "fetch",
+            vi.fn(async () => new Response(html))
+        );
+        const service = await WebSearchService.start(runtime({ TAVILY_API_KEY: "tvly-test" }));
+
+        const pageInfo = await service.getPageInfo("https://example.test/og");
+        expect(pageInfo.description).toBe("Fallback Og Desc");
     });
 
     it("fails page info requests on non-ok HTTP responses", async () => {

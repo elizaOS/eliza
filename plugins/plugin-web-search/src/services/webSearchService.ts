@@ -167,6 +167,126 @@ function freshnessToDays(freshness: NewsSearchOptions["freshness"]): number {
     }
 }
 
+function decodeHtmlEntities(text: string): string {
+    return text
+        .replace(/&amp;/g, "&")
+        .replace(/&lt;/g, "<")
+        .replace(/&gt;/g, ">")
+        .replace(/&quot;/g, '"')
+        .replace(/&#39;/g, "'")
+        .replace(/&apos;/g, "'")
+        .replace(/&#(\d+);/g, (_, code) => {
+            const num = Number(code);
+            return Number.isFinite(num) ? String.fromCharCode(num) : _;
+        })
+        .replace(/&#x([0-9a-fA-F]+);/g, (_, hex) => {
+            const num = parseInt(hex, 16);
+            return Number.isFinite(num) ? String.fromCharCode(num) : _;
+        });
+}
+
+function extractTitle(content: string, fallbackUrl: string): string {
+    const match = content.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+    if (!match?.[1]) return fallbackUrl;
+    const cleanText = match[1].replace(/<[^>]+>/g, "").trim();
+    return cleanText ? decodeHtmlEntities(cleanText) : fallbackUrl;
+}
+
+function extractMetaTags(content: string): {
+    description: string;
+    metadata: Record<string, string>;
+} {
+    const metadata: Record<string, string> = {};
+    let description = "";
+
+    const metaRegex = /<meta\s+([^>]+)>/gi;
+    let match = metaRegex.exec(content);
+    while (match !== null) {
+        const attrString = match[1];
+        const keyMatch = attrString.match(/(?:name|property)=["']([^"']+)["']/i);
+        const contentMatch = attrString.match(/content=["']([^"']*)["']/i);
+        if (keyMatch && contentMatch) {
+            const key = keyMatch[1].trim();
+            const val = decodeHtmlEntities(contentMatch[1].trim());
+            metadata[key] = val;
+            const lowerKey = key.toLowerCase();
+            if (
+                !description &&
+                (lowerKey === "description" ||
+                    lowerKey === "og:description" ||
+                    lowerKey === "twitter:description")
+            ) {
+                description = val;
+            }
+        }
+        match = metaRegex.exec(content);
+    }
+    return { description, metadata };
+}
+
+function extractImages(content: string, baseUrl: URL): string[] {
+    const images: string[] = [];
+    const seen = new Set<string>();
+    const imgRegex = /<img\s+[^>]*src=["']([^"']+)["']/gi;
+    let match = imgRegex.exec(content);
+    while (match !== null) {
+        const rawSrc = match[1].trim();
+        if (!rawSrc || rawSrc.startsWith("data:")) {
+            match = imgRegex.exec(content);
+            continue;
+        }
+        try {
+            const resolved = new URL(rawSrc, baseUrl).toString();
+            if (
+                (resolved.startsWith("http://") || resolved.startsWith("https://")) &&
+                !seen.has(resolved)
+            ) {
+                seen.add(resolved);
+                images.push(resolved);
+                if (images.length >= 20) break;
+            }
+        } catch {
+            // Ignore malformed image URLs
+        }
+        match = imgRegex.exec(content);
+    }
+    return images;
+}
+
+function extractLinks(content: string, baseUrl: URL): string[] {
+    const links: string[] = [];
+    const seen = new Set<string>();
+    const anchorRegex = /<a\s+[^>]*href=["']([^"']+)["']/gi;
+    let match = anchorRegex.exec(content);
+    while (match !== null) {
+        const rawHref = match[1].trim();
+        if (
+            !rawHref ||
+            rawHref.startsWith("#") ||
+            rawHref.startsWith("javascript:") ||
+            rawHref.startsWith("mailto:")
+        ) {
+            match = anchorRegex.exec(content);
+            continue;
+        }
+        try {
+            const resolved = new URL(rawHref, baseUrl).toString();
+            if (
+                (resolved.startsWith("http://") || resolved.startsWith("https://")) &&
+                !seen.has(resolved)
+            ) {
+                seen.add(resolved);
+                links.push(resolved);
+                if (links.length >= 50) break;
+            }
+        } catch {
+            // Ignore malformed hrefs
+        }
+        match = anchorRegex.exec(content);
+    }
+    return links;
+}
+
 export class WebSearchService extends IWebSearchService {
     static override serviceType = ServiceType.WEB_SEARCH;
     override capabilityDescription = "Web search and content discovery capabilities" as const;
@@ -301,16 +421,17 @@ export class WebSearchService extends IWebSearchService {
             throw new Error(`Failed to fetch page info: ${response.status} ${response.statusText}`);
         }
         const content = await response.text();
-        const title = content.match(/<title[^>]*>(.*?)<\/title>/i)?.[1] ?? url;
-        const description =
-            content.match(/<meta\s+name=["']description["']\s+content=["']([^"']+)/i)?.[1] ?? "";
+        const title = extractTitle(content, url);
+        const { description, metadata } = extractMetaTags(content);
+        const images = extractImages(content, parsedUrl);
+        const links = extractLinks(content, parsedUrl);
         return {
             title,
             description,
             content,
-            metadata: {},
-            images: [],
-            links: [],
+            metadata,
+            images,
+            links,
         };
     }
 }
