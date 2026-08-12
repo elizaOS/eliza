@@ -16,6 +16,9 @@ name: Cloud CF Deploy
 # Per environment (both projects):
 # - push to develop  -> staging   (api-staging.elizacloud.ai; staging.* / app-staging.*)
 # - push to main     -> production (api.elizacloud.ai; elizacloud.ai / app.elizacloud.ai)
+# - pull_request     -> build isolated Pages artifacts without credentials;
+#                       `.github/workflows/cloud-cf-pr-preview-deploy.yml`
+#                       performs the trusted `pr-<number>` deployment afterward.
 #
 # Required repo secrets:
 #   CLOUDFLARE_API_TOKEN   - account-scoped token with Workers + Pages edit perms
@@ -51,6 +54,20 @@ on:
       - "packages/app-core/**"
       - "packages/ui/**"
       - ".github/workflows/cloud-cf-deploy.yml"
+      - ".github/workflows/cloud-cf-pr-preview-deploy.yml"
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - "packages/cloud/api/**"
+      - "packages/cloud/shared/**"
+      - "packages/cloud/services/**"
+      - "packages/cloud/sdk/**"
+      - "packages/cloud/scripts/**"
+      - "packages/app/**"
+      - "packages/app-core/**"
+      - "packages/ui/**"
+      - ".github/workflows/cloud-cf-deploy.yml"
+      - ".github/workflows/cloud-cf-pr-preview-deploy.yml"
   workflow_dispatch:
     inputs:
       environment:
@@ -1087,6 +1104,25 @@ jobs:
       artifact_run_attempt: ${{ steps.pages-artifact.outputs.run_attempt }}
       artifact_source_sha: ${{ steps.pages-artifact.outputs.source_sha }}
     steps:
+      - name: Validate PR preview identity
+        if: github.event_name == 'pull_request'
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          if ! [[ "$PR_NUMBER" =~ ^[1-9][0-9]*$ ]]; then
+            echo "::error::Pull-request Pages branch requires a valid immutable PR number"
+            exit 1
+          fi
+          pages_branch="pr-${PR_NUMBER}"
+          case "$pages_branch" in
+            main|develop)
+              echo "::error::Pull-request Pages branch may not target canonical branch $pages_branch"
+              exit 1
+              ;;
+          esac
+          echo "Pages artifacts are bound to trusted preview branch ${pages_branch}." >> "$GITHUB_STEP_SUMMARY"
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
 
       - name: Bind Pages artifacts to this producer attempt
@@ -1193,15 +1229,12 @@ jobs:
     # Hosted unconditionally to preserve CI/placement workload separation.
     runs-on: ubuntu-latest
     timeout-minutes: 75
-    # Schema gate (#11208): real (non-PR) deploys only run after migrate-db
-    # succeeded, so the frontend never goes live ahead of the schema its API
-    # features expect. PR previews are the ONE allowed skip: migrate-db is
-    # skipped on pull_request, and previews build against the staging API
-    # without repo secrets. `!cancelled()` overrides the implicit success()
-    # so the skipped-dependency preview case can run; everything else is
-    # fail-closed (failed/cancelled migrate-db -> this job is skipped).
-    needs: [migrate-db, build-pages]
-    if: ${{ !cancelled() && needs.build-pages.result == 'success' }}
+    # Release gate (#11208/#18088): build the Pages artifacts in parallel with
+    # the API, but do not move a canonical Pages alias until both the artifact
+    # and the matching API deployment have succeeded. Pull requests publish
+    # only through the separate trusted workflow_run consumer.
+    needs: [deploy-api, build-pages]
+    if: ${{ !cancelled() && github.event_name != 'pull_request' && needs.deploy-api.result == 'success' && needs.build-pages.result == 'success' }}
     env:
       CHECKOUT_DIR: /tmp/eliza-checkout-${{ github.run_id }}-${{ github.run_attempt }}-deploy-console
       CHECKOUT_MATERIALIZE_TIMEOUT_SECONDS: ${{ vars.CLOUD_CF_CHECKOUT_MATERIALIZE_TIMEOUT_SECONDS || '600' }}
@@ -1458,18 +1491,32 @@ jobs:
         id: pages
         working-directory: ${{ env.CHECKOUT_DIR }}
         env:
-          PR_HEAD_REF: ${{ github.head_ref }}
           EVENT_NAME: ${{ github.event_name }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          TARGET_ENVIRONMENT: ${{ inputs.environment }}
         run: |
+          set -euo pipefail
+
           if [ "$EVENT_NAME" = "pull_request" ]; then
-            echo "branch=$PR_HEAD_REF" >> "$GITHUB_OUTPUT"
-          elif [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.environment }}" = "production" ]; then
-            echo "branch=main" >> "$GITHUB_OUTPUT"
-          elif [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "branch=develop" >> "$GITHUB_OUTPUT"
+            if ! [[ "$PR_NUMBER" =~ ^[1-9][0-9]*$ ]]; then
+              echo "::error::Pull-request Pages branch requires a valid immutable PR number"
+              exit 1
+            fi
+            pages_branch="pr-${PR_NUMBER}"
+            case "$pages_branch" in
+              main|develop)
+                echo "::error::Pull-request Pages branch may not target canonical branch $pages_branch"
+                exit 1
+                ;;
+            esac
+          elif [ "$EVENT_NAME" = "workflow_dispatch" ] && [ "$TARGET_ENVIRONMENT" = "production" ]; then
+            pages_branch="main"
+          elif [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            pages_branch="develop"
           else
-            echo "branch=${GITHUB_REF#refs/heads/}" >> "$GITHUB_OUTPUT"
+            pages_branch="${GITHUB_REF#refs/heads/}"
           fi
+          echo "branch=$pages_branch" >> "$GITHUB_OUTPUT"
 
       - name: Check Cloudflare credentials
         id: cf
@@ -1485,7 +1532,6 @@ jobs:
             echo "configured=false" >> "$GITHUB_OUTPUT"
             MSG="CLOUDFLARE_API_TOKEN/CLOUDFLARE_ACCOUNT_ID not configured. Add them at https://github.com/elizaOS/eliza/settings/secrets/actions."
             if [ "$EVENT_NAME" = "pull_request" ]; then
-              # PRs from forks legitimately lack access to repo secrets.
               echo "::warning::$MSG Skipping Pages deploy (PR event)." >> "$GITHUB_STEP_SUMMARY"
             else
               echo "::error::$MSG Refusing to silently skip Pages deploy on $EVENT_NAME event." >> "$GITHUB_STEP_SUMMARY"
@@ -1622,20 +1668,19 @@ jobs:
   # ---------------------------------------------------------------------------
   deploy-app:
     name: Deploy App (Pages · app.elizacloud.ai)
-    # Per-env (or per-PR) job concurrency so a newer main promote queues behind
-    # the in-flight prod Pages deploy instead of cancelling it (#11640); PR
-    # previews keep a per-PR group that DOES dedupe (cancel-in-progress).
+    # Per-env concurrency so a newer main promote queues behind the in-flight
+    # prod Pages deploy instead of cancelling it (#11640).
     concurrency:
       group: cloud-cf-deploy-app-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || (((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'production' || 'staging') }}
       cancel-in-progress: ${{ github.event_name == 'pull_request' }}
     # Hosted unconditionally to preserve CI/placement workload separation.
     runs-on: ubuntu-latest
     timeout-minutes: 75
-    # Schema gate (#11208): same contract as deploy-console — non-PR deploys
-    # require a successful migrate-db; PR previews (migrate-db skipped) still
-    # run; failed/cancelled migrate-db skips this job (fail-closed).
-    needs: [migrate-db, build-pages]
-    if: ${{ !cancelled() && needs.build-pages.result == 'success' }}
+    # Release gate (#11208/#18088): same contract as deploy-console. Canonical
+    # Pages aliases wait for the matching API deployment; pull-request artifacts
+    # are consumed only by the separate trusted preview workflow.
+    needs: [deploy-api, build-pages]
+    if: ${{ !cancelled() && github.event_name != 'pull_request' && needs.deploy-api.result == 'success' && needs.build-pages.result == 'success' }}
     env:
       CHECKOUT_DIR: /tmp/eliza-checkout-${{ github.run_id }}-${{ github.run_attempt }}-deploy-app
       CHECKOUT_MATERIALIZE_TIMEOUT_SECONDS: ${{ vars.CLOUD_CF_CHECKOUT_MATERIALIZE_TIMEOUT_SECONDS || '600' }}
@@ -1874,18 +1919,32 @@ jobs:
         id: pages
         working-directory: ${{ env.CHECKOUT_DIR }}
         env:
-          PR_HEAD_REF: ${{ github.head_ref }}
           EVENT_NAME: ${{ github.event_name }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          TARGET_ENVIRONMENT: ${{ inputs.environment }}
         run: |
+          set -euo pipefail
+
           if [ "$EVENT_NAME" = "pull_request" ]; then
-            echo "branch=$PR_HEAD_REF" >> "$GITHUB_OUTPUT"
-          elif [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.environment }}" = "production" ]; then
-            echo "branch=main" >> "$GITHUB_OUTPUT"
-          elif [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "branch=develop" >> "$GITHUB_OUTPUT"
+            if ! [[ "$PR_NUMBER" =~ ^[1-9][0-9]*$ ]]; then
+              echo "::error::Pull-request Pages branch requires a valid immutable PR number"
+              exit 1
+            fi
+            pages_branch="pr-${PR_NUMBER}"
+            case "$pages_branch" in
+              main|develop)
+                echo "::error::Pull-request Pages branch may not target canonical branch $pages_branch"
+                exit 1
+                ;;
+            esac
+          elif [ "$EVENT_NAME" = "workflow_dispatch" ] && [ "$TARGET_ENVIRONMENT" = "production" ]; then
+            pages_branch="main"
+          elif [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            pages_branch="develop"
           else
-            echo "branch=${GITHUB_REF#refs/heads/}" >> "$GITHUB_OUTPUT"
+            pages_branch="${GITHUB_REF#refs/heads/}"
           fi
+          echo "branch=$pages_branch" >> "$GITHUB_OUTPUT"
 
       - name: Check Cloudflare credentials
         id: cf
