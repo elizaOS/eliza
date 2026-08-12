@@ -10,7 +10,10 @@
 
 import { v4 as uuidv4 } from "uuid";
 import { createUniqueUuid } from "../../entities.ts";
-import { executePlannedToolCall } from "../../runtime/execute-planned-tool-call.ts";
+import {
+	executePlannedToolCall,
+	projectActionResultForClipboard,
+} from "../../runtime/execute-planned-tool-call.ts";
 import { runPostTurnEvaluators } from "../../services/evaluator.ts";
 import type {
 	ActionResult,
@@ -176,6 +179,9 @@ export async function runAutonomyPostResponse(
 		const previousResults: ActionResult[] = [];
 		const activeContexts = fieldsToActiveContexts(fields);
 		for (const actionName of responseContent.actions ?? []) {
+			const action = runtime.actions.find(
+				(candidate) => candidate.name === actionName,
+			);
 			const result = await executePlannedToolCall(
 				runtime,
 				{
@@ -197,7 +203,9 @@ export async function runAutonomyPostResponse(
 				},
 				{ name: actionName },
 			);
-			previousResults.push(result);
+			previousResults.push(
+				projectActionResultForClipboard(action, result, actionName),
+			);
 		}
 	}
 

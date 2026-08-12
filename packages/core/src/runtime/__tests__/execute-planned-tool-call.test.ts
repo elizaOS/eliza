@@ -35,6 +35,7 @@ import {
 	_resetActionRolePolicyCacheForTests,
 	dropEmptyOptionalArgs,
 	executePlannedToolCall,
+	projectActionResultForClipboard,
 } from "../execute-planned-tool-call";
 
 type ExecuteToolCallTestRuntime = Pick<IAgentRuntime, "actions"> &
@@ -1367,6 +1368,7 @@ describe("executePlannedToolCall", () => {
 		};
 		const emitEvent = vi.fn(async () => {});
 		const onToolResult = vi.fn();
+		const onSettledResult = vi.fn();
 		const action = makeAction({
 			name: "TASKS",
 			tags: ["effect:receipt-required"],
@@ -1386,6 +1388,7 @@ describe("executePlannedToolCall", () => {
 					runtime,
 					{ message: makeMessage() },
 					{ name: "TASKS", params: {} },
+					{ onSettledResult },
 				),
 		);
 
@@ -1395,6 +1398,39 @@ describe("executePlannedToolCall", () => {
 		);
 		expect(JSON.stringify(onToolResult.mock.calls)).not.toContain(
 			plannerObservation,
+		);
+		expect(onSettledResult).toHaveBeenCalledTimes(1);
+		expect(JSON.stringify(onSettledResult.mock.calls)).not.toContain(
+			plannerObservation,
+		);
+	});
+
+	it("omits planner observations from suppressed and unsuppressed clipboard projections", () => {
+		const result = {
+			success: true,
+			plannerObservation: "internal planner-only read",
+			data: { actionName: "TASKS", secret: "private" },
+		};
+
+		const unsuppressed = projectActionResultForClipboard(
+			{ name: "TASKS" },
+			result,
+		);
+		const suppressed = projectActionResultForClipboard(
+			{ name: "TASKS", suppressActionResultClipboard: true },
+			result,
+		);
+
+		expect(unsuppressed).toEqual({
+			success: true,
+			data: { actionName: "TASKS", secret: "private" },
+		});
+		expect(suppressed).toEqual({
+			success: true,
+			data: { actionName: "TASKS" },
+		});
+		expect(JSON.stringify([unsuppressed, suppressed])).not.toContain(
+			"plannerObservation",
 		);
 	});
 

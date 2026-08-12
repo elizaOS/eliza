@@ -6379,6 +6379,7 @@ async function executeV5PlannedToolCall(
 		toolCall.name,
 	);
 	return actionResultToPlannerToolResult(actionResult, {
+		plannerObservationSource: rawActionResult,
 		summary: summarizeActionResultForPlanner(
 			action,
 			actionResult,
@@ -6851,25 +6852,21 @@ export async function runShortcutGate(args: {
 		}
 		return null;
 	}
-	let actionResult: ActionResult | undefined;
-	if (shouldSuppressActionResultClipboard(action, shortcutActionResult)) {
-		actionResult = projectActionResultForClipboard(
-			action,
-			shortcutActionResult,
-			action.name,
-		);
-	} else {
+	let actionResult = projectActionResultForClipboard(
+		action,
+		shortcutActionResult,
+		action.name,
+	);
+	if (!shouldSuppressActionResultClipboard(action, shortcutActionResult)) {
 		actionResult = {
-			...shortcutActionResult,
+			...actionResult,
 			data: {
-				...shortcutActionResult.data,
+				...actionResult.data,
 				actionName: action.name,
 			},
 		};
 	}
-	const resultState = actionResult
-		? withActionResultsForPrompt(args.state, [actionResult])
-		: args.state;
+	const resultState = withActionResultsForPrompt(args.state, [actionResult]);
 	const shortcutActionResults = actionResult ? [actionResult] : [];
 	const shortcutReplyDecision = evaluatePlannedReplyEgress({
 		reply: captured,

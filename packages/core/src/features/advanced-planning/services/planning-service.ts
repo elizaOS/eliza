@@ -18,6 +18,7 @@ import { ElizaError, isElizaError } from "../../../errors.ts";
 import { logger } from "../../../logger.ts";
 import { settleActionHandler } from "../../../runtime/action-handler-settlement.ts";
 import { runWithActionRoutingContext } from "../../../runtime/action-routing-context.ts";
+import { projectActionResultForClipboard } from "../../../runtime/execute-planned-tool-call.ts";
 import {
 	parseJsonObject,
 	stringifyForModel,
@@ -1006,7 +1007,7 @@ Focus on:
 				});
 
 				return {
-					...actionResult,
+					...projectActionResultForClipboard(action, actionResult, action.name),
 					data: {
 						...(actionResult.data ?? {}),
 						stepId: step.id ? String(step.id) : "",

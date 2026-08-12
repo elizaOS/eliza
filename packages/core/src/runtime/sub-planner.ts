@@ -331,6 +331,9 @@ export async function runSubPlanner(
 	const subPlannerCtx: ExecutePlannedToolCallContext = {
 		...params.ctx,
 		activeContexts: authorizedActiveContexts,
+		previousResults: (params.ctx.previousResults ?? []).map((result) =>
+			projectActionResultForClipboard(undefined, result),
+		),
 	};
 
 	// Mark a sub-planner descent so trajectory consumers can render the tree.
@@ -414,16 +417,17 @@ export async function runSubPlanner(
 					actions: childActions,
 				},
 			);
-			settledChildResults.push(
-				resultWithCanonicalActionName(rawResult, resolvedChildAction.name),
-			);
 			const result = projectActionResultForClipboard(
 				resolvedChildAction,
 				rawResult,
 				resolvedChildAction.name,
 			);
+			settledChildResults.push(
+				resultWithCanonicalActionName(result, resolvedChildAction.name),
+			);
 			return {
 				...actionResultToPlannerToolResult(result, {
+					plannerObservationSource: rawResult,
 					summary: summarizeActionResultForPlanner(
 						resolvedChildAction,
 						result,

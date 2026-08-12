@@ -125,6 +125,35 @@ describe("runShortcutGate (#8791 pre-LLM gate)", () => {
 		]);
 	});
 
+	it("omits planner observations from shortcut action results and prompt state", async () => {
+		const action = echoAction();
+		action.handler = async (_rt, _message, _state, _options, callback) => {
+			await callback?.({ text: "safe reply" });
+			return {
+				success: true,
+				text: "safe reply",
+				plannerObservation: "shortcut planner-only observation",
+			};
+		};
+		const { runtime } = makeRuntime({ actions: [action] });
+
+		const result = await runShortcutGate({
+			// biome-ignore lint/suspicious/noExplicitAny: minimal fake runtime
+			runtime: runtime as any,
+			message: msg("/echo hi"),
+			state: {} as State,
+			responseId,
+			senderRole: "OWNER",
+		});
+
+		expect(JSON.stringify(result?.result.actionResults)).not.toContain(
+			"plannerObservation",
+		);
+		expect(
+			JSON.stringify(result?.result.state.data.actionResults),
+		).not.toContain("plannerObservation");
+	});
+
 	it("publishes a receipt-backed shortcut settlement before later turn work", async () => {
 		const receipt: EffectReceipt = {
 			receiptId: "receipt-shortcut-create-1",

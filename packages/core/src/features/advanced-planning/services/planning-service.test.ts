@@ -220,6 +220,43 @@ describe("PlanningService model-output validation", () => {
 });
 
 describe("PlanningService.executePlan action settlement", () => {
+	it("omits planner observations from later plan-step context and results", async () => {
+		const observation = "advanced-plan planner-only observation";
+		const first = {
+			name: "PLAN_FIRST",
+			description: "First plan step",
+			validate: async () => true,
+			handler: async () => ({ success: true, plannerObservation: observation }),
+		} satisfies Action;
+		const secondHandler = vi.fn(async (_runtime, _message, _state, options) => {
+			expect(options?.actionContext?.previousResults).toHaveLength(1);
+			expect(
+				JSON.stringify(options?.actionContext?.previousResults),
+			).not.toContain(observation);
+			return { success: true };
+		});
+		const second = {
+			name: "PLAN_SECOND",
+			description: "Second plan step",
+			validate: async () => true,
+			handler: secondHandler,
+		} satisfies Action;
+		const runtime = planningRuntime(first, { actions: [first, second] });
+		const service = new PlanningService(runtime);
+		const plan = await service.createSimplePlan(
+			runtime,
+			msg("run both steps"),
+			{} as State,
+			{ text: "run it", actions: [first.name, second.name] } as Content,
+		);
+		if (!plan) throw new Error("Expected a plan");
+
+		const execution = await service.executePlan(runtime, plan, msg("run it"));
+
+		expect(secondHandler).toHaveBeenCalledTimes(1);
+		expect(JSON.stringify(execution.results)).not.toContain(observation);
+	});
+
 	it("delivers exact canonical mutation text with applied receipt proof", async () => {
 		const receipt = appliedEffectReceipt();
 		const canonicalText = "The planned change is committed.";

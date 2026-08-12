@@ -21,6 +21,7 @@ import { MAX_ACTION_RESULT_TEXT_CHARS } from "../utils/action-results";
 import { isPlainObject } from "../utils/type-guards";
 import { hashStableJson } from "./context-hash";
 import { appendContextEvent } from "./context-object";
+import { authorizedPlannerObservation } from "./planner-observation-authority";
 import { truncateToolResultText } from "./planner-rendering";
 import type {
 	ContextObject,
@@ -247,10 +248,7 @@ export function projectPlannerObservationForModel(
 	result: PlannerToolResult,
 	allTurnReceipts: readonly EffectReceipt[],
 ): string | undefined {
-	const observation =
-		typeof result.plannerObservation === "string"
-			? result.plannerObservation.trim()
-			: undefined;
+	const observation = authorizedPlannerObservation(result);
 	if (
 		!observation ||
 		result.userFacingEffect !== "none" ||

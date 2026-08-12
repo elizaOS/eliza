@@ -45,6 +45,7 @@ import { _resetActionRolePolicyCacheForTests as _resetCacheForTests } from "./ac
 import { runWithActionRoutingContext } from "./action-routing-context";
 import { parseJsonObject } from "./json-output";
 import type { PlannerToolCall } from "./planner-loop";
+import { authorizeCanonicalPlannerObservation } from "./planner-observation-authority";
 
 export interface PlannedToolCall {
 	id?: string;
@@ -158,57 +159,63 @@ export function projectActionResultForClipboard(
 	result: ActionResult,
 	actionName = action?.name,
 ): ActionResult {
+	const { plannerObservation: _plannerObservation, ...observationFreeResult } =
+		result;
 	if (!shouldSuppressActionResultClipboard(action, result)) {
-		return result;
+		return observationFreeResult;
 	}
 
 	const resultActionName =
-		typeof result.data?.actionName === "string"
-			? result.data.actionName
+		typeof observationFreeResult.data?.actionName === "string"
+			? observationFreeResult.data.actionName
 			: undefined;
 	const safeActionName = actionName ?? resultActionName;
 	const safeControlData = {
 		...(safeActionName ? { actionName: safeActionName } : {}),
-		...(result.data?.outcomeUnknown === true ? { outcomeUnknown: true } : {}),
-		...(result.data?.retryable === false ? { retryable: false } : {}),
-		...(result.data?.reconciliationRequired === true
+		...(observationFreeResult.data?.outcomeUnknown === true
+			? { outcomeUnknown: true }
+			: {}),
+		...(observationFreeResult.data?.retryable === false
+			? { retryable: false }
+			: {}),
+		...(observationFreeResult.data?.reconciliationRequired === true
 			? { reconciliationRequired: true }
 			: {}),
 	};
 	return {
-		success: result.success,
-		...(result.text !== undefined ? { text: result.text } : {}),
-		...(result.transcriptVisibility !== undefined
-			? { transcriptVisibility: result.transcriptVisibility }
+		success: observationFreeResult.success,
+		...(observationFreeResult.text !== undefined
+			? { text: observationFreeResult.text }
 			: {}),
-		...(result.plannerObservation !== undefined
-			? { plannerObservation: result.plannerObservation }
+		...(observationFreeResult.transcriptVisibility !== undefined
+			? { transcriptVisibility: observationFreeResult.transcriptVisibility }
 			: {}),
-		...(result.userFacingText !== undefined
-			? { userFacingText: result.userFacingText }
+		...(observationFreeResult.userFacingText !== undefined
+			? { userFacingText: observationFreeResult.userFacingText }
 			: {}),
-		...(result.verifiedUserFacing !== undefined
-			? { verifiedUserFacing: result.verifiedUserFacing }
+		...(observationFreeResult.verifiedUserFacing !== undefined
+			? { verifiedUserFacing: observationFreeResult.verifiedUserFacing }
 			: {}),
-		...(result.userFacingEffect !== undefined
-			? { userFacingEffect: result.userFacingEffect }
+		...(observationFreeResult.userFacingEffect !== undefined
+			? { userFacingEffect: observationFreeResult.userFacingEffect }
 			: {}),
-		...(result.effectReceipts !== undefined
-			? { effectReceipts: result.effectReceipts }
+		...(observationFreeResult.effectReceipts !== undefined
+			? { effectReceipts: observationFreeResult.effectReceipts }
 			: {}),
-		...(result.userFacingEffectReceiptIds !== undefined
+		...(observationFreeResult.userFacingEffectReceiptIds !== undefined
 			? {
-					userFacingEffectReceiptIds: result.userFacingEffectReceiptIds,
+					userFacingEffectReceiptIds:
+						observationFreeResult.userFacingEffectReceiptIds,
 				}
 			: {}),
 		...(Object.keys(safeControlData).length > 0
 			? { data: safeControlData }
 			: {}),
-		...(result.turnComplete !== undefined
-			? { turnComplete: result.turnComplete }
+		...(observationFreeResult.turnComplete !== undefined
+			? { turnComplete: observationFreeResult.turnComplete }
 			: {}),
-		...(result.continueChain !== undefined
-			? { continueChain: result.continueChain }
+		...(observationFreeResult.continueChain !== undefined
+			? { continueChain: observationFreeResult.continueChain }
 			: {}),
 	};
 }
@@ -415,7 +422,9 @@ export async function executePlannedToolCall(
 			),
 		);
 	}
-	const previousResults = [...(executorCtx.previousResults ?? [])];
+	const previousResults = (executorCtx.previousResults ?? []).map((result) =>
+		projectActionResultForClipboard(undefined, result),
+	);
 	const parameters =
 		action.parameters && action.parameters.length > 0
 			? (validation.args as ActionParameters | undefined)
@@ -615,6 +624,7 @@ export async function executePlannedToolCall(
 				},
 			),
 	);
+	authorizeCanonicalPlannerObservation(runtime, action, resultForEvent);
 	// The handler result is the completion barrier. Publish it before event
 	// emission or disclosure revalidation can strand a committed side effect.
 	publishSettledResult(runtime, action, resultForEvent, onSettledResult);

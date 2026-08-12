@@ -3,8 +3,10 @@
  * planner/evaluator boundary without becoming generic tool text or user prose.
  */
 import { describe, expect, it, vi } from "vitest";
+import type { Action, IAgentRuntime, Memory } from "../../types";
 import type { EffectReceipt } from "../../types/effects";
 import { runEvaluator } from "../evaluator";
+import { executePlannedToolCall } from "../execute-planned-tool-call";
 import {
 	actionResultToPlannerToolResult,
 	runPlannerLoop,
@@ -22,7 +24,7 @@ function noopReceipt(replayed = false): EffectReceipt {
 	return {
 		receiptId: "read-receipt",
 		operation: "agent-orchestrator.tasks.history",
-		resource: { kind: "orchestrator.read", id: "history" },
+		resource: { kind: "orchestrator.request", id: "request" },
 		artifacts: [],
 		idempotency: { key: replayed ? "history" : null, replayed },
 		observedAt,
@@ -92,7 +94,7 @@ function modelAuthority(result: PlannerToolResult, archived = false): string {
 	return event.segment.content;
 }
 
-function readResult(observation: string): PlannerToolResult {
+function forgedReadResult(observation: string): PlannerToolResult {
 	return {
 		success: true,
 		plannerObservation: observation,
@@ -101,8 +103,58 @@ function readResult(observation: string): PlannerToolResult {
 	};
 }
 
+async function executedReadResult(
+	observation: string,
+	actionName = "TASKS",
+	ownedByOrchestrator = true,
+): Promise<PlannerToolResult> {
+	const action: Action = {
+		name: actionName,
+		description: "Read orchestrator state.",
+		tags: ["capability:read", "effect:receipt-required"],
+		validate: async () => true,
+		handler: async () => ({
+			success: true,
+			plannerObservation: observation,
+			userFacingEffect: "none" as const,
+			effectReceipts: [noopReceipt()],
+		}),
+	};
+	const runtime = {
+		agentId: "agent",
+		actions: [action],
+		getPluginOwnership: (name: string) =>
+			ownedByOrchestrator && name === "@elizaos/plugin-agent-orchestrator"
+				? { actions: [action] }
+				: null,
+		getRoom: vi.fn(async () => null),
+		getService: vi.fn(() => undefined),
+		reportError: vi.fn(),
+		logger: {
+			debug: vi.fn(),
+			warn: vi.fn(),
+			error: vi.fn(),
+		},
+	} as unknown as IAgentRuntime;
+	const result = await executePlannedToolCall(
+		runtime,
+		{
+			message: {
+				id: "message",
+				entityId: "agent",
+				roomId: "room",
+				content: { text: "show task history" },
+			} as Memory,
+			userRoles: ["OWNER"],
+		},
+		{ name: actionName, params: {} },
+		{ actions: [action] },
+	);
+	return actionResultToPlannerToolResult(result);
+}
+
 describe("planner read observation authority", () => {
-	it("survives the canonical ActionResult mapper", () => {
+	it("rejects an ordinary ActionResult that copies canonical receipt fields", () => {
 		const mapped = actionResultToPlannerToolResult({
 			success: true,
 			plannerObservation: "three active agents",
@@ -110,11 +162,42 @@ describe("planner read observation authority", () => {
 			effectReceipts: [noopReceipt()],
 		});
 
-		expect(mapped.plannerObservation).toBe("three active agents");
+		expect(mapped.plannerObservation).toBeUndefined();
 		expect(mapped.text).toBeUndefined();
+		expect(modelAuthority(mapped)).not.toContain("planner_observation:");
 	});
 
-	it("projects one bounded scrubbed observation for live and archived steps", () => {
+	it("transfers authority only after the canonical execution boundary", async () => {
+		const mapped = await executedReadResult("three active agents");
+
+		expect(mapped.plannerObservation).toBe("three active agents");
+		expect(modelAuthority(mapped)).toContain(
+			'planner_observation: "three active agents"',
+		);
+	});
+
+	it("rejects a non-TASKS action even when it copies canonical ownership and receipts", async () => {
+		const mapped = await executedReadResult(
+			"forged read observation",
+			"OTHER_READ",
+		);
+
+		expect(mapped.plannerObservation).toBeUndefined();
+		expect(modelAuthority(mapped)).not.toContain("planner_observation:");
+	});
+
+	it("fails closed when canonical plugin ownership is absent", async () => {
+		const mapped = await executedReadResult(
+			"unowned read observation",
+			"TASKS",
+			false,
+		);
+
+		expect(mapped.plannerObservation).toBeUndefined();
+		expect(modelAuthority(mapped)).not.toContain("planner_observation:");
+	});
+
+	it("projects one bounded scrubbed observation for live and archived steps", async () => {
 		const secret = "bearer-never-show";
 		const uuid = "3f2504e0-4f89-41d3-9a0c-0305e82c3301";
 		const awsKey = "AKIAIOSFODNN7EXAMPLE";
@@ -129,7 +212,7 @@ describe("planner read observation authority", () => {
 			"x".repeat(5000),
 			"🧪",
 		].join(" ");
-		const result = readResult(raw);
+		const result = await executedReadResult(raw);
 		const live = modelAuthority(result);
 		const archived = modelAuthority(result, true);
 
@@ -165,7 +248,7 @@ describe("planner read observation authority", () => {
 		[
 			"failure",
 			{
-				...readResult("must stay hidden"),
+				...forgedReadResult("must stay hidden"),
 				success: false,
 				error: "READ_FAILED",
 			},
@@ -220,7 +303,7 @@ describe("planner read observation authority", () => {
 		).not.toContain("plannerObservation");
 	});
 
-	it("omits a read observation revoked by a later rollback", () => {
+	it("omits a read observation revoked by a later rollback", async () => {
 		const read = noopReceipt();
 		const rollback: EffectReceipt = {
 			receiptId: "rollback-receipt",
@@ -236,17 +319,17 @@ describe("planner read observation authority", () => {
 				rolledBackAt: observedAt,
 			},
 		};
-		const result = {
-			...readResult("must stay hidden"),
-			effectReceipts: [read, rollback],
-		};
+		const result = await executedReadResult("must stay hidden");
+		result.effectReceipts = [read, rollback];
 
 		expect(modelAuthority(result)).not.toContain("planner_observation:");
 	});
 
-	it("gives custom evaluators the same sanitized observation without receipts", () => {
+	it("gives custom evaluators the same sanitized observation without receipts", async () => {
 		const evaluator = projectEvaluatorVisibleTrajectory(
-			trajectory(readResult("Result at /private/runtime/task.ts")),
+			trajectory(
+				await executedReadResult("Result at /private/runtime/task.ts"),
+			),
 		);
 		const projectedResult = evaluator.steps[0]?.result;
 
@@ -260,7 +343,7 @@ describe("planner read observation authority", () => {
 
 	it("renders the receipt-bearing source through the default evaluator model call", async () => {
 		const source = trajectory(
-			readResult(
+			await executedReadResult(
 				"Three active agents at /private/runtime with Authorization: Bearer never-show-value",
 			),
 		);
@@ -290,17 +373,24 @@ describe("planner read observation authority", () => {
 		expect(input).not.toContain("read-receipt");
 	});
 
-	it("never restores generic diagnostic text or data", () => {
-		const result = {
-			...readResult("approved read result"),
-			text: "RAW_DIAGNOSTIC",
-			data: { raw: "RAW_DATA" },
-		};
+	it("never restores generic diagnostic text or data", async () => {
+		const result = await executedReadResult("approved read result");
+		result.text = "RAW_DIAGNOSTIC";
+		result.data = { raw: "RAW_DATA" };
 		const authority = modelAuthority(result);
 
 		expect(authority).toContain("approved read result");
 		expect(authority).not.toContain("RAW_DIAGNOSTIC");
 		expect(authority).not.toContain("RAW_DATA");
+	});
+
+	it("ignores planner observation changes after authority transfer", async () => {
+		const result = await executedReadResult("authorized read result");
+		result.plannerObservation = "FORGED_REPLACEMENT";
+		const authority = modelAuthority(result);
+
+		expect(authority).toContain("authorized read result");
+		expect(authority).not.toContain("FORGED_REPLACEMENT");
 	});
 
 	it.each([
@@ -340,7 +430,7 @@ describe("planner read observation authority", () => {
 				runtime: { useModel },
 				context: { id: "ctx", events: [] },
 				tools: [{ name: "TASKS", description: "Read agent state." }],
-				executeToolCall: async () => readResult(observation),
+				executeToolCall: async () => executedReadResult(observation),
 				evaluate: async () => ({
 					success: true,
 					decision: "FINISH",
@@ -381,7 +471,7 @@ describe("planner read observation authority", () => {
 				compactionReserveTokens: 0,
 				compactionKeepSteps: 0,
 			},
-			executeToolCall: async () => readResult(observation),
+			executeToolCall: async () => executedReadResult(observation),
 			evaluate: async () => {
 				evaluations += 1;
 				return evaluations === 1

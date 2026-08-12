@@ -12,10 +12,13 @@ import type {
 } from "@elizaos/core";
 import { ModelType } from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { runEvaluator } from "../../../../packages/core/src/runtime/evaluator.ts";
+import { executePlannedToolCall } from "../../../../packages/core/src/runtime/execute-planned-tool-call.ts";
 import {
   actionResultToPlannerToolResult,
   runPlannerLoop,
 } from "../../../../packages/core/src/runtime/planner-loop.ts";
+import { projectEvaluatorVisibleTrajectory } from "../../../../packages/core/src/runtime/planner-trajectory.ts";
 
 const fakeWorkspaceService = {
   setAuthPromptCallback: vi.fn(),
@@ -165,6 +168,10 @@ async function runReadThroughPlanner(params: Record<string, unknown>) {
   const plannerRuntime = {
     ...runtime,
     useModel,
+    getPluginOwnership: (name: string) =>
+      name === "@elizaos/plugin-agent-orchestrator"
+        ? { actions: [tasksAction] }
+        : null,
     getService: (type: string) =>
       type === "ACP_SERVICE" || type === "ACP_SUBPROCESS_SERVICE"
         ? acp
@@ -177,18 +184,37 @@ async function runReadThroughPlanner(params: Record<string, unknown>) {
     runtime: plannerRuntime,
     context: { id: "ctx", events: [] },
     tools: [{ name: "TASKS", description: "Read orchestrator state." }],
+    config: {
+      contextWindowTokens: 1,
+      compactionReserveTokens: 0,
+      compactionKeepSteps: 0,
+    },
     executeToolCall: async (toolCall) => {
-      const result = await tasksAction.handler(
+      const result = await executePlannedToolCall(
         plannerRuntime,
-        baseMessage,
-        baseState,
-        { parameters: toolCall.params ?? {} },
-        callback,
+        {
+          message: baseMessage,
+          state: baseState,
+          userRoles: ["OWNER"],
+          activeContexts: ["code"],
+          callback,
+        },
+        { name: toolCall.name, params: toolCall.params ?? {} },
+        { actions: [tasksAction] },
       );
-      if (!result) throw new Error("TASKS handler returned no result");
       settled = result;
       return actionResultToPlannerToolResult(result);
     },
+  });
+
+  const archivedEvaluatorTrajectory = projectEvaluatorVisibleTrajectory(
+    loop.trajectory,
+  );
+  await runEvaluator({
+    runtime: plannerRuntime,
+    context: archivedEvaluatorTrajectory.context,
+    trajectory: archivedEvaluatorTrajectory,
+    modelInputTrajectory: loop.trajectory,
   });
 
   return { callback, evaluatorCalls, loop, settled, useModel };
@@ -373,7 +399,11 @@ describe("TASKS read observations reach planner and evaluator models", () => {
       const { callback, evaluatorCalls, loop, settled, useModel } =
         await runReadThroughPlanner(params);
 
-      expect(settled?.plannerObservation).toBeTruthy();
+      expect(settled?.error).toBeUndefined();
+      expect(settled).toMatchObject({
+        success: true,
+        plannerObservation: expect.any(String),
+      });
       expect(settled?.text).toBeUndefined();
       expect(callback).not.toHaveBeenCalled();
       expect(evaluatorCalls).toBeGreaterThanOrEqual(1);
@@ -387,9 +417,20 @@ describe("TASKS read observations reach planner and evaluator models", () => {
       expect(JSON.stringify(plannerInputs[1]?.[1])).toContain(
         "planner_observation",
       );
-      expect(JSON.stringify(evaluatorInputs[0]?.[1])).toContain(
-        "planner_observation",
-      );
+      expect(evaluatorInputs).toHaveLength(2);
+      for (const evaluatorInput of evaluatorInputs) {
+        expect(JSON.stringify(evaluatorInput[1])).toContain(
+          "planner_observation",
+        );
+      }
+      expect(loop.trajectory.archivedSteps).toEqual([
+        expect.objectContaining({
+          toolCall: expect.objectContaining({ name: "TASKS" }),
+          result: expect.objectContaining({
+            plannerObservation: expect.any(String),
+          }),
+        }),
+      ]);
       expect(loop.finalMessage).toBe("Synthesized read answer.");
     },
   );

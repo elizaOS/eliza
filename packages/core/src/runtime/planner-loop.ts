@@ -74,6 +74,7 @@ import {
 	type ModelInputBudget,
 	withModelInputBudgetProviderOptions,
 } from "./model-input-budget";
+import { transferPlannerObservationAuthority } from "./planner-observation-authority";
 import {
 	cacheProviderOptions,
 	toolMessageContent,
@@ -5217,7 +5218,7 @@ function ensureToolCallId(
  */
 export function actionResultToPlannerToolResult(
 	result: ActionResult,
-	options: { summary?: string } = {},
+	options: { summary?: string; plannerObservationSource?: ActionResult } = {},
 ): PlannerToolResult {
 	const data: Record<string, unknown> = {};
 	if (result.data) {
@@ -5229,7 +5230,6 @@ export function actionResultToPlannerToolResult(
 	const plannerResult: PlannerToolResult = {
 		success: effectiveMachineSuccess(result),
 		text: result.text,
-		plannerObservation: result.plannerObservation,
 		transcriptVisibility: result.transcriptVisibility,
 		userFacingText: result.userFacingText,
 		verifiedUserFacing: result.verifiedUserFacing,
@@ -5244,6 +5244,10 @@ export function actionResultToPlannerToolResult(
 	if (options.summary) {
 		plannerResult.summary = options.summary;
 	}
+	transferPlannerObservationAuthority(
+		options.plannerObservationSource ?? result,
+		plannerResult,
+	);
 	return plannerResult;
 }
 

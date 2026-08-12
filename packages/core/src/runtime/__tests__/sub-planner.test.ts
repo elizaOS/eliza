@@ -244,6 +244,8 @@ describe("sub-planner helpers", () => {
 	});
 
 	it("carries settled child results forward inside one nested invocation", async () => {
+		const inheritedObservation = "inherited planner-only observation";
+		const childObservation = "child planner-only observation";
 		const childA = makeAction({ name: "CHILD_A" });
 		const childB = makeAction({ name: "CHILD_B" });
 		const parent = makeAction({
@@ -268,15 +270,34 @@ describe("sub-planner helpers", () => {
 				call: { name: string },
 			): Promise<ActionResult> => {
 				if (call.name === "CHILD_A") {
-					expect(ctx.previousResults ?? []).toEqual([]);
-					return { success: true, userFacingEffect: "none" };
+					expect(ctx.previousResults).toEqual([
+						{
+							success: true,
+							data: { actionName: "INHERITED" },
+						},
+					]);
+					expect(JSON.stringify(ctx.previousResults)).not.toContain(
+						inheritedObservation,
+					);
+					return {
+						success: true,
+						userFacingEffect: "none",
+						plannerObservation: childObservation,
+					};
 				}
 				expect(ctx.previousResults).toEqual([
+					{
+						success: true,
+						data: { actionName: "INHERITED" },
+					},
 					expect.objectContaining({
 						success: true,
 						data: { actionName: "CHILD_A" },
 					}),
 				]);
+				expect(JSON.stringify(ctx.previousResults)).not.toContain(
+					childObservation,
+				);
 				return { success: true, userFacingEffect: "none" };
 			},
 		);
@@ -285,7 +306,16 @@ describe("sub-planner helpers", () => {
 			runtime: makeRuntime([parent, childA, childB], useModel),
 			action: parent,
 			context: { id: "ctx", events: [] },
-			ctx: { message: makeMessage() },
+			ctx: {
+				message: makeMessage(),
+				previousResults: [
+					{
+						success: true,
+						plannerObservation: inheritedObservation,
+						data: { actionName: "INHERITED" },
+					},
+				],
+			},
 			execute,
 			evaluate: vi
 				.fn()
