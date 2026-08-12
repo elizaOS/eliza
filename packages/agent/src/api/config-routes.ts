@@ -22,7 +22,6 @@ import {
   sanitizeForSettingsDebug,
   settingsDebugCloudSummary,
 } from "@elizaos/shared";
-import { isBlockedEnvKey } from "../config/blocked-env-keys.ts";
 import type { ElizaConfig } from "../config/config.ts";
 import { loadElizaConfig, saveElizaConfig } from "../config/config.ts";
 import { buildCharacterFromConfig } from "../runtime/build-character-config.ts";
