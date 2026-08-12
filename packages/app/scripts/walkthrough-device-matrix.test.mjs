@@ -4,6 +4,9 @@
 // (#13573). No device is touched — matrices are fabricated in-process.
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
+import { mkdtempSync, rmSync, symlinkSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 import {
@@ -14,6 +17,7 @@ import {
   erroredLanes,
   iosDeviceConnectionState,
   isLaneRequired,
+  MAX_DURATION_SECONDS,
   MAX_NODE_TIMER_MS,
   parseArgs,
   parsePositiveInteger,
@@ -104,7 +108,7 @@ describe("walkthrough device matrix required lanes", () => {
       "10junk",
       "NaN",
       "Infinity",
-      String(MAX_NODE_TIMER_MS + 1),
+      String(MAX_DURATION_SECONDS + 1),
     ]) {
       assert.throws(() => parseArgs(["--duration", bad], {}), /--duration/);
     }
@@ -143,6 +147,81 @@ describe("real CLI rejection for --duration", () => {
     assert.match(result.stderr, /--duration/);
     assert.doesNotMatch(result.stdout, /=== walkthrough device matrix ===/);
     assert.doesNotMatch(result.stdout + result.stderr, /reports\/walkthrough/);
+  });
+
+  it("accepts the timer-safe maximum and rejects the next second", () => {
+    assert.equal(
+      parseArgs(["--duration", String(MAX_DURATION_SECONDS)], {}).duration,
+      MAX_DURATION_SECONDS,
+    );
+    assert.throws(
+      () => parseArgs(["--duration", String(MAX_DURATION_SECONDS + 1)], {}),
+      new RegExp(`--duration.*1 to ${MAX_DURATION_SECONDS}`),
+    );
+  });
+
+  it("enforces max and max+1 through the direct executable", () => {
+    const accepted = spawnSync(
+      process.execPath,
+      [
+        scriptPath,
+        "--duration",
+        String(MAX_DURATION_SECONDS),
+        "--definitely-invalid",
+      ],
+      { encoding: "utf8", env: { PATH: process.env.PATH ?? "" } },
+    );
+    assert.equal(accepted.status, 1);
+    assert.match(accepted.stderr, /Unknown argument: --definitely-invalid/);
+    assert.doesNotMatch(accepted.stderr, /--duration must be/);
+
+    const rejected = spawnSync(
+      process.execPath,
+      [scriptPath, "--duration", String(MAX_DURATION_SECONDS + 1)],
+      { encoding: "utf8", env: { PATH: process.env.PATH ?? "" } },
+    );
+    assert.equal(rejected.status, 1);
+    assert.match(rejected.stderr, /--duration/);
+    assert.doesNotMatch(rejected.stdout, /=== walkthrough device matrix ===/);
+  });
+
+  it("enforces max and max+1 through a symlinked executable", () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "walkthrough-duration-"));
+    const symlinkPath = join(tempDir, "walkthrough-device-matrix.mjs");
+    try {
+      symlinkSync(scriptPath, symlinkPath);
+      const accepted = spawnSync(
+        process.execPath,
+        [
+          symlinkPath,
+          "--duration",
+          String(MAX_DURATION_SECONDS),
+          "--definitely-invalid",
+        ],
+        {
+          encoding: "utf8",
+          env: { PATH: process.env.PATH ?? "" },
+        },
+      );
+      assert.equal(accepted.status, 1);
+      assert.match(accepted.stderr, /Unknown argument: --definitely-invalid/);
+      assert.doesNotMatch(accepted.stderr, /--duration must be/);
+
+      const rejected = spawnSync(
+        process.execPath,
+        [symlinkPath, "--duration", String(MAX_DURATION_SECONDS + 1)],
+        {
+          encoding: "utf8",
+          env: { PATH: process.env.PATH ?? "" },
+        },
+      );
+
+      assert.equal(rejected.status, 1);
+      assert.match(rejected.stderr, /--duration/);
+      assert.doesNotMatch(rejected.stdout, /=== walkthrough device matrix ===/);
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
   });
 });
 

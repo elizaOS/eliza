@@ -31,9 +31,9 @@
  */
 
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, realpathSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 import { readDevicectlDeviceList } from "./ios-device-devicectl.mjs";
 import { resolveDeviceId } from "./ios-device-lib.mjs";
 import {
@@ -47,6 +47,8 @@ const APP_DIR = resolve(dirname(SCRIPT_PATH), "..");
 const REPO_ROOT = resolve(APP_DIR, "../..");
 /** Largest delay Node accepts without clamping (2^31-1). */
 export const MAX_NODE_TIMER_MS = 2_147_483_647;
+/** Largest whole-second duration whose millisecond conversion fits a Node timer. */
+export const MAX_DURATION_SECONDS = Math.floor(MAX_NODE_TIMER_MS / 1_000);
 export const DEFAULT_DURATION_SECONDS = 30;
 
 /**
@@ -117,12 +119,12 @@ export function parseArgs(argv, env = process.env) {
       const value = argv[++i];
       if (value === undefined || value.startsWith("--")) {
         throw new Error(
-          `--duration requires an integer from 1 to ${MAX_NODE_TIMER_MS}`,
+          `--duration requires an integer from 1 to ${MAX_DURATION_SECONDS}`,
         );
       }
       a.duration = parsePositiveInteger(value, "--duration", {
         min: 1,
-        max: MAX_NODE_TIMER_MS,
+        max: MAX_DURATION_SECONDS,
       });
     } else if (arg === "--require") {
       const value = argv[++i];
@@ -658,7 +660,17 @@ async function main() {
   process.exit(computeExitCode(matrix, args.require));
 }
 
-if (import.meta.url === pathToFileURL(process.argv[1]).href) {
+function isDirectRun(entryPath) {
+  if (!entryPath) return false;
+  try {
+    return realpathSync(resolve(entryPath)) === realpathSync(SCRIPT_PATH);
+  } catch {
+    // error-policy:J3 an unresolved argv entry is not this module's CLI path
+    return false;
+  }
+}
+
+if (isDirectRun(process.argv[1])) {
   main().catch((error) => {
     console.error(`[walkthrough] device matrix failed: ${error.message}`);
     process.exit(1);
