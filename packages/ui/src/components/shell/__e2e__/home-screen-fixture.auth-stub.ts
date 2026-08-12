@@ -63,4 +63,13 @@ export function useAuthStatus(): {
  * authenticated snapshot (never the `loading` phase the real probe races), so
  * priming is inherently a no-op.
  */
+/**
+ * Non-hook full snapshot read used by the notification store (#18391).
+ * The fixture is a fixed authenticated snapshot, so return that constant;
+ * the export must exist here or the aliased e2e bundle fails to resolve it.
+ */
+export function getAuthStatusSnapshot(): typeof AUTHENTICATED_STATE {
+  return AUTHENTICATED_STATE;
+}
+
 export function primeAuthStatusProbe(): void {}
