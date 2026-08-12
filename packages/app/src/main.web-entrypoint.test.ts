@@ -5,7 +5,7 @@
  * full dashboard tree.
  */
 import { Capacitor } from "@capacitor/core";
-import { runIosFullBunSmokeIfRequested } from "@elizaos/app-core";
+import { runIosFullBunSmokeIfRequested } from "@elizaos/app-core/desktop-shell";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const webBoot = vi.hoisted(() => ({

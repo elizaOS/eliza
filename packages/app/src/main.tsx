@@ -43,17 +43,13 @@ import { BackgroundRunner } from "@capacitor/background-runner";
 import { Capacitor, type PluginListenerHandle } from "@capacitor/core";
 import { Keyboard, KeyboardResize } from "@capacitor/keyboard";
 import { Preferences } from "@capacitor/preferences";
-import {
-  buildLocalizedTrayMenu,
-  DesktopSurfaceNavigationRuntime,
-  DesktopTrayRuntime,
-  DetachedShellRoot,
-  runIosFullBunSmokeIfRequested,
-} from "@elizaos/app-core";
+// #18056: desktop shell is loaded only via dynamic import / React.lazy so the
+// cold anonymous /login entry does not static-import app-core/ui browser graphs.
 import {
   installIosLocalAgentFetchBridge,
   installIosLocalAgentNativeRequestBridge,
 } from "@elizaos/app-core/api/ios-local-agent-transport";
+import type { DetachedShellRootProps } from "@elizaos/app-core/desktop-shell";
 import { Agent } from "@elizaos/capacitor-agent";
 import { Desktop } from "@elizaos/capacitor-desktop";
 import type { DeviceBridgeClient } from "@elizaos/capacitor-llama";
@@ -69,7 +65,6 @@ import {
   isCloudPairAgentId,
   isCloudPairLoopbackOrigin,
 } from "@elizaos/shared/contracts";
-import { App } from "@elizaos/ui/App";
 import { client } from "@elizaos/ui/api";
 import { installAndroidNativeAgentFetchBridge } from "@elizaos/ui/api/android-native-agent-transport";
 import {
@@ -83,7 +78,6 @@ import {
   setStorageValue,
 } from "@elizaos/ui/bridge/storage-bridge";
 import { RenderTelemetryProfiler } from "@elizaos/ui/cloud-ui/runtime/render-telemetry";
-import { AppWindowRenderer } from "@elizaos/ui/components/apps/AppWindowRenderer";
 import { ShellModalityProvider } from "@elizaos/ui/components/ShellModalityProvider";
 import { ShellRoleProvider } from "@elizaos/ui/components/ShellRoleProvider";
 import type {
@@ -291,9 +285,59 @@ function lazyNamedComponent<TProps>(
   return lazy(async () => ({ default: await load() })) as ComponentType<TProps>;
 }
 
+/**
+ * Tab/view App is dynamically imported so anonymous `/login` (CloudRouterShell
+ * public routes) does not static-import the full agent dashboard graph into the
+ * entry modulepreload list (#18056). Native / non-shell paths still mount it
+ * under the same Suspense boundary as the rest of the tree.
+ */
+const App = lazy(async () => {
+  const mod = await import("@elizaos/ui/App");
+  return { default: mod.App };
+});
+
+const AppWindowRenderer = lazyNamedComponent<{ slug: string }>(async () => {
+  const mod = await import("@elizaos/ui/components/apps/AppWindowRenderer");
+  return mod.AppWindowRenderer;
+});
+
+/** Desktop-only shell widgets — never static-import into the login entry. */
+const DesktopSurfaceNavigationRuntime = lazyNamedComponent<
+  Record<string, never>
+>(async () => {
+  const mod = await import("@elizaos/app-core/desktop-shell");
+  return mod.DesktopSurfaceNavigationRuntime;
+});
+const DesktopTrayRuntime = lazyNamedComponent<Record<string, never>>(
+  async () => {
+    const mod = await import("@elizaos/app-core/desktop-shell");
+    return mod.DesktopTrayRuntime;
+  },
+);
+const DetachedShellRoot = lazyNamedComponent<DetachedShellRootProps>(
+  async () => {
+    const mod = await import("@elizaos/app-core/desktop-shell");
+    return mod.DetachedShellRoot;
+  },
+);
+
 const PhoneCompanionApp = lazyNamedComponent<Record<string, never>>(
   async () => (await importAppPhone()).PhoneCompanionApp,
 );
+
+async function runIosFullBunSmokeFromDesktopShell(): Promise<boolean> {
+  const mod = await import("@elizaos/app-core/desktop-shell");
+  return mod.runIosFullBunSmokeIfRequested();
+}
+
+async function buildLocalizedTrayMenuAsync(
+  ...args: Parameters<
+    typeof import("@elizaos/app-core/desktop-shell").buildLocalizedTrayMenu
+  >
+) {
+  const mod = await import("@elizaos/app-core/desktop-shell");
+  return mod.buildLocalizedTrayMenu(...args);
+}
 const AppBlockerSettingsCard = lazyNamedComponent<AppBlockerSettingsCardProps>(
   async () => (await importPersonalAssistant()).AppBlockerSettingsCard,
 );
@@ -1711,7 +1755,7 @@ async function initializePlatform(): Promise<void> {
   await initializeStorageBridge();
   initializeCapacitorBridge();
   installNativeTranscriptPlatformBridge();
-  void runIosFullBunSmokeIfRequested();
+  void runIosFullBunSmokeFromDesktopShell();
   void runIosOnboardingSmokeIfRequested();
   void runIosCloudOnboardingSmokeIfRequested();
   void runIosOnboardingRelaunchSmokeIfRequested();
@@ -2349,7 +2393,7 @@ async function initializeDesktopShell(): Promise<void> {
   });
 
   await Desktop.setTrayMenu({
-    menu: buildLocalizedTrayMenu(createTranslator(loadUiLanguage())),
+    menu: await buildLocalizedTrayMenuAsync(createTranslator(loadUiLanguage())),
   });
 
   await Desktop.addListener(
@@ -2482,11 +2526,17 @@ const CloudRouterShell = lazy(async () => {
   // no cloud/auth/payment route resolves. Both imports live inside this
   // `__ELIZA_WEB_SHELL__`-guarded factory, so a cloud-free build drops them
   // statically.
-  const [{ registerAllCloudSurfaces }, mod] = await Promise.all([
-    import("@elizaos/ui/cloud/register-all"),
+  // Progressive public boot (#18056): import register-public, NOT register-all.
+  // register-all remains the synchronous full-table contract for unmodified
+  // consumers; this entrypoint only registers public/auth routes so idle
+  // /login never pulls private dashboard chunks.
+  const [{ registerPublicCloudSurfaces }, mod] = await Promise.all([
+    import("@elizaos/ui/cloud/register-public"),
     import("@elizaos/ui/cloud/shell/CloudRouterShell"),
   ]);
-  registerAllCloudSurfaces();
+  // Public/auth only on shell boot. Private dashboard domains are loaded by
+  // CloudRouterShell when a dashboard/* path is visited — never from idle /login.
+  registerPublicCloudSurfaces();
   return { default: mod.CloudRouterShell };
 });
 
@@ -3226,7 +3276,7 @@ async function main(): Promise<void> {
       initializeCapacitorBridge,
       installNativeRequestBridge: installIosLocalAgentNativeRequestBridge,
       installFetchBridge: installIosLocalAgentFetchBridge,
-      runSmoke: runIosFullBunSmokeIfRequested,
+      runSmoke: runIosFullBunSmokeFromDesktopShell,
     })
   ) {
     return;

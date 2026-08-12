@@ -2,10 +2,14 @@
 // @vitest-environment jsdom
 import { STEWARD_TOKEN_KEY } from "@elizaos/shared/steward-session-client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, describe, expect, it } from "vitest";
 import { appModeNavigation } from "../app-mode/app-mode";
+import {
+  resetPrivateCloudRegistrationForTests,
+  setPrivateCloudLoadForTests,
+} from "../private-cloud-registration";
 import { AppCatchAllRoute, DASHBOARD_REDIRECTS } from "./CloudRouterShell";
 
 /**
@@ -131,6 +135,7 @@ describe("CloudRouterShell apex catch-all", () => {
   afterEach(() => {
     cleanup();
     localStorage.clear();
+    resetPrivateCloudRegistrationForTests();
     Object.defineProperty(window, "location", {
       configurable: true,
       value: realLocation,
@@ -211,6 +216,7 @@ describe("CloudRouterShell apex catch-all — zero app-mode network", () => {
   afterEach(() => {
     cleanup();
     localStorage.clear();
+    resetPrivateCloudRegistrationForTests();
     globalThis.fetch = realFetch;
     Object.defineProperty(window, "location", {
       configurable: true,
@@ -246,6 +252,7 @@ describe("CloudRouterShell app-mode catch-all (app.elizacloud.ai)", () => {
   afterEach(() => {
     cleanup();
     localStorage.clear();
+    resetPrivateCloudRegistrationForTests();
     globalThis.fetch = realFetch;
     appModeNavigation.assign = realAssign;
     appModeNavigation.replace = realReplace;
@@ -256,6 +263,10 @@ describe("CloudRouterShell app-mode catch-all (app.elizacloud.ai)", () => {
   });
 
   it("sends an unauthenticated app-host visitor through the login flow, not the agent app", async () => {
+    let privateLoads = 0;
+    setPrivateCloudLoadForTests(async () => {
+      privateLoads += 1;
+    });
     setHostname("app.elizacloud.ai");
     installFetchRecorder();
     renderCatchAllWithAppModeMarkers();
@@ -263,6 +274,8 @@ describe("CloudRouterShell app-mode catch-all (app.elizacloud.ai)", () => {
     expect(await screen.findByTestId("login-page")).toBeTruthy();
     expect(screen.queryByTestId("agent-app")).toBeNull();
     expect(fetchLog).toEqual([]);
+    await flushMicrotasks();
+    expect(privateLoads).toBe(0);
   });
 
   it("gates every non-registered (marketing/app) path on the app host, not just the root", async () => {
@@ -279,6 +292,10 @@ describe("CloudRouterShell app-mode catch-all (app.elizacloud.ai)", () => {
     // per-agent /pair URL; a cold-starting container cannot consume the token
     // inside its TTL, so entry dead-ended on "Sign-in link expired". Entry
     // must render the chat app and issue zero pairing traffic.
+    let privateLoads = 0;
+    setPrivateCloudLoadForTests(async () => {
+      privateLoads += 1;
+    });
     setHostname("app.elizacloud.ai");
     installFetchRecorder((url, init) => {
       if (url === "/api/v1/eliza/agents" && (init?.method ?? "GET") === "GET") {
@@ -315,6 +332,9 @@ describe("CloudRouterShell app-mode catch-all (app.elizacloud.ai)", () => {
     renderCatchAllWithAppModeMarkers();
 
     expect(await screen.findByTestId("agent-app")).toBeTruthy();
+    await waitFor(() => {
+      expect(privateLoads).toBe(1);
+    });
     expect(fetchLog.filter((line) => line.includes("pairing-token"))).toEqual(
       [],
     );
