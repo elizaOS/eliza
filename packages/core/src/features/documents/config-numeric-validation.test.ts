@@ -149,4 +149,32 @@ describe("validateModelConfig numeric boundary", () => {
 			/Model configuration validation failed: BATCH_DELAY_MS:/,
 		);
 	});
+
+	it.each([
+		["LOCAL_EMBEDDING_DIMENSIONS", "local", ""],
+		["LOCAL_EMBEDDING_DIMENSIONS", "local", "   "],
+		["OPENAI_EMBEDDING_DIMENSIONS", "openai", ""],
+		["OPENAI_EMBEDDING_DIMENSIONS", "openai", "   "],
+	] as const)("rejects a blank %s alias", (setting, provider, value) => {
+		vi.stubEnv("EMBEDDING_PROVIDER", provider);
+		vi.stubEnv(setting, value);
+
+		expect(() => validateModelConfig()).toThrow(
+			/Model configuration validation failed: EMBEDDING_DIMENSION:/,
+		);
+	});
+
+	it("preserves the real configuration-boundary defaults", () => {
+		vi.stubEnv("EMBEDDING_PROVIDER", "local");
+
+		expect(validateModelConfig()).toMatchObject({
+			MAX_INPUT_TOKENS: 4000,
+			MAX_OUTPUT_TOKENS: 4096,
+			EMBEDDING_DIMENSION: 384,
+			MAX_CONCURRENT_REQUESTS: 100,
+			REQUESTS_PER_MINUTE: 500,
+			TOKENS_PER_MINUTE: 1_000_000,
+			BATCH_DELAY_MS: 100,
+		});
+	});
 });
