@@ -9,6 +9,7 @@ const repairedRuntimes = new WeakSet<AgentRuntime>();
 const repairPromises = new WeakMap<AgentRuntime, Promise<void>>();
 
 export function quoteIdent(name: string): string {
+  if (typeof name !== "string") return '""';
   return `"${name.replace(/"/g, '""')}"`;
 }
 
@@ -24,6 +25,7 @@ export function sanitizeIdentifier(
 }
 
 export function sqlLiteral(value: string): string {
+  if (typeof value !== "string") return "''";
   return `'${value.replace(/'/g, "''")}'`;
 }
 
@@ -36,10 +38,13 @@ export async function executeRawSql(
 }> {
   const db = runtime.adapter.db as
     | {
-        execute: (query: { queryChunks: unknown[] }) => Promise<{
-          rows: Record<string, unknown>[];
-          fields?: Array<{ name: string }>;
-        }>;
+        execute: (query: { queryChunks: unknown[] }) => Promise<
+          | {
+              rows: Record<string, unknown>[];
+              fields?: Array<{ name: string }>;
+            }
+          | Record<string, unknown>[]
+        >;
       }
     | undefined;
 
@@ -49,9 +54,17 @@ export async function executeRawSql(
 
   const { sql } = await import("drizzle-orm");
   const result = await db.execute(sql.raw(sqlText));
-  const rows = Array.isArray(result.rows) ? result.rows : [];
-  const columns = Array.isArray(result.fields)
-    ? result.fields.map((field) => field.name)
+  const rows = Array.isArray(result)
+    ? (result as Record<string, unknown>[])
+    : Array.isArray((result as { rows?: Record<string, unknown>[] })?.rows)
+      ? (result as { rows: Record<string, unknown>[] }).rows
+      : [];
+  const columns = Array.isArray(
+    (result as { fields?: Array<{ name: string }> })?.fields,
+  )
+    ? (result as { fields: Array<{ name: string }> }).fields.map(
+        (field) => field.name,
+      )
     : Object.keys(rows[0] ?? {});
 
   return { rows, columns };
