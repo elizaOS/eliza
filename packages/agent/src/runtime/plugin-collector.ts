@@ -15,7 +15,7 @@ import { createRequire } from "node:module";
 import path from "node:path";
 import {
   isGoogleChatConfigured,
-  lifeOpsPassiveConnectorsEnabled,
+  lifeOpsPassiveConnectorsSetting,
 } from "@elizaos/core";
 import channelPluginMap from "@elizaos/registry/first-party/channel-plugin-map.json" with {
   type: "json",
@@ -151,10 +151,14 @@ function gitpathologistRequested(config: ElizaConfig): boolean {
 function telegramStandaloneRequested(
   pluginNames: ReadonlySet<string>,
 ): boolean {
-  const resolvedPlugins = Array.from(pluginNames, (name) => ({ name }));
-  if (
-    lifeOpsPassiveConnectorsEnabled({ plugins: resolvedPlugins }, process.env)
-  ) {
+  // Host loading policy: before runtime construction only resolved package
+  // names exist, and the personal-assistant package is the one whose Plugin
+  // declares `passiveConnectorsByDefault`. An explicit operator setting wins;
+  // otherwise the presence of that package predicts the runtime-time gate.
+  const passive =
+    lifeOpsPassiveConnectorsSetting(null, process.env) ??
+    pluginNames.has("@elizaos/plugin-personal-assistant");
+  if (passive) {
     return false;
   }
   const raw = process.env.ELIZA_TELEGRAM_STANDALONE_BOT?.trim().toLowerCase();
