@@ -3229,8 +3229,7 @@ describe("view management actions", () => {
 									},
 									query: {
 										type: "string",
-										description:
-											"Unique text contained anywhere in the note.",
+										description: "Unique text contained anywhere in the note.",
 										minLength: 1,
 										maxLength: 20_000,
 									},
@@ -3316,8 +3315,7 @@ describe("view management actions", () => {
 									},
 									query: {
 										type: "string",
-										description:
-											"Unique text contained anywhere in the note.",
+										description: "Unique text contained anywhere in the note.",
 										minLength: 1,
 										maxLength: 20_000,
 									},
@@ -3411,8 +3409,7 @@ describe("view management actions", () => {
 									},
 									query: {
 										type: "string",
-										description:
-											"Unique text contained anywhere in the note.",
+										description: "Unique text contained anywhere in the note.",
 										minLength: 1,
 										maxLength: 20_000,
 									},
@@ -3489,8 +3486,7 @@ describe("view management actions", () => {
 								params: {
 									query: {
 										type: "string",
-										description:
-											"Unique text contained anywhere in the note.",
+										description: "Unique text contained anywhere in the note.",
 										minLength: 1,
 										maxLength: 20_000,
 									},
