@@ -2068,7 +2068,12 @@ describe("runOnboardingChat", () => {
           organization: { id: "org-1" },
           isNew: true,
         });
-        // Start with provisioning pending — no handoff yet.
+        getElizaAppProvisioningStatus.mockResolvedValue({
+          status: "provisioning",
+          agentId: "agent-1",
+          bridgeUrl: null,
+          sandbox: null,
+        });
         ensureElizaAppProvisioning.mockResolvedValue({
           status: "provisioning",
           agentId: "agent-1",
@@ -2109,7 +2114,16 @@ describe("runOnboardingChat", () => {
         // Still no handoff — polls never triggered one.
         expect(rememberRequests).toHaveLength(0);
 
-        // Provisioning reaches running — the next turn fires the handoff.
+        getElizaAppProvisioningStatus.mockResolvedValue({
+          status: "running",
+          agentId: "agent-1",
+          bridgeUrl: "https://agent-1.example",
+          sandbox: {
+            id: "agent-1",
+            status: "running",
+            bridge_url: "https://agent-1.example",
+          },
+        });
         ensureElizaAppProvisioning.mockResolvedValue({
           status: "running",
           agentId: "agent-1",
