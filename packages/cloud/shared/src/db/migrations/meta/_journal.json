@@ -1373,6 +1373,13 @@
       "when": 1786651200000,
       "tag": "0196_oauth_success_proof_tickets",
       "breakpoints": true
+    },
+    {
+      "idx": 196,
+      "version": "7",
+      "when": 1786737600000,
+      "tag": "0197_cloud_approval_requests_distinct_tables",
+      "breakpoints": true
     }
   ]
 }

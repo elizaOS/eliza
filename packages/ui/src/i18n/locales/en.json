@@ -6666,6 +6666,8 @@
   "cloud.approval.metaTitle": "Approval Request | Eliza Cloud",
   "cloud.approval.couldNotLoad": "Could not load approval request",
   "cloud.approval.unknownError": "Unknown error",
+  "cloud.approval.loading": "Loading approval request…",
+  "cloud.approval.returnHome": "Return to Eliza Cloud",
   "cloud.approval.heading": "Approval request",
   "cloud.approval.kind": "Kind",
   "cloud.approval.status": "Status",
