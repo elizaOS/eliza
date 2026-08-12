@@ -202,7 +202,13 @@ const CLOUD_AUDIT_CASES: CloudAuditCase[] = [
   // get-started/ — a continuation token is required to exercise the real
   // messaging handoff page instead of its missing-token redirect.
   {
-    slug: "get-started",
+    slug: "get-started-confirm",
+    path: "/get-started?onboardingSession=audit-continuation-token",
+    route: "get-started",
+    auth: AUTH,
+  },
+  {
+    slug: "get-started-success",
     path: "/get-started?onboardingSession=audit-continuation-token",
     route: "get-started",
     auth: AUTH,
@@ -622,6 +628,35 @@ test.describe("cloud-surfaces aesthetic audit (#10725/#11342)", () => {
           await seedStewardToken(page);
         }
         await installCloudApiStubs(page);
+        if (auditCase.slug.startsWith("get-started-")) {
+          await page.route(
+            "**/api/eliza-app/onboarding/chat**",
+            async (route) => {
+              const request = route.request();
+              if (request.method() === "GET") {
+                await route.fulfill({
+                  status: 200,
+                  contentType: "application/json",
+                  body: JSON.stringify({
+                    success: true,
+                    data: {
+                      platform: "blooio",
+                      platformUserId: "+14155550123",
+                      platformDisplayName: "+14155550123",
+                      returnUrl: "sms:+18087881821",
+                    },
+                  }),
+                });
+                return;
+              }
+              await route.fulfill({
+                status: 200,
+                contentType: "application/json",
+                body: JSON.stringify({ success: true, data: {} }),
+              });
+            },
+          );
+        }
         if (auditCase.slug === "join") {
           await page.route("**/api/cloud/compat/agents**", async (route) => {
             await route.fulfill({
@@ -641,6 +676,15 @@ test.describe("cloud-surfaces aesthetic audit (#10725/#11342)", () => {
           });
         }
         await page.goto(auditCase.path, { waitUntil: "domcontentloaded" });
+
+        if (auditCase.slug === "get-started-success") {
+          await page
+            .getByRole("button", { name: "Connect this iMessage account" })
+            .click();
+          await expect(
+            page.getByRole("button", { name: "Back to iMessage" }),
+          ).toBeVisible();
+        }
 
         // Routes with expectedFinalPath always redirect on localhost (the
         // harness hostname is 127.0.0.1). Assert the final URL matches the
