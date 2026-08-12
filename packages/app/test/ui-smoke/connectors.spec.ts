@@ -137,6 +137,22 @@ async function installConnectorRoutes(
   page: Page,
   options: { cloudConnected: boolean },
 ): Promise<void> {
+  // installDefaultAppRoutes reports cloudProvisioned: true, which hides
+  // Discord Desktop App (`hideOnManagedCloud`). This spec is a local renderer,
+  // not a managed Cloud container, so keep the co-located desktop mode.
+  await page.unroute("**/api/first-run/status").catch(() => {});
+  await page.route("**/api/first-run/status", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ complete: true, cloudProvisioned: false }),
+    });
+  });
+
   await page.route("**/api/plugins", async (route) => {
     if (route.request().method() !== "GET") {
       await route.fallback();
