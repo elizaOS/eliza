@@ -1879,9 +1879,29 @@ export function sanitizeReplyTextAfterMediaDelivery(
 		return cleaned;
 	}
 
+	const isUrlTokenBoundary = (character: string | undefined): boolean =>
+		character === undefined || /[\s<>()[\]{}"'`]/u.test(character);
 	for (const url of deliveredUrls) {
-		const escaped = url.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-		cleaned = cleaned.replace(new RegExp(`<?\\s*${escaped}\\s*>?`, "gi"), "");
+		if (!url) continue;
+		let cursor = 0;
+		let withoutDeliveredUrl = "";
+		while (cursor < cleaned.length) {
+			const matchStart = cleaned.indexOf(url, cursor);
+			if (matchStart < 0) {
+				withoutDeliveredUrl += cleaned.slice(cursor);
+				break;
+			}
+			const matchEnd = matchStart + url.length;
+			withoutDeliveredUrl += cleaned.slice(cursor, matchStart);
+			if (
+				!isUrlTokenBoundary(cleaned[matchStart - 1]) ||
+				!isUrlTokenBoundary(cleaned[matchEnd])
+			) {
+				withoutDeliveredUrl += url;
+			}
+			cursor = matchEnd;
+		}
+		cleaned = withoutDeliveredUrl;
 	}
 	cleaned = cleaned
 		.replace(

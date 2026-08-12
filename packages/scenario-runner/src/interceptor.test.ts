@@ -10,22 +10,33 @@ import {
 } from "./interceptor.ts";
 
 describe("action option capture", () => {
-  it("passes the room lease to the handler without serializing it", async () => {
+  it("projects action input once while keeping the live room lease exact", async () => {
     const lease = { release: async () => {} };
-    let observedOptions: unknown;
-    const action = {
+    let observedParameterizedOptions: unknown;
+    let observedMessageOptions: unknown;
+    const parameterizedAction = {
       name: "LEASE_PROBE",
       handler: async (...args: unknown[]) => {
-        observedOptions = args[3];
+        observedParameterizedOptions = args[3];
         return { success: true };
       },
     };
-    const runtime = { actions: [action] } as unknown as Parameters<
-      typeof attachInterceptor
-    >[0];
+    const parameterlessMessage = {
+      name: "MESSAGE",
+      handler: async (...args: unknown[]) => {
+        observedMessageOptions = args[3];
+        return { success: true, data: { channel: "sms" } };
+      },
+    };
+    const runtime = {
+      actions: [parameterizedAction, parameterlessMessage],
+    } as unknown as Parameters<typeof attachInterceptor>[0];
     const interceptor = attachInterceptor(runtime);
-    const options = {
-      parameters: { attachmentId: "attachment-1" },
+    const parameterizedOptions = {
+      parameters: {
+        attachmentId: "attachment-1",
+        roomHandlerLease: lease,
+      },
       actionContext: {
         previousResults: [{ success: true }],
         getPreviousResult: () => undefined,
@@ -33,23 +44,49 @@ describe("action option capture", () => {
       customContext: { traceId: "trace-1" },
       roomHandlerLease: lease,
     };
+    const messageOptions = {
+      actionContext: {
+        previousResults: [],
+        getPreviousResult: () => undefined,
+      },
+      roomHandlerLease: lease,
+    };
 
-    await (action.handler as (...args: unknown[]) => Promise<unknown>)(
-      runtime,
-      { roomId: "room-1" },
-      undefined,
-      options,
-    );
+    await (
+      parameterizedAction.handler as (...args: unknown[]) => Promise<unknown>
+    )(runtime, { roomId: "room-1" }, undefined, parameterizedOptions);
+    await (
+      parameterlessMessage.handler as (...args: unknown[]) => Promise<unknown>
+    )(runtime, { roomId: "room-1" }, undefined, messageOptions);
 
-    expect(observedOptions).toBe(options);
-    expect(interceptor.actions).toHaveLength(1);
+    expect(observedParameterizedOptions).toBe(parameterizedOptions);
+    expect(observedMessageOptions).toBe(messageOptions);
+    expect(interceptor.actions).toHaveLength(2);
     expect(interceptor.actions[0]?.parameters).toEqual({
-      parameters: { attachmentId: "attachment-1" },
-      actionContext: { previousResults: [{ success: true }] },
-      customContext: { traceId: "trace-1" },
+      attachmentId: "attachment-1",
     });
-    expect(interceptor.actions[0]?.parameters).not.toHaveProperty(
-      "roomHandlerLease",
+    expect(interceptor.actions[1]?.parameters).toBeUndefined();
+    expect(interceptor.connectorDispatches).toHaveLength(1);
+    expect(interceptor.connectorDispatches[0]).toMatchObject({
+      actionName: "MESSAGE",
+      channel: "sms",
+      delivered: true,
+      payload: { channel: "sms" },
+    });
+
+    // Captured parameters feed planner/judge text and the same object graph is
+    // serialized into reports. No sink may receive the capability key, its
+    // release function, or the empty object produced by function stripping.
+    const reportJson = JSON.stringify({
+      actions: interceptor.actions,
+      connectorDispatches: interceptor.connectorDispatches,
+    });
+    expect(reportJson).not.toContain("roomHandlerLease");
+    expect(reportJson).not.toContain('"release"');
+    expect(reportJson).not.toContain("getPreviousResult");
+    expect(reportJson).not.toContain("{}");
+    expect(JSON.stringify(interceptor.actions[0]?.parameters)).toBe(
+      '{"attachmentId":"attachment-1"}',
     );
   });
 });

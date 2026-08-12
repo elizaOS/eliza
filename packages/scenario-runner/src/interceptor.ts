@@ -11,11 +11,13 @@
 import type {
   Action,
   HandlerCallback,
+  HandlerOptions,
   IAgentRuntime,
   Memory,
   State,
   Task,
 } from "@elizaos/core";
+import { actionVisibleParameters } from "@elizaos/core";
 import type {
   CapturedAction,
   CapturedApprovalRequest,
@@ -409,19 +411,16 @@ export function attachInterceptor(runtime: IAgentRuntime): ActionInterceptor {
         IAgentRuntime,
         Memory,
         State | undefined,
-        Record<string, unknown> | undefined,
+        HandlerOptions | undefined,
         HandlerCallback | undefined,
       ];
-      const { roomHandlerLease: _roomHandlerLease, ...reportableOptions } =
-        options ?? {};
+      const reportableParameters = actionVisibleParameters(options);
       const entry: CapturedAction = {
         actionName: action.name,
-        // The lease is an executable ownership capability, not action input.
-        // Keep it live for the handler while omitting it from durable reports.
         parameters:
-          options === undefined
+          reportableParameters === undefined
             ? undefined
-            : (toJsonSafe(reportableOptions) as Record<string, unknown>),
+            : (toJsonSafe(reportableParameters) as Record<string, unknown>),
       };
       const wrappedArgs = [...args];
       if (isCallable(callback)) {
@@ -484,7 +483,7 @@ export function attachInterceptor(runtime: IAgentRuntime): ActionInterceptor {
           captureConnectorDispatchesFromAction(
             connectorDispatches,
             action.name,
-            options,
+            reportableParameters,
             resultForReport,
           );
         } else {

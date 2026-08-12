@@ -1090,3 +1090,39 @@ export interface HandlerOptions {
 	/** Allow extensions from plugins */
 	[key: string]: JsonValue | object | undefined;
 }
+
+const HANDLER_INFRASTRUCTURE_KEYS: ReadonlySet<string> = new Set([
+	"actionContext",
+	"actionPlan",
+	"onStreamChunk",
+	"roomHandlerLease",
+	"parameterErrors",
+]);
+
+/**
+ * Projects handler options onto the parameters an action is allowed to
+ * observe as input. Canonical runtime calls carry validated input under
+ * `parameters`; direct/legacy callers may still pass a flat parameter object.
+ * Runtime infrastructure is omitted from that legacy shape so live callbacks,
+ * planner context, and room ownership capabilities cannot enter messages,
+ * model prompts, or durable action traces.
+ */
+export function actionVisibleParameters(
+	options: HandlerOptions | undefined,
+): Record<string, unknown> | undefined {
+	if (!options) return undefined;
+	let source: Record<string, unknown>;
+	if (Object.hasOwn(options, "parameters")) {
+		const parameters = options.parameters;
+		if (!parameters || typeof parameters !== "object") return undefined;
+		source = parameters as Record<string, unknown>;
+	} else {
+		source = options as Record<string, unknown>;
+	}
+
+	const visible: Record<string, unknown> = {};
+	for (const [key, value] of Object.entries(source)) {
+		if (!HANDLER_INFRASTRUCTURE_KEYS.has(key)) visible[key] = value;
+	}
+	return Object.keys(visible).length > 0 ? visible : undefined;
+}

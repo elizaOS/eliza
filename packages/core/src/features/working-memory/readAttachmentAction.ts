@@ -29,6 +29,7 @@ import {
 import {
 	type Action,
 	type ActionResult,
+	actionVisibleParameters,
 	ContentType,
 	type HandlerCallback,
 	type HandlerOptions,
@@ -523,20 +524,6 @@ async function answerAttachmentRequest(params: {
 	return text || params.fallbackText;
 }
 
-function getActionParams(
-	options: HandlerOptions | undefined,
-): Record<string, unknown> {
-	const direct =
-		options && typeof options === "object"
-			? (options as Record<string, unknown>)
-			: {};
-	const parameters =
-		direct.parameters && typeof direct.parameters === "object"
-			? (direct.parameters as Record<string, unknown>)
-			: {};
-	return { ...direct, ...parameters };
-}
-
 function readAttachmentId(params: Record<string, unknown>): string | null {
 	const value = params.attachmentId ?? params.id;
 	return typeof value === "string" && value.trim() ? value.trim() : null;
@@ -721,7 +708,7 @@ export const readAttachmentAction: Action = {
 		callback?: HandlerCallback,
 	) => {
 		try {
-			const params = getActionParams(_options);
+			const params = actionVisibleParameters(_options) ?? {};
 			const action = readAttachmentActionKind(params);
 			const messageWithParams: Memory = {
 				...message,

@@ -55,11 +55,26 @@ import { ContentType, ModelType } from "../../types/index.ts";
 // Only the network-touching remote fetcher is mocked; the module's other
 // exports (MediaFetchError, the shared streaming cap reader) stay real so the
 // local-branch read path under test runs its actual code.
-const fetchRemoteMediaMock = vi.fn();
+const { attachmentContentProbe, fetchRemoteMediaMock } = vi.hoisted(() => ({
+	attachmentContentProbe: vi.fn(),
+	fetchRemoteMediaMock: vi.fn(),
+}));
 vi.mock("../../media/fetch.ts", async (importActual) => ({
 	...(await importActual<typeof import("../../media/fetch.ts")>()),
 	fetchRemoteMedia: (...args: unknown[]) => fetchRemoteMediaMock(...args),
 }));
+vi.mock("./attachmentContext.ts", async (importActual) => {
+	const actual = await importActual<typeof import("./attachmentContext.ts")>();
+	return {
+		...actual,
+		readAttachmentRecords: async (
+			...args: Parameters<typeof actual.readAttachmentRecords>
+		) => {
+			attachmentContentProbe(args[1].content);
+			return actual.readAttachmentRecords(...args);
+		},
+	};
+});
 
 const { readAttachmentAction } = await import("./readAttachmentAction.ts");
 
@@ -134,9 +149,11 @@ async function runRead(params: {
 	reportedErrors?: ReportedError[];
 	roomHandlerQueue?: RoomHandlerQueue;
 	handlerOptions?: Partial<HandlerOptions>;
+	withRoomHandlerLease?: boolean;
 	text?: string;
 }) {
 	fetchRemoteMediaMock.mockReset();
+	attachmentContentProbe.mockReset();
 	fetchRemoteMediaMock.mockImplementation(
 		params.fetchImpl ?? (async () => ({ buffer: VIDEO_BYTES })),
 	);
@@ -185,29 +202,60 @@ async function runRead(params: {
 		if (typeof content?.text === "string") callbackTexts.push(content.text);
 		return [];
 	};
-	const result = await readAttachmentAction.handler?.(
-		runtime,
+	let handlerLease: HandlerOptions["roomHandlerLease"];
+	const invoke = (roomHandlerLease?: HandlerOptions["roomHandlerLease"]) =>
+		readAttachmentAction.handler?.(
+			runtime,
+			message,
+			undefined,
+			{
+				...params.handlerOptions,
+				...(roomHandlerLease ? { roomHandlerLease } : {}),
+				parameters: { action: "read", attachmentId: params.attachment.id },
+			},
+			callback,
+		);
+	const result = params.withRoomHandlerLease
+		? await runtime.roomHandlerQueue.withLease(message.roomId, (lease) => {
+				handlerLease = lease;
+				return invoke(lease);
+			})
+		: await invoke();
+	return {
+		result,
+		callbackTexts,
+		calls,
 		message,
-		undefined,
-		{
-			...params.handlerOptions,
-			parameters: { action: "read", attachmentId: params.attachment.id },
-		},
-		callback,
-	);
-	return { result, callbackTexts, calls, message, storedMemory };
+		storedMemory,
+		handlerLease,
+		handlerContents: attachmentContentProbe.mock.calls.map(
+			([content]) => content as Memory["content"],
+		),
+	};
 }
 
 describe("ATTACHMENT read on-demand transcription", () => {
 	it("fetches bytes through the guarded capped fetch and answers from the transcript", async () => {
 		let providerInput: unknown;
-		const { result, callbackTexts, calls } = await runRead({
-			attachment: makeVideoAttachment(),
-			transcription: async (input) => {
-				providerInput = input;
-				return TRANSCRIPT;
-			},
-		});
+		const queue = new RoomHandlerQueue({ asyncContext: "explicit" });
+		const withLeaseWrite = vi.spyOn(queue, "withLeaseWrite");
+		const { result, callbackTexts, calls, handlerContents, handlerLease } =
+			await runRead({
+				attachment: makeVideoAttachment(),
+				roomHandlerQueue: queue,
+				withRoomHandlerLease: true,
+				handlerOptions: {
+					actionContext: {
+						previousResults: [],
+						getPreviousResult: () => undefined,
+					},
+					onStreamChunk: async () => undefined,
+				},
+				transcription: async (input) => {
+					providerInput = input;
+					return TRANSCRIPT;
+				},
+			});
 
 		expect(result?.success).toBe(true);
 		expect(callbackTexts).toEqual([ANSWER]);
@@ -229,6 +277,21 @@ describe("ATTACHMENT read on-demand transcription", () => {
 		expect((answerCall?.options as { prompt?: string })?.prompt).toContain(
 			TRANSCRIPT,
 		);
+		// The real handler may use the exact live capability for its durable
+		// write, but only validated parameters enter the synthetic Memory content
+		// consumed by attachment selection and the answering model.
+		expect(withLeaseWrite.mock.calls[0]?.[1]).toBe(handlerLease);
+		expect(handlerContents).toHaveLength(1);
+		expect(handlerContents[0]).toMatchObject({
+			action: "read",
+			attachmentId: "video-attachment-1",
+		});
+		expect(handlerContents[0]).not.toHaveProperty("roomHandlerLease");
+		expect(handlerContents[0]).not.toHaveProperty("actionContext");
+		expect(handlerContents[0]).not.toHaveProperty("onStreamChunk");
+		const artifacts = JSON.stringify({ calls, handlerContents, result });
+		expect(artifacts).not.toContain("roomHandlerLease");
+		expect(artifacts).not.toContain('"release"');
 	});
 
 	it("reports honest unavailability when no TRANSCRIPTION provider can serve", async () => {
@@ -372,14 +435,27 @@ describe("ATTACHMENT read on-demand transcription", () => {
 	);
 
 	it("rejects an oversize local attachment on content-length before reading the body", async () => {
+		let signalCancelStarted: (() => void) | undefined;
+		const cancelStarted = new Promise<void>((resolve) => {
+			signalCancelStarted = resolve;
+		});
+		const body = new ReadableStream<Uint8Array>({
+			cancel() {
+				signalCancelStarted?.();
+				return new Promise<void>(() => undefined);
+			},
+		});
 		const arrayBufferSpy = vi.fn(
 			async () => Uint8Array.from(VIDEO_BYTES).buffer,
 		);
-		const { callbackTexts, calls } = await runRead({
+		const queue = new RoomHandlerQueue({ asyncContext: "explicit" });
+		const pending = runRead({
 			attachment: makeVideoAttachment({
 				url: `/api/media/${STORED_SHA}.mp4`,
 				title: "stored_clip.mp4",
 			}),
+			roomHandlerQueue: queue,
+			withRoomHandlerLease: true,
 			transcription: async () => TRANSCRIPT,
 			localFetch: async () =>
 				({
@@ -388,9 +464,18 @@ describe("ATTACHMENT read on-demand transcription", () => {
 					headers: new Headers({
 						"content-length": String(50 * 1024 * 1024 + 1),
 					}),
+					body,
 					arrayBuffer: arrayBufferSpy,
 				}) as unknown as Response,
 		});
+		let outcome: Awaited<typeof pending> | undefined;
+		void pending.then((value) => {
+			outcome = value;
+		});
+		await cancelStarted;
+		await vi.waitFor(() => expect(outcome).toBeDefined());
+		if (!outcome) throw new Error("byte-limit outcome did not settle");
+		const { callbackTexts, calls, message } = outcome;
 
 		// The declared size alone rejects the fetch — the body is NEVER
 		// allocated (remote-branch parity: fetchRemoteMedia also refuses on the
@@ -403,6 +488,11 @@ describe("ATTACHMENT read on-demand transcription", () => {
 		expect(callbackTexts).toEqual([
 			"I don't have a transcript for that attachment yet.",
 		]);
+		let reacquired = false;
+		await queue.withLease(message.roomId, async () => {
+			reacquired = true;
+		});
+		expect(reacquired).toBe(true);
 	});
 
 	it("still rejects an oversize local body when content-length is absent", async () => {

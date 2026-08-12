@@ -7,6 +7,7 @@
 import type { IAgentRuntime } from "../types/runtime.ts";
 import { getLocalServerUrl } from "../utils/node.ts";
 import {
+	cancelMediaStreamBestEffort,
 	type FetchMediaResult,
 	fetchRemoteMedia,
 	MediaFetchError,
@@ -86,12 +87,10 @@ export async function fetchAttachmentMediaBytes(
 			Number.isFinite(declaredLength) &&
 			declaredLength > ATTACHMENT_MEDIA_MAX_BYTES
 		) {
-			try {
-				await response.body?.cancel();
-			} catch {
-				// error-policy:J6 The declared-size rejection is authoritative;
-				// cancelling the unread response is best-effort transport teardown.
-			}
+			cancelMediaStreamBestEffort(
+				response.body,
+				"attachment-local-content-length",
+			);
 			throw new MediaFetchError(
 				"max_bytes",
 				`Attachment exceeds ${ATTACHMENT_MEDIA_MAX_BYTES} bytes`,

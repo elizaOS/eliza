@@ -3,6 +3,7 @@
  * limits, and derives safe filenames and MIME metadata.
  */
 
+import { logger } from "../logger.ts";
 import {
 	fetchWithSsrfGuard,
 	type LookupFn,
@@ -35,6 +36,39 @@ export type FetchLike = (
 	input: RequestInfo | URL,
 	init?: RequestInit,
 ) => Promise<Response>;
+
+type CancellableMediaStream = {
+	cancel(): Promise<void>;
+};
+
+/**
+ * Starts best-effort stream teardown without delaying the authoritative media
+ * failure. Both synchronous throws and later promise rejections are observed,
+ * while a hostile cancel promise that never settles cannot hold the caller.
+ */
+export function cancelMediaStreamBestEffort(
+	stream: CancellableMediaStream | null | undefined,
+	source: string,
+): void {
+	if (!stream) return;
+	try {
+		void stream.cancel().catch((error) => {
+			// error-policy:J6 Media rejection already owns the outcome; an async
+			// cancellation failure is observed here as best-effort teardown.
+			logger.warn(
+				{ err: error, source },
+				"[MediaFetch] Failed to cancel rejected media stream",
+			);
+		});
+	} catch (error) {
+		// error-policy:J6 Media rejection already owns the outcome; a synchronous
+		// cancellation failure is observed here as best-effort teardown.
+		logger.warn(
+			{ err: error, source },
+			"[MediaFetch] Failed to cancel rejected media stream",
+		);
+	}
+}
 
 export type FetchMediaOptions = {
 	url: string;
@@ -188,12 +222,7 @@ async function enforceContentLengthLimit(
 
 	const length = Number(contentLength);
 	if (Number.isFinite(length) && length > maxBytes) {
-		try {
-			await res.body?.cancel();
-		} catch {
-			// error-policy:J6 The declared byte limit already rejected the response;
-			// cancelling its unread body is best-effort transport teardown.
-		}
+		cancelMediaStreamBestEffort(res.body, "remote-content-length");
 		throw new MediaFetchError(
 			"max_bytes",
 			`Failed to fetch media from ${url}: content length ${length} exceeds maxBytes ${maxBytes}`,
@@ -326,13 +355,7 @@ export async function readResponseWithLimit(
 			if (value.length) {
 				total += value.length;
 				if (total > maxBytes) {
-					try {
-						await reader.cancel();
-					} catch {
-						// error-policy:J6 Cancellation is best-effort after the
-						// byte-limit failure has already been established.
-						// ignore cancel errors
-					}
+					cancelMediaStreamBestEffort(reader, "bounded-response-body");
 					throw new MediaFetchError(
 						"max_bytes",
 						`Failed to fetch media from ${res.url || "response"}: payload exceeds maxBytes ${maxBytes}`,
@@ -344,9 +367,12 @@ export async function readResponseWithLimit(
 	} finally {
 		try {
 			reader.releaseLock();
-		} catch {
+		} catch (error) {
 			// error-policy:J6 Stream lock release is best-effort teardown.
-			// ignore release errors
+			logger.warn(
+				{ err: error, source: "bounded-response-body" },
+				"[MediaFetch] Failed to release rejected media stream reader",
+			);
 		}
 	}
 

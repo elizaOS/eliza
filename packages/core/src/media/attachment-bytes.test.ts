@@ -13,6 +13,7 @@ vi.mock("./fetch.ts", async (importActual) => ({
 	fetchRemoteMedia: fetchRemoteMediaMock,
 }));
 
+import { logger } from "../logger.ts";
 import type { IAgentRuntime } from "../types/runtime.ts";
 import {
 	ATTACHMENT_MEDIA_MAX_BYTES,
@@ -90,7 +91,7 @@ describe("fetchAttachmentMediaBytes", () => {
 		).rejects.toBe(typed);
 	});
 
-	it("aborts a stalled canonical loopback fetch after the shared timeout", async () => {
+	it("bounds stalled loopback fetches without awaiting rejected-body teardown", async () => {
 		const controller = new AbortController();
 		const timeoutSpy = vi
 			.spyOn(AbortSignal, "timeout")
@@ -121,5 +122,76 @@ describe("fetchAttachmentMediaBytes", () => {
 			code: "fetch_failed",
 		});
 		expect(timeoutSpy).toHaveBeenCalledWith(ATTACHMENT_MEDIA_TIMEOUT_MS);
+
+		let signalCancelStarted: (() => void) | undefined;
+		const cancelStarted = new Promise<void>((resolve) => {
+			signalCancelStarted = resolve;
+		});
+		const oversize = fetchAttachmentMediaBytes(
+			{
+				fetch: async () =>
+					new Response(
+						new ReadableStream<Uint8Array>({
+							cancel() {
+								signalCancelStarted?.();
+								return new Promise<void>(() => undefined);
+							},
+						}),
+						{
+							headers: {
+								"content-length": String(ATTACHMENT_MEDIA_MAX_BYTES + 1),
+							},
+						},
+					),
+			} as Pick<IAgentRuntime, "fetch">,
+			`/api/media/${"b".repeat(64)}.wav`,
+		);
+		let outcome: unknown;
+		void oversize.then(
+			() => {
+				outcome = new Error("oversize fetch unexpectedly succeeded");
+			},
+			(error) => {
+				outcome = error;
+			},
+		);
+		await cancelStarted;
+		await vi.waitFor(() =>
+			expect(outcome).toMatchObject({
+				name: "MediaFetchError",
+				code: "max_bytes",
+			}),
+		);
+
+		const cancelError = new Error("late cancellation rejection");
+		const warn = vi.spyOn(logger, "warn").mockImplementation(() => undefined);
+		try {
+			await expect(
+				fetchAttachmentMediaBytes(
+					{
+						fetch: async () =>
+							new Response(
+								new ReadableStream<Uint8Array>({
+									cancel: () => Promise.reject(cancelError),
+								}),
+								{
+									headers: {
+										"content-length": String(ATTACHMENT_MEDIA_MAX_BYTES + 1),
+									},
+								},
+							),
+					} as Pick<IAgentRuntime, "fetch">,
+					`/api/media/${"c".repeat(64)}.wav`,
+				),
+			).rejects.toMatchObject({ code: "max_bytes" });
+			await vi.waitFor(() =>
+				expect(warn).toHaveBeenCalledWith(
+					expect.objectContaining({ err: cancelError }),
+					"[MediaFetch] Failed to cancel rejected media stream",
+				),
+			);
+		} finally {
+			warn.mockRestore();
+		}
 	});
 });

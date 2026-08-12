@@ -9,13 +9,26 @@ import { sanitizeReplyTextAfterMediaDelivery } from "../services/message.ts";
 describe("sanitizeReplyTextAfterMediaDelivery", () => {
 	const url = "http://192.168.255.164:8080/v1/videos/50a2f4c2/content";
 
-	it("strips known media URLs and zerollama content paths", () => {
+	it("strips only exact case-sensitive delivered URL tokens", () => {
 		expect(
 			sanitizeReplyTextAfterMediaDelivery(`Here it is: <${url}>`, [url]),
 		).toBe("");
 		expect(
 			sanitizeReplyTextAfterMediaDelivery(`Done. Video's up: ${url}`, [url]),
 		).toBe("");
+
+		const shortUrl = "https://example.test/media/abc";
+		const longerUrl = `${shortUrl}def`;
+		const caseVariant = "https://example.test/media/ABC";
+		const regexMetacharUrl = "https://example.test/media/[clip](1)?token=a+b*$";
+		const mixed = sanitizeReplyTextAfterMediaDelivery(
+			`Keep ${longerUrl} and ${caseVariant}; remove <${shortUrl}> and ${regexMetacharUrl}`,
+			[shortUrl, regexMetacharUrl],
+		);
+		expect(mixed).toContain(longerUrl);
+		expect(mixed).toContain(caseVariant);
+		expect(mixed).not.toContain(`<${shortUrl}>`);
+		expect(mixed).not.toContain(regexMetacharUrl);
 	});
 
 	it("preserves meaningful text that is not a URL echo", () => {

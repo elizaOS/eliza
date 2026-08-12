@@ -5,8 +5,8 @@
  * Deterministic — DNS resolution and transport are injected through the
  * `lookupFn` + `pinnedFetchImpl` pair (the production pinned shape), no network.
  */
-import { describe, expect, it } from "vitest";
-import { fetchRemoteMedia } from "./fetch.ts";
+import { describe, expect, it, vi } from "vitest";
+import { fetchRemoteMedia, readResponseWithLimit } from "./fetch.ts";
 
 describe("fetchRemoteMedia", () => {
 	it("applies timeout signals to guarded fetches", async () => {
@@ -79,7 +79,82 @@ describe("fetchRemoteMedia", () => {
 		});
 	});
 
-	it("cancels a 4 MiB 503 body as soon as the caller's 1 KiB cap is crossed", async () => {
+	it("throws byte-limit failures without awaiting hostile cancellation", async () => {
+		let signalReaderCancelStarted: (() => void) | undefined;
+		const readerCancelStarted = new Promise<void>((resolve) => {
+			signalReaderCancelStarted = resolve;
+		});
+		const boundedRead = readResponseWithLimit(
+			new Response(
+				new ReadableStream<Uint8Array>({
+					start(controller) {
+						controller.enqueue(new Uint8Array(1025));
+					},
+					cancel() {
+						signalReaderCancelStarted?.();
+						return new Promise<void>(() => undefined);
+					},
+				}),
+			),
+			1024,
+		);
+		let boundedReadOutcome: unknown;
+		void boundedRead.then(
+			() => {
+				boundedReadOutcome = new Error("bounded read unexpectedly succeeded");
+			},
+			(error) => {
+				boundedReadOutcome = error;
+			},
+		);
+		await readerCancelStarted;
+		await vi.waitFor(() =>
+			expect(boundedReadOutcome).toMatchObject({
+				name: "MediaFetchError",
+				code: "max_bytes",
+			}),
+		);
+
+		let signalHeaderCancelStarted: (() => void) | undefined;
+		const headerCancelStarted = new Promise<void>((resolve) => {
+			signalHeaderCancelStarted = resolve;
+		});
+		const declaredOversize = fetchRemoteMedia({
+			url: "https://example.com/declared-oversize.wav",
+			maxBytes: 1024,
+			lookupFn: async () => [{ address: "93.184.216.34", family: 4 }],
+			pinnedFetchImpl: async () =>
+				new Response(
+					new ReadableStream<Uint8Array>({
+						cancel() {
+							signalHeaderCancelStarted?.();
+							return new Promise<void>(() => undefined);
+						},
+					}),
+					{ headers: { "content-length": "1025" } },
+				),
+		});
+		let declaredOutcome: unknown;
+		void declaredOversize.then(
+			() => {
+				declaredOutcome = new Error(
+					"declared oversize fetch unexpectedly succeeded",
+				);
+			},
+			(error) => {
+				declaredOutcome = error;
+			},
+		);
+		await headerCancelStarted;
+		await vi.waitFor(() =>
+			expect(declaredOutcome).toMatchObject({
+				name: "MediaFetchError",
+				code: "max_bytes",
+			}),
+		);
+
+		// HTTP diagnostics use the same bounded reader but translate its overflow
+		// back to the authoritative status failure after cancelling the body.
 		const chunk = new Uint8Array(1024);
 		let pulls = 0;
 		let cancelled = false;
