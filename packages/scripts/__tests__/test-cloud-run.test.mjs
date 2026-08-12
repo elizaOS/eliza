@@ -7,6 +7,7 @@
  * lane instead.
  */
 import { describe, expect, it } from "bun:test";
+import { EventEmitter } from "node:events";
 import {
   mkdirSync,
   mkdtempSync,
@@ -17,7 +18,9 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { PassThrough } from "node:stream";
 import {
+  appendClassificationOutput,
   buildTestEnv,
   chunkByBudget,
   computeRequiredRuntimeArtifacts,
@@ -26,11 +29,17 @@ import {
   ensureCloudTestRuntime,
   findMissingRoots,
   formatBatchFiles,
+  MAX_CLASSIFICATION_OUTPUT_CHARS,
   MAX_FILES_PER_BATCH_WIN32,
   PREFLIGHT_STEPS,
+  parseBatchTimeoutArg,
+  parsePositiveDuration,
   runBatches,
+  runCommandWithWatchdog,
   runPreflightStep,
+  terminateProcessTree,
   walkTests,
+  windowsTaskkillInvocation,
   writeSyncAll,
 } from "../test-cloud-run.mjs";
 
@@ -325,58 +334,84 @@ describe("runBatches", () => {
     return { lines, write: (text) => lines.push(text) };
   }
 
-  it("returns false and keeps going when every batch passes", () => {
+  it("prints the exact manifest before spawning and keeps going when every batch passes", async () => {
     const out = collector();
     const err = collector();
     const calls = [];
-    const anyFailed = runBatches([["a.test.ts"], ["b.test.ts"]], {
-      spawnBatch: (batch) => {
-        calls.push(batch);
-        return { status: 0, signal: null, stdout: "ok\n", stderr: "" };
+    const events = [];
+    const anyFailed = await runBatches(
+      [["/repo/a.test.ts"], ["/repo/b.test.ts"]],
+      {
+        spawnBatch: (batch) => {
+          events.push(`spawn:${batch[0]}`);
+          calls.push(batch);
+          return { status: 0, signal: null, stdout: "ok\n", stderr: "" };
+        },
+        stagingDir: "/staging",
+        env: {},
+        repoRoot: "/repo",
+        writeOut: (text) => {
+          events.push(`out:${text}`);
+          out.write(text);
+        },
+        writeErr: err.write,
       },
-      stagingDir: "/staging",
-      env: {},
-      repoRoot: "/repo",
-      writeOut: out.write,
-      writeErr: err.write,
-    });
+    );
     expect(anyFailed).toBe(false);
-    expect(calls).toEqual([["a.test.ts"], ["b.test.ts"]]);
+    expect(calls).toEqual([["/repo/a.test.ts"], ["/repo/b.test.ts"]]);
     expect(out.lines.join("")).toContain("batch 1/2");
+    expect(out.lines.join("")).toContain("files in batch:\n  - a.test.ts");
     expect(out.lines.join("")).toContain("ok\n");
+    expect(
+      events.findIndex((event) => event.includes("  - a.test.ts")),
+    ).toBeLessThan(events.indexOf("spawn:/repo/a.test.ts"));
   });
 
-  it("marks the gate failed and reports the offending files on a real failure", () => {
+  it("collects ordinary failures and reports the offending files", async () => {
     const out = collector();
     const err = collector();
-    const anyFailed = runBatches([["/repo/packages/x/a.test.ts"]], {
-      spawnBatch: () => ({
-        status: 1,
-        signal: null,
-        stdout: "1 fail\n",
-        stderr: "(fail) something broke\n",
-      }),
-      stagingDir: "/staging",
-      env: {},
-      repoRoot: "/repo",
-      writeOut: out.write,
-      writeErr: err.write,
-    });
+    const calls = [];
+    const anyFailed = await runBatches(
+      [["/repo/packages/x/a.test.ts"], ["/repo/packages/y/b.test.ts"]],
+      {
+        spawnBatch: (batch) => {
+          calls.push(batch);
+          return calls.length === 1
+            ? {
+                status: 1,
+                signal: null,
+                stdout: "1 fail\n",
+                stderr: "(fail) something broke\n",
+              }
+            : { status: 0, signal: null };
+        },
+        stagingDir: "/staging",
+        env: {},
+        repoRoot: "/repo",
+        writeOut: out.write,
+        writeErr: err.write,
+      },
+    );
     expect(anyFailed).toBe(true);
+    expect(calls).toHaveLength(2);
     expect(err.lines.join("")).toContain("exited non-zero");
     expect(err.lines.join("")).toContain(join("packages", "x", "a.test.ts"));
   });
 
-  it("normalizes the known Bun/PGlite status-99 pollution as a pass", () => {
+  it("normalizes the known Bun/PGlite status-99 pollution from complete streamed output", async () => {
     const out = collector();
     const err = collector();
-    const anyFailed = runBatches([["a.test.ts"]], {
-      spawnBatch: () => ({
-        status: 99,
-        signal: null,
-        stdout: "Ran 3 tests across 1 file.\n",
-        stderr: "",
-      }),
+    const anyFailed = await runBatches([["a.test.ts"]], {
+      spawnBatch: (_batch, { writeOut }) => {
+        writeOut("Ran 3 tests across 1 file.\n");
+        return {
+          status: 99,
+          signal: null,
+          stdout: "Ran 3 tests across 1 file.\n",
+          stderr: "",
+          streamed: true,
+        };
+      },
       stagingDir: "/staging",
       env: {},
       repoRoot: "/repo",
@@ -387,11 +422,18 @@ describe("runBatches", () => {
     expect(err.lines.join("")).toContain("treating as pass");
   });
 
-  it("stops immediately and reports a spawn error", () => {
+  it("does not normalize status 99 when bounded classification output was truncated", async () => {
     const out = collector();
     const err = collector();
-    const anyFailed = runBatches([["a.test.ts"], ["b.test.ts"]], {
-      spawnBatch: () => ({ error: new Error("spawn bun ENOENT") }),
+    const anyFailed = await runBatches([["a.test.ts"]], {
+      spawnBatch: () => ({
+        status: 99,
+        signal: null,
+        stdout: "Ran 3 tests across 1 file.\n",
+        stderr: "",
+        streamed: true,
+        outputTruncated: true,
+      }),
       stagingDir: "/staging",
       env: {},
       repoRoot: "/repo",
@@ -399,7 +441,336 @@ describe("runBatches", () => {
       writeErr: err.write,
     });
     expect(anyFailed).toBe(true);
+    expect(err.lines.join("")).toContain("exited non-zero");
+    expect(err.lines.join("")).not.toContain("treating as pass");
+  });
+
+  it("stops when process-tree teardown fails", async () => {
+    const out = collector();
+    const err = collector();
+    const calls = [];
+    const anyFailed = await runBatches([["a.test.ts"], ["b.test.ts"]], {
+      spawnBatch: (batch) => {
+        calls.push(batch);
+        return { terminationError: new Error("taskkill failed") };
+      },
+      stagingDir: "/staging",
+      env: {},
+      repoRoot: "/repo",
+      writeOut: out.write,
+      writeErr: err.write,
+    });
+    expect(anyFailed).toBe(true);
+    expect(calls).toHaveLength(1);
+    expect(err.lines.join("")).toContain("process-tree teardown failed");
+  });
+
+  it("continues after a successfully reaped timeout and reports its deadline and files", async () => {
+    const out = collector();
+    const err = collector();
+    const calls = [];
+    const anyFailed = await runBatches(
+      [["/repo/a.test.ts"], ["/repo/b.test.ts"]],
+      {
+        spawnBatch: (batch, { onTimeout }) => {
+          calls.push(batch);
+          if (calls.length === 1) {
+            onTimeout();
+            return { timedOut: true, status: null, signal: "SIGKILL" };
+          }
+          return { status: 0, signal: null };
+        },
+        stagingDir: "/staging",
+        env: {},
+        repoRoot: "/repo",
+        writeOut: out.write,
+        writeErr: err.write,
+        timeoutMs: 4321,
+      },
+    );
+    expect(anyFailed).toBe(true);
+    expect(calls).toHaveLength(2);
+    expect(err.lines.join("")).toContain("4321 ms wall-clock deadline");
+    expect(err.lines.join("")).toContain(
+      "files in timed-out batch:\n  - a.test.ts",
+    );
+  });
+
+  it("stops immediately and reports a spawn error", async () => {
+    const out = collector();
+    const err = collector();
+    const calls = [];
+    const anyFailed = await runBatches([["a.test.ts"], ["b.test.ts"]], {
+      spawnBatch: (batch) => {
+        calls.push(batch);
+        return { error: new Error("spawn bun ENOENT") };
+      },
+      stagingDir: "/staging",
+      env: {},
+      repoRoot: "/repo",
+      writeOut: out.write,
+      writeErr: err.write,
+    });
+    expect(anyFailed).toBe(true);
+    expect(calls).toHaveLength(1);
     expect(err.lines.join("")).toContain("spawn error");
     expect(err.lines.join("")).toContain("ENOENT");
+  });
+});
+
+describe("watchdog configuration", () => {
+  it("accepts positive millisecond values and rejects invalid timers", () => {
+    expect(parsePositiveDuration(undefined, "TIMEOUT", 50)).toBe(50);
+    expect(parsePositiveDuration("250", "TIMEOUT", 50)).toBe(250);
+    for (const value of ["0", "-1", "1.5", "1e3", " 10", "2147483648"]) {
+      expect(() => parsePositiveDuration(value, "TIMEOUT", 50)).toThrow(
+        /TIMEOUT must be/,
+      );
+    }
+  });
+
+  it("parses the optional batch timeout CLI argument", () => {
+    expect(parseBatchTimeoutArg([])).toBe(600_000);
+    expect(parseBatchTimeoutArg(["--batch-timeout-ms=250"])).toBe(250);
+    expect(() =>
+      parseBatchTimeoutArg([
+        "--batch-timeout-ms=250",
+        "--batch-timeout-ms=500",
+      ]),
+    ).toThrow(/only once/);
+    expect(() => parseBatchTimeoutArg(["--unknown"])).toThrow(
+      /unexpected argument/,
+    );
+    expect(() => parseBatchTimeoutArg(["--batch-timeout-ms="])).toThrow(
+      /must include a positive integer value/,
+    );
+  });
+
+  it("builds soft and forced Windows whole-tree taskkill commands", () => {
+    expect(windowsTaskkillInvocation(321, false)).toEqual({
+      command: "taskkill",
+      args: ["/PID", "321", "/T"],
+    });
+    expect(windowsTaskkillInvocation(321, true)).toEqual({
+      command: "taskkill",
+      args: ["/PID", "321", "/T", "/F"],
+    });
+  });
+
+  it("signals the POSIX process group with TERM then KILL", async () => {
+    const signals = [];
+    await terminateProcessTree(321, {
+      platform: "darwin",
+      graceMs: 1,
+      signalFn: (pid, signal) => signals.push([pid, signal]),
+      delayFn: async () => {},
+    });
+    expect(signals).toEqual([
+      [-321, "SIGTERM"],
+      [-321, "SIGKILL"],
+    ]);
+  });
+
+  it("normalizes Windows taskkill races when the tree is already gone", async () => {
+    const runWithCodes = async (codes) => {
+      const invocations = [];
+      await terminateProcessTree(321, {
+        platform: "win32",
+        graceMs: 1,
+        delayFn: async () => {},
+        spawnFn: (command, args) => {
+          invocations.push([command, args]);
+          const killer = new EventEmitter();
+          killer.kill = () => {};
+          queueMicrotask(() => killer.emit("close", codes.shift(), null));
+          return killer;
+        },
+      });
+      return invocations;
+    };
+
+    expect(await runWithCodes([128, 128])).toHaveLength(2);
+    expect(await runWithCodes([0, 128])).toHaveLength(2);
+    expect(await runWithCodes([5, 0])).toHaveLength(2);
+  });
+
+  it("fails closed when forced Windows tree termination fails", async () => {
+    const codes = [0, 5];
+    await expect(
+      terminateProcessTree(321, {
+        platform: "win32",
+        graceMs: 1,
+        delayFn: async () => {},
+        spawnFn: () => {
+          const killer = new EventEmitter();
+          killer.kill = () => {};
+          queueMicrotask(() => killer.emit("close", codes.shift(), null));
+          return killer;
+        },
+      }),
+    ).rejects.toThrow(/failed to terminate Windows process tree/);
+  });
+
+  it("tears down the active child and removes listeners on a parent signal", async () => {
+    const signalSource = new EventEmitter();
+    const child = new EventEmitter();
+    child.pid = 321;
+    child.stdout = new PassThrough();
+    child.stderr = new PassThrough();
+    const terminations = [];
+    const resultPromise = runCommandWithWatchdog("bun", ["test"], {
+      timeoutMs: 10_000,
+      writeOut: () => {},
+      writeErr: () => {},
+      signalSource,
+      spawnFn: () => child,
+      terminateTree: async (pid) => {
+        terminations.push(pid);
+        child.emit("close", null, "SIGTERM");
+      },
+    });
+
+    signalSource.emit("SIGTERM");
+    const result = await resultPromise;
+
+    expect(result.parentSignal).toBe("SIGTERM");
+    expect(terminations).toEqual([321]);
+    expect(signalSource.listenerCount("SIGINT")).toBe(0);
+    expect(signalSource.listenerCount("SIGTERM")).toBe(0);
+  });
+
+  it("keeps the first termination cause when a parent signal races a timeout", async () => {
+    const signalSource = new EventEmitter();
+    const child = new EventEmitter();
+    child.pid = 321;
+    child.stdout = new PassThrough();
+    child.stderr = new PassThrough();
+    let releaseTermination;
+    const terminationStarted = new Promise((resolve) => {
+      releaseTermination = resolve;
+    });
+    let unblockTermination;
+    const terminationBlocked = new Promise((resolve) => {
+      unblockTermination = resolve;
+    });
+    const resultPromise = runCommandWithWatchdog("bun", ["test"], {
+      timeoutMs: 1,
+      writeOut: () => {},
+      writeErr: () => {},
+      signalSource,
+      spawnFn: () => child,
+      terminateTree: async () => {
+        releaseTermination();
+        await terminationBlocked;
+        child.emit("close", null, "SIGKILL");
+      },
+    });
+
+    await terminationStarted;
+    signalSource.emit("SIGTERM");
+    unblockTermination();
+    const result = await resultPromise;
+
+    expect(result.timedOut).toBe(true);
+    expect(result.parentSignal).toBeUndefined();
+  });
+
+  it("keeps a parent signal as the cause when its teardown crosses the deadline", async () => {
+    const signalSource = new EventEmitter();
+    const child = new EventEmitter();
+    child.pid = 321;
+    child.stdout = new PassThrough();
+    child.stderr = new PassThrough();
+    let unblockTermination;
+    const terminationBlocked = new Promise((resolve) => {
+      unblockTermination = resolve;
+    });
+    const resultPromise = runCommandWithWatchdog("bun", ["test"], {
+      timeoutMs: 1,
+      writeOut: () => {},
+      writeErr: () => {},
+      signalSource,
+      spawnFn: () => child,
+      terminateTree: async () => {
+        await terminationBlocked;
+        child.emit("close", null, "SIGTERM");
+      },
+    });
+
+    signalSource.emit("SIGTERM");
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    unblockTermination();
+    const result = await resultPromise;
+
+    expect(result.parentSignal).toBe("SIGTERM");
+    expect(result.timedOut).toBe(false);
+  });
+
+  it("terminates a POSIX group when an exited leader leaves descendant stdio open", async () => {
+    const signalSource = new EventEmitter();
+    const child = new EventEmitter();
+    child.pid = 321;
+    child.exitCode = 0;
+    child.signalCode = null;
+    child.stdout = new PassThrough();
+    child.stderr = new PassThrough();
+    let terminationCalls = 0;
+    const resultPromise = runCommandWithWatchdog("bun", ["test"], {
+      timeoutMs: 1,
+      writeOut: () => {},
+      writeErr: () => {},
+      platform: "darwin",
+      signalSource,
+      spawnFn: () => child,
+      terminateTree: async () => {
+        terminationCalls += 1;
+        child.emit("close", 0, null);
+      },
+    });
+
+    const result = await resultPromise;
+
+    expect(terminationCalls).toBe(1);
+    expect(result.timedOut).toBe(true);
+    expect(result.status).toBe(0);
+  });
+
+  it("fails closed instead of taskkilling a reused Windows leader PID", async () => {
+    const signalSource = new EventEmitter();
+    const child = new EventEmitter();
+    child.pid = 321;
+    child.exitCode = 0;
+    child.signalCode = null;
+    child.stdout = new PassThrough();
+    child.stderr = new PassThrough();
+    let terminationCalls = 0;
+    const result = await runCommandWithWatchdog("bun", ["test"], {
+      timeoutMs: 1,
+      writeOut: () => {},
+      writeErr: () => {},
+      platform: "win32",
+      signalSource,
+      spawnFn: () => child,
+      terminateTree: async () => {
+        terminationCalls += 1;
+      },
+    });
+
+    expect(terminationCalls).toBe(0);
+    expect(result.timedOut).toBe(true);
+    expect(result.terminationError?.message).toContain(
+      "process-tree teardown cannot be proven safely",
+    );
+  });
+
+  it("retains only a bounded output tail for status classification", () => {
+    const oversized = "x".repeat(MAX_CLASSIFICATION_OUTPUT_CHARS + 20);
+    const retained = appendClassificationOutput(
+      "prefix",
+      `${oversized}STATUS99`,
+    );
+    expect(retained).toHaveLength(MAX_CLASSIFICATION_OUTPUT_CHARS);
+    expect(retained.endsWith("STATUS99")).toBe(true);
+    expect(retained.startsWith("prefix")).toBe(false);
   });
 });
