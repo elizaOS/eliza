@@ -50,11 +50,15 @@ function rescueContext(request: string): ContextObject {
 	};
 }
 
-function structuredRescueReply(
-	reply: string,
-	failureAcknowledged = true,
+function structuredRescueSummary(
+	summary: string,
+	extra: Record<string, unknown> = {},
 ): string {
-	return JSON.stringify({ reply, failureAcknowledged });
+	return JSON.stringify({ summary, ...extra });
+}
+
+function failedTurnWithSummary(summary: string): string {
+	return `${FAILED_TOOL_FALLBACK_MESSAGE}\n\nSuccessful results:\n${summary}`;
 }
 
 /** The instruction blocks the loop itself composes (retry / synthesis) — the
@@ -645,7 +649,7 @@ describe("rescue synthesis from successful tool results (2026-08-11 sub-agent re
 				await getStreamingContext()?.onStreamChunk(
 					"/private/raw/path from an unvalidated rescue chunk",
 				);
-				return structuredRescueReply(
+				return structuredRescueSummary(
 					"standujar reviewed 85 pull requests over the last four days and filed 46 issues.",
 				);
 			});
@@ -693,9 +697,11 @@ describe("rescue synthesis from successful tool results (2026-08-11 sub-agent re
 		);
 
 		expect(result.finalMessage).toBe(
-			"standujar reviewed 85 pull requests over the last four days and filed 46 issues.",
+			failedTurnWithSummary(
+				"standujar reviewed 85 pull requests over the last four days and filed 46 issues.",
+			),
 		);
-		expect(result.finalMessage).not.toBe(FAILED_TOOL_FALLBACK_MESSAGE);
+		expect(result.finalMessage).toContain(FAILED_TOOL_FALLBACK_MESSAGE);
 		expect(visibleStreamChunk).not.toHaveBeenCalled();
 		expect(useModel.mock.calls[4]?.[2]).toBe("pinned-provider");
 		// The rescue call carried the successful result as input material
@@ -718,40 +724,57 @@ describe("rescue synthesis from successful tool results (2026-08-11 sub-agent re
 			"Stale memory must never replace the current request authority.",
 		);
 		expect(rescueParams?.responseSchema).toMatchObject({
-			required: ["reply", "failureAcknowledged"],
+			required: ["summary"],
 		});
 	});
 
-	it("rejects unstructured and structurally unacknowledged false-success rescues", async () => {
+	it("never lets model-authored completion status replace the machine-owned failure", async () => {
 		const unstructured = await runStandardFailedRescue(
 			"Summarize the completed research and the blocker.",
 			"Everything completed successfully.",
 		);
-		const unacknowledged = await runStandardFailedRescue(
+		const selfAttested = await runStandardFailedRescue(
 			"Summarize the completed research and the blocker.",
-			structuredRescueReply("Everything completed successfully.", false),
+			structuredRescueSummary("Everything completed successfully.", {
+				failureAcknowledged: true,
+			}),
+		);
+		const statusOnly = await runStandardFailedRescue(
+			"Summarize the completed research and the blocker.",
+			structuredRescueSummary("Everything completed successfully."),
+		);
+		const euphemisticStatus = await runStandardFailedRescue(
+			"Summarize the completed research and the blocker.",
+			structuredRescueSummary(
+				"The entire request finished perfectly with no errors or blockers remaining.",
+			),
 		);
 
-		expect(unstructured.result.finalMessage).toBe(FAILED_TOOL_FALLBACK_MESSAGE);
-		expect(unacknowledged.result.finalMessage).toBe(
-			FAILED_TOOL_FALLBACK_MESSAGE,
-		);
-		expect(unacknowledged.result.finalMessage).not.toContain(
-			"Everything completed successfully",
-		);
+		for (const attempt of [
+			unstructured,
+			selfAttested,
+			statusOnly,
+			euphemisticStatus,
+		]) {
+			expect(attempt.result.finalMessage).toBe(FAILED_TOOL_FALLBACK_MESSAGE);
+			expect(attempt.result.finalMessage).not.toMatch(
+				/completed successfully|finished perfectly|no errors/iu,
+			);
+		}
 	});
 
 	it("preserves distinct original-request formats while keeping identical tool data", async () => {
-		const bulletReply = "- 85 reviews completed.\n- The PR listing failed.";
+		const bulletReply =
+			"- Research found 85 reviews.\n- Contributors filed 46 issues.";
 		const executiveReply =
-			"Eighty-five reviews completed, while the PR listing remained unavailable.";
+			"The research found eighty-five reviews and forty-six filed issues.";
 		const bullets = await runStandardFailedRescue(
 			"Reply as a two-item bullet list.",
-			structuredRescueReply(bulletReply),
+			structuredRescueSummary(bulletReply),
 		);
 		const executive = await runStandardFailedRescue(
 			"Reply in one executive sentence.",
-			structuredRescueReply(executiveReply),
+			structuredRescueSummary(executiveReply),
 		);
 
 		const bulletMessages = (
@@ -767,8 +790,12 @@ describe("rescue synthesis from successful tool results (2026-08-11 sub-agent re
 			"Reply in one executive sentence.",
 		);
 		expect(bulletMessages?.[2]?.content).toBe(executiveMessages?.[2]?.content);
-		expect(bullets.result.finalMessage).toBe(bulletReply);
-		expect(executive.result.finalMessage).toBe(executiveReply);
+		expect(bullets.result.finalMessage).toBe(
+			failedTurnWithSummary(bulletReply),
+		);
+		expect(executive.result.finalMessage).toBe(
+			failedTurnWithSummary(executiveReply),
+		);
 	});
 
 	it("keeps the generic sentence when there are no successful results to rescue from", async () => {
@@ -869,8 +896,8 @@ describe("rescue synthesis from successful tool results (2026-08-11 sub-agent re
 			.mockResolvedValueOnce({ text: "", toolCalls: [] })
 			// 6: the TEXT_LARGE rescue composes from the ARCHIVED successes.
 			.mockResolvedValueOnce(
-				structuredRescueReply(
-					"The fleet release shipped with twelve plugins and the shipwright tail closed out, though the PR listing step failed.",
+				structuredRescueSummary(
+					"The fleet release included twelve plugins, and the shipwright report covered its tail.",
 				),
 			);
 		const executeToolCall = vi
@@ -935,7 +962,9 @@ describe("rescue synthesis from successful tool results (2026-08-11 sub-agent re
 		// The rescue still surfaced them instead of no-opping into the canned
 		// failure sentence.
 		expect(result.finalMessage).toBe(
-			"The fleet release shipped with twelve plugins and the shipwright tail closed out, though the PR listing step failed.",
+			failedTurnWithSummary(
+				"The fleet release included twelve plugins, and the shipwright report covered its tail.",
+			),
 		);
 		const rescueParams = useModel.mock.calls[5]?.[1] as
 			| MockedMessages
@@ -982,7 +1011,7 @@ describe("rescue synthesis from successful tool results (2026-08-11 sub-agent re
 			// canned placeholder instead of composing a real answer.
 			.mockResolvedValueOnce({ text: "", toolCalls: [] })
 			.mockResolvedValueOnce(
-				structuredRescueReply(HANDLED_STEP_FALLBACK_MESSAGE),
+				structuredRescueSummary(HANDLED_STEP_FALLBACK_MESSAGE),
 			);
 		const executeToolCall = vi
 			.fn()
@@ -1024,7 +1053,7 @@ describe("rescue synthesis from successful tool results (2026-08-11 sub-agent re
 		expect(result.finalMessage).toBe(FAILED_TOOL_FALLBACK_MESSAGE);
 	});
 
-	it("frames the rescued reply as a partial failure: the compose prompt names the failed step with a scrubbed cause", async () => {
+	it("composes the machine-owned failed-step projection ahead of the optional successful summary", async () => {
 		const useModel = vi
 			.fn()
 			.mockResolvedValueOnce({
@@ -1055,9 +1084,7 @@ describe("rescue synthesis from successful tool results (2026-08-11 sub-agent re
 			})
 			.mockResolvedValueOnce({ text: "", toolCalls: [] })
 			.mockResolvedValueOnce(
-				structuredRescueReply(
-					"Revenue grew nine percent last quarter, though the PR listing part of this did not complete.",
-				),
+				structuredRescueSummary("Revenue grew nine percent last quarter."),
 			);
 		const executeToolCall = vi
 			.fn()
@@ -1094,11 +1121,10 @@ describe("rescue synthesis from successful tool results (2026-08-11 sub-agent re
 		});
 
 		expect(result.finalMessage).toBe(
-			"Revenue grew nine percent last quarter, though the PR listing part of this did not complete.",
+			failedTurnWithSummary("Revenue grew nine percent last quarter."),
 		);
-		// The compose prompt is honest about the partial failure — it names the
-		// failed step and carries the scrubbed cause — instead of presenting
-		// only the successful excerpts as a clean turn.
+		// The model sees only successful findings; the machine-owned failure
+		// projection is composed after validation and cannot be replaced by it.
 		const rescueParams = useModel.mock.calls[4]?.[1] as
 			| MockedMessages
 			| undefined;
@@ -1107,8 +1133,7 @@ describe("rescue synthesis from successful tool results (2026-08-11 sub-agent re
 				typeof message.content === "string" ? message.content : "",
 			)
 			.join("\n");
-		expect(rescueText).toContain("SHELL step did not complete");
-		expect(rescueText).toContain("<path>");
+		expect(rescueText).not.toContain("SHELL step did not complete");
 		expect(rescueText).not.toContain("/home/milady");
 		expect(rescueText).toContain("untrusted");
 		// The failed step stays recorded in the trajectory — the turn is not
@@ -1155,8 +1180,8 @@ describe("rescue synthesis from successful tool results (2026-08-11 sub-agent re
 			},
 			// Failure-aware synthesis blank, then the rescue composes the reply.
 			{ text: "", toolCalls: [] },
-			structuredRescueReply(
-				"The latest refinements settled it: the final numbers are in, though the last step failed.",
+			structuredRescueSummary(
+				"The latest refinements report the final numbers.",
 			),
 		];
 		const useModel = vi.fn(async () => {
@@ -1201,7 +1226,7 @@ describe("rescue synthesis from successful tool results (2026-08-11 sub-agent re
 		});
 
 		expect(result.finalMessage).toBe(
-			"The latest refinements settled it: the final numbers are in, though the last step failed.",
+			failedTurnWithSummary("The latest refinements report the final numbers."),
 		);
 		// The excerpt budget keeps the NEWEST six results — the refined,
 		// answer-bearing ones — dropping the oldest, not the newest.
