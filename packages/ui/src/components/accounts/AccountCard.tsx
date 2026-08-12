@@ -12,7 +12,7 @@ import { ChevronDown, ChevronUp, KeyRound, Trash2 } from "lucide-react";
 import type { AccountWithCredentialFlag } from "../../api/client-agent";
 import { useModalState } from "../../hooks/useModalState";
 import { cn } from "../../lib/utils";
-import { useAppSelector } from "../../state";
+import { useAppSelector } from "../../state/app-store";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Checkbox } from "../ui/checkbox";
