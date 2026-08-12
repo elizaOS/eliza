@@ -183,12 +183,14 @@
       },
       "peerDependencies": {
         "@elizaos/plugin-calendar": "workspace:*",
+        "@elizaos/plugin-documents": "workspace:*",
         "@elizaos/plugin-e2b-sandbox": "*",
         "@elizaos/plugin-inbox": "workspace:*",
         "@elizaos/plugin-x402": "*",
       },
       "optionalPeers": [
         "@elizaos/plugin-calendar",
+        "@elizaos/plugin-documents",
         "@elizaos/plugin-e2b-sandbox",
         "@elizaos/plugin-inbox",
         "@elizaos/plugin-x402",

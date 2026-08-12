@@ -63,6 +63,7 @@ describe("collectPluginNames lean-chat plugin set (#8434)", () => {
     expect(names.has("@elizaos/plugin-sql")).toBe(true);
     expect(names.has("@elizaos/plugin-app-control")).toBe(true);
     expect(names.has("@elizaos/plugin-notes")).toBe(true);
+    expect(names.has("@elizaos/plugin-documents")).toBe(true);
     expect(names.has("@elizaos/plugin-commands")).toBe(true);
     expect(names.has("@elizaos/plugin-agent-skills")).toBe(true);
     // Calendar tile (viewEveryPlatform) needs scheduling; Google Workspace is
