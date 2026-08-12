@@ -189,6 +189,8 @@ export class AgentManager {
   private inFlight = 0;
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
 
+  constructor(private readonly capacity: number) {}
+
   /** Returns the internal K8s service URL for this pod. */
   private getServerUrl(): string {
     return getAdvertisedServerUrl();
@@ -273,7 +275,7 @@ export class AgentManager {
     return {
       serverName: process.env.SERVER_NAME,
       tier: process.env.TIER,
-      capacity: Number(process.env.CAPACITY),
+      capacity: this.capacity,
       agentCount: this.agents.size,
       inFlight: this.inFlight,
       draining: this._draining,
@@ -304,7 +306,7 @@ export class AgentManager {
    * @throws {Error} "Agent already exists" if the agent is already loaded
    */
   async startAgent(agentId: string, characterRef: string) {
-    if (this.agents.size >= Number(process.env.CAPACITY)) {
+    if (this.agents.size >= this.capacity) {
       throw new Error("At capacity");
     }
     if (this.agents.has(agentId)) {

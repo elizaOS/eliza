@@ -3,6 +3,7 @@ import { Elysia } from "elysia";
 import { AgentManager } from "./agent-manager";
 import {
   ensureServerName,
+  getAgentCapacity,
   getAutoStartAgentConfig,
   getRequiredEnv,
 } from "./config";
@@ -21,7 +22,6 @@ const required = [
   "SERVER_NAME",
   "REDIS_URL",
   "DATABASE_URL",
-  "CAPACITY",
   "TIER",
   "AGENT_SERVER_SHARED_SECRET",
 ];
@@ -34,6 +34,14 @@ for (const key of required) {
   }
 }
 
+let capacity: number;
+try {
+  capacity = getAgentCapacity();
+} catch (err) {
+  logger.error(err instanceof Error ? err.message : String(err));
+  process.exit(1);
+}
+
 let autoStartAgent: ReturnType<typeof getAutoStartAgentConfig>;
 try {
   autoStartAgent = getAutoStartAgentConfig();
@@ -44,7 +52,7 @@ try {
 
 const PORT = Number(process.env.PORT ?? 3000);
 const sharedSecret = getRequiredEnv("AGENT_SERVER_SHARED_SECRET");
-const manager = new AgentManager();
+const manager = new AgentManager(capacity);
 
 // Initialize manager before accepting connections
 await manager.initialize();
@@ -65,7 +73,7 @@ logger.info("Agent-server listening", {
   serverName: process.env.SERVER_NAME,
   port: PORT,
   tier: process.env.TIER,
-  capacity: process.env.CAPACITY,
+  capacity,
 });
 
 process.on("SIGTERM", async () => {
