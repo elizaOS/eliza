@@ -237,3 +237,101 @@ export function lookupStaticBaseWalletLabel(
 
   return STATIC_BASE_LABELS[address.toLowerCase()] ?? null;
 }
+
+// Deliberately small and deliberately NOT a general Bitcoin exchange
+// registry - see the investigation behind this addition. Unlike EVM/Solana
+// exchange hot wallets (one persistent, long-lived address), Bitcoin
+// exchanges typically issue a unique HD-derived deposit address per user,
+// often rotating - so even a fully accurate list of an exchange's COLD/
+// RESERVE wallets (below) only ever covers that narrow slice, never the
+// per-user deposit addresses a typical investigated wallet actually
+// interacts with. See WalletExposureSummary... no - see the
+// "known infrastructure" limitation note surfaced in wallet.ts's bitcoin
+// branch for the user-facing disclosure of this gap.
+//
+// Every entry below was independently fetched and read directly from the
+// exchange's own official page/repository during this investigation - not
+// copied from a third-party list. Several other major exchanges (Kraken,
+// Coinbase, Crypto.com, CEX.IO, OKX, HTX/Huobi) were investigated and
+// deliberately left out because no directly-fetchable, first-party address
+// list could be confirmed for them in that pass - a smaller, fully-
+// verified registry was chosen over a larger, partially-trusted one.
+//
+// Verified directly against Binance's own transparency blog post
+// (binance.com/en/blog/community/our-commitment-to-transparency-...),
+// fetched and read directly, not sourced from a third-party list.
+const STATIC_BITCOIN_LABELS: Record<string, WalletLabel> = {
+  "34xp4vRoCGJym3xR7yCVPFHoCNxv4Twseo": {
+    address: "34xp4vRoCGJym3xR7yCVPFHoCNxv4Twseo",
+    label: "Binance (reserve wallet)",
+    category: "centralized_exchange",
+    confidence: "high",
+    source: "static_registry",
+  },
+
+  "3LYJfcfHPXYJreMsASk2jkn69LWEYKzexb": {
+    address: "3LYJfcfHPXYJreMsASk2jkn69LWEYKzexb",
+    label: "Binance (reserve wallet)",
+    category: "centralized_exchange",
+    confidence: "high",
+    source: "static_registry",
+  },
+
+  "3M219KR5vEneNb47ewrPfWyb5jQ2DjxRP6": {
+    address: "3M219KR5vEneNb47ewrPfWyb5jQ2DjxRP6",
+    label: "Binance (reserve wallet)",
+    category: "centralized_exchange",
+    confidence: "high",
+    source: "static_registry",
+  },
+
+  bc1qm34lsc65zpw79lxes69zkqmk6ee3ewf0j77s3h: {
+    address: "bc1qm34lsc65zpw79lxes69zkqmk6ee3ewf0j77s3h",
+    label: "Binance (reserve wallet)",
+    category: "centralized_exchange",
+    confidence: "high",
+    source: "static_registry",
+  },
+
+  // Verified directly against Bitfinex's own official GitHub repository
+  // (github.com/bitfinexcom/pub/blob/main/wallets.txt), fetched and read
+  // directly.
+  "1Kr6QSydW9bFQG1mXiPNNu6WpJGmUa9i1g": {
+    address: "1Kr6QSydW9bFQG1mXiPNNu6WpJGmUa9i1g",
+    label: "Bitfinex (hot wallet)",
+    category: "centralized_exchange",
+    confidence: "high",
+    source: "static_registry",
+  },
+
+  "3JZq4atUahhuA9rLhXLMhhTo133J9rF97j": {
+    address: "3JZq4atUahhuA9rLhXLMhhTo133J9rF97j",
+    label: "Bitfinex (reserve wallet)",
+    category: "centralized_exchange",
+    confidence: "high",
+    source: "static_registry",
+  },
+
+  bc1qgdjqv0av3q56jvd82tkdjpy7gdp9ut8tlqmgrpmv24sq90ecnvqqjwvw97: {
+    address:
+      "bc1qgdjqv0av3q56jvd82tkdjpy7gdp9ut8tlqmgrpmv24sq90ecnvqqjwvw97",
+    label: "Bitfinex (reserve wallet)",
+    category: "centralized_exchange",
+    confidence: "high",
+    source: "static_registry",
+  },
+};
+
+// No case normalization, unlike the EVM lookups above - Bitcoin has no
+// EIP-55-style checksum-casing convention. Legacy/P2SH addresses are
+// base58 and genuinely case-sensitive; bech32 (bc1...) addresses are
+// conventionally lowercase already. Exact-match lookup, same as Solana's.
+export function lookupStaticBitcoinWalletLabel(
+  address: string | null | undefined,
+): WalletLabel | null {
+  if (!address) {
+    return null;
+  }
+
+  return STATIC_BITCOIN_LABELS[address] ?? null;
+}

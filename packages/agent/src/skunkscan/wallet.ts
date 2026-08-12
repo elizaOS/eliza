@@ -1643,6 +1643,17 @@ warnings: investigationWarnings,
           );
         }
 
+        // Structural limitation, not an oversight - see
+        // STATIC_BITCOIN_LABELS's doc comment in labels/staticRegistry.ts.
+        // Unlike EVM/Solana, Bitcoin exchanges typically issue a unique
+        // per-user deposit address (often HD-derived and rotated) rather
+        // than reusing one persistent hot wallet, so even a fully accurate
+        // registry of an exchange's published reserve wallets can only
+        // ever cover that narrow slice.
+        investigationWarnings.push(
+          "Known-infrastructure detection for Bitcoin currently covers a small number of independently-verified exchange reserve wallets only (Binance, Bitfinex) - it does not and structurally cannot cover exchanges' per-user deposit addresses, which are typically unique per customer and never published. Relationships with an unrecognized exchange deposit address will still show as an unknown counterparty, not as known infrastructure.",
+        );
+
         const tokenHoldings: WalletTokenHolding[] =
           (tokenBalancesResult.data?.balances ?? []).map((tokenBalance) => ({
             tokenId: tokenBalance.asset.contractAddress ?? "",
