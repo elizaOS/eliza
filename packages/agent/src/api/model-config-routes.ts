@@ -577,10 +577,10 @@ export function resolveActiveChat(
         hostOf(baseFor("CEREBRAS_BASE_URL")) ??
         "api.cerebras.ai")
       : family === "ELIZAOS_CLOUD"
-      ? (hostOf(baseFor("ELIZAOS_CLOUD_BASE_URL")) ?? "elizacloud.ai")
-      : family === "ANTHROPIC"
-        ? (hostOf(baseFor("ANTHROPIC_BASE_URL")) ?? "api.anthropic.com")
-        : (hostOf(baseFor("OPENAI_BASE_URL")) ?? "api.openai.com");
+        ? (hostOf(baseFor("ELIZAOS_CLOUD_BASE_URL")) ?? "elizacloud.ai")
+        : family === "ANTHROPIC"
+          ? (hostOf(baseFor("ANTHROPIC_BASE_URL")) ?? "api.anthropic.com")
+          : (hostOf(baseFor("OPENAI_BASE_URL")) ?? "api.openai.com");
   return { provider, family, endpoint };
 }
 
