@@ -60,9 +60,6 @@ export default function AgentsPage() {
     );
   }
 
-  const agents = agentsQuery.data?.agents ?? [];
-  const sandboxes = agents.map(toAgentRow);
-  const hostingSummary = agentsQuery.data?.hostingSummary;
   const showSkeleton = enabled && agentsQuery.isLoading;
   const showAgentsError = enabled && agentsQuery.isError;
 
@@ -85,12 +82,20 @@ export default function AgentsPage() {
                   })
             }
           />
+        ) : agentsQuery.data === undefined ? (
+          <DashboardErrorState
+            message={t("cloud.agents.invalidResponse", {
+              defaultValue: "Agent data is unavailable",
+            })}
+          />
         ) : (
           <>
-            {hostingSummary && (
-              <ElizaAgentPricingBanner hostingSummary={hostingSummary} />
-            )}
-            <ElizaAgentsTable sandboxes={sandboxes} />
+            <ElizaAgentPricingBanner
+              hostingSummary={agentsQuery.data.hostingSummary}
+            />
+            <ElizaAgentsTable
+              sandboxes={agentsQuery.data.agents.map(toAgentRow)}
+            />
           </>
         )}
       </DashboardPageContainer>

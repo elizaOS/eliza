@@ -8,17 +8,17 @@
  *   (no page reload) and firing a "now running" callback on transitions.
  */
 
-import type { AgentHostingCostDto } from "@elizaos/cloud-shared/lib/types/cloud-api";
+import type {
+  AgentListItemDto,
+  AgentSandboxStatus,
+} from "@elizaos/cloud-shared/lib/types/cloud-api";
+import {
+  agentResponseSchema,
+  agentsResponseSchema,
+} from "@elizaos/cloud-shared/types/agent-api-schema";
 import { useCallback, useEffect, useRef, useState } from "react";
 
-export type SandboxStatus =
-  | "pending"
-  | "provisioning"
-  | "running"
-  | "stopped"
-  | "sleeping"
-  | "disconnected"
-  | "error";
+export type SandboxStatus = AgentSandboxStatus;
 
 export interface SandboxStatusResult {
   status: SandboxStatus;
@@ -31,7 +31,10 @@ const TERMINAL_STATES = new Set<SandboxStatus>([
   "running",
   "stopped",
   "sleeping",
+  "disconnected",
   "error",
+  "deletion_pending",
+  "deletion_failed",
 ]);
 const ACTIVE_STATES = new Set<SandboxStatus>(["pending", "provisioning"]);
 const MAX_CONSECUTIVE_ERRORS = 5;
@@ -109,17 +112,14 @@ export function useSandboxStatusPoll(
 
         consecutiveErrorsRef.current = 0;
 
-        const json = await res.json();
-        const data = json?.data;
-        if (!data) return;
-
-        const newStatus = (data.status as SandboxStatus) ?? "pending";
+        const data = agentResponseSchema.parse(await res.json()).data;
+        const newStatus = data.status;
         statusRef.current = newStatus;
 
         setResult({
           status: newStatus,
-          lastHeartbeat: data.lastHeartbeatAt ?? null,
-          error: data.errorMessage ?? null,
+          lastHeartbeat: data.lastHeartbeatAt,
+          error: data.errorMessage,
           isLoading: false,
         });
 
@@ -127,9 +127,15 @@ export function useSandboxStatusPoll(
           cleanup();
         }
       } catch {
+        // error-policy:J4 the status card shows its retained state while a
+        // bounded retry counter makes repeated transport/contract failure stop.
         if (!cancelledRef.current) {
           consecutiveErrorsRef.current++;
-          setResult((prev) => ({ ...prev, isLoading: false }));
+          setResult((prev) => ({
+            ...prev,
+            isLoading: false,
+            error: "Unable to refresh agent status",
+          }));
           if (consecutiveErrorsRef.current >= MAX_CONSECUTIVE_ERRORS) {
             cleanup();
           }
@@ -147,36 +153,23 @@ export function useSandboxStatusPoll(
   return result;
 }
 
-/** Raw agent shape returned by the list endpoint (camelCase). */
-export interface SandboxListAgent {
-  id: string;
-  status: string;
-  agentName?: string;
-  agent_name?: string;
-  databaseStatus?: string;
-  errorMessage?: string;
-  dockerImage?: string | null;
-  executionTier?: "shared" | "dedicated-lazy" | "dedicated-always" | "custom";
-  hostingCost: AgentHostingCostDto;
-  webUiUrl?: string | null;
-  lastHeartbeatAt?: string | null;
-  createdAt?: string;
-  updatedAt?: string;
-  [key: string]: unknown;
-}
+/** Canonical list row returned by the hosted-agent endpoint. */
+export type SandboxListAgent = AgentListItemDto;
 
 export function useSandboxListPoll(
-  sandboxes: Array<{ id: string; status: string }>,
+  sandboxes: Array<{ id: string; status: AgentSandboxStatus }>,
   options: {
     intervalMs?: number;
-    onTransitionToRunning?: (agentId: string, agentName?: string) => void;
+    onTransitionToRunning?: (agentId: string, agentName: string | null) => void;
     /** Called on every successful poll with the full agent list from the API. */
     onDataRefresh?: (agents: SandboxListAgent[]) => void;
   } = {},
 ) {
   const { intervalMs = 10_000, onTransitionToRunning, onDataRefresh } = options;
   const [isPolling, setIsPolling] = useState(false);
-  const previousStatusesRef = useRef<Map<string, string>>(new Map());
+  const previousStatusesRef = useRef<Map<string, AgentSandboxStatus>>(
+    new Map(),
+  );
   const callbackRef = useRef(onTransitionToRunning);
   const dataRefreshRef = useRef(onDataRefresh);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -190,7 +183,7 @@ export function useSandboxListPoll(
   }, [onDataRefresh]);
 
   useEffect(() => {
-    const statusMap = new Map<string, string>();
+    const statusMap = new Map<string, AgentSandboxStatus>();
     for (const sb of sandboxes) {
       if (!previousStatusesRef.current.has(sb.id)) {
         statusMap.set(sb.id, sb.status);
@@ -204,9 +197,7 @@ export function useSandboxListPoll(
     previousStatusesRef.current = statusMap;
   }, [sandboxes]);
 
-  const hasActiveAgents = sandboxes.some((sb) =>
-    ACTIVE_STATES.has(sb.status as SandboxStatus),
-  );
+  const hasActiveAgents = sandboxes.some((sb) => ACTIVE_STATES.has(sb.status));
 
   useEffect(() => {
     if (!hasActiveAgents) {
@@ -233,8 +224,7 @@ export function useSandboxListPoll(
         const res = await fetch("/api/v1/eliza/agents");
         if (cancelled || !res.ok) return;
 
-        const json = await res.json();
-        const agents: SandboxListAgent[] = json?.data ?? [];
+        const agents = agentsResponseSchema.parse(await res.json()).data;
 
         dataRefreshRef.current?.(agents);
 
@@ -244,19 +234,17 @@ export function useSandboxListPoll(
 
           if (
             prevStatus &&
-            ACTIVE_STATES.has(prevStatus as SandboxStatus) &&
+            ACTIVE_STATES.has(prevStatus) &&
             newStatus === "running"
           ) {
-            callbackRef.current?.(
-              agent.id,
-              agent.agentName ?? agent.agent_name,
-            );
+            callbackRef.current?.(agent.id, agent.agentName);
           }
 
           previousStatusesRef.current.set(agent.id, newStatus);
         }
       } catch {
-        // silently retry on next interval
+        // error-policy:J4 this active-row refresh is opportunistic; the primary
+        // useAgents query owns the visible error state and retries independently.
       }
     };
 

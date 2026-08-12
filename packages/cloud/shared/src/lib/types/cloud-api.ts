@@ -1,4 +1,4 @@
-// Defines cloud shared cloud api behavior for backend service consumers.
+/** Canonical Cloud API DTOs shared by route producers and typed consumers. */
 export type IsoDateString = string;
 export type DateLike = Date | IsoDateString;
 
@@ -391,32 +391,32 @@ export type AgentExecutionTier = "shared" | "dedicated-lazy" | "dedicated-always
 
 export type AgentHostingCostDto =
   | {
+      pricingState: "known";
       rateClass: "shared-usage" | "deactivated";
       hourlyRateUsd: 0;
       monthlyEstimateUsd: 0;
     }
   | {
+      pricingState: "known";
       rateClass: "running" | "idle";
       hourlyRateUsd: number;
       monthlyEstimateUsd: number;
     }
   | {
+      pricingState: "unavailable";
       rateClass: "unavailable";
       hourlyRateUsd: null;
       monthlyEstimateUsd: null;
     };
 
-export interface AgentHostingSummaryDto {
+interface AgentHostingSummaryBaseDto {
   sharedCount: number;
   dedicatedRunningCount: number;
   dedicatedIdleCount: number;
+  dedicatedDeactivatedCount: number;
   hasAgents: boolean;
   hasDedicatedHosting: boolean;
-  hourlyHostingCostUsd: number;
-  monthlyHostingCostUsd: number;
   creditBalanceUsd: number;
-  hoursRemaining: number | null;
-  lowBalance: boolean;
   dedicatedRunningHourlyRateUsd: number;
   dedicatedRunningMonthlyEstimateUsd: number;
   dedicatedIdleHourlyRateUsd: number;
@@ -424,6 +424,24 @@ export interface AgentHostingSummaryDto {
   minimumDepositUsd: number;
   lowCreditWarningUsd: number;
 }
+
+export type AgentHostingSummaryDto =
+  | (AgentHostingSummaryBaseDto & {
+      pricingState: "complete";
+      unavailableDedicatedCount: 0;
+      hourlyHostingCostUsd: number;
+      monthlyHostingCostUsd: number;
+      hoursRemaining: number | null;
+      lowBalance: boolean;
+    })
+  | (AgentHostingSummaryBaseDto & {
+      pricingState: "incomplete";
+      unavailableDedicatedCount: number;
+      hourlyHostingCostUsd: null;
+      monthlyHostingCostUsd: null;
+      hoursRemaining: null;
+      lowBalance: null;
+    });
 
 export interface AgentListItemDto {
   id: string;

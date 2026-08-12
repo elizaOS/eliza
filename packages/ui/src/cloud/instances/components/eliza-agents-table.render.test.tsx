@@ -39,6 +39,7 @@ function row(overrides: Partial<ElizaAgentRow>): ElizaAgentRow {
     docker_image: null,
     execution_tier: "dedicated-lazy",
     hosting_cost: {
+      pricingState: "known",
       rateClass: "running",
       hourlyRateUsd: 0.01,
       monthlyEstimateUsd: 7.2,
@@ -196,6 +197,7 @@ describe("ElizaAgentsTable per-row view model", () => {
               status: "sleeping",
               canonical_web_ui_url: null,
               hosting_cost: {
+                pricingState: "known",
                 rateClass: "deactivated",
                 hourlyRateUsd: 0,
                 monthlyEstimateUsd: 0,
@@ -205,6 +207,7 @@ describe("ElizaAgentsTable per-row view model", () => {
               id: "00000000-1111-2222-3333-555555555555",
               status: "stopped",
               hosting_cost: {
+                pricingState: "known",
                 rateClass: "idle",
                 hourlyRateUsd: 0.0025,
                 monthlyEstimateUsd: 1.8,
@@ -246,6 +249,7 @@ describe("ElizaAgentsTable per-row view model", () => {
             row({
               execution_tier: "shared",
               hosting_cost: {
+                pricingState: "known",
                 rateClass: "shared-usage",
                 hourlyRateUsd: 0,
                 monthlyEstimateUsd: 0,
@@ -278,6 +282,18 @@ describe("ElizaAgentsTable per-row view model", () => {
     expect(
       within(dedicatedDesktopRow as HTMLElement).getByText("$0.01/hr"),
     ).toBeTruthy();
+    const sharedStatus = within(sharedDesktopRow as HTMLElement).getByText(
+      "Shared ready",
+    );
+    const dedicatedStatus = within(
+      dedicatedDesktopRow as HTMLElement,
+    ).getByText("running");
+    expect(sharedStatus.querySelector("span")?.className).toContain(
+      "bg-muted-strong",
+    );
+    expect(dedicatedStatus.querySelector("span")?.className).toContain(
+      "bg-status-success",
+    );
 
     const sharedMobileCard = screen
       .getAllByRole("link", { name: "Ada" })[1]

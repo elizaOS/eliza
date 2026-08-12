@@ -32,6 +32,7 @@ export function deriveAgentHostingCost({
 }: AgentHostingState): AgentHostingCostDto {
   if (executionTier === "shared") {
     return {
+      pricingState: "known",
       rateClass: "shared-usage",
       hourlyRateUsd: 0,
       monthlyEstimateUsd: 0,
@@ -42,6 +43,7 @@ export function deriveAgentHostingCost({
 
   if (status === "running" && billingActive) {
     return {
+      pricingState: "known",
       rateClass: "running",
       hourlyRateUsd: AGENT_PRICING.RUNNING_HOURLY_RATE,
       monthlyEstimateUsd: monthlyEstimate(AGENT_PRICING.RUNNING_HOURLY_RATE),
@@ -50,6 +52,7 @@ export function deriveAgentHostingCost({
 
   if (status === "stopped" && lastBackupAt !== null && billingActive) {
     return {
+      pricingState: "known",
       rateClass: "idle",
       hourlyRateUsd: AGENT_PRICING.IDLE_HOURLY_RATE,
       monthlyEstimateUsd: monthlyEstimate(AGENT_PRICING.IDLE_HOURLY_RATE),
@@ -58,6 +61,7 @@ export function deriveAgentHostingCost({
 
   if (status === "sleeping") {
     return {
+      pricingState: "known",
       rateClass: "deactivated",
       hourlyRateUsd: 0,
       monthlyEstimateUsd: 0,
@@ -65,6 +69,7 @@ export function deriveAgentHostingCost({
   }
 
   return {
+    pricingState: "unavailable",
     rateClass: "unavailable",
     hourlyRateUsd: null,
     monthlyEstimateUsd: null,
@@ -78,7 +83,9 @@ export function summarizeAgentHosting(
   let sharedCount = 0;
   let dedicatedRunningCount = 0;
   let dedicatedIdleCount = 0;
-  let hourlyHostingCostUsd = 0;
+  let dedicatedDeactivatedCount = 0;
+  let unavailableDedicatedCount = 0;
+  let knownHourlyHostingCostUsd = 0;
 
   for (const cost of costs) {
     if (cost.rateClass === "shared-usage") {
@@ -87,33 +94,58 @@ export function summarizeAgentHosting(
       dedicatedRunningCount += 1;
     } else if (cost.rateClass === "idle") {
       dedicatedIdleCount += 1;
+    } else if (cost.rateClass === "deactivated") {
+      dedicatedDeactivatedCount += 1;
+    } else {
+      unavailableDedicatedCount += 1;
     }
 
-    if (cost.hourlyRateUsd !== null) {
-      hourlyHostingCostUsd += cost.hourlyRateUsd;
+    if (cost.pricingState === "known") {
+      knownHourlyHostingCostUsd += cost.hourlyRateUsd;
     }
   }
 
   const hasAgents = costs.length > 0;
-  const hasDedicatedHosting = hourlyHostingCostUsd > 0;
-
-  return {
+  const hasDedicatedHosting = sharedCount < costs.length;
+  const common = {
     sharedCount,
     dedicatedRunningCount,
     dedicatedIdleCount,
+    dedicatedDeactivatedCount,
     hasAgents,
     hasDedicatedHosting,
-    hourlyHostingCostUsd,
-    monthlyHostingCostUsd: monthlyEstimate(hourlyHostingCostUsd),
     creditBalanceUsd,
-    hoursRemaining:
-      hourlyHostingCostUsd > 0 ? Math.floor(creditBalanceUsd / hourlyHostingCostUsd) : null,
-    lowBalance: hasDedicatedHosting && creditBalanceUsd < AGENT_PRICING.LOW_CREDIT_WARNING,
     dedicatedRunningHourlyRateUsd: AGENT_PRICING.RUNNING_HOURLY_RATE,
     dedicatedRunningMonthlyEstimateUsd: monthlyEstimate(AGENT_PRICING.RUNNING_HOURLY_RATE),
     dedicatedIdleHourlyRateUsd: AGENT_PRICING.IDLE_HOURLY_RATE,
     dedicatedIdleMonthlyEstimateUsd: monthlyEstimate(AGENT_PRICING.IDLE_HOURLY_RATE),
     minimumDepositUsd: AGENT_PRICING.MINIMUM_DEPOSIT,
     lowCreditWarningUsd: AGENT_PRICING.LOW_CREDIT_WARNING,
+  };
+
+  if (unavailableDedicatedCount > 0) {
+    return {
+      ...common,
+      pricingState: "incomplete",
+      unavailableDedicatedCount,
+      hourlyHostingCostUsd: null,
+      monthlyHostingCostUsd: null,
+      hoursRemaining: null,
+      lowBalance: null,
+    };
+  }
+
+  return {
+    ...common,
+    pricingState: "complete",
+    unavailableDedicatedCount: 0,
+    hourlyHostingCostUsd: knownHourlyHostingCostUsd,
+    monthlyHostingCostUsd: monthlyEstimate(knownHourlyHostingCostUsd),
+    hoursRemaining:
+      knownHourlyHostingCostUsd > 0
+        ? Math.floor(creditBalanceUsd / knownHourlyHostingCostUsd)
+        : null,
+    lowBalance:
+      knownHourlyHostingCostUsd > 0 && creditBalanceUsd < AGENT_PRICING.LOW_CREDIT_WARNING,
   };
 }

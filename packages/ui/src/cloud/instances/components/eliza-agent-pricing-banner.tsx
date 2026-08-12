@@ -24,9 +24,12 @@ export function ElizaAgentPricingBanner({
 }: ElizaAgentPricingBannerProps) {
   const t = useT();
   const {
+    pricingState,
     sharedCount,
     dedicatedRunningCount,
     dedicatedIdleCount,
+    dedicatedDeactivatedCount,
+    unavailableDedicatedCount,
     hasAgents,
     hasDedicatedHosting,
     monthlyHostingCostUsd,
@@ -58,7 +61,7 @@ export function ElizaAgentPricingBanner({
               })}
             </p>
           </div>
-          {lowBalance && hasAgents && (
+          {lowBalance === true && hasAgents && (
             <Badge
               variant="outline"
               className="bg-red-500/10 border-red-500/30 text-red-400 text-[10px] px-2"
@@ -120,17 +123,23 @@ export function ElizaAgentPricingBanner({
             </div>
             <p className="text-base font-mono font-semibold text-white tabular-nums">
               {hasAgents
-                ? `${formatUSD(monthlyHostingCostUsd)}/mo hosting`
+                ? pricingState === "complete"
+                  ? `${formatUSD(monthlyHostingCostUsd)}/mo hosting`
+                  : t("cloud.containers.pricingBanner.pricingIncomplete", {
+                      defaultValue: "Pricing incomplete",
+                    })
                 : "—"}
             </p>
             <p className="text-[10px] text-white/30 font-mono">
               {hasAgents
                 ? t("cloud.containers.pricingBanner.hostingSummary", {
                     defaultValue:
-                      "{{shared}} shared · {{run}} dedicated running · {{idle}} dedicated idle",
+                      "{{shared}} shared · {{run}} dedicated running · {{idle}} dedicated idle · {{off}} deactivated · {{unavailable}} pricing unavailable",
                     shared: sharedCount,
                     run: dedicatedRunningCount,
                     idle: dedicatedIdleCount,
+                    off: dedicatedDeactivatedCount,
+                    unavailable: unavailableDedicatedCount,
                   })
                 : t("cloud.containers.pricingBanner.noAgents", {
                     defaultValue: "No agents",
@@ -153,7 +162,13 @@ export function ElizaAgentPricingBanner({
                 lowBalance ? "text-red-400" : "text-white"
               }`}
             >
-              {hoursRemaining !== null ? formatDuration(hoursRemaining) : "—"}
+              {pricingState === "incomplete"
+                ? t("cloud.containers.pricingBanner.unavailable", {
+                    defaultValue: "Unavailable",
+                  })
+                : hoursRemaining !== null
+                  ? formatDuration(hoursRemaining)
+                  : "—"}
             </p>
             <p className="text-[10px] text-white/30 font-mono">
               {t("cloud.containers.pricingBanner.balance", {
@@ -165,6 +180,16 @@ export function ElizaAgentPricingBanner({
         </div>
 
         <div className="space-y-1 mt-3">
+          {pricingState === "incomplete" && (
+            <p className="text-[10px] text-status-warning font-mono">
+              {t("cloud.containers.pricingBanner.unavailableDedicated", {
+                defaultValue:
+                  "{{count}} dedicated agent{{plural}} cannot be priced in the current state; no hosting total or runway is shown.",
+                count: unavailableDedicatedCount,
+                plural: unavailableDedicatedCount === 1 ? "" : "s",
+              })}
+            </p>
+          )}
           {sharedCount > 0 && (
             <p className="text-[10px] text-white/35 font-mono">
               {t("cloud.containers.pricingBanner.sharedUsage", {

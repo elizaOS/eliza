@@ -17,32 +17,62 @@
  * No blue anywhere; every class resolves correctly in light and dark.
  */
 
-export const STATUS_DOT_COLORS: Record<string, string> = {
+import type {
+  AgentExecutionTier,
+  AgentSandboxStatus,
+} from "@elizaos/cloud-shared/lib/types/cloud-api";
+
+export type AgentVisualStatus = AgentSandboxStatus | "shared-ready";
+
+export interface AgentStatusPresentation {
+  label: string;
+  visualStatus: AgentVisualStatus;
+}
+
+export const STATUS_DOT_COLORS: Record<AgentVisualStatus, string> = {
   running: "bg-status-success",
+  "shared-ready": "bg-muted-strong",
   provisioning: "bg-accent animate-pulse motion-reduce:animate-none",
   pending: "bg-status-warning animate-pulse motion-reduce:animate-none",
   stopped: "bg-muted",
   sleeping: "bg-muted-strong",
   disconnected: "bg-status-danger",
   error: "bg-status-danger",
+  deletion_pending:
+    "bg-status-warning animate-pulse motion-reduce:animate-none",
+  deletion_failed: "bg-status-danger",
 };
 
-export const STATUS_BADGE_COLORS: Record<string, string> = {
+export const STATUS_BADGE_COLORS: Record<AgentVisualStatus, string> = {
   running: "bg-status-success-bg text-status-success border-status-success",
+  "shared-ready": "bg-surface text-muted-strong border-border-strong",
   provisioning: "bg-accent-subtle text-accent border-accent",
   pending: "bg-status-warning-bg text-status-warning border-status-warning",
   stopped: "bg-bg-muted text-muted border-border",
   sleeping: "bg-surface text-muted-strong border-border-strong",
   disconnected: "bg-status-danger-bg text-status-danger border-status-danger",
   error: "bg-status-danger-bg text-status-danger border-status-danger",
+  deletion_pending:
+    "bg-status-warning-bg text-status-warning border-status-warning",
+  deletion_failed:
+    "bg-status-danger-bg text-status-danger border-status-danger",
 };
 
-export function statusDotColor(status: string): string {
-  return STATUS_DOT_COLORS[status] ?? "bg-muted";
+export function agentStatusPresentation(
+  executionTier: AgentExecutionTier,
+  status: AgentSandboxStatus,
+): AgentStatusPresentation {
+  return executionTier === "shared" && status === "running"
+    ? { label: "Shared ready", visualStatus: "shared-ready" }
+    : { label: status, visualStatus: status };
 }
 
-export function statusBadgeColor(status: string): string {
-  return STATUS_BADGE_COLORS[status] ?? "bg-bg-muted text-muted border-border";
+export function statusDotColor(status: AgentVisualStatus): string {
+  return STATUS_DOT_COLORS[status];
+}
+
+export function statusBadgeColor(status: AgentVisualStatus): string {
+  return STATUS_BADGE_COLORS[status];
 }
 
 /** Format a date into a human-readable relative time string. */

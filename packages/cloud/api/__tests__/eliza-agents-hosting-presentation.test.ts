@@ -1,7 +1,33 @@
 /** Proves the real agents list route emits server-owned shared-hosting truth. */
 
-import { describe, expect, mock, test } from "bun:test";
+import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { Hono } from "hono";
+import type { AgentBillingStatus } from "../../shared/src/db/schemas/agent-sandboxes";
+import type {
+  AgentDatabaseStatus,
+  AgentExecutionTier,
+  AgentSandboxStatus,
+} from "../../shared/src/lib/types/cloud-api";
+import { agentsResponseSchema } from "../../shared/src/types/agent-api-schema";
+
+interface ListedAgent {
+  id: string;
+  organization_id: string;
+  user_id: string;
+  character_id: string | null;
+  agent_name: string;
+  agent_config: Record<string, unknown>;
+  status: AgentSandboxStatus;
+  database_status: AgentDatabaseStatus;
+  billing_status: AgentBillingStatus;
+  execution_tier: AgentExecutionTier;
+  last_backup_at: Date | null;
+  last_heartbeat_at: Date | null;
+  error_message: string | null;
+  created_at: Date;
+  updated_at: Date;
+  docker_image: string | null;
+}
 
 const requireUserOrApiKeyWithOrg = mock(async () => ({
   id: "user-1",
@@ -9,7 +35,7 @@ const requireUserOrApiKeyWithOrg = mock(async () => ({
 }));
 const findByIdsInOrganization = mock(async () => []);
 const getCreditBalanceResponse = mock(async () => ({ balance: 5 }));
-const listAgents = mock(async () => [
+const sharedAgents: readonly ListedAgent[] = [
   {
     id: "11111111-1111-4111-8111-111111111111",
     organization_id: "org-1",
@@ -17,10 +43,10 @@ const listAgents = mock(async () => [
     character_id: null,
     agent_name: "Shared one",
     agent_config: {},
-    status: "running" as const,
-    database_status: "ready" as const,
-    billing_status: "active" as const,
-    execution_tier: "shared" as const,
+    status: "running",
+    database_status: "ready",
+    billing_status: "active",
+    execution_tier: "shared",
     last_backup_at: null,
     last_heartbeat_at: null,
     error_message: null,
@@ -35,10 +61,10 @@ const listAgents = mock(async () => [
     character_id: null,
     agent_name: "Shared two",
     agent_config: {},
-    status: "provisioning" as const,
-    database_status: "none" as const,
-    billing_status: "active" as const,
-    execution_tier: "shared" as const,
+    status: "provisioning",
+    database_status: "none",
+    billing_status: "active",
+    execution_tier: "shared",
     last_backup_at: null,
     last_heartbeat_at: null,
     error_message: null,
@@ -46,7 +72,9 @@ const listAgents = mock(async () => [
     updated_at: new Date("2026-08-12T00:00:00.000Z"),
     docker_image: null,
   },
-]);
+];
+let listedAgents: readonly ListedAgent[] = sharedAgents;
+const listAgents = mock(async () => listedAgents);
 
 mock.module("@/lib/auth/workers-hono-auth", () => ({
   requireUserOrApiKeyWithOrg,
@@ -94,31 +122,37 @@ const app = new Hono();
 app.route("/api/v1/eliza/agents", agentsRoute);
 
 describe("GET /api/v1/eliza/agents hosting presentation", () => {
+  beforeEach(() => {
+    listedAgents = sharedAgents;
+  });
+
   test("shared rows carry zero continuous hosting and never count as dedicated", async () => {
     const response = await app.request("/api/v1/eliza/agents");
 
     expect(response.status).toBe(200);
-    const body = (await response.json()) as {
-      data: Array<{ hostingCost: unknown }>;
-      hostingSummary: Record<string, unknown>;
-    };
+    const body = agentsResponseSchema.parse(await response.json());
 
     expect(body.data.map((agent) => agent.hostingCost)).toEqual([
       {
+        pricingState: "known",
         rateClass: "shared-usage",
         hourlyRateUsd: 0,
         monthlyEstimateUsd: 0,
       },
       {
+        pricingState: "known",
         rateClass: "shared-usage",
         hourlyRateUsd: 0,
         monthlyEstimateUsd: 0,
       },
     ]);
     expect(body.hostingSummary).toMatchObject({
+      pricingState: "complete",
       sharedCount: 2,
       dedicatedRunningCount: 0,
       dedicatedIdleCount: 0,
+      dedicatedDeactivatedCount: 0,
+      unavailableDedicatedCount: 0,
       hourlyHostingCostUsd: 0,
       monthlyHostingCostUsd: 0,
       creditBalanceUsd: 5,
@@ -126,5 +160,45 @@ describe("GET /api/v1/eliza/agents hosting presentation", () => {
       lowBalance: false,
     });
     expect(getCreditBalanceResponse).toHaveBeenCalledWith("org-1");
+  });
+
+  test("mixed known and unavailable dedicated rows suppress the aggregate total", async () => {
+    listedAgents = [
+      sharedAgents[0],
+      {
+        ...sharedAgents[0],
+        id: "33333333-3333-4333-8333-333333333333",
+        agent_name: "Dedicated running",
+        execution_tier: "dedicated-always",
+      },
+      {
+        ...sharedAgents[1],
+        id: "44444444-4444-4444-8444-444444444444",
+        agent_name: "Dedicated provisioning",
+        execution_tier: "dedicated-lazy",
+      },
+    ];
+
+    const response = await app.request("/api/v1/eliza/agents");
+
+    expect(response.status).toBe(200);
+    const body = agentsResponseSchema.parse(await response.json());
+    expect(body.data[2]?.hostingCost).toEqual({
+      pricingState: "unavailable",
+      rateClass: "unavailable",
+      hourlyRateUsd: null,
+      monthlyEstimateUsd: null,
+    });
+    expect(body.hostingSummary).toMatchObject({
+      pricingState: "incomplete",
+      sharedCount: 1,
+      dedicatedRunningCount: 1,
+      unavailableDedicatedCount: 1,
+      hasDedicatedHosting: true,
+      hourlyHostingCostUsd: null,
+      monthlyHostingCostUsd: null,
+      hoursRemaining: null,
+      lowBalance: null,
+    });
   });
 });

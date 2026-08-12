@@ -31,7 +31,11 @@ import { ElizaAgentTabs } from "./components/eliza-agent-tabs";
 import { ElizaConnectButton } from "./components/eliza-connect-button";
 import { useAgent } from "./lib/data/eliza-agents";
 import { useT } from "./lib/i18n";
-import { statusBadgeColor, statusDotColor } from "./lib/sandbox-status";
+import {
+  agentStatusPresentation,
+  statusBadgeColor,
+  statusDotColor,
+} from "./lib/sandbox-status";
 
 function formatDate(date: string | null): string {
   if (!date) return "—";
@@ -115,8 +119,12 @@ export default function AgentDetailPage() {
   const agent = query.data;
   if (!agent) return <Navigate to="/dashboard/agents" replace />;
 
-  const badgeColor = statusBadgeColor(agent.status);
-  const dotColor = statusDotColor(agent.status);
+  const statusPresentation = agentStatusPresentation(
+    agent.executionTier,
+    agent.status,
+  );
+  const badgeColor = statusBadgeColor(statusPresentation.visualStatus);
+  const dotColor = statusDotColor(statusPresentation.visualStatus);
   const hostingCost = agent.hostingCost;
   const adminDetails = agent.adminDetails;
   const isDockerBacked = adminDetails?.isDockerBacked ?? false;
@@ -168,7 +176,7 @@ export default function AgentDetailPage() {
                 <span
                   className={`inline-block size-1.5 rounded-full mr-1.5 ${dotColor}`}
                 />
-                {agent.status}
+                {statusPresentation.label}
               </Badge>
             </div>
             <div className="flex items-center gap-3 text-xs text-muted">
@@ -184,7 +192,7 @@ export default function AgentDetailPage() {
             {t("cloud.agents.detail.statusLabel", { defaultValue: "Status" })}
           </p>
           <p className="text-lg font-medium text-txt-strong capitalize tabular-nums font-mono">
-            {agent.status}
+            {statusPresentation.label}
           </p>
         </div>
         <div className="bg-card p-4 space-y-1">
@@ -218,8 +226,10 @@ export default function AgentDetailPage() {
               ? t("cloud.agents.detail.usageBased", {
                   defaultValue: "Usage-based",
                 })
-              : hostingCost.hourlyRateUsd === null
-                ? "—"
+              : hostingCost.pricingState === "unavailable"
+                ? t("cloud.agents.detail.pricingUnavailable", {
+                    defaultValue: "Pricing unavailable",
+                  })
                 : formatHourlyRate(hostingCost.hourlyRateUsd)}
           </p>
           {(hostingCost.rateClass === "running" ||
@@ -240,6 +250,14 @@ export default function AgentDetailPage() {
             <p className="text-2xs text-muted">
               {t("cloud.agents.detail.deactivatedNoCost", {
                 defaultValue: "Deactivated — no hourly cost",
+              })}
+            </p>
+          )}
+          {hostingCost.pricingState === "unavailable" && (
+            <p className="text-2xs text-status-warning">
+              {t("cloud.agents.detail.pricingUnavailableDetail", {
+                defaultValue:
+                  "A continuous hosting estimate is not available for this dedicated agent state.",
               })}
             </p>
           )}

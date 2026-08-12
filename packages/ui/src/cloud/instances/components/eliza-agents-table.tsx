@@ -6,7 +6,12 @@
 
 import { AGENT_PRICING } from "@elizaos/cloud-shared/lib/constants/agent-pricing";
 import { formatHourlyRate } from "@elizaos/cloud-shared/lib/constants/agent-pricing-display";
-import type { AgentHostingCostDto } from "@elizaos/cloud-shared/lib/types/cloud-api";
+import type {
+  AgentExecutionTier,
+  AgentHostingCostDto,
+  AgentSandboxStatus,
+} from "@elizaos/cloud-shared/lib/types/cloud-api";
+import { agentsResponseSchema } from "@elizaos/cloud-shared/types/agent-api-schema";
 import {
   AlertDialog,
   AlertDialogCancel,
@@ -66,6 +71,7 @@ import { api, apiWithStatus } from "../../lib/api-client";
 import { useT } from "../lib/i18n";
 import { openWebUIWithPairing } from "../lib/open-web-ui";
 import {
+  agentStatusPresentation,
   formatRelative,
   statusBadgeColor,
   statusDotColor,
@@ -90,15 +96,15 @@ interface AgentJobEnvelope {
 export interface ElizaAgentRow {
   id: string;
   agent_name: string | null;
-  status: string;
-  canonical_web_ui_url?: string | null;
+  status: AgentSandboxStatus;
+  canonical_web_ui_url: string | null;
   node_id: string | null;
   container_name: string | null;
   bridge_port: number | null;
   web_ui_port: number | null;
   headscale_ip: string | null;
   docker_image: string | null;
-  execution_tier?: "shared" | "dedicated-lazy" | "dedicated-always" | "custom";
+  execution_tier: AgentExecutionTier;
   hosting_cost: AgentHostingCostDto;
   sandbox_id: string | null;
   bridge_url: string | null;
@@ -119,35 +125,25 @@ function mergeSandboxRow(
   agent: SandboxListAgent,
 ): ElizaAgentRow {
   return {
-    ...(existing ?? {}),
     id: agent.id,
-    agent_name: agent.agentName ?? existing?.agent_name ?? null,
-    status: agent.status ?? existing?.status ?? "pending",
-    error_message: agent.errorMessage ?? existing?.error_message ?? null,
-    last_heartbeat_at:
-      agent.lastHeartbeatAt ?? existing?.last_heartbeat_at ?? null,
-    created_at:
-      agent.createdAt ?? existing?.created_at ?? new Date().toISOString(),
-    updated_at:
-      agent.updatedAt ?? existing?.updated_at ?? new Date().toISOString(),
+    agent_name: agent.agentName,
+    status: agent.status,
+    error_message: agent.errorMessage,
+    last_heartbeat_at: agent.lastHeartbeatAt,
+    created_at: agent.createdAt,
+    updated_at: agent.updatedAt,
     node_id: existing?.node_id ?? null,
     container_name: existing?.container_name ?? null,
     bridge_port: existing?.bridge_port ?? null,
     web_ui_port: existing?.web_ui_port ?? null,
     headscale_ip: existing?.headscale_ip ?? null,
-    docker_image: agent.dockerImage ?? existing?.docker_image ?? null,
-    execution_tier:
-      agent.executionTier === undefined
-        ? existing?.execution_tier
-        : agent.executionTier,
+    docker_image: agent.dockerImage,
+    execution_tier: agent.executionTier,
     hosting_cost: agent.hostingCost,
     sandbox_id: existing?.sandbox_id ?? null,
     bridge_url: existing?.bridge_url ?? null,
-    canonical_web_ui_url:
-      agent.webUiUrl === undefined
-        ? (existing?.canonical_web_ui_url ?? null)
-        : agent.webUiUrl,
-  } as ElizaAgentRow;
+    canonical_web_ui_url: agent.webUiUrl,
+  };
 }
 
 /**
@@ -268,7 +264,8 @@ interface AgentRowViewModel {
   isDocker: boolean;
   trackedJob: TrackedJob | undefined;
   isProvisioningActive: boolean;
-  displayStatus: string;
+  displayStatus: AgentSandboxStatus;
+  statusPresentation: ReturnType<typeof agentStatusPresentation>;
   busy: boolean;
   canStart: boolean;
   canStop: boolean;
@@ -295,6 +292,10 @@ export function deriveAgentRow(
     trackedJob: poller.getStatus(sb.id),
     isProvisioningActive,
     displayStatus,
+    statusPresentation: agentStatusPresentation(
+      sb.execution_tier,
+      displayStatus,
+    ),
     busy,
     canStart:
       ["stopped", "error", "pending", "disconnected"].includes(displayStatus) &&
@@ -366,40 +367,41 @@ function RowBackingMeta({ vm }: { vm: AgentRowViewModel }) {
 }
 
 function StatusCell({
-  displayStatus,
+  presentation,
   isProvisioning,
   trackedJob,
   errorMessage,
 }: {
-  displayStatus: string;
+  presentation: ReturnType<typeof agentStatusPresentation>;
   isProvisioning: boolean;
   trackedJob?: { jobId: string } | null;
   errorMessage: string | null;
 }) {
   const t = useT();
-  const [prevStatus, setPrevStatus] = useState(displayStatus);
+  const { label, visualStatus } = presentation;
+  const [prevStatus, setPrevStatus] = useState(visualStatus);
   const [animate, setAnimate] = useState<"success" | "error" | null>(null);
 
   useEffect(() => {
-    if (prevStatus !== displayStatus) {
+    if (prevStatus !== visualStatus) {
       if (
-        displayStatus === "running" &&
+        visualStatus === "running" &&
         (prevStatus === "provisioning" || prevStatus === "pending")
       ) {
         setAnimate("success");
         const id = setTimeout(() => setAnimate(null), 1500);
-        setPrevStatus(displayStatus);
+        setPrevStatus(visualStatus);
         return () => clearTimeout(id);
       }
-      if (displayStatus === "error") {
+      if (visualStatus === "error") {
         setAnimate("error");
         const id = setTimeout(() => setAnimate(null), 600);
-        setPrevStatus(displayStatus);
+        setPrevStatus(visualStatus);
         return () => clearTimeout(id);
       }
-      setPrevStatus(displayStatus);
+      setPrevStatus(visualStatus);
     }
-  }, [displayStatus, prevStatus]);
+  }, [prevStatus, visualStatus]);
 
   return (
     <div className="flex flex-col gap-1.5">
@@ -414,12 +416,12 @@ function StatusCell({
       >
         <Badge
           variant="outline"
-          className={`${statusBadgeColor(displayStatus)} w-fit text-xs-tight font-medium px-2 py-0.5`}
+          className={`${statusBadgeColor(visualStatus)} w-fit text-xs-tight font-medium px-2 py-0.5`}
         >
           <span
-            className={`inline-block size-1.5 rounded-full mr-1.5 ${statusDotColor(displayStatus)}`}
+            className={`inline-block size-1.5 rounded-full mr-1.5 ${statusDotColor(visualStatus)}`}
           />
-          {displayStatus}
+          {label}
         </Badge>
       </div>
       {isProvisioning && trackedJob && (
@@ -569,10 +571,10 @@ export function ElizaAgentsTable({
     try {
       // The typed cloud client (Bearer → api.elizacloud.ai). A same-origin
       // fetch here 404s on the console hosts, which serve no /api/*.
-      const json = await api<{ data?: SandboxListAgent[] }>(
-        "/api/v1/eliza/agents",
+      const response = agentsResponseSchema.parse(
+        await api<unknown>("/api/v1/eliza/agents"),
       );
-      mergeApiData(json?.data ?? []);
+      mergeApiData(response.data);
       // Keep the parent useAgents() cache honest too, so navigating away and
       // back doesn't rehydrate pre-action rows.
       await queryClient.invalidateQueries({ queryKey: ["agent", "agents"] });
@@ -1289,10 +1291,7 @@ export function ElizaAgentsTable({
                                   defaultValue: "Unnamed Agent",
                                 })}
                             </a>
-                            <AgentCostBadge
-                              status={displayStatus}
-                              hostingCost={sb.hosting_cost}
-                            />
+                            <AgentCostBadge hostingCost={sb.hosting_cost} />
                           </div>
                           <RowBackingMeta vm={vm} />
                         </div>
@@ -1300,7 +1299,7 @@ export function ElizaAgentsTable({
 
                       <TableCell>
                         <StatusCell
-                          displayStatus={displayStatus}
+                          presentation={vm.statusPresentation}
                           isProvisioning={isProvisioningActive}
                           trackedJob={trackedJob}
                           errorMessage={sb.error_message}
@@ -1529,7 +1528,6 @@ export function ElizaAgentsTable({
               const {
                 trackedJob,
                 isProvisioningActive,
-                displayStatus,
                 busy,
                 canStart,
                 canStop,
@@ -1552,14 +1550,11 @@ export function ElizaAgentsTable({
                             defaultValue: "Unnamed Agent",
                           })}
                       </a>
-                      <AgentCostBadge
-                        status={displayStatus}
-                        hostingCost={sb.hosting_cost}
-                      />
+                      <AgentCostBadge hostingCost={sb.hosting_cost} />
                       <RowBackingMeta vm={vm} />
                     </div>
                     <StatusCell
-                      displayStatus={displayStatus}
+                      presentation={vm.statusPresentation}
                       isProvisioning={isProvisioningActive}
                       trackedJob={trackedJob}
                       errorMessage={sb.error_message}

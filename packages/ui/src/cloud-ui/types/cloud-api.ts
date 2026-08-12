@@ -381,6 +381,60 @@ export type AgentExecutionTier =
   | "dedicated-always"
   | "custom";
 
+export type AgentHostingCostDto =
+  | {
+      pricingState: "known";
+      rateClass: "shared-usage" | "deactivated";
+      hourlyRateUsd: 0;
+      monthlyEstimateUsd: 0;
+    }
+  | {
+      pricingState: "known";
+      rateClass: "running" | "idle";
+      hourlyRateUsd: number;
+      monthlyEstimateUsd: number;
+    }
+  | {
+      pricingState: "unavailable";
+      rateClass: "unavailable";
+      hourlyRateUsd: null;
+      monthlyEstimateUsd: null;
+    };
+
+interface AgentHostingSummaryBaseDto {
+  sharedCount: number;
+  dedicatedRunningCount: number;
+  dedicatedIdleCount: number;
+  dedicatedDeactivatedCount: number;
+  hasAgents: boolean;
+  hasDedicatedHosting: boolean;
+  creditBalanceUsd: number;
+  dedicatedRunningHourlyRateUsd: number;
+  dedicatedRunningMonthlyEstimateUsd: number;
+  dedicatedIdleHourlyRateUsd: number;
+  dedicatedIdleMonthlyEstimateUsd: number;
+  minimumDepositUsd: number;
+  lowCreditWarningUsd: number;
+}
+
+export type AgentHostingSummaryDto =
+  | (AgentHostingSummaryBaseDto & {
+      pricingState: "complete";
+      unavailableDedicatedCount: 0;
+      hourlyHostingCostUsd: number;
+      monthlyHostingCostUsd: number;
+      hoursRemaining: number | null;
+      lowBalance: boolean;
+    })
+  | (AgentHostingSummaryBaseDto & {
+      pricingState: "incomplete";
+      unavailableDedicatedCount: number;
+      hourlyHostingCostUsd: null;
+      monthlyHostingCostUsd: null;
+      hoursRemaining: null;
+      lowBalance: null;
+    });
+
 export interface AgentListItemDto {
   id: string;
   agentName: string | null;
@@ -397,6 +451,8 @@ export interface AgentListItemDto {
   token_ticker: string | null;
   dockerImage: string | null;
   executionTier: AgentExecutionTier;
+  hostingCost: AgentHostingCostDto;
+  webUiUrl: string | null;
 }
 
 export interface AgentAdminDetailsDto {
@@ -422,7 +478,9 @@ export interface AgentDetailDto extends AgentListItemDto {
   adminDetails: AgentAdminDetailsDto | null;
 }
 
-export type AgentsResponse = ApiSuccessEnvelope<AgentListItemDto[]>;
+export interface AgentsResponse extends ApiSuccessEnvelope<AgentListItemDto[]> {
+  hostingSummary: AgentHostingSummaryDto;
+}
 export type AgentResponse = ApiSuccessEnvelope<AgentDetailDto>;
 
 export type AdminRole = "super_admin" | "moderator" | "viewer";

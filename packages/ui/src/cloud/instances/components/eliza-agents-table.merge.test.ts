@@ -4,6 +4,7 @@
  * Instances table while the count still read >0). Removal is tombstone-only.
  */
 
+import type { AgentSandboxStatus } from "@elizaos/cloud-shared/lib/types/cloud-api";
 import { describe, expect, it } from "vitest";
 import type { SandboxListAgent } from "../lib/use-sandbox-status-poll";
 import {
@@ -12,7 +13,7 @@ import {
   retireExpiredTombstones,
 } from "./eliza-agents-table";
 
-function row(id: string, status: string): ElizaAgentRow {
+function row(id: string, status: AgentSandboxStatus): ElizaAgentRow {
   return {
     id,
     agent_name: `agent-${id}`,
@@ -24,8 +25,9 @@ function row(id: string, status: string): ElizaAgentRow {
     web_ui_port: null,
     headscale_ip: null,
     docker_image: null,
-    execution_tier: undefined,
+    execution_tier: "dedicated-lazy",
     hosting_cost: {
+      pricingState: "unavailable",
       rateClass: "unavailable",
       hourlyRateUsd: null,
       monthlyEstimateUsd: null,
@@ -39,8 +41,31 @@ function row(id: string, status: string): ElizaAgentRow {
   };
 }
 
-function apiAgent(id: string, status: string): SandboxListAgent {
-  return { id, agentName: `agent-${id}`, status } as SandboxListAgent;
+function apiAgent(id: string, status: AgentSandboxStatus): SandboxListAgent {
+  return {
+    id,
+    agentName: `agent-${id}`,
+    status,
+    databaseStatus: "ready",
+    lastBackupAt: null,
+    lastHeartbeatAt: null,
+    errorMessage: null,
+    createdAt: "2026-07-04T00:00:00.000Z",
+    updatedAt: "2026-07-04T00:00:00.000Z",
+    token_address: null,
+    token_chain: null,
+    token_name: null,
+    token_ticker: null,
+    dockerImage: null,
+    executionTier: "dedicated-lazy",
+    hostingCost: {
+      pricingState: "unavailable",
+      rateClass: "unavailable",
+      hourlyRateUsd: null,
+      monthlyEstimateUsd: null,
+    },
+    webUiUrl: null,
+  };
 }
 
 const NONE: ReadonlySet<string> = new Set();

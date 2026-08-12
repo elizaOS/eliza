@@ -24,6 +24,7 @@ describe("agent hosting presentation", () => {
           lastBackupAt: null,
         }),
       ).toEqual({
+        pricingState: "known",
         rateClass: "shared-usage",
         hourlyRateUsd: 0,
         monthlyEstimateUsd: 0,
@@ -63,9 +64,12 @@ describe("agent hosting presentation", () => {
     );
 
     expect(summary).toMatchObject({
+      pricingState: "complete",
       sharedCount: 1,
       dedicatedRunningCount: 1,
       dedicatedIdleCount: 1,
+      dedicatedDeactivatedCount: 1,
+      unavailableDedicatedCount: 0,
       hasAgents: true,
       hasDedicatedHosting: true,
       hourlyHostingCostUsd: 0.0125,
@@ -102,9 +106,12 @@ describe("agent hosting presentation", () => {
         0.01,
       ),
     ).toMatchObject({
+      pricingState: "complete",
       sharedCount: 3,
       dedicatedRunningCount: 0,
       dedicatedIdleCount: 0,
+      dedicatedDeactivatedCount: 0,
+      unavailableDedicatedCount: 0,
       hourlyHostingCostUsd: 0,
       monthlyHostingCostUsd: 0,
       hoursRemaining: null,
@@ -113,14 +120,21 @@ describe("agent hosting presentation", () => {
   });
 
   it("matches the billing cron predicate for non-shared rows", () => {
-    expect(
-      deriveAgentHostingCost({
-        executionTier: "dedicated-lazy",
-        status: "provisioning",
-        billingStatus: "active",
-        lastBackupAt: null,
-      }).rateClass,
-    ).toBe("unavailable");
+    for (const status of ["pending", "provisioning", "error", "disconnected"] as const) {
+      expect(
+        deriveAgentHostingCost({
+          executionTier: "dedicated-lazy",
+          status,
+          billingStatus: "active",
+          lastBackupAt: null,
+        }),
+      ).toEqual({
+        pricingState: "unavailable",
+        rateClass: "unavailable",
+        hourlyRateUsd: null,
+        monthlyEstimateUsd: null,
+      });
+    }
     expect(
       deriveAgentHostingCost({
         executionTier: "dedicated-lazy",
@@ -137,5 +151,43 @@ describe("agent hosting presentation", () => {
         lastBackupAt: null,
       }).rateClass,
     ).toBe("unavailable");
+  });
+
+  it("marks mixed known and unavailable dedicated pricing incomplete", () => {
+    const summary = summarizeAgentHosting(
+      [
+        deriveAgentHostingCost({
+          executionTier: "shared",
+          status: "running",
+          billingStatus: "active",
+          lastBackupAt: null,
+        }),
+        deriveAgentHostingCost({
+          executionTier: "dedicated-always",
+          status: "running",
+          billingStatus: "active",
+          lastBackupAt: null,
+        }),
+        deriveAgentHostingCost({
+          executionTier: "dedicated-lazy",
+          status: "provisioning",
+          billingStatus: "active",
+          lastBackupAt: null,
+        }),
+      ],
+      5,
+    );
+
+    expect(summary).toMatchObject({
+      pricingState: "incomplete",
+      sharedCount: 1,
+      dedicatedRunningCount: 1,
+      unavailableDedicatedCount: 1,
+      hasDedicatedHosting: true,
+      hourlyHostingCostUsd: null,
+      monthlyHostingCostUsd: null,
+      hoursRemaining: null,
+      lowBalance: null,
+    });
   });
 });

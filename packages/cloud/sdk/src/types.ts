@@ -7,9 +7,13 @@
  */
 
 export type {
+  AgentAdminDetailsDto,
   AgentDatabaseStatus,
   AgentDetailDto,
   AgentDetailDto as Agent,
+  AgentExecutionTier,
+  AgentHostingCostDto,
+  AgentHostingSummaryDto,
   AgentListItemDto,
   AgentResponse,
   AgentSandboxStatus,

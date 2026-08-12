@@ -20,8 +20,8 @@ describe("AgentCostBadge", () => {
     render(
       <TooltipProvider>
         <AgentCostBadge
-          status="running"
           hostingCost={{
+            pricingState: "known",
             rateClass: "shared-usage",
             hourlyRateUsd: 0,
             monthlyEstimateUsd: 0,
@@ -32,7 +32,7 @@ describe("AgentCostBadge", () => {
 
     const label = screen.getByText("Usage-based");
     expect(screen.queryByText("$0.01/hr")).toBeNull();
-    expect(label.querySelector("span")?.className).toContain("bg-green-500/60");
+    expect(label.querySelector("span")?.className).toContain("bg-white/40");
 
     await user.hover(label);
     expect(
@@ -42,31 +42,37 @@ describe("AgentCostBadge", () => {
     ).toBeTruthy();
   });
 
-  it("keeps shared provisioning visually active without projecting hosting", () => {
+  it("renders unavailable dedicated pricing instead of omitting the badge", async () => {
+    const user = userEvent.setup();
     render(
       <TooltipProvider>
         <AgentCostBadge
-          status="provisioning"
           hostingCost={{
-            rateClass: "shared-usage",
-            hourlyRateUsd: 0,
-            monthlyEstimateUsd: 0,
+            pricingState: "unavailable",
+            rateClass: "unavailable",
+            hourlyRateUsd: null,
+            monthlyEstimateUsd: null,
           }}
         />
       </TooltipProvider>,
     );
 
-    const label = screen.getByText("Usage-based");
-    expect(label.querySelector("span")?.className).toContain("bg-green-500/60");
-    expect(screen.queryByText("$0.01/hr")).toBeNull();
+    const label = screen.getByText("Pricing unavailable");
+    expect(label).toBeTruthy();
+    await user.hover(label);
+    expect(
+      await screen.findByText(
+        "A continuous hosting estimate is not available for this dedicated agent state.",
+      ),
+    ).toBeTruthy();
   });
 
   it("preserves the dedicated running hosting rate", () => {
     render(
       <TooltipProvider>
         <AgentCostBadge
-          status="running"
           hostingCost={{
+            pricingState: "known",
             rateClass: "running",
             hourlyRateUsd: 0.01,
             monthlyEstimateUsd: 7.2,

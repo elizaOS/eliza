@@ -1,9 +1,8 @@
 /**
  * Compact cost indicator shown next to agent status in the table.
  * Shows the hourly rate and monthly estimate for a given agent state.
- * Sleeping (deactivated) agents render an explicit $0.00/hr: the hourly
- * billing cron only charges running/stopped-with-backup rows, so "no badge"
- * would hide the very fact deactivation exists to communicate.
+ * Known zero and unavailable pricing both render explicitly: hiding either
+ * would make a deactivated or not-yet-priceable dedicated row look healthy.
  */
 
 "use client";
@@ -17,7 +16,6 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@elizaos/ui/cloud-ui";
 import { useT } from "../lib/i18n";
 
 interface AgentCostBadgeProps {
-  status: string;
   hostingCost: AgentHostingCostDto;
 }
 
@@ -26,20 +24,40 @@ function formatBadgeHourlyRate(rate: number, isIdle: boolean) {
   return formatHourlyRate(rate);
 }
 
-export function AgentCostBadge({ status, hostingCost }: AgentCostBadgeProps) {
+export function AgentCostBadge({ hostingCost }: AgentCostBadgeProps) {
   const t = useT();
   const isShared = hostingCost.rateClass === "shared-usage";
   const isRunning = hostingCost.rateClass === "running";
   const isIdle = hostingCost.rateClass === "idle";
   const isSleeping = hostingCost.rateClass === "deactivated";
-  const isActiveState = status === "running" || status === "provisioning";
 
-  if (
-    hostingCost.rateClass === "unavailable" ||
-    hostingCost.hourlyRateUsd === null ||
-    hostingCost.monthlyEstimateUsd === null
-  )
-    return null;
+  if (hostingCost.pricingState === "unavailable") {
+    return (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span className="inline-flex items-center gap-1 text-[10px] text-status-warning font-mono cursor-help">
+            <span className="inline-block size-1 rounded-full bg-status-warning" />
+            {t("cloud.containers.costBadge.pricingUnavailable", {
+              defaultValue: "Pricing unavailable",
+            })}
+          </span>
+        </TooltipTrigger>
+        <TooltipContent className="bg-neutral-900 border-white/10 text-xs">
+          <p className="font-medium text-white mb-0.5">
+            {t("cloud.containers.costBadge.pricingUnavailable", {
+              defaultValue: "Pricing unavailable",
+            })}
+          </p>
+          <p className="text-white/60">
+            {t("cloud.containers.costBadge.pricingUnavailableDetail", {
+              defaultValue:
+                "A continuous hosting estimate is not available for this dedicated agent state.",
+            })}
+          </p>
+        </TooltipContent>
+      </Tooltip>
+    );
+  }
 
   const rate = hostingCost.hourlyRateUsd;
   const hourlyRateLabel = isShared
@@ -53,7 +71,7 @@ export function AgentCostBadge({ status, hostingCost }: AgentCostBadgeProps) {
       <TooltipTrigger asChild>
         <span className="inline-flex items-center gap-1 text-[10px] text-white/30 font-mono tabular-nums cursor-help">
           <span
-            className={`inline-block size-1 rounded-full ${isActiveState ? "bg-green-500/60" : "bg-white/40"}`}
+            className={`inline-block size-1 rounded-full ${isRunning ? "bg-green-500/60" : "bg-white/40"}`}
           />
           {hourlyRateLabel}
         </span>

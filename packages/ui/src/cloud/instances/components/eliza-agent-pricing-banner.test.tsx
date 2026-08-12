@@ -1,8 +1,8 @@
 /** Verifies shared and dedicated hosting projections in the agents pricing banner. */
 // @vitest-environment jsdom
 
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { cleanup, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { ElizaAgentPricingBanner } from "./eliza-agent-pricing-banner";
 
 vi.mock("../lib/i18n", () => ({
@@ -22,14 +22,19 @@ vi.mock("../lib/i18n", () => ({
     },
 }));
 
+afterEach(cleanup);
+
 describe("ElizaAgentPricingBanner", () => {
   it("shows zero hosting projection and no balance alarm for an all-shared list", () => {
     render(
       <ElizaAgentPricingBanner
         hostingSummary={{
+          pricingState: "complete",
           sharedCount: 3,
           dedicatedRunningCount: 0,
           dedicatedIdleCount: 0,
+          dedicatedDeactivatedCount: 0,
+          unavailableDedicatedCount: 0,
           hasAgents: true,
           hasDedicatedHosting: false,
           hourlyHostingCostUsd: 0,
@@ -49,7 +54,9 @@ describe("ElizaAgentPricingBanner", () => {
 
     expect(screen.getByText("$0.00/mo hosting")).toBeTruthy();
     expect(
-      screen.getByText("3 shared · 0 dedicated running · 0 dedicated idle"),
+      screen.getByText(
+        "3 shared · 0 dedicated running · 0 dedicated idle · 0 deactivated · 0 pricing unavailable",
+      ),
     ).toBeTruthy();
     expect(screen.queryByText("Low balance")).toBeNull();
     expect(
@@ -65,9 +72,12 @@ describe("ElizaAgentPricingBanner", () => {
     render(
       <ElizaAgentPricingBanner
         hostingSummary={{
+          pricingState: "complete",
           sharedCount: 1,
           dedicatedRunningCount: 1,
           dedicatedIdleCount: 1,
+          dedicatedDeactivatedCount: 0,
+          unavailableDedicatedCount: 0,
           hasAgents: true,
           hasDedicatedHosting: true,
           hourlyHostingCostUsd: 0.0125,
@@ -87,8 +97,48 @@ describe("ElizaAgentPricingBanner", () => {
 
     expect(screen.getByText("$9.00/mo hosting")).toBeTruthy();
     expect(
-      screen.getByText("1 shared · 1 dedicated running · 1 dedicated idle"),
+      screen.getByText(
+        "1 shared · 1 dedicated running · 1 dedicated idle · 0 deactivated · 0 pricing unavailable",
+      ),
     ).toBeTruthy();
     expect(screen.getByText("Low balance")).toBeTruthy();
+  });
+
+  it("makes a mixed known and unavailable dedicated total visibly incomplete", () => {
+    render(
+      <ElizaAgentPricingBanner
+        hostingSummary={{
+          pricingState: "incomplete",
+          sharedCount: 1,
+          dedicatedRunningCount: 1,
+          dedicatedIdleCount: 0,
+          dedicatedDeactivatedCount: 0,
+          unavailableDedicatedCount: 1,
+          hasAgents: true,
+          hasDedicatedHosting: true,
+          hourlyHostingCostUsd: null,
+          monthlyHostingCostUsd: null,
+          creditBalanceUsd: 1,
+          hoursRemaining: null,
+          lowBalance: null,
+          dedicatedRunningHourlyRateUsd: 0.01,
+          dedicatedRunningMonthlyEstimateUsd: 7.2,
+          dedicatedIdleHourlyRateUsd: 0.0025,
+          dedicatedIdleMonthlyEstimateUsd: 1.8,
+          minimumDepositUsd: 0.1,
+          lowCreditWarningUsd: 2,
+        }}
+      />,
+    );
+
+    expect(screen.getByText("Pricing incomplete")).toBeTruthy();
+    expect(screen.getByText("Unavailable")).toBeTruthy();
+    expect(
+      screen.getByText(
+        "1 dedicated agent cannot be priced in the current state; no hosting total or runway is shown.",
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText("$7.20/mo hosting")).toBeNull();
+    expect(screen.queryByText("Low balance")).toBeNull();
   });
 });
