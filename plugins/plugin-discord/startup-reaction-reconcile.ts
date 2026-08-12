@@ -17,6 +17,12 @@
  * this runs detached from the ready path, where a rejection would be treated
  * as a terminal login failure.
  *
+ * Discord's bot API cannot enumerate existing DM channels. The DM leg can
+ * therefore scan only channels already present in `client.channels.cache`;
+ * after a cold restart that cache may be empty until a DM gateway event arrives.
+ * Cached DMs are scanned before guild channels so the shared channel cap cannot
+ * starve the DM coverage that is available on warm reconnects.
+ *
  * The scan must never eat a marker the CURRENT process just placed: message
  * listeners bind before login resolves, so a turn can start (and stamp ⏳/🤔)
  * before this scan runs. Two guards enforce that: messages created at or
@@ -30,7 +36,7 @@ import { IN_PROGRESS_STATUS_EMOJIS } from "./status-reactions";
 /** Setting/env name; set to "0" or "false" to disable the scan entirely. */
 export const STARTUP_REACTION_SCAN_SETTING = "DISCORD_STARTUP_REACTION_SCAN";
 
-/** Hard cap on channels inspected across all guilds plus cached DMs. */
+/** Hard cap on channels inspected across cached DMs plus all guilds. */
 export const STARTUP_SCAN_MAX_CHANNELS = 50;
 
 /** Recent messages fetched per channel (one fetch per channel). */
@@ -91,7 +97,7 @@ function channelLabel(channel: { id?: string }): string {
 	return typeof channel?.id === "string" ? channel.id : "unknown-channel";
 }
 
-/** Collect scannable channels: guild text channels the bot can read, then cached DMs. */
+/** Collect scannable channels: cached DMs first, then readable guild text channels. */
 function collectChannels(client: Client, cap: number): TextBasedChannel[] {
 	const channels: TextBasedChannel[] = [];
 	const seen = new Set<string>();
@@ -109,16 +115,16 @@ function collectChannels(client: Client, cap: number): TextBasedChannel[] {
 		seen.add(candidate.id);
 		channels.push(candidate);
 	};
+	for (const channel of client.channels.cache.values()) {
+		const dm = channel as { isDMBased?: () => boolean };
+		if (typeof dm.isDMBased === "function" && dm.isDMBased()) push(channel);
+		if (channels.length >= cap) return channels;
+	}
 	for (const guild of client.guilds.cache.values()) {
 		for (const channel of guild.channels.cache.values()) {
 			push(channel);
 			if (channels.length >= cap) return channels;
 		}
-	}
-	for (const channel of client.channels.cache.values()) {
-		const dm = channel as { isDMBased?: () => boolean };
-		if (typeof dm.isDMBased === "function" && dm.isDMBased()) push(channel);
-		if (channels.length >= cap) break;
 	}
 	return channels;
 }
