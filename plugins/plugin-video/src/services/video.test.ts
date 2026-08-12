@@ -270,7 +270,7 @@ describe("VideoService deterministic behavior", () => {
     const { service } = createServiceWithYtDlp([]);
     const captionJson = JSON.stringify({
       events: [
-        { segs: [{ utf8: "first\r\nsecond" }, { utf8: "\rthird" }] },
+        { segs: [{ utf8: "first\r\nsecond" }, { utf8: "\rthird\r" }] },
         { segs: [{ utf8: "fourth\rfifth\n" }] },
       ],
     });

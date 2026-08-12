@@ -22,10 +22,7 @@ import {
 } from "@elizaos/core";
 import ffmpeg from "fluent-ffmpeg";
 import { BinaryResolver } from "./binaries";
-import {
-  normalizeCaptionNewlines,
-  parseYtDlpUploadDate,
-} from "./video-parse";
+import { normalizeCaptionNewlines, parseYtDlpUploadDate } from "./video-parse";
 
 /** Minimal yt-dlp JSON shape used by this service (fields vary by extractor). */
 interface YtDlpSubtitleTrack {

@@ -1,8 +1,7 @@
+/** Verifies pure video metadata and caption parsers with deterministic boundary cases. */
+
 import { describe, expect, it } from "vitest";
-import {
-  normalizeCaptionNewlines,
-  parseYtDlpUploadDate,
-} from "./video-parse";
+import { normalizeCaptionNewlines, parseYtDlpUploadDate } from "./video-parse";
 
 describe("parseYtDlpUploadDate", () => {
   it("parses valid compact YYYYMMDD as UTC midnight", () => {
@@ -32,9 +31,9 @@ describe("parseYtDlpUploadDate", () => {
 
 describe("normalizeCaptionNewlines", () => {
   it("replaces LF globally with spaces", () => {
-    expect(normalizeCaptionNewlines("First line\nsecond line\nThird line\n")).toBe(
-      "First line second line Third line ",
-    );
+    expect(
+      normalizeCaptionNewlines("First line\nsecond line\nThird line\n"),
+    ).toBe("First line second line Third line ");
   });
 
   it("normalizes CRLF and bare CR without leaking \\r", () => {
