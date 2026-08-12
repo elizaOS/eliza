@@ -1,21 +1,23 @@
 /**
  * Passive-connector gate for LifeOps deployments.
  *
- * When `plugin-personal-assistant` is loaded the runtime operates in passive
- * mode: connectors ingest inbound messages into memory but do not auto-reply
- * (the LifeOps pipeline drives responses instead). Standalone agents that do
- * not load that plugin default to active-reply mode.
+ * A runtime is passive when a loaded plugin declares the typed
+ * `passiveConnectorsByDefault` capability (the LifeOps personal-assistant
+ * plugin does): connectors ingest inbound messages into memory but do not
+ * auto-reply, because the LifeOps pipeline drives responses instead. Agents
+ * without such a plugin default to active-reply mode. Core never branches on
+ * plugin names — only on the declared capability.
  *
  * Explicit env vars (`ELIZA_LIFEOPS_PASSIVE_CONNECTORS` / `LIFEOPS_PASSIVE_CONNECTORS`)
- * and runtime settings always take precedence over plugin-presence detection.
- * Callers that run before `AgentRuntime` construction must supply the plugin
- * set they have resolved from configuration. An absent runtime or plugin list
- * means no LifeOps deployment was identified and therefore defaults active.
+ * and runtime settings always take precedence over capability detection.
+ * Pre-runtime hosts that only know resolved plugin names should call
+ * {@link lifeOpsPassiveConnectorsSetting} and apply their own loading policy
+ * when it returns undefined.
  */
 
 type SettingsReader = {
 	getSetting?: (key: string) => unknown;
-	plugins?: Array<{ name: string }>;
+	plugins?: Array<{ name: string; passiveConnectorsByDefault?: boolean }>;
 };
 
 type EnvLike = Record<string, string | undefined>;
@@ -24,8 +26,6 @@ const PASSIVE_CONNECTOR_SETTING_KEYS = [
 	"ELIZA_LIFEOPS_PASSIVE_CONNECTORS",
 	"LIFEOPS_PASSIVE_CONNECTORS",
 ] as const;
-
-const LIFEOPS_PLUGIN_NAME = "@elizaos/plugin-personal-assistant";
 
 function readFirstSetting(
 	runtime: SettingsReader | null | undefined,
@@ -68,31 +68,47 @@ function isExplicitFalse(value: unknown): boolean {
 	);
 }
 
-function isLifeOpsPluginLoaded(
+function hasPassiveConnectorPlugin(
 	runtime: SettingsReader | null | undefined,
 ): boolean {
 	return (
 		Array.isArray(runtime?.plugins) &&
-		runtime.plugins.some((p) => p.name === LIFEOPS_PLUGIN_NAME)
+		runtime.plugins.some((p) => p.passiveConnectorsByDefault === true)
 	);
 }
 
 /**
- * Returns whether LifeOps passive-connector mode is active for this runtime.
+ * Resolves only the explicit operator-configured passive-connector setting
+ * (runtime setting first, then env). Returns undefined when nothing explicit
+ * is configured, so pre-runtime callers can fall back to their own policy.
+ */
+export function lifeOpsPassiveConnectorsSetting(
+	runtime?: SettingsReader | null,
+	env: EnvLike = defaultEnv(),
+): boolean | undefined {
+	const value = readFirstSetting(runtime, env);
+	if (value === undefined) {
+		return undefined;
+	}
+	return !isExplicitFalse(value);
+}
+
+/**
+ * Returns whether passive-connector mode is active for this runtime.
  *
- * **Default flip:** prior to this function the default was always `true` (passive).
- * It is now `false` for agents that do not load `plugin-personal-assistant` and
- * do not set either env var. Any existing deployment without that plugin will
- * begin auto-replying on connectors where it previously only ingested.
+ * **Default flip:** prior to this function the default was always `true`
+ * (passive). It now defaults from the typed `passiveConnectorsByDefault`
+ * plugin capability; agents without such a plugin and without either env var
+ * auto-reply on connectors where they previously only ingested.
  */
 export function lifeOpsPassiveConnectorsEnabled(
 	runtime?: SettingsReader | null,
 	env: EnvLike = defaultEnv(),
 ): boolean {
-	const value = readFirstSetting(runtime, env);
-	if (value !== undefined) {
-		// Explicit setting always wins — higher priority than plugin detection.
-		return !isExplicitFalse(value);
+	const explicit = lifeOpsPassiveConnectorsSetting(runtime, env);
+	if (explicit !== undefined) {
+		// Explicit setting always wins — higher priority than capability detection.
+		return explicit;
 	}
-	return isLifeOpsPluginLoaded(runtime);
+	return hasPassiveConnectorPlugin(runtime);
 }

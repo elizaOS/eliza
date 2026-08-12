@@ -1385,6 +1385,16 @@ export interface Plugin {
 	remote?: RemotePluginConfig;
 
 	/**
+	 * Declares that loading this plugin puts messaging connectors into passive
+	 * (ingest-only) mode by default, because the plugin owns the reply pipeline
+	 * (e.g. the LifeOps personal assistant). Connector gates read this typed
+	 * capability via `lifeOpsPassiveConnectorsEnabled` instead of matching
+	 * plugin names. Explicit `ELIZA_LIFEOPS_PASSIVE_CONNECTORS` settings
+	 * override the declared default in either direction.
+	 */
+	passiveConnectorsByDefault?: boolean;
+
+	/**
 	 * Optional pre-initialization hook invoked by the plugin resolver once the
 	 * plugin module has loaded, before `init` runs. Use it to prepare a
 	 * plugin-owned load-time dependency that must exist before the plugin's
