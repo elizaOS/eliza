@@ -235,6 +235,7 @@ function AuthTokenSync({ children }: { children: ReactNode }) {
               writeStoredStewardToken(body.token);
               lastSyncedToken.current = body.token;
               wasAuthenticated.current = true;
+              dispatchStewardSessionChange("present");
             }
             try {
               window.dispatchEvent(new CustomEvent("steward-token-sync"));
