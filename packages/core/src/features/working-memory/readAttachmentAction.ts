@@ -14,11 +14,18 @@
  * inference so routing stays language-agnostic (#10471).
  */
 
+import { ElizaError } from "../../errors.ts";
 import {
 	fetchRemoteMedia,
 	MediaFetchError,
 	readResponseWithLimit,
 } from "../../media/fetch.ts";
+import {
+	classifyTranscriptionFailure,
+	isTranscriptionUnavailableNote,
+	transcriptionFailureNote,
+} from "../../media/transcription-failure.ts";
+import type { RoomHandlerLease } from "../../runtime/room-handler-queue.ts";
 import {
 	linkShareOwnText,
 	looksLikeBareLinkShare,
@@ -31,6 +38,7 @@ import {
 	type HandlerOptions,
 	type IAgentRuntime,
 	logger,
+	type Media,
 	type Memory,
 	ModelType,
 	type State,
@@ -108,21 +116,6 @@ function isMediaAttachment(record: AttachmentRecord): boolean {
 }
 
 /**
- * Anchored writer-controlled unavailability marker prefix ("Transcription
- * unavailable:" on-demand, "Audio/Video transcription unavailable:" ingest).
- * The appended error prose can echo a hostile remote body (media/fetch.ts
- * embeds up to ~200 chars of it), so mid-string matches must never count as
- * unavailability evidence. A live re-attempt supersedes ANY stored note,
- * marker or not (transcribeMediaOnDemand): ingest labels every non-fetch
- * provider exception — an ordinary 502 included — with this marker, so a
- * stored marker is history, not proof. By classification time only a record
- * that could not be re-attempted (no url) or one the CURRENT attempt marked
- * unavailable still carries it.
- */
-const TRANSCRIPTION_UNAVAILABLE_MARKER =
-	/^(?:(?:audio|video)\s+)?transcription unavailable/i;
-
-/**
  * True when a media record's transcript is missing because transcription
  * itself was unavailable (ingest or on-demand), not because nobody has asked
  * yet. `notProcessed` carries the raw provider error; the user-facing message
@@ -132,8 +125,7 @@ function mediaTranscriptionUnavailable(records: AttachmentRecord[]): boolean {
 	return records.some(
 		(record) =>
 			isMediaAttachment(record) &&
-			typeof record.attachment.notProcessed === "string" &&
-			TRANSCRIPTION_UNAVAILABLE_MARKER.test(record.attachment.notProcessed),
+			isTranscriptionUnavailableNote(record.attachment.notProcessed),
 	);
 }
 
@@ -177,28 +169,6 @@ const ON_DEMAND_TRANSCRIPTION_TIMEOUT_MS = 30_000;
  * Anything else must never reach the trusted local fetch.
  */
 const LOCAL_MEDIA_STORE_URL = /^\/api\/media\/[a-f0-9]{64}\.[a-z0-9]{1,8}$/;
-
-/**
- * True when a TRANSCRIPTION failure means no provider can serve at all —
- * a provider's *UnavailableError fall-through (e.g. `CloudSttUnavailableError`)
- * or the runtime having no registered handler — as opposed to a transient
- * failure (network blip, provider 5xx) that a later retry could clear. Only
- * the former may claim "speech-to-text isn't enabled" to the user.
- */
-function isTranscriptionUnavailableError(err: unknown): err is Error {
-	if (!(err instanceof Error)) return false;
-	// Fetch-layer failures are NEVER unavailability evidence: MediaFetchError
-	// messages embed up to ~200 chars of the REMOTE response body
-	// (media/fetch.ts throwIfHttpError), so a hostile host could plant
-	// "TRANSCRIPTION not available" prose there and forge the disabled reply.
-	// Matched by name rather than instanceof so the exclusion survives module
-	// duplication across the multi-target build and test module mocks.
-	if (err.name === "MediaFetchError") return false;
-	if (err.name.endsWith("UnavailableError")) return true;
-	return /falling through to next TRANSCRIPTION handler|no (?:model )?handler.*TRANSCRIPTION|TRANSCRIPTION.*not (?:available|enabled|registered)/i.test(
-		err.message,
-	);
-}
 
 /**
  * Fetches a conversation attachment's bytes for transcription, mirroring the
@@ -290,76 +260,143 @@ async function fetchTranscribableBytes(
 }
 
 /**
- * Persists a fresh on-demand transcript into the stored message memory that
- * owns the attachment — the same `updateMemory` write ingest performs after
- * `processAttachments` — so later reads answer from storage instead of
- * re-downloading the bytes and re-billing the STT provider. Only the matching
- * attachment entry changes: its stale `notProcessed` marker is dropped, every
- * other stored field survives, and the gathering layer's underscore transport
- * fields never reach storage. Never throws — the in-memory transcript already
- * serves this reply, so a lost write only costs one future re-transcription.
- *
- * Two guards keep this write from destroying stored data: a redacted-disclosure
- * variant (selectAttachmentForRequester keeps the shared `id`/`_messageId` but
- * swaps `url` to the redacted bytes and strips text/description) must never
- * persist its transcript over the original entry, and a stored entry that
- * already carries a non-empty transcript is never overwritten — this fill-only
- * rule also settles concurrent reads racing to persist.
+ * Durable state written after a current on-demand transcription attempt. The
+ * retryable state removes historical failure notes without claiming success;
+ * the unavailable state carries only the shared classifier's definitive marker.
  */
-async function persistTranscript(
+type AttachmentTranscriptionState =
+	| { kind: "transcribed"; text: string }
+	| { kind: "retryable" }
+	| { kind: "unavailable"; note: string };
+
+/**
+ * Merges one attachment's current transcription state into its owning memory
+ * while holding the canonical per-room writer authority. The read and whole-
+ * content update stay inside the same FIFO section, so sibling transcripts and
+ * unrelated room writes each observe the latest committed content. Missing
+ * rows/attachments and declined writes are invariant failures, never success.
+ *
+ * Redacted variants and unsaved in-flight attachments have no safe durable
+ * target. They keep their current in-memory result without touching the stored
+ * original.
+ */
+async function persistTranscriptionState(
 	runtime: IAgentRuntime,
 	record: AttachmentRecord,
-	transcript: string,
-): Promise<void> {
+	roomId: UUID,
+	roomHandlerLease: RoomHandlerLease | undefined,
+	state: AttachmentTranscriptionState,
+): Promise<Media | undefined> {
 	const { attachment } = record;
 	const messageId = attachment._messageId;
-	// Without a known owning row (e.g. an unsaved in-flight message) there is
-	// nothing to update; the next read simply retries transcription.
 	if (!messageId) return;
-	// A redacted variant's transcript came from the redacted bytes; writing it
-	// would replace the original entry's real transcript. The in-memory
-	// transcript still serves this reply — only the write is skipped.
 	if (attachment.redacted) return;
-	try {
-		const stored = await runtime.getMemoryById(messageId);
-		const storedAttachments = stored?.content.attachments;
-		if (!stored || !Array.isArray(storedAttachments)) return;
-		let found = false;
-		const attachments = storedAttachments.map((entry) => {
-			if (entry.id !== attachment.id) return entry;
-			// Fill-only: an existing stored transcript always wins.
-			if (typeof entry.text === "string" && entry.text.trim()) return entry;
-			found = true;
-			const { notProcessed: _stale, ...rest } = entry;
-			return {
-				...rest,
-				text: transcript,
-				description: `Transcript: ${transcript}`,
-			};
-		});
-		if (!found) return;
-		const persisted = await runtime.updateMemory({
-			id: messageId,
-			content: { ...stored.content, attachments },
-		});
-		if (!persisted) {
-			logger.warn(
-				{ attachmentId: attachment.id, messageId },
-				"[ReadAttachment] updateMemory declined to persist the on-demand transcript",
+
+	const write = async (): Promise<Media> => {
+		try {
+			const stored = await runtime.getMemoryById(messageId);
+			if (!stored) {
+				throw new ElizaError("Attachment owner memory disappeared", {
+					code: "ATTACHMENT_TRANSCRIPTION_MEMORY_MISSING",
+					context: { attachmentId: attachment.id, messageId, roomId },
+				});
+			}
+			if (stored.roomId !== roomId) {
+				throw new ElizaError("Attachment owner moved outside the owned room", {
+					code: "ATTACHMENT_TRANSCRIPTION_ROOM_MISMATCH",
+					context: {
+						attachmentId: attachment.id,
+						messageId,
+						roomId,
+						storedRoomId: stored.roomId,
+					},
+				});
+			}
+			const storedAttachments = stored.content.attachments;
+			if (!Array.isArray(storedAttachments)) {
+				throw new ElizaError("Attachment owner no longer has attachments", {
+					code: "ATTACHMENT_TRANSCRIPTION_ATTACHMENT_MISSING",
+					context: { attachmentId: attachment.id, messageId, roomId },
+				});
+			}
+			const index = storedAttachments.findIndex(
+				(entry) => entry.id === attachment.id,
 			);
+			const current = storedAttachments[index];
+			if (!current) {
+				throw new ElizaError("Attachment disappeared from its owning memory", {
+					code: "ATTACHMENT_TRANSCRIPTION_ATTACHMENT_MISSING",
+					context: { attachmentId: attachment.id, messageId, roomId },
+				});
+			}
+
+			const storedTranscript = current.text?.trim();
+			let updated = current;
+			if (storedTranscript) {
+				// A sibling writer's completed transcript is authoritative over this
+				// attempt's later retry/unavailable outcome.
+				if (current.notProcessed !== undefined) {
+					const { notProcessed: _historical, ...withoutHistoricalNote } =
+						current;
+					updated = withoutHistoricalNote;
+				}
+			} else if (state.kind === "transcribed") {
+				const { notProcessed: _historical, ...withoutHistoricalNote } = current;
+				updated = {
+					...withoutHistoricalNote,
+					text: state.text,
+					description: `Transcript: ${state.text}`,
+				};
+			} else if (state.kind === "unavailable") {
+				if (current.notProcessed !== state.note) {
+					updated = { ...current, notProcessed: state.note };
+				}
+			} else if (current.notProcessed !== undefined) {
+				const { notProcessed: _historical, ...withoutHistoricalNote } = current;
+				updated = withoutHistoricalNote;
+			}
+
+			if (updated === current) {
+				return current;
+			}
+			const attachments = [...storedAttachments];
+			attachments[index] = updated;
+			const persisted = await runtime.updateMemory({
+				id: messageId,
+				content: { ...stored.content, attachments },
+			});
+			if (!persisted) {
+				throw new ElizaError("Attachment transcription update was declined", {
+					code: "ATTACHMENT_TRANSCRIPTION_UPDATE_DECLINED",
+					context: { attachmentId: attachment.id, messageId, roomId },
+				});
+			}
+			return updated;
+		} catch (error) {
+			if (
+				error instanceof ElizaError &&
+				error.code.startsWith("ATTACHMENT_TRANSCRIPTION_")
+			) {
+				throw error;
+			}
+			// error-policy:J2 add attachment/room context while preserving the
+			// database or adapter failure for the action's reporting boundary.
+			throw new ElizaError("Failed to persist attachment transcription state", {
+				code: "ATTACHMENT_TRANSCRIPTION_PERSIST_FAILED",
+				cause: error,
+				context: { attachmentId: attachment.id, messageId, roomId },
+			});
 		}
-	} catch (err) {
-		// error-policy:J7 persistence is bookkeeping for future reads; its
-		// failure must not break the reply the transcript already serves.
-		logger.warn(
-			{ attachmentId: attachment.id, messageId, err },
-			"[ReadAttachment] Failed to persist the on-demand transcript",
-		);
-		runtime.reportError("ReadAttachmentAction.persistTranscript", err, {
-			attachmentId: attachment.id,
-			messageId,
-		});
+	};
+
+	const queue = runtime.roomHandlerQueue;
+	const lease = roomHandlerLease ?? queue.currentLease(roomId);
+	if (lease) {
+		return queue.withLeaseWrite(roomId, lease, write);
 	}
+	return queue.withLease(roomId, (acquired) =>
+		queue.withLeaseWrite(roomId, acquired, write),
+	);
 }
 
 /**
@@ -381,50 +418,80 @@ async function persistTranscript(
 async function transcribeMediaOnDemand(
 	runtime: IAgentRuntime,
 	records: AttachmentRecord[],
+	roomId: UUID,
+	roomHandlerLease?: RoomHandlerLease,
 ): Promise<boolean> {
 	let transcribedAny = false;
 	for (const record of records) {
 		const { attachment } = record;
 		if (!isMediaAttachment(record) || record.content.trim()) continue;
 		if (typeof attachment.url !== "string" || !attachment.url.trim()) continue;
-		// The CURRENT attempt is authoritative: clear ANY prior notProcessed
-		// note — anchored unavailability markers included, because ingest writes
-		// that marker for every non-fetch provider exception (an ordinary
-		// transient 502 among them), so a stored marker is history, not proof.
-		// Only this attempt's outcome decides the reply: the catch below
-		// re-marks unavailability iff the CURRENT error is typed-unavailable,
-		// while success, empty/no-speech, and transient failures leave the
-		// record note-free so the reply stays the retryable "yet".
-		attachment.notProcessed = undefined;
+		let state: AttachmentTranscriptionState;
+		let failure: ReturnType<typeof classifyTranscriptionFailure> | undefined;
+		let buffer: Buffer | undefined;
 		try {
-			const buffer = await fetchTranscribableBytes(runtime, attachment.url);
-			const transcript = await runtime.useModel(
-				ModelType.TRANSCRIPTION,
-				buffer,
-			);
-			if (typeof transcript === "string" && transcript.trim()) {
-				const text = transcript.trim();
-				record.content = text;
-				attachment.text = text;
-				attachment.description = `Transcript: ${text}`;
-				attachment.notProcessed = undefined;
-				transcribedAny = true;
-				await persistTranscript(runtime, record, text);
+			buffer = await fetchTranscribableBytes(runtime, attachment.url);
+		} catch (error) {
+			failure = classifyTranscriptionFailure(error, "fetch");
+		}
+		if (!buffer) {
+			state = { kind: "retryable" };
+		} else {
+			let transcript: unknown;
+			try {
+				transcript = await runtime.useModel(ModelType.TRANSCRIPTION, buffer);
+			} catch (error) {
+				failure = classifyTranscriptionFailure(error, "provider");
 			}
-		} catch (err) {
-			// error-policy:J4 the attachment stays readable-as-absent and the
-			// caller's fallback message reports the state honestly. Only a
-			// no-provider-can-serve failure from THIS attempt marks the record
-			// unavailable (and thus the "isn't enabled" reply); any stored note
-			// was cleared before the attempt, so a transient fetch/provider
-			// error leaves the record note-free and the reply stays the
-			// retryable "yet". Expected whenever STT is disabled, so debug, not
-			// warn.
-			if (isTranscriptionUnavailableError(err)) {
-				attachment.notProcessed = `Transcription unavailable: ${err.message}`;
+			if (failure?.kind === "provider_unavailable") {
+				state = {
+					kind: "unavailable",
+					note: transcriptionFailureNote(failure),
+				};
+			} else if (typeof transcript === "string" && transcript.trim()) {
+				state = { kind: "transcribed", text: transcript.trim() };
+			} else {
+				state = { kind: "retryable" };
 			}
+		}
+
+		if (state.kind === "transcribed") {
+			record.content = state.text;
+			attachment.text = state.text;
+			attachment.description = `Transcript: ${state.text}`;
+			attachment.notProcessed = undefined;
+		} else {
+			attachment.notProcessed =
+				state.kind === "unavailable" ? state.note : undefined;
+		}
+
+		const stored = await persistTranscriptionState(
+			runtime,
+			record,
+			roomId,
+			roomHandlerLease,
+			state,
+		);
+		const storedTranscript = stored?.text?.trim();
+		if (stored && storedTranscript) {
+			record.content = storedTranscript;
+			attachment.text = storedTranscript;
+			attachment.description =
+				stored.description ?? `Transcript: ${storedTranscript}`;
+			attachment.notProcessed = undefined;
+			transcribedAny = true;
+		} else if (state.kind === "transcribed") {
+			transcribedAny = true;
+		} else if (stored) {
+			attachment.notProcessed = stored.notProcessed;
+		}
+
+		if (failure) {
+			// error-policy:J4 the action exposes a typed retryable/unavailable state
+			// and the durable marker is committed before the user-facing reply.
+			// Expected whenever STT is disabled or temporarily unhealthy, so debug.
 			logger.debug(
-				{ attachmentId: attachment.id, err },
+				{ attachmentId: attachment.id, err: failure.error },
 				"[ReadAttachment] On-demand transcription did not produce a transcript",
 			);
 		}
@@ -794,7 +861,15 @@ export const readAttachmentAction: Action = {
 			let hasContent = hasReadableContent(records);
 			// Media with no stored transcript gets one live attempt before the
 			// missing-content fallback, covering both read and save_as_document.
-			if (!hasContent && (await transcribeMediaOnDemand(runtime, records))) {
+			if (
+				!hasContent &&
+				(await transcribeMediaOnDemand(
+					runtime,
+					records,
+					message.roomId,
+					_options?.roomHandlerLease,
+				))
+			) {
 				hasContent = hasReadableContent(records);
 			}
 			const storedContent = hasContent ? contentForRecords(records) : "";

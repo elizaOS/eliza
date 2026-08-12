@@ -19,6 +19,8 @@ export type FetchMediaResult = {
 
 export type MediaFetchErrorCode = "max_bytes" | "http_error" | "fetch_failed";
 
+const ERROR_BODY_DIAGNOSTIC_MAX_BYTES = 8 * 1024;
+
 export class MediaFetchError extends Error {
 	readonly code: MediaFetchErrorCode;
 
@@ -93,10 +95,17 @@ function parseContentDispositionFileName(
 
 async function readErrorBodySnippet(
 	res: Response,
+	maxBytes?: number,
 	maxChars = 200,
 ): Promise<string | undefined> {
 	try {
-		const text = await res.text();
+		const diagnosticLimit =
+			maxBytes !== undefined && maxBytes > 0
+				? Math.min(maxBytes, ERROR_BODY_DIAGNOSTIC_MAX_BYTES)
+				: ERROR_BODY_DIAGNOSTIC_MAX_BYTES;
+		const text = (await readResponseWithLimit(res, diagnosticLimit)).toString(
+			"utf8",
+		);
 		if (!text) {
 			return undefined;
 		}
@@ -110,7 +119,7 @@ async function readErrorBodySnippet(
 		return `${collapsed.slice(0, maxChars)}…`;
 	} catch {
 		// error-policy:J7 The HTTP status remains authoritative when its optional
-		// diagnostic body snippet cannot be read.
+		// diagnostic body snippet cannot be read or exceeds its bounded budget.
 		return undefined;
 	}
 }
@@ -144,6 +153,7 @@ async function throwIfHttpError(
 	res: Response,
 	url: string,
 	finalUrl: string,
+	maxBytes?: number,
 ): Promise<void> {
 	if (res.ok) {
 		return;
@@ -155,7 +165,7 @@ async function throwIfHttpError(
 	if (!res.body) {
 		detail = `HTTP ${res.status}${statusText}; empty response body`;
 	} else {
-		const snippet = await readErrorBodySnippet(res);
+		const snippet = await readErrorBodySnippet(res, maxBytes);
 		if (snippet) {
 			detail += `; body: ${snippet}`;
 		}
@@ -166,11 +176,11 @@ async function throwIfHttpError(
 	);
 }
 
-function enforceContentLengthLimit(
+async function enforceContentLengthLimit(
 	res: Response,
 	url: string,
 	maxBytes?: number,
-): void {
+): Promise<void> {
 	const contentLength = res.headers.get("content-length");
 	if (!maxBytes || !contentLength) {
 		return;
@@ -178,6 +188,12 @@ function enforceContentLengthLimit(
 
 	const length = Number(contentLength);
 	if (Number.isFinite(length) && length > maxBytes) {
+		try {
+			await res.body?.cancel();
+		} catch {
+			// error-policy:J6 The declared byte limit already rejected the response;
+			// cancelling its unread body is best-effort transport teardown.
+		}
 		throw new MediaFetchError(
 			"max_bytes",
 			`Failed to fetch media from ${url}: content length ${length} exceeds maxBytes ${maxBytes}`,
@@ -247,8 +263,8 @@ export async function fetchRemoteMedia(
 	const { response: res, finalUrl, release } = await fetchGuardedMedia(options);
 
 	try {
-		await throwIfHttpError(res, options.url, finalUrl);
-		enforceContentLengthLimit(res, options.url, options.maxBytes);
+		await enforceContentLengthLimit(res, options.url, options.maxBytes);
+		await throwIfHttpError(res, options.url, finalUrl, options.maxBytes);
 
 		const buffer = options.maxBytes
 			? await readResponseWithLimit(res, options.maxBytes)
@@ -275,7 +291,8 @@ export async function fetchRemoteMedia(
  * first — so a missing or lying Content-Length can never force an unbounded
  * allocation. Shared by the remote media fetcher above and the trusted local
  * attachment byte-fetches (ingest enrichment and on-demand transcription).
- * Falls back to a post-read check only when the response exposes no stream.
+ * A null body is the Fetch API's explicit empty-body signal and returns an
+ * empty buffer; it never falls back to an unbounded arrayBuffer allocation.
  * Throws MediaFetchError("max_bytes") on overflow.
  */
 export async function readResponseWithLimit(
@@ -284,14 +301,7 @@ export async function readResponseWithLimit(
 ): Promise<Buffer> {
 	const body = res.body;
 	if (!body) {
-		const fallback = Buffer.from(await res.arrayBuffer());
-		if (fallback.length > maxBytes) {
-			throw new MediaFetchError(
-				"max_bytes",
-				`Failed to fetch media from ${res.url || "response"}: payload exceeds maxBytes ${maxBytes}`,
-			);
-		}
-		return fallback;
+		return Buffer.alloc(0);
 	}
 
 	const reader = body.getReader();

@@ -19,17 +19,17 @@
  *      open-ended "yet" reply — they must NOT claim STT is disabled, live or
  *      via a stored ingest marker: the CURRENT attempt is authoritative, so
  *      ANY stored notProcessed note (the anchored unavailable marker
- *      included — ingest writes it even for transient provider 5xxs) is
- *      cleared before the retry and only a typed-unavailable failure from
- *      THIS attempt re-marks the record;
+ *      included, because older rows may have anchored transient 5xxs) is
+ *      cleared durably and only a typed-unavailable failure from THIS attempt
+ *      re-marks the record;
  *   4. ONLY the canonical media-store shape (`/api/media/<sha256>.<ext>`)
  *      reaches the trusted local runtime fetch — bounded by an abort signal —
  *      and any other non-http(s) url (userinfo tricks like `@host/...`,
  *      protocol-relative `//host/...`) is rejected without fetching anything;
- *   5. a successful transcript persists into the owning message memory with
- *      `notProcessed` cleared, and a persistence failure never breaks the
- *      reply — but a redacted-disclosure variant never persists at all, and a
- *      stored entry that already has a transcript is never overwritten;
+ *   5. every current outcome is merged durably into the owning memory under
+ *      the room writer lease: success stores a transcript, transient/empty
+ *      retries clear historical markers, and persistence rejection fails the
+ *      action instead of claiming success; redacted variants never persist;
  *   6. (#18429) the local branch rejects an oversize attachment on the
  *      declared content-length BEFORE allocating the body, streams the body
  *      under the byte cap when the header is absent or lying (cancelling at
@@ -41,8 +41,10 @@
  */
 import { v4 as uuidv4 } from "uuid";
 import { describe, expect, it, vi } from "vitest";
+import { RoomHandlerQueue } from "../../runtime/room-handler-queue.ts";
 import type {
 	HandlerCallback,
+	HandlerOptions,
 	IAgentRuntime,
 	Media,
 	Memory,
@@ -88,6 +90,7 @@ function makeRuntime(params: {
 	agentId: UUID;
 	calls: UseModelCall[];
 	transcription: (input: unknown) => Promise<string>;
+	roomHandlerQueue?: RoomHandlerQueue;
 	localFetch?: (input: unknown, init?: RequestInit) => Promise<Response>;
 	getMemoryById?: (id: UUID) => Promise<Memory | null>;
 	updateMemory?: (patch: MemoryUpdate) => Promise<boolean>;
@@ -95,6 +98,9 @@ function makeRuntime(params: {
 }): IAgentRuntime {
 	const runtime = {
 		agentId: params.agentId,
+		roomHandlerQueue:
+			params.roomHandlerQueue ??
+			new RoomHandlerQueue({ asyncContext: "explicit" }),
 		fetch: params.localFetch,
 		getConversationLength: () => 8,
 		getMemories: async () => [],
@@ -123,9 +129,11 @@ async function runRead(params: {
 	transcription: (input: unknown) => Promise<string>;
 	fetchImpl?: () => Promise<{ buffer: Buffer }>;
 	localFetch?: (input: unknown, init?: RequestInit) => Promise<Response>;
-	getMemoryById?: (id: UUID) => Promise<Memory | null>;
+	getMemoryById?: (id: UUID, owner: Memory) => Promise<Memory | null>;
 	updateMemory?: (patch: MemoryUpdate) => Promise<boolean>;
 	reportedErrors?: ReportedError[];
+	roomHandlerQueue?: RoomHandlerQueue;
+	handlerOptions?: Partial<HandlerOptions>;
 	text?: string;
 }) {
 	fetchRemoteMediaMock.mockReset();
@@ -133,16 +141,6 @@ async function runRead(params: {
 		params.fetchImpl ?? (async () => ({ buffer: VIDEO_BYTES })),
 	);
 	const agentId = uuidv4() as UUID;
-	const calls: UseModelCall[] = [];
-	const runtime = makeRuntime({
-		agentId,
-		calls,
-		transcription: params.transcription,
-		localFetch: params.localFetch,
-		getMemoryById: params.getMemoryById,
-		updateMemory: params.updateMemory,
-		reportedErrors: params.reportedErrors,
-	});
 	const message: Memory = {
 		id: uuidv4() as UUID,
 		agentId,
@@ -155,6 +153,33 @@ async function runRead(params: {
 			attachments: [params.attachment],
 		},
 	};
+	let storedMemory = structuredClone(message);
+	const calls: UseModelCall[] = [];
+	const getMemoryById = params.getMemoryById;
+	const runtime = makeRuntime({
+		agentId,
+		calls,
+		transcription: params.transcription,
+		roomHandlerQueue: params.roomHandlerQueue,
+		localFetch: params.localFetch,
+		getMemoryById: getMemoryById
+			? (id) => getMemoryById(id, structuredClone(storedMemory))
+			: async (id) =>
+					id === storedMemory.id ? structuredClone(storedMemory) : null,
+		updateMemory:
+			params.updateMemory ??
+			(async (patch) => {
+				storedMemory = {
+					...storedMemory,
+					...patch,
+					content: patch.content
+						? structuredClone(patch.content)
+						: storedMemory.content,
+				};
+				return true;
+			}),
+		reportedErrors: params.reportedErrors,
+	});
 	const callbackTexts: string[] = [];
 	const callback: HandlerCallback = async (content) => {
 		if (typeof content?.text === "string") callbackTexts.push(content.text);
@@ -165,11 +190,12 @@ async function runRead(params: {
 		message,
 		undefined,
 		{
+			...params.handlerOptions,
 			parameters: { action: "read", attachmentId: params.attachment.id },
 		},
 		callback,
 	);
-	return { result, callbackTexts, calls, message };
+	return { result, callbackTexts, calls, message, storedMemory };
 }
 
 describe("ATTACHMENT read on-demand transcription", () => {
@@ -277,12 +303,7 @@ describe("ATTACHMENT read on-demand transcription", () => {
 				localFetch: async (input, init) => {
 					localUrls.push(String(input));
 					localSignals.push(init?.signal);
-					return {
-						ok: true,
-						status: 200,
-						headers: new Headers(),
-						arrayBuffer: async () => Uint8Array.from(VIDEO_BYTES).buffer,
-					} as unknown as Response;
+					return new Response(VIDEO_BYTES);
 				},
 			});
 
@@ -384,20 +405,20 @@ describe("ATTACHMENT read on-demand transcription", () => {
 		]);
 	});
 
-	it("still rejects an oversize local body when content-length is absent (post-read backstop)", async () => {
+	it("still rejects an oversize local body when content-length is absent", async () => {
+		const chunk = new Uint8Array(8 * 1024 * 1024);
+		const body = new ReadableStream<Uint8Array>({
+			pull(controller) {
+				controller.enqueue(chunk);
+			},
+		});
 		const { callbackTexts, calls } = await runRead({
 			attachment: makeVideoAttachment({
 				url: `/api/media/${STORED_SHA}.mp4`,
 				title: "stored_clip.mp4",
 			}),
 			transcription: async () => TRANSCRIPT,
-			localFetch: async () =>
-				({
-					ok: true,
-					status: 200,
-					headers: new Headers(),
-					arrayBuffer: async () => new ArrayBuffer(50 * 1024 * 1024 + 1),
-				}) as unknown as Response,
+			localFetch: async () => new Response(body),
 		});
 
 		expect(
@@ -469,11 +490,13 @@ describe("ATTACHMENT read on-demand transcription", () => {
 					ok: true,
 					status: 200,
 					headers: new Headers(),
-					arrayBuffer: async () => {
-						throw new Error(
-							"TRANSCRIPTION not available — falling through to next TRANSCRIPTION handler",
-						);
-					},
+					body: new ReadableStream<Uint8Array>({
+						pull() {
+							throw new Error(
+								"TRANSCRIPTION not available — falling through to next TRANSCRIPTION handler",
+							);
+						},
+					}),
 				}) as unknown as Response,
 		});
 
@@ -565,13 +588,12 @@ describe("ATTACHMENT read on-demand transcription", () => {
 				notProcessed: "Video transcription unavailable: provider returned 502",
 			}),
 			transcription: async () => TRANSCRIPT,
-			getMemoryById: async (id) => {
+			getMemoryById: async (id, owner) => {
 				lookups.push(id);
 				return {
-					id,
-					entityId: id,
-					roomId: id,
+					...owner,
 					content: {
+						...owner.content,
 						text: "posted the clip",
 						attachments: [
 							bystander,
@@ -612,16 +634,14 @@ describe("ATTACHMENT read on-demand transcription", () => {
 		expect("_createdAt" in video).toBe(false);
 	});
 
-	it("still replies with the transcript when persistence fails", async () => {
+	it("fails closed when transcript persistence throws", async () => {
 		const reportedErrors: ReportedError[] = [];
 		const { result, callbackTexts } = await runRead({
 			attachment: makeVideoAttachment(),
 			transcription: async () => TRANSCRIPT,
-			getMemoryById: async (id) =>
+			getMemoryById: async (_id, owner) =>
 				({
-					id,
-					entityId: id,
-					roomId: id,
+					...owner,
 					content: { attachments: [makeVideoAttachment()] },
 				}) as Memory,
 			updateMemory: async () => {
@@ -630,14 +650,63 @@ describe("ATTACHMENT read on-demand transcription", () => {
 			reportedErrors,
 		});
 
-		expect(result?.success).toBe(true);
-		expect(callbackTexts).toEqual([ANSWER]);
-		// The failure is reported diagnostics-style (error-policy:J7), not thrown.
+		expect(result?.success).toBe(false);
+		expect(callbackTexts).toEqual([
+			"I couldn't read that attachment right now.",
+		]);
 		expect(reportedErrors).toHaveLength(1);
-		expect(reportedErrors[0]?.scope).toBe(
-			"ReadAttachmentAction.persistTranscript",
+		expect(reportedErrors[0]?.scope).toBe("ReadAttachmentAction.handler");
+		expect(result?.error).toBe(
+			"Failed to persist attachment transcription state",
 		);
 	});
+
+	it("fails closed when the adapter declines the update", async () => {
+		const reportedErrors: ReportedError[] = [];
+		const { result, callbackTexts } = await runRead({
+			attachment: makeVideoAttachment({
+				notProcessed: "Video transcription unavailable: historical failure",
+			}),
+			transcription: async () => "",
+			updateMemory: async () => false,
+			reportedErrors,
+		});
+
+		expect(result?.success).toBe(false);
+		expect(result?.error).toBe("Attachment transcription update was declined");
+		expect(callbackTexts).toEqual([
+			"I couldn't read that attachment right now.",
+		]);
+		expect(reportedErrors).toHaveLength(1);
+		expect(reportedErrors[0]?.scope).toBe("ReadAttachmentAction.handler");
+	});
+
+	it.each(["owner memory", "attachment"] as const)(
+		"fails closed when the %s disappears before persistence",
+		async (missing) => {
+			const reportedErrors: ReportedError[] = [];
+			const { result, callbackTexts } = await runRead({
+				attachment: makeVideoAttachment(),
+				transcription: async () => TRANSCRIPT,
+				getMemoryById: async (_id, owner) =>
+					missing === "owner memory"
+						? null
+						: {
+								...owner,
+								content: { ...owner.content, attachments: [] },
+							},
+				reportedErrors,
+			});
+
+			expect(result?.success).toBe(false);
+			expect(callbackTexts).toEqual([
+				"I couldn't read that attachment right now.",
+			]);
+			expect(reportedErrors).toHaveLength(1);
+			expect(reportedErrors[0]?.scope).toBe("ReadAttachmentAction.handler");
+			expect(result?.error).toMatch(/disappeared|no longer has attachments/i);
+		},
+	);
 
 	it("never persists a redacted variant's transcript over the stored original", async () => {
 		// selectAttachmentForRequester hands a redacted-disclosure viewer a
@@ -690,12 +759,11 @@ describe("ATTACHMENT read on-demand transcription", () => {
 		const { result, callbackTexts } = await runRead({
 			attachment: makeVideoAttachment(),
 			transcription: async () => TRANSCRIPT,
-			getMemoryById: async (id) =>
+			getMemoryById: async (_id, owner) =>
 				({
-					id,
-					entityId: id,
-					roomId: id,
+					...owner,
 					content: {
+						...owner.content,
 						attachments: [
 							makeVideoAttachment({ text: "an earlier stored transcript" }),
 						],
@@ -710,6 +778,132 @@ describe("ATTACHMENT read on-demand transcription", () => {
 		expect(result?.success).toBe(true);
 		expect(callbackTexts).toEqual([ANSWER]);
 		expect(updates).toEqual([]);
+	});
+
+	it("serializes sibling transcript merges with unrelated owning-memory updates", async () => {
+		fetchRemoteMediaMock.mockReset();
+		fetchRemoteMediaMock.mockImplementation(
+			async (options: { url: string }) => ({
+				buffer: Buffer.from(options.url, "utf8"),
+			}),
+		);
+		const queue = new RoomHandlerQueue({ asyncContext: "explicit" });
+		const agentId = uuidv4() as UUID;
+		const roomId = uuidv4() as UUID;
+		const ownerId = uuidv4() as UUID;
+		const entityId = uuidv4() as UUID;
+		const attachmentA = makeVideoAttachment({
+			id: "video-a",
+			url: "https://cdn.example/a.mp4",
+			title: "a.mp4",
+		});
+		const attachmentB = makeVideoAttachment({
+			id: "video-b",
+			url: "https://cdn.example/b.mp4",
+			title: "b.mp4",
+		});
+		const owner: Memory = {
+			id: ownerId,
+			agentId,
+			entityId,
+			roomId,
+			createdAt: Date.now(),
+			content: {
+				text: "original owning-memory text",
+				source: "discord",
+				attachments: [attachmentA, attachmentB],
+			},
+		};
+		let storedMemory = structuredClone(owner);
+		let activeReads = 0;
+		let maxActiveReads = 0;
+		const calls: UseModelCall[] = [];
+		const runtime = makeRuntime({
+			agentId,
+			calls,
+			roomHandlerQueue: queue,
+			transcription: async (input) => {
+				const source = (input as Buffer).toString("utf8");
+				return source.endsWith("/a.mp4") ? "transcript-a" : "transcript-b";
+			},
+			getMemoryById: async (id) => {
+				if (id !== ownerId) return null;
+				activeReads += 1;
+				maxActiveReads = Math.max(maxActiveReads, activeReads);
+				const snapshot = structuredClone(storedMemory);
+				await new Promise<void>((resolve) => setTimeout(resolve, 0));
+				activeReads -= 1;
+				return snapshot;
+			},
+			updateMemory: async (patch) => {
+				await Promise.resolve();
+				storedMemory = {
+					...storedMemory,
+					...patch,
+					content: patch.content
+						? structuredClone(patch.content)
+						: storedMemory.content,
+				};
+				return true;
+			},
+		});
+		const handler = readAttachmentAction.handler;
+		expect(handler).toBeDefined();
+		if (!handler) throw new Error("ATTACHMENT handler is missing");
+		const invoke = (
+			attachment: Media,
+			lease: HandlerOptions["roomHandlerLease"],
+		) =>
+			handler(
+				runtime,
+				{
+					...owner,
+					content: {
+						...owner.content,
+						text: `read ${attachment.id}`,
+						attachments: [attachment],
+					},
+				},
+				undefined,
+				{
+					parameters: { action: "read", attachmentId: attachment.id },
+					roomHandlerLease: lease,
+				},
+			);
+
+		const [resultA, resultB] = await queue.withLease(roomId, async (lease) => {
+			const pendingA = invoke(attachmentA, lease);
+			const unrelated = queue.withLeaseWrite(roomId, lease, async () => {
+				const current = structuredClone(storedMemory);
+				await Promise.resolve();
+				storedMemory = {
+					...current,
+					content: {
+						...current.content,
+						text: "unrelated owning-memory update",
+					},
+				};
+			});
+			const pendingB = invoke(attachmentB, lease);
+			const [first, second] = await Promise.all([
+				pendingA,
+				pendingB,
+				unrelated,
+			]);
+			return [first, second] as const;
+		});
+
+		expect(resultA.success).toBe(true);
+		expect(resultB.success).toBe(true);
+		expect(maxActiveReads).toBe(1);
+		expect(storedMemory.content.text).toBe("unrelated owning-memory update");
+		const persisted = storedMemory.content.attachments ?? [];
+		expect(persisted.find((item) => item.id === "video-a")?.text).toBe(
+			"transcript-a",
+		);
+		expect(persisted.find((item) => item.id === "video-b")?.text).toBe(
+			"transcript-b",
+		);
 	});
 
 	it("keeps the retryable 'yet' reply for a stored ingest fetch-failure marker", async () => {
@@ -742,7 +936,7 @@ describe("ATTACHMENT read on-demand transcription", () => {
 			"second failure: Eliza Cloud STT is not available — falling through to next TRANSCRIPTION handler",
 		);
 		unavailable.name = "CloudSttUnavailableError";
-		const { result, callbackTexts } = await runRead({
+		const { result, callbackTexts, storedMemory } = await runRead({
 			attachment: makeVideoAttachment({
 				notProcessed: "Video attachment could not be fetched: first failure",
 			}),
@@ -761,13 +955,16 @@ describe("ATTACHMENT read on-demand transcription", () => {
 		expect(latestNote).toMatch(/^Transcription unavailable:/);
 		expect(latestNote).toContain("second failure");
 		expect(latestNote).not.toContain("first failure");
+		expect(storedMemory.content.attachments?.[0]?.notProcessed).toBe(
+			latestNote,
+		);
 	});
 
 	it("clears a stale transient note when the re-attempt fails transiently again", async () => {
 		// The re-attempt supersedes the old note: after another transient
 		// failure the record is note-free, so nothing downstream can show the
 		// stale first-failure prose as if it described the current state.
-		const { result, callbackTexts } = await runRead({
+		const { result, callbackTexts, storedMemory } = await runRead({
 			attachment: makeVideoAttachment({
 				notProcessed: "Video attachment could not be fetched: first failure",
 			}),
@@ -783,15 +980,15 @@ describe("ATTACHMENT read on-demand transcription", () => {
 		const attachments = (result?.data as { attachments?: Media[] } | undefined)
 			?.attachments;
 		expect(attachments?.[0]?.notProcessed).toBeUndefined();
+		expect(storedMemory.content.attachments?.[0]?.notProcessed).toBeUndefined();
 	});
 
 	it("keeps the retryable 'yet' reply when a stored ingest unavailable marker meets a transient re-attempt", async () => {
-		// Ingest labels EVERY non-fetch provider exception with the anchored
-		// unavailable marker — an ordinary transient failure included — so a
+		// Historical ingest code anchored ordinary provider failures too, so a
 		// stored marker is history, not proof. The CURRENT attempt is
 		// authoritative: when it fails transiently, the stale marker must not
 		// resurface as "speech-to-text isn't enabled".
-		const { result, callbackTexts } = await runRead({
+		const { result, callbackTexts, storedMemory } = await runRead({
 			attachment: makeVideoAttachment({
 				notProcessed:
 					"Video transcription unavailable: Eliza Cloud STT is not available — falling through to next TRANSCRIPTION handler",
@@ -809,13 +1006,14 @@ describe("ATTACHMENT read on-demand transcription", () => {
 		const attachments = (result?.data as { attachments?: Media[] } | undefined)
 			?.attachments;
 		expect(attachments?.[0]?.notProcessed).toBeUndefined();
+		expect(storedMemory.content.attachments?.[0]?.notProcessed).toBeUndefined();
 	});
 
 	it("does not resurrect a historical provider-5xx unavailable marker on a transient retry", async () => {
 		// The ingest catch wrote "Video transcription unavailable: provider
 		// returned 503" for a transient provider 503; the current attempt's 502
 		// is equally transient, so the reply must stay the retryable "yet".
-		const { result, callbackTexts } = await runRead({
+		const { result, callbackTexts, storedMemory } = await runRead({
 			attachment: makeVideoAttachment({
 				notProcessed: "Video transcription unavailable: provider returned 503",
 			}),
@@ -830,13 +1028,14 @@ describe("ATTACHMENT read on-demand transcription", () => {
 		const attachments = (result?.data as { attachments?: Media[] } | undefined)
 			?.attachments;
 		expect(attachments?.[0]?.notProcessed).toBeUndefined();
+		expect(storedMemory.content.attachments?.[0]?.notProcessed).toBeUndefined();
 	});
 
 	it("clears a stored unavailable marker when the re-attempt returns no speech", async () => {
 		// An empty transcript is a successful current attempt with nothing to
 		// say — the record ends note-free and the reply stays the open "yet",
 		// never the stale marker's "isn't enabled".
-		const { result, callbackTexts } = await runRead({
+		const { result, callbackTexts, storedMemory } = await runRead({
 			attachment: makeVideoAttachment({
 				notProcessed: "Video transcription unavailable: provider returned 503",
 			}),
@@ -849,6 +1048,7 @@ describe("ATTACHMENT read on-demand transcription", () => {
 		const attachments = (result?.data as { attachments?: Media[] } | undefined)
 			?.attachments;
 		expect(attachments?.[0]?.notProcessed).toBeUndefined();
+		expect(storedMemory.content.attachments?.[0]?.notProcessed).toBeUndefined();
 	});
 
 	it("re-marks unavailability when the re-attempt of a marked record is typed-unavailable", async () => {

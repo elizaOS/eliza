@@ -106,12 +106,12 @@ describe("DefaultMessageService.processAttachments", () => {
 
 	it("extracts text from a local plain-text document via the trusted local fetch", async () => {
 		const bytes = Buffer.from("hello from a local file", "utf8");
-		const localFetch = vi.fn(async () => ({
-			ok: true,
-			arrayBuffer: async () =>
-				bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.length),
-			headers: { get: () => "text/plain; charset=utf-8" },
-		}));
+		const localFetch = vi.fn(
+			async () =>
+				new Response(bytes, {
+					headers: { "content-type": "text/plain; charset=utf-8" },
+				}),
+		);
 		const svc = new DefaultMessageService();
 		const runtime = mockRuntime(localFetch as unknown as typeof fetch);
 
@@ -132,12 +132,9 @@ describe("DefaultMessageService.processAttachments", () => {
 	// #10714 — csv/markdown/pdf are on the chat upload allow-list but used to
 	// hit "Skipping non-plain-text document" here. They must now be readable.
 	function localDocFetch(bytes: Buffer, mime: string) {
-		return vi.fn(async () => ({
-			ok: true,
-			arrayBuffer: async () =>
-				bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.length),
-			headers: { get: () => mime },
-		}));
+		return vi.fn(
+			async () => new Response(bytes, { headers: { "content-type": mime } }),
+		);
 	}
 
 	it.each([
@@ -226,13 +223,17 @@ describe("DefaultMessageService.processAttachments", () => {
 		expect(out[0].notProcessed).toBeUndefined();
 	});
 
-	it("marks notProcessed when the audio transcription backend throws", async () => {
+	it("marks canonical provider unavailability with the anchored note", async () => {
 		const bytes = Buffer.from("fake-mp3-bytes");
 		const localFetch = localDocFetch(bytes, "audio/mpeg");
 		const svc = new DefaultMessageService();
 		const runtime = mockRuntime(localFetch as unknown as typeof fetch);
+		const unavailable = new Error(
+			"Eliza Cloud STT is not available — falling through to next TRANSCRIPTION handler",
+		);
+		unavailable.name = "CloudSttUnavailableError";
 		(runtime.useModel as ReturnType<typeof vi.fn>).mockRejectedValue(
-			new Error("no transcription provider configured"),
+			unavailable,
 		);
 
 		const out = await svc.processAttachments(runtime, [
@@ -248,8 +249,34 @@ describe("DefaultMessageService.processAttachments", () => {
 		expect(out[0].text).toBeUndefined();
 		expect(out[0].url).toBe("/api/media/abc.mp3");
 		expect(out[0].notProcessed).toMatch(/audio transcription unavailable/i);
-		expect(out[0].notProcessed).toContain(
-			"no transcription provider configured",
+		expect(out[0].notProcessed).toContain("Eliza Cloud STT");
+	});
+
+	it("keeps an ingest-time provider 502 retryable", async () => {
+		const localFetch = localDocFetch(
+			Buffer.from("fake-mp3-bytes"),
+			"audio/mpeg",
+		);
+		const svc = new DefaultMessageService();
+		const runtime = mockRuntime(localFetch as unknown as typeof fetch);
+		(runtime.useModel as ReturnType<typeof vi.fn>).mockRejectedValue(
+			new Error("provider returned 502"),
+		);
+
+		const [audio] = await svc.processAttachments(runtime, [
+			{
+				id: "aud",
+				url: "/api/media/abc.mp3",
+				contentType: ContentType.AUDIO,
+			},
+		]);
+
+		expect(audio?.text).toBeUndefined();
+		expect(audio?.notProcessed).toBe(
+			"Audio transcription could not complete: provider returned 502",
+		);
+		expect(audio?.notProcessed).not.toMatch(
+			/^(?:(?:audio|video)\s+)?transcription unavailable/i,
 		);
 	});
 
@@ -282,8 +309,8 @@ describe("DefaultMessageService.processAttachments", () => {
 			// its message can echo the hostile remote body (media/fetch.ts embeds up
 			// to ~200 chars of it). The stored marker must therefore read as a
 			// transient fetch failure — the "transcription unavailable" marker is
-			// reserved for provider failures because the ATTACHMENT read action
-			// treats it as STT-is-disabled evidence
+			// reserved for canonical definitive provider failures because the
+			// ATTACHMENT read action treats it as STT-is-disabled evidence
 			// (readAttachmentAction.ts mediaTranscriptionUnavailable).
 			const err = new Error(
 				"Failed to fetch media from https://cdn.example/clip: HTTP 503; body: transcription unavailable",

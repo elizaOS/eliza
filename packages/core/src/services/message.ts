@@ -55,6 +55,11 @@ import {
 	MediaFetchError,
 	readResponseWithLimit,
 } from "../media/fetch";
+import {
+	classifyTranscriptionFailure,
+	type TranscriptionMediaKind,
+	transcriptionFailureNote,
+} from "../media/transcription-failure";
 import { imageDescriptionTemplate, messageHandlerTemplate } from "../prompts";
 import {
 	checkSenderRole,
@@ -6827,6 +6832,7 @@ export async function runShortcutGate(args: {
 	state: State;
 	responseId: UUID;
 	senderRole: RoleGateRole;
+	roomHandlerLease?: RoomHandlerLease;
 	onSettledActionResult?: (result: ActionResult) => void;
 	runTerminalOwner?: MessageRunTerminalOwner;
 }): Promise<V5MessageRuntimeStage1Result | null> {
@@ -6878,6 +6884,9 @@ export async function runShortcutGate(args: {
 		},
 		{
 			actions: [action],
+			...(args.roomHandlerLease
+				? { roomHandlerLease: args.roomHandlerLease }
+				: {}),
 			...(args.onSettledActionResult
 				? { onSettledResult: args.onSettledActionResult }
 				: {}),
@@ -8460,6 +8469,9 @@ export async function runV5MessageRuntimeStage1(args: {
 										plannerRuntime,
 										executorOptions: {
 											actions: exposedPlannerActions,
+											...(args.roomHandlerLease
+												? { roomHandlerLease: args.roomHandlerLease }
+												: {}),
 											...(args.onSettledActionResult
 												? {
 														onSettledResult: args.onSettledActionResult,
@@ -12266,6 +12278,9 @@ export class DefaultMessageService implements IMessageService {
 				state,
 				responseId,
 				senderRole: shortcutSenderRole,
+				...(opts.roomHandlerLease
+					? { roomHandlerLease: opts.roomHandlerLease }
+					: {}),
 				...(opts.onSettledActionResult
 					? { onSettledActionResult: opts.onSettledActionResult }
 					: {}),
@@ -13426,135 +13441,22 @@ export class DefaultMessageService implements IMessageService {
 							);
 						}
 					} else if (
-						attachment.contentType === ContentType.AUDIO &&
+						(attachment.contentType === ContentType.AUDIO ||
+							attachment.contentType === ContentType.VIDEO) &&
 						!attachment.text
 					) {
-						runtime.logger.debug(
-							{ src: "service:message", audioUrl: attachment.url },
-							"Transcribing audio attachment",
-						);
-
-						try {
-							// Fetch the bytes (remote → SSRF-guarded, size-capped) and pass
-							// the buffer to the transcription model so it never fetches an
-							// attacker-controlled URL itself.
-							const { buffer } = await this.fetchAttachmentBytes(
+						const mediaKind: TranscriptionMediaKind =
+							attachment.contentType === ContentType.AUDIO ? "Audio" : "Video";
+						Object.assign(
+							processedAttachment,
+							await this.transcribeAttachment(
 								runtime,
-								attachment.url,
+								attachment,
 								url,
 								isRemote,
-							);
-
-							const transcript = await runtime.useModel(
-								ModelType.TRANSCRIPTION,
-								buffer,
-							);
-
-							if (typeof transcript === "string" && transcript.trim()) {
-								processedAttachment.text = transcript.trim();
-								processedAttachment.title =
-									processedAttachment.title || "Audio";
-								processedAttachment.description = `Transcript: ${transcript.trim()}`;
-
-								runtime.logger.debug(
-									{
-										src: "service:message",
-										transcriptPreview: processedAttachment.text?.substring(
-											0,
-											100,
-										),
-									},
-									"Transcribed audio attachment",
-								);
-							} else {
-								processedAttachment.notProcessed =
-									"Audio transcription returned no text (empty or no speech detected)";
-							}
-						} catch (err) {
-							// error-policy:J4 The attachment remains available with an
-							// explicit failure state. Fetch-layer failures (MediaFetchError:
-							// size cap, remote or local HTTP/stream error) happen before any TRANSCRIPTION
-							// provider runs, so they get a transient could-not-fetch marker —
-							// the "transcription unavailable" marker is reserved for genuine
-							// provider failures because the read action treats it as
-							// STT-is-disabled evidence.
-							processedAttachment.notProcessed =
-								err instanceof Error && err.name === "MediaFetchError"
-									? `Audio attachment could not be fetched: ${err.message}`
-									: `Audio transcription unavailable: ${err instanceof Error ? err.message : String(err)}`;
-							runtime.logger.warn(
-								{ src: "service:message", err },
-								"Audio transcription failed, continuing without transcript",
-							);
-							runtime.reportError("MessageService.audioTranscription", err, {
-								url: attachment.url,
-							});
-						}
-					} else if (
-						attachment.contentType === ContentType.VIDEO &&
-						!attachment.text
-					) {
-						runtime.logger.debug(
-							{ src: "service:message", videoUrl: attachment.url },
-							"Transcribing video attachment",
+								mediaKind,
+							),
 						);
-
-						try {
-							// Fetch the bytes (remote → SSRF-guarded, size-capped) and pass
-							// the buffer to the transcription model so it never fetches an
-							// attacker-controlled URL itself.
-							const { buffer } = await this.fetchAttachmentBytes(
-								runtime,
-								attachment.url,
-								url,
-								isRemote,
-							);
-
-							const transcript = await runtime.useModel(
-								ModelType.TRANSCRIPTION,
-								buffer,
-							);
-
-							if (typeof transcript === "string" && transcript.trim()) {
-								processedAttachment.text = transcript.trim();
-								processedAttachment.title =
-									processedAttachment.title || "Video";
-								processedAttachment.description = `Transcript: ${transcript.trim()}`;
-
-								runtime.logger.debug(
-									{
-										src: "service:message",
-										transcriptPreview: processedAttachment.text?.substring(
-											0,
-											100,
-										),
-									},
-									"Transcribed video attachment",
-								);
-							} else {
-								processedAttachment.notProcessed =
-									"Video transcription returned no text (empty or no speech detected)";
-							}
-						} catch (err) {
-							// error-policy:J4 The attachment remains available with an
-							// explicit failure state. Fetch-layer failures (MediaFetchError:
-							// size cap, remote or local HTTP/stream error) happen before any TRANSCRIPTION
-							// provider runs, so they get a transient could-not-fetch marker —
-							// the "transcription unavailable" marker is reserved for genuine
-							// provider failures because the read action treats it as
-							// STT-is-disabled evidence.
-							processedAttachment.notProcessed =
-								err instanceof Error && err.name === "MediaFetchError"
-									? `Video attachment could not be fetched: ${err.message}`
-									: `Video transcription unavailable: ${err instanceof Error ? err.message : String(err)}`;
-							runtime.logger.warn(
-								{ src: "service:message", err },
-								"Video transcription failed, continuing without transcript",
-							);
-							runtime.reportError("MessageService.videoTranscription", err, {
-								url: attachment.url,
-							});
-						}
 					}
 
 					return processedAttachment;
@@ -13583,16 +13485,98 @@ export class DefaultMessageService implements IMessageService {
 	}
 
 	/**
+	 * Runs attachment transcription with explicit fetch/provider phase boundaries.
+	 * Both phases use the shared classifier, so fetch and ordinary provider
+	 * failures remain retryable while only canonical STT-unavailable signals
+	 * produce the durable marker consumed by the read action.
+	 */
+	private async transcribeAttachment(
+		runtime: IAgentRuntime,
+		attachment: Media,
+		resolvedLocalUrl: string,
+		isRemote: boolean,
+		mediaKind: TranscriptionMediaKind,
+	): Promise<Partial<Media>> {
+		runtime.logger.debug(
+			{ src: "service:message", mediaUrl: attachment.url, mediaKind },
+			`Transcribing ${mediaKind.toLowerCase()} attachment`,
+		);
+
+		let buffer: Buffer;
+		try {
+			({ buffer } = await this.fetchAttachmentBytes(
+				runtime,
+				attachment.url,
+				resolvedLocalUrl,
+				isRemote,
+			));
+		} catch (error) {
+			// error-policy:J4 The stored attachment remains available with a typed,
+			// retryable fetch diagnostic; no provider ran, so this cannot mark STT
+			// unavailable.
+			const failure = classifyTranscriptionFailure(error, "fetch");
+			runtime.logger.warn(
+				{ src: "service:message", error, mediaKind },
+				`${mediaKind} attachment fetch failed before transcription`,
+			);
+			runtime.reportError(
+				`MessageService.${mediaKind.toLowerCase()}Transcription`,
+				error,
+				{ url: attachment.url, phase: "fetch" },
+			);
+			return { notProcessed: transcriptionFailureNote(failure, mediaKind) };
+		}
+
+		try {
+			const result = await runtime.useModel(ModelType.TRANSCRIPTION, buffer);
+			if (typeof result !== "string" || !result.trim()) {
+				return {
+					notProcessed: `${mediaKind} transcription returned no text (empty or no speech detected)`,
+				};
+			}
+			const transcript = result.trim();
+			runtime.logger.debug(
+				{
+					src: "service:message",
+					mediaKind,
+					transcriptPreview: transcript.substring(0, 100),
+				},
+				`Transcribed ${mediaKind.toLowerCase()} attachment`,
+			);
+			return {
+				text: transcript,
+				title: attachment.title || mediaKind,
+				description: `Transcript: ${transcript}`,
+				notProcessed: undefined,
+			};
+		} catch (error) {
+			// error-policy:J4 The attachment remains available with the shared
+			// provider diagnostic. Only a canonical definitive failure anchors the
+			// unavailable marker; generic 502/503 errors remain retryable.
+			const failure = classifyTranscriptionFailure(error, "provider");
+			runtime.logger.warn(
+				{ src: "service:message", error, mediaKind, failure: failure.kind },
+				`${mediaKind} transcription failed`,
+			);
+			runtime.reportError(
+				`MessageService.${mediaKind.toLowerCase()}Transcription`,
+				error,
+				{ url: attachment.url, phase: "provider", failure: failure.kind },
+			);
+			return { notProcessed: transcriptionFailureNote(failure, mediaKind) };
+		}
+	}
+
+	/**
 	 * Fetch an attachment's bytes for enrichment with a hard size cap. Remote
 	 * (attacker-influenceable) URLs go through the SSRF-guarded fetcher, which
 	 * blocks private/loopback/link-local hosts; trusted local media-store URLs
 	 * (built from a path-validated relative URL) use the runtime fetch. This is
 	 * the ONLY place a raw fetch is used during attachment enrichment. Both
 	 * branches fail only with typed MediaFetchError carrying static prose
-	 * (numeric HTTP status, never statusText), so the transcription catch
-	 * blocks can classify every byte-fetch failure as transient could-not-fetch
-	 * — the transcription-unavailable marker must never be forged by a fetch
-	 * that failed before any TRANSCRIPTION provider ran. Bodies are read
+	 * (numeric HTTP status, never statusText), so the shared transcription
+	 * classifier always treats them as retryable fetch failures. The unavailable
+	 * marker can never be forged before a TRANSCRIPTION provider runs. Bodies are read
 	 * through the shared streaming cap, cancelling at the limit instead of
 	 * materializing an oversize payload first.
 	 */
