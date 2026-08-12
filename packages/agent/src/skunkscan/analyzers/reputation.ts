@@ -44,6 +44,15 @@ export function analyzeWalletReputation(
   if (input.trust.trustScore >= 70)
     strengths.push("Strong trust indicators.");
 
+  // alpha is reputation's second-largest weight (25%, after trust's 35%),
+  // but previously had no strength condition at all - a wallet with a
+  // strong alpha reading contributed real, positive weight to the score
+  // with zero visible explanation. Threshold matches smartMoney/
+  // profitability's existing 60 for consistency, rather than introducing
+  // a third distinct value.
+  if (input.alpha.alphaScore >= 60)
+    strengths.push("Strong Alpha Score indicators.");
+
   if (input.smartMoney.smartMoneyScore >= 60)
     strengths.push("Shows smart-money characteristics.");
 
