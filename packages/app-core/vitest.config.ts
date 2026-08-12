@@ -341,6 +341,10 @@ export default defineConfig({
         replacement: path.join(pluginAnthropicRoot, "index.node.ts"),
       },
       {
+        find: /^@elizaos\/plugin-anthropic\/endpoint-config$/,
+        replacement: path.join(pluginAnthropicRoot, "utils/config.ts"),
+      },
+      {
         find: /^@elizaos\/plugin-anthropic\/(.+)$/,
         replacement: path.join(pluginAnthropicRoot, "$1"),
       },
@@ -401,12 +405,20 @@ export default defineConfig({
         replacement: path.join(pluginElizaCloudSrc, "index.node.ts"),
       },
       {
+        find: /^@elizaos\/plugin-elizacloud\/endpoint-config$/,
+        replacement: path.join(pluginElizaCloudSrc, "utils/config.ts"),
+      },
+      {
         find: /^@elizaos\/plugin-elizacloud\/(.+)$/,
         replacement: path.join(pluginElizaCloudSrc, "$1"),
       },
       {
         find: /^@elizaos\/plugin-openai$/,
         replacement: path.join(pluginOpenAiSrc, "index.node.ts"),
+      },
+      {
+        find: /^@elizaos\/plugin-openai\/endpoint-config$/,
+        replacement: path.join(pluginOpenAiSrc, "utils/config.ts"),
       },
       {
         find: /^@elizaos\/plugin-openai\/(.+)$/,
