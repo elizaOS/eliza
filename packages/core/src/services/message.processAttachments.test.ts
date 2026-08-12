@@ -6,12 +6,16 @@
  * the TRANSCRIPTION model, and every enrichment failure (unsupported subtype,
  * transcription backend error, empty transcript) records an explicit
  * `notProcessed` reason instead of leaving text/description silently unset —
- * with pre-provider fetch-layer failures (remote AND local: non-ok status,
- * oversize on content-length, oversize chunked body) marked could-not-fetch,
- * never with the transcription-unavailable marker the read action treats as
- * STT disabled. Local byte-fetch errors carry only the numeric HTTP status —
- * statusText is dynamic prose a hostile response controls — and oversize
- * bodies are cancelled at the streaming cap, not materialized then measured.
+ * with the marker chosen by the shared phase classifier
+ * (media/transcription.ts): pre-provider fetch-layer failures (remote AND
+ * local: non-ok status, oversize on content-length, oversize chunked body)
+ * marked could-not-fetch and transient provider failures marked
+ * failed-transiently, never with the transcription-unavailable marker the
+ * read action treats as STT disabled — that marker is reserved for genuine
+ * no-provider failures. Local byte-fetch errors carry only the numeric HTTP
+ * status — statusText is dynamic prose a hostile response controls — and
+ * oversize bodies are cancelled at the streaming cap, not materialized then
+ * measured.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ContentType, type Media } from "../types/primitives";
@@ -251,6 +255,135 @@ describe("DefaultMessageService.processAttachments", () => {
 		expect(out[0].notProcessed).toContain(
 			"no transcription provider configured",
 		);
+	});
+
+	it.each([
+		[ContentType.AUDIO, "aud", "mp3", "audio/mpeg", "Audio"],
+		[ContentType.VIDEO, "vid", "mp4", "video/mp4", "Video"],
+	])(
+		"marks a transient %s provider failure retryable, never transcription-unavailable",
+		async (contentType, id, ext, mime, kind) => {
+			// The bytes fetched fine and a provider ran but failed transiently
+			// (an upstream 502). The shared phase classifier must keep this out
+			// of the anchored transcription-unavailable marker — otherwise one
+			// provider blip becomes a durable "speech-to-text isn't enabled"
+			// state on the read path.
+			const bytes = Buffer.from("fake-media-bytes");
+			const localFetch = localDocFetch(bytes, mime);
+			const svc = new DefaultMessageService();
+			const runtime = mockRuntime(localFetch as unknown as typeof fetch);
+			(runtime.useModel as ReturnType<typeof vi.fn>).mockRejectedValue(
+				new Error("upstream STT returned 502 Bad Gateway"),
+			);
+
+			const out = await svc.processAttachments(runtime, [
+				{ id, url: `/api/media/abc.${ext}`, contentType },
+			]);
+
+			expect(out[0].text).toBeUndefined();
+			// The URL survives so a later read can re-attempt transcription.
+			expect(out[0].url).toBe(`/api/media/abc.${ext}`);
+			expect(out[0].notProcessed).toBe(
+				`${kind} transcription failed transiently: upstream STT returned 502 Bad Gateway`,
+			);
+			// Never the anchored marker prefix the read action keys on.
+			expect(out[0].notProcessed).not.toMatch(
+				/^(?:(?:audio|video)\s+)?transcription unavailable/i,
+			);
+		},
+	);
+
+	it("keeps the durable unavailable marker for a typed provider *UnavailableError", async () => {
+		// A provider's typed unavailability fall-through (CloudSttUnavailableError
+		// shape) IS genuine no-provider evidence and must keep producing the
+		// anchored marker the read action reports as STT disabled.
+		const bytes = Buffer.from("fake-mp3-bytes");
+		const localFetch = localDocFetch(bytes, "audio/mpeg");
+		const svc = new DefaultMessageService();
+		const runtime = mockRuntime(localFetch as unknown as typeof fetch);
+		const err = new Error("Eliza Cloud STT is not available for this account");
+		err.name = "CloudSttUnavailableError";
+		(runtime.useModel as ReturnType<typeof vi.fn>).mockRejectedValue(err);
+
+		const out = await svc.processAttachments(runtime, [
+			{ id: "aud", url: "/api/media/abc.mp3", contentType: ContentType.AUDIO },
+		]);
+
+		expect(out[0].text).toBeUndefined();
+		expect(out[0].notProcessed).toBe(
+			`Audio transcription unavailable: ${err.message}`,
+		);
+		expect(out[0].notProcessed).toMatch(
+			/^(?:(?:audio|video)\s+)?transcription unavailable/i,
+		);
+	});
+
+	it("a transient provider failure at ingest never becomes the STT-disabled reply on a later read", async () => {
+		// Cross-contract handoff: the marker written by the ingest catch is the
+		// exact evidence the ATTACHMENT read action later classifies. A stored
+		// record that cannot be re-attempted (its url rotted away) is judged by
+		// the marker alone — a transient ingest failure must read as retryable
+		// "yet", never as "speech-to-text isn't enabled".
+		const bytes = Buffer.from("fake-mp4-bytes");
+		const localFetch = localDocFetch(bytes, "video/mp4");
+		const svc = new DefaultMessageService();
+		const ingestRuntime = mockRuntime(localFetch as unknown as typeof fetch);
+		(ingestRuntime.useModel as ReturnType<typeof vi.fn>).mockRejectedValue(
+			new Error("provider returned 502"),
+		);
+		const [stored] = await svc.processAttachments(ingestRuntime, [
+			{ id: "vid", url: "/api/media/abc.mp4", contentType: ContentType.VIDEO },
+		]);
+		expect(stored.notProcessed).toBeDefined();
+
+		const { readAttachmentAction } = await import(
+			"../features/working-memory/readAttachmentAction.ts"
+		);
+		const agentId = "00000000-0000-0000-0000-00000000000a";
+		const readRuntime = {
+			agentId,
+			getConversationLength: () => 8,
+			getMemories: async () => [],
+			getMemoryById: async () => null,
+			updateMemory: async () => true,
+			getRoom: async () => null,
+			getWorld: async () => null,
+			getService: () => null,
+			getSetting: () => undefined,
+			reportError: vi.fn(),
+			useModel: vi.fn(async () => {
+				throw new Error("no model call expected for a record with no url");
+			}),
+		} as unknown as IAgentRuntime;
+		const texts: string[] = [];
+		await readAttachmentAction.handler?.(
+			readRuntime,
+			{
+				id: "00000000-0000-0000-0000-00000000000b",
+				agentId,
+				// Reader == agent skips artifact-disclosure URL selection, which
+				// would otherwise drop a record whose url rotted to "" — the
+				// contract under test is marker classification, not disclosure.
+				entityId: agentId,
+				roomId: "00000000-0000-0000-0000-00000000000d",
+				createdAt: Date.now(),
+				content: {
+					text: "what does the video say?",
+					source: "test",
+					attachments: [{ ...stored, url: "" }],
+				},
+			} as never,
+			undefined,
+			{ parameters: { action: "read", attachmentId: "vid" } },
+			async (content) => {
+				if (typeof content?.text === "string") texts.push(content.text);
+				return [];
+			},
+		);
+
+		expect(texts).toHaveLength(1);
+		expect(texts[0]).not.toContain("isn't enabled");
+		expect(texts[0]).toContain("yet");
 	});
 
 	it("marks notProcessed when audio transcription returns empty text", async () => {

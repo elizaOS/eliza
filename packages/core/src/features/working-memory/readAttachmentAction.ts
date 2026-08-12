@@ -14,11 +14,16 @@
  * inference so routing stays language-agnostic (#10471).
  */
 
+import { ElizaError } from "../../errors.ts";
 import {
 	fetchRemoteMedia,
 	MediaFetchError,
 	readResponseWithLimit,
 } from "../../media/fetch.ts";
+import {
+	classifyTranscriptionFailure,
+	TRANSCRIPTION_UNAVAILABLE_MARKER,
+} from "../../media/transcription.ts";
 import {
 	linkShareOwnText,
 	looksLikeBareLinkShare,
@@ -108,25 +113,14 @@ function isMediaAttachment(record: AttachmentRecord): boolean {
 }
 
 /**
- * Anchored writer-controlled unavailability marker prefix ("Transcription
- * unavailable:" on-demand, "Audio/Video transcription unavailable:" ingest).
- * The appended error prose can echo a hostile remote body (media/fetch.ts
- * embeds up to ~200 chars of it), so mid-string matches must never count as
- * unavailability evidence. A live re-attempt supersedes ANY stored note,
- * marker or not (transcribeMediaOnDemand): ingest labels every non-fetch
- * provider exception — an ordinary 502 included — with this marker, so a
- * stored marker is history, not proof. By classification time only a record
- * that could not be re-attempted (no url) or one the CURRENT attempt marked
- * unavailable still carries it.
- */
-const TRANSCRIPTION_UNAVAILABLE_MARKER =
-	/^(?:(?:audio|video)\s+)?transcription unavailable/i;
-
-/**
  * True when a media record's transcript is missing because transcription
  * itself was unavailable (ingest or on-demand), not because nobody has asked
- * yet. `notProcessed` carries the raw provider error; the user-facing message
- * must stay a clean sentence, never that internal prose.
+ * yet — evidenced only by the shared anchored marker
+ * (media/transcription.ts), which the shared phase classifier writes solely
+ * for genuine no-provider failures; transient and fetch-phase failures get
+ * non-matching markers so they can never surface here. `notProcessed` carries
+ * the raw provider error; the user-facing message must stay a clean sentence,
+ * never that internal prose.
  */
 function mediaTranscriptionUnavailable(records: AttachmentRecord[]): boolean {
 	return records.some(
@@ -177,28 +171,6 @@ const ON_DEMAND_TRANSCRIPTION_TIMEOUT_MS = 30_000;
  * Anything else must never reach the trusted local fetch.
  */
 const LOCAL_MEDIA_STORE_URL = /^\/api\/media\/[a-f0-9]{64}\.[a-z0-9]{1,8}$/;
-
-/**
- * True when a TRANSCRIPTION failure means no provider can serve at all —
- * a provider's *UnavailableError fall-through (e.g. `CloudSttUnavailableError`)
- * or the runtime having no registered handler — as opposed to a transient
- * failure (network blip, provider 5xx) that a later retry could clear. Only
- * the former may claim "speech-to-text isn't enabled" to the user.
- */
-function isTranscriptionUnavailableError(err: unknown): err is Error {
-	if (!(err instanceof Error)) return false;
-	// Fetch-layer failures are NEVER unavailability evidence: MediaFetchError
-	// messages embed up to ~200 chars of the REMOTE response body
-	// (media/fetch.ts throwIfHttpError), so a hostile host could plant
-	// "TRANSCRIPTION not available" prose there and forge the disabled reply.
-	// Matched by name rather than instanceof so the exclusion survives module
-	// duplication across the multi-target build and test module mocks.
-	if (err.name === "MediaFetchError") return false;
-	if (err.name.endsWith("UnavailableError")) return true;
-	return /falling through to next TRANSCRIPTION handler|no (?:model )?handler.*TRANSCRIPTION|TRANSCRIPTION.*not (?:available|enabled|registered)/i.test(
-		err.message,
-	);
-}
 
 /**
  * Fetches a conversation attachment's bytes for transcription, mirroring the
@@ -276,10 +248,11 @@ async function fetchTranscribableBytes(
 		// response read boundary (fetch, header reads, body read): whatever the
 		// fetch or stream layer threw — including a body read rejecting with
 		// unavailability-looking prose — the local branch surfaces only
-		// MediaFetchError with a static message, which
-		// isTranscriptionUnavailableError refuses as STT-disabled evidence.
-		// Matched by name rather than instanceof so the pass-through survives
-		// module duplication across the multi-target build and test mocks.
+		// MediaFetchError with a static message, which the shared phase
+		// classifier (classifyTranscriptionFailure) refuses as STT-disabled
+		// evidence. Matched by name rather than instanceof so the pass-through
+		// survives module duplication across the multi-target build and test
+		// mocks.
 		if (err instanceof Error && err.name === "MediaFetchError") throw err;
 		throw new MediaFetchError(
 			"fetch_failed",
@@ -298,6 +271,17 @@ async function fetchTranscribableBytes(
  * other stored field survives, and the gathering layer's underscore transport
  * fields never reach storage. Never throws — the in-memory transcript already
  * serves this reply, so a lost write only costs one future re-transcription.
+ *
+ * The write routes through the canonical room-writer authority
+ * (`runtime.roomHandlerQueue`): the read-modify-write runs inside the owning
+ * room's lease (reusing ambient turn ownership when this action already runs
+ * under it, acquiring otherwise) and its adapter write goes through the
+ * lease's serialized writer, so a concurrent room-writer or sibling
+ * enrichment updating the same memory row can never be clobbered by a stale
+ * snapshot — the row is re-read inside the critical section. `updateMemory`
+ * reports success unconditionally, so a verify re-read asserts the transcript
+ * actually landed; a write that did not land is reported, never silently
+ * claimed as persisted.
  *
  * Two guards keep this write from destroying stored data: a redacted-disclosure
  * variant (selectAttachmentForRequester keeps the shared `id`/`_messageId` but
@@ -321,33 +305,57 @@ async function persistTranscript(
 	// transcript still serves this reply — only the write is skipped.
 	if (attachment.redacted) return;
 	try {
-		const stored = await runtime.getMemoryById(messageId);
-		const storedAttachments = stored?.content.attachments;
-		if (!stored || !Array.isArray(storedAttachments)) return;
-		let found = false;
-		const attachments = storedAttachments.map((entry) => {
-			if (entry.id !== attachment.id) return entry;
-			// Fill-only: an existing stored transcript always wins.
-			if (typeof entry.text === "string" && entry.text.trim()) return entry;
-			found = true;
-			const { notProcessed: _stale, ...rest } = entry;
-			return {
-				...rest,
-				text: transcript,
-				description: `Transcript: ${transcript}`,
-			};
-		});
-		if (!found) return;
-		const persisted = await runtime.updateMemory({
-			id: messageId,
-			content: { ...stored.content, attachments },
-		});
-		if (!persisted) {
-			logger.warn(
-				{ attachmentId: attachment.id, messageId },
-				"[ReadAttachment] updateMemory declined to persist the on-demand transcript",
-			);
-		}
+		// Snapshot read only to learn the owning row's room; the authoritative
+		// read-modify-write below re-reads the row inside that room's lease.
+		const snapshot = await runtime.getMemoryById(messageId);
+		if (!snapshot) return;
+		await runtime.roomHandlerQueue.withLeases([snapshot.roomId], (leases) =>
+			runtime.roomHandlerQueue.withLeaseWrites(leases, async () => {
+				const stored = await runtime.getMemoryById(messageId);
+				const storedAttachments = stored?.content.attachments;
+				if (!stored || !Array.isArray(storedAttachments)) return;
+				let found = false;
+				const attachments = storedAttachments.map((entry) => {
+					if (entry.id !== attachment.id) return entry;
+					// Fill-only: an existing stored transcript always wins.
+					if (typeof entry.text === "string" && entry.text.trim()) return entry;
+					found = true;
+					const { notProcessed: _stale, ...rest } = entry;
+					return {
+						...rest,
+						text: transcript,
+						description: `Transcript: ${transcript}`,
+					};
+				});
+				if (!found) return;
+				const accepted = await runtime.updateMemory({
+					id: messageId,
+					content: { ...stored.content, attachments },
+				});
+				// runtime.updateMemory returns true whenever the adapter did not
+				// throw — a silently no-oped write (row deleted, adapter declined)
+				// would otherwise be claimed as persisted. Only a re-read proves the
+				// transcript landed.
+				const durable = accepted
+					? await runtime.getMemoryById(messageId)
+					: null;
+				const durableEntry = Array.isArray(durable?.content.attachments)
+					? durable.content.attachments.find(
+							(entry) => entry.id === attachment.id,
+						)
+					: undefined;
+				if (durableEntry?.text !== transcript) {
+					throw new ElizaError(
+						"On-demand transcript was not durably persisted to its owning message",
+						{
+							code: "ATTACHMENT_TRANSCRIPT_PERSIST_UNVERIFIED",
+							context: { attachmentId: attachment.id, messageId, accepted },
+							severity: "ephemeral",
+						},
+					);
+				}
+			}),
+		);
 	} catch (err) {
 		// error-policy:J7 persistence is bookkeeping for future reads; its
 		// failure must not break the reply the transcript already serves.
@@ -388,13 +396,13 @@ async function transcribeMediaOnDemand(
 		if (!isMediaAttachment(record) || record.content.trim()) continue;
 		if (typeof attachment.url !== "string" || !attachment.url.trim()) continue;
 		// The CURRENT attempt is authoritative: clear ANY prior notProcessed
-		// note — anchored unavailability markers included, because ingest writes
-		// that marker for every non-fetch provider exception (an ordinary
-		// transient 502 among them), so a stored marker is history, not proof.
-		// Only this attempt's outcome decides the reply: the catch below
-		// re-marks unavailability iff the CURRENT error is typed-unavailable,
-		// while success, empty/no-speech, and transient failures leave the
-		// record note-free so the reply stays the retryable "yet".
+		// note — anchored unavailability markers included, because a stored
+		// marker is history, not proof (rows written before the shared phase
+		// classifier may carry it for an ordinary transient 502). Only this
+		// attempt's outcome decides the reply: the catch below re-marks
+		// unavailability iff the CURRENT error classifies as unavailable, while
+		// success, empty/no-speech, and transient failures leave the record
+		// note-free so the reply stays the retryable "yet".
 		attachment.notProcessed = undefined;
 		try {
 			const buffer = await fetchTranscribableBytes(runtime, attachment.url);
@@ -413,14 +421,17 @@ async function transcribeMediaOnDemand(
 			}
 		} catch (err) {
 			// error-policy:J4 the attachment stays readable-as-absent and the
-			// caller's fallback message reports the state honestly. Only a
-			// no-provider-can-serve failure from THIS attempt marks the record
-			// unavailable (and thus the "isn't enabled" reply); any stored note
-			// was cleared before the attempt, so a transient fetch/provider
-			// error leaves the record note-free and the reply stays the
-			// retryable "yet". Expected whenever STT is disabled, so debug, not
-			// warn.
-			if (isTranscriptionUnavailableError(err)) {
+			// caller's fallback message reports the state honestly. The shared
+			// phase classifier decides: only a no-provider-can-serve failure from
+			// THIS attempt marks the record unavailable (and thus the "isn't
+			// enabled" reply); any stored note was cleared before the attempt, so
+			// a fetch-phase or transient provider error leaves the record
+			// note-free and the reply stays the retryable "yet". Expected
+			// whenever STT is disabled, so debug, not warn.
+			if (
+				err instanceof Error &&
+				classifyTranscriptionFailure(err) === "unavailable"
+			) {
 				attachment.notProcessed = `Transcription unavailable: ${err.message}`;
 			}
 			logger.debug(

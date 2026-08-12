@@ -29,7 +29,12 @@
  *   5. a successful transcript persists into the owning message memory with
  *      `notProcessed` cleared, and a persistence failure never breaks the
  *      reply — but a redacted-disclosure variant never persists at all, and a
- *      stored entry that already has a transcript is never overwritten;
+ *      stored entry that already has a transcript is never overwritten; the
+ *      write routes through the room's lease (runtime.roomHandlerQueue — a
+ *      REAL queue instance here, not a stub) with a leased re-read so a
+ *      concurrent sibling write to the same memory row is never lost, and a
+ *      verify re-read so a silently no-oped write is reported instead of
+ *      claimed as persisted;
  *   6. (#18429) the local branch rejects an oversize attachment on the
  *      declared content-length BEFORE allocating the body, streams the body
  *      under the byte cap when the header is absent or lying (cancelling at
@@ -60,6 +65,9 @@ vi.mock("../../media/fetch.ts", async (importActual) => ({
 }));
 
 const { readAttachmentAction } = await import("./readAttachmentAction.ts");
+const { RoomHandlerQueue } = await import(
+	"../../runtime/room-handler-queue.ts"
+);
 
 const VIDEO_URL =
 	"https://cdn.discordapp.com/attachments/123/456/snaptik_video.mp4";
@@ -92,6 +100,7 @@ function makeRuntime(params: {
 	getMemoryById?: (id: UUID) => Promise<Memory | null>;
 	updateMemory?: (patch: MemoryUpdate) => Promise<boolean>;
 	reportedErrors?: ReportedError[];
+	roomHandlerQueue?: InstanceType<typeof RoomHandlerQueue>;
 }): IAgentRuntime {
 	const runtime = {
 		agentId: params.agentId,
@@ -104,6 +113,10 @@ function makeRuntime(params: {
 		getWorld: async () => null,
 		getService: () => null,
 		getSetting: () => undefined,
+		// The persistence path serializes through the REAL room-writer queue —
+		// a stub here would silently bypass the lost-update protection under
+		// test.
+		roomHandlerQueue: params.roomHandlerQueue ?? new RoomHandlerQueue(),
 		reportError: (scope: string, error: unknown) => {
 			params.reportedErrors?.push({ scope, error });
 		},
@@ -126,6 +139,7 @@ async function runRead(params: {
 	getMemoryById?: (id: UUID) => Promise<Memory | null>;
 	updateMemory?: (patch: MemoryUpdate) => Promise<boolean>;
 	reportedErrors?: ReportedError[];
+	roomHandlerQueue?: InstanceType<typeof RoomHandlerQueue>;
 	text?: string;
 }) {
 	fetchRemoteMediaMock.mockReset();
@@ -142,6 +156,7 @@ async function runRead(params: {
 		getMemoryById: params.getMemoryById,
 		updateMemory: params.updateMemory,
 		reportedErrors: params.reportedErrors,
+		roomHandlerQueue: params.roomHandlerQueue,
 	});
 	const message: Memory = {
 		id: uuidv4() as UUID,
@@ -552,6 +567,7 @@ describe("ATTACHMENT read on-demand transcription", () => {
 	it("persists a successful transcript into the owning message's stored attachment", async () => {
 		const lookups: UUID[] = [];
 		const updates: MemoryUpdate[] = [];
+		const reportedErrors: ReportedError[] = [];
 		const bystander: Media = {
 			id: "image-1",
 			url: "/api/media/aabbccdd.png",
@@ -560,6 +576,25 @@ describe("ATTACHMENT read on-demand transcription", () => {
 			contentType: ContentType.IMAGE,
 			text: "a chart",
 		};
+		// Backing store: reads return copies, updates land, so the persistence
+		// path's leased re-read and verify re-read observe real durable state.
+		let store: Memory | null = null;
+		const rowFor = (id: UUID): Memory =>
+			({
+				id,
+				entityId: id,
+				roomId: id,
+				content: {
+					text: "posted the clip",
+					attachments: [
+						{ ...bystander },
+						makeVideoAttachment({
+							notProcessed:
+								"Video transcription unavailable: provider returned 502",
+						}),
+					],
+				},
+			}) as Memory;
 		const { result, callbackTexts, message } = await runRead({
 			attachment: makeVideoAttachment({
 				notProcessed: "Video transcription unavailable: provider returned 502",
@@ -567,35 +602,29 @@ describe("ATTACHMENT read on-demand transcription", () => {
 			transcription: async () => TRANSCRIPT,
 			getMemoryById: async (id) => {
 				lookups.push(id);
-				return {
-					id,
-					entityId: id,
-					roomId: id,
-					content: {
-						text: "posted the clip",
-						attachments: [
-							bystander,
-							makeVideoAttachment({
-								notProcessed:
-									"Video transcription unavailable: provider returned 502",
-							}),
-						],
-					},
-				} as Memory;
+				if (!store) store = rowFor(id);
+				return structuredClone(store);
 			},
 			updateMemory: async (patch) => {
 				updates.push(patch);
+				store = { ...(store as Memory), ...patch } as Memory;
 				return true;
 			},
+			reportedErrors,
 		});
 
 		expect(result?.success).toBe(true);
 		expect(callbackTexts).toEqual([ANSWER]);
-		// The stored row that owns the attachment was looked up and rewritten.
-		expect(lookups).toEqual([message.id]);
+		// The verified write reported no persistence failure.
+		expect(reportedErrors).toEqual([]);
+		// The stored row that owns the attachment was read three times: the
+		// room-discovery snapshot, the authoritative leased re-read, and the
+		// post-write verification.
+		expect(lookups).toEqual([message.id, message.id, message.id]);
 		expect(updates).toHaveLength(1);
 		expect(updates[0]?.id).toBe(message.id);
-		const persisted = updates[0]?.content?.attachments as Media[];
+		const persisted = (store as unknown as Memory).content
+			.attachments as Media[];
 		expect(persisted).toHaveLength(2);
 		// Only the owning attachment entry changed.
 		expect(persisted[0]).toEqual(bystander);
@@ -610,6 +639,156 @@ describe("ATTACHMENT read on-demand transcription", () => {
 		// Gathering-layer transport fields never reach storage.
 		expect("_messageId" in video).toBe(false);
 		expect("_createdAt" in video).toBe(false);
+	});
+
+	it("never loses a concurrent sibling write to the same memory row (lost-update guard)", async () => {
+		// A sibling enrichment (e.g. an image description landing on the same
+		// message row) writes between the persistence path's first read and its
+		// durable write. A stale-snapshot read-modify-write would clobber it;
+		// the leased re-read must pick it up so BOTH the sibling's field and
+		// the fresh transcript survive.
+		const reportedErrors: ReportedError[] = [];
+		let reads = 0;
+		let store: Memory | null = null;
+		const rowFor = (id: UUID): Memory =>
+			({
+				id,
+				entityId: id,
+				roomId: id,
+				content: {
+					text: "posted the clip",
+					attachments: [
+						{
+							id: "image-1",
+							url: "/api/media/aabbccdd.png",
+							title: "chart.png",
+							source: "discord",
+							contentType: ContentType.IMAGE,
+						},
+						makeVideoAttachment(),
+					],
+				},
+			}) as Memory;
+		const { result, callbackTexts } = await runRead({
+			attachment: makeVideoAttachment(),
+			transcription: async () => TRANSCRIPT,
+			getMemoryById: async (id) => {
+				if (!store) store = rowFor(id);
+				reads += 1;
+				const snapshotCopy = structuredClone(store);
+				if (reads === 1) {
+					// The sibling's write lands right after the first read is taken:
+					// any writer still holding that stale snapshot will lose it.
+					const sibling = structuredClone(store) as Memory;
+					const image = (sibling.content.attachments as Media[]).find(
+						(entry) => entry.id === "image-1",
+					);
+					if (image) image.description = "sibling wrote this";
+					store = sibling;
+				}
+				return snapshotCopy;
+			},
+			updateMemory: async (patch) => {
+				store = { ...(store as Memory), ...patch } as Memory;
+				return true;
+			},
+			reportedErrors,
+		});
+
+		expect(result?.success).toBe(true);
+		expect(callbackTexts).toEqual([ANSWER]);
+		expect(reportedErrors).toEqual([]);
+		const finalAttachments = (store as unknown as Memory).content
+			.attachments as Media[];
+		const image = finalAttachments.find((entry) => entry.id === "image-1");
+		const video = finalAttachments.find(
+			(entry) => entry.id === "video-attachment-1",
+		);
+		// The sibling's concurrent write survived the transcript persistence...
+		expect(image?.description).toBe("sibling wrote this");
+		// ...and the transcript landed too.
+		expect(video?.text).toBe(TRANSCRIPT);
+	});
+
+	it("reports a silently no-oped persistence instead of claiming success", async () => {
+		// runtime.updateMemory returns true whenever the adapter did not throw,
+		// so a write that never landed (row moved / adapter declined silently)
+		// would otherwise be claimed as persisted. The verify re-read must
+		// surface it through reportError while the reply still serves the
+		// in-memory transcript.
+		const reportedErrors: ReportedError[] = [];
+		const { result, callbackTexts } = await runRead({
+			attachment: makeVideoAttachment(),
+			transcription: async () => TRANSCRIPT,
+			getMemoryById: async (id) =>
+				({
+					id,
+					entityId: id,
+					roomId: id,
+					content: { attachments: [makeVideoAttachment()] },
+				}) as Memory,
+			// Claims success, persists nothing: every re-read still lacks text.
+			updateMemory: async () => true,
+			reportedErrors,
+		});
+
+		expect(result?.success).toBe(true);
+		expect(callbackTexts).toEqual([ANSWER]);
+		expect(reportedErrors).toHaveLength(1);
+		expect(reportedErrors[0]?.scope).toBe(
+			"ReadAttachmentAction.persistTranscript",
+		);
+	});
+
+	it("serializes the durable write behind the room's held lease (canonical writer authority)", async () => {
+		// While the canonical room writer holds the room's lease, the
+		// transcript persistence must wait its turn instead of racing an
+		// unserialized write into the row.
+		const queue = new RoomHandlerQueue();
+		const ROOM = uuidv4() as UUID;
+		const updates: MemoryUpdate[] = [];
+		let reads = 0;
+		let store: Memory | null = null;
+		const rowFor = (id: UUID): Memory =>
+			({
+				id,
+				entityId: id,
+				roomId: ROOM,
+				content: { attachments: [makeVideoAttachment()] },
+			}) as Memory;
+		const lease = await queue.acquire(ROOM);
+		const pending = runRead({
+			attachment: makeVideoAttachment(),
+			transcription: async () => TRANSCRIPT,
+			getMemoryById: async (id) => {
+				if (!store) store = rowFor(id);
+				reads += 1;
+				return structuredClone(store);
+			},
+			updateMemory: async (patch) => {
+				updates.push(patch);
+				store = { ...(store as Memory), ...patch } as Memory;
+				return true;
+			},
+			roomHandlerQueue: queue,
+		});
+		const deadline = Date.now() + 5_000;
+		while (reads < 1) {
+			if (Date.now() > deadline) throw new Error("snapshot read never ran");
+			await new Promise((resolve) => setTimeout(resolve, 5));
+		}
+		// Give an unserialized (buggy) write every chance to land while the
+		// canonical writer still owns the room.
+		await new Promise((resolve) => setTimeout(resolve, 25));
+		expect(updates).toHaveLength(0);
+		await lease.release();
+		const { result, callbackTexts } = await pending;
+		expect(result?.success).toBe(true);
+		expect(callbackTexts).toEqual([ANSWER]);
+		expect(updates).toHaveLength(1);
+		const persisted = (store as unknown as Memory).content
+			.attachments as Media[];
+		expect(persisted[0]?.text).toBe(TRANSCRIPT);
 	});
 
 	it("still replies with the transcript when persistence fails", async () => {
