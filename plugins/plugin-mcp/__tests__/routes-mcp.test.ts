@@ -48,6 +48,8 @@ function makeCtx(
     resolveMcpTerminalAuthorizationRejection?: McpRouteContext["resolveMcpTerminalAuthorizationRejection"];
     decodePathComponent?: McpRouteContext["decodePathComponent"];
     saveElizaConfig?: McpRouteContext["saveElizaConfig"];
+    json?: McpRouteContext["json"];
+    error?: McpRouteContext["error"];
   } = {}
 ): McpRouteContext & {
   response: { status: number; body: unknown };
@@ -80,14 +82,18 @@ function makeCtx(
       config: options.config ?? {},
       runtime: options.runtime ?? null,
     },
-    json: (_res, data, status = 200) => {
-      response.status = status;
-      response.body = data;
-    },
-    error: (_res, message, status = 500) => {
-      response.status = status;
-      response.body = { ok: false, error: message };
-    },
+    json:
+      options.json ??
+      ((_res, data, status = 200) => {
+        response.status = status;
+        response.body = data;
+      }),
+    error:
+      options.error ??
+      ((_res, message, status = 500) => {
+        response.status = status;
+        response.body = { ok: false, error: message };
+      }),
     readJsonBody: vi.fn(async () => options.body),
     saveElizaConfig,
     redactDeep: (value) => value,
@@ -227,6 +233,40 @@ describe("handleMcpRoutes", () => {
 
     expect(requestSignal?.aborted).toBe(true);
     expect(ctx.response).toEqual({ status: 0, body: undefined });
+  });
+
+  it("keeps abort tracking active until an asynchronous response write settles", async () => {
+    let requestSignal: AbortSignal | undefined;
+    let beginWrite!: () => void;
+    let finishWrite!: () => void;
+    const writeStarted = new Promise<void>((resolve) => {
+      beginWrite = resolve;
+    });
+    const writeFinished = new Promise<void>((resolve) => {
+      finishWrite = resolve;
+    });
+    vi.mocked(searchMcpMarketplace).mockImplementation(async (_query, _limit, options) => {
+      requestSignal = options?.signal;
+      return { results: [] };
+    });
+    const ctx = makeCtx("GET", "/api/mcp/marketplace/search", {
+      query: "?q=files",
+      json: async (_res, data, status = 200) => {
+        beginWrite();
+        await writeFinished;
+        ctx.response.status = status;
+        ctx.response.body = data;
+      },
+    });
+
+    const pending = handleMcpRoutes(ctx);
+    await writeStarted;
+    (ctx.req as unknown as EventEmitter).emit("aborted");
+    expect(requestSignal?.aborted).toBe(true);
+    finishWrite();
+    await expect(pending).resolves.toBe(true);
+
+    expect(ctx.response).toEqual({ status: 200, body: { ok: true, results: [] } });
   });
 
   it("rejects malformed config bodies before saving server config", async () => {

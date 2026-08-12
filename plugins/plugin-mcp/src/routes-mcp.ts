@@ -25,8 +25,8 @@ export interface McpRouteContext {
     config: McpRouteConfig;
     runtime: { getService: (name: string) => unknown } | null;
   };
-  json: (res: http.ServerResponse, data: unknown, status?: number) => void;
-  error: (res: http.ServerResponse, message: string, status?: number) => void;
+  json: (res: http.ServerResponse, data: unknown, status?: number) => void | Promise<void>;
+  error: (res: http.ServerResponse, message: string, status?: number) => void | Promise<void>;
   readJsonBody: <T extends object>(
     req: http.IncomingMessage,
     res: http.ServerResponse,
@@ -206,11 +206,15 @@ export async function handleMcpRoutes(ctx: McpRouteContext): Promise<boolean> {
         signal: abortTracker.signal,
       });
       if (abortTracker.isAborted() || !canWriteMarketplaceResponse(res)) return true;
-      json(res, { ok: true, results: result.results });
+      await json(res, { ok: true, results: result.results });
       abortTracker.markCompleted();
     } catch (err) {
       if (abortTracker.isAborted() || !canWriteMarketplaceResponse(res)) return true;
-      error(res, `MCP marketplace search failed: ${err instanceof Error ? err.message : err}`, 502);
+      await error(
+        res,
+        `MCP marketplace search failed: ${err instanceof Error ? err.message : err}`,
+        502
+      );
       abortTracker.markCompleted();
     } finally {
       abortTracker.dispose();
@@ -254,15 +258,15 @@ export async function handleMcpRoutes(ctx: McpRouteContext): Promise<boolean> {
       });
       if (abortTracker.isAborted() || !canWriteMarketplaceResponse(res)) return true;
       if (!details) {
-        error(res, `MCP server "${normalizedServerName}" not found`, 404);
+        await error(res, `MCP server "${normalizedServerName}" not found`, 404);
         abortTracker.markCompleted();
         return true;
       }
-      json(res, { ok: true, server: details });
+      await json(res, { ok: true, server: details });
       abortTracker.markCompleted();
     } catch (err) {
       if (abortTracker.isAborted() || !canWriteMarketplaceResponse(res)) return true;
-      error(
+      await error(
         res,
         `Failed to fetch server details: ${err instanceof Error ? err.message : err}`,
         502
