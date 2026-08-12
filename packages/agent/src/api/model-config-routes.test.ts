@@ -7,7 +7,7 @@
  * operation manager are injected; no live runtime or filesystem is touched.
  */
 import type http from "node:http";
-import type { IAgentRuntime } from "@elizaos/core";
+import { type IAgentRuntime, logger } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ElizaConfig } from "../config/config";
 import { buildModelCatalog } from "./model-catalog";
@@ -746,6 +746,40 @@ describe("GET /api/models/config activeChat", () => {
     expect(responseOf(openAiOverride.json).body.activeChat).toMatchObject({
       endpoint: "gateway.example",
     });
+  });
+
+  it("redacts credentials from the reported endpoint and provider logs", async () => {
+    const username = "wire-user-secret";
+    const password = "wire-password-secret";
+    const querySecret = "query-secret";
+    const fragmentSecret = "fragment-secret";
+    const configuredBase = `https://${username}:${password}@runtime-openai.example/v1?token=${querySecret}#${fragmentSecret}`;
+    const debug = vi.spyOn(logger, "debug").mockImplementation(() => undefined);
+
+    try {
+      const { ctx, json } = makeHarness("GET", null, {
+        config: directCerebrasConfig,
+        runtime: runtimeWith({ OPENAI_BASE_URL: configuredBase }),
+      });
+      await handleModelConfigRoutes(ctx as never);
+      const response = responseOf(json);
+
+      expect(response.body.activeChat).toEqual({
+        provider: "cerebras",
+        family: "OPENAI",
+        endpoint: "runtime-openai.example",
+      });
+      const observableOutput = JSON.stringify({
+        response,
+        logs: debug.mock.calls,
+      });
+      expect(observableOutput).not.toContain(username);
+      expect(observableOutput).not.toContain(password);
+      expect(observableOutput).not.toContain(querySecret);
+      expect(observableOutput).not.toContain(fragmentSecret);
+    } finally {
+      debug.mockRestore();
+    }
   });
 
   const runtimeEndpointCases: RuntimeEndpointCase[] = [

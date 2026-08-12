@@ -229,7 +229,6 @@ export function getBaseURL(runtime: IAgentRuntime): string {
         cerebrasBaseURL ??
         evolinkBaseURL ??
         "https://api.openai.com/v1");
-  logger.debug(`[OpenAI] Base URL: ${baseURL}`);
   return baseURL;
 }
 
