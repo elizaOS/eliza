@@ -386,6 +386,7 @@ async function triggerChannelCallback(
   // org — otherwise a forged settlement message could be injected cross-tenant.
   const authorized = await callbackRoomBelongsToOrganization({
     roomId,
+    agentId,
     chargeOrganizationId: payment.organization_id,
     logContext: "x402-payment-requests",
   });

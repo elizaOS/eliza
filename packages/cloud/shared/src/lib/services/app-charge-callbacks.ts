@@ -323,6 +323,7 @@ export class AppChargeCallbacksService {
     // otherwise a forged settlement message could be injected cross-tenant.
     const authorized = await callbackRoomBelongsToOrganization({
       roomId,
+      agentId,
       chargeOrganizationId,
       logContext: "AppChargeCallbacks",
     });
