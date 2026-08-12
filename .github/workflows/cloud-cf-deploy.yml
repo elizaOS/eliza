@@ -698,13 +698,10 @@ jobs:
               echo "::error::Production realtime voice is enabled but required dedicated/provider secrets are missing: ${missing_voice_secrets[*]}"
               exit 1
             fi
-            case "$VOICE_REALTIME_ELIZA_AUTHORIZATION" in
-              "Bearer "[![:space:]]*) ;;
-              *)
-                echo "::error::Production realtime voice authorization must be a nonblank Bearer credential"
-                exit 1
-                ;;
-            esac
+            if ! [[ "$VOICE_REALTIME_ELIZA_AUTHORIZATION" =~ ^Bearer\ [^[:space:]]+$ ]]; then
+              echo "::error::Production realtime voice authorization must match ^Bearer [^[:space:]]+$"
+              exit 1
+            fi
             if ! printf '%s' "$PRODUCTION_REALTIME_CARTESIA_VOICE_ID" | grep -Eq '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'; then
               echo "::error::Production realtime voice requires a Cartesia UUID voice id"
               exit 1
@@ -855,6 +852,16 @@ jobs:
             echo "::error::$name is unset but deleting the stale Worker secret failed after 3 attempts: $out"
             return 1
           }
+
+          # The dedicated credential authorizes the internal shared-agent
+          # stream independently of the WebSocket flag. Remove it before a
+          # disabled deploy so rollback closes both entrypoints; a failed delete
+          # must block the Worker deploy instead of leaving latent authority.
+          if ! is_truthy "$VOICE_REALTIME_WS_ENABLED"; then
+            VOICE_REALTIME_ELIZA_AUTHORIZATION=""
+            export VOICE_REALTIME_ELIZA_AUTHORIZATION
+            publish_toggle_secret VOICE_REALTIME_ELIZA_AUTHORIZATION || exit 1
+          fi
 
           # QA cutover is OFF-FIRST. Secret mutations update the currently
           # served Worker immediately, so remove the activation bit before
@@ -1153,6 +1160,9 @@ jobs:
     # The realtime flag is environment-scoped. Build the renderer under the
     # same staging/production authority as the Worker so its advertised
     # capability cannot drift from the route deployed in this run.
+    # Repository settings own admission to that environment: the release
+    # readback must confirm intended source-owned PR merge refs are admitted,
+    # while the trusted preview consumer keeps its independent same-repo gate.
     environment: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'production' || 'staging' }}
     timeout-minutes: 30
     # GitHub preserves outputs from successful jobs when only failed jobs are

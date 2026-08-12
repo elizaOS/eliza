@@ -7,10 +7,22 @@
  * provider, bridge, voice, and endpoint configuration is complete.
  */
 import { describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { spawnSync } from "../lib/spawn-sync-captured.mjs";
 
 const repoRoot = new URL("../../../", import.meta.url);
+const cloudApiDirectory = fileURLToPath(
+  new URL("packages/cloud/api/", repoRoot),
+);
 
 function read(path: string): string {
   return readFileSync(new URL(path, repoRoot), "utf8");
@@ -52,8 +64,40 @@ const preflight = publishStep.run.slice(
   publishStep.run.indexOf("# The Worker is the gateway"),
 );
 
+function sliceBetween(
+  source: string,
+  startMarker: string,
+  endMarker: string,
+): string {
+  const start = source.indexOf(startMarker);
+  const end = source.indexOf(endMarker, start + startMarker.length);
+  if (start < 0 || end < 0) {
+    throw new Error(
+      `Missing workflow shell markers: ${startMarker} -> ${endMarker}`,
+    );
+  }
+  return source.slice(start, end);
+}
+
+const shellHelpers = sliceBetween(
+  publishStep.run,
+  "has_nonblank_value() {",
+  "# Construct the staging fallback",
+);
+const secretMutationFunctions = sliceBetween(
+  publishStep.run,
+  "publish_secret() {",
+  "# The dedicated credential authorizes the internal shared-agent",
+);
+const realtimeDisableTransition = sliceBetween(
+  publishStep.run,
+  "# The dedicated credential authorizes the internal shared-agent",
+  "# QA cutover is OFF-FIRST",
+);
+
 function runPreflight(env: Record<string, string>) {
-  return spawnSync("/bin/bash", ["-c", preflight], {
+  return spawnSync("/bin/bash", ["-e", "-o", "pipefail", "-c", preflight], {
+    cwd: cloudApiDirectory,
     encoding: "utf8",
     env: {
       ...process.env,
@@ -75,6 +119,17 @@ function runPreflight(env: Record<string, string>) {
       ...env,
     },
   });
+}
+
+interface PreflightResult {
+  status: number | null;
+  stderr: string;
+  stdout: string;
+}
+
+function expectSuccessfulPreflight(result: PreflightResult) {
+  expect(result.status, `${result.stdout}${result.stderr}`).toBe(0);
+  expect(result.stderr).toBe("");
 }
 
 describe("Cloud CF realtime voice deploy contract", () => {
@@ -105,6 +160,69 @@ describe("Cloud CF realtime voice deploy contract", () => {
     expect(publishStep.run).toContain(
       "is gated by realtime voice, Fish enablement, and data-governance approval; skipping",
     );
+  });
+
+  test("removes disabled realtime bridge authority before deploying the false runtime flag", () => {
+    const stateDirectory = mkdtempSync(
+      path.join(tmpdir(), "eliza-voice-secret-transition-"),
+    );
+    const authorizationSecret = path.join(
+      stateDirectory,
+      "VOICE_REALTIME_ELIZA_AUTHORIZATION",
+    );
+    const mutationLog = path.join(stateDirectory, "wrangler.log");
+    writeFileSync(authorizationSecret, "previously-published");
+
+    try {
+      const mutationHarness = `
+bunx() {
+  printf '%s\\n' "$*" >> "$VOICE_TEST_MUTATION_LOG"
+  if [ "$1" = "wrangler" ] && [ "$2" = "secret" ] && [ "$3" = "delete" ]; then
+    rm -f "$VOICE_TEST_STATE_DIRECTORY/$4"
+  fi
+}
+${shellHelpers}
+${secretMutationFunctions.replaceAll("$" + "{{ steps.env.outputs.wrangler_args }}", "--env production")}
+${realtimeDisableTransition}
+`;
+      const result = spawnSync(
+        "/bin/bash",
+        ["-e", "-o", "pipefail", "-c", mutationHarness],
+        {
+          cwd: cloudApiDirectory,
+          encoding: "utf8",
+          env: {
+            ...process.env,
+            VOICE_REALTIME_WS_ENABLED: "false",
+            VOICE_REALTIME_ELIZA_AUTHORIZATION: "Bearer previously-live",
+            VOICE_TEST_MUTATION_LOG: mutationLog,
+            VOICE_TEST_STATE_DIRECTORY: stateDirectory,
+          },
+        },
+      );
+
+      expect(result.status, `${result.stdout}${result.stderr}`).toBe(0);
+      expect(result.stderr).toBe("");
+      expect(existsSync(authorizationSecret)).toBe(false);
+      expect(readFileSync(mutationLog, "utf8")).toContain(
+        "wrangler secret delete VOICE_REALTIME_ELIZA_AUTHORIZATION --env production",
+      );
+
+      const steps = workflow.jobs?.["deploy-api"]?.steps ?? [];
+      const publishIndex = steps.findIndex(
+        (step) => step.name === "Publish Worker AI secrets",
+      );
+      const deployIndex = steps.findIndex(
+        (step) => step.name === "Deploy to Cloudflare Workers",
+      );
+      expect(publishIndex).toBeGreaterThanOrEqual(0);
+      expect(publishIndex).toBeLessThan(deployIndex);
+      expect(deployStep.run).toContain(
+        '--var VOICE_REALTIME_WS_ENABLED:"$VOICE_REALTIME_WS_ENABLED"',
+      );
+    } finally {
+      rmSync(stateDirectory, { recursive: true, force: true });
+    }
   });
 
   test("passes a production-off Fish opt-in and exact realtime format to the Worker", () => {
@@ -219,6 +337,15 @@ describe("Cloud CF realtime voice deploy contract", () => {
     for (const jobName of ["build-pages", "deploy-console", "deploy-app"]) {
       expect(workflow.jobs?.[jobName]?.environment).toBe(deployEnvironment);
     }
+    const previewWorkflow = read(
+      ".github/workflows/cloud-cf-pr-preview-deploy.yml",
+    );
+    expect(previewWorkflow).toContain(
+      "github.event.workflow_run.head_repository.full_name == github.repository",
+    );
+    expect(workflowSource).toContain(
+      "readback must confirm intended source-owned PR merge refs are admitted",
+    );
     expect(deployStep.run).toContain(
       '--var VOICE_REALTIME_CARTESIA_VOICE_ID:"$PRODUCTION_REALTIME_CARTESIA_VOICE_ID"',
     );
@@ -255,7 +382,7 @@ describe("Cloud CF realtime voice deploy preflight (executed verbatim)", () => {
       STAGING_ELIZACLOUD_API_KEY: "repo-key-must-not-be-used",
       VOICE_REALTIME_WS_ENABLED: "false",
     });
-    expect(result.status).toBe(0);
+    expectSuccessfulPreflight(result);
     expect(result.stdout).not.toContain("Bearer repo-key-must-not-be-used");
   });
 
@@ -310,7 +437,7 @@ describe("Cloud CF realtime voice deploy preflight (executed verbatim)", () => {
       FISH_AUDIO_DATA_GOVERNANCE_APPROVED: "true",
       VOICE_REALTIME_WS_ENABLED: "true",
     });
-    expect(configured.status).toBe(0);
+    expectSuccessfulPreflight(configured);
   });
 
   test("refuses Fish promotion without explicit data-governance approval", () => {
@@ -328,10 +455,14 @@ describe("Cloud CF realtime voice deploy preflight (executed verbatim)", () => {
     const configured = spawnSync(
       "/bin/bash",
       [
+        "-e",
+        "-o",
+        "pipefail",
         "-c",
         `${preflight}\nprintf '<%s>' "$VOICE_REALTIME_ELIZA_AUTHORIZATION"`,
       ],
       {
+        cwd: cloudApiDirectory,
         encoding: "utf8",
         env: {
           ...process.env,
@@ -344,7 +475,7 @@ describe("Cloud CF realtime voice deploy preflight (executed verbatim)", () => {
         },
       },
     );
-    expect(configured.status).toBe(0);
+    expectSuccessfulPreflight(configured);
     expect(configured.stdout).toBe("<Bearer stage-cloud-key>");
 
     const empty = runPreflight({
@@ -364,7 +495,7 @@ describe("Cloud CF realtime voice deploy preflight (executed verbatim)", () => {
       VOICE_REALTIME_ELIZA_AUTHORIZATION: "",
       STAGING_ELIZACLOUD_API_KEY: "repo-key-must-not-be-used",
     });
-    expect(disabled.status).toBe(0);
+    expectSuccessfulPreflight(disabled);
     expect(disabled.stdout).not.toContain("Bearer repo-key-must-not-be-used");
 
     const missingDedicated = runPreflight({
@@ -404,7 +535,7 @@ describe("Cloud CF realtime voice deploy preflight (executed verbatim)", () => {
       PRODUCTION_REALTIME_ELIZA_ENDPOINT: "https://api.elizacloud.ai",
       STAGING_ELIZACLOUD_API_KEY: "repo-key-must-not-be-used",
     });
-    expect(configured.status).toBe(0);
+    expectSuccessfulPreflight(configured);
   });
 
   test("rejects malformed production voice routing before publishing secrets", () => {
@@ -420,6 +551,11 @@ describe("Cloud CF realtime voice deploy preflight (executed verbatim)", () => {
     };
     for (const invalid of [
       { VOICE_REALTIME_ELIZA_AUTHORIZATION: "production-dedicated" },
+      { VOICE_REALTIME_ELIZA_AUTHORIZATION: "Bearer production-dedicated " },
+      {
+        VOICE_REALTIME_ELIZA_AUTHORIZATION:
+          "Bearer production-dedicated\nsecond-line",
+      },
       { PRODUCTION_REALTIME_CARTESIA_VOICE_ID: "not-a-uuid" },
       {
         PRODUCTION_REALTIME_ELIZA_ENDPOINT: "https://api-staging.elizacloud.ai",

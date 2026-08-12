@@ -103,12 +103,23 @@ Staging is enabled in `wrangler.toml` and supplies the Cartesia voice id and
 staging API origin there. Production's committed Wrangler default stays off.
 The managed deploy workflow can enable production only from its protected
 GitHub environment and fails before secret publication or deploy unless the
-Cartesia key, dedicated Worker-to-agent authorization, Cartesia voice id, and
-production API origin are all nonblank. The Pages renderer consumes that same
-environment-scoped flag, so it cannot advertise realtime while the Worker is
-off. Realtime production acceptance still requires one live mic → Cartesia Ink
-→ Eliza/Cerebras → Cartesia Sonic session after the protected configuration is
-installed.
+`CEREBRAS_API_KEY` and Cartesia key are nonblank, the dedicated Worker-to-agent
+authorization matches `^Bearer [^[:space:]]+$`, the Cartesia voice id is a UUID,
+and the API origin is exactly `https://api.elizacloud.ai` (an optional trailing
+slash is normalized). Disabling realtime deletes the dedicated authorization
+before deploying the false Worker flag, so rollback removes both the WebSocket
+entrypoint and its independent internal-stream authority. The Pages renderer
+consumes that same environment-scoped flag, so it cannot advertise realtime
+while the Worker is off. Realtime production acceptance still requires one live
+mic → Cartesia Ink → Eliza/Cerebras → Cartesia Sonic session after the protected
+configuration is installed.
+
+`build-pages` references the selected GitHub environment so the renderer can
+read its flag. The final release readback must therefore confirm that the
+`staging` environment admits intended source-owned pull-request merge refs; the
+workflow does not create or mutate that repository setting. The privileged PR
+preview consumer separately rejects fork producers before using Cloudflare
+credentials.
 
 ## headscale (not Railway — Hetzner control-plane VM)
 
