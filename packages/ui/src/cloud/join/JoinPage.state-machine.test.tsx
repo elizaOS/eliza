@@ -12,7 +12,12 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { StrictMode } from "react";
-import { MemoryRouter, Route, Routes } from "react-router-dom";
+import {
+  MemoryRouter,
+  Route,
+  Routes,
+  useLocation,
+} from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   CloudAgentJoinProgress,
@@ -30,6 +35,7 @@ const testDoubles = vi.hoisted(() => ({
   clearPersistedActiveServer: vi.fn(),
   savePersistedActiveServer: vi.fn(),
   savePersistedFirstRunComplete: vi.fn(),
+  session: { authenticated: true, ready: true },
 }));
 
 vi.mock("../../api", () => ({ client: testDoubles.client }));
@@ -52,7 +58,7 @@ vi.mock("./lib/run-join-flow", () => ({
 }));
 
 vi.mock("./lib/use-join-session", () => ({
-  useJoinSessionAuth: () => ({ authenticated: true, ready: true }),
+  useJoinSessionAuth: () => testDoubles.session,
 }));
 
 vi.mock("../../state/persistence", () => ({
@@ -80,9 +86,22 @@ const PROVISIONING_PROGRESS: CloudAgentJoinProgress = {
   correlationId: "job-test",
 };
 
+function LocationProbe() {
+  const location = useLocation();
+  return (
+    <span
+      data-testid="location-probe"
+      data-pathname={location.pathname}
+      data-search={location.search}
+      hidden
+    />
+  );
+}
+
 function renderJoinPage(options: { strict?: boolean } = {}) {
   const page = (
     <MemoryRouter initialEntries={["/join"]}>
+      <LocationProbe />
       <Routes>
         <Route path="/join" element={<JoinPage />} />
         <Route path="/login" element={<p>Login escape reached</p>} />
@@ -97,7 +116,10 @@ describe("JoinPage lifecycle state", () => {
 
   beforeEach(() => {
     mocks.runJoinFlow.mockReset();
-    mocks.signOut.mockClear();
+    mocks.signOut.mockReset();
+    mocks.signOut.mockResolvedValue(undefined);
+    testDoubles.session.authenticated = true;
+    testDoubles.session.ready = true;
     testDoubles.client.selectOrProvisionCloudAgent.mockReset();
     testDoubles.client.setBaseUrl.mockReset();
     testDoubles.client.setToken.mockReset();
@@ -147,9 +169,33 @@ describe("JoinPage lifecycle state", () => {
     expect(mocks.runJoinFlow).toHaveBeenCalledTimes(1);
   });
 
+  it("preserves the join return target for an initially unauthenticated session", async () => {
+    testDoubles.session.authenticated = false;
+
+    renderJoinPage();
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("location-probe").getAttribute("data-pathname"),
+      ).toBe("/login");
+    });
+    expect(
+      screen.getByTestId("location-probe").getAttribute("data-search"),
+    ).toBe("?returnTo=/join");
+    expect(mocks.runJoinFlow).not.toHaveBeenCalled();
+  });
+
   it("signs out through the bridged host and invalidates the active attempt", async () => {
     let finish: ((value: unknown) => void) | undefined;
+    let finishSignOut: (() => void) | undefined;
     let obsoleteFlowSettled = false;
+    const pendingSignOut = new Promise<void>((resolve) => {
+      finishSignOut = resolve;
+    });
+    mocks.signOut.mockImplementation(() => {
+      testDoubles.session.authenticated = false;
+      return pendingSignOut;
+    });
     mocks.runJoinFlow.mockImplementation(async (args: RunJoinFlowArgs) => {
       args.onProgress?.(
         "provisioning",
@@ -174,9 +220,24 @@ describe("JoinPage lifecycle state", () => {
     renderJoinPage();
     fireEvent.click(await screen.findByRole("button", { name: "Sign out" }));
 
-    expect(await screen.findByText("Login escape reached")).toBeTruthy();
     expect(mocks.signOut).toHaveBeenCalledTimes(1);
     expect(mocks.runJoinFlow).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText("Login escape reached")).toBeNull();
+    expect(
+      screen.getByTestId("location-probe").getAttribute("data-pathname"),
+    ).toBe("/join");
+    expect(
+      screen.getByTestId("location-probe").getAttribute("data-search"),
+    ).toBe("");
+
+    finishSignOut?.();
+    expect(await screen.findByText("Login escape reached")).toBeTruthy();
+    expect(
+      screen.getByTestId("location-probe").getAttribute("data-pathname"),
+    ).toBe("/login");
+    expect(
+      screen.getByTestId("location-probe").getAttribute("data-search"),
+    ).toBe("");
 
     finish?.({
       agentId: "agent-test",
