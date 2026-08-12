@@ -6411,10 +6411,15 @@ export class ElizaSandboxService {
       throw error;
     }
 
-    if (type === "pre-upgrade" && !stateData.manifest) {
+    // Both labels gate a destructive follow-up — a rollback replays the
+    // `pre-upgrade` point, and a relocation destroys the source container once
+    // the `pre-move` capture is restored elsewhere. A partial capture would
+    // survive either as silent data loss, so neither is accepted without a
+    // full-agent manifest.
+    if ((type === "pre-upgrade" || type === "pre-move") && !stateData.manifest) {
       return {
         success: false,
-        error: "Pre-upgrade snapshot did not include a full-agent manifest",
+        error: `${type} snapshot did not include a full-agent manifest`,
       };
     }
 
