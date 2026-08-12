@@ -965,7 +965,8 @@ async function runPlannerLoopIterations(
 
 			const nonTerminalCalls = plannerOutput.toolCalls
 				.filter((toolCall) => !isTerminalToolCall(toolCall))
-				.map((toolCall, index) => ensureToolCallId(toolCall, iteration, index));
+				.map((toolCall, index) => ensureToolCallId(toolCall, iteration, index))
+				.map((toolCall) => params.canonicalizeToolCall?.(toolCall) ?? toolCall);
 			const unavailable = splitUnavailableToolCalls(
 				nonTerminalCalls,
 				params.tools,

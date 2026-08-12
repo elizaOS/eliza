@@ -278,6 +278,8 @@ export interface PlannerLoopParams {
 		toolCall: PlannerToolCall,
 		context: { iteration: number },
 	) => Promise<void> | void;
+	/** Resolve aliases to the same canonical operation used by execution. */
+	canonicalizeToolCall?: (toolCall: PlannerToolCall) => PlannerToolCall;
 	modelType?: TextGenerationModelType;
 	evaluatorEffects?: EvaluatorEffects;
 	provider?: string;

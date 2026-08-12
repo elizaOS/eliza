@@ -1059,6 +1059,122 @@ describe("sub-planner helpers", () => {
 		]);
 	});
 
+	it("skips a proven child when the model repeats its alias", async () => {
+		const child = makeAction({
+			name: "GOOGLE_CALENDAR",
+			similes: ["CALENDAR_READ"],
+		});
+		const parent = makeAction({
+			name: "CALENDAR",
+			subActions: ["GOOGLE_CALENDAR"],
+			subPlanner: true,
+		});
+		const aliasCall = {
+			name: "CALENDAR_READ",
+			arguments: { day: "today" },
+		};
+		const useModel = vi
+			.fn()
+			.mockResolvedValueOnce({
+				text: "",
+				toolCalls: [{ id: "alias-1", ...aliasCall }],
+			})
+			.mockResolvedValueOnce({
+				text: "",
+				toolCalls: [{ id: "alias-2", ...aliasCall }],
+			})
+			.mockResolvedValueOnce({ text: "Done.", toolCalls: [] });
+		const execute = vi.fn(async () => ({
+			success: true,
+			userFacingEffect: "none" as const,
+		}));
+
+		const result = await runSubPlanner({
+			runtime: makeRuntime([parent, child], useModel),
+			action: parent,
+			context: { id: "ctx", events: [] },
+			ctx: { message: makeMessage() },
+			execute,
+			evaluate: vi.fn(async () => ({
+				success: true,
+				decision: "CONTINUE" as const,
+				thought: "Check once more.",
+			})),
+			config: { maxRepeatedToolCalls: 0 },
+		});
+
+		expect(execute).toHaveBeenCalledTimes(1);
+		expect(result.trajectory.steps[0]?.toolCall?.name).toBe("GOOGLE_CALENDAR");
+	});
+
+	it("retries a failed child through its canonicalized alias", async () => {
+		const child = makeAction({
+			name: "GOOGLE_CALENDAR",
+			similes: ["CALENDAR_READ"],
+		});
+		const parent = makeAction({
+			name: "CALENDAR",
+			subActions: ["GOOGLE_CALENDAR"],
+			subPlanner: true,
+		});
+		const useModel = vi
+			.fn()
+			.mockResolvedValueOnce({
+				text: "",
+				toolCalls: [
+					{
+						id: "alias-fail-1",
+						name: "CALENDAR_READ",
+						arguments: { day: "today" },
+					},
+				],
+			})
+			.mockResolvedValueOnce({
+				text: "",
+				toolCalls: [
+					{
+						id: "alias-fail-2",
+						name: "CALENDAR_READ",
+						arguments: { day: "today" },
+					},
+				],
+			});
+		const execute = vi
+			.fn()
+			.mockResolvedValueOnce({ success: false, error: "temporary" })
+			.mockResolvedValueOnce({
+				success: true,
+				userFacingEffect: "none" as const,
+			});
+
+		await runSubPlanner({
+			runtime: makeRuntime([parent, child], useModel),
+			action: parent,
+			context: { id: "ctx", events: [] },
+			ctx: { message: makeMessage() },
+			execute,
+			evaluate: vi
+				.fn()
+				.mockResolvedValueOnce({
+					success: false,
+					decision: "CONTINUE",
+					thought: "Retry.",
+				})
+				.mockResolvedValueOnce({
+					success: true,
+					decision: "FINISH",
+					thought: "Done.",
+					messageToUser: "Done.",
+				}),
+		});
+
+		expect(execute).toHaveBeenCalledTimes(2);
+		expect(execute.mock.calls.map((call) => call[2].name)).toEqual([
+			"GOOGLE_CALENDAR",
+			"GOOGLE_CALENDAR",
+		]);
+	});
+
 	it("passes child actions to the model as native tool definitions", async () => {
 		const childA = makeAction({
 			name: "CHILD_A",
