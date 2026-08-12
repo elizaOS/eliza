@@ -29,9 +29,11 @@ import {
 } from "./scheduled-task/standalone-tick.js";
 
 /**
- * One fallback tick timer per runtime. WeakMap so a torn-down runtime's timer
- * reference does not keep it alive; the timer itself is unref'd so it never
- * blocks process exit.
+ * One fallback tick timer per runtime. The interval callback closes over the
+ * runtime, so the WeakMap alone cannot release a torn-down runtime — the
+ * self-stop check inside the callback is what actually ends the timer's (and
+ * therefore the runtime's) lifetime. The timer is unref'd so it never blocks
+ * process exit.
  */
 const standaloneTickTimers = new WeakMap<
   IAgentRuntime,
@@ -41,6 +43,16 @@ const standaloneTickTimers = new WeakMap<
 function startStandaloneTickDriver(runtime: IAgentRuntime): void {
   if (standaloneTickTimers.has(runtime)) return;
   const timer = setInterval(() => {
+    // Self-stop on runtime teardown: a stopped runtime no longer resolves the
+    // runner service (`runtime.getService` returns null after stop), and
+    // without this check the closure would pin the runtime alive and throw a
+    // warn line every interval forever in multi-agent processes that
+    // stop/restart agents.
+    if (!runtime.getService(ScheduledTaskRunnerService.serviceType)) {
+      clearInterval(timer);
+      standaloneTickTimers.delete(runtime);
+      return;
+    }
     void runStandaloneSchedulingTick(runtime).catch((error) => {
       logger.warn(
         { src: "scheduling:standalone-tick", agentId: runtime.agentId },
