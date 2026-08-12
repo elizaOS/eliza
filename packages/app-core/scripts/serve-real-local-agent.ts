@@ -8,9 +8,11 @@
  */
 
 import { readFile } from "node:fs/promises";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { ModelType, type Route } from "@elizaos/core";
-import { backgroundUploadImageRoute } from "../../agent/src/api/background-routes.ts";
 import { createDeterministicModelPlugin } from "@elizaos/core/testing";
+import { backgroundUploadImageRoute } from "../../agent/src/api/background-routes.ts";
 import { startApiServer } from "../src/api/server.ts";
 import { useIsolatedConfigEnv } from "../test/helpers/isolated-config.ts";
 import { createRealTestRuntime } from "../test/helpers/real-runtime.ts";
@@ -145,26 +147,40 @@ async function installGeneratedRegistryFixture(): Promise<() => void> {
   };
 }
 
-function resolvePort(): number {
-  const raw = process.env.ELIZA_API_PORT ?? process.env.ELIZA_PORT ?? "31337";
-  const port = Number.parseInt(raw, 10);
-  if (!Number.isFinite(port) || port <= 0) {
+export function resolvePort(env = process.env): number {
+  const raw = env.ELIZA_API_PORT ?? env.ELIZA_PORT ?? "31337";
+  if (!/^\d+$/.test(raw)) {
+    throw new Error(`Invalid ELIZA_API_PORT/ELIZA_PORT: ${raw}`);
+  }
+  const port = Number(raw);
+  if (!Number.isSafeInteger(port) || port <= 0 || port > 65535) {
     throw new Error(`Invalid ELIZA_API_PORT/ELIZA_PORT: ${raw}`);
   }
   return port;
 }
 
-function resolveNonNegativeIntegerEnv(name: string, fallback: string): number {
-  const raw = process.env[name] ?? fallback;
-  const value = Number.parseInt(raw, 10);
+export function resolveNonNegativeIntegerEnv(
+  name: string,
+  fallback: string,
+  env = process.env,
+): number {
+  const raw = env[name] ?? fallback;
+  if (!/^\d+$/.test(raw)) {
+    throw new Error(`${name} must be a non-negative integer: ${raw}`);
+  }
+  const value = Number(raw);
   if (!Number.isSafeInteger(value) || value < 0) {
     throw new Error(`${name} must be a non-negative integer: ${raw}`);
   }
   return value;
 }
 
-function resolvePositiveIntegerEnv(name: string, fallback: string): number {
-  const value = resolveNonNegativeIntegerEnv(name, fallback);
+export function resolvePositiveIntegerEnv(
+  name: string,
+  fallback: string,
+  env = process.env,
+): number {
+  const value = resolveNonNegativeIntegerEnv(name, fallback, env);
   if (value === 0) {
     throw new Error(`${name} must be greater than zero`);
   }
@@ -267,9 +283,14 @@ async function main(): Promise<void> {
   await new Promise<never>(() => {});
 }
 
-main().catch((error) => {
-  console.error(
-    `[device-e2e-host-agent] FAILED: ${error instanceof Error ? (error.stack ?? error.message) : String(error)}`,
-  );
-  process.exit(1);
-});
+if (
+  process.argv[1] &&
+  path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)
+) {
+  main().catch((error) => {
+    console.error(
+      `[device-e2e-host-agent] FAILED: ${error instanceof Error ? (error.stack ?? error.message) : String(error)}`,
+    );
+    process.exit(1);
+  });
+}
