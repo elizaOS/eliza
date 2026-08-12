@@ -148,6 +148,31 @@ describe("runJoinFlow", () => {
     });
   });
 
+  test("forwards shared-first preference so join cannot create a billed dedicated agent", async () => {
+    const { client, select } = makeClient({
+      agentId: "agent-shared",
+      agentName: "Eliza",
+      apiBase: "https://api.elizacloud.ai/api/v1/eliza/agents/agent-shared",
+      bridgeUrl: null,
+      created: true,
+      source: "shared_runtime",
+    });
+    const { effects } = makeEffects();
+
+    await runJoinFlow({
+      client,
+      effects,
+      cloudApiBase: CLOUD_API_BASE,
+      authToken: "tok",
+      agentName: "Eliza",
+      preferSharedTier: true,
+    });
+
+    expect(select).toHaveBeenCalledWith(
+      expect.objectContaining({ preferSharedTier: true }),
+    );
+  });
+
   test("prefers the dedicated container subdomain when reported", async () => {
     const { client, setBaseUrl } = makeClient({
       agentId: "agent-xyz",

@@ -26,6 +26,11 @@
  * an agent within seconds.
  */
 
+import type {
+  CloudAgentJoinProgress,
+  CloudAgentJoinProgressHandler,
+  CloudAgentJoinSource,
+} from "../../../api/client-types-cloud";
 import { isCloudAgentGoneError } from "../../../api/client-types-core";
 import {
   buildCloudSharedAgentApiBase,
@@ -42,13 +47,16 @@ export interface JoinFlowClient {
     preferAgentId?: string | null;
     preferSharedTier?: boolean;
     forceCreate?: boolean;
-    onProgress?: (status: string, detail?: string) => void;
+    onProgress?: CloudAgentJoinProgressHandler;
   }): Promise<{
     agentId: string;
     agentName: string;
     apiBase: string;
     bridgeUrl: string | null;
     created: boolean;
+    source?: CloudAgentJoinSource;
+    jobId?: string | null;
+    progress?: CloudAgentJoinProgress;
   }>;
   setBaseUrl(baseUrl: string | null): void;
   setToken(token: string | null): void;
@@ -78,11 +86,11 @@ export interface RunJoinFlowArgs {
   bio?: string[];
   /** Reuse this agent id when it still exists (e.g. last-active). */
   preferAgentId?: string | null;
-  /** Prefer the shared tier when provisioning (prevents billed dedicated). */
+  /** Prefer instant shared capacity; dedicated billing remains explicit. */
   preferSharedTier?: boolean;
   /** Always create a new agent ("Create new" gesture). */
   forceCreate?: boolean;
-  onProgress?: (status: string, detail?: string) => void;
+  onProgress?: CloudAgentJoinProgressHandler;
 }
 
 export interface JoinFlowResult {
@@ -94,6 +102,12 @@ export interface JoinFlowResult {
   created: boolean;
   /** True when the dedicated container subdomain was selected. */
   dedicated: boolean;
+  /** Lifecycle operation that produced the selected running agent. */
+  source?: CloudAgentJoinSource;
+  /** Canonical lifecycle job, when startup used one. */
+  jobId?: string | null;
+  /** Final sanitized state receipt for UI and support correlation. */
+  progress?: CloudAgentJoinProgress;
 }
 
 /**
@@ -147,7 +161,7 @@ export async function runJoinFlow(
     authToken,
     name: agentName,
     ...(bio?.length ? { bio } : {}),
-    ...(preferSharedTier ? { preferSharedTier } : {}),
+    ...(preferSharedTier ? { preferSharedTier: true } : {}),
     ...(forceCreate ? { forceCreate } : {}),
     ...(onProgress ? { onProgress } : {}),
   };
@@ -213,5 +227,8 @@ export async function runJoinFlow(
     apiBase: connectionBase,
     created: selected.created,
     dedicated: dedicated !== null,
+    ...(selected.source ? { source: selected.source } : {}),
+    ...(selected.jobId !== undefined ? { jobId: selected.jobId } : {}),
+    ...(selected.progress ? { progress: selected.progress } : {}),
   };
 }

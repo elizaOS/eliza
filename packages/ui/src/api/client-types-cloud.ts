@@ -292,6 +292,48 @@ export interface CloudCompatAgent {
   execution_tier?: string | null;
 }
 
+/** Truthful control-plane phase for the post-login Cloud agent join flow. */
+export type CloudAgentJoinPhase =
+  | "listing"
+  | "reusing"
+  | "waking"
+  | "resuming"
+  | "provisioning"
+  | "running";
+
+/** The operation that produced the agent selected by the join flow. */
+export type CloudAgentJoinSource =
+  | "existing_running"
+  | "existing_wake"
+  | "existing_resume"
+  | "existing_provision"
+  | "shared_runtime"
+  | "warm_pool"
+  | "warm_pool_recovery"
+  | "cold_provision";
+
+/**
+ * Sanitized join progress suitable for rendering and operator correlation.
+ * Agent and job ids are opaque Cloud identifiers; no token or user identity is
+ * carried through this surface.
+ */
+export interface CloudAgentJoinProgress {
+  phase: CloudAgentJoinPhase;
+  source: CloudAgentJoinSource | null;
+  agentId: string | null;
+  jobId: string | null;
+  status: string;
+  elapsedMs: number;
+  correlationId: string | null;
+}
+
+/** Backward-compatible progress callback plus the typed join-state receipt. */
+export type CloudAgentJoinProgressHandler = (
+  status: string,
+  detail?: string,
+  progress?: CloudAgentJoinProgress,
+) => void;
+
 /** User-owned BlueBubbles relay registered with the Eliza Cloud gateway. */
 export interface CloudBlueBubblesGateway {
   id: string;
@@ -347,6 +389,7 @@ export interface CloudCompatAgentProvisionResponse {
   success: boolean;
   created?: boolean;
   alreadyInProgress?: boolean;
+  source?: string;
   message?: string;
   error?: string;
   requiredBalance?: number;

@@ -2,6 +2,7 @@
  * Unit coverage for the cloud select-or-provision-agent flow. Capacitor mocked,
  * no live cloud.
  */
+import { ElizaError } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("@capacitor/core", () => ({
@@ -12,8 +13,13 @@ vi.mock("@capacitor/core", () => ({
 import { ElizaClient } from "./client-base";
 // Side-effect import: patches selectOrProvisionCloudAgent onto the prototype.
 import "./client-cloud";
-import type { CloudCompatAgent } from "./client-types-cloud";
+import type {
+  CloudAgentJoinProgress,
+  CloudCompatAgent,
+  CloudCompatJob,
+} from "./client-types-cloud";
 import { isCloudAgentGoneError } from "./client-types-core";
+import { cloudAgentJoinProgressFromError } from "./cloud-agent-join-progress";
 
 /**
  * selectOrProvisionCloudAgent reuses an existing cloud agent instead of minting
@@ -50,24 +56,82 @@ function makeAgent(
   };
 }
 
+function makeJob(
+  jobId: string,
+  overrides: Partial<CloudCompatJob> = {},
+): CloudCompatJob {
+  return {
+    jobId,
+    type: "agent_provision",
+    status: "completed",
+    data: {},
+    result: null,
+    error: null,
+    createdAt: "2026-08-11T00:00:00.000Z",
+    startedAt: "2026-08-11T00:00:00.000Z",
+    completedAt: "2026-08-11T00:00:01.000Z",
+    retryCount: 0,
+    id: jobId,
+    name: "agent_provision",
+    state: "completed",
+    created_on: "2026-08-11T00:00:00.000Z",
+    completed_on: "2026-08-11T00:00:01.000Z",
+    ...overrides,
+  };
+}
+
 function fakeClient() {
   const getCloudCompatAgents = vi.fn();
   const createCloudCompatAgent = vi.fn();
   const getCloudCompatAgent = vi.fn();
-  const resumeCloudCompatAgent = vi.fn(async () => ({ success: true }));
+  const getCloudCompatJobStatus = vi.fn(async (jobId: string) => ({
+    success: true,
+    data: makeJob(jobId),
+  }));
+  const provisionCloudCompatAgent = vi.fn(async (agentId: string) => ({
+    success: true,
+    alreadyInProgress: true,
+    data: {
+      agentId,
+      jobId: `provision-${agentId}`,
+      status: "queued",
+    },
+  }));
+  const resumeCloudCompatAgent = vi.fn(async (agentId: string) => ({
+    success: true,
+    data: {
+      jobId: `resume-${agentId}`,
+      status: "queued",
+      message: "Agent resume enqueued",
+    },
+  }));
+  const wakeCloudCompatAgent = vi.fn(async (agentId: string) => ({
+    success: true,
+    data: {
+      jobId: `wake-${agentId}`,
+      status: "queued",
+      message: "Agent wake enqueued",
+    },
+  }));
   const client = Object.create(ElizaClient.prototype) as ElizaClient;
   Object.assign(client, {
     getCloudCompatAgents,
     createCloudCompatAgent,
     getCloudCompatAgent,
+    getCloudCompatJobStatus,
+    provisionCloudCompatAgent,
     resumeCloudCompatAgent,
+    wakeCloudCompatAgent,
   });
   return {
     client,
     getCloudCompatAgents,
     createCloudCompatAgent,
     getCloudCompatAgent,
+    getCloudCompatJobStatus,
+    provisionCloudCompatAgent,
     resumeCloudCompatAgent,
+    wakeCloudCompatAgent,
   };
 }
 
@@ -141,6 +205,181 @@ describe("selectOrProvisionCloudAgent — never duplicate on a failed lookup", (
     expect(resumeCloudCompatAgent).toHaveBeenCalledWith("agent-existing");
     expect(createCloudCompatAgent).not.toHaveBeenCalled();
   });
+
+  it("wakes a sleeping agent through the canonical restore path and polls its job", async () => {
+    const {
+      client,
+      createCloudCompatAgent,
+      getCloudCompatAgent,
+      getCloudCompatAgents,
+      getCloudCompatJobStatus,
+      provisionCloudCompatAgent,
+      resumeCloudCompatAgent,
+      wakeCloudCompatAgent,
+    } = fakeClient();
+    getCloudCompatAgents.mockResolvedValue({
+      success: true,
+      data: [makeAgent({ status: "sleeping" })],
+    });
+    getCloudCompatAgent.mockResolvedValue({
+      success: true,
+      data: makeAgent({ status: "running" }),
+    });
+
+    const result = await client.selectOrProvisionCloudAgent({
+      ...BASE_OPTS,
+      wakePollIntervalMs: 1,
+      wakeTimeoutMs: 50,
+    });
+
+    expect(wakeCloudCompatAgent).toHaveBeenCalledOnce();
+    expect(wakeCloudCompatAgent).toHaveBeenCalledWith("agent-existing");
+    expect(getCloudCompatJobStatus).toHaveBeenCalledWith("wake-agent-existing");
+    expect(resumeCloudCompatAgent).not.toHaveBeenCalled();
+    expect(provisionCloudCompatAgent).not.toHaveBeenCalled();
+    expect(createCloudCompatAgent).not.toHaveBeenCalled();
+    expect(result).toMatchObject({
+      agentId: "agent-existing",
+      created: false,
+      jobId: "wake-agent-existing",
+      source: "existing_wake",
+      progress: {
+        phase: "running",
+        source: "existing_wake",
+        correlationId: "wake-agent-existing",
+      },
+    });
+  });
+
+  it("reprovisions a disconnected agent idempotently without resume, wake, or create", async () => {
+    const {
+      client,
+      createCloudCompatAgent,
+      getCloudCompatAgent,
+      getCloudCompatAgents,
+      getCloudCompatJobStatus,
+      provisionCloudCompatAgent,
+      resumeCloudCompatAgent,
+      wakeCloudCompatAgent,
+    } = fakeClient();
+    getCloudCompatAgents.mockResolvedValue({
+      success: true,
+      data: [makeAgent({ status: "disconnected" })],
+    });
+    provisionCloudCompatAgent.mockResolvedValue({
+      success: true,
+      alreadyInProgress: true,
+      data: {
+        agentId: "agent-existing",
+        jobId: "provision-agent-existing",
+        status: "processing",
+      },
+    });
+    getCloudCompatAgent.mockResolvedValue({
+      success: true,
+      data: makeAgent({ status: "running" }),
+    });
+
+    const result = await client.selectOrProvisionCloudAgent({
+      ...BASE_OPTS,
+      wakePollIntervalMs: 1,
+      wakeTimeoutMs: 50,
+    });
+
+    expect(provisionCloudCompatAgent).toHaveBeenCalledOnce();
+    expect(provisionCloudCompatAgent).toHaveBeenCalledWith("agent-existing");
+    expect(getCloudCompatJobStatus).toHaveBeenCalledWith(
+      "provision-agent-existing",
+    );
+    expect(resumeCloudCompatAgent).not.toHaveBeenCalled();
+    expect(wakeCloudCompatAgent).not.toHaveBeenCalled();
+    expect(createCloudCompatAgent).not.toHaveBeenCalled();
+    expect(result).toMatchObject({
+      agentId: "agent-existing",
+      created: false,
+      jobId: "provision-agent-existing",
+      source: "existing_provision",
+    });
+  });
+
+  it.each([
+    {
+      status: "sleeping",
+      expectedJobId: "wake-agent-existing",
+      expectedSource: "existing_wake",
+      expectedTrigger: "wake",
+    },
+    {
+      status: "disconnected",
+      expectedJobId: "provision-agent-existing",
+      expectedSource: "existing_provision",
+      expectedTrigger: "provision",
+    },
+  ] as const)(
+    "routes an idempotent create response whose detail is $status through $expectedTrigger",
+    async ({ status, expectedJobId, expectedSource, expectedTrigger }) => {
+      const {
+        client,
+        createCloudCompatAgent,
+        getCloudCompatAgent,
+        getCloudCompatAgents,
+        provisionCloudCompatAgent,
+        resumeCloudCompatAgent,
+        wakeCloudCompatAgent,
+      } = fakeClient();
+      getCloudCompatAgents.mockResolvedValue({ success: true, data: [] });
+      createCloudCompatAgent.mockResolvedValue({
+        success: true,
+        created: false,
+        data: {
+          agentId: "agent-existing",
+          agentName: "Eliza",
+          jobId: "",
+          status,
+          nodeId: null,
+          message: "Existing agent returned",
+        },
+      });
+      getCloudCompatAgent
+        .mockResolvedValueOnce({
+          success: true,
+          data: makeAgent({
+            status,
+            web_ui_url: "https://agent-existing.elizacloud.ai",
+            webUiUrl: "https://agent-existing.elizacloud.ai",
+          }),
+        })
+        .mockResolvedValueOnce({
+          success: true,
+          data: makeAgent({
+            status: "running",
+            web_ui_url: "https://agent-existing.elizacloud.ai",
+            webUiUrl: "https://agent-existing.elizacloud.ai",
+          }),
+        });
+
+      const result = await client.selectOrProvisionCloudAgent({
+        ...BASE_OPTS,
+        wakePollIntervalMs: 1,
+        wakeTimeoutMs: 50,
+      });
+
+      expect(createCloudCompatAgent).toHaveBeenCalledTimes(1);
+      expect(resumeCloudCompatAgent).not.toHaveBeenCalled();
+      expect(wakeCloudCompatAgent).toHaveBeenCalledTimes(
+        expectedTrigger === "wake" ? 1 : 0,
+      );
+      expect(provisionCloudCompatAgent).toHaveBeenCalledTimes(
+        expectedTrigger === "provision" ? 1 : 0,
+      );
+      expect(result).toMatchObject({
+        agentId: "agent-existing",
+        created: false,
+        jobId: expectedJobId,
+        source: expectedSource,
+      });
+    },
+  );
 
   it("reuses real dedicated Eliza Cloud agent subdomains without pairing", async () => {
     const { client, getCloudCompatAgents } = fakeClient();
@@ -412,11 +651,24 @@ describe("selectOrProvisionCloudAgent — never duplicate on a failed lookup", (
       }),
     });
 
-    const result = await client.selectOrProvisionCloudAgent(BASE_OPTS);
+    const progress: CloudAgentJoinProgress[] = [];
+    const result = await client.selectOrProvisionCloudAgent({
+      ...BASE_OPTS,
+      onProgress: (_status, _detail, receipt) => {
+        if (receipt) progress.push(receipt);
+      },
+    });
 
     expect(result.created).toBe(true);
     expect(result.agentId).toBe("agent-new");
     expect(createCloudCompatAgent).toHaveBeenCalledTimes(1);
+    expect(progress.find(({ status }) => status === "creating")).toMatchObject({
+      phase: "provisioning",
+      source: null,
+      agentId: null,
+      jobId: null,
+    });
+    expect(result.source).toBe("cold_provision");
   });
 
   it("does not reuse terminal-error agents; force-creates a replacement instead", async () => {
@@ -450,7 +702,7 @@ describe("selectOrProvisionCloudAgent — never duplicate on a failed lookup", (
       success: true,
       data: makeAgent({
         agent_id: "agent-replacement",
-        status: "provisioning",
+        status: "running",
         web_ui_url: "https://agent-replacement.example.test",
         webUiUrl: "https://agent-replacement.example.test",
       }),
@@ -485,11 +737,13 @@ describe("selectOrProvisionCloudAgent — never duplicate on a failed lookup", (
     });
     createCloudCompatAgent.mockResolvedValue({
       success: true,
+      created: true,
+      source: "shared_runtime",
       data: {
         agentId: "agent-shared-replacement",
         agentName: "Eliza",
-        jobId: "job-1",
-        status: "provisioning",
+        jobId: "",
+        status: "running",
         nodeId: null,
         message: "",
       },
@@ -498,9 +752,10 @@ describe("selectOrProvisionCloudAgent — never duplicate on a failed lookup", (
       success: true,
       data: makeAgent({
         agent_id: "agent-shared-replacement",
-        status: "provisioning",
-        web_ui_url: "https://agent-shared-replacement.example.test",
-        webUiUrl: "https://agent-shared-replacement.example.test",
+        status: "running",
+        execution_tier: "shared",
+        web_ui_url: null,
+        webUiUrl: null,
       }),
     });
 
@@ -542,7 +797,7 @@ describe("selectOrProvisionCloudAgent — never duplicate on a failed lookup", (
       data: makeAgent({
         agent_id: "agent-forced-new",
         agent_name: "Demo Fresh",
-        status: "provisioning",
+        status: "running",
         web_ui_url: "https://agent-forced-new.example.test",
         webUiUrl: "https://agent-forced-new.example.test",
       }),
@@ -627,6 +882,7 @@ describe("selectOrProvisionCloudAgent — never duplicate on a failed lookup", (
       getCloudCompatAgents,
       createCloudCompatAgent,
       getCloudCompatAgent,
+      getCloudCompatJobStatus,
       resumeCloudCompatAgent,
     } = fakeClient();
     getCloudCompatAgents.mockResolvedValue({ success: true, data: [] });
@@ -662,8 +918,6 @@ describe("selectOrProvisionCloudAgent — never duplicate on a failed lookup", (
           webUiUrl: "https://agent-new.elizacloud.ai",
         }),
       });
-    resumeCloudCompatAgent.mockResolvedValue({ success: true });
-
     const result = await client.selectOrProvisionCloudAgent({
       ...BASE_OPTS,
       wakePollIntervalMs: 1,
@@ -674,7 +928,8 @@ describe("selectOrProvisionCloudAgent — never duplicate on a failed lookup", (
     expect(result.agentId).toBe("agent-new");
     expect(result.apiBase).toBe("https://agent-new.elizacloud.ai");
     expect(result.requiresAgentPairing).toBe(false);
-    expect(resumeCloudCompatAgent).toHaveBeenCalledWith("agent-new");
+    expect(getCloudCompatJobStatus).toHaveBeenCalledWith("job-1");
+    expect(resumeCloudCompatAgent).not.toHaveBeenCalled();
   });
 
   // The warm-pool path returns a brand-new agent already `running` with a
@@ -745,5 +1000,468 @@ describe("selectOrProvisionCloudAgent — never duplicate on a failed lookup", (
     expect(result.apiBase).toBe("https://agent-warm.elizacloud.ai");
     expect(result.apiBase).not.toContain("/api/v1/eliza/agents/");
     expect(result.requiresAgentPairing).toBe(false);
+  });
+
+  it("preserves a fresh cold-create job and polls it before accepting the running agent", async () => {
+    const {
+      client,
+      createCloudCompatAgent,
+      getCloudCompatAgent,
+      getCloudCompatAgents,
+      getCloudCompatJobStatus,
+      provisionCloudCompatAgent,
+      resumeCloudCompatAgent,
+    } = fakeClient();
+    getCloudCompatAgents.mockResolvedValue({ success: true, data: [] });
+    createCloudCompatAgent.mockResolvedValue({
+      success: true,
+      created: true,
+      data: {
+        agentId: "agent-cold",
+        agentName: "Eliza",
+        jobId: "job-cold",
+        status: "queued",
+        nodeId: null,
+        message: "",
+      },
+    });
+    getCloudCompatJobStatus
+      .mockResolvedValueOnce({
+        success: true,
+        data: makeJob("job-cold", {
+          status: "processing",
+          state: "in_progress",
+          completedAt: null,
+          completed_on: null,
+        }),
+      })
+      .mockResolvedValueOnce({
+        success: true,
+        data: makeJob("job-cold"),
+      });
+    getCloudCompatAgent
+      .mockResolvedValueOnce({
+        success: true,
+        data: makeAgent({
+          agent_id: "agent-cold",
+          status: "provisioning",
+          web_ui_url: "https://agent-cold.elizacloud.ai",
+          webUiUrl: "https://agent-cold.elizacloud.ai",
+        }),
+      })
+      .mockResolvedValueOnce({
+        success: true,
+        data: makeAgent({
+          agent_id: "agent-cold",
+          status: "running",
+          web_ui_url: "https://agent-cold.elizacloud.ai",
+          webUiUrl: "https://agent-cold.elizacloud.ai",
+        }),
+      });
+
+    const result = await client.selectOrProvisionCloudAgent({
+      ...BASE_OPTS,
+      wakePollIntervalMs: 1,
+      wakeTimeoutMs: 100,
+    });
+
+    expect(getCloudCompatJobStatus).toHaveBeenCalledTimes(2);
+    expect(getCloudCompatJobStatus).toHaveBeenNthCalledWith(1, "job-cold");
+    expect(
+      getCloudCompatJobStatus.mock.invocationCallOrder.at(-1),
+    ).toBeLessThan(getCloudCompatAgent.mock.invocationCallOrder[0] ?? 0);
+    expect(provisionCloudCompatAgent).not.toHaveBeenCalled();
+    expect(resumeCloudCompatAgent).not.toHaveBeenCalled();
+    expect(result).toMatchObject({
+      agentId: "agent-cold",
+      jobId: "job-cold",
+      source: "cold_provision",
+      progress: {
+        phase: "running",
+        source: "cold_provision",
+        agentId: "agent-cold",
+        jobId: "job-cold",
+        status: "running",
+        correlationId: "job-cold",
+      },
+    });
+  });
+
+  it("accepts a warm-pool create without inventing or polling a lifecycle job", async () => {
+    const {
+      client,
+      createCloudCompatAgent,
+      getCloudCompatAgent,
+      getCloudCompatAgents,
+      getCloudCompatJobStatus,
+      provisionCloudCompatAgent,
+      resumeCloudCompatAgent,
+    } = fakeClient();
+    getCloudCompatAgents.mockResolvedValue({ success: true, data: [] });
+    createCloudCompatAgent.mockResolvedValue({
+      success: true,
+      created: true,
+      source: "warm_pool",
+      data: {
+        agentId: "agent-warm-source",
+        agentName: "Eliza",
+        jobId: "",
+        status: "running",
+        nodeId: null,
+        message: "",
+      },
+    });
+    getCloudCompatAgent.mockResolvedValue({
+      success: true,
+      data: makeAgent({
+        agent_id: "agent-warm-source",
+        status: "running",
+        web_ui_url: "https://agent-warm-source.elizacloud.ai",
+        webUiUrl: "https://agent-warm-source.elizacloud.ai",
+      }),
+    });
+
+    const result = await client.selectOrProvisionCloudAgent(BASE_OPTS);
+
+    expect(result.source).toBe("warm_pool");
+    expect(result.jobId).toBeNull();
+    expect(getCloudCompatJobStatus).not.toHaveBeenCalled();
+    expect(provisionCloudCompatAgent).not.toHaveBeenCalled();
+    expect(resumeCloudCompatAgent).not.toHaveBeenCalled();
+  });
+
+  it("recovers the same provisioning job across reload attempts without duplicate create", async () => {
+    const {
+      client,
+      createCloudCompatAgent,
+      getCloudCompatAgent,
+      getCloudCompatAgents,
+      provisionCloudCompatAgent,
+      resumeCloudCompatAgent,
+    } = fakeClient();
+    getCloudCompatAgents.mockResolvedValue({
+      success: true,
+      data: [makeAgent({ status: "provisioning" })],
+    });
+    provisionCloudCompatAgent.mockResolvedValue({
+      success: true,
+      alreadyInProgress: true,
+      data: {
+        agentId: "agent-existing",
+        jobId: "job-existing",
+        status: "processing",
+      },
+    });
+    getCloudCompatAgent.mockResolvedValue({
+      success: true,
+      data: makeAgent({ status: "running" }),
+    });
+
+    const first = await client.selectOrProvisionCloudAgent(BASE_OPTS);
+    const afterReload = await client.selectOrProvisionCloudAgent(BASE_OPTS);
+
+    expect(createCloudCompatAgent).not.toHaveBeenCalled();
+    expect(resumeCloudCompatAgent).not.toHaveBeenCalled();
+    expect(provisionCloudCompatAgent).toHaveBeenCalledTimes(2);
+    expect(provisionCloudCompatAgent).toHaveBeenNthCalledWith(
+      1,
+      "agent-existing",
+    );
+    expect(provisionCloudCompatAgent).toHaveBeenNthCalledWith(
+      2,
+      "agent-existing",
+    );
+    expect(first.jobId).toBe("job-existing");
+    expect(afterReload.jobId).toBe("job-existing");
+    expect(first.source).toBe("existing_provision");
+  });
+
+  for (const status of [401, 402, 403, 404, 409, 503]) {
+    it(`fails a stopped-agent resume immediately on HTTP ${status}`, async () => {
+      const {
+        client,
+        createCloudCompatAgent,
+        getCloudCompatAgent,
+        getCloudCompatAgents,
+        getCloudCompatJobStatus,
+        resumeCloudCompatAgent,
+      } = fakeClient();
+      getCloudCompatAgents.mockResolvedValue({
+        success: true,
+        data: [makeAgent({ status: "stopped" })],
+      });
+      resumeCloudCompatAgent.mockRejectedValueOnce(
+        Object.assign(new Error(`HTTP ${status}`), { status }),
+      );
+
+      const rejection = await client
+        .selectOrProvisionCloudAgent({
+          ...BASE_OPTS,
+          wakePollIntervalMs: 1,
+          wakeTimeoutMs: 50,
+        })
+        .then(() => null)
+        .catch((error: unknown) => error);
+
+      expect(rejection).toBeInstanceOf(Error);
+      expect(rejection).toBeInstanceOf(ElizaError);
+      expect(rejection).toMatchObject({ code: "CLOUD_AGENT_JOIN_FAILED" });
+      expect(resumeCloudCompatAgent).toHaveBeenCalledTimes(1);
+      expect(getCloudCompatJobStatus).not.toHaveBeenCalled();
+      expect(getCloudCompatAgent).not.toHaveBeenCalled();
+      expect(createCloudCompatAgent).not.toHaveBeenCalled();
+      expect(cloudAgentJoinProgressFromError(rejection)).toMatchObject({
+        phase: "resuming",
+        source: "existing_resume",
+        agentId: "agent-existing",
+        jobId: null,
+        status: "stopped",
+        correlationId: "agent-existing",
+      });
+    });
+  }
+
+  for (const status of [401, 402, 403, 404, 409, 503]) {
+    it(`fails a post-job agent-detail read immediately on HTTP ${status}`, async () => {
+      const {
+        client,
+        createCloudCompatAgent,
+        getCloudCompatAgent,
+        getCloudCompatAgents,
+        getCloudCompatJobStatus,
+        resumeCloudCompatAgent,
+      } = fakeClient();
+      getCloudCompatAgents.mockResolvedValue({
+        success: true,
+        data: [makeAgent({ status: "stopped" })],
+      });
+      getCloudCompatAgent.mockRejectedValueOnce(
+        Object.assign(new Error(`detail HTTP ${status}`), { status }),
+      );
+
+      const rejection = await client
+        .selectOrProvisionCloudAgent({
+          ...BASE_OPTS,
+          wakePollIntervalMs: 1,
+          wakeTimeoutMs: 50,
+        })
+        .then(() => null)
+        .catch((error: unknown) => error);
+
+      expect(rejection).toBeInstanceOf(Error);
+      expect(getCloudCompatJobStatus).toHaveBeenCalledTimes(1);
+      expect(getCloudCompatAgent).toHaveBeenCalledTimes(1);
+      expect(resumeCloudCompatAgent).toHaveBeenCalledTimes(1);
+      expect(createCloudCompatAgent).not.toHaveBeenCalled();
+      expect(cloudAgentJoinProgressFromError(rejection)).toMatchObject({
+        phase: "resuming",
+        source: "existing_resume",
+        agentId: "agent-existing",
+        jobId: "resume-agent-existing",
+        status: "completed",
+        correlationId: "resume-agent-existing",
+      });
+    });
+  }
+
+  it("retries a declared transient resume failure and retains the canonical resume job", async () => {
+    const {
+      client,
+      getCloudCompatAgent,
+      getCloudCompatAgents,
+      resumeCloudCompatAgent,
+    } = fakeClient();
+    getCloudCompatAgents.mockResolvedValue({
+      success: true,
+      data: [makeAgent({ status: "stopped" })],
+    });
+    resumeCloudCompatAgent.mockRejectedValueOnce(
+      Object.assign(new Error("temporary gateway"), { status: 502 }),
+    );
+    getCloudCompatAgent.mockResolvedValue({
+      success: true,
+      data: makeAgent({ status: "running" }),
+    });
+
+    const result = await client.selectOrProvisionCloudAgent({
+      ...BASE_OPTS,
+      wakePollIntervalMs: 1,
+      wakeTimeoutMs: 100,
+    });
+
+    expect(resumeCloudCompatAgent).toHaveBeenCalledTimes(2);
+    expect(result.jobId).toBe("resume-agent-existing");
+    expect(result.source).toBe("existing_resume");
+  });
+
+  for (const testCase of [
+    {
+      action: "wake",
+      expectedJobId: "wake-agent-existing",
+      status: "sleeping",
+    },
+    {
+      action: "resume",
+      expectedJobId: "resume-agent-existing",
+      status: "stopped",
+    },
+    {
+      action: "provision",
+      expectedJobId: "provision-agent-existing",
+      status: "disconnected",
+    },
+  ] as const) {
+    it(`never replays ${testCase.action} when a progress consumer throws TypeError`, async () => {
+      const {
+        client,
+        createCloudCompatAgent,
+        getCloudCompatAgents,
+        getCloudCompatJobStatus,
+        provisionCloudCompatAgent,
+        resumeCloudCompatAgent,
+        wakeCloudCompatAgent,
+      } = fakeClient();
+      getCloudCompatAgents.mockResolvedValue({
+        success: true,
+        data: [makeAgent({ status: testCase.status })],
+      });
+
+      const result = client.selectOrProvisionCloudAgent({
+        ...BASE_OPTS,
+        onProgress: (_status, _detail, progress) => {
+          if (progress?.jobId === testCase.expectedJobId) {
+            throw new TypeError("progress renderer exploded");
+          }
+        },
+        wakePollIntervalMs: 1,
+        wakeTimeoutMs: 50,
+      });
+
+      await expect(result).rejects.toThrow("progress renderer exploded");
+      expect(wakeCloudCompatAgent).toHaveBeenCalledTimes(
+        testCase.action === "wake" ? 1 : 0,
+      );
+      expect(resumeCloudCompatAgent).toHaveBeenCalledTimes(
+        testCase.action === "resume" ? 1 : 0,
+      );
+      expect(provisionCloudCompatAgent).toHaveBeenCalledTimes(
+        testCase.action === "provision" ? 1 : 0,
+      );
+      expect(getCloudCompatJobStatus).not.toHaveBeenCalled();
+      expect(createCloudCompatAgent).not.toHaveBeenCalled();
+    });
+  }
+
+  it("times out with the last phase and canonical correlation instead of spinning forever", async () => {
+    const {
+      client,
+      createCloudCompatAgent,
+      getCloudCompatAgent,
+      getCloudCompatAgents,
+      getCloudCompatJobStatus,
+    } = fakeClient();
+    getCloudCompatAgents.mockResolvedValue({ success: true, data: [] });
+    createCloudCompatAgent.mockResolvedValue({
+      success: true,
+      created: true,
+      data: {
+        agentId: "agent-timeout",
+        agentName: "Eliza",
+        jobId: "job-timeout",
+        status: "queued",
+        nodeId: null,
+        message: "",
+      },
+    });
+    getCloudCompatJobStatus.mockResolvedValue({
+      success: true,
+      data: makeJob("job-timeout", {
+        status: "processing",
+        state: "in_progress",
+        completedAt: null,
+        completed_on: null,
+      }),
+    });
+    getCloudCompatAgent.mockResolvedValue({
+      success: true,
+      data: makeAgent({
+        agent_id: "agent-timeout",
+        status: "provisioning",
+        web_ui_url: "https://agent-timeout.elizacloud.ai",
+        webUiUrl: "https://agent-timeout.elizacloud.ai",
+      }),
+    });
+
+    const rejection = await client
+      .selectOrProvisionCloudAgent({
+        ...BASE_OPTS,
+        wakePollIntervalMs: 1,
+        wakeTimeoutMs: 5,
+      })
+      .then(() => null)
+      .catch((error: unknown) => error);
+
+    expect(rejection).toBeInstanceOf(Error);
+    expect((rejection as Error).message).toMatch(/still .* after|booting/i);
+    expect(cloudAgentJoinProgressFromError(rejection)).toMatchObject({
+      phase: "provisioning",
+      source: "cold_provision",
+      agentId: "agent-timeout",
+      jobId: "job-timeout",
+      correlationId: "job-timeout",
+    });
+  });
+
+  it("surfaces a failed canonical job and never treats agent detail as success", async () => {
+    const {
+      client,
+      createCloudCompatAgent,
+      getCloudCompatAgent,
+      getCloudCompatAgents,
+      getCloudCompatJobStatus,
+    } = fakeClient();
+    getCloudCompatAgents.mockResolvedValue({ success: true, data: [] });
+    createCloudCompatAgent.mockResolvedValue({
+      success: true,
+      created: true,
+      data: {
+        agentId: "agent-failed-job",
+        agentName: "Eliza",
+        jobId: "job-failed",
+        status: "queued",
+        nodeId: null,
+        message: "",
+      },
+    });
+    getCloudCompatAgent.mockResolvedValueOnce({
+      success: true,
+      data: makeAgent({
+        agent_id: "agent-failed-job",
+        status: "provisioning",
+        web_ui_url: "https://agent-failed-job.elizacloud.ai",
+        webUiUrl: "https://agent-failed-job.elizacloud.ai",
+      }),
+    });
+    getCloudCompatJobStatus.mockResolvedValue({
+      success: true,
+      data: makeJob("job-failed", {
+        status: "failed",
+        state: "failed",
+        error: "worker rejected image",
+      }),
+    });
+
+    const rejection = await client
+      .selectOrProvisionCloudAgent(BASE_OPTS)
+      .then(() => null)
+      .catch((error: unknown) => error);
+
+    expect((rejection as Error).message).toContain("worker rejected image");
+    expect(getCloudCompatAgent).not.toHaveBeenCalled();
+    expect(cloudAgentJoinProgressFromError(rejection)).toMatchObject({
+      phase: "provisioning",
+      jobId: "job-failed",
+      status: "failed",
+    });
   });
 });

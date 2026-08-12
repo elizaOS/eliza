@@ -11,9 +11,9 @@
  * CapacitorHttp is never used on it).
  *
  * Covered:
- *  - G1: a reused DEDICATED agent that is not `running` triggers a resume kick
- *    and a control-plane poll (progress streamed via onProgress) before the
- *    dedicated base is bound; the post-wake record's fresh URL wins.
+ *  - G1: stopped, sleeping, and disconnected DEDICATED rows take their real
+ *    resume, wake, and idempotent reprovision routes before the post-start
+ *    record's fresh URL is bound.
  *  - error path: a terminal `error` status fails fast with the agent's
  *    error_message; timeout path: a never-booting agent fails with an
  *    actionable message instead of hanging.
@@ -65,15 +65,16 @@ type MockAgent = {
   /** When set, this webUiUrl is reported ONLY once the agent is running —
    *  models the record re-read picking up fresh post-wake URLs. */
   runningWebUiUrl?: string | null;
-  /** Number of detail polls (after a resume) before the agent flips to
+  /** Number of detail polls (after a lifecycle start) before the agent flips to
    *  `running`; Infinity = never boots. */
   bootAfterPolls: number;
-  /** When set: number of post-resume polls before the boot FAILS terminally. */
+  /** When set: number of post-start polls before the boot FAILS terminally. */
   errorAfterPolls?: number;
-  /** Detail GETs that answer 500 before the route recovers (transient blips). */
+  /** Detail GETs that answer 502 before the route recovers (transient blips). */
   detailFailuresRemaining?: number;
-  resumeRequested: boolean;
-  pollsSinceResume: number;
+  startRequested: boolean;
+  pollsSinceStart: number;
+  startAction?: "provision" | "resume" | "wake";
   /** After running: how many dedicated-proxy calls still answer 202. */
   proxy202sRemaining: number;
   executionTier: "shared" | "dedicated-always";
@@ -95,7 +96,9 @@ interface MockCloudState {
     { id: string; title: string; messages: MockMessage[] }
   >;
   requests: Array<{ method: string; path: string; auth: string | null }>;
+  provisionCalls: string[];
   resumeCalls: string[];
+  wakeCalls: string[];
 }
 
 function agentDto(agent: MockAgent) {
@@ -114,6 +117,20 @@ function agentDto(agent: MockAgent) {
     createdAt: "2026-07-01T00:00:00.000Z",
     updatedAt: "2026-07-01T00:00:00.000Z",
   };
+}
+
+function advanceStartJob(agent: MockAgent): void {
+  if (!agent.startRequested || agent.status !== "starting") return;
+  agent.pollsSinceStart += 1;
+  if (
+    agent.errorAfterPolls !== undefined &&
+    agent.pollsSinceStart >= agent.errorAfterPolls
+  ) {
+    agent.status = "error";
+    agent.errorMessage = agent.errorMessage ?? "container image pull failed";
+  } else if (agent.pollsSinceStart >= agent.bootAfterPolls) {
+    agent.status = "running";
+  }
 }
 
 function json(
@@ -136,7 +153,7 @@ async function readBody(
 
 /**
  * One HTTP server plays all three cloud roles:
- *  - control plane: /api/v1/eliza/agents(/:id)(/resume)
+ *  - control plane: /api/v1/eliza/agents(/:id)(/{provision,resume,wake})
  *  - dedicated-agent proxy: /dedicated/:id/api/*  (202 + Retry-After while the
  *    container is not running — the #8628 unified-proxy semantics)
  *  - shared REST adapter (#8387): /api/v1/eliza/agents/:id/api/*
@@ -281,6 +298,41 @@ function createMockCloud(state: MockCloudState): Server {
     }
 
     // ── control plane ──────────────────────────────────────────────────────
+    const job = /^\/api\/v1\/jobs\/(job-.+)$/.exec(path);
+    if (job && method === "GET") {
+      if (auth !== `Bearer ${AUTH_TOKEN}`) {
+        json(res, 401, { error: "unauthorized", success: false });
+        return;
+      }
+      const agent = [...state.agents.values()].find(
+        (candidate) => `job-${candidate.id}` === job[1],
+      );
+      if (!agent) {
+        json(res, 404, { error: "unknown job", success: false });
+        return;
+      }
+      advanceStartJob(agent);
+      const status =
+        agent.status === "running"
+          ? "completed"
+          : agent.status === "error"
+            ? "failed"
+            : "in_progress";
+      json(res, 200, {
+        success: true,
+        data: {
+          id: job[1],
+          jobId: job[1],
+          type: `agent_${agent.startAction ?? "resume"}`,
+          status,
+          error: status === "failed" ? agent.errorMessage : null,
+          createdAt: "2026-07-01T00:00:00.000Z",
+          completedAt:
+            status === "completed" ? "2026-07-01T00:00:01.000Z" : null,
+        },
+      });
+      return;
+    }
     if (path.startsWith("/api/v1/eliza/agents")) {
       if (auth !== `Bearer ${AUTH_TOKEN}`) {
         json(res, 401, { error: "unauthorized", success: false });
@@ -301,8 +353,9 @@ function createMockCloud(state: MockCloudState): Server {
           return;
         }
         state.resumeCalls.push(agent.id);
-        agent.resumeRequested = true;
-        agent.pollsSinceResume = 0;
+        agent.startRequested = true;
+        agent.pollsSinceStart = 0;
+        agent.startAction = "resume";
         if (agent.status !== "running" && agent.status !== "error") {
           agent.status = "starting";
         }
@@ -312,6 +365,57 @@ function createMockCloud(state: MockCloudState): Server {
             jobId: `job-${agent.id}`,
             status: "queued",
             message: "Agent resume enqueued",
+          },
+        });
+        return;
+      }
+      const wake = /^\/api\/v1\/eliza\/agents\/([^/]+)\/wake$/.exec(path);
+      if (wake && method === "POST") {
+        const agent = state.agents.get(wake[1]);
+        if (!agent) {
+          json(res, 404, { error: "unknown agent", success: false });
+          return;
+        }
+        state.wakeCalls.push(agent.id);
+        agent.startRequested = true;
+        agent.pollsSinceStart = 0;
+        agent.startAction = "wake";
+        if (agent.status !== "running" && agent.status !== "error") {
+          agent.status = "starting";
+        }
+        json(res, 202, {
+          success: true,
+          data: {
+            jobId: `job-${agent.id}`,
+            status: "queued",
+            message: "Agent wake enqueued",
+          },
+        });
+        return;
+      }
+      const provision = /^\/api\/v1\/eliza\/agents\/([^/]+)\/provision$/.exec(
+        path,
+      );
+      if (provision && method === "POST") {
+        const agent = state.agents.get(provision[1]);
+        if (!agent) {
+          json(res, 404, { error: "unknown agent", success: false });
+          return;
+        }
+        state.provisionCalls.push(agent.id);
+        agent.startRequested = true;
+        agent.pollsSinceStart = 0;
+        agent.startAction = "provision";
+        if (agent.status !== "running" && agent.status !== "error") {
+          agent.status = "starting";
+        }
+        json(res, 202, {
+          success: true,
+          alreadyInProgress: true,
+          data: {
+            agentId: agent.id,
+            jobId: `job-${agent.id}`,
+            status: "queued",
           },
         });
         return;
@@ -336,25 +440,13 @@ function createMockCloud(state: MockCloudState): Server {
         if ((agent.detailFailuresRemaining ?? 0) > 0) {
           agent.detailFailuresRemaining =
             (agent.detailFailuresRemaining ?? 0) - 1;
-          json(res, 500, {
+          json(res, 502, {
             error: "transient control-plane blip",
             success: false,
           });
           return;
         }
-        if (agent.resumeRequested && agent.status === "starting") {
-          agent.pollsSinceResume += 1;
-          if (
-            agent.errorAfterPolls !== undefined &&
-            agent.pollsSinceResume >= agent.errorAfterPolls
-          ) {
-            agent.status = "error";
-            agent.errorMessage =
-              agent.errorMessage ?? "container image pull failed";
-          } else if (agent.pollsSinceResume >= agent.bootAfterPolls) {
-            agent.status = "running";
-          }
-        }
+        advanceStartJob(agent);
         json(res, 200, { success: true, data: agentDto(agent) });
         return;
       }
@@ -384,7 +476,9 @@ describe("mock-cloud connect e2e — dedicated cold boot + shared chat bridge", 
     agents: new Map(),
     conversations: new Map(),
     requests: [],
+    provisionCalls: [],
     resumeCalls: [],
+    wakeCalls: [],
   };
   let server: Server;
   let base: string;
@@ -405,7 +499,9 @@ describe("mock-cloud connect e2e — dedicated cold boot + shared chat bridge", 
     state.agents.clear();
     state.conversations.clear();
     state.requests.length = 0;
+    state.provisionCalls.length = 0;
     state.resumeCalls.length = 0;
+    state.wakeCalls.length = 0;
     // The production resolver trusts only the canonical host table. This
     // explicit test-only entry makes the real local server a recognized
     // control plane without weakening the configured-origin boundary.
@@ -429,8 +525,8 @@ describe("mock-cloud connect e2e — dedicated cold boot + shared chat bridge", 
       runningWebUiUrl: `${base}/dedicated/agent-ded`,
       bridgeUrl: null,
       bootAfterPolls: 3,
-      resumeRequested: false,
-      pollsSinceResume: 0,
+      startRequested: false,
+      pollsSinceStart: 0,
       proxy202sRemaining: 0,
       executionTier: "dedicated-always",
       ...overrides,
@@ -455,6 +551,8 @@ describe("mock-cloud connect e2e — dedicated cold boot + shared chat bridge", 
 
     // Resume was kicked exactly once and the agent booted through the poll.
     expect(state.resumeCalls).toEqual(["agent-ded"]);
+    expect(state.wakeCalls).toEqual([]);
+    expect(state.provisionCalls).toEqual([]);
     expect(agent.status).toBe("running");
     expect(result.created).toBe(false);
     expect(result.agentId).toBe("agent-ded");
@@ -505,6 +603,68 @@ describe("mock-cloud connect e2e — dedicated cold boot + shared chat bridge", 
     expect(proxyCalls.every((r) => r.auth === `Bearer ${AUTH_TOKEN}`)).toBe(
       true,
     );
+  });
+
+  it("wakes a sleeping row through the canonical restore endpoint, never resume", async () => {
+    const agent = seedDedicated({ status: "sleeping", bootAfterPolls: 1 });
+    const progress: Array<[string, string | undefined, string | undefined]> =
+      [];
+    const client = makeClient();
+
+    const result = await client.selectOrProvisionCloudAgent({
+      cloudApiBase: base,
+      authToken: AUTH_TOKEN,
+      name: "Eliza",
+      onProgress: (status, _detail, receipt) =>
+        progress.push([status, receipt?.phase, receipt?.source ?? undefined]),
+      wakePollIntervalMs: 20,
+      wakeTimeoutMs: 5_000,
+    });
+
+    expect(state.wakeCalls).toEqual(["agent-ded"]);
+    expect(state.resumeCalls).toEqual([]);
+    expect(state.provisionCalls).toEqual([]);
+    expect(agent.startAction).toBe("wake");
+    expect(result).toMatchObject({
+      created: false,
+      jobId: "job-agent-ded",
+      source: "existing_wake",
+      apiBase: `${base}/dedicated/agent-ded`,
+    });
+    expect(progress).toContainEqual(["starting", "waking", "existing_wake"]);
+  });
+
+  it("reprovisions a disconnected row idempotently without wake, resume, or create", async () => {
+    const agent = seedDedicated({
+      status: "disconnected",
+      bootAfterPolls: 1,
+    });
+    const client = makeClient();
+
+    const result = await client.selectOrProvisionCloudAgent({
+      cloudApiBase: base,
+      authToken: AUTH_TOKEN,
+      name: "Eliza",
+      wakePollIntervalMs: 20,
+      wakeTimeoutMs: 5_000,
+    });
+
+    expect(state.provisionCalls).toEqual(["agent-ded"]);
+    expect(state.resumeCalls).toEqual([]);
+    expect(state.wakeCalls).toEqual([]);
+    expect(agent.startAction).toBe("provision");
+    expect(result).toMatchObject({
+      created: false,
+      jobId: "job-agent-ded",
+      source: "existing_provision",
+      apiBase: `${base}/dedicated/agent-ded`,
+    });
+    expect(
+      state.requests.filter(
+        ({ method, path }) =>
+          method === "POST" && path === "/api/v1/eliza/agents",
+      ),
+    ).toEqual([]);
   });
 
   it("skips the wait entirely for an already-running dedicated agent (no resume, no starting progress)", async () => {
@@ -558,11 +718,12 @@ describe("mock-cloud connect e2e — dedicated cold boot + shared chat bridge", 
         wakePollIntervalMs: 20,
         wakeTimeoutMs: 200,
       }),
-    ).rejects.toThrow(/still "starting" after \d+s/i);
+    ).rejects.toThrow(/startup job is still "processing" after \d+s/i);
   });
 
   it("tolerates transient control-plane poll failures while waiting", async () => {
-    // First two detail polls 500 (transient); the wait must keep going.
+    // First two detail polls hit a declared transient gateway failure; the
+    // bounded wait retries only this recoverable class, never auth/credit/503.
     const agent = seedDedicated({
       bootAfterPolls: 2,
       detailFailuresRemaining: 2,
@@ -576,7 +737,7 @@ describe("mock-cloud connect e2e — dedicated cold boot + shared chat bridge", 
     });
     expect(record.status).toBe("running");
     expect(agent.status).toBe("running");
-    // The 500s were real: the control plane logged them before recovering.
+    // The 502s were real: the control plane logged them before recovering.
     expect(agent.detailFailuresRemaining).toBe(0);
   });
 
@@ -588,8 +749,8 @@ describe("mock-cloud connect e2e — dedicated cold boot + shared chat bridge", 
       webUiUrl: null,
       bridgeUrl: null,
       bootAfterPolls: 0,
-      resumeRequested: false,
-      pollsSinceResume: 0,
+      startRequested: false,
+      pollsSinceStart: 0,
       proxy202sRemaining: 0,
       executionTier: "shared",
     };
@@ -653,8 +814,8 @@ describe("mock-cloud connect e2e — dedicated cold boot + shared chat bridge", 
       webUiUrl: `${base}/dedicated/agent-other`,
       bridgeUrl: null,
       bootAfterPolls: 0,
-      resumeRequested: false,
-      pollsSinceResume: 0,
+      startRequested: false,
+      pollsSinceStart: 0,
       proxy202sRemaining: 0,
       executionTier: "dedicated-always",
     };
@@ -687,8 +848,8 @@ describe("mock-cloud connect e2e — dedicated cold boot + shared chat bridge", 
       webUiUrl: null,
       bridgeUrl: null,
       bootAfterPolls: 0,
-      resumeRequested: false,
-      pollsSinceResume: 0,
+      startRequested: false,
+      pollsSinceStart: 0,
       proxy202sRemaining: 0,
       executionTier: "shared",
     };
@@ -759,8 +920,8 @@ describe("mock-cloud connect e2e — dedicated cold boot + shared chat bridge", 
       webUiUrl: null,
       bridgeUrl: null,
       bootAfterPolls: 0,
-      resumeRequested: false,
-      pollsSinceResume: 0,
+      startRequested: false,
+      pollsSinceStart: 0,
       proxy202sRemaining: 0,
       executionTier: "shared",
     };

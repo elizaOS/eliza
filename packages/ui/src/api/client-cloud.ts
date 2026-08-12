@@ -17,6 +17,7 @@ import {
   startCloudConversationHandoff,
 } from "../cloud/handoff/cloud-handoff-supervisor";
 import { isRetryableHandoffHttpStatus } from "../cloud/handoff/conversation-handoff";
+import type { AgentSandboxStatus } from "../cloud-ui/types/cloud-api";
 import { getBootConfig } from "../config/boot-config";
 import {
   buildCloudSharedAgentApiBase,
@@ -28,6 +29,10 @@ import {
 import { ElizaClient } from "./client-base";
 import type {
   ApiError,
+  CloudAgentJoinPhase,
+  CloudAgentJoinProgress,
+  CloudAgentJoinProgressHandler,
+  CloudAgentJoinSource,
   CloudApiKeySummary,
   CloudApiKeys,
   CloudBillingCheckoutRequest,
@@ -67,6 +72,11 @@ import type {
   SandboxStartResponse,
   SandboxWindowInfo,
 } from "./client-types";
+import {
+  cloudAgentJoinError,
+  cloudAgentJoinProgressFromError,
+  isRetryableCloudAgentJoinError,
+} from "./cloud-agent-join-progress";
 import {
   DEFAULT_DIRECT_CLOUD_BASE_URL,
   DIRECT_ELIZA_CLOUD_API_BY_HOST,
@@ -141,6 +151,7 @@ type DirectCloudAgentCreateData = {
   id: string;
   agentName: string;
   status: string;
+  jobId: string;
 };
 
 function requireConfirmedFreshCloudAgentCreate(
@@ -953,6 +964,7 @@ function parseDirectCloudAgentCreateData(
     id: requireString(data.id ?? data.agentId, "data.id"),
     agentName: stringOrNull(data.agentName) ?? fallbackAgentName,
     status: stringOrNull(data.status) ?? "pending",
+    jobId: stringOrNull(data.jobId ?? data.job_id) ?? "",
   };
 }
 
@@ -1315,6 +1327,8 @@ declare module "./client-base" {
        * are normalized to `true`; undefined otherwise means unknown.
        */
       created?: boolean;
+      /** Backend path that fulfilled a fresh create (warm/shared/cold). */
+      source?: string;
       data: {
         agentId: string;
         agentName: string;
@@ -1463,6 +1477,12 @@ declare module "./client-base" {
     }>;
     resumeCloudCompatAgent(agentId: string): Promise<{
       success: boolean;
+      error?: string;
+      data: { jobId: string; status: string; message: string };
+    }>;
+    wakeCloudCompatAgent(agentId: string): Promise<{
+      success: boolean;
+      error?: string;
       data: { jobId: string; status: string; message: string };
     }>;
     launchCloudCompatAgent(agentId: string): Promise<{
@@ -1581,7 +1601,7 @@ declare module "./client-base" {
        * leave it off so they can still run the `/pair` exchange.
        */
       preferStewardAgentAdapter?: boolean;
-      onProgress?: (status: string, detail?: string) => void;
+      onProgress?: CloudAgentJoinProgressHandler;
       /**
        * Cold-boot wait tuning for a reused dedicated agent that is not yet
        * `running` (a dedicated container cold-starts in ~5 minutes — #8621).
@@ -1603,6 +1623,12 @@ declare module "./client-base" {
        */
       requiresAgentPairing?: boolean;
       executionTier?: string | null;
+      /** Truthful operation that produced the selected running agent. */
+      source?: CloudAgentJoinSource;
+      /** Canonical lifecycle job, when the operation used one. */
+      jobId?: string | null;
+      /** Final typed state receipt; always `running` on success. */
+      progress?: CloudAgentJoinProgress;
     }>;
     /**
      * Background shared→personal handoff for a freshly provisioned cloud agent:
@@ -2106,10 +2132,11 @@ ElizaClient.prototype.createCloudCompatAgent = async function (
     return {
       success: direct.success,
       created: opts.forceCreate ? true : direct.created,
+      ...(direct.source ? { source: direct.source } : {}),
       data: {
         agentId: data.id,
         agentName: data.agentName,
-        jobId: "",
+        jobId: data.jobId,
         status: data.status,
         nodeId: null,
         message: direct.success ? "Agent created" : (direct.error ?? ""),
@@ -2139,22 +2166,28 @@ ElizaClient.prototype.createCloudCompatAgent = async function (
       source?: string;
       data: unknown;
       error?: string;
-    }>("/api/v1/eliza/agents", {
-      method: "POST",
-      body: JSON.stringify({
-        agentName: opts.agentName,
-        // Dedicated (own-container, always-on) agent — see the direct-path note.
-        // The Phase-0 shared-tier flag drops `alwaysOn` here too (tierFields).
-        ...tierFields,
-        // Opt out of the backend reuse guard so a SEPARATE agent is minted (the
-        // shared→dedicated handoff target). Omitted by default → reuse unchanged.
-        ...(opts.forceCreate ? { forceCreate: true } : {}),
-        ...(opts.agentConfig ? { agentConfig: opts.agentConfig } : {}),
-        ...(opts.environmentVars
-          ? { environmentVars: opts.environmentVars }
-          : {}),
-      }),
-    });
+    }>(
+      "/api/v1/eliza/agents",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          agentName: opts.agentName,
+          // Dedicated (own-container, always-on) agent — see the direct-path note.
+          // The Phase-0 shared-tier flag drops `alwaysOn` here too (tierFields).
+          ...tierFields,
+          // Opt out of the backend reuse guard so a SEPARATE agent is minted (the
+          // shared→dedicated handoff target). Omitted by default → reuse unchanged.
+          ...(opts.forceCreate ? { forceCreate: true } : {}),
+          ...(opts.agentConfig ? { agentConfig: opts.agentConfig } : {}),
+          ...(opts.environmentVars
+            ? { environmentVars: opts.environmentVars }
+            : {}),
+        }),
+      },
+      // This endpoint's own 202 is its canonical job envelope, not the
+      // dedicated-ingress wake signal that rawRequest normally replays.
+      { skipResume: true },
+    );
     requireConfirmedFreshCloudAgentCreate(
       opts.forceCreate,
       response.created,
@@ -2164,10 +2197,11 @@ ElizaClient.prototype.createCloudCompatAgent = async function (
     return {
       success: response.success,
       created: opts.forceCreate ? true : response.created,
+      ...(response.source ? { source: response.source } : {}),
       data: {
         agentId: data.id,
         agentName: data.agentName,
-        jobId: "",
+        jobId: data.jobId,
         status: data.status,
         nodeId: null,
         message: response.success ? "Agent created" : (response.error ?? ""),
@@ -2181,10 +2215,14 @@ ElizaClient.prototype.createCloudCompatAgent = async function (
     );
   }
 
-  return this.fetch("/api/cloud/compat/agents", {
-    method: "POST",
-    body: JSON.stringify(opts),
-  });
+  return this.fetch(
+    "/api/cloud/compat/agents",
+    {
+      method: "POST",
+      body: JSON.stringify(opts),
+    },
+    { skipResume: true },
+  );
 };
 
 ElizaClient.prototype.ensureCloudCompatManagedDiscordAgent = async function (
@@ -2220,7 +2258,7 @@ ElizaClient.prototype.provisionCloudCompatAgent = async function (
     const response = await this.fetch<CloudCompatAgentProvisionResponse>(
       `/api/v1/eliza/agents/${encodeURIComponent(agentId)}/provision`,
       { method: "POST" },
-      { allowNonOk: true },
+      { allowNonOk: true, skipResume: true },
     );
     return normalizeCloudCompatProvisionResponse(response, agentId);
   }
@@ -2234,7 +2272,7 @@ ElizaClient.prototype.provisionCloudCompatAgent = async function (
   const response = await this.fetch<CloudCompatAgentProvisionResponse>(
     `/api/cloud/v1/eliza/agents/${encodeURIComponent(agentId)}/provision`,
     { method: "POST" },
-    { allowNonOk: true },
+    { allowNonOk: true, skipResume: true },
   );
   return normalizeCloudCompatProvisionResponse(response, agentId);
 };
@@ -2698,21 +2736,21 @@ function normalizeCloudLifecycleResponse(
 }
 
 /**
- * Drive a cloud agent lifecycle action (suspend/resume) through the
+ * Drive a cloud agent lifecycle action (suspend/resume/wake) through the
  * direct-cloud ladder — direct token request → native-auth-missing guard →
  * direct-cloud-base same-origin fetch → legacy `/api/cloud/compat` proxy.
  * Mirrors `deleteCloudCompatAgent` so the Power/Start buttons work on
  * phone/web (which have no local API server proxying `/api/cloud/compat/...`).
  *
- * Only suspend/resume go through this ladder: the cloud-api exposes
- * `/api/v1/eliza/agents/:id/{suspend,resume}` (also sleep/wake) but NOT a
+ * Only suspend/resume/wake go through this ladder: the cloud-api exposes
+ * `/api/v1/eliza/agents/:id/{suspend,resume,wake}` (also sleep) but NOT a
  * `restart` route, so restart stays on its legacy `/api/cloud/compat` proxy
  * (see `restartCloudCompatAgent`).
  */
 async function runCloudLifecycleAction(
   client: ElizaClient,
   agentId: string,
-  action: "suspend" | "resume",
+  action: "suspend" | "resume" | "wake",
 ): Promise<{ success: boolean; error?: string; data: LifecycleResult }> {
   const encoded = encodeURIComponent(agentId);
   const directPath = `/api/v1/eliza/agents/${encoded}/${action}`;
@@ -2741,14 +2779,22 @@ async function runCloudLifecycleAction(
       success: boolean;
       data?: { jobId?: string; status?: string; message?: string };
       error?: string;
-    }>(directPath, { method: "POST" }, { allowNonOk: true });
+    }>(directPath, { method: "POST" }, { allowNonOk: true, skipResume: true });
     return normalizeCloudLifecycleResponse(response, action);
   }
 
+  // Wake has no legacy compat handler. It must retain the canonical Cloud v1
+  // route because that boundary validates the encrypted backup chain before
+  // allocating compute; routing a sleeping agent through resume bypasses that
+  // integrity contract.
+  const proxyPath =
+    action === "wake"
+      ? `/api/cloud/v1/eliza/agents/${encoded}/wake`
+      : `/api/cloud/compat/agents/${encoded}/${action}`;
   return client.fetch(
-    `/api/cloud/compat/agents/${encoded}/${action}`,
+    proxyPath,
     { method: "POST" },
-    { allowNonOk: true },
+    { allowNonOk: true, skipResume: true },
   );
 }
 
@@ -2777,6 +2823,13 @@ ElizaClient.prototype.resumeCloudCompatAgent = async function (
   agentId,
 ) {
   return runCloudLifecycleAction(this, agentId, "resume");
+};
+
+ElizaClient.prototype.wakeCloudCompatAgent = async function (
+  this: ElizaClient,
+  agentId,
+) {
+  return runCloudLifecycleAction(this, agentId, "wake");
 };
 
 ElizaClient.prototype.launchCloudCompatAgent = async function (
@@ -3404,27 +3457,453 @@ export function describeProvisioningWait(
 // instead of letting the first chat call exhaust that budget and error.
 const CLOUD_AGENT_WAKE_POLL_INTERVAL_MS = 5_000;
 const CLOUD_AGENT_WAKE_TIMEOUT_MS = 6 * 60_000;
-const CLOUD_AGENT_FAILED_STATUSES = new Set([
-  "error",
-  "failed",
-  "deletion_pending",
-  "deletion_failed",
-]);
+type CloudAgentJoinDisposition =
+  | "running"
+  | "wake"
+  | "resume"
+  | "provision"
+  | "terminal"
+  | "unsupported";
+
+const CANONICAL_CLOUD_AGENT_JOIN_DISPOSITION = {
+  pending: "provision",
+  provisioning: "provision",
+  running: "running",
+  stopped: "resume",
+  sleeping: "wake",
+  disconnected: "provision",
+  deletion_pending: "terminal",
+  deletion_failed: "terminal",
+  error: "terminal",
+} as const satisfies Record<AgentSandboxStatus, CloudAgentJoinDisposition>;
+
+function cloudAgentJoinDisposition(status: string): CloudAgentJoinDisposition {
+  const canonical =
+    CANONICAL_CLOUD_AGENT_JOIN_DISPOSITION[status as AgentSandboxStatus];
+  if (canonical) return canonical;
+  switch (status) {
+    case "queued":
+    case "starting":
+      return "provision";
+    case "suspended":
+      return "resume";
+    case "failed":
+      return "terminal";
+    default:
+      return "unsupported";
+  }
+}
 
 function isTerminalFailedCloudAgent(agent: CloudCompatAgent): boolean {
-  return CLOUD_AGENT_FAILED_STATUSES.has(
-    String(agent.status ?? "").toLowerCase(),
+  return (
+    cloudAgentJoinDisposition(normalizeCloudAgentStatus(agent.status)) ===
+    "terminal"
+  );
+}
+
+type CloudAgentJoinTrigger = "none" | "provision" | "resume" | "wake";
+type CloudAgentJoinActivePhase = Extract<
+  CloudAgentJoinPhase,
+  "provisioning" | "resuming" | "waking"
+>;
+
+interface CloudAgentJoinWaitResult {
+  agent: CloudCompatAgent;
+  jobId: string | null;
+  progress: CloudAgentJoinProgress;
+  source: CloudAgentJoinSource;
+}
+
+interface CloudAgentJoinWaitOptions {
+  agentId: string;
+  initialJobId?: string | null;
+  initialStatus?: string;
+  onProgress?: CloudAgentJoinProgressHandler;
+  phase: CloudAgentJoinActivePhase;
+  pollIntervalMs?: number;
+  source: CloudAgentJoinSource;
+  startedAt?: number;
+  timeoutMs?: number;
+  trigger: CloudAgentJoinTrigger;
+}
+
+function normalizeCloudAgentStatus(status: string | null | undefined): string {
+  return status?.trim().toLowerCase() || "unknown";
+}
+
+function cloudAgentJoinProgress(
+  phase: CloudAgentJoinPhase,
+  source: CloudAgentJoinSource | null,
+  agentId: string | null,
+  jobId: string | null,
+  status: string,
+  startedAt: number,
+): CloudAgentJoinProgress {
+  return {
+    phase,
+    source,
+    agentId,
+    jobId,
+    status,
+    elapsedMs: Math.max(0, Date.now() - startedAt),
+    correlationId: jobId ?? agentId,
+  };
+}
+
+function emitCloudAgentJoinProgress(
+  onProgress: CloudAgentJoinProgressHandler | undefined,
+  legacyStatus: string,
+  detail: string,
+  progress: CloudAgentJoinProgress,
+): void {
+  onProgress?.(legacyStatus, detail, progress);
+}
+
+function cloudAgentJoinFailure(
+  message: string,
+  options: {
+    agentId: string | null;
+    cause?: unknown;
+    jobId: string | null;
+    phase: CloudAgentJoinActivePhase;
+    source: CloudAgentJoinSource | null;
+    startedAt: number;
+    status: string;
+  },
+): Error {
+  return cloudAgentJoinError(
+    message,
+    cloudAgentJoinProgress(
+      options.phase,
+      options.source,
+      options.agentId,
+      options.jobId,
+      options.status,
+      options.startedAt,
+    ),
+    options.cause,
+  );
+}
+
+function describeCloudAgentJoinWait(
+  phase: CloudAgentJoinActivePhase,
+  status: string,
+  elapsedMs: number,
+): string {
+  return phase === "provisioning"
+    ? describeProvisioningWait(status, elapsedMs)
+    : describeAgentWakeWait(elapsedMs);
+}
+
+function authoritativeJoinSource(
+  source: string | null | undefined,
+): CloudAgentJoinSource | null {
+  switch (source) {
+    case "shared_runtime":
+    case "warm_pool":
+    case "warm_pool_recovery":
+    case "cold_provision":
+      return source;
+    default:
+      return null;
+  }
+}
+
+function normalizedJoinSource(
+  source: string | null | undefined,
+  fallback: CloudAgentJoinSource,
+): CloudAgentJoinSource {
+  return authoritativeJoinSource(source) ?? fallback;
+}
+
+async function waitOneCloudAgentJoinTick(
+  pollIntervalMs: number,
+  deadline: number,
+): Promise<void> {
+  const remainingMs = deadline - Date.now();
+  if (remainingMs <= 0) return;
+  await new Promise<void>((resolve) =>
+    setTimeout(resolve, Math.min(pollIntervalMs, remainingMs)),
   );
 }
 
 /**
- * Wait for a dedicated cloud agent to report `running` on the control plane,
- * kicking a resume first so a stopped/suspended container actually boots.
- *
- * The resume kick is best-effort: an agent already starting answers with an
- * idempotent "already in progress" envelope, and the dedicated-agent proxy
- * auto-resumes on first request anyway — the poll below is the source of
- * truth. Transient poll errors are tolerated (the timeout bounds them).
+ * Drive one idempotent lifecycle operation to a running control-plane record.
+ * A returned job id is authoritative and is polled before agent detail; the
+ * detail read remains the final source for post-start URLs and execution tier.
+ */
+async function waitForCloudAgentJoin(
+  client: ElizaClient,
+  options: CloudAgentJoinWaitOptions,
+): Promise<CloudAgentJoinWaitResult> {
+  const pollIntervalMs = Math.max(
+    1,
+    options.pollIntervalMs ?? CLOUD_AGENT_WAKE_POLL_INTERVAL_MS,
+  );
+  const timeoutMs = Math.max(
+    pollIntervalMs,
+    options.timeoutMs ?? CLOUD_AGENT_WAKE_TIMEOUT_MS,
+  );
+  const startedAt = options.startedAt ?? Date.now();
+  const deadline = startedAt + timeoutMs;
+  let jobId = options.initialJobId?.trim() || null;
+  let jobCompleted = jobId === null;
+  let source = options.source;
+  let lastStatus = normalizeCloudAgentStatus(options.initialStatus);
+
+  const emit = (legacyStatus: string): void => {
+    const progress = cloudAgentJoinProgress(
+      options.phase,
+      source,
+      options.agentId,
+      jobId,
+      lastStatus,
+      startedAt,
+    );
+    emitCloudAgentJoinProgress(
+      options.onProgress,
+      legacyStatus,
+      describeCloudAgentJoinWait(options.phase, lastStatus, progress.elapsedMs),
+      progress,
+    );
+  };
+
+  emit(options.phase === "provisioning" ? "provisioning" : "starting");
+
+  if (options.trigger !== "none") {
+    for (;;) {
+      let triggerCompleted = false;
+      try {
+        if (options.trigger === "resume" || options.trigger === "wake") {
+          const response =
+            options.trigger === "wake"
+              ? await client.wakeCloudCompatAgent(options.agentId)
+              : await client.resumeCloudCompatAgent(options.agentId);
+          if (!response.success) {
+            throw new Error(
+              response.error ||
+                response.data.message ||
+                `Eliza Cloud could not ${options.trigger} this agent.`,
+            );
+          }
+          jobId = response.data.jobId?.trim() || null;
+          jobCompleted = jobId === null;
+          lastStatus = normalizeCloudAgentStatus(response.data.status);
+        } else {
+          const response = await client.provisionCloudCompatAgent(
+            options.agentId,
+          );
+          if (!response.success) {
+            throw new Error(
+              response.error ||
+                response.message ||
+                "Eliza Cloud could not provision this agent.",
+            );
+          }
+          jobId = response.data?.jobId?.trim() || null;
+          jobCompleted = jobId === null;
+          lastStatus = normalizeCloudAgentStatus(response.data?.status);
+          source = normalizedJoinSource(response.source, source);
+        }
+        triggerCompleted = true;
+      } catch (cause) {
+        // error-policy:J4 the join boundary retries only declared transient
+        // lifecycle transport failures; every other shape becomes UI error.
+        if (!isRetryableCloudAgentJoinError(cause)) {
+          throw cloudAgentJoinFailure(
+            cause instanceof Error
+              ? cause.message
+              : `Eliza Cloud could not ${options.trigger} this agent.`,
+            {
+              agentId: options.agentId,
+              cause,
+              jobId,
+              phase: options.phase,
+              source,
+              startedAt,
+              status: lastStatus,
+            },
+          );
+        }
+        if (Date.now() >= deadline) break;
+        lastStatus = "retrying";
+      }
+      // Progress consumers are outside the transport retry boundary. A UI
+      // callback bug must surface once, never replay a control-plane mutation.
+      emit(options.phase === "provisioning" ? "provisioning" : "starting");
+      if (triggerCompleted) break;
+      await waitOneCloudAgentJoinTick(pollIntervalMs, deadline);
+    }
+  }
+
+  while (jobId) {
+    try {
+      const response = await client.getCloudCompatJobStatus(jobId);
+      if (!response.success) {
+        throw new Error(
+          response.data.error || "Eliza Cloud could not read the startup job.",
+        );
+      }
+      lastStatus = normalizeCloudAgentStatus(response.data.status);
+      if (response.data.status === "failed") {
+        throw cloudAgentJoinFailure(
+          response.data.error
+            ? `Your cloud agent failed to start: ${response.data.error}`
+            : "Your cloud agent failed to start.",
+          {
+            agentId: options.agentId,
+            jobId,
+            phase: options.phase,
+            source,
+            startedAt,
+            status: lastStatus,
+          },
+        );
+      }
+      if (response.data.status === "completed") {
+        jobCompleted = true;
+      }
+    } catch (cause) {
+      // error-policy:J4 the canonical-job poll translates declared transient
+      // transport failures into bounded waiting and all others into UI error.
+      if (!isRetryableCloudAgentJoinError(cause)) {
+        if (cloudAgentJoinProgressFromError(cause)) throw cause;
+        throw cloudAgentJoinFailure(
+          cause instanceof Error
+            ? cause.message
+            : "Eliza Cloud could not read the startup job.",
+          {
+            agentId: options.agentId,
+            cause,
+            jobId,
+            phase: options.phase,
+            source,
+            startedAt,
+            status: lastStatus,
+          },
+        );
+      }
+      lastStatus = "retrying";
+    }
+    emit(options.phase === "provisioning" ? "provisioning" : "starting");
+    if (jobCompleted) break;
+    if (Date.now() >= deadline) break;
+    await waitOneCloudAgentJoinTick(pollIntervalMs, deadline);
+  }
+
+  if (jobId && !jobCompleted) {
+    const elapsedMs = Math.max(0, Date.now() - startedAt);
+    throw cloudAgentJoinFailure(
+      `Your cloud agent startup job is still "${lastStatus}" after ${Math.round(
+        elapsedMs / 1000,
+      )}s. It may still be booting — try again in a minute.`,
+      {
+        agentId: options.agentId,
+        jobId,
+        phase: options.phase,
+        source,
+        startedAt,
+        status: lastStatus,
+      },
+    );
+  }
+
+  for (;;) {
+    let runningAgent: CloudCompatAgent | null = null;
+    let runningProgress: CloudAgentJoinProgress | null = null;
+    try {
+      const response = await client.getCloudCompatAgent(options.agentId);
+      if (!response.success) {
+        throw new Error("Eliza Cloud could not read this agent's status.");
+      }
+      const agent = response.data;
+      lastStatus = normalizeCloudAgentStatus(agent.status);
+      if (lastStatus === "running") {
+        runningAgent = agent;
+        runningProgress = cloudAgentJoinProgress(
+          "running",
+          source,
+          options.agentId,
+          jobId,
+          lastStatus,
+          startedAt,
+        );
+      }
+      if (
+        runningAgent === null &&
+        cloudAgentJoinDisposition(lastStatus) === "terminal"
+      ) {
+        throw cloudAgentJoinFailure(
+          agent.error_message
+            ? `Your cloud agent failed to start: ${agent.error_message}`
+            : "Your cloud agent failed to start. Check its status in Eliza Cloud and try again.",
+          {
+            agentId: options.agentId,
+            jobId,
+            phase: options.phase,
+            source,
+            startedAt,
+            status: lastStatus,
+          },
+        );
+      }
+    } catch (cause) {
+      // error-policy:J4 agent-detail polling retries only declared transient
+      // transport failures and otherwise renders an explicit unavailable state.
+      if (!isRetryableCloudAgentJoinError(cause)) {
+        if (cloudAgentJoinProgressFromError(cause)) throw cause;
+        throw cloudAgentJoinFailure(
+          cause instanceof Error
+            ? cause.message
+            : "Eliza Cloud could not read this agent's status.",
+          {
+            agentId: options.agentId,
+            cause,
+            jobId,
+            phase: options.phase,
+            source,
+            startedAt,
+            status: lastStatus,
+          },
+        );
+      }
+      lastStatus = "retrying";
+    }
+
+    if (runningAgent && runningProgress) {
+      emitCloudAgentJoinProgress(
+        options.onProgress,
+        "ready",
+        "Connected to your agent",
+        runningProgress,
+      );
+      return { agent: runningAgent, jobId, progress: runningProgress, source };
+    }
+    emit(options.phase === "provisioning" ? "provisioning" : "starting");
+
+    if (Date.now() >= deadline) break;
+    await waitOneCloudAgentJoinTick(pollIntervalMs, deadline);
+  }
+
+  const elapsedMs = Math.max(0, Date.now() - startedAt);
+  throw cloudAgentJoinFailure(
+    `Your cloud agent is still "${lastStatus}" after ${Math.round(
+      elapsedMs / 1000,
+    )}s. It may still be booting — try again in a minute.`,
+    {
+      agentId: options.agentId,
+      jobId,
+      phase: options.phase,
+      source,
+      startedAt,
+      status: lastStatus,
+    },
+  );
+}
+
+/**
+ * Wait for a stopped dedicated cloud agent to report `running`, preserving and
+ * polling the canonical resume job before reading the final control-plane row.
  *
  * Resolves with the FRESH agent record (post-wake URLs), so callers bind the
  * base the running container actually reports, not the stale list entry.
@@ -3436,56 +3915,24 @@ export async function waitForCloudAgentRunning(
     agentId: string;
     pollIntervalMs?: number;
     timeoutMs?: number;
-    onProgress?: (status: string, detail?: string) => void;
+    onProgress?: CloudAgentJoinProgressHandler;
   },
 ): Promise<CloudCompatAgent> {
-  const { agentId, onProgress } = options;
-  const pollIntervalMs = Math.max(
-    50,
-    options.pollIntervalMs ?? CLOUD_AGENT_WAKE_POLL_INTERVAL_MS,
-  );
-  const timeoutMs = Math.max(
-    pollIntervalMs,
-    options.timeoutMs ?? CLOUD_AGENT_WAKE_TIMEOUT_MS,
-  );
-  const startedAt = Date.now();
-
-  onProgress?.(
-    "starting",
-    "Starting your agent — a cold boot can take a few minutes...",
-  );
-  // error-policy:J4 resume is an idempotent wake nudge — the status poll
-  // below is the authority and surfaces failed/timed-out boots as errors.
-  await client.resumeCloudCompatAgent(agentId).catch(() => null);
-
-  let lastStatus = "unknown";
-  for (;;) {
-    // error-policy:J4 a failed status read counts as an unknown tick inside
-    // this bounded poll; the deadline below throws with the last status.
-    const detail = await client.getCloudCompatAgent(agentId).catch(() => null);
-    const agent = detail?.success ? detail.data : null;
-    if (agent) {
-      lastStatus = agent.status || "unknown";
-      if (lastStatus === "running") return agent;
-      if (CLOUD_AGENT_FAILED_STATUSES.has(lastStatus)) {
-        throw new Error(
-          agent.error_message
-            ? `Your cloud agent failed to start: ${agent.error_message}`
-            : "Your cloud agent failed to start. Check its status in Eliza Cloud and try again.",
-        );
-      }
-    }
-    const elapsedMs = Date.now() - startedAt;
-    if (elapsedMs + pollIntervalMs > timeoutMs) {
-      throw new Error(
-        `Your cloud agent is still "${lastStatus}" after ${Math.round(
-          elapsedMs / 1000,
-        )}s. It may still be booting — try again in a minute.`,
-      );
-    }
-    onProgress?.("starting", describeAgentWakeWait(elapsedMs));
-    await new Promise((r) => setTimeout(r, pollIntervalMs));
-  }
+  return (
+    await waitForCloudAgentJoin(client, {
+      agentId: options.agentId,
+      ...(options.onProgress ? { onProgress: options.onProgress } : {}),
+      phase: "resuming",
+      ...(typeof options.pollIntervalMs === "number"
+        ? { pollIntervalMs: options.pollIntervalMs }
+        : {}),
+      source: "existing_resume",
+      ...(typeof options.timeoutMs === "number"
+        ? { timeoutMs: options.timeoutMs }
+        : {}),
+      trigger: "resume",
+    })
+  ).agent;
 }
 
 /**
@@ -3559,6 +4006,7 @@ ElizaClient.prototype.selectOrProvisionCloudAgent = async function (
     preferStewardAgentAdapter,
   } = options;
   const onProgress = options.onProgress;
+  const joinStartedAt = Date.now();
   const resolvedCloudApiBase = resolveDirectCloudAuthApiBase(cloudApiBase);
   let forceCreateForTerminalAgents = false;
   let forceCreatePastSharedAgents = false;
@@ -3574,6 +4022,19 @@ ElizaClient.prototype.selectOrProvisionCloudAgent = async function (
   // is the fix for "a new cloud agent is created on every sign-in" — the create
   // path only runs when the user has no agent yet.
   if (!forceCreate) {
+    emitCloudAgentJoinProgress(
+      onProgress,
+      "listing",
+      "Finding your agents...",
+      cloudAgentJoinProgress(
+        "listing",
+        null,
+        null,
+        null,
+        "listing",
+        joinStartedAt,
+      ),
+    );
     const list = knownAgents
       ? { success: true as const, data: knownAgents }
       : await (async () => {
@@ -3582,7 +4043,6 @@ ElizaClient.prototype.selectOrProvisionCloudAgent = async function (
           // distinguish real provisioning phases from bookkeeping by this code.
           // Display consumers render the detail text, so the rename is
           // invisible to them.
-          onProgress?.("listing", "Finding your agents...");
           // A failed agent-list lookup must NOT fall through to provisioning. A
           // transient error (expired token, network blip, or a success:false
           // body) previously collapsed to an empty list and minted a brand-new
@@ -3626,25 +4086,91 @@ ElizaClient.prototype.selectOrProvisionCloudAgent = async function (
       eligibleAgents.every(isTerminalFailedCloudAgent);
     if (chosen) {
       let agent = chosen;
+      let source: CloudAgentJoinSource = "existing_running";
+      let jobId: string | null = null;
+      let finalProgress: CloudAgentJoinProgress;
       // A picked agent that is not `running` is a dedicated cold boot: shared
       // rows are BORN `running` (they are container-free, served instantly by
       // the in-Worker runtime), so a non-running pick always has a container
       // to wake (~5 minutes — #8621). Binding its list-row base immediately
       // would exhaust the ~60 s 202-retry budget on the first chat call AND
       // risks a stale pointer (the list row's URLs predate the wake) — so wait
-      // for `running` here; `waitForCloudAgentRunning` kicks a resume and
-      // resolves with the FRESH post-wake record, whose URLs we bind below.
-      if (agent.status !== "running") {
-        agent = await waitForCloudAgentRunning(this, {
+      // for `running` here. Sleeping rows wake through the backup-integrity
+      // boundary, stopped rows resume, and in-flight or disconnected rows
+      // recover their idempotent provision job. Every path resolves with the
+      // FRESH post-start record, whose URLs we bind below.
+      const chosenStatus = normalizeCloudAgentStatus(agent.status);
+      if (chosenStatus !== "running") {
+        const disposition = cloudAgentJoinDisposition(chosenStatus);
+        const wakesExisting = disposition === "wake";
+        const resumesExisting = disposition === "resume";
+        const continuesProvision = disposition === "provision";
+        if (!wakesExisting && !resumesExisting && !continuesProvision) {
+          throw cloudAgentJoinFailure(
+            `Your cloud agent is in an unsupported "${chosenStatus}" state. No new agent was created.`,
+            {
+              agentId: chosen.agent_id,
+              jobId: null,
+              phase: "provisioning",
+              source: "existing_provision",
+              startedAt: joinStartedAt,
+              status: chosenStatus,
+            },
+          );
+        }
+        const waiting = await waitForCloudAgentJoin(this, {
           agentId: chosen.agent_id,
+          initialStatus: chosenStatus,
           ...(typeof options.wakePollIntervalMs === "number"
             ? { pollIntervalMs: options.wakePollIntervalMs }
             : {}),
+          phase: wakesExisting
+            ? "waking"
+            : resumesExisting
+              ? "resuming"
+              : "provisioning",
+          source: wakesExisting
+            ? "existing_wake"
+            : resumesExisting
+              ? "existing_resume"
+              : "existing_provision",
+          startedAt: joinStartedAt,
           ...(typeof options.wakeTimeoutMs === "number"
             ? { timeoutMs: options.wakeTimeoutMs }
             : {}),
           ...(onProgress ? { onProgress } : {}),
+          trigger: wakesExisting
+            ? "wake"
+            : resumesExisting
+              ? "resume"
+              : "provision",
         });
+        agent = waiting.agent;
+        source = waiting.source;
+        jobId = waiting.jobId;
+        finalProgress = waiting.progress;
+      } else {
+        emitCloudAgentJoinProgress(
+          onProgress,
+          "reusing",
+          "Reconnecting to your agent",
+          cloudAgentJoinProgress(
+            "reusing",
+            source,
+            agent.agent_id,
+            null,
+            chosenStatus,
+            joinStartedAt,
+          ),
+        );
+        finalProgress = cloudAgentJoinProgress(
+          "running",
+          source,
+          agent.agent_id,
+          null,
+          "running",
+          joinStartedAt,
+        );
       }
       const hasDedicatedBase = Boolean(
         agent.bridge_url || agent.web_ui_url || agent.webUiUrl,
@@ -3662,7 +4188,12 @@ ElizaClient.prototype.selectOrProvisionCloudAgent = async function (
             agentId: agent.agent_id,
             cloudApiBase: resolvedCloudApiBase,
           });
-      onProgress?.("ready", "Connected to your agent");
+      emitCloudAgentJoinProgress(
+        onProgress,
+        "ready",
+        "Connected to your agent",
+        finalProgress,
+      );
       return {
         agentId: agent.agent_id,
         agentName: agent.agent_name,
@@ -3671,6 +4202,9 @@ ElizaClient.prototype.selectOrProvisionCloudAgent = async function (
         created: false,
         requiresAgentPairing: false,
         executionTier: agent.execution_tier ?? null,
+        source,
+        jobId,
+        progress: finalProgress,
       };
     }
   }
@@ -3685,61 +4219,300 @@ ElizaClient.prototype.selectOrProvisionCloudAgent = async function (
   // container finishes booting), so re-read the created agent to pick it up;
   // if that lookup fails or has no URL yet, fall back to the standard dedicated
   // subdomain for the known agent id.
-  onProgress?.("creating", `Creating ${name}...`);
+  let source: CloudAgentJoinSource | null = null;
+  emitCloudAgentJoinProgress(
+    onProgress,
+    "creating",
+    `Creating ${name}...`,
+    cloudAgentJoinProgress(
+      "provisioning",
+      null,
+      null,
+      null,
+      "creating",
+      joinStartedAt,
+    ),
+  );
   const mustForceCreate =
     forceCreate ||
     forceCreatePastSharedAgents ||
     (forceCreateForTerminalAgents && !preferSharedTier);
-  const created = await this.createCloudCompatAgent({
-    agentName: name,
-    ...(bio?.length ? { agentConfig: { bio } } : {}),
-    ...(mustForceCreate ? { forceCreate: true } : {}),
-    ...(preferSharedTier ? { preferSharedTier: true } : {}),
-  });
-  if (!created.success || !created.data.agentId) {
-    throw new Error(created.data.message || "Failed to create cloud agent");
+  let created: Awaited<ReturnType<ElizaClient["createCloudCompatAgent"]>>;
+  try {
+    created = await this.createCloudCompatAgent({
+      agentName: name,
+      ...(bio?.length ? { agentConfig: { bio } } : {}),
+      ...(mustForceCreate ? { forceCreate: true } : {}),
+      ...(preferSharedTier ? { preferSharedTier: true } : {}),
+    });
+  } catch (cause) {
+    // error-policy:J4 create failure is the user-facing join boundary; retain
+    // its typed transport cause while rendering a terminal error state.
+    throw cloudAgentJoinFailure(
+      cause instanceof Error
+        ? cause.message
+        : "Eliza Cloud could not create this agent.",
+      {
+        agentId: null,
+        cause,
+        jobId: null,
+        phase: "provisioning",
+        source,
+        startedAt: joinStartedAt,
+        status: "create_failed",
+      },
+    );
   }
-  requireConfirmedFreshCloudAgentCreate(mustForceCreate, created.created);
+  if (!created.success || !created.data.agentId) {
+    throw cloudAgentJoinFailure(
+      created.data.message || "Failed to create cloud agent",
+      {
+        agentId: created.data.agentId || null,
+        jobId: created.data.jobId?.trim() || null,
+        phase: "provisioning",
+        source,
+        startedAt: joinStartedAt,
+        status: normalizeCloudAgentStatus(created.data.status),
+      },
+    );
+  }
   const agentId = created.data.agentId;
-  // error-policy:J4 detail is an optimization probe (warm-pool fast path);
-  // on failure the standard dedicated subdomain is still the desired default.
-  const detail = await this.getCloudCompatAgent(agentId).catch(() => null);
-  let detailAgent = detail?.success ? detail.data : null;
-  const detailHasDedicatedBase = Boolean(
-    detailAgent?.bridge_url || detailAgent?.web_ui_url || detailAgent?.webUiUrl,
-  );
-  const useSharedAdapter = Boolean(
-    detailAgent?.execution_tier === "shared" ||
-      (!detailHasDedicatedBase &&
-        (preferSharedTier || preferStewardAgentAdapter)),
-  );
-  // A freshly-created dedicated agent's subdomain is populated immediately, but
-  // its container takes ~30-120s to boot. When the caller wants a dedicated
-  // runtime, wait here so the first chat request does not land on the shared
-  // adapter for a non-shared agent or race the container cold boot.
-  const initialDedicatedApiBase = resolveDedicatedCloudAgentApiBase({
-    bridgeUrl: detailAgent?.bridge_url ?? null,
-    webUiUrl: detailAgent?.web_ui_url ?? detailAgent?.webUiUrl,
-    agentId,
-    cloudApiBase: resolvedCloudApiBase,
-  });
-  if (
-    !useSharedAdapter &&
-    detailAgent &&
-    detailAgent.status !== "running" &&
-    isDedicatedCloudAgentBase(initialDedicatedApiBase)
-  ) {
-    detailAgent = await waitForCloudAgentRunning(this, {
+  const createdStatus = normalizeCloudAgentStatus(created.data.status);
+  const createdDisposition = cloudAgentJoinDisposition(createdStatus);
+  source =
+    created.created === false
+      ? createdDisposition === "running"
+        ? "existing_running"
+        : createdDisposition === "wake"
+          ? "existing_wake"
+          : createdDisposition === "resume"
+            ? "existing_resume"
+            : "existing_provision"
+      : (authoritativeJoinSource(created.source) ??
+        (created.data.jobId?.trim() ? "cold_provision" : null));
+  try {
+    requireConfirmedFreshCloudAgentCreate(
+      mustForceCreate,
+      created.created,
+      created.source,
+    );
+  } catch (cause) {
+    // error-policy:J2 annotate ambiguous create confirmation with the selected
+    // agent/source while preserving the original validation failure as cause.
+    throw cloudAgentJoinFailure(
+      cause instanceof Error ? cause.message : "Cloud create was ambiguous.",
+      {
+        agentId,
+        cause,
+        jobId: created.data.jobId?.trim() || null,
+        phase: "provisioning",
+        source,
+        startedAt: joinStartedAt,
+        status: createdStatus,
+      },
+    );
+  }
+  const initialJobId = created.data.jobId?.trim() || null;
+  let detailAgent: CloudCompatAgent;
+  let finalProgress: CloudAgentJoinProgress;
+  let finalJobId = initialJobId;
+  if (initialJobId) {
+    // A returned job makes the requested async path authoritative even when an
+    // older Cloud response omits its explicit source marker.
+    source ??= "cold_provision";
+    // The create response's job is the lifecycle authority. Poll it before any
+    // agent-detail acceptance so a not-yet-materialized row cannot turn a real
+    // queued start into a false 404 or an ambiguous retry.
+    const waiting = await waitForCloudAgentJoin(this, {
       agentId,
+      initialJobId,
+      initialStatus: created.data.status,
       ...(typeof options.wakePollIntervalMs === "number"
         ? { pollIntervalMs: options.wakePollIntervalMs }
         : {}),
+      phase:
+        source === "existing_wake"
+          ? "waking"
+          : source === "existing_resume"
+            ? "resuming"
+            : "provisioning",
+      source,
+      startedAt: joinStartedAt,
       ...(typeof options.wakeTimeoutMs === "number"
         ? { timeoutMs: options.wakeTimeoutMs }
         : {}),
       ...(onProgress ? { onProgress } : {}),
+      trigger: "none",
     });
+    detailAgent = waiting.agent;
+    source = waiting.source;
+    finalJobId = waiting.jobId;
+    finalProgress = waiting.progress;
+  } else {
+    let detail: Awaited<ReturnType<ElizaClient["getCloudCompatAgent"]>>;
+    try {
+      detail = await this.getCloudCompatAgent(agentId);
+    } catch (cause) {
+      // error-policy:J4 this first detail read is the user-facing join boundary;
+      // failures remain typed and visible instead of fabricating a ready agent.
+      throw cloudAgentJoinFailure(
+        cause instanceof Error
+          ? cause.message
+          : "Eliza Cloud could not read the new agent.",
+        {
+          agentId,
+          cause,
+          jobId: initialJobId,
+          phase: "provisioning",
+          source,
+          startedAt: joinStartedAt,
+          status: normalizeCloudAgentStatus(created.data.status),
+        },
+      );
+    }
+    if (!detail.success) {
+      throw cloudAgentJoinFailure("Eliza Cloud could not read the new agent.", {
+        agentId,
+        jobId: initialJobId,
+        phase: "provisioning",
+        source,
+        startedAt: joinStartedAt,
+        status: normalizeCloudAgentStatus(created.data.status),
+      });
+    }
+    detailAgent = detail.data;
+    const detailStatus = normalizeCloudAgentStatus(detailAgent.status);
+    const detailHasDedicatedBase = Boolean(
+      detailAgent.bridge_url || detailAgent.web_ui_url || detailAgent.webUiUrl,
+    );
+    if (source === null) {
+      source =
+        detailAgent.execution_tier === "shared"
+          ? "shared_runtime"
+          : detailAgent.execution_tier || detailHasDedicatedBase
+            ? "cold_provision"
+            : null;
+    }
+    if (isTerminalFailedCloudAgent(detailAgent)) {
+      throw cloudAgentJoinFailure(
+        detailAgent.error_message
+          ? `Your cloud agent is unavailable: ${detailAgent.error_message}`
+          : "Your cloud agent is unavailable. Try again.",
+        {
+          agentId,
+          jobId: initialJobId,
+          phase: "provisioning",
+          source,
+          startedAt: joinStartedAt,
+          status: detailStatus,
+        },
+      );
+    }
+    if (detailStatus === "running") {
+      finalProgress = cloudAgentJoinProgress(
+        "running",
+        source,
+        agentId,
+        finalJobId,
+        "running",
+        joinStartedAt,
+      );
+    } else {
+      // A fresh dedicated agent's subdomain is populated before its container
+      // finishes booting. Shared-runtime rows are the only container-free
+      // exception; they still must reach `running` before the UI reports ready.
+      const initialDedicatedApiBase = resolveDedicatedCloudAgentApiBase({
+        bridgeUrl: detailAgent.bridge_url,
+        webUiUrl: detailAgent.web_ui_url ?? detailAgent.webUiUrl,
+        agentId,
+        cloudApiBase: resolvedCloudApiBase,
+      });
+      const useSharedAdapter = Boolean(
+        detailAgent.execution_tier === "shared" ||
+          (!detailHasDedicatedBase &&
+            (preferSharedTier || preferStewardAgentAdapter)),
+      );
+      const disposition = cloudAgentJoinDisposition(detailStatus);
+      const wakesExisting = disposition === "wake";
+      const resumesExisting = disposition === "resume";
+      const continuesProvision = disposition === "provision";
+      if (!wakesExisting && !resumesExisting && !continuesProvision) {
+        throw cloudAgentJoinFailure(
+          `Your cloud agent is in an unsupported "${detailStatus}" state. No additional agent was created.`,
+          {
+            agentId,
+            jobId: initialJobId,
+            phase: "provisioning",
+            source,
+            startedAt: joinStartedAt,
+            status: detailStatus,
+          },
+        );
+      }
+      if (
+        source !== "shared_runtime" &&
+        (useSharedAdapter ||
+          !isDedicatedCloudAgentBase(initialDedicatedApiBase))
+      ) {
+        throw cloudAgentJoinFailure(
+          "Eliza Cloud returned an agent that is not yet reachable.",
+          {
+            agentId,
+            jobId: initialJobId,
+            phase: "provisioning",
+            source,
+            startedAt: joinStartedAt,
+            status: detailStatus,
+          },
+        );
+      }
+      const waitingSource = wakesExisting
+        ? "existing_wake"
+        : resumesExisting
+          ? "existing_resume"
+          : (source ??
+            (detailAgent.execution_tier === "shared"
+              ? "shared_runtime"
+              : "cold_provision"));
+      const waiting = await waitForCloudAgentJoin(this, {
+        agentId,
+        initialStatus: detailStatus,
+        ...(typeof options.wakePollIntervalMs === "number"
+          ? { pollIntervalMs: options.wakePollIntervalMs }
+          : {}),
+        phase: wakesExisting
+          ? "waking"
+          : resumesExisting
+            ? "resuming"
+            : "provisioning",
+        source: waitingSource,
+        startedAt: joinStartedAt,
+        ...(typeof options.wakeTimeoutMs === "number"
+          ? { timeoutMs: options.wakeTimeoutMs }
+          : {}),
+        ...(onProgress ? { onProgress } : {}),
+        trigger: wakesExisting
+          ? "wake"
+          : resumesExisting
+            ? "resume"
+            : source === "warm_pool_recovery" || source === "shared_runtime"
+              ? "none"
+              : "provision",
+      });
+      detailAgent = waiting.agent;
+      source = waiting.source;
+      finalJobId = waiting.jobId;
+      finalProgress = waiting.progress;
+    }
   }
+  const detailHasDedicatedBase = Boolean(
+    detailAgent.bridge_url || detailAgent.web_ui_url || detailAgent.webUiUrl,
+  );
+  const useSharedAdapter = Boolean(
+    detailAgent.execution_tier === "shared" ||
+      (!detailHasDedicatedBase &&
+        (preferSharedTier || preferStewardAgentAdapter)),
+  );
   const apiBase = useSharedAdapter
     ? buildCloudSharedAgentApiBase(resolvedCloudApiBase, agentId)
     : resolveDedicatedCloudAgentApiBase({
@@ -3748,7 +4521,12 @@ ElizaClient.prototype.selectOrProvisionCloudAgent = async function (
         agentId,
         cloudApiBase: resolvedCloudApiBase,
       });
-  onProgress?.("ready", "Cloud agent ready!");
+  emitCloudAgentJoinProgress(
+    onProgress,
+    "ready",
+    "Cloud agent ready!",
+    finalProgress,
+  );
   return {
     agentId,
     agentName: created.data.agentName || name,
@@ -3760,6 +4538,9 @@ ElizaClient.prototype.selectOrProvisionCloudAgent = async function (
     created: created.created !== false,
     requiresAgentPairing: false,
     executionTier: detailAgent?.execution_tier ?? null,
+    ...(source ? { source } : {}),
+    jobId: finalJobId,
+    progress: finalProgress,
   };
 };
 
