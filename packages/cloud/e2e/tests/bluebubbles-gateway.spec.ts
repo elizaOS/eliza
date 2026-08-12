@@ -44,6 +44,8 @@ interface FakeBlueBubblesServer {
   url: string;
   sends: JsonRecord[];
   webhookCreates: JsonRecord[];
+  messageTargets: Map<string, string | null>;
+  messageLookups: string[];
 }
 
 function json(res: ServerResponse, status: number, body: unknown): void {
@@ -61,6 +63,8 @@ async function readJson(req: IncomingMessage): Promise<JsonRecord> {
 async function startFakeBlueBubbles(): Promise<FakeBlueBubblesServer> {
   const sends: JsonRecord[] = [];
   const webhookCreates: JsonRecord[] = [];
+  const messageTargets = new Map<string, string | null>();
+  const messageLookups: string[] = [];
   const server = createServer((req, res) => {
     void (async () => {
       const url = new URL(req.url ?? "/", "http://127.0.0.1");
@@ -73,6 +77,24 @@ async function startFakeBlueBubbles(): Promise<FakeBlueBubblesServer> {
       }
       if (req.method === "GET" && url.pathname === "/api/v1/webhook") {
         json(res, 200, { status: 200, data: [] });
+        return;
+      }
+      const messageMatch = url.pathname.match(/^\/api\/v1\/message\/(.+)$/);
+      if (req.method === "GET" && messageMatch) {
+        const guid = decodeURIComponent(messageMatch[1] ?? "");
+        messageLookups.push(guid);
+        if (!messageTargets.has(guid)) {
+          json(res, 404, { error: "message not found" });
+          return;
+        }
+        const target = messageTargets.get(guid);
+        json(res, 200, {
+          status: 200,
+          data: {
+            guid,
+            chats: target ? [{ lastAddressedHandle: target }] : [],
+          },
+        });
         return;
       }
       if (req.method === "POST" && url.pathname === "/api/v1/webhook") {
@@ -105,6 +127,8 @@ async function startFakeBlueBubbles(): Promise<FakeBlueBubblesServer> {
     url: `http://127.0.0.1:${address.port}`,
     sends,
     webhookCreates,
+    messageTargets,
+    messageLookups,
   };
 }
 
@@ -245,6 +269,11 @@ test.describe("registered BlueBubbles gateway", () => {
 
     try {
       await waitForRelay(relayBaseUrl);
+      const onboardingGuid = `inbound-${crypto.randomUUID()}`;
+      fakeBlueBubbles.messageTargets.set(
+        onboardingGuid,
+        registration.phoneNumber,
+      );
       const onboardingInboundResponse = await fetch(
         `${relayBaseUrl}/webhooks/bluebubbles`,
         {
@@ -253,7 +282,7 @@ test.describe("registered BlueBubbles gateway", () => {
           body: JSON.stringify({
             type: "new-message",
             data: {
-              guid: `inbound-${crypto.randomUUID()}`,
+              guid: onboardingGuid,
               text: "My name is Casey",
               isFromMe: false,
               handle: { address: senderPhone, service: "iMessage" },
@@ -261,10 +290,6 @@ test.describe("registered BlueBubbles gateway", () => {
                 {
                   guid: `iMessage;-;${senderPhone}`,
                   chatIdentifier: senderPhone,
-                  // The relay fail-closes unless the event proves which local
-                  // account received it. Real BlueBubbles payloads carry this
-                  // field; keep the fixture on the routed onboarding path.
-                  lastAddressedHandle: registration.phoneNumber,
                 },
               ],
             },
@@ -284,6 +309,7 @@ test.describe("registered BlueBubbles gateway", () => {
         replied: true,
         replyQueued: false,
       });
+      expect(fakeBlueBubbles.messageLookups).toEqual([onboardingGuid]);
       expect(stack.mocks.mockLlm?.requestCount()).toBe(0);
       expect(fakeBlueBubbles.sends).toHaveLength(1);
       const onboardingReply = String(fakeBlueBubbles.sends[0]?.message ?? "");
@@ -345,6 +371,30 @@ test.describe("registered BlueBubbles gateway", () => {
       if (!agentId)
         throw new Error("Onboarding returned no provisioned agent id");
 
+      const configureAgentResponse = await fetch(
+        `${stack.urls.api}/api/v1/eliza/agents/${agentId}`,
+        {
+          method: "PATCH",
+          headers: {
+            ...authHeaders(senderUser.apiKey),
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({
+            agentConfig: {
+              character: {
+                name: "Phone Eliza",
+                system: "Reply helpfully to messages arriving by phone.",
+                model: MODEL,
+              },
+            },
+          }),
+        },
+      );
+      expect(
+        configureAgentResponse.status,
+        `agent config returned ${configureAgentResponse.status}: ${await configureAgentResponse.clone().text()}`,
+      ).toBe(200);
+
       const { usersRepository } = await import(
         "@elizaos/cloud-shared/db/repositories/users"
       );
@@ -390,13 +440,10 @@ test.describe("registered BlueBubbles gateway", () => {
         replied: true,
         replyQueued: false,
       });
+      expect(stack.mocks.mockLlm?.requestCount()).toBe(1);
       expect(fakeBlueBubbles.sends[1]).toMatchObject({
         chatGuid: `iMessage;-;${senderPhone}`,
-        // The onboarding-created shared agent intentionally has no model
-        // override in this credential-free lane. Prove the linked turn reached
-        // that agent and its deterministic fail-closed reply was relayed.
-        message:
-          "Eliza is temporarily unavailable (no shared model configured).",
+        message: "PONG",
         method: "apple-script",
       });
 
@@ -418,6 +465,76 @@ test.describe("registered BlueBubbles gateway", () => {
         replied: true,
         replyQueued: false,
       });
+
+      const mismatchedGuid = `mismatched-${crypto.randomUUID()}`;
+      fakeBlueBubbles.messageTargets.set(mismatchedGuid, "+14155559999");
+      const mismatchedTargetResponse = await fetch(
+        `${relayBaseUrl}/webhooks/bluebubbles`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            type: "new-message",
+            data: {
+              guid: mismatchedGuid,
+              text: "This belongs to a different local number.",
+              isFromMe: false,
+              handle: { address: senderPhone, service: "iMessage" },
+              chats: [
+                {
+                  guid: `iMessage;-;${senderPhone}`,
+                  chatIdentifier: senderPhone,
+                },
+              ],
+            },
+          }),
+        },
+      );
+      expect(mismatchedTargetResponse.status).toBe(200);
+      await expect(mismatchedTargetResponse.json()).resolves.toMatchObject({
+        success: true,
+        skipped: "gateway_target_mismatch",
+        replied: false,
+        replyQueued: false,
+      });
+
+      const unverifiedGuid = `unverified-${crypto.randomUUID()}`;
+      const unverifiedTargetResponse = await fetch(
+        `${relayBaseUrl}/webhooks/bluebubbles`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            type: "new-message",
+            data: {
+              guid: unverifiedGuid,
+              text: "This target cannot be proven.",
+              isFromMe: false,
+              handle: { address: senderPhone, service: "iMessage" },
+              chats: [
+                {
+                  guid: `iMessage;-;${senderPhone}`,
+                  chatIdentifier: senderPhone,
+                },
+              ],
+            },
+          }),
+        },
+      );
+      expect(unverifiedTargetResponse.status).toBe(200);
+      await expect(unverifiedTargetResponse.json()).resolves.toMatchObject({
+        success: true,
+        skipped: "gateway_target_unverified",
+        replied: false,
+        replyQueued: false,
+      });
+      expect(fakeBlueBubbles.messageLookups).toEqual([
+        onboardingGuid,
+        mismatchedGuid,
+        unverifiedGuid,
+      ]);
+      expect(fakeBlueBubbles.sends).toHaveLength(2);
+      expect(stack.mocks.mockLlm?.requestCount()).toBe(1);
 
       await expect.poll(() => fakeBlueBubbles.webhookCreates.length).toBe(1);
       expect(fakeBlueBubbles.webhookCreates[0]).toEqual({
@@ -477,7 +594,7 @@ test.describe("registered BlueBubbles gateway", () => {
         }),
       });
       expect(rejectedResponse.status).toBe(401);
-      expect(stack.mocks.mockLlm?.requestCount()).toBe(0);
+      expect(stack.mocks.mockLlm?.requestCount()).toBe(1);
     } finally {
       // error-policy:J6 test teardown must release the relay and loopback server.
       await stopChild(relay);
