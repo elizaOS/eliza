@@ -127,4 +127,50 @@ describe("run-turbo concurrency override", () => {
       expect.arrayContaining(["lint", "--concurrency=6"]),
     );
   });
+
+  test("does not rewrite task pass-through concurrency after bare --", async () => {
+    const { argvFile, fakeTurbo } = await fixture();
+
+    const result = invoke(fakeTurbo, "4", [
+      "run",
+      "lint",
+      "--",
+      "--concurrency",
+      "8",
+    ]);
+
+    expect(result.status, result.stderr).toBe(0);
+    const argv = JSON.parse(await readFile(argvFile, "utf8"));
+    const sep = argv.indexOf("--");
+    expect(sep).toBeGreaterThan(-1);
+    const owned = argv.slice(0, sep);
+    const pass = argv.slice(sep);
+    expect(owned.filter((a: string) => a.startsWith("--concurrency")).length).toBe(
+      1,
+    );
+    expect(owned).toContain("--concurrency=4");
+    expect(pass).toEqual(["--", "--concurrency", "8"]);
+  });
+
+  test("removes every pre-separator concurrency occurrence before injecting one override", async () => {
+    const { argvFile, fakeTurbo } = await fixture();
+
+    const result = invoke(fakeTurbo, "4", [
+      "run",
+      "lint",
+      "--concurrency",
+      "8",
+      "--concurrency=9",
+    ]);
+
+    expect(result.status, result.stderr).toBe(0);
+    const argv = JSON.parse(await readFile(argvFile, "utf8"));
+    const concurrencyFlags = argv.filter(
+      (a: string) => a === "--concurrency" || a.startsWith("--concurrency="),
+    );
+    expect(concurrencyFlags).toEqual(["--concurrency=4"]);
+    expect(argv).not.toContain("8");
+    expect(argv).not.toContain("9");
+    expect(argv).not.toContain("--concurrency=9");
+  });
 });

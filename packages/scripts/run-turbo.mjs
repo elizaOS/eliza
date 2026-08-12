@@ -180,19 +180,31 @@ if (
 // tsc processes on a full-workspace cone — the VM itself is OOM-killed and the
 // job exits 143 (#15140) — so CI lanes set this to 4 without forking the
 // `verify`/`typecheck` script definitions.
+//
+// Only the argv prefix before a bare `--` is Turbo-owned. Task pass-through
+// after `--` must not be rewritten (e.g. `run lint -- --concurrency 8`).
+// Strip every pre-separator concurrency occurrence and insert exactly one
+// env override so mixed duplicates cannot reach Turbo.
 if (concurrencyOverride !== null) {
-  const idx = turboArgs.findIndex(
-    (arg) => arg === "--concurrency" || arg.startsWith("--concurrency="),
-  );
-  const override = `--concurrency=${concurrencyOverride}`;
-  if (idx === -1) {
-    if (runIndex !== -1) turboArgs.splice(runIndex + 1, 0, override);
-    else turboArgs.push(override);
-  } else if (turboArgs[idx] === "--concurrency") {
-    turboArgs.splice(idx, 2, override);
-  } else {
-    turboArgs.splice(idx, 1, override);
+  const sep = turboArgs.indexOf("--");
+  const owned = sep === -1 ? turboArgs.slice() : turboArgs.slice(0, sep);
+  const passThrough = sep === -1 ? [] : turboArgs.slice(sep);
+  const stripped = [];
+  for (let i = 0; i < owned.length; i++) {
+    const arg = owned[i];
+    if (arg === "--concurrency") {
+      i += 1; // skip value token
+      continue;
+    }
+    if (arg.startsWith("--concurrency=")) continue;
+    stripped.push(arg);
   }
+  const override = `--concurrency=${concurrencyOverride}`;
+  const ownedRunIndex = stripped.indexOf("run");
+  if (ownedRunIndex !== -1) stripped.splice(ownedRunIndex + 1, 0, override);
+  else stripped.push(override);
+  turboArgs.length = 0;
+  turboArgs.push(...stripped, ...passThrough);
 }
 
 // Test seam: RUN_TURBO_BIN points at a Node script that stands in for the
