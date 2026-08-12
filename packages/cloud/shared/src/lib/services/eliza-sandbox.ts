@@ -9421,6 +9421,7 @@ export class ElizaSandboxService {
             updated_at = NOW()
           WHERE node_id = ${incoming.nodeId}
             AND enabled = TRUE
+            AND placement_state = 'open'
             AND status = 'healthy'
             AND allocated_count < capacity
           RETURNING node_id
