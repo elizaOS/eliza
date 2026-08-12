@@ -37,6 +37,7 @@ vi.mock("./lib/onboarding-continuation", async (importOriginal) => {
       platform: "discord" as const,
       platformUserId: "1234567890",
       platformDisplayName: "attested-discord-user",
+      returnUrl: null,
     })),
     completePendingOnboardingContinuation: vi.fn(async () => {
       actual.clearPendingOnboardingSession();
@@ -52,6 +53,7 @@ beforeEach(() => {
     platform: "discord",
     platformUserId: "1234567890",
     platformDisplayName: "attested-discord-user",
+    returnUrl: null,
   });
   vi.mocked(completePendingOnboardingContinuation).mockReset();
   vi.mocked(completePendingOnboardingContinuation).mockImplementation(
@@ -127,6 +129,7 @@ describe("GetStartedPage", () => {
       platform: "telegram",
       platformUserId: "123456789",
       platformDisplayName: "attested-telegram-user",
+      returnUrl: null,
     });
     const entry = `/get-started?onboardingSession=${TOKEN}`;
     window.history.replaceState(null, "", entry);
@@ -146,5 +149,33 @@ describe("GetStartedPage", () => {
       screen.getByRole("button", { name: /Connect this Telegram account/ }),
     );
     expect(await screen.findByText("You're connected")).toBeTruthy();
+  });
+
+  it("offers a deep link back to the originating iMessage conversation", async () => {
+    vi.mocked(previewPendingOnboardingContinuation).mockResolvedValue({
+      platform: "blooio",
+      platformUserId: "+14155550123",
+      platformDisplayName: "Shaw",
+      returnUrl: "sms:+18087881821",
+    });
+    const entry = `/get-started?onboardingSession=${TOKEN}`;
+    window.history.replaceState(null, "", entry);
+
+    render(
+      <MemoryRouter initialEntries={[entry]}>
+        <Routes>
+          <Route path="/get-started" element={<GetStartedPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText("Shaw")).toBeTruthy();
+    fireEvent.click(
+      screen.getByRole("button", { name: /Connect this iMessage account/ }),
+    );
+    expect(await screen.findByText("You're connected")).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "Back to iMessage" }),
+    ).toBeTruthy();
   });
 });

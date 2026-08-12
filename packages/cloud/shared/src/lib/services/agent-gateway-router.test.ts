@@ -436,6 +436,7 @@ describe("AgentGatewayRouterService phone routing", () => {
         message: "hello",
         platform: "blooio",
         platformUserId: "+1 (555) 555-0100",
+        platformReplyAddress: "+14159611510",
         sessionId: "platform:blooio:+1 (555) 555-0100",
         trustedPlatformIdentity: true,
         idempotencyKey: "blooio:msg-1",
@@ -500,6 +501,7 @@ describe("AgentGatewayRouterService phone routing", () => {
     });
     expect(runOnboardingChat).toHaveBeenCalledWith(
       expect.objectContaining({
+        platformReplyAddress: "+14159611510",
         trustedPlatformIdentity: true,
         idempotencyKey: "blooio:msg-1",
       }),
@@ -536,6 +538,7 @@ describe("AgentGatewayRouterService phone routing", () => {
     });
     expect(runOnboardingChat).toHaveBeenCalledWith(
       expect.objectContaining({
+        platformReplyAddress: "+14159611510",
         authenticatedUser: {
           userId: "known-user",
           organizationId: "known-org",
@@ -621,6 +624,7 @@ describe("AgentGatewayRouterService phone routing", () => {
     });
     expect(runOnboardingChat).toHaveBeenCalledWith(
       expect.objectContaining({
+        platformReplyAddress: "+14159611510",
         authenticatedUser: {
           userId: "known-user",
           organizationId: "known-org",
