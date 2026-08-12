@@ -282,8 +282,9 @@ export function plannerLoopResultMachineSuccess(
  * not manufacture a terminal message.
  */
 function writeTerminalResult(result: PlannerLoopResult): PlannerLoopResult {
-	if (result.status !== "finished" || result.endedWithDeliberateSilence) {
-		return result;
+	if (result.status !== "finished") return result;
+	if (result.endedWithDeliberateSilence) {
+		return { ...result, finalMessage: undefined };
 	}
 	const failureReport =
 		result.evaluator?.success === false
@@ -633,17 +634,6 @@ async function runPlannerLoopIterations(
 					});
 					continue;
 				}
-				trajectory.steps.push({
-					iteration,
-					thought: plannerOutput.thought,
-					terminalMessage: plannerOutput.messageToUser,
-					terminalOnly: true,
-				});
-				trajectory.context = appendTerminalPlannerOutputEvent({
-					context: trajectory.context,
-					iteration,
-					message: plannerOutput.messageToUser,
-				});
 				if (allSteps(trajectory).some((step) => step.toolCall)) {
 					// Coding mode: the model emitted a final text summary AFTER
 					// executing build tools — it's signalling completion. Finish with
@@ -664,9 +654,30 @@ async function runPlannerLoopIterations(
 							),
 						};
 					}
+					// Evaluators need to inspect the proposed terminal answer, but it is
+					// not authoritative yet. Give the evaluator an ephemeral trajectory
+					// view so raw planner bytes never enter the persisted trajectory before
+					// the terminal writer applies failure authority and user-output safety.
+					const terminalEvaluationTrajectory: PlannerTrajectory = {
+						...trajectory,
+						context: appendTerminalPlannerOutputEvent({
+							context: trajectory.context,
+							iteration,
+							message: plannerOutput.messageToUser,
+						}),
+						steps: [
+							...trajectory.steps,
+							{
+								iteration,
+								thought: plannerOutput.thought,
+								terminalMessage: plannerOutput.messageToUser,
+								terminalOnly: true,
+							},
+						],
+					};
 					const evaluator = await evaluateTrajectory(
 						params,
-						trajectory,
+						terminalEvaluationTrajectory,
 						iteration,
 					);
 					trajectory.evaluatorOutputs.push(evaluator);
@@ -734,7 +745,9 @@ async function runPlannerLoopIterations(
 					}
 
 					const missingInputWidgetRelay =
-						deterministicMissingInputPlannerWidgetRelay(trajectory);
+						deterministicMissingInputPlannerWidgetRelay(
+							terminalEvaluationTrajectory,
+						);
 					if (missingInputWidgetRelay) {
 						params.runtime.logger?.warn?.(
 							{ iteration },
@@ -756,8 +769,9 @@ async function runPlannerLoopIterations(
 
 					terminalOnlyContinuations++;
 					if (terminalOnlyContinuations > config.maxTerminalOnlyContinuations) {
-						const relay =
-							deterministicTerminalContinuationLimitRelay(trajectory);
+						const relay = deterministicTerminalContinuationLimitRelay(
+							terminalEvaluationTrajectory,
+						);
 						if (relay) {
 							params.runtime.logger?.warn?.(
 								{
@@ -896,12 +910,6 @@ async function runPlannerLoopIterations(
 							plannerOutput.messageToUser,
 						)
 					: undefined;
-				trajectory.steps.push({
-					iteration,
-					thought: plannerOutput.thought,
-					terminalMessage: finalMessage,
-					terminalOnly: true,
-				});
 				const latestNonTerminalStep =
 					latestUnresolvedFailedNonTerminalToolStep(trajectory);
 				const pendingInteraction = latestNonTerminalStep
@@ -913,11 +921,17 @@ async function runPlannerLoopIterations(
 				const terminalFollowsFailedTool =
 					latestNonTerminalStep !== undefined &&
 					pendingInteraction === undefined;
-				const terminalReplyMessage = hasReplyCall
-					? terminalMessageWithFailureAuthority(trajectory, finalMessage)
+				// The synthetic evaluator is persisted for observability, so it may
+				// carry only the same safe projection the terminal writer can return.
+				// Raw REPLY parameters remain transient planner output.
+				const safeTerminalReplyMessage = hasReplyCall
+					? userSafeFinalMessage(
+							terminalMessageWithFailureAuthority(trajectory, finalMessage),
+							trajectory,
+						)
 					: undefined;
 				const terminalEvaluator = terminalToolCallFinish(
-					terminalReplyMessage,
+					safeTerminalReplyMessage,
 					!terminalFollowsFailedTool,
 				);
 				// Only record an evaluation stage when the trajectory already has
@@ -954,12 +968,10 @@ async function runPlannerLoopIterations(
 					status: "finished",
 					trajectory,
 					evaluator: terminalEvaluator,
-					finalMessage: terminalFollowsFailedTool
-						? hasReplyCall
-							? userSafeFinalMessage(terminalReplyMessage, trajectory)
-							: undefined
-						: pendingInteraction && hasReplyCall
-							? userSafeFinalMessage(terminalReplyMessage, trajectory)
+					finalMessage: !hasReplyCall
+						? undefined
+						: terminalFollowsFailedTool || pendingInteraction
+							? safeTerminalReplyMessage
 							: userSafeFinalMessage(
 									codingDrainQueue
 										? codingFinalMessage(trajectory, finalMessage)
@@ -1149,7 +1161,7 @@ async function runPlannerLoopIterations(
 					? { silentTerminalAction: latestResult.silentTerminalAction }
 					: {}),
 				finalMessage: suppressReply
-					? ""
+					? undefined
 					: userSafeFinalMessage(
 							terminalMessageWithFailureAuthority(
 								trajectory,

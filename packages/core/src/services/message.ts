@@ -8669,21 +8669,17 @@ export async function runV5MessageRuntimeStage1(args: {
 			plannedTextRaw,
 			deliveredMediaUrls,
 		);
-		// Planner deliberate silence on an ambient turn: the ambient-turn policy
-		// instruction tells the planner to end an empty unaddressed turn with
-		// IGNORE, so honor that choice the same way a Stage-1 IGNORE is honored —
+		// Planner deliberate silence with no completed action is a terminal choice,
+		// so honor it the same way a Stage-1 IGNORE/STOP is honored —
 		// a terminal decision handleMessage records observably (an
 		// actions:["IGNORE"] terminal memory + MESSAGE_SENT), not a bare
 		// mode-"none" result indistinguishable from a dropped turn. Scoped to
 		// turns where nothing reached the user (no early ack, no action results,
 		// no planner text): once anything was delivered, the existing
 		// planned-reply bookkeeping below must keep owning dedupe and delivery.
-		// This also pre-empts the stage-one-ack fallback below — on an ambient
-		// turn an undelivered drafted ack is exactly the filler the policy
-		// exists to suppress. Addressed turns never take this branch, so the
-		// turn-delivery floor (an addressed turn always delivers) is untouched.
+		// This also pre-empts the stage-one-ack fallback below: an explicit silent
+		// terminal outranks earlier draft prose on addressed and ambient turns.
 		if (
-			ambientTurn &&
 			plannerResult.endedWithDeliberateSilence === true &&
 			!earlyReplySent &&
 			actionResults.length === 0 &&
@@ -8702,20 +8698,17 @@ export async function runV5MessageRuntimeStage1(args: {
 		// "(no response)" while the real work continues in the background. Respect
 		// explicit suppressPlannerReply terminal actions (IGNORE/STOP-style flows),
 		// which are deliberately silent.
-		// Ambient deliberate silence counts as suppression even after tool work:
-		// the ambient-turn policy invites the planner to attempt work before
-		// choosing IGNORE, so a turn that ran a tool and then ended on a silent
-		// terminal must not have the ack fallback below "fix" that silence into
-		// filler ("on it, working on that now.") — the exact narration the
-		// policy suppresses — nor resurrect a preserved stage-0 draft the
-		// planner deliberately declined to send.
+		// Deliberate silence counts as suppression even after tool work: a turn that
+		// ran a tool and then ended on STOP/IGNORE must not let the ack fallback
+		// turn that silence into filler ("on it, working on that now."), nor
+		// resurrect a preserved stage-0 draft or typed tool projection the planner
+		// deliberately declined to send.
 		const suppressesPlannerReply =
 			actionResults.some(
 				(result) =>
 					(result.data as { suppressPlannerReply?: unknown } | undefined)
 						?.suppressPlannerReply === true,
-			) ||
-			(ambientTurn && plannerResult.endedWithDeliberateSilence === true);
+			) || plannerResult.endedWithDeliberateSilence === true;
 		const ranNonSilentAction =
 			actionResults.length > 0 && !suppressesPlannerReply;
 		const rawStageOneAck =

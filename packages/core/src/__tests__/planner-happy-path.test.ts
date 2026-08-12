@@ -767,89 +767,105 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 		);
 	});
 
-	it("suppresses the ack fallback when an ambient turn ran a tool and then deliberately IGNOREd", async () => {
-		// The ambient-turn policy invites the planner to attempt work before
-		// choosing silence, so a tool-then-IGNORE ambient turn must end silent:
-		// the ack fallback ("On it." / "on it, working on that now.") is exactly
-		// the process-narration filler the policy suppresses, and the action
-		// results alone make the turn observable.
-		let webSearchCalls = 0;
-		const webSearch = makeMockAction({
-			name: "WEB_SEARCH",
-			parameters: [
-				{
-					name: "q",
-					description: "Search query",
-					required: true,
-					schema: { type: "string" },
-				},
-			],
-			handler: async () => {
-				webSearchCalls++;
-				return {
-					success: true,
-					text: "no results worth sharing",
-					data: { actionName: "WEB_SEARCH", results: [] },
-				};
-			},
-		});
-
-		const runtime = makeRuntime({
-			actions: [webSearch],
-			responses: [
-				{
-					expectModelType: ModelType.RESPONSE_HANDLER,
-					body: stage1Response({
-						contexts: ["web"],
-						thought: "Ambient chatter; check whether the web has anything.",
-						candidateActionNames: ["WEB_SEARCH"],
-						replyText: "On it.",
-					}),
-				},
-				{
-					expectModelType: ModelType.ACTION_PLANNER,
-					body: {
-						text: "",
-						toolCalls: [
-							{ id: "call-1", name: "WEB_SEARCH", args: { q: "eliza" } },
-						],
+	it.each(
+		(["STOP", "IGNORE"] as const).flatMap((silentTerminal) => [
+			{ turn: "addressed", channelType: ChannelType.DM, silentTerminal },
+			{ turn: "ambient", channelType: ChannelType.GROUP, silentTerminal },
+		]),
+	)(
+		"suppresses earlier output when an $turn turn ran a tool and then chose $silentTerminal",
+		async ({ channelType, silentTerminal }) => {
+			// A silent terminal outranks an earlier ack and typed tool projection on
+			// addressed and ambient turns alike. The action results stay observable
+			// in the internal result envelope without becoming a reply.
+			let webSearchCalls = 0;
+			const webSearch = makeMockAction({
+				name: "WEB_SEARCH",
+				parameters: [
+					{
+						name: "q",
+						description: "Search query",
+						required: true,
+						schema: { type: "string" },
 					},
-				},
-				{
-					expectModelType: ModelType.RESPONSE_HANDLER,
-					body: JSON.stringify({
+				],
+				handler: async () => {
+					webSearchCalls++;
+					return {
 						success: true,
-						decision: "CONTINUE",
-						thought: "Nothing concrete came back.",
-					}),
+						text: "no results worth sharing",
+						userFacingText: "Do not revive",
+						verifiedUserFacing: true,
+						data: {
+							actionName: "WEB_SEARCH",
+							results: [],
+							retainedInternally: true,
+						},
+					};
 				},
-				{
-					expectModelType: ModelType.ACTION_PLANNER,
-					body: {
-						text: "",
-						toolCalls: [{ id: "ignore-1", name: "IGNORE", args: {} }],
+			});
+
+			const runtime = makeRuntime({
+				actions: [webSearch],
+				responses: [
+					{
+						expectModelType: ModelType.RESPONSE_HANDLER,
+						body: stage1Response({
+							contexts: ["web"],
+							thought: "Ambient chatter; check whether the web has anything.",
+							candidateActionNames: ["WEB_SEARCH"],
+							replyText: "On it.",
+						}),
 					},
-				},
-			],
-		});
+					{
+						expectModelType: ModelType.ACTION_PLANNER,
+						body: {
+							text: "",
+							toolCalls: [
+								{ id: "call-1", name: "WEB_SEARCH", args: { q: "eliza" } },
+							],
+						},
+					},
+					{
+						expectModelType: ModelType.RESPONSE_HANDLER,
+						body: JSON.stringify({
+							success: true,
+							decision: "CONTINUE",
+							thought: "Nothing concrete came back.",
+						}),
+					},
+					{
+						expectModelType: ModelType.ACTION_PLANNER,
+						body: {
+							text: "",
+							toolCalls: [{ id: "silent-1", name: silentTerminal, args: {} }],
+						},
+					},
+				],
+			});
 
-		const message = makeMessage("what was that tool everyone mentioned?");
-		message.content.channelType = ChannelType.GROUP;
-		const result = await runV5MessageRuntimeStage1({
-			runtime,
-			message,
-			state: makeState(),
-			responseId: RESPONSE_ID,
-		});
+			const message = makeMessage("what was that tool everyone mentioned?");
+			message.content.channelType = channelType;
+			const result = await runV5MessageRuntimeStage1({
+				runtime,
+				message,
+				state: makeState(),
+				responseId: RESPONSE_ID,
+			});
 
-		expect(webSearchCalls).toBe(1);
-		expect(result.kind).toBe("planned_reply");
-		if (result.kind === "planned_reply") {
-			expect(result.result.responseContent).toBeNull();
-			expect(result.result.mode).toBe("none");
-			expect(result.result.actionResults).toHaveLength(1);
-		}
-	});
+			expect(webSearchCalls).toBe(1);
+			expect(result.kind).toBe("planned_reply");
+			if (result.kind === "planned_reply") {
+				expect(result.result.responseContent).toBeNull();
+				expect(result.result.mode).toBe("none");
+				expect(result.result.actionResults).toHaveLength(1);
+				expect(result.result.actionResults[0]).toMatchObject({
+					userFacingText: "Do not revive",
+					data: expect.objectContaining({ retainedInternally: true }),
+				});
+			}
+		},
+	);
 
 	it("records STOP-shaped ambient deliberate silence as a terminal STOP, not IGNORE", async () => {
 		const runtime = makeRuntime({

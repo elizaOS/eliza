@@ -3,7 +3,11 @@
  * evaluator, and tool doubles exercise compaction and every terminal seam.
  */
 import { describe, expect, it, vi } from "vitest";
-import { FAILED_TOOL_FALLBACK_MESSAGE, runPlannerLoop } from "../planner-loop";
+import {
+	FAILED_TOOL_FALLBACK_MESSAGE,
+	HANDLED_STEP_FALLBACK_MESSAGE,
+	runPlannerLoop,
+} from "../planner-loop";
 
 const compactEveryCompletedStep = {
 	contextWindowTokens: 1_200,
@@ -180,6 +184,104 @@ describe("terminal authority survives compaction (#18466)", () => {
 		);
 	});
 
+	it.each(["STOP", "IGNORE"] as const)(
+		"keeps %s silent after a typed tool result without compaction",
+		async (silentTerminal) => {
+			const observedAt = "2026-08-12T08:00:00.000Z";
+			const useModel = vi
+				.fn()
+				.mockResolvedValueOnce({
+					text: "",
+					toolCalls: [{ id: "work", name: "WORK", arguments: {} }],
+				})
+				.mockResolvedValueOnce({
+					text: "Do not turn earlier output into a reply.",
+					toolCalls: [{ id: "silent", name: silentTerminal, arguments: {} }],
+				});
+			const result = await runPlannerLoop({
+				runtime: { useModel },
+				context: { id: "ctx" },
+				tools: [{ name: "WORK", description: "Perform internal work." }],
+				executeToolCall: vi.fn(async () => ({
+					success: true,
+					text: "INTERNAL_WORK_LOG",
+					userFacingText: "Do not revive",
+					verifiedUserFacing: true,
+					data: { taskId: "task-silent" },
+					effectReceipts: [
+						{
+							receiptId: "receipt-silent",
+							operation: "work.finish",
+							resource: { kind: "work", id: "task-silent" },
+							artifacts: [],
+							idempotency: { key: "task-silent", replayed: false },
+							observedAt,
+							outcome: "applied" as const,
+							commit: {
+								kind: "durable" as const,
+								id: "commit-silent",
+								committedAt: observedAt,
+							},
+						},
+					],
+				})),
+				evaluate: vi.fn(async () => ({
+					success: true,
+					decision: "CONTINUE" as const,
+					thought: "The planner may deliberately choose silence.",
+				})),
+			});
+
+			expect(result.finalMessage).toBeUndefined();
+			expect(result.endedWithDeliberateSilence).toBe(true);
+			expect(result.silentTerminalAction).toBe(silentTerminal);
+			expect(result.trajectory.archivedSteps).toEqual([]);
+			expect(result.trajectory.steps).toEqual([
+				expect.objectContaining({
+					toolCall: expect.objectContaining({ name: "WORK" }),
+					result: expect.objectContaining({
+						userFacingText: "Do not revive",
+						data: { taskId: "task-silent" },
+						effectReceipts: [
+							expect.objectContaining({ receiptId: "receipt-silent" }),
+						],
+					}),
+				}),
+			]);
+		},
+	);
+
+	it("sanitizes a raw REPLY before the sole terminal append", async () => {
+		const rawReply = "call:SECRET_TOOL{token:never-show}";
+		const result = await runPlannerLoop({
+			runtime: {
+				useModel: vi.fn(async () => ({
+					text: "",
+					toolCalls: [
+						{
+							id: "reply",
+							name: "REPLY",
+							arguments: { text: rawReply },
+						},
+					],
+				})),
+			},
+			context: { id: "ctx" },
+			executeToolCall: vi.fn(),
+		});
+
+		expect(result.finalMessage).toBe(HANDLED_STEP_FALLBACK_MESSAGE);
+		const terminalSteps = result.trajectory.steps.filter(
+			(step) => step.terminalOnly === true,
+		);
+		expect(terminalSteps).toEqual([
+			expect.objectContaining({
+				terminalMessage: result.finalMessage,
+			}),
+		]);
+		expect(JSON.stringify(result.trajectory)).not.toContain(rawReply);
+	});
+
 	it.each([
 		{
 			name: "raw no-tool output",
@@ -220,11 +322,19 @@ describe("terminal authority survives compaction (#18466)", () => {
 		},
 	])(
 		"stores exactly the returned terminal bytes for $name",
-		async ({ params }) => {
+		async ({ name, params }) => {
 			const result = await runPlannerLoop(params);
-			expect(result.trajectory.steps.at(-1)?.terminalMessage).toBe(
-				result.finalMessage,
+			const terminalSteps = result.trajectory.steps.filter(
+				(step) => step.terminalOnly === true,
 			);
+			expect(terminalSteps).toEqual([
+				expect.objectContaining({ terminalMessage: result.finalMessage }),
+			]);
+			if (name === "raw no-tool output") {
+				expect(JSON.stringify(result.trajectory)).not.toContain(
+					"call:SECRET_TOOL{token:never-show}",
+				);
+			}
 		},
 	);
 

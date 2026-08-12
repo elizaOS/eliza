@@ -618,7 +618,7 @@ describe("sub-planner helpers", () => {
 			expect(collapsed.silentTerminalAction).toBe(silentTerminal);
 			expect(result.endedWithDeliberateSilence).toBe(true);
 			expect(result.silentTerminalAction).toBe(silentTerminal);
-			expect(result.finalMessage).toBe("");
+			expect(result.finalMessage).toBeUndefined();
 			expect(result.trajectory.steps.at(-1)?.terminalOnly).not.toBe(true);
 			expect(outerEvaluate).not.toHaveBeenCalled();
 		},
