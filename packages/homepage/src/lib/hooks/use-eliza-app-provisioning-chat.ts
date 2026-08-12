@@ -200,6 +200,12 @@ export function useElizaAppProvisioningChat(
       pollStartRef.current = Date.now();
       stoppedRef.current = false;
       generationRef.current += 1;
+      provisionedRef.current = false;
+      setContainerStatus("pending");
+      setAgentId(null);
+      setBridgeUrl(null);
+      setMessages([WELCOME]);
+      setIsLoading(false);
       if (timeoutRef.current) {
         clearTimeout(timeoutRef.current);
         timeoutRef.current = null;

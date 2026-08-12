@@ -115,9 +115,9 @@ function setupDom() {
   g.HTMLElement = window.HTMLElement;
   g.localStorage = window.localStorage;
 
-  // Override setInterval with a controllable shim. Production schedules the
-  // 5-second poll via setInterval; we capture the callback so tests can fire
-  // it manually and assert the interval retry body.
+  // Override setInterval/setTimeout with controllable shims. Production
+  // now schedules the 5-second poll via recursive setTimeout (single-flight
+  // + generation token); legacy setInterval is kept for backwards compat.
   g.setInterval = ((callback: () => void, delay: number) => {
     const timer: CapturedTimer = { callback, cleared: false, delay };
     capturedTimers.push(timer);
@@ -129,6 +129,17 @@ function setupDom() {
     timer.cleared = true;
     activeTimers.delete(timer);
   }) as typeof clearInterval;
+  g.setTimeout = ((callback: () => void, delay: number) => {
+    const timer: CapturedTimer = { callback, cleared: false, delay };
+    capturedTimers.push(timer);
+    activeTimers.add(timer);
+    return timer as unknown as number;
+  }) as unknown as typeof setTimeout;
+  g.clearTimeout = ((id: number) => {
+    const timer = id as unknown as CapturedTimer;
+    timer.cleared = true;
+    activeTimers.delete(timer);
+  }) as unknown as typeof clearTimeout;
 
   return window as unknown as Window & typeof globalThis;
 }
