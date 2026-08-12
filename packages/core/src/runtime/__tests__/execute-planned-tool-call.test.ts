@@ -159,6 +159,63 @@ describe("executePlannedToolCall", () => {
 		expect(handler).not.toHaveBeenCalled();
 	});
 
+	it("rebuilds caller-supplied action context from sanitized previous results", async () => {
+		const executorObservation = "executor planner-only observation";
+		const callerObservation = "caller planner-only observation";
+		const callerResult = {
+			success: true,
+			plannerObservation: callerObservation,
+			data: { actionName: "CALLER_RESULT" },
+		};
+		const callerGetPreviousResult = vi.fn(() => callerResult);
+		const handler = vi.fn(async (_runtime, _message, _state, options) => {
+			const actionContext = options?.actionContext;
+			expect(actionContext?.previousResults).toEqual([
+				{
+					success: true,
+					data: { actionName: "EXECUTOR_RESULT" },
+				},
+			]);
+			expect(JSON.stringify(actionContext?.previousResults)).not.toContain(
+				executorObservation,
+			);
+			expect(actionContext?.getPreviousResult?.("EXECUTOR_RESULT")).toEqual({
+				success: true,
+				data: { actionName: "EXECUTOR_RESULT" },
+			});
+			expect(
+				actionContext?.getPreviousResult?.("CALLER_RESULT"),
+			).toBeUndefined();
+			return { success: true };
+		});
+		const action = makeAction({ name: "SECOND_ACTION", handler });
+
+		const result = await executePlannedToolCall(
+			makeRuntime([action]),
+			{
+				message: makeMessage(),
+				previousResults: [
+					{
+						success: true,
+						plannerObservation: executorObservation,
+						data: { actionName: "EXECUTOR_RESULT" },
+					},
+				],
+			},
+			{ name: action.name, params: {} },
+			{
+				actionContext: {
+					previousResults: [callerResult],
+					getPreviousResult: callerGetPreviousResult,
+				},
+			},
+		);
+
+		expect(result.success).toBe(true);
+		expect(handler).toHaveBeenCalledTimes(1);
+		expect(callerGetPreviousResult).not.toHaveBeenCalled();
+	});
+
 	it("does not start an action or publish a settlement when cancellation wins during validation", async () => {
 		const abortController = new AbortController();
 		const abortReason = new Error("transport disconnected before commit");

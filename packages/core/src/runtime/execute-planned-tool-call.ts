@@ -432,13 +432,19 @@ export async function executePlannedToolCall(
 	const {
 		actions: _scopedActions,
 		onSettledResult,
+		actionContext: {
+			previousResults: _suppliedPreviousResults,
+			getPreviousResult: _suppliedGetPreviousResult,
+			...actionContextOverrides
+		} = {},
 		...handlerOptionOverrides
 	} = options;
 	const handlerOptions: HandlerOptions = {
 		...handlerOptionOverrides,
 		parameters,
 		parameterErrors: undefined,
-		actionContext: options.actionContext ?? {
+		actionContext: {
+			...actionContextOverrides,
 			previousResults,
 			getPreviousResult: (actionName: string) =>
 				previousResults.find(
