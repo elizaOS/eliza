@@ -46,6 +46,7 @@ import {
   __resetNotificationStoreForTests,
   __setHydratedForTests,
   __setHydrationFailureForTests,
+  __setMutationFailureForTests,
 } from "../../state/notifications/notification-store";
 import {
   dampenPull,
@@ -689,6 +690,27 @@ describe("NotificationsHomeCenter", () => {
 
     expect(screen.queryByTestId("notifications-unavailable")).toBeNull();
     expect(screen.queryByTestId("notifications-empty")).not.toBeNull();
+  });
+
+  it("renders a distinct mutation failure while keeping the restored row visible", () => {
+    __ingestNotificationForTests(
+      makeNotification({ id: "restored-row", title: "Restored" }),
+      1,
+    );
+    __setMutationFailureForTests({
+      operation: "remove",
+      message: "The notification could not be dismissed. It was restored.",
+      failedCount: 1,
+    });
+
+    render(<NotificationsHomeCenter />);
+
+    const failure = screen.getByTestId("notification-mutation-failure");
+    expect(failure.getAttribute("role")).toBe("alert");
+    expect(failure.getAttribute("data-notification-mutation")).toBe("remove");
+    expect(failure.textContent).toContain("Notification action failed");
+    expect(failure.textContent).toContain("It was restored");
+    expect(screen.getByText("Restored")).toBeTruthy();
   });
 
   it("applies directional fades only where notification content is hidden", () => {

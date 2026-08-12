@@ -8,8 +8,10 @@
  */
 import type { AgentNotification } from "@elizaos/core";
 import {
-  STEWARD_SESSION_TRANSITION_EVENT,
+  __resetStewardSessionAuthorityForTests,
+  clearStoredStewardToken,
   type StewardSessionTransition,
+  writeStoredStewardToken,
 } from "@elizaos/shared/steward-session-client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "../../api/client-types-core";
@@ -73,6 +75,8 @@ import {
   initNotifications,
   markAllNotificationsRead,
   markNotificationRead,
+  NotificationMutationError,
+  NotificationMutationSupersededError,
   removeNotification,
   removeNotifications,
   retryNotificationHydration,
@@ -115,17 +119,33 @@ async function flushDelivery(): Promise<void> {
   for (let i = 0; i < 8; i++) await Promise.resolve();
 }
 
-function dispatchStewardSessionTransition(
-  state: StewardSessionTransition["state"],
-  sessionEpoch: number,
-): void {
-  window.dispatchEvent(
-    new CustomEvent<StewardSessionTransition>(
-      STEWARD_SESSION_TRANSITION_EVENT,
-      { detail: { state, sessionEpoch } },
-    ),
+function captureRejection(promise: Promise<unknown>): Promise<unknown> {
+  return promise.then(
+    () => {
+      throw new Error("Expected promise to reject");
+    },
+    (error: unknown) => error,
   );
 }
+
+function publishStewardSessionTransition(
+  kind: StewardSessionTransition["kind"],
+): void {
+  if (kind === "present") {
+    writeStoredStewardToken("test-only-steward-token");
+  } else {
+    clearStoredStewardToken();
+  }
+}
+
+beforeEach(() => {
+  __resetStewardSessionAuthorityForTests();
+});
+
+afterEach(() => {
+  __resetStewardSessionAuthorityForTests();
+  window.localStorage.clear();
+});
 
 describe("notification-store", () => {
   beforeEach(() => {
@@ -783,24 +803,33 @@ describe("notification-store", () => {
   it("reverts the optimistic read when the write rejects (no silent divergence)", async () => {
     markNotificationReadApi.mockRejectedValueOnce(new Error("500"));
     __ingestNotificationForTests(makeNotification({ id: "r1" }), 1);
-    await markNotificationRead("r1");
+    await expect(markNotificationRead("r1")).rejects.toBeInstanceOf(
+      NotificationMutationError,
+    );
     // Write failed → item must return to unread, not stay optimistically read.
     const stored = __getStateForTests().notifications.find(
       (n) => n.id === "r1",
     );
     expect(stored?.readAt).toBeFalsy();
     expect(__getStateForTests().unreadCount).toBe(1);
+    expect(__getStateForTests().mutationFailure).toMatchObject({
+      operation: "mark-read",
+      failedCount: 1,
+    });
   });
 
   it("restores a removed notification when the delete rejects", async () => {
     removeNotificationApi.mockRejectedValueOnce(new Error("network"));
     __ingestNotificationForTests(makeNotification({ id: "r2" }), 1);
-    await removeNotification("r2");
+    await expect(removeNotification("r2")).rejects.toBeInstanceOf(
+      NotificationMutationError,
+    );
     // Failed delete must NOT leave the item visibly gone-but-still-on-server.
     expect(__getStateForTests().notifications.some((n) => n.id === "r2")).toBe(
       true,
     );
     expect(__getStateForTests().unreadCount).toBe(1);
+    expect(__getStateForTests().mutationFailure?.operation).toBe("remove");
   });
 
   it("retains successful deletes when one producer-batch row rejects", async () => {
@@ -809,30 +838,44 @@ describe("notification-store", () => {
       .mockRejectedValueOnce(new Error("network"));
     __ingestNotificationForTests(makeNotification({ id: "batch-1" }), 1);
     __ingestNotificationForTests(makeNotification({ id: "batch-2" }), 2);
-    await removeNotifications(["batch-1", "batch-2"]);
+    await expect(
+      removeNotifications(["batch-1", "batch-2"]),
+    ).rejects.toBeInstanceOf(NotificationMutationError);
     expect(__getStateForTests().notifications.map(({ id }) => id)).toEqual([
       "batch-2",
     ]);
     expect(__getStateForTests().unreadCount).toBe(1);
+    expect(__getStateForTests().mutationFailure).toMatchObject({
+      operation: "remove-batch",
+      failedCount: 1,
+    });
   });
 
   it("restores the inbox when clear rejects", async () => {
     clearNotificationsApi.mockRejectedValueOnce(new Error("boom"));
     __ingestNotificationForTests(makeNotification({ id: "c1" }), 1);
     __ingestNotificationForTests(makeNotification({ id: "c2" }), 2);
-    await clearNotifications();
+    await expect(clearNotifications()).rejects.toBeInstanceOf(
+      NotificationMutationError,
+    );
     expect(__getStateForTests().notifications).toHaveLength(2);
     expect(__getStateForTests().unreadCount).toBe(2);
+    expect(__getStateForTests().mutationFailure?.operation).toBe("clear");
   });
 
   it("reverts markAll when the write rejects", async () => {
     markAllNotificationsReadApi.mockRejectedValueOnce(new Error("down"));
     __ingestNotificationForTests(makeNotification({ id: "a1" }), 1);
     __ingestNotificationForTests(makeNotification({ id: "a2" }), 2);
-    await markAllNotificationsRead();
+    await expect(markAllNotificationsRead()).rejects.toBeInstanceOf(
+      NotificationMutationError,
+    );
     expect(__getStateForTests().unreadCount).toBe(2);
     expect(__getStateForTests().notifications.every((n) => !n.readAt)).toBe(
       true,
+    );
+    expect(__getStateForTests().mutationFailure?.operation).toBe(
+      "mark-all-read",
     );
   });
 
@@ -1176,16 +1219,56 @@ describe("notification-store — authority isolation (#18391)", () => {
     initNotifications();
     await vi.waitFor(() => expect(listNotifications).toHaveBeenCalledTimes(1));
 
-    dispatchStewardSessionTransition("cleared", 1);
+    publishStewardSessionTransition("cleared");
     expect(rotateConnection).toHaveBeenCalledTimes(1);
   });
 
-  // #18542 review finding 3: useAuthStatus intentionally keeps the previous
-  // authenticated snapshot until the async /api/auth/me probe resolves, so a
-  // real logout would otherwise be invisible to reconcileAuthority (which
-  // only reacts to that eventual publish) for the whole round-trip.
-  // The typed Steward transition fires synchronously on the clear itself.
+  // useAuthStatus intentionally keeps the previous authenticated snapshot
+  // until the async /api/auth/me probe resolves. The typed Steward transition
+  // closes that interval synchronously without consulting the agent bearer.
   describe("credential-sync invalidation ahead of the async auth probe", () => {
+    it("replays a pre-init cookie-only clear before stale auth can hydrate private rows", () => {
+      __setAuthStatusForTests(authenticated("user-a", "session-a"));
+      __ingestNotificationForTests(
+        makeNotification({ id: "private-row", title: "Private" }),
+        1,
+      );
+      hasToken.mockReturnValue(true);
+      expect(window.localStorage.getItem("steward_session_token")).toBeNull();
+
+      // No notification subscriber exists yet. The shared authority snapshot,
+      // not the independent agent bearer or stale auth probe, carries the clear.
+      clearStoredStewardToken();
+      initNotifications();
+
+      expect(__getStateForTests().notifications).toEqual([]);
+      expect(__getStateForTests().hydrationStatus).toBe("idle");
+      expect(listNotifications).not.toHaveBeenCalled();
+      expect(rotateConnection).toHaveBeenCalledTimes(1);
+    });
+
+    it("replays the same latest clear to a replacement notification-store subscriber", () => {
+      __setAuthStatusForTests(authenticated("user-a", "session-a"));
+      hasToken.mockReturnValue(true);
+      clearStoredStewardToken();
+      initNotifications();
+      expect(listNotifications).not.toHaveBeenCalled();
+
+      // Model HMR/module replacement: the old listener is removed, a fresh
+      // store instance appears with stale private state, and no second clear
+      // event is emitted. Replaying the persisted snapshot still invalidates it.
+      __resetNotificationStoreForTests();
+      __ingestNotificationForTests(
+        makeNotification({ id: "replacement-stale", title: "Stale" }),
+        1,
+      );
+      initNotifications();
+
+      expect(__getStateForTests().notifications).toEqual([]);
+      expect(listNotifications).not.toHaveBeenCalled();
+      expect(rotateConnection).toHaveBeenCalledTimes(2);
+    });
+
     it("clears immediately on a cleared token, before the auth-status probe catches up", async () => {
       __setAuthStatusForTests(authenticated("user-a", "session-a"));
       const notifA = makeNotification({ id: "a-row", title: "A's row" });
@@ -1202,7 +1285,7 @@ describe("notification-store — authority isolation (#18391)", () => {
       // updated yet — this is exactly the gap useAuthStatus leaves open.
       // Invalidation deliberately does not fetch (identity is unknown), so
       // no response needs to be queued for it.
-      dispatchStewardSessionTransition("cleared", 1);
+      publishStewardSessionTransition("cleared");
 
       // Synchronous: no await before this assertion.
       expect(__getStateForTests().notifications).toHaveLength(0);
@@ -1229,7 +1312,7 @@ describe("notification-store — authority isolation (#18391)", () => {
       await vi.waitFor(() => expect(agentEventHandlers()).toHaveLength(1));
       const handlerA = agentEventHandlers()[0];
 
-      dispatchStewardSessionTransition("cleared", 1);
+      publishStewardSessionTransition("cleared");
 
       handlerA({
         stream: "notification",
@@ -1259,12 +1342,58 @@ describe("notification-store — authority isolation (#18391)", () => {
       );
       rotateConnection.mockClear();
 
-      dispatchStewardSessionTransition("present", 1);
+      publishStewardSessionTransition("present");
       await Promise.resolve();
 
       // The session epoch changes even when identity is stable. Rotate the
       // credential-bearing transport but retain the current inbox.
       expect(listNotifications).toHaveBeenCalledTimes(2);
+      expect(rotateConnection).toHaveBeenCalledTimes(1);
+    });
+
+    it("rehydrates when a present transition supersedes pending optimistic state", async () => {
+      __setAuthStatusForTests(authenticated("user-a", "session-a"));
+      const persisted = makeNotification({ id: "pending-row", readAt: null });
+      listNotifications.mockResolvedValueOnce({
+        notifications: [persisted],
+        unreadCount: 1,
+      });
+      initNotifications();
+      await vi.waitFor(() =>
+        expect(__getStateForTests().notifications).toEqual([persisted]),
+      );
+
+      let rejectPending!: (error: unknown) => void;
+      markNotificationReadApi.mockReturnValueOnce(
+        new Promise((_resolve, reject) => {
+          rejectPending = reject;
+        }),
+      );
+      const pendingMutation = captureRejection(
+        markNotificationRead("pending-row"),
+      );
+      await vi.waitFor(() =>
+        expect(markNotificationReadApi).toHaveBeenCalledTimes(1),
+      );
+      expect(__getStateForTests().notifications[0]?.readAt).not.toBeNull();
+
+      listNotifications.mockResolvedValueOnce({
+        notifications: [persisted],
+        unreadCount: 1,
+      });
+      publishStewardSessionTransition("present");
+
+      expect(__getStateForTests().notifications).toEqual([]);
+      await vi.waitFor(() =>
+        expect(__getStateForTests().notifications).toEqual([persisted]),
+      );
+      rejectPending(new Error("old credential failed"));
+
+      expect(await pendingMutation).toBeInstanceOf(
+        NotificationMutationSupersededError,
+      );
+      expect(__getStateForTests().notifications).toEqual([persisted]);
+      expect(__getStateForTests().mutationFailure).toBeNull();
       expect(rotateConnection).toHaveBeenCalledTimes(1);
     });
 
@@ -1282,7 +1411,7 @@ describe("notification-store — authority isolation (#18391)", () => {
       // The dedicated-agent API bearer is intentionally still present; it is
       // not Steward session authority and must not suppress logout clearing.
       hasToken.mockReturnValue(true);
-      dispatchStewardSessionTransition("cleared", 1);
+      publishStewardSessionTransition("cleared");
 
       expect(__getStateForTests().notifications).toEqual([]);
       expect(rotateConnection).toHaveBeenCalledTimes(1);
@@ -1358,6 +1487,119 @@ describe("notification-store mutations — authority-scoped rollback (#18542)", 
     __resetAuthStatusForTests();
   });
 
+  it("aborts an A delete queued behind pending A work before it can address B's same-id row", async () => {
+    __setAuthStatusForTests(authenticated("user-a", "session-a"));
+    const sharedId = "same-id";
+    listNotifications.mockResolvedValueOnce({
+      notifications: [
+        makeNotification({ id: sharedId, title: "A private row" }),
+      ],
+      unreadCount: 1,
+    });
+    initNotifications();
+    await vi.waitFor(() =>
+      expect(__getStateForTests().notifications[0]?.title).toBe(
+        "A private row",
+      ),
+    );
+
+    let releasePendingA!: () => void;
+    markNotificationReadApi.mockReturnValueOnce(
+      new Promise<{ ok: true }>((resolve) => {
+        releasePendingA = () => resolve({ ok: true });
+      }),
+    );
+    const pendingA = markNotificationRead(sharedId);
+    const pendingARejection = captureRejection(pendingA);
+    await vi.waitFor(() =>
+      expect(markNotificationReadApi).toHaveBeenCalledTimes(1),
+    );
+    const queuedDeleteA = removeNotification(sharedId);
+    const queuedDeleteRejection = captureRejection(queuedDeleteA);
+    await Promise.resolve();
+    expect(removeNotificationApi).not.toHaveBeenCalled();
+
+    listNotifications.mockResolvedValueOnce({
+      notifications: [
+        makeNotification({ id: sharedId, title: "B same-id row" }),
+      ],
+      unreadCount: 1,
+    });
+    __setAuthStatusForTests(authenticated("user-b", "session-b"));
+    await vi.waitFor(() =>
+      expect(__getStateForTests().notifications[0]?.title).toBe(
+        "B same-id row",
+      ),
+    );
+
+    releasePendingA();
+    expect(await pendingARejection).toBeInstanceOf(
+      NotificationMutationSupersededError,
+    );
+    expect(await queuedDeleteRejection).toBeInstanceOf(
+      NotificationMutationSupersededError,
+    );
+
+    expect(removeNotificationApi).not.toHaveBeenCalled();
+    expect(__getStateForTests().notifications).toEqual([
+      expect.objectContaining({ id: sharedId, title: "B same-id row" }),
+    ]);
+  });
+
+  it("rejects a late A rollback after A -> B -> A because the authority revision changed", async () => {
+    __setAuthStatusForTests(authenticated("user-a", "session-a"));
+    const sharedId = "cycled-id";
+    listNotifications.mockResolvedValueOnce({
+      notifications: [makeNotification({ id: sharedId, title: "Old A" })],
+      unreadCount: 1,
+    });
+    initNotifications();
+    await vi.waitFor(() =>
+      expect(__getStateForTests().notifications[0]?.title).toBe("Old A"),
+    );
+
+    let rejectOldA!: (error: unknown) => void;
+    markNotificationReadApi.mockReturnValueOnce(
+      new Promise((_resolve, reject) => {
+        rejectOldA = reject;
+      }),
+    );
+    const oldAMutation = markNotificationRead(sharedId);
+    const rejection = captureRejection(oldAMutation);
+    await vi.waitFor(() =>
+      expect(markNotificationReadApi).toHaveBeenCalledTimes(1),
+    );
+
+    listNotifications.mockResolvedValueOnce({
+      notifications: [makeNotification({ id: "b-row", title: "B" })],
+      unreadCount: 1,
+    });
+    __setAuthStatusForTests(authenticated("user-b", "session-b"));
+    await vi.waitFor(() =>
+      expect(__getStateForTests().notifications[0]?.title).toBe("B"),
+    );
+
+    const freshA = makeNotification({
+      id: sharedId,
+      title: "Fresh A",
+      readAt: 42,
+    });
+    listNotifications.mockResolvedValueOnce({
+      notifications: [freshA],
+      unreadCount: 0,
+    });
+    __setAuthStatusForTests(authenticated("user-a", "session-a"));
+    await vi.waitFor(() =>
+      expect(__getStateForTests().notifications[0]?.title).toBe("Fresh A"),
+    );
+
+    rejectOldA(new Error("late A failure"));
+    expect(await rejection).toBeInstanceOf(NotificationMutationSupersededError);
+
+    expect(__getStateForTests().notifications).toEqual([freshA]);
+    expect(__getStateForTests().mutationFailure).toBeNull();
+  });
+
   it("discards a stale-authority optimistic rollback instead of overwriting the new authority's rows", async () => {
     __setAuthStatusForTests(authenticated("user-a", "session-a"));
     const notifA = makeNotification({ id: "a-row", title: "A's row" });
@@ -1378,6 +1620,10 @@ describe("notification-store mutations — authority-scoped rollback (#18542)", 
       }),
     );
     const mutationPromise = markNotificationRead("a-row");
+    const mutationRejection = captureRejection(mutationPromise);
+    await vi.waitFor(() =>
+      expect(markNotificationReadApi).toHaveBeenCalledTimes(1),
+    );
 
     // Authority switches to B before the mutation settles.
     const notifB = makeNotification({ id: "b-row", title: "B's row" });
@@ -1393,7 +1639,9 @@ describe("notification-store mutations — authority-scoped rollback (#18542)", 
     // A's mutation now fails — its optimistic-rollback snapshot belongs to a
     // superseded authority and must not overwrite B's freshly-hydrated rows.
     rejectMarkRead(new Error("network"));
-    await mutationPromise;
+    expect(await mutationRejection).toBeInstanceOf(
+      NotificationMutationSupersededError,
+    );
     expect(__getStateForTests().notifications).toHaveLength(1);
     expect(__getStateForTests().notifications[0]?.id).toBe("b-row");
   });
@@ -1411,9 +1659,12 @@ describe("notification-store mutations — authority-scoped rollback (#18542)", 
     );
 
     markNotificationReadApi.mockRejectedValueOnce(new Error("network"));
-    await markNotificationRead("a-row");
+    await expect(markNotificationRead("a-row")).rejects.toBeInstanceOf(
+      NotificationMutationError,
+    );
 
     expect(__getStateForTests().notifications[0]?.readAt).toBeNull();
+    expect(__getStateForTests().mutationFailure?.operation).toBe("mark-read");
   });
 
   it("serializes same-authority writes so an earlier failure cannot undo a later success", async () => {
@@ -1435,6 +1686,7 @@ describe("notification-store mutations — authority-scoped rollback (#18542)", 
       }),
     );
     const first = markNotificationRead("row");
+    const firstRejection = captureRejection(first);
     await vi.waitFor(() =>
       expect(markNotificationReadApi).toHaveBeenCalledTimes(1),
     );
@@ -1443,7 +1695,7 @@ describe("notification-store mutations — authority-scoped rollback (#18542)", 
     expect(removeNotificationApi).not.toHaveBeenCalled();
 
     rejectRead(new Error("read failed"));
-    await first;
+    expect(await firstRejection).toBeInstanceOf(NotificationMutationError);
     await second;
 
     expect(removeNotificationApi).toHaveBeenCalledWith("row");
@@ -1468,12 +1720,18 @@ describe("notification-store mutations — authority-scoped rollback (#18542)", 
       expect(__getStateForTests().notifications).toHaveLength(3),
     );
 
-    await removeNotifications(["a", "b", "c"]);
+    await expect(removeNotifications(["a", "b", "c"])).rejects.toBeInstanceOf(
+      NotificationMutationError,
+    );
 
     expect(__getStateForTests().notifications.map(({ id }) => id)).toEqual([
       "b",
     ]);
     expect(__getStateForTests().unreadCount).toBe(1);
+    expect(__getStateForTests().mutationFailure).toMatchObject({
+      operation: "remove-batch",
+      failedCount: 1,
+    });
   });
 
   it("preserves a live row update while reverting only a failed optimistic read", async () => {
@@ -1495,12 +1753,13 @@ describe("notification-store mutations — authority-scoped rollback (#18542)", 
     );
 
     const mutation = markNotificationRead("row");
+    const mutationRejection = captureRejection(mutation);
     await vi.waitFor(() =>
       expect(markNotificationReadApi).toHaveBeenCalledTimes(1),
     );
     __ingestNotificationForTests({ ...row, title: "Live update" }, 1);
     rejectRead(new Error("read failed"));
-    await mutation;
+    expect(await mutationRejection).toBeInstanceOf(NotificationMutationError);
 
     expect(__getStateForTests().notifications[0]).toMatchObject({
       id: "row",

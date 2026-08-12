@@ -2119,9 +2119,10 @@ export class ElizaClient {
     this.ws = null;
     try {
       socket.close();
-    } catch {
+    } catch (err) {
       // error-policy:J6 the socket is already closing; all callbacks are
       // detached and local connection ownership has been released.
+      logger.debug({ err }, "[ElizaClient] detached WebSocket close failed");
     }
   }
 

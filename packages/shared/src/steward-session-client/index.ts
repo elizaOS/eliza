@@ -57,10 +57,6 @@ export const STEWARD_NONCE_EXCHANGE_ENDPOINT =
  */
 export const STEWARD_REFRESH_ENDPOINT = "/api/auth/steward-refresh";
 
-/** Browser event emitted after an explicit Steward credential transition. */
-export const STEWARD_SESSION_TRANSITION_EVENT =
-  "eliza:steward-session-transition";
-
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -150,14 +146,18 @@ export interface ClearOpts {
 }
 
 /**
- * Non-secret session-lifecycle signal for authority-scoped browser state.
- * The epoch orders transitions within one page lifetime without exposing the
- * Steward token that caused them.
+ * Latest non-secret Steward session authority transition. The revision is
+ * monotonic for the page lifetime and survives module replacement through the
+ * global authority store; credential material never enters this snapshot.
  */
 export interface StewardSessionTransition {
-  state: "present" | "cleared";
-  sessionEpoch: number;
+  readonly kind: "present" | "cleared";
+  readonly revision: number;
 }
+
+export type StewardSessionTransitionListener = (
+  transition: StewardSessionTransition,
+) => void;
 
 // ---------------------------------------------------------------------------
 // localStorage helpers
@@ -172,55 +172,127 @@ export function readStoredStewardToken(): string | null {
   }
 }
 
-const STEWARD_SESSION_EPOCH_SYMBOL = Symbol.for(
-  "elizaos.steward-session-epoch",
+interface StewardSessionAuthorityStore {
+  revision: number;
+  current: StewardSessionTransition | null;
+  listeners: Set<StewardSessionTransitionListener>;
+}
+
+const STEWARD_SESSION_AUTHORITY_SYMBOL = Symbol.for(
+  "elizaos.steward-session-authority",
 );
 
-function nextStewardSessionEpoch(): number {
+function stewardSessionAuthorityStore(): StewardSessionAuthorityStore {
   const globalState = globalThis as Record<PropertyKey, unknown>;
-  const previous = globalState[STEWARD_SESSION_EPOCH_SYMBOL];
-  const next =
-    typeof previous === "number" && Number.isSafeInteger(previous)
-      ? previous + 1
-      : 1;
-  globalState[STEWARD_SESSION_EPOCH_SYMBOL] = next;
-  return next;
+  const existing = globalState[STEWARD_SESSION_AUTHORITY_SYMBOL] as
+    | StewardSessionAuthorityStore
+    | undefined;
+  if (existing) return existing;
+  const created: StewardSessionAuthorityStore = {
+    revision: 0,
+    current: null,
+    listeners: new Set(),
+  };
+  globalState[STEWARD_SESSION_AUTHORITY_SYMBOL] = created;
+  return created;
+}
+
+/** Read the latest transition without inspecting browser credential storage. */
+export function getStewardSessionTransitionSnapshot(): StewardSessionTransition | null {
+  return stewardSessionAuthorityStore().current;
+}
+
+/**
+ * Subscribe to Steward authority changes and synchronously replay the latest
+ * transition before returning. The settle-and-recheck loop closes the only
+ * re-entrant gap: a listener may itself publish a newer transition while the
+ * initial snapshot is being replayed.
+ */
+export function subscribeStewardSessionTransitions(
+  listener: StewardSessionTransitionListener,
+): () => void {
+  const store = stewardSessionAuthorityStore();
+  let observedRevision = 0;
+  for (;;) {
+    const current = store.current;
+    if (current && current.revision > observedRevision) {
+      listener(current);
+      observedRevision = current.revision;
+      continue;
+    }
+    store.listeners.add(listener);
+    if ((store.current?.revision ?? 0) === observedRevision) break;
+    store.listeners.delete(listener);
+  }
+  return () => store.listeners.delete(listener);
 }
 
 function publishStewardSessionTransition(
-  state: StewardSessionTransition["state"],
+  kind: StewardSessionTransition["kind"],
+  precedingErrors: readonly unknown[] = [],
 ): void {
-  if (typeof window === "undefined") return;
-  window.dispatchEvent(
-    new CustomEvent<StewardSessionTransition>(
-      STEWARD_SESSION_TRANSITION_EVENT,
-      { detail: { state, sessionEpoch: nextStewardSessionEpoch() } },
-    ),
-  );
+  const store = stewardSessionAuthorityStore();
+  const transition = Object.freeze({
+    kind,
+    revision: store.revision + 1,
+  }) satisfies StewardSessionTransition;
+  store.revision = transition.revision;
+  store.current = transition;
+
+  const transitionErrors = [...precedingErrors];
+  for (const listener of [...store.listeners]) {
+    try {
+      listener(transition);
+    } catch (error) {
+      // error-policy:J1 lifecycle dispatch boundary completes synchronous
+      // invalidation for every subscriber, then surfaces observer failures.
+      transitionErrors.push(error);
+    }
+  }
+  if (transitionErrors.length > 0) {
+    throw new AggregateError(
+      transitionErrors,
+      "A Steward session transition failed after authority publication",
+    );
+  }
 }
 
 export function writeStoredStewardToken(token: string): void {
   if (typeof window === "undefined") return;
+  const storageErrors: unknown[] = [];
   try {
     window.localStorage.setItem(STEWARD_TOKEN_KEY, token);
-  } catch {
-    // localStorage may be disabled (private mode, quota, sandboxed iframe);
-    // callers that need durability should detect this themselves.
+  } catch (error) {
+    // error-policy:J1 browser-storage boundary publishes the authoritative
+    // transition before surfacing persistence and observer failures together.
+    storageErrors.push(error);
   }
-  publishStewardSessionTransition("present");
+  publishStewardSessionTransition("present", storageErrors);
 }
 
 export function clearStoredStewardToken(): void {
   if (typeof window === "undefined") return;
-  try {
-    window.localStorage.removeItem(STEWARD_TOKEN_KEY);
-    window.localStorage.removeItem(STEWARD_REFRESH_TOKEN_KEY);
-  } catch {
-    // ignore
+  const storageErrors: unknown[] = [];
+  for (const key of [STEWARD_TOKEN_KEY, STEWARD_REFRESH_TOKEN_KEY]) {
+    try {
+      window.localStorage.removeItem(key);
+    } catch (error) {
+      // error-policy:J1 browser-storage boundary attempts every removal and
+      // publishes invalidation before surfacing all lifecycle failures.
+      storageErrors.push(error);
+    }
   }
-  // An explicit clear is authoritative even for cookie-only sessions, where
-  // no browser-readable Steward token existed before logout.
-  publishStewardSessionTransition("cleared");
+  // Cookie-only sessions have no browser-readable token whose removal could
+  // prove logout, so the explicit transition is the synchronous authority.
+  publishStewardSessionTransition("cleared", storageErrors);
+}
+
+/** Test-only reset for the global snapshot and replacement-safe subscribers. */
+export function __resetStewardSessionAuthorityForTests(): void {
+  const store = stewardSessionAuthorityStore();
+  store.revision = 0;
+  store.current = null;
+  store.listeners.clear();
 }
 
 /**

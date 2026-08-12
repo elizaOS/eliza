@@ -21,8 +21,8 @@ import {
 } from "@elizaos/core";
 import { logger } from "@elizaos/logger";
 import {
-  STEWARD_SESSION_TRANSITION_EVENT,
   type StewardSessionTransition,
+  subscribeStewardSessionTransitions,
 } from "@elizaos/shared/steward-session-client";
 import { useSyncExternalStore } from "react";
 import { client } from "../../api/client";
@@ -65,6 +65,51 @@ export interface NotificationState {
     | "failed";
   hydrationAttempts: number;
   hydrationError: string | null;
+  mutationFailure: NotificationMutationFailure | null;
+}
+
+export type NotificationMutationOperation =
+  | "mark-read"
+  | "mark-all-read"
+  | "remove"
+  | "remove-batch"
+  | "clear";
+
+/** Safe user-facing failure for a notification collection mutation. */
+export interface NotificationMutationFailure {
+  operation: NotificationMutationOperation;
+  message: string;
+  failedCount: number;
+}
+
+/** Typed rejection paired with the store's visible mutation-failure state. */
+export class NotificationMutationError extends Error {
+  readonly failure: NotificationMutationFailure;
+
+  constructor(failure: NotificationMutationFailure, cause: unknown) {
+    super(failure.message, { cause });
+    this.name = "NotificationMutationError";
+    this.failure = failure;
+  }
+}
+
+/** A queued write whose captured authority no longer owns the store. */
+export class NotificationMutationSupersededError extends Error {
+  readonly operation: NotificationMutationOperation;
+  readonly capturedRevision: number;
+  readonly currentRevision: number;
+
+  constructor(
+    operation: NotificationMutationOperation,
+    capturedRevision: number,
+    currentRevision: number,
+  ) {
+    super("Notification mutation authority changed before completion");
+    this.name = "NotificationMutationSupersededError";
+    this.operation = operation;
+    this.capturedRevision = capturedRevision;
+    this.currentRevision = currentRevision;
+  }
 }
 
 let state: NotificationState = {
@@ -74,6 +119,7 @@ let state: NotificationState = {
   hydrationStatus: "idle",
   hydrationAttempts: 0,
   hydrationError: null,
+  mutationFailure: null,
 };
 
 const listeners = new Set<() => void>();
@@ -106,7 +152,9 @@ let currentAuthorityBaseUrl: string | null = null;
 // Monotonic even when the visible authority key cycles A -> X -> A, so a
 // callback retained from the first A can never become current again.
 let currentAuthorityRevision = 0;
-let lastStewardSessionEpoch = 0;
+let lastStewardSessionRevision = 0;
+let notificationMutationTail = Promise.resolve();
+let notificationMutationQueueDepth = 0;
 // Unsubscribes the currently-bound live WS notification handler; rebound on
 // every authority change so a handler closure from a superseded authority can
 // never reach ingest(), even if a message is somehow still in flight.
@@ -415,8 +463,8 @@ function computeAuthorityKey(
 }
 
 /** Cancel retry/hydration ownership and clear rows/unread state for a new
- *  authority. Shared by {@link reconcileAuthority} and {@link
- *  invalidateAuthorityForCredentialChange} (#18542). */
+ *  authority. Shared by auth reconciliation and synchronous Steward-session
+ *  invalidation (#18542). */
 function clearForAuthorityChange(): void {
   if (hydrationRetryTimer) {
     clearTimeout(hydrationRetryTimer);
@@ -425,7 +473,6 @@ function clearForAuthorityChange(): void {
   hydrationInFlight = null;
   hydrationReadinessDeadlineAt = 0;
   hydrationGeneration += 1;
-  notificationMutationTail = Promise.resolve();
 
   setState({
     notifications: [],
@@ -434,6 +481,7 @@ function clearForAuthorityChange(): void {
     hydrationStatus: "idle",
     hydrationAttempts: 0,
     hydrationError: null,
+    mutationFailure: null,
   });
   ephemeralNotificationIds.clear();
 }
@@ -493,25 +541,30 @@ const INVALIDATED_AUTHORITY_KEY = "credential-invalidated";
  * rotates transport without guessing that the unrelated agent API bearer
  * represents a Steward login or logout.
  */
-function onStewardSessionTransition(event: Event): void {
-  const detail = (event as CustomEvent<StewardSessionTransition>).detail;
+function onStewardSessionTransition(
+  transition: StewardSessionTransition,
+): void {
   if (
-    !detail ||
-    (detail.state !== "present" && detail.state !== "cleared") ||
-    !Number.isSafeInteger(detail.sessionEpoch) ||
-    detail.sessionEpoch <= lastStewardSessionEpoch
+    (transition.kind !== "present" && transition.kind !== "cleared") ||
+    !Number.isSafeInteger(transition.revision) ||
+    transition.revision <= lastStewardSessionRevision
   ) {
     return;
   }
-  lastStewardSessionEpoch = detail.sessionEpoch;
+  lastStewardSessionRevision = transition.revision;
 
-  if (detail.state === "present") {
+  if (transition.kind === "present") {
     // Token rotation does not prove an identity change, so retain the inbox;
-    // rotate/rebind transport now and let the typed auth snapshot decide
-    // whether a later clear + hydrate is necessary.
+    // pending optimistic writes are the exception because their result belongs
+    // to the preceding credential revision and cannot safely survive as truth.
+    const hasPendingMutation = notificationMutationQueueDepth > 0;
     if (currentAuthorityKey !== null) {
       bindLiveNotificationStream(currentAuthorityKey);
       client.rotateConnection();
+      if (hasPendingMutation) {
+        clearForAuthorityChange();
+        void requestHydration();
+      }
     }
     return;
   }
@@ -543,12 +596,6 @@ function mergeNotificationLists(
     if (merged.length === 300) break;
   }
   return merged;
-}
-
-function mergeHydratedNotifications(
-  persisted: AgentNotification[],
-): AgentNotification[] {
-  return mergeNotificationLists(state.notifications, persisted);
 }
 
 function isRetryableHydrationError(error: unknown): boolean {
@@ -608,7 +655,10 @@ async function runHydrationAttempt(generation: number): Promise<void> {
       clearTimeout(hydrationRetryTimer);
       hydrationRetryTimer = null;
     }
-    const notifications = mergeHydratedNotifications(res.notifications);
+    const notifications = mergeNotificationLists(
+      state.notifications,
+      res.notifications,
+    );
     const hydrationStatus =
       res.serviceStatus === "disabled" ? "disabled" : "ready";
     hydrationReadinessDeadlineAt = 0;
@@ -686,6 +736,9 @@ async function runHydrationAttempt(generation: number): Promise<void> {
 }
 
 function requestHydration(): Promise<void> {
+  if (currentAuthorityKey === INVALIDATED_AUTHORITY_KEY) {
+    return Promise.resolve();
+  }
   if (!notificationProbesEnabled()) {
     // No session yet on the shared Cloud app — skip the protected fetch (it
     // would 401 and Chromium logs the console error). initNotifications()'s
@@ -735,18 +788,9 @@ export function initNotifications(): void {
     }),
     subscribeAuthStatus(reconcileAuthority),
     client.onBaseUrlChange(() => reconcileAuthority(getAuthStatusSnapshot())),
+    subscribeStewardSessionTransitions(onStewardSessionTransition),
   );
   if (typeof window !== "undefined") {
-    window.addEventListener(
-      STEWARD_SESSION_TRANSITION_EVENT,
-      onStewardSessionTransition,
-    );
-    notificationCleanups.push(() =>
-      window.removeEventListener(
-        STEWARD_SESSION_TRANSITION_EVENT,
-        onStewardSessionTransition,
-      ),
-    );
     const retryOnline = () => void retryNotificationHydration();
     window.addEventListener("online", retryOnline);
     notificationCleanups.push(() =>
@@ -797,67 +841,138 @@ export async function seedDevNotificationsIfEmpty(): Promise<void> {
 
 // ── Mutations (optimistic; backed by the HTTP API) ──────────────────────────
 
-/** An optimistic mutation's pre-write state, tagged with the authority it was
- *  captured under so a response that settles after an authority switch can
- *  recognize its snapshot is stale (#18542). */
+/** Immutable authority captured synchronously when a public write is queued. */
+interface MutationAuthoritySnapshot {
+  key: string | null;
+  revision: number;
+}
+
+/** Optimistic pre-write state paired with its enqueue-time authority. */
 interface MutationSnapshot {
-  authorityKey: string | null;
+  authority: MutationAuthoritySnapshot;
   state: NotificationState;
 }
 
-let notificationMutationTail = Promise.resolve();
-
-function snapshotForMutation(): MutationSnapshot {
-  return { authorityKey: currentAuthorityKey, state };
+function captureMutationAuthority(): MutationAuthoritySnapshot {
+  return Object.freeze({
+    key: currentAuthorityKey,
+    revision: currentAuthorityRevision,
+  });
 }
 
-/**
- * Roll the optimistic state back to the snapshot and log at error level when a
- * mutation's HTTP write fails. Reverting is the user-visible surfacing: a
- * failed "mark read" returns the item to unread and a failed delete makes it
- * reappear, so the inbox never silently diverges from server truth. Callers
- * fire-and-forget (`void`), so this never rethrows.
- *
- * If the authority has changed since the snapshot was captured (the request
- * that failed belonged to a prior authority A, but the store has since
- * switched to and hydrated authority B), applying the snapshot would overwrite
- * B's rows with A's — discard the rollback instead (#18542).
- */
-function mutationStillOwnsAuthority(
-  snapshot: MutationSnapshot,
-  op: string,
-  err: unknown,
-): boolean {
-  if (snapshot.authorityKey !== currentAuthorityKey) {
+function assertMutationAuthority(
+  authority: MutationAuthoritySnapshot,
+  operation: NotificationMutationOperation,
+  phase: "queue" | "request" | "result" | "rollback",
+): void {
+  if (
+    authority.key !== currentAuthorityKey ||
+    authority.revision !== currentAuthorityRevision
+  ) {
     logger.warn(
-      { err },
-      `[notification-store] ${op} failed after an authority switch; stale rollback discarded`,
+      {
+        operation,
+        phase,
+        capturedRevision: authority.revision,
+        currentRevision: currentAuthorityRevision,
+      },
+      "[notification-store] stale-authority mutation aborted",
     );
-    return false;
+    throw new NotificationMutationSupersededError(
+      operation,
+      authority.revision,
+      currentAuthorityRevision,
+    );
   }
-  return true;
 }
 
 /**
- * Serialize notification writes within one authority. Mark-all, clear, and
- * per-row actions overlap the same server collection, so a single queue is the
- * smallest authority that prevents one failed optimistic write from racing a
- * later successful write. Authority changes replace the queue immediately.
+ * Serialize every notification write through one queue. Authority identity and
+ * revision are captured before observing the predecessor tail, so queued A
+ * work cannot wake under B (or a later A revision) and address that authority's
+ * same-id row. The queue itself is never replaced on an authority switch.
  */
 async function serializeNotificationMutation<T>(
-  operation: () => Promise<T>,
+  operation: NotificationMutationOperation,
+  run: (authority: MutationAuthoritySnapshot) => Promise<T>,
 ): Promise<T> {
+  const authority = captureMutationAuthority();
   const predecessor = notificationMutationTail;
+  const waitsForPredecessor = notificationMutationQueueDepth > 0;
+  notificationMutationQueueDepth += 1;
   let release!: () => void;
   notificationMutationTail = new Promise<void>((resolve) => {
     release = resolve;
   });
-  await predecessor;
+  if (waitsForPredecessor) await predecessor;
   try {
-    return await operation();
+    assertMutationAuthority(authority, operation, "queue");
+    if (state.mutationFailure !== null) setState({ mutationFailure: null });
+    assertMutationAuthority(authority, operation, "queue");
+    return await run(authority);
   } finally {
+    notificationMutationQueueDepth -= 1;
     release();
   }
+}
+
+async function runMutationRequest<T>(
+  authority: MutationAuthoritySnapshot,
+  operation: NotificationMutationOperation,
+  request: () => Promise<T>,
+): Promise<T> {
+  assertMutationAuthority(authority, operation, "request");
+  const result = await request();
+  assertMutationAuthority(authority, operation, "result");
+  return result;
+}
+
+function snapshotForMutation(
+  authority: MutationAuthoritySnapshot,
+): MutationSnapshot {
+  return { authority, state };
+}
+
+function applyMutationRollback(
+  snapshot: MutationSnapshot,
+  operation: NotificationMutationOperation,
+  rollback: () => void,
+): void {
+  assertMutationAuthority(snapshot.authority, operation, "rollback");
+  rollback();
+}
+
+const MUTATION_FAILURE_MESSAGES: Record<NotificationMutationOperation, string> =
+  {
+    "mark-read":
+      "The notification could not be marked read. Its previous state was restored.",
+    "mark-all-read":
+      "Notifications could not be marked read. Their previous state was restored.",
+    remove: "The notification could not be dismissed. It was restored.",
+    "remove-batch":
+      "Some notifications could not be dismissed. Failed items were restored.",
+    clear: "Notifications could not be cleared. They were restored.",
+  };
+
+function reportMutationFailure(
+  authority: MutationAuthoritySnapshot,
+  operation: NotificationMutationOperation,
+  failedCount: number,
+  cause: unknown,
+): never {
+  assertMutationAuthority(authority, operation, "result");
+  const failure: NotificationMutationFailure = {
+    operation,
+    message: MUTATION_FAILURE_MESSAGES[operation],
+    failedCount,
+  };
+  setState({ mutationFailure: failure });
+  assertMutationAuthority(authority, operation, "result");
+  logger.error(
+    { err: cause, operation, failedCount },
+    "[notification-store] notification mutation failed; optimistic fields restored",
+  );
+  throw new NotificationMutationError(failure, cause);
 }
 
 function restoreRemovedRows(
@@ -873,8 +988,8 @@ function restoreRemovedRows(
 }
 
 export async function markNotificationRead(id: string): Promise<void> {
-  return serializeNotificationMutation(async () => {
-    const snapshot = snapshotForMutation();
+  return serializeNotificationMutation("mark-read", async (authority) => {
+    const snapshot = snapshotForMutation(authority);
     const now = Date.now();
     const notifications = state.notifications.map((notification) =>
       notification.id === id && !notification.readAt
@@ -883,87 +998,94 @@ export async function markNotificationRead(id: string): Promise<void> {
     );
     setState({ notifications, unreadCount: countUnread(notifications) });
     try {
-      await client.markNotificationRead(id);
-    } catch (err) {
-      // error-policy:J4 restore only this optimistic field when its write
-      // fails; a live update with different bytes remains authoritative.
-      if (!mutationStillOwnsAuthority(snapshot, "markNotificationRead", err))
-        return;
-      const previous = snapshot.state.notifications.find(
-        (notification) => notification.id === id,
+      await runMutationRequest(authority, "mark-read", () =>
+        client.markNotificationRead(id),
       );
-      const restored = state.notifications.map((notification) =>
-        notification.id === id && notification.readAt === now && previous
-          ? { ...notification, readAt: previous.readAt }
-          : notification,
-      );
-      setState({ notifications: restored, unreadCount: countUnread(restored) });
-      logger.error(
-        { err },
-        "[notification-store] markNotificationRead failed; reverted row",
-      );
+    } catch (error) {
+      // error-policy:J4 the owned field is restored and mutationFailure renders
+      // as a role=alert before this boundary rethrows a typed failure.
+      applyMutationRollback(snapshot, "mark-read", () => {
+        const previous = snapshot.state.notifications.find(
+          (notification) => notification.id === id,
+        );
+        const restored = state.notifications.map((notification) =>
+          notification.id === id && notification.readAt === now && previous
+            ? { ...notification, readAt: previous.readAt }
+            : notification,
+        );
+        setState({
+          notifications: restored,
+          unreadCount: countUnread(restored),
+        });
+      });
+      reportMutationFailure(authority, "mark-read", 1, error);
     }
   });
 }
 
 export async function markAllNotificationsRead(): Promise<void> {
-  return serializeNotificationMutation(async () => {
-    const snapshot = snapshotForMutation();
+  return serializeNotificationMutation("mark-all-read", async (authority) => {
+    const snapshot = snapshotForMutation(authority);
     const now = Date.now();
     const notifications = state.notifications.map((notification) =>
       notification.readAt ? notification : { ...notification, readAt: now },
     );
     setState({ notifications, unreadCount: 0 });
     try {
-      await client.markAllNotificationsRead();
-    } catch (err) {
-      // error-policy:J4 reverse only fields still owned by this optimistic
-      // write, preserving any live notification update that arrived later.
-      if (
-        !mutationStillOwnsAuthority(snapshot, "markAllNotificationsRead", err)
-      )
-        return;
-      const previousById = new Map(
-        snapshot.state.notifications.map((notification) => [
-          notification.id,
-          notification,
-        ]),
+      await runMutationRequest(authority, "mark-all-read", () =>
+        client.markAllNotificationsRead(),
       );
-      const restored = state.notifications.map((notification) => {
-        const previous = previousById.get(notification.id);
-        return notification.readAt === now && previous
-          ? { ...notification, readAt: previous.readAt }
-          : notification;
+    } catch (error) {
+      // error-policy:J4 only still-owned optimistic readAt values roll back;
+      // mutationFailure renders the distinct alert before the typed rethrow.
+      applyMutationRollback(snapshot, "mark-all-read", () => {
+        const previousById = new Map(
+          snapshot.state.notifications.map((notification) => [
+            notification.id,
+            notification,
+          ]),
+        );
+        const restored = state.notifications.map((notification) => {
+          const previous = previousById.get(notification.id);
+          return notification.readAt === now && previous
+            ? { ...notification, readAt: previous.readAt }
+            : notification;
+        });
+        setState({
+          notifications: restored,
+          unreadCount: countUnread(restored),
+        });
       });
-      setState({ notifications: restored, unreadCount: countUnread(restored) });
-      logger.error(
-        { err },
-        "[notification-store] markAllNotificationsRead failed; reverted rows",
+      reportMutationFailure(
+        authority,
+        "mark-all-read",
+        snapshot.state.notifications.length,
+        error,
       );
     }
   });
 }
 
 export async function removeNotification(id: string): Promise<void> {
-  return serializeNotificationMutation(async () => {
-    const snapshot = snapshotForMutation();
+  return serializeNotificationMutation("remove", async (authority) => {
+    const snapshot = snapshotForMutation(authority);
     const notifications = state.notifications.filter(
       (notification) => notification.id !== id,
     );
     setState({ notifications, unreadCount: countUnread(notifications) });
+    assertMutationAuthority(authority, "remove", "result");
     if (ephemeralNotificationIds.delete(id)) return;
     try {
-      await client.removeNotification(id);
-    } catch (err) {
-      // error-policy:J4 the failed row reappears without replacing unrelated
-      // rows or live events received while the request was in flight.
-      if (!mutationStillOwnsAuthority(snapshot, "removeNotification", err))
-        return;
-      restoreRemovedRows(snapshot, new Set([id]));
-      logger.error(
-        { err },
-        "[notification-store] removeNotification failed; restored row",
+      await runMutationRequest(authority, "remove", () =>
+        client.removeNotification(id),
       );
+    } catch (error) {
+      // error-policy:J4 the failed row returns additively and mutationFailure
+      // renders the distinct alert before this boundary rethrows.
+      applyMutationRollback(snapshot, "remove", () =>
+        restoreRemovedRows(snapshot, new Set([id])),
+      );
+      reportMutationFailure(authority, "remove", 1, error);
     }
   });
 }
@@ -973,13 +1095,14 @@ export async function removeNotifications(
   ids: readonly string[],
 ): Promise<void> {
   if (ids.length === 0) return;
-  return serializeNotificationMutation(async () => {
+  return serializeNotificationMutation("remove-batch", async (authority) => {
     const idSet = new Set(ids);
-    const snapshot = snapshotForMutation();
+    const snapshot = snapshotForMutation(authority);
     const notifications = state.notifications.filter(
       (notification) => !idSet.has(notification.id),
     );
     setState({ notifications, unreadCount: countUnread(notifications) });
+    assertMutationAuthority(authority, "remove-batch", "result");
     const ephemeralIds = ids.filter((id) =>
       ephemeralNotificationIds.delete(id),
     );
@@ -987,8 +1110,10 @@ export async function removeNotifications(
     const persistedIds = ids.filter((id) => !ephemeralIdSet.has(id));
     if (persistedIds.length === 0) return;
 
-    const results = await Promise.allSettled(
-      persistedIds.map((id) => client.removeNotification(id)),
+    const results = await runMutationRequest(authority, "remove-batch", () =>
+      Promise.allSettled(
+        persistedIds.map((id) => client.removeNotification(id)),
+      ),
     );
     const failedIds = new Set<string>();
     const failures: unknown[] = [];
@@ -1000,46 +1125,49 @@ export async function removeNotifications(
       }
     });
     if (failedIds.size === 0) return;
-    const representativeError = failures[0];
-    if (
-      !mutationStillOwnsAuthority(
-        snapshot,
-        "removeNotifications",
-        representativeError,
-      )
-    )
-      return;
     // Partial success is authoritative: only failed persisted rows return;
     // successful deletes and local-only ephemeral deletes stay removed.
-    restoreRemovedRows(snapshot, failedIds);
-    logger.error(
-      { errors: failures, failedCount: failedIds.size },
-      "[notification-store] removeNotifications partially failed; restored failed rows",
+    applyMutationRollback(snapshot, "remove-batch", () =>
+      restoreRemovedRows(snapshot, failedIds),
+    );
+    reportMutationFailure(
+      authority,
+      "remove-batch",
+      failedIds.size,
+      new AggregateError(
+        failures,
+        "Notification batch delete partially failed",
+      ),
     );
   });
 }
 
 export async function clearNotifications(): Promise<void> {
-  return serializeNotificationMutation(async () => {
-    const snapshot = snapshotForMutation();
+  return serializeNotificationMutation("clear", async (authority) => {
+    const snapshot = snapshotForMutation(authority);
     const previousEphemeralIds = [...ephemeralNotificationIds];
     setState({ notifications: [], unreadCount: 0 });
+    assertMutationAuthority(authority, "clear", "result");
     ephemeralNotificationIds.clear();
     try {
-      await client.clearNotifications();
-    } catch (err) {
-      // error-policy:J4 restore the cleared rows additively so a live arrival
-      // during the request is not overwritten by the older snapshot.
-      if (!mutationStillOwnsAuthority(snapshot, "clearNotifications", err))
-        return;
-      for (const id of previousEphemeralIds) ephemeralNotificationIds.add(id);
-      restoreRemovedRows(
-        snapshot,
-        new Set(snapshot.state.notifications.map(({ id }) => id)),
+      await runMutationRequest(authority, "clear", () =>
+        client.clearNotifications(),
       );
-      logger.error(
-        { err },
-        "[notification-store] clearNotifications failed; restored rows",
+    } catch (error) {
+      // error-policy:J4 restored rows merge with live arrivals and
+      // mutationFailure renders the distinct alert before the typed rethrow.
+      applyMutationRollback(snapshot, "clear", () => {
+        for (const id of previousEphemeralIds) ephemeralNotificationIds.add(id);
+        restoreRemovedRows(
+          snapshot,
+          new Set(snapshot.state.notifications.map(({ id }) => id)),
+        );
+      });
+      reportMutationFailure(
+        authority,
+        "clear",
+        snapshot.state.notifications.length,
+        error,
       );
     }
   });
@@ -1071,8 +1199,9 @@ export function __resetNotificationStoreForTests(): void {
   currentAuthorityKey = null;
   currentAuthorityBaseUrl = null;
   currentAuthorityRevision = 0;
-  lastStewardSessionEpoch = 0;
+  lastStewardSessionRevision = 0;
   notificationMutationTail = Promise.resolve();
+  notificationMutationQueueDepth = 0;
   notificationEventUnsub?.();
   notificationEventUnsub = null;
   liveEventRevision = 0;
@@ -1083,6 +1212,7 @@ export function __resetNotificationStoreForTests(): void {
     hydrationStatus: "idle",
     hydrationAttempts: 0,
     hydrationError: null,
+    mutationFailure: null,
   };
   initialized = false;
   devSeedAttempted = false;
@@ -1120,6 +1250,13 @@ export function __setHydrationFailureForTests(message: string): void {
     hydrationAttempts: HYDRATION_MAX_ATTEMPTS,
     hydrationError: message,
   });
+}
+
+/** Test-only visible mutation failure used by the notification-center render. */
+export function __setMutationFailureForTests(
+  failure: NotificationMutationFailure,
+): void {
+  setState({ mutationFailure: failure });
 }
 
 /** Test-only snapshot of the live store state (the WS-validation path asserts the

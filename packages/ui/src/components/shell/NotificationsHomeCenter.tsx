@@ -71,6 +71,8 @@ import {
   navigateDeepLink,
 } from "../../state/notifications/navigate-deep-link";
 import {
+  NotificationMutationError,
+  NotificationMutationSupersededError,
   removeNotification,
   removeNotifications,
   retryNotificationHydration,
@@ -654,13 +656,29 @@ export interface NotificationsHomeCenterProps {
   onShadeOccupancyChange?: (occupiesHome: boolean) => void;
 }
 
+function observeNotificationMutation(mutation: Promise<void>): void {
+  void mutation.catch((error: unknown) => {
+    // error-policy:J5 API failures are observed by notification-store's
+    // role=alert mutationFailure state; superseded writes are observed by the
+    // synchronous authority clear that made their captured revision stale.
+    if (
+      error instanceof NotificationMutationError ||
+      error instanceof NotificationMutationSupersededError
+    ) {
+      return;
+    }
+    throw error;
+  });
+}
+
 export function NotificationsHomeCenter({
   emptyGestureTargetRef,
   shadeLayoutTargetRef,
   onShadeOccupancyChange,
 }: NotificationsHomeCenterProps = {}): React.JSX.Element | null {
   notificationsHomeCenterRenderObserverForTests?.();
-  const { notifications, hydrated, hydrationStatus } = useNotifications();
+  const { notifications, hydrated, hydrationStatus, mutationFailure } =
+    useNotifications();
   const inboxEmpty = notifications.length === 0;
   const reduceMotion = usePrefersReducedMotion();
   // Shade mode: rested (interrupt-tier triage) vs expanded (full inbox).
@@ -2452,10 +2470,10 @@ export function NotificationsHomeCenter({
     if (n.deepLink && isSafeDeepLink(n.deepLink)) {
       navigateDeepLink(n.deepLink);
     }
-    void removeNotification(n.id);
+    observeNotificationMutation(removeNotification(n.id));
   }, []);
   const dismissNotification = useCallback((id: string) => {
-    void removeNotification(id);
+    observeNotificationMutation(removeNotification(id));
   }, []);
   const clearProducer = useCallback(
     (key: string, ids: readonly string[]) => {
@@ -2465,7 +2483,7 @@ export function NotificationsHomeCenter({
       }
       setConfirmingGroupKey(null);
       foldStack(key);
-      void removeNotifications(ids);
+      observeNotificationMutation(removeNotifications(ids));
     },
     [confirmingGroupKey, foldStack],
   );
@@ -2738,6 +2756,21 @@ export function NotificationsHomeCenter({
           shadeClosing && "pointer-events-none",
         )}
       >
+        {mutationFailure ? (
+          <li
+            role="alert"
+            data-testid="notification-mutation-failure"
+            data-notification-mutation={mutationFailure.operation}
+            className="eliza-notif-glass mx-0.5 flex-none rounded-2xl border border-orange-500/30 px-4 py-3"
+          >
+            <p className="text-sm font-semibold text-white">
+              Notification action failed
+            </p>
+            <p className="mt-0.5 text-xs leading-snug text-white/60">
+              {mutationFailure.message}
+            </p>
+          </li>
+        ) : null}
         {!hasNotifications ? (
           <li
             role="status"
