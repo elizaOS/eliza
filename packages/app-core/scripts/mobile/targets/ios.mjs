@@ -6,12 +6,12 @@
 import { ElizaError } from "../../lib/eliza-error.mjs";
 
 /**
- * @typedef {"operator-default" | "target"} IosRuntimeModeAuthority
+ * @typedef {"operator-default" | "target"} IosEnvironmentAuthority
  * @typedef {{ target: string, capacitorTarget: "ios", buildVariant: "store" | "direct",
  *   releaseAuthority: "apple-app-store" | "developer-toolchain",
  *   iosRuntimeMode: "cloud" | "cloud-hybrid" | "local",
  *   runtimeExecutionMode: "cloud" | "local-safe",
- *   runtimeModeAuthority: IosRuntimeModeAuthority,
+ *   environmentAuthority: IosEnvironmentAuthority,
  *   localEngine: "required" | "allowed" | "forbidden",
  *   includeLlama: "disabled" | "direct-default",
  *   appControlledOta: false }} IosBuildTarget
@@ -31,7 +31,7 @@ export const IOS_BUILD_TARGETS = Object.freeze({
     releaseAuthority: "apple-app-store",
     iosRuntimeMode: "cloud-hybrid",
     runtimeExecutionMode: "local-safe",
-    runtimeModeAuthority: "operator-default",
+    environmentAuthority: "operator-default",
     localEngine: "allowed",
     includeLlama: "disabled",
     appControlledOta: false,
@@ -43,7 +43,7 @@ export const IOS_BUILD_TARGETS = Object.freeze({
     releaseAuthority: "apple-app-store",
     iosRuntimeMode: "cloud",
     runtimeExecutionMode: "cloud",
-    runtimeModeAuthority: "target",
+    environmentAuthority: "target",
     localEngine: "forbidden",
     includeLlama: "disabled",
     appControlledOta: false,
@@ -55,7 +55,7 @@ export const IOS_BUILD_TARGETS = Object.freeze({
     releaseAuthority: "developer-toolchain",
     iosRuntimeMode: "local",
     runtimeExecutionMode: "local-safe",
-    runtimeModeAuthority: "operator-default",
+    environmentAuthority: "operator-default",
     localEngine: "required",
     includeLlama: "direct-default",
     appControlledOta: false,
@@ -67,7 +67,7 @@ export const IOS_BUILD_TARGETS = Object.freeze({
     releaseAuthority: "developer-toolchain",
     iosRuntimeMode: "cloud",
     runtimeExecutionMode: "cloud",
-    runtimeModeAuthority: "operator-default",
+    environmentAuthority: "operator-default",
     localEngine: "allowed",
     includeLlama: "disabled",
     appControlledOta: false,
@@ -105,8 +105,9 @@ function setDefaultEnv(env, key, value) {
 
 /**
  * Resolves the environment consumed by every phase of an iOS build. A named
- * pure-cloud target rejects a contradictory renderer mode, then erases all
- * inherited local-engine capability signals before payload decisions run.
+ * pure-cloud target rejects a contradictory renderer mode, owns the release
+ * classification, then erases inherited local-engine capability signals
+ * before payload decisions run.
  *
  * @param {string} targetName
  * @param {Record<string, string|undefined>} [env]
@@ -114,11 +115,12 @@ function setDefaultEnv(env, key, value) {
  */
 export function resolveIosBuildEnvironment(targetName, env = {}) {
   const target = resolveIosBuildTargetPolicy(targetName);
+  const targetOwnsEnvironment = target.environmentAuthority === "target";
   const requestedRuntimeMode = normalizedEnvValue(
     env.VITE_ELIZA_IOS_RUNTIME_MODE,
   );
   if (
-    target.runtimeModeAuthority === "target" &&
+    targetOwnsEnvironment &&
     requestedRuntimeMode != null &&
     requestedRuntimeMode !== target.iosRuntimeMode
   ) {
@@ -139,8 +141,13 @@ export function resolveIosBuildEnvironment(targetName, env = {}) {
   }
 
   const resolved = { ...env };
-  setDefaultEnv(resolved, "ELIZA_BUILD_VARIANT", target.buildVariant);
-  setDefaultEnv(resolved, "ELIZA_RELEASE_AUTHORITY", target.releaseAuthority);
+  if (targetOwnsEnvironment) {
+    resolved.ELIZA_BUILD_VARIANT = target.buildVariant;
+    resolved.ELIZA_RELEASE_AUTHORITY = target.releaseAuthority;
+  } else {
+    setDefaultEnv(resolved, "ELIZA_BUILD_VARIANT", target.buildVariant);
+    setDefaultEnv(resolved, "ELIZA_RELEASE_AUTHORITY", target.releaseAuthority);
+  }
 
   const runtimeKeys = ["ELIZA_IOS_RUNTIME_MODE", "VITE_ELIZA_IOS_RUNTIME_MODE"];
   const executionKeys = [
@@ -149,7 +156,7 @@ export function resolveIosBuildEnvironment(targetName, env = {}) {
     "LOCAL_RUNTIME_MODE",
     "VITE_ELIZA_RUNTIME_MODE",
   ];
-  if (target.runtimeModeAuthority === "target") {
+  if (targetOwnsEnvironment) {
     for (const key of runtimeKeys) resolved[key] = target.iosRuntimeMode;
     for (const key of executionKeys) {
       resolved[key] = target.runtimeExecutionMode;
@@ -166,6 +173,7 @@ export function resolveIosBuildEnvironment(targetName, env = {}) {
   if (target.localEngine === "forbidden") {
     resolved.ELIZA_IOS_APP_STORE_LOCAL_RUNTIME = "0";
     resolved.ELIZA_IOS_FULL_BUN_ENGINE = "0";
+    resolved.ELIZA_IOS_INCLUDE_MOBILE_AGENT_BRIDGE = "0";
     resolved.VITE_ELIZA_IOS_FULL_BUN_AVAILABLE = "0";
     resolved.VITE_ELIZA_IOS_FULL_BUN_STRICT = "0";
     resolved.VITE_ELIZA_IOS_FULL_BUN_SMOKE = "0";

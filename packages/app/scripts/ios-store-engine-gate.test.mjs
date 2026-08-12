@@ -125,25 +125,31 @@ describe("canonical iOS runtime build scripts", () => {
     expect(resolveIosBuildTargetPolicy("ios-cloud")).toMatchObject({
       iosRuntimeMode: "cloud",
       runtimeExecutionMode: "cloud",
-      runtimeModeAuthority: "target",
+      environmentAuthority: "target",
       localEngine: "forbidden",
     });
   });
 
-  it("forces inherited local-engine flags off before payload decisions", () => {
+  it("forces inherited release and local-engine flags to the pure-cloud target", () => {
     const resolved = resolveIosBuildEnvironment("ios-cloud", {
+      ELIZA_BUILD_VARIANT: "direct",
+      ELIZA_RELEASE_AUTHORITY: "developer-toolchain",
       ELIZA_IOS_APP_STORE_LOCAL_RUNTIME: "1",
       ELIZA_IOS_FULL_BUN_ENGINE: "1",
+      ELIZA_IOS_INCLUDE_MOBILE_AGENT_BRIDGE: "1",
       VITE_ELIZA_IOS_FULL_BUN_AVAILABLE: "1",
       VITE_ELIZA_IOS_FULL_BUN_STRICT: "1",
       VITE_ELIZA_IOS_FULL_BUN_SMOKE: "1",
     });
 
     expect(resolved).toMatchObject({
+      ELIZA_BUILD_VARIANT: "store",
+      ELIZA_RELEASE_AUTHORITY: "apple-app-store",
       VITE_ELIZA_IOS_RUNTIME_MODE: "cloud",
       ELIZA_IOS_RUNTIME_MODE: "cloud",
       ELIZA_IOS_APP_STORE_LOCAL_RUNTIME: "0",
       ELIZA_IOS_FULL_BUN_ENGINE: "0",
+      ELIZA_IOS_INCLUDE_MOBILE_AGENT_BRIDGE: "0",
       VITE_ELIZA_IOS_FULL_BUN_AVAILABLE: "0",
       VITE_ELIZA_IOS_FULL_BUN_STRICT: "0",
       VITE_ELIZA_IOS_FULL_BUN_SMOKE: "0",
@@ -184,14 +190,29 @@ describe("canonical iOS runtime build scripts", () => {
     expect(
       resolveIosBuildEnvironment("ios", {
         VITE_ELIZA_IOS_RUNTIME_MODE: "cloud-hybrid",
-      }).VITE_ELIZA_IOS_RUNTIME_MODE,
-    ).toBe("cloud-hybrid");
+      }),
+    ).toMatchObject({
+      ELIZA_BUILD_VARIANT: "store",
+      ELIZA_RELEASE_AUTHORITY: "apple-app-store",
+      VITE_ELIZA_IOS_RUNTIME_MODE: "cloud-hybrid",
+    });
+    expect(
+      resolveIosBuildEnvironment("ios", {
+        ELIZA_BUILD_VARIANT: "direct",
+        ELIZA_RELEASE_AUTHORITY: "developer-toolchain",
+      }),
+    ).toMatchObject({
+      ELIZA_BUILD_VARIANT: "direct",
+      ELIZA_RELEASE_AUTHORITY: "developer-toolchain",
+    });
     expect(
       resolveIosBuildEnvironment("ios-local", {
         VITE_ELIZA_IOS_RUNTIME_MODE: "local",
         ELIZA_IOS_FULL_BUN_ENGINE: "1",
       }),
     ).toMatchObject({
+      ELIZA_BUILD_VARIANT: "direct",
+      ELIZA_RELEASE_AUTHORITY: "developer-toolchain",
       VITE_ELIZA_IOS_RUNTIME_MODE: "local",
       ELIZA_IOS_FULL_BUN_ENGINE: "1",
     });
