@@ -13,6 +13,7 @@ import {
   readStoredAppAuthorizeReturnTo,
 } from "../../../../cloud-ui/components/auth/authorize-return";
 import { BrandButton } from "../../../../cloud-ui/components/brand/brand-button";
+import { Button } from "../../../../components/primitives";
 import { useCloudT } from "../../../shell/CloudI18nProvider";
 import {
   LocalStewardAuthContext,
@@ -193,6 +194,13 @@ function EmailCallbackContent() {
           })}
         </h1>
         <p className="max-w-xs text-center text-sm text-muted">{error}</p>
+        <Button asChild className="mt-2">
+          <a href="/login">
+            {t("cloud.cliLogin.signInAgain", {
+              defaultValue: "Sign In Again",
+            })}
+          </a>
+        </Button>
       </Frame>
     );
   }
@@ -235,12 +243,12 @@ function EmailCallbackContent() {
 
 function Frame({ children }: { children: ReactNode }) {
   return (
-    <div className="theme-cloud relative flex min-h-[100dvh] w-full flex-col overflow-hidden bg-bg font-sans text-txt">
+    <main className="theme-cloud relative flex min-h-[100dvh] w-full flex-col overflow-hidden bg-bg font-sans text-txt">
       <div className="relative z-10 flex flex-1 items-center justify-center p-4">
         <div className="w-full max-w-md border border-border bg-card p-8">
           <div className="flex flex-col items-center gap-6">{children}</div>
         </div>
       </div>
-    </div>
+    </main>
   );
 }
