@@ -306,7 +306,10 @@ function describeSchedule(
   nowMs = Date.now(),
 ): string {
   if (t.triggerType === "interval") {
-    return describeIntervalMs(t.intervalMs ?? DEFAULT_INTERVAL_MS);
+    return (
+      describeIntervalMs(t.intervalMs ?? DEFAULT_INTERVAL_MS) ??
+      "on a custom schedule"
+    );
   }
   if (t.triggerType === "once") {
     const friendly = t.scheduledAtIso
