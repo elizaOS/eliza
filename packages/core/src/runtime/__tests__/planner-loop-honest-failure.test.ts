@@ -11,55 +11,15 @@
  */
 import { describe, expect, it, vi } from "vitest";
 import {
-	getStreamingContext,
-	runWithStreamingContext,
-} from "../../streaming-context";
-import type { ContextObject } from "../../types/context-object";
-import {
 	FAILED_TOOL_FALLBACK_MESSAGE,
-	HANDLED_STEP_FALLBACK_MESSAGE,
 	runPlannerLoop,
+	TOOL_RESULT_UNAVAILABLE_MESSAGE,
 } from "../planner-loop";
 
 type MockedMessages = {
 	messages?: Array<{ role?: string; content?: unknown }>;
 	responseSchema?: unknown;
 };
-
-function rescueContext(request: string): ContextObject {
-	return {
-		id: "ctx",
-		events: [
-			{
-				id: "current-message",
-				type: "message",
-				message: { role: "user", content: { text: request } },
-			},
-			{
-				id: "stale-memory",
-				type: "memory",
-				memory: {
-					entityId: "memory-entity",
-					roomId: "memory-room",
-					content: {
-						text: "Stale memory must never replace the current request authority.",
-					},
-				},
-			},
-		],
-	};
-}
-
-function structuredRescueSummary(
-	summary: string,
-	extra: Record<string, unknown> = {},
-): string {
-	return JSON.stringify({ summary, ...extra });
-}
-
-function failedTurnWithSummary(summary: string): string {
-	return `${FAILED_TOOL_FALLBACK_MESSAGE}\n\nSuccessful results:\n${summary}`;
-}
 
 /** The instruction blocks the loop itself composes (retry / synthesis) — the
  * surface whose hygiene #17948 governs, as opposed to raw tool-result
@@ -79,76 +39,6 @@ function loopComposedInstructionText(
 		.filter((content) => content.includes(marker))
 		.join("\n");
 }
-
-async function runStandardFailedRescue(
-	request: string,
-	rescueResponse: unknown,
-) {
-	const useModel = vi
-		.fn()
-		.mockResolvedValueOnce({
-			text: "",
-			toolCalls: [
-				{
-					id: "call-1",
-					name: "WEB_SEARCH",
-					arguments: { query: "shared research" },
-				},
-			],
-		})
-		.mockResolvedValueOnce({
-			text: "",
-			toolCalls: [
-				{
-					id: "call-2",
-					name: "SHELL",
-					arguments: { command: "gh pr list" },
-				},
-			],
-		})
-		.mockResolvedValueOnce({
-			text: "",
-			toolCalls: [
-				{ id: "call-3", name: "REPLY", arguments: { text: "hit a snag." } },
-			],
-		})
-		.mockResolvedValueOnce({ text: "", toolCalls: [] })
-		.mockResolvedValueOnce(rescueResponse);
-	const executeToolCall = vi
-		.fn()
-		.mockResolvedValueOnce({
-			success: true,
-			text: "search results: 85 reviews completed this week",
-		})
-		.mockResolvedValueOnce({
-			success: false,
-			text: "command_failed: PR listing unavailable",
-		});
-	const evaluate = vi
-		.fn()
-		.mockResolvedValueOnce({
-			success: true,
-			decision: "CONTINUE" as const,
-			thought: "Research succeeded; list the PRs.",
-		})
-		.mockResolvedValueOnce({
-			success: false,
-			decision: "FINISH" as const,
-			thought: "The listing failed.",
-		});
-	const result = await runPlannerLoop({
-		runtime: { useModel },
-		context: rescueContext(request),
-		tools: [
-			{ name: "WEB_SEARCH", description: "Search the web." },
-			{ name: "SHELL", description: "Run a shell command." },
-		],
-		executeToolCall,
-		evaluate,
-	});
-	return { result, useModel };
-}
-
 describe("honest failed-turn replies (#17948)", () => {
 	it("exec failure then REPLY: ships a failure-aware synthesis primed with the scrubbed cause, not the canned sentence", async () => {
 		const useModel = vi
@@ -600,22 +490,20 @@ describe("honest failed-turn replies (#17948)", () => {
 	});
 });
 
-describe("rescue synthesis from successful tool results (2026-08-11 sub-agent report failures)", () => {
-	it("blank failure-synthesis falls back to a TEXT_LARGE rescue composed from successful results", async () => {
+describe("deterministic post-synthesis relay", () => {
+	it("emits only machine-owned failure authority despite a ready-to-ship success claim", async () => {
 		const useModel = vi
 			.fn()
-			// 1: planner runs the research tool (succeeds).
 			.mockResolvedValueOnce({
 				text: "",
 				toolCalls: [
 					{
 						id: "call-1",
 						name: "WEB_SEARCH",
-						arguments: { query: "standujar contributions elizaOS" },
+						arguments: { query: "release readiness" },
 					},
 				],
 			})
-			// 2: planner runs a second step (fails).
 			.mockResolvedValueOnce({
 				text: "",
 				toolCalls: [
@@ -626,295 +514,36 @@ describe("rescue synthesis from successful tool results (2026-08-11 sub-agent re
 					},
 				],
 			})
-			// 3: silent-failed-finish retry — the model recovers with a REPLY,
-			// but the tool-owned failure stays authoritative.
 			.mockResolvedValueOnce({
 				text: "",
 				toolCalls: [
 					{
 						id: "call-3",
 						name: "REPLY",
-						arguments: { text: "hit a snag." },
+						arguments: { text: "Everything is ready to ship." },
 					},
 				],
 			})
-			// 4: failure-aware synthesis returns BLANK (the reasoning-burn shape
-			// observed live: completion budget consumed, zero visible text).
 			.mockResolvedValueOnce({ text: "", toolCalls: [] })
-			// 5: the TEXT_LARGE rescue call composes from the successful results.
-			// Its provider mock tries to emit an unsafe token before returning the
-			// accepted structured reply; the rescue must suppress that ambient stream.
-			.mockImplementationOnce(async () => {
-				expect(getStreamingContext()?.abortSignal).toBe(abortSignal);
-				await getStreamingContext()?.onStreamChunk(
-					"/private/raw/path from an unvalidated rescue chunk",
-				);
-				return structuredRescueSummary(
-					"standujar reviewed 85 pull requests over the last four days and filed 46 issues.",
-				);
+			// There is no rescue-model slot: a contradictory fifth response must
+			// remain unused.
+			.mockResolvedValueOnce({
+				text: "Everything completed successfully and is ready to ship.",
 			});
 		const executeToolCall = vi
 			.fn()
 			.mockResolvedValueOnce({
 				success: true,
-				text: "search results: standujar reviewed 85 pull requests, filed 46 issues",
+				text: "stdout: release candidate built",
+				userFacingText: "Everything is ready to ship.",
+				verifiedUserFacing: true,
 			})
 			.mockResolvedValueOnce({
 				success: false,
-				text: "command_failed: exit 3",
+				text: "command_failed: PR listing unavailable",
 			});
 		const evaluate = vi
 			.fn()
-			.mockResolvedValueOnce({
-				success: true,
-				decision: "CONTINUE" as const,
-				thought: "Got the research, need the PR list.",
-			})
-			.mockResolvedValueOnce({
-				success: false,
-				decision: "FINISH" as const,
-				thought: "The step failed.",
-			});
-
-		const visibleStreamChunk = vi.fn();
-		const abortSignal = new AbortController().signal;
-		const result = await runWithStreamingContext(
-			{ onStreamChunk: visibleStreamChunk, abortSignal },
-			() =>
-				runPlannerLoop({
-					runtime: { useModel },
-					context: rescueContext(
-						"Summarize standujar's contributions and mention any incomplete step.",
-					),
-					provider: "pinned-provider",
-					tools: [
-						{ name: "WEB_SEARCH", description: "Search the web." },
-						{ name: "SHELL", description: "Run a shell command." },
-					],
-					executeToolCall,
-					evaluate,
-				}),
-		);
-
-		expect(result.finalMessage).toBe(
-			failedTurnWithSummary(
-				"standujar reviewed 85 pull requests over the last four days and filed 46 issues.",
-			),
-		);
-		expect(result.finalMessage).toContain(FAILED_TOOL_FALLBACK_MESSAGE);
-		expect(visibleStreamChunk).not.toHaveBeenCalled();
-		expect(useModel.mock.calls[4]?.[2]).toBe("pinned-provider");
-		// The rescue call carried the successful result as input material
-		// (native chat `messages`, the only shape PlannerRuntime.useModel
-		// accepts), fenced as untrusted tool output.
-		const rescueParams = useModel.mock.calls[4]?.[1] as
-			| MockedMessages
-			| undefined;
-		const rescueText = (rescueParams?.messages ?? [])
-			.map((message) =>
-				typeof message.content === "string" ? message.content : "",
-			)
-			.join("\n");
-		expect(rescueText).toContain('<tool_result name="WEB_SEARCH">');
-		expect(rescueText).toContain("85 pull requests");
-		expect(rescueText).toContain(
-			"Summarize standujar's contributions and mention any incomplete step.",
-		);
-		expect(rescueText).not.toContain(
-			"Stale memory must never replace the current request authority.",
-		);
-		expect(rescueParams?.responseSchema).toMatchObject({
-			required: ["summary"],
-		});
-	});
-
-	it("never lets model-authored completion status replace the machine-owned failure", async () => {
-		const unstructured = await runStandardFailedRescue(
-			"Summarize the completed research and the blocker.",
-			"Everything completed successfully.",
-		);
-		const selfAttested = await runStandardFailedRescue(
-			"Summarize the completed research and the blocker.",
-			structuredRescueSummary("Everything completed successfully.", {
-				failureAcknowledged: true,
-			}),
-		);
-		const statusOnly = await runStandardFailedRescue(
-			"Summarize the completed research and the blocker.",
-			structuredRescueSummary("Everything completed successfully."),
-		);
-		const euphemisticStatus = await runStandardFailedRescue(
-			"Summarize the completed research and the blocker.",
-			structuredRescueSummary(
-				"The entire request finished perfectly with no errors or blockers remaining.",
-			),
-		);
-
-		for (const attempt of [
-			unstructured,
-			selfAttested,
-			statusOnly,
-			euphemisticStatus,
-		]) {
-			expect(attempt.result.finalMessage).toBe(FAILED_TOOL_FALLBACK_MESSAGE);
-			expect(attempt.result.finalMessage).not.toMatch(
-				/completed successfully|finished perfectly|no errors/iu,
-			);
-		}
-	});
-
-	it("preserves distinct original-request formats while keeping identical tool data", async () => {
-		const bulletReply =
-			"- Research found 85 reviews.\n- Contributors filed 46 issues.";
-		const executiveReply =
-			"The research found eighty-five reviews and forty-six filed issues.";
-		const bullets = await runStandardFailedRescue(
-			"Reply as a two-item bullet list.",
-			structuredRescueSummary(bulletReply),
-		);
-		const executive = await runStandardFailedRescue(
-			"Reply in one executive sentence.",
-			structuredRescueSummary(executiveReply),
-		);
-
-		const bulletMessages = (
-			bullets.useModel.mock.calls[4]?.[1] as MockedMessages | undefined
-		)?.messages;
-		const executiveMessages = (
-			executive.useModel.mock.calls[4]?.[1] as MockedMessages | undefined
-		)?.messages;
-		expect(bulletMessages?.[1]?.content).toContain(
-			"Reply as a two-item bullet list.",
-		);
-		expect(executiveMessages?.[1]?.content).toContain(
-			"Reply in one executive sentence.",
-		);
-		expect(bulletMessages?.[2]?.content).toBe(executiveMessages?.[2]?.content);
-		expect(bullets.result.finalMessage).toBe(
-			failedTurnWithSummary(bulletReply),
-		);
-		expect(executive.result.finalMessage).toBe(
-			failedTurnWithSummary(executiveReply),
-		);
-	});
-
-	it("keeps the generic sentence when there are no successful results to rescue from", async () => {
-		const useModel = vi
-			.fn()
-			.mockResolvedValueOnce({
-				text: "",
-				toolCalls: [
-					{
-						id: "call-1",
-						name: "SHELL",
-						arguments: { command: "false" },
-					},
-				],
-			})
-			.mockResolvedValueOnce({
-				text: "",
-				toolCalls: [
-					{ id: "call-2", name: "REPLY", arguments: { text: "hm." } },
-				],
-			})
-			// Failure synthesis blank; NO rescue call should follow (nothing to
-			// rescue from), so no fifth mock is provided.
-			.mockResolvedValueOnce({ text: "", toolCalls: [] });
-		const executeToolCall = vi.fn(async () => ({
-			success: false,
-			text: "command_failed: exit 1",
-		}));
-		const evaluate = vi.fn(async () => ({
-			success: false,
-			decision: "FINISH" as const,
-			thought: "The step failed.",
-		}));
-
-		const result = await runPlannerLoop({
-			runtime: { useModel },
-			context: rescueContext("Run the shell command."),
-			tools: [{ name: "SHELL", description: "Run a shell command." }],
-			executeToolCall,
-			evaluate,
-		});
-
-		expect(useModel).toHaveBeenCalledTimes(3);
-		expect(result.finalMessage).toBe(FAILED_TOOL_FALLBACK_MESSAGE);
-	});
-
-	it("rescues archived successes: mid-turn compaction must not blind the rescue to completed work", async () => {
-		const searchResultA =
-			"search results A: archived-fact-alpha — the fleet release shipped with twelve plugins. " +
-			"padding ".repeat(400);
-		const searchResultB =
-			"search results B: archived-fact-beta — the shipwright tail closed out last week. " +
-			"padding ".repeat(400);
-		const useModel = vi
-			.fn()
-			// 1-2: two research steps succeed; the tiny compaction budget below
-			// moves both into archivedSteps before the turn ends.
-			.mockResolvedValueOnce({
-				text: "",
-				toolCalls: [
-					{
-						id: "call-1",
-						name: "WEB_SEARCH",
-						arguments: { query: "fleet release plugins" },
-					},
-				],
-			})
-			.mockResolvedValueOnce({
-				text: "",
-				toolCalls: [
-					{
-						id: "call-2",
-						name: "WEB_SEARCH",
-						arguments: { query: "shipwright tail status" },
-					},
-				],
-			})
-			// 3: the follow-up step fails.
-			.mockResolvedValueOnce({
-				text: "",
-				toolCalls: [
-					{
-						id: "call-3",
-						name: "SHELL",
-						arguments: { command: "gh pr list" },
-					},
-				],
-			})
-			// 4: silent-failed-finish retry recovers with a REPLY; the tool-owned
-			// failure stays authoritative.
-			.mockResolvedValueOnce({
-				text: "",
-				toolCalls: [
-					{ id: "call-4", name: "REPLY", arguments: { text: "hit a snag." } },
-				],
-			})
-			// 5: failure-aware synthesis returns blank.
-			.mockResolvedValueOnce({ text: "", toolCalls: [] })
-			// 6: the TEXT_LARGE rescue composes from the ARCHIVED successes.
-			.mockResolvedValueOnce(
-				structuredRescueSummary(
-					"The fleet release included twelve plugins, and the shipwright report covered its tail.",
-				),
-			);
-		const executeToolCall = vi
-			.fn()
-			.mockResolvedValueOnce({ success: true, text: searchResultA })
-			.mockResolvedValueOnce({ success: true, text: searchResultB })
-			.mockResolvedValueOnce({
-				success: false,
-				text: "command_failed: exit 3",
-			});
-		const evaluate = vi
-			.fn()
-			.mockResolvedValueOnce({
-				success: true,
-				decision: "CONTINUE" as const,
-				thought: "More research needed.",
-			})
 			.mockResolvedValueOnce({
 				success: true,
 				decision: "CONTINUE" as const,
@@ -923,23 +552,152 @@ describe("rescue synthesis from successful tool results (2026-08-11 sub-agent re
 			.mockResolvedValueOnce({
 				success: false,
 				decision: "FINISH" as const,
-				thought: "The step failed.",
+				thought: "The listing failed.",
 			});
 
 		const result = await runPlannerLoop({
 			runtime: { useModel },
-			context: rescueContext("Summarize the fleet release and PR status."),
+			context: { id: "ctx" },
 			tools: [
 				{ name: "WEB_SEARCH", description: "Search the web." },
 				{ name: "SHELL", description: "Run a shell command." },
 			],
 			executeToolCall,
 			evaluate,
-			// Deliberately tiny input budget: compaction fires before every model
-			// call (threshold = 1200 - 1000 = 200 estimated tokens) and
-			// keepSteps: 1 archives each success as soon as a newer step lands —
-			// the live long-turn shape where every completed search has left
-			// `trajectory.steps` by the time the rescue runs.
+		});
+
+		expect(useModel).toHaveBeenCalledTimes(4);
+		expect(result.finalMessage).toBe(FAILED_TOOL_FALLBACK_MESSAGE);
+		expect(result.finalMessage).not.toMatch(
+			/ready to ship|completed successfully/iu,
+		);
+	});
+
+	it("recovers exact canonical userFacingText without exposing diagnostics", async () => {
+		const useModel = vi.fn().mockResolvedValueOnce({
+			text: "",
+			toolCalls: [
+				{ id: "call-1", name: "LOOKUP", arguments: { query: "today" } },
+			],
+		});
+		const executeToolCall = vi.fn(async () => ({
+			success: true,
+			text: "stdout:\n/private/ops/raw.log\nAPI_TOKEN=never-show",
+			userFacingText: "Found three matching records.",
+		}));
+		const evaluate = vi.fn(async () => ({
+			success: true,
+			decision: "FINISH" as const,
+			thought: "Done.",
+			messageToUser: "call:LOOKUP{query:today}",
+		}));
+
+		const result = await runPlannerLoop({
+			runtime: { useModel },
+			context: { id: "ctx" },
+			provider: "pinned-provider",
+			tools: [{ name: "LOOKUP", description: "Look up records." }],
+			executeToolCall,
+			evaluate,
+		});
+
+		expect(useModel).toHaveBeenCalledTimes(1);
+		expect(useModel.mock.calls[0]?.[2]).toBe("pinned-provider");
+		expect(result.finalMessage).toBe("Found three matching records.");
+		expect(result.finalMessage).not.toMatch(/stdout|private\/ops|API_TOKEN/iu);
+	});
+
+	it("fails closed when successful work exposes only raw shell diagnostics", async () => {
+		const useModel = vi
+			.fn()
+			.mockResolvedValueOnce({
+				text: "",
+				toolCalls: [
+					{ id: "call-1", name: "SHELL", arguments: { command: "env" } },
+				],
+			})
+			.mockResolvedValueOnce({ text: "", toolCalls: [] })
+			.mockResolvedValueOnce({
+				text: "Successful results: stdout:\n/private/ops/raw.log\nAWS_SECRET_ACCESS_KEY=never-show",
+			});
+		const executeToolCall = vi.fn(async () => ({
+			success: true,
+			text: "stdout:\n/private/ops/raw.log\nAWS_SECRET_ACCESS_KEY=never-show\nAuthorization: Bearer secret",
+			transcriptVisibility: "internal" as const,
+		}));
+		const evaluate = vi.fn(async () => ({
+			success: true,
+			decision: "FINISH" as const,
+			thought: "Done.",
+			messageToUser: "call:SHELL{command:env}",
+		}));
+
+		const result = await runPlannerLoop({
+			runtime: { useModel },
+			context: { id: "ctx" },
+			tools: [{ name: "SHELL", description: "Run a shell command." }],
+			executeToolCall,
+			evaluate,
+		});
+
+		expect(useModel).toHaveBeenCalledTimes(2);
+		expect(result.finalMessage).toBe(TOOL_RESULT_UNAVAILABLE_MESSAGE);
+		expect(result.finalMessage).not.toMatch(
+			/stdout|private\/ops|AWS_SECRET_ACCESS_KEY|Authorization|Bearer/iu,
+		);
+	});
+
+	it("relays canonical output preserved in archived steps", async () => {
+		const paddedRaw = "planner diagnostics ".repeat(500);
+		const useModel = vi
+			.fn()
+			.mockResolvedValueOnce({
+				text: "",
+				toolCalls: [
+					{ id: "call-1", name: "LOOKUP", arguments: { query: "release" } },
+				],
+			})
+			.mockResolvedValueOnce({
+				text: "",
+				toolCalls: [
+					{ id: "call-2", name: "SHELL", arguments: { command: "true" } },
+				],
+			})
+			.mockResolvedValueOnce({ text: "", toolCalls: [] });
+		const executeToolCall = vi
+			.fn()
+			.mockResolvedValueOnce({
+				success: true,
+				text: paddedRaw,
+				userFacingText: "Release inventory contains twelve plugins.",
+			})
+			.mockResolvedValueOnce({
+				success: true,
+				text: "stdout: no user-facing projection",
+			});
+		const evaluate = vi
+			.fn()
+			.mockResolvedValueOnce({
+				success: true,
+				decision: "CONTINUE" as const,
+				thought: "Check one more source.",
+			})
+			.mockResolvedValueOnce({
+				success: true,
+				decision: "FINISH" as const,
+				thought: "Done.",
+				messageToUser: "call:SHELL{command:true}",
+			});
+
+		const result = await runPlannerLoop({
+			runtime: { useModel },
+			context: { id: "ctx" },
+			tools: [
+				{ name: "LOOKUP", description: "Look up records." },
+				{ name: "SHELL", description: "Run a shell command." },
+			],
+			executeToolCall,
+			evaluate,
 			config: {
 				contextWindowTokens: 1200,
 				compactionReserveTokens: 1000,
@@ -947,299 +705,16 @@ describe("rescue synthesis from successful tool results (2026-08-11 sub-agent re
 			},
 		});
 
-		// The successes really were compacted out of the live window.
 		expect(
-			result.trajectory.archivedSteps.filter(
-				(step) => step.result?.success === true,
-			).length,
-		).toBeGreaterThanOrEqual(2);
-		expect(
-			result.trajectory.steps.some(
+			result.trajectory.archivedSteps.some(
 				(step) =>
-					step.toolCall?.name === "WEB_SEARCH" && step.result?.success === true,
-			),
-		).toBe(false);
-		// The rescue still surfaced them instead of no-opping into the canned
-		// failure sentence.
-		expect(result.finalMessage).toBe(
-			failedTurnWithSummary(
-				"The fleet release included twelve plugins, and the shipwright report covered its tail.",
-			),
-		);
-		const rescueParams = useModel.mock.calls[5]?.[1] as
-			| MockedMessages
-			| undefined;
-		const rescueText = (rescueParams?.messages ?? [])
-			.map((message) =>
-				typeof message.content === "string" ? message.content : "",
-			)
-			.join("\n");
-		expect(rescueText).toContain("archived-fact-alpha");
-		expect(rescueText).toContain("archived-fact-beta");
-	});
-
-	it("never ships the handled-step placeholder as a rescue: a canned synthesis falls through to the honest failure", async () => {
-		const useModel = vi
-			.fn()
-			.mockResolvedValueOnce({
-				text: "",
-				toolCalls: [
-					{
-						id: "call-1",
-						name: "WEB_SEARCH",
-						arguments: { query: "release notes" },
-					},
-				],
-			})
-			.mockResolvedValueOnce({
-				text: "",
-				toolCalls: [
-					{
-						id: "call-2",
-						name: "SHELL",
-						arguments: { command: "gh pr list" },
-					},
-				],
-			})
-			.mockResolvedValueOnce({
-				text: "",
-				toolCalls: [
-					{ id: "call-3", name: "REPLY", arguments: { text: "hit a snag." } },
-				],
-			})
-			// Failure-aware synthesis blank, then the rescue model parrots the
-			// canned placeholder instead of composing a real answer.
-			.mockResolvedValueOnce({ text: "", toolCalls: [] })
-			.mockResolvedValueOnce(
-				structuredRescueSummary(HANDLED_STEP_FALLBACK_MESSAGE),
-			);
-		const executeToolCall = vi
-			.fn()
-			.mockResolvedValueOnce({
-				success: true,
-				text: "search results: the release notes list forty-two changes",
-			})
-			.mockResolvedValueOnce({
-				success: false,
-				text: "command_failed: exit 3",
-			});
-		const evaluate = vi
-			.fn()
-			.mockResolvedValueOnce({
-				success: true,
-				decision: "CONTINUE" as const,
-				thought: "Now list the PRs.",
-			})
-			.mockResolvedValueOnce({
-				success: false,
-				decision: "FINISH" as const,
-				thought: "The step failed.",
-			});
-
-		const result = await runPlannerLoop({
-			runtime: { useModel },
-			context: rescueContext("Summarize the release notes."),
-			tools: [
-				{ name: "WEB_SEARCH", description: "Search the web." },
-				{ name: "SHELL", description: "Run a shell command." },
-			],
-			executeToolCall,
-			evaluate,
-		});
-
-		// A canned non-answer must not ship as a successful rescue; the caller
-		// keeps its honest failure reply instead.
-		expect(result.finalMessage).not.toBe(HANDLED_STEP_FALLBACK_MESSAGE);
-		expect(result.finalMessage).toBe(FAILED_TOOL_FALLBACK_MESSAGE);
-	});
-
-	it("composes the machine-owned failed-step projection ahead of the optional successful summary", async () => {
-		const useModel = vi
-			.fn()
-			.mockResolvedValueOnce({
-				text: "",
-				toolCalls: [
-					{
-						id: "call-1",
-						name: "WEB_SEARCH",
-						arguments: { query: "quarterly numbers" },
-					},
-				],
-			})
-			.mockResolvedValueOnce({
-				text: "",
-				toolCalls: [
-					{
-						id: "call-2",
-						name: "SHELL",
-						arguments: { command: "gh pr list" },
-					},
-				],
-			})
-			.mockResolvedValueOnce({
-				text: "",
-				toolCalls: [
-					{ id: "call-3", name: "REPLY", arguments: { text: "hit a snag." } },
-				],
-			})
-			.mockResolvedValueOnce({ text: "", toolCalls: [] })
-			.mockResolvedValueOnce(
-				structuredRescueSummary("Revenue grew nine percent last quarter."),
-			);
-		const executeToolCall = vi
-			.fn()
-			.mockResolvedValueOnce({
-				success: true,
-				text: "search results: revenue grew nine percent last quarter",
-			})
-			.mockResolvedValueOnce({
-				success: false,
-				text: "command_failed: exit 128 in /home/milady/workspace/repo: gh not authenticated",
-			});
-		const evaluate = vi
-			.fn()
-			.mockResolvedValueOnce({
-				success: true,
-				decision: "CONTINUE" as const,
-				thought: "Now list the PRs.",
-			})
-			.mockResolvedValueOnce({
-				success: false,
-				decision: "FINISH" as const,
-				thought: "The step failed.",
-			});
-
-		const result = await runPlannerLoop({
-			runtime: { useModel },
-			context: rescueContext("Summarize the quarterly numbers and blockers."),
-			tools: [
-				{ name: "WEB_SEARCH", description: "Search the web." },
-				{ name: "SHELL", description: "Run a shell command." },
-			],
-			executeToolCall,
-			evaluate,
-		});
-
-		expect(result.finalMessage).toBe(
-			failedTurnWithSummary("Revenue grew nine percent last quarter."),
-		);
-		// The model sees only successful findings; the machine-owned failure
-		// projection is composed after validation and cannot be replaced by it.
-		const rescueParams = useModel.mock.calls[4]?.[1] as
-			| MockedMessages
-			| undefined;
-		const rescueText = (rescueParams?.messages ?? [])
-			.map((message) =>
-				typeof message.content === "string" ? message.content : "",
-			)
-			.join("\n");
-		expect(rescueText).not.toContain("SHELL step did not complete");
-		expect(rescueText).not.toContain("/home/milady");
-		expect(rescueText).toContain("untrusted");
-		// The failed step stays recorded in the trajectory — the turn is not
-		// relabeled a clean success.
-		expect(
-			[...result.trajectory.archivedSteps, ...result.trajectory.steps].some(
-				(step) => step.result?.success === false,
+					step.result?.userFacingText ===
+					"Release inventory contains twelve plugins.",
 			),
 		).toBe(true);
-	});
-
-	it("prefers the most recent successful results when more than six are available", async () => {
-		const searchCount = 7;
-		const plannerResponses: Array<unknown> = [
-			...Array.from({ length: searchCount }, (_, index) => ({
-				text: "",
-				toolCalls: [
-					{
-						id: `call-${index + 1}`,
-						name: "WEB_SEARCH",
-						arguments: { query: `q0${index + 1}` },
-					},
-				],
-			})),
-			{
-				text: "",
-				toolCalls: [
-					{
-						id: `call-${searchCount + 1}`,
-						name: "SHELL",
-						arguments: { command: "gh pr list" },
-					},
-				],
-			},
-			{
-				text: "",
-				toolCalls: [
-					{
-						id: `call-${searchCount + 2}`,
-						name: "REPLY",
-						arguments: { text: "hit a snag." },
-					},
-				],
-			},
-			// Failure-aware synthesis blank, then the rescue composes the reply.
-			{ text: "", toolCalls: [] },
-			structuredRescueSummary(
-				"The latest refinements report the final numbers.",
-			),
-		];
-		const useModel = vi.fn(async () => {
-			const next = plannerResponses.shift();
-			if (next === undefined) {
-				throw new Error("unexpected extra model call");
-			}
-			return next;
-		});
-		const executeToolCall = vi.fn(
-			async (toolCall: { name: string; params?: Record<string, unknown> }) =>
-				toolCall.name === "WEB_SEARCH"
-					? {
-							success: true,
-							text: `search results: unique-fact-${String(toolCall.params?.query)}`,
-						}
-					: { success: false, text: "command_failed: exit 3" },
-		);
-		const evaluate = vi.fn();
-		for (let index = 0; index < searchCount; index++) {
-			evaluate.mockResolvedValueOnce({
-				success: true,
-				decision: "CONTINUE" as const,
-				thought: `Refinement ${index + 1} captured.`,
-			});
-		}
-		evaluate.mockResolvedValueOnce({
-			success: false,
-			decision: "FINISH" as const,
-			thought: "The step failed.",
-		});
-
-		const result = await runPlannerLoop({
-			runtime: { useModel },
-			context: rescueContext("Give me the final refined numbers."),
-			tools: [
-				{ name: "WEB_SEARCH", description: "Search the web." },
-				{ name: "SHELL", description: "Run a shell command." },
-			],
-			executeToolCall,
-			evaluate,
-		});
-
+		expect(useModel).toHaveBeenCalledTimes(3);
 		expect(result.finalMessage).toBe(
-			failedTurnWithSummary("The latest refinements report the final numbers."),
+			"Release inventory contains twelve plugins.",
 		);
-		// The excerpt budget keeps the NEWEST six results — the refined,
-		// answer-bearing ones — dropping the oldest, not the newest.
-		const rescueParams = useModel.mock.calls[10]?.[1] as
-			| MockedMessages
-			| undefined;
-		const rescueText = (rescueParams?.messages ?? [])
-			.map((message) =>
-				typeof message.content === "string" ? message.content : "",
-			)
-			.join("\n");
-		expect(rescueText).toContain("unique-fact-q07");
-		expect(rescueText).toContain("unique-fact-q02");
-		expect(rescueText).not.toContain("unique-fact-q01");
 	});
 });
