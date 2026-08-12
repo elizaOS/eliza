@@ -3793,7 +3793,14 @@ describe("ElizaSandboxService.deleteAgent teardown cap (#9066)", () => {
     const update = mock(() => ({
       set: mock(() => ({
         where: mock(() => ({
-          returning: mock(async () => [{ ...live, status: "deletion_pending" }]),
+          returning: mock(async () => [
+            {
+              id: AGENT,
+              deletionAttemptId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+              deletionStartedAt: new Date("2026-06-04T12:00:00.000Z"),
+              lifecycleRevision: 1,
+            },
+          ]),
         })),
       })),
     }));

@@ -288,7 +288,9 @@ describe("enqueueScheduledBackups — enqueue behavior", () => {
  * predicate is a red test rather than a silent bad row on the queue.
  */
 describe("enqueueAgent*Once — real lifecycle-job inserts", () => {
-  async function seedAgent(opts: { status?: string; lastHeartbeatAt?: Date | null } = {}): Promise<{
+  async function seedAgent(
+    opts: { status?: string; lastHeartbeatAt?: Date | null; executionTier?: string } = {},
+  ): Promise<{
     agentId: string;
     orgId: string;
     userId: string;
@@ -302,6 +304,7 @@ describe("enqueueAgent*Once — real lifecycle-job inserts", () => {
         user_id: userId,
         agent_name: uniq("agent"),
         status: (opts.status ?? "running") as never,
+        execution_tier: (opts.executionTier ?? "shared") as never,
         bridge_url: REACHABLE_BRIDGE,
         last_heartbeat_at: opts.lastHeartbeatAt ?? null,
       })
@@ -549,6 +552,7 @@ describe("enqueueAgent*Once — real lifecycle-job inserts", () => {
     const { agentId, orgId, userId } = await seedAgent({
       status: "running",
       lastHeartbeatAt: new Date(Date.now() - 5 * 60_000),
+      executionTier: "dedicated-always",
     });
 
     await expect(
