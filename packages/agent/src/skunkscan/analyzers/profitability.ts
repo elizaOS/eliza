@@ -60,8 +60,28 @@ export function analyzeWalletProfitability(
 
   let profitabilityScore = 0;
 
-  const positiveIndicators: string[] = [];
-  const negativeIndicators: string[] = [];
+  // Surfaces the blend's own real inputs' already-computed reasons, rather
+  // than reinventing explanation logic - alpha.ts and conviction.ts already
+  // expose purpose-built positive/negative pairs (strengths/weaknesses,
+  // supportingSignals/conflictingSignals); smartMoney.ts and trust.ts only
+  // expose a positive array (their own `limitations` are evidence caveats,
+  // not "this reduced the score" statements, so deliberately not folded in
+  // here - a different kind of claim). This fixes the common case (a real,
+  // confidently-computed score with nothing visibly backing it), not every
+  // case - alpha.ts's own strengths/weaknesses are themselves populated by
+  // narrow bonus conditions, so a sufficiently "middling on every axis"
+  // wallet could still end up with empty indicators here. Not claiming
+  // more than this actually delivers.
+  const positiveIndicators: string[] = [
+    ...input.alpha.strengths,
+    ...input.conviction.supportingSignals,
+    ...input.smartMoney.positiveSignals,
+    ...input.trust.positiveSignals,
+  ];
+  const negativeIndicators: string[] = [
+    ...input.alpha.weaknesses,
+    ...input.conviction.conflictingSignals,
+  ];
   const limitations: string[] = [];
 
   profitabilityScore += Math.round(input.alpha.alphaScore * 0.35);
