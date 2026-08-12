@@ -401,6 +401,22 @@ __filename = '"/worker.js"'
 
 [env.staging.vars]
 NODE_ENV = "production"
+# Staging-only QA session exchange (#18223). Committed vars, not secrets: these
+# are allow-list identifiers, and the exchange serves nothing unless a caller's
+# API key, organization AND user all appear below — so the list has to survive a
+# redeploy that wipes secrets rather than silently reopening or disappearing.
+#
+# Why it exists: the messaging onboarding path (POST /api/v1/agents/:id/message
+# and the eliza-app onboarding chat) refuses a wallet API key by design — one
+# wants a service key, the other a Steward session. Neither is reachable from a
+# test harness, so the shared-to-dedicated journey has never been exercised end
+# to end. This exchange is the gated way in, scoped to a single QA identity.
+#
+# ENABLED is the kill switch; unset (or "false") closes the door outright.
+STAGING_SESSION_EXCHANGE_ENABLED = "true"
+STAGING_SESSION_EXCHANGE_ALLOWED_API_KEY_IDS = "651350d4-5287-4d0d-aebf-e31991f94dc4"
+STAGING_SESSION_EXCHANGE_ALLOWED_ORGANIZATION_IDS = "08561e32-37f1-4b27-8c6d-492ef4b3379c"
+STAGING_SESSION_EXCHANGE_ALLOWED_USER_IDS = "1b2b7f49-db5b-4892-b5d3-7b93828b4a02"
 # Apps (Product 2): wire the real deploy trigger so POST /api/v1/apps/:id/deploy
 # enqueues an APP_DEPLOY job the provisioning-worker daemon runs (instead of the
 # legacy status-only stub). Staging only — the apps data plane (tenant DB +
