@@ -32,6 +32,7 @@ import {
   imageBlock,
   parseVisionVerdict,
 } from "./review-lib.mjs";
+import { parseReviewerArgs } from "./reviewer-args.mjs";
 import { resolveReviewerBackend } from "./reviewer-preflight.mjs";
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
@@ -44,26 +45,6 @@ const DEFAULT_VERDICT_MD = join(
   REPO_ROOT,
   "packages/app/test/ui-smoke/walkthrough/WALKTHROUGH_VERDICTS.md",
 );
-
-function parseArgs(argv) {
-  const a = {
-    runDir: null,
-    concurrency: 4,
-    strict: false,
-    updateDebt: false,
-    verdictMd: DEFAULT_VERDICT_MD,
-  };
-  for (let i = 0; i < argv.length; i++) {
-    const arg = argv[i];
-    if (arg === "--run-dir") a.runDir = argv[++i];
-    else if (arg === "--concurrency") a.concurrency = Number(argv[++i]);
-    else if (arg === "--strict") a.strict = true;
-    else if (arg === "--update-debt") a.updateDebt = true;
-    else if (arg === "--verdict-md")
-      a.verdictMd = resolve(REPO_ROOT, argv[++i]);
-  }
-  return a;
-}
 
 async function latestRunDir() {
   const base = join(REPO_ROOT, "reports", "walkthrough");
@@ -280,7 +261,13 @@ function buildVerdictMarkdown({ runId, model, lane, totals, results }) {
 }
 
 async function main() {
-  const args = parseArgs(process.argv.slice(2));
+  const parsedArgs = parseReviewerArgs(process.argv.slice(2), {
+    defaultVerdictMd: DEFAULT_VERDICT_MD,
+  });
+  const args = {
+    ...parsedArgs,
+    verdictMd: resolve(REPO_ROOT, parsedArgs.verdictMd),
+  };
   const providerKey =
     BACKEND === "openai"
       ? process.env.OPENAI_API_KEY
