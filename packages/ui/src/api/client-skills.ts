@@ -1117,6 +1117,8 @@ ElizaClient.prototype.getBlueBubblesStatus = async function (
       ...(typeof d.reason === "string" ? { reason: d.reason } : {}),
     };
   } catch (err) {
+    // error-policy:J4 expected 404 (connector not registered) becomes a
+    // visibly distinct unavailable state; every other failure rethrows.
     const status = (err as { status?: unknown })?.status;
     const code = (err as { code?: unknown })?.code;
     if (status === 404 && code === "agent_not_found") {
