@@ -18,7 +18,11 @@ import {
 } from "./plugin-validation.ts";
 import { findOwnPackageRoot } from "./server-helpers.ts";
 
-export { BLOCKED_ENV_KEYS } from "../config/blocked-env-keys.ts";
+export {
+  BLOCKED_ENV_KEY_PREFIXES,
+  BLOCKED_ENV_KEYS,
+  isBlockedEnvKey,
+} from "../config/blocked-env-keys.ts";
 
 const require = createRequire(import.meta.url);
 
