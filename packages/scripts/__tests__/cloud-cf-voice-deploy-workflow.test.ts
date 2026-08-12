@@ -1,14 +1,13 @@
 /**
- * Fail-closed deployment contracts for the staging realtime-voice soak.
+ * Fail-closed deployment contracts for realtime voice promotion.
  * Provider and bridge credentials must exist before a Worker advertising the
- * feature can deploy, while production may never inherit the repository Cloud
- * key as an implicit service authorization. Production remains deployable
- * while realtime is explicitly off; enabling it requires dedicated/provider
- * secrets so a managed deploy overwrites any stale Worker value first.
+ * feature can deploy, while production may never inherit the staging Cloud key
+ * as an implicit service authorization. Each protected GitHub environment owns
+ * its Worker and renderer flag; production remains off until its dedicated
+ * provider, bridge, voice, and endpoint configuration is complete.
  */
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
-import { resolveGnuBash } from "../lib/gnu-shell.mjs";
 import { spawnSync } from "../lib/spawn-sync-captured.mjs";
 
 const repoRoot = new URL("../../../", import.meta.url);
@@ -23,8 +22,13 @@ interface WorkflowStep {
   run?: string;
 }
 
+interface WorkflowJob {
+  environment?: string;
+  steps?: WorkflowStep[];
+}
+
 interface Workflow {
-  jobs?: Record<string, { steps?: WorkflowStep[] }>;
+  jobs?: Record<string, WorkflowJob>;
 }
 
 const workflowSource = read(".github/workflows/cloud-cf-deploy.yml");
@@ -48,25 +52,8 @@ const preflight = publishStep.run.slice(
   publishStep.run.indexOf("# The Worker is the gateway"),
 );
 
-// The executed cases run the workflow's VERBATIM preflight bash, which uses
-// bash >= 4 `${1,,}` lowercasing (GitHub's Linux runners). macOS /bin/bash 3.2
-// aborts on that expansion with "bad substitution", zeroing every gate the
-// snippet enforces — so the executed cases only run where a modern bash
-// resolves (Linux natively; macOS via `brew install bash`) and skip otherwise.
-// The static expression-layer and wrangler assertions still run everywhere.
-const GNU_BASH = resolveGnuBash();
-
-function requirePreflightBash(): string {
-  if (!GNU_BASH) {
-    throw new Error(
-      "preflight execution requires bash >= 4 (lowercase parameter expansion); install GNU bash",
-    );
-  }
-  return GNU_BASH;
-}
-
 function runPreflight(env: Record<string, string>) {
-  return spawnSync(requirePreflightBash(), ["-c", preflight], {
+  return spawnSync("/bin/bash", ["-c", preflight], {
     encoding: "utf8",
     env: {
       ...process.env,
@@ -83,7 +70,6 @@ function runPreflight(env: Record<string, string>) {
       VOICE_REALTIME_ELIZA_AUTHORIZATION: "Bearer dedicated-test",
       VOICE_REALTIME_WS_ENABLED: "false",
       STAGING_ELIZACLOUD_API_KEY: "",
-      PRODUCTION_REALTIME_WS_ENABLED: "false",
       PRODUCTION_REALTIME_CARTESIA_VOICE_ID: "",
       PRODUCTION_REALTIME_ELIZA_ENDPOINT: "",
       ...env,
@@ -142,7 +128,7 @@ describe("Cloud CF realtime voice deploy contract", () => {
     );
   });
 
-  test("keeps production wrangler vars and workflow env realtime-off with no dedicated-secret advertisement", () => {
+  test("keeps direct production deploys off while managed deploys use the protected environment opt-in", () => {
     const wrangler = read("packages/cloud/api/wrangler.toml");
     const stagingVars = wrangler.slice(
       wrangler.indexOf("[env.staging.vars]"),
@@ -166,11 +152,18 @@ describe("Cloud CF realtime voice deploy contract", () => {
     expect(publishStep.env?.VOICE_REALTIME_WS_ENABLED).toContain(
       "vars.VOICE_REALTIME_WS_ENABLED",
     );
-    expect(publishStep.env?.PRODUCTION_REALTIME_WS_ENABLED).toBe("false");
+    expect(publishStep.env?.VOICE_REALTIME_WS_ENABLED).not.toContain(
+      "deploy_environment != 'production'",
+    );
     expect(productionVars).not.toContain("VOICE_REALTIME_CARTESIA_VOICE_ID");
     expect(productionVars).not.toContain("VOICE_REALTIME_ELIZA_ENDPOINT");
-    expect(publishStep.env?.PRODUCTION_REALTIME_CARTESIA_VOICE_ID).toBe("");
-    expect(publishStep.env?.PRODUCTION_REALTIME_ELIZA_ENDPOINT).toBe("");
+    expect(publishStep.env?.PRODUCTION_REALTIME_CARTESIA_VOICE_ID).toContain(
+      "vars.ELIZA_VOICE_CARTESIA_VOICE_ID",
+    );
+    expect(publishStep.env?.PRODUCTION_REALTIME_ELIZA_ENDPOINT).toContain(
+      "vars.VOICE_REALTIME_ELIZA_ENDPOINT",
+    );
+    expect(publishStep.run).not.toContain("PRODUCTION_REALTIME_WS_ENABLED");
     expect(wrangler).not.toContain("VOICE_AMBIENT_ENABLED");
     expect(wrangler).not.toContain("VOICE_AMBIENT_PENDANT_BASE_URL");
   });
@@ -178,8 +171,6 @@ describe("Cloud CF realtime voice deploy contract", () => {
   test("deploy Worker passes the same fail-closed runtime realtime opt-in as secrets", () => {
     const runtimeFlag = deployStep.env?.VOICE_REALTIME_WS_ENABLED;
     expect(runtimeFlag).toBe(publishStep.env?.VOICE_REALTIME_WS_ENABLED);
-    expect(runtimeFlag).toContain("steps.env.outputs.deploy_environment");
-    expect(runtimeFlag).toContain("!= 'production'");
     expect(runtimeFlag).toContain("vars.VOICE_REALTIME_WS_ENABLED");
     expect(runtimeFlag).toContain("&& 'true' || 'false'");
     expect(deployStep.run).toContain(
@@ -203,6 +194,12 @@ describe("Cloud CF realtime voice deploy contract", () => {
     expect(deployStep.env?.VOICE_REALTIME_WS_ENABLED).toBe(
       publishStep.env?.VOICE_REALTIME_WS_ENABLED,
     );
+    expect(deployStep.env?.PRODUCTION_REALTIME_CARTESIA_VOICE_ID).toBe(
+      publishStep.env?.PRODUCTION_REALTIME_CARTESIA_VOICE_ID,
+    );
+    expect(deployStep.env?.PRODUCTION_REALTIME_ELIZA_ENDPOINT).toBe(
+      publishStep.env?.PRODUCTION_REALTIME_ELIZA_ENDPOINT,
+    );
     expect(deployStep.env?.VOICE_REALTIME_WS_ENABLED).toContain(
       "&& 'true' || 'false'",
     );
@@ -212,10 +209,22 @@ describe("Cloud CF realtime voice deploy contract", () => {
     );
     expect(frontendRealtimeFlags?.length).toBeGreaterThanOrEqual(2);
     for (const flag of frontendRealtimeFlags ?? []) {
-      expect(flag).toContain("inputs.environment == 'production'");
-      expect(flag).toContain("github.ref == 'refs/heads/main'");
       expect(flag).toContain("vars.VOICE_REALTIME_WS_ENABLED");
+      expect(flag).not.toContain("inputs.environment == 'production'");
+      expect(flag).not.toContain("github.ref == 'refs/heads/main'");
     }
+    const deployEnvironment = workflow.jobs?.["deploy-api"]?.environment;
+    expect(deployEnvironment).toContain("inputs.environment == 'production'");
+    expect(deployEnvironment).toContain("github.ref == 'refs/heads/main'");
+    for (const jobName of ["build-pages", "deploy-console", "deploy-app"]) {
+      expect(workflow.jobs?.[jobName]?.environment).toBe(deployEnvironment);
+    }
+    expect(deployStep.run).toContain(
+      '--var VOICE_REALTIME_CARTESIA_VOICE_ID:"$PRODUCTION_REALTIME_CARTESIA_VOICE_ID"',
+    );
+    expect(deployStep.run).toContain(
+      '--var VOICE_REALTIME_ELIZA_ENDPOINT:"$PRODUCTION_REALTIME_ELIZA_ENDPOINT"',
+    );
   });
 
   test("every GitHub expression in the deploy workflow has balanced parentheses", () => {
@@ -237,168 +246,191 @@ describe("Cloud CF realtime voice deploy contract", () => {
   });
 });
 
-// Skip the executed preflight cases when no bash >= 4 is reachable (macOS
-// /bin/bash 3.2 without a brew-installed bash); CI runs on Linux and keeps
-// full executed coverage.
-const executedDescribe = GNU_BASH ? describe : describe.skip;
-executedDescribe(
-  "Cloud CF realtime voice deploy preflight (executed verbatim)",
-  () => {
-    test("does not require realtime secrets when staging opt-in is absent", () => {
+describe("Cloud CF realtime voice deploy preflight (executed verbatim)", () => {
+  test("does not require realtime secrets when staging opt-in is absent", () => {
+    const result = runPreflight({
+      DEEPGRAM_API_KEY: "",
+      CARTESIA_API_KEY: "",
+      VOICE_REALTIME_ELIZA_AUTHORIZATION: "",
+      STAGING_ELIZACLOUD_API_KEY: "repo-key-must-not-be-used",
+      VOICE_REALTIME_WS_ENABLED: "false",
+    });
+    expect(result.status).toBe(0);
+    expect(result.stdout).not.toContain("Bearer repo-key-must-not-be-used");
+  });
+
+  test("requires every realtime provider and bridge secret in opted-in staging", () => {
+    for (const missing of [
+      "CARTESIA_API_KEY",
+      "VOICE_REALTIME_ELIZA_AUTHORIZATION",
+    ]) {
       const result = runPreflight({
-        DEEPGRAM_API_KEY: "",
-        CARTESIA_API_KEY: "",
-        VOICE_REALTIME_ELIZA_AUTHORIZATION: "",
-        STAGING_ELIZACLOUD_API_KEY: "repo-key-must-not-be-used",
-        VOICE_REALTIME_WS_ENABLED: "false",
+        [missing]: " \t\n",
+        STAGING_ELIZACLOUD_API_KEY: "",
+        VOICE_REALTIME_WS_ENABLED: "true",
       });
-      expect(result.status).toBe(0);
-      expect(result.stdout).not.toContain("Bearer repo-key-must-not-be-used");
-    });
+      expect(
+        result.status,
+        `${missing}: ${result.stdout}${result.stderr}`,
+      ).toBe(1);
+      expect(result.stdout).toContain(missing);
+    }
+  });
 
-    test("requires every realtime provider and bridge secret in opted-in staging", () => {
-      for (const missing of [
-        "CARTESIA_API_KEY",
-        "VOICE_REALTIME_ELIZA_AUTHORIZATION",
-      ]) {
-        const result = runPreflight({
-          [missing]: " \t\n",
-          STAGING_ELIZACLOUD_API_KEY: "",
-          VOICE_REALTIME_WS_ENABLED: "true",
-        });
-        expect(
-          result.status,
-          `${missing}: ${result.stdout}${result.stderr}`,
-        ).toBe(1);
-        expect(result.stdout).toContain(missing);
-      }
-    });
-
-    test("requires Fish credentials and exact provider configuration only after Fish opt-in", () => {
-      for (const missing of ["FISH_AUDIO_API_KEY", "FISH_AUDIO_REFERENCE_ID"]) {
-        const result = runPreflight({
-          [missing]: " \t\n",
-          ELIZA_TTS_FISH_ENABLED: "true",
-          FISH_AUDIO_DATA_GOVERNANCE_APPROVED: "true",
-          VOICE_REALTIME_WS_ENABLED: "true",
-        });
-        expect(
-          result.status,
-          `${missing}: ${result.stdout}${result.stderr}`,
-        ).toBe(1);
-        expect(result.stdout).toContain(missing);
-      }
-
-      for (const invalid of [
-        { FISH_AUDIO_MODEL: "s2.1" },
-        { FISH_AUDIO_SAMPLE_RATE: "24000" },
-      ]) {
-        const result = runPreflight({
-          ...invalid,
-          ELIZA_TTS_FISH_ENABLED: "true",
-          FISH_AUDIO_DATA_GOVERNANCE_APPROVED: "true",
-          VOICE_REALTIME_WS_ENABLED: "true",
-        });
-        expect(result.status, `${result.stdout}${result.stderr}`).toBe(1);
-      }
-
-      const configured = runPreflight({
+  test("requires Fish credentials and exact provider configuration only after Fish opt-in", () => {
+    for (const missing of ["FISH_AUDIO_API_KEY", "FISH_AUDIO_REFERENCE_ID"]) {
+      const result = runPreflight({
+        [missing]: " \t\n",
         ELIZA_TTS_FISH_ENABLED: "true",
         FISH_AUDIO_DATA_GOVERNANCE_APPROVED: "true",
         VOICE_REALTIME_WS_ENABLED: "true",
       });
-      expect(configured.status).toBe(0);
-    });
+      expect(
+        result.status,
+        `${missing}: ${result.stdout}${result.stderr}`,
+      ).toBe(1);
+      expect(result.stdout).toContain(missing);
+    }
 
-    test("refuses Fish promotion without explicit data-governance approval", () => {
+    for (const invalid of [
+      { FISH_AUDIO_MODEL: "s2.1" },
+      { FISH_AUDIO_SAMPLE_RATE: "24000" },
+    ]) {
       const result = runPreflight({
+        ...invalid,
         ELIZA_TTS_FISH_ENABLED: "true",
-        FISH_AUDIO_DATA_GOVERNANCE_APPROVED: "false",
+        FISH_AUDIO_DATA_GOVERNANCE_APPROVED: "true",
         VOICE_REALTIME_WS_ENABLED: "true",
       });
+      expect(result.status, `${result.stdout}${result.stderr}`).toBe(1);
+    }
 
-      expect(result.status).toBe(1);
-      expect(result.stdout).toContain("FISH_AUDIO_DATA_GOVERNANCE_APPROVED");
+    const configured = runPreflight({
+      ELIZA_TTS_FISH_ENABLED: "true",
+      FISH_AUDIO_DATA_GOVERNANCE_APPROVED: "true",
+      VOICE_REALTIME_WS_ENABLED: "true",
+    });
+    expect(configured.status).toBe(0);
+  });
+
+  test("refuses Fish promotion without explicit data-governance approval", () => {
+    const result = runPreflight({
+      ELIZA_TTS_FISH_ENABLED: "true",
+      FISH_AUDIO_DATA_GOVERNANCE_APPROVED: "false",
+      VOICE_REALTIME_WS_ENABLED: "true",
     });
 
-    test("constructs the staging fallback only after truthy opt-in and a nonblank source key", () => {
-      const configured = spawnSync(
-        requirePreflightBash(),
-        [
-          "-c",
-          `${preflight}\nprintf '<%s>' "$VOICE_REALTIME_ELIZA_AUTHORIZATION"`,
-        ],
-        {
-          encoding: "utf8",
-          env: {
-            ...process.env,
-            DEPLOY_ENVIRONMENT: "staging",
-            DEEPGRAM_API_KEY: "deepgram-test",
-            CARTESIA_API_KEY: "cartesia-test",
-            VOICE_REALTIME_WS_ENABLED: "true",
-            VOICE_REALTIME_ELIZA_AUTHORIZATION: "",
-            STAGING_ELIZACLOUD_API_KEY: "stage-cloud-key",
-          },
+    expect(result.status).toBe(1);
+    expect(result.stdout).toContain("FISH_AUDIO_DATA_GOVERNANCE_APPROVED");
+  });
+
+  test("constructs the staging fallback only after truthy opt-in and a nonblank source key", () => {
+    const configured = spawnSync(
+      "/bin/bash",
+      [
+        "-c",
+        `${preflight}\nprintf '<%s>' "$VOICE_REALTIME_ELIZA_AUTHORIZATION"`,
+      ],
+      {
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          DEPLOY_ENVIRONMENT: "staging",
+          DEEPGRAM_API_KEY: "deepgram-test",
+          CARTESIA_API_KEY: "cartesia-test",
+          VOICE_REALTIME_WS_ENABLED: "true",
+          VOICE_REALTIME_ELIZA_AUTHORIZATION: "",
+          STAGING_ELIZACLOUD_API_KEY: "stage-cloud-key",
         },
-      );
-      expect(configured.status).toBe(0);
-      expect(configured.stdout).toBe("<Bearer stage-cloud-key>");
+      },
+    );
+    expect(configured.status).toBe(0);
+    expect(configured.stdout).toBe("<Bearer stage-cloud-key>");
 
-      const empty = runPreflight({
-        VOICE_REALTIME_ELIZA_AUTHORIZATION: "",
-        STAGING_ELIZACLOUD_API_KEY: " \t\n",
-        VOICE_REALTIME_WS_ENABLED: "true",
-      });
-      expect(empty.status).toBe(1);
-      expect(empty.stdout).not.toContain("Bearer ");
+    const empty = runPreflight({
+      VOICE_REALTIME_ELIZA_AUTHORIZATION: "",
+      STAGING_ELIZACLOUD_API_KEY: " \t\n",
+      VOICE_REALTIME_WS_ENABLED: "true",
     });
+    expect(empty.status).toBe(1);
+    expect(empty.stdout).not.toContain("Bearer ");
+  });
 
-    test("keeps disabled production deployable but fails a future enable without dedicated secrets", () => {
-      const disabled = runPreflight({
-        DEPLOY_ENVIRONMENT: "production",
-        DEEPGRAM_API_KEY: "",
-        CARTESIA_API_KEY: "",
-        VOICE_REALTIME_ELIZA_AUTHORIZATION: "",
-        STAGING_ELIZACLOUD_API_KEY: "repo-key-must-not-be-used",
-      });
-      expect(disabled.status).toBe(0);
-      expect(disabled.stdout).not.toContain("Bearer repo-key-must-not-be-used");
+  test("keeps disabled production deployable but fails a future enable without dedicated secrets", () => {
+    const disabled = runPreflight({
+      DEPLOY_ENVIRONMENT: "production",
+      DEEPGRAM_API_KEY: "",
+      CARTESIA_API_KEY: "",
+      VOICE_REALTIME_ELIZA_AUTHORIZATION: "",
+      STAGING_ELIZACLOUD_API_KEY: "repo-key-must-not-be-used",
+    });
+    expect(disabled.status).toBe(0);
+    expect(disabled.stdout).not.toContain("Bearer repo-key-must-not-be-used");
 
-      const missingDedicated = runPreflight({
-        DEPLOY_ENVIRONMENT: "production",
-        PRODUCTION_REALTIME_WS_ENABLED: "true",
-        DEEPGRAM_API_KEY: "",
-        CARTESIA_API_KEY: "",
-        VOICE_REALTIME_ELIZA_AUTHORIZATION: "",
-        STAGING_ELIZACLOUD_API_KEY: "repo-key-must-not-be-used",
-      });
-      expect(missingDedicated.status).toBe(1);
-      expect(missingDedicated.stdout).toContain(
-        "Production realtime voice is enabled",
-      );
-      expect(missingDedicated.stdout).not.toContain("DEEPGRAM_API_KEY");
-      expect(missingDedicated.stdout).toContain("CARTESIA_API_KEY");
-      expect(missingDedicated.stdout).toContain(
-        "VOICE_REALTIME_ELIZA_AUTHORIZATION",
-      );
-      expect(missingDedicated.stdout).toContain(
-        "PRODUCTION_REALTIME_CARTESIA_VOICE_ID",
-      );
-      expect(missingDedicated.stdout).toContain(
-        "PRODUCTION_REALTIME_ELIZA_ENDPOINT",
-      );
+    const missingDedicated = runPreflight({
+      DEPLOY_ENVIRONMENT: "production",
+      VOICE_REALTIME_WS_ENABLED: "true",
+      DEEPGRAM_API_KEY: "",
+      CEREBRAS_API_KEY: "",
+      CARTESIA_API_KEY: "",
+      VOICE_REALTIME_ELIZA_AUTHORIZATION: "",
+      STAGING_ELIZACLOUD_API_KEY: "repo-key-must-not-be-used",
+    });
+    expect(missingDedicated.status).toBe(1);
+    expect(missingDedicated.stdout).toContain(
+      "Production realtime voice is enabled",
+    );
+    expect(missingDedicated.stdout).not.toContain("DEEPGRAM_API_KEY");
+    expect(missingDedicated.stdout).toContain("CEREBRAS_API_KEY");
+    expect(missingDedicated.stdout).toContain("CARTESIA_API_KEY");
+    expect(missingDedicated.stdout).toContain(
+      "VOICE_REALTIME_ELIZA_AUTHORIZATION",
+    );
+    expect(missingDedicated.stdout).toContain(
+      "PRODUCTION_REALTIME_CARTESIA_VOICE_ID",
+    );
+    expect(missingDedicated.stdout).toContain(
+      "PRODUCTION_REALTIME_ELIZA_ENDPOINT",
+    );
 
-      const configured = runPreflight({
-        DEPLOY_ENVIRONMENT: "production",
-        PRODUCTION_REALTIME_WS_ENABLED: "true",
-        CARTESIA_API_KEY: "cartesia-production",
-        VOICE_REALTIME_ELIZA_AUTHORIZATION: "Bearer production-dedicated",
-        PRODUCTION_REALTIME_CARTESIA_VOICE_ID: "production-voice-id",
+    const configured = runPreflight({
+      DEPLOY_ENVIRONMENT: "production",
+      VOICE_REALTIME_WS_ENABLED: "true",
+      CEREBRAS_API_KEY: "cerebras-production",
+      CARTESIA_API_KEY: "cartesia-production",
+      VOICE_REALTIME_ELIZA_AUTHORIZATION: "Bearer production-dedicated",
+      PRODUCTION_REALTIME_CARTESIA_VOICE_ID:
+        "db6b0ed5-d5d3-463d-ae85-518a07d3c2b4",
+      PRODUCTION_REALTIME_ELIZA_ENDPOINT: "https://api.elizacloud.ai",
+      STAGING_ELIZACLOUD_API_KEY: "repo-key-must-not-be-used",
+    });
+    expect(configured.status).toBe(0);
+  });
+
+  test("rejects malformed production voice routing before publishing secrets", () => {
+    const valid = {
+      DEPLOY_ENVIRONMENT: "production",
+      VOICE_REALTIME_WS_ENABLED: "true",
+      CEREBRAS_API_KEY: "cerebras-production",
+      CARTESIA_API_KEY: "cartesia-production",
+      VOICE_REALTIME_ELIZA_AUTHORIZATION: "Bearer production-dedicated",
+      PRODUCTION_REALTIME_CARTESIA_VOICE_ID:
+        "db6b0ed5-d5d3-463d-ae85-518a07d3c2b4",
+      PRODUCTION_REALTIME_ELIZA_ENDPOINT: "https://api.elizacloud.ai",
+    };
+    for (const invalid of [
+      { VOICE_REALTIME_ELIZA_AUTHORIZATION: "production-dedicated" },
+      { PRODUCTION_REALTIME_CARTESIA_VOICE_ID: "not-a-uuid" },
+      {
+        PRODUCTION_REALTIME_ELIZA_ENDPOINT: "https://api-staging.elizacloud.ai",
+      },
+      {
         PRODUCTION_REALTIME_ELIZA_ENDPOINT:
           "https://api.elizacloud.ai/api/v1/chat/completions",
-        STAGING_ELIZACLOUD_API_KEY: "repo-key-must-not-be-used",
-      });
-      expect(configured.status).toBe(0);
-    });
-  },
-);
+      },
+    ]) {
+      const result = runPreflight({ ...valid, ...invalid });
+      expect(result.status, `${result.stdout}${result.stderr}`).toBe(1);
+    }
+  });
+});

@@ -89,16 +89,26 @@ Encrypt cert).
 The Worker owns auth and billing; the Railway voice services are
 unauthenticated **private** origins.
 
-### Realtime voice (merged, NOT live)
+### Realtime voice (staging live; production gated)
 
-Session mint/consent/revoke/WS routes exist under
-`packages/cloud/api/v1/voice/session/` with Deepgram (STT) and Cartesia (TTS)
-adapters — but every entrypoint gates on `VOICE_REALTIME_WS_ENABLED`
+Session mint/consent/revoke/WS routes under
+`packages/cloud/api/v1/voice/session/` use Cartesia Ink for STT, Cartesia Sonic
+for TTS, and the canonical Eliza conversation SSE route for the Cerebras-backed
+agent turn. Every entrypoint gates on `VOICE_REALTIME_WS_ENABLED`
 (`packages/cloud/shared/src/lib/voice-session/config.ts`): when the flag is
 unset the mint route returns 404, the WS refuses the upgrade, and clients fall
-back to the batch path. No committed environment sets any `VOICE_REALTIME_*`
-var (`wrangler.toml` has none), so **do not document realtime voice as a
-deployed public API** until an operator explicitly enables the flag.
+back to the batch path.
+
+Staging is enabled in `wrangler.toml` and supplies the Cartesia voice id and
+staging API origin there. Production's committed Wrangler default stays off.
+The managed deploy workflow can enable production only from its protected
+GitHub environment and fails before secret publication or deploy unless the
+Cartesia key, dedicated Worker-to-agent authorization, Cartesia voice id, and
+production API origin are all nonblank. The Pages renderer consumes that same
+environment-scoped flag, so it cannot advertise realtime while the Worker is
+off. Realtime production acceptance still requires one live mic → Cartesia Ink
+→ Eliza/Cerebras → Cartesia Sonic session after the protected configuration is
+installed.
 
 ## headscale (not Railway — Hetzner control-plane VM)
 
