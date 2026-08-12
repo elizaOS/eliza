@@ -647,6 +647,14 @@ export default function StewardLoginSection() {
     );
   }
 
+  function isUserVerificationError(e: unknown): boolean {
+    const message = getErrorMessage(e, "").toLowerCase();
+    return (
+      message.includes("user verification") ||
+      message.includes("user could not be verified")
+    );
+  }
+
   async function handlePasskey() {
     if (!showPasskey) {
       if (providers.email !== false) {
@@ -669,8 +677,18 @@ export default function StewardLoginSection() {
         await auth.signInWithPasskey(email.trim()),
       );
       await handleSuccess(result.token, result.refreshToken);
-    } catch {
-      await startPasskeySignup();
+    } catch (e: unknown) {
+      if (isUserVerificationError(e)) {
+        setError(
+          getErrorMessage(
+            e,
+            "Passkey sign-in requires device verification (PIN or biometric). Your device may not support this — try Magic Link instead.",
+          ),
+        );
+        setLoading(null);
+      } else {
+        await startPasskeySignup();
+      }
     }
   }
 
