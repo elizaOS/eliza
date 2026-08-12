@@ -8190,5 +8190,8 @@
   "cloud.security.metaTitle": "Security · Eliza Cloud",
   "cloud.security.pluginPermissionsLink": "Plugin permissions →",
   "browserworkspace.NativeSurfaceUnavailable": "Browser view unavailable",
-  "browserworkspace.NativeSurfaceUnavailableDescription": "The secure browser surface could not connect. Retry without losing your tabs."
+  "browserworkspace.NativeSurfaceUnavailableDescription": "The secure browser surface could not connect. Retry without losing your tabs.",
+  "cloud.login.handoffCompleteTitle": "You're signed in",
+  "cloud.login.handoffCompleteBody": "Return to the Eliza app tab to continue. You can close this window.",
+  "cloud.login.closeWindow": "Close window"
 }
