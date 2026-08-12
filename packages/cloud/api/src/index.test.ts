@@ -110,12 +110,15 @@ describe("thin Steward public path dispatch (#18049)", () => {
     STEWARD_TENANT_ID: "elizacloud-staging",
     GOOGLE_CLIENT_ID: "google-client-id",
     GOOGLE_CLIENT_SECRET: "google-client-secret",
+    REDIS_RATE_LIMITING: "false",
+    BLOB: {},
   } as unknown as AppEnv["Bindings"];
 
   const originalFetch = globalThis.fetch;
 
   beforeEach(() => {
     resetProvidersResponseCacheForTests();
+    globalThis.fetch = originalFetch;
   });
 
   test("matches only login-critical Steward GETs", () => {
@@ -149,7 +152,7 @@ describe("thin Steward public path dispatch (#18049)", () => {
           oauth: [],
         },
       });
-    }) as typeof fetch;
+    }) as unknown as typeof fetch;
 
     try {
       const response = await cloudApiWorker.fetch(
@@ -184,7 +187,7 @@ describe("thin Steward public path dispatch (#18049)", () => {
     globalThis.fetch = (async () => {
       upstreamCalls += 1;
       return new Response("should-not-be-called", { status: 500 });
-    }) as typeof fetch;
+    }) as unknown as typeof fetch;
 
     try {
       const response = await cloudApiWorker.fetch(
@@ -222,7 +225,7 @@ describe("thin Steward public path dispatch (#18049)", () => {
           oauth: [],
         },
       });
-    }) as typeof fetch;
+    }) as unknown as typeof fetch;
 
     try {
       const first = await cloudApiWorker.fetch(

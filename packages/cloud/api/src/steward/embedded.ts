@@ -189,13 +189,19 @@ function hasOAuthCreds(
  * The enabled provider set changes at deploy/config time (OAuth env + Steward
  * config), not per request. A short TTL cuts warm multi-sample p95 when the
  * upstream leg is still material after the thin entry path removes cold
- * bootstrap. Staleness window: at most PROVIDERS_CACHE_TTL_MS, or sooner when
- * `ELIZA_DEPLOY_COMMIT` changes (new deploy). No cross-isolate shared store —
- * each Worker isolate has its own entry.
+ * bootstrap.
+ *
+ * Staleness bound (hard ceiling **60s** from fetch):
+ * - Isolate entry expires after PROVIDERS_CACHE_TTL_MS (60s), or sooner when
+ *   `ELIZA_DEPLOY_COMMIT` changes (new deploy / key mismatch).
+ * - Browser/shared `Cache-Control` is `public, max-age=60` only — **no**
+ *   `stale-while-revalidate`, so intermediaries cannot serve a removed provider
+ *   past the same 60s bound (#18049 risk callout).
+ * - No cross-isolate shared store; each Worker isolate has its own entry.
  */
-const PROVIDERS_CACHE_TTL_MS = 60_000;
-const PROVIDERS_BROWSER_CACHE_CONTROL =
-  "public, max-age=30, stale-while-revalidate=120";
+export const PROVIDERS_CACHE_TTL_MS = 60_000;
+/** Browser/shared-cache policy; must keep total staleness ≤ PROVIDERS_CACHE_TTL_MS. */
+export const PROVIDERS_BROWSER_CACHE_CONTROL = "public, max-age=60";
 
 type ProvidersCacheEntry = {
   body: ArrayBuffer;
@@ -255,6 +261,13 @@ async function writeProvidersCache(
 /** Test helper — clears the isolate providers cache between cases. */
 export function resetProvidersResponseCacheForTests(): void {
   providersResponseCache = null;
+}
+
+/** Test helper — force the current isolate entry past its expiry. */
+export function expireProvidersResponseCacheForTests(): void {
+  if (providersResponseCache) {
+    providersResponseCache.expiresAt = Date.now() - 1;
+  }
 }
 
 /**
