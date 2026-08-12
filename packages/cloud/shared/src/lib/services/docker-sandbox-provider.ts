@@ -1054,9 +1054,16 @@ export class DockerSandboxProvider implements SandboxProvider {
     // getAvailableNode + incrementAllocated + getUsedDockerHostPorts are three sequential
     // DB round-trips without a transaction boundary; the UNIQUE port index and
     // retry logic provide safety against concurrent capacity changes.
+    // The ceiling admitted here is the same value applied to `docker create`
+    // below, so a node can never be accepted against one number and loaded with
+    // another. Zero means the operator disabled ceilings entirely, which opts
+    // this container out of memory admission rather than admitting it for free.
+    const containerMemoryMb =
+      config.container?.memoryMb ?? containersEnv.agentContainerMemoryLimitMb();
     let dbNode = await dockerNodeManager.getAvailableNode({
       requiredPlatform: imagePlatform,
       excludeNodeId: config.excludeNodeId,
+      ...(containerMemoryMb > 0 ? { requiredMemoryMb: containerMemoryMb } : {}),
     });
     if (!dbNode) {
       dbNode = await this.provisionAutoscaledNodeForAgent({
@@ -1455,9 +1462,7 @@ export class DockerSandboxProvider implements SandboxProvider {
         // an explicit per-agent `container.memory` wins; otherwise the
         // env-tunable fleet default applies so a boot-looping agent can never
         // OOM-starve its co-tenants again (staging fleet incident 2026-08-05).
-        ...buildAgentContainerMemoryFlags(
-          config.container?.memoryMb ?? containersEnv.agentContainerMemoryLimitMb(),
-        ),
+        ...buildAgentContainerMemoryFlags(containerMemoryMb),
         // Escape-hardening (#12230/#12302): drop ALL kernel capabilities, forbid
         // privilege escalation, and bound the process count — then, under
         // headscale only, re-add exactly NET_ADMIN + /dev/net/tun for the VPN.
@@ -2443,7 +2448,10 @@ export class DockerSandboxProvider implements SandboxProvider {
         );
       }
       if (unreachable) {
-        outcome = { kind: "not-running-unresolved", reason: "node-unreachable" };
+        outcome = {
+          kind: "not-running-unresolved",
+          reason: "node-unreachable",
+        };
         logger.warn(
           `[docker-sandbox] Node ${meta.hostname} unreachable during stop of ${meta.containerName}; ` +
             `completing delete while retaining its capacity until reconciliation — ` +
