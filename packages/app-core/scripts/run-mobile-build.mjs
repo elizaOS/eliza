@@ -86,6 +86,10 @@ import {
 } from "./lib/capacitor-platform-templates.mjs";
 import { ElizaError } from "./lib/eliza-error.mjs";
 import {
+  auditIosCloudArtifact,
+  resolveIosAppFromBuildSettingsJson,
+} from "./lib/ios-cloud-artifact-audit.mjs";
+import {
   androidUsesAppDirFor,
   MTP_FORK_SRC_CANDIDATES,
   mtpForceRebuildRequested,
@@ -8635,19 +8639,22 @@ async function buildIos({ local = false } = {}) {
   )
     ? ["-allowProvisioningUpdates", "-allowProvisioningDeviceRegistration"]
     : [];
+  const buildSelectionArgs = [
+    ...projectArgs,
+    "-scheme",
+    "App",
+    ...(derivedDataPath ? ["-derivedDataPath", derivedDataPath] : []),
+    "-configuration",
+    resolveIosBuildConfiguration(),
+    "-destination",
+    buildTarget.destination,
+    "-sdk",
+    buildTarget.sdk,
+  ];
   await run(
     "xcodebuild",
     [
-      ...projectArgs,
-      "-scheme",
-      "App",
-      ...(derivedDataPath ? ["-derivedDataPath", derivedDataPath] : []),
-      "-configuration",
-      resolveIosBuildConfiguration(),
-      "-destination",
-      buildTarget.destination,
-      "-sdk",
-      buildTarget.sdk,
+      ...buildSelectionArgs,
       ...provisioningArgs,
       `IPHONEOS_DEPLOYMENT_TARGET=${resolveIosDeploymentTarget()}`,
       `CODE_SIGNING_ALLOWED=${process.env.ELIZA_IOS_CODE_SIGNING_ALLOWED ?? "NO"}`,
@@ -8660,6 +8667,49 @@ async function buildIos({ local = false } = {}) {
     ],
     { cwd: iosDir },
   );
+
+  // A source/native-graph policy cannot prove what Xcode actually linked and
+  // copied. Thin iOS builds therefore inspect the final app product before it
+  // can be treated as release evidence. Local-runtime lanes intentionally do
+  // not use this prohibition audit.
+  if (!includesLocalAgentPayload) {
+    const settings = runCaptureSync(
+      "xcodebuild",
+      [...buildSelectionArgs, "-showBuildSettings", "-json"],
+      { cwd: iosDir, maxBuffer: 32 * 1024 * 1024 },
+    );
+    if (settings.error || settings.status !== 0) {
+      throw new Error(
+        `[mobile-build] Could not resolve final iOS app for cloud artifact audit: ${
+          settings.stderr?.trim() ||
+          settings.stdout?.trim() ||
+          settings.error?.message ||
+          `xcodebuild exited ${String(settings.status)}`
+        }`,
+      );
+    }
+    const artifactPath = resolveIosAppFromBuildSettingsJson(settings.stdout);
+    const attestation = auditIosCloudArtifact({
+      artifactPath,
+      freshDistDir: path.join(appDir, "dist"),
+      expectedRuntimeMode: process.env.VITE_ELIZA_IOS_RUNTIME_MODE ?? null,
+      requireCodesign:
+        !isIosSimulatorBuildTarget(buildTarget) &&
+        isTruthyEnv(process.env.ELIZA_IOS_CODE_SIGNING_ALLOWED),
+      ...(process.env.ELIZA_IOS_ARTIFACT_ATTESTATION_PATH?.trim()
+        ? {
+            attestationPath:
+              process.env.ELIZA_IOS_ARTIFACT_ATTESTATION_PATH.trim(),
+          }
+        : {}),
+    });
+    console.log(
+      `[mobile-build] iOS cloud artifact audit passed: ${artifactPath} ` +
+        `(renderer=${attestation.renderer.buildId.slice(0, 12)}, ` +
+        `Mach-O=${attestation.machOBinaries.length}, signature=${attestation.signature.status}); ` +
+        `attestation=${attestation.attestationFile}`,
+    );
+  }
 }
 
 // ── Entry point ─────────────────────────────────────────────────────────
