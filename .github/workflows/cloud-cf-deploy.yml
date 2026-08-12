@@ -625,10 +625,11 @@ jobs:
           VAST_API_KEY: ${{ secrets.VAST_API_KEY }}
           VAST_BASE_URL: ${{ secrets.VAST_BASE_URL }}
           DEPLOY_ENVIRONMENT: ${{ steps.env.outputs.deploy_environment }}
-          # Environment-scoped opt-in for both staging and production. The
-          # production environment starts unset, and the preflight below refuses
-          # an enabled deploy until every provider/bridge value is present.
-          VOICE_REALTIME_WS_ENABLED: ${{ contains(fromJSON('["1","true","TRUE","True","yes","YES","Yes","on","ON","On"]'), vars.VOICE_REALTIME_WS_ENABLED) && 'true' || 'false' }}
+          # Production uses a distinct variable name so GitHub's org/repo/env
+          # merge cannot inherit staging's opt-in when production is unset.
+          # The preflight below still refuses either enabled environment until
+          # every required provider and bridge value is present.
+          VOICE_REALTIME_WS_ENABLED: ${{ ((steps.env.outputs.deploy_environment == 'production' && contains(fromJSON('["1","true","TRUE","True","yes","YES","Yes","on","ON","On"]'), vars.PRODUCTION_VOICE_REALTIME_WS_ENABLED)) || (steps.env.outputs.deploy_environment == 'staging' && contains(fromJSON('["1","true","TRUE","True","yes","YES","Yes","on","ON","On"]'), vars.VOICE_REALTIME_WS_ENABLED))) && 'true' || 'false' }}
           PRODUCTION_REALTIME_CARTESIA_VOICE_ID: ${{ steps.env.outputs.deploy_environment == 'production' && vars.ELIZA_VOICE_CARTESIA_VOICE_ID || '' }}
           PRODUCTION_REALTIME_ELIZA_ENDPOINT: ${{ steps.env.outputs.deploy_environment == 'production' && vars.VOICE_REALTIME_ELIZA_ENDPOINT || '' }}
           VOICE_REALTIME_ELIZA_AUTHORIZATION: ${{ secrets.VOICE_REALTIME_ELIZA_AUTHORIZATION }}
@@ -830,17 +831,29 @@ jobs:
               return $?
             fi
             # Unset: delete so the Worker falls back to its default path.
-            # Wrangler auto-confirms the prompt in non-interactive CI.
-            # "Binding not found" is success (nothing was published). Any
-            # other failure must FAIL after retries: deploying with a stale
-            # routing toggle is exactly the outage this function prevents.
+            # Wrangler auto-confirms the prompt in non-interactive CI. Its API
+            # error for an already-absent Worker binding has exit 1, the exact
+            # secret resource, and code 10092; accepting any looser "not found"
+            # text could mistake a missing tool or config for completed cleanup.
             local out
+            local delete_status
+            local api_code_count
+            local missing_binding_count
+            local secret_resource_count
             for attempt in 1 2 3; do
-              if out=$(bunx wrangler secret delete "$name" ${{ steps.env.outputs.wrangler_args }} 2>&1); then
+              delete_status=0
+              out=$(bunx wrangler secret delete "$name" ${{ steps.env.outputs.wrangler_args }} 2>&1) || delete_status=$?
+              if [ "$delete_status" -eq 0 ]; then
                 echo "::notice::$name is not configured; deleted any previously published value"
                 return 0
               fi
-              if printf '%s' "$out" | grep -qi "not found"; then
+              api_code_count=$(printf '%s\n' "$out" | grep -Ec '\[code: [0-9]+\]' || :)
+              missing_binding_count=$(printf '%s\n' "$out" | grep -Ec '^[[:space:]]*Binding not found \[code: 10092\][[:space:]]*$' || :)
+              secret_resource_count=$(printf '%s\n' "$out" | grep -Ec "A request to the Cloudflare API \\(/accounts/[^/[:space:]]+/workers/(scripts/[^/[:space:]]+|services/[^/[:space:]]+/environments/[^/[:space:]]+)/secrets/${name}\\) failed\\." || :)
+              if [ "$delete_status" -eq 1 ] && \
+                 [ "$api_code_count" -eq 1 ] && \
+                 [ "$missing_binding_count" -eq 1 ] && \
+                 [ "$secret_resource_count" -eq 1 ]; then
                 echo "::notice::$name is not configured and not present on the Worker; nothing to do"
                 return 0
               fi
@@ -941,7 +954,7 @@ jobs:
           DEPLOY_ENVIRONMENT: ${{ steps.env.outputs.deploy_environment }}
           STAGING_ONBOARDING_LOGIN_APP_URL: https://staging.eliza.app
           KOKORO_TTS_URL: ${{ vars.ELIZA_VOICE_KOKORO_TTS_URL }}
-          VOICE_REALTIME_WS_ENABLED: ${{ contains(fromJSON('["1","true","TRUE","True","yes","YES","Yes","on","ON","On"]'), vars.VOICE_REALTIME_WS_ENABLED) && 'true' || 'false' }}
+          VOICE_REALTIME_WS_ENABLED: ${{ ((steps.env.outputs.deploy_environment == 'production' && contains(fromJSON('["1","true","TRUE","True","yes","YES","Yes","on","ON","On"]'), vars.PRODUCTION_VOICE_REALTIME_WS_ENABLED)) || (steps.env.outputs.deploy_environment == 'staging' && contains(fromJSON('["1","true","TRUE","True","yes","YES","Yes","on","ON","On"]'), vars.VOICE_REALTIME_WS_ENABLED))) && 'true' || 'false' }}
           PRODUCTION_REALTIME_CARTESIA_VOICE_ID: ${{ steps.env.outputs.deploy_environment == 'production' && vars.ELIZA_VOICE_CARTESIA_VOICE_ID || '' }}
           PRODUCTION_REALTIME_ELIZA_ENDPOINT: ${{ steps.env.outputs.deploy_environment == 'production' && vars.VOICE_REALTIME_ELIZA_ENDPOINT || '' }}
           ELIZA_TTS_FISH_ENABLED: ${{ steps.env.outputs.deploy_environment != 'production' && contains(fromJSON('["1","true","TRUE","True","yes","YES","Yes","on","ON","On"]'), vars.ELIZA_TTS_FISH_ENABLED) && 'true' || 'false' }}
@@ -1234,7 +1247,7 @@ jobs:
           VITE_STEWARD_TENANT_ID: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'elizacloud' || 'elizacloud-staging' }}
           NEXT_PUBLIC_STEWARD_TENANT_ID: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'elizacloud' || 'elizacloud-staging' }}
           VITE_ENVIRONMENT: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'production' || 'staging' }}
-          VITE_VOICE_REALTIME_WS: ${{ contains(fromJSON('["1","true","TRUE","True","yes","YES","Yes","on","ON","On"]'), vars.VOICE_REALTIME_WS_ENABLED) && '1' || '0' }}
+          VITE_VOICE_REALTIME_WS: ${{ ((((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && contains(fromJSON('["1","true","TRUE","True","yes","YES","Yes","on","ON","On"]'), vars.PRODUCTION_VOICE_REALTIME_WS_ENABLED)) || (!((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && contains(fromJSON('["1","true","TRUE","True","yes","YES","Yes","on","ON","On"]'), vars.VOICE_REALTIME_WS_ENABLED))) && '1' || '0' }}
           VITE_VOICE_REALTIME_FORCE: "0"
           NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID: ${{ vars.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID }}
 
@@ -1263,7 +1276,7 @@ jobs:
           VITE_STEWARD_TENANT_ID: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'elizacloud' || 'elizacloud-staging' }}
           NEXT_PUBLIC_STEWARD_TENANT_ID: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'elizacloud' || 'elizacloud-staging' }}
           VITE_ENVIRONMENT: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'production' || 'staging' }}
-          VITE_VOICE_REALTIME_WS: ${{ contains(fromJSON('["1","true","TRUE","True","yes","YES","Yes","on","ON","On"]'), vars.VOICE_REALTIME_WS_ENABLED) && '1' || '0' }}
+          VITE_VOICE_REALTIME_WS: ${{ ((((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && contains(fromJSON('["1","true","TRUE","True","yes","YES","Yes","on","ON","On"]'), vars.PRODUCTION_VOICE_REALTIME_WS_ENABLED)) || (!((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && contains(fromJSON('["1","true","TRUE","True","yes","YES","Yes","on","ON","On"]'), vars.VOICE_REALTIME_WS_ENABLED))) && '1' || '0' }}
           VITE_VOICE_REALTIME_FORCE: "0"
           NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID: ${{ vars.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID }}
 
@@ -1541,7 +1554,7 @@ jobs:
           # `ENVIRONMENT` binding is invisible to the SPA — VITE_ENVIRONMENT is
           # the only thing the bundle can see at runtime.
           VITE_ENVIRONMENT: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'production' || 'staging' }}
-          VITE_VOICE_REALTIME_WS: ${{ contains(fromJSON('["1","true","TRUE","True","yes","YES","Yes","on","ON","On"]'), vars.VOICE_REALTIME_WS_ENABLED) && '1' || '0' }}
+          VITE_VOICE_REALTIME_WS: ${{ ((((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && contains(fromJSON('["1","true","TRUE","True","yes","YES","Yes","on","ON","On"]'), vars.PRODUCTION_VOICE_REALTIME_WS_ENABLED)) || (!((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && contains(fromJSON('["1","true","TRUE","True","yes","YES","Yes","on","ON","On"]'), vars.VOICE_REALTIME_WS_ENABLED))) && '1' || '0' }}
           VITE_VOICE_REALTIME_FORCE: "0"
           NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID: ${{ vars.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID }}
 
@@ -1970,7 +1983,7 @@ jobs:
           VITE_STEWARD_TENANT_ID: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'elizacloud' || 'elizacloud-staging' }}
           NEXT_PUBLIC_STEWARD_TENANT_ID: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'elizacloud' || 'elizacloud-staging' }}
           VITE_ENVIRONMENT: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'production' || 'staging' }}
-          VITE_VOICE_REALTIME_WS: ${{ contains(fromJSON('["1","true","TRUE","True","yes","YES","Yes","on","ON","On"]'), vars.VOICE_REALTIME_WS_ENABLED) && '1' || '0' }}
+          VITE_VOICE_REALTIME_WS: ${{ ((((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && contains(fromJSON('["1","true","TRUE","True","yes","YES","Yes","on","ON","On"]'), vars.PRODUCTION_VOICE_REALTIME_WS_ENABLED)) || (!((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && contains(fromJSON('["1","true","TRUE","True","yes","YES","Yes","on","ON","On"]'), vars.VOICE_REALTIME_WS_ENABLED))) && '1' || '0' }}
           VITE_VOICE_REALTIME_FORCE: "0"
           NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID: ${{ vars.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID }}
 

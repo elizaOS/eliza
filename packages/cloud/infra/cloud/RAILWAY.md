@@ -100,26 +100,35 @@ unset the mint route returns 404, the WS refuses the upgrade, and clients fall
 back to the batch path.
 
 Staging is enabled in `wrangler.toml` and supplies the Cartesia voice id and
-staging API origin there. Production's committed Wrangler default stays off.
-The managed deploy workflow can enable production only from its protected
-GitHub environment and fails before secret publication or deploy unless the
-`CEREBRAS_API_KEY` and Cartesia key are nonblank, the dedicated Worker-to-agent
-authorization matches `^Bearer [^[:space:]]+$`, the Cartesia voice id is a UUID,
-and the API origin is exactly `https://api.elizacloud.ai` (an optional trailing
-slash is normalized). Disabling realtime deletes the dedicated authorization
-before deploying the false Worker flag, so rollback removes both the WebSocket
-entrypoint and its independent internal-stream authority. The Pages renderer
-consumes that same environment-scoped flag, so it cannot advertise realtime
-while the Worker is off. Realtime production acceptance still requires one live
-mic → Cartesia Ink → Eliza/Cerebras → Cartesia Sonic session after the protected
-configuration is installed.
+staging API origin there. Managed staging deploys read only the GitHub variable
+`VOICE_REALTIME_WS_ENABLED`; production reads only the distinct
+`PRODUCTION_VOICE_REALTIME_WS_ENABLED`. GitHub merges organization, repository,
+and environment variables, so the separate production name prevents a staging
+opt-in at a lower scope from enabling production when its protected environment
+has no override. Production's committed Wrangler default stays off.
+
+When production resolves enabled, the managed deploy workflow fails before
+secret publication or deploy unless the `CEREBRAS_API_KEY` and Cartesia key are
+nonblank, the dedicated Worker-to-agent authorization matches
+`^Bearer [^[:space:]]+$`, the Cartesia voice id is a UUID, and the API origin is
+exactly `https://api.elizacloud.ai` (an optional trailing slash is normalized).
+Disabling realtime deletes the dedicated authorization before deploying the
+false Worker flag, so rollback removes both the WebSocket entrypoint and its
+independent internal-stream authority. The Pages renderer consumes the same
+environment-selected variable as the Worker, so it cannot advertise realtime
+while the Worker is off. Realtime production acceptance still requires one
+live mic → Cartesia Ink → Eliza/Cerebras → Cartesia Sonic session after the
+protected configuration is installed.
 
 `build-pages` references the selected GitHub environment so the renderer can
-read its flag. The final release readback must therefore confirm that the
-`staging` environment admits intended source-owned pull-request merge refs; the
-workflow does not create or mutate that repository setting. The privileged PR
-preview consumer separately rejects fork producers before using Cloudflare
-credentials.
+read its flag. The final release readback must confirm that the `staging`
+environment admits intended source-owned pull-request merge refs and resolves
+`VOICE_REALTIME_WS_ENABLED` to the intended staging value. It must separately
+confirm that the protected `production` environment resolves
+`PRODUCTION_VOICE_REALTIME_WS_ENABLED` to the approved production value; the
+generic staging variable is never a production fallback. The workflow does not
+create or mutate those repository settings. The privileged PR preview consumer
+separately rejects fork producers before using Cloudflare credentials.
 
 ## headscale (not Railway — Hetzner control-plane VM)
 
