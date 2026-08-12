@@ -569,12 +569,18 @@ describe("rescue synthesis from successful tool results (2026-08-11 sub-agent re
 			"standujar reviewed 85 pull requests over the last four days and filed 46 issues.",
 		);
 		expect(result.finalMessage).not.toBe(FAILED_TOOL_FALLBACK_MESSAGE);
-		// The rescue prompt carried the successful result as input material.
+		// The rescue call carried the successful result as input material
+		// (native chat `messages`, the only shape PlannerRuntime.useModel accepts).
 		const rescueParams = useModel.mock.calls[4]?.[1] as
-			| { prompt?: string }
+			| MockedMessages
 			| undefined;
-		expect(rescueParams?.prompt).toContain("[WEB_SEARCH]");
-		expect(rescueParams?.prompt).toContain("85 pull requests");
+		const rescueText = (rescueParams?.messages ?? [])
+			.map((message) =>
+				typeof message.content === "string" ? message.content : "",
+			)
+			.join("\n");
+		expect(rescueText).toContain("[WEB_SEARCH]");
+		expect(rescueText).toContain("85 pull requests");
 	});
 
 	it("keeps the generic sentence when there are no successful results to rescue from", async () => {

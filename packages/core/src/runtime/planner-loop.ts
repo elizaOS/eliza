@@ -4026,15 +4026,19 @@ async function rescueReplyFromSuccessfulResults(
 	if (excerpts.length === 0) return undefined;
 	try {
 		const raw = await params.runtime.useModel(ModelType.TEXT_LARGE, {
-			prompt: [
-				"You are finishing a chat turn. Compose the final reply to the user from these tool results.",
-				"Answer the user's request directly from the material; be concise and human.",
-				"Never include file paths, internal ids, session or task uuids, or raw logs.",
-				"",
-				excerpts.join("\n\n"),
-			].join("\n"),
+			messages: [
+				{
+					role: "user",
+					content: [
+						"You are finishing a chat turn. Compose the final reply to the user from these tool results.",
+						"Answer the user's request directly from the material; be concise and human.",
+						"Never include file paths, internal ids, session or task uuids, or raw logs.",
+						"",
+						excerpts.join("\n\n"),
+					].join("\n"),
+				},
+			],
 			maxTokens: 1024,
-			temperature: 0.3,
 		});
 		const text =
 			typeof raw === "string" ? raw : (raw as { text?: string })?.text;
