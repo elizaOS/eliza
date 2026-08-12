@@ -38,6 +38,8 @@ type WorkerNodeAutoscaler =
   typeof import("@elizaos/cloud-shared/lib/services/containers/node-autoscaler").getNodeAutoscaler;
 type WorkerWarmPoolManager =
   typeof import("@elizaos/cloud-shared/lib/services/containers/agent-warm-pool").WarmPoolManager;
+type WorkerEnvWarmPoolPolicy =
+  typeof import("@elizaos/cloud-shared/lib/services/containers/agent-warm-pool").envWarmPoolPolicy;
 type WorkerContainersEnv =
   typeof import("@elizaos/cloud-shared/lib/config/containers-env").containersEnv;
 type WorkerAssertSSHKeyAvailable =
@@ -79,6 +81,7 @@ interface WorkerDeps {
   dockerNodeManager: WorkerNodeManager;
   getNodeAutoscaler: WorkerNodeAutoscaler;
   WarmPoolManager: WorkerWarmPoolManager;
+  envWarmPoolPolicy: WorkerEnvWarmPoolPolicy;
   getHetznerPoolContainerCreator: WorkerWarmPoolCreator;
   containersEnv: WorkerContainersEnv;
   assertSSHKeyAvailable: WorkerAssertSSHKeyAvailable;
@@ -290,6 +293,7 @@ async function loadDeps(): Promise<WorkerDeps> {
         dockerNodeManager: nodeMgrModule.dockerNodeManager,
         getNodeAutoscaler: autoscalerModule.getNodeAutoscaler,
         WarmPoolManager: warmPoolModule.WarmPoolManager,
+        envWarmPoolPolicy: warmPoolModule.envWarmPoolPolicy,
         getHetznerPoolContainerCreator:
           warmPoolCreatorModule.getHetznerPoolContainerCreator,
         containersEnv: containersEnvModule.containersEnv,
@@ -317,9 +321,13 @@ async function getWarmPoolManager(): Promise<
   InstanceType<WorkerWarmPoolManager>
 > {
   if (cachedWarmPoolManagerInstance) return cachedWarmPoolManagerInstance;
-  const { WarmPoolManager, getHetznerPoolContainerCreator } = await loadDeps();
+  const { WarmPoolManager, envWarmPoolPolicy, getHetznerPoolContainerCreator } =
+    await loadDeps();
+  // envWarmPoolPolicy, not the constructor default: the bare default pins
+  // minPoolSize to 1 and leaves WARM_POOL_MIN_SIZE / WARM_POOL_MAX_SIZE inert.
   cachedWarmPoolManagerInstance = new WarmPoolManager(
     getHetznerPoolContainerCreator(),
+    envWarmPoolPolicy(),
   );
   return cachedWarmPoolManagerInstance;
 }
