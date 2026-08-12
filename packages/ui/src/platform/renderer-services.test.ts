@@ -152,30 +152,72 @@ describe("teardown", () => {
     expect(getRendererServiceStates().hostShell).toBeNull();
   });
 
-  it("disposes on a real pagehide but survives a bfcache round trip", async () => {
+  it("suspends every instance on a persisted pagehide (bfcache) and restarts them on pageshow", async () => {
     const svc = makeService("a.bfcache");
     registerRendererService(svc.definition);
     startRendererServiceHost({ shell: "main" });
     await settleRendererServices();
 
-    // bfcache entry: persisted=true (iOS Safari back-nav) — the page can come
-    // back via pageshow, so the host must keep every service alive.
+    // bfcache entry: persisted=true (iOS Safari back-nav). The page can come
+    // back via pageshow, so the host itself survives, but every instance's
+    // owned native resources must be suspended now — the freeze can happen
+    // mid-flight, so only *initiating* teardown needs to be synchronous.
     const persisted = new Event("pagehide") as Event & { persisted: boolean };
     Object.defineProperty(persisted, "persisted", { value: true });
     window.dispatchEvent(persisted);
-    expect(svc.cleanup).not.toHaveBeenCalled();
-    expect(stateOf("a.bfcache")).toBe("running");
+    expect(svc.cleanup).toHaveBeenCalledTimes(1);
+    expect(stateOf("a.bfcache")).toBe("stopped");
     expect(getRendererServiceStates().hostShell).toBe("main");
 
-    // Restore from bfcache, then a real teardown: persisted=false disposes.
+    // Restore from bfcache: pageshow restarts the suspended service through
+    // the same serialized queue.
     const pageshow = new Event("pageshow") as Event & { persisted: boolean };
     Object.defineProperty(pageshow, "persisted", { value: true });
     window.dispatchEvent(pageshow);
+    await settleRendererServices();
+    expect(svc.start).toHaveBeenCalledTimes(2);
     expect(stateOf("a.bfcache")).toBe("running");
 
+    // A real teardown (persisted=false) still fully disposes the host.
     window.dispatchEvent(new Event("pagehide"));
-    expect(svc.cleanup).toHaveBeenCalledTimes(1);
+    expect(svc.cleanup).toHaveBeenCalledTimes(2);
     expect(getRendererServiceStates().hostShell).toBeNull();
+  });
+
+  it("restarted suspended service waits for a still-pending suspension cleanup", async () => {
+    let releaseCleanup: (() => void) | undefined;
+    const start = vi.fn(
+      () => () =>
+        new Promise<void>((resolve) => {
+          releaseCleanup = resolve;
+        }),
+    );
+    registerRendererService({
+      id: "a.slow-suspend",
+      shells: ["main"],
+      start,
+    });
+    startRendererServiceHost({ shell: "main" });
+    await settleRendererServices();
+    expect(start).toHaveBeenCalledTimes(1);
+
+    const persisted = new Event("pagehide") as Event & { persisted: boolean };
+    Object.defineProperty(persisted, "persisted", { value: true });
+    window.dispatchEvent(persisted);
+
+    const pageshow = new Event("pageshow") as Event & { persisted: boolean };
+    Object.defineProperty(pageshow, "persisted", { value: true });
+    window.dispatchEvent(pageshow);
+
+    // The restart is queued but must not run until the pending suspension
+    // cleanup settles.
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(start).toHaveBeenCalledTimes(1);
+
+    releaseCleanup?.();
+    await settleRendererServices();
+    expect(start).toHaveBeenCalledTimes(2);
   });
 
   it("stops the previous host's instances on host replacement", async () => {
@@ -231,6 +273,135 @@ describe("teardown", () => {
       expect.any(Error),
       "cleanup",
     );
+  });
+});
+
+describe("async cleanup serialization (#17110)", () => {
+  it("awaits an async cleanup before starting the successor on re-registration", async () => {
+    let releaseCleanup: (() => void) | undefined;
+    const firstStart = vi.fn(
+      () => () =>
+        new Promise<void>((resolve) => {
+          releaseCleanup = resolve;
+        }),
+    );
+    const secondStart = vi.fn(() => () => {});
+    registerRendererService({
+      id: "a.async-hmr",
+      shells: ["main"],
+      start: firstStart,
+    });
+    startRendererServiceHost({ shell: "main" });
+    await settleRendererServices();
+    expect(firstStart).toHaveBeenCalledTimes(1);
+
+    registerRendererService({
+      id: "a.async-hmr",
+      shells: ["main"],
+      start: secondStart,
+    });
+
+    // The old instance's cleanup is still pending — the successor must not
+    // have started yet.
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(secondStart).not.toHaveBeenCalled();
+
+    releaseCleanup?.();
+    await settleRendererServices();
+    expect(secondStart).toHaveBeenCalledTimes(1);
+    expect(stateOf("a.async-hmr")).toBe("running");
+  });
+
+  it("awaits the prior host's full disposal before the replacement host's services start", async () => {
+    let releaseCleanup: (() => void) | undefined;
+    const start = vi.fn(
+      () => () =>
+        new Promise<void>((resolve) => {
+          releaseCleanup = resolve;
+        }),
+    );
+    registerRendererService({
+      id: "a.async-host-replace",
+      shells: ["main"],
+      start,
+    });
+    startRendererServiceHost({ shell: "main" });
+    await settleRendererServices();
+    expect(start).toHaveBeenCalledTimes(1);
+
+    // Host replacement (shell HMR, repeated test boots) while the old
+    // instance's cleanup is still pending — the new host's instance must not
+    // start until the old host has fully disposed.
+    startRendererServiceHost({ shell: "main" });
+
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(start).toHaveBeenCalledTimes(1);
+
+    releaseCleanup?.();
+    await settleRendererServices();
+    expect(start).toHaveBeenCalledTimes(2);
+  });
+
+  it("reports a rejecting async cleanup and still unblocks the successor", async () => {
+    const reportError = vi.fn();
+    let rejectCleanup: ((error: Error) => void) | undefined;
+    registerRendererService({
+      id: "a.async-reject-cleanup",
+      shells: ["main"],
+      start: () => () =>
+        new Promise<void>((_resolve, reject) => {
+          rejectCleanup = reject;
+        }),
+    });
+    startRendererServiceHost({ shell: "main", reportError });
+    await settleRendererServices();
+
+    const second = makeService("a.async-reject-cleanup");
+    registerRendererService(second.definition);
+    rejectCleanup?.(new Error("cleanup rejected"));
+
+    await settleRendererServices();
+    expect(reportError).toHaveBeenCalledWith(
+      "a.async-reject-cleanup",
+      expect.any(Error),
+      "cleanup",
+    );
+    expect(second.start).toHaveBeenCalledTimes(1);
+    expect(stateOf("a.async-reject-cleanup")).toBe("running");
+  });
+
+  it("a late-completing predecessor cleanup cannot stop the running successor", async () => {
+    let releaseCleanup: (() => void) | undefined;
+    registerRendererService({
+      id: "a.late-cleanup-safety",
+      shells: ["main"],
+      start: () => () =>
+        new Promise<void>((resolve) => {
+          releaseCleanup = resolve;
+        }),
+    });
+    startRendererServiceHost({ shell: "main" });
+    await settleRendererServices();
+
+    const successor = makeService("a.late-cleanup-safety");
+    registerRendererService(successor.definition);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(successor.start).not.toHaveBeenCalled();
+
+    releaseCleanup?.();
+    await settleRendererServices();
+    expect(successor.start).toHaveBeenCalledTimes(1);
+    expect(stateOf("a.late-cleanup-safety")).toBe("running");
+
+    // The predecessor's long-settled cleanup resolving even later must not
+    // retroactively stop or clean up the now-running successor.
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(successor.cleanup).not.toHaveBeenCalled();
+    expect(stateOf("a.late-cleanup-safety")).toBe("running");
   });
 });
 

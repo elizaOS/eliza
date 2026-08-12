@@ -16,6 +16,31 @@
  * definitions registered later (side-effect modules load on the idle path)
  * start immediately.
  *
+ * Cleanup is allowed to be asynchronous (owned native resources — listeners,
+ * monitors — stop asynchronously), so every id-scoped transition (stop then
+ * replacement start, whether triggered by re-registration or host
+ * replacement) is serialized: a successor's `start` never runs until the
+ * predecessor's cleanup promise has settled, resolved or rejected. A
+ * rejecting cleanup is reported through the host's `reportError` and still
+ * unblocks the successor — teardown never deadlocks the registry, and a
+ * failure is always surfaced, never swallowed. `disposeHost` returns a
+ * promise that resolves once every instance it stopped has fully settled;
+ * `startRendererServiceHost` makes every newly started instance await that
+ * promise before it starts, so a replaced generation's in-flight teardown
+ * (e.g. a native `stopMonitoring()` call) can never land after the
+ * replacement's `start` and clobber it (#17110). Each instance keeps its own
+ * `AbortController`/generation identity, so a stale instance's late
+ * completion (a delayed start, or cleanup settling long after a successor is
+ * already running) can only ever act on itself — it is discarded rather than
+ * mutating the successor's state.
+ *
+ * A `pagehide` with `persisted=true` (bfcache entry, e.g. iOS Safari
+ * back-nav) suspends every instance through the same serialized stop path
+ * instead of disposing the host outright — the page may come back via
+ * `pageshow`, which restarts every eligible definition through the same
+ * serialized start path (awaiting a still-in-flight suspension first). Only a
+ * real `pagehide` (`persisted=false`) fully disposes the host.
+ *
  * The store lives on `globalThis` so duplicated module evaluations (HMR, mixed
  * chunk graphs) share one registry — two copies of this module must never each
  * believe they own the running instances. Stop is race-safe against pending
@@ -50,7 +75,8 @@ export interface RendererServiceContext {
   signal: AbortSignal;
 }
 
-export type RendererServiceCleanup = () => void;
+/** May resolve asynchronously — the registry awaits it before starting a successor. */
+export type RendererServiceCleanup = () => void | Promise<void>;
 
 export interface RendererServiceDefinition {
   /** Globally unique, stable id, e.g. "personal-assistant.lifeops-activity-signals". */
@@ -89,8 +115,12 @@ export type RendererServiceErrorReporter = (
 
 export interface RendererServiceHostHandle {
   shell: RendererShellKind;
-  /** Stop every running/starting instance and detach the pagehide hook. */
-  dispose: () => void;
+  /**
+   * Stop every running/starting instance and detach the pagehide/pageshow
+   * hooks. Returns a promise that settles once every instance's cleanup has
+   * fully run; callers that only need to enqueue the stop may ignore it.
+   */
+  dispose: () => void | Promise<void>;
 }
 
 interface ServiceInstance {
@@ -98,7 +128,12 @@ interface ServiceInstance {
   controller: AbortController;
   status: "starting" | "running" | "failed" | "stopped";
   cleanup: RendererServiceCleanup | null;
-  /** Settles when a pending start has fully resolved its cleanup handling. */
+  /**
+   * Settles once this instance's `start` (if still pending) and any cleanup
+   * it triggers have both fully resolved — the single signal a successor
+   * (same id re-registration, or the next host generation) awaits before it
+   * is allowed to start.
+   */
   settled: Promise<void>;
 }
 
@@ -106,7 +141,9 @@ interface HostState {
   shell: RendererShellKind;
   reportError: RendererServiceErrorReporter;
   instances: Map<string, ServiceInstance>;
-  detachPagehide: (() => void) | null;
+  /** Id-scoped teardown in flight; a same-id start awaits this before running. */
+  pendingCleanup: Map<string, Promise<void>>;
+  detachLifecycleHooks: (() => void) | null;
   disposed: boolean;
 }
 
@@ -150,33 +187,79 @@ const defaultReportError: RendererServiceErrorReporter = (
   });
 };
 
-function runCleanup(host: HostState, instance: ServiceInstance): void {
+/**
+ * Invoke a retained cleanup and return a promise that settles once it (sync
+ * or async) has fully run. Never rejects: a throwing/rejecting cleanup is
+ * reported through the host's reporter instead, so a failed teardown can
+ * never deadlock a successor waiting on it.
+ */
+function runCleanup(host: HostState, instance: ServiceInstance): Promise<void> {
   const cleanup = instance.cleanup;
   instance.cleanup = null;
-  if (!cleanup) return;
-  try {
-    cleanup();
-  } catch (error) {
-    // error-policy:J6 best-effort teardown — a throwing cleanup must not block
-    // the remaining services' teardown; it is reported, never swallowed.
+  if (!cleanup) return Promise.resolve();
+  const reportFailure = (error: unknown): void => {
+    // error-policy:J6 best-effort teardown — a throwing/rejecting cleanup
+    // must not block the remaining services' teardown or a waiting
+    // successor's start; it is reported, never swallowed.
     host.reportError(instance.definition.id, error, "cleanup");
+  };
+  try {
+    const result = cleanup();
+    if (result && typeof (result as Promise<void>).then === "function") {
+      return (result as Promise<void>).catch(reportFailure);
+    }
+    return Promise.resolve();
+  } catch (error) {
+    reportFailure(error);
+    return Promise.resolve();
   }
 }
 
-function stopInstance(host: HostState, instance: ServiceInstance): void {
-  if (instance.status === "stopped") return;
+/**
+ * Mark an instance stopped, invoke (or arrange) its cleanup, and register the
+ * settling promise under the instance's id so a same-id `startInstance` call
+ * — from re-registration or the next host generation — waits for it. Returns
+ * that same promise.
+ */
+function stopInstance(
+  host: HostState,
+  instance: ServiceInstance,
+): Promise<void> {
+  if (instance.status === "stopped") {
+    return host.pendingCleanup.get(instance.definition.id) ?? Promise.resolve();
+  }
   const id = instance.definition.id;
+  const wasStarting = instance.status === "starting";
   instance.status = "stopped";
   instance.controller.abort();
-  // If start is still pending, cleanup is null here; the start continuation in
-  // startInstance sees the aborted signal and runs the late cleanup itself.
-  runCleanup(host, instance);
-  host.instances.delete(id);
+  // If start is still pending, `instance.settled`'s continuation sees the
+  // aborted signal and runs (and awaits) the late cleanup itself once the
+  // start resolves; that same promise is what a waiting successor needs.
+  // Otherwise the retained cleanup runs now.
+  const settled = wasStarting ? instance.settled : runCleanup(host, instance);
+  if (host.instances.get(id) === instance) {
+    host.instances.delete(id);
+  }
+  host.pendingCleanup.set(id, settled);
+  void settled.finally(() => {
+    if (host.pendingCleanup.get(id) === settled) {
+      host.pendingCleanup.delete(id);
+    }
+  });
+  return settled;
 }
 
+/**
+ * Start a new instance for `definition`. If `waitFor` is given (the prior
+ * host generation's full disposal) or a same-id teardown is already pending
+ * on this host (re-registration), `start` is not invoked until that teardown
+ * has settled — this is the serialization guarantee (#17110): a predecessor's
+ * async cleanup always finishes before its successor starts.
+ */
 function startInstance(
   host: HostState,
   definition: RendererServiceDefinition,
+  waitFor?: Promise<void>,
 ): void {
   const controller = new AbortController();
   const instance: ServiceInstance = {
@@ -189,6 +272,19 @@ function startInstance(
   host.instances.set(definition.id, instance);
 
   instance.settled = (async () => {
+    if (waitFor) {
+      await waitFor;
+    }
+    const pendingSameId = host.pendingCleanup.get(definition.id);
+    if (pendingSameId) {
+      await pendingSameId;
+    }
+    // A later stop (or another re-registration) may have already superseded
+    // this instance while we waited — do not start an instance nobody wants.
+    if (host.instances.get(definition.id) !== instance) {
+      return;
+    }
+
     let cleanup: RendererServiceCleanup;
     try {
       cleanup = await definition.start({
@@ -226,9 +322,11 @@ function startInstance(
 
     if (controller.signal.aborted) {
       // Stopped while start was awaited: run the late cleanup now so no
-      // listener/interval installed by the finished start survives the stop.
+      // listener/interval installed by the finished start survives the stop,
+      // and await it so this instance's `settled` remains the single signal
+      // a waiting successor needs.
       instance.cleanup = cleanup;
-      runCleanup(host, instance);
+      await runCleanup(host, instance);
       return;
     }
 
@@ -249,8 +347,9 @@ function isEligible(
  * entries call this at import time. If a host is active and the definition's
  * shells include the host's shell, the service starts immediately.
  * Re-registering an id replaces the definition: the old instance is stopped
- * (its cleanup runs) before the new definition starts — this is what makes dev
- * HMR of a plugin registration module safe.
+ * (its cleanup runs, and is fully awaited before the replacement starts) —
+ * this is what makes dev HMR of a plugin registration module safe even when
+ * the old instance's cleanup is asynchronous.
  */
 export function registerRendererService(
   definition: RendererServiceDefinition,
@@ -276,47 +375,73 @@ export function registerRendererService(
 /**
  * Install the per-window service host. The app shell calls this once per
  * renderer window with the window's resolved shell kind; every already
- * registered eligible definition starts, later registrations start on arrival,
- * and a non-bfcache `pagehide` (real page teardown, including mobile app
- * kill) disposes everything — a bfcache round trip keeps services alive.
- * Calling again replaces the previous host — its instances are
- * stopped first — which keeps repeated boots (tests, HMR of the shell) from
- * stacking duplicate instances.
+ * registered eligible definition starts, later registrations start on
+ * arrival. A non-bfcache `pagehide` (real page teardown, including mobile app
+ * kill) disposes everything; a bfcache round trip (`persisted=true`) instead
+ * suspends every instance — their cleanup runs, but the host and its
+ * definitions survive — and a matching `pageshow` restarts them. Calling
+ * again replaces the previous host: its disposal is awaited before any of the
+ * new host's instances start, so a stale generation's in-flight teardown can
+ * never land after (and clobber) the replacement.
  */
 export function startRendererServiceHost(options: {
   shell: RendererShellKind;
   reportError?: RendererServiceErrorReporter;
 }): RendererServiceHostHandle {
   const store = getStore();
-  if (store.host) disposeHost(store.host);
+  const priorDisposal = store.host ? disposeHost(store.host) : undefined;
 
   const host: HostState = {
     shell: options.shell,
     reportError: options.reportError ?? defaultReportError,
     instances: new Map(),
-    detachPagehide: null,
+    pendingCleanup: new Map(),
+    detachLifecycleHooks: null,
     disposed: false,
   };
   store.host = host;
 
   if (typeof window !== "undefined") {
-    // Real page teardown disposes everything; a bfcache round trip
-    // (persisted=true — iOS Safari back-nav is the common case) must NOT: the
-    // page can come back via `pageshow`, and a dispose here would permanently
-    // kill every renderer service until a hard reload. While the page sits in
-    // bfcache no JS runs, so keeping instances alive is safe — their timers
-    // and listeners freeze with the page and resume on restore, which is why
-    // no `pageshow` revival hook is needed.
     const onPagehide = (event: PageTransitionEvent) => {
-      if (!event.persisted) disposeHost(host);
+      if (event.persisted) {
+        // bfcache entry: suspend every instance's owned resources now — the
+        // page can come back via pageshow, so the host and its definitions
+        // must survive. The page may freeze mid-flight; only *initiating*
+        // every instance's stop needs to be synchronous, which it is (each
+        // stopInstance call below invokes cleanup() synchronously).
+        for (const instance of [...host.instances.values()]) {
+          stopInstance(host, instance);
+        }
+        return;
+      }
+      disposeHost(host);
+    };
+    const onPageshow = (event: PageTransitionEvent) => {
+      if (!event.persisted || host.disposed) return;
+      // Restore from bfcache: restart every eligible definition that isn't
+      // already running through the same serialized start path, so a restart
+      // racing a still-in-flight suspension cleanup waits for it.
+      for (const definition of store.definitions.values()) {
+        if (
+          isEligible(definition, host.shell) &&
+          !host.instances.has(definition.id)
+        ) {
+          startInstance(host, definition);
+        }
+      }
     };
     window.addEventListener("pagehide", onPagehide);
-    host.detachPagehide = () =>
+    window.addEventListener("pageshow", onPageshow);
+    host.detachLifecycleHooks = () => {
       window.removeEventListener("pagehide", onPagehide);
+      window.removeEventListener("pageshow", onPageshow);
+    };
   }
 
   for (const definition of store.definitions.values()) {
-    if (isEligible(definition, host.shell)) startInstance(host, definition);
+    if (isEligible(definition, host.shell)) {
+      startInstance(host, definition, priorDisposal);
+    }
   }
 
   return {
@@ -325,16 +450,24 @@ export function startRendererServiceHost(options: {
   };
 }
 
-function disposeHost(host: HostState): void {
-  if (host.disposed) return;
+/**
+ * Stop every instance and detach the lifecycle hooks. Returns a promise that
+ * settles once every instance's cleanup has fully run (idempotent — a second
+ * call resolves immediately). The next host generation's `startInstance`
+ * calls await this so a replaced generation's in-flight teardown can never
+ * land after the replacement starts.
+ */
+function disposeHost(host: HostState): Promise<void> {
+  if (host.disposed) return Promise.resolve();
   host.disposed = true;
-  host.detachPagehide?.();
-  host.detachPagehide = null;
-  for (const instance of [...host.instances.values()]) {
-    stopInstance(host, instance);
-  }
+  host.detachLifecycleHooks?.();
+  host.detachLifecycleHooks = null;
+  const settling = [...host.instances.values()].map((instance) =>
+    stopInstance(host, instance),
+  );
   const store = getStore();
   if (store.host === host) store.host = null;
+  return Promise.all(settling).then(() => undefined);
 }
 
 /**

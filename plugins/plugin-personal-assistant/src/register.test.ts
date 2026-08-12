@@ -25,6 +25,31 @@ const h = vi.hoisted(() => ({
   subscribeAuthStatus: vi.fn(() => () => undefined),
   isElectrobunRuntime: vi.fn(() => false),
   loadDesktopWorkspaceSnapshot: vi.fn(async () => ({ supported: false })),
+  capacitorGetPlatform: vi.fn(() => "web"),
+  capacitorIsNative: vi.fn(() => false),
+  mobile: {
+    checkPermissions: vi.fn(async () => ({ status: "granted" })),
+    addListener: vi.fn(
+      async (_event: string, _cb: (signal: unknown) => void) => ({
+        remove: vi.fn(async () => {}),
+      }),
+    ),
+    startMonitoring: vi.fn(async () => ({
+      enabled: true,
+      supported: true,
+      platform: "ios",
+      snapshot: null,
+      healthSnapshot: null,
+    })),
+    stopMonitoring: vi.fn(async () => ({ stopped: true })),
+    getSnapshot: vi.fn(async () => ({
+      supported: false,
+      snapshot: null,
+      healthSnapshot: null,
+    })),
+    scheduleBackgroundRefresh: vi.fn(async () => ({ scheduled: false })),
+    cancelBackgroundRefresh: vi.fn(async () => ({ cancelled: true })),
+  },
 }));
 
 // The four @elizaos/ui subpath specifiers (/api, /bridge, /browser, /events)
@@ -90,23 +115,48 @@ vi.mock("@elizaos/ui/browser", () => ({
 
 vi.mock("@capacitor/core", () => ({
   Capacitor: {
-    getPlatform: vi.fn(() => "web"),
-    isNativePlatform: vi.fn(() => false),
+    getPlatform: h.capacitorGetPlatform,
+    isNativePlatform: h.capacitorIsNative,
   },
 }));
 
-// Web-platform run: the capture never touches MobileSignals, but the module
-// must still resolve without the Capacitor plugin registry.
-vi.mock("@elizaos/capacitor-mobile-signals", () => ({ MobileSignals: {} }));
+// Web-platform tests never touch MobileSignals beyond this stub; the
+// inter-instance and abort-propagation tests below switch the platform to
+// native and drive `h.mobile` directly.
+vi.mock("@elizaos/capacitor-mobile-signals", () => ({
+  MobileSignals: h.mobile,
+}));
+
+// Spy on (never replace) the real capture entry point so one test can assert
+// on the arguments register.ts's own `start` callback passes it, without
+// losing real behavior for every other test in this file.
+vi.mock("./lifeops/activity-signals-capture.js", async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import("./lifeops/activity-signals-capture.js")
+    >();
+  return {
+    ...actual,
+    startLifeOpsActivitySignalCapture: vi.fn(
+      actual.startLifeOpsActivitySignalCapture,
+    ),
+  };
+});
 
 import {
   getRendererServiceStates,
+  registerRendererService,
   settleRendererServices,
   startRendererServiceHost,
 } from "@elizaos/ui/platform/renderer-services";
-import { isLifeOpsActivitySignalCaptureActive } from "./lifeops/activity-signals-capture.js";
+import {
+  isLifeOpsActivitySignalCaptureActive,
+  startLifeOpsActivitySignalCapture,
+} from "./lifeops/activity-signals-capture.js";
 // Side-effect import under test: registers the renderer service definition.
 import "./register.js";
+
+const spiedStartCapture = vi.mocked(startLifeOpsActivitySignalCapture);
 
 const SERVICE_ID = "personal-assistant.lifeops-activity-signals";
 
@@ -127,6 +177,28 @@ describe("personal-assistant renderer registration entry", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     h.getStatus.mockResolvedValue({ state: "running" });
+    h.capacitorGetPlatform.mockReturnValue("web");
+    h.capacitorIsNative.mockReturnValue(false);
+    h.mobile.checkPermissions.mockResolvedValue({ status: "granted" });
+    h.mobile.addListener.mockImplementation(
+      async (_event: string, _cb: (signal: unknown) => void) => ({
+        remove: vi.fn(async () => {}),
+      }),
+    );
+    h.mobile.startMonitoring.mockResolvedValue({
+      enabled: true,
+      supported: true,
+      platform: "ios",
+      snapshot: null,
+      healthSnapshot: null,
+    });
+    h.mobile.getSnapshot.mockResolvedValue({
+      supported: false,
+      snapshot: null,
+      healthSnapshot: null,
+    });
+    h.mobile.scheduleBackgroundRefresh.mockResolvedValue({ scheduled: false });
+    h.mobile.cancelBackgroundRefresh.mockResolvedValue({ cancelled: true });
   });
 
   afterEach(async () => {
@@ -205,5 +277,110 @@ describe("personal-assistant renderer registration entry", () => {
     window.dispatchEvent(new Event("pagehide"));
     expect(isLifeOpsActivitySignalCaptureActive()).toBe(false);
     host = undefined;
+  });
+
+  it("serializes host replacement so a slow old-generation stopMonitoring cannot land after the new generation's startMonitoring (#17110)", async () => {
+    h.capacitorIsNative.mockReturnValue(true);
+    h.capacitorGetPlatform.mockReturnValue("ios");
+
+    host = startRendererServiceHost({ shell: "main" });
+    await settleRendererServices();
+    for (let i = 0; i < 8; i += 1) {
+      await settle();
+    }
+    expect(h.mobile.startMonitoring).toHaveBeenCalledTimes(1);
+
+    let releaseStopMonitoring: (() => void) | undefined;
+    h.mobile.stopMonitoring.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          releaseStopMonitoring = () => resolve({ stopped: true });
+        }),
+    );
+
+    // Host replacement (shell HMR / repeated boot) while the old
+    // generation's native stopMonitoring call is still in flight.
+    host = startRendererServiceHost({ shell: "main" });
+
+    // Give the replacement generation ample opportunity to race ahead if it
+    // is not actually serialized behind the old generation's teardown.
+    for (let i = 0; i < 12; i += 1) {
+      await settle();
+    }
+    // The replacement is serialized behind the old generation's still-
+    // pending stop — its own startMonitoring must not have run yet.
+    expect(h.mobile.startMonitoring).toHaveBeenCalledTimes(1);
+
+    releaseStopMonitoring?.();
+    await settleRendererServices();
+    for (let i = 0; i < 8; i += 1) {
+      await settle();
+    }
+
+    expect(h.mobile.startMonitoring).toHaveBeenCalledTimes(2);
+    expect(isLifeOpsActivitySignalCaptureActive()).toBe(true);
+  });
+
+  it("awaits the real capture's async cleanup before a re-registered instance starts (HMR) (#17110)", async () => {
+    h.capacitorIsNative.mockReturnValue(true);
+    h.capacitorGetPlatform.mockReturnValue("ios");
+
+    host = startRendererServiceHost({ shell: "main" });
+    await settleRendererServices();
+    for (let i = 0; i < 8; i += 1) {
+      await settle();
+    }
+    expect(h.mobile.startMonitoring).toHaveBeenCalledTimes(1);
+
+    let releaseStopMonitoring: (() => void) | undefined;
+    h.mobile.stopMonitoring.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          releaseStopMonitoring = () => resolve({ stopped: true });
+        }),
+    );
+
+    // Simulate dev HMR re-evaluating register.ts: the same id re-registers
+    // with the same start wiring while the old instance's native
+    // stopMonitoring call is still in flight.
+    registerRendererService({
+      id: SERVICE_ID,
+      shells: ["main"],
+      start: (context) => startLifeOpsActivitySignalCapture(true, context),
+    });
+
+    for (let i = 0; i < 12; i += 1) {
+      await settle();
+    }
+    // The re-registered instance is serialized behind the old instance's
+    // still-pending native stopMonitoring call.
+    expect(h.mobile.startMonitoring).toHaveBeenCalledTimes(1);
+
+    releaseStopMonitoring?.();
+    await settleRendererServices();
+    for (let i = 0; i < 8; i += 1) {
+      await settle();
+    }
+    expect(h.mobile.startMonitoring).toHaveBeenCalledTimes(2);
+  });
+
+  it("register.ts threads the host's per-instance context (shell + abort signal) into the capture's start()", async () => {
+    // Drives register.ts's REAL `start` wiring (only the capture entry point
+    // is spied, not replaced), proving the registration entry itself passes
+    // the context through rather than dropping it (#17110).
+    host = startRendererServiceHost({ shell: "main" });
+    await settleRendererServices();
+
+    expect(spiedStartCapture).toHaveBeenCalledTimes(1);
+    const [enabledArg, contextArg] = spiedStartCapture.mock.calls[0] ?? [];
+    expect(enabledArg).toBe(true);
+    expect(contextArg?.shell).toBe("main");
+    expect(contextArg?.signal).toBeInstanceOf(AbortSignal);
+    expect(contextArg?.signal?.aborted).toBe(false);
+
+    host.dispose();
+    host = undefined;
+    await settle();
+    expect(contextArg?.signal?.aborted).toBe(true);
   });
 });
