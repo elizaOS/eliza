@@ -51,7 +51,6 @@ const ShaderBackground = lazy(
 );
 const VideoCall = lazy(() => import("@/components/VideoCall"));
 
-import { buildElizaSmsHref } from "@/lib/contact";
 import {
   COMPOSER_VIEWPORT_LIFT_PX,
   hiddenChromeDomProps,
@@ -856,7 +855,20 @@ export default function Leaderboard() {
               <ElizaLogo className="h-8 md:h-10 lg:h-12 w-auto" />
             </button>
             <nav className="flex items-center gap-4">
-              <BlobButton href={buildElizaSmsHref("Hi Eliza")} show={showUI}>
+              {/* Primary CTA steers into the elizacloud login/link funnel
+                  (/get-started), not an sms: deep link that dead-ends on
+                  desktop and never touches elizacloud auth. Canon:
+                  ONBOARD-LOGIN-DIRECT-2026-08-11: "connect should take us to
+                  the elizacloud login flow, link the user, authenticate."
+                  href kept as a graceful fallback for no-JS / new-tab. */}
+              <BlobButton
+                href="/get-started"
+                onClick={(e) => {
+                  e.preventDefault();
+                  navigate("/get-started");
+                }}
+                show={showUI}
+              >
                 <AnimatedLetters
                   text={t("homepage_eliza.leaderboard.getStarted", {
                     defaultValue: "Get Started",

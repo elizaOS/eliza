@@ -2,11 +2,15 @@
  * Browser fetch helpers for calling the Eliza Cloud API from the static
  * homepage.
  */
-// Apex, not `www.`: the www host 308-redirects to the apex, and CORS
-// preflights never follow redirects — with the www default every
-// /api/eliza-app/* POST from the homepage died before reaching the API
-// (the get-started Telegram phone step and Discord callback failures).
-const ELIZACLOUD_DEFAULT_URL = "https://elizacloud.ai";
+// Canonical API host is `app.elizacloud.ai`. Both `www.elizacloud.ai`
+// AND the apex `elizacloud.ai` 308-redirect (apex serves the marketing
+// console, not the API), and browser fetch never replays a cross-origin
+// POST + Authorization across a 308, so any build without an explicit
+// VITE_ELIZACLOUD_API_URL override sent every /api/eliza-app/* auth call
+// into a redirect and "wasn't using elizacloud auth" (dead get-started
+// Telegram phone step + Discord callback). Prod overrides this via env;
+// this default keeps local/preview/fork builds pointed at the real API.
+const ELIZACLOUD_DEFAULT_URL = "https://app.elizacloud.ai";
 
 function getBaseUrl(): string {
   return (
