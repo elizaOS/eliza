@@ -311,6 +311,100 @@ describe("cloud-api worker entrypoint", () => {
     });
   });
 
+  test("reports only value-free staging session cutover readiness", async () => {
+    const response = await cloudApiWorker.fetch(
+      new Request("https://api-staging.elizacloud.ai/api/health", {
+        headers: { host: "api-staging.elizacloud.ai" },
+      }),
+      {
+        NODE_ENV: "production",
+        ENVIRONMENT: "staging",
+        ELIZA_DEPLOY_COMMIT: "cutover-commit",
+        STAGING_SESSION_EXCHANGE_ENABLED: "true",
+        STAGING_SESSION_EXCHANGE_VERSION: "v1",
+        STAGING_SESSION_EXCHANGE_SIGNING_SECRET:
+          "never-return-this-secret-0123456789abcdef",
+        ELIZA_SERVICE_JWT_SECRET:
+          "separate-service-bridge-secret-0123456789abcdef",
+        STAGING_SESSION_EXCHANGE_SIGNING_KEY_ID: "staging-qa-v1-test",
+        STEWARD_TENANT_ID: "staging-tenant",
+        STAGING_SESSION_EXCHANGE_ALLOWED_API_KEY_IDS:
+          "33333333-3333-4333-8333-333333333333",
+        STAGING_SESSION_EXCHANGE_ALLOWED_USER_IDS:
+          "11111111-1111-4111-8111-111111111111",
+        STAGING_SESSION_EXCHANGE_ALLOWED_ORGANIZATION_IDS:
+          "22222222-2222-4222-8222-222222222222",
+      } as never,
+      {} as never,
+    );
+
+    const text = await response.text();
+    expect(JSON.parse(text)).toMatchObject({
+      commit: "cutover-commit",
+      environment: "staging",
+      stagingSessionExchange: {
+        enabled: true,
+        ready: true,
+        version: "v1",
+      },
+    });
+    expect(text).not.toContain("never-return-this-secret");
+    expect(text).not.toContain("11111111-1111-4111-8111-111111111111");
+    expect(text).not.toContain("staging-qa-v1-test");
+
+    const malformedResponse = await cloudApiWorker.fetch(
+      new Request("https://api-staging.elizacloud.ai/api/health", {
+        headers: { host: "api-staging.elizacloud.ai" },
+      }),
+      {
+        NODE_ENV: "production",
+        ENVIRONMENT: "staging",
+        STAGING_SESSION_EXCHANGE_ENABLED: "true",
+        STAGING_SESSION_EXCHANGE_VERSION: "v1",
+        STAGING_SESSION_EXCHANGE_SIGNING_SECRET:
+          "never-return-this-secret-0123456789abcdef",
+        STAGING_SESSION_EXCHANGE_SIGNING_KEY_ID: "staging-qa-v1-test",
+        STEWARD_TENANT_ID: "staging-tenant",
+        STAGING_SESSION_EXCHANGE_ALLOWED_API_KEY_IDS:
+          "33333333-3333-4333-8333-333333333333",
+        STAGING_SESSION_EXCHANGE_ALLOWED_USER_IDS: "not-a-uuid",
+        STAGING_SESSION_EXCHANGE_ALLOWED_ORGANIZATION_IDS:
+          "22222222-2222-4222-8222-222222222222",
+      } as never,
+      {} as never,
+    );
+    expect(await malformedResponse.json()).toMatchObject({
+      stagingSessionExchange: { enabled: true, ready: false, version: "v1" },
+    });
+
+    const serviceCollisionResponse = await cloudApiWorker.fetch(
+      new Request("https://api-staging.elizacloud.ai/api/health", {
+        headers: { host: "api-staging.elizacloud.ai" },
+      }),
+      {
+        NODE_ENV: "production",
+        ENVIRONMENT: "staging",
+        STAGING_SESSION_EXCHANGE_ENABLED: "true",
+        STAGING_SESSION_EXCHANGE_VERSION: "v1",
+        STAGING_SESSION_EXCHANGE_SIGNING_SECRET:
+          "colliding-service-secret-0123456789abcdef",
+        ELIZA_SERVICE_JWT_SECRET: "colliding-service-secret-0123456789abcdef",
+        STAGING_SESSION_EXCHANGE_SIGNING_KEY_ID: "staging-qa-v1-test",
+        STEWARD_TENANT_ID: "staging-tenant",
+        STAGING_SESSION_EXCHANGE_ALLOWED_API_KEY_IDS:
+          "33333333-3333-4333-8333-333333333333",
+        STAGING_SESSION_EXCHANGE_ALLOWED_USER_IDS:
+          "11111111-1111-4111-8111-111111111111",
+        STAGING_SESSION_EXCHANGE_ALLOWED_ORGANIZATION_IDS:
+          "22222222-2222-4222-8222-222222222222",
+      } as never,
+      {} as never,
+    );
+    expect(await serviceCollisionResponse.json()).toMatchObject({
+      stagingSessionExchange: { enabled: true, ready: false, version: "v1" },
+    });
+  });
+
   test("routes app-staging custom domain to the staging Worker", async () => {
     const config = Bun.TOML.parse(
       await Bun.file(new URL("../wrangler.toml", import.meta.url)).text(),

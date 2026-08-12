@@ -1100,10 +1100,6 @@ export async function startApiServer(
     },
     configureServer: async (httpServer) => {
       await callerOptions?.configureServer?.(httpServer);
-      const { deviceBridge } = await import(
-        "@elizaos/plugin-local-inference/services"
-      );
-      deviceBridge.attachToHttpServer(httpServer);
     },
   });
   logger.info(

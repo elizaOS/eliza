@@ -91,14 +91,57 @@ function canUseManagedDirectRelay(req: http.IncomingMessage): boolean {
 }
 
 function escapeHtml(value: string): string {
-  return value.replace(/[<>&]/g, (c) =>
-    c === "<" ? "&lt;" : c === ">" ? "&gt;" : "&amp;",
+  return value.replace(/[<>&"]/g, (c) =>
+    c === "<" ? "&lt;" : c === ">" ? "&gt;" : c === "&" ? "&amp;" : "&quot;",
   );
 }
 
-function renderErrorHtml(title: string, message: string): string {
+/**
+ * Canonical staging hostnames — mirrors `STAGING_CONSOLE_HOSTS` in
+ * `packages/ui/src/utils/cloud-agent-base.ts` plus the wildcard subdomain.
+ * Kept local (not imported) to preserve the agent→UI dependency boundary.
+ * Update both if the canonical staging host set changes.
+ */
+const STAGING_CLOUD_HOSTS: ReadonlySet<string> = new Set([
+  "staging.elizacloud.ai",
+  "api-staging.elizacloud.ai",
+  "app-staging.elizacloud.ai",
+]);
+
+function isStagingCloudHostname(hostname: string): boolean {
+  const host = hostname.toLowerCase();
+  return (
+    STAGING_CLOUD_HOSTS.has(host) || host.endsWith(".staging.elizacloud.ai")
+  );
+}
+
+/**
+ * Resolve the Eliza Cloud console dashboard URL for the environment the agent
+ * is provisioned against. A staging agent (any canonical staging alias or
+ * wildcard subdomain) gets the staging console; everything else gets the
+ * production console. This prevents staging users from being bounced to a
+ * production dashboard where their account/org/agent does not exist.
+ */
+function resolveCloudConsoleUrl(): string {
+  try {
+    const hostname = new URL(resolveCloudAuthRoot()).hostname.toLowerCase();
+    if (isStagingCloudHostname(hostname)) {
+      return "https://staging.elizacloud.ai/dashboard/agents";
+    }
+  } catch {
+    // error-policy:J3 malformed auth root yields the production default.
+  }
+  return "https://www.elizacloud.ai/dashboard/agents";
+}
+
+function renderErrorHtml(
+  title: string,
+  message: string,
+  recoveryUrl?: string,
+): string {
   const safeTitle = escapeHtml(title);
   const safeMessage = escapeHtml(message);
+  const safeHref = escapeHtml(recoveryUrl ?? resolveCloudConsoleUrl());
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -118,7 +161,7 @@ function renderErrorHtml(title: string, message: string): string {
   <div class="card">
     <h1>${safeTitle}</h1>
     <p>${safeMessage}</p>
-    <a href="https://www.elizacloud.ai/dashboard/agents" target="_top" rel="noopener">Back to Eliza Cloud</a>
+    <a href="${safeHref}" target="_top" rel="noopener">Back to Eliza Cloud</a>
   </div>
 </body>
 </html>`;
@@ -238,9 +281,11 @@ export async function handleStandaloneCloudPairRoute(
       // malformed JSON or missing bearer ownership becomes an explicit 502.
       const body: unknown = await response.json().catch(() => null);
       exchanged = parseCloudPairRelaySession(body);
-    } else {
+    } else if (status !== 401 && status !== 403 && status !== 410) {
+      // 401/403/410 are logged separately as pairing-link rejections below;
+      // only unexpected non-2xx statuses get the generic warning here.
       logger.warn(
-        `[cloud-pair] exchange returned non-2xx status=${status} url=${exchangeUrl}`,
+        `[cloud-pair] exchange returned non-2xx status=${status} exchangeUrl=${exchangeUrl} requestOrigin=${origin}`,
       );
     }
   } catch (err) {
@@ -261,12 +306,20 @@ export async function handleStandaloneCloudPairRoute(
   }
 
   if (status === 401 || status === 403 || status === 410) {
+    // Cloud returns one opaque body for ALL rejection causes: expired,
+    // already-redeemed, unknown-to-this-environment, origin-not-bound, and
+    // malformed. The relay cannot determine which cause applies, so the
+    // rendered copy must NOT assert a specific cause — only that the link
+    // could not be verified. See issue #18184.
+    logger.warn(
+      `[cloud-pair] pairing link rejected status=${status} exchangeUrl=${exchangeUrl} requestOrigin=${origin}`,
+    );
     sendHtml(
       res,
       403,
       renderErrorHtml(
-        "Sign-in link expired",
-        "Pairing links are single-use and only valid for a minute. Open your agent again from Eliza Cloud.",
+        "Sign-in link could not be verified",
+        "Eliza Cloud could not verify this pairing link. It may have already been used, or does not match this agent. Open your agent again from Eliza Cloud to get a fresh link.",
       ),
     );
     return true;

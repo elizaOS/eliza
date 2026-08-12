@@ -35,6 +35,7 @@ mock.module("./cache/client", () => ({
   },
 }));
 mock.module("./auth/steward-client", () => ({
+  isStagingSessionTokenCandidate: () => false,
   verifyStewardTokenCached: async () => ({ userId: "steward-123" }),
   invalidateStewardTokenCache: async () => undefined,
 }));

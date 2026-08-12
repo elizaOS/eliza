@@ -269,16 +269,19 @@ frontend logs) is [#15171](https://github.com/elizaOS/eliza/pull/15171).
 
 ## Security Reporting
 
-The canonical security policy — reporting channel, disclosure window, and
-remediation SLAs — is [`packages/docs/security.md`](packages/docs/security.md). In short: report
-vulnerabilities privately to `security@elizalabs.ai`; do not open a public
-GitHub issue for a live vulnerability, credential leak, exploit path, or
-embargoed dependency issue. Include affected versions or commits, reproduction
-steps, impact, and any safe proof of exploitability. Agents that encounter a
-secret or suspected vulnerability must stop exposing details publicly and route
-the finding to that mailbox or a maintainer-owned private channel.
+The canonical security policy — reporting channels, disclosure window, and
+remediation SLAs — is [`SECURITY.md`](SECURITY.md). In short: report
+vulnerabilities privately through [GitHub Security Advisories](https://github.com/elizaOS/eliza/security/advisories/new)
+or `security@elizalabs.ai`; do not open a public GitHub issue for a live
+vulnerability, credential leak, exploit path, or embargoed dependency issue.
+Include affected versions or commits, reproduction steps, impact, and any safe
+proof of exploitability. Contributors who encounter a secret or suspected
+vulnerability must stop exposing details publicly and route the finding through
+those private channels.
 
-Security, SOC2, and incident-response reference material lives under
+Security architecture and hardening notes live in
+[`packages/docs/security.md`](packages/docs/security.md). SOC2 and
+incident-response reference material lives under
 [`packages/docs/security/`](packages/docs/security/). Package-specific security
 implementation notes live in the relevant package docs.
 

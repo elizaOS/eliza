@@ -26,7 +26,7 @@ import {
   Suspense,
 } from "react";
 
-interface DetachedShellRootProps {
+export interface DetachedShellRootProps {
   route: Exclude<WindowShellRoute, { mode: "main" }>;
 }
 

@@ -8,7 +8,7 @@ import { z } from "zod";
 import { assertOrgMembership } from "@/api-app/middleware/org-membership";
 import { getAuditDispatcher } from "@/api-app/services/audit-dispatcher-singleton";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
+import { requireUserWithOrg } from "@/lib/auth/workers-hono-auth";
 import {
   RateLimitPresets,
   rateLimit,
@@ -29,7 +29,7 @@ function isAgentSandboxKeyName(name: string): boolean {
 
 app.delete("/", async (c) => {
   try {
-    const user = await requireUserOrApiKeyWithOrg(c);
+    const user = await requireUserWithOrg(c);
     const id = c.req.param("id");
     if (!id) return c.json({ error: "Missing id" }, 400);
 
@@ -67,7 +67,7 @@ app.delete("/", async (c) => {
 
 app.patch("/", async (c) => {
   try {
-    const user = await requireUserOrApiKeyWithOrg(c);
+    const user = await requireUserWithOrg(c);
     const id = c.req.param("id");
     if (!id) return c.json({ error: "Missing id" }, 400);
 
@@ -82,6 +82,16 @@ app.patch("/", async (c) => {
     const body = await c.req.json();
     const { name, description, rate_limit, is_active, expires_at } =
       updateApiKeySchema.parse(body);
+
+    if (isAgentSandboxKeyName(existingKey.name)) {
+      return c.json(
+        {
+          error:
+            "Provisioner-managed API keys cannot be updated through user routes.",
+        },
+        403,
+      );
+    }
 
     if (name !== undefined && isAgentSandboxKeyName(name)) {
       return c.json(

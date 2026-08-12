@@ -2,7 +2,11 @@
  * Browser fetch helpers for calling the Eliza Cloud API from the static
  * homepage.
  */
-const ELIZACLOUD_DEFAULT_URL = "https://www.elizacloud.ai";
+// Apex, not `www.`: the www host 308-redirects to the apex, and CORS
+// preflights never follow redirects — with the www default every
+// /api/eliza-app/* POST from the homepage died before reaching the API
+// (the get-started Telegram phone step and Discord callback failures).
+const ELIZACLOUD_DEFAULT_URL = "https://elizacloud.ai";
 
 function getBaseUrl(): string {
   return (

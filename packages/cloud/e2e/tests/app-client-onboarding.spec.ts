@@ -27,6 +27,7 @@ import {
   writeStoredStewardToken,
 } from "@elizaos/shared/steward-session-client";
 import { ElizaClient } from "@elizaos/ui/api";
+import { DIRECT_ELIZA_CLOUD_API_BY_HOST } from "@elizaos/ui/api/direct-cloud-endpoints";
 import { getBootConfig, setBootConfig } from "@elizaos/ui/config";
 import { expect, test } from "../src/helpers/test-fixtures";
 
@@ -38,16 +39,23 @@ test.describe("app onboarding client ↔ real cloud-api", () => {
     const cloudApiBase = stack.urls.api;
     const authToken = seededUser.apiKey;
 
-    // Make the app client treat the mock cloud-api as the canonical direct-cloud
-    // base. `isDirectCloudBase` matches the client base against
-    // getBootConfig().cloudApiBase, and the compat fetch reads the cloud token
-    // from the global the controller normally sets at sign-in.
+    // Make the app client treat the mock cloud-api as a canonical direct-cloud
+    // base. Direct routing is host-allowlisted; the compat fetch reads the cloud
+    // token from the global the controller normally sets at sign-in.
     const prevBoot = getBootConfig();
     const prevToken = readStoredStewardToken();
-    setBootConfig({ ...prevBoot, cloudApiBase });
-    writeStoredStewardToken(authToken);
-
+    const cloudApiHost = new URL(cloudApiBase).hostname.toLowerCase();
+    const prevDirectCloudApiBase =
+      DIRECT_ELIZA_CLOUD_API_BY_HOST.get(cloudApiHost);
+    // Production only treats canonical Eliza Cloud hosts as direct control
+    // planes. This local stack is intentionally equivalent, so register its
+    // ephemeral host for the duration of the test instead of letting the real
+    // client fall through to the agent-proxy `/api/cloud/compat/*` route.
     try {
+      DIRECT_ELIZA_CLOUD_API_BY_HOST.set(cloudApiHost, cloudApiBase);
+      setBootConfig({ ...prevBoot, cloudApiBase });
+      writeStoredStewardToken(authToken);
+
       const client = new ElizaClient(cloudApiBase, authToken);
 
       // 1) New user with no agents → provision a fresh cloud agent.
@@ -124,6 +132,14 @@ test.describe("app onboarding client ↔ real cloud-api", () => {
       expect(switched).toBe(false);
       expect(handoff.status).toBe("timed-out");
     } finally {
+      if (prevDirectCloudApiBase === undefined) {
+        DIRECT_ELIZA_CLOUD_API_BY_HOST.delete(cloudApiHost);
+      } else {
+        DIRECT_ELIZA_CLOUD_API_BY_HOST.set(
+          cloudApiHost,
+          prevDirectCloudApiBase,
+        );
+      }
       setBootConfig(prevBoot);
       if (prevToken === null) {
         clearStoredStewardToken();

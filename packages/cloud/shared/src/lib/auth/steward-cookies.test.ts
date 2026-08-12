@@ -2,12 +2,17 @@
  * stewardCookieNames env scoping: production/unset keep the historical names,
  * every other environment gets suffixed names that cannot collide with
  * production's on the shared parent-zone cookie domain (#13728).
+ *
+ * The bounded read-only migration window that allowed non-production
+ * environments to fall back to the historical unsuffixed access cookie closed
+ * on 2026-08-04 (#14130). Non-production environments now read ONLY their own
+ * scoped cookie — the legacy unsuffixed cookie is never read, regardless of
+ * timestamp.
  */
 
 import { describe, expect, it } from "vitest";
 import {
   canMutateLegacyStewardCookies,
-  LEGACY_STEWARD_COOKIE_FALLBACK_EXPIRES_AT_MS,
   LEGACY_STEWARD_COOKIES,
   readStewardAccessCookieFromHeader,
   stewardCookieNames,
@@ -41,38 +46,29 @@ describe("canMutateLegacyStewardCookies", () => {
   });
 });
 
-describe("readStewardAccessCookieFromHeader", () => {
-  const beforeCutoff = LEGACY_STEWARD_COOKIE_FALLBACK_EXPIRES_AT_MS - 1;
-  const atCutoff = LEGACY_STEWARD_COOKIE_FALLBACK_EXPIRES_AT_MS;
-
+describe("readStewardAccessCookieFromHeader (post-migration, #14130)", () => {
   it("reads the environment-scoped access cookie first", () => {
     expect(
       readStewardAccessCookieFromHeader(
         "steward-token=prod; steward-token-staging=stage",
         "staging",
-        beforeCutoff,
       ),
     ).toBe("stage");
   });
 
-  it("allows a bounded read-only legacy fallback before the cutoff", () => {
-    expect(readStewardAccessCookieFromHeader("steward-token=legacy", "staging", beforeCutoff)).toBe(
-      "legacy",
-    );
+  it("never falls back to the legacy unsuffixed cookie in non-production", () => {
+    // Only the legacy unsuffixed cookie is present (no scoped cookie).
+    // Post-migration, non-production must NOT read it.
+    expect(readStewardAccessCookieFromHeader("steward-token=legacy", "staging")).toBeUndefined();
   });
 
-  it("shuts off the non-production legacy fallback at the cutoff", () => {
-    expect(
-      readStewardAccessCookieFromHeader("steward-token=legacy", "staging", atCutoff),
-    ).toBeUndefined();
+  it("reads the historical cookie in production and unset (local dev)", () => {
+    expect(readStewardAccessCookieFromHeader("steward-token=prod", "production")).toBe("prod");
+    expect(readStewardAccessCookieFromHeader("steward-token=local", undefined)).toBe("local");
   });
 
-  it("keeps production and unset local environments on the historical cookie", () => {
-    expect(readStewardAccessCookieFromHeader("steward-token=prod", "production", atCutoff)).toBe(
-      "prod",
-    );
-    expect(readStewardAccessCookieFromHeader("steward-token=local", undefined, atCutoff)).toBe(
-      "local",
-    );
+  it("returns undefined when no cookie is present", () => {
+    expect(readStewardAccessCookieFromHeader(null, "staging")).toBeUndefined();
+    expect(readStewardAccessCookieFromHeader("", "production")).toBeUndefined();
   });
 });

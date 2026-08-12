@@ -40,6 +40,7 @@ export interface JoinFlowClient {
     name: string;
     bio?: string[];
     preferAgentId?: string | null;
+    preferSharedTier?: boolean;
     forceCreate?: boolean;
     onProgress?: (status: string, detail?: string) => void;
   }): Promise<{
@@ -77,6 +78,8 @@ export interface RunJoinFlowArgs {
   bio?: string[];
   /** Reuse this agent id when it still exists (e.g. last-active). */
   preferAgentId?: string | null;
+  /** Prefer the shared tier when provisioning (prevents billed dedicated). */
+  preferSharedTier?: boolean;
   /** Always create a new agent ("Create new" gesture). */
   forceCreate?: boolean;
   onProgress?: (status: string, detail?: string) => void;
@@ -134,6 +137,7 @@ export async function runJoinFlow(
     agentName,
     bio,
     preferAgentId,
+    preferSharedTier,
     forceCreate,
     onProgress,
   } = args;
@@ -143,6 +147,7 @@ export async function runJoinFlow(
     authToken,
     name: agentName,
     ...(bio?.length ? { bio } : {}),
+    ...(preferSharedTier ? { preferSharedTier } : {}),
     ...(forceCreate ? { forceCreate } : {}),
     ...(onProgress ? { onProgress } : {}),
   };

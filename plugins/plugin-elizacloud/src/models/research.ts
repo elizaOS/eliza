@@ -225,12 +225,19 @@ export async function handleResearch(
     requestBody.reasoning = { summary: params.reasoningSummary };
   }
 
+  const timeoutMs = resolveCloudTimeoutMs(
+    "ELIZAOS_CLOUD_RESEARCH_TIMEOUT_MS",
+    DEFAULT_RESEARCH_TIMEOUT_MS
+  );
+  const timeoutSignal = timeoutMs ? AbortSignal.timeout(timeoutMs) : undefined;
+  const signal =
+    params.signal && timeoutSignal
+      ? AbortSignal.any([params.signal, timeoutSignal])
+      : (params.signal ?? timeoutSignal);
+
   const response = await createCloudApiClient(runtime).requestRaw("POST", "/responses", {
     json: requestBody,
-    timeoutMs: resolveCloudTimeoutMs(
-      "ELIZAOS_CLOUD_RESEARCH_TIMEOUT_MS",
-      DEFAULT_RESEARCH_TIMEOUT_MS
-    ),
+    signal,
   });
 
   if (!response.ok) {

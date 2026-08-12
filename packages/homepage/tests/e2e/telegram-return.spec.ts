@@ -37,62 +37,59 @@ test("redeems a bot continuation inside signed Telegram auth", async ({
   await page.route("https://telegram.org/js/**", (route) =>
     route.fulfill({ contentType: "application/javascript", body: "" }),
   );
-  await page.route(
-    "https://www.elizacloud.ai/api/eliza-app/**",
-    async (route) => {
-      const request = route.request();
-      const url = new URL(request.url());
-      if (url.pathname === "/api/eliza-app/auth/telegram") {
-        authBodies.push(request.postDataJSON());
-        return route.fulfill({
-          json: {
-            success: true,
-            user: {
-              id: "telegram-return-user",
-              telegram_id: "123456789",
-              telegram_username: "sam",
-              phone_number: "+14155550123",
-              name: "Sam",
-              organization_id: "telegram-return-org",
-            },
-            session: {
-              token: "redeemed-session-token",
-              expires_at: "2026-08-09T00:00:00.000Z",
-            },
-            is_new_user: false,
-            continuation_redeemed: true,
+  await page.route("https://elizacloud.ai/api/eliza-app/**", async (route) => {
+    const request = route.request();
+    const url = new URL(request.url());
+    if (url.pathname === "/api/eliza-app/auth/telegram") {
+      authBodies.push(request.postDataJSON());
+      return route.fulfill({
+        json: {
+          success: true,
+          user: {
+            id: "telegram-return-user",
+            telegram_id: "123456789",
+            telegram_username: "sam",
+            phone_number: "+14155550123",
+            name: "Sam",
+            organization_id: "telegram-return-org",
           },
-        });
-      }
-      if (url.pathname === "/api/eliza-app/onboarding/chat") {
-        browserContinuationCalls += 1;
-        return route.fulfill({
-          status: 500,
-          json: { error: "unexpected browser redemption" },
-        });
-      }
-      if (url.pathname === "/api/eliza-app/user/me") {
-        return route.fulfill({
-          json: {
-            user: {
-              id: "telegram-return-user",
-              telegram_id: "123456789",
-              telegram_username: "sam",
-              telegram_first_name: "Sam",
-              organization_id: "telegram-return-org",
-              created_at: "2026-01-01T00:00:00.000Z",
-            },
-            organization: {
-              id: "telegram-return-org",
-              name: "Telegram Return Org",
-              credit_balance: "5.00",
-            },
+          session: {
+            token: "redeemed-session-token",
+            expires_at: "2026-08-09T00:00:00.000Z",
           },
-        });
-      }
-      return route.fulfill({ status: 404, json: { error: "Unhandled mock" } });
-    },
-  );
+          is_new_user: false,
+          continuation_redeemed: true,
+        },
+      });
+    }
+    if (url.pathname === "/api/eliza-app/onboarding/chat") {
+      browserContinuationCalls += 1;
+      return route.fulfill({
+        status: 500,
+        json: { error: "unexpected browser redemption" },
+      });
+    }
+    if (url.pathname === "/api/eliza-app/user/me") {
+      return route.fulfill({
+        json: {
+          user: {
+            id: "telegram-return-user",
+            telegram_id: "123456789",
+            telegram_username: "sam",
+            telegram_first_name: "Sam",
+            organization_id: "telegram-return-org",
+            created_at: "2026-01-01T00:00:00.000Z",
+          },
+          organization: {
+            id: "telegram-return-org",
+            name: "Telegram Return Org",
+            credit_balance: "5.00",
+          },
+        },
+      });
+    }
+    return route.fulfill({ status: 404, json: { error: "Unhandled mock" } });
+  });
 
   await page.goto(
     "/get-started?method=telegram&link=true&onboardingSession=opaque-session-id",
@@ -145,49 +142,46 @@ test("does not return to Telegram unless the server confirms redemption", async 
   await page.route("https://telegram.org/js/**", (route) =>
     route.fulfill({ contentType: "application/javascript", body: "" }),
   );
-  await page.route(
-    "https://www.elizacloud.ai/api/eliza-app/**",
-    async (route) => {
-      const url = new URL(route.request().url());
-      if (url.pathname === "/api/eliza-app/auth/telegram") {
-        return route.fulfill({
-          json: {
-            success: true,
-            user: {
-              id: "telegram-return-user",
-              telegram_id: "123456789",
-              phone_number: "+14155550123",
-              organization_id: "telegram-return-org",
-            },
-            session: {
-              token: "unredeemed-session-token",
-              expires_at: "2026-08-09T00:00:00.000Z",
-            },
-            is_new_user: false,
-            continuation_redeemed: false,
+  await page.route("https://elizacloud.ai/api/eliza-app/**", async (route) => {
+    const url = new URL(route.request().url());
+    if (url.pathname === "/api/eliza-app/auth/telegram") {
+      return route.fulfill({
+        json: {
+          success: true,
+          user: {
+            id: "telegram-return-user",
+            telegram_id: "123456789",
+            phone_number: "+14155550123",
+            organization_id: "telegram-return-org",
           },
-        });
-      }
-      if (url.pathname === "/api/eliza-app/user/me") {
-        return route.fulfill({
-          json: {
-            user: {
-              id: "telegram-return-user",
-              telegram_id: "123456789",
-              organization_id: "telegram-return-org",
-              created_at: "2026-01-01T00:00:00.000Z",
-            },
-            organization: {
-              id: "telegram-return-org",
-              name: "Telegram Return Org",
-              credit_balance: "5.00",
-            },
+          session: {
+            token: "unredeemed-session-token",
+            expires_at: "2026-08-09T00:00:00.000Z",
           },
-        });
-      }
-      return route.fulfill({ status: 404, json: { error: "Unhandled mock" } });
-    },
-  );
+          is_new_user: false,
+          continuation_redeemed: false,
+        },
+      });
+    }
+    if (url.pathname === "/api/eliza-app/user/me") {
+      return route.fulfill({
+        json: {
+          user: {
+            id: "telegram-return-user",
+            telegram_id: "123456789",
+            organization_id: "telegram-return-org",
+            created_at: "2026-01-01T00:00:00.000Z",
+          },
+          organization: {
+            id: "telegram-return-org",
+            name: "Telegram Return Org",
+            credit_balance: "5.00",
+          },
+        },
+      });
+    }
+    return route.fulfill({ status: 404, json: { error: "Unhandled mock" } });
+  });
 
   await page.goto(
     "/get-started?method=telegram&link=true&onboardingSession=opaque-session-id",
@@ -213,7 +207,7 @@ test("a completed Telegram handoff offers a direct return to the bot", async ({
   await page.addInitScript((token) => {
     window.localStorage.setItem("eliza_app_session", token as string);
   }, TEST_TOKEN);
-  await page.route("https://www.elizacloud.ai/api/eliza-app/**", (route) => {
+  await page.route("https://elizacloud.ai/api/eliza-app/**", (route) => {
     const url = new URL(route.request().url());
     if (url.pathname === "/api/eliza-app/user/me") {
       return route.fulfill({

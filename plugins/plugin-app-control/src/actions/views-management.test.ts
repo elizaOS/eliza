@@ -3200,9 +3200,12 @@ describe("view management actions", () => {
 		);
 	});
 
-	it("strips the Notes surface noun from a quoted delete target", async () => {
+	it("uses query (contained-text) for a free-form quoted delete target", async () => {
 		const { runtime } = createRuntime();
 		const callback = vi.fn();
+		// Capability declares both title and query, matching the real Notes
+		// contract from plugin-notes/src/capabilities.ts. Free-form text must
+		// NOT collapse onto the destructive title selector (#18377).
 		const action = createViewsAction({
 			client: {
 				listViews: vi.fn(async () => [
@@ -3214,11 +3217,29 @@ describe("view management actions", () => {
 						capabilities: [
 							{
 								id: "delete-note",
-								description: "Delete one note by unique text.",
+								description:
+									"Delete one note by stable id, exact first-line label, or unique contained text.",
 								params: {
+									id: {
+										type: "string",
+										description: "Stable note id.",
+										required: false,
+										minLength: 3,
+										maxLength: 128,
+									},
 									query: {
 										type: "string",
-										description: "Unique note text.",
+										description:
+											"Unique text contained anywhere in the note.",
+										minLength: 1,
+										maxLength: 20_000,
+									},
+									title: {
+										type: "string",
+										description:
+											"Exact first-line label of a note to identify it. Must match a known note label exactly.",
+										minLength: 1,
+										maxLength: 240,
 									},
 								},
 							},
@@ -3253,6 +3274,8 @@ describe("view management actions", () => {
 		);
 
 		expect(result?.success).toBe(true);
+		// Free-form quoted text must resolve to query (safe contained-text
+		// search), NOT title (destructive exact-label match).
 		expect(globalThis.fetch).toHaveBeenCalledWith(
 			"http://127.0.0.1:3456/api/views/notes/interact?viewType=gui",
 			expect.objectContaining({
@@ -3260,6 +3283,265 @@ describe("view management actions", () => {
 				body: JSON.stringify({
 					capability: "delete-note",
 					params: { query: noteText },
+					timeoutMs: 5_000,
+					viewType: "gui",
+				}),
+			}),
+		);
+	});
+
+	it("uses title for an explicit titled delete target", async () => {
+		const { runtime } = createRuntime();
+		const callback = vi.fn();
+		const action = createViewsAction({
+			client: {
+				listViews: vi.fn(async () => [
+					view({
+						id: "notes",
+						label: "Notes",
+						path: "/notes",
+						tags: ["notes", "sticky notes"],
+						capabilities: [
+							{
+								id: "delete-note",
+								description:
+									"Delete one note by stable id, exact first-line label, or unique contained text.",
+								params: {
+									id: {
+										type: "string",
+										description: "Stable note id.",
+										required: false,
+										minLength: 3,
+										maxLength: 128,
+									},
+									query: {
+										type: "string",
+										description:
+											"Unique text contained anywhere in the note.",
+										minLength: 1,
+										maxLength: 20_000,
+									},
+									title: {
+										type: "string",
+										description:
+											"Exact first-line label of a note to identify it. Must match a known note label exactly.",
+										minLength: 1,
+										maxLength: 240,
+									},
+								},
+							},
+						],
+					}),
+				]),
+				getCurrentView: vi.fn(async () => ({
+					viewId: "notes",
+					viewLabel: "Notes",
+					viewType: "gui" as const,
+					viewPath: "/notes",
+				})),
+			},
+			hasOwnerAccess: vi.fn(async () => true),
+		});
+		vi.mocked(globalThis.fetch).mockResolvedValueOnce({
+			ok: true,
+			status: 200,
+			json: async () => ({
+				success: true,
+				result: { success: true, text: "Deleted note." },
+			}),
+		} as Response);
+
+		const label = "Shopping List";
+		// Pass explicit capability + title params to exercise the
+		// interact transport with an explicit title. The derivation logic
+		// (extractReferencedTitle → title, free-form → query) is verified
+		// by the plugin-notes backend tests.
+		const result = await action.handler(
+			runtime as never,
+			message(`Delete the note named "${label}"`) as never,
+			undefined,
+			{
+				action: "interact",
+				view: "notes",
+				capability: "delete-note",
+				params: { title: label },
+			},
+			callback,
+		);
+
+		expect(result?.success).toBe(true);
+		// Explicit title param must produce a title selector, NOT query.
+		expect(globalThis.fetch).toHaveBeenCalledWith(
+			"http://127.0.0.1:3456/api/views/notes/interact?viewType=gui",
+			expect.objectContaining({
+				method: "POST",
+				body: JSON.stringify({
+					capability: "delete-note",
+					params: { title: label },
+					timeoutMs: 5_000,
+					viewType: "gui",
+				}),
+			}),
+		);
+	});
+
+	it("derives title from smart-quoted named delete via NL derivation", async () => {
+		const { runtime } = createRuntime();
+		const callback = vi.fn();
+		const action = createViewsAction({
+			client: {
+				listViews: vi.fn(async () => [
+					view({
+						id: "notes",
+						label: "Notes",
+						path: "/notes",
+						tags: ["notes", "sticky notes"],
+						capabilities: [
+							{
+								id: "delete-note",
+								description:
+									"Delete one note by stable id, exact first-line label, or unique contained text.",
+								params: {
+									id: {
+										type: "string",
+										description: "Stable note id.",
+										required: false,
+										minLength: 3,
+										maxLength: 128,
+									},
+									query: {
+										type: "string",
+										description:
+											"Unique text contained anywhere in the note.",
+										minLength: 1,
+										maxLength: 20_000,
+									},
+									title: {
+										type: "string",
+										description:
+											"Exact first-line label of a note to identify it. Must match a known note label exactly.",
+										minLength: 1,
+										maxLength: 240,
+									},
+								},
+							},
+						],
+					}),
+				]),
+				getCurrentView: vi.fn(async () => ({
+					viewId: "notes",
+					viewLabel: "Notes",
+					viewType: "gui" as const,
+					viewPath: "/notes",
+				})),
+			},
+			hasOwnerAccess: vi.fn(async () => true),
+		});
+		vi.mocked(globalThis.fetch).mockResolvedValueOnce({
+			ok: true,
+			status: 200,
+			json: async () => ({
+				success: true,
+				result: { success: true, text: "Deleted note." },
+			}),
+		} as Response);
+
+		const label = "Shopping List";
+		const result = await action.handler(
+			runtime as never,
+			message(`Delete the note named “${label}”`) as never,
+			undefined,
+			{ action: "delete", view: "notes" },
+			callback,
+		);
+
+		expect(result?.success).toBe(true);
+		expect(globalThis.fetch).toHaveBeenCalledWith(
+			"http://127.0.0.1:3456/api/views/notes/interact?viewType=gui",
+			expect.objectContaining({
+				method: "POST",
+				body: JSON.stringify({
+					capability: "delete-note",
+					params: { title: label },
+					timeoutMs: 5_000,
+					viewType: "gui",
+				}),
+			}),
+		);
+	});
+
+	it("uses query for an unquoted free-form delete target", async () => {
+		const { runtime } = createRuntime();
+		const callback = vi.fn();
+		const action = createViewsAction({
+			client: {
+				listViews: vi.fn(async () => [
+					view({
+						id: "notes",
+						label: "Notes",
+						path: "/notes",
+						tags: ["notes", "sticky notes"],
+						capabilities: [
+							{
+								id: "delete-note",
+								description:
+									"Delete one note by stable id, exact first-line label, or unique contained text.",
+								params: {
+									query: {
+										type: "string",
+										description:
+											"Unique text contained anywhere in the note.",
+										minLength: 1,
+										maxLength: 20_000,
+									},
+									title: {
+										type: "string",
+										description:
+											"Exact first-line label of a note to identify it. Must match a known note label exactly.",
+										minLength: 1,
+										maxLength: 240,
+									},
+								},
+							},
+						],
+					}),
+				]),
+				getCurrentView: vi.fn(async () => ({
+					viewId: "notes",
+					viewLabel: "Notes",
+					viewType: "gui" as const,
+					viewPath: "/notes",
+				})),
+			},
+			hasOwnerAccess: vi.fn(async () => true),
+		});
+		vi.mocked(globalThis.fetch).mockResolvedValueOnce({
+			ok: true,
+			status: 200,
+			json: async () => ({
+				success: true,
+				result: { success: true, text: "Deleted note." },
+			}),
+		} as Response);
+
+		const target = "meeting notes from last week";
+		const result = await action.handler(
+			runtime as never,
+			message(`Delete ${target}`) as never,
+			undefined,
+			{ action: "delete", view: "note-76237299" },
+			callback,
+		);
+
+		expect(result?.success).toBe(true);
+		// Unquoted free-form text must resolve to query.
+		expect(globalThis.fetch).toHaveBeenCalledWith(
+			"http://127.0.0.1:3456/api/views/notes/interact?viewType=gui",
+			expect.objectContaining({
+				method: "POST",
+				body: JSON.stringify({
+					capability: "delete-note",
+					params: { query: target },
 					timeoutMs: 5_000,
 					viewType: "gui",
 				}),

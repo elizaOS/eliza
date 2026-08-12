@@ -1,13 +1,14 @@
 /**
- * Unit tests for `DocumentService` character-document ingestion under boot races:
- * it waits for a late `TEXT_EMBEDDING` registration before ingesting (rather than
- * writing empty-fragment stubs), and reprocesses an existing zero-fragment
- * document stub. Drives `createMockRuntime` with Vitest fake timers —
- * deterministic, no live model or DB.
+ * Exercises character-document boot races and atomic pre-chunked ingestion.
+ * Timing seams use a mock runtime; persistence and embedding failures use a real
+ * AgentRuntime, model registry, and in-memory adapter.
  */
 import { afterEach, describe, expect, test, vi } from "vitest";
+import { InMemoryDatabaseAdapter } from "../../database/inMemoryAdapter";
+import { ElizaError } from "../../errors";
+import { AgentRuntime } from "../../runtime";
 import { createMockRuntime, MOCK_AGENT_ID } from "../../testing/mock-runtime";
-import type { Memory, UUID } from "../../types";
+import type { Character, Memory, UUID } from "../../types";
 import { MemoryType, ModelType } from "../../types";
 import { DocumentService } from "./service.ts";
 
@@ -16,6 +17,33 @@ const DOCUMENT_FRAGMENTS_TABLE = "document_fragments";
 
 function embeddingFor(text: string): number[] {
 	return [text.length, 1, 0.5];
+}
+
+async function createRealRuntime(): Promise<AgentRuntime> {
+	const adapter = new InMemoryDatabaseAdapter();
+	await adapter.initialize();
+	return new AgentRuntime({
+		agentId: MOCK_AGENT_ID,
+		character: {
+			name: "DocumentCharacterIngestTestAgent",
+			bio: "Exercises character document persistence through the real runtime.",
+			settings: {},
+		} as Character,
+		adapter,
+		logLevel: "fatal",
+	});
+}
+
+async function getStoredMemories(
+	runtime: AgentRuntime,
+	tableName: string,
+): Promise<Memory[]> {
+	return runtime.getMemories({
+		tableName,
+		agentId: MOCK_AGENT_ID,
+		roomId: MOCK_AGENT_ID,
+		count: 20,
+	});
 }
 
 describe("DocumentService character document ingestion boot races", () => {
@@ -143,29 +171,8 @@ describe("DocumentService character document ingestion boot races", () => {
 	});
 
 	test("persists a pre-chunked parent and all anchored fragments in one batch", async () => {
-		const batches: Array<
-			Array<{ memory: Memory; tableName: string; unique?: boolean }>
-		> = [];
-		const runtime = createMockRuntime({
-			getSetting: () => undefined,
-			redactSecrets: (text: string) => text,
-			getModel: (type: string) =>
-				type === ModelType.TEXT_EMBEDDING
-					? async () => embeddingFor("registered")
-					: undefined,
-			getMemoryById: async () => null,
-			addEmbeddingToMemory: async (memory: Memory) => {
-				memory.embedding = embeddingFor(memory.content.text ?? "");
-				return memory;
-			},
-			createMemory: vi.fn(async () => {
-				throw new Error("single-row persistence must not run");
-			}),
-			createMemories: async (entries) => {
-				batches.push(entries);
-				return entries.map((entry) => entry.memory.id as UUID);
-			},
-		});
+		const runtime = await createRealRuntime();
+		const createMemories = vi.spyOn(runtime, "createMemories");
 		const service = new DocumentService(runtime);
 
 		const result = await service.addDocument({
@@ -190,42 +197,61 @@ describe("DocumentService character document ingestion boot races", () => {
 		});
 
 		expect(result.fragmentCount).toBe(2);
-		expect(batches).toHaveLength(1);
-		expect(batches[0].map((entry) => entry.tableName)).toEqual([
-			DOCUMENTS_TABLE,
+		expect(createMemories).toHaveBeenCalledTimes(1);
+		expect(createMemories.mock.calls[0]?.[0]).toHaveLength(3);
+		const documents = await getStoredMemories(runtime, DOCUMENTS_TABLE);
+		const fragments = await getStoredMemories(
+			runtime,
 			DOCUMENT_FRAGMENTS_TABLE,
-			DOCUMENT_FRAGMENTS_TABLE,
-		]);
-		expect(batches[0][1].memory.metadata).toMatchObject({
-			segmentIds: ["s1"],
-			startMs: 0,
-			endMs: 900,
-			position: 0,
-		});
+		);
+		expect(documents).toHaveLength(1);
+		expect(fragments).toHaveLength(2);
+		expect(
+			fragments.every((fragment) => fragment.embedding === undefined),
+		).toBe(true);
+		expect(fragments).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({
+					metadata: expect.objectContaining({
+						segmentIds: ["s1"],
+						startMs: 0,
+						endMs: 900,
+						position: 0,
+					}),
+				}),
+				expect.objectContaining({
+					metadata: expect.objectContaining({
+						segmentIds: ["s2"],
+						startMs: 1000,
+						endMs: 1800,
+						position: 1,
+					}),
+				}),
+			]),
+		);
 	});
 
 	test("does not write the parent when any pre-chunked embedding fails", async () => {
-		const createMemories = vi.fn();
 		let embeddings = 0;
-		const runtime = createMockRuntime({
-			getSetting: () => undefined,
-			redactSecrets: (text: string) => text,
-			getModel: (type: string) =>
-				type === ModelType.TEXT_EMBEDDING
-					? async () => embeddingFor("registered")
-					: undefined,
-			getMemoryById: async () => null,
-			addEmbeddingToMemory: async (memory: Memory) => {
+		const runtime = await createRealRuntime();
+		runtime.registerModel(
+			ModelType.TEXT_EMBEDDING,
+			async (_runtime, params) => {
+				const text = params.text;
+				if (typeof text !== "string") {
+					throw new Error("embedding input must contain text");
+				}
 				embeddings++;
-				if (embeddings === 1) memory.embedding = embeddingFor("first");
-				return memory;
+				return embeddings === 1 ? embeddingFor(text) : [];
 			},
-			createMemories,
-		});
+			"document-character-ingest-test",
+			100,
+		);
 		const service = new DocumentService(runtime);
 
-		await expect(
-			service.addDocument({
+		let thrown: unknown;
+		try {
+			await service.addDocument({
 				agentId: MOCK_AGENT_ID,
 				worldId: MOCK_AGENT_ID,
 				roomId: MOCK_AGENT_ID,
@@ -244,8 +270,33 @@ describe("DocumentService character document ingestion boot races", () => {
 						metadata: { segmentIds: ["s2"], startMs: 600, endMs: 1000 },
 					},
 				],
-			}),
-		).rejects.toThrow(/Failed to process document/);
-		expect(createMemories).not.toHaveBeenCalled();
+			});
+		} catch (error) {
+			thrown = error;
+		}
+
+		if (!(thrown instanceof ElizaError)) {
+			throw new Error("Expected document ingestion to throw ElizaError", {
+				cause: thrown,
+			});
+		}
+		expect(thrown.code).toBe("DOCUMENT_PROCESSING_FAILED");
+		expect(thrown.cause).toBeInstanceOf(ElizaError);
+		if (!(thrown.cause instanceof ElizaError)) {
+			throw new Error(
+				"Expected document failure to preserve its fragment cause",
+			);
+		}
+		expect(thrown.cause).toMatchObject({
+			code: "DOCUMENT_FRAGMENT_EMBED_FAILED",
+			context: { documentId: expect.any(String), position: 1 },
+		});
+		expect(embeddings).toBe(2);
+		await expect(getStoredMemories(runtime, DOCUMENTS_TABLE)).resolves.toEqual(
+			[],
+		);
+		await expect(
+			getStoredMemories(runtime, DOCUMENT_FRAGMENTS_TABLE),
+		).resolves.toEqual([]);
 	});
 });

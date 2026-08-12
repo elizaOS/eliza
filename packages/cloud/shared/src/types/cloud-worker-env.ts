@@ -30,6 +30,20 @@ export interface Bindings {
    * names (`lib/auth/steward-cookies.ts`) and cache key prefixes.
    */
   ENVIRONMENT?: string;
+  /** Staging-only QA session bridge kill switch; absent/anything but "true" is off. */
+  STAGING_SESSION_EXCHANGE_ENABLED?: string;
+  /** Exact runtime/code contract version; currently only "v1" is accepted. */
+  STAGING_SESSION_EXCHANGE_VERSION?: string;
+  /** Dedicated HS256 key; must differ from every ordinary Steward JWT secret. */
+  STAGING_SESSION_EXCHANGE_SIGNING_SECRET?: string;
+  /** Dedicated protected-header kid (`staging-qa-v1-*`). */
+  STAGING_SESSION_EXCHANGE_SIGNING_KEY_ID?: string;
+  /** Exact API-key UUIDs permitted to mint a full QA browser session. */
+  STAGING_SESSION_EXCHANGE_ALLOWED_API_KEY_IDS?: string;
+  /** Exact Cloud user UUIDs eligible for the staging QA session bridge. */
+  STAGING_SESSION_EXCHANGE_ALLOWED_USER_IDS?: string;
+  /** Exact Cloud organization UUIDs eligible for the staging QA session bridge. */
+  STAGING_SESSION_EXCHANGE_ALLOWED_ORGANIZATION_IDS?: string;
   /**
    * Routes chat completions through the lazy chat-only Worker application.
    * Default off provides an immediate rollback to the monolithic router.
@@ -249,6 +263,8 @@ export interface Bindings {
   GOOGLE_CLIENT_ID?: string;
   GOOGLE_CLIENT_SECRET?: string;
   STEWARD_JWT_SECRET?: string;
+  /** HS256 service-account bridge secret; must never equal the staging QA signer. */
+  ELIZA_SERVICE_JWT_SECRET?: string;
   /** Steward vault encryption master password. Required for wallet/key operations. */
   STEWARD_MASTER_PASSWORD?: string;
   /** Tenant scoping. */
