@@ -33,52 +33,13 @@ import { ElizaConnectButton } from "./components/eliza-connect-button";
 import { useAgent } from "./lib/data/eliza-agents";
 import { useT } from "./lib/i18n";
 import { statusBadgeColor, statusDotColor } from "./lib/sandbox-status";
+import {
+  formatDate,
+  formatRelativeShort,
+  formatTime,
+} from "./agent-detail-dates";
 
-export function formatDate(date: string | null): string {
-  if (!date) return "—";
-  const timestamp = new Date(date).getTime();
-  if (!Number.isFinite(timestamp)) return "—";
-  return new Date(timestamp).toLocaleDateString(undefined, {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
-}
-
-function formatTime(date: string | null): string {
-  if (!date) return "";
-  return new Date(date).toLocaleTimeString(undefined, {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
-
-export function formatRelativeShort(
-  date: string | null,
-  t: ReturnType<typeof useT>,
-): string {
-  if (!date) return t("cloud.agents.detail.never", { defaultValue: "Never" });
-  const d = new Date(date);
-  const timestamp = d.getTime();
-  if (!Number.isFinite(timestamp))
-    return t("cloud.agents.detail.never", { defaultValue: "Never" });
-  const diffMs = Date.now() - timestamp;
-  const diffMin = Math.floor(diffMs / 60_000);
-  if (diffMin < 1)
-    return t("cloud.agents.detail.justNow", { defaultValue: "Just now" });
-  if (diffMin < 60)
-    return t("cloud.agents.detail.minutesAgo", {
-      defaultValue: "{{n}}m ago",
-      n: diffMin,
-    });
-  const diffH = Math.floor(diffMin / 60);
-  if (diffH < 24)
-    return t("cloud.agents.detail.hoursAgo", {
-      defaultValue: "{{n}}h ago",
-      n: diffH,
-    });
-  return formatDate(date);
-}
+export { formatDate, formatRelativeShort, formatTime };
 
 export default function AgentDetailPage() {
   const t = useT();
