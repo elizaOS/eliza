@@ -17,26 +17,37 @@ const mocks = vi.hoisted(() => ({
   realFetchRemoteMedia: null as null | ((...args: unknown[]) => Promise<unknown>),
 }));
 
-vi.mock("@elizaos/core", async (importActual) => {
-  const actual = await importActual<typeof import("@elizaos/core")>();
-  mocks.realFetchRemoteMedia = actual.fetchRemoteMedia as (...args: unknown[]) => Promise<unknown>;
-  return {
-    ...actual,
-    logger: {
-      debug: vi.fn(),
-      error: vi.fn(),
-      log: vi.fn(),
-      warn: vi.fn(),
-    },
-    recordLlmCall: mocks.recordLlmCall,
-    fetchRemoteMedia: (...args: unknown[]) => {
-      if (mocks.useRealFetchRemoteMedia && mocks.realFetchRemoteMedia) {
-        return mocks.realFetchRemoteMedia(...args);
-      }
-      return mocks.fetchRemoteMedia(...args);
-    },
-  };
-});
+// The handler imports logger/recordLlmCall from `@elizaos/core` but loads
+// `fetchRemoteMedia` lazily from `@elizaos/core/node` so the browser bundle
+// never pulls it in. Under Node both specifiers resolve to the same module
+// file, so both mocks must expose the same full mocked surface.
+const coreMockFactory = vi.hoisted(
+  () => async (importActual: () => Promise<Record<string, unknown>>) => {
+    const actual = await importActual();
+    mocks.realFetchRemoteMedia = actual.fetchRemoteMedia as (
+      ...args: unknown[]
+    ) => Promise<unknown>;
+    return {
+      ...actual,
+      logger: {
+        debug: vi.fn(),
+        error: vi.fn(),
+        log: vi.fn(),
+        warn: vi.fn(),
+      },
+      recordLlmCall: mocks.recordLlmCall,
+      fetchRemoteMedia: (...args: unknown[]) => {
+        if (mocks.useRealFetchRemoteMedia && mocks.realFetchRemoteMedia) {
+          return mocks.realFetchRemoteMedia(...args);
+        }
+        return mocks.fetchRemoteMedia(...args);
+      },
+    };
+  }
+);
+
+vi.mock("@elizaos/core", coreMockFactory);
+vi.mock("@elizaos/core/node", coreMockFactory);
 
 vi.mock("../utils/config", () => ({
   getAuthHeader: mocks.getAuthHeader,
