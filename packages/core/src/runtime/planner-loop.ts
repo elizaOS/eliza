@@ -214,9 +214,10 @@ interface RawPlannerOutput {
  * Public planner-loop entry: runs the iteration loop, then enforces two reply
  * guarantees. Failed turns get the honest-failure guarantee — a turn that
  * would ship the generic failed-step sentence gets ONE forced no-tools
- * synthesis pass whose instruction names the failed step and its scrubbed
- * human-readable cause, so the model states what failed and why in its own
- * voice (#17948). Successful tool turns get the tool-turn reply guarantee —
+ * synthesis pass for bounded diagnostic context, while the unresolved tool's
+ * machine-owned failure projection remains the terminal user-facing authority
+ * regardless of what that model pass says. Successful tool turns get the
+ * tool-turn reply guarantee —
  * real tool work must end with a user-facing reply, not silence or the
  * generic handled-step placeholder; junk evaluator output after a successful
  * tool converts into ONE forced no-tools synthesis call grounded in the tool
@@ -3604,10 +3605,9 @@ async function finishWithForcedSynthesis(params: {
 	/** Overrides the repeated-call framing when a caller forces synthesis for a different reason. */
 	instruction?: string;
 	/**
-	 * Marks this synthesis as failure-instructed: the instruction told the
-	 * model the step failed, so its reply is a failure report by construction
-	 * and may stand against the failure authority instead of being replaced
-	 * with the generic failed-step sentence (#17948).
+	 * Marks this synthesis as failure-instructed. An unresolved tool failure
+	 * remains authoritative even if the model ignores that instruction; model
+	 * prose is never trusted as machine status.
 	 */
 	failureAware?: boolean;
 }): Promise<PlannerLoopResult> {
@@ -3642,10 +3642,22 @@ async function finishWithForcedSynthesis(params: {
 		iteration,
 		onUsage: params.onUsage,
 	});
-	const finalMessage = preferredFinalMessageFromToolOrModel(
-		trajectory,
-		synthOutput.messageToUser,
-	);
+	const unresolvedFailure = params.failureAware
+		? latestUnresolvedFailedNonTerminalToolStep(trajectory)
+		: undefined;
+	const modelMessage = unresolvedFailure
+		? undefined
+		: preferredFinalMessageFromToolOrModel(
+				trajectory,
+				synthOutput.messageToUser,
+			);
+	// Failure-aware synthesis records the attempted diagnosis but cannot authorize
+	// completion status. Store and return only the machine-owned projection while
+	// an operation remains failed so trajectory consumers cannot mistake model
+	// prose for the terminal outcome.
+	const finalMessage = unresolvedFailure
+		? groundedFailedToolMessage(unresolvedFailure)
+		: modelMessage;
 	trajectory.steps.push({
 		iteration,
 		thought: synthOutput.thought,
@@ -3656,13 +3668,7 @@ async function finishWithForcedSynthesis(params: {
 		status: "finished",
 		trajectory,
 		finalMessage: userSafeFinalMessage(
-			terminalMessageWithFailureAuthority(
-				trajectory,
-				finalMessage,
-				params.failureAware
-					? userSafeFailureReport(synthOutput.messageToUser, trajectory)
-					: undefined,
-			),
+			terminalMessageWithFailureAuthority(trajectory, finalMessage),
 			trajectory,
 		),
 	};
@@ -3912,10 +3918,10 @@ async function ensureToolTurnFinalMessage(
  * every model-side candidate was discarded or missing and the failed tool
  * owned no user-safe text — gets ONE forced no-tools synthesis pass whose
  * instruction names the failed step and its scrubbed human-readable cause.
- * Context-in, model-out: the model writes the failure reply in its own voice
- * from that context; the fixed sentence is never post-processed or templated.
- * Synthesis is best-effort — a model failure here keeps the generic sentence
- * rather than discarding the finished turn (#17948).
+ * The synthesis remains diagnostic only while an operation is unresolved:
+ * neither a plausible diagnosis nor a contradictory success claim may replace
+ * the machine-owned tool failure projection. A model failure keeps that same
+ * projection rather than discarding the finished turn.
  */
 async function ensureFailedTurnFinalMessage(
 	params: PlannerLoopParams,
@@ -3970,12 +3976,11 @@ async function ensureFailedTurnFinalMessage(
 		}
 	} catch (err) {
 		// error-policy:J4 explicit user-facing degrade — the failure synthesis is
-		// a best-effort upgrade of an already-finished failed turn; a model
-		// failure here must not discard the turn, so the generic failed-step
-		// sentence ships and the synthesis failure is logged for diagnosis.
+		// diagnostic-only for an unresolved turn. A provider failure must not
+		// discard or replace the machine-owned failed-step projection.
 		params.runtime.logger?.warn?.(
 			{ err: err instanceof Error ? err.message : String(err) },
-			"[planner-loop] failure-aware synthesis pass failed; keeping the generic failed-step reply",
+			"[planner-loop] failure-aware synthesis pass failed; keeping machine failure authority",
 		);
 	}
 	return {
@@ -4512,12 +4517,11 @@ function shouldRecoverSilentFailedFinish(args: {
 
 /**
  * Generic last-resort reply for a turn that ends on a failed tool with no
- * user-safe tool-owned text. Since #17948 this ships only when the
- * failure-aware synthesis pass in `ensureFailedTurnFinalMessage` itself fails
- * or produces nothing usable — every model-reachable failed turn instead gets
- * a model-authored reply naming what failed and why. Exported so the message
- * service can recognize it and drop it as redundant when the failed tool's
- * own callback already told the user what happened.
+ * user-safe tool-owned text. It remains the machine-owned projection when a
+ * failure-aware model pass is blank, unavailable, or contradictory; model
+ * prose never upgrades an unresolved operation's status. Exported so the
+ * message service can recognize it and drop it as redundant when the failed
+ * tool's own callback already told the user what happened.
  */
 export const FAILED_TOOL_FALLBACK_MESSAGE =
 	"I tried to complete that, but the available runtime step failed before it produced a usable result.";

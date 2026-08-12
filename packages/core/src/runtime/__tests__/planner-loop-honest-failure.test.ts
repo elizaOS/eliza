@@ -1,11 +1,11 @@
 /**
  * Honest failed-turn replies (#17948): a planner turn that ends on a failed
- * step must ship a model-authored reply naming what failed and why — never
- * the fixed "runtime step failed" sentence — across every failure shape: exec
- * failures, thrown timeouts, validation rejects, structural retryable:false
- * results, and multi-step turns that fail late. Also pins the hygiene of the
- * prompt context the loop adds (scrubbed causes, no absolute paths or ids)
- * and the J4 degrade when the synthesis model call itself fails.
+ * step keeps the machine-recorded failure authoritative across exec failures,
+ * thrown timeouts, validation rejects, structural retryable:false results,
+ * and multi-step turns that fail late. Model-authored explanations may enrich
+ * structurally acknowledged evaluator failures, but forced synthesis cannot
+ * relabel an unresolved operation. The suite also pins prompt hygiene and J4
+ * degradation when synthesis fails.
  * Deterministic — `useModel`, `executeToolCall`, and `evaluate` are vitest
  * mocks; no live model.
  */
@@ -40,7 +40,7 @@ function loopComposedInstructionText(
 		.join("\n");
 }
 describe("honest failed-turn replies (#17948)", () => {
-	it("exec failure then REPLY: ships a failure-aware synthesis primed with the scrubbed cause, not the canned sentence", async () => {
+	it("exec failure then REPLY: records a scrubbed synthesis attempt but keeps machine failure authority", async () => {
 		const useModel = vi
 			.fn()
 			.mockResolvedValueOnce({
@@ -90,10 +90,7 @@ describe("honest failed-turn replies (#17948)", () => {
 
 		expect(executeToolCall).toHaveBeenCalledTimes(1);
 		expect(useModel).toHaveBeenCalledTimes(3);
-		expect(result.finalMessage).toBe(
-			"I tried to check this week's git log, but this workspace repo has no commits yet.",
-		);
-		expect(result.finalMessage).not.toBe(FAILED_TOOL_FALLBACK_MESSAGE);
+		expect(result.finalMessage).toBe(FAILED_TOOL_FALLBACK_MESSAGE);
 
 		// The silent-failed-finish retry instruction names the failed tool AND
 		// its human-readable cause, with internal detail scrubbed.
@@ -218,7 +215,7 @@ describe("honest failed-turn replies (#17948)", () => {
 		);
 	});
 
-	it("retryable:false structured failure: the synthesis pass receives the structural failure's human text", async () => {
+	it("retryable:false structured failure: synthesis receives the cause but cannot replace failure authority", async () => {
 		const useModel = vi
 			.fn()
 			.mockResolvedValueOnce({
@@ -276,9 +273,7 @@ describe("honest failed-turn replies (#17948)", () => {
 		);
 		expect(synthesisInstruction).toContain("The DEPLOY_APP step failed");
 		expect(synthesisInstruction).toContain("requires a name");
-		expect(result.finalMessage).toBe(
-			"I couldn't deploy the app — the template needs a name and I didn't have one to give it.",
-		);
+		expect(result.finalMessage).toBe(FAILED_TOOL_FALLBACK_MESSAGE);
 	});
 
 	it("multi-step turn: a late failure after earlier successes ships the evaluator's diagnosis, not the canned sentence", async () => {
@@ -338,7 +333,7 @@ describe("honest failed-turn replies (#17948)", () => {
 		);
 	});
 
-	it("rejects an unsafe evaluator diagnosis and rescues the turn through the synthesis pass", async () => {
+	it("rejects an unsafe evaluator diagnosis and keeps machine failure authority after synthesis", async () => {
 		const useModel = vi
 			.fn()
 			.mockResolvedValueOnce({
@@ -377,9 +372,7 @@ describe("honest failed-turn replies (#17948)", () => {
 		});
 
 		expect(useModel).toHaveBeenCalledTimes(2);
-		expect(result.finalMessage).toBe(
-			"I couldn't read that directory — the command failed with a permissions error.",
-		);
+		expect(result.finalMessage).toBe(FAILED_TOOL_FALLBACK_MESSAGE);
 	});
 
 	it("scrubs uuids, hex ids, and absolute paths from the failure cause it adds to prompt context", async () => {
@@ -443,7 +436,7 @@ describe("honest failed-turn replies (#17948)", () => {
 		);
 	});
 
-	it("keeps the generic failed-step sentence only when the synthesis model call itself fails", async () => {
+	it("keeps machine failure authority when the synthesis model call itself fails", async () => {
 		const useModel = vi
 			.fn()
 			.mockResolvedValueOnce({
@@ -491,7 +484,7 @@ describe("honest failed-turn replies (#17948)", () => {
 });
 
 describe("deterministic post-synthesis relay", () => {
-	it("emits only machine-owned failure authority despite a ready-to-ship success claim", async () => {
+	it("emits only machine-owned failure authority despite a contradictory nonblank synthesis", async () => {
 		const useModel = vi
 			.fn()
 			.mockResolvedValueOnce({
@@ -524,11 +517,9 @@ describe("deterministic post-synthesis relay", () => {
 					},
 				],
 			})
-			.mockResolvedValueOnce({ text: "", toolCalls: [] })
-			// There is no rescue-model slot: a contradictory fifth response must
-			// remain unused.
 			.mockResolvedValueOnce({
 				text: "Everything completed successfully and is ready to ship.",
+				toolCalls: [],
 			});
 		const executeToolCall = vi
 			.fn()
@@ -537,6 +528,109 @@ describe("deterministic post-synthesis relay", () => {
 				text: "stdout: release candidate built",
 				userFacingText: "Everything is ready to ship.",
 				verifiedUserFacing: true,
+			})
+			.mockResolvedValueOnce({
+				success: false,
+				text: "command_failed: PR listing unavailable",
+			});
+		const evaluate = vi
+			.fn()
+			.mockResolvedValueOnce({
+				success: true,
+				decision: "CONTINUE" as const,
+				thought: "Now list the PRs.",
+			})
+			.mockResolvedValueOnce({
+				success: false,
+				decision: "FINISH" as const,
+				thought: "The listing failed.",
+			});
+
+		const result = await runPlannerLoop({
+			runtime: { useModel },
+			context: {
+				id: "ctx",
+				events: [
+					{
+						id: "current-request",
+						type: "message",
+						message: {
+							role: "user",
+							content: { text: "Summarize release readiness and blockers." },
+						},
+					},
+				],
+			},
+			provider: "pinned-provider",
+			tools: [
+				{ name: "WEB_SEARCH", description: "Search the web." },
+				{ name: "SHELL", description: "Run a shell command." },
+			],
+			executeToolCall,
+			evaluate,
+		});
+
+		expect(useModel).toHaveBeenCalledTimes(4);
+		expect(
+			useModel.mock.calls.every((call) => call[2] === "pinned-provider"),
+		).toBe(true);
+		const synthesisMessages = (
+			useModel.mock.calls[3]?.[1] as MockedMessages | undefined
+		)?.messages;
+		expect(JSON.stringify(synthesisMessages)).toContain(
+			"Summarize release readiness and blockers.",
+		);
+		expect(result.finalMessage).toBe(FAILED_TOOL_FALLBACK_MESSAGE);
+		expect(result.finalMessage).not.toMatch(
+			/ready to ship|completed successfully/iu,
+		);
+		expect(result.trajectory.steps.at(-1)?.terminalMessage).toBe(
+			FAILED_TOOL_FALLBACK_MESSAGE,
+		);
+	});
+
+	it("does not surface path, id, or credential prose from failure-aware synthesis", async () => {
+		const leaked =
+			"Everything succeeded for job 3f2504e0-4f89-11d3-9a0c-0305e82c3301 at /private/ops; use API_TOKEN=never-show.";
+		const useModel = vi
+			.fn()
+			.mockResolvedValueOnce({
+				text: "",
+				toolCalls: [
+					{
+						id: "call-1",
+						name: "WEB_SEARCH",
+						arguments: { query: "release readiness" },
+					},
+				],
+			})
+			.mockResolvedValueOnce({
+				text: "",
+				toolCalls: [
+					{
+						id: "call-2",
+						name: "SHELL",
+						arguments: { command: "gh pr list" },
+					},
+				],
+			})
+			.mockResolvedValueOnce({
+				text: "",
+				toolCalls: [
+					{
+						id: "call-3",
+						name: "REPLY",
+						arguments: { text: "Everything is ready to ship." },
+					},
+				],
+			})
+			.mockResolvedValueOnce({ text: leaked, toolCalls: [] });
+		const executeToolCall = vi
+			.fn()
+			.mockResolvedValueOnce({
+				success: true,
+				text: "stdout: release candidate built",
+				userFacingText: "Candidate build completed.",
 			})
 			.mockResolvedValueOnce({
 				success: false,
@@ -569,7 +663,10 @@ describe("deterministic post-synthesis relay", () => {
 		expect(useModel).toHaveBeenCalledTimes(4);
 		expect(result.finalMessage).toBe(FAILED_TOOL_FALLBACK_MESSAGE);
 		expect(result.finalMessage).not.toMatch(
-			/ready to ship|completed successfully/iu,
+			/private\/ops|3f2504e0|API_TOKEN|never-show/iu,
+		);
+		expect(result.trajectory.steps.at(-1)?.terminalMessage).toBe(
+			FAILED_TOOL_FALLBACK_MESSAGE,
 		);
 	});
 
