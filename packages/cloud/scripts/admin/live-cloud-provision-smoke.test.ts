@@ -33,11 +33,13 @@ interface RequestRecord {
 interface HarnessOptions {
   asyncDelete?: boolean;
   bridgeReply?: "valid" | "invalid" | "warming-once";
+  bridgeDelayMs?: number;
   cleanupDelete?: "success" | "fail" | "retain";
   create?:
     | "fresh"
     | "fresh-http-200"
     | "fresh-http-202"
+    | "fresh-wrong-name"
     | "malformed-201"
     | "idempotent-race"
     | "wrong-tier"
@@ -73,6 +75,10 @@ function identity(tier = "shared"): JsonObject {
   };
 }
 
+function identityWithName(name: string, tier = "shared"): JsonObject {
+  return { ...identity(tier), agentName: name };
+}
+
 function makeHarness(options: HarnessOptions = {}) {
   const requests: RequestRecord[] = [];
   let clock = 1_000;
@@ -80,6 +86,10 @@ function makeHarness(options: HarnessOptions = {}) {
   let bridgeAttempts = 0;
   const agentTier =
     options.create === "wrong-tier" ? "dedicated-lazy" : "shared";
+  const createdAgentName =
+    options.create === "fresh-wrong-name"
+      ? "unexpected-created-name"
+      : AGENT_NAME;
   let preflightComplete = false;
 
   const fetchImpl = async (
@@ -112,7 +122,9 @@ function makeHarness(options: HarnessOptions = {}) {
         return Response.json({ data: options.existingPreflight ?? [] });
       }
       return Response.json({
-        data: agentExists ? [identity(agentTier)] : [],
+        data: agentExists
+          ? [identityWithName(createdAgentName, agentTier)]
+          : [],
       });
     }
 
@@ -141,7 +153,10 @@ function makeHarness(options: HarnessOptions = {}) {
           success: true,
           created: true,
           source: "shared_runtime",
-          data: identity(agentTier),
+          data:
+            options.create === "fresh-wrong-name"
+              ? identityWithName("unexpected-created-name", agentTier)
+              : identity(agentTier),
         },
         {
           status:
@@ -170,6 +185,7 @@ function makeHarness(options: HarnessOptions = {}) {
       method === "POST"
     ) {
       bridgeAttempts += 1;
+      clock += options.bridgeDelayMs ?? 0;
       if (options.bridgeReply === "warming-once" && bridgeAttempts === 1) {
         return Response.json(
           {
@@ -235,7 +251,10 @@ function makeHarness(options: HarnessOptions = {}) {
       method === "GET"
     ) {
       return agentExists
-        ? Response.json({ success: true, data: identity(agentTier) })
+        ? Response.json({
+            success: true,
+            data: identityWithName(createdAgentName, agentTier),
+          })
         : Response.json(
             { success: false, error: "Agent not found" },
             { status: 404 },
@@ -298,6 +317,8 @@ function makeHarness(options: HarnessOptions = {}) {
       },
       suffix: SUFFIX,
       cleanupTimeoutMs: 5,
+      totalTimeoutMs: 100,
+      cleanupReserveMs: 20,
       createRecoveryTimeoutMs: 5,
       pollIntervalMs: 1,
     },
@@ -495,6 +516,24 @@ describe("shared staging onboarding smoke", () => {
     ).toBe(true);
   });
 
+  test("cleans a parseable created:true row before rejecting its returned name", async () => {
+    const harness = makeHarness({ create: "fresh-wrong-name" });
+    const evidence = await runSharedStagingOnboardingSmoke(harness.options);
+
+    expect(evidence.failure).toEqual({
+      phase: "create",
+      code: "created_name_mismatch",
+    });
+    expect(evidence.capacity.createdAgents).toBe(1);
+    expect(evidence.cleanup.status).toBe("passed");
+    const deletion = harness.requests.find(
+      (request) => request.method === "DELETE",
+    );
+    expect(deletion?.body).toMatchObject({
+      expectedAgentName: "unexpected-created-name",
+    });
+  });
+
   test("recovers and cleans an unaccepted 2xx create status by exact name", async () => {
     const harness = makeHarness({ create: "fresh-http-202" });
     const evidence = await runSharedStagingOnboardingSmoke(harness.options);
@@ -534,6 +573,32 @@ describe("shared staging onboarding smoke", () => {
     expect(evidence.capacity.chatRequests).toBeLessThanOrEqual(
       evidence.capacity.maxChatRequests,
     );
+  });
+
+  test("reserves cleanup capacity when the operation deadline is exhausted", async () => {
+    const harness = makeHarness({
+      bridgeReply: "warming-once",
+      bridgeDelayMs: 80,
+    });
+    const evidence = await runSharedStagingOnboardingSmoke({
+      ...harness.options,
+      totalTimeoutMs: 100,
+      cleanupReserveMs: 20,
+      cleanupTimeoutMs: 20,
+    });
+
+    expect(evidence.failure).toEqual({
+      phase: "bridge",
+      code: "absolute_deadline_exceeded",
+    });
+    expect(evidence.cleanup).toEqual({
+      status: "passed",
+      possibleOrphan: false,
+    });
+    expect(
+      harness.requests.some((request) => request.method === "DELETE"),
+    ).toBe(true);
+    expect(harness.requests.at(-1)?.method).toBe("GET");
   });
 
   test("fails a dedicated-tier drift but still deletes the exact row", async () => {
@@ -658,6 +723,8 @@ describe("shared staging onboarding smoke", () => {
     expect(workflow).toContain("environment: staging");
     expect(workflow).toContain("bun run cloud:shared-onboarding:live");
     expect(workflow).toContain("CLOUD_SHARED_STAGING_SMOKE_EVIDENCE_PATH");
+    expect(workflow).toContain("git merge-base --is-ancestor");
+    expect(workflow).toContain("fetch-depth: 0");
     expect(packageJson).toContain('"cloud:shared-onboarding:live"');
     expect(source).not.toContain("CLOUD_SMOKE_KEEP_RESOURCES");
     expect(source).not.toContain("CLOUD_SMOKE_SKIP_STREAM");

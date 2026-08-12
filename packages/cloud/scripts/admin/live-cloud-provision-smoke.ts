@@ -39,6 +39,8 @@ const SMOKE_NAME_PREFIX = "shared-staging-smoke-";
 const EXPECTED_TIER = "shared";
 const REQUEST_TIMEOUT_MS = 130_000;
 const CLEANUP_TIMEOUT_MS = 120_000;
+const TOTAL_TIMEOUT_MS = 14 * 60_000;
+const CLEANUP_RESERVE_MS = 3 * 60_000;
 const CREATE_RECOVERY_TIMEOUT_MS = 15_000;
 const POLL_INTERVAL_MS = 2_000;
 const MAX_CREATE_RECOVERY_ATTEMPTS = 4;
@@ -94,6 +96,8 @@ export interface SharedStagingSmokeOptions {
   suffix?: string;
   requestTimeoutMs?: number;
   cleanupTimeoutMs?: number;
+  totalTimeoutMs?: number;
+  cleanupReserveMs?: number;
   createRecoveryTimeoutMs?: number;
   pollIntervalMs?: number;
 }
@@ -312,6 +316,8 @@ export async function runSharedStagingOnboardingSmoke(
   const apiKey = options.apiKey.trim();
   const requestTimeoutMs = options.requestTimeoutMs ?? REQUEST_TIMEOUT_MS;
   const cleanupTimeoutMs = options.cleanupTimeoutMs ?? CLEANUP_TIMEOUT_MS;
+  const totalTimeoutMs = options.totalTimeoutMs ?? TOTAL_TIMEOUT_MS;
+  const cleanupReserveMs = options.cleanupReserveMs ?? CLEANUP_RESERVE_MS;
   const createRecoveryTimeoutMs =
     options.createRecoveryTimeoutMs ?? CREATE_RECOVERY_TIMEOUT_MS;
   const pollIntervalMs = options.pollIntervalMs ?? POLL_INTERVAL_MS;
@@ -319,11 +325,30 @@ export async function runSharedStagingOnboardingSmoke(
     options.suffix ??
     `${Date.now().toString(36)}${randomBytes(6).toString("hex")}`;
   const totalDone = timedPhase(evidence, "total", now);
+  const startedAt = now();
+  const totalDeadline = startedAt + totalTimeoutMs;
+  const operationDeadline = totalDeadline - cleanupReserveMs;
 
   let suffix = "";
   let expectedName = "";
   let identity: AgentIdentity | null = null;
   let possibleOrphan = false;
+
+  function remainingMs(deadline: number, phase: string): number {
+    const remaining = deadline - now();
+    if (remaining <= 0) {
+      throw new SharedSmokeFailure(phase, "absolute_deadline_exceeded");
+    }
+    return remaining;
+  }
+
+  async function sleepWithin(
+    phase: string,
+    requestedMs: number,
+    deadline = operationDeadline,
+  ): Promise<void> {
+    await sleep(Math.min(requestedMs, remainingMs(deadline, phase)));
+  }
 
   async function request(
     phase: string,
@@ -331,6 +356,7 @@ export async function runSharedStagingOnboardingSmoke(
     init: RequestInit = {},
     expectedStatuses: readonly number[] = [200],
     timeoutMs = requestTimeoutMs,
+    deadline = operationDeadline,
   ): Promise<{ status: number; body: JsonObject }> {
     const headers = new Headers(init.headers);
     headers.set("authorization", `Bearer ${apiKey}`);
@@ -346,7 +372,11 @@ export async function runSharedStagingOnboardingSmoke(
         ...init,
         headers,
         redirect: "error",
-        signal: init.signal ?? AbortSignal.timeout(timeoutMs),
+        signal:
+          init.signal ??
+          AbortSignal.timeout(
+            Math.min(timeoutMs, remainingMs(deadline, phase)),
+          ),
       });
     } catch {
       throw new SharedSmokeFailure(phase, "request_failed");
@@ -393,7 +423,9 @@ export async function runSharedStagingOnboardingSmoke(
         },
         body,
         redirect: "error",
-        signal: AbortSignal.timeout(requestTimeoutMs),
+        signal: AbortSignal.timeout(
+          Math.min(requestTimeoutMs, remainingMs(operationDeadline, "sse")),
+        ),
       });
     } catch {
       throw new SharedSmokeFailure("sse", "request_failed");
@@ -420,7 +452,10 @@ export async function runSharedStagingOnboardingSmoke(
   }
 
   async function recoverAmbiguousCreate(): Promise<boolean> {
-    const deadline = now() + createRecoveryTimeoutMs;
+    const deadline = Math.min(
+      now() + createRecoveryTimeoutMs,
+      operationDeadline,
+    );
     let attempts = 0;
     do {
       attempts += 1;
@@ -446,7 +481,7 @@ export async function runSharedStagingOnboardingSmoke(
       if (attempts >= MAX_CREATE_RECOVERY_ATTEMPTS || now() >= deadline) {
         break;
       }
-      await sleep(Math.min(pollIntervalMs, Math.max(0, deadline - now())));
+      await sleepWithin("create_recovery", pollIntervalMs, deadline);
     } while (now() <= deadline);
     possibleOrphan = true;
     return false;
@@ -506,7 +541,7 @@ export async function runSharedStagingOnboardingSmoke(
         lastFailure = asFailure(error);
       }
       if (attempt + 1 < MAX_CHAT_ATTEMPTS_PER_PATH) {
-        await sleep(pollIntervalMs);
+        await sleepWithin("bridge", pollIntervalMs);
       }
     }
     throw lastFailure;
@@ -580,7 +615,7 @@ export async function runSharedStagingOnboardingSmoke(
         return;
       } catch (error) {
         if (attempt + 1 >= MAX_CHAT_ATTEMPTS_PER_PATH) throw error;
-        await sleep(pollIntervalMs);
+        await sleepWithin("sse", pollIntervalMs);
       }
     }
   }
@@ -590,13 +625,17 @@ export async function runSharedStagingOnboardingSmoke(
       const { body } = await request(
         "cleanup_job",
         `/api/v1/jobs/${encodeURIComponent(jobId)}`,
+        {},
+        [200],
+        requestTimeoutMs,
+        deadline,
       );
       const status = stringField(dataRecord(body), "status") ?? "unknown";
       if (status === "completed") return;
       if (TERMINAL_JOB_STATUSES.has(status)) {
         throw new SharedSmokeFailure("cleanup_job", "delete_job_failed");
       }
-      await sleep(pollIntervalMs);
+      await sleepWithin("cleanup_job", pollIntervalMs, deadline);
     }
     throw new SharedSmokeFailure("cleanup_job", "delete_job_timeout");
   }
@@ -618,12 +657,14 @@ export async function runSharedStagingOnboardingSmoke(
         return;
       }
 
-      const deadline = now() + cleanupTimeoutMs;
+      const deadline = Math.min(now() + cleanupTimeoutMs, totalDeadline);
       const current = await request(
         "cleanup_verify",
         `/api/v1/eliza/agents/${encodeURIComponent(identity.id)}`,
         {},
         [200, 404],
+        requestTimeoutMs,
+        deadline,
       );
       if (current.status === 404) {
         throw new SharedSmokeFailure(
@@ -647,6 +688,8 @@ export async function runSharedStagingOnboardingSmoke(
           }),
         },
         [200, 202],
+        requestTimeoutMs,
+        deadline,
       );
       if (deletion.status === 200) {
         const data = dataRecord(deletion.body);
@@ -677,6 +720,8 @@ export async function runSharedStagingOnboardingSmoke(
           `/api/v1/eliza/agents/${encodeURIComponent(identity.id)}`,
           {},
           [200, 404],
+          requestTimeoutMs,
+          deadline,
         );
         if (confirmation.status === 404) {
           identity = null;
@@ -687,7 +732,7 @@ export async function runSharedStagingOnboardingSmoke(
         if (!identityMatches(dataRecord(confirmation.body), identity)) {
           throw new SharedSmokeFailure("cleanup_confirm", "identity_mismatch");
         }
-        await sleep(pollIntervalMs);
+        await sleepWithin("cleanup_confirm", pollIntervalMs, deadline);
       }
       throw new SharedSmokeFailure("cleanup_confirm", "final_404_not_observed");
     } finally {
@@ -759,14 +804,19 @@ export async function runSharedStagingOnboardingSmoke(
         // A response that explicitly says it created a row is cleanup-owned
         // even if the HTTP status/source later drift from the required
         // contract. Idempotent `created:false` responses remain untouchable.
-        if (!parsedIdentity || parsedIdentity.name !== expectedName) {
+        if (parsedIdentity) {
+          identity = parsedIdentity;
+          evidence.capacity.createdAgents = 1;
+          evidence.path.observedTier = privacySafeTier(
+            parsedIdentity.executionTier,
+          );
+        } else {
+          possibleOrphan = true;
           throw new SharedSmokeFailure("create", "missing_created_identity");
         }
-        identity = parsedIdentity;
-        evidence.capacity.createdAgents = 1;
-        evidence.path.observedTier = privacySafeTier(
-          parsedIdentity.executionTier,
-        );
+        if (parsedIdentity.name !== expectedName) {
+          throw new SharedSmokeFailure("create", "created_name_mismatch");
+        }
 
         if (
           created.status !== 201 ||
