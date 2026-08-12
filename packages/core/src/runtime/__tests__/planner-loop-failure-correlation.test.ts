@@ -5,7 +5,7 @@
  */
 
 import { describe, expect, it, vi } from "vitest";
-import { runPlannerLoop } from "../planner-loop";
+import { FAILED_TOOL_FALLBACK_MESSAGE, runPlannerLoop } from "../planner-loop";
 
 const failureA = "Note A could not be updated.";
 const successB = "Note B was updated.";
@@ -113,7 +113,7 @@ describe("planner-loop failed-operation correlation", () => {
 		});
 
 		expect(result.status).toBe("finished");
-		expect(result.finalMessage).toBe(failure);
+		expect(result.finalMessage).toBe(FAILED_TOOL_FALLBACK_MESSAGE);
 		expect(runtime.useModel).toHaveBeenCalledTimes(1);
 	});
 
@@ -372,7 +372,7 @@ describe("planner-loop failed-operation correlation", () => {
 		});
 
 		expect(result.status).toBe("finished");
-		expect(result.finalMessage).toBe(taskFailure);
+		expect(result.finalMessage).toBe(FAILED_TOOL_FALLBACK_MESSAGE);
 		expect(result.finalMessage).not.toContain("Both repair tasks");
 	});
 
@@ -436,7 +436,7 @@ describe("planner-loop failed-operation correlation", () => {
 		});
 
 		expect(result.status).toBe("finished");
-		expect(result.finalMessage).toBe(shellFailure);
+		expect(result.finalMessage).toBe(FAILED_TOOL_FALLBACK_MESSAGE);
 		expect(result.finalMessage).not.toContain("Both test runs passed");
 		expect(result.finalMessage).not.toContain("Project B tests passed");
 	});
@@ -468,7 +468,7 @@ describe("planner-loop failed-operation correlation", () => {
 		});
 
 		expect(result.status).toBe("finished");
-		expect(result.finalMessage).toBe(failureA);
+		expect(result.finalMessage).toBe(FAILED_TOOL_FALLBACK_MESSAGE);
 		expect(result.finalMessage).not.toContain("Both notes were updated");
 	});
 
@@ -682,7 +682,7 @@ describe("planner-loop failed-operation correlation", () => {
 		});
 
 		expect(result.status).toBe("finished");
-		expect(result.finalMessage).toBe(newestFailure);
+		expect(result.finalMessage).toBe(FAILED_TOOL_FALLBACK_MESSAGE);
 		expect(result.finalMessage).not.toContain("Confirm B.");
 	});
 
@@ -736,7 +736,7 @@ describe("planner-loop failed-operation correlation", () => {
 			});
 
 			expect(result.status).toBe("finished");
-			expect(result.finalMessage).toBe(shellFailure);
+			expect(result.finalMessage).toBe(FAILED_TOOL_FALLBACK_MESSAGE);
 			expect(result.finalMessage).not.toContain("Both test runs passed");
 			expect(evaluate).not.toHaveBeenCalled();
 		});
@@ -763,7 +763,7 @@ describe("planner-loop failed-operation correlation", () => {
 		});
 
 		expect(result.status).toBe("finished");
-		expect(result.finalMessage).toBe(failureA);
+		expect(result.finalMessage).toBe(FAILED_TOOL_FALLBACK_MESSAGE);
 		expect(result.finalMessage).not.toContain("Both notes were updated");
 		expect(runtime.useModel).toHaveBeenCalledTimes(3);
 	});
@@ -802,10 +802,10 @@ describe("planner-loop failed-operation correlation", () => {
 
 		expect(runtime.useModel).toHaveBeenCalledTimes(4);
 		expect(executeToolCall).toHaveBeenCalledTimes(2);
-		expect(result.finalMessage).toBe(failureA);
+		expect(result.finalMessage).toBe(FAILED_TOOL_FALLBACK_MESSAGE);
 		expect(result.trajectory.steps.at(-1)).toMatchObject({
 			terminalOnly: true,
-			terminalMessage: failureA,
+			terminalMessage: FAILED_TOOL_FALLBACK_MESSAGE,
 		});
 	});
 
@@ -845,7 +845,7 @@ describe("planner-loop failed-operation correlation", () => {
 		});
 
 		expect(result.status).toBe("finished");
-		expect(result.finalMessage).toBe(failureA);
+		expect(result.finalMessage).toBe(FAILED_TOOL_FALLBACK_MESSAGE);
 		expect(result.finalMessage).not.toContain('"action":"VIEWS"');
 	});
 
@@ -871,7 +871,7 @@ describe("planner-loop failed-operation correlation", () => {
 		});
 
 		expect(result.status).toBe("finished");
-		expect(result.finalMessage).toBe(failureA);
+		expect(result.finalMessage).toBe(FAILED_TOOL_FALLBACK_MESSAGE);
 		expect(result.finalMessage).not.toBe(successB);
 		expect(runtime.useModel).toHaveBeenCalledTimes(3);
 	});
