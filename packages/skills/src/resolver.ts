@@ -23,16 +23,34 @@ function looksLikeSkillsDir(dir: string): boolean {
     return false;
   }
 
-  const entries = readdirSync(dir, { withFileTypes: true });
+  let entries: import("node:fs").Dirent[];
+  try {
+    entries = readdirSync(dir, { withFileTypes: true });
+  } catch {
+    return false;
+  }
+
   for (const entry of entries) {
     if (entry.name.startsWith(".")) {
       continue;
     }
     const fullPath = join(dir, entry.name);
-    if (entry.isFile() && entry.name.endsWith(".md")) {
+    let isFile = entry.isFile();
+    let isDirectory = entry.isDirectory();
+    if (entry.isSymbolicLink()) {
+      try {
+        const stats = statSync(fullPath);
+        isFile = stats.isFile();
+        isDirectory = stats.isDirectory();
+      } catch {
+        isFile = false;
+        isDirectory = false;
+      }
+    }
+    if (isFile && entry.name.endsWith(".md")) {
       return true;
     }
-    if (entry.isDirectory()) {
+    if (isDirectory) {
       if (existsSync(join(fullPath, "SKILL.md"))) {
         return true;
       }
