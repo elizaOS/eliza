@@ -2961,6 +2961,20 @@
         "vite": "^8.0.0",
       },
     },
+    "plugins/plugin-taskmarket": {
+      "name": "@elizaos/plugin-taskmarket",
+      "version": "0.1.0",
+      "dependencies": {
+        "@elizaos/core": "workspace:*",
+      },
+      "devDependencies": {
+        "@biomejs/biome": "2.5.6",
+        "@types/node": "^25.0.6",
+        "@typescript/native": "npm:typescript@^7.0.2",
+        "typescript": "^6.0.3",
+        "vitest": "^4.1.7",
+      },
+    },
     "plugins/plugin-telegram": {
       "name": "@elizaos/plugin-telegram",
       "version": "2.0.3-beta.7",
@@ -3986,6 +4000,8 @@
     "@elizaos/plugin-sql": ["@elizaos/plugin-sql@workspace:plugins/plugin-sql"],
 
     "@elizaos/plugin-task-coordinator": ["@elizaos/plugin-task-coordinator@workspace:plugins/plugin-task-coordinator"],
+
+    "@elizaos/plugin-taskmarket": ["@elizaos/plugin-taskmarket@workspace:plugins/plugin-taskmarket"],
 
     "@elizaos/plugin-telegram": ["@elizaos/plugin-telegram@workspace:plugins/plugin-telegram"],
 
