@@ -51,7 +51,9 @@ function relativeImportPattern(moduleName: string): RegExp {
 
 function sideEffectImportPattern(moduleName: string): RegExp {
   const escaped = moduleName.replaceAll(".", String.raw`\.`);
-  return new RegExp(String.raw`import\s+["']\.\/${escaped}(?:\.(?:tsx?|jsx?))?["']`);
+  return new RegExp(
+    String.raw`import\s+["']\.\/${escaped}(?:\.(?:tsx?|jsx?))?["']`,
+  );
 }
 
 function starExportPattern(moduleName: string): RegExp {
@@ -96,7 +98,9 @@ describe("server entry — no browser/UI imports (#18031, #18347)", () => {
 
   it("does not import browser-only barrel paths", () => {
     for (const path of BROWSER_ONLY_PATHS) {
-      const escaped = path.replaceAll("/", String.raw`\/`).replaceAll(".", String.raw`\.`);
+      const escaped = path
+        .replaceAll("/", String.raw`\/`)
+        .replaceAll(".", String.raw`\.`);
       expect(source, `import from ${path}`).not.toMatch(
         new RegExp(String.raw`(?:import|export)\s+[^"']*["']${escaped}`),
       );
