@@ -89,16 +89,15 @@ export async function prewarmSharedAgentTurnCaches(
   // 3. Conversation Durable Object hydration ("Conversation cache is
   //    warming"). The first history read on a cold object starts its
   //    authoritative Postgres hydration under the object's own waitUntil and
-  //    reports warming; swallowing that expected rejection leaves the object
-  //    hydrated for the real first turn. Launch model: one canonical
+  //    reports warming; Promise.allSettled observes and logs that rejection
+  //    while leaving the object hydrated for the real first turn. Launch model:
+  //    one canonical
   //    conversation per shared agent (roomId === agentId), the same room the
   //    REST turn dispatch addresses.
   if (options.namespace) {
     legs.push({
       leg: "conversation-object",
-      run: coordinateSharedHistory(agent.id, agent.id, { namespace: options.namespace }).catch(
-        () => undefined,
-      ),
+      run: coordinateSharedHistory(agent.id, agent.id, { namespace: options.namespace }),
     });
   }
 
