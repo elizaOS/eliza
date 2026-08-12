@@ -131,7 +131,7 @@ describe("AgentRuntime.stop", () => {
 	});
 
 	it("fast shutdown caps already-started service stop waits", async () => {
-		process.env.ELIZA_SHUTDOWN_SERVICE_STOP_TIMEOUT_MS = "5";
+		process.env.ELIZA_SHUTDOWN_SERVICE_STOP_TIMEOUT_MS = "500";
 		const runtime = new AgentRuntime({ logLevel: "fatal" });
 		await runtime.initialize({ allowNoDatabase: true, skipMigrations: true });
 		let stopCalls = 0;
@@ -154,7 +154,9 @@ describe("AgentRuntime.stop", () => {
 		await runtime.getServiceLoadPromise(HangingStopService.serviceType);
 
 		const stopResult = await Promise.race([
-			runtime.stop({ fast: true }).then(() => "stopped"),
+			runtime
+				.stop({ fast: true, serviceStopTimeoutMs: 5 })
+				.then(() => "stopped"),
 			delay(500),
 		]);
 
@@ -198,6 +200,51 @@ describe("AgentRuntime.stop", () => {
 		await lease.release();
 		await stop;
 		expect(events).toEqual(["prepare:runtime-stop", "stop"]);
+	});
+
+	it("makes reentrant and concurrent stop callers await one teardown", async () => {
+		const runtime = new AgentRuntime({ logLevel: "fatal" });
+		await runtime.initialize({ allowNoDatabase: true, skipMigrations: true });
+		const stopStarted = createDeferred<void>();
+		const finishStop = createDeferred<void>();
+		let stopCalls = 0;
+		let reentrantStop: Promise<void> | null = null;
+
+		class DeferredStopService extends Service {
+			static override serviceType = "shutdown-concurrent-stop-service";
+			capabilityDescription = "service that exposes concurrent stop ordering";
+
+			static override async start(): Promise<DeferredStopService> {
+				return new DeferredStopService();
+			}
+
+			override prepareStop(): void {
+				reentrantStop = runtime.stop();
+			}
+
+			override async stop(): Promise<void> {
+				stopCalls += 1;
+				stopStarted.resolve();
+				await finishStop.promise;
+			}
+		}
+
+		await runtime.registerService(DeferredStopService);
+		await runtime.getServiceLoadPromise(DeferredStopService.serviceType);
+		const first = runtime.stop();
+		await stopStarted.promise;
+		expect(reentrantStop).not.toBeNull();
+		let secondSettled = false;
+		const second = runtime.stop().then(() => {
+			secondSettled = true;
+		});
+		await Promise.resolve();
+		expect(secondSettled).toBe(false);
+
+		finishStop.resolve();
+		await Promise.all([first, second, reentrantStop]);
+		expect(stopCalls).toBe(1);
+		expect(secondSettled).toBe(true);
 	});
 
 	it("fails fast without stopping resources beneath a noncooperative room owner", async () => {

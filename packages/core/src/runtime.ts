@@ -1414,8 +1414,10 @@ export class AgentRuntime implements IAgentRuntime {
 	public companionUrl?: string;
 	/** Set when stop() has completed service teardown. */
 	private stopped = false;
-	/** Set synchronously at stop entry, before any drain can yield. */
-	private stopping = false;
+	/** Set permanently at the first stop request, before any drain can yield. */
+	private stopRequested = false;
+	/** The active stop attempt; concurrent callers await the same teardown. */
+	private stopPromise: Promise<void> | null = null;
 
 	constructor(opts: {
 		conversationLength?: number;
@@ -2333,9 +2335,9 @@ export class AgentRuntime implements IAgentRuntime {
 			throw new Error(`registerPlugin: ${errorMsg}`);
 		}
 		const assertRuntimeActive = (): void => {
-			if (!this.stopped) return;
+			if (!this.stopRequested) return;
 			throw new ElizaError(
-				`Cannot register plugin "${plugin.name}" on a stopped runtime`,
+				`Cannot register plugin "${plugin.name}" after runtime stop was requested`,
 				{
 					code: "RUNTIME_STOPPED_DURING_PLUGIN_REGISTRATION",
 					severity: "ephemeral",
@@ -2601,37 +2603,72 @@ export class AgentRuntime implements IAgentRuntime {
 	 * For full teardown (including DB/adapter connection), call close() after stop().
 	 */
 	async stop(options?: RuntimeStopOptions): Promise<void> {
-		if (this.stopped || this.stopping) {
+		if (this.stopPromise) {
 			this.logger.debug(
 				{ src: "agent", agentId: this.agentId },
-				"Runtime already stopping or stopped",
+				"Runtime stop already in progress",
+			);
+			await this.stopPromise;
+			return;
+		}
+		if (this.stopped) {
+			this.logger.debug(
+				{ src: "agent", agentId: this.agentId },
+				"Runtime already stopped",
 			);
 			return;
 		}
-		this.stopping = true;
-		// Freeze connector/service ingress before the first shutdown await. Without
-		// this phase, a gateway delivery can begin a new turn while the runtime is
-		// already waiting for its room-owner drain, behind the eventual service-stop
-		// snapshot. Hooks are synchronous by contract to make that boundary atomic.
-		for (const [serviceType, services] of this.services) {
-			for (const service of services) {
-				try {
-					service?.prepareStop?.("runtime-stop");
-				} catch (err) {
-					// error-policy:J6 admission preparation is best-effort so one broken
-					// connector cannot deny every service its teardown opportunity.
-					this.logger.warn(
-						{
-							src: "agent",
-							agentId: this.agentId,
-							serviceType,
-							error: err instanceof Error ? err.message : String(err),
-						},
-						"Service prepareStop() threw; continuing",
-					);
+
+		let resolveStop!: () => void;
+		let rejectStop!: (reason?: unknown) => void;
+		const stopAttempt = new Promise<void>((resolve, reject) => {
+			resolveStop = resolve;
+			rejectStop = reject;
+		});
+		// Publish single-flight ownership before invoking a service hook. A hook is
+		// synchronous but may itself request shutdown; that reentrant call must join
+		// this attempt instead of starting a second teardown.
+		this.stopPromise = stopAttempt;
+		if (!this.stopRequested) {
+			this.stopRequested = true;
+			// Freeze connector/service ingress before the first shutdown await. Without
+			// this phase, a gateway delivery can begin a new turn while the runtime is
+			// already waiting for its room-owner drain, behind the eventual service-stop
+			// snapshot. Hooks are synchronous by contract to make that boundary atomic.
+			for (const [serviceType, services] of this.services) {
+				for (const service of services) {
+					try {
+						service?.prepareStop?.("runtime-stop");
+					} catch (err) {
+						// error-policy:J6 admission preparation is best-effort so one broken
+						// connector cannot deny every service its teardown opportunity.
+						this.logger.warn(
+							{
+								src: "agent",
+								agentId: this.agentId,
+								serviceType,
+								error: err instanceof Error ? err.message : String(err),
+							},
+							"Service prepareStop() threw; continuing",
+						);
+					}
 				}
 			}
 		}
+
+		void this._stopAfterAdmissionCordon(options).then(resolveStop, rejectStop);
+		try {
+			await stopAttempt;
+		} finally {
+			if (this.stopPromise === stopAttempt) {
+				this.stopPromise = null;
+			}
+		}
+	}
+
+	private async _stopAfterAdmissionCordon(
+		options?: RuntimeStopOptions,
+	): Promise<void> {
 		this.roomHandlerQueue.closeAdmissions("runtime-stop");
 		this.turnControllers.abortAllTurns("runtime-stop");
 		const fast = options?.fast === true;
@@ -2658,7 +2695,6 @@ export class AgentRuntime implements IAgentRuntime {
 					pendingRooms: this.roomHandlerQueue.pendingTotal(),
 					timeoutMs,
 				});
-				this.stopping = false;
 				throw error;
 			}
 		} else {
@@ -2679,7 +2715,7 @@ export class AgentRuntime implements IAgentRuntime {
 			process.env.ELIZA_FAST_SHUTDOWN = "1";
 		}
 		try {
-			await this._stopServices(fast);
+			await this._stopServices(fast, options?.serviceStopTimeoutMs);
 		} finally {
 			if (fast) {
 				if (previousFastShutdown === undefined) {
@@ -2691,7 +2727,10 @@ export class AgentRuntime implements IAgentRuntime {
 		}
 	}
 
-	private async _stopServices(fast: boolean): Promise<void> {
+	private async _stopServices(
+		fast: boolean,
+		serviceStopTimeoutMs?: number,
+	): Promise<void> {
 		this.stopped = true;
 		this.logger.debug(
 			{ src: "agent", agentId: this.agentId, fast },
@@ -2769,10 +2808,15 @@ export class AgentRuntime implements IAgentRuntime {
 			}
 		}
 		if (fast && fastStopTasks.length > 0) {
-			const timeoutMs = resolveShutdownTimeoutMs(
-				"ELIZA_SHUTDOWN_SERVICE_STOP_TIMEOUT_MS",
-				DEFAULT_FAST_SERVICE_STOP_TIMEOUT_MS,
-			);
+			const timeoutMs =
+				serviceStopTimeoutMs !== undefined &&
+				Number.isFinite(serviceStopTimeoutMs) &&
+				serviceStopTimeoutMs >= 0
+					? Math.floor(serviceStopTimeoutMs)
+					: resolveShutdownTimeoutMs(
+							"ELIZA_SHUTDOWN_SERVICE_STOP_TIMEOUT_MS",
+							DEFAULT_FAST_SERVICE_STOP_TIMEOUT_MS,
+						);
 			if (timeoutMs > 0) {
 				await Promise.race([
 					Promise.allSettled(fastStopTasks),
@@ -5561,7 +5605,7 @@ export class AgentRuntime implements IAgentRuntime {
 	private async _ensureServiceStarted(
 		serviceType: ServiceTypeName | string,
 	): Promise<Service | null> {
-		if (this.stopped) return null;
+		if (this.stopRequested) return null;
 		if (!this.isNativeFeatureServiceEnabled(serviceType)) return null;
 		const key = this.resolveServiceTypeAlias(serviceType) as ServiceTypeName;
 		// Fast path: a service that is already registered and running is returned
@@ -5571,7 +5615,7 @@ export class AgentRuntime implements IAgentRuntime {
 		const alreadyRunning = this.services.get(key)?.[0];
 		if (alreadyRunning && this.initResolver) return alreadyRunning;
 		await this.initPromise;
-		if (this.stopped) return null;
+		if (this.stopRequested) return null;
 		const classes = this.serviceTypes.get(key);
 		if (!classes || classes.length === 0) {
 			return null;
@@ -5685,9 +5729,9 @@ export class AgentRuntime implements IAgentRuntime {
 			});
 		}
 		try {
-			if (this.stopped || this.stopping) {
+			if (this.stopped || this.stopRequested) {
 				throw new Error(
-					`Runtime stopped before service ${String(serviceType)} could start`,
+					`Runtime stop requested before service ${String(serviceType)} could start`,
 				);
 			}
 			const serviceInstance = await serviceDef.start(this);
@@ -5698,14 +5742,14 @@ export class AgentRuntime implements IAgentRuntime {
 					context: { serviceType },
 				});
 			}
-			if (this.stopped || this.stopping) {
+			if (this.stopped || this.stopRequested) {
 				await this._stopServiceInstance(
 					key,
 					serviceInstance,
 					"late service start after runtime stop",
 				);
 				throw new Error(
-					`Runtime stopped while service ${String(serviceType)} was starting`,
+					`Runtime stop requested while service ${String(serviceType)} was starting`,
 				);
 			}
 			this.serviceInstancesByClass.set(serviceDef, serviceInstance);
@@ -5885,6 +5929,16 @@ export class AgentRuntime implements IAgentRuntime {
 				code: "SERVICE_TYPE_MISSING",
 				context: { serviceName },
 			});
+		}
+		if (this.stopRequested) {
+			throw new ElizaError(
+				`Cannot register service ${String(serviceType)} after runtime stop was requested`,
+				{
+					code: "RUNTIME_STOPPED_DURING_SERVICE_REGISTRATION",
+					severity: "ephemeral",
+					context: { agentId: this.agentId, serviceType },
+				},
+			);
 		}
 		this.logger.debug(
 			{ src: "agent", agentId: this.agentId, serviceType },
