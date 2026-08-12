@@ -91,6 +91,47 @@ describe("run-turbo concurrency override", () => {
     expect(argv).not.toContain("--concurrency=8");
   });
 
+  test("preserves task pass-through concurrency arguments byte-for-byte", async () => {
+    const { argvFile, fakeTurbo } = await fixture();
+    const passThrough = ["--", "--concurrency=9", "task-value"];
+
+    const result = invoke(fakeTurbo, "5", ["run", "lint", ...passThrough]);
+
+    expect(result.status, result.stderr).toBe(0);
+    const argv = JSON.parse(await readFile(argvFile, "utf8"));
+    const separatorIndex = argv.indexOf("--");
+    expect(argv.slice(separatorIndex)).toEqual(passThrough);
+    expect(
+      argv
+        .slice(0, separatorIndex)
+        .filter((arg) => arg.startsWith("--concurrency")),
+    ).toEqual(["--concurrency=5"]);
+  });
+
+  test("canonicalizes mixed Turbo-owned concurrency duplicates", async () => {
+    const { argvFile, fakeTurbo } = await fixture();
+
+    const result = invoke(fakeTurbo, "5", [
+      "run",
+      "lint",
+      "--concurrency",
+      "8",
+      "--filter=x",
+      "--concurrency=9",
+      "--concurrency",
+      "3",
+    ]);
+
+    expect(result.status, result.stderr).toBe(0);
+    const argv = JSON.parse(await readFile(argvFile, "utf8"));
+    expect(argv.filter((arg) => arg.startsWith("--concurrency"))).toEqual([
+      "--concurrency=5",
+    ]);
+    expect(argv).toContain("--filter=x");
+    expect(argv).not.toContain("8");
+    expect(argv).not.toContain("3");
+  });
+
   test.each([
     " ",
     " 4 ",
