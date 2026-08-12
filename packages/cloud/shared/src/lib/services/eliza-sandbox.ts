@@ -3387,7 +3387,12 @@ export class ElizaSandboxService {
     return (
       (message?.role === "user" || message?.role === "assistant") &&
       typeof message.content === "string" &&
-      message.content.trim().length > 0
+      message.content.trim().length > 0 &&
+      // Conversation Durable Objects persist undispatched turn identities in
+      // this shared mirror. Legacy bridge callers read the same row, so they
+      // must uphold the canonical history boundary instead of feeding an
+      // idempotency tombstone into billing or the model as user dialogue.
+      message.pendingProviderDispatch !== true
     );
   }
 

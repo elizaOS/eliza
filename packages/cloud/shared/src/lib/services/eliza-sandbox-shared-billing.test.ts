@@ -428,6 +428,63 @@ describe("ElizaSandboxService shared runtime billing", () => {
     }
   });
 
+  test("excludes conversation idempotency tombstones from the legacy bridge model history", async () => {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const sandbox = sharedSandbox();
+    const findRunningSandboxSpy = spyOn(
+      agentSandboxesRepository,
+      "findRunningSandbox",
+    ).mockResolvedValue(sandbox);
+    const historyGetSpy = spyOn(sharedRuntimeHistoryRepository, "get").mockResolvedValue([
+      {
+        id: "visible-assistant",
+        role: "assistant",
+        content: "prior visible reply",
+        createdAt: 1,
+      },
+      {
+        id: "pending-user",
+        role: "user",
+        content: "must remain internal",
+        createdAt: 2,
+        pendingProviderDispatch: true,
+      },
+    ]);
+    const historyMergeSpy = spyOn(sharedRuntimeHistoryRepository, "merge").mockResolvedValue([]);
+
+    try {
+      await runWithCloudBindings({ CEREBRAS_API_KEY: "test-key" }, () =>
+        new ElizaSandboxService().bridge(sandbox.id, sandbox.organization_id, {
+          jsonrpc: "2.0",
+          id: "legacy-shared-turn",
+          method: "message.send",
+          params: { text: "next visible turn" },
+        }),
+      );
+
+      expect(runSharedAgentTurn).toHaveBeenCalledWith(
+        expect.objectContaining({
+          history: [
+            expect.objectContaining({
+              id: "visible-assistant",
+              content: "prior visible reply",
+            }),
+          ],
+          message: "next visible turn",
+        }),
+      );
+      expect(runSharedAgentTurn).not.toHaveBeenCalledWith(
+        expect.objectContaining({
+          history: expect.arrayContaining([expect.objectContaining({ id: "pending-user" })]),
+        }),
+      );
+    } finally {
+      findRunningSandboxSpy.mockRestore();
+      historyGetSpy.mockRestore();
+      historyMergeSpy.mockRestore();
+    }
+  });
+
   // The credit-gate contract for a drained org / welcome-bonus-withheld signup:
   // the JSON-RPC bridge keeps the -32002 wire error (the /bridge route serves
   // raw JSON-RPC), while bridgeStream — whose callers are HTTP boundaries —
