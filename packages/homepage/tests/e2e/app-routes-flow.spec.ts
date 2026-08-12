@@ -214,6 +214,53 @@ test("get-started covers method selection, phone input, country dropdown, and di
   ).toBeVisible();
 });
 
+test("get-started preserves touch targets and exposes glass phone-input focus", async ({
+  page,
+}) => {
+  await page.goto("/get-started");
+
+  const home = page.getByRole("link", { name: "Home" });
+  await expect
+    .poll(async () => (await home.boundingBox())?.height ?? 0)
+    .toBeGreaterThanOrEqual(44);
+
+  await page.getByRole("button", { name: /^iMessage$/ }).click();
+  const back = page.getByRole("button", { name: "Back" });
+  await expect
+    .poll(async () => (await back.boundingBox())?.height ?? 0)
+    .toBeGreaterThanOrEqual(44);
+
+  await seedAuthenticatedSession(page);
+  await page.addInitScript(() => {
+    Reflect.set(window, "Telegram", {
+      Login: {
+        auth: (
+          _options: object,
+          callback: (value: Record<string, unknown>) => void,
+        ) =>
+          callback({
+            id: 123456,
+            first_name: "Homepage",
+            username: "homepage_e2e",
+            auth_date: 1_786_500_000,
+            hash: "telegram-test-hash",
+          }),
+      },
+    });
+  });
+  await page.goto("/get-started?method=telegram&link=true");
+  await page.getByRole("button", { name: "Connect Telegram" }).click();
+
+  const country = page.getByLabel("Choose country");
+  await country.focus();
+  const focusBoxShadow = await country.evaluate((select) => {
+    const wrapper = select.closest("label")?.parentElement;
+    return wrapper ? getComputedStyle(wrapper).boxShadow : "";
+  });
+  expect(focusBoxShadow).not.toBe("none");
+  expect(focusBoxShadow).not.toBe("");
+});
+
 test("get-started covers Discord callback errors and setup guide", async ({
   page,
 }) => {
