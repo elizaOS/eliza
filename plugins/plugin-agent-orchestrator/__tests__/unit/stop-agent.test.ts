@@ -87,7 +87,7 @@ describe("TASKS:stop_agent", () => {
       effectReceipts: [{ outcome: "noop" }],
     });
   });
-  it("preserves mixed all-session stop effects after every child settles", async () => {
+  it("preserves mixed stop effects when a middle child throws synchronously", async () => {
     const sessions = [
       session({ id: "session-one" }),
       session({ id: "session-two" }),
@@ -102,7 +102,7 @@ describe("TASKS:stop_agent", () => {
         attempted.push(sessionId);
         if (sessionId === "session-one") return first.promise;
         if (sessionId === "session-two") {
-          return Promise.reject(new Error("private stop transport detail"));
+          throw new Error("private stop transport detail");
         }
         return third.promise;
       }),

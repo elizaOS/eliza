@@ -288,7 +288,9 @@ async function collectAcpSessionMutations(
   mutate: (sessionId: string) => Promise<AcpSessionMutationResult>,
 ): Promise<AcpBatchMutationCollection> {
   const settled = await Promise.allSettled(
-    sessionIds.map((sessionId) => mutate(sessionId)),
+    sessionIds.map((sessionId) =>
+      Promise.resolve().then(() => mutate(sessionId)),
+    ),
   );
   const receipts: AcpBatchMutationCollection["receipts"] = [];
   const failures: AcpBatchMutationFailure[] = [];

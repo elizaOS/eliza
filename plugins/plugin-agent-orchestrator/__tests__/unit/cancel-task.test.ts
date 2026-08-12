@@ -111,23 +111,23 @@ describe("TASKS:cancel", () => {
       effectReceipts: [{ outcome: "noop" }],
     });
   });
-  it("preserves mixed all-session cancel effects after every child settles", async () => {
+  it("preserves mixed cancel effects when the first child throws synchronously", async () => {
     const sessions = [
       session({ id: "session-one" }),
       session({ id: "session-two" }),
       session({ id: "session-three" }),
     ];
-    const first = Promise.withResolvers<ReturnType<typeof sessionMutation>>();
+    const second = Promise.withResolvers<ReturnType<typeof sessionMutation>>();
     const third = Promise.withResolvers<ReturnType<typeof sessionMutation>>();
     const attempted: string[] = [];
     const svc = serviceMock({
       listSessions: vi.fn(() => sessions),
       cancelSession: vi.fn((sessionId: string) => {
         attempted.push(sessionId);
-        if (sessionId === "session-one") return first.promise;
-        if (sessionId === "session-two") {
-          return Promise.reject(new Error("private cancel transport detail"));
+        if (sessionId === "session-one") {
+          throw new Error("private cancel transport detail");
         }
+        if (sessionId === "session-two") return second.promise;
         return third.promise;
       }),
     });
@@ -145,7 +145,7 @@ describe("TASKS:cancel", () => {
     );
     third.resolve(sessionMutation("session-three", "cancel"));
     await Promise.resolve();
-    first.resolve(sessionMutation("session-one", "cancel"));
+    second.resolve(sessionMutation("session-two", "cancel"));
     const result = await pending;
 
     expect(result).toMatchObject({
@@ -154,12 +154,12 @@ describe("TASKS:cancel", () => {
       text: expect.stringContaining("remaining session outcomes are unknown"),
       data: {
         canceledCount: 2,
-        stoppedSessions: ["session-one", "session-three"],
-        appliedSessionIds: ["session-one", "session-three"],
-        failedSessionIds: ["session-two"],
+        stoppedSessions: ["session-two", "session-three"],
+        appliedSessionIds: ["session-two", "session-three"],
+        failedSessionIds: ["session-one"],
         mutationFailures: [
           {
-            sessionId: "session-two",
+            sessionId: "session-one",
             code: "ACP_SESSION_MUTATION_REJECTED",
             acceptance: "unknown",
             retryable: false,
@@ -172,12 +172,12 @@ describe("TASKS:cancel", () => {
       effectReceipts: [
         {
           outcome: "failed",
-          resource: { kind: "acp.session", id: "session-one" },
+          resource: { kind: "acp.session", id: "session-two" },
           artifacts: expect.arrayContaining([
             { kind: "acp.session", id: "session-three" },
             {
               kind: "acp.session-mutation-receipt",
-              id: "session-store:cancel:session-one:1",
+              id: "session-store:cancel:session-two:1",
             },
             {
               kind: "acp.session-mutation-receipt",
