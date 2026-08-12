@@ -293,6 +293,9 @@ function mapChallengeStatus(status: StewardEmailLoginStatus): EmailCheckState {
 
 function describeEmailLoginError(error: unknown, fallback: string): string {
   if (error instanceof StewardEmailLoginError) {
+    if (error.code === "email_delivery_provider_unavailable") {
+      return "Email sign-in is not available right now. Try another sign-in method or contact support.";
+    }
     if (error.status === 429) {
       return "Too many attempts. Wait a moment before trying again.";
     }
