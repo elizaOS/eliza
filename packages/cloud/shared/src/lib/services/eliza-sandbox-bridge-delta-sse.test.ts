@@ -11,6 +11,7 @@
  * service) must rebuild the full text. Real methods, no network.
  */
 import { afterEach, describe, expect, mock, test } from "bun:test";
+import { ElizaClient } from "../../../../../ui/src/api/client";
 import { runWithCloudBindings } from "../runtime/cloud-bindings";
 import { ElizaSandboxBridgeService } from "./eliza-sandbox-bridge";
 
@@ -179,6 +180,33 @@ for (const [label, make] of normalizers) {
         accountConnect: { provider: "openai" },
       });
       expect(done?.untrustedExtra).toBeUndefined();
+    });
+
+    test("a real normalized terminal response drives the shared client with metadata intact", async () => {
+      const upstream = sseResponse(
+        'data: {"type":"token","text":"Opened notes"}\n\n' +
+          'data: {"type":"done","messageId":"assistant-1","userMessageId":"user-1","fullText":"Opened notes","actionResults":[{"actionName":"VIEWS","success":true}],"usage":{"promptTokens":2,"completionTokens":1,"totalTokens":3},"failureKind":"provider_gate","accountConnect":{"provider":"openai"}}\n\n',
+      );
+      // No restated wire payload: the client consumes the Response the REAL
+      // normalizer produced from the upstream terminal event.
+      const normalized = make().normalizeBridgeSseResponse(upstream);
+      const client = new ElizaClient("http://agent.example:31337", "token");
+      client.setRequestTransport({ request: async () => normalized });
+
+      const result = await client.streamChatEndpoint("/api/x/stream", "open notes", () => {});
+
+      expect(result.completed).toBe(true);
+      expect(result.text).toBe("Opened notes");
+      expect(result.messageId).toBe("assistant-1");
+      expect(result.userMessageId).toBe("user-1");
+      expect(result.actionResults).toEqual([{ actionName: "VIEWS", success: true }]);
+      expect(result.usage).toEqual({
+        promptTokens: 2,
+        completionTokens: 1,
+        totalTokens: 3,
+      });
+      expect(result.failureKind).toBe("provider_gate");
+      expect(result.accountConnect).toEqual({ provider: "openai" });
     });
 
     test("buffers split SSE frames before parsing and accumulating", async () => {

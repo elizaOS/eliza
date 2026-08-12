@@ -8,6 +8,7 @@
 process.env.MOCK_REDIS = "1";
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { ElizaClient } from "../../../../../../ui/src/api/client";
 
 let turn: Record<string, unknown>;
 let streamTurn: Record<string, unknown>;
@@ -572,6 +573,29 @@ describe("SharedRuntimeChatService", () => {
     expect(frames[1]?.data.messageId).toBe(frames[0]?.data.messageId);
     expect(frames[1]?.data.userMessageId).toBe(frames[0]?.data.userMessageId);
     expect(settleCalls).toEqual([0]);
+  });
+
+  test("the real degraded producer response drives the shared client to exact text and one completion", async () => {
+    const degradedReply = "Eliza is temporarily unavailable (no shared model configured).";
+    streamTurn = { degraded: true, reply: degradedReply };
+    // No restated wire payload: the Response consumed by the REAL client below
+    // is whatever SharedRuntimeChatService.stream() actually produced.
+    const response = await new SharedRuntimeChatService().stream(agent, rpc, harness());
+    const client = new ElizaClient("http://agent.example:31337", "token");
+    client.setRequestTransport({ request: async () => response });
+    const tokens: string[] = [];
+    const result = await client.streamChatEndpoint(
+      "/api/conversations/c/messages/stream",
+      "hi",
+      (token: string) => {
+        tokens.push(token);
+      },
+    );
+    expect(tokens).toEqual([degradedReply]);
+    expect(result.text).toBe(degradedReply);
+    expect(result.completed).toBe(true);
+    expect(typeof result.messageId).toBe("string");
+    expect(typeof result.userMessageId).toBe("string");
   });
 
   test("every SSE frame carries the canonical JSON type and done carries authoritative fullText (#17122)", async () => {
