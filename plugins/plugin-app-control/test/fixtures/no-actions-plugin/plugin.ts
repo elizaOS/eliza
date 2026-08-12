@@ -1,8 +1,8 @@
 /**
  * Worker-host fixture plugin that contributes NO actions — only a provider
- * and a route. This replicates apps like `hello-gradient` that export a
- * valid Plugin shape but fail the worker's old "must have actions array"
- * gate. The fix accepts any `isValidPluginShape`-compliant export.
+ * and a route. It is a structurally valid Plugin export, which lets tests
+ * prove the worker rejects it explicitly: the sandbox only bridges actions,
+ * so booting an actionless plugin would be a healthy-looking no-op.
  */
 
 interface FixtureProvider {

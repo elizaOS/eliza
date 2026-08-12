@@ -302,16 +302,12 @@ async function loadPlugin(entryPath: string): Promise<{
 			mod.appPlugin,
 			mod.sandboxPlugin,
 		];
-		let plugin: {
-			name: string;
-			actions?: LoadedAction[];
-		} | null = null;
-		for (const c of candidates) {
-			if (isValidPluginExport(c)) {
-				plugin = c;
-				break;
-			}
-		}
+		// Prefer the actions-bearing export: a metadata-only default export
+		// (valid shape, zero actions) must not shadow a sibling export that
+		// actually contributes actions, or the zero-action gate below would
+		// reject a module the worker could serve.
+		const valid = candidates.filter(isValidPluginExport);
+		const plugin = valid.find((p) => p.actions?.length) ?? valid[0] ?? null;
 		if (!plugin) {
 			return { loaded: 0, error: "no plugin export found in module" };
 		}

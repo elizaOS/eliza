@@ -36,6 +36,10 @@ const NO_ACTIONS_PLUGIN_PATH = path.resolve(
 	path.dirname(__filename),
 	"../../../test/fixtures/no-actions-plugin/plugin.ts",
 );
+const SHADOWED_ACTIONS_PLUGIN_PATH = path.resolve(
+	path.dirname(__filename),
+	"../../../test/fixtures/shadowed-actions-plugin/plugin.ts",
+);
 
 describe("AppWorkerHostService worker bridge", () => {
 	let service: AppWorkerHostService;
@@ -284,6 +288,25 @@ describe("AppWorkerHostService worker bridge", () => {
 			expect(service.list().some((w) => w.slug === "fixture-no-actions")).toBe(
 				false,
 			);
+		});
+
+		it("prefers an actions-bearing named export over a metadata-only default export", async () => {
+			// A metadata-only default export is a valid plugin shape; if
+			// candidate selection stopped at the first valid export it would
+			// shadow the sibling actions-bearing `plugin` export and the
+			// zero-action gate would reject a module the worker can serve.
+			await service.spawn({
+				slug: "fixture-shadowed-actions",
+				isolation: "worker",
+				pluginEntryPath: SHADOWED_ACTIONS_PLUGIN_PATH,
+			});
+			const reply = await service.invoke<{
+				pong: boolean;
+				actions: string[];
+			}>("fixture-shadowed-actions", "ping");
+			expect(reply.ok).toBe(true);
+			if (!reply.ok) return;
+			expect(reply.result.actions).toEqual(["SHADOWED_ECHO"]);
 		});
 	});
 
