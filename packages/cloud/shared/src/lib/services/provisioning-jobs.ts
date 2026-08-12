@@ -910,6 +910,29 @@ export const PER_JOB_TIMEOUT_MS = parsePositiveIntEnv(
  *  operators enable the lane. */
 const SNAPSHOT_GATE_RETRY_DELAY_MS = 10 * 60 * 1000;
 const PROVISION_TRANSPORT_RETRY_DELAY_MS = 2 * 60 * 1000;
+
+/**
+ * Requeues a retryable transport failure may take WITHOUT consuming an attempt.
+ *
+ * Without a bound, a provision that keeps failing never reaches
+ * `max_attempts`, so the permanent-failure writeback never runs and the agent
+ * row sits at `provisioning` with a null error indefinitely — the spinner in
+ * #18463. The stuck-provisioning sweep cannot rescue it either: that gate
+ * excludes any agent still owning a pending job, which the requeue guarantees.
+ *
+ * Same shape as the deletion path's re-enqueue budget in this file: a counter,
+ * not a clock, so a slow node cannot buy itself extra passes.
+ */
+const MAX_TRANSPORT_REQUEUES = 5;
+
+/** Where the budget rides on the job row. `data` survives a requeue intact. */
+const TRANSPORT_REQUEUE_KEY = "transportRequeues";
+
+/** Requeues already spent by this job. Absent or malformed counts as none. */
+function readTransportRequeues(job: Job): number {
+  const raw = (job.data as Record<string, unknown> | null)?.[TRANSPORT_REQUEUE_KEY];
+  return typeof raw === "number" && Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : 0;
+}
 const WARM_CLAIM_RECOVERY_ORPHAN_GRACE_MS = 2 * 60 * 1000;
 const EXECUTION_LEASE_MS = 60_000;
 const EXECUTION_LEASE_HEARTBEAT_MS = 15_000;
@@ -1119,7 +1142,13 @@ export class ProvisioningRecoveryDegradedError extends ElizaError {
 }
 
 function emptyRecoverySummary(): ProvisioningRecoverySummary {
-  return { scanned: 0, retried: 0, permanentlyFailed: 0, unchanged: 0, failures: [] };
+  return {
+    scanned: 0,
+    retried: 0,
+    permanentlyFailed: 0,
+    unchanged: 0,
+    failures: [],
+  };
 }
 
 function addRecoveryResult(
@@ -3133,29 +3162,61 @@ export class ProvisioningJobService {
     ) {
       const retrySnapshot =
         err instanceof RetryableReplacementCleanupError ? err.retrySnapshot : job;
-      const requeued = await this.retryOwnedWrite(job, "retry-later", () =>
-        jobsRepository.retryLaterWithoutIncrementingAttempts(
-          retrySnapshot,
-          errorMsg,
-          PROVISION_TRANSPORT_RETRY_DELAY_MS,
-          this.executionOwnerId,
-        ),
-      );
-      if (requeued) {
-        if (result) result.retried++;
-        logger.warn("[provisioning-jobs] Requeued retryable provision transport failure", {
-          jobId: job.id,
-          delayMs: PROVISION_TRANSPORT_RETRY_DELAY_MS,
-          error: errorMsg,
+      const requeues = readTransportRequeues(retrySnapshot);
+      if (requeues < MAX_TRANSPORT_REQUEUES) {
+        // One owned write does two jobs. It persists the budget on the row that
+        // survives the requeue, AND the row it returns is the fresh snapshot the
+        // fence in retryLaterWithoutIncrementingAttempts compares against. The
+        // claim-time snapshot never matches, because the three call sites all
+        // stamp `result`/`updated_at` on their way here — so without this the
+        // requeue is refused and the job wedges `in_progress` until the stale-job
+        // sweep collects it ~16 minutes later.
+        const counted = await this.updateClaimedExecution(retrySnapshot, {
+          data: {
+            ...(retrySnapshot.data as Record<string, unknown> | null),
+            [TRANSPORT_REQUEUE_KEY]: requeues + 1,
+          },
         });
-      } else {
-        logger.info("[provisioning-jobs] Retryable failure lost its exact job-state claim", {
-          jobId: job.id,
-          error: errorMsg,
-        });
+        const requeued = await this.retryOwnedWrite(job, "retry-later", () =>
+          jobsRepository.retryLaterWithoutIncrementingAttempts(
+            counted ?? retrySnapshot,
+            errorMsg,
+            PROVISION_TRANSPORT_RETRY_DELAY_MS,
+            this.executionOwnerId,
+          ),
+        );
+        if (requeued) {
+          if (result) result.retried++;
+          logger.warn("[provisioning-jobs] Requeued retryable provision transport failure", {
+            jobId: job.id,
+            delayMs: PROVISION_TRANSPORT_RETRY_DELAY_MS,
+            requeues: requeues + 1,
+            maxRequeues: MAX_TRANSPORT_REQUEUES,
+            error: errorMsg,
+          });
+        } else {
+          logger.info("[provisioning-jobs] Retryable failure lost its exact job-state claim", {
+            jobId: job.id,
+            error: errorMsg,
+          });
+        }
+        return;
       }
-      return;
+      // Budget spent. Fall through to the terminal writeback below rather than
+      // requeuing again: a provision that has failed this many times is not a
+      // transient blip, and leaving it pending forever is what strands the agent
+      // row at `provisioning` with a null error while the UI spins on it.
+      logger.warn("[provisioning-jobs] Retryable failure exhausted its requeue budget", {
+        jobId: job.id,
+        requeues,
+        maxRequeues: MAX_TRANSPORT_REQUEUES,
+        error: errorMsg,
+      });
     }
+
+    const requeueBudgetExhausted =
+      err instanceof RetryableProvisionTransportError ||
+      err instanceof RetryableReplacementCleanupError;
 
     if (result) result.failed++;
 
@@ -3178,7 +3239,11 @@ export class ProvisioningJobService {
       jobsRepository.incrementAttempt(
         job.id,
         errorMsg,
-        job.max_attempts,
+        // The requeue budget already supplied this job's retries — five passes
+        // two minutes apart. Settling on this pass rather than restarting the
+        // 30s/2min/8min attempt ladder is the point: the caller has been told
+        // "provisioning" for ten minutes already.
+        requeueBudgetExhausted ? 1 : job.max_attempts,
         onFailedInTx,
         job.execution_generation ?? undefined,
         this.executionOwnerId,
@@ -3391,7 +3456,11 @@ export class ProvisioningJobService {
             .update(apps)
             .set({ deployment_status: "failed", updated_at: new Date() })
             .where(and(eq(apps.id, appId), eq(apps.organization_id, failedJob.organization_id)))
-            .returning({ id: apps.id, api_key_id: apps.api_key_id, slug: apps.slug });
+            .returning({
+              id: apps.id,
+              api_key_id: apps.api_key_id,
+              slug: apps.slug,
+            });
           if (failedApp) {
             await enqueueAppCacheInvalidation(tx, failedJob, failedApp);
             logger.warn(
@@ -3438,7 +3507,11 @@ export class ProvisioningJobService {
             .update(apps)
             .set({ deployment_status: "failed", updated_at: new Date() })
             .where(and(eq(apps.id, appId), eq(apps.organization_id, row.organizationId)))
-            .returning({ id: apps.id, api_key_id: apps.api_key_id, slug: apps.slug });
+            .returning({
+              id: apps.id,
+              api_key_id: apps.api_key_id,
+              slug: apps.slug,
+            });
           if (failedApp) {
             await enqueueAppCacheInvalidation(tx, failedJob, failedApp);
             logger.warn(
@@ -3765,7 +3838,11 @@ export class ProvisioningJobService {
   ): Promise<boolean> {
     if (result.success || result.error !== "Agent not found") return false;
     await this.settleClaimedExecution(job, "completed", {
-      result: { cloudAgentId: agentId, skipped: true, reason: "Agent not found" },
+      result: {
+        cloudAgentId: agentId,
+        skipped: true,
+        reason: "Agent not found",
+      },
       completed_at: new Date(),
     });
     logger.info("[provisioning-jobs] Job completed as no-op — agent no longer exists", {
@@ -5098,7 +5175,12 @@ export class ProvisioningJobService {
     minAgeMs?: number;
     maxAgents?: number;
     concurrency?: number;
-  }): Promise<{ total: number; recovered: number; unresolved: number; failed: number }> {
+  }): Promise<{
+    total: number;
+    recovered: number;
+    unresolved: number;
+    failed: number;
+  }> {
     const minAgeMs = params?.minAgeMs ?? 5 * 60 * 1000; // 5m grace beyond normal boot
     const maxAgents = params?.maxAgents ?? 50;
     const concurrency = params?.concurrency ?? 5;
@@ -5319,7 +5401,9 @@ export class ProvisioningJobService {
       const isWaifuTarget =
         waifuTarget != null && isWaifuWebhookTargetUrl(safeWebhookUrl, waifuTarget);
 
-      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+      };
       let rawBody: string;
 
       if (isWaifuTarget && waifuTarget) {

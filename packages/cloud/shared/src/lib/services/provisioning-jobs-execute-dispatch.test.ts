@@ -14,7 +14,10 @@
 
 import { afterEach, describe, expect, spyOn, test } from "bun:test";
 
-import { jobsRepository, StaleJobExecutionError } from "../../db/repositories/jobs";
+import {
+  jobsRepository,
+  StaleJobExecutionError,
+} from "../../db/repositories/jobs";
 import type { Job } from "../../db/schemas/jobs";
 import { elizaSandboxService } from "./eliza-sandbox";
 import { JOB_TYPES, type ProvisioningJobType } from "./provisioning-job-types";
@@ -92,15 +95,26 @@ function harness(job: Job) {
     },
     "assertNoConflictingLifecycleExecution",
   ).mockResolvedValue(undefined);
-  const ordinaryClaimSpy = spyOn(jobsRepository, "claimPendingJobs").mockImplementation(
-    async (f: { type: string }) => (f.type === job.type ? [job] : []),
+  const ordinaryClaimSpy = spyOn(
+    jobsRepository,
+    "claimPendingJobs",
+  ).mockImplementation(async (f: { type: string }) =>
+    f.type === job.type ? [job] : [],
   );
-  const leaseSpy = spyOn(jobsRepository, "assertExecutionLease").mockResolvedValue(undefined);
-  const renewLeaseSpy = spyOn(jobsRepository, "renewExecutionLease").mockResolvedValue("lost");
+  const leaseSpy = spyOn(
+    jobsRepository,
+    "assertExecutionLease",
+  ).mockResolvedValue(undefined);
+  const renewLeaseSpy = spyOn(
+    jobsRepository,
+    "renewExecutionLease",
+  ).mockResolvedValue("lost");
   const sharedClaimSpy = spyOn(
     jobsRepository,
     "claimPendingJobsWithinSharedRunningLimit",
-  ).mockImplementation(async (f: { type: string }) => (f.type === job.type ? [job] : []));
+  ).mockImplementation(async (f: { type: string }) =>
+    f.type === job.type ? [job] : [],
+  );
   const claimSpy = {
     mockRestore() {
       conflictSpy.mockRestore();
@@ -110,12 +124,25 @@ function harness(job: Job) {
       renewLeaseSpy.mockRestore();
     },
   };
-  const recoverSpy = spyOn(jobsRepository, "recoverStaleJobs").mockResolvedValue(EMPTY_RECOVERY);
-  const updateStatusSpy = spyOn(jobsRepository, "settleExecution").mockResolvedValue(undefined);
-  const updateSpy = spyOn(jobsRepository, "updateForExecution").mockImplementation(
-    async (claimedJob, updates) => ({ ...claimedJob, ...updates }),
-  );
-  const incrementSpy = spyOn(jobsRepository, "incrementAttempt").mockResolvedValue(undefined);
+  const recoverSpy = spyOn(
+    jobsRepository,
+    "recoverStaleJobs",
+  ).mockResolvedValue(EMPTY_RECOVERY);
+  const updateStatusSpy = spyOn(
+    jobsRepository,
+    "settleExecution",
+  ).mockResolvedValue(undefined);
+  const updateSpy = spyOn(
+    jobsRepository,
+    "updateForExecution",
+  ).mockImplementation(async (claimedJob, updates) => ({
+    ...claimedJob,
+    ...updates,
+  }));
+  const incrementSpy = spyOn(
+    jobsRepository,
+    "incrementAttempt",
+  ).mockResolvedValue(undefined);
   const retryLaterSpy = spyOn(
     jobsRepository,
     "retryLaterWithoutIncrementingAttempts",
@@ -134,8 +161,13 @@ function harness(job: Job) {
 }
 
 const serviceSpies: Array<{ mockRestore: () => void }> = [];
-function stub<M extends keyof typeof elizaSandboxService>(method: M, value: unknown) {
-  const spy = spyOn(elizaSandboxService, method).mockResolvedValue(value as never);
+function stub<M extends keyof typeof elizaSandboxService>(
+  method: M,
+  value: unknown,
+) {
+  const spy = spyOn(elizaSandboxService, method).mockResolvedValue(
+    value as never,
+  );
   serviceSpies.push(spy);
   return spy;
 }
@@ -173,7 +205,12 @@ const AGENT_ARMS: Array<{
     method: "provision",
     success: {
       success: true,
-      sandboxRecord: { id: AGENT, organization_id: ORG, user_id: USER, status: "running" },
+      sandboxRecord: {
+        id: AGENT,
+        organization_id: ORG,
+        user_id: USER,
+        status: "running",
+      },
       bridgeUrl: "http://10.0.0.5:8080",
       healthUrl: "http://10.0.0.5:8081",
     },
@@ -204,7 +241,11 @@ const AGENT_ARMS: Array<{
     type: JOB_TYPES.AGENT_SLEEP,
     data: {},
     method: "executeSleep",
-    success: { success: true, containerRemoved: true, backupId: "backup-sleep" },
+    success: {
+      success: true,
+      containerRemoved: true,
+      backupId: "backup-sleep",
+    },
   },
   {
     name: "wake",
@@ -234,7 +275,11 @@ const AGENT_ARMS: Array<{
   {
     name: "upgrade",
     type: JOB_TYPES.AGENT_UPGRADE,
-    data: { dockerImage: "eliza/agent", fromDigest: "sha256:old", toDigest: "sha256:new" },
+    data: {
+      dockerImage: "eliza/agent",
+      fromDigest: "sha256:old",
+      toDigest: "sha256:new",
+    },
     method: "executeUpgrade",
     success: {
       success: true,
@@ -288,7 +333,12 @@ const AGENT_ARMS: Array<{
     type: JOB_TYPES.AGENT_LOGS,
     data: { tail: 100 },
     method: "executeLogs",
-    success: { success: true, status: "ok", logs: "line-1\nline-2", message: "collected" },
+    success: {
+      success: true,
+      status: "ok",
+      logs: "line-1\nline-2",
+      message: "collected",
+    },
   },
   {
     name: "snapshot",
@@ -422,38 +472,42 @@ describe("executeJob dispatch — success path per job type marks the job comple
     const first = harness(makeJob(arm.type, arm.data));
     let pendingAudit: Record<string, unknown> | undefined;
     let pendingSnapshot: Job | undefined;
-    const findByIdSpy = spyOn(jobsRepository, "findByIdForWrite").mockImplementation(async () => {
+    const findByIdSpy = spyOn(
+      jobsRepository,
+      "findByIdForWrite",
+    ).mockImplementation(async () => {
       return pendingSnapshot;
     });
-    const canarySpy = spyOn(elizaSandboxService, "executeAdminCanaryUpgrade").mockImplementation(
-      async (params) => {
-        const tx = {
-          update: () => ({
-            set: (updates: Record<string, unknown>) => {
-              pendingAudit = updates.result as Record<string, unknown>;
-              pendingSnapshot = { ...first.job, ...updates } as Job;
-              return {
-                where: () => ({
-                  returning: async () => [pendingSnapshot],
-                }),
-              };
-            },
-          }),
-        };
-        await params.onCutoverInTx(tx as never, {
-          oldNodeId: "node-a",
-          oldContainerName: "c-old",
-          newNodeId: "node-b",
-          newContainerName: "c-new",
-          newDigest: params.targetDigest,
-        });
-        return {
-          ...arm.success,
-          cleanupPending: true,
-          error: "old node unreachable",
-        } as never;
-      },
-    );
+    const canarySpy = spyOn(
+      elizaSandboxService,
+      "executeAdminCanaryUpgrade",
+    ).mockImplementation(async (params) => {
+      const tx = {
+        update: () => ({
+          set: (updates: Record<string, unknown>) => {
+            pendingAudit = updates.result as Record<string, unknown>;
+            pendingSnapshot = { ...first.job, ...updates } as Job;
+            return {
+              where: () => ({
+                returning: async () => [pendingSnapshot],
+              }),
+            };
+          },
+        }),
+      };
+      await params.onCutoverInTx(tx as never, {
+        oldNodeId: "node-a",
+        oldContainerName: "c-old",
+        newNodeId: "node-b",
+        newContainerName: "c-new",
+        newDigest: params.targetDigest,
+      });
+      return {
+        ...arm.success,
+        cleanupPending: true,
+        error: "old node unreachable",
+      } as never;
+    });
     serviceSpies.push(canarySpy);
     try {
       const pending = await run(arm.type);
@@ -474,7 +528,8 @@ describe("executeJob dispatch — success path per job type marks the job comple
       findByIdSpy.mockRestore();
     }
 
-    if (!pendingAudit) throw new Error("pending cutover audit was not captured");
+    if (!pendingAudit)
+      throw new Error("pending cutover audit was not captured");
     if (typeof pendingAudit.cutoverAt !== "string") {
       throw new Error("pending cutover audit has no cutover timestamp");
     }
@@ -491,22 +546,24 @@ describe("executeJob dispatch — success path per job type marks the job comple
     const convergeSpy = spyOn(
       elizaSandboxService,
       "convergeReplacementCleanupFence",
-    ).mockImplementation(async (_agentId, _organizationId, _expectation, onConvergedInTx) => {
-      await onConvergedInTx?.({
-        update: () => ({
-          set: (updates: Record<string, unknown>) => {
-            if ("result" in updates) {
-              cleanupCompletion = updates.result as Record<string, unknown>;
-            }
-            return {
-              where: () => ({
-                returning: async () => [{ id: retry.job.id }],
-              }),
-            };
-          },
-        }),
-      } as never);
-    });
+    ).mockImplementation(
+      async (_agentId, _organizationId, _expectation, onConvergedInTx) => {
+        await onConvergedInTx?.({
+          update: () => ({
+            set: (updates: Record<string, unknown>) => {
+              if ("result" in updates) {
+                cleanupCompletion = updates.result as Record<string, unknown>;
+              }
+              return {
+                where: () => ({
+                  returning: async () => [{ id: retry.job.id }],
+                }),
+              };
+            },
+          }),
+        } as never);
+      },
+    );
     serviceSpies.push(convergeSpy);
     try {
       const converged = await run(arm.type);
@@ -536,7 +593,9 @@ describe("executeJob dispatch — success path per job type marks the job comple
   });
 
   test("message: bridge reply is stored on the job result and completes", async () => {
-    const ctx = harness(makeJob(JOB_TYPES.AGENT_MESSAGE, { text: "hello", nonce: "n-1" }));
+    const ctx = harness(
+      makeJob(JOB_TYPES.AGENT_MESSAGE, { text: "hello", nonce: "n-1" }),
+    );
     const bridgeSpy = spyOn(elizaSandboxService, "bridge").mockResolvedValue({
       jsonrpc: "2.0",
       id: null,
@@ -587,7 +646,9 @@ describe("executeJob dispatch — failure path per job type retries (increments 
   }
 
   test("message: bridge error is stored on the job result and the job fails", async () => {
-    const ctx = harness(makeJob(JOB_TYPES.AGENT_MESSAGE, { text: "hello", nonce: "n-1" }));
+    const ctx = harness(
+      makeJob(JOB_TYPES.AGENT_MESSAGE, { text: "hello", nonce: "n-1" }),
+    );
     const bridgeSpy = spyOn(elizaSandboxService, "bridge").mockResolvedValue({
       jsonrpc: "2.0",
       id: null,
@@ -618,7 +679,9 @@ describe("executeJob dispatch — failure path per job type retries (increments 
 
 describe("executeJob dispatch — type-specific disposition rules", () => {
   test("agent_delete preserves billing authorization through worker execution", async () => {
-    const ctx = harness(makeJob(JOB_TYPES.AGENT_DELETE, { authorization: "billing_request" }));
+    const ctx = harness(
+      makeJob(JOB_TYPES.AGENT_DELETE, { authorization: "billing_request" }),
+    );
     const executeDeletionSpy = stub("executeDeletion", {
       success: true,
       containerStopped: true,
@@ -628,7 +691,11 @@ describe("executeJob dispatch — type-specific disposition rules", () => {
     try {
       const res = await run(JOB_TYPES.AGENT_DELETE);
       expect(res).toMatchObject({ succeeded: 1, failed: 0, retried: 0 });
-      expect(executeDeletionSpy).toHaveBeenCalledWith(AGENT, ORG, "billing_request");
+      expect(executeDeletionSpy).toHaveBeenCalledWith(
+        AGENT,
+        ORG,
+        "billing_request",
+      );
     } finally {
       ctx.claimSpy.mockRestore();
       ctx.recoverSpy.mockRestore();
@@ -671,14 +738,21 @@ describe("executeJob dispatch — type-specific disposition rules", () => {
       success: false,
       retryable: true,
       error: "readiness probe transport_unresolved",
-      sandboxRecord: { id: AGENT, organization_id: ORG, user_id: USER, status: "provisioning" },
+      sandboxRecord: {
+        id: AGENT,
+        organization_id: ORG,
+        user_id: USER,
+        status: "provisioning",
+      },
     });
     try {
       const res = await run(JOB_TYPES.AGENT_PROVISION);
       expect(res.retried).toBe(1);
       expect(res.failed).toBe(0);
       expect(ctx.retryLaterSpy).toHaveBeenCalledTimes(1);
-      expect(ctx.retryLaterSpy.mock.calls[0]?.[1]).toBe("readiness probe transport_unresolved");
+      expect(ctx.retryLaterSpy.mock.calls[0]?.[1]).toBe(
+        "readiness probe transport_unresolved",
+      );
       expect(ctx.incrementSpy).not.toHaveBeenCalled();
     } finally {
       ctx.claimSpy.mockRestore();
@@ -697,7 +771,8 @@ describe("executeJob dispatch — type-specific disposition rules", () => {
       retryable: true,
       containerStopped: false,
       containerStarted: false,
-      error: "Refusing to stop without a current backup: Snapshot capture temporarily unavailable",
+      error:
+        "Refusing to stop without a current backup: Snapshot capture temporarily unavailable",
     });
     try {
       const res = await run(JOB_TYPES.AGENT_RESTART);
@@ -724,13 +799,25 @@ describe("executeJob dispatch — type-specific disposition rules", () => {
       success: false,
       retryable: true,
       error: "readiness probe transport_unresolved",
-      sandboxRecord: { id: AGENT, organization_id: ORG, user_id: USER, status: "provisioning" },
+      sandboxRecord: {
+        id: AGENT,
+        organization_id: ORG,
+        user_id: USER,
+        status: "provisioning",
+      },
     });
     try {
       const res = await run(JOB_TYPES.AGENT_PROVISION);
       expect(res).toMatchObject({ claimed: 1, retried: 0, failed: 0 });
+      // Not the claim-time row: the requeue budget is persisted first, and the
+      // row that write returns is the fresh snapshot the fence compares against.
+      // Handing the stale claim row here is what made every requeue lose its
+      // claim and wedge the job `in_progress` until the stale-job sweep.
       expect(ctx.retryLaterSpy).toHaveBeenCalledWith(
-        ctx.job,
+        expect.objectContaining({
+          id: ctx.job.id,
+          data: expect.objectContaining({ transportRequeues: 1 }),
+        }),
         "readiness probe transport_unresolved",
         expect.any(Number),
         expect.any(String),
@@ -752,7 +839,8 @@ describe("executeJob dispatch — type-specific disposition rules", () => {
       success: false,
       containerStopped: true,
       containerStarted: true,
-      error: "Warm-claim credential recovery failed: source-key revocation unavailable",
+      error:
+        "Warm-claim credential recovery failed: source-key revocation unavailable",
     });
     try {
       const res = await run(JOB_TYPES.AGENT_RESTART);
@@ -772,9 +860,14 @@ describe("executeJob dispatch — type-specific disposition rules", () => {
   });
 
   test("auto snapshot of a stopped agent → completed-as-skipped, no retry", async () => {
-    const ctx = harness(makeJob(JOB_TYPES.AGENT_SNAPSHOT, { snapshotType: "auto" }));
+    const ctx = harness(
+      makeJob(JOB_TYPES.AGENT_SNAPSHOT, { snapshotType: "auto" }),
+    );
     const disarmGate = armSnapshotGateFor(JOB_TYPES.AGENT_SNAPSHOT);
-    stub("executeSnapshot", { success: false, error: "Sandbox is not running" });
+    stub("executeSnapshot", {
+      success: false,
+      error: "Sandbox is not running",
+    });
     try {
       const res = await run(JOB_TYPES.AGENT_SNAPSHOT);
       expect(res.succeeded).toBe(1);
@@ -796,7 +889,9 @@ describe("executeJob dispatch — type-specific disposition rules", () => {
   });
 
   test("agent_snapshot transient capture failure → requeued without burning an attempt", async () => {
-    const ctx = harness(makeJob(JOB_TYPES.AGENT_SNAPSHOT, { snapshotType: "auto" }));
+    const ctx = harness(
+      makeJob(JOB_TYPES.AGENT_SNAPSHOT, { snapshotType: "auto" }),
+    );
     const disarmGate = armSnapshotGateFor(JOB_TYPES.AGENT_SNAPSHOT);
     stub("executeSnapshot", {
       success: false,
@@ -823,7 +918,9 @@ describe("executeJob dispatch — type-specific disposition rules", () => {
   });
 
   test("agent_wake integrity-gate refusal → fails and preserves the sleeping row (no writeback)", async () => {
-    const ctx = harness(makeJob(JOB_TYPES.AGENT_WAKE, { restoreBackupId: "b1" }));
+    const ctx = harness(
+      makeJob(JOB_TYPES.AGENT_WAKE, { restoreBackupId: "b1" }),
+    );
     stub("executeWake", {
       success: false,
       error: "restore integrity check failed",
@@ -851,7 +948,11 @@ describe("executeJob dispatch — type-specific disposition rules", () => {
 
   test("permanent-failure writeback is built for provision (dependent row flip) but not for suspend", async () => {
     const provCtx = harness(makeJob(JOB_TYPES.AGENT_PROVISION));
-    stub("provision", { success: false, error: "down", sandboxRecord: { status: "error" } });
+    stub("provision", {
+      success: false,
+      error: "down",
+      sandboxRecord: { status: "error" },
+    });
     try {
       await run(JOB_TYPES.AGENT_PROVISION);
       // AGENT_PROVISION supplies an onFailedInTx callback (arg 4) so the sandbox
@@ -892,7 +993,11 @@ describe("executeJob dispatch — type-specific disposition rules", () => {
     );
     // rolledBack:false → executeAgentUpgrade throws UpgradeFailedError({rolledBack:false}),
     // and buildPermanentFailureWriteback returns the terminal `status:error` branch.
-    stub("executeUpgrade", { success: false, error: "agent not serving", rolledBack: false });
+    stub("executeUpgrade", {
+      success: false,
+      error: "agent not serving",
+      rolledBack: false,
+    });
     try {
       const res = await run(JOB_TYPES.AGENT_UPGRADE);
       expect(res.failed).toBe(1);
@@ -931,9 +1036,17 @@ describe("executeJob dispatch — type-specific disposition rules", () => {
 
   test("agent_provision transport receives the job payload's own agentId/orgId — the contract the single-flight enqueue writes (#15943)", async () => {
     const ctx = harness(makeJob(JOB_TYPES.AGENT_PROVISION));
-    const provisionSpy = spyOn(elizaSandboxService, "provision").mockResolvedValue({
+    const provisionSpy = spyOn(
+      elizaSandboxService,
+      "provision",
+    ).mockResolvedValue({
       success: true,
-      sandboxRecord: { id: AGENT, organization_id: ORG, user_id: USER, status: "running" },
+      sandboxRecord: {
+        id: AGENT,
+        organization_id: ORG,
+        user_id: USER,
+        status: "running",
+      },
     } as never);
     serviceSpies.push(provisionSpy);
     try {
@@ -958,9 +1071,14 @@ describe("executeJob dispatch — type-specific disposition rules", () => {
 
   test("organization-id mismatch between payload and column fails before any transport call", async () => {
     const ctx = harness(
-      makeJob(JOB_TYPES.AGENT_SUSPEND, { organizationId: "99999999-9999-4999-8999-999999999999" }),
+      makeJob(JOB_TYPES.AGENT_SUSPEND, {
+        organizationId: "99999999-9999-4999-8999-999999999999",
+      }),
     );
-    const svcSpy = spyOn(elizaSandboxService, "executeSuspend").mockResolvedValue({
+    const svcSpy = spyOn(
+      elizaSandboxService,
+      "executeSuspend",
+    ).mockResolvedValue({
       success: true,
     } as never);
     try {
@@ -984,7 +1102,10 @@ describe("executeJob dispatch — type-specific disposition rules", () => {
     const job = makeJob(JOB_TYPES.AGENT_SUSPEND);
     const ctx = harness(job);
     ctx.leaseSpy.mockRejectedValueOnce(new StaleJobExecutionError(job.id));
-    const suspendSpy = spyOn(elizaSandboxService, "executeSuspend").mockResolvedValue({
+    const suspendSpy = spyOn(
+      elizaSandboxService,
+      "executeSuspend",
+    ).mockResolvedValue({
       success: true,
       containerStopped: true,
     });
@@ -1028,7 +1149,11 @@ describe("executeJob dispatch — type-specific disposition rules", () => {
 
   test("transient attempt settlement failure retries in-process without startup recovery", async () => {
     const ctx = harness(makeJob(JOB_TYPES.AGENT_SUSPEND));
-    stub("executeSuspend", { success: false, containerStopped: false, error: "provider failed" });
+    stub("executeSuspend", {
+      success: false,
+      containerStopped: false,
+      error: "provider failed",
+    });
     ctx.incrementSpy
       .mockRejectedValueOnce(new Error("temporary database disconnect"))
       .mockResolvedValue(undefined);
