@@ -366,7 +366,17 @@ export const WARM_POOL_USER_ID = "00000000-0000-4000-8000-000000077002";
 
 export type AgentSandboxPoolStatus = "unclaimed";
 
-export type AgentBackupSnapshotType = "auto" | "manual" | "pre-shutdown" | "pre-upgrade";
+/**
+ * `pre-move` is deliberately distinct from `pre-upgrade`: a rollback restores
+ * the latest `pre-upgrade` point, so a relocation writing under that label
+ * would silently become the state a later rollback replays.
+ */
+export type AgentBackupSnapshotType =
+  | "auto"
+  | "manual"
+  | "pre-shutdown"
+  | "pre-upgrade"
+  | "pre-move";
 
 /**
  * Outcome of the last restorability verification pass over a backup row
