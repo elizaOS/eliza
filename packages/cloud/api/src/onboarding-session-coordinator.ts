@@ -55,13 +55,17 @@ const GREETING_KEY_PREFIX = "greeting:";
 // Mirrors GREETING_TTL_MS in onboarding-proactive-greeting.ts: stale greetings
 // are dropped at drain time, never delivered.
 const GREETING_TTL_MS = 15 * 60 * 1000;
+const GREETING_LEASE_MS = 2 * 60 * 1000;
 const GREETING_DRAIN_LIMIT_MAX = 50;
+const GREETING_SCAN_LIMIT = 128;
 
 interface StoredGreeting {
   sessionId: string;
   platformUserId: string;
   message: string;
   createdAt: string;
+  deliveryNonce: string;
+  lease?: { id: string; expiresAt: number };
 }
 
 function isValidGreeting(value: unknown): value is StoredGreeting {
@@ -78,8 +82,28 @@ function isValidGreeting(value: unknown): value is StoredGreeting {
     record.message.length >= 1 &&
     record.message.length <= 2000 &&
     typeof record.createdAt === "string" &&
-    Number.isFinite(Date.parse(record.createdAt))
+    Number.isFinite(Date.parse(record.createdAt)) &&
+    typeof record.deliveryNonce === "string" &&
+    /^[A-Za-z0-9_-]{1,25}$/.test(record.deliveryNonce) &&
+    (record.lease === undefined || isValidGreetingLease(record.lease))
   );
+}
+
+function isValidGreetingLease(
+  value: unknown,
+): value is StoredGreeting["lease"] {
+  if (!value || typeof value !== "object") return false;
+  const record = value as Record<string, unknown>;
+  return (
+    typeof record.id === "string" &&
+    /^[A-Za-z0-9_-]{1,25}$/.test(record.id) &&
+    typeof record.expiresAt === "number" &&
+    Number.isFinite(record.expiresAt)
+  );
+}
+
+function greetingLeaseId(): string {
+  return crypto.randomUUID().replaceAll("-", "").slice(0, 25);
 }
 const REPLAY_KEY_PREFIX = "replay:";
 const REPLAY_CLEANUP_STATE_KEY = "replay-cleanup-state";
@@ -477,7 +501,7 @@ export class OnboardingSessionCoordinator {
 
   /**
    * Records a pending proactive greeting, keyed by session id (set semantics:
-   * a replayed authenticated turn overwrites rather than duplicates). Lives on
+   * a replayed authenticated turn is a no-op rather than a duplicate). Lives on
    * the well-known `proactive-greetings:<platform>` instance, not per-session
    * coordinators, so one drain call claims the whole platform queue.
    */
@@ -486,18 +510,16 @@ export class OnboardingSessionCoordinator {
     if (!isValidGreeting(body)) {
       return Response.json({ error: "Invalid greeting" }, { status: 400 });
     }
-    await this.state.storage.put(
-      `${GREETING_KEY_PREFIX}${storageComponent(body.sessionId)}`,
-      body,
-    );
+    const key = `${GREETING_KEY_PREFIX}${storageComponent(body.sessionId)}`;
+    const existing = await this.state.storage.get<StoredGreeting>(key);
+    if (!isValidGreeting(existing)) await this.state.storage.put(key, body);
     return Response.json({ success: true });
   }
 
   /**
-   * Atomically claims pending greetings: entries are deleted in the same
-   * serialized Durable Object operation that returns them, so exactly one
-   * drain caller ever sees each greeting (at-most-once delivery). Expired
-   * entries are deleted and dropped, never returned.
+   * Atomically leases pending greetings. A live lease excludes competing
+   * pollers, but the entry remains durable until a matching acknowledgement;
+   * a crash or lost response therefore becomes recoverable after lease expiry.
    */
   private async drainGreetings(request: Request): Promise<Response> {
     const body: unknown = await request.json();
@@ -511,29 +533,72 @@ export class OnboardingSessionCoordinator {
         : GREETING_DRAIN_LIMIT_MAX;
     const entries = await this.state.storage.list<StoredGreeting>({
       prefix: GREETING_KEY_PREFIX,
-      limit,
+      limit: GREETING_SCAN_LIMIT,
     });
     const now = Date.now();
-    const claimed: StoredGreeting[] = [];
+    const claimed: Array<StoredGreeting & { leaseId: string }> = [];
     const deletions: string[] = [];
     for (const [key, entry] of entries) {
-      deletions.push(key);
       if (
         !isValidGreeting(entry) ||
         now - Date.parse(entry.createdAt) > GREETING_TTL_MS
       ) {
+        deletions.push(key);
         logger.warn(
           "[OnboardingSessionCoordinator] dropped stale proactive greeting",
           { key },
         );
         continue;
       }
-      claimed.push(entry);
+      if (claimed.length >= limit) continue;
+      if (entry.lease && entry.lease.expiresAt > now) continue;
+      const leaseId = greetingLeaseId();
+      const leased = {
+        ...entry,
+        lease: { id: leaseId, expiresAt: now + GREETING_LEASE_MS },
+      };
+      await this.state.storage.put(key, leased);
+      claimed.push({ ...entry, leaseId });
     }
     if (deletions.length > 0) {
       await this.state.storage.delete(deletions);
     }
     return Response.json({ greetings: claimed });
+  }
+
+  /** Deletes only greetings still owned by the acknowledging lease. */
+  private async acknowledgeGreetings(request: Request): Promise<Response> {
+    const body: unknown = await request.json();
+    const acknowledgements =
+      body && typeof body === "object" && "acknowledgements" in body
+        ? (body as { acknowledgements?: unknown }).acknowledgements
+        : undefined;
+    if (!Array.isArray(acknowledgements) || acknowledgements.length > 50) {
+      return Response.json(
+        { error: "Invalid greeting acknowledgements" },
+        { status: 400 },
+      );
+    }
+    let acknowledged = 0;
+    for (const value of acknowledgements) {
+      if (!value || typeof value !== "object") continue;
+      const { sessionId, leaseId } = value as Record<string, unknown>;
+      if (
+        typeof sessionId !== "string" ||
+        sessionId.length < 8 ||
+        sessionId.length > 180 ||
+        typeof leaseId !== "string" ||
+        !/^[A-Za-z0-9_-]{1,25}$/.test(leaseId)
+      ) {
+        continue;
+      }
+      const key = `${GREETING_KEY_PREFIX}${storageComponent(sessionId)}`;
+      const entry = await this.state.storage.get<StoredGreeting>(key);
+      if (!isValidGreeting(entry) || entry.lease?.id !== leaseId) continue;
+      await this.state.storage.delete(key);
+      acknowledged += 1;
+    }
+    return Response.json({ acknowledged });
   }
 
   private async mirrorSessionBestEffort(
@@ -730,6 +795,9 @@ export class OnboardingSessionCoordinator {
         }
         if (pathname === "/drain-greetings") {
           return this.drainGreetings(request);
+        }
+        if (pathname === "/ack-greetings") {
+          return this.acknowledgeGreetings(request);
         }
         if (pathname === "/complete-claim") {
           return this.completeContinuationClaim(request);

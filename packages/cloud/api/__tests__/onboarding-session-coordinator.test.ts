@@ -881,6 +881,7 @@ describe("OnboardingSessionCoordinator", () => {
         platformUserId: sessionId.slice("platform:discord:".length) || "u",
         message: "you're all set",
         createdAt: new Date().toISOString(),
+        deliveryNonce: `nonce-${sessionId.replaceAll(/[^A-Za-z0-9_-]/g, "").slice(-12)}`,
         ...overrides,
       };
     }
@@ -911,16 +912,29 @@ describe("OnboardingSessionCoordinator", () => {
       );
     }
 
+    function acknowledge(
+      coordinator: OnboardingSessionCoordinator,
+      acknowledgements: Array<{ sessionId: string; leaseId: string }>,
+    ): Promise<Response> {
+      return coordinator.fetch(
+        new Request("https://onboarding.test/ack-greetings", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ acknowledgements }),
+        }),
+      );
+    }
+
     async function greetingsOf(
       response: Response,
-    ): Promise<Array<{ sessionId: string }>> {
+    ): Promise<Array<{ sessionId: string; leaseId: string }>> {
       const body = (await response.json()) as {
-        greetings: Array<{ sessionId: string }>;
+        greetings: Array<{ sessionId: string; leaseId: string }>;
       };
       return body.greetings;
     }
 
-    test("drain claims each greeting exactly once", async () => {
+    test("a live lease hides greetings until matching acknowledgement", async () => {
       const harness = createCoordinatorHarness();
       const queue = harness.objectByName(QUEUE);
 
@@ -937,11 +951,63 @@ describe("OnboardingSessionCoordinator", () => {
         "platform:discord:greet-2",
       ]);
 
-      // Already claimed: a second drain returns nothing (at-most-once).
+      // A concurrent poll cannot claim an actively leased entry.
+      expect(await greetingsOf(await drain(queue))).toEqual([]);
+
+      const wrongAck = await acknowledge(queue, [
+        { sessionId: first[0]?.sessionId ?? "", leaseId: "wrong-lease" },
+      ]);
+      expect((await wrongAck.json()) as unknown).toEqual({ acknowledged: 0 });
+      expect(await greetingsOf(await drain(queue))).toEqual([]);
+
+      const ackResponse = await acknowledge(
+        queue,
+        first.map(({ sessionId, leaseId }) => ({ sessionId, leaseId })),
+      );
+      expect((await ackResponse.json()) as unknown).toEqual({
+        acknowledged: 2,
+      });
       expect(await greetingsOf(await drain(queue))).toEqual([]);
     });
 
-    test("re-enqueueing the same session id overwrites instead of duplicating", async () => {
+    test("an unacknowledged greeting is reclaimable after lease expiry", async () => {
+      const harness = createCoordinatorHarness();
+      const queue = harness.objectByName(QUEUE);
+      const sessionId = "platform:discord:recover";
+      await enqueue(queue, greeting(sessionId));
+
+      const first = await greetingsOf(await drain(queue));
+      expect(first).toHaveLength(1);
+
+      const storage = harness.storageFor(QUEUE);
+      const key = `greeting:${encodeURIComponent(sessionId)}`;
+      const stored = await storage.get<Record<string, unknown>>(key);
+      if (!stored) throw new Error("leased greeting was not stored");
+      await storage.put(key, {
+        ...stored,
+        lease: { id: first[0]?.leaseId, expiresAt: Date.now() - 1 },
+      });
+
+      const reclaimed = await greetingsOf(await drain(queue));
+      expect(reclaimed).toHaveLength(1);
+      expect(reclaimed[0]?.sessionId).toBe(sessionId);
+      expect(reclaimed[0]?.leaseId).not.toBe(first[0]?.leaseId);
+
+      // A delayed acknowledgement from the old delivery cannot delete the
+      // newly leased entry.
+      const staleAck = await acknowledge(queue, [
+        { sessionId, leaseId: first[0]?.leaseId ?? "" },
+      ]);
+      expect((await staleAck.json()) as unknown).toEqual({ acknowledged: 0 });
+      expect(await greetingsOf(await drain(queue))).toEqual([]);
+
+      const currentAck = await acknowledge(queue, [
+        { sessionId, leaseId: reclaimed[0]?.leaseId ?? "" },
+      ]);
+      expect((await currentAck.json()) as unknown).toEqual({ acknowledged: 1 });
+    });
+
+    test("re-enqueueing the same session id preserves the original work", async () => {
       const harness = createCoordinatorHarness();
       const queue = harness.objectByName(QUEUE);
 
@@ -956,7 +1022,7 @@ describe("OnboardingSessionCoordinator", () => {
         message?: string;
       }>;
       expect(claimed).toHaveLength(1);
-      expect(claimed[0]?.message).toBe("second write");
+      expect(claimed[0]?.message).toBe("you're all set");
     });
 
     test("expired greetings are dropped at drain time, never delivered", async () => {

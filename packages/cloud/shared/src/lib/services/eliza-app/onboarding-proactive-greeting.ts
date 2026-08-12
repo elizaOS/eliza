@@ -13,10 +13,11 @@
  * Durable Object instance of the onboarding session coordinator
  * (`proactive-greetings:discord`), which gives atomic enqueue (set semantics
  * keyed by session id, so repeated authenticated turns can never duplicate a
- * greeting) and atomic drain (claimed entries are deleted in the same
- * serialized operation — single consumer, at-most-once delivery). Outside a
- * Worker (tests, local node runs) a process-local map provides the same
- * semantics.
+ * greeting) and lease/ack delivery. A drain leases entries without deleting
+ * them; the gateway acknowledges only delivered or definitively terminal DMs.
+ * An unacknowledged lease becomes claimable again after a bounded interval.
+ * Each entry also carries a stable Discord nonce so a provider retry is
+ * idempotent. Outside a Worker a process-local map provides the same semantics.
  *
  * Failure policy: enqueue failures are logged and swallowed — a missing
  * courtesy greeting must never fail the user's onboarding turn (the sign-in
@@ -44,6 +45,17 @@ export interface ProactiveGreetingEntry {
   message: string;
   /** ISO timestamp of enqueue; entries expire after {@link GREETING_TTL_MS}. */
   createdAt: string;
+  /** Stable Discord idempotency nonce (the API limit is 25 characters). */
+  deliveryNonce: string;
+}
+
+export interface LeasedProactiveGreetingEntry extends ProactiveGreetingEntry {
+  leaseId: string;
+}
+
+export interface ProactiveGreetingAcknowledgement {
+  sessionId: string;
+  leaseId: string;
 }
 
 /**
@@ -55,6 +67,9 @@ export const GREETING_TTL_MS = 15 * 60 * 1000;
 
 /** Upper bound on entries returned by a single drain. */
 export const MAX_GREETING_DRAIN = 20;
+
+/** Short enough to retry within Discord's enforced-nonce dedupe window. */
+export const GREETING_LEASE_MS = 2 * 60 * 1000;
 
 /**
  * Reserved instance-name prefix for the well-known greeting queues. The
@@ -87,7 +102,7 @@ function greetingCoordinator(): RuntimeDurableObjectNamespace | undefined {
 
 /** Process-local fallback queue for non-Worker runtimes (keyed by session id). */
 const localGreetingQueue = new Map<string, ProactiveGreetingEntry>();
-
+const localGreetingLeases = new Map<string, { leaseId: string; expiresAt: number }>();
 /** Test-only visibility into the local fallback queue. */
 export function peekLocalGreetingQueue(): ProactiveGreetingEntry[] {
   return [...localGreetingQueue.values()];
@@ -96,6 +111,11 @@ export function peekLocalGreetingQueue(): ProactiveGreetingEntry[] {
 /** Test-only reset of the local fallback queue. */
 export function clearLocalGreetingQueue(): void {
   localGreetingQueue.clear();
+  localGreetingLeases.clear();
+}
+
+function newOpaqueId(): string {
+  return crypto.randomUUID().replaceAll("-", "").slice(0, 25);
 }
 
 export function composeProactiveGreeting(name: string | undefined): string {
@@ -123,6 +143,7 @@ export async function enqueueDiscordProactiveGreeting(
     platformUserId: input.platformUserId,
     message: composeProactiveGreeting(input.name),
     createdAt: new Date().toISOString(),
+    deliveryNonce: newOpaqueId(),
   };
   try {
     const coordinator = greetingCoordinator();
@@ -142,10 +163,11 @@ export async function enqueueDiscordProactiveGreeting(
     if (hasCloudBindingsContext()) {
       throw new Error("ONBOARDING_SESSIONS binding is required in Worker deployments");
     }
-    localGreetingQueue.set(entry.sessionId, entry);
+    const existing = localGreetingQueue.get(entry.sessionId);
+    if (!existing) localGreetingQueue.set(entry.sessionId, entry);
   } catch (error) {
-    // error-policy: the proactive greeting is best-effort by design; a queue
-    // outage must not turn a successful sign-in into a failed onboarding turn.
+    // error-policy:J4 The durable sign-in already succeeded; a queue outage
+    // degrades only the explicitly best-effort courtesy greeting.
     logger.warn("[eliza-app onboarding] proactive greeting enqueue failed", {
       sessionId: entry.sessionId,
       error: error instanceof Error ? error.message : String(error),
@@ -154,11 +176,10 @@ export async function enqueueDiscordProactiveGreeting(
 }
 
 /**
- * Claims up to {@link MAX_GREETING_DRAIN} pending Discord greetings. Claimed
- * entries are removed atomically (at-most-once delivery); expired entries are
- * dropped with a log line and never returned.
+ * Leases up to {@link MAX_GREETING_DRAIN} pending Discord greetings. Entries
+ * remain stored until an acknowledgement with the matching lease id arrives.
  */
-export async function drainDiscordProactiveGreetings(): Promise<ProactiveGreetingEntry[]> {
+export async function drainDiscordProactiveGreetings(): Promise<LeasedProactiveGreetingEntry[]> {
   const coordinator = greetingCoordinator();
   if (coordinator) {
     const response = await coordinator
@@ -171,24 +192,67 @@ export async function drainDiscordProactiveGreetings(): Promise<ProactiveGreetin
     if (!response.ok) {
       throw new Error(`greeting drain failed (${response.status})`);
     }
-    const body = (await response.json()) as { greetings?: ProactiveGreetingEntry[] };
+    const body = (await response.json()) as {
+      greetings?: LeasedProactiveGreetingEntry[];
+    };
     return body.greetings ?? [];
   }
   if (hasCloudBindingsContext()) {
     throw new Error("ONBOARDING_SESSIONS binding is required in Worker deployments");
   }
   const now = Date.now();
-  const claimed: ProactiveGreetingEntry[] = [];
+  const claimed: LeasedProactiveGreetingEntry[] = [];
   for (const [key, entry] of localGreetingQueue) {
     if (claimed.length >= MAX_GREETING_DRAIN) break;
-    localGreetingQueue.delete(key);
     if (!isEntryFresh(entry, now)) {
+      localGreetingQueue.delete(key);
+      localGreetingLeases.delete(key);
       logger.warn("[eliza-app onboarding] dropped expired proactive greeting", {
         sessionId: entry.sessionId,
       });
       continue;
     }
-    claimed.push(entry);
+    const currentLease = localGreetingLeases.get(key);
+    if (currentLease && currentLease.expiresAt > now) continue;
+    const leaseId = newOpaqueId();
+    localGreetingLeases.set(key, {
+      leaseId,
+      expiresAt: now + GREETING_LEASE_MS,
+    });
+    claimed.push({ ...entry, leaseId });
   }
   return claimed;
+}
+
+/** Deletes only greetings whose current lease matches the acknowledgement. */
+export async function acknowledgeDiscordProactiveGreetings(
+  acknowledgements: ProactiveGreetingAcknowledgement[],
+): Promise<number> {
+  const coordinator = greetingCoordinator();
+  if (coordinator) {
+    const response = await coordinator
+      .getByName(DISCORD_GREETING_QUEUE_NAME)
+      .fetch("https://onboarding.internal/ack-greetings", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ acknowledgements }),
+      });
+    if (!response.ok) {
+      throw new Error(`greeting acknowledgement failed (${response.status})`);
+    }
+    const body = (await response.json()) as { acknowledged?: number };
+    return body.acknowledged ?? 0;
+  }
+  if (hasCloudBindingsContext()) {
+    throw new Error("ONBOARDING_SESSIONS binding is required in Worker deployments");
+  }
+  let acknowledged = 0;
+  for (const acknowledgement of acknowledgements) {
+    const lease = localGreetingLeases.get(acknowledgement.sessionId);
+    if (lease?.leaseId !== acknowledgement.leaseId) continue;
+    localGreetingQueue.delete(acknowledgement.sessionId);
+    localGreetingLeases.delete(acknowledgement.sessionId);
+    acknowledged += 1;
+  }
+  return acknowledged;
 }

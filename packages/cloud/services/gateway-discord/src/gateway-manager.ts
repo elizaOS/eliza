@@ -25,7 +25,10 @@ import {
   deliverManagedReply,
   postManagedAgentMessageWithRetry,
 } from "./managed-message-egress";
-import { drainAndDeliverGreetings as drainAndDeliverPendingGreetings } from "./proactive-greeting-delivery";
+import {
+  drainAndDeliverGreetings as drainAndDeliverPendingGreetings,
+  isTerminalDiscordDirectMessageError,
+} from "./proactive-greeting-delivery";
 import { createMockRedis, createNativeRedis } from "./redis-adapter";
 import {
   buildManagedFailureReplyOptions,
@@ -198,7 +201,8 @@ const ELIZA_APP_LEADER_TTL_SECONDS = 10;
 /**
  * Interval between drains of pending proactive onboarding greetings
  * (15 seconds). Only the Eliza App bot leader polls, and the API claims
- * entries atomically, so each greeting is delivered at most once.
+ * entries atomically. A stable enforced Discord nonce makes lease retries
+ * idempotent if the gateway loses the acknowledgement response.
  */
 const GREETING_POLL_INTERVAL_MS = parseIntEnv(
   "GREETING_POLL_INTERVAL_MS",
@@ -346,9 +350,9 @@ export class GatewayManager {
   /** Interval for draining pending proactive onboarding greetings (leader only) */
   private greetingPollInterval: NodeJS.Timeout | null = null;
   /**
-   * The currently running greeting drain, if any. Teardown paths await this
-   * BEFORE destroying the Discord client: the API deletes entries at claim
-   * time, so a batch interrupted between claim and send is permanently lost.
+   * The currently running greeting drain, if any. Polling never overlaps it;
+   * graceful teardown lets it finish promptly, while the durable lease and
+   * provider nonce also recover correctly from abrupt process termination.
    */
   private greetingDrainInFlight: Promise<void> | null = null;
   /** Interval for leader election checks */
@@ -582,10 +586,9 @@ export class GatewayManager {
     if (this.greetingPollInterval) clearInterval(this.greetingPollInterval);
     this.voiceHandler.stopCleanupJob();
 
-    // Settle any claimed-but-unsent greeting batch before the client goes
-    // away: the API deletes entries at claim time, so interrupting between
-    // claim and send loses those DMs permanently (intervals above are already
-    // cleared, so no new drain can start).
+    // Let an in-flight delivery acknowledge before disconnecting. This is an
+    // optimization, not the durability mechanism: abrupt termination leaves
+    // the lease recoverable and the provider nonce makes a retry idempotent.
     if (this.greetingDrainInFlight) {
       await this.greetingDrainInFlight;
       this.greetingDrainInFlight = null;
@@ -1942,9 +1945,8 @@ export class GatewayManager {
       clearInterval(this.greetingPollInterval);
       this.greetingPollInterval = null;
     }
-    // A claimed batch is already deleted server-side; destroying the client
-    // mid-send would lose those DMs permanently. Settle the in-flight drain
-    // first (its own errors are handled inside the drain promise).
+    // Let an in-flight delivery acknowledge before disconnecting. A crash or
+    // forced shutdown remains safe through lease expiry and nonce deduplication.
     if (this.greetingDrainInFlight) {
       await this.greetingDrainInFlight;
       this.greetingDrainInFlight = null;
@@ -1972,6 +1974,8 @@ export class GatewayManager {
       if (this.greetingDrainInFlight) return;
       const drain = this.drainAndDeliverGreetings()
         .catch((error) => {
+          // error-policy:J1 This timer callback is the background-job boundary;
+          // lease recovery preserves unacknowledged work for the next poll.
           logger.error("Error draining proactive onboarding greetings", {
             error: sanitizeError(error),
           });
@@ -1991,7 +1995,7 @@ export class GatewayManager {
 
   /**
    * Claims pending post-sign-in greetings from the API and delivers each as a
-   * proactive DM. At-most-once semantics live in
+   * proactive DM. Recoverable lease/ack semantics live in
    * {@link drainAndDeliverPendingGreetings}; this wrapper binds the production
    * fetch/auth/send closures.
    */
@@ -2009,13 +2013,31 @@ export class GatewayManager {
               "Content-Type": "application/json",
               ...this.getAuthHeader(),
             },
-            body: JSON.stringify({}),
+            body: JSON.stringify({ action: "claim" }),
             timeout: HTTP_TIMEOUT_MS,
           },
         ),
-      sendDirectMessage: async (userId, content) => {
-        await client.users.send(userId, content);
+      acknowledge: (acknowledgements) =>
+        fetchWithTimeout(
+          `${this.config.elizaCloudUrl}/api/internal/discord/eliza-app/pending-greetings`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              ...this.getAuthHeader(),
+            },
+            body: JSON.stringify({ action: "ack", acknowledgements }),
+            timeout: HTTP_TIMEOUT_MS,
+          },
+        ),
+      sendDirectMessage: async (userId, content, deliveryNonce) => {
+        await client.users.send(userId, {
+          content,
+          nonce: deliveryNonce,
+          enforceNonce: true,
+        });
       },
+      isTerminalError: isTerminalDiscordDirectMessageError,
       refreshAuth: () => this.refreshToken(),
       onEvent: (event) => {
         if (event.kind === "delivered") {
@@ -2031,10 +2053,17 @@ export class GatewayManager {
           logger.warn("Skipping malformed proactive greeting", {
             sessionId: event.sessionId ?? null,
           });
-        } else {
+        } else if (event.kind === "drain-failed") {
           logger.warn("Proactive greeting drain returned non-OK status", {
             status: event.status,
           });
+        } else {
+          logger.warn(
+            "Proactive greeting acknowledgement returned non-OK status",
+            {
+              status: event.status,
+            },
+          );
         }
       },
     });

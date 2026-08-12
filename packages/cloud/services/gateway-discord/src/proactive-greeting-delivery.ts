@@ -1,16 +1,17 @@
 /**
  * Delivers proactive post-sign-in onboarding greetings claimed from the cloud
- * API. The API's drain endpoint removes entries atomically before returning
- * them (at-most-once), so delivery here never retries a failed DM send:
- * re-queueing on the gateway side would reintroduce the double-send class the
- * atomic claim exists to prevent. Callers supply fetch/send/auth closures the
- * same way managed-message-egress does.
+ * API. The API leases rather than deletes each entry; successful and
+ * definitively terminal sends are acknowledged, while retryable/ambiguous
+ * failures become claimable after lease expiry. The gateway supplies the
+ * entry's stable nonce with `enforceNonce`, making provider retries idempotent.
  */
 
 export interface PendingGreeting {
   sessionId?: string;
   platformUserId?: string;
   message?: string;
+  leaseId?: string;
+  deliveryNonce?: string;
 }
 
 export interface GreetingDeliveryReport {
@@ -18,6 +19,8 @@ export interface GreetingDeliveryReport {
   delivered: number;
   malformed: number;
   failed: number;
+  acknowledged: number;
+  retainedForRetry: number;
   /** True when the drain response required an auth refresh (401). */
   authRefreshed: boolean;
 }
@@ -36,20 +39,56 @@ function parsePendingGreetings(body: unknown): PendingGreeting[] {
 const MAX_DM_LENGTH = 2000;
 
 /**
- * Claims pending greetings via `drain` and sends each with `sendDirectMessage`.
+ * True only when Discord definitively rejected a DM in a way retrying this
+ * short-lived greeting cannot repair. Rate limits, 5xx responses, and network
+ * failures remain recoverable through the queue lease and enforced nonce.
+ */
+export function isTerminalDiscordDirectMessageError(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const record = error as Record<string, unknown>;
+  const raw =
+    record.rawError && typeof record.rawError === "object"
+      ? (record.rawError as Record<string, unknown>)
+      : undefined;
+  const code = typeof record.code === "number" ? record.code : raw?.code;
+  if (code === 50007 || code === 10013) return true;
+  const status =
+    typeof record.status === "number"
+      ? record.status
+      : typeof record.statusCode === "number"
+        ? record.statusCode
+        : undefined;
+  return status === 400 || status === 403 || status === 404;
+}
+
+/**
+ * Leases pending greetings and sends each with a stable provider nonce.
  *
  * - 401 from the drain: `refreshAuth` runs and the batch is skipped; the
  *   entries were never claimed, so the next poll delivers them.
  * - Non-OK drain status: reported, nothing claimed, nothing lost.
- * - Send failure: logged via the report; the entry is already claimed, so a
- *   user with closed DMs (Discord 50007) or a deleted account is terminal.
+ * - Delivered and definitively terminal entries are acknowledged.
+ * - Retryable or ambiguous failures retain their entry for lease recovery.
  */
 export async function drainAndDeliverGreetings(options: {
   drain: () => Promise<Response>;
-  sendDirectMessage: (userId: string, content: string) => Promise<void>;
+  acknowledge: (
+    acknowledgements: Array<{ sessionId: string; leaseId: string }>,
+  ) => Promise<Response>;
+  sendDirectMessage: (
+    userId: string,
+    content: string,
+    deliveryNonce: string,
+  ) => Promise<void>;
+  isTerminalError?: (error: unknown) => boolean;
   refreshAuth?: () => Promise<void>;
   onEvent?: (event: {
-    kind: "drain-failed" | "malformed" | "delivered" | "send-failed";
+    kind:
+      | "drain-failed"
+      | "ack-failed"
+      | "malformed"
+      | "delivered"
+      | "send-failed";
     sessionId?: string | null;
     status?: number;
     error?: unknown;
@@ -60,6 +99,8 @@ export async function drainAndDeliverGreetings(options: {
     delivered: 0,
     malformed: 0,
     failed: 0,
+    acknowledged: 0,
+    retainedForRetry: 0,
     authRefreshed: false,
   };
 
@@ -76,32 +117,60 @@ export async function drainAndDeliverGreetings(options: {
 
   const greetings = parsePendingGreetings(await response.json());
   report.claimed = greetings.length;
+  const acknowledgements: Array<{ sessionId: string; leaseId: string }> = [];
 
   for (const greeting of greetings) {
     const userId = greeting.platformUserId;
     const content = greeting.message?.trim().slice(0, MAX_DM_LENGTH);
-    if (!userId || !content) {
+    const sessionId = greeting.sessionId;
+    const leaseId = greeting.leaseId;
+    const deliveryNonce = greeting.deliveryNonce;
+    if (!userId || !content || !sessionId || !leaseId || !deliveryNonce) {
       report.malformed += 1;
       options.onEvent?.({
         kind: "malformed",
         sessionId: greeting.sessionId ?? null,
       });
+      if (sessionId && leaseId) acknowledgements.push({ sessionId, leaseId });
       continue;
     }
     try {
-      await options.sendDirectMessage(userId, content);
+      await options.sendDirectMessage(userId, content, deliveryNonce);
       report.delivered += 1;
+      acknowledgements.push({ sessionId, leaseId });
       options.onEvent?.({
         kind: "delivered",
         sessionId: greeting.sessionId ?? null,
       });
     } catch (error) {
+      // error-policy:J4 A DM failure degrades this courtesy notification only;
+      // retryable work remains durable and terminal work is explicitly acked.
       report.failed += 1;
+      if (options.isTerminalError?.(error) === true) {
+        acknowledgements.push({ sessionId, leaseId });
+      } else {
+        report.retainedForRetry += 1;
+      }
       options.onEvent?.({
         kind: "send-failed",
         sessionId: greeting.sessionId ?? null,
         error,
       });
+    }
+  }
+
+  if (acknowledgements.length > 0) {
+    let ackResponse = await options.acknowledge(acknowledgements);
+    if (ackResponse.status === 401 && options.refreshAuth) {
+      await options.refreshAuth();
+      ackResponse = await options.acknowledge(acknowledgements);
+    }
+    if (!ackResponse.ok) {
+      options.onEvent?.({ kind: "ack-failed", status: ackResponse.status });
+    } else {
+      const body = (await ackResponse.json()) as { acknowledged?: unknown };
+      report.acknowledged =
+        typeof body.acknowledged === "number" ? body.acknowledged : 0;
     }
   }
 
