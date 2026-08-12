@@ -109,9 +109,6 @@ export function optionalStringArray(
 export function splitRepo(
   repo: string,
 ): { owner: string; name: string } | null {
-  if (typeof repo !== "string") {
-    return null;
-  }
   let cleaned = repo.trim();
   if (cleaned.endsWith(".git")) {
     cleaned = cleaned.slice(0, -4);

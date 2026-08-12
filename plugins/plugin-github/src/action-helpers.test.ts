@@ -74,7 +74,6 @@ describe("splitRepo", () => {
     expect(splitRepo("noslash")).toBeNull();
     expect(splitRepo("a/b/c")).toBeNull();
     expect(splitRepo("/eliza")).toBeNull();
-    expect(splitRepo(null as unknown as string)).toBeNull();
   });
 });
 
