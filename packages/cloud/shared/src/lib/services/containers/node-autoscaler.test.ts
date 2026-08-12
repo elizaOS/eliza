@@ -295,6 +295,36 @@ describe("NodeAutoscaler Hetzner provisioning", () => {
     expect(mocks.createServer).not.toHaveBeenCalled();
   });
 
+  test("does not charge a different provider's DB rows to the selected provider", async () => {
+    mocks.nodes = Array.from(
+      { length: policy.maxNodes },
+      (_, index) =>
+        ({
+          node_id: `digitalocean-node-${index}`,
+          hostname: `198.51.100.${index + 1}`,
+          capacity: policy.defaultCapacity,
+          metadata: {
+            provider: "digitalocean",
+            environment: "local",
+            hcloudServerId: 5000 + index,
+          },
+        }) as DockerNode,
+    );
+    const autoscaler = new NodeAutoscaler(policy);
+
+    await expect(
+      autoscaler.provisionNode(
+        { nodeId: "hetzner-provider-isolated" },
+        {
+          controlPlanePublicKey: "ssh-ed25519 AAAAcontrol",
+          registrationUrl: "https://cloud.example.test/register",
+          registrationSecret: "secret",
+        },
+      ),
+    ).resolves.toMatchObject({ idempotent: false });
+    expect(mocks.createServer).toHaveBeenCalledTimes(1);
+  });
+
   test("deletes a newly-created provider server when DB registration fails", async () => {
     mocks.createNode.mockRejectedValueOnce(new Error("database unavailable"));
     const autoscaler = new NodeAutoscaler(policy);

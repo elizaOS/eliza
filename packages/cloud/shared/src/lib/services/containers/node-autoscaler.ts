@@ -289,7 +289,15 @@ export class NodeAutoscaler {
       );
       const environmentNodes = authority.nodes.filter((node) => {
         const metadata = (node.metadata ?? {}) as Record<string, unknown>;
-        return metadata.environment === environment || metadata.environment == null;
+        const nodeProvider = metadata.provider;
+        const belongsToProvider =
+          providerName === "hetzner"
+            ? nodeProvider === "hetzner-cloud" || nodeProvider == null
+            : nodeProvider === providerName;
+        return (
+          belongsToProvider &&
+          (metadata.environment === environment || metadata.environment == null)
+        );
       });
       const providerIds = new Set(providerServers.map((server) => String(server.id)));
       const dbOnlyCount = environmentNodes.filter((node) => {
