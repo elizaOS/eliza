@@ -7,7 +7,7 @@ import assert from "node:assert";
 import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, it } from "node:test";
+import { afterEach, beforeEach, describe, it } from "node:test";
 import {
   clearSkillsDirCache,
   getCuratedActiveDir,
