@@ -2947,6 +2947,27 @@ export const INVALID_TRACER_PROVIDER = {};
               "platform/empty-node-module.ts",
             ),
           },
+          // #18056: pure client subpaths resolve to SOURCE modules so Rolldown
+          // tree-shakes. Bare `@elizaos/core` stays on the prebuilt browser blob
+          // for heavy App/runtime imports.
+          {
+            find: /^@elizaos\/core\/client-public$/,
+            replacement: path.join(
+              elizaRoot,
+              "packages/core/src/client-public.ts",
+            ),
+          },
+          {
+            find: /^@elizaos\/core\/errors$/,
+            replacement: path.join(elizaRoot, "packages/core/src/errors.ts"),
+          },
+          {
+            find: /^@elizaos\/core\/roles-rank$/,
+            replacement: path.join(
+              elizaRoot,
+              "packages/core/src/roles-rank.ts",
+            ),
+          },
           // @elizaos/core — force ALL copies (including nested ones in plugins
           // that bundle their own older core) to the
           // main workspace copy's browser entry.  The browser entry has all

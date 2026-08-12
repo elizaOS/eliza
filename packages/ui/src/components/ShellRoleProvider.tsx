@@ -9,7 +9,7 @@
  * computes in app-core); when that lands, only `deriveShellRole` changes.
  */
 
-import { ROLE_RANK, type RoleGateRole } from "@elizaos/core";
+import { ROLE_RANK, type RoleGateRole } from "@elizaos/core/client-public";
 import type { ReactNode } from "react";
 import { useAuthStatus } from "../hooks/useAuthStatus.ts";
 import { RoleProvider } from "../hooks/useRole.tsx";

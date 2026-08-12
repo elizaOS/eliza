@@ -48,7 +48,7 @@
  */
 
 import type { ResolvedSurfaceManifest } from "@elizaos/core";
-import { surfaceGrants } from "@elizaos/core";
+import { surfaceGrants } from "@elizaos/core/client-public";
 import { logger } from "@elizaos/logger";
 import { THEME_CSS_VAR_MAP, THEME_FONT_CSS_VARS } from "@elizaos/shared";
 import { isPrivilegedShellActive } from "./surface-realm-channel";

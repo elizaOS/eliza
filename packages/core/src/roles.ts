@@ -29,6 +29,16 @@ import {
 import { createUniqueUuid } from "./entities";
 import { ElizaError } from "./errors.ts";
 import { logger } from "./logger";
+// Pure rank table lives in roles-rank.ts so UI can import without the full
+// browser blob (#18056). Re-export for existing server/runtime callers.
+export {
+	CANONICAL_ROLE_RANK,
+	ROLE_RANK,
+	hasAtLeastRole,
+	isAdminRank,
+	type RoleName,
+} from "./roles-rank.ts";
+import { CANONICAL_ROLE_RANK, type RoleName } from "./roles-rank.ts";
 import type { IAgentRuntime, Memory, UUID, World } from "./types";
 import {
 	MESSAGE_SOURCE_AGENT_GREETING,
@@ -39,58 +49,7 @@ import {
 import { formatError } from "./utils/format-error";
 import { asRecordOrUndefined as asRecord } from "./utils/type-guards";
 
-export type RoleName = "OWNER" | "ADMIN" | "USER" | "GUEST";
-
 export type RoleGrantSource = "owner" | "manual" | "connector_admin";
-
-/**
- * Canonical rank for every role tier across the codebase — the single source of
- * truth for role ordering (#9948). It spans both vocabularies that historically
- * disagreed: the `NONE` floor and the `MEMBER` alias (`environment.ts` `Role`)
- * plus `USER`/`GUEST` (`RoleName`). `USER` and `MEMBER` are the same tier.
- *
- * `roles.ts` and `runtime/context-gates.ts` both derive their ranking from this
- * constant rather than each keeping a private rank literal — two rank tables
- * that could silently drift apart is the authz hazard #9948 calls out.
- */
-export const CANONICAL_ROLE_RANK = {
-	NONE: 0,
-	GUEST: 1,
-	USER: 2,
-	MEMBER: 2,
-	ADMIN: 3,
-	OWNER: 4,
-} as const;
-
-export const ROLE_RANK: Record<RoleName, number> = {
-	GUEST: CANONICAL_ROLE_RANK.GUEST,
-	USER: CANONICAL_ROLE_RANK.USER,
-	ADMIN: CANONICAL_ROLE_RANK.ADMIN,
-	OWNER: CANONICAL_ROLE_RANK.OWNER,
-};
-
-/**
- * True iff `role` ranks at least `minRole` on {@link CANONICAL_ROLE_RANK}. The
- * rank-aware replacement for the scattered `isAdminRank(role)`
- * string comparisons (#12087 Item 31) — those silently miss any tier added between
- * ADMIN and OWNER and don't recognize the MEMBER/USER aliasing. Unknown/empty roles
- * fall to the NONE floor (rank 0), so the predicate fails closed.
- */
-export function hasAtLeastRole(
-	role: string | undefined | null,
-	minRole: keyof typeof CANONICAL_ROLE_RANK,
-): boolean {
-	const rank =
-		CANONICAL_ROLE_RANK[
-			(role ?? "").toUpperCase() as keyof typeof CANONICAL_ROLE_RANK
-		] ?? 0;
-	return rank >= CANONICAL_ROLE_RANK[minRole];
-}
-
-/** True iff `role` is ADMIN-rank or higher (ADMIN or OWNER). #12087 Item 31. */
-export function isAdminRank(role: string | undefined | null): boolean {
-	return hasAtLeastRole(role, "ADMIN");
-}
 
 export type RolesWorldMetadata = {
 	ownership?: { ownerId?: string };

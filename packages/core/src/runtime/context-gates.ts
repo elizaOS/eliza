@@ -5,7 +5,10 @@
  * candidate list by both. Role and context names are normalized before every
  * comparison.
  */
-import { CANONICAL_ROLE_RANK } from "../roles";
+import {
+	normalizeGateRole as normalizeGateRolePure,
+	roleRank as roleRankPure,
+} from "../roles-rank";
 import type {
 	AgentContext,
 	ContextGate,
@@ -15,16 +18,13 @@ import type {
 import { lookupProviderCatalogContexts } from "../utils/context-catalog.ts";
 import { normalizeContextList } from "./context-normalization";
 
-// #9948: single source of truth for role ranking — delegates to CANONICAL_ROLE_RANK.
-const ROLE_RANK: Record<string, number> = CANONICAL_ROLE_RANK;
-
+// #9948: single source of truth for role ranking — pure table in roles-rank.
 export function normalizeGateRole(role: RoleGateRole): RoleGateRole {
-	const normalized = String(role).trim().toUpperCase();
-	return (normalized === "USER" ? "MEMBER" : normalized) as RoleGateRole;
+	return normalizeGateRolePure(role) as RoleGateRole;
 }
 
 export function roleRank(role: RoleGateRole): number {
-	return ROLE_RANK[String(normalizeGateRole(role))] ?? 0;
+	return roleRankPure(role);
 }
 
 export function satisfiesRoleGate(

@@ -11,7 +11,7 @@
  * just read `useRole()` / wrap in `<RoleGate>`.
  */
 
-import { type RoleGateRole, roleRank } from "@elizaos/core";
+import { type RoleGateRole, roleRank } from "@elizaos/core/client-public";
 import { createContext, type ReactNode, useContext, useMemo } from "react";
 
 /** Default to the lowest tier so a missing provider never leaks gated UI. */

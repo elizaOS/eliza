@@ -3,7 +3,7 @@
  * draft lifecycle metadata to the agent while keeping unsent text entirely
  * client-side.
  */
-import { logger } from "@elizaos/core";
+import { logger } from "@elizaos/logger";
 import { supportsFullAppShellRoutes } from "../api/app-shell-capabilities";
 import { getElizaApiBase, getElizaApiToken } from "../utils/eliza-globals";
 

@@ -4,7 +4,7 @@
  * after the shell can paint, then releases them when the phase is torn down.
  */
 
-import { MESSAGE_SOURCE_CLIENT_CHAT } from "@elizaos/core";
+import { MESSAGE_SOURCE_CLIENT_CHAT } from "@elizaos/core/client-public";
 import { logger } from "@elizaos/logger";
 import {
   createNavigateViewEvent,

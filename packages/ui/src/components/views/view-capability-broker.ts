@@ -21,7 +21,7 @@
  */
 
 import type { ResolvedSurfaceManifest } from "@elizaos/core";
-import { surfaceGrants } from "@elizaos/core";
+import { surfaceGrants } from "@elizaos/core/client-public";
 
 /**
  * Interact capabilities that only READ view state. Always permitted — inspecting

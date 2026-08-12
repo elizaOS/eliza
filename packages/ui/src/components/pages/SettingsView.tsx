@@ -7,7 +7,7 @@
  * Section content is lazy-loaded and gated by `isViewVisible`; `initialSection`
  * deep-links a specific section. Also reusable in modal form (`inModal`).
  */
-import { isViewVisible } from "@elizaos/core";
+import { isViewVisible } from "@elizaos/core/client-public";
 import { isPermissionId, type PermissionId } from "@elizaos/shared";
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useAgentElement } from "../../agent-surface";

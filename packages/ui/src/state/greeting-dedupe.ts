@@ -22,7 +22,7 @@
  * once painted). This is the single dedupe seam every greeting mutation routes
  * through.
  */
-import { MESSAGE_SOURCE_AGENT_GREETING } from "@elizaos/core";
+import { MESSAGE_SOURCE_AGENT_GREETING } from "@elizaos/core/client-public";
 import type { ConversationMessage } from "../api";
 
 /** Whether a message is an agent-greeting bubble. */

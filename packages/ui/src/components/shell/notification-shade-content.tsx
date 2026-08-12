@@ -4,7 +4,7 @@
  * this module keeps row-local swipe state isolated and memoized.
  */
 import type { AgentNotification, NotificationCategory } from "@elizaos/core";
-import { tierForPriority } from "@elizaos/core";
+import { tierForPriority } from "@elizaos/core/client-public";
 import { X } from "lucide-react";
 import {
   type JSX,

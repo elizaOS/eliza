@@ -2,7 +2,7 @@
  * Discovers reachable local gateway endpoints via the plugin bridge, feeding the
  * connect/handoff surfaces.
  */
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core/client-public";
 import { logger } from "@elizaos/logger";
 import { invokeDesktopBridgeRequestWithTimeout } from "./electrobun-rpc";
 import { isElectrobunRuntime } from "./electrobun-runtime";

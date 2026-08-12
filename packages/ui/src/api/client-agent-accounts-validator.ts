@@ -11,7 +11,7 @@ import {
   LINKED_ACCOUNT_HEALTH_STATES,
   LINKED_ACCOUNT_PROVIDER_IDS,
   SERVICE_ROUTE_ACCOUNT_STRATEGIES,
-} from "@elizaos/core";
+} from "@elizaos/core/client-public";
 import type { AccountsListResponse } from "./client-agent";
 
 /** Stable classification for malformed account inventory responses. */

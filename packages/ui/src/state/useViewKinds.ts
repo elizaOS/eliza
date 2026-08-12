@@ -9,7 +9,7 @@ import {
   resolveViewKind,
   type ViewKind,
   type ViewKindBearer,
-} from "@elizaos/core";
+} from "@elizaos/core/client-public";
 import { useMemo } from "react";
 import { useIsDeveloperMode } from "./useDeveloperMode";
 import { useIsPreviewMode } from "./usePreviewMode";

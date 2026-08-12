@@ -1,5 +1,5 @@
 /** Verifies linked-account response and mutation contracts at the transport boundary. */
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core/client-public";
 import { describe, expect, it, vi } from "vitest";
 import { ElizaClient } from "./client";
 import { ACCOUNTS_RESPONSE_INVALID_CODE } from "./client-agent-accounts-validator";
