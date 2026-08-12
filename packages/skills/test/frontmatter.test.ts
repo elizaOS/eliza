@@ -89,6 +89,35 @@ Body`;
     assert.strictEqual(result.frontmatter["disable-model-invocation"], true);
     assert.strictEqual(result.frontmatter["user-invocable"], false);
   });
+
+  it("handles malformed YAML syntax without throwing", () => {
+    const content = `---
+invalid: : : yaml syntax error
+---
+Body content`;
+    const result = parseFrontmatter(content);
+    assert.deepStrictEqual(result.frontmatter, {});
+    assert.strictEqual(result.body, "Body content");
+  });
+
+  it("returns empty frontmatter for non-object YAML frontmatter blocks", () => {
+    const scalarContent = `---
+"just a string scalar"
+---
+Body content`;
+    const scalarResult = parseFrontmatter(scalarContent);
+    assert.deepStrictEqual(scalarResult.frontmatter, {});
+    assert.strictEqual(scalarResult.body, "Body content");
+
+    const arrayContent = `---
+- item1
+- item2
+---
+Body content`;
+    const arrayResult = parseFrontmatter(arrayContent);
+    assert.deepStrictEqual(arrayResult.frontmatter, {});
+    assert.strictEqual(arrayResult.body, "Body content");
+  });
 });
 
 describe("stripFrontmatter", () => {

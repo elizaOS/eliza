@@ -72,8 +72,15 @@ export function parseFrontmatter<
   if (!yamlString) {
     return { frontmatter: {} as T, body };
   }
-  const parsed = parse(yamlString);
-  return { frontmatter: (parsed ?? {}) as T, body };
+  try {
+    const parsed = parse(yamlString);
+    if (isRecord(parsed)) {
+      return { frontmatter: parsed as T, body };
+    }
+  } catch {
+    // Malformed YAML frontmatter block falls back safely to empty object
+  }
+  return { frontmatter: {} as T, body };
 }
 
 export function stripFrontmatter(content: string): string {
