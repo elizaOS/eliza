@@ -14,27 +14,29 @@
  * Usage:
  *   node scripts/testing-coverage-matrix.mjs
  *   node scripts/testing-coverage-matrix.mjs --check
+ *   node scripts/testing-coverage-matrix.mjs --output <path>
+ *   node scripts/testing-coverage-matrix.mjs --help
  */
 
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const REPO_ROOT = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "..",
 );
-const OUTPUT = path.join(REPO_ROOT, "docs", "TESTING_COVERAGE_MATRIX.md");
+const DEFAULT_OUTPUT = path.join(REPO_ROOT, "docs", "TESTING_COVERAGE_MATRIX.md");
 
 const TEST_FILE_RE = /\.(test|spec)\.(ts|tsx|js|jsx|mjs|cjs)$/;
 // it.skip / test.skip / describe.skip / xit / xdescribe / .todo / .skipIf(...)
 const SKIP_RE =
   /\b(?:it|test|describe)\.(?:skip|todo)\b|\bx(?:it|describe)\s*\(|\.skipIf\s*\(|\btest\.skip\b/g;
 
-function gitFiles() {
+export function gitFiles(rootDir = REPO_ROOT) {
   return execFileSync("git", ["ls-files"], {
-    cwd: REPO_ROOT,
+    cwd: rootDir,
     encoding: "utf8",
     maxBuffer: 256 * 1024 * 1024,
   })
@@ -42,16 +44,53 @@ function gitFiles() {
     .filter(Boolean);
 }
 
-function readJson(rel) {
-  try {
-    return JSON.parse(readFileSync(path.join(REPO_ROOT, rel), "utf8"));
-  } catch {
-    return null;
+export function parseArgs(argv = process.argv.slice(2)) {
+  const args = { check: false, output: "", help: false };
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i];
+    if (arg === "--check") {
+      args.check = true;
+    } else if (arg === "--help" || arg === "-h") {
+      args.help = true;
+    } else if (arg === "--output") {
+      if (i + 1 >= argv.length || argv[i + 1].startsWith("-")) {
+        throw new Error("Option '--output' requires a non-empty file path argument.");
+      }
+      args.output = argv[++i];
+    } else if (arg.startsWith("--output=")) {
+      const val = arg.slice("--output=".length);
+      if (!val) {
+        throw new Error("Option '--output' requires a non-empty file path argument.");
+      }
+      args.output = val;
+    } else {
+      throw new Error(`Unknown option or argument: ${arg}`);
+    }
   }
+  return args;
 }
 
-function main() {
-  const files = gitFiles();
+export function generateMatrixData(options = {}) {
+  const rootDir = options.rootDir ?? REPO_ROOT;
+  const files = options.files ?? gitFiles(rootDir);
+  const readJsonFn =
+    options.readJsonFn ??
+    ((rel) => {
+      try {
+        return JSON.parse(readFileSync(path.join(rootDir, rel), "utf8"));
+      } catch {
+        return null;
+      }
+    });
+  const readFileTextFn =
+    options.readFileTextFn ??
+    ((file) => {
+      try {
+        return readFileSync(path.join(rootDir, file), "utf8");
+      } catch {
+        return null;
+      }
+    });
 
   // Every directory that owns a package.json (excluding the repo root) is a
   // package node. Tracked files never include node_modules, so this is clean.
@@ -74,7 +113,7 @@ function main() {
     return null;
   }
 
-  const rootPkg = readJson("package.json");
+  const rootPkg = readJsonFn("package.json");
   const workspaceNegations = (rootPkg?.workspaces ?? [])
     .filter((w) => typeof w === "string" && w.startsWith("!"))
     .map((w) => w.slice(1));
@@ -90,10 +129,12 @@ function main() {
 
   // Per-package package.json metadata.
   for (const dir of packageDirs) {
-    const pkg = readJson(`${dir}/package.json`);
+    const pkg = readJsonFn(`${dir}/package.json`);
     const entry = stats.get(dir);
-    entry.name = pkg?.name ?? "(unnamed)";
-    entry.hasTestScript = Boolean(pkg?.scripts?.test);
+    if (entry) {
+      entry.name = pkg?.name ?? "(unnamed)";
+      entry.hasTestScript = Boolean(pkg?.scripts?.test);
+    }
   }
 
   // Assign test files to their owning package and count skips.
@@ -102,13 +143,12 @@ function main() {
     const owner = ownerPackage(file);
     if (!owner) continue;
     const entry = stats.get(owner);
+    if (!entry) continue;
     entry.testFiles += 1;
-    try {
-      const body = readFileSync(path.join(REPO_ROOT, file), "utf8");
+    const body = readFileTextFn(file);
+    if (body) {
       const matches = body.match(SKIP_RE);
       if (matches) entry.skips += matches.length;
-    } catch {
-      // Unreadable tracked file (symlink/binary) — skip silently.
     }
   }
 
@@ -178,24 +218,58 @@ function main() {
   lines.push("");
 
   const content = `${lines.join("\n")}`;
-
-  if (process.argv.includes("--check")) {
-    const current = existsSync(OUTPUT) ? readFileSync(OUTPUT, "utf8") : "";
-    if (current !== content) {
-      console.error(
-        "docs/TESTING_COVERAGE_MATRIX.md is stale. Run `node scripts/testing-coverage-matrix.mjs`.",
-      );
-      process.exit(1);
-    }
-    console.log("TESTING_COVERAGE_MATRIX.md is up to date.");
-    return;
-  }
-
-  writeFileSync(OUTPUT, content);
-  console.log(
-    `Wrote ${path.relative(REPO_ROOT, OUTPUT)}: ${rows.length} packages, ` +
-      `${totals.testFiles} test files, ${totals.skips} skips.`,
-  );
+  return { content, totals, rows };
 }
 
-main();
+export function runCli(argv = process.argv.slice(2), io = {}) {
+  const stdout = io.stdout ?? process.stdout;
+  const stderr = io.stderr ?? process.stderr;
+
+  let args;
+  try {
+    args = parseArgs(argv);
+  } catch (err) {
+    stderr.write(`[testing-coverage-matrix] Error: ${err.message}\n`);
+    stderr.write("Usage: node scripts/testing-coverage-matrix.mjs [--check] [--output <path>] [--help]\n");
+    return 2;
+  }
+
+  if (args.help) {
+    stdout.write(
+      "Usage: node scripts/testing-coverage-matrix.mjs [options]\n\n" +
+        "Options:\n" +
+        "  --check          Verify that the matrix file is up to date instead of writing it\n" +
+        "  --output <path>  Specify alternative destination path for the matrix file\n" +
+        "  --help, -h       Show this help message\n",
+    );
+    return 0;
+  }
+
+  const outputPath = args.output ? path.resolve(args.output) : DEFAULT_OUTPUT;
+  const { content, totals, rows } = generateMatrixData();
+
+  if (args.check) {
+    const current = existsSync(outputPath) ? readFileSync(outputPath, "utf8") : "";
+    if (current !== content) {
+      stderr.write(
+        `${path.relative(REPO_ROOT, outputPath)} is stale. Run \`node scripts/testing-coverage-matrix.mjs\`.\n`,
+      );
+      return 1;
+    }
+    stdout.write(`${path.relative(REPO_ROOT, outputPath)} is up to date.\n`);
+    return 0;
+  }
+
+  mkdirSync(path.dirname(outputPath), { recursive: true });
+  writeFileSync(outputPath, content);
+  stdout.write(
+    `Wrote ${path.relative(REPO_ROOT, outputPath)}: ${rows.length} packages, ` +
+      `${totals.testFiles} test files, ${totals.skips} skips.\n`,
+  );
+  return 0;
+}
+
+if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
+  process.exitCode = runCli();
+}
+
