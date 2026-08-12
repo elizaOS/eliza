@@ -18,8 +18,10 @@
 
 import { BRAND_PATHS, LOGO_FILES } from "@elizaos/shared/brand";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Navigate } from "react-router-dom";
+import { Navigate, useNavigate } from "react-router-dom";
 import { client } from "../../api";
+import type { CloudAgentJoinProgress } from "../../api/client-types-cloud";
+import { cloudAgentJoinProgressFromError } from "../../api/cloud-agent-join-progress";
 import { Button } from "../../components/ui/button";
 import { getBootConfig } from "../../config/boot-config-store";
 import {
@@ -30,6 +32,7 @@ import {
 import { appModeNavigation } from "../app-mode/app-mode";
 import { openCloudBillingConsole } from "../billing-console";
 import { useCloudT } from "../shell/CloudI18nProvider";
+import { signOutFromSsoBridgedHost } from "../sso-bridge/sso-bridge";
 import { resolveApexJoinHandoff } from "./lib/apex-app-handoff";
 import { describeJoinCreditGateError } from "./lib/join-credit-gate-error";
 import {
@@ -71,6 +74,7 @@ function describeJoinError(err: unknown): string {
 
 export default function JoinPage(): React.JSX.Element {
   const t = useCloudT();
+  const navigate = useNavigate();
   const session = useJoinSessionAuth();
   const [phase, setPhase] = useState<JoinPhase>("connecting");
   const [detail, setDetail] = useState<string>("");
@@ -82,9 +86,31 @@ export default function JoinPage(): React.JSX.Element {
     typeof window === "undefined"
       ? null
       : resolveApexJoinHandoff(window.location.hostname);
+  const [progress, setProgress] = useState<CloudAgentJoinProgress | null>(null);
+  const [elapsedMs, setElapsedMs] = useState(0);
   // Guard so React StrictMode's double-mount (and re-renders) don't double-run
   // the provisioning network calls.
   const startedRef = useRef(false);
+  // Every attempt owns a monotonically increasing id. Sign-out invalidates the
+  // active id before navigating; attempt-scoped mutation wrappers below then
+  // prevent an obsolete completion from binding or persisting the connection.
+  const attemptRef = useRef(0);
+  const attemptStartedAtRef = useRef(Date.now());
+  const mountEpochRef = useRef(0);
+
+  useEffect(() => {
+    const epoch = mountEpochRef.current + 1;
+    mountEpochRef.current = epoch;
+    return () => {
+      // React StrictMode immediately replays effects on the same mounted
+      // instance. Deferring the invalidation one microtask lets that replay
+      // advance the epoch, while a real route/unmount leaves it unchanged and
+      // invalidates every attempt-scoped mutation before async I/O can settle.
+      queueMicrotask(() => {
+        if (mountEpochRef.current === epoch) attemptRef.current += 1;
+      });
+    };
+  }, []);
 
   const start = useCallback(async () => {
     const authToken = resolveJoinAuthToken();
@@ -92,27 +118,59 @@ export default function JoinPage(): React.JSX.Element {
       // No session — the auth gate below redirects to login; bail quietly.
       return;
     }
+    const attempt = attemptRef.current + 1;
+    attemptRef.current = attempt;
+    attemptStartedAtRef.current = Date.now();
     setPhase("connecting");
+    setDetail("");
     setError(null);
     setCreditGateWithheldReason(null);
+    setProgress(null);
+    setElapsedMs(0);
+    const isActiveAttempt = () => attemptRef.current === attempt;
+    const attemptClient = {
+      selectOrProvisionCloudAgent:
+        client.selectOrProvisionCloudAgent.bind(client),
+      setBaseUrl: (baseUrl: string | null) => {
+        if (isActiveAttempt()) client.setBaseUrl(baseUrl);
+      },
+      setToken: (token: string | null) => {
+        if (isActiveAttempt()) client.setToken(token);
+      },
+    };
+    const attemptEffects = {
+      savePersistedActiveServer: (
+        server: Parameters<typeof savePersistedActiveServer>[0],
+      ) => {
+        if (isActiveAttempt()) savePersistedActiveServer(server);
+      },
+      clearPersistedActiveServer: () => {
+        if (isActiveAttempt()) clearPersistedActiveServer();
+      },
+      savePersistedFirstRunComplete: (complete: boolean) => {
+        if (isActiveAttempt()) savePersistedFirstRunComplete(complete);
+      },
+    };
     try {
       const result = await runJoinFlow({
-        client,
-        effects: {
-          savePersistedActiveServer,
-          clearPersistedActiveServer,
-          savePersistedFirstRunComplete,
-        },
+        client: attemptClient,
+        effects: attemptEffects,
         cloudApiBase: resolveJoinCloudApiBase(),
         authToken,
         agentName: DEFAULT_AGENT_NAME,
         bio: DEFAULT_AGENT_BIO,
         preferAgentId: readLastActiveCloudAgentId(),
         preferSharedTier: getBootConfig().preferSharedCloudTier ?? undefined,
-        onProgress: (_status, progressDetail) => {
+        onProgress: (_status, progressDetail, nextProgress) => {
+          if (attemptRef.current !== attempt) return;
           if (progressDetail) setDetail(progressDetail);
+          if (nextProgress) {
+            setProgress(nextProgress);
+            setElapsedMs(nextProgress.elapsedMs);
+          }
         },
       });
+      if (attemptRef.current !== attempt) return;
       setPhase("ready");
       // Hard navigation to chat home so the startup coordinator restores the
       // just-persisted cloud connection from a clean boot. `void result` keeps
@@ -122,6 +180,12 @@ export default function JoinPage(): React.JSX.Element {
         appModeNavigation.assign("/");
       }
     } catch (err) {
+      if (attemptRef.current !== attempt) return;
+      const failureProgress = cloudAgentJoinProgressFromError(err);
+      if (failureProgress) {
+        setProgress(failureProgress);
+        setElapsedMs(failureProgress.elapsedMs);
+      }
       // The Cloud's credit gate (402) is a payment state, not a connection
       // failure: retry can never succeed, so render the server's explanation
       // (e.g. the welcome bonus withheld by the per-IP daily free-credit cap
@@ -144,6 +208,15 @@ export default function JoinPage(): React.JSX.Element {
   }, []);
 
   useEffect(() => {
+    if (phase !== "connecting") return;
+    const updateElapsed = () => {
+      setElapsedMs(Date.now() - attemptStartedAtRef.current);
+    };
+    const interval = window.setInterval(updateElapsed, 1_000);
+    return () => window.clearInterval(interval);
+  }, [phase]);
+
+  useEffect(() => {
     if (!session.ready || !session.authenticated) return;
     if (appHandoff) {
       // The apex is the billing console and cannot boot chat. Hand off before
@@ -162,6 +235,18 @@ export default function JoinPage(): React.JSX.Element {
     startedRef.current = true;
     void start();
   }, [start]);
+
+  const handleSignOut = useCallback(() => {
+    attemptRef.current += 1;
+    void signOutFromSsoBridgedHost();
+    navigate("/login", { replace: true });
+  }, [navigate]);
+
+  const displayedElapsedMs = Math.max(elapsedMs, progress?.elapsedMs ?? 0);
+  const displayedElapsedSeconds = Math.floor(displayedElapsedMs / 1_000);
+  const displayedPhase = progress?.phase
+    ? progress.phase.replaceAll("_", " ")
+    : "connecting";
 
   // Signed out → send to login, returning here once authenticated.
   if (session.ready && !session.authenticated) {
@@ -251,6 +336,14 @@ export default function JoinPage(): React.JSX.Element {
             >
               {t("cloud.join.retry", { defaultValue: "Try again" })}
             </Button>
+            <Button
+              variant="ghost"
+              type="button"
+              onClick={handleSignOut}
+              className="text-white/72 hover:bg-white/10 hover:text-white"
+            >
+              {t("cloud.join.signOut", { defaultValue: "Sign out" })}
+            </Button>
           </div>
         ) : (
           <div
@@ -265,8 +358,30 @@ export default function JoinPage(): React.JSX.Element {
                   defaultValue: "Connecting you to your agent...",
                 })}
             </p>
+            <Button
+              variant="ghost"
+              type="button"
+              onClick={handleSignOut}
+              className="text-white/72 hover:bg-white/10 hover:text-white"
+            >
+              {t("cloud.join.signOut", { defaultValue: "Sign out" })}
+            </Button>
           </div>
         )}
+
+        <div className="flex flex-col items-center gap-1 text-xs text-white/52">
+          <p data-testid="cloud-join-phase">
+            {t("cloud.join.phase", { defaultValue: "Phase" })}: {displayedPhase}
+            {progress?.status ? ` (${progress.status})` : ""} ·{" "}
+            {displayedElapsedSeconds}s
+          </p>
+          {progress?.correlationId ? (
+            <p data-testid="cloud-join-correlation">
+              {t("cloud.join.reference", { defaultValue: "Reference" })}:{" "}
+              {progress.correlationId}
+            </p>
+          ) : null}
+        </div>
       </div>
     </div>
   );

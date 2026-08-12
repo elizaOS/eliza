@@ -447,6 +447,7 @@ describe("ElizaClient direct Cloud auth on native", () => {
         success: true,
         data: expect.objectContaining({
           agentId: "agent-async-1",
+          jobId: "job-async-1",
           status: "provisioning",
         }),
       }),
@@ -556,6 +557,76 @@ describe("ElizaClient direct Cloud auth on native", () => {
         message: "Resume job created.",
       },
     });
+    expectNoLocalPersistOrStatusProbe();
+  });
+
+  it("wakes sleeping Cloud agents through the canonical direct restore route", async () => {
+    capacitorMocks.request.mockResolvedValue({
+      status: 202,
+      data: {
+        success: true,
+        data: {
+          agentId: "agent-1",
+          action: "wake",
+          jobId: "job-wake",
+          status: "queued",
+          message: "Wake job created.",
+        },
+      },
+    });
+
+    const client = new ElizaClient(undefined, "cloud-api-key");
+    const result = await client.wakeCloudCompatAgent("agent-1");
+
+    expect(capacitorMocks.request).toHaveBeenCalledWith(
+      expect.objectContaining({
+        url: "https://api.elizacloud.ai/api/v1/eliza/agents/agent-1/wake",
+        method: "POST",
+        headers: expect.objectContaining({
+          Authorization: "Bearer cloud-api-key",
+        }),
+      }),
+    );
+    expect(result).toEqual({
+      success: true,
+      data: {
+        jobId: "job-wake",
+        status: "queued",
+        message: "Wake job created.",
+      },
+    });
+    expectNoLocalPersistOrStatusProbe();
+  });
+
+  it("retains the canonical wake job when a repeated request returns 409", async () => {
+    capacitorMocks.request.mockResolvedValue({
+      status: 409,
+      data: {
+        success: true,
+        created: false,
+        alreadyInProgress: true,
+        data: {
+          agentId: "agent-1",
+          action: "wake",
+          jobId: "job-wake-existing",
+          status: "processing",
+          message: "Wake is already in progress.",
+        },
+      },
+    });
+
+    const client = new ElizaClient(undefined, "cloud-api-key");
+    const result = await client.wakeCloudCompatAgent("agent-1");
+
+    expect(result).toEqual({
+      success: true,
+      data: {
+        jobId: "job-wake-existing",
+        status: "processing",
+        message: "Wake is already in progress.",
+      },
+    });
+    expect(capacitorMocks.request).toHaveBeenCalledTimes(1);
     expectNoLocalPersistOrStatusProbe();
   });
 
