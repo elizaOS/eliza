@@ -29,16 +29,18 @@ import {
 import { createUniqueUuid } from "./entities";
 import { ElizaError } from "./errors.ts";
 import { logger } from "./logger";
+
 // Pure rank table lives in roles-rank.ts so UI can import without the full
 // browser blob (#18056). Re-export for existing server/runtime callers.
 export {
 	CANONICAL_ROLE_RANK,
-	ROLE_RANK,
 	hasAtLeastRole,
 	isAdminRank,
+	ROLE_RANK,
 	type RoleName,
 } from "./roles-rank.ts";
-import { CANONICAL_ROLE_RANK, type RoleName } from "./roles-rank.ts";
+
+import { isAdminRank, ROLE_RANK, type RoleName } from "./roles-rank.ts";
 import type { IAgentRuntime, Memory, UUID, World } from "./types";
 import {
 	MESSAGE_SOURCE_AGENT_GREETING,

@@ -106,7 +106,6 @@
 			"import": "./dist/client-public.js",
 			"default": "./dist/client-public.js"
 		},
-
 		"./testing": {
 			"types": "./dist/testing/index.d.ts",
 			"import": "./dist/testing/index.js",
