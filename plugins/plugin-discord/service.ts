@@ -17,6 +17,7 @@ import {
 	type EventPayload,
 	getConnectorAdminWhitelist,
 	type IAgentRuntime,
+	logInboundDrop,
 	type Media,
 	type Memory,
 	MemoryType,
@@ -196,6 +197,7 @@ type DiscordAccountServiceFacade = IDiscordService &
 	ReactionServiceInternals & {
 		client: DiscordJsClient;
 		discordSettings: DiscordSettingsForEvents;
+		admitInboundMessage(messageId: string, channelId: string): boolean;
 		commandRegistrationQueue: Promise<void>;
 		addAllowedChannel(channelId: string): boolean;
 		removeAllowedChannel(channelId: string): boolean;
@@ -614,6 +616,12 @@ export class DiscordService extends Service implements IDiscordService {
 	 * reaction left showing "in progress" instead of tearing down mid-turn.
 	 */
 	private readonly turnDrainRegistry = createTurnDrainRegistry();
+	/**
+	 * Shared across every account facade. `stop()` closes this synchronously
+	 * before it awaits the turn drain, so gateway deliveries racing shutdown can
+	 * never start a new message turn behind the drain snapshot.
+	 */
+	private ingressClosedReason: string | null = null;
 	client: DiscordJsClient | null = null;
 	character: Character;
 	discordSettings: DiscordSettings;
@@ -1346,6 +1354,8 @@ export class DiscordService extends Service implements IDiscordService {
 			get clientReadyPromise() {
 				return state?.clientReadyPromise ?? parent.clientReadyPromise;
 			},
+			admitInboundMessage: (messageId: string, channelId: string) =>
+				parent.admitInboundMessage(messageId, channelId, accountId()),
 			accountToken: state?.account.token,
 		};
 		return facade;
@@ -4035,10 +4045,54 @@ export class DiscordService extends Service implements IDiscordService {
 	}
 
 	/**
+	 * Admission gate for Discord gateway messages. The check is synchronous so
+	 * a delivery either owns admission before shutdown begins or is observably
+	 * rejected; there is no await boundary where it can slip behind the drain.
+	 */
+	public admitInboundMessage(
+		messageId: string,
+		channelId: string,
+		accountId = this.accountId,
+	): boolean {
+		if (this.ingressClosedReason === null) {
+			return true;
+		}
+		const context = {
+			src: "plugin:discord",
+			agentId: this.runtime.agentId,
+			accountId,
+			messageId,
+			channelId,
+			reason: this.ingressClosedReason,
+		};
+		logInboundDrop({
+			log: (message) => this.runtime.logger.info(context, message),
+			channel: "discord",
+			reason: this.ingressClosedReason,
+			target: channelId,
+		});
+		return false;
+	}
+
+	/** Close inbound admissions exactly once while allowing admitted turns to drain. */
+	public cordonIngress(reason = "shutdown-cordon"): void {
+		this.ingressClosedReason ??= reason;
+	}
+
+	/** Runtime-level pre-drain hook; intentionally synchronous. */
+	public override prepareStop(_reason: string): void {
+		this.cordonIngress();
+	}
+
+	/**
 	 * Stops the Discord service and cleans up resources.
 	 */
 	public async stop(): Promise<void> {
 		this.runtime.logger.info("Stopping Discord service");
+		// Cordon before the first await and before taking the drain snapshot. New
+		// gateway deliveries are rejected by the messageCreate gate below, while
+		// turns admitted before this point remain tracked and may finish normally.
+		this.cordonIngress();
 
 		// Drain before any teardown below: in-flight turns depend on the
 		// debouncers, message managers, and client this method is about to
