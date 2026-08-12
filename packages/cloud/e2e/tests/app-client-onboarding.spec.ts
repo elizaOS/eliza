@@ -27,6 +27,7 @@ import {
   writeStoredStewardToken,
 } from "@elizaos/shared/steward-session-client";
 import { ElizaClient } from "@elizaos/ui/api";
+import { DIRECT_ELIZA_CLOUD_API_BY_HOST } from "@elizaos/ui/api/direct-cloud-endpoints";
 import { getBootConfig, setBootConfig } from "@elizaos/ui/config";
 import { expect, test } from "../src/helpers/test-fixtures";
 
@@ -44,6 +45,14 @@ test.describe("app onboarding client ↔ real cloud-api", () => {
     // from the global the controller normally sets at sign-in.
     const prevBoot = getBootConfig();
     const prevToken = readStoredStewardToken();
+    const cloudApiHost = new URL(cloudApiBase).hostname.toLowerCase();
+    const prevDirectCloudApiBase =
+      DIRECT_ELIZA_CLOUD_API_BY_HOST.get(cloudApiHost);
+    // Production only treats canonical Eliza Cloud hosts as direct control
+    // planes. This local stack is intentionally equivalent, so register its
+    // ephemeral host for the duration of the test instead of letting the real
+    // client fall through to the agent-proxy `/api/cloud/compat/*` route.
+    DIRECT_ELIZA_CLOUD_API_BY_HOST.set(cloudApiHost, cloudApiBase);
     setBootConfig({ ...prevBoot, cloudApiBase });
     writeStoredStewardToken(authToken);
 
@@ -124,6 +133,14 @@ test.describe("app onboarding client ↔ real cloud-api", () => {
       expect(switched).toBe(false);
       expect(handoff.status).toBe("timed-out");
     } finally {
+      if (prevDirectCloudApiBase === undefined) {
+        DIRECT_ELIZA_CLOUD_API_BY_HOST.delete(cloudApiHost);
+      } else {
+        DIRECT_ELIZA_CLOUD_API_BY_HOST.set(
+          cloudApiHost,
+          prevDirectCloudApiBase,
+        );
+      }
       setBootConfig(prevBoot);
       if (prevToken === null) {
         clearStoredStewardToken();
