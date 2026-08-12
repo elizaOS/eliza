@@ -5,6 +5,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
+import { registerMovedApplicationsCloudRoutes } from "./applications/register-moved-routes";
 import {
   ensurePrivateCloudSurfaces,
   forceNewPrivateCloudGenerationForTests,
@@ -15,6 +16,7 @@ import {
   setPrivateCloudLoadForTests,
   subscribePrivateCloudRegistration,
 } from "./private-cloud-registration";
+import { getCloudRoute } from "./shell/cloud-route-registry";
 
 const appMainSource = readFileSync(
   join(dirname(fileURLToPath(import.meta.url)), "../../../app/src/main.tsx"),
@@ -50,6 +52,23 @@ describe("pathNeedsPrivateCloudSurfaces", () => {
     ]) {
       expect(pathNeedsPrivateCloudSurfaces(path), path).toBe(true);
     }
+  });
+});
+
+describe("private cloud route registration", () => {
+  it("maps legacy Applications URLs to the moved Apps route", () => {
+    registerMovedApplicationsCloudRoutes();
+    const movedAppsRoute = getCloudRoute("dashboard/apps");
+    expect(movedAppsRoute).toBeDefined();
+    expect(getCloudRoute("dashboard/apps/:id")?.element).toBe(
+      movedAppsRoute?.element,
+    );
+    expect(getCloudRoute("dashboard/applications")?.element).toBe(
+      movedAppsRoute?.element,
+    );
+    expect(getCloudRoute("dashboard/applications/:id")?.element).toBe(
+      movedAppsRoute?.element,
+    );
   });
 });
 

@@ -29,7 +29,7 @@ vi.mock("../api", () => ({ client }));
 vi.mock("@elizaos/logger", () => ({
   logger: { warn: loggerWarn },
 }));
-vi.mock("../state", () => ({
+vi.mock("../state/app-store", () => ({
   useAppSelector: (
     selector: (state: {
       t: (key: string, vars?: Record<string, unknown>) => string;
