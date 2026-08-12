@@ -36,11 +36,12 @@
  */
 
 import { mkdir } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium, webkit } from "playwright";
 import { PNG } from "pngjs";
 import {
+  compileTailwindTheme,
   renameRecordedVideo,
   stubElizaCore,
   stubNodeBuiltins,
@@ -53,6 +54,7 @@ import {
 } from "../../../testing/real-touch-gestures.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
+const uiRoot = resolve(here, "../../../..");
 const browserName = process.argv.includes("--browser=webkit")
   ? "webkit"
   : "chromium";
@@ -80,6 +82,10 @@ function near(a, b, tol) {
 // at render in the browser; the only render-path core symbol,
 // findInteractionRegions, is test-only) are replaced with no-op proxies,
 // mirroring the sibling shell runners.
+const themeCss = await compileTailwindTheme({
+  uiRoot,
+  sources: [join(uiRoot, "src/components/shell"), here],
+});
 const url = await writeFixturePage({
   entry: join(here, "chat-sheet-fixture.tsx"),
   outDir,
@@ -87,12 +93,38 @@ const url = await writeFixturePage({
   title: "chat sheet e2e",
   plugins: [stubElizaCore(), stubNodeBuiltins()],
   processShim: true,
+  htmlClass: "dark",
+  tailwind: { css: themeCss },
   background: "#0a0d16",
   headHtml: "<style>.bg-bg{background-color:#0a0d16}</style>",
 });
 
 async function gotoFixture(p, href = url) {
   await p.goto(href, { waitUntil: "domcontentloaded" });
+  await p.waitForSelector('[data-testid="chat-overlay"]');
+  // Probe real fixture elements so a missing or incomplete compiled theme
+  // fails closed before screenshots can record raw form controls while every
+  // behavioral assertion still passes.
+  await p.waitForFunction(
+    () => {
+      const overlay = document.querySelector('[data-testid="chat-overlay"]');
+      const fileInput = document.querySelector('input[type="file"]');
+      const diagnostic = document.querySelector(".sr-only");
+      if (!overlay || !fileInput || !diagnostic) return false;
+
+      const overlayStyle = getComputedStyle(overlay);
+      const diagnosticStyle = getComputedStyle(diagnostic);
+      return (
+        overlayStyle.position === "fixed" &&
+        getComputedStyle(fileInput).display === "none" &&
+        diagnosticStyle.position === "absolute" &&
+        diagnosticStyle.width === "1px" &&
+        diagnosticStyle.height === "1px"
+      );
+    },
+    undefined,
+    { timeout: 10_000 },
+  );
 }
 
 // --- DOM probes ----------------------------------------------------------
@@ -4208,7 +4240,7 @@ try {
   {
     const short = await ctrl();
     attachConsole(short, sink);
-    await short.setViewportSize({ width: 1080, height: 1240 });
+    await short.setViewportSize({ width: 1080, height: 800 });
     await gotoFixture(short, `${url}?firstrun&tall`);
     await short.waitForSelector('[data-testid="chat-thread-scroll"]');
     await short.waitForTimeout(700);
@@ -4277,10 +4309,20 @@ try {
       if (!el) return null;
       const cs = getComputedStyle(el);
       const r = el.getBoundingClientRect();
+      const canvas = document.createElement("canvas");
+      canvas.width = 1;
+      canvas.height = 1;
+      const context = canvas.getContext("2d");
+      if (!context) return null;
+      context.clearRect(0, 0, 1, 1);
+      context.fillStyle = cs.backgroundColor;
+      context.fillRect(0, 0, 1, 1);
+      const [red, green, blue, alpha] = context.getImageData(0, 0, 1, 1).data;
       return {
         opaque: el.getAttribute("data-first-run-opaque"),
         opacity: cs.opacity,
         bg: cs.backgroundColor,
+        color: { r: red, g: green, b: blue, a: alpha / 255 },
         coversW: r.width >= window.innerWidth - 1,
         coversH: r.height >= window.innerHeight - 1,
       };
@@ -4293,7 +4335,7 @@ try {
       backdrop.opaque === "true" && backdrop.opacity === "1",
       `ONBOARDING: wallpaper scrim is fully applied while onboarding is open (phase ${backdrop?.opaque}, opacity ${backdrop?.opacity})`,
     );
-    const scrim = parseColor(backdrop.bg);
+    const scrim = backdrop.color;
     assert(
       scrim !== null && scrim.a > 0 && scrim.a < 0.4,
       `ONBOARDING: backdrop paints a subtle translucent scrim (got ${backdrop?.bg})`,
@@ -4323,8 +4365,12 @@ try {
           Math.abs(scrimmedWallpaperPx.b - expectedScrimmedWallpaper.b),
         )
       : Number.POSITIVE_INFINITY;
+    // Chromium screenshots rasterize modern `oklab()` alpha slightly
+    // differently from the numeric sRGB composition above. Twenty channels
+    // keeps that color-space tolerance narrow enough to reject both an absent
+    // scrim (delta > 30) and an opaque backdrop (delta > 190).
     assert(
-      scrimDelta <= 8,
+      scrimDelta <= 20,
       `ONBOARDING: configured wallpaper remains visible through the neutral scrim (max channel delta ${Math.round(scrimDelta)})`,
     );
     await snap(p, "state-onboarding-opaque-backdrop");
