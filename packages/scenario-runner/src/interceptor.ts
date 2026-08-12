@@ -412,10 +412,16 @@ export function attachInterceptor(runtime: IAgentRuntime): ActionInterceptor {
         Record<string, unknown> | undefined,
         HandlerCallback | undefined,
       ];
+      const { roomHandlerLease: _roomHandlerLease, ...reportableOptions } =
+        options ?? {};
       const entry: CapturedAction = {
         actionName: action.name,
-        // Snapshot, never the live object — see toJsonSafe.
-        parameters: toJsonSafe(options) as Record<string, unknown> | undefined,
+        // The lease is an executable ownership capability, not action input.
+        // Keep it live for the handler while omitting it from durable reports.
+        parameters:
+          options === undefined
+            ? undefined
+            : (toJsonSafe(reportableOptions) as Record<string, unknown>),
       };
       const wrappedArgs = [...args];
       if (isCallable(callback)) {

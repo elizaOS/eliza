@@ -708,6 +708,40 @@ describe("ATTACHMENT read on-demand transcription", () => {
 		},
 	);
 
+	it("fails closed when the stored attachment URL changes before persistence", async () => {
+		const reportedErrors: ReportedError[] = [];
+		const updates: MemoryUpdate[] = [];
+		const { result, callbackTexts } = await runRead({
+			attachment: makeVideoAttachment(),
+			transcription: async () => TRANSCRIPT,
+			getMemoryById: async (_id, owner) =>
+				({
+					...owner,
+					content: {
+						...owner.content,
+						attachments: [
+							makeVideoAttachment({
+								url: "https://cdn.example/replacement.mp4",
+							}),
+						],
+					},
+				}) as Memory,
+			updateMemory: async (patch) => {
+				updates.push(patch);
+				return true;
+			},
+			reportedErrors,
+		});
+
+		expect(result?.success).toBe(false);
+		expect(result?.error).toMatch(/disappeared/i);
+		expect(callbackTexts).toEqual([
+			"I couldn't read that attachment right now.",
+		]);
+		expect(updates).toEqual([]);
+		expect(reportedErrors).toHaveLength(1);
+	});
+
 	it("never persists a redacted variant's transcript over the stored original", async () => {
 		// selectAttachmentForRequester hands a redacted-disclosure viewer a
 		// variant keeping the shared id/_messageId but with `url` swapped to the

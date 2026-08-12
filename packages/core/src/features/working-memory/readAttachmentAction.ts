@@ -213,9 +213,23 @@ async function persistTranscriptionState(
 					context: { attachmentId: attachment.id, messageId, roomId },
 				});
 			}
-			const index = storedAttachments.findIndex(
-				(entry) => entry.id === attachment.id,
+			const matchingIndexes = storedAttachments.flatMap((entry, index) =>
+				entry.id === attachment.id && entry.url === attachment.url
+					? [index]
+					: [],
 			);
+			if (matchingIndexes.length !== 1) {
+				throw new ElizaError("Attachment disappeared from its owning memory", {
+					code: "ATTACHMENT_TRANSCRIPTION_ATTACHMENT_MISSING",
+					context: {
+						attachmentId: attachment.id,
+						messageId,
+						roomId,
+						matchingAttachments: matchingIndexes.length,
+					},
+				});
+			}
+			const index = matchingIndexes[0];
 			const current = storedAttachments[index];
 			if (!current) {
 				throw new ElizaError("Attachment disappeared from its owning memory", {
