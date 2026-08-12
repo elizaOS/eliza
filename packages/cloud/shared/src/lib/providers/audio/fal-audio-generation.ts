@@ -1,6 +1,18 @@
 // Defines cloud shared fal audio generation behavior for backend service consumers.
-import { falQueueOptionsFromApiKeys, runFalQueueJob } from "../fal-queue";
-import type { AudioGenRequest, AudioProvider, GeneratedAudio } from "./types";
+import {
+  FalQueueTimeoutError,
+  falQueueOptionsFromApiKeys,
+  getFalQueueResult,
+  runFalQueueJob,
+} from "../fal-queue";
+import {
+  type AudioGenRequest,
+  type AudioJobStatus,
+  type AudioJobStatusRequest,
+  AudioGenerationPendingError,
+  type AudioProvider,
+  type GeneratedAudio,
+} from "./types";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -121,11 +133,110 @@ export function buildFalSfxInput(request: AudioGenRequest): Record<string, unkno
 export async function generateFalAudio(request: AudioGenRequest): Promise<GeneratedAudio> {
   const options = falQueueOptionsFromApiKeys(request.apiKeys);
   const input = request.kind === "sfx" ? buildFalSfxInput(request) : buildFalMusicInput(request);
-  const { requestId, payload } = await runFalQueueJob(request.model, input, options);
-  return normalizeFalAudioResult(payload, requestId);
+  try {
+    const { requestId, payload } = await runFalQueueJob(request.model, input, options);
+    return normalizeFalAudioResult(payload, requestId);
+  } catch (error) {
+    // The poll window expired with the upstream job still IN_QUEUE or
+    // IN_PROGRESS. The enqueue already succeeded — fal may still complete the
+    // render and bill the platform. The route must verify the terminal state
+    // before refunding the credit hold (#18436), mirroring the video pending
+    // flow (#11862).
+    if (error instanceof FalQueueTimeoutError && error.requestId) {
+      throw new AudioGenerationPendingError(
+        error.requestId,
+        error instanceof Error ? error.message : String(error),
+      );
+    }
+    throw error;
+  }
+}
+
+/**
+ * Verifies the upstream state of an enqueued fal audio request. Only reports
+ * `failed` on a definitive provider verdict; transport errors propagate so
+ * callers keep the credit hold instead of refunding blind.
+ *
+ * The fal queue status endpoint is accessed via the standard
+ * `/requests/{requestId}/status` path and the result endpoint via
+ * `/requests/{requestId}`. A 404 means the upstream no longer knows the job
+ * (stale, purged) — a verified failure where refunding is safe.
+ */
+export async function getFalAudioJobStatus(req: AudioJobStatusRequest): Promise<AudioJobStatus> {
+  const options = falQueueOptionsFromApiKeys(req.apiKeys);
+  const base = new URL(options.baseUrl ?? "https://queue.fal.run");
+  const basepath = base.pathname.replace(/\/+$/, "");
+
+  const statusUrl = new URL(
+    `${basepath}/requests/${req.requestId}/status`.replace(/^\/+/, "/"),
+    base.origin,
+  );
+
+  let statusResponse: Response;
+  try {
+    statusResponse = await fetch(statusUrl, {
+      headers: {
+        Authorization: `Key ${options.apiKey}`,
+        "content-type": "application/json",
+      },
+      signal: AbortSignal.timeout(30_000),
+    });
+  } catch {
+    // Transport failure — the upstream state is UNKNOWN; propagate so the
+    // caller keeps the credit hold.
+    throw new Error(`fal audio status probe failed for request ${req.requestId}`);
+  }
+
+  if (statusResponse.status === 404) {
+    return {
+      state: "failed",
+      error: `fal does not know request ${req.requestId}`,
+    };
+  }
+
+  const statusPayload = (await statusResponse.json().catch(() => null)) as unknown;
+  if (!isRecord(statusPayload)) {
+    throw new Error(
+      `fal audio status returned a non-JSON-object response for ${req.requestId}`,
+    );
+  }
+  if (!statusResponse.ok) {
+    throw new Error(`fal audio status failed (${statusResponse.status}) for ${req.requestId}`);
+  }
+
+  const status = stringValue(statusPayload.status);
+  if (status !== "COMPLETED") {
+    return { state: "pending" };
+  }
+
+  // COMPLETED — fetch the result payload to confirm audio is present.
+  const responseUrl = new URL(
+    `${basepath}/requests/${req.requestId}`.replace(/^\/+/, "/"),
+    base.origin,
+  );
+  let resultPayload: Record<string, unknown>;
+  try {
+    const { payload } = await getFalQueueResult(responseUrl.toString(), options);
+    resultPayload = payload;
+  } catch {
+    // A COMPLETED job whose result endpoint fails is treated as pending — the
+    // render may still be finalizing its output. Do not refund blind.
+    return { state: "pending" };
+  }
+  try {
+    return { state: "succeeded", result: normalizeFalAudioResult(resultPayload, req.requestId) };
+  } catch (normalizeError) {
+    // COMPLETED but the payload has no audio — the render failed at the model
+    // level even though the queue job is technically done.
+    return {
+      state: "failed",
+      error: normalizeError instanceof Error ? normalizeError.message : String(normalizeError),
+    };
+  }
 }
 
 export const falAudioProvider: AudioProvider = {
   billingSource: "fal",
   generate: generateFalAudio,
+  getJobStatus: getFalAudioJobStatus,
 };

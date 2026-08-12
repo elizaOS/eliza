@@ -10,7 +10,12 @@ import {
 } from "@/api-app/lib/generative-route-auth";
 import { failureResponse, jsonError } from "@/lib/api/cloud-worker-errors";
 import { getAudioProvider } from "@/lib/providers/audio/registry";
-import type { GeneratedAudio } from "@/lib/providers/audio/types";
+import {
+  AUDIO_PENDING_SETTLEMENT_MARKER,
+  type AudioGenerationPendingError as AudioGenPendingError,
+  AudioGenerationPendingError,
+  type GeneratedAudio,
+} from "@/lib/providers/audio/types";
 import { type BillingContext, billFlatUsage } from "@/lib/services/ai-billing";
 import { calculateMusicGenerationCostFromCatalog } from "@/lib/services/ai-pricing";
 import {
@@ -20,6 +25,7 @@ import {
 import { contentSafetyService } from "@/lib/services/content-safety";
 import { InsufficientCreditsError } from "@/lib/services/credits";
 import { generationsService } from "@/lib/services/generations";
+import { persistPendingAudioSettlement } from "@/lib/services/pending-audio-settlement";
 import { putPublicObject } from "@/lib/storage/r2-public-object";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv, Bindings } from "@/types/cloud-worker-env";

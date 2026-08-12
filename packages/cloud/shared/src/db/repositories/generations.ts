@@ -1,6 +1,7 @@
 // Persists generations records for cloud services through the shared DB boundary.
 import { randomUUID } from "node:crypto";
 import { and, asc, count, desc, eq, sql, sum } from "drizzle-orm";
+import { AUDIO_PENDING_SETTLEMENT_MARKER } from "../../lib/providers/audio/types";
 import { VIDEO_PENDING_SETTLEMENT_MARKER } from "../../lib/providers/video/types";
 import { ObjectNamespaces } from "../../lib/storage/object-namespace";
 import {
@@ -349,6 +350,26 @@ export class GenerationsRepository {
         eq(generations.type, "video"),
         eq(generations.status, "pending"),
         sql`${generations.metadata}->>'settlement_marker' = ${VIDEO_PENDING_SETTLEMENT_MARKER}`,
+      ),
+      orderBy: asc(generations.created_at),
+      limit: boundedLimit,
+    });
+    return await Promise.all(rows.map(hydrateGeneration));
+  }
+
+  /**
+   * Lists music generations still awaiting upstream settlement (#18436):
+   * rows the generate-music route persisted after a poll timeout, carrying a
+   * live credit hold that the reconcile sweep settles or refunds. Oldest
+   * first so long-pending holds are resolved before fresh ones.
+   */
+  async listPendingMusicSettlements(limit = 50): Promise<Generation[]> {
+    const boundedLimit = Math.min(Math.max(limit, 1), 200);
+    const rows = await dbRead.query.generations.findMany({
+      where: and(
+        eq(generations.type, "music"),
+        eq(generations.status, "pending"),
+        sql`${generations.metadata}->>'settlement_marker' = ${AUDIO_PENDING_SETTLEMENT_MARKER}`,
       ),
       orderBy: asc(generations.created_at),
       limit: boundedLimit,

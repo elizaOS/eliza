@@ -19,6 +19,11 @@ export function getAudioProvider(billingSource: PricingBillingSource): AudioProv
   return provider;
 }
 
+/** Returns the provider for a billing source or undefined if none is registered. */
+export function findAudioProvider(billingSource: string): AudioProvider | undefined {
+  return PROVIDERS.get(billingSource as PricingBillingSource);
+}
+
 registerAudioProvider(falAudioProvider);
 registerAudioProvider(elevenLabsAudioProvider);
 registerAudioProvider(sunoAudioProvider);
