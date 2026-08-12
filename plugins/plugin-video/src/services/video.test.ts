@@ -1,3 +1,5 @@
+/** Exercises VideoService metadata and parsing boundaries with deterministic binary doubles. */
+
 import type { ElizaError, IAgentRuntime, Media } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import type { BinaryResolver } from "./binaries";
@@ -111,6 +113,76 @@ describe("VideoService deterministic behavior", () => {
     ).rejects.toMatchObject({
       code: "VIDEO_METADATA_INVALID",
     } satisfies Partial<ElizaError>);
+  });
+
+  it("rejects malformed fields before they enter the public format DTO", async () => {
+    const malformedFields: Array<[string, unknown]> = [
+      ["format_id", 123],
+      ["url", {}],
+      ["ext", false],
+      ["quality", {}],
+      ["quality", Number.POSITIVE_INFINITY],
+      ["filesize", "huge"],
+      ["filesize", -1],
+      ["vcodec", 123],
+      ["acodec", false],
+      ["resolution", []],
+      ["fps", Number.POSITIVE_INFINITY],
+      ["fps", -1],
+      ["tbr", Number.NaN],
+      ["tbr", -1],
+    ];
+
+    for (const [field, value] of malformedFields) {
+      const { service } = createServiceWithYtDlp([
+        { formats: [{ [field]: value }] },
+      ]);
+
+      await expect(
+        service.getVideoInfo("https://youtu.be/malformed-field"),
+      ).rejects.toMatchObject({
+        code: "VIDEO_METADATA_FORMAT_FIELD_INVALID",
+        context: { index: 0, field },
+      } satisfies Partial<ElizaError>);
+    }
+  });
+
+  it("normalizes legitimate missing format fields without leaking null", async () => {
+    const { service } = createServiceWithYtDlp([
+      {
+        formats: [
+          {
+            format_id: "720p",
+            url: "https://example.com/video",
+            ext: "mp4",
+            quality: 7,
+            filesize: null,
+            vcodec: null,
+            acodec: "aac",
+            resolution: "1280x720",
+            fps: 30,
+            tbr: 2500,
+          },
+        ],
+      },
+    ]);
+
+    await expect(
+      service.getAvailableFormats("https://youtu.be/valid-format"),
+    ).resolves.toEqual([
+      {
+        formatId: "720p",
+        url: "https://example.com/video",
+        extension: "mp4",
+        quality: "7",
+        fileSize: undefined,
+        videoCodec: undefined,
+        audioCodec: "aac",
+        resolution: "1280x720",
+        fps: 30,
+        bitrate: 2500,
+      },
+    ]);
   });
 
   it("preserves the original yt-dlp failure", async () => {
