@@ -30,6 +30,7 @@ import {
 import type { AgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import type { PluginParamDef, ReadJsonBodyOptions } from "@elizaos/shared";
+import { bridgePluginParamsToRuntime } from "./bridge-plugin-settings.ts";
 import {
   asRecord,
   isElizaSettingsDebugEnabled,
@@ -879,6 +880,7 @@ export async function handlePluginRoutes(
         : {};
       let touchedPluginConfig = false;
 
+      const bridgedValues: Record<string, string | undefined> = {};
       for (const [key, value] of Object.entries(body.config)) {
         if (
           allowedParamKeys.has(key) &&
@@ -890,16 +892,26 @@ export async function handlePluginRoutes(
             process.env[key] = value;
             (state.config.env as Record<string, unknown>)[key] = value;
             nextPluginConfig[key] = value;
+            bridgedValues[key] = value;
           } else if (!allowedParamsByKey.get(key)?.required) {
             delete process.env[key];
             delete (state.config.env as Record<string, unknown>)[key];
             delete nextPluginConfig[key];
+            bridgedValues[key] = undefined;
           }
         }
       }
       if (touchedPluginConfig) {
         pluginEntry.config = nextPluginConfig;
         entries[pluginId] = pluginEntry;
+        // Catalog isSet reads process.env; Discord/Telegram init read
+        // runtime.getSetting(). Bridge before the hot reload so the live
+        // runtime secrets match what the UI just saved (#18713).
+        bridgePluginParamsToRuntime(
+          state.runtime,
+          plugin.parameters,
+          bridgedValues,
+        );
       }
       plugin.configured = true;
 
@@ -960,7 +972,12 @@ export async function handlePluginRoutes(
 
         const entries = (state.config.plugins as Record<string, unknown>)
           .entries as Record<string, Record<string, unknown>>;
-        entries[pluginId] = { enabled: body.enabled };
+        // Preserve any previously saved entry.config — replacing the whole
+        // object with `{ enabled }` wiped Discord tokens on enable (#18713).
+        entries[pluginId] = {
+          ...(entries[pluginId] ?? {}),
+          enabled: body.enabled,
+        };
 
         // Keep plugins.allow aligned with entries[pluginId].enabled so the
         // enable-state drift check in buildCoreToggleDiagnostics() stays clean.
@@ -970,6 +987,10 @@ export async function handlePluginRoutes(
           if (!allow.includes(pluginId) && !allow.includes(packageName)) {
             allow.push(pluginId);
           }
+          // Token may already be in process.env from an earlier save that
+          // never reached getSetting (pre-fix UI path). Hydrate secrets
+          // before the plugin graph reload so Discord init sees the token.
+          bridgePluginParamsToRuntime(state.runtime, plugin.parameters);
         } else {
           state.config.plugins.allow = allow.filter(
             (p: string) => p !== pluginId && p !== packageName,

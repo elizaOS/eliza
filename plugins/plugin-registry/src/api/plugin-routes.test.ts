@@ -152,10 +152,12 @@ describe("handlePluginRoutes config persistence", () => {
 
   it("persists submitted config to env and plugins.entries", async () => {
     const config = { env: {}, plugins: { entries: {} } };
+    const setSetting = vi.fn();
     const ctx = makeContext(
       { config: { DISCORD_API_TOKEN: "abc123" } },
       config,
     );
+    ctx.state.runtime = { setSetting } as never;
 
     const handled = await handlePluginRoutes(ctx);
 
@@ -173,10 +175,44 @@ describe("handlePluginRoutes config persistence", () => {
       },
     });
     expect(process.env.DISCORD_API_TOKEN).toBe("abc123");
+    expect(setSetting).toHaveBeenCalledWith(
+      "DISCORD_API_TOKEN",
+      "abc123",
+      true,
+    );
     expect(mocks.saveElizaConfig).toHaveBeenCalledWith(config);
     expect(ctx.json).toHaveBeenCalledWith(
       ctx.res,
       expect.objectContaining({ ok: true }),
+    );
+  });
+
+  it("preserves entry config when enabling a plugin", async () => {
+    const config = {
+      env: { DISCORD_API_TOKEN: "keep-me" },
+      plugins: {
+        entries: {
+          discord: {
+            config: { DISCORD_API_TOKEN: "keep-me" },
+          },
+        },
+      },
+    };
+    const setSetting = vi.fn();
+    process.env.DISCORD_API_TOKEN = "keep-me";
+    const ctx = makeContext({ enabled: true }, config);
+    ctx.state.runtime = { setSetting } as never;
+
+    await handlePluginRoutes(ctx);
+
+    expect(config.plugins.entries.discord).toEqual({
+      config: { DISCORD_API_TOKEN: "keep-me" },
+      enabled: true,
+    });
+    expect(setSetting).toHaveBeenCalledWith(
+      "DISCORD_API_TOKEN",
+      "keep-me",
+      true,
     );
   });
 
@@ -193,7 +229,9 @@ describe("handlePluginRoutes config persistence", () => {
         },
       },
     };
+    const setSetting = vi.fn();
     const ctx = makeContext({ config: { DISCORD_API_TOKEN: " " } }, config);
+    ctx.state.runtime = { setSetting } as never;
 
     await handlePluginRoutes(ctx);
 
@@ -209,6 +247,7 @@ describe("handlePluginRoutes config persistence", () => {
       },
     });
     expect(process.env.DISCORD_API_TOKEN).toBeUndefined();
+    expect(setSetting).toHaveBeenCalledWith("DISCORD_API_TOKEN", null, true);
   });
 
   it.each(["../../evil", "@scope/../evil", "plugin name", "", "   "])(

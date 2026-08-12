@@ -48,6 +48,7 @@ import {
   type RegistryEntry,
 } from "@elizaos/registry/first-party";
 import { asRecord, CONNECTOR_PLUGINS } from "@elizaos/shared";
+import { bridgePluginParamsToRuntime } from "./bridge-plugin-settings.ts";
 import { VaultMissError } from "@elizaos/vault";
 
 const require = createRequire(import.meta.url);
@@ -1666,6 +1667,25 @@ export async function handlePluginsCompatRoutes(
     const result = persistCompatPluginMutation(pluginId, body, plugin);
     if (result.status === 200) {
       const nextConfig = loadElizaConfig();
+      // Bridge process.env / just-saved config into runtime.getSetting before
+      // hot reload — catalog isSet reads env, connectors read getSetting (#18713).
+      if (body.config && typeof body.config === "object" && !Array.isArray(body.config)) {
+        const bridgedValues: Record<string, string | undefined> = {};
+        for (const [key, value] of Object.entries(
+          body.config as Record<string, unknown>,
+        )) {
+          if (typeof value === "string") {
+            bridgedValues[key] = value.trim() ? value : undefined;
+          }
+        }
+        bridgePluginParamsToRuntime(
+          state.current,
+          plugin.parameters ?? [],
+          bridgedValues,
+        );
+      } else if (body.enabled === true) {
+        bridgePluginParamsToRuntime(state.current, plugin.parameters ?? []);
+      }
       const runtimeApply = await applyCompatRuntimeMutation({
         state,
         pluginId,
