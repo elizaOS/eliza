@@ -81,6 +81,13 @@ async function startFakeBlueBubbles(): Promise<FakeBlueBubblesServer> {
       }
       const messageMatch = url.pathname.match(/^\/api\/v1\/message\/(.+)$/);
       if (req.method === "GET" && messageMatch) {
+        if (
+          url.searchParams.get("password") !== "e2e-password" ||
+          url.searchParams.get("with") !== "chats"
+        ) {
+          json(res, 401, { error: "invalid message lookup" });
+          return;
+        }
         const guid = decodeURIComponent(messageMatch[1] ?? "");
         messageLookups.push(guid);
         if (!messageTargets.has(guid)) {
@@ -405,6 +412,8 @@ test.describe("registered BlueBubbles gateway", () => {
         organization_id: senderUser.organizationId,
       });
 
+      const linkedGuid = `linked-${crypto.randomUUID()}`;
+      fakeBlueBubbles.messageTargets.set(linkedGuid, registration.phoneNumber);
       const linkedInboundResponse = await fetch(
         `${relayBaseUrl}/webhooks/bluebubbles`,
         {
@@ -413,7 +422,7 @@ test.describe("registered BlueBubbles gateway", () => {
           body: JSON.stringify({
             type: "new-message",
             data: {
-              guid: `linked-${crypto.randomUUID()}`,
+              guid: linkedGuid,
               text: "Reply through my linked phone gateway.",
               isFromMe: false,
               handle: { address: senderPhone, service: "iMessage" },
@@ -421,7 +430,6 @@ test.describe("registered BlueBubbles gateway", () => {
                 {
                   guid: `iMessage;-;${senderPhone}`,
                   chatIdentifier: senderPhone,
-                  lastAddressedHandle: registration.phoneNumber,
                 },
               ],
             },
@@ -530,6 +538,7 @@ test.describe("registered BlueBubbles gateway", () => {
       });
       expect(fakeBlueBubbles.messageLookups).toEqual([
         onboardingGuid,
+        linkedGuid,
         mismatchedGuid,
         unverifiedGuid,
       ]);
