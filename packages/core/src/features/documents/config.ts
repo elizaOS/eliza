@@ -65,10 +65,16 @@ export function validateModelConfig(runtime?: IAgentRuntime): ModelConfig {
 		);
 		const embeddingProvider = getSetting("EMBEDDING_PROVIDER");
 		const localEmbeddingModel = getSetting("LOCAL_EMBEDDING_MODEL");
-		const localEmbeddingDimensions = getSetting("LOCAL_EMBEDDING_DIMENSIONS");
+		const localEmbeddingDimensions = getNumericSetting(
+			"LOCAL_EMBEDDING_DIMENSIONS",
+		);
+		const openaiEmbeddingDimensions = getNumericSetting(
+			"OPENAI_EMBEDDING_DIMENSIONS",
+		);
 		const inferredLocalEmbeddings =
 			!embeddingProvider &&
-			Boolean(localEmbeddingModel || localEmbeddingDimensions);
+			(localEmbeddingModel !== undefined ||
+				localEmbeddingDimensions !== undefined);
 		const resolvedEmbeddingProvider =
 			embeddingProvider || (inferredLocalEmbeddings ? "local" : undefined);
 		const assumePluginOpenAI = !resolvedEmbeddingProvider;
@@ -83,10 +89,10 @@ export function validateModelConfig(runtime?: IAgentRuntime): ModelConfig {
 				: "text-embedding-3-small");
 		const embeddingDimension =
 			getNumericSetting("EMBEDDING_DIMENSION") ??
-			((resolvedEmbeddingProvider === "local"
+			(resolvedEmbeddingProvider === "local"
 				? localEmbeddingDimensions
-				: getSetting("OPENAI_EMBEDDING_DIMENSIONS")) ||
-				(resolvedEmbeddingProvider === "local" ? "384" : "1536"));
+				: openaiEmbeddingDimensions) ??
+			(resolvedEmbeddingProvider === "local" ? "384" : "1536");
 
 		const rawOpenaiApiKey = getSetting("OPENAI_API_KEY");
 		const rawOpenaiBaseURL = getSetting("OPENAI_BASE_URL");
