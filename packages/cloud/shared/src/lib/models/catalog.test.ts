@@ -67,3 +67,12 @@ describe("#8426 text catalog recommendation invariants", () => {
     expect(top?.id).not.toBe(BITROUTER_NITRO_TEXT_MODEL);
   });
 });
+
+describe("MiniMax static catalog", () => {
+  test("includes MiniMax M3 in the catalog and selector", () => {
+    const modelId = "minimax/minimax-m3";
+
+    expect(STATIC_TEXT_CATALOG_MODELS.some((model) => model.id === modelId)).toBe(true);
+    expect(FALLBACK_TEXT_SELECTOR_MODELS.some((model) => model.modelId === modelId)).toBe(true);
+  });
+});
