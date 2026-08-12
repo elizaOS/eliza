@@ -23,48 +23,10 @@ import {
   seedRegisteredTaskPacks,
 } from "./scheduled-task/seed-registry.js";
 import {
-  isStandaloneTickDisabled,
-  runStandaloneSchedulingTick,
-  STANDALONE_TICK_INTERVAL_MS,
+  disposeStandaloneTick,
+  ensureStandaloneTickTask,
+  registerStandaloneTickWorker,
 } from "./scheduled-task/standalone-tick.js";
-
-/**
- * One fallback tick timer per runtime. The interval callback closes over the
- * runtime, so the WeakMap alone cannot release a torn-down runtime — the
- * self-stop check inside the callback is what actually ends the timer's (and
- * therefore the runtime's) lifetime. The timer is unref'd so it never blocks
- * process exit.
- */
-const standaloneTickTimers = new WeakMap<
-  IAgentRuntime,
-  ReturnType<typeof setInterval>
->();
-
-function startStandaloneTickDriver(runtime: IAgentRuntime): void {
-  if (standaloneTickTimers.has(runtime)) return;
-  const timer = setInterval(() => {
-    // Self-stop on runtime teardown: a stopped runtime no longer resolves the
-    // runner service (`runtime.getService` returns null after stop), and
-    // without this check the closure would pin the runtime alive and throw a
-    // warn line every interval forever in multi-agent processes that
-    // stop/restart agents.
-    if (!runtime.getService(ScheduledTaskRunnerService.serviceType)) {
-      clearInterval(timer);
-      standaloneTickTimers.delete(runtime);
-      return;
-    }
-    void runStandaloneSchedulingTick(runtime).catch((error) => {
-      logger.warn(
-        { src: "scheduling:standalone-tick", agentId: runtime.agentId },
-        `[scheduling] standalone tick crashed; retrying next interval: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
-      );
-    });
-  }, STANDALONE_TICK_INTERVAL_MS);
-  timer.unref?.();
-  standaloneTickTimers.set(runtime, timer);
-}
 
 export async function waitForScheduledTaskRunnerService(
   runtime: IAgentRuntime,
@@ -117,6 +79,7 @@ export const schedulingPlugin: Plugin = {
     },
   ],
   init: async (_config: Record<string, string>, runtime: IAgentRuntime) => {
+    registerStandaloneTickWorker(runtime);
     // Seed registered default-task packs once init has finished so the runner
     // service (and any consumer's injected deps + packs) are registered before
     // the seed runs. Failures are non-fatal to plugin load.
@@ -143,15 +106,13 @@ export const schedulingPlugin: Plugin = {
             agentId: runtime.agentId,
           });
           await seedRegisteredTaskPacks(runtime, runner);
-          // Fallback wall-clock driver: without this, a runtime with no
+          // Fallback TaskService worker: without this, a runtime with no
           // consumer host (plugin-personal-assistant) accepts scheduled
           // tasks over REST but never fires them — `once`/`cron`/`interval`
           // rows sat `scheduled` forever (sol-dev cutover QA 2026-08-11).
-          // The tick itself defers per-invocation when a consumer host's
-          // deps are registered, so starting it unconditionally is safe.
-          if (!isStandaloneTickDisabled()) {
-            startStandaloneTickDriver(runtime);
-          }
+          // The worker defers per-invocation when a consumer host's deps are
+          // registered. Core TaskService remains the only wall clock.
+          await ensureStandaloneTickTask(runtime);
         } catch (error) {
           logger.warn(
             { src: "scheduling:boot-seed", agentId: runtime.agentId, error },
@@ -162,5 +123,17 @@ export const schedulingPlugin: Plugin = {
       .catch(() => {
         /* initPromise rejection is surfaced elsewhere */
       });
+  },
+  dispose: async (runtime: IAgentRuntime) => {
+    try {
+      await disposeStandaloneTick(runtime);
+    } catch (error) {
+      // error-policy:J6 Plugin unload is best-effort; surface cleanup failure
+      // without turning an otherwise successful runtime shutdown into a crash.
+      logger.warn(
+        { src: "scheduling:dispose", agentId: runtime.agentId, error },
+        "[scheduling] Failed to remove the standalone tick task during teardown.",
+      );
+    }
   },
 };

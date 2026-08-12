@@ -1,6 +1,7 @@
 /**
- * Standalone scheduler tick — the fallback wall-clock driver for the
- * ScheduledTask spine when no consumer host is loaded.
+ * Standalone scheduler tick — the fallback TaskService worker for the
+ * ScheduledTask spine when no consumer host is loaded. Core owns the only
+ * process clock; this module contributes one durable repeat row and worker.
  *
  * `@elizaos/plugin-scheduling` is the always-loaded scheduling primitive: it
  * hosts the runner service, the REST surface (`POST /api/lifeops/scheduled-tasks`
@@ -29,7 +30,13 @@
  *   spine's REST contract already implies.
  */
 
-import { type IAgentRuntime, logger } from "@elizaos/core";
+import {
+  type IAgentRuntime,
+  logger,
+  type Task,
+  type TaskMetadata,
+  type UUID,
+} from "@elizaos/core";
 import { isScheduledTaskDue } from "./due.js";
 import type { ScheduledTaskFireResult } from "./runner.js";
 import {
@@ -39,6 +46,14 @@ import {
 
 /** Base cadence of the fallback tick; mirrors PA's LIFEOPS_TASK_INTERVAL_MS. */
 export const STANDALONE_TICK_INTERVAL_MS = 60_000;
+export const STANDALONE_TICK_TASK_NAME = "SCHEDULED_TASK_RUNNER" as const;
+export const STANDALONE_TICK_TASK_TAGS = [
+  "queue",
+  "repeat",
+  "scheduling",
+] as const;
+
+const STANDALONE_TICK_TASK_KIND = "standalone_scheduled_task_runner";
 
 /** Process-level kill switch, mirroring PA's ELIZA_DISABLE_LIFEOPS_SCHEDULER. */
 export function isStandaloneTickDisabled(
@@ -59,7 +74,7 @@ export interface StandaloneTickResult {
 
 /**
  * Run one standalone tick: fire every due wall-clock task through the runner.
- * Exposed for tests and for the interval driver in the runner service.
+ * Exposed for tests and for the TaskService worker registered below.
  */
 export async function runStandaloneSchedulingTick(
   runtime: IAgentRuntime,
@@ -101,6 +116,12 @@ export async function runStandaloneSchedulingTick(
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       result.errors.push({ taskId: task.taskId, message });
+      // error-policy:J7 A malformed or temporarily failing scheduled row must
+      // not starve independent rows; diagnostics make the isolated failure
+      // visible while the durable row remains eligible for the next tick.
+      runtime.reportError("SchedulingStandaloneTick.task", error, {
+        taskId: task.taskId,
+      });
       logger.warn(
         { src: "scheduling:standalone-tick", taskId: task.taskId },
         `[scheduling] standalone tick failed for ${task.taskId}: ${message}`,
@@ -108,4 +129,102 @@ export async function runStandaloneSchedulingTick(
     }
   }
   return result;
+}
+
+function isStandaloneTickTask(task: Task): boolean {
+  const marker = task.metadata?.schedulingTick;
+  return (
+    task.name === STANDALONE_TICK_TASK_NAME &&
+    typeof marker === "object" &&
+    marker !== null &&
+    "kind" in marker &&
+    marker.kind === STANDALONE_TICK_TASK_KIND
+  );
+}
+
+function buildStandaloneTickMetadata(): TaskMetadata {
+  return {
+    updateInterval: STANDALONE_TICK_INTERVAL_MS,
+    baseInterval: STANDALONE_TICK_INTERVAL_MS,
+    blocking: true,
+    maxFailures: 0,
+    paused: false,
+    schedulingTick: {
+      kind: STANDALONE_TICK_TASK_KIND,
+      version: 1,
+    },
+  };
+}
+
+/** Register the fallback tick as a core TaskService worker. */
+export function registerStandaloneTickWorker(runtime: IAgentRuntime): void {
+  if (runtime.getTaskWorker(STANDALONE_TICK_TASK_NAME)) return;
+  runtime.registerTaskWorker({
+    name: STANDALONE_TICK_TASK_NAME,
+    shouldRun: async () =>
+      !isStandaloneTickDisabled() &&
+      getScheduledTaskRunnerDeps(runtime) === null,
+    execute: async () => {
+      await runStandaloneSchedulingTick(runtime);
+      return { nextInterval: STANDALONE_TICK_INTERVAL_MS };
+    },
+  });
+}
+
+/**
+ * Ensure exactly one durable repeat row drives the fallback worker.
+ *
+ * The row remains present while a richer consumer host is loaded; the worker's
+ * `shouldRun` gate hands ownership to that host without introducing another
+ * wall clock. If the host unloads, the next core TaskService poll resumes the
+ * fallback automatically.
+ */
+export async function ensureStandaloneTickTask(
+  runtime: IAgentRuntime,
+): Promise<UUID> {
+  const tasks = await runtime.getTasks({
+    agentIds: [runtime.agentId],
+    tags: [...STANDALONE_TICK_TASK_TAGS],
+  });
+  const matches = tasks.filter(isStandaloneTickTask);
+  const [canonical, ...duplicates] = matches;
+
+  for (const duplicate of duplicates) {
+    if (duplicate.id) await runtime.deleteTask(duplicate.id);
+  }
+
+  const metadata = buildStandaloneTickMetadata();
+  if (canonical?.id) {
+    await runtime.updateTask(canonical.id, {
+      description:
+        "Drive scheduled tasks when no consumer host owns the runner",
+      metadata,
+    });
+    return canonical.id;
+  }
+
+  return runtime.createTask({
+    name: STANDALONE_TICK_TASK_NAME,
+    description: "Drive scheduled tasks when no consumer host owns the runner",
+    agentId: runtime.agentId,
+    tags: [...STANDALONE_TICK_TASK_TAGS],
+    metadata,
+    dueAt: Date.now(),
+  });
+}
+
+/** Remove the worker and its durable driver rows during plugin unload. */
+export async function disposeStandaloneTick(
+  runtime: IAgentRuntime,
+): Promise<void> {
+  runtime.unregisterTaskWorker(STANDALONE_TICK_TASK_NAME);
+  const tasks = await runtime.getTasks({
+    agentIds: [runtime.agentId],
+    tags: [...STANDALONE_TICK_TASK_TAGS],
+  });
+  for (const task of tasks) {
+    if (isStandaloneTickTask(task) && task.id) {
+      await runtime.deleteTask(task.id);
+    }
+  }
 }

@@ -4,8 +4,8 @@
  * Regression (sol-dev cutover QA 2026-08-11): on a runtime WITHOUT
  * plugin-personal-assistant, `POST /api/lifeops/scheduled-tasks` accepted a
  * `once` reminder (201) but nothing ever fired it — the only production
- * caller of the due-task loop lived in PA. The standalone tick is the
- * in-plugin fallback driver; these tests pin:
+ * caller of the due-task loop lived in PA. The standalone tick is a core
+ * TaskService worker, not a second timer; these tests pin:
  *
  *  - a due `once` task FIRES through the real runner (fails before the fix:
  *    no fallback driver existed, so nothing transitions the row)
@@ -15,7 +15,7 @@
  *  - one throwing row does not starve the rest of the tick
  */
 
-import type { IAgentRuntime, UUID } from "@elizaos/core";
+import type { IAgentRuntime, Task, TaskWorker, UUID } from "@elizaos/core";
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
@@ -23,8 +23,12 @@ import {
   ScheduledTaskRunnerService,
 } from "./runner-service.js";
 import {
+  disposeStandaloneTick,
+  ensureStandaloneTickTask,
   isStandaloneTickDisabled,
+  registerStandaloneTickWorker,
   runStandaloneSchedulingTick,
+  STANDALONE_TICK_TASK_NAME,
 } from "./standalone-tick.js";
 
 function makeFakeRuntime(): IAgentRuntime {
@@ -102,6 +106,62 @@ describe("standalone scheduling tick", () => {
       now: new Date("2026-08-11T09:47:00.000Z"),
     });
     expect(again.fires.filter((f) => f.outcome === "fired")).toEqual([]);
+  });
+
+  it("uses one durable core TaskService worker row and removes it on unload", async () => {
+    const workerByName = new Map<string, TaskWorker>();
+    const taskById = new Map<UUID, Task>();
+    let nextId = 1;
+    const runtime = {
+      ...makeFakeRuntime(),
+      getTaskWorker: (name: string) => workerByName.get(name),
+      registerTaskWorker: (worker: TaskWorker) => {
+        workerByName.set(worker.name, worker);
+      },
+      unregisterTaskWorker: (name: string) => workerByName.delete(name),
+      getTasks: async () => [...taskById.values()],
+      createTask: async (task: Task) => {
+        const id =
+          `00000000-0000-0000-0000-${String(nextId++).padStart(12, "0")}` as UUID;
+        taskById.set(id, { ...task, id });
+        return id;
+      },
+      updateTask: async (id: UUID, update: Partial<Task>) => {
+        const current = taskById.get(id);
+        if (!current) throw new Error(`missing task ${id}`);
+        taskById.set(id, { ...current, ...update });
+      },
+      deleteTask: async (id: UUID) => {
+        taskById.delete(id);
+      },
+    } as unknown as IAgentRuntime;
+
+    registerStandaloneTickWorker(runtime);
+    registerStandaloneTickWorker(runtime);
+    const firstId = await ensureStandaloneTickTask(runtime);
+    const secondId = await ensureStandaloneTickTask(runtime);
+
+    expect(secondId).toBe(firstId);
+    expect([...workerByName]).toHaveLength(1);
+    expect([...taskById.values()]).toMatchObject([
+      {
+        id: firstId,
+        name: STANDALONE_TICK_TASK_NAME,
+        tags: ["queue", "repeat", "scheduling"],
+        metadata: { blocking: true, maxFailures: 0, paused: false },
+      },
+    ]);
+
+    const worker = workerByName.get(STANDALONE_TICK_TASK_NAME);
+    const driverTask = taskById.get(firstId);
+    expect(driverTask).toBeDefined();
+    expect(driverTask && (await worker?.shouldRun?.(runtime, driverTask))).toBe(
+      true,
+    );
+
+    await disposeStandaloneTick(runtime);
+    expect(workerByName.size).toBe(0);
+    expect(taskById.size).toBe(0);
   });
 
   it("defers to a registered consumer host without touching tasks", async () => {
