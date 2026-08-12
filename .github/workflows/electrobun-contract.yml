@@ -1,0 +1,44 @@
+# Lightweight pull-request gate for the executable Electrobun release contracts.
+name: Validate Electrobun Release Workflow
+
+on:
+  pull_request:
+    branches: [develop]
+    paths:
+      - ".github/workflows/release-electrobun.yml"
+      - ".github/workflows/electrobun-contract.yml"
+      - "packages/app-core/scripts/**"
+      - "packages/app-core/platforms/electrobun/**"
+      - "packages/app-core/test/regression-matrix.json"
+      - "package.json"
+      - "bun.lock"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  BUN_VERSION: "1.3.14"
+
+jobs:
+  release-contract:
+    name: Release Workflow Contract
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+
+      - name: Setup Bun workspace
+        uses: ./.github/actions/setup-bun-workspace
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+          install-command: bun install --frozen-lockfile --ignore-scripts
+          run-postinstall: "true"
+          init-submodules: "false"
+
+      - name: Validate release workflow and regression inventory
+        run: |
+          bun run test:regression-matrix:release-contract
+          bun run test:release:contract
