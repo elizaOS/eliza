@@ -129,33 +129,32 @@ export class VideoService extends IVideoService {
   // Required abstract methods from IVideoService
   async getVideoInfo(url: string): Promise<VideoInfo> {
     const videoInfo = await this.fetchVideoInfo(url);
-    const rawFormats = Array.isArray(videoInfo?.formats)
-      ? videoInfo.formats
-      : [];
-    const formats: VideoFormat[] = rawFormats.map((f: YtDlpFormatRow) => ({
-      formatId: f.format_id ?? "",
-      url: f.url ?? "",
-      extension: f.ext ?? "",
-      quality:
-        f.quality !== undefined && f.quality !== ""
-          ? String(f.quality)
-          : "unknown",
-      fileSize: f.filesize,
-      videoCodec: f.vcodec,
-      audioCodec: f.acodec,
-      resolution: f.resolution,
-      fps: f.fps,
-      bitrate: f.tbr,
-    }));
+    const formats: VideoFormat[] = (videoInfo.formats ?? []).map(
+      (f: YtDlpFormatRow) => ({
+        formatId: f.format_id ?? "",
+        url: f.url ?? "",
+        extension: f.ext ?? "",
+        quality:
+          f.quality !== undefined && f.quality !== ""
+            ? String(f.quality)
+            : "unknown",
+        fileSize: f.filesize,
+        videoCodec: f.vcodec,
+        audioCodec: f.acodec,
+        resolution: f.resolution,
+        fps: f.fps,
+        bitrate: f.tbr,
+      }),
+    );
     return {
-      title: videoInfo?.title,
-      duration: videoInfo?.duration,
+      title: videoInfo.title,
+      duration: videoInfo.duration,
       url: url,
-      thumbnail: videoInfo?.thumbnail,
-      description: videoInfo?.description,
-      uploader: videoInfo?.channel,
-      viewCount: videoInfo?.view_count,
-      uploadDate: parseYtDlpUploadDate(videoInfo?.upload_date),
+      thumbnail: videoInfo.thumbnail,
+      description: videoInfo.description,
+      uploader: videoInfo.channel,
+      viewCount: videoInfo.view_count,
+      uploadDate: parseYtDlpUploadDate(videoInfo.upload_date),
       formats,
     };
   }
@@ -366,9 +365,6 @@ export class VideoService extends IVideoService {
   }
 
   public isVideoUrl(url: string): boolean {
-    if (!url || typeof url !== "string") {
-      return false;
-    }
     try {
       const { hostname } = new URL(url);
       return (
@@ -550,7 +546,7 @@ export class VideoService extends IVideoService {
     return await response.text();
   }
 
-  public parseCaption(captionContent: string): string {
+  private parseCaption(captionContent: string): string {
     elizaLogger.log("Parsing caption");
     if (!captionContent || typeof captionContent !== "string") {
       return "";
@@ -582,7 +578,7 @@ export class VideoService extends IVideoService {
     }
   }
 
-  public parseSRT(srtContent: string): string {
+  private parseSRT(srtContent: string): string {
     if (!srtContent || typeof srtContent !== "string") {
       return "";
     }

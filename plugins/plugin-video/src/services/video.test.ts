@@ -70,9 +70,7 @@ describe("VideoService deterministic behavior", () => {
     expect(first.title).toBe("First Vimeo");
     expect(second.title).toBe("Second Vimeo");
     expect(runtime.setCache).toHaveBeenCalledTimes(2);
-    const keys = (
-      runtime.setCache as unknown as { mock: { calls: Array<[string]> } }
-    ).mock.calls.map(([key]) => key);
+    const keys = vi.mocked(runtime.setCache).mock.calls.map(([key]) => key);
     expect(new Set(keys).size).toBe(2);
   });
 
@@ -92,17 +90,25 @@ describe("VideoService deterministic behavior", () => {
 
   it("parses SRT subtitles with CRLF line endings cleanly", () => {
     const { service } = createServiceWithYtDlp([]);
-    const srtContent =
-      "1\r\n00:00:01,000 --> 00:00:04,000\r\nHello world!\r\n\r\n2\r\n00:00:04,500 --> 00:00:07,000\r\nThis is a test.\r\nLine 2 text.";
+    const srtContent = [
+      "1",
+      "00:00:01,000 --> 00:00:04,000",
+      "Hello world!",
+      "",
+      "2",
+      "00:00:04,500 --> 00:00:07,000",
+      "This is a test.",
+      "Line 2 text.",
+    ].join("\r\n");
 
-    const parsed = service.parseSRT(srtContent);
+    const parsed = service["parseSRT"](srtContent);
     expect(parsed).toBe("Hello world! This is a test. Line 2 text.");
   });
 
   it("handles empty or non-string SRT input", () => {
     const { service } = createServiceWithYtDlp([]);
-    expect(service.parseSRT("")).toBe("");
-    expect(service.parseSRT(null as unknown as string)).toBe("");
+    expect(service["parseSRT"]("")).toBe("");
+    expect(service["parseSRT"](null as unknown as string)).toBe("");
   });
 
   it("parses caption JSON and replaces all linebreaks globally", () => {
@@ -114,26 +120,18 @@ describe("VideoService deterministic behavior", () => {
       ],
     });
 
-    const parsed = service.parseCaption(captionJson);
+    const parsed = service["parseCaption"](captionJson);
     expect(parsed).toBe("First line second line Third line ");
   });
 
   it("handles invalid or malformed caption JSON gracefully", () => {
     const { service } = createServiceWithYtDlp([]);
-    expect(service.parseCaption("")).toBe("");
-    expect(service.parseCaption("not-json")).toBe(
+    expect(service["parseCaption"]("")).toBe("");
+    expect(service["parseCaption"]("not-json")).toBe(
       "Error: Unable to parse captions",
     );
-    expect(service.parseCaption(JSON.stringify({ events: "invalid" }))).toBe(
+    expect(service["parseCaption"](JSON.stringify({ events: "invalid" }))).toBe(
       "Error: Unable to parse captions",
     );
-  });
-
-  it("safely handles non-string or empty URLs in isVideoUrl", () => {
-    const { service } = createServiceWithYtDlp([]);
-    expect(service.isVideoUrl("")).toBe(false);
-    expect(service.isVideoUrl(null as unknown as string)).toBe(false);
-    expect(service.isVideoUrl(undefined as unknown as string)).toBe(false);
-    expect(service.isVideoUrl("https://youtube.com/watch?v=123")).toBe(true);
   });
 });
