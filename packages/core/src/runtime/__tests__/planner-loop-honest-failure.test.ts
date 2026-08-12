@@ -757,8 +757,14 @@ describe("deterministic post-synthesis relay", () => {
 		);
 	});
 
-	it("relays canonical output preserved in archived steps", async () => {
-		const paddedRaw = "planner diagnostics ".repeat(500);
+	it("relays archived canonical output without exposing compacted diagnostics", async () => {
+		const privatePath = "/private/ops/raw-release.log";
+		const privateData = "AWS_SECRET_ACCESS_KEY=data-never-show";
+		const privateError =
+			"Authorization: Bearer error-never-show 3f2504e0-4f89-11d3-9a0c-0305e82c3301";
+		const paddedRaw =
+			`stdout: ${privatePath}\nRAW_DIAGNOSTIC_MARKER\n` +
+			"planner diagnostics ".repeat(500);
 		const useModel = vi
 			.fn()
 			.mockResolvedValueOnce({
@@ -770,15 +776,30 @@ describe("deterministic post-synthesis relay", () => {
 			.mockResolvedValueOnce({
 				text: "",
 				toolCalls: [
-					{ id: "call-2", name: "SHELL", arguments: { command: "true" } },
+					{ id: "call-2", name: "LOOKUP", arguments: { query: "release" } },
 				],
 			})
-			.mockResolvedValueOnce({ text: "", toolCalls: [] });
+			.mockResolvedValueOnce({
+				text: "",
+				toolCalls: [
+					{ id: "call-3", name: "SHELL", arguments: { command: "true" } },
+				],
+			})
+			.mockResolvedValueOnce({
+				text: "Release inventory contains twelve plugins.",
+				toolCalls: [],
+			});
 		const executeToolCall = vi
 			.fn()
 			.mockResolvedValueOnce({
-				success: true,
+				success: false,
 				text: paddedRaw,
+				data: { credential: privateData },
+				error: privateError,
+			})
+			.mockResolvedValueOnce({
+				success: true,
+				text: "planner diagnostics: twelve release plugins",
 				userFacingText: "Release inventory contains twelve plugins.",
 			})
 			.mockResolvedValueOnce({
@@ -787,6 +808,11 @@ describe("deterministic post-synthesis relay", () => {
 			});
 		const evaluate = vi
 			.fn()
+			.mockResolvedValueOnce({
+				success: false,
+				decision: "CONTINUE" as const,
+				thought: "Retry the same release lookup.",
+			})
 			.mockResolvedValueOnce({
 				success: true,
 				decision: "CONTINUE" as const,
@@ -801,7 +827,25 @@ describe("deterministic post-synthesis relay", () => {
 
 		const result = await runPlannerLoop({
 			runtime: { useModel },
-			context: { id: "ctx" },
+			context: {
+				id: "ctx",
+				events: [
+					{
+						id: "request",
+						type: "message",
+						message: {
+							role: "user",
+							content: "Summarize the release inventory.",
+						},
+					},
+					{
+						id: "reply-reference",
+						type: "provider",
+						name: "turn-reference",
+						text: "reply_reference: release-thread-17\nturn_state: active",
+					},
+				],
+			},
 			tools: [
 				{ name: "LOOKUP", description: "Look up records." },
 				{ name: "SHELL", description: "Run a shell command." },
@@ -811,7 +855,7 @@ describe("deterministic post-synthesis relay", () => {
 			config: {
 				contextWindowTokens: 1200,
 				compactionReserveTokens: 1000,
-				compactionKeepSteps: 1,
+				compactionKeepSteps: 0,
 			},
 		});
 
@@ -822,9 +866,33 @@ describe("deterministic post-synthesis relay", () => {
 					"Release inventory contains twelve plugins.",
 			),
 		).toBe(true);
-		expect(useModel).toHaveBeenCalledTimes(3);
+		expect(
+			result.trajectory.context.events.some(
+				(event) =>
+					event.type === "segment" &&
+					"segment" in event &&
+					event.segment.label === "compaction",
+			),
+		).toBe(true);
+		expect(useModel).toHaveBeenCalledTimes(4);
+		const synthesisPayload = JSON.stringify(useModel.mock.calls[3]?.[1]);
+		expect(synthesisPayload).toContain("Summarize the release inventory.");
+		expect(synthesisPayload).toContain("reply_reference: release-thread-17");
+		expect(synthesisPayload).toContain("archived_tool_authority");
+		expect(synthesisPayload).toContain(
+			"Release inventory contains twelve plugins.",
+		);
+		expect(synthesisPayload).not.toMatch(
+			/private\/ops|RAW_DIAGNOSTIC_MARKER|AWS_SECRET_ACCESS_KEY|data-never-show|Authorization|Bearer|error-never-show|3f2504e0/iu,
+		);
 		expect(result.finalMessage).toBe(
 			"Release inventory contains twelve plugins.",
+		);
+		expect(result.finalMessage).not.toMatch(
+			/private\/ops|RAW_DIAGNOSTIC_MARKER|AWS_SECRET_ACCESS_KEY|Authorization|Bearer|3f2504e0/iu,
+		);
+		expect(result.trajectory.steps.at(-1)?.terminalMessage).toBe(
+			result.finalMessage,
 		);
 	});
 });

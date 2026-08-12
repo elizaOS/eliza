@@ -3630,14 +3630,65 @@ async function finishWithForcedSynthesis(params: {
 				},
 			};
 		});
+	const canonicalArchivedSteps = canonicalSteps(trajectory.archivedSteps);
+	const synthesisContextEvents = trajectory.context.events.filter(
+		(event) =>
+			!(
+				event.type === "segment" &&
+				event.source === "planner-loop" &&
+				"segment" in event &&
+				isPlainObject(event.segment) &&
+				event.segment.label === "compaction"
+			),
+	);
+	const archivedAuthority = canonicalArchivedSteps
+		.filter(
+			(
+				step,
+			): step is PlannerStep & {
+				toolCall: PlannerToolCall;
+				result: PlannerToolResult;
+			} => step.toolCall !== undefined && step.result !== undefined,
+		)
+		.map((step) => {
+			const userFacingText = getNonEmptyString(step.result.userFacingText);
+			return [
+				`iteration: ${step.iteration}`,
+				`tool: ${step.toolCall.name}`,
+				`status: ${step.result.success === true ? "success" : "failed"}`,
+				userFacingText
+					? `user_facing_text: ${JSON.stringify(compactText(userFacingText, 360))}`
+					: "user_facing_text: unavailable",
+			].join("\n");
+		});
+	const synthesisContext =
+		archivedAuthority.length > 0
+			? appendContextEvent(
+					{ ...trajectory.context, events: synthesisContextEvents },
+					{
+						id: `force-synthesis-archived-authority:${iteration}`,
+						type: "segment",
+						source: "planner-loop",
+						createdAt: Date.now(),
+						segment: {
+							id: `force-synthesis-archived-authority:${iteration}`,
+							label: "archived_tool_authority",
+							content: archivedAuthority.join("\n\n"),
+							stable: false,
+						},
+					},
+				)
+			: { ...trajectory.context, events: synthesisContextEvents };
 	// Forced synthesis is a user-output boundary, not another reasoning turn.
-	// Give it only action-owned user-facing projections; diagnostic text, raw
-	// data, errors, and internal transcript payloads remain in the authoritative
-	// trajectory for replay and observability but never enter this model call.
+	// Give it only action-owned user-facing projections and machine-owned status.
+	// Compaction summaries stay in the authoritative context for replay, but their
+	// diagnostic result payloads are replaced here with the same canonical
+	// projection used by the live tool messages.
 	const synthesisTrajectory: PlannerTrajectory = {
 		...trajectory,
+		context: synthesisContext,
 		steps: canonicalSteps(trajectory.steps),
-		archivedSteps: canonicalSteps(trajectory.archivedSteps),
+		archivedSteps: canonicalArchivedSteps,
 		plannedQueue: [...trajectory.plannedQueue],
 		evaluatorOutputs: [...trajectory.evaluatorOutputs],
 	};
