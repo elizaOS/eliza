@@ -42,6 +42,7 @@ import { jobs } from "../../db/schemas/jobs";
 import { imageRepo } from "../../db/utils/docker-image-ref";
 import { ApiError } from "../api/cloud-worker-errors";
 import { InsufficientCreditsError as InsufficientCreditsApiError } from "../api/errors";
+import { buildRedisClient, hasRedisConfig } from "../cache/redis-factory";
 import { containersEnv } from "../config/containers-env";
 import { getElizaAgentPublicWebUiUrl } from "../eliza-agent-web-ui";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
@@ -503,6 +504,13 @@ const RECONCILE_SSH_CMD_TIMEOUT_MS = 15_000;
 // still fires — an unreachable paid agent must never look "running" forever.
 const IP_RECONCILE_MAX_UNRESOLVED_CYCLES = 3;
 const DB_LIVENESS_RESTART_MARKER = "[db-liveness-restart]";
+// TTLs for the server-side routing key fallback written during heartbeat.
+// The agent→server mapping is long-lived (30 days) to match the gateway
+// contract in server-router.ts:154-159 (a booted container writes it with a
+// 30-day TTL). The server→URL key is heartbeat-backed and short so a dead
+// pod's URL expires quickly (the ~30s heartbeat cycle refreshes it).
+const ROUTING_AGENT_KEY_TTL_SECONDS = 30 * 24 * 60 * 60; // 30 days = 2592000
+const ROUTING_SERVER_URL_KEY_TTL_SECONDS = 90;
 const DB_LIVENESS_RESTART_BUDGET = 3;
 const DB_LIVENESS_RESTART_COOLDOWN_MS = 10 * 60_000;
 const DB_LIVENESS_RESTART_BUDGET_WINDOW_MS = 60 * 60_000;
@@ -6325,7 +6333,89 @@ export class ElizaSandboxService {
       // the last healthy beat, not a stale prior error_count from an old episode.
       error_count: 0,
     });
+    // Write the routing registry fallback after a successful heartbeat so the
+    // gateway can route inbound platform messages to this sandbox even when
+    // the container did not self-register (#18277). Errors are swallowed inside
+    // ensureRoutingRegistryKeys so Redis failures never flip the heartbeat result.
+    if (updated) {
+      await this.ensureRoutingRegistryKeys(rec);
+    }
     return Boolean(updated);
+  }
+
+  /**
+   * Server-side fallback for the gateway routing registry. A booted container
+   * self-registers by writing `agent:<id>:server` + `server:<name>:url` keys to
+   * the shared Redis via `SandboxRegistry` (built from `SANDBOX_REGISTRY_*` env
+   * vars injected by the Docker provisioner). When those env vars are absent or
+   * the container fails to self-register, no routing key ever appears and the
+   * webhook gateway resolves `unregistered` forever — re-onboarding the user on
+   * every message even though the agent is alive and heartbeating (#18277).
+   *
+   * This method writes the keys from the control-plane side when the heartbeat
+   * confirms the container is reachable. On the first heartbeat it claims the
+   * agent→server mapping atomically with SET NX (so a container that
+   * self-registers is never clobbered). On subsequent heartbeats it refreshes
+   * both TTLs when we own the pair — without this refresh the URL key expires
+   * after ~90s and the agent mapping expires after ~30 days, making the gateway
+   * resolve "unreachable" or "unregistered" for a healthy agent. If the agent
+   * key is owned by a different server name (container self-registered), both
+   * keys are left untouched. Best-effort: failures are logged and swallowed so a
+   * Redis outage does not abort the heartbeat.
+   */
+  private async ensureRoutingRegistryKeys(
+    rec: Pick<AgentSandbox, "id" | "bridge_url">,
+  ): Promise<void> {
+    if (!rec.bridge_url) return;
+    if (!hasRedisConfig()) return;
+
+    try {
+      const redis = buildRedisClient();
+      if (!redis) return;
+
+      const agentServerKey = `agent:${rec.id}:server`;
+      const serverName = `sandbox-${rec.id}`;
+      const serverUrlKey = `server:${serverName}:url`;
+
+      // Try to claim the agent→server mapping atomically. SET NX is atomic in
+      // Redis — unlike a GET-then-SET, there is no window for a self-registering
+      // container to write between our check and our write.
+      const claimed = await redis.set(agentServerKey, serverName, {
+        ex: ROUTING_AGENT_KEY_TTL_SECONDS,
+        nx: true,
+      });
+
+      if (claimed) {
+        // First heartbeat: we claimed the agent key. Write the URL key with a
+        // short TTL so a dead pod's URL expires before the agent mapping does.
+        await redis.setex(serverUrlKey, ROUTING_SERVER_URL_KEY_TTL_SECONDS, rec.bridge_url);
+        logger.info(
+          `[agent-sandbox] Wrote routing registry fallback for agent ${rec.id} -> ${rec.bridge_url}`,
+        );
+        return;
+      }
+
+      // The agent key already exists. Check whether WE own it (a prior
+      // heartbeat wrote it) or a container self-registered under a different
+      // name. Only refresh TTLs if we own the pair.
+      const owner = await redis.get<string>(agentServerKey);
+      if (owner !== serverName) return;
+
+      // We own the pair from a prior heartbeat — refresh both TTLs so the
+      // mapping survives until the next heartbeat cycle.
+      await Promise.all([
+        redis.expire(agentServerKey, ROUTING_AGENT_KEY_TTL_SECONDS),
+        redis.setex(serverUrlKey, ROUTING_SERVER_URL_KEY_TTL_SECONDS, rec.bridge_url),
+      ]);
+    } catch (err) {
+      // error-policy:J7 — diagnostics must not kill the loop: the routing
+      // fallback is a non-critical optimization layered on the heartbeat cycle.
+      // A Redis outage or transient failure here must not abort the heartbeat or
+      // mark the agent unhealthy; the next heartbeat cycle retries the write.
+      logger.warn(
+        `[agent-sandbox] Routing registry fallback failed for agent ${rec.id}: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
   }
 
   /**

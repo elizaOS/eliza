@@ -2882,6 +2882,229 @@ describe("ElizaSandboxService tailnet-IP reconciliation", () => {
       getClientSpy.mockRestore();
     }
   }, 30_000);
+
+  test("successful heartbeat writes routing registry fallback keys when none exist (#18277)", async () => {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const sandbox = customSandbox();
+    const findSpy = spyOn(agentSandboxesRepository, "findRunningSandbox").mockImplementation(
+      async () => sandbox,
+    );
+    const updateSpy = spyOn(agentSandboxesRepository, "update").mockImplementation(
+      async (_id, updates) => ({ ...sandbox, ...updates }) as AgentSandbox,
+    );
+
+    globalThis.fetch = mock(async () => new Response("ok", { status: 200 }));
+
+    const redisStore = new Map<string, string>();
+    const mockRedis = {
+      set: jest.fn(async (key: string, value: string, _options?: unknown) => {
+        if (redisStore.has(key)) return null;
+        redisStore.set(key, value);
+        return "OK";
+      }),
+      setex: jest.fn(async (key: string, _ttl: number, value: string) => {
+        redisStore.set(key, value);
+        return "OK";
+      }),
+      expire: jest.fn(async () => 1),
+      get: jest.fn(async (key: string) => redisStore.get(key) ?? null),
+      pipeline: jest.fn(() => ({
+        setex: jest.fn().mockReturnThis(),
+        exec: jest.fn(async () => []),
+      })),
+    };
+    const redisFactory = await import("../cache/redis-factory");
+    const buildSpy = spyOn(redisFactory, "buildRedisClient").mockReturnValue(mockRedis as never);
+    const hasRedisSpy = spyOn(redisFactory, "hasRedisConfig").mockReturnValue(true);
+
+    try {
+      const ok = await new ElizaSandboxService().heartbeat(sandbox.id, sandbox.organization_id);
+      expect(ok).toBe(true);
+
+      const agentServerKey = `agent:${sandbox.id}:server`;
+      const serverUrlKey = `server:sandbox-${sandbox.id}:url`;
+      expect(mockRedis.set).toHaveBeenCalledWith(
+        agentServerKey,
+        `sandbox-${sandbox.id}`,
+        expect.objectContaining({ nx: true }),
+      );
+      expect(redisStore.get(agentServerKey)).toBe(`sandbox-${sandbox.id}`);
+      expect(redisStore.get(serverUrlKey)).toBe(sandbox.bridge_url);
+    } finally {
+      findSpy.mockRestore();
+      updateSpy.mockRestore();
+      buildSpy.mockRestore();
+      hasRedisSpy.mockRestore();
+    }
+  });
+
+  test("subsequent heartbeat refreshes URL and agent key TTL when we own the agent key (#18277)", async () => {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const sandbox = customSandbox();
+    const findSpy = spyOn(agentSandboxesRepository, "findRunningSandbox").mockImplementation(
+      async () => sandbox,
+    );
+    const updateSpy = spyOn(agentSandboxesRepository, "update").mockImplementation(
+      async (_id, updates) => ({ ...sandbox, ...updates }) as AgentSandbox,
+    );
+
+    globalThis.fetch = mock(async () => new Response("ok", { status: 200 }));
+
+    const agentServerKey = `agent:${sandbox.id}:server`;
+    const serverUrlKey = `server:sandbox-${sandbox.id}:url`;
+    const serverName = `sandbox-${sandbox.id}`;
+    const redisStore = new Map<string, string>([
+      [agentServerKey, serverName],
+      [serverUrlKey, "old-url"],
+    ]);
+    const setexCalls: Array<{ key: string; value: string }> = [];
+    const expireCalls: Array<{ key: string; ttl: number }> = [];
+    const mockRedis = {
+      set: jest.fn(async (key: string, _value: string, _options?: unknown) =>
+        redisStore.has(key) ? null : "OK",
+      ),
+      setex: jest.fn(async (key: string, ttl: number, value: string) => {
+        redisStore.set(key, value);
+        setexCalls.push({ key, value });
+        return "OK";
+      }),
+      expire: jest.fn(async (key: string, ttl: number) => {
+        expireCalls.push({ key, ttl });
+        return 1;
+      }),
+      get: jest.fn(async (key: string) => redisStore.get(key) ?? null),
+      pipeline: jest.fn(() => ({
+        setex: jest.fn().mockReturnThis(),
+        exec: jest.fn(async () => []),
+      })),
+    };
+    const redisFactory = await import("../cache/redis-factory");
+    const buildSpy = spyOn(redisFactory, "buildRedisClient").mockReturnValue(mockRedis as never);
+    const hasRedisSpy = spyOn(redisFactory, "hasRedisConfig").mockReturnValue(true);
+
+    try {
+      const ok = await new ElizaSandboxService().heartbeat(sandbox.id, sandbox.organization_id);
+      expect(ok).toBe(true);
+
+      expect(mockRedis.set).toHaveBeenCalledWith(
+        agentServerKey,
+        serverName,
+        expect.objectContaining({ nx: true }),
+      );
+      expect(mockRedis.get).toHaveBeenCalledWith(agentServerKey);
+      expect(setexCalls).toContainEqual({ key: serverUrlKey, value: sandbox.bridge_url });
+      expect(expireCalls).toContainEqual({
+        key: agentServerKey,
+        ttl: 30 * 24 * 60 * 60,
+      });
+      expect(redisStore.get(serverUrlKey)).toBe(sandbox.bridge_url);
+    } finally {
+      findSpy.mockRestore();
+      updateSpy.mockRestore();
+      buildSpy.mockRestore();
+      hasRedisSpy.mockRestore();
+    }
+  });
+
+  test("successful heartbeat does NOT overwrite routing keys when container already self-registered (#18277)", async () => {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const sandbox = customSandbox();
+    const findSpy = spyOn(agentSandboxesRepository, "findRunningSandbox").mockImplementation(
+      async () => sandbox,
+    );
+    const updateSpy = spyOn(agentSandboxesRepository, "update").mockImplementation(
+      async (_id, updates) => ({ ...sandbox, ...updates }) as AgentSandbox,
+    );
+
+    globalThis.fetch = mock(async () => new Response("ok", { status: 200 }));
+
+    const selfRegisteredServer = "container-own-server-name";
+    const redisStore = new Map<string, string>([
+      [`agent:${sandbox.id}:server`, selfRegisteredServer],
+    ]);
+    const setexCalls: Array<{ key: string; value: string }> = [];
+    const mockRedis = {
+      set: jest.fn(async (key: string, _value: string, _options?: unknown) =>
+        redisStore.has(key) ? null : "OK",
+      ),
+      setex: jest.fn(async (key: string, _ttl: number, value: string) => {
+        setexCalls.push({ key, value });
+        return "OK";
+      }),
+      expire: jest.fn(async () => 1),
+      get: jest.fn(async (key: string) => redisStore.get(key) ?? null),
+      pipeline: jest.fn(() => ({
+        setex: jest.fn().mockReturnThis(),
+        exec: jest.fn(async () => []),
+      })),
+    };
+    const redisFactory = await import("../cache/redis-factory");
+    const buildSpy = spyOn(redisFactory, "buildRedisClient").mockReturnValue(mockRedis as never);
+    const hasRedisSpy = spyOn(redisFactory, "hasRedisConfig").mockReturnValue(true);
+
+    try {
+      const ok = await new ElizaSandboxService().heartbeat(sandbox.id, sandbox.organization_id);
+      expect(ok).toBe(true);
+
+      expect(mockRedis.set).toHaveBeenCalledWith(
+        `agent:${sandbox.id}:server`,
+        `sandbox-${sandbox.id}`,
+        expect.objectContaining({ nx: true }),
+      );
+      expect(setexCalls).toEqual([]);
+      expect(mockRedis.expire).not.toHaveBeenCalled();
+    } finally {
+      findSpy.mockRestore();
+      updateSpy.mockRestore();
+      buildSpy.mockRestore();
+      hasRedisSpy.mockRestore();
+    }
+  });
+
+  test("Redis failure during routing fallback does not abort heartbeat (#18277)", async () => {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const sandbox = customSandbox();
+    const findSpy = spyOn(agentSandboxesRepository, "findRunningSandbox").mockImplementation(
+      async () => sandbox,
+    );
+    const updateSpy = spyOn(agentSandboxesRepository, "update").mockImplementation(
+      async (_id, updates) => ({ ...sandbox, ...updates }) as AgentSandbox,
+    );
+
+    globalThis.fetch = mock(async () => new Response("ok", { status: 200 }));
+
+    const mockRedis = {
+      set: jest.fn(async () => {
+        throw new Error("ECONNREFUSED");
+      }),
+      setex: jest.fn(async () => {
+        throw new Error("ECONNREFUSED");
+      }),
+      expire: jest.fn(async () => {
+        throw new Error("ECONNREFUSED");
+      }),
+      get: jest.fn(async () => {
+        throw new Error("ECONNREFUSED");
+      }),
+      pipeline: jest.fn(() => ({
+        setex: jest.fn().mockReturnThis(),
+        exec: jest.fn(async () => []),
+      })),
+    };
+    const redisFactory = await import("../cache/redis-factory");
+    const buildSpy = spyOn(redisFactory, "buildRedisClient").mockReturnValue(mockRedis as never);
+    const hasRedisSpy = spyOn(redisFactory, "hasRedisConfig").mockReturnValue(true);
+
+    try {
+      const ok = await new ElizaSandboxService().heartbeat(sandbox.id, sandbox.organization_id);
+      expect(ok).toBe(true);
+    } finally {
+      findSpy.mockRestore();
+      updateSpy.mockRestore();
+      buildSpy.mockRestore();
+      hasRedisSpy.mockRestore();
+    }
+  });
 });
 
 // The daemon handler for the `agent_resume` job. Covers the branch logic the
