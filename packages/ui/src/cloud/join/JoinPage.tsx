@@ -255,11 +255,7 @@ export default function JoinPage(): React.JSX.Element {
   if (signOutState === "complete") {
     return <Navigate to="/login" replace />;
   }
-  if (
-    signOutState === "idle" &&
-    session.ready &&
-    !session.authenticated
-  ) {
+  if (signOutState === "idle" && session.ready && !session.authenticated) {
     return <Navigate to="/login?returnTo=/join" replace />;
   }
 
