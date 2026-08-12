@@ -17,6 +17,7 @@ import {
 import { ApiError } from "@elizaos/cloud-shared/lib/api/errors";
 import { containersEnv } from "@elizaos/cloud-shared/lib/config/containers-env";
 import { runWithCloudBindingsAsync } from "@elizaos/cloud-shared/lib/runtime/cloud-bindings";
+import { chatSseFrame } from "@elizaos/cloud-shared/lib/services/chat-sse-frames";
 import { WarmPoolManager } from "@elizaos/cloud-shared/lib/services/containers/agent-warm-pool";
 import { getHetznerPoolContainerCreator } from "@elizaos/cloud-shared/lib/services/containers/agent-warm-pool-creator";
 import { evaluateForwardedDatabaseUrl } from "@elizaos/cloud-shared/lib/services/containers/forwarded-database-url-guard";
@@ -1158,14 +1159,23 @@ app.post("/api/v1/eliza/agents/:id/stream", (c) =>
         );
         if (!status.error) {
           return new Response(
-            `data: ${JSON.stringify({ text: fallbackText })}\n\nevent: done\ndata: ${JSON.stringify({})}\n\n`,
+            chatSseFrame("chunk", {
+              text: fallbackText,
+              fullText: fallbackText,
+            }) +
+              chatSseFrame("done", {
+                text: fallbackText,
+                fullText: fallbackText,
+              }),
             { status: 200, headers: streamHeaders },
           );
         }
       }
 
       return new Response(
-        `event: error\ndata: ${JSON.stringify({ message: "Sandbox is not running or unreachable" })}\n\n`,
+        chatSseFrame("error", {
+          message: "Sandbox is not running or unreachable",
+        }),
         { status: 200, headers: streamHeaders },
       );
     }

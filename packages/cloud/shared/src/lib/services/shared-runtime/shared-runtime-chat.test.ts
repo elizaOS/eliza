@@ -546,6 +546,31 @@ describe("SharedRuntimeChatService", () => {
     expect(settleCalls).toEqual([0.004]);
   });
 
+  test("every SSE frame carries the canonical JSON type and done carries authoritative fullText (#17122)", async () => {
+    const service = new SharedRuntimeChatService();
+    const response = await service.stream(agent, rpc, harness());
+    const frames = (await response.text())
+      .split("\n\n")
+      .filter((frame) => frame.trim().length > 0)
+      .map((frame) => {
+        const lines = frame.split("\n");
+        const event = lines.find((line) => line.startsWith("event: "))?.slice("event: ".length);
+        const data = JSON.parse(
+          lines.find((line) => line.startsWith("data: "))?.slice("data: ".length) ?? "{}",
+        ) as Record<string, unknown>;
+        return { event, data };
+      });
+    expect(frames.length).toBeGreaterThanOrEqual(2);
+    for (const frame of frames) {
+      expect(frame.event).toBeDefined();
+      expect(frame.data.type).toBe(frame.event === "chunk" ? "token" : frame.event);
+    }
+    const doneData = frames.find((frame) => frame.event === "done")?.data ?? {};
+    const fullText = doneData.fullText;
+    expect(fullText).toBe(doneData.text);
+    expect(typeof fullText === "string" && fullText.length > 0).toBe(true);
+  });
+
   test("stream error and no-parts paths conservatively settle unknown usage", async () => {
     const service = new SharedRuntimeChatService();
     streamTurn = { degraded: false };

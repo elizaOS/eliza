@@ -11,6 +11,7 @@ import crypto from "node:crypto";
 import type { AgentSandbox } from "../../db/repositories/agent-sandboxes";
 import { agentSandboxesRepository } from "../../db/repositories/agent-sandboxes";
 import { logger } from "../utils/logger";
+import { chatSseFrame } from "./chat-sse-frames";
 
 export interface BridgeRequest {
   jsonrpc: "2.0";
@@ -367,22 +368,24 @@ export class ElizaSandboxBridgeService {
           const delta = typeof data.text === "string" ? data.text : "";
           accumulated = typeof data.fullText === "string" ? data.fullText : accumulated + delta;
           controller.enqueue(
-            `event: chunk\ndata: ${JSON.stringify({
+            chatSseFrame("chunk", {
               messageId,
               chunk: delta,
               text: delta,
               fullText: accumulated,
               timestamp: Date.now(),
-            })}\n\n`,
+            }),
           );
           return;
         }
         if (data?.type === "done") {
+          const finalText = typeof data.fullText === "string" ? data.fullText : accumulated;
           controller.enqueue(
-            `event: done\ndata: ${JSON.stringify({
+            chatSseFrame("done", {
               messageId,
-              text: typeof data.fullText === "string" ? data.fullText : accumulated,
-            })}\n\n`,
+              text: finalText,
+              fullText: finalText,
+            }),
           );
           return;
         }
@@ -1120,10 +1123,11 @@ export class ElizaSandboxBridgeService {
       messageId,
       chunk: text,
       text,
+      fullText: text,
       timestamp: Date.now(),
     };
     return new Response(
-      `event: chunk\ndata: ${JSON.stringify(chunk)}\n\nevent: done\ndata: ${JSON.stringify({ messageId, text })}\n\n`,
+      chatSseFrame("chunk", chunk) + chatSseFrame("done", { messageId, text, fullText: text }),
       {
         status: 200,
         headers: {
@@ -1135,7 +1139,7 @@ export class ElizaSandboxBridgeService {
   }
 
   private createBridgeSseErrorResponse(message: string): Response {
-    return new Response(`event: error\ndata: ${JSON.stringify({ message })}\n\n`, {
+    return new Response(chatSseFrame("error", { message }), {
       status: 200,
       headers: {
         "Content-Type": "text/event-stream; charset=utf-8",
