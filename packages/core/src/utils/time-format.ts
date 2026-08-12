@@ -4,6 +4,14 @@ function describeRelativeTime(
 	timestamp: number,
 	style: "compact" | "verbose",
 ): string {
+	// Non-finite inputs (NaN, ±Infinity) make every unit magnitude NaN and
+	// fall through to toLocaleDateString → the browser string "Invalid Date".
+	// Fail closed to the same sub-minute sentinel used for valid near-now
+	// offsets (and matching packages/ui's formatRelativeTime guard).
+	if (!Number.isFinite(timestamp)) {
+		return "just now";
+	}
+
 	const now = Date.now();
 	const diff = now - timestamp;
 	const future = diff < 0;

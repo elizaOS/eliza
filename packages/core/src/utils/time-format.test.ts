@@ -110,3 +110,14 @@ describe("formatTimestamp (verbose)", () => {
 		expect(formatTimestamp(NOW + DAY + 1)).toBe("in 2 days");
 	});
 });
+
+describe("non-finite timestamps", () => {
+	it("fails closed to 'just now' instead of 'Invalid Date'", () => {
+		expect(formatRelativeTime(Number.NaN)).toBe("just now");
+		expect(formatRelativeTime(Number.POSITIVE_INFINITY)).toBe("just now");
+		expect(formatRelativeTime(Number.NEGATIVE_INFINITY)).toBe("just now");
+		expect(formatTimestamp(Number.NaN)).toBe("just now");
+		expect(formatTimestamp(Number.POSITIVE_INFINITY)).toBe("just now");
+		expect(formatTimestamp(Number.NEGATIVE_INFINITY)).toBe("just now");
+	});
+});
