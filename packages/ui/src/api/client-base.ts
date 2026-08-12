@@ -304,11 +304,46 @@ function findSseEventBreak(
     : { index: crlfBreak, length: 4 };
 }
 
-function parseStreamChatDataLine(line: string): StreamChatEvent | null {
+// Producers that predate the canonical JSON `type` (shared-runtime, sandbox,
+// bridge, and control-plane fallback chat) classify frames only through their
+// SSE event name. Map those names when `type` is absent so a terminal `done`
+// or `error` frame is never misread as another token (#17122). An explicit
+// JSON `type` always wins over the event name.
+const LEGACY_SSE_EVENT_TYPES: Record<string, string> = {
+  chunk: "token",
+  done: "done",
+  error: "error",
+};
+
+// Per the SSE spec the `event:` field names the whole event block regardless
+// of field order, and a later `event:` line overwrites an earlier one.
+function sseEventName(lines: readonly string[]): string | undefined {
+  let name: string | undefined;
+  for (const line of lines) {
+    if (line.startsWith("event:")) name = line.slice(6).trim() || undefined;
+  }
+  return name;
+}
+
+function parseStreamChatDataLine(
+  line: string,
+  eventName?: string,
+): StreamChatEvent | null {
   const payload = line.startsWith("data:") ? line.slice(5).trim() : "";
   if (!payload) return null;
   try {
     const parsed = JSON.parse(payload) as StreamChatEvent;
+    if (!parsed.type && eventName && LEGACY_SSE_EVENT_TYPES[eventName]) {
+      parsed.type = LEGACY_SSE_EVENT_TYPES[eventName];
+      if (
+        parsed.type === "done" &&
+        typeof parsed.fullText !== "string" &&
+        typeof parsed.text === "string"
+      ) {
+        // Legacy named done frames carried the authoritative reply in `text`.
+        parsed.fullText = parsed.text;
+      }
+    }
     if (!parsed.type && typeof parsed.text === "string") parsed.type = "token";
     return parsed;
   } catch {
@@ -411,8 +446,9 @@ function applyStreamChatDataLine(
   ) => void,
   onStatus?: (status: ChatTurnStatus) => void,
   onToolEvent?: (event: ChatToolCallEvent) => void,
+  eventName?: string,
 ): boolean {
-  const parsed = parseStreamChatDataLine(line);
+  const parsed = parseStreamChatDataLine(line, eventName);
   if (!parsed) return false;
   if (parsed.type === "token") {
     return applyStreamChatTokenEvent(parsed, state, onToken);
@@ -2195,7 +2231,9 @@ export class ElizaClient {
       while (eventBreak) {
         const rawEvent = buffer.slice(0, eventBreak.index);
         buffer = buffer.slice(eventBreak.index + eventBreak.length);
-        for (const line of rawEvent.split(/\r?\n/)) {
+        const eventLines = rawEvent.split(/\r?\n/);
+        const eventName = sseEventName(eventLines);
+        for (const line of eventLines) {
           if (!line.startsWith("data:")) continue;
           if (
             applyStreamChatDataLine(
@@ -2204,6 +2242,7 @@ export class ElizaClient {
               onToken,
               onStatus,
               onToolEvent,
+              eventName,
             )
           ) {
             buffer = "";
@@ -2221,7 +2260,9 @@ export class ElizaClient {
     }
 
     if (!streamState.receivedDone && buffer.trim()) {
-      for (const line of buffer.split(/\r?\n/)) {
+      const trailingLines = buffer.split(/\r?\n/);
+      const trailingEventName = sseEventName(trailingLines);
+      for (const line of trailingLines) {
         if (line.startsWith("data:")) {
           applyStreamChatDataLine(
             line,
@@ -2229,6 +2270,7 @@ export class ElizaClient {
             onToken,
             onStatus,
             onToolEvent,
+            trailingEventName,
           );
         }
       }

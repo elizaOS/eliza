@@ -546,6 +546,59 @@ describe("SharedRuntimeChatService", () => {
     expect(settleCalls).toEqual([0.004]);
   });
 
+  test("no-model degradation remains a complete canonical SSE turn", async () => {
+    streamTurn = {
+      degraded: true,
+      reply: "Eliza is temporarily unavailable (no shared model configured).",
+    };
+
+    const body = await (await new SharedRuntimeChatService().stream(agent, rpc, harness())).text();
+    const frames = body
+      .split("\n\n")
+      .filter(Boolean)
+      .map((frame) => {
+        const lines = frame.split("\n");
+        return {
+          event: lines.find((line) => line.startsWith("event: "))?.slice(7),
+          data: JSON.parse(lines.find((line) => line.startsWith("data: "))?.slice(6) ?? "{}"),
+        };
+      });
+
+    expect(frames.map((frame) => frame.event)).toEqual(["chunk", "done"]);
+    expect(frames.map((frame) => frame.data.type)).toEqual(["token", "done"]);
+    expect(frames[1]?.data.fullText).toBe(
+      "Eliza is temporarily unavailable (no shared model configured).",
+    );
+    expect(frames[1]?.data.messageId).toBe(frames[0]?.data.messageId);
+    expect(frames[1]?.data.userMessageId).toBe(frames[0]?.data.userMessageId);
+    expect(settleCalls).toEqual([0]);
+  });
+
+  test("every SSE frame carries the canonical JSON type and done carries authoritative fullText (#17122)", async () => {
+    const service = new SharedRuntimeChatService();
+    const response = await service.stream(agent, rpc, harness());
+    const frames = (await response.text())
+      .split("\n\n")
+      .filter((frame) => frame.trim().length > 0)
+      .map((frame) => {
+        const lines = frame.split("\n");
+        const event = lines.find((line) => line.startsWith("event: "))?.slice("event: ".length);
+        const data = JSON.parse(
+          lines.find((line) => line.startsWith("data: "))?.slice("data: ".length) ?? "{}",
+        ) as Record<string, unknown>;
+        return { event, data };
+      });
+    expect(frames.length).toBeGreaterThanOrEqual(2);
+    for (const frame of frames) {
+      expect(frame.event).toBeDefined();
+      expect(frame.data.type).toBe(frame.event === "chunk" ? "token" : frame.event);
+    }
+    const doneData = frames.find((frame) => frame.event === "done")?.data ?? {};
+    const fullText = doneData.fullText;
+    expect(fullText).toBe(doneData.text);
+    expect(typeof fullText === "string" && fullText.length > 0).toBe(true);
+  });
+
   test("stream error and no-parts paths conservatively settle unknown usage", async () => {
     const service = new SharedRuntimeChatService();
     streamTurn = { degraded: false };
