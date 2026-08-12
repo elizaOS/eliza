@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+
 /**
  * Cold anonymous `/login` transfer measurement for #18056.
  *
@@ -24,12 +25,12 @@
  * Desktop (1280x720) and mobile (390x844) viewports are measured by default.
  */
 
+import { execSync } from "node:child_process";
+import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
-import { gzipSync } from "node:zlib";
-import { readFileSync, writeFileSync, existsSync, statSync } from "node:fs";
 import { dirname, extname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { execSync } from "node:child_process";
+import { gzipSync } from "node:zlib";
 import { chromium } from "@playwright/test";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -123,9 +124,10 @@ function startDistServer(root) {
       const rootResolved = resolve(distDir);
       // Trailing separator so `distDir + "evil"` cannot pass a prefix check
       // (shipwright #18441 path-traversal note).
-      const rootPrefix = rootResolved.endsWith("\\") || rootResolved.endsWith("/")
-        ? rootResolved
-        : rootResolved + (process.platform === "win32" ? "\\" : "/");
+      const rootPrefix =
+        rootResolved.endsWith("\\") || rootResolved.endsWith("/")
+          ? rootResolved
+          : rootResolved + (process.platform === "win32" ? "\\" : "/");
       const resolved = resolve(filePath);
       if (resolved !== rootResolved && !resolved.startsWith(rootPrefix)) {
         res.writeHead(403);
@@ -181,9 +183,7 @@ function startDistServer(root) {
  * Sample PRT inside the page — same shape as issue #18056.
  */
 function sampleTransferInPage() {
-  const resources = performance.getEntriesByType(
-    "resource",
-  );
+  const resources = performance.getEntriesByType("resource");
   const scripts = resources.filter((e) => e.initiatorType === "script");
   const sum = (list, key) =>
     list.reduce((n, e) => n + (Number(e[key]) || 0), 0);
@@ -306,7 +306,9 @@ async function main() {
       serviceWorkers: "block",
       cache: "empty-context",
       interaction: "none (no form submit)",
-      build: args.serveDist ? "packages/app/dist production assets" : "external-url",
+      build: args.serveDist
+        ? "packages/app/dist production assets"
+        : "external-url",
     },
     capturedAtIso: new Date().toISOString(),
     samples,
@@ -322,7 +324,9 @@ async function main() {
   }
 
   // Always print markdown table for PR evidence paste.
-  console.log("\n| Viewport | Resources | Total transferSize | Scripts | Script transferSize |");
+  console.log(
+    "\n| Viewport | Resources | Total transferSize | Scripts | Script transferSize |",
+  );
   console.log("| --- | ---: | ---: | ---: | ---: |");
   for (const s of samples) {
     console.log(

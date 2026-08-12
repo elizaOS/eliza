@@ -417,9 +417,13 @@ export function AppCatchAllRoute({
   if (isAppModeHost()) {
     return (
       <Suspense fallback={<RouteChunkFallback />}>
-        <EnsurePrivateCloudSurfacesOnMount>
-          <AppModeEntryRoute appElement={appElement} />
-        </EnsurePrivateCloudSurfacesOnMount>
+        <AppModeEntryRoute
+          appElement={
+            <EnsurePrivateCloudSurfacesOnMount>
+              {appElement}
+            </EnsurePrivateCloudSurfacesOnMount>
+          }
+        />
       </Suspense>
     );
   }
