@@ -1188,6 +1188,27 @@ describe("notification-store — authority isolation (#18391)", () => {
   // only reacts to that eventual publish) for the whole round-trip.
   // steward-token-sync fires synchronously on the token clear itself.
   describe("credential-sync invalidation ahead of the async auth probe", () => {
+    it("clears account A immediately when a present token is replaced before the auth probe resolves", async () => {
+      __setAuthStatusForTests(authenticated("user-a", "session-a"));
+      const notifA = makeNotification({ id: "a-row", title: "A's row" });
+      listNotifications.mockResolvedValueOnce({
+        notifications: [notifA],
+        unreadCount: 1,
+      });
+      initNotifications();
+      await vi.waitFor(() =>
+        expect(__getStateForTests().notifications).toHaveLength(1),
+      );
+      rotateConnection.mockClear();
+
+      // The canonical token writer knows that the credential changed before
+      // /api/auth/me can publish B's non-secret identity.
+      writeStoredStewardToken("account-b-token");
+
+      expect(__getStateForTests().notifications).toHaveLength(0);
+      expect(rotateConnection).toHaveBeenCalledTimes(1);
+    });
+
     it("clears immediately on a cleared token, before the auth-status probe catches up", async () => {
       __setAuthStatusForTests(authenticated("user-a", "session-a"));
       const notifA = makeNotification({ id: "a-row", title: "A's row" });
@@ -1267,7 +1288,7 @@ describe("notification-store — authority isolation (#18391)", () => {
       expect(__getStateForTests().notifications).toHaveLength(0);
     });
 
-    it("a token install (login/refresh/handoff) is a harmless no-op when the base already reconciled", async () => {
+    it("keeps a token handoff invalidated until the typed auth probe confirms its identity", async () => {
       __setAuthStatusForTests(authenticated("user-a", "session-a"));
       initNotifications();
       await vi.waitFor(() =>
@@ -1288,9 +1309,12 @@ describe("notification-store — authority isolation (#18391)", () => {
       publishStewardSession("present");
       await Promise.resolve();
 
-      // No extra clear/refetch/rotation beyond what the base change already did.
+      // The new credential has no non-secret identity yet. Do not hydrate
+      // under A's stale auth snapshot; the auth-status subscriber will
+      // reconcile and fetch after the probe confirms the new authority.
       expect(listNotifications).toHaveBeenCalledTimes(2);
-      expect(rotateConnection).not.toHaveBeenCalled();
+      expect(__getStateForTests().notifications).toHaveLength(0);
+      expect(rotateConnection).toHaveBeenCalledTimes(1);
     });
   });
 });
