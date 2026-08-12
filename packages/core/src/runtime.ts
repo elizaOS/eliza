@@ -12721,7 +12721,7 @@ ${section_end}`;
 	}
 
 	async getPairingRequests(
-		queries: Array<{ channel: PairingChannel; agentId: UUID }>,
+		queries: import("./types/pairing").PairingRequestQuery[],
 	): Promise<import("./types/database").PairingRequestsResult> {
 		return this.adapter.getPairingRequests(queries);
 	}
@@ -12737,7 +12737,7 @@ ${section_end}`;
 	}
 
 	async getPairingAllowlists(
-		queries: Array<{ channel: PairingChannel; agentId: UUID }>,
+		queries: import("./types/pairing").PairingAllowlistQuery[],
 	): Promise<import("./types/database").PairingAllowlistsResult> {
 		return this.adapter.getPairingAllowlists(queries);
 	}
