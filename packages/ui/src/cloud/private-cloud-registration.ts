@@ -174,6 +174,10 @@ export function ensurePrivateCloudSurfaces(): Promise<void> {
       setSnapshot("ready");
     } catch (cause: unknown) {
       if (generation !== loadGeneration) {
+        // Quarantine stale failures (superseded by a newer generation or a
+        // test reset). Resolve without mutating the current snapshot so a late
+        // reject cannot demote ready → error or surface as unhandledrejection
+        // after the fire-and-forget observer has already settled.
         return;
       }
       privateRegistration = null;
@@ -233,4 +237,18 @@ export function setPrivateCloudLoadForTests(
   loader: (() => Promise<void>) | null,
 ): void {
   privateLoadImpl = loader ?? loadPrivateCloudDomains;
+}
+
+/**
+ * Test-only: drop the shared in-flight promise handle so a **new** generation
+ * can start while an older loader is still running. Production code never does
+ * this (pending callers share one promise); the hook exists solely so the
+ * generation guard can be exercised with reverse completion order.
+ */
+export function forceNewPrivateCloudGenerationForTests(): Promise<void> {
+  privateRegistration = null;
+  privateRegistered = false;
+  // Leave snapshot as-is (often pending); ensure will bump generation and
+  // start a second concurrent loader.
+  return ensurePrivateCloudSurfaces();
 }

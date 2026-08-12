@@ -9,7 +9,7 @@ import {
   resetPrivateCloudRegistrationForTests,
   setPrivateCloudLoadForTests,
 } from "../private-cloud-registration";
-import { registerPublicCloudSurfaces } from "../register-all";
+import { registerPublicCloudSurfaces } from "../register-public";
 import { CloudRouterShell } from "./CloudRouterShell";
 
 afterEach(() => {

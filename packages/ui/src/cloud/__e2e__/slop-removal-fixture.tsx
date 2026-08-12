@@ -18,12 +18,13 @@
  *   real data from the mock cloud stack proxied on the page origin.
  *
  * Bundled as IIFE for the e2e harness — no top-level await. Full registration
- * uses the synchronous {@link register-all-sync} entrypoint (not public boot).
+ * uses the synchronous {@link registerAllCloudSurfaces} from `../register-all`
+ * (the preserved develop contract).
  */
 
 import { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { registerAllCloudSurfaces } from "../register-all-sync";
+import { registerAllCloudSurfaces } from "../register-all";
 import {
   CloudAccountSection,
   CloudApiKeysSection,

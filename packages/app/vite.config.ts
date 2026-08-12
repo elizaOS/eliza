@@ -2691,6 +2691,13 @@ export const INVALID_TRACER_PROVIDER = {};
                 "src/shims/cloud-register-all-stub.ts",
               ),
             },
+            {
+              find: /^@elizaos\/ui\/cloud\/register-public$/,
+              replacement: path.join(
+                here,
+                "src/shims/cloud-register-all-stub.ts",
+              ),
+            },
           ]
         : []),
       // Force local @elizaos/ui source paths when the app bundles linked

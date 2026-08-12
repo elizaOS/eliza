@@ -2482,13 +2482,16 @@ const CloudRouterShell = lazy(async () => {
   // no cloud/auth/payment route resolves. Both imports live inside this
   // `__ELIZA_WEB_SHELL__`-guarded factory, so a cloud-free build drops them
   // statically.
+  // Progressive public boot (#18056): import register-public, NOT register-all.
+  // register-all remains the synchronous full-table contract for unmodified
+  // consumers; this entrypoint only registers public/auth routes so idle
+  // /login never pulls private dashboard chunks.
   const [{ registerPublicCloudSurfaces }, mod] = await Promise.all([
-    import("@elizaos/ui/cloud/register-all"),
+    import("@elizaos/ui/cloud/register-public"),
     import("@elizaos/ui/cloud/shell/CloudRouterShell"),
   ]);
-  // Public/auth only on shell boot (#18056). Private dashboard domains are
-  // loaded by CloudRouterShell when a dashboard/* path is visited — never
-  // from idle /login.
+  // Public/auth only on shell boot. Private dashboard domains are loaded by
+  // CloudRouterShell when a dashboard/* path is visited — never from idle /login.
   registerPublicCloudSurfaces();
   return { default: mod.CloudRouterShell };
 });

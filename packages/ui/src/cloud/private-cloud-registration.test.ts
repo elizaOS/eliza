@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   ensurePrivateCloudSurfaces,
+  forceNewPrivateCloudGenerationForTests,
   getPrivateCloudRegistrationSnapshot,
   pathNeedsPrivateCloudSurfaces,
   resetPrivateCloudRegistrationForTests,
@@ -184,6 +185,56 @@ describe("ensurePrivateCloudSurfaces", () => {
     expect(getPrivateCloudRegistrationSnapshot().status).toBe("ready");
   });
 
+  it("ignores reverse-order completion across overlapping generations", async () => {
+    // Discriminating test: two loaders run concurrently (A then forced B).
+    // B succeeds first → ready. A then fails. Without the generation guard,
+    // A's catch would demote ready → error. The force-new-generation test hook
+    // is the only way to start B while A is still in flight (production shares
+    // the pending promise).
+    type Gate = {
+      resolve: () => void;
+      reject: (e: Error) => void;
+      promise: Promise<void>;
+    };
+    const gates: Gate[] = [];
+    const makeGate = (): Gate => {
+      let resolve!: () => void;
+      let reject!: (e: Error) => void;
+      const promise = new Promise<void>((res, rej) => {
+        resolve = res;
+        reject = rej;
+      });
+      return { resolve, reject, promise };
+    };
+
+    setPrivateCloudLoadForTests(async () => {
+      const gate = makeGate();
+      gates.push(gate);
+      await gate.promise;
+    });
+
+    const attemptA = ensurePrivateCloudSurfaces();
+    expect(getPrivateCloudRegistrationSnapshot().status).toBe("pending");
+    expect(gates).toHaveLength(1);
+
+    // Start generation B while A is still awaiting its gate.
+    const attemptB = forceNewPrivateCloudGenerationForTests();
+    expect(gates).toHaveLength(2);
+    expect(getPrivateCloudRegistrationSnapshot().status).toBe("pending");
+
+    // Reverse completion: B wins first.
+    gates[1].resolve();
+    await attemptB;
+    expect(getPrivateCloudRegistrationSnapshot().status).toBe("ready");
+
+    // Stale A fails after B already committed ready — must not overwrite.
+    // Quarantined generations resolve without mutating the snapshot.
+    gates[0].reject(new Error("stale generation failure"));
+    await expect(attemptA).resolves.toBeUndefined();
+    expect(getPrivateCloudRegistrationSnapshot().status).toBe("ready");
+    expect(getPrivateCloudRegistrationSnapshot().error).toBeNull();
+  });
+
   it("returns the in-flight promise instead of starting a second loader while pending", async () => {
     let starts = 0;
     let resolveLoad!: () => void;
@@ -210,6 +261,9 @@ describe("ensurePrivateCloudSurfaces", () => {
 describe("web shell public boot contract", () => {
   it("does not invoke private registration from packages/app main shell factory", () => {
     expect(appMainSource).toContain("registerPublicCloudSurfaces()");
+    expect(appMainSource).toContain(
+      'import("@elizaos/ui/cloud/register-public")',
+    );
     const factory = appMainSource.slice(
       appMainSource.indexOf("const CloudRouterShell = lazy"),
       appMainSource.indexOf("const ChatWidgetHarness"),
@@ -217,5 +271,8 @@ describe("web shell public boot contract", () => {
     expect(factory).toContain("registerPublicCloudSurfaces()");
     expect(factory).not.toContain("registerPrivateCloudSurfaces");
     expect(factory).not.toContain("ensurePrivateCloudSurfaces");
+    expect(factory).not.toMatch(
+      /import\("@elizaos\/ui\/cloud\/register-all"\)/,
+    );
   });
 });
