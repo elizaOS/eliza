@@ -642,6 +642,8 @@ jobs:
           # while unset, so this is safe before ops adds the GH env secret and
           # keeps it published on every redeploy once they do.
           STEWARD_PLATFORM_KEYS: ${{ secrets.STEWARD_PLATFORM_KEYS }}
+          ELIZA_APP_WEBHOOK_GATEWAY_URL: ${{ vars.ELIZA_APP_WEBHOOK_GATEWAY_URL }}
+          ELIZA_APP_WEBHOOK_GATEWAY_SECRET: ${{ secrets.ELIZA_APP_WEBHOOK_GATEWAY_SECRET }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
@@ -877,7 +879,8 @@ jobs:
             FISH_AUDIO_API_KEY \
             FISH_AUDIO_REFERENCE_ID \
             VOICE_REALTIME_ELIZA_AUTHORIZATION \
-            STEWARD_PLATFORM_KEYS
+            STEWARD_PLATFORM_KEYS \
+            ELIZA_APP_WEBHOOK_GATEWAY_SECRET
           do
             publish_secret "$name"
           done
@@ -890,7 +893,8 @@ jobs:
             CARTESIA_VOICE_ID \
             WHISPER_STT_URL \
             WHISPER_STT_MODEL \
-            VOICE_BATCH_STT_PROVIDER
+            VOICE_BATCH_STT_PROVIDER \
+            ELIZA_APP_WEBHOOK_GATEWAY_URL
           do
             publish_toggle_secret "$name" || exit 1
           done
