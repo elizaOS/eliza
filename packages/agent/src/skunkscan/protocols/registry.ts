@@ -1,4 +1,4 @@
-import { SupportedChain } from "../types";
+import { isEvmChain, SupportedChain } from "../types";
 import { SOLANA_DEX_PROTOCOLS } from "./solana/dex";
 import { SOLANA_LAUNCHPAD_PROTOCOLS } from "./solana/launchpad";
 import { SOLANA_LENDING_PROTOCOLS } from "./solana/lending";
@@ -109,5 +109,19 @@ export function lookupProtocol(
     return null;
   }
 
-  return registry[programOrContractId] ?? null;
+  // Same isEvmChain() lowercase convention as exposure/staticRegistry.ts
+  // and labels/staticRegistry.ts - EVM registry keys below are all
+  // lowercase, but callers aren't guaranteed to pass lowercase input
+  // (checksummed EIP-55 addresses are the normal display format). Solana
+  // program IDs are base58 and case-sensitive by design - must NOT be
+  // lowercased, hence the isEvmChain() guard rather than an unconditional
+  // toLowerCase(). This was a latent, currently-benign version of the
+  // checksummed-address bug fixed elsewhere this session (existing callers
+  // happen to always pass already-lowercase Moralis data), not yet a live
+  // symptom, but the same missing-normalization pattern.
+  const normalizedId = isEvmChain(chain)
+    ? programOrContractId.toLowerCase()
+    : programOrContractId;
+
+  return registry[normalizedId] ?? null;
 }

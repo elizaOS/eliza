@@ -735,7 +735,9 @@ warnings: investigationWarnings,
 
         const pipeline = await runWalletPipeline({
           chain,
-          address: walletAddress,
+          // See the identical comment on the Base branch's runWalletPipeline
+          // call for why this is lowercased.
+          address: walletAddress.toLowerCase(),
           balance: walletBalance,
           tokenHoldings,
           recentTransactions: nonSpamRecentTransactions,
@@ -1032,7 +1034,9 @@ warnings: investigationWarnings,
 
         const pipeline = await runWalletPipeline({
           chain,
-          address: walletAddress,
+          // See the identical comment on the Base branch's runWalletPipeline
+          // call for why this is lowercased.
+          address: walletAddress.toLowerCase(),
           balance: walletBalance,
           tokenHoldings,
           recentTransactions: nonSpamRecentTransactions,
@@ -1327,7 +1331,15 @@ warnings: investigationWarnings,
 
         const pipeline = await runWalletPipeline({
           chain,
-          address: walletAddress,
+          // Lowercased for matching purposes only (funding.ts/relationships.ts
+          // Set-lookups against Moralis's lowercase transfer addresses) - the
+          // wallet.ts return value below still echoes the original walletAddress
+          // casing for display. Real bug this fixes: a checksummed input
+          // (the normal Etherscan/MetaMask format) previously made every
+          // funding/relationship match silently fail, live-confirmed on a
+          // real wallet (relationshipCount 0 vs 8 for the same address in
+          // different casing).
+          address: walletAddress.toLowerCase(),
           balance: walletBalance,
           tokenHoldings,
           recentTransactions: nonSpamRecentTransactions,
