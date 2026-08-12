@@ -58,6 +58,7 @@ import {
   type TerminalCapability,
   type TerminalRunParams,
 } from "@elizaos/core";
+import { parsePositiveInteger } from "@elizaos/shared";
 
 const DEFAULT_REQUEST_TIMEOUT_MS = 60_000;
 
@@ -1066,12 +1067,6 @@ function parseBoolean(value: string | undefined): boolean | undefined {
   if (["1", "true", "yes", "on"].includes(normalized)) return true;
   if (["0", "false", "no", "off"].includes(normalized)) return false;
   return undefined;
-}
-
-function parsePositiveInteger(value: string | undefined): number | undefined {
-  if (!value) return undefined;
-  const parsed = Number.parseInt(value, 10);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
 }
 
 function parseEnvironment(
