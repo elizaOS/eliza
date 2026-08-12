@@ -3382,6 +3382,16 @@ export class DiscordService extends Service implements IDiscordService {
 		channelId: string,
 		recipientId: string,
 	): void {
+		this.getDmRegistry(accountId).record(channelId, recipientId);
+	}
+
+	/**
+	 * Construct-on-demand so the READY path can load persisted records on a
+	 * cold boot. Getting the registry only when a DM arrives would leave the
+	 * scan with an empty map on exactly the restart the persistence exists
+	 * for (#18746 live-run finding).
+	 */
+	private getDmRegistry(accountId: string): DmChannelRegistry {
 		let registry = this.dmRegistries.get(accountId);
 		if (!registry) {
 			registry = new DmChannelRegistry({
@@ -3394,7 +3404,7 @@ export class DiscordService extends Service implements IDiscordService {
 			});
 			this.dmRegistries.set(accountId, registry);
 		}
-		registry.record(channelId, recipientId);
+		return registry;
 	}
 
 	/**
@@ -3414,11 +3424,10 @@ export class DiscordService extends Service implements IDiscordService {
 			this.runtime.getSetting(STARTUP_REACTION_SCAN_SETTING) ?? "",
 		).toLowerCase();
 		if (scanSetting !== "0" && scanSetting !== "false") {
-			const dmRegistry = this.dmRegistries.get(accountId);
 			void (async () => {
 				const reopened = await reopenPersistedDms({
 					client: readyClient,
-					records: dmRegistry ? dmRegistry.listRecent() : [],
+					records: this.getDmRegistry(accountId).listRecent(),
 					logger: this.runtime.logger,
 				});
 				return reconcileStrandedStatusReactions({
