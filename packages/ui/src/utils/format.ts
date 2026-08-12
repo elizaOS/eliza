@@ -15,14 +15,13 @@ type RelativeTimeTranslator = (
   vars?: Record<string, string | number | boolean | null | undefined>,
 ) => string;
 
-/**
- * Canonical "time ago" formatter for UI surfaces.
- *
- * The bucketing (just-now / minutes / hours / days, then an absolute date
- * past one week) is shared. Callers in i18n contexts pass a `t` translator
- * keyed under `conversations.*`; callers without i18n omit it and receive the
- * English defaults. Past one week the value falls back to a locale date.
- */
+/** One week in milliseconds — the boundary past which both relative formatters
+ * fall back to an absolute locale date. The gate uses the RAW magnitude, not
+ * the ceiled day count: a future value of 6d + 1ms ceils to 7 days but is
+ * still inside the week, and must render "in 7d" rather than jump early to a
+ * date the past direction would not show until a full week. */
+const WEEK_MS = 7 * 86_400_000;
+
 /**
  * Direction-aware unit buckets shared by both relative formatters.
  *
@@ -59,8 +58,17 @@ function relativeTimeParts(diffMs: number): {
  * bare `5m` / `3h` / `2d` with no "ago" suffix (`in 5m` when the moment is
  * ahead), `now` under a minute in either direction, and the same locale-date
  * fallback past one week as {@link formatRelativeTime}.
+ *
+ * Past compact output is language-neutral (`5m`), so it takes no translation.
+ * Future output carries the direction word, so callers on localized surfaces
+ * pass `t` and the label resolves through the same `conversations.in*` keys as
+ * the long formatter (English catalog fallback applies until translated);
+ * callers without i18n omit it and receive the English defaults.
  */
-export function formatRelativeTimeShort(value: string | number | Date): string {
+export function formatRelativeTimeShort(
+  value: string | number | Date,
+  t?: RelativeTimeTranslator,
+): string {
   const date = value instanceof Date ? value : new Date(value);
   const time = date.getTime();
   if (!Number.isFinite(time)) return "now";
@@ -68,12 +76,33 @@ export function formatRelativeTimeShort(value: string | number | Date): string {
     Date.now() - time,
   );
   if (absMs < 60_000) return "now";
-  if (mins < 60) return future ? `in ${mins}m` : `${mins}m`;
-  if (hours < 24) return future ? `in ${hours}h` : `${hours}h`;
-  if (days < 7) return future ? `in ${days}d` : `${days}d`;
-  return date.toLocaleDateString();
+  if (absMs >= WEEK_MS) return date.toLocaleDateString();
+  if (mins < 60) {
+    if (future) {
+      return t ? t("conversations.inMinutes", { count: mins }) : `in ${mins}m`;
+    }
+    return `${mins}m`;
+  }
+  if (hours < 24) {
+    if (future) {
+      return t ? t("conversations.inHours", { count: hours }) : `in ${hours}h`;
+    }
+    return `${hours}h`;
+  }
+  if (future) {
+    return t ? t("conversations.inDays", { count: days }) : `in ${days}d`;
+  }
+  return `${days}d`;
 }
 
+/**
+ * Canonical "time ago" formatter for UI surfaces.
+ *
+ * The bucketing (just-now / minutes / hours / days, then an absolute date
+ * past one week) is shared. Callers in i18n contexts pass a `t` translator
+ * keyed under `conversations.*`; callers without i18n omit it and receive the
+ * English defaults. Past one week the value falls back to a locale date.
+ */
 export function formatRelativeTime(
   value: string | number | Date,
   t?: RelativeTimeTranslator,
@@ -88,6 +117,7 @@ export function formatRelativeTime(
   );
 
   if (absMs < 60_000) return t ? t("conversations.justNow") : "just now";
+  if (absMs >= WEEK_MS) return date.toLocaleDateString();
   if (mins < 60) {
     if (future) {
       return t ? t("conversations.inMinutes", { count: mins }) : `in ${mins}m`;
@@ -100,11 +130,8 @@ export function formatRelativeTime(
     }
     return t ? t("conversations.hoursAgo", { count: hours }) : `${hours}h ago`;
   }
-  if (days < 7) {
-    if (future) {
-      return t ? t("conversations.inDays", { count: days }) : `in ${days}d`;
-    }
-    return t ? t("conversations.daysAgo", { count: days }) : `${days}d ago`;
+  if (future) {
+    return t ? t("conversations.inDays", { count: days }) : `in ${days}d`;
   }
-  return date.toLocaleDateString();
+  return t ? t("conversations.daysAgo", { count: days }) : `${days}d ago`;
 }

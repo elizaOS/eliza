@@ -61,11 +61,38 @@ describe("formatRelativeTimeShort", () => {
     expect(formatRelativeTimeShort(NOW + DAY + 1)).toBe("in 2d");
   });
 
-  it("falls back to a locale date at a week and beyond in both directions", () => {
-    expect(formatRelativeTimeShort(NOW - 8 * DAY)).not.toMatch(
-      /^\d+[mhd]$|now/,
-    );
-    expect(formatRelativeTimeShort(NOW + 8 * DAY)).not.toMatch(/in |now/);
+  it("gates the locale-date fallback on the raw magnitude, not the ceiled day count", () => {
+    // now + 6d + 1ms ceils to 7 days but is still inside the week — it must
+    // render "in 7d", not jump to a date the past direction would not show
+    // until a full week.
+    expect(formatRelativeTimeShort(NOW + 6 * DAY)).toBe("in 6d");
+    expect(formatRelativeTimeShort(NOW + 6 * DAY + 1)).toBe("in 7d");
+    expect(formatRelativeTimeShort(NOW + 7 * DAY - 1)).toBe("in 7d");
+    expect(formatRelativeTimeShort(NOW - 7 * DAY + 1)).toBe("6d");
+  });
+
+  it("falls back to the exact locale date at a week and beyond in both directions", () => {
+    const spy = vi
+      .spyOn(Date.prototype, "toLocaleDateString")
+      .mockReturnValue("1/23/2026");
+    try {
+      expect(formatRelativeTimeShort(NOW + 7 * DAY)).toBe("1/23/2026");
+      expect(formatRelativeTimeShort(NOW - 7 * DAY)).toBe("1/23/2026");
+      expect(formatRelativeTimeShort(NOW + 8 * DAY)).toBe("1/23/2026");
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("localizes the future direction word through a provided translator", () => {
+    // Past compact output is language-neutral ("5m") and takes no translation;
+    // the future direction word resolves through the same conversations.in*
+    // keys as the long formatter.
+    const t = createTranslator("en");
+    expect(formatRelativeTimeShort(NOW + 5 * MINUTE, t)).toBe("in 5m");
+    expect(formatRelativeTimeShort(NOW + 2 * HOUR, t)).toBe("in 2h");
+    expect(formatRelativeTimeShort(NOW + 3 * DAY, t)).toBe("in 3d");
+    expect(formatRelativeTimeShort(NOW - 5 * MINUTE, t)).toBe("5m");
   });
 
   it("renders an unparseable value as 'now'", () => {
@@ -115,5 +142,27 @@ describe("formatRelativeTime (translated)", () => {
     expect(formatRelativeTime(NOW - 5 * MINUTE, t)).toBe("5m ago");
     expect(formatRelativeTime(NOW - 2 * HOUR, t)).toBe("2h ago");
     expect(formatRelativeTime(NOW - MINUTE + 1, t)).toBe("just now");
+  });
+
+  it("gates the week fallback on raw magnitude in the translated path too", () => {
+    expect(formatRelativeTime(NOW + 6 * DAY + 1, t)).toBe("in 7d");
+    const spy = vi
+      .spyOn(Date.prototype, "toLocaleDateString")
+      .mockReturnValue("1/23/2026");
+    try {
+      expect(formatRelativeTime(NOW + 7 * DAY, t)).toBe("1/23/2026");
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("falls back to the English catalog for a locale without the conversations.in* keys", () => {
+    // Non-English dictionaries load lazily and resolve missing keys through
+    // t()'s localized[key] ?? english[key] chain — the standard path for new
+    // keys until translators catch up. A Japanese translator therefore still
+    // renders the English future labels rather than the raw key names.
+    const ja = createTranslator("ja");
+    expect(formatRelativeTime(NOW + 5 * MINUTE, ja)).toBe("in 5m");
+    expect(formatRelativeTimeShort(NOW + 5 * MINUTE, ja)).toBe("in 5m");
   });
 });
