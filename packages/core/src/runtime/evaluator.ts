@@ -186,6 +186,16 @@ export async function runEvaluator(
 		throw error;
 	}
 	const endedAt = Date.now();
+	const usage = extractEvaluatorUsage(raw);
+	if (
+		usage?.promptTokens !== undefined &&
+		usage.completionTokens !== undefined
+	) {
+		params.onUsage?.({
+			promptTokens: usage.promptTokens,
+			completionTokens: usage.completionTokens,
+		});
+	}
 	const output = sanitizeOutputMessage(
 		repairFinishedToolTurnWithoutUserMessage(
 			repairMissingEvaluatorMessage(

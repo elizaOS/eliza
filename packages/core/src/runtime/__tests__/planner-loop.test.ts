@@ -1556,13 +1556,26 @@ describe("v5 planner loop skeleton", () => {
 			useModel: vi
 				.fn()
 				// iter 1 (fresh) → executes; iters 2-3 repeat it → redundant
-				.mockResolvedValueOnce({ text: "", toolCalls: [sameCall] })
-				.mockResolvedValueOnce({ text: "", toolCalls: [sameCall] })
-				.mockResolvedValueOnce({ text: "", toolCalls: [sameCall] })
+				.mockResolvedValueOnce({
+					text: "",
+					toolCalls: [sameCall],
+					usage: { promptTokens: 10, completionTokens: 1, totalTokens: 11 },
+				})
+				.mockResolvedValueOnce({
+					text: "",
+					toolCalls: [sameCall],
+					usage: { promptTokens: 20, completionTokens: 2, totalTokens: 22 },
+				})
+				.mockResolvedValueOnce({
+					text: "",
+					toolCalls: [sameCall],
+					usage: { promptTokens: 30, completionTokens: 3, totalTokens: 33 },
+				})
 				// forced synthesis (no tools) → terminal answer
-				.mockResolvedValueOnce(
-					'{"thought":"I already have the price.","messageToUser":"The price is 42.","toolCalls":[]}',
-				),
+				.mockResolvedValueOnce({
+					text: '{"thought":"I already have the price.","messageToUser":"The price is 42.","toolCalls":[]}',
+					usage: { promptTokens: 40, completionTokens: 4, totalTokens: 44 },
+				}),
 			logger: { debug: vi.fn(), warn: vi.fn() },
 		};
 		const executeToolCall = vi.fn(async () => ({
@@ -1588,6 +1601,11 @@ describe("v5 planner loop skeleton", () => {
 		expect(executeToolCall).toHaveBeenCalledTimes(1);
 		expect(result.status).toBe("finished");
 		expect(result.finalMessage).toContain("42");
+		expect(result.modelUsage).toEqual({
+			promptTokens: 100,
+			completionTokens: 10,
+			modelCalls: 4,
+		});
 	});
 
 	it("does not re-execute an identical call that failed with retryable:false and forces a terminal synthesis", async () => {

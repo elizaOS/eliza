@@ -13,6 +13,7 @@ import {
 	detectSubActionCycles,
 	resolveSubActions,
 	runSubPlanner,
+	subPlannerCallDigest,
 } from "../sub-planner";
 
 type SubPlannerTestRuntime = Pick<IAgentRuntime, "actions" | "useModel"> & {
@@ -124,6 +125,61 @@ describe("sub-planner helpers", () => {
 		);
 		expect(result.status).toBe("finished");
 		expect(result.finalMessage).toBe("Done.");
+	});
+
+	it("does not replay an exact prior non-retryable nested operation", async () => {
+		const child = makeAction({ name: "CHILD" });
+		const parent = makeAction({
+			name: "PARENT",
+			subActions: ["CHILD"],
+			subPlanner: true,
+		});
+		const call = { name: "CHILD", params: { target: "same" } };
+		const execute = vi.fn(async () => ({ success: true }));
+		const result = await runSubPlanner({
+			runtime: makeRuntime(
+				[parent, child],
+				vi.fn(async () => ({
+					text: "",
+					toolCalls: [
+						{ id: "call-replay", name: "CHILD", arguments: call.params },
+					],
+				})),
+			),
+			action: parent,
+			context: { id: "ctx", events: [] },
+			ctx: {
+				message: makeMessage(),
+				previousResults: [
+					{
+						success: false,
+						data: {
+							subSteps: [
+								{
+									action: "CHILD",
+									success: false,
+									callDigest: subPlannerCallDigest(call),
+									retryable: false,
+								},
+							],
+						},
+					},
+				],
+			},
+			execute,
+			evaluate: async () => ({
+				success: false,
+				decision: "FINISH",
+				messageToUser: "That exact operation cannot be retried this turn.",
+			}),
+		});
+
+		expect(execute).not.toHaveBeenCalled();
+		expect(result.trajectory.steps[0]?.result?.data).toMatchObject({
+			retryable: false,
+			replaySuppressed: true,
+			code: "PRIOR_NON_RETRYABLE_SUBSTEP",
+		});
 	});
 
 	it("resolves child action similes before rejecting sub-planner tool calls", async () => {
