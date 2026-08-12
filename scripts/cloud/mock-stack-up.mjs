@@ -58,7 +58,12 @@ function parsePortOverride(flag, value) {
     return { error: `${flag} requires a decimal port between 1 and 65535` };
   }
   const port = Number(value);
-  if (!Number.isSafeInteger(port) || port < 1 || port > 65_535) {
+  if (
+    !Number.isSafeInteger(port) ||
+    port < 1 ||
+    port > 65_535 ||
+    String(port) !== value
+  ) {
     return { error: `${flag} requires a decimal port between 1 and 65535` };
   }
   return { port };

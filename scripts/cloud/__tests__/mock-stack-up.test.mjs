@@ -77,6 +77,21 @@ describe("mock-stack-up orchestrator", () => {
   });
 
   test.each([
+    ["--port-frontend", "03000"],
+    ["--port-api", "01"],
+    ["--port-cp", "00080"],
+    ["--port-hetzner", "065535"],
+  ])("%s rejects a non-canonical override %s", async (flag, value) => {
+    const r = await redirectedRun([flag, value, "--help"]);
+    expect(r.code).toBe(1);
+    const combined = r.stdout + r.stderr;
+    expect(combined).toContain(
+      `${flag} requires a decimal port between 1 and 65535`,
+    );
+    expect(combined).not.toContain("Eliza cloud mock stack — ready");
+  });
+
+  test.each([
     ["non-numeric", ["not-a-port"]],
     ["empty", [""]],
     ["trailing junk", ["23456junk"]],
