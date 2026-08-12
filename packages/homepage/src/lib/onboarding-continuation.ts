@@ -4,9 +4,9 @@
  * A visitor who lands with an `onboardingSession` query parameter came from a
  * platform chat (Discord DM "Connect" button, SMS link). They already chose
  * their platform, so the connector picker is never the right destination:
- * signed-in visitors continue into the identity-link handoff (Discord
- * sessions confirm the link and are prompted back to Discord; other platform
- * sessions fall back to the web provisioning chat), signed-out visitors go
+ * signed-in visitors continue into the identity-link handoff (Discord and
+ * Telegram sessions confirm the link and return to their originating chat;
+ * other platform sessions fall back to the web provisioning chat), signed-out visitors go
  * straight to sign-in. Kept as a pure function so the routing contract is
  * directly unit-testable outside the page component.
  */
@@ -21,7 +21,7 @@ export interface OnboardingEntryInput {
   isLinkMode: boolean;
   /** Discord OAuth callback `code` — the callback step must handle it. */
   discordCode: string | null;
-  /** Explicit `method` parameter (Telegram continuations set method=telegram). */
+  /** Explicit `method` parameter for non-continuation account-linking flows. */
   methodParam: string | null;
 }
 

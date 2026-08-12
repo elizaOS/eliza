@@ -9,7 +9,11 @@
  *
  * - onboardingSession + unauthenticated renders the SIGN-IN step, not the
  *   connector picker (fails on develop, passes with the fix)
- * - onboardingSession + authenticated still resumes the provisioning chat
+ * - authenticated messaging continuations preview and explicitly confirm the
+ *   attested Discord or Telegram identity before returning to that platform
+ * - transient preview failures retry in place while deliberate non-linkable
+ *   responses retain the phone-style provisioning fallback
+ * - a consent-denied OAuth return restores only a state-matched continuation
  * - no onboardingSession still renders the picker (no regression)
  */
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
@@ -53,10 +57,14 @@ let previewResult: {
   platformUserId: "555001122334455667",
   platformDisplayName: "shadow#0001",
 };
+let previewError: Error | null = null;
 const chatFetch = mock(async (_path: string, init?: RequestInit) => {
   const isPreview = !init?.method || init.method === "GET";
   if (isPreview && !init?.body) {
-    if (!previewResult) throw new Error("continuation invalid");
+    if (previewError) throw previewError;
+    if (!previewResult) {
+      throw new Error("elizacloud API error 403: continuation invalid");
+    }
     return { success: true, data: previewResult };
   }
   return {
@@ -112,8 +120,8 @@ mock.module("@elizaos/ui/input", () => ({
     ReactForStubs.createElement("input", props),
 }));
 mock.module("@elizaos/ui/cloud-ui/components/icons", () => ({
-  AppleMessagesIcon: passthrough,
   DiscordIcon: passthrough,
+  IMessageIcon: passthrough,
   TelegramIcon: passthrough,
   WhatsAppIcon: passthrough,
 }));
@@ -184,12 +192,16 @@ function setupDom() {
   return window as unknown as Window & typeof globalThis;
 }
 
-async function renderPage(url: string): Promise<{
+async function renderPage(
+  url: string,
+  initializeStorage?: (storage: Storage) => void,
+): Promise<{
   html: () => string;
   query: (testId: string) => Element | null;
   unmount: () => void;
 }> {
   const window = setupDom();
+  initializeStorage?.(window.sessionStorage);
   const container = window.document.getElementById("root");
   if (!container) throw new Error("root element not found");
   const root = createRoot(container);
@@ -222,6 +234,7 @@ describe("GetStartedPage platform continuation", () => {
       platformUserId: "555001122334455667",
       platformDisplayName: "shadow#0001",
     };
+    previewError = null;
     chatFetch.mockClear();
   });
 
@@ -289,6 +302,29 @@ describe("GetStartedPage platform continuation", () => {
     page.unmount();
   });
 
+  test("a Telegram continuation confirms and returns to the Telegram bot", async () => {
+    authState = { isAuthenticated: true, isLoading: false };
+    previewResult = {
+      platform: "telegram",
+      platformUserId: "123456789",
+      platformDisplayName: "shadow_tg",
+    };
+    const page = await renderPage(
+      "/get-started?onboardingSession=0f5f9f9a-72cf-45e1-b1a1-2b7f9b1de111",
+    );
+
+    expect(page.html()).toContain("Connect your Telegram account?");
+    expect(page.html()).toContain("Telegram ID 123456789");
+    (page.query("continuation-confirm-button") as HTMLButtonElement).click();
+    await new Promise((resolve) => setTimeout(resolve, 150));
+
+    expect(page.html()).toContain("Head back to Telegram");
+    const openTelegram = page.query("continuation-open-telegram");
+    expect(openTelegram).not.toBeNull();
+    expect(openTelegram?.getAttribute("href")).toContain("https://t.me/");
+    page.unmount();
+  });
+
   test("a non-Discord continuation falls back to the provisioning chat", async () => {
     authState = { isAuthenticated: true, isLoading: false };
     previewResult = null; // preview rejects (e.g. phone-originated session)
@@ -303,6 +339,47 @@ describe("GetStartedPage platform continuation", () => {
     );
     expect(chatPost).toBeDefined();
 
+    page.unmount();
+  });
+
+  test("a transient preview failure stays on the continuation and retries", async () => {
+    authState = { isAuthenticated: true, isLoading: false };
+    previewError = new Error("elizacloud API error 503: upstream unavailable");
+    const page = await renderPage(
+      "/get-started?onboardingSession=0f5f9f9a-72cf-45e1-b1a1-2b7f9b1de111",
+    );
+
+    expect(page.query("continuation-error")).not.toBeNull();
+    expect(
+      chatFetch.mock.calls.some(
+        ([, init]) => typeof (init as RequestInit)?.body === "string",
+      ),
+    ).toBe(false);
+    previewError = null;
+    const retryButton = page
+      .query("continuation-error")
+      ?.querySelector("button");
+    expect(retryButton).not.toBeNull();
+    (retryButton as HTMLButtonElement).click();
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    expect(page.query("continuation-confirm")).not.toBeNull();
+
+    page.unmount();
+  });
+
+  test("a consent-denied Discord return restores the stashed continuation", async () => {
+    const oauthState = "oauth-state-from-redirect";
+    const sessionId = "0f5f9f9a-72cf-45e1-b1a1-2b7f9b1de111";
+    const page = await renderPage(
+      `/get-started?error=access_denied&state=${oauthState}`,
+      (storage) => {
+        storage.setItem("eliza_discord_oauth_state", oauthState);
+        storage.setItem("eliza_onboarding_session_continuation", sessionId);
+      },
+    );
+
+    expect(page.html()).toContain(SIGN_IN_HEADER);
+    expect(page.html()).not.toContain(PICKER_HEADER);
     page.unmount();
   });
 
