@@ -1,8 +1,10 @@
 /** Covers device E2E host env parsing before runtime or server startup. */
 import { spawn } from "node:child_process";
+import { createServer } from "node:net";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { signalSpawnedProcessTree } from "./lib/kill-process-tree.mjs";
 import {
   resolveNonNegativeIntegerEnv,
   resolvePort,
@@ -12,8 +14,24 @@ import {
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const SCRIPT = path.join(SCRIPT_DIR, "serve-real-local-agent.ts");
 const RUN_NODE_TSX = path.join(SCRIPT_DIR, "run-node-tsx.mjs");
+const PROCESS_TREE_LISTENER = path.join(
+  SCRIPT_DIR,
+  "fixtures/process-tree-listener.mjs",
+);
 
-function runRealHost(env: NodeJS.ProcessEnv): Promise<{
+function runWrappedScript({
+  detached = process.platform !== "win32",
+  env,
+  script = SCRIPT,
+  timeoutMs = 30_000,
+  timeoutSignal = process.platform === "win32" ? "SIGKILL" : "SIGTERM",
+}: {
+  detached?: boolean;
+  env: NodeJS.ProcessEnv;
+  script?: string;
+  timeoutMs?: number;
+  timeoutSignal?: NodeJS.Signals;
+}): Promise<{
   status: number | null;
   signal: NodeJS.Signals | null;
   stdout: string;
@@ -21,8 +39,7 @@ function runRealHost(env: NodeJS.ProcessEnv): Promise<{
   timedOut: boolean;
 }> {
   return new Promise((resolve, reject) => {
-    const detached = process.platform !== "win32";
-    const child = spawn(process.execPath, [RUN_NODE_TSX, SCRIPT], {
+    const child = spawn(process.execPath, [RUN_NODE_TSX, script], {
       cwd: path.resolve(SCRIPT_DIR, "../../.."),
       detached,
       env,
@@ -39,18 +56,66 @@ function runRealHost(env: NodeJS.ProcessEnv): Promise<{
     });
     const timer = setTimeout(() => {
       timedOut = true;
-      if (detached && child.pid) {
-        process.kill(-child.pid, "SIGTERM");
-      } else {
-        child.kill("SIGTERM");
-      }
-    }, 30_000);
-    child.on("error", reject);
-    child.on("exit", (status, signal) => {
+      signalSpawnedProcessTree(child, timeoutSignal);
+    }, timeoutMs);
+    child.on("error", (error) => {
+      clearTimeout(timer);
+      reject(error);
+    });
+    child.on("close", (status, signal) => {
       clearTimeout(timer);
       resolve({ status, signal, stdout, stderr, timedOut });
     });
   });
+}
+
+function getFreePort(): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const server = createServer();
+    server.unref();
+    server.on("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      const address = server.address();
+      if (!address || typeof address === "string") {
+        server.close();
+        reject(new Error("free-port probe did not return a TCP address"));
+        return;
+      }
+      server.close((error) => {
+        if (error) reject(error);
+        else resolve(address.port);
+      });
+    });
+  });
+}
+
+function isPidAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function canListen(port: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const server = createServer();
+    server.unref();
+    server.once("error", () => resolve(false));
+    server.listen(port, "127.0.0.1", () => {
+      server.close(() => resolve(true));
+    });
+  });
+}
+
+async function waitForTreeRelease(pid: number, port: number): Promise<boolean> {
+  const deadline = Date.now() + 2_000;
+  while (Date.now() < deadline) {
+    if (!isPidAlive(pid) && (await canListen(port))) return true;
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  return !isPidAlive(pid) && (await canListen(port));
 }
 
 describe("serve-real-local-agent env parsing", () => {
@@ -101,10 +166,12 @@ describe("serve-real-local-agent env parsing", () => {
   );
 
   it("fails the real host process before runtime creation", async () => {
-    const result = await runRealHost({
-      ...process.env,
-      ELIZA_NODE_PATH: process.execPath,
-      ELIZA_API_PORT: "31337junk",
+    const result = await runWrappedScript({
+      env: {
+        ...process.env,
+        ELIZA_NODE_PATH: process.execPath,
+        ELIZA_API_PORT: "31337junk",
+      },
     });
 
     expect(result.timedOut).toBe(false);
@@ -113,5 +180,35 @@ describe("serve-real-local-agent env parsing", () => {
       "Invalid ELIZA_API_PORT/ELIZA_PORT: 31337junk",
     );
     expect(result.stdout).not.toContain("real API up");
+  });
+
+  it("terminates the wrapper descendant and releases its listener port", async () => {
+    const port = await getFreePort();
+    const result = await runWrappedScript({
+      detached: false,
+      env: {
+        ...process.env,
+        ELIZA_NODE_PATH: process.execPath,
+        PROCESS_TREE_LISTENER_PORT: String(port),
+      },
+      script: PROCESS_TREE_LISTENER,
+      timeoutMs: 2_000,
+      // Windows ChildProcess.kill terminates the wrapper without delivering a
+      // catchable POSIX signal. SIGKILL reproduces that lifecycle on Unix.
+      timeoutSignal: "SIGKILL",
+    });
+    const match = result.stdout.match(
+      /\[process-tree-listener\] ready pid=(\d+) port=(\d+)/,
+    );
+    expect(match).not.toBeNull();
+    const descendantPid = Number(match?.[1]);
+
+    try {
+      expect(result.timedOut).toBe(true);
+      expect(Number(match?.[2])).toBe(port);
+      expect(await waitForTreeRelease(descendantPid, port)).toBe(true);
+    } finally {
+      if (isPidAlive(descendantPid)) process.kill(descendantPid, "SIGKILL");
+    }
   });
 });
