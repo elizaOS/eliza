@@ -8,15 +8,14 @@
  * cannot succeed after the first verify.
  */
 
-import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
-import { cache } from "../../cache/client";
+import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
+import { oauthSuccessProofTicketsRepository } from "../../../db/repositories/oauth-success-proof-tickets";
 import { getCloudAwareEnv } from "../../runtime/cloud-bindings";
 import { getAllProviderIds } from "./provider-registry";
 
 const DEFAULT_TTL_MS = 10 * 60 * 1000;
 /** Reject absurd query-string proofs before HMAC work (payload.sig base64url). */
 const MAX_PROOF_CHARS = 2_048;
-const TICKET_KEY_PREFIX = "oauth_success_proof:v1:";
 
 /** Connector-native providers that emit `*_connected` but are outside OAUTH_PROVIDERS. */
 const EXTRA_CONNECTED_MARKERS = new Set(["discord"]);
@@ -82,20 +81,45 @@ export interface OAuthSuccessProofTicket {
 
 /**
  * Pluggable ticket store so unit tests can hermetically exercise mint/consume
- * without a live Redis. Production uses {@link cache}.getAndDelete.
+ * without a live database. Production uses Postgres because the deployed
+ * Worker cache is Cloudflare KV and cannot atomically consume a nonce.
+ *
+ * Contract:
+ * - {@link put} MUST report whether durable storage acknowledged the write.
+ *   Callers fail closed when it resolves `false`.
+ * - {@link take} MUST be an atomic get-and-delete (single one-time consume).
+ *   The default implementation uses Postgres `DELETE … RETURNING`.
  */
 export interface OAuthSuccessProofTicketStore {
-  put(nonce: string, ticket: OAuthSuccessProofTicket, ttlSeconds: number): Promise<void>;
+  /** Returns true only when the backend acknowledged a durable write. */
+  put(nonce: string, ticket: OAuthSuccessProofTicket, ttlSeconds: number): Promise<boolean>;
   /** Atomic get-and-delete. Returns null when missing or already consumed. */
   take(nonce: string): Promise<OAuthSuccessProofTicket | null>;
 }
 
 const defaultTicketStore: OAuthSuccessProofTicketStore = {
-  async put(nonce, ticket, ttlSeconds) {
-    await cache.set(`${TICKET_KEY_PREFIX}${nonce}`, ticket, ttlSeconds);
+  async put(nonce, ticket, _ttlSeconds) {
+    await oauthSuccessProofTicketsRepository.purgeExpired();
+    await oauthSuccessProofTicketsRepository.insert({
+      nonce_hash: hashNonce(nonce),
+      platform: ticket.platform,
+      connection_id: ticket.connectionId,
+      organization_id: ticket.organizationId,
+      user_id: ticket.userId,
+      expires_at: new Date(ticket.exp),
+    });
+    return true;
   },
   async take(nonce) {
-    return cache.getAndDelete<OAuthSuccessProofTicket>(`${TICKET_KEY_PREFIX}${nonce}`);
+    const claimed = await oauthSuccessProofTicketsRepository.claim(hashNonce(nonce));
+    if (!claimed) return null;
+    return {
+      platform: claimed.platform,
+      connectionId: claimed.connection_id,
+      organizationId: claimed.organization_id,
+      userId: claimed.user_id,
+      exp: claimed.expires_at.getTime(),
+    };
   },
 };
 
@@ -117,6 +141,7 @@ export function createMemoryOAuthSuccessProofTicketStore(): OAuthSuccessProofTic
         ticket,
         expiresAtMs: Date.now() + ttlSeconds * 1000,
       });
+      return true;
     },
     async take(nonce) {
       const entry = tickets.get(nonce);
@@ -165,6 +190,10 @@ function safeEqual(a: string, b: string): boolean {
   return timingSafeEqual(ab, bb);
 }
 
+function hashNonce(nonce: string): string {
+  return createHash("sha256").update(nonce).digest("hex");
+}
+
 function ticketKeyTtlSeconds(expMs: number): number {
   const remainingMs = Math.max(0, expMs - Date.now());
   return Math.max(1, Math.ceil(remainingMs / 1000));
@@ -209,12 +238,18 @@ export async function mintOAuthSuccessProof(args: {
     userId,
     exp,
   };
+  let written: boolean;
   try {
-    await ticketStore.put(nonce, ticket, ticketKeyTtlSeconds(exp));
+    written = await ticketStore.put(nonce, ticket, ticketKeyTtlSeconds(exp));
   } catch {
     // error-policy:J1 ticket registration failure — cannot mint a consumable proof.
     return null;
   }
+  // Fail closed: if the store did not acknowledge a durable write (backend
+  // unavailable, invalid value, or an error), do not sign/return a proof. The
+  // legacy `cache.set` wrapper discarded this outcome and minted an unconsumable
+  // proof (#18114).
+  if (!written) return null;
   const payloadB64 = b64url(JSON.stringify(payload));
   const signature = sign(secret, payloadB64);
   return `${payloadB64}.${signature}`;

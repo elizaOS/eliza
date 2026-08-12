@@ -33,9 +33,12 @@ import { shouldStartTelegramStandaloneBot } from "./policy";
 import { TelegramStandaloneService } from "./service";
 
 // Minimal runtime — the service only touches getService() at stop time.
-function fakeRuntime(): Parameters<typeof TelegramStandaloneService.start>[0] {
+function fakeRuntime(
+  plugins: string[] = [],
+): Parameters<typeof TelegramStandaloneService.start>[0] {
   return {
     agentId: "agent-standalone",
+    plugins: plugins.map((name) => ({ name })),
     getService: vi.fn(() => null),
     reportError: vi.fn(),
   } as unknown as Parameters<typeof TelegramStandaloneService.start>[0];
@@ -55,12 +58,12 @@ afterEach(async () => {
 });
 
 describe("shouldStartTelegramStandaloneBot (gate truth table)", () => {
-  it("is false by default (passive connectors on) even with the flag set", () => {
+  it("is true for a non-LifeOps runtime when the standalone flag is set", () => {
     expect(
       shouldStartTelegramStandaloneBot({
         ELIZA_TELEGRAM_STANDALONE_BOT: "1",
       } as NodeJS.ProcessEnv),
-    ).toBe(false);
+    ).toBe(true);
   });
 
   it("is false when passive connectors are off but the flag is unset", () => {
@@ -79,15 +82,38 @@ describe("shouldStartTelegramStandaloneBot (gate truth table)", () => {
       } as NodeJS.ProcessEnv),
     ).toBe(true);
   });
+
+  it("is false when the resolved runtime loads LifeOps", () => {
+    expect(
+      shouldStartTelegramStandaloneBot(
+        { ELIZA_TELEGRAM_STANDALONE_BOT: "true" } as NodeJS.ProcessEnv,
+        fakeRuntime(["@elizaos/plugin-personal-assistant"]),
+      ),
+    ).toBe(false);
+  });
 });
 
 describe("TelegramStandaloneService lifecycle", () => {
-  it("no-ops (no poller) when the gate is off, even with a token present", async () => {
+  it("launches for a plain runtime with the standalone flag", async () => {
     delete process.env.ELIZA_LIFEOPS_PASSIVE_CONNECTORS;
     process.env.ELIZA_TELEGRAM_STANDALONE_BOT = "1";
     process.env.TELEGRAM_BOT_TOKEN = "test-token";
 
     const service = await TelegramStandaloneService.start(fakeRuntime());
+
+    expect(constructed).toEqual([{ token: "test-token" }]);
+    expect(launchMock).toHaveBeenCalledOnce();
+    await service.stop();
+  });
+
+  it("no-ops when LifeOps owns passive Telegram, even with the flag set", async () => {
+    delete process.env.ELIZA_LIFEOPS_PASSIVE_CONNECTORS;
+    process.env.ELIZA_TELEGRAM_STANDALONE_BOT = "1";
+    process.env.TELEGRAM_BOT_TOKEN = "test-token";
+
+    const service = await TelegramStandaloneService.start(
+      fakeRuntime(["@elizaos/plugin-personal-assistant"]),
+    );
 
     expect(constructed).toHaveLength(0);
     expect(launchMock).not.toHaveBeenCalled();

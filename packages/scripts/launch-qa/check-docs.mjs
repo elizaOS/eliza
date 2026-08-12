@@ -21,7 +21,16 @@ const SKIP_DIRS = new Set([
   "node_modules",
   "target",
 ]);
-const ROOT_DOCS = ["README.md", "CONTRIBUTING.md", "WINDOWS.md"];
+const ROOT_DOCS = [
+  "README.md",
+  "CONTRIBUTING.md",
+  "SECURITY.md",
+  "WINDOWS.md",
+];
+const ISSUE_TEMPLATE_CONFIG = ".github/ISSUE_TEMPLATE/config.yml";
+const SECURITY_POLICY_FILE = "SECURITY.md";
+const SECURITY_POLICY_CONTACT_URL =
+  "https://github.com/elizaOS/eliza/blob/develop/SECURITY.md";
 
 function rel(repoRoot, filePath) {
   return path.relative(repoRoot, filePath).split(path.sep).join("/");
@@ -477,6 +486,62 @@ function checkCommands({ repoRoot, docFiles, contentByFile, scriptsByDir }) {
   return errors;
 }
 
+function readIssueTemplateSecurityContactUrl(configPath) {
+  try {
+    const content = fs.readFileSync(configPath, "utf8");
+    const match = content.match(
+      /name:\s*Security vulnerability\s*\n\s*url:\s*([^\n#]+)/i,
+    );
+    return match?.[1]?.trim() ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function checkSecurityPolicy(repoRoot) {
+  const errors = [];
+  const securityPolicyPath = path.join(repoRoot, SECURITY_POLICY_FILE);
+  if (!exists(securityPolicyPath)) {
+    errors.push({
+      type: "missing-security-policy",
+      file: SECURITY_POLICY_FILE,
+      message: `missing root ${SECURITY_POLICY_FILE} required for GitHub security-policy discovery`,
+    });
+    return errors;
+  }
+
+  const configPath = path.join(repoRoot, ISSUE_TEMPLATE_CONFIG);
+  if (!exists(configPath)) {
+    errors.push({
+      type: "missing-issue-template-config",
+      file: ISSUE_TEMPLATE_CONFIG,
+      message: `missing ${ISSUE_TEMPLATE_CONFIG} required for security contact validation`,
+    });
+    return errors;
+  }
+
+  const securityContactUrl = readIssueTemplateSecurityContactUrl(configPath);
+  if (!securityContactUrl) {
+    errors.push({
+      type: "missing-security-contact",
+      file: ISSUE_TEMPLATE_CONFIG,
+      message: "missing Security vulnerability contact link in issue template config",
+    });
+    return errors;
+  }
+
+  if (securityContactUrl !== SECURITY_POLICY_CONTACT_URL) {
+    errors.push({
+      type: "stale-security-contact",
+      file: ISSUE_TEMPLATE_CONFIG,
+      target: securityContactUrl,
+      message: `Security vulnerability contact must target ${SECURITY_POLICY_CONTACT_URL}`,
+    });
+  }
+
+  return errors;
+}
+
 export function checkDocs(options = {}) {
   const repoRoot = path.resolve(options.repoRoot ?? defaultRepoRoot);
   const docFiles =
@@ -488,6 +553,7 @@ export function checkDocs(options = {}) {
   }
   const scriptsByDir = collectPackageScripts(repoRoot);
   const errors = [
+    ...checkSecurityPolicy(repoRoot),
     ...checkLinks({ repoRoot, docFiles, contentByFile }),
     ...checkCommands({ repoRoot, docFiles, contentByFile, scriptsByDir }),
   ];

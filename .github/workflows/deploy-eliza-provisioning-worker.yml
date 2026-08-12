@@ -562,8 +562,8 @@ jobs:
           title: "🚀 Eliza Provisioning Worker Deployed"
           nodetail: true
           description: |
-            Branch: develop
-            Commit: ${{ github.sha }}
+            Branch: ${{ needs.determine-env.outputs.branch }}
+            Commit: ${{ needs.determine-env.outputs.deployment_sha }}
           color: 0x00ff00
 
       - name: Notify Discord (Failure)
@@ -575,8 +575,8 @@ jobs:
           title: "❌ Eliza Provisioning Worker Deploy Failed"
           nodetail: true
           description: |
-            Branch: develop
-            Commit: ${{ github.sha }}
+            Branch: ${{ needs.determine-env.outputs.branch }}
+            Commit: ${{ needs.determine-env.outputs.deployment_sha }}
           color: 0xff0000
 
 # ci-touch: re-trigger prod daemon deploy (dispatch runs were runner-starved) 2026-06-21

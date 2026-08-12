@@ -14,7 +14,7 @@ cp .env.example .env.local
 
 | Variable | Description |
 |---|---|
-| `VITE_ELIZACLOUD_API_URL` | Eliza Cloud backend URL (defaults to `https://www.elizacloud.ai`) |
+| `VITE_ELIZACLOUD_API_URL` | Eliza Cloud backend URL (defaults to `https://elizacloud.ai`) |
 | `VITE_TELEGRAM_BOT_USERNAME` | Telegram bot username from @BotFather |
 | `VITE_TELEGRAM_BOT_ID` | Numeric Telegram bot ID (first part of bot token before `:`) |
 | `VITE_DISCORD_CLIENT_ID` | Discord Application ID (from Developer Portal → General Information) |

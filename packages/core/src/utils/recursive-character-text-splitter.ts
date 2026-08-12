@@ -70,10 +70,14 @@ export class RecursiveCharacterTextSplitter {
 	): Promise<string[]> {
 		const docs: string[] = [];
 		const currentDoc: string[] = [];
+		const separatorLength = await this.lengthFunction(separator);
 		let total = 0;
 		for (const d of splits) {
 			const len = await this.lengthFunction(d);
-			if (total + len + currentDoc.length * separator.length > this.chunkSize) {
+			if (
+				total + len + (currentDoc.length > 0 ? separatorLength : 0) >
+				this.chunkSize
+			) {
 				if (total > this.chunkSize) {
 					logger.warn(
 						`[RecursiveCharacterTextSplitter] Created a chunk of size ${total}, which is longer than the specified ${this.chunkSize}`,
@@ -84,19 +88,21 @@ export class RecursiveCharacterTextSplitter {
 					if (doc !== null) docs.push(doc);
 					while (
 						total > this.chunkOverlap ||
-						(total + len + currentDoc.length * separator.length >
+						(total + len + (currentDoc.length > 0 ? separatorLength : 0) >
 							this.chunkSize &&
 							total > 0)
 					) {
 						const first = currentDoc[0];
 						if (first === undefined) break;
-						total -= await this.lengthFunction(first);
+						total -=
+							(await this.lengthFunction(first)) +
+							(currentDoc.length > 1 ? separatorLength : 0);
 						currentDoc.shift();
 					}
 				}
 			}
 			currentDoc.push(d);
-			total += len;
+			total += len + (currentDoc.length > 1 ? separatorLength : 0);
 		}
 		const doc = this.joinDocs(currentDoc, separator);
 		if (doc !== null) docs.push(doc);
@@ -127,7 +133,8 @@ export class RecursiveCharacterTextSplitter {
 		const goodSplits: string[] = [];
 		const sepForMerge = this.keepSeparator ? "" : separator;
 		for (const s of splits) {
-			if ((await this.lengthFunction(s)) < this.chunkSize) {
+			const splitLength = await this.lengthFunction(s);
+			if (splitLength < this.chunkSize) {
 				goodSplits.push(s);
 			} else {
 				if (goodSplits.length) {
@@ -136,6 +143,11 @@ export class RecursiveCharacterTextSplitter {
 					goodSplits.length = 0;
 				}
 				if (!newSeparators) {
+					if (splitLength > this.chunkSize) {
+						logger.warn(
+							`[RecursiveCharacterTextSplitter] Created a chunk of size ${splitLength}, which is longer than the specified ${this.chunkSize}`,
+						);
+					}
 					finalChunks.push(s);
 				} else {
 					const otherInfo = await this._splitText(s, newSeparators);

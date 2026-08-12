@@ -54,6 +54,20 @@ const STATIC_ALLOWED_ORIGINS = new Set<string>([
   "https://os.elizacloud.ai",
   "https://eliza.ai",
   "https://www.eliza.ai",
+  // The eliza.app homepage (packages/homepage) hosts /get-started, whose
+  // Telegram-widget phone step and Discord OAuth callback POST directly to
+  // /api/eliza-app/auth/* on elizacloud.ai. Those calls are browser-enforced
+  // cross-origin requests, so this origin must be first-party or every
+  // homepage auth flow fails in preflight with no ACAO header. Mirrors the
+  // legacy allowlist in lib/utils/cors.ts, which always included eliza.app.
+  "https://eliza.app",
+  "https://www.eliza.app",
+  // staging.eliza.app (CF Pages project eliza-home-staging, deployed by
+  // .github/workflows/deploy-homepage-staging.yml) is the same homepage built
+  // against staging.elizacloud.ai. The staging worker runs this same
+  // allowlist, so without this entry every staging auth POST dies in
+  // preflight exactly like the prod outage this PR fixes.
+  "https://staging.eliza.app",
 ]);
 const PAGES_PREVIEW_SUFFIX = ".eliza-cloud-enq.pages.dev";
 

@@ -177,4 +177,56 @@ describe("media generation cold-cache warming retry", () => {
     );
     expect(postApiV1GenerateVideo).toHaveBeenCalledTimes(1);
   });
+
+  // Fixed-price music models 400 with a machine-actionable "omit
+  // durationSeconds" hint (generate-music route). Observed live: "make me a
+  // 10 second synthwave loop" failed the whole turn. The handler must retry
+  // once without the param — and only for that exact rejection.
+  it("retries a duration-rejecting music model as a fixed-price generation", async () => {
+    const postApiV1GenerateMusic = vi
+      .fn()
+      .mockRejectedValueOnce(
+        new Error(
+          "Model fal-ai/minimax-music/v2.6 does not support durationSeconds; omit durationSeconds and bill it as a fixed-price generation"
+        )
+      )
+      .mockResolvedValueOnce({
+        music: { url: "https://cdn/m2.mp3", content_type: "audio/mpeg" },
+        id: "m2",
+      });
+    setCloudMediaClientFactoryForTesting(() => ({
+      routes: { postApiV1GenerateVideo: vi.fn(), postApiV1GenerateMusic },
+    }));
+
+    const result = await handleAudioGeneration(runtime(), {
+      prompt: "synthwave loop",
+      audioKind: "music",
+      durationSeconds: 10,
+    });
+
+    expect(result).toMatchObject({ url: "https://cdn/m2.mp3" });
+    expect(result).not.toHaveProperty("duration");
+    expect(postApiV1GenerateMusic).toHaveBeenCalledTimes(2);
+    // The retry dropped the rejected param.
+    expect(postApiV1GenerateMusic.mock.calls[0]?.[0]?.json?.durationSeconds).toBe(10);
+    expect(postApiV1GenerateMusic.mock.calls[1]?.[0]?.json?.durationSeconds).toBeUndefined();
+  });
+
+  it("does not strip durationSeconds for unrelated music failures", async () => {
+    const postApiV1GenerateMusic = vi
+      .fn()
+      .mockRejectedValue(new Error("music generation is not configured"));
+    setCloudMediaClientFactoryForTesting(() => ({
+      routes: { postApiV1GenerateVideo: vi.fn(), postApiV1GenerateMusic },
+    }));
+
+    await expect(
+      handleAudioGeneration(runtime(), {
+        prompt: "x",
+        audioKind: "music",
+        durationSeconds: 10,
+      })
+    ).rejects.toThrow("not configured");
+    expect(postApiV1GenerateMusic).toHaveBeenCalledTimes(1);
+  });
 });

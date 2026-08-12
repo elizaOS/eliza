@@ -11,6 +11,74 @@ import { fileURLToPath } from "node:url";
 const repoRoot = fileURLToPath(new URL("../../..", import.meta.url));
 const githubRoot = join(repoRoot, ".github");
 
+type WorkflowStep = {
+  if?: string;
+  name?: string;
+  run?: string;
+};
+
+const smokeBrowserInstallCommand =
+  "PLAYWRIGHT_INSTALL_CWD=packages/app .github/scripts/install-playwright-browsers.sh chromium webkit";
+
+// The e2e lane is split across two jobs: `smoke` shards the Playwright suite in
+// packages/app, and `smoke_lanes` runs the tasks that cannot be sharded — one of
+// which (@elizaos/ui#test:e2e) launches its own Chromium. Each job must install
+// the engines it launches; a job that inherits none dies at browserType.launch.
+const smokeLanesBrowserInstallCommand =
+  "PLAYWRIGHT_INSTALL_CWD=packages/ui .github/scripts/install-playwright-browsers.sh chromium";
+
+const smokeShardE2eCommand = "bun run --cwd packages/app test:e2e";
+const smokeLanesE2eCommand =
+  "bun run test:e2e --filter='^(?!.*packages/app\\)#test:e2e)'";
+
+const zeroKeyCondition = "needs.changes.outputs.zero_key == 'true'";
+
+function assertJobBrowserBootstrap(
+  steps: WorkflowStep[],
+  { job, install, e2e }: { job: string; install: string; e2e: string },
+): void {
+  const installIndex = steps.findIndex((step) => step.run === install);
+  const e2eIndex = steps.findIndex((step) => step.run === e2e);
+
+  if (installIndex < 0) {
+    throw new Error(`${job} must install the browser engines it launches`);
+  }
+  if (e2eIndex < 0) {
+    throw new Error(`${job} must retain the deterministic E2E command`);
+  }
+  if (installIndex >= e2eIndex) {
+    throw new Error(`${job} must install browsers before running E2E`);
+  }
+  if (
+    steps[installIndex]?.if !== zeroKeyCondition ||
+    steps[e2eIndex]?.if !== zeroKeyCondition
+  ) {
+    throw new Error(
+      `${job} browser bootstrap and E2E must share the zero-key condition`,
+    );
+  }
+}
+
+function assertSmokeE2eBrowserBootstrap(source: string): void {
+  const workflow = Bun.YAML.parse(source) as {
+    jobs?: {
+      smoke?: { steps?: WorkflowStep[] };
+      smoke_lanes?: { steps?: WorkflowStep[] };
+    };
+  };
+
+  assertJobBrowserBootstrap(workflow.jobs?.smoke?.steps ?? [], {
+    job: "Smoke",
+    install: smokeBrowserInstallCommand,
+    e2e: smokeShardE2eCommand,
+  });
+  assertJobBrowserBootstrap(workflow.jobs?.smoke_lanes?.steps ?? [], {
+    job: "Smoke lanes",
+    install: smokeLanesBrowserInstallCommand,
+    e2e: smokeLanesE2eCommand,
+  });
+}
+
 function collectYamlFiles(directory: string): string[] {
   return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
     const path = join(directory, entry.name);
@@ -127,16 +195,54 @@ describe("GitHub action supply-chain references", () => {
     );
   });
 
+  test("installs both app browser engines before deterministic smoke E2E", () => {
+    const source = readFileSync(
+      join(githubRoot, "workflows", "ci.yml"),
+      "utf8",
+    );
+
+    expect(() => assertSmokeE2eBrowserBootstrap(source)).not.toThrow();
+    expect(() =>
+      assertSmokeE2eBrowserBootstrap(
+        source.replace(
+          smokeBrowserInstallCommand,
+          "echo browser-install-removed",
+        ),
+      ),
+    ).toThrow("Smoke must install the browser engines it launches");
+
+    expect(() =>
+      assertSmokeE2eBrowserBootstrap(
+        source.replace(
+          smokeLanesBrowserInstallCommand,
+          "echo lanes-browser-install-removed",
+        ),
+      ),
+    ).toThrow("Smoke lanes must install the browser engines it launches");
+
+    const installStep = `      - name: Install Playwright browsers
+        if: needs.changes.outputs.zero_key == 'true'
+        run: ${smokeBrowserInstallCommand}
+
+`;
+    const afterE2e = source
+      .replace(installStep, "")
+      .replace(
+        `        run: ${smokeShardE2eCommand}\n`,
+        (command) => `${command}\n${installStep}`,
+      );
+    expect(() => assertSmokeE2eBrowserBootstrap(afterE2e)).toThrow(
+      "Smoke must install browsers before running E2E",
+    );
+  });
+
   test("provisions homepage Chromium without requiring self-hosted sudo", () => {
     const source = readFileSync(
       join(githubRoot, "workflows", "quality.yml"),
       "utf8",
     );
     const workflow = Bun.YAML.parse(source) as {
-      jobs?: Record<
-        string,
-        { "runs-on"?: string; "timeout-minutes"?: number }
-      >;
+      jobs?: Record<string, { "runs-on"?: string; "timeout-minutes"?: number }>;
     };
     const job = workflow.jobs?.["homepage-build"];
     const formatGate = workflow.jobs?.["format-check"];

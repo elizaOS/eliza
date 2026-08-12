@@ -34,16 +34,12 @@ import fs from "node:fs/promises";
 import type { Server as HttpServer, IncomingMessage } from "node:http";
 import path from "node:path";
 import type { Duplex } from "node:stream";
-import type { AgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import {
 	computeGenerationThroughput,
 	type GenerationThroughput,
 } from "@elizaos/shared/local-inference";
-import type {
-	LocalInferenceLoadArgs,
-	LocalInferenceLoader,
-} from "./active-model";
+import type { LocalInferenceLoadArgs } from "./active-model";
 import { localInferenceRoot } from "./paths";
 
 const DEFAULT_CALL_TIMEOUT_MS = 60_000;
@@ -1205,33 +1201,4 @@ export function buildDeviceResourceMetricsDevPayload(
 		latest: bridge.latestGenerationMetrics(),
 		recentGenerations: bridge.recentGenerationMetrics(limit),
 	};
-}
-
-export function registerDeviceBridgeLoader(
-	runtime: AgentRuntime & {
-		registerService?: (name: string, impl: unknown) => unknown;
-	},
-): void {
-	if (typeof runtime.registerService !== "function") return;
-	const loader: LocalInferenceLoader = {
-		async loadModel(args: LocalInferenceLoadArgs) {
-			await deviceBridge.loadModel(args);
-		},
-		async unloadModel() {
-			await deviceBridge.unloadModel();
-		},
-		currentModelPath() {
-			return deviceBridge.currentModelPath();
-		},
-		async generate(args) {
-			return deviceBridge.generate(args);
-		},
-		async embed(args) {
-			return deviceBridge.embed(args);
-		},
-	};
-	runtime.registerService("localInferenceLoader", loader);
-	logger.info(
-		"[device-bridge] Registered device-bridge loader for remote on-device inference",
-	);
 }

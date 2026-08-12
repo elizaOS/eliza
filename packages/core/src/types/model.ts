@@ -1258,6 +1258,14 @@ export interface ResearchParams {
 	background?: boolean;
 
 	/**
+	 * Optional cancellation signal for the provider request.
+	 * The first-party research providers combine it with their configured
+	 * request timeout, so either caller cancellation or the deadline aborts the
+	 * underlying request.
+	 */
+	signal?: AbortSignal;
+
+	/**
 	 * Array of tools/data sources for the research model.
 	 * Must include at least one data source: web_search_preview, file_search, or mcp.
 	 * Can also include code_interpreter for data analysis.

@@ -16,6 +16,9 @@ name: Cloud CF Deploy
 # Per environment (both projects):
 # - push to develop  -> staging   (api-staging.elizacloud.ai; staging.* / app-staging.*)
 # - push to main     -> production (api.elizacloud.ai; elizacloud.ai / app.elizacloud.ai)
+# - pull_request     -> build isolated Pages artifacts without credentials;
+#                       `.github/workflows/cloud-cf-pr-preview-deploy.yml`
+#                       performs the trusted `pr-<number>` deployment afterward.
 #
 # Required repo secrets:
 #   CLOUDFLARE_API_TOKEN   - account-scoped token with Workers + Pages edit perms
@@ -51,6 +54,20 @@ on:
       - "packages/app-core/**"
       - "packages/ui/**"
       - ".github/workflows/cloud-cf-deploy.yml"
+      - ".github/workflows/cloud-cf-pr-preview-deploy.yml"
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - "packages/cloud/api/**"
+      - "packages/cloud/shared/**"
+      - "packages/cloud/services/**"
+      - "packages/cloud/sdk/**"
+      - "packages/cloud/scripts/**"
+      - "packages/app/**"
+      - "packages/app-core/**"
+      - "packages/ui/**"
+      - ".github/workflows/cloud-cf-deploy.yml"
+      - ".github/workflows/cloud-cf-pr-preview-deploy.yml"
   workflow_dispatch:
     inputs:
       environment:
@@ -510,8 +527,47 @@ jobs:
             fi
           fi
 
-      - name: Publish Worker AI secrets
+      # Freshness must be resolved BEFORE any Worker secret mutation. A stale
+      # zombie run is not allowed to toggle the currently served QA auth
+      # surface even when its eventual code deploy would have been skipped.
+      - name: Deploy freshness guard
+        id: freshness
         if: steps.cf.outputs.configured == 'true'
+        working-directory: ${{ env.CHECKOUT_DIR }}
+        env:
+          SERVED_URL: ${{ steps.env.outputs.deploy_environment == 'production' && 'https://api.elizacloud.ai' || 'https://api-staging.elizacloud.ai' }}
+          FORCE: ${{ github.event_name == 'workflow_dispatch' && inputs.force == true }}
+        run: |
+          args=(--run-sha "$GITHUB_SHA" --served-url "$SERVED_URL" --served-path /api/health)
+          if [ "$FORCE" = "true" ]; then
+            args+=(--force)
+          fi
+          node packages/cloud/scripts/deploy-freshness-guard-cli.mjs "${args[@]}"
+
+      - name: Disable staging session exchange before cutover
+        if: steps.cf.outputs.configured == 'true' && steps.freshness.outputs.should_deploy == 'true' && steps.env.outputs.deploy_environment == 'staging'
+        working-directory: ${{ env.CHECKOUT_DIR }}/packages/cloud/api
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3; do
+            if output=$(bunx wrangler secret delete STAGING_SESSION_EXCHANGE_ENABLED --env staging 2>&1); then
+              echo "Staging session exchange is off before config validation or deploy."
+              exit 0
+            fi
+            if printf '%s' "$output" | grep -qi "not found"; then
+              echo "Staging session exchange was already off before cutover."
+              exit 0
+            fi
+            [ "$attempt" -lt 3 ] && sleep 10
+          done
+          echo "::error::Could not confirm staging session exchange is off before cutover"
+          exit 1
+
+      - name: Publish Worker AI secrets
+        if: steps.cf.outputs.configured == 'true' && steps.freshness.outputs.should_deploy == 'true'
         working-directory: ${{ env.CHECKOUT_DIR }}/packages/cloud/api
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
@@ -583,12 +639,28 @@ jobs:
           # voice bridge. Production MUST use the dedicated authorization and
           # can never fall back to a repository-wide Cloud key.
           STAGING_ELIZACLOUD_API_KEY: ${{ steps.env.outputs.deploy_environment == 'staging' && secrets.ELIZACLOUD_API_KEY || '' }}
+          # Disabled-by-default staging QA browser-session bridge. Desired
+          # state is NOT published directly: the step first forces the live
+          # gate off, publishes the versioned config, and activation happens
+          # only after exact-commit deploy proof.
+          STAGING_SESSION_EXCHANGE_DESIRED_ENABLED: ${{ steps.env.outputs.deploy_environment == 'staging' && contains(fromJSON('["1","true","TRUE","True","yes","YES","Yes","on","ON","On"]'), vars.STAGING_SESSION_EXCHANGE_ENABLED) && 'true' || 'false' }}
+          STAGING_SESSION_EXCHANGE_VERSION: "v1"
+          STAGING_SESSION_EXCHANGE_SIGNING_SECRET: ${{ steps.env.outputs.deploy_environment == 'staging' && secrets.STAGING_SESSION_EXCHANGE_SIGNING_SECRET || '' }}
+          # Value is used only for collision validation; this workflow does not
+          # publish or mutate the pre-existing service bridge credential.
+          ELIZA_SERVICE_JWT_SECRET: ${{ steps.env.outputs.deploy_environment == 'staging' && secrets.ELIZA_SERVICE_JWT_SECRET || '' }}
+          STAGING_SESSION_EXCHANGE_SIGNING_KEY_ID: ${{ steps.env.outputs.deploy_environment == 'staging' && vars.STAGING_SESSION_EXCHANGE_SIGNING_KEY_ID || '' }}
+          STAGING_SESSION_EXCHANGE_ALLOWED_API_KEY_IDS: ${{ steps.env.outputs.deploy_environment == 'staging' && secrets.STAGING_SESSION_EXCHANGE_ALLOWED_API_KEY_IDS || '' }}
+          STAGING_SESSION_EXCHANGE_ALLOWED_USER_IDS: ${{ steps.env.outputs.deploy_environment == 'staging' && secrets.STAGING_SESSION_EXCHANGE_ALLOWED_USER_IDS || '' }}
+          STAGING_SESSION_EXCHANGE_ALLOWED_ORGANIZATION_IDS: ${{ steps.env.outputs.deploy_environment == 'staging' && secrets.STAGING_SESSION_EXCHANGE_ALLOWED_ORGANIZATION_IDS || '' }}
           # Platform key the Worker forwards as X-Steward-Platform-Key so per-org
           # sandbox Steward tenants provision instead of collapsing onto the
           # shared default tenant (#11461). publish_secret no-ops with a notice
           # while unset, so this is safe before ops adds the GH env secret and
           # keeps it published on every redeploy once they do.
           STEWARD_PLATFORM_KEYS: ${{ secrets.STEWARD_PLATFORM_KEYS }}
+          ELIZA_APP_WEBHOOK_GATEWAY_URL: ${{ vars.ELIZA_APP_WEBHOOK_GATEWAY_URL }}
+          ELIZA_APP_WEBHOOK_GATEWAY_SECRET: ${{ secrets.ELIZA_APP_WEBHOOK_GATEWAY_SECRET }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
@@ -651,6 +723,11 @@ jobs:
               exit 1
             fi
           fi
+
+          # Value-safe validation: exact UUID allowlists, dedicated signing
+          # key/kid, and the code/runtime version are all required before the
+          # first QA-related Worker secret is touched.
+          node ../scripts/validate-staging-session-cutover.mjs
 
           # Fish is a separate, default-off promotion within realtime voice.
           # Refuse to advertise it unless its own credentials and the exact
@@ -770,6 +847,37 @@ jobs:
             return 1
           }
 
+          # QA cutover is OFF-FIRST. Secret mutations update the currently
+          # served Worker immediately, so remove the activation bit before
+          # changing any version, signer, or allowlist. If any later config or
+          # code deploy fails, the served feature remains absent.
+          STAGING_SESSION_EXCHANGE_ENABLED=""
+          export STAGING_SESSION_EXCHANGE_ENABLED
+          publish_toggle_secret STAGING_SESSION_EXCHANGE_ENABLED || exit 1
+
+          staging_session_config_names=(
+            STAGING_SESSION_EXCHANGE_VERSION
+            STAGING_SESSION_EXCHANGE_SIGNING_SECRET
+            STAGING_SESSION_EXCHANGE_SIGNING_KEY_ID
+            STAGING_SESSION_EXCHANGE_ALLOWED_API_KEY_IDS
+            STAGING_SESSION_EXCHANGE_ALLOWED_USER_IDS
+            STAGING_SESSION_EXCHANGE_ALLOWED_ORGANIZATION_IDS
+          )
+          if [ "$DEPLOY_ENVIRONMENT" = "staging" ] && \
+             is_truthy "$STAGING_SESSION_EXCHANGE_DESIRED_ENABLED"; then
+            for name in "${staging_session_config_names[@]}"; do
+              publish_toggle_secret "$name" || exit 1
+            done
+          else
+            # Disabled/non-staging environments retain no stale QA signer or
+            # allowlist. Deletion happens only after the gate is already off.
+            for name in "${staging_session_config_names[@]}"; do
+              printf -v "$name" '%s' ""
+              export "${name?}"
+              publish_toggle_secret "$name" || exit 1
+            done
+          fi
+
           for name in \
             OPENROUTER_API_KEY \
             OPENAI_API_KEY \
@@ -788,7 +896,8 @@ jobs:
             FISH_AUDIO_API_KEY \
             FISH_AUDIO_REFERENCE_ID \
             VOICE_REALTIME_ELIZA_AUTHORIZATION \
-            STEWARD_PLATFORM_KEYS
+            STEWARD_PLATFORM_KEYS \
+            ELIZA_APP_WEBHOOK_GATEWAY_SECRET
           do
             publish_secret "$name"
           done
@@ -801,27 +910,11 @@ jobs:
             CARTESIA_VOICE_ID \
             WHISPER_STT_URL \
             WHISPER_STT_MODEL \
-            VOICE_BATCH_STT_PROVIDER
+            VOICE_BATCH_STT_PROVIDER \
+            ELIZA_APP_WEBHOOK_GATEWAY_URL
           do
             publish_toggle_secret "$name" || exit 1
           done
-
-      # Freshness guard (#14083): skip a stale Worker deploy about to roll the
-      # API back behind the currently-served `/api/health` commit stamp.
-      # Fail-open on missing/old stamps; force=true bypasses for rollbacks.
-      - name: Deploy freshness guard
-        id: freshness
-        if: steps.cf.outputs.configured == 'true'
-        working-directory: ${{ env.CHECKOUT_DIR }}
-        env:
-          SERVED_URL: ${{ steps.env.outputs.deploy_environment == 'production' && 'https://api.elizacloud.ai' || 'https://api-staging.elizacloud.ai' }}
-          FORCE: ${{ github.event_name == 'workflow_dispatch' && inputs.force == true }}
-        run: |
-          args=(--run-sha "$GITHUB_SHA" --served-url "$SERVED_URL" --served-path /api/health)
-          if [ "$FORCE" = "true" ]; then
-            args+=(--force)
-          fi
-          node packages/cloud/scripts/deploy-freshness-guard-cli.mjs "${args[@]}"
 
       - name: Deploy to Cloudflare Workers
         if: steps.cf.outputs.configured == 'true' && steps.freshness.outputs.should_deploy == 'true'
@@ -829,6 +922,8 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          DEPLOY_ENVIRONMENT: ${{ steps.env.outputs.deploy_environment }}
+          STAGING_ONBOARDING_LOGIN_APP_URL: https://staging.eliza.app
           KOKORO_TTS_URL: ${{ vars.ELIZA_VOICE_KOKORO_TTS_URL }}
           VOICE_REALTIME_WS_ENABLED: ${{ steps.env.outputs.deploy_environment != 'production' && contains(fromJSON('["1","true","TRUE","True","yes","YES","Yes","on","ON","On"]'), vars.VOICE_REALTIME_WS_ENABLED) && 'true' || 'false' }}
           ELIZA_TTS_FISH_ENABLED: ${{ steps.env.outputs.deploy_environment != 'production' && contains(fromJSON('["1","true","TRUE","True","yes","YES","Yes","on","ON","On"]'), vars.ELIZA_TTS_FISH_ENABLED) && 'true' || 'false' }}
@@ -837,13 +932,52 @@ jobs:
           FISH_AUDIO_SAMPLE_RATE: "16000"
           FISH_AUDIO_FIRST_AUDIO_TIMEOUT_MS: ${{ vars.FISH_AUDIO_FIRST_AUDIO_TIMEOUT_MS || '1500' }}
         run: |
+          legacy_onboarding_secret_removed=false
+          restore_legacy_onboarding_secrets() {
+            if [ "$legacy_onboarding_secret_removed" != "true" ]; then
+              return
+            fi
+            echo "::warning::Worker deploy failed after retiring legacy onboarding URL secrets; restoring the staging value."
+            for name in ELIZA_ONBOARDING_LOGIN_APP_URL ELIZA_APP_ONBOARDING_LOGIN_APP_URL; do
+              if ! printf '%s' "$STAGING_ONBOARDING_LOGIN_APP_URL" | bunx wrangler secret put "$name" --env staging; then
+                echo "::error::Failed to restore legacy staging binding $name; staging onboarding CTA configuration requires operator repair."
+              fi
+            done
+          }
+
+          delete_legacy_onboarding_secret() {
+            local name="$1"
+            local output=""
+            for attempt in 1 2 3; do
+              if output=$(bunx wrangler secret delete "$name" --env staging 2>&1); then
+                legacy_onboarding_secret_removed=true
+                echo "Retired legacy staging secret binding $name."
+                return 0
+              fi
+              if printf '%s' "$output" | grep -qi "not found"; then
+                echo "Legacy staging secret binding $name is already absent."
+                return 0
+              fi
+              [ "$attempt" -lt 3 ] && sleep 10
+            done
+            printf '%s\n' "$output" >&2
+            echo "::error::Could not retire legacy staging secret binding $name."
+            return 1
+          }
+
           args=(${{ steps.env.outputs.wrangler_args }} --var ELIZA_DEPLOY_COMMIT:"$GITHUB_SHA" --var VOICE_REALTIME_WS_ENABLED:"$VOICE_REALTIME_WS_ENABLED" --var ELIZA_TTS_FISH_ENABLED:"$ELIZA_TTS_FISH_ENABLED" --var FISH_AUDIO_DATA_GOVERNANCE_APPROVED:"$FISH_AUDIO_DATA_GOVERNANCE_APPROVED" --var FISH_AUDIO_MODEL:"$FISH_AUDIO_MODEL" --var FISH_AUDIO_SAMPLE_RATE:"$FISH_AUDIO_SAMPLE_RATE" --var FISH_AUDIO_FIRST_AUDIO_TIMEOUT_MS:"$FISH_AUDIO_FIRST_AUDIO_TIMEOUT_MS")
           if [ -n "${KOKORO_TTS_URL:-}" ]; then
             args+=(--var KOKORO_TTS_URL:"$KOKORO_TTS_URL")
           else
             echo "::notice::ELIZA_VOICE_KOKORO_TTS_URL is not configured; deploying without KOKORO_TTS_URL"
           fi
+          if [ "$DEPLOY_ENVIRONMENT" = "staging" ]; then
+            trap restore_legacy_onboarding_secrets ERR
+            delete_legacy_onboarding_secret ELIZA_ONBOARDING_LOGIN_APP_URL
+            delete_legacy_onboarding_secret ELIZA_APP_ONBOARDING_LOGIN_APP_URL
+          fi
           bunx wrangler deploy "${args[@]}"
+          trap - ERR
 
       - name: Verify deployed API commit
         if: steps.cf.outputs.configured == 'true' && steps.freshness.outputs.should_deploy == 'true'
@@ -879,6 +1013,108 @@ jobs:
           echo "::error::API health did not serve the deployed commit ${expected_commit} for ${expected_environment}."
           exit 1
 
+      - name: Activate and verify staging session exchange after deploy proof
+        if: steps.cf.outputs.configured == 'true' && steps.freshness.outputs.should_deploy == 'true' && steps.env.outputs.deploy_environment == 'staging'
+        working-directory: ${{ env.CHECKOUT_DIR }}/packages/cloud/api
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          STAGING_SESSION_EXCHANGE_DESIRED_ENABLED: ${{ contains(fromJSON('["1","true","TRUE","True","yes","YES","Yes","on","ON","On"]'), vars.STAGING_SESSION_EXCHANGE_ENABLED) && 'true' || 'false' }}
+        run: |
+          set -euo pipefail
+          health_url="https://api-staging.elizacloud.ai/api/health"
+          expected_enabled="$STAGING_SESSION_EXCHANGE_DESIRED_ENABLED"
+
+          rollback_gate() {
+            local output
+            for attempt in 1 2 3; do
+              if output=$(bunx wrangler secret delete STAGING_SESSION_EXCHANGE_ENABLED --env staging 2>&1); then
+                echo "Staging session exchange activation is off."
+                return 0
+              fi
+              if printf '%s' "$output" | grep -qi "not found"; then
+                echo "Staging session exchange activation was already off."
+                return 0
+              fi
+              [ "$attempt" -lt 3 ] && sleep 10
+            done
+            return 1
+          }
+
+          # Keep an EXIT/interrupt rollback armed across the activation/proof
+          # boundary. A secret-put can reach Cloudflare yet return an ambiguous
+          # transport failure; the health beacon, not the CLI exit code, is the
+          # authority, and every unproven exit returns the served gate to off.
+          rollback_needed=true
+          rollback_on_unproven_exit() {
+            local status=$?
+            if [ "$rollback_needed" = "true" ]; then
+              if ! rollback_gate; then
+                echo "::error::Unproven cutover exited and activation rollback could not be confirmed"
+              fi
+            fi
+            return "$status"
+          }
+          trap rollback_on_unproven_exit EXIT
+          trap 'exit 1' INT TERM
+
+          if [ "$expected_enabled" = "true" ]; then
+            activation_cli_confirmed=false
+            for attempt in 1 2 3; do
+              if printf '%s' 'true' | bunx wrangler secret put STAGING_SESSION_EXCHANGE_ENABLED --env staging; then
+                activation_cli_confirmed=true
+                break
+              fi
+              [ "$attempt" -lt 3 ] && sleep 10
+            done
+            if [ "$activation_cli_confirmed" != "true" ]; then
+              echo "::warning::Activation CLI result was ambiguous; requiring served-state proof"
+            fi
+          else
+            echo "Staging session exchange remains disabled pending served-state proof."
+          fi
+
+          for attempt in 1 2 3 4 5 6; do
+            tmp="$(mktemp)"
+            code="$(curl -sS -o "$tmp" -w '%{http_code}' -m 20 "$health_url" || echo '000')"
+            if [ "$code" = "200" ] && node - "$tmp" "$GITHUB_SHA" "$expected_enabled" <<'NODE'
+          const fs = require("fs");
+          const [path, expectedCommit, expectedEnabled] = process.argv.slice(2);
+          const body = JSON.parse(fs.readFileSync(path, "utf8"));
+          const status = body.stagingSessionExchange;
+          const enabled = status?.enabled === true;
+          const expected = expectedEnabled === "true";
+          if (
+            body.commit !== expectedCommit ||
+            body.environment !== "staging" ||
+            enabled !== expected ||
+            (expected && (status?.ready !== true || status?.version !== "v1")) ||
+            (!expected && status?.ready !== false)
+          ) {
+            process.exit(1);
+          }
+          NODE
+            then
+              rm -f "$tmp"
+              rollback_needed=false
+              echo "Staging session exchange cutover matches the exact deployed commit and desired state."
+              exit 0
+            fi
+            rm -f "$tmp"
+            [ "$attempt" -lt 6 ] && sleep 10
+          done
+
+          # Any mismatch, including an unexpected enable while desired state is
+          # off, is rolled back. Keep versioned config for diagnosis only.
+          if rollback_gate; then
+            rollback_needed=false
+            echo "::warning::Cutover proof failed; staging session exchange was rolled back off"
+          else
+            echo "::error::Cutover proof failed and activation rollback could not be confirmed"
+          fi
+          echo "::error::Staging session exchange cutover proof failed"
+          exit 1
+
       - name: Clean temp checkout
         if: always()
         working-directory: /tmp
@@ -900,8 +1136,47 @@ jobs:
     if: ${{ !cancelled() && (needs.migrate-db.result == 'success' || (github.event_name == 'pull_request' && needs.migrate-db.result == 'skipped')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    # GitHub preserves outputs from successful jobs when only failed jobs are
+    # rerun. Consumers must therefore use the producer's attempt, not their own
+    # newer github.run_attempt. A full rerun executes this job again and emits
+    # the new attempt, so its deploy jobs consume the newly built artifacts.
+    outputs:
+      artifact_run_id: ${{ steps.pages-artifact.outputs.run_id }}
+      artifact_run_attempt: ${{ steps.pages-artifact.outputs.run_attempt }}
+      artifact_source_sha: ${{ steps.pages-artifact.outputs.source_sha }}
     steps:
+      - name: Validate PR preview identity
+        if: github.event_name == 'pull_request'
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          if ! [[ "$PR_NUMBER" =~ ^[1-9][0-9]*$ ]]; then
+            echo "::error::Pull-request Pages branch requires a valid immutable PR number"
+            exit 1
+          fi
+          pages_branch="pr-${PR_NUMBER}"
+          case "$pages_branch" in
+            main|develop)
+              echo "::error::Pull-request Pages branch may not target canonical branch $pages_branch"
+              exit 1
+              ;;
+          esac
+          echo "Pages artifacts are bound to trusted preview branch ${pages_branch}." >> "$GITHUB_STEP_SUMMARY"
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      - name: Bind Pages artifacts to this producer attempt
+        id: pages-artifact
+        env:
+          PRODUCER_RUN_ID: ${{ github.run_id }}
+          PRODUCER_RUN_ATTEMPT: ${{ github.run_attempt }}
+          PRODUCER_SOURCE_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          echo "run_id=$PRODUCER_RUN_ID" >> "$GITHUB_OUTPUT"
+          echo "run_attempt=$PRODUCER_RUN_ATTEMPT" >> "$GITHUB_OUTPUT"
+          echo "source_sha=$PRODUCER_SOURCE_SHA" >> "$GITHUB_OUTPUT"
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
@@ -940,7 +1215,7 @@ jobs:
       - name: Upload console artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: pages-console-${{ github.run_id }}-${{ github.run_attempt }}
+          name: pages-console-${{ steps.pages-artifact.outputs.run_id }}-${{ steps.pages-artifact.outputs.run_attempt }}
           path: |
             packages/app/dist
             packages/app/functions
@@ -969,7 +1244,7 @@ jobs:
       - name: Upload app artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: pages-app-${{ github.run_id }}-${{ github.run_attempt }}
+          name: pages-app-${{ steps.pages-artifact.outputs.run_id }}-${{ steps.pages-artifact.outputs.run_attempt }}
           path: |
             packages/app/dist
             packages/app/functions
@@ -995,15 +1270,12 @@ jobs:
     # Hosted unconditionally to preserve CI/placement workload separation.
     runs-on: ubuntu-latest
     timeout-minutes: 75
-    # Schema gate (#11208): real (non-PR) deploys only run after migrate-db
-    # succeeded, so the frontend never goes live ahead of the schema its API
-    # features expect. PR previews are the ONE allowed skip: migrate-db is
-    # skipped on pull_request, and previews build against the staging API
-    # without repo secrets. `!cancelled()` overrides the implicit success()
-    # so the skipped-dependency preview case can run; everything else is
-    # fail-closed (failed/cancelled migrate-db -> this job is skipped).
-    needs: [migrate-db, build-pages]
-    if: ${{ !cancelled() && needs.build-pages.result == 'success' }}
+    # Release gate (#11208/#18088): build the Pages artifacts in parallel with
+    # the API, but do not move a canonical Pages alias until both the artifact
+    # and the matching API deployment have succeeded. Pull requests publish
+    # only through the separate trusted workflow_run consumer.
+    needs: [deploy-api, build-pages]
+    if: ${{ !cancelled() && github.event_name != 'pull_request' && needs.deploy-api.result == 'success' && needs.build-pages.result == 'success' }}
     env:
       CHECKOUT_DIR: /tmp/eliza-checkout-${{ github.run_id }}-${{ github.run_attempt }}-deploy-console
       CHECKOUT_MATERIALIZE_TIMEOUT_SECONDS: ${{ vars.CLOUD_CF_CHECKOUT_MATERIALIZE_TIMEOUT_SECONDS || '600' }}
@@ -1118,10 +1390,36 @@ jobs:
           # lookup during setup. See elizaOS/eliza#10839.
           bun-version: "1.3.14"
 
+      - name: Resolve immutable console artifact
+        id: pages-artifact
+        env:
+          PRODUCER_RUN_ID: ${{ needs.build-pages.outputs.artifact_run_id }}
+          PRODUCER_RUN_ATTEMPT: ${{ needs.build-pages.outputs.artifact_run_attempt }}
+          PRODUCER_SOURCE_SHA: ${{ needs.build-pages.outputs.artifact_source_sha }}
+        run: |
+          set -euo pipefail
+          if ! [[ "$PRODUCER_RUN_ID" =~ ^[1-9][0-9]*$ ]]; then
+            echo "::error::Pages producer run ID is missing or invalid"
+            exit 1
+          fi
+          if ! [[ "$PRODUCER_RUN_ATTEMPT" =~ ^[1-9][0-9]*$ ]]; then
+            echo "::error::Pages producer run attempt is missing or invalid"
+            exit 1
+          fi
+          if [ "$PRODUCER_RUN_ID" != "$GITHUB_RUN_ID" ]; then
+            echo "::error::Pages artifact run mismatch: producer=$PRODUCER_RUN_ID consumer=$GITHUB_RUN_ID"
+            exit 1
+          fi
+          if [ "$PRODUCER_SOURCE_SHA" != "$GITHUB_SHA" ]; then
+            echo "::error::Pages artifact SHA mismatch: producer=$PRODUCER_SOURCE_SHA consumer=$GITHUB_SHA"
+            exit 1
+          fi
+          echo "name=pages-console-${PRODUCER_RUN_ID}-${PRODUCER_RUN_ATTEMPT}" >> "$GITHUB_OUTPUT"
+
       - name: Download immutable console artifact
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
-          name: pages-console-${{ github.run_id }}-${{ github.run_attempt }}
+          name: ${{ steps.pages-artifact.outputs.name }}
           path: ${{ env.CHECKOUT_DIR }}/packages/app
 
       - name: Legacy inline fallback - install dependencies
@@ -1234,18 +1532,32 @@ jobs:
         id: pages
         working-directory: ${{ env.CHECKOUT_DIR }}
         env:
-          PR_HEAD_REF: ${{ github.head_ref }}
           EVENT_NAME: ${{ github.event_name }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          TARGET_ENVIRONMENT: ${{ inputs.environment }}
         run: |
+          set -euo pipefail
+
           if [ "$EVENT_NAME" = "pull_request" ]; then
-            echo "branch=$PR_HEAD_REF" >> "$GITHUB_OUTPUT"
-          elif [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.environment }}" = "production" ]; then
-            echo "branch=main" >> "$GITHUB_OUTPUT"
-          elif [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "branch=develop" >> "$GITHUB_OUTPUT"
+            if ! [[ "$PR_NUMBER" =~ ^[1-9][0-9]*$ ]]; then
+              echo "::error::Pull-request Pages branch requires a valid immutable PR number"
+              exit 1
+            fi
+            pages_branch="pr-${PR_NUMBER}"
+            case "$pages_branch" in
+              main|develop)
+                echo "::error::Pull-request Pages branch may not target canonical branch $pages_branch"
+                exit 1
+                ;;
+            esac
+          elif [ "$EVENT_NAME" = "workflow_dispatch" ] && [ "$TARGET_ENVIRONMENT" = "production" ]; then
+            pages_branch="main"
+          elif [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            pages_branch="develop"
           else
-            echo "branch=${GITHUB_REF#refs/heads/}" >> "$GITHUB_OUTPUT"
+            pages_branch="${GITHUB_REF#refs/heads/}"
           fi
+          echo "branch=$pages_branch" >> "$GITHUB_OUTPUT"
 
       - name: Check Cloudflare credentials
         id: cf
@@ -1261,7 +1573,6 @@ jobs:
             echo "configured=false" >> "$GITHUB_OUTPUT"
             MSG="CLOUDFLARE_API_TOKEN/CLOUDFLARE_ACCOUNT_ID not configured. Add them at https://github.com/elizaOS/eliza/settings/secrets/actions."
             if [ "$EVENT_NAME" = "pull_request" ]; then
-              # PRs from forks legitimately lack access to repo secrets.
               echo "::warning::$MSG Skipping Pages deploy (PR event)." >> "$GITHUB_STEP_SUMMARY"
             else
               echo "::error::$MSG Refusing to silently skip Pages deploy on $EVENT_NAME event." >> "$GITHUB_STEP_SUMMARY"
@@ -1398,20 +1709,19 @@ jobs:
   # ---------------------------------------------------------------------------
   deploy-app:
     name: Deploy App (Pages · app.elizacloud.ai)
-    # Per-env (or per-PR) job concurrency so a newer main promote queues behind
-    # the in-flight prod Pages deploy instead of cancelling it (#11640); PR
-    # previews keep a per-PR group that DOES dedupe (cancel-in-progress).
+    # Per-env concurrency so a newer main promote queues behind the in-flight
+    # prod Pages deploy instead of cancelling it (#11640).
     concurrency:
       group: cloud-cf-deploy-app-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || (((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'production' || 'staging') }}
       cancel-in-progress: ${{ github.event_name == 'pull_request' }}
     # Hosted unconditionally to preserve CI/placement workload separation.
     runs-on: ubuntu-latest
     timeout-minutes: 75
-    # Schema gate (#11208): same contract as deploy-console — non-PR deploys
-    # require a successful migrate-db; PR previews (migrate-db skipped) still
-    # run; failed/cancelled migrate-db skips this job (fail-closed).
-    needs: [migrate-db, build-pages]
-    if: ${{ !cancelled() && needs.build-pages.result == 'success' }}
+    # Release gate (#11208/#18088): same contract as deploy-console. Canonical
+    # Pages aliases wait for the matching API deployment; pull-request artifacts
+    # are consumed only by the separate trusted preview workflow.
+    needs: [deploy-api, build-pages]
+    if: ${{ !cancelled() && github.event_name != 'pull_request' && needs.deploy-api.result == 'success' && needs.build-pages.result == 'success' }}
     env:
       CHECKOUT_DIR: /tmp/eliza-checkout-${{ github.run_id }}-${{ github.run_attempt }}-deploy-app
       CHECKOUT_MATERIALIZE_TIMEOUT_SECONDS: ${{ vars.CLOUD_CF_CHECKOUT_MATERIALIZE_TIMEOUT_SECONDS || '600' }}
@@ -1526,10 +1836,36 @@ jobs:
           # lookup during setup. See elizaOS/eliza#10839.
           bun-version: "1.3.14"
 
+      - name: Resolve immutable app artifact
+        id: pages-artifact
+        env:
+          PRODUCER_RUN_ID: ${{ needs.build-pages.outputs.artifact_run_id }}
+          PRODUCER_RUN_ATTEMPT: ${{ needs.build-pages.outputs.artifact_run_attempt }}
+          PRODUCER_SOURCE_SHA: ${{ needs.build-pages.outputs.artifact_source_sha }}
+        run: |
+          set -euo pipefail
+          if ! [[ "$PRODUCER_RUN_ID" =~ ^[1-9][0-9]*$ ]]; then
+            echo "::error::Pages producer run ID is missing or invalid"
+            exit 1
+          fi
+          if ! [[ "$PRODUCER_RUN_ATTEMPT" =~ ^[1-9][0-9]*$ ]]; then
+            echo "::error::Pages producer run attempt is missing or invalid"
+            exit 1
+          fi
+          if [ "$PRODUCER_RUN_ID" != "$GITHUB_RUN_ID" ]; then
+            echo "::error::Pages artifact run mismatch: producer=$PRODUCER_RUN_ID consumer=$GITHUB_RUN_ID"
+            exit 1
+          fi
+          if [ "$PRODUCER_SOURCE_SHA" != "$GITHUB_SHA" ]; then
+            echo "::error::Pages artifact SHA mismatch: producer=$PRODUCER_SOURCE_SHA consumer=$GITHUB_SHA"
+            exit 1
+          fi
+          echo "name=pages-app-${PRODUCER_RUN_ID}-${PRODUCER_RUN_ATTEMPT}" >> "$GITHUB_OUTPUT"
+
       - name: Download immutable app artifact
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
-          name: pages-app-${{ github.run_id }}-${{ github.run_attempt }}
+          name: ${{ steps.pages-artifact.outputs.name }}
           path: ${{ env.CHECKOUT_DIR }}/packages/app
 
       - name: Legacy inline fallback - install dependencies
@@ -1624,18 +1960,32 @@ jobs:
         id: pages
         working-directory: ${{ env.CHECKOUT_DIR }}
         env:
-          PR_HEAD_REF: ${{ github.head_ref }}
           EVENT_NAME: ${{ github.event_name }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          TARGET_ENVIRONMENT: ${{ inputs.environment }}
         run: |
+          set -euo pipefail
+
           if [ "$EVENT_NAME" = "pull_request" ]; then
-            echo "branch=$PR_HEAD_REF" >> "$GITHUB_OUTPUT"
-          elif [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.environment }}" = "production" ]; then
-            echo "branch=main" >> "$GITHUB_OUTPUT"
-          elif [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "branch=develop" >> "$GITHUB_OUTPUT"
+            if ! [[ "$PR_NUMBER" =~ ^[1-9][0-9]*$ ]]; then
+              echo "::error::Pull-request Pages branch requires a valid immutable PR number"
+              exit 1
+            fi
+            pages_branch="pr-${PR_NUMBER}"
+            case "$pages_branch" in
+              main|develop)
+                echo "::error::Pull-request Pages branch may not target canonical branch $pages_branch"
+                exit 1
+                ;;
+            esac
+          elif [ "$EVENT_NAME" = "workflow_dispatch" ] && [ "$TARGET_ENVIRONMENT" = "production" ]; then
+            pages_branch="main"
+          elif [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            pages_branch="develop"
           else
-            echo "branch=${GITHUB_REF#refs/heads/}" >> "$GITHUB_OUTPUT"
+            pages_branch="${GITHUB_REF#refs/heads/}"
           fi
+          echo "branch=$pages_branch" >> "$GITHUB_OUTPUT"
 
       - name: Check Cloudflare credentials
         id: cf

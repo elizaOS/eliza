@@ -37,7 +37,11 @@ import {
 } from "../test/helpers/live-provider.ts";
 import { resolveMainAppDir } from "./lib/app-dir.mjs";
 import { shouldForceStubStack } from "./lib/ui-smoke-stub-decision.mjs";
-import { viteRendererBuildNeeded } from "./lib/vite-renderer-dist-stale.mjs";
+import {
+  rendererDistMatchesPlaywrightTestAuth,
+  resolvePlaywrightTestAuth,
+  viteRendererBuildNeeded,
+} from "./lib/vite-renderer-dist-stale.mjs";
 import {
   clearPendingWebSocketQueue,
   createPendingWebSocketQueueState,
@@ -75,6 +79,7 @@ const READY_TIMEOUT_MS = 180_000;
 const API_PORT = Number(process.env.ELIZA_UI_SMOKE_API_PORT ?? "31337");
 const UI_PORT = Number(process.env.ELIZA_UI_SMOKE_PORT ?? "2138");
 const UI_SMOKE_RUN_ID = process.env.ELIZA_UI_SMOKE_RUN_ID?.trim() ?? "";
+const EXPECTED_PLAYWRIGHT_TEST_AUTH = resolvePlaywrightTestAuth(APP_DIR);
 const LIVE_PROVIDER = await selectLiveProviderAsync();
 const REAL_LOCAL_STACK = process.env.ELIZA_UI_SMOKE_REAL_LOCAL_STACK === "1";
 const BACKEND_LOG_PATH = process.env.ELIZA_UI_SMOKE_BACKEND_LOG_PATH?.trim();
@@ -878,7 +883,9 @@ async function ensureUiDistReady(): Promise<void> {
 
   try {
     await access(distIndex);
-    needsBuild = viteRendererBuildNeeded(APP_DIR, REPO_ROOT);
+    needsBuild = viteRendererBuildNeeded(APP_DIR, REPO_ROOT, {
+      expectedPlaywrightTestAuth: EXPECTED_PLAYWRIGHT_TEST_AUTH,
+    });
   } catch {
     needsBuild = true;
   }
@@ -891,12 +898,22 @@ async function ensureUiDistReady(): Promise<void> {
   if (needsBuild && process.env.ELIZA_UI_SMOKE_SKIP_BUILD === "1") {
     try {
       await access(distIndex);
-      needsBuild = false;
     } catch {
       throw new Error(
         `ELIZA_UI_SMOKE_SKIP_BUILD=1 but no built renderer at ${distIndex}. Build once (bun run --cwd packages/app build:web) before skipping.`,
       );
     }
+    if (
+      !rendererDistMatchesPlaywrightTestAuth(
+        APP_DIR,
+        EXPECTED_PLAYWRIGHT_TEST_AUTH,
+      )
+    ) {
+      throw new Error(
+        `ELIZA_UI_SMOKE_SKIP_BUILD=1 but the renderer manifest does not match VITE_PLAYWRIGHT_TEST_AUTH=${EXPECTED_PLAYWRIGHT_TEST_AUTH}. Rebuild without ELIZA_UI_SMOKE_SKIP_BUILD=1.`,
+      );
+    }
+    needsBuild = false;
   }
 
   if (!needsBuild) {
@@ -941,6 +958,16 @@ async function ensureUiDistReady(): Promise<void> {
   if (child.exitCode !== 0) {
     throw new Error(
       `app renderer build failed (exit ${child.exitCode}).\n${logs.join("").slice(-8_000)}`,
+    );
+  }
+  if (
+    !rendererDistMatchesPlaywrightTestAuth(
+      APP_DIR,
+      EXPECTED_PLAYWRIGHT_TEST_AUTH,
+    )
+  ) {
+    throw new Error(
+      `Renderer build completed with a manifest that does not match VITE_PLAYWRIGHT_TEST_AUTH=${EXPECTED_PLAYWRIGHT_TEST_AUTH}.`,
     );
   }
 }

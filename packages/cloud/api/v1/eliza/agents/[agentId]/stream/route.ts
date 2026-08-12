@@ -8,6 +8,7 @@ import { Hono } from "hono";
 import { z } from "zod";
 import type { AgentSandbox } from "@/db/repositories/agent-sandboxes";
 import { errorToResponse, ValidationError } from "@/lib/api/errors";
+import { chatSseFrame } from "@/lib/services/chat-sse-frames";
 import type { BridgeRequest } from "@/lib/services/eliza-sandbox-bridge";
 import { applyCorsHeaders, handleCorsOptions } from "@/lib/services/proxy/cors";
 import { coordinateSharedStream } from "@/lib/services/shared-runtime/conversation-coordinator";
@@ -109,7 +110,9 @@ async function __hono_POST(
       (async () => {
         await writer.write(
           encoder.encode(
-            `event: error\ndata: ${JSON.stringify({ message: "Sandbox is not running or unreachable" })}\n\n`,
+            chatSseFrame("error", {
+              message: "Sandbox is not running or unreachable",
+            }),
           ),
         );
         await writer.close();
