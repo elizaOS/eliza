@@ -11,8 +11,11 @@ This package owns one intentionally focused Cloud surface:
 
 The persisted schema retains a derived first-line label plus body for stable
 lookup and compatibility with existing notes. That split is deterministic:
-planner capabilities accept one `content` value and never ask a model to invent
-a separate title or summary. The view renders the combined content as one field.
+`create-note` and `update-note` accept one `content` value (the view renders it
+as one field); `get-note`, `update-note`, and `delete-note` accept exactly one
+selector `id` (stable), `title` (exact first-line label, strict), or `query`
+(unique contained text). Never ask a model to invent a separate title or
+summary, and never infer a destructive selector from free-form payload text.
 
 Managed dedicated agents load the runtime plugin through the `lean-chat`
 profile. The app build loads `src/register.ts` through the manifest-driven app
