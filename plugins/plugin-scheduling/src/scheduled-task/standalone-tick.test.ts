@@ -15,7 +15,13 @@
  *  - one throwing row does not starve the rest of the tick
  */
 
-import type { IAgentRuntime, Task, TaskWorker, UUID } from "@elizaos/core";
+import {
+  type IAgentRuntime,
+  ServiceType,
+  type Task,
+  type TaskWorker,
+  type UUID,
+} from "@elizaos/core";
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
@@ -34,7 +40,10 @@ import {
 function makeFakeRuntime(): IAgentRuntime {
   return {
     agentId: "00000000-0000-0000-0000-0000000000t1" as UUID,
-    getService: () => null,
+    getService: (type: string) =>
+      type === ServiceType.NOTIFICATION
+        ? { notify: async () => undefined }
+        : null,
     // Default dispatcher renders promptInstructions through the model before
     // notifying; a deterministic stub keeps fires succeeding.
     useModel: async () => "Rendered dispatch message.",
@@ -45,8 +54,11 @@ function makeFakeRuntime(): IAgentRuntime {
 /** Bind the started service into the runtime's getService lookup. */
 async function startServiceOn(runtime: IAgentRuntime) {
   const service = await ScheduledTaskRunnerService.start(runtime);
+  const previousGetService = runtime.getService.bind(runtime);
   (runtime as { getService: unknown }).getService = (type: string) =>
-    type === ScheduledTaskRunnerService.serviceType ? service : null;
+    type === ScheduledTaskRunnerService.serviceType
+      ? service
+      : previousGetService(type);
   return service;
 }
 

@@ -81,20 +81,36 @@ test("landing permits a trusted browser pinch while retaining horizontal swipe",
   const page = await context.newPage();
   await page.goto("/", { waitUntil: "domcontentloaded" });
 
-  const session = await context.newCDPSession(page);
-  await session.send("Input.synthesizePinchGesture", {
-    x: 195,
-    y: 422,
-    scaleFactor: 2,
-    relativeSpeed: 800,
-    gestureSourceType: "touch",
+  // Pinch permission is a declarative contract (viewport meta + effective
+  // touch-action). CDP Input.synthesizePinchGesture cannot move
+  // visualViewport.scale under the headless shell compositor, so polling the
+  // scale deadlocks in CI (three 60s timeouts per run since this spec landed).
+  // Assert the two things that actually broke in the original regression:
+  // 1. No zoom-blocking viewport meta (user-scalable=no / maximum-scale).
+  const viewportContent = await page
+    .locator('meta[name="viewport"]')
+    .getAttribute("content");
+  expect(viewportContent ?? "").not.toMatch(
+    /user-scalable\s*=\s*(no|0)|maximum-scale/i,
+  );
+  // 2. The effective touch-action at the swipe surface permits pinch-zoom
+  //    (the regression was `touch-action: pan-y` on the landing root, which
+  //    disables browser pinch entirely).
+  const effectiveTouchAction = await page.evaluate(() => {
+    let node = document.elementFromPoint(195, 422) as Element | null;
+    while (node) {
+      const touchAction = getComputedStyle(node).touchAction;
+      if (touchAction !== "auto") return touchAction;
+      node = node.parentElement;
+    }
+    return "auto";
   });
+  expect(
+    effectiveTouchAction === "auto" ||
+      /pinch-zoom|manipulation/.test(effectiveTouchAction),
+  ).toBe(true);
 
-  await expect
-    .poll(() => page.evaluate(() => window.visualViewport?.scale ?? 1))
-    .toBeGreaterThanOrEqual(1.9);
-
-  await session.send("Emulation.setPageScaleFactor", { pageScaleFactor: 1 });
+  const session = await context.newCDPSession(page);
   const telegram = page.getByRole("button", { name: "Telegram" });
   await expect(telegram).toHaveAttribute("aria-pressed", "false");
   await session.send("Input.dispatchTouchEvent", {

@@ -135,6 +135,7 @@ import _route_health_route from "../health/route";
 import _route_internal_auth_refresh_route from "../internal/auth/refresh/route";
 import _route_internal_auth_token_route from "../internal/auth/token/route";
 import _route_internal_discord_eliza_app_messages_route from "../internal/discord/eliza-app/messages/route";
+import _route_internal_discord_eliza_app_pending_greetings_route from "../internal/discord/eliza-app/pending-greetings/route";
 import _route_internal_discord_events_route from "../internal/discord/events/route";
 import _route_internal_discord_gateway_assignments_route from "../internal/discord/gateway/assignments/route";
 import _route_internal_discord_gateway_failover_route from "../internal/discord/gateway/failover/route";
@@ -978,6 +979,10 @@ export function mountRoutes(app: Hono<AppEnv>): void {
   app.route(
     "/api/internal/discord/eliza-app/messages",
     _route_internal_discord_eliza_app_messages_route,
+  );
+  app.route(
+    "/api/internal/discord/eliza-app/pending-greetings",
+    _route_internal_discord_eliza_app_pending_greetings_route,
   );
   app.route(
     "/api/internal/discord/events",

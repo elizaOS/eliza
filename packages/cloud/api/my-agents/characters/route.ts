@@ -51,6 +51,8 @@ app.get("/", async (c) => {
     // (unlike marketplace/public search). See elizaOS/eliza#18339 review.
     const sortOptions = { sortBy, order, pinFeatured: false as const };
 
+    // Push filtering, sorting, and pagination to the DB so we never fetch
+    // the entire characters table into memory. Run count and page in parallel.
     const [totalCount, paginatedCharacters] = await Promise.all([
       userCharactersRepository.count(filters, user.id, user.organization_id),
       userCharactersRepository.search(
