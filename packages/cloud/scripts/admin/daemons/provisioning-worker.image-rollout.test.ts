@@ -7,6 +7,7 @@
 
 import { afterEach, describe, expect, mock, spyOn, test } from "bun:test";
 import { fileURLToPath } from "node:url";
+import { DEFAULT_WARM_POOL_POLICY } from "@elizaos/cloud-shared/lib/services/containers/agent-warm-pool-forecast";
 import {
   __setDepsForTests,
   processFleetUpgradeCycle,
@@ -36,6 +37,7 @@ function installDeps(
     jobsRepository: { countInFlightByTypes },
     agentSandboxesRepository: { listRunningWithDigestOtherThan },
     provisioningJobService: { enqueueAgentUpgradeOnce },
+    envWarmPoolPolicy: () => DEFAULT_WARM_POOL_POLICY,
     logger: { warn: mock(() => {}) },
   } as unknown as Parameters<typeof __setDepsForTests>[0]);
   return {
@@ -300,6 +302,7 @@ describe("real one-shot daemon entrypoint", () => {
       },
       "@elizaos/cloud-shared/lib/services/containers/agent-warm-pool": {
         WarmPoolManager: OneShotWarmPoolManager,
+        envWarmPoolPolicy: () => DEFAULT_WARM_POOL_POLICY,
       },
       "@elizaos/cloud-shared/lib/services/containers/agent-warm-pool-creator": {
         getHetznerPoolContainerCreator: () => ({ kind: "deterministic" }),

@@ -10,6 +10,7 @@
  */
 
 import { afterEach, describe, expect, mock, test } from "bun:test";
+import { DEFAULT_WARM_POOL_POLICY } from "@elizaos/cloud-shared/lib/services/containers/agent-warm-pool-forecast";
 import {
   __setDepsForTests,
   processPoolReplenishCycle,
@@ -38,6 +39,7 @@ function fakeDeps(replenishImpl: (image: string) => Promise<unknown>) {
   const deps = {
     containersEnv: { defaultAgentImage: () => "img:tag" },
     WarmPoolManager: FakeManager,
+    envWarmPoolPolicy: () => DEFAULT_WARM_POOL_POLICY,
     getHetznerPoolContainerCreator: () => ({}),
   } as unknown as Parameters<typeof __setDepsForTests>[0];
   return { deps, replenish };
