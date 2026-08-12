@@ -1,4 +1,9 @@
-// Exercises payment-request agent ownership at the authenticated API boundary.
+/**
+ * Exercises payment-request agent ownership at the authenticated API boundary.
+ * Bun test with mocked auth, sandbox, and payment-request service modules; the
+ * real Hono route under test must reject foreign/missing agents with 404
+ * before any provider intent is created.
+ */
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { Hono } from "hono";
 
@@ -70,9 +75,15 @@ function createRequest(agentId: string): Request {
 describe("POST /api/v1/payment-requests agent ownership", () => {
   beforeEach(() => {
     requireUserOrApiKeyWithOrg.mockReset();
-    requireUserOrApiKeyWithOrg.mockResolvedValue({ id: "user-a", organization_id: "org-a" });
+    requireUserOrApiKeyWithOrg.mockResolvedValue({
+      id: "user-a",
+      organization_id: "org-a",
+    });
     getAgentForWrite.mockReset();
-    getAgentForWrite.mockResolvedValue({ id: "agent-a", organization_id: "org-a" });
+    getAgentForWrite.mockResolvedValue({
+      id: "agent-a",
+      organization_id: "org-a",
+    });
     createPaymentRequest.mockReset();
     createPaymentRequest.mockResolvedValue({
       paymentRequest: {
