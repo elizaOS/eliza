@@ -651,14 +651,23 @@ export class OnboardingSessionCoordinator {
         await transaction.setAlarm(replay.expiresAt);
       }
     });
-    await this.bindContinuation(result.session);
     // Commit ordering for the false-success DM hazard: the storage
     // transaction above is the turn's durable commit. Only now — with the
     // userId binding persisted — may the recorded greeting enqueue. A turn
     // that threw before this point (for example a provisioning outage) never
     // reaches here, so the user is never told "you're all set" for a sign-in
     // that did not durably complete. Enqueue itself stays best-effort.
+    //
+    // The enqueue runs BEFORE the fallible cross-DO `bindContinuation` below.
+    // If it ran after, a transient /bind failure would permanently suppress
+    // the greeting: the failed turn's retry lands in the replay branch (which
+    // stores the stripped, committed shape and must never re-enqueue), and a
+    // fresh-key retry sees an already-bound session and records no handoff.
+    // Enqueue-then-bind is safe in the failure direction: the sign-in itself
+    // IS durably committed at this point, so greeting a user whose
+    // continuation re-bind needs one more retry is correct, not premature.
     const committed = await deliverCommittedProactiveGreeting(result);
+    await this.bindContinuation(result.session);
     await this.mirrorSessionBestEffort(committed.session);
     return committed;
   }

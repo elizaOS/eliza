@@ -345,6 +345,12 @@ export class GatewayManager {
   private isElizaAppLeader: boolean = false;
   /** Interval for draining pending proactive onboarding greetings (leader only) */
   private greetingPollInterval: NodeJS.Timeout | null = null;
+  /**
+   * The currently running greeting drain, if any. Teardown paths await this
+   * BEFORE destroying the Discord client: the API deletes entries at claim
+   * time, so a batch interrupted between claim and send is permanently lost.
+   */
+  private greetingDrainInFlight: Promise<void> | null = null;
   /** Interval for leader election checks */
   private elizaAppLeaderInterval: NodeJS.Timeout | null = null;
 
@@ -575,6 +581,15 @@ export class GatewayManager {
     if (this.elizaAppLeaderInterval) clearInterval(this.elizaAppLeaderInterval);
     if (this.greetingPollInterval) clearInterval(this.greetingPollInterval);
     this.voiceHandler.stopCleanupJob();
+
+    // Settle any claimed-but-unsent greeting batch before the client goes
+    // away: the API deletes entries at claim time, so interrupting between
+    // claim and send loses those DMs permanently (intervals above are already
+    // cleared, so no new drain can start).
+    if (this.greetingDrainInFlight) {
+      await this.greetingDrainInFlight;
+      this.greetingDrainInFlight = null;
+    }
 
     // Release Eliza App bot leadership for faster failover
     if (this.isElizaAppLeader && this.redis) {
@@ -1927,6 +1942,13 @@ export class GatewayManager {
       clearInterval(this.greetingPollInterval);
       this.greetingPollInterval = null;
     }
+    // A claimed batch is already deleted server-side; destroying the client
+    // mid-send would lose those DMs permanently. Settle the in-flight drain
+    // first (its own errors are handled inside the drain promise).
+    if (this.greetingDrainInFlight) {
+      await this.greetingDrainInFlight;
+      this.greetingDrainInFlight = null;
+    }
     if (this.elizaAppClient) {
       logger.info("Disconnecting Eliza App bot", {
         podName: this.config.podName,
@@ -1945,11 +1967,21 @@ export class GatewayManager {
   private startGreetingPolling(): void {
     if (this.greetingPollInterval) return;
     this.greetingPollInterval = setInterval(() => {
-      this.drainAndDeliverGreetings().catch((error) => {
-        logger.error("Error draining proactive onboarding greetings", {
-          error: sanitizeError(error),
+      // Skip if the previous drain is still running; never claim a second
+      // batch while one is in flight.
+      if (this.greetingDrainInFlight) return;
+      const drain = this.drainAndDeliverGreetings()
+        .catch((error) => {
+          logger.error("Error draining proactive onboarding greetings", {
+            error: sanitizeError(error),
+          });
+        })
+        .finally(() => {
+          if (this.greetingDrainInFlight === drain) {
+            this.greetingDrainInFlight = null;
+          }
         });
-      });
+      this.greetingDrainInFlight = drain;
     }, GREETING_POLL_INTERVAL_MS);
     logger.info("Proactive onboarding greeting polling started", {
       podName: this.config.podName,

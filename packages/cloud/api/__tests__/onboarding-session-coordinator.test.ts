@@ -1057,6 +1057,74 @@ describe("OnboardingSessionCoordinator", () => {
       expect(await greetingsOf(await drain(queue))).toEqual([]);
     });
 
+    test("a post-commit continuation-bind failure does not lose the greeting", async () => {
+      // Regression (PR #18353 review): the transaction commits, then the
+      // fallible cross-DO /bind runs. When the greeting enqueued only after a
+      // successful bind, a transient /bind outage permanently suppressed it —
+      // the same-key retry hits the replay branch (stripped, committed shape;
+      // must never re-enqueue) and a fresh-key retry sees an already-bound
+      // session and records no handoff. The enqueue therefore runs after the
+      // durable commit but BEFORE the bind; this pins that ordering.
+      const harness = createCoordinatorHarness();
+      const { coordinator, sessionId } = harness;
+      const queue = harness.objectByName(QUEUE);
+
+      const first = await readResult(
+        await turn(
+          coordinator,
+          sessionId,
+          "My name is Sam",
+          "discord:bind-fail-1",
+        ),
+      );
+      const token = first.session.continuationToken;
+      if (!token) throw new Error("expected a continuation token");
+
+      // Sabotage exactly the /bind endpoint on the token's DO, once.
+      const tokenObject = harness.objectByName(token);
+      const realFetch = tokenObject.fetch.bind(tokenObject);
+      let bindFailures = 1;
+      tokenObject.fetch = async (request: Request) => {
+        if (new URL(request.url).pathname === "/bind" && bindFailures > 0) {
+          bindFailures -= 1;
+          return new Response("bind outage", { status: 503 });
+        }
+        return realFetch(request);
+      };
+
+      const browserTurn = () =>
+        coordinator.fetch(
+          new Request("https://onboarding.test/turn", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              sessionId,
+              input: {
+                sessionId,
+                platform: "web",
+                idempotencyKey: "web:bind-fail",
+                confirmPlatformLink: true,
+                authenticatedUser: {
+                  userId: "user-1",
+                  organizationId: "org-1",
+                },
+              },
+            }),
+          }),
+        );
+
+      // The turn fails on the bind — but the sign-in itself durably
+      // committed, so the greeting must already be claimable.
+      expect((await browserTurn()).status).toBe(500);
+      const afterFailure = await greetingsOf(await drain(queue));
+      expect(afterFailure.map((entry) => entry.sessionId)).toEqual([sessionId]);
+
+      // The retry replays the committed turn, re-binds successfully, and
+      // must not enqueue a duplicate greeting.
+      expect((await browserTurn()).status).toBe(200);
+      expect(await greetingsOf(await drain(queue))).toEqual([]);
+    });
+
     test("greeting keys never collide with session or replay storage", async () => {
       const harness = createCoordinatorHarness();
       const { coordinator, sessionId } = harness;
