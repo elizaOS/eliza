@@ -1,4 +1,4 @@
-import type { IAgentRuntime, Media } from "@elizaos/core";
+import type { ElizaError, IAgentRuntime, Media } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import type { BinaryResolver } from "./binaries";
 import { VideoService } from "./video";
@@ -88,6 +88,40 @@ describe("VideoService deterministic behavior", () => {
     expect(info.formats).toEqual([]);
   });
 
+  it("rejects malformed yt-dlp format collections with a typed error", async () => {
+    const { service } = createServiceWithYtDlp([
+      { title: "Malformed metadata", formats: { format_id: "not-an-array" } },
+      { formats: [null] },
+      "not-json-metadata",
+    ]);
+
+    await expect(
+      service.getVideoInfo("https://youtu.be/malformed"),
+    ).rejects.toMatchObject({
+      code: "VIDEO_METADATA_FORMATS_INVALID",
+    } satisfies Partial<ElizaError>);
+    await expect(
+      service.getAvailableFormats("https://youtu.be/malformed"),
+    ).rejects.toMatchObject({
+      code: "VIDEO_METADATA_FORMAT_ENTRY_INVALID",
+      context: { index: 0 },
+    } satisfies Partial<ElizaError>);
+    await expect(
+      service.getAvailableFormats("https://youtu.be/malformed"),
+    ).rejects.toMatchObject({
+      code: "VIDEO_METADATA_INVALID",
+    } satisfies Partial<ElizaError>);
+  });
+
+  it("preserves the original yt-dlp failure", async () => {
+    const upstreamFailure = new Error("yt-dlp unavailable");
+    const { service } = createServiceWithYtDlp([upstreamFailure]);
+
+    await expect(
+      service.getAvailableFormats("https://youtu.be/upstream-failure"),
+    ).rejects.toBe(upstreamFailure);
+  });
+
   it("parses SRT subtitles with CRLF line endings cleanly", () => {
     const { service } = createServiceWithYtDlp([]);
     const srtContent = [
@@ -133,5 +167,11 @@ describe("VideoService deterministic behavior", () => {
     expect(service["parseCaption"](JSON.stringify({ events: "invalid" }))).toBe(
       "Error: Unable to parse captions",
     );
+  });
+
+  it("returns false for non-string video URL input", () => {
+    const { service } = createServiceWithYtDlp([]);
+    expect(service.isVideoUrl(null as unknown as string)).toBe(false);
+    expect(service.isVideoUrl({} as unknown as string)).toBe(false);
   });
 });
