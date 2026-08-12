@@ -32,6 +32,7 @@ import {
 import { GOOGLE_OAUTH_PROVIDER_METADATA } from "./auth.js";
 import { persistConnectorCredentialRefs } from "./connector-credential-refs.js";
 import { createGmailMessageConnector } from "./gmail-message-connector.js";
+import { resolveGoogleConnectorOAuthCallbackUrl } from "./google-oauth-callback.js";
 import {
   GOOGLE_CAPABILITIES,
   GOOGLE_IDENTITY_SCOPES,
@@ -115,8 +116,8 @@ function readClientConfig(runtime: IAgentRuntime): {
 } {
   const clientId = readSetting(runtime, "GOOGLE_CLIENT_ID");
   const clientSecret = readSetting(runtime, "GOOGLE_CLIENT_SECRET");
-  const redirectUri = readSetting(runtime, "GOOGLE_REDIRECT_URI");
-  if (!clientId || !clientSecret || !redirectUri) {
+  const redirectUri = resolveGoogleConnectorOAuthCallbackUrl(runtime);
+  if (!clientId || !clientSecret) {
     throw new Error(
       "Google OAuth requires GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, and GOOGLE_REDIRECT_URI to be configured."
     );
@@ -415,7 +416,7 @@ export function createGoogleConnectorAccountProvider(
       _manager: ConnectorAccountManager
     ): Promise<ConnectorOAuthStartResult> => {
       const config = readClientConfig(runtime);
-      const redirectUri = request.redirectUri ?? config.redirectUri;
+      const redirectUri = config.redirectUri;
       const capabilities = normalizeRequestedCapabilities(request.scopes);
       const oauthScopes = scopesForGoogleCapabilities(capabilities);
       const codeVerifier = createCodeVerifier();
@@ -436,6 +437,7 @@ export function createGoogleConnectorAccountProvider(
 
       return {
         authUrl: `${GOOGLE_OAUTH_PROVIDER_METADATA.authorizationEndpoint}?${params.toString()}`,
+        redirectUri,
         codeVerifier,
         metadata: {
           ...request.metadata,

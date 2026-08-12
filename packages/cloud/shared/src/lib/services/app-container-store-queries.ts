@@ -6,7 +6,7 @@
 import { and, eq, sql } from "drizzle-orm";
 import type { dbWrite } from "../../db/helpers";
 import { containers } from "../../db/schemas/containers";
-import { dockerNodes } from "../../db/schemas/docker-nodes";
+import { dockerNodes, PLACEABLE_NODE_STATE } from "../../db/schemas/docker-nodes";
 
 export interface ProjectableContainerRow {
   id: string;
@@ -130,6 +130,7 @@ export function claimAppContainerNodeSlot(
         and(
           eq(dockerNodes.node_id, nodeId),
           eq(dockerNodes.enabled, true),
+          eq(dockerNodes.placement_state, PLACEABLE_NODE_STATE),
           sql`${dockerNodes.allocated_count} < ${dockerNodes.capacity}`,
         ),
       )

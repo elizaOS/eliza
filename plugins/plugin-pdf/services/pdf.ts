@@ -104,8 +104,8 @@ function normalizeExtractionOptions(
   };
 }
 
-function parseMetadataDate(value: string | Date | undefined): Date | undefined {
-  if (value === undefined) return undefined;
+function parseMetadataDate(value: string | Date | undefined | null): Date | undefined {
+  if (value === undefined || value === null) return undefined;
   const date = value instanceof Date ? value : new Date(value);
   return Number.isNaN(date.getTime()) ? undefined : date;
 }
@@ -201,15 +201,15 @@ export class PdfService extends Service {
     const numPages = pdf.numPages;
 
     const metadataResult = await pdf.getMetadata();
-    const info = metadataResult.info as Record<string, string | Date | undefined>;
+    const info = (metadataResult.info ?? {}) as Record<string, string | Date | undefined | null>;
 
     const metadata: PdfMetadata = {
-      title: info.Title as string | undefined,
-      author: info.Author as string | undefined,
-      subject: info.Subject as string | undefined,
-      keywords: info.Keywords as string | undefined,
-      creator: info.Creator as string | undefined,
-      producer: info.Producer as string | undefined,
+      title: typeof info.Title === "string" ? info.Title : undefined,
+      author: typeof info.Author === "string" ? info.Author : undefined,
+      subject: typeof info.Subject === "string" ? info.Subject : undefined,
+      keywords: typeof info.Keywords === "string" ? info.Keywords : undefined,
+      creator: typeof info.Creator === "string" ? info.Creator : undefined,
+      producer: typeof info.Producer === "string" ? info.Producer : undefined,
       creationDate: parseMetadataDate(info.CreationDate),
       modificationDate: parseMetadataDate(info.ModDate),
     };
