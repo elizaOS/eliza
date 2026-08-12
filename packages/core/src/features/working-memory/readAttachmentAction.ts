@@ -14,7 +14,11 @@
  * inference so routing stays language-agnostic (#10471).
  */
 
-import { fetchRemoteMedia } from "../../media/fetch.ts";
+import {
+	fetchRemoteMedia,
+	MediaFetchError,
+	readResponseWithLimit,
+} from "../../media/fetch.ts";
 import {
 	linkShareOwnText,
 	looksLikeBareLinkShare,
@@ -108,8 +112,12 @@ function isMediaAttachment(record: AttachmentRecord): boolean {
  * unavailable:" on-demand, "Audio/Video transcription unavailable:" ingest).
  * The appended error prose can echo a hostile remote body (media/fetch.ts
  * embeds up to ~200 chars of it), so mid-string matches must never count as
- * unavailability evidence. Notes that do NOT match are transient-class and a
- * re-attempt supersedes them (transcribeMediaOnDemand).
+ * unavailability evidence. A live re-attempt supersedes ANY stored note,
+ * marker or not (transcribeMediaOnDemand): ingest labels every non-fetch
+ * provider exception — an ordinary 502 included — with this marker, so a
+ * stored marker is history, not proof. By classification time only a record
+ * that could not be re-attempted (no url) or one the CURRENT attempt marked
+ * unavailable still carries it.
  */
 const TRANSCRIPTION_UNAVAILABLE_MARKER =
 	/^(?:(?:audio|video)\s+)?transcription unavailable/i;
@@ -202,9 +210,13 @@ function isTranscriptionUnavailableError(err: unknown): err is Error {
  * is rejected before any fetch: `getLocalServerUrl` is a bare string concat,
  * so an unvalidated `@attacker.example/x` would become
  * `http://localhost:PORT@attacker.example/x` (userinfo trick) and hand the
- * trusted local fetch to an attacker host. Rejections throw plain
- * transient-class errors with static messages (never echoing the
- * attacker-influenceable url) so the reply degrades to the honest "yet" path.
+ * trusted local fetch to an attacker host. Rejections throw transient-class
+ * errors with static messages (never echoing the attacker-influenceable url or
+ * dynamic response prose) so the reply degrades to the honest "yet" path; the
+ * whole local response read (fetch, headers, body) surfaces failures only as
+ * typed MediaFetchError, which the unavailability classifier refuses as
+ * evidence. The body is read through the shared streaming cap so an absent or
+ * lying Content-Length can never force materializing an oversize payload.
  */
 async function fetchTranscribableBytes(
 	runtime: IAgentRuntime,
@@ -232,41 +244,49 @@ async function fetchTranscribableBytes(
 		);
 	}
 	const runtimeFetch = runtime.fetch ?? globalThis.fetch;
-	let res: Response;
 	try {
-		res = await runtimeFetch(localUrl.href, {
+		const res = await runtimeFetch(localUrl.href, {
 			signal: AbortSignal.timeout(ON_DEMAND_TRANSCRIPTION_TIMEOUT_MS),
 		});
+		if (!res.ok) {
+			// Only the numeric status: statusText is dynamic prose and must never
+			// feed the unavailability classifier.
+			throw new MediaFetchError(
+				"http_error",
+				`Could not fetch attachment locally (HTTP ${res.status})`,
+			);
+		}
+		// Reject on the declared size BEFORE reading the body (parity with the
+		// remote branch's enforceContentLengthLimit in media/fetch.ts); the
+		// streamed read below cancels at the cap when the header is absent or
+		// lying, so an oversize body is never materialized either way.
+		const declaredLength = Number(res.headers.get("content-length"));
+		if (
+			Number.isFinite(declaredLength) &&
+			declaredLength > ON_DEMAND_TRANSCRIPTION_MAX_BYTES
+		) {
+			throw new MediaFetchError(
+				"max_bytes",
+				`Attachment exceeds ${ON_DEMAND_TRANSCRIPTION_MAX_BYTES} bytes`,
+			);
+		}
+		return await readResponseWithLimit(res, ON_DEMAND_TRANSCRIPTION_MAX_BYTES);
 	} catch (err) {
-		// error-policy:J2 static transient-class rethrow: whatever the fetch
-		// layer threw, the local branch must never surface prose that
-		// isTranscriptionUnavailableError could mistake for STT being disabled.
-		throw new Error("Could not fetch attachment locally", { cause: err });
-	}
-	if (!res.ok) {
-		// Only the numeric status: statusText is dynamic prose and must never
-		// feed the unavailability classifier.
-		throw new Error(`Could not fetch attachment locally (HTTP ${res.status})`);
-	}
-	// Reject on the declared size BEFORE allocating the body (parity with the
-	// remote branch's enforceContentLengthLimit in media/fetch.ts); the
-	// post-read check stays as the backstop for an absent or lying header.
-	const declaredLength = Number(res.headers.get("content-length"));
-	if (
-		Number.isFinite(declaredLength) &&
-		declaredLength > ON_DEMAND_TRANSCRIPTION_MAX_BYTES
-	) {
-		throw new Error(
-			`Attachment exceeds ${ON_DEMAND_TRANSCRIPTION_MAX_BYTES} bytes`,
+		// error-policy:J2 typed transient-class rethrow covering the WHOLE local
+		// response read boundary (fetch, header reads, body read): whatever the
+		// fetch or stream layer threw — including a body read rejecting with
+		// unavailability-looking prose — the local branch surfaces only
+		// MediaFetchError with a static message, which
+		// isTranscriptionUnavailableError refuses as STT-disabled evidence.
+		// Matched by name rather than instanceof so the pass-through survives
+		// module duplication across the multi-target build and test mocks.
+		if (err instanceof Error && err.name === "MediaFetchError") throw err;
+		throw new MediaFetchError(
+			"fetch_failed",
+			"Could not fetch attachment locally",
+			err,
 		);
 	}
-	const buffer = Buffer.from(await res.arrayBuffer());
-	if (buffer.length > ON_DEMAND_TRANSCRIPTION_MAX_BYTES) {
-		throw new Error(
-			`Attachment exceeds ${ON_DEMAND_TRANSCRIPTION_MAX_BYTES} bytes`,
-		);
-	}
-	return buffer;
 }
 
 /**
@@ -352,9 +372,11 @@ async function persistTranscript(
  * routes to WEB_FETCH) — and hands the provider a buffer, mirroring the
  * ingest call shape. Success fills the record in place so read/save answer
  * from the fresh transcript and persists it to the owning message so later
- * reads stop re-billing STT; unavailability keeps the explicit unavailable
- * state; a transient failure (remote or local fetch, provider blip) changes
- * nothing so the user-facing reply stays the honest open-ended "yet".
+ * reads stop re-billing STT. The CURRENT attempt is authoritative over any
+ * stored notProcessed note: only a typed-unavailable failure from THIS
+ * attempt marks the record unavailable, while a transient failure (remote or
+ * local fetch, provider blip) or an empty transcript leaves it note-free so
+ * the user-facing reply stays the honest open-ended "yet".
  */
 async function transcribeMediaOnDemand(
 	runtime: IAgentRuntime,
@@ -365,16 +387,15 @@ async function transcribeMediaOnDemand(
 		const { attachment } = record;
 		if (!isMediaAttachment(record) || record.content.trim()) continue;
 		if (typeof attachment.url !== "string" || !attachment.url.trim()) continue;
-		// A fresh attempt supersedes a stale TRANSIENT failure note (e.g. an
-		// ingest fetch-failure marker): clear it so this attempt's outcome, not
-		// last time's, decides the reply. An anchored unavailability marker is
-		// durable evidence and survives unless this attempt resolves it.
-		if (
-			typeof attachment.notProcessed === "string" &&
-			!TRANSCRIPTION_UNAVAILABLE_MARKER.test(attachment.notProcessed)
-		) {
-			attachment.notProcessed = undefined;
-		}
+		// The CURRENT attempt is authoritative: clear ANY prior notProcessed
+		// note — anchored unavailability markers included, because ingest writes
+		// that marker for every non-fetch provider exception (an ordinary
+		// transient 502 among them), so a stored marker is history, not proof.
+		// Only this attempt's outcome decides the reply: the catch below
+		// re-marks unavailability iff the CURRENT error is typed-unavailable,
+		// while success, empty/no-speech, and transient failures leave the
+		// record note-free so the reply stays the retryable "yet".
+		attachment.notProcessed = undefined;
 		try {
 			const buffer = await fetchTranscribableBytes(runtime, attachment.url);
 			const transcript = await runtime.useModel(
@@ -393,12 +414,12 @@ async function transcribeMediaOnDemand(
 		} catch (err) {
 			// error-policy:J4 the attachment stays readable-as-absent and the
 			// caller's fallback message reports the state honestly. Only a
-			// no-provider-can-serve failure marks the record unavailable (and
-			// thus the "isn't enabled" reply) — plain assignment so the LATEST
-			// failure's note wins over any stale marker; a transient
-			// fetch/provider error leaves the record note-free so the reply
-			// stays the retryable "yet". Expected whenever STT is disabled, so
-			// debug, not warn.
+			// no-provider-can-serve failure from THIS attempt marks the record
+			// unavailable (and thus the "isn't enabled" reply); any stored note
+			// was cleared before the attempt, so a transient fetch/provider
+			// error leaves the record note-free and the reply stays the
+			// retryable "yet". Expected whenever STT is disabled, so debug, not
+			// warn.
 			if (isTranscriptionUnavailableError(err)) {
 				attachment.notProcessed = `Transcription unavailable: ${err.message}`;
 			}
