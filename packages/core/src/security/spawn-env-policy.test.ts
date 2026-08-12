@@ -11,16 +11,50 @@ import { isBlockedSpawnEnvKey, sanitizeSpawnEnv } from "./spawn-env-policy.ts";
 
 describe("isBlockedSpawnEnvKey (loader/interpreter hijack keys)", () => {
 	it.each([
+		// dynamic linker
 		"LD_AUDIT",
 		"ld_audit",
 		"DYLD_FRAMEWORK_PATH",
+		// glibc locale/resolver
+		"GCONV_PATH",
+		"NLSPATH",
+		"HOSTALIASES",
+		"RES_OPTIONS",
+		"LOCALDOMAIN",
+		// Python
 		"PYTHONPATH",
 		"PYTHONSTARTUP",
 		"PYTHONHOME",
+		"PYTHONUSERBASE",
+		"PYTHONINSPECT",
+		"PYTHONWARNINGS",
+		// Perl
 		"PERL5OPT",
 		"PERL5LIB",
+		"PERLIO_DEBUG",
+		// Ruby
 		"RUBYOPT",
 		"RUBYLIB",
+		"GEM_HOME",
+		"GEM_PATH",
+		"RUBYSHELL",
+		// Shell startup/expansion
+		"BASH_ENV",
+		"SHELLOPTS",
+		"PS4",
+		"GLOBIGNORE",
+		"IFS",
+		// JVM
+		"JAVA_TOOL_OPTIONS",
+		"_JAVA_OPTIONS",
+		"CLASSPATH",
+		// terminfo/termcap
+		"TERMINFO",
+		"TERMINFO_DIRS",
+		"TERMCAP",
+		// Git external commands
+		"GIT_SSH_COMMAND",
+		"GIT_EXTERNAL_DIFF",
 	])("blocks %s", (key) => {
 		expect(isBlockedSpawnEnvKey(key)).toBe(true);
 	});
@@ -31,21 +65,43 @@ describe("isBlockedSpawnEnvKey (loader/interpreter hijack keys)", () => {
 	});
 
 	it("does not block ordinary application keys", () => {
+		expect(isBlockedSpawnEnvKey("NODE_ENV")).toBe(false);
+		expect(isBlockedSpawnEnvKey("ENVIRONMENT")).toBe(false);
+		expect(isBlockedSpawnEnvKey("TERM")).toBe(false);
+		expect(isBlockedSpawnEnvKey("GIT_AUTHOR_NAME")).toBe(false);
+		expect(isBlockedSpawnEnvKey("ENV")).toBe(false);
 		expect(isBlockedSpawnEnvKey("LANG")).toBe(false);
 		expect(isBlockedSpawnEnvKey("MY_APP_SETTING")).toBe(false);
 		expect(isBlockedSpawnEnvKey("TZ")).toBe(false);
+		// Lookalikes that must NOT be blocked
+		expect(isBlockedSpawnEnvKey("PYTHON_VERSION")).toBe(false);
+		expect(isBlockedSpawnEnvKey("RUBY_VERSION")).toBe(false);
 	});
 });
 
 describe("sanitizeSpawnEnv", () => {
-	it("drops LD_AUDIT / PYTHONPATH but keeps benign keys", () => {
+	it("drops all injection-primitive keys but keeps benign keys", () => {
 		const out = sanitizeSpawnEnv({
 			LD_AUDIT: "/tmp/evil.so",
+			GCONV_PATH: "/tmp/evil-gconv",
 			PYTHONPATH: "/tmp/evil-modules",
+			PYTHONUSERBASE: "/tmp/evil-userbase",
+			BASH_ENV: "/tmp/evil-hook.sh",
+			GEM_HOME: "/tmp/evil-gems",
+			CLASSPATH: "/tmp/evil.jar",
+			GIT_SSH_COMMAND: "/tmp/evil-ssh",
+			IFS: " ",
 			RUBYOPT: "-r/tmp/evil",
 			MY_APP_SETTING: "ok",
 			LANG: "en_US.UTF-8",
+			NODE_ENV: "production",
+			GIT_AUTHOR_NAME: "test",
 		});
-		expect(out).toEqual({ MY_APP_SETTING: "ok", LANG: "en_US.UTF-8" });
+		expect(out).toEqual({
+			MY_APP_SETTING: "ok",
+			LANG: "en_US.UTF-8",
+			NODE_ENV: "production",
+			GIT_AUTHOR_NAME: "test",
+		});
 	});
 });
