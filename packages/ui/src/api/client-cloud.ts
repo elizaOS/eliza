@@ -3811,10 +3811,32 @@ ElizaClient.prototype.startCloudAgentHandoff = function (
 
   const readiness: AgentReadinessProbe = {
     resolveReadyBase: async () => {
-      const detail = await this.getCloudCompatAgent(readinessAgentId).catch(
-        () => null,
-      );
-      const agent = detail?.success ? detail.data : null;
+      // Handoff already carries an explicit Cloud API base and credential.
+      // Read the target through that canonical route instead of asking the
+      // client to infer direct-vs-proxy mode from its ambient configuration.
+      // Local and self-hosted Cloud bases are intentionally not recognized as
+      // production direct-cloud hosts, so inference would otherwise poll the
+      // app-only `/api/cloud/compat/agents/:id` proxy and time out on 404.
+      const detail = await authedFetch(
+        resolvedCloudApiBase,
+        `/api/v1/eliza/agents/${encodeURIComponent(readinessAgentId)}`,
+      ).catch(() => null);
+      const detailBody = detail?.json as {
+        success?: boolean;
+        data?: DirectCloudAgent;
+      } | null;
+      let agent =
+        detail?.status === 200 && detailBody?.success && detailBody.data
+          ? toCloudCompatAgent(detailBody.data)
+          : null;
+      // Compatibility fallback for older app proxies and injected clients that
+      // do not implement the canonical direct detail envelope.
+      if (!agent) {
+        const compatDetail = await this.getCloudCompatAgent(
+          readinessAgentId,
+        ).catch(() => null);
+        agent = compatDetail?.success ? compatDetail.data : null;
+      }
       if (!agent) return null;
       // The container is "ready" only once the record exposes a dedicated base
       // (bridge/web-ui subdomain) AND reports running — until then the user is
