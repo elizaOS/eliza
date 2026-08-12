@@ -399,7 +399,8 @@ function buildSelectorName(modelId: string): string {
 }
 
 function buildSelectorDescription(modelId: string): string {
-  const id = modelId.toLowerCase();
+  const [provider = "", rawName = modelId] = modelId.toLowerCase().split("/", 2);
+  const id = rawName.startsWith(`${provider}-`) ? rawName.slice(provider.length + 1) : rawName;
 
   if (id.includes("codex")) return "Coding-focused model";
   if (id.includes("deep-research")) return "Research-focused reasoning model";
