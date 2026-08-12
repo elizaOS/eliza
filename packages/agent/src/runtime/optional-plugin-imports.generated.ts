@@ -18,19 +18,25 @@ export const OPTIONAL_PLUGIN_IMPORTERS: Record<string, () => Promise<unknown>> =
     "@elizaos/plugin-commands": () => import("@elizaos/plugin-commands"),
     "@elizaos/plugin-video": () => import("@elizaos/plugin-video"),
     "@elizaos/plugin-vision": () => import("@elizaos/plugin-vision"),
-    // biome-ignore lint/suspicious/noTsIgnore: optional literal imports may be unbuilt in sibling source typechecks.
-    // @ts-ignore: optional mobile bundle plugin is outside sibling typecheck build graph; runtime import is guarded.
     "@elizaos/plugin-native-filesystem": () =>
+      // biome-ignore lint/suspicious/noTsIgnore: optional literal imports may be unbuilt in sibling source typechecks.
+      // @ts-ignore: optional mobile bundle plugin is outside sibling typecheck build graph; runtime import is guarded.
       import("@elizaos/plugin-native-filesystem"),
     "@elizaos/plugin-scheduling": () => import("@elizaos/plugin-scheduling"),
-    // biome-ignore lint/suspicious/noTsIgnore: optional literal imports may be unbuilt in sibling source typechecks.
-    // @ts-ignore: runtime subpath export is intentional; not every package tsconfig resolves its declaration condition.
-    "@elizaos/plugin-inbox": () => import("@elizaos/plugin-inbox/plugin"),
+    "@elizaos/plugin-inbox": () =>
+      // biome-ignore lint/suspicious/noTsIgnore: optional literal imports may be unbuilt in sibling source typechecks.
+      // @ts-ignore: runtime subpath export is intentional; not every package tsconfig resolves its declaration condition.
+      import("@elizaos/plugin-inbox/plugin"),
     "@elizaos/plugin-app-control": () => import("@elizaos/plugin-app-control"),
     "@elizaos/plugin-notes": () => import("@elizaos/plugin-notes/plugin"),
-    // biome-ignore lint/suspicious/noTsIgnore: optional literal imports may be unbuilt in sibling source typechecks.
-    // @ts-ignore: calendar is peer-linked to avoid the calendar -> agent runtime dependency cycle; the deferred import runs after agent module initialization.
-    "@elizaos/plugin-calendar": () => import("@elizaos/plugin-calendar/plugin"),
+    "@elizaos/plugin-documents": () =>
+      // biome-ignore lint/suspicious/noTsIgnore: optional literal imports may be unbuilt in sibling source typechecks.
+      // @ts-ignore: documents is peer-linked to avoid the documents -> agent runtime dependency cycle; the deferred import runs after agent module initialization.
+      import("@elizaos/plugin-documents/plugin"),
+    "@elizaos/plugin-calendar": () =>
+      // biome-ignore lint/suspicious/noTsIgnore: optional literal imports may be unbuilt in sibling source typechecks.
+      // @ts-ignore: calendar is peer-linked to avoid the calendar -> agent runtime dependency cycle; the deferred import runs after agent module initialization.
+      import("@elizaos/plugin-calendar/plugin"),
     "@elizaos/plugin-anthropic": () => import("@elizaos/plugin-anthropic"),
     "@elizaos/plugin-openai": () => import("@elizaos/plugin-openai"),
   };
