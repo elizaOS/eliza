@@ -1070,8 +1070,13 @@ function parseBoolean(value: string | undefined): boolean | undefined {
 
 function parsePositiveInteger(value: string | undefined): number | undefined {
   if (!value) return undefined;
-  const parsed = Number.parseInt(value, 10);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+  // Strict validation: reject non-digit-only, non-safe-integer, and
+  // non-positive values. Uses the same logic as @elizaos/shared but without
+  // the fallback parameter (we want undefined for invalid, not a default).
+  const trimmed = value.trim();
+  if (!/^\d+$/.test(trimmed)) return undefined;
+  const parsed = Number.parseInt(trimmed, 10);
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : undefined;
 }
 
 function parseEnvironment(
