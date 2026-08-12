@@ -302,15 +302,22 @@ describe("generate-music — poll timeout with a live upstream job must NOT refu
     });
   });
 
-  test("persisting the pending generation fails: STILL no refund (hold left for the sweep)", async () => {
+  test("persisting the pending generation fails: non-pollable 503, hold retained, no generation id", async () => {
     const ledger = makeLedgerReservation(100, COST);
     reserve.mockResolvedValue(ledger.reservation);
     mockState.mode = "timeout-pending";
     generationsCreate.mockRejectedValue(new Error("db write failed"));
 
     const res = await post();
+    const body = (await res.json()) as Record<string, unknown>;
 
-    expect(res.status).toBe(202);
+    // Must not advertise a pollable id that was never written (#18719 P1).
+    expect(res.status).toBe(503);
+    expect(body.status).toBe("untracked");
+    expect(body.id).toBeUndefined();
+    expect(body.requestId).toBe("req-music");
+    expect(String(body.error)).toMatch(/Do not poll a generation id/i);
+    // Upstream job may still complete — do not refund the hold.
     expect(ledger.reconcileCalls).toBe(0);
     expect(ledger.balance).toBeCloseTo(ledger.startBalance - COST, 10);
   });

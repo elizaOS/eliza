@@ -415,8 +415,9 @@ app.post("/", async (c) => {
       const pendingAdmission = admission;
       const pending = pendingContext;
       const pendingGenerationId = crypto.randomUUID();
-      // Await persistence before 202 so clients can poll /gallery/:id
-      // immediately without racing a detached waitUntil write (#18436 review).
+      // Durable generation row is a prerequisite for a pollable 202. A fabricated
+      // id that never landed in the DB 404s on /gallery/:id and is invisible to
+      // the reconcile sweep (#18719 review).
       try {
         await persistPendingMusicSettlement({
           generationId: pendingGenerationId,
@@ -429,29 +430,41 @@ app.post("/", async (c) => {
               : undefined,
           releaseDeferredAdmission: () => pendingAdmission.settle(0),
         });
-        logger.warn(
-          "[GenerateMusic] Upstream job still pending after poll window — holding credits for reconcile",
-          {
-            generationId: pendingGenerationId,
-            requestId: error.requestId,
-            organizationId: pending.organizationId,
-            billedCost: pending.totalCost,
-          },
-        );
       } catch (persistError) {
-        // error-policy:J7 the upstream job may still bill us, so a failed
-        // persistence must retain the admitted hold for the reservation sweep.
+        // Hold stays open (upstream may still complete). Do not advertise a
+        // pollable generation id. Reservation metadata + requestId remain the
+        // stranded-sweep / ops correlation keys.
         logger.error(
-          "[GenerateMusic] Failed to persist pending settlement — leaving hold for the reservation sweep",
+          "[GenerateMusic] Failed to persist pending settlement — hold retained, no pollable id",
           {
             requestId: error.requestId,
+            generationId: pendingGenerationId,
             error:
               persistError instanceof Error
                 ? persistError.message
                 : String(persistError),
           },
         );
+        return c.json(
+          {
+            success: false,
+            status: "untracked",
+            requestId: error.requestId,
+            error:
+              "Music generation is still running upstream, but tracking could not be persisted. Credits stay reserved. Do not poll a generation id.",
+          },
+          503,
+        );
       }
+      logger.warn(
+        "[GenerateMusic] Upstream job still pending after poll window — holding credits for reconcile",
+        {
+          generationId: pendingGenerationId,
+          requestId: error.requestId,
+          organizationId: pending.organizationId,
+          billedCost: pending.totalCost,
+        },
+      );
       return c.json(
         {
           success: false,
