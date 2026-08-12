@@ -802,6 +802,7 @@ export function __resetNotificationStoreForTests(): void {
   hydrationInFlight = null;
   hydrationReadinessDeadlineAt = 0;
   currentAuthorityKey = null;
+  notificationEventUnsub?.();
   notificationEventUnsub = null;
   liveEventRevision = 0;
   state = {
