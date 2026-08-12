@@ -78,10 +78,19 @@ describe("AI-QA reviewer arguments", () => {
     ],
     [["--run-dir"], "--run-dir requires a value"],
     [["--run-dir", "--strict"], "--run-dir requires a value"],
+    [["--run-dir", "-strict"], "--run-dir requires a value"],
     [["--concurrency"], "--concurrency requires a value"],
     [["--concurrency", "--strict"], "--concurrency requires a value"],
   ])("rejects ambiguous arguments %j", (argv, message) => {
     expect(() => parseReviewerArgs(argv)).toThrow(message);
+  });
+
+  it("rejects flag-shaped walkthrough verdict values", () => {
+    expect(() =>
+      parseReviewerArgs(["--verdict-md", "-strict"], {
+        defaultVerdictMd: "default.md",
+      }),
+    ).toThrow("--verdict-md requires a value");
   });
 
   it.each(["0", "-1", "1.5", "NaN", "Infinity", "9007199254740992"])(
@@ -103,6 +112,25 @@ describe("AI-QA reviewer arguments", () => {
 
       expect(result.status).toBe(1);
       expect(result.stderr).toContain("unknown argument: --strcit");
+      expect(result.stdout).not.toContain("skipping");
+      expect(result.stdout).not.toContain("PASSED");
+    },
+  );
+
+  it.each(reviewerScripts)(
+    "rejects a flag-shaped value at the real $label boundary",
+    ({ path }) => {
+      const result = spawnSync(
+        process.execPath,
+        [path, "--run-dir", "-strict"],
+        {
+          encoding: "utf8",
+          env: keylessEnvironment,
+        },
+      );
+
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain("--run-dir requires a value");
       expect(result.stdout).not.toContain("skipping");
       expect(result.stdout).not.toContain("PASSED");
     },
