@@ -177,22 +177,38 @@ export async function investigateWallet(
     return investigateWalletInternal(chain, address);
   }
 
-  return Promise.race([
-    investigateWalletInternal(chain, address),
-    new Promise<WalletInvestigationResult>((resolve) => {
-      setTimeout(() => {
-        resolve({
-          chain,
-          address: address.trim(),
-          status: "error",
-          summary: "Wallet investigation timed out.",
-          warnings: [
-            `This investigation did not complete within ${EVM_INVESTIGATION_TIMEOUT_MS / 1000}s. This usually means the wallet holds an extremely large number of distinct tokens and/or NFTs. Try again - a transient slowdown on the data provider's side is also possible - or note that this wallet may not be fully investigable within a reasonable time.`,
-          ],
-        });
-      }, EVM_INVESTIGATION_TIMEOUT_MS);
-    }),
-  ]);
+  // The timeout handle must be captured and cleared once the race settles,
+  // regardless of which side wins - previously it wasn't, so even a fast
+  // investigation left a 60s timer alive in the background (harmless to
+  // correctness, since resolve() on an already-settled Promise.race is a
+  // no-op, but a real resource leak: the process/event loop stayed alive
+  // for up to 60s longer than necessary after a request that had already
+  // finished). clearTimeout on an already-fired timer (the genuine-timeout
+  // case) is a safe no-op, so this doesn't need to branch on which side won.
+  let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+
+  const timeoutPromise = new Promise<WalletInvestigationResult>((resolve) => {
+    timeoutHandle = setTimeout(() => {
+      resolve({
+        chain,
+        address: address.trim(),
+        status: "error",
+        summary: "Wallet investigation timed out.",
+        warnings: [
+          `This investigation did not complete within ${EVM_INVESTIGATION_TIMEOUT_MS / 1000}s. This usually means the wallet holds an extremely large number of distinct tokens and/or NFTs. Try again - a transient slowdown on the data provider's side is also possible - or note that this wallet may not be fully investigable within a reasonable time.`,
+        ],
+      });
+    }, EVM_INVESTIGATION_TIMEOUT_MS);
+  });
+
+  try {
+    return await Promise.race([
+      investigateWalletInternal(chain, address),
+      timeoutPromise,
+    ]);
+  } finally {
+    clearTimeout(timeoutHandle);
+  }
 }
 
 async function investigateWalletInternal(
