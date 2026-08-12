@@ -1164,7 +1164,10 @@ export async function runOnboardingChatWithStore(
   };
 
   if (!requiresLogin && session.userId && session.organizationId) {
-    provisioning = preferredNameCaptured
+    // statusOnly polls are read-only — never trigger provisioning, even if
+    // preferredNameCaptured is true. A read-only poll must not provision.
+    const shouldProvision = preferredNameCaptured && !input.statusOnly;
+    provisioning = shouldProvision
       ? await ensureElizaAppProvisioning({
           userId: session.userId,
           organizationId: session.organizationId,
