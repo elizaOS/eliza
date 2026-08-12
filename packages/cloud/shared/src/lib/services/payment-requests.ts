@@ -1,4 +1,4 @@
-// Coordinates cloud service payment requests behavior behind route handlers.
+/** Coordinates payment-request state, provider intents, and public checkout projection. */
 import type {
   PaymentRequestRow,
   PaymentRequestsRepository,
@@ -13,6 +13,10 @@ export type { PaymentRequestRow } from "../../db/repositories/payment-requests";
 export type PaymentProvider = PaymentRequestRow["provider"];
 export type PaymentRequestStatus = PaymentRequestRow["status"];
 export type PaymentRequestContext = PaymentRequestRow["paymentContext"];
+export type PublicPaymentRequest = Pick<
+  PaymentRequestRow,
+  "id" | "provider" | "amountCents" | "currency" | "reason" | "status" | "hostedUrl" | "expiresAt"
+>;
 
 const DEFAULT_EXPIRES_IN_MS = 30 * 60 * 1000; // 30 minutes
 const TERMINAL_STATUSES: ReadonlySet<PaymentRequestStatus> = new Set([
@@ -509,12 +513,15 @@ export function createPaymentRequestsService(
   return new PaymentRequestsServiceImpl(deps);
 }
 
-export function redactPaymentRequestForPublic(
-  row: PaymentRequestRow,
-): Omit<PaymentRequestRow, "callbackSecret" | "settlementProof"> {
-  const { callbackSecret: _callbackSecret, settlementProof: _settlementProof, ...publicRow } = row;
+export function toPublicPaymentRequest(row: PaymentRequestRow): PublicPaymentRequest {
   return {
-    ...publicRow,
-    payerIdentityId: row.paymentContext.kind === "any_payer" ? null : row.payerIdentityId,
+    id: row.id,
+    provider: row.provider,
+    amountCents: row.amountCents,
+    currency: row.currency,
+    reason: row.reason,
+    status: row.status,
+    hostedUrl: row.hostedUrl,
+    expiresAt: row.expiresAt,
   };
 }

@@ -5,13 +5,21 @@
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { Hono } from "hono";
+import type { PaymentRequestRow } from "@/lib/services/payment-requests";
 
 const requireUserOrApiKeyWithOrg = mock(async () => ({
   id: "user-1",
   organization_id: "org-1",
 }));
-const getMock = mock(async (_id: string, _organizationId: string) => null);
-const getPublicMock = mock(async (_id: string) => null);
+const getMock = mock(
+  async (
+    _id: string,
+    _organizationId: string,
+  ): Promise<PaymentRequestRow | null> => null,
+);
+const getPublicMock = mock(
+  async (_id: string): Promise<PaymentRequestRow | null> => null,
+);
 const getPaymentRequestsService = mock(() => ({
   get: getMock,
   getPublic: getPublicMock,
@@ -31,8 +39,10 @@ mock.module("@/lib/middleware/rate-limit-hono-cloudflare", () => ({
 }));
 
 mock.module("@/lib/api/cloud-worker-errors", () => ({
-  failureResponse: (c: { json: (body: unknown, status: number) => Response }) =>
-    c.json({ success: false, error: "internal error" }, status),
+  failureResponse: (
+    c: { json: (body: unknown, status: number) => Response },
+    _error: unknown,
+  ) => c.json({ success: false, error: "internal error" }, 500),
 }));
 
 mock.module("@/lib/utils/logger", () => ({
@@ -44,7 +54,7 @@ mock.module("@/lib/utils/logger", () => ({
 const { default: route } = await import("./route");
 const app = new Hono().route("/:id", route);
 
-const paymentRequest = {
+const paymentRequest: PaymentRequestRow = {
   id: "pr-1",
   organizationId: "org-1",
   agentId: "agent-1",
@@ -124,7 +134,12 @@ describe("GET /api/v1/payment-requests/:id", () => {
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({
       success: true,
-      paymentRequest,
+      paymentRequest: {
+        ...paymentRequest,
+        createdAt: paymentRequest.createdAt.toISOString(),
+        expiresAt: paymentRequest.expiresAt.toISOString(),
+        updatedAt: paymentRequest.updatedAt.toISOString(),
+      },
     });
     expect(getMock).toHaveBeenCalledWith("pr-1", "org-1");
     expect(getPublicMock).not.toHaveBeenCalled();
@@ -139,5 +154,17 @@ describe("GET /api/v1/payment-requests/:id", () => {
       error: "Payment request not found",
     });
     expect(getMock).toHaveBeenCalledWith("pr-1", "org-1");
+  });
+
+  test("translates service failures at the HTTP boundary", async () => {
+    getPublicMock.mockRejectedValue(new Error("database unavailable"));
+
+    const response = await app.request("/pr-1?public=1");
+
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toEqual({
+      success: false,
+      error: "internal error",
+    });
   });
 });
