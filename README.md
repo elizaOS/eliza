@@ -163,10 +163,10 @@ testing, synchronization, and human-verifiable evidence requirements.
 - [Feature request](.github/ISSUE_TEMPLATE/feature_request.md)
 - [Agent work item](.github/ISSUE_TEMPLATE/agent_work_item.md)
 - [Windows setup](WINDOWS.md)
-- [Product security documentation](packages/docs/security.md)
+- [Security policy](SECURITY.md)
+- [Security architecture documentation](packages/docs/security.md)
 
-Report vulnerabilities privately through
-[GitHub Security Advisories](https://github.com/elizaOS/eliza/security/advisories/new),
+Report vulnerabilities privately through the [security policy](SECURITY.md),
 not a public issue.
 
 ## License

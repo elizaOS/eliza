@@ -1,6 +1,7 @@
 /** Exercises run node runtime behavior with deterministic app-core test fixtures. */
 import { describe, expect, test } from "vitest";
 import {
+  buildNodeProbeEnv,
   chooseElizaRuntime,
   parseNodeMajor,
   resolveNodeExecPath,
@@ -114,6 +115,29 @@ describe("run-node-runtime node validation", () => {
       ok: true,
       reason: null,
     });
+  });
+
+  test("accepts probe markers when stdout includes preload or warning noise", () => {
+    expect(
+      validateNodeProbeOutput(
+        "[apm-bootstrap] instrumenting process\nnode:24.4.0",
+      ),
+    ).toEqual({ ok: true, reason: null });
+    expect(
+      validateNodeProbeOutput("node:24.4.0\n[apm-bootstrap] done"),
+    ).toEqual({ ok: true, reason: null });
+    expect(
+      validateNodeProbeOutput("(node:123) DeprecationWarning: x\nnode:24.4.0"),
+    ).toEqual({ ok: true, reason: null });
+  });
+
+  test("strips NODE_OPTIONS from the shared probe env without removing PATH", () => {
+    const env = buildNodeProbeEnv({
+      PATH: "/usr/bin",
+      NODE_OPTIONS: "--require ./apm-bootstrap.js",
+    });
+    expect(env.NODE_OPTIONS).toBeUndefined();
+    expect(env.PATH).toBe("/usr/bin");
   });
 
   test("rejects Codex-bundled macOS Node", () => {
