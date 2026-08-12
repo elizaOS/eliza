@@ -9,6 +9,8 @@
  * interactions, reactions, voice, identity, allowlist) as helpers. This is the
  * service registered from `index.ts` under the `"discord"` type key.
  */
+
+import nodePath from "node:path";
 import {
 	ChannelType,
 	type Character,
@@ -30,6 +32,7 @@ import {
 	type MessageConnectorUserContext,
 	parseBooleanFromText,
 	type Room,
+	resolveStateDir,
 	type SendHandlerOutcome,
 	type SendHandlerPersistence,
 	type SendHandlerPersistenceFailure,
@@ -136,6 +139,7 @@ import {
 	handleReactionRemove as handleReactionRemoveExtracted,
 	type ReactionServiceInternals,
 } from "./discord-reactions";
+import { DmChannelRegistry } from "./dm-channel-registry";
 import { getDiscordSettings } from "./environment";
 import {
 	extractDiscordOwnerUserIds,
@@ -160,6 +164,7 @@ import {
 } from "./slash-command-registration";
 import {
 	reconcileStrandedStatusReactions,
+	reopenPersistedDms,
 	STARTUP_REACTION_SCAN_SETTING,
 } from "./startup-reaction-reconcile";
 import type { StatusReactionController } from "./status-reactions";
@@ -3359,6 +3364,33 @@ export class DiscordService extends Service implements IDiscordService {
 		}
 	}
 
+	/** Per-account DM channel registries for cold-start scan coverage (#18746). */
+	private dmRegistries = new Map<string, DmChannelRegistry>();
+
+	/**
+	 * Record an observed DM channel so a cold restart can re-open and scan it.
+	 * Called from the message path; must never throw into message handling.
+	 */
+	public recordDmChannel(
+		accountId: string,
+		channelId: string,
+		recipientId: string,
+	): void {
+		let registry = this.dmRegistries.get(accountId);
+		if (!registry) {
+			registry = new DmChannelRegistry({
+				filePath: nodePath.join(
+					resolveStateDir(),
+					"discord",
+					`dm-channels-${accountId}.json`,
+				),
+				logger: this.runtime.logger,
+			});
+			this.dmRegistries.set(accountId, registry);
+		}
+		registry.record(channelId, recipientId);
+	}
+
 	/**
 	 * Handles tasks to be performed once the Discord client is fully ready. Delegates to extracted module.
 	 * @private
@@ -3376,15 +3408,24 @@ export class DiscordService extends Service implements IDiscordService {
 			this.runtime.getSetting(STARTUP_REACTION_SCAN_SETTING) ?? "",
 		).toLowerCase();
 		if (scanSetting !== "0" && scanSetting !== "false") {
-			void reconcileStrandedStatusReactions({
-				client: readyClient,
-				logger: this.runtime.logger,
-				// Listeners bind before login, so a turn started by THIS process
-				// can already be in flight (with a live ⏳/🤔) when the scan runs;
-				// the registry marks those markers as current, not crash residue.
-				isTurnActive: (messageId) =>
-					this.turnDrainRegistry.isPending(messageId),
-			}).catch((error) => {
+			const dmRegistry = this.dmRegistries.get(accountId);
+			void (async () => {
+				const reopened = await reopenPersistedDms({
+					client: readyClient,
+					records: dmRegistry ? dmRegistry.listRecent() : [],
+					logger: this.runtime.logger,
+				});
+				return reconcileStrandedStatusReactions({
+					client: readyClient,
+					logger: this.runtime.logger,
+					dmChannels: reopened.channels,
+					// Listeners bind before login, so a turn started by THIS process
+					// can already be in flight (with a live ⏳/🤔) when the scan runs;
+					// the registry marks those markers as current, not crash residue.
+					isTurnActive: (messageId) =>
+						this.turnDrainRegistry.isPending(messageId),
+				});
+			})().catch((error) => {
 				// error-policy:J7 the scan is detached diagnostics/cleanup off the
 				// ready path; a failure is warned here and must never surface as a
 				// terminal login failure for the account.

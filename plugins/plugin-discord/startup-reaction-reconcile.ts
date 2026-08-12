@@ -80,6 +80,13 @@ interface ReconcileOptions {
 	 * its marker is current state, not crash residue, and is skipped.
 	 */
 	isTurnActive?: (messageId: string) => boolean;
+	/**
+	 * DM channels re-opened from the persisted registry before the scan
+	 * (elizaOS/eliza#18746). Scanned FIRST: cold-start DMs are the leg the
+	 * channel cap must never starve, and on a cold boot the guild cache is
+	 * large while the DM cache is empty.
+	 */
+	dmChannels?: unknown[];
 	maxChannels?: number;
 	messagesPerChannel?: number;
 	maxAgeMs?: number;
@@ -91,8 +98,16 @@ function channelLabel(channel: { id?: string }): string {
 	return typeof channel?.id === "string" ? channel.id : "unknown-channel";
 }
 
-/** Collect scannable channels: guild text channels the bot can read, then cached DMs. */
-function collectChannels(client: Client, cap: number): TextBasedChannel[] {
+/**
+ * Collect scannable channels: supplied/re-opened DMs first, then cached DMs,
+ * then guild text channels the bot can read. DMs lead so the global cap
+ * cannot starve them behind a large guild list (#18746).
+ */
+function collectChannels(
+	client: Client,
+	cap: number,
+	dmChannels: unknown[] = [],
+): TextBasedChannel[] {
 	const channels: TextBasedChannel[] = [];
 	const seen = new Set<string>();
 	const push = (channel: unknown) => {
@@ -109,18 +124,59 @@ function collectChannels(client: Client, cap: number): TextBasedChannel[] {
 		seen.add(candidate.id);
 		channels.push(candidate);
 	};
+	for (const channel of dmChannels) {
+		push(channel);
+		if (channels.length >= cap) return channels;
+	}
+	for (const channel of client.channels.cache.values()) {
+		const dm = channel as { isDMBased?: () => boolean };
+		if (typeof dm.isDMBased === "function" && dm.isDMBased()) push(channel);
+		if (channels.length >= cap) return channels;
+	}
 	for (const guild of client.guilds.cache.values()) {
 		for (const channel of guild.channels.cache.values()) {
 			push(channel);
 			if (channels.length >= cap) return channels;
 		}
 	}
-	for (const channel of client.channels.cache.values()) {
-		const dm = channel as { isDMBased?: () => boolean };
-		if (typeof dm.isDMBased === "function" && dm.isDMBased()) push(channel);
-		if (channels.length >= cap) break;
-	}
 	return channels;
+}
+
+/**
+ * Re-open persisted DM channels ahead of the scan (elizaOS/eliza#18746).
+ * `createDM` is idempotent for an existing DM; failures (deleted account,
+ * blocked bot, network) are counted and logged, never thrown, and a channel
+ * already in the cache costs no REST call.
+ */
+export async function reopenPersistedDms(options: {
+	client: Client;
+	records: { channelId: string; recipientId: string }[];
+	logger: ScanLogger;
+	limit?: number;
+}): Promise<{ channels: unknown[]; failures: number }> {
+	const { client, records, logger, limit = 16 } = options;
+	const channels: unknown[] = [];
+	let failures = 0;
+	for (const record of records.slice(0, Math.max(0, limit))) {
+		const cached = client.channels.cache.get(record.channelId);
+		if (cached) {
+			channels.push(cached);
+			continue;
+		}
+		try {
+			channels.push(await client.users.createDM(record.recipientId));
+		} catch (error) {
+			// error-policy:J6 A single unreachable recipient must not stop the
+			// remaining DM re-opens or the scan behind them.
+			failures += 1;
+			logger.warn(
+				`[DiscordService] Could not re-open persisted DM channel ${record.channelId}: ${
+					error instanceof Error ? error.message : String(error)
+				}`,
+			);
+		}
+	}
+	return { channels, failures };
 }
 
 export async function reconcileStrandedStatusReactions(
@@ -154,7 +210,11 @@ export async function reconcileStrandedStatusReactions(
 	}
 
 	const startedAt = now();
-	const channels = collectChannels(client, maxChannels);
+	const channels = collectChannels(
+		client,
+		maxChannels,
+		options.dmChannels ?? [],
+	);
 
 	for (const channel of channels) {
 		if (now() - startedAt > timeBudgetMs) {
