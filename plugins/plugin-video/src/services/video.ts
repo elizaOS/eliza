@@ -556,7 +556,7 @@ export class VideoService extends IVideoService {
           )
           .map((event) => event.segs.map((seg) => seg.utf8 ?? "").join(""))
           .join("")
-          .replace("\n", " ");
+          .replace(/\r?\n/g, " ");
       } else {
         elizaLogger.log(
           "Unexpected caption format:",

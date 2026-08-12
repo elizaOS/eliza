@@ -73,4 +73,43 @@ describe("VideoService deterministic behavior", () => {
     const keys = vi.mocked(runtime.setCache).mock.calls.map(([key]) => key);
     expect(new Set(keys).size).toBe(2);
   });
+
+  it("normalizes every automatic-caption line break", async () => {
+    const { service } = createServiceWithYtDlp([
+      {
+        title: "Captioned video",
+        channel: "channel",
+        description: "description",
+        automatic_captions: {
+          en: [{ url: "https://captions.example/video.json" }],
+        },
+      },
+    ]);
+    const runtime = createRuntime();
+    const captionResponse = new Response(
+      JSON.stringify({
+        events: [
+          { segs: [{ utf8: "first\nsecond\r\n" }] },
+          { segs: [{ utf8: "third\nfourth" }] },
+        ],
+      }),
+    );
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(captionResponse);
+
+    try {
+      const result = await service.processVideo(
+        "https://youtu.be/captioned-video",
+        runtime,
+      );
+
+      expect(result.text).toBe("first second third fourth");
+      expect(fetchSpy).toHaveBeenCalledWith(
+        "https://captions.example/video.json",
+      );
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
 });
