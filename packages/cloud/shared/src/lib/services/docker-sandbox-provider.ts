@@ -65,9 +65,9 @@ import {
 } from "./docker-sandbox-utils";
 import { classifyDockerSshProbeError, DockerSSHClient } from "./docker-ssh";
 import {
+  classifyMeshAuthStatus,
   TS_AUTHKEY_EXPIRED_EXIT_CODE,
   TS_AUTHKEY_EXPIRED_MARKER_BASENAME,
-  classifyMeshAuthStatus,
 } from "./headscale-auth-status";
 import { headscaleClient } from "./headscale-client";
 import { DEFAULT_REGISTRATION_TIMEOUT_MS, headscaleIntegration } from "./headscale-integration";

@@ -1,10 +1,10 @@
 // Exercises mesh-join auth-expired classification with deterministic fixtures.
 import { describe, expect, it } from "vitest";
 import {
-  TS_AUTHKEY_EXPIRED_EXIT_CODE,
-  TS_AUTHKEY_EXPIRED_MARKER_BASENAME,
   classifyMeshAuthStatus,
   isMeshAuthExpired,
+  TS_AUTHKEY_EXPIRED_EXIT_CODE,
+  TS_AUTHKEY_EXPIRED_MARKER_BASENAME,
 } from "./headscale-auth-status";
 
 /**

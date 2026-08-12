@@ -141,8 +141,8 @@ start_tailscale_if_configured() {
   #    single-use/short-TTL key is irrelevant to them and must not gate the boot.
   #    This is the common path across the fleet (nodes with multi-day uptime) and
   #    is exactly what a hard reset breaks by de-authorizing the node identity.
-  #    `--force-reauth=false` keeps `up` from insisting on interactive re-login
-  #    when the persisted identity is still valid.
+  #    Running `up` without --auth-key (and without --force-reauth) reuses the
+  #    persisted identity instead of insisting on interactive re-login.
   # shellcheck disable=SC2086
   if [ -s "$ts_state_file" ]; then
     ts_up --hostname="$ts_hostname" $login_server_arg ${TS_EXTRA_ARGS:-}
