@@ -125,6 +125,33 @@ function readClientConfig(runtime: IAgentRuntime): {
   return { clientId, clientSecret, redirectUri };
 }
 
+/**
+ * Re-auth of an existing account may omit `scopes`: default to exactly the
+ * account's recorded granted capabilities — least privilege, re-requesting
+ * what was granted and never expanding it (#18543). New-account starts (no
+ * usable `accountId`, no recorded grant) keep failing closed downstream in
+ * normalizeRequestedCapabilities.
+ */
+async function resolveRequestedScopes(
+  request: ConnectorOAuthStartRequest,
+  manager: ConnectorAccountManager
+): Promise<readonly string[] | undefined> {
+  if (request.scopes && request.scopes.length > 0) {
+    return request.scopes;
+  }
+  const accountId = nonEmptyString(request.accountId);
+  if (!accountId) {
+    return request.scopes;
+  }
+  const account = await manager.getAccount(GOOGLE_SERVICE_NAME, accountId);
+  const recorded = (account?.metadata as Record<string, unknown> | undefined)?.grantedCapabilities;
+  if (!Array.isArray(recorded)) {
+    return request.scopes;
+  }
+  const granted = recorded.filter((value): value is GoogleCapability => isGoogleCapability(value));
+  return granted.length > 0 ? granted : request.scopes;
+}
+
 function normalizeRequestedCapabilities(scopes: readonly string[] | undefined): GoogleCapability[] {
   if (!scopes || scopes.length === 0) {
     throw new ElizaError(
@@ -420,11 +447,13 @@ export function createGoogleConnectorAccountProvider(
 
     startOAuth: async (
       request: ConnectorOAuthStartRequest,
-      _manager: ConnectorAccountManager
+      manager: ConnectorAccountManager
     ): Promise<ConnectorOAuthStartResult> => {
       const config = readClientConfig(runtime);
       const redirectUri = config.redirectUri;
-      const capabilities = normalizeRequestedCapabilities(request.scopes);
+      const capabilities = normalizeRequestedCapabilities(
+        await resolveRequestedScopes(request, manager)
+      );
       const oauthScopes = scopesForGoogleCapabilities(capabilities);
       const codeVerifier = createCodeVerifier();
       const codeChallenge = createCodeChallenge(codeVerifier);
@@ -444,7 +473,6 @@ export function createGoogleConnectorAccountProvider(
 
       return {
         authUrl: `${GOOGLE_OAUTH_PROVIDER_METADATA.authorizationEndpoint}?${params.toString()}`,
-        redirectUri,
         codeVerifier,
         metadata: {
           ...request.metadata,
