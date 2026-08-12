@@ -17,6 +17,7 @@ import {
   type ElizaAgentRow,
   ElizaAgentsTable,
 } from "./components/eliza-agents-table";
+import { summarizeAgentHosting } from "./lib/agent-hosting-cost";
 import { useCreditsBalance } from "./lib/data/credits";
 import { type AgentListItem, useAgents } from "./lib/data/eliza-agents";
 import { useT } from "./lib/i18n";
@@ -64,10 +65,7 @@ export default function AgentsPage() {
 
   const agents: AgentListItemDto[] = agentsQuery.data ?? [];
   const sandboxes = agents.map(toAgentRow);
-  const runningCount = agents.filter((a) => a.status === "running").length;
-  const idleCount = agents.filter(
-    (a) => a.status === "stopped" || a.status === "disconnected",
-  ).length;
+  const hostingSummary = summarizeAgentHosting(agents);
   const creditBalance =
     typeof credits.data?.balance === "number" ? credits.data.balance : null;
   const showSkeleton = enabled && agentsQuery.isLoading;
@@ -95,8 +93,7 @@ export default function AgentsPage() {
         ) : (
           <>
             <ElizaAgentPricingBanner
-              runningCount={runningCount}
-              idleCount={idleCount}
+              hostingSummary={hostingSummary}
               creditBalance={creditBalance}
             />
             <ElizaAgentsTable sandboxes={sandboxes} />

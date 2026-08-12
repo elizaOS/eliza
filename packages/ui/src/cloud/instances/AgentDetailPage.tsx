@@ -2,7 +2,6 @@
  * Agent detail page (`/dashboard/agents/:id`).
  */
 
-import { AGENT_PRICING } from "@elizaos/cloud-shared/lib/constants/agent-pricing";
 import {
   formatHourlyRate,
   formatMonthlyEstimate,
@@ -30,6 +29,7 @@ import { ElizaAgentBackupsPanel } from "./components/eliza-agent-backups-panel";
 import { ElizaAgentLogsViewer } from "./components/eliza-agent-logs-viewer";
 import { ElizaAgentTabs } from "./components/eliza-agent-tabs";
 import { ElizaConnectButton } from "./components/eliza-connect-button";
+import { getAgentHostingCost } from "./lib/agent-hosting-cost";
 import { useAgent } from "./lib/data/eliza-agents";
 import { useT } from "./lib/i18n";
 import { statusBadgeColor, statusDotColor } from "./lib/sandbox-status";
@@ -118,13 +118,10 @@ export default function AgentDetailPage() {
 
   const badgeColor = statusBadgeColor(agent.status);
   const dotColor = statusDotColor(agent.status);
-  const isRunningish =
-    agent.status === "running" || agent.status === "provisioning";
-  const isIdle = agent.status === "stopped" || agent.status === "disconnected";
-  // Deactivated (sleeping) agents are skipped by the hourly billing cron
-  // entirely — show an explicit $0.00/hr instead of a blank so the "stop the
-  // burn" promise of deactivation is visible where the burn was shown.
-  const isSleeping = agent.status === "sleeping";
+  const hostingCost = getAgentHostingCost({
+    executionTier: agent.executionTier,
+    status: agent.status,
+  });
   const adminDetails = agent.adminDetails;
   const isDockerBacked = adminDetails?.isDockerBacked ?? false;
   const showConnect = !!agent.webUiUrl && agent.status === "running";
@@ -221,22 +218,30 @@ export default function AgentDetailPage() {
             {t("cloud.agents.detail.costLabel", { defaultValue: "Cost" })}
           </p>
           <p className="text-lg font-medium text-txt-strong tabular-nums font-mono">
-            {isRunningish
-              ? formatHourlyRate(AGENT_PRICING.RUNNING_HOURLY_RATE)
-              : isIdle
-                ? formatHourlyRate(AGENT_PRICING.IDLE_HOURLY_RATE)
-                : isSleeping
-                  ? formatHourlyRate(0)
-                  : "—"}
+            {hostingCost.rateClass === "shared-usage"
+              ? t("cloud.agents.detail.usageBased", {
+                  defaultValue: "Usage-based",
+                })
+              : hostingCost.hourlyRate === null
+                ? "—"
+                : formatHourlyRate(hostingCost.hourlyRate)}
           </p>
-          {(isRunningish || isIdle) && (
+          {(hostingCost.rateClass === "running" ||
+            hostingCost.rateClass === "provisioning" ||
+            hostingCost.rateClass === "idle") && (
             <p className="text-2xs text-muted tabular-nums">
-              {isRunningish
-                ? formatMonthlyEstimate(AGENT_PRICING.RUNNING_HOURLY_RATE)
-                : formatMonthlyEstimate(AGENT_PRICING.IDLE_HOURLY_RATE)}
+              {formatMonthlyEstimate(hostingCost.hourlyRate)}
             </p>
           )}
-          {isSleeping && (
+          {hostingCost.rateClass === "shared-usage" && (
+            <p className="text-2xs text-muted">
+              {t("cloud.agents.detail.sharedUsageCost", {
+                defaultValue:
+                  "No continuous hosting charge — model usage billed separately based on usage",
+              })}
+            </p>
+          )}
+          {hostingCost.rateClass === "deactivated" && (
             <p className="text-2xs text-muted">
               {t("cloud.agents.detail.deactivatedNoCost", {
                 defaultValue: "Deactivated — no hourly cost",

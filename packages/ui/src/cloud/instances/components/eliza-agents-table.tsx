@@ -1286,7 +1286,10 @@ export function ElizaAgentsTable({
                                   defaultValue: "Unnamed Agent",
                                 })}
                             </a>
-                            <AgentCostBadge status={displayStatus} />
+                            <AgentCostBadge
+                              status={displayStatus}
+                              executionTier={sb.execution_tier}
+                            />
                           </div>
                           <RowBackingMeta vm={vm} />
                         </div>
@@ -1546,7 +1549,10 @@ export function ElizaAgentsTable({
                             defaultValue: "Unnamed Agent",
                           })}
                       </a>
-                      <AgentCostBadge status={displayStatus} />
+                      <AgentCostBadge
+                        status={displayStatus}
+                        executionTier={sb.execution_tier}
+                      />
                       <RowBackingMeta vm={vm} />
                     </div>
                     <StatusCell

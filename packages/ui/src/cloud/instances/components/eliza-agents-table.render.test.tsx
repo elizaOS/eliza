@@ -213,6 +213,59 @@ describe("ElizaAgentsTable per-row view model", () => {
     expect(screen.getAllByText("<$0.01/hr").length).toBeGreaterThanOrEqual(1);
   });
 
+  it("renders shared usage separately from dedicated hosting cost", () => {
+    const queryClient = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false },
+        mutations: { retry: false },
+      },
+    });
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <ElizaAgentsTable
+          sandboxes={[
+            row({ execution_tier: "shared" }),
+            row({
+              id: "00000000-1111-2222-3333-666666666666",
+              agent_name: "Grace",
+              execution_tier: "dedicated-always",
+            }),
+          ]}
+        />
+      </QueryClientProvider>,
+    );
+
+    const sharedDesktopRow = screen
+      .getAllByRole("link", { name: "Ada" })[0]
+      ?.closest("tr");
+    const dedicatedDesktopRow = screen
+      .getAllByRole("link", { name: "Grace" })[0]
+      ?.closest("tr");
+    expect(sharedDesktopRow).not.toBeNull();
+    expect(dedicatedDesktopRow).not.toBeNull();
+    expect(
+      within(sharedDesktopRow as HTMLElement).getByText("Usage-based"),
+    ).toBeTruthy();
+    expect(
+      within(sharedDesktopRow as HTMLElement).queryByText("$0.01/hr"),
+    ).toBeNull();
+    expect(
+      within(dedicatedDesktopRow as HTMLElement).getByText("$0.01/hr"),
+    ).toBeTruthy();
+
+    const sharedMobileCard = screen
+      .getAllByRole("link", { name: "Ada" })[1]
+      ?.closest(".border.border-border.bg-card");
+    expect(sharedMobileCard).not.toBeNull();
+    expect(
+      within(sharedMobileCard as HTMLElement).getByText("Usage-based"),
+    ).toBeTruthy();
+    expect(
+      within(sharedMobileCard as HTMLElement).queryByText("$0.01/hr"),
+    ).toBeNull();
+  });
+
   it("requires a billing-transparency confirm before deactivating", async () => {
     const user = userEvent.setup();
     const queryClient = new QueryClient({

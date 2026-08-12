@@ -17,32 +17,42 @@ import {
 } from "@elizaos/cloud-shared/lib/constants/agent-pricing-display";
 import { Badge, BrandCard, CornerBrackets } from "@elizaos/ui/cloud-ui";
 import { Clock, DollarSign, TrendingDown, Zap } from "lucide-react";
+import type { AgentHostingSummary } from "../lib/agent-hosting-cost";
 import { useT } from "../lib/i18n";
 
 interface ElizaAgentPricingBannerProps {
-  runningCount: number;
-  idleCount: number;
+  hostingSummary: AgentHostingSummary;
   /** null = balance unavailable (e.g. still loading); renders as "—". */
   creditBalance: number | null;
 }
 
 export function ElizaAgentPricingBanner({
-  runningCount,
-  idleCount,
+  hostingSummary,
   creditBalance,
 }: ElizaAgentPricingBannerProps) {
   const t = useT();
+  const { sharedCount, dedicatedRunningCount, dedicatedIdleCount } =
+    hostingSummary;
   const totalMonthlyCost =
-    runningCount * MONTHLY_RUNNING_COST + idleCount * MONTHLY_IDLE_COST;
+    dedicatedRunningCount * MONTHLY_RUNNING_COST +
+    dedicatedIdleCount * MONTHLY_IDLE_COST;
 
   const hoursRemaining =
     creditBalance !== null
-      ? estimateHoursRemaining(creditBalance, runningCount, idleCount)
+      ? estimateHoursRemaining(
+          creditBalance,
+          dedicatedRunningCount,
+          dedicatedIdleCount,
+        )
       : null;
 
+  const hasDedicatedHosting = dedicatedRunningCount + dedicatedIdleCount > 0;
   const isLowBalance =
-    creditBalance !== null && creditBalance < AGENT_PRICING.LOW_CREDIT_WARNING;
-  const hasAgents = runningCount + idleCount > 0;
+    hasDedicatedHosting &&
+    creditBalance !== null &&
+    creditBalance < AGENT_PRICING.LOW_CREDIT_WARNING;
+  const hasAgents =
+    sharedCount + dedicatedRunningCount + dedicatedIdleCount > 0;
 
   return (
     <BrandCard className="relative overflow-hidden">
@@ -80,8 +90,8 @@ export function ElizaAgentPricingBanner({
             <div className="flex items-center gap-1.5">
               <Zap className="h-3 w-3 text-green-400" />
               <p className="text-[10px] uppercase tracking-[0.2em] text-white/60">
-                {t("cloud.containers.pricingBanner.running", {
-                  defaultValue: "Running",
+                {t("cloud.containers.pricingBanner.dedicatedRunning", {
+                  defaultValue: "Dedicated running",
                 })}
               </p>
             </div>
@@ -98,8 +108,8 @@ export function ElizaAgentPricingBanner({
             <div className="flex items-center gap-1.5">
               <TrendingDown className="h-3 w-3 text-white/60" />
               <p className="text-[10px] uppercase tracking-[0.2em] text-white/60">
-                {t("cloud.containers.pricingBanner.idle", {
-                  defaultValue: "Idle",
+                {t("cloud.containers.pricingBanner.dedicatedIdle", {
+                  defaultValue: "Dedicated idle",
                 })}
               </p>
             </div>
@@ -122,14 +132,16 @@ export function ElizaAgentPricingBanner({
               </p>
             </div>
             <p className="text-base font-mono font-semibold text-white tabular-nums">
-              {hasAgents ? `${formatUSD(totalMonthlyCost)}/mo` : "—"}
+              {hasAgents ? `${formatUSD(totalMonthlyCost)}/mo hosting` : "—"}
             </p>
             <p className="text-[10px] text-white/30 font-mono">
               {hasAgents
-                ? t("cloud.containers.pricingBanner.runningIdleSummary", {
-                    defaultValue: "{{run}} running · {{idle}} idle",
-                    run: runningCount,
-                    idle: idleCount,
+                ? t("cloud.containers.pricingBanner.hostingSummary", {
+                    defaultValue:
+                      "{{shared}} shared · {{run}} dedicated running · {{idle}} dedicated idle",
+                    shared: sharedCount,
+                    run: dedicatedRunningCount,
+                    idle: dedicatedIdleCount,
                   })
                 : t("cloud.containers.pricingBanner.noAgents", {
                     defaultValue: "No agents",
@@ -149,7 +161,7 @@ export function ElizaAgentPricingBanner({
             </div>
             <p
               className={`text-base font-mono font-semibold tabular-nums ${
-                isLowBalance && hasAgents ? "text-red-400" : "text-white"
+                isLowBalance ? "text-red-400" : "text-white"
               }`}
             >
               {hoursRemaining !== null ? formatDuration(hoursRemaining) : "—"}
@@ -163,14 +175,25 @@ export function ElizaAgentPricingBanner({
           </div>
         </div>
 
-        {/* Minimum deposit note */}
-        <p className="text-[10px] text-white/25 mt-3 font-mono">
-          {t("cloud.containers.pricingBanner.minSuspend", {
-            defaultValue: "Min. {{min}} · Suspends at {{warn}}",
-            min: formatUSD(AGENT_PRICING.MINIMUM_DEPOSIT),
-            warn: formatUSD(AGENT_PRICING.LOW_CREDIT_WARNING),
-          })}
-        </p>
+        <div className="space-y-1 mt-3">
+          {sharedCount > 0 && (
+            <p className="text-[10px] text-white/35 font-mono">
+              {t("cloud.containers.pricingBanner.sharedUsage", {
+                defaultValue:
+                  "Shared runtime has no continuous hosting charge; model usage is billed separately based on usage.",
+              })}
+            </p>
+          )}
+          {hasDedicatedHosting && (
+            <p className="text-[10px] text-white/25 font-mono">
+              {t("cloud.containers.pricingBanner.minSuspend", {
+                defaultValue: "Min. {{min}} · Suspends at {{warn}}",
+                min: formatUSD(AGENT_PRICING.MINIMUM_DEPOSIT),
+                warn: formatUSD(AGENT_PRICING.LOW_CREDIT_WARNING),
+              })}
+            </p>
+          )}
+        </div>
       </div>
     </BrandCard>
   );
