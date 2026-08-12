@@ -4,6 +4,7 @@ import {
   lookupStaticEthereumWalletLabel,
   lookupStaticBnbWalletLabel,
   lookupStaticBaseWalletLabel,
+  lookupStaticBitcoinWalletLabel,
 } from "./staticRegistry";
 
 export function getUnknownWalletLabel(
@@ -41,6 +42,14 @@ export function lookupWalletLabel(
 
     case "base": {
       return lookupStaticBaseWalletLabel(address) ?? getUnknownWalletLabel(address);
+    }
+
+    // Deliberately small - see STATIC_BITCOIN_LABELS's doc comment in
+    // staticRegistry.ts. Covers known exchange reserve/cold wallets only,
+    // not per-user deposit addresses (which Bitcoin exchanges typically
+    // rotate per-user via HD derivation and never publish).
+    case "bitcoin": {
+      return lookupStaticBitcoinWalletLabel(address) ?? getUnknownWalletLabel(address);
     }
 
     default:
