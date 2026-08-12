@@ -11,7 +11,7 @@ import crypto from "node:crypto";
 import type { AgentSandbox } from "../../db/repositories/agent-sandboxes";
 import { agentSandboxesRepository } from "../../db/repositories/agent-sandboxes";
 import { logger } from "../utils/logger";
-import { chatSseFrame } from "./chat-sse-frames";
+import { chatSseFrame, normalizeChatSseDonePayload } from "./chat-sse-frames";
 
 export interface BridgeRequest {
   jsonrpc: "2.0";
@@ -379,13 +379,14 @@ export class ElizaSandboxBridgeService {
           return;
         }
         if (data?.type === "done") {
-          const finalText = typeof data.fullText === "string" ? data.fullText : accumulated;
           controller.enqueue(
-            chatSseFrame("done", {
-              messageId,
-              text: finalText,
-              fullText: finalText,
-            }),
+            chatSseFrame(
+              "done",
+              normalizeChatSseDonePayload(data, {
+                messageId,
+                fullText: accumulated,
+              }),
+            ),
           );
           return;
         }

@@ -9,6 +9,7 @@ import type { AgentSandbox } from "../../../db/repositories/agent-sandboxes";
 import type { RuntimeDurableObjectNamespace } from "../../../types/cloud-worker-env";
 import { InsufficientCreditsError, RateLimitError } from "../../api/errors";
 import { logger } from "../../utils/logger";
+import { chatSseFrame } from "../chat-sse-frames";
 import type { BridgeRequest } from "../eliza-sandbox-bridge";
 import { applyCorsHeaders } from "../proxy/cors";
 import { coordinateSharedStream } from "./conversation-coordinator";
@@ -184,9 +185,9 @@ export async function handleCanonicalScopedAgentStream(
   }
 
   if (!upstream.body) {
-    const body = `event: error\ndata: ${JSON.stringify({
+    const body = chatSseFrame("error", {
       message: "Agent produced no streamed response",
-    })}\n\n`;
+    });
     return addStreamTimingHeaders(
       applyCorsHeaders(
         new Response(body, { headers: STREAM_HEADERS }),

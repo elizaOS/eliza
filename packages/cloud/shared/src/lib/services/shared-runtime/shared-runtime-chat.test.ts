@@ -546,6 +546,34 @@ describe("SharedRuntimeChatService", () => {
     expect(settleCalls).toEqual([0.004]);
   });
 
+  test("no-model degradation remains a complete canonical SSE turn", async () => {
+    streamTurn = {
+      degraded: true,
+      reply: "Eliza is temporarily unavailable (no shared model configured).",
+    };
+
+    const body = await (await new SharedRuntimeChatService().stream(agent, rpc, harness())).text();
+    const frames = body
+      .split("\n\n")
+      .filter(Boolean)
+      .map((frame) => {
+        const lines = frame.split("\n");
+        return {
+          event: lines.find((line) => line.startsWith("event: "))?.slice(7),
+          data: JSON.parse(lines.find((line) => line.startsWith("data: "))?.slice(6) ?? "{}"),
+        };
+      });
+
+    expect(frames.map((frame) => frame.event)).toEqual(["chunk", "done"]);
+    expect(frames.map((frame) => frame.data.type)).toEqual(["token", "done"]);
+    expect(frames[1]?.data.fullText).toBe(
+      "Eliza is temporarily unavailable (no shared model configured).",
+    );
+    expect(frames[1]?.data.messageId).toBe(frames[0]?.data.messageId);
+    expect(frames[1]?.data.userMessageId).toBe(frames[0]?.data.userMessageId);
+    expect(settleCalls).toEqual([0]);
+  });
+
   test("every SSE frame carries the canonical JSON type and done carries authoritative fullText (#17122)", async () => {
     const service = new SharedRuntimeChatService();
     const response = await service.stream(agent, rpc, harness());

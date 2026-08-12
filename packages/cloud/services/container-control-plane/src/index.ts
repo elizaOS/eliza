@@ -1134,7 +1134,7 @@ app.post("/api/v1/eliza/agents/:id/stream", (c) =>
       body.method !== "message.send"
     ) {
       return new Response(
-        `event: error\ndata: ${JSON.stringify({ message: "Invalid JSON-RPC stream request" })}\n\n`,
+        chatSseFrame("error", { message: "Invalid JSON-RPC stream request" }),
         { status: 400, headers: streamHeaders },
       );
     }

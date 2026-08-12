@@ -756,9 +756,27 @@ export class SharedRuntimeChatService {
     if (turn.degraded) {
       detachRequestAbort();
       await billing?.settle(0);
-      return new Response(turn.reply ?? "", {
-        headers: { "Content-Type": "text/event-stream; charset=utf-8" },
-      });
+      const reply = turn.reply?.trim() ?? "";
+      if (!reply) return sseError("Shared runtime is unavailable");
+      return new Response(
+        chatSseFrame("chunk", {
+          messageId: messageIds.assistant,
+          userMessageId: messageIds.user,
+          chunk: reply,
+          text: reply,
+          fullText: reply,
+          timestamp: Date.now(),
+        }) +
+          chatSseFrame("done", {
+            messageId: messageIds.assistant,
+            userMessageId: messageIds.user,
+            text: reply,
+            fullText: reply,
+          }),
+        {
+          headers: { "Content-Type": "text/event-stream; charset=utf-8" },
+        },
+      );
     }
     if (!turn.parts) {
       detachRequestAbort();
