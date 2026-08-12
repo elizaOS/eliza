@@ -1380,6 +1380,13 @@
       "when": 1786737600000,
       "tag": "0197_cloud_approval_requests_distinct_tables",
       "breakpoints": true
+    },
+    {
+      "idx": 197,
+      "version": "7",
+      "when": 1786824000000,
+      "tag": "0198_docker_nodes_placement_state",
+      "breakpoints": true
     }
   ]
 }

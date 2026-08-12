@@ -21,6 +21,11 @@
  * The timer itself is exercised by the provider suites; what is under test here
  * is what `deleteAgent` does with a tagged timeout, which is exactly the
  * branch a future refactor could silently drop.
+ *
+ * Every delete passes `authorization: "user_request"`: the seeded agent is a
+ * running dedicated workload, and the live-agent deletion guard (#18573)
+ * refuses unauthorized deletes before the slot-release policy under test here
+ * is ever reached.
  */
 
 import { afterAll, beforeAll, describe, expect, spyOn, test } from "bun:test";
@@ -83,6 +88,7 @@ beforeAll(async () => {
       "enabled" boolean NOT NULL DEFAULT true,
       "status" text NOT NULL DEFAULT 'unknown'::text,
       "allocated_count" integer NOT NULL DEFAULT 0,
+      "placement_state" text NOT NULL DEFAULT 'open',
       "last_health_check" timestamptz,
       "ssh_user" text NOT NULL DEFAULT 'root'::text,
       "host_key_fingerprint" text,
@@ -180,7 +186,7 @@ describe("deleteAgent releases the node slot only when the workload is proven no
       const { service, agentId, orgId, nodeId } = await seedPlacedAgent();
       scriptProvider(service, async () => {});
 
-      await service.deleteAgent(agentId, orgId);
+      await service.deleteAgent(agentId, orgId, { authorization: "user_request" });
 
       expect(await nodeCount(nodeId)).toBe(1);
     },
@@ -198,7 +204,7 @@ describe("deleteAgent releases the node slot only when the workload is proven no
         throw new Error("Cannot connect to the Docker daemon");
       });
 
-      const result = await service.deleteAgent(agentId, orgId);
+      const result = await service.deleteAgent(agentId, orgId, { authorization: "user_request" });
 
       expect(result.success).toBe(false);
       expect(await nodeCount(nodeId)).toBe(2);
@@ -223,7 +229,7 @@ describe("deleteAgent releases the node slot only when the workload is proven no
         error: new Error("agent-delete stop timed out"),
       });
 
-      const result = await service.deleteAgent(agentId, orgId);
+      const result = await service.deleteAgent(agentId, orgId, { authorization: "user_request" });
 
       expect(result).toMatchObject({ success: true, rowDeleted: false });
       expect(await nodeCount(nodeId)).toBe(2);
@@ -242,7 +248,7 @@ describe("deleteAgent releases the node slot only when the workload is proven no
         reason: "node-unreachable",
       });
 
-      const result = await service.deleteAgent(agentId, orgId);
+      const result = await service.deleteAgent(agentId, orgId, { authorization: "user_request" });
 
       expect(result).toMatchObject({ success: true, rowDeleted: false });
       expect(await nodeCount(nodeId)).toBe(2);
@@ -264,7 +270,7 @@ describe("deleteAgent releases the node slot only when the workload is proven no
         kind: "not-running-unresolved",
         reason: "node-unreachable",
       });
-      const pending = await service.deleteAgent(agentId, orgId);
+      const pending = await service.deleteAgent(agentId, orgId, { authorization: "user_request" });
       expect(pending).toMatchObject({ success: true, rowDeleted: false });
 
       const removed: string[] = [];
@@ -290,7 +296,9 @@ describe("deleteAgent releases the node slot only when the workload is proven no
       expect(await ownership(agentId)).toBe(false);
 
       scriptProvider(service, async () => {});
-      const finalized = await service.deleteAgent(agentId, orgId);
+      const finalized = await service.deleteAgent(agentId, orgId, {
+        authorization: "user_request",
+      });
       expect(finalized).toMatchObject({ success: true, rowDeleted: true });
       const row = await dbWrite.query.agentSandboxes.findFirst({
         where: eq(agentSandboxes.id, agentId),
@@ -318,16 +326,16 @@ describe("deleteAgent releases the node slot only when the workload is proven no
         new Error("credential revocation failed"),
       );
       try {
-        await expect(service.deleteAgent(agentId, orgId)).rejects.toThrow(
-          /credential revocation failed/,
-        );
+        await expect(
+          service.deleteAgent(agentId, orgId, { authorization: "user_request" }),
+        ).rejects.toThrow(/credential revocation failed/);
         // The release already committed before the failure — that is the design.
         expect(await nodeCount(nodeId)).toBe(1);
         expect(await ownership(agentId)).toBe(false);
 
         // Retry the whole path. Revocation now succeeds, the delete completes,
         // and the release CAS is a no-op because ownership is spent.
-        await service.deleteAgent(agentId, orgId);
+        await service.deleteAgent(agentId, orgId, { authorization: "user_request" });
         expect(await nodeCount(nodeId)).toBe(1);
       } finally {
         revoke.mockRestore();

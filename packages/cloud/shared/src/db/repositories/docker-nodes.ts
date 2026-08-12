@@ -9,6 +9,7 @@ import {
   type DockerNodeStatus,
   dockerNodes,
   type NewDockerNode,
+  PLACEABLE_NODE_STATE,
 } from "../schemas/docker-nodes";
 
 export type { DockerNode, DockerNodeStatus, NewDockerNode };
@@ -49,11 +50,41 @@ export class DockerNodesRepository {
     return dbRead.select().from(dockerNodes).orderBy(asc(dockerNodes.node_id));
   }
 
+  /**
+   * Every operationally live node, INCLUDING cordoned ones.
+   *
+   * This is the operational set, not the placement set: health checks,
+   * allocated-count sync, disk monitoring, image pre-pull, and the orphan
+   * reconciler all read it, and every one of them must keep watching a node
+   * that is being emptied — that is exactly when its residents move, fail, or
+   * strand a container. Use {@link findPlaceable} to pick a home for new work.
+   */
   async findEnabled(): Promise<DockerNode[]> {
     return dbRead
       .select()
       .from(dockerNodes)
       .where(and(eq(dockerNodes.enabled, true), currentEnvironmentPredicate()))
+      .orderBy(asc(dockerNodes.node_id));
+  }
+
+  /**
+   * Nodes that may receive NEW placements: enabled and not cordoned.
+   *
+   * Kept separate from {@link findEnabled} rather than added as a flag,
+   * because the two sets diverge exactly when it matters and a boolean
+   * argument makes the wrong one a typo away.
+   */
+  async findPlaceable(): Promise<DockerNode[]> {
+    return dbRead
+      .select()
+      .from(dockerNodes)
+      .where(
+        and(
+          eq(dockerNodes.enabled, true),
+          eq(dockerNodes.placement_state, PLACEABLE_NODE_STATE),
+          currentEnvironmentPredicate(),
+        ),
+      )
       .orderBy(asc(dockerNodes.node_id));
   }
 
@@ -82,6 +113,7 @@ export class DockerNodesRepository {
       .where(
         and(
           eq(dockerNodes.enabled, true),
+          eq(dockerNodes.placement_state, PLACEABLE_NODE_STATE),
           eq(dockerNodes.status, "healthy"),
           currentEnvironmentPredicate(),
           sql`${dockerNodes.allocated_count} < ${dockerNodes.capacity}`,

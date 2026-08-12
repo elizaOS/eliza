@@ -636,7 +636,7 @@ export class DockerNodeManager {
    * Returns null if no capacity is available.
    */
   async getAvailableNode(options: NodeSelectionOptions = {}): Promise<DockerNode | null> {
-    const nodes = await dockerNodesRepository.findEnabled();
+    const nodes = await dockerNodesRepository.findPlaceable();
     const candidates = (
       await Promise.all(
         nodes.map(async (node) => {
