@@ -1029,7 +1029,7 @@ export default function GetStartedPage() {
             <button
               type="button"
               onClick={handleBack}
-              className={`inline-flex min-h-10 items-center gap-1.5 rounded-full ${GLASS_TILE} hover:bg-white/60 px-4 text-neutral-700 hover:text-neutral-900 transition-colors cursor-pointer`}
+              className={`inline-flex min-h-11 items-center gap-1.5 rounded-full ${GLASS_TILE} hover:bg-white/60 px-4 text-neutral-700 hover:text-neutral-900 transition-colors cursor-pointer`}
             >
               <ArrowLeft className="size-4" />
               <span className="text-sm font-medium">
@@ -1039,7 +1039,7 @@ export default function GetStartedPage() {
           ) : (
             <Link
               to="/"
-              className={`inline-flex min-h-10 items-center gap-1.5 rounded-full ${GLASS_TILE} hover:bg-white/60 px-4 text-neutral-700 hover:text-neutral-900 transition-colors`}
+              className={`inline-flex min-h-11 items-center gap-1.5 rounded-full ${GLASS_TILE} hover:bg-white/60 px-4 text-neutral-700 hover:text-neutral-900 transition-colors`}
             >
               <ArrowLeft className="size-4" />
               <span className="text-sm font-medium">
@@ -1063,7 +1063,7 @@ export default function GetStartedPage() {
                     defaultValue: "Anywhere you want her to be.",
                   })}
                 </h1>
-                <p className="text-sm font-medium text-neutral-500 text-center mb-10 text-balance">
+                <p className="text-sm font-medium text-neutral-700 text-center mb-10 text-balance">
                   {t("homepage_eliza.getStarted.selectSubheader", {
                     defaultValue: "Pick where you want to talk to Eliza.",
                   })}

@@ -82,7 +82,7 @@ const variantStyles = {
   },
   glass: {
     wrapper:
-      "w-full flex items-center rounded-full border border-white/60 bg-white/40 backdrop-blur-md overflow-hidden focus-within:bg-white/60 focus-within:border-white/80 transition-colors",
+      "w-full flex items-center rounded-full border border-white/60 bg-white/40 backdrop-blur-md overflow-hidden focus-within:bg-white/60 focus-within:border-white/80 focus-within:ring-2 focus-within:ring-[#9a3412] focus-within:ring-offset-2 focus-within:ring-offset-transparent transition-colors",
     label:
       "relative flex h-14 shrink-0 cursor-pointer items-center gap-2 pl-4 pr-2 text-neutral-600 hover:text-neutral-900",
     flag: "size-6 rounded-full overflow-hidden shrink-0 pointer-events-none",
