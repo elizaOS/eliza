@@ -160,6 +160,7 @@ import {
 	summarizeActionResultForPlanner,
 } from "../runtime/planner-loop";
 import {
+	allEffectReceipts,
 	allSteps,
 	canonicalUserFacingText,
 } from "../runtime/planner-trajectory";
@@ -286,7 +287,7 @@ import type {
 	UUID,
 } from "../types/primitives";
 import { asUUID, ChannelType, ContentType } from "../types/primitives";
-import type { IAgentRuntime } from "../types/runtime";
+import type { IAgentRuntime, ModelCallProvenance } from "../types/runtime";
 import type { ShortcutMatch } from "../types/shortcut";
 import type { State } from "../types/state";
 import type {
@@ -1844,11 +1845,16 @@ export function preservedSettledToolResult(
 	settled: ReadonlyArray<{ name: string; result: PlannerToolResult }>,
 	deliveredVisibleTexts: ReadonlySet<string>,
 ): (PlannerToolResult & { userFacingText: string }) | undefined {
+	const allTurnReceipts = mergeEffectReceipts(
+		...settled.map((entry) => entry.result.effectReceipts),
+	);
 	for (let index = settled.length - 1; index >= 0; index--) {
 		const entry = settled[index];
 		if (!entry) continue;
 		if (isTerminalPlannerToolName(entry.name)) continue;
-		const candidate = canonicalUserFacingText(entry.result);
+		const candidate = canonicalUserFacingText(entry.result, {
+			allTurnReceipts,
+		});
 		if (!candidate) continue;
 		// A text the user already saw via an action callback must not be
 		// re-sent; keep scanning for an undelivered result.
@@ -3508,9 +3514,13 @@ function uniqueAppliedCanonicalActionReply(
 	for (const result of results) {
 		const text = canonicalUserFacingText(result, {
 			allTurnReceipts,
-			requireAppliedEffect: true,
 		});
-		if (!text) continue;
+		if (
+			!text ||
+			resolveAppliedUserFacingEffectReceipts(result, allTurnReceipts) === null
+		) {
+			continue;
+		}
 		candidates.add(text);
 	}
 	return candidates.size === 1
@@ -6239,7 +6249,7 @@ interface ExecuteV5PlannedToolCallParams {
 		context: ContextObject;
 		trajectory: PlannerTrajectory;
 	}) => Promise<EvaluatorOutput> | EvaluatorOutput;
-	provider: string | undefined;
+	provider: string;
 	tools?: ToolDefinition[];
 	recorder?: TrajectoryRecorder;
 	trajectoryId?: string;
@@ -6508,9 +6518,7 @@ export function subPlannerResultToPlannerToolResult(
 		.filter((step) => step.success)
 		.map((step) => step.action);
 	const terminalData = latestSubActionResult?.data;
-	const effectReceipts = mergeEffectReceipts(
-		...completedSubActionSteps.map((step) => step.result?.effectReceipts),
-	);
+	const effectReceipts = allEffectReceipts(subResult.trajectory);
 	const terminalUserFacingEffectReceiptIds =
 		typeof latestSubActionResult?.userFacingText === "string" &&
 		typeof userFacingText === "string" &&
@@ -6522,7 +6530,6 @@ export function subPlannerResultToPlannerToolResult(
 		{
 			allTurnReceipts: effectReceipts,
 			includeTerminalFailure: !success,
-			requireAppliedEffect: success,
 		},
 	);
 	const terminalVerifiedUserFacing =
@@ -6557,6 +6564,10 @@ export function subPlannerResultToPlannerToolResult(
 				}
 			: {}),
 		...(terminalVerifiedUserFacing ? { verifiedUserFacing: true } : {}),
+		...(terminalVerifiedUserFacing &&
+		latestSubActionResult?.userFacingEffect === "none"
+			? { userFacingEffect: "none" as const }
+			: {}),
 		...(terminalVerifiedUserFacing &&
 		latestSubActionResult?.turnComplete === true
 			? { turnComplete: true }
@@ -6737,6 +6748,9 @@ function collectPreviousActionResults(
 				...(step.result.verifiedUserFacing !== undefined
 					? { verifiedUserFacing: step.result.verifiedUserFacing }
 					: {}),
+				...(step.result.userFacingEffect !== undefined
+					? { userFacingEffect: step.result.userFacingEffect }
+					: {}),
 				...(step.result.effectReceipts !== undefined
 					? { effectReceipts: step.result.effectReceipts }
 					: {}),
@@ -6795,6 +6809,9 @@ function collectPreviousActionResults(
 				: {}),
 			...(step.result.verifiedUserFacing !== undefined
 				? { verifiedUserFacing: step.result.verifiedUserFacing }
+				: {}),
+			...(step.result.userFacingEffect !== undefined
+				? { userFacingEffect: step.result.userFacingEffect }
 				: {}),
 			...(step.result.effectReceipts !== undefined
 				? { effectReceipts: step.result.effectReceipts }
@@ -7415,9 +7432,12 @@ export async function runV5MessageRuntimeStage1(args: {
 			"message:stage1:preprocess",
 			performance.now() - stage1PreprocessStartedAt,
 		);
+		let stageOneProvenance: ModelCallProvenance = {};
 		let rawMessageHandler = (await args.runtime.useModel(
 			ModelType.RESPONSE_HANDLER,
 			stage1ModelParams,
+			undefined,
+			stageOneProvenance,
 		)) as string | GenerateTextResult;
 		let stage1RetryReason = getStage1RetryReason(rawMessageHandler);
 		while (
@@ -7438,20 +7458,22 @@ export async function runV5MessageRuntimeStage1(args: {
 				},
 				`[message] Stage 1 returned ${stage1RetryReason} — retrying (${stage1RetryCount}/${stage1RetryLimit})`,
 			);
+			stageOneProvenance = {};
 			rawMessageHandler = (await args.runtime.useModel(
 				ModelType.RESPONSE_HANDLER,
 				stage1ModelParams,
+				undefined,
+				stageOneProvenance,
 			)) as string | GenerateTextResult;
 			stage1RetryReason = getStage1RetryReason(rawMessageHandler);
 		}
 		const messageHandlerEndedAt = Date.now();
-		// Capture the provider that served the Stage-1 (RESPONSE_HANDLER) call
-		// right after it completes, before any later model call could overwrite the
-		// runtime-wide last-resolved-provider, so the recorded stage names the real
-		// provider instead of the fabricated "default" literal (#13623).
-		const messageHandlerProvider =
-			extractStageResultProvider(rawMessageHandler) ??
-			args.runtime.getLastResolvedModelProvider?.(ModelType.RESPONSE_HANDLER);
+		// The successful invocation writes its own provenance before returning, so
+		// concurrent Stage-1 turns cannot overwrite each other's provider pin.
+		const messageHandlerProvider = resolveStageOneProviderAuthority(
+			stageOneProvenance.resolvedProvider,
+			rawMessageHandler,
+		);
 		const rawFieldParsed = extractMessageHandlerRawParsed(rawMessageHandler);
 		let fieldRunResult: ResponseHandlerFieldRunResult | null = null;
 		let messageHandler: MessageHandlerResult | null = null;
@@ -7964,6 +7986,16 @@ export async function runV5MessageRuntimeStage1(args: {
 			};
 		}
 
+		if (!messageHandlerProvider) {
+			throw new ElizaError(
+				"The Stage-1 model provider could not be proven, so planning was stopped before any tool execution.",
+				{
+					code: "STAGE_ONE_PROVIDER_UNAVAILABLE",
+					context: { modelType: ModelType.RESPONSE_HANDLER },
+					severity: "fatal",
+				},
+			);
+		}
 		const selectedContexts =
 			route.type === "planning_needed" ? route.contexts : [];
 		// Merge direct-request candidate inference before the early-ack gate so
@@ -8920,7 +8952,12 @@ export async function runV5MessageRuntimeStage1(args: {
 			effectiveReplyText === stageOneAck;
 		const effectiveReplyIsCanonicalActionText = actionResults.some(
 			(result) =>
-				effectiveDeliveredReplyText === canonicalUserFacingText(result),
+				effectiveDeliveredReplyText ===
+				canonicalUserFacingText(result, {
+					allTurnReceipts: mergeEffectReceipts(
+						...actionResults.map((entry) => entry.effectReceipts),
+					),
+				}),
 		);
 		const transcriptVisibility = resolveActionResultTranscriptVisibility(
 			plannedTextRaw || effectiveReplyText,
@@ -9227,6 +9264,37 @@ function extractStageResultProvider(
 		}
 	}
 	return undefined;
+}
+
+/**
+ * Runtime model resolution is the sole provider pin for every later model
+ * boundary. Adapter metadata may corroborate it, but a contradiction is a
+ * provenance violation rather than permission to switch providers.
+ */
+function resolveStageOneProviderAuthority(
+	runtimeResolvedProvider: string | undefined,
+	raw: string | GenerateTextResult,
+): string | undefined {
+	const runtimeResolved = runtimeResolvedProvider?.trim();
+	const selfReported = extractStageResultProvider(raw);
+	if (
+		runtimeResolved &&
+		selfReported &&
+		runtimeResolved.toLowerCase() !== selfReported.toLowerCase()
+	) {
+		throw new ElizaError(
+			"Stage-1 provider metadata did not match runtime model resolution.",
+			{
+				code: "STAGE_ONE_PROVIDER_MISMATCH",
+				context: {
+					runtimeProvider: runtimeResolved,
+					metadataProvider: selfReported,
+				},
+				severity: "fatal",
+			},
+		);
+	}
+	return runtimeResolved || undefined;
 }
 
 /**

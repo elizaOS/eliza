@@ -6,6 +6,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
 	FAILED_TOOL_FALLBACK_MESSAGE,
 	HANDLED_STEP_FALLBACK_MESSAGE,
+	type PlannerTrajectory,
 	runPlannerLoop,
 } from "../planner-loop";
 
@@ -66,18 +67,25 @@ describe("terminal authority survives compaction (#18466)", () => {
 			text: `RAW_RESULT_SECRET ${"planner-only diagnostics ".repeat(500)}`,
 			userFacingText: canonicalReceipt,
 			verifiedUserFacing: true,
+			userFacingEffect: "none" as const,
 			data: {
 				awaitingUserInput: true,
 				privateData: "RESULT_DATA_SECRET",
 			},
 			error: "RESULT_ERROR_SECRET",
 		}));
-		const evaluate = vi.fn(async () => ({
-			success: true,
-			decision: "CONTINUE" as const,
-			thought: "EVALUATOR_THOUGHT_SECRET",
-			messageToUser: "EVALUATOR_MESSAGE_SECRET",
-		}));
+		const evaluatorTrajectories: PlannerTrajectory[] = [];
+		const evaluate = vi.fn(
+			async ({ trajectory }: { trajectory: PlannerTrajectory }) => {
+				evaluatorTrajectories.push(trajectory);
+				return {
+					success: true,
+					decision: "CONTINUE" as const,
+					thought: "EVALUATOR_THOUGHT_SECRET",
+					messageToUser: "EVALUATOR_MESSAGE_SECRET",
+				};
+			},
+		);
 
 		const result = await runPlannerLoop({
 			runtime: { useModel },
@@ -140,6 +148,19 @@ describe("terminal authority survives compaction (#18466)", () => {
 		expect(synthesis).toContain(JSON.stringify(canonicalReceipt));
 		expect(synthesis).not.toMatch(
 			/THOUGHT_SECRET|TOOL_CALL_ID_SECRET|PARAM_SECRET|RAW_RESULT_SECRET|RESULT_DATA_SECRET|RESULT_ERROR_SECRET|TERMINAL_PLANNER_OUTPUT_SECRET|EVALUATOR_THOUGHT_SECRET|EVALUATOR_MESSAGE_SECRET|PROVIDER_DATA_SECRET|ORIGINAL_EVALUATOR_RAW_SECRET|compaction/,
+		);
+		const terminalEvaluatorView = evaluatorTrajectories.find(
+			(trajectory) => trajectory.steps.at(-1)?.terminalOnly === true,
+		);
+		expect(terminalEvaluatorView).toBeDefined();
+		expect(
+			terminalEvaluatorView?.steps.some(
+				(step) => step.toolCall?.name === "LOOKUP",
+			),
+		).toBe(true);
+		expect(terminalEvaluatorView?.archivedSteps).toEqual([]);
+		expect(JSON.stringify(terminalEvaluatorView)).not.toMatch(
+			/THOUGHT_SECRET|TOOL_CALL_ID_SECRET|PARAM_SECRET|RAW_RESULT_SECRET|RESULT_DATA_SECRET|RESULT_ERROR_SECRET|TERMINAL_PLANNER_OUTPUT_SECRET/,
 		);
 		expect(result.finalMessage).toBe(canonicalReceipt);
 		expect(result.finalMessage).not.toContain("INVENTED_SYNTHESIS_TEXT");

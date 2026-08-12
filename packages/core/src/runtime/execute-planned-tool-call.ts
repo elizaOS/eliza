@@ -186,6 +186,9 @@ export function projectActionResultForClipboard(
 		...(result.verifiedUserFacing !== undefined
 			? { verifiedUserFacing: result.verifiedUserFacing }
 			: {}),
+		...(result.userFacingEffect !== undefined
+			? { userFacingEffect: result.userFacingEffect }
+			: {}),
 		...(result.effectReceipts !== undefined
 			? { effectReceipts: result.effectReceipts }
 			: {}),
@@ -227,6 +230,9 @@ function projectSettledResultForObserver(
 
 	return {
 		success: projected.success,
+		...(projected.userFacingEffect !== undefined
+			? { userFacingEffect: projected.userFacingEffect }
+			: {}),
 		...(projected.effectReceipts !== undefined
 			? { effectReceipts: projected.effectReceipts }
 			: {}),
@@ -774,6 +780,7 @@ function actionResultToStreamingResult(
 		text: result.text,
 		userFacingText: result.userFacingText,
 		verifiedUserFacing: result.verifiedUserFacing,
+		userFacingEffect: result.userFacingEffect,
 		effectReceipts: result.effectReceipts,
 		userFacingEffectReceiptIds: result.userFacingEffectReceiptIds,
 		error: result.error ? stringifyError(result.error) : undefined,

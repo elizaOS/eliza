@@ -303,10 +303,22 @@ describe("TASKS submit_workspace (real service, real git, bare remote)", () => {
     expect(result.success).toBe(false);
     expect(result.error).toBe("FINALIZE_FAILED");
     expect(replies).toEqual([]);
-    expect(result.userFacingText).toContain("Failed to finalize workspace");
+    expect(result.userFacingText).toBe(
+      "I committed the workspace changes, but submission did not finish safely. Review the workspace and remote state before retrying.",
+    );
+    const localCommit = git(work, "rev-parse", "HEAD");
+    expect(result.data).toMatchObject({
+      workspaceId: "ws-submit-1",
+      commitHash: localCommit,
+      artifacts: [{ kind: "git.commit", id: localCommit }],
+      outcomeUnknown: true,
+      reconciliationRequired: true,
+    });
     expect(result.effectReceipts).toEqual([
       expect.objectContaining({
         outcome: "failed",
+        resource: { kind: "coding.workspace", id: "ws-submit-1" },
+        artifacts: [{ kind: "git.commit", id: localCommit }],
         failure: expect.objectContaining({ acceptance: "unknown" }),
       }),
     ]);
@@ -352,10 +364,22 @@ describe("TASKS submit_workspace (real service, real git, bare remote)", () => {
     expect(result.success).toBe(false);
     expect(result.error).toBe("FINALIZE_FAILED");
     expect(replies).toEqual([]);
-    expect(result.userFacingText).toContain("Failed to finalize workspace");
+    expect(result.userFacingText).toBe(
+      "I committed the workspace changes, but submission did not finish safely. Review the workspace and remote state before retrying.",
+    );
+    const localCommit = git(work, "rev-parse", "HEAD");
+    expect(result.data).toMatchObject({
+      workspaceId: "ws-submit-1",
+      commitHash: localCommit,
+      artifacts: [{ kind: "git.commit", id: localCommit }],
+      outcomeUnknown: true,
+      reconciliationRequired: true,
+    });
     expect(result.effectReceipts).toEqual([
       expect.objectContaining({
         outcome: "failed",
+        resource: { kind: "coding.workspace", id: "ws-submit-1" },
+        artifacts: [{ kind: "git.commit", id: localCommit }],
         failure: expect.objectContaining({ acceptance: "unknown" }),
       }),
     ]);

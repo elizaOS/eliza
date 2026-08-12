@@ -111,6 +111,14 @@ export function normalizeActionResult(
 			"ActionResult.success must be a boolean when present.",
 		);
 	}
+	if (
+		"userFacingEffect" in rawResult &&
+		rawResult.userFacingEffect !== "none"
+	) {
+		return invalidActionResult(
+			"ActionResult.userFacingEffect must be 'none' when present.",
+		);
+	}
 	const resultData = isObjectRecord(rawResult.data) ? rawResult.data : {};
 	const effectReceipts =
 		rawResult.effectReceipts === undefined
@@ -358,6 +366,26 @@ export async function settleActionHandler(
 	}
 	try {
 		settledResult = normalizeActionResult(options.action.name, rawResult);
+		const declaredReadOnly =
+			options.action.tags?.some(
+				(tag) => tag.trim().toLowerCase() === "capability:read",
+			) === true && !tagsMayProduceEffects(options.action.tags);
+		if (
+			settledResult.userFacingEffect === "none" &&
+			tagsMayProduceEffects(options.action.tags)
+		) {
+			return invalidActionResult(
+				"Mutation-capable actions cannot classify user-facing completion text as no-effect.",
+			);
+		}
+		if (
+			settledResult.success === true &&
+			settledResult.verifiedUserFacing === true &&
+			settledResult.userFacingEffect === undefined &&
+			declaredReadOnly
+		) {
+			settledResult = { ...settledResult, userFacingEffect: "none" };
+		}
 		if (
 			settledResult.success !== false &&
 			tagsMayProduceEffects(options.action.tags) &&

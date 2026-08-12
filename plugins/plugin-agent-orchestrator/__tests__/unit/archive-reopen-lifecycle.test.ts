@@ -58,6 +58,12 @@ describe("TASKS archive/reopen lifecycle (#11028)", () => {
       taskId: "t1",
       task: { task: { id: "t1", archived: true } },
     });
+    expect(result?.effectReceipts).toEqual([
+      expect.objectContaining({
+        outcome: "applied",
+        resource: { kind: "orchestrator.task", id: "t1" },
+      }),
+    ]);
   });
 
   it("reopens a task through the durable service", async () => {
@@ -88,7 +94,41 @@ describe("TASKS archive/reopen lifecycle (#11028)", () => {
     );
     expect(svc.pauseTask).toHaveBeenCalledWith("t1");
     expect(result?.success).toBe(true);
+    expect(result?.effectReceipts).toEqual([
+      expect.objectContaining({
+        outcome: "applied",
+        resource: { kind: "orchestrator.task", id: "t1" },
+      }),
+    ]);
+    expect(result?.userFacingEffectReceiptIds).toEqual([
+      result?.effectReceipts?.[0]?.receiptId,
+    ]);
   });
+
+  it.each(["archive", "reopen"] as const)(
+    "binds control/%s to the same durable effect proof as its top-level alias",
+    async (controlAction) => {
+      const svc = taskServiceMock();
+      const result = await archiveCodingTaskAction.handler(
+        runtimeWith(svc),
+        memory({}),
+        state,
+        opts({ action: "control", controlAction, taskId: "t1" }),
+        callback(),
+      );
+
+      expect(result?.success).toBe(true);
+      expect(result?.effectReceipts).toEqual([
+        expect.objectContaining({
+          outcome: "applied",
+          resource: { kind: "orchestrator.task", id: "t1" },
+        }),
+      ]);
+      expect(result?.userFacingEffectReceiptIds).toEqual([
+        result?.effectReceipts?.[0]?.receiptId,
+      ]);
+    },
+  );
 
   it("reports TASK_NOT_FOUND for an unknown task", async () => {
     const svc = taskServiceMock();

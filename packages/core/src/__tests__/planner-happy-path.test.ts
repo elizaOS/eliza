@@ -25,7 +25,7 @@ import type { ContextRegistry } from "../types/contexts";
 import type { Memory } from "../types/memory";
 import { ModelType } from "../types/model";
 import { ChannelType, type UUID } from "../types/primitives";
-import type { IAgentRuntime } from "../types/runtime";
+import type { IAgentRuntime, ModelCallProvenance } from "../types/runtime";
 import type { State } from "../types/state";
 
 const MSG_ID = "00000000-0000-0000-0000-000000000001" as UUID;
@@ -138,8 +138,15 @@ function makeRuntime(opts: {
 		emitEvent: vi.fn(async () => undefined),
 		runActionsByMode: vi.fn(async () => undefined),
 		getSetting: vi.fn(() => undefined),
+		getLastResolvedModelProvider: vi.fn(() => "test-provider"),
 		useModel: vi.fn(
-			async (modelType: unknown, params: unknown, provider: unknown) => {
+			async (
+				modelType: unknown,
+				params: unknown,
+				provider: unknown,
+				provenance?: ModelCallProvenance,
+			) => {
+				if (provenance) provenance.resolvedProvider = "test-provider";
 				calls.push({ modelType, params, provider });
 				if (queue.length === 0) {
 					throw new Error(
@@ -923,6 +930,7 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 				// fall back to the evaluator's paraphrase (which can hallucinate
 				// paths/numbers in this kind of structured output).
 				verifiedUserFacing: true,
+				userFacingEffect: "none",
 				data: { actionName: "CHECK_RUNTIME" },
 			}),
 		});
@@ -1214,6 +1222,23 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 					text: confirmation,
 					userFacingText: confirmation,
 					verifiedUserFacing: true,
+					effectReceipts: [
+						{
+							receiptId: "receipt-personality-mention-only",
+							operation: "personality.update",
+							resource: { kind: "agent.setting", id: "mention-only" },
+							artifacts: [],
+							idempotency: { key: "mention-only", replayed: false },
+							observedAt: "2026-08-12T00:00:00.000Z",
+							outcome: "applied" as const,
+							commit: {
+								kind: "durable" as const,
+								id: "mention-only",
+								committedAt: "2026-08-12T00:00:00.000Z",
+							},
+						},
+					],
+					userFacingEffectReceiptIds: ["receipt-personality-mention-only"],
 					turnComplete: true,
 					data: { actionName: "PERSONALITY" },
 				};

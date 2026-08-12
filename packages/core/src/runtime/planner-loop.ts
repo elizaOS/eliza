@@ -79,9 +79,11 @@ import {
 	trajectoryStepsToMessages,
 } from "./planner-rendering";
 import {
+	allEffectReceipts,
 	allSteps,
 	canonicalUserFacingText,
 	captureOriginalContextEvents,
+	projectEvaluatorVisibleTrajectory,
 	projectModelVisibleTrajectory,
 } from "./planner-trajectory";
 import type {
@@ -632,31 +634,11 @@ async function runPlannerLoopIterations(
 							),
 						};
 					}
-					// Evaluators need to inspect the proposed terminal answer, but it is
-					// not authoritative yet. Give the evaluator an ephemeral trajectory
-					// view so raw planner bytes never enter the persisted trajectory before
-					// the terminal writer applies failure authority and user-output safety.
-					const terminalEvaluationTrajectory: PlannerTrajectory = {
-						...trajectory,
-						context: appendTerminalPlannerOutputEvent({
-							context: trajectory.context,
-							iteration,
-							message: plannerOutput.messageToUser,
-						}),
-						steps: [
-							...trajectory.steps,
-							{
-								iteration,
-								thought: plannerOutput.thought,
-								terminalMessage: plannerOutput.messageToUser,
-								terminalOnly: true,
-							},
-						],
-					};
 					const evaluator = await evaluateTrajectory(
 						params,
-						terminalEvaluationTrajectory,
+						trajectory,
 						iteration,
+						true,
 					);
 					trajectory.evaluatorOutputs.push(evaluator);
 					trajectory.context = appendEvaluationEvent({
@@ -718,7 +700,8 @@ async function runPlannerLoopIterations(
 
 					const missingInputWidgetRelay =
 						deterministicMissingInputPlannerWidgetRelay(
-							terminalEvaluationTrajectory,
+							trajectory,
+							plannerOutput.messageToUser,
 						);
 					if (missingInputWidgetRelay) {
 						params.runtime.logger?.warn?.(
@@ -742,7 +725,8 @@ async function runPlannerLoopIterations(
 					terminalOnlyContinuations++;
 					if (terminalOnlyContinuations > config.maxTerminalOnlyContinuations) {
 						const relay = deterministicTerminalContinuationLimitRelay(
-							terminalEvaluationTrajectory,
+							trajectory,
+							plannerOutput.messageToUser,
 						);
 						if (relay) {
 							params.runtime.logger?.warn?.(
@@ -2648,20 +2632,25 @@ async function evaluateTrajectory(
 	params: PlannerLoopParams,
 	trajectory: PlannerTrajectory,
 	iteration: number,
+	terminalOnly = false,
 ): Promise<EvaluatorOutput> {
+	const evaluatorTrajectory = projectEvaluatorVisibleTrajectory(
+		trajectory,
+		terminalOnly ? iteration : undefined,
+	);
 	if (params.evaluate) {
 		return params.evaluate({
 			runtime: params.runtime,
-			context: trajectory.context,
-			trajectory,
+			context: evaluatorTrajectory.context,
+			trajectory: evaluatorTrajectory,
 			provider: params.provider,
 		});
 	}
 
 	return runEvaluator({
 		runtime: params.runtime,
-		context: trajectory.context,
-		trajectory,
+		context: evaluatorTrajectory.context,
+		trajectory: evaluatorTrajectory,
 		effects: params.evaluatorEffects,
 		recorder: params.recorder,
 		trajectoryId: params.trajectoryId,
@@ -2705,44 +2694,6 @@ function appendEvaluatorContextEvent(
 		context: trajectory.context,
 		iteration,
 		evaluator,
-	});
-}
-
-function appendTerminalPlannerOutputEvent(args: {
-	context: ContextObject;
-	iteration: number;
-	message?: string;
-}): ContextObject {
-	const createdAt = Date.now();
-	const unsafe = isUnsafeUserVisibleText(args.message);
-	const content = [
-		"planner_terminal_output:",
-		compactText(args.message ?? "", 1_200),
-		"",
-		unsafe
-			? "note: This output looked like internal planning or attempted tool-call text. It must not be shown directly to the user."
-			: "note: Evaluate whether this user-visible output actually completes the request.",
-	].join("\n");
-	return appendContextEvent(args.context, {
-		id: `terminal-planner-output:${args.iteration}:${createdAt}`,
-		type: "segment",
-		source: "planner-loop",
-		provenance: "runtime",
-		createdAt,
-		metadata: {
-			iteration: args.iteration,
-			unsafe,
-		},
-		segment: {
-			id: `terminal-planner-output:${args.iteration}:${createdAt}`,
-			label: "terminal_planner_output",
-			content,
-			stable: false,
-			metadata: {
-				iteration: args.iteration,
-				unsafe,
-			},
-		},
 	});
 }
 
@@ -3482,7 +3433,7 @@ function terminalMessageWithFailureAuthority(
 		return pendingInteraction;
 	}
 
-	return groundedFailedToolMessage(unresolvedFailure);
+	return groundedFailedToolMessage(trajectory, unresolvedFailure);
 }
 
 /**
@@ -3752,19 +3703,19 @@ function terminalMessageFromToolCalls(
  * prompts, exit codes, cwd, byte counts) and leaks the tool's wrapper
  * format into the user channel.
  *
- * Tools that produce real user-facing answers (Q&A, content generation,
- * mutation confirmations, vetted shell projections) must opt in by setting
- * `userFacingText`. Tools that only emit logs (raw shell transcripts, fetchers,
- * file readers) leave it unset; this function then returns undefined and the
- * caller falls through to the evaluator's synthesized reply instead of dumping
- * the log into the channel. The contract is structural: tools declare what is
- * safe to show, the framework never guesses by parsing wrapper text.
+ * Tools that produce real user-facing answers must provide verified
+ * `userFacingText` with explicit no-effect classification or active receipt
+ * bindings. Tools that only emit logs leave it unset; this function then returns
+ * undefined instead of guessing from wrapper text.
  */
 function latestToolResultText(
 	trajectory: PlannerTrajectory,
 ): string | undefined {
+	const receipts = allEffectReceipts(trajectory);
 	for (const step of allSteps(trajectory).reverse()) {
-		const text = canonicalUserFacingText(step.result);
+		const text = canonicalUserFacingText(step.result, {
+			allTurnReceipts: receipts,
+		});
 		if (text) {
 			return text;
 		}
@@ -3841,10 +3792,10 @@ function isEchoOfPlannerFacingToolText(
 		// When the tool's own userFacingText carries the raw text, the raw text
 		// IS the sanctioned user projection — repeating it is not a leak.
 		const userFacing =
-			canonicalUserFacingText(result, { includeTerminalFailure: true }) ??
-			(result.success === false
-				? getNonEmptyString(result.userFacingText)
-				: undefined) ??
+			canonicalUserFacingText(result, {
+				allTurnReceipts: allEffectReceipts(trajectory),
+				includeTerminalFailure: true,
+			}) ??
 			(hasRequiresConfirmationMarker(result) ||
 			hasAwaitingUserInputMarker(result) ||
 			(result.success === true && hasNoopMarker(result))
@@ -3972,7 +3923,10 @@ async function ensureFailedTurnFinalMessage(
 	if (unresolvedFailure) {
 		return {
 			...result,
-			finalMessage: groundedFailedToolMessage(unresolvedFailure),
+			finalMessage: groundedFailedToolMessage(
+				result.trajectory,
+				unresolvedFailure,
+			),
 		};
 	}
 	const failedStep = latestFailedToolStep(result.trajectory);
@@ -4043,18 +3997,22 @@ export const TOOL_RESULT_UNAVAILABLE_MESSAGE =
  * guessed into the user channel. A tool declares its output safe to show by
  * setting `userFacingText` — FILE write/edit do so ("Wrote N bytes to <path>"),
  * as do narrowly vetted shell projections. Raw shell transcripts, fetchers, and
- * file readers leave it unset, so their logs never leak here. Both active and
- * compacted steps are searched because archiving cannot revoke an already-safe
- * projection. Returns undefined when no successful non-terminal tool exposed a
- * user-facing result, so genuine failures still surface.
+ * file readers leave it unset, so their logs never leak here. Canonical text
+ * additionally needs explicit no-effect or active receipt authority. Both active
+ * and compacted steps are searched because archiving cannot revoke an
+ * already-safe projection. Returns undefined when no successful non-terminal
+ * tool exposed an authoritative result, so genuine failures still surface.
  */
 function deterministicSuccessfulToolRelay(
 	trajectory: PlannerTrajectory,
 ): string | undefined {
+	const receipts = allEffectReceipts(trajectory);
 	for (const step of allSteps(trajectory).reverse()) {
 		if (!step.toolCall || step.result?.success !== true) continue;
 		if (isTerminalToolCall(step.toolCall)) continue;
-		const candidate = canonicalUserFacingText(step.result);
+		const candidate = canonicalUserFacingText(step.result, {
+			allTurnReceipts: receipts,
+		});
 		if (candidate) return candidate;
 	}
 	return undefined;
@@ -4080,7 +4038,7 @@ function deterministicEvaluatorProtocolFailureRelay(
 		// that just failed. Finish with that action-owned failure; an older failure
 		// followed by newer work still gets the normal replanning opportunity.
 		return latestExecutedTool === unresolvedFailure
-			? groundedFailedToolMessage(unresolvedFailure)
+			? groundedFailedToolMessage(trajectory, unresolvedFailure)
 			: undefined;
 	}
 	return deterministicSuccessfulToolRelay(trajectory);
@@ -4088,13 +4046,20 @@ function deterministicEvaluatorProtocolFailureRelay(
 
 function deterministicTerminalContinuationLimitRelay(
 	trajectory: PlannerTrajectory,
+	terminalCandidate?: string,
 ): string | undefined {
 	return (
-		deterministicMissingInputPlannerWidgetRelay(trajectory) ??
+		deterministicMissingInputPlannerWidgetRelay(
+			trajectory,
+			terminalCandidate,
+		) ??
 		deterministicSuccessfulToolRelay(trajectory) ??
 		deterministicRequiresConfirmationRelay(trajectory) ??
 		deterministicNoopClarificationRelay(trajectory) ??
-		deterministicMissingInputPlannerClarificationRelay(trajectory)
+		deterministicMissingInputPlannerClarificationRelay(
+			trajectory,
+			terminalCandidate,
+		)
 	);
 }
 
@@ -4107,22 +4072,25 @@ function deterministicTerminalContinuationLimitRelay(
  */
 function deterministicMissingInputPlannerWidgetRelay(
 	trajectory: PlannerTrajectory,
+	terminalCandidate?: string,
 ): string | undefined {
-	return missingInputPlannerTerminalCandidates(trajectory)
+	return missingInputPlannerTerminalCandidates(trajectory, terminalCandidate)
 		.map(userSafeWidgetReplyCandidate)
 		.find((candidate): candidate is string => candidate !== undefined);
 }
 
 function deterministicMissingInputPlannerClarificationRelay(
 	trajectory: PlannerTrajectory,
+	terminalCandidate?: string,
 ): string | undefined {
-	return missingInputPlannerTerminalCandidates(trajectory)
+	return missingInputPlannerTerminalCandidates(trajectory, terminalCandidate)
 		.map(userSafeClarificationReplyCandidate)
 		.find((candidate): candidate is string => candidate !== undefined);
 }
 
 function missingInputPlannerTerminalCandidates(
 	trajectory: PlannerTrajectory,
+	terminalCandidate?: string,
 ): Array<string | undefined> {
 	const steps = allSteps(trajectory);
 	let latestToolResultIndex = -1;
@@ -4137,11 +4105,14 @@ function missingInputPlannerTerminalCandidates(
 	}
 	if (latestToolResultIndex < 0) return [];
 
-	return steps
-		.slice(latestToolResultIndex + 1)
-		.filter((step) => step.terminalOnly === true)
-		.map((step) => step.terminalMessage)
-		.reverse();
+	return [
+		terminalCandidate,
+		...steps
+			.slice(latestToolResultIndex + 1)
+			.filter((step) => step.terminalOnly === true)
+			.map((step) => step.terminalMessage)
+			.reverse(),
+	];
 }
 
 function deterministicRequiresConfirmationRelay(
@@ -4226,9 +4197,9 @@ function plannerResultValues(
 }
 
 /**
- * Returns the canonical user-facing text from a trajectory whose
- * `verifiedUserFacing` opt-in is unambiguous: exactly one completed tool step
- * set `verifiedUserFacing: true` with a non-empty `userFacingText`.
+ * Returns canonical user-facing text from a trajectory with one unambiguous
+ * completed tool result. Successful text also needs explicit no-effect or
+ * active receipt authority.
  *
  * Failed steps are intentionally ignored unless they are explicit
  * confirmation-required previews. A plan whose first tool errored and whose
@@ -4267,7 +4238,9 @@ export function singleVerifiedUserFacingToolResultText(
 	);
 	if (successfulToolSteps.length !== 1) return undefined;
 	const result = successfulToolSteps[0]?.result;
-	return canonicalUserFacingText(result);
+	return canonicalUserFacingText(result, {
+		allTurnReceipts: allEffectReceipts(trajectory),
+	});
 }
 
 /**
@@ -4819,6 +4792,7 @@ function tryGateVerifiedFailure(
 		return null;
 	}
 	const message = canonicalUserFacingText(latestResult, {
+		allTurnReceipts: allEffectReceipts(args.trajectory),
 		includeTerminalFailure: true,
 	});
 	if (!message || isUnsafeUserVisibleText(message)) return null;
@@ -4838,10 +4812,15 @@ function tryGateVerifiedFailure(
 
 function selectGatedEvaluatorReply(
 	latestResult: PlannerToolResult,
-	args: { lastPlannerExplicitMessageToUser: string | undefined },
+	args: {
+		trajectory: PlannerTrajectory;
+		lastPlannerExplicitMessageToUser: string | undefined;
+	},
 ): GatedEvaluatorDecision | null {
 	if (latestResult.turnComplete === true) {
-		const message = canonicalUserFacingText(latestResult);
+		const message = canonicalUserFacingText(latestResult, {
+			allTurnReceipts: allEffectReceipts(args.trajectory),
+		});
 		if (!message) return null;
 		if (isUnsafeUserVisibleText(message)) return null;
 		return {
@@ -4887,15 +4866,16 @@ const TERMINAL_TOOL_CALL_FINISH_THOUGHT =
 const TERMINAL_AFTER_FAILED_TOOL_THOUGHT =
 	"Terminal FINISH: planner ended the loop after a failed tool; the tool-owned failure remains authoritative.";
 
-function groundedFailedToolMessage(step: PlannerStep): string {
-	const result = step.result;
-	const toolOwnedText =
-		result &&
-		(hasRequiresConfirmationMarker(result) ||
-			hasAwaitingUserInputMarker(result))
-			? (result.userFacingText ?? result.text)
-			: result?.userFacingText;
-	const candidate = sanitizePlannerMessage(toolOwnedText);
+function groundedFailedToolMessage(
+	trajectory: PlannerTrajectory,
+	step: PlannerStep,
+): string {
+	const candidate = sanitizePlannerMessage(
+		canonicalUserFacingText(step.result, {
+			allTurnReceipts: allEffectReceipts(trajectory),
+			includeTerminalFailure: true,
+		}),
+	);
 	if (candidate && !isUnsafeUserVisibleText(candidate)) return candidate;
 	return FAILED_TOOL_FALLBACK_MESSAGE;
 }
@@ -5211,6 +5191,7 @@ export function actionResultToPlannerToolResult(
 		transcriptVisibility: result.transcriptVisibility,
 		userFacingText: result.userFacingText,
 		verifiedUserFacing: result.verifiedUserFacing,
+		userFacingEffect: result.userFacingEffect,
 		effectReceipts: result.effectReceipts,
 		userFacingEffectReceiptIds: result.userFacingEffectReceiptIds,
 		data: Object.keys(data).length > 0 ? data : undefined,

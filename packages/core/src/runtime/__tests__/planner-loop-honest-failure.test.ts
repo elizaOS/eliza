@@ -253,6 +253,23 @@ describe("honest failed-turn replies (#17948)", () => {
 				text: "deployment retry completed",
 				userFacingText: "Candidate deployment receipt: release-42",
 				verifiedUserFacing: true,
+				effectReceipts: [
+					{
+						receiptId: "receipt-release-42",
+						operation: "deploy",
+						resource: { kind: "release", id: "release-42" },
+						artifacts: [],
+						idempotency: { key: "release-42", replayed: false },
+						observedAt: "2026-08-12T00:00:00.000Z",
+						outcome: "applied" as const,
+						commit: {
+							kind: "provider_accepted" as const,
+							id: "release-42",
+							committedAt: "2026-08-12T00:00:00.000Z",
+						},
+					},
+				],
+				userFacingEffectReceiptIds: ["receipt-release-42"],
 			});
 		const evaluate = vi
 			.fn()
@@ -670,7 +687,7 @@ describe("deterministic post-turn relay", () => {
 		expect(
 			useModel.mock.calls.every((call) => call[2] === "pinned-provider"),
 		).toBe(true);
-		const evaluatorInput = JSON.stringify(useModel.mock.calls[1]?.[1]);
+		const evaluatorInput = JSON.stringify(useModel.mock.calls.at(-1)?.[1]);
 		expect(evaluatorInput).toContain("tool_authority");
 		expect(evaluatorInput).toContain("Deploy the release.");
 		expect(evaluatorInput).toContain("SAFE_PROVIDER_CONTEXT");
@@ -834,6 +851,145 @@ describe("deterministic post-turn relay", () => {
 		expect(result.finalMessage).not.toBe(falseCompletion);
 	});
 
+	it("does not canonicalize receiptless mutation-capable completion text", async () => {
+		const falseCompletion = "Deployment completed.";
+		const safeFinal = "Deployment could not be verified.";
+		const useModel = vi
+			.fn()
+			.mockResolvedValueOnce({
+				text: "",
+				toolCalls: [{ id: "deploy", name: "DEPLOY", arguments: {} }],
+			})
+			.mockResolvedValueOnce({
+				object: {
+					success: true,
+					decision: "FINISH",
+					thought: "No receipt proves the deployment.",
+					messageToUser: safeFinal,
+				},
+			});
+
+		const result = await runPlannerLoop({
+			runtime: { useModel },
+			context: { id: "ctx" },
+			tools: [{ name: "DEPLOY", description: "Deploy an application." }],
+			executeToolCall: async () => ({
+				success: true,
+				userFacingText: falseCompletion,
+				verifiedUserFacing: true,
+				turnComplete: false,
+			}),
+		});
+
+		const evaluatorInput = JSON.stringify(useModel.mock.calls[1]?.[1]);
+		expect(evaluatorInput).toContain("canonical_user_facing_text: unavailable");
+		expect(evaluatorInput).not.toContain(falseCompletion);
+		expect(result.finalMessage).toBe(safeFinal);
+		expect(result.finalMessage).not.toContain(falseCompletion);
+	});
+
+	it("revokes earlier applied text when a later rollback enters all-turn authority", async () => {
+		const applied = {
+			receiptId: "deploy-applied",
+			operation: "deploy",
+			resource: { kind: "app", id: "release-42" },
+			outcome: "applied" as const,
+			artifacts: [],
+			idempotency: { key: "release-42", replayed: false },
+			commit: {
+				kind: "provider_accepted" as const,
+				id: "provider-deploy-42",
+				committedAt: "2026-08-12T00:00:00.000Z",
+			},
+			observedAt: "2026-08-12T00:00:00.000Z",
+		};
+		const rollback = {
+			receiptId: "deploy-rollback",
+			operation: "deploy.rollback",
+			resource: { kind: "app", id: "release-42" },
+			outcome: "rolled_back" as const,
+			artifacts: [],
+			idempotency: { key: "release-42", replayed: false },
+			rollback: {
+				receiptId: "provider-rollback-42",
+				revertedReceiptIds: [applied.receiptId],
+				rolledBackAt: "2026-08-12T00:01:00.000Z",
+			},
+			observedAt: "2026-08-12T00:01:00.000Z",
+		};
+		const falseCompletion = "Deployment completed.";
+		const useModel = vi
+			.fn()
+			.mockResolvedValueOnce({
+				text: "",
+				toolCalls: [
+					{ id: "deploy", name: "DEPLOY", arguments: {} },
+					{ id: "rollback", name: "ROLLBACK", arguments: {} },
+				],
+			})
+			.mockResolvedValueOnce({
+				object: {
+					success: true,
+					decision: "NEXT_RECOMMENDED",
+					thought: "Run the queued rollback.",
+					recommendedToolCallId: "rollback",
+				},
+			})
+			.mockResolvedValueOnce({
+				object: {
+					success: true,
+					decision: "FINISH",
+					thought: "The deployment was rolled back.",
+					messageToUser: "The deployment was rolled back.",
+				},
+			});
+
+		const result = await runPlannerLoop({
+			runtime: { useModel },
+			context: { id: "ctx" },
+			tools: [
+				{ name: "DEPLOY", description: "Deploy an application." },
+				{ name: "ROLLBACK", description: "Roll back an application." },
+			],
+			executeToolCall: async (call) =>
+				call.name === "DEPLOY"
+					? {
+							success: true,
+							text: `deploy diagnostics ${"private output ".repeat(500)}`,
+							userFacingText: falseCompletion,
+							verifiedUserFacing: true,
+							effectReceipts: [applied],
+							userFacingEffectReceiptIds: [applied.receiptId],
+						}
+					: { success: true, effectReceipts: [rollback] },
+			config: {
+				contextWindowTokens: 1_200,
+				compactionReserveTokens: 1_000,
+				compactionKeepSteps: 1,
+			},
+		});
+
+		const evaluatorInputs = useModel.mock.calls
+			.slice(1)
+			.map((call) => JSON.stringify(call[1]));
+		expect(evaluatorInputs[0]).toContain(falseCompletion);
+		expect(evaluatorInputs.at(-1)).not.toContain(falseCompletion);
+		expect(evaluatorInputs.at(-1)).toContain(
+			"canonical_user_facing_text: unavailable",
+		);
+		expect(
+			result.trajectory.archivedSteps.some(
+				(step) => step.toolCall?.name === "DEPLOY",
+			),
+		).toBe(true);
+		expect(
+			result.trajectory.steps.some(
+				(step) => step.toolCall?.name === "ROLLBACK",
+			),
+		).toBe(true);
+		expect(result.finalMessage).toBe("The deployment was rolled back.");
+	});
+
 	it("preserves verified success authority and provider routing through the default evaluator", async () => {
 		const canonical = "Release receipt: twelve plugins verified.";
 		const useModel = vi
@@ -867,6 +1023,7 @@ describe("deterministic post-turn relay", () => {
 				data: { secret: "SUCCESS_DATA_NEVER_SHOW" },
 				userFacingText: canonical,
 				verifiedUserFacing: true,
+				userFacingEffect: "none" as const,
 				turnComplete: false,
 			}),
 		});
@@ -898,6 +1055,7 @@ describe("deterministic post-turn relay", () => {
 			text: "stdout:\n/private/ops/raw.log\nAPI_TOKEN=never-show",
 			userFacingText: "Found three matching records.",
 			verifiedUserFacing: true,
+			userFacingEffect: "none" as const,
 		}));
 		const evaluate = vi.fn(async () => ({
 			success: true,
@@ -1022,6 +1180,7 @@ describe("deterministic post-turn relay", () => {
 				text: "planner diagnostics: twelve release plugins",
 				userFacingText: "Release inventory contains twelve plugins.",
 				verifiedUserFacing: true,
+				userFacingEffect: "none" as const,
 			})
 			.mockResolvedValueOnce({
 				success: true,

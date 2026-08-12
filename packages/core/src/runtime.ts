@@ -215,6 +215,7 @@ import {
 	type MessageConnectorRegistration,
 	type MessageSearchHit,
 	type Metadata,
+	type ModelCallProvenance,
 	type ModelHandler,
 	type ModelParamsMap,
 	type ModelRegistrationInfo,
@@ -6119,9 +6120,12 @@ export class AgentRuntime implements IAgentRuntime {
 	private noteResolvedModelProvider(
 		modelTypeKey: string,
 		provider: string | undefined,
+		provenance?: ModelCallProvenance,
 	): void {
 		if (typeof provider === "string" && provider.trim().length > 0) {
-			this.lastResolvedModelProviderByType.set(modelTypeKey, provider);
+			const resolvedProvider = provider.trim();
+			this.lastResolvedModelProviderByType.set(modelTypeKey, resolvedProvider);
+			if (provenance) provenance.resolvedProvider = resolvedProvider;
 		}
 	}
 
@@ -6552,6 +6556,7 @@ export class AgentRuntime implements IAgentRuntime {
 		modelType: T,
 		params: ModelParamsMap[T],
 		provider?: string,
+		provenance?: ModelCallProvenance,
 	): Promise<R> {
 		const useModelStartedAt = Date.now();
 		this.assertCanonicalModelCapabilityEnabled(String(modelType));
@@ -6603,6 +6608,7 @@ export class AgentRuntime implements IAgentRuntime {
 									resolved.modelType as T,
 									params,
 									resolved.provider,
+									provenance,
 								),
 							),
 					);
@@ -7413,6 +7419,7 @@ export class AgentRuntime implements IAgentRuntime {
 					this.noteResolvedModelProvider(
 						requestedModelKey,
 						resolvedModel.provider,
+						provenance,
 					);
 
 					this.logger.trace(
@@ -7518,6 +7525,7 @@ export class AgentRuntime implements IAgentRuntime {
 				this.noteResolvedModelProvider(
 					requestedModelKey,
 					resolvedModel.provider,
+					provenance,
 				);
 
 				this.logger.trace(

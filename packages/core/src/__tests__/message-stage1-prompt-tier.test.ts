@@ -16,7 +16,7 @@ import { isUnaddressedTextGroupTurn } from "../services/message/stage1-prompt-ti
 import type { ContextDefinition } from "../types/contexts";
 import type { Memory } from "../types/memory";
 import { ChannelType, type UUID } from "../types/primitives";
-import type { IAgentRuntime } from "../types/runtime";
+import type { IAgentRuntime, ModelCallProvenance } from "../types/runtime";
 import type { State } from "../types/state";
 
 /** Unique substrings that identify which template tier rendered. */
@@ -133,7 +133,17 @@ function makeRuntime(
 		composeState: vi.fn(async () => makeState()),
 		runActionsByMode: vi.fn(async () => undefined),
 		emitEvent: vi.fn(async () => undefined),
-		useModel: vi.fn(async () => stage1ResponseBody),
+		useModel: vi.fn(
+			async (
+				_modelType: unknown,
+				_params: unknown,
+				_provider: unknown,
+				provenance?: ModelCallProvenance,
+			) => {
+				if (provenance) provenance.resolvedProvider = "test-provider";
+				return stage1ResponseBody;
+			},
+		),
 		logger: {
 			debug: vi.fn(),
 			info: vi.fn(),

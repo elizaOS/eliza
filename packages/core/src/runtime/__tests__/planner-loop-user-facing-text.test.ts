@@ -133,6 +133,7 @@ describe("planner-loop — user-facing tool text isolation", () => {
 			text: `Q_AND_A result\n[exit 0]\n--- stdout ---\n${userFriendly}`,
 			userFacingText: userFriendly,
 			verifiedUserFacing: true,
+			userFacingEffect: "none" as const,
 		}));
 		const evaluate = vi.fn(async () => ({
 			success: true,
@@ -225,15 +226,16 @@ describe("singleVerifiedUserFacingToolResultText — canonical tool filter", () 
 		result: {
 			success: true as const,
 			text: "raw diag",
-			userFacingText: "Wrote 14 files to /home/example/.bun/install/cache.",
+			userFacingText: "Found 14 files under /home/example/.bun/install/cache.",
 			verifiedUserFacing: true,
+			userFacingEffect: "none" as const,
 		},
 	};
 
 	it("returns the verified tool's text when a prior step failed", () => {
 		const trajectory = trajectoryWith([failedStep, verifiedStep]);
 		expect(singleVerifiedUserFacingToolResultText(trajectory)).toBe(
-			"Wrote 14 files to /home/example/.bun/install/cache.",
+			"Found 14 files under /home/example/.bun/install/cache.",
 		);
 	});
 
@@ -635,7 +637,10 @@ describe("planner-loop — verified tool text + evaluator prose combine", () => 
 					usage: { promptTokens: 50, completionTokens: 20, totalTokens: 70 },
 				}),
 		};
-		const executeToolCall = vi.fn(async () => opts.toolResult);
+		const executeToolCall = vi.fn(async () => ({
+			userFacingEffect: "none" as const,
+			...opts.toolResult,
+		}));
 		const evaluate = vi.fn(async () => ({
 			success: true,
 			decision: "FINISH" as const,

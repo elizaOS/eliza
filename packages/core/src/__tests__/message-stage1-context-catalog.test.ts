@@ -16,7 +16,7 @@ import {
 import type { ContextDefinition } from "../types/contexts";
 import type { Memory } from "../types/memory";
 import type { UUID } from "../types/primitives";
-import type { IAgentRuntime } from "../types/runtime";
+import type { IAgentRuntime, ModelCallProvenance } from "../types/runtime";
 import type { State } from "../types/state";
 
 function stage1Response(fields: {
@@ -118,7 +118,17 @@ function makeRuntimeWithContexts(
 		composeState: vi.fn(async () => makeState()),
 		runActionsByMode: vi.fn(async () => undefined),
 		emitEvent: vi.fn(async () => undefined),
-		useModel: vi.fn(async () => stage1ResponseBody),
+		useModel: vi.fn(
+			async (
+				_modelType: unknown,
+				_params: unknown,
+				_provider: unknown,
+				provenance?: ModelCallProvenance,
+			) => {
+				if (provenance) provenance.resolvedProvider = "test-provider";
+				return stage1ResponseBody;
+			},
+		),
 		logger: {
 			debug: vi.fn(),
 			info: vi.fn(),
@@ -249,12 +259,20 @@ describe("Stage 1 prompt — available contexts catalog", () => {
 			composeState: vi.fn(async () => makeState()),
 			runActionsByMode: vi.fn(async () => undefined),
 			emitEvent: vi.fn(async () => undefined),
-			useModel: vi.fn(async () =>
-				stage1Response({
-					contexts: [],
-					thought: "Direct answer.",
-					replyText: "Hello.",
-				}),
+			useModel: vi.fn(
+				async (
+					_modelType: unknown,
+					_params: unknown,
+					_provider: unknown,
+					provenance?: ModelCallProvenance,
+				) => {
+					if (provenance) provenance.resolvedProvider = "test-provider";
+					return stage1Response({
+						contexts: [],
+						thought: "Direct answer.",
+						replyText: "Hello.",
+					});
+				},
 			),
 			logger: {
 				debug: vi.fn(),

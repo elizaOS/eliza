@@ -21,7 +21,7 @@ import type { Action, ActionResult } from "../types/components";
 import type { Memory } from "../types/memory";
 import { ModelType } from "../types/model";
 import type { UUID } from "../types/primitives";
-import type { IAgentRuntime } from "../types/runtime";
+import type { IAgentRuntime, ModelCallProvenance } from "../types/runtime";
 import type { State } from "../types/state";
 
 const MSG_ID = "00000000-0000-0000-0000-000000000001" as UUID;
@@ -97,6 +97,7 @@ function taskHistoryAction(result: Partial<ActionResult>): Action {
 	return {
 		name: "TASK_HISTORY",
 		description: "List orchestrator task history.",
+		tags: ["capability:read"],
 		similes: [],
 		examples: [],
 		parameters: [],
@@ -141,20 +142,31 @@ function makeRuntime(opts: {
 		reportError: vi.fn(),
 		runActionsByMode: vi.fn(async () => undefined),
 		getSetting: vi.fn(() => undefined),
-		useModel: vi.fn(async (modelType: unknown) => {
-			if (queue.length === 0) {
-				throw new Error(
-					`Unexpected useModel call (modelType=${String(modelType)}); queue empty`,
-				);
-			}
-			const next = queue.shift();
-			if (next?.expectModelType && String(modelType) !== next.expectModelType) {
-				throw new Error(
-					`Expected ${next.expectModelType} but received ${String(modelType)}`,
-				);
-			}
-			return next?.body;
-		}),
+		useModel: vi.fn(
+			async (
+				modelType: unknown,
+				_params: unknown,
+				_provider: unknown,
+				provenance?: ModelCallProvenance,
+			) => {
+				if (provenance) provenance.resolvedProvider = "test-provider";
+				if (queue.length === 0) {
+					throw new Error(
+						`Unexpected useModel call (modelType=${String(modelType)}); queue empty`,
+					);
+				}
+				const next = queue.shift();
+				if (
+					next?.expectModelType &&
+					String(modelType) !== next.expectModelType
+				) {
+					throw new Error(
+						`Expected ${next.expectModelType} but received ${String(modelType)}`,
+					);
+				}
+				return next?.body;
+			},
+		),
 		logger: {
 			debug: vi.fn(),
 			info: vi.fn(),
@@ -293,7 +305,12 @@ describe("protocol-failure recovery never promotes raw result.text", () => {
 		const userFacing =
 			"You have 3 task threads from today: login flow and billing are active; the homepage deploy is complete.";
 		const runtime = makeRuntime({
-			actions: [taskHistoryAction({ userFacingText: userFacing })],
+			actions: [
+				taskHistoryAction({
+					userFacingText: userFacing,
+					verifiedUserFacing: true,
+				}),
+			],
 			responses: [
 				{
 					expectModelType: ModelType.RESPONSE_HANDLER,

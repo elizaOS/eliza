@@ -568,12 +568,13 @@ describe("executePlannedToolCall", () => {
 		);
 	});
 
-	it("preserves byte-exact canonical callback text through later voice gates", async () => {
+	it("auto-classifies canonical read-only results as no-effect", async () => {
 		const canonicalText =
 			"“Send demo video” is scheduled for Tuesday, August 4, 2026 at 9:00 AM.";
 		const callback: HandlerCallback = vi.fn(async () => []);
 		const action = makeAction({
 			name: "READ_CALENDAR",
+			tags: ["capability:read"],
 			handler: async (_runtime, _message, _state, _options, actionCallback) => {
 				await actionCallback?.({ text: canonicalText });
 				return {
@@ -585,7 +586,7 @@ describe("executePlannedToolCall", () => {
 			},
 		});
 
-		await executePlannedToolCall(
+		const result = await executePlannedToolCall(
 			makeRuntime([action]),
 			{ message: makeMessage(), callback },
 			{ name: "READ_CALENDAR", params: {} },
@@ -595,6 +596,12 @@ describe("executePlannedToolCall", () => {
 			{ text: canonicalText, agentVoiced: true },
 			"READ_CALENDAR",
 		);
+		expect(result).toMatchObject({
+			success: true,
+			userFacingText: canonicalText,
+			verifiedUserFacing: true,
+			userFacingEffect: "none",
+		});
 	});
 
 	it("suppresses mutation callbacks until their result carries receipt proof", async () => {
@@ -614,6 +621,40 @@ describe("executePlannedToolCall", () => {
 			{ name: "CREATE_TASK", params: {} },
 		);
 
+		expect(callback).not.toHaveBeenCalled();
+	});
+
+	it("rejects a mutation handler that claims its completion is no-effect", async () => {
+		const callback: HandlerCallback = vi.fn(async () => []);
+		const canonicalText = "The deployment completed.";
+		const action = makeAction({
+			name: "DEPLOY",
+			tags: ["capability:write"],
+			handler: async (_runtime, _message, _state, _options, actionCallback) => {
+				await actionCallback?.({ text: canonicalText });
+				return {
+					success: true,
+					userFacingText: canonicalText,
+					verifiedUserFacing: true,
+					userFacingEffect: "none" as const,
+				};
+			},
+		});
+
+		const result = await executePlannedToolCall(
+			makeRuntime([action]),
+			{ message: makeMessage(), callback },
+			{ name: "DEPLOY", params: {} },
+		);
+
+		expect(result).toMatchObject({
+			success: false,
+			data: {
+				outcomeUnknown: true,
+				reconciliationRequired: true,
+			},
+		});
+		expect(result.userFacingText).toBeUndefined();
 		expect(callback).not.toHaveBeenCalled();
 	});
 

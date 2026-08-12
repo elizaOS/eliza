@@ -159,6 +159,16 @@ export interface RuntimeStopOptions {
 	serviceStopTimeoutMs?: number;
 }
 
+/**
+ * Call-scoped provenance populated by the model registration that successfully
+ * serves a `useModel` invocation. Keeping this authority on the invocation
+ * prevents concurrent turns from observing each other's runtime-global
+ * last-provider diagnostic.
+ */
+export interface ModelCallProvenance {
+	resolvedProvider?: string;
+}
+
 export const ConnectorAccountPurpose = {
 	MESSAGING: "messaging",
 	POSTING: "posting",
@@ -911,6 +921,7 @@ export interface IAgentRuntime extends RuntimeDatabaseAdapterSurface {
 		modelType: TextGenerationModelType,
 		params: GenerateTextParams,
 		provider?: string,
+		provenance?: ModelCallProvenance,
 	): Promise<string>;
 
 	// Overload 2: Generic fallback for other model types
@@ -918,6 +929,7 @@ export interface IAgentRuntime extends RuntimeDatabaseAdapterSurface {
 		modelType: T,
 		params: ModelParamsMap[T],
 		provider?: string,
+		provenance?: ModelCallProvenance,
 	): Promise<R>;
 
 	/**

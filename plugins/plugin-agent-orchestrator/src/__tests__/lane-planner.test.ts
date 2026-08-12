@@ -1124,7 +1124,7 @@ describe("TASKS create lane planner integration", () => {
     expect(createMetadata).toHaveProperty("source", "test");
   });
 
-  it("falls back to legacy single-task behavior when planning fails", async () => {
+  it("rejects missing lane scopes before legacy execution", async () => {
     const acp = makeAcp();
     const taskService = makeTaskService();
     const runtime = makeRuntime(
@@ -1133,7 +1133,7 @@ describe("TASKS create lane planner integration", () => {
       taskService,
     );
 
-    await tasksAction.handler(
+    const result = await tasksAction.handler(
       runtime,
       makeMessage("split unscoped work"),
       {} as State,
@@ -1146,16 +1146,23 @@ describe("TASKS create lane planner integration", () => {
       vi.fn(async () => []) as unknown as HandlerCallback,
     );
 
-    expect(acp.spawnSession).toHaveBeenCalledTimes(2);
-    const spawnMetadata = acp.spawnSession.mock.calls[0]?.[0]?.metadata;
-    expect(spawnMetadata).not.toHaveProperty("lane");
-    const createMetadata = taskService.createTask.mock.calls[0]?.[0]?.metadata;
-    expect(createMetadata).not.toHaveProperty("lane");
-    expect(createMetadata).not.toHaveProperty("waveId");
-    expect(createMetadata).toHaveProperty("source", "test");
+    expect(result).toMatchObject({
+      success: false,
+      error: "LANE_PLAN_MISSING_SCOPE",
+      data: {
+        awaitingUserInput: true,
+        laneSettlement: {
+          phase: "pre_effect",
+          category: "safety",
+          acceptance: "rejected",
+        },
+      },
+    });
+    expect(acp.spawnSession).not.toHaveBeenCalled();
+    expect(taskService.createTask).not.toHaveBeenCalled();
   });
 
-  it("preserves the legacy too-many-agents error when requests exceed both caps", async () => {
+  it("rejects too many lanes before legacy execution", async () => {
     const acp = makeAcp();
     const taskService = makeTaskService();
     const runtime = makeRuntime(
@@ -1181,7 +1188,56 @@ describe("TASKS create lane planner integration", () => {
     );
 
     expect(result?.success).toBe(false);
-    expect(result?.error).toBe("TOO_MANY_AGENTS");
+    expect(result).toMatchObject({
+      success: false,
+      error: "LANE_PLAN_TOO_MANY",
+      data: {
+        awaitingUserInput: true,
+        laneSettlement: {
+          phase: "pre_effect",
+          category: "safety",
+          acceptance: "rejected",
+        },
+      },
+    });
+    expect(acp.spawnSession).not.toHaveBeenCalled();
+    expect(taskService.createTask).not.toHaveBeenCalled();
+  });
+
+  it("rejects overlapping lane scopes before legacy execution", async () => {
+    const acp = makeAcp();
+    const taskService = makeTaskService();
+    const runtime = makeRuntime(
+      { ELIZA_ORCHESTRATOR_LANE_PLANNER: "1" },
+      acp,
+      taskService,
+    );
+
+    const result = await tasksAction.handler(
+      runtime,
+      makeMessage("split overlapping work"),
+      {} as State,
+      {
+        parameters: {
+          action: "create",
+          agents:
+            "Update packages/core/src/runtime/planner-loop.ts | Test packages/core/src/runtime/planner-loop.ts",
+        },
+      },
+      vi.fn(async () => []) as unknown as HandlerCallback,
+    );
+
+    expect(result).toMatchObject({
+      success: false,
+      error: "LANE_PLAN_SCOPE_OVERLAP",
+      data: {
+        laneSettlement: {
+          phase: "pre_effect",
+          category: "safety",
+          acceptance: "rejected",
+        },
+      },
+    });
     expect(acp.spawnSession).not.toHaveBeenCalled();
     expect(taskService.createTask).not.toHaveBeenCalled();
   });

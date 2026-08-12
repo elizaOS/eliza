@@ -130,6 +130,11 @@ export type CommittedEffectReceipt =
 export interface EffectBearingResult {
 	verifiedUserFacing?: boolean;
 	userFacingText?: string;
+	/**
+	 * Explicit assertion that the visible result describes no external mutation.
+	 * Mutation-capable actions must instead bind their text to active receipts.
+	 */
+	userFacingEffect?: "none";
 	effectReceipts?: readonly EffectReceipt[];
 	userFacingEffectReceiptIds?: readonly string[];
 }

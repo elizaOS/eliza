@@ -15,7 +15,7 @@ import type {
 import type { ChoiceInteraction, FormInteraction } from "../types/interactions";
 import type { Memory } from "../types/memory";
 import type { UUID } from "../types/primitives";
-import type { IAgentRuntime } from "../types/runtime";
+import type { IAgentRuntime, ModelCallProvenance } from "../types/runtime";
 import type { State } from "../types/state";
 
 const MSG_ID = "00000000-0000-0000-0000-000000000001" as UUID;
@@ -129,14 +129,22 @@ function makeRuntime(opts: {
 		],
 		emitEvent: vi.fn(async () => undefined),
 		runActionsByMode: vi.fn(async () => undefined),
-		useModel: vi.fn(async (modelType: unknown) => {
-			if (queue.length === 0) {
-				throw new Error(
-					`Unexpected useModel call (modelType=${String(modelType)}); queue empty`,
-				);
-			}
-			return queue.shift();
-		}),
+		useModel: vi.fn(
+			async (
+				modelType: unknown,
+				_params: unknown,
+				_provider: unknown,
+				provenance?: ModelCallProvenance,
+			) => {
+				if (provenance) provenance.resolvedProvider = "test-provider";
+				if (queue.length === 0) {
+					throw new Error(
+						`Unexpected useModel call (modelType=${String(modelType)}); queue empty`,
+					);
+				}
+				return queue.shift();
+			},
+		),
 		logger: {
 			debug: vi.fn(),
 			info: vi.fn(),
@@ -254,6 +262,7 @@ describe("v5 widget markers — action callback and verified payload channels", 
 				text: "choice presented; awaiting pick",
 				userFacingText: CHOICE_BLOCK,
 				verifiedUserFacing: true,
+				userFacingEffect: "none",
 			}),
 		});
 		const runtime = makeRuntime({

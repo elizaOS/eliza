@@ -14,6 +14,7 @@ import type {
 import {
 	type EffectReceipt,
 	hasAppliedUserFacingEffectProof,
+	mergeEffectReceipts,
 } from "../types/effects";
 import { isPlainObject } from "../utils/type-guards";
 import { appendContextEvent } from "./context-object";
@@ -26,6 +27,15 @@ import type {
 /** Complete semantic history, independent of the bounded live render window. */
 export function allSteps(trajectory: PlannerTrajectory): PlannerStep[] {
 	return [...trajectory.archivedSteps, ...trajectory.steps];
+}
+
+/** All normalized receipts in chronological semantic history. */
+export function allEffectReceipts(
+	trajectory: PlannerTrajectory,
+): readonly EffectReceipt[] {
+	return mergeEffectReceipts(
+		...allSteps(trajectory).map((step) => step.result?.effectReceipts),
+	);
 }
 
 /**
@@ -55,20 +65,17 @@ export function captureOriginalContextEvents(
 
 /**
  * Exact action-owned text eligible for model projection and final delivery.
- * Successful results that declare effect receipts must bind the text to active,
- * committed receipts; results with no receipt declaration are the explicit
- * no-effect category used by read-only and pure-output actions. Consumers that
- * specifically require a committed mutation opt out of that category through
- * `requireAppliedEffect`. The optional terminal-failure category is limited to
- * an action's verified, turn-complete failure guidance and never licenses that
- * text as successful completion.
+ * A successful result is eligible only when it explicitly declares itself
+ * no-effect or binds its text to active committed receipts from the complete
+ * turn. The optional terminal-failure category is limited to an action's
+ * verified, turn-complete failure guidance and never licenses that text as a
+ * successful completion.
  */
 export function canonicalUserFacingText(
 	result: PlannerStep["result"],
 	options: {
 		allTurnReceipts?: readonly EffectReceipt[];
 		includeTerminalFailure?: boolean;
-		requireAppliedEffect?: boolean;
 	} = {},
 ): string | undefined {
 	if (result?.verifiedUserFacing !== true) {
@@ -83,19 +90,11 @@ export function canonicalUserFacingText(
 			? text
 			: undefined;
 	}
-	const declaresEffectAuthority =
-		result.effectReceipts !== undefined ||
-		result.userFacingEffectReceiptIds !== undefined;
-	if (
-		(options.requireAppliedEffect === true || declaresEffectAuthority) &&
-		!hasAppliedUserFacingEffectProof(
-			result,
-			options.allTurnReceipts ?? result.effectReceipts,
-		)
-	) {
-		return undefined;
-	}
-	return text;
+	if (result.userFacingEffect === "none") return text;
+	return options.allTurnReceipts !== undefined &&
+		hasAppliedUserFacingEffectProof(result, options.allTurnReceipts)
+		? text
+		: undefined;
 }
 
 /**
@@ -149,10 +148,13 @@ export function projectModelVisibleTrajectory(
 	let projectedContext = modelVisibleBaseContext(
 		captureOriginalContextEvents(context),
 	);
+	const receipts = allEffectReceipts(trajectory);
 	const authority = [
 		...allSteps(trajectory).flatMap((step) => {
 			if (!step.toolCall || !step.result) return [];
-			const userFacingText = canonicalUserFacingText(step.result);
+			const userFacingText = canonicalUserFacingText(step.result, {
+				allTurnReceipts: receipts,
+			});
 			return [
 				[
 					`tool_name: ${JSON.stringify(step.toolCall.name)}`,
@@ -190,6 +192,66 @@ export function projectModelVisibleTrajectory(
 		steps: [],
 		archivedSteps: [],
 		plannedQueue: [],
+		evaluatorOutputs: [],
+	};
+}
+
+/**
+ * Evaluator boundary view of the complete trajectory. Archived steps remain
+ * chronologically visible as machine status, while reasoning, invocation
+ * identity/parameters, diagnostics, effect identifiers, terminal prose, and
+ * evaluator output never cross the boundary. Canonical text is proven against
+ * the unprojected all-turn receipt set before it enters this view.
+ */
+export function projectEvaluatorVisibleTrajectory(
+	trajectory: PlannerTrajectory,
+	terminalIteration?: number,
+): PlannerTrajectory {
+	const receipts = allEffectReceipts(trajectory);
+	const steps = allSteps(trajectory).flatMap((step): PlannerStep[] => {
+		if (step.terminalOnly === true) {
+			return [{ iteration: step.iteration, terminalOnly: true }];
+		}
+		if (!step.toolCall || !step.result) return [];
+		const userFacingText = canonicalUserFacingText(step.result, {
+			allTurnReceipts: receipts,
+		});
+		return [
+			{
+				iteration: step.iteration,
+				toolCall: { name: step.toolCall.name },
+				result: {
+					success: step.result.success,
+					...(userFacingText
+						? {
+								userFacingText,
+								verifiedUserFacing: true,
+								userFacingEffect: "none" as const,
+							}
+						: {}),
+					...(step.result.turnComplete !== undefined
+						? { turnComplete: step.result.turnComplete }
+						: {}),
+					...(step.result.continueChain !== undefined
+						? { continueChain: step.result.continueChain }
+						: {}),
+					...(step.result.silentTerminalAction
+						? { silentTerminalAction: step.result.silentTerminalAction }
+						: {}),
+				},
+			},
+		];
+	});
+	if (terminalIteration !== undefined) {
+		steps.push({ iteration: terminalIteration, terminalOnly: true });
+	}
+	return {
+		context: modelVisibleBaseContext(
+			captureOriginalContextEvents(trajectory.context),
+		),
+		steps,
+		archivedSteps: [],
+		plannedQueue: trajectory.plannedQueue.map((call) => ({ name: call.name })),
 		evaluatorOutputs: [],
 	};
 }

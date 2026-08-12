@@ -8,7 +8,11 @@
 import { describe, expect, it, vi } from "vitest";
 import { InMemoryDatabaseAdapter } from "../../database/inMemoryAdapter";
 import { AgentRuntime } from "../../runtime";
-import { type Character, ModelType } from "../../types";
+import {
+	type Character,
+	type ModelCallProvenance,
+	ModelType,
+} from "../../types";
 
 function makeRuntime(): AgentRuntime {
 	return new AgentRuntime({
@@ -197,5 +201,59 @@ describe("AgentRuntime.useModel provider fallback", () => {
 		expect(runtime.getLastResolvedModelProvider(ModelType.TEXT_LARGE)).toBe(
 			"eliza-cloud",
 		);
+	});
+
+	it("records provider provenance on each concurrent useModel invocation", async () => {
+		const runtime = makeRuntime();
+		let releaseA!: () => void;
+		let releaseB!: () => void;
+		const waitA = new Promise<void>((resolve) => {
+			releaseA = resolve;
+		});
+		const waitB = new Promise<void>((resolve) => {
+			releaseB = resolve;
+		});
+		runtime.registerModel(
+			ModelType.RESPONSE_HANDLER,
+			vi.fn(async () => {
+				await waitA;
+				return "provider-a-response";
+			}),
+			"provider-a",
+			100,
+		);
+		runtime.registerModel(
+			ModelType.RESPONSE_HANDLER,
+			vi.fn(async () => {
+				await waitB;
+				return "provider-b-response";
+			}),
+			"provider-b",
+			90,
+		);
+		const provenanceA: ModelCallProvenance = {};
+		const provenanceB: ModelCallProvenance = {};
+		const callA = runtime.useModel(
+			ModelType.RESPONSE_HANDLER,
+			{ prompt: "turn a" },
+			"provider-a",
+			provenanceA,
+		);
+		const callB = runtime.useModel(
+			ModelType.RESPONSE_HANDLER,
+			{ prompt: "turn b" },
+			"provider-b",
+			provenanceB,
+		);
+
+		releaseB();
+		await expect(callB).resolves.toBe("provider-b-response");
+		expect(provenanceB.resolvedProvider).toBe("provider-b");
+		releaseA();
+		await expect(callA).resolves.toBe("provider-a-response");
+		expect(provenanceA.resolvedProvider).toBe("provider-a");
+		expect(
+			runtime.getLastResolvedModelProvider(ModelType.RESPONSE_HANDLER),
+		).toBe("provider-a");
 	});
 });

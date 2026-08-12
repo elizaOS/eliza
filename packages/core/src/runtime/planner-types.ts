@@ -126,18 +126,15 @@ export interface PlannerToolResult {
 	 *
 	 * By default an explicit evaluator `messageToUser` outranks this —
 	 * the evaluator has seen the full trajectory and chose what the
-	 * user should read. To mark `userFacingText` as canonical
-	 * (do-not-paraphrase) and have it outrank the evaluator's reply
-	 * when there is exactly one completed tool result, set
-	 * `verifiedUserFacing: true`.
+	 * user should read. Canonical (do-not-paraphrase) text needs
+	 * `verifiedUserFacing: true` plus explicit no-effect classification or active
+	 * applied/replayed receipt bindings.
 	 */
 	userFacingText?: string;
 	/**
-	 * Marks `userFacingText` as the canonical answer for this turn —
-	 * the evaluator's `messageToUser` MUST NOT paraphrase it. When set
-	 * AND there is exactly one completed tool result with
-	 * `userFacingText`, the planner-loop prefers the tool's text over
-	 * the evaluator's reply for the terminal-FINISH `finalMessage`.
+	 * Marks `userFacingText` as action-owned. With no-effect or active receipt
+	 * authority, the evaluator's `messageToUser` MUST NOT paraphrase it and the
+	 * planner-loop may prefer it for terminal FINISH.
 	 *
 	 * Use when the tool's output is structured data or a confirmation
 	 * preview the evaluator can easily hallucinate (paths, ids, counts,
@@ -147,6 +144,11 @@ export interface PlannerToolResult {
 	 * rephrase or add framing.
 	 */
 	verifiedUserFacing?: boolean;
+	/**
+	 * Explicit no-effect authority for a canonical successful answer. Successful
+	 * mutation claims require active receipt proof instead of this marker.
+	 */
+	userFacingEffect?: "none";
 	/** Canonical mutation outcomes propagated from the action result. */
 	effectReceipts?: readonly EffectReceipt[];
 	/** Receipt IDs described by the exact canonical user-facing text. */

@@ -224,6 +224,7 @@ describe("sub-planner helpers", () => {
 	});
 
 	it("collapses a non-silent successful run from its tool result after the terminal append", async () => {
+		const observedAt = "2026-08-12T07:00:00.000Z";
 		const child = makeAction({ name: "CHILD" });
 		const parent = makeAction({
 			name: "PARENT",
@@ -246,6 +247,23 @@ describe("sub-planner helpers", () => {
 				text: "task task-42 started",
 				userFacingText: "Task task-42 started.",
 				verifiedUserFacing: true,
+				effectReceipts: [
+					{
+						receiptId: "receipt-task-42",
+						operation: "task.start",
+						resource: { kind: "task", id: "task-42" },
+						artifacts: [],
+						idempotency: { key: "task-42", replayed: false },
+						observedAt,
+						outcome: "applied" as const,
+						commit: {
+							kind: "durable" as const,
+							id: "task-42",
+							committedAt: observedAt,
+						},
+					},
+				],
+				userFacingEffectReceiptIds: ["receipt-task-42"],
 				data: { taskId: "task-42" },
 				continueChain: false,
 			})),
@@ -412,7 +430,9 @@ describe("sub-planner helpers", () => {
 			// The aggregate remains available to planner/trajectory consumers. Only
 			// a receipt-bound mutation may retain canonical terminal authority.
 			expect(collapsed.text).toContain("K9_SECRET");
-			expect(collapsed.userFacingText).toBe("Canonical only.");
+			expect(collapsed.userFacingText).toBe(
+				withReceipt ? "Canonical only." : TOOL_RESULT_UNAVAILABLE_MESSAGE,
+			);
 			expect(collapsed.continueChain).toBe(false);
 			expect(collapsed.data).toMatchObject({ nestedId: "nested-1" });
 			expect(result.finalMessage).toBe(

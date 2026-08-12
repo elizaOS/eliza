@@ -26,7 +26,7 @@ import type { V5MessageRuntimeStage1Result } from "../services/message";
 import { runV5MessageRuntimeStage1 } from "../services/message";
 import type { Memory } from "../types/memory";
 import { ChannelType, type UUID } from "../types/primitives";
-import type { IAgentRuntime } from "../types/runtime";
+import type { IAgentRuntime, ModelCallProvenance } from "../types/runtime";
 import type { State } from "../types/state";
 
 const ROOM = "11111111-1111-1111-1111-111111111111" as UUID;
@@ -114,10 +114,18 @@ function makeAgentRuntime(agentName: string): IAgentRuntime {
 		composeState: vi.fn(async () => makeState()),
 		runActionsByMode: vi.fn(async () => undefined),
 		emitEvent: vi.fn(async () => undefined),
-		useModel: vi.fn(async () => {
-			if (queue.length === 0) throw new Error("Unexpected useModel call");
-			return queue.shift();
-		}),
+		useModel: vi.fn(
+			async (
+				_modelType: unknown,
+				_params: unknown,
+				_provider: unknown,
+				provenance?: ModelCallProvenance,
+			) => {
+				if (provenance) provenance.resolvedProvider = "test-provider";
+				if (queue.length === 0) throw new Error("Unexpected useModel call");
+				return queue.shift();
+			},
+		),
 		getSetting: vi.fn(() => undefined),
 		logger: {
 			debug: vi.fn(),

@@ -20,7 +20,7 @@ import type { AgentContext, ContextGate, RoleGate } from "../types/contexts";
 import type { Memory } from "../types/memory";
 import { ModelType } from "../types/model";
 import type { UUID } from "../types/primitives";
-import type { IAgentRuntime } from "../types/runtime";
+import type { IAgentRuntime, ModelCallProvenance } from "../types/runtime";
 import type { State } from "../types/state";
 import { getActiveRoutingContextsForTurn } from "../utils/context-routing";
 
@@ -91,7 +91,13 @@ function makeRuntime(opts: {
 		emitEvent: vi.fn(async () => undefined),
 		runActionsByMode: vi.fn(async () => undefined),
 		useModel: vi.fn(
-			async (modelType: unknown, params: unknown, provider: unknown) => {
+			async (
+				modelType: unknown,
+				params: unknown,
+				provider: unknown,
+				provenance?: ModelCallProvenance,
+			) => {
+				if (provenance) provenance.resolvedProvider = "test-provider";
 				calls.push({ modelType, params, provider });
 				if (queue.length === 0) {
 					throw new Error(`Unexpected useModel call: ${String(modelType)}`);

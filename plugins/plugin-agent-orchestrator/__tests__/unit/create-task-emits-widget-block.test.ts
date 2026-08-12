@@ -44,6 +44,7 @@ function runtimeWithServices(opts: {
   };
 }): IAgentRuntime {
   return {
+    agentId: "00000000-0000-4000-8000-000000000001",
     getService: vi.fn((serviceType: string) => {
       if (
         serviceType === "ACP_SERVICE" ||
@@ -86,7 +87,7 @@ describe("TASKS:create durable-task widget emission", () => {
           workdir,
           model: "gpt-5.5",
           approvalPreset: "readonly",
-          timeout_ms: 1000,
+          timeout_ms: 5000,
           acceptanceCriteria: ["tests green", "no lint"],
         },
       },
@@ -120,22 +121,33 @@ describe("TASKS:create durable-task widget emission", () => {
     const cb = callback();
     const workdir = os.tmpdir();
 
-    const result = await createTaskAction.handler(
-      runtime,
-      memory({}),
-      state,
-      {
-        parameters: {
-          action: "create",
-          task: "fix bug",
-          agentType: "codex",
-          workdir,
-          approvalPreset: "readonly",
-          timeout_ms: 1000,
+    const previousSmithers = process.env.ELIZA_ORCHESTRATOR_SMITHERS;
+    let result: Awaited<ReturnType<typeof createTaskAction.handler>>;
+    try {
+      process.env.ELIZA_ORCHESTRATOR_SMITHERS = "0";
+      result = await createTaskAction.handler(
+        runtime,
+        memory({}),
+        state,
+        {
+          parameters: {
+            action: "create",
+            task: "fix bug",
+            agentType: "codex",
+            workdir,
+            approvalPreset: "readonly",
+            timeout_ms: 5000,
+          },
         },
-      },
-      cb,
-    );
+        cb,
+      );
+    } finally {
+      if (previousSmithers === undefined) {
+        delete process.env.ELIZA_ORCHESTRATOR_SMITHERS;
+      } else {
+        process.env.ELIZA_ORCHESTRATOR_SMITHERS = previousSmithers;
+      }
+    }
 
     expect(result?.success).toBe(true);
     expect(result?.text).not.toContain("[TASK:");
@@ -233,8 +245,21 @@ describe("TASKS:create durable-task widget emission", () => {
     }
 
     expect(result?.success).toBe(false);
-    expect(result?.text).toContain("durable store offline");
+    expect(result?.text).toBe(
+      "I couldn't start every requested task agent. Review the created task and session state before retrying.",
+    );
+    expect(result?.userFacingText).toBe(result?.text);
+    expect(result?.data?.internalLaneFailure).toMatchObject({
+      category: "execution",
+      code: "TASK_AGENT_LAUNCH_FAILED",
+      primary: {
+        code: "TASK_DURABLE_LINK_FAILED",
+        message: "durable store offline",
+      },
+      diagnostics: ["durable store offline"],
+    });
     expect(result?.text).not.toContain("stop transport failed");
+    expect(JSON.stringify(result?.data)).not.toContain("stop transport failed");
     expect(attachSession).toHaveBeenCalledTimes(1);
     expect(acp.stopSession).toHaveBeenCalledTimes(1);
     expect(acp.sendPrompt).not.toHaveBeenCalled();

@@ -21,7 +21,7 @@ import type { Action, HandlerCallback } from "../types/components";
 import type { Memory } from "../types/memory";
 import { ModelType } from "../types/model";
 import type { Content, Media, UUID } from "../types/primitives";
-import type { IAgentRuntime } from "../types/runtime";
+import type { IAgentRuntime, ModelCallProvenance } from "../types/runtime";
 import type { State } from "../types/state";
 
 const AGENT_ID = "00000000-0000-0000-0000-000000000003" as UUID;
@@ -133,16 +133,27 @@ function makeRuntime(opts: {
 		composeState: vi.fn(async () => makeState()),
 		runActionsByMode: vi.fn(async () => undefined),
 		emitEvent: vi.fn(async () => undefined),
-		useModel: vi.fn(async (modelType: unknown) => {
-			const next = queue.shift();
-			if (!next) throw new Error("Unexpected useModel call; queue empty");
-			if (next.expectModelType && String(modelType) !== next.expectModelType) {
-				throw new Error(
-					`Expected ${next.expectModelType} but received ${String(modelType)}`,
-				);
-			}
-			return next.body;
-		}),
+		useModel: vi.fn(
+			async (
+				modelType: unknown,
+				_params: unknown,
+				_provider: unknown,
+				provenance?: ModelCallProvenance,
+			) => {
+				if (provenance) provenance.resolvedProvider = "test-provider";
+				const next = queue.shift();
+				if (!next) throw new Error("Unexpected useModel call; queue empty");
+				if (
+					next.expectModelType &&
+					String(modelType) !== next.expectModelType
+				) {
+					throw new Error(
+						`Expected ${next.expectModelType} but received ${String(modelType)}`,
+					);
+				}
+				return next.body;
+			},
+		),
 		// The per-callback character-voice rewrite spends a TEXT_SMALL call and
 		// restyles delivered text, which would desync the strict canned-response
 		// queue — the same opt-out the scenario runner uses.

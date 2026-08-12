@@ -9,6 +9,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { promoteSubactionsToActions } from "../../actions/promote-subactions";
 import { plannerTemplate } from "../../prompts/planner";
+import type { EffectReceipt } from "../../types/effects";
 import { type ChatMessage, ModelType } from "../../types/model";
 import { TrajectoryLimitExceeded } from "../limits";
 import {
@@ -27,6 +28,26 @@ import {
 	withTurnScopeToolArg,
 } from "../planner-loop";
 import type { RecordedStage, TrajectoryRecorder } from "../trajectory-recorder";
+
+function appliedEffectReceipt(
+	operation: string,
+	resourceId: string,
+): EffectReceipt {
+	return {
+		receiptId: `receipt-${resourceId}`,
+		operation,
+		resource: { kind: "test.resource", id: resourceId },
+		artifacts: [],
+		idempotency: { key: resourceId, replayed: false },
+		outcome: "applied",
+		commit: {
+			kind: "durable",
+			id: `commit-${resourceId}`,
+			committedAt: "2026-08-12T00:00:00.000Z",
+		},
+		observedAt: "2026-08-12T00:00:00.000Z",
+	};
+}
 
 describe("v5 planner loop skeleton", () => {
 	it("parses planner tool calls", () => {
@@ -1044,6 +1065,7 @@ describe("v5 planner loop skeleton", () => {
 			text: preview,
 			userFacingText: preview,
 			verifiedUserFacing: true,
+			userFacingEffect: "none" as const,
 			data: {
 				noop: true,
 			},
@@ -3409,12 +3431,15 @@ describe("v5 planner loop — evaluator gate", () => {
 			}),
 		};
 		const reply = "Shell access is off.";
+		const receipt = appliedEffectReceipt("settings.set", "settings-shell");
 		const executeToolCall = vi.fn(async () => ({
 			success: true,
 			text: reply,
 			userFacingText: reply,
 			verifiedUserFacing: true,
 			turnComplete: true,
+			effectReceipts: [receipt],
+			userFacingEffectReceiptIds: [receipt.receiptId],
 		}));
 		const evaluate = vi.fn(async () => ({
 			success: true,
@@ -3473,12 +3498,18 @@ describe("v5 planner loop — evaluator gate", () => {
 			}),
 		};
 		const reply = "Shell access is off.";
+		const receipt = appliedEffectReceipt(
+			"settings.set",
+			"settings-shell-pending",
+		);
 		const executeToolCall = vi.fn(async () => ({
 			success: true,
 			text: reply,
 			userFacingText: reply,
 			verifiedUserFacing: true,
 			turnComplete: true,
+			effectReceipts: [receipt],
+			userFacingEffectReceiptIds: [receipt.receiptId],
 		}));
 		const evaluate = vi.fn(async () => ({
 			success: true,
@@ -3524,12 +3555,18 @@ describe("v5 planner loop — evaluator gate", () => {
 			}),
 		};
 		const reply = "Shell access is off.";
+		const receipt = appliedEffectReceipt(
+			"settings.set",
+			"settings-shell-final",
+		);
 		const executeToolCall = vi.fn(async () => ({
 			success: true,
 			text: reply,
 			userFacingText: reply,
 			verifiedUserFacing: true,
 			turnComplete: true,
+			effectReceipts: [receipt],
+			userFacingEffectReceiptIds: [receipt.receiptId],
 		}));
 		const evaluate = vi.fn(async () => ({
 			success: true,
@@ -3938,11 +3975,14 @@ describe("v5 planner loop — evaluator gate", () => {
 				],
 			}),
 		};
+		const receipt = appliedEffectReceipt("workflow.create", "workflow-draft");
 		const executeToolCall = vi.fn(async () => ({
 			success: true,
 			text: createdReply,
 			userFacingText: createdReply,
 			verifiedUserFacing: true,
+			effectReceipts: [receipt],
+			userFacingEffectReceiptIds: [receipt.receiptId],
 			data: {
 				workflowId: "8914e389-8cda-401e-aac0-a501286a8130",
 			},
@@ -4166,6 +4206,7 @@ describe("verified widget payloads stay pure in the combine path", () => {
 			text: "disambiguation required",
 			userFacingText: widget,
 			verifiedUserFacing: true,
+			userFacingEffect: "none" as const,
 		}));
 		const evaluate = vi.fn(async () => ({
 			success: true,

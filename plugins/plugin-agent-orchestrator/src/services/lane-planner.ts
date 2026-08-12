@@ -2,8 +2,8 @@
  * Lane planner for splitting a single orchestrator coding request into
  * independent Smithers runs. The pure planner is intentionally conservative:
  * it only emits multiple lanes when scopes can be made mutually exclusive, and
- * the integration layer falls back to the legacy one-task path on any boundary
- * failure.
+ * safety-invalid plans fail before execution, while optional collision/refine
+ * enrichment may degrade without changing the deterministic plan.
  */
 
 import { ElizaError, type IAgentRuntime, ModelType } from "@elizaos/core";
@@ -441,8 +441,13 @@ export function createDeterministicLanePlan(
     .map((task) => task.trim())
     .filter((task) => task.length > 0);
   if (candidates.length > MAX_LANES) {
-    throw new Error(
+    throw new ElizaError(
       `Lane planner accepts at most ${MAX_LANES} lanes; received ${candidates.length}`,
+      {
+        code: "LANE_PLAN_TOO_MANY",
+        context: { maximum: MAX_LANES, received: candidates.length },
+        severity: "ephemeral",
+      },
     );
   }
   const tasks = candidates.length > 0 ? candidates : [input.task];
@@ -452,14 +457,26 @@ export function createDeterministicLanePlan(
   validateLaneDependencyGraph(laneIds, dependencies);
   if (tasks.length > 1) {
     if (scopeSets.some((scopes) => scopes.length === 0)) {
-      throw new Error(
+      throw new ElizaError(
         "Cannot split lanes without explicit non-overlapping scopes",
+        {
+          code: "LANE_PLAN_MISSING_SCOPE",
+          context: { laneCount: tasks.length },
+          severity: "ephemeral",
+        },
       );
     }
     for (let i = 0; i < scopeSets.length; i += 1) {
       for (let j = i + 1; j < scopeSets.length; j += 1) {
         if (scopeSetsOverlap(scopeSets[i], scopeSets[j])) {
-          throw new Error("Lane scopes overlap");
+          throw new ElizaError("Lane scopes overlap", {
+            code: "LANE_PLAN_SCOPE_OVERLAP",
+            context: {
+              leftLaneId: laneIds[i],
+              rightLaneId: laneIds[j],
+            },
+            severity: "ephemeral",
+          });
         }
       }
     }

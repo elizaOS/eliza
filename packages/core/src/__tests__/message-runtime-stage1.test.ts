@@ -32,7 +32,7 @@ import type { Action } from "../types/components";
 import type { Memory } from "../types/memory";
 import { ModelType } from "../types/model";
 import { ChannelType, type UUID } from "../types/primitives";
-import type { IAgentRuntime } from "../types/runtime";
+import type { IAgentRuntime, ModelCallProvenance } from "../types/runtime";
 import type { State } from "../types/state";
 
 // Mirrors the scheduled-task backstop rule that plugin-personal-assistant
@@ -191,6 +191,7 @@ function makeRuntime(
 	responses: unknown[],
 	settings?: Record<string, string>,
 	evaluators?: ResponseHandlerEvaluator[],
+	stageOneProvider: string | null = "test-provider",
 ): IAgentRuntime {
 	const queue = [...responses];
 	const responseHandlerFieldRegistry = new ResponseHandlerFieldRegistry();
@@ -212,12 +213,23 @@ function makeRuntime(
 		runActionsByMode: vi.fn(async () => undefined),
 		emitEvent: vi.fn(async () => undefined),
 		reportError: vi.fn(),
-		useModel: vi.fn(async () => {
-			if (queue.length === 0) {
-				throw new Error("Unexpected useModel call");
-			}
-			return queue.shift();
-		}),
+		getLastResolvedModelProvider: vi.fn(() => "test-provider"),
+		useModel: vi.fn(
+			async (
+				_modelType: unknown,
+				_params: unknown,
+				_provider: unknown,
+				provenance?: ModelCallProvenance,
+			) => {
+				if (provenance && stageOneProvider) {
+					provenance.resolvedProvider = stageOneProvider;
+				}
+				if (queue.length === 0) {
+					throw new Error("Unexpected useModel call");
+				}
+				return queue.shift();
+			},
+		),
 		getSetting: vi.fn((key: string) => settings?.[key]),
 		logger: {
 			debug: vi.fn(),
@@ -2003,6 +2015,23 @@ describe("runV5MessageRuntimeStage1", () => {
 				text: "Spawned coding agent.",
 				userFacingText: "Spawned coding agent.",
 				verifiedUserFacing: true,
+				effectReceipts: [
+					{
+						receiptId: "receipt-spawn-app-builder",
+						operation: "tasks.spawn_agent",
+						resource: { kind: "acp.session", id: "spawn-app-builder" },
+						artifacts: [],
+						idempotency: { key: "spawn-app-builder", replayed: false },
+						observedAt: "2026-08-12T00:00:00.000Z",
+						outcome: "applied" as const,
+						commit: {
+							kind: "provider_accepted" as const,
+							id: "spawn-app-builder",
+							committedAt: "2026-08-12T00:00:00.000Z",
+						},
+					},
+				],
+				userFacingEffectReceiptIds: ["receipt-spawn-app-builder"],
 				turnComplete: true,
 				continueChain: false,
 				data: { actionName: "TASKS" },
@@ -2088,39 +2117,43 @@ describe("runV5MessageRuntimeStage1", () => {
 
 	it("pins the Stage-1 provider through outer planning, nested planning, and evaluation", async () => {
 		const pinnedProvider = "stage-one-provider";
-		const runtime = makeRuntime([
-			stage1Response({
-				thought: "Delegate through the parent action.",
-				contexts: ["general"],
-				candidateActionNames: ["PARENT"],
-				extra: { requiresTool: true },
-			}),
-			{
-				text: "",
-				toolCalls: [{ id: "parent", name: "PARENT", args: {} }],
-			},
-			{
-				text: "",
-				toolCalls: [{ id: "child", name: "CHILD", args: {} }],
-			},
-			{
-				object: {
-					success: true,
-					decision: "FINISH",
-					thought: "The child result completed the nested request.",
-					messageToUser: "Nested work completed.",
+		const runtime = makeRuntime(
+			[
+				stage1Response({
+					thought: "Delegate through the parent action.",
+					contexts: ["general"],
+					candidateActionNames: ["PARENT"],
+					extra: { requiresTool: true },
+				}),
+				{
+					text: "",
+					toolCalls: [{ id: "parent", name: "PARENT", args: {} }],
 				},
-			},
-			{
-				object: {
-					success: true,
-					decision: "FINISH",
-					thought: "The nested result completed the outer request.",
-					messageToUser: "Nested work completed.",
+				{
+					text: "",
+					toolCalls: [{ id: "child", name: "CHILD", args: {} }],
 				},
-			},
-		]);
-		runtime.getLastResolvedModelProvider = vi.fn(() => pinnedProvider);
+				{
+					object: {
+						success: true,
+						decision: "FINISH",
+						thought: "The child result completed the nested request.",
+						messageToUser: "Nested work completed.",
+					},
+				},
+				{
+					object: {
+						success: true,
+						decision: "FINISH",
+						thought: "The nested result completed the outer request.",
+						messageToUser: "Nested work completed.",
+					},
+				},
+			],
+			undefined,
+			undefined,
+			pinnedProvider,
+		);
 		const parentHandler = vi.fn(async () => ({
 			success: false,
 			text: "The parent handler must not run directly.",
@@ -2130,6 +2163,7 @@ describe("runV5MessageRuntimeStage1", () => {
 			text: "internal child diagnostic",
 			userFacingText: "Nested work completed.",
 			verifiedUserFacing: true,
+			userFacingEffect: "none" as const,
 		}));
 		runtime.actions = [
 			{
@@ -2172,6 +2206,138 @@ describe("runV5MessageRuntimeStage1", () => {
 		);
 		expect(parentHandler).not.toHaveBeenCalled();
 		expect(childHandler).toHaveBeenCalledTimes(1);
+	});
+
+	it("keeps concurrent Stage-1 provider provenance bound to each invocation", async () => {
+		const runtime = makeRuntime([]);
+		let runtimeGlobalProvider: string | undefined;
+		let markSecondStageStarted!: () => void;
+		const secondStageStarted = new Promise<void>((resolve) => {
+			markSecondStageStarted = resolve;
+		});
+		runtime.getLastResolvedModelProvider = vi.fn(() => runtimeGlobalProvider);
+		runtime.useModel = vi.fn(
+			async (
+				modelType: unknown,
+				params: unknown,
+				provider: unknown,
+				provenance?: ModelCallProvenance,
+			) => {
+				if (modelType === ModelType.RESPONSE_HANDLER) {
+					const input = JSON.stringify(params);
+					const isFirst = input.includes("first concurrent provider turn");
+					const isSecond = input.includes("second concurrent provider turn");
+					if (!isFirst && !isSecond) {
+						throw new Error("Could not correlate concurrent Stage-1 input");
+					}
+					const resolvedProvider = isFirst ? "openai" : "cerebras";
+					runtimeGlobalProvider = resolvedProvider;
+					if (provenance) provenance.resolvedProvider = resolvedProvider;
+					if (isFirst) {
+						await secondStageStarted;
+					} else {
+						markSecondStageStarted();
+					}
+					return stage1Response({
+						thought: "This turn needs planning.",
+						contexts: ["general"],
+					});
+				}
+				if (modelType === ModelType.ACTION_PLANNER) {
+					if (provider !== "openai" && provider !== "cerebras") {
+						throw new Error(`Unexpected planner provider ${String(provider)}`);
+					}
+					return {
+						thought: "Return the provider-bound reply.",
+						toolCalls: [
+							{
+								id: `reply-${provider}`,
+								name: "REPLY",
+								args: { text: `Reply from ${provider}.` },
+							},
+						],
+					};
+				}
+				throw new Error(`Unexpected model type ${String(modelType)}`);
+			},
+		) as IAgentRuntime["useModel"];
+
+		const [first, second] = await Promise.all([
+			runV5MessageRuntimeStage1({
+				runtime,
+				message: makeMessage({ text: "first concurrent provider turn" }),
+				state: makeState(),
+				responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+			}),
+			runV5MessageRuntimeStage1({
+				runtime,
+				message: {
+					...makeMessage({ text: "second concurrent provider turn" }),
+					id: "00000000-0000-0000-0000-000000000006" as UUID,
+				},
+				state: makeState(),
+				responseId: "00000000-0000-0000-0000-000000000007" as UUID,
+			}),
+		]);
+
+		expect(first.kind).toBe("planned_reply");
+		expect(second.kind).toBe("planned_reply");
+		if (first.kind === "planned_reply" && second.kind === "planned_reply") {
+			expect(first.result.responseContent?.text).toBe("Reply from openai.");
+			expect(second.result.responseContent?.text).toBe("Reply from cerebras.");
+		}
+		const plannerProviders = useModelCalls(runtime)
+			.filter((call) => call[0] === ModelType.ACTION_PLANNER)
+			.map((call) => call[2]);
+		expect(plannerProviders.sort()).toEqual(["cerebras", "openai"]);
+		expect(runtimeGlobalProvider).toBe("cerebras");
+	});
+
+	it("rejects adapter provider metadata that contradicts runtime resolution", async () => {
+		const stage = {
+			...stage1Response({
+				contexts: ["general"],
+				candidateActionNames: ["CHILD"],
+				extra: { requiresTool: true },
+			}),
+			providerMetadata: { provider: "cerebras" },
+		};
+		const runtime = makeRuntime([stage], undefined, undefined, "openai");
+
+		await expect(
+			runV5MessageRuntimeStage1({
+				runtime,
+				message: makeMessage({ text: "Run the child operation." }),
+				state: makeState(),
+				responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+			}),
+		).rejects.toMatchObject({ code: "STAGE_ONE_PROVIDER_MISMATCH" });
+		expect(useModelCalls(runtime)).toHaveLength(1);
+	});
+
+	it("fails closed before planning when runtime provider provenance is unavailable", async () => {
+		const runtime = makeRuntime(
+			[
+				stage1Response({
+					contexts: ["general"],
+					candidateActionNames: ["CHILD"],
+					extra: { requiresTool: true },
+				}),
+			],
+			undefined,
+			undefined,
+			null,
+		);
+
+		await expect(
+			runV5MessageRuntimeStage1({
+				runtime,
+				message: makeMessage({ text: "Run the child operation." }),
+				state: makeState(),
+				responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+			}),
+		).rejects.toMatchObject({ code: "STAGE_ONE_PROVIDER_UNAVAILABLE" });
+		expect(useModelCalls(runtime)).toHaveLength(1);
 	});
 
 	it("hard-enforces an umbrella candidate when retrieval exposes only its promoted child", async () => {
@@ -5229,7 +5395,7 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(runtime.useModel).toHaveBeenCalledTimes(2);
 		expect(useModelCalls(runtime)[0]?.[0]).toBe(ModelType.RESPONSE_HANDLER);
 		expect(useModelCalls(runtime)[1]?.[0]).toBe(ModelType.ACTION_PLANNER);
-		expect(useModelCalls(runtime)[1]?.[2]).toBeUndefined();
+		expect(useModelCalls(runtime)[1]?.[2]).toBe("test-provider");
 		if (result.kind === "planned_reply") {
 			expect(result.result.responseContent?.text).toBe(
 				"Your calendar is clear.",

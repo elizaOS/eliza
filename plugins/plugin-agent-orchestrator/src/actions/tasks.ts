@@ -125,7 +125,7 @@ type TaskOp =
 type LaneSettlementAuthority =
   | {
       phase: "pre_effect";
-      category: "dependency";
+      category: "dependency" | "safety";
       code: string;
       acceptance: "rejected";
     }
@@ -149,6 +149,7 @@ type LaneSettlementActionResult = ActionResult & {
 type LaneInternalFailure = {
   category: "execution";
   code: string;
+  primary: { code: string; message: string };
   diagnostics: string[];
 };
 
@@ -157,6 +158,15 @@ const RUNTIME_LANE_FAILURE_TEXT =
 
 const TASK_AGENT_LAUNCH_FAILURE_TEXT =
   "I couldn't start every requested task agent. Review the created task and session state before retrying.";
+
+const LANE_PLAN_SAFETY_GUIDANCE: Readonly<Record<string, string>> = {
+  LANE_PLAN_TOO_MANY:
+    "That request has too many independent lanes. Reduce it to six or fewer scoped lanes and try again.",
+  LANE_PLAN_MISSING_SCOPE:
+    "I need an explicit, non-overlapping file or package scope for every lane before I can start them.",
+  LANE_PLAN_SCOPE_OVERLAP:
+    "Those lane scopes overlap. Give each lane a distinct file or package scope before I start any work.",
+};
 
 const SUPPORTED_OPS: readonly TaskOp[] = [
   "create",
@@ -1214,7 +1224,12 @@ async function runCreateLegacy(
                 }`,
               );
             }
-            throw error;
+            throw new ElizaError(failureMessage(error), {
+              code: "TASK_DURABLE_LINK_FAILED",
+              cause: error,
+              context: { threadId, sessionId: session.sessionId },
+              severity: "ephemeral",
+            });
           }
           // error-policy:J7 direct-prompt compatibility path: the ACP session
           // still has value when optional widget bookkeeping is unavailable.
@@ -1313,6 +1328,10 @@ async function runCreateLegacy(
     const agentType = parsed.agentType as AgentType;
     const label = baseLabel ?? labelFrom(parsed.task, index);
     const msg = failureMessage(outcome.reason);
+    const errorCode =
+      outcome.reason instanceof ElizaError
+        ? String(outcome.reason.code)
+        : "TASK_AGENT_LAUNCH_FAILED";
     const attemptedSession = attemptedSessions.get(index);
     logger(runtime).error(
       `TASKS:create launch failed: ${JSON.stringify({
@@ -1329,6 +1348,7 @@ async function runCreateLegacy(
       label,
       status: "failed",
       error: msg,
+      errorCode,
     });
   }
 
@@ -1351,6 +1371,11 @@ async function runCreateLegacy(
         internalLaneFailure: {
           category: "execution",
           code: "TASK_AGENT_LAUNCH_FAILED",
+          primary: {
+            code:
+              effectString(failed[0]?.errorCode) ?? "TASK_AGENT_LAUNCH_FAILED",
+            message: String(failed[0]?.error),
+          },
           diagnostics: failed.map((result) => String(result.error)),
         } satisfies LaneInternalFailure,
         suppressActionResultClipboard: true,
@@ -1399,18 +1424,23 @@ function laneSettlementFailureResult(
   const dependencyFailure =
     rawCode?.startsWith("LANE_DEPENDENCY_") === true ||
     rawCode === "LANE_PLAN_DEADLOCK";
-  if (args.phase === "pre_effect" && !dependencyFailure) {
+  const safetyFailure =
+    args.phase === "pre_effect" && rawCode?.startsWith("LANE_PLAN_") === true;
+  if (args.phase === "pre_effect" && !dependencyFailure && !safetyFailure) {
     return undefined;
   }
 
-  const code = dependencyFailure
-    ? (rawCode ?? "LANE_DEPENDENCY_FAILED")
-    : "LANE_EXECUTION_FAILED";
+  const code =
+    args.phase === "pre_effect"
+      ? (rawCode ?? "LANE_PLAN_REJECTED")
+      : dependencyFailure
+        ? (rawCode ?? "LANE_DEPENDENCY_FAILED")
+        : "LANE_EXECUTION_FAILED";
   const authority: LaneSettlementAuthority =
     args.phase === "pre_effect"
       ? {
           phase: "pre_effect",
-          category: "dependency",
+          category: safetyFailure ? "safety" : "dependency",
           code,
           acceptance: "rejected",
         }
@@ -1421,7 +1451,9 @@ function laneSettlementFailureResult(
           acceptance: "unknown",
         };
   if (args.phase === "pre_effect") {
-    const text = failureMessage(args.error);
+    const text =
+      (rawCode ? LANE_PLAN_SAFETY_GUIDANCE[rawCode] : undefined) ??
+      failureMessage(args.error);
     return {
       success: false,
       error: code,
@@ -1468,6 +1500,7 @@ function lanePlanEffectData(
         laneId: plan.lanes[index]?.id,
         category: internal.category,
         code: internal.code,
+        primary: internal.primary,
         diagnostics: internal.diagnostics,
       },
     ];
@@ -1718,6 +1751,10 @@ async function runLanePlan(
             internalLaneFailure: {
               category: "execution",
               code: "LANE_EXECUTION_FAILED",
+              primary: {
+                code: "LANE_EXECUTION_FAILED",
+                message: diagnostic,
+              },
               diagnostics: [diagnostic],
             } satisfies LaneInternalFailure,
             suppressActionResultClipboard: true,
@@ -3693,6 +3730,7 @@ async function runSubmitWorkspace(
     };
   }
 
+  let commitHash: string | undefined;
   try {
     const status = await workspaceService.getStatus(workspaceId);
 
@@ -3714,7 +3752,7 @@ async function runSubmitWorkspace(
       content.commitMessage ??
       `feat: automated changes from task agent\n\nGenerated by Eliza task-agent plugin.`;
 
-    const commitHash = await workspaceService.commit(workspaceId, {
+    commitHash = await workspaceService.commit(workspaceId, {
       message: commitMessage,
       all: true,
     });
@@ -3768,10 +3806,31 @@ async function runSubmitWorkspace(
     // error-policy:J1 submit action boundary → structured failure to the
     // planner; the evaluator reports the failure in voice.
     const errorMessage = error instanceof Error ? error.message : String(error);
+    const artifacts = commitHash
+      ? [{ kind: "git.commit", id: commitHash }]
+      : [];
+    const text = commitHash
+      ? "I committed the workspace changes, but submission did not finish safely. Review the workspace and remote state before retrying."
+      : "I couldn't finalize the workspace. Review its current state before retrying.";
     return {
       success: false,
       error: "FINALIZE_FAILED",
-      text: `Failed to finalize workspace: ${errorMessage}`,
+      text,
+      userFacingText: text,
+      verifiedUserFacing: true,
+      turnComplete: true,
+      continueChain: false,
+      data: {
+        workspaceId,
+        ...(commitHash ? { commitHash } : {}),
+        artifacts,
+        internalFailure: {
+          category: "submission",
+          code: "FINALIZE_FAILED",
+          diagnostics: [errorMessage],
+        },
+        suppressActionResultClipboard: true,
+      },
     };
   }
 }
@@ -4570,6 +4629,29 @@ function tasksEffectProof(
   result: ActionResult,
 ): TasksEffectProof | undefined {
   const data = objectValue(result.data) ?? {};
+  const controlOperation: ControlAction | undefined =
+    operation === "archive" || operation === "reopen"
+      ? operation
+      : operation === "control"
+        ? (normalizeControlAction(
+            effectString(params.controlAction) ??
+              effectString(content.controlAction),
+          ) ?? "continue")
+        : undefined;
+  if (
+    controlOperation === "archive" ||
+    controlOperation === "reopen" ||
+    controlOperation === "pause"
+  ) {
+    const taskId = effectString(data.taskId);
+    return taskId && objectValue(data.task)
+      ? {
+          commitId: taskId,
+          commitKind: "durable",
+          resource: { kind: "orchestrator.task", id: taskId },
+        }
+      : undefined;
+  }
   if (operation === "manage_issues") {
     return issueEffectProof(params, content, data);
   }
@@ -4597,35 +4679,18 @@ function tasksEffectProof(
       commitId: commitHash,
       commitKind: "provider_accepted",
       resource: { kind: "coding.workspace", id: workspaceId },
-      artifacts: pullRequestId
-        ? [{ kind: "github.pull-request", id: pullRequestId }]
-        : [],
+      artifacts: [
+        { kind: "git.commit", id: commitHash },
+        ...(pullRequestId
+          ? [{ kind: "github.pull-request", id: pullRequestId }]
+          : []),
+      ],
     };
   }
-  if (operation === "archive" || operation === "reopen") {
-    const taskId = effectString(data.taskId);
-    return taskId && objectValue(data.task)
-      ? {
-          commitId: taskId,
-          commitKind: "durable",
-          resource: { kind: "orchestrator.task", id: taskId },
-        }
-      : undefined;
-  }
-  if (operation === "control") {
-    const controlAction =
-      normalizeControlAction(
-        effectString(params.controlAction) ??
-          effectString(content.controlAction),
-      ) ?? "continue";
+  if (controlOperation === "resume" || controlOperation === "continue") {
     const taskId = effectString(data.taskId);
     const sessionId = effectString(data.sessionId);
-    if (
-      taskId &&
-      (controlAction === "pause" ||
-        ((controlAction === "resume" || controlAction === "continue") &&
-          !sessionId))
-    ) {
+    if (taskId && !sessionId) {
       return {
         commitId: taskId,
         commitKind: "durable",
@@ -4697,7 +4762,12 @@ function tasksEffectReceipt(args: {
     const proof =
       args.operation === "create"
         ? tasksCreateEffectProof(resultData, true)
-        : undefined;
+        : tasksEffectProof(
+            args.operation,
+            args.params,
+            args.content,
+            args.result,
+          );
     const errorCode =
       effectString(args.result.error) ?? "TASKS_OPERATION_FAILED";
     const rejected =
