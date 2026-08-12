@@ -14,6 +14,7 @@ import {
 import { emitStreamingHook, getStreamingContext } from "../streaming-context";
 import type { Action, ActionResult, IAgentRuntime } from "../types";
 import type { ContextEvent, ContextObject } from "../types/context-object";
+import type { EffectReceipt } from "../types/effects";
 import type { JSONSchema, ToolDefinition } from "../types/model";
 import { canActionRun } from "./action-gate";
 import {
@@ -31,6 +32,11 @@ import {
 	runPlannerLoop,
 	summarizeActionResultForPlanner,
 } from "./planner-loop";
+import {
+	plannerToolCallDigest,
+	resolvePlannerSubstepAuthority,
+} from "./planner-trajectory";
+import type { PlannerSubstepDigest } from "./planner-types";
 import type { RecordedStage, TrajectoryRecorder } from "./trajectory-recorder";
 
 function normalizeSubPlannerActionIdentifier(actionName: string): string {
@@ -180,6 +186,84 @@ export interface RunSubPlannerParams {
 	recorder?: TrajectoryRecorder;
 	trajectoryId?: string;
 	parentStageId?: string;
+	/** Nested-operation authority from an earlier identical umbrella call. */
+	priorSubSteps?: readonly PlannerSubstepDigest[];
+	/** Complete outer-turn receipts used to revalidate prior nested effects. */
+	priorEffectReceipts?: readonly EffectReceipt[];
+}
+
+function substepDigest(
+	operation: string,
+	toolCall: PlannerToolCall,
+	result: ActionResult,
+): PlannerSubstepDigest {
+	return {
+		operation,
+		callDigest: plannerToolCallDigest({ ...toolCall, name: operation }),
+		nominalSuccess: result.success === true && result.error == null,
+		effect:
+			result.userFacingEffect === "none"
+				? { kind: "none" }
+				: result.effectReceipts && result.effectReceipts.length > 0
+					? {
+							kind: "receipts",
+							receiptIds: result.effectReceipts.map(
+								(receipt) => receipt.receiptId,
+							),
+						}
+					: { kind: "unproven" },
+		retryable: result.data?.retryable !== false,
+	};
+}
+
+function priorCompletedSubstepResult(
+	operation: string,
+	toolCall: PlannerToolCall,
+	priorSubSteps: readonly PlannerSubstepDigest[],
+	receipts: readonly EffectReceipt[],
+): { digest: PlannerSubstepDigest; result: ActionResult } | undefined {
+	const callDigest = plannerToolCallDigest({ ...toolCall, name: operation });
+	const prior = [...priorSubSteps]
+		.reverse()
+		.map((digest) => ({
+			digest,
+			authority: resolvePlannerSubstepAuthority(digest, receipts),
+		}))
+		.find(
+			(candidate) =>
+				candidate.digest.callDigest === callDigest &&
+				candidate.authority.status === "completed",
+		);
+	if (prior?.authority.status !== "completed") return undefined;
+	const { authority, digest } = prior;
+	if (authority.effect.kind === "none") {
+		return {
+			digest,
+			result: {
+				success: true,
+				userFacingEffect: "none",
+				data: { actionName: operation },
+			},
+		};
+	}
+	return {
+		digest,
+		result: {
+			success: true,
+			effectReceipts: authority.effect.receipts,
+			data: { actionName: operation },
+		},
+	};
+}
+
+function resultWithCanonicalActionName(
+	result: ActionResult,
+	actionName: string,
+): ActionResult {
+	return {
+		...result,
+		data: { ...(result.data ?? {}), actionName },
+	};
 }
 
 export async function runSubPlanner(
@@ -232,6 +316,9 @@ export async function runSubPlanner(
 		...CORE_PLANNER_TERMINALS,
 	];
 	const execute = params.execute ?? executePlannedToolCall;
+	const settledChildResults: ActionResult[] = [];
+	const priorSubSteps = params.priorSubSteps ?? [];
+	const priorEffectReceipts = params.priorEffectReceipts ?? [];
 	const context = buildSubPlannerContext(
 		params.context,
 		params.action,
@@ -292,28 +379,53 @@ export async function runSubPlanner(
 					error: `Action ${toolCall.name} is not available to sub-planner ${params.action.name}`,
 				};
 			}
+			const prior = priorCompletedSubstepResult(
+				resolvedChildAction.name,
+				toolCall,
+				priorSubSteps,
+				priorEffectReceipts,
+			);
+			if (prior) {
+				settledChildResults.push(prior.result);
+				return {
+					...actionResultToPlannerToolResult(prior.result),
+					subSteps: [prior.digest],
+				};
+			}
 
 			const rawResult = await execute(
 				params.runtime,
-				subPlannerCtx,
+				{
+					...subPlannerCtx,
+					previousResults: [
+						...(subPlannerCtx.previousResults ?? []),
+						...settledChildResults,
+					],
+				},
 				{ ...toolCall, name: resolvedChildAction.name },
 				{
 					...(params.options ?? {}),
 					actions: childActions,
 				},
 			);
+			settledChildResults.push(
+				resultWithCanonicalActionName(rawResult, resolvedChildAction.name),
+			);
 			const result = projectActionResultForClipboard(
 				resolvedChildAction,
 				rawResult,
 				resolvedChildAction.name,
 			);
-			return actionResultToPlannerToolResult(result, {
-				summary: summarizeActionResultForPlanner(
-					resolvedChildAction,
-					result,
-					toolCall.params,
-				),
-			});
+			return {
+				...actionResultToPlannerToolResult(result, {
+					summary: summarizeActionResultForPlanner(
+						resolvedChildAction,
+						result,
+						toolCall.params,
+					),
+				}),
+				subSteps: [substepDigest(resolvedChildAction.name, toolCall, result)],
+			};
 		},
 	});
 }

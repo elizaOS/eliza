@@ -84,6 +84,7 @@ import {
 	allSteps,
 	canonicalUserFacingText,
 	captureOriginalContextEvents,
+	plannerToolCallDigest,
 	projectEvaluatorVisibleTrajectory,
 	projectModelVisibleTrajectory,
 } from "./planner-trajectory";
@@ -3567,25 +3568,6 @@ function handleRequiredToolPlannerMiss(params: {
 // fulfill the request: the planner produces honest REPLY refusals across
 // iterations, and surfacing the last one is materially better than the
 // generic apology the caller would otherwise emit.
-function canonicalParamsString(value: unknown): string {
-	// Sorted-key serialization so two logically-identical tool calls that differ
-	// only in key insertion order (common across LLM re-emissions) map to the
-	// same identity — otherwise the redundant-call loop-breaker never trips.
-	return JSON.stringify(value, (_key, val) =>
-		val && typeof val === "object" && !Array.isArray(val)
-			? Object.fromEntries(
-					Object.entries(val as Record<string, unknown>).sort(([a], [b]) =>
-						a < b ? -1 : a > b ? 1 : 0,
-					),
-				)
-			: val,
-	);
-}
-
-function toolCallIdentity(toolCall: PlannerToolCall): string {
-	return `${toolCall.name} ${canonicalParamsString(toolCall.params ?? {})}`;
-}
-
 /**
  * Split a set of planned non-terminal calls into those that are genuinely new
  * this turn and those that exactly repeat a call (same tool name + arguments)
@@ -3609,7 +3591,7 @@ export function partitionRedundantSucceededCalls(
 	const receipts = allEffectReceipts(trajectory);
 	for (const step of allSteps(trajectory)) {
 		if (!step.toolCall || !step.result) continue;
-		const identity = toolCallIdentity(step.toolCall);
+		const identity = plannerToolCallDigest(step.toolCall);
 		if (effectiveMachineSuccess(step.result, receipts)) {
 			succeeded.add(identity);
 		} else if (step.result.data?.retryable === false) {
@@ -3620,7 +3602,7 @@ export function partitionRedundantSucceededCalls(
 	const redundant: PlannerToolCall[] = [];
 	const nonRetryable: PlannerToolCall[] = [];
 	for (const call of calls) {
-		const identity = toolCallIdentity(call);
+		const identity = plannerToolCallDigest(call);
 		if (succeeded.has(identity)) redundant.push(call);
 		else if (failedNonRetryable.has(identity)) nonRetryable.push(call);
 		else fresh.push(call);

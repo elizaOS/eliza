@@ -18,10 +18,14 @@ import {
 	mergeEffectReceipts,
 } from "../types/effects";
 import { isPlainObject } from "../utils/type-guards";
+import { hashStableJson } from "./context-hash";
 import { appendContextEvent } from "./context-object";
 import type {
 	ContextObject,
 	PlannerStep,
+	PlannerSubstepDigest,
+	PlannerSubstepStatus,
+	PlannerToolCall,
 	PlannerTrajectory,
 } from "./planner-types";
 
@@ -37,6 +41,82 @@ export function allEffectReceipts(
 	return mergeEffectReceipts(
 		...allSteps(trajectory).map((step) => step.result?.effectReceipts),
 	);
+}
+
+/** Stable, process-local identity for one canonical action call. */
+export function plannerToolCallDigest(toolCall: PlannerToolCall): string {
+	return hashStableJson({
+		operation: toolCall.name.trim(),
+		params: toolCall.params ?? {},
+	});
+}
+
+export type ResolvedPlannerSubstepAuthority =
+	| { status: "completed"; effect: { kind: "none" } }
+	| {
+			status: "completed";
+			effect: { kind: "receipts"; receipts: readonly EffectReceipt[] };
+	  }
+	| { status: "failed" | "unknown" };
+
+/**
+ * Resolve a nested operation against the complete current-turn receipt set.
+ * The same authority drives both model status and runtime replay suppression,
+ * so a later rollback cannot leave those decisions out of sync.
+ */
+export function resolvePlannerSubstepAuthority(
+	step: PlannerSubstepDigest,
+	allTurnReceipts: readonly EffectReceipt[],
+): ResolvedPlannerSubstepAuthority {
+	if (!step.nominalSuccess) return { status: "failed" };
+	if (step.effect.kind === "none") {
+		return { status: "completed", effect: { kind: "none" } };
+	}
+	if (step.effect.kind === "unproven") return { status: "unknown" };
+	if (step.effect.receiptIds.length === 0) return { status: "unknown" };
+
+	const receiptsById = new Map(
+		allTurnReceipts.map((receipt) => [receipt.receiptId, receipt]),
+	);
+	const receipts = step.effect.receiptIds.map((id) => receiptsById.get(id));
+	if (receipts.some((receipt) => receipt === undefined)) {
+		return { status: "unknown" };
+	}
+	const resolvedReceipts = receipts.filter(
+		(receipt): receipt is EffectReceipt => receipt !== undefined,
+	);
+	return effectiveMachineSuccess(
+		{
+			success: true,
+			effectReceipts: resolvedReceipts,
+		},
+		allTurnReceipts,
+	)
+		? {
+				status: "completed",
+				effect: { kind: "receipts", receipts: resolvedReceipts },
+			}
+		: { status: "failed" };
+}
+
+/** The only nested-operation shape permitted across a model boundary. */
+export function projectPlannerSubsteps(
+	steps: readonly PlannerSubstepDigest[] | undefined,
+	allTurnReceipts: readonly EffectReceipt[],
+): PlannerSubstepStatus[] {
+	return (steps ?? []).map((step) => ({
+		operation: step.operation,
+		status: resolvePlannerSubstepAuthority(step, allTurnReceipts).status,
+	}));
+}
+
+/** Single canonical serialization used by planner and evaluator projections. */
+export function renderPlannerSubsteps(
+	steps: readonly PlannerSubstepDigest[] | undefined,
+	allTurnReceipts: readonly EffectReceipt[],
+): string | undefined {
+	const projected = projectPlannerSubsteps(steps, allTurnReceipts);
+	return projected.length > 0 ? JSON.stringify(projected) : undefined;
 }
 
 /**
@@ -157,10 +237,12 @@ export function projectModelVisibleTrajectory(
 			const userFacingText = canonicalUserFacingText(step.result, {
 				allTurnReceipts: receipts,
 			});
+			const subSteps = renderPlannerSubsteps(step.result.subSteps, receipts);
 			return [
 				[
 					`tool_name: ${JSON.stringify(step.toolCall.name)}`,
 					`machine_status: ${success ? "success" : "failed"}`,
+					...(subSteps ? [`substeps: ${subSteps}`] : []),
 					userFacingText
 						? `canonical_user_facing_text: ${JSON.stringify(userFacingText)}`
 						: "canonical_user_facing_text: unavailable",
@@ -219,12 +301,14 @@ export function projectEvaluatorVisibleTrajectory(
 		const userFacingText = canonicalUserFacingText(step.result, {
 			allTurnReceipts: receipts,
 		});
+		const subSteps = renderPlannerSubsteps(step.result.subSteps, receipts);
 		return [
 			{
 				iteration: step.iteration,
 				toolCall: { name: step.toolCall.name },
 				result: {
 					success,
+					...(subSteps ? { text: `substeps: ${subSteps}` } : {}),
 					...(userFacingText
 						? {
 								userFacingText,

@@ -102,6 +102,15 @@ describe("subPlannerResultToPlannerToolResult", () => {
 							success: true,
 							text: inventory,
 							transcriptVisibility: "internal",
+							subSteps: [
+								{
+									operation: "VIEWS",
+									callDigest: "views-call",
+									nominalSuccess: true,
+									effect: { kind: "unproven" },
+									retryable: true,
+								},
+							],
 						},
 					},
 					{
@@ -116,14 +125,14 @@ describe("subPlannerResultToPlannerToolResult", () => {
 			},
 		} as unknown as SubResult);
 		expect(result.transcriptVisibility).toBe("internal");
-		expect(result.text).toBe(`OK VIEWS: ${inventory}`);
+		expect(result.text).toBe('[{"operation":"VIEWS","status":"unknown"}]');
 		expect(result.userFacingText).toBeUndefined();
-		expect(result.data?.subSteps).toEqual([
+		expect(result.subSteps).toEqual([
 			expect.objectContaining({
-				action: "VIEWS",
-				internalTranscriptText: inventory,
+				operation: "VIEWS",
 			}),
 		]);
+		expect(result.data).toBeUndefined();
 	});
 
 	it("keeps a distinct synthesized summary visible after an internal sub-action", () => {
@@ -142,6 +151,15 @@ describe("subPlannerResultToPlannerToolResult", () => {
 							success: true,
 							text: inventory,
 							transcriptVisibility: "internal",
+							subSteps: [
+								{
+									operation: "VIEWS",
+									callDigest: "views-call",
+									nominalSuccess: true,
+									effect: { kind: "unproven" },
+									retryable: true,
+								},
+							],
 						},
 					},
 					{
@@ -157,7 +175,7 @@ describe("subPlannerResultToPlannerToolResult", () => {
 		} as unknown as SubResult);
 
 		expect(result.transcriptVisibility).toBe("internal");
-		expect(result.text).toBe(`OK VIEWS: ${inventory}`);
+		expect(result.text).toBe('[{"operation":"VIEWS","status":"unknown"}]');
 		expect(result.userFacingText).toBe(summary);
 	});
 
@@ -449,7 +467,7 @@ describe("subPlannerResultToPlannerToolResult", () => {
 	// surface EVERY executed sub-step to the parent loop, not only the terminal
 	// one, so the outer planner can see which ops already succeeded and advance
 	// instead of re-running the umbrella action from the first step.
-	it("aggregates all sub-steps into the diagnostic text and data", () => {
+	it("aggregates all typed sub-steps into safe diagnostic text", () => {
 		const multiStep = {
 			status: "finished",
 			finalMessage: "Opened a PR for hello-world.",
@@ -459,17 +477,53 @@ describe("subPlannerResultToPlannerToolResult", () => {
 					{
 						iteration: 1,
 						toolCall: { name: "provision_workspace" },
-						result: { success: true, text: "workspace ws-1 ready" },
+						result: {
+							success: true,
+							text: "workspace ws-1 ready",
+							subSteps: [
+								{
+									operation: "provision_workspace",
+									callDigest: "provision-call",
+									nominalSuccess: true,
+									effect: { kind: "unproven" },
+									retryable: true,
+								},
+							],
+						},
 					},
 					{
 						iteration: 2,
 						toolCall: { name: "spawn_agent" },
-						result: { success: true, text: "spawned agent a-1" },
+						result: {
+							success: true,
+							text: "spawned agent a-1",
+							subSteps: [
+								{
+									operation: "spawn_agent",
+									callDigest: "spawn-call",
+									nominalSuccess: true,
+									effect: { kind: "unproven" },
+									retryable: true,
+								},
+							],
+						},
 					},
 					{
 						iteration: 3,
 						toolCall: { name: "submit_workspace" },
-						result: { success: false, error: "no diff to submit" },
+						result: {
+							success: false,
+							error: "no diff to submit",
+							subSteps: [
+								{
+									operation: "submit_workspace",
+									callDigest: "submit-call",
+									nominalSuccess: false,
+									effect: { kind: "unproven" },
+									retryable: true,
+								},
+							],
+						},
 					},
 					{
 						iteration: 4,
@@ -485,24 +539,17 @@ describe("subPlannerResultToPlannerToolResult", () => {
 
 		const result = subPlannerResultToPlannerToolResult(multiStep);
 
-		// The diagnostic text (what the parent planner reasons over) carries the
-		// full progression, not just the terminal step.
+		// The diagnostic channel carries only canonical operation/status pairs.
 		expect(result.text).toContain("provision_workspace");
 		expect(result.text).toContain("spawn_agent");
 		expect(result.text).toContain("submit_workspace");
-		expect(result.text).toContain("OK");
-		expect(result.text).toContain("FAIL");
+		expect(result.text).toContain("unknown");
+		expect(result.text).toContain("failed");
 
 		// The user-facing text stays the synthesized final message.
 		expect(result.userFacingText).toBe("Opened a PR for hello-world.");
 
-		// Structured sub-step data lets downstream action context see which ops
-		// already completed.
-		expect(result.data?.completedSubActions).toEqual([
-			"provision_workspace",
-			"spawn_agent",
-		]);
-		const subSteps = result.data?.subSteps;
+		const subSteps = result.subSteps;
 		expect(Array.isArray(subSteps)).toBe(true);
 		if (!Array.isArray(subSteps)) {
 			throw new Error("Expected structured sub-step diagnostics");
@@ -534,7 +581,7 @@ describe("action-result transcript visibility", () => {
 		).toBeUndefined();
 	});
 
-	it("binds an internal sub-planner terminal payload without hiding its distinct summary", () => {
+	it("never revives a removed raw sub-planner payload from legacy data", () => {
 		const inventory = "available_views:\nviews[0]:";
 		const summary = "There are no apps available yet.";
 		const actionResults = [
@@ -558,7 +605,7 @@ describe("action-result transcript visibility", () => {
 
 		expect(
 			resolveActionResultTranscriptVisibility(inventory, actionResults),
-		).toBe("internal");
+		).toBeUndefined();
 		expect(
 			resolveActionResultTranscriptVisibility(summary, actionResults),
 		).toBeUndefined();

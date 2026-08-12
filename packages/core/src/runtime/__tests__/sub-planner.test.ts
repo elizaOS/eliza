@@ -17,12 +17,32 @@ import {
 	runPlannerLoop,
 	TOOL_RESULT_UNAVAILABLE_MESSAGE,
 } from "../planner-loop";
+import { plannerToolCallDigest } from "../planner-trajectory";
 import {
 	actionHasSubActions,
 	detectSubActionCycles,
 	resolveSubActions,
 	runSubPlanner,
 } from "../sub-planner";
+
+const observedAt = "2026-08-12T12:00:00.000Z";
+
+function appliedReceipt(receiptId: string) {
+	return {
+		receiptId,
+		operation: "nested.apply",
+		resource: { kind: "nested", id: `resource-${receiptId}` },
+		artifacts: [],
+		idempotency: { key: `key-${receiptId}`, replayed: false },
+		observedAt,
+		outcome: "applied" as const,
+		commit: {
+			kind: "durable" as const,
+			id: `commit-${receiptId}`,
+			committedAt: observedAt,
+		},
+	};
+}
 
 type SubPlannerTestRuntime = Pick<IAgentRuntime, "actions" | "useModel"> & {
 	logger: Pick<IAgentRuntime["logger"], "debug" | "warn" | "error">;
@@ -221,6 +241,339 @@ describe("sub-planner helpers", () => {
 		);
 		expect(result.status).toBe("finished");
 		expect(result.finalMessage).toBe("Done.");
+	});
+
+	it("carries settled child results forward inside one nested invocation", async () => {
+		const childA = makeAction({ name: "CHILD_A" });
+		const childB = makeAction({ name: "CHILD_B" });
+		const parent = makeAction({
+			name: "PARENT",
+			subActions: ["CHILD_A", "CHILD_B"],
+			subPlanner: true,
+		});
+		const useModel = vi
+			.fn()
+			.mockResolvedValueOnce({
+				text: "",
+				toolCalls: [{ id: "a", name: "CHILD_A", arguments: {} }],
+			})
+			.mockResolvedValueOnce({
+				text: "",
+				toolCalls: [{ id: "b", name: "CHILD_B", arguments: {} }],
+			});
+		const execute = vi.fn(
+			async (
+				_runtime: IAgentRuntime,
+				ctx: { previousResults?: ActionResult[] },
+				call: { name: string },
+			): Promise<ActionResult> => {
+				if (call.name === "CHILD_A") {
+					expect(ctx.previousResults ?? []).toEqual([]);
+					return { success: true, userFacingEffect: "none" };
+				}
+				expect(ctx.previousResults).toEqual([
+					expect.objectContaining({
+						success: true,
+						data: { actionName: "CHILD_A" },
+					}),
+				]);
+				return { success: true, userFacingEffect: "none" };
+			},
+		);
+
+		await runSubPlanner({
+			runtime: makeRuntime([parent, childA, childB], useModel),
+			action: parent,
+			context: { id: "ctx", events: [] },
+			ctx: { message: makeMessage() },
+			execute,
+			evaluate: vi
+				.fn()
+				.mockResolvedValueOnce({
+					success: true,
+					decision: "CONTINUE",
+					thought: "Run B.",
+				})
+				.mockResolvedValueOnce({
+					success: true,
+					decision: "FINISH",
+					thought: "Done.",
+					messageToUser: "Done.",
+				}),
+		});
+		expect(execute).toHaveBeenCalledTimes(2);
+	});
+
+	it.each([{ archived: false }, { archived: true }])(
+		"skips only proven exact prior children and retries a failed sibling (archived=$archived)",
+		async ({ archived }) => {
+			const childA = makeAction({ name: "CHILD_A" });
+			const childB = makeAction({ name: "CHILD_B" });
+			const parent = makeAction({
+				name: "PARENT",
+				subActions: ["CHILD_A", "CHILD_B"],
+				subPlanner: true,
+			});
+			const receipt = appliedReceipt("receipt-a");
+			const firstModel = vi
+				.fn()
+				.mockResolvedValueOnce({
+					text: "",
+					toolCalls: [
+						{ id: "a-1", name: "CHILD_A", arguments: { lane: "same" } },
+					],
+				})
+				.mockResolvedValueOnce({
+					text: "",
+					toolCalls: [
+						{ id: "b-1", name: "CHILD_B", arguments: { lane: "same" } },
+					],
+				});
+			const first = await runSubPlanner({
+				runtime: makeRuntime([parent, childA, childB], firstModel),
+				action: parent,
+				context: { id: "first", events: [] },
+				ctx: { message: makeMessage() },
+				execute: vi.fn(async (_runtime, _ctx, call) =>
+					call.name === "CHILD_A"
+						? { success: true, effectReceipts: [receipt] }
+						: { success: false, error: "submit failed" },
+				),
+				evaluate: vi
+					.fn()
+					.mockResolvedValueOnce({
+						success: true,
+						decision: "CONTINUE",
+						thought: "Run B.",
+					})
+					.mockResolvedValueOnce({
+						success: false,
+						decision: "FINISH",
+						thought: "B failed.",
+						messageToUser: "B failed.",
+					}),
+				...(archived
+					? {
+							config: {
+								contextWindowTokens: 1_200,
+								compactionReserveTokens: 1_000,
+								compactionKeepSteps: 0,
+							},
+						}
+					: {}),
+			});
+			const collapsed = subPlannerResultToPlannerToolResult(first);
+			const retryExecute = vi.fn(async () => ({
+				success: true,
+				userFacingEffect: "none" as const,
+			}));
+			const retry = await runSubPlanner({
+				runtime: makeRuntime(
+					[parent, childA, childB],
+					vi
+						.fn()
+						.mockResolvedValueOnce({
+							text: "",
+							toolCalls: [
+								{
+									id: "a-2",
+									name: "CHILD_A",
+									arguments: { lane: "same" },
+								},
+							],
+						})
+						.mockResolvedValueOnce({
+							text: "",
+							toolCalls: [
+								{
+									id: "b-2",
+									name: "CHILD_B",
+									arguments: { lane: "same" },
+								},
+							],
+						}),
+				),
+				action: parent,
+				context: { id: "retry", events: [] },
+				ctx: { message: makeMessage() },
+				execute: retryExecute,
+				priorSubSteps: collapsed.subSteps,
+				priorEffectReceipts: collapsed.effectReceipts,
+				evaluate: vi
+					.fn()
+					.mockResolvedValueOnce({
+						success: true,
+						decision: "CONTINUE",
+						thought: "Retry B.",
+					})
+					.mockResolvedValueOnce({
+						success: true,
+						decision: "FINISH",
+						thought: "Done.",
+						messageToUser: "Done.",
+					}),
+			});
+
+			expect(retryExecute).toHaveBeenCalledTimes(1);
+			expect(retryExecute.mock.calls[0]?.[2]).toMatchObject({
+				name: "CHILD_B",
+			});
+			expect(subPlannerResultToPlannerToolResult(retry).text).toContain(
+				'{"operation":"CHILD_A","status":"completed"}',
+			);
+		},
+	);
+
+	it("retries prior unproven work and a receipt whose effect was rolled back", async () => {
+		const child = makeAction({ name: "CHILD" });
+		const parent = makeAction({
+			name: "PARENT",
+			subActions: ["CHILD"],
+			subPlanner: true,
+		});
+		const receipt = appliedReceipt("receipt-revoked");
+		const call = { name: "CHILD", params: { lane: "same" } };
+		const callDigest = plannerToolCallDigest(call);
+		const rollback = {
+			receiptId: "rollback-receipt",
+			operation: "nested.rollback",
+			resource: receipt.resource,
+			artifacts: [],
+			idempotency: { key: "rollback-key", replayed: false },
+			observedAt,
+			outcome: "rolled_back" as const,
+			rollback: {
+				receiptId: "rollback-commit",
+				revertedReceiptIds: [receipt.receiptId],
+				rolledBackAt: observedAt,
+			},
+		};
+		for (const prior of [
+			{
+				operation: "CHILD",
+				callDigest,
+				nominalSuccess: true,
+				effect: { kind: "unproven" as const },
+				retryable: true,
+			},
+			{
+				operation: "CHILD",
+				callDigest,
+				nominalSuccess: true,
+				effect: {
+					kind: "receipts" as const,
+					receiptIds: [receipt.receiptId],
+				},
+				retryable: true,
+			},
+		]) {
+			const execute = vi.fn(async () => ({
+				success: true,
+				userFacingEffect: "none" as const,
+			}));
+			await runSubPlanner({
+				runtime: makeRuntime(
+					[parent, child],
+					vi.fn(async () => ({
+						text: "",
+						toolCalls: [
+							{ id: "retry", name: "CHILD", arguments: { lane: "same" } },
+						],
+					})),
+				),
+				action: parent,
+				context: { id: "retry", events: [] },
+				ctx: { message: makeMessage() },
+				execute,
+				priorSubSteps: [prior],
+				priorEffectReceipts:
+					prior.effect.kind === "receipts" ? [receipt, rollback] : [],
+			});
+			expect(execute).toHaveBeenCalledTimes(1);
+		}
+	});
+
+	it("does not skip the same operation when its arguments differ", async () => {
+		const child = makeAction({ name: "CHILD" });
+		const parent = makeAction({
+			name: "PARENT",
+			subActions: ["CHILD"],
+			subPlanner: true,
+		});
+		const execute = vi.fn(async () => ({
+			success: true,
+			userFacingEffect: "none" as const,
+		}));
+		await runSubPlanner({
+			runtime: makeRuntime(
+				[parent, child],
+				vi.fn(async () => ({
+					text: "",
+					toolCalls: [
+						{ id: "different", name: "CHILD", arguments: { lane: "b" } },
+					],
+				})),
+			),
+			action: parent,
+			context: { id: "different", events: [] },
+			ctx: { message: makeMessage() },
+			execute,
+			priorSubSteps: [
+				{
+					operation: "CHILD",
+					callDigest: plannerToolCallDigest({
+						name: "CHILD",
+						params: { lane: "a" },
+					}),
+					nominalSuccess: true,
+					effect: { kind: "none" },
+					retryable: true,
+				},
+			],
+		});
+		expect(execute).toHaveBeenCalledTimes(1);
+	});
+
+	it("reuses an exact prior effect-free operation without executing it again", async () => {
+		const child = makeAction({ name: "CHILD" });
+		const parent = makeAction({
+			name: "PARENT",
+			subActions: ["CHILD"],
+			subPlanner: true,
+		});
+		const execute = vi.fn(async () => ({ success: false }));
+		const result = await runSubPlanner({
+			runtime: makeRuntime(
+				[parent, child],
+				vi.fn(async () => ({
+					text: "",
+					toolCalls: [
+						{ id: "same", name: "CHILD", arguments: { lane: "same" } },
+					],
+				})),
+			),
+			action: parent,
+			context: { id: "same", events: [] },
+			ctx: { message: makeMessage() },
+			execute,
+			priorSubSteps: [
+				{
+					operation: "CHILD",
+					callDigest: plannerToolCallDigest({
+						name: "CHILD",
+						params: { lane: "same" },
+					}),
+					nominalSuccess: true,
+					effect: { kind: "none" },
+					retryable: true,
+				},
+			],
+		});
+
+		expect(execute).not.toHaveBeenCalled();
+		expect(subPlannerResultToPlannerToolResult(result).text).toBe(
+			'[{"operation":"CHILD","status":"completed"}]',
+		);
 	});
 
 	it("collapses a non-silent successful run from its tool result after the terminal append", async () => {
@@ -427,9 +780,13 @@ describe("sub-planner helpers", () => {
 				},
 			});
 
-			// The aggregate remains available to planner/trajectory consumers. Only
-			// a receipt-bound mutation may retain canonical terminal authority.
-			expect(collapsed.text).toContain("K9_SECRET");
+			// The aggregate retains only machine-owned child status. Only a
+			// receipt-bound mutation may retain canonical terminal authority.
+			expect(collapsed.text).toContain('"operation":"CHILD"');
+			expect(collapsed.text).toContain(
+				withReceipt ? '"status":"completed"' : '"status":"unknown"',
+			);
+			expect(collapsed.text).not.toContain("K9_SECRET");
 			expect(collapsed.userFacingText).toBe(
 				withReceipt ? "Canonical only." : TOOL_RESULT_UNAVAILABLE_MESSAGE,
 			);
@@ -605,8 +962,12 @@ describe("sub-planner helpers", () => {
 			data: { taskId: "task-b" },
 		});
 		expect(collapsed.verifiedUserFacing).toBeUndefined();
-		expect(collapsed.text).toContain("FAIL CHILD_A");
-		expect(collapsed.text).toContain("OK CHILD_B");
+		expect(collapsed.text).toContain(
+			'{"operation":"CHILD_A","status":"failed"}',
+		);
+		expect(collapsed.text).toContain(
+			'{"operation":"CHILD_B","status":"completed"}',
+		);
 		expect(collapsed.effectReceipts).toEqual([
 			expect.objectContaining({ receiptId: "receipt-child-b" }),
 		]);
@@ -640,7 +1001,8 @@ describe("sub-planner helpers", () => {
 			]);
 			expect(subResult.endedWithDeliberateSilence).toBe(true);
 			expect(subResult.silentTerminalAction).toBe(silentTerminal);
-			expect(collapsed.text).toContain("ARCHIVED_SECRET");
+			expect(collapsed.text).toContain('"operation":"CHILD"');
+			expect(collapsed.text).not.toContain("ARCHIVED_SECRET");
 			expect(collapsed.userFacingText).toBeUndefined();
 			expect(collapsed.continueChain).toBe(false);
 			expect(collapsed.silentTerminalAction).toBe(silentTerminal);
@@ -672,7 +1034,7 @@ describe("sub-planner helpers", () => {
 			data: { actionName: "GOOGLE_CALENDAR" },
 		}));
 
-		await runSubPlanner({
+		const result = await runSubPlanner({
 			runtime: makeRuntime([parent, child], useModel),
 			action: parent,
 			context: { id: "ctx", events: [] },
@@ -692,6 +1054,9 @@ describe("sub-planner helpers", () => {
 			expect.objectContaining({ name: "GOOGLE_CALENDAR" }),
 			expect.objectContaining({ actions: [child] }),
 		);
+		expect(subPlannerResultToPlannerToolResult(result).subSteps).toEqual([
+			expect.objectContaining({ operation: "GOOGLE_CALENDAR" }),
+		]);
 	});
 
 	it("passes child actions to the model as native tool definitions", async () => {

@@ -1,14 +1,15 @@
 /**
  * Regression coverage (#8007) for planner multi-step advance: each succeeded
- * intermediate tool result is surfaced to the next turn so the loop advances
- * (provision → spawn → submit) instead of re-dispatching the first step, and a
- * weak model that re-emits an identical call is bounded. Deterministic —
+ * nested operation's receipt-backed status reaches the next turn so the loop
+ * advances (provision → spawn → submit) instead of re-dispatching the first
+ * step, and a weak model that re-emits an identical call is bounded. Deterministic —
  * scripted `useModel` + tool executor shaped like the orchestrator's real
  * returns; no live model.
  */
 import { describe, expect, it, vi } from "vitest";
 import type { GenerateTextResult, ToolDefinition } from "../../types/model";
 import { runPlannerLoop } from "../planner-loop";
+import { plannerToolCallDigest } from "../planner-trajectory";
 
 /**
  * Regression for #8007 — "v5 planner loops on `decision: CONTINUE` without
@@ -21,15 +22,10 @@ import { runPlannerLoop } from "../planner-loop";
  * SAME first step (provision_workspace) instead of advancing — looping until a
  * trajectory limit fired and the user saw a timeout.
  *
- * Root cause (since fixed at `planner-rendering.ts` `trajectoryStepsToMessages`):
- * a succeeded intermediate tool result was not surfaced to the next planner /
- * evaluator model call, so the model "believed" no tool had run yet and routed
- * CONTINUE forever. The fix renders each completed step as an assistant
- * (tool-call) + tool (tool-result) message pair — INCLUDING the result `data` —
- * for every subsequent turn, so the model can read the intermediate output
- * (e.g. `workspaceId`) and advance to the next op. A defense-in-depth
- * loop-breaker (`partitionRedundantSucceededCalls`) also caps a model that
- * still re-emits an already-succeeded call.
+ * The parent planner receives only receipt-backed nested operation status;
+ * arguments, raw child output, identifiers, and result data remain outside the
+ * model boundary. A defense-in-depth loop-breaker also caps a model that still
+ * re-emits an already-succeeded call.
  *
  * These tests drive the real `runPlannerLoop` with a scripted model + scripted
  * tool executor shaped exactly like the orchestrator's real returns
@@ -67,31 +63,47 @@ function tasksToolCall(subaction: string, id: string): GenerateTextResult {
 	} as GenerateTextResult;
 }
 
-// Real orchestrator provision_workspace success return shape (tasks.ts:2075-2084).
-const PROVISION_RESULT = {
-	success: true as const,
-	text: "Created workspace w1",
-	data: {
-		workspaceId: "w1",
-		path: "/workspaces/w1",
-		branch: "main",
-		isWorktree: false,
-	},
-	// provision returns no continueChain (undefined) → falls through to the
-	// evaluator so the chain can continue to the next op.
-};
+const observedAt = "2026-08-12T12:00:00.000Z";
 
-// Real orchestrator spawn_agent success return (tasks.ts:1121-1142): terminal
-// for the turn (continueChain:false) so intra-turn duplicate spawns are stopped.
-const SPAWN_RESULT = {
-	success: true as const,
-	text: "Agent spawned into workspace w1.",
-	data: { agentId: "a1", workspaceId: "w1" },
-	continueChain: false as const,
-};
+function completedNestedResult(
+	operation: string,
+	params: Record<string, unknown>,
+	options: { continueChain?: false; rawText?: string; rawData?: object } = {},
+) {
+	const receipt = {
+		receiptId: `receipt-${operation}`,
+		operation: `tasks.${operation}`,
+		resource: { kind: "tasks.operation", id: `resource-${operation}` },
+		artifacts: [],
+		idempotency: { key: `tasks-${operation}`, replayed: false },
+		observedAt,
+		outcome: "applied" as const,
+		commit: {
+			kind: "durable" as const,
+			id: `commit-${operation}`,
+			committedAt: observedAt,
+		},
+	};
+	return {
+		success: true as const,
+		text: options.rawText,
+		data: options.rawData,
+		continueChain: options.continueChain,
+		effectReceipts: [receipt],
+		subSteps: [
+			{
+				operation,
+				callDigest: plannerToolCallDigest({ name: operation, params }),
+				nominalSuccess: true,
+				effect: { kind: "receipts" as const, receiptIds: [receipt.receiptId] },
+				retryable: true,
+			},
+		],
+	};
+}
 
 describe("#8007 planner multi-step advance", () => {
-	it("advances provision → spawn (no re-dispatch) and surfaces the provision result to the next turn", async () => {
+	it("advances provision → spawn and surfaces safe provision status", async () => {
 		const modelInputs: unknown[] = [];
 		const executed: string[] = [];
 		let plannerCall = 0;
@@ -120,8 +132,25 @@ describe("#8007 planner multi-step advance", () => {
 			async (toolCall: { name: string; params?: Record<string, unknown> }) => {
 				const sub = String(toolCall.params?.subaction ?? "");
 				executed.push(sub);
-				if (sub === "provision_workspace") return PROVISION_RESULT;
-				if (sub === "spawn_agent") return SPAWN_RESULT;
+				if (sub === "provision_workspace")
+					return completedNestedResult(sub, toolCall.params ?? {}, {
+						rawText: "Created workspace w1",
+						rawData: {
+							workspaceId: "w1",
+							path: "/workspaces/w1",
+							branch: "main",
+							isWorktree: false,
+						},
+					});
+				if (sub === "spawn_agent")
+					return completedNestedResult(sub, toolCall.params ?? {}, {
+						continueChain: false,
+						rawText: "Agent spawned into workspace w1.",
+						rawData: {
+							agentId: "AGENT_PRIVATE_3f2504e0",
+							workspaceId: "w1",
+						},
+					});
 				return { success: true as const, text: "ok", continueChain: false };
 			},
 		);
@@ -157,17 +186,19 @@ describe("#8007 planner multi-step advance", () => {
 		// Advanced to the next op exactly once each — provision is NOT re-dispatched.
 		expect(executed).toEqual(["provision_workspace", "spawn_agent"]);
 
-		// The second planner turn's model input carries the succeeded provision
-		// result, including the workspaceId the model needs to advance. This is the
-		// exact surfacing whose absence caused #8007.
+		// The second turn carries only the safe operation/status projection.
 		const secondTurnInput = JSON.stringify(modelInputs[1] ?? {});
-		expect(secondTurnInput).toContain("Created workspace w1");
-		expect(secondTurnInput).toContain("w1");
+		expect(secondTurnInput).toContain(
+			'{\\"operation\\":\\"provision_workspace\\",\\"status\\":\\"completed\\"}',
+		);
+		for (const forbidden of ["Created workspace w1", "/workspaces/w1", "w1"]) {
+			expect(secondTurnInput).not.toContain(forbidden);
+		}
 
 		expect(result.status).toBe("finished");
 	});
 
-	it("surfaces provision AND spawn results to the third turn for the submit step", async () => {
+	it("surfaces safe provision and spawn status before submit", async () => {
 		const modelInputs: unknown[] = [];
 		const executed: string[] = [];
 		let plannerCall = 0;
@@ -193,21 +224,26 @@ describe("#8007 planner multi-step advance", () => {
 			async (toolCall: { name: string; params?: Record<string, unknown> }) => {
 				const sub = String(toolCall.params?.subaction ?? "");
 				executed.push(sub);
-				if (sub === "provision_workspace") return PROVISION_RESULT;
+				if (sub === "provision_workspace")
+					return completedNestedResult(sub, toolCall.params ?? {}, {
+						rawText: "Created workspace w1",
+						rawData: { workspaceId: "w1", path: "/workspaces/w1" },
+					});
 				// spawn without continueChain:false here so the chain continues to submit.
 				if (sub === "spawn_agent")
-					return {
-						success: true as const,
-						text: "Agent spawned into workspace w1.",
-						data: { agentId: "a1", workspaceId: "w1" },
-					};
+					return completedNestedResult(sub, toolCall.params ?? {}, {
+						rawText: "Agent spawned into workspace w1.",
+						rawData: {
+							agentId: "AGENT_PRIVATE_3f2504e0",
+							workspaceId: "w1",
+						},
+					});
 				if (sub === "submit_workspace")
-					return {
-						success: true as const,
-						text: "Submitted PR for workspace w1.",
-						data: { prUrl: "https://github.com/org/hello-world/pull/1" },
-						continueChain: false as const,
-					};
+					return completedNestedResult(sub, toolCall.params ?? {}, {
+						continueChain: false,
+						rawText: "Submitted PR for workspace w1.",
+						rawData: { prUrl: "https://github.com/org/hello-world/pull/1" },
+					});
 				return { success: true as const, text: "ok", continueChain: false };
 			},
 		);
@@ -245,10 +281,22 @@ describe("#8007 planner multi-step advance", () => {
 			"submit_workspace",
 		]);
 
-		// By the third turn, BOTH prior succeeded results are in the model input.
+		// By the third turn, both statuses are present and all raw payloads stay out.
 		const thirdTurnInput = JSON.stringify(modelInputs[2] ?? {});
-		expect(thirdTurnInput).toContain("Created workspace w1");
-		expect(thirdTurnInput).toContain("Agent spawned into workspace w1");
+		expect(thirdTurnInput).toContain(
+			'{\\"operation\\":\\"provision_workspace\\",\\"status\\":\\"completed\\"}',
+		);
+		expect(thirdTurnInput).toContain(
+			'{\\"operation\\":\\"spawn_agent\\",\\"status\\":\\"completed\\"}',
+		);
+		for (const forbidden of [
+			"Created workspace w1",
+			"Agent spawned into workspace w1",
+			"/workspaces/w1",
+			"AGENT_PRIVATE_3f2504e0",
+		]) {
+			expect(thirdTurnInput).not.toContain(forbidden);
+		}
 
 		expect(result.status).toBe("finished");
 	});
@@ -265,7 +313,13 @@ describe("#8007 planner multi-step advance", () => {
 			}),
 		};
 
-		const executeToolCall = vi.fn(async () => PROVISION_RESULT);
+		const executeToolCall = vi.fn(async () =>
+			completedNestedResult(
+				"provision_workspace",
+				{ subaction: "provision_workspace", repo: "org/hello-world" },
+				{ rawText: "Created workspace w1" },
+			),
+		);
 
 		const evaluate = vi.fn(async () => ({
 			success: false,

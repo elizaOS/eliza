@@ -149,7 +149,6 @@ import {
 	isTerminalPlannerToolName,
 	type PlannerLoopParams,
 	type PlannerRuntime,
-	type PlannerStep,
 	type PlannerToolCall,
 	type PlannerToolResult,
 	type PlannerTrajectory,
@@ -163,6 +162,8 @@ import {
 	allEffectReceipts,
 	allSteps,
 	canonicalUserFacingText,
+	plannerToolCallDigest,
+	renderPlannerSubsteps,
 } from "../runtime/planner-trajectory";
 import {
 	extractReplyTextFromTranscript,
@@ -244,7 +245,6 @@ import type {
 import type { ContextEvent, ContextObject } from "../types/context-object";
 import type { ContextDefinition, RoleGateRole } from "../types/contexts";
 import {
-	type EffectReceipt,
 	effectiveMachineSuccess,
 	mergeEffectReceipts,
 	resolveAppliedUserFacingEffectReceipts,
@@ -332,7 +332,6 @@ import {
 	hasFirstSentence,
 } from "../utils/text-splitting";
 import { isObjectRecord as isRecord } from "../utils/type-guards";
-import { truncateWellFormed } from "../utils/well-formed";
 import { maybeHandleAnalysisActivation } from "./analysis-mode-handler";
 import { ChannelTopicsService } from "./channel-topics";
 import { runPostTurnEvaluators } from "./evaluator";
@@ -2042,21 +2041,6 @@ export function resolveActionResultTranscriptVisibility(
 	return actionResults?.some((result) => {
 		if (result.transcriptVisibility !== "internal") return false;
 		const candidates = typeof result.text === "string" ? [result.text] : [];
-		const subSteps =
-			result.data &&
-			typeof result.data === "object" &&
-			Array.isArray(result.data.subSteps)
-				? result.data.subSteps
-				: [];
-		const terminalSubStep = subSteps.at(-1);
-		if (
-			terminalSubStep &&
-			typeof terminalSubStep === "object" &&
-			"internalTranscriptText" in terminalSubStep &&
-			typeof terminalSubStep.internalTranscriptText === "string"
-		) {
-			candidates.push(terminalSubStep.internalTranscriptText);
-		}
 		return candidates.some((candidate) => canonicalize(candidate) === selected);
 	})
 		? "internal"
@@ -6244,6 +6228,7 @@ function actionOwnsResponseHandlerEarlyReply(
 interface ExecuteV5PlannedToolCallParams {
 	runtime: IAgentRuntime;
 	toolCall: PlannerToolCall;
+	outerTrajectory: PlannerTrajectory;
 	plannerContext: ContextObject;
 	executorCtx: ExecutePlannedToolCallContext;
 	executorOptions?: ExecutePlannedToolCallOptions;
@@ -6347,6 +6332,23 @@ async function executeV5PlannedToolCall(
 	const hasDispatcherActionParameter =
 		plannerToolCallHasActionParameter(toolCall);
 	if (action && actionHasSubActions(action) && !hasDispatcherActionParameter) {
+		const parentCallDigest = plannerToolCallDigest(toolCall);
+		const priorSubSteps = allSteps(args.outerTrajectory).flatMap((step) => {
+			if (!step.toolCall || !step.result?.subSteps) return [];
+			const previousResolvedName =
+				resolvePlannerActionName(
+					args.runtime,
+					actionLookup,
+					step.toolCall.name,
+					{ strict: strictResolve },
+				)[0] ?? step.toolCall.name;
+			return plannerToolCallDigest({
+				...step.toolCall,
+				name: previousResolvedName,
+			}) === parentCallDigest
+				? [...step.result.subSteps]
+				: [];
+		});
 		const subResult = await runSubPlanner({
 			runtime: args.runtime as IAgentRuntime & PlannerRuntime,
 			action,
@@ -6359,6 +6361,8 @@ async function executeV5PlannedToolCall(
 			config: args.plannerLoopConfig,
 			recorder: args.recorder,
 			trajectoryId: args.trajectoryId,
+			priorSubSteps,
+			priorEffectReceipts: allEffectReceipts(args.outerTrajectory),
 		});
 		return subPlannerResultToPlannerToolResult(subResult);
 	}
@@ -6403,84 +6407,6 @@ function plannerToolCallHasActionParameter(toolCall: PlannerToolCall): boolean {
 }
 
 /**
- * One entry per executed sub-planner step, projected for the parent loop. This
- * is the structured record the outer planner's next turn reasons over so it can
- * see which multi-step operations already succeeded and advance to the next one
- * instead of re-dispatching the umbrella action from scratch (issue
- * elizaOS/eliza#8007).
- */
-interface SubPlannerSubStep {
-	action: string;
-	success: boolean;
-	summary?: string;
-	internalTranscriptText?: string;
-	error?: string;
-}
-
-const SUB_STEP_SUMMARY_MAX_CHARS = 400;
-
-function truncateSubStepText(text: string): string {
-	const trimmed = text.trim();
-	if (trimmed.length <= SUB_STEP_SUMMARY_MAX_CHARS) return trimmed;
-	return `${truncateWellFormed(trimmed, SUB_STEP_SUMMARY_MAX_CHARS)}...`;
-}
-
-function collectSubPlannerSubSteps(
-	steps: readonly PlannerStep[],
-	receipts: readonly EffectReceipt[],
-): SubPlannerSubStep[] {
-	const subSteps: SubPlannerSubStep[] = [];
-	for (const step of steps) {
-		if (!step.toolCall?.name || !step.result) continue;
-		const result = step.result;
-		const errorText =
-			typeof result.error === "string"
-				? result.error
-				: result.error instanceof Error
-					? result.error.message
-					: undefined;
-		const summarySource =
-			typeof result.text === "string" && result.text.trim().length > 0
-				? result.text
-				: typeof result.userFacingText === "string"
-					? result.userFacingText
-					: undefined;
-		subSteps.push({
-			action: step.toolCall.name,
-			success: effectiveMachineSuccess(result, receipts),
-			...(summarySource ? { summary: truncateSubStepText(summarySource) } : {}),
-			...(result.transcriptVisibility === "internal" &&
-			typeof result.text === "string"
-				? { internalTranscriptText: result.text }
-				: {}),
-			...(errorText ? { error: truncateSubStepText(errorText) } : {}),
-		});
-	}
-	return subSteps;
-}
-
-/**
- * Diagnostic, log-shaped projection of the full sub-planner trajectory. Renders
- * every executed sub-step as `OK/FAIL <action>: <summary/error>` so the parent
- * planner's tool-result message carries the progression (e.g.
- * `OK provision_workspace, OK spawn_agent, FAIL submit_workspace`) instead of
- * only the terminal step. Without this the outer LLM cannot tell that step 1
- * already succeeded and re-dispatches the umbrella action on every CONTINUE
- * turn.
- */
-function renderSubStepDiagnosticText(subSteps: SubPlannerSubStep[]): string {
-	return subSteps
-		.map((step) => {
-			const marker = step.success ? "OK" : "FAIL";
-			const detail = step.error ?? step.summary;
-			return detail
-				? `${marker} ${step.action}: ${detail}`
-				: `${marker} ${step.action}`;
-		})
-		.join("\n");
-}
-
-/**
  * Collapses a nested planner run into the parent planner's tool-result shape.
  * The inner loop's unresolved-failure and terminal-evaluator authority owns
  * overall success, the latest completed nonterminal tool owns payload/effect
@@ -6512,21 +6438,13 @@ export function subPlannerResultToPlannerToolResult(
 		typeof userFacingText === "string" &&
 		latestSubActionResult.text.trim() === userFacingText.trim();
 
-	// Aggregate every executed sub-step, not just the terminal one, so the
-	// parent planner's next turn can see which operations already succeeded and
-	// advance to the next op instead of re-running the umbrella action from the
-	// first step (issue elizaOS/eliza#8007). The per-step progression flows to
-	// the outer LLM through `text` (the diagnostic tool-result projection) and
-	// to downstream action context through `data.subSteps` /
-	// `data.completedSubActions`.
-	const subSteps = collectSubPlannerSubSteps(
-		completedSubActionSteps,
-		effectReceipts,
+	// Child executors author exactly one typed digest per settled operation.
+	// Flatten those immutable records chronologically; receipt status is resolved
+	// only at projection/retry time so a later rollback changes the outcome.
+	const subSteps = completedSubActionSteps.flatMap(
+		(step) => step.result?.subSteps ?? [],
 	);
-	const diagnosticText = renderSubStepDiagnosticText(subSteps);
-	const completedSubActions = subSteps
-		.filter((step) => step.success)
-		.map((step) => step.action);
+	const diagnosticText = renderPlannerSubsteps(subSteps, effectReceipts);
 	const terminalData = latestSubActionResult?.data;
 	const terminalUserFacingEffectReceiptIds =
 		typeof latestSubActionResult?.userFacingText === "string" &&
@@ -6545,25 +6463,12 @@ export function subPlannerResultToPlannerToolResult(
 		!internalTerminalPayload &&
 		terminalCanonicalUserFacingText !== undefined &&
 		terminalCanonicalUserFacingText === userFacingText;
-	const data =
-		terminalData || subSteps.length > 0
-			? {
-					...(terminalData ?? {}),
-					...(subSteps.length > 0
-						? {
-								subSteps,
-								completedSubActions,
-							}
-						: {}),
-				}
-			: undefined;
 
 	return {
 		success,
-		// Diagnostic channel: the whole progression, so CONTINUE re-planning
-		// sees the completed steps. Falls back to the user-facing text when the
-		// sub-planner executed no discrete steps.
-		text: diagnosticText.length > 0 ? diagnosticText : userFacingText,
+		// Process-local diagnostic text contains only the same operation/status
+		// projection admitted at the model boundary.
+		text: diagnosticText ?? userFacingText,
 		transcriptVisibility: latestSubActionResult?.transcriptVisibility,
 		...(internalTerminalPayload ? {} : { userFacingText }),
 		...(effectReceipts.length > 0 ? { effectReceipts } : {}),
@@ -6581,7 +6486,8 @@ export function subPlannerResultToPlannerToolResult(
 		latestSubActionResult?.turnComplete === true
 			? { turnComplete: true }
 			: {}),
-		data,
+		...(subSteps.length > 0 ? { subSteps } : {}),
+		data: terminalData,
 		error: latestSubActionResult?.error,
 		...(subResult.endedWithDeliberateSilence && subResult.silentTerminalAction
 			? { silentTerminalAction: subResult.silentTerminalAction }
@@ -8499,6 +8405,7 @@ export async function runV5MessageRuntimeStage1(args: {
 									await executeV5PlannedToolCall({
 										runtime: args.runtime,
 										toolCall,
+										outerTrajectory: ctx.trajectory,
 										plannerContext: loopContext,
 										executorCtx: buildV5ExecutorContext({
 											message: args.message,

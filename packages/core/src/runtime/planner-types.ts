@@ -27,6 +27,28 @@ export interface PlannerToolCall {
 	params?: Record<string, unknown>;
 }
 
+/**
+ * Machine-owned identity and effect authority for one executed nested action.
+ * The call digest and receipt IDs stay process-local; model projections expose
+ * only the canonical operation name and a status derived from current receipts.
+ */
+export interface PlannerSubstepDigest {
+	operation: string;
+	callDigest: string;
+	nominalSuccess: boolean;
+	effect:
+		| { kind: "none" }
+		| { kind: "receipts"; receiptIds: readonly string[] }
+		| { kind: "unproven" };
+	retryable: boolean;
+}
+
+/** Safe model projection of a nested operation after receipt resolution. */
+export interface PlannerSubstepStatus {
+	operation: string;
+	status: "completed" | "failed" | "unknown";
+}
+
 export type EvaluatorRoute = EvaluationResult["decision"];
 
 export interface EvaluatorRuntime {
@@ -153,6 +175,12 @@ export interface PlannerToolResult {
 	effectReceipts?: readonly EffectReceipt[];
 	/** Receipt IDs described by the exact canonical user-facing text. */
 	userFacingEffectReceiptIds?: readonly string[];
+	/**
+	 * Ordered nested-operation authority. Raw child output and invocation
+	 * parameters never enter this record; receipt state is resolved again at
+	 * every projection and retry boundary so later rollbacks revoke completion.
+	 */
+	subSteps?: readonly PlannerSubstepDigest[];
 	/**
 	 * Owner-declared short summary of a successful action result. Used only for
 	 * synthesized planner fallback replies when the model/evaluator emitted no

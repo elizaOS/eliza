@@ -12,9 +12,9 @@
  * Two framework mechanisms bound and unblock this loop; these tests pin
  * both against the exact orchestrator shape from the issue:
  *
- *  1. Prior successful tool results ARE surfaced into the next planner turn's
- *     messages (via `trajectoryStepsToMessages`), so a capable model can see
- *     "provision already succeeded, now spawn" and advance.
+ *  1. Prior receipt-backed nested operation statuses reach the next planner
+ *     turn, so a capable model can see provision succeeded and advance without
+ *     receiving raw action output or identifiers.
  *  2. When a weak model instead re-issues the IDENTICAL successful call, the
  *     redundant-success loop-breaker executes it once, skips the repeats, and
  *     past `maxRepeatedToolCalls` forces one terminal synthesis instead of
@@ -25,6 +25,42 @@ import {
 	runPlannerLoop,
 	TOOL_RESULT_UNAVAILABLE_MESSAGE,
 } from "../planner-loop";
+import { plannerToolCallDigest } from "../planner-trajectory";
+
+const observedAt = "2026-08-12T12:00:00.000Z";
+
+function completedNestedResult(
+	operation: string,
+	params: Record<string, unknown>,
+) {
+	const receipt = {
+		receiptId: `receipt-${operation}`,
+		operation: `tasks.${operation}`,
+		resource: { kind: "tasks.operation", id: `resource-${operation}` },
+		artifacts: [],
+		idempotency: { key: `tasks-${operation}`, replayed: false },
+		observedAt,
+		outcome: "applied" as const,
+		commit: {
+			kind: "durable" as const,
+			id: `commit-${operation}`,
+			committedAt: observedAt,
+		},
+	};
+	return {
+		success: true,
+		effectReceipts: [receipt],
+		subSteps: [
+			{
+				operation,
+				callDigest: plannerToolCallDigest({ name: operation, params }),
+				nominalSuccess: true,
+				effect: { kind: "receipts" as const, receiptIds: [receipt.receiptId] },
+				retryable: true,
+			},
+		],
+	};
+}
 
 describe("v5 planner #8007 - multi-step orchestrator advance", () => {
 	const REPO = "acme/hello-world";
@@ -66,10 +102,7 @@ describe("v5 planner #8007 - multi-step orchestrator advance", () => {
 			async (toolCall: { params?: { action?: string } }) => {
 				const op = toolCall.params?.action ?? "unknown";
 				executed.push(op);
-				return {
-					success: true,
-					text: `${op} completed for ${REPO}`,
-				};
+				return completedNestedResult(op, toolCall.params ?? {});
 			},
 		);
 
@@ -108,11 +141,14 @@ describe("v5 planner #8007 - multi-step orchestrator advance", () => {
 		expect(result.status).toBe("finished");
 		expect(result.finalMessage).toContain("PR opened");
 
-		// The prior successful step must be visible to the model on the next
-		// planner turn; this is the exact signal #8007 said was missing ("the
-		// LLM does not see 'you already provisioned a workspace, now spawn'").
+		// The next planner turn sees the receipt-backed operation status without
+		// receiving raw repository, result, or receipt authority.
 		const secondTurnMessages = JSON.stringify(seenMessages[1] ?? []);
-		expect(secondTurnMessages).toContain("provision_workspace completed");
+		expect(secondTurnMessages).toContain(
+			'{\\"operation\\":\\"provision_workspace\\",\\"status\\":\\"completed\\"}',
+		);
+		expect(secondTurnMessages).not.toContain(REPO);
+		expect(secondTurnMessages).not.toContain("receipt-provision_workspace");
 	});
 
 	it("bounds a weak model that re-issues the identical successful op (no 8x loop)", async () => {
