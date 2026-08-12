@@ -73,6 +73,23 @@ function makeService(
   return new AcpService(runtime(settings), { store });
 }
 
+function attachNativeTransport(
+  service: InstanceType<typeof AcpService>,
+  sessionId: string,
+): void {
+  const client = {
+    closeSession: vi.fn(async () => undefined),
+    close: vi.fn(async () => undefined),
+  };
+  // These lifecycle fixtures insert sessions directly into the store, so they
+  // must also supply the live transport that a real running native session owns.
+  (
+    service as unknown as {
+      nativeClients: Map<string, typeof client>;
+    }
+  ).nativeClients.set(sessionId, client);
+}
+
 function session(
   id: string,
   workdir: string,
@@ -141,6 +158,7 @@ describe("teardown reclaims the owned scratch dir", () => {
     await makeDir(workdir);
     await store.create(session(id, workdir));
     const service = makeService(store);
+    attachNativeTransport(service, id);
 
     await service.closeSession(id);
 
@@ -154,6 +172,7 @@ describe("teardown reclaims the owned scratch dir", () => {
     await makeDir(workdir);
     await store.create(session(id, workdir));
     const service = makeService(store);
+    attachNativeTransport(service, id);
 
     await service.deleteSession(id);
 
@@ -188,6 +207,7 @@ describe("teardown reclaims the owned scratch dir", () => {
     await makeDir(workdir);
     await store.create(session(id, workdir));
     const service = makeService(store);
+    attachNativeTransport(service, id);
 
     await service.stopSession(id);
 
@@ -205,6 +225,8 @@ describe("teardown reclaims the owned scratch dir", () => {
     await makeDir(sharedClone);
     await store.create(session("shared-1", sharedClone));
     const service = makeService(store);
+    attachNativeTransport(service, "user-1");
+    attachNativeTransport(service, "shared-1");
 
     await service.closeSession("user-1");
     await service.deleteSession("shared-1");
