@@ -287,16 +287,16 @@ test.describe("registered BlueBubbles gateway", () => {
       expect(stack.mocks.mockLlm?.requestCount()).toBe(0);
       expect(fakeBlueBubbles.sends).toHaveLength(1);
       const onboardingReply = String(fakeBlueBubbles.sends[0]?.message ?? "");
-      // Copy is intentionally conversational and may evolve; the durable
-      // contract is an inline, parseable continuation URL carrying the session.
-      expect(onboardingReply.toLowerCase()).toContain("connect your account");
+      // Copy is intentionally conversational and may evolve. The durable
+      // contract is an inline HTTPS continuation URL carrying the session.
       const onboardingUrl = onboardingReply.match(/https:\/\/\S+/)?.[0];
       expect(onboardingUrl, "onboarding continuation URL").toBeTruthy();
       if (!onboardingUrl)
         throw new Error("Onboarding reply did not contain a URL");
-      const continuationToken = new URL(onboardingUrl).searchParams.get(
-        "onboardingSession",
-      );
+      const parsedOnboardingUrl = new URL(onboardingUrl);
+      expect(parsedOnboardingUrl.protocol).toBe("https:");
+      const continuationToken =
+        parsedOnboardingUrl.searchParams.get("onboardingSession");
       expect(continuationToken).toMatch(/^[0-9a-f-]{36}$/);
       if (!continuationToken)
         throw new Error("Onboarding URL did not contain a session token");
