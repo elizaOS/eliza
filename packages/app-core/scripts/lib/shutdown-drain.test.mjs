@@ -305,8 +305,14 @@ describe("dev-platform supervisor wiring", () => {
     expect(devPlatformSource).not.toContain("}, 1500).unref();");
   });
 
-  it("names both tracked children for loud escalation logs", () => {
-    expect(devPlatformSource).toContain('childNames.set(child, "electrobun");');
+  it("names tracked children for loud escalation logs", () => {
+    // pushChild is generic (called with "vite" and "electrobun"): the stored
+    // name must be the caller's argument, never a hard-coded literal, or a
+    // Vite straggler is misreported as Electrobun (#18708 review, @w1kke).
+    expect(devPlatformSource).toContain("childNames.set(child, name);");
+    expect(devPlatformSource).not.toContain(
+      'childNames.set(child, "electrobun");',
+    );
     expect(devPlatformSource).toContain('childNames.set(child, "api");');
   });
 });

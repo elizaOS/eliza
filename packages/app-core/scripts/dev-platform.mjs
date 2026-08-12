@@ -728,7 +728,7 @@ function pushChild(name, cmd, args, cwd, extraEnv = {}) {
       });
     }
   });
-  childNames.set(child, "electrobun");
+  childNames.set(child, name);
   children.push(child);
   return child;
 }
