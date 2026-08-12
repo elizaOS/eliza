@@ -83,6 +83,9 @@ mock.module("./user-service", () => ({
 const { runOnboardingChat, validateTelegramOnboardingContinuation } = await import(
   `./onboarding-chat.ts?test=onboarding-chat-${Date.now()}`
 );
+const { peekLocalGreetingQueue, clearLocalGreetingQueue } = await import(
+  "./onboarding-proactive-greeting"
+);
 
 describe("runOnboardingChat", () => {
   beforeEach(() => {
@@ -99,6 +102,7 @@ describe("runOnboardingChat", () => {
     launchManagedElizaAgent.mockReset();
     loggerWarn.mockReset();
     cloudEnv = {};
+    clearLocalGreetingQueue();
   });
 
   afterEach(() => {
@@ -1785,6 +1789,196 @@ describe("runOnboardingChat", () => {
       } finally {
         globalThis.fetch = originalFetch;
       }
+    });
+  });
+
+  describe("proactive post-sign-in greeting (Discord)", () => {
+    async function runTrustedDiscordHandoff(discordUserId: string) {
+      return runOnboardingChat({
+        message: "call me Sam",
+        platform: "discord",
+        platformUserId: discordUserId,
+        sessionId: `platform:discord:${discordUserId}`,
+        trustedPlatformIdentity: true,
+      });
+    }
+
+    test("queues exactly one greeting when a browser turn binds a trusted discord session", async () => {
+      getElizaAppProvisioningStatus.mockResolvedValue({
+        status: "provisioning",
+        agentId: null,
+        bridgeUrl: null,
+        sandbox: null,
+      });
+      ensureElizaAppProvisioning.mockResolvedValue({
+        status: "provisioning",
+        agentId: null,
+        bridgeUrl: null,
+        sandbox: null,
+      });
+      const gatewayTurn = await runTrustedDiscordHandoff("discord-user-greet");
+      expect(peekLocalGreetingQueue()).toHaveLength(0);
+
+      const continued = await runOnboardingChat({
+        sessionId: continuationToken(gatewayTurn),
+        platform: "web",
+        authenticatedUser: { userId: "user-1", organizationId: "org-1" },
+        confirmPlatformLink: true,
+      });
+      expect(continued.session.userId).toBe("user-1");
+
+      const queued = peekLocalGreetingQueue();
+      expect(queued).toHaveLength(1);
+      const entry = queued[0];
+      if (!entry) throw new Error("expected a queued greeting");
+      expect(entry.platformUserId).toBe("discord-user-greet");
+      expect(entry.sessionId).toBe("platform:discord:discord-user-greet");
+      expect(entry.message).toContain("Sam");
+      expect(entry.message).toContain("you're all set");
+
+      // A replayed/repeated authenticated turn must not queue a second
+      // greeting: the session is already bound.
+      await runOnboardingChat({
+        sessionId: continuationToken(gatewayTurn),
+        platform: "web",
+        authenticatedUser: { userId: "user-1", organizationId: "org-1" },
+        confirmPlatformLink: true,
+        statusOnly: true,
+      });
+      expect(peekLocalGreetingQueue()).toHaveLength(1);
+    });
+
+    test("the committed result never exposes the greeting handoff field", async () => {
+      getElizaAppProvisioningStatus.mockResolvedValue({
+        status: "provisioning",
+        agentId: null,
+        bridgeUrl: null,
+        sandbox: null,
+      });
+      ensureElizaAppProvisioning.mockResolvedValue({
+        status: "provisioning",
+        agentId: null,
+        bridgeUrl: null,
+        sandbox: null,
+      });
+      const gatewayTurn = await runTrustedDiscordHandoff("discord-user-strip");
+      const continued = await runOnboardingChat({
+        sessionId: continuationToken(gatewayTurn),
+        platform: "web",
+        authenticatedUser: { userId: "user-1", organizationId: "org-1" },
+        confirmPlatformLink: true,
+      });
+      // Commit-ordering handoff is internal: the greeting was enqueued, but
+      // the field must not cross the service boundary in the result.
+      expect(peekLocalGreetingQueue()).toHaveLength(1);
+      expect("proactiveGreeting" in continued).toBe(false);
+    });
+
+    test("a turn that fails after binding never queues a greeting (no false-success DM)", async () => {
+      getElizaAppProvisioningStatus.mockResolvedValue({
+        status: "provisioning",
+        agentId: null,
+        bridgeUrl: null,
+        sandbox: null,
+      });
+      ensureElizaAppProvisioning.mockRejectedValue(new Error("transient provisioning outage"));
+      const gatewayTurn = await runTrustedDiscordHandoff("discord-user-fail");
+      expect(peekLocalGreetingQueue()).toHaveLength(0);
+
+      // The browser continuation binds the account in memory, then
+      // provisioning throws before the turn's durable save. The greeting must
+      // NOT be queued: the user would be told "you're all set" for a sign-in
+      // turn that failed.
+      await expect(
+        runOnboardingChat({
+          sessionId: continuationToken(gatewayTurn),
+          platform: "web",
+          authenticatedUser: { userId: "user-1", organizationId: "org-1" },
+          confirmPlatformLink: true,
+        }),
+      ).rejects.toThrow("transient provisioning outage");
+      expect(peekLocalGreetingQueue()).toHaveLength(0);
+
+      // Once the outage clears, the retried turn commits and queues exactly
+      // one greeting.
+      ensureElizaAppProvisioning.mockResolvedValue({
+        status: "provisioning",
+        agentId: null,
+        bridgeUrl: null,
+        sandbox: null,
+      });
+      await runOnboardingChat({
+        sessionId: continuationToken(gatewayTurn),
+        platform: "web",
+        authenticatedUser: { userId: "user-1", organizationId: "org-1" },
+        confirmPlatformLink: true,
+      });
+      const queued = peekLocalGreetingQueue();
+      expect(queued).toHaveLength(1);
+      expect(queued[0]?.platformUserId).toBe("discord-user-fail");
+    });
+
+    test("the reserved greeting queue name is never adopted as a session id", async () => {
+      // An anonymous caller addressing the well-known queue instance must be
+      // re-keyed to a fresh session: a chat turn landing on the queue DO
+      // would contend its serialize lock and write chat state into queue
+      // storage.
+      const result = await runOnboardingChat({
+        message: "hello",
+        sessionId: "proactive-greetings:discord",
+      });
+      expect(result.session.id).not.toBe("proactive-greetings:discord");
+      expect(loggerWarn).toHaveBeenCalledWith(
+        "[eliza-app onboarding] rejected reserved queue instance name as session id",
+        expect.anything(),
+      );
+
+      // A trusted transport presenting the reserved name is re-keyed too.
+      const trusted = await runOnboardingChat({
+        message: "hello",
+        sessionId: "proactive-greetings:discord",
+        platform: "discord",
+        platformUserId: "queue-squatter",
+        trustedPlatformIdentity: true,
+      });
+      expect(trusted.session.id).toBe("platform:discord:queue-squatter");
+    });
+
+    test("bot-transport turns never queue a greeting (the user just got a live reply)", async () => {
+      ensureElizaAppProvisioning.mockResolvedValue({
+        status: "provisioning",
+        agentId: null,
+        bridgeUrl: null,
+        sandbox: null,
+      });
+      await runTrustedDiscordHandoff("discord-user-live");
+      // Simulate the DM transport delivering an authenticated turn (e.g. a
+      // trusted gateway continuation): trustedPlatformIdentity excludes it.
+      await runOnboardingChat({
+        message: "hi again",
+        platform: "discord",
+        platformUserId: "discord-user-live",
+        sessionId: "platform:discord:discord-user-live",
+        trustedPlatformIdentity: true,
+        authenticatedUser: { userId: "user-2", organizationId: "org-2" },
+      });
+      expect(peekLocalGreetingQueue()).toHaveLength(0);
+    });
+
+    test("non-discord platforms never queue a greeting", async () => {
+      ensureElizaAppProvisioning.mockResolvedValue({
+        status: "provisioning",
+        agentId: null,
+        bridgeUrl: null,
+        sandbox: null,
+      });
+      const named = await runTrustedPhoneTurn("My name is Sam");
+      await runOnboardingChat({
+        sessionId: continuationToken(named),
+        platform: "web",
+        authenticatedUser: { userId: "user-1", organizationId: "org-1" },
+      });
+      expect(peekLocalGreetingQueue()).toHaveLength(0);
     });
   });
 
