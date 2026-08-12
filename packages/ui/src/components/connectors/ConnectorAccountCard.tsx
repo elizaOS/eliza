@@ -35,10 +35,6 @@ import { Spinner } from "../ui/spinner";
 import { StatusBadge } from "../ui/status-badge";
 import { ConnectorAccountPrivacySelector } from "./ConnectorAccountPrivacySelector";
 import { ConnectorAccountPurposeSelector } from "./ConnectorAccountPurposeSelector";
-import {
-  GOOGLE_WORKSPACE_CAPABILITY_OPTIONS,
-  googleWorkspaceCapabilitiesFromAccountMetadata,
-} from "./google-workspace-capabilities";
 
 export interface ConnectorAccountCardProps {
   account: ConnectorAccountRecord;
@@ -169,16 +165,6 @@ export function ConnectorAccountCard({
   const status = deriveStatus(account.status, t);
   const displayHandle = account.handle ?? account.externalId ?? null;
   const enabled = account.enabled !== false;
-  const grantedGoogleCapabilities =
-    account.provider === "google"
-      ? googleWorkspaceCapabilitiesFromAccountMetadata(account.metadata)
-      : [];
-  const grantedGoogleCapabilityLabels = grantedGoogleCapabilities.map((id) => {
-    const option = GOOGLE_WORKSPACE_CAPABILITY_OPTIONS.find(
-      (entry) => entry.id === id,
-    );
-    return option?.label ?? id;
-  });
 
   const handleDelete = () => {
     void deleteModal.submit(() => Promise.resolve(onDelete()));
@@ -242,19 +228,6 @@ export function ConnectorAccountCard({
               </span>
             ) : null}
           </div>
-          {grantedGoogleCapabilityLabels.length > 0 ? (
-            <div className="flex flex-wrap gap-1 pt-1">
-              {grantedGoogleCapabilityLabels.map((label) => (
-                <Badge
-                  key={label}
-                  variant="outline"
-                  className="text-[10px] font-normal"
-                >
-                  {label}
-                </Badge>
-              ))}
-            </div>
-          ) : null}
         </div>
 
         <div className="flex shrink-0 flex-wrap items-center gap-1.5">

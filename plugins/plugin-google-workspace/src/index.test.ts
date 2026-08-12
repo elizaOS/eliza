@@ -12,6 +12,7 @@ import type {
   IAgentRuntime,
 } from "@elizaos/core";
 import { getConnectorAccountManager } from "@elizaos/core";
+import { getConnectorAccountCatalogEntry } from "@elizaos/shared/connector-account-catalog";
 import { Auth } from "googleapis";
 
 const { OAuth2Client } = Auth;
@@ -20,6 +21,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import googlePlugin, {
   createGoogleConnectorAccountProvider,
   DefaultGoogleCredentialResolver,
+  GOOGLE_CAPABILITIES,
   GOOGLE_MEET_API_SURFACE,
   GOOGLE_OAUTH_SCOPES,
   type GoogleApiClientFactory,
@@ -70,6 +72,14 @@ describe("google plugin", () => {
     ]);
     expect(scopes).not.toContain(GOOGLE_OAUTH_SCOPES.drive.write);
     expect(scopes).not.toContain(GOOGLE_OAUTH_SCOPES.meet.read);
+  });
+
+  it("keeps provider capabilities aligned with the shared connector declaration", () => {
+    expect(
+      getConnectorAccountCatalogEntry("google")?.oauthCapabilities?.map(
+        (capability) => capability.id
+      )
+    ).toEqual(GOOGLE_CAPABILITIES);
   });
 
   it("normalizes capability input and preserves opt-in OAuth metadata", () => {

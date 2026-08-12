@@ -19,7 +19,6 @@
 
 import type {
   ConnectorAccountCreateInput,
-  ConnectorAccountOAuthStartInput,
   ConnectorAccountRole,
 } from "../../api/client-agent";
 import { useConnectorAccounts } from "../../hooks/useConnectorAccounts";
@@ -51,10 +50,6 @@ export interface OwnerAgentConnectorSetupPanelProps {
   agentTitle?: string;
   /** Optional help text rendered above the two sections. */
   description?: string;
-  /** When false, OAuth add-account buttons stay disabled (e.g. missing scopes). */
-  canStartOAuth?: boolean;
-  /** Optional OAuth body factory merged into the start request (scopes/metadata). */
-  resolveOAuthStartInput?: () => ConnectorAccountOAuthStartInput;
 }
 
 export function OwnerAgentConnectorSetupPanel({
@@ -69,8 +64,6 @@ export function OwnerAgentConnectorSetupPanel({
   ownerTitle,
   agentTitle,
   description,
-  canStartOAuth = true,
-  resolveOAuthStartInput,
 }: OwnerAgentConnectorSetupPanelProps) {
   // Hoist the accounts hook to the panel so both the OWNER and AGENT lists
   // share a single polling instance + cache, instead of each calling the
@@ -99,8 +92,6 @@ export function OwnerAgentConnectorSetupPanel({
           title={ownerTitle}
           externalAccounts={accountsHook}
           onAddAccount={onAddAccount ? () => onAddAccount("OWNER") : undefined}
-          canStartOAuth={canStartOAuth}
-          resolveOAuthStartInput={resolveOAuthStartInput}
         />
       ) : null}
       {enableAgent ? (
@@ -111,8 +102,6 @@ export function OwnerAgentConnectorSetupPanel({
           title={agentTitle}
           externalAccounts={accountsHook}
           onAddAccount={onAddAccount ? () => onAddAccount("AGENT") : undefined}
-          canStartOAuth={canStartOAuth}
-          resolveOAuthStartInput={resolveOAuthStartInput}
         />
       ) : null}
       {enableTeam ? (
@@ -122,8 +111,6 @@ export function OwnerAgentConnectorSetupPanel({
           accountRole="TEAM"
           externalAccounts={accountsHook}
           onAddAccount={onAddAccount ? () => onAddAccount("TEAM") : undefined}
-          canStartOAuth={canStartOAuth}
-          resolveOAuthStartInput={resolveOAuthStartInput}
         />
       ) : null}
       {hasUnknownRoleAccounts ? (
