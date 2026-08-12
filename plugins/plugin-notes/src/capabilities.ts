@@ -29,6 +29,22 @@ const COLOR_PARAM: ViewCapabilityParameter = {
   enum: ["yellow", "green", "rose", "slate"],
 };
 
+const CONFIRM_PARAM: ViewCapabilityParameter = {
+  type: "boolean",
+  description:
+    "Must be true after the user explicitly confirms deleting every note.",
+  required: true,
+  enum: [true],
+};
+
+const EXPECTED_REVISION_PARAM: ViewCapabilityParameter = {
+  type: "integer",
+  description:
+    "Current notes revision from the latest snapshot; must match at execution time.",
+  required: true,
+  minimum: 0,
+};
+
 const ID_PARAM = {
   id: {
     type: "string",
@@ -112,6 +128,11 @@ export const NOTES_CAPABILITIES: ViewCapability[] = [
   },
   {
     id: "clear-notes",
-    description: "Delete every sticky note.",
+    description:
+      "Delete every sticky note. Requires explicit confirmation and the current notes revision from the latest snapshot.",
+    params: {
+      confirm: CONFIRM_PARAM,
+      expectedRevision: EXPECTED_REVISION_PARAM,
+    },
   },
 ];
