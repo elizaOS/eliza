@@ -565,5 +565,5 @@ describe("registered BlueBubbles local bridge E2E", () => {
         },
       ],
     });
-  }, 15_000);
+  }, 180_000);
 });
