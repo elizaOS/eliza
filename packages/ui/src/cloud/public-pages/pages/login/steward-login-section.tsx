@@ -648,6 +648,7 @@ export default function StewardLoginSection() {
   }
 
   // UV errors surface when the Steward server or browser WebAuthn layer requires
+  // Contributes to #18468 — provenance: claude-fable-5 via contribute-to-eliza (see PR body).
   // user verification (PIN/biometric) but the assertion didn't satisfy it. They
   // must NOT silently fall through to startPasskeySignup() — the user already
   // has a passkey; sending a setup OTP and re-running addPasskey() hits the same
