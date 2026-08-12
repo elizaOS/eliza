@@ -38,6 +38,7 @@
     "drizzle-orm": "0.45.2",
     "file-type": "^22.0.1",
     "hono": "4.12.34",
+    "jose": "^6.0.0",
     "music-metadata": "^11.12.3",
     "nanoid": "^6.0.0",
     "stripe": "^22.0.0",
