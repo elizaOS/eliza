@@ -137,8 +137,8 @@ const defaultTransport: OnboardingContinuationTransport = {
   get: (path) => api(path),
 };
 
-export interface DiscordContinuationPreview {
-  platform: "discord";
+export interface MessagingContinuationPreview {
+  platform: "discord" | "telegram";
   platformUserId: string;
   platformDisplayName: string;
 }
@@ -146,15 +146,15 @@ export interface DiscordContinuationPreview {
 export async function previewPendingOnboardingContinuation(
   token: string,
   transport: OnboardingContinuationTransport = defaultTransport,
-): Promise<DiscordContinuationPreview> {
+): Promise<MessagingContinuationPreview> {
   const sanitized = sanitizeOnboardingSessionToken(token);
   if (!sanitized || !transport.get)
     throw new Error("Invalid onboarding connection link");
   const response = (await transport.get(
     `/api/eliza-app/onboarding/chat?sessionId=${encodeURIComponent(sanitized)}`,
-  )) as { data?: DiscordContinuationPreview };
+  )) as { data?: MessagingContinuationPreview };
   if (!response?.data)
-    throw new Error("Could not verify the Discord account to connect");
+    throw new Error("Could not verify the messaging account to connect");
   return response.data;
 }
 

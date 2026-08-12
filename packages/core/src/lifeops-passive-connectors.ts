@@ -1,11 +1,21 @@
 /**
- * Resolves whether LifeOps passive connectors are enabled, reading the
- * `ELIZA_LIFEOPS_PASSIVE_CONNECTORS` / `LIFEOPS_PASSIVE_CONNECTORS` setting from
- * a runtime (`getSetting`) first, then the process env. Defaults to enabled;
- * only an explicit falsey value (`0`/`false`/`off`/`no`/`disabled`) disables it.
+ * Passive-connector gate for LifeOps deployments.
+ *
+ * When `plugin-personal-assistant` is loaded the runtime operates in passive
+ * mode: connectors ingest inbound messages into memory but do not auto-reply
+ * (the LifeOps pipeline drives responses instead). Standalone agents that do
+ * not load that plugin default to active-reply mode.
+ *
+ * Explicit env vars (`ELIZA_LIFEOPS_PASSIVE_CONNECTORS` / `LIFEOPS_PASSIVE_CONNECTORS`)
+ * and runtime settings always take precedence over plugin-presence detection.
+ * Callers that run before `AgentRuntime` construction must supply the plugin
+ * set they have resolved from configuration. An absent runtime or plugin list
+ * means no LifeOps deployment was identified and therefore defaults active.
  */
+
 type SettingsReader = {
 	getSetting?: (key: string) => unknown;
+	plugins?: Array<{ name: string }>;
 };
 
 type EnvLike = Record<string, string | undefined>;
@@ -14,6 +24,8 @@ const PASSIVE_CONNECTOR_SETTING_KEYS = [
 	"ELIZA_LIFEOPS_PASSIVE_CONNECTORS",
 	"LIFEOPS_PASSIVE_CONNECTORS",
 ] as const;
+
+const LIFEOPS_PLUGIN_NAME = "@elizaos/plugin-personal-assistant";
 
 function readFirstSetting(
 	runtime: SettingsReader | null | undefined,
@@ -56,10 +68,31 @@ function isExplicitFalse(value: unknown): boolean {
 	);
 }
 
+function isLifeOpsPluginLoaded(
+	runtime: SettingsReader | null | undefined,
+): boolean {
+	return (
+		Array.isArray(runtime?.plugins) &&
+		runtime.plugins.some((p) => p.name === LIFEOPS_PLUGIN_NAME)
+	);
+}
+
+/**
+ * Returns whether LifeOps passive-connector mode is active for this runtime.
+ *
+ * **Default flip:** prior to this function the default was always `true` (passive).
+ * It is now `false` for agents that do not load `plugin-personal-assistant` and
+ * do not set either env var. Any existing deployment without that plugin will
+ * begin auto-replying on connectors where it previously only ingested.
+ */
 export function lifeOpsPassiveConnectorsEnabled(
 	runtime?: SettingsReader | null,
 	env: EnvLike = defaultEnv(),
 ): boolean {
 	const value = readFirstSetting(runtime, env);
-	return value === undefined ? true : !isExplicitFalse(value);
+	if (value !== undefined) {
+		// Explicit setting always wins — higher priority than plugin detection.
+		return !isExplicitFalse(value);
+	}
+	return isLifeOpsPluginLoaded(runtime);
 }

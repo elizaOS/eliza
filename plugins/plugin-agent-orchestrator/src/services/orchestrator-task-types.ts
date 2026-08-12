@@ -233,6 +233,8 @@ export interface OrchestratorTaskSession {
   id: string;
   taskId: string;
   sessionId: string;
+  /** True only on the durable row that currently owns a reusable ACP session. */
+  currentOwner?: boolean;
   framework: string;
   providerSource?: string;
   model?: string;
@@ -371,6 +373,8 @@ export interface OrchestratorTaskEvent {
   id: string;
   taskId: string;
   sessionId?: string;
+  /** Immutable ACP prompt-turn identity when the event belongs to a prompt. */
+  turnId?: string;
   eventType: string;
   summary: string;
   data: Record<string, unknown>;

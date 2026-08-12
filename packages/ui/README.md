@@ -31,6 +31,7 @@ subpath to keep bundles lean:
 ```tsx
 import { Button } from "@elizaos/ui/button";
 import { ElizaClient } from "@elizaos/ui/api";
+import { isAuthenticatedNow } from "@elizaos/ui/auth-status";
 import { useMediaQuery } from "@elizaos/ui/hooks";
 import "@elizaos/ui/styles"; // default stylesheets (renderer only)
 ```
@@ -50,6 +51,8 @@ loaders can import `@elizaos/ui` without evaluating CSS. Import
 
 - **API client** (`@elizaos/ui/api`) — `ElizaClient` plus per-domain client
   modules for agents, chat, cloud, automations, and more.
+- **Auth status** (`@elizaos/ui/auth-status`) — a narrow, read-only snapshot and
+  subscription seam for session-gated renderer background services.
 - **Agent surface** (re-exported from `@elizaos/ui`) — `useAgentElement` and the
   provider/overlay that let the agent address, focus, fill, and click view
   elements. See `src/agent-surface/README.md`.
@@ -71,4 +74,3 @@ bun run --cwd packages/ui stories:dev # component stories
 ```
 
 This is a library; there is no standalone dev server — run it through a host app.
-

@@ -110,26 +110,15 @@ Permissions can be used to restrict what operations an API key can perform.
 
 ## API Key Management
 
-### List Keys
+API keys authenticate product APIs, but they cannot list, create, update,
+regenerate, or revoke API keys. Key-management routes require an authenticated
+Steward browser session so one leaked or lower-privilege key cannot take over
+other credentials in the organization.
 
-```bash
-curl -X GET "https://elizacloud.ai/api/v1/api-keys" \
-  -H "Authorization: Bearer eliza_xxxxxxxxxxxx"
-```
-
-### Regenerate Key
-
-```bash
-curl -X POST "https://elizacloud.ai/api/v1/api-keys/{id}/regenerate" \
-  -H "Authorization: Bearer eliza_xxxxxxxxxxxx"
-```
-
-### Revoke Key
-
-```bash
-curl -X DELETE "https://elizacloud.ai/api/v1/api-keys/{id}" \
-  -H "Authorization: Bearer eliza_xxxxxxxxxxxx"
-```
+Use [Dashboard → API Keys](https://elizacloud.ai/dashboard/api-keys) to manage
+keys. Browser clients may call the same routes with the Steward session cookie
+by setting `credentials: "include"`; an `Authorization: Bearer eliza_…` header
+returns `401` on every key-management route.
 
 ## Session Authentication
 

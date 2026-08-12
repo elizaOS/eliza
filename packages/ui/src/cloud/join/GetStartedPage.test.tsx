@@ -85,7 +85,9 @@ describe("GetStartedPage", () => {
 
     expect(await screen.findByText("attested-discord-user")).toBeTruthy();
     expect(screen.queryByText("You're connected")).toBeNull();
-    fireEvent.click(screen.getByText("Connect this Discord account"));
+    fireEvent.click(
+      screen.getByRole("button", { name: /Connect this Discord account/ }),
+    );
     expect(await screen.findByText("You're connected")).toBeTruthy();
     await waitFor(() => {
       expect(peekPendingOnboardingSession()).toBeNull();
@@ -118,5 +120,31 @@ describe("GetStartedPage", () => {
     expect(await screen.findByText("attested-discord-user")).toBeTruthy();
     expect(completePendingOnboardingContinuation).not.toHaveBeenCalled();
     expect(previewPendingOnboardingContinuation).toHaveBeenCalledTimes(2);
+  });
+
+  it("renders the Telegram identity preview and confirm for a telegram continuation", async () => {
+    vi.mocked(previewPendingOnboardingContinuation).mockResolvedValue({
+      platform: "telegram",
+      platformUserId: "123456789",
+      platformDisplayName: "attested-telegram-user",
+    });
+    const entry = `/get-started?onboardingSession=${TOKEN}`;
+    window.history.replaceState(null, "", entry);
+
+    render(
+      <MemoryRouter initialEntries={[entry]}>
+        <Routes>
+          <Route path="/get-started" element={<GetStartedPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText("attested-telegram-user")).toBeTruthy();
+    expect(screen.getByText(/Connect your/)).toBeTruthy();
+    expect(screen.queryByText(/Discord/)).toBeNull();
+    fireEvent.click(
+      screen.getByRole("button", { name: /Connect this Telegram account/ }),
+    );
+    expect(await screen.findByText("You're connected")).toBeTruthy();
   });
 });

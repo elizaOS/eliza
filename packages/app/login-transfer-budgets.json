@@ -1,0 +1,26 @@
+{
+  "description": "Cold anonymous /login transfer budgets for issue #18056. Measured with scripts/measure-anonymous-login-transfer.mjs (SW blocked, empty context, settle ~6s, no interaction). Budgets are calibrated after a develop baseline capture — null means not yet set (gate reports missing-budget until filled).",
+  "settleMs": 6000,
+  "conditions": {
+    "serviceWorkers": "block",
+    "cache": "empty-context",
+    "path": "/login"
+  },
+  "tolerancePct": 10,
+  "desktop": {
+    "maxTotalTransferBytes": 2114147,
+    "maxScriptTransferBytes": 2033595,
+    "maxScriptCount": 272,
+    "baselineTotalTransferBytes": 1921951,
+    "baselineScriptTransferBytes": 1848722,
+    "baselineScriptCount": 247
+  },
+  "mobile": {
+    "maxTotalTransferBytes": 2114147,
+    "maxScriptTransferBytes": 2033595,
+    "maxScriptCount": 272,
+    "baselineTotalTransferBytes": 1921951,
+    "baselineScriptTransferBytes": 1848722,
+    "baselineScriptCount": 247
+  }
+}

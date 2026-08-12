@@ -32,15 +32,19 @@ const apiKeyScopeHashPrefix = mock(() => scopeHashPrefixBehavior());
 let sessionHashPrefixBehavior: () => Promise<string | null> = async () => null;
 const sessionScopeHashPrefix = mock(() => sessionHashPrefixBehavior());
 let sessionRevalidateBehavior: (cachedStewardUserId: string) => Promise<boolean> = async () => true;
-const revalidateSessionScope = mock((_: unknown, cachedStewardUserId: string) =>
-  sessionRevalidateBehavior(cachedStewardUserId),
+const revalidateSessionScope = mock(
+  (_: unknown, cachedStewardUserId: string, _cachedOrganizationId?: string) =>
+    sessionRevalidateBehavior(cachedStewardUserId),
 );
+let stagingSessionCandidateBehavior = false;
+const isStagingSessionScopeCandidate = mock(() => stagingSessionCandidateBehavior);
 
 mock.module("../../auth/workers-hono-auth", () => ({
   requireUserOrApiKeyWithOrgLookup,
   apiKeyScopeHashPrefix,
   sessionScopeHashPrefix,
   revalidateSessionScope,
+  isStagingSessionScopeCandidate,
 }));
 
 mock.module("../../../db/repositories/agent-sandboxes", () => ({
@@ -174,9 +178,11 @@ beforeEach(() => {
   cacheStore.clear();
   sessionScopeHashPrefix.mockClear();
   revalidateSessionScope.mockClear();
+  isStagingSessionScopeCandidate.mockClear();
   scopeHashPrefixBehavior = async () => "keyhashpref0000";
   sessionHashPrefixBehavior = async () => null;
   sessionRevalidateBehavior = async () => true;
+  stagingSessionCandidateBehavior = false;
   validateBehavior = async () => ({ is_active: true, organization_id: "org-1", expires_at: null });
 });
 
@@ -775,6 +781,31 @@ describe("resolveSharedAgent SESSION scope cache (SHADOW-ACCOUNT-DEBUG)", () => 
     // But the credential gate STILL ran (JWT re-verified against the cached user).
     expect(revalidateSessionScope).toHaveBeenCalledTimes(1);
     expect(revalidateSessionScope.mock.calls[0][1]).toBe("steward-user-1");
+    expect(revalidateSessionScope.mock.calls[0][2]).toBe("org-1");
+  });
+
+  test("a QA session cache hit uses primary-bound revalidation instead of a Steward user cache", async () => {
+    scopeHashPrefixBehavior = async () => null;
+    sessionHashPrefixBehavior = async () => "qa-sesshash00000";
+    stagingSessionCandidateBehavior = true;
+    findByIdAndOrg.mockResolvedValue(agent());
+
+    await resolveSharedAgent(contextWithAgentId("agent-1") as never);
+    requireUserOrApiKeyWithOrgLookup.mockClear();
+    findByIdAndOrg.mockClear();
+    revalidateSessionScope.mockClear();
+    // No generic user:steward cache is seeded: the QA verifier itself owns the
+    // primary user/org check and must not depend on that rollback-era cache.
+    const result = await resolveSharedAgent(contextWithAgentId("agent-1") as never);
+
+    expect(result).toMatchObject({ agentId: "agent-1", orgId: "org-1" });
+    expect(requireUserOrApiKeyWithOrgLookup).not.toHaveBeenCalled();
+    expect(findByIdAndOrg).not.toHaveBeenCalled();
+    expect(revalidateSessionScope).toHaveBeenCalledWith(
+      expect.anything(),
+      "steward-user-1",
+      "org-1",
+    );
   });
 
   test("a session hit whose token no longer verifies falls back to the full gate", async () => {

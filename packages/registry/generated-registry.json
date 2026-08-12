@@ -1092,6 +1092,51 @@
       "registryKind": "plugin",
       "directory": null
     },
+    "elizaos-plugin-adanos": {
+      "git": {
+        "repo": "adanos-software/elizaos-plugin-adanos",
+        "v0": {
+          "branch": null
+        },
+        "v1": {
+          "branch": null
+        },
+        "v2": {
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "elizaos-plugin-adanos",
+        "v0": null,
+        "v1": null,
+        "v2": "0.1.0"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Read-only Adanos stock and crypto market sentiment for elizaOS agents.",
+      "homepage": "https://adanos.org/",
+      "topics": [
+        "market-sentiment",
+        "stocks",
+        "crypto",
+        "alternative-data",
+        "adanos"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "origin": "third-party",
+      "source": "community",
+      "support": "community",
+      "builtIn": false,
+      "firstParty": false,
+      "thirdParty": true,
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": null
+    },
     "elizaos-plugin-coinrailz": {
       "git": {
         "repo": "tdnupe3/elizaos-plugin-coinrailz",
@@ -1458,6 +1503,54 @@
         "sec-edgar",
         "micropayments",
         "no-api-key"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "origin": "third-party",
+      "source": "community",
+      "support": "community",
+      "builtIn": false,
+      "firstParty": false,
+      "thirdParty": true,
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": null
+    },
+    "plugin-pulsenetwork": {
+      "git": {
+        "repo": "GTCC777/plugin-pulsenetwork",
+        "v0": {
+          "branch": null
+        },
+        "v1": {
+          "branch": null
+        },
+        "v2": {
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "plugin-pulsenetwork",
+        "v0": null,
+        "v1": null,
+        "v2": "0.2.0"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Pulse Network paid data for agents: free catalog search across the x402 fleet (finance, crypto, macro, travel, sports, health, legal), pre-trade token safety scans, and pay-per-call fetches — USDC on Base, no API keys. Quote-first: every paid call previews its exact price, asset, and recipient and executes only on a content-bound user confirmation, under a per-call cap, a daily budget, and an execute-once ledger.",
+      "homepage": "https://pulse.theaslangroupllc.com",
+      "topics": [
+        "x402",
+        "micropayments",
+        "paid-data",
+        "token-safety",
+        "usdc",
+        "base",
+        "finance",
+        "crypto-data"
       ],
       "stargazers_count": 0,
       "language": "TypeScript",

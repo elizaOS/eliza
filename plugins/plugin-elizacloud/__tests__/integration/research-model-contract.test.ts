@@ -8,7 +8,7 @@
  */
 
 import * as http from "node:http";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { handleResearch } from "../../src/models/research";
 
 let server: http.Server;
@@ -16,6 +16,7 @@ let baseUrl: string;
 let lastRequestBody = "";
 let nextStatus = 200;
 let nextBody = "{}";
+let holdResponse = false;
 
 function createRuntime(overrides: Record<string, string> = {}) {
   return {
@@ -42,6 +43,9 @@ beforeAll(async () => {
     req.on("data", (chunk: Buffer) => chunks.push(chunk));
     req.on("end", () => {
       lastRequestBody = Buffer.concat(chunks).toString("utf8");
+      if (holdResponse) {
+        return;
+      }
       res.writeHead(nextStatus, { "Content-Type": "application/json" });
       res.end(nextBody);
     });
@@ -58,6 +62,16 @@ beforeAll(async () => {
 
 afterAll(() => {
   server.close();
+});
+
+beforeEach(() => {
+  nextStatus = 200;
+  nextBody = "{}";
+  holdResponse = false;
+});
+
+afterEach(() => {
+  vi.unstubAllEnvs();
 });
 
 describe("handleResearch", () => {
@@ -145,5 +159,29 @@ describe("handleResearch", () => {
     ).rejects.toThrow(
       "Eliza Cloud /responses rejected deep-research tool types; the provider currently only accepts function tools on this route"
     );
+  });
+
+  it("aborts the in-flight cloud request when the caller cancels", async () => {
+    holdResponse = true;
+    const controller = new AbortController();
+    const request = handleResearch(createRuntime() as never, {
+      input: "Research cancellation behavior.",
+      signal: controller.signal,
+    });
+
+    controller.abort(new DOMException("Research cancelled", "AbortError"));
+
+    await expect(request).rejects.toMatchObject({ name: "AbortError" });
+  });
+
+  it("retains the configured cloud timeout when no caller signal fires", async () => {
+    holdResponse = true;
+    vi.stubEnv("ELIZAOS_CLOUD_RESEARCH_TIMEOUT_MS", "5");
+
+    await expect(
+      handleResearch(createRuntime() as never, {
+        input: "Research timeout behavior.",
+      })
+    ).rejects.toMatchObject({ name: "TimeoutError" });
   });
 });

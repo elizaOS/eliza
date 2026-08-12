@@ -21,12 +21,15 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Navigate } from "react-router-dom";
 import { client } from "../../api";
 import { Button } from "../../components/ui/button";
+import { getBootConfig } from "../../config/boot-config-store";
 import {
   clearPersistedActiveServer,
   savePersistedActiveServer,
   savePersistedFirstRunComplete,
 } from "../../state/persistence";
+import { openCloudBillingConsole } from "../billing-console";
 import { useCloudT } from "../shell/CloudI18nProvider";
+import { describeJoinCreditGateError } from "./lib/join-credit-gate-error";
 import {
   resolveJoinAuthToken,
   resolveJoinCloudApiBase,
@@ -38,7 +41,7 @@ import { useJoinSessionAuth } from "./lib/use-join-session";
 const DEFAULT_AGENT_NAME = "Eliza";
 const DEFAULT_AGENT_BIO = ["An autonomous AI agent powered by elizaOS."];
 
-type JoinPhase = "connecting" | "ready" | "error";
+type JoinPhase = "connecting" | "ready" | "error" | "credit-gate";
 
 /** The last-active Cloud agent id, used as `preferAgentId` so a returning user
  * with several agents resumes the one they used last (not a guess). */
@@ -70,6 +73,9 @@ export default function JoinPage(): React.JSX.Element {
   const [phase, setPhase] = useState<JoinPhase>("connecting");
   const [detail, setDetail] = useState<string>("");
   const [error, setError] = useState<string | null>(null);
+  const [creditGateWithheldReason, setCreditGateWithheldReason] = useState<
+    "ip_daily_cap" | "count_unavailable" | null
+  >(null);
   // Guard so React StrictMode's double-mount (and re-renders) don't double-run
   // the provisioning network calls.
   const startedRef = useRef(false);
@@ -82,6 +88,7 @@ export default function JoinPage(): React.JSX.Element {
     }
     setPhase("connecting");
     setError(null);
+    setCreditGateWithheldReason(null);
     try {
       const result = await runJoinFlow({
         client,
@@ -95,6 +102,7 @@ export default function JoinPage(): React.JSX.Element {
         agentName: DEFAULT_AGENT_NAME,
         bio: DEFAULT_AGENT_BIO,
         preferAgentId: readLastActiveCloudAgentId(),
+        preferSharedTier: getBootConfig().preferSharedCloudTier ?? undefined,
         onProgress: (_status, progressDetail) => {
           if (progressDetail) setDetail(progressDetail);
         },
@@ -108,6 +116,22 @@ export default function JoinPage(): React.JSX.Element {
         window.location.assign("/");
       }
     } catch (err) {
+      // The Cloud's credit gate (402) is a payment state, not a connection
+      // failure: retry can never succeed, so render the server's explanation
+      // (e.g. the welcome bonus withheld by the per-IP daily free-credit cap
+      // — CGNAT networks) with an add-funds path instead of the dead-end
+      // "Couldn't connect to your agent" + Retry.
+      const creditGate = describeJoinCreditGateError(err);
+      if (creditGate) {
+        setError(creditGate.message);
+        setCreditGateWithheldReason(
+          creditGate.welcomeBonusWithheld
+            ? (creditGate.welcomeBonusWithheldReason ?? "count_unavailable")
+            : null,
+        );
+        setPhase("credit-gate");
+        return;
+      }
       setError(describeJoinError(err));
       setPhase("error");
     }
@@ -144,7 +168,56 @@ export default function JoinPage(): React.JSX.Element {
           draggable={false}
         />
 
-        {phase === "error" ? (
+        {phase === "credit-gate" ? (
+          <div
+            className="flex flex-col items-center gap-4"
+            data-testid="join-credit-gate"
+          >
+            <h1 className="font-poppins text-lg font-semibold text-white">
+              {creditGateWithheldReason
+                ? t("cloud.join.creditGateWithheldTitle", {
+                    defaultValue: "Welcome credit unavailable",
+                  })
+                : t("cloud.join.creditGateTitle", {
+                    defaultValue: "Add funds to start your agent",
+                  })}
+            </h1>
+            <p className="text-sm text-white/70">
+              {error ??
+                t("cloud.join.creditGateBody", {
+                  defaultValue: "Add funds to start an agent.",
+                })}
+            </p>
+            {creditGateWithheldReason === "ip_daily_cap" ? (
+              <p className="text-sm text-white/50">
+                {t("cloud.join.creditGateWithheldHint", {
+                  defaultValue:
+                    "This limit is per network and resets daily. Your account itself is fine.",
+                })}
+              </p>
+            ) : null}
+            <Button
+              variant="ghost"
+              type="button"
+              onClick={() => {
+                void openCloudBillingConsole();
+              }}
+              className="bg-txt px-6 py-2.5 font-semibold text-bg transition-colors hover:bg-txt/90"
+            >
+              {t("cloud.join.creditGateCta", { defaultValue: "Add funds" })}
+            </Button>
+            <Button
+              variant="ghost"
+              type="button"
+              onClick={handleRetry}
+              className="px-6 py-2 text-sm text-white/70 transition-colors hover:text-white"
+            >
+              {t("cloud.join.creditGateRecheck", {
+                defaultValue: "I've added funds, try again",
+              })}
+            </Button>
+          </div>
+        ) : phase === "error" ? (
           <div className="flex flex-col items-center gap-4">
             <h1 className="font-poppins text-lg font-semibold text-white">
               {t("cloud.join.errorTitle", {

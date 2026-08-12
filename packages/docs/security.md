@@ -6,7 +6,12 @@ description: "Security layers, hardening measures, and review notes for the Eliz
 
 # Security Architecture
 
-This document describes the security architecture and hardening measures implemented in the Eliza codebase. It is intended for developers, auditors, and contributors who want to understand the defensive layers in place.
+This document describes the security architecture and hardening measures
+implemented in the Eliza codebase. It is intended for developers, auditors, and
+contributors who want to understand the defensive layers in place.
+
+To report a vulnerability, follow the reporter-facing policy in the root
+[`SECURITY.md`](../../SECURITY.md) — do not open a public GitHub issue.
 
 ---
 
@@ -220,7 +225,6 @@ Only known top-level configuration keys are accepted (`CONFIG_WRITE_ALLOWED_TOP_
 
 ## Reporting Security Issues
 
-If you discover a security vulnerability, please report it responsibly through a **private channel** — do **not** open a public GitHub issue, as this risks 0-day disclosure. Use one of:
-
-- **GitHub private vulnerability reporting** via the repository's Security tab
-- **Direct contact** with the maintainers
+Report vulnerabilities through the root [`SECURITY.md`](../../SECURITY.md) policy
+— private GitHub Security Advisories or `security@elizalabs.ai`. Do not open a
+public GitHub issue for a live vulnerability.

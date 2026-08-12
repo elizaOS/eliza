@@ -16,7 +16,7 @@
  * failure driving the dispatch policy, and delegation for other channels).
  */
 
-import { type IAgentRuntime, isElizaError } from "@elizaos/core";
+import { type IAgentRuntime, isElizaError, ServiceType } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -36,7 +36,10 @@ import { ScheduledTaskRunnerService } from "./runner-service.js";
 function makeFakeRuntime(): IAgentRuntime {
   return {
     agentId: "00000000-0000-0000-0000-00000000cafe",
-    getService: () => null,
+    getService: (type: string) =>
+      type === ServiceType.NOTIFICATION
+        ? { notify: async () => undefined }
+        : null,
     // The default dispatcher renders promptInstructions through the model
     // before notifying; a deterministic stub keeps fires succeeding so the
     // assertions below stay about the clock.

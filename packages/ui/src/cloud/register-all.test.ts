@@ -1,36 +1,56 @@
 /**
- * Unit coverage asserting registerAllCloudSurfaces wires every expected cloud
- * route into the registry. In-memory registry, no runtime.
+ * Unit coverage asserting full cloud registration wires every expected route,
+ * and that the progressive public entrypoint stays free of private domains.
+ *
+ * `register-all` preserves the develop synchronous `(): void` contract —
+ * callers that register then immediately read the registry must see a complete
+ * table.
  */
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { registerAllCloudSurfaces } from "./register-all";
+import { registerPublicCloudSurfaces } from "./register-public";
 import { getCloudRoute, listCloudRoutes } from "./shell/cloud-route-registry";
 
-/**
- * Guards the boot-time wiring: every cloud domain must register its routes when
- * the app shell calls `registerAllCloudSurfaces()`. Without this, the
- * CloudRouterShell mounts an empty registry and no cloud/public route resolves.
- */
-describe("registerAllCloudSurfaces", () => {
-  it("populates the cloud-route registry with every domain's routes", () => {
+const registerAllSource = readFileSync(
+  join(dirname(fileURLToPath(import.meta.url)), "register-all.ts"),
+  "utf8",
+);
+const registerPublicSource = readFileSync(
+  join(dirname(fileURLToPath(import.meta.url)), "register-public.ts"),
+  "utf8",
+);
+const appMainSource = readFileSync(
+  join(dirname(fileURLToPath(import.meta.url)), "../../../app/src/main.tsx"),
+  "utf8",
+);
+
+describe("registerAllCloudSurfaces (sync public API contract)", () => {
+  it("exports a synchronous void function at the original register-all path", () => {
+    expect(registerAllSource).toMatch(
+      /export function registerAllCloudSurfaces\(\): void/,
+    );
+    expect(registerAllSource).not.toMatch(
+      /export async function registerAllCloudSurfaces/,
+    );
+    expect(registerAllSource).toMatch(/^import "\.\/instances"/m);
+    expect(registerAllSource).toMatch(/^import "\.\/analytics"/m);
+  });
+
+  it("populates the cloud-route registry before the next statement", () => {
     registerAllCloudSurfaces();
     const paths = new Set(listCloudRoutes().map((r) => r.path));
     for (const p of [
       "join",
-      // The console home — the apex catch-all's authenticated landing.
       "dashboard",
       "dashboard/agents",
       "dashboard/my-agents",
-      // Analytics registers as an import side effect — this entry guards that
-      // the register-all import stays wired.
       "dashboard/analytics",
-      // Billing home + Stripe return URL + invoice detail.
       "dashboard/billing",
       "dashboard/billing/success",
       "dashboard/invoices/:id",
-      // Account-management console pages. These are what make the apex console
-      // (elizacloud.ai) usable — the agent app (and its in-app Settings view)
-      // never boots on a control-plane host.
       "dashboard/api-keys",
       "dashboard/account",
       "dashboard/security",
@@ -57,19 +77,12 @@ describe("registerAllCloudSurfaces", () => {
   it("leaves the web Cloud Apps handoff in the tab/view app", () => {
     registerAllCloudSurfaces();
     const cloudApps = getCloudRoute("cloud-apps");
-
-    // Registering this as a top-level cloud route unmounts App and therefore
-    // its navigate-view listener, stranding the user on the handoff surface.
     expect(cloudApps).toBeUndefined();
   });
 
   it("keeps legacy-only spellings as redirects, not routes", () => {
     registerAllCloudSurfaces();
     const paths = new Set(listCloudRoutes().map((r) => r.path));
-    // These resolve via the CloudRouterShell compat redirects (earnings /
-    // affiliates → the monetization page; dashboard/settings?tab=<x> → the
-    // matching console page). Registering them as routes too would shadow the
-    // redirects and fork the canonical homes.
     for (const p of [
       "dashboard/earnings",
       "dashboard/affiliates",
@@ -78,5 +91,35 @@ describe("registerAllCloudSurfaces", () => {
     ]) {
       expect(paths, `unexpected standalone route ${p}`).not.toContain(p);
     }
+  });
+});
+
+describe("progressive register-public (anonymous /login boot)", () => {
+  it("keeps public registration free of static private dashboard imports", () => {
+    expect(registerPublicSource).toContain('from "./public-pages/register"');
+    expect(registerPublicSource).toContain('from "./join/register"');
+    expect(registerPublicSource).not.toMatch(/^import "\.\/instances"/m);
+    expect(registerPublicSource).not.toMatch(/^import "\.\/analytics"/m);
+    expect(registerPublicSource).not.toMatch(/from\s+["']\.\/register-all["']/);
+    expect(registerPublicSource).not.toMatch(
+      /from\s+["']\.\/register-all-sync["']/,
+    );
+  });
+
+  it("is the packages/app shell factory import path (not register-all)", () => {
+    expect(appMainSource).toContain(
+      'import("@elizaos/ui/cloud/register-public")',
+    );
+    expect(appMainSource).not.toMatch(
+      /import\("@elizaos\/ui\/cloud\/register-all"\)/,
+    );
+    expect(appMainSource).toContain("registerPublicCloudSurfaces()");
+  });
+
+  it("registers public auth routes without requiring private domains", () => {
+    registerPublicCloudSurfaces();
+    const paths = new Set(listCloudRoutes().map((r) => r.path));
+    expect(paths).toContain("login");
+    expect(paths).toContain("join");
   });
 });

@@ -11,7 +11,7 @@ const appDir = path.resolve(
   "../../../app",
 );
 
-test("resolveViteCommand skips Vite's redundant config bundling", () => {
+test("resolveViteCommand uses workspace source while skipping config bundling", () => {
   const resolved = resolveViteCommand({
     appDir,
     nodePath: "/test/node",
@@ -19,7 +19,11 @@ test("resolveViteCommand skips Vite's redundant config bundling", () => {
   });
 
   assert.equal(resolved.command, "/test/node");
-  assert.deepEqual(resolved.args.slice(-4), [
+  assert.deepEqual(resolved.args, [
+    "--conditions=eliza-source",
+    "--import",
+    "tsx",
+    path.join(appDir, "node_modules", "vite", "bin", "vite.js"),
     "--configLoader",
     "native",
     "--port",

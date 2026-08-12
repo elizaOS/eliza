@@ -53,9 +53,10 @@ import type {
 	Metadata,
 	OAuthFlowRecord,
 	PairingAllowlistEntry,
+	PairingAllowlistQuery,
 	PairingAllowlistsResult,
-	PairingChannel,
 	PairingRequest,
+	PairingRequestQuery,
 	PairingRequestsResult,
 	Participant,
 	ParticipantsForRoomsResult,
@@ -72,6 +73,7 @@ import type {
 	World,
 } from "../types";
 import { MemoryType } from "../types";
+import { normalizePairingPageOptions } from "../types/pairing";
 import { DEFAULT_UUID } from "../types/primitives";
 import { isPlainObject } from "../utils/type-guards";
 import {
@@ -1875,21 +1877,63 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 	// ===============================
 
 	async getPairingRequests(
-		queries: Array<{ channel: PairingChannel; agentId: UUID }>,
+		queries: PairingRequestQuery[],
 	): Promise<PairingRequestsResult> {
 		const result: PairingRequestsResult = [];
-		for (const { channel, agentId } of queries) {
+		for (const query of queries) {
+			const { channel, agentId } = query;
 			const requests: PairingRequest[] = [];
 			for (const request of this.pairingRequests.values()) {
-				if (request.channel === channel && request.agentId === agentId) {
+				if (
+					request.channel === channel &&
+					request.agentId === agentId &&
+					(!query.createdAfter ||
+						new Date(request.createdAt).getTime() >=
+							query.createdAfter.getTime())
+				) {
 					requests.push(request);
 				}
 			}
-			requests.sort(
-				(a, b) =>
-					new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
-			);
-			result.push({ channel, agentId, requests });
+			const isPaged = query.limit !== undefined || query.offset !== undefined;
+			const direction = query.order === "newest" ? -1 : 1;
+			if (!isPaged && query.order === undefined) {
+				// Keep the legacy complete-array contract: chronological ordering with
+				// stable insertion order for records sharing a timestamp.
+				requests.sort(
+					(a, b) =>
+						new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+				);
+				result.push({ channel, agentId, requests });
+				continue;
+			}
+
+			requests.sort((a, b) => {
+				const timeDifference =
+					new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+				if (timeDifference !== 0) return timeDifference * direction;
+				const aId = String(a.id);
+				const bId = String(b.id);
+				return aId === bId ? 0 : aId < bId ? -direction : direction;
+			});
+			if (!isPaged) {
+				result.push({ channel, agentId, requests });
+				continue;
+			}
+
+			const { limit, offset } = normalizePairingPageOptions(query);
+			const page = requests.slice(offset, offset + limit + 1);
+			const hasMore = page.length > limit;
+			result.push({
+				channel,
+				agentId,
+				requests: page.slice(0, limit),
+				pageInfo: {
+					limit,
+					offset,
+					hasMore,
+					nextOffset: hasMore ? offset + limit : null,
+				},
+			});
 		}
 		return result;
 	}
@@ -1929,21 +1973,57 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 	}
 
 	async getPairingAllowlists(
-		queries: Array<{ channel: PairingChannel; agentId: UUID }>,
+		queries: PairingAllowlistQuery[],
 	): Promise<PairingAllowlistsResult> {
 		const result: PairingAllowlistsResult = [];
-		for (const { channel, agentId } of queries) {
+		for (const query of queries) {
+			const { channel, agentId } = query;
 			const entries: PairingAllowlistEntry[] = [];
 			for (const entry of this.pairingAllowlist.values()) {
 				if (entry.channel === channel && entry.agentId === agentId) {
 					entries.push(entry);
 				}
 			}
-			entries.sort(
-				(a, b) =>
-					new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
-			);
-			result.push({ channel, agentId, entries });
+			const isPaged = query.limit !== undefined || query.offset !== undefined;
+			const direction = query.order === "newest" ? -1 : 1;
+			if (!isPaged && query.order === undefined) {
+				// Keep the legacy complete-array contract: chronological ordering with
+				// stable insertion order for records sharing a timestamp.
+				entries.sort(
+					(a, b) =>
+						new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+				);
+				result.push({ channel, agentId, entries });
+				continue;
+			}
+
+			entries.sort((a, b) => {
+				const timeDifference =
+					new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+				if (timeDifference !== 0) return timeDifference * direction;
+				const aId = String(a.id);
+				const bId = String(b.id);
+				return aId === bId ? 0 : aId < bId ? -direction : direction;
+			});
+			if (!isPaged) {
+				result.push({ channel, agentId, entries });
+				continue;
+			}
+
+			const { limit, offset } = normalizePairingPageOptions(query);
+			const page = entries.slice(offset, offset + limit + 1);
+			const hasMore = page.length > limit;
+			result.push({
+				channel,
+				agentId,
+				entries: page.slice(0, limit),
+				pageInfo: {
+					limit,
+					offset,
+					hasMore,
+					nextOffset: hasMore ? offset + limit : null,
+				},
+			});
 		}
 		return result;
 	}

@@ -21,7 +21,10 @@ on:
         default: ""
 
 concurrency:
-  group: live-smoke-${{ inputs.suite }}
+  # The shared smoke credential must remain attached to an empty organization.
+  # Serialize every manual live suite so an `all` and `cloud` dispatch cannot
+  # race between the read-only preflight and fresh create.
+  group: live-smoke
   cancel-in-progress: false
 
 permissions:
@@ -312,3 +315,105 @@ jobs:
           ' >> "$GITHUB_STEP_SUMMARY"
 
           echo "Managed dedicated canary passed with exact cleanup."
+
+  shared-staging-onboarding:
+    name: Shared staging onboarding
+    needs: smoke
+    if: ${{ always() && (inputs.suite == 'all' || inputs.suite == 'cloud') }}
+    environment: staging
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      CI: "true"
+      # The runner contract uses ELIZAOS_CLOUD_API_KEY; ELIZACLOUD_API_KEY is
+      # the repository's established staging smoke credential.
+      ELIZAOS_CLOUD_API_KEY: ${{ secrets.ELIZAOS_CLOUD_API_KEY || secrets.ELIZACLOUD_API_KEY }}
+      CLOUD_SHARED_STAGING_SMOKE_EVIDENCE_PATH: reports/live-smoke/shared-staging-onboarding.json
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          submodules: false
+          fetch-depth: 0
+
+      - uses: ./.github/actions/setup-bun-workspace
+        with:
+          bun-version: "1.3.14"
+          node-version: "24.15.0"
+          install-command: bun install --frozen-lockfile --ignore-scripts
+          skip-avatar-clone: "true"
+          no-vision-deps: "true"
+
+      - name: Require isolated staging credential
+        shell: bash
+        run: |
+          set -euo pipefail
+          key_without_whitespace="${ELIZAOS_CLOUD_API_KEY:-}"
+          key_without_whitespace="${key_without_whitespace//[[:space:]]/}"
+          if [[ -z "$key_without_whitespace" ]]; then
+            echo "::error::Shared staging onboarding requires ELIZAOS_CLOUD_API_KEY or ELIZACLOUD_API_KEY; refusing a green skip."
+            exit 1
+          fi
+          unset key_without_whitespace
+
+      - name: Run shared staging onboarding smoke
+        id: shared_live
+        run: bun run cloud:shared-onboarding:live
+
+      - name: Upload privacy-safe shared staging evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: shared-staging-onboarding
+          path: reports/live-smoke/shared-staging-onboarding.json
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Enforce shared live proof, deployed SHA, and cleanup
+        if: ${{ always() }}
+        env:
+          LIVE_PROCESS_OUTCOME: ${{ steps.shared_live.outcome }}
+          EXPECTED_SOURCE_SHA: ${{ github.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence_path="$CLOUD_SHARED_STAGING_SMOKE_EVIDENCE_PATH"
+          if [[ ! -s "$evidence_path" ]]; then
+            echo "::error::Shared staging smoke produced no evidence."
+            exit 1
+          fi
+
+          deployed_commit="$(
+            bun -e '
+              import { readFileSync } from "node:fs";
+              const evidence = JSON.parse(readFileSync(process.env.CLOUD_SHARED_STAGING_SMOKE_EVIDENCE_PATH, "utf8"));
+              if (
+                evidence.verdict !== "pass" ||
+                evidence.cleanup?.status !== "passed" ||
+                evidence.cleanup?.possibleOrphan !== false ||
+                typeof evidence.deployedCommit !== "string" ||
+                !/^[a-f0-9]{40}$/.test(evidence.deployedCommit)
+              ) {
+                console.error("::error::Shared staging evidence did not prove pass + exact cleanup.");
+                process.exit(1);
+              }
+              process.stdout.write(evidence.deployedCommit);
+            '
+          )"
+
+          if [[ "${LIVE_PROCESS_OUTCOME:-missing}" != "success" ]]; then
+            echo "::error::Shared staging smoke process did not succeed."
+            exit 1
+          fi
+          if ! git cat-file -e "${deployed_commit}^{commit}" 2>/dev/null; then
+            echo "::error::Staging reported a deploy commit absent from this repository checkout."
+            exit 1
+          fi
+          expected_source_sha="${EXPECTED_SOURCE_SHA:-}"
+          if [[ -z "$expected_source_sha" ]] || ! git cat-file -e "${expected_source_sha}^{commit}" 2>/dev/null; then
+            echo "::error::Expected shared-smoke source commit is absent from this checkout."
+            exit 1
+          fi
+          if ! git merge-base --is-ancestor "$expected_source_sha" "$deployed_commit"; then
+            echo "::error::Staging deploy does not contain this shared-smoke source commit."
+            exit 1
+          fi

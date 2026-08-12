@@ -97,6 +97,7 @@
   "homepage_eliza.getStarted.back": "Voltar",
   "homepage_eliza.getStarted.home": "Início",
   "homepage_eliza.getStarted.selectHeader": "Onde você quiser que ela esteja.",
+  "homepage_eliza.getStarted.selectSubheader": "Escolha onde você quer falar com a Eliza.",
   "homepage_eliza.getStarted.btnTelegram": "Telegram",
   "homepage_eliza.getStarted.btnImessage": "iMessage",
   "homepage_eliza.getStarted.btnWhatsapp": "WhatsApp",

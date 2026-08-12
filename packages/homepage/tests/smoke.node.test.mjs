@@ -1,5 +1,5 @@
 /**
- * Homepage asset, caching, and build-configuration contracts exercised without importing the React tree.
+ * Homepage asset, caching, API-origin, and build-configuration contracts exercised without importing the React tree.
  *
  * The package test script runs under node:test, so this avoids pulling three.js
  * or adding Vitest just to confirm the entry component remains exportable.
@@ -28,6 +28,18 @@ const shaderBackgroundPath = resolve(
   "../src/components/ShaderBackground/ShaderBackground.tsx",
 );
 const visualRegressionSpecPath = resolve(__dirname, "./e2e/visual.spec.ts");
+const cloudApiClientPath = resolve(__dirname, "../src/lib/api/client.ts");
+const playwrightLauncherPath = resolve(
+  __dirname,
+  "../scripts/run-playwright-web-server.mjs",
+);
+const cloudRouteMockPaths = [
+  "./e2e/aesthetic-audit.spec.ts",
+  "./e2e/app-routes-flow.spec.ts",
+  "./e2e/contact-sheet-capture.spec.ts",
+  "./e2e/telegram-return.spec.ts",
+  "./e2e/visual.spec.ts",
+].map((relativePath) => resolve(__dirname, relativePath));
 const globalStylesPath = resolve(__dirname, "../src/index.css");
 const iphoneModelPath = resolve(
   __dirname,
@@ -96,6 +108,26 @@ test("visual regression compares the quality-validated capture itself", () => {
     /const screenshot = await captureScreenshotWithQualityRetry\(/,
   );
   assert.match(visualSpec, /expect\(screenshot\)\.toMatchSnapshot\(/);
+});
+
+test("cloud API defaults, the e2e server, and route mocks use the apex origin", () => {
+  const apexOrigin = "https://elizacloud.ai";
+  const redirectedOrigin = "https://www.elizacloud.ai";
+  const client = readFileSync(cloudApiClientPath, "utf8");
+  const launcher = readFileSync(playwrightLauncherPath, "utf8");
+
+  assert.ok(client.includes(`ELIZACLOUD_DEFAULT_URL = "${apexOrigin}"`));
+  assert.ok(launcher.includes(`VITE_ELIZACLOUD_API_URL: "${apexOrigin}"`));
+  assert.ok(!client.includes(`ELIZACLOUD_DEFAULT_URL = "${redirectedOrigin}"`));
+  assert.ok(
+    !launcher.includes(`VITE_ELIZACLOUD_API_URL: "${redirectedOrigin}"`),
+  );
+
+  for (const routeMockPath of cloudRouteMockPaths) {
+    const routeMock = readFileSync(routeMockPath, "utf8");
+    assert.ok(routeMock.includes(`${apexOrigin}/api/eliza-app/`));
+    assert.ok(!routeMock.includes(`route("${redirectedOrigin}/api/eliza-app/`));
+  }
 });
 
 test("large visual assets receive a durable browser cache policy", () => {

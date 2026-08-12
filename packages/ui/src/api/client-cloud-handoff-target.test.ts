@@ -65,9 +65,21 @@ describe("startCloudAgentHandoff — dedicated migration target", () => {
   beforeEach(() => {
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () => ({
+      vi.fn(async (input: RequestInfo | URL) => ({
         status: 200,
-        json: async () => ({ messages: [] }),
+        json: async () => {
+          const match = String(input).match(
+            /\/api\/v1\/eliza\/agents\/([^/]+)$/,
+          );
+          if (match) {
+            const id = decodeURIComponent(match[1] ?? "");
+            return {
+              success: true,
+              data: { ...runningDedicated({ agent_id: id }), id },
+            };
+          }
+          return { messages: [] };
+        },
       })),
     );
   });
@@ -97,8 +109,14 @@ describe("startCloudAgentHandoff — dedicated migration target", () => {
       log: () => {},
     });
 
-    expect(getCloudCompatAgent).toHaveBeenCalledWith("dedicated-1");
+    expect(getCloudCompatAgent).not.toHaveBeenCalled();
     expect(getCloudCompatAgent).not.toHaveBeenCalledWith("shared-1");
+    expect(fetch).toHaveBeenCalledWith(
+      "https://api.elizacloud.ai/api/v1/eliza/agents/dedicated-1",
+      expect.objectContaining({
+        headers: expect.objectContaining({ Authorization: "Bearer tok" }),
+      }),
+    );
     expect(onSwitch).toHaveBeenCalledWith("https://dedicated-1.elizacloud.ai");
     expect(
       result.status === "switched" || result.status === "switched-empty",
@@ -126,7 +144,7 @@ describe("startCloudAgentHandoff — dedicated migration target", () => {
       log: () => {},
     });
 
-    expect(getCloudCompatAgent).toHaveBeenCalledWith("agent-self");
+    expect(getCloudCompatAgent).not.toHaveBeenCalled();
   });
 });
 

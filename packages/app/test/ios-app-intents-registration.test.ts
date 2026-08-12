@@ -362,7 +362,37 @@ describe("native assistant entry contracts", () => {
       "Action Button physical press",
     );
     expect(deviceExtensionSurfaceUITestsSwift).toContain(
-      "and custom\n/// keyboard enablement still require the provisioned-device lane",
+      "custom keyboard requires a provisioned device lane",
+    );
+    // Brand-aware widget gallery: stale hard-coded display name must be gone.
+    expect(deviceExtensionSurfaceUITestsSwift).toContain(
+      "widgetAppDisplayName",
+    );
+    expect(deviceExtensionSurfaceUITestsSwift).not.toContain(
+      'staticTexts["elizaOS"]',
+    );
+    expect(deviceExtensionSurfaceUITestsSwift).toContain(
+      "let displayName = try widgetAppDisplayName()",
+    );
+    expect(deviceExtensionSurfaceUITestsSwift).toContain(
+      "app.wait(for: .runningForeground",
+    );
+    expect(deviceExtensionSurfaceUITestsSwift).toContain(
+      "label.isEmpty ? nil : label",
+    );
+    const widgetGalleryCaptureUITestsSwift = readFileSync(
+      path.join(iosAppRoot, "AppUITests/WidgetGalleryCaptureUITests.swift"),
+      "utf8",
+    );
+    expect(widgetGalleryCaptureUITestsSwift).toContain("widgetAppDisplayName");
+    expect(widgetGalleryCaptureUITestsSwift).not.toContain(
+      'staticTexts["elizaOS"]',
+    );
+    expect(widgetGalleryCaptureUITestsSwift).toContain(
+      "let displayName = try widgetAppDisplayName()",
+    );
+    expect(widgetGalleryCaptureUITestsSwift).toContain(
+      "app.wait(for: .runningForeground",
     );
   });
 

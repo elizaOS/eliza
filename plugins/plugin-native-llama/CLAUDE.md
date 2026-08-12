@@ -12,7 +12,7 @@ This package does not register elizaOS actions, providers, evaluators, or routes
 
 - **`CapacitorLlamaAdapter`** — class implementing `LlamaAdapter`. One instance per native context (chat and embedding run as separate instances). Core methods: `load`, `unload`, `generate`, `generateStream`, `embed`, `formatChat`, `getHardwareInfo`, `cancelGenerate`, `setCacheType`, `setSpecType`, `setDrafter`, `trimMemory`, `onToken`, `dispose`.
 - **`capacitorLlama`** — default singleton `LlamaAdapter` (back-compat; new code should use `registerCapacitorLlamaLoader` which creates per-role instances).
-- **`registerCapacitorLlamaLoader(runtime)`** — registers the `localInferenceLoader` service on the elizaOS runtime; creates separate chat and embedding adapter instances to avoid native context ID collisions (fix for eliza#7681).
+- **`registerCapacitorLlamaLoader(runtime)`** — asynchronously registers the `localInferenceLoader` service class without waiting on runtime initialization. Startup creates separate chat and embedding adapter instances to avoid native context ID collisions (fix for eliza#7681); runtime stop disposes both contexts.
 - **`DeviceBridgeClient`** / **`startDeviceBridgeClient`** — WebSocket client that runs inside the mobile app; relays `load`/`generate`/`embed`/`formatChat` RPC from the agent container to the device over the `device-bridge` WebSocket protocol.
 - **`serializeTokenTree`** / **`deserializeTokenTree`** — binary codec for `TokenTreeDescriptor` payloads used by the native speculative-decode sampler hook (wire format: little-endian, magic `0x544B5452`, version 1).
 

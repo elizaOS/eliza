@@ -29,8 +29,24 @@ function isRuntimePermissionId(id: SystemPermissionId): boolean {
   return (RUNTIME_PERMISSION_IDS as readonly string[]).includes(id);
 }
 
-function isRendererPermissionId(id: SystemPermissionId): boolean {
-  return (RENDERER_PERMISSION_IDS as readonly string[]).includes(id);
+export function isRendererPermissionAuthoritative(
+  id: SystemPermissionId,
+  nativePlatform: PermissionState["platform"] = currentRendererPlatform(),
+  nativeBridgeAvailable = false,
+): boolean {
+  if (!(RENDERER_PERMISSION_IDS as readonly string[]).includes(id)) {
+    return false;
+  }
+
+  // WKWebView's Notification.permission describes the embedded page, not the
+  // signed macOS app process registered with UserNotificationCenter. Ordinary
+  // browsers and non-macOS shells have no such bridge, so their renderer API
+  // remains the concrete notification permission boundary.
+  return (
+    id !== "notifications" ||
+    nativePlatform !== "darwin" ||
+    !nativeBridgeAvailable
+  );
 }
 
 function currentRendererPlatform(): PermissionState["platform"] {
@@ -46,6 +62,7 @@ function buildRendererPermissionState(
   id: SystemPermissionId,
   status: PermissionState["status"],
   lastRequested?: number,
+  platform: PermissionState["platform"] = currentRendererPlatform(),
 ): PermissionState {
   return {
     id,
@@ -53,7 +70,7 @@ function buildRendererPermissionState(
     lastChecked: Date.now(),
     ...(lastRequested ? { lastRequested } : {}),
     canRequest: status === "not-determined",
-    platform: currentRendererPlatform(),
+    platform,
   };
 }
 
@@ -71,14 +88,25 @@ function mapRendererPermissionState(
 
 async function queryRendererPermission(
   id: SystemPermissionId,
+  nativeState?: PermissionState | null,
 ): Promise<PermissionState | null> {
-  if (!isRendererPermissionId(id) || typeof navigator === "undefined") {
+  const resolvedPlatform = nativeState?.platform ?? currentRendererPlatform();
+  if (
+    !isRendererPermissionAuthoritative(
+      id,
+      resolvedPlatform,
+      nativeState !== null && nativeState !== undefined,
+    ) ||
+    typeof navigator === "undefined"
+  ) {
     return null;
   }
 
   if (id === "notifications" && typeof Notification !== "undefined") {
     const status = mapRendererPermissionState(Notification.permission);
-    return status ? buildRendererPermissionState(id, status) : null;
+    return status
+      ? buildRendererPermissionState(id, status, undefined, resolvedPlatform)
+      : null;
   }
 
   if (!navigator.permissions?.query) {
@@ -91,7 +119,9 @@ async function queryRendererPermission(
       name: name as PermissionName,
     });
     const status = mapRendererPermissionState(result.state);
-    return status ? buildRendererPermissionState(id, status) : null;
+    return status
+      ? buildRendererPermissionState(id, status, undefined, resolvedPlatform)
+      : null;
   } catch {
     // error-policy:J4 permissions.query unsupported for this name — null is
     // the explicit "state unknown" the permissions UI renders as such.
@@ -101,8 +131,17 @@ async function queryRendererPermission(
 
 async function requestRendererPermission(
   id: SystemPermissionId,
+  nativeState?: PermissionState | null,
 ): Promise<PermissionState | null> {
-  if (!isRendererPermissionId(id) || typeof navigator === "undefined") {
+  const resolvedPlatform = nativeState?.platform ?? currentRendererPlatform();
+  if (
+    !isRendererPermissionAuthoritative(
+      id,
+      resolvedPlatform,
+      nativeState !== null && nativeState !== undefined,
+    ) ||
+    typeof navigator === "undefined"
+  ) {
     return null;
   }
 
@@ -119,7 +158,7 @@ async function requestRendererPermission(
     } catch {
       // The follow-up query reports denied when the browser has a recorded denial.
     }
-    const checked = await queryRendererPermission(id);
+    const checked = await queryRendererPermission(id, nativeState);
     return checked ? { ...checked, lastRequested } : null;
   }
 
@@ -134,10 +173,15 @@ async function requestRendererPermission(
         );
       },
     );
-    const checked = await queryRendererPermission(id);
+    const checked = await queryRendererPermission(id, nativeState);
     if (checked) return { ...checked, lastRequested };
     return requestedStatus
-      ? buildRendererPermissionState(id, requestedStatus, lastRequested)
+      ? buildRendererPermissionState(
+          id,
+          requestedStatus,
+          lastRequested,
+          resolvedPlatform,
+        )
       : null;
   }
 
@@ -146,11 +190,16 @@ async function requestRendererPermission(
       await Notification.requestPermission(),
     );
     return status
-      ? buildRendererPermissionState(id, status, lastRequested)
+      ? buildRendererPermissionState(
+          id,
+          status,
+          lastRequested,
+          resolvedPlatform,
+        )
       : null;
   }
 
-  return queryRendererPermission(id);
+  return queryRendererPermission(id, nativeState);
 }
 
 async function reconcileRendererPermissions(
@@ -161,9 +210,9 @@ async function reconcileRendererPermissions(
 
   await Promise.all(
     RENDERER_PERMISSION_IDS.map(async (id) => {
-      const state = await queryRendererPermission(id);
-      if (!state) return;
       const current = nextPermissions[id];
+      const state = await queryRendererPermission(id, current);
+      if (!state) return;
       if (
         current?.status === state.status &&
         current?.canRequest === state.canRequest
@@ -236,6 +285,25 @@ export async function mergeRuntimePermissions(
   return nextPermissions;
 }
 
+/** Re-probe one desktop permission after the user changes an OS setting. */
+export async function checkDesktopPermissionFresh(
+  id: SystemPermissionId,
+): Promise<PermissionState> {
+  const bridged = await invokeDesktopBridgeRequest<PermissionState>({
+    rpcMethod: "permissionsCheck",
+    ipcChannel: "permissions:check",
+    params: { id, forceRefresh: true },
+  });
+  const rendererState = await queryRendererPermission(id, bridged);
+  if (rendererState) return rendererState;
+  if (bridged === null) {
+    throw new Error(
+      `[desktop-permissions] native bridge unavailable while refreshing ${id}`,
+    );
+  }
+  return bridged;
+}
+
 export function installDesktopPermissionsClientPatch(
   client: ClientLike,
 ): () => void {
@@ -286,7 +354,7 @@ export function installDesktopPermissionsClientPatch(
       ipcChannel: "permissions:check",
       params: { id },
     });
-    const rendererState = await queryRendererPermission(id);
+    const rendererState = await queryRendererPermission(id, bridged);
     return rendererState ?? bridged ?? originalGetPermission(id);
   };
 
@@ -299,7 +367,7 @@ export function installDesktopPermissionsClientPatch(
       ipcChannel: "permissions:request",
       params: { id },
     });
-    const rendererState = await requestRendererPermission(id);
+    const rendererState = await requestRendererPermission(id, bridged);
     return rendererState ?? bridged ?? originalRequestPermission(id);
   };
 
