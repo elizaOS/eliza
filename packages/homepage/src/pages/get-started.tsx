@@ -141,8 +141,14 @@ function ProvisioningChatStep({
   onContinue: () => void;
 }) {
   const t = useT();
-  const { messages, sendMessage, containerStatus, isLoading, isReady } =
-    useElizaAppProvisioningChat(true, onboardingSessionId);
+  const {
+    messages,
+    sendMessage,
+    containerStatus,
+    isLoading,
+    isReady,
+    provisioningError,
+  } = useElizaAppProvisioningChat(true, onboardingSessionId);
   const [input, setInput] = useState("");
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -160,21 +166,24 @@ function ProvisioningChatStep({
     inputRef.current?.focus();
   }, [input, isLoading, sendMessage]);
 
+  const provisioningFailed =
+    provisioningError !== null || containerStatus === "error";
   const statusLabel = isReady
     ? t("homepage_eliza.getStarted.statusReady", {
         defaultValue: "Ready! Connecting...",
       })
-    : containerStatus === "error"
-      ? t("homepage_eliza.getStarted.statusFailed", {
+    : provisioningFailed
+      ? (provisioningError ??
+        t("homepage_eliza.getStarted.statusFailed", {
           defaultValue: "Setup failed — please refresh.",
-        })
+        }))
       : t("homepage_eliza.getStarted.statusSettingUp", {
           defaultValue: "Setting up your AI space...",
         });
 
   const statusColor = isReady
     ? "#4ade80"
-    : containerStatus === "error"
+    : provisioningFailed
       ? "#f87171"
       : "#229ED9";
 
@@ -188,7 +197,10 @@ function ProvisioningChatStep({
             height: 8,
             borderRadius: "50%",
             backgroundColor: statusColor,
-            animation: isReady ? "none" : "gs-pulse 2s ease-in-out infinite",
+            animation:
+              isReady || provisioningFailed
+                ? "none"
+                : "gs-pulse 2s ease-in-out infinite",
             flexShrink: 0,
           }}
         />

@@ -58,9 +58,7 @@ function uid(): string {
 }
 
 const POLL_INTERVAL_MS = 5_000;
-const MAX_POLL_ATTEMPTS = 72;
 const POLL_DEADLINE_MS = 5 * 60 * 1000;
-const BACKOFF_INTERVAL_MS = 10_000;
 
 const WELCOME: ProvisioningChatMessage = {
   id: "welcome",
@@ -105,10 +103,11 @@ export function useElizaAppProvisioningChat(
   const [bridgeUrl, setBridgeUrl] = useState<string | null>(null);
   const [agentId, setAgentId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [provisioningError, setProvisioningError] = useState<string | null>(null);
+  const [provisioningError, setProvisioningError] = useState<string | null>(
+    null,
+  );
   const stoppedRef = useRef(false);
   const provisionedRef = useRef(false);
-  const pollAttemptsRef = useRef(0);
   const pollStartRef = useRef<number | null>(null);
 
   const isReady = containerStatus === "running" && bridgeUrl !== null;
@@ -172,16 +171,20 @@ export function useElizaAppProvisioningChat(
   useEffect(() => {
     if (!active || isReady || provisioningError) return;
     stoppedRef.current = false;
-    pollAttemptsRef.current = 0;
-    pollStartRef.current = Date.now();
+    // The deadline is anchored once per provisioning session; effect re-runs
+    // caused by status transitions must not restart the clock.
+    pollStartRef.current ??= Date.now();
 
     const poll = async () => {
       if (stoppedRef.current) return;
-      pollAttemptsRef.current += 1;
-      const elapsed = pollStartRef.current ? Date.now() - pollStartRef.current : 0;
-      if (pollAttemptsRef.current > MAX_POLL_ATTEMPTS || elapsed > POLL_DEADLINE_MS) {
+      const elapsed = pollStartRef.current
+        ? Date.now() - pollStartRef.current
+        : 0;
+      if (elapsed > POLL_DEADLINE_MS) {
         stoppedRef.current = true;
-        setProvisioningError("Provisioning timed out. Please refresh or contact support.");
+        setProvisioningError(
+          "Provisioning timed out. Please refresh or contact support.",
+        );
         return;
       }
       try {
@@ -210,10 +213,9 @@ export function useElizaAppProvisioningChat(
               ]);
             } else if (newStatus === "error") {
               stoppedRef.current = true;
-              setProvisioningError("Provisioning failed. Please try again or contact support.");
-            } else if (newStatus === "none" && elapsed > POLL_DEADLINE_MS) {
-              stoppedRef.current = true;
-              setProvisioningError("Provisioning not started. Please refresh.");
+              setProvisioningError(
+                "Provisioning failed. Please try again or contact support.",
+              );
             }
           }
           return;
@@ -243,10 +245,9 @@ export function useElizaAppProvisioningChat(
             applyOnboardingResponse(res.data);
           } else if (newStatus === "error") {
             stoppedRef.current = true;
-            setProvisioningError("Provisioning failed. Please try again or contact support.");
-          } else if (newStatus === "none" && elapsed > POLL_DEADLINE_MS) {
-            stoppedRef.current = true;
-            setProvisioningError("Provisioning not started. Please refresh.");
+            setProvisioningError(
+              "Provisioning failed. Please try again or contact support.",
+            );
           }
         }
       } catch {
@@ -255,8 +256,7 @@ export function useElizaAppProvisioningChat(
     };
 
     void poll();
-    const interval = pollAttemptsRef.current > 30 ? BACKOFF_INTERVAL_MS : POLL_INTERVAL_MS;
-    const timer = setInterval(() => void poll(), interval);
+    const timer = setInterval(() => void poll(), POLL_INTERVAL_MS);
     return () => {
       stoppedRef.current = true;
       clearInterval(timer);
@@ -268,6 +268,7 @@ export function useElizaAppProvisioningChat(
     containerStatus,
     isReady,
     onboardingSessionId,
+    provisioningError,
     usesSharedOnboarding,
   ]);
 

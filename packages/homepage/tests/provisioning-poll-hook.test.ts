@@ -147,6 +147,7 @@ interface ObservedState {
   messages: Array<{ role: string; content: string }>;
   containerStatus: string;
   isReady: boolean;
+  provisioningError: string | null;
 }
 
 function mountHook(
@@ -158,6 +159,7 @@ function mountHook(
     messages: [],
     containerStatus: "pending",
     isReady: false,
+    provisioningError: null,
   };
 
   function TestHarness() {
@@ -170,6 +172,7 @@ function mountHook(
         })),
         containerStatus: result.containerStatus,
         isReady: result.isReady,
+        provisioningError: result.provisioningError,
       };
     });
     return React.createElement("div");
@@ -369,5 +372,74 @@ describe("useElizaAppProvisioningChat — shared onboarding poll", () => {
 
     // No new calls should have arrived after unmount.
     expect(callsAfter).toBe(callsBefore);
+  });
+
+  test("a terminal error status stops polling and surfaces provisioningError", async () => {
+    nextStatus = "error";
+    const { getState, unmount } = mountHook(
+      true,
+      "platform:blooio:+123****7890",
+    );
+
+    await new Promise((r) => setTimeout(r, 150));
+
+    expect(getState().provisioningError).toContain("Provisioning failed");
+
+    const callsBefore = fetchCalls.filter(
+      (c) => c.url === "/api/eliza-app/onboarding/chat",
+    ).length;
+
+    // Further interval ticks must not poll again after the terminal error.
+    await tickIntervals();
+    await new Promise((r) => setTimeout(r, 50));
+
+    const callsAfter = fetchCalls.filter(
+      (c) => c.url === "/api/eliza-app/onboarding/chat",
+    ).length;
+    expect(callsAfter).toBe(callsBefore);
+
+    unmount();
+  });
+
+  test("the poll deadline surfaces a timeout error instead of polling forever", async () => {
+    const { getState, unmount } = mountHook(
+      true,
+      "platform:blooio:+123****7890",
+    );
+
+    await new Promise((r) => setTimeout(r, 150));
+    expect(getState().provisioningError).toBeNull();
+
+    const callsBefore = fetchCalls.filter(
+      (c) => c.url === "/api/eliza-app/onboarding/chat",
+    ).length;
+
+    // Advance past the 5-minute deadline without touching the wall clock.
+    const realNow = Date.now;
+    Date.now = () => realNow() + 5 * 60 * 1000 + 1_000;
+    try {
+      await tickIntervals();
+      await new Promise((r) => setTimeout(r, 50));
+    } finally {
+      Date.now = realNow;
+    }
+
+    expect(getState().provisioningError).toContain("timed out");
+
+    // Polling stops after the deadline fires: the tick above must not have
+    // produced a network call, and further ticks stay silent.
+    const callsAfterDeadline = fetchCalls.filter(
+      (c) => c.url === "/api/eliza-app/onboarding/chat",
+    ).length;
+    expect(callsAfterDeadline).toBe(callsBefore);
+
+    await tickIntervals();
+    await new Promise((r) => setTimeout(r, 50));
+    const callsAfterExtraTick = fetchCalls.filter(
+      (c) => c.url === "/api/eliza-app/onboarding/chat",
+    ).length;
+    expect(callsAfterExtraTick).toBe(callsBefore);
+
+    unmount();
   });
 });
