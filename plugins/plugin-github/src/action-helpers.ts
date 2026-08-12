@@ -105,11 +105,22 @@ export function optionalStringArray(
   return requireStringArray(options, key) ?? undefined;
 }
 
-/** Splits "owner/repo" into its two components. Returns null on malformed input. */
+/** Splits "owner/repo" (or GitHub repository URLs and .git references) into owner and repo name. Returns null on malformed input. */
 export function splitRepo(
   repo: string,
 ): { owner: string; name: string } | null {
-  const parts = repo.split("/");
+  if (typeof repo !== "string") {
+    return null;
+  }
+  let cleaned = repo.trim();
+  if (cleaned.endsWith(".git")) {
+    cleaned = cleaned.slice(0, -4);
+  }
+  cleaned = cleaned
+    .replace(/^https?:\/\/github\.com\//i, "")
+    .replace(/^github\.com\//i, "");
+
+  const parts = cleaned.split("/");
   if (parts.length !== 2 || !parts[0] || !parts[1]) {
     return null;
   }

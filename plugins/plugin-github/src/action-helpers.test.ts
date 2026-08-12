@@ -55,9 +55,26 @@ describe("splitRepo", () => {
       owner: "elizaOS",
       name: "eliza",
     });
+    expect(splitRepo("  elizaOS/eliza  ")).toEqual({
+      owner: "elizaOS",
+      name: "eliza",
+    });
+    expect(splitRepo("elizaOS/eliza.git")).toEqual({
+      owner: "elizaOS",
+      name: "eliza",
+    });
+    expect(splitRepo("https://github.com/elizaOS/eliza")).toEqual({
+      owner: "elizaOS",
+      name: "eliza",
+    });
+    expect(splitRepo("https://github.com/elizaOS/eliza.git")).toEqual({
+      owner: "elizaOS",
+      name: "eliza",
+    });
     expect(splitRepo("noslash")).toBeNull();
     expect(splitRepo("a/b/c")).toBeNull();
     expect(splitRepo("/eliza")).toBeNull();
+    expect(splitRepo(null as unknown as string)).toBeNull();
   });
 });
 

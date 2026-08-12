@@ -48,7 +48,6 @@ function createTestRuntime(runtimeShape: TestRuntimeShape): IAgentRuntime {
 describe("GitHub account resolution", () => {
   afterEach(() => {
     vi.restoreAllMocks();
-    vi.unstubAllGlobals();
   });
 
   it("keeps legacy user/agent PATs as role-tagged accounts", () => {
@@ -187,8 +186,7 @@ describe("GitHub account resolution", () => {
       "acct_github_durable_1",
       setCredentialRef,
     );
-    vi.stubGlobal(
-      "fetch",
+    vi.spyOn(globalThis, "fetch").mockImplementation(
       vi.fn(async (url: string | URL | Request) => {
         const href = String(url);
         if (href.includes("/login/oauth/access_token")) {
@@ -216,7 +214,7 @@ describe("GitHub account resolution", () => {
           );
         }
         throw new Error(`Unexpected fetch ${href}`);
-      }),
+      }) as never,
     );
 
     const provider = createGitHubConnectorAccountProvider(runtime);
@@ -279,8 +277,7 @@ describe("GitHub account resolution", () => {
       "acct_github_durable_1",
       vi.fn(async () => undefined),
     );
-    vi.stubGlobal(
-      "fetch",
+    vi.spyOn(globalThis, "fetch").mockImplementation(
       vi.fn(async (url: string | URL | Request) => {
         const href = String(url);
         if (href.includes("/login/oauth/access_token")) {
@@ -308,7 +305,7 @@ describe("GitHub account resolution", () => {
           );
         }
         throw new Error(`Unexpected fetch ${href}`);
-      }),
+      }) as never,
     );
 
     const provider = createGitHubConnectorAccountProvider(runtime);
