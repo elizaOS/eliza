@@ -30,6 +30,8 @@ interface StoredConversation {
   history: SharedTurnMessage[];
   dirty: boolean;
   version: number;
+  /** Message ids that must also be deleted from the additive Postgres mirror. */
+  removedMessageIds?: string[];
 }
 
 const CONVERSATION_KEY = "conversation";
@@ -124,6 +126,7 @@ export class SharedRuntimeConversation {
           history,
           dirty: false,
           version: 0,
+          removedMessageIds: [],
         };
         await this.state.storage.put(CONVERSATION_KEY, this.conversation);
       })
@@ -159,6 +162,13 @@ export class SharedRuntimeConversation {
           snapshot.history,
           MAX_HISTORY_MESSAGES,
         );
+        for (const messageId of snapshot.removedMessageIds ?? []) {
+          await sharedRuntimeHistoryRepository.removeMessage(
+            snapshot.agentId,
+            snapshot.channelId,
+            messageId,
+          );
+        }
       });
       const current =
         await this.state.storage.get<StoredConversation>(CONVERSATION_KEY);
@@ -168,7 +178,7 @@ export class SharedRuntimeConversation {
         current.channelId === snapshot.channelId &&
         current.version === snapshot.version
       ) {
-        this.conversation = { ...current, dirty: false };
+        this.conversation = { ...current, dirty: false, removedMessageIds: [] };
         await this.state.storage.put(CONVERSATION_KEY, this.conversation);
       }
     } catch (error) {
@@ -199,6 +209,9 @@ export class SharedRuntimeConversation {
         (await this.loadConversation(agentId, channelId)).history,
       merge: async (agentId, channelId, messages) => {
         const current = await this.loadConversation(agentId, channelId);
+        const incomingIds = new Set(
+          messages.flatMap((message) => (message.id ? [message.id] : [])),
+        );
         const snapshot: StoredConversation = {
           agentId,
           channelId,
@@ -211,6 +224,9 @@ export class SharedRuntimeConversation {
           ),
           dirty: true,
           version: (this.conversation?.version ?? 0) + 1,
+          removedMessageIds: (current.removedMessageIds ?? []).filter(
+            (messageId) => !incomingIds.has(messageId),
+          ),
         };
         // Durable write FIRST: cancellation finalizers must be retryable. A
         // failed put leaves the prior in-memory state untouched so the same
@@ -219,6 +235,24 @@ export class SharedRuntimeConversation {
         this.conversation = snapshot;
         this.scheduleMirror(snapshot);
         return snapshot.history;
+      },
+      removeMessage: async (agentId, channelId, messageId) => {
+        const current = await this.loadConversation(agentId, channelId);
+        const snapshot: StoredConversation = {
+          agentId,
+          channelId,
+          history: current.history.filter(
+            (message) => message.id !== messageId,
+          ),
+          dirty: true,
+          version: (this.conversation?.version ?? 0) + 1,
+          removedMessageIds: [
+            ...new Set([...(current.removedMessageIds ?? []), messageId]),
+          ],
+        };
+        await this.state.storage.put(CONVERSATION_KEY, snapshot);
+        this.conversation = snapshot;
+        this.scheduleMirror(snapshot);
       },
     };
   }

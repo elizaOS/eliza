@@ -11,6 +11,7 @@ export interface SharedRuntimeHistoryMessageLike {
   role: "user" | "assistant";
   content: string;
   createdAt?: number;
+  pendingProviderDispatch?: boolean;
   interrupted?: boolean;
   actionResults?: Array<{
     actionName?: string;
@@ -41,6 +42,9 @@ function chooseMergedMessage<T extends SharedRuntimeHistoryMessageLike>(
   incoming: T,
 ): T {
   if (!current) return incoming;
+  if (current.pendingProviderDispatch !== true && incoming.pendingProviderDispatch === true) {
+    return current;
+  }
   if (
     current.role === "assistant" &&
     incoming.role === "assistant" &&

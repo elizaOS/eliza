@@ -75,6 +75,7 @@ export interface SharedRuntimeHistoryStore {
     channelId: string,
     messages: SharedTurnMessage[],
   ): Promise<SharedTurnMessage[]>;
+  removeMessage(agentId: string, channelId: string, messageId: string): Promise<void>;
 }
 
 export interface SharedRuntimeChatOptions {
@@ -221,6 +222,26 @@ async function mergeHistory(
   )) as SharedTurnMessage[];
 }
 
+async function removeHistoryMessage(
+  agentId: string,
+  roomId: string,
+  messageId: string,
+  store?: SharedRuntimeHistoryStore,
+): Promise<void> {
+  if (store) {
+    await store.removeMessage(agentId, roomId, messageId);
+    return;
+  }
+  const { sharedRuntimeHistoryRepository } = await import(
+    "../../../db/repositories/shared-runtime-history"
+  );
+  await sharedRuntimeHistoryRepository.removeMessage(agentId, roomId, messageId);
+}
+
+function conversationalHistory(history: SharedTurnMessage[]): SharedTurnMessage[] {
+  return history.filter((message) => message.pendingProviderDispatch !== true);
+}
+
 function persistProviderDispatch(
   agentId: string,
   roomId: string,
@@ -234,12 +255,26 @@ function persistProviderDispatch(
     role: "user",
     content: text,
     createdAt: Date.now(),
+    pendingProviderDispatch: true,
   };
   return async () => {
-    // Persist the logical turn before the irreversible provider handoff. If a
-    // worker exits after generation but before the completion merge, a retry
+    // Persist an idempotency-only tombstone before the irreversible provider
+    // handoff. It is never included in model history. A failed dispatch mark
+    // proves the provider did not run, so remove the tombstone and allow a
+    // same-id retry; an ambiguous post-dispatch failure deliberately retains it.
     await mergeHistory(agentId, roomId, [userMessage], store);
-    await billing?.markProviderDispatched?.();
+    try {
+      await billing?.markProviderDispatched?.();
+    } catch (error) {
+      // error-policy:J2 remove the provably pre-dispatch tombstone, then add
+      // turn identity while preserving the typed admission failure as cause.
+      await removeHistoryMessage(agentId, roomId, messageId, store);
+      throw new ElizaError("Provider dispatch marker failed before handoff", {
+        code: "SHARED_RUNTIME_DISPATCH_MARK_FAILED",
+        context: { agentId, roomId, messageId },
+        cause: error,
+      });
+    }
   };
 }
 
@@ -607,7 +642,7 @@ export class SharedRuntimeChatService {
     roomId = agentId,
     store?: SharedRuntimeHistoryStore,
   ): Promise<SharedTurnMessage[]> {
-    return await loadHistory(agentId, channelId(agentId, { roomId }), store);
+    return conversationalHistory(await loadHistory(agentId, channelId(agentId, { roomId }), store));
   }
 
   async getCharacter(
@@ -652,9 +687,9 @@ export class SharedRuntimeChatService {
       };
     }
     const roomId = channelId(agent.id, params);
-    const history = await loadHistory(agent.id, roomId, options.historyStore);
+    const persistedHistory = await loadHistory(agent.id, roomId, options.historyStore);
     const messageIds = turnMessageIds(agent.id, roomId, rpc);
-    const replay = completedTurn(history, messageIds, text);
+    const replay = completedTurn(persistedHistory, messageIds, text);
     if (replay) {
       logger.info("[SharedRuntimeChatService] replaying completed idempotent turn", {
         agentId: agent.id,
@@ -676,6 +711,7 @@ export class SharedRuntimeChatService {
         },
       };
     }
+    const history = conversationalHistory(persistedHistory);
     const character = await characterFor(agent, {
       cacheOnly: Boolean(options.historyStore),
       executionCtx: options.executionCtx,
@@ -806,9 +842,9 @@ export class SharedRuntimeChatService {
     const text = stringValue(params.text);
     if (!text) return sseError("message.send requires params.text");
     const roomId = channelId(agent.id, params);
-    const history = await loadHistory(agent.id, roomId, options.historyStore);
+    const persistedHistory = await loadHistory(agent.id, roomId, options.historyStore);
     const messageIds = turnMessageIds(agent.id, roomId, rpc);
-    const replay = completedTurn(history, messageIds, text);
+    const replay = completedTurn(persistedHistory, messageIds, text);
     if (replay) {
       logger.info("[SharedRuntimeChatService] replaying completed idempotent stream", {
         agentId: agent.id,
@@ -817,6 +853,7 @@ export class SharedRuntimeChatService {
       });
       return replayStream(replay, messageIds, agent.agent_name ?? "Eliza agent");
     }
+    const history = conversationalHistory(persistedHistory);
     const character = await characterFor(agent, {
       cacheOnly: Boolean(options.historyStore),
       executionCtx: options.executionCtx,

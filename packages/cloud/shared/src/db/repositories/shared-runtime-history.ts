@@ -95,6 +95,35 @@ export class SharedRuntimeHistoryRepository {
     });
     return merged;
   }
+
+  async removeMessage(agentId: string, channelId: string, messageId: string): Promise<void> {
+    await dbWrite.transaction(async (tx) => {
+      const [row] = await tx
+        .select()
+        .from(sharedRuntimeHistory)
+        .where(
+          and(
+            eq(sharedRuntimeHistory.agent_id, agentId),
+            eq(sharedRuntimeHistory.channel_id, channelId),
+          ),
+        )
+        .for("update")
+        .limit(1);
+      if (!row) return;
+      const messages = Array.isArray(row.messages)
+        ? row.messages.filter((message) => message.id !== messageId)
+        : [];
+      await tx
+        .update(sharedRuntimeHistory)
+        .set({ messages: jsonbParam(messages), updated_at: new Date() })
+        .where(
+          and(
+            eq(sharedRuntimeHistory.agent_id, agentId),
+            eq(sharedRuntimeHistory.channel_id, channelId),
+          ),
+        );
+    });
+  }
 }
 
 export const sharedRuntimeHistoryRepository = new SharedRuntimeHistoryRepository();

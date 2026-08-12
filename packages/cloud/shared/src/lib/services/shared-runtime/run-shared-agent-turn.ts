@@ -36,6 +36,12 @@ export interface SharedTurnMessage {
   /** Epoch-ms timestamp used by REST chat clients to reconcile persisted turns. */
   createdAt?: number;
   /**
+   * Internal pre-dispatch tombstone. It participates in idempotency checks but
+   * is excluded from model and user-visible conversation history until the
+   * provider turn is completed.
+   */
+  pendingProviderDispatch?: boolean;
+  /**
    * True when an assistant message is a partial prefix from a canceled or failed
    * stream. Model history keeps the text but annotates it as incomplete.
    */

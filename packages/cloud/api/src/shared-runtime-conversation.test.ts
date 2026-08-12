@@ -83,6 +83,18 @@ mock.module("@/db/repositories/shared-runtime-history", () => ({
       repositoryRow = merged;
       return merged;
     },
+    removeMessage: async (
+      _agentId: string,
+      _channelId: string,
+      messageId: string,
+    ) => {
+      repositoryWrites++;
+      repositoryRow = repositoryRow.filter(
+        (message) => (message as { id?: unknown }).id !== messageId,
+      );
+      repositoryHistoryLengths.push(repositoryRow.length);
+      repositoryHistories.push([...repositoryRow]);
+    },
   },
 }));
 mock.module("@/lib/services/shared-runtime/shared-runtime-chat", () => ({
@@ -104,6 +116,11 @@ mock.module("@/lib/services/shared-runtime/shared-runtime-chat", () => ({
             channelId: string,
             messages: unknown[],
           ): Promise<unknown[]>;
+          removeMessage(
+            agentId: string,
+            channelId: string,
+            messageId: string,
+          ): Promise<void>;
         };
       },
     ) => {
@@ -111,6 +128,22 @@ mock.module("@/lib/services/shared-runtime/shared-runtime-chat", () => ({
         throw new RateLimitError("Organization rate limit exceeded.", 29);
       }
       const channelId = rpc.params?.roomId ?? agent.id;
+      if (rpc.id === "remove-marker") {
+        await options.historyStore.merge(agent.id, channelId, [
+          {
+            id: "pending-marker",
+            role: "user",
+            content: "not dispatched",
+            pendingProviderDispatch: true,
+          },
+        ]);
+        await options.historyStore.removeMessage(
+          agent.id,
+          channelId,
+          "pending-marker",
+        );
+        return { jsonrpc: "2.0", id: rpc.id, result: { removed: true } };
+      }
       const history = await options.historyStore.load(agent.id, channelId);
       if (
         history.some(
@@ -373,6 +406,42 @@ test("concurrent duplicate ids serialize to one dispatch and one replay", async 
   expect(
     (data.get("conversation") as { history: unknown[] }).history,
   ).toHaveLength(1);
+});
+
+test("pre-dispatch marker cleanup is durable and mirrored without exposing the tombstone", async () => {
+  repositoryReads = 0;
+  repositoryWrites = 0;
+  repositoryRow = [];
+  repositoryHistoryLengths.length = 0;
+  repositoryHistories.length = 0;
+  const data = new Map<string, unknown>([
+    [
+      "conversation",
+      {
+        agentId: AGENT_FIXTURE.id,
+        channelId: "room-1",
+        history: [{ id: "prior", role: "assistant", content: "prior" }],
+        dirty: false,
+        version: 1,
+      },
+    ],
+  ]);
+  const background: Promise<unknown>[] = [];
+  const object = new SharedRuntimeConversation(
+    makeState(data, background) as never,
+    {} as never,
+  );
+
+  expect(await makeInvoke(object)("remove-marker")).toMatchObject({
+    result: { removed: true },
+  });
+  expect((data.get("conversation") as { history: unknown[] }).history).toEqual([
+    { id: "prior", role: "assistant", content: "prior" },
+  ]);
+  await Promise.all(background.splice(0));
+  expect(repositoryHistories.at(-1)).toEqual([
+    { id: "prior", role: "assistant", content: "prior" },
+  ]);
 });
 
 test("stream body cancellation persists before the room queue releases", async () => {

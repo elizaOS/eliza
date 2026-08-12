@@ -49,6 +49,30 @@ afterAll(async () => {
 });
 
 describe("SharedRuntimeHistoryRepository.merge", () => {
+  test("removes only the failed pre-dispatch tombstone", async () => {
+    await sharedRuntimeHistoryRepository.merge(
+      "agent-1",
+      "channel-1",
+      [
+        { id: "prior", role: "assistant", content: "prior", createdAt: 1 },
+        {
+          id: "pending",
+          role: "user",
+          content: "not dispatched",
+          createdAt: 2,
+          pendingProviderDispatch: true,
+        },
+      ],
+      40,
+    );
+
+    await sharedRuntimeHistoryRepository.removeMessage("agent-1", "channel-1", "pending");
+
+    expect(await sharedRuntimeHistoryRepository.get("agent-1", "channel-1")).toEqual([
+      { id: "prior", role: "assistant", content: "prior", createdAt: 1 },
+    ]);
+  });
+
   test("concurrent first writes preserve both turns", async () => {
     await Promise.all([
       sharedRuntimeHistoryRepository.merge(

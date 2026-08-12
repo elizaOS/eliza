@@ -9,6 +9,8 @@ export type SharedRuntimeHistoryMessage = {
   content: string;
   /** Epoch-ms timestamp; used to order turns merged from concurrent writers. */
   createdAt?: number;
+  /** Internal idempotency tombstone excluded from conversational history. */
+  pendingProviderDispatch?: boolean;
   /** True when an assistant message is a partial interrupted response. */
   interrupted?: boolean;
   /** Structured terminal handoffs retained for idempotent completion replay. */

@@ -40,6 +40,23 @@ describe("shared runtime history merge policy", () => {
     expect(mergeSharedRuntimeHistoryMessages([longer], [complete], 40)).toEqual([complete]);
   });
 
+  test("a stale pending-dispatch tombstone cannot replace a completed user message", () => {
+    const completed = {
+      id: "user-1",
+      role: "user" as const,
+      content: "hello",
+      createdAt: 1,
+    };
+    const staleTombstone = { ...completed, pendingProviderDispatch: true };
+
+    expect(mergeSharedRuntimeHistoryMessages([completed], [staleTombstone], 40)).toEqual([
+      completed,
+    ]);
+    expect(mergeSharedRuntimeHistoryMessages([staleTombstone], [completed], 40)).toEqual([
+      completed,
+    ]);
+  });
+
   test("stale snapshots merge by id, reject invalid entries, and cap oldest turns", () => {
     const current = [
       { id: "one", role: "user" as const, content: "one", createdAt: 1 },

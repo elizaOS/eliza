@@ -23,6 +23,9 @@ let settleUnknownCalls = 0;
 const billCalls: unknown[] = [];
 let characterReads = 0;
 let providerDispatchCalls = 0;
+let providerDispatchError: Error | null;
+let turnInvocationCalls = 0;
+let streamInvocationCalls = 0;
 const loggerInfo = mock(() => undefined);
 
 class ApiInsufficientCreditsError extends Error {}
@@ -115,6 +118,7 @@ const admitOrganizationInference = mock(
       },
       markProviderDispatched: async () => {
         providerDispatchCalls++;
+        if (providerDispatchError) throw providerDispatchError;
       },
       reservation: payoutAwareReservation,
     };
@@ -163,6 +167,7 @@ mock.module("./run-shared-agent-turn", () => ({
     onProviderDispatch?: () => Promise<void>;
   }) => {
     if (!turn.degraded) await input.onProviderDispatch?.();
+    turnInvocationCalls++;
     if (turnError) throw turnError;
     const history = Array.isArray(turn.history)
       ? turn.history.map((message, index) =>
@@ -180,6 +185,7 @@ mock.module("./run-shared-agent-turn", () => ({
     onProviderDispatch?: () => Promise<void>;
   }) => {
     if (!streamTurn.degraded) await input.onProviderDispatch?.();
+    streamInvocationCalls++;
     if (streamTurnError) throw streamTurnError;
     streamAbortSignal = input.abortSignal;
     return streamTurn;
@@ -288,6 +294,7 @@ type TestMessage = {
   role: "user" | "assistant";
   content: string;
   createdAt?: number;
+  pendingProviderDispatch?: boolean;
   interrupted?: boolean;
   actionResults?: Array<{
     actionName?: string;
@@ -322,6 +329,9 @@ function harness() {
       },
       merge: async (_agentId: string, _channelId: string, messages: TestMessage[]) =>
         merge(messages),
+      removeMessage: async (_agentId: string, _channelId: string, messageId: string) => {
+        history = history.filter((message) => message.id !== messageId);
+      },
     },
     executionCtx: {
       waitUntil: (promise: Promise<unknown>) => background.push(promise),
@@ -340,6 +350,9 @@ beforeEach(() => {
   streamTurnError = null;
   characterReads = 0;
   providerDispatchCalls = 0;
+  providerDispatchError = null;
+  turnInvocationCalls = 0;
+  streamInvocationCalls = 0;
   loggerInfo.mockClear();
   enforceOrgRateLimit.mockClear();
   getInferenceAdmissionSnapshotCacheOnly.mockClear();
@@ -383,6 +396,23 @@ function wrappedProviderError(statusCode: number): Error {
 }
 
 describe("SharedRuntimeChatService", () => {
+  test("never exposes pre-dispatch tombstones through conversation history", async () => {
+    const service = new SharedRuntimeChatService();
+    const h = harness();
+    await h.historyStore.merge(agent.id, agent.id, [
+      {
+        id: "pending",
+        role: "user",
+        content: "not yet dispatched",
+        pendingProviderDispatch: true,
+      },
+    ]);
+
+    expect(await service.getHistory(agent.id, agent.id, h.historyStore)).toEqual([
+      { role: "assistant", content: "prior" },
+    ]);
+  });
+
   test("handles status, unknown methods, and invalid message input", async () => {
     const service = new SharedRuntimeChatService();
     expect((await service.bridge(agent, { ...rpc, method: "heartbeat" })).result).toMatchObject({
@@ -501,6 +531,7 @@ describe("SharedRuntimeChatService", () => {
       merge: async () => {
         throw new Error("durable marker write failed");
       },
+      removeMessage: async () => undefined,
     };
 
     await expect(service.bridge(agent, rpc, { historyStore })).rejects.toThrow(
@@ -530,6 +561,9 @@ describe("SharedRuntimeChatService", () => {
         history = [...history, ...messages];
         return history;
       },
+      removeMessage: async (_agentId: string, _channelId: string, messageId: string) => {
+        history = history.filter((message) => message.id !== messageId);
+      },
     };
 
     await expect(service.bridge(agent, rpc, { historyStore })).rejects.toThrow(
@@ -542,8 +576,53 @@ describe("SharedRuntimeChatService", () => {
     expect(admitOrganizationInference).toHaveBeenCalledTimes(1);
     expect(providerDispatchCalls).toBe(1);
     expect(history).toContainEqual(
-      expect.objectContaining({ role: "user", content: "hello", id: expect.any(String) }),
+      expect.objectContaining({
+        role: "user",
+        content: "hello",
+        id: expect.any(String),
+        pendingProviderDispatch: true,
+      }),
     );
+  });
+
+  test("a failed dispatch mark removes the hidden tombstone and permits a clean retry", async () => {
+    const service = new SharedRuntimeChatService();
+    const h = harness();
+    providerDispatchError = new TestInferenceAdmissionDispatchMarkError("dispatch mark failed");
+
+    await expect(service.bridge(agent, rpc, h)).rejects.toThrow(
+      "Provider dispatch marker failed before handoff",
+    );
+    expect(h.history()).toEqual([{ role: "assistant", content: "prior" }]);
+    expect(turnInvocationCalls).toBe(0);
+
+    providerDispatchError = null;
+    const retry = await service.bridge(agent, rpc, h);
+    expect(retry.result?.text).toBe("hello back");
+    expect(turnInvocationCalls).toBe(1);
+    expect(h.history()).not.toContainEqual(
+      expect.objectContaining({ pendingProviderDispatch: true }),
+    );
+  });
+
+  test("a failed stream dispatch mark never leaks its user turn into later model history", async () => {
+    const service = new SharedRuntimeChatService();
+    const h = harness();
+    providerDispatchError = new TestInferenceAdmissionDispatchMarkError("dispatch mark failed");
+
+    await expect(service.stream(agent, rpc, h)).rejects.toThrow(
+      "Provider dispatch marker failed before handoff",
+    );
+    expect(streamInvocationCalls).toBe(0);
+    expect(h.history()).toEqual([{ role: "assistant", content: "prior" }]);
+
+    providerDispatchError = null;
+    const nextRpc = { ...rpc, id: "turn-2", params: { text: "next", roomId: "room-1" } };
+    const response = await service.stream(agent, nextRpc, h);
+    await response.text();
+    expect(streamInvocationCalls).toBe(1);
+    expect(h.history().filter((message) => message.role === "user")).toHaveLength(1);
+    expect(h.history()).not.toContainEqual(expect.objectContaining({ content: "hello" }));
   });
 
   test("rejects reused ids with changed or incomplete persisted state", async () => {
