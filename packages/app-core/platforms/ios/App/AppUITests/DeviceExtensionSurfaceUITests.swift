@@ -1,14 +1,16 @@
+/**
+ Assert-level lane for iOS extension surfaces (#13695).
+
+ This suite is intentionally separate from WidgetGalleryCaptureUITests: the
+ capture harness keeps `continueAfterFailure = true` and only produces
+ screenshots, while this suite fails when an expected simulator-reachable
+ surface disappears. Hardware-only verification remains out of scope here:
+ Action Button physical press, device signing/profile faults, and custom
+ keyboard enablement still require the provisioned-device lane called out in
+ #13567/#13563.
+ */
 import XCTest
 
-/// Assert-level lane for iOS extension surfaces (#13695).
-///
-/// This suite is intentionally separate from WidgetGalleryCaptureUITests:
-/// the capture harness keeps `continueAfterFailure = true` and only produces
-/// screenshots, while this suite fails when an expected simulator-reachable
-/// surface disappears. Hardware-only verification remains out of scope here:
-/// Action Button physical press, device signing/profile faults, and custom
-/// keyboard enablement still require the provisioned-device lane called out in
-/// #13567/#13563.
 final class DeviceExtensionSurfaceUITests: XCTestCase {
 
     private let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
