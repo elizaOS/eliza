@@ -2,7 +2,12 @@
 export function formatTrajectoryDuration(ms: number | null): string {
   if (ms === null) return "—";
   if (ms < 1000) return `${ms}ms`;
-  if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`;
+  if (ms < 60000) {
+    const seconds = (ms / 1000).toFixed(1);
+    // Rounding can reach the unit boundary ("60.0"); promote to minutes
+    // instead of rendering an impossible seconds value.
+    if (Number(seconds) < 60) return `${seconds}s`;
+  }
   return `${(ms / 60000).toFixed(1)}m`;
 }
 
@@ -47,5 +52,11 @@ export function formatTrajectoryTokenCount(
 ): string {
   if (count === undefined || count === 0) return options.emptyLabel;
   if (count < 1000) return String(count);
-  return `${(count / 1000).toFixed(1)}k`;
+  if (count < 1_000_000) {
+    const thousands = (count / 1000).toFixed(1);
+    // Same boundary promotion as durations: a rounded "1000.0k" is promoted
+    // to the M tier rather than displayed.
+    if (Number(thousands) < 1000) return `${thousands}k`;
+  }
+  return `${(count / 1_000_000).toFixed(1)}M`;
 }
