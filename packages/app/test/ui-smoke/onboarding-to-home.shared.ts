@@ -474,9 +474,30 @@ export async function installHomeRoutes(
     await fulfillJson(route, sleepRegularity());
   });
   // Notification inbox hydrate — the pinned center + the urgent signal.
-  // (installDefaultAppRoutes registers an empty default; this override wins.)
+  // Drop the empty default from installDefaultAppRoutes so this seeded payload
+  // is the only handler (LIFO route order is easy to accidentally invert).
+  await page.unroute("**/api/notifications**").catch(() => {});
   await page.route("**/api/notifications**", async (route) => {
-    if (route.request().method() !== "GET") {
+    const method = route.request().method();
+    const pathname = new URL(route.request().url()).pathname;
+    if (method === "POST" && pathname === "/api/notifications") {
+      await fulfillJson(
+        route,
+        {
+          notification: {
+            id: "smoke-notification-1",
+            title: "smoke",
+            category: "system",
+            priority: "low",
+            createdAt: Date.now(),
+            readAt: null,
+          },
+        },
+        201,
+      );
+      return;
+    }
+    if (method !== "GET") {
       await route.fallback();
       return;
     }
@@ -867,12 +888,14 @@ async function expectPopulatedHome(page: Page): Promise<Locator> {
     await expect(host.getByTestId(testId)).toHaveCount(0);
   }
   // The seeded urgent notification renders in the INLINE notification inbox on
-  // the home column, not as a ranked WidgetHost tile.
-  await expect(
-    page
-      .getByTestId("home-notification-center")
-      .getByTestId("notification-row"),
-  ).toContainText("Payment failed");
+  // the home column, not as a ranked WidgetHost tile. Hydration can lag the
+  // widget host on mobile first-run, and rested groups are aria-hidden, so
+  // assert the visible center's text rather than the hidden row locator.
+  const notificationCenter = page.getByTestId("home-notification-center");
+  await expect(notificationCenter).toBeVisible({ timeout: 30_000 });
+  await expect(notificationCenter).toContainText("Payment failed", {
+    timeout: 30_000,
+  });
   const surface = page.getByTestId("home-launcher-surface");
   await expect(surface).toHaveAttribute("data-page", "home");
   return surface;
