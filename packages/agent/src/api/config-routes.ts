@@ -21,6 +21,7 @@ import {
   sanitizeForSettingsDebug,
   settingsDebugCloudSummary,
 } from "@elizaos/shared";
+import { isBlockedEnvKey } from "../config/blocked-env-keys.ts";
 import type { ElizaConfig } from "../config/config.ts";
 import { loadElizaConfig, saveElizaConfig } from "../config/config.ts";
 import { buildCharacterFromConfig } from "../runtime/build-character-config.ts";
@@ -423,14 +424,15 @@ export async function handleConfigRoutes(
         delete vars.GITHUB_TOKEN;
       }
 
-      // Defense-in-depth: strip ALL BLOCKED_ENV_KEYS from the env patch
-      // before safeMerge.  The explicit deletes above cover known step-up
-      // secrets; this loop catches process-level injection keys
-      // (NODE_OPTIONS, LD_PRELOAD, etc.) so they never reach
-      // saveElizaConfig() and the persistence→restart RCE chain is closed.
+      // Defense-in-depth: strip ALL blocked env keys (including prefix-matched
+      // families like GIT_CONFIG_KEY_*) from the env patch before safeMerge.
+      // The explicit deletes above cover known step-up secrets; this loop
+      // catches process-level injection keys (NODE_OPTIONS, LD_PRELOAD, etc.)
+      // so they never reach saveElizaConfig() and the persistence→restart RCE
+      // chain is closed.
       for (const key of Object.keys(envPatch)) {
         if (key === "vars" || key === "shellEnv") continue;
-        if (BLOCKED_ENV_KEYS.has(key.toUpperCase())) {
+        if (isBlockedEnvKey(key)) {
           delete envPatch[key];
         }
       }
@@ -441,7 +443,7 @@ export async function handleConfigRoutes(
       ) {
         const innerVars = envPatch.vars as Record<string, unknown>;
         for (const key of Object.keys(innerVars)) {
-          if (BLOCKED_ENV_KEYS.has(key.toUpperCase())) {
+          if (isBlockedEnvKey(key)) {
             delete innerVars[key];
           }
         }
@@ -545,7 +547,7 @@ export async function handleConfigRoutes(
       const vars = envPatch.vars;
       if (vars && typeof vars === "object" && !Array.isArray(vars)) {
         for (const [k, v] of Object.entries(vars as Record<string, unknown>)) {
-          if (BLOCKED_ENV_KEYS.has(k.toUpperCase())) continue;
+          if (isBlockedEnvKey(k)) continue;
           const str = typeof v === "string" ? v : "";
           if (str.trim()) {
             process.env[k] = str;
@@ -558,7 +560,7 @@ export async function handleConfigRoutes(
       // 2) Direct env.* string keys (legacy)
       for (const [k, v] of Object.entries(envPatch)) {
         if (k === "vars" || k === "shellEnv") continue;
-        if (BLOCKED_ENV_KEYS.has(k.toUpperCase())) continue;
+        if (isBlockedEnvKey(k)) continue;
         if (typeof v !== "string") continue;
         if (v.trim()) process.env[k] = v;
         else delete process.env[k];

@@ -2,33 +2,20 @@
  * Environment variable keys that must never be written through user-editable
  * config or synced from config into process.env.
  *
- * Categories:
- * - Process-level code injection (NODE_OPTIONS, LD_PRELOAD, ...)
- * - TLS/proxy hijack (NODE_TLS_REJECT_UNAUTHORIZED, HTTP_PROXY, ...)
- * - Module/path resolution and process identity (NODE_PATH, PATH, HOME, ...)
- * - Privilege escalation and step-up tokens
- * - Wallet/steward/private trading secrets
- * - Database connection strings
+ * The code-injection / TLS-hijack / path-resolution keys are imported from the
+ * core spawn-env policy so the two denylists cannot drift: every key the spawn
+ * sanitizer strips must also be blocked at the config-write boundary. Agent-
+ * specific secrets (tokens, private keys, DB URLs) are appended on top.
  */
-export const BLOCKED_ENV_KEYS = new Set([
-  "LD_PRELOAD",
-  "LD_LIBRARY_PATH",
-  "DYLD_INSERT_LIBRARIES",
-  "DYLD_LIBRARY_PATH",
-  "NODE_OPTIONS",
-  "NODE_EXTRA_CA_CERTS",
-  "NODE_TLS_REJECT_UNAUTHORIZED",
-  "HTTP_PROXY",
-  "HTTPS_PROXY",
-  "ALL_PROXY",
-  "NO_PROXY",
-  "NODE_PATH",
-  "SSL_CERT_FILE",
-  "SSL_CERT_DIR",
-  "CURL_CA_BUNDLE",
-  "PATH",
-  "HOME",
-  "SHELL",
+import {
+  BLOCKED_SPAWN_ENV_KEYS,
+  BLOCKED_SPAWN_ENV_PREFIXES,
+} from "@elizaos/core";
+
+export const BLOCKED_ENV_KEYS = new Set<string>([
+  ...BLOCKED_SPAWN_ENV_KEYS,
+  // Agent-specific step-up secrets and private keys (not spawn injection
+  // primitives — they belong here so config writes cannot persist them).
   "ELIZA_API_TOKEN",
   "ELIZA_WALLET_EXPORT_TOKEN",
   "ELIZA_TERMINAL_RUN_TOKEN",
@@ -43,3 +30,16 @@ export const BLOCKED_ENV_KEYS = new Set([
   "DATABASE_URL",
   "POSTGRES_URL",
 ]);
+
+/**
+ * Check whether an env key is blocked at the config-write boundary.
+ *
+ * Uses the same predicate as the spawn sanitizer (exact match + prefix match)
+ * so indexed families like {@code GIT_CONFIG_KEY_0} are caught at config write
+ * time, not just at the later spawn boundary.
+ */
+export function isBlockedEnvKey(key: string): boolean {
+  const upper = key.toUpperCase();
+  if (BLOCKED_ENV_KEYS.has(upper)) return true;
+  return BLOCKED_SPAWN_ENV_PREFIXES.some((prefix) => upper.startsWith(prefix));
+}

@@ -47,6 +47,7 @@ describe("isBlockedSpawnEnvKey (loader/interpreter hijack keys)", () => {
 		// JVM
 		"JAVA_TOOL_OPTIONS",
 		"_JAVA_OPTIONS",
+		"JDK_JAVA_OPTIONS",
 		"CLASSPATH",
 		// terminfo/termcap
 		"TERMINFO",
@@ -55,6 +56,11 @@ describe("isBlockedSpawnEnvKey (loader/interpreter hijack keys)", () => {
 		// Git external commands
 		"GIT_SSH_COMMAND",
 		"GIT_EXTERNAL_DIFF",
+		"GIT_SSH",
+		"GIT_ASKPASS",
+		"GIT_CONFIG_COUNT",
+		"GIT_CONFIG_KEY_0",
+		"GIT_CONFIG_VALUE_0",
 	])("blocks %s", (key) => {
 		expect(isBlockedSpawnEnvKey(key)).toBe(true);
 	});
@@ -76,6 +82,9 @@ describe("isBlockedSpawnEnvKey (loader/interpreter hijack keys)", () => {
 		// Lookalikes that must NOT be blocked
 		expect(isBlockedSpawnEnvKey("PYTHON_VERSION")).toBe(false);
 		expect(isBlockedSpawnEnvKey("RUBY_VERSION")).toBe(false);
+		expect(isBlockedSpawnEnvKey("GIT_AUTHOR_NAME")).toBe(false);
+		expect(isBlockedSpawnEnvKey("GIT_COMMITTER_NAME")).toBe(false);
+		expect(isBlockedSpawnEnvKey("GIT_TERMINAL_PROMPT")).toBe(false);
 	});
 });
 
@@ -103,5 +112,18 @@ describe("sanitizeSpawnEnv", () => {
 			NODE_ENV: "production",
 			GIT_AUTHOR_NAME: "test",
 		});
+	});
+
+	it("drops equivalent JVM and Git injection primitives added in review", () => {
+		const out = sanitizeSpawnEnv({
+			JDK_JAVA_OPTIONS: "-javaagent:/tmp/evil.jar",
+			GIT_SSH: "/tmp/evil-ssh",
+			GIT_ASKPASS: "/tmp/evil-askpass",
+			GIT_CONFIG_COUNT: "1",
+			GIT_CONFIG_KEY_0: "core.sshCommand",
+			GIT_CONFIG_VALUE_0: "/tmp/evil-cmd",
+			SAFE_KEY: "ok",
+		});
+		expect(out).toEqual({ SAFE_KEY: "ok" });
 	});
 });
