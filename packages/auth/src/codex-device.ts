@@ -1,13 +1,56 @@
+/**
+ * Orchestrates headless Codex device login for authentication consumers.
+ *
+ * The flow owns an isolated temporary CODEX_HOME, parses only the public
+ * device prompt, and withholds credentials until the child is terminal and
+ * that temporary state has been removed successfully.
+ */
+
 import { spawn } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { ElizaError } from "@elizaos/core";
 import type { OAuthCredentials } from "./types.ts";
 
 // biome-ignore lint/suspicious/noControlCharactersInRegex: strips terminal ANSI color sequences from CLI output.
 const ANSI_RE = /\x1b\[[0-9;]*m/g;
 const DEVICE_URL_RE = /https:\/\/auth\.openai\.com\/codex\/device/;
 const DEVICE_CODE_RE = /\b[A-Z0-9]{4}-[A-Z0-9]{5}\b/;
+const CLEANUP_MAX_RETRIES = 2;
+const CLEANUP_RETRY_DELAY_MS = 25;
+
+type CodexDeviceErrorCode =
+  | "codex_device.cleanup_failed"
+  | "codex_device.credentials_invalid"
+  | "codex_device.invalid_access_token"
+  | "codex_device.process_failed"
+  | "codex_device.prompt_missing"
+  | "codex_device.spawn_failed";
+
+type CleanupPhase =
+  | "credentials_complete"
+  | "credentials_invalid"
+  | "process_failed"
+  | "prompt_missing"
+  | "spawn_failed";
+
+function codexDeviceError(
+  code: CodexDeviceErrorCode,
+  message: string,
+  options: {
+    cause?: unknown;
+    context?: Record<string, unknown>;
+    severity: "ephemeral" | "fatal";
+  },
+): ElizaError {
+  return new ElizaError(message, {
+    code,
+    severity: options.severity,
+    ...(options.context ? { context: options.context } : {}),
+    ...(options.cause !== undefined ? { cause: options.cause } : {}),
+  });
+}
 
 export interface CodexDeviceFlow {
   authUrl: string;
@@ -28,9 +71,11 @@ function expiryFromJwt(token: string): number {
   } catch (cause) {
     // error-policy:J2 context-adding rethrow — fabricating an expiry can make an
     // invalid token look healthy and delay required reauthentication.
-    throw new Error("Codex access token expiry could not be validated", {
-      cause,
-    });
+    throw codexDeviceError(
+      "codex_device.invalid_access_token",
+      "Codex access token expiry could not be validated",
+      { cause, severity: "fatal" },
+    );
   }
 }
 
@@ -43,6 +88,8 @@ export function startCodexDeviceLogin(): Promise<CodexDeviceFlow> {
 
   let output = "";
   let settledStart = false;
+  let settledTerminal = false;
+  let cleanedUp = false;
   let resolveCredentials!: (credentials: OAuthCredentials) => void;
   let rejectCredentials!: (error: Error) => void;
   const credentials = new Promise<OAuthCredentials>((resolve, reject) => {
@@ -53,7 +100,48 @@ export function startCodexDeviceLogin(): Promise<CodexDeviceFlow> {
   // observer prevents a process-level rejection before the flow is consumed.
   void credentials.catch(() => undefined);
 
+  const cleanup = (phase: CleanupPhase): ElizaError | null => {
+    if (cleanedUp) return null;
+    try {
+      rmSync(codexHome, {
+        recursive: true,
+        force: true,
+        maxRetries: CLEANUP_MAX_RETRIES,
+        retryDelay: CLEANUP_RETRY_DELAY_MS,
+      });
+      cleanedUp = true;
+      return null;
+    } catch (cause) {
+      // error-policy:J1 filesystem boundary translation — cleanup is part of
+      // terminal settlement, so its failure becomes a typed promise rejection
+      // instead of escaping a child-process event callback.
+      return codexDeviceError(
+        "codex_device.cleanup_failed",
+        "Codex device login temporary state could not be removed",
+        {
+          cause,
+          context: {
+            phase,
+            maxRetries: CLEANUP_MAX_RETRIES,
+            retryDelayMs: CLEANUP_RETRY_DELAY_MS,
+          },
+          severity: "fatal",
+        },
+      );
+    }
+  };
+
   return new Promise<CodexDeviceFlow>((resolve, reject) => {
+    const rejectStart = (error: Error) => {
+      if (settledStart) return;
+      settledStart = true;
+      reject(error);
+    };
+    const fail = (error: ElizaError, phase: CleanupPhase) => {
+      const terminalError = cleanup(phase) ?? error;
+      rejectStart(terminalError);
+      rejectCredentials(terminalError);
+    };
     const inspect = (chunk: Buffer | string) => {
       output += String(chunk).replace(ANSI_RE, "");
       if (settledStart) return;
@@ -71,20 +159,53 @@ export function startCodexDeviceLogin(): Promise<CodexDeviceFlow> {
     child.stdout.on("data", inspect);
     child.stderr.on("data", inspect);
     child.once("error", (err) => {
-      if (!settledStart) reject(err);
-      rejectCredentials(err);
-      rmSync(codexHome, { recursive: true, force: true });
+      if (settledTerminal) return;
+      settledTerminal = true;
+      fail(
+        codexDeviceError(
+          "codex_device.spawn_failed",
+          "Codex device login process could not be started",
+          {
+            cause: err,
+            context: { command: "codex", mode: "device-auth" },
+            severity: "fatal",
+          },
+        ),
+        "spawn_failed",
+      );
     });
-    child.once("exit", (code, signal) => {
+    // `close` follows the exit event after stdio has closed, so the prompt
+    // parser has observed every output chunk before deciding it was absent.
+    child.once("close", (code, signal) => {
+      if (settledTerminal) return;
+      settledTerminal = true;
       if (code !== 0) {
-        const err = new Error(
+        const err = codexDeviceError(
+          "codex_device.process_failed",
           `Codex device login exited ${signal ? `with ${signal}` : `with code ${code}`}`,
+          {
+            context: { exitCode: code, signal },
+            severity: "ephemeral",
+          },
         );
-        if (!settledStart) reject(err);
-        rejectCredentials(err);
-        rmSync(codexHome, { recursive: true, force: true });
+        fail(err, "process_failed");
         return;
       }
+      if (!settledStart) {
+        fail(
+          codexDeviceError(
+            "codex_device.prompt_missing",
+            "Codex device login exited with code 0 before emitting a device URL and user code",
+            {
+              context: { exitCode: code, signal },
+              severity: "fatal",
+            },
+          ),
+          "prompt_missing",
+        );
+        return;
+      }
+      let parsedCredentials: OAuthCredentials;
       try {
         const parsed = JSON.parse(
           readFileSync(path.join(codexHome, "auth.json"), "utf8"),
@@ -99,21 +220,36 @@ export function startCodexDeviceLogin(): Promise<CodexDeviceFlow> {
         const refresh = parsed.tokens?.refresh_token;
         if (!access || !refresh)
           throw new Error("Codex device login returned no tokens");
-        resolveCredentials({
+        parsedCredentials = {
           access,
           refresh,
           expires: expiryFromJwt(access),
           ...(parsed.tokens?.id_token
             ? { idToken: parsed.tokens.id_token }
             : {}),
-        });
-      } catch (err) {
-        // error-policy:J1 child-process boundary translation — credential-file
-        // failures reject the public flow and never fabricate a token record.
-        rejectCredentials(err instanceof Error ? err : new Error(String(err)));
-      } finally {
-        rmSync(codexHome, { recursive: true, force: true });
+        };
+      } catch (cause) {
+        // error-policy:J2 context-adding translation — credential-file and JWT
+        // failures become a typed terminal flow error with their cause intact.
+        fail(
+          cause instanceof ElizaError
+            ? cause
+            : codexDeviceError(
+                "codex_device.credentials_invalid",
+                "Codex device login credentials could not be validated",
+                { cause, severity: "fatal" },
+              ),
+          "credentials_invalid",
+        );
+        return;
       }
+
+      const cleanupError = cleanup("credentials_complete");
+      if (cleanupError) {
+        rejectCredentials(cleanupError);
+        return;
+      }
+      resolveCredentials(parsedCredentials);
     });
   });
 }
