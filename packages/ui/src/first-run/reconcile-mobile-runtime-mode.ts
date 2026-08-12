@@ -3,12 +3,10 @@
  * and the runtime truth stamped into this build (issue #11030).
  *
  * The persisted mode survives reinstalls (it is mirrored into Capacitor
- * Preferences), so a device that once ran a cloud build can carry a stale
- * `"cloud"` mode into a later LOCAL sideload build. That stale mode gates the
- * native local-agent transports ("iOS cloud builds cannot use local-agent IPC
- * unless local runtime mode is active") while the build ships no cloud
- * endpoint at all — every startup probe fails and the renderer hangs on the
- * "Booting up…" splash even though the on-device agent is running.
+ * Preferences), so reinstalling another build can leave an incompatible mode:
+ * `cloud` can lock the transport in a local-only build, while `local` or
+ * `cloud-hybrid` can claim an on-device agent that a pure-cloud build does not
+ * contain. Both mismatches otherwise survive into startup routing.
  *
  * Reconciliation adopts the build's native mode ONLY when the persisted mode
  * is provably unusable in this build ({@link planMobileRuntimeModeReconcile}
@@ -30,6 +28,7 @@ import { resolveAndroidRuntimeMode } from "../platform/android-runtime";
 import { resolveIosRuntimeConfig } from "../platform/ios-runtime";
 import { loadPersistedActiveServer } from "../state/persistence";
 import {
+  isCommittedOnDeviceMobileRuntimeMode,
   type MobileRuntimeMode,
   persistMobileRuntimeMode,
   readPersistedMobileRuntimeMode,
@@ -58,7 +57,7 @@ export type MobileRuntimeModeReconcilePlan =
       to: MobileRuntimeMode;
       reason:
         | "persisted-cloud-mode-has-no-endpoint-in-local-build"
-        | "persisted-local-mode-has-no-engine-in-this-build";
+        | "persisted-on-device-mode-has-no-engine-in-this-build";
     };
 
 /**
@@ -69,9 +68,12 @@ export type MobileRuntimeModeReconcilePlan =
  *   apiBase AND no cloud session exists on the device. With any of those, the
  *   cloud mode still has somewhere to talk to and is treated as a valid user
  *   choice.
- * - Persisted `local` is UNUSABLE only when this build physically cannot host
- *   the on-device agent (e.g. an iOS store/cloud bundle without the full-Bun
- *   engine, or the Play-Store `android-cloud` APK).
+ * - Persisted on-device modes (`local` / `cloud-hybrid`) are UNUSABLE in a
+ *   pure-cloud build that physically cannot host the bundled agent. This build
+ *   truth wins even when a cloud session or apiBase exists: those can serve
+ *   `cloud`, but cannot make the missing on-device runtime support hybrid.
+ * - Persisted `local` remains unusable in any other engine-less build and
+ *   adopts that build's declared mode.
  * - `remote-mac` / `tunnel-to-mobile` target user-configured EXTERNAL
  *   endpoints the build truth cannot invalidate — never reconciled here.
  */
@@ -88,6 +90,19 @@ export function planMobileRuntimeModeReconcile(args: {
     return { action: "keep" };
   }
 
+  if (
+    !build.hasLocalEngine &&
+    isCommittedOnDeviceMobileRuntimeMode(persistedMode) &&
+    (build.buildMode === "cloud" || persistedMode === "local")
+  ) {
+    return {
+      action: "adopt-build-mode",
+      from: persistedMode,
+      to: build.buildMode,
+      reason: "persisted-on-device-mode-has-no-engine-in-this-build",
+    };
+  }
+
   if (persistedMode === "cloud" || persistedMode === "cloud-hybrid") {
     if (
       build.buildMode === "local" &&
@@ -102,15 +117,6 @@ export function planMobileRuntimeModeReconcile(args: {
       };
     }
     return { action: "keep" };
-  }
-
-  if (persistedMode === "local" && !build.hasLocalEngine) {
-    return {
-      action: "adopt-build-mode",
-      from: persistedMode,
-      to: build.buildMode,
-      reason: "persisted-local-mode-has-no-engine-in-this-build",
-    };
   }
 
   return { action: "keep" };
