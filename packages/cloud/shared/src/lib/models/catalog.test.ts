@@ -69,10 +69,21 @@ describe("#8426 text catalog recommendation invariants", () => {
 });
 
 describe("MiniMax static catalog", () => {
-  test("includes MiniMax M3 in the catalog and selector", () => {
+  test("describes flagship M3 without matching the provider name as a mini model", () => {
     const modelId = "minimax/minimax-m3";
+    const catalogModel = STATIC_TEXT_CATALOG_MODELS.find((model) => model.id === modelId);
+    const selectorModel = FALLBACK_TEXT_SELECTOR_MODELS.find((model) => model.modelId === modelId);
 
-    expect(STATIC_TEXT_CATALOG_MODELS.some((model) => model.id === modelId)).toBe(true);
-    expect(FALLBACK_TEXT_SELECTOR_MODELS.some((model) => model.modelId === modelId)).toBe(true);
+    expect(catalogModel?.description).toBe("General-purpose language model");
+    expect(selectorModel?.description).toBe("General-purpose language model");
+    expect(selectorModel?.description).not.toBe("Faster, lower-cost option");
+  });
+
+  test("keeps the mini heuristic for model names that explicitly use it", () => {
+    const selectorModel = FALLBACK_TEXT_SELECTOR_MODELS.find(
+      (model) => model.modelId === "openai/gpt-5-mini",
+    );
+
+    expect(selectorModel?.description).toBe("Faster, lower-cost option");
   });
 });
