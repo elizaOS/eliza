@@ -1210,6 +1210,12 @@ export class DiscordService extends Service implements IDiscordService {
 			};
 		};
 		const facade: DiscordAccountServiceFacade = {
+			// Forward DM observations to the parent registry (#18746): the facade
+			// is what MessageManager holds; without this forward the optional
+			// call in the message path silently no-ops and cold-start DM
+			// coverage records nothing.
+			recordDmChannel: (acct: string, channelId: string, recipientId: string) =>
+				parent.recordDmChannel(acct, channelId, recipientId),
 			get accountId() {
 				return accountId();
 			},

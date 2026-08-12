@@ -15,7 +15,8 @@
  * with guild count or traffic. All I/O failures degrade to an empty registry
  * and a logged warning: DM cleanup is best-effort, service start is not.
  */
-import { readFileSync, renameSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { dirname } from "node:path";
 
 /** Newest entries kept; older observations age out. */
 export const DM_REGISTRY_MAX_ENTRIES = 64;
@@ -135,6 +136,9 @@ export class DmChannelRegistry {
 			entries: [...this.entries.values()],
 		};
 		try {
+			// The state subdirectory does not exist on first use; creating it
+			// here keeps the constructor I/O-free.
+			mkdirSync(dirname(this.filePath), { recursive: true });
 			const tmp = `${this.filePath}.tmp`;
 			writeFileSync(tmp, JSON.stringify(payload), "utf8");
 			renameSync(tmp, this.filePath);
