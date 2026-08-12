@@ -5,7 +5,8 @@ description: "How the monorepo validates builds and publishes an explicit npm re
 
 # Build and release
 
-The repository has one pull-request workflow and one release workflow:
+The repository has one canonical required CI workflow and one npm release
+authority. Platform artifacts use separate, package-owned workflows:
 
 - `.github/workflows/ci.yml` validates every pull request and protected-branch
   push. Its stable `CI / Required` job is the only required status.
@@ -13,9 +14,14 @@ The repository has one pull-request workflow and one release workflow:
   `develop`. It builds one immutable package cohort, publishes those tarballs to
   npm, verifies the registry, and only then creates the exact Git tag and GitHub
   Release.
+- `.github/workflows/release-electrobun.yml` builds Electrobun desktop artifacts
+  and uploads them to the existing tagged GitHub Release without publishing the
+  npm cohort.
+- `.github/workflows/snap-publish.yml` builds and optionally uploads the Snap
+  artifact without publishing the npm cohort.
 
 Nightly validation never publishes packages or creates releases. A tag or
-GitHub Release event never starts publication.
+GitHub Release event never starts npm publication.
 
 ## Prepare a release
 
@@ -46,10 +52,10 @@ registry publication cannot produce a release tag.
 
 ## Desktop and mobile artifacts
 
-Desktop, Android, and Apple builds are release evidence produced with the
-package-owned scripts rather than independent GitHub Actions release graphs.
-This keeps store credentials and platform troubleshooting out of the npm
-transaction.
+Electrobun desktop and Snap artifacts have platform-specific GitHub Actions
+lanes. The Electrobun lane remains tag-bound and upload-only; Android, Apple,
+and local desktop builds use package-owned scripts. All platform artifact paths
+remain separate from the npm transaction.
 
 ### Desktop release lane (`release-electrobun.yml`)
 
@@ -79,7 +85,8 @@ bun run --cwd packages/app build:ios:cloud:sim
 
 Run platform builds on the supported host, inspect the installed artifact, and
 attach the resulting screenshots, recordings, hashes, and logs to the release
-issue. Store submission remains an explicit operator action.
+issue. Mobile and other store submissions remain explicit operator actions;
+the specialized Snap workflow owns its configured Store upload.
 
 ## Local build troubleshooting
 

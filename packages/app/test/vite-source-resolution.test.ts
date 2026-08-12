@@ -33,6 +33,7 @@ describe("workspace package resolution", () => {
       ...defaultClientConditions,
     ]);
     expect(buildConfig.resolve?.conditions).toBeUndefined();
+    expect(buildConfig.build?.modulePreload).toBe(false);
   });
 
   test("keeps browser conditional exports on their browser entry", async () => {

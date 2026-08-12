@@ -1,12 +1,13 @@
 # Desktop Release Regression Inventory
 
-This inventory records desktop regression coverage that is intentionally outside
-the deterministic PR gate. The release matrix validator keeps these entries
-visible so they are reviewed before a production desktop release.
+This inventory defines desktop regression proof that is intentionally outside
+the deterministic PR gate. Labels identify the required proof type; they do not
+claim that an automated lane currently owns the check. Operators record the
+resulting evidence in the release issue before distribution.
 
 ## Packaged and E2E Coverage
 
-- gameOpenWindow — full round-trip with openGameWindow mock (needs canvas mock update)
+- gameOpenWindow — verify a full round-trip opens a canvas window (manual desktop integration)
 - Abnormal window position (off-screen) is corrected to safe defaults (e2e)
 - Deep link received while app is closed causes app to launch (e2e)
 - Deep link received while app is open does not launch second instance (e2e)
