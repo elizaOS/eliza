@@ -40,6 +40,7 @@ describe("UI reads connector defaults from the shared catalog", () => {
         ...entry.defaultPurpose,
       ]);
       expect(option?.supportsOAuth).toBe(entry.supportsOAuth);
+      expect(option?.oauthCapabilities).toEqual(entry.oauthCapabilities);
       // The UI must not invent values the catalog does not carry.
       expect(getConnectorAccountCatalogEntry(entry.connectorId)).not.toBeNull();
     });

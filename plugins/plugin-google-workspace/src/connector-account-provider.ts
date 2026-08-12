@@ -6,11 +6,11 @@
  * can list, create, patch, delete, and run the OAuth flow for Google accounts
  * using a single consolidated grant covering Gmail, Calendar, Drive, and Meet.
  *
- * Single OAuth grant per account: callers may pass `scopes` to the manager's
- * startOAuth to limit which capabilities are requested. By default all
- * capabilities (gmail.read+send+manage, calendar.read+write, drive.read+write,
- * meet.create+read) are requested; granted capabilities are recorded on the
- * returned account so downstream consumers know which surfaces are usable.
+ * Single OAuth grant per account: callers must pass an explicit `scopes`
+ * capability subset to the manager's startOAuth. Omitted or empty scope lists
+ * fail closed instead of expanding to every supported capability. Granted
+ * capabilities are recorded on the returned account so downstream consumers
+ * know which surfaces are usable.
  */
 
 import { createHash, randomBytes } from "node:crypto";
@@ -127,7 +127,14 @@ function readClientConfig(runtime: IAgentRuntime): {
 
 function normalizeRequestedCapabilities(scopes: readonly string[] | undefined): GoogleCapability[] {
   if (!scopes || scopes.length === 0) {
-    return [...GOOGLE_CAPABILITIES];
+    throw new ElizaError(
+      "Google OAuth requires an explicit Gmail, Calendar, Drive, or Meet capability selection.",
+      {
+        code: "GOOGLE_OAUTH_CAPABILITY_REQUIRED",
+        context: { scopes: scopes ?? null },
+        severity: "fatal",
+      }
+    );
   }
   // The caller passes either capability identifiers (e.g. "gmail.read") OR raw
   // OAuth scope URLs. Both shapes are accepted so the manager's startOAuth API
