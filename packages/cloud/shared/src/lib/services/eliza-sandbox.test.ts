@@ -20,6 +20,7 @@ import { PgDialect } from "drizzle-orm/pg-core";
 
 import { decryptField, encryptField } from "../../db/crypto/field-crypto";
 import { resetKmsClientForTests } from "../../db/crypto/kms-client";
+import * as realEnsureSchemaNs from "../../db/ensure-agent-sandbox-schema";
 import * as realHelpersNs from "../../db/helpers";
 import { agentBillingRepository } from "../../db/repositories/agent-billing";
 import type { AgentSandbox, AgentSandboxBackup } from "../../db/repositories/agent-sandboxes";
@@ -100,6 +101,12 @@ type UpgradeTransactionOutcome =
 // patch the SHARED live binding — building the restore (or this override's
 // spread) from the live namespace after a mock landed would capture the mock.
 const realHelpers = { ...realHelpersNs };
+// Same VALUE-snapshot rule for the self-healing DDL guard: prepareAgentDelete
+// awaits ensureAgentSandboxSchema() before its transaction, and this file's
+// swapped `dbWrite` forwards `.execute` to the real connection — so the real
+// guard would attempt live DDL here. This is a mocked-database suite; the
+// guard itself is covered by the PGlite tests.
+const realEnsureSchema = { ...realEnsureSchemaNs };
 let upgradeTransactionImpl: (<T>(fn: (tx: UpgradeTx) => Promise<T>) => Promise<T>) | null = null;
 let upgradeTransactionOutcome: UpgradeTransactionOutcome = null;
 const realDbWrite = realHelpers.dbWrite as unknown as object;
@@ -346,6 +353,10 @@ beforeAll(async () => {
     ...realHelpers,
     dbWrite: upgradeDbWrite,
   }));
+  mock.module("../../db/ensure-agent-sandbox-schema", () => ({
+    ...realEnsureSchema,
+    ensureAgentSandboxSchema: async () => {},
+  }));
 
   const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
   const prototype = ElizaSandboxService.prototype as unknown as ReplacementLifecycleHarnessService;
@@ -516,6 +527,7 @@ beforeAll(async () => {
 afterAll(() => {
   restoreReplacementLifecycleHarness?.();
   mock.module("../../db/helpers", () => realHelpers);
+  mock.module("../../db/ensure-agent-sandbox-schema", () => realEnsureSchema);
 });
 
 // provision()'s success path now re-enters the billable set via

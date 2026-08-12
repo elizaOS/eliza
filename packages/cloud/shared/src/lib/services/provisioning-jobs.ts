@@ -46,9 +46,11 @@ import {
 } from "../../db/repositories/jobs";
 import {
   type AgentExecutionTier,
+  type AgentSandboxPoolStatus,
   type AgentSandboxStatus,
   agentSandboxes,
   UPGRADE_FAILURE_TARGET_MARKER_PREFIX,
+  WARM_POOL_ORG_ID,
 } from "../../db/schemas/agent-sandboxes";
 import { apps } from "../../db/schemas/apps";
 import { containers } from "../../db/schemas/containers";
@@ -777,6 +779,7 @@ interface LifecycleSandboxRow {
   replacement_cleanup_sandbox_id: string | null;
   deletion_attempt_id: string | null;
   deletion_started_at: Date | null;
+  pool_status: AgentSandboxPoolStatus | null;
 }
 
 interface LifecycleJobOptions<TData extends object> {
@@ -1260,7 +1263,7 @@ export class ProvisioningJobService {
         replacement_cleanup_sandbox_id: agentSandboxes.replacement_cleanup_sandbox_id,
         deletion_attempt_id: agentSandboxes.deletion_attempt_id,
         deletion_started_at: agentSandboxes.deletion_started_at,
-        last_heartbeat_at: agentSandboxes.last_heartbeat_at,
+        pool_status: agentSandboxes.pool_status,
       })
       .from(agentSandboxes)
       .where(
@@ -1307,10 +1310,18 @@ export class ProvisioningJobService {
 
     opts.validateSandbox?.(sandbox);
 
+    // Mirrors prepareAgentDelete's admission policy in eliza-sandbox.ts: an
+    // unqualified delete of a running dedicated agent fails closed, while
+    // shared-runtime rows and unclaimed warm-pool rows stay deletable by
+    // cleanup paths. The row lookup above is scoped to opts.organizationId,
+    // so that value is the row's organization_id.
+    const isUnclaimedWarmPoolEntry =
+      opts.organizationId === WARM_POOL_ORG_ID && sandbox.pool_status === "unclaimed";
     if (
       opts.jobType === JOB_TYPES.AGENT_DELETE &&
       sandbox.status === "running" &&
       sandbox.execution_tier !== "shared" &&
+      !isUnclaimedWarmPoolEntry &&
       !opts.deleteAuthorization
     ) {
       throw new ApiError(409, "session_not_ready", "Agent is running; suspend it before deletion");
