@@ -11,6 +11,11 @@
  */
 import { describe, expect, it, vi } from "vitest";
 import {
+	getStreamingContext,
+	runWithStreamingContext,
+} from "../../streaming-context";
+import type { ContextObject } from "../../types/context-object";
+import {
 	FAILED_TOOL_FALLBACK_MESSAGE,
 	HANDLED_STEP_FALLBACK_MESSAGE,
 	runPlannerLoop,
@@ -18,7 +23,39 @@ import {
 
 type MockedMessages = {
 	messages?: Array<{ role?: string; content?: unknown }>;
+	responseSchema?: unknown;
 };
+
+function rescueContext(request: string): ContextObject {
+	return {
+		id: "ctx",
+		events: [
+			{
+				id: "current-message",
+				type: "message",
+				message: { role: "user", content: { text: request } },
+			},
+			{
+				id: "stale-memory",
+				type: "memory",
+				memory: {
+					entityId: "memory-entity",
+					roomId: "memory-room",
+					content: {
+						text: "Stale memory must never replace the current request authority.",
+					},
+				},
+			},
+		],
+	};
+}
+
+function structuredRescueReply(
+	reply: string,
+	failureAcknowledged = true,
+): string {
+	return JSON.stringify({ reply, failureAcknowledged });
+}
 
 /** The instruction blocks the loop itself composes (retry / synthesis) — the
  * surface whose hygiene #17948 governs, as opposed to raw tool-result
@@ -37,6 +74,75 @@ function loopComposedInstructionText(
 		)
 		.filter((content) => content.includes(marker))
 		.join("\n");
+}
+
+async function runStandardFailedRescue(
+	request: string,
+	rescueResponse: unknown,
+) {
+	const useModel = vi
+		.fn()
+		.mockResolvedValueOnce({
+			text: "",
+			toolCalls: [
+				{
+					id: "call-1",
+					name: "WEB_SEARCH",
+					arguments: { query: "shared research" },
+				},
+			],
+		})
+		.mockResolvedValueOnce({
+			text: "",
+			toolCalls: [
+				{
+					id: "call-2",
+					name: "SHELL",
+					arguments: { command: "gh pr list" },
+				},
+			],
+		})
+		.mockResolvedValueOnce({
+			text: "",
+			toolCalls: [
+				{ id: "call-3", name: "REPLY", arguments: { text: "hit a snag." } },
+			],
+		})
+		.mockResolvedValueOnce({ text: "", toolCalls: [] })
+		.mockResolvedValueOnce(rescueResponse);
+	const executeToolCall = vi
+		.fn()
+		.mockResolvedValueOnce({
+			success: true,
+			text: "search results: 85 reviews completed this week",
+		})
+		.mockResolvedValueOnce({
+			success: false,
+			text: "command_failed: PR listing unavailable",
+		});
+	const evaluate = vi
+		.fn()
+		.mockResolvedValueOnce({
+			success: true,
+			decision: "CONTINUE" as const,
+			thought: "Research succeeded; list the PRs.",
+		})
+		.mockResolvedValueOnce({
+			success: false,
+			decision: "FINISH" as const,
+			thought: "The listing failed.",
+		});
+	const result = await runPlannerLoop({
+		runtime: { useModel },
+		context: rescueContext(request),
+		tools: [
+			{ name: "WEB_SEARCH", description: "Search the web." },
+			{ name: "SHELL", description: "Run a shell command." },
+		],
+		executeToolCall,
+		evaluate,
+	});
+	return { result, useModel };
 }
 
 describe("honest failed-turn replies (#17948)", () => {
@@ -532,9 +638,17 @@ describe("rescue synthesis from successful tool results (2026-08-11 sub-agent re
 			// observed live: completion budget consumed, zero visible text).
 			.mockResolvedValueOnce({ text: "", toolCalls: [] })
 			// 5: the TEXT_LARGE rescue call composes from the successful results.
-			.mockResolvedValueOnce(
-				"standujar reviewed 85 pull requests over the last four days and filed 46 issues.",
-			);
+			// Its provider mock tries to emit an unsafe token before returning the
+			// accepted structured reply; the rescue must suppress that ambient stream.
+			.mockImplementationOnce(async () => {
+				expect(getStreamingContext()?.abortSignal).toBe(abortSignal);
+				await getStreamingContext()?.onStreamChunk(
+					"/private/raw/path from an unvalidated rescue chunk",
+				);
+				return structuredRescueReply(
+					"standujar reviewed 85 pull requests over the last four days and filed 46 issues.",
+				);
+			});
 		const executeToolCall = vi
 			.fn()
 			.mockResolvedValueOnce({
@@ -558,21 +672,32 @@ describe("rescue synthesis from successful tool results (2026-08-11 sub-agent re
 				thought: "The step failed.",
 			});
 
-		const result = await runPlannerLoop({
-			runtime: { useModel },
-			context: { id: "ctx" },
-			tools: [
-				{ name: "WEB_SEARCH", description: "Search the web." },
-				{ name: "SHELL", description: "Run a shell command." },
-			],
-			executeToolCall,
-			evaluate,
-		});
+		const visibleStreamChunk = vi.fn();
+		const abortSignal = new AbortController().signal;
+		const result = await runWithStreamingContext(
+			{ onStreamChunk: visibleStreamChunk, abortSignal },
+			() =>
+				runPlannerLoop({
+					runtime: { useModel },
+					context: rescueContext(
+						"Summarize standujar's contributions and mention any incomplete step.",
+					),
+					provider: "pinned-provider",
+					tools: [
+						{ name: "WEB_SEARCH", description: "Search the web." },
+						{ name: "SHELL", description: "Run a shell command." },
+					],
+					executeToolCall,
+					evaluate,
+				}),
+		);
 
 		expect(result.finalMessage).toBe(
 			"standujar reviewed 85 pull requests over the last four days and filed 46 issues.",
 		);
 		expect(result.finalMessage).not.toBe(FAILED_TOOL_FALLBACK_MESSAGE);
+		expect(visibleStreamChunk).not.toHaveBeenCalled();
+		expect(useModel.mock.calls[4]?.[2]).toBe("pinned-provider");
 		// The rescue call carried the successful result as input material
 		// (native chat `messages`, the only shape PlannerRuntime.useModel
 		// accepts), fenced as untrusted tool output.
@@ -586,6 +711,64 @@ describe("rescue synthesis from successful tool results (2026-08-11 sub-agent re
 			.join("\n");
 		expect(rescueText).toContain('<tool_result name="WEB_SEARCH">');
 		expect(rescueText).toContain("85 pull requests");
+		expect(rescueText).toContain(
+			"Summarize standujar's contributions and mention any incomplete step.",
+		);
+		expect(rescueText).not.toContain(
+			"Stale memory must never replace the current request authority.",
+		);
+		expect(rescueParams?.responseSchema).toMatchObject({
+			required: ["reply", "failureAcknowledged"],
+		});
+	});
+
+	it("rejects unstructured and structurally unacknowledged false-success rescues", async () => {
+		const unstructured = await runStandardFailedRescue(
+			"Summarize the completed research and the blocker.",
+			"Everything completed successfully.",
+		);
+		const unacknowledged = await runStandardFailedRescue(
+			"Summarize the completed research and the blocker.",
+			structuredRescueReply("Everything completed successfully.", false),
+		);
+
+		expect(unstructured.result.finalMessage).toBe(FAILED_TOOL_FALLBACK_MESSAGE);
+		expect(unacknowledged.result.finalMessage).toBe(
+			FAILED_TOOL_FALLBACK_MESSAGE,
+		);
+		expect(unacknowledged.result.finalMessage).not.toContain(
+			"Everything completed successfully",
+		);
+	});
+
+	it("preserves distinct original-request formats while keeping identical tool data", async () => {
+		const bulletReply = "- 85 reviews completed.\n- The PR listing failed.";
+		const executiveReply =
+			"Eighty-five reviews completed, while the PR listing remained unavailable.";
+		const bullets = await runStandardFailedRescue(
+			"Reply as a two-item bullet list.",
+			structuredRescueReply(bulletReply),
+		);
+		const executive = await runStandardFailedRescue(
+			"Reply in one executive sentence.",
+			structuredRescueReply(executiveReply),
+		);
+
+		const bulletMessages = (
+			bullets.useModel.mock.calls[4]?.[1] as MockedMessages | undefined
+		)?.messages;
+		const executiveMessages = (
+			executive.useModel.mock.calls[4]?.[1] as MockedMessages | undefined
+		)?.messages;
+		expect(bulletMessages?.[1]?.content).toContain(
+			"Reply as a two-item bullet list.",
+		);
+		expect(executiveMessages?.[1]?.content).toContain(
+			"Reply in one executive sentence.",
+		);
+		expect(bulletMessages?.[2]?.content).toBe(executiveMessages?.[2]?.content);
+		expect(bullets.result.finalMessage).toBe(bulletReply);
+		expect(executive.result.finalMessage).toBe(executiveReply);
 	});
 
 	it("keeps the generic sentence when there are no successful results to rescue from", async () => {
@@ -622,7 +805,7 @@ describe("rescue synthesis from successful tool results (2026-08-11 sub-agent re
 
 		const result = await runPlannerLoop({
 			runtime: { useModel },
-			context: { id: "ctx" },
+			context: rescueContext("Run the shell command."),
 			tools: [{ name: "SHELL", description: "Run a shell command." }],
 			executeToolCall,
 			evaluate,
@@ -686,7 +869,9 @@ describe("rescue synthesis from successful tool results (2026-08-11 sub-agent re
 			.mockResolvedValueOnce({ text: "", toolCalls: [] })
 			// 6: the TEXT_LARGE rescue composes from the ARCHIVED successes.
 			.mockResolvedValueOnce(
-				"The fleet release shipped with twelve plugins and the shipwright tail closed out, though the PR listing step failed.",
+				structuredRescueReply(
+					"The fleet release shipped with twelve plugins and the shipwright tail closed out, though the PR listing step failed.",
+				),
 			);
 		const executeToolCall = vi
 			.fn()
@@ -716,7 +901,7 @@ describe("rescue synthesis from successful tool results (2026-08-11 sub-agent re
 
 		const result = await runPlannerLoop({
 			runtime: { useModel },
-			context: { id: "ctx" },
+			context: rescueContext("Summarize the fleet release and PR status."),
 			tools: [
 				{ name: "WEB_SEARCH", description: "Search the web." },
 				{ name: "SHELL", description: "Run a shell command." },
@@ -796,7 +981,9 @@ describe("rescue synthesis from successful tool results (2026-08-11 sub-agent re
 			// Failure-aware synthesis blank, then the rescue model parrots the
 			// canned placeholder instead of composing a real answer.
 			.mockResolvedValueOnce({ text: "", toolCalls: [] })
-			.mockResolvedValueOnce(HANDLED_STEP_FALLBACK_MESSAGE);
+			.mockResolvedValueOnce(
+				structuredRescueReply(HANDLED_STEP_FALLBACK_MESSAGE),
+			);
 		const executeToolCall = vi
 			.fn()
 			.mockResolvedValueOnce({
@@ -822,7 +1009,7 @@ describe("rescue synthesis from successful tool results (2026-08-11 sub-agent re
 
 		const result = await runPlannerLoop({
 			runtime: { useModel },
-			context: { id: "ctx" },
+			context: rescueContext("Summarize the release notes."),
 			tools: [
 				{ name: "WEB_SEARCH", description: "Search the web." },
 				{ name: "SHELL", description: "Run a shell command." },
@@ -868,7 +1055,9 @@ describe("rescue synthesis from successful tool results (2026-08-11 sub-agent re
 			})
 			.mockResolvedValueOnce({ text: "", toolCalls: [] })
 			.mockResolvedValueOnce(
-				"Revenue grew nine percent last quarter, though the PR listing part of this did not complete.",
+				structuredRescueReply(
+					"Revenue grew nine percent last quarter, though the PR listing part of this did not complete.",
+				),
 			);
 		const executeToolCall = vi
 			.fn()
@@ -895,7 +1084,7 @@ describe("rescue synthesis from successful tool results (2026-08-11 sub-agent re
 
 		const result = await runPlannerLoop({
 			runtime: { useModel },
-			context: { id: "ctx" },
+			context: rescueContext("Summarize the quarterly numbers and blockers."),
 			tools: [
 				{ name: "WEB_SEARCH", description: "Search the web." },
 				{ name: "SHELL", description: "Run a shell command." },
@@ -966,7 +1155,9 @@ describe("rescue synthesis from successful tool results (2026-08-11 sub-agent re
 			},
 			// Failure-aware synthesis blank, then the rescue composes the reply.
 			{ text: "", toolCalls: [] },
-			"The latest refinements settled it: the final numbers are in, though the last step failed.",
+			structuredRescueReply(
+				"The latest refinements settled it: the final numbers are in, though the last step failed.",
+			),
 		];
 		const useModel = vi.fn(async () => {
 			const next = plannerResponses.shift();
@@ -1000,7 +1191,7 @@ describe("rescue synthesis from successful tool results (2026-08-11 sub-agent re
 
 		const result = await runPlannerLoop({
 			runtime: { useModel },
-			context: { id: "ctx" },
+			context: rescueContext("Give me the final refined numbers."),
 			tools: [
 				{ name: "WEB_SEARCH", description: "Search the web." },
 				{ name: "SHELL", description: "Run a shell command." },
