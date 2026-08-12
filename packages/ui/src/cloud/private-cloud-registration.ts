@@ -12,12 +12,7 @@
  * successful one.
  */
 
-import { lazy } from "react";
-import { registerCloudRoute } from "./shell/cloud-route-registry";
-
-/** Stable Applications paths (console no longer hosts Apps; see override below). */
-const APPLICATIONS_LIST_ROUTE_PATH = "dashboard/apps";
-const APPLICATIONS_DETAIL_ROUTE_PATH = "dashboard/apps/:id";
+import { registerMovedApplicationsCloudRoutes } from "./applications/register-moved-routes";
 
 export type PrivateCloudRegistrationStatus =
   | "idle"
@@ -97,20 +92,10 @@ async function loadPrivateCloudDomains(): Promise<void> {
   registerApprovalsCloudRoute();
 
   // The console no longer surfaces Apps — management moved into the Eliza
-  // app. Override both paths (later same-path registration wins) so a stale
-  // /dashboard/apps link redirects to the dashboard. Do not import the
-  // Applications barrel: it eagerly re-exports heavy page modules.
-  const AppsMovedRoute = lazy(() => import("./applications/AppsMovedRoute"));
-  registerCloudRoute({
-    path: APPLICATIONS_LIST_ROUTE_PATH,
-    element: AppsMovedRoute,
-    group: "dashboard",
-  });
-  registerCloudRoute({
-    path: APPLICATIONS_DETAIL_ROUTE_PATH,
-    element: AppsMovedRoute,
-    group: "dashboard",
-  });
+  // app. Override the current paths and retain the older plural aliases so
+  // stale links redirect to the dashboard. Do not import the Applications
+  // barrel: it eagerly re-exports heavy page modules.
+  registerMovedApplicationsCloudRoutes();
 
   registerAdminCloudRoutes();
   registerMcpsCloudRoute();
