@@ -21,7 +21,7 @@
  * row, then re-counts and sees it — so the cap holds across concurrency.
  */
 
-import { eq, sql } from "drizzle-orm";
+import { sql } from "drizzle-orm";
 import type { DbTransaction } from "../../db/client";
 import { dbWrite } from "../../db/client";
 import { organizations } from "../../db/schemas/organizations";
@@ -69,9 +69,7 @@ const WITHHELD_REASONS: ReadonlySet<string> = new Set(["ip_daily_cap", "count_un
 
 /**
  * The `organizations.settings` patch recording a withheld welcome bonus, or
- * `null` when the decision granted the bonus. Callers write this onto the
- * just-created org (whose settings are still the `{}` default), so a plain
- * overwrite is safe — no merge needed at signup time.
+ * `null` when the decision granted the bonus.
  */
 export function welcomeBonusWithheldSettingsPatch(
   decision: Pick<SignupGrantDecision, "withheldReason" | "withheldMessage">,
@@ -86,13 +84,13 @@ export function welcomeBonusWithheldSettingsPatch(
 }
 
 /**
- * Persist the withheld-bonus decision onto the just-created org's settings so
+ * Persist the withheld-bonus decision onto the org's settings so
  * the agent credit gate can explain the resulting $0-balance 402 later. No-op
  * when the bonus was granted (or when the degrade path produced a message
  * without a reason). Runs on `tx` when the caller's signup transaction is
- * still open (wallet signup), else on the primary. A plain settings overwrite
- * is correct here: the org was created moments ago in this same signup with
- * the `{}` settings default.
+ * still open (wallet signup), else on the primary. Wallet signup can adopt an
+ * org created by a prior top-up or a concurrent request, so this merges one
+ * JSONB key and preserves every unrelated setting.
  */
 export async function recordWelcomeBonusWithheldOnOrg(
   organizationId: string,
@@ -104,8 +102,18 @@ export async function recordWelcomeBonusWithheldOnOrg(
   const db = tx ?? dbWrite;
   await db
     .update(organizations)
-    .set({ settings: patch, updated_at: new Date() })
-    .where(eq(organizations.id, organizationId));
+    .set({
+      settings: sql`COALESCE(${organizations.settings}, '{}'::jsonb) || ${JSON.stringify(patch)}::jsonb`,
+      updated_at: new Date(),
+    })
+    .where(sql`${organizations.id} = ${organizationId}
+      AND NOT EXISTS (
+        SELECT 1
+        FROM credit_transactions
+        WHERE organization_id = ${organizationId}
+          AND type = 'credit'
+          AND amount > 0
+      )`);
 }
 
 /**

@@ -107,11 +107,9 @@ async function runCreditGate(
     const balance = parseGateCreditBalance(org.credit_balance);
 
     if (balance <= minimumBalance) {
-      // A zero balance on an org whose welcome bonus was withheld at signup is
-      // the anti-sybil cap talking, not a drained account — attach the recorded
-      // reason so the 402 the routes serialize can say so. Balance > 0 means
-      // the org was topped up since signup; the withheld record is then stale
-      // history and the plain insufficient-credits message is the honest one.
+      // A successful credit transaction removes this marker atomically with
+      // its balance increase. If it remains at zero, the org has never been
+      // funded since signup and the original withheld reason is still honest.
       const withheld = balance <= 0 ? readWelcomeBonusWithheldSettings(org.settings) : null;
       return {
         allowed: false,

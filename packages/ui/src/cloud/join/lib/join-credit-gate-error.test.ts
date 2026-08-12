@@ -40,6 +40,7 @@ describe("describeJoinCreditGateError", () => {
     expect(describeJoinCreditGateError(error)).toEqual({
       message: WITHHELD_MESSAGE,
       welcomeBonusWithheld: true,
+      welcomeBonusWithheldReason: "ip_daily_cap",
     });
   });
 
@@ -92,6 +93,7 @@ describe("describeJoinCreditGateError", () => {
     expect(describeJoinCreditGateError(error)).toEqual({
       message: WITHHELD_MESSAGE,
       welcomeBonusWithheld: true,
+      welcomeBonusWithheldReason: "ip_daily_cap",
     });
   });
 
@@ -127,6 +129,19 @@ describe("describeJoinCreditGateError", () => {
           path: "/api/v1/eliza/agents",
           status: 500,
           message: "Failed to start provisioning",
+        }),
+      ),
+    ).toBeNull();
+    expect(
+      describeJoinCreditGateError(
+        directCloudError(402, { code: "payment_required", error: "Pay" }),
+      ),
+    ).toBeNull();
+    expect(
+      describeJoinCreditGateError(
+        directCloudError(500, {
+          code: "insufficient_credits",
+          error: "wrong status",
         }),
       ),
     ).toBeNull();

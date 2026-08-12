@@ -130,6 +130,30 @@ describe("JoinPage credit-gate (402) surface", () => {
     ).toBeNull();
   });
 
+  it("does not claim a daily network cap when the grant count was unavailable", async () => {
+    runJoinFlowMock.mockRejectedValue(
+      creditGate402({
+        success: false,
+        code: "insufficient_credits",
+        error:
+          "Welcome credit could not be verified. Add funds to start an agent.",
+        currentBalance: 0,
+        welcomeBonusWithheld: true,
+        welcomeBonusWithheldReason: "count_unavailable",
+      }),
+    );
+
+    render(<JoinPage />);
+    await act(async () => {});
+
+    expect(screen.getByText("Welcome credit unavailable")).toBeTruthy();
+    expect(
+      screen.queryByText(
+        "This limit is per network and resets daily. Your account itself is fine.",
+      ),
+    ).toBeNull();
+  });
+
   it("keeps the generic error state for non-402 failures", async () => {
     runJoinFlowMock.mockRejectedValue(new Error("network down"));
 

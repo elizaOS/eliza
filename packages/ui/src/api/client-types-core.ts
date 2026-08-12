@@ -513,7 +513,17 @@ export class ApiError extends Error {
     this.status = options.status;
     this.code = options.code;
     this.retryAfter = options.retryAfter;
-    this.data = options.data;
+    if (options.data !== undefined) {
+      // Error objects are routinely logged/spread. Keep the parsed body
+      // directly readable by structured consumers without serializing every
+      // endpoint's potentially sensitive error fields by default.
+      Object.defineProperty(this, "data", {
+        value: options.data,
+        enumerable: false,
+        configurable: false,
+        writable: false,
+      });
+    }
     if (options.cause !== undefined) {
       (
         this as Error & {

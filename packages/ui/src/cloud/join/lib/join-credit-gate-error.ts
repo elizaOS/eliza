@@ -23,6 +23,8 @@ export interface JoinCreditGateError {
   message: string;
   /** True when the body says the signup welcome bonus was withheld (IP cap). */
   welcomeBonusWithheld: boolean;
+  /** Server-authored reason used for reason-specific explanatory UI. */
+  welcomeBonusWithheldReason?: "ip_daily_cap" | "count_unavailable";
 }
 
 const INSUFFICIENT_CREDITS_CODE = "insufficient_credits";
@@ -52,16 +54,20 @@ export function describeJoinCreditGateError(
     const body = bodyFrom(current);
     const bodyCode = body?.code;
     if (
-      status === 402 ||
-      code === INSUFFICIENT_CREDITS_CODE ||
-      bodyCode === INSUFFICIENT_CREDITS_CODE
+      status === 402 &&
+      (code === INSUFFICIENT_CREDITS_CODE ||
+        bodyCode === INSUFFICIENT_CREDITS_CODE)
     ) {
       const bodyError =
         typeof body?.error === "string" ? body.error.trim() : "";
       const message = bodyError || current.message.trim();
+      const reason = body?.welcomeBonusWithheldReason;
       return {
         message,
         welcomeBonusWithheld: body?.welcomeBonusWithheld === true,
+        ...(reason === "ip_daily_cap" || reason === "count_unavailable"
+          ? { welcomeBonusWithheldReason: reason }
+          : {}),
       };
     }
     current = (current as Error & { cause?: unknown }).cause;

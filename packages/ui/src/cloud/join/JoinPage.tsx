@@ -73,7 +73,9 @@ export default function JoinPage(): React.JSX.Element {
   const [phase, setPhase] = useState<JoinPhase>("connecting");
   const [detail, setDetail] = useState<string>("");
   const [error, setError] = useState<string | null>(null);
-  const [creditGateWithheld, setCreditGateWithheld] = useState(false);
+  const [creditGateWithheldReason, setCreditGateWithheldReason] = useState<
+    "ip_daily_cap" | "count_unavailable" | null
+  >(null);
   // Guard so React StrictMode's double-mount (and re-renders) don't double-run
   // the provisioning network calls.
   const startedRef = useRef(false);
@@ -86,7 +88,7 @@ export default function JoinPage(): React.JSX.Element {
     }
     setPhase("connecting");
     setError(null);
-    setCreditGateWithheld(false);
+    setCreditGateWithheldReason(null);
     try {
       const result = await runJoinFlow({
         client,
@@ -122,7 +124,11 @@ export default function JoinPage(): React.JSX.Element {
       const creditGate = describeJoinCreditGateError(err);
       if (creditGate) {
         setError(creditGate.message);
-        setCreditGateWithheld(creditGate.welcomeBonusWithheld);
+        setCreditGateWithheldReason(
+          creditGate.welcomeBonusWithheld
+            ? (creditGate.welcomeBonusWithheldReason ?? "count_unavailable")
+            : null,
+        );
         setPhase("credit-gate");
         return;
       }
@@ -168,7 +174,7 @@ export default function JoinPage(): React.JSX.Element {
             data-testid="join-credit-gate"
           >
             <h1 className="font-poppins text-lg font-semibold text-white">
-              {creditGateWithheld
+              {creditGateWithheldReason
                 ? t("cloud.join.creditGateWithheldTitle", {
                     defaultValue: "Welcome credit unavailable",
                   })
@@ -182,7 +188,7 @@ export default function JoinPage(): React.JSX.Element {
                   defaultValue: "Add funds to start an agent.",
                 })}
             </p>
-            {creditGateWithheld ? (
+            {creditGateWithheldReason === "ip_daily_cap" ? (
               <p className="text-sm text-white/50">
                 {t("cloud.join.creditGateWithheldHint", {
                   defaultValue:
