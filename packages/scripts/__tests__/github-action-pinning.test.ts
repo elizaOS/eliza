@@ -92,7 +92,10 @@ function assertSmokeLanesCoreBootstrap(source: string): void {
   );
   const e2eIndex = steps.findIndex((step) => step.run === smokeLanesE2eCommand);
 
-  if (buildIndex < 0 || steps[buildIndex]?.if !== smokeLanesCoreBuildCondition) {
+  if (
+    buildIndex < 0 ||
+    steps[buildIndex]?.if !== smokeLanesCoreBuildCondition
+  ) {
     throw new Error(
       "Smoke lanes must build the core contract for cloud and zero-key work",
     );
