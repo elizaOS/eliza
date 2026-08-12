@@ -1,9 +1,8 @@
 /**
- * Exercises the shared outbound sanitization boundary inside
- * `wrapSingleTurnVisibleCallback` (services/message) — the per-turn wrap every
- * connector-visible delivery funnels through. Drives the REAL wrap function
- * with a typed capture callback and the real structured logger; no part of the
- * unit under test is mocked.
+ * Exercises sanitization and delivery-receipt accounting inside
+ * `wrapSingleTurnVisibleCallback`, the per-turn boundary every connector-visible
+ * delivery funnels through. Drives the real wrapper with typed callbacks and the
+ * structured logger; no part of the unit under test is mocked.
  */
 import { describe, expect, it } from "vitest";
 import { logger } from "../../logger";
@@ -147,5 +146,103 @@ describe("outbound sanitization at the visible-callback boundary", () => {
 		// The connector's own empty-text handling (skip send / components-only
 		// fallback) owns this case; the boundary just reports the truth.
 		expect(delivered[0].content.text).toBe("");
+	});
+
+	it("does not infer media delivery from a nonempty text-only receipt", async () => {
+		const agentId = stringToUuid("media-receipt-agent");
+		const roomId = stringToUuid("media-receipt-room");
+		const recordedText: string[] = [];
+		const recordedMedia: string[] = [];
+		const callback: HandlerCallback = async () => [
+			{
+				id: stringToUuid("text-only-receipt"),
+				agentId,
+				entityId: agentId,
+				roomId,
+				content: { text: "Only the text reached the connector." },
+			},
+		];
+		const wrapped = wrapSingleTurnVisibleCallback(
+			{
+				agentId,
+				logger,
+				reportError: () => undefined,
+			},
+			{
+				id: stringToUuid("media-receipt-message"),
+				roomId,
+				entityId: stringToUuid("media-receipt-user"),
+			},
+			callback,
+			(text) => recordedText.push(text),
+			(urls) => recordedMedia.push(...urls),
+		);
+		if (!wrapped) throw new Error("visible callback wrapper is missing");
+
+		await wrapped({
+			text: "Visible confirmation.",
+			attachments: [
+				{
+					id: "attempted-image",
+					url: "https://example.test/attempted.png",
+					contentType: "image/png",
+				},
+			],
+		});
+
+		expect(recordedMedia).toEqual([]);
+		// Visible-text dedup keeps its existing callback-attempt semantics.
+		expect(recordedText).toEqual(["Visible confirmation."]);
+	});
+
+	it("records only the exact attempted URLs present in partial receipts", async () => {
+		const firstUrl = "https://example.test/first.png";
+		const secondUrl = "https://example.test/second.png";
+		const agentId = stringToUuid("partial-media-agent");
+		const roomId = stringToUuid("partial-media-room");
+		const recordedMedia: string[] = [];
+		const callback: HandlerCallback = async () => [
+			{
+				id: stringToUuid("partial-media-receipt"),
+				agentId,
+				entityId: agentId,
+				roomId,
+				content: {
+					attachments: [
+						{ id: "first", url: firstUrl, contentType: "image/png" },
+						{
+							id: "unrelated",
+							url: "https://example.test/unrelated.png",
+							contentType: "image/png",
+						},
+					],
+				},
+			},
+		];
+		const wrapped = wrapSingleTurnVisibleCallback(
+			{
+				agentId,
+				logger,
+				reportError: () => undefined,
+			},
+			{
+				id: stringToUuid("partial-media-message"),
+				roomId,
+				entityId: stringToUuid("partial-media-user"),
+			},
+			callback,
+			undefined,
+			(urls) => recordedMedia.push(...urls),
+		);
+		if (!wrapped) throw new Error("visible callback wrapper is missing");
+
+		await wrapped({
+			attachments: [
+				{ id: "first", url: firstUrl, contentType: "image/png" },
+				{ id: "second", url: secondUrl, contentType: "image/png" },
+			],
+		});
+
+		expect(recordedMedia).toEqual([firstUrl]);
 	});
 });

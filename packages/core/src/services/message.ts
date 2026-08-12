@@ -10530,11 +10530,27 @@ export function wrapSingleTurnVisibleCallback(
 		);
 		const delivered = await callback(response, actionName);
 		if (Array.isArray(delivered) && delivered.length > 0) {
-			const attachmentUrls = (response.attachments ?? [])
-				.map((attachment) => attachment.url.trim())
-				.filter((url) => url.length > 0);
-			if (attachmentUrls.length > 0) {
-				recordDeliveredMediaUrls?.(attachmentUrls);
+			// A nonempty receipt proves only that the callback delivered something.
+			// Connector partial-success paths can return a text memory after dropping
+			// an attachment, so media authority comes from receipt contents and remains
+			// bounded to the exact URLs this callback attempted.
+			const attemptedUrls = new Set(
+				(response.attachments ?? [])
+					.map((attachment) => attachment.url)
+					.filter((url) => url.trim().length > 0),
+			);
+			if (attemptedUrls.size > 0) {
+				const deliveredUrls = new Set<string>();
+				for (const memory of delivered) {
+					for (const attachment of memory.content.attachments ?? []) {
+						if (attemptedUrls.has(attachment.url)) {
+							deliveredUrls.add(attachment.url);
+						}
+					}
+				}
+				if (deliveredUrls.size > 0) {
+					recordDeliveredMediaUrls?.([...deliveredUrls]);
+				}
 			}
 		}
 		if (rawUnsanitizedText) {

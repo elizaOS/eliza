@@ -57,6 +57,28 @@ describe("fetchRemoteMedia", () => {
 		expect(aborted).toBe(true);
 	});
 
+	it("normalizes a DNS-pinned response stream failure as MediaFetchError", async () => {
+		const body = new ReadableStream<Uint8Array>({
+			pull() {
+				throw new Error("response stream failed after headers");
+			},
+		});
+
+		await expect(
+			fetchRemoteMedia({
+				url: "https://example.com/broken.wav",
+				maxBytes: 1024,
+				timeoutMs: 30_000,
+				lookupFn: async () => [{ address: "93.184.216.34", family: 4 }],
+				pinnedFetchImpl: async () => new Response(body),
+			}),
+		).rejects.toMatchObject({
+			name: "MediaFetchError",
+			code: "fetch_failed",
+			message: "Failed to read fetched media response",
+		});
+	});
+
 	it("cancels a 4 MiB 503 body as soon as the caller's 1 KiB cap is crossed", async () => {
 		const chunk = new Uint8Array(1024);
 		let pulls = 0;

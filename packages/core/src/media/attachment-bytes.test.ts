@@ -59,6 +59,37 @@ describe("fetchAttachmentMediaBytes", () => {
 		});
 	});
 
+	it("normalizes an untyped remote response-read failure", async () => {
+		const cause = new Error("remote body read exploded");
+		fetchRemoteMediaMock.mockRejectedValue(cause);
+
+		await expect(
+			fetchAttachmentMediaBytes(
+				{} as Pick<IAgentRuntime, "fetch">,
+				"https://example.test/broken.wav",
+			),
+		).rejects.toMatchObject({
+			name: "MediaFetchError",
+			code: "fetch_failed",
+			cause,
+		});
+	});
+
+	it("preserves a typed remote failure by name across module duplication", async () => {
+		const typed = Object.assign(new Error("bounded remote failure"), {
+			name: "MediaFetchError",
+			code: "max_bytes",
+		});
+		fetchRemoteMediaMock.mockRejectedValue(typed);
+
+		await expect(
+			fetchAttachmentMediaBytes(
+				{} as Pick<IAgentRuntime, "fetch">,
+				"https://example.test/large.wav",
+			),
+		).rejects.toBe(typed);
+	});
+
 	it("aborts a stalled canonical loopback fetch after the shared timeout", async () => {
 		const controller = new AbortController();
 		const timeoutSpy = vi

@@ -32,15 +32,26 @@ export async function fetchAttachmentMediaBytes(
 	url: string,
 ): Promise<FetchMediaResult & { contentType: string }> {
 	if (/^https?:\/\//.test(url)) {
-		const result = await fetchRemoteMedia({
-			url,
-			maxBytes: ATTACHMENT_MEDIA_MAX_BYTES,
-			timeoutMs: ATTACHMENT_MEDIA_TIMEOUT_MS,
-		});
-		return {
-			...result,
-			contentType: result.contentType ?? "application/octet-stream",
-		};
+		try {
+			const result = await fetchRemoteMedia({
+				url,
+				maxBytes: ATTACHMENT_MEDIA_MAX_BYTES,
+				timeoutMs: ATTACHMENT_MEDIA_TIMEOUT_MS,
+			});
+			return {
+				...result,
+				contentType: result.contentType ?? "application/octet-stream",
+			};
+		} catch (error) {
+			// error-policy:J2 Normalize the whole guarded remote boundary while
+			// preserving typed failures across duplicated module instances.
+			if (isMediaFetchError(error)) throw error;
+			throw new MediaFetchError(
+				"fetch_failed",
+				"Failed to fetch attachment remotely",
+				error,
+			);
+		}
 	}
 
 	if (!LOCAL_MEDIA_STORE_URL.test(url)) {

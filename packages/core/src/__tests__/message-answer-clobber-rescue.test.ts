@@ -602,9 +602,14 @@ describe("answer-clobber rescue", () => {
 
 describe("media deliverable suppresses the trailing progress ack", () => {
 	const IMAGE_URL = "https://example.test/neon-cat.png";
+	const SECOND_IMAGE_URL = "https://example.test/neon-dog.png";
 
 	function generateMediaAction(
-		options: { turnComplete?: boolean; userFacingText?: string | false } = {},
+		options: {
+			turnComplete?: boolean;
+			userFacingText?: string | false;
+			attachments?: Media[];
+		} = {},
 	): Action {
 		const attachment: Media = {
 			id: "generated-image",
@@ -613,6 +618,7 @@ describe("media deliverable suppresses the trailing progress ack", () => {
 			contentType: "image/png",
 			source: "media-generation",
 		};
+		const attachments = options.attachments ?? [attachment];
 		return {
 			name: "GENERATE_MEDIA_TEST",
 			description: "generates an image and delivers it as an attachment",
@@ -625,7 +631,7 @@ describe("media deliverable suppresses the trailing progress ack", () => {
 			// URLs. Only a nonempty callback receipt may establish delivery.
 			handler: async (_rt, _msg, _state, _opts, cb) => {
 				await cb?.({
-					attachments: [attachment],
+					attachments,
 					text: "",
 					actions: ["GENERATE_MEDIA_TEST"],
 					source: "media-generation",
@@ -642,8 +648,8 @@ describe("media deliverable suppresses the trailing progress ack", () => {
 							}),
 					data: {
 						actionName: "GENERATE_MEDIA_TEST",
-						mediaUrl: IMAGE_URL,
-						imageUrl: IMAGE_URL,
+						mediaUrl: attachments[0]?.url ?? IMAGE_URL,
+						imageUrl: attachments[0]?.url ?? IMAGE_URL,
 					},
 				};
 			},
@@ -774,6 +780,123 @@ describe("media deliverable suppresses the trailing progress ack", () => {
 		expect(attempted).toHaveLength(1);
 		expect(deliveredMediaUrls).toEqual([]);
 		expect(finalText).toBe(PROGRESS_ACK);
+	});
+
+	it("keeps the progress ack when a nonempty receipt contains only text", async () => {
+		const runtime = makeRuntime({
+			responses: [
+				{
+					expectModelType: String(ModelType.RESPONSE_HANDLER),
+					body: stage1Response({
+						contexts: ["general"],
+						replyText: PROGRESS_ACK,
+						extra: { candidateActionNames: ["GENERATE_MEDIA_TEST"] },
+					}),
+				},
+				{
+					expectModelType: String(ModelType.ACTION_PLANNER),
+					body: {
+						text: "",
+						toolCalls: [
+							{
+								id: "gen-media-text-only-receipt",
+								name: "GENERATE_MEDIA_TEST",
+								arguments: {},
+							},
+						],
+					},
+				},
+			],
+			evaluators: [],
+			actions: [
+				generateMediaAction({
+					turnComplete: true,
+					userFacingText: PROGRESS_ACK,
+				}),
+			],
+		});
+
+		const { deliveredMediaUrls, finalText } = await runTurn({
+			runtime,
+			callback: async () => [
+				{
+					...makeMessage(),
+					id: "00000000-0000-0000-0000-000000000098" as UUID,
+					content: { text: "The connector delivered a text-only fallback." },
+				},
+			],
+			noEarlyReply: true,
+		});
+
+		expect(deliveredMediaUrls).toEqual([]);
+		expect(finalText).toBe(PROGRESS_ACK);
+	});
+
+	it("sanitizes only the attachment URL proven by a partial receipt", async () => {
+		const first: Media = {
+			id: "generated-image",
+			url: IMAGE_URL,
+			contentType: "image/png",
+			source: "media-generation",
+		};
+		const second: Media = {
+			id: "generated-image-two",
+			url: SECOND_IMAGE_URL,
+			contentType: "image/png",
+			source: "media-generation",
+		};
+		const runtime = makeRuntime({
+			responses: [
+				{
+					expectModelType: String(ModelType.RESPONSE_HANDLER),
+					body: stage1Response({
+						contexts: ["general"],
+						replyText: PROGRESS_ACK,
+						extra: { candidateActionNames: ["GENERATE_MEDIA_TEST"] },
+					}),
+				},
+				{
+					expectModelType: String(ModelType.ACTION_PLANNER),
+					body: {
+						text: "",
+						toolCalls: [
+							{
+								id: "gen-media-partial-receipt",
+								name: "GENERATE_MEDIA_TEST",
+								arguments: {},
+							},
+						],
+					},
+				},
+				{
+					expectModelType: String(ModelType.RESPONSE_HANDLER),
+					body: JSON.stringify({
+						success: true,
+						decision: "FINISH",
+						thought: "One attachment delivered.",
+						messageToUser: `Here they are:\n${IMAGE_URL}\n${SECOND_IMAGE_URL}`,
+					}),
+				},
+			],
+			evaluators: [],
+			actions: [generateMediaAction({ attachments: [first, second] })],
+		});
+
+		const { deliveredMediaUrls, finalText } = await runTurn({
+			runtime,
+			callback: async (content) => [
+				{
+					...makeMessage(),
+					id: "00000000-0000-0000-0000-000000000097" as UUID,
+					content: { ...content, attachments: [first] },
+				},
+			],
+			noEarlyReply: true,
+		});
+
+		expect(deliveredMediaUrls).toEqual([IMAGE_URL]);
+		expect(finalText).not.toContain(IMAGE_URL);
+		expect(finalText).toContain(SECOND_IMAGE_URL);
 	});
 
 	it("keeps the progress ack when no attachment callback exists", async () => {

@@ -280,6 +280,16 @@ export async function fetchRemoteMedia(
 			buffer,
 			...metadata,
 		};
+	} catch (error) {
+		// error-policy:J2 The guarded transport can still fail while headers or the
+		// response stream are consumed. Keep the documented typed error contract
+		// across that entire boundary, including duplicated module instances.
+		if (error instanceof Error && error.name === "MediaFetchError") throw error;
+		throw new MediaFetchError(
+			"fetch_failed",
+			"Failed to read fetched media response",
+			error,
+		);
 	} finally {
 		await release();
 	}
