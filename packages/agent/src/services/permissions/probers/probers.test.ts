@@ -18,7 +18,7 @@ import {
 import os from "node:os";
 import path from "node:path";
 import { PERMISSION_IDS, type PermissionId } from "@elizaos/shared";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { Prober } from "../contracts.ts";
 import {
@@ -28,8 +28,14 @@ import {
   mapNativePrivacyAuthStatus,
   mapUNAuthStatus,
   platformUnsupportedState,
+  resolvePackagedNativePermissionsDylib,
 } from "./_bridge.ts";
 import { ALL_PROBERS, PROBERS_BY_ID } from "./index.ts";
+import { waitForAuthorizationDecision } from "./notifications.ts";
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 // Permission ids whose prober is contributed by an opt-in plugin at init
 // (via registry.registerProber), NOT by the central ALL_PROBERS enumeration.
@@ -133,6 +139,26 @@ describe("permission probers", () => {
     }
   });
 
+  it("resolves the native bridge sealed into an Electrobun app", () => {
+    const execPath = path.join(
+      "/Applications",
+      "Eliza.app",
+      "Contents",
+      "MacOS",
+      "bun",
+    );
+    expect(resolvePackagedNativePermissionsDylib(execPath)).toBe(
+      path.join(
+        "/Applications",
+        "Eliza.app",
+        "Contents",
+        "Resources",
+        "app",
+        "libMacWindowEffects.dylib",
+      ),
+    );
+  });
+
   it("maps the native dylib camera/microphone status contract", () => {
     expect(mapAVAuthStatus(0)).toBe("not-determined");
     expect(mapAVAuthStatus(1)).toBe("denied");
@@ -145,6 +171,82 @@ describe("permission probers", () => {
     expect(mapUNAuthStatus(1)).toBe("denied");
     expect(mapUNAuthStatus(2)).toBe("granted");
     expect(mapUNAuthStatus(3)).toBe("restricted");
+    expect(() => mapUNAuthStatus(-1)).toThrowError(
+      /notification authorization request/i,
+    );
+  });
+
+  it.each([
+    ["grant", 2],
+    ["denial", 1],
+    ["native failure", -1],
+  ])("waits for a notification %s decision", async (_label, decision) => {
+    vi.useFakeTimers();
+    const bridge = {
+      requestNotificationPermission: vi.fn(() => 0),
+      checkNotificationPermission: vi.fn(() => decision),
+    };
+
+    const pending = waitForAuthorizationDecision(bridge);
+    await vi.advanceTimersByTimeAsync(250);
+
+    await expect(pending).resolves.toBe(decision);
+    expect(bridge.checkNotificationPermission).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps a still-open notification prompt pending until a real decision", async () => {
+    vi.useFakeTimers();
+    let decision = 0;
+    const bridge = {
+      requestNotificationPermission: vi.fn(() => 0),
+      checkNotificationPermission: vi.fn(() => decision),
+    };
+
+    const pending = waitForAuthorizationDecision(bridge);
+    let settled = false;
+    void pending.then(() => {
+      settled = true;
+    });
+    await vi.advanceTimersByTimeAsync(15_000);
+    expect(settled).toBe(false);
+
+    decision = 2;
+    await vi.advanceTimersByTimeAsync(250);
+    await expect(pending).resolves.toBe(2);
+  });
+
+  it("waits through an in-flight native status query", async () => {
+    vi.useFakeTimers();
+    const decisions = [-2, 2];
+    const bridge = {
+      requestNotificationPermission: vi.fn(() => 0),
+      checkNotificationPermission: vi.fn(() => decisions.shift() ?? 2),
+    };
+
+    const pending = waitForAuthorizationDecision(bridge);
+    await vi.advanceTimersByTimeAsync(500);
+
+    await expect(pending).resolves.toBe(2);
+    expect(bridge.checkNotificationPermission).toHaveBeenCalledTimes(2);
+  });
+
+  it("times out when the notification prompt never reaches a decision", async () => {
+    vi.useFakeTimers();
+    const bridge = {
+      requestNotificationPermission: vi.fn(() => 0),
+      checkNotificationPermission: vi.fn(() => -2),
+    };
+
+    const pending = waitForAuthorizationDecision(bridge, {
+      timeoutMs: 500,
+      pollIntervalMs: 250,
+    });
+    const rejection = expect(pending).rejects.toMatchObject({
+      code: "NOTIFICATION_AUTHORIZATION_TIMEOUT",
+      context: { operation: "request", timeoutMs: 500 },
+    });
+    await vi.advanceTimersByTimeAsync(750);
+    await rejection;
   });
 
   it("maps the native EventKit/Contacts status contract", () => {
@@ -172,6 +274,15 @@ describe("permission probers", () => {
         "queryAppleEventsTccStatus",
       );
     }
+  });
+
+  it("never fabricates a notification request through AppleScript", () => {
+    const source = readFileSync(
+      new URL("notifications.ts", import.meta.url),
+      "utf8",
+    );
+    expect(source).not.toContain("runOsascript");
+    expect(source).toContain("NOTIFICATION_NATIVE_BRIDGE_UNAVAILABLE");
   });
 
   it("keeps native Apple data probers off Automation", () => {

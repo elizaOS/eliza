@@ -74,6 +74,7 @@ function makeService() {
 	};
 	const service = {
 		accountId: "test",
+		admitInboundMessage: vi.fn(() => true),
 		allowAllSlashCommands: new Set(),
 		allowedChannelIds: undefined,
 		buildMemoryFromMessage: vi.fn(),
@@ -137,6 +138,24 @@ describe("messageCreate — persisted mute gate before ingestion", () => {
 		service.client.emit("messageCreate", makeChannelMessage("chan-1"));
 		await tick();
 
+		expect(debouncerState.channelEnqueue).not.toHaveBeenCalled();
+		expect(service.messageManager.handleMessage).not.toHaveBeenCalled();
+	});
+
+	it("drops a post-cordon delivery before ingestion or dispatch", async () => {
+		const { service } = makeService();
+		service.admitInboundMessage.mockReturnValue(false);
+		wire(service);
+
+		const message = makeChannelMessage("chan-shutdown");
+		service.client.emit("messageCreate", message);
+		await tick();
+
+		expect(service.admitInboundMessage).toHaveBeenCalledWith(
+			message.id,
+			message.channel.id,
+		);
+		expect(service.buildMemoryFromMessage).not.toHaveBeenCalled();
 		expect(debouncerState.channelEnqueue).not.toHaveBeenCalled();
 		expect(service.messageManager.handleMessage).not.toHaveBeenCalled();
 	});

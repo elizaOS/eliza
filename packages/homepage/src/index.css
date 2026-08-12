@@ -1203,6 +1203,71 @@ body {
   }
 }
 
+@media (max-width: 900px) {
+  .app-header {
+    position: relative;
+    flex-wrap: wrap;
+  }
+
+  .app-nav {
+    width: 100%;
+    flex-wrap: wrap;
+    overflow: visible;
+    white-space: normal;
+  }
+
+  .app-hero {
+    padding-top: 2rem;
+  }
+
+  .app-download-band,
+  .app-download-band > *,
+  .app-store-card > div,
+  .app-os-card-head > * {
+    min-width: 0;
+  }
+
+  .app-download-grid,
+  .app-store-grid,
+  .app-os-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .app-store-card,
+  .app-os-card-head {
+    flex-wrap: wrap;
+  }
+
+  .app-store-card strong,
+  .app-store-card span,
+  .app-os-card-head strong,
+  .app-os-status {
+    overflow-wrap: anywhere;
+  }
+
+  .app-download-unavailable > * {
+    min-width: 0;
+    max-width: 100%;
+    overflow-wrap: anywhere;
+  }
+
+  .app-download-unavailable .app-cta {
+    width: auto;
+    white-space: normal;
+  }
+}
+
+.landing-platform-switcher {
+  width: max-content;
+  max-width: calc(100vw - 1rem);
+}
+
+.landing-platform-switcher-row {
+  max-width: 100%;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
 /* Reduced motion: this standalone homepage owns animated wordmarks, pulse loops,
    reveal transitions, and smooth scrolling, so the global override intentionally
    wins over component-level animation declarations for accessibility. */

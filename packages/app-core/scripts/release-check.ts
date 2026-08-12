@@ -276,6 +276,36 @@ export const requiredMacStaplerFailureBlock = [
   "fi",
 ] as const;
 
+/**
+ * The stager block that derives the permission host's signing identity from
+ * the app bundle rather than assigning a helper-owned identifier.
+ */
+export const requiredMacAppIdentifierReadBlock = [
+  'APP_INFO_PLIST_PATH="$STAGED_APP_PATH/Contents/Info.plist"',
+  'if ! APP_IDENTIFIER="$(/usr/bin/plutil -extract CFBundleIdentifier raw -expect string -o - "$APP_INFO_PLIST_PATH" 2>/dev/null)"; then',
+  'echo "stage-macos-release-artifacts: failed to read CFBundleIdentifier from $APP_INFO_PLIST_PATH" >&2',
+  "exit 1",
+  "fi",
+  'if [[ ! "$APP_IDENTIFIER" =~ ^[A-Za-z0-9][A-Za-z0-9.-]*$ ]]; then',
+  'echo "stage-macos-release-artifacts: invalid CFBundleIdentifier: $APP_IDENTIFIER" >&2',
+  "exit 1",
+  "fi",
+] as const;
+
+/**
+ * The stager block that signs and verifies only the top-level Bun permission
+ * host with the app identity before the outer bundle is sealed.
+ */
+export const requiredMacPermissionHostIdentityBlock = [
+  'bun_permission_host_path="$macos_code_dir/bun"',
+  'if [[ ! -e "$bun_permission_host_path" ]]; then',
+  'echo "stage-macos-release-artifacts: Bun permission host is missing: $bun_permission_host_path" >&2',
+  "exit 1",
+  "fi",
+  'sign_macos_runtime_target_with_identifier "$bun_permission_host_path" "$APP_IDENTIFIER"',
+  'codesign --verify --strict --verbose=2 -R "=identifier \\"$APP_IDENTIFIER\\"" "$bun_permission_host_path"',
+] as const;
+
 const forbiddenWorkflowSnippets = [
   ' -name "*.exe" -o \\',
   'bun install -g "rcedit@4.0.1"',
@@ -1110,6 +1140,34 @@ function assertMacArtifactStagerLooksCorrect() {
     }
     console.error(
       "  A require-staple release must exit non-zero rather than fall through to the warning.",
+    );
+    process.exit(1);
+  }
+
+  if (!containsContiguousBlock(script, requiredMacAppIdentifierReadBlock)) {
+    console.error(
+      "release-check: macOS artifact stager's app-identifier block is missing, reordered, or no longer contiguous:",
+    );
+    for (const line of requiredMacAppIdentifierReadBlock) {
+      console.error(`  | ${line}`);
+    }
+    console.error(
+      "  The permission host must inherit the staged app bundle's canonical identifier.",
+    );
+    process.exit(1);
+  }
+
+  if (
+    !containsContiguousBlock(script, requiredMacPermissionHostIdentityBlock)
+  ) {
+    console.error(
+      "release-check: macOS artifact stager's permission-host identity block is missing, reordered, or no longer contiguous:",
+    );
+    for (const line of requiredMacPermissionHostIdentityBlock) {
+      console.error(`  | ${line}`);
+    }
+    console.error(
+      "  The top-level Bun permission host must be signed and verified with the app identity before the bundle is sealed.",
     );
     process.exit(1);
   }

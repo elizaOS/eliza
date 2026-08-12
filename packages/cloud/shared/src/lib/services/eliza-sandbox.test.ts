@@ -6205,6 +6205,13 @@ describe("isUnrecoverableSnapshotError (permanent-vs-transient classification)",
     expect(isUnrecoverableSnapshotError(new Error("State restore failed: HTTP 429 "))).toBe(false);
     expect(isUnrecoverableSnapshotError(new Error("Snapshot fetch failed: HTTP 500"))).toBe(false);
     expect(isUnrecoverableSnapshotError(new Error("Snapshot fetch failed: HTTP 503"))).toBe(false);
+    // #18228: a diagnostic body suffix must not change transient-vs-permanent
+    // classification — the regex is anchored at the status prefix.
+    expect(
+      isUnrecoverableSnapshotError(
+        new Error("Snapshot fetch failed: HTTP 500 Durable Object storage quota exceeded"),
+      ),
+    ).toBe(false);
   });
 
   test("matches only this file's snapshot throw shapes — anchored, exact status", async () => {
@@ -8696,6 +8703,108 @@ describe("ElizaSandboxService updateAgentProfile / updateAgentEnvironment", () =
       mint.mockRestore();
       revoke.mockRestore();
     }
+  });
+});
+
+// Snapshot fetch error-body excerpt (#18228 / #18336).
+describe("readErrorBodyExcerpt (snapshot transfer diagnostics)", () => {
+  function errorResponse(
+    body: string,
+    init?: { contentType?: string; splitAtBytes?: number[] },
+  ): Response {
+    const bytes = new TextEncoder().encode(body);
+    const splitAt = init?.splitAtBytes ?? [bytes.length];
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        let offset = 0;
+        for (const end of splitAt) {
+          if (offset >= bytes.length) break;
+          controller.enqueue(bytes.subarray(offset, Math.min(end, bytes.length)));
+          offset = end;
+        }
+        if (offset < bytes.length) {
+          controller.enqueue(bytes.subarray(offset));
+        }
+        controller.close();
+      },
+    });
+    const headers = new Headers();
+    if (init?.contentType) {
+      headers.set("content-type", init.contentType);
+    }
+    return new Response(stream, { status: 500, headers });
+  }
+
+  test("returns null for an empty body", async () => {
+    const { readErrorBodyExcerpt } = await import("./eliza-sandbox.ts?actual");
+    expect(await readErrorBodyExcerpt(errorResponse(""))).toBeNull();
+    expect(await readErrorBodyExcerpt(new Response(null, { status: 500 }))).toBeNull();
+  });
+
+  test("returns null for whitespace-only bodies", async () => {
+    const { readErrorBodyExcerpt } = await import("./eliza-sandbox.ts?actual");
+    expect(await readErrorBodyExcerpt(errorResponse("   \n\t  "))).toBeNull();
+  });
+
+  test("extracts JSON {error} and {message} fields from short bodies", async () => {
+    const { readErrorBodyExcerpt } = await import("./eliza-sandbox.ts?actual");
+    expect(
+      await readErrorBodyExcerpt(
+        errorResponse('{"error":"Durable Object storage quota exceeded"}', {
+          contentType: "application/json",
+        }),
+      ),
+    ).toBe("Durable Object storage quota exceeded");
+    expect(
+      await readErrorBodyExcerpt(
+        errorResponse('{"message":"Internal agent error during snapshot serialization"}', {
+          contentType: "application/json",
+        }),
+      ),
+    ).toBe("Internal agent error during snapshot serialization");
+  });
+
+  test("returns trimmed plain-text and proxy error pages", async () => {
+    const { readErrorBodyExcerpt } = await import("./eliza-sandbox.ts?actual");
+    expect(
+      await readErrorBodyExcerpt(
+        errorResponse("  Worker exceeded CPU time limit  ", { contentType: "text/plain" }),
+      ),
+    ).toBe("Worker exceeded CPU time limit");
+    expect(
+      await readErrorBodyExcerpt(
+        errorResponse("<html>Bad Gateway: upstream timeout</html>", {
+          contentType: "text/html",
+        }),
+      ),
+    ).toBe("<html>Bad Gateway: upstream timeout</html>");
+  });
+
+  test("truncates bodies past the 512-byte excerpt budget", async () => {
+    const { readErrorBodyExcerpt } = await import("./eliza-sandbox.ts?actual");
+    const body = "y".repeat(600);
+    const excerpt = await readErrorBodyExcerpt(
+      errorResponse(body, { contentType: "text/plain", splitAtBytes: [256, 512, 700] }),
+    );
+    expect(excerpt).toBe("y".repeat(512));
+    expect(Buffer.byteLength(excerpt ?? "", "utf-8")).toBe(512);
+  });
+
+  test("flushes a multi-byte UTF-8 character split across stream chunks", async () => {
+    const { readErrorBodyExcerpt } = await import("./eliza-sandbox.ts?actual");
+    const excerpt = await readErrorBodyExcerpt(
+      errorResponse("😀", { contentType: "text/plain", splitAtBytes: [2] }),
+    );
+    expect(excerpt).toBe("😀");
+  });
+
+  test("truncates at the byte budget without a garbled trailing character", async () => {
+    const { readErrorBodyExcerpt } = await import("./eliza-sandbox.ts?actual");
+    const body = `${"x".repeat(510)}😀`;
+    const excerpt = await readErrorBodyExcerpt(
+      errorResponse(body, { contentType: "text/plain", splitAtBytes: [512] }),
+    );
+    expect(excerpt).toBe("x".repeat(510));
   });
 });
 

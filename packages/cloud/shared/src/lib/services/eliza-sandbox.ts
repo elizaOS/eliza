@@ -75,6 +75,7 @@ import {
 } from "./ai-billing";
 import { aiBillingRecordsService } from "./ai-billing-records";
 import { apiKeysService } from "./api-keys";
+import { chatSseFrame, normalizeChatSseDonePayload } from "./chat-sse-frames";
 import { imageRequiresDigestPin, isCodingContainerImageAllowed } from "./coding-containers";
 import type { CreditReconciliationResult, CreditReservation } from "./credits";
 import { holdsCountedNodeSlot, isDeletionContinuation } from "./docker-node-workload-queries";
@@ -522,6 +523,14 @@ const DB_LIVENESS_RESTART_BUDGET = 3;
 const DB_LIVENESS_RESTART_COOLDOWN_MS = 10 * 60_000;
 const DB_LIVENESS_RESTART_BUDGET_WINDOW_MS = 60 * 60_000;
 const SNAPSHOT_FETCH_TIMEOUT_MS = 120_000;
+/**
+ * Maximum bytes to read from a snapshot-fetch error response body for
+ * diagnostic logging (#18228). The body distinguishes an agent-side 500
+ * (carries the thrown error message) from a bridge/proxy-hop 500 (proxy
+ * error page or empty). Bounded so a malicious or misconfigured upstream
+ * cannot exhaust Worker memory.
+ */
+const SNAPSHOT_ERROR_BODY_EXCERPT_BYTES = 512;
 /**
  * Hydration budgets (#16639): the worker heap died buffering unbounded
  * snapshot bodies (`res.json()` retained everything, then a re-stringify
@@ -989,6 +998,91 @@ class ManagedLaunchOwnershipLost extends Error {
     super("Managed launch lost its agent ownership CAS");
     this.name = "ManagedLaunchOwnershipLost";
   }
+}
+
+/**
+ * Read a bounded excerpt of an error response body for diagnostic logging.
+ * Returns a trimmed string or null when the body is empty. Used by
+ * `fetchSnapshotState` (#18228) so an agent-side 500 (carrying the thrown
+ * error message) is distinguishable from a bridge/proxy-hop 500 (proxy error
+ * page or empty body) in Worker logs.
+ *
+ * Streams the body via a ReadableStream reader and stops after
+ * SNAPSHOT_ERROR_BODY_EXCERPT_BYTES of UTF-8, cancelling the remainder —
+ * never buffering the full response (a malicious upstream could OOM the
+ * Worker with an unbounded body).
+ */
+export async function readErrorBodyExcerpt(
+  res: Pick<Response, "body" | "headers">,
+): Promise<string | null> {
+  // error-policy:J2 non-blocking diagnostic — a body-read failure degrades to
+  // a null excerpt (status-only message) without aborting the snapshot path.
+  try {
+    if (!res.body) return null;
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder("utf-8", { fatal: false });
+    const chunks: string[] = [];
+    let totalBytes = 0;
+    try {
+      // error-policy:J2 stream cancellation after the byte budget is reached.
+      while (totalBytes < SNAPSHOT_ERROR_BODY_EXCERPT_BYTES) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        const remaining = SNAPSHOT_ERROR_BODY_EXCERPT_BYTES - totalBytes;
+        const sliced = value.length >= remaining ? truncateUtf8Bytes(value, remaining) : value;
+        chunks.push(decoder.decode(sliced, { stream: true }));
+        totalBytes += sliced.length;
+      }
+    } finally {
+      // Cancel the reader to release the connection even if the body is larger.
+      await reader.cancel().catch(() => {});
+    }
+    // Flush any trailing multi-byte UTF-8 sequence held by the stream decoder.
+    chunks.push(decoder.decode());
+    const body = chunks.join("");
+    if (!body.trim()) return null;
+    const contentType = res.headers.get("content-type") ?? "";
+    // JSON error bodies carry structured diagnostics — try to extract a message.
+    if (contentType.includes("application/json")) {
+      try {
+        const data = JSON.parse(body) as { error?: unknown; message?: unknown };
+        const msg = data.error ?? data.message;
+        if (typeof msg === "string" && msg.trim()) {
+          return msg.trim();
+        }
+      } catch {
+        // Not valid JSON — fall through to raw excerpt.
+      }
+    }
+    return body.trim();
+  } catch {
+    return null;
+  }
+}
+
+/** Truncate UTF-8 bytes without splitting a multi-byte code point. */
+function truncateUtf8Bytes(bytes: Uint8Array, maxBytes: number): Uint8Array {
+  const limit = Math.min(bytes.length, maxBytes);
+  let safeEnd = limit;
+  while (safeEnd > 0) {
+    const byte = bytes[safeEnd - 1]!;
+    if ((byte & 0x80) === 0) {
+      return bytes.slice(0, safeEnd);
+    }
+    if ((byte & 0xc0) === 0x80) {
+      safeEnd--;
+      continue;
+    }
+    let sequenceLength = 1;
+    if ((byte & 0xf8) === 0xf0) sequenceLength = 4;
+    else if ((byte & 0xf0) === 0xe0) sequenceLength = 3;
+    else if ((byte & 0xe0) === 0xc0) sequenceLength = 2;
+    if (safeEnd - 1 + sequenceLength <= limit) {
+      return bytes.slice(0, limit);
+    }
+    return bytes.slice(0, safeEnd - 1);
+  }
+  return bytes.slice(0, 0);
 }
 
 export class ElizaSandboxService {
@@ -3793,13 +3887,13 @@ export class ElizaSandboxService {
                 reply += part.text;
                 controller.enqueue(
                   encoder.encode(
-                    `event: chunk\ndata: ${JSON.stringify({
+                    chatSseFrame("chunk", {
                       messageId,
                       chunk: part.text,
                       text: part.text,
                       fullText: reply,
                       timestamp: Date.now(),
-                    })}\n\n`,
+                    }),
                   ),
                 );
                 continue;
@@ -3902,24 +3996,24 @@ export class ElizaSandboxService {
               }
               // Attach a VIEWS navigation handoff for a deterministic nav turn so
               // the PWA opens the view (findViewActionHandoff → navigate event in
-              // packages/ui/src/view-action-handoff.ts). Non-nav turns omit it,
-              // so the `done` frame is byte-identical to before for normal chat.
+              // packages/ui/src/view-action-handoff.ts). Non-nav turns omit it.
               const doneData = turn.navIntent
                 ? {
                     messageId,
                     text: finalReply,
+                    fullText: finalReply,
                     actionResults: [navIntentActionResult(turn.navIntent)],
                   }
-                : { messageId, text: finalReply };
-              controller.enqueue(
-                encoder.encode(`event: done\ndata: ${JSON.stringify(doneData)}\n\n`),
-              );
+                : { messageId, text: finalReply, fullText: finalReply };
+              controller.enqueue(encoder.encode(chatSseFrame("done", doneData)));
             }
             if (!finished) {
               await settleReservation(0);
               controller.enqueue(
                 encoder.encode(
-                  `event: error\ndata: ${JSON.stringify({ message: "Shared runtime stream ended without completion" })}\n\n`,
+                  chatSseFrame("error", {
+                    message: "Shared runtime stream ended without completion",
+                  }),
                 ),
               );
             }
@@ -3936,9 +4030,7 @@ export class ElizaSandboxService {
               agentId: rec.id,
             });
             controller.enqueue(
-              encoder.encode(
-                `event: error\ndata: ${JSON.stringify({ message: "Shared runtime stream failed" })}\n\n`,
-              ),
+              encoder.encode(chatSseFrame("error", { message: "Shared runtime stream failed" })),
             );
           } finally {
             controller.close();
@@ -6146,10 +6238,11 @@ export class ElizaSandboxService {
       messageId,
       chunk: text,
       text,
+      fullText: text,
       timestamp: Date.now(),
     };
     return new Response(
-      `event: chunk\ndata: ${JSON.stringify(chunk)}\n\nevent: done\ndata: ${JSON.stringify({ messageId, text })}\n\n`,
+      chatSseFrame("chunk", chunk) + chatSseFrame("done", { messageId, text, fullText: text }),
       {
         status: 200,
         headers: {
@@ -6194,22 +6287,25 @@ export class ElizaSandboxService {
           const delta = typeof data.text === "string" ? data.text : "";
           accumulated = typeof data.fullText === "string" ? data.fullText : accumulated + delta;
           controller.enqueue(
-            `event: chunk\ndata: ${JSON.stringify({
+            chatSseFrame("chunk", {
               messageId,
               chunk: delta,
               text: delta,
               fullText: accumulated,
               timestamp: Date.now(),
-            })}\n\n`,
+            }),
           );
           return;
         }
         if (data?.type === "done") {
           controller.enqueue(
-            `event: done\ndata: ${JSON.stringify({
-              messageId,
-              text: typeof data.fullText === "string" ? data.fullText : accumulated,
-            })}\n\n`,
+            chatSseFrame(
+              "done",
+              normalizeChatSseDonePayload(data, {
+                messageId,
+                fullText: accumulated,
+              }),
+            ),
           );
           return;
         }
@@ -6247,7 +6343,7 @@ export class ElizaSandboxService {
   }
 
   private createBridgeSseErrorResponse(message: string): Response {
-    return new Response(`event: error\ndata: ${JSON.stringify({ message })}\n\n`, {
+    return new Response(chatSseFrame("error", { message }), {
       status: 200,
       headers: {
         "Content-Type": "text/event-stream; charset=utf-8",
@@ -9862,7 +9958,17 @@ export class ElizaSandboxService {
       throw new Error(SNAPSHOT_ENDPOINT_UNSUPPORTED);
     }
     if (!res.ok) {
-      throw new Error(`Snapshot fetch failed: HTTP ${res.status}`);
+      // #18228: the snapshot transfer failed somewhere between the agent's HTTP
+      // handler and this fetch — an agent-side 500 carries a diagnostic body
+      // (the thrown message), while a bridge/proxy hop 500 carries a proxy
+      // error page or an empty body. The Worker log previously reported only
+      // the status code and discarded the body, making the two indistinguishable.
+      // Read a bounded excerpt of the body and include it after the canonical
+      // `Snapshot fetch failed: HTTP <status>` prefix so the existing
+      // SNAPSHOT_HTTP_ERROR_SHAPE regex (anchored at the status) still classifies
+      // it, while the operator sees where the hop failed.
+      const excerpt = await readErrorBodyExcerpt(res);
+      throw new Error(`Snapshot fetch failed: HTTP ${res.status}${excerpt ? ` ${excerpt}` : ""}`);
     }
 
     // Bounded hydration (#16639): stream and count — bytes past the raw

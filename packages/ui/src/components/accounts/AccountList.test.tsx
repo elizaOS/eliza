@@ -54,7 +54,7 @@ const accounts = vi.hoisted(() => ({
 }));
 
 vi.mock("../../hooks/useAccounts", () => ({ useAccounts: () => accounts }));
-vi.mock("../../state", () => ({
+vi.mock("../../state/app-store", () => ({
   useAppSelector: (
     selector: (state: {
       t: (key: string, vars?: Record<string, unknown>) => string;

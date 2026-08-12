@@ -159,6 +159,9 @@ const {
   resolveSignupGrantIpLimits,
   parseGrantCount,
   FREE_GRANT_IP_LIMITS,
+  welcomeBonusWithheldSettingsPatch,
+  readWelcomeBonusWithheldSettings,
+  WELCOME_BONUS_WITHHELD_SETTINGS_KEY,
 } = await import("./signup-grant-guard");
 
 afterAll(() => {
@@ -316,6 +319,57 @@ describe("runWithSignupGrantIpCap (anti-sybil free-grant cap)", () => {
     });
     expect(decision.granted).toBe(true);
     expect(granted).toBe(true);
+  });
+});
+
+describe("welcome-bonus withheld settings record (402 messaging carrier)", () => {
+  test("patch round-trips through the read for a withheld decision", () => {
+    const patch = welcomeBonusWithheldSettingsPatch({
+      withheldReason: "ip_daily_cap",
+      withheldMessage:
+        "Welcome credit unavailable because this network reached the daily free-credit limit. Add funds to start an agent.",
+    });
+    expect(patch).not.toBeNull();
+    expect(Object.keys(patch!)).toEqual([WELCOME_BONUS_WITHHELD_SETTINGS_KEY]);
+
+    const read = readWelcomeBonusWithheldSettings(patch);
+    expect(read).toEqual({
+      reason: "ip_daily_cap",
+      message:
+        "Welcome credit unavailable because this network reached the daily free-credit limit. Add funds to start an agent.",
+    });
+  });
+
+  test("granted decision produces no patch", () => {
+    expect(welcomeBonusWithheldSettingsPatch({})).toBeNull();
+    expect(welcomeBonusWithheldSettingsPatch({ withheldMessage: "msg only" })).toBeNull();
+  });
+
+  test("read fails closed on absent or malformed shapes", () => {
+    for (const bad of [
+      undefined,
+      null,
+      "string",
+      {},
+      { [WELCOME_BONUS_WITHHELD_SETTINGS_KEY]: true },
+      { [WELCOME_BONUS_WITHHELD_SETTINGS_KEY]: { reason: "bogus_reason" } },
+      { [WELCOME_BONUS_WITHHELD_SETTINGS_KEY]: { message: "no reason" } },
+    ]) {
+      expect(readWelcomeBonusWithheldSettings(bad)).toBeNull();
+    }
+  });
+
+  test("read tolerates a record without a message and drops a blank one", () => {
+    expect(
+      readWelcomeBonusWithheldSettings({
+        [WELCOME_BONUS_WITHHELD_SETTINGS_KEY]: { reason: "count_unavailable" },
+      }),
+    ).toEqual({ reason: "count_unavailable" });
+    expect(
+      readWelcomeBonusWithheldSettings({
+        [WELCOME_BONUS_WITHHELD_SETTINGS_KEY]: { reason: "ip_daily_cap", message: "   " },
+      }),
+    ).toEqual({ reason: "ip_daily_cap" });
   });
 });
 

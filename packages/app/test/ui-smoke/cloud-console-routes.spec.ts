@@ -2,7 +2,6 @@
  * Playwright UI-smoke spec for the Cloud Console Routes app flow using the
  * real renderer fixture.
  */
-import { STEWARD_TOKEN_KEY } from "@elizaos/shared/steward-session-client";
 import { expect, type Page, test } from "@playwright/test";
 import {
   expectNoPageDiagnostics,
@@ -10,31 +9,11 @@ import {
   installPageDiagnosticsGuard,
 } from "./helpers";
 import { installCloudApiStubs } from "./helpers/cloud-audit-fixtures";
+import { seedStewardSession } from "./helpers/test-auth";
 
 const TEST_AUTH_ENABLED =
   process.env.VITE_PLAYWRIGHT_TEST_AUTH === "true" ||
   process.env.NEXT_PUBLIC_PLAYWRIGHT_TEST_AUTH === "true";
-
-function makeJwt(payload: Record<string, unknown>): string {
-  const encode = (value: object) =>
-    Buffer.from(JSON.stringify(value)).toString("base64url");
-  return `${encode({ alg: "HS256", typ: "JWT" })}.${encode(payload)}.sig`;
-}
-
-async function seedStewardToken(page: Page): Promise<string> {
-  const token = makeJwt({
-    sub: "cloud-console-route-smoke-user",
-    email: "cloud-console-route-smoke@agent.local",
-    exp: Math.floor(Date.now() / 1000) + 600,
-  });
-  await page.addInitScript(
-    ({ key, value }) => {
-      localStorage.setItem(key, value);
-    },
-    { key: STEWARD_TOKEN_KEY, value: token },
-  );
-  return token;
-}
 
 async function installAdminModerationRoutes(page: Page): Promise<void> {
   await page.route("**/api/v1/admin/moderation**", async (route) => {
@@ -132,7 +111,11 @@ test.describe("cloud console route wiring", () => {
     installPageDiagnosticsGuard(page);
     await installDefaultAppRoutes(page);
     await installCloudApiStubs(page);
-    stewardToken = await seedStewardToken(page);
+    stewardToken = await seedStewardSession(page, {
+      jwt: true,
+      subject: "cloud-console-route-smoke-user",
+      email: "cloud-console-route-smoke@agent.local",
+    });
   });
 
   test("registers /dashboard/analytics instead of falling through to the cloud 404", async ({

@@ -76,6 +76,9 @@ mock.module("./signup-grant-guard", () => ({
   runWithSignupGrantIpCapDetailed: () => {
     throw new Error("grant guard must not run with grantInitialCredits:false");
   },
+  recordWelcomeBonusWithheldOnOrg: () => {
+    throw new Error("withheld recording must not run with grantInitialCredits:false");
+  },
 }));
 mock.module("../runtime/request-context", () => ({ getClientIp: () => "1.2.3.4" }));
 
