@@ -385,6 +385,11 @@ export interface CloudCompatAgentStatus {
   databaseStatus: string;
 }
 
+/** The namespace and identifier that an async Cloud lifecycle result must poll. */
+export type CloudJobPollTarget =
+  | { kind: "compat-agent"; agentId: string }
+  | { kind: "v1-job"; jobId: string };
+
 export interface CloudCompatAgentProvisionResponse {
   success: boolean;
   created?: boolean;
@@ -394,6 +399,7 @@ export interface CloudCompatAgentProvisionResponse {
   error?: string;
   requiredBalance?: number;
   currentBalance?: number;
+  pollTarget: CloudJobPollTarget | null;
   data?: {
     id?: string;
     agentId?: string;

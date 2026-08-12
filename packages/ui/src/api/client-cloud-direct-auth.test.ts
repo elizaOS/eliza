@@ -517,6 +517,7 @@ describe("ElizaClient direct Cloud auth on native", () => {
         jobId: "job-suspend",
         status: "queued",
         message: "Suspend job created.",
+        pollTarget: { kind: "v1-job", jobId: "job-suspend" },
       },
     });
     expectNoLocalPersistOrStatusProbe();
@@ -555,6 +556,7 @@ describe("ElizaClient direct Cloud auth on native", () => {
         jobId: "job-resume",
         status: "queued",
         message: "Resume job created.",
+        pollTarget: { kind: "v1-job", jobId: "job-resume" },
       },
     });
     expectNoLocalPersistOrStatusProbe();
@@ -593,6 +595,7 @@ describe("ElizaClient direct Cloud auth on native", () => {
         jobId: "job-wake",
         status: "queued",
         message: "Wake job created.",
+        pollTarget: { kind: "v1-job", jobId: "job-wake" },
       },
     });
     expectNoLocalPersistOrStatusProbe();
@@ -624,6 +627,7 @@ describe("ElizaClient direct Cloud auth on native", () => {
         jobId: "job-wake-existing",
         status: "processing",
         message: "Wake is already in progress.",
+        pollTarget: { kind: "v1-job", jobId: "job-wake-existing" },
       },
     });
     expect(capacitorMocks.request).toHaveBeenCalledTimes(1);
@@ -669,6 +673,7 @@ describe("ElizaClient direct Cloud auth on native", () => {
         jobId: "",
         status: "auth-missing",
         message: "Eliza Cloud login session is missing. Sign in again.",
+        pollTarget: null,
       },
     });
     expect(capacitorMocks.request).not.toHaveBeenCalled();
