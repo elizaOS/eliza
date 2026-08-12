@@ -120,9 +120,14 @@ function startDistServer(root) {
       let rel = decodeURIComponent(url.pathname);
       if (rel === "/") rel = "/index.html";
       const filePath = join(distDir, rel.replace(/^\/+/, ""));
-      const safeRoot = distDir + "\\";
+      const rootResolved = resolve(distDir);
+      // Trailing separator so `distDir + "evil"` cannot pass a prefix check
+      // (shipwright #18441 path-traversal note).
+      const rootPrefix = rootResolved.endsWith("\\") || rootResolved.endsWith("/")
+        ? rootResolved
+        : rootResolved + (process.platform === "win32" ? "\\" : "/");
       const resolved = resolve(filePath);
-      if (!resolved.startsWith(resolve(distDir))) {
+      if (resolved !== rootResolved && !resolved.startsWith(rootPrefix)) {
         res.writeHead(403);
         res.end("forbidden");
         return;

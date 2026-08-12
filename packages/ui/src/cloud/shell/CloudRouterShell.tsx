@@ -242,6 +242,24 @@ function PrivateCloudRegistrationCoordinator(): null {
 }
 
 /**
+ * Loads private Cloud domains (dashboard routes + in-app Cloud settings
+ * sections) when the tab/view App catch-all mounts. Without this, settings
+ * registration only ran after a `dashboard/*` visit, so Cloud settings groups
+ * were missing on the public web shell (shipwright #18441). Public auth routes
+ * like `/login` never mount this wrapper.
+ */
+function EnsurePrivateCloudSurfacesOnMount({
+  children,
+}: {
+  children: ReactNode;
+}): React.JSX.Element {
+  useEffect(() => {
+    void ensurePrivateCloudSurfaces();
+  }, []);
+  return <>{children}</>;
+}
+
+/**
  * `/dashboard/*` catch-all: pending private load, designed failure/retry, or
  * true 404 only after private registration has completed successfully.
  */
@@ -399,11 +417,17 @@ export function AppCatchAllRoute({
   if (isAppModeHost()) {
     return (
       <Suspense fallback={<RouteChunkFallback />}>
-        <AppModeEntryRoute appElement={appElement} />
+        <EnsurePrivateCloudSurfacesOnMount>
+          <AppModeEntryRoute appElement={appElement} />
+        </EnsurePrivateCloudSurfacesOnMount>
       </Suspense>
     );
   }
-  return <>{appElement}</>;
+  return (
+    <EnsurePrivateCloudSurfacesOnMount>
+      {appElement}
+    </EnsurePrivateCloudSurfacesOnMount>
+  );
 }
 
 /** App-mode entry gate, loaded only on the Eliza app hosts (see

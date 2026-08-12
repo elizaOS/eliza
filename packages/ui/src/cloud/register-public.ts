@@ -18,22 +18,21 @@ import {
   type PrivateCloudRegistrationSnapshot,
   type PrivateCloudRegistrationStatus,
   pathNeedsPrivateCloudSurfaces,
-  resetPrivateCloudRegistrationForTests,
   retryPrivateCloudSurfaces,
-  setPrivateCloudLoadForTests,
   subscribePrivateCloudRegistration,
 } from "./private-cloud-registration";
 import { registerPublicPages } from "./public-pages/register";
 
+// Runtime API only — test-only mutation hooks stay on
+// `./private-cloud-registration` so the public boot entry does not re-export
+// them (shipwright #18441).
 export {
   ensurePrivateCloudSurfaces,
   getPrivateCloudRegistrationSnapshot,
   type PrivateCloudRegistrationSnapshot,
   type PrivateCloudRegistrationStatus,
   pathNeedsPrivateCloudSurfaces,
-  resetPrivateCloudRegistrationForTests,
   retryPrivateCloudSurfaces,
-  setPrivateCloudLoadForTests,
   subscribePrivateCloudRegistration,
 };
 
