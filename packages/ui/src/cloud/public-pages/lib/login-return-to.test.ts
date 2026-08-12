@@ -2,10 +2,9 @@
 // @vitest-environment jsdom
 
 /**
- * Post-login destination resolution: explicit returnTo always wins; the
- * default is host-dependent — the apex console (elizacloud.ai) lands on
- * /dashboard (the agent app never boots there), every other host keeps the
- * /join drop-into-chat flow. Protocol-relative values are rejected.
+ * Post-login destination resolution: explicit returnTo always wins; every
+ * host defaults to the /join drop-into-chat flow. Apex /join performs a
+ * trusted handoff to the paired app host. Protocol-relative values are rejected.
  */
 
 import { afterEach, describe, expect, it } from "vitest";
@@ -31,13 +30,13 @@ describe("login return-to resolution", () => {
     });
   });
 
-  it("defaults to the /dashboard console on an apex control-plane host", () => {
+  it("defaults apex login to the /join drop-into-chat flow", () => {
     setHostname("elizacloud.ai");
-    expect(defaultLoginReturnTo()).toBe("/dashboard");
-    expect(resolveLoginReturnTo(params())).toBe("/dashboard");
+    expect(defaultLoginReturnTo()).toBe("/join");
+    expect(resolveLoginReturnTo(params())).toBe("/join");
   });
 
-  it("defaults to the /join drop-into-chat flow on app hosts", () => {
+  it("defaults app-host login to the /join drop-into-chat flow", () => {
     setHostname("app.elizacloud.ai");
     expect(defaultLoginReturnTo()).toBe("/join");
     setHostname("localhost");
@@ -55,9 +54,7 @@ describe("login return-to resolution", () => {
 
   it("rejects protocol-relative and external values", () => {
     setHostname("elizacloud.ai");
-    expect(resolveLoginReturnTo(params("//evil.example"))).toBe("/dashboard");
-    expect(resolveLoginReturnTo(params("https://evil.example"))).toBe(
-      "/dashboard",
-    );
+    expect(resolveLoginReturnTo(params("//evil.example"))).toBe("/join");
+    expect(resolveLoginReturnTo(params("https://evil.example"))).toBe("/join");
   });
 });

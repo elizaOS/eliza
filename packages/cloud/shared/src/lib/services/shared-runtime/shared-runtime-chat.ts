@@ -29,6 +29,7 @@ import {
   recordUsageAnalytics,
 } from "../ai-billing";
 import { aiBillingRecordsService } from "../ai-billing-records";
+import { chatSseFrame } from "../chat-sse-frames";
 import type { CreditReconciliationResult, CreditReservation } from "../credits";
 import type { BridgeRequest, BridgeResponse } from "../eliza-sandbox-bridge";
 import { isInferenceAdmissionDispatchMarkError } from "../inference-admission-gate";
@@ -530,7 +531,7 @@ function settleFailedProviderWorkOffPath(
 }
 
 function sseError(message: string): Response {
-  return new Response(`event: error\ndata: ${JSON.stringify({ message })}\n\n`, {
+  return new Response(chatSseFrame("error", { message }), {
     headers: { "Content-Type": "text/event-stream; charset=utf-8" },
   });
 }
@@ -755,9 +756,27 @@ export class SharedRuntimeChatService {
     if (turn.degraded) {
       detachRequestAbort();
       await billing?.settle(0);
-      return new Response(turn.reply ?? "", {
-        headers: { "Content-Type": "text/event-stream; charset=utf-8" },
-      });
+      const reply = turn.reply?.trim() ?? "";
+      if (!reply) return sseError("Shared runtime is unavailable");
+      return new Response(
+        chatSseFrame("chunk", {
+          messageId: messageIds.assistant,
+          userMessageId: messageIds.user,
+          chunk: reply,
+          text: reply,
+          fullText: reply,
+          timestamp: Date.now(),
+        }) +
+          chatSseFrame("done", {
+            messageId: messageIds.assistant,
+            userMessageId: messageIds.user,
+            text: reply,
+            fullText: reply,
+          }),
+        {
+          headers: { "Content-Type": "text/event-stream; charset=utf-8" },
+        },
+      );
     }
     if (!turn.parts) {
       detachRequestAbort();
@@ -834,7 +853,14 @@ export class SharedRuntimeChatService {
               if (consumerCanceled) continue;
               controller.enqueue(
                 encoder.encode(
-                  `event: chunk\ndata: ${JSON.stringify({ messageId: messageIds.assistant, userMessageId: messageIds.user, chunk: part.text, text: part.text, fullText: streamedReply, timestamp: Date.now() })}\n\n`,
+                  chatSseFrame("chunk", {
+                    messageId: messageIds.assistant,
+                    userMessageId: messageIds.user,
+                    chunk: part.text,
+                    text: part.text,
+                    fullText: streamedReply,
+                    timestamp: Date.now(),
+                  }),
                 ),
               );
               continue;
@@ -854,7 +880,9 @@ export class SharedRuntimeChatService {
               );
               controller.enqueue(
                 encoder.encode(
-                  `event: error\ndata: ${JSON.stringify({ message: "Shared runtime stream produced an empty reply" })}\n\n`,
+                  chatSseFrame("error", {
+                    message: "Shared runtime stream produced an empty reply",
+                  }),
                 ),
               );
               continue;
@@ -875,14 +903,16 @@ export class SharedRuntimeChatService {
                   messageId: messageIds.assistant,
                   userMessageId: messageIds.user,
                   text: finalReply,
+                  fullText: finalReply,
                   actionResults: [navIntentActionResult(turn.navIntent)],
                 }
               : {
                   messageId: messageIds.assistant,
                   userMessageId: messageIds.user,
                   text: finalReply,
+                  fullText: finalReply,
                 };
-            controller.enqueue(encoder.encode(`event: done\ndata: ${JSON.stringify(done)}\n\n`));
+            controller.enqueue(encoder.encode(chatSseFrame("done", done)));
           }
           if (!finished) {
             await finalizeMessages(streamedReply, true, () =>
@@ -891,7 +921,9 @@ export class SharedRuntimeChatService {
             if (!consumerCanceled) {
               controller.enqueue(
                 encoder.encode(
-                  `event: error\ndata: ${JSON.stringify({ message: "Shared runtime stream ended without completion" })}\n\n`,
+                  chatSseFrame("error", {
+                    message: "Shared runtime stream ended without completion",
+                  }),
                 ),
               );
             }
@@ -917,9 +949,7 @@ export class SharedRuntimeChatService {
           });
           if (!consumerCanceled) {
             controller.enqueue(
-              encoder.encode(
-                `event: error\ndata: ${JSON.stringify({ message: "Shared runtime stream failed" })}\n\n`,
-              ),
+              encoder.encode(chatSseFrame("error", { message: "Shared runtime stream failed" })),
             );
           }
         } finally {

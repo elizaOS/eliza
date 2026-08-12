@@ -221,6 +221,7 @@ export class InferenceIdleUnloader {
   private inFlight = 0;
   private timer: NodeJS.Timeout | null = null;
   private unloading = false;
+  private activeUnload: Promise<IdleUnloadTickResult> | null = null;
 
   constructor(opts: InferenceIdleUnloaderOptions) {
     this.idleUnloadMs = opts.idleUnloadMs;
@@ -250,10 +251,12 @@ export class InferenceIdleUnloader {
     this.timer = t;
   }
 
-  stop(): void {
-    if (!this.timer) return;
-    clearInterval(this.timer);
-    this.timer = null;
+  async stop(): Promise<void> {
+    if (this.timer) {
+      clearInterval(this.timer);
+      this.timer = null;
+    }
+    await this.activeUnload;
   }
 
   /**
@@ -298,7 +301,18 @@ export class InferenceIdleUnloader {
     return "warm";
   }
 
-  private async runUnload(
+  private runUnload(
+    reason: string,
+    result: "unloaded" | "pressure-unloaded",
+  ): Promise<IdleUnloadTickResult> {
+    const pending = this.performUnload(reason, result);
+    this.activeUnload = pending;
+    return pending.finally(() => {
+      if (this.activeUnload === pending) this.activeUnload = null;
+    });
+  }
+
+  private async performUnload(
     reason: string,
     result: "unloaded" | "pressure-unloaded",
   ): Promise<IdleUnloadTickResult> {

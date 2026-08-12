@@ -27,7 +27,7 @@ import {
   SUBSCRIPTION_PROVIDER_SELECTIONS,
   type SubscriptionProviderSelectionId,
 } from "../../providers";
-import { useAppSelector } from "../../state";
+import { useAppSelector } from "../../state/app-store";
 import { Button } from "../ui/button";
 import { AccountCard } from "./AccountCard";
 import { AccountCommandTable } from "./AccountCommandTable";

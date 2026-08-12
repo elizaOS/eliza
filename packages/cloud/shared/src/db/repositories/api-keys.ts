@@ -1,5 +1,5 @@
 // Persists api keys records for cloud services through the shared DB boundary.
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import type { DbTransaction } from "../client";
 import { dbRead, dbWrite } from "../helpers";
 import { type ApiKey, apiKeys, type NewApiKey } from "../schemas/api-keys";
@@ -86,6 +86,23 @@ export class ApiKeysRepository {
       return undefined;
     }
 
+    return apiKey;
+  }
+
+  /**
+   * Finds an active API key by id on the primary connection.
+   *
+   * Session credentials derived from an API key use this on every verify so a
+   * delete, soft-delete, deactivation, or expiry takes effect without replica
+   * lag or the normal API-key validation cache window.
+   */
+  async findActiveByIdConsistent(id: string, now: Date = new Date()): Promise<ApiKey | undefined> {
+    const apiKey = await dbWrite.query.apiKeys.findFirst({
+      where: and(eq(apiKeys.id, id), eq(apiKeys.is_active, true), isNull(apiKeys.deleted_at)),
+    });
+
+    if (!apiKey) return undefined;
+    if (apiKey.expires_at && new Date(apiKey.expires_at) <= now) return undefined;
     return apiKey;
   }
 

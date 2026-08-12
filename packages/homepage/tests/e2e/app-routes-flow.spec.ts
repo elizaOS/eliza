@@ -31,7 +31,7 @@ const mockUser = {
 async function installHomepageApiMocks(page: Page) {
   let linkedPhone: string | null = null;
 
-  await page.route("https://www.elizacloud.ai/api/eliza-app/**/chat", (route) =>
+  await page.route("https://elizacloud.ai/api/eliza-app/**/chat", (route) =>
     route.fulfill({
       json: {
         messages: [
@@ -46,7 +46,7 @@ async function installHomepageApiMocks(page: Page) {
     }),
   );
 
-  await page.route("https://www.elizacloud.ai/api/eliza-app/**", (route) => {
+  await page.route("https://elizacloud.ai/api/eliza-app/**", (route) => {
     const url = new URL(route.request().url());
     const path = url.pathname;
 
@@ -212,6 +212,58 @@ test("get-started covers method selection, phone input, country dropdown, and di
   await expect(
     page.getByRole("link", { name: /Open Telegram/i }),
   ).toBeVisible();
+});
+
+test("get-started preserves touch targets and exposes glass phone-input focus", async ({
+  page,
+}) => {
+  await page.goto("/get-started");
+
+  const home = page.getByRole("link", { name: "Home" });
+  await expect
+    .poll(async () => (await home.boundingBox())?.height ?? 0)
+    .toBeGreaterThanOrEqual(44);
+
+  await page.getByRole("button", { name: /^iMessage$/ }).click();
+  const back = page.getByRole("button", { name: "Back" });
+  await expect
+    .poll(async () => (await back.boundingBox())?.height ?? 0)
+    .toBeGreaterThanOrEqual(44);
+
+  await seedAuthenticatedSession(page);
+  // In link mode the page injects the real telegram.org widget script, which
+  // (whenever the network wins the race) overwrites this mock and leaves the
+  // flow stuck on the real popup at "Connecting...". Abort the widget request
+  // so the deterministic mock always answers.
+  await page.route("https://telegram.org/**", (route) => route.abort());
+  await page.addInitScript(() => {
+    Reflect.set(window, "Telegram", {
+      Login: {
+        auth: (
+          _options: object,
+          callback: (value: Record<string, unknown>) => void,
+        ) =>
+          callback({
+            id: 123456,
+            first_name: "Homepage",
+            username: "homepage_e2e",
+            auth_date: 1_786_500_000,
+            hash: "telegram-test-hash",
+          }),
+      },
+    });
+  });
+  await page.goto("/get-started?method=telegram&link=true");
+  await page.getByRole("button", { name: "Connect Telegram" }).click();
+
+  const country = page.getByLabel("Choose country");
+  await country.focus();
+  const focusBoxShadow = await country.evaluate((select) => {
+    const wrapper = select.closest("label")?.parentElement;
+    return wrapper ? getComputedStyle(wrapper).boxShadow : "";
+  });
+  expect(focusBoxShadow).not.toBe("none");
+  expect(focusBoxShadow).not.toBe("");
 });
 
 test("get-started covers Discord callback errors and setup guide", async ({

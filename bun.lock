@@ -411,6 +411,7 @@
       "dependencies": {
         "@elizaos/agent": "workspace:*",
         "@elizaos/app-core": "workspace:*",
+        "@elizaos/core": "workspace:*",
         "@elizaos/plugin-browser": "workspace:*",
         "@elizaos/plugin-capacitor-bridge": "workspace:*",
         "@elizaos/plugin-local-inference": "workspace:*",
@@ -459,6 +460,7 @@
         "drizzle-orm": "0.45.2",
         "file-type": "^22.0.1",
         "hono": "4.12.34",
+        "jose": "^6.0.0",
         "music-metadata": "^11.12.3",
         "nanoid": "^6.0.0",
         "stripe": "^22.0.0",
@@ -2961,6 +2963,20 @@
         "vite": "^8.0.0",
       },
     },
+    "plugins/plugin-taskmarket": {
+      "name": "@elizaos/plugin-taskmarket",
+      "version": "0.1.0",
+      "dependencies": {
+        "@elizaos/core": "workspace:*",
+      },
+      "devDependencies": {
+        "@biomejs/biome": "2.5.6",
+        "@types/node": "^25.0.6",
+        "@typescript/native": "npm:typescript@^7.0.2",
+        "typescript": "^6.0.3",
+        "vitest": "^4.1.7",
+      },
+    },
     "plugins/plugin-telegram": {
       "name": "@elizaos/plugin-telegram",
       "version": "2.0.3-beta.7",
@@ -3974,6 +3990,8 @@
     "@elizaos/plugin-sql": ["@elizaos/plugin-sql@workspace:plugins/plugin-sql"],
 
     "@elizaos/plugin-task-coordinator": ["@elizaos/plugin-task-coordinator@workspace:plugins/plugin-task-coordinator"],
+
+    "@elizaos/plugin-taskmarket": ["@elizaos/plugin-taskmarket@workspace:plugins/plugin-taskmarket"],
 
     "@elizaos/plugin-telegram": ["@elizaos/plugin-telegram@workspace:plugins/plugin-telegram"],
 

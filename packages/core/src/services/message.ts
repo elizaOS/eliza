@@ -50,7 +50,11 @@ import {
 } from "../inference-timing";
 import { logger } from "../logger";
 import { describeImageCached } from "../media";
-import { fetchRemoteMedia } from "../media/fetch";
+import {
+	fetchRemoteMedia,
+	MediaFetchError,
+	readResponseWithLimit,
+} from "../media/fetch";
 import { imageDescriptionTemplate, messageHandlerTemplate } from "../prompts";
 import {
 	checkSenderRole,
@@ -8732,10 +8736,17 @@ export async function runV5MessageRuntimeStage1(args: {
 		// ran NO action must not "fix" its silence into a work-is-underway ack:
 		// no work follows this turn, so the ack would be a lie. Prefer the
 		// preserved stage-0 answer over any ack in every case.
+		// A media deliverable delivered through an action's own callback
+		// (GENERATE_MEDIA posts an attachment-only, text:"" callback) IS the turn's
+		// answer. The answerless-final floor must not then resurrect the Stage-1
+		// "on it" ack behind the image — a redundant, out-of-order second bubble.
+		// deliveredMediaUrls is non-empty only for a SYNCHRONOUSLY delivered media
+		// attachment, so a slow/async generation (nothing delivered yet) still acks.
+		const mediaDeliverableShipped = deliveredMediaUrls.length > 0;
 		const ackFallback =
 			!plannedText && !earlyReplySent && !suppressesPlannerReply
 				? preservedAnswerFallback ||
-					(ranNonSilentAction
+					(ranNonSilentAction && !mediaDeliverableShipped
 						? stageOneAck || "on it, working on that now."
 						: "")
 				: preservedAnswerFallback;
@@ -13462,7 +13473,7 @@ export class DefaultMessageService implements IMessageService {
 						} catch (err) {
 							// error-policy:J4 The attachment remains available with an
 							// explicit failure state. Fetch-layer failures (MediaFetchError:
-							// size cap, remote HTTP error) happen before any TRANSCRIPTION
+							// size cap, remote or local HTTP/stream error) happen before any TRANSCRIPTION
 							// provider runs, so they get a transient could-not-fetch marker —
 							// the "transcription unavailable" marker is reserved for genuine
 							// provider failures because the read action treats it as
@@ -13527,7 +13538,7 @@ export class DefaultMessageService implements IMessageService {
 						} catch (err) {
 							// error-policy:J4 The attachment remains available with an
 							// explicit failure state. Fetch-layer failures (MediaFetchError:
-							// size cap, remote HTTP error) happen before any TRANSCRIPTION
+							// size cap, remote or local HTTP/stream error) happen before any TRANSCRIPTION
 							// provider runs, so they get a transient could-not-fetch marker —
 							// the "transcription unavailable" marker is reserved for genuine
 							// provider failures because the read action treats it as
@@ -13576,7 +13587,14 @@ export class DefaultMessageService implements IMessageService {
 	 * (attacker-influenceable) URLs go through the SSRF-guarded fetcher, which
 	 * blocks private/loopback/link-local hosts; trusted local media-store URLs
 	 * (built from a path-validated relative URL) use the runtime fetch. This is
-	 * the ONLY place a raw fetch is used during attachment enrichment.
+	 * the ONLY place a raw fetch is used during attachment enrichment. Both
+	 * branches fail only with typed MediaFetchError carrying static prose
+	 * (numeric HTTP status, never statusText), so the transcription catch
+	 * blocks can classify every byte-fetch failure as transient could-not-fetch
+	 * — the transcription-unavailable marker must never be forged by a fetch
+	 * that failed before any TRANSCRIPTION provider ran. Bodies are read
+	 * through the shared streaming cap, cancelling at the limit instead of
+	 * materializing an oversize payload first.
 	 */
 	private async fetchAttachmentBytes(
 		runtime: IAgentRuntime,
@@ -13595,17 +13613,51 @@ export class DefaultMessageService implements IMessageService {
 			};
 		}
 		const runtimeFetch = runtime.fetch ?? globalThis.fetch;
-		const res = await runtimeFetch(resolvedLocalUrl);
-		if (!res.ok) {
-			throw new Error(`Failed to fetch attachment: ${res.statusText}`);
+		try {
+			const res = await runtimeFetch(resolvedLocalUrl);
+			if (!res.ok) {
+				// Only the numeric status: statusText is dynamic prose (a local
+				// 503 could carry "TRANSCRIPTION not available") and must never
+				// reach the catch blocks that key on unavailability wording.
+				throw new MediaFetchError(
+					"http_error",
+					`Failed to fetch attachment locally (HTTP ${res.status})`,
+				);
+			}
+			// Reject on the declared size before reading; the streamed read below
+			// cancels at the cap when the header is absent or lying.
+			const declaredLength = Number(res.headers.get("content-length"));
+			if (
+				Number.isFinite(declaredLength) &&
+				declaredLength > ATTACHMENT_FETCH_MAX_BYTES
+			) {
+				throw new MediaFetchError(
+					"max_bytes",
+					`Attachment exceeds ${ATTACHMENT_FETCH_MAX_BYTES} bytes`,
+				);
+			}
+			const contentType =
+				res.headers.get("content-type") || "application/octet-stream";
+			const buffer = await readResponseWithLimit(
+				res,
+				ATTACHMENT_FETCH_MAX_BYTES,
+			);
+			return { buffer, contentType };
+		} catch (err) {
+			// error-policy:J2 typed transient-class rethrow covering the whole
+			// local read boundary (fetch, header reads, body read): every local
+			// byte-fetch failure surfaces as MediaFetchError so the audio/video
+			// catch blocks write the transient could-not-fetch marker, never the
+			// transcription-unavailable one. Matched by name rather than
+			// instanceof so the pass-through survives module duplication across
+			// the multi-target build and test mocks.
+			if (err instanceof Error && err.name === "MediaFetchError") throw err;
+			throw new MediaFetchError(
+				"fetch_failed",
+				"Failed to fetch attachment locally",
+				err,
+			);
 		}
-		const buffer = Buffer.from(await res.arrayBuffer());
-		if (buffer.length > ATTACHMENT_FETCH_MAX_BYTES) {
-			throw new Error(`Attachment exceeds ${ATTACHMENT_FETCH_MAX_BYTES} bytes`);
-		}
-		const contentType =
-			res.headers.get("content-type") || "application/octet-stream";
-		return { buffer, contentType };
 	}
 
 	private resolveRecentMessagesForFailureReply(

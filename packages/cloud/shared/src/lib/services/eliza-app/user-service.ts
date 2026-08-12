@@ -969,7 +969,12 @@ class ElizaAppUserService {
 
   async linkTelegramToUser(
     userId: string,
-    telegramData: TelegramAuthData,
+    telegramData: {
+      id: string | number;
+      username?: string;
+      first_name?: string;
+      photo_url?: string;
+    },
   ): Promise<{ success: boolean; error?: string }> {
     const telegramId = String(telegramData.id);
     const existingTelegramUser = await usersRepository.findByTelegramIdWithOrganization(telegramId);
@@ -987,13 +992,17 @@ class ElizaAppUserService {
     }
 
     try {
-      await usersRepository.update(userId, {
+      // Atomic canonical + userIdentities projection write: the Telegram
+      // gateway resolves inbound DMs through the projection
+      // (findByTelegramIdWithOrganization), so a canonical-only update would
+      // report success while DM routing still cannot see the link.
+      const linked = await usersRepository.linkTelegramIdentity(userId, {
         telegram_id: telegramId,
         telegram_username: telegramData.username,
         telegram_first_name: telegramData.first_name,
         telegram_photo_url: telegramData.photo_url,
-        updated_at: new Date(),
       });
+      if (!linked) return { success: false, error: "User account was not found" };
     } catch (error) {
       // Handle race condition: another request linked this Telegram first
       if (isUniqueConstraintError(error)) {

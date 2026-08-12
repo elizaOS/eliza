@@ -25,10 +25,13 @@
  *   is surfaced as a `permission_unavailable` status event, then re-checked on
  *   each app resume so a grant made in Settings activates without a restart.
  *
- * Expected unavailability (no authenticated session yet — every capture
- * endpoint 401s on signed-out pages, runtime not yet running, transient
- * network/timeout, endpoint 503, a stale binding whose deleted agent answers
- * with the structural agent-gone 404) quietly stands the capture down.
+ * Canonical auth state gates runtime readiness: a signed-out renderer makes no
+ * protected status requests, and the capture arms immediately when the app's
+ * existing auth probe publishes a valid session. A defensive 401/403 from an
+ * already-armed request suspends the poller until auth publishes again.
+ * Expected unavailability (runtime not yet running, transient network/timeout,
+ * endpoint 503, a stale binding whose deleted agent answers with the structural
+ * agent-gone 404) quietly stands the capture down.
  * Capability-specific 503s use a bounded retry interval because the global
  * runtime status cannot prove that this optional plugin route is active.
  * Anything else is surfaced observably: a `capture_error` status event plus a
@@ -57,6 +60,11 @@ import {
   isApiError,
   isCloudAgentGoneError,
 } from "@elizaos/ui/api";
+import {
+  type AuthStatusState,
+  isAuthenticatedNow,
+  subscribeAuthStatus,
+} from "@elizaos/ui/auth-status";
 import { isElectrobunRuntime } from "@elizaos/ui/bridge";
 import { loadDesktopWorkspaceSnapshot } from "@elizaos/ui/browser";
 import { APP_PAUSE_EVENT, APP_RESUME_EVENT } from "@elizaos/ui/events";
@@ -221,8 +229,25 @@ export function startLifeOpsActivitySignalCapture(enabled = true): () => void {
   const platform = resolveActivityPlatform();
   const lastSent = new Map<string, SignalFingerprint>();
   let runtimeReady = false;
+  let sessionAllowsReadiness = false;
+  let runtimeReadinessGeneration = 0;
+  let runtimePoller: number | null = null;
   let activitySignalsRetryAtMs = 0;
   let mounted = true;
+
+  const stopRuntimeReadiness = (): void => {
+    runtimeReadinessGeneration += 1;
+    runtimeReady = false;
+    if (runtimePoller !== null) {
+      window.clearInterval(runtimePoller);
+      runtimePoller = null;
+    }
+  };
+
+  const suspendForUnavailableSession = (): void => {
+    sessionAllowsReadiness = false;
+    stopRuntimeReadiness();
+  };
 
   const standDownActivitySignals = (): void => {
     runtimeReady = false;
@@ -239,26 +264,24 @@ export function startLifeOpsActivitySignalCapture(enabled = true): () => void {
   const isExpectedTransientError = (error: unknown): boolean =>
     isApiError(error) && (error.kind === "network" || error.kind === "timeout");
 
-  // A 401/403 is the designed signed-out state, not a capture defect: every
-  // capture endpoint sits behind session auth, so anonymous pages (pre
-  // sign-in, post sign-out) reject each probe and signal. The ready poll
-  // keeps checking quietly and the capture engages on the first poll after a
-  // session exists — no console noise in between.
+  // A 401/403 is the designed signed-out state, not a capture defect. It also
+  // means the canonical snapshot was stale relative to the protected request,
+  // so fail closed and wait for a later auth publication instead of polling.
   const isSessionUnavailableError = (error: unknown): boolean =>
     isApiError(error) &&
     error.kind === "http" &&
     (error.status === 401 || error.status === 403);
 
   const reportCaptureError = (error: unknown): void => {
-    if (isRuntimeUnavailableError(error) || isSessionUnavailableError(error)) {
+    if (isSessionUnavailableError(error)) {
+      suspendForUnavailableSession();
+      return;
+    }
+    if (isRuntimeUnavailableError(error)) {
       standDownActivitySignals();
       return;
     }
-    if (
-      isExpectedTransientError(error) ||
-      isSessionUnavailableError(error) ||
-      isCloudAgentGoneError(error)
-    ) {
+    if (isExpectedTransientError(error) || isCloudAgentGoneError(error)) {
       return;
     }
     // Unexpected failure: surface it observably — status event for in-app
@@ -271,32 +294,54 @@ export function startLifeOpsActivitySignalCapture(enabled = true): () => void {
     });
   };
 
-  // Runtime not up yet (boot, restart), signed-out (401/403), and a stale binding
-  // to a deleted agent (structural agent-gone 404) are the designed
-  // stand-down states; only those plus transport loss and the 503 "runtime
-  // starting" shape count. Anything else coming out of the status probe
-  // (persistent 500s included) is a real defect and must surface, not read as
-  // "not ready" forever (#16504).
+  // Runtime not up yet (boot, restart), signed-out (401/403), a stale binding
+  // to a deleted agent (structural agent-gone 404), and a cloud-console base
+  // with no runtime status endpoint (raw 404) are the designed stand-down
+  // states; only those plus transport loss and the 503 "runtime starting"
+  // shape count. Anything else coming out of the status probe (persistent
+  // 500s included) is a real defect and must surface, not read as "not ready"
+  // forever (#16504).
   const isExpectedProbeFailure = (error: unknown): boolean =>
     isSessionUnavailableError(error) ||
     isCloudAgentGoneError(error) ||
     (isApiError(error) &&
       (error.kind === "network" ||
         error.kind === "timeout" ||
-        (error.kind === "http" && error.status === 503)));
+        (error.kind === "http" &&
+          (error.status === 503 || error.status === 404))));
 
   const refreshRuntimeReady = async (): Promise<boolean> => {
+    if (!mounted || !sessionAllowsReadiness) {
+      return false;
+    }
+    const generation = runtimeReadinessGeneration;
     try {
       const status = await client.getStatus();
+      if (
+        !mounted ||
+        !sessionAllowsReadiness ||
+        generation !== runtimeReadinessGeneration
+      ) {
+        return false;
+      }
       const ready =
         status.state === "running" && Date.now() >= activitySignalsRetryAtMs;
       runtimeReady = ready;
       return ready;
     } catch (error) {
+      if (
+        !mounted ||
+        !sessionAllowsReadiness ||
+        generation !== runtimeReadinessGeneration
+      ) {
+        return false;
+      }
       // error-policy:J4 capture stands down until a later poll succeeds;
       // unexpected probe failures still surface as a capture_error status.
       runtimeReady = false;
-      if (!isExpectedProbeFailure(error)) {
+      if (isSessionUnavailableError(error)) {
+        suspendForUnavailableSession();
+      } else if (!isExpectedProbeFailure(error)) {
         reportCaptureError(error);
       }
       return false;
@@ -331,10 +376,11 @@ export function startLifeOpsActivitySignalCapture(enabled = true): () => void {
       return persisted;
     } catch (error) {
       lastSent.delete(dedupeKey);
-      if (
-        isRuntimeUnavailableError(error) ||
-        isSessionUnavailableError(error)
-      ) {
+      if (isSessionUnavailableError(error)) {
+        suspendForUnavailableSession();
+        return null;
+      }
+      if (isRuntimeUnavailableError(error)) {
         standDownActivitySignals();
         return null;
       }
@@ -564,33 +610,64 @@ export function startLifeOpsActivitySignalCapture(enabled = true): () => void {
     void refreshMobileHealthSnapshot(reason).catch(reportCaptureError);
   };
 
-  void refreshRuntimeReady()
-    .then((ready) => {
-      if (ready && mounted) {
-        emitCurrentState("mount");
-        void startMobileSignals().catch(reportCaptureError);
-      }
-    })
-    .catch(reportCaptureError);
-
   document.addEventListener("visibilitychange", handleVisibilityChange);
   document.addEventListener(APP_RESUME_EVENT, handleResume);
   document.addEventListener(APP_PAUSE_EVENT, handlePause);
   window.addEventListener("focus", handleFocus);
   window.addEventListener("blur", handleBlur);
 
-  const runtimePoller = window.setInterval(() => {
+  const runRuntimeReadyProbe = (readyReason: string): void => {
     const wasReady = runtimeReady;
     void refreshRuntimeReady()
       .then((ready) => {
         if (!mounted || !ready || wasReady) {
           return;
         }
-        emitCurrentState("runtime-ready");
+        emitCurrentState(readyReason);
         void startMobileSignals().catch(reportCaptureError);
       })
       .catch(reportCaptureError);
-  }, RUNTIME_READY_POLL_MS);
+  };
+
+  const startRuntimeReadiness = (initialReadyReason: string): void => {
+    if (!mounted || !sessionAllowsReadiness || runtimePoller !== null) {
+      return;
+    }
+    runRuntimeReadyProbe(initialReadyReason);
+    runtimePoller = window.setInterval(() => {
+      runRuntimeReadyProbe("runtime-ready");
+    }, RUNTIME_READY_POLL_MS);
+  };
+
+  const updateSessionAvailability = (
+    authenticated: boolean,
+    initialReadyReason: string,
+  ): void => {
+    if (!authenticated) {
+      if (sessionAllowsReadiness || runtimePoller !== null) {
+        suspendForUnavailableSession();
+      }
+      return;
+    }
+    if (sessionAllowsReadiness) {
+      return;
+    }
+    sessionAllowsReadiness = true;
+    runtimeReadinessGeneration += 1;
+    startRuntimeReadiness(initialReadyReason);
+  };
+
+  const handleAuthStatus = (state: AuthStatusState): void => {
+    updateSessionAvailability(state.phase === "authenticated", "runtime-ready");
+  };
+
+  // Subscribe before reading the snapshot so an auth publication racing this
+  // startup cannot be missed. A duplicate authenticated publication is a no-op.
+  const unsubscribeAuthStatus = subscribeAuthStatus(handleAuthStatus);
+  if (isAuthenticatedNow()) {
+    updateSessionAvailability(true, "mount");
+  }
+
   const pageHeartbeat = window.setInterval(() => {
     if (document.visibilityState === "visible") {
       emitPageState("heartbeat");
@@ -606,6 +683,9 @@ export function startLifeOpsActivitySignalCapture(enabled = true): () => void {
     if (activeCaptureStop === stop) {
       activeCaptureStop = null;
     }
+    unsubscribeAuthStatus();
+    sessionAllowsReadiness = false;
+    stopRuntimeReadiness();
     document.removeEventListener("visibilitychange", handleVisibilityChange);
     document.removeEventListener(APP_RESUME_EVENT, handleResume);
     document.removeEventListener(APP_PAUSE_EVENT, handlePause);
@@ -626,7 +706,6 @@ export function startLifeOpsActivitySignalCapture(enabled = true): () => void {
       window.clearInterval(mobileHealthPoller);
       mobileHealthPoller = null;
     }
-    window.clearInterval(runtimePoller);
     window.clearInterval(pageHeartbeat);
     window.clearInterval(desktopPoller);
   };

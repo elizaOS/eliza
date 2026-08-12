@@ -16,6 +16,10 @@ import {
   type BrowserService,
 } from "../browser-service.js";
 import {
+  type BrowserDispatchFailure,
+  isBrowserDispatchFailure,
+} from "../dispatch-types.js";
+import {
   type BrowserWorkspaceCommand,
   type BrowserWorkspaceCommandResult,
   executeBrowserWorkspaceCommand,
@@ -822,7 +826,21 @@ export const browserAction: Action = {
     } catch (error) {
       const errorText =
         error instanceof Error ? error.message : "Browser action failed";
-      logger.warn(`[BROWSER] Failed: ${errorText}`);
+
+      // Preserve the typed dispatch failure state (issue #18258 review):
+      // The service layer distinguishes UNSUPPORTED/UNAVAILABLE (safe
+      // pre-dispatch declines — OK to try a different approach) from
+      // UNCERTAIN_OUTCOME (a side-effecting command may have partially
+      // executed — must NOT be retried). Collapsing everything to
+      // "BROWSER_FAILED" drops this distinction at the action boundary,
+      // so the planner/action consumer cannot tell safe declines from
+      // outcomes that must not be retried.
+      const dispatchFailure: BrowserDispatchFailure | null =
+        isBrowserDispatchFailure(error) ? error : null;
+
+      logger.warn(
+        `[BROWSER] Failed: ${errorText}${dispatchFailure ? ` (kind=${dispatchFailure.kind}, target=${dispatchFailure.targetId ?? "none"}, fallbackSafe=${dispatchFailure.fallbackSafe})` : ""}`,
+      );
       await emitBrowserStepProgress(
         callback,
         command,
@@ -834,10 +852,30 @@ export const browserAction: Action = {
       return {
         text: `Browser action failed: ${errorText}`,
         success: false,
-        values: { success: false, error: "BROWSER_FAILED" },
+        values: {
+          success: false,
+          error: dispatchFailure?.kind ?? "BROWSER_FAILED",
+          ...(dispatchFailure
+            ? {
+                dispatchKind: dispatchFailure.kind,
+                fallbackSafe: dispatchFailure.fallbackSafe,
+                targetId: dispatchFailure.targetId,
+              }
+            : {}),
+        },
         data: {
           actionName: "BROWSER",
           command,
+          ...(dispatchFailure
+            ? {
+                dispatchFailure: {
+                  kind: dispatchFailure.kind,
+                  fallbackSafe: dispatchFailure.fallbackSafe,
+                  targetId: dispatchFailure.targetId,
+                  message: dispatchFailure.message,
+                },
+              }
+            : {}),
         },
       };
     }

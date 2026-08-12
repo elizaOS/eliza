@@ -19,7 +19,7 @@ import {
 import { getCurrentUser } from "@/lib/auth/workers-hono-auth";
 import { elizaAppSessionService } from "@/lib/services/eliza-app";
 import {
-  inspectDiscordOnboardingContinuation,
+  inspectOnboardingContinuation,
   type OnboardingPlatform,
   runOnboardingChat,
 } from "@/lib/services/eliza-app/onboarding-chat";
@@ -71,7 +71,7 @@ app.get("/", async (c) => {
     if (!caller.authenticatedUser || caller.trustedPlatformIdentity) {
       throw ForbiddenError("Browser authentication required");
     }
-    const preview = await inspectDiscordOnboardingContinuation(
+    const preview = await inspectOnboardingContinuation(
       token,
       caller.authenticatedUser,
     );
@@ -83,7 +83,7 @@ app.get("/", async (c) => {
     ) {
       return failureResponse(
         c,
-        ForbiddenError("This Discord connection link is invalid or expired"),
+        ForbiddenError("This connection link is invalid or expired"),
       );
     }
     return failureResponse(c, error);

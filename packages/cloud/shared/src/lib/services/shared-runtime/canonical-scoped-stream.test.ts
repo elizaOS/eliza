@@ -107,4 +107,22 @@ describe("handleCanonicalScopedAgentStream", () => {
       retryable: true,
     });
   });
+
+  test("emits a canonical typed SSE error when the coordinator has no body", async () => {
+    coordinateSharedStream.mockResolvedValueOnce(
+      new Response(null, { headers: { "Content-Type": "text/event-stream" } }),
+    );
+
+    const res = await handleCanonicalScopedAgentStream(BASE);
+    const body = await res.text();
+    expect(body).toContain("event: error");
+    const data = JSON.parse(body.split("data: ")[1]?.split("\n")[0] ?? "{}") as Record<
+      string,
+      unknown
+    >;
+    expect(data).toEqual({
+      message: "Agent produced no streamed response",
+      type: "error",
+    });
+  });
 });

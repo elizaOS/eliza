@@ -1,6 +1,7 @@
 /** Exercises MCP server helper routing with deterministic request and plugin fixtures. */
-import { describe, expect, it } from "vitest";
+
 import { validateMcpServerConfig } from "@elizaos/core/security/mcp-server-config";
+import { describe, expect, it } from "vitest";
 
 function stdioConfig(
   command: string,
@@ -148,6 +149,62 @@ describe("validateMcpServerConfig env hardening (GHSA-54rx-pcr9-hg9x)", () => {
         stdioConfig("npx", ["@scope/pkg"], {
           LOG_LEVEL: "info",
           NO_COLOR: "1",
+        }),
+      ),
+    ).toBeNull();
+  });
+});
+
+describe("validateMcpServerConfig spawn-env-policy key coverage", () => {
+  // Table-driven: every key that the spawn sanitizer blocks must also be
+  // rejected by the MCP config validator, proving the security boundary holds
+  // end-to-end (config → validateMcpServerConfig → spawn).
+  const newInjectionKeys: Array<[string, string]> = [
+    ["JDK_JAVA_OPTIONS", "-javaagent:/tmp/evil.jar"],
+    ["GIT_SSH", "/tmp/evil-ssh"],
+    ["GIT_ASKPASS", "/tmp/evil-askpass"],
+    ["GIT_CONFIG_COUNT", "1"],
+    ["GIT_CONFIG_KEY_0", "core.sshCommand"],
+    ["GIT_CONFIG_VALUE_0", "/tmp/evil-cmd"],
+    // Keys from the original PR that the reviewer confirmed are present
+    ["JAVA_TOOL_OPTIONS", "-javaagent:/tmp/evil.jar"],
+    ["_JAVA_OPTIONS", "-javaagent:/tmp/evil.jar"],
+    ["GIT_SSH_COMMAND", "/tmp/evil-ssh-wrapper"],
+    ["GIT_EXTERNAL_DIFF", "/tmp/evil-diff"],
+    ["CLASSPATH", "/tmp/evil.jar"],
+  ];
+
+  it.each(newInjectionKeys)(
+    "rejects %s through the config validator",
+    async (key, value) => {
+      const rejection = await validateMcpServerConfig(
+        stdioConfig("npx", ["pkg"], { [key]: value }),
+      );
+      // Exact-match keys return "not allowed for security reasons";
+      // prefix-matched keys return "matches blocked prefix ... and is not allowed".
+      expect(rejection).toMatch(
+        /not allowed for security reasons|matches blocked prefix/i,
+      );
+    },
+  );
+
+  it("rejects GIT_CONFIG_KEY_0 as a prefix-matched key", async () => {
+    const rejection = await validateMcpServerConfig(
+      stdioConfig("npx", ["pkg"], {
+        GIT_CONFIG_KEY_0: "core.editor",
+        GIT_CONFIG_VALUE_0: "/tmp/evil-editor",
+      }),
+    );
+    expect(rejection).toMatch(/blocked prefix GIT_CONFIG_KEY_/i);
+  });
+
+  it("allows benign git env keys that are NOT on the denylist", async () => {
+    expect(
+      await validateMcpServerConfig(
+        stdioConfig("npx", ["pkg"], {
+          GIT_AUTHOR_NAME: "test",
+          GIT_COMMITTER_NAME: "test",
+          GIT_TERMINAL_PROMPT: "0",
         }),
       ),
     ).toBeNull();

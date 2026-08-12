@@ -98,10 +98,10 @@ async function resolveOnboardingOrigins(
  * Pages domain, same environment-peer rule as STAGING_ELIZA_APP_ORIGIN in
  * packages/ui/src/utils/cloud-agent-base.ts).
  *
- * `loginOrigin` is the homepage. Staging has no homepage deployment of its own,
- * so it still resolves the production one — a live release blocker recorded in
- * #18197, not an approved mapping. The expectation below documents the defect so
- * it cannot drift silently; closing #18197 must change it.
+ * `loginOrigin` is the homepage. Production resolves the public homepage while
+ * staging resolves the dedicated staging homepage whose bundle redeems
+ * continuation tokens against the staging API. Keeping this explicit prevents
+ * a plain Worker redeploy from silently restoring the production fallback.
  */
 const ONBOARDING_HOST_CONTRACT: ReadonlyArray<{
   section: string;
@@ -120,7 +120,7 @@ const ONBOARDING_HOST_CONTRACT: ReadonlyArray<{
   },
   {
     section: "env.staging.vars",
-    loginOrigin: "https://eliza.app",
+    loginOrigin: "https://staging.eliza.app",
     appOrigin: "https://app-staging.elizacloud.ai",
   },
 ];

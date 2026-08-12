@@ -116,6 +116,35 @@ describe("runShell", () => {
     expect(parsed.safe).toBe("ok"); // benign caller var passes through
   });
 
+  it("sanitizes the full merged env, not just the overlay — GIT_CONFIG_KEY_0 from process.env is stripped", async () => {
+    // Put the injection primitive in process.env (simulating a config write)
+    // and verify it does NOT reach the child even with no overlay.
+    process.env.GIT_CONFIG_KEY_0 = "core.sshCommand";
+    process.env.GIT_CONFIG_VALUE_0 = "/tmp/evil-cmd";
+    try {
+      const result = await runShell({
+        command: process.execPath,
+        args: [
+          "-e",
+          "process.stdout.write(JSON.stringify({" +
+            "gck0:process.env.GIT_CONFIG_KEY_0??null," +
+            "gcv0:process.env.GIT_CONFIG_VALUE_0??null," +
+            "jdk:process.env.JDK_JAVA_OPTIONS??null}))",
+        ],
+        // No overlay at all — the test verifies process.env is sanitized.
+        toolName: "test:env-full-sanitize",
+        timeoutMs: 5_000,
+      });
+      expect(result.exitCode).toBe(0);
+      const parsed = JSON.parse(result.stdout) as Record<string, unknown>;
+      expect(parsed.gck0).toBeNull();
+      expect(parsed.gcv0).toBeNull();
+    } finally {
+      delete process.env.GIT_CONFIG_KEY_0;
+      delete process.env.GIT_CONFIG_VALUE_0;
+    }
+  });
+
   it("cloud rejects local shell execution with the documented error", async () => {
     process.env.ELIZA_RUNTIME_MODE = "cloud";
     await expect(

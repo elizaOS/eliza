@@ -1275,6 +1275,17 @@ export class MessageManager {
 	 * @param {DiscordMessage} message - The Discord message to be handled
 	 */
 	async handleMessage(message: DiscordMessage): Promise<void> {
+		// Choke point for gateway, direct/replay, and coordination-sweeper turns.
+		// Event-listener gates avoid wasted preprocessing, but only this check can
+		// guarantee no alternate caller registers work behind the drain snapshot.
+		if (
+			this.discordService.admitInboundMessage?.(
+				message.id,
+				message.channel.id,
+			) === false
+		) {
+			return;
+		}
 		const turn = this.runMessageTurn(message);
 		this.discordService.trackInFlightTurn?.(message.id, turn);
 		return turn;

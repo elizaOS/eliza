@@ -44,6 +44,10 @@ const publicPathPrefixes = [
   "/api/auth/steward-session",
   "/api/auth/steward-nonce-exchange",
   "/api/auth/steward-refresh",
+  // Disabled-by-default staging QA bridge. Both legs self-authenticate: mint
+  // requires a strongly revalidated allowlisted API key, while exchange burns
+  // a 60-second Postgres-backed PKCE code before every subsequent check.
+  "/api/auth/staging-session-exchange",
   // Cross-host SSO bridge: /mint self-authenticates (Bearer verified in the
   // handler — the global gate's cookie acceptance must NOT vouch for it, see
   // the route's plant-a-cookie rationale), /exchange is authenticated by the

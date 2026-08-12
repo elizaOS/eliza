@@ -181,6 +181,11 @@ const ANSWERLESS_FINISH: CannedResponse = {
 async function runTurn(opts: {
 	runtime: IAgentRuntime;
 	callback?: HandlerCallback;
+	// Connectors like Discord do not wire an early-reply channel
+	// (message.ts:12122): the stage-0 ack is never delivered early and instead
+	// survives as the post-action ackFallback. Omitting the callback reproduces
+	// that path.
+	noEarlyReply?: boolean;
 }): Promise<{
 	finalText: string | undefined;
 	earlyReplies: string[];
@@ -210,9 +215,13 @@ async function runTurn(opts: {
 		responseId: RESPONSE_ID,
 		...(instrumentedCallback ? { callback: instrumentedCallback } : {}),
 		deliveredVisibleTexts,
-		onResponseHandlerEarlyReply: async ({ text }) => {
-			earlyReplies.push(text);
-		},
+		...(opts.noEarlyReply
+			? {}
+			: {
+					onResponseHandlerEarlyReply: async ({ text }) => {
+						earlyReplies.push(text);
+					},
+				}),
 	});
 	const finalText =
 		result.kind === "planned_reply"
@@ -577,5 +586,176 @@ describe("answer-clobber rescue", () => {
 
 		expect(earlyReplies).toContain(PROGRESS_ACK);
 		expect(finalText).toBe(SUBSTANTIVE_ANSWER);
+	});
+});
+
+describe("media deliverable suppresses the trailing progress ack", () => {
+	const IMAGE_URL = "https://example.test/neon-cat.png";
+
+	function generateMediaAction(): Action {
+		const attachment: Media = {
+			id: "generated-image",
+			url: IMAGE_URL,
+			title: "neon cat",
+			contentType: "image/png",
+			source: "media-generation",
+		};
+		return {
+			name: "GENERATE_MEDIA_TEST",
+			description: "generates an image and delivers it as an attachment",
+			similes: [],
+			examples: [],
+			parameters: [],
+			validate: async () => true,
+			// Mirrors the real GENERATE_MEDIA delivery shape: an attachment-only,
+			// text:"" callback posts the image, and the result carries mediaUrl in
+			// data (which collectMediaDeliveryUrls reads) plus a userFacingText the
+			// media-delivery sanitizer strips to empty.
+			handler: async (_rt, _msg, _state, _opts, cb) => {
+				await cb?.({
+					attachments: [attachment],
+					text: "",
+					actions: ["GENERATE_MEDIA_TEST"],
+					source: "media-generation",
+				});
+				return {
+					success: true,
+					text: "Generated image",
+					userFacingText: "Here's your image.",
+					data: {
+						actionName: "GENERATE_MEDIA_TEST",
+						mediaUrl: IMAGE_URL,
+						imageUrl: IMAGE_URL,
+					},
+				};
+			},
+		} as unknown as Action;
+	}
+
+	it("does not resurrect the stage-1 ack behind an already-posted image", async () => {
+		// BUG 2: GENERATE_MEDIA posts the image through its own attachment-only
+		// callback, then the answerless-final floor resurrected the stage-1
+		// "on it" ack behind it — a redundant, out-of-order second bubble. Once a
+		// media deliverable shipped this turn, the ack must be suppressed.
+		const delivered: Content[] = [];
+		const callback: HandlerCallback = async (content) => {
+			delivered.push(content);
+			return [];
+		};
+		const runtime = makeRuntime({
+			responses: [
+				{
+					expectModelType: String(ModelType.RESPONSE_HANDLER),
+					body: stage1Response({
+						contexts: ["general"],
+						replyText: PROGRESS_ACK,
+						extra: { candidateActionNames: ["GENERATE_MEDIA_TEST"] },
+					}),
+				},
+				{
+					expectModelType: String(ModelType.ACTION_PLANNER),
+					body: {
+						text: "",
+						toolCalls: [
+							{
+								id: "gen-media-1",
+								name: "GENERATE_MEDIA_TEST",
+								arguments: {},
+							},
+						],
+					},
+				},
+				// The post-media evaluator summarizes the delivered image with a bare
+				// completion ack ("Done."), which the media-delivery sanitizer strips
+				// to empty — exactly the answerless-final state where the pre-fix
+				// floor resurrected the stage-1 ack behind the already-posted image.
+				{
+					expectModelType: String(ModelType.RESPONSE_HANDLER),
+					body: JSON.stringify({
+						success: true,
+						decision: "FINISH",
+						thought: "Image delivered.",
+						messageToUser: "Done.",
+					}),
+				},
+			],
+			evaluators: [],
+			actions: [generateMediaAction()],
+		});
+
+		const { finalText } = await runTurn({
+			runtime,
+			callback,
+			noEarlyReply: true,
+		});
+
+		// The image WAS delivered through the action callback.
+		expect(
+			delivered.some((content) =>
+				content.attachments?.some((media) => media.url === IMAGE_URL),
+			),
+		).toBe(true);
+		// No trailing ack after the image.
+		expect(finalText ?? "").toBe("");
+		expect(delivered.map((content) => content.text)).not.toContain(
+			PROGRESS_ACK,
+		);
+	});
+
+	it("does not suppress a non-media action's own reply (the gate keys on media, not on 'an action ran')", async () => {
+		// Regression guard for the fix's blast radius: the new `!mediaDeliverableShipped`
+		// conjunct must alter delivery ONLY when a media URL was actually shipped.
+		// The SAME answerless-finish turn as above, minus the media (no attachment,
+		// no mediaUrl in data), must still surface the action's user-facing text —
+		// nothing is stripped or suppressed when no deliverable shipped.
+		const summary = "Here's the summary you asked for.";
+		const noMediaAction: Action = {
+			name: "SUMMARIZE_TEST",
+			description: "produces a text summary, no media",
+			similes: [],
+			examples: [],
+			parameters: [],
+			validate: async () => true,
+			handler: async () => ({
+				success: true,
+				text: "Summarized",
+				userFacingText: summary,
+				data: { actionName: "SUMMARIZE_TEST" },
+			}),
+		} as unknown as Action;
+		const runtime = makeRuntime({
+			responses: [
+				{
+					expectModelType: String(ModelType.RESPONSE_HANDLER),
+					body: stage1Response({
+						contexts: ["general"],
+						replyText: PROGRESS_ACK,
+						extra: { candidateActionNames: ["SUMMARIZE_TEST"] },
+					}),
+				},
+				{
+					expectModelType: String(ModelType.ACTION_PLANNER),
+					body: {
+						text: "",
+						toolCalls: [
+							{
+								id: "summarize-1",
+								name: "SUMMARIZE_TEST",
+								arguments: {},
+							},
+						],
+					},
+				},
+				ANSWERLESS_FINISH,
+			],
+			evaluators: [],
+			actions: [noMediaAction],
+		});
+
+		const { finalText } = await runTurn({ runtime, noEarlyReply: true });
+
+		// No media shipped: the action's user-facing text is delivered intact,
+		// never collapsed to empty the way the media-delivered turn is.
+		expect(finalText).toBe(summary);
 	});
 });

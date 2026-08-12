@@ -111,6 +111,7 @@ All settings are read via `getSetting(runtime, key)` (runtime config first, then
 | `OPENAI_EXPERIMENTAL_TELEMETRY` | no | `false` | Enable AI SDK telemetry |
 | `OPENAI_REASONING_EFFORT` | no | — | `minimal`/`low`/`medium`/`high` for o-series models |
 | `OPENAI_BROWSER_BASE_URL` | no | — | Browser-only proxy URL (keeps key server-side) |
+| `OPENAI_BROWSER_UPSTREAM_BASE_URL` | no | — | Actual proxy upstream used for endpoint-specific capability checks |
 | `OPENAI_BROWSER_EMBEDDING_URL` | no | — | Browser-only embeddings proxy URL |
 | `OPENAI_ALLOW_BROWSER_API_KEY` | no | `false` | Send auth header in browser (opt-in) |
 | `ELIZA_PROVIDER` | no | — | Set to `cerebras` or `evolink` to force that provider mode |

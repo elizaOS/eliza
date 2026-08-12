@@ -172,7 +172,7 @@ describe("Cloud CF Pages artifact metadata", () => {
   test("keeps the deploy and served-frontend freshness gates strict", () => {
     for (const { jobId } of deployJobs) {
       const job = workflow.jobs?.[jobId];
-      expect(job?.needs).toEqual(["migrate-db", "build-pages"]);
+      expect(job?.needs).toEqual(["deploy-api", "build-pages"]);
 
       const guard = namedStep(job, "Deploy freshness guard");
       const verification = namedStep(job, "Verify Pages frontend freshness");

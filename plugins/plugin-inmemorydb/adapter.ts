@@ -42,10 +42,12 @@ import {
   MemoryType,
   type MessageSearchHit,
   type Metadata,
+  normalizePairingPageOptions,
   type PairingAllowlistEntry,
+  type PairingAllowlistQuery,
   type PairingAllowlistsResult,
-  type PairingChannel,
   type PairingRequest,
+  type PairingRequestQuery,
   type PairingRequestsResult,
   type Participant,
   type ParticipantsForRoomsResult,
@@ -1672,30 +1674,95 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
 
   // ── Pairing CRUD ──────────────────────────────────────────────────────
 
-  async getPairingRequests(
-    queries: Array<{ channel: PairingChannel; agentId: UUID }>
-  ): Promise<PairingRequestsResult> {
+  async getPairingRequests(queries: PairingRequestQuery[]): Promise<PairingRequestsResult> {
     const result: PairingRequestsResult = [];
-    for (const { channel, agentId } of queries) {
+    for (const query of queries) {
+      const { channel, agentId } = query;
       const requests = await this.storage.getWhere<PairingRequest>(
         COLLECTIONS.PAIRING_REQUESTS,
-        (r) => r.channel === channel && r.agentId === agentId
+        (r) =>
+          r.channel === channel &&
+          r.agentId === agentId &&
+          (!query.createdAfter || new Date(r.createdAt).getTime() >= query.createdAfter.getTime())
       );
-      result.push({ channel, agentId, requests });
+      const isPaged = query.limit !== undefined || query.offset !== undefined;
+      if (!isPaged && query.order === undefined) {
+        result.push({ channel, agentId, requests });
+        continue;
+      }
+
+      const direction = query.order === "newest" ? -1 : 1;
+      requests.sort((a, b) => {
+        const timeDifference = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+        if (timeDifference !== 0) return timeDifference * direction;
+        const aId = String(a.id);
+        const bId = String(b.id);
+        return aId === bId ? 0 : aId < bId ? -direction : direction;
+      });
+      if (!isPaged) {
+        result.push({ channel, agentId, requests });
+        continue;
+      }
+
+      const { limit, offset } = normalizePairingPageOptions(query);
+      const page = requests.slice(offset, offset + limit + 1);
+      const hasMore = page.length > limit;
+      result.push({
+        channel,
+        agentId,
+        requests: page.slice(0, limit),
+        pageInfo: {
+          limit,
+          offset,
+          hasMore,
+          nextOffset: hasMore ? offset + limit : null,
+        },
+      });
     }
     return result;
   }
 
-  async getPairingAllowlists(
-    queries: Array<{ channel: PairingChannel; agentId: UUID }>
-  ): Promise<PairingAllowlistsResult> {
+  async getPairingAllowlists(queries: PairingAllowlistQuery[]): Promise<PairingAllowlistsResult> {
     const result: PairingAllowlistsResult = [];
-    for (const { channel, agentId } of queries) {
+    for (const query of queries) {
+      const { channel, agentId } = query;
       const entries = await this.storage.getWhere<PairingAllowlistEntry>(
         COLLECTIONS.PAIRING_ALLOWLIST,
         (e) => e.channel === channel && e.agentId === agentId
       );
-      result.push({ channel, agentId, entries });
+      const isPaged = query.limit !== undefined || query.offset !== undefined;
+      if (!isPaged && query.order === undefined) {
+        result.push({ channel, agentId, entries });
+        continue;
+      }
+
+      const direction = query.order === "newest" ? -1 : 1;
+      entries.sort((a, b) => {
+        const timeDifference = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+        if (timeDifference !== 0) return timeDifference * direction;
+        const aId = String(a.id);
+        const bId = String(b.id);
+        return aId === bId ? 0 : aId < bId ? -direction : direction;
+      });
+      if (!isPaged) {
+        result.push({ channel, agentId, entries });
+        continue;
+      }
+
+      const { limit, offset } = normalizePairingPageOptions(query);
+      const page = entries.slice(offset, offset + limit + 1);
+      const hasMore = page.length > limit;
+      result.push({
+        channel,
+        agentId,
+        entries: page.slice(0, limit),
+        pageInfo: {
+          limit,
+          offset,
+          hasMore,
+          nextOffset: hasMore ? offset + limit : null,
+        },
+      });
     }
     return result;
   }

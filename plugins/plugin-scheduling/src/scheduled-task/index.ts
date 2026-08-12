@@ -20,6 +20,13 @@ export {
   registerBuiltInCompletionChecks,
 } from "./completion-check-registry.js";
 export {
+  type ConnectorDispatchTarget,
+  dispatchViaMessageConnector,
+  isConnectorDispatchIntent,
+  resolveConnectorDispatchTarget,
+  runtimeHasMessageConnector,
+} from "./connector-dispatch.js";
+export {
   type AnchorRegistry,
   type ConsolidationRegistry,
   createAnchorRegistry,

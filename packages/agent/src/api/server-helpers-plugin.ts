@@ -2,7 +2,7 @@
  * Plugin config/form helpers extracted from server.ts.
  */
 
-import { BLOCKED_ENV_KEYS } from "./plugin-discovery-helpers.ts";
+import { isBlockedEnvKey } from "./plugin-discovery-helpers.ts";
 import type { ServerState } from "./server-types.ts";
 
 // ---------------------------------------------------------------------------
@@ -183,7 +183,7 @@ export function resolvePluginConfigMutationRejections(
       continue;
     }
 
-    if (BLOCKED_ENV_KEYS.has(normalized)) {
+    if (isBlockedEnvKey(normalized)) {
       rejections.push({
         field: key,
         message: `${key} is blocked for security reasons`,

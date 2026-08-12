@@ -9,6 +9,7 @@ import {
   isOAuthSuccessConnectedParam,
   isOAuthSuccessLandingPath,
   mintOAuthSuccessProof,
+  type OAuthSuccessProofTicketStore,
   verifyOAuthSuccessProof,
 } from "./success-proof";
 
@@ -151,5 +152,101 @@ describe("oauth success proof", () => {
     expect(isOAuthSuccessLandingPath("/auth/success/")).toBe(true);
     expect(isOAuthSuccessLandingPath("/foo/auth/success")).toBe(false);
     expect(isOAuthSuccessLandingPath("/dashboard/settings")).toBe(false);
+  });
+
+  it("does not mint a proof when the ticket store did not acknowledge the write", async () => {
+    // Regression for #18114: the default store used the lossy `cache.set`
+    // wrapper that discarded the `unavailable`/`error` outcome, so a proof was
+    // signed and returned even though no nonce ticket was ever stored. A later
+    // verify then answered `already_used` instead of a retryable failure.
+    const unavailableStore: OAuthSuccessProofTicketStore = {
+      async put() {
+        return false;
+      },
+      async take() {
+        return null;
+      },
+    };
+    __setOAuthSuccessProofTicketStoreForTests(unavailableStore);
+    const proof = await mintOAuthSuccessProof({
+      platform: "github",
+      connectionId: "conn-1",
+      ...BINDING,
+    });
+    expect(proof).toBeNull();
+  });
+
+  it("does not mint a proof when the ticket store throws", async () => {
+    const throwingStore: OAuthSuccessProofTicketStore = {
+      async put() {
+        throw new Error("store down");
+      },
+      async take() {
+        return null;
+      },
+    };
+    __setOAuthSuccessProofTicketStoreForTests(throwingStore);
+    const proof = await mintOAuthSuccessProof({
+      platform: "github",
+      ...BINDING,
+    });
+    expect(proof).toBeNull();
+  });
+
+  it("guarantees exactly one consume under concurrent verification (atomic store)", async () => {
+    // Regression for #18114: the one-time ticket must be consumed exactly once
+    // even when multiple matching-session verifications race. The in-memory
+    // store is single-process atomic; a non-atomic backend (Cloudflare KV) is
+    // refused by the default store's `take` and must not reach this path.
+    const proof = await mintOAuthSuccessProof({
+      platform: "discord",
+      connectionId: "conn-1",
+      ...BINDING,
+    });
+    expect(proof).toBeTruthy();
+    // Fire many concurrent consumes against the same proof.
+    const results = await Promise.all(
+      Array.from({ length: 16 }, () => consumeOAuthSuccessProof(proof, BINDING)),
+    );
+    const oks = results.filter((r) => r.ok);
+    expect(oks).toHaveLength(1);
+    // Every loser must report already_used (the ticket was claimed), not a
+    // binding mismatch or store-unavailable result.
+    for (const r of results) {
+      if (!r.ok) expect(r.reason).toBe("already_used");
+    }
+  });
+
+  it("refuses a non-atomic backend store (KV replay guard)", async () => {
+    // Regression for #18114: Cloudflare KV's getdel is a two-step read/delete
+    // with eventual consistency; two concurrent verifications could both receive
+    // the same ticket. The default ticket store gates `take` on
+    // `cache.supportsAtomicOperations()` so a non-atomic backend yields null and
+    // the proof verifies as already_used rather than replaying. A fake store
+    // emulating that non-atomic read-then-delete must not produce a valid
+    // consume either, because the placeholder it stores cannot match the
+    // HMAC-bound ticket payload.
+    const kv = new Map<string, string>();
+    const racyKvLikeStore: OAuthSuccessProofTicketStore = {
+      async put(nonce) {
+        kv.set(nonce, JSON.stringify({ placeholder: true }));
+        return true;
+      },
+      // Deliberately non-atomic read-then-delete, matching KvCacheAdapter.getdel.
+      async take(nonce) {
+        const value = kv.get(nonce) ?? null;
+        if (value !== null) kv.delete(nonce);
+        // Return a value that cannot satisfy the binding check in consume.
+        return value ? (JSON.parse(value) as never) : null;
+      },
+    };
+    __setOAuthSuccessProofTicketStoreForTests(racyKvLikeStore);
+    const proof = await mintOAuthSuccessProof({
+      platform: "twitter",
+      ...BINDING,
+    });
+    expect(proof).toBeTruthy();
+    const result = await consumeOAuthSuccessProof(proof, BINDING);
+    expect(result.ok).toBe(false);
   });
 });

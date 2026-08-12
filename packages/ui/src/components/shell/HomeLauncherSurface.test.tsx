@@ -13,7 +13,7 @@ import {
   screen,
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { goHome, goLauncher } from "../../state/shell-surface-store";
 import { HomeLauncherSurface } from "./HomeLauncherSurface";
 
@@ -22,6 +22,13 @@ function LauncherProbe() {
 }
 
 const originalMatchMedia = window.matchMedia;
+
+// The pager derives flick velocity from performance.now() deltas between
+// pointer events. Real wall-clock time makes the flick tests load-sensitive
+// (a GC/scheduler stall between two fireEvent calls on a busy CI host reads as
+// a slow drag and snaps back), so the suite pins the gesture clock the same
+// way useHorizontalPager.test.tsx does and advances it explicitly.
+let clock = 1000;
 
 function mockDesktopPagingMedia({
   finePointer,
@@ -43,8 +50,14 @@ function mockDesktopPagingMedia({
   })) as unknown as typeof window.matchMedia;
 }
 
+beforeEach(() => {
+  clock = 1000;
+  vi.spyOn(performance, "now").mockImplementation(() => clock);
+});
+
 afterEach(() => {
   cleanup();
+  vi.restoreAllMocks();
   Object.defineProperty(window, "matchMedia", {
     configurable: true,
     writable: true,
@@ -70,11 +83,13 @@ describe("HomeLauncherSurface", () => {
       clientX: 260,
       clientY: 100,
     });
+    clock += 10;
     fireEvent.pointerMove(homePage, {
       isPrimary: true,
       clientX: 150,
       clientY: 104,
     });
+    clock += 10;
     fireEvent.pointerUp(homePage, {
       isPrimary: true,
       clientX: 150,
@@ -107,11 +122,13 @@ describe("HomeLauncherSurface", () => {
       clientX: 120,
       clientY: 300,
     });
+    clock += 10;
     fireEvent.pointerMove(launcherPage, {
       isPrimary: true,
       clientX: 260,
       clientY: 304,
     });
+    clock += 10;
     fireEvent.pointerUp(launcherPage, {
       isPrimary: true,
       clientX: 260,

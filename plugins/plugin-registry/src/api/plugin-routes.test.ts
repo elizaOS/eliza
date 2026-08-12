@@ -110,7 +110,7 @@ function makeContext(
     readJsonBody: vi.fn(() => Promise.resolve(body)),
     scheduleRuntimeRestart: vi.fn(),
     restartRuntime: vi.fn(),
-    BLOCKED_ENV_KEYS: new Set(),
+    isBlockedEnvKey: () => false,
     discoverInstalledPlugins: vi.fn(() => []),
     maskValue: vi.fn((value: string) => `***${value.length}`),
     aggregateSecrets: vi.fn(() => []),
