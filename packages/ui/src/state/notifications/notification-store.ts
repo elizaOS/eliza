@@ -30,6 +30,10 @@ import {
 } from "../../bridge/native-notifications";
 import { APP_RESUME_EVENT } from "../../events";
 import {
+  STEWARD_SESSION_CHANGE_EVENT,
+  type StewardSessionChangeDetail,
+} from "../../events/steward-session-event";
+import {
   type AuthStatusState,
   getAuthStatusSnapshot,
   isAuthenticatedNow,
@@ -99,6 +103,10 @@ let currentAuthorityKey: string | null = null;
 // base switch (already handled by client.onBaseUrlChange's own transport
 // teardown) — see reconcileAuthority (#18542).
 let currentAuthorityBaseUrl: string | null = null;
+let authorityEpoch = 0;
+let lastStewardSessionEpoch = 0;
+let mutationRevision = 0;
+const notificationMutationRevisions = new Map<string, number>();
 // Unsubscribes the currently-bound live WS notification handler; rebound on
 // every authority change so a handler closure from a superseded authority can
 // never reach ingest(), even if a message is somehow still in flight.
@@ -410,6 +418,8 @@ function isAnonAuthorityKey(key: string | null): boolean {
  *  authority. Shared by {@link reconcileAuthority} and {@link
  *  invalidateAuthorityForCredentialChange} (#18542). */
 function clearForAuthorityChange(): void {
+  authorityEpoch += 1;
+  notificationMutationRevisions.clear();
   if (hydrationRetryTimer) {
     clearTimeout(hydrationRetryTimer);
     hydrationRetryTimer = null;
@@ -474,23 +484,16 @@ const INVALIDATED_AUTHORITY_KEY = "credential-invalidated";
 
 /**
  * `useAuthStatus` deliberately keeps the previous authenticated snapshot
- * until the async `/api/auth/me` probe resolves, so a real logout is
- * invisible to {@link reconcileAuthority} for the duration of that
- * round-trip — the inbox and live delivery would keep serving the outgoing
- * authority's data (#18542). `client`'s synchronous `steward-token-sync`
- * event fires immediately on any credential change; when it reflects a
- * cleared token (`!client.hasToken()`), that is logout-shaped and cannot wait
- * for the probe, so invalidate to a sentinel that can never equal a real
- * computed key — clearing rows/unread and unbinding live delivery — without
- * hydrating (identity is unknown until the probe's eventual publish runs the
- * real reconcile). A non-empty token (login, refresh, or an agent handoff's
- * repointBaseUrl token swap) is not logout-shaped: recompute from whatever
- * the auth snapshot currently says, which is a no-op if a same-tick base
- * change already reconciled correctly (e.g. the handoff path) and otherwise
- * catches up once the snapshot is fresh.
+ * until the async `/api/auth/me` probe resolves. The typed Steward session
+ * event distinguishes a real clear from login/refresh without consulting the
+ * unrelated Eliza API bearer. A clear invalidates synchronously; a present
+ * transition reconciles against the latest typed auth snapshot.
  */
-function onCredentialSync(): void {
-  if (client.hasToken()) {
+function onStewardSessionChange(event: Event): void {
+  const detail = (event as CustomEvent<StewardSessionChangeDetail>).detail;
+  if (!detail || detail.sessionEpoch <= lastStewardSessionEpoch) return;
+  lastStewardSessionEpoch = detail.sessionEpoch;
+  if (detail.state === "present") {
     reconcileAuthority(getAuthStatusSnapshot());
     return;
   }
@@ -711,9 +714,15 @@ export function initNotifications(): void {
     client.onBaseUrlChange(() => reconcileAuthority(getAuthStatusSnapshot())),
   );
   if (typeof window !== "undefined") {
-    window.addEventListener("steward-token-sync", onCredentialSync);
+    window.addEventListener(
+      STEWARD_SESSION_CHANGE_EVENT,
+      onStewardSessionChange,
+    );
     notificationCleanups.push(() =>
-      window.removeEventListener("steward-token-sync", onCredentialSync),
+      window.removeEventListener(
+        STEWARD_SESSION_CHANGE_EVENT,
+        onStewardSessionChange,
+      ),
     );
     const retryOnline = () => void retryNotificationHydration();
     window.addEventListener("online", retryOnline);
@@ -770,11 +779,29 @@ export async function seedDevNotificationsIfEmpty(): Promise<void> {
  *  recognize its snapshot is stale (#18542). */
 interface MutationSnapshot {
   authorityKey: string | null;
-  state: NotificationState;
+  authorityEpoch: number;
+  originals: Map<string, AgentNotification>;
+  revisions: Map<string, number>;
 }
 
-function snapshotForMutation(): MutationSnapshot {
-  return { authorityKey: currentAuthorityKey, state };
+function snapshotForMutation(ids: readonly string[]): MutationSnapshot {
+  const originals = new Map(
+    state.notifications
+      .filter((notification) => ids.includes(notification.id))
+      .map((notification) => [notification.id, notification]),
+  );
+  const revisions = new Map<string, number>();
+  for (const id of ids) {
+    mutationRevision += 1;
+    notificationMutationRevisions.set(id, mutationRevision);
+    revisions.set(id, mutationRevision);
+  }
+  return {
+    authorityKey: currentAuthorityKey,
+    authorityEpoch,
+    originals,
+    revisions,
+  };
 }
 
 /**
@@ -793,23 +820,39 @@ function revertMutation(
   snapshot: MutationSnapshot,
   op: string,
   err: unknown,
+  ids: readonly string[] = [...snapshot.originals.keys()],
 ): void {
-  if (snapshot.authorityKey !== currentAuthorityKey) {
+  if (
+    snapshot.authorityKey !== currentAuthorityKey ||
+    snapshot.authorityEpoch !== authorityEpoch
+  ) {
     logger.warn(
       { err },
       `[notification-store] ${op} failed after an authority switch; stale rollback discarded`,
     );
     return;
   }
-  setState({
-    notifications: snapshot.state.notifications,
-    unreadCount: snapshot.state.unreadCount,
-  });
+  const restoreIds = ids.filter(
+    (id) =>
+      snapshot.revisions.get(id) === notificationMutationRevisions.get(id),
+  );
+  if (restoreIds.length > 0) {
+    const restoreSet = new Set(restoreIds);
+    const restored = state.notifications.filter(
+      (notification) => !restoreSet.has(notification.id),
+    );
+    for (const id of restoreIds) {
+      const original = snapshot.originals.get(id);
+      if (original) restored.push(original);
+    }
+    restored.sort((a, b) => b.createdAt - a.createdAt);
+    setState({ notifications: restored, unreadCount: countUnread(restored) });
+  }
   logger.error({ err }, `[notification-store] ${op} failed; reverted`);
 }
 
 export async function markNotificationRead(id: string): Promise<void> {
-  const snapshot = snapshotForMutation();
+  const snapshot = snapshotForMutation([id]);
   const now = Date.now();
   const notifications = state.notifications.map((n) =>
     n.id === id && !n.readAt ? { ...n, readAt: now } : n,
@@ -823,7 +866,7 @@ export async function markNotificationRead(id: string): Promise<void> {
 }
 
 export async function markAllNotificationsRead(): Promise<void> {
-  const snapshot = snapshotForMutation();
+  const snapshot = snapshotForMutation(state.notifications.map((n) => n.id));
   const now = Date.now();
   const notifications = state.notifications.map((n) =>
     n.readAt ? n : { ...n, readAt: now },
@@ -837,7 +880,7 @@ export async function markAllNotificationsRead(): Promise<void> {
 }
 
 export async function removeNotification(id: string): Promise<void> {
-  const snapshot = snapshotForMutation();
+  const snapshot = snapshotForMutation([id]);
   const notifications = state.notifications.filter((n) => n.id !== id);
   setState({ notifications, unreadCount: countUnread(notifications) });
   if (ephemeralNotificationIds.delete(id)) return;
@@ -854,28 +897,32 @@ export async function removeNotifications(
 ): Promise<void> {
   if (ids.length === 0) return;
   const idSet = new Set(ids);
-  const snapshot = snapshotForMutation();
+  const snapshot = snapshotForMutation(ids);
   const notifications = state.notifications.filter((n) => !idSet.has(n.id));
   setState({ notifications, unreadCount: countUnread(notifications) });
   const ephemeralIds = ids.filter((id) => ephemeralNotificationIds.delete(id));
   const ephemeralIdSet = new Set(ephemeralIds);
   const persistedIds = ids.filter((id) => !ephemeralIdSet.has(id));
   if (persistedIds.length === 0) return;
-  try {
-    await Promise.all(persistedIds.map((id) => client.removeNotification(id)));
-  } catch (err) {
-    // Re-adding these ephemeral IDs into a superseded authority's set would
-    // let its stray local-only rows resurface under the new authority — only
-    // restore them when the authority that owned them is still current.
-    if (snapshot.authorityKey === currentAuthorityKey) {
-      for (const id of ephemeralIds) ephemeralNotificationIds.add(id);
-    }
-    revertMutation(snapshot, "removeNotifications", err);
+  const results = await Promise.allSettled(
+    persistedIds.map((id) => client.removeNotification(id)),
+  );
+  const failedIds = persistedIds.filter(
+    (_id, index) => results[index]?.status === "rejected",
+  );
+  if (failedIds.length > 0) {
+    const errors = results
+      .filter(
+        (result): result is PromiseRejectedResult =>
+          result.status === "rejected",
+      )
+      .map((result) => result.reason);
+    revertMutation(snapshot, "removeNotifications", errors, failedIds);
   }
 }
 
 export async function clearNotifications(): Promise<void> {
-  const snapshot = snapshotForMutation();
+  const snapshot = snapshotForMutation(state.notifications.map((n) => n.id));
   const previousEphemeralIds = [...ephemeralNotificationIds];
   setState({ notifications: [], unreadCount: 0 });
   ephemeralNotificationIds.clear();
@@ -914,6 +961,10 @@ export function __resetNotificationStoreForTests(): void {
   hydrationReadinessDeadlineAt = 0;
   currentAuthorityKey = null;
   currentAuthorityBaseUrl = null;
+  authorityEpoch = 0;
+  lastStewardSessionEpoch = 0;
+  mutationRevision = 0;
+  notificationMutationRevisions.clear();
   notificationEventUnsub?.();
   notificationEventUnsub = null;
   liveEventRevision = 0;
