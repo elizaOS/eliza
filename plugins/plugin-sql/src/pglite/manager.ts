@@ -132,6 +132,8 @@ export class PGliteClientManager implements IDatabaseClientManager<PGlite> {
   private shuttingDown = false;
   private initialized = false;
   private initializePromise: Promise<void> | null = null;
+  private lifecycleTail: Promise<void> = Promise.resolve();
+  private closePromise: Promise<void> | null = null;
   private lockFd: number | null = null;
   private lockPath: string | null = null;
   private syncUrl: string | null;
@@ -184,6 +186,32 @@ export class PGliteClientManager implements IDatabaseClientManager<PGlite> {
 
   public getConnection(): PGlite {
     return this.client;
+  }
+
+  /**
+   * Capture the live PGlite data directory without racing client teardown.
+   * Once close has begun, new captures fail explicitly instead of touching a
+   * monotonically closing handle.
+   */
+  public async dumpDataDir(compression: "gzip" = "gzip"): Promise<File | Blob> {
+    if (this.shuttingDown) {
+      throw new Error("PGlite is closing");
+    }
+    return await this.withLifecycleLock(async () => await this.client.dumpDataDir(compression));
+  }
+
+  private async withLifecycleLock<T>(operation: () => Promise<T>): Promise<T> {
+    const predecessor = this.lifecycleTail;
+    let release!: () => void;
+    this.lifecycleTail = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    await predecessor;
+    try {
+      return await operation();
+    } finally {
+      release();
+    }
   }
 
   /**
@@ -254,7 +282,16 @@ export class PGliteClientManager implements IDatabaseClientManager<PGlite> {
   }
 
   public async close(): Promise<void> {
-    this.shuttingDown = true;
+    if (!this.closePromise) {
+      this.shuttingDown = true;
+      this.closePromise = this.withLifecycleLock(async () => {
+        await this.closeInternal();
+      });
+    }
+    await this.closePromise;
+  }
+
+  private async closeInternal(): Promise<void> {
     // Flush pending write-backs before tearing down.
     if (this.writeBack.enabled) {
       try {
