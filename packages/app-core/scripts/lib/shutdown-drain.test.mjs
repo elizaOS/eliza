@@ -284,3 +284,29 @@ describe("dev-ui supervisor wiring", () => {
     );
   });
 });
+
+describe("dev-platform supervisor wiring", () => {
+  const devPlatformSource = readFileSync(
+    path.join(libDir, "..", "dev-platform.mjs"),
+    "utf8",
+  );
+
+  it("routes shutdownDesktopDev through the bounded drain", () => {
+    expect(devPlatformSource).toContain("void drainSpawnedChildren({");
+    expect(devPlatformSource).toContain(
+      "drainWindowMs: SHUTDOWN_DRAIN_WINDOW_MS,",
+    );
+    expect(devPlatformSource).toContain(
+      "signalTree: signalSpawnedProcessTree,",
+    );
+  });
+
+  it("no longer SIGKILLs surviving children on a fixed fuse", () => {
+    expect(devPlatformSource).not.toContain("}, 1500).unref();");
+  });
+
+  it("names both tracked children for loud escalation logs", () => {
+    expect(devPlatformSource).toContain('childNames.set(child, "electrobun");');
+    expect(devPlatformSource).toContain('childNames.set(child, "api");');
+  });
+});
