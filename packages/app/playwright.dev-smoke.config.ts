@@ -6,11 +6,21 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig, devices } from "@playwright/test";
+import { resolvePlaywrightPortEnv } from "./scripts/lib/playwright-port.mjs";
 
 const appDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(appDir, "../..");
-const apiPort = Number(process.env.ELIZA_DEV_SMOKE_API_PORT || "31337");
-const uiPort = Number(process.env.ELIZA_DEV_SMOKE_UI_PORT || "2138");
+// Fail closed on explicit port typos before baseURL/webServer wiring.
+const apiPort = resolvePlaywrightPortEnv(
+  process.env,
+  "ELIZA_DEV_SMOKE_API_PORT",
+  31337,
+);
+const uiPort = resolvePlaywrightPortEnv(
+  process.env,
+  "ELIZA_DEV_SMOKE_UI_PORT",
+  2138,
+);
 const stateDir =
   process.env.ELIZA_DEV_SMOKE_STATE_DIR ||
   path.join(os.tmpdir(), `eliza-dev-smoke-${process.pid}`);

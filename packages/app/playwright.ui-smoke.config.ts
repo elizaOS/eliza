@@ -16,6 +16,7 @@ import {
   writeAuditProjectPropagation,
 } from "./scripts/lib/playwright-audit-projects.mjs";
 import { resolvePlaywrightNodeRuntime } from "./scripts/lib/playwright-node-runtime.mjs";
+import { resolvePlaywrightPortEnv } from "./scripts/lib/playwright-port.mjs";
 import {
   parseUiSmokeShard,
   UI_SMOKE_SHARD_ENV,
@@ -34,8 +35,17 @@ const uiSmokeLiveStack = path.join(
   "scripts",
   "playwright-ui-live-stack.ts",
 );
-const uiSmokeApiPort = Number(process.env.ELIZA_UI_SMOKE_API_PORT || "31337");
-const uiSmokePort = Number(process.env.ELIZA_UI_SMOKE_PORT || "2138");
+// Fail closed on explicit port typos before baseURL/webServer wiring.
+const uiSmokeApiPort = resolvePlaywrightPortEnv(
+  process.env,
+  "ELIZA_UI_SMOKE_API_PORT",
+  31337,
+);
+const uiSmokePort = resolvePlaywrightPortEnv(
+  process.env,
+  "ELIZA_UI_SMOKE_PORT",
+  2138,
+);
 const reuseExistingServer = process.env.ELIZA_UI_SMOKE_REUSE_SERVER === "1";
 // Fail-fast Node runtime resolution: the shared app-core validator throws at
 // config load — before the webServer command spawns — when ELIZA_NODE_PATH is
