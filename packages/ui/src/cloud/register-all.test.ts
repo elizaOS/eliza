@@ -60,6 +60,9 @@ describe("registerAllCloudSurfaces (sync public API contract)", () => {
       "dashboard/organization",
       "dashboard/api-explorer",
       "dashboard/apps",
+      "dashboard/apps/:id",
+      "dashboard/applications",
+      "dashboard/applications/:id",
       "dashboard/admin",
       "approve/:approvalId",
       "ballot/:ballotId",
@@ -72,6 +75,21 @@ describe("registerAllCloudSurfaces (sync public API contract)", () => {
     ]) {
       expect(paths, `missing route ${p}`).toContain(p);
     }
+  });
+
+  it("maps legacy Applications URLs to the moved Apps route", () => {
+    registerAllCloudSurfaces();
+    const movedAppsRoute = getCloudRoute("dashboard/apps");
+    expect(movedAppsRoute).toBeDefined();
+    expect(getCloudRoute("dashboard/apps/:id")?.element).toBe(
+      movedAppsRoute?.element,
+    );
+    expect(getCloudRoute("dashboard/applications")?.element).toBe(
+      movedAppsRoute?.element,
+    );
+    expect(getCloudRoute("dashboard/applications/:id")?.element).toBe(
+      movedAppsRoute?.element,
+    );
   });
 
   it("leaves the web Cloud Apps handoff in the tab/view app", () => {

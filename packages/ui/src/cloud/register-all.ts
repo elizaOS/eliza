@@ -44,20 +44,16 @@ import "./account-security/routes";
 import "./monetization/routes";
 import "./connectors/routes";
 import "./organization/routes";
+import "./applications";
 
-import { lazy } from "react";
 import { registerAdminCloudRoutes } from "./admin";
 import { registerApiExplorerCloudRoute } from "./api-explorer";
-import {
-  APPLICATIONS_DETAIL_ROUTE_PATH,
-  APPLICATIONS_LIST_ROUTE_PATH,
-} from "./applications";
+import { registerMovedApplicationsCloudRoutes } from "./applications/register-moved-routes";
 import { registerApprovalsCloudRoute } from "./approvals";
 import { registerJoinFlow } from "./join/register";
 import { registerMcpsCloudRoute } from "./mcps";
 import { registerPublicPages } from "./public-pages/register";
 import { registerCloudSettingsSections } from "./settings";
-import { registerCloudRoute } from "./shell/cloud-route-registry";
 
 let registered = false;
 
@@ -75,19 +71,9 @@ export function registerAllCloudSurfaces(): void {
 
   registerApiExplorerCloudRoute();
   registerApprovalsCloudRoute();
-  // The Applications module self-registers at import time; override both paths
-  // so stale /dashboard/apps links redirect to the dashboard.
-  const AppsMovedRoute = lazy(() => import("./applications/AppsMovedRoute"));
-  registerCloudRoute({
-    path: APPLICATIONS_LIST_ROUTE_PATH,
-    element: AppsMovedRoute,
-    group: "dashboard",
-  });
-  registerCloudRoute({
-    path: APPLICATIONS_DETAIL_ROUTE_PATH,
-    element: AppsMovedRoute,
-    group: "dashboard",
-  });
+  // The Applications module self-registers at import time; override its paths
+  // and retain the older plural aliases so stale links reach the dashboard.
+  registerMovedApplicationsCloudRoutes();
   registerAdminCloudRoutes();
   registerMcpsCloudRoute();
 
