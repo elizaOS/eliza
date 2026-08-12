@@ -176,7 +176,7 @@ describe("PermissionPrimingModal", () => {
     expect(
       screen.getByTestId("priming-recovery-notifications-settings-error")
         .textContent,
-    ).toContain("Couldn't open Settings");
+    ).toContain("Couldn’t open Settings");
   });
 
   it("a denied card that can still re-prompt retries via request()", async () => {

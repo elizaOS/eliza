@@ -1426,7 +1426,6 @@ export function persistCompatPluginMutation(
   const configRecord = config as Record<string, unknown>;
   config.plugins ??= {};
   config.plugins.entries ??= {};
-  config.plugins.allow ??= [];
   const canonicalEntryId = canonicalPluginEntryId(pluginId, plugin.npmName);
   const npmDerivedEntryId = plugin.npmName
     ? normalizePluginId(plugin.npmName)
@@ -1450,7 +1449,8 @@ export function persistCompatPluginMutation(
       canonicalPluginPackageName(pluginId, plugin.npmName),
     ].filter((value): value is string => Boolean(value)),
   );
-  const wasAllowed = config.plugins.allow.some((candidate) =>
+  const hadAllowList = Array.isArray(config.plugins.allow);
+  const wasAllowed = (config.plugins.allow ?? []).some((candidate) =>
     allowAliases.has(candidate),
   );
   const pluginEntry = {
@@ -1470,13 +1470,15 @@ export function persistCompatPluginMutation(
       ? body.enabled
       : typeof pluginEntry.enabled === "boolean"
         ? pluginEntry.enabled
-        : wasAllowed;
-  writePluginAllowListEnabled(
-    config,
-    pluginId,
-    plugin.npmName,
-    persistedEnabled,
-  );
+        : undefined;
+  if (persistedEnabled !== undefined || hadAllowList) {
+    writePluginAllowListEnabled(
+      config,
+      pluginId,
+      plugin.npmName,
+      persistedEnabled ?? wasAllowed,
+    );
+  }
 
   if (typeof body.enabled === "boolean") {
     pluginEntry.enabled = body.enabled;
