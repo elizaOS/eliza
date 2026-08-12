@@ -27,11 +27,11 @@ import {
   savePersistedActiveServer,
   savePersistedFirstRunComplete,
 } from "../../state/persistence";
-import { openCloudBillingConsole } from "../billing-console";
 import { appModeNavigation } from "../app-mode/app-mode";
+import { openCloudBillingConsole } from "../billing-console";
 import { useCloudT } from "../shell/CloudI18nProvider";
-import { describeJoinCreditGateError } from "./lib/join-credit-gate-error";
 import { resolveApexJoinHandoff } from "./lib/apex-app-handoff";
+import { describeJoinCreditGateError } from "./lib/join-credit-gate-error";
 import {
   resolveJoinAuthToken,
   resolveJoinCloudApiBase,
