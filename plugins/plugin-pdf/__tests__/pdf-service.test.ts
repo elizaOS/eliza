@@ -245,4 +245,37 @@ describe("PdfService", () => {
 
 		await expect(service().convertPdfToText(prefixedPdf)).resolves.toBe("offset header");
 	});
+
+	it("handles missing or null metadata info objects without throwing", async () => {
+		getDocumentProxyMock.mockResolvedValue({
+			numPages: 1,
+			getPage: vi.fn(async () => ({
+				getTextContent: vi.fn(async () => ({ items: [{ str: "hello" }] })),
+				getViewport: vi.fn(() => ({ width: 100, height: 200 })),
+			})),
+			getMetadata: vi.fn(async () => ({ info: undefined })),
+		});
+
+		const info = await service().getDocumentInfo(validPdfBuffer());
+		expect(info.pageCount).toBe(1);
+		expect(info.metadata.title).toBeUndefined();
+		expect(info.metadata.creationDate).toBeUndefined();
+	});
+
+	it("omits null metadata creationDate instead of returning epoch 1970 date", async () => {
+		getDocumentProxyMock.mockResolvedValue({
+			numPages: 1,
+			getPage: vi.fn(async () => ({
+				getTextContent: vi.fn(async () => ({ items: [{ str: "hello" }] })),
+				getViewport: vi.fn(() => ({ width: 100, height: 200 })),
+			})),
+			getMetadata: vi.fn(async () => ({
+				info: { CreationDate: null as unknown as string, Title: 123 as unknown as string },
+			})),
+		});
+
+		const info = await service().getDocumentInfo(validPdfBuffer());
+		expect(info.metadata.creationDate).toBeUndefined();
+		expect(info.metadata.title).toBeUndefined();
+	});
 });
