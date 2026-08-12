@@ -169,7 +169,10 @@ describe("runOnboardingChat", () => {
     });
 
     const loginUrl = new URL(result.loginUrl);
-    expect(loginUrl.origin).toBe("https://eliza.app");
+    // Same continuation as Discord: straight to the Cloud app's /get-started
+    // (Steward login), never the homepage sign-in card.
+    expect(loginUrl.origin).toBe("https://app.elizacloud.ai");
+    expect(loginUrl.pathname).toBe("/get-started");
     // No legacy method/link hints: those forced the homepage's Telegram
     // widget + phone-number flow instead of the Steward continuation.
     expect(loginUrl.searchParams.get("method")).toBeNull();
@@ -657,8 +660,44 @@ describe("runOnboardingChat", () => {
     expect(result.reply).toContain("$5");
   });
 
+  test("discord Connect CTA targets the Cloud app /get-started directly, not the homepage", async () => {
+    // Shadow spec 2026-08-11/12: the Discord DM Connect button must open the
+    // ElizaCloud/Steward login flow directly. The Cloud app's authenticated
+    // /get-started bounces signed-out users to /login?returnTo=/get-started,
+    // so it IS the Steward login entry — no intermediate homepage sign-in card.
+    const result = await runOnboardingChat({
+      message: "call me Sam",
+      platform: "discord",
+      platformUserId: "discord-user-direct",
+      sessionId: "platform:discord:discord-user-direct",
+      trustedPlatformIdentity: true,
+    });
+
+    const loginUrl = new URL(result.loginUrl);
+    // Default cloud env => the Cloud *app* host, never the homepage (eliza.app).
+    expect(loginUrl.origin).toBe("https://app.elizacloud.ai");
+    expect(loginUrl.pathname).toBe("/get-started");
+    expect(loginUrl.searchParams.get("onboardingSession")).toBeTruthy();
+    expect(result.cta).toEqual({ label: "Connect", url: result.loginUrl });
+  });
+
+  test("discord Connect CTA follows ELIZA_ONBOARDING_APP_URL to the staging app host", async () => {
+    cloudEnv = { ELIZA_ONBOARDING_APP_URL: "https://app-staging.elizacloud.ai" };
+    const result = await runOnboardingChat({
+      message: "call me Sam",
+      platform: "discord",
+      platformUserId: "discord-user-staging",
+      sessionId: "platform:discord:discord-user-staging",
+      trustedPlatformIdentity: true,
+    });
+
+    const loginUrl = new URL(result.loginUrl);
+    expect(loginUrl.origin).toBe("https://app-staging.elizacloud.ai");
+    expect(loginUrl.pathname).toBe("/get-started");
+  });
+
   test("discord handoff falls back to the inline-URL copy when the login URL cannot be a button (http scheme)", async () => {
-    cloudEnv = { ELIZA_ONBOARDING_LOGIN_APP_URL: "http://localhost:3000" };
+    cloudEnv = { ELIZA_ONBOARDING_APP_URL: "http://localhost:3000" };
     const result = await runOnboardingChat({
       message: "call me Sam",
       platform: "discord",
@@ -678,7 +717,7 @@ describe("runOnboardingChat", () => {
 
   test("discord handoff falls back to the inline-URL copy when the login URL exceeds Discord's 512-char button bound", async () => {
     cloudEnv = {
-      ELIZA_ONBOARDING_LOGIN_APP_URL: `https://example.com/${"a".repeat(520)}`,
+      ELIZA_ONBOARDING_APP_URL: `https://example.com/${"a".repeat(520)}`,
     };
     const result = await runOnboardingChat({
       message: "call me Sam",
@@ -842,7 +881,7 @@ describe("runOnboardingChat", () => {
   test("stays deterministic and model-free even when a Cerebras key is configured", async () => {
     cloudEnv = {
       CEREBRAS_API_KEY: "test-key",
-      ELIZA_ONBOARDING_LOGIN_APP_URL: "https://elizaos-homepage.pages.dev",
+      ELIZA_ONBOARDING_APP_URL: "https://elizaos-homepage.pages.dev",
     };
     const first = await runOnboardingChat({
       message: "My name is Sam",

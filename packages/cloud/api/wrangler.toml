@@ -451,6 +451,13 @@ ELIZA_APP_URL = "https://eliza.app"
 # Same environment-peer rule as STAGING_ELIZA_APP_ORIGIN in
 # packages/ui/src/utils/cloud-agent-base.ts (#15161).
 ELIZA_ONBOARDING_APP_URL = "https://app-staging.elizacloud.ai"
+# VESTIGIAL as of the CONNECT-DIRECT-STEWARD change: the messaging Connect CTA
+# now targets the Cloud app's own /get-started (ELIZA_ONBOARDING_APP_URL above)
+# for a direct Steward-login handoff, so onboarding-chat.ts no longer reads
+# ELIZA_ONBOARDING_LOGIN_APP_URL. Left in place (not deleted) because the
+# canonical Worker deploy still manages the paired out-of-band secret binding
+# around this key; deleting it here without updating that workflow could break
+# the secret-removal/restore dance. Safe to remove once that workflow drops it.
 # Login CTA base for onboarding DMs (`/get-started?onboardingSession=...`).
 # The staging homepage exists since 2026-08-11: CF Pages project
 # eliza-home-staging serves https://staging.eliza.app built with
