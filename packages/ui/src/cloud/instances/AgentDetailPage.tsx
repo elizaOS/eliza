@@ -34,9 +34,11 @@ import { useAgent } from "./lib/data/eliza-agents";
 import { useT } from "./lib/i18n";
 import { statusBadgeColor, statusDotColor } from "./lib/sandbox-status";
 
-function formatDate(date: string | null): string {
+export function formatDate(date: string | null): string {
   if (!date) return "—";
-  return new Date(date).toLocaleDateString(undefined, {
+  const timestamp = new Date(date).getTime();
+  if (!Number.isFinite(timestamp)) return "—";
+  return new Date(timestamp).toLocaleDateString(undefined, {
     month: "short",
     day: "numeric",
     year: "numeric",
@@ -51,13 +53,16 @@ function formatTime(date: string | null): string {
   });
 }
 
-function formatRelativeShort(
+export function formatRelativeShort(
   date: string | null,
   t: ReturnType<typeof useT>,
 ): string {
   if (!date) return t("cloud.agents.detail.never", { defaultValue: "Never" });
   const d = new Date(date);
-  const diffMs = Date.now() - d.getTime();
+  const timestamp = d.getTime();
+  if (!Number.isFinite(timestamp))
+    return t("cloud.agents.detail.never", { defaultValue: "Never" });
+  const diffMs = Date.now() - timestamp;
   const diffMin = Math.floor(diffMs / 60_000);
   if (diffMin < 1)
     return t("cloud.agents.detail.justNow", { defaultValue: "Just now" });
