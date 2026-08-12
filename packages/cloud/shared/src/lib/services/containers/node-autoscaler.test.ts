@@ -26,6 +26,8 @@ const realNodeBootstrap = { ...realNodeBootstrapNs };
 const AGENT_IMAGE = "ELIZA_AGENT_IMAGE";
 const AGENT_IMAGE_PLATFORM = "ELIZA_AGENT_IMAGE_PLATFORM";
 const HCLOUD_NETWORK_IDS = "CONTAINERS_HCLOUD_NETWORK_IDS";
+const AUTOSCALE_MIN_FREE_SLOTS_BUFFER = "CONTAINERS_AUTOSCALE_MIN_FREE_SLOTS_BUFFER";
+const AUTOSCALE_MIN_HOT_AVAILABLE_SLOTS = "CONTAINERS_AUTOSCALE_MIN_HOT_AVAILABLE_SLOTS";
 
 function restoreEnv(key: string, value: string | undefined): void {
   if (value === undefined) {
@@ -94,7 +96,21 @@ afterAll(() => {
 });
 
 import { InMemoryComputeProvider } from "./compute-provider-fake";
-import { type AutoscalePolicy, DEFAULT_AUTOSCALE_POLICY, NodeAutoscaler } from "./node-autoscaler";
+import type { AutoscalePolicy } from "./node-autoscaler";
+
+// The shipped policy is constructed at module load, so isolate its two
+// environment-backed fields before importing it. Restoring immediately keeps
+// the process-global environment intact for the rest of the shared test lane.
+const originalAutoscaleMinFreeSlotsBuffer = process.env[AUTOSCALE_MIN_FREE_SLOTS_BUFFER];
+const originalAutoscaleMinHotAvailableSlots = process.env[AUTOSCALE_MIN_HOT_AVAILABLE_SLOTS];
+delete process.env[AUTOSCALE_MIN_FREE_SLOTS_BUFFER];
+delete process.env[AUTOSCALE_MIN_HOT_AVAILABLE_SLOTS];
+const { DEFAULT_AUTOSCALE_POLICY, NodeAutoscaler } = await import("./node-autoscaler").finally(
+  () => {
+    restoreEnv(AUTOSCALE_MIN_FREE_SLOTS_BUFFER, originalAutoscaleMinFreeSlotsBuffer);
+    restoreEnv(AUTOSCALE_MIN_HOT_AVAILABLE_SLOTS, originalAutoscaleMinHotAvailableSlots);
+  },
+);
 
 const policy: AutoscalePolicy = {
   minFreeSlotsBuffer: 4,
@@ -497,6 +513,8 @@ describe("DEFAULT_AUTOSCALE_POLICY cap regression (#18413)", () => {
   const NOW = CREATED_AT + 60 * 60 * 1000;
   const NODE_CAPACITY = 8;
   let originalAgentImagePlatform: string | undefined;
+  let originalMinFreeSlotsBuffer: string | undefined;
+  let originalMinHotAvailableSlots: string | undefined;
 
   function fullyAllocatedNode(index: number): DockerNode {
     return {
@@ -517,7 +535,13 @@ describe("DEFAULT_AUTOSCALE_POLICY cap regression (#18413)", () => {
 
   beforeEach(() => {
     originalAgentImagePlatform = process.env[AGENT_IMAGE_PLATFORM];
+    originalMinFreeSlotsBuffer = process.env[AUTOSCALE_MIN_FREE_SLOTS_BUFFER];
+    originalMinHotAvailableSlots = process.env[AUTOSCALE_MIN_HOT_AVAILABLE_SLOTS];
     process.env[AGENT_IMAGE_PLATFORM] = "linux/arm64";
+    // Exercise the boundary while ambient overrides disagree with the shipped
+    // defaults; the imported policy must remain the isolated default snapshot.
+    process.env[AUTOSCALE_MIN_FREE_SLOTS_BUFFER] = "0";
+    process.env[AUTOSCALE_MIN_HOT_AVAILABLE_SLOTS] = "0";
     mocks.findAllNodes.mockReset();
     mocks.countAllocated.mockReset();
     mocks.countRetained.mockReset();
@@ -531,9 +555,13 @@ describe("DEFAULT_AUTOSCALE_POLICY cap regression (#18413)", () => {
 
   afterEach(() => {
     restoreEnv(AGENT_IMAGE_PLATFORM, originalAgentImagePlatform);
+    restoreEnv(AUTOSCALE_MIN_FREE_SLOTS_BUFFER, originalMinFreeSlotsBuffer);
+    restoreEnv(AUTOSCALE_MIN_HOT_AVAILABLE_SLOTS, originalMinHotAvailableSlots);
   });
 
   test("ships maxNodes 16 as the default cap (#18437)", () => {
+    expect(DEFAULT_AUTOSCALE_POLICY.minFreeSlotsBuffer).toBe(2);
+    expect(DEFAULT_AUTOSCALE_POLICY.minHotAvailableSlots).toBe(1);
     expect(DEFAULT_AUTOSCALE_POLICY.maxNodes).toBe(16);
   });
 
