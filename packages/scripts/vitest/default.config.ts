@@ -438,6 +438,17 @@ const vitestResolveAlias: ModuleAlias[] = [
           ),
         },
         {
+          // Root-level single-file subpaths added for the client-public
+          // surface (#18056) map 1:1 onto files next to the entry. Must sit
+          // before the broad `@elizaos/core` alias, which would otherwise
+          // prefix-replace them into `index.node.ts/<subpath>` → ENOTDIR.
+          find: /^@elizaos\/core\/(client-public|errors|roles-rank)$/,
+          replacement: path.join(
+            path.dirname(elizaCoreEntry),
+            elizaCoreEntry.endsWith(".ts") ? "$1.ts" : "$1.js",
+          ),
+        },
+        {
           find: "@elizaos/core",
           replacement: elizaCoreEntry,
         },
