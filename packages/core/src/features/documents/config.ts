@@ -50,6 +50,15 @@ export function validateModelConfig(runtime?: IAgentRuntime): ModelConfig {
 			}
 			return normalizeEnvValue(process.env[key]) || defaultValue;
 		};
+		const getNumericSetting = (key: string, defaultValue?: string) => {
+			if (runtime) {
+				const runtimeValue = runtime.getSetting(key);
+				if (runtimeValue !== null && runtimeValue !== undefined) {
+					return runtimeValue;
+				}
+			}
+			return process.env[key] ?? defaultValue;
+		};
 
 		const ctxDocumentsEnabled = parseBooleanEnv(
 			getSetting("CTX_DOCUMENTS_ENABLED", "false"),
@@ -73,11 +82,11 @@ export function validateModelConfig(runtime?: IAgentRuntime): ModelConfig {
 				? "local-embedding"
 				: "text-embedding-3-small");
 		const embeddingDimension =
-			getSetting("EMBEDDING_DIMENSION") ||
-			(resolvedEmbeddingProvider === "local"
+			getNumericSetting("EMBEDDING_DIMENSION") ??
+			((resolvedEmbeddingProvider === "local"
 				? localEmbeddingDimensions
 				: getSetting("OPENAI_EMBEDDING_DIMENSIONS")) ||
-			(resolvedEmbeddingProvider === "local" ? "384" : "1536");
+				(resolvedEmbeddingProvider === "local" ? "384" : "1536"));
 
 		const rawOpenaiApiKey = getSetting("OPENAI_API_KEY");
 		const rawOpenaiBaseURL = getSetting("OPENAI_BASE_URL");
@@ -111,8 +120,8 @@ export function validateModelConfig(runtime?: IAgentRuntime): ModelConfig {
 			TEXT_EMBEDDING_MODEL: textEmbeddingModel,
 			TEXT_MODEL: getSetting("TEXT_MODEL"),
 
-			MAX_INPUT_TOKENS: getSetting("MAX_INPUT_TOKENS", "4000"),
-			MAX_OUTPUT_TOKENS: getSetting("MAX_OUTPUT_TOKENS", "4096"),
+			MAX_INPUT_TOKENS: getNumericSetting("MAX_INPUT_TOKENS", "4000"),
+			MAX_OUTPUT_TOKENS: getNumericSetting("MAX_OUTPUT_TOKENS", "4096"),
 
 			EMBEDDING_DIMENSION: embeddingDimension,
 
@@ -122,10 +131,13 @@ export function validateModelConfig(runtime?: IAgentRuntime): ModelConfig {
 			RATE_LIMIT_ENABLED: parseBooleanEnv(
 				getSetting("RATE_LIMIT_ENABLED", "true"),
 			),
-			MAX_CONCURRENT_REQUESTS: getSetting("MAX_CONCURRENT_REQUESTS", "100"),
-			REQUESTS_PER_MINUTE: getSetting("REQUESTS_PER_MINUTE", "500"),
-			TOKENS_PER_MINUTE: getSetting("TOKENS_PER_MINUTE", "1000000"),
-			BATCH_DELAY_MS: getSetting("BATCH_DELAY_MS", "100"),
+			MAX_CONCURRENT_REQUESTS: getNumericSetting(
+				"MAX_CONCURRENT_REQUESTS",
+				"100",
+			),
+			REQUESTS_PER_MINUTE: getNumericSetting("REQUESTS_PER_MINUTE", "500"),
+			TOKENS_PER_MINUTE: getNumericSetting("TOKENS_PER_MINUTE", "1000000"),
+			BATCH_DELAY_MS: getNumericSetting("BATCH_DELAY_MS", "100"),
 		});
 		validateConfigRequirements(config, assumePluginOpenAI);
 		return config;

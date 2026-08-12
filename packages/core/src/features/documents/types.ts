@@ -17,6 +17,52 @@ import type {
 } from "../../types";
 import type { ServiceTypeRegistry } from "../../types/service.ts";
 
+const safeIntegerSetting = (minimum: 0 | 1, defaultValue?: number) => {
+	const schema = z
+		.union([z.string(), z.number()])
+		.transform((value, context) => {
+			let parsed: number;
+
+			if (typeof value === "string") {
+				const normalized = value.trim();
+				if (!/^\d+$/.test(normalized)) {
+					context.addIssue({
+						code: "custom",
+						message: "must be a complete decimal integer",
+					});
+					return z.NEVER;
+				}
+				parsed = Number(normalized);
+			} else {
+				parsed = value;
+			}
+
+			if (
+				!Number.isSafeInteger(parsed) ||
+				Object.is(parsed, -0) ||
+				parsed < minimum
+			) {
+				context.addIssue({
+					code: "custom",
+					message:
+						minimum === 0
+							? "must be a nonnegative safe integer"
+							: "must be a positive safe integer",
+				});
+				return z.NEVER;
+			}
+
+			return parsed;
+		});
+
+	return defaultValue === undefined ? schema : schema.default(defaultValue);
+};
+
+const positiveSafeIntegerSetting = (defaultValue?: number) =>
+	safeIntegerSetting(1, defaultValue);
+const nonnegativeSafeIntegerSetting = (defaultValue?: number) =>
+	safeIntegerSetting(0, defaultValue);
+
 /**
  * Local metadata type for stored document items.
  * Uses a permissive record type to avoid conflicts between TypeScript and protobuf MemoryMetadata types.
@@ -55,25 +101,10 @@ export const ModelConfigSchema = z.object({
 	TEXT_EMBEDDING_MODEL: z.string(),
 	TEXT_MODEL: z.string().optional(),
 
-	MAX_INPUT_TOKENS: z
-		.string()
-		.or(z.number())
-		.transform((val) => (typeof val === "string" ? parseInt(val, 10) : val)),
-	MAX_OUTPUT_TOKENS: z
-		.string()
-		.or(z.number())
-		.optional()
-		.transform((val) =>
-			val ? (typeof val === "string" ? parseInt(val, 10) : val) : 4096,
-		),
+	MAX_INPUT_TOKENS: positiveSafeIntegerSetting(),
+	MAX_OUTPUT_TOKENS: positiveSafeIntegerSetting(4096),
 
-	EMBEDDING_DIMENSION: z
-		.string()
-		.or(z.number())
-		.optional()
-		.transform((val) =>
-			val ? (typeof val === "string" ? parseInt(val, 10) : val) : 1536,
-		),
+	EMBEDDING_DIMENSION: positiveSafeIntegerSetting(1536),
 
 	LOAD_DOCS_ON_STARTUP: z.boolean().default(false),
 
@@ -81,37 +112,13 @@ export const ModelConfigSchema = z.object({
 
 	RATE_LIMIT_ENABLED: z.boolean().default(true),
 
-	MAX_CONCURRENT_REQUESTS: z
-		.string()
-		.or(z.number())
-		.optional()
-		.transform((val) =>
-			val ? (typeof val === "string" ? parseInt(val, 10) : val) : 150,
-		),
+	MAX_CONCURRENT_REQUESTS: positiveSafeIntegerSetting(150),
 
-	REQUESTS_PER_MINUTE: z
-		.string()
-		.or(z.number())
-		.optional()
-		.transform((val) =>
-			val ? (typeof val === "string" ? parseInt(val, 10) : val) : 300,
-		),
+	REQUESTS_PER_MINUTE: positiveSafeIntegerSetting(300),
 
-	TOKENS_PER_MINUTE: z
-		.string()
-		.or(z.number())
-		.optional()
-		.transform((val) =>
-			val ? (typeof val === "string" ? parseInt(val, 10) : val) : 750000,
-		),
+	TOKENS_PER_MINUTE: positiveSafeIntegerSetting(750000),
 
-	BATCH_DELAY_MS: z
-		.string()
-		.or(z.number())
-		.optional()
-		.transform((val) =>
-			val ? (typeof val === "string" ? parseInt(val, 10) : val) : 100,
-		),
+	BATCH_DELAY_MS: nonnegativeSafeIntegerSetting(100),
 });
 
 export type ModelConfig = z.infer<typeof ModelConfigSchema>;
