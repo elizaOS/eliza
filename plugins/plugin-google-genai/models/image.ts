@@ -14,7 +14,7 @@ import type {
   ImageDescriptionParams,
   RecordLlmCallDetails,
 } from "@elizaos/core";
-import { logger, recordLlmCall } from "@elizaos/core";
+import { fetchRemoteMedia, logger, recordLlmCall } from "@elizaos/core";
 import type { ImageDescriptionResponse } from "../types";
 import {
   createGoogleGenAI,
@@ -49,15 +49,12 @@ export async function handleImageDescription(
   }
 
   try {
-    const imageResponse = await fetch(imageUrl);
-    if (!imageResponse.ok) {
-      throw new Error(`Failed to fetch image: ${imageResponse.statusText}`);
-    }
-
-    const imageData = await imageResponse.arrayBuffer();
-    const base64Image = Buffer.from(imageData).toString("base64");
-    const contentType =
-      imageResponse.headers.get("content-type") || "image/jpeg";
+    const { buffer: imageBuffer, contentType } = await fetchRemoteMedia({
+      url: imageUrl,
+      maxBytes: 10_000_000, // 10 MB image cap
+      timeoutMs: 30_000,
+    });
+    const base64Image = Buffer.from(imageBuffer).toString("base64");
 
     const details: RecordLlmCallDetails = {
       model: modelName,
