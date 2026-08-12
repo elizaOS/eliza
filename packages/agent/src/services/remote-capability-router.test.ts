@@ -49,6 +49,34 @@ describe("remote capability router", () => {
     });
   });
 
+  it.each([
+    ["trailing junk", "1000junk"],
+    ["non-integer", "1.5"],
+    ["zero", "0"],
+  ])(
+    "falls back to the 60s default timeout for %s override",
+    (_label, value) => {
+      const config = resolveRemoteCapabilityRouterConfig(
+        makeRuntime({
+          ELIZA_CAPABILITY_ROUTER_URL: "https://capability.example/",
+          ELIZA_CAPABILITY_ROUTER_TIMEOUT_MS: value,
+        }),
+      );
+
+      expect(config.requestTimeoutMs).toBe(60_000);
+    },
+  );
+
+  it("uses the 60s default timeout when no override is set", () => {
+    const config = resolveRemoteCapabilityRouterConfig(
+      makeRuntime({
+        ELIZA_CAPABILITY_ROUTER_URL: "https://capability.example/",
+      }),
+    );
+
+    expect(config.requestTimeoutMs).toBe(60_000);
+  });
+
   it("resolves multiple canonical remote endpoint URLs", () => {
     const config = resolveRemoteCapabilityRouterConfig(
       makeRuntime({

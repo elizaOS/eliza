@@ -58,6 +58,7 @@ import {
   type TerminalCapability,
   type TerminalRunParams,
 } from "@elizaos/core";
+import { parsePositiveInteger } from "@elizaos/shared";
 
 const DEFAULT_REQUEST_TIMEOUT_MS = 60_000;
 
@@ -1066,17 +1067,6 @@ function parseBoolean(value: string | undefined): boolean | undefined {
   if (["1", "true", "yes", "on"].includes(normalized)) return true;
   if (["0", "false", "no", "off"].includes(normalized)) return false;
   return undefined;
-}
-
-function parsePositiveInteger(value: string | undefined): number | undefined {
-  if (!value) return undefined;
-  // Strict validation: reject non-digit-only, non-safe-integer, and
-  // non-positive values. Uses the same logic as @elizaos/shared but without
-  // the fallback parameter (we want undefined for invalid, not a default).
-  const trimmed = value.trim();
-  if (!/^\d+$/.test(trimmed)) return undefined;
-  const parsed = Number.parseInt(trimmed, 10);
-  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : undefined;
 }
 
 function parseEnvironment(
