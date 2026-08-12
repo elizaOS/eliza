@@ -56,14 +56,14 @@ export function parsePositiveSafeInteger(value, label) {
     }
     return value;
   }
-  const raw = String(value ?? "").trim();
+  const raw = String(value ?? "");
   if (!/^\d+$/.test(raw)) {
     throw new Error(
       `${label} must be a positive safe-integer decimal (received ${received})`,
     );
   }
   const parsed = Number.parseInt(raw, 10);
-  if (!Number.isSafeInteger(parsed) || parsed < 1 || String(parsed) !== raw) {
+  if (!Number.isSafeInteger(parsed) || parsed < 1) {
     throw new Error(
       `${label} must be a positive safe-integer decimal (received ${received})`,
     );
@@ -72,9 +72,10 @@ export function parsePositiveSafeInteger(value, label) {
 }
 
 /**
- * Resolve auto-heal attempt ceiling and log budget from env. Unset, empty, and
- * whitespace-only values keep historical defaults. Explicit overrides fail
- * closed so a typo cannot disable the attempt ceiling or empty log excerpts.
+ * Resolve auto-heal attempt ceiling and log budget from env. Unset and empty
+ * values keep historical defaults. Explicit overrides fail closed so a typo,
+ * including surrounding whitespace, cannot disable the attempt ceiling or
+ * empty log excerpts.
  *
  * @param {NodeJS.ProcessEnv | Record<string, string | undefined>} [env]
  * @returns {{ maxAttempts: number, logBudget: number }}
@@ -84,12 +85,12 @@ export function resolveAutohealPolicy(env = process.env) {
   const logBudgetRaw = env.AUTOHEAL_LOG_BUDGET;
 
   const maxAttempts =
-    maxAttemptsRaw == null || String(maxAttemptsRaw).trim() === ""
+    maxAttemptsRaw == null || maxAttemptsRaw === ""
       ? DEFAULT_MAX_ATTEMPTS
       : parsePositiveSafeInteger(maxAttemptsRaw, "AUTOHEAL_MAX_ATTEMPTS");
 
   const logBudget =
-    logBudgetRaw == null || String(logBudgetRaw).trim() === ""
+    logBudgetRaw == null || logBudgetRaw === ""
       ? DEFAULT_LOG_BUDGET
       : parsePositiveSafeInteger(logBudgetRaw, "AUTOHEAL_LOG_BUDGET");
 
