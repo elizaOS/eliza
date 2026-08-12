@@ -104,6 +104,7 @@ describe("terminal authority survives compaction (#18466)", () => {
 					{
 						id: "reply-reference",
 						type: "segment",
+						modelInputKind: "reply_reference",
 						segment: {
 							label: "reply_reference",
 							content: "REPLY_REFERENCE_ALLOWED",

@@ -144,7 +144,6 @@ import {
 } from "../runtime/model-input-budget";
 import {
 	actionResultToPlannerToolResult,
-	allSteps,
 	cacheProviderOptions,
 	FAILED_TOOL_FALLBACK_MESSAGE,
 	isTerminalPlannerToolName,
@@ -160,6 +159,10 @@ import {
 	runPlannerLoop,
 	summarizeActionResultForPlanner,
 } from "../runtime/planner-loop";
+import {
+	allSteps,
+	canonicalUserFacingText,
+} from "../runtime/planner-trajectory";
 import {
 	extractReplyTextFromTranscript,
 	looksLikeRawFieldTranscript,
@@ -242,7 +245,6 @@ import type { ContextDefinition, RoleGateRole } from "../types/contexts";
 import {
 	mergeEffectReceipts,
 	resolveAppliedUserFacingEffectReceipts,
-	resolveUserFacingEffectReceipts,
 } from "../types/effects";
 import type { Room } from "../types/environment";
 import type { RunEventPayload } from "../types/events";
@@ -1844,9 +1846,9 @@ export function preservedSettledToolResult(
 ): (PlannerToolResult & { userFacingText: string }) | undefined {
 	for (let index = settled.length - 1; index >= 0; index--) {
 		const entry = settled[index];
-		if (!entry || entry.result.success !== true) continue;
+		if (!entry) continue;
 		if (isTerminalPlannerToolName(entry.name)) continue;
-		const candidate = entry.result.userFacingText?.trim();
+		const candidate = canonicalUserFacingText(entry.result);
 		if (!candidate) continue;
 		// A text the user already saw via an action callback must not be
 		// re-sent; keep scanning for an undelivered result.
@@ -2199,6 +2201,7 @@ function appendPriorDialogueEvents(
 			id: `history:${memory.id}`,
 			type: "segment",
 			source: "prior-dialogue",
+			modelInputKind: "conversation",
 			createdAt: memory.createdAt,
 			segment: {
 				id: `history:${memory.id}`,
@@ -2330,6 +2333,7 @@ function replyReferenceEventForContext(message: Memory): ContextEvent | null {
 		id,
 		type: "segment",
 		source: message.content.source ?? "platform",
+		modelInputKind: "reply_reference",
 		segment: {
 			id,
 			label: "reply_reference",
@@ -3109,15 +3113,11 @@ async function createV5MessageContextObject(args: {
 	if (hasStructuredRecentMessagesProvider(args.state)) {
 		events.push({
 			id: "prior-dialogue-policy",
-			type: "segment",
+			type: "instruction",
 			source: "message-service",
-			segment: {
-				id: "prior-dialogue-policy",
-				label: "system",
-				content:
-					"prior_dialogue_policy: Prior chat is context only. For current, latest, live, filesystem, runtime, build, deploy, or verification requests, use the current turn's tools/context instead of answering from prior tool results or stale sub-agent transcripts.",
-				stable: true,
-			},
+			content:
+				"prior_dialogue_policy: Prior chat is context only. For current, latest, live, filesystem, runtime, build, deploy, or verification requests, use the current turn's tools/context instead of answering from prior tool results or stale sub-agent transcripts.",
+			stable: true,
 		});
 	}
 
@@ -3506,11 +3506,11 @@ function uniqueAppliedCanonicalActionReply(
 	);
 	const candidates = new Set<string>();
 	for (const result of results) {
-		const text = result.userFacingText?.trim();
-		if (result.verifiedUserFacing !== true || !text) continue;
-		if (!resolveAppliedUserFacingEffectReceipts(result, allTurnReceipts)) {
-			continue;
-		}
+		const text = canonicalUserFacingText(result, {
+			allTurnReceipts,
+			requireAppliedEffect: true,
+		});
+		if (!text) continue;
 		candidates.add(text);
 	}
 	return candidates.size === 1
@@ -6239,7 +6239,7 @@ interface ExecuteV5PlannedToolCallParams {
 		context: ContextObject;
 		trajectory: PlannerTrajectory;
 	}) => Promise<EvaluatorOutput> | EvaluatorOutput;
-	provider?: string;
+	provider: string | undefined;
 	tools?: ToolDefinition[];
 	recorder?: TrajectoryRecorder;
 	trajectoryId?: string;
@@ -6517,13 +6517,18 @@ export function subPlannerResultToPlannerToolResult(
 		latestSubActionResult.userFacingText.trim() === userFacingText.trim()
 			? latestSubActionResult.userFacingEffectReceiptIds
 			: undefined;
+	const terminalCanonicalUserFacingText = canonicalUserFacingText(
+		latestSubActionResult,
+		{
+			allTurnReceipts: effectReceipts,
+			includeTerminalFailure: !success,
+			requireAppliedEffect: success,
+		},
+	);
 	const terminalVerifiedUserFacing =
 		!internalTerminalPayload &&
-		latestSubActionResult?.verifiedUserFacing === true &&
-		Array.isArray(terminalUserFacingEffectReceiptIds) &&
-		terminalUserFacingEffectReceiptIds.length > 0 &&
-		resolveUserFacingEffectReceipts(latestSubActionResult, effectReceipts) !==
-			null;
+		terminalCanonicalUserFacingText !== undefined &&
+		terminalCanonicalUserFacingText === userFacingText;
 	const data =
 		terminalData || subSteps.length > 0
 			? {
@@ -6552,6 +6557,10 @@ export function subPlannerResultToPlannerToolResult(
 				}
 			: {}),
 		...(terminalVerifiedUserFacing ? { verifiedUserFacing: true } : {}),
+		...(terminalVerifiedUserFacing &&
+		latestSubActionResult?.turnComplete === true
+			? { turnComplete: true }
+			: {}),
 		data,
 		error: latestSubActionResult?.error,
 		...(subResult.endedWithDeliberateSilence && subResult.silentTerminalAction
@@ -6709,7 +6718,7 @@ function collectPreviousActionResults(
 		actionsByName.set(normalizeActionIdentifier(action.name), action);
 	}
 	const results: ActionResult[] = [];
-	for (const step of [...trajectory.archivedSteps, ...trajectory.steps]) {
+	for (const step of allSteps(trajectory)) {
 		if (!step.result || !step.toolCall) {
 			continue;
 		}
@@ -7440,9 +7449,9 @@ export async function runV5MessageRuntimeStage1(args: {
 		// right after it completes, before any later model call could overwrite the
 		// runtime-wide last-resolved-provider, so the recorded stage names the real
 		// provider instead of the fabricated "default" literal (#13623).
-		const messageHandlerProvider = args.runtime.getLastResolvedModelProvider?.(
-			ModelType.RESPONSE_HANDLER,
-		);
+		const messageHandlerProvider =
+			extractStageResultProvider(rawMessageHandler) ??
+			args.runtime.getLastResolvedModelProvider?.(ModelType.RESPONSE_HANDLER);
 		const rawFieldParsed = extractMessageHandlerRawParsed(rawMessageHandler);
 		let fieldRunResult: ResponseHandlerFieldRunResult | null = null;
 		let messageHandler: MessageHandlerResult | null = null;
@@ -8172,6 +8181,7 @@ export async function runV5MessageRuntimeStage1(args: {
 			id: `message-handler:${messageHandlerEndedAt}`,
 			type: "message_handler",
 			source: "message-service",
+			provenance: "runtime",
 			createdAt: messageHandlerEndedAt,
 			...(responseHandlerContextSlices.length > 0
 				? { content: responseHandlerContextSlices.join("\n\n") }
@@ -8386,6 +8396,7 @@ export async function runV5MessageRuntimeStage1(args: {
 				runPlannerLoop({
 					runtime: plannerRuntime,
 					context: loopContext,
+					provider: messageHandlerProvider,
 					config: args.plannerLoopConfig,
 					tools: plannerTools.length > 0 ? plannerTools : undefined,
 					requireNonTerminalToolCall,
@@ -8468,6 +8479,7 @@ export async function runV5MessageRuntimeStage1(args: {
 												: {}),
 										}),
 										plannerRuntime,
+										provider: messageHandlerProvider,
 										executorOptions: {
 											actions: exposedPlannerActions,
 											...(args.roomHandlerLease
@@ -8908,9 +8920,7 @@ export async function runV5MessageRuntimeStage1(args: {
 			effectiveReplyText === stageOneAck;
 		const effectiveReplyIsCanonicalActionText = actionResults.some(
 			(result) =>
-				result.verifiedUserFacing === true &&
-				typeof result.userFacingText === "string" &&
-				effectiveDeliveredReplyText === result.userFacingText.trim(),
+				effectiveDeliveredReplyText === canonicalUserFacingText(result),
 		);
 		const transcriptVisibility = resolveActionResultTranscriptVisibility(
 			plannedTextRaw || effectiveReplyText,
@@ -8928,7 +8938,7 @@ export async function runV5MessageRuntimeStage1(args: {
 							text: effectiveDeliveredReplyText,
 							thought:
 								plannerResult.evaluator?.thought ??
-								plannerResult.trajectory.steps.at(-1)?.thought ??
+								allSteps(plannerResult.trajectory).at(-1)?.thought ??
 								messageHandler.thought,
 							agentVoiced:
 								effectiveReplyIsModelVoice ||

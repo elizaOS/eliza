@@ -907,13 +907,12 @@ describe("v5 planner loop skeleton", () => {
 
 		expect(runtime.useModel).toHaveBeenCalledTimes(2);
 		const retryParams = runtime.useModel.mock.calls[1]?.[1] as {
+			tools?: Array<{ name?: string }>;
 			messages?: Array<{ role?: string; content?: string | null }>;
 		};
-		expect(retryParams.messages?.[1]?.content).toContain(
-			"previous planner response was not valid",
-		);
-		expect(retryParams.messages?.[1]?.content).toContain(
-			'do not answer with "saved", "done", or similar prose unless a tool call result proves the side effect happened',
+		expect(retryParams.tools?.map((tool) => tool.name)).toContain("LOOKUP");
+		expect(retryParams.messages?.[1]?.content ?? "").not.toMatch(
+			/previous planner response was not valid|Looks fine/iu,
 		);
 		expect(executeToolCall).toHaveBeenCalledWith(
 			{ id: "call-1", name: "LOOKUP", params: { query: "status" } },
@@ -940,6 +939,8 @@ describe("v5 planner loop skeleton", () => {
 			text: "Draft goal: Leave the apartment more. Not saved yet — what would count as success?",
 			userFacingText:
 				"Draft goal: Leave the apartment more. Not saved yet — what would count as success?",
+			verifiedUserFacing: true,
+			data: { awaitingUserInput: true },
 		}));
 		const evaluate = vi.fn(async () => ({
 			success: true,
@@ -1042,6 +1043,7 @@ describe("v5 planner loop skeleton", () => {
 			success: true,
 			text: preview,
 			userFacingText: preview,
+			verifiedUserFacing: true,
 			data: {
 				noop: true,
 			},
@@ -1092,6 +1094,8 @@ describe("v5 planner loop skeleton", () => {
 			text: "Here's the draft — nothing saved yet. Want me to save it?",
 			userFacingText:
 				"Here's the draft — nothing saved yet. Want me to save it?",
+			verifiedUserFacing: true,
+			data: { requiresConfirmation: true },
 		}));
 		const evaluate = vi.fn(async () => ({
 			success: true,
@@ -1131,6 +1135,8 @@ describe("v5 planner loop skeleton", () => {
 			success: false,
 			text: "What would count as success for that goal?",
 			userFacingText: "What would count as success for that goal?",
+			verifiedUserFacing: true,
+			data: { awaitingUserInput: true },
 		}));
 		const evaluate = vi.fn(async () => ({
 			success: true,
@@ -1170,6 +1176,8 @@ describe("v5 planner loop skeleton", () => {
 			success: false,
 			text: "Here's the draft — not saved yet. Want me to save it?",
 			userFacingText: "Here's the draft — not saved yet. Want me to save it?",
+			verifiedUserFacing: true,
+			data: { requiresConfirmation: true },
 		}));
 		const evaluate = vi.fn(async () => ({
 			success: true,
@@ -2284,13 +2292,13 @@ describe("v5 planner loop skeleton", () => {
 
 		expect(runtime.useModel).toHaveBeenCalledTimes(2);
 		const retryParams = runtime.useModel.mock.calls[1]?.[1] as {
+			tools?: Array<{ name?: string }>;
 			messages?: Array<{ role?: string; content?: string | null }>;
 		};
-		expect(retryParams.messages?.[1]?.content).toContain(
-			"unavailable_tool_calls",
+		expect(retryParams.tools?.map((tool) => tool.name)).toContain("SHELL");
+		expect(retryParams.messages?.[1]?.content ?? "").not.toMatch(
+			/unavailable_tool_calls|GET_PRICE/iu,
 		);
-		expect(retryParams.messages?.[1]?.content).toContain("GET_PRICE");
-		expect(retryParams.messages?.[1]?.content).toContain("SHELL");
 		expect(executeToolCall).toHaveBeenCalledTimes(1);
 		expect(executeToolCall).toHaveBeenCalledWith(
 			{
@@ -2421,7 +2429,11 @@ describe("v5 planner loop skeleton", () => {
 		const retryParams = runtime.useModel.mock.calls[1]?.[1] as {
 			messages?: Array<{ role?: string; content?: string | null }>;
 		};
+		expect(retryParams.messages?.[1]?.content).toContain("tool_authority");
 		expect(retryParams.messages?.[1]?.content).toContain(
+			"machine_status: failed",
+		);
+		expect(retryParams.messages?.[1]?.content).not.toContain(
 			"silent_failed_finish",
 		);
 		expect(executeToolCall).toHaveBeenCalledTimes(2);
@@ -2909,8 +2921,9 @@ describe("v5 planner loop skeleton", () => {
 		const secondCall = capturedMessages[1];
 		if (!secondCall) throw new Error("Expected a second planner call");
 		const secondPayload = JSON.stringify(secondCall);
-		expect(secondPayload).toContain("compaction");
-		expect(secondPayload).toContain("GENERATE success");
+		expect(secondPayload).not.toContain("compaction");
+		expect(secondPayload).toContain('tool_name: \\"GENERATE\\"');
+		expect(secondPayload).toContain("machine_status: success");
 		expect(secondPayload).not.toContain("x".repeat(1_000));
 
 		const recordedKinds = recordStage.mock.calls.map((call) => call[1]?.kind);

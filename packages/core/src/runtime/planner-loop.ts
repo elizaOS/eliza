@@ -26,7 +26,6 @@ import type {
 	ProviderDataRecord,
 } from "../types/components";
 import type { ContextEvent, ContextObjectTool } from "../types/context-object";
-import { hasAppliedUserFacingEffectProof } from "../types/effects";
 import {
 	type ChatMessage,
 	type GenerateTextResult,
@@ -79,7 +78,12 @@ import {
 	toolMessageContent,
 	trajectoryStepsToMessages,
 } from "./planner-rendering";
-import { allSteps, projectModelVisibleTrajectory } from "./planner-trajectory";
+import {
+	allSteps,
+	canonicalUserFacingText,
+	captureOriginalContextEvents,
+	projectModelVisibleTrajectory,
+} from "./planner-trajectory";
 import type {
 	ContextObject,
 	EvaluatorOutput,
@@ -113,7 +117,6 @@ export {
 	cacheProviderOptions,
 	trajectoryStepsToMessages,
 } from "./planner-rendering";
-export { allSteps } from "./planner-trajectory";
 export {
 	looksLikeActionEnvelopeJson,
 	looksLikeEvaluatorEnvelopeJson,
@@ -1040,6 +1043,7 @@ async function runPlannerLoopIterations(
 					id: `redundant-tool-call:${iteration}`,
 					type: "instruction",
 					source: "planner-loop",
+					provenance: "runtime",
 					createdAt: Date.now(),
 					content:
 						`${instructionParts.join(" ")} Answer the user now from the ` +
@@ -1087,6 +1091,7 @@ async function runPlannerLoopIterations(
 					id: `queue:${toolCall.id ?? toolCall.name}:${iteration}`,
 					type: "planned_tool_call",
 					source: "planner-loop",
+					provenance: "runtime",
 					createdAt: Date.now(),
 					metadata: {
 						iteration,
@@ -1350,12 +1355,7 @@ async function runPlannerLoopIterations(
 }
 
 function normalizePlannerContext(context: ContextObject): ContextObject {
-	return Array.isArray(context.events)
-		? context
-		: {
-				...context,
-				events: [],
-			};
+	return captureOriginalContextEvents(context);
 }
 
 function renderPlannerModelInput(params: {
@@ -1915,6 +1915,8 @@ async function callPlanner(params: {
 	parentStageId?: string;
 	providerAttributionState?: PlannerLoopParams["providerAttributionState"];
 	iteration?: number;
+	/** Safe machine-owned instruction appended after the trusted projection. */
+	modelInstruction?: { id: string; content: string };
 	/**
 	 * Side-channel observer called once per model call with the gross
 	 * `promptTokens` reported by the provider. Used by `runPlannerLoop`
@@ -1978,6 +1980,36 @@ async function callPlanner(params: {
 			});
 		}
 	}
+	const modelTrajectory = projectModelVisibleTrajectory(
+		params.trajectory,
+		params.trajectory.context,
+	);
+	const modelContext = params.modelInstruction
+		? appendContextEvent(modelTrajectory.context, {
+				id: params.modelInstruction.id,
+				type: "instruction",
+				source: "planner-loop",
+				provenance: "runtime",
+				content: params.modelInstruction.content,
+			})
+		: modelTrajectory.context;
+	renderedInput = renderPlannerModelInput({
+		context: modelContext,
+		trajectory: modelTrajectory,
+		template: resolveOptimizedPlannerTemplate(params.runtime),
+		runtime: params.runtime,
+		maxToolResultChars: params.config.compactionMaxKeptStepChars,
+	});
+	modelInputBudget = buildModelInputBudget({
+		messages: renderedInput.messages,
+		promptSegments: renderedInput.promptSegments,
+		tools: params.tools,
+		modelName: params.config.contextWindowModelName,
+		...(params.config.contextWindowTokens
+			? { contextWindowTokens: params.config.contextWindowTokens }
+			: {}),
+		reserveTokens: compactionReserveForBudget(params.config),
+	});
 	const prefixHashes = computePrefixHashes(renderedInput.promptSegments);
 	const cachePrefixHashes = computePrefixHashes(renderedInput.cacheKeySegments);
 	const prefixHash =
@@ -2201,6 +2233,7 @@ async function maybeCompactPlannerTrajectory(args: {
 		id: `compaction:${args.iteration}:${startedAt}`,
 		type: "segment",
 		source: "planner-loop",
+		provenance: "runtime",
 		createdAt: startedAt,
 		metadata: {
 			reason: "input_budget",
@@ -2648,6 +2681,7 @@ function appendEvaluationEvent(args: {
 		id: `evaluation:${args.iteration}:${createdAt}`,
 		type: "evaluation",
 		source: "planner-loop",
+		provenance: "runtime",
 		createdAt,
 		metadata: {
 			iteration: args.iteration,
@@ -2693,6 +2727,7 @@ function appendTerminalPlannerOutputEvent(args: {
 		id: `terminal-planner-output:${args.iteration}:${createdAt}`,
 		type: "segment",
 		source: "planner-loop",
+		provenance: "runtime",
 		createdAt,
 		metadata: {
 			iteration: args.iteration,
@@ -2731,6 +2766,7 @@ function appendTerminalContinuationEvent(args: {
 		id: `terminal-planner-retry:${args.iteration}:${createdAt}`,
 		type: "segment",
 		source: "planner-loop",
+		provenance: "runtime",
 		createdAt,
 		metadata: {
 			iteration: args.iteration,
@@ -2770,6 +2806,7 @@ function appendUnavailableToolCallEvent(args: {
 		id: `unavailable-tool-call-retry:${args.iteration}:${createdAt}`,
 		type: "instruction",
 		source: "planner-loop",
+		provenance: "runtime",
 		createdAt,
 		content,
 		metadata: {
@@ -2789,11 +2826,10 @@ function appendSilentFailedFinishRecoveryEvent(args: {
 	const createdAt = Date.now();
 	const failedStep = latestFailedToolStep(args.trajectory);
 	const failedToolName = failedStep?.toolCall?.name;
-	// Naming the cause (not just the tool) lets the replan pick a genuinely
-	// different approach — and lets a blocker reply state WHY the step failed
-	// instead of degenerating to the generic failed-step sentence (#17948).
+	// Recovery diagnostics remain process-local for trajectory inspection. The
+	// model boundary receives only the failed tool's machine status projection.
 	const failedToolCause = failedStep
-		? failedStepCauseForPrompt(failedStep)
+		? failedStepInternalCause(failedStep)
 		: undefined;
 	const content = [
 		"planner_retry_instruction:",
@@ -2808,6 +2844,7 @@ function appendSilentFailedFinishRecoveryEvent(args: {
 		id: `silent-failed-finish-retry:${args.iteration}:${createdAt}`,
 		type: "instruction",
 		source: "planner-loop",
+		provenance: "runtime",
 		createdAt,
 		content,
 		metadata: {
@@ -2925,6 +2962,7 @@ async function executeQueuedToolCall(params: {
 		id: `tool-result:${params.toolCall.id ?? params.toolCall.name}:${endedAt}`,
 		type: "tool_result",
 		source: "planner-loop",
+		provenance: "runtime",
 		createdAt: endedAt,
 		metadata: {
 			iteration: params.iteration,
@@ -3547,6 +3585,7 @@ function handleRequiredToolPlannerMiss(params: {
 		id: `required-tool-retry:${params.iteration}:${params.reason}`,
 		type: "instruction",
 		source: "planner-loop",
+		provenance: "runtime",
 		createdAt,
 		content:
 			"The previous planner response was not valid because this turn is tool-required and no non-terminal tool has run yet. " +
@@ -3645,26 +3684,16 @@ async function finishWithForcedSynthesis(params: {
 	instruction?: string;
 }): Promise<PlannerLoopResult> {
 	const { loop, config, trajectory, iteration } = params;
-	const synthesisContext = appendContextEvent(loop.context, {
-		id: `force-synthesis:${iteration}`,
-		type: "instruction",
-		source: "planner-loop",
-		createdAt: Date.now(),
-		content:
-			params.instruction ??
-			"Tool gathering for this turn is complete and the same call was repeated " +
-				"without new results. Do not call any tool. Write the final answer to the " +
-				"user now from the tool results already in this trajectory; if they do not " +
-				"contain the answer, say plainly what you found and what was missing.",
-	});
-	const synthesisTrajectory = projectModelVisibleTrajectory(
-		trajectory,
-		synthesisContext,
-	);
+	const synthesisInstruction =
+		params.instruction ??
+		"Tool gathering for this turn is complete and the same call was repeated " +
+			"without new results. Do not call any tool. Write the final answer to the " +
+			"user now from the tool results already in this trajectory; if they do not " +
+			"contain the answer, say plainly what you found and what was missing.";
 	const synthOutput = await callPlanner({
 		runtime: loop.runtime,
-		context: synthesisTrajectory.context,
-		trajectory: synthesisTrajectory,
+		context: trajectory.context,
+		trajectory,
 		config,
 		modelType: loop.modelType,
 		provider: loop.provider,
@@ -3677,6 +3706,10 @@ async function finishWithForcedSynthesis(params: {
 		parentStageId: loop.parentStageId,
 		providerAttributionState: loop.providerAttributionState,
 		iteration,
+		modelInstruction: {
+			id: `force-synthesis:${iteration}`,
+			content: synthesisInstruction,
+		},
 		onUsage: params.onUsage,
 	});
 	const canonicalSuccess = deterministicSuccessfulToolRelay(trajectory);
@@ -3731,7 +3764,7 @@ function latestToolResultText(
 	trajectory: PlannerTrajectory,
 ): string | undefined {
 	for (const step of allSteps(trajectory).reverse()) {
-		const text = step.result?.userFacingText?.trim();
+		const text = canonicalUserFacingText(step.result);
 		if (text) {
 			return text;
 		}
@@ -3807,7 +3840,16 @@ function isEchoOfPlannerFacingToolText(
 		if (normalizedRaw.length < RAW_TOOL_TEXT_ECHO_MIN_CHARS) continue;
 		// When the tool's own userFacingText carries the raw text, the raw text
 		// IS the sanctioned user projection — repeating it is not a leak.
-		const userFacing = getNonEmptyString(result.userFacingText);
+		const userFacing =
+			canonicalUserFacingText(result, { includeTerminalFailure: true }) ??
+			(result.success === false
+				? getNonEmptyString(result.userFacingText)
+				: undefined) ??
+			(hasRequiresConfirmationMarker(result) ||
+			hasAwaitingUserInputMarker(result) ||
+			(result.success === true && hasNoopMarker(result))
+				? getNonEmptyString(result.userFacingText)
+				: undefined);
 		if (
 			userFacing &&
 			normalizeForEchoComparison(userFacing).includes(normalizedRaw)
@@ -4012,7 +4054,7 @@ function deterministicSuccessfulToolRelay(
 	for (const step of allSteps(trajectory).reverse()) {
 		if (!step.toolCall || step.result?.success !== true) continue;
 		if (isTerminalToolCall(step.toolCall)) continue;
-		const candidate = getNonEmptyString(step.result.userFacingText);
+		const candidate = canonicalUserFacingText(step.result);
 		if (candidate) return candidate;
 	}
 	return undefined;
@@ -4225,16 +4267,7 @@ export function singleVerifiedUserFacingToolResultText(
 	);
 	if (successfulToolSteps.length !== 1) return undefined;
 	const result = successfulToolSteps[0]?.result;
-	if (result?.verifiedUserFacing !== true) return undefined;
-	if (
-		(result.effectReceipts !== undefined ||
-			result.userFacingEffectReceiptIds !== undefined) &&
-		!hasAppliedUserFacingEffectProof(result)
-	) {
-		return undefined;
-	}
-	const text = result.userFacingText?.trim();
-	return text || undefined;
+	return canonicalUserFacingText(result);
 }
 
 /**
@@ -4415,6 +4448,7 @@ function combinedVerifiedToolTextAndProse(
 	modelText: string | undefined,
 ): string | undefined {
 	if (!verifiedToolText || !modelText) return undefined;
+	if (modelText.trim() === FAILED_TOOL_FALLBACK_MESSAGE) return undefined;
 	const hasVerifiedConfirmationPreview = allSteps(trajectory).some(
 		(step) =>
 			step.result?.verifiedUserFacing === true &&
@@ -4590,20 +4624,16 @@ function diagnosticFailureReason(
 	return undefined;
 }
 
-/** Ceiling for a scrubbed failure cause injected into a synthesis prompt —
- * enough for a producer's human-shaped sentence, too short for a log dump. */
-const PROMPT_FAILURE_CAUSE_MAX_CHARS = 320;
+/** Ceiling for scrubbed failure metadata retained inside the trajectory. */
+const INTERNAL_FAILURE_CAUSE_MAX_CHARS = 320;
 
 /**
- * Internal-detail hygiene for failure text that is about to enter a prompt
- * WE compose (retry instructions, failure synthesis). Producers fixed under
- * #17923 emit human-shaped `text`, but older producers and thrown errors can
- * still carry absolute paths, uuids, session ids, or byte dumps — none of
- * which belong in context the reply model is told to speak from. Redaction is
- * token-level (paths/ids/hex → placeholders), never sentence templating: the
- * surviving prose is still the producer's own words.
+ * Internal-detail hygiene for failure text retained as runtime-authored
+ * recovery metadata. This cause never enters a model-visible projection;
+ * scrubbing still keeps telemetry compact and avoids retaining needless paths
+ * and identifiers in the trajectory.
  */
-function scrubFailureCauseForPrompt(text: string): string | undefined {
+function scrubInternalFailureCause(text: string): string | undefined {
 	const cleaned = text
 		.replace(
 			/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi,
@@ -4616,19 +4646,19 @@ function scrubFailureCauseForPrompt(text: string): string | undefined {
 		.replace(/\s+/g, " ")
 		.trim();
 	if (!cleaned) return undefined;
-	return cleaned.length > PROMPT_FAILURE_CAUSE_MAX_CHARS
-		? `${truncateWellFormed(cleaned, PROMPT_FAILURE_CAUSE_MAX_CHARS)}…`
+	return cleaned.length > INTERNAL_FAILURE_CAUSE_MAX_CHARS
+		? `${truncateWellFormed(cleaned, INTERNAL_FAILURE_CAUSE_MAX_CHARS)}…`
 		: cleaned;
 }
 
 /**
- * Human-readable cause of a failed step, scrubbed for prompt injection.
+ * Human-readable cause of a failed step for internal recovery telemetry.
  * Prefers the producer's human-shaped `text` / structured `data.error` (the
  * `diagnosticFailureReason` order), then the thrown error's message — the only
  * cause available for exec failures and timeouts that reached the J1 boundary
  * in `executeQueuedToolCall` as a bare `{ success:false, error }`.
  */
-function failedStepCauseForPrompt(step: PlannerStep): string | undefined {
+function failedStepInternalCause(step: PlannerStep): string | undefined {
 	const result = step.result;
 	if (!result) return undefined;
 	const reason =
@@ -4639,7 +4669,7 @@ function failedStepCauseForPrompt(step: PlannerStep): string | undefined {
 				? result.error.message.trim()
 				: undefined);
 	if (!reason) return undefined;
-	return scrubFailureCauseForPrompt(reason);
+	return scrubInternalFailureCause(reason);
 }
 
 /**
@@ -4782,15 +4812,15 @@ function tryGateVerifiedFailure(
 	},
 ): GatedEvaluatorDecision | null {
 	if (latestResult?.success !== false) return null;
-	if (latestResult.turnComplete !== true) return null;
-	if (latestResult.verifiedUserFacing !== true) return null;
 	if (
 		hasAwaitingUserInputMarker(latestResult) ||
 		hasRequiresConfirmationMarker(latestResult)
 	) {
 		return null;
 	}
-	const message = latestResult.userFacingText?.trim();
+	const message = canonicalUserFacingText(latestResult, {
+		includeTerminalFailure: true,
+	});
 	if (!message || isUnsafeUserVisibleText(message)) return null;
 	if (args.trajectory.plannedQueue.length > 0) return null;
 	if (args.lastPlannerExplicitCompleted === false) return null;
@@ -4811,8 +4841,8 @@ function selectGatedEvaluatorReply(
 	args: { lastPlannerExplicitMessageToUser: string | undefined },
 ): GatedEvaluatorDecision | null {
 	if (latestResult.turnComplete === true) {
-		const message = latestResult.userFacingText?.trim();
-		if (latestResult.verifiedUserFacing !== true || !message) return null;
+		const message = canonicalUserFacingText(latestResult);
+		if (!message) return null;
 		if (isUnsafeUserVisibleText(message)) return null;
 		return {
 			reason: "action_terminal_result",

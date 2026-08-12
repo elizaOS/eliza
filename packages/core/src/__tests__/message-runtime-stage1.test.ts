@@ -1961,14 +1961,14 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(calls[3]?.[0]).toBe(ModelType.ACTION_PLANNER);
 		const plannerCall = calls[3]?.[1] as {
 			messages?: Array<{ role?: string; content?: string | null }>;
+			tools?: Array<{ name?: string }>;
 		};
 		const plannerUserContent = plannerCall.messages?.[1]?.content ?? "";
-		expect(plannerUserContent).toContain(
-			'"candidateActions":["TASKS_SPAWN_AGENT"]',
+		expect(plannerCall.tools?.map((tool) => tool.name)).toContain(
+			"TASKS_SPAWN_AGENT",
 		);
-		expect(plannerUserContent).toContain(
-			'"tierAParents":["TASKS_SPAWN_AGENT"]',
-		);
+		expect(plannerUserContent).not.toContain("candidateActions");
+		expect(plannerUserContent).not.toContain("tierAParents");
 	});
 
 	it("executes an umbrella action directly when the planner supplies its dispatcher enum", async () => {
@@ -2084,6 +2084,94 @@ describe("runV5MessageRuntimeStage1", () => {
 				}),
 			]);
 		}
+	});
+
+	it("pins the Stage-1 provider through outer planning, nested planning, and evaluation", async () => {
+		const pinnedProvider = "stage-one-provider";
+		const runtime = makeRuntime([
+			stage1Response({
+				thought: "Delegate through the parent action.",
+				contexts: ["general"],
+				candidateActionNames: ["PARENT"],
+				extra: { requiresTool: true },
+			}),
+			{
+				text: "",
+				toolCalls: [{ id: "parent", name: "PARENT", args: {} }],
+			},
+			{
+				text: "",
+				toolCalls: [{ id: "child", name: "CHILD", args: {} }],
+			},
+			{
+				object: {
+					success: true,
+					decision: "FINISH",
+					thought: "The child result completed the nested request.",
+					messageToUser: "Nested work completed.",
+				},
+			},
+			{
+				object: {
+					success: true,
+					decision: "FINISH",
+					thought: "The nested result completed the outer request.",
+					messageToUser: "Nested work completed.",
+				},
+			},
+		]);
+		runtime.getLastResolvedModelProvider = vi.fn(() => pinnedProvider);
+		const parentHandler = vi.fn(async () => ({
+			success: false,
+			text: "The parent handler must not run directly.",
+		}));
+		const childHandler = vi.fn(async () => ({
+			success: true,
+			text: "internal child diagnostic",
+			userFacingText: "Nested work completed.",
+			verifiedUserFacing: true,
+		}));
+		runtime.actions = [
+			{
+				name: "PARENT",
+				description: "Delegate a bounded nested operation.",
+				contexts: ["general"],
+				subActions: ["CHILD"],
+				validate: async () => true,
+				handler: parentHandler,
+			},
+			{
+				name: "CHILD",
+				description: "Complete the nested operation.",
+				contexts: ["general"],
+				validate: async () => true,
+				handler: childHandler,
+			},
+		] as never;
+
+		await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({
+				text: "Run the nested operation.",
+				mentionContext: { isMention: true },
+			}),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		const calls = useModelCalls(runtime);
+		expect(calls.map((call) => call[0])).toEqual([
+			ModelType.RESPONSE_HANDLER,
+			ModelType.ACTION_PLANNER,
+			ModelType.ACTION_PLANNER,
+			ModelType.RESPONSE_HANDLER,
+			ModelType.RESPONSE_HANDLER,
+		]);
+		expect(calls.slice(1).every((call) => call[2] === pinnedProvider)).toBe(
+			true,
+		);
+		expect(parentHandler).not.toHaveBeenCalled();
+		expect(childHandler).toHaveBeenCalledTimes(1);
 	});
 
 	it("hard-enforces an umbrella candidate when retrieval exposes only its promoted child", async () => {
@@ -2237,10 +2325,12 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(calls[3]?.[0]).toBe(ModelType.ACTION_PLANNER);
 		const plannerCall = calls[3]?.[1] as {
 			messages?: Array<{ role?: string; content?: string | null }>;
+			tools?: Array<{ name?: string }>;
 		};
 		const plannerUserContent = plannerCall.messages?.[1]?.content ?? "";
-		expect(plannerUserContent).toContain('"candidateActions":["SEARCH"]');
-		expect(plannerUserContent).toContain('"requiresTool":true');
+		expect(plannerCall.tools?.map((tool) => tool.name)).toContain("SEARCH");
+		expect(plannerUserContent).not.toContain("candidateActions");
+		expect(plannerUserContent).not.toContain('"requiresTool"');
 		if (result.kind === "planned_reply") {
 			expect(result.result.responseContent?.text).toBe(
 				"Current BTC price fetched from search.",
@@ -2320,10 +2410,12 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(calls[1]?.[0]).toBe(ModelType.ACTION_PLANNER);
 		const plannerCall = calls[1]?.[1] as {
 			messages?: Array<{ role?: string; content?: string | null }>;
+			tools?: Array<{ name?: string }>;
 		};
 		const plannerUserContent = plannerCall.messages?.[1]?.content ?? "";
-		expect(plannerUserContent).toContain('"candidateActions":["WEB_SEARCH"]');
-		expect(plannerUserContent).toContain('"requiresTool":true');
+		expect(plannerCall.tools?.map((tool) => tool.name)).toContain("WEB_SEARCH");
+		expect(plannerUserContent).not.toContain("candidateActions");
+		expect(plannerUserContent).not.toContain('"requiresTool"');
 		if (result.kind === "planned_reply") {
 			expect(result.result.responseContent?.text).toBe(
 				"Current BTC price fetched from search.",
@@ -2540,10 +2632,12 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(calls[1]?.[0]).toBe(ModelType.ACTION_PLANNER);
 		const plannerCall = calls[1]?.[1] as {
 			messages?: Array<{ role?: string; content?: string | null }>;
+			tools?: Array<{ name?: string }>;
 		};
 		const plannerUserContent = plannerCall.messages?.[1]?.content ?? "";
-		expect(plannerUserContent).toContain('"candidateActions":["WEB_SEARCH"]');
-		expect(plannerUserContent).toContain('"requiresTool":true');
+		expect(plannerCall.tools?.map((tool) => tool.name)).toContain("WEB_SEARCH");
+		expect(plannerUserContent).not.toContain("candidateActions");
+		expect(plannerUserContent).not.toContain('"requiresTool"');
 		if (result.kind === "planned_reply") {
 			expect(result.result.responseContent?.text).toBe(
 				"Current BTC price fetched from search.",
@@ -4641,10 +4735,14 @@ describe("runV5MessageRuntimeStage1", () => {
 			"Stage 1 router marked this current turn as requiring a tool",
 		);
 		const retryPlannerParams = useModelCalls(runtime)[2]?.[1] as {
+			tools?: Array<{ name?: string }>;
 			messages?: Array<{ role?: string; content?: string | null }>;
 		};
-		expect(JSON.stringify(retryPlannerParams.messages)).toContain(
-			"previous planner response was not valid",
+		expect(retryPlannerParams.tools?.map((tool) => tool.name)).toContain(
+			"CHECK_RUNTIME",
+		);
+		expect(JSON.stringify(retryPlannerParams.messages)).not.toMatch(
+			/previous planner response was not valid|Looks fine/iu,
 		);
 		expect(handler).toHaveBeenCalledTimes(1);
 		expect(result.kind).toBe("planned_reply");
@@ -4876,9 +4974,12 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(runtime.useModel).toHaveBeenCalledTimes(3);
 		expect(useModelCalls(runtime)[1]?.[0]).toBe(ModelType.ACTION_PLANNER);
 		const plannerParams = useModelCalls(runtime)[1]?.[1] as {
+			tools?: Array<{ name?: string }>;
 			messages?: Array<{ role?: string; content?: string | null }>;
 		};
-		expect(JSON.stringify(plannerParams.messages)).toContain("CHECK_RUNTIME");
+		expect(plannerParams.tools?.map((tool) => tool.name)).toContain(
+			"CHECK_RUNTIME",
+		);
 		expect(handler).toHaveBeenCalledTimes(1);
 	});
 
@@ -4945,10 +5046,13 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(useModelCalls(runtime)[1]?.[0]).toBe(ModelType.ACTION_PLANNER);
 		expect(useModelCalls(runtime)[2]?.[0]).toBe(ModelType.RESPONSE_HANDLER);
 		const plannerParams = useModelCalls(runtime)[1]?.[1] as {
+			tools?: Array<{ name?: string }>;
 			messages?: Array<{ role?: string; content?: string | null }>;
 		};
 		const plannerPrompt = JSON.stringify(plannerParams.messages);
-		expect(plannerPrompt).toContain("CHECK_RUNTIME");
+		expect(plannerParams.tools?.map((tool) => tool.name)).toContain(
+			"CHECK_RUNTIME",
+		);
 		expect(plannerPrompt).toContain(
 			"Stage 1 router marked this current turn as requiring a tool",
 		);
@@ -5037,11 +5141,12 @@ describe("runV5MessageRuntimeStage1", () => {
 		const toolNames = plannerParams.tools?.map((tool) => tool.name) ?? [];
 		expect(toolNames).toContain("CHECK_RUNTIME");
 		expect(toolNames).not.toContain("SHELL");
-		expect(
+		const plannerPrompt =
 			plannerParams.messages
 				?.map((entry) => String(entry.content ?? ""))
-				.join("\n"),
-		).toContain('"candidateActions":["CHECK_RUNTIME"]');
+				.join("\n") ?? "";
+		expect(plannerPrompt).not.toContain("message_handler:");
+		expect(plannerPrompt).not.toContain('"candidateActions":');
 		expect(checkHandler).toHaveBeenCalledTimes(1);
 	});
 
@@ -6143,12 +6248,14 @@ describe("sub-agent completion relay vs the direct-candidate injection backstop"
 		expect(calls[1]?.[0]).toBe(ModelType.ACTION_PLANNER);
 		const plannerCall = calls[1]?.[1] as {
 			messages?: Array<{ role?: string; content?: string | null }>;
+			tools?: Array<{ name?: string }>;
 		};
 		const plannerUserContent = plannerCall.messages?.[1]?.content ?? "";
-		expect(plannerUserContent).toContain('"requiresTool":true');
-		expect(plannerUserContent).toContain(
-			'"candidateActions":["TASKS_SPAWN_AGENT"]',
+		expect(plannerCall.tools?.map((tool) => tool.name)).toContain(
+			"TASKS_SPAWN_AGENT",
 		);
+		expect(plannerUserContent).not.toContain('"requiresTool"');
+		expect(plannerUserContent).not.toContain("candidateActions");
 	});
 
 	it("routes a simple turn into planning when a response-handler evaluator promotes it", async () => {

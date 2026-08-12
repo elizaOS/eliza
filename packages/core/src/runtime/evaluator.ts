@@ -33,7 +33,11 @@ import {
 	cacheProviderOptions,
 	trajectoryStepsToMessages,
 } from "./planner-rendering";
-import { projectModelVisibleTrajectory } from "./planner-trajectory";
+import {
+	allSteps,
+	canonicalUserFacingText,
+	projectModelVisibleTrajectory,
+} from "./planner-trajectory";
 import type {
 	ContextObject,
 	EvaluatorEffects,
@@ -624,7 +628,7 @@ function repairMissingEvaluatorSuccess(
 	if (output.decision !== "FINISH") {
 		return output;
 	}
-	const latestStep = [...trajectory.steps]
+	const latestStep = allSteps(trajectory)
 		.reverse()
 		.find((step) => step.toolCall && step.result);
 	if (latestStep?.result?.success !== true) {
@@ -672,16 +676,16 @@ function repairFinishedToolTurnWithoutUserMessage(
 	// throws TrajectoryLimitExceeded and relays a generic apology instead of the
 	// planner's real answer (observed live: MMLU via the benchmark server — the
 	// planner answered "B" three times and the turn still errored).
-	const lastStep = trajectory.steps.at(-1);
+	const lastStep = allSteps(trajectory).at(-1);
 	if (lastStep?.terminalOnly && lastStep.terminalMessage?.trim()) {
 		return output;
 	}
-	const latestStep = [...trajectory.steps]
+	const latestStep = allSteps(trajectory)
 		.reverse()
 		.find((step) => step.toolCall && step.result);
 	const latestResult = latestStep?.result;
 	if (latestResult?.success !== true) return output;
-	if (latestResult.userFacingText?.trim()) return output;
+	if (canonicalUserFacingText(latestResult)) return output;
 	return {
 		...output,
 		success: false,
@@ -916,7 +920,7 @@ function rawText(raw: string | { text?: string; object?: unknown }): string {
 }
 
 function hasSuccessfulToolResult(trajectory: PlannerTrajectory): boolean {
-	return trajectory.steps.some((step) => step.result?.success === true);
+	return allSteps(trajectory).some((step) => step.result?.success === true);
 }
 
 /**
@@ -933,7 +937,7 @@ function invokesTrajectoryTool(
 	text: string,
 	trajectory: PlannerTrajectory,
 ): boolean {
-	for (const step of trajectory.steps) {
+	for (const step of allSteps(trajectory)) {
 		const name = step.toolCall?.name?.trim();
 		if (!name) continue;
 		const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -1051,7 +1055,7 @@ function latestSafeCommandForUser(
 	trajectory: PlannerTrajectory,
 ): string | undefined {
 	if (!latestUserAskedForCommandEcho(context)) return undefined;
-	for (const step of [...trajectory.steps].reverse()) {
+	for (const step of allSteps(trajectory).reverse()) {
 		const command = step.toolCall?.params?.command;
 		if (typeof command !== "string") continue;
 		const trimmed = command.trim();

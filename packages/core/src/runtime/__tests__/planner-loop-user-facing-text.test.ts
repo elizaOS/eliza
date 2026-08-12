@@ -132,6 +132,7 @@ describe("planner-loop — user-facing tool text isolation", () => {
 			success: true,
 			text: `Q_AND_A result\n[exit 0]\n--- stdout ---\n${userFriendly}`,
 			userFacingText: userFriendly,
+			verifiedUserFacing: true,
 		}));
 		const evaluate = vi.fn(async () => ({
 			success: true,

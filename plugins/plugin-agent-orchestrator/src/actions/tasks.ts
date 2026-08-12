@@ -122,11 +122,21 @@ type TaskOp =
   | "archive"
   | "reopen";
 
-type LaneDependencyFailureAuthority =
-  | { phase: "pre_effect"; acceptance: "rejected" }
-  | { phase: "post_effect"; acceptance: "unknown" };
+type LaneSettlementAuthority =
+  | {
+      phase: "pre_effect";
+      category: "dependency";
+      code: string;
+      acceptance: "rejected";
+    }
+  | {
+      phase: "post_effect";
+      category: "dependency" | "execution";
+      code: string;
+      acceptance: "unknown";
+    };
 
-type LaneDependencyActionResult = ActionResult & {
+type LaneSettlementActionResult = ActionResult & {
   success: false;
   error: string;
   text: string;
@@ -136,8 +146,17 @@ type LaneDependencyActionResult = ActionResult & {
   data: NonNullable<ActionResult["data"]>;
 };
 
-const RUNTIME_LANE_DEPENDENCY_FAILURE_TEXT =
-  "I started part of the task, but its dependency plan could not continue safely. I stopped the remaining lanes. Review the created task and session state before retrying.";
+type LaneInternalFailure = {
+  category: "execution";
+  code: string;
+  diagnostics: string[];
+};
+
+const RUNTIME_LANE_FAILURE_TEXT =
+  "I started part of the task, but the lane plan could not finish safely. I stopped the remaining lanes. Review the created task and session state before retrying.";
+
+const TASK_AGENT_LAUNCH_FAILURE_TEXT =
+  "I couldn't start every requested task agent. Review the created task and session state before retrying.";
 
 const SUPPORTED_OPS: readonly TaskOp[] = [
   "create",
@@ -1316,14 +1335,24 @@ async function runCreateLegacy(
   setCurrentSessions(state, sessions);
   const failed = results.filter((result) => result.status === "failed");
   if (failed.length > 0) {
-    const textOut = `I started some task agents, but ${failed.length} failed to launch: ${failed.map((item) => String(item.error)).join("; ")}.`;
+    const textOut = TASK_AGENT_LAUNCH_FAILURE_TEXT;
     await callbackText(callback, textOut);
     return {
       success: false,
+      error: "TASK_AGENT_LAUNCH_FAILED",
       text: textOut,
+      userFacingText: textOut,
+      verifiedUserFacing: true,
+      turnComplete: true,
+      continueChain: false,
       data: {
         ...(threadId ? { taskId: threadId } : {}),
         agents: results,
+        internalLaneFailure: {
+          category: "execution",
+          code: "TASK_AGENT_LAUNCH_FAILED",
+          diagnostics: failed.map((result) => String(result.error)),
+        } satisfies LaneInternalFailure,
         suppressActionResultClipboard: true,
       },
     };
@@ -1352,7 +1381,7 @@ async function runCreateLegacy(
   };
 }
 
-function laneDependencyFailureResult(
+function laneSettlementFailureResult(
   args:
     | { phase: "pre_effect"; error: unknown }
     | {
@@ -1360,24 +1389,37 @@ function laneDependencyFailureResult(
         error: unknown;
         effectData: NonNullable<ActionResult["data"]>;
       },
-): LaneDependencyActionResult | undefined {
-  const code =
+): LaneSettlementActionResult | undefined {
+  const rawCode =
     args.error instanceof ElizaError
       ? String(args.error.code)
       : typeof args.error === "string"
         ? args.error
         : undefined;
-  if (
-    !code ||
-    (!code.startsWith("LANE_DEPENDENCY_") && code !== "LANE_PLAN_DEADLOCK")
-  ) {
+  const dependencyFailure =
+    rawCode?.startsWith("LANE_DEPENDENCY_") === true ||
+    rawCode === "LANE_PLAN_DEADLOCK";
+  if (args.phase === "pre_effect" && !dependencyFailure) {
     return undefined;
   }
 
-  const authority: LaneDependencyFailureAuthority =
+  const code = dependencyFailure
+    ? (rawCode ?? "LANE_DEPENDENCY_FAILED")
+    : "LANE_EXECUTION_FAILED";
+  const authority: LaneSettlementAuthority =
     args.phase === "pre_effect"
-      ? { phase: "pre_effect", acceptance: "rejected" }
-      : { phase: "post_effect", acceptance: "unknown" };
+      ? {
+          phase: "pre_effect",
+          category: "dependency",
+          code,
+          acceptance: "rejected",
+        }
+      : {
+          phase: "post_effect",
+          category: dependencyFailure ? "dependency" : "execution",
+          code,
+          acceptance: "unknown",
+        };
   if (args.phase === "pre_effect") {
     const text = failureMessage(args.error);
     return {
@@ -1389,7 +1431,7 @@ function laneDependencyFailureResult(
       continueChain: false,
       data: {
         awaitingUserInput: true,
-        dependencyFailure: authority,
+        laneSettlement: authority,
       },
     };
   }
@@ -1397,14 +1439,14 @@ function laneDependencyFailureResult(
   return {
     success: false,
     error: code,
-    text: RUNTIME_LANE_DEPENDENCY_FAILURE_TEXT,
-    userFacingText: RUNTIME_LANE_DEPENDENCY_FAILURE_TEXT,
+    text: RUNTIME_LANE_FAILURE_TEXT,
+    userFacingText: RUNTIME_LANE_FAILURE_TEXT,
     verifiedUserFacing: true,
     turnComplete: true,
     continueChain: false,
     data: {
       ...args.effectData,
-      dependencyFailure: authority,
+      laneSettlement: authority,
       outcomeUnknown: true,
       retryable: false,
       reconciliationRequired: true,
@@ -1416,6 +1458,20 @@ function lanePlanEffectData(
   plan: Awaited<ReturnType<LanePlannerService["plan"]>>,
   results: Array<ActionResult | undefined>,
 ): NonNullable<ActionResult["data"]> {
+  const internalLaneFailures = results.flatMap((result, index) => {
+    const internal = objectValue(
+      objectValue(result?.data)?.internalLaneFailure,
+    );
+    if (!internal) return [];
+    return [
+      {
+        laneId: plan.lanes[index]?.id,
+        category: internal.category,
+        code: internal.code,
+        diagnostics: internal.diagnostics,
+      },
+    ];
+  });
   return {
     waveId: plan.waveId,
     agents: results.flatMap((result) =>
@@ -1431,6 +1487,7 @@ function lanePlanEffectData(
       dependencies: lane.dependencies,
       collisions: lane.collisions,
     })),
+    ...(internalLaneFailures.length > 0 ? { internalLaneFailures } : {}),
     suppressActionResultClipboard: true,
   };
 }
@@ -1495,7 +1552,7 @@ async function runCreate(
       workdir: explicitWorkdir,
     });
   } catch (error) {
-    const dependencyFailure = laneDependencyFailureResult({
+    const dependencyFailure = laneSettlementFailureResult({
       phase: "pre_effect",
       error,
     });
@@ -1573,73 +1630,99 @@ async function runLanePlan(
   const failed = new Set<string>();
   const results = new Array<ActionResult>(plan.lanes.length);
   const active = new Set<Promise<void>>();
-  let dependencyFailure: ActionResult | undefined;
+  let dependencyFailureCode: string | undefined;
   const workspaceService = getCodingWorkspaceService(runtime);
   const reuseTaskId =
     pickString(params, content, "taskId") ??
     pickString(params, content, "threadId");
   const launch = (lane: (typeof plan.lanes)[number], index: number) => {
     const run = (async () => {
-      if (workspaceService && reuseTaskId) {
-        const activeSession = await workspaceService.findActiveSessionForTask({
-          taskId: reuseTaskId,
-        });
-        if (activeSession) {
-          results[index] = {
-            success: true,
-            text: `Reused active task-agent session ${activeSession.sessionId}.`,
-            data: {
-              taskId: activeSession.taskId,
-              agents: [
-                {
-                  id: activeSession.sessionId,
-                  sessionId: activeSession.sessionId,
-                  agentType: activeSession.agentType,
-                  workdir: activeSession.workdir,
-                  status: activeSession.status,
-                  label: lane.title,
-                  reused: true,
-                },
-              ],
-              suppressActionResultClipboard: true,
+      try {
+        if (workspaceService && reuseTaskId) {
+          const activeSession = await workspaceService.findActiveSessionForTask(
+            {
+              taskId: reuseTaskId,
             },
-          };
-          completed.add(lane.id);
-          return;
+          );
+          if (activeSession) {
+            results[index] = {
+              success: true,
+              text: `Reused active task-agent session ${activeSession.sessionId}.`,
+              data: {
+                taskId: activeSession.taskId,
+                agents: [
+                  {
+                    id: activeSession.sessionId,
+                    sessionId: activeSession.sessionId,
+                    agentType: activeSession.agentType,
+                    workdir: activeSession.workdir,
+                    status: activeSession.status,
+                    label: lane.title,
+                    reused: true,
+                  },
+                ],
+                suppressActionResultClipboard: true,
+              },
+            };
+            return;
+          }
         }
-      }
-      const laneCallbacks: CapturedCallback[] = [];
-      const actionResult = await runCreateLegacy(
-        runtime,
-        message,
-        state,
-        {
-          ...params,
-          task: lane.initialPrompt,
-          agents: undefined,
-          title: lane.title,
-          goal: lane.initialPrompt,
-          taskComplexity: lane.difficultyTag,
-          acceptanceCriteria: [...lane.acceptanceCriteria],
-          branchName: lane.branchName,
-          metadata: {
-            ...(objectValue(params.metadata) ?? {}),
-            ...laneMetadata(plan, lane),
+        const laneCallbacks: CapturedCallback[] = [];
+        const actionResult = await runCreateLegacy(
+          runtime,
+          message,
+          state,
+          {
+            ...params,
+            task: lane.initialPrompt,
+            agents: undefined,
+            title: lane.title,
+            goal: lane.initialPrompt,
+            taskComplexity: lane.difficultyTag,
+            acceptanceCriteria: [...lane.acceptanceCriteria],
+            branchName: lane.branchName,
+            metadata: {
+              ...(objectValue(params.metadata) ?? {}),
+              ...laneMetadata(plan, lane),
+            },
           },
-        },
-        laneExecutionContent(content),
-        callback
-          ? async (response, actionName) => {
-              laneCallbacks.push({ response, actionName });
-              return [];
-            }
-          : undefined,
-      );
-      results[index] = actionResult;
-      if (actionResult.success && callback) {
-        for (const emitted of laneCallbacks) {
-          await callback(emitted.response, emitted.actionName);
+          laneExecutionContent(content),
+          callback
+            ? async (response, actionName) => {
+                laneCallbacks.push({ response, actionName });
+                return [];
+              }
+            : undefined,
+        );
+        results[index] = actionResult;
+        if (actionResult.success && callback) {
+          for (const emitted of laneCallbacks) {
+            await callback(emitted.response, emitted.actionName);
+          }
         }
+      } catch (error) {
+        // error-policy:J1 lane execution translates raw adapter failures into
+        // one typed settlement; the diagnostic stays internal.
+        const diagnostic = failureMessage(error);
+        logger(runtime).error(
+          `[TASKS:create] lane execution failed: ${JSON.stringify({
+            laneId: lane.id,
+            error: diagnostic,
+          })}`,
+        );
+        results[index] = {
+          success: false,
+          error: "LANE_EXECUTION_FAILED",
+          text: TASK_AGENT_LAUNCH_FAILURE_TEXT,
+          data: {
+            internalLaneFailure: {
+              category: "execution",
+              code: "LANE_EXECUTION_FAILED",
+              diagnostics: [diagnostic],
+            } satisfies LaneInternalFailure,
+            suppressActionResultClipboard: true,
+          },
+        };
       }
     })()
       .then((result) => {
@@ -1669,18 +1752,7 @@ async function runLanePlan(
         blocker.endsWith(": failed"),
       );
       if (failedBlocker) {
-        dependencyFailure = laneDependencyFailureResult({
-          phase: "post_effect",
-          error: "LANE_DEPENDENCY_FAILED",
-          effectData: lanePlanEffectData(plan, results),
-        });
-        if (!dependencyFailure) {
-          throw new ElizaError("Dependency failure classification was lost", {
-            code: "LANE_DEPENDENCY_CLASSIFICATION_MISSING",
-            context: { laneId: entry.lane.id, failedBlocker },
-            severity: "fatal",
-          });
-        }
+        dependencyFailureCode = "LANE_DEPENDENCY_FAILED";
         pending.clear();
         break;
       }
@@ -1689,10 +1761,22 @@ async function runLanePlan(
       launch(entry.lane, entry.index);
       launched = true;
     }
-    if (dependencyFailure) {
+    if (dependencyFailureCode) {
       // Already-launched independent lanes remain owned by this action. Wait for
       // them to settle so failures cannot escape as unobserved background work.
       if (active.size > 0) await Promise.allSettled([...active]);
+      const dependencyFailure = laneSettlementFailureResult({
+        phase: "post_effect",
+        error: dependencyFailureCode,
+        effectData: lanePlanEffectData(plan, results),
+      });
+      if (!dependencyFailure) {
+        throw new ElizaError("Dependency failure classification was lost", {
+          code: "LANE_DEPENDENCY_CLASSIFICATION_MISSING",
+          context: { dependencyFailureCode },
+          severity: "fatal",
+        });
+      }
       return { success: false, result: dependencyFailure };
     }
     if (active.size === 0 && !launched) {
@@ -1705,7 +1789,7 @@ async function runLanePlan(
         context: { blocked },
         severity: "ephemeral",
       });
-      const classified = laneDependencyFailureResult({
+      const classified = laneSettlementFailureResult({
         phase: "post_effect",
         error: deadlock,
         effectData: lanePlanEffectData(plan, results),
@@ -1718,7 +1802,7 @@ async function runLanePlan(
 
   for (const result of results) {
     if (!result.success) {
-      const classified = laneDependencyFailureResult({
+      const classified = laneSettlementFailureResult({
         phase: "post_effect",
         error: result.error,
         effectData: lanePlanEffectData(plan, results),
@@ -4608,20 +4692,18 @@ function tasksEffectReceipt(args: {
     };
   }
   const resultData = objectValue(args.result.data) ?? {};
-  const dependencyFailure = objectValue(resultData.dependencyFailure);
-  const preEffectDependencyFailure =
-    dependencyFailure?.phase === "pre_effect" &&
-    dependencyFailure.acceptance === "rejected";
-  const postEffectDependencyFailure =
-    dependencyFailure?.phase === "post_effect" &&
-    dependencyFailure.acceptance === "unknown";
-  if (preEffectDependencyFailure || postEffectDependencyFailure) {
+  const laneSettlement = objectValue(resultData.laneSettlement);
+  if (args.result.success === false) {
     const proof =
       args.operation === "create"
-        ? tasksCreateEffectProof(resultData, postEffectDependencyFailure)
+        ? tasksCreateEffectProof(resultData, true)
         : undefined;
     const errorCode =
-      effectString(args.result.error) ?? "LANE_DEPENDENCY_FAILED";
+      effectString(args.result.error) ?? "TASKS_OPERATION_FAILED";
+    const rejected =
+      laneSettlement?.phase === "pre_effect" ||
+      (!proof && TASKS_REJECTED_FAILURE_CODES.has(errorCode));
+    const outcomeUnknown = !rejected;
     return {
       receipt: {
         ...tasksReceiptBase(
@@ -4633,10 +4715,10 @@ function tasksEffectReceipt(args: {
         failure: {
           code: errorCode,
           retryable: false,
-          acceptance: preEffectDependencyFailure ? "rejected" : "unknown",
+          acceptance: rejected ? "rejected" : "unknown",
         },
       },
-      outcomeUnknown: postEffectDependencyFailure,
+      outcomeUnknown,
     };
   }
   const proof = tasksEffectProof(
@@ -4662,11 +4744,7 @@ function tasksEffectReceipt(args: {
       outcomeUnknown: false,
     };
   }
-  const errorCode =
-    effectString(args.result.error) ?? "AUTHORITATIVE_RECEIPT_MISSING";
-  const rejected =
-    args.result.success === false &&
-    TASKS_REJECTED_FAILURE_CODES.has(errorCode);
+  const errorCode = "AUTHORITATIVE_RECEIPT_MISSING";
   return {
     receipt: {
       ...tasksReceiptBase(args.operation, {
@@ -4677,10 +4755,10 @@ function tasksEffectReceipt(args: {
       failure: {
         code: errorCode,
         retryable: false,
-        acceptance: rejected ? "rejected" : "unknown",
+        acceptance: "unknown",
       },
     },
-    outcomeUnknown: !rejected,
+    outcomeUnknown: true,
   };
 }
 
@@ -4720,14 +4798,23 @@ async function settleTasksOperation(args: {
   let result = plannerOnlyRead ? plannerOnlyResult : args.result;
   const helperEmittedCallback =
     !plannerOnlyRead && args.capturedCallbacks.length > 0;
-  let canonical = helperEmittedCallback
-    ? args.capturedCallbacks.at(-1)
-    : undefined;
+  const authoritativeFailureText =
+    !plannerOnlyRead &&
+    args.result.success === false &&
+    args.result.verifiedUserFacing === true
+      ? effectString(args.result.userFacingText)
+      : undefined;
+  let canonical = authoritativeFailureText
+    ? { response: { text: authoritativeFailureText } }
+    : helperEmittedCallback
+      ? args.capturedCallbacks.at(-1)
+      : undefined;
   if (!plannerOnlyRead && !canonical && effectString(result.text)) {
     canonical = { response: { text: effectString(result.text) } };
   }
   if (
     !plannerOnlyRead &&
+    !authoritativeFailureText &&
     args.capturedCallbacks.length > 1 &&
     effectString(result.text) !== undefined
   ) {

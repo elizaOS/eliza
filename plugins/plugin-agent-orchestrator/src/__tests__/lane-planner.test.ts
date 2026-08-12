@@ -601,8 +601,10 @@ describe("TASKS create lane planner integration", () => {
     expect(result?.verifiedUserFacing).toBe(true);
     expect(result?.data).toEqual({
       awaitingUserInput: true,
-      dependencyFailure: {
+      laneSettlement: {
         phase: "pre_effect",
+        category: "dependency",
+        code: "LANE_DEPENDENCY_CYCLE",
         acceptance: "rejected",
       },
     });
@@ -702,7 +704,7 @@ describe("TASKS create lane planner integration", () => {
     const diagnostic =
       "dependency executor failed at /private/runtime/task.ts for 3f2504e0-4f89-11d3-9a0c-0305e82c3301; API_TOKEN=never-show; Authorization: Bearer bearer-never-show";
     const guidance =
-      "I started part of the task, but its dependency plan could not continue safely. I stopped the remaining lanes. Review the created task and session state before retrying.";
+      "I started part of the task, but the lane plan could not finish safely. I stopped the remaining lanes. Review the created task and session state before retrying.";
     const acp = makeAcp();
     acp.sendPrompt.mockRejectedValueOnce(new Error(diagnostic));
     const taskService = makeTaskService();
@@ -783,8 +785,10 @@ describe("TASKS create lane planner integration", () => {
       turnComplete: true,
       continueChain: false,
       data: {
-        dependencyFailure: {
+        laneSettlement: {
           phase: "post_effect",
+          category: "dependency",
+          code: "LANE_DEPENDENCY_FAILED",
           acceptance: "unknown",
         },
         outcomeUnknown: true,
@@ -797,6 +801,14 @@ describe("TASKS create lane planner integration", () => {
             status: "failed",
             error: diagnostic,
           }),
+        ],
+        internalLaneFailures: [
+          {
+            laneId: "lane-1",
+            category: "execution",
+            code: "TASK_AGENT_LAUNCH_FAILED",
+            diagnostics: [diagnostic],
+          },
         ],
         lanes: [
           expect.objectContaining({ id: "lane-1", taskId: "task-1" }),
@@ -818,6 +830,128 @@ describe("TASKS create lane planner integration", () => {
     });
     expect(toolResult?.data?.awaitingUserInput).toBeUndefined();
     expect(result.trajectory.steps.at(-1)?.terminalMessage).toBe(guidance);
+  });
+
+  it("waits for concurrent lane settlement and retains every created task and session", async () => {
+    const diagnostic =
+      "leaf failed at /private/runtime/leaf.ts for 3f2504e0-4f89-11d3-9a0c-0305e82c3301; API_TOKEN=never-show; Authorization: Bearer bearer-never-show";
+    const guidance =
+      "I started part of the task, but the lane plan could not finish safely. I stopped the remaining lanes. Review the created task and session state before retrying.";
+    const acp = makeAcp();
+    const secondStarted = deferred();
+    const releaseSecond = deferred();
+    acp.sendPrompt.mockImplementation(async (sessionId: string) => {
+      if (sessionId === "sess-1") {
+        await secondStarted.promise;
+        throw new Error(diagnostic);
+      }
+      secondStarted.resolve();
+      await releaseSecond.promise;
+      return { stopReason: "end_turn", finalText: "done" };
+    });
+    const taskService = makeTaskService();
+    const runtime = makeRuntime(
+      { ELIZA_ORCHESTRATOR_LANE_PLANNER: "1" },
+      acp,
+      taskService,
+    );
+    const callback = vi.fn(async () => []) as unknown as HandlerCallback;
+    let settled = false;
+    const pendingResult = tasksAction
+      .handler(
+        runtime,
+        makeMessage("split concurrent dependent work"),
+        {} as State,
+        {
+          parameters: {
+            action: "create",
+            maxParallel: 2,
+            dependencies: { "lane-3": ["lane-1"] },
+            agents: [
+              "Update packages/core/src/runtime.ts",
+              "Update packages/shared/src/contracts/chat.ts",
+              "Update plugins/plugin-agent-orchestrator/src/actions/tasks.ts",
+            ].join(" | "),
+          },
+        },
+        callback,
+      )
+      .then((result) => {
+        settled = true;
+        return result;
+      });
+
+    await secondStarted.promise;
+    await Promise.resolve();
+    expect(settled).toBe(false);
+    releaseSecond.resolve();
+    const result = await pendingResult;
+
+    expect(result).toMatchObject({
+      success: false,
+      error: "LANE_DEPENDENCY_FAILED",
+      text: guidance,
+      userFacingText: guidance,
+      verifiedUserFacing: true,
+      continueChain: false,
+      data: {
+        laneSettlement: {
+          phase: "post_effect",
+          category: "dependency",
+          code: "LANE_DEPENDENCY_FAILED",
+          acceptance: "unknown",
+        },
+        outcomeUnknown: true,
+        reconciliationRequired: true,
+        agents: [
+          expect.objectContaining({
+            sessionId: "sess-1",
+            status: "failed",
+            error: diagnostic,
+          }),
+          expect.objectContaining({
+            sessionId: "sess-2",
+            status: "completed",
+          }),
+        ],
+        internalLaneFailures: [
+          {
+            laneId: "lane-1",
+            category: "execution",
+            code: "TASK_AGENT_LAUNCH_FAILED",
+            diagnostics: [diagnostic],
+          },
+        ],
+        lanes: [
+          expect.objectContaining({ id: "lane-1", taskId: "task-1" }),
+          expect.objectContaining({ id: "lane-2", taskId: "task-2" }),
+          expect.objectContaining({ id: "lane-3", taskId: undefined }),
+        ],
+      },
+      effectReceipts: [
+        expect.objectContaining({
+          outcome: "failed",
+          resource: { kind: "orchestrator.task", id: "task-1" },
+          artifacts: [
+            { kind: "orchestrator.task", id: "task-2" },
+            { kind: "acp.session", id: "sess-1" },
+            { kind: "acp.session", id: "sess-2" },
+          ],
+          failure: {
+            code: "LANE_DEPENDENCY_FAILED",
+            retryable: false,
+            acceptance: "unknown",
+          },
+        }),
+      ],
+    });
+    expect(acp.spawnSession).toHaveBeenCalledTimes(2);
+    expect(taskService.createTask).toHaveBeenCalledTimes(2);
+    expect(callback.mock.calls.at(-1)?.[0]).toEqual({ text: guidance });
+    expect(JSON.stringify(callback.mock.calls)).not.toMatch(
+      /private\/runtime|3f2504e0|API_TOKEN|Authorization|Bearer|never-show/iu,
+    );
+    expect(result?.userFacingText).not.toContain("Created task agent");
   });
 
   it("reuses the active session via CodingWorkspaceService.findActiveSessionForTask", async () => {
@@ -1052,7 +1186,7 @@ describe("TASKS create lane planner integration", () => {
     expect(taskService.createTask).not.toHaveBeenCalled();
   });
 
-  it("propagates a lane execution throw after lane 1 without replaying the original request", async () => {
+  it("settles a lane execution throw after lane 1 without replaying the original request", async () => {
     const acp = makeAcp();
     let resolveCalls = 0;
     acp.resolveAgentType.mockImplementation(async () => {
@@ -1062,45 +1196,6 @@ describe("TASKS create lane planner integration", () => {
       }
       return "codex";
     });
-    const taskService = makeTaskService();
-    const runtime = makeRuntime(
-      { ELIZA_ORCHESTRATOR_LANE_PLANNER: "1" },
-      acp,
-      taskService,
-    );
-
-    await expect(
-      tasksAction.handler(
-        runtime,
-        makeMessage("split work"),
-        {} as State,
-        {
-          parameters: {
-            action: "create",
-            agents: [
-              "Update plugins/plugin-agent-orchestrator/src/services/lane-planner.ts",
-              "Update packages/core/src/runtime.ts",
-            ].join(" | "),
-          },
-        },
-        vi.fn(async () => []) as unknown as HandlerCallback,
-      ),
-    ).rejects.toThrow("lane 2 backend resolution exploded");
-
-    expect(acp.spawnSession).toHaveBeenCalledTimes(1);
-    expect(acp.sendPrompt).toHaveBeenCalledTimes(1);
-    expect(taskService.createTask).toHaveBeenCalledTimes(1);
-    expect(resolveCalls).toBe(2);
-  });
-
-  it("returns an ordinary failed lane result without replaying the original request", async () => {
-    const acp = makeAcp();
-    acp.sendPrompt
-      .mockResolvedValueOnce({
-        stopReason: "end_turn",
-        finalText: "done",
-      })
-      .mockRejectedValueOnce(new Error("lane 2 prompt failed"));
     const taskService = makeTaskService();
     const runtime = makeRuntime(
       { ELIZA_ORCHESTRATOR_LANE_PLANNER: "1" },
@@ -1124,7 +1219,131 @@ describe("TASKS create lane planner integration", () => {
       vi.fn(async () => []) as unknown as HandlerCallback,
     );
 
-    expect(result?.success).toBe(false);
+    expect(result).toMatchObject({
+      success: false,
+      error: "LANE_EXECUTION_FAILED",
+      verifiedUserFacing: true,
+      continueChain: false,
+      data: {
+        laneSettlement: {
+          phase: "post_effect",
+          category: "execution",
+          code: "LANE_EXECUTION_FAILED",
+          acceptance: "unknown",
+        },
+        outcomeUnknown: true,
+        reconciliationRequired: true,
+        internalLaneFailures: [
+          {
+            laneId: "lane-2",
+            category: "execution",
+            code: "LANE_EXECUTION_FAILED",
+            diagnostics: ["lane 2 backend resolution exploded"],
+          },
+        ],
+      },
+      effectReceipts: [
+        expect.objectContaining({
+          outcome: "failed",
+          failure: {
+            code: "LANE_EXECUTION_FAILED",
+            retryable: false,
+            acceptance: "unknown",
+          },
+        }),
+      ],
+    });
+    expect(JSON.stringify(result?.userFacingText)).not.toContain(
+      "lane 2 backend resolution exploded",
+    );
+    expect(acp.spawnSession).toHaveBeenCalledTimes(1);
+    expect(acp.sendPrompt).toHaveBeenCalledTimes(1);
+    expect(taskService.createTask).toHaveBeenCalledTimes(1);
+    expect(resolveCalls).toBe(2);
+  });
+
+  it("returns an ordinary failed lane result without replaying the original request", async () => {
+    const diagnostic =
+      "lane leaf failed at /private/runtime/leaf.ts; API_TOKEN=never-show; Authorization: Bearer bearer-never-show";
+    const acp = makeAcp();
+    acp.sendPrompt
+      .mockResolvedValueOnce({
+        stopReason: "end_turn",
+        finalText: "done",
+      })
+      .mockRejectedValueOnce(new Error(diagnostic));
+    const taskService = makeTaskService();
+    const runtime = makeRuntime(
+      { ELIZA_ORCHESTRATOR_LANE_PLANNER: "1" },
+      acp,
+      taskService,
+    );
+
+    const callback = vi.fn(async () => []) as unknown as HandlerCallback;
+    const result = await tasksAction.handler(
+      runtime,
+      makeMessage("split work"),
+      {} as State,
+      {
+        parameters: {
+          action: "create",
+          agents: [
+            "Update plugins/plugin-agent-orchestrator/src/services/lane-planner.ts",
+            "Update packages/core/src/runtime.ts",
+          ].join(" | "),
+        },
+      },
+      callback,
+    );
+
+    expect(result).toMatchObject({
+      success: false,
+      error: "LANE_EXECUTION_FAILED",
+      verifiedUserFacing: true,
+      continueChain: false,
+      data: {
+        laneSettlement: {
+          phase: "post_effect",
+          category: "execution",
+          code: "LANE_EXECUTION_FAILED",
+          acceptance: "unknown",
+        },
+        outcomeUnknown: true,
+        reconciliationRequired: true,
+        agents: [
+          expect.objectContaining({ sessionId: "sess-1", status: "completed" }),
+          expect.objectContaining({
+            sessionId: "sess-2",
+            status: "failed",
+            error: diagnostic,
+          }),
+        ],
+        internalLaneFailures: [
+          {
+            laneId: "lane-2",
+            category: "execution",
+            code: "TASK_AGENT_LAUNCH_FAILED",
+            diagnostics: [diagnostic],
+          },
+        ],
+      },
+      effectReceipts: [
+        expect.objectContaining({
+          outcome: "failed",
+          failure: {
+            code: "LANE_EXECUTION_FAILED",
+            retryable: false,
+            acceptance: "unknown",
+          },
+        }),
+      ],
+    });
+    expect(JSON.stringify(callback.mock.calls)).not.toMatch(
+      /private\/runtime|API_TOKEN|Authorization|Bearer|never-show/iu,
+    );
+    expect(result?.userFacingText).not.toMatch(
+      /private\/runtime|API_TOKEN|Authorization|Bearer|never-show/iu,
+    );
     expect(acp.spawnSession).toHaveBeenCalledTimes(2);
     expect(acp.sendPrompt).toHaveBeenCalledTimes(2);
     expect(taskService.createTask).toHaveBeenCalledTimes(2);

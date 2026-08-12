@@ -3,6 +3,7 @@
  * consumers read archived and live steps together, while model stages receive
  * only the original conversational context plus machine-owned tool authority.
  */
+import { isSensitiveKeyName, redactObjectSecrets } from "../security/redact";
 import type {
 	ContextEvent,
 	ContextInstructionEvent,
@@ -10,6 +11,10 @@ import type {
 	ContextProviderEvent,
 	ContextSegmentEvent,
 } from "../types/context-object";
+import {
+	type EffectReceipt,
+	hasAppliedUserFacingEffectProof,
+} from "../types/effects";
 import { isPlainObject } from "../utils/type-guards";
 import { appendContextEvent } from "./context-object";
 import type {
@@ -24,6 +29,115 @@ export function allSteps(trajectory: PlannerTrajectory): PlannerStep[] {
 }
 
 /**
+ * Capture the immutable model-input event set exactly once. A nested planner
+ * may inherit a context containing later runtime events, so the context-level
+ * marker is authoritative and prevents those untrusted additions from being
+ * reclassified as original input.
+ */
+export function captureOriginalContextEvents(
+	context: ContextObject,
+): ContextObject {
+	const normalized = Array.isArray(context.events)
+		? context
+		: { ...context, events: [] };
+	if (normalized.provenance?.originalEventsCaptured === true) {
+		return normalized;
+	}
+	return {
+		...normalized,
+		provenance: { originalEventsCaptured: true },
+		events: normalized.events.map((event) => ({
+			...event,
+			provenance: event.provenance ?? "original",
+		})),
+	};
+}
+
+/**
+ * Exact action-owned text eligible for model projection and final delivery.
+ * Successful results that declare effect receipts must bind the text to active,
+ * committed receipts; results with no receipt declaration are the explicit
+ * no-effect category used by read-only and pure-output actions. Consumers that
+ * specifically require a committed mutation opt out of that category through
+ * `requireAppliedEffect`. The optional terminal-failure category is limited to
+ * an action's verified, turn-complete failure guidance and never licenses that
+ * text as successful completion.
+ */
+export function canonicalUserFacingText(
+	result: PlannerStep["result"],
+	options: {
+		allTurnReceipts?: readonly EffectReceipt[];
+		includeTerminalFailure?: boolean;
+		requireAppliedEffect?: boolean;
+	} = {},
+): string | undefined {
+	if (result?.verifiedUserFacing !== true) {
+		return undefined;
+	}
+	const text = result.userFacingText?.trim();
+	if (!text) return undefined;
+	if (result.success !== true) {
+		return options.includeTerminalFailure === true &&
+			result.success === false &&
+			result.turnComplete === true
+			? text
+			: undefined;
+	}
+	const declaresEffectAuthority =
+		result.effectReceipts !== undefined ||
+		result.userFacingEffectReceiptIds !== undefined;
+	if (
+		(options.requireAppliedEffect === true || declaresEffectAuthority) &&
+		!hasAppliedUserFacingEffectProof(
+			result,
+			options.allTurnReceipts ?? result.effectReceipts,
+		)
+	) {
+		return undefined;
+	}
+	return text;
+}
+
+/**
+ * Defense-in-depth for the immutable events admitted by the provenance gate.
+ * Credential-shaped object fields are omitted, and inline assignments or auth
+ * headers are removed as whole forms so even their labels cannot become model
+ * instructions. The ordinary security redactor still handles bare token shapes.
+ */
+function projectModelSafeValue<T>(value: T): T {
+	if (typeof value === "string") {
+		const withoutCredentialForms = value
+			.replace(
+				/\bAuthorization\s*[:=]\s*(?:Bearer|Basic)\s+[^\s,;]+/giu,
+				"[credential omitted]",
+			)
+			.replace(
+				/\b[A-Z0-9_]*(?:KEY|TOKEN|SECRET|PASSWORD|PASSWD|PASSPHRASE|MNEMONIC|SEED|CREDENTIAL)\b\s*[=:]\s*(?:"[^"\r\n]*"|'[^'\r\n]*'|[^\s,;]+)/giu,
+				"[credential omitted]",
+			)
+			.replace(
+				/\b(?:Bearer|Basic)\s+[A-Za-z0-9._+/=-]{8,}/giu,
+				"[credential omitted]",
+			);
+		return redactObjectSecrets(withoutCredentialForms, {}) as T;
+	}
+	if (Array.isArray(value)) {
+		return value.map((entry) => projectModelSafeValue(entry)) as T;
+	}
+	if (value !== null && typeof value === "object") {
+		const projected = Object.fromEntries(
+			Object.entries(value).flatMap(([key, entry]) =>
+				isSensitiveKeyName(key)
+					? []
+					: [[key, projectModelSafeValue(entry)] as const],
+			),
+		);
+		return projected as T;
+	}
+	return value;
+}
+
+/**
  * Model-visible authority for completed and queued work. Raw reasoning,
  * invocation identities and parameters, diagnostic result fields, terminal
  * candidates, evaluator output, and compaction state remain process-local.
@@ -32,16 +146,13 @@ export function projectModelVisibleTrajectory(
 	trajectory: PlannerTrajectory,
 	context: ContextObject = trajectory.context,
 ): PlannerTrajectory {
-	let projectedContext = modelVisibleBaseContext(context);
+	let projectedContext = modelVisibleBaseContext(
+		captureOriginalContextEvents(context),
+	);
 	const authority = [
 		...allSteps(trajectory).flatMap((step) => {
 			if (!step.toolCall || !step.result) return [];
-			const userFacingText =
-				step.result.verifiedUserFacing === true &&
-				typeof step.result.userFacingText === "string" &&
-				step.result.userFacingText.trim().length > 0
-					? step.result.userFacingText
-					: undefined;
+			const userFacingText = canonicalUserFacingText(step.result);
 			return [
 				[
 					`tool_name: ${JSON.stringify(step.toolCall.name)}`,
@@ -65,6 +176,7 @@ export function projectModelVisibleTrajectory(
 			id: "model-visible-tool-authority",
 			type: "segment",
 			source: "planner-loop",
+			provenance: "runtime",
 			segment: {
 				id: "model-visible-tool-authority",
 				label: "tool_authority",
@@ -87,6 +199,7 @@ function modelVisibleBaseContext(context: ContextObject): ContextObject {
 		? context
 		: { ...context, events: [] };
 	const events = original.events.flatMap((event): ContextEvent[] => {
+		if (event.provenance !== "original") return [];
 		if (isModelVisibleMessageEvent(event)) {
 			return [
 				{
@@ -94,10 +207,11 @@ function modelVisibleBaseContext(context: ContextObject): ContextObject {
 					type: "message",
 					source: event.source,
 					createdAt: event.createdAt,
+					provenance: "original",
 					message: {
 						id: event.message.id,
 						role: event.message.role,
-						content: event.message.content,
+						content: projectModelSafeValue(event.message.content),
 						name: event.message.name,
 					},
 				},
@@ -110,8 +224,12 @@ function modelVisibleBaseContext(context: ContextObject): ContextObject {
 					type: "provider",
 					source: event.source,
 					createdAt: event.createdAt,
+					provenance: "original",
 					name: event.name,
-					text: event.text,
+					text:
+						typeof event.text === "string"
+							? projectModelSafeValue(event.text)
+							: event.text,
 					cacheStable: event.cacheStable,
 				},
 			];
@@ -123,9 +241,28 @@ function modelVisibleBaseContext(context: ContextObject): ContextObject {
 					type: "instruction",
 					source: event.source,
 					createdAt: event.createdAt,
-					content: event.content,
+					provenance: "original",
+					content: projectModelSafeValue(event.content),
 					role: event.role,
 					stable: event.stable,
+				},
+			];
+		}
+		if (isModelVisibleConversationalSegmentEvent(event)) {
+			return [
+				{
+					id: event.id,
+					type: "segment",
+					source: event.source,
+					createdAt: event.createdAt,
+					provenance: "original",
+					modelInputKind: "conversation",
+					segment: {
+						id: event.segment.id,
+						label: event.segment.label,
+						content: projectModelSafeValue(event.segment.content),
+						stable: event.segment.stable,
+					},
 				},
 			];
 		}
@@ -136,10 +273,12 @@ function modelVisibleBaseContext(context: ContextObject): ContextObject {
 					type: "segment",
 					source: event.source,
 					createdAt: event.createdAt,
+					provenance: "original",
+					modelInputKind: "reply_reference",
 					segment: {
 						id: event.segment.id,
 						label: "reply_reference",
-						content: event.segment.content,
+						content: projectModelSafeValue(event.segment.content),
 						stable: event.segment.stable,
 					},
 				},
@@ -151,18 +290,31 @@ function modelVisibleBaseContext(context: ContextObject): ContextObject {
 		id: original.id,
 		version: original.version,
 		createdAt: original.createdAt,
+		provenance: { originalEventsCaptured: true },
 		staticPrefix: original.staticPrefix
 			? {
-					systemPrompt: original.staticPrefix.systemPrompt,
-					characterPrompt: original.staticPrefix.characterPrompt,
-					staticProviders: original.staticPrefix.staticProviders,
+					systemPrompt: projectModelSafeValue(
+						original.staticPrefix.systemPrompt,
+					),
+					characterPrompt: projectModelSafeValue(
+						original.staticPrefix.characterPrompt,
+					),
+					staticProviders: projectModelSafeValue(
+						original.staticPrefix.staticProviders,
+					),
 				}
 			: undefined,
 		trajectoryPrefix: original.trajectoryPrefix
 			? {
-					selectedContexts: original.trajectoryPrefix.selectedContexts,
-					contextDefinitions: original.trajectoryPrefix.contextDefinitions,
-					contextProviders: original.trajectoryPrefix.contextProviders,
+					selectedContexts: projectModelSafeValue(
+						original.trajectoryPrefix.selectedContexts,
+					),
+					contextDefinitions: projectModelSafeValue(
+						original.trajectoryPrefix.contextDefinitions,
+					),
+					contextProviders: projectModelSafeValue(
+						original.trajectoryPrefix.contextProviders,
+					),
 				}
 			: undefined,
 		events,
@@ -200,7 +352,19 @@ function isModelVisibleReplyReferenceEvent(
 		event.type === "segment" &&
 		"segment" in event &&
 		isPlainObject(event.segment) &&
-		event.segment.label === "reply_reference" &&
+		event.modelInputKind === "reply_reference" &&
+		typeof event.segment.content === "string"
+	);
+}
+
+function isModelVisibleConversationalSegmentEvent(
+	event: ContextEvent,
+): event is ContextSegmentEvent {
+	return (
+		event.type === "segment" &&
+		"segment" in event &&
+		isPlainObject(event.segment) &&
+		event.modelInputKind === "conversation" &&
 		typeof event.segment.content === "string"
 	);
 }

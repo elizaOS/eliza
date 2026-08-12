@@ -15,6 +15,7 @@ import {
 	type PlannerLoopResult,
 	type PlannerToolResult,
 	runPlannerLoop,
+	TOOL_RESULT_UNAVAILABLE_MESSAGE,
 } from "../planner-loop";
 import {
 	actionHasSubActions,
@@ -293,12 +294,14 @@ describe("sub-planner helpers", () => {
 			terminalOnly: true,
 			terminalMessage: runResult.finalMessage,
 		});
-		expect(subPlannerResultToPlannerToolResult(runResult)).toMatchObject({
+		const collapsed = subPlannerResultToPlannerToolResult(runResult);
+		expect(collapsed).toMatchObject({
 			success: false,
 			error: "boom",
 			data: { code: "CHILD_BOOM" },
 			continueChain: false,
 		});
+		expect(collapsed.verifiedUserFacing).toBeUndefined();
 	});
 
 	it("collapses an actual tool result archived by compaction before terminal output", async () => {
@@ -406,13 +409,15 @@ describe("sub-planner helpers", () => {
 				},
 			});
 
-			// The aggregate remains available to planner/trajectory consumers, but
-			// the exact nested terminal is the only user-visible authority.
+			// The aggregate remains available to planner/trajectory consumers. Only
+			// a receipt-bound mutation may retain canonical terminal authority.
 			expect(collapsed.text).toContain("K9_SECRET");
 			expect(collapsed.userFacingText).toBe("Canonical only.");
 			expect(collapsed.continueChain).toBe(false);
 			expect(collapsed.data).toMatchObject({ nestedId: "nested-1" });
-			expect(result.finalMessage).toBe("Canonical only.");
+			expect(result.finalMessage).toBe(
+				withReceipt ? "Canonical only." : TOOL_RESULT_UNAVAILABLE_MESSAGE,
+			);
 			expect(result.finalMessage).not.toContain("K9_SECRET");
 			expect(result.trajectory.steps.at(-1)?.terminalMessage).toBe(
 				result.finalMessage,
@@ -437,6 +442,7 @@ describe("sub-planner helpers", () => {
 				text: "FAILURE_DIAGNOSTIC_SECRET",
 				userFacingText: "The nested operation failed.",
 				verifiedUserFacing: true,
+				turnComplete: true,
 				error: "nested failure",
 				data: { code: "NESTED_FAILURE" },
 				continueChain: false,
@@ -578,6 +584,7 @@ describe("sub-planner helpers", () => {
 			userFacingText: FAILED_TOOL_FALLBACK_MESSAGE,
 			data: { taskId: "task-b" },
 		});
+		expect(collapsed.verifiedUserFacing).toBeUndefined();
 		expect(collapsed.text).toContain("FAIL CHILD_A");
 		expect(collapsed.text).toContain("OK CHILD_B");
 		expect(collapsed.effectReceipts).toEqual([

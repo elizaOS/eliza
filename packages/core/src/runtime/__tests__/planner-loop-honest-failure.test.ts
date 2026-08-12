@@ -21,24 +21,6 @@ type MockedMessages = {
 	responseSchema?: unknown;
 };
 
-/** The instruction blocks the loop itself composes (retry / synthesis) — the
- * surface whose hygiene #17948 governs, as opposed to raw tool-result
- * messages that already existed in the trajectory rendering. */
-function loopComposedInstructionText(
-	useModel: ReturnType<typeof vi.fn>,
-	callIndex: number,
-	marker: string,
-): string {
-	const params = useModel.mock.calls[callIndex]?.[1] as
-		| MockedMessages
-		| undefined;
-	return (params?.messages ?? [])
-		.map((message) =>
-			typeof message.content === "string" ? message.content : "",
-		)
-		.filter((content) => content.includes(marker))
-		.join("\n");
-}
 describe("honest failed-turn replies (#17948)", () => {
 	it("exec failure then REPLY: retries once but skips unresolved-failure synthesis", async () => {
 		const useModel = vi
@@ -87,18 +69,13 @@ describe("honest failed-turn replies (#17948)", () => {
 		expect(useModel).toHaveBeenCalledTimes(2);
 		expect(result.finalMessage).toBe(FAILED_TOOL_FALLBACK_MESSAGE);
 
-		// The silent-failed-finish retry instruction names the failed tool AND
-		// its human-readable cause, with internal detail scrubbed.
-		const retryInstruction = loopComposedInstructionText(
-			useModel,
-			1,
-			"silent_failed_finish",
+		const retryInput = JSON.stringify(useModel.mock.calls[1]?.[1]);
+		expect(retryInput).toContain("tool_authority");
+		expect(retryInput).toContain('tool_name: \\"SHELL\\"');
+		expect(retryInput).toContain("machine_status: failed");
+		expect(retryInput).not.toMatch(
+			/silent_failed_finish|failed_tool_cause|does not have any commits yet|\/home\/milady/iu,
 		);
-		expect(retryInstruction).toContain("failed_tool: SHELL");
-		expect(retryInstruction).toContain("failed_tool_cause:");
-		expect(retryInstruction).toContain("does not have any commits yet");
-		expect(retryInstruction).toContain("<path>");
-		expect(retryInstruction).not.toContain("/home/milady");
 	});
 
 	it("thrown timeout: machine failure authority outranks the evaluator's diagnosis", async () => {
@@ -183,13 +160,10 @@ describe("honest failed-turn replies (#17948)", () => {
 		});
 
 		expect(useModel).toHaveBeenCalledTimes(2);
-		const retryInstruction = loopComposedInstructionText(
-			useModel,
-			1,
-			"silent_failed_finish",
-		);
-		expect(retryInstruction).toContain(
-			"failed_tool_cause: I need a trigger (once, cron, or every)",
+		const retryInput = JSON.stringify(useModel.mock.calls[1]?.[1]);
+		expect(retryInput).toContain("machine_status: failed");
+		expect(retryInput).not.toMatch(
+			/silent_failed_finish|failed_tool_cause|I need a trigger/iu,
 		);
 		expect(result.finalMessage).toBe(FAILED_TOOL_FALLBACK_MESSAGE);
 	});
@@ -241,7 +215,7 @@ describe("honest failed-turn replies (#17948)", () => {
 		expect(result.finalMessage).toBe(FAILED_TOOL_FALLBACK_MESSAGE);
 	});
 
-	it("retains forced synthesis after the same operation resolves its failure", async () => {
+	it("uses canonical completion authority after the same operation resolves its failure", async () => {
 		const useModel = vi
 			.fn()
 			.mockResolvedValueOnce({
@@ -278,6 +252,7 @@ describe("honest failed-turn replies (#17948)", () => {
 				success: true,
 				text: "deployment retry completed",
 				userFacingText: "Candidate deployment receipt: release-42",
+				verifiedUserFacing: true,
 			});
 		const evaluate = vi
 			.fn()
@@ -303,19 +278,12 @@ describe("honest failed-turn replies (#17948)", () => {
 		});
 
 		expect(executeToolCall).toHaveBeenCalledTimes(2);
-		expect(useModel).toHaveBeenCalledTimes(3);
+		expect(useModel).toHaveBeenCalledTimes(2);
 		expect(
 			useModel.mock.calls.every((call) => call[2] === "pinned-provider"),
 		).toBe(true);
-		const resolvedInstruction = loopComposedInstructionText(
-			useModel,
-			2,
-			"later authoritative tool results resolved every operation",
-		);
-		expect(resolvedInstruction).toContain("canonical tool authority");
-		expect(resolvedInstruction).not.toContain("temporary deployment lock");
 		expect(result.finalMessage).toBe(
-			"The candidate deployed successfully on the retry.",
+			"Candidate deployment receipt: release-42",
 		);
 		expect(result.trajectory.steps.at(-1)?.terminalMessage).toBe(
 			result.finalMessage,
@@ -413,7 +381,7 @@ describe("honest failed-turn replies (#17948)", () => {
 		expect(result.finalMessage).toBe(FAILED_TOOL_FALLBACK_MESSAGE);
 	});
 
-	it("scrubs uuids, hex ids, and absolute paths from the failure cause it adds to prompt context", async () => {
+	it("keeps failure ids and paths entirely outside retry model context", async () => {
 		const useModel = vi
 			.fn()
 			.mockResolvedValueOnce({
@@ -457,18 +425,12 @@ describe("honest failed-turn replies (#17948)", () => {
 			evaluate,
 		});
 
-		const retryInstruction = loopComposedInstructionText(
-			useModel,
-			1,
-			"failed_tool_cause",
-		);
-		expect(retryInstruction).toContain("<id>");
-		expect(retryInstruction).toContain("<path>");
-		expect(retryInstruction).not.toContain(
-			"3f2504e0-4f89-11d3-9a0c-0305e82c3301",
-		);
-		expect(retryInstruction).not.toContain("/var/lib");
-		expect(retryInstruction).not.toContain("deadbeef");
+		const retryInput = JSON.stringify(useModel.mock.calls[1]?.[1]);
+		expect(retryInput).toContain("machine_status: failed");
+		expect(retryInput).not.toContain("3f2504e0-4f89-11d3-9a0c-0305e82c3301");
+		expect(retryInput).not.toContain("/var/lib");
+		expect(retryInput).not.toContain("deadbeef");
+		expect(retryInput).not.toContain("failed_tool_cause");
 		expect(result.finalMessage).toBe(FAILED_TOOL_FALLBACK_MESSAGE);
 	});
 
@@ -671,6 +633,7 @@ describe("deterministic post-turn relay", () => {
 					{
 						id: "reply-reference",
 						type: "segment",
+						modelInputKind: "reply_reference",
 						segment: {
 							label: "reply_reference",
 							content: "SAFE_REPLY_REFERENCE",
@@ -732,6 +695,143 @@ describe("deterministic post-turn relay", () => {
 		);
 		expect(terminalSteps).toHaveLength(1);
 		expect(terminalSteps[0]?.terminalMessage).toBe(result.finalMessage);
+	});
+
+	it("keeps silent-failure recovery diagnostics out of every default model boundary", async () => {
+		const diagnostic =
+			"failed at /private/runtime/secret.ts for 3f2504e0-4f89-11d3-9a0c-0305e82c3301; API_TOKEN=never-show; Authorization: Bearer bearer-never-show";
+		const useModel = vi
+			.fn()
+			.mockResolvedValueOnce({
+				text: "",
+				toolCalls: [
+					{
+						id: "failed-call",
+						name: "SHELL",
+						arguments: { command: "deploy" },
+					},
+				],
+			})
+			.mockResolvedValueOnce({
+				object: {
+					success: false,
+					decision: "FINISH",
+					thought: "The tool failed without a safe result.",
+				},
+			})
+			.mockResolvedValueOnce({
+				text: "",
+				toolCalls: [
+					{
+						id: "reply",
+						name: "REPLY",
+						arguments: { text: "The runtime step did not complete." },
+					},
+				],
+			})
+			.mockResolvedValueOnce({
+				object: {
+					success: false,
+					decision: "FINISH",
+					thought: "The failure remains unresolved.",
+					messageToUser: "The runtime step did not complete.",
+				},
+			});
+
+		const result = await runPlannerLoop({
+			runtime: { useModel },
+			context: {
+				id: "ctx",
+				events: [
+					{
+						id: "request",
+						type: "message",
+						message: { role: "user", content: "Deploy the release." },
+					},
+					{
+						id: "provider-diagnostic",
+						type: "provider",
+						name: "SAFE_PROVIDER",
+						text: "API_TOKEN=provider-never-show Authorization: Bearer provider-bearer-never-show",
+					},
+				],
+			},
+			provider: "pinned-provider",
+			tools: [{ name: "SHELL", description: "Run a shell command." }],
+			executeToolCall: async () => ({
+				success: false,
+				text: diagnostic,
+				error: diagnostic,
+			}),
+		});
+
+		expect(useModel).toHaveBeenCalledTimes(3);
+		for (const call of useModel.mock.calls) {
+			const input = JSON.stringify(call[1]);
+			expect(input).not.toMatch(
+				/private\/runtime|3f2504e0|API_TOKEN|Authorization|Bearer|never-show|silent_failed_finish|failed_tool_cause/iu,
+			);
+			expect(call[2]).toBe("pinned-provider");
+		}
+		expect(result.finalMessage).toBe(FAILED_TOOL_FALLBACK_MESSAGE);
+	});
+
+	it("rejects verified completion text bound to a failed effect receipt", async () => {
+		const falseCompletion = "Deployment completed with receipt deploy-42.";
+		const useModel = vi
+			.fn()
+			.mockResolvedValueOnce({
+				text: "",
+				toolCalls: [
+					{
+						id: "deploy",
+						name: "DEPLOY",
+						arguments: {},
+					},
+				],
+			})
+			.mockResolvedValueOnce({
+				object: {
+					success: true,
+					decision: "FINISH",
+					thought: "The receipt does not prove completion.",
+					messageToUser: "The deployment could not be verified.",
+				},
+			});
+
+		const result = await runPlannerLoop({
+			runtime: { useModel },
+			context: { id: "ctx" },
+			tools: [{ name: "DEPLOY", description: "Deploy an application." }],
+			executeToolCall: async () => ({
+				success: true,
+				userFacingText: falseCompletion,
+				verifiedUserFacing: true,
+				effectReceipts: [
+					{
+						receiptId: "receipt-failed",
+						operation: "deploy",
+						resource: { kind: "app", id: "deploy-42" },
+						outcome: "failed" as const,
+						artifacts: [],
+						idempotency: { key: null, replayed: false },
+						failure: {
+							code: "DEPLOY_FAILED",
+							retryable: false,
+							acceptance: "rejected" as const,
+						},
+						observedAt: "2026-08-12T00:00:00.000Z",
+					},
+				],
+				userFacingEffectReceiptIds: ["receipt-failed"],
+			}),
+		});
+
+		const evaluatorInput = JSON.stringify(useModel.mock.calls[1]?.[1]);
+		expect(evaluatorInput).toContain("canonical_user_facing_text: unavailable");
+		expect(evaluatorInput).not.toContain(falseCompletion);
+		expect(result.finalMessage).toBe("The deployment could not be verified.");
+		expect(result.finalMessage).not.toBe(falseCompletion);
 	});
 
 	it("preserves verified success authority and provider routing through the default evaluator", async () => {
@@ -797,6 +897,7 @@ describe("deterministic post-turn relay", () => {
 			success: true,
 			text: "stdout:\n/private/ops/raw.log\nAPI_TOKEN=never-show",
 			userFacingText: "Found three matching records.",
+			verifiedUserFacing: true,
 		}));
 		const evaluate = vi.fn(async () => ({
 			success: true,
@@ -920,6 +1021,7 @@ describe("deterministic post-turn relay", () => {
 				success: true,
 				text: "planner diagnostics: twelve release plugins",
 				userFacingText: "Release inventory contains twelve plugins.",
+				verifiedUserFacing: true,
 			})
 			.mockResolvedValueOnce({
 				success: true,

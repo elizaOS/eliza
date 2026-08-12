@@ -399,6 +399,58 @@ df -h / /home
 		expect(result.thought).toContain("without a user-facing message");
 	});
 
+	it("repairs identical live and archived tool history without promoting thought", async () => {
+		const evaluate = async (archived: boolean) => {
+			const step = {
+				iteration: 1,
+				toolCall: {
+					id: "lookup",
+					name: "LOOKUP",
+					params: { secret: "PROCESS_LOCAL_PARAM" },
+				},
+				result: { success: true, text: "PROCESS_LOCAL_RESULT" },
+			};
+			return runEvaluator({
+				runtime: {
+					useModel: vi.fn(async () => ({
+						object: {
+							success: true,
+							decision: "FINISH",
+							thought: "This sentence looks like a user-facing answer.",
+						},
+					})),
+				},
+				context: {
+					id: "ctx",
+					events: [
+						{
+							id: "request",
+							type: "message",
+							message: { role: "user", content: "Look this up." },
+						},
+					],
+				},
+				trajectory: {
+					context: { id: "ctx" },
+					steps: archived ? [] : [step],
+					archivedSteps: archived ? [step] : [],
+					plannedQueue: [],
+					evaluatorOutputs: [],
+				},
+			});
+		};
+
+		const live = await evaluate(false);
+		const archived = await evaluate(true);
+		expect(archived).toEqual(live);
+		expect(live).toMatchObject({
+			success: false,
+			decision: "CONTINUE",
+		});
+		expect(live.messageToUser).toBeUndefined();
+		expect(live.thought).toContain("without a user-facing message");
+	});
+
 	it("recovers evaluator tool-attempt text as CONTINUE without parse failure", async () => {
 		const runtime = {
 			useModel: vi.fn(

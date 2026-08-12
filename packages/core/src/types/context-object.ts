@@ -56,6 +56,14 @@ export interface ContextEventBase {
 	type: ContextObjectEventType;
 	createdAt?: number;
 	source?: string;
+	/**
+	 * Trust provenance for model-bound context. The planner captures its input
+	 * events as `original` once; events created while the loop is running remain
+	 * `runtime` or untrusted and cannot be promoted into later model calls.
+	 */
+	provenance?: "original" | "runtime";
+	/** Explicit semantic kind for trusted model-visible segment events. */
+	modelInputKind?: "conversation" | "reply_reference";
 	metadata?: Record<string, JsonValue | undefined>;
 }
 
@@ -123,6 +131,8 @@ export interface ContextObject {
 	version?: "v5" | (string & {});
 	createdAt?: number;
 	metadata?: Record<string, JsonValue | undefined>;
+	/** Prevents a nested planner from recapturing runtime-authored events. */
+	provenance?: { originalEventsCaptured: true };
 	staticPrefix?: {
 		systemPrompt?: ContextObjectPromptSegment;
 		characterPrompt?: ContextObjectPromptSegment;

@@ -40,6 +40,7 @@ describe("planner-loop — post-tool evaluator failure recovery", () => {
 			success: true,
 			text: wrote,
 			userFacingText: wrote,
+			verifiedUserFacing: true,
 		}));
 		const evaluate = vi.fn(async () => {
 			throw providerHttpError(400, "Bad Request");

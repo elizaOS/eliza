@@ -2153,10 +2153,7 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 		expect(trajectory.metrics.plannerIterations).toBe(1);
 	});
 
-	it("records a response-handler evaluator promotion in the stage-1 trajectory", async () => {
-		// A promotion that overwrites the stage-1 reply must be visible in the
-		// recorded trajectory (evaluator name + changed fields), so a reviewer can
-		// see WHY a fully-answered turn went to planning.
+	it("keeps a response-handler evaluator promotion out of the planner model input", async () => {
 		const runtime = makeRuntime({
 			actions: [],
 			responses: [
@@ -2205,17 +2202,16 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 			);
 		}
 
-		// The promotion is visible evidence in the planner's own prompt: the
-		// message-handler event carries the applied patch trace (which evaluator
-		// changed what) alongside the patched plan.
+		// The planning result proves the runtime promotion took effect, while the
+		// model boundary excludes the runtime-authored message-handler envelope.
 		const calls = getCalls(runtime);
 		expect(calls[1]?.modelType).toBe(ModelType.ACTION_PLANNER);
 		const plannerParams = calls[1]?.params as {
 			messages?: Array<{ content?: string | null }>;
 		};
 		const plannerUserContent = plannerParams.messages?.[1]?.content ?? "";
-		expect(plannerUserContent).toContain('"requiresTool":true');
-		expect(plannerUserContent).toContain("test-promotion");
-		expect(plannerUserContent).toContain('"reply":"On it."');
+		expect(plannerUserContent).not.toContain('"requiresTool":true');
+		expect(plannerUserContent).not.toContain("test-promotion");
+		expect(plannerUserContent).not.toContain('"reply":"On it."');
 	});
 });
