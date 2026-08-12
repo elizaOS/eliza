@@ -1,10 +1,13 @@
 /**
  * Verifies BLOCKED_ENV_KEYS is the single secret-key denylist shared by API env
  * writes and startup env collection: it must be the same Set instance the
- * plugin-discovery helpers use, cover the canonical secret keys, and make
- * collectConfigEnvVars drop those keys while passing safe ones through.
+ * plugin-discovery helpers use, cover the canonical secret keys, make
+ * collectConfigEnvVars drop those keys while passing safe ones through, and
+ * remain a superset of core's BLOCKED_SPAWN_ENV_KEYS so the config/API write
+ * path cannot drift behind the spawn-side denylist it mirrors.
  * Deterministic, no live services.
  */
+import { BLOCKED_SPAWN_ENV_KEYS } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import { BLOCKED_ENV_KEYS } from "./blocked-env-keys";
 import { collectConfigEnvVars } from "./env-vars";
@@ -39,5 +42,38 @@ describe("BLOCKED_ENV_KEYS", () => {
       SAFE_PUBLIC_FLAG: "enabled",
       SAFE_DIRECT_VALUE: "direct",
     });
+  });
+
+  it("keeps the code-injection category a superset of core's spawn-side denylist", () => {
+    for (const key of BLOCKED_SPAWN_ENV_KEYS) {
+      expect(BLOCKED_ENV_KEYS.has(key)).toBe(true);
+    }
+  });
+
+  it("blocks the loader-hijack keys the spawn denylist already blocks", () => {
+    for (const key of [
+      "LD_AUDIT",
+      "DYLD_FRAMEWORK_PATH",
+      "PYTHONPATH",
+      "PYTHONSTARTUP",
+      "PYTHONHOME",
+      "PERL5OPT",
+      "PERL5LIB",
+      "RUBYOPT",
+      "RUBYLIB",
+    ]) {
+      expect(BLOCKED_ENV_KEYS.has(key)).toBe(true);
+    }
+  });
+
+  it("does not block ordinary keys that merely resemble a blocked name", () => {
+    for (const key of [
+      "NODE_ENV",
+      "PYTHON_VERSION",
+      "LD_FLAGS",
+      "RUBY_VERSION",
+    ]) {
+      expect(BLOCKED_ENV_KEYS.has(key)).toBe(false);
+    }
   });
 });
