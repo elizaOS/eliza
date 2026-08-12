@@ -36,23 +36,10 @@ interface YtDlpJson {
   thumbnail?: string;
   view_count?: number;
   upload_date?: string;
-  formats?: YtDlpFormatRow[];
+  formats?: unknown;
   categories?: string[];
   subtitles?: Record<string, YtDlpSubtitleTrack[]>;
   automatic_captions?: Record<string, YtDlpSubtitleTrack[]>;
-}
-
-interface YtDlpFormatRow {
-  format_id?: string;
-  url?: string;
-  ext?: string;
-  quality?: string | number;
-  filesize?: number;
-  vcodec?: string;
-  acodec?: string;
-  resolution?: string;
-  fps?: number;
-  tbr?: number;
 }
 
 interface CaptionSegment {
@@ -83,21 +70,67 @@ function parseYtDlpUploadDate(value: string | undefined): Date | undefined {
   return Number.isNaN(parsed.getTime()) ? undefined : parsed;
 }
 
-function toVideoFormat(format: YtDlpFormatRow): VideoFormat {
+function invalidFormatField(
+  index: number,
+  field: string,
+  value: unknown,
+): never {
+  throw new ElizaError("yt-dlp returned an invalid format field.", {
+    code: "VIDEO_METADATA_FORMAT_FIELD_INVALID",
+    context: { index, field, receivedType: typeof value },
+    severity: "ephemeral",
+  });
+}
+
+function optionalFormatString(
+  format: Record<string, unknown>,
+  field: string,
+  index: number,
+): string | undefined {
+  const value = format[field];
+  if (value === undefined || value === null) return undefined;
+  if (typeof value !== "string") invalidFormatField(index, field, value);
+  return value;
+}
+
+function optionalFormatNumber(
+  format: Record<string, unknown>,
+  field: string,
+  index: number,
+): number | undefined {
+  const value = format[field];
+  if (value === undefined || value === null) return undefined;
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
+    invalidFormatField(index, field, value);
+  }
+  return value;
+}
+
+function formatQuality(format: Record<string, unknown>, index: number): string {
+  const value = format.quality;
+  if (value === undefined || value === null || value === "") return "unknown";
+  if (typeof value === "string") return value;
+  if (typeof value === "number" && Number.isFinite(value) && value >= 0) {
+    return String(value);
+  }
+  return invalidFormatField(index, "quality", value);
+}
+
+function toVideoFormat(
+  format: Record<string, unknown>,
+  index: number,
+): VideoFormat {
   return {
-    formatId: format.format_id ?? "",
-    url: format.url ?? "",
-    extension: format.ext ?? "",
-    quality:
-      format.quality !== undefined && format.quality !== ""
-        ? String(format.quality)
-        : "unknown",
-    fileSize: format.filesize,
-    videoCodec: format.vcodec,
-    audioCodec: format.acodec,
-    resolution: format.resolution,
-    fps: format.fps,
-    bitrate: format.tbr,
+    formatId: optionalFormatString(format, "format_id", index) ?? "",
+    url: optionalFormatString(format, "url", index) ?? "",
+    extension: optionalFormatString(format, "ext", index) ?? "",
+    quality: formatQuality(format, index),
+    fileSize: optionalFormatNumber(format, "filesize", index),
+    videoCodec: optionalFormatString(format, "vcodec", index),
+    audioCodec: optionalFormatString(format, "acodec", index),
+    resolution: optionalFormatString(format, "resolution", index),
+    fps: optionalFormatNumber(format, "fps", index),
+    bitrate: optionalFormatNumber(format, "tbr", index),
   };
 }
 
@@ -123,7 +156,7 @@ function parseYtDlpFormats(value: unknown): VideoFormat[] {
         severity: "ephemeral",
       });
     }
-    return toVideoFormat(format as YtDlpFormatRow);
+    return toVideoFormat(format as Record<string, unknown>, index);
   });
 }
 
@@ -371,7 +404,7 @@ export class VideoService extends IVideoService {
       return [];
     }
 
-    return parseYtDlpFormats((result as YtDlpJson).formats);
+    return parseYtDlpFormats((result as Record<string, unknown>).formats);
   }
 
   private ensureDataDirectoryExists() {
