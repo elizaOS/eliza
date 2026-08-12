@@ -125,6 +125,26 @@ function checkIdentity(checkRun) {
   return checkRun.name ?? checkRun.external_id ?? String(checkRun.id);
 }
 
+/** Treat only GitHub's explicit success-like terminal outcomes as ignorable. */
+export function isActionableCheckRun(checkRun) {
+  if (checkRun.status !== "completed") return false;
+  switch (checkRun.conclusion) {
+    case "success":
+    case "neutral":
+    case "skipped":
+    case "cancelled":
+      return false;
+    case "failure":
+    case "timed_out":
+    case "action_required":
+    case "startup_failure":
+    case "stale":
+      return true;
+    default:
+      return true;
+  }
+}
+
 /**
  * Supersession grouping key: the producing GitHub App plus the display
  * identity. Only a later attempt from the same App may supersede a run, since
@@ -187,9 +207,7 @@ export function classifyCheckRuns(checkRuns) {
     if (byName !== 0) return byName;
     return checkGroupKey(a).localeCompare(checkGroupKey(b));
   });
-  const actionableFailures = current.filter(
-    (run) => run.status === "completed" && run.conclusion === "failure",
-  );
+  const actionableFailures = current.filter(isActionableCheckRun);
 
   return {
     actionableFailures,
