@@ -44,6 +44,8 @@ import {
   sendJson,
   sendJsonError,
   tryHandleTrajectoryReadRoutes,
+  writeJsonError,
+  writeJsonResponse,
 } from "@elizaos/core";
 import type {
   AppManagerLike,
@@ -3218,8 +3220,22 @@ async function handleRequest(
         pathname,
         url,
         state,
-        json,
-        error,
+        // The MCP marketplace route tracks client disconnects until the
+        // response write has actually been initiated. Keep these helpers
+        // awaitable without changing the fire-and-forget behavior of the
+        // other agent routes.
+        json: (response: http.ServerResponse, data: unknown, status?: number) =>
+          writeJsonResponse(response, data, status).catch((err) => {
+            logger.warn(`[api] MCP JSON response write failed: ${err}`);
+          }),
+        error: (
+          response: http.ServerResponse,
+          message: string,
+          status?: number,
+        ) =>
+          writeJsonError(response, message, status).catch((err) => {
+            logger.warn(`[api] MCP JSON error response write failed: ${err}`);
+          }),
         readJsonBody,
         saveElizaConfig,
         redactDeep,
