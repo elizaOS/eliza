@@ -2,10 +2,11 @@
  * Exercises the sub-planner helpers (`actionHasSubActions`,
  * `detectSubActionCycles`, `resolveSubActions`, `runSubPlanner`): child-action
  * resolution and simile matching, native-tool exposure, context propagation,
- * and role/context gating. Mocked runtime with stubbed useModel/execute/evaluate;
- * deterministic.
+ * role/context gating, and parent-result collapse after terminal persistence or
+ * compaction. Mocked runtime with stubbed useModel/execute/evaluate; deterministic.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { subPlannerResultToPlannerToolResult } from "../../services/message";
 import type { Action, IAgentRuntime, Memory } from "../../types";
 import { _resetActionRolePolicyCacheForTests } from "../action-role-policy";
 import {
@@ -124,6 +125,151 @@ describe("sub-planner helpers", () => {
 		);
 		expect(result.status).toBe("finished");
 		expect(result.finalMessage).toBe("Done.");
+	});
+
+	it("collapses a non-silent successful run from its tool result after the terminal append", async () => {
+		const child = makeAction({ name: "CHILD" });
+		const parent = makeAction({
+			name: "PARENT",
+			subActions: ["CHILD"],
+			subPlanner: true,
+		});
+		const runResult = await runSubPlanner({
+			runtime: makeRuntime(
+				[parent, child],
+				vi.fn(async () => ({
+					text: "",
+					toolCalls: [{ id: "call-success", name: "CHILD", arguments: {} }],
+				})),
+			),
+			action: parent,
+			context: { id: "ctx", events: [] },
+			ctx: { message: makeMessage() },
+			execute: vi.fn(async () => ({
+				success: true,
+				text: "task task-42 started",
+				userFacingText: "Task task-42 started.",
+				verifiedUserFacing: true,
+				data: { taskId: "task-42" },
+				continueChain: false,
+			})),
+		});
+
+		expect(runResult.trajectory.steps.at(-1)).toMatchObject({
+			terminalOnly: true,
+			terminalMessage: runResult.finalMessage,
+		});
+		expect(subPlannerResultToPlannerToolResult(runResult)).toMatchObject({
+			success: true,
+			userFacingText: "Task task-42 started.",
+			data: { taskId: "task-42" },
+			continueChain: false,
+		});
+	});
+
+	it("collapses a non-silent failed run without losing its machine failure fields", async () => {
+		const child = makeAction({ name: "CHILD" });
+		const parent = makeAction({
+			name: "PARENT",
+			subActions: ["CHILD"],
+			subPlanner: true,
+		});
+		const runResult = await runSubPlanner({
+			runtime: makeRuntime(
+				[parent, child],
+				vi.fn(async () => ({
+					text: "",
+					toolCalls: [{ id: "call-failure", name: "CHILD", arguments: {} }],
+				})),
+			),
+			action: parent,
+			context: { id: "ctx", events: [] },
+			ctx: { message: makeMessage() },
+			execute: vi.fn(async () => ({
+				success: false,
+				text: "boom",
+				error: "boom",
+				data: { code: "CHILD_BOOM" },
+				continueChain: false,
+			})),
+		});
+
+		expect(runResult.trajectory.steps.at(-1)).toMatchObject({
+			terminalOnly: true,
+			terminalMessage: runResult.finalMessage,
+		});
+		expect(subPlannerResultToPlannerToolResult(runResult)).toMatchObject({
+			success: false,
+			error: "boom",
+			data: { code: "CHILD_BOOM" },
+			continueChain: false,
+		});
+	});
+
+	it("collapses an actual tool result archived by compaction before terminal output", async () => {
+		const child = makeAction({ name: "CHILD" });
+		const parent = makeAction({
+			name: "PARENT",
+			subActions: ["CHILD"],
+			subPlanner: true,
+		});
+		const useModel = vi
+			.fn()
+			.mockResolvedValueOnce({
+				text: "",
+				toolCalls: [{ id: "call-archive", name: "CHILD", arguments: {} }],
+			})
+			.mockResolvedValueOnce({
+				text: "",
+				toolCalls: [
+					{
+						id: "reply-archive",
+						name: "REPLY",
+						arguments: { text: "Archived task task-archive started." },
+					},
+				],
+			});
+		const runResult = await runSubPlanner({
+			runtime: makeRuntime([parent, child], useModel),
+			action: parent,
+			context: { id: "ctx", events: [] },
+			ctx: { message: makeMessage() },
+			execute: vi.fn(async () => ({
+				success: true,
+				text: `task task-archive started ${"private diagnostics ".repeat(500)}`,
+				userFacingText: "Archived task task-archive started.",
+				data: { taskId: "task-archive" },
+			})),
+			evaluate: vi.fn(async () => ({
+				success: true,
+				decision: "CONTINUE",
+				thought: "The child result is complete; emit a terminal reply.",
+			})),
+			config: {
+				contextWindowTokens: 1_200,
+				compactionReserveTokens: 1_000,
+				compactionKeepSteps: 0,
+			},
+		});
+
+		expect(runResult.trajectory.archivedSteps).toEqual([
+			expect.objectContaining({
+				toolCall: expect.objectContaining({ name: "CHILD" }),
+				result: expect.objectContaining({
+					success: true,
+					data: { taskId: "task-archive" },
+				}),
+			}),
+		]);
+		expect(runResult.trajectory.steps.at(-1)).toMatchObject({
+			terminalOnly: true,
+			terminalMessage: "Archived task task-archive started.",
+		});
+		expect(subPlannerResultToPlannerToolResult(runResult)).toMatchObject({
+			success: true,
+			userFacingText: "Archived task task-archive started.",
+			data: { taskId: "task-archive" },
+		});
 	});
 
 	it("resolves child action similes before rejecting sub-planner tool calls", async () => {

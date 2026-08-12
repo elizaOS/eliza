@@ -149,6 +149,7 @@ import {
 	isTerminalPlannerToolName,
 	type PlannerLoopParams,
 	type PlannerRuntime,
+	type PlannerStep,
 	type PlannerToolCall,
 	type PlannerToolResult,
 	type PlannerTrajectory,
@@ -6408,10 +6409,10 @@ function truncateSubStepText(text: string): string {
 }
 
 function collectSubPlannerSubSteps(
-	subResult: Awaited<ReturnType<typeof runSubPlanner>>,
+	steps: readonly PlannerStep[],
 ): SubPlannerSubStep[] {
 	const subSteps: SubPlannerSubStep[] = [];
-	for (const step of subResult.trajectory.steps) {
+	for (const step of steps) {
 		if (!step.toolCall?.name || !step.result) continue;
 		const result = step.result;
 		const errorText =
@@ -6461,22 +6462,39 @@ function renderSubStepDiagnosticText(subSteps: SubPlannerSubStep[]): string {
 		.join("\n");
 }
 
+/**
+ * Collapses a nested planner run into the parent planner's tool-result shape.
+ * The latest explicit terminal step owns user-facing text, while the latest
+ * completed nonterminal tool owns machine result fields; both authorities are
+ * selected chronologically across archived and live steps.
+ */
 export function subPlannerResultToPlannerToolResult(
 	subResult: Awaited<ReturnType<typeof runSubPlanner>>,
 ): PlannerToolResult {
-	const evaluator = subResult.evaluator;
 	const allSteps = [
 		...(subResult.trajectory.archivedSteps ?? []),
 		...subResult.trajectory.steps,
 	];
-	const lastStep = allSteps[allSteps.length - 1];
-	const success = evaluator?.success ?? lastStep?.result?.success ?? true;
-	const userFacingText = subResult.finalMessage ?? evaluator?.messageToUser;
+	const completedSubActionSteps = allSteps.filter(
+		(step) =>
+			step.toolCall !== undefined &&
+			!isTerminalPlannerToolName(step.toolCall.name) &&
+			step.result !== undefined,
+	);
+	const latestSubActionResult = completedSubActionSteps.at(-1)?.result;
+	const terminalStep = [...allSteps]
+		.reverse()
+		.find((step) => step.terminalOnly === true);
+	const success =
+		latestSubActionResult?.success ?? subResult.evaluator?.success ?? true;
+	const userFacingText = subResult.endedWithDeliberateSilence
+		? undefined
+		: terminalStep?.terminalMessage;
 	const internalTerminalPayload =
-		lastStep?.result?.transcriptVisibility === "internal" &&
-		typeof lastStep.result.text === "string" &&
+		latestSubActionResult?.transcriptVisibility === "internal" &&
+		typeof latestSubActionResult.text === "string" &&
 		typeof userFacingText === "string" &&
-		lastStep.result.text.trim() === userFacingText.trim();
+		latestSubActionResult.text.trim() === userFacingText.trim();
 
 	// Aggregate every executed sub-step, not just the terminal one, so the
 	// parent planner's next turn can see which operations already succeeded and
@@ -6485,28 +6503,28 @@ export function subPlannerResultToPlannerToolResult(
 	// the outer LLM through `text` (the diagnostic tool-result projection) and
 	// to downstream action context through `data.subSteps` /
 	// `data.completedSubActions`.
-	const subSteps = collectSubPlannerSubSteps(subResult);
+	const subSteps = collectSubPlannerSubSteps(completedSubActionSteps);
 	const diagnosticText = renderSubStepDiagnosticText(subSteps);
 	const completedSubActions = subSteps
 		.filter((step) => step.success)
 		.map((step) => step.action);
-	const terminalResult = lastStep?.result;
-	const terminalData = terminalResult?.data;
+	const terminalData = latestSubActionResult?.data;
 	const effectReceipts = mergeEffectReceipts(
-		...allSteps.map((step) => step.result?.effectReceipts),
+		...completedSubActionSteps.map((step) => step.result?.effectReceipts),
 	);
 	const terminalUserFacingEffectReceiptIds =
-		typeof terminalResult?.userFacingText === "string" &&
+		typeof latestSubActionResult?.userFacingText === "string" &&
 		typeof userFacingText === "string" &&
-		terminalResult.userFacingText.trim() === userFacingText.trim()
-			? terminalResult.userFacingEffectReceiptIds
+		latestSubActionResult.userFacingText.trim() === userFacingText.trim()
+			? latestSubActionResult.userFacingEffectReceiptIds
 			: undefined;
 	const terminalVerifiedUserFacing =
 		!internalTerminalPayload &&
-		terminalResult?.verifiedUserFacing === true &&
+		latestSubActionResult?.verifiedUserFacing === true &&
 		Array.isArray(terminalUserFacingEffectReceiptIds) &&
 		terminalUserFacingEffectReceiptIds.length > 0 &&
-		resolveUserFacingEffectReceipts(terminalResult, effectReceipts) !== null;
+		resolveUserFacingEffectReceipts(latestSubActionResult, effectReceipts) !==
+			null;
 	const data =
 		terminalData || subSteps.length > 0
 			? {
@@ -6526,7 +6544,7 @@ export function subPlannerResultToPlannerToolResult(
 		// sees the completed steps. Falls back to the user-facing text when the
 		// sub-planner executed no discrete steps.
 		text: diagnosticText.length > 0 ? diagnosticText : userFacingText,
-		transcriptVisibility: lastStep?.result?.transcriptVisibility,
+		transcriptVisibility: latestSubActionResult?.transcriptVisibility,
 		...(internalTerminalPayload ? {} : { userFacingText }),
 		...(effectReceipts.length > 0 ? { effectReceipts } : {}),
 		...(terminalUserFacingEffectReceiptIds
@@ -6536,14 +6554,14 @@ export function subPlannerResultToPlannerToolResult(
 			: {}),
 		...(terminalVerifiedUserFacing ? { verifiedUserFacing: true } : {}),
 		data,
-		error: lastStep?.result?.error,
+		error: latestSubActionResult?.error,
 		// Propagate the terminal sub-action's chain signal to the parent
 		// loop. A sub-action that returns `continueChain: false` (e.g.
 		// TASKS_SPAWN_AGENT, fire-and-forget) terminates the sub-planner,
 		// but without this the parent planner loop never sees the flag,
 		// evaluates CONTINUE, and re-runs the umbrella action, producing
 		// duplicate spawns on a single user turn.
-		continueChain: lastStep?.result?.continueChain,
+		continueChain: latestSubActionResult?.continueChain,
 	};
 }
 

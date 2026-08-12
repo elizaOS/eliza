@@ -27,7 +27,26 @@ function subResult(
 		status: "finished",
 		finalMessage,
 		trajectory: {
-			steps: lastStepResult ? [{ iteration: 1, result: lastStepResult }] : [],
+			steps: [
+				...(lastStepResult
+					? [
+							{
+								iteration: 1,
+								toolCall: { name: "CHILD" },
+								result: lastStepResult,
+							},
+						]
+					: []),
+				...(finalMessage !== undefined
+					? [
+							{
+								iteration: 2,
+								terminalMessage: finalMessage,
+								terminalOnly: true,
+							},
+						]
+					: []),
+			],
 		},
 	} as unknown as SubResult;
 }
@@ -80,6 +99,11 @@ describe("subPlannerResultToPlannerToolResult", () => {
 							transcriptVisibility: "internal",
 						},
 					},
+					{
+						iteration: 2,
+						terminalMessage: inventory,
+						terminalOnly: true,
+					},
 				],
 			},
 		} as unknown as SubResult);
@@ -110,6 +134,11 @@ describe("subPlannerResultToPlannerToolResult", () => {
 							text: inventory,
 							transcriptVisibility: "internal",
 						},
+					},
+					{
+						iteration: 2,
+						terminalMessage: summary,
+						terminalOnly: true,
 					},
 				],
 			},
@@ -215,6 +244,84 @@ describe("subPlannerResultToPlannerToolResult", () => {
 		expect(result.success).toBe(true);
 	});
 
+	it("keeps deliberate sub-planner silence authoritative over earlier terminal text", () => {
+		const result = subPlannerResultToPlannerToolResult({
+			status: "finished",
+			endedWithDeliberateSilence: true,
+			silentTerminalAction: "STOP",
+			trajectory: {
+				archivedSteps: [
+					{
+						iteration: 1,
+						terminalOnly: true,
+						terminalMessage: "Do not revive this superseded reply.",
+					},
+				],
+				steps: [],
+				plannedQueue: [],
+				evaluatorOutputs: [],
+				context: { id: "ctx", events: [] },
+			},
+		} as unknown as SubResult);
+
+		expect(result.userFacingText).toBeUndefined();
+		expect(result.text).toBeUndefined();
+	});
+
+	it("separates terminal-message authority from the latest actual sub-action result", () => {
+		const result = subPlannerResultToPlannerToolResult({
+			status: "finished",
+			finalMessage: "STALE_RETURN_FALLBACK",
+			evaluator: {
+				success: true,
+				decision: "FINISH",
+				thought: "Invented success.",
+				messageToUser: "INVENTED_EVALUATOR_FALLBACK",
+			},
+			trajectory: {
+				archivedSteps: [
+					{
+						iteration: 1,
+						toolCall: { name: "CHILD" },
+						result: {
+							success: false,
+							error: "boom",
+							data: { code: "CHILD_BOOM" },
+							continueChain: false,
+						},
+					},
+				],
+				steps: [
+					{
+						iteration: 2,
+						toolCall: { name: "REPLY" },
+						result: {
+							success: true,
+							data: { code: "FORGED_TERMINAL_RESULT" },
+							continueChain: true,
+						},
+					},
+					{
+						iteration: 3,
+						terminalOnly: true,
+						terminalMessage: "Canonical terminal message.",
+					},
+				],
+				plannedQueue: [],
+				evaluatorOutputs: [],
+				context: { id: "ctx", events: [] },
+			},
+		} as unknown as SubResult);
+
+		expect(result).toMatchObject({
+			success: false,
+			userFacingText: "Canonical terminal message.",
+			error: "boom",
+			data: { code: "CHILD_BOOM" },
+			continueChain: false,
+		});
+	});
+
 	// Regression for elizaOS/eliza#8007: a multi-step sub-planner collapse must
 	// surface EVERY executed sub-step to the parent loop, not only the terminal
 	// one, so the outer planner can see which ops already succeeded and advance
@@ -239,6 +346,11 @@ describe("subPlannerResultToPlannerToolResult", () => {
 						iteration: 3,
 						toolCall: { name: "submit_workspace" },
 						result: { success: false, error: "no diff to submit" },
+					},
+					{
+						iteration: 4,
+						terminalMessage: "Opened a PR for hello-world.",
+						terminalOnly: true,
 					},
 				],
 			},
