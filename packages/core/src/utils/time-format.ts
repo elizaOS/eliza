@@ -8,10 +8,18 @@ function describeRelativeTime(
 	const diff = now - timestamp;
 	const future = diff < 0;
 	const absDiff = Math.abs(diff);
-	const seconds = Math.floor(absDiff / 1000);
-	const minutes = Math.floor(seconds / 60);
-	const hours = Math.floor(minutes / 60);
-	const days = Math.floor(hours / 24);
+
+	// Direction-aware rounding. Future magnitudes round UP so "in N <unit>"
+	// always means the moment arrives within N units: a target computed as
+	// now + 5 minutes has already lost a few milliseconds by the time this
+	// function reads the clock, and flooring would render it "in 4m". Past
+	// magnitudes keep the original floor, so every past-direction string is
+	// unchanged. Each unit is derived from absDiff directly because
+	// ceil(ceil(x/a)/b) overshoots where ceil(x/(a*b)) does not.
+	const round = future ? Math.ceil : Math.floor;
+	const minutes = round(absDiff / 60000);
+	const hours = round(absDiff / 3600000);
+	const days = round(absDiff / 86400000);
 
 	// A magnitude ("5 minutes", "3d") carries no direction; the tense is applied
 	// here. A past timestamp reads "<magnitude> ago"; a future one reads
@@ -35,7 +43,9 @@ function describeRelativeTime(
 		return tense(`${days} day${days !== 1 ? "s" : ""}`);
 	}
 
-	if (seconds < 60) {
+	// The raw-millisecond threshold keeps compact and verbose "just now"
+	// windows identical in both directions.
+	if (absDiff < 60000) {
 		return "just now";
 	}
 	if (minutes < 60) {
