@@ -439,17 +439,16 @@ ELIZA_ONBOARDING_APP_URL = "https://app-staging.elizacloud.ai"
 # The staging homepage exists since 2026-08-11: CF Pages project
 # eliza-home-staging serves https://staging.eliza.app built with
 # VITE_ELIZACLOUD_API_URL=https://staging.elizacloud.ai (packages/homepage
-# .env.staging + deploy:staging / deploy-homepage-staging.yml), so staging
+# .env.staging + the canonical deploy-homepage.yml workflow), so staging
 # continuation tokens land on a bundle that redeems them against the STAGING
 # API. Before that this had to stay unpinned (prod-only homepage would freeze
 # staging tokens into a prod redemption endpoint - #18197); the interim live
 # value was an out-of-band wrangler secret pointing at the same host, which
 # this committed var replaces so a plain redeploy cannot silently regress the
 # CTA to the code default (https://eliza.app = prod).
-# NOTE: if a deploy fails with a var/secret name collision here, delete the
-# legacy out-of-band secrets ELIZA_ONBOARDING_LOGIN_APP_URL and
-# ELIZA_APP_ONBOARDING_LOGIN_APP_URL from the eliza-cloud-api-staging Worker
-# first - committed config is the source of truth.
+# The canonical Worker deploy removes the two legacy out-of-band secret
+# bindings immediately before deployment and restores their staging value if
+# that deployment fails. The committed var is the steady-state authority.
 ELIZA_ONBOARDING_LOGIN_APP_URL = "https://staging.eliza.app"
 NEXT_PUBLIC_NETWORK = "base"
 NEXT_PUBLIC_SOLANA_RPC_URL = "https://api.mainnet-beta.solana.com"

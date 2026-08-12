@@ -829,6 +829,8 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          DEPLOY_ENVIRONMENT: ${{ steps.env.outputs.deploy_environment }}
+          STAGING_ONBOARDING_LOGIN_APP_URL: https://staging.eliza.app
           KOKORO_TTS_URL: ${{ vars.ELIZA_VOICE_KOKORO_TTS_URL }}
           VOICE_REALTIME_WS_ENABLED: ${{ steps.env.outputs.deploy_environment != 'production' && contains(fromJSON('["1","true","TRUE","True","yes","YES","Yes","on","ON","On"]'), vars.VOICE_REALTIME_WS_ENABLED) && 'true' || 'false' }}
           ELIZA_TTS_FISH_ENABLED: ${{ steps.env.outputs.deploy_environment != 'production' && contains(fromJSON('["1","true","TRUE","True","yes","YES","Yes","on","ON","On"]'), vars.ELIZA_TTS_FISH_ENABLED) && 'true' || 'false' }}
@@ -837,13 +839,52 @@ jobs:
           FISH_AUDIO_SAMPLE_RATE: "16000"
           FISH_AUDIO_FIRST_AUDIO_TIMEOUT_MS: ${{ vars.FISH_AUDIO_FIRST_AUDIO_TIMEOUT_MS || '1500' }}
         run: |
+          legacy_onboarding_secret_removed=false
+          restore_legacy_onboarding_secrets() {
+            if [ "$legacy_onboarding_secret_removed" != "true" ]; then
+              return
+            fi
+            echo "::warning::Worker deploy failed after retiring legacy onboarding URL secrets; restoring the staging value."
+            for name in ELIZA_ONBOARDING_LOGIN_APP_URL ELIZA_APP_ONBOARDING_LOGIN_APP_URL; do
+              if ! printf '%s' "$STAGING_ONBOARDING_LOGIN_APP_URL" | bunx wrangler secret put "$name" --env staging; then
+                echo "::error::Failed to restore legacy staging binding $name; staging onboarding CTA configuration requires operator repair."
+              fi
+            done
+          }
+
+          delete_legacy_onboarding_secret() {
+            local name="$1"
+            local output=""
+            for attempt in 1 2 3; do
+              if output=$(bunx wrangler secret delete "$name" --env staging 2>&1); then
+                legacy_onboarding_secret_removed=true
+                echo "Retired legacy staging secret binding $name."
+                return 0
+              fi
+              if printf '%s' "$output" | grep -qi "not found"; then
+                echo "Legacy staging secret binding $name is already absent."
+                return 0
+              fi
+              [ "$attempt" -lt 3 ] && sleep 10
+            done
+            printf '%s\n' "$output" >&2
+            echo "::error::Could not retire legacy staging secret binding $name."
+            return 1
+          }
+
           args=(${{ steps.env.outputs.wrangler_args }} --var ELIZA_DEPLOY_COMMIT:"$GITHUB_SHA" --var VOICE_REALTIME_WS_ENABLED:"$VOICE_REALTIME_WS_ENABLED" --var ELIZA_TTS_FISH_ENABLED:"$ELIZA_TTS_FISH_ENABLED" --var FISH_AUDIO_DATA_GOVERNANCE_APPROVED:"$FISH_AUDIO_DATA_GOVERNANCE_APPROVED" --var FISH_AUDIO_MODEL:"$FISH_AUDIO_MODEL" --var FISH_AUDIO_SAMPLE_RATE:"$FISH_AUDIO_SAMPLE_RATE" --var FISH_AUDIO_FIRST_AUDIO_TIMEOUT_MS:"$FISH_AUDIO_FIRST_AUDIO_TIMEOUT_MS")
           if [ -n "${KOKORO_TTS_URL:-}" ]; then
             args+=(--var KOKORO_TTS_URL:"$KOKORO_TTS_URL")
           else
             echo "::notice::ELIZA_VOICE_KOKORO_TTS_URL is not configured; deploying without KOKORO_TTS_URL"
           fi
+          if [ "$DEPLOY_ENVIRONMENT" = "staging" ]; then
+            trap restore_legacy_onboarding_secrets ERR
+            delete_legacy_onboarding_secret ELIZA_ONBOARDING_LOGIN_APP_URL
+            delete_legacy_onboarding_secret ELIZA_APP_ONBOARDING_LOGIN_APP_URL
+          fi
           bunx wrangler deploy "${args[@]}"
+          trap - ERR
 
       - name: Verify deployed API commit
         if: steps.cf.outputs.configured == 'true' && steps.freshness.outputs.should_deploy == 'true'
