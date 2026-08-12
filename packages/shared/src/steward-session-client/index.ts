@@ -57,6 +57,10 @@ export const STEWARD_NONCE_EXCHANGE_ENDPOINT =
  */
 export const STEWARD_REFRESH_ENDPOINT = "/api/auth/steward-refresh";
 
+/** Browser event emitted after an explicit Steward credential transition. */
+export const STEWARD_SESSION_TRANSITION_EVENT =
+  "eliza:steward-session-transition";
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -145,6 +149,16 @@ export interface ClearOpts {
   fetchImpl?: typeof fetch;
 }
 
+/**
+ * Non-secret session-lifecycle signal for authority-scoped browser state.
+ * The epoch orders transitions within one page lifetime without exposing the
+ * Steward token that caused them.
+ */
+export interface StewardSessionTransition {
+  state: "present" | "cleared";
+  sessionEpoch: number;
+}
+
 // ---------------------------------------------------------------------------
 // localStorage helpers
 // ---------------------------------------------------------------------------
@@ -158,6 +172,33 @@ export function readStoredStewardToken(): string | null {
   }
 }
 
+const STEWARD_SESSION_EPOCH_SYMBOL = Symbol.for(
+  "elizaos.steward-session-epoch",
+);
+
+function nextStewardSessionEpoch(): number {
+  const globalState = globalThis as Record<PropertyKey, unknown>;
+  const previous = globalState[STEWARD_SESSION_EPOCH_SYMBOL];
+  const next =
+    typeof previous === "number" && Number.isSafeInteger(previous)
+      ? previous + 1
+      : 1;
+  globalState[STEWARD_SESSION_EPOCH_SYMBOL] = next;
+  return next;
+}
+
+function publishStewardSessionTransition(
+  state: StewardSessionTransition["state"],
+): void {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(
+    new CustomEvent<StewardSessionTransition>(
+      STEWARD_SESSION_TRANSITION_EVENT,
+      { detail: { state, sessionEpoch: nextStewardSessionEpoch() } },
+    ),
+  );
+}
+
 export function writeStoredStewardToken(token: string): void {
   if (typeof window === "undefined") return;
   try {
@@ -166,6 +207,7 @@ export function writeStoredStewardToken(token: string): void {
     // localStorage may be disabled (private mode, quota, sandboxed iframe);
     // callers that need durability should detect this themselves.
   }
+  publishStewardSessionTransition("present");
 }
 
 export function clearStoredStewardToken(): void {
@@ -176,6 +218,9 @@ export function clearStoredStewardToken(): void {
   } catch {
     // ignore
   }
+  // An explicit clear is authoritative even for cookie-only sessions, where
+  // no browser-readable Steward token existed before logout.
+  publishStewardSessionTransition("cleared");
 }
 
 /**

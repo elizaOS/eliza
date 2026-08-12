@@ -7,6 +7,10 @@
  * with the API client and bridges mocked — deterministic, no real server.
  */
 import type { AgentNotification } from "@elizaos/core";
+import {
+  STEWARD_SESSION_TRANSITION_EVENT,
+  type StewardSessionTransition,
+} from "@elizaos/shared/steward-session-client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "../../api/client-types-core";
 
@@ -109,6 +113,18 @@ function notificationServiceStartingError(retryAfter: number): ApiError {
  */
 async function flushDelivery(): Promise<void> {
   for (let i = 0; i < 8; i++) await Promise.resolve();
+}
+
+function dispatchStewardSessionTransition(
+  state: StewardSessionTransition["state"],
+  sessionEpoch: number,
+): void {
+  window.dispatchEvent(
+    new CustomEvent<StewardSessionTransition>(
+      STEWARD_SESSION_TRANSITION_EVENT,
+      { detail: { state, sessionEpoch } },
+    ),
+  );
 }
 
 describe("notification-store", () => {
@@ -787,15 +803,17 @@ describe("notification-store", () => {
     expect(__getStateForTests().unreadCount).toBe(1);
   });
 
-  it("restores an entire producer batch when one delete rejects", async () => {
+  it("retains successful deletes when one producer-batch row rejects", async () => {
     removeNotificationApi
       .mockResolvedValueOnce({ ok: true })
       .mockRejectedValueOnce(new Error("network"));
     __ingestNotificationForTests(makeNotification({ id: "batch-1" }), 1);
     __ingestNotificationForTests(makeNotification({ id: "batch-2" }), 2);
     await removeNotifications(["batch-1", "batch-2"]);
-    expect(__getStateForTests().notifications).toHaveLength(2);
-    expect(__getStateForTests().unreadCount).toBe(2);
+    expect(__getStateForTests().notifications.map(({ id }) => id)).toEqual([
+      "batch-2",
+    ]);
+    expect(__getStateForTests().unreadCount).toBe(1);
   });
 
   it("restores the inbox when clear rejects", async () => {
@@ -1142,15 +1160,15 @@ describe("notification-store — authority isolation (#18391)", () => {
     expect(rotateConnection).toHaveBeenCalledTimes(1);
   });
 
-  it("does not rotate the connection on the first resolution from boot", async () => {
-    // No auth status set before init: the store seeds from the boot-time
-    // "anon" snapshot, which never hydrated anything worth protecting.
+  it("rotates the anonymous socket on the first authenticated resolution", async () => {
+    // The boot socket may already have queued anonymous frames. Authentication
+    // changes its credential authority even when the base URL stays fixed.
     initNotifications();
     await vi.waitFor(() => expect(listNotifications).toHaveBeenCalledTimes(1));
 
     __setAuthStatusForTests(authenticated("user-a", "session-a"));
     await vi.waitFor(() => expect(listNotifications).toHaveBeenCalledTimes(2));
-    expect(rotateConnection).not.toHaveBeenCalled();
+    expect(rotateConnection).toHaveBeenCalledTimes(1);
   });
 
   it("rotates the connection on logout even though the base is unchanged", async () => {
@@ -1158,8 +1176,7 @@ describe("notification-store — authority isolation (#18391)", () => {
     initNotifications();
     await vi.waitFor(() => expect(listNotifications).toHaveBeenCalledTimes(1));
 
-    hasToken.mockReturnValue(false);
-    window.dispatchEvent(new Event("steward-token-sync"));
+    dispatchStewardSessionTransition("cleared", 1);
     expect(rotateConnection).toHaveBeenCalledTimes(1);
   });
 
@@ -1167,7 +1184,7 @@ describe("notification-store — authority isolation (#18391)", () => {
   // authenticated snapshot until the async /api/auth/me probe resolves, so a
   // real logout would otherwise be invisible to reconcileAuthority (which
   // only reacts to that eventual publish) for the whole round-trip.
-  // steward-token-sync fires synchronously on the token clear itself.
+  // The typed Steward transition fires synchronously on the clear itself.
   describe("credential-sync invalidation ahead of the async auth probe", () => {
     it("clears immediately on a cleared token, before the auth-status probe catches up", async () => {
       __setAuthStatusForTests(authenticated("user-a", "session-a"));
@@ -1185,8 +1202,7 @@ describe("notification-store — authority isolation (#18391)", () => {
       // updated yet — this is exactly the gap useAuthStatus leaves open.
       // Invalidation deliberately does not fetch (identity is unknown), so
       // no response needs to be queued for it.
-      hasToken.mockReturnValue(false);
-      window.dispatchEvent(new Event("steward-token-sync"));
+      dispatchStewardSessionTransition("cleared", 1);
 
       // Synchronous: no await before this assertion.
       expect(__getStateForTests().notifications).toHaveLength(0);
@@ -1213,8 +1229,7 @@ describe("notification-store — authority isolation (#18391)", () => {
       await vi.waitFor(() => expect(agentEventHandlers()).toHaveLength(1));
       const handlerA = agentEventHandlers()[0];
 
-      hasToken.mockReturnValue(false);
-      window.dispatchEvent(new Event("steward-token-sync"));
+      dispatchStewardSessionTransition("cleared", 1);
 
       handlerA({
         stream: "notification",
@@ -1226,7 +1241,7 @@ describe("notification-store — authority isolation (#18391)", () => {
       expect(__getStateForTests().notifications).toHaveLength(0);
     });
 
-    it("a token install (login/refresh/handoff) is a harmless no-op when the base already reconciled", async () => {
+    it("a present transition rotates transport without clearing or refetching", async () => {
       __setAuthStatusForTests(authenticated("user-a", "session-a"));
       initNotifications();
       await vi.waitFor(() =>
@@ -1235,7 +1250,7 @@ describe("notification-store — authority isolation (#18391)", () => {
 
       // Simulates repointBaseUrl: onBaseUrlChange fires first (same tick, a
       // real handoff) and already reconciles to the new base correctly;
-      // steward-token-sync fires afterward with a present token.
+      // The typed Steward transition fires afterward with a present session.
       getBaseUrl.mockReturnValue("http://agent-b.local");
       const baseUrlHandler = onBaseUrlChange.mock.calls[0][0] as () => void;
       baseUrlHandler();
@@ -1244,13 +1259,63 @@ describe("notification-store — authority isolation (#18391)", () => {
       );
       rotateConnection.mockClear();
 
-      hasToken.mockReturnValue(true);
-      window.dispatchEvent(new Event("steward-token-sync"));
+      dispatchStewardSessionTransition("present", 1);
       await Promise.resolve();
 
-      // No extra clear/refetch/rotation beyond what the base change already did.
+      // The session epoch changes even when identity is stable. Rotate the
+      // credential-bearing transport but retain the current inbox.
       expect(listNotifications).toHaveBeenCalledTimes(2);
-      expect(rotateConnection).not.toHaveBeenCalled();
+      expect(rotateConnection).toHaveBeenCalledTimes(1);
+    });
+
+    it("clears a cookie-only Steward logout even while the agent bearer remains installed", async () => {
+      __setAuthStatusForTests(authenticated("user-a", "session-a"));
+      listNotifications.mockResolvedValueOnce({
+        notifications: [makeNotification({ id: "private-row" })],
+        unreadCount: 1,
+      });
+      initNotifications();
+      await vi.waitFor(() =>
+        expect(__getStateForTests().notifications).toHaveLength(1),
+      );
+
+      // The dedicated-agent API bearer is intentionally still present; it is
+      // not Steward session authority and must not suppress logout clearing.
+      hasToken.mockReturnValue(true);
+      dispatchStewardSessionTransition("cleared", 1);
+
+      expect(__getStateForTests().notifications).toEqual([]);
+      expect(rotateConnection).toHaveBeenCalledTimes(1);
+    });
+
+    it("ignores a delayed handler after authority cycles A -> B -> A", async () => {
+      __setAuthStatusForTests(authenticated("user-a", "session-a"));
+      initNotifications();
+      await vi.waitFor(() => expect(agentEventHandlers()).toHaveLength(1));
+      const firstA = agentEventHandlers()[0];
+
+      __setAuthStatusForTests(authenticated("user-b", "session-b"));
+      __setAuthStatusForTests(authenticated("user-a", "session-a"));
+      await vi.waitFor(() => expect(agentEventHandlers()).toHaveLength(3));
+      const secondA = agentEventHandlers()[2];
+
+      firstA({
+        stream: "notification",
+        payload: {
+          notification: makeNotification({ id: "stale-a" }),
+          unreadCount: 1,
+        },
+      });
+      expect(__getStateForTests().notifications).toEqual([]);
+
+      secondA({
+        stream: "notification",
+        payload: {
+          notification: makeNotification({ id: "fresh-a" }),
+          unreadCount: 1,
+        },
+      });
+      expect(__getStateForTests().notifications[0]?.id).toBe("fresh-a");
     });
   });
 });
@@ -1281,7 +1346,10 @@ describe("notification-store mutations — authority-scoped rollback (#18542)", 
     onBaseUrlChange.mockReset().mockReturnValue(() => {});
     hasToken.mockReset().mockReturnValue(true);
     rotateConnection.mockReset();
-    markNotificationReadApi.mockReset();
+    markNotificationReadApi.mockReset().mockResolvedValue({ ok: true });
+    markAllNotificationsReadApi.mockReset().mockResolvedValue({ changed: 0 });
+    removeNotificationApi.mockReset().mockResolvedValue({ ok: true });
+    clearNotificationsApi.mockReset().mockResolvedValue({ ok: true });
     invokeDesktopBridgeRequest.mockReset().mockResolvedValue(null);
   });
 
@@ -1346,5 +1414,98 @@ describe("notification-store mutations — authority-scoped rollback (#18542)", 
     await markNotificationRead("a-row");
 
     expect(__getStateForTests().notifications[0]?.readAt).toBeNull();
+  });
+
+  it("serializes same-authority writes so an earlier failure cannot undo a later success", async () => {
+    __setAuthStatusForTests(authenticated("user-a", "session-a"));
+    const row = makeNotification({ id: "row", title: "Row" });
+    listNotifications.mockResolvedValueOnce({
+      notifications: [row],
+      unreadCount: 1,
+    });
+    initNotifications();
+    await vi.waitFor(() =>
+      expect(__getStateForTests().notifications).toHaveLength(1),
+    );
+
+    let rejectRead!: (error: unknown) => void;
+    markNotificationReadApi.mockReturnValueOnce(
+      new Promise((_resolve, reject) => {
+        rejectRead = reject;
+      }),
+    );
+    const first = markNotificationRead("row");
+    await vi.waitFor(() =>
+      expect(markNotificationReadApi).toHaveBeenCalledTimes(1),
+    );
+    const second = removeNotification("row");
+    await Promise.resolve();
+    expect(removeNotificationApi).not.toHaveBeenCalled();
+
+    rejectRead(new Error("read failed"));
+    await first;
+    await second;
+
+    expect(removeNotificationApi).toHaveBeenCalledWith("row");
+    expect(__getStateForTests().notifications).toEqual([]);
+  });
+
+  it("restores only failed rows after a partially successful batch delete", async () => {
+    __setAuthStatusForTests(authenticated("user-a", "session-a"));
+    const rows = ["a", "b", "c"].map((id) =>
+      makeNotification({ id, title: id.toUpperCase() }),
+    );
+    listNotifications.mockResolvedValueOnce({
+      notifications: rows,
+      unreadCount: 3,
+    });
+    removeNotificationApi.mockImplementation(async (id: string) => {
+      if (id === "b") throw new Error("b failed");
+      return { ok: true };
+    });
+    initNotifications();
+    await vi.waitFor(() =>
+      expect(__getStateForTests().notifications).toHaveLength(3),
+    );
+
+    await removeNotifications(["a", "b", "c"]);
+
+    expect(__getStateForTests().notifications.map(({ id }) => id)).toEqual([
+      "b",
+    ]);
+    expect(__getStateForTests().unreadCount).toBe(1);
+  });
+
+  it("preserves a live row update while reverting only a failed optimistic read", async () => {
+    __setAuthStatusForTests(authenticated("user-a", "session-a"));
+    const row = makeNotification({ id: "row", title: "Before" });
+    listNotifications.mockResolvedValueOnce({
+      notifications: [row],
+      unreadCount: 1,
+    });
+    let rejectRead!: (error: unknown) => void;
+    markNotificationReadApi.mockReturnValueOnce(
+      new Promise((_resolve, reject) => {
+        rejectRead = reject;
+      }),
+    );
+    initNotifications();
+    await vi.waitFor(() =>
+      expect(__getStateForTests().notifications).toHaveLength(1),
+    );
+
+    const mutation = markNotificationRead("row");
+    await vi.waitFor(() =>
+      expect(markNotificationReadApi).toHaveBeenCalledTimes(1),
+    );
+    __ingestNotificationForTests({ ...row, title: "Live update" }, 1);
+    rejectRead(new Error("read failed"));
+    await mutation;
+
+    expect(__getStateForTests().notifications[0]).toMatchObject({
+      id: "row",
+      title: "Live update",
+      readAt: null,
+    });
   });
 });

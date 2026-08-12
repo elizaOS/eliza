@@ -1064,18 +1064,7 @@ export class ElizaClient {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
     }
-    if (this.ws) {
-      this.ws.onopen = null;
-      this.ws.onclose = null;
-      this.ws.onerror = null;
-      this.ws.onmessage = null;
-      try {
-        this.ws.close();
-      } catch {
-        /* already closing */
-      }
-      this.ws = null;
-    }
+    this.detachWebSocket();
     // Pending outbound WS frames were addressed to the old host; drop them so
     // they aren't replayed against the dedicated socket. The send-queue is for
     // offline buffering, not cross-host carry-over.
@@ -1752,12 +1741,14 @@ export class ElizaClient {
     if (token) params.set("token", token);
     url += `?${params.toString()}`;
 
-    this.ws = new WebSocket(url);
+    const socket = new WebSocket(url);
+    this.ws = socket;
 
-    this.ws.onopen = () => {
+    socket.onopen = () => {
+      if (this.ws !== socket) return;
       const token = this.apiToken;
-      if (token && this.ws?.readyState === WebSocket.OPEN) {
-        this.ws.send(JSON.stringify({ type: "auth", token }));
+      if (token && socket.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify({ type: "auth", token }));
       }
       this.backoffMs = 500;
       // Reset connection state on successful connection
@@ -1781,19 +1772,16 @@ export class ElizaClient {
         }
       }
       this.wsHasConnectedOnce = true;
-      if (
-        this.wsSendQueue.length > 0 &&
-        this.ws?.readyState === WebSocket.OPEN
-      ) {
+      if (this.wsSendQueue.length > 0 && socket.readyState === WebSocket.OPEN) {
         const pending = this.wsSendQueue;
         this.wsSendQueue = [];
         for (let i = 0; i < pending.length; i++) {
-          if (this.ws?.readyState !== WebSocket.OPEN) {
+          if (this.ws !== socket || socket.readyState !== WebSocket.OPEN) {
             this.wsSendQueue = pending.slice(i).concat(this.wsSendQueue);
             break;
           }
           try {
-            this.ws.send(pending[i]);
+            socket.send(pending[i]);
           } catch {
             this.wsSendQueue = pending.slice(i).concat(this.wsSendQueue);
             break;
@@ -1802,7 +1790,8 @@ export class ElizaClient {
       }
     };
 
-    this.ws.onmessage = (event) => {
+    socket.onmessage = (event) => {
+      if (this.ws !== socket) return;
       try {
         const data = JSON.parse(event.data as string) as Record<
           string,
@@ -1815,7 +1804,8 @@ export class ElizaClient {
       }
     };
 
-    this.ws.onclose = () => {
+    socket.onclose = () => {
+      if (this.ws !== socket) return;
       this.ws = null;
       // Track disconnection time if not already set
       if (this.disconnectedAt === null) {
@@ -1847,7 +1837,7 @@ export class ElizaClient {
       this.scheduleReconnect();
     };
 
-    this.ws.onerror = () => {
+    socket.onerror = () => {
       // close handler will fire
     };
   }
@@ -1965,18 +1955,7 @@ export class ElizaClient {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
     }
-    if (this.ws) {
-      this.ws.onopen = null;
-      this.ws.onclose = null;
-      this.ws.onerror = null;
-      this.ws.onmessage = null;
-      try {
-        this.ws.close();
-      } catch {
-        /* already closing */
-      }
-      this.ws = null;
-    }
+    this.detachWebSocket();
     this.wsSendQueue = [];
     this.wsEventBacklog.clear();
     this.backoffMs = 500;
@@ -2116,8 +2095,7 @@ export class ElizaClient {
       this.networkStatusUnsubscribe();
       this.networkStatusUnsubscribe = null;
     }
-    this.ws?.close();
-    this.ws = null;
+    this.detachWebSocket();
     this.wsSendQueue = [];
     this.wsEventBacklog.clear();
     // Reset connection state on intentional disconnect
@@ -2125,6 +2103,26 @@ export class ElizaClient {
     this.disconnectedAt = null;
     this.connectionState = "disconnected";
     this.emitConnectionStateChange();
+  }
+
+  /**
+   * Detach a live socket before closing it so already-queued callbacks cannot
+   * dispatch through the handlers or mutate a replacement connection.
+   */
+  private detachWebSocket(): void {
+    const socket = this.ws;
+    if (!socket) return;
+    socket.onopen = null;
+    socket.onclose = null;
+    socket.onerror = null;
+    socket.onmessage = null;
+    this.ws = null;
+    try {
+      socket.close();
+    } catch {
+      // error-policy:J6 the socket is already closing; all callbacks are
+      // detached and local connection ownership has been released.
+    }
   }
 
   // --- Text normalization helpers (used by chat domain methods) ---

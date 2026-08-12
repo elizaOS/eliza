@@ -325,6 +325,7 @@ describe("ElizaClient websocket connection policy", () => {
       client.connectWs();
       for (let i = 0; i < 15; i++) {
         instances[instances.length - 1].onclose?.();
+        if (i < 14) vi.runOnlyPendingTimers();
       }
       expect(client.getConnectionState().state).toBe("failed");
     } finally {
@@ -470,6 +471,30 @@ describe("ElizaClient websocket connection policy", () => {
     const before = instances.length;
     instances[0].onclose?.();
     expect(instances).toHaveLength(before);
+  });
+
+  it("drops an already-queued frame from a detached socket after repoint", () => {
+    const instances = stubWebSocketWithInstances();
+    const client = new ElizaClient("https://old.example.test", "old-token");
+    const received: Record<string, unknown>[] = [];
+    client.onWsEvent("agent_event", (data) => received.push(data));
+    client.connectWs();
+    const oldMessage = instances[0]?.onmessage;
+
+    client.repointBaseUrl("https://new.example.test", "new-token");
+    expect(instances).toHaveLength(2);
+
+    // The browser may already have queued a callback before teardown nulled
+    // the property. Invoking that captured callback must still self-drop.
+    oldMessage?.({
+      data: JSON.stringify({ type: "agent_event", authority: "old" }),
+    });
+    expect(received).toEqual([]);
+
+    instances[1]?.onmessage?.({
+      data: JSON.stringify({ type: "agent_event", authority: "new" }),
+    });
+    expect(received).toEqual([{ type: "agent_event", authority: "new" }]);
   });
 
   it("repointBaseUrl installs the selected bearer before opening the replacement socket", () => {
