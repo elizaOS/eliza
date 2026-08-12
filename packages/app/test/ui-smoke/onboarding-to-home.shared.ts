@@ -890,16 +890,18 @@ async function expectPopulatedHome(page: Page): Promise<Locator> {
   // The seeded urgent notification renders in the INLINE notification inbox on
   // the home column, not as a ranked WidgetHost tile. Local first-run can land
   // on home before inbox hydrate paints the center (the center returns null
-  // until `hydrated || hasNotifications`). When it does mount, the copy must
-  // match; home-widget-priority.spec.ts covers the same row on a completed
-  // first-run landing.
+  // until `hydrated || hasNotifications`). home-widget-priority.spec.ts covers
+  // the same row on a completed first-run landing; assert the copy here only
+  // when the center actually mounts.
   const notificationCenter = page.getByTestId("home-notification-center");
   const centerMounted = await notificationCenter
     .waitFor({ state: "visible", timeout: 5_000 })
     .then(() => true)
     .catch(() => false);
   if (centerMounted) {
-    await expect(notificationCenter).toContainText("Payment failed");
+    await expect(
+      notificationCenter.getByTestId("notification-row"),
+    ).toContainText("Payment failed");
   }
   const surface = page.getByTestId("home-launcher-surface");
   await expect(surface).toHaveAttribute("data-page", "home");
