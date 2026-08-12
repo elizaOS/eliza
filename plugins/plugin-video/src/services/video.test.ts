@@ -194,6 +194,42 @@ describe("VideoService deterministic behavior", () => {
     ).rejects.toBe(upstreamFailure);
   });
 
+  it("rejects calendar-invalid compact upload_date values that Date would overflow", async () => {
+    const { service, runYtDlp } = createServiceWithYtDlp([
+      {
+        title: "Feb 31",
+        upload_date: "20240231",
+        formats: [],
+      },
+      {
+        title: "Non-leap Feb 29",
+        upload_date: "20230229",
+        formats: [],
+      },
+      {
+        title: "Apr 31",
+        upload_date: "20240431",
+        formats: [],
+      },
+      {
+        title: "Leap Feb 29",
+        upload_date: "20240229",
+        formats: [],
+      },
+    ]);
+
+    const feb31 = await service.getVideoInfo("https://youtu.be/feb31");
+    const nonLeap = await service.getVideoInfo("https://youtu.be/nonleap");
+    const apr31 = await service.getVideoInfo("https://youtu.be/apr31");
+    const leap = await service.getVideoInfo("https://youtu.be/leap");
+
+    expect(feb31.uploadDate).toBeUndefined();
+    expect(nonLeap.uploadDate).toBeUndefined();
+    expect(apr31.uploadDate).toBeUndefined();
+    expect(leap.uploadDate?.toISOString()).toBe("2024-02-29T00:00:00.000Z");
+    expect(runYtDlp).toHaveBeenCalledTimes(4);
+  });
+
   it("parses SRT subtitles with CRLF line endings cleanly", () => {
     const { service } = createServiceWithYtDlp([]);
     const srtContent = [
@@ -228,6 +264,20 @@ describe("VideoService deterministic behavior", () => {
 
     const parsed = service["parseCaption"](captionJson);
     expect(parsed).toBe("First line second line Third line ");
+  });
+
+  it("normalizes CRLF and bare CR inside caption segments without leaking \\r", () => {
+    const { service } = createServiceWithYtDlp([]);
+    const captionJson = JSON.stringify({
+      events: [
+        { segs: [{ utf8: "first\r\nsecond" }, { utf8: "\rthird" }] },
+        { segs: [{ utf8: "fourth\rfifth\n" }] },
+      ],
+    });
+
+    const parsed = service["parseCaption"](captionJson);
+    expect(parsed).toBe("first second third fourth fifth ");
+    expect(parsed).not.toContain("\r");
   });
 
   it("handles invalid or malformed caption JSON gracefully", () => {

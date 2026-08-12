@@ -22,6 +22,10 @@ import {
 } from "@elizaos/core";
 import ffmpeg from "fluent-ffmpeg";
 import { BinaryResolver } from "./binaries";
+import {
+  normalizeCaptionNewlines,
+  parseYtDlpUploadDate,
+} from "./video-parse";
 
 /** Minimal yt-dlp JSON shape used by this service (fields vary by extractor). */
 interface YtDlpSubtitleTrack {
@@ -56,18 +60,6 @@ interface CaptionJson {
 
 function loggableError(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
-}
-
-function parseYtDlpUploadDate(value: string | undefined): Date | undefined {
-  if (!value) return undefined;
-  const compact = value.match(/^(\d{4})(\d{2})(\d{2})$/);
-  if (compact) {
-    const [, year, month, day] = compact;
-    const parsed = new Date(`${year}-${month}-${day}T00:00:00.000Z`);
-    return Number.isNaN(parsed.getTime()) ? undefined : parsed;
-  }
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? undefined : parsed;
 }
 
 function invalidFormatField(
@@ -604,7 +596,7 @@ export class VideoService extends IVideoService {
     try {
       const jsonContent = JSON.parse(captionContent) as CaptionJson;
       if (Array.isArray(jsonContent?.events)) {
-        return jsonContent.events
+        const joined = jsonContent.events
           .filter((event): event is { segs: CaptionSegment[] } =>
             Array.isArray(event?.segs),
           )
@@ -613,8 +605,8 @@ export class VideoService extends IVideoService {
               .map((seg) => (typeof seg?.utf8 === "string" ? seg.utf8 : ""))
               .join(""),
           )
-          .join("")
-          .replace(/\n/g, " ");
+          .join("");
+        return normalizeCaptionNewlines(joined);
       } else {
         elizaLogger.log(
           "Unexpected caption format:",
