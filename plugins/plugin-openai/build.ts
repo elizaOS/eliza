@@ -10,7 +10,7 @@ const reexport = "export * from '../index';\nexport { default } from '../index';
 const endpointDeclaration = `export type EndpointSettingReader = (key: string) => string | undefined;
 export declare function resolveOpenAIBaseURL(
   readSetting: EndpointSettingReader,
-  options?: { browser?: boolean },
+  options?: { browser?: boolean; mockBaseURL?: string },
 ): string;
 `;
 

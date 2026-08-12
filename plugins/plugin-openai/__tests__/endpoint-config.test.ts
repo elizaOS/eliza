@@ -16,7 +16,12 @@ describe("OpenAI-compatible endpoint config", () => {
     vi.stubEnv("CEREBRAS_BASE_URL", " https://process.cerebras.example/v1 ");
     vi.stubEnv("ELIZA_MOCK_OPENAI_BASE", undefined);
     const runtime = {
-      getSetting: (key: string) => (key === "OPENAI_BASE_URL" ? " \t " : null),
+      getSetting: (key: string) =>
+        key === "OPENAI_BASE_URL"
+          ? " \t "
+          : key === "ELIZA_MOCK_OPENAI_BASE"
+            ? "https://config-mock.invalid/v1"
+            : null,
     } as IAgentRuntime;
 
     const inferred = getBaseURL(runtime);

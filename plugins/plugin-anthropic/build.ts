@@ -15,7 +15,7 @@ export default _default;
 const endpointDeclaration = `export type EndpointSettingReader = (key: string) => string | undefined;
 export declare function resolveAnthropicBaseURL(
   readSetting: EndpointSettingReader,
-  options?: { browser?: boolean },
+  options?: { browser?: boolean; mockBaseURL?: string },
 ): string;
 `;
 

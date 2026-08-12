@@ -213,7 +213,7 @@ function normalizeEndpointSetting(value: string | undefined): string | undefined
  */
 export function resolveOpenAIBaseURL(
   readSetting: EndpointSettingReader,
-  options: { browser?: boolean } = {}
+  options: { browser?: boolean; mockBaseURL?: string } = {}
 ): string {
   const read = (key: string): string | undefined => normalizeEndpointSetting(readSetting(key));
   const explicitProvider = read("ELIZA_PROVIDER")?.toLowerCase();
@@ -236,7 +236,7 @@ export function resolveOpenAIBaseURL(
     if (browserURL) return browserURL;
   }
   return (
-    read("ELIZA_MOCK_OPENAI_BASE") ??
+    normalizeEndpointSetting(options.mockBaseURL) ??
     openAIBaseURL ??
     (cerebrasMode ? (read("CEREBRAS_BASE_URL") ?? "https://api.cerebras.ai/v1") : undefined) ??
     (evolinkMode ? (read("EVOLINK_BASE_URL") ?? "https://direct.evolink.ai/v1") : undefined) ??
@@ -253,7 +253,10 @@ export function getBaseURL(runtime: IAgentRuntime): string {
       );
       return normalizedRuntime ?? getEnvValue(key);
     },
-    { browser: isBrowser() }
+    {
+      browser: isBrowser(),
+      mockBaseURL: getEnvValue("ELIZA_MOCK_OPENAI_BASE"),
+    }
   );
   logger.debug(`[OpenAI] Base URL: ${baseURL}`);
   return baseURL;

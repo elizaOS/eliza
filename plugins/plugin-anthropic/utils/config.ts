@@ -63,13 +63,13 @@ export type EndpointSettingReader = (key: string) => string | undefined;
  */
 export function resolveAnthropicBaseURL(
   readSetting: EndpointSettingReader,
-  options: { browser?: boolean } = {}
+  options: { browser?: boolean; mockBaseURL?: string } = {}
 ): string {
   const read = (key: string): string | undefined => {
     const value = readSetting(key)?.trim();
     return value ? value : undefined;
   };
-  const mockBaseURL = read("ELIZA_MOCK_ANTHROPIC_BASE");
+  const mockBaseURL = options.mockBaseURL?.trim();
   if (mockBaseURL) return mockBaseURL;
   if (options.browser) {
     const browserURL = read("ANTHROPIC_BROWSER_BASE_URL");
@@ -81,6 +81,7 @@ export function resolveAnthropicBaseURL(
 export function getBaseURL(runtime: IAgentRuntime): string {
   return resolveAnthropicBaseURL((key) => getRawSetting(runtime, key), {
     browser: isBrowser(),
+    mockBaseURL: getEnvValue("ELIZA_MOCK_ANTHROPIC_BASE"),
   });
 }
 

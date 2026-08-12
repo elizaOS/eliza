@@ -583,11 +583,15 @@ export function resolveActiveChat(
     family === "ELIZAOS_CLOUD"
       ? resolveElizaCloudBaseURL(readSetting)
       : family === "ANTHROPIC"
-        ? resolveAnthropicBaseURL(readSetting)
-        : resolveOpenAIBaseURL((key) =>
-            key === "ELIZA_PROVIDER" && provider === "cerebras"
-              ? "cerebras"
-              : readSetting(key),
+        ? resolveAnthropicBaseURL(readSetting, {
+            mockBaseURL: processEnv.ELIZA_MOCK_ANTHROPIC_BASE,
+          })
+        : resolveOpenAIBaseURL(
+            (key) =>
+              key === "ELIZA_PROVIDER" && provider === "cerebras"
+                ? "cerebras"
+                : readSetting(key),
+            { mockBaseURL: processEnv.ELIZA_MOCK_OPENAI_BASE },
           );
   const endpoint =
     hostOf(baseURL) ??

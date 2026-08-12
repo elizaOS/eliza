@@ -13,7 +13,12 @@ describe("Anthropic endpoint config", () => {
     vi.stubEnv("ANTHROPIC_BASE_URL", " https://process.anthropic.example/v1 ");
     vi.stubEnv("ELIZA_MOCK_ANTHROPIC_BASE", undefined);
     const runtime = {
-      getSetting: (key: string) => (key === "ANTHROPIC_BASE_URL" ? "   " : null),
+      getSetting: (key: string) =>
+        key === "ANTHROPIC_BASE_URL"
+          ? "   "
+          : key === "ELIZA_MOCK_ANTHROPIC_BASE"
+            ? "https://config-mock.invalid/v1"
+            : null,
     } as IAgentRuntime;
 
     const inferred = getBaseURL(runtime);

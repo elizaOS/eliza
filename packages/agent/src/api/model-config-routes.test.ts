@@ -689,7 +689,12 @@ describe("GET /api/models/config activeChat", () => {
               accountId: "anthropic",
             },
           },
-          env: { vars: { ANTHROPIC_BASE_URL: "   " } },
+          env: {
+            vars: {
+              ANTHROPIC_BASE_URL: "   ",
+              ELIZA_MOCK_ANTHROPIC_BASE: "https://config-mock.invalid/v1",
+            },
+          },
         },
         processEnv: {
           ANTHROPIC_BASE_URL: " https://process.anthropic.example/v1 ",
