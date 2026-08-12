@@ -229,4 +229,57 @@ describe("media generation cold-cache warming retry", () => {
     ).rejects.toThrow("not configured");
     expect(postApiV1GenerateMusic).toHaveBeenCalledTimes(1);
   });
+
+  it("polls gallery status after a 202 pending music response and returns the audio URL (#18436)", async () => {
+    vi.useFakeTimers();
+    const postApiV1GenerateMusic = vi.fn(async () => ({
+      success: false,
+      status: "pending",
+      id: "gen_pending",
+      requestId: "req_pending",
+      error: "still running upstream",
+    }));
+    const getGenerationStatus = vi
+      .fn()
+      .mockResolvedValueOnce({
+        success: true,
+        id: "gen_pending",
+        status: "pending",
+      })
+      .mockResolvedValueOnce({
+        success: true,
+        id: "gen_pending",
+        status: "completed",
+        storage_url: "https://cdn.example/late.mp3",
+        mime_type: "audio/mpeg",
+        file_name: "late.mp3",
+        job_id: "req_pending",
+        requestId: "req_pending",
+      });
+
+    setCloudMediaClientFactoryForTesting(() => ({
+      routes: {
+        postApiV1GenerateVideo: vi.fn(),
+        postApiV1GenerateMusic,
+      },
+      getGenerationStatus,
+    }));
+
+    const pending = handleAudioGeneration(runtime(), {
+      prompt: "slow ambient",
+      audioKind: "music",
+    });
+
+    await vi.advanceTimersByTimeAsync(2_500);
+    await expect(pending).resolves.toMatchObject({
+      url: "https://cdn.example/late.mp3",
+      audioUrl: "https://cdn.example/late.mp3",
+      id: "gen_pending",
+      requestId: "req_pending",
+      status: "completed",
+    });
+    expect(postApiV1GenerateMusic).toHaveBeenCalledTimes(1);
+    expect(getGenerationStatus).toHaveBeenCalled();
+    vi.useRealTimers();
+  });
 });

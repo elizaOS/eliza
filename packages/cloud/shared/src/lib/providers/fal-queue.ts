@@ -33,20 +33,41 @@ export interface FalQueueResult {
 }
 
 /**
- * Thrown when a job was enqueued on fal but the local poll window expired
- * before a terminal status arrived. The upstream job may still complete and
- * bill the platform, so callers must not refund credit holds blindly.
+ * Thrown when a job was successfully enqueued on fal but its terminal state
+ * could not be determined (poll timeout, status transport failure, status 5xx,
+ * non-JSON status body, result 5xx). The upstream job may still complete and
+ * bill the platform, so callers must not refund credit holds blindly (#18436).
  */
-export class FalQueueTimeoutError extends Error {
+export class FalQueueEnqueuedError extends Error {
   readonly requestId: string;
+
+  constructor(requestId: string, message: string) {
+    super(message);
+    this.name = "FalQueueEnqueuedError";
+    this.requestId = requestId;
+  }
+}
+
+/**
+ * @deprecated Prefer {@link FalQueueEnqueuedError}. Kept as a named subclass so
+ * existing timeout-specific tests and call sites keep working.
+ */
+export class FalQueueTimeoutError extends FalQueueEnqueuedError {
   readonly timeoutMs: number;
 
   constructor(requestId: string, timeoutMs: number) {
-    super(`fal queue job timed out after ${timeoutMs}ms (request ${requestId})`);
+    super(requestId, `fal queue job timed out after ${timeoutMs}ms (request ${requestId})`);
     this.name = "FalQueueTimeoutError";
-    this.requestId = requestId;
     this.timeoutMs = timeoutMs;
   }
+}
+
+function asEnqueuedOrThrow(requestId: string | undefined, error: unknown): never {
+  const message = error instanceof Error ? error.message : String(error);
+  if (requestId) {
+    throw new FalQueueEnqueuedError(requestId, message);
+  }
+  throw error instanceof Error ? error : new Error(message);
 }
 
 /**
@@ -152,11 +173,43 @@ export async function runFalQueueJob(
   const statusUrl = assertSameOrigin(statusUrlRaw, base, "status_url");
   const responseUrl = assertSameOrigin(responseUrlRaw, base, "response_url");
 
+  // From this point the job is live upstream. Non-definitive failures must
+  // preserve requestId so callers keep credit holds for reconcile (#18436).
+  // Definitive failures (404 unknown job, unexpected terminal status, result 4xx)
+  // stay ordinary Errors so the route can refund safely.
   const deadline = Date.now() + timeoutMs;
   for (;;) {
-    const statusResponse = await queueFetch(statusUrl, options.apiKey);
-    const statusPayload = await readJson(statusResponse, "status");
+    let statusResponse: Response;
+    try {
+      statusResponse = await queueFetch(statusUrl, options.apiKey);
+    } catch (error) {
+      asEnqueuedOrThrow(requestId, error);
+    }
+
+    let statusPayload: Record<string, unknown>;
+    try {
+      statusPayload = await readJson(statusResponse, "status");
+    } catch (error) {
+      // Non-JSON / empty body on status is not a definitive terminal state.
+      asEnqueuedOrThrow(requestId, error);
+    }
+
     if (!statusResponse.ok) {
+      // 404 is definitive (provider does not know the job). 5xx / 429 / 408
+      // leave outcome unknown → keep the hold.
+      if (statusResponse.status === 404) {
+        throw new Error(`fal queue status failed (${statusResponse.status})`);
+      }
+      if (
+        statusResponse.status >= 500 ||
+        statusResponse.status === 429 ||
+        statusResponse.status === 408
+      ) {
+        asEnqueuedOrThrow(
+          requestId,
+          new Error(`fal queue status failed (${statusResponse.status})`),
+        );
+      }
       throw new Error(`fal queue status failed (${statusResponse.status})`);
     }
 
@@ -165,11 +218,10 @@ export async function runFalQueueJob(
       break;
     }
     if (status !== "IN_QUEUE" && status !== "IN_PROGRESS") {
+      // Unexpected terminal-ish status from the provider — definitive failure.
       throw new Error(`fal queue job ended in unexpected status: ${status ?? "unknown"}`);
     }
     if (Date.now() + pollIntervalMs > deadline) {
-      // Job is already live upstream — surface a typed timeout so callers can
-      // keep credit holds and reconcile later instead of refunding blind (#18436).
       if (requestId) {
         throw new FalQueueTimeoutError(requestId, timeoutMs);
       }
@@ -178,10 +230,36 @@ export async function runFalQueueJob(
     await sleep(pollIntervalMs);
   }
 
-  const resultResponse = await queueFetch(responseUrl, options.apiKey);
-  const payload = await readJson(resultResponse, "response");
+  let resultResponse: Response;
+  try {
+    resultResponse = await queueFetch(responseUrl, options.apiKey);
+  } catch (error) {
+    asEnqueuedOrThrow(requestId, error);
+  }
+
+  let payload: Record<string, unknown>;
+  try {
+    payload = await readJson(resultResponse, "response");
+  } catch (error) {
+    asEnqueuedOrThrow(requestId, error);
+  }
+
   if (!resultResponse.ok) {
-    throw new Error(`fal queue response fetch failed (${resultResponse.status})`);
+    // COMPLETED + 4xx on result is a terminal render failure (safe to refund).
+    // 5xx / transport-class remain unknown so the hold is retained.
+    if (resultResponse.status >= 400 && resultResponse.status < 500) {
+      const detail =
+        stringField(payload, "detail") ??
+        stringField(payload, "message") ??
+        resultResponse.statusText;
+      throw new Error(
+        detail || `fal queue response fetch failed (${resultResponse.status})`,
+      );
+    }
+    asEnqueuedOrThrow(
+      requestId,
+      new Error(`fal queue response fetch failed (${resultResponse.status})`),
+    );
   }
 
   return { requestId, payload };

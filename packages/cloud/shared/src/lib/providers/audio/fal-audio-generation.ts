@@ -1,6 +1,6 @@
 // Defines cloud shared fal audio generation behavior for backend service consumers.
 import {
-  FalQueueTimeoutError,
+  FalQueueEnqueuedError,
   falQueueOptionsFromApiKeys,
   getFalQueueJobStatus,
   runFalQueueJob,
@@ -186,10 +186,11 @@ export async function generateFalAudio(request: AudioGenRequest): Promise<Genera
     const { requestId, payload } = await runFalQueueJob(request.model, input, options);
     return normalizeFalAudioResult(payload, requestId);
   } catch (error) {
-    // Typed timeout after enqueue: verify terminal state before letting the
-    // route refund. A still-live job becomes AudioGenerationPendingError so
-    // credits stay reserved for the reconcile sweep (#18436).
-    if (!(error instanceof FalQueueTimeoutError)) {
+    // Any post-enqueue unknown outcome (timeout, status 5xx/abort, result 5xx)
+    // carries FalQueueEnqueuedError with requestId. Probe terminal state before
+    // letting the route refund. Still-live jobs become AudioGenerationPendingError
+    // so credits stay reserved for the reconcile sweep (#18436).
+    if (!(error instanceof FalQueueEnqueuedError)) {
       throw error;
     }
 
@@ -207,8 +208,9 @@ export async function generateFalAudio(request: AudioGenRequest): Promise<Genera
       return probe.result;
     }
     if (probe.state === "failed") {
-      // Verified terminal failure — refunding is safe.
-      throw error;
+      // Verified terminal failure — refunding is safe. Throw a plain Error so
+      // the route refund path is not confused with pending settlement.
+      throw new Error(probe.error || error.message);
     }
     throw new AudioGenerationPendingError(error.requestId, error.message);
   }

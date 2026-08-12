@@ -84,7 +84,14 @@ mock.module("@/lib/services/generations", () => ({
 }));
 
 type MockState = {
-  mode: "timeout-pending" | "timeout-completed" | "timeout-failed" | "pre-enqueue-fail" | "success";
+  mode:
+    | "timeout-pending"
+    | "timeout-completed"
+    | "timeout-failed"
+    | "pre-enqueue-fail"
+    | "status-5xx"
+    | "result-5xx"
+    | "success";
   submitCount: number;
   statusCount: number;
 };
@@ -114,13 +121,19 @@ globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
 
   if (url.includes("/status")) {
     mockState.statusCount++;
+    if (mockState.mode === "status-5xx") {
+      return new Response("status unavailable", { status: 503 });
+    }
     if (mockState.mode === "timeout-pending") {
       // Always IN_PROGRESS so the poll loop times out with a live request id.
       return Response.json({ status: "IN_PROGRESS" });
     }
-    if (mockState.mode === "timeout-completed") {
+    if (mockState.mode === "timeout-completed" || mockState.mode === "result-5xx") {
       // First status polls during runFalQueueJob stay pending; the post-timeout
       // probe (after FalQueueTimeoutError) reports COMPLETED.
+      if (mockState.mode === "result-5xx") {
+        return Response.json({ status: "COMPLETED" });
+      }
       if (mockState.statusCount <= 2) {
         return Response.json({ status: "IN_PROGRESS" });
       }
@@ -136,6 +149,9 @@ globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
   }
 
   if (url.includes("/requests/req-music")) {
+    if (mockState.mode === "result-5xx") {
+      return new Response("result unavailable", { status: 503 });
+    }
     if (mockState.mode === "timeout-completed" || mockState.mode === "success") {
       return Response.json({
         audio: {
@@ -351,5 +367,40 @@ describe("generate-music — verified terminal failures still refund exactly onc
     expect(ledger.reconcileCalls).toBe(1);
     expect(ledger.lastActual).toBe(0);
     expect(ledger.balance).toBeCloseTo(ledger.startBalance, 10);
+  });
+});
+
+describe("generate-music — post-enqueue transport failures must NOT refund (#18436 review)", () => {
+  test("status 5xx after enqueue: 202 pending, hold open", async () => {
+    const ledger = makeLedgerReservation(100, COST);
+    reserve.mockResolvedValue(ledger.reservation);
+    mockState.mode = "status-5xx";
+    generationsCreate.mockImplementation(
+      async (data: Record<string, unknown>) => ({ id: "gen-s5", ...data }),
+    );
+
+    const res = await post();
+
+    expect(res.status).toBe(202);
+    expect(ledger.reconcileCalls).toBe(0);
+    expect(ledger.balance).toBeCloseTo(ledger.startBalance - COST, 10);
+    const body = (await res.json()) as Record<string, unknown>;
+    expect(body.status).toBe("pending");
+    expect(body.requestId).toBe("req-music");
+  });
+
+  test("result 5xx after COMPLETED status: 202 pending, hold open", async () => {
+    const ledger = makeLedgerReservation(100, COST);
+    reserve.mockResolvedValue(ledger.reservation);
+    mockState.mode = "result-5xx";
+    generationsCreate.mockImplementation(
+      async (data: Record<string, unknown>) => ({ id: "gen-r5", ...data }),
+    );
+
+    const res = await post();
+
+    expect(res.status).toBe(202);
+    expect(ledger.reconcileCalls).toBe(0);
+    expect(ledger.balance).toBeCloseTo(ledger.startBalance - COST, 10);
   });
 });

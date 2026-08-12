@@ -8,6 +8,18 @@ import { logger } from "@elizaos/core";
 import { resolveCloudTimeoutMs } from "../utils/config";
 import { createElizaCloudClient } from "../utils/sdk-client";
 
+interface CloudGenerationStatusResponse {
+  success?: boolean;
+  id?: string;
+  status?: string;
+  storage_url?: string | null;
+  mime_type?: string | null;
+  file_name?: string | null;
+  error?: string | null;
+  job_id?: string | null;
+  requestId?: string | null;
+}
+
 interface CloudMediaClient {
   routes: {
     postApiV1GenerateVideo<T = unknown>(options: {
@@ -18,20 +30,42 @@ interface CloudMediaClient {
       json: Record<string, unknown>;
       timeoutMs?: number;
     }): Promise<T>;
+    /** Optional: generated after GET /api/v1/gallery/{id} is registered. */
+    getApiV1GalleryById?<T = unknown>(options: {
+      path?: { id: string | number };
+      id?: string | number;
+      timeoutMs?: number;
+    }): Promise<T>;
   };
+  /** Fallback poll when generated gallery-by-id route helper is unavailable. */
+  getGenerationStatus?(
+    id: string,
+    options?: { timeoutMs?: number },
+  ): Promise<CloudGenerationStatusResponse>;
 }
 
 type CloudMediaClientFactory = (runtime: IAgentRuntime) => CloudMediaClient;
 
-let cloudMediaClientFactory: CloudMediaClientFactory = (runtime) =>
-  createElizaCloudClient(runtime) as CloudMediaClient;
+function defaultCloudMediaClient(runtime: IAgentRuntime): CloudMediaClient {
+  const client = createElizaCloudClient(runtime);
+  return {
+    routes: client.routes as CloudMediaClient["routes"],
+    getGenerationStatus: async (id, options) => {
+      // CloudApiClient is scoped to /api/v1.
+      return await client.v1.get<CloudGenerationStatusResponse>(
+        `/gallery/${encodeURIComponent(id)}`,
+        { timeoutMs: options?.timeoutMs },
+      );
+    },
+  };
+}
+
+let cloudMediaClientFactory: CloudMediaClientFactory = defaultCloudMediaClient;
 
 export function setCloudMediaClientFactoryForTesting(
   factory: CloudMediaClientFactory | null,
 ): void {
-  cloudMediaClientFactory =
-    factory ??
-    ((runtime) => createElizaCloudClient(runtime) as CloudMediaClient);
+  cloudMediaClientFactory = factory ?? defaultCloudMediaClient;
 }
 
 function stringValue(value: unknown): string | undefined {
@@ -176,11 +210,107 @@ interface CloudMusicResponse {
   id?: string;
   requestId?: string;
   status?: string;
+  error?: string;
   music?: {
     url?: string;
     content_type?: string;
     file_name?: string;
   };
+}
+
+const MUSIC_PENDING_POLL_INTERVAL_MS = 2_000;
+
+function isPendingMusicResponse(response: CloudMusicResponse): boolean {
+  if (response.music?.url) return false;
+  const status = stringValue(response.status)?.toLowerCase();
+  // 202 body: { success:false, status:"pending", id, requestId }
+  return status === "pending" && Boolean(stringValue(response.id));
+}
+
+async function fetchGenerationStatus(
+  client: CloudMediaClient,
+  id: string,
+  timeoutMs: number,
+): Promise<CloudGenerationStatusResponse> {
+  if (client.routes.getApiV1GalleryById) {
+    return await client.routes.getApiV1GalleryById<CloudGenerationStatusResponse>(
+      {
+        path: { id },
+        id,
+        timeoutMs,
+      },
+    );
+  }
+  if (client.getGenerationStatus) {
+    return await client.getGenerationStatus(id, { timeoutMs });
+  }
+  throw new Error(
+    "Cloud media client cannot poll generation status (missing gallery GET)",
+  );
+}
+
+/**
+ * After a 202 pending generate-music response, poll GET /gallery/:id until the
+ * reconcile path completes the generation or the remaining client budget ends.
+ */
+async function resolvePendingMusicResponse(
+  client: CloudMediaClient,
+  pending: CloudMusicResponse,
+  totalTimeoutMs: number,
+  startedAt: number,
+): Promise<CloudMusicResponse> {
+  const id = stringValue(pending.id);
+  if (!id) {
+    throw new Error(
+      "Eliza Cloud music generation returned pending without a generation id",
+    );
+  }
+
+  logger.log(
+    `[ELIZAOS_CLOUD] Music generation pending upstream (id=${id}); polling for completion`,
+  );
+
+  for (;;) {
+    const remaining = totalTimeoutMs - (Date.now() - startedAt);
+    if (remaining <= 0) {
+      throw new Error(
+        `Music generation still pending after ${totalTimeoutMs}ms (id=${id}). Try again shortly or check gallery status.`,
+      );
+    }
+
+    const status = await fetchGenerationStatus(
+      client,
+      id,
+      Math.min(30_000, remaining),
+    );
+    const state = stringValue(status.status)?.toLowerCase();
+    if (state === "completed" && stringValue(status.storage_url)) {
+      return {
+        success: true,
+        id: stringValue(status.id) ?? id,
+        requestId:
+          stringValue(status.requestId) ??
+          stringValue(status.job_id) ??
+          pending.requestId,
+        status: "completed",
+        music: {
+          url: stringValue(status.storage_url),
+          content_type: stringValue(status.mime_type) ?? "audio/mpeg",
+          file_name: stringValue(status.file_name),
+        },
+      };
+    }
+    if (state === "failed" || state === "deleted") {
+      throw new Error(
+        stringValue(status.error) ||
+          `Music generation failed upstream (id=${id}, status=${state})`,
+      );
+    }
+
+    await new Promise((r) =>
+      setTimeout(r, Math.min(MUSIC_PENDING_POLL_INTERVAL_MS, remaining)),
+    );
+  }
 }
 
 export async function handleAudioGeneration(
@@ -218,14 +348,15 @@ export async function handleAudioGeneration(
     "ELIZAOS_CLOUD_MUSIC_TIMEOUT_MS",
     300_000,
   );
+  const client = cloudMediaClientFactory(runtime);
+  const startedAt = Date.now();
   const postMusic = (json: Record<string, JsonValue>) =>
     retryMediaWarming(
       () =>
-        cloudMediaClientFactory(
-          runtime,
-        ).routes.postApiV1GenerateMusic<CloudMusicResponse>({
+        client.routes.postApiV1GenerateMusic<CloudMusicResponse>({
           json,
-          timeoutMs,
+          // First hop can return 202 quickly; keep budget for status polling.
+          timeoutMs: Math.min(timeoutMs, 120_000),
         }),
       "Music generation",
     );
@@ -256,6 +387,15 @@ export async function handleAudioGeneration(
     outputDurationSeconds = undefined;
   }
 
+  if (isPendingMusicResponse(response)) {
+    response = await resolvePendingMusicResponse(
+      client,
+      response,
+      timeoutMs,
+      startedAt,
+    );
+  }
+
   const audioUrl = response.music?.url;
   if (!audioUrl) {
     throw new Error("Eliza Cloud music generation returned no audio URL");
@@ -269,6 +409,6 @@ export async function handleAudioGeneration(
     duration: outputDurationSeconds,
     requestId: response.requestId,
     id: response.id,
-    status: response.status,
+    status: response.status ?? "completed",
   });
 }

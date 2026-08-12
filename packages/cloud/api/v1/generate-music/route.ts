@@ -415,45 +415,43 @@ app.post("/", async (c) => {
       const pendingAdmission = admission;
       const pending = pendingContext;
       const pendingGenerationId = crypto.randomUUID();
-      const persistPendingSettlement = persistPendingMusicSettlement({
-        generationId: pendingGenerationId,
-        requestId: error.requestId,
-        ...pending,
-        settlementMarker: MUSIC_PENDING_SETTLEMENT_MARKER,
-        existingReservation:
-          pendingAdmission.mode === "synchronous_reservation"
-            ? pendingAdmission.reservation
-            : undefined,
-        releaseDeferredAdmission: () => pendingAdmission.settle(0),
-      })
-        .then(() => {
-          logger.warn(
-            "[GenerateMusic] Upstream job still pending after poll window — holding credits for reconcile",
-            {
-              generationId: pendingGenerationId,
-              requestId: error.requestId,
-              organizationId: pending.organizationId,
-              billedCost: pending.totalCost,
-            },
-          );
-        })
-        .catch((persistError) => {
-          // error-policy:J7 the upstream job may still bill us, so a failed
-          // detached persistence must retain the admitted hold for the sweep.
-          logger.error(
-            "[GenerateMusic] Failed to persist pending settlement — leaving hold for the reservation sweep",
-            {
-              requestId: error.requestId,
-              error:
-                persistError instanceof Error
-                  ? persistError.message
-                  : String(persistError),
-            },
-          );
+      // Await persistence before 202 so clients can poll /gallery/:id
+      // immediately without racing a detached waitUntil write (#18436 review).
+      try {
+        await persistPendingMusicSettlement({
+          generationId: pendingGenerationId,
+          requestId: error.requestId,
+          ...pending,
+          settlementMarker: MUSIC_PENDING_SETTLEMENT_MARKER,
+          existingReservation:
+            pendingAdmission.mode === "synchronous_reservation"
+              ? pendingAdmission.reservation
+              : undefined,
+          releaseDeferredAdmission: () => pendingAdmission.settle(0),
         });
-      const executionCtx = getGenerativeExecutionContext(c);
-      if (executionCtx) executionCtx.waitUntil(persistPendingSettlement);
-      else await persistPendingSettlement;
+        logger.warn(
+          "[GenerateMusic] Upstream job still pending after poll window — holding credits for reconcile",
+          {
+            generationId: pendingGenerationId,
+            requestId: error.requestId,
+            organizationId: pending.organizationId,
+            billedCost: pending.totalCost,
+          },
+        );
+      } catch (persistError) {
+        // error-policy:J7 the upstream job may still bill us, so a failed
+        // persistence must retain the admitted hold for the reservation sweep.
+        logger.error(
+          "[GenerateMusic] Failed to persist pending settlement — leaving hold for the reservation sweep",
+          {
+            requestId: error.requestId,
+            error:
+              persistError instanceof Error
+                ? persistError.message
+                : String(persistError),
+          },
+        );
+      }
       return c.json(
         {
           success: false,
@@ -461,7 +459,7 @@ app.post("/", async (c) => {
           id: pendingGenerationId,
           requestId: error.requestId,
           error:
-            "Music generation is still running upstream. Credits stay reserved and settle automatically: charged if the track completes, refunded if it fails.",
+            "Music generation is still running upstream. Credits stay reserved and settle automatically: charged if the track completes, refunded if it fails. Poll GET /api/v1/gallery/:id until status is completed or failed.",
         },
         202,
       );

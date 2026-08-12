@@ -1,9 +1,9 @@
 /**
- * DELETE /api/v1/gallery/:id
+ * GET /api/v1/gallery/:id — owner poll for generation status (incl. pending music).
+ * DELETE /api/v1/gallery/:id — soft-delete owned gallery media.
  *
- * Soft-deletes a media item from the gallery. Verifies ownership, removes
- * the underlying R2 object if the storage URL is a trusted blob URL, then
- * marks the generation record as `deleted`.
+ * GET verifies ownership and returns status + storage URL when ready so clients
+ * can complete a 202 pending generate-music response (#18436).
  */
 
 import { Hono } from "hono";
@@ -15,6 +15,44 @@ import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 const app = new Hono<AppEnv>();
+
+app.get("/", async (c) => {
+  try {
+    const user = await requireUserOrApiKeyWithOrg(c);
+    const id = c.req.param("id") ?? "";
+
+    const generation = await generationsService.getById(id);
+    // Owner user OR same-organization API key may poll (pending music path).
+    if (
+      !generation ||
+      (generation.user_id !== user.id &&
+        generation.organization_id !== user.organization_id)
+    ) {
+      throw NotFoundError("Media not found or access denied");
+    }
+
+    return c.json({
+      success: true,
+      id: generation.id,
+      type: generation.type,
+      status: generation.status,
+      storage_url: generation.storage_url,
+      mime_type: generation.mime_type,
+      file_name:
+        typeof generation.result === "object" &&
+        generation.result !== null &&
+        "file_name" in generation.result
+          ? (generation.result as { file_name?: string }).file_name
+          : undefined,
+      error: generation.error,
+      job_id: generation.job_id,
+      requestId: generation.job_id,
+      completed_at: generation.completed_at,
+    });
+  } catch (error) {
+    return failureResponse(c, error);
+  }
+});
 
 app.delete("/", async (c) => {
   try {

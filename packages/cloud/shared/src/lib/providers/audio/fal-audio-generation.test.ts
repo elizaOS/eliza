@@ -14,9 +14,21 @@ interface MockState {
   responseBody: Record<string, unknown>;
   /** When true, status stays IN_PROGRESS so the sync poll times out. */
   hang: boolean;
+  /** Force status endpoint to return 5xx after enqueue. */
+  statusStatus: number;
+  /** Force result endpoint to return a non-2xx after COMPLETED. */
+  resultStatus: number;
+  statusBodies: string;
 }
 
-const state: MockState = { submitBodies: [], responseBody: {}, hang: false };
+const state: MockState = {
+  submitBodies: [],
+  responseBody: {},
+  hang: false,
+  statusStatus: 200,
+  resultStatus: 200,
+  statusBodies: "json",
+};
 
 const server = Bun.serve({
   port: 0,
@@ -31,10 +43,22 @@ const server = Bun.serve({
       });
     }
     if (url.pathname.endsWith("/status")) {
+      if (state.statusStatus !== 200) {
+        return new Response("upstream down", { status: state.statusStatus });
+      }
+      if (state.statusBodies === "non-json") {
+        return new Response("not-json", {
+          status: 200,
+          headers: { "content-type": "text/plain" },
+        });
+      }
       if (state.hang) {
         return Response.json({ status: "IN_PROGRESS" });
       }
       return Response.json({ status: "COMPLETED" });
+    }
+    if (state.resultStatus !== 200) {
+      return new Response("result unavailable", { status: state.resultStatus });
     }
     return Response.json(state.responseBody);
   },
@@ -48,6 +72,9 @@ afterAll(() => {
 beforeEach(() => {
   state.submitBodies = [];
   state.hang = false;
+  state.statusStatus = 200;
+  state.resultStatus = 200;
+  state.statusBodies = "json";
   state.responseBody = {
     audio: {
       url: `${base}/media/out.mp3`,
@@ -117,6 +144,57 @@ describe("generateFalAudio — music", () => {
           FAL_QUEUE_TIMEOUT_MS: "40",
           FAL_QUEUE_POLL_INTERVAL_MS: "5",
         },
+      });
+    } catch (e) {
+      error = e;
+    }
+    expect(error).toBeInstanceOf(AudioGenerationPendingError);
+    expect((error as AudioGenerationPendingError).requestId).toBe("req-7");
+  });
+
+  test("status 5xx after enqueue throws AudioGenerationPendingError (no blind failure) (#18436)", async () => {
+    state.statusStatus = 503;
+    let error: unknown;
+    try {
+      await generateFalAudio({
+        kind: "music",
+        model: "fal-ai/minimax-music/v2.6",
+        prompt: "status flaky",
+        apiKeys: { ...apiKeys, FAL_QUEUE_TIMEOUT_MS: "200", FAL_QUEUE_POLL_INTERVAL_MS: "5" },
+      });
+    } catch (e) {
+      error = e;
+    }
+    expect(error).toBeInstanceOf(AudioGenerationPendingError);
+    expect((error as AudioGenerationPendingError).requestId).toBe("req-7");
+  });
+
+  test("non-JSON status body after enqueue throws AudioGenerationPendingError (#18436)", async () => {
+    state.statusBodies = "non-json";
+    let error: unknown;
+    try {
+      await generateFalAudio({
+        kind: "music",
+        model: "fal-ai/minimax-music/v2.6",
+        prompt: "bad status body",
+        apiKeys: { ...apiKeys, FAL_QUEUE_TIMEOUT_MS: "200", FAL_QUEUE_POLL_INTERVAL_MS: "5" },
+      });
+    } catch (e) {
+      error = e;
+    }
+    expect(error).toBeInstanceOf(AudioGenerationPendingError);
+    expect((error as AudioGenerationPendingError).requestId).toBe("req-7");
+  });
+
+  test("result 5xx after COMPLETED throws AudioGenerationPendingError (#18436)", async () => {
+    state.resultStatus = 503;
+    let error: unknown;
+    try {
+      await generateFalAudio({
+        kind: "music",
+        model: "fal-ai/minimax-music/v2.6",
+        prompt: "result flaky",
+        apiKeys: { ...apiKeys, FAL_QUEUE_TIMEOUT_MS: "200", FAL_QUEUE_POLL_INTERVAL_MS: "5" },
       });
     } catch (e) {
       error = e;
