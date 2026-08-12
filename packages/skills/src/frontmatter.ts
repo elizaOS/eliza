@@ -21,8 +21,17 @@ function normalizeNewlines(value: string): string {
   return value.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
 }
 
+/**
+ * True only for plain string-keyed records (Object.prototype or null-prototype).
+ * yaml.parse can return Set/Map/collection instances for !!set / !!omap roots;
+ * those must not be typed or returned as Record<string, unknown>.
+ */
 function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return false;
+  }
+  const proto = Object.getPrototypeOf(value);
+  return proto === Object.prototype || proto === null;
 }
 
 function frontmatterValue(
@@ -78,7 +87,7 @@ export function parseFrontmatter<
       return { frontmatter: parsed as T, body };
     }
   } catch {
-    // Malformed YAML frontmatter block falls back safely to empty object
+    // error-policy:J3 untrusted YAML frontmatter parse fails closed to empty record
   }
   return { frontmatter: {} as T, body };
 }

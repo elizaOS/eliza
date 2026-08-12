@@ -1,6 +1,7 @@
 /**
- * Tests for parseFrontmatter: valid YAML blocks, absent/empty frontmatter, CRLF
- * line endings, and a missing closing delimiter. Deterministic string parsing.
+ * Deterministic unit coverage for parseFrontmatter and skill frontmatter
+ * resolvers: valid blocks, absent/empty/malformed YAML, non-object and
+ * non-plain collection roots, CRLF, and metadata/policy extraction.
  */
 import assert from "node:assert";
 import { describe, it } from "node:test";
@@ -117,6 +118,42 @@ Body content`;
     const arrayResult = parseFrontmatter(arrayContent);
     assert.deepStrictEqual(arrayResult.frontmatter, {});
     assert.strictEqual(arrayResult.body, "Body content");
+  });
+
+  it("returns empty frontmatter for YAML Set and Map collection roots", () => {
+    const setContent = `---
+!!set
+? alpha
+? beta
+---
+Body content`;
+    const setResult = parseFrontmatter(setContent);
+    assert.deepStrictEqual(setResult.frontmatter, {});
+    assert.strictEqual(setResult.body, "Body content");
+    assert.ok(!(setResult.frontmatter instanceof Set));
+
+    const omapContent = `---
+!!omap
+- alpha: 1
+- beta: 2
+---
+Body content`;
+    const omapResult = parseFrontmatter(omapContent);
+    assert.deepStrictEqual(omapResult.frontmatter, {});
+    assert.strictEqual(omapResult.body, "Body content");
+    assert.ok(!(omapResult.frontmatter instanceof Map));
+  });
+
+  it("accepts plain and null-prototype-equivalent mapping roots", () => {
+    const content = `---
+name: plain-skill
+description: mapping root
+---
+Body`;
+    const result = parseFrontmatter<SkillFrontmatter>(content);
+    assert.strictEqual(result.frontmatter.name, "plain-skill");
+    assert.strictEqual(result.frontmatter.description, "mapping root");
+    assert.strictEqual(result.body, "Body");
   });
 });
 
