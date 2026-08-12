@@ -257,6 +257,7 @@ const MISTRAL_TEXT_MODEL_IDS = [
   "mistralai/ministral-8b",
 ] as const;
 const MINIMAX_TEXT_MODEL_IDS = [
+  "minimax/minimax-m3",
   "minimax/minimax-m2.7",
   "minimax/minimax-m2.5",
   "minimax/minimax-m2.1-lightning",
