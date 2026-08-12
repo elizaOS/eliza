@@ -100,6 +100,48 @@ export function analyzeWalletConviction(
     );
   }
 
+  // Previously conflictingSignals only ever had the one condition above.
+  // These mirror the positive strategy/smartMoney/diversity conditions
+  // already scored earlier in this function with their own negative
+  // counterpart, the same relationship "activity === none" already had to
+  // its own scale - real conditions, not decorative text, so each one
+  // also affects `score` consistently with how this file already treats
+  // conflicting evidence.
+  if (input.strategy.primaryStrategy === "distributing") {
+    score -= 15;
+
+    conflictingSignals.push(
+      "Distributing behaviour conflicts with sustained conviction.",
+    );
+  }
+
+  if (input.strategy.primaryStrategy === "taking_profits") {
+    score -= 10;
+
+    conflictingSignals.push(
+      "Taking-profits behaviour suggests reduced conviction in the current position.",
+    );
+  }
+
+  if (input.smartMoney.level === "none") {
+    score -= 10;
+
+    conflictingSignals.push(
+      "No smart-money characteristics detected, reducing conviction confidence.",
+    );
+  }
+
+  if (
+    !portfolioDataIncomplete &&
+    input.portfolio.diversityLevel === "none"
+  ) {
+    score -= 5;
+
+    conflictingSignals.push(
+      "No portfolio diversification was detected.",
+    );
+  }
+
   score = Math.max(0, Math.min(score, 100));
 
   let convictionLevel:
