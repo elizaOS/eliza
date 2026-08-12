@@ -10,9 +10,9 @@
 
 CREATE TABLE IF NOT EXISTS cloud_approval_requests (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  organization_id UUID NOT NULL,
   agent_id UUID,
-  user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+  user_id UUID,
 
   challenge_kind TEXT NOT NULL CHECK (challenge_kind IN ('login','signature','generic')),
   challenge_payload JSONB NOT NULL DEFAULT '{}'::jsonb,
@@ -42,6 +42,37 @@ CREATE INDEX IF NOT EXISTS idx_cloud_approval_requests_agent
 CREATE INDEX IF NOT EXISTS idx_cloud_approval_requests_expected_signer
   ON cloud_approval_requests(expected_signer_identity_id)
   WHERE expected_signer_identity_id IS NOT NULL;
+
+-- Attach the identity foreign keys only where the referenced tables exist.
+-- Diagnostic harnesses replay this migration against an empty database, so an
+-- inline REFERENCES would abort with 42P01 before Cloud bootstrap runs.
+DO $$
+BEGIN
+  IF to_regclass('public.organizations') IS NOT NULL
+    AND NOT EXISTS (
+      SELECT 1 FROM pg_constraint
+      WHERE conname = 'cloud_approval_requests_organization_id_fkey'
+        AND conrelid = 'public.cloud_approval_requests'::regclass
+    )
+  THEN
+    ALTER TABLE cloud_approval_requests
+      ADD CONSTRAINT cloud_approval_requests_organization_id_fkey
+      FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE;
+  END IF;
+
+  IF to_regclass('public.users') IS NOT NULL
+    AND NOT EXISTS (
+      SELECT 1 FROM pg_constraint
+      WHERE conname = 'cloud_approval_requests_user_id_fkey'
+        AND conrelid = 'public.cloud_approval_requests'::regclass
+    )
+  THEN
+    ALTER TABLE cloud_approval_requests
+      ADD CONSTRAINT cloud_approval_requests_user_id_fkey
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL;
+  END IF;
+END
+$$;
 
 CREATE TABLE IF NOT EXISTS cloud_approval_request_events (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

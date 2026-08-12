@@ -246,7 +246,7 @@ export default function ApprovalPage() {
             })}
         </p>
         <Link
-          className="mt-3 text-sm text-muted transition-colors hover:text-txt focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+          className="mt-3 text-sm text-muted transition-colors hover:text-txt"
           to="/"
         >
           {t("cloud.approval.returnHome", {
