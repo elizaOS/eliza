@@ -63,7 +63,7 @@ const txExecute = mock(async () => ({ rows: [] }));
 let txSelectCall = 0;
 let selectedSandbox: Record<string, unknown> = {
   id: "agent",
-  status: "running",
+  status: "stopped",
   lifecycle_revision: 0,
   updated_at: new Date(),
   last_heartbeat_at: null,
@@ -157,7 +157,7 @@ afterEach(() => {
   txSelectCall = 0;
   selectedSandbox = {
     id: "agent",
-    status: "running",
+    status: "stopped",
     lifecycle_revision: 0,
     updated_at: new Date(),
     last_heartbeat_at: null,
@@ -171,9 +171,10 @@ afterAll(() => {
 });
 
 describe("enqueueAgentDeleteOnce.beforeInsert — cancels other pending jobs", () => {
-  test("rejects a running agent with a recent heartbeat before flipping deletion_pending", async () => {
+  test("rejects a running agent before flipping deletion_pending", async () => {
     selectedSandbox = {
       ...selectedSandbox,
+      status: "running",
       last_heartbeat_at: new Date(Date.now() - 30_000),
     };
     const { provisioningJobService } = await import("./provisioning-jobs");
@@ -184,12 +185,29 @@ describe("enqueueAgentDeleteOnce.beforeInsert — cancels other pending jobs", (
         organizationId: "22222222-2222-4222-8222-222222222222",
         userId: "33333333-3333-4333-8333-333333333333",
       }),
-    ).rejects.toThrow("Agent is running with a recent heartbeat");
+    ).rejects.toThrow("Agent is running; suspend it before deletion");
     expect(
       txUpdateSet.mock.calls.some(
         ([values]) => (values as { status?: string }).status === "deletion_pending",
       ),
     ).toBe(false);
+  });
+
+  test("allows an explicitly authorized running-agent delete", async () => {
+    selectedSandbox = {
+      ...selectedSandbox,
+      status: "running",
+    };
+    const { provisioningJobService } = await import("./provisioning-jobs");
+
+    await expect(
+      provisioningJobService.enqueueAgentDeleteOnce({
+        agentId: "agent",
+        organizationId: "22222222-2222-4222-8222-222222222222",
+        userId: "33333333-3333-4333-8333-333333333333",
+        authorization: "user_request",
+      }),
+    ).resolves.toMatchObject({ created: true });
   });
 
   test("marks only the agent's quiescent non-delete pending jobs cancelled", async () => {

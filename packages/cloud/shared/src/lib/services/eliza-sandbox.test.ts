@@ -3708,6 +3708,7 @@ describe("ElizaSandboxService.deleteAgent teardown cap (#9066)", () => {
     executeDeletion(
       agentId: string,
       orgId: string,
+      authorization?: "user_request" | "billing_request",
     ): Promise<{
       success: boolean;
       containerStopped: boolean;
@@ -3717,6 +3718,7 @@ describe("ElizaSandboxService.deleteAgent teardown cap (#9066)", () => {
     prepareAgentDelete(
       agentId: string,
       orgId: string,
+      authorization?: "user_request" | "billing_request",
     ): Promise<
       | {
           ok: true;
@@ -3736,7 +3738,7 @@ describe("ElizaSandboxService.deleteAgent teardown cap (#9066)", () => {
     return new ElizaSandboxService() as unknown as Svc;
   }
 
-  test("prepareAgentDelete refuses a running agent with a fresh heartbeat", async () => {
+  test("prepareAgentDelete refuses an unauthorized running agent before deletion intent", async () => {
     const svc = await makeSvc();
     const live = {
       ...customSandbox(),
@@ -3764,9 +3766,44 @@ describe("ElizaSandboxService.deleteAgent teardown cap (#9066)", () => {
     try {
       await expect(svc.prepareAgentDelete(AGENT, ORG)).resolves.toEqual({
         ok: false,
-        error: "Agent is running with a recent heartbeat",
+        error: "Agent is running; suspend it before deletion",
       });
       expect(update).not.toHaveBeenCalled();
+    } finally {
+      upgradeTransactionImpl = null;
+      lockLifecycle.mockRestore();
+      getForMutation.mockRestore();
+      activeProvision.mockRestore();
+      activeReplacement.mockRestore();
+    }
+  });
+
+  test("prepareAgentDelete allows an explicitly authorized running agent", async () => {
+    const svc = await makeSvc();
+    const live = {
+      ...customSandbox(),
+      id: AGENT,
+      organization_id: ORG,
+      last_heartbeat_at: null,
+    };
+    const lockLifecycle = spyOn(svc, "lockLifecycle").mockResolvedValue(undefined);
+    const getForMutation = spyOn(svc, "getAgentForLifecycleMutation").mockResolvedValue(live);
+    const activeProvision = spyOn(svc, "hasActiveProvisionJobTx").mockResolvedValue(false);
+    const activeReplacement = spyOn(svc, "hasActiveReplacementJobTx").mockResolvedValue(false);
+    const update = mock(() => ({
+      set: mock(() => ({
+        where: mock(() => ({
+          returning: mock(async () => [{ ...live, status: "deletion_pending" }]),
+        })),
+      })),
+    }));
+    upgradeTransactionImpl = async (fn) => fn({ execute: async () => ({ rows: [] }), update });
+
+    try {
+      await expect(svc.prepareAgentDelete(AGENT, ORG, "user_request")).resolves.toMatchObject({
+        ok: true,
+      });
+      expect(update).toHaveBeenCalled();
     } finally {
       upgradeTransactionImpl = null;
       lockLifecycle.mockRestore();

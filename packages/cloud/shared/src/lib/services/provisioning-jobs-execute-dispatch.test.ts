@@ -617,6 +617,28 @@ describe("executeJob dispatch — failure path per job type retries (increments 
 });
 
 describe("executeJob dispatch — type-specific disposition rules", () => {
+  test("agent_delete preserves billing authorization through worker execution", async () => {
+    const ctx = harness(makeJob(JOB_TYPES.AGENT_DELETE, { authorization: "billing_request" }));
+    const executeDeletionSpy = stub("executeDeletion", {
+      success: true,
+      containerStopped: true,
+      rowDeleted: true,
+    });
+
+    try {
+      const res = await run(JOB_TYPES.AGENT_DELETE);
+      expect(res).toMatchObject({ succeeded: 1, failed: 0, retried: 0 });
+      expect(executeDeletionSpy).toHaveBeenCalledWith(AGENT, ORG, "billing_request");
+    } finally {
+      ctx.claimSpy.mockRestore();
+      ctx.recoverSpy.mockRestore();
+      ctx.updateStatusSpy.mockRestore();
+      ctx.updateSpy.mockRestore();
+      ctx.incrementSpy.mockRestore();
+      ctx.retryLaterSpy.mockRestore();
+    }
+  });
+
   test("an unresolved delete completes the hot queue attempt with rowDeleted false", async () => {
     const ctx = harness(makeJob(JOB_TYPES.AGENT_DELETE));
     stub("executeDeletion", {

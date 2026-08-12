@@ -90,8 +90,8 @@ import {
 } from "./eliza-provision-lock";
 import {
   AdminCanaryCleanupExpectationError,
+  type DeleteAuthorization,
   elizaSandboxService,
-  hasRecentAgentHeartbeat,
   SNAPSHOT_ENDPOINT_UNSUPPORTED,
 } from "./eliza-sandbox";
 import {
@@ -128,6 +128,7 @@ export interface AgentDeleteJobData {
   agentId: string;
   organizationId: string;
   userId: string;
+  authorization?: DeleteAuthorization;
 }
 
 export interface AgentSuspendJobData {
@@ -450,12 +451,19 @@ function isAgentProvisionJobData(value: unknown): value is AgentProvisionJobData
 }
 
 function isAgentDeleteJobData(value: unknown): value is AgentDeleteJobData {
+  const authorization =
+    typeof value === "object" && value !== null
+      ? (value as { authorization?: unknown }).authorization
+      : undefined;
   return (
     typeof value === "object" &&
     value !== null &&
     typeof (value as { agentId?: unknown }).agentId === "string" &&
     typeof (value as { organizationId?: unknown }).organizationId === "string" &&
-    typeof (value as { userId?: unknown }).userId === "string"
+    typeof (value as { userId?: unknown }).userId === "string" &&
+    (authorization === undefined ||
+      authorization === "user_request" ||
+      authorization === "billing_request")
   );
 }
 
@@ -807,6 +815,7 @@ interface LifecycleJobOptions<TData extends object> {
    * provision's lifecycle-revision race check).
    */
   validateSandbox?: (sandbox: LifecycleSandboxRow) => void;
+  deleteAuthorization?: DeleteAuthorization;
   /**
    * Called with the hydrated existing job when an active pending/in_progress
    * job of the same type would be reused instead of inserting a new row.
@@ -1301,9 +1310,10 @@ export class ProvisioningJobService {
     if (
       opts.jobType === JOB_TYPES.AGENT_DELETE &&
       sandbox.status === "running" &&
-      hasRecentAgentHeartbeat(sandbox.last_heartbeat_at)
+      sandbox.execution_tier !== "shared" &&
+      !opts.deleteAuthorization
     ) {
-      throw new ApiError(409, "session_not_ready", "Agent is running with a recent heartbeat");
+      throw new ApiError(409, "session_not_ready", "Agent is running; suspend it before deletion");
     }
 
     const configuredConflicts = opts.mutuallyExclusiveJobTypes ?? [];
@@ -1497,6 +1507,7 @@ export class ProvisioningJobService {
     organizationId: string;
     userId: string;
     webhookUrl?: string;
+    authorization?: DeleteAuthorization;
     expectedIdentity?: {
       agentName: string;
       createdAt: Date | string;
@@ -1518,12 +1529,14 @@ export class ProvisioningJobService {
         agentId: params.agentId,
         organizationId: params.organizationId,
         userId: params.userId,
+        authorization: params.authorization,
       },
       toRecord: agentDeleteJobDataToRecord,
       agentId: params.agentId,
       organizationId: params.organizationId,
       userId: params.userId,
       webhookUrl: params.webhookUrl,
+      deleteAuthorization: params.authorization,
       maxAttempts: 3,
       // SSH stop is fast (~10s graceful + ~5s force kill), DB cascade is
       // sub-second. 30s matches the Docker deletion-stop command timeout.
@@ -4858,7 +4871,11 @@ export class ProvisioningJobService {
     });
 
     await this.assertExecutionMutationLease(job);
-    const delResult = await elizaSandboxService.executeDeletion(data.agentId, data.organizationId);
+    const delResult = await elizaSandboxService.executeDeletion(
+      data.agentId,
+      data.organizationId,
+      data.authorization,
+    );
 
     if (!delResult.success) {
       // Persist a partial result and rethrow so the jobs runner counts an

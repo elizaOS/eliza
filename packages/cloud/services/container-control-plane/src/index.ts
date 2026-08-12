@@ -1051,12 +1051,14 @@ app.delete("/api/compat/agents/:id", (c) =>
     const deleted = await elizaSandboxService.deleteAgent(
       agentId,
       auth.organizationId,
+      { authorization: "user_request" },
     );
     if (!deleted.success) {
       const status =
         deleted.error === "Agent not found"
           ? 404
-          : deleted.error === "Agent provisioning is in progress"
+          : deleted.error === "Agent provisioning is in progress" ||
+              deleted.error === "Agent is running; suspend it before deletion"
             ? 409
             : 500;
       return c.json(errorEnvelope(deleted.error), status);
