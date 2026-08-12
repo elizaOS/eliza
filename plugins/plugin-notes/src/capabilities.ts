@@ -76,7 +76,8 @@ export const NOTES_CAPABILITIES: ViewCapability[] = [
   },
   {
     id: "get-note",
-    description: "Read one note by id, exact first-line label, or unique text it contains.",
+    description:
+      "Read one note by id, exact first-line label, or unique text it contains.",
     params: {
       id: { ...ID_PARAM.id, required: false },
       title: TITLE_PARAM,

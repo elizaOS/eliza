@@ -763,7 +763,11 @@ describe("Notes capabilities", () => {
     );
 
     // Exact title match reads the right note.
-    const read = await interact("get-note", { title: "Shopping list" }, service);
+    const read = await interact(
+      "get-note",
+      { title: "Shopping list" },
+      service,
+    );
     expect(read).toMatchObject({
       success: true,
       data: { note: { title: "Shopping list" } },
@@ -810,20 +814,14 @@ describe("Notes capabilities", () => {
 
     // Providing both title and query must fail validation.
     await expect(
-      interact(
-        "get-note",
-        { title: "Test", query: "Body" },
-        service,
-      ),
+      interact("get-note", { title: "Test", query: "Body" }, service),
     ).resolves.toMatchObject({
       success: false,
       error: { code: "NOTES_VALIDATION_FAILED" },
     });
 
     // Providing zero selectors must fail validation.
-    await expect(
-      interact("get-note", {}, service),
-    ).resolves.toMatchObject({
+    await expect(interact("get-note", {}, service)).resolves.toMatchObject({
       success: false,
       error: { code: "NOTES_VALIDATION_FAILED" },
     });
