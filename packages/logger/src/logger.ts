@@ -102,6 +102,7 @@ export type LogListener = (entry: LogEntry) => void;
 
 // Global log listeners for streaming
 const logListeners: Set<LogListener> = new Set();
+const warnedLogListeners: WeakSet<LogListener> = new WeakSet();
 
 /**
  * Add a listener for real-time log entries (used for WebSocket streaming)
@@ -109,7 +110,10 @@ const logListeners: Set<LogListener> = new Set();
  * @returns Function to remove the listener
  */
 export function addLogListener(listener: LogListener): () => void {
-  logListeners.add(listener);
+  if (!logListeners.has(listener)) {
+    warnedLogListeners.delete(listener);
+    logListeners.add(listener);
+  }
   return () => logListeners.delete(listener);
 }
 
@@ -721,9 +725,26 @@ function createInMemoryDestination(maxLogs = 100): InMemoryDestination {
       if (logs.length > maxLogs) {
         logs.shift();
       }
-      // Notify all listeners for real-time streaming
-      for (const listener of logListeners) {
-        listener(entry);
+      if (logListeners.size === 0) return;
+      // Snapshot so registration changes during a callback apply only to the
+      // next entry and cannot revisit the current listener indefinitely.
+      for (const listener of [...logListeners]) {
+        try {
+          listener(entry);
+        } catch {
+          // error-policy:J7 the logger is the diagnostics boundary, so report
+          // directly without recursively invoking it or exposing the entry.
+          if (!warnedLogListeners.has(listener)) {
+            warnedLogListeners.add(listener);
+            try {
+              console.error(
+                "[logger] log listener failed; continuing fan-out and suppressing further errors from this listener",
+              );
+            } catch {
+              // error-policy:J7 a failed console sink cannot be re-reported.
+            }
+          }
+        }
       }
     },
     clear(): void {
