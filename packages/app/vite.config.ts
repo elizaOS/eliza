@@ -2886,6 +2886,13 @@ export const INVALID_TRACER_PROVIDER = {};
               "api/ios-local-agent-transport.ts",
             ),
           },
+          // #18056: thin desktop shell — avoids app-core/browser.ts star-export
+          // of @elizaos/ui/browser on the packages/app main entry.
+          {
+            find: /^@elizaos\/app-core\/desktop-shell$/,
+            replacement: path.join(appCoreSrcRoot, "desktop-shell.ts"),
+          },
+
           {
             find: /^@elizaos\/agent$/,
             replacement: path.join(

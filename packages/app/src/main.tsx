@@ -43,13 +43,8 @@ import { BackgroundRunner } from "@capacitor/background-runner";
 import { Capacitor, type PluginListenerHandle } from "@capacitor/core";
 import { Keyboard, KeyboardResize } from "@capacitor/keyboard";
 import { Preferences } from "@capacitor/preferences";
-import {
-  buildLocalizedTrayMenu,
-  DesktopSurfaceNavigationRuntime,
-  DesktopTrayRuntime,
-  DetachedShellRoot,
-  runIosFullBunSmokeIfRequested,
-} from "@elizaos/app-core";
+// #18056: desktop shell is loaded only via dynamic import / React.lazy so the
+// cold anonymous /login entry does not static-import app-core/ui browser graphs.
 import {
   installIosLocalAgentFetchBridge,
   installIosLocalAgentNativeRequestBridge,
@@ -82,7 +77,6 @@ import {
   setStorageValue,
 } from "@elizaos/ui/bridge/storage-bridge";
 import { RenderTelemetryProfiler } from "@elizaos/ui/cloud-ui/runtime/render-telemetry";
-import { AppWindowRenderer } from "@elizaos/ui/components/apps/AppWindowRenderer";
 import { ShellModalityProvider } from "@elizaos/ui/components/ShellModalityProvider";
 import { ShellRoleProvider } from "@elizaos/ui/components/ShellRoleProvider";
 import type {
@@ -301,9 +295,46 @@ const App = lazy(async () => {
   return { default: mod.App };
 });
 
+const AppWindowRenderer = lazyNamedComponent<{ slug: string }>(async () => {
+  const mod = await import("@elizaos/ui/components/apps/AppWindowRenderer");
+  return mod.AppWindowRenderer;
+});
+
+/** Desktop-only shell widgets — never static-import into the login entry. */
+const DesktopSurfaceNavigationRuntime = lazyNamedComponent<
+  Record<string, never>
+>(async () => {
+  const mod = await import("@elizaos/app-core/desktop-shell");
+  return mod.DesktopSurfaceNavigationRuntime;
+});
+const DesktopTrayRuntime = lazyNamedComponent<Record<string, never>>(
+  async () => {
+    const mod = await import("@elizaos/app-core/desktop-shell");
+    return mod.DesktopTrayRuntime;
+  },
+);
+const DetachedShellRoot = lazyNamedComponent<{ route: unknown }>(async () => {
+  const mod = await import("@elizaos/app-core/desktop-shell");
+  return mod.DetachedShellRoot;
+});
+
 const PhoneCompanionApp = lazyNamedComponent<Record<string, never>>(
   async () => (await importAppPhone()).PhoneCompanionApp,
 );
+
+async function runIosFullBunSmokeIfRequested(): Promise<void> {
+  const mod = await import("@elizaos/app-core/desktop-shell");
+  return mod.runIosFullBunSmokeIfRequested();
+}
+
+async function buildLocalizedTrayMenuAsync(
+  ...args: Parameters<
+    typeof import("@elizaos/app-core/desktop-shell").buildLocalizedTrayMenu
+  >
+) {
+  const mod = await import("@elizaos/app-core/desktop-shell");
+  return mod.buildLocalizedTrayMenu(...args);
+}
 const AppBlockerSettingsCard = lazyNamedComponent<AppBlockerSettingsCardProps>(
   async () => (await importPersonalAssistant()).AppBlockerSettingsCard,
 );
@@ -2359,7 +2390,9 @@ async function initializeDesktopShell(): Promise<void> {
   });
 
   await Desktop.setTrayMenu({
-    menu: buildLocalizedTrayMenu(createTranslator(loadUiLanguage())),
+    menu: await buildLocalizedTrayMenuAsync(
+      createTranslator(loadUiLanguage()),
+    ),
   });
 
   await Desktop.addListener(
