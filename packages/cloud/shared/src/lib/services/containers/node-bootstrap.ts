@@ -123,7 +123,19 @@ export function buildContainerNodeUserData(input: NodeBootstrapInput): string {
       echo '[bootstrap] host key fingerprint unavailable; refusing self-registration'
       exit 1
     fi
-    PAYLOAD=$(printf '{"nodeId":"%s","hostname":"%s","capacity":%d,"sshPort":22,"sshUser":"root","hostKeyFingerprint":"%s"}' '${nodeId}' "$PUBLIC_IP" ${capacity} "$HOST_KEY_FINGERPRINT")
+    MEM_TOTAL_MB=$(awk '/^MemTotal:/{print int($2/1024)}' /proc/meminfo 2>/dev/null)
+    # Omitted rather than sent as 0 when unreadable: the callback rejects a
+    # zero and would fail the whole registration over a missing hint.
+    VCPU_COUNT=$(nproc 2>/dev/null)
+    MEM_FIELD=""
+    CPU_FIELD=""
+    if [ -n "$VCPU_COUNT" ] && [ "$VCPU_COUNT" -gt 0 ] 2>/dev/null; then
+      CPU_FIELD=$(printf '"vCpuCount":%d,' "$VCPU_COUNT")
+    fi
+    if [ -n "$MEM_TOTAL_MB" ] && [ "$MEM_TOTAL_MB" -gt 0 ] 2>/dev/null; then
+      MEM_FIELD=$(printf '"memTotalMb":%d,' "$MEM_TOTAL_MB")
+    fi
+    PAYLOAD=$(printf '{"nodeId":"%s","hostname":"%s","capacity":%d,%s%s"sshPort":22,"sshUser":"root","hostKeyFingerprint":"%s"}' '${nodeId}' "$PUBLIC_IP" ${capacity} "$MEM_FIELD" "$CPU_FIELD" "$HOST_KEY_FINGERPRINT")
     curl -fsS -X POST '${registerUrl}' \\
       -H 'Content-Type: application/json' \\
       ${registerSecret ? `-H 'X-Bootstrap-Secret: ${registerSecret}'` : ""} \\
