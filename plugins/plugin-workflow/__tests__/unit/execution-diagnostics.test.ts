@@ -31,9 +31,9 @@ describe('formatWorkflowExecutionDuration', () => {
     expect(formatWorkflowExecutionDuration('not-a-date', '2026-06-23T00:00:00Z')).toBe(
       'Invalid date'
     );
-    expect(
-      formatWorkflowExecutionDuration('2026-06-23T00:00:00Z', 'not-a-date')
-    ).toBe('Invalid date');
+    expect(formatWorkflowExecutionDuration('2026-06-23T00:00:00Z', 'not-a-date')).toBe(
+      'Invalid date'
+    );
   });
 });
 
