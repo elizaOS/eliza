@@ -44,6 +44,7 @@ describe("isBlockedSpawnEnvKey (loader/interpreter hijack keys)", () => {
 		"PS4",
 		"GLOBIGNORE",
 		"IFS",
+		"ZDOTDIR",
 		// JVM
 		"JAVA_TOOL_OPTIONS",
 		"_JAVA_OPTIONS",

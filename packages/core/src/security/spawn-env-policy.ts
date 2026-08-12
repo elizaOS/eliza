@@ -70,6 +70,10 @@ export const BLOCKED_SPAWN_ENV_KEYS: ReadonlySet<string> = new Set([
 	"PS4",
 	"GLOBIGNORE",
 	"IFS",
+	// ZDOTDIR redirects where zsh looks for .zshenv, which zsh sources on
+	// EVERY invocation — including non-interactive ones — so it is the zsh
+	// equivalent of BASH_ENV.
+	"ZDOTDIR",
 
 	// JVM: both accept -javaagent:<jar> for bytecode injection; CLASSPATH
 	// directs the class loader to attacker-controlled JARs.
