@@ -8,6 +8,11 @@
  */
 
 export {
+  IOS_FULL_BUN_SMOKE_REQUEST_KEY,
+  IOS_FULL_BUN_SMOKE_RESULT_KEY,
+  runIosFullBunSmokeIfRequested,
+} from "./platform/ios-runtime-bridge";
+export {
   buildLocalizedTrayMenu,
   DESKTOP_TRAY_MENU_ITEMS,
   DesktopSurfaceNavigationRuntime,
@@ -15,8 +20,3 @@ export {
   DetachedShellRoot,
 } from "./runtime/desktop";
 export { AppWindowRenderer } from "./runtime/desktop/AppWindowRenderer";
-export {
-  IOS_FULL_BUN_SMOKE_REQUEST_KEY,
-  IOS_FULL_BUN_SMOKE_RESULT_KEY,
-  runIosFullBunSmokeIfRequested,
-} from "./platform/ios-runtime-bridge";
