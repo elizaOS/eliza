@@ -173,7 +173,7 @@ export default function BallotPage() {
             t("cloud.ballot.notFound", { defaultValue: "Ballot not found." })}
         </p>
         <Link
-          className="mt-6 text-sm text-muted transition-colors hover:text-txt focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+          className="mt-6 text-sm text-muted transition-colors hover:text-txt"
           to="/"
         >
           {t("cloud.ballot.returnHome", {
