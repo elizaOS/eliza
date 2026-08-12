@@ -371,7 +371,7 @@
     "esbuild": "^0.28.0",
     "ethers": "^6.16.0",
     "git-workspace-service": "0.4.5",
-    "hono": "^4.12.18",
+    "hono": "^4.13.1",
     "isomorphic-git": "^1.35.0",
     "jpeg-js": "^0.4.4",
     "jsdom": "^29.0.0",
