@@ -5,8 +5,8 @@
 import { BRAND_COLORS } from "@elizaos/shared/brand";
 import { Button } from "@elizaos/ui/button";
 import {
-  AppleMessagesIcon,
   DiscordIcon,
+  IMessageIcon,
   TelegramIcon,
   WhatsAppIcon,
 } from "@elizaos/ui/cloud-ui/components/icons";
@@ -54,8 +54,6 @@ import {
   useAuth,
 } from "@/lib/context/auth-context";
 import { getTelegramLinkDestination } from "@/lib/telegram-onboarding";
-
-const SOLANA_GRADIENT = "linear-gradient(135deg, #9945FF 0%, #14F195 100%)";
 
 function SolanaIcon({ className }: { className?: string }) {
   return (
@@ -131,7 +129,21 @@ function getDiscordClientId(): string {
   return (import.meta.env.VITE_DISCORD_CLIENT_ID || "").trim();
 }
 
-const MONO = "Geist, system-ui, sans-serif";
+const SANS = "Geist, system-ui, sans-serif";
+
+/**
+ * Static fallback that echoes the landing-page shader palette so pre-shader
+ * frames (loading / redirect states) feel like the same surface instead of
+ * flashing a different brand color.
+ */
+const PASTEL_FALLBACK: CSSProperties = {
+  background:
+    "linear-gradient(160deg, #efedf7 0%, #e4e2f1 40%, #eadfe9 75%, #e7e9ef 100%)",
+  fontFamily: SANS,
+};
+
+/** Landing-page glass tile language: white hairline + frosted fill. */
+const GLASS_TILE = "border border-white/60 bg-white/35 backdrop-blur-md";
 
 function ProvisioningChatStep({
   onboardingSessionId,
@@ -179,7 +191,7 @@ function ProvisioningChatStep({
       : "#229ED9";
 
   return (
-    <div style={{ width: "100%", maxWidth: "420px", fontFamily: MONO }}>
+    <div style={{ width: "100%", maxWidth: "420px", fontFamily: SANS }}>
       <div className="flex items-center gap-2 mb-4">
         <span
           style={{
@@ -222,8 +234,8 @@ function ProvisioningChatStep({
           padding: 12,
           background: "rgba(255,255,255,0.38)",
           backdropFilter: "blur(8px)",
-          border: "1.5px solid rgba(255,255,255,0.55)",
-          borderRadius: 12,
+          border: "1px solid rgba(255,255,255,0.6)",
+          borderRadius: 20,
           marginBottom: 10,
         }}
       >
@@ -300,13 +312,13 @@ function ProvisioningChatStep({
           style={{
             flex: 1,
             height: 44,
-            padding: "0 14px",
-            borderRadius: 10,
-            border: "1.5px solid rgba(0,0,0,0.15)",
-            background: "rgba(255,255,255,0.6)",
+            padding: "0 18px",
+            borderRadius: 22,
+            border: "1px solid rgba(255,255,255,0.6)",
+            background: "rgba(255,255,255,0.5)",
             backdropFilter: "blur(8px)",
             fontSize: 14,
-            fontFamily: MONO,
+            fontFamily: SANS,
             outline: "none",
           }}
         />
@@ -317,7 +329,7 @@ function ProvisioningChatStep({
           style={{
             width: 44,
             height: 44,
-            borderRadius: 10,
+            borderRadius: 22,
             border: "none",
             background:
               isLoading || !input.trim() ? "rgba(0,0,0,0.15)" : "#1a1a1a",
@@ -336,7 +348,7 @@ function ProvisioningChatStep({
       {isReady && (
         <Button
           onClick={onContinue}
-          className="w-full h-[52px] rounded-xs bg-black text-white font-medium hover:bg-white hover:text-black transition-colors mt-4"
+          className="w-full h-[52px] rounded-full bg-neutral-900 text-white font-medium hover:bg-neutral-800 transition-colors mt-4"
         >
           <Check className="size-4 mr-2" />
           {t("homepage_eliza.getStarted.continueToDashboard", {
@@ -948,10 +960,10 @@ export default function GetStartedPage() {
   if (authLoading) {
     return (
       <main
-        className="theme-app brand-section brand-section--orange min-h-screen flex flex-col items-center justify-center px-4"
-        style={{ fontFamily: "Geist, system-ui, sans-serif" }}
+        className="min-h-screen flex flex-col items-center justify-center px-4"
+        style={PASTEL_FALLBACK}
       >
-        <div className="text-black/70 animate-pulse font-semibold">
+        <div className="text-neutral-600 animate-pulse font-medium">
           {t("homepage_eliza.common.loading", { defaultValue: "Loading…" })}
         </div>
       </main>
@@ -969,10 +981,10 @@ export default function GetStartedPage() {
   ) {
     return (
       <main
-        className="theme-app brand-section brand-section--orange min-h-screen flex flex-col items-center justify-center px-4"
-        style={{ fontFamily: "Geist, system-ui, sans-serif" }}
+        className="min-h-screen flex flex-col items-center justify-center px-4"
+        style={PASTEL_FALLBACK}
       >
-        <div className="text-black/70 animate-pulse font-semibold">
+        <div className="text-neutral-600 animate-pulse font-medium">
           {t("homepage_eliza.common.redirecting", {
             defaultValue: "Redirecting…",
           })}
@@ -984,10 +996,10 @@ export default function GetStartedPage() {
   if (isRedirectingToOAuth) {
     return (
       <main
-        className="theme-app brand-section brand-section--orange min-h-screen flex flex-col items-center justify-center px-4"
-        style={{ fontFamily: "Geist, system-ui, sans-serif" }}
+        className="min-h-screen flex flex-col items-center justify-center px-4"
+        style={PASTEL_FALLBACK}
       >
-        <div className="text-black/70 animate-pulse font-semibold">
+        <div className="text-neutral-600 animate-pulse font-medium">
           {t("homepage_eliza.getStarted.redirectingToDiscord", {
             defaultValue: "Redirecting to Discord…",
           })}
@@ -997,48 +1009,48 @@ export default function GetStartedPage() {
   }
 
   return (
-    <main className="min-h-screen flex flex-col relative">
+    <main
+      className="min-h-screen flex flex-col relative"
+      style={{ fontFamily: SANS }}
+    >
       <Suspense fallback={null}>
         <ShaderBackground />
       </Suspense>
       <div
-        className="fixed inset-0 pointer-events-none mix-blend-overlay z-0"
-        style={{
-          backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.7' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E")`,
-          backgroundRepeat: "repeat",
-          backgroundSize: "256px 256px",
-        }}
+        aria-hidden="true"
+        className="fixed inset-0 pointer-events-none mix-blend-overlay bg-[url('/grain.webp')] z-0"
       />
       <header
         className="relative z-10 p-4 flex items-center justify-between"
         style={headerStyle}
       >
-        <div className="w-16">
+        <div className="w-24">
           {step === "DISCORD_SETUP_GUIDE" ? null : step !== "SELECT_METHOD" ? (
             <button
               type="button"
               onClick={handleBack}
-              className="inline-flex min-h-11 items-center gap-2 text-neutral-600 hover:text-neutral-900 transition-colors cursor-pointer"
+              className={`inline-flex min-h-11 items-center gap-1.5 rounded-full ${GLASS_TILE} hover:bg-white/60 px-4 text-neutral-700 hover:text-neutral-900 transition-colors cursor-pointer`}
             >
               <ArrowLeft className="size-4" />
-              <span className="text-sm">
+              <span className="text-sm font-medium">
                 {t("homepage_eliza.getStarted.back", { defaultValue: "Back" })}
               </span>
             </button>
           ) : (
             <Link
               to="/"
-              className="inline-flex min-h-11 items-center gap-2 text-neutral-600 hover:text-neutral-900 transition-colors"
+              className={`inline-flex min-h-11 items-center gap-1.5 rounded-full ${GLASS_TILE} hover:bg-white/60 px-4 text-neutral-700 hover:text-neutral-900 transition-colors`}
             >
               <ArrowLeft className="size-4" />
-              <span className="text-sm">
+              <span className="text-sm font-medium">
                 {t("homepage_eliza.getStarted.home", { defaultValue: "Home" })}
               </span>
             </Link>
           )}
         </div>
+
         <ElizaLogo variant="svg" className="h-8 w-auto" />
-        <div className="w-16" />
+        <div className="w-24" />
       </header>
 
       <div className="relative z-10 flex-1 flex flex-col items-center justify-center px-4 pb-20">
@@ -1046,15 +1058,20 @@ export default function GetStartedPage() {
           {step === "SELECT_METHOD" && (
             <>
               <div style={titleStyle}>
-                <h1 className="text-2xl sm:text-3xl font-bold text-neutral-900 text-center mb-8 whitespace-nowrap">
+                <h1 className="text-2xl sm:text-[1.75rem] font-medium tracking-tight text-neutral-900 text-center mb-2 text-balance">
                   {t("homepage_eliza.getStarted.selectHeader", {
                     defaultValue: "Anywhere you want her to be.",
                   })}
                 </h1>
+                <p className="text-sm font-medium text-neutral-700 text-center mb-10 text-balance">
+                  {t("homepage_eliza.getStarted.selectSubheader", {
+                    defaultValue: "Pick where you want to talk to Eliza.",
+                  })}
+                </p>
               </div>
 
               {(discordError || telegramError) && (
-                <div className="w-full mb-4 p-3 rounded-xs bg-red-50 border border-red-200">
+                <div className="w-full mb-4 p-3 rounded-2xl bg-red-50/80 border border-red-200">
                   <p className="text-sm text-red-600 text-center">
                     {discordError || telegramError}
                   </p>
@@ -1065,14 +1082,14 @@ export default function GetStartedPage() {
                 <button
                   type="button"
                   onClick={() => handleMethodSelect("telegram")}
-                  className="w-full h-[72px] bg-white hover:bg-black text-black hover:text-white rounded-xs transition-colors flex items-center gap-4 px-5 cursor-pointer"
+                  className={`w-full h-16 ${GLASS_TILE} hover:bg-white/60 rounded-full transition-colors flex items-center gap-4 pl-2.5 pr-6 cursor-pointer`}
                   style={cardStyle(0)}
                 >
-                  <div className="w-12 h-12 rounded-xs bg-[#229ED9]/20 flex items-center justify-center shrink-0">
-                    <TelegramIcon className="size-6 text-[#229ED9]" />
+                  <div className="size-11 rounded-full bg-white/60 flex items-center justify-center shrink-0">
+                    <TelegramIcon className="size-6 text-[#2AABEE]" />
                   </div>
                   <div className="flex-1 text-left">
-                    <p className="font-medium">
+                    <p className="font-medium text-neutral-900">
                       {t("homepage_eliza.getStarted.btnTelegram", {
                         defaultValue: "Telegram",
                       })}
@@ -1083,14 +1100,14 @@ export default function GetStartedPage() {
                 <button
                   type="button"
                   onClick={() => handleMethodSelect("imessage")}
-                  className="w-full h-[72px] bg-white hover:bg-black text-black hover:text-white rounded-xs transition-colors flex items-center gap-4 px-5 cursor-pointer"
+                  className={`w-full h-16 ${GLASS_TILE} hover:bg-white/60 rounded-full transition-colors flex items-center gap-4 pl-2.5 pr-6 cursor-pointer`}
                   style={cardStyle(1)}
                 >
-                  <div className="w-12 h-12 shrink-0 flex items-center justify-center">
-                    <AppleMessagesIcon className="size-12" />
+                  <div className="size-11 rounded-full bg-white/60 flex items-center justify-center shrink-0">
+                    <IMessageIcon className="size-6 text-[#34C759]" />
                   </div>
                   <div className="flex-1 text-left">
-                    <p className="font-medium">
+                    <p className="font-medium text-neutral-900">
                       {t("homepage_eliza.getStarted.btnImessage", {
                         defaultValue: "iMessage",
                       })}
@@ -1101,14 +1118,14 @@ export default function GetStartedPage() {
                 <button
                   type="button"
                   onClick={() => handleMethodSelect("whatsapp")}
-                  className="w-full h-[72px] bg-white hover:bg-black text-black hover:text-white rounded-xs transition-colors flex items-center gap-4 px-5 cursor-pointer"
+                  className={`w-full h-16 ${GLASS_TILE} hover:bg-white/60 rounded-full transition-colors flex items-center gap-4 pl-2.5 pr-6 cursor-pointer`}
                   style={cardStyle(2)}
                 >
-                  <div className="w-12 h-12 rounded-xs bg-[#25D366]/20 flex items-center justify-center shrink-0">
+                  <div className="size-11 rounded-full bg-white/60 flex items-center justify-center shrink-0">
                     <WhatsAppIcon className="size-6 text-[#25D366]" />
                   </div>
                   <div className="flex-1 text-left">
-                    <p className="font-medium">
+                    <p className="font-medium text-neutral-900">
                       {t("homepage_eliza.getStarted.btnWhatsapp", {
                         defaultValue: "WhatsApp",
                       })}
@@ -1119,14 +1136,14 @@ export default function GetStartedPage() {
                 <button
                   type="button"
                   onClick={() => handleMethodSelect("discord")}
-                  className="w-full h-[72px] bg-white hover:bg-black text-black hover:text-white rounded-xs transition-colors flex items-center gap-4 px-5 cursor-pointer"
+                  className={`w-full h-16 ${GLASS_TILE} hover:bg-white/60 rounded-full transition-colors flex items-center gap-4 pl-2.5 pr-6 cursor-pointer`}
                   style={cardStyle(3)}
                 >
-                  <div className="w-12 h-12 rounded-xs bg-[#5865F2]/20 flex items-center justify-center shrink-0">
+                  <div className="size-11 rounded-full bg-white/60 flex items-center justify-center shrink-0">
                     <DiscordIcon className="size-6 text-[#5865F2]" />
                   </div>
                   <div className="flex-1 text-left">
-                    <p className="font-medium">
+                    <p className="font-medium text-neutral-900">
                       {t("homepage_eliza.getStarted.btnDiscord", {
                         defaultValue: "Discord",
                       })}
@@ -1142,17 +1159,14 @@ export default function GetStartedPage() {
                   data-testid="solana-signin"
                   disabled={isSolanaLoading}
                   onClick={() => handleMethodSelect("solana")}
-                  className="w-full h-[72px] bg-white hover:bg-black text-black hover:text-white rounded-xs transition-colors flex items-center gap-4 px-5 cursor-pointer disabled:opacity-60"
+                  className={`w-full h-16 ${GLASS_TILE} hover:bg-white/60 rounded-full transition-colors flex items-center gap-4 pl-2.5 pr-6 cursor-pointer disabled:opacity-60`}
                   style={cardStyle(4)}
                 >
-                  <div
-                    className="w-12 h-12 rounded-xs flex items-center justify-center shrink-0"
-                    style={{ background: SOLANA_GRADIENT }}
-                  >
-                    <SolanaIcon className="size-6 text-white" />
+                  <div className="size-11 rounded-full bg-white/60 flex items-center justify-center shrink-0">
+                    <SolanaIcon className="size-5" />
                   </div>
                   <div className="flex-1 text-left">
-                    <p className="font-medium">
+                    <p className="font-medium text-neutral-900">
                       {isSolanaLoading
                         ? t("homepage_eliza.getStarted.btnSolanaLoading", {
                             defaultValue: "Connecting…",
@@ -1178,11 +1192,13 @@ export default function GetStartedPage() {
 
           {step === "TELEGRAM_DIRECT" && (
             <>
-              <div className="w-16 h-16 rounded-xs bg-[#229ED9]/20 flex items-center justify-center mb-6">
-                <TelegramIcon className="size-8 text-[#229ED9]" />
+              <div
+                className={`w-16 h-16 rounded-full ${GLASS_TILE} flex items-center justify-center mb-6`}
+              >
+                <TelegramIcon className="size-8 text-[#2AABEE]" />
               </div>
 
-              <h1 className="text-xl font-medium text-neutral-900 text-center mb-2">
+              <h1 className="text-xl font-semibold tracking-tight text-neutral-900 text-center mb-2">
                 {t("homepage_eliza.getStarted.telegramDirectTitle", {
                   defaultValue: "Message Eliza on Telegram",
                 })}
@@ -1196,7 +1212,7 @@ export default function GetStartedPage() {
 
               <Button
                 asChild
-                className="w-full h-[52px] rounded-xs bg-[#229ED9] hover:bg-[#1b7fae] text-white font-medium gap-2"
+                className="w-full h-[52px] rounded-full bg-neutral-900 hover:bg-neutral-800 text-white font-medium gap-2"
               >
                 <a
                   href={buildElizaTelegramHref()}
@@ -1215,11 +1231,13 @@ export default function GetStartedPage() {
 
           {step === "TELEGRAM_OAUTH" && (
             <>
-              <div className="w-16 h-16 rounded-xs bg-[#229ED9]/20 flex items-center justify-center mb-6">
-                <TelegramIcon className="size-8 text-[#229ED9]" />
+              <div
+                className={`w-16 h-16 rounded-full ${GLASS_TILE} flex items-center justify-center mb-6`}
+              >
+                <TelegramIcon className="size-8 text-[#2AABEE]" />
               </div>
 
-              <h1 className="text-xl font-medium text-neutral-900 text-center mb-2">
+              <h1 className="text-xl font-semibold tracking-tight text-neutral-900 text-center mb-2">
                 {t("homepage_eliza.getStarted.telegramTitle", {
                   defaultValue: "Connect with Telegram",
                 })}
@@ -1240,7 +1258,7 @@ export default function GetStartedPage() {
               <Button
                 onClick={handleTelegramClick}
                 disabled={isTelegramLoading}
-                className="w-full h-[52px] rounded-xs bg-[#ff5800] hover:bg-[#cc4600] text-white font-medium gap-2"
+                className="w-full h-[52px] rounded-full bg-neutral-900 hover:bg-neutral-800 text-white font-medium gap-2"
               >
                 {isTelegramLoading ? (
                   t("homepage_eliza.getStarted.telegramConnecting", {
@@ -1260,11 +1278,13 @@ export default function GetStartedPage() {
 
           {step === "PHONE_INPUT" && (
             <>
-              <div className="w-12 h-12 rounded-xs bg-[#229ED9]/20 flex items-center justify-center mb-6">
-                <TelegramIcon className="size-6 text-[#229ED9]" />
+              <div
+                className={`w-12 h-12 rounded-full ${GLASS_TILE} flex items-center justify-center mb-6`}
+              >
+                <TelegramIcon className="size-6 text-[#2AABEE]" />
               </div>
 
-              <h1 className="text-xl font-medium text-neutral-900 text-center mb-2">
+              <h1 className="text-xl font-semibold tracking-tight text-neutral-900 text-center mb-2">
                 {t("homepage_eliza.getStarted.phoneTitle", {
                   defaultValue: "Almost there!",
                 })}
@@ -1283,7 +1303,7 @@ export default function GetStartedPage() {
                   phoneValue={phoneValue}
                   onPhoneChange={setPhoneValue}
                   onSubmit={handlePhoneSubmit}
-                  variant="light"
+                  variant="glass"
                   autoFocus
                   countryOptions={countryOptions}
                 />
@@ -1298,10 +1318,10 @@ export default function GetStartedPage() {
               <Button
                 onClick={handlePhoneSubmit}
                 disabled={!hasPhoneNumber || isSubmittingPhone}
-                className={`w-full h-[52px] rounded-xs font-medium transition-colors ${
+                className={`w-full h-[52px] rounded-full font-medium transition-colors ${
                   hasPhoneNumber
                     ? "bg-neutral-900 text-white hover:bg-neutral-800"
-                    : "bg-neutral-300 text-neutral-500 cursor-not-allowed"
+                    : "bg-white/40 border border-white/60 text-neutral-400 cursor-not-allowed"
                 }`}
               >
                 {isSubmittingPhone
@@ -1317,11 +1337,13 @@ export default function GetStartedPage() {
 
           {step === "IMESSAGE_DIRECT" && (
             <>
-              <div className="w-16 h-16 flex items-center justify-center mb-6">
-                <AppleMessagesIcon className="size-16" />
+              <div
+                className={`w-16 h-16 rounded-full ${GLASS_TILE} flex items-center justify-center mb-6`}
+              >
+                <IMessageIcon className="size-8 text-[#34C759]" />
               </div>
 
-              <h1 className="text-xl font-medium text-neutral-900 text-center mb-2">
+              <h1 className="text-xl font-semibold tracking-tight text-neutral-900 text-center mb-2">
                 {t("homepage_eliza.getStarted.imessageReady", {
                   defaultValue: "Ready to chat!",
                 })}
@@ -1333,9 +1355,9 @@ export default function GetStartedPage() {
                 })}
               </p>
 
-              <div className="w-full p-4 bg-white border border-black rounded-xs mb-6">
+              <div className={`w-full p-4 ${GLASS_TILE} rounded-2xl mb-6`}>
                 <div className="flex items-center justify-between gap-3">
-                  <span className="text-lg font-mono text-neutral-900">
+                  <span className="text-lg font-medium tabular-nums tracking-wide text-neutral-900">
                     {ELIZA_PHONE_FORMATTED}
                   </span>
                   <Button
@@ -1355,9 +1377,9 @@ export default function GetStartedPage() {
 
               <Button
                 onClick={handleOpenMessages}
-                className="w-full h-[52px] rounded-xs bg-[#34C759] hover:bg-black text-white font-medium gap-2"
+                className="w-full h-[52px] rounded-full bg-neutral-900 hover:bg-neutral-800 text-white font-medium gap-2"
               >
-                <AppleMessagesIcon className="size-5" />
+                <IMessageIcon className="size-5 text-[#34C759]" />
                 {t("homepage_eliza.getStarted.openImessage", {
                   defaultValue: "Open iMessage",
                 })}
@@ -1380,11 +1402,13 @@ export default function GetStartedPage() {
 
           {step === "WHATSAPP_DIRECT" && (
             <>
-              <div className="w-16 h-16 rounded-xs bg-[#25D366]/20 flex items-center justify-center mb-6">
+              <div
+                className={`w-16 h-16 rounded-full ${GLASS_TILE} flex items-center justify-center mb-6`}
+              >
                 <WhatsAppIcon className="size-8 text-[#25D366]" />
               </div>
 
-              <h1 className="text-xl font-medium text-neutral-900 text-center mb-2">
+              <h1 className="text-xl font-semibold tracking-tight text-neutral-900 text-center mb-2">
                 {t("homepage_eliza.getStarted.whatsappTitle", {
                   defaultValue: "Chat on WhatsApp!",
                 })}
@@ -1401,9 +1425,9 @@ export default function GetStartedPage() {
                   const waNumber = getWhatsAppNumber().replace(/\D/g, "");
                   window.open(`https://wa.me/${waNumber}`, "_blank");
                 }}
-                className="w-full h-[52px] rounded-xs bg-[#25D366] hover:bg-black text-white font-medium gap-2"
+                className="w-full h-[52px] rounded-full bg-neutral-900 hover:bg-neutral-800 text-white font-medium gap-2"
               >
-                <WhatsAppIcon className="size-5" />
+                <WhatsAppIcon className="size-5 text-[#25D366]" />
                 {t("homepage_eliza.getStarted.openWhatsapp", {
                   defaultValue: "Open WhatsApp",
                 })}
@@ -1438,14 +1462,14 @@ export default function GetStartedPage() {
           {step === "DISCORD_CALLBACK" && (
             <>
               <div
-                className={`w-16 h-16 rounded-xs ${discordError ? "bg-red-100" : "bg-[#5865F2]/20"} flex items-center justify-center mb-6`}
+                className={`w-16 h-16 rounded-full ${discordError ? "border border-red-200 bg-red-100/70 backdrop-blur-md" : GLASS_TILE} flex items-center justify-center mb-6`}
               >
                 <DiscordIcon
                   className={`size-8 ${discordError ? "text-red-500" : "text-[#5865F2]"}`}
                 />
               </div>
 
-              <h1 className="text-xl font-medium text-neutral-900 text-center mb-2">
+              <h1 className="text-xl font-semibold tracking-tight text-neutral-900 text-center mb-2">
                 {discordError
                   ? t("homepage_eliza.getStarted.discordCbConnectionFailed", {
                       defaultValue: "Connection Failed",
@@ -1475,7 +1499,7 @@ export default function GetStartedPage() {
               </p>
 
               {discordError && (
-                <div className="w-full mb-4 p-3 rounded-xs bg-red-50 border border-red-200">
+                <div className="w-full mb-4 p-3 rounded-2xl bg-red-50/80 border border-red-200">
                   <p className="text-sm text-red-600 text-center">
                     {discordError}
                   </p>
@@ -1486,7 +1510,7 @@ export default function GetStartedPage() {
                 <>
                   <Button
                     onClick={() => handleMethodSelect("discord")}
-                    className="w-full h-[52px] rounded-xs bg-[#5865F2] text-white font-medium hover:bg-black"
+                    className="w-full h-[52px] rounded-full bg-neutral-900 text-white font-medium hover:bg-neutral-800"
                   >
                     {t("homepage_eliza.getStarted.tryAgain", {
                       defaultValue: "Try Again",
@@ -1519,7 +1543,7 @@ export default function GetStartedPage() {
                       phoneValue={phoneValue}
                       onPhoneChange={setPhoneValue}
                       onSubmit={handleDiscordPhoneSubmit}
-                      variant="light"
+                      variant="glass"
                       autoFocus
                       countryOptions={countryOptions}
                     />
@@ -1536,10 +1560,10 @@ export default function GetStartedPage() {
                     disabled={
                       !hasPhoneNumber || isSubmittingPhone || isDiscordLoading
                     }
-                    className={`w-full h-[52px] rounded-xs font-medium transition-colors ${
+                    className={`w-full h-[52px] rounded-full font-medium transition-colors ${
                       hasPhoneNumber
-                        ? "bg-[#5865F2] text-white hover:bg-black"
-                        : "bg-neutral-300 text-neutral-500 cursor-not-allowed"
+                        ? "bg-neutral-900 text-white hover:bg-neutral-800"
+                        : "bg-white/40 border border-white/60 text-neutral-400 cursor-not-allowed"
                     }`}
                   >
                     {isSubmittingPhone || isDiscordLoading
@@ -1581,10 +1605,12 @@ export default function GetStartedPage() {
             <>
               {guideParam ? (
                 <>
-                  <div className="w-16 h-16 rounded-xs bg-[#5865F2]/20 flex items-center justify-center mb-6">
+                  <div
+                    className={`w-16 h-16 rounded-full ${GLASS_TILE} flex items-center justify-center mb-6`}
+                  >
                     <Info className="size-8 text-[#5865F2]" />
                   </div>
-                  <h1 className="text-xl font-medium text-neutral-900 text-center mb-2">
+                  <h1 className="text-xl font-semibold tracking-tight text-neutral-900 text-center mb-2">
                     {t("homepage_eliza.getStarted.guideTitleGuide", {
                       defaultValue: "Discord Setup Guide",
                     })}
@@ -1592,10 +1618,12 @@ export default function GetStartedPage() {
                 </>
               ) : (
                 <>
-                  <div className="w-16 h-16 rounded-xs bg-[#5865F2]/20 flex items-center justify-center mb-6">
+                  <div
+                    className={`w-16 h-16 rounded-full ${GLASS_TILE} flex items-center justify-center mb-6`}
+                  >
                     <Check className="size-8 text-[#5865F2]" />
                   </div>
-                  <h1 className="text-xl font-medium text-neutral-900 text-center mb-2">
+                  <h1 className="text-xl font-semibold tracking-tight text-neutral-900 text-center mb-2">
                     {t("homepage_eliza.getStarted.guideTitleAllSet", {
                       defaultValue: "You’re all set!",
                     })}
@@ -1603,10 +1631,10 @@ export default function GetStartedPage() {
                 </>
               )}
               <div className="w-full flex flex-col gap-4">
-                <div className="w-full p-4 bg-white border border-black rounded-xs">
+                <div className={`w-full p-4 ${GLASS_TILE} rounded-2xl`}>
                   <div className="flex items-start gap-3">
-                    <div className="w-7 h-7 rounded-xs bg-[#5865F2]/20 flex items-center justify-center shrink-0 mt-0.5">
-                      <span className="text-xs font-bold text-[#5865F2]">
+                    <div className="w-7 h-7 rounded-full bg-white/60 flex items-center justify-center shrink-0 mt-0.5">
+                      <span className="text-xs font-semibold text-neutral-700">
                         1
                       </span>
                     </div>
@@ -1626,7 +1654,7 @@ export default function GetStartedPage() {
                             "_blank",
                           );
                         }}
-                        className="mt-3 text-[#5865F2] border-[#5865F2]/30 hover:bg-black hover:text-white gap-1.5"
+                        className="mt-3 rounded-full border-neutral-300 bg-white/50 text-neutral-800 hover:bg-neutral-900 hover:text-white gap-1.5"
                       >
                         <ExternalLink className="size-3.5" />
                         {t("homepage_eliza.getStarted.guideInviteToServer", {
@@ -1637,10 +1665,10 @@ export default function GetStartedPage() {
                   </div>
                 </div>
 
-                <div className="w-full p-4 bg-white border border-black rounded-xs">
+                <div className={`w-full p-4 ${GLASS_TILE} rounded-2xl`}>
                   <div className="flex items-start gap-3">
-                    <div className="w-7 h-7 rounded-xs bg-[#5865F2]/20 flex items-center justify-center shrink-0 mt-0.5">
-                      <span className="text-xs font-bold text-[#5865F2]">
+                    <div className="w-7 h-7 rounded-full bg-white/60 flex items-center justify-center shrink-0 mt-0.5">
+                      <span className="text-xs font-semibold text-neutral-700">
                         2
                       </span>
                     </div>
@@ -1660,7 +1688,7 @@ export default function GetStartedPage() {
                             "_blank",
                           );
                         }}
-                        className="mt-3 text-[#5865F2] border-[#5865F2]/30 hover:bg-black hover:text-white gap-1.5"
+                        className="mt-3 rounded-full border-neutral-300 bg-white/50 text-neutral-800 hover:bg-neutral-900 hover:text-white gap-1.5"
                       >
                         <ExternalLink className="size-3.5" />
                         {t("homepage_eliza.getStarted.guideOpenDm", {
@@ -1671,10 +1699,10 @@ export default function GetStartedPage() {
                   </div>
                 </div>
 
-                <div className="w-full p-4 bg-white border border-black rounded-xs">
+                <div className={`w-full p-4 ${GLASS_TILE} rounded-2xl`}>
                   <div className="flex items-start gap-3">
-                    <div className="w-7 h-7 rounded-xs bg-[#5865F2]/20 flex items-center justify-center shrink-0 mt-0.5">
-                      <span className="text-xs font-bold text-[#5865F2]">
+                    <div className="w-7 h-7 rounded-full bg-white/60 flex items-center justify-center shrink-0 mt-0.5">
+                      <span className="text-xs font-semibold text-neutral-700">
                         3
                       </span>
                     </div>
@@ -1684,8 +1712,8 @@ export default function GetStartedPage() {
                           defaultValue: "Start chatting",
                         })}
                       </p>
-                      <div className="mt-2 px-3 py-2 bg-[#5865F2]/10 border border-[#5865F2]/20 rounded-xs">
-                        <p className="text-sm text-[#5865F2] font-medium">
+                      <div className="mt-2 px-3 py-2 bg-white/50 border border-white/60 rounded-xl">
+                        <p className="text-sm text-neutral-700 font-medium">
                           {t("homepage_eliza.getStarted.guideSampleQuote", {
                             defaultValue: '"Hey Eliza, what can you do?"',
                           })}
@@ -1698,7 +1726,7 @@ export default function GetStartedPage() {
 
               <Button
                 onClick={handleContinueToConnected}
-                className="w-full h-[52px] rounded-xs bg-[#5865F2] hover:bg-black text-white font-medium mt-6"
+                className="w-full h-[52px] rounded-full bg-neutral-900 hover:bg-neutral-800 text-white font-medium mt-6"
               >
                 {t("homepage_eliza.getStarted.guideContinue", {
                   defaultValue: "Continue",
@@ -1710,7 +1738,7 @@ export default function GetStartedPage() {
       </div>
 
       <footer className="relative z-10 p-4 text-center">
-        <p className="text-[10px] text-neutral-400">
+        <p className="text-[11px] font-medium tracking-wide text-neutral-600">
           {t("homepage_eliza.common.year", {
             defaultValue: "ElizaCloud Inc. {{year}}",
             year: new Date().getFullYear(),

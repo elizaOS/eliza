@@ -26,6 +26,23 @@ export { SharedRuntimeConversation } from "./shared-runtime-conversation";
 let appPromise: Promise<Hono<AppEnv>> | undefined;
 const inferenceAppPromises = new Map<string, Promise<Hono<AppEnv>>>();
 
+const STAGING_SESSION_UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const STAGING_SESSION_KEY_ID_RE = /^staging-qa-v1-[A-Za-z0-9._-]{1,48}$/;
+
+function hasExactStagingSessionUuidList(value: string | undefined): boolean {
+  const entries = value
+    ?.split(/[\s,]+/)
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+  return Boolean(
+    entries &&
+      entries.length > 0 &&
+      entries.length <= 100 &&
+      entries.every((entry) => STAGING_SESSION_UUID_RE.test(entry)),
+  );
+}
+
 interface InferenceRouteSpec {
   key: string;
   mountPath: string;
@@ -204,6 +221,34 @@ async function dispatchInference(
 }
 
 function healthResponse(env: AppEnv["Bindings"]): Response {
+  const stagingSessionVersion =
+    env.STAGING_SESSION_EXCHANGE_VERSION?.trim() || null;
+  const stagingSessionSigningSecret =
+    env.STAGING_SESSION_EXCHANGE_SIGNING_SECRET?.trim() ?? "";
+  const stagingSessionEnabled =
+    env.NODE_ENV === "production" &&
+    env.ENVIRONMENT === "staging" &&
+    env.STAGING_SESSION_EXCHANGE_ENABLED === "true" &&
+    env.STAGING_SESSION_EXCHANGE_VERSION === "v1";
+  const stagingSessionReady =
+    stagingSessionEnabled &&
+    stagingSessionSigningSecret.length >= 32 &&
+    stagingSessionSigningSecret !== env.STEWARD_JWT_SECRET?.trim() &&
+    stagingSessionSigningSecret !== env.STEWARD_SESSION_SECRET?.trim() &&
+    stagingSessionSigningSecret !== env.ELIZA_SERVICE_JWT_SECRET?.trim() &&
+    STAGING_SESSION_KEY_ID_RE.test(
+      env.STAGING_SESSION_EXCHANGE_SIGNING_KEY_ID?.trim() ?? "",
+    ) &&
+    Boolean(env.STEWARD_TENANT_ID?.trim()) &&
+    hasExactStagingSessionUuidList(
+      env.STAGING_SESSION_EXCHANGE_ALLOWED_API_KEY_IDS,
+    ) &&
+    hasExactStagingSessionUuidList(
+      env.STAGING_SESSION_EXCHANGE_ALLOWED_USER_IDS,
+    ) &&
+    hasExactStagingSessionUuidList(
+      env.STAGING_SESSION_EXCHANGE_ALLOWED_ORGANIZATION_IDS,
+    );
   return Response.json(
     {
       status: "ok",
@@ -220,6 +265,18 @@ function healthResponse(env: AppEnv["Bindings"]): Response {
       // the beacon the cross-environment routing verifier probes
       // (packages/cloud/scripts/verify-environment-routing.mjs).
       environment: env.ENVIRONMENT ?? null,
+      // Value-free cutover receipt for the default-off staging QA bridge. The
+      // deploy workflow proves exact code first, flips the secret last, then
+      // requires this beacon to report the expected version/readiness. No key,
+      // allowlist, kid, or subject value is exposed.
+      stagingSessionExchange:
+        env.ENVIRONMENT === "staging"
+          ? {
+              enabled: stagingSessionEnabled,
+              ready: stagingSessionReady,
+              version: stagingSessionVersion,
+            }
+          : null,
     },
     {
       status: 200,

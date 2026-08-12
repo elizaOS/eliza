@@ -286,6 +286,13 @@ app.post("/", async (c) => {
       logRefresh("bearer-invalid-token");
       return c.json(errorBody("Invalid token", "invalid_token"), 401);
     }
+    // Staging QA sessions are deliberately non-renewable. Their absolute
+    // one-hour maximum is signed into the source binding, and the bearer
+    // convenience refresh must never move that window forward.
+    if (claims.stagingSessionBinding) {
+      logRefresh("bearer-staging-session-nonrenewable");
+      return c.json(errorBody("Invalid token", "invalid_token"), 401);
+    }
 
     const refreshed = await mintStewardTokenFromClaims(
       c.env,
