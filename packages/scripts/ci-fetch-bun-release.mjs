@@ -1,0 +1,348 @@
+#!/usr/bin/env node
+/**
+ * Fetches the pinned Bun release zip for CI with GitHub Releases retries and
+ * an npm registry fallback, then optionally serves it on localhost so
+ * oven-sh/setup-bun does not have to download from GitHub itself.
+ *
+ * GitHub-hosted jobs set setup-bun `no-cache: true` because the extracted
+ * executable lives in an ephemeral per-job HOME. That is correct for shared
+ * runners, but it also means every job re-downloads bun-linux-x64.zip from
+ * GitHub Releases. A develop merge then stampedes that CDN and fails with
+ * `socket hang up`. This script caches the immutable zip (not the HOME path)
+ * and mirrors through registry.npmjs.org.
+ */
+import { execFileSync } from "node:child_process";
+import {
+  appendFileSync,
+  chmodSync,
+  copyFileSync,
+  createReadStream,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  writeFileSync,
+} from "node:fs";
+import { createServer } from "node:http";
+import { tmpdir } from "node:os";
+import { dirname, join, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
+
+const BUN_VERSION = "1.3.14";
+const ZIP_NAME = "bun.zip";
+const DEFAULT_ATTEMPTS = 6;
+
+/**
+ * @typedef {{
+ *   platform: string,
+ *   arch: string,
+ *   hasAvx2?: boolean,
+ * }} HostProbe
+ */
+
+/**
+ * @param {HostProbe} host
+ */
+export function resolveBunAsset(host) {
+  const platform = host.platform;
+  const arch = host.arch === "x64" || host.arch === "ia32" ? "x64" : host.arch;
+  if (platform === "linux" && arch === "x64") {
+    const baseline = host.hasAvx2 === false;
+    return {
+      variant: baseline ? "linux-x64-baseline" : "linux-x64",
+      githubAsset: baseline
+        ? "bun-linux-x64-baseline.zip"
+        : "bun-linux-x64.zip",
+      npmPackage: baseline
+        ? "@oven/bun-linux-x64-baseline"
+        : "@oven/bun-linux-x64",
+      zipRoot: baseline ? "bun-linux-x64-baseline" : "bun-linux-x64",
+    };
+  }
+  if (platform === "linux" && (arch === "arm64" || arch === "aarch64")) {
+    return {
+      variant: "linux-arm64",
+      githubAsset: "bun-linux-aarch64.zip",
+      npmPackage: "@oven/bun-linux-aarch64",
+      zipRoot: "bun-linux-aarch64",
+    };
+  }
+  if (platform === "darwin" && arch === "x64") {
+    return {
+      variant: "darwin-x64",
+      githubAsset: "bun-darwin-x64.zip",
+      npmPackage: "@oven/bun-darwin-x64",
+      zipRoot: "bun-darwin-x64",
+    };
+  }
+  if (platform === "darwin" && (arch === "arm64" || arch === "aarch64")) {
+    return {
+      variant: "darwin-arm64",
+      githubAsset: "bun-darwin-aarch64.zip",
+      npmPackage: "@oven/bun-darwin-aarch64",
+      zipRoot: "bun-darwin-aarch64",
+    };
+  }
+  if (platform === "win32" && arch === "x64") {
+    return {
+      variant: "win-x64",
+      githubAsset: "bun-windows-x64.zip",
+      npmPackage: "@oven/bun-windows-x64",
+      zipRoot: "bun-windows-x64",
+    };
+  }
+  if (platform === "win32" && (arch === "arm64" || arch === "aarch64")) {
+    return {
+      variant: "win-arm64",
+      githubAsset: "bun-windows-aarch64.zip",
+      npmPackage: "@oven/bun-windows-aarch64",
+      zipRoot: "bun-windows-aarch64",
+    };
+  }
+  throw new Error(
+    `unsupported Bun CI host: platform=${platform} arch=${host.arch}`,
+  );
+}
+
+/**
+ * @param {string} version
+ * @param {ReturnType<typeof resolveBunAsset>} asset
+ */
+export function bunReleaseUrls(version, asset) {
+  const github = `https://github.com/oven-sh/bun/releases/download/bun-v${BUN_VERSION}/${asset.githubAsset}`;
+  const npmName = asset.npmPackage.replace("@oven/", "");
+  const npm = `https://registry.npmjs.org/${asset.npmPackage}/-/${npmName}-${version}.tgz`;
+  if (version === BUN_VERSION) {
+    return [github, npm];
+  }
+  return [github.replace(`bun-v${BUN_VERSION}`, `bun-v${version}`), npm];
+}
+
+export function detectLinuxAvx2(cpuInfo) {
+  return /(^|\s)avx2(\s|$)/.test(cpuInfo);
+}
+
+export function probeHost(env = process.env, cpuInfo = "") {
+  const platform = env.ELIZA_BUN_PLATFORM || process.platform;
+  const arch = env.ELIZA_BUN_ARCH || process.arch;
+  let hasAvx2;
+  if (platform === "linux" && (arch === "x64" || arch === "ia32")) {
+    const info =
+      cpuInfo ||
+      (existsSync("/proc/cpuinfo")
+        ? readFileSync("/proc/cpuinfo", "utf8")
+        : "");
+    hasAvx2 = detectLinuxAvx2(info);
+  }
+  return { platform, arch, hasAvx2 };
+}
+
+function zipLooksValid(bytes) {
+  return bytes.length > 1024 && bytes[0] === 0x50 && bytes[1] === 0x4b;
+}
+
+function tgzLooksValid(bytes) {
+  return bytes.length > 1024 && bytes[0] === 0x1f && bytes[1] === 0x8b;
+}
+
+async function downloadBytes(
+  url,
+  { fetchImpl, attempts, retryDelayMs = 1500 },
+) {
+  let lastError;
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    try {
+      const response = await fetchImpl(url, { redirect: "follow" });
+      if (!response.ok) {
+        throw new Error(`${url} -> HTTP ${response.status}`);
+      }
+      const bytes = Buffer.from(await response.arrayBuffer());
+      if (bytes.length < 1024) {
+        throw new Error(`${url} returned ${bytes.length} bytes`);
+      }
+      return bytes;
+    } catch (error) {
+      // error-policy:J1 retry a transient GitHub/npm hang, then fail this URL
+      lastError = error;
+      if (attempt === attempts) break;
+      await new Promise((resolve) =>
+        setTimeout(resolve, attempt * retryDelayMs),
+      );
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error(String(lastError));
+}
+
+function packDirectoryZip(sourceDir, zipPath) {
+  if (process.platform === "win32") {
+    execFileSync("tar", ["-a", "-c", "-f", zipPath, "-C", sourceDir, "."], {
+      stdio: "inherit",
+    });
+    return;
+  }
+  execFileSync("zip", ["-r", "-q", zipPath, "."], {
+    cwd: sourceDir,
+    stdio: "inherit",
+  });
+}
+
+function npmTgzToGithubZip(tgzPath, zipPath, zipRoot) {
+  const extractRoot = join(tmpdir(), `eliza-bun-npm-${process.pid}`);
+  mkdirSync(extractRoot, { recursive: true });
+  execFileSync("tar", ["-xzf", tgzPath, "-C", extractRoot], {
+    stdio: "inherit",
+  });
+  const bunName = process.platform === "win32" ? "bun.exe" : "bun";
+  const found = readdirSync(extractRoot, { recursive: true, encoding: "utf8" })
+    .map((rel) => join(extractRoot, rel))
+    .find((abs) => abs.endsWith(`/${bunName}`) || abs.endsWith(`\\${bunName}`));
+  if (!found) {
+    throw new Error(`npm tarball at ${tgzPath} did not contain ${bunName}`);
+  }
+  const staging = join(tmpdir(), `eliza-bun-zip-${process.pid}`);
+  const nested = join(staging, zipRoot);
+  mkdirSync(nested, { recursive: true });
+  copyFileSync(found, join(nested, bunName));
+  if (process.platform !== "win32") {
+    chmodSync(join(nested, bunName), 0o755);
+  }
+  packDirectoryZip(staging, zipPath);
+}
+
+export async function ensureBunReleaseZip(options) {
+  const {
+    outDir,
+    version = BUN_VERSION,
+    host = probeHost(),
+    fetchImpl = globalThis.fetch,
+    attempts = DEFAULT_ATTEMPTS,
+    retryDelayMs = 1500,
+  } = options;
+  mkdirSync(outDir, { recursive: true });
+  const zipPath = join(outDir, ZIP_NAME);
+  if (existsSync(zipPath)) {
+    const existing = readFileSync(zipPath);
+    if (zipLooksValid(existing)) {
+      return { zipPath, cacheHit: true, asset: resolveBunAsset(host) };
+    }
+  }
+  const asset = resolveBunAsset(host);
+  const urls = bunReleaseUrls(version, asset);
+  let lastError;
+  for (const url of urls) {
+    try {
+      const bytes = await downloadBytes(url, {
+        fetchImpl,
+        attempts,
+        retryDelayMs,
+      });
+      if (zipLooksValid(bytes)) {
+        writeFileSync(zipPath, bytes);
+      } else if (tgzLooksValid(bytes)) {
+        const tgzPath = join(outDir, "bun.tgz");
+        writeFileSync(tgzPath, bytes);
+        npmTgzToGithubZip(tgzPath, zipPath, asset.zipRoot);
+      } else {
+        throw new Error(`${url} was neither a zip nor a gzip tarball`);
+      }
+      return { zipPath, cacheHit: false, asset, source: url };
+    } catch (error) {
+      // error-policy:J1 try the next mirror, then fail the CI download
+      lastError = error;
+    }
+  }
+  throw lastError instanceof Error
+    ? lastError
+    : new Error("Bun release download failed");
+}
+
+export function serveBunZip(zipPath, urlFile) {
+  return new Promise((resolve, reject) => {
+    const server = createServer((req, res) => {
+      if (req.url !== `/${ZIP_NAME}` && req.url !== "/") {
+        res.writeHead(404);
+        res.end();
+        return;
+      }
+      res.writeHead(200, { "content-type": "application/zip" });
+      createReadStream(zipPath).pipe(res);
+    });
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      const address = server.address();
+      if (!address || typeof address === "string") {
+        reject(new Error("Bun zip server did not bind a TCP port"));
+        return;
+      }
+      const url = `http://127.0.0.1:${address.port}/${ZIP_NAME}`;
+      if (urlFile) {
+        mkdirSync(dirname(urlFile), { recursive: true });
+        writeFileSync(urlFile, `${url}\n`);
+      }
+      resolve({ url, server });
+    });
+  });
+}
+
+function parseArgs(argv) {
+  const args = { _: [] };
+  for (let i = 0; i < argv.length; i++) {
+    const token = argv[i];
+    if (token === "--print-variant") args.printVariant = true;
+    else if (token === "--serve-only") args.serveOnly = true;
+    else if (token === "--out-dir") args.outDir = argv[++i];
+    else if (token === "--url-file") args.urlFile = argv[++i];
+    else args._.push(token);
+  }
+  return args;
+}
+
+export async function main(argv = process.argv.slice(2)) {
+  const args = parseArgs(argv);
+  const host = probeHost();
+  const asset = resolveBunAsset(host);
+  if (args.printVariant) {
+    process.stdout.write(`${asset.variant}\n`);
+    const githubOutput = process.env.GITHUB_OUTPUT;
+    if (githubOutput) {
+      appendFileSync(githubOutput, `variant=${asset.variant}\n`);
+    }
+    return;
+  }
+  const outDir = args.outDir;
+  if (!outDir) {
+    throw new Error("ci-fetch-bun-release: --out-dir is required");
+  }
+  const zipPath = join(outDir, ZIP_NAME);
+  if (!args.serveOnly) {
+    const result = await ensureBunReleaseZip({
+      outDir,
+      version: process.env.BUN_VERSION || BUN_VERSION,
+      host,
+    });
+    process.stdout.write(
+      `bun zip ready variant=${result.asset.variant} cacheHit=${result.cacheHit} path=${result.zipPath}\n`,
+    );
+  }
+  if (!existsSync(zipPath)) {
+    throw new Error(`ci-fetch-bun-release: missing ${zipPath}`);
+  }
+  if (args.serveOnly || args.urlFile) {
+    const { url } = await serveBunZip(zipPath, args.urlFile);
+    process.stdout.write(`bun zip url ${url}\n`);
+    if (args.serveOnly) {
+      await new Promise(() => {});
+    }
+  }
+}
+
+if (
+  process.argv[1] !== undefined &&
+  import.meta.url === pathToFileURL(resolve(process.argv[1])).href
+) {
+  main().catch((error) => {
+    // error-policy:J1 the executable boundary prints one message and exits
+    console.error(error instanceof Error ? error.message : error);
+    process.exit(1);
+  });
+}

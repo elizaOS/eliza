@@ -354,30 +354,42 @@ export async function readAttachmentRecords(
 	message: Memory,
 	attachmentId?: string | null,
 ): Promise<ReadAttachmentResult[]> {
-	if (attachmentId?.trim()) {
-		const record = await readAttachmentRecord(runtime, message, attachmentId);
-		return record ? [record] : [];
-	}
-
+	const trimmedId = attachmentId?.trim() || "";
 	const currentAttachments = (message.content.attachments ??
 		[]) as AttachmentWithInlineData[];
+
+	// A "what's in this image" on a message that CARRIES its own attachment must
+	// analyze THAT attachment — never a prior attachment's cached description. The
+	// planner may name a stale id (a previously generated/described image is the
+	// cheapest readable candidate); honoring it against room history returns the
+	// wrong image's cached text. So when the current message has attachments, an
+	// explicit id is honored ONLY if it names one of them; otherwise it is stale
+	// and the current-message attachment(s) win.
 	if (currentAttachments.length > 0) {
 		const createdAt = message.createdAt ?? Date.now();
 		const attachments = await listConversationAttachments(runtime, message);
 		const currentIds = new Set(
 			currentAttachments.map((attachment) => attachment.id),
 		);
+		const explicitIsCurrent = trimmedId.length > 0 && currentIds.has(trimmedId);
+		const targetIds = explicitIsCurrent ? new Set([trimmedId]) : currentIds;
 		return Promise.all(
 			attachments
-				.filter((attachment) => currentIds.has(attachment.id))
+				.filter((attachment) => targetIds.has(attachment.id))
 				.map(async (attachment) => ({
 					attachment: { ...attachment, _createdAt: createdAt },
 					content: await readableAttachmentContent(runtime, attachment),
-					autoSelected: true,
+					autoSelected: !explicitIsCurrent,
 				})),
 		);
 	}
 
+	// No current-message attachment: honor an explicit id against the
+	// conversation window, else auto-select from it.
+	if (trimmedId.length > 0) {
+		const record = await readAttachmentRecord(runtime, message, trimmedId);
+		return record ? [record] : [];
+	}
 	const record = await readAttachmentRecord(runtime, message);
 	return record ? [record] : [];
 }

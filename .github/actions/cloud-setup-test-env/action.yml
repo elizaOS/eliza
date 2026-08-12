@@ -39,12 +39,48 @@ runs:
       with:
         node-version: "24.15.0"
 
+    - name: Resolve Bun release variant
+      id: bun-variant
+      shell: bash
+      run: node packages/scripts/ci-fetch-bun-release.mjs --print-variant
+
+    - name: Restore Bun release zip
+      id: bun-zip-cache
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      with:
+        path: ${{ runner.temp }}/eliza-bun-release
+        key: bun-release-${{ steps.bun-variant.outputs.variant }}-${{ inputs.bun-version }}
+
+    - name: Fetch and serve Bun release zip
+      id: bun-zip
+      shell: bash
+      env:
+        BUN_VERSION: ${{ inputs.bun-version }}
+      run: |
+        set -euo pipefail
+        out="${RUNNER_TEMP}/eliza-bun-release"
+        mkdir -p "$out"
+        node packages/scripts/ci-fetch-bun-release.mjs --out-dir "$out"
+        node packages/scripts/ci-fetch-bun-release.mjs --out-dir "$out" --serve-only --url-file "$out/download-url" &
+        i=0
+        while [ "$i" -lt 50 ]; do
+          if [ -s "$out/download-url" ]; then
+            echo "url=$(tr -d '[:space:]' < "$out/download-url")" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          i=$((i + 1))
+          sleep 0.1
+        done
+        echo "::error::Bun zip local server did not become ready"
+        exit 1
+
     - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
       env:
         HOME: ${{ runner.temp }}/bun-home-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}-${{ strategy.job-index || 0 }}
         USERPROFILE: ${{ runner.temp }}/bun-home-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}-${{ strategy.job-index || 0 }}
       with:
         bun-version: ${{ inputs.bun-version }}
+        bun-download-url: ${{ steps.bun-zip.outputs.url }}
         no-cache: true
 
     - name: Install dependencies

@@ -110,3 +110,37 @@ describe("formatTimestamp (verbose)", () => {
 		expect(formatTimestamp(NOW + DAY + 1)).toBe("in 2 days");
 	});
 });
+
+// JS Date is valid only in ±8.64e15 ms; one past either end is Invalid Date.
+const MAX_REPRESENTABLE_MS = 8_640_000_000_000_000;
+
+describe("invalid and unrepresentable timestamps", () => {
+	it("fails closed to 'just now' for non-finite inputs", () => {
+		expect(formatRelativeTime(Number.NaN)).toBe("just now");
+		expect(formatRelativeTime(Number.POSITIVE_INFINITY)).toBe("just now");
+		expect(formatRelativeTime(Number.NEGATIVE_INFINITY)).toBe("just now");
+		expect(formatTimestamp(Number.NaN)).toBe("just now");
+		expect(formatTimestamp(Number.POSITIVE_INFINITY)).toBe("just now");
+		expect(formatTimestamp(Number.NEGATIVE_INFINITY)).toBe("just now");
+	});
+
+	it("fails closed for finite values just outside the Date range", () => {
+		expect(formatRelativeTime(MAX_REPRESENTABLE_MS + 1)).toBe("just now");
+		expect(formatRelativeTime(-(MAX_REPRESENTABLE_MS + 1))).toBe("just now");
+		expect(formatRelativeTime(Number.MAX_VALUE)).toBe("just now");
+		expect(formatTimestamp(MAX_REPRESENTABLE_MS + 1)).toBe("just now");
+		expect(formatTimestamp(-(MAX_REPRESENTABLE_MS + 1))).toBe("just now");
+		expect(formatTimestamp(Number.MAX_VALUE)).toBe("just now");
+	});
+
+	it("keeps the ±8.64e15 endpoints representable (no Invalid Date)", () => {
+		// Endpoints are valid Dates; output is a huge relative/absolute string,
+		// never the browser garbage label.
+		expect(formatRelativeTime(MAX_REPRESENTABLE_MS)).not.toBe("Invalid Date");
+		expect(formatRelativeTime(-MAX_REPRESENTABLE_MS)).not.toBe("Invalid Date");
+		expect(formatTimestamp(MAX_REPRESENTABLE_MS)).not.toBe("Invalid Date");
+		expect(formatTimestamp(-MAX_REPRESENTABLE_MS)).not.toBe("Invalid Date");
+		expect(formatRelativeTime(MAX_REPRESENTABLE_MS)).not.toBe("just now");
+		expect(formatTimestamp(MAX_REPRESENTABLE_MS)).not.toBe("just now");
+	});
+});

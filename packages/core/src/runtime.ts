@@ -3478,6 +3478,11 @@ export class AgentRuntime implements IAgentRuntime {
 			if (value !== null && value !== undefined) {
 				// Secrets are stored as strings
 				this.character.secrets[key] = String(value);
+			} else {
+				// null clears — callers use setSetting(key, null) to revoke a
+				// previously bridged credential (cloud disconnect, connector
+				// admin wipe, plugin Settings blanking an optional param).
+				delete this.character.secrets[key];
 			}
 		} else {
 			if (!this.character.settings) {
@@ -3485,7 +3490,16 @@ export class AgentRuntime implements IAgentRuntime {
 			}
 			if (value !== null && value !== undefined) {
 				this.character.settings[key] = value;
+			} else {
+				delete this.character.settings[key];
 			}
+		}
+		// Keep the constructor settings map aligned so getRuntimeSettingValue
+		// cannot resurrect a cleared key after character.secrets/settings drop it.
+		if (value !== null && value !== undefined) {
+			this.settings[key] = value;
+		} else {
+			delete this.settings[key];
 		}
 	}
 
