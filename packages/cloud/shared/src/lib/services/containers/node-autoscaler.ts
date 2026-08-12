@@ -30,9 +30,10 @@ import {
   inferNodeArchitectureFromMetadata,
   isArchitectureCompatibleWithPlatform,
 } from "../docker-sandbox-utils";
-import { type ComputeProvider, getComputeProvider } from "./compute-provider";
+import { type ComputeProvider, getComputeProvider, isComputeConfigured } from "./compute-provider";
 import { HetznerCloudError, isHetznerCloudConfigured } from "./hetzner-cloud-api";
 import { buildContainerNodeUserData, type NodeBootstrapInput } from "./node-bootstrap";
+import { withNodeProvisionAuthority } from "./node-provision-authority";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -103,6 +104,8 @@ export interface ProvisionResult {
   hostname: string;
   hcloudServerId: number;
   rootPassword: string | null;
+  /** True when a retry recovered an existing provider/DB node. */
+  idempotent: boolean;
 }
 
 export interface DrainOptions {
@@ -222,10 +225,10 @@ export class NodeAutoscaler {
       "controlPlanePublicKey" | "registrationUrl" | "registrationSecret"
     >,
   ): Promise<ProvisionResult> {
-    if (!isHetznerCloudConfigured()) {
+    if (!isComputeConfigured()) {
       throw new HetznerCloudError(
         "missing_token",
-        "Cannot provision a node: HCLOUD_TOKEN is not set.",
+        "Cannot provision a node: compute provider credentials are not configured.",
       );
     }
     if (bootstrap.controlPlanePublicKey.trim().length === 0) {
@@ -261,66 +264,114 @@ export class NodeAutoscaler {
     // these labels every API-discovered node looks identical, which is how we
     // shipped a staging node tagged `environment=production` in the first
     // place. Caller overrides via `request.labels` win (test seams).
+    const environment = containersEnv.environment();
+    const providerName =
+      process.env.COMPUTE_PROVIDER === "digitalocean" ? "digitalocean" : "hetzner";
     const labels = {
+      ...request.labels,
       "managed-by": "eliza-cloud",
       "node-id": nodeId,
-      environment: containersEnv.environment(),
+      environment,
       tier: "data-plane",
-      ...request.labels,
     };
 
-    const provisioned = await client.createServer({
-      name: nodeId,
-      serverType,
-      location,
-      image,
-      userData,
-      networkIds,
-      labels,
-    });
+    return withNodeProvisionAuthority(`${providerName}:${environment}`, async (authority) => {
+      const existingRow = authority.nodes.find((node) => node.node_id === nodeId);
+      if (existingRow) return provisionResultFromNode(existingRow);
 
-    // Resolve via the canonical seam field (ipv4→ipv6 already collapsed by the
-    // provider) so this works for any ComputeProvider, not just Hetzner.
-    const ip = provisioned.server.publicIpv4 ?? provisioned.server.name;
-    const hcloudServerId = Number(provisioned.server.id);
+      const providerServers = await client.listServers({
+        "managed-by": "eliza-cloud",
+        environment,
+        tier: "data-plane",
+      });
+      const existingServer = providerServers.find(
+        (server) => server.labels?.["node-id"] === nodeId || server.name === nodeId,
+      );
+      const environmentNodes = authority.nodes.filter((node) => {
+        const metadata = (node.metadata ?? {}) as Record<string, unknown>;
+        return metadata.environment === environment || metadata.environment == null;
+      });
+      const providerIds = new Set(providerServers.map((server) => String(server.id)));
+      const dbOnlyCount = environmentNodes.filter((node) => {
+        const id = getHcloudServerId(node);
+        return id === undefined || !providerIds.has(String(id));
+      }).length;
+      const authoritativeNodeCount = providerServers.length + dbOnlyCount;
+      const authoritativeCapacity =
+        environmentNodes.reduce((sum, node) => sum + node.capacity, 0) +
+        Math.max(0, providerServers.length - environmentNodes.length) * this.policy.defaultCapacity;
+      const capacityBudget = this.policy.maxNodes * this.policy.defaultCapacity;
 
-    // Insert the row in `unknown` status — the cloud-init bootstrap is
-    // still running; the periodic health check will flip it to healthy.
-    await dockerNodesRepository.create({
-      node_id: nodeId,
-      hostname: ip,
-      ssh_port: 22,
-      capacity,
-      enabled: true,
-      status: "unknown",
-      allocated_count: 0,
-      ssh_user: "root",
-      metadata: {
-        provider: "hetzner-cloud",
-        autoscaled: true,
+      if (!existingServer && authoritativeNodeCount >= this.policy.maxNodes) {
+        throw new HetznerCloudError(
+          "quota_exceeded",
+          `Compute node quota reached for ${providerName}/${environment}`,
+        );
+      }
+      if (!existingServer && authoritativeCapacity + capacity > capacityBudget) {
+        throw new HetznerCloudError(
+          "quota_exceeded",
+          `Compute capacity budget reached for ${providerName}/${environment}`,
+        );
+      }
+
+      const provisioned = existingServer
+        ? { server: existingServer, rootPassword: null }
+        : await client.createServer({
+            name: nodeId,
+            serverType,
+            location,
+            image,
+            userData,
+            networkIds,
+            labels,
+          });
+      const ip = provisioned.server.publicIpv4 ?? provisioned.server.name;
+      const hcloudServerId = Number(provisioned.server.id);
+
+      try {
+        await authority.createNode({
+          node_id: nodeId,
+          hostname: ip,
+          ssh_port: 22,
+          capacity,
+          enabled: true,
+          status: "unknown",
+          allocated_count: 0,
+          ssh_user: "root",
+          metadata: {
+            provider: providerName === "hetzner" ? "hetzner-cloud" : providerName,
+            environment,
+            autoscaled: true,
+            hcloudServerId,
+            serverType,
+            location,
+            image,
+            architecture: inferArchitectureFromHetznerServerType(serverType),
+            provisionedAt: new Date().toISOString(),
+          },
+        });
+      } catch (error) {
+        if (!existingServer) await client.deleteServer(Number(provisioned.server.id));
+        throw error;
+      }
+
+      logger.info("[autoscaler] Provisioned new container node", {
+        nodeId,
         hcloudServerId,
+        ip,
         serverType,
         location,
-        image,
-        architecture: inferArchitectureFromHetznerServerType(serverType),
-        provisionedAt: new Date().toISOString(),
-      },
-    });
+      });
 
-    logger.info("[autoscaler] Provisioned new container node", {
-      nodeId,
-      hcloudServerId,
-      ip,
-      serverType,
-      location,
+      return {
+        nodeId,
+        hostname: ip,
+        hcloudServerId,
+        rootPassword: provisioned.rootPassword,
+        idempotent: Boolean(existingServer),
+      };
     });
-
-    return {
-      nodeId,
-      hostname: ip,
-      hcloudServerId,
-      rootPassword: provisioned.rootPassword,
-    };
   }
 
   /**
@@ -464,6 +515,23 @@ function generateNodeId(): string {
 function getHcloudServerId(node: DockerNode): number | undefined {
   const meta = (node.metadata ?? {}) as Record<string, unknown>;
   return typeof meta.hcloudServerId === "number" ? meta.hcloudServerId : undefined;
+}
+
+function provisionResultFromNode(node: DockerNode): ProvisionResult {
+  const hcloudServerId = getHcloudServerId(node);
+  if (hcloudServerId === undefined) {
+    throw new HetznerCloudError(
+      "invalid_input",
+      `node ${node.node_id} has no authoritative provider id`,
+    );
+  }
+  return {
+    nodeId: node.node_id,
+    hostname: node.hostname,
+    hcloudServerId,
+    rootPassword: null,
+    idempotent: true,
+  };
 }
 
 function isAutoscaledHetznerNode(node: DockerNode): boolean {

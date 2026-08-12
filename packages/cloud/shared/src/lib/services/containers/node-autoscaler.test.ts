@@ -40,6 +40,7 @@ const mocks = {
   createNode: mock(),
   findAllNodes: mock(),
   createServer: mock(),
+  listServers: mock(),
   deleteServer: mock(),
   isConfigured: mock(),
   buildUserData: mock(),
@@ -76,10 +77,21 @@ mock.module("./hetzner-cloud-api", () => ({
     }
   },
   getHetznerCloudClient: () => ({
+    listServers: mocks.listServers,
     createServer: mocks.createServer,
     deleteServer: mocks.deleteServer,
   }),
   isHetznerCloudConfigured: mocks.isConfigured,
+}));
+
+mock.module("./node-provision-authority", () => ({
+  withNodeProvisionAuthority: async (
+    _scope: string,
+    operation: (authority: {
+      nodes: DockerNode[];
+      createNode: typeof mocks.createNode;
+    }) => Promise<unknown>,
+  ) => operation({ nodes: mocks.nodes, createNode: mocks.createNode }),
 }));
 
 mock.module("./node-bootstrap", () => ({
@@ -123,6 +135,7 @@ describe("NodeAutoscaler Hetzner provisioning", () => {
     mocks.createNode.mockClear();
     mocks.findAllNodes.mockClear();
     mocks.createServer.mockClear();
+    mocks.listServers.mockClear();
     mocks.deleteServer.mockClear();
     mocks.isConfigured.mockClear();
     mocks.buildUserData.mockClear();
@@ -148,6 +161,7 @@ describe("NodeAutoscaler Hetzner provisioning", () => {
       },
       rootPassword: "root-secret",
     });
+    mocks.listServers.mockResolvedValue([]);
   });
 
   afterEach(() => {
@@ -221,7 +235,81 @@ describe("NodeAutoscaler Hetzner provisioning", () => {
       hostname: "203.0.113.10",
       hcloudServerId: 4242,
       rootPassword: "root-secret",
+      idempotent: false,
     });
+  });
+
+  test("returns the authoritative DB row for an idempotent retry", async () => {
+    mocks.nodes = [
+      {
+        node_id: "node-existing",
+        hostname: "203.0.113.20",
+        metadata: { hcloudServerId: 2020, environment: "local" },
+      } as DockerNode,
+    ];
+    const autoscaler = new NodeAutoscaler(policy);
+
+    await expect(
+      autoscaler.provisionNode(
+        { nodeId: "node-existing" },
+        {
+          controlPlanePublicKey: "ssh-ed25519 AAAAcontrol",
+          registrationUrl: "https://cloud.example.test/register",
+          registrationSecret: "secret",
+        },
+      ),
+    ).resolves.toMatchObject({
+      nodeId: "node-existing",
+      hcloudServerId: 2020,
+      idempotent: true,
+    });
+    expect(mocks.listServers).not.toHaveBeenCalled();
+    expect(mocks.createServer).not.toHaveBeenCalled();
+  });
+
+  test("enforces the provider/environment node quota before create", async () => {
+    mocks.listServers.mockResolvedValue(
+      Array.from({ length: policy.maxNodes }, (_, index) => ({
+        id: 1000 + index,
+        name: `provider-node-${index}`,
+        status: "running",
+        labels: {
+          "managed-by": "eliza-cloud",
+          environment: "local",
+          tier: "data-plane",
+        },
+      })),
+    );
+    const autoscaler = new NodeAutoscaler(policy);
+
+    await expect(
+      autoscaler.provisionNode(
+        { nodeId: "node-over-quota" },
+        {
+          controlPlanePublicKey: "ssh-ed25519 AAAAcontrol",
+          registrationUrl: "https://cloud.example.test/register",
+          registrationSecret: "secret",
+        },
+      ),
+    ).rejects.toMatchObject({ code: "quota_exceeded" });
+    expect(mocks.createServer).not.toHaveBeenCalled();
+  });
+
+  test("deletes a newly-created provider server when DB registration fails", async () => {
+    mocks.createNode.mockRejectedValueOnce(new Error("database unavailable"));
+    const autoscaler = new NodeAutoscaler(policy);
+
+    await expect(
+      autoscaler.provisionNode(
+        { nodeId: "node-compensate" },
+        {
+          controlPlanePublicKey: "ssh-ed25519 AAAAcontrol",
+          registrationUrl: "https://cloud.example.test/register",
+          registrationSecret: "secret",
+        },
+      ),
+    ).rejects.toThrow("database unavailable");
+    expect(mocks.deleteServer).toHaveBeenCalledWith(4242);
   });
 
   test("passes configured Hetzner private network ids to new nodes", async () => {
