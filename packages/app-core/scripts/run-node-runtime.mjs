@@ -8,6 +8,34 @@ import { spawnSync } from "node:child_process";
 
 const KNOWN_UNSTABLE_BUN_LINUX = /^1\.3\.9(?:$|[-+].*)/;
 const MIN_NODE_MAJOR = 24;
+/** Matches a Node version token emitted by the runtime probe anywhere in stdout. */
+const NODE_PROBE_VERSION_PATTERN = /(?:^|[\s\r\n])node:([0-9][^\s\r\n]*)/g;
+
+/**
+ * Builds the child-process env for the Node runtime probe. Inherits PATH and
+ * other discovery-related vars, but strips NODE_OPTIONS so caller preloads
+ * cannot write to stdout and corrupt version detection.
+ */
+export function buildNodeProbeEnv(parentEnv = process.env) {
+  const env = { ...parentEnv };
+  delete env.NODE_OPTIONS;
+  return env;
+}
+
+function extractNodeProbeVersion(text) {
+  const trimmed = text.trim();
+  if (!trimmed) {
+    return null;
+  }
+  for (const line of trimmed.split(/\r?\n/)) {
+    const exact = /^node:(.+)$/.exec(line.trim());
+    if (exact) {
+      return exact[1];
+    }
+  }
+  const matches = [...trimmed.matchAll(NODE_PROBE_VERSION_PATTERN)];
+  return matches.at(-1)?.[1] ?? null;
+}
 
 /**
  * Bun 1.3.9 has known Linux segfault reports in long-running workloads.
@@ -129,18 +157,18 @@ export function validateNodeProbeOutput(output) {
   if (text === "bun") {
     return { ok: false, reason: "resolved to Bun, not Node.js" };
   }
-  const match = /^node:(.+)$/.exec(text);
-  if (!match) {
+  const version = extractNodeProbeVersion(text);
+  if (!version) {
     return { ok: false, reason: "did not report a Node.js runtime" };
   }
-  const major = parseNodeMajor(match[1]);
+  const major = parseNodeMajor(version);
   if (major === null) {
-    return { ok: false, reason: `could not parse Node.js version ${match[1]}` };
+    return { ok: false, reason: `could not parse Node.js version ${version}` };
   }
   if (major < MIN_NODE_MAJOR) {
     return {
       ok: false,
-      reason: `Node.js ${match[1]} is too old; Node.js ${MIN_NODE_MAJOR}+ is required`,
+      reason: `Node.js ${version} is too old; Node.js ${MIN_NODE_MAJOR}+ is required`,
     };
   }
   return { ok: true, reason: null };
@@ -183,7 +211,7 @@ export function probeNodeExecutable(candidate) {
         "-e",
         "process.stdout.write(process.versions.bun ? 'bun' : 'node:' + (process.versions.node || ''))",
       ],
-      { encoding: "utf8" },
+      { encoding: "utf8", env: buildNodeProbeEnv() },
     );
     return {
       status: result.status ?? 1,

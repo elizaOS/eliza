@@ -10,6 +10,10 @@ import { fileURLToPath } from "node:url";
 import { getFreePort } from "../test/utils/get-free-port.mjs";
 import { resolveAuditAppOutput } from "./lib/audit-output.mjs";
 import { withElizaSourceNodeOptions } from "./lib/playwright-node-options.mjs";
+import {
+  resolveExecutableFromPath,
+  resolvePlaywrightNodeRuntime,
+} from "./lib/playwright-node-runtime.mjs";
 
 const appDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const repoRoot = path.resolve(appDir, "..", "..");
@@ -49,35 +53,6 @@ function resolvePlaywrightCommand() {
     }
   }
   return binaryNames[0];
-}
-
-function resolveExecutableFromPath(command) {
-  const pathValue = process.env.PATH ?? process.env.Path ?? "";
-  if (!pathValue) return null;
-
-  const hasExtension = path.extname(command).length > 0;
-  const pathExts =
-    process.platform === "win32"
-      ? (process.env.PATHEXT ?? ".COM;.EXE;.BAT;.CMD")
-          .split(";")
-          .map((ext) => ext.trim())
-          .filter(Boolean)
-      : [""];
-  const binaryNames =
-    process.platform === "win32" && !hasExtension
-      ? pathExts.map((ext) => `${command}${ext.toLowerCase()}`)
-      : [command];
-
-  for (const dir of pathValue.split(path.delimiter)) {
-    if (!dir) continue;
-    for (const binaryName of binaryNames) {
-      const candidate = path.join(dir, binaryName);
-      if (fs.existsSync(candidate)) {
-        return candidate;
-      }
-    }
-  }
-  return null;
 }
 
 function resolveBunCommand() {
@@ -131,32 +106,15 @@ function resolveBunCommand() {
   return process.platform === "win32" ? "bun.exe" : "bun";
 }
 
-function looksLikeBun(command) {
-  const binaryName = path.basename(command).toLowerCase();
-  return binaryName === "bun" || binaryName === "bun.exe";
-}
-
-function resolveNodeCommand() {
-  for (const candidate of [
-    process.env.ELIZA_NODE_PATH?.trim(),
-    process.env.npm_node_execpath?.trim(),
-    process.execPath,
-    resolveExecutableFromPath("node"),
-  ]) {
-    if (candidate && fs.existsSync(candidate) && !looksLikeBun(candidate)) {
-      return candidate;
-    }
-  }
-
-  return process.platform === "win32" ? "node.exe" : "node";
-}
-
 const env = { ...process.env };
 delete env.NO_COLOR;
 delete env.FORCE_COLOR;
 delete env.CLICOLOR_FORCE;
 env.BUN = env.BUN || resolveBunCommand();
-env.ELIZA_NODE_PATH = env.ELIZA_NODE_PATH || resolveNodeCommand();
+// Validated through app-core's shared resolver: an invalid or pre-24
+// ELIZA_NODE_PATH (or an environment with no usable Node 24+) throws here,
+// before Playwright or its webServer spawns, instead of dying late in boot.
+env.ELIZA_NODE_PATH = resolvePlaywrightNodeRuntime({ env });
 
 const bunBinDir = path.dirname(env.BUN);
 const pathDelimiter = process.platform === "win32" ? ";" : ":";
