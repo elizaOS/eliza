@@ -4,8 +4,11 @@
  *
  * The merge queue often leaves cancelled or superseded check runs behind after
  * a branch is pushed or marked ready again. This helper reads the current check
- * runs for a PR head/ref, collapses older attempts with the same check name,
- * and reports only current completed failures as actionable.
+ * runs for a PR head/ref, collapses older attempts of the same check from the
+ * same GitHub App, and reports only current completed failures as actionable.
+ * Same-named checks from different Apps are distinct: branch protection can
+ * require a named check from one specific App (`integration_id`), so another
+ * App's newer success must never bury that App's failure (#18568).
  */
 
 import { spawnSync } from "node:child_process";
@@ -122,6 +125,21 @@ function checkIdentity(checkRun) {
   return checkRun.name ?? checkRun.external_id ?? String(checkRun.id);
 }
 
+/**
+ * Supersession grouping key: the producing GitHub App plus the display
+ * identity. Only a later attempt from the same App may supersede a run, since
+ * a required status check can be pinned to one App and each App reports its
+ * own history. Only `app.id` qualifies a group — it is the identity branch
+ * protection pins (`integration_id`). Inputs without it, including slug-only
+ * captures and hand-authored `--input` fixtures, share one distinct "no-id"
+ * bucket so they keep the legacy name-only collapsing among themselves
+ * (#18568) without ever merging into a real App's history.
+ */
+function checkGroupKey(checkRun) {
+  const appIdentity = checkRun.app?.id ?? "none";
+  return `${appIdentity}::${checkIdentity(checkRun)}`;
+}
+
 export function normalizeCheckRuns(payload) {
   if (Array.isArray(payload)) {
     if (
@@ -144,7 +162,7 @@ export function normalizeCheckRuns(payload) {
 export function classifyCheckRuns(checkRuns) {
   const groups = new Map();
   for (const checkRun of checkRuns) {
-    const key = checkIdentity(checkRun);
+    const key = checkGroupKey(checkRun);
     const list = groups.get(key) ?? [];
     list.push(checkRun);
     groups.set(key, list);
@@ -162,9 +180,13 @@ export function classifyCheckRuns(checkRuns) {
     superseded.push(...sorted.slice(1));
   }
 
-  const current = latest.sort((a, b) =>
-    String(checkIdentity(a)).localeCompare(String(checkIdentity(b))),
-  );
+  const current = latest.sort((a, b) => {
+    const byName = String(checkIdentity(a)).localeCompare(
+      String(checkIdentity(b)),
+    );
+    if (byName !== 0) return byName;
+    return checkGroupKey(a).localeCompare(checkGroupKey(b));
+  });
   const actionableFailures = current.filter(
     (run) => run.status === "completed" && run.conclusion === "failure",
   );
