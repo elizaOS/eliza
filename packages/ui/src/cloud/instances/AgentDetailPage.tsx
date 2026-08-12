@@ -465,6 +465,7 @@ export default function AgentDetailPage() {
           agentId={agent.id}
           executionTier={agent.executionTier}
           status={agent.status}
+          hostingCost={agent.hostingCost}
           webUiUrl={agent.webUiUrl}
         />
 

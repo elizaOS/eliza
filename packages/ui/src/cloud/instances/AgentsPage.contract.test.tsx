@@ -41,7 +41,9 @@ afterEach(() => {
 describe("AgentsPage response states", () => {
   it("shows the query validation failure instead of an empty table", () => {
     mockUseAgents.mockReturnValue({
-      data: undefined,
+      // Background refetch errors retain the last successful query data. The
+      // page must still hide both halves of that stale healthy presentation.
+      data: { agents: [{ agentName: "Stale agent" }], hostingSummary: {} },
       error: new Error("Invalid hosted-agent API response"),
       isError: true,
       isLoading: false,
@@ -53,6 +55,7 @@ describe("AgentsPage response states", () => {
       "Invalid hosted-agent API response",
     );
     expect(screen.queryByText("Agents table")).toBeNull();
+    expect(screen.queryByText("Pricing banner")).toBeNull();
   });
 
   it("fails visibly when a query resolves without its required data", () => {

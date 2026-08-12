@@ -1,6 +1,6 @@
 /**
- * ElizaAgentActions — start/stop/deactivate/reactivate/snapshot/upgrade/delete
- * controls on the agent detail page.
+ * Provides lifecycle, snapshot, tier-upgrade, and delete controls on the agent
+ * detail page.
  *
  * **Upgrade to Dedicated** (shared-tier agents only, #15355) drives the whole
  * shared→dedicated tier upgrade from this page: a confirm dialog spells out the
@@ -18,9 +18,9 @@
  * confirm dialog that spells out the billing consequences. **Reactivate**
  * (`POST /wake`) re-provisions compute and restores the backup — it can take a
  * few minutes, so the tracked-job progress line carries wake-specific copy.
- * Both ride the existing 202 + jobId poll path. Pricing figures shown in the
- * dialog come from the cloud-shared `AGENT_PRICING` constants (the same source
- * the billing cron charges from) — the client only displays them.
+ * Both ride the existing 202 + jobId poll path. The deactivation dialog gets
+ * current pricing from the hosted-agent DTO, including its unavailable state;
+ * it never infers the live rate from client constants.
  */
 "use client";
 
@@ -29,7 +29,11 @@ import {
   formatHourlyRate,
   formatUSD,
 } from "@elizaos/cloud-shared/lib/constants/agent-pricing-display";
-import type { AgentExecutionTier } from "@elizaos/cloud-shared/lib/types/cloud-api";
+import type {
+  AgentExecutionTier,
+  AgentHostingCostDto,
+  AgentSandboxStatus,
+} from "@elizaos/cloud-shared/lib/types/cloud-api";
 import {
   AlertDialog,
   AlertDialogCancel,
@@ -63,11 +67,13 @@ import { apiWithStatus, readCloudBearerToken } from "../../lib/api-client";
 import { useT } from "../lib/i18n";
 import { openWebUIWithPairing } from "../lib/open-web-ui";
 import { useJobPoller } from "../lib/use-job-poller";
+import { DeactivateAgentDialog } from "./deactivate-agent-dialog";
 
 interface ElizaAgentActionsProps {
   agentId: string;
   executionTier: AgentExecutionTier;
-  status: string;
+  status: AgentSandboxStatus;
+  hostingCost: AgentHostingCostDto;
   webUiUrl: string | null;
 }
 
@@ -75,6 +81,7 @@ export function ElizaAgentActions({
   agentId,
   executionTier,
   status,
+  hostingCost,
   webUiUrl,
 }: ElizaAgentActionsProps) {
   const t = useT();
@@ -294,6 +301,8 @@ export function ElizaAgentActions({
       );
       window.location.reload();
     } catch (err) {
+      // error-policy:J4 detail actions surface transport and protocol failures
+      // in the persistent toast region instead of presenting a completed job.
       const msg = err instanceof Error ? err.message : String(err);
       toast.error(
         `${t("cloud.containers.agentActions.actionFailed", { defaultValue: "Action failed" })}: ${msg}`,
@@ -410,6 +419,8 @@ export function ElizaAgentActions({
           }),
       );
     } catch (err) {
+      // error-policy:J4 tier-upgrade failures remain on the working shared
+      // agent and surface the server/handoff error in the persistent toast.
       setUpgradeTargetId(null);
       const msg = err instanceof Error ? err.message : String(err);
       toast.error(
@@ -780,64 +791,14 @@ export function ElizaAgentActions({
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Deactivate confirm — non-destructive counterpart to delete: spells
-          out the billing consequence before the sleep job is enqueued. */}
-      <AlertDialog
+      <DeactivateAgentDialog
         open={showDeactivateConfirm}
         onOpenChange={setShowDeactivateConfirm}
-      >
-        <AlertDialogContent className="bg-card border-border">
-          <AlertDialogHeader>
-            <AlertDialogTitle className="text-txt-strong">
-              {t("cloud.containers.agentActions.deactivateTitle", {
-                defaultValue: "Deactivate this agent?",
-              })}
-            </AlertDialogTitle>
-            <AlertDialogDescription className="text-muted">
-              <span className="block">
-                {t("cloud.containers.agentActions.deactivateBody1", {
-                  defaultValue:
-                    "Your agent stops running and stops consuming hourly credits (currently {{rate}} while running).",
-                  rate: formatHourlyRate(AGENT_PRICING.RUNNING_HOURLY_RATE),
-                })}
-              </span>
-              <span className="block mt-2">
-                {t("cloud.containers.agentActions.deactivateBody2", {
-                  defaultValue:
-                    "Before deactivation, Eliza saves an encrypted backup. If the backup cannot be saved, the agent stays running and billing continues.",
-                })}
-              </span>
-              <span className="block mt-2">
-                {t("cloud.containers.agentActions.deactivateBody3", {
-                  defaultValue:
-                    "Reactivation restores the backup and can take a few minutes; it requires available credits.",
-                })}
-              </span>
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel className="border-border bg-transparent text-txt hover:bg-surface">
-              {t("cloud.containers.agentActions.cancel", {
-                defaultValue: "Cancel",
-              })}
-            </AlertDialogCancel>
-            <Button
-              type="button"
-              disabled={!!loading || isBusy}
-              onClick={() => doAction("sleep")}
-            >
-              {loading === "sleep" ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Moon className="h-4 w-4" />
-              )}
-              {t("cloud.containers.agentActions.deactivateConfirm", {
-                defaultValue: "Yes, deactivate",
-              })}
-            </Button>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+        hostingCost={hostingCost}
+        confirmDisabled={Boolean(loading) || isBusy}
+        isConfirming={loading === "sleep"}
+        onConfirm={() => void doAction("sleep")}
+      />
     </BrandCard>
   );
 }

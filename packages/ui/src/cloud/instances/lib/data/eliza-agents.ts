@@ -2,7 +2,10 @@
  * React-query hooks for the hosted Eliza agents (Instances) list + detail.
  */
 
-import type { AgentListItemDto } from "@elizaos/cloud-shared/lib/types/cloud-api";
+import type {
+  AgentListItemDto,
+  AgentSandboxStatus,
+} from "@elizaos/cloud-shared/lib/types/cloud-api";
 import {
   agentResponseSchema,
   agentsResponseSchema,
@@ -15,6 +18,12 @@ import {
 } from "../../../lib/auth-query";
 
 export type AgentListItem = AgentListItemDto;
+export const AGENTS_QUERY_KEY = ["agent", "agents"] as const;
+
+const ACTIVE_AGENT_STATUSES: ReadonlySet<AgentSandboxStatus> = new Set([
+  "pending",
+  "provisioning",
+]);
 
 export async function fetchAgents() {
   const res = agentsResponseSchema.parse(
@@ -34,15 +43,23 @@ export async function fetchAgent(agentId: string) {
 export function useAgents() {
   const gate = useAuthenticatedQueryGate();
   return useQuery({
-    queryKey: authenticatedQueryKey(["agent", "agents"], gate),
+    queryKey: authenticatedQueryKey(AGENTS_QUERY_KEY, gate),
     queryFn: fetchAgents,
     enabled: gate.enabled,
-    refetchInterval: gate.enabled ? 15_000 : false,
-    // Keep polling while the tab is backgrounded so the list converges even when
-    // hidden. The agents table hides a just-deleted row for a 60s grace before
-    // re-checking; if this interval paused while backgrounded, a delete + long
-    // background could freeze the list stale and briefly resurrect the deleted
-    // row on refocus. Cheap authenticated GET; precedent: payment-waiting-overlay.
+    // One validated query owns both rows and their hosting summary. Active
+    // lifecycle states converge faster, while settled lists retain the prior
+    // cadence and React Query's retry backoff on transport failures.
+    refetchInterval: (query) => {
+      if (!gate.enabled) return false;
+      if (query.state.data === undefined) return 15_000;
+      return query.state.data.agents.some((agent) =>
+        ACTIVE_AGENT_STATUSES.has(agent.status),
+      )
+        ? 10_000
+        : 15_000;
+    },
+    // Background polling keeps lifecycle transitions convergent even when the
+    // tab is hidden.
     refetchIntervalInBackground: true,
   });
 }

@@ -21,8 +21,14 @@ import {
 } from "./eliza-agents-table";
 
 vi.mock("../lib/i18n", () => ({
-  useT: () => (_key: string, options?: { defaultValue?: string }) =>
-    options?.defaultValue ?? _key,
+  useT: () => (_key: string, options?: Record<string, unknown>) => {
+    let copy =
+      typeof options?.defaultValue === "string" ? options.defaultValue : _key;
+    for (const [name, value] of Object.entries(options ?? {})) {
+      copy = copy.replaceAll(`{{${name}}}`, String(value));
+    }
+    return copy;
+  },
 }));
 
 function row(overrides: Partial<ElizaAgentRow>): ElizaAgentRow {
@@ -318,7 +324,19 @@ describe("ElizaAgentsTable per-row view model", () => {
 
     render(
       <QueryClientProvider client={queryClient}>
-        <ElizaAgentsTable sandboxes={[row({ status: "running" })]} />
+        <ElizaAgentsTable
+          sandboxes={[
+            row({
+              status: "running",
+              hosting_cost: {
+                pricingState: "known",
+                rateClass: "running",
+                hourlyRateUsd: 0.02,
+                monthlyEstimateUsd: 14.4,
+              },
+            }),
+          ]}
+        />
       </QueryClientProvider>,
     );
 
@@ -337,10 +355,54 @@ describe("ElizaAgentsTable per-row view model", () => {
     expect(
       within(dialog).getByText(/requires available credits/i),
     ).toBeTruthy();
+    expect(dialog.textContent).toContain("$0.02/hr");
+    expect(dialog.textContent).not.toContain("$0.01/hr");
 
     // Cancel is a real exit: no job fired, dialog gone.
     await user.click(within(dialog).getByRole("button", { name: "Cancel" }));
     expect(screen.queryByRole("alertdialog")).toBeNull();
+  });
+
+  it("keeps deactivation available without inventing a rate when pricing is unavailable", async () => {
+    const user = userEvent.setup();
+    const queryClient = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false },
+        mutations: { retry: false },
+      },
+    });
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <ElizaAgentsTable
+          sandboxes={[
+            row({
+              status: "running",
+              hosting_cost: {
+                pricingState: "unavailable",
+                rateClass: "unavailable",
+                hourlyRateUsd: null,
+                monthlyEstimateUsd: null,
+              },
+            }),
+          ]}
+        />
+      </QueryClientProvider>,
+    );
+
+    const [deactivate] = screen.getAllByRole("button", {
+      name: "Deactivate agent",
+    });
+    await user.click(deactivate);
+
+    const dialog = await screen.findByRole("alertdialog");
+    expect(
+      within(dialog).getByText(/current hosting price is unavailable/i),
+    ).toBeTruthy();
+    expect(
+      within(dialog).getByRole("button", { name: "Yes, deactivate" }),
+    ).toBeTruthy();
+    expect(dialog.textContent).not.toContain("$");
   });
 
   it("keeps the empty Agents page connected to the Eliza app create flow", () => {
