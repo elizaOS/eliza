@@ -25,6 +25,12 @@ import { isBlueBubblesWebhookAuthorized } from "./webhook-auth.js";
 const BLUEBUBBLES_SERVICE_NAME = "bluebubbles";
 const DEFAULT_WEBHOOK_PATH = "/webhooks/bluebubbles";
 
+function parsePaginationValue(raw: string | null, fallback: number): number {
+	if (raw === null || !/^-?\d+$/.test(raw.trim())) return fallback;
+	const parsed = Number(raw);
+	return Number.isSafeInteger(parsed) ? parsed : fallback;
+}
+
 type BlueBubblesWebhookPayload = {
 	type: string;
 	data: Record<string, unknown>;
@@ -86,15 +92,12 @@ async function handleChats(
 	}
 	const url = new URL(req.url ?? "/api/bluebubbles/chats", "http://localhost");
 	const limit = Math.min(
-		Math.max(
-			1,
-			Number.parseInt(url.searchParams.get("limit") ?? "100", 10) || 100,
-		),
+		Math.max(1, parsePaginationValue(url.searchParams.get("limit"), 100)),
 		500,
 	);
 	const offset = Math.max(
 		0,
-		Number.parseInt(url.searchParams.get("offset") ?? "0", 10) || 0,
+		parsePaginationValue(url.searchParams.get("offset"), 0),
 	);
 	try {
 		const chats = await client.listChats(limit, offset);
@@ -155,15 +158,12 @@ async function handleMessages(
 		return;
 	}
 	const limit = Math.min(
-		Math.max(
-			1,
-			Number.parseInt(url.searchParams.get("limit") ?? "50", 10) || 50,
-		),
+		Math.max(1, parsePaginationValue(url.searchParams.get("limit"), 50)),
 		500,
 	);
 	const offset = Math.max(
 		0,
-		Number.parseInt(url.searchParams.get("offset") ?? "0", 10) || 0,
+		parsePaginationValue(url.searchParams.get("offset"), 0),
 	);
 	try {
 		const messages = await client.getMessages(chatGuid, limit, offset);

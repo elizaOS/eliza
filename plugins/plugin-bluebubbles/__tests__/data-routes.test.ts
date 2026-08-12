@@ -93,6 +93,42 @@ describe("blueBubblesDataRoutes", () => {
 		});
 	});
 
+	it("ignores malformed pagination values instead of partially parsing them", async () => {
+		const client = {
+			listChats: vi.fn(async () => []),
+		};
+		const service = { getClient: vi.fn(() => client) };
+		const res = makeResponse();
+
+		await route("/api/bluebubbles/chats", "GET").handler(
+			{
+				url: "/api/bluebubbles/chats?limit=10oops&offset=4oops",
+			} as RouteRequest,
+			res,
+			makeRuntime(service),
+		);
+
+		expect(client.listChats).toHaveBeenCalledWith(100, 0);
+	});
+
+	it("ignores malformed pagination values for message listing", async () => {
+		const client = {
+			getMessages: vi.fn(async () => []),
+		};
+		const service = { getClient: vi.fn(() => client) };
+		const res = makeResponse();
+
+		await route("/api/bluebubbles/messages", "GET").handler(
+			{
+				url: "/api/bluebubbles/messages?chatGuid=chat-1&limit=20oops&offset=3oops",
+			} as RouteRequest,
+			res,
+			makeRuntime(service),
+		);
+
+		expect(client.getMessages).toHaveBeenCalledWith("chat-1", 50, 0);
+	});
+
 	it("rejects webhooks without the configured shared secret", async () => {
 		const service = {
 			handleWebhook: vi.fn(async () => undefined),
