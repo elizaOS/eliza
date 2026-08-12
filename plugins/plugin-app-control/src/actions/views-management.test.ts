@@ -3621,7 +3621,7 @@ describe("view management actions", () => {
 				method: "POST",
 				body: JSON.stringify({
 					capability: "delete-note",
-					params: { title: "current note titled GAUSS NOTES QA" },
+					params: { title: "GAUSS NOTES QA" },
 					timeoutMs: 5_000,
 					viewType: "gui",
 				}),
