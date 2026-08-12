@@ -387,8 +387,8 @@
     "@elizaos/capacitor-agent": "workspace:*",
     "@elizaos/capacitor-llama": "workspace:*",
     "llama-cpp-capacitor": "^0.1.5",
-    "react": "19.2.5",
-    "react-dom": "19.2.5"
+    "react": "19.2.7",
+    "react-dom": "19.2.7"
   },
   "peerDependenciesMeta": {
     "@capacitor-community/bluetooth-le": {
@@ -511,8 +511,8 @@
     "playwright": "^1.61.0",
     "pngjs": "^7.0.0",
     "postcss": "^8.5.16",
-    "react": "19.2.5",
-    "react-dom": "19.2.5",
+    "react": "19.2.7",
+    "react-dom": "19.2.7",
     "sharp": "^0.35.3",
     "storybook": "^10.0.0",
     "@typescript/native": "npm:typescript@^7.0.2",
