@@ -8,7 +8,13 @@
  * "60.0m" never render.
  */
 export function formatTrajectoryDuration(ms: number | null): string {
-  if (ms === null) return "—";
+  // Fail closed on non-finite or negative values, matching the sibling
+  // formatters in format.ts (formatDurationMs / formatByteSize) that treat
+  // anything not finite or negative — NaN, Infinity, -Infinity, -1 — as
+  // unavailable. Without this guard a corrupt/missing durationMs renders the
+  // browser garbage "NaNh" / "Infinityh" / "-1ms" instead of the designed
+  // placeholder.
+  if (ms === null || !Number.isFinite(ms) || ms < 0) return "—";
   if (ms < 1000) return `${ms}ms`;
   const seconds = ms / 1000;
   if (seconds < 60) {
@@ -36,7 +42,17 @@ export function formatTrajectoryTokenCount(
   count: number | undefined,
   options: { emptyLabel: string },
 ): string {
-  if (count === undefined || count === 0) return options.emptyLabel;
+  // Fail closed on non-finite or negative values: NaN / Infinity / negative
+  // counts render as emptyLabel rather than "NaNM" / "InfinityM". Aligns with
+  // the non-negative contract of formatByteSize in format.ts.
+  if (
+    count === undefined ||
+    count === 0 ||
+    !Number.isFinite(count) ||
+    count < 0
+  ) {
+    return options.emptyLabel;
+  }
   if (count < 1000) return String(count);
   const thousands = count / 1000;
   if (thousands < 1000) {
@@ -52,7 +68,12 @@ export function formatTrajectoryTimestamp(
   iso: string,
   mode: "smart" | "detailed",
 ): string {
+  // Fail closed on empty / unparseable timestamps, matching formatDateTime in
+  // format.ts: empty input or a non-finite parsed Date renders the placeholder
+  // instead of the browser's "Invalid Date" string.
+  if (iso == null || iso === "") return "—";
   const date = new Date(iso);
+  if (!Number.isFinite(date.getTime())) return "—";
 
   if (mode === "smart") {
     const now = new Date();

@@ -9135,3 +9135,160 @@ describe("snapshot hydration budgets (#16639)", () => {
     ).toThrow("file budget");
   });
 });
+
+describe("ElizaSandboxService.transferStateForRelocation", () => {
+  // A blue/green replacement moves the CONTAINER, not the state: agent volumes
+  // are host bind-mounts, so the pglite directory does not follow a container
+  // to another machine. The caller retires the source placement on the strength
+  // of this answer, so the contract is that `transferred: true` is reported
+  // only after a completed push — anything else is a move that did not happen.
+  const SOURCE_SNAPSHOT = {
+    memories: [{ id: "m1" }],
+    config: { agentName: "probe" },
+    workspaceFiles: {},
+    manifest: { version: 1, tables: ["memories"] },
+  };
+
+  function bridgeStub(opts: { snapshotStatus?: number; restoreStatus?: number; body?: unknown }) {
+    const calls: string[] = [];
+    globalThis.fetch = mock(async (input: RequestInfo | URL) => {
+      const url = fetchUrl(input);
+      calls.push(url);
+      if (url.endsWith("/api/snapshot")) {
+        const status = opts.snapshotStatus ?? 200;
+        if (status !== 200) return new Response("nope", { status });
+        return Response.json(opts.body ?? SOURCE_SNAPSHOT);
+      }
+      if (url.endsWith("/api/restore")) {
+        const status = opts.restoreStatus ?? 200;
+        if (status !== 200) return new Response("refused", { status });
+        return Response.json({ ok: true });
+      }
+      return Response.json({ ok: true });
+    });
+    return calls;
+  }
+
+  async function runTransfer(sandbox: AgentSandbox) {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    return (
+      new ElizaSandboxService() as unknown as {
+        transferStateForRelocation: (o: {
+          agentId: string;
+          orgId: string;
+          targetBridgeUrl: string;
+          authRec: Pick<AgentSandbox, "id" | "environment_vars">;
+        }) => Promise<{ transferred: boolean; reason?: string; detail?: string }>;
+      }
+    ).transferStateForRelocation({
+      agentId: sandbox.id,
+      orgId: sandbox.organization_id,
+      targetBridgeUrl: "https://blue.example",
+      authRec: sandbox,
+    });
+  }
+
+  test("an image with no snapshot endpoint is unrelocatable, and nothing is pushed", async () => {
+    const sandbox = customSandbox();
+    const findSpy = spyOn(agentSandboxesRepository, "findRunningSandbox").mockResolvedValue(
+      sandbox as never,
+    );
+    const calls = bridgeStub({ snapshotStatus: 404 });
+    try {
+      const outcome = await runTransfer(sandbox);
+      expect(outcome.transferred).toBe(false);
+      expect(outcome.reason).toBe("capture-unsupported");
+      // The decisive assertion: the replacement was never given a state, so a
+      // caller that retired the source here would destroy the only copy.
+      expect(calls.some((u) => u.endsWith("/api/restore"))).toBe(false);
+    } finally {
+      findSpy.mockRestore();
+    }
+  });
+
+  test("a capture without a full manifest is refused before anything is pushed", async () => {
+    const sandbox = customSandbox();
+    const findSpy = spyOn(agentSandboxesRepository, "findRunningSandbox").mockResolvedValue(
+      sandbox as never,
+    );
+    // Same shape minus the manifest: a partial capture would survive as silent
+    // data loss once the source container is destroyed.
+    const calls = bridgeStub({ body: { ...SOURCE_SNAPSHOT, manifest: undefined } });
+    try {
+      const outcome = await runTransfer(sandbox);
+      expect(outcome.transferred).toBe(false);
+      expect(outcome.reason).toBe("capture-failed");
+      expect(outcome.detail).toContain("manifest");
+      expect(calls.some((u) => u.endsWith("/api/restore"))).toBe(false);
+    } finally {
+      findSpy.mockRestore();
+    }
+  });
+
+  test("a refused restore is never reported as transferred", async () => {
+    const sandbox = customSandbox();
+    const findSpy = spyOn(agentSandboxesRepository, "findRunningSandbox").mockResolvedValue(
+      sandbox as never,
+    );
+    const backupSpy = spyOn(agentSandboxesRepository, "createBackup").mockResolvedValue({
+      id: "backup-1",
+      size_bytes: 4096,
+    } as never);
+    const stateSpy = spyOn(
+      agentSandboxesRepository,
+      "getReconstructedBackupState",
+    ).mockResolvedValue(SOURCE_SNAPSHOT as never);
+    const updateSpy = spyOn(agentSandboxesRepository, "update").mockResolvedValue(null as never);
+    const pruneSpy = spyOn(agentSandboxesRepository, "pruneBackups").mockResolvedValue(
+      undefined as never,
+    );
+    // No parent chain: forces a full backup, which is the shape a relocation
+    // must carry anyway.
+    const latestSpy = spyOn(agentSandboxesRepository, "getLatestBackup").mockResolvedValue(
+      undefined as never,
+    );
+    bridgeStub({ restoreStatus: 500 });
+    try {
+      const outcome = await runTransfer(sandbox);
+      expect(outcome.transferred).toBe(false);
+      expect(outcome.reason).toBe("push-failed");
+    } finally {
+      for (const s of [findSpy, backupSpy, stateSpy, updateSpy, pruneSpy, latestSpy])
+        s.mockRestore();
+    }
+  });
+
+  test("reports transferred only after the restore actually completed", async () => {
+    const sandbox = customSandbox();
+    const findSpy = spyOn(agentSandboxesRepository, "findRunningSandbox").mockResolvedValue(
+      sandbox as never,
+    );
+    const backupSpy = spyOn(agentSandboxesRepository, "createBackup").mockResolvedValue({
+      id: "backup-1",
+      size_bytes: 4096,
+    } as never);
+    const stateSpy = spyOn(
+      agentSandboxesRepository,
+      "getReconstructedBackupState",
+    ).mockResolvedValue(SOURCE_SNAPSHOT as never);
+    const updateSpy = spyOn(agentSandboxesRepository, "update").mockResolvedValue(null as never);
+    const pruneSpy = spyOn(agentSandboxesRepository, "pruneBackups").mockResolvedValue(
+      undefined as never,
+    );
+    // No parent chain: forces a full backup, which is the shape a relocation
+    // must carry anyway.
+    const latestSpy = spyOn(agentSandboxesRepository, "getLatestBackup").mockResolvedValue(
+      undefined as never,
+    );
+    const calls = bridgeStub({});
+    try {
+      const outcome = await runTransfer(sandbox);
+      expect(outcome.transferred).toBe(true);
+      expect(calls.some((u) => u.endsWith("/api/snapshot"))).toBe(true);
+      expect(calls.some((u) => u.endsWith("/api/restore"))).toBe(true);
+    } finally {
+      for (const s of [findSpy, backupSpy, stateSpy, updateSpy, pruneSpy, latestSpy])
+        s.mockRestore();
+    }
+  });
+});

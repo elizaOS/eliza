@@ -1,3 +1,8 @@
+/**
+ * Local device-e2e host-agent process helper. Chooses an exclusive API port,
+ * spawns the real local agent (or a caller-supplied command), waits for health,
+ * and returns a stop handle used by iOS/Android device lanes.
+ */
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import net from "node:net";
@@ -6,10 +11,10 @@ import path from "node:path";
 export const DEFAULT_HOST_AGENT_PORT = 31338;
 export const DEFAULT_HOST_AGENT_HOST = "127.0.0.1";
 export const DEFAULT_HOST_AGENT_HEALTH_PATH = "/api/health";
+export const DEFAULT_READY_ATTEMPTS = 90;
+export const DEFAULT_READY_DELAY_MS = 2000;
 
 const SIGNALS = ["SIGINT", "SIGTERM", "SIGHUP"];
-const DEFAULT_READY_ATTEMPTS = 90;
-const DEFAULT_READY_DELAY_MS = 2000;
 
 export function parsePort(value, label = "port") {
   const raw = String(value ?? "").trim();
@@ -21,6 +26,68 @@ export function parsePort(value, label = "port") {
     throw new Error(`Invalid ${label}: ${value}`);
   }
   return port;
+}
+
+/**
+ * Parses a non-negative safe integer from a string or number. Rejects partial
+ * numeric strings (`10abc`), fractions, negatives, and empty values so readiness
+ * knobs cannot silently become NaN/truncated via `Number.parseInt`.
+ */
+export function parseNonNegativeSafeInteger(value, label) {
+  if (typeof value === "number") {
+    if (!Number.isSafeInteger(value) || value < 0) {
+      throw new Error(`Invalid ${label}: ${value}`);
+    }
+    return value;
+  }
+  const raw = String(value ?? "").trim();
+  if (!/^\d+$/.test(raw)) {
+    throw new Error(`Invalid ${label}: ${value}`);
+  }
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isSafeInteger(parsed) || parsed < 0) {
+    throw new Error(`Invalid ${label}: ${value}`);
+  }
+  return parsed;
+}
+
+/** Like parseNonNegativeSafeInteger but requires a positive value (>= 1). */
+export function parsePositiveSafeInteger(value, label) {
+  const parsed = parseNonNegativeSafeInteger(value, label);
+  if (parsed < 1) {
+    throw new Error(`Invalid ${label}: ${value}`);
+  }
+  return parsed;
+}
+
+/**
+ * Resolve readiness knobs from explicit options or env, failing closed on
+ * malformed values so a typo never becomes a zero-iteration health wait.
+ */
+export function resolveReadyOptions({
+  readyAttempts,
+  readyDelayMs,
+  env = process.env,
+} = {}) {
+  const attemptsSource =
+    readyAttempts ??
+    env.ELIZA_HOST_AGENT_READY_ATTEMPTS ??
+    DEFAULT_READY_ATTEMPTS;
+  const delaySource =
+    readyDelayMs ??
+    env.ELIZA_HOST_AGENT_READY_DELAY_MS ??
+    DEFAULT_READY_DELAY_MS;
+
+  return {
+    readyAttempts: parsePositiveSafeInteger(
+      attemptsSource,
+      "host-agent readyAttempts",
+    ),
+    readyDelayMs: parseNonNegativeSafeInteger(
+      delaySource,
+      "host-agent readyDelayMs",
+    ),
+  };
 }
 
 export function hostAgentApiBase(port, host = DEFAULT_HOST_AGENT_HOST) {
@@ -86,6 +153,7 @@ function tailFile(filePath, maxBytes = 12_000) {
       fs.closeSync(fd);
     }
   } catch {
+    // error-policy:J6 best-effort log tail for failure messages
     return "";
   }
 }
@@ -128,7 +196,7 @@ async function waitForHealth({
         return;
       }
     } catch {
-      // Retry until attempts are exhausted or the child exits.
+      // error-policy:J4 health probe retry until attempts exhausted or child exits
     }
 
     await sleep(delayMs);
@@ -151,16 +219,8 @@ export async function startDeviceE2eHostAgent({
   preferredPort = process.env.ELIZA_IOS_HOST_AGENT_PORT ??
     DEFAULT_HOST_AGENT_PORT,
   host = DEFAULT_HOST_AGENT_HOST,
-  readyAttempts = Number.parseInt(
-    process.env.ELIZA_HOST_AGENT_READY_ATTEMPTS ??
-      String(DEFAULT_READY_ATTEMPTS),
-    10,
-  ),
-  readyDelayMs = Number.parseInt(
-    process.env.ELIZA_HOST_AGENT_READY_DELAY_MS ??
-      String(DEFAULT_READY_DELAY_MS),
-    10,
-  ),
+  readyAttempts,
+  readyDelayMs,
   log = null,
   command = process.execPath,
   args = [
@@ -173,6 +233,16 @@ export async function startDeviceE2eHostAgent({
   if (!artifactDir) {
     throw new Error("startDeviceE2eHostAgent requires artifactDir.");
   }
+
+  // Validate before spawn so a bad env typo cannot start a child that is then
+  // immediately torn down after a zero-iteration readiness wait. Readiness
+  // knobs come from the parent process env (or explicit options), not the child
+  // spawn env bag.
+  const resolvedReady = resolveReadyOptions({
+    readyAttempts,
+    readyDelayMs,
+    env: process.env,
+  });
 
   const port = await chooseHostAgentPort({
     preferredPort,
@@ -211,7 +281,7 @@ export async function startDeviceE2eHostAgent({
         try {
           fs.closeSync(logFd);
         } catch {
-          // Already closed by the platform.
+          // error-policy:J6 log fd may already be closed by the platform
         }
         resolve();
       };
@@ -261,11 +331,12 @@ export async function startDeviceE2eHostAgent({
       child,
       getChildError: () => childError,
       logPath,
-      attempts: readyAttempts,
-      delayMs: readyDelayMs,
+      attempts: resolvedReady.readyAttempts,
+      delayMs: resolvedReady.readyDelayMs,
       log,
     });
   } catch (error) {
+    // error-policy:J2 stop child then rethrow readiness/spawn failure
     await stop();
     throw error;
   }

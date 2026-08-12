@@ -32,6 +32,8 @@ const smokeLanesE2eCommand =
   "bun run test:e2e --filter='^(?!.*packages/app\\)#test:e2e)'";
 
 const zeroKeyCondition = "needs.changes.outputs.zero_key == 'true'";
+const smokeLanesCoreBuildCondition =
+  "needs.changes.outputs.cloud == 'true' || needs.changes.outputs.zero_key == 'true'";
 
 function assertJobBrowserBootstrap(
   steps: WorkflowStep[],
@@ -77,6 +79,30 @@ function assertSmokeE2eBrowserBootstrap(source: string): void {
     install: smokeLanesBrowserInstallCommand,
     e2e: smokeLanesE2eCommand,
   });
+}
+
+function assertSmokeLanesCoreBootstrap(source: string): void {
+  const workflow = Bun.YAML.parse(source) as {
+    jobs?: { smoke_lanes?: { steps?: WorkflowStep[] } };
+  };
+  const steps = workflow.jobs?.smoke_lanes?.steps ?? [];
+  const buildIndex = steps.findIndex(
+    (step) =>
+      step.name === "Build core contract" && step.run === "bun run build:core",
+  );
+  const e2eIndex = steps.findIndex((step) => step.run === smokeLanesE2eCommand);
+
+  if (
+    buildIndex < 0 ||
+    steps[buildIndex]?.if !== smokeLanesCoreBuildCondition
+  ) {
+    throw new Error(
+      "Smoke lanes must build the core contract for cloud and zero-key work",
+    );
+  }
+  if (e2eIndex < 0 || buildIndex >= e2eIndex) {
+    throw new Error("Smoke lanes must build the core contract before E2E");
+  }
 }
 
 function collectYamlFiles(directory: string): string[] {
@@ -233,6 +259,25 @@ describe("GitHub action supply-chain references", () => {
       );
     expect(() => assertSmokeE2eBrowserBootstrap(afterE2e)).toThrow(
       "Smoke must install browsers before running E2E",
+    );
+  });
+
+  test("builds workspace contracts before unshardable smoke E2E", () => {
+    const source = readFileSync(
+      join(githubRoot, "workflows", "ci.yml"),
+      "utf8",
+    );
+
+    expect(() => assertSmokeLanesCoreBootstrap(source)).not.toThrow();
+    expect(() =>
+      assertSmokeLanesCoreBootstrap(
+        source.replace(
+          `        if: ${smokeLanesCoreBuildCondition}\n        run: bun run build:core`,
+          `        if: ${zeroKeyCondition}\n        run: bun run build:core`,
+        ),
+      ),
+    ).toThrow(
+      "Smoke lanes must build the core contract for cloud and zero-key work",
     );
   });
 

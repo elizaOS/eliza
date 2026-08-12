@@ -1,7 +1,8 @@
 /**
  * Unit coverage for the pending-permissions provider and its formatters:
  * formatPendingPermissionLine (denied / not-determined / restricted states with
- * relative timing and last-blocked-feature attribution),
+ * relative timing and last-blocked-feature attribution, including non-finite
+ * denied-age fail-closed lines from #18705),
  * buildPendingPermissionsContext (the PENDING PERMISSIONS section, empty when
  * nothing is pending), and pendingPermissionsProvider itself (silent when the
  * permissions registry is absent or empty, populated otherwise, registered at
@@ -94,6 +95,89 @@ describe("formatPendingPermissionLine", () => {
         NOW,
       ),
     ).toBe("- health: restricted (entitlement_required)");
+  });
+
+  it("omits relative age when lastBlockedFeature.at is non-finite (#18705)", () => {
+    const deniedWithAt = (at: number): PermissionState => ({
+      id: "reminders",
+      status: "denied",
+      lastChecked: NOW,
+      canRequest: false,
+      platform: "darwin",
+      lastBlockedFeature: {
+        app: "lifeops",
+        action: "reminders.create",
+        at,
+      },
+    });
+
+    for (const at of [
+      Number.NaN,
+      Number.POSITIVE_INFINITY,
+      Number.NEGATIVE_INFINITY,
+    ]) {
+      const line = formatPendingPermissionLine(deniedWithAt(at), NOW);
+      expect(line).toBe("- reminders: denied (lifeops.reminders.create)");
+      expect(line).not.toMatch(/NaN/i);
+    }
+  });
+
+  it("omits relative age when the clock argument is non-finite (#18705)", () => {
+    const line = formatPendingPermissionLine(
+      {
+        id: "reminders",
+        status: "denied",
+        lastChecked: NOW,
+        canRequest: false,
+        platform: "darwin",
+        lastBlockedFeature: {
+          app: "lifeops",
+          action: "reminders.create",
+          at: NOW - 60_000,
+        },
+      },
+      Number.NaN,
+    );
+    expect(line).toBe("- reminders: denied (lifeops.reminders.create)");
+    expect(line).not.toMatch(/NaN/i);
+  });
+
+  it("keeps finite minute and hour buckets for denied age", () => {
+    expect(
+      formatPendingPermissionLine(
+        {
+          id: "camera",
+          status: "denied",
+          lastChecked: NOW,
+          canRequest: false,
+          platform: "darwin",
+          lastBlockedFeature: {
+            app: "native",
+            action: "camera.open",
+            at: NOW - 5 * 60_000,
+          },
+        },
+        NOW,
+      ),
+    ).toBe("- camera: denied 5 minutes ago (native.camera.open)");
+
+    expect(
+      formatPendingPermissionLine(
+        {
+          id: "microphone",
+          status: "denied",
+          lastChecked: NOW,
+          canRequest: false,
+          platform: "darwin",
+          lastBlockedFeature: {
+            app: "native",
+            action: "mic.open",
+            at: NOW - 3 * 60 * 60_000,
+          },
+        },
+        NOW,
+      ),
+    ).toBe("- microphone: denied 3 hours ago (native.mic.open)");
   });
 });
 

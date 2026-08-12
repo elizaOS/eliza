@@ -1,0 +1,180 @@
+/**
+ * Unit tests for untrusted Notes boundary validators in validation.ts.
+ */
+
+import { describe, expect, it } from "vitest";
+import { NOTES_SCHEMA_VERSION } from "../types.js";
+import {
+  isRecord,
+  parseCreateNoteInput,
+  parseEntityId,
+  parseNoteContent,
+  parseNotesDocument,
+  parseStickyColor,
+  parseUpdateNoteInput,
+} from "../validation.js";
+
+describe("Notes boundary validation", () => {
+  describe("isRecord", () => {
+    it("identifies plain objects and rejects primitives or arrays", () => {
+      expect(isRecord({ key: "val" })).toBe(true);
+      expect(isRecord({})).toBe(true);
+      expect(isRecord(null)).toBe(false);
+      expect(isRecord([])).toBe(false);
+      expect(isRecord("string")).toBe(false);
+      expect(isRecord(123)).toBe(false);
+      expect(isRecord(undefined)).toBe(false);
+    });
+  });
+
+  describe("parseNoteContent", () => {
+    it("splits single-line content into title and empty body", () => {
+      const result = parseNoteContent("Simple Note Title");
+      expect(result).toEqual({
+        title: "Simple Note Title",
+        body: "",
+      });
+    });
+
+    it("splits multi-line content into first line title and remaining body", () => {
+      const result = parseNoteContent(
+        "Header Line\nFirst paragraph\nSecond paragraph",
+      );
+      expect(result).toEqual({
+        title: "Header Line",
+        body: "First paragraph\nSecond paragraph",
+      });
+    });
+
+    it("handles leading and trailing whitespace on lines cleanly", () => {
+      const result = parseNoteContent("   Padded Title   \n   Padded Body   ");
+      expect(result).toEqual({
+        title: "Padded Title",
+        body: "Padded Body",
+      });
+    });
+
+    it("rejects non-string or empty content", () => {
+      expect(() => parseNoteContent(123)).toThrow();
+      expect(() => parseNoteContent("   ")).toThrow();
+    });
+  });
+
+  describe("parseEntityId", () => {
+    it("accepts valid lowercase alphanumeric IDs", () => {
+      expect(parseEntityId("note-123")).toBe("note-123");
+      expect(parseEntityId("abc")).toBe("abc");
+    });
+
+    it("rejects invalid IDs (uppercase, symbols, starting with number)", () => {
+      expect(() => parseEntityId("123note")).toThrow();
+      expect(() => parseEntityId("Note-123")).toThrow();
+      expect(() => parseEntityId("ab")).toThrow();
+      expect(() => parseEntityId("note_123")).toThrow();
+    });
+  });
+
+  describe("parseStickyColor", () => {
+    it("accepts valid sticky colors", () => {
+      expect(parseStickyColor("yellow")).toBe("yellow");
+      expect(parseStickyColor("green")).toBe("green");
+      expect(parseStickyColor("rose")).toBe("rose");
+      expect(parseStickyColor("slate")).toBe("slate");
+    });
+
+    it("rejects unknown colors", () => {
+      expect(() => parseStickyColor("blue")).toThrow();
+      expect(() => parseStickyColor(123)).toThrow();
+    });
+  });
+
+  describe("parseCreateNoteInput", () => {
+    it("validates and defaults sticky color to yellow", () => {
+      const note = parseCreateNoteInput({ title: "Test Note" });
+      expect(note).toEqual({
+        title: "Test Note",
+        body: "",
+        color: "yellow",
+      });
+    });
+
+    it("accepts custom body and valid color", () => {
+      const note = parseCreateNoteInput({
+        title: "Task Note",
+        body: "Details here",
+        color: "rose",
+      });
+      expect(note).toEqual({
+        title: "Task Note",
+        body: "Details here",
+        color: "rose",
+      });
+    });
+
+    it("rejects extra unknown keys in create input", () => {
+      expect(() =>
+        parseCreateNoteInput({ title: "Test", unknownKey: true }),
+      ).toThrow();
+    });
+  });
+
+  describe("parseUpdateNoteInput", () => {
+    it("accepts valid partial patch", () => {
+      const patch = parseUpdateNoteInput({ title: "Updated Title" });
+      expect(patch).toEqual({ title: "Updated Title" });
+    });
+
+    it("rejects empty patch", () => {
+      expect(() => parseUpdateNoteInput({})).toThrow();
+    });
+  });
+
+  describe("parseNotesDocument", () => {
+    it("validates complete notes document structure", () => {
+      const validDoc = {
+        schemaVersion: NOTES_SCHEMA_VERSION,
+        revision: 1,
+        persistedAt: "2026-08-12T12:00:00.000Z",
+        notes: [
+          {
+            id: "note-001",
+            title: "First Note",
+            body: "Content",
+            color: "green",
+            createdAt: "2026-08-12T12:00:00.000Z",
+            updatedAt: "2026-08-12T12:00:00.000Z",
+          },
+        ],
+      };
+      const parsed = parseNotesDocument(validDoc);
+      expect(parsed).toEqual(validDoc);
+    });
+
+    it("rejects duplicate note IDs in document", () => {
+      const docWithDuplicates = {
+        schemaVersion: NOTES_SCHEMA_VERSION,
+        revision: 1,
+        persistedAt: "2026-08-12T12:00:00.000Z",
+        notes: [
+          {
+            id: "note-001",
+            title: "First Note",
+            body: "",
+            color: "yellow",
+            createdAt: "2026-08-12T12:00:00.000Z",
+            updatedAt: "2026-08-12T12:00:00.000Z",
+          },
+          {
+            id: "note-001",
+            title: "Duplicate Note",
+            body: "",
+            color: "slate",
+            createdAt: "2026-08-12T12:00:00.000Z",
+            updatedAt: "2026-08-12T12:00:00.000Z",
+          },
+        ],
+      };
+      expect(() => parseNotesDocument(docWithDuplicates)).toThrow();
+    });
+  });
+});

@@ -17,14 +17,18 @@ import { makeCronHandler } from "@/lib/cron/cloudflare-cron";
 import type { AppEnv } from "@/types/cloud-worker-env";
 import { serveBlobHostRequest } from "./blob-host";
 import { serveRegistryHostRequest } from "./registry-host";
+import { isThinStewardPublicPath } from "./steward/public-paths";
 
 export { AnonymousChatGate } from "./anonymous-chat-gate";
 export { InferenceAdmissionGate } from "./inference-admission-gate";
 export { OnboardingSessionCoordinator } from "./onboarding-session-coordinator";
 export { SharedRuntimeConversation } from "./shared-runtime-conversation";
+export { isThinStewardPublicPath } from "./steward/public-paths";
 
 let appPromise: Promise<Hono<AppEnv>> | undefined;
 const inferenceAppPromises = new Map<string, Promise<Hono<AppEnv>>>();
+/** Lazy thin shell for login-critical Steward GETs (#18049). */
+let stewardThinAppPromise: Promise<Hono<AppEnv>> | undefined;
 
 const STAGING_SESSION_UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -159,6 +163,51 @@ type AgentDomainBindings = Pick<
 async function getApp(): Promise<Hono<AppEnv>> {
   appPromise ??= import("./bootstrap-app").then((m) => m.createApp());
   return appPromise;
+}
+
+async function getStewardThinApp(): Promise<Hono<AppEnv>> {
+  stewardThinAppPromise ??= import("./steward/thin-app").then((m) =>
+    m.createStewardThinApp(),
+  );
+  return stewardThinAppPromise;
+}
+
+async function dispatchThinSteward(
+  request: Request,
+  env: AppEnv["Bindings"],
+  ctx: ExecutionContext,
+): Promise<Response | null> {
+  const method = request.method.toUpperCase();
+  if (method !== "GET" && method !== "HEAD" && method !== "OPTIONS") {
+    return null;
+  }
+  const pathname = new URL(request.url).pathname;
+  if (!isThinStewardPublicPath(pathname)) return null;
+
+  const dispatchStartedAt = performance.now();
+  const moduleWasInitialized = stewardThinAppPromise !== undefined;
+  const app = await getStewardThinApp();
+  const moduleInitMs = performance.now() - dispatchStartedAt;
+  const response = await app.fetch(request, env, ctx);
+  const dispatchMs = performance.now() - dispatchStartedAt;
+
+  const headers = new Headers(response.headers);
+  headers.set("X-Eliza-Steward-Path", "thin");
+  headers.append(
+    "Server-Timing",
+    `entry_dispatch;dur=${dispatchMs.toFixed(1)}`,
+  );
+  if (!moduleWasInitialized) {
+    headers.append(
+      "Server-Timing",
+      `steward_module_init;dur=${moduleInitMs.toFixed(1)}`,
+    );
+  }
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
 }
 
 async function getInferenceApp(
@@ -499,6 +548,12 @@ export default {
         frontendAliasApiTarget.toString(),
         createFrontendAliasProxyInit(request, url),
       );
+      const stewardThinResponse = await dispatchThinSteward(
+        apiRequest,
+        env,
+        ctx,
+      );
+      if (stewardThinResponse) return stewardThinResponse;
       const inferenceResponse = await dispatchInference(apiRequest, env, ctx);
       if (inferenceResponse) return inferenceResponse;
       return (await getApp()).fetch(apiRequest, env, ctx);
@@ -527,6 +582,10 @@ export default {
     if (url.pathname === "/api/health") {
       return healthResponse(env);
     }
+
+    // Login-critical Steward GETs before full-app bootstrap (#18049).
+    const stewardThinResponse = await dispatchThinSteward(request, env, ctx);
+    if (stewardThinResponse) return stewardThinResponse;
 
     const inferenceResponse = await dispatchInference(request, env, ctx);
     if (inferenceResponse) return inferenceResponse;
