@@ -662,7 +662,9 @@ export default function StewardLoginSection() {
       message.includes("no passkey") ||
       message.includes("credential not found") ||
       message.includes("passkey not found") ||
-      message.includes("404")
+      message.includes("404") ||
+      message.includes("401") ||
+      message.includes("authentication required")
     );
   }
 
