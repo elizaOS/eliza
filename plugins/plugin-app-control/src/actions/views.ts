@@ -795,72 +795,38 @@ const OPERATION_TOKEN_FAMILIES: Record<OperationFamily, Set<string>> = {
 };
 
 /**
- * Tokens that negate or condition a subsequent destructive verb. When any of
- * these precede a delete-family token within a short window, the destructive
- * token is treated as negated/conditional, not as affirmative authority.
+ * Genuine negation tokens for a subsequent destructive verb. When one of
+ * these immediately precedes a delete-family token (within a three-token
+ * window), the destructive token is treated as negated, not as affirmative
+ * authority. Apostrophes are stripped before tokenization, so "don't"
+ * arrives here as "dont".
  *
- * This is a structural safeguard, not a full NLU pipeline — it catches the
- * common English negation/conditional patterns NubsCarson identified as
- * false-green risks. Non-English input is handled by fail-closed logic in
- * the correction function, not by this list.
+ * Deliberately narrow: modal/conditional words ("could", "would", "when")
+ * are NOT negation — they appear in polite imperatives ("Could you delete
+ * note X") that must still execute. Semantic disambiguation beyond simple
+ * adjacent negation belongs to the LLM planner, not this lexical guard.
  */
-const NEGATION_TOKENS = new Set([
-	"not",
-	"don't",
-	"dont",
-	"never",
-	"without",
-	"no",
-	"instead",
-	"rather",
-	"cancel",
-	"undo",
-	"abort",
-]);
-
-const CONDITIONAL_TOKENS = new Set([
-	"if",
-	"when",
-	"should",
-	"might",
-	"may",
-	"could",
-	"would",
-	"unless",
-	"whether",
-	"after",
-]);
+const NEGATION_TOKENS = new Set(["not", "dont", "never"]);
 
 /**
- * Returns true when a destructive-family token appears within a negation or
- * conditional context. Negation uses a ±3 token window (covers "do not
- * delete"). Conditionals are checked across the entire message up to the
- * destructive token, since conditional clauses ("if X then ... delete")
- * can span many words.
+ * Returns true when a destructive-family token is preceded by a genuine
+ * negation token within a three-token window (covers "not delete",
+ * "don't remove", "never destroy", "do not ever delete").
  *
  * The token array is the already-split, normalized request text. This only
  * fires for destructive tokens because the asymmetric risk (silent data
  * loss) justifies special-case handling. Read/update/create families are
  * unaffected.
  */
-function isDestructiveTokenNegatedOrConditional(
+function isDestructiveTokenNegated(
 	tokens: string[],
 	destructiveTokenSet: Set<string>,
 ): boolean {
 	const negationWindow = 3;
 	for (let i = 0; i < tokens.length; i++) {
 		if (!destructiveTokenSet.has(tokens[i])) continue;
-		// Negation: short window — "not delete", "don't remove", "never destroy"
 		for (let j = Math.max(0, i - negationWindow); j < i; j++) {
 			if (NEGATION_TOKENS.has(tokens[j])) {
-				return true;
-			}
-		}
-		// Conditional: full backward scan — "if X ... then delete",
-		// "when X ... delete", "should ... delete". Conditionals introduce
-		// a clause that can span many words.
-		for (let j = 0; j < i; j++) {
-			if (CONDITIONAL_TOKENS.has(tokens[j])) {
 				return true;
 			}
 		}
@@ -1179,11 +1145,10 @@ function resolveViewCapability({
 }
 
 /**
- * Result of the destructive-authority gate. The correction path can either
- * return a corrected capability or — when a destructive capability would be
- * authorized on insufficient evidence — return a rejection so the caller
- * can refuse the request rather than silently execute a data-destroying
- * action.
+ * Result of the capability correction path. It either returns a (possibly
+ * corrected) capability or — when the request lexically negates the
+ * destructive verb the planner selected ("do not delete X") — returns a
+ * rejection so the caller refuses rather than silently destroying data.
  */
 type CapabilityCorrection =
 	| { kind: "capability"; capability: ViewCapability }
@@ -1194,7 +1159,9 @@ function correctCapabilityOperationFamily(
 	capability: ViewCapability,
 	text: string,
 ): CapabilityCorrection {
-	const requestText = viewRequestText(text);
+	// Strip apostrophes before normalization so "don't" tokenizes as "dont"
+	// instead of splitting into meaningless "don" / "t" fragments.
+	const requestText = viewRequestText(text).replace(/['‘’]/g, "");
 	const normalizedRequest = normalizeCapabilityKey(requestText);
 	const requestTokenArray = normalizedRequest.split(" ").filter(Boolean);
 	const requestTokens = new Set(requestTokenArray);
@@ -1202,39 +1169,25 @@ function correctCapabilityOperationFamily(
 	const selectedFamily = operationFamilyForCapability(capability);
 	const selectedIsDestructive = selectedFamily === "delete";
 
-	// Destructive-authority gate: verify that the request structurally
-	// authorizes a destructive capability before preserving or correcting
-	// to one. This prevents negated ("do not delete"), conditional ("if X
-	// then delete"), unsupported-language (no family detected), or ambiguous
-	// requests from carrying or escalating into a destructive action.
-	if (selectedIsDestructive) {
-		// Fail-closed for unsupported languages: if no operation family at
-		// all was detected from the request tokens, the input is likely
-		// non-English or otherwise outside this function's lexical scope.
-		// A destructive planner selection must not be silently trusted.
-		if (requestedFamilies.size === 0) {
-			return {
-				kind: "reject",
-				reason:
-					"destructive capability selected but no operation family detected in the request — possible unsupported language or ambiguous intent; refusing to execute without affirmative authority",
-			};
-		}
-
-		// Negation/conditional gate: if a destructive token appears within
-		// a negation or conditional window, it does not constitute
-		// affirmative authority for the destructive capability.
-		if (
-			isDestructiveTokenNegatedOrConditional(
-				requestTokenArray,
-				OPERATION_TOKEN_FAMILIES.delete,
-			)
-		) {
-			return {
-				kind: "reject",
-				reason:
-					"destructive token is negated or conditional in the request — cannot confirm affirmative authority for destructive capability",
-			};
-		}
+	// Negation gate: an explicitly negated destructive verb ("do not
+	// delete", "never remove") is not affirmative authority for the
+	// destructive capability the planner selected. This is deliberately the
+	// ONLY lexical veto over the planner: broader guesses (conditionals,
+	// requests with no recognizable English verbs) stay with the planner,
+	// which is the semantic authority — otherwise polite imperatives
+	// ("Could you delete note X") and non-English requests would be broken.
+	if (
+		selectedIsDestructive &&
+		isDestructiveTokenNegated(
+			requestTokenArray,
+			OPERATION_TOKEN_FAMILIES.delete,
+		)
+	) {
+		return {
+			kind: "reject",
+			reason:
+				"the destructive verb is negated in the request — cannot confirm affirmative authority for a destructive capability",
+		};
 	}
 
 	// Preserve the planner's explicit selection when its family has any

@@ -3507,11 +3507,13 @@ describe("view management actions", () => {
 		);
 	});
 
-	// ── Adversarial zero-mutation coverage (#18386 P1) ──────────────
-	// These tests prove the destructive-authority gate catches the cases
-	// NubsCarson identified: negation, conditional, unsupported-language
-	// fail-closed, and read→delete escalation. Each must assert zero
-	// fetch (no mutation request sent) and unchanged state.
+	// ── Negation gate + planner-authority coverage (#18386 P1) ──────
+	// The lexical veto over the planner is deliberately narrow: only a
+	// genuinely negated destructive verb ("do not delete", "never
+	// delete") is refused, with zero fetch/mutation. Polite imperatives
+	// ("Could you delete note X") and non-English requests keep the
+	// planner's explicit selection — the planner is the semantic
+	// authority. Read→delete lexical escalation stays prohibited.
 	// ────────────────────────────────────────────────────────────────
 
 	it("rejects negated destructive request with zero fetch/mutation (#18386 P1)", async () => {
@@ -3568,7 +3570,11 @@ describe("view management actions", () => {
 		expect(globalThis.fetch).not.toHaveBeenCalled();
 	});
 
-	it("rejects conditional destructive request with zero fetch/mutation (#18386 P1)", async () => {
+	it("executes a polite-imperative delete ('Could you delete note X') without refusal (#18386 P1)", async () => {
+		// Modal/conditional words ("could", "would", "when") are NOT
+		// negation — a polite imperative is an affirmative delete request.
+		// The earlier full-backward conditional scan refused these; the
+		// narrowed gate must let the planner's explicit selection execute.
 		const { runtime } = createRuntime();
 		const callback = vi.fn();
 		const action = createViewsAction({
@@ -3606,23 +3612,39 @@ describe("view management actions", () => {
 			},
 			hasOwnerAccess: vi.fn(async () => true),
 		});
+		vi.mocked(globalThis.fetch).mockResolvedValueOnce({
+			ok: true,
+			status: 200,
+			json: async () => ({
+				success: true,
+				result: { success: true, text: "Deleted." },
+			}),
+		} as Response);
 
-		// "if X then delete" — the conditional must prevent destructive authority.
 		const result = await action.handler(
 			runtime as never,
-			message("If the note is empty then delete note titled X") as never,
+			message("Could you delete note X") as never,
 			undefined,
 			{ action: "interact", view: "notes", capability: "delete-note" },
 			callback,
 		);
 
-		expect(result?.success).toBe(false);
-		expect(result?.text).toContain("Refusing destructive capability");
-		// Zero fetch — no mutation request was sent.
-		expect(globalThis.fetch).not.toHaveBeenCalled();
+		expect(result?.success).toBe(true);
+		expect(globalThis.fetch).toHaveBeenCalledWith(
+			"http://127.0.0.1:3456/api/views/notes/interact?viewType=gui",
+			expect.objectContaining({
+				method: "POST",
+				body: expect.stringContaining('"capability":"delete-note"'),
+			}),
+		);
 	});
 
-	it("rejects destructive capability with unsupported-language (no family detected) input — fail-closed (#18386 P1)", async () => {
+	it("preserves the planner's explicit delete selection for non-English input (#18386 P1)", async () => {
+		// Non-English input yields no lexical operation-family tokens. The
+		// LLM planner already understood the request and explicitly selected
+		// delete-note; the lexical layer has no evidence to override it, so
+		// the selection executes. (An earlier fail-closed rejection here
+		// broke every non-English delete request.)
 		const { runtime } = createRuntime();
 		const callback = vi.fn();
 		const action = createViewsAction({
@@ -3661,19 +3683,32 @@ describe("view management actions", () => {
 			hasOwnerAccess: vi.fn(async () => true),
 		});
 
-		// Non-English input that doesn't match any operation family token.
-		// A destructive capability must fail-closed, not be silently trusted.
+		vi.mocked(globalThis.fetch).mockResolvedValueOnce({
+			ok: true,
+			status: 200,
+			json: async () => ({
+				success: true,
+				result: { success: true, text: "Deleted." },
+			}),
+		} as Response);
+
+		// "Please delete note X" in Japanese — no English family tokens.
 		const result = await action.handler(
 			runtime as never,
-			message("削除しないでください") as never,
+			message("メモXを削除してください") as never,
 			undefined,
 			{ action: "interact", view: "notes", capability: "delete-note" },
 			callback,
 		);
 
-		expect(result?.success).toBe(false);
-		expect(result?.text).toContain("no operation family detected");
-		expect(globalThis.fetch).not.toHaveBeenCalled();
+		expect(result?.success).toBe(true);
+		expect(globalThis.fetch).toHaveBeenCalledWith(
+			"http://127.0.0.1:3456/api/views/notes/interact?viewType=gui",
+			expect.objectContaining({
+				method: "POST",
+				body: expect.stringContaining('"capability":"delete-note"'),
+			}),
+		);
 	});
 
 	it("never lexically escalates read→delete from read-family + incidental delete wording (#18386 P1)", async () => {
@@ -3803,6 +3838,20 @@ describe("view management actions", () => {
 
 		expect(result?.success).toBe(false);
 		expect(result?.text).toContain("Refusing destructive capability");
+		expect(globalThis.fetch).not.toHaveBeenCalled();
+
+		// Contracted negation: "don't delete" tokenizes as "dont" after
+		// apostrophe stripping and must also refuse with zero mutation.
+		const contracted = await action.handler(
+			runtime as never,
+			message("Show the note, don't delete it") as never,
+			undefined,
+			{ action: "interact", view: "notes", capability: "delete-note" },
+			callback,
+		);
+
+		expect(contracted?.success).toBe(false);
+		expect(contracted?.text).toContain("Refusing destructive capability");
 		expect(globalThis.fetch).not.toHaveBeenCalled();
 	});
 
