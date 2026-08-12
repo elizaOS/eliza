@@ -5,7 +5,38 @@
  */
 import type { IAgentRuntime, Memory, State } from "@elizaos/core";
 import { vi } from "vitest";
-import type { SessionInfo } from "../services/types.js";
+import type {
+  AcpSessionMutationResult,
+  SessionInfo,
+} from "../services/types.js";
+
+export function sessionMutation(
+  sessionId: string,
+  operation: "stop" | "cancel",
+): AcpSessionMutationResult {
+  const committedAt = "2026-05-03T10:00:00.000Z";
+  return operation === "stop"
+    ? {
+        sessionId,
+        receipt: {
+          operation,
+          authority: "session_store",
+          receiptId: `session-store:stop:${sessionId}:1`,
+          committedAt,
+          status: "stopped",
+        },
+      }
+    : {
+        sessionId,
+        receipt: {
+          operation,
+          authority: "session_store",
+          receiptId: `session-store:cancel:${sessionId}:1`,
+          committedAt,
+          status: "cancelled",
+        },
+      };
+}
 
 export function session(overrides: Partial<SessionInfo> = {}): SessionInfo {
   const now = new Date("2026-05-03T10:00:00.000Z");
@@ -79,26 +110,8 @@ export function serviceMock(overrides: Record<string, unknown> = {}) {
       },
     })),
     sendKeysToSession: vi.fn(async () => undefined),
-    stopSession: vi.fn(async (sid: string) => ({
-      sessionId: sid,
-      receipt: {
-        operation: "stop" as const,
-        authority: "session_store" as const,
-        receiptId: `session-store:stop:${sid}:1`,
-        committedAt: "2026-05-03T10:00:00.000Z",
-        status: "stopped" as const,
-      },
-    })),
-    cancelSession: vi.fn(async (sid: string) => ({
-      sessionId: sid,
-      receipt: {
-        operation: "cancel" as const,
-        authority: "session_store" as const,
-        receiptId: `session-store:cancel:${sid}:1`,
-        committedAt: "2026-05-03T10:00:00.000Z",
-        status: "cancelled" as const,
-      },
-    })),
+    stopSession: vi.fn(async (sid: string) => sessionMutation(sid, "stop")),
+    cancelSession: vi.fn(async (sid: string) => sessionMutation(sid, "cancel")),
     listSessions: vi.fn(() => [s]),
     getSession: vi.fn((id: string) => (id === s.id ? s : undefined)),
     resolveAgentType: vi.fn(async () => "codex"),

@@ -11,6 +11,7 @@ import {
   runtimeWith,
   serviceMock,
   session,
+  sessionMutation,
   state,
 } from "../../src/test-utils/action-test-utils.js";
 
@@ -66,31 +67,9 @@ describe("TASKS:stop_agent", () => {
       ],
     });
   });
-  it("fails an all-session stop closed when any child receipt is missing", async () => {
-    const sessions = [
-      session({ id: "session-one" }),
-      session({ id: "session-two" }),
-    ];
-    const svc = serviceMock({
-      listSessions: vi.fn(() => sessions),
-      stopSession: vi.fn(async (sessionId: string) =>
-        sessionId === "session-one"
-          ? {
-              sessionId,
-              receipt: {
-                operation: "stop",
-                authority: "session_store",
-                receiptId: "session-store:stop:session-one:1",
-                committedAt: "2026-05-03T10:00:00.000Z",
-                status: "stopped",
-              },
-            }
-          : undefined,
-      ),
-    });
-
+  it("treats an empty all-session stop as a proved no-op", async () => {
     const result = await stopAgentAction.handler(
-      runtimeWith(svc),
+      runtimeWith(serviceMock({ listSessions: vi.fn(() => []) })),
       memory({ all: true }),
       state,
       stopOptions,
@@ -98,19 +77,107 @@ describe("TASKS:stop_agent", () => {
     );
 
     expect(result).toMatchObject({
+      success: true,
+      data: {
+        stoppedCount: 0,
+        stoppedSessions: [],
+        appliedSessionIds: [],
+        failedSessionIds: [],
+      },
+      effectReceipts: [{ outcome: "noop" }],
+    });
+  });
+  it("preserves mixed all-session stop effects after every child settles", async () => {
+    const sessions = [
+      session({ id: "session-one" }),
+      session({ id: "session-two" }),
+      session({ id: "session-three" }),
+    ];
+    const first = Promise.withResolvers<ReturnType<typeof sessionMutation>>();
+    const third = Promise.withResolvers<ReturnType<typeof sessionMutation>>();
+    const attempted: string[] = [];
+    const svc = serviceMock({
+      listSessions: vi.fn(() => sessions),
+      stopSession: vi.fn((sessionId: string) => {
+        attempted.push(sessionId);
+        if (sessionId === "session-one") return first.promise;
+        if (sessionId === "session-two") {
+          return Promise.reject(new Error("private stop transport detail"));
+        }
+        return third.promise;
+      }),
+    });
+    const delivered = callback();
+
+    const pending = stopAgentAction.handler(
+      runtimeWith(svc),
+      memory({ all: true }),
+      state,
+      stopOptions,
+      delivered,
+    );
+    await vi.waitFor(() =>
+      expect(attempted).toEqual(sessions.map(({ id }) => id)),
+    );
+    third.resolve(sessionMutation("session-three", "stop"));
+    await Promise.resolve();
+    first.resolve(sessionMutation("session-one", "stop"));
+    const result = await pending;
+
+    expect(result).toMatchObject({
       success: false,
-      error: "AUTHORITATIVE_RECEIPT_MISSING",
-      data: { outcomeUnknown: true, reconciliationRequired: true },
+      error: "ACP_BATCH_PARTIAL_EFFECT",
+      text: expect.stringContaining("remaining session outcomes are unknown"),
+      data: {
+        stoppedCount: 2,
+        stoppedSessions: ["session-one", "session-three"],
+        appliedSessionIds: ["session-one", "session-three"],
+        failedSessionIds: ["session-two"],
+        mutationFailures: [
+          {
+            sessionId: "session-two",
+            code: "ACP_SESSION_MUTATION_REJECTED",
+            acceptance: "unknown",
+            retryable: false,
+          },
+        ],
+        outcomeUnknown: true,
+        reconciliationRequired: true,
+        retryable: false,
+      },
       effectReceipts: [
         {
           outcome: "failed",
-          failure: { acceptance: "unknown", retryable: false },
+          resource: { kind: "acp.session", id: "session-one" },
+          artifacts: expect.arrayContaining([
+            { kind: "acp.session", id: "session-three" },
+            {
+              kind: "acp.session-mutation-receipt",
+              id: "session-store:stop:session-one:1",
+            },
+            {
+              kind: "acp.session-mutation-receipt",
+              id: "session-store:stop:session-three:1",
+            },
+          ]),
+          failure: {
+            code: "ACP_BATCH_PARTIAL_EFFECT",
+            acceptance: "unknown",
+            retryable: false,
+          },
         },
       ],
     });
+    expect(svc.stopSession).toHaveBeenCalledTimes(3);
     expect(
       result?.effectReceipts?.some((receipt) => receipt.outcome === "applied"),
     ).toBe(false);
+    expect(JSON.stringify(result)).not.toContain(
+      "private stop transport detail",
+    );
+    expect(JSON.stringify(delivered.mock.calls)).not.toContain(
+      "private stop transport detail",
+    );
   });
   it("reports SERVICE_UNAVAILABLE when ACP is missing", async () => {
     expect(

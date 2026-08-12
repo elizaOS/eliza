@@ -264,6 +264,148 @@ function acpSessionMutationReceipt(
       };
 }
 
+type AcpBatchMutationFailure = {
+  sessionId: string;
+  code: "ACP_SESSION_MUTATION_REJECTED" | "ACP_SESSION_MUTATION_RESULT_INVALID";
+  acceptance: "unknown";
+  retryable: false;
+};
+
+type AcpBatchMutationCollection = {
+  receipts: Array<{
+    sessionId: string;
+    receipt: Exclude<AcpSessionMutationReceipt, { operation: "send" }>;
+  }>;
+  appliedSessionIds: string[];
+  failedSessionIds: string[];
+  failures: AcpBatchMutationFailure[];
+};
+
+async function collectAcpSessionMutations(
+  runtime: IAgentRuntime,
+  operation: "stop" | "cancel",
+  sessionIds: string[],
+  mutate: (sessionId: string) => Promise<AcpSessionMutationResult>,
+): Promise<AcpBatchMutationCollection> {
+  const settled = await Promise.allSettled(
+    sessionIds.map((sessionId) => mutate(sessionId)),
+  );
+  const receipts: AcpBatchMutationCollection["receipts"] = [];
+  const failures: AcpBatchMutationFailure[] = [];
+  const internalDiagnostics: Array<{ sessionId: string; error: string }> = [];
+  const acceptedOperations: readonly AcpSessionMutationReceipt["operation"][] =
+    operation === "stop" ? ["stop"] : ["cancel", "stop"];
+
+  for (const [index, child] of settled.entries()) {
+    const sessionId = sessionIds[index];
+    if (!sessionId) continue;
+    if (child.status === "rejected") {
+      failures.push({
+        sessionId,
+        code: "ACP_SESSION_MUTATION_REJECTED",
+        acceptance: "unknown",
+        retryable: false,
+      });
+      internalDiagnostics.push({
+        sessionId,
+        error: failureMessage(child.reason),
+      });
+      continue;
+    }
+    const record = objectValue(child.value);
+    const receiptRecord = objectValue(record?.receipt);
+    const receiptOperation = receiptRecord?.operation;
+    const receipt = acceptedOperations.includes(
+      receiptOperation as AcpSessionMutationReceipt["operation"],
+    )
+      ? acpSessionMutationReceipt(
+          receiptRecord,
+          receiptOperation as AcpSessionMutationReceipt["operation"],
+        )
+      : undefined;
+    if (
+      record?.sessionId !== sessionId ||
+      !receipt ||
+      receipt.operation === "send"
+    ) {
+      failures.push({
+        sessionId,
+        code: "ACP_SESSION_MUTATION_RESULT_INVALID",
+        acceptance: "unknown",
+        retryable: false,
+      });
+      internalDiagnostics.push({
+        sessionId,
+        error: "ACP session mutation returned no correlated terminal receipt",
+      });
+      continue;
+    }
+    receipts.push({ sessionId, receipt });
+  }
+
+  if (failures.length > 0) {
+    logger(runtime).warn(
+      { src: "tasks", operation: `${operation}_all`, internalDiagnostics },
+      `[TASKS:${operation}] one or more session mutations did not settle`,
+    );
+  }
+  return {
+    receipts,
+    appliedSessionIds: receipts.map(({ sessionId }) => sessionId),
+    failedSessionIds: failures.map(({ sessionId }) => sessionId),
+    failures,
+  };
+}
+
+function acpBatchMutationActionResult(
+  operation: "stop" | "cancel",
+  collection: AcpBatchMutationCollection,
+): ActionResult & { text: string } {
+  const appliedCount = collection.appliedSessionIds.length;
+  const noun = operation === "stop" ? "task agent" : "task";
+  const pastTense = operation === "stop" ? "Stopped" : "Canceled";
+  const data = {
+    ...(operation === "stop"
+      ? { stoppedCount: appliedCount }
+      : { canceledCount: appliedCount }),
+    stoppedSessions: collection.appliedSessionIds,
+    appliedSessionIds: collection.appliedSessionIds,
+    failedSessionIds: collection.failedSessionIds,
+    mutationFailures: collection.failures,
+    acpMutationReceipts: collection.receipts,
+  };
+  if (collection.failures.length === 0) {
+    const text = `${pastTense} ${appliedCount} ${noun}${appliedCount === 1 ? "" : "s"}.`;
+    return {
+      success: true,
+      text,
+      userFacingText: text,
+      verifiedUserFacing: true,
+      turnComplete: true,
+      data,
+    };
+  }
+  const partial = appliedCount > 0;
+  const text = partial
+    ? `Some ${noun}s changed state, but the remaining session outcomes are unknown. Inspect the applied and failed session IDs before retrying.`
+    : `I couldn't confirm any ${noun} state changes. Inspect the failed session IDs before retrying.`;
+  return {
+    success: false,
+    error: partial ? "ACP_BATCH_PARTIAL_EFFECT" : "ACP_BATCH_MUTATION_FAILED",
+    text,
+    userFacingText: text,
+    verifiedUserFacing: true,
+    turnComplete: true,
+    continueChain: false,
+    data: {
+      ...data,
+      outcomeUnknown: true,
+      reconciliationRequired: true,
+      retryable: false,
+    },
+  };
+}
+
 function promptSettlementFailure(
   runtime: IAgentRuntime,
   operation: "send" | "control",
@@ -2699,33 +2841,24 @@ async function runStopAgent(
     const sessions = await Promise.resolve(service.listSessions());
 
     if (all) {
-      const mutations = await Promise.all(
-        sessions.map((session) => service.stopSession(session.id)),
+      const collection = await collectAcpSessionMutations(
+        runtime,
+        "stop",
+        sessions.map((session) => session.id),
+        (sessionId) => service.stopSession(sessionId),
       );
-      if (state)
+      if (collection.failures.length === 0 && state)
         (
           state as {
             codingSession?: unknown;
             codingSessions?: unknown;
           }
         ).codingSession = undefined;
-      if (state) (state as { codingSessions?: unknown }).codingSessions = [];
-      // The stop confirmation is the complete answer to a single-operation
-      // turn: verified + turnComplete make the callback the sole delivery.
-      const text = `Stopped ${sessions.length} task agent${sessions.length === 1 ? "" : "s"}.`;
-      await callbackText(callback, text);
-      return {
-        success: true,
-        text,
-        userFacingText: text,
-        verifiedUserFacing: true,
-        turnComplete: true,
-        data: {
-          stoppedCount: sessions.length,
-          stoppedSessions: sessions.map((session) => session.id),
-          acpMutationReceipts: mutations,
-        },
-      };
+      if (collection.failures.length === 0 && state)
+        (state as { codingSessions?: unknown }).codingSessions = [];
+      const result = acpBatchMutationActionResult("stop", collection);
+      await callbackText(callback, result.text);
+      return result;
     }
 
     const requestedId =
@@ -2883,32 +3016,18 @@ async function runCancel(
     const sessions = await Promise.resolve(service.listSessions());
 
     if (all) {
-      const stoppedSessions: string[] = [];
-      const mutations: AcpSessionMutationResult[] = [];
-      for (const session of sessions) {
-        mutations.push(
+      const collection = await collectAcpSessionMutations(
+        runtime,
+        "cancel",
+        sessions.map((session) => session.id),
+        (targetSessionId) =>
           service.cancelSession
-            ? await service.cancelSession(session.id)
-            : await service.stopSession(session.id),
-        );
-        stoppedSessions.push(session.id);
-      }
-      // The cancel confirmation is the complete answer to a single-operation
-      // turn: verified + turnComplete make the callback the sole delivery.
-      const text = `Canceled ${stoppedSessions.length} task${stoppedSessions.length === 1 ? "" : "s"}.`;
-      await callbackText(callback, text);
-      return {
-        success: true,
-        text,
-        userFacingText: text,
-        verifiedUserFacing: true,
-        turnComplete: true,
-        data: {
-          canceledCount: stoppedSessions.length,
-          stoppedSessions,
-          acpMutationReceipts: mutations,
-        },
-      };
+            ? service.cancelSession(targetSessionId)
+            : service.stopSession(targetSessionId),
+      );
+      const result = acpBatchMutationActionResult("cancel", collection);
+      await callbackText(callback, result.text);
+      return result;
     }
 
     const target = sessionId
@@ -5086,10 +5205,19 @@ function tasksEffectProof(
           .map((value) => effectString(value))
           .filter((value): value is string => Boolean(value))
       : [];
+    const appliedSessionIds = Array.isArray(data.appliedSessionIds)
+      ? data.appliedSessionIds
+          .map((value) => effectString(value))
+          .filter((value): value is string => Boolean(value))
+      : [];
     return acpSessionMutationEffectProof(
       data,
       operation === "stop_agent" ? ["stop"] : ["cancel", "stop"],
-      sessionId ? [sessionId] : stoppedSessions,
+      sessionId
+        ? [sessionId]
+        : result.success === false
+          ? appliedSessionIds
+          : stoppedSessions,
     );
   }
   if (operation === "create") {
