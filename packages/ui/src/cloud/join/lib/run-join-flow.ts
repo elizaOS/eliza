@@ -42,6 +42,7 @@ export interface JoinFlowClient {
     preferAgentId?: string | null;
     preferSharedTier?: boolean;
     forceCreate?: boolean;
+    signal?: AbortSignal;
     onProgress?: (status: string, detail?: string) => void;
   }): Promise<{
     agentId: string;
@@ -50,6 +51,10 @@ export interface JoinFlowClient {
     bridgeUrl: string | null;
     created: boolean;
   }>;
+  /** Compensate a fresh provision that completed after its join attempt was cancelled. */
+  deleteCloudCompatAgent?(
+    agentId: string,
+  ): Promise<{ success: boolean; error?: string }>;
   setBaseUrl(baseUrl: string | null): void;
   setToken(token: string | null): void;
 }
@@ -83,6 +88,8 @@ export interface RunJoinFlowArgs {
   /** Always create a new agent ("Create new" gesture). */
   forceCreate?: boolean;
   onProgress?: (status: string, detail?: string) => void;
+  /** Cancels this attempt. A fresh provision is deleted before cancellation settles. */
+  signal?: AbortSignal;
 }
 
 export interface JoinFlowResult {
@@ -140,7 +147,10 @@ export async function runJoinFlow(
     preferSharedTier,
     forceCreate,
     onProgress,
+    signal,
   } = args;
+
+  signal?.throwIfAborted();
 
   const selectionOptions = {
     cloudApiBase,
@@ -150,6 +160,7 @@ export async function runJoinFlow(
     ...(preferSharedTier ? { preferSharedTier } : {}),
     ...(forceCreate ? { forceCreate } : {}),
     ...(onProgress ? { onProgress } : {}),
+    ...(signal ? { signal } : {}),
   };
 
   let selected: Awaited<
@@ -176,6 +187,24 @@ export async function runJoinFlow(
     effects.clearPersistedActiveServer();
     client.setBaseUrl(null);
     selected = await client.selectOrProvisionCloudAgent(selectionOptions);
+  }
+
+  if (signal?.aborted) {
+    if (selected.created && client.deleteCloudCompatAgent) {
+      const compensation = await client.deleteCloudCompatAgent(
+        selected.agentId,
+      );
+      if (!compensation.success) {
+        throw new AggregateError(
+          [
+            signal.reason,
+            new Error(compensation.error ?? "Cloud agent cleanup failed"),
+          ],
+          "Join was cancelled, but its newly created agent could not be cleaned up",
+        );
+      }
+    }
+    signal.throwIfAborted();
   }
 
   if (!selected.agentId) {

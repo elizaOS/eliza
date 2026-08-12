@@ -1590,6 +1590,8 @@ declare module "./client-base" {
        */
       wakePollIntervalMs?: number;
       wakeTimeoutMs?: number;
+      /** Cancel selection/wake polling. A completed create remains observable to the caller for compensation. */
+      signal?: AbortSignal;
     }): Promise<{
       agentId: string;
       agentName: string;
@@ -3437,9 +3439,11 @@ export async function waitForCloudAgentRunning(
     pollIntervalMs?: number;
     timeoutMs?: number;
     onProgress?: (status: string, detail?: string) => void;
+    signal?: AbortSignal;
   },
 ): Promise<CloudCompatAgent> {
   const { agentId, onProgress } = options;
+  options.signal?.throwIfAborted();
   const pollIntervalMs = Math.max(
     50,
     options.pollIntervalMs ?? CLOUD_AGENT_WAKE_POLL_INTERVAL_MS,
@@ -3460,6 +3464,7 @@ export async function waitForCloudAgentRunning(
 
   let lastStatus = "unknown";
   for (;;) {
+    options.signal?.throwIfAborted();
     // error-policy:J4 a failed status read counts as an unknown tick inside
     // this bounded poll; the deadline below throws with the last status.
     const detail = await client.getCloudCompatAgent(agentId).catch(() => null);
@@ -3484,8 +3489,24 @@ export async function waitForCloudAgentRunning(
       );
     }
     onProgress?.("starting", describeAgentWakeWait(elapsedMs));
-    await new Promise((r) => setTimeout(r, pollIntervalMs));
+    await abortableDelay(pollIntervalMs, options.signal);
   }
+}
+
+function abortableDelay(delayMs: number, signal?: AbortSignal): Promise<void> {
+  if (!signal) return new Promise((resolve) => setTimeout(resolve, delayMs));
+  signal.throwIfAborted();
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      signal.removeEventListener("abort", onAbort);
+      resolve();
+    }, delayMs);
+    const onAbort = () => {
+      clearTimeout(timeout);
+      reject(signal.reason);
+    };
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
 }
 
 /**
@@ -3558,6 +3579,7 @@ ElizaClient.prototype.selectOrProvisionCloudAgent = async function (
     knownAgents,
     preferStewardAgentAdapter,
   } = options;
+  options.signal?.throwIfAborted();
   const onProgress = options.onProgress;
   const resolvedCloudApiBase = resolveDirectCloudAuthApiBase(cloudApiBase);
   let forceCreateForTerminalAgents = false;
@@ -3644,6 +3666,7 @@ ElizaClient.prototype.selectOrProvisionCloudAgent = async function (
             ? { timeoutMs: options.wakeTimeoutMs }
             : {}),
           ...(onProgress ? { onProgress } : {}),
+          ...(options.signal ? { signal: options.signal } : {}),
         });
       }
       const hasDedicatedBase = Boolean(
@@ -3701,6 +3724,21 @@ ElizaClient.prototype.selectOrProvisionCloudAgent = async function (
   }
   requireConfirmedFreshCloudAgentCreate(mustForceCreate, created.created);
   const agentId = created.data.agentId;
+  // A create cannot be safely abandoned after the server has accepted it: the
+  // caller needs the authoritative id in order to compensate. Return the
+  // receipt immediately and let the join controller delete it before its
+  // cancellation promise settles.
+  if (options.signal?.aborted) {
+    return {
+      agentId,
+      agentName: created.data.agentName || name,
+      apiBase: buildCloudSharedAgentApiBase(resolvedCloudApiBase, agentId),
+      bridgeUrl: null,
+      created: created.created !== false,
+      requiresAgentPairing: false,
+      executionTier: preferSharedTier ? "shared" : null,
+    };
+  }
   // error-policy:J4 detail is an optimization probe (warm-pool fast path);
   // on failure the standard dedicated subdomain is still the desired default.
   const detail = await this.getCloudCompatAgent(agentId).catch(() => null);
@@ -3738,6 +3776,7 @@ ElizaClient.prototype.selectOrProvisionCloudAgent = async function (
         ? { timeoutMs: options.wakeTimeoutMs }
         : {}),
       ...(onProgress ? { onProgress } : {}),
+      ...(options.signal ? { signal: options.signal } : {}),
     });
   }
   const apiBase = useSharedAdapter

@@ -19,7 +19,7 @@
 import { BRAND_PATHS, LOGO_FILES } from "@elizaos/shared/brand";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Navigate } from "react-router-dom";
-import { client } from "../../api";
+import { client } from "../../api/client";
 import { Button } from "../../components/ui/button";
 import { getBootConfig } from "../../config/boot-config-store";
 import {
@@ -75,6 +75,7 @@ export default function JoinPage(): React.JSX.Element {
   const [phase, setPhase] = useState<JoinPhase>("connecting");
   const [detail, setDetail] = useState<string>("");
   const [error, setError] = useState<string | null>(null);
+  const [signingOut, setSigningOut] = useState(false);
   const [creditGateWithheldReason, setCreditGateWithheldReason] = useState<
     "ip_daily_cap" | "count_unavailable" | null
   >(null);
@@ -85,6 +86,10 @@ export default function JoinPage(): React.JSX.Element {
   // Guard so React StrictMode's double-mount (and re-renders) don't double-run
   // the provisioning network calls.
   const startedRef = useRef(false);
+  const activeAttemptRef = useRef<{
+    controller: AbortController;
+    promise: Promise<void>;
+  } | null>(null);
 
   const start = useCallback(async () => {
     const authToken = resolveJoinAuthToken();
@@ -95,53 +100,76 @@ export default function JoinPage(): React.JSX.Element {
     setPhase("connecting");
     setError(null);
     setCreditGateWithheldReason(null);
-    try {
-      const result = await runJoinFlow({
-        client,
-        effects: {
-          savePersistedActiveServer,
-          clearPersistedActiveServer,
-          savePersistedFirstRunComplete,
-        },
-        cloudApiBase: resolveJoinCloudApiBase(),
-        authToken,
-        agentName: DEFAULT_AGENT_NAME,
-        bio: DEFAULT_AGENT_BIO,
-        preferAgentId: readLastActiveCloudAgentId(),
-        preferSharedTier: getBootConfig().preferSharedCloudTier ?? undefined,
-        onProgress: (_status, progressDetail) => {
-          if (progressDetail) setDetail(progressDetail);
-        },
-      });
-      setPhase("ready");
-      // Hard navigation to chat home so the startup coordinator restores the
-      // just-persisted cloud connection from a clean boot. `void result` keeps
-      // the resolved agent in scope for future telemetry without unused-var noise.
-      void result;
-      if (typeof window !== "undefined") {
-        appModeNavigation.assign("/");
+    activeAttemptRef.current?.controller.abort(
+      new DOMException("Join attempt superseded", "AbortError"),
+    );
+    const controller = new AbortController();
+    const attempt = (async () => {
+      try {
+        const result = await runJoinFlow({
+          client,
+          effects: {
+            savePersistedActiveServer,
+            clearPersistedActiveServer,
+            savePersistedFirstRunComplete,
+          },
+          cloudApiBase: resolveJoinCloudApiBase(),
+          authToken,
+          agentName: DEFAULT_AGENT_NAME,
+          bio: DEFAULT_AGENT_BIO,
+          preferAgentId: readLastActiveCloudAgentId(),
+          preferSharedTier: getBootConfig().preferSharedCloudTier ?? undefined,
+          signal: controller.signal,
+          onProgress: (_status, progressDetail) => {
+            if (progressDetail) setDetail(progressDetail);
+          },
+        });
+        controller.signal.throwIfAborted();
+        setPhase("ready");
+        // Hard navigation to chat home so the startup coordinator restores the
+        // just-persisted cloud connection from a clean boot. `void result` keeps
+        // the resolved agent in scope for future telemetry without unused-var noise.
+        void result;
+        if (typeof window !== "undefined") {
+          appModeNavigation.assign("/");
+        }
+      } catch (err) {
+        if (controller.signal.aborted) return;
+        // The Cloud's credit gate (402) is a payment state, not a connection
+        // failure: retry can never succeed, so render the server's explanation
+        // (e.g. the welcome bonus withheld by the per-IP daily free-credit cap
+        // — CGNAT networks) with an add-funds path instead of the dead-end
+        // "Couldn't connect to your agent" + Retry.
+        const creditGate = describeJoinCreditGateError(err);
+        if (creditGate) {
+          setError(creditGate.message);
+          setCreditGateWithheldReason(
+            creditGate.welcomeBonusWithheld
+              ? (creditGate.welcomeBonusWithheldReason ?? "count_unavailable")
+              : null,
+          );
+          setPhase("credit-gate");
+          return;
+        }
+        setError(describeJoinError(err));
+        setPhase("error");
       }
-    } catch (err) {
-      // The Cloud's credit gate (402) is a payment state, not a connection
-      // failure: retry can never succeed, so render the server's explanation
-      // (e.g. the welcome bonus withheld by the per-IP daily free-credit cap
-      // — CGNAT networks) with an add-funds path instead of the dead-end
-      // "Couldn't connect to your agent" + Retry.
-      const creditGate = describeJoinCreditGateError(err);
-      if (creditGate) {
-        setError(creditGate.message);
-        setCreditGateWithheldReason(
-          creditGate.welcomeBonusWithheld
-            ? (creditGate.welcomeBonusWithheldReason ?? "count_unavailable")
-            : null,
-        );
-        setPhase("credit-gate");
-        return;
-      }
-      setError(describeJoinError(err));
-      setPhase("error");
+    })();
+    activeAttemptRef.current = { controller, promise: attempt };
+    await attempt;
+    if (activeAttemptRef.current?.controller === controller) {
+      activeAttemptRef.current = null;
     }
   }, []);
+
+  useEffect(
+    () => () => {
+      activeAttemptRef.current?.controller.abort(
+        new DOMException("Join page unmounted", "AbortError"),
+      );
+    },
+    [],
+  );
 
   useEffect(() => {
     if (!session.ready || !session.authenticated) return;
@@ -162,6 +190,23 @@ export default function JoinPage(): React.JSX.Element {
     startedRef.current = true;
     void start();
   }, [start]);
+
+  const handleSignOut = useCallback(async () => {
+    if (signingOut) return;
+    setSigningOut(true);
+    const active = activeAttemptRef.current;
+    active?.controller.abort(
+      new DOMException("User signed out during join", "AbortError"),
+    );
+    // Preserve the session until a newly-created agent has been compensated.
+    // The flow settles promptly during polling and after an in-flight create.
+    await active?.promise.catch(() => undefined);
+    const { signOutFromSsoBridgedHost } = await import(
+      "../sso-bridge/sso-bridge"
+    );
+    await signOutFromSsoBridgedHost();
+    appModeNavigation.replace("/login");
+  }, [signingOut]);
 
   // Signed out → send to login, returning here once authenticated.
   if (session.ready && !session.authenticated) {
@@ -222,6 +267,17 @@ export default function JoinPage(): React.JSX.Element {
             <Button
               variant="ghost"
               type="button"
+              disabled={signingOut}
+              onClick={() => void handleSignOut()}
+              className="px-6 py-2 text-sm text-white/70 transition-colors hover:text-white"
+            >
+              {signingOut
+                ? t("cloud.join.signingOut", { defaultValue: "Signing out..." })
+                : t("cloud.join.signOut", { defaultValue: "Sign out" })}
+            </Button>
+            <Button
+              variant="ghost"
+              type="button"
               onClick={handleRetry}
               className="px-6 py-2 text-sm text-white/70 transition-colors hover:text-white"
             >
@@ -251,6 +307,17 @@ export default function JoinPage(): React.JSX.Element {
             >
               {t("cloud.join.retry", { defaultValue: "Try again" })}
             </Button>
+            <Button
+              variant="ghost"
+              type="button"
+              disabled={signingOut}
+              onClick={() => void handleSignOut()}
+              className="px-6 py-2 text-sm text-white/70 transition-colors hover:text-white"
+            >
+              {signingOut
+                ? t("cloud.join.signingOut", { defaultValue: "Signing out..." })
+                : t("cloud.join.signOut", { defaultValue: "Sign out" })}
+            </Button>
           </div>
         ) : (
           <div
@@ -265,6 +332,17 @@ export default function JoinPage(): React.JSX.Element {
                   defaultValue: "Connecting you to your agent...",
                 })}
             </p>
+            <Button
+              variant="ghost"
+              type="button"
+              disabled={signingOut}
+              onClick={() => void handleSignOut()}
+              className="px-6 py-2 text-sm text-white/70 transition-colors hover:text-white"
+            >
+              {signingOut
+                ? t("cloud.join.signingOut", { defaultValue: "Signing out..." })
+                : t("cloud.join.signOut", { defaultValue: "Sign out" })}
+            </Button>
           </div>
         )}
       </div>

@@ -348,4 +348,50 @@ describe("runJoinFlow", () => {
     ).rejects.toThrow(/did not return an agent/i);
     expect(saveFirstRun).not.toHaveBeenCalled();
   });
+
+  test("compensates a fresh agent before an aborted join attempt settles", async () => {
+    type Selection = Awaited<
+      ReturnType<JoinFlowClient["selectOrProvisionCloudAgent"]>
+    >;
+    let resolveSelection: (value: Selection) => void = () => undefined;
+    const select = vi.fn(
+      () =>
+        new Promise<Selection>((resolve) => {
+          resolveSelection = resolve;
+        }),
+    );
+    const deleteCloudCompatAgent = vi.fn().mockResolvedValue({ success: true });
+    const client: JoinFlowClient = {
+      selectOrProvisionCloudAgent: select,
+      deleteCloudCompatAgent,
+      setBaseUrl: vi.fn(),
+      setToken: vi.fn(),
+    };
+    const { effects, saveServer, saveFirstRun } = makeEffects();
+    const controller = new AbortController();
+    const flow = runJoinFlow({
+      client,
+      effects,
+      cloudApiBase: CLOUD_API_BASE,
+      authToken: "tok",
+      agentName: "Eliza",
+      signal: controller.signal,
+    });
+
+    controller.abort(new DOMException("User signed out", "AbortError"));
+    resolveSelection({
+      agentId: "agent-created-after-cancel",
+      agentName: "Eliza",
+      apiBase: SHARED_BASE,
+      bridgeUrl: null,
+      created: true,
+    });
+
+    await expect(flow).rejects.toMatchObject({ name: "AbortError" });
+    expect(deleteCloudCompatAgent).toHaveBeenCalledWith(
+      "agent-created-after-cancel",
+    );
+    expect(saveServer).not.toHaveBeenCalled();
+    expect(saveFirstRun).not.toHaveBeenCalled();
+  });
 });
