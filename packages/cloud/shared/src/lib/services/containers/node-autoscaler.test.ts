@@ -94,7 +94,7 @@ afterAll(() => {
 });
 
 import { InMemoryComputeProvider } from "./compute-provider-fake";
-import { type AutoscalePolicy, NodeAutoscaler } from "./node-autoscaler";
+import { type AutoscalePolicy, DEFAULT_AUTOSCALE_POLICY, NodeAutoscaler } from "./node-autoscaler";
 
 const policy: AutoscalePolicy = {
   minFreeSlotsBuffer: 4,
@@ -480,5 +480,86 @@ describe("NodeAutoscaler full provision\u2192healthy\u2192drain loop (#8920)", (
     const drained = await autoscaler.evaluateCapacity();
     expect(drained.healthyNodeCount).toBe(0);
     expect(drained.shouldScaleUp).toBe(true);
+  });
+});
+
+// Every other suite in this file supplies a custom policy (maxNodes: 4), so a
+// silent revert of the DEFAULT cap would keep the whole file green. This block
+// pins the shipped default (14 \u2192 16, #18437 / #18413) and observes the cap
+// boundary under DEFAULT_AUTOSCALE_POLICY itself: with zero free slots the
+// capacity need always wants a node, leaving `enabled.length < maxNodes` as the
+// only gate \u2014 15 nodes must scale up (15 < 16) and 16 must be capped. If the
+// default reverts to 14, the 15-node case caps out and fails.
+describe("DEFAULT_AUTOSCALE_POLICY cap regression (#18413)", () => {
+  const CREATED_AT = Date.parse("2026-05-15T12:00:00Z");
+  // 1h after creation \u2192 safely past the default scaleUpCooldownMs (5m), so the
+  // cooldown gate cannot mask the maxNodes gate.
+  const NOW = CREATED_AT + 60 * 60 * 1000;
+  const NODE_CAPACITY = 8;
+  let originalAgentImagePlatform: string | undefined;
+
+  function fullyAllocatedNode(index: number): DockerNode {
+    return {
+      id: `db-cap-${index}`,
+      node_id: `cap-node-${index}`,
+      hostname: `10.0.1.${index}`,
+      ssh_port: 22,
+      ssh_user: "root",
+      capacity: NODE_CAPACITY,
+      allocated_count: NODE_CAPACITY,
+      enabled: true,
+      status: "healthy",
+      metadata: { architecture: "arm64" },
+      created_at: new Date(CREATED_AT),
+      updated_at: new Date(CREATED_AT),
+    } as DockerNode;
+  }
+
+  beforeEach(() => {
+    originalAgentImagePlatform = process.env[AGENT_IMAGE_PLATFORM];
+    process.env[AGENT_IMAGE_PLATFORM] = "linux/arm64";
+    mocks.findAllNodes.mockReset();
+    mocks.countAllocated.mockReset();
+    mocks.countRetained.mockReset();
+    mocks.nodes = [];
+    mocks.findAllNodes.mockImplementation(() => Promise.resolve(mocks.nodes));
+    // Every healthy node reports zero free slots, so the capacity need alone
+    // wants a scale-up and the maxNodes cap is the only remaining gate.
+    mocks.countAllocated.mockResolvedValue(NODE_CAPACITY);
+    mocks.countRetained.mockResolvedValue(0);
+  });
+
+  afterEach(() => {
+    restoreEnv(AGENT_IMAGE_PLATFORM, originalAgentImagePlatform);
+  });
+
+  test("ships maxNodes 16 as the default cap (#18437)", () => {
+    expect(DEFAULT_AUTOSCALE_POLICY.maxNodes).toBe(16);
+  });
+
+  test("15 enabled fully-allocated nodes still scale up under the default cap", async () => {
+    mocks.nodes = Array.from({ length: 15 }, (_, i) => fullyAllocatedNode(i));
+    const autoscaler = new NodeAutoscaler(DEFAULT_AUTOSCALE_POLICY, () => NOW);
+
+    // 15 < 16: one node of proactive headroom must remain. A revert to the old
+    // default (14) turns this into 15 < 14 and the assertion fails.
+    await expect(autoscaler.evaluateCapacity()).resolves.toMatchObject({
+      enabledNodeCount: 15,
+      healthyNodeCount: 15,
+      totalAvailable: 0,
+      shouldScaleUp: true,
+    });
+  });
+
+  test("16 enabled fully-allocated nodes are capped under the default cap", async () => {
+    mocks.nodes = Array.from({ length: 16 }, (_, i) => fullyAllocatedNode(i));
+    const autoscaler = new NodeAutoscaler(DEFAULT_AUTOSCALE_POLICY, () => NOW);
+
+    await expect(autoscaler.evaluateCapacity()).resolves.toMatchObject({
+      enabledNodeCount: 16,
+      healthyNodeCount: 16,
+      totalAvailable: 0,
+      shouldScaleUp: false,
+    });
   });
 });
