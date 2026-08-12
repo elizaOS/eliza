@@ -348,6 +348,10 @@ export async function handleAudioGeneration(
     "ELIZAOS_CLOUD_MUSIC_TIMEOUT_MS",
     300_000,
   );
+  // An operator may opt out of the per-request fetch timeout (undefined), but
+  // the pending-poll loop needs a finite budget or a stuck generation would be
+  // polled forever; opt-outs fall back to the default poll window.
+  const pollBudgetMs = timeoutMs ?? 300_000;
   const client = cloudMediaClientFactory(runtime);
   const startedAt = Date.now();
   const postMusic = (json: Record<string, JsonValue>) =>
@@ -356,7 +360,10 @@ export async function handleAudioGeneration(
         client.routes.postApiV1GenerateMusic<CloudMusicResponse>({
           json,
           // First hop can return 202 quickly; keep budget for status polling.
-          timeoutMs: Math.min(timeoutMs, 120_000),
+          timeoutMs:
+            timeoutMs === undefined
+              ? undefined
+              : Math.min(timeoutMs, 120_000),
         }),
       "Music generation",
     );
@@ -391,7 +398,7 @@ export async function handleAudioGeneration(
     response = await resolvePendingMusicResponse(
       client,
       response,
-      timeoutMs,
+      pollBudgetMs,
       startedAt,
     );
   }

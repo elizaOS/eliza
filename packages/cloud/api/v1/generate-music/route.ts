@@ -8,7 +8,11 @@ import {
   getGenerativePricingCacheOptions,
   requireGenerativeRouteCaller,
 } from "@/api-app/lib/generative-route-auth";
-import { failureResponse, jsonError } from "@/lib/api/cloud-worker-errors";
+import {
+  ApiError,
+  failureResponse,
+  jsonError,
+} from "@/lib/api/cloud-worker-errors";
 import {
   collectAudioProviderApiKeys,
   getAudioProvider,
@@ -137,6 +141,53 @@ async function storeGeneratedAudio(
     file_size: generated.bytes.byteLength,
     content_type: generated.contentType,
   };
+}
+
+function redactProviderErrorMessage(message: string): string {
+  return message
+    .replace(/\bsk-[A-Za-z0-9_-]{8,}\b/g, "sk-[REDACTED]")
+    .replace(/\bBearer\s+[A-Za-z0-9._~+/=-]{8,}/gi, "Bearer [REDACTED]")
+    .replace(
+      /\b(api[_-]?key|access[_-]?token|token|secret|authorization)=([^&\s]+)/gi,
+      "$1=[REDACTED]",
+    );
+}
+
+function providerFailureDetails(options: {
+  provider: string;
+  model: string;
+  billingSource: string;
+  error: unknown;
+}): Record<string, unknown> {
+  const errorRecord =
+    typeof options.error === "object" && options.error !== null
+      ? (options.error as Record<string, unknown>)
+      : {};
+  const details: Record<string, unknown> = {
+    provider: options.provider,
+    model: options.model,
+    billingSource: options.billingSource,
+  };
+  const status = errorRecord.status ?? errorRecord.statusCode;
+  if (typeof status === "number" && Number.isFinite(status)) {
+    details.upstreamStatus = status;
+  }
+  if (typeof errorRecord.code === "string" && errorRecord.code.trim()) {
+    details.upstreamCode = errorRecord.code.trim().slice(0, 128);
+  }
+  const message =
+    options.error instanceof Error
+      ? options.error.message
+      : typeof options.error === "string"
+        ? options.error
+        : "";
+  if (message.trim()) {
+    details.upstreamMessage = redactProviderErrorMessage(message.trim()).slice(
+      0,
+      500,
+    );
+  }
+  return details;
 }
 
 /** Everything the catch needs to persist a pending settlement (#18436). */
@@ -329,8 +380,21 @@ app.post("/", async (c) => {
         apiKeys: collectAudioProviderApiKeys(c.env),
       });
     } catch (error) {
+      // error-policy:J1 the pending path rethrows for the outer settlement
+      // handler; every other provider failure is translated into a structured
+      // 503 ApiError at this boundary, mirroring generate-video.
       if (error instanceof AudioGenerationPendingError) throw error;
-      throw error;
+      throw new ApiError(
+        503,
+        "internal_error",
+        "Music provider request failed",
+        providerFailureDetails({
+          provider: definition.provider,
+          model: request.model,
+          billingSource: definition.billingSource,
+          error,
+        }),
+      );
     }
 
     const music = await storeGeneratedAudio(
