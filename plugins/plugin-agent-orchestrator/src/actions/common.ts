@@ -17,6 +17,7 @@ import type {
 import type {
   AcpCapacity,
   AcpJsonRpcMessage,
+  AcpSessionMutationResult,
   ApprovalPreset,
   AvailableAgentInfo,
   PromptResult,
@@ -40,8 +41,11 @@ export interface AcpActionService {
   ): Promise<PromptResult>;
   sendToSession(sessionId: string, input: string): Promise<PromptResult>;
   sendKeysToSession(sessionId: string, keys?: string): Promise<void>;
-  stopSession(sessionId: string, force?: boolean): Promise<void>;
-  cancelSession?(sessionId: string): Promise<void>;
+  stopSession(
+    sessionId: string,
+    force?: boolean,
+  ): Promise<AcpSessionMutationResult>;
+  cancelSession?(sessionId: string): Promise<AcpSessionMutationResult>;
   getSessionOutput?(sessionId: string, lines?: number): Promise<string>;
   listSessions(): SessionInfo[] | Promise<SessionInfo[]>;
   /** Live worker/system slot usage for admission-control back-pressure. */

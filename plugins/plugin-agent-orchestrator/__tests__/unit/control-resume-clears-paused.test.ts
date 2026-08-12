@@ -15,6 +15,7 @@ import { tasksAction } from "../../src/actions/tasks.js";
 import { AcpService } from "../../src/services/acp-service.js";
 import { OrchestratorTaskService } from "../../src/services/orchestrator-task-service.js";
 import { OrchestratorTaskStore } from "../../src/services/orchestrator-task-store.js";
+import type { PromptResult } from "../../src/services/types.js";
 import {
   callback,
   memory,
@@ -58,6 +59,7 @@ class FakeAcp {
   live: LiveSession[] = [];
   readonly sent: { sessionId: string; message: string }[] = [];
   readonly stopped: string[] = [];
+  nextPromptResult: PromptResult | undefined;
 
   onSessionEvent(
     cb: (sessionId: string, event: string, data: unknown) => void,
@@ -87,15 +89,46 @@ class FakeAcp {
     });
   }
 
-  sendToSession(sessionId: string, message: string): Promise<void> {
+  sendToSession(sessionId: string, message: string): Promise<PromptResult> {
     this.sent.push({ sessionId, message });
-    return Promise.resolve();
+    return Promise.resolve(
+      this.nextPromptResult ?? {
+        sessionId,
+        response: "ok",
+        finalText: "ok",
+        stopReason: "end_turn",
+        durationMs: 5,
+        exitCode: 0,
+        signal: null,
+        providerDisposition: {
+          kind: "accepted" as const,
+          receipt: {
+            operation: "send" as const,
+            authority: "provider_response" as const,
+            receiptId: `native:${sessionId}:${this.sent.length}`,
+            acceptedAt: "2026-07-02T10:00:00.000Z",
+            transport: "native" as const,
+            protocolSessionId: sessionId,
+            requestId: String(this.sent.length),
+          },
+        },
+      },
+    );
   }
 
-  stopSession(sessionId: string): Promise<void> {
+  stopSession(sessionId: string) {
     this.stopped.push(sessionId);
     this.live = this.live.filter((session) => session.id !== sessionId);
-    return Promise.resolve();
+    return Promise.resolve({
+      sessionId,
+      receipt: {
+        operation: "stop" as const,
+        authority: "session_store" as const,
+        receiptId: `session-store:stop:${sessionId}:${this.stopped.length}`,
+        committedAt: "2026-07-02T10:00:00.000Z",
+        status: "stopped" as const,
+      },
+    });
   }
 
   listSessions(): LiveSession[] {
@@ -287,6 +320,62 @@ describe("TASKS control pause/resume symmetry (#11216 follow-up)", () => {
       sessionId: "live-1",
       message: "pick the work back up",
     });
+  });
+
+  it("fails a partially resumed task closed when the provider rejects its follow-up", async () => {
+    const { acp, runtime, taskService, taskId } = await harness();
+
+    await control(runtime, {
+      action: "control",
+      controlAction: "pause",
+      taskId,
+    });
+    acp.live = [liveSession("live-rejected")];
+    acp.nextPromptResult = {
+      sessionId: "live-rejected",
+      response: "",
+      finalText: "",
+      stopReason: "refusal",
+      durationMs: 5,
+      exitCode: 0,
+      signal: null,
+      providerDisposition: {
+        kind: "rejected",
+        code: "ACP_PROMPT_REJECTED",
+        message: "raw provider diagnostic",
+      },
+    };
+
+    const result = await control(runtime, {
+      action: "control",
+      controlAction: "resume",
+      taskId,
+      instruction: "pick the work back up",
+    });
+
+    expect((await taskService.getTask(taskId))?.paused).toBe(false);
+    expect(result).toMatchObject({
+      success: false,
+      error: "ACP_CONTROL_PARTIAL_OUTCOME",
+      data: {
+        taskId,
+        sessionId: "live-rejected",
+        providerAcceptance: "rejected",
+        reconciliationRequired: true,
+        outcomeUnknown: true,
+      },
+      effectReceipts: [
+        {
+          outcome: "failed",
+          failure: {
+            code: "ACP_CONTROL_PARTIAL_OUTCOME",
+            acceptance: "unknown",
+            retryable: false,
+          },
+        },
+      ],
+    });
+    expect(result?.text).not.toContain("raw provider diagnostic");
   });
 
   it("resume without a taskId keeps the plain ACP-send fallback (no durable task touched)", async () => {

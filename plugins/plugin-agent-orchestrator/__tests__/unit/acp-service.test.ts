@@ -92,8 +92,26 @@ vi.mock("../../src/services/acp-native-transport.js", () => {
             agentSessionId: "agent-session",
           },
     );
-    prompt = vi.fn(async () => ({ stopReason: "end_turn" }));
-    cancel = vi.fn(async () => undefined);
+    prompt = vi.fn(async () => ({
+      stopReason: "end_turn",
+      providerDisposition: {
+        kind: "accepted" as const,
+        receipt: {
+          operation: "send" as const,
+          authority: "provider_response" as const,
+          receiptId: "native:protocol-session:prompt",
+          acceptedAt: "2026-05-03T10:00:00.000Z",
+          transport: "native" as const,
+          protocolSessionId: "protocol-session",
+          requestId: "prompt",
+        },
+      },
+    }));
+    cancel = vi.fn(async (protocolSessionId: string) => ({
+      requestId: "cancel",
+      acceptedAt: "2026-05-03T10:00:00.000Z",
+      protocolSessionId,
+    }));
     closeSession = vi.fn(async () => undefined);
     close = vi.fn(async () => undefined);
     // Mirrors the real transport's auto-approve decision. Defaults to true to
@@ -1500,13 +1518,27 @@ describe("AcpService", () => {
     const cancelled = service.cancelSession("cli-cancel");
     await waitForSpawn(cancelProc);
     closeOk(cancelProc);
-    await cancelled;
+    await expect(cancelled).resolves.toMatchObject({
+      sessionId: "cli-cancel",
+      receipt: {
+        operation: "cancel",
+        authority: "session_store",
+        status: "cancelled",
+      },
+    });
 
     const closeProc = nextProc();
     const closed = service.closeSession("cli-close");
     await waitForSpawn(closeProc);
     closeOk(closeProc);
-    await closed;
+    await expect(closed).resolves.toMatchObject({
+      sessionId: "cli-close",
+      receipt: {
+        operation: "stop",
+        authority: "session_store",
+        status: "stopped",
+      },
+    });
 
     expect(nativeClientMock.instances).toHaveLength(0);
     expect(spawnMock).toHaveBeenCalledTimes(2);
@@ -1522,6 +1554,76 @@ describe("AcpService", () => {
     expect((await service.getSession("cli-close"))?.status).toBe("stopped");
     await service.stop();
   });
+
+  it.each(["cancelSession", "stopSession"] as const)(
+    "fails %s closed when a persisted native session has no live transport",
+    async (operation) => {
+      const store = new InMemorySessionStore();
+      const now = new Date();
+      await store.create({
+        id: "native-detached",
+        name: "native-detached",
+        agentType: "codex",
+        workdir: "/tmp/acp-test",
+        status: "ready",
+        acpxSessionId: "protocol-session",
+        approvalPreset: "autonomous",
+        createdAt: now,
+        lastActivityAt: now,
+        metadata: { transportMode: "native" },
+      });
+      const service = new AcpService(
+        runtime({ ELIZA_ACP_TRANSPORT: "native" }),
+        { store },
+      );
+      await service.start();
+
+      await expect(service[operation]("native-detached")).rejects.toMatchObject(
+        { code: "ACP_NATIVE_SESSION_UNAVAILABLE" },
+      );
+      expect((await service.getSession("native-detached"))?.status).toBe(
+        "ready",
+      );
+      await service.stop();
+    },
+  );
+
+  it.each(["cancelSession", "stopSession"] as const)(
+    "does not persist %s after a rejected CLI lifecycle command",
+    async (operation) => {
+      const store = new InMemorySessionStore();
+      const now = new Date();
+      await store.create({
+        id: "cli-rejected",
+        name: "cli-rejected",
+        agentType: "codex",
+        workdir: "/tmp/acp-test",
+        status: "ready",
+        approvalPreset: "autonomous",
+        createdAt: now,
+        lastActivityAt: now,
+        metadata: { transportMode: "cli" },
+      });
+      const service = new AcpService(runtime(), { store });
+      await service.start();
+
+      const lifecycle = nextProc();
+      const result = service[operation]("cli-rejected");
+      await waitForSpawn(lifecycle);
+      lifecycle.proc.emit("close", 1, null);
+
+      await expect(result).rejects.toMatchObject({
+        code:
+          operation === "cancelSession"
+            ? "ACP_SESSION_CANCEL_NOT_ACCEPTED"
+            : "ACP_SESSION_CLOSE_NOT_ACCEPTED",
+      });
+      expect((await service.getSession("cli-rejected"))?.status).toBe(
+        "errored",
+      );
+      await service.stop();
+    },
+  );
 
   it("retries managed Codex Landlock fallback when reconnecting a native session", async () => {
     const previousOverride = process.env.ELIZA_CODEX_ACP_LANDLOCK;

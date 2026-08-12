@@ -2467,6 +2467,8 @@ export {
 export type {
   AcpEventCallback,
   AcpJsonRpcMessage,
+  AcpSessionMutationReceipt,
+  AcpSessionMutationResult,
   AgentType,
   ApprovalPreset,
   AvailableAgentInfo,

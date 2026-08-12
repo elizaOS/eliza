@@ -26,6 +26,8 @@ describe("TASKS:send", () => {
     providerDisposition: {
       kind: "accepted" as const,
       receipt: {
+        operation: "send" as const,
+        authority: "provider_response" as const,
         receiptId: "native:protocol-session:42",
         acceptedAt: "2026-05-03T10:00:00.000Z",
         transport: "native" as const,

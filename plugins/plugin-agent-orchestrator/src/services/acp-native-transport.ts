@@ -102,6 +102,12 @@ export type NativeAcpPromptResult = {
   providerDisposition: PromptProviderDisposition;
 };
 
+export type NativeAcpSessionMutationAck = {
+  requestId: string;
+  acceptedAt: string;
+  protocolSessionId: string;
+};
+
 type JsonRpcId = string | number | null;
 
 type PendingRequest = {
@@ -281,13 +287,25 @@ export class NativeAcpClient {
     };
   }
 
-  async cancel(sessionId: string): Promise<void> {
-    // error-policy:J6 best-effort teardown — if the request/cancel round-trip
-    // fails, fall back to a fire-and-forget cancel notification; neither path
-    // can do more than ask a possibly-dead subprocess to stop.
-    await this.request("session/cancel", { sessionId }, 5_000).catch(() => {
-      void this.notify("session/cancel", { sessionId }).catch(() => undefined);
-    });
+  async cancel(sessionId: string): Promise<NativeAcpSessionMutationAck> {
+    let responseIdentity: { requestId: string; receivedAt: string } | undefined;
+    await this.request(
+      "session/cancel",
+      { sessionId },
+      5_000,
+      undefined,
+      (response) => {
+        responseIdentity = response;
+      },
+    );
+    if (!responseIdentity) {
+      throw new Error("ACP session/cancel response was not observed");
+    }
+    return {
+      requestId: responseIdentity.requestId,
+      acceptedAt: responseIdentity.receivedAt,
+      protocolSessionId: sessionId,
+    };
   }
 
   async closeSession(sessionId: string): Promise<void> {
@@ -346,17 +364,10 @@ export class NativeAcpClient {
     });
   }
 
-  private async notify(method: string, params: unknown): Promise<void> {
-    const proc = this.requireProcess();
-    const payload = { jsonrpc: "2.0", method, params };
-    this.emitEvent(payload as AcpJsonRpcMessage);
-    proc.stdin.write(`${JSON.stringify(payload)}\n`);
-  }
-
   /**
    * Fire the onEvent observer without letting a consumer's throw derail the
    * transport. onEvent is best-effort observability (trajectory capture); a
-   * throw used to propagate — synchronously breaking `request`/`notify`, or as
+   * throw used to propagate — synchronously breaking a request, or as
    * an unhandled rejection out of the un-awaited `handleLine` — instead of being
    * contained here.
    */

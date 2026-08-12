@@ -62,6 +62,8 @@ import {
 } from "../services/task-agent-routing.js";
 import { requireTaskAgentAccess } from "../services/task-policy.js";
 import {
+  type AcpSessionMutationReceipt,
+  type AcpSessionMutationResult,
   type AgentType,
   type PromptProviderDisposition,
   type SessionInfo,
@@ -167,6 +169,149 @@ const TASK_AGENT_SEND_ACCEPTANCE_UNKNOWN_TEXT =
 const TASK_AGENT_SEND_REJECTED_TEXT =
   "The coding-agent provider declined the follow-up. No accepted provider result was recorded.";
 
+const TASK_CONTROL_PARTIAL_OUTCOME_TEXT =
+  "The coding task was resumed, but its follow-up did not reach an accepted provider result. Inspect the task and session before retrying.";
+
+function acpSessionMutationReceipt(
+  value: unknown,
+  expectedOperation: AcpSessionMutationReceipt["operation"],
+): AcpSessionMutationReceipt | undefined {
+  const receipt = objectValue(value);
+  const receiptId = effectString(receipt?.receiptId);
+  if (receipt?.operation !== expectedOperation || !receiptId) return undefined;
+  if (expectedOperation === "send") {
+    const acceptedAt = effectString(receipt.acceptedAt);
+    const transport = receipt.transport;
+    const protocolSessionId = effectString(receipt.protocolSessionId);
+    const requestId = effectString(receipt.requestId);
+    return receipt.authority === "provider_response" &&
+      acceptedAt &&
+      !Number.isNaN(Date.parse(acceptedAt)) &&
+      (transport === "native" || transport === "cli") &&
+      protocolSessionId &&
+      requestId
+      ? {
+          operation: expectedOperation,
+          authority: "provider_response",
+          receiptId,
+          acceptedAt,
+          transport,
+          protocolSessionId,
+          requestId,
+        }
+      : undefined;
+  }
+  const committedAt = effectString(receipt.committedAt);
+  const status = expectedOperation === "stop" ? "stopped" : "cancelled";
+  const providerAck = objectValue(receipt.providerAck);
+  const providerTransport = providerAck?.transport;
+  const providerProtocolSessionId = effectString(
+    providerAck?.protocolSessionId,
+  );
+  const providerRequestId = effectString(providerAck?.requestId);
+  const providerAcceptedAt = effectString(providerAck?.acceptedAt);
+  const normalizedProviderAck:
+    | {
+        transport: "native" | "cli";
+        protocolSessionId: string;
+        requestId: string;
+        acceptedAt: string;
+      }
+    | undefined = providerAck
+    ? providerTransport &&
+      (providerTransport === "native" || providerTransport === "cli") &&
+      providerProtocolSessionId &&
+      providerRequestId &&
+      providerAcceptedAt &&
+      !Number.isNaN(Date.parse(providerAcceptedAt))
+      ? {
+          transport: providerTransport,
+          protocolSessionId: providerProtocolSessionId,
+          requestId: providerRequestId,
+          acceptedAt: providerAcceptedAt,
+        }
+      : undefined
+    : undefined;
+  if (providerAck && !normalizedProviderAck) return undefined;
+  if (
+    receipt.authority !== "session_store" ||
+    receipt.status !== status ||
+    !committedAt ||
+    Number.isNaN(Date.parse(committedAt))
+  ) {
+    return undefined;
+  }
+  return expectedOperation === "stop"
+    ? {
+        operation: expectedOperation,
+        authority: "session_store",
+        receiptId,
+        committedAt,
+        status: "stopped",
+        ...(normalizedProviderAck
+          ? { providerAck: normalizedProviderAck }
+          : {}),
+      }
+    : {
+        operation: expectedOperation,
+        authority: "session_store",
+        receiptId,
+        committedAt,
+        status: "cancelled",
+        ...(normalizedProviderAck
+          ? { providerAck: normalizedProviderAck }
+          : {}),
+      };
+}
+
+function promptSettlementFailure(
+  runtime: IAgentRuntime,
+  operation: "send" | "control",
+  sessionId: string,
+  settlement: Exclude<PromptProviderDisposition, { kind: "accepted" }>,
+  data: Record<string, unknown> = {},
+): ActionResult {
+  logger(runtime).warn(
+    {
+      src: "tasks",
+      operation,
+      targetSessionId: sessionId,
+      providerSettlement: settlement.kind,
+      providerCode: settlement.code,
+    },
+    `[TASKS:${operation}] provider acceptance could not be established`,
+  );
+  const partialOutcome =
+    operation === "control" &&
+    Boolean(effectString(data.taskId) && objectValue(data.task));
+  const rejected = settlement.kind === "rejected" && !partialOutcome;
+  const publicText = partialOutcome
+    ? TASK_CONTROL_PARTIAL_OUTCOME_TEXT
+    : rejected
+      ? TASK_AGENT_SEND_REJECTED_TEXT
+      : TASK_AGENT_SEND_ACCEPTANCE_UNKNOWN_TEXT;
+  return {
+    success: false,
+    error: partialOutcome
+      ? "ACP_CONTROL_PARTIAL_OUTCOME"
+      : rejected
+        ? "ACP_PROMPT_REJECTED"
+        : "ACP_SEND_ACCEPTANCE_UNKNOWN",
+    text: publicText,
+    userFacingText: publicText,
+    turnComplete: true,
+    continueChain: false,
+    data: {
+      ...data,
+      sessionId,
+      providerAccepted: false,
+      providerAcceptance: settlement.kind,
+      reconciliationRequired: !rejected,
+      retryable: false,
+    },
+  };
+}
+
 function settlePromptResult(
   expectedSessionId: string,
   value: unknown,
@@ -203,24 +348,15 @@ function settlePromptResult(
       effectsMayHaveOccurred: disposition.effectsMayHaveOccurred !== false,
     };
   }
-  const receipt = objectValue(disposition.receipt);
-  const receiptId = effectString(receipt?.receiptId);
-  const acceptedAt = effectString(receipt?.acceptedAt);
-  const transport = receipt?.transport;
-  const protocolSessionId = effectString(receipt?.protocolSessionId);
-  const requestId = effectString(receipt?.requestId);
+  const receipt = acpSessionMutationReceipt(disposition.receipt, "send");
   if (
     disposition.kind !== "accepted" ||
     result.stopReason !== "end_turn" ||
     result.exitCode !== 0 ||
     result.signal !== null ||
     result.error !== undefined ||
-    !receiptId ||
-    !acceptedAt ||
-    Number.isNaN(Date.parse(acceptedAt)) ||
-    (transport !== "native" && transport !== "cli") ||
-    !protocolSessionId ||
-    !requestId
+    !receipt ||
+    receipt.operation !== "send"
   ) {
     return {
       kind: "unknown",
@@ -230,13 +366,7 @@ function settlePromptResult(
   }
   return {
     kind: "accepted",
-    receipt: {
-      receiptId,
-      acceptedAt,
-      transport,
-      protocolSessionId,
-      requestId,
-    },
+    receipt,
   };
 }
 
@@ -2471,39 +2601,13 @@ async function runSend(
       );
       const settlement = settlePromptResult(target.session.id, promptResult);
       if (settlement.kind !== "accepted") {
-        logger(runtime).warn(
-          {
-            src: "tasks",
-            operation: "send",
-            targetSessionId: target.session.id,
-            providerSettlement: settlement.kind,
-            providerCode: settlement.code,
-          },
-          "[TASKS:send] provider acceptance could not be established",
+        return promptSettlementFailure(
+          runtime,
+          "send",
+          target.session.id,
+          settlement,
+          { input: textInput, ...(task ? { task } : {}) },
         );
-        const rejected = settlement.kind === "rejected";
-        const publicText = rejected
-          ? TASK_AGENT_SEND_REJECTED_TEXT
-          : TASK_AGENT_SEND_ACCEPTANCE_UNKNOWN_TEXT;
-        return {
-          success: false,
-          error: rejected
-            ? "ACP_PROMPT_REJECTED"
-            : "ACP_SEND_ACCEPTANCE_UNKNOWN",
-          text: publicText,
-          userFacingText: publicText,
-          turnComplete: true,
-          continueChain: false,
-          data: {
-            sessionId: target.session.id,
-            input: textInput,
-            providerAccepted: false,
-            providerAcceptance: settlement.kind,
-            reconciliationRequired: !rejected,
-            retryable: false,
-            ...(task ? { task } : {}),
-          },
-        };
       }
       const text = task ? "Assigned new task to agent" : "Sent input to agent";
       return {
@@ -2513,9 +2617,9 @@ async function runSend(
           sessionId: target.session.id,
           input: textInput,
           providerAccepted: true,
-          providerReceiptId: settlement.receipt.receiptId,
-          providerAcceptedAt: settlement.receipt.acceptedAt,
-          providerTransport: settlement.receipt.transport,
+          acpMutationReceipts: [
+            { sessionId: target.session.id, receipt: settlement.receipt },
+          ],
           ...(task ? { task } : {}),
         },
       };
@@ -2595,7 +2699,7 @@ async function runStopAgent(
     const sessions = await Promise.resolve(service.listSessions());
 
     if (all) {
-      await Promise.all(
+      const mutations = await Promise.all(
         sessions.map((session) => service.stopSession(session.id)),
       );
       if (state)
@@ -2616,7 +2720,11 @@ async function runStopAgent(
         userFacingText: text,
         verifiedUserFacing: true,
         turnComplete: true,
-        data: { stoppedCount: sessions.length },
+        data: {
+          stoppedCount: sessions.length,
+          stoppedSessions: sessions.map((session) => session.id),
+          acpMutationReceipts: mutations,
+        },
       };
     }
 
@@ -2643,10 +2751,15 @@ async function runStopAgent(
         userFacingText: noneText,
         verifiedUserFacing: true,
         turnComplete: true,
+        data: {
+          stoppedCount: 0,
+          stoppedSessions: [],
+          acpMutationReceipts: [],
+        },
       };
     }
 
-    await service.stopSession(target.id);
+    const mutation = await service.stopSession(target.id);
     if (
       (state as { codingSession?: { id?: string } } | undefined)?.codingSession
         ?.id === target.id
@@ -2661,7 +2774,11 @@ async function runStopAgent(
       userFacingText: stoppedText,
       verifiedUserFacing: true,
       turnComplete: true,
-      data: { sessionId: target.id, agentType: String(target.agentType) },
+      data: {
+        sessionId: target.id,
+        agentType: String(target.agentType),
+        acpMutationReceipts: [mutation],
+      },
     };
   } catch (error) {
     // error-policy:J1 stop action boundary → structured failure to the
@@ -2767,9 +2884,13 @@ async function runCancel(
 
     if (all) {
       const stoppedSessions: string[] = [];
+      const mutations: AcpSessionMutationResult[] = [];
       for (const session of sessions) {
-        await (service.cancelSession?.(session.id) ??
-          service.stopSession(session.id));
+        mutations.push(
+          service.cancelSession
+            ? await service.cancelSession(session.id)
+            : await service.stopSession(session.id),
+        );
         stoppedSessions.push(session.id);
       }
       // The cancel confirmation is the complete answer to a single-operation
@@ -2782,7 +2903,11 @@ async function runCancel(
         userFacingText: text,
         verifiedUserFacing: true,
         turnComplete: true,
-        data: { canceledCount: stoppedSessions.length, stoppedSessions },
+        data: {
+          canceledCount: stoppedSessions.length,
+          stoppedSessions,
+          acpMutationReceipts: mutations,
+        },
       };
     }
 
@@ -2808,8 +2933,9 @@ async function runCancel(
       );
     }
 
-    await (service.cancelSession?.(target.id) ??
-      service.stopSession(target.id));
+    const mutation = service.cancelSession
+      ? await service.cancelSession(target.id)
+      : await service.stopSession(target.id);
     const id = threadId ?? target.id;
     const text = `Canceled task ${id}.`;
     await callbackText(callback, text);
@@ -2824,6 +2950,7 @@ async function runCancel(
         sessionId: target.id,
         stoppedSessions: [target.id],
         status: "canceled",
+        acpMutationReceipts: [mutation],
       },
     };
   } catch (error) {
@@ -3534,19 +3661,40 @@ async function runControl(
     action,
   };
   if (resumedTask && controlTaskId) {
-    data = { ...data, taskId: controlTaskId };
+    data = { ...data, taskId: controlTaskId, task: resumedTask };
   }
 
   let responseText = "";
   if (action === "stop") {
-    await service.stopSession(target.session.id);
+    const mutation = await service.stopSession(target.session.id);
     responseText = "Stopped the coding task.";
+    data = { ...data, acpMutationReceipts: [mutation] };
   } else {
     const nextInstruction =
       instruction?.trim() || "Continue with the current task.";
-    await service.sendToSession(target.session.id, nextInstruction);
+    const promptResult = await service.sendToSession(
+      target.session.id,
+      nextInstruction,
+    );
+    const settlement = settlePromptResult(target.session.id, promptResult);
+    if (settlement.kind !== "accepted") {
+      return promptSettlementFailure(
+        runtime,
+        "control",
+        target.session.id,
+        settlement,
+        { ...data, instruction: nextInstruction },
+      );
+    }
     responseText = "Passed your follow-up instructions to the coding agent.";
-    data = { ...data, instruction: nextInstruction };
+    data = {
+      ...data,
+      instruction: nextInstruction,
+      providerAccepted: true,
+      acpMutationReceipts: [
+        { sessionId: target.session.id, receipt: settlement.receipt },
+      ],
+    };
   }
 
   // The control outcome is the complete answer to a single-operation turn:
@@ -4748,6 +4896,73 @@ function tasksCreateEffectProof(
   };
 }
 
+function acpSessionMutationEffectProof(
+  data: Record<string, unknown>,
+  expectedOperations: readonly AcpSessionMutationReceipt["operation"][],
+  expectedSessionIds: string[],
+): TasksEffectProof | undefined {
+  const uniqueExpectedSessionIds = [...new Set(expectedSessionIds)];
+  const records = effectRecords(data.acpMutationReceipts);
+  if (
+    uniqueExpectedSessionIds.length === 0 ||
+    uniqueExpectedSessionIds.length !== expectedSessionIds.length ||
+    records.length !== uniqueExpectedSessionIds.length
+  ) {
+    return undefined;
+  }
+  const expectedSessionSet = new Set(uniqueExpectedSessionIds);
+  const seenSessions = new Set<string>();
+  const mutations: Array<{
+    sessionId: string;
+    receipt: AcpSessionMutationReceipt;
+  }> = [];
+  for (const record of records) {
+    const sessionId = effectString(record.sessionId);
+    const operation = objectValue(record.receipt)?.operation;
+    if (
+      !sessionId ||
+      seenSessions.has(sessionId) ||
+      !expectedSessionSet.has(sessionId) ||
+      !expectedOperations.includes(
+        operation as AcpSessionMutationReceipt["operation"],
+      )
+    ) {
+      return undefined;
+    }
+    const receipt = acpSessionMutationReceipt(
+      record.receipt,
+      operation as AcpSessionMutationReceipt["operation"],
+    );
+    if (!receipt) return undefined;
+    seenSessions.add(sessionId);
+    mutations.push({ sessionId, receipt });
+  }
+  if (seenSessions.size !== expectedSessionSet.size) return undefined;
+  const first = mutations[0];
+  if (!first) return undefined;
+  const committedAt =
+    first.receipt.operation === "send"
+      ? first.receipt.acceptedAt
+      : first.receipt.committedAt;
+  return {
+    commitId: first.receipt.receiptId,
+    commitKind:
+      first.receipt.operation === "send" ? "provider_accepted" : "durable",
+    committedAt,
+    resource: { kind: "acp.session", id: first.sessionId },
+    artifacts: uniqueEffectRefs([
+      ...mutations.slice(1).map(({ sessionId }) => ({
+        kind: "acp.session",
+        id: sessionId,
+      })),
+      ...mutations.map(({ receipt }) => ({
+        kind: "acp.session-mutation-receipt",
+        id: receipt.receiptId,
+      })),
+    ]),
+  };
+}
+
 function tasksEffectProof(
   operation: TaskOp,
   params: Record<string, unknown>,
@@ -4816,6 +5031,8 @@ function tasksEffectProof(
   if (controlOperation === "resume" || controlOperation === "continue") {
     const taskId = effectString(data.taskId);
     const sessionId = effectString(data.sessionId);
+    const task = objectValue(data.task);
+    if (taskId && !task) return undefined;
     if (taskId && !sessionId) {
       return {
         commitId: taskId,
@@ -4823,7 +5040,28 @@ function tasksEffectProof(
         resource: { kind: "orchestrator.task", id: taskId },
       };
     }
-    return undefined;
+    if (!sessionId) return undefined;
+    const promptProof = acpSessionMutationEffectProof(
+      data,
+      ["send"],
+      [sessionId],
+    );
+    if (!promptProof) return undefined;
+    return taskId
+      ? {
+          ...promptProof,
+          artifacts: uniqueEffectRefs([
+            ...(promptProof.artifacts ?? []),
+            { kind: "orchestrator.task", id: taskId },
+          ]),
+        }
+      : promptProof;
+  }
+  if (controlOperation === "stop") {
+    const sessionId = effectString(data.sessionId);
+    return sessionId
+      ? acpSessionMutationEffectProof(data, ["stop"], [sessionId])
+      : undefined;
   }
   if (operation === "spawn_agent") {
     const sessionId = effectString(data.sessionId);
@@ -4837,20 +5075,22 @@ function tasksEffectProof(
   }
   if (operation === "send") {
     const sessionId = effectString(data.sessionId);
-    const providerReceiptId = effectString(data.providerReceiptId);
-    const providerAcceptedAt = effectString(data.providerAcceptedAt);
-    return sessionId &&
-      providerReceiptId &&
-      providerAcceptedAt &&
-      !Number.isNaN(Date.parse(providerAcceptedAt)) &&
-      data.providerAccepted === true
-      ? {
-          commitId: providerReceiptId,
-          commitKind: "provider_accepted",
-          committedAt: providerAcceptedAt,
-          resource: { kind: "acp.session", id: sessionId },
-        }
+    return sessionId && data.providerAccepted === true
+      ? acpSessionMutationEffectProof(data, ["send"], [sessionId])
       : undefined;
+  }
+  if (operation === "stop_agent" || operation === "cancel") {
+    const sessionId = effectString(data.sessionId);
+    const stoppedSessions = Array.isArray(data.stoppedSessions)
+      ? data.stoppedSessions
+          .map((value) => effectString(value))
+          .filter((value): value is string => Boolean(value))
+      : [];
+    return acpSessionMutationEffectProof(
+      data,
+      operation === "stop_agent" ? ["stop"] : ["cancel", "stop"],
+      sessionId ? [sessionId] : stoppedSessions,
+    );
   }
   if (operation === "create") {
     return tasksCreateEffectProof(data);

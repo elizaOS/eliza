@@ -10,6 +10,7 @@ import {
   memory,
   runtimeWith,
   serviceMock,
+  session,
   state,
 } from "../../src/test-utils/action-test-utils.js";
 
@@ -42,17 +43,74 @@ describe("TASKS:stop_agent", () => {
   });
   it("stops all sessions when all=true", async () => {
     const svc = serviceMock();
+    const result = await stopAgentAction.handler(
+      runtimeWith(svc),
+      memory({ all: true }),
+      state,
+      stopOptions,
+      callback(),
+    );
+    expect(result).toMatchObject({
+      success: true,
+      data: { stoppedCount: 1, stoppedSessions: ["abcdef123456"] },
+      effectReceipts: [
+        {
+          outcome: "applied",
+          resource: { kind: "acp.session", id: "abcdef123456" },
+          commit: {
+            kind: "durable",
+            id: "session-store:stop:abcdef123456:1",
+            committedAt: "2026-05-03T10:00:00.000Z",
+          },
+        },
+      ],
+    });
+  });
+  it("fails an all-session stop closed when any child receipt is missing", async () => {
+    const sessions = [
+      session({ id: "session-one" }),
+      session({ id: "session-two" }),
+    ];
+    const svc = serviceMock({
+      listSessions: vi.fn(() => sessions),
+      stopSession: vi.fn(async (sessionId: string) =>
+        sessionId === "session-one"
+          ? {
+              sessionId,
+              receipt: {
+                operation: "stop",
+                authority: "session_store",
+                receiptId: "session-store:stop:session-one:1",
+                committedAt: "2026-05-03T10:00:00.000Z",
+                status: "stopped",
+              },
+            }
+          : undefined,
+      ),
+    });
+
+    const result = await stopAgentAction.handler(
+      runtimeWith(svc),
+      memory({ all: true }),
+      state,
+      stopOptions,
+      callback(),
+    );
+
+    expect(result).toMatchObject({
+      success: false,
+      error: "AUTHORITATIVE_RECEIPT_MISSING",
+      data: { outcomeUnknown: true, reconciliationRequired: true },
+      effectReceipts: [
+        {
+          outcome: "failed",
+          failure: { acceptance: "unknown", retryable: false },
+        },
+      ],
+    });
     expect(
-      (
-        await stopAgentAction.handler(
-          runtimeWith(svc),
-          memory({ all: true }),
-          state,
-          stopOptions,
-          callback(),
-        )
-      )?.data,
-    ).toEqual({ stoppedCount: 1 });
+      result?.effectReceipts?.some((receipt) => receipt.outcome === "applied"),
+    ).toBe(false);
   });
   it("reports SERVICE_UNAVAILABLE when ACP is missing", async () => {
     expect(

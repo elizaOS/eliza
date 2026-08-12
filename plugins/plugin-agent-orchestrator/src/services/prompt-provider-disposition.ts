@@ -31,6 +31,8 @@ export function classifyPromptProviderResponse(input: {
     return {
       kind: "accepted",
       receipt: {
+        operation: "send",
+        authority: "provider_response",
         receiptId: `${input.transport}:${input.protocolSessionId}:${input.requestId}`,
         acceptedAt: input.acceptedAt,
         transport: input.transport,

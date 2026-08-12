@@ -47,6 +47,8 @@ export function serviceMock(overrides: Record<string, unknown> = {}) {
       providerDisposition: {
         kind: "accepted" as const,
         receipt: {
+          operation: "send" as const,
+          authority: "provider_response" as const,
           receiptId: `native:${sid}:1`,
           acceptedAt: "2026-05-03T10:00:00.000Z",
           transport: "native" as const,
@@ -66,6 +68,8 @@ export function serviceMock(overrides: Record<string, unknown> = {}) {
       providerDisposition: {
         kind: "accepted" as const,
         receipt: {
+          operation: "send" as const,
+          authority: "provider_response" as const,
           receiptId: `native:${sid}:2`,
           acceptedAt: "2026-05-03T10:00:00.000Z",
           transport: "native" as const,
@@ -75,8 +79,26 @@ export function serviceMock(overrides: Record<string, unknown> = {}) {
       },
     })),
     sendKeysToSession: vi.fn(async () => undefined),
-    stopSession: vi.fn(async () => undefined),
-    cancelSession: vi.fn(async () => undefined),
+    stopSession: vi.fn(async (sid: string) => ({
+      sessionId: sid,
+      receipt: {
+        operation: "stop" as const,
+        authority: "session_store" as const,
+        receiptId: `session-store:stop:${sid}:1`,
+        committedAt: "2026-05-03T10:00:00.000Z",
+        status: "stopped" as const,
+      },
+    })),
+    cancelSession: vi.fn(async (sid: string) => ({
+      sessionId: sid,
+      receipt: {
+        operation: "cancel" as const,
+        authority: "session_store" as const,
+        receiptId: `session-store:cancel:${sid}:1`,
+        committedAt: "2026-05-03T10:00:00.000Z",
+        status: "cancelled" as const,
+      },
+    })),
     listSessions: vi.fn(() => [s]),
     getSession: vi.fn((id: string) => (id === s.id ? s : undefined)),
     resolveAgentType: vi.fn(async () => "codex"),

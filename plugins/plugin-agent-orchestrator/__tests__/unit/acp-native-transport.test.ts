@@ -290,7 +290,7 @@ describe("NativeAcpClient JSON-RPC lifecycle", () => {
     },
   );
 
-  it("falls back from session/cancel request to notification when rejected", async () => {
+  it("fails cancel closed when the provider rejects session/cancel", async () => {
     const { client, p } = await startClient();
 
     const cancelled = client.cancel("session-1");
@@ -307,13 +307,22 @@ describe("NativeAcpClient JSON-RPC lifecycle", () => {
       id: 2,
       error: { code: -32601, message: "Method not found" },
     });
-    await waitForWrites(p, 3);
-    expect(writeAt(p, 2)).toEqual({
-      jsonrpc: "2.0",
-      method: "session/cancel",
-      params: { sessionId: "session-1" },
+    await expect(cancelled).rejects.toThrow("Method not found");
+    expect(p.stdinWrites).toHaveLength(2);
+  });
+
+  it("returns the correlated provider identity for session/cancel", async () => {
+    const { client, p } = await startClient();
+    const cancelled = client.cancel("session-1");
+    await waitForWrites(p, 2);
+
+    emitJson(p, { jsonrpc: "2.0", id: 2, result: {} });
+
+    await expect(cancelled).resolves.toMatchObject({
+      requestId: "2",
+      acceptedAt: expect.any(String),
+      protocolSessionId: "session-1",
     });
-    await expect(cancelled).resolves.toBeUndefined();
   });
 
   it("triggers cancellation when a prompt request times out", async () => {

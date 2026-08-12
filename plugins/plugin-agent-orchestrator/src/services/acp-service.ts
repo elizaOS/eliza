@@ -121,6 +121,7 @@ import {
   type AcpCapacity,
   type AcpEventCallback,
   type AcpJsonRpcMessage,
+  type AcpSessionMutationResult,
   type AcpToolCall,
   type AgentType,
   type ApprovalPreset,
@@ -2263,18 +2264,86 @@ export class AcpService extends Service {
     return promptResult;
   }
 
-  async cancelSession(sessionId: string): Promise<void> {
+  private async commitTerminalSessionMutation(
+    sessionId: string,
+    operation: "stop" | "cancel",
+    providerAck?: {
+      transport: "native" | "cli";
+      protocolSessionId: string;
+      requestId: string;
+      acceptedAt: string;
+    },
+  ): Promise<AcpSessionMutationResult> {
+    const status = operation === "stop" ? "stopped" : "cancelled";
+    await this.store.updateStatus(sessionId, status);
+    const persisted = await this.store.get(sessionId);
+    if (persisted?.status !== status) {
+      throw new ElizaError("ACP terminal session state was not persisted", {
+        code: "ACP_TERMINAL_STATE_NOT_PERSISTED",
+        context: {
+          sessionId,
+          operation,
+          expectedStatus: status,
+          actualStatus: persisted?.status ?? "missing",
+        },
+        severity: "ephemeral",
+      });
+    }
+    const receiptId = `session-store:${operation}:${sessionId}:${randomUUID()}`;
+    const committedAt = new Date().toISOString();
+    return operation === "stop"
+      ? {
+          sessionId,
+          receipt: {
+            operation,
+            authority: "session_store",
+            receiptId,
+            committedAt,
+            status: "stopped",
+            ...(providerAck ? { providerAck } : {}),
+          },
+        }
+      : {
+          sessionId,
+          receipt: {
+            operation,
+            authority: "session_store",
+            receiptId,
+            committedAt,
+            status: "cancelled",
+            ...(providerAck ? { providerAck } : {}),
+          },
+        };
+  }
+
+  async cancelSession(sessionId: string): Promise<AcpSessionMutationResult> {
     const session = await this.requireSession(sessionId);
     const transportMode = sessionTransportMode(session, this.transportMode);
     if (transportMode === "native") {
       const client = this.nativeClients.get(sessionId);
+      if (!client) {
+        throw new ElizaError("Native ACP session has no active transport", {
+          code: "ACP_NATIVE_SESSION_UNAVAILABLE",
+          context: { sessionId, operation: "cancel" },
+          severity: "ephemeral",
+        });
+      }
       if (this.nativePromptSessionIds.has(sessionId)) {
         this.nativeCancelledPromptSessionIds.add(sessionId);
       }
-      await client?.cancel(
+      const ack = await client.cancel(
         session.acpxSessionId ?? session.agentSessionId ?? session.id,
       );
-      await this.store.updateStatus(sessionId, "cancelled");
+      const result = await this.commitTerminalSessionMutation(
+        sessionId,
+        "cancel",
+        {
+          transport: "native",
+          protocolSessionId: ack.protocolSessionId,
+          requestId: ack.requestId,
+          acceptedAt: ack.acceptedAt,
+        },
+      );
       // Stop the scratch dir counting against the shared cap the moment the
       // session is terminal; the actual rm still happens on close/delete via
       // removeOwnedScratchWorkdir (a cancelled session may be reopened/inspected
@@ -2282,39 +2351,62 @@ export class AcpService extends Service {
       this.workspaceRegistry.markTerminal(session.workdir);
       void this.revokeModelLease(sessionId, "cancelSession:native");
       await this.removeOwnedGitIndex(session);
-      return;
+      return result;
     }
     const active = this.activeProcesses.get(sessionId);
     if (active) {
       active.cancelled = true;
-      this.terminateProcess(sessionId, active);
+      await this.stopTrackedProcess(sessionId);
     } else {
       const args = this.agentCommandArgs(session.agentType, [
         "cancel",
         "-s",
         session.name ?? session.id,
       ]);
-      await this.runAcpx({
+      const cancelResult = await this.runAcpx({
         sessionId,
         agentType: session.agentType,
         workdir: session.workdir,
         args,
       });
+      if (cancelResult.code !== 0 || cancelResult.signal !== null) {
+        throw new ElizaError("ACP session cancel was not accepted", {
+          code: "ACP_SESSION_CANCEL_NOT_ACCEPTED",
+          context: {
+            sessionId,
+            exitCode: cancelResult.code,
+            signal: cancelResult.signal,
+          },
+          severity: "ephemeral",
+        });
+      }
     }
-    await this.store.updateStatus(sessionId, "cancelled");
+    const result = await this.commitTerminalSessionMutation(
+      sessionId,
+      "cancel",
+    );
     this.workspaceRegistry.markTerminal(session.workdir);
     void this.revokeModelLease(sessionId, "cancelSession");
     await this.removeOwnedGitIndex(session);
+    return result;
   }
 
-  async closeSession(sessionId: string): Promise<void> {
+  async closeSession(sessionId: string): Promise<AcpSessionMutationResult> {
     const session = await this.requireSession(sessionId);
     const transportMode = sessionTransportMode(session, this.transportMode);
     if (transportMode === "native") {
+      if (!this.nativeClients.has(sessionId)) {
+        throw new ElizaError("Native ACP session has no active transport", {
+          code: "ACP_NATIVE_SESSION_UNAVAILABLE",
+          context: { sessionId, operation: "stop" },
+          severity: "ephemeral",
+        });
+      }
       this.nativeStoppingSessionIds.add(sessionId);
+      let result: AcpSessionMutationResult;
       try {
         await this.stopNativeClient(sessionId);
-        await this.store.updateStatus(sessionId, "stopped");
+        result = await this.commitTerminalSessionMutation(sessionId, "stop");
         // `closeSession()` is an awaited teardown boundary. Revoke before the
         // terminal event so callers cannot observe a closed session whose
         // leased model credential is still live; the event-side revoke then
@@ -2331,8 +2423,9 @@ export class AcpService extends Service {
       }
       await this.removeOwnedScratchWorkdir(session);
       await this.removeOwnedGitIndex(session);
-      return;
+      return result;
     }
+    const hadActiveProcess = this.activeProcesses.has(sessionId);
     await this.stopTrackedProcess(sessionId);
     const args = [
       "--format",
@@ -2346,12 +2439,26 @@ export class AcpService extends Service {
       ]),
     ];
     try {
-      await this.runAcpx({
+      const closeResult = await this.runAcpx({
         sessionId,
         agentType: session.agentType,
         workdir: session.workdir,
         args,
       });
+      if (
+        !hadActiveProcess &&
+        (closeResult.code !== 0 || closeResult.signal !== null)
+      ) {
+        throw new ElizaError("ACP session close was not accepted", {
+          code: "ACP_SESSION_CLOSE_NOT_ACCEPTED",
+          context: {
+            sessionId,
+            exitCode: closeResult.code,
+            signal: closeResult.signal,
+          },
+          severity: "ephemeral",
+        });
+      }
     } catch (err: unknown) {
       // error-policy:J6 best-effort teardown — `sessions close` is cleanup that
       // runs AFTER the task's real work is done. An agent server that does not
@@ -2360,6 +2467,7 @@ export class AcpService extends Service {
       // task (files written, app deployed, link returned) as "Couldn't finish".
       // Log and continue to the stopped-status update so the close never masks
       // a completed turn.
+      if (!hadActiveProcess) throw err;
       this.runtime.logger.debug(
         {
           src: "acp-service",
@@ -2370,7 +2478,7 @@ export class AcpService extends Service {
         "Session close failed (best-effort) — marking stopped anyway",
       );
     }
-    await this.store.updateStatus(sessionId, "stopped");
+    const result = await this.commitTerminalSessionMutation(sessionId, "stop");
     // Keep CLI close parity with the native awaited teardown contract.
     await this.revokeModelLease(sessionId, "closeSession:cli");
     this.emitSessionEvent(sessionId, "stopped", {
@@ -2379,6 +2487,7 @@ export class AcpService extends Service {
     });
     await this.removeOwnedScratchWorkdir(session);
     await this.removeOwnedGitIndex(session);
+    return result;
   }
 
   async deleteSession(sessionId: string): Promise<void> {
@@ -2649,8 +2758,8 @@ export class AcpService extends Service {
     throw new Error("ACP sessions do not support raw key input.");
   }
 
-  async stopSession(sessionId: string): Promise<void> {
-    await this.closeSession(sessionId);
+  async stopSession(sessionId: string): Promise<AcpSessionMutationResult> {
+    return this.closeSession(sessionId);
   }
 
   private async closeInitialTaskSession(sessionId: string): Promise<void> {
@@ -3365,7 +3474,7 @@ export class AcpService extends Service {
     // error-policy:J6 best-effort teardown of a session being deleted; a
     // close/closeSession failure must not abort the deletion.
     await client.closeSession(protocolSessionId).catch(() => undefined);
-    await client.close().catch(() => undefined);
+    await client.close();
   }
 
   private agentCommandArgs(agentType: AgentType, args: string[]): string[] {
@@ -4165,9 +4274,11 @@ export class AcpService extends Service {
     const active = this.activeProcesses.get(sessionId);
     if (!active) return;
     this.terminateProcess(sessionId, active);
-    await new Promise<void>((resolveStop) =>
-      active.proc.once("close", () => resolveStop()),
-    );
+    if (!active.exited) {
+      await new Promise<void>((resolveStop) =>
+        active.proc.once("close", () => resolveStop()),
+      );
+    }
   }
 
   private terminateProcess(_sessionId: string, record: ProcessRecord): void {

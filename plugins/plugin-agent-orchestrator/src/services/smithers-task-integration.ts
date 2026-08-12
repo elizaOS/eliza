@@ -141,7 +141,7 @@ export interface AcpTaskService {
     opts?: { timeoutMs?: number; model?: string },
   ): Promise<PromptOut>;
   sendToSession?(sessionId: string, text: string): Promise<PromptOut>;
-  cancelSession?(sessionId: string): Promise<void>;
+  cancelSession?(sessionId: string): Promise<unknown>;
 }
 
 /**
@@ -187,7 +187,9 @@ export function acpServiceToAcpLike(
         new Error("ACP service has neither sendPrompt nor sendToSession"),
       );
     },
-    cancelSession: (sessionId) => cancelSession.call(service, sessionId),
+    cancelSession: async (sessionId) => {
+      await cancelSession.call(service, sessionId);
+    },
     // Reattach-by-label is intentionally not wired here: runDurableTask drives an
     // already-spawned session by id, and the real lookup is workdir-aware. The
     // executor still supports reattach when given a capable AcpLike (see tests).

@@ -215,16 +215,57 @@ export interface SendOptions {
   model?: string;
 }
 
-export type PromptProviderDisposition =
+export type AcpSessionMutationReceipt =
   | {
-      kind: "accepted";
-      receipt: {
-        receiptId: string;
-        acceptedAt: string;
+      operation: "send";
+      authority: "provider_response";
+      receiptId: string;
+      acceptedAt: string;
+      transport: "native" | "cli";
+      protocolSessionId: string;
+      requestId: string;
+    }
+  | {
+      operation: "stop";
+      authority: "session_store";
+      receiptId: string;
+      committedAt: string;
+      status: "stopped";
+      providerAck?: {
         transport: "native" | "cli";
         protocolSessionId: string;
         requestId: string;
+        acceptedAt: string;
       };
+    }
+  | {
+      operation: "cancel";
+      authority: "session_store";
+      receiptId: string;
+      committedAt: string;
+      status: "cancelled";
+      providerAck?: {
+        transport: "native" | "cli";
+        protocolSessionId: string;
+        requestId: string;
+        acceptedAt: string;
+      };
+    };
+
+export type AcpSessionMutationResult =
+  | {
+      sessionId: string;
+      receipt: Extract<AcpSessionMutationReceipt, { operation: "stop" }>;
+    }
+  | {
+      sessionId: string;
+      receipt: Extract<AcpSessionMutationReceipt, { operation: "cancel" }>;
+    };
+
+export type PromptProviderDisposition =
+  | {
+      kind: "accepted";
+      receipt: Extract<AcpSessionMutationReceipt, { operation: "send" }>;
     }
   | {
       kind: "rejected";
