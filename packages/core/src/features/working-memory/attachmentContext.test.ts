@@ -4,7 +4,15 @@
  * text or original URLs. The harness stubs runtime memory/world access; no live
  * model or database is involved.
  */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import { fetchRemoteMedia } from "../../media/fetch.ts";
+import { getLocalServerUrl } from "../../utils/node.ts";
+
+vi.mock("../../media/fetch.ts", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("../../media/fetch.ts")>();
+	return { ...actual, fetchRemoteMedia: vi.fn(actual.fetchRemoteMedia) };
+});
+
 import type { IAgentRuntime, Memory, UUID } from "../../types/index.ts";
 import {
 	listConversationAttachments,
@@ -186,5 +194,141 @@ describe("current-message attachment wins over a stale explicit id", () => {
 		expect(records).toHaveLength(1);
 		expect(records[0]?.attachment.id).toBe("eliza-pic");
 		expect(records[0]?.autoSelected).toBe(false);
+	});
+});
+
+describe("image attachments without stored text inline bytes before describing (#18760)", () => {
+	const PNG_BYTES = Buffer.from([0x89, 0x50, 0x4e, 0x47]);
+
+	function imageMessage(url: string): Memory {
+		return {
+			id: "00000000-0000-0000-0000-000000000010" as UUID,
+			entityId: userId,
+			roomId,
+			createdAt: 2,
+			content: {
+				text: "what's in this image?",
+				attachments: [
+					{ id: "img-1", url, title: "Image", contentType: "image" },
+				],
+			},
+		} as Memory;
+	}
+
+	function makeVisionRuntime(fetchImpl?: (url: string) => Promise<Response>) {
+		const useModelParams: Array<Record<string, unknown>> = [];
+		const fetchedUrls: string[] = [];
+		const reported: unknown[] = [];
+		const runtime = {
+			agentId,
+			getConversationLength: () => 20,
+			getMemories: async () => [],
+			getRoom: async () => null,
+			logger: { warn: () => undefined, debug: () => undefined },
+			getCache: async () => undefined,
+			setCache: async () => undefined,
+			reportError: (...args: unknown[]) => {
+				reported.push(args);
+			},
+			useModel: async (_type: unknown, params: Record<string, unknown>) => {
+				useModelParams.push(params);
+				return "described!";
+			},
+			fetch: fetchImpl
+				? (url: string) => {
+						fetchedUrls.push(String(url));
+						return fetchImpl(String(url));
+					}
+				: undefined,
+		} as unknown as IAgentRuntime;
+		return { runtime, useModelParams, fetchedUrls, reported };
+	}
+
+	function pngResponse(): Response {
+		return new Response(new Uint8Array(PNG_BYTES), {
+			status: 200,
+			headers: { "content-type": "image/png" },
+		});
+	}
+
+	it("resolves a relative own-store URL via the local server and passes a data URL to the model", async () => {
+		const { runtime, useModelParams, fetchedUrls } = makeVisionRuntime(
+			async () => pngResponse(),
+		);
+		const records = await readAttachmentRecords(
+			runtime,
+			imageMessage("/api/media/abc.png"),
+			"img-1",
+		);
+
+		expect(records[0]?.content).toBe("described!");
+		expect(fetchedUrls).toHaveLength(1);
+		expect(fetchedUrls[0]).toMatch(
+			/^http:\/\/localhost:\d+\/api\/media\/abc\.png$/,
+		);
+		expect(vi.mocked(fetchRemoteMedia)).not.toHaveBeenCalled();
+		expect(useModelParams[0]?.imageUrl).toBe(
+			`data:image/png;base64,${PNG_BYTES.toString("base64")}`,
+		);
+	});
+
+	it("treats an absolute URL on the agent's own server origin as trusted-local", async () => {
+		const { runtime, useModelParams, fetchedUrls } = makeVisionRuntime(
+			async () => pngResponse(),
+		);
+		const ownUrl = getLocalServerUrl("/api/media/def.png");
+		const records = await readAttachmentRecords(
+			runtime,
+			imageMessage(ownUrl),
+			"img-1",
+		);
+
+		expect(records[0]?.content).toBe("described!");
+		expect(fetchedUrls).toEqual([ownUrl]);
+		expect(vi.mocked(fetchRemoteMedia)).not.toHaveBeenCalled();
+		expect(String(useModelParams[0]?.imageUrl)).toMatch(
+			/^data:image\/png;base64,/,
+		);
+	});
+
+	it("fetches genuinely remote URLs through the SSRF-guarded fetcher", async () => {
+		vi.mocked(fetchRemoteMedia).mockResolvedValueOnce({
+			buffer: PNG_BYTES,
+			contentType: "image/png",
+			fileName: "cat.png",
+		});
+		const { runtime, useModelParams, fetchedUrls } = makeVisionRuntime(
+			async () => pngResponse(),
+		);
+		const records = await readAttachmentRecords(
+			runtime,
+			imageMessage("https://example.test/cat.png"),
+			"img-1",
+		);
+
+		expect(records[0]?.content).toBe("described!");
+		expect(fetchedUrls).toHaveLength(0);
+		expect(vi.mocked(fetchRemoteMedia)).toHaveBeenCalledTimes(1);
+		expect(String(useModelParams[0]?.imageUrl)).toMatch(
+			/^data:image\/png;base64,/,
+		);
+	});
+
+	it("degrades to no description and reports when the guarded fetch rejects", async () => {
+		vi.mocked(fetchRemoteMedia).mockRejectedValueOnce(
+			new Error("SSRF policy denied host"),
+		);
+		const { runtime, useModelParams, reported } = makeVisionRuntime(async () =>
+			pngResponse(),
+		);
+		const records = await readAttachmentRecords(
+			runtime,
+			imageMessage("https://10.0.0.1/internal.png"),
+			"img-1",
+		);
+
+		expect(records[0]?.content).toBe("");
+		expect(useModelParams).toHaveLength(0);
+		expect(reported).toHaveLength(1);
 	});
 });

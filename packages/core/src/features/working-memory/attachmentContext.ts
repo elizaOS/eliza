@@ -17,6 +17,7 @@ import {
 	resolveArtifactDisclosure,
 	selectDisclosedArtifactUrl,
 } from "../../access-control/artifact-disclosure.ts";
+import { fetchRemoteMedia, readResponseWithLimit } from "../../media/fetch.ts";
 import { describeImageCached } from "../../media/index.ts";
 import {
 	type AccessContext,
@@ -27,6 +28,7 @@ import {
 	type MemoryScope,
 	type UUID,
 } from "../../types/index.ts";
+import { getLocalServerUrl } from "../../utils/node.ts";
 
 type AttachmentWithInlineData = Media & {
 	_data?: string;
@@ -160,6 +162,46 @@ function selectAttachmentForRequester(
 	};
 }
 
+/** Parity with DefaultMessageService.ATTACHMENT_FETCH_MAX_BYTES. */
+const DESCRIBE_ATTACHMENT_MAX_BYTES = 50 * 1024 * 1024;
+
+/**
+ * Resolves an attachment URL to inline data-URL bytes so the vision model
+ * never fetches a caller-controlled URL itself — the same contract the
+ * inbound attachment path upholds in DefaultMessageService.processAttachments.
+ * Remote URLs go through the SSRF-guarded fetcher; the agent's own media-store
+ * URLs (relative `/api/media/...`, or absolute on the agent's own server
+ * origin) use the trusted runtime fetch under the same byte cap.
+ */
+async function inlineAttachmentImage(
+	runtime: IAgentRuntime,
+	rawUrl: string,
+): Promise<string | null> {
+	const ownOrigin = new URL(getLocalServerUrl("/")).origin;
+	const isAbsolute = /^(http|https):\/\//.test(rawUrl);
+	const isOwnServer = isAbsolute && new URL(rawUrl).origin === ownOrigin;
+	if (isAbsolute && !isOwnServer) {
+		const { buffer, contentType } = await fetchRemoteMedia({
+			url: rawUrl,
+			maxBytes: DESCRIBE_ATTACHMENT_MAX_BYTES,
+		});
+		return `data:${contentType ?? "application/octet-stream"};base64,${buffer.toString("base64")}`;
+	}
+	const localUrl = isOwnServer ? rawUrl : getLocalServerUrl(rawUrl);
+	const runtimeFetch = runtime.fetch ?? globalThis.fetch;
+	const res = await runtimeFetch(localUrl);
+	if (!res.ok) {
+		return null;
+	}
+	const buffer = await readResponseWithLimit(
+		res,
+		DESCRIBE_ATTACHMENT_MAX_BYTES,
+	);
+	const contentType =
+		res.headers.get("content-type") || "application/octet-stream";
+	return `data:${contentType};base64,${buffer.toString("base64")}`;
+}
+
 async function describeImageAttachment(
 	runtime: IAgentRuntime,
 	attachment: AttachmentWithInlineData,
@@ -170,8 +212,17 @@ async function describeImageAttachment(
 		typeof attachment._mimeType === "string"
 	) {
 		imageUrl = `data:${attachment._mimeType};base64,${attachment._data}`;
-	} else if (/^(http|https):\/\//.test(attachment.url)) {
-		imageUrl = attachment.url;
+	} else if (typeof attachment.url === "string" && attachment.url.trim()) {
+		try {
+			imageUrl = await inlineAttachmentImage(runtime, attachment.url);
+		} catch (error) {
+			// error-policy:J4 recall visibly degrades to no description; the
+			// fetch failure is reported rather than surfacing a fake result.
+			runtime.reportError("WorkingMemory.describeImageAttachment", error, {
+				url: attachment.url,
+			});
+			return "";
+		}
 	}
 	if (!imageUrl) {
 		return "";
