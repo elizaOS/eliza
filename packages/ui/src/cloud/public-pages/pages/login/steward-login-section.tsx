@@ -631,7 +631,9 @@ export default function StewardLoginSection() {
     persistStewardToken(token);
     await syncStewardSessionCookie(token, refreshToken);
     toast.success("Signed in!");
-    setRedirectTo(resolveLoginReturnTo(searchParams));
+    setRedirectTo(
+      resolveLoginReturnTo(searchParams, consumePendingOAuthReturnTo()),
+    );
     setStep("success");
   }
 
@@ -743,6 +745,10 @@ export default function StewardLoginSection() {
     setLoading("email");
     setError(null);
     try {
+      // The magic link can open in a new same-origin tab. Persist the pending
+      // destination before asking Steward to send it so the callback can
+      // resume an onboarding continuation instead of falling back to /join.
+      storePendingOAuthReturnTo(searchParams);
       const challenge = await startStewardEmailLogin(
         { baseUrl: stewardApiUrl, tenantId: STEWARD_TENANT_ID },
         email.trim(),

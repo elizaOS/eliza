@@ -24,12 +24,15 @@
  * Callers must keep it off the response path (Worker executionCtx.waitUntil).
  */
 
+import type { Context } from "hono";
+
 import type { AgentSandbox } from "../../../db/repositories/agent-sandboxes";
-import type { RuntimeDurableObjectNamespace } from "../../../types/cloud-worker-env";
+import type { AppEnv, RuntimeDurableObjectNamespace } from "../../../types/cloud-worker-env";
 import { calculateCost, getProviderFromModel, normalizeModelName } from "../../pricing";
 import { logger } from "../../utils/logger";
 import { warmInferenceAdmissionSnapshot } from "../inference-admission-snapshot";
 import { coordinateSharedHistory } from "./conversation-coordinator";
+import { seedSharedAgentScopeCache } from "./resolve-shared-agent";
 import { resolveSharedAgentTurnModel } from "./run-shared-agent-turn";
 import { projectSharedAgentCharacter } from "./shared-agent-character";
 
@@ -40,6 +43,19 @@ export interface PrewarmSharedAgentOptions {
    * it only the conversation-object leg is skipped.
    */
   namespace?: RuntimeDurableObjectNamespace;
+  /**
+   * The creating request's Hono context — the credential it carries is the one
+   * the immediate first message will present, so it is what the authorization
+   * scope leg needs to derive `CacheKeys.sharedAgentScope.resolve(<prefix>,
+   * agentId)`. Without it that leg is skipped and the first send pays the
+   * "authorization cache is warming" 503.
+   */
+  requestContext?: Context<AppEnv>;
+  /**
+   * The creating user's steward id, for a session-keyed scope entry to pass
+   * its hit-time same-user re-verification. Ignored on the API-key path.
+   */
+  stewardUserId?: string;
 }
 
 /**
@@ -98,6 +114,18 @@ export async function prewarmSharedAgentTurnCaches(
     legs.push({
       leg: "conversation-object",
       run: coordinateSharedHistory(agent.id, agent.id, { namespace: options.namespace }),
+    });
+  }
+
+  // 4. Credential-scoped authorization entry ("Agent authorization cache is
+  //    warming"). The first message route resolves the agent cache-only against
+  //    the creator's own credential; seeding that exact entry here is what lets
+  //    a fresh create take an immediate send. Hits still re-run the
+  //    per-request credential gate, so this leg only removes latency.
+  if (options.requestContext) {
+    legs.push({
+      leg: "authorization-scope",
+      run: seedSharedAgentScopeCache(options.requestContext, agent, options.stewardUserId),
     });
   }
 

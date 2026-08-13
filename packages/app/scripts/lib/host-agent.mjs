@@ -13,6 +13,8 @@ export const DEFAULT_HOST_AGENT_HOST = "127.0.0.1";
 export const DEFAULT_HOST_AGENT_HEALTH_PATH = "/api/health";
 export const DEFAULT_READY_ATTEMPTS = 90;
 export const DEFAULT_READY_DELAY_MS = 2000;
+/** Node clamps setTimeout delays above this value to 1 ms. */
+export const MAX_TIMER_DELAY_MS = 2_147_483_647;
 
 const SIGNALS = ["SIGINT", "SIGTERM", "SIGHUP"];
 
@@ -33,20 +35,29 @@ export function parsePort(value, label = "port") {
  * numeric strings (`10abc`), fractions, negatives, and empty values so readiness
  * knobs cannot silently become NaN/truncated via `Number.parseInt`.
  */
-export function parseNonNegativeSafeInteger(value, label) {
+export function parseNonNegativeSafeInteger(value, label, options = {}) {
+  const max = options.max ?? Number.MAX_SAFE_INTEGER;
+  const requirement =
+    max === Number.MAX_SAFE_INTEGER
+      ? "a non-negative safe integer"
+      : `a non-negative safe integer no greater than ${max}`;
+  const invalid = () =>
+    new Error(
+      `Invalid ${label}: expected ${requirement}; received ${JSON.stringify(value)}`,
+    );
   if (typeof value === "number") {
-    if (!Number.isSafeInteger(value) || value < 0) {
-      throw new Error(`Invalid ${label}: ${value}`);
+    if (!Number.isSafeInteger(value) || value < 0 || value > max) {
+      throw invalid();
     }
     return value;
   }
-  const raw = String(value ?? "").trim();
+  const raw = String(value ?? "");
   if (!/^\d+$/.test(raw)) {
-    throw new Error(`Invalid ${label}: ${value}`);
+    throw invalid();
   }
   const parsed = Number.parseInt(raw, 10);
-  if (!Number.isSafeInteger(parsed) || parsed < 0) {
-    throw new Error(`Invalid ${label}: ${value}`);
+  if (!Number.isSafeInteger(parsed) || parsed < 0 || parsed > max) {
+    throw invalid();
   }
   return parsed;
 }
@@ -64,19 +75,34 @@ export function parsePositiveSafeInteger(value, label) {
  * Resolve readiness knobs from explicit options or env, failing closed on
  * malformed values so a typo never becomes a zero-iteration health wait.
  */
-export function resolveReadyOptions({
-  readyAttempts,
-  readyDelayMs,
-  env = process.env,
-} = {}) {
+export function resolveReadyOptions(options = {}) {
+  const { readyAttempts, readyDelayMs, env = process.env } = options;
+  const hasReadyAttempts = Object.hasOwn(options, "readyAttempts");
+  const hasReadyDelayMs = Object.hasOwn(options, "readyDelayMs");
+  const attemptsOverride =
+    hasReadyAttempts && readyAttempts !== undefined
+      ? readyAttempts
+      : (env.ELIZA_HOST_AGENT_READY_ATTEMPTS ?? null);
+  const delayOverride =
+    hasReadyDelayMs && readyDelayMs !== undefined
+      ? readyDelayMs
+      : (env.ELIZA_HOST_AGENT_READY_DELAY_MS ?? null);
+  const isBlank = (value) =>
+    value === null ||
+    value === undefined ||
+    (typeof value === "string" && value.trim() === "");
   const attemptsSource =
-    readyAttempts ??
-    env.ELIZA_HOST_AGENT_READY_ATTEMPTS ??
-    DEFAULT_READY_ATTEMPTS;
+    hasReadyAttempts && readyAttempts !== undefined
+      ? attemptsOverride
+      : isBlank(attemptsOverride)
+        ? DEFAULT_READY_ATTEMPTS
+        : attemptsOverride;
   const delaySource =
-    readyDelayMs ??
-    env.ELIZA_HOST_AGENT_READY_DELAY_MS ??
-    DEFAULT_READY_DELAY_MS;
+    hasReadyDelayMs && readyDelayMs !== undefined
+      ? delayOverride
+      : isBlank(delayOverride)
+        ? DEFAULT_READY_DELAY_MS
+        : delayOverride;
 
   return {
     readyAttempts: parsePositiveSafeInteger(
@@ -86,6 +112,7 @@ export function resolveReadyOptions({
     readyDelayMs: parseNonNegativeSafeInteger(
       delaySource,
       "host-agent readyDelayMs",
+      { max: MAX_TIMER_DELAY_MS },
     ),
   };
 }

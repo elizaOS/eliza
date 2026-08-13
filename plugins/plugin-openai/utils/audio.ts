@@ -29,7 +29,7 @@ export type AudioMimeType =
   | "audio/webm"
   | "application/octet-stream";
 
-function matchBytes(buffer: Buffer, offset: number, expected: readonly number[]): boolean {
+function matchBytes(buffer: Uint8Array, offset: number, expected: readonly number[]): boolean {
   for (let i = 0; i < expected.length; i++) {
     const expectedByte = expected[i];
     if (expectedByte === undefined || buffer[offset + i] !== expectedByte) {
@@ -39,7 +39,7 @@ function matchBytes(buffer: Buffer, offset: number, expected: readonly number[])
   return true;
 }
 
-export function detectAudioMimeType(buffer: Buffer): AudioMimeType {
+export function detectAudioMimeType(buffer: Uint8Array): AudioMimeType {
   if (buffer.length < MIN_DETECTION_BUFFER_SIZE) {
     return "application/octet-stream";
   }

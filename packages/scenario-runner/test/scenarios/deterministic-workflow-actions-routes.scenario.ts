@@ -3,6 +3,10 @@
  * on the pr-deterministic lane under the model provider.
  */
 import type { IAgentRuntime, Plugin } from "@elizaos/core";
+import {
+  type RuntimeWithScenarioModelFixtures,
+  registerStrictActionRouteFixtures,
+} from "@elizaos/core/testing";
 import type {
   CapturedAction,
   ScenarioContext,
@@ -20,10 +24,6 @@ import {
 } from "../../../../plugins/plugin-workflow/src/services/index.ts";
 import type { WorkflowDefinition } from "../../../../plugins/plugin-workflow/src/types/index.ts";
 import { getUserTagName } from "../../../../plugins/plugin-workflow/src/utils/context.ts";
-import {
-  type RuntimeWithScenarioModelFixtures,
-  registerStrictActionRouteFixtures,
-} from "@elizaos/core/testing";
 
 const WORKFLOW_ID = "scenario-workflow-keyless-minimal";
 const WORKFLOW_NAME = "Scenario keyless workflow";
@@ -66,33 +66,18 @@ let scenarioRuntime: RuntimeWithWorkflowScenario | null = null;
 const workflowDefinition: WorkflowDefinition = {
   id: WORKFLOW_ID,
   name: WORKFLOW_NAME,
-  nodes: [
-    {
-      id: "manual",
-      name: "Manual Trigger",
-      type: "workflows-nodes-base.manualTrigger",
-      typeVersion: 1,
-      position: [0, 0],
-      parameters: {},
-    },
-    {
-      id: "set",
-      name: "Set",
-      type: "workflows-nodes-base.set",
-      typeVersion: 3.4,
-      position: [200, 0],
-      parameters: {
-        assignments: {
-          assignments: [{ name: "scenario", value: "workflow-keyless" }],
-        },
-      },
-    },
-  ],
-  connections: {
-    "Manual Trigger": {
-      main: [[{ node: "Set", type: "main", index: 0 }]],
-    },
-  },
+  source: `/** @jsxImportSource smthrs */
+import { createSmithers } from "smthrs/create";
+import { z } from "zod";
+const { Workflow, smithers } = createSmithers(
+  { result: z.object({ message: z.string() }) },
+  { dbPath: process.env.ELIZA_SMTHRS_DB_PATH },
+);
+export default smithers(() => <Workflow name="Scenario keyless workflow" />);`,
+  language: "tsx",
+  active: true,
+  steps: [],
+  widgets: [],
 };
 
 function isRecord(value: unknown): value is JsonRecord {
@@ -191,7 +176,7 @@ function seededItem(execution: unknown): JsonRecord | null {
 function expectSeededExecution(execution: unknown): string | undefined {
   for (const [path, expected] of Object.entries({
     workflowId: WORKFLOW_ID,
-    status: "success",
+    status: "finished",
     mode: "manual",
     finished: true,
   })) {
@@ -343,8 +328,8 @@ function expectWorkflowRoute(
   for (const [path, expected] of Object.entries({
     id: WORKFLOW_ID,
     name: WORKFLOW_NAME,
-    "nodes.0.type": "workflows-nodes-base.manualTrigger",
-    "nodes.1.type": "workflows-nodes-base.set",
+    language: "tsx",
+    active: true,
   })) {
     const failure = expectEqual(readPath(body, path), expected, path);
     if (failure) return failure;

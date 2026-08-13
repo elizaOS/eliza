@@ -501,7 +501,10 @@ app.post("/", async (c) => {
           createExecutionCtx = candidate;
         }
       } catch {
-        // Hono throws outside Workers (tests, node runtimes); skip the prewarm.
+        // error-policy:J4 Hono intentionally throws when executionCtx is read
+        // outside Workers (tests, node runtimes); the create degrades to no
+        // prewarm and the turn path's retryable warming 503s remain the
+        // fallback.
         createExecutionCtx = undefined;
       }
       if (createExecutionCtx) {
@@ -510,6 +513,11 @@ app.post("/", async (c) => {
             ({ prewarmSharedAgentTurnCaches }) =>
               prewarmSharedAgentTurnCaches(agent, {
                 namespace: c.env?.SHARED_RUNTIME_CONVERSATIONS,
+                // The creating request's credential is the one the immediate
+                // first message presents; it lets the prewarm seed the exact
+                // credential-scoped authorization entry that message consults.
+                requestContext: c,
+                stewardUserId: user.steward_id ?? undefined,
               }),
           ),
         );

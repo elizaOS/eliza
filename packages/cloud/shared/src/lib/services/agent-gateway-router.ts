@@ -843,6 +843,7 @@ export class AgentGatewayRouterService {
         message: args.body,
         platform: args.provider,
         platformUserId: args.from,
+        platformReplyAddress: args.to,
         sessionId: `platform:${args.provider}:${args.from}`,
         trustedPlatformIdentity: true,
         idempotencyKey: args.providerMessageId
@@ -866,6 +867,7 @@ export class AgentGatewayRouterService {
           message: args.body,
           platform: args.provider,
           platformUserId: args.from,
+          platformReplyAddress: args.to,
           sessionId: `platform:${args.provider}:${args.from}`,
           trustedPlatformIdentity: true,
           idempotencyKey: args.providerMessageId
@@ -893,6 +895,7 @@ export class AgentGatewayRouterService {
           message: args.body,
           platform: args.provider,
           platformUserId: args.from,
+          platformReplyAddress: args.to,
           sessionId: `platform:${args.provider}:${args.from}`,
           trustedPlatformIdentity: true,
           authenticatedUser: {
@@ -999,6 +1002,7 @@ export class AgentGatewayRouterService {
         message: args.body,
         platform: args.provider,
         platformUserId: args.from,
+        platformReplyAddress: args.to,
         sessionId: `platform:${args.provider}:${args.from}`,
         trustedPlatformIdentity: true,
         authenticatedUser: {

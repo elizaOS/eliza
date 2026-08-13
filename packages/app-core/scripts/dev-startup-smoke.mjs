@@ -66,7 +66,7 @@ export function parsePositiveSafeInteger(value, label, options = {}) {
     }
     return value;
   }
-  const raw = String(value ?? "").trim();
+  const raw = String(value ?? "");
   if (!/^\d+$/.test(raw)) {
     throw new Error(
       `${label} must be ${rangeHint} (received ${received(value)})`,
@@ -349,6 +349,8 @@ if (isDirectRun) {
     process.exit(1);
   }
   main(timing).catch((err) => {
+    // error-policy:J1 executable boundary — surface unexpected smoke failures
+    // to the invoking process with a nonzero exit status.
     console.error(`[dev-startup-smoke] unexpected error: ${err?.stack || err}`);
     process.exit(1);
   });

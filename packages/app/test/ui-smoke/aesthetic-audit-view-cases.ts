@@ -59,6 +59,13 @@ export function buildAuditViewCases(): AuditViewCase[] {
         kind: "builtin",
       }),
     ),
+    {
+      id: "workflow-studio",
+      slug: "builtin-workflow-studio",
+      path: "/automations#automations/__new__",
+      viewType: "gui",
+      kind: "builtin",
+    },
     ...VIEW_CASES.map(
       (view): AuditViewCase => ({
         id: view.id,

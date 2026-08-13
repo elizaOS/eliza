@@ -1365,6 +1365,9 @@ export class BM25 {
 			results.splice(insertAt, 0, result);
 			results.pop();
 		}
+		// A full buffer was sorted when it reached `topK`; only the partial path
+		// still retains document-index order.
+		if (results.length < topK) results.sort((a, b) => b.score - a.score);
 		return results;
 	}
 
