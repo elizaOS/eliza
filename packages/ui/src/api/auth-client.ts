@@ -9,9 +9,23 @@
  */
 
 import type { RoleGateRole } from "@elizaos/core";
+import { getElizaApiToken } from "@elizaos/shared";
+import {
+  clearStoredStewardToken,
+  readStoredStewardToken,
+  writeStoredStewardToken,
+} from "@elizaos/shared/steward-session-client";
 import { invokeDesktopBridgeRequest } from "../bridge/electrobun-rpc";
+import { isElectrobunRuntime } from "../bridge/electrobun-runtime";
+import { normalizeCloudApiKeyToken } from "../cloud/lib/cloud-api-key-token";
 import { getBootConfig } from "../config/boot-config";
-import { isDirectCloudSharedAgentBase } from "./client-cloud";
+import { isNative } from "../platform";
+import { clearSharedCloudAccountBinding } from "../state/shared-cloud-account-binding";
+import { isManagedCloudSharedAgentBase } from "../utils/cloud-agent-base";
+import {
+  cloudTokenSecsRemaining,
+  refreshCloudStewardSession,
+} from "./client-cloud";
 import { fetchWithCsrf } from "./csrf-client";
 import { isDesktopExternalApiBaseUrl } from "./desktop-external-api-base";
 
@@ -299,12 +313,54 @@ export async function authLogout(): Promise<AuthLogoutResult> {
  * show a backend failure instead of a misleading credential prompt.
  */
 export async function authMe(): Promise<AuthMeResult> {
-  // A serverless shared-runtime cloud agent has no agent server, so /api/auth/me
-  // 404s and the startup auth probe fails "Backend Unreachable". The cloud API
-  // key (validated per-request by the cloud API) IS the auth here — there's no
-  // per-agent password/session gate to satisfy. Report authenticated (machine
-  // identity = the API-key-authed cloud caller) so auth-checking passes.
-  if (isDirectCloudSharedAgentBase(authBase())) {
+  // A serverless shared-runtime agent has no independent password/session
+  // service, so this gate reflects the canonical Steward account credential.
+  // It must not report synthetic success merely because the selected base has
+  // a shared-agent URL: after terminal refresh expiry that kept the mounted
+  // shell "authenticated", allowing protected pollers and chat sends to loop
+  // on 401 while stale agent content remained visible.
+  if (isManagedCloudSharedAgentBase(authBase())) {
+    let token = readStoredStewardToken()?.trim();
+    const hasNativeOwnerApiKey =
+      (isNative || isElectrobunRuntime()) &&
+      Boolean(
+        normalizeCloudApiKeyToken(getBootConfig().apiToken) ??
+          normalizeCloudApiKeyToken(getElizaApiToken()),
+      );
+    const secondsRemaining = token ? cloudTokenSecsRemaining(token) : null;
+    if (
+      token &&
+      secondsRemaining !== null &&
+      secondsRemaining <= 0 &&
+      !hasNativeOwnerApiKey
+    ) {
+      try {
+        const refreshed = await refreshCloudStewardSession();
+        token = refreshed?.token?.trim() || undefined;
+        if (token) writeStoredStewardToken(token);
+      } catch {
+        // error-policy:J1 this auth boundary translates a failed terminal
+        // refresh into the same explicit signed-out state as a rejected one.
+        token = undefined;
+      }
+      if (!token) {
+        clearStoredStewardToken();
+        clearSharedCloudAccountBinding();
+      }
+    }
+    if (!token && !hasNativeOwnerApiKey) {
+      clearSharedCloudAccountBinding();
+      return {
+        ok: false,
+        status: 401,
+        reason: "remote_auth_required",
+        access: {
+          mode: "remote",
+          passwordConfigured: false,
+          ownerConfigured: true,
+        },
+      };
+    }
     return {
       ok: true,
       identity: { id: "cloud", displayName: "Eliza Cloud", kind: "machine" },

@@ -27,6 +27,7 @@ import {
   ElizaError,
   isLocalCodeExecutionAllowed,
   logger,
+  redactSensitiveText,
   stringToUuid,
 } from "@elizaos/core";
 import { readAliasedEnv, resolveServerOnlyPort } from "@elizaos/shared";
@@ -302,6 +303,15 @@ function terminalEffectReceipt(
   };
 }
 
+// Max raw stdout, in chars, that may be relayed verbatim as the user-facing
+// message. Small single-line results (a SHA, a count, a path) are useful to
+// echo for "run X and tell me the value" turns; anything larger — or with
+// multiple lines — must NOT be dumped to the (possibly shared) channel, or a
+// `cat`/`grep` of a config or secrets file leaks its contents. Larger output
+// stays available to the model through the action's diagnostic `text`, so it
+// can still answer specifics from context without the raw dump.
+const TERMINAL_RELAY_MAX_CHARS = 200;
+
 function terminalUserFacingText(
   result: CapturedTerminalRun,
   cleanStdout: string,
@@ -312,7 +322,14 @@ function terminalUserFacingText(
   if (result.exitCode !== 0) {
     return `The command failed with exit code ${result.exitCode}.`;
   }
-  return cleanStdout || "The command finished successfully with exit code 0.";
+  if (!cleanStdout) {
+    return "The command finished successfully with exit code 0.";
+  }
+  const lineCount = cleanStdout.split("\n").length;
+  if (cleanStdout.length <= TERMINAL_RELAY_MAX_CHARS && lineCount <= 1) {
+    return cleanStdout;
+  }
+  return `The command finished (exit 0) with ${lineCount} line${lineCount === 1 ? "" : "s"} of output; ask me about specifics instead of dumping it into chat.`;
 }
 
 function buildCapturedResponseText(
@@ -446,7 +463,22 @@ export const terminalAction: Action = {
         severity: "fatal",
       });
     }
-    const capturedRun = normalizeCapturedRun(command, responseBody);
+    const rawRun = normalizeCapturedRun(command, responseBody);
+    // Secret hygiene: scrub known secret shapes (API keys, tokens, Bearer
+    // headers, PEM private keys, credential env/JSON fields) out of stdout and
+    // stderr at the source, so no downstream path — the model-facing diagnostic
+    // preview, the user-facing chat relay, or the stored output attachment —
+    // can echo a plaintext secret that happened to appear in command output.
+    // The command LINE itself is a leak vector too (curl -H "Authorization:
+    // Bearer <token>", psql postgres://user:pass@host): scrub it once here so
+    // every consumer — "Command:" artifact header, attachment title and
+    // description, and the model-facing action text — sees the redacted form.
+    const capturedRun: CapturedTerminalRun = {
+      ...rawRun,
+      command: redactSensitiveText(rawRun.command, { mode: "tools" }),
+      stdout: redactSensitiveText(rawRun.stdout, { mode: "tools" }),
+      stderr: redactSensitiveText(rawRun.stderr, { mode: "tools" }),
+    };
     const boundedRun = {
       ...capturedRun,
       stdout: truncateForData(capturedRun.stdout),
@@ -479,7 +511,14 @@ export const terminalAction: Action = {
       text: buildCapturedResponseText(capturedRun, outputAttachment),
       success: succeeded,
       userFacingText,
-      verifiedUserFacing: true,
+      // Raw stdout stays available as the deterministic fallback relay for
+      // "run X" turns, but must not carry the do-not-paraphrase stamp: verified
+      // text outranks and prepends to the evaluator's prose in the final-message
+      // precedence, which shipped bare command output (e.g. a `git ls-remote`
+      // SHA line) as a leading junk paragraph before the natural reply. Only
+      // the action-owned deterministic sentences (failure, timeout,
+      // empty-stdout success) keep the verbatim-relay promise.
+      verifiedUserFacing: cleanStdout.length === 0,
       effectReceipts: [effectReceipt],
       userFacingEffectReceiptIds: [effectReceipt.receiptId],
       ...(succeeded

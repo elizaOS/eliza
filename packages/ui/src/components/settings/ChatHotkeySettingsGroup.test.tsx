@@ -76,6 +76,8 @@ describe("ChatHotkeySettingsGroup", () => {
     expect(screen.getByText("CommandOrControl+Shift+C")).toBeTruthy();
     const sw = screen.getByRole("switch") as HTMLButtonElement;
     expect(sw.getAttribute("data-state")).toBe("checked");
+    expect(sw.getAttribute("data-agent-id")).toBe("desktop-chat-summon-hotkey");
+    expect(sw.getAttribute("data-agent-role")).toBe("toggle");
   });
 
   it("disabling the toggle persists disabled and unregisters the shortcut", async () => {

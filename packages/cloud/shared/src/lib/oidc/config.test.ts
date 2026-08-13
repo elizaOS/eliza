@@ -253,7 +253,10 @@ describe("issuers that cannot be served at all", () => {
 describe("the console bundle is built with the issuer the Worker serves", () => {
   const repoRoot = join(import.meta.dir, "../../../../../..");
   const wrangler = readFileSync(join(repoRoot, "packages/cloud/api/wrangler.toml"), "utf8");
-  const workflow = readFileSync(join(repoRoot, ".github/workflows/cloud-cf-deploy.yml"), "utf8");
+  const workflow = [
+    readFileSync(join(repoRoot, ".github/workflows/cloud-cf-deploy.yml"), "utf8"),
+    readFileSync(join(repoRoot, ".github/workflows/cloud-cf-release.yml"), "utf8"),
+  ].join("\n");
 
   /** Every `NAME = "value"` / `NAME: …'value'…` URL literal for one variable. */
   function configuredUrls(source: string, name: string): string[] {

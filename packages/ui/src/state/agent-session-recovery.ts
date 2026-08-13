@@ -123,7 +123,7 @@ export function shouldShowCloudAgentReauthNotice(input: {
   return (
     input.isHostedLocation ||
     Boolean(input.recoveryStatus) ||
-    (input.isNative && isManagedCloudAgentServer(input.activeServer))
+    isManagedCloudAgentServer(input.activeServer)
   );
 }
 

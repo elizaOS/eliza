@@ -20,6 +20,12 @@ describe("homepage deployment workflow", () => {
       "utf8",
     ),
   ) as { name?: string; scripts?: Record<string, string> };
+  const appPackage = JSON.parse(
+    readFileSync(
+      path.join(repositoryRoot, "packages/app/package.json"),
+      "utf8",
+    ),
+  ) as { scripts?: Record<string, string> };
   const devAll = readFileSync(
     path.join(repositoryRoot, "packages/scripts/dev-all.mjs"),
     "utf8",
@@ -48,6 +54,7 @@ describe("homepage deployment workflow", () => {
   });
 
   it("builds homepage changes into the single eliza-app artifact", () => {
+    expect(appPackage.scripts?.["prebuild:web"]).toBe("bun run prebuild");
     expect(workflow).toContain('      - "packages/homepage/**"');
     expect(workflow).toContain("Build consolidated frontend artifact");
     expect(workflow).toContain("Upload consolidated frontend artifact");
@@ -56,6 +63,37 @@ describe("homepage deployment workflow", () => {
     expect(workflow).toContain("https://cloud.eliza.app");
     expect(workflow).toContain("https://staging.eliza.app");
     expect(workflow).toContain("https://cloud-staging.eliza.app");
+  });
+
+  it("resolves matched Telegram configuration for canonical and preview builds", () => {
+    expect(workflow).toContain("resolve-pages-environment-config:");
+    expect(workflow).toContain("resolve-pages-preview-config:");
+    expect(workflow).toContain("VITE_TELEGRAM_BOT_ID must be numeric");
+    expect(workflow.match(/TELEGRAM_BOT_ID=7684336618/g)).toHaveLength(2);
+    expect(workflow.match(/TELEGRAM_BOT_USERNAME=Elizav2_Bot/g)).toHaveLength(
+      2,
+    );
+    expect(
+      workflow.match(
+        /VITE_TELEGRAM_BOT_ID and VITE_TELEGRAM_BOT_USERNAME must be configured together/g,
+      ),
+    ).toHaveLength(2);
+    expect(workflow).toContain(
+      "VITE_TELEGRAM_BOT_ID: $" +
+        "{{ needs.resolve-pages-environment-config.outputs.telegram_bot_id || needs.resolve-pages-preview-config.outputs.telegram_bot_id }}",
+    );
+    expect(workflow).toContain(
+      "VITE_TELEGRAM_BOT_USERNAME: $" +
+        "{{ needs.resolve-pages-environment-config.outputs.telegram_bot_username || needs.resolve-pages-preview-config.outputs.telegram_bot_username }}",
+    );
+    expect(workflow).toContain(
+      "VITE_TELEGRAM_BOT_ID: $" +
+        "{{ needs.build-pages.outputs.telegram_bot_id }}",
+    );
+    expect(workflow).toContain(
+      "VITE_TELEGRAM_BOT_USERNAME: $" +
+        "{{ needs.build-pages.outputs.telegram_bot_username }}",
+    );
   });
 
   it("validates homepage source while building only packages/app in quality CI", () => {
@@ -74,5 +112,18 @@ describe("homepage deployment workflow", () => {
     expect(qualityWorkflow).not.toContain(
       "PLAYWRIGHT_INSTALL_CWD=packages/homepage",
     );
+  });
+
+  it("builds the core workspace before the quality frontend build", () => {
+    // packages/app/vite.config.ts reaches @elizaos/core through the
+    // packages/shared barrels, and Vite bundles the config with esbuild under
+    // default export conditions, so core's dist must exist first. Both
+    // workflows install with --ignore-scripts and therefore need the step.
+    expect(workflow).toContain("run: bun run build:core");
+    expect(qualityWorkflow).toContain("run: bun run build:core");
+    const coreBuildIndex = qualityWorkflow.indexOf("run: bun run build:core");
+    const webBuildIndex = qualityWorkflow.indexOf("run: bun run build:web");
+    expect(coreBuildIndex).toBeGreaterThan(-1);
+    expect(webBuildIndex).toBeGreaterThan(coreBuildIndex);
   });
 });

@@ -54,6 +54,7 @@ export interface TriggerSummary {
   scheduledAtIso?: string;
   cronExpression?: string;
   eventKind?: string;
+  eventFilter?: Record<string, unknown>;
   maxRuns?: number;
   runCount: number;
   nextRunAtMs?: number;
@@ -89,6 +90,7 @@ export interface NormalizedTriggerDraft {
   scheduledAtIso?: string;
   cronExpression?: string;
   eventKind?: string;
+  eventFilter?: Record<string, unknown>;
   maxRuns?: number;
   kind: TriggerKind;
   // Present only for `kind === "workflow"`.
@@ -126,6 +128,7 @@ interface TriggerDraftInput {
   scheduledAtIso?: string;
   cronExpression?: string;
   eventKind?: string;
+  eventFilter?: Record<string, unknown>;
   maxRuns?: number;
   kind?: TriggerKind;
   workflowId?: string;
@@ -195,6 +198,10 @@ function parseNonEmptyString(value: unknown): string | undefined {
   if (typeof value !== 'string') return undefined;
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : undefined;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
 function parseEventPayload(value: unknown): Record<string, unknown> {
@@ -299,6 +306,10 @@ export async function handleTriggerRoutes(ctx: TriggerRouteContext): Promise<boo
       error(res, "instructions is required when kind is 'prompt'", 400);
       return true;
     }
+    if (body.eventFilter != null && !isRecord(body.eventFilter)) {
+      error(res, 'eventFilter must be a JSON object', 400);
+      return true;
+    }
 
     const inputDraft: TriggerDraftInput = {
       displayName: typeof body.displayName === 'string' ? body.displayName : undefined,
@@ -313,6 +324,7 @@ export async function handleTriggerRoutes(ctx: TriggerRouteContext): Promise<boo
       scheduledAtIso: typeof body.scheduledAtIso === 'string' ? body.scheduledAtIso : undefined,
       cronExpression: typeof body.cronExpression === 'string' ? body.cronExpression : undefined,
       eventKind: typeof body.eventKind === 'string' ? body.eventKind : undefined,
+      eventFilter: isRecord(body.eventFilter) ? body.eventFilter : undefined,
       maxRuns: typeof body.maxRuns === 'number' ? body.maxRuns : undefined,
       kind: requestedKind,
       workflowId,
@@ -530,6 +542,10 @@ export async function handleTriggerRoutes(ctx: TriggerRouteContext): Promise<boo
 
     const body = await readJsonBody<Record<string, unknown>>(req, res);
     if (!body) return true;
+    if (body.eventFilter != null && !isRecord(body.eventFilter)) {
+      error(res, 'eventFilter must be a JSON object', 400);
+      return true;
+    }
 
     const kindParsed = parseTriggerKindStrict(body.kind);
     if (kindParsed !== undefined && kindParsed.ok === false) {
@@ -580,6 +596,11 @@ export async function handleTriggerRoutes(ctx: TriggerRouteContext): Promise<boo
       cronExpression:
         typeof body.cronExpression === 'string' ? body.cronExpression : current.cronExpression,
       eventKind: typeof body.eventKind === 'string' ? body.eventKind : current.eventKind,
+      eventFilter: Object.hasOwn(body, 'eventFilter')
+        ? isRecord(body.eventFilter)
+          ? body.eventFilter
+          : undefined
+        : current.eventFilter,
       maxRuns: typeof body.maxRuns === 'number' ? body.maxRuns : current.maxRuns,
       kind: nextKind,
       workflowId: nextWorkflowId,

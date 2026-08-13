@@ -225,7 +225,12 @@ export function stripOptionalHostPort(value: string): string {
 
 	const lower = trimmed.toLowerCase();
 	if (lower.startsWith("http://") || lower.startsWith("https://")) {
-		return new URL(lower).hostname.toLowerCase();
+		try {
+			return new URL(lower).hostname.toLowerCase();
+		} catch {
+			// error-policy:J3 malformed host input remains untrusted and is rejected.
+			return lower;
+		}
 	}
 
 	if (lower.startsWith("[")) {
@@ -243,8 +248,18 @@ export function stripOptionalHostPort(value: string): string {
 export function isLoopbackBindHost(host: string): boolean {
 	const normalized = stripOptionalHostPort(host);
 	if (!normalized) return true;
-	if (LOOPBACK_BIND_RE.test(normalized)) return true;
-	return normalized.startsWith("127.");
+	if (!LOOPBACK_BIND_RE.test(normalized)) return false;
+	const ipv4 = normalized.startsWith("::ffff:")
+		? normalized.slice("::ffff:".length)
+		: normalized;
+	if (/^127(?:\.\d{1,3}){3}$/.test(ipv4)) {
+		return ipv4
+			.split(".")
+			.every(
+				(octet) => Number.isInteger(Number(octet)) && Number(octet) <= 255,
+			);
+	}
+	return true;
 }
 
 export function isWildcardBindHost(host: string): boolean {

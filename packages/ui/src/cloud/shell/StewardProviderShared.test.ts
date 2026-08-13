@@ -8,9 +8,16 @@
  * JWT `exp` claim.
  */
 
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  loadPersistedActiveServer,
+  savePersistedActiveServer,
+} from "../../state/persistence";
 
-import { tokenIsExpired } from "./StewardProviderShared";
+import {
+  clearStaleStewardSession,
+  tokenIsExpired,
+} from "./StewardProviderShared";
 
 // The Steward auth endpoints are resolved per browser host: co-hosted cloud
 // surfaces use their same-origin Pages/Worker proxy. The invariant under guard:
@@ -112,6 +119,45 @@ function makeJwt(payload: Record<string, unknown>): string {
       .replace(/=+$/, "");
   return `${b64url({ alg: "HS256", typ: "JWT" })}.${b64url(payload)}.sig`;
 }
+
+describe("clearStaleStewardSession", () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  it("drops a shared Cloud agent selection so the next account resolves its own agent", () => {
+    savePersistedActiveServer({
+      id: "cloud:old-agent",
+      kind: "cloud",
+      label: "Eliza Cloud",
+      apiBase: "https://api.eliza.app/api/v1/eliza/agents/old-agent",
+      accessToken: "expired-steward-token",
+    });
+
+    clearStaleStewardSession();
+
+    expect(loadPersistedActiveServer()).toBeNull();
+  });
+
+  it("preserves a dedicated target selection while scrubbing its rejected bearer", () => {
+    savePersistedActiveServer({
+      id: "cloud:dedicated-agent",
+      kind: "cloud",
+      label: "Eliza Cloud",
+      apiBase: "https://dedicated-agent.eliza.app",
+      accessToken: "rejected-agent-token",
+    });
+
+    clearStaleStewardSession();
+
+    expect(loadPersistedActiveServer()).toEqual({
+      id: "cloud:dedicated-agent",
+      kind: "cloud",
+      label: "Eliza Cloud",
+      apiBase: "https://dedicated-agent.eliza.app",
+    });
+  });
+});
 
 describe("tokenIsExpired", () => {
   it("keeps a token with a future exp", () => {

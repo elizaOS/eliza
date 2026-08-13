@@ -48,6 +48,14 @@ export type ResolvedSharedAgent =
       error: string;
       status: 400 | 401 | 403 | 404 | 503;
       refusal?: SharedAgentRefusal;
+      /**
+       * Stable machine code for the 503 family (#18045). `agent_cache_warming`
+       * is the ONLY state clients may absorb with a bounded automatic retry;
+       * `agent_cache_unavailable` is a cache outage and stays a manual retry.
+       */
+      code?: "agent_cache_warming" | "agent_cache_unavailable";
+      /** Advertised retry delay for warming responses; render as `Retry-After`. */
+      retryAfterSeconds?: number;
     }
   | { agent: AgentSandbox; agentId: string; orgId: string; agentName: string };
 
@@ -414,6 +422,7 @@ export async function resolveSharedAgent(
           return {
             error: "Agent authorization cache is unavailable. Retry shortly.",
             status: 503,
+            code: "agent_cache_unavailable",
           };
         }
       }
@@ -534,6 +543,8 @@ export async function resolveSharedAgent(
     return {
       error: "Agent authorization cache is warming. Retry shortly.",
       status: 503,
+      code: "agent_cache_warming",
+      retryAfterSeconds: 1,
     };
   }
 

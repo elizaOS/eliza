@@ -12,7 +12,6 @@
  * tests deterministic.
  */
 
-import { EXTERNAL_URLS } from "@elizaos/shared/brand";
 import {
   DiscordIcon,
   IMessageIcon,
@@ -27,6 +26,7 @@ import {
   buildElizaWhatsAppHref,
   ELIZA_PHONE_NUMBER,
 } from "@/lib/contact";
+import { resolveHomepageProductNavigation } from "@/lib/product-navigation";
 import { useT } from "@/providers/I18nProvider";
 
 // The ambient gradient wave stays lazy so the static hero is interactive
@@ -526,14 +526,16 @@ function DemoKeyboard({ composerText }: { composerText: string }) {
 }
 
 const SESSION_STORAGE_KEY = "eliza_app_session";
-const CLOUD_SIGN_IN_URL = `${EXTERNAL_URLS.cloud}/login?intent=launch`;
-const CLOUD_DASHBOARD_URL = `${EXTERNAL_URLS.app}/cloud-apps`;
 
 export default function LandingPage() {
   const t = useT();
+  const browserWindow = typeof window === "undefined" ? null : window;
   const signedIn =
-    typeof window !== "undefined" &&
-    window.localStorage.getItem(SESSION_STORAGE_KEY) !== null;
+    browserWindow !== null &&
+    browserWindow.localStorage.getItem(SESSION_STORAGE_KEY) !== null;
+  const productNavigation = resolveHomepageProductNavigation(
+    browserWindow?.location.hostname ?? "",
+  );
   const channels = [
     {
       key: "telegram",
@@ -585,7 +587,11 @@ export default function LandingPage() {
         </a>
         <a
           className="landing-cta landing-cta--white landing-header-cta"
-          href={signedIn ? CLOUD_DASHBOARD_URL : CLOUD_SIGN_IN_URL}
+          href={
+            signedIn
+              ? productNavigation.dashboardUrl
+              : productNavigation.signInUrl
+          }
         >
           {signedIn
             ? t("homepage_eliza.landing.dashboard", {

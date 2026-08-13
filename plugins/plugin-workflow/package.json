@@ -101,7 +101,6 @@
   },
   "dependencies": {
     "@elizaos/shared": "workspace:*",
-    "@smthrs/engine": "0.33.0",
     "smthrs": "0.33.0",
     "zod": "^4.4.3",
     "drizzle-orm": "0.45.2",

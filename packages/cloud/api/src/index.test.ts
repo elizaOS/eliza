@@ -4,6 +4,7 @@ import type { AppEnv } from "@/types/cloud-worker-env";
 import cloudApiWorker, {
   getFrontendAliasApiProxyTarget,
   getFrontendAliasProxyTarget,
+  getGeneratedAgentId,
   getHostedFrontendServeRewrite,
   isCanonicalInferencePath,
   isThinInferenceEnabled,
@@ -395,7 +396,7 @@ describe("cloud-api worker entrypoint", () => {
     }
   });
 
-  test("redirects legacy UUID agent and public service hosts", () => {
+  test("keeps legacy UUID agents proxied while redirecting public service hosts", () => {
     const response = redirectFrontendHost(
       new URL(
         "https://e06bb509-6c52-4c33-a9f7-66addc43e8c8.elizacloud.ai/chat?room=1",
@@ -403,10 +404,7 @@ describe("cloud-api worker entrypoint", () => {
       { ELIZA_CLOUD_AGENT_BASE_DOMAIN: "cloud.eliza.app" },
     );
 
-    expect(response?.status).toBe(308);
-    expect(response?.headers.get("location")).toBe(
-      "https://e06bb509-6c52-4c33-a9f7-66addc43e8c8.cloud.eliza.app/chat?room=1",
-    );
+    expect(response).toBeNull();
     const serviceCases = [
       [
         "https://blob.elizacloud.ai/object.bin",
@@ -441,6 +439,27 @@ describe("cloud-api worker entrypoint", () => {
       expect(serviceResponse?.status).toBe(308);
       expect(serviceResponse?.headers.get("location")).toBe(canonicalUrl);
     }
+  });
+
+  test("extracts canonical and legacy UUID hosts for the dedicated-agent proxy", () => {
+    const env = { ELIZA_CLOUD_AGENT_BASE_DOMAIN: "cloud.eliza.app" };
+    const agentId = "e06bb509-6c52-4c33-a9f7-66addc43e8c8";
+
+    expect(
+      getGeneratedAgentId(
+        new URL(`https://${agentId}.cloud.eliza.app/api/health`),
+        env,
+      ),
+    ).toBe(agentId);
+    expect(
+      getGeneratedAgentId(
+        new URL(`https://${agentId}.elizacloud.ai/api/health`),
+        env,
+      ),
+    ).toBe(agentId);
+    expect(
+      getGeneratedAgentId(new URL("https://blob.elizacloud.ai/object"), env),
+    ).toBeNull();
   });
 
   test("proxies canonical staging marketing to the unified Pages develop branch", () => {

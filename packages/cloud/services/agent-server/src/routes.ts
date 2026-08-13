@@ -83,6 +83,7 @@ type WorkflowServiceLike = {
   startWorkflow: (
     workflowId: string,
     options: { mode?: "manual"; input?: Record<string, unknown> } | undefined,
+    userId: string,
   ) => Promise<unknown>;
   listExecutions: (
     params: { workflowId?: string; limit?: number },
@@ -914,12 +915,16 @@ export function createRoutes(manager: AgentManager, sharedSecret: string) {
           set,
           async (service) => {
             await requireWorkflowOwnership(service, userId, params.workflowId);
-            const execution = await service.startWorkflow(params.workflowId, {
-              mode: "manual",
-              ...(isRecord(body) && isRecord(body.input)
-                ? { input: body.input }
-                : {}),
-            });
+            const execution = await service.startWorkflow(
+              params.workflowId,
+              {
+                mode: "manual",
+                ...(isRecord(body) && isRecord(body.input)
+                  ? { input: body.input }
+                  : {}),
+              },
+              userId,
+            );
             set.status = 202;
             return { execution };
           },

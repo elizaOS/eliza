@@ -13,7 +13,8 @@ function withBaseEnv(stripeSecretKey: string) {
   process.env = {
     ...ORIGINAL_ENV,
     DATABASE_URL: "postgresql://user:pass@localhost:5432/eliza",
-    STEWARD_SESSION_SECRET: "x".repeat(32),
+    STEWARD_JWT_SECRET: "x".repeat(32),
+    STEWARD_SESSION_SECRET: undefined,
     CRON_SECRET: "y".repeat(32),
     STRIPE_SECRET_KEY: stripeSecretKey,
   };
@@ -47,6 +48,31 @@ describe("validateEnvironment", () => {
       message:
         "STRIPE_SECRET_KEY: Must start with 'sk_test_', 'sk_live_', 'rk_test_', or 'rk_live_'. Feature may not work correctly.",
       required: false,
+    });
+  });
+
+  it("accepts the deprecated Steward session-secret alias during migration", () => {
+    withBaseEnv("sk_test_123");
+    process.env.STEWARD_JWT_SECRET = undefined;
+    process.env.STEWARD_SESSION_SECRET = "s".repeat(32);
+
+    const result = validateEnvironment();
+
+    expect(result.errors.filter((error) => error.variable === "STEWARD_JWT_SECRET")).toEqual([]);
+  });
+
+  it("requires either canonical or deprecated Steward JWT verifier secret", () => {
+    withBaseEnv("sk_test_123");
+    process.env.STEWARD_JWT_SECRET = undefined;
+    process.env.STEWARD_SESSION_SECRET = undefined;
+
+    const result = validateEnvironment();
+
+    expect(result.errors).toContainEqual({
+      variable: "STEWARD_JWT_SECRET",
+      message:
+        "STEWARD_JWT_SECRET is required but not set (STEWARD_SESSION_SECRET is accepted as a deprecated fallback).",
+      required: true,
     });
   });
 });
