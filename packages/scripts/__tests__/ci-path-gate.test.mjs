@@ -1,9 +1,85 @@
 /**
  * Verifies the shared CI classifier parses Git's NUL-delimited changed-path
- * inventory without losing rename endpoints or unusual valid filenames.
+ * inventory without losing rename endpoints or unusual valid filenames, and
+ * that the centralized classifier workflow path triggers every consumer lane.
  */
 import { describe, expect, it } from "bun:test";
-import { parseGitNameStatus } from "../ci-path-gate.mjs";
+import { writeFileSync, unlinkSync } from "node:fs";
+import { parseGitNameStatus, evaluate, CONFIGS } from "../ci-path-gate.mjs";
+
+const CLASSIFIER_PATH = ".github/workflows/classify-paths.yml";
+const tmpFile = `${import.meta.dir}/.tmp-classifier-only-diff`;
+
+/**
+ * The reusable classifier workflow must never self-skip. Before #14051 Tier B,
+ * each consumer workflow inlined ci-path-gate.mjs and referenced itself by
+ * path, so a change to the inline classifier always re-triggered every lane it
+ * gated. After consolidation into classify-paths.yml, that workflow path was
+ * missing from every CONFIGS rule set — a classifier-only diff returned all
+ * lanes false, letting a change to the routing/output contract skip every
+ * consumer (#14051 review round 2, P1 finding). This test proves the fix.
+ */
+describe("classifier self-registration regression", () => {
+  it("test config triggers all seven lanes for a classifier-only diff", () => {
+    writeFileSync(tmpFile, `${CLASSIFIER_PATH}\n`);
+    try {
+      const result = evaluate(CONFIGS.test, {
+        eventName: "pull_request",
+        labels: "",
+        changedFilesPath: tmpFile,
+      });
+      for (const lane of CONFIGS.test.outputs) {
+        expect(result.matchesByLane.get(lane).length).toBeGreaterThan(0);
+      }
+    } finally {
+      unlinkSync(tmpFile);
+    }
+  });
+
+  it("scenario-pr config triggers its lane for a classifier-only diff", () => {
+    writeFileSync(tmpFile, `${CLASSIFIER_PATH}\n`);
+    try {
+      const result = evaluate(CONFIGS["scenario-pr"], {
+        eventName: "pull_request",
+        labels: "",
+        changedFilesPath: tmpFile,
+      });
+      expect(result.matchesByLane.get("run_scenario_pr").length).toBeGreaterThan(
+        0,
+      );
+    } finally {
+      unlinkSync(tmpFile);
+    }
+  });
+
+  it("docker config triggers its lane for a classifier-only diff", () => {
+    writeFileSync(tmpFile, `${CLASSIFIER_PATH}\n`);
+    try {
+      const result = evaluate(CONFIGS.docker, {
+        eventName: "pull_request",
+        labels: "",
+        changedFilesPath: tmpFile,
+      });
+      expect(result.matchesByLane.get("docker").length).toBeGreaterThan(0);
+    } finally {
+      unlinkSync(tmpFile);
+    }
+  });
+
+  it("dev-smoke config triggers its lane for a classifier-only diff", () => {
+    writeFileSync(tmpFile, `${CLASSIFIER_PATH}\n`);
+    try {
+      const result = evaluate(CONFIGS["dev-smoke"], {
+        eventName: "pull_request",
+        labels: "",
+        changedFilesPath: tmpFile,
+      });
+      expect(result.matchesByLane.get("dev_smoke").length).toBeGreaterThan(0);
+    } finally {
+      unlinkSync(tmpFile);
+    }
+  });
+});
 
 describe("parseGitNameStatus", () => {
   it("returns an empty inventory for an empty diff", () => {
