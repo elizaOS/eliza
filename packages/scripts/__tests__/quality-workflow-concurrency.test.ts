@@ -25,9 +25,14 @@ describe("quality.yml concurrency contract", () => {
     const group = workflow.concurrency?.group;
     expect(group).toStartWith("quality-");
     expect(group).toContain("github.event.pull_request.number || github.ref");
-    // A run_id fallback would give every push a unique group and re-open the
-    // unbounded queue from #14069.
-    expect(group).not.toContain("run_id");
+    // An unconditional run_id fallback would give every push a unique group
+    // and re-open the unbounded queue from #14069. run_id may appear only
+    // behind an explicit workflow_dispatch guard, so a manual health read is
+    // not parked behind — and then superseded by — the develop push queue.
+    const dispatchGuard =
+      "github.event_name == 'workflow_dispatch' && format('dispatch-{0}', github.run_id)";
+    const withoutDispatchGuard = String(group).replace(dispatchGuard, "");
+    expect(withoutDispatchGuard).not.toContain("run_id");
   });
 
   test("cancels in progress only for pull_request events, never push", () => {

@@ -43,8 +43,11 @@ on:
 # pending, which cannot starve the fleet. merge_group and schedule events are
 # also not in the cancel set, so the merge queue and nightly runs always
 # complete.
+# workflow_dispatch is excluded from the shared ref group: a manual run is an
+# on-demand health read, and parking it behind the push queue means it is
+# superseded before it ever starts.
 concurrency:
-  group: quality-${{ github.event.pull_request.number || github.ref }}
+  group: quality-${{ github.event_name == 'workflow_dispatch' && format('dispatch-{0}', github.run_id) || github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
