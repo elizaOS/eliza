@@ -101,6 +101,25 @@ function stableUuid(raw: string): string {
   return `${hash.slice(0, 8)}-${hash.slice(8, 12)}-4${hash.slice(13, 16)}-a${hash.slice(17, 20)}-${hash.slice(20, 32)}`;
 }
 
+/**
+ * Client-supplied idempotency key for a shared turn (#18045). When present it
+ * becomes the bridge RPC id, so `turnMessageIds` derives the SAME user/assistant
+ * message ids on a retry and the history merge de-dupes the landed turn instead
+ * of double-delivering it. Untrusted input: accept only a non-empty string of a
+ * sane length; anything else means "no key" and the caller generates a fresh id
+ * (a lost de-dupe, never a broken turn).
+ */
+export function sharedTurnClientMessageId(body: unknown): string | undefined {
+  // error-policy:J3 untrusted request body — an absent/oversized/non-string key
+  // yields an explicit undefined, never a fabricated identity.
+  if (!body || typeof body !== "object") return undefined;
+  const raw = (body as { clientMessageId?: unknown }).clientMessageId;
+  if (typeof raw !== "string") return undefined;
+  const trimmed = raw.trim();
+  if (!trimmed || trimmed.length > 128) return undefined;
+  return trimmed;
+}
+
 function rpcTurnIdentity(rpc: BridgeRequest): string {
   if (typeof rpc.id === "string" || typeof rpc.id === "number") {
     return String(rpc.id);
