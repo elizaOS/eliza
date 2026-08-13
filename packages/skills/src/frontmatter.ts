@@ -78,6 +78,12 @@ function extractFrontmatter(content: string): {
   };
 }
 
+/**
+ * Parses a Markdown document's YAML frontmatter and returns its body.
+ *
+ * @throws {ElizaError} With code `INVALID_SKILL_FRONTMATTER_YAML` when a
+ * delimited frontmatter block contains malformed YAML.
+ */
 export function parseFrontmatter<
   T extends Record<string, unknown> = Record<string, unknown>,
 >(content: string): ParsedFrontmatter<T> {
@@ -102,6 +108,12 @@ export function parseFrontmatter<
   return { frontmatter: {} as T, body };
 }
 
+/**
+ * Removes a Markdown document's YAML frontmatter and returns its body.
+ *
+ * @throws {ElizaError} With code `INVALID_SKILL_FRONTMATTER_YAML` when a
+ * delimited frontmatter block contains malformed YAML.
+ */
 export function stripFrontmatter(content: string): string {
   return parseFrontmatter(content).body;
 }
