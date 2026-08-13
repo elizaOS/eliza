@@ -54,11 +54,22 @@ import {
   type SharedTurnMessage,
 } from "./run-shared-agent-turn";
 import { projectSharedAgentCharacter } from "./shared-agent-character";
-import { capabilityWallActionResult, type SharedCapabilityWall } from "./shared-capability-wall";
+import {
+  capabilityWallActionResult,
+  resolveSharedCapabilityWall,
+  type SharedCapabilityWall,
+} from "./shared-capability-wall";
 import { navIntentActionResult, type SharedNavIntent } from "./shared-nav-intent";
 import type { SharedRuntimeAgent } from "./shared-runtime-agent";
 import { SharedRuntimeCacheWarmingError, SharedTurnConflictError } from "./shared-runtime-errors";
 import { MAX_HISTORY_MESSAGES } from "./shared-runtime-history-policy";
+import {
+  executeMeteredSharedWebSearch,
+  resolveSharedWebSearchQuery,
+  type SharedWebSearchContext,
+  SharedWebSearchRateLimitError,
+  webSearchActionResult,
+} from "./shared-web-search";
 
 export { MAX_HISTORY_MESSAGES } from "./shared-runtime-history-policy";
 
@@ -69,14 +80,16 @@ export type BridgeExecutionContext = {
   waitUntil(promise: Promise<unknown>): void;
 };
 
-function deterministicActionResults(turn: {
+function turnActionResults(turn: {
   navIntent?: SharedNavIntent;
   capabilityWall?: SharedCapabilityWall;
+  webSearch?: SharedWebSearchContext;
 }): unknown[] | undefined {
   if (turn.capabilityWall) {
     return [capabilityWallActionResult(turn.capabilityWall)];
   }
   if (turn.navIntent) return [navIntentActionResult(turn.navIntent)];
+  if (turn.webSearch) return [webSearchActionResult(turn.webSearch)];
   return undefined;
 }
 
@@ -85,6 +98,33 @@ function isDeterministicFreeTurn(turn: {
   capabilityWall?: SharedCapabilityWall;
 }): boolean {
   return Boolean(turn.navIntent || turn.capabilityWall);
+}
+
+async function searchContextForTurn(
+  agent: SharedRuntimeAgent,
+  text: string,
+  executionCtx: BridgeExecutionContext | undefined,
+): Promise<SharedWebSearchContext | undefined> {
+  if (resolveSharedCapabilityWall(text)) return undefined;
+  const query = resolveSharedWebSearchQuery(text);
+  if (!query) return undefined;
+  try {
+    return await executeMeteredSharedWebSearch({
+      organizationId: agent.organization_id,
+      query,
+      executionCtx,
+    });
+  } catch (error) {
+    if (error instanceof OrgRateLimitCacheNotReadyError) {
+      throw new SharedRuntimeCacheWarmingError(
+        "Shared web search meter is warming. Retry shortly.",
+      );
+    }
+    if (error instanceof SharedWebSearchRateLimitError) {
+      throw new RateLimitError(error.message, error.retryAfterSeconds);
+    }
+    throw error;
+  }
 }
 
 export interface SharedRuntimeHistoryStore {
@@ -711,6 +751,15 @@ export class SharedRuntimeChatService {
       }
       throw error;
     }
+    let webSearch: SharedWebSearchContext | undefined;
+    try {
+      webSearch = resolveSharedAgentTurnModel(character.model)
+        ? await searchContextForTurn(agent, text, options.executionCtx)
+        : undefined;
+    } catch (error) {
+      await billing?.settle(0);
+      throw error;
+    }
 
     const messageIds = turnMessageIds(agent.id, roomId, rpc);
     let turn: RunSharedAgentTurnResult;
@@ -721,6 +770,7 @@ export class SharedRuntimeChatService {
         message: text,
         messageIds,
         onProviderDispatch: billing?.markProviderDispatched,
+        webSearch,
       });
     } catch (error) {
       await settleFailedProviderWorkOffPath(
@@ -737,7 +787,7 @@ export class SharedRuntimeChatService {
     let turnIsProvablyFree = false;
     try {
       turnIsProvablyFree = turn.degraded || isDeterministicFreeTurn(turn);
-      const actionResults = deterministicActionResults(turn);
+      const actionResults = turnActionResults(turn);
       const result: SharedTurnTerminalResult = {
         text: turn.reply,
         messageId: messageIds.assistant,
@@ -860,6 +910,15 @@ export class SharedRuntimeChatService {
       }
       throw error;
     }
+    let webSearch: SharedWebSearchContext | undefined;
+    try {
+      webSearch = resolveSharedAgentTurnModel(character.model)
+        ? await searchContextForTurn(agent, text, options.executionCtx)
+        : undefined;
+    } catch (error) {
+      await billing?.settle(0);
+      throw error;
+    }
     const messageIds = turnMessageIds(agent.id, roomId, rpc);
     const generationAbort = new AbortController();
     const abortFromRequest = () => {
@@ -883,6 +942,7 @@ export class SharedRuntimeChatService {
         message: text,
         messageIds,
         onProviderDispatch: billing?.markProviderDispatched,
+        webSearch,
       });
     } catch (error) {
       detachRequestAbort();
@@ -1029,7 +1089,7 @@ export class SharedRuntimeChatService {
               );
               continue;
             }
-            const actionResults = deterministicActionResults(turn);
+            const actionResults = turnActionResults(turn);
             await finalizeMessages(finalReply, false, async () => {
               // Durable claim completion before the done frame: a lost/dropped
               // terminal frame replays this result on retry instead of

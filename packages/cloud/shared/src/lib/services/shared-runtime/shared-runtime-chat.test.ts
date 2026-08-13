@@ -483,6 +483,49 @@ describe("SharedRuntimeChatService", () => {
     expect(h.history()).toHaveLength(3);
   });
 
+  test("returns the typed metered web-search receipt with a normal billed model turn", async () => {
+    const service = new SharedRuntimeChatService();
+    const h = harness();
+    turn = {
+      degraded: false,
+      reply: "According to the public sources, elizaOS shipped the update.",
+      history: [
+        { role: "user", content: "hello" },
+        {
+          role: "assistant",
+          content: "According to the public sources, elizaOS shipped the update.",
+        },
+      ],
+      model: "gpt-oss-120b",
+      webSearch: {
+        query: "search the web for elizaOS updates",
+        answer: "https://elizaos.ai/update",
+        provider: "exa",
+        metered: true,
+      },
+    };
+
+    const response = await service.bridge(agent, rpc, {
+      executionCtx: h.executionCtx,
+      historyStore: h.historyStore,
+    });
+
+    expect(response.result).toMatchObject({
+      actionResults: [
+        {
+          actionName: "WEB_SEARCH",
+          success: true,
+          values: {
+            provider: "exa",
+            metered: true,
+            currentExecutionTier: "shared",
+          },
+        },
+      ],
+    });
+    expect(settleCalls).toEqual([0.004]);
+  });
+
   test("rate denial and policy warming stop before billing admission or provider dispatch", async () => {
     const service = new SharedRuntimeChatService();
     const h = harness();
