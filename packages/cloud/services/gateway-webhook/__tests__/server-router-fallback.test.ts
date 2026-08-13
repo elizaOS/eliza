@@ -10,6 +10,18 @@ const AGENT_ID = "4602b3be-2c01-4e7e-9cdc-849604e1bef7";
 const RUNTIME_AGENT_ID = "b850bc30-45f8-0041-a00a-83df46d8555d";
 const originalFetch = globalThis.fetch;
 
+function domainWithLength(length: number): string {
+  const labels: string[] = [];
+  let remaining = length;
+  while (remaining > 0) {
+    const labelLength = Math.min(63, remaining);
+    labels.push("a".repeat(labelLength));
+    remaining -= labelLength;
+    if (remaining > 0) remaining -= 1;
+  }
+  return labels.join(".");
+}
+
 afterEach(() => {
   globalThis.fetch = originalFetch;
 });
@@ -37,6 +49,39 @@ describe("canonical agent forwarding fallback", () => {
       getCanonicalAgentFallbackTarget(AGENT_ID, {
         AGENT_ROUTER_ORIGIN_HOST: "https://attacker.example/path",
         ELIZA_CLOUD_AGENT_BASE_DOMAIN: "cloud.eliza.app",
+      }),
+    ).toBeNull();
+  });
+
+  test("validates the complete forwarded hostname at the DNS length boundary", () => {
+    const maxBaseDomain = domainWithLength(216);
+    const overlongBaseDomain = domainWithLength(217);
+
+    expect(
+      getCanonicalAgentFallbackTarget(AGENT_ID, {
+        AGENT_ROUTER_ORIGIN_HOST: "router.eliza.app",
+        ELIZA_CLOUD_AGENT_BASE_DOMAIN: maxBaseDomain,
+      })?.forwardedHost,
+    ).toHaveLength(253);
+    expect(
+      getCanonicalAgentFallbackTarget(AGENT_ID, {
+        AGENT_ROUTER_ORIGIN_HOST: "router.eliza.app",
+        ELIZA_CLOUD_AGENT_BASE_DOMAIN: overlongBaseDomain,
+      }),
+    ).toBeNull();
+  });
+
+  test("accepts a 63-character base-domain label and rejects 64", () => {
+    expect(
+      getCanonicalAgentFallbackTarget(AGENT_ID, {
+        AGENT_ROUTER_ORIGIN_HOST: "router.eliza.app",
+        ELIZA_CLOUD_AGENT_BASE_DOMAIN: `${"a".repeat(63)}.app`,
+      }),
+    ).not.toBeNull();
+    expect(
+      getCanonicalAgentFallbackTarget(AGENT_ID, {
+        AGENT_ROUTER_ORIGIN_HOST: "router.eliza.app",
+        ELIZA_CLOUD_AGENT_BASE_DOMAIN: `${"a".repeat(64)}.app`,
       }),
     ).toBeNull();
   });
