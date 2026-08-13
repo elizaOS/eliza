@@ -3647,6 +3647,18 @@ export interface EligibleDirectActionRoute {
 	action: Action;
 }
 
+function routeReplacesStage1Candidate(
+	rule: DirectActionRoutingRule,
+	candidateActions: readonly string[] | undefined,
+): boolean {
+	const replacements = rule.replacesActionNames ?? [];
+	if (replacements.length === 0 || !candidateActions?.length) return false;
+	const candidates = new Set(candidateActions.map(normalizeActionIdentifier));
+	return replacements.some((name) =>
+		candidates.has(normalizeActionIdentifier(name)),
+	);
+}
+
 /**
  * Resolve plugin-owned direct routes against the real execution surface for
  * this actor and turn. Context adjacency is deliberately insufficient:
@@ -4013,25 +4025,43 @@ export const BUILTIN_RESPONSE_HANDLER_EVALUATORS: readonly ResponseHandlerEvalua
 		{
 			name: "core.direct_registered_capability_request",
 			description:
-				"Promotes a plugin-declared current-turn intent only when a matching, capability-tagged action is executable for this actor.",
+				"Promotes or reconciles a plugin-declared current-turn intent only when a matching, capability-tagged action is executable for this actor.",
 			priority: 15,
 			shouldRun: ({ message, messageHandler, runtime }) => {
 				if (messageHandler.processMessage !== "RESPOND") return false;
-				if (messageHandler.plan.requiresTool === true) return false;
 				if (isSubAgentCompletionArtifact(message)) return false;
 				const nonSimpleContexts = (messageHandler.plan.contexts ?? []).filter(
 					(context) => context !== SIMPLE_CONTEXT_ID,
 				);
-				if (nonSimpleContexts.length > 0) return false;
 				const text = getUserMessageText(message)?.trim() ?? "";
-				return (
-					text.length > 0 &&
-					getDirectActionRoutingRules(runtime).some((rule) =>
-						rule.matches(text),
-					)
+				if (text.length === 0) return false;
+				const matchingRules = getDirectActionRoutingRules(runtime).filter(
+					(rule) => rule.matches(text),
 				);
+				if (matchingRules.length === 0) return false;
+				// A plugin may reconcile an already-tool-bearing/non-simple plan only
+				// for the explicit fallback candidates it owns. All other plans keep
+				// their Stage-1 route, even when their text happens to match.
+				if (
+					messageHandler.plan.requiresTool === true ||
+					nonSimpleContexts.length > 0
+				) {
+					return matchingRules.some((rule) =>
+						routeReplacesStage1Candidate(
+							rule,
+							messageHandler.plan.candidateActions,
+						),
+					);
+				}
+				return true;
 			},
-			evaluate: async ({ message, state, runtime, userRoles }) => {
+			evaluate: async ({
+				message,
+				messageHandler,
+				state,
+				runtime,
+				userRoles,
+			}) => {
 				const routes = await resolveEligibleDirectActionRoutes({
 					runtime,
 					message,
@@ -4039,21 +4069,32 @@ export const BUILTIN_RESPONSE_HANDLER_EVALUATORS: readonly ResponseHandlerEvalua
 					userRoles,
 				});
 				if (routes.length === 0) return undefined;
+				const replacingRoutes = routes.filter(({ rule }) =>
+					routeReplacesStage1Candidate(
+						rule,
+						messageHandler.plan.candidateActions,
+					),
+				);
+				const selectedRoutes =
+					replacingRoutes.length > 0 ? replacingRoutes : routes;
 				const candidateActions = uniqueActionNames(
-					routes.map(({ action }) => action.name),
+					selectedRoutes.map(({ action }) => action.name),
 				);
 				const contexts = mergeAgentContexts(
-					...routes.map(({ rule }) => rule.contexts),
+					...selectedRoutes.map(({ rule }) => rule.contexts),
 				);
 				return {
 					requiresTool: true,
 					addContexts: contexts,
 					addCandidateActions: candidateActions,
+					...(replacingRoutes.length > 0
+						? { clearCandidateActions: true }
+						: {}),
 					// A deterministic read route must not emit Stage-1's speculative
 					// answer or a progress bubble before the real action responds.
 					clearReply: true,
 					debug: [
-						`current request matched executable direct route(s): ${routes.map(({ rule }) => rule.id).join(", ")} -> ${candidateActions.join(", ")}`,
+						`current request matched executable direct route(s): ${selectedRoutes.map(({ rule }) => rule.id).join(", ")} -> ${candidateActions.join(", ")}`,
 					],
 				};
 			},

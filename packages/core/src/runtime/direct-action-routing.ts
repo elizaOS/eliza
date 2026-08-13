@@ -15,6 +15,12 @@ export interface DirectActionRoutingRule {
 	/** Runtime action names that can satisfy this intent. */
 	readonly actionNames: readonly string[];
 	/**
+	 * Stage-1 candidates that this rule may replace after its action has passed
+	 * the normal execution gates. This is intentionally opt-in: an owner route
+	 * must not rewrite an unrelated, already-tool-bearing plan.
+	 */
+	readonly replacesActionNames?: readonly string[];
+	/**
 	 * Every selected action must declare all of these tags. This prevents a
 	 * same-named or context-adjacent action from masquerading as the required
 	 * read/write capability.

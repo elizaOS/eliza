@@ -578,6 +578,149 @@ describe(EMPTY_CLAIM_EVALUATOR_NAME, () => {
 	});
 });
 
+describe(DIRECT_ROUTE_EVALUATOR_NAME, () => {
+	function getEvaluator() {
+		const evaluator = BUILTIN_RESPONSE_HANDLER_EVALUATORS.find(
+			(candidate) => candidate.name === DIRECT_ROUTE_EVALUATOR_NAME,
+		);
+		if (!evaluator)
+			throw new Error(`${DIRECT_ROUTE_EVALUATOR_NAME} is not registered`);
+		return evaluator;
+	}
+
+	function ownerReminderAction(overrides: Partial<Action> = {}): Action {
+		return {
+			name: "OWNER_REMINDERS",
+			description: "Create owner reminders.",
+			contexts: ["tasks", "productivity"],
+			tags: [
+				"domain:reminders",
+				"capability:write",
+				"capability:schedule",
+				"effect:receipt-required",
+			],
+			roleGate: { minRole: "USER" },
+			validate: async () => true,
+			handler: async () => ({ success: true, text: "Reminder created." }),
+			...overrides,
+		};
+	}
+
+	it("replaces a Stage-1 TRIGGER_CREATE candidate only after owner gates pass", async () => {
+		const runtime = testRuntime.runtime;
+		__resetDirectActionRoutingRulesForTests(runtime);
+		runtime.actions = [ownerReminderAction()];
+		registerDirectActionRoutingRule(runtime, {
+			id: "test.owner-reminder-authoritative",
+			actionNames: ["OWNER_REMINDERS"],
+			replacesActionNames: ["TRIGGER_CREATE"],
+			requiredActionTags: [
+				"domain:reminders",
+				"capability:write",
+				"capability:schedule",
+				"effect:receipt-required",
+			],
+			contexts: ["tasks", "productivity"],
+			matches: (text) => /\bremind\s+me\b/iu.test(text),
+		});
+		const context = makeContext(
+			{
+				processMessage: "RESPOND",
+				thought: "",
+				plan: {
+					contexts: ["tasks"],
+					requiresTool: true,
+					candidateActions: ["TRIGGER_CREATE"],
+					reply: "On it.",
+				},
+			},
+			{ userText: "Remind me to call Pat tomorrow." },
+		);
+		const evaluator = getEvaluator();
+		expect(await evaluator.shouldRun(context)).toBe(true);
+		const patch = (await evaluator.evaluate(context)) as ResponseHandlerPatch;
+		expect(patch).toMatchObject({
+			requiresTool: true,
+			addCandidateActions: ["OWNER_REMINDERS"],
+			clearCandidateActions: true,
+			clearReply: true,
+		});
+	});
+
+	it.each([
+		"missing action",
+		"missing required tag",
+		"role denied",
+		"validate denied",
+	])(
+		"preserves the preselected core fallback when owner is %s",
+		async (failure) => {
+			const runtime = testRuntime.runtime;
+			__resetDirectActionRoutingRulesForTests(runtime);
+			const action = ownerReminderAction(
+				failure === "missing action"
+					? undefined
+					: failure === "missing required tag"
+						? { tags: ["domain:reminders"] }
+						: failure === "role denied"
+							? { roleGate: { minRole: "OWNER" } }
+							: { validate: async () => false },
+			);
+			runtime.actions = failure === "missing action" ? [] : [action];
+			registerDirectActionRoutingRule(runtime, {
+				id: "test.owner-reminder-authoritative",
+				actionNames: ["OWNER_REMINDERS"],
+				replacesActionNames: ["TRIGGER_CREATE"],
+				requiredActionTags: [
+					"domain:reminders",
+					"capability:write",
+					"capability:schedule",
+					"effect:receipt-required",
+				],
+				contexts: ["tasks"],
+				matches: (text) => /\bremind\s+me\b/iu.test(text),
+			});
+			const context = makeContext(
+				{
+					processMessage: "RESPOND",
+					thought: "",
+					plan: {
+						contexts: ["tasks"],
+						requiresTool: true,
+						candidateActions: ["TRIGGER_CREATE"],
+						reply: "On it.",
+					},
+				},
+				{ userText: "Remind me to call Pat tomorrow." },
+			);
+			const evaluator = getEvaluator();
+			expect(await evaluator.shouldRun(context)).toBe(true);
+			expect(await evaluator.evaluate(context)).toBeUndefined();
+		},
+	);
+
+	it("leaves core-only fallback untouched when no owner rule is registered", async () => {
+		const runtime = testRuntime.runtime;
+		__resetDirectActionRoutingRulesForTests(runtime);
+		runtime.actions = [];
+		const context = makeContext(
+			{
+				processMessage: "RESPOND",
+				thought: "",
+				plan: {
+					contexts: ["tasks"],
+					requiresTool: true,
+					candidateActions: ["TRIGGER_CREATE"],
+					reply: "On it.",
+				},
+			},
+			{ userText: "Remind me to call Pat tomorrow." },
+		);
+		const evaluator = getEvaluator();
+		expect(await evaluator.shouldRun(context)).toBe(false);
+	});
+});
+
 describe("evaluatePlannedReplyEgress", () => {
 	const FABRICATED_ALL_SET_REPLY =
 		"You're all set — I've seeded your first reminder for tomorrow at 9am.";
