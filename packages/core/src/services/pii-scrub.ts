@@ -47,7 +47,9 @@ import {
 	PiiScrubFabricationError,
 	scrubWithEscalation,
 } from "../security/pii-scrub-seam.js";
-import type { PiiScrubRequestPayload } from "../types/events.js";
+import { applyScrubVerdicts } from "../security/pii-scrub-rewrite.js";
+import { applyPiiScrubWriteBack } from "../security/pii-scrub-pipeline.js";
+import type { EventPayload, PiiScrubRequestPayload } from "../types/events.js";
 import { EventType } from "../types/events.js";
 import type { IAgentRuntime } from "../types/runtime.js";
 import { Service } from "../types/service.js";
@@ -205,10 +207,16 @@ export class PiiScrubService extends Service {
 	}
 
 	/**
-	 * Process one item: idempotency skip -> seam escalation -> mark-done. Throws
-	 * on any failure so BatchQueue applies retry / `onExhausted`, and CRUCIALLY
-	 * does not write the done-marker on failure (the item is retried, never
-	 * silently marked scrubbed).
+	 * Process one item: idempotency skip -> seam escalation -> write-back ->
+	 * mark-done. Throws on any failure so BatchQueue applies retry /
+	 * `onExhausted`, and CRUCIALLY does not write the done-marker on failure
+	 * (the item is retried, never silently marked scrubbed).
+	 *
+	 * Commit-before-marker invariant (#15973): the write-back owner commits the
+	 * scrubbed content to the source artifact BEFORE the done-marker is written.
+	 * A write-back throw aborts — the marker is NOT written, the item is
+	 * retried. This satisfies the reviewer's requirement that scrubbed content
+	 * is committed to memory/document/conversation before the done-marker.
 	 */
 	private async scrubItem(item: PiiScrubQueueItem): Promise<void> {
 		// Idempotency re-check inside the drain: covers the race where the same
@@ -224,6 +232,7 @@ export class PiiScrubService extends Service {
 
 		let escalated: boolean;
 		let modelId: string;
+		let scrubbedText: string;
 		try {
 			const result = await scrubWithEscalation(this.runtime, {
 				text: item.content,
@@ -235,6 +244,14 @@ export class PiiScrubService extends Service {
 			});
 			escalated = result.escalated;
 			modelId = result.escalation?.modelId ?? "tier0";
+			// Compute the scrubbed text from the tier-0 spans + model verdicts
+			// so the write-back owner can commit it to the source artifact.
+			scrubbedText = applyScrubVerdicts(
+				item.content,
+				result.tier0,
+				result.escalation?.verdicts ?? [],
+				{ rulesetVersion: item.rulesetVersion },
+			);
 		} catch (error) {
 			// error-policy:J2 Queue retry policy owns recovery; this layer adds job
 			// diagnostics and rethrows without manufacturing a scrubbed result.
@@ -255,9 +272,53 @@ export class PiiScrubService extends Service {
 			throw error;
 		}
 
+		// Commit-before-marker (#15973): run the write-back owner BEFORE writing
+		// the done-marker. A throw here aborts — the marker is NOT written, the
+		// item is retried. When no write-back owner is registered, this is a
+		// no-op (the scrub succeeded; write-back is an independent concern) and
+		// the marker is written as before.
+		try {
+			const committed = await applyPiiScrubWriteBack(
+				this.runtime,
+				{
+					content: item.content,
+					rulesetVersion: item.rulesetVersion,
+					itemRef: item.itemRef,
+					jobId: item.jobId,
+					tier0Only: !escalated,
+					modelId,
+				},
+				scrubbedText,
+			);
+			if (committed) {
+				this.runtime.logger.debug(
+					{
+						src: SRC,
+						agentId: this.runtime.agentId,
+						itemRef: item.itemRef,
+					},
+					"Write-back committed (before done-marker)",
+				);
+			}
+		} catch (error) {
+			// Write-back failure is fail-closed: the scrubbed content was NOT
+			// committed, so we must NOT write the done-marker (the item would be
+			// falsely marked complete). Rethrow so the queue retries.
+			this.runtime.logger.error(
+				{
+					src: SRC,
+					agentId: this.runtime.agentId,
+					itemRef: item.itemRef,
+					error: error instanceof Error ? error.message : String(error),
+				},
+				"Write-back failed (fail-closed, not marking done)",
+			);
+			throw error;
+		}
+
 		// Success: write the content-addressed done-marker so a re-scrub of this
 		// exact content under this ruleset no-ops, and a crash-restart resumes
-		// past it with zero duplicate work.
+		// past it with zero duplicate work. Written AFTER write-back committed.
 		await markScrubDone(this.runtime, item.content, {
 			rulesetVersion: item.rulesetVersion,
 			modelId,
@@ -265,15 +326,9 @@ export class PiiScrubService extends Service {
 		});
 
 		await this.runtime.emitEvent(EventType.PII_SCRUB_COMPLETED, {
-			runtime: this.runtime,
-			content: item.content,
-			rulesetVersion: item.rulesetVersion,
-			jobId: item.jobId,
-			itemRef: item.itemRef,
-			tier0Only: !escalated,
-			modelId,
-			source: "piiScrubService",
-		});
+				runtime: this.runtime,
+				source: "piiScrubService",
+			} as EventPayload);
 	}
 
 	/** Emit FAILED + report the error after retries are exhausted. */
