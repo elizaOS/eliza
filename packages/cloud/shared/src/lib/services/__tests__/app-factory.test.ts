@@ -80,7 +80,8 @@ const DATA = {
   app_url: "https://demo.example.com",
 };
 
-const DEFAULT_TEMPLATE_IMAGE = "ghcr.io/elizaos/example-edad:showcase";
+const DEFAULT_TEMPLATE_IMAGE =
+  "ghcr.io/elizaos/example-edad@sha256:2c68b639eec00fad1b35e978f5463f1543b392c96680ec496fd0c0a9eddc8241";
 const buildOff = { resolveImage: undefined } as unknown as AppDeployRunnerDeps;
 
 function metaImageTag(metadata: unknown): string | undefined {
@@ -113,25 +114,28 @@ describe("createApp: template-image wiring (no-repo apps)", () => {
   });
 
   test("APP_DEFAULT_TEMPLATE_IMAGE env overrides the stamped image", async () => {
-    process.env.APP_DEFAULT_TEMPLATE_IMAGE = "ghcr.io/elizaos/example-clone-ur-crush:showcase";
+    process.env.APP_DEFAULT_TEMPLATE_IMAGE =
+      "ghcr.io/elizaos/example-clone-ur-crush@sha256:b7e5fd1310a56158ea47ea923eccc7ae4ca067b177bea0cd326d32c4129b60db";
     const result = await appFactoryService.createApp(DATA, { createGitHubRepo: false });
     expect(metaImageTag(result.app.metadata)).toBe(
-      "ghcr.io/elizaos/example-clone-ur-crush:showcase",
+      "ghcr.io/elizaos/example-clone-ur-crush@sha256:b7e5fd1310a56158ea47ea923eccc7ae4ca067b177bea0cd326d32c4129b60db",
     );
   });
 
   test("caller-supplied options.imageTag wins over the default (not overwritten)", async () => {
     const result = await appFactoryService.createApp(DATA, {
       createGitHubRepo: false,
-      imageTag: "ghcr.io/elizaos/myapp:v9",
+      imageTag: `ghcr.io/elizaos/myapp@sha256:e${"0".repeat(63)}`,
     });
-    expect(metaImageTag(result.app.metadata)).toBe("ghcr.io/elizaos/myapp:v9");
+    expect(metaImageTag(result.app.metadata)).toBe(`ghcr.io/elizaos/myapp@sha256:e${"0".repeat(63)}`);
   });
 
   test("a pre-existing metadata.imageTag is never overwritten (no redundant update)", async () => {
-    seededMetadata = { imageTag: "ghcr.io/elizaos/preexisting:v1" };
+    seededMetadata = { imageTag: `ghcr.io/elizaos/preexisting@sha256:f${"0".repeat(63)}` };
     const result = await appFactoryService.createApp(DATA, { createGitHubRepo: false });
-    expect(metaImageTag(result.app.metadata)).toBe("ghcr.io/elizaos/preexisting:v1");
+    expect(metaImageTag(result.app.metadata)).toBe(
+      `ghcr.io/elizaos/preexisting@sha256:f${"0".repeat(63)}`,
+    );
     // imageTag unchanged => no metadata write (and no repo => no github_repo write).
     expect(updateCalls.length).toBe(0);
   });

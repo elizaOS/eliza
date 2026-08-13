@@ -14,6 +14,11 @@ function recordingBuilder(): { builder: AppImageBuilder; cmds: string[] } {
   const exec: BuildExec = {
     async exec(cmd) {
       cmds.push(cmd);
+      // The builder inspects pushed images to resolve the manifest digest
+      // (#13097); return a digest so the resolver yields a pinned ref.
+      if (cmd.startsWith("docker buildx imagetools inspect")) {
+        return `Name:      ref\nDigest:    sha256:abc123def4567890abc123def4567890abc123def4567890abc123def4567890\n`;
+      }
       return "built";
     },
   };
@@ -21,7 +26,11 @@ function recordingBuilder(): { builder: AppImageBuilder; cmds: string[] } {
 }
 
 describe("makeBuildFromRepoResolver", () => {
-  test("builds + pushes from app.github_repo and returns the ref", async () => {
+  // The builder pushes and resolves the manifest digest (#13097), so push builds
+  // return a digest-pinned ref: `<mutable-ref>@sha256:<64hex>`.
+  const DIGEST = "sha256:abc123def4567890abc123def4567890abc123def4567890abc123def4567890";
+
+  test("builds + pushes from app.github_repo and returns the digest-pinned ref", async () => {
     const { builder, cmds } = recordingBuilder();
     const resolve = makeBuildFromRepoResolver({ builder, registry: "ghcr.io/elizaos" });
     const ref = await resolve({
@@ -31,7 +40,7 @@ describe("makeBuildFromRepoResolver", () => {
       repoUrl: "https://github.com/u/repo.git",
     });
 
-    expect(ref).toBe("ghcr.io/elizaos/app-aaaaaaaaaaaa4aaa8aaaaaaa:a1b2c3d");
+    expect(ref).toBe(`ghcr.io/elizaos/app-aaaaaaaaaaaa4aaa8aaaaaaa:a1b2c3d@${DIGEST}`);
     expect(cmds[0]).toContain("docker buildx build");
     expect(cmds[0]).toContain("--push");
     expect(cmds[0]).toContain("'https://github.com/u/repo.git#a1b2c3d'");
@@ -41,7 +50,7 @@ describe("makeBuildFromRepoResolver", () => {
     const { builder, cmds } = recordingBuilder();
     const resolve = makeBuildFromRepoResolver({ builder, registry: "r" });
     const ref = await resolve({ id: APP, name: "demo", metadata: { repoUrl: "/local/ctx" } });
-    expect(ref).toBe("r/app-aaaaaaaaaaaa4aaa8aaaaaaa:latest");
+    expect(ref).toBe(`r/app-aaaaaaaaaaaa4aaa8aaaaaaa:latest@${DIGEST}`);
     expect(cmds[0]).toContain("'/local/ctx'");
   });
 
@@ -63,7 +72,7 @@ describe("makeBuildFromRepoResolver", () => {
       repoUrl: "https://github.com/linked/repo.git",
     });
 
-    expect(ref).toBe("r/app-aaaaaaaaaaaa4aaa8aaaaaaa:develop");
+    expect(ref).toBe(`r/app-aaaaaaaaaaaa4aaa8aaaaaaa:develop@${DIGEST}`);
     expect(cmds[0]).toContain("--file 'apps/example/Dockerfile.cloud'");
     expect(cmds[0]).toContain("'https://github.com/elizaOS/eliza.git#develop'");
     expect(cmds[0]).not.toContain("https://github.com/linked/repo.git");

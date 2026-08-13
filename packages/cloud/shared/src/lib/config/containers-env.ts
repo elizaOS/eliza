@@ -343,19 +343,23 @@ export const containersEnv = {
    * user repo) at create time, so create -> deploy resolves to a prebuilt,
    * allowlisted image instead of failing with "no image to deploy".
    *
-   * Defaults to the retained `:showcase` template image. It sits under
-   * `ghcr.io/elizaos/*`, so the apps-deploy allowlist permits it unchanged.
-   * Override the whole ref via `APP_DEFAULT_TEMPLATE_IMAGE`.
+   * Defaults to the first-party showcase image PINNED to its immutable sha256
+   * digest (#13097): a mutable `:showcase` tag lets the registry swap the bytes
+   * behind an allowed name after the deploy-time allowlist check, so the digest
+   * pin makes the stamped default content-addressed. The image sits under
+   * `ghcr.io/elizaos/*`, so the apps-deploy allowlist permits it unchanged. The
+   * digest-pinned default also passes the armed digest-pin gate
+   * (`CONTAINER_IMAGE_REQUIRE_DIGEST`) unchanged.
    *
-   * TODO(ops, digest-pin): `:showcase` is a MUTABLE tag — the registry could
-   * re-point it after the deploy-time allowlist check. Once a stable showcase
-   * digest is published, pin this default to
-   * `ghcr.io/elizaos/example-edad@sha256:<64hex>` so a future digest-pin gate
-   * (`CONTAINER_IMAGE_REQUIRE_DIGEST`) accepts the template default unchanged.
+   * Override the whole ref via `APP_DEFAULT_TEMPLATE_IMAGE` (operators that
+   * re-pin after a future image publish should pass a `repo@sha256:<digest>`).
    */
   appDefaultTemplateImage(): string {
     const env = getCloudAwareEnv();
-    return pick(env.APP_DEFAULT_TEMPLATE_IMAGE) ?? "ghcr.io/elizaos/example-edad:showcase";
+    return (
+      pick(env.APP_DEFAULT_TEMPLATE_IMAGE) ??
+      "ghcr.io/elizaos/example-edad@sha256:2c68b639eec00fad1b35e978f5463f1543b392c96680ec496fd0c0a9eddc8241"
+    );
   },
 
   /**
@@ -381,6 +385,25 @@ export const containersEnv = {
         env.CONTAINERS_IMAGE_REQUIRE_DIGEST,
       ) === "true"
     );
+  },
+
+  /**
+   * Whether the APPS-DEPLOY lane (Product 2 app deploys) must reject a mutable
+   * `:tag`/implicit-latest image ref even when the global
+   * {@link requireDigestPinnedImages} gate is off.
+   *
+   * SECURITY (#13097): the first-party template default and source-build output
+   * are now digest-pinned end-to-end, so the apps-deploy lane can enforce
+   * immutability by DEFAULT without breaking the GA path. This is ON by default;
+   * an operator that still needs a mutable-tag app deploy can opt out with
+   * `APPS_DEPLOY_REQUIRE_DIGEST=false`. Read via `APPS_DEPLOY_REQUIRE_DIGEST`
+   * (with `ELIZA_` fallback); any value other than `"false"`/`"0"` keeps the
+   * gate armed.
+   */
+  appsDeployRequireDigest(): boolean {
+    const env = getCloudAwareEnv();
+    const raw = pick(env.APPS_DEPLOY_REQUIRE_DIGEST, env.ELIZA_APPS_DEPLOY_REQUIRE_DIGEST);
+    return raw !== "false" && raw !== "0";
   },
 
   /**

@@ -179,14 +179,21 @@ export async function resolveImageRef(
         `to grant the namespace to your organization (settings.allowed_image_namespaces).`,
     );
   }
-  // SECURITY (opt-in, default OFF): when the digest-pin gate is armed, reject a
+  // SECURITY (#13097): the apps-deploy lane enforces immutability by DEFAULT via
+  // the lane-scoped `appsDeployRequireDigest()` gate (ON unless an operator opts
+  // out with `APPS_DEPLOY_REQUIRE_DIGEST=false`), AND inherits the global
+  // `requireDigestPinnedImages()` gate when armed. Either being on rejects a
   // mutable `:tag`/`:latest` reference so the registry cannot swap the bytes
   // behind an allowed name after this check. This is the SAME gate the two
-  // container routes (`/v1/containers`, `/v1/coding-containers`) enforce; an
-  // app deploy is the third shared-node image path, so it must enforce it too —
-  // otherwise CONTAINER_IMAGE_REQUIRE_DIGEST=true would still let an app deploy
-  // run a mutable tag while the routes reject it.
-  if (imageRequiresDigestPin(image, containersEnv.requireDigestPinnedImages())) {
+  // container routes (`/v1/containers`, `/v1/coding-containers`) enforce via the
+  // global flag; an app deploy is the third shared-node image path, so it must
+  // enforce it too — otherwise the global flag would still let an app deploy run
+  // a mutable tag while the routes reject it. The first-party template default
+  // and source-build output are now digest-pinned, so the armed gate accepts
+  // them unchanged.
+  const requireDigest =
+    containersEnv.appsDeployRequireDigest() || containersEnv.requireDigestPinnedImages();
+  if (imageRequiresDigestPin(image, requireDigest)) {
     throw new Error(
       `Image '${image}' for app ${app.id} must be pinned to a full sha256 digest ` +
         `(e.g. repo@sha256:<64 hex>): the digest-pin gate ` +
