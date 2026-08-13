@@ -161,26 +161,31 @@ describe("validateModelConfig numeric boundary", () => {
 	});
 
 	it.each([
-		["LOCAL_EMBEDDING_DIMENSIONS", "local", ""],
-		["LOCAL_EMBEDDING_DIMENSIONS", "local", "   "],
-		["OPENAI_EMBEDDING_DIMENSIONS", "openai", ""],
-		["OPENAI_EMBEDDING_DIMENSIONS", "openai", "   "],
-	] as const)("rejects a blank %s alias", (setting, provider, value) => {
-		vi.stubEnv("EMBEDDING_PROVIDER", provider);
-		vi.stubEnv(setting, value);
+		["LOCAL_EMBEDDING_DIMENSIONS", "local", "", 384],
+		["LOCAL_EMBEDDING_DIMENSIONS", "local", "   ", 384],
+		["OPENAI_EMBEDDING_DIMENSIONS", "openai", "", 1536],
+		["OPENAI_EMBEDDING_DIMENSIONS", "openai", "   ", 1536],
+	] as const)(
+		"treats a blank %s alias as unset and uses the provider default",
+		(setting, provider, value, expected) => {
+			vi.stubEnv("EMBEDDING_PROVIDER", provider);
+			vi.stubEnv("OPENAI_API_KEY", "test-openai-key");
+			vi.stubEnv(setting, value);
 
-		expect(() => validateModelConfig()).toThrow(
-			/Model configuration validation failed: EMBEDDING_DIMENSION:/,
-		);
-	});
+			expect(validateModelConfig()).toMatchObject({
+				EMBEDDING_PROVIDER: provider,
+				EMBEDDING_DIMENSION: expected,
+			});
+		},
+	);
 
-	it("rejects a blank OpenAI alias when OpenAI is inferred", () => {
+	it("treats a blank OpenAI alias as unset when OpenAI is inferred", () => {
 		vi.stubEnv("EMBEDDING_PROVIDER", undefined);
 		vi.stubEnv("OPENAI_EMBEDDING_DIMENSIONS", "");
 
-		expect(() => validateModelConfig()).toThrow(
-			/Model configuration validation failed: EMBEDDING_DIMENSION:/,
-		);
+		expect(validateModelConfig()).toMatchObject({
+			EMBEDDING_DIMENSION: 1536,
+		});
 	});
 
 	it("ignores inactive local and OpenAI aliases for Google embeddings", () => {
