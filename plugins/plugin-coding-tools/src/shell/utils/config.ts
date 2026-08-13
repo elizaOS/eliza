@@ -5,9 +5,56 @@
  */
 import fs from "node:fs";
 import path from "node:path";
-import { logger } from "@elizaos/core";
+import { ElizaError, logger } from "@elizaos/core";
 import { z } from "zod";
 import type { ShellConfig } from "../types";
+
+/**
+ * Ceilings for the numeric shell settings, each tied to the real consumer of
+ * the value rather than an arbitrary sanity number:
+ * - timeout feeds a `setTimeout` (shellService kill timer), whose 32-bit
+ *   signed ceiling is 2^31-1 ms — larger values overflow and fire immediately,
+ *   turning "very long timeout" into "instant kill";
+ * - the yield window consumer clamps to [10, 120_000] ms, so a configured
+ *   default outside that window would be silently rewritten on every call;
+ * - retained-output settings size in-memory per-session buffers, so they get
+ *   a practical per-session ceiling instead of "any safe integer".
+ */
+const SHELL_TIMEOUT_MAX_MS = 2_147_483_647;
+const SHELL_BACKGROUND_MIN_MS = 10;
+const SHELL_BACKGROUND_MAX_MS = 120_000;
+const SHELL_OUTPUT_CHARS_MAX = 10_000_000;
+
+/**
+ * Parses one explicitly-provided env token as an exact positive decimal
+ * integer within [min, max]. Unset and blank both mean "use the default"
+ * (blank-is-unset convention); anything else that is not exactly an in-range
+ * decimal integer throws before any shell service state exists.
+ */
+function parseShellSetting(
+  setting: string,
+  raw: string | undefined,
+  {
+    defaultValue,
+    min,
+    max,
+  }: { defaultValue: number; min: number; max: number },
+): number {
+  if (raw === undefined || raw.trim() === "") return defaultValue;
+  const token = raw.trim();
+  const value = /^\d+$/.test(token) ? Number(token) : Number.NaN;
+  if (!Number.isSafeInteger(value) || value < min || value > max) {
+    throw new ElizaError(
+      `${setting} must be an integer between ${min} and ${max}; received ${JSON.stringify(raw)}`,
+      {
+        code: "SHELL_CONFIG_INVALID",
+        context: { setting, value: raw, min, max },
+        severity: "fatal",
+      },
+    );
+  }
+  return value;
+}
 
 const configSchema = z.object({
   enabled: z.boolean(),
@@ -50,18 +97,33 @@ export const DEFAULT_FORBIDDEN_COMMANDS: readonly string[] = [
 
 export function loadShellConfig(): ShellConfig {
   const allowedDirectory = process.env.SHELL_ALLOWED_DIRECTORY || process.cwd();
-  const timeout = parseInt(process.env.SHELL_TIMEOUT || "30000", 10);
-  const maxOutputChars = parseInt(
-    process.env.SHELL_MAX_OUTPUT_CHARS || "200000",
-    10,
+  const timeout = parseShellSetting(
+    "SHELL_TIMEOUT",
+    process.env.SHELL_TIMEOUT,
+    {
+      defaultValue: 30000,
+      min: 1,
+      max: SHELL_TIMEOUT_MAX_MS,
+    },
   );
-  const pendingMaxOutputChars = parseInt(
-    process.env.SHELL_PENDING_MAX_OUTPUT_CHARS || "200000",
-    10,
+  const maxOutputChars = parseShellSetting(
+    "SHELL_MAX_OUTPUT_CHARS",
+    process.env.SHELL_MAX_OUTPUT_CHARS,
+    { defaultValue: 200000, min: 1, max: SHELL_OUTPUT_CHARS_MAX },
   );
-  const defaultBackgroundMs = parseInt(
-    process.env.SHELL_BACKGROUND_MS || "10000",
-    10,
+  const pendingMaxOutputChars = parseShellSetting(
+    "SHELL_PENDING_MAX_OUTPUT_CHARS",
+    process.env.SHELL_PENDING_MAX_OUTPUT_CHARS,
+    { defaultValue: 200000, min: 1, max: SHELL_OUTPUT_CHARS_MAX },
+  );
+  const defaultBackgroundMs = parseShellSetting(
+    "SHELL_BACKGROUND_MS",
+    process.env.SHELL_BACKGROUND_MS,
+    {
+      defaultValue: 10000,
+      min: SHELL_BACKGROUND_MIN_MS,
+      max: SHELL_BACKGROUND_MAX_MS,
+    },
   );
   const allowBackground = process.env.SHELL_ALLOW_BACKGROUND !== "false";
 
