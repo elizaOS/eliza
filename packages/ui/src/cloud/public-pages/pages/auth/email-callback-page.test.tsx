@@ -23,6 +23,7 @@ const callbackState = vi.hoisted(() => ({
         email: string,
       ) => Promise<{ token: string; refreshToken?: string }>
     >(),
+  pendingReturnTo: null as string | null,
 }));
 
 // Stub StewardAuthProvider with a marker that ALSO supplies the Steward context
@@ -64,6 +65,14 @@ vi.mock("../../lib/use-page-title", () => ({ usePageTitle: () => {} }));
 vi.mock("../../lib/steward-session", () => ({
   syncStewardSessionCookie: vi.fn(),
 }));
+vi.mock("../../lib/login-return-to", () => ({
+  defaultLoginReturnTo: () => "/join",
+  consumePendingOAuthReturnTo: () => {
+    const value = callbackState.pendingReturnTo;
+    callbackState.pendingReturnTo = null;
+    return value;
+  },
+}));
 vi.mock("../../../../cloud-ui/components/auth/authorize-return", () => ({
   readStoredAppAuthorizeReturnTo: () => null,
   clearStoredAppAuthorizeReturnTo: () => {},
@@ -74,10 +83,13 @@ vi.mock("../../../../cloud-ui/components/brand/brand-button", () => ({
   ),
 }));
 
-import EmailCallbackPage from "./email-callback-page";
+import EmailCallbackPage, {
+  resolveEmailCallbackDestination,
+} from "./email-callback-page";
 
 beforeEach(() => {
   callbackState.verifyEmailCallback.mockReset();
+  callbackState.pendingReturnTo = null;
 });
 
 afterEach(() => {
@@ -188,6 +200,18 @@ describe("EmailCallbackPage", () => {
     await waitFor(() =>
       expect(callbackState.verifyEmailCallback).toHaveBeenCalledTimes(2),
     );
+  });
+
+  it("restores a pending messaging continuation after magic-link verification", async () => {
+    expect(resolveEmailCallbackDestination(null, "/get-started")).toBe(
+      "/get-started",
+    );
+    expect(
+      resolveEmailCallbackDestination(
+        "/app-auth/authorize?id=1",
+        "/get-started",
+      ),
+    ).toBe("/app-auth/authorize?id=1");
   });
 
   it("rejects an incomplete callback and offers a safe keyboard-reachable recovery action", async () => {
