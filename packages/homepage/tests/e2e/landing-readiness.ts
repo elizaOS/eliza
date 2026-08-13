@@ -10,7 +10,6 @@ const READINESS_TIMEOUT_MS = 30_000;
 
 export async function waitForLandingIntro(page: Page) {
   await page.evaluate(() => document.fonts.ready);
-  await page.waitForSelector("header", { timeout: READINESS_TIMEOUT_MS });
   await expect(
     page.getByRole("heading", { name: /Save 4 hours a week/ }),
   ).toBeVisible({ timeout: READINESS_TIMEOUT_MS });

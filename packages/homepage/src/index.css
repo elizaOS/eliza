@@ -1452,19 +1452,21 @@ body {
   width: 3rem;
   height: 3rem;
   border-radius: 50%;
-  background: rgb(253 250 247 / 55%);
-  color: var(--brand-black);
-  transition: background 0.15s ease;
+  background: #ffffff;
+  transition:
+    transform 0.15s ease,
+    box-shadow 0.15s ease;
 }
 
 .landing-channels a:hover {
-  background: var(--brand-white);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgb(0 0 0 / 18%);
 }
 
 /* iPhone-styled iMessage preview */
 .landing-iphone {
   justify-self: center;
-  width: min(100%, 21rem);
+  width: min(100%, 19.5rem);
   border-radius: 3.2rem;
   padding: 0.55rem;
   background: #0b0b0f;
@@ -1477,6 +1479,8 @@ body {
   position: relative;
   display: flex;
   flex-direction: column;
+  /* Real iPhone display proportions (390x844 points ≈ 9:19.5). */
+  aspect-ratio: 390 / 844;
   border-radius: 2.7rem;
   background: #ffffff;
   overflow: hidden;
@@ -1555,9 +1559,9 @@ body {
 .landing-phone-thread {
   display: flex;
   flex-direction: column;
+  flex: 1;
   gap: 0.5rem;
   padding: 1.1rem 0.9rem;
-  min-height: 16rem;
 }
 
 .landing-bubble {

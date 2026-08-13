@@ -90,10 +90,10 @@ function PhoneMockup() {
         <div className="landing-phone-header">
           <img
             className="landing-phone-avatar"
-            src="/eliza-app-profile-image.webp"
+            src="/brand/logos/logo_white_orangebg.svg"
             alt=""
-            width={192}
-            height={192}
+            width={423}
+            height={423}
           />
           <span className="landing-phone-name">Eliza</span>
           <span className="landing-phone-channel">iMessage</span>
@@ -130,7 +130,7 @@ export default function LandingPage() {
       label: t("homepage_eliza.landing.channelTelegram", {
         defaultValue: "Message Eliza on Telegram",
       }),
-      icon: <TelegramIcon className="size-6" />,
+      icon: <TelegramIcon className="size-6 text-[#2AABEE]" />,
     },
     {
       key: "discord",
@@ -139,7 +139,7 @@ export default function LandingPage() {
       label: t("homepage_eliza.landing.channelDiscord", {
         defaultValue: "Message Eliza on Discord",
       }),
-      icon: <DiscordIcon className="size-6" />,
+      icon: <DiscordIcon className="size-6 text-[#5865F2]" />,
     },
     {
       key: "whatsapp",
@@ -148,7 +148,7 @@ export default function LandingPage() {
       label: t("homepage_eliza.landing.channelWhatsapp", {
         defaultValue: "Message Eliza on WhatsApp",
       }),
-      icon: <WhatsAppIcon className="size-6" />,
+      icon: <WhatsAppIcon className="size-6 text-[#25D366]" />,
     },
   ];
 
