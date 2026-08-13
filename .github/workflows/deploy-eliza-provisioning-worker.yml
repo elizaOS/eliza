@@ -43,12 +43,10 @@ on:
         required: false
         type: string
 
-# Per-SHA workflow groups so an environment-approval wait cannot head-of-line
-# block a newer SHA (#18092). Staging and production still cannot share a
-# group. The deploy job's mutate lock is the one that SSHes the host and
-# never cancels in-flight work.
+# Per-run admission so two dispatches of the same SHA both reach
+# determine-env (#18092). The deploy job is the SSH critical section.
 concurrency:
-  group: deploy-eliza-provisioning-worker-${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'production' || 'staging') }}-${{ github.sha }}
+  group: deploy-eliza-provisioning-worker-${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'production' || 'staging') }}-${{ format('run-{0}', github.run_id) }}
   cancel-in-progress: false
 
 # Default to least privilege. Override per-job where needed.
