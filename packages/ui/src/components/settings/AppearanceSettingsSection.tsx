@@ -13,10 +13,10 @@ import { ACCENT_PRESETS, useAppSelector, useContentPack } from "../../state";
 import type { AccentPreset } from "../../state/ui-preferences";
 import { LANGUAGES } from "../shared/LanguageDropdown.helpers";
 import { Button } from "../ui/button";
-import { Switch } from "../ui/switch";
 import { selectableTileClass } from "./appearance-primitives.helpers";
 import { BackgroundSettingsControls } from "./BackgroundSettingsControls";
 import { LoadedPacksList } from "./LoadedPacksList";
+import { SettingsSwitchRow } from "./settings-agent-rows";
 import { SettingsGroup, SettingsRow, SettingsStack } from "./settings-layout";
 
 function LanguageTileButton({
@@ -57,30 +57,6 @@ function LanguageTileButton({
         <Check className="absolute right-1.5 top-1.5 h-3 w-3 text-accent" />
       ) : null}
     </Button>
-  );
-}
-
-function HomeTimeWidgetSwitch({
-  hidden,
-  onHiddenChange,
-}: {
-  hidden: boolean;
-  onHiddenChange: (hidden: boolean) => void;
-}) {
-  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
-    id: "appearance-show-time-widget",
-    role: "toggle",
-    label: "Show time & date",
-    status: hidden ? "off" : "on",
-    onActivate: () => onHiddenChange(!hidden),
-  });
-  return (
-    <Switch
-      ref={ref}
-      checked={!hidden}
-      onCheckedChange={(checked) => onHiddenChange(!checked)}
-      {...agentProps}
-    />
   );
 }
 
@@ -178,16 +154,14 @@ export function AppearanceSettingsSection() {
         bare
         title={t("settings.homeDashboard", { defaultValue: "Home" })}
       >
-        <SettingsRow
+        <SettingsSwitchRow
+          agentId="appearance-show-time-widget"
+          agentLabel="Show time & date"
           label={t("settings.showTimeWidget", {
             defaultValue: "Show time & date",
           })}
-          control={
-            <HomeTimeWidgetSwitch
-              hidden={homeTimeWidgetHidden}
-              onHiddenChange={setHomeTimeWidgetHidden}
-            />
-          }
+          checked={!homeTimeWidgetHidden}
+          onCheckedChange={(checked) => setHomeTimeWidgetHidden(!checked)}
         />
       </SettingsGroup>
 

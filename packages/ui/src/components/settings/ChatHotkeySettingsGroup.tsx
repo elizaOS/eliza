@@ -16,7 +16,7 @@ import {
   useChatOverlayHotkey,
 } from "../../state/useChatOverlayHotkey";
 import { Button } from "../ui/button";
-import { Switch } from "../ui/switch";
+import { SettingsSwitchRow } from "./settings-agent-rows";
 import { SettingsGroup, SettingsRow } from "./settings-layout";
 
 /**
@@ -99,7 +99,9 @@ export function ChatHotkeySettingsGroup() {
           "A global keyboard shortcut that brings the floating chat surface to the foreground.",
       })}
     >
-      <SettingsRow
+      <SettingsSwitchRow
+        agentId="chat-hotkey-enabled"
+        group="desktop-workspace"
         icon={Keyboard}
         label={t("desktopworkspacesection.chatHotkey.enableLabel", {
           defaultValue: "Enable chat summon hotkey",
@@ -108,17 +110,8 @@ export function ChatHotkeySettingsGroup() {
           defaultValue:
             "The command palette keeps ⌘/Ctrl+K; this is a separate shortcut.",
         })}
-        control={
-          <Switch
-            checked={hotkey.enabled}
-            onCheckedChange={(checked) =>
-              void apply(hotkey.accelerator, checked)
-            }
-            aria-label={t("desktopworkspacesection.chatHotkey.enableLabel", {
-              defaultValue: "Enable chat summon hotkey",
-            })}
-          />
-        }
+        checked={hotkey.enabled}
+        onCheckedChange={(checked) => void apply(hotkey.accelerator, checked)}
       />
       <SettingsRow
         label={t("desktopworkspacesection.chatHotkey.shortcutLabel", {

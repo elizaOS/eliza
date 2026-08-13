@@ -45,6 +45,14 @@ export interface SettingsSwitchRowProps {
   disabled?: boolean;
   /** Agent-surface grouping key. */
   group?: string;
+  /**
+   * Overrides the reported agent status. Defaults to on/off from `checked`;
+   * rows representing a capability the platform cannot offer right now (e.g.
+   * push notifications outside an installed PWA) report "unavailable".
+   */
+  agentStatus?: string;
+  /** DOM id for the switch, paired with the row label's htmlFor. */
+  switchId?: string;
   className?: string;
 }
 
@@ -59,6 +67,8 @@ export function SettingsSwitchRow({
   onCheckedChange,
   disabled = false,
   group = "settings",
+  agentStatus,
+  switchId,
   className,
 }: SettingsSwitchRowProps) {
   const resolvedLabel = agentLabel ?? labelToString(label, agentId);
@@ -68,7 +78,7 @@ export function SettingsSwitchRow({
     label: resolvedLabel,
     group,
     description: typeof description === "string" ? description : undefined,
-    status: checked ? "on" : "off",
+    status: agentStatus ?? (checked ? "on" : "off"),
     getValue: () => checked,
     onActivate: disabled ? undefined : () => onCheckedChange(!checked),
   });
@@ -80,9 +90,11 @@ export function SettingsSwitchRow({
       label={label}
       description={description}
       className={className}
+      htmlFor={switchId}
       control={
         <Switch
           ref={ref}
+          id={switchId}
           checked={checked}
           onCheckedChange={onCheckedChange}
           disabled={disabled}

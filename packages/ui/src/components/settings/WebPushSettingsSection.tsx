@@ -9,10 +9,9 @@
 
 import { BellRing } from "lucide-react";
 import { useCallback } from "react";
-import { useAgentElement } from "../../agent-surface";
 import { useWebPush } from "../../state/notifications/useWebPush";
-import { Switch } from "../ui/switch";
-import { SettingsGroup, SettingsRow, SettingsStack } from "./settings-layout";
+import { SettingsSwitchRow } from "./settings-agent-rows";
+import { SettingsGroup, SettingsStack } from "./settings-layout";
 
 /** Human copy for each coarse state. */
 function describeState(state: ReturnType<typeof useWebPush>["state"]): {
@@ -77,36 +76,18 @@ export function WebPushSettingsSection() {
     [subscribe, unsubscribe],
   );
 
-  // Agent-addressable so "turn on notifications" reaches the toggle from chat +
-  // voice, like every other settings control.
-  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
-    id: "notifications-push-toggle",
-    role: "toggle",
-    label: view.label,
-    group: "settings",
-    status: view.canToggle ? (view.on ? "on" : "off") : "unavailable",
-    onActivate: () => {
-      if (view.canToggle && !busy && ready) onToggle(!view.on);
-    },
-  });
-
   return (
     <SettingsStack>
       <SettingsGroup title="Notifications">
-        <SettingsRow
+        <SettingsSwitchRow
+          agentId="notifications-push-toggle"
           icon={BellRing}
           label={view.label}
           description={error ?? view.description}
-          control={
-            <Switch
-              ref={ref}
-              checked={view.on}
-              disabled={!view.canToggle || busy || !ready}
-              onCheckedChange={onToggle}
-              aria-label="Toggle push notifications"
-              {...agentProps}
-            />
-          }
+          checked={view.on}
+          disabled={!view.canToggle || busy || !ready}
+          agentStatus={view.canToggle ? undefined : "unavailable"}
+          onCheckedChange={onToggle}
         />
       </SettingsGroup>
     </SettingsStack>
