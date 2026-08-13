@@ -1,4 +1,4 @@
-// Handles v1 cloud API v1 apps id analytics requests route traffic with route-local auth expectations.
+/** Handles app request analytics views with shared date validation and route-local auth. */
 import { Hono } from "hono";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { nextStyleParams } from "@/lib/api/hono-next-style-params";
@@ -29,6 +29,24 @@ import type { AppEnv } from "@/types/cloud-worker-env";
  *
  * Rate limited: 60 requests per minute per API key/IP
  */
+function parseIsoDate(value: string): Date | undefined {
+  const match =
+    /^(\d{4}-\d{2}-\d{2})(?:T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:\d{2})?)?$/.exec(
+      value,
+    );
+  if (!match) return undefined;
+
+  const date = new Date(value);
+  const calendarDate = new Date(`${match[1]}T00:00:00.000Z`);
+  return !Number.isNaN(date.getTime()) &&
+    !match[1].startsWith("0000-") &&
+    date.getUTCFullYear() >= 1 &&
+    date.getUTCFullYear() <= 9999 &&
+    calendarDate.toISOString().slice(0, 10) === match[1]
+    ? date
+    : undefined;
+}
+
 async function handleGET(
   request: Request,
   context?: { params: Promise<{ id: string }> },
@@ -38,6 +56,30 @@ async function handleGET(
     const { user, apiKey } = await requireAuthOrApiKeyWithOrg(request);
     const { id } = await params;
     const { searchParams } = new URL(request.url);
+    const rawStartDate = searchParams.get("start_date");
+    const rawEndDate = searchParams.get("end_date");
+    const startDate =
+      rawStartDate !== null ? parseIsoDate(rawStartDate) : undefined;
+    const endDate = rawEndDate !== null ? parseIsoDate(rawEndDate) : undefined;
+
+    if (rawStartDate !== null && !startDate) {
+      return Response.json(
+        { success: false, error: "Invalid start_date" },
+        { status: 400 },
+      );
+    }
+    if (rawEndDate !== null && !endDate) {
+      return Response.json(
+        { success: false, error: "Invalid end_date" },
+        { status: 400 },
+      );
+    }
+    if (startDate && endDate && startDate > endDate) {
+      return Response.json(
+        { success: false, error: "start_date must not be after end_date" },
+        { status: 400 },
+      );
+    }
 
     const existingApp = await appsService.getById(id);
 
@@ -62,12 +104,6 @@ async function handleGET(
     }
 
     const view = searchParams.get("view") || "stats";
-    const startDate = searchParams.get("start_date")
-      ? new Date(searchParams.get("start_date")!)
-      : undefined;
-    const endDate = searchParams.get("end_date")
-      ? new Date(searchParams.get("end_date")!)
-      : undefined;
     const requestType = searchParams.get("request_type") || undefined;
     const source = searchParams.get("source") || undefined;
 
@@ -162,6 +198,7 @@ async function handleGET(
       }
     }
   } catch (error) {
+    // error-policy:J1 This route boundary translates failures into structured HTTP errors.
     logger.error("Failed to get app request analytics:", error);
     return Response.json(
       {
