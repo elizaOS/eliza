@@ -4,8 +4,9 @@
  */
 import { BRAND_COLORS } from "@elizaos/shared/brand";
 import { Loader2 } from "lucide-react";
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, useEffect } from "react";
 import { BrowserRouter, Route, Routes } from "react-router-dom";
+import { getLegacyOnboardingRedirect } from "@/lib/legacy-onboarding-redirect";
 
 const MarketingPage = lazy(() => import("@/pages/marketing"));
 const LandingPage = lazy(() => import("@/pages/landing"));
@@ -31,6 +32,21 @@ function RouteFallback() {
   );
 }
 
+function GetStartedRoute() {
+  const redirectUrl =
+    typeof window === "undefined"
+      ? null
+      : getLegacyOnboardingRedirect(window.location);
+
+  useEffect(() => {
+    if (redirectUrl) {
+      window.location.replace(redirectUrl);
+    }
+  }, [redirectUrl]);
+
+  return redirectUrl ? <RouteFallback /> : <GetStartedPage />;
+}
+
 export function App() {
   return (
     <BrowserRouter>
@@ -42,7 +58,7 @@ export function App() {
           <Route element={<AuthedShell />}>
             <Route path="/login" element={<LoginPage />} />
             <Route path="/connected" element={<ConnectedPage />} />
-            <Route path="/get-started" element={<GetStartedPage />} />
+            <Route path="/get-started" element={<GetStartedRoute />} />
             <Route path="/profile/edit" element={<ProfileEditPage />} />
           </Route>
           <Route path="*" element={<NotFoundPage />} />
