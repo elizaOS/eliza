@@ -12,7 +12,21 @@
  * and a controllable setInterval shim so tests advance the 5 s interval
  * deterministically without real-time waits.
  */
-import { beforeEach, describe, expect, mock, test } from "bun:test";
+
+import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import { setTimeout as delay } from "node:timers/promises";
+
+const nativeSetInterval = globalThis.setInterval;
+const nativeClearInterval = globalThis.clearInterval;
+const nativeSetTimeout = globalThis.setTimeout;
+const nativeClearTimeout = globalThis.clearTimeout;
+
+function settleEffects(delayMs: number): Promise<void> {
+  // The test replaces global timers below to drive the production poll
+  // deterministically. Node's promise timer remains independent of those
+  // fakes, so harness settlement and Bun's process lifecycle cannot deadlock.
+  return delay(delayMs);
+}
 
 // Capture every fetch invocation so tests can assert on the request body.
 const fetchCalls: Array<{ url: string; body: unknown }> = [];
@@ -211,11 +225,18 @@ describe("useElizaAppProvisioningChat — shared onboarding poll", () => {
     activeTimers = new Set();
   });
 
+  afterEach(() => {
+    globalThis.setInterval = nativeSetInterval;
+    globalThis.clearInterval = nativeClearInterval;
+    globalThis.setTimeout = nativeSetTimeout;
+    globalThis.clearTimeout = nativeClearTimeout;
+  });
+
   test("immediate poll sends statusOnly:true with no message field", async () => {
     const { unmount } = mountHook(true, "platform:blooio:+123****7890");
 
     // Wait for the mount effect + immediate poll to fire.
-    await new Promise((r) => setTimeout(r, 150));
+    await settleEffects(150);
 
     const chatCalls = fetchCalls.filter(
       (c) => c.url === "/api/eliza-app/onboarding/chat",
@@ -249,7 +270,7 @@ describe("useElizaAppProvisioningChat — shared onboarding poll", () => {
     const { unmount } = mountHook(true, "platform:blooio:+123****7890");
 
     // Wait for mount + immediate poll.
-    await new Promise((r) => setTimeout(r, 150));
+    await settleEffects(150);
 
     const callsAfterImmediate = fetchCalls.filter(
       (c) => c.url === "/api/eliza-app/onboarding/chat",
@@ -264,7 +285,7 @@ describe("useElizaAppProvisioningChat — shared onboarding poll", () => {
     await tickIntervals();
 
     // Allow the async fetch to resolve.
-    await new Promise((r) => setTimeout(r, 50));
+    await settleEffects(50);
 
     const callsAfterInterval = fetchCalls.filter(
       (c) => c.url === "/api/eliza-app/onboarding/chat",
@@ -294,12 +315,12 @@ describe("useElizaAppProvisioningChat — shared onboarding poll", () => {
     );
 
     // Wait for mount + immediate poll.
-    await new Promise((r) => setTimeout(r, 150));
+    await settleEffects(150);
 
     // Fire multiple interval ticks to simulate several 5-second polls.
     for (let i = 0; i < 3; i++) {
       await tickIntervals();
-      await new Promise((r) => setTimeout(r, 50));
+      await settleEffects(50);
     }
 
     // The transcript visible to the UI must not contain duplicate assistant
@@ -322,14 +343,14 @@ describe("useElizaAppProvisioningChat — shared onboarding poll", () => {
     );
 
     // Wait for mount + immediate poll (status pending).
-    await new Promise((r) => setTimeout(r, 150));
+    await settleEffects(150);
 
     // Flip the mock so the next response is provisioning=running with a bridgeUrl.
     nextStatus = "running";
 
     // Fire the interval tick — the hook should see isReady and stop polling.
     await tickIntervals();
-    await new Promise((r) => setTimeout(r, 100));
+    await settleEffects(100);
 
     // The hook must have transitioned to ready.
     expect(getState().isReady).toBe(true);
@@ -342,7 +363,7 @@ describe("useElizaAppProvisioningChat — shared onboarding poll", () => {
 
     // Even if we fire timers manually, cleared timers are skipped.
     await tickIntervals();
-    await new Promise((r) => setTimeout(r, 50));
+    await settleEffects(50);
 
     const callsAfterExtraTick = fetchCalls.filter(
       (c) => c.url === "/api/eliza-app/onboarding/chat",
@@ -358,7 +379,7 @@ describe("useElizaAppProvisioningChat — shared onboarding poll", () => {
     const { unmount } = mountHook(true, "platform:blooio:+123****7890");
 
     // Wait for mount + immediate poll.
-    await new Promise((r) => setTimeout(r, 150));
+    await settleEffects(150);
 
     const callsBefore = fetchCalls.filter(
       (c) => c.url === "/api/eliza-app/onboarding/chat",
@@ -375,7 +396,7 @@ describe("useElizaAppProvisioningChat — shared onboarding poll", () => {
 
     // Fire interval ticks — since they are cleared, no calls should arrive.
     await tickIntervals();
-    await new Promise((r) => setTimeout(r, 50));
+    await settleEffects(50);
 
     const callsAfter = fetchCalls.filter(
       (c) => c.url === "/api/eliza-app/onboarding/chat",
@@ -392,7 +413,7 @@ describe("useElizaAppProvisioningChat — shared onboarding poll", () => {
       "platform:blooio:+123****7890",
     );
 
-    await new Promise((r) => setTimeout(r, 150));
+    await settleEffects(150);
 
     expect(getState().provisioningError).toContain("Provisioning failed");
 
@@ -402,7 +423,7 @@ describe("useElizaAppProvisioningChat — shared onboarding poll", () => {
 
     // Further interval ticks must not poll again after the terminal error.
     await tickIntervals();
-    await new Promise((r) => setTimeout(r, 50));
+    await settleEffects(50);
 
     const callsAfter = fetchCalls.filter(
       (c) => c.url === "/api/eliza-app/onboarding/chat",
@@ -418,7 +439,7 @@ describe("useElizaAppProvisioningChat — shared onboarding poll", () => {
       "platform:blooio:+123****7890",
     );
 
-    await new Promise((r) => setTimeout(r, 150));
+    await settleEffects(150);
     expect(getState().provisioningError).toBeNull();
 
     const callsBefore = fetchCalls.filter(
@@ -430,7 +451,7 @@ describe("useElizaAppProvisioningChat — shared onboarding poll", () => {
     Date.now = () => realNow() + 5 * 60 * 1000 + 1_000;
     try {
       await tickIntervals();
-      await new Promise((r) => setTimeout(r, 50));
+      await settleEffects(50);
     } finally {
       Date.now = realNow;
     }
@@ -445,7 +466,7 @@ describe("useElizaAppProvisioningChat — shared onboarding poll", () => {
     expect(callsAfterDeadline).toBe(callsBefore);
 
     await tickIntervals();
-    await new Promise((r) => setTimeout(r, 50));
+    await settleEffects(50);
     const callsAfterExtraTick = fetchCalls.filter(
       (c) => c.url === "/api/eliza-app/onboarding/chat",
     ).length;
