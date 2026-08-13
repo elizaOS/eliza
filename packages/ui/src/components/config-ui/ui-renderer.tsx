@@ -3,9 +3,12 @@
  * tree) into React. Walks the spec's element graph from its root, resolves
  * bound props / state paths / visibility conditions against a live state store,
  * runs field validators, and fires `UiAction`s back through the `onAction`
- * callback. Link hrefs are sanitized (`sanitizeLinkHref`) and only supported
- * component types render; the spec is data, not code. Contrast with
- * `ConfigRenderer`, which drives a JSON-Schema config form rather than a spec tree.
+ * callback. Action metadata keeps password-sourced values out of durable
+ * history without withholding them from direct handlers, while malformed
+ * bindings render an explicit unavailable state. Link hrefs are sanitized
+ * (`sanitizeLinkHref`) and only supported component types render; the spec is
+ * data, not code. Contrast with `ConfigRenderer`, which drives a JSON-Schema
+ * config form rather than a spec tree.
  */
 import type React from "react";
 import {
@@ -49,9 +52,26 @@ import {
   sanitizeLinkHref,
 } from "./ui-renderer.helpers";
 
-const UiContext = createContext<UiRenderContext | null>(null);
+export interface UiActionDispatchMetadata {
+  /** Resolved params safe to persist in chat or another durable history. */
+  historySafeParams: Record<string, unknown>;
+}
 
-function useUiCtx(): UiRenderContext {
+type UiRendererActionHandler = (
+  action: string,
+  params?: Record<string, unknown>,
+  metadata?: UiActionDispatchMetadata,
+) => void;
+
+type UiRendererContext = Omit<UiRenderContext, "onAction"> & {
+  onAction?: UiRendererActionHandler;
+  clearActionError: () => void;
+  reportActionError: (error: Error) => void;
+};
+
+const UiContext = createContext<UiRendererContext | null>(null);
+
+function useUiCtx(): UiRendererContext {
   const ctx = useContext(UiContext);
   if (!ctx) throw new Error("UiRenderer context missing");
   return ctx;
@@ -59,7 +79,11 @@ function useUiCtx(): UiRenderContext {
 
 // ── Dynamic value resolution ────────────────────────────────────────
 
-function resolveProp(value: unknown, ctx: UiRenderContext): unknown {
+function resolveProp(
+  value: unknown,
+  ctx: UiRendererContext,
+  resolveLegacyPath = true,
+): unknown {
   if (value == null) return value;
 
   // $data.path string prefix (simpler syntax for AI)
@@ -76,7 +100,10 @@ function resolveProp(value: unknown, ctx: UiRenderContext): unknown {
     typeof value === "object" &&
     "$path" in (value as Record<string, unknown>)
   ) {
-    const path = (value as { $path: string }).$path;
+    const path = (value as { $path: unknown }).$path;
+    if (typeof path !== "string") {
+      throw new TypeError("UiSpec $path binding must be a string");
+    }
     if (path.startsWith("$item/") && ctx.repeatItem) {
       return ctx.repeatItem[path.slice(6)];
     }
@@ -93,30 +120,35 @@ function resolveProp(value: unknown, ctx: UiRenderContext): unknown {
     let result = false;
 
     if (cond.eq) {
-      const [a, b] = cond.eq.map((v) => resolveProp(v, ctx));
+      const [a, b] = cond.eq.map((v) => resolveProp(v, ctx, resolveLegacyPath));
       result = a === b;
     } else if (cond.neq) {
-      const [a, b] = cond.neq.map((v) => resolveProp(v, ctx));
+      const [a, b] = cond.neq.map((v) =>
+        resolveProp(v, ctx, resolveLegacyPath),
+      );
       result = a !== b;
     } else if (cond.gt) {
-      const [a, b] = cond.gt.map((v) => resolveProp(v, ctx));
+      const [a, b] = cond.gt.map((v) => resolveProp(v, ctx, resolveLegacyPath));
       result = Number(a) > Number(b);
     } else if (cond.lt) {
-      const [a, b] = cond.lt.map((v) => resolveProp(v, ctx));
+      const [a, b] = cond.lt.map((v) => resolveProp(v, ctx, resolveLegacyPath));
       result = Number(a) < Number(b);
     } else if (cond.truthy) {
-      result = !!resolveProp(cond.truthy, ctx);
+      result = !!resolveProp(cond.truthy, ctx, resolveLegacyPath);
     } else if (cond.falsy) {
-      result = !resolveProp(cond.falsy, ctx);
+      result = !resolveProp(cond.falsy, ctx, resolveLegacyPath);
     } else if (cond.path) {
       result = !!getByPath(ctx.state, cond.path);
     }
 
-    return result ? resolveProp(expr.$then, ctx) : resolveProp(expr.$else, ctx);
+    return result
+      ? resolveProp(expr.$then, ctx, resolveLegacyPath)
+      : resolveProp(expr.$else, ctx, resolveLegacyPath);
   }
 
   // Object with path references
   if (
+    resolveLegacyPath &&
     typeof value === "object" &&
     value !== null &&
     "path" in (value as Record<string, unknown>)
@@ -133,18 +165,135 @@ function resolveProp(value: unknown, ctx: UiRenderContext): unknown {
 
 function resolveProps(
   props: Record<string, unknown>,
-  ctx: UiRenderContext,
+  ctx: UiRendererContext,
+  resolveLegacyPath = true,
 ): Record<string, unknown> {
   const resolved: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(props)) {
-    resolved[k] = resolveProp(v, ctx);
+    resolved[k] = resolveProp(v, ctx, resolveLegacyPath);
   }
   return resolved;
 }
 
+type ActionParamsResolution =
+  | {
+      ok: true;
+      params: Record<string, unknown> | undefined;
+      metadata?: UiActionDispatchMetadata;
+    }
+  | { ok: false; error: Error };
+
+function pathTouchesSensitiveState(
+  path: string,
+  sensitivePaths: ReadonlySet<string>,
+): boolean {
+  for (const sensitivePath of sensitivePaths) {
+    if (
+      path === sensitivePath ||
+      path.startsWith(`${sensitivePath}.`) ||
+      sensitivePath.startsWith(`${path}.`)
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function referencesSensitiveState(
+  value: unknown,
+  sensitivePaths: ReadonlySet<string>,
+  seen = new Set<object>(),
+): boolean {
+  if (typeof value === "string") {
+    return (
+      value.startsWith("$data.") &&
+      pathTouchesSensitiveState(value.slice(6), sensitivePaths)
+    );
+  }
+  if (value === null || typeof value !== "object") return false;
+  if (seen.has(value)) return false;
+  seen.add(value);
+
+  if (Array.isArray(value)) {
+    return value.some((entry) =>
+      referencesSensitiveState(entry, sensitivePaths, seen),
+    );
+  }
+
+  const record = value as Record<string, unknown>;
+  if (
+    typeof record.$path === "string" &&
+    pathTouchesSensitiveState(record.$path, sensitivePaths)
+  ) {
+    return true;
+  }
+  const conditionalPath = (record.$cond as { path?: unknown } | undefined)
+    ?.path;
+  if (
+    typeof conditionalPath === "string" &&
+    pathTouchesSensitiveState(conditionalPath, sensitivePaths)
+  ) {
+    return true;
+  }
+  return Object.values(record).some((entry) =>
+    referencesSensitiveState(entry, sensitivePaths, seen),
+  );
+}
+
+function sensitiveStatePaths(ctx: UiRendererContext): ReadonlySet<string> {
+  const paths = new Set<string>();
+  for (const element of Object.values(ctx.spec.elements)) {
+    const statePath = element.props.statePath;
+    if (element.props.type === "password" && typeof statePath === "string") {
+      paths.add(statePath);
+    }
+  }
+  return paths;
+}
+
+function resolveActionParams(
+  params: Record<string, unknown> | undefined,
+  ctx: UiRendererContext,
+): ActionParamsResolution {
+  if (!params) return { ok: true, params: undefined };
+
+  try {
+    // Action payloads have historically allowed literal objects containing a
+    // `path` field. Resolve only the documented `$path`/`$data`/`$cond`
+    // bindings here; the legacy bare `{ path }` prop shorthand remains scoped
+    // to element props so existing action contracts are not reinterpreted.
+    const resolvedParams = resolveProps(params, ctx, false);
+    const sensitivePaths = sensitiveStatePaths(ctx);
+    const historySafeParams: Record<string, unknown> = {};
+    let redacted = false;
+    for (const [key, value] of Object.entries(params)) {
+      if (referencesSensitiveState(value, sensitivePaths)) {
+        redacted = true;
+      } else {
+        historySafeParams[key] = resolvedParams[key];
+      }
+    }
+    return {
+      ok: true,
+      params: resolvedParams,
+      metadata: redacted ? { historySafeParams } : undefined,
+    };
+  } catch (error) {
+    // error-policy:J3 malformed dynamic bindings reject the action instead of
+    // dispatching a partially resolved payload or escaping the click handler.
+    return {
+      ok: false,
+      error:
+        error instanceof Error
+          ? error
+          : new TypeError("UiSpec action parameters are invalid"),
+    };
+  }
+}
+
 // ── State helpers ───────────────────────────────────────────────────
 
-function useStatePath(statePath: string | undefined, ctx: UiRenderContext) {
+function useStatePath(statePath: string | undefined, ctx: UiRendererContext) {
   const value = statePath ? getByPath(ctx.state, statePath) : undefined;
   const setValue = useCallback(
     (v: unknown) => {
@@ -157,24 +306,48 @@ function useStatePath(statePath: string | undefined, ctx: UiRenderContext) {
 
 // ── Fire event action ───────────────────────────────────────────────
 
-function fireEvent(action: UiAction | undefined, ctx: UiRenderContext) {
+function fireEvent(action: UiAction | undefined, ctx: UiRendererContext) {
   if (!action) return;
 
   const execute = () => {
-    if (action.action === "setState" && action.params) {
-      const p = action.params as { path: string; value: unknown };
+    ctx.clearActionError();
+    const resolution = resolveActionParams(action.params, ctx);
+    if (!resolution.ok) {
+      if (action.onError && ctx.onAction) {
+        ctx.onAction(action.onError.action, action.onError.params);
+      } else {
+        ctx.reportActionError(resolution.error);
+      }
+      return;
+    }
+    const { params } = resolution;
+    if (action.action === "setState" && params) {
+      const p = params as { path: string; value: unknown };
       ctx.setState(p.path, p.value);
       if (action.onSuccess && ctx.onAction) {
         ctx.onAction(action.onSuccess.action, action.onSuccess.params);
       }
     } else if (ctx.onAction) {
       try {
-        ctx.onAction(action.action, action.params);
+        if (resolution.metadata) {
+          ctx.onAction(action.action, params, resolution.metadata);
+        } else {
+          ctx.onAction(action.action, params);
+        }
         if (action.onSuccess)
           ctx.onAction(action.onSuccess.action, action.onSuccess.params);
-      } catch {
-        if (action.onError && ctx.onAction)
+      } catch (error) {
+        // error-policy:J4 action callback failures become an explicit renderer
+        // error unless the spec declares its own error action.
+        if (action.onError && ctx.onAction) {
           ctx.onAction(action.onError.action, action.onError.params);
+        } else {
+          ctx.reportActionError(
+            error instanceof Error
+              ? error
+              : new Error("UiSpec action execution failed"),
+          );
+        }
       }
     }
   };
@@ -243,7 +416,7 @@ const TAP_FLOOR = "pointer-coarse:min-h-touch pointer-coarse:min-w-touch";
 type ComponentFn = (
   props: Record<string, unknown>,
   children: React.ReactNode,
-  ctx: UiRenderContext,
+  ctx: UiRendererContext,
   el: UiElement,
 ) => React.ReactNode;
 
@@ -1536,13 +1709,13 @@ function RepeatItemRenderer({
   component,
   resolvedProps,
 }: {
-  ctx: UiRenderContext;
+  ctx: UiRendererContext;
   item: Record<string, unknown>;
   el: UiElement;
   component: ComponentFn;
   resolvedProps: Record<string, unknown>;
 }) {
-  const itemCtx = useMemo<UiRenderContext>(
+  const itemCtx = useMemo<UiRendererContext>(
     () => ({ ...ctx, repeatItem: item }),
     [ctx, item],
   );
@@ -1624,7 +1797,7 @@ function ElementRenderer({ elementId }: { elementId: string }) {
 
 export interface UiRendererProps {
   spec: UiSpec;
-  onAction?: (action: string, params?: Record<string, unknown>) => void;
+  onAction?: UiRendererActionHandler;
   loading?: boolean;
   auth?: AuthState;
   validators?: Record<
@@ -1647,6 +1820,16 @@ export function UiRenderer({
     ...spec.state,
   }));
   const [fieldErrors, setFieldErrors] = useState<Record<string, string[]>>({});
+  const [actionError, setActionError] = useState<string | null>(null);
+
+  const clearActionError = useCallback(() => setActionError(null), []);
+  const reportActionError = useCallback((error: Error) => {
+    setActionError(
+      error instanceof TypeError
+        ? "This action is unavailable because its dynamic parameters are invalid."
+        : "This action could not be completed.",
+    );
+  }, []);
 
   const setState = useCallback((path: string, value: unknown) => {
     setStateRaw((prev) => {
@@ -1671,7 +1854,7 @@ export function UiRenderer({
     [spec.elements, state, validators],
   );
 
-  const ctx = useMemo<UiRenderContext>(
+  const ctx = useMemo<UiRendererContext>(
     () => ({
       spec,
       state,
@@ -1682,6 +1865,8 @@ export function UiRenderer({
       validators,
       fieldErrors,
       validateField,
+      clearActionError,
+      reportActionError,
     }),
     [
       spec,
@@ -1693,6 +1878,8 @@ export function UiRenderer({
       validators,
       fieldErrors,
       validateField,
+      clearActionError,
+      reportActionError,
     ],
   );
 
@@ -1713,6 +1900,15 @@ export function UiRenderer({
   return (
     <UiContext.Provider value={ctx}>
       <ElementRenderer elementId={spec.root} />
+      {actionError && (
+        <div
+          role="alert"
+          aria-label="Interactive action unavailable"
+          className="mt-2 rounded-sm border border-danger/30 bg-danger/5 px-3 py-2 text-xs text-danger"
+        >
+          {actionError}
+        </div>
+      )}
     </UiContext.Provider>
   );
 }
