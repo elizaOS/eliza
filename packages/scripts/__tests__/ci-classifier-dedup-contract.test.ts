@@ -77,20 +77,23 @@ describe("path-classifier dedup contract", () => {
       join(workflowsDir, "classify-paths.yml"),
       "utf8",
     );
-    const workflow = Bun.YAML.parse(source) as {
+    const workflow = Bun.YAML.parse(source) as Record<string, unknown> & {
       name?: string;
-      // YAML parses the `on:` key as boolean `true`, matching GitHub's own
-      // workflow parser convention.
-      true?: {
-        workflow_call?: {
-          outputs?: Record<string, unknown>;
-        };
-      };
-      jobs?: Record<string, { outputs?: Record<string, string>; "runs-on"?: string }>;
+      jobs?: Record<
+        string,
+        { outputs?: Record<string, string>; "runs-on"?: string }
+      >;
     };
 
+    // Bun.YAML.parse resolves the YAML `on:` key to the boolean `true` in
+    // some runtime versions and to the string `"on"` in others. Check both
+    // paths so the contract holds regardless of the runner's Bun version.
+    const trigger = (workflow.on ?? workflow.true) as
+      | { workflow_call?: { outputs?: Record<string, unknown> } }
+      | undefined;
+
     expect(workflow.name).toBe("Classify Paths");
-    expect(workflow.true?.workflow_call).toBeDefined();
+    expect(trigger?.workflow_call).toBeDefined();
 
     const classifyJob = workflow.jobs?.classify;
     expect(classifyJob).toBeDefined();
@@ -101,7 +104,7 @@ describe("path-classifier dedup contract", () => {
     // Must export all lanes that any consumer might need — at BOTH the
     // workflow_call level (so callers can read them) and the job level
     // (so the step outputs propagate).
-    const callOutputs = workflow.true?.workflow_call?.outputs ?? {};
+    const callOutputs = trigger?.workflow_call?.outputs ?? {};
     const jobOutputs = classifyJob?.outputs ?? {};
     for (const lane of [
       "server",
