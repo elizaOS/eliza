@@ -356,7 +356,7 @@ export class GoogleDomain {
   }
 
   async getGoogleConnectorStatus(
-    _requestUrl: URL,
+    requestUrl: URL,
     requestedMode?: LifeOpsConnectorMode,
     requestedSide?: LifeOpsConnectorSide,
     grantId?: string,
@@ -369,20 +369,26 @@ export class GoogleDomain {
     if (!manager?.getProvider?.("google")) {
       return googlePluginUnavailableStatus(side);
     }
-    const callbackAssessment = assessGoogleOAuthCallbackConfig(
-      this.ctx.runtime,
-    );
-    if (!callbackAssessment.configured) {
-      return googleOAuthCallbackMisconfigStatus(side, callbackAssessment);
-    }
+    // Resolve the persisted account BEFORE assessing callback readiness: an
+    // existing grant works through its stored/refresh tokens regardless of the
+    // callback config, so a config mistake must not make it look disconnected
+    // (#18455). Callback readiness only gates starting a new OAuth flow.
     const account = await resolveGoogleConnectorAccount({
       runtime: this.ctx.runtime,
       requestedSide: side,
       grantId,
     });
-    return account
-      ? this.googleAccountStatus(account)
-      : disconnectedGoogleStatus(side);
+    if (account) {
+      return this.googleAccountStatus(account);
+    }
+    const callbackAssessment = assessGoogleOAuthCallbackConfig(
+      this.ctx.runtime,
+      { servedOrigin: requestUrl },
+    );
+    if (!callbackAssessment.configured) {
+      return googleOAuthCallbackMisconfigStatus(side, callbackAssessment);
+    }
+    return disconnectedGoogleStatus(side);
   }
 
   async getGoogleConnectorAccounts(
@@ -424,7 +430,7 @@ export class GoogleDomain {
 
   async startGoogleConnector(
     request: StartLifeOpsGoogleConnectorRequest,
-    _requestUrl: URL,
+    requestUrl: URL,
   ): Promise<StartLifeOpsGoogleConnectorResponse> {
     const mode = normalizeOptionalConnectorMode(request.mode, "mode");
     assertLocalMode(mode);
@@ -438,6 +444,20 @@ export class GoogleDomain {
       fail(
         503,
         "@elizaos/plugin-google-workspace is required before starting Google OAuth.",
+      );
+    }
+    // Fail closed before redirecting the user to Google: a callback that
+    // cannot reach the origin serving this request would strand the grant.
+    const callbackAssessment = assessGoogleOAuthCallbackConfig(
+      this.ctx.runtime,
+      { servedOrigin: requestUrl },
+    );
+    if (!callbackAssessment.configured) {
+      fail(
+        503,
+        `Google OAuth callback is not usable: ${callbackAssessment.issues
+          .map((issue) => issue.message)
+          .join(" ")}`,
       );
     }
 
