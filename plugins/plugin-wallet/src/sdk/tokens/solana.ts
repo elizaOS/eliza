@@ -258,10 +258,16 @@ export class SolanaWallet {
       // Token account doesn't exist — balance is 0
     }
 
+    // A 0-decimal token has no fractional part, so `toFixed(0)` produces a plain
+    // integer with no decimal point and the trailing-zero trim would strip
+    // significant zeros (100 -> "1"). Format it as the exact integer, matching
+    // `toHuman(amount, 0)` in ./decimals.ts.
     const humanBalance =
-      (Number(rawBalance) / 10 ** decimals)
-        .toFixed(decimals)
-        .replace(/\.?0+$/, "") || "0";
+      decimals === 0
+        ? rawBalance.toString()
+        : (Number(rawBalance) / 10 ** decimals)
+            .toFixed(decimals)
+            .replace(/\.?0+$/, "") || "0";
 
     return { mint: mintAddress, rawBalance, humanBalance, decimals };
   }
