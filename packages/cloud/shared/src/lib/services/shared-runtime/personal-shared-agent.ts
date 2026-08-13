@@ -7,6 +7,8 @@
  */
 
 import { v5 as uuidv5 } from "uuid";
+import type { AgentSandbox } from "../../../db/schemas/agent-sandboxes";
+import { getElizaAgentPublicWebUiUrl } from "../../eliza-agent-web-ui";
 import { getDefaultElizaCharacterData } from "../../utils/default-eliza-character";
 import type { SharedRuntimeAgent } from "./shared-runtime-agent";
 
@@ -31,6 +33,16 @@ export function isPersonalSharedAgentId(value: string): boolean {
   return /^personal:[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
     value,
   );
+}
+
+/** Resolve the same Dedicated agent base for cutover and future account login. */
+export function personalDedicatedAgentApiBase(
+  target: Pick<AgentSandbox, "id" | "headscale_ip">,
+  baseDomain?: string,
+): string | null {
+  return getElizaAgentPublicWebUiUrl(target, {
+    baseDomain: baseDomain ?? undefined,
+  });
 }
 
 /** Build the rowless runtime projection for the authenticated account. */

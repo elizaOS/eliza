@@ -320,9 +320,9 @@ test.describe("shared→dedicated tier upgrade", () => {
 
       // ── 9. The shared bridge is gone ONLY now (post-switch), for real. ──
       expect(
-        outcome.sharedBridgeDeleted,
+        outcome.sourceCleanup,
         "shared bridge deleted after the confirmed switch",
-      ).toBe(true);
+      ).toBe("deleted-row");
       const sharedAfter = await agentSandboxesRepository.findByIdAndOrg(
         sharedAgentId,
         seededUser.organizationId,

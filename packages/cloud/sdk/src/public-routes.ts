@@ -3713,6 +3713,15 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     catchAllPathParams: [],
     file: "packages/cloud/api/v1/eliza/agents/[agentId]/upgrade-tier/route.ts",
   },
+  "POST /api/v1/eliza/agents/{agentId}/upgrade-tier/cutover": {
+    method: "POST",
+    path: "/api/v1/eliza/agents/{agentId}/upgrade-tier/cutover",
+    methodName: "postApiV1ElizaAgentsByAgentIdUpgradeTierCutover",
+    responseMode: "json",
+    pathParams: ["agentId"],
+    catchAllPathParams: [],
+    file: "packages/cloud/api/v1/eliza/agents/[agentId]/upgrade-tier/cutover/route.ts",
+  },
   "POST /api/v1/eliza/agents/{agentId}/wake": {
     method: "POST",
     path: "/api/v1/eliza/agents/{agentId}/wake",
@@ -5407,6 +5416,9 @@ export interface PublicRoutePathParams {
   "POST /api/v1/eliza/agents/{agentId}/stream": { agentId: string | number };
   "POST /api/v1/eliza/agents/{agentId}/suspend": { agentId: string | number };
   "POST /api/v1/eliza/agents/{agentId}/upgrade-tier": {
+    agentId: string | number;
+  };
+  "POST /api/v1/eliza/agents/{agentId}/upgrade-tier/cutover": {
     agentId: string | number;
   };
   "POST /api/v1/eliza/agents/{agentId}/wake": { agentId: string | number };
@@ -9421,6 +9433,15 @@ export class ElizaCloudPublicRoutesClient {
     >("POST /api/v1/eliza/agents/{agentId}/upgrade-tier", options);
   }
 
+  postApiV1ElizaAgentsByAgentIdUpgradeTierCutover<TResponse = unknown>(
+    options: PublicRouteCallOptions<"POST /api/v1/eliza/agents/{agentId}/upgrade-tier/cutover">,
+  ): Promise<TResponse> {
+    return this.call<
+      "POST /api/v1/eliza/agents/{agentId}/upgrade-tier/cutover",
+      TResponse
+    >("POST /api/v1/eliza/agents/{agentId}/upgrade-tier/cutover", options);
+  }
+
   postApiV1ElizaAgentsByAgentIdWake<TResponse = unknown>(
     options: PublicRouteCallOptions<"POST /api/v1/eliza/agents/{agentId}/wake">,
   ): Promise<TResponse> {
@@ -13227,6 +13248,15 @@ export class ElizaCloudPublicRoutesClient {
   ): Promise<Response> {
     return this.callRaw(
       "POST /api/v1/eliza/agents/{agentId}/upgrade-tier",
+      options,
+    );
+  }
+
+  postApiV1ElizaAgentsByAgentIdUpgradeTierCutoverRaw(
+    options: PublicRouteCallOptions<"POST /api/v1/eliza/agents/{agentId}/upgrade-tier/cutover">,
+  ): Promise<Response> {
+    return this.callRaw(
+      "POST /api/v1/eliza/agents/{agentId}/upgrade-tier/cutover",
       options,
     );
   }

@@ -20,6 +20,15 @@ const sharedRestMessageSend = mock(async () => ({
   text: "hello back",
   agentName: "Eliza",
 }));
+type ActiveDedicatedTarget = {
+  id: string;
+  agent_name: string;
+  bridge_url: string;
+  headscale_ip: null;
+};
+const findActivePersonalDedicatedTarget = mock(
+  async (): Promise<ActiveDedicatedTarget | null> => null,
+);
 const namespace = {
   getByName: mock(() => ({ fetch: mock(async () => new Response()) })),
 };
@@ -31,6 +40,9 @@ mock.module("@/lib/auth/workers-hono-auth", () => ({
 mock.module("@/lib/services/shared-runtime/shared-rest-adapter", () => ({
   sharedRestMessagesGet,
   sharedRestMessageSend,
+}));
+mock.module("@/lib/services/agent-tier-upgrade-target", () => ({
+  findActivePersonalDedicatedTarget,
 }));
 mock.module("@/lib/services/shared-runtime/resolve-shared-agent", () => ({
   resolveSharedRuntimeWorkerRequestContext: () => ({
@@ -58,7 +70,10 @@ function request(method: "GET" | "POST", body?: unknown) {
       headers: { "Content-Type": "application/json" },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     },
-    { SHARED_RUNTIME_CONVERSATIONS: namespace } as never,
+    {
+      SHARED_RUNTIME_CONVERSATIONS: namespace,
+      ELIZA_CLOUD_AGENT_BASE_DOMAIN: "cloud.test",
+    } as never,
     executionCtx as never,
   );
 }
@@ -68,6 +83,8 @@ describe("personal Shared messages route", () => {
     requireUserOrApiKeyWithOrg.mockClear();
     sharedRestMessagesGet.mockClear();
     sharedRestMessageSend.mockClear();
+    findActivePersonalDedicatedTarget.mockReset();
+    findActivePersonalDedicatedTarget.mockResolvedValue(null);
   });
 
   test("returns one deterministic account identity and its durable history", async () => {
@@ -123,6 +140,35 @@ describe("personal Shared messages route", () => {
   test("rejects malformed messages before the runtime", async () => {
     const response = await request("POST", { text: " " });
     expect(response.status).toBe(400);
+    expect(sharedRestMessageSend).not.toHaveBeenCalled();
+  });
+
+  test("returns the active Dedicated identity and refuses to split a new turn into Shared", async () => {
+    findActivePersonalDedicatedTarget.mockResolvedValue({
+      id: "11111111-1111-4111-8111-111111111111",
+      agent_name: "Eliza",
+      bridge_url: "https://personal.cloud.test/chat",
+      headscale_ip: null,
+    });
+
+    const history = await request("GET");
+    expect(history.status).toBe(200);
+    expect(await history.json()).toMatchObject({
+      data: {
+        identity: {
+          runtime: "dedicated",
+          activeAgentId: "11111111-1111-4111-8111-111111111111",
+          apiBase: "https://11111111-1111-4111-8111-111111111111.cloud.test",
+        },
+      },
+    });
+
+    const send = await request("POST", { text: "continue here" });
+    expect(send.status).toBe(409);
+    expect(await send.json()).toMatchObject({
+      code: "personal_eliza_dedicated",
+      data: { identity: { runtime: "dedicated" } },
+    });
     expect(sharedRestMessageSend).not.toHaveBeenCalled();
   });
 });

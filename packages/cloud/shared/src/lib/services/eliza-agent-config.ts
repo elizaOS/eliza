@@ -13,6 +13,15 @@ export const AGENT_MANAGED_GITHUB_KEY = "__agentManagedGithub";
  * can never forge it (stripReservedElizaConfigKeys drops it at every create).
  */
 export const AGENT_UPGRADED_FROM_KEY = "__agentUpgradedFrom";
+export const AGENT_PERSONAL_CUTOVER_KEY = "__agentPersonalCutover";
+
+export interface PersonalElizaCutover {
+  mode: "dedicated";
+  sourceAgentId: string;
+  conversationId: string;
+  sharedMessageCount: number;
+  activatedAt: string;
+}
 
 /** The shared source agent id a dedicated tier-upgrade target was minted from, if any. */
 export function readUpgradedFromAgentId(
@@ -20,6 +29,34 @@ export function readUpgradedFromAgentId(
 ): string | null {
   const value = agentConfig?.[AGENT_UPGRADED_FROM_KEY];
   return typeof value === "string" && value.trim() ? value : null;
+}
+
+/** Read the server-owned marker that makes a healthy Dedicated target authoritative. */
+export function readPersonalElizaCutover(
+  agentConfig?: Record<string, unknown> | null,
+): PersonalElizaCutover | null {
+  const value = asRecord(agentConfig?.[AGENT_PERSONAL_CUTOVER_KEY]);
+  if (
+    value?.mode !== "dedicated" ||
+    typeof value.sourceAgentId !== "string" ||
+    !value.sourceAgentId.trim() ||
+    typeof value.conversationId !== "string" ||
+    !value.conversationId.trim() ||
+    typeof value.sharedMessageCount !== "number" ||
+    !Number.isInteger(value.sharedMessageCount) ||
+    value.sharedMessageCount < 0 ||
+    typeof value.activatedAt !== "string" ||
+    !value.activatedAt.trim()
+  ) {
+    return null;
+  }
+  return {
+    mode: "dedicated",
+    sourceAgentId: value.sourceAgentId,
+    conversationId: value.conversationId,
+    sharedMessageCount: value.sharedMessageCount,
+    activatedAt: value.activatedAt,
+  };
 }
 
 export interface ManagedAgentDiscordBinding {

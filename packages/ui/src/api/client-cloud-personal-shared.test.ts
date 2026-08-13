@@ -63,6 +63,40 @@ describe("getPersonalSharedEliza", () => {
       agentName: "Eliza",
       apiBase:
         "https://api.eliza.app/api/v1/eliza/agents/personal%3A3b9e517b-5c33-5c5f-a6f9-f78c764dc41b",
+      runtime: "shared",
+    });
+  });
+
+  it("reconnects a returning account to its activated Dedicated target", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        jsonResponse(200, {
+          success: true,
+          data: {
+            identity: {
+              id: "personal:3b9e517b-5c33-5c5f-a6f9-f78c764dc41b",
+              displayName: "Eliza",
+              runtime: "dedicated",
+              activeAgentId: "00000000-0000-4000-8000-000000000020",
+              apiBase:
+                "https://00000000-0000-4000-8000-000000000020.cloud.eliza.app",
+            },
+          },
+        }),
+      ),
+    );
+
+    await expect(
+      new ElizaClient().getPersonalSharedEliza({
+        cloudApiBase: "https://api.eliza.app",
+        authToken: "steward-token",
+      }),
+    ).resolves.toEqual({
+      agentId: "00000000-0000-4000-8000-000000000020",
+      agentName: "Eliza",
+      apiBase: "https://00000000-0000-4000-8000-000000000020.cloud.eliza.app",
+      runtime: "dedicated",
     });
   });
 
@@ -88,6 +122,6 @@ describe("getPersonalSharedEliza", () => {
         cloudApiBase: "https://api.eliza.app",
         authToken: "steward-token",
       }),
-    ).rejects.toThrow("invalid personal Shared identity");
+    ).rejects.toThrow("invalid personal Eliza identity");
   });
 });

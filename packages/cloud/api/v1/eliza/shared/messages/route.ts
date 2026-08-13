@@ -10,8 +10,12 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { RateLimitError } from "@/lib/api/errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
+import { findActivePersonalDedicatedTarget } from "@/lib/services/agent-tier-upgrade-target";
 import { applyCorsHeaders, handleCorsOptions } from "@/lib/services/proxy/cors";
-import { personalSharedAgent } from "@/lib/services/shared-runtime/personal-shared-agent";
+import {
+  personalDedicatedAgentApiBase,
+  personalSharedAgent,
+} from "@/lib/services/shared-runtime/personal-shared-agent";
 import { resolveSharedRuntimeWorkerRequestContext } from "@/lib/services/shared-runtime/resolve-shared-agent";
 import {
   sharedRestMessageSend,
@@ -27,7 +31,36 @@ const messageSchema = z.object({
   clientMessageId: z.string().trim().min(1).max(128).optional(),
 });
 
-function identityDto(agent: ReturnType<typeof personalSharedAgent>) {
+async function readJsonBody(request: Request): Promise<unknown> {
+  try {
+    return await request.json();
+  } catch {
+    // error-policy:J3 malformed transport input stays an explicit invalid
+    // message instead of being fabricated into a healthy request body.
+    return null;
+  }
+}
+
+async function identityDto(
+  agent: ReturnType<typeof personalSharedAgent>,
+  baseDomain?: string,
+) {
+  const dedicated = await findActivePersonalDedicatedTarget(
+    agent.organization_id,
+    agent.id,
+  );
+  const apiBase = dedicated
+    ? personalDedicatedAgentApiBase(dedicated, baseDomain)
+    : null;
+  if (dedicated && apiBase) {
+    return {
+      id: agent.id,
+      displayName: dedicated.agent_name ?? agent.agent_name ?? "Eliza",
+      runtime: "dedicated" as const,
+      activeAgentId: dedicated.id,
+      apiBase,
+    };
+  }
   return {
     id: agent.id,
     displayName: agent.agent_name ?? "Eliza",
@@ -123,6 +156,10 @@ app.get("/", async (c) => {
     userId: user.id,
     organizationId: user.organization_id,
   });
+  const identity = await identityDto(
+    agent,
+    c.env.ELIZA_CLOUD_AGENT_BASE_DOMAIN,
+  );
   try {
     const { messages } = await sharedRestMessagesGet(
       agent.id,
@@ -132,7 +169,10 @@ app.get("/", async (c) => {
     return applyCorsHeaders(
       Response.json({
         success: true,
-        data: { identity: identityDto(agent), messages },
+        data: {
+          identity,
+          messages,
+        },
       }),
       CORS_METHODS,
       origin,
@@ -166,7 +206,7 @@ app.post("/", async (c) => {
     );
   }
 
-  const raw: unknown = await c.req.json().catch(() => null);
+  const raw = await readJsonBody(c.req.raw);
   const parsed = messageSchema.safeParse(raw);
   if (!parsed.success) {
     return applyCorsHeaders(
@@ -188,6 +228,27 @@ app.post("/", async (c) => {
     userId: user.id,
     organizationId: user.organization_id,
   });
+  const identity = await identityDto(
+    agent,
+    c.env.ELIZA_CLOUD_AGENT_BASE_DOMAIN,
+  );
+  if (identity.runtime === "dedicated") {
+    return applyCorsHeaders(
+      Response.json(
+        {
+          success: false,
+          code: "personal_eliza_dedicated",
+          error:
+            "This personal Eliza is active on Dedicated. Reconnect to the returned endpoint.",
+          retryable: false,
+          data: { identity },
+        },
+        { status: 409 },
+      ),
+      CORS_METHODS,
+      origin,
+    );
+  }
   try {
     const reply = await sharedRestMessageSend(
       agent,
@@ -202,7 +263,10 @@ app.post("/", async (c) => {
     return applyCorsHeaders(
       Response.json({
         success: true,
-        data: { identity: identityDto(agent), reply },
+        data: {
+          identity,
+          reply,
+        },
       }),
       CORS_METHODS,
       origin,

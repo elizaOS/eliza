@@ -38,6 +38,15 @@ type ConversationRequest =
       rpc: BridgeRequest;
     }
   | { operation: "history"; agentId: string; roomId: string }
+  | {
+      operation: "cutover-seal";
+      agentId: string;
+      roomId: string;
+      token: string;
+      leaseMs: number;
+    }
+  | { operation: "cutover-release"; token: string }
+  | { operation: "cutover-commit"; token: string }
   | { operation: "delete"; agentId: string };
 
 interface StoredConversation {
@@ -49,7 +58,15 @@ interface StoredConversation {
 }
 
 const CONVERSATION_KEY = "conversation";
+const CUTOVER_SEAL_KEY = "personal-cutover-seal";
 const RETRY_DELAY_MS = 30_000;
+const COMMITTED_CUTOVER_SEAL_MS = 24 * 60 * 60 * 1000;
+
+interface StoredCutoverSeal {
+  token: string;
+  expiresAt: number;
+  committed: boolean;
+}
 
 /**
  * Durable claim ledger for client-keyed turns (#18045), stored as one bounded
@@ -308,10 +325,80 @@ export class SharedRuntimeConversation {
     };
   }
 
+  private async activeCutoverSeal(): Promise<StoredCutoverSeal | null> {
+    const seal =
+      (await this.state.storage.get<StoredCutoverSeal>(CUTOVER_SEAL_KEY)) ??
+      null;
+    if (!seal || seal.expiresAt > Date.now()) return seal;
+    await this.state.storage.delete(CUTOVER_SEAL_KEY);
+    return null;
+  }
+
   private async handle(request: Request): Promise<Response> {
     const payload = (await request.json()) as ConversationRequest;
     const historyStore = this.historyStore();
     const turnClaims = this.turnClaims();
+    if (payload.operation === "cutover-seal") {
+      const existing = await this.activeCutoverSeal();
+      if (existing && existing.token !== payload.token) {
+        return Response.json(
+          {
+            success: false,
+            code: existing.committed
+              ? "personal_eliza_dedicated"
+              : "personal_cutover_in_progress",
+          },
+          { status: existing.committed ? 409 : 423 },
+        );
+      }
+      const seal: StoredCutoverSeal = {
+        token: payload.token,
+        expiresAt: Date.now() + payload.leaseMs,
+        committed: existing?.committed ?? false,
+      };
+      await this.state.storage.put(CUTOVER_SEAL_KEY, seal);
+      try {
+        const history = await this.runWithBindings(async () => {
+          const { sharedRuntimeChatService } = await import(
+            "@/lib/services/shared-runtime/shared-runtime-chat"
+          );
+          return await sharedRuntimeChatService.getHistory(
+            payload.agentId,
+            payload.roomId,
+            historyStore,
+          );
+        });
+        return Response.json({ success: true, history });
+      } catch (error) {
+        const current = await this.activeCutoverSeal();
+        if (current?.token === payload.token && !current.committed) {
+          await this.state.storage.delete(CUTOVER_SEAL_KEY);
+        }
+        throw error;
+      }
+    }
+    if (payload.operation === "cutover-release") {
+      const existing = await this.activeCutoverSeal();
+      if (existing?.token === payload.token && !existing.committed) {
+        await this.state.storage.delete(CUTOVER_SEAL_KEY);
+      }
+      return Response.json({ success: true });
+    }
+    if (payload.operation === "cutover-commit") {
+      const existing = await this.activeCutoverSeal();
+      if (!existing || existing.token !== payload.token) {
+        return Response.json(
+          { success: false, code: "personal_cutover_seal_lost" },
+          { status: 409 },
+        );
+      }
+      await this.state.storage.put(CUTOVER_SEAL_KEY, {
+        ...existing,
+        expiresAt: Date.now() + COMMITTED_CUTOVER_SEAL_MS,
+        committed: true,
+      } satisfies StoredCutoverSeal);
+      return Response.json({ success: true });
+    }
     if (payload.operation === "history") {
       const history = await this.runWithBindings(async () => {
         const { sharedRuntimeChatService } = await import(
@@ -335,6 +422,26 @@ export class SharedRuntimeConversation {
       await this.state.storage.deleteAlarm();
       this.conversation = null;
       return Response.json({ success: true });
+    }
+
+    const cutoverSeal = await this.activeCutoverSeal();
+    if (cutoverSeal) {
+      return Response.json(
+        {
+          success: false,
+          error: cutoverSeal.committed
+            ? "This personal Eliza is active on Dedicated."
+            : "Dedicated cutover is finishing. Retry this turn shortly.",
+          code: cutoverSeal.committed
+            ? "personal_eliza_dedicated"
+            : "personal_cutover_in_progress",
+          retryable: !cutoverSeal.committed,
+        },
+        {
+          status: cutoverSeal.committed ? 409 : 423,
+          headers: cutoverSeal.committed ? {} : { "Retry-After": "1" },
+        },
+      );
     }
 
     return await this.runWithBindings(async () => {

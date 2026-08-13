@@ -24,6 +24,7 @@ export interface JoinFlowClient {
     agentId: string;
     agentName: string;
     apiBase: string;
+    runtime: "shared" | "dedicated";
   }>;
   setBaseUrl(baseUrl: string | null): void;
   setToken(token: string | null): void;
@@ -54,6 +55,7 @@ export interface JoinFlowResult {
   agentName: string;
   /** The base the live client + persisted active server were pointed at. */
   apiBase: string;
+  runtime: "shared" | "dedicated";
 }
 
 /**
@@ -95,5 +97,6 @@ export async function runJoinFlow(
     agentId: selected.agentId,
     agentName: selected.agentName || "Eliza",
     apiBase: connectionBase,
+    runtime: selected.runtime,
   };
 }
