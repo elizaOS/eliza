@@ -26,6 +26,7 @@ import type {
 import {
   type CreateTodoInput,
   getTodosService,
+  isValidTodoLimit,
   type TodosService,
   type UpdateTodoInput,
 } from "../service.js";
@@ -90,15 +91,6 @@ function readBoolean(value: unknown): boolean | undefined {
     const v = value.trim().toLowerCase();
     if (v === "true" || v === "1" || v === "yes") return true;
     if (v === "false" || v === "0" || v === "no") return false;
-  }
-  return undefined;
-}
-
-function readNumber(value: unknown): number | undefined {
-  if (typeof value === "number" && Number.isFinite(value)) return value;
-  if (typeof value === "string" && value.trim()) {
-    const n = Number(value);
-    if (Number.isFinite(n)) return n;
   }
   return undefined;
 }
@@ -416,7 +408,17 @@ async function actionList({
   callback,
 }: ActionHandlerArgs): Promise<ActionResult> {
   const includeCompleted = readBoolean(params.includeCompleted) ?? false;
-  const limit = readNumber(params.limit);
+  const rawLimit = params.limit;
+  let limit: number | undefined;
+  if (rawLimit !== undefined) {
+    if (!isValidTodoLimit(rawLimit)) {
+      return failure(
+        "invalid_param",
+        "limit must be a positive safe integer when provided",
+      );
+    }
+    limit = rawLimit;
+  }
   const filter: Parameters<TodosService["list"]>[0] = {
     entityId: scope.entityId,
     agentId: scope.agentId,

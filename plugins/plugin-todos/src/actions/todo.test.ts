@@ -86,9 +86,10 @@ class FakeTodosService {
     agentId?: string;
     roomId?: string | null;
     includeCompleted?: boolean;
+    limit?: number;
   }): Promise<StoredTodo[]> {
     this.throwIf("list");
-    return this.rows.filter((r) => {
+    const todos = this.rows.filter((r) => {
       if (r.entityId !== filter.entityId) return false;
       if (filter.agentId && r.agentId !== filter.agentId) return false;
       if (filter.roomId && r.roomId !== filter.roomId) return false;
@@ -100,6 +101,7 @@ class FakeTodosService {
       }
       return true;
     });
+    return filter.limit === undefined ? todos : todos.slice(0, filter.limit);
   }
 
   async update(
@@ -554,6 +556,29 @@ describe("TODO action", () => {
       });
       const data = result.data as { todos: unknown[] };
       expect(data.todos.length).toBe(1);
+    });
+
+    it("caps results at a positive safe-integer limit", async () => {
+      await invoke(runtime, { action: "create", content: "a" });
+      await invoke(runtime, { action: "create", content: "b" });
+      const result = await invoke(runtime, { action: "list", limit: 1 });
+      expect(result.success).toBe(true);
+      const data = result.data as { todos: unknown[] };
+      expect(data.todos).toHaveLength(1);
+    });
+
+    it.each([
+      [0, "zero"],
+      [-1, "negative"],
+      [1.5, "fractional"],
+      [Number.NaN, "NaN"],
+      ["1", "numeric string"],
+    ])("rejects %s (%s) before persistence", async (limit) => {
+      service.failOn = "list";
+      const result = await invoke(runtime, { action: "list", limit });
+      expect(result.success).toBe(false);
+      expect(result.text).toContain("invalid_param");
+      expect(result.text).toContain("positive safe integer");
     });
   });
 

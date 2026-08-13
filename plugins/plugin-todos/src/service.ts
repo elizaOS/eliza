@@ -24,6 +24,11 @@ export interface TodoFilter {
   limit?: number;
 }
 
+/** A supplied list limit must be a positive safe integer. */
+export function isValidTodoLimit(value: unknown): value is number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value > 0;
+}
+
 export interface CreateTodoInput {
   entityId: string;
   agentId: string;
@@ -127,6 +132,11 @@ export class TodosService extends Service {
   }
 
   async list(filter: TodoFilter): Promise<Todo[]> {
+    if (filter.limit !== undefined && !isValidTodoLimit(filter.limit)) {
+      throw new Error(
+        `${TODOS_LOG_PREFIX} limit must be a positive safe integer when provided`,
+      );
+    }
     const db = this.getDb();
     const conditions = [eq(todosTable.entityId, filter.entityId as UUID)];
     if (filter.agentId) {
@@ -150,7 +160,10 @@ export class TodosService extends Service {
       .from(todosTable)
       .where(and(...conditions))
       .orderBy(desc(todosTable.updatedAt));
-    const rows = filter.limit ? await query.limit(filter.limit) : await query;
+    const rows =
+      filter.limit === undefined
+        ? await query
+        : await query.limit(filter.limit);
     return rows.map(rowToTodo);
   }
 
