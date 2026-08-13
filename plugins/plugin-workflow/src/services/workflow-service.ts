@@ -110,7 +110,7 @@ Source contract:
 - Use Smithers Workflow, Task, Sequence, Parallel, Branch, Loop, Approval, Signal, Timer, UI, and TUI primitives as appropriate.
 - Make Task ids stable and identical to ids in steps.
 - Include a UI component and widget manifest when the workflow has useful interactive output.
-- Do not use Smithers Gateway, gateway-react, gateway-ui, HTTP calls to a Smithers server, n8n concepts, node catalogs, or legacy Smithers package names.
+- Do not use Smithers Gateway, gateway-react, gateway-ui, HTTP calls to a Smithers server, foreign workflow concepts, node catalogs, or legacy Smithers package names.
 - Do not use placeholders for the workflow logic. The module must run.
 
 Return JSON only.`;

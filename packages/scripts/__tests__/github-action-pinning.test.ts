@@ -219,6 +219,7 @@ describe("GitHub action supply-chain references", () => {
     expect(source).toContain(
       "ELIZA_VAULT_PASSPHRASE: dev-smoke-headless-vault-only",
     );
+    expect(source.match(/cache-bun-install: "false"/g)).toHaveLength(2);
   });
 
   test("installs both app browser engines before deterministic smoke E2E", () => {

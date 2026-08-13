@@ -54,7 +54,6 @@ It is not a hand-rolled Cloud API fetch path.
 | --- | --- |
 | Text generation (`TEXT_NANO`, `TEXT_SMALL`, `TEXT_MEDIUM`, `TEXT_LARGE`, `TEXT_MEGA`, response handler, planner) | `CloudApiClient.requestRaw("POST", "/responses", ...)` |
 | Structured object generation | `CloudApiClient.requestRaw("POST", "/responses", ...)` |
-| Research generation | `CloudApiClient.requestRaw("POST", "/responses", ...)` |
 | Text embeddings | `CloudApiClient.requestRaw("POST", "/embeddings", ...)` |
 | Image generation | `ElizaCloudClient.generateImage(...)` |
 | Image description | generated SDK route `client.routes.postApiV1ChatCompletionsRaw(...)` |
@@ -114,7 +113,6 @@ Get an API key from
 | `ELIZAOS_CLOUD_MEGA_MODEL` | Mega model override | `MEGA_MODEL` or large model |
 | `ELIZAOS_CLOUD_RESPONSE_HANDLER_MODEL` | Response handler model override | small model |
 | `ELIZAOS_CLOUD_ACTION_PLANNER_MODEL` | Action planner model override | large model |
-| `ELIZAOS_CLOUD_RESEARCH_MODEL` | Research model override | large model |
 | `ELIZAOS_CLOUD_EMBEDDING_MODEL` | Embedding model | `text-embedding-3-small` |
 | `ELIZAOS_CLOUD_EMBEDDING_URL` | Optional custom embedding API base URL | unset |
 | `ELIZAOS_CLOUD_EMBEDDING_API_KEY` | Optional custom embedding API key | `ELIZAOS_CLOUD_API_KEY` |
@@ -163,14 +161,6 @@ const speech = await runtime.useModel(ModelType.TEXT_TO_SPEECH, {
 // SSRF guard. Requires ELIZAOS_CLOUD_ENABLED=true or ELIZAOS_CLOUD_USE_STT=true.
 const transcript = await runtime.useModel(ModelType.TRANSCRIPTION, audioBuffer);
 
-// Cancel a long-running research request without disabling its provider timeout.
-const researchController = new AbortController();
-const report = await runtime.useModel(ModelType.RESEARCH, {
-  input: "Compare current grid-scale energy storage approaches.",
-  tools: [{ type: "web_search_preview" }],
-  signal: researchController.signal,
-});
-// Call researchController.abort() when the result is no longer needed.
 ```
 
 ## Adding Cloud Calls

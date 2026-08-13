@@ -13,7 +13,7 @@ The dashboard runs as a web application served by the Eliza agent runtime.
 | Method | Details |
 |--------|---------|
 | **Default URL** | `http://localhost:2138` |
-| **CLI shortcut** | Run `eliza dashboard` to open the dashboard in your default browser |
+| **Project checkout** | Run `bun run start` or `bun run dev`, then open the URL printed at startup |
 | **Desktop app** | The Electrobun desktop app embeds the dashboard directly (no browser required) |
 
 On first launch you will see first-run setup. If the selected server still

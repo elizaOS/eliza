@@ -3215,7 +3215,6 @@
       "version": "2.0.3-beta.7",
       "dependencies": {
         "@elizaos/shared": "workspace:*",
-        "@smthrs/engine": "0.33.0",
         "drizzle-orm": "0.45.2",
         "effect": "4.0.0-beta.102",
         "smthrs": "0.33.0",

@@ -17,7 +17,6 @@ import {
   handleImageDescription,
   handleImageGeneration,
   handleAudioGeneration,
-  handleResearch,
   handleResponseHandler,
   handleBatchTextEmbedding,
   handleTextEmbedding,
@@ -77,7 +76,7 @@ const env = getProcessEnv();
 // Registered from init() rather than the static `models` map so a host can
 // run a DIFFERENT text brain (a CLI/SDK subscription provider, a local
 // model, …) while keeping Cloud's capability handlers — IMAGE,
-// IMAGE_DESCRIPTION, TEXT_TO_SPEECH, embeddings, RESEARCH — active. At
+// IMAGE_DESCRIPTION, TEXT_TO_SPEECH, embeddings — active. At
 // priority 50 a static registration silently steals the chat-brain slots
 // from priority-0 provider plugins whenever a Cloud key is present, which
 // forced hosts to nuke ELIZAOS_CLOUD_API_KEY wholesale and lose image/media
@@ -227,8 +226,6 @@ export const elizaOSCloudPlugin: Plugin = {
     PLANNER_MODEL: env.PLANNER_MODEL ?? null,
     RESPONSE_MODEL: env.RESPONSE_MODEL ?? null,
     // Research model
-    ELIZAOS_CLOUD_RESEARCH_MODEL: env.ELIZAOS_CLOUD_RESEARCH_MODEL ?? null,
-    RESEARCH_MODEL: env.RESEARCH_MODEL ?? null,
     // Embedding
     ELIZAOS_CLOUD_EMBEDDING_MODEL: env.ELIZAOS_CLOUD_EMBEDDING_MODEL ?? null,
     ELIZAOS_CLOUD_EMBEDDING_API_KEY: env.ELIZAOS_CLOUD_EMBEDDING_API_KEY ?? null,
@@ -356,7 +353,6 @@ export const elizaOSCloudPlugin: Plugin = {
   // handlers are registered conditionally from init() — see textInferenceModels
   // and cloudEmbeddingModels above.
   models: {
-    [ModelType.RESEARCH]: handleResearch,
     [ModelType.IMAGE]: handleImageGeneration,
     [ModelType.IMAGE_DESCRIPTION]: handleImageDescription,
     [ModelType.TEXT_TO_SPEECH]: handleTextToSpeech,

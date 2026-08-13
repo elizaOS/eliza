@@ -171,7 +171,7 @@ export function createSmithersWorkerScript(): string {
     import { readFileSync } from 'node:fs';
     import { pathToFileURL } from 'node:url';
     import { Effect } from 'effect';
-    import { runWorkflow } from '@smthrs/engine';
+    import { runWorkflow } from 'smthrs';
     import { createInterface } from 'node:readline';
 
     const PREFIX = ${JSON.stringify(PROTOCOL_PREFIX)};
@@ -264,7 +264,7 @@ export function createSmithersControlScript(): string {
   return `
     import { readFileSync } from 'node:fs';
     import { Effect } from 'effect';
-    import { approveNode, denyNode, signalRun } from '@smthrs/engine';
+    import { approveNode, denyNode, signalRun } from 'smthrs';
     import { openSmithersStore } from 'smthrs/openSmithersStore';
 
     const payload = JSON.parse(readFileSync(process.env.ELIZA_SMTHRS_PAYLOAD_PATH, 'utf8'));
