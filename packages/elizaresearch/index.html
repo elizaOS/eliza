@@ -247,7 +247,7 @@
   const boids = [];
   let targets = [];
   let linkD2 = 88 * 88;
-  const FADE_MS = 2600, MERGE_DELAY_MS = 1000, MERGE_MS = 12000;
+  const FADE_MS = 2600, MERGE_DELAY_MS = 1000, MERGE_MS = 16000;
   let born = 0;                       // timestamp of last formation
   const pointer = { x: -1e4, y: -1e4, vx: 0, vy: 0, down: false, t: 0 };
 
@@ -318,11 +318,11 @@
       const gy = Math.min(2, ((t.y - miny) / (maxy - miny + 1) * 3) | 0);
       const gi = gy * 3 + gx;
       if (!origins[gi]) {
-        origins[gi] = { x: Math.random() * W, y: Math.random() * H };
+        origins[gi] = { x: W * (0.5 + (Math.random() - 0.5) * 0.55), y: H * (0.5 + (Math.random() - 0.5) * 0.55) };
       }
       const a = Math.random() * Math.PI * 2;
-      const sx = origins[gi].x + (Math.random() - 0.5) * 160;
-      const sy = origins[gi].y + (Math.random() - 0.5) * 160;
+      const sx = origins[gi].x + (Math.random() - 0.5) * 210;
+      const sy = origins[gi].y + (Math.random() - 0.5) * 210;
       boids.push({
         x: sx, y: sy, sx, sy,
         vx: Math.cos(a) * 0.3, vy: Math.sin(a) * 0.3, tx: t.x, ty: t.y,
@@ -358,10 +358,11 @@
   function step(now) {
     if (!boids.length) { tryInit(); return; }
     for (const b of boids) {
-      const jx = Math.sin(now * 0.00055 + b.jp) * 5;
-      const jy = Math.cos(now * 0.00042 + b.jp * 1.7) * 5;
       const p = Math.min(1, Math.max(0, (now - born - MERGE_DELAY_MS) / MERGE_MS));
       const e = p * p * (3 - 2 * p);
+      const wob = 2 + e * 8;
+      const jx = Math.sin(now * 0.00055 + b.jp) * wob;
+      const jy = Math.cos(now * 0.00042 + b.jp * 1.7) * wob;
       const gx = b.sx + (b.tx - b.sx) * e + jx;
       const gy = b.sy + (b.ty - b.sy) * e + jy;
       b.vx += (gx - b.x) * 0.0022;
