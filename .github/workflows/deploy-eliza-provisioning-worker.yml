@@ -573,8 +573,20 @@ jobs:
             done
             sudo nginx -t
             sudo systemctl reload nginx
-            curl -fsS "https://${AGENT_ROUTER_PUBLIC_HOST}/healthz" \
-              | grep -Eq '"ok"[[:space:]]*:[[:space:]]*true'
+            canonical_router_ready=false
+            for attempt in $(seq 1 30); do
+              if curl -fsS "https://${AGENT_ROUTER_PUBLIC_HOST}/healthz" \
+                | grep -Eq '"ok"[[:space:]]*:[[:space:]]*true'; then
+                canonical_router_ready=true
+                break
+              fi
+              echo "Canonical agent-router health not ready (attempt ${attempt}/30)"
+              sleep 2
+            done
+            if [ "$canonical_router_ready" != "true" ]; then
+              echo "::error::Canonical agent-router did not return JSON health after 30 attempts"
+              exit 1
+            fi
             echo "Verified canonical agent-router nginx host alias: ${AGENT_ROUTER_PUBLIC_HOST}"
 
       - name: Health check
