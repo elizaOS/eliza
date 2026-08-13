@@ -93,8 +93,23 @@ describe("protected tunnel-proxy deployment workflow", () => {
 
     const volume = step("Converge persistent tsnet volume");
     expect(volume.run).toContain("railway volume");
-    expect(volume.run).toContain("--mount-path /var/lib/tunnel-proxy");
-    expect(volume.run).toContain('.mountPath == "/var/lib/tunnel-proxy"');
+    expect(volume.run).toContain('--mount-path "$target_mount"');
+    expect(volume.run).toContain("for attempt in $(seq 1 30)");
+    expect(volume.run).toContain(".mountPath == $mount");
+    expect(volume.run).toContain('.status == "Ready"');
+    expect(volume.run).toContain('.serviceName == "tunnel-proxy"');
+    expect(volume.run).toContain("target_mount_count");
+
+    const volumeIndex = steps.findIndex(
+      (candidate) => candidate.name === "Converge persistent tsnet volume",
+    );
+    const keyIndex = steps.findIndex(
+      (candidate) =>
+        candidate.name ===
+        "Mint proxy key and publish it without exposing the value",
+    );
+    expect(volumeIndex).toBeGreaterThan(-1);
+    expect(keyIndex).toBeGreaterThan(volumeIndex);
 
     const deploySource = step("Deploy tunnel-proxy source to Railway");
     expect(deploySource["working-directory"]).toBe(

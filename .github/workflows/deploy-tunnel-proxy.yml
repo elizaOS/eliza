@@ -205,6 +205,69 @@ jobs:
             --json >/dev/null
           echo "Canonical non-secret variables and the protected signing secret were published without printing values."
 
+      - name: Converge persistent tsnet volume
+        shell: bash
+        run: |
+          set -euo pipefail
+          volume_args=(
+            --project "$RAILWAY_PROJECT_ID"
+            --environment "$RAILWAY_ENVIRONMENT_ID"
+            --service "$RAILWAY_SERVICE_ID"
+          )
+          volumes_path="$RUNNER_TEMP/railway-volumes.json"
+          target_mount="/var/lib/tunnel-proxy"
+
+          railway volume "${volume_args[@]}" list --json > "$volumes_path"
+          service_volume_count=$(jq \
+            '[.volumes[] | select(.deletedAt == null and .serviceName == "tunnel-proxy")] | length' \
+            "$volumes_path")
+          target_mount_count=$(jq --arg mount "$target_mount" \
+            '[.volumes[] | select(.deletedAt == null and .mountPath == $mount)] | length' \
+            "$volumes_path")
+
+          if [ "$service_volume_count" -gt 1 ] || [ "$target_mount_count" -gt 1 ]; then
+            echo "::error::tunnel-proxy must have exactly one persistent Railway volume"
+            exit 1
+          fi
+          if [ "$service_volume_count" = "1" ] && [ "$target_mount_count" = "0" ]; then
+            echo "::error::the existing tunnel-proxy volume is mounted at the wrong path"
+            exit 1
+          fi
+          if [ "$service_volume_count" = "0" ] && [ "$target_mount_count" = "0" ]; then
+            railway volume "${volume_args[@]}" add \
+              --mount-path "$target_mount" \
+              --json >/dev/null
+          fi
+
+          for attempt in $(seq 1 30); do
+            railway volume "${volume_args[@]}" list --json > "$volumes_path"
+            service_volume_count=$(jq \
+              '[.volumes[] | select(.deletedAt == null and .serviceName == "tunnel-proxy")] | length' \
+              "$volumes_path")
+            target_mount_count=$(jq --arg mount "$target_mount" \
+              '[.volumes[] | select(.deletedAt == null and .mountPath == $mount)] | length' \
+              "$volumes_path")
+            if [ "$service_volume_count" -gt 1 ] || [ "$target_mount_count" -gt 1 ]; then
+              echo "::error::tunnel-proxy volume convergence produced duplicate volumes"
+              exit 1
+            fi
+            if jq -e --arg mount "$target_mount" \
+              '[.volumes[] | select(
+                .deletedAt == null and
+                .serviceName == "tunnel-proxy" and
+                .mountPath == $mount and
+                .status == "Ready"
+              )] | length == 1' "$volumes_path" >/dev/null; then
+              echo "Persistent tsnet state volume is mounted at $target_mount."
+              break
+            fi
+            if [ "$attempt" = "30" ]; then
+              echo "::error::tunnel-proxy volume did not become ready at $target_mount"
+              exit 1
+            fi
+            sleep 2
+          done
+
       - name: Mint proxy key and publish it without exposing the value
         id: headscale_key
         shell: bash
@@ -293,37 +356,6 @@ jobs:
           unset new_key
           echo "old_ids=$old_ids" >> "$GITHUB_OUTPUT"
           echo "A reusable tag:eliza-proxy key was minted and published without printing its value."
-
-      - name: Converge persistent tsnet volume
-        shell: bash
-        run: |
-          set -euo pipefail
-          volume_args=(
-            --project "$RAILWAY_PROJECT_ID"
-            --environment "$RAILWAY_ENVIRONMENT_ID"
-            --service "$RAILWAY_SERVICE_ID"
-          )
-          volumes_path="$RUNNER_TEMP/railway-volumes.json"
-          railway volume "${volume_args[@]}" list --json > "$volumes_path"
-          service_volume_count=$(jq \
-            '[.volumes[] | select(.serviceName == "tunnel-proxy")] | length' \
-            "$volumes_path")
-          if [ "$service_volume_count" = "0" ]; then
-            railway volume "${volume_args[@]}" add \
-              --mount-path /var/lib/tunnel-proxy \
-              --json >/dev/null
-            railway volume "${volume_args[@]}" list --json > "$volumes_path"
-          elif [ "$service_volume_count" != "1" ]; then
-            echo "::error::tunnel-proxy must have exactly one persistent Railway volume"
-            exit 1
-          fi
-          jq -e \
-            '[.volumes[] | select(.serviceName == "tunnel-proxy" and .mountPath == "/var/lib/tunnel-proxy")] | length == 1' \
-            "$volumes_path" >/dev/null || {
-            echo "::error::tunnel-proxy volume is not mounted at /var/lib/tunnel-proxy"
-            exit 1
-          }
-          echo "Persistent tsnet state volume is mounted at /var/lib/tunnel-proxy."
 
       - name: Deploy tunnel-proxy source to Railway
         working-directory: packages/cloud/services/tunnel-proxy
