@@ -15,7 +15,7 @@ import {
 	type Service,
 	ServiceType,
 } from "@elizaos/core";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { StdioBridgeStreamSink } from "../shared/stdio-bridge.ts";
 import {
 	type AndroidCoreRouteDeps,
@@ -100,6 +100,168 @@ function coreDeps(overrides: Partial<AndroidCoreRouteDeps> = {}): {
 }
 
 describe("dispatchBufferedRequest", () => {
+	it("runs authenticated Android internal wakes through TaskService", async () => {
+		const previousToken = process.env.ELIZA_API_TOKEN;
+		process.env.ELIZA_API_TOKEN = "a".repeat(64);
+		const runDueTasks = vi.fn(async () => {});
+		const wakeRuntime = {
+			getService: (type: ServiceType) =>
+				type === ServiceType.TASK ? { runDueTasks } : null,
+		} as unknown as IAgentRuntime;
+		const { route, calls } = fixedRoute(null);
+		try {
+			const response = await dispatchBufferedRequest(wakeRuntime, route, {
+				method: "POST",
+				path: "/api/internal/wake",
+				headers: { Authorization: `Bearer ${"a".repeat(64)}` },
+				body: JSON.stringify({
+					kind: "refresh",
+					deadlineMs: Date.now() + 5_000,
+				}),
+			});
+			expect(response.status).toBe(200);
+			expect(JSON.parse(response.body)).toMatchObject({
+				ok: true,
+				coalesced: false,
+			});
+			expect(runDueTasks).toHaveBeenCalledOnce();
+			expect(runDueTasks).toHaveBeenCalledWith({
+				maxWallTimeMs: expect.any(Number),
+			});
+			expect(calls).toHaveLength(0);
+		} finally {
+			if (previousToken === undefined) delete process.env.ELIZA_API_TOKEN;
+			else process.env.ELIZA_API_TOKEN = previousToken;
+		}
+	});
+
+	it("rejects unauthenticated and invalid Android internal wakes", async () => {
+		const previousToken = process.env.ELIZA_API_TOKEN;
+		process.env.ELIZA_API_TOKEN = "b".repeat(64);
+		const runDueTasks = vi.fn(async () => {});
+		const wakeRuntime = {
+			getService: () => ({ runDueTasks }),
+		} as unknown as IAgentRuntime;
+		const { route } = fixedRoute(null);
+		try {
+			const unauthorized = await dispatchBufferedRequest(wakeRuntime, route, {
+				method: "POST",
+				path: "/api/internal/wake",
+				body: { kind: "refresh", deadlineMs: Date.now() + 5_000 },
+			});
+			expect(unauthorized.status).toBe(401);
+
+			const invalid = await dispatchBufferedRequest(wakeRuntime, route, {
+				method: "POST",
+				path: "/api/internal/wake",
+				headers: { authorization: `Bearer ${"b".repeat(64)}` },
+				body: "not-json",
+			});
+			expect(invalid.status).toBe(400);
+			expect(runDueTasks).not.toHaveBeenCalled();
+		} finally {
+			if (previousToken === undefined) delete process.env.ELIZA_API_TOKEN;
+			else process.env.ELIZA_API_TOKEN = previousToken;
+		}
+	});
+
+	it("returns a typed unavailable boundary and resets after TaskService failure", async () => {
+		const previousToken = process.env.ELIZA_API_TOKEN;
+		process.env.ELIZA_API_TOKEN = "c".repeat(64);
+		const { route } = fixedRoute(null);
+		const payload = {
+			method: "POST",
+			path: "/api/internal/wake",
+			headers: { authorization: `Bearer ${"c".repeat(64)}` },
+			body: { kind: "processing", deadlineMs: Date.now() - 1 },
+		};
+		try {
+			const unavailable = await dispatchBufferedRequest(
+				{ getService: () => null } as unknown as IAgentRuntime,
+				route,
+				payload,
+			);
+			expect(unavailable.status).toBe(503);
+			expect(JSON.parse(unavailable.body)).toEqual({
+				ok: false,
+				error: "task_service_unavailable",
+			});
+
+			const runDueTasks = vi
+				.fn()
+				.mockRejectedValueOnce(new Error("task store unavailable"))
+				.mockResolvedValueOnce(undefined);
+			const wakeRuntime = {
+				getService: () => ({ runDueTasks }),
+			} as unknown as IAgentRuntime;
+			const failed = await dispatchBufferedRequest(wakeRuntime, route, payload);
+			expect(failed.status).toBe(500);
+			expect(JSON.parse(failed.body)).toEqual({
+				ok: false,
+				error: "task store unavailable",
+			});
+			const recovered = await dispatchBufferedRequest(
+				wakeRuntime,
+				route,
+				payload,
+			);
+			expect(recovered.status).toBe(200);
+			expect(runDueTasks).toHaveBeenNthCalledWith(1, { maxWallTimeMs: 1_000 });
+			expect(runDueTasks).toHaveBeenNthCalledWith(2, { maxWallTimeMs: 1_000 });
+		} finally {
+			if (previousToken === undefined) delete process.env.ELIZA_API_TOKEN;
+			else process.env.ELIZA_API_TOKEN = previousToken;
+		}
+	});
+
+	it("coalesces concurrent wakes per runtime without skipping a replacement runtime", async () => {
+		const previousToken = process.env.ELIZA_API_TOKEN;
+		process.env.ELIZA_API_TOKEN = "d".repeat(64);
+		let releaseFirst: (() => void) | undefined;
+		const firstBlocked = new Promise<void>((resolve) => {
+			releaseFirst = resolve;
+		});
+		const firstRun = vi.fn(() => firstBlocked);
+		const replacementRun = vi.fn(async () => {});
+		const firstRuntime = {
+			getService: () => ({ runDueTasks: firstRun }),
+		} as unknown as IAgentRuntime;
+		const replacementRuntime = {
+			getService: () => ({ runDueTasks: replacementRun }),
+		} as unknown as IAgentRuntime;
+		const { route } = fixedRoute(null);
+		const payload = {
+			method: "POST",
+			path: "/api/internal/wake",
+			headers: { authorization: `Bearer ${"d".repeat(64)}` },
+			body: { kind: "refresh", deadlineMs: Date.now() + 5_000 },
+		};
+		try {
+			const first = dispatchBufferedRequest(firstRuntime, route, payload);
+			await vi.waitFor(() => expect(firstRun).toHaveBeenCalledOnce());
+			const coalesced = dispatchBufferedRequest(firstRuntime, route, payload);
+			const replacement = await dispatchBufferedRequest(
+				replacementRuntime,
+				route,
+				payload,
+			);
+			expect(replacement.status).toBe(200);
+			expect(replacementRun).toHaveBeenCalledOnce();
+			expect(firstRun).toHaveBeenCalledOnce();
+			releaseFirst?.();
+			const [firstResponse, coalescedResponse] = await Promise.all([
+				first,
+				coalesced,
+			]);
+			expect(JSON.parse(firstResponse.body).coalesced).toBe(false);
+			expect(JSON.parse(coalescedResponse.body).coalesced).toBe(true);
+		} finally {
+			releaseFirst?.();
+			if (previousToken === undefined) delete process.env.ELIZA_API_TOKEN;
+			else process.env.ELIZA_API_TOKEN = previousToken;
+		}
+	});
+
 	it("serves Android local startup app-core routes before dispatchRoute", async () => {
 		const { route, calls } = fixedRoute(null);
 		const { deps } = coreDeps({
@@ -366,23 +528,23 @@ describe("dispatchBufferedRequest", () => {
 		}
 	});
 
-	it("returns typed retryable 503 while the notification service is pending", async () => {
-		const pending = await createNotificationRuntime([NotificationService]);
+	it("serves the real notification service once registration is ready", async () => {
+		const ready = await createNotificationRuntime([NotificationService]);
 		try {
+			await ready.runtime.getServiceLoadPromise(ServiceType.NOTIFICATION);
 			const { route } = fixedRoute(null);
-			const res = await dispatchBufferedRequest(pending.runtime, route, {
+			const res = await dispatchBufferedRequest(ready.runtime, route, {
 				method: "GET",
 				path: "/api/notifications",
 			});
-			expect(res.status).toBe(503);
-			expect(res.headers["retry-after"]).toBe("1");
-			expect(JSON.parse(res.body)).toEqual({
-				error: "Notification service is still starting",
-				code: "NOTIFICATION_SERVICE_NOT_READY",
-				retryAfter: 1,
+			expect(res.status).toBe(200);
+			expect(JSON.parse(res.body)).toMatchObject({
+				notifications: [],
+				unreadCount: 0,
+				serviceStatus: "ready",
 			});
 		} finally {
-			await pending.cleanup();
+			await ready.cleanup();
 		}
 	});
 
