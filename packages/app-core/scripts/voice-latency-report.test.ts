@@ -1,10 +1,16 @@
 /** Exercises voice latency report behavior with deterministic app-core test fixtures. */
+import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
   fetchAndRenderVoiceLatency,
   renderVoiceLatencyReport,
 } from "./lib/voice-latency-report.mjs";
+import { parsePositiveLimit } from "./lib/voice-latency-report-limit.mjs";
 
+const SCRIPT_PATH = fileURLToPath(
+  new URL("./voice-latency-report.mjs", import.meta.url),
+);
 const SAMPLE_PAYLOAD = {
   generatedAtEpochMs: 1_700_000_000_000,
   checkpoints: ["vad-trigger", "llm-first-token", "tts-first-audio-chunk"],
@@ -173,5 +179,47 @@ describe("fetchAndRenderVoiceLatency", () => {
     });
     expect(seenUrl).toContain("limit=7");
     expect(seenUrl).toContain("/api/dev/voice-latency");
+  });
+});
+
+describe("voice-latency-report --limit validation", () => {
+  it("accepts complete positive integers", () => {
+    expect(parsePositiveLimit("1")).toBe(1);
+    expect(parsePositiveLimit("7")).toBe(7);
+    expect(parsePositiveLimit("2147483647")).toBe(2147483647);
+  });
+
+  it.each([
+    undefined,
+    "",
+    "0",
+    "-3",
+    "1.5",
+    "10junk",
+    "NaN",
+    "Infinity",
+    "+1",
+    "--json",
+    "2147483648",
+  ])("rejects invalid --limit %p", (value) => {
+    expect(() => parsePositiveLimit(value as string | undefined)).toThrow(
+      /--limit/,
+    );
+  });
+
+  it("CLI exits non-zero before fetch for malformed --limit", () => {
+    const result = spawnSync(
+      process.execPath,
+      [SCRIPT_PATH, "--limit", "junk"],
+      {
+        encoding: "utf8",
+        env: { PATH: process.env.PATH ?? "", ELIZA_API_PORT: "1" },
+      },
+    );
+    expect(result.status).toBe(1);
+    expect(result.stderr).toMatch(/--limit/);
+    expect(result.stdout + result.stderr).not.toMatch(
+      /could not fetch|ECONNREFUSED/i,
+    );
   });
 });
