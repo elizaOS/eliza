@@ -87,6 +87,7 @@ export interface OnboardingChatInput {
     userId: string;
     organizationId: string;
     telegramId?: string;
+    discordId?: string;
   } | null;
   trustedPlatformIdentity?: boolean;
   /** Requests fail-closed redemption of an existing trusted Telegram session. */
@@ -184,7 +185,8 @@ function resultCacheKey(
     : "transport";
   const mode = input.continuationMode ?? "standard";
   const telegramId = input.authenticatedUser?.telegramId ?? "no-telegram";
-  return `eliza-app:onboarding-result:${sessionId}:${scope}:${mode}:${encodeURIComponent(telegramId)}:${idempotencyKey}`;
+  const discordId = input.authenticatedUser?.discordId ?? "no-discord";
+  return `eliza-app:onboarding-result:${sessionId}:${scope}:${mode}:${encodeURIComponent(telegramId)}:${encodeURIComponent(discordId)}:${idempotencyKey}`;
 }
 
 function nowIso(): string {
@@ -802,6 +804,12 @@ async function maybeLinkAuthenticatedPlatformIdentity(
       // Already linked (eliza-app JWT carries the signed Telegram id).
       return session;
     }
+    if (platform === "discord" && input.authenticatedUser.discordId === session.platformUserId) {
+      // Already linked (eliza-app JWT carries the signed Discord id): the user
+      // authenticated via Discord OAuth as the same account that sent the DM,
+      // so the identity is proven and no confirmation detour is needed.
+      return session;
+    }
     if (input.confirmPlatformLink !== true) {
       throw new ElizaError(
         `${platformLinkLabel(platform)} identity linking requires explicit confirmation`,
@@ -880,7 +888,7 @@ async function maybeLinkAuthenticatedPlatformIdentity(
   return session;
 }
 
-function assertAuthenticatedTelegramIdentity(
+function assertAuthenticatedPlatformIdentity(
   session: OnboardingSession,
   input: OnboardingChatInput,
 ): void {
@@ -895,21 +903,26 @@ function assertAuthenticatedTelegramIdentity(
     return;
   }
 
-  if (session.platform !== "telegram") {
+  if (session.platform !== "telegram" && session.platform !== "discord") {
     return;
   }
-  const signedPlatformId = input.authenticatedUser.telegramId;
+  const signedPlatformId =
+    session.platform === "discord"
+      ? input.authenticatedUser.discordId
+      : input.authenticatedUser.telegramId;
   if (signedPlatformId === session.platformUserId) {
     return;
   }
 
-  // A Steward browser continuation carries no signed Telegram identity — the
-  // opaque continuation token (delivered only inside the Telegram DM) plus the
+  // A Steward browser continuation carries no signed platform identity — the
+  // opaque continuation token (delivered only inside the platform DM) plus the
   // explicit confirmPlatformLink turn is the ownership proof, exactly like the
   // Discord continuation path (#18161). Strict trusted-telegram redemption
   // (the legacy widget auth route) always carries the signed id and never
-  // takes this branch. A caller whose token DOES carry a Telegram id that
-  // differs from the session's stays a hard mismatch.
+  // takes this branch. A caller whose token DOES carry a signed id for the
+  // session's platform that differs from the session's stays a hard mismatch:
+  // a Discord-OAuth (or Telegram-widget) authenticated browser that owns a
+  // DIFFERENT platform account must not adopt this DM session (#18058).
   if (signedPlatformId === undefined && input.continuationMode !== "trusted-telegram") {
     return;
   }
@@ -950,7 +963,7 @@ export function assertTrustedTelegramContinuation(
     throw trustedContinuationError(session);
   }
 
-  assertAuthenticatedTelegramIdentity(session, input);
+  assertAuthenticatedPlatformIdentity(session, input);
 }
 
 function getOnboardingAppUrl(): string {
@@ -1336,7 +1349,7 @@ export async function runOnboardingChatWithStore(
 
   const wasUnboundBeforeThisTurn = !session.userId;
   if (input.authenticatedUser) {
-    assertAuthenticatedTelegramIdentity(session, input);
+    assertAuthenticatedPlatformIdentity(session, input);
     session = {
       ...session,
       userId: input.authenticatedUser.userId,
