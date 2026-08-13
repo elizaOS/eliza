@@ -318,17 +318,17 @@ jobs:
         env:
           VITE_TELEGRAM_BOT_ID: ${{ needs.resolve-pages-preview-config.outputs.telegram_bot_id }}
           VITE_TELEGRAM_BOT_USERNAME: ${{ needs.resolve-pages-preview-config.outputs.telegram_bot_username }}
-          VITE_API_URL: ${{ (inputs.target_environment == 'production') && 'https://api.eliza.app' || 'https://api-staging.eliza.app' }}
-          NEXT_PUBLIC_API_URL: ${{ (inputs.target_environment == 'production') && 'https://api.eliza.app' || 'https://api-staging.eliza.app' }}
-          VITE_OIDC_ISSUER_URL: ${{ (inputs.target_environment == 'production') && 'https://api.eliza.app' || 'https://api-staging.eliza.app' }}
-          VITE_ELIZA_CLOUD_BASE: ${{ (inputs.target_environment == 'production') && 'https://cloud.eliza.app' || 'https://cloud-staging.eliza.app' }}
-          VITE_APP_URL: ${{ (inputs.target_environment == 'production') && 'https://eliza.app' || 'https://staging.eliza.app' }}
-          NEXT_PUBLIC_APP_URL: ${{ (inputs.target_environment == 'production') && 'https://cloud.eliza.app' || 'https://cloud-staging.eliza.app' }}
-          VITE_ELIZA_APP_URL: ${{ (inputs.target_environment == 'production') && 'https://cloud.eliza.app' || 'https://cloud-staging.eliza.app' }}
-          VITE_STEWARD_TENANT_ID: ${{ (inputs.target_environment == 'production') && 'elizacloud' || 'elizacloud-staging' }}
-          NEXT_PUBLIC_STEWARD_TENANT_ID: ${{ (inputs.target_environment == 'production') && 'elizacloud' || 'elizacloud-staging' }}
-          VITE_ENVIRONMENT: ${{ inputs.target_environment }}
-          VITE_VOICE_REALTIME_WS: ${{ !(inputs.target_environment == 'production') && contains(fromJSON('["1","true","TRUE","True","yes","YES","Yes","on","ON","On"]'), vars.VOICE_REALTIME_WS_ENABLED) && '1' || '0' }}
+          VITE_API_URL: https://api-staging.eliza.app
+          NEXT_PUBLIC_API_URL: https://api-staging.eliza.app
+          VITE_OIDC_ISSUER_URL: https://api-staging.eliza.app
+          VITE_ELIZA_CLOUD_BASE: https://cloud-staging.eliza.app
+          VITE_APP_URL: https://staging.eliza.app
+          NEXT_PUBLIC_APP_URL: https://cloud-staging.eliza.app
+          VITE_ELIZA_APP_URL: https://cloud-staging.eliza.app
+          VITE_STEWARD_TENANT_ID: elizacloud-staging
+          NEXT_PUBLIC_STEWARD_TENANT_ID: elizacloud-staging
+          VITE_ENVIRONMENT: staging
+          VITE_VOICE_REALTIME_WS: ${{ contains(fromJSON('["1","true","TRUE","True","yes","YES","Yes","on","ON","On"]'), vars.VOICE_REALTIME_WS_ENABLED) && '1' || '0' }}
           VITE_VOICE_REALTIME_FORCE: "0"
           NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID: ${{ vars.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID }}
 
