@@ -186,16 +186,26 @@ beforeEach(() => {
 });
 
 function makeState(data: Map<string, unknown>, background: Promise<unknown>[]) {
-  return {
+  const state = {
+    alarmDeleted: false,
     storage: {
       get: async <T>(key: string) => data.get(key) as T | undefined,
       put: async (key: string, value: unknown) => {
         data.set(key, structuredClone(value));
       },
-      setAlarm: async () => undefined,
+      setAlarm: async () => {
+        state.alarmDeleted = false;
+      },
+      deleteAlarm: async () => {
+        state.alarmDeleted = true;
+      },
+      deleteAll: async () => {
+        data.clear();
+      },
     },
     waitUntil: (promise: Promise<unknown>) => background.push(promise),
   };
+  return state;
 }
 
 // The envelope carries a full serialized agent row: the Durable Object
@@ -546,4 +556,52 @@ test("rate denial crosses the Durable Object boundary as a typed retryable 429",
   });
   expect(repositoryReads).toBe(0);
   expect(repositoryWrites).toBe(0);
+});
+
+test("delete operation clears room storage and cancels the mirror-retry alarm", async () => {
+  repositoryReads = 0;
+  repositoryWrites = 0;
+  repositoryRow = [];
+  const data = new Map<string, unknown>([
+    [
+      "conversation",
+      {
+        agentId: AGENT_FIXTURE.id,
+        channelId: "room-1",
+        history: [{ id: "m-1", role: "user", content: "secret", createdAt: 1 }],
+        dirty: true,
+        version: 3,
+      },
+    ],
+  ]);
+  const background: Promise<unknown>[] = [];
+  const state = makeState(data, background);
+  const object = new SharedRuntimeConversation(state as never, {} as never);
+  const invoke = makeInvoke(object);
+
+  // A turn first, so the delete also has warm in-memory state to discard.
+  expect(await invoke("pre-delete")).toMatchObject({
+    result: { historyLength: 2 },
+  });
+  await Promise.all(background.splice(0));
+  expect(data.size).toBe(1);
+
+  const response = await object.fetch(
+    new Request("https://shared-runtime.internal/delete", {
+      method: "POST",
+      body: JSON.stringify({ operation: "delete", agentId: AGENT_FIXTURE.id }),
+    }),
+  );
+
+  await expect(response.json()).resolves.toEqual({ success: true });
+  expect(data.size).toBe(0);
+  expect(state.alarmDeleted).toBe(true);
+
+  // The next request must observe no resident history: it falls back to the
+  // cold-hydration path (warming 503) instead of serving purged content.
+  expect(await invoke("post-delete")).toMatchObject({
+    code: "conversation_cache_warming",
+    retryable: true,
+  });
+  await Promise.all(background.splice(0));
 });

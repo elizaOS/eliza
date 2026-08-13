@@ -40,12 +40,12 @@ import {
 import { dockerNodes } from "../../db/schemas/docker-nodes";
 import { jobs } from "../../db/schemas/jobs";
 import { imageRepo } from "../../db/utils/docker-image-ref";
+import type { RuntimeDurableObjectNamespace } from "../../types/cloud-worker-env";
 import { ApiError } from "../api/cloud-worker-errors";
 import { InsufficientCreditsError as InsufficientCreditsApiError } from "../api/errors";
 import { containersEnv } from "../config/containers-env";
 import { getElizaAgentPublicWebUiUrl } from "../eliza-agent-web-ui";
 import { getCloudAwareEnv, getCloudBinding } from "../runtime/cloud-bindings";
-import type { RuntimeDurableObjectNamespace } from "../../types/cloud-worker-env";
 import { assertSafeOutboundUrl } from "../security/outbound-url";
 import { createCreditReservationSettler } from "../utils/credit-reservation";
 import { logger } from "../utils/logger";
@@ -113,6 +113,7 @@ import {
   type SandboxDeletionStopOutcome,
   SandboxReplacementCleanupUnresolvedError,
 } from "./sandbox-provider-types";
+import { purgeSharedConversationRooms } from "./shared-runtime/conversation-coordinator";
 import { isDedicatedBootstrapWindow } from "./shared-runtime/dedicated-bootstrap";
 import {
   type RunSharedAgentTurnResult,
@@ -2085,12 +2086,8 @@ export class ElizaSandboxService {
       // privacy gap, unbounded namespace growth).
       let channelIds: string[] = [];
       try {
-        channelIds = await sharedRuntimeHistoryRepository.listChannelsByAgent(
-          agentId,
-        );
-        const removed = await sharedRuntimeHistoryRepository.deleteByAgent(
-          agentId,
-        );
+        channelIds = await sharedRuntimeHistoryRepository.listChannelsByAgent(agentId);
+        const removed = await sharedRuntimeHistoryRepository.deleteByAgent(agentId);
         if (removed > 0) {
           logger.info("[agent-sandbox] Cleaned up shared-runtime history after delete", {
             agentId,
@@ -2098,17 +2095,45 @@ export class ElizaSandboxService {
           });
         }
       } catch (err) {
+        // error-policy:J6 the sandbox is already gone; failed history cleanup
+        // leaves stale rows for a later sweep, never un-deletes the agent.
         logger.warn("[agent-sandbox] Failed to clean up shared-runtime history", {
           agentId,
           error: err instanceof Error ? err.message : String(err),
         });
       }
 
-      // #17006: The SharedRuntimeConversation DO keeps live conversation
-      // windows in DO storage. The DO handler now accepts
-      // `{ operation: "delete"; agentId }` to purge all state. The DO binding
-      // is Worker-scoped (cloud/api), so the actual purge happens via the
-      // Worker's agent-deletion route, not here in cloud/shared.
+      // #17006: purge each room's SharedRuntimeConversation Durable Object.
+      // The DO copy is the live source of truth for the conversation window,
+      // so dropping only the Postgres mirror above would leave the deleted
+      // agent's conversation content resident in DO storage indefinitely. The
+      // namespace binding exists only inside a Worker request (getCloudBinding
+      // returns undefined in tests/node runtimes), and the purge is
+      // best-effort per room: the deletion is already committed.
+      if (channelIds.length > 0) {
+        const conversations = getCloudBinding<RuntimeDurableObjectNamespace>(
+          "SHARED_RUNTIME_CONVERSATIONS",
+        );
+        if (conversations && typeof conversations.getByName === "function") {
+          try {
+            const purge = await purgeSharedConversationRooms(agentId, channelIds, {
+              namespace: conversations,
+            });
+            logger.info("[agent-sandbox] Purged shared-runtime conversation objects", {
+              agentId,
+              rooms: channelIds.length,
+              ...purge,
+            });
+          } catch (err) {
+            // error-policy:J6 the deletion is already committed; a purge
+            // failure is teardown-only and must never fail the delete.
+            logger.warn("[agent-sandbox] Shared-runtime conversation purge failed", {
+              agentId,
+              error: err instanceof Error ? err.message : String(err),
+            });
+          }
+        }
+      }
     }
 
     return result;

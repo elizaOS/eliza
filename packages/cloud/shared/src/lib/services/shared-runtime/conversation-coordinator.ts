@@ -9,6 +9,7 @@
 import type { AgentSandbox } from "../../../db/repositories/agent-sandboxes";
 import type { RuntimeDurableObjectNamespace } from "../../../types/cloud-worker-env";
 import { InsufficientCreditsError, RateLimitError } from "../../api/errors";
+import { logger } from "../../utils/logger";
 import type { BridgeRequest, BridgeResponse } from "../eliza-sandbox-bridge";
 import type { SharedTurnMessage } from "./run-shared-agent-turn";
 import type { BridgeExecutionContext } from "./shared-runtime-chat";
@@ -141,6 +142,61 @@ export async function coordinateSharedStream(
       ...(options.abortSignal ? { signal: options.abortSignal } : {}),
     });
   return await requireCoordinatorResponse(response, "stream");
+}
+
+export interface SharedConversationPurgeResult {
+  purged: number;
+  failures: number;
+}
+
+/**
+ * Purge every room Durable Object of a deleted agent (#17006). Rooms share the
+ * turn/history naming (`${agentId}:${room}`), so this addresses exactly the
+ * objects the turn path wrote. Best-effort by contract: the agent deletion is
+ * already committed when this runs, so each room is attempted independently
+ * and failures are counted and logged, never thrown.
+ */
+export async function purgeSharedConversationRooms(
+  agentId: string,
+  channelIds: string[],
+  options: SharedConversationHistoryCoordinatorOptions,
+): Promise<SharedConversationPurgeResult> {
+  const namespace = requireHistoryCoordinator(options);
+  let purged = 0;
+  let failures = 0;
+  for (const channelId of channelIds) {
+    try {
+      const response = await coordinatorStub(namespace, agentId, channelId).fetch(
+        "https://shared-runtime.internal/delete",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ operation: "delete", agentId }),
+        },
+      );
+      if (!response.ok) {
+        failures += 1;
+        logger.warn("[shared-runtime] Conversation object purge returned an error", {
+          agentId,
+          channelId,
+          status: response.status,
+        });
+        continue;
+      }
+      purged += 1;
+    } catch (error) {
+      // error-policy:J6 the agent row is already deleted; one room's failed
+      // purge is teardown-only, logged with its room, and must not stop the
+      // remaining rooms or fail the deletion that triggered it.
+      failures += 1;
+      logger.warn("[shared-runtime] Conversation object purge failed", {
+        agentId,
+        channelId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+  return { purged, failures };
 }
 
 export async function coordinateSharedHistory(

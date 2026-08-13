@@ -241,11 +241,13 @@ export class SharedRuntimeConversation {
       return Response.json({ history });
     }
 
-    // #17006: delete all DO-stored conversation state for this agent.
-    // Called from agent deletion to purge conversation content that would
-    // otherwise persist in DO storage indefinitely.
+    // #17006: purge all DO-stored conversation state for this agent's room.
+    // Dispatched from agent deletion (purgeSharedConversationRooms) after the
+    // Postgres mirror rows are dropped; also cancels a pending mirror-retry
+    // alarm so a queued retry cannot fire against the emptied room.
     if (payload.operation === "delete") {
       await this.state.storage.deleteAll();
+      await this.state.storage.deleteAlarm();
       this.conversation = null;
       return Response.json({ success: true });
     }
