@@ -164,7 +164,7 @@
   "homepage_eliza.phoneInput.phoneAria": "電話番号",
   "homepage_eliza.phoneInput.optionFormat": "{{name}} (+{{dial}})",
   "homepage_eliza.landing.heroTitle": "Elizaで、毎週4時間を取り戻そう。",
-  "homepage_eliza.landing.heroLede": "こんにちは、Elizaです — テキストひとつで届くパーソナルアシスタント。電話でもメッセージでも、あとは任せてください。",
+  "homepage_eliza.landing.heroLede": "こんにちは、Elizaです — あなたのパーソナルアシスタント。時間を節約して、あなたの負担を引き受けます。",
   "homepage_eliza.landing.ctaText": "メッセージする",
   "homepage_eliza.landing.ctaCall": "電話する",
   "homepage_eliza.landing.channelTelegram": "TelegramでElizaにメッセージ",

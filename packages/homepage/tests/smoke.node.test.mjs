@@ -77,7 +77,12 @@ test("landing stays a static surface with no animation-framework dependencies", 
   }
   assert.doesNotMatch(
     landing,
-    /@react-three|react-spring|use-gesture|ModelViewers|ShaderBackground/,
+    /@react-three|react-spring|use-gesture|ModelViewers/,
+  );
+  assert.match(
+    landing,
+    /const ShaderBackground = lazy\(/,
+    "the shader background must stay behind a lazy boundary",
   );
   assert.match(packageJson.scripts.postbuild, /prune-unused-static-assets/);
   assert.match(pruneAssets, /"brand\/background", "product"/);

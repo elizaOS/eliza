@@ -11,6 +11,7 @@ import {
   TelegramIcon,
   WhatsAppIcon,
 } from "@elizaos/ui/cloud-ui/components/icons";
+import { lazy, Suspense } from "react";
 import {
   buildElizaDiscordHref,
   buildElizaSmsHref,
@@ -19,6 +20,12 @@ import {
   ELIZA_PHONE_NUMBER,
 } from "@/lib/contact";
 import { useT } from "@/providers/I18nProvider";
+
+// The ambient gradient wave stays lazy so the static hero is interactive
+// before any WebGL code downloads.
+const ShaderBackground = lazy(
+  () => import("@/components/ShaderBackground/ShaderBackground"),
+);
 
 function PhoneIcon({ className }: { className?: string }) {
   return (
@@ -154,6 +161,13 @@ export default function LandingPage() {
 
   return (
     <div className="landing-page theme-app">
+      <Suspense fallback={null}>
+        <ShaderBackground />
+      </Suspense>
+      <div
+        aria-hidden="true"
+        className="fixed inset-0 pointer-events-none mix-blend-overlay bg-[url('/grain.webp')] z-0"
+      />
       <main className="landing-hero">
         <div className="landing-hero-copy">
           <h1 className="landing-hero-heading">
@@ -165,7 +179,7 @@ export default function LandingPage() {
           <p className="landing-hero-lede">
             {t("homepage_eliza.landing.heroLede", {
               defaultValue:
-                "Hey, I'm Eliza — your personal assistant, one text away. Call me or text me and I'll take it from there.",
+                "Hey, I'm Eliza — your personal assistant. I'm here to save you time and take things off your plate.",
             })}
           </p>
           <div className="landing-hero-actions">

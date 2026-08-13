@@ -164,7 +164,7 @@
   "homepage_eliza.phoneInput.phoneAria": "电话号码",
   "homepage_eliza.phoneInput.optionFormat": "{{name}}（+{{dial}}）",
   "homepage_eliza.landing.heroTitle": "让 Eliza 每周为你省回 4 个小时。",
-  "homepage_eliza.landing.heroLede": "嗨，我是 Eliza — 你的个人助理，一条消息就能找到。打电话或发消息，剩下的交给我。",
+  "homepage_eliza.landing.heroLede": "嗨，我是 Eliza — 你的个人助理。我在这里为你节省时间，替你分担事务。",
   "homepage_eliza.landing.ctaText": "给我发消息",
   "homepage_eliza.landing.ctaCall": "给我打电话",
   "homepage_eliza.landing.channelTelegram": "在 Telegram 上联系 Eliza",

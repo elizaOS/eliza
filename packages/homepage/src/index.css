@@ -1338,12 +1338,14 @@ body {
   min-height: 100svh;
   display: flex;
   flex-direction: column;
-  background: var(--landing-orange);
+  background: var(--brand-white);
   color: var(--brand-black);
   font-family: "Geist", Arial, sans-serif;
 }
 
 .landing-hero {
+  position: relative;
+  z-index: 1;
   flex: 1;
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -1376,7 +1378,7 @@ body {
   line-height: 1;
   letter-spacing: -0.02em;
   text-wrap: balance;
-  color: var(--brand-white);
+  color: var(--brand-black);
 }
 
 .landing-hero-lede {
@@ -1431,6 +1433,7 @@ body {
 .landing-cta--white {
   background: #ffffff;
   color: var(--brand-black);
+  box-shadow: 0 10px 30px rgb(0 0 0 / 10%);
 }
 
 .landing-cta--white:hover {
@@ -1454,6 +1457,7 @@ body {
   height: 3rem;
   border-radius: 50%;
   background: #ffffff;
+  box-shadow: 0 6px 18px rgb(0 0 0 / 10%);
   transition:
     transform 0.15s ease,
     box-shadow 0.15s ease;
