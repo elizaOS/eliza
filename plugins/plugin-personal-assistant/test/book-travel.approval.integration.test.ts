@@ -22,6 +22,8 @@ import {
 import { seedGoogleConnectorGrant } from "./support/helpers/seed-grants.ts";
 
 const TEST_TIME_ZONE = "America/Los_Angeles";
+const TEST_GOOGLE_REDIRECT_URI =
+  "http://127.0.0.1:31437/api/connectors/google/oauth/callback";
 const approveRequestAction = resolveRequestAction;
 const rejectRequestAction = resolveRequestAction;
 
@@ -394,6 +396,7 @@ beforeAll(async () => {
     characterName: "book-travel-test-agent",
   });
   runtime = testRuntime.runtime;
+  runtime.setSetting("GOOGLE_REDIRECT_URI", TEST_GOOGLE_REDIRECT_URI, false);
   await createFeatureFlagService(runtime).enable(
     "travel.book_flight",
     "local",
