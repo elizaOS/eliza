@@ -22,6 +22,11 @@ on:
         required: false
         type: boolean
         default: false
+      force_hosted:
+        description: "Force GitHub-hosted runners for ALL events (SPOF guard #13617). Set by callers that were unconditionally hosted before consolidation."
+        required: false
+        type: boolean
+        default: false
     # Reusable workflows must declare outputs at the workflow_call level so
     # callers can read them via needs.<job>.outputs.<name>. Without this block
     # every consumer's needs.changes.outputs.* would be null/undefined.
@@ -66,11 +71,13 @@ env:
 jobs:
   classify:
     name: Classify changed paths
-    # PR events use GitHub-hosted runners (SPOF guard #13617/#8501). Non-PR
-    # events (push, schedule, dispatch) use the fleet-aware conditional so a
-    # self-hosted runner can serve the classifier when the fleet is online —
-    # matching the routing dev-smoke.yml and scenario-pr.yml previously used.
-    runs-on: ${{ fromJSON(github.event_name == 'pull_request' && '["ubuntu-24.04"]' || vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    # GitHub-hosted runners are used for ALL events when force_hosted is set
+    # (SPOF guard #13617/#8501) — ci.yml and docker-ci-smoke.yml were
+    # unconditionally hosted before consolidation, so they pass force_hosted:
+    # true to preserve that invariant. Without it, non-PR events (push, merge
+    # queue, schedule, dispatch) use the fleet-aware conditional so a
+    # self-hosted runner can serve the classifier when the fleet is online.
+    runs-on: ${{ fromJSON((inputs.force_hosted || github.event_name == 'pull_request' || vars.HETZNER_FLEET_ONLINE != 'true') && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 10
     outputs:
       server: ${{ steps.filter.outputs.server }}

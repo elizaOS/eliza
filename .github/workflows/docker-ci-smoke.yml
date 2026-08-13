@@ -33,6 +33,11 @@ jobs:
     uses: ./.github/workflows/classify-paths.yml
     with:
       config: docker
+      # docker-ci-smoke.yml was unconditionally hosted before consolidation
+      # and has no pull_request trigger — ALL its events are non-PR (push,
+      # schedule, dispatch). force_hosted preserves the pre-consolidation
+      # invariant that the classifier never goes to the self-hosted fleet.
+      force_hosted: true
 
   docker-ci-smoke:
     name: Build production Docker image (+ smoke boot)

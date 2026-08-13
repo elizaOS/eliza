@@ -35,6 +35,11 @@ jobs:
     with:
       config: test
       run_windows_contract: true
+      # ci.yml was unconditionally hosted before consolidation — keep it
+      # hosted for ALL events (push, merge_group, dispatch) to preserve the
+      # SPOF guard (#13617): a drained self-hosted fleet must never leave the
+      # merge-gate classifier queued.
+      force_hosted: true
 
   quality:
     name: Quality

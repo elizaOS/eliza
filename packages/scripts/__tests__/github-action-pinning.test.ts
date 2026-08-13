@@ -316,21 +316,31 @@ describe("GitHub action supply-chain references", () => {
     expect(source).not.toContain("git push");
   });
 
-  test("keeps the Docker smoke on a runner with a Docker daemon", () => {
+  test("keeps the Docker smoke classifier unconditionally hosted (SPOF guard)", () => {
     const source = readFileSync(
       join(githubRoot, "workflows", "docker-ci-smoke.yml"),
       "utf8",
     );
     const workflow = Bun.YAML.parse(source) as {
-      jobs?: Record<string, { "runs-on"?: string; uses?: string }>;
+      jobs?: Record<
+        string,
+        { "runs-on"?: string; uses?: string; with?: Record<string, unknown> }
+      >;
     };
     const classifier = workflow.jobs?.changes;
     const job = workflow.jobs?.["docker-ci-smoke"];
 
-    // The classifier is now delegated to the reusable classify-paths workflow,
-    // which is hardcoded to ubuntu-24.04. Verify the delegation exists; the
-    // reusable workflow's own contract test enforces its runs-on.
+    // docker-ci-smoke.yml delegates to the reusable classify-paths workflow.
     expect(classifier?.uses).toContain("classify-paths.yml");
+
+    // The classifier must pass force_hosted: true — docker-ci-smoke.yml was
+    // unconditionally ubuntu-24.04 before consolidation and has no
+    // pull_request trigger, so ALL its events are non-PR. Without
+    // force_hosted, the reusable workflow's fleet-aware conditional would
+    // route the classifier to self-hosted (#13617 SPOF regression).
+    expect(classifier?.with?.force_hosted).toBe(true);
+
+    // The actual smoke job stays on hosted runners (needs a Docker daemon).
     expect(job?.["runs-on"]).toBe("ubuntu-24.04");
   });
 });

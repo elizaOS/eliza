@@ -89,16 +89,27 @@ describe("path-classifier dedup contract", () => {
     // some runtime versions and to the string `"on"` in others. Check both
     // paths so the contract holds regardless of the runner's Bun version.
     const trigger = (workflow.on ?? workflow.true) as
-      | { workflow_call?: { outputs?: Record<string, unknown> } }
+      | {
+          workflow_call?: {
+            inputs?: Record<string, unknown>;
+            outputs?: Record<string, unknown>;
+          };
+        }
       | undefined;
 
     expect(workflow.name).toBe("Classify Paths");
     expect(trigger?.workflow_call).toBeDefined();
 
+    // The force_hosted input must be declared so callers can opt into
+    // unconditional GitHub-hosted runners (SPOF guard #13617).
+    expect(trigger?.workflow_call?.inputs?.force_hosted).toBeDefined();
+
     const classifyJob = workflow.jobs?.classify;
     expect(classifyJob).toBeDefined();
-    // PR events must stay on GitHub-hosted runners (SPOF guard). Non-PR events
-    // use the fleet-aware conditional. Verify the PR-hosted fallback is present.
+    // The runs-on expression must reference force_hosted so the input
+    // actually controls runner routing — not just be declared and unused.
+    expect(classifyJob?.["runs-on"]).toContain("force_hosted");
+    // The hosted fallback must be present in the expression.
     expect(classifyJob?.["runs-on"]).toContain("ubuntu-24.04");
 
     // Must export all lanes that any consumer might need — at BOTH the
@@ -121,5 +132,36 @@ describe("path-classifier dedup contract", () => {
       expect(callOutputs[lane]).toBeDefined();
       expect(jobOutputs[lane]).toBeDefined();
     }
+  });
+
+  test("unconditionally-hosted callers pass force_hosted: true (SPOF guard)", () => {
+    // ci.yml and docker-ci-smoke.yml were unconditionally ubuntu-24.04 before
+    // consolidation. They must pass force_hosted: true so the reusable
+    // workflow's fleet-aware conditional does not route their classifier to
+    // self-hosted runners on non-PR events (#13617 SPOF regression).
+    const FORCE_HOSTED_CALLERS = ["ci.yml", "docker-ci-smoke.yml"];
+    const violations: string[] = [];
+
+    for (const file of FORCE_HOSTED_CALLERS) {
+      const source = readFileSync(join(workflowsDir, file), "utf8");
+      const workflow = Bun.YAML.parse(source) as {
+        jobs?: Record<
+          string,
+          { uses?: string; with?: Record<string, unknown> }
+        >;
+      };
+      const changesJob = workflow.jobs?.changes;
+      if (!changesJob?.uses?.endsWith("classify-paths.yml")) {
+        violations.push(`${file}: changes job must use classify-paths.yml`);
+        continue;
+      }
+      if (changesJob.with?.force_hosted !== true) {
+        violations.push(
+          `${file}: changes job must pass force_hosted: true to preserve the pre-consolidation unconditional-hosted invariant (#13617)`,
+        );
+      }
+    }
+
+    expect(violations).toEqual([]);
   });
 });
