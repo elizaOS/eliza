@@ -207,13 +207,15 @@ jobs:
     name: Mutate and verify Cloud CF release
     needs: [validate-deploy-source, admit-staging, authorize-production]
     if: ${{ always() && github.event_name != 'pull_request' && (((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && (needs.validate-deploy-source.result == 'success' || needs.validate-deploy-source.result == 'skipped') && needs.authorize-production.result == 'success' || !((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && needs.admit-staging.outputs.should_deploy == 'true') }}
-    # One critical section for migrate + API + Pages + routing proof. GitHub
-    # keeps at most one pending member per group; a single holder cannot
-    # interleave those legs across SHAs or lose a later leg to a pending
-    # eviction (#18092).
+    # One critical section for migrate + API + Pages + routing proof.
+    # `queue: max` is GitHub's production-deploy contract: up to 100 approved
+    # releases wait instead of the default one-pending eviction. FIFO is by
+    # wait-start, not dispatch; ordering is not guaranteed. Incompatible with
+    # cancel-in-progress: true (#18092).
     concurrency:
       group: cloud-cf-release-v6-${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'production' || 'staging' }}
       cancel-in-progress: false
+      queue: max
     uses: ./.github/workflows/cloud-cf-release.yml
     secrets: inherit
     with:
