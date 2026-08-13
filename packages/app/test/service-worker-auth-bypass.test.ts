@@ -33,6 +33,10 @@ function loadServiceWorker() {
       claim: () => Promise.resolve(),
       matchAll: () => Promise.resolve([]),
     },
+    // sw.js reads `self.registration.active` at module scope to tell a first
+    // install from an update (#19075), and `registration.navigationPreload`
+    // during activate. A first install is the state this suite exercises.
+    registration: { active: null, navigationPreload: null },
   };
   const cache = {
     match: () => Promise.resolve(null),
