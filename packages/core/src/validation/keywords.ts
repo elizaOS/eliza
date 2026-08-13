@@ -103,5 +103,5 @@ export function validateActionRegex(
 	}
 
 	const combinedText = relevantText.join("\n");
-	return regex.test(combinedText);
+	return new RegExp(regex.source, regex.flags).test(combinedText);
 }
