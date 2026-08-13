@@ -23,6 +23,8 @@ Eliza has multiple surfaces. The runtime does the work; the app is the surface y
 
 ## CLI runtime
 
+From the root of an elizaOS source checkout:
+
 ```bash
 bun run start     # start the standalone agent host
 bun run dev       # start the API and Eliza app development UI
@@ -30,9 +32,15 @@ bun run dev       # start the API and Eliza app development UI
 
 Stop the CLI runtime with `Ctrl-C` in the terminal, or quit the desktop app normally. The published `elizaos` binary is the scaffold CLI only; see the [CLI overview](/cli/overview).
 
+Generated projects have their own script inventory and use `bun run dev`; they
+do not necessarily expose the monorepo's standalone `start` script.
+
 ## Browser dashboard
 
-If the runtime is local, the desktop app usually embeds the dashboard. If you started the runtime from a project checkout, open the URL printed at startup (default `http://localhost:2138`). For local development, `bun run dev` starts the API and the Eliza app UI together.
+If the runtime is local, the desktop app usually embeds the dashboard. From an
+elizaOS source checkout, open the URL printed at startup (default
+`http://localhost:2138`). For local development, `bun run dev` starts the API
+and the Eliza app UI together.
 
 ```bash
 bun run start     # standalone agent host; prints the dashboard URL
