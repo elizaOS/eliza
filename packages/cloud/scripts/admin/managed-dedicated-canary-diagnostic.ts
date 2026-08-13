@@ -140,6 +140,247 @@ export interface ManagedDedicatedCanaryDiagnostic {
   }>;
 }
 
+// --- Schema-v4 lifecycle authority types ---
+
+/**
+ * Standby lifecycle states introduced by #17172. These are the only states a
+ * rollback-standby row may occupy; the preflight proves the column exists before
+ * any of them can be emitted.
+ */
+const STANDBY_STATES = new Set([
+  "pausing",
+  "paused_pre_cutover",
+  "paused",
+  "retiring",
+  "rollback_pending",
+  "rollback_cleanup_pending",
+]);
+
+/**
+ * Restore-validation states introduced by #17172. These are the only states a
+ * never-routed restore proof may occupy.
+ */
+const RESTORE_VALIDATION_STATES = new Set([
+  "planned",
+  "candidate_provisioning",
+  "restore_committed",
+  "never_routed_retired",
+]);
+
+/**
+ * The private control route that never exposes a restore candidate to traffic.
+ */
+const RESTORE_VALIDATION_ROUTE = "restore_validation_private_control";
+
+/**
+ * The frozen #17172 receipt schema version for committed restore proofs.
+ */
+const RESTORE_RECEIPT_SCHEMA = 2;
+
+/**
+ * The frozen #17172 transfer protocol for chunked v2 backup payloads.
+ */
+const RESTORE_TRANSFER_PROTOCOL = "chunked-v1";
+
+/**
+ * Read-only SQL preflight to prove the 0184 (rollback_standby_state) and 0185
+ * (agent_snapshot_restore_validations) migrations have landed before emitting
+ * schemaVersion: 4. Runs inside a single BEGIN READ ONLY transaction; never
+ * mutates the database.
+ *
+ * The connection is accepted as a callback so this function owns no database
+ * client lifecycle — the caller is responsible for opening and closing it.
+ */
+export interface SchemaV4PreflightClient {
+  /**
+   * Execute a query string inside the current transaction. The query is always
+   * read-only information_schema introspection; results are returned as rows.
+   */
+  query(sql: string): Promise<Array<Record<string, unknown>>>;
+}
+
+export interface SchemaV4PreflightResult {
+  /** True only when every required 0184/0185 column and constraint exists. */
+  ready: boolean;
+  /**
+   * The specific findings — column names present/absent, constraint names
+   * present/absent. Contains no secrets: only information_schema identifiers.
+   */
+  details: {
+    columnsPresent: string[];
+    columnsAbsent: string[];
+    constraintsPresent: string[];
+    constraintsAbsent: string[];
+  };
+}
+
+/**
+ * The exact columns and constraints the preflight proves exist. These are the
+ * frozen #17172 migration targets at commit 2fc20c254b96e8413b03a59318e7002826e5e730.
+ */
+const REQUIRED_SCHEMA_V4_COLUMNS = [
+  // 0184_rollback_standby_state.sql adds a standby lifecycle column to
+  // agent_sandboxes.
+  "agent_sandboxes.rollback_standby_state",
+  // 0185_agent_snapshot_restore_validations.sql adds a restore-validation
+  // column to agent_sandboxes.
+  "agent_sandboxes.restore_validation_state",
+] as const;
+
+const REQUIRED_SCHEMA_V4_CONSTRAINTS = [
+  // 0184 adds a CHECK constraint bounding rollback_standby_state to the
+  // allowlisted enum.
+  "agent_sandboxes_rollback_standby_state_check",
+  // 0185 adds a CHECK constraint bounding restore_validation_state to the
+  // allowlisted enum.
+  "agent_sandboxes_restore_validation_state_check",
+] as const;
+
+export async function runSchemaV4Preflight(
+  client: SchemaV4PreflightClient,
+): Promise<SchemaV4PreflightResult> {
+  const columnsPresent: string[] = [];
+  const columnsAbsent: string[] = [];
+  const constraintsPresent: string[] = [];
+  const constraintsAbsent: string[] = [];
+
+  // Introspect columns: one read-only query covers all required column checks.
+  const columnRows = await client.query(`
+    SELECT table_name || '.' || column_name AS qualified
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+  `);
+  const foundColumns = new Set(
+    columnRows
+      .map((row) => row.qualified)
+      .filter((value): value is string => typeof value === "string"),
+  );
+  for (const column of REQUIRED_SCHEMA_V4_COLUMNS) {
+    if (foundColumns.has(column)) {
+      columnsPresent.push(column);
+    } else {
+      columnsAbsent.push(column);
+    }
+  }
+
+  // Introspect constraints: one read-only query covers all required checks.
+  const constraintRows = await client.query(`
+    SELECT conname AS name
+    FROM pg_constraint
+    JOIN pg_namespace ON pg_constraint.connamespace = pg_namespace.oid
+    WHERE nspname = 'public'
+  `);
+  const foundConstraints = new Set(
+    constraintRows
+      .map((row) => row.name)
+      .filter((value): value is string => typeof value === "string"),
+  );
+  for (const constraint of REQUIRED_SCHEMA_V4_CONSTRAINTS) {
+    if (foundConstraints.has(constraint)) {
+      constraintsPresent.push(constraint);
+    } else {
+      constraintsAbsent.push(constraint);
+    }
+  }
+
+  return {
+    ready: columnsAbsent.length === 0 && constraintsAbsent.length === 0,
+    details: {
+      columnsPresent,
+      columnsAbsent,
+      constraintsPresent,
+      constraintsAbsent,
+    },
+  };
+}
+
+/**
+ * The closed lifecycle authority surface emitted only after the schema-v4
+ * preflight proves the 0184/0185 columns and constraints exist.
+ */
+export interface LifecycleAuthority {
+  /** Transaction capture time for the read-only snapshot. */
+  capturedAt: string;
+  /** Current locator-presence booleans for the sandbox row. */
+  locator: {
+    sandboxIdPresent: boolean;
+    nodeIdPresent: boolean;
+    containerNamePresent: boolean;
+  };
+  /**
+   * Closed lifecycle authority: whether the row carries rollback-standby
+   * authority, restore-validation authority, or neither. Never both — the
+   * #17172 contract guarantees exactly one lifecycle authority per row.
+   */
+  lifecycleAuthority: "rollback_standby" | "restore_validation" | "deletion_only";
+  /** Whether the current row owns deletion (matches schema-v3 deletionOwned). */
+  deletionOwnership: boolean;
+  /**
+   * Replacement-cleanup state from the existing replacement_cleanup lifecycle.
+   * Null when the row is not in a replacement-cleanup phase.
+   */
+  replacementCleanupState: "pending" | "completed" | "absent";
+  /**
+   * Routed-runtime state: whether the sandbox has ever been routed to traffic.
+   */
+  routedRuntimeState: "routed" | "never_routed";
+  /** Exact pointed source job clock (createdAt of the pointed source job). */
+  sourceJobClock: string | null;
+  /** Exact pointed decision job clock (createdAt of the pointed decision job). */
+  decisionJobClock: string | null;
+  /** Allowlisted outcomes for the source and decision jobs. */
+  sourceJobOutcome: "exhausted" | "recovery" | "absent";
+  decisionJobOutcome: "exhausted" | "recovery" | "absent";
+  /** Closed standby state from the 0184 column. Null when absent. */
+  standbyState: string | null;
+  /** Never-routed restore-validation proof from the 0185 contract. */
+  restoreValidation: {
+    validationState: string;
+    route: string;
+    receiptSchema: number;
+    transferProtocol: string;
+    routeExposedAt: string | null;
+    committed: boolean;
+    retirementProof: {
+      descriptorRetiredAt: string | null;
+      chunksRetiredAt: string | null;
+      standbyRetiredAt: string | null;
+      routeBlockedAt: string | null;
+    };
+  } | null;
+}
+
+export interface ManagedDedicatedCanaryDiagnosticV4 {
+  schemaVersion: 4;
+  targetCount: 1;
+  sandbox: {
+    status: string;
+    errorCode: ErrorCode;
+    errorCount: number;
+    deletionStartedAt: string | null;
+    updatedAt: string;
+  };
+  jobs: Array<{
+    status: string;
+    attempts: number;
+    maxAttempts: number;
+    containerStopped: boolean | null;
+    rowDeleted: boolean | null;
+    errorCode: ErrorCode;
+    recoveryCode: RecoveryCode;
+    resultErrorCode: ErrorCode;
+    unclassifiedProfile: UnclassifiedErrorProfile | null;
+    scheduledFor: string;
+    startedAt: string | null;
+    completedAt: string | null;
+    createdAt: string;
+    updatedAt: string;
+    durationMs: number | null;
+    queueDurationMs: number | null;
+  }>;
+  lifecycle: LifecycleAuthority;
+}
+
 function record(value: unknown, label: string): JsonRecord {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new Error(`${label} must be an object`);
@@ -868,6 +1109,447 @@ export function sanitizeManagedDedicatedCanaryDiagnostic(
     },
     jobs,
   };
+}
+
+// --- Schema-v4 lifecycle authority sanitization ---
+
+/**
+ * Sanitize the lifecycle authority section from the raw diagnostic input. This
+ * is only called after the v3 base diagnostic has been validated and after the
+ * schema-v4 preflight has confirmed the 0184/0185 columns and constraints exist.
+ *
+ * The lifecycle authority consumes the production reader contract
+ * semantically — it validates the exact shape of the restore-proof and standby
+ * records without inferring authority from latest-job ordering or timestamps
+ * alone.
+ */
+function sanitizeLifecycleAuthority(
+  raw: unknown,
+  locatorPresent: { sandboxIdPresent: boolean; nodeIdPresent: boolean; containerNamePresent: boolean },
+  deletionOwned: boolean,
+  jobClocks: string[],
+): LifecycleAuthority {
+  const lifecycle = record(raw, "lifecycle");
+  exactKeys(
+    lifecycle,
+    [
+      "capturedAt",
+      "lifecycleAuthority",
+      "deletionOwnership",
+      "replacementCleanupState",
+      "routedRuntimeState",
+      "sourceJobClock",
+      "decisionJobClock",
+      "sourceJobOutcome",
+      "decisionJobOutcome",
+      "standbyState",
+      "restoreValidation",
+      "sourceJob",
+      "decisionJob",
+    ],
+    "lifecycle",
+  );
+
+  const capturedAt = timestamp(
+    lifecycle.capturedAt,
+    "lifecycle.capturedAt",
+  ) as string;
+  const lifecycleAuthorityValue = lifecycle.lifecycleAuthority;
+  if (
+    lifecycleAuthorityValue !== "rollback_standby" &&
+    lifecycleAuthorityValue !== "restore_validation" &&
+    lifecycleAuthorityValue !== "deletion_only"
+  ) {
+    throw new Error("lifecycle.lifecycleAuthority is invalid");
+  }
+  const deletionOwnership = boolean(
+    lifecycle.deletionOwnership,
+    "lifecycle.deletionOwnership",
+  );
+  if (deletionOwnership !== deletionOwned) {
+    throw new Error("lifecycle deletion ownership disagrees with agent");
+  }
+
+  const replacementCleanupStateValue = lifecycle.replacementCleanupState;
+  if (
+    replacementCleanupStateValue !== "pending" &&
+    replacementCleanupStateValue !== "completed" &&
+    replacementCleanupStateValue !== "absent"
+  ) {
+    throw new Error("lifecycle.replacementCleanupState is invalid");
+  }
+  const routedRuntimeStateValue = lifecycle.routedRuntimeState;
+  if (
+    routedRuntimeStateValue !== "routed" &&
+    routedRuntimeStateValue !== "never_routed"
+  ) {
+    throw new Error("lifecycle.routedRuntimeState is invalid");
+  }
+
+  // Source and decision job clocks must be exact ISO timestamps or null. They
+  // must point at a real job in the bounded history when present — authority is
+  // never inferred from timestamps alone.
+  const sourceJobClock = timestamp(
+    lifecycle.sourceJobClock,
+    "lifecycle.sourceJobClock",
+    true,
+  );
+  const decisionJobClock = timestamp(
+    lifecycle.decisionJobClock,
+    "lifecycle.decisionJobClock",
+    true,
+  );
+
+  // Validate pointed source/decision job clocks against the bounded job history.
+  // The source and decision job records carry their own createdAt and outcome.
+  const sourceJobRecord = record(lifecycle.sourceJob, "lifecycle.sourceJob");
+  exactKeys(sourceJobRecord, ["createdAt", "outcome"], "lifecycle.sourceJob");
+  const decisionJobRecord = record(
+    lifecycle.decisionJob,
+    "lifecycle.decisionJob",
+  );
+  exactKeys(decisionJobRecord, ["createdAt", "outcome"], "lifecycle.decisionJob");
+
+  const sourceJobCreatedAt = timestamp(
+    sourceJobRecord.createdAt,
+    "lifecycle.sourceJob.createdAt",
+    true,
+  );
+  const decisionJobCreatedAt = timestamp(
+    decisionJobRecord.createdAt,
+    "lifecycle.decisionJob.createdAt",
+    true,
+  );
+  const sourceJobOutcomeValue = sourceJobRecord.outcome;
+  if (
+    sourceJobOutcomeValue !== "exhausted" &&
+    sourceJobOutcomeValue !== "recovery" &&
+    sourceJobOutcomeValue !== "absent"
+  ) {
+    throw new Error("lifecycle.sourceJob.outcome is invalid");
+  }
+  const decisionJobOutcomeValue = decisionJobRecord.outcome;
+  if (
+    decisionJobOutcomeValue !== "exhausted" &&
+    decisionJobOutcomeValue !== "recovery" &&
+    decisionJobOutcomeValue !== "absent"
+  ) {
+    throw new Error("lifecycle.decisionJob.outcome is invalid");
+  }
+
+  // Cross-check: if a clock is present it must match its job record and a job
+  // in the bounded history. If absent, the job record must also be absent.
+  if (sourceJobClock === null) {
+    if (sourceJobCreatedAt !== null || sourceJobOutcomeValue !== "absent") {
+      throw new Error("lifecycle source job clock and record disagree");
+    }
+  } else {
+    if (sourceJobClock !== sourceJobCreatedAt) {
+      throw new Error("lifecycle source job clock does not match record");
+    }
+    if (!jobClocks.includes(sourceJobClock)) {
+      throw new Error("lifecycle source job clock is not in bounded history");
+    }
+  }
+  if (decisionJobClock === null) {
+    if (decisionJobCreatedAt !== null || decisionJobOutcomeValue !== "absent") {
+      throw new Error("lifecycle decision job clock and record disagree");
+    }
+  } else {
+    if (decisionJobClock !== decisionJobCreatedAt) {
+      throw new Error("lifecycle decision job clock does not match record");
+    }
+    if (!jobClocks.includes(decisionJobClock)) {
+      throw new Error("lifecycle decision job clock is not in bounded history");
+    }
+  }
+
+  // A row cannot carry both a source and decision job that are the same clock
+  // unless the lifecycle authority is deletion_only (where they represent the
+  // same exhausted attempt).
+  if (
+    sourceJobClock !== null &&
+    decisionJobClock !== null &&
+    sourceJobClock === decisionJobClock &&
+    lifecycleAuthorityValue !== "deletion_only"
+  ) {
+    throw new Error("lifecycle dual authority is contradictory");
+  }
+
+  // Validate standby state from the 0184 column.
+  let standbyState: string | null = null;
+  if (lifecycle.standbyState !== null) {
+    if (typeof lifecycle.standbyState !== "string") {
+      throw new Error("lifecycle.standbyState must be a string or null");
+    }
+    if (!STANDBY_STATES.has(lifecycle.standbyState)) {
+      throw new Error("lifecycle.standbyState is not an allowlisted standby enum");
+    }
+    standbyState = lifecycle.standbyState;
+    // Standby state requires rollback_standby authority.
+    if (lifecycleAuthorityValue !== "rollback_standby") {
+      throw new Error("lifecycle standby state without rollback_standby authority");
+    }
+  } else {
+    if (lifecycleAuthorityValue === "rollback_standby") {
+      throw new Error("lifecycle rollback_standby authority requires standby state");
+    }
+  }
+
+  // Validate the never-routed restore-validation proof from the 0185 contract.
+  let restoreValidation: LifecycleAuthority["restoreValidation"] = null;
+  if (lifecycle.restoreValidation !== null) {
+    if (lifecycleAuthorityValue !== "restore_validation") {
+      throw new Error(
+        "lifecycle restore validation present without restore_validation authority",
+      );
+    }
+    const rv = record(lifecycle.restoreValidation, "lifecycle.restoreValidation");
+    exactKeys(
+      rv,
+      [
+        "validationState",
+        "route",
+        "receiptSchema",
+        "transferProtocol",
+        "routeExposedAt",
+        "committed",
+        "retirementProof",
+      ],
+      "lifecycle.restoreValidation",
+    );
+    if (
+      typeof rv.validationState !== "string" ||
+      !RESTORE_VALIDATION_STATES.has(rv.validationState)
+    ) {
+      throw new Error(
+        "lifecycle.restoreValidation.validationState is not an allowlisted enum",
+      );
+    }
+    if (rv.route !== RESTORE_VALIDATION_ROUTE) {
+      throw new Error("lifecycle.restoreValidation.route is invalid");
+    }
+    const receiptSchema = integer(
+      rv.receiptSchema,
+      "lifecycle.restoreValidation.receiptSchema",
+      RESTORE_RECEIPT_SCHEMA,
+      RESTORE_RECEIPT_SCHEMA,
+    );
+    if (rv.transferProtocol !== RESTORE_TRANSFER_PROTOCOL) {
+      throw new Error("lifecycle.restoreValidation.transferProtocol is invalid");
+    }
+    const routeExposedAt = timestamp(
+      rv.routeExposedAt,
+      "lifecycle.restoreValidation.routeExposedAt",
+      true,
+    );
+    // The never-routed proof requires route_exposed_at to remain null.
+    if (routeExposedAt !== null) {
+      throw new Error(
+        "lifecycle.restoreValidation.routeExposedAt must remain null for never-routed proof",
+      );
+    }
+    const committed = boolean(
+      rv.committed,
+      "lifecycle.restoreValidation.committed",
+    );
+
+    // Validate the retirement/absence proof timestamps.
+    const rp = record(
+      rv.retirementProof,
+      "lifecycle.restoreValidation.retirementProof",
+    );
+    exactKeys(
+      rp,
+      ["descriptorRetiredAt", "chunksRetiredAt", "standbyRetiredAt", "routeBlockedAt"],
+      "lifecycle.restoreValidation.retirementProof",
+    );
+    const retirementProof = {
+      descriptorRetiredAt: timestamp(
+        rp.descriptorRetiredAt,
+        "lifecycle.restoreValidation.retirementProof.descriptorRetiredAt",
+        true,
+      ),
+      chunksRetiredAt: timestamp(
+        rp.chunksRetiredAt,
+        "lifecycle.restoreValidation.retirementProof.chunksRetiredAt",
+        true,
+      ),
+      standbyRetiredAt: timestamp(
+        rp.standbyRetiredAt,
+        "lifecycle.restoreValidation.retirementProof.standbyRetiredAt",
+        true,
+      ),
+      routeBlockedAt: timestamp(
+        rp.routeBlockedAt,
+        "lifecycle.restoreValidation.retirementProof.routeBlockedAt",
+        true,
+      ),
+    };
+
+    // A committed receipt requires a complete retirement proof: all four
+    // retirement/absence proof timestamps must be present.
+    if (committed) {
+      if (
+        retirementProof.descriptorRetiredAt === null ||
+        retirementProof.chunksRetiredAt === null ||
+        retirementProof.standbyRetiredAt === null ||
+        retirementProof.routeBlockedAt === null
+      ) {
+        throw new Error(
+          "lifecycle committed restore receipt requires all four retirement proof timestamps",
+        );
+      }
+    }
+
+    restoreValidation = {
+      validationState: rv.validationState,
+      route: RESTORE_VALIDATION_ROUTE,
+      receiptSchema,
+      transferProtocol: RESTORE_TRANSFER_PROTOCOL,
+      routeExposedAt: null,
+      committed,
+      retirementProof,
+    };
+  } else {
+    if (lifecycleAuthorityValue === "restore_validation") {
+      throw new Error(
+        "lifecycle restore_validation authority requires restore validation proof",
+      );
+    }
+  }
+
+  // Existing stale deletion-owned rows must remain classifiable without
+  // fabricating standby or restore state. When lifecycleAuthority is
+  // deletion_only, both standbyState and restoreValidation must be null.
+  if (
+    lifecycleAuthorityValue === "deletion_only" &&
+    (standbyState !== null || restoreValidation !== null)
+  ) {
+    throw new Error(
+      "lifecycle deletion_only authority must not carry standby or restore state",
+    );
+  }
+
+  return {
+    capturedAt,
+    locator: { ...locatorPresent },
+    lifecycleAuthority: lifecycleAuthorityValue,
+    deletionOwnership,
+    replacementCleanupState: replacementCleanupStateValue,
+    routedRuntimeState: routedRuntimeStateValue,
+    sourceJobClock,
+    decisionJobClock,
+    sourceJobOutcome: sourceJobOutcomeValue,
+    decisionJobOutcome: decisionJobOutcomeValue,
+    standbyState,
+    restoreValidation,
+  };
+}
+
+/**
+ * Sanitize the full schema-v4 diagnostic: the existing schema-v3 fields plus
+ * the lifecycle authority. The preflight result must be passed to prove the
+ * 0184/0185 columns and constraints exist before schemaVersion: 4 is emitted.
+ */
+export function sanitizeManagedDedicatedCanaryDiagnosticV4(
+  raw: unknown,
+  suffix: string,
+  preflight: SchemaV4PreflightResult,
+): ManagedDedicatedCanaryDiagnosticV4 {
+  if (!preflight.ready) {
+    throw new Error(
+      "schema-v4 diagnostic requires a passing 0184/0185 schema preflight",
+    );
+  }
+
+  const root = record(raw, "diagnostic input");
+  // The v4 input carries an additional lifecycle key alongside the v3 keys.
+  exactKeys(
+    root,
+    ["targetCount", "agent", "jobs", "lifecycle"],
+    "diagnostic input",
+  );
+
+  // Reuse the v3 sanitizer on a v3-shaped projection (without the lifecycle
+  // key) so every existing field and invariant is preserved.
+  const v3Projection = sanitizeManagedDedicatedCanaryDiagnostic(
+    {
+      targetCount: root.targetCount,
+      agent: root.agent,
+      jobs: root.jobs,
+    },
+    suffix,
+  );
+
+  // Extract locator booleans from the agent for the lifecycle section.
+  const agent = record(root.agent, "agent");
+  const locator = record(agent.locator, "agent.locator");
+  const locatorPresent = {
+    sandboxIdPresent: boolean(locator.sandboxIdPresent, "locator.sandboxIdPresent"),
+    nodeIdPresent: boolean(locator.nodeIdPresent, "locator.nodeIdPresent"),
+    containerNamePresent: boolean(
+      locator.containerNamePresent,
+      "locator.containerNamePresent",
+    ),
+  };
+  const deletionOwned = boolean(agent.deletionOwned, "agent.deletionOwned");
+
+  // Collect job createdAt clocks for cross-checking lifecycle pointers.
+  const jobClocks = v3Projection.jobs.map((job) => job.createdAt);
+
+  const lifecycle = sanitizeLifecycleAuthority(
+    root.lifecycle,
+    locatorPresent,
+    deletionOwned,
+    jobClocks,
+  );
+
+  return {
+    schemaVersion: 4,
+    targetCount: 1,
+    sandbox: v3Projection.sandbox,
+    jobs: v3Projection.jobs,
+    lifecycle,
+  };
+}
+
+/**
+ * Project a schema-v4 diagnostic back to schema-v3, proving old fields and
+ * semantics are unchanged. This is the exact schema-v3 golden: every v3 field
+ * is present with the same value, and the lifecycle section is dropped.
+ */
+export function projectDiagnosticV3(
+  v4: ManagedDedicatedCanaryDiagnosticV4,
+): ManagedDedicatedCanaryDiagnostic {
+  return {
+    schemaVersion: 3,
+    targetCount: v4.targetCount,
+    sandbox: { ...v4.sandbox },
+    jobs: v4.jobs.map((job) => ({ ...job })),
+  };
+}
+
+export function canonicalizeManagedDedicatedCanaryDiagnosticV4(
+  rawText: string,
+  suffix: string,
+  preflight: SchemaV4PreflightResult,
+): string {
+  const evidence = sanitizeManagedDedicatedCanaryDiagnosticV4(
+    JSON.parse(rawText),
+    suffix,
+    preflight,
+  );
+  const canonical = `${JSON.stringify(evidence, null, 2)}\n`;
+  if (
+    UUID_PATTERN.test(canonical) ||
+    FORBIDDEN_OUTPUT_PATTERN.test(canonical)
+  ) {
+    throw new Error(
+      "privacy-safe diagnostic contains a forbidden identifier or secret shape",
+    );
+  }
+  return canonical;
 }
 
 export function canonicalizeManagedDedicatedCanaryDiagnostic(

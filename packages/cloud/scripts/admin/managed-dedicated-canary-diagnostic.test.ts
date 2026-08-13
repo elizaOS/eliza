@@ -17,8 +17,14 @@ import { join } from "node:path";
 import { toLibpqConnectionUrl } from "./libpq-connection-url";
 import {
   canonicalizeManagedDedicatedCanaryDiagnostic,
+  canonicalizeManagedDedicatedCanaryDiagnosticV4,
+  projectDiagnosticV3,
+  runSchemaV4Preflight,
   sanitizeManagedDedicatedCanaryDiagnostic,
+  sanitizeManagedDedicatedCanaryDiagnosticV4,
   writeManagedDedicatedCanaryDiagnostic,
+  type SchemaV4PreflightClient,
+  type SchemaV4PreflightResult,
 } from "./managed-dedicated-canary-diagnostic";
 
 const SUFFIX = "r30081355987a1";
