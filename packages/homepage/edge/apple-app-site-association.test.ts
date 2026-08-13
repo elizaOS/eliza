@@ -186,8 +186,8 @@ describe("eliza.app AASA edge Worker", () => {
     );
     expect(workflow).toContain("branches: [main]");
     expect(workflow).toContain("environment: production");
-    expect(workflow.match(/runs-on: ubuntu-24\.04/g)).toHaveLength(3);
-    expect(workflow.match(/persist-credentials: false/g)).toHaveLength(3);
+    expect(workflow.match(/runs-on: ubuntu-24\.04/g)).toHaveLength(2);
+    expect(workflow.match(/persist-credentials: false/g)).toHaveLength(2);
     expect(workflow).not.toContain("workflow_call:");
     expect(workflow).not.toContain("bun install");
     expect(workflow).toContain(
@@ -208,12 +208,35 @@ describe("eliza.app AASA edge Worker", () => {
     expect(workflow).toContain(
       "bunx wrangler@4.100.0 delete --config wrangler-aasa.toml --force",
     );
-    expect(workflow).toContain("verify-apple-cdn:");
+    // The CDN proof used to be a third `verify-apple-cdn:` job. It now runs as
+    // the closing step of the publish job so one post-approval lock covers
+    // mutate + proof. The property that mattered is unchanged and asserted
+    // structurally below: observing Apple's cache can never itself mutate.
+    expect(workflow).not.toContain("verify-apple-cdn:");
     expect(workflow).toContain("--apple-cdn-live");
-    const cdnJob = workflow.split("  verify-apple-cdn:")[1];
-    expect(cdnJob).toBeDefined();
-    expect(cdnJob).not.toContain("rollback");
-    expect(cdnJob).not.toContain("CLOUDFLARE_API_TOKEN");
+
+    const cdnWait = workflow.indexOf("Wait for Apple's unmodified CDN cache");
+    const rollback = workflow.indexOf(
+      "Restore the previous safe origin on verification failure",
+    );
+    expect(cdnWait).toBeGreaterThan(-1);
+    expect(rollback).toBeGreaterThan(-1);
+
+    // Rollback reacts only to the origin verification, never to the CDN wait,
+    // and precedes it — so nothing downstream of the CDN observation can roll
+    // back or delete the Worker.
+    expect(workflow).toContain(
+      "always() && steps.deploy.outcome == 'success' && steps.origin.outcome != 'success'",
+    );
+    expect(rollback).toBeLessThan(cdnWait);
+    const afterCdnWait = workflow.slice(cdnWait);
+    expect(afterCdnWait).not.toContain("rollback");
+    expect(afterCdnWait).not.toContain("CLOUDFLARE_API_TOKEN");
+
+    // The CDN wait runs only after a published and verified origin.
+    expect(workflow).toContain(
+      "steps.deploy.outcome == 'success' && steps.origin.outcome == 'success'",
+    );
   });
 
   test("validates a captured production response and rejects stale hosting", () => {

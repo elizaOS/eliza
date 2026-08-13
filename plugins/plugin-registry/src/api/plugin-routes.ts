@@ -63,6 +63,46 @@ const ADVANCED_CAPABILITY_SERVICE_BY_PLUGIN_ID: Partial<
   personality: "CHARACTER_MANAGEMENT",
 };
 
+function createRuntimeSettingReader(
+  runtime: AgentRuntime | null,
+): ((key: string) => string | boolean | number | undefined) | undefined {
+  if (
+    !runtime ||
+    typeof (runtime as unknown as { getSetting?: unknown }).getSetting !==
+      "function"
+  ) {
+    return undefined;
+  }
+  return (key: string) => {
+    const value = (runtime as AgentRuntime).getSetting(key);
+    if (typeof value === "string") {
+      return value.trim() || undefined;
+    }
+    return typeof value === "boolean" || typeof value === "number"
+      ? value
+      : undefined;
+  };
+}
+
+function resolveDiscordServiceHealth(
+  runtime: AgentRuntime | null,
+): boolean | null {
+  if (
+    !runtime ||
+    typeof (runtime as unknown as { getService?: unknown }).getService !==
+      "function"
+  ) {
+    return null;
+  }
+  const service = (runtime as AgentRuntime).getService("discord") as {
+    isHealthy?: () => boolean;
+  } | null;
+  if (!service || typeof service.isHealthy !== "function") {
+    return false;
+  }
+  return service.isHealthy();
+}
+
 // ---------------------------------------------------------------------------
 // Types — kept lean to avoid circular deps with server.ts
 // ---------------------------------------------------------------------------
@@ -600,34 +640,71 @@ export async function handlePluginRoutes(
       }
     }
 
+    const readRuntimeSetting = createRuntimeSettingReader(state.runtime);
     for (const plugin of allPlugins) {
       for (const param of plugin.parameters) {
-        const envValue = process.env[param.key];
-        param.isSet = Boolean(envValue?.trim());
-        param.currentValue = param.isSet
+        const envValue = process.env[param.key]?.trim() || undefined;
+        const runtimeValue = readRuntimeSetting?.(param.key);
+        // When a runtime exists, getSetting is authoritative: connector
+        // services do not fall through to the process-wide environment.
+        const isSet = readRuntimeSetting
+          ? runtimeValue !== undefined
+          : Boolean(envValue);
+        param.isSet = isSet;
+        const displayValue = String(
+          (readRuntimeSetting ? runtimeValue : envValue) ?? "",
+        );
+        param.currentValue = isSet
           ? param.sensitive
-            ? maskValue(envValue ?? "")
-            : (envValue ?? "")
+            ? maskValue(displayValue)
+            : displayValue
           : null;
       }
-      const paramInfos: PluginParamInfo[] = plugin.parameters.map((p) => ({
-        key: p.key,
-        required: p.required,
-        sensitive: p.sensitive,
-        type: p.type,
-        description: p.description,
-        default: p.default,
-      }));
+      // Validate against effective isSet, not stale process.env. This keeps
+      // `configured` honest when getSetting is empty but process.env is set (#18713).
+      const validationErrors = plugin.parameters
+        .filter((p) => p.required && !p.default && !p.isSet)
+        .map((p) => ({
+          field: p.key,
+          message: `${p.key} is required but not set`,
+        }));
       const validation = validatePluginConfig(
         plugin.id,
         plugin.category,
         plugin.envKey,
         plugin.configKeys,
         undefined,
-        paramInfos,
+        plugin.parameters.map((p) => ({
+          key: p.key,
+          required: p.required,
+          sensitive: p.sensitive,
+          type: p.type,
+          description: p.description,
+          default: p.default,
+        })),
       );
-      plugin.validationErrors = validation.errors;
+      // Format/default diagnostics remain warnings. Required-field errors use
+      // the authoritative runtime-backed presence calculated above.
+      plugin.validationErrors = validationErrors;
       plugin.validationWarnings = validation.warnings;
+      plugin.configured = validationErrors.length === 0;
+    }
+    // A loaded Discord package is not an active connector until its service
+    // exists and the Discord client reports ready. Other plugins retain their
+    // existing loaded-package semantics; they do not share this health API.
+    for (const plugin of allPlugins) {
+      if (plugin.id !== "discord" || !plugin.isActive) continue;
+      if (resolveDiscordServiceHealth(state.runtime) === false) {
+        plugin.isActive = false;
+        plugin.validationWarnings = [
+          ...(plugin.validationWarnings ?? []),
+          {
+            field: "DISCORD_API_TOKEN",
+            message:
+              "Discord is loaded but not connected. Check credentials and connectivity.",
+          },
+        ];
+      }
     }
 
     applyWhatsAppQrOverride(allPlugins, resolveDefaultAgentWorkspaceDir());
@@ -917,8 +994,40 @@ export async function handlePluginRoutes(
           bridgedValues,
           { isBlockedKey: isBlockedEnvKey },
         );
+        // Refresh plugin param isSet from authoritative getSetting so
+        // configured/isSet matches what gateway will see
+        const rtReader = createRuntimeSettingReader(state.runtime);
+        for (const param of plugin.parameters) {
+          const rtVal = rtReader?.(param.key);
+          const envVal = process.env[param.key]?.trim() || undefined;
+          const isSet = rtReader ? rtVal !== undefined : Boolean(envVal);
+          param.isSet = isSet;
+          const eff = String((rtReader ? rtVal : envVal) ?? "");
+          param.currentValue = isSet
+            ? param.sensitive
+              ? maskValue(eff)
+              : eff
+            : null;
+        }
+        const errs = plugin.parameters
+          .filter((p) => p.required && !p.default && !p.isSet)
+          .map((p) => ({
+            field: p.key,
+            message: `${p.key} is required but not set`,
+          }));
+        plugin.validationErrors = errs;
+        plugin.configured = errs.length === 0;
+      } else {
+        // No config touched, but still recompute configured from current isSet
+        const errs = plugin.parameters
+          .filter((p) => p.required && !p.default && !p.isSet)
+          .map((p) => ({
+            field: p.key,
+            message: `${p.key} is required but not set`,
+          }));
+        if (errs.length > 0) plugin.validationErrors = errs;
+        plugin.configured = (plugin.validationErrors?.length ?? 0) === 0;
       }
-      plugin.configured = true;
 
       // Save config even when only config values changed (no enable toggle)
       if (body.enabled === undefined) {
@@ -932,7 +1041,26 @@ export async function handlePluginRoutes(
       }
     }
 
-    // Refresh validation
+    // Refresh validation — authoritative via getSetting when runtime exists
+    const rtReader2 = createRuntimeSettingReader(state.runtime);
+    for (const param of plugin.parameters) {
+      const rtVal = rtReader2?.(param.key);
+      const envVal = process.env[param.key]?.trim() || undefined;
+      param.isSet = rtReader2 ? rtVal !== undefined : Boolean(envVal);
+      const eff = String((rtReader2 ? rtVal : envVal) ?? "");
+      param.currentValue = param.isSet
+        ? param.sensitive
+          ? maskValue(eff)
+          : eff
+        : null;
+    }
+    const requiredErrs = plugin.parameters
+      .filter((p) => p.required && !p.default && !p.isSet)
+      .map((p) => ({
+        field: p.key,
+        message: `${p.key} is required but not set`,
+      }));
+    // Preserve format warnings from validatePluginConfig but use authoritative required errors
     const refreshParamInfos: PluginParamInfo[] = plugin.parameters.map((p) => ({
       key: p.key,
       required: p.required,
@@ -949,8 +1077,9 @@ export async function handlePluginRoutes(
       undefined,
       refreshParamInfos,
     );
-    plugin.validationErrors = updated.errors;
+    plugin.validationErrors = requiredErrs;
     plugin.validationWarnings = updated.warnings;
+    plugin.configured = requiredErrs.length === 0;
 
     // Update config.plugins.entries so the runtime loads/skips this plugin
     if (body.enabled !== undefined) {

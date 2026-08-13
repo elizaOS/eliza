@@ -158,6 +158,7 @@ async function resolveAgentScope(
         error: "Agent authorization cache is warming. Retry shortly.",
         code: "agent_cache_warming",
         status: 503 as const,
+        retryAfterSeconds: 1,
       };
     }
     if (
@@ -242,7 +243,12 @@ app.post("/", async (c) => {
           ...("code" in r ? { code: r.code } : {}),
           ...(r.status === 503 ? { retryable: true } : {}),
         },
-        { status: r.status },
+        {
+          status: r.status,
+          ...("retryAfterSeconds" in r && r.retryAfterSeconds
+            ? { headers: { "Retry-After": String(r.retryAfterSeconds) } }
+            : {}),
+        },
       ),
       CORS_METHODS,
       origin,

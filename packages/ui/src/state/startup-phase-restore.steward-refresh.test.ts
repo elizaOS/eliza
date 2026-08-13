@@ -6,13 +6,17 @@
 // @vitest-environment jsdom
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { PersistedActiveServer } from "./persistence";
+import {
+  loadPersistedActiveServer,
+  type PersistedActiveServer,
+  savePersistedActiveServer,
+} from "./persistence";
 import { applyRestoredConnection } from "./startup-phase-restore";
 
 const STEWARD_TOKEN_KEY = "steward_session_token";
 const STEWARD_REFRESH_PATH = "/api/auth/steward-refresh";
 const CLOUD_AGENT_ID = "11111111-1111-4111-8111-111111111111";
-const CLOUD_AGENT_API_BASE = `https://api.elizacloud.ai/api/v1/eliza/agents/${CLOUD_AGENT_ID}`;
+const CLOUD_AGENT_API_BASE = `https://api.eliza.app/api/v1/eliza/agents/${CLOUD_AGENT_ID}`;
 
 /** Build a minimal (unsigned) JWT whose payload carries the given `exp`. */
 function makeJwt(expSecondsFromNow: number | null): string {
@@ -174,22 +178,32 @@ describe("applyRestoredConnection — cloud Steward token refresh at restore", (
     expect(client.setToken).not.toHaveBeenCalledWith(steward);
   });
 
-  it("leaves the session UNAUTHENTICATED (and clears the token) when refresh fails, without looping", async () => {
+  it("leaves the session UNAUTHENTICATED and drops the shared selection when refresh fails", async () => {
     localStorage.setItem(STEWARD_TOKEN_KEY, makeJwt(-60));
+    savePersistedActiveServer(
+      cloudServer({ accessToken: "expired-steward-token" }),
+    );
     fetchMock.mockResolvedValue({ ok: false, json: async () => ({}) });
 
     const client = fakeClient();
     await applyRestoredConnection({
-      // No provision-time accessToken to fall back to.
-      restoredActiveServer: cloudServer({ accessToken: undefined }),
+      // A normal persisted record mirrors the now-expired Steward bearer.
+      restoredActiveServer: cloudServer({
+        accessToken: "expired-steward-token",
+      }),
       clientRef: client,
     });
 
     // Exactly one refresh attempt — no retry loop.
     expect(fetchMock).toHaveBeenCalledTimes(1);
     // The dead credential is dropped and the client is left unauthenticated.
-    expect(client.setToken).toHaveBeenCalledWith(null);
+    expect(client.setToken).toHaveBeenLastCalledWith(null);
+    expect(client.setBaseUrl).toHaveBeenLastCalledWith(null);
+    expect(client.setToken).not.toHaveBeenLastCalledWith(
+      "expired-steward-token",
+    );
     expect(localStorage.getItem(STEWARD_TOKEN_KEY)).toBeNull();
+    expect(loadPersistedActiveServer()).toBeNull();
   });
 
   it("falls back to the provision-time token when refresh fails but the JWT is still (barely) alive", async () => {

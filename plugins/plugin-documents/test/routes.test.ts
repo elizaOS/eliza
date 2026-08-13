@@ -209,6 +209,80 @@ describe("document routes", () => {
     });
   });
 
+  it.each([
+    {
+      content: "hello world",
+      filename: "notes.txt",
+      contentType: "TEXT/PLAIN; charset=UTF-8",
+      expectedContentType: "text/plain",
+      expectedTextBacked: true,
+      expectedBytes: "hello world",
+    },
+    {
+      content: Buffer.from("pdf bytes").toString("base64"),
+      filename: "report.bin",
+      contentType: "APPLICATION/PDF",
+      expectedContentType: "application/pdf",
+      expectedTextBacked: false,
+      expectedBytes: "pdf bytes",
+    },
+    {
+      content: Buffer.from("pdf bytes").toString("base64"),
+      filename: "report.bin",
+      contentType: "application/pdf; charset=UTF-8",
+      expectedContentType: "application/pdf",
+      expectedTextBacked: false,
+      expectedBytes: "pdf bytes",
+    },
+  ])(
+    "canonicalizes case and parameters before document service routing %#",
+    async ({
+      content,
+      filename,
+      contentType,
+      expectedContentType,
+      expectedTextBacked,
+      expectedBytes,
+    }) => {
+      const store = vi.fn(async () => ({
+        url: "/api/media/deadbeef.bin",
+        hash: "deadbeef",
+        fileName: "deadbeef.bin",
+        mimeType: contentType,
+        size: expectedBytes.length,
+      }));
+      addDocument.mockResolvedValueOnce({
+        clientDocumentId: "doc-id",
+        fragmentCount: 1,
+      });
+      const { ctx, res } = buildCtx({
+        method: "POST",
+        pathname: "/api/documents",
+        runtime: {
+          getService: vi.fn(() => ({ store })),
+        } as Partial<NonNullable<DocumentRouteContext["runtime"]>>,
+        body: { content, filename, contentType },
+      });
+
+      await expect(handleDocumentsRoutes(ctx)).resolves.toBe(true);
+
+      expect(res.statusCode).toBe(200);
+      expect(store.mock.calls).toHaveLength(1);
+      const storedContent = store.mock.calls[0][0] as Buffer;
+      expect(storedContent.toString("utf8")).toBe(expectedBytes);
+      expect(addDocument).toHaveBeenCalledWith(
+        expect.objectContaining({
+          contentType: expectedContentType,
+          metadata: expect.objectContaining({
+            contentType: expectedContentType,
+            fileType: contentType,
+            textBacked: expectedTextBacked,
+          }),
+        }),
+      );
+    },
+  );
+
   it("rejects image uploads when the image description model fails", async () => {
     const useModel = vi.fn(async () => {
       throw new Error("vision unavailable");

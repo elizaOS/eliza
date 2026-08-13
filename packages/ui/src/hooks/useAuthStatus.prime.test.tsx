@@ -8,9 +8,14 @@
 // test; only global fetch (the network boundary) is stubbed. The shared
 // module snapshot is reset per test via the __resetAuthStatusForTests seam.
 
+import {
+  clearStoredStewardToken,
+  writeStoredStewardToken,
+} from "@elizaos/shared/steward-session-client";
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { setBootConfig } from "../config/boot-config-store";
+import { clearStaleStewardSession } from "../cloud/shell/StewardProviderShared";
+import { getBootConfig, setBootConfig } from "../config/boot-config-store";
 import {
   createPersistedActiveServer,
   loadPersistedActiveServer,
@@ -31,6 +36,17 @@ const AUTH_ME_BODY = {
   access: { mode: "session", passwordConfigured: true, ownerConfigured: true },
 };
 
+function makeJwt(expSecondsFromNow: number): string {
+  const encode = (value: unknown) =>
+    btoa(JSON.stringify(value))
+      .replace(/\+/g, "-")
+      .replace(/\//g, "_")
+      .replace(/=+$/, "");
+  return `${encode({ alg: "none" })}.${encode({
+    exp: Math.floor(Date.now() / 1000) + expSecondsFromNow,
+  })}.sig`;
+}
+
 function jsonResponse(status: number, body: unknown): Response {
   return {
     ok: status >= 200 && status < 300,
@@ -44,6 +60,8 @@ describe("primeAuthStatusProbe + activation reuse", () => {
   const realFetch = globalThis.fetch;
 
   beforeEach(() => {
+    delete (window as Window & { __electrobunWindowId?: number })
+      .__electrobunWindowId;
     localStorage.clear();
     setBootConfig({ branding: {} });
     __resetAuthStatusForTests();
@@ -64,8 +82,140 @@ describe("primeAuthStatusProbe + activation reuse", () => {
       await new Promise((resolve) => setImmediate(resolve));
     });
     globalThis.fetch = realFetch;
+    delete (window as Window & { __electrobunWindowId?: number })
+      .__electrobunWindowId;
     vi.restoreAllMocks();
     __resetAuthStatusForTests();
+  });
+
+  it("fails the shared Cloud auth gate when no Steward account session exists", async () => {
+    setBootConfig({
+      branding: {},
+      apiBase: "https://api.eliza.app/api/v1/eliza/agents/shared-agent",
+    });
+    clearStoredStewardToken();
+
+    const { result } = renderHook(() => useAuthStatus({ pollIntervalMs: 0 }));
+
+    await waitFor(() =>
+      expect(result.current.state).toMatchObject({
+        phase: "unauthenticated",
+        reason: "remote_auth_required",
+      }),
+    );
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("preserves a native owner API-key session without a Steward JWT", async () => {
+    const apiBase = "https://api.eliza.app/api/v1/eliza/agents/shared-agent";
+    (
+      window as Window & { __electrobunWindowId?: number }
+    ).__electrobunWindowId = 1;
+    setBootConfig({
+      branding: {},
+      apiBase,
+      apiToken: "eliza_native_owner_key",
+    });
+    savePersistedActiveServer({
+      id: "cloud:shared-agent",
+      kind: "cloud",
+      label: "Eliza Cloud",
+      apiBase,
+      accessToken: "eliza_native_owner_key",
+    });
+    clearStoredStewardToken();
+
+    const { result } = renderHook(() => useAuthStatus({ pollIntervalMs: 0 }));
+
+    await waitFor(() =>
+      expect(result.current.state.phase).toBe("authenticated"),
+    );
+    expect(loadPersistedActiveServer()).not.toBeNull();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("probes self-hosted targets whose route resembles the shared adapter", async () => {
+    setBootConfig({
+      branding: {},
+      apiBase: "https://vps.example/api/v1/eliza/agents/agent-1",
+    });
+    fetchMock.mockResolvedValue(jsonResponse(200, AUTH_ME_BODY));
+
+    const { result } = renderHook(() => useAuthStatus({ pollIntervalMs: 0 }));
+
+    await waitFor(() =>
+      expect(result.current.state.phase).toBe("authenticated"),
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(String(fetchMock.mock.calls[0]?.[0])).toContain("/api/auth/me");
+  });
+
+  it("invalidates a mounted shared Cloud shell immediately when Steward expires", async () => {
+    const apiBase = "https://api.eliza.app/api/v1/eliza/agents/shared-agent";
+    setBootConfig({ branding: {}, apiBase });
+    writeStoredStewardToken(makeJwt(3600));
+    savePersistedActiveServer({
+      id: "cloud:shared-agent",
+      kind: "cloud",
+      label: "Eliza Cloud",
+      apiBase,
+      accessToken: "stale-token-mirror",
+    });
+
+    const { result } = renderHook(() => useAuthStatus({ pollIntervalMs: 0 }));
+    await waitFor(() =>
+      expect(result.current.state.phase).toBe("authenticated"),
+    );
+    fetchMock.mockResolvedValue(jsonResponse(200, {}));
+
+    act(() => {
+      clearStaleStewardSession();
+    });
+
+    await waitFor(() =>
+      expect(result.current.state).toMatchObject({
+        phase: "unauthenticated",
+        reason: "remote_auth_required",
+      }),
+    );
+    expect(loadPersistedActiveServer()).toBeNull();
+    expect(getBootConfig().apiBase).toBeUndefined();
+    expect(fetchMock).toHaveBeenCalled();
+    expect(
+      fetchMock.mock.calls.every(([, init]) => init?.method === "DELETE"),
+    ).toBe(true);
+  });
+
+  it("invalidates a peer tab when the canonical Steward token is removed", async () => {
+    const apiBase = "https://api.eliza.app/api/v1/eliza/agents/shared-agent";
+    setBootConfig({ branding: {}, apiBase });
+    writeStoredStewardToken(makeJwt(3600));
+    savePersistedActiveServer({
+      id: "cloud:shared-agent",
+      kind: "cloud",
+      label: "Eliza Cloud",
+      apiBase,
+    });
+    const { result } = renderHook(() => useAuthStatus({ pollIntervalMs: 0 }));
+    await waitFor(() =>
+      expect(result.current.state.phase).toBe("authenticated"),
+    );
+
+    act(() => {
+      localStorage.removeItem("steward_session_token");
+      window.dispatchEvent(
+        new StorageEvent("storage", {
+          key: "steward_session_token",
+          oldValue: makeJwt(3600),
+          newValue: null,
+        }),
+      );
+    });
+
+    await waitFor(() =>
+      expect(result.current.state.phase).toBe("unauthenticated"),
+    );
+    expect(loadPersistedActiveServer()).toBeNull();
   });
 
   it("publishes an authenticated prime and the activating hook reuses it without a second probe", async () => {

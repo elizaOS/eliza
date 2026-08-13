@@ -665,6 +665,60 @@ describe("executeJob dispatch — type-specific disposition rules", () => {
     }
   });
 
+  test("a transient pre-deletion capture requeues for free and tallies the free retry", async () => {
+    const ctx = harness(makeJob(JOB_TYPES.AGENT_DELETE));
+    stub("executeDeletion", {
+      success: false,
+      retryable: true,
+      containerStopped: false,
+      rowDeleted: false,
+      error: "Refusing to delete without a current backup: snapshot_capture_transient",
+    });
+    try {
+      const res = await run(JOB_TYPES.AGENT_DELETE);
+      expect(res).toMatchObject({ retried: 1, failed: 0 });
+      expect(ctx.retryLaterSpy).toHaveBeenCalledTimes(1);
+      expect(ctx.incrementSpy).not.toHaveBeenCalled();
+      expect(ctx.updateSpy.mock.calls[0]?.[1]?.result).toMatchObject({ captureRetryCount: 1 });
+    } finally {
+      ctx.claimSpy.mockRestore();
+      ctx.recoverSpy.mockRestore();
+      ctx.updateStatusSpy.mockRestore();
+      ctx.updateSpy.mockRestore();
+      ctx.incrementSpy.mockRestore();
+      ctx.retryLaterSpy.mockRestore();
+    }
+  });
+
+  test("a pre-deletion capture stuck past its free-retry budget escalates and burns an attempt", async () => {
+    // `retryLaterWithoutIncrementingAttempts` never touches `attempts`, so an
+    // outage that never clears would requeue forever and keep a user-requested
+    // delete alive and billed. Past the cap it must fail closed through the
+    // ordinary attempt-consuming path instead.
+    const ctx = harness(makeJob(JOB_TYPES.AGENT_DELETE, {}, { result: { captureRetryCount: 10 } }));
+    stub("executeDeletion", {
+      success: false,
+      retryable: true,
+      containerStopped: false,
+      rowDeleted: false,
+      error: "Refusing to delete without a current backup: snapshot_capture_transient",
+    });
+    try {
+      const res = await run(JOB_TYPES.AGENT_DELETE);
+      expect(res).toMatchObject({ retried: 0, failed: 1 });
+      expect(ctx.retryLaterSpy).not.toHaveBeenCalled();
+      expect(ctx.incrementSpy).toHaveBeenCalledTimes(1);
+      expect(res.errors[0]?.error).toContain("attempt-preserving retries");
+    } finally {
+      ctx.claimSpy.mockRestore();
+      ctx.recoverSpy.mockRestore();
+      ctx.updateStatusSpy.mockRestore();
+      ctx.updateSpy.mockRestore();
+      ctx.incrementSpy.mockRestore();
+      ctx.retryLaterSpy.mockRestore();
+    }
+  });
+
   test("agent_provision retryable transport → requeued without burning an attempt", async () => {
     const ctx = harness(makeJob(JOB_TYPES.AGENT_PROVISION));
     stub("provision", {

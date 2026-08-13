@@ -1,5 +1,5 @@
 {
-  "description": "Cold anonymous /login transfer budgets for issue #18056. Measured with scripts/measure-anonymous-login-transfer.mjs (SW blocked, empty context, settle ~6s, no interaction). Budgets are calibrated after a develop baseline capture — null means not yet set (gate reports missing-budget until filled).",
+  "description": "Cold anonymous /login transfer budgets for issue #18056. Measured with scripts/measure-anonymous-login-transfer.mjs (SW blocked, empty context, settle ~6s, no interaction). The calibrated baseline is the dedicated hosted-public entry; ceilings include 10% transfer tolerance and a small request-count allowance.",
   "settleMs": 6000,
   "conditions": {
     "serviceWorkers": "block",
@@ -8,19 +8,19 @@
   },
   "tolerancePct": 10,
   "desktop": {
-    "maxTotalTransferBytes": 2114147,
-    "maxScriptTransferBytes": 2033595,
-    "maxScriptCount": 272,
-    "baselineTotalTransferBytes": 1921951,
-    "baselineScriptTransferBytes": 1848722,
-    "baselineScriptCount": 247
+    "maxTotalTransferBytes": 1691036,
+    "maxScriptTransferBytes": 1573531,
+    "maxScriptCount": 58,
+    "baselineTotalTransferBytes": 1537305,
+    "baselineScriptTransferBytes": 1430482,
+    "baselineScriptCount": 52
   },
   "mobile": {
-    "maxTotalTransferBytes": 2114147,
-    "maxScriptTransferBytes": 2033595,
-    "maxScriptCount": 272,
-    "baselineTotalTransferBytes": 1921951,
-    "baselineScriptTransferBytes": 1848722,
-    "baselineScriptCount": 247
+    "maxTotalTransferBytes": 1691036,
+    "maxScriptTransferBytes": 1573531,
+    "maxScriptCount": 58,
+    "baselineTotalTransferBytes": 1537305,
+    "baselineScriptTransferBytes": 1430482,
+    "baselineScriptCount": 52
   }
 }
