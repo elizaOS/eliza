@@ -3470,10 +3470,12 @@ const CLOUD_AGENT_FAILED_STATUSES = new Set([
  * conflicting lifecycle operation (409), and a worker/capacity outage (503).
  * Continuing to poll cannot cure any of them — it only hides the real failure
  * behind the six-minute timeout (#18463). Transport failures without an HTTP
- * status and explicit 500/502/504 infrastructure churn stay transient: the
- * bounded poll remains the authority for those cases.
+ * status and explicit 408/429/500/502/504 churn stay transient: those are the
+ * control plane asking for another attempt (a rate-limited or timed-out poll
+ * tick says nothing about the wake itself), so the bounded poll remains the
+ * authority and honors any Retry-After it carried.
  */
-const CLOUD_WAKE_TRANSIENT_STATUSES = new Set([500, 502, 504]);
+const CLOUD_WAKE_TRANSIENT_STATUSES = new Set([408, 429, 500, 502, 504]);
 
 /** Where in the wake/provision state machine a typed failure was observed. */
 export type CloudAgentWakePhase =
@@ -3492,14 +3494,7 @@ export type CloudAgentWakePhase =
  * the backend's Retry-After) when present. `agentId`/`jobId` are the
  * operator-safe correlation ids for the attempt.
  */
-// The isolated-browser fixture harnesses (src/**/__e2e__/run-*-e2e.mjs) stub
-// `@elizaos/core` with a CJS Proxy whose named exports arrive as `undefined`
-// through esbuild's ESM interop. A `class … extends undefined` crashes the
-// fixture bundle at evaluation time, so guard the base: real builds always see
-// the real ElizaError; only stubbed fixture bundles degrade to plain Error.
-const WakeErrorBase = (ElizaError ?? Error) as typeof ElizaError;
-
-export class CloudAgentWakeError extends WakeErrorBase {
+export class CloudAgentWakeError extends ElizaError {
   override readonly name = "CloudAgentWakeError";
   readonly phase: CloudAgentWakePhase;
   readonly agentId: string;
@@ -3553,23 +3548,54 @@ export class CloudAgentWakeError extends WakeErrorBase {
 /**
  * Classify a wake-path request rejection. Returns any terminal HTTP status (+
  * Retry-After when the transport preserved one); status-less network errors
- * and explicit 500/502/504 infrastructure churn return `null` and keep
- * polling. Reads both transport error shapes: `ApiError`
- * (`status`/`retryAfter`) and the direct-cloud
- * `Object.assign(new Error(), { status, data })` throw.
+ * and the transient statuses return `null` and keep polling.
  */
 function nonTransientWakeFailure(cause: unknown): {
   status: number;
   retryAfter?: number;
   controlPlaneCode?: string;
 } | null {
+  const details = wakeFailureDetails(cause);
+  if (details === null || CLOUD_WAKE_TRANSIENT_STATUSES.has(details.status)) {
+    return null;
+  }
+  return details;
+}
+
+/**
+ * Milliseconds a transient wake-path rejection asked the caller to back off,
+ * or `null` when it carried no Retry-After. A 429/503-style throttle is the
+ * control plane naming its own pace; polling it again on the fixed 5s tick
+ * only earns another rejection, so the loop sleeps for what it was told.
+ */
+function transientWakeRetryDelayMs(cause: unknown): number | null {
+  const details = wakeFailureDetails(cause);
+  if (
+    details === null ||
+    !CLOUD_WAKE_TRANSIENT_STATUSES.has(details.status) ||
+    details.retryAfter === undefined ||
+    details.retryAfter <= 0
+  ) {
+    return null;
+  }
+  return Math.ceil(details.retryAfter * 1000);
+}
+
+/**
+ * Parse the HTTP status, Retry-After, and control-plane code out of a
+ * wake-path rejection, reading both transport error shapes: `ApiError`
+ * (`status`/`retryAfter`) and the direct-cloud
+ * `Object.assign(new Error(), { status, data })` throw. Returns `null` for a
+ * status-less transport failure, which no classification can act on.
+ */
+function wakeFailureDetails(cause: unknown): {
+  status: number;
+  retryAfter?: number;
+  controlPlaneCode?: string;
+} | null {
   if (typeof cause !== "object" || cause === null) return null;
   const { status } = cause as { status?: unknown };
-  if (
-    typeof status !== "number" ||
-    !Number.isInteger(status) ||
-    CLOUD_WAKE_TRANSIENT_STATUSES.has(status)
-  ) {
+  if (typeof status !== "number" || !Number.isInteger(status)) {
     return null;
   }
   const body = recordOrNull((cause as { data?: unknown }).data);
@@ -3713,7 +3739,9 @@ export async function waitForCloudAgentRunning(
   }
 
   let lastStatus = "unknown";
+  let backoffMs: number | null = null;
   for (;;) {
+    backoffMs = null;
     const detail = await client
       .getCloudCompatAgent(agentId)
       .catch((cause: unknown) => {
@@ -3735,7 +3763,8 @@ export async function waitForCloudAgentRunning(
         }
         // error-policy:J4 a transient status read counts as an unknown tick
         // inside this bounded poll; the deadline below throws with the last
-        // status.
+        // status. A Retry-After on that rejection sets the next tick's pace.
+        backoffMs = transientWakeRetryDelayMs(cause);
         return null;
       });
     if (detail && !detail.success) {
@@ -3779,7 +3808,13 @@ export async function waitForCloudAgentRunning(
     }
     onProgress?.("starting", describeAgentWakeWait(elapsedMs));
     await new Promise((r) =>
-      setTimeout(r, Math.min(pollIntervalMs, timeoutMs - elapsedMs)),
+      setTimeout(
+        r,
+        Math.min(
+          Math.max(pollIntervalMs, backoffMs ?? 0),
+          timeoutMs - elapsedMs,
+        ),
+      ),
     );
   }
 }
@@ -3830,7 +3865,9 @@ export async function waitForCloudProvisionJob(
   );
   const startedAt = Date.now();
   let lastStatus = "queued";
+  let backoffMs: number | null = null;
   for (;;) {
+    backoffMs = null;
     const res = await client
       .getCloudCompatJobStatus(jobId)
       .catch((cause: unknown) => {
@@ -3853,7 +3890,8 @@ export async function waitForCloudProvisionJob(
         }
         // error-policy:J4 a transient job read counts as an unknown tick
         // inside this bounded poll; the deadline below throws with the last
-        // status.
+        // status. A Retry-After on that rejection sets the next tick's pace.
+        backoffMs = transientWakeRetryDelayMs(cause);
         return null;
       });
     if (res && !res.success) {
@@ -3903,7 +3941,13 @@ export async function waitForCloudProvisionJob(
       describeProvisioningWait(lastStatus, elapsedMs),
     );
     await new Promise((r) =>
-      setTimeout(r, Math.min(pollIntervalMs, timeoutMs - elapsedMs)),
+      setTimeout(
+        r,
+        Math.min(
+          Math.max(pollIntervalMs, backoffMs ?? 0),
+          timeoutMs - elapsedMs,
+        ),
+      ),
     );
   }
 }
@@ -4105,6 +4149,16 @@ ElizaClient.prototype.selectOrProvisionCloudAgent = async function (
   }
   requireConfirmedFreshCloudAgentCreate(mustForceCreate, created.created);
   const agentId = created.data.agentId;
+  // The provisioning-job wait and the running wait below are two halves of ONE
+  // join, so they share ONE budget. Giving each the full wake timeout let a job
+  // that finished at 5:59 hand a fresh six minutes to the status poll — the
+  // twelve-minute spinner of #18463. Each wait gets whatever is left.
+  const wakeBudgetMs =
+    typeof options.wakeTimeoutMs === "number"
+      ? options.wakeTimeoutMs
+      : CLOUD_AGENT_WAKE_TIMEOUT_MS;
+  const wakeDeadlineAt = Date.now() + wakeBudgetMs;
+  const remainingWakeMs = () => Math.max(0, wakeDeadlineAt - Date.now());
   // A 202 async create names its canonical provisioning job. Follow THAT job
   // to terminal — its row carries the real failure reason long before the
   // agent-detail poll below would time out — instead of discarding the id.
@@ -4115,9 +4169,7 @@ ElizaClient.prototype.selectOrProvisionCloudAgent = async function (
       ...(typeof options.wakePollIntervalMs === "number"
         ? { pollIntervalMs: options.wakePollIntervalMs }
         : {}),
-      ...(typeof options.wakeTimeoutMs === "number"
-        ? { timeoutMs: options.wakeTimeoutMs }
-        : {}),
+      timeoutMs: remainingWakeMs(),
       ...(onProgress ? { onProgress } : {}),
     });
   }
@@ -4154,9 +4206,7 @@ ElizaClient.prototype.selectOrProvisionCloudAgent = async function (
       ...(typeof options.wakePollIntervalMs === "number"
         ? { pollIntervalMs: options.wakePollIntervalMs }
         : {}),
-      ...(typeof options.wakeTimeoutMs === "number"
-        ? { timeoutMs: options.wakeTimeoutMs }
-        : {}),
+      timeoutMs: remainingWakeMs(),
       ...(onProgress ? { onProgress } : {}),
     });
   }

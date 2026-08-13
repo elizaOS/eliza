@@ -7,6 +7,7 @@
  * job to terminal instead of discarding its jobId. Mocked client, no live
  * cloud.
  */
+import { ElizaError } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("@capacitor/core", () => ({
@@ -424,5 +425,154 @@ describe("selectOrProvisionCloudAgent — fresh create follows its job", () => {
     expect((error as CloudAgentWakeError).jobId).toBe("job-9");
     expect((error as CloudAgentWakeError).message).toMatch(/image pull failed/);
     expect(getCloudCompatAgent).not.toHaveBeenCalled();
+  });
+});
+
+describe("CloudAgentWakeError — real typed-error identity", () => {
+  it("is an ElizaError carrying the wake code and context", async () => {
+    const client = fakeClient({
+      resumeCloudCompatAgent: vi
+        .fn()
+        .mockRejectedValue(httpError(402, { retryAfter: 30 })),
+      getCloudCompatAgent: vi.fn(),
+    });
+    const error = await waitForCloudAgentRunning(client, {
+      agentId: "agent-1",
+      ...FAST,
+    }).catch((e: unknown) => e);
+    // The class must extend the real ElizaError, not a degraded plain-Error
+    // base: `code`/`context` are what `isCloudAgentGoneError` and the error
+    // reporters read, and a fixture bundle that swapped the base would
+    // exercise a different class than production.
+    expect(error).toBeInstanceOf(ElizaError);
+    expect(error).toBeInstanceOf(CloudAgentWakeError);
+    const wake = error as CloudAgentWakeError;
+    expect(wake.code).toBe("CLOUD_AGENT_WAKE_FAILED");
+    expect(wake.context).toMatchObject({
+      phase: "resume",
+      agentId: "agent-1",
+      status: 402,
+      retryAfter: 30,
+    });
+  });
+});
+
+describe("throttled wake polls stay transient and honor Retry-After", () => {
+  it("keeps polling through a 429 status read instead of aborting the join", async () => {
+    const client = fakeClient({
+      resumeCloudCompatAgent: vi.fn(async () => ({ success: true })),
+      getCloudCompatAgent: vi
+        .fn()
+        .mockRejectedValueOnce(httpError(429, { retryAfter: 0 }))
+        .mockRejectedValueOnce(httpError(408))
+        .mockResolvedValue({ success: true, data: makeAgent() }),
+    });
+    const agent = await waitForCloudAgentRunning(client, {
+      agentId: "agent-1",
+      pollIntervalMs: 1,
+      timeoutMs: 1_000,
+    });
+    expect(agent.status).toBe("running");
+    expect(client.getCloudCompatAgent).toHaveBeenCalledTimes(3);
+  });
+
+  it("waits the Retry-After the control plane asked for before the next tick", async () => {
+    const client = fakeClient({
+      resumeCloudCompatAgent: vi.fn(async () => ({ success: true })),
+      getCloudCompatAgent: vi
+        .fn()
+        .mockRejectedValueOnce(httpError(429, { retryAfter: 0.12 }))
+        .mockResolvedValue({ success: true, data: makeAgent() }),
+    });
+    const startedAt = Date.now();
+    const agent = await waitForCloudAgentRunning(client, {
+      agentId: "agent-1",
+      pollIntervalMs: 1,
+      timeoutMs: 5_000,
+    });
+    // Re-polling on the 1ms tick would earn another 429; the loop must back off
+    // for the 120ms the backend named.
+    expect(Date.now() - startedAt).toBeGreaterThanOrEqual(100);
+    expect(agent.status).toBe("running");
+  });
+
+  it("keeps polling through a 429 job read and honors its Retry-After", async () => {
+    const client = fakeClient({
+      getCloudCompatJobStatus: vi
+        .fn()
+        .mockRejectedValueOnce(httpError(429, { data: { retry_after: 0.12 } }))
+        .mockResolvedValue({
+          success: true,
+          data: { status: "completed", state: "completed" },
+        }),
+    });
+    const startedAt = Date.now();
+    await waitForCloudProvisionJob(client, {
+      agentId: "agent-1",
+      jobId: "job-1",
+      pollIntervalMs: 1,
+      timeoutMs: 5_000,
+    });
+    expect(Date.now() - startedAt).toBeGreaterThanOrEqual(100);
+    expect(client.getCloudCompatJobStatus).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("selectOrProvisionCloudAgent — one wake budget for the whole join", () => {
+  it("spends the provisioning wait out of the same deadline as the running wait", async () => {
+    const WAKE_TIMEOUT_MS = 300;
+    const JOB_LATENCY_MS = 240;
+    const getCloudCompatAgent = vi.fn(async () => ({
+      success: true,
+      data: makeAgent({
+        agent_id: "agent-new",
+        status: "starting",
+        web_ui_url: "https://agent-new.elizacloud.ai",
+        webUiUrl: "https://agent-new.elizacloud.ai",
+      }),
+    }));
+    const client = fakeClient({
+      getCloudCompatAgents: vi.fn(async () => ({ success: true, data: [] })),
+      createCloudCompatAgent: vi.fn(async () => ({
+        success: true,
+        data: {
+          agentId: "agent-new",
+          agentName: "Eliza",
+          jobId: "job-9",
+          status: "provisioning",
+          nodeId: null,
+          message: "",
+        },
+      })),
+      getCloudCompatJobStatus: vi.fn(async () => {
+        await new Promise((r) => setTimeout(r, JOB_LATENCY_MS));
+        return {
+          success: true,
+          data: { status: "completed", state: "completed" },
+        };
+      }),
+      getCloudCompatAgent,
+      resumeCloudCompatAgent: vi.fn(async () => ({ success: true })),
+    });
+
+    const startedAt = Date.now();
+    const error = await client
+      .selectOrProvisionCloudAgent({
+        cloudApiBase: "https://api.elizacloud.ai/api/v1",
+        authToken: "test-token",
+        name: "Eliza",
+        wakePollIntervalMs: 1,
+        wakeTimeoutMs: WAKE_TIMEOUT_MS,
+      })
+      .catch((e: unknown) => e);
+    const elapsedMs = Date.now() - startedAt;
+
+    expect(error).toBeInstanceOf(CloudAgentWakeError);
+    expect((error as CloudAgentWakeError).phase).toBe("timeout");
+    // Before the shared deadline each wait got the full budget, so a job that
+    // finished just under the wire handed a fresh full timeout to the status
+    // poll — the doubled spinner of #18463.
+    expect(elapsedMs).toBeLessThan(JOB_LATENCY_MS + WAKE_TIMEOUT_MS);
+    expect(elapsedMs).toBeGreaterThanOrEqual(JOB_LATENCY_MS);
   });
 });
