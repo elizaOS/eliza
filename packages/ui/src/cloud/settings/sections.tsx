@@ -12,7 +12,7 @@
  *  - {@link CloudAccountSection}       → cloud/account-security (AccountSurface)
  *  - {@link CloudBillingSection}       → cloud/billing (BillingSectionBody + invoices route)
  *  - {@link CloudApiKeysSection}       → cloud/api-keys (ApiKeysSurface)
- *  - {@link CloudApplicationsSection}  → cloud/applications (entry → /dashboard/apps view)
+ *  - {@link CloudApplicationsSection}  → cloud/applications (entry → /cloud/apps view)
  *  - {@link CloudMonetizationSection}  → cloud/monetization (Earnings + Affiliates)
  *  - {@link CloudOrganizationSection}  → cloud/organization (OrganizationSection)
  *  - {@link CloudSecuritySection}      → cloud/account-security (SecuritySurface: sessions/privacy-DSR/audit)
@@ -56,7 +56,7 @@ export function CloudApiKeysSection(): React.JSX.Element {
 }
 
 /**
- * Applications is a standalone cloud VIEW (`/dashboard/apps`, 8-tab developer
+ * Applications is a standalone cloud VIEW (`/cloud/apps`, 8-tab developer
  * surface), not an embeddable body — so this section is an entry that opens that
  * view (CloudRouterShell serves it on the web build). The cloud route registry
  * already registers the route at import time.
@@ -65,7 +65,7 @@ function ApplicationsEntry(): React.JSX.Element {
   const t = useCloudT();
   const open = () => {
     if (typeof window !== "undefined") {
-      window.location.assign("/dashboard/apps");
+      window.location.assign("/cloud/apps");
     }
   };
   return (

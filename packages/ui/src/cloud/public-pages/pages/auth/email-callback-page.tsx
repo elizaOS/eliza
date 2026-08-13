@@ -1,7 +1,7 @@
 /**
  * Steward email magic-link callback (public). Verifies the token/email via the
  * Steward auth context, syncs the session cookie, then redirects to the stored
- * app-authorize returnTo (third-party app integration) or /dashboard.
+ * app-authorize returnTo (third-party app integration) or /cloud.
  */
 
 import { AlertTriangle, CheckCircle2, Loader2 } from "lucide-react";

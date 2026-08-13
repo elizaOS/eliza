@@ -73,12 +73,12 @@ offerings.
 
 ### Dashboard
 
-View your balance at [Dashboard → Billing](https://elizacloud.ai/dashboard/billing).
+View your balance at [Cloud → Billing](https://cloud.eliza.app/cloud/billing).
 
 ### API
 
 ```bash
-curl -X GET "https://elizacloud.ai/api/v1/credits/summary" \
+curl -X GET "https://api.eliza.app/api/v1/credits/summary" \
   -H "Authorization: Bearer YOUR_API_KEY"
 ```
 
@@ -98,13 +98,13 @@ curl -X GET "https://elizacloud.ai/api/v1/credits/summary" \
 ### Stripe Checkout
 
 ```bash
-curl -X POST "https://elizacloud.ai/api/v1/credits/checkout" \
+curl -X POST "https://api.eliza.app/api/v1/credits/checkout" \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
     "credits": 50,
-    "success_url": "https://elizacloud.ai/dashboard/billing/success",
-    "cancel_url": "https://elizacloud.ai/dashboard/billing"
+    "success_url": "https://cloud.eliza.app/cloud/billing/success",
+    "cancel_url": "https://cloud.eliza.app/cloud/billing"
   }'
 ```
 
@@ -116,7 +116,7 @@ verify the completed session with `GET /api/v1/credits/verify?session_id=...`.
 Pay with USDC via x402 protocol:
 
 ```bash
-curl -X POST "https://elizacloud.ai/api/v1/topup/10" \
+curl -X POST "https://api.eliza.app/api/v1/topup/10" \
   -H "X-PAYMENT: <x402-payment-header>"
 ```
 
@@ -129,7 +129,7 @@ signature headers, include `walletAddress` in the request body.
 Configure automatic credit refills:
 
 ```bash
-curl -X PUT "https://elizacloud.ai/api/v1/billing/settings" \
+curl -X PUT "https://api.eliza.app/api/v1/billing/settings" \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
@@ -152,7 +152,7 @@ curl -X PUT "https://elizacloud.ai/api/v1/billing/settings" \
 Track your spending via the credits summary endpoint:
 
 ```bash
-curl -X GET "https://elizacloud.ai/api/v1/credits/summary" \
+curl -X GET "https://api.eliza.app/api/v1/credits/summary" \
   -H "Authorization: Bearer YOUR_API_KEY"
 ```
 
@@ -164,7 +164,7 @@ Invoices are available in the dashboard and through the legacy invoice routes.
 They are session/account scoped.
 
 ```bash
-curl -X GET "https://elizacloud.ai/api/invoices/list" \
+curl -X GET "https://api.eliza.app/api/invoices/list" \
   -H "Authorization: Bearer YOUR_API_KEY"
 ```
 
@@ -174,12 +174,12 @@ Payment methods are managed through the Stripe checkout flow. When you create a 
 
 <Info>
   Saved payment methods and auto top-up can be configured in your [Dashboard →
-  Billing](https://elizacloud.ai/dashboard/billing) settings.
+  Billing](https://cloud.eliza.app/cloud/billing) settings.
 </Info>
 
 ## Cost Alerts
 
-Cost alerts can be configured in your [Dashboard → Billing](https://elizacloud.ai/dashboard/billing) settings. You can set:
+Cost alerts can be configured in your [Cloud → Billing](https://cloud.eliza.app/cloud/billing) settings. You can set:
 
 - **Email notifications** when balance drops below a threshold
 - **Auto top-up** to automatically add credits when balance is low

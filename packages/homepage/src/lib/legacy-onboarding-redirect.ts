@@ -4,7 +4,7 @@
  */
 
 const LEGACY_HOMEPAGE_HOSTS = new Set(["eliza.app", "www.eliza.app"]);
-const CLOUD_APP_ORIGIN = "https://app.elizacloud.ai";
+const CLOUD_APP_ORIGIN = "https://cloud.eliza.app";
 
 export function getLegacyOnboardingRedirect(location: {
   hostname: string;

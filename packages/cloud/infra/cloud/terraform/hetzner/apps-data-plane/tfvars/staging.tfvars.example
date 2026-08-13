@@ -2,8 +2,10 @@
 
 environment        = "staging"
 hcloud_location    = "fsn1"
-cloudflare_zone_id = "<zone-id-for-elizacloud.ai>"
-apps_base_domain   = "apps-staging.elizacloud.ai"
+cloudflare_zone_id = "<legacy-zone-id-for-elizacloud.ai>"
+eliza_app_zone_id  = "<canonical-zone-id-for-eliza.app>"
+legacy_apps_base_domain = "apps-staging.elizacloud.ai"
+apps_base_domain   = "apps-staging.eliza.app"
 
 # Sizing — start small for the allowlist beta.
 app_node_count       = 1
@@ -18,4 +20,4 @@ ssh_public_keys = [
 ]
 
 # cloud-api origin for this env (the on-demand-TLS ask endpoint lives under it)
-cloud_api_origin         = "https://api-staging.elizacloud.ai"
+cloud_api_origin         = "https://api-staging.eliza.app"

@@ -8,9 +8,17 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { onRequest } from "../functions/_middleware";
+import {
+  onRequest,
+  resolveCanonicalPageRedirect,
+} from "../functions/_middleware";
+import {
+  type PagesProxyEnv,
+  proxyToApiWorker,
+  resolveApiWorkerTarget,
+} from "../functions/_proxy";
 
-const ORIGIN = "https://app.elizacloud.ai";
+const ORIGIN = "https://cloud.eliza.app";
 
 // The Pages static layer bakes `public/_headers` values into next() responses;
 // the aggregated Cache-Control below is what it really produces when more than
@@ -38,7 +46,8 @@ const assetHit = () =>
 const run = (
   request: Request,
   next: (input?: Request) => Promise<Response>,
-): Promise<Response> => onRequest({ request, env: {}, next });
+  env: PagesProxyEnv = {},
+): Promise<Response> => onRequest({ request, env, next });
 
 describe("pages middleware /assets/* serving", () => {
   it("converts an asset miss (SPA fallback) into an uncacheable 404", async () => {
@@ -168,6 +177,89 @@ describe("pages middleware SPA fallback and embed surface", () => {
     expect(response.headers.get("Content-Security-Policy")).toBe(
       "frame-ancestors 'none'",
     );
+  });
+});
+
+describe("unified host migration", () => {
+  it("redirects legacy browser routes while preserving path and query", () => {
+    expect(
+      resolveCanonicalPageRedirect(
+        "https://elizacloud.ai/dashboard/billing?source=legacy",
+      ),
+    ).toBe("https://cloud.eliza.app/cloud/billing?source=legacy");
+    expect(
+      resolveCanonicalPageRedirect(
+        "https://app.elizacloud.ai/settings?tab=billing",
+      ),
+    ).toBe("https://cloud.eliza.app/settings?tab=billing");
+    expect(
+      resolveCanonicalPageRedirect("https://www.eliza.app/downloads"),
+    ).toBe("https://eliza.app/downloads");
+    expect(
+      resolveCanonicalPageRedirect(
+        "https://eliza.app/dashboard/agents?source=bookmark",
+      ),
+    ).toBe("https://cloud.eliza.app/cloud/agents?source=bookmark");
+  });
+
+  it("moves protocol paths on legacy hosts to the canonical API", () => {
+    expect(
+      resolveCanonicalPageRedirect("https://elizacloud.ai/api/v1/models"),
+    ).toBe("https://api.eliza.app/api/v1/models");
+    expect(
+      resolveCanonicalPageRedirect("https://app.elizacloud.ai/steward/session"),
+    ).toBe("https://api.eliza.app/steward/session");
+  });
+
+  it("selects canonical production and staging API upstreams by host", () => {
+    expect(
+      resolveApiWorkerTarget("https://cloud.eliza.app/api/health", {}),
+    ).toBe("https://api.eliza.app/api/health");
+    expect(
+      resolveApiWorkerTarget(
+        "https://cloud-staging.eliza.app/api/health?full=1",
+        {},
+      ),
+    ).toBe("https://api-staging.eliza.app/api/health?full=1");
+  });
+
+  it("proxies exact protocol roots and OIDC discovery through the bound API Worker", async () => {
+    const requests: Request[] = [];
+    const apiWorker = {
+      fetch: async (request: Request) => {
+        requests.push(request);
+        return new Response("bound", { status: 200 });
+      },
+    };
+    for (const path of [
+      "/api",
+      "/steward",
+      "/.well-known/openid-configuration",
+      "/.well-known/oidc/jwks.json",
+    ]) {
+      const response = await run(
+        new Request(`${ORIGIN}${path}`),
+        async () => spaFallback(),
+        { API_WORKER: apiWorker },
+      );
+      expect(response.status).toBe(200);
+      expect(await response.text()).toBe("bound");
+    }
+    expect(requests.map((request) => new URL(request.url).pathname)).toEqual([
+      "/api",
+      "/steward",
+      "/.well-known/openid-configuration",
+      "/.well-known/oidc/jwks.json",
+    ]);
+  });
+
+  it("fails closed when the deployed API service binding is missing", async () => {
+    const response = await proxyToApiWorker({
+      request: new Request(`${ORIGIN}/api/health`),
+      env: {},
+    });
+    expect(response.status).toBe(503);
+    expect(response.headers.get("Cache-Control")).toBe("no-store");
   });
 });
 

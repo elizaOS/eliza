@@ -2018,7 +2018,7 @@ function androidSmsGatewayBuildConfigFieldLines() {
     `        buildConfigField "boolean", "ELIZA_ANDROID_LP3_COLOR_POLICY_ENABLED", "\${['1', 'true', 'yes'].contains((System.getenv('ELIZA_ANDROID_LP3_COLOR_POLICY_ENABLED') ?: 'false').toLowerCase())}"`,
     `        buildConfigField "boolean", "ELIZA_ANDROID_SMS_GATEWAY_ENABLED", "\${['1', 'true', 'yes'].contains((System.getenv('ELIZA_ANDROID_SMS_GATEWAY_ENABLED') ?: 'false').toLowerCase())}"`,
     `        buildConfigField "String", "ELIZA_ANDROID_SMS_GATEWAY_SECRET", "\\"${escapeJavaString(process.env.ELIZA_ANDROID_SMS_GATEWAY_SECRET ?? "")}\\""`,
-    `        buildConfigField "String", "ELIZA_ANDROID_SMS_GATEWAY_WEBHOOK_URL", "\\"${escapeJavaString(process.env.ELIZA_ANDROID_SMS_GATEWAY_WEBHOOK_URL ?? "https://api.elizacloud.ai/api/webhooks/blooio/local?bridge=bluebubbles")}\\""`,
+    `        buildConfigField "String", "ELIZA_ANDROID_SMS_GATEWAY_WEBHOOK_URL", "\\"${escapeJavaString(process.env.ELIZA_ANDROID_SMS_GATEWAY_WEBHOOK_URL ?? "https://api.eliza.app/api/webhooks/blooio/local?bridge=bluebubbles")}\\""`,
     `        buildConfigField "String", "ELIZA_ANDROID_SMS_GATEWAY_PHONE_NUMBER", "\\"${escapeJavaString(process.env.ELIZA_ANDROID_SMS_GATEWAY_PHONE_NUMBER ?? "+14159611510")}\\""`,
     `        buildConfigField "String", "ELIZA_ANDROID_SMS_GATEWAY_PHONE_LABEL", "\\"${escapeJavaString(process.env.ELIZA_ANDROID_SMS_GATEWAY_PHONE_LABEL ?? "Eliza Cloud Gateway (+14159611510)")}\\""`,
   ];
@@ -6903,7 +6903,7 @@ function resolveAndroidSmsGatewayEnvDefaults(env) {
       env.ELIZA_ANDROID_SMS_GATEWAY_ENABLED ?? "true",
     ELIZA_ANDROID_SMS_GATEWAY_WEBHOOK_URL:
       env.ELIZA_ANDROID_SMS_GATEWAY_WEBHOOK_URL ??
-      "https://api.elizacloud.ai/api/webhooks/blooio/local?bridge=bluebubbles",
+      "https://api.eliza.app/api/webhooks/blooio/local?bridge=bluebubbles",
     ELIZA_ANDROID_SMS_GATEWAY_PHONE_NUMBER:
       env.ELIZA_ANDROID_SMS_GATEWAY_PHONE_NUMBER ?? "+14159611510",
     ELIZA_ANDROID_SMS_GATEWAY_PHONE_LABEL:

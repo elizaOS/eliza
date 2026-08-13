@@ -101,7 +101,7 @@ class AppPromotionAssetsService {
       const response = await Promise.race([
         safeFetch(safeUrl.toString(), {
           headers: {
-            "User-Agent": "Mozilla/5.0 (compatible; ElizaCloudBot/1.0; +https://www.elizacloud.ai)",
+            "User-Agent": "Mozilla/5.0 (compatible; ElizaBot/1.0; +https://eliza.app)",
             Accept: "text/html",
           },
           redirect: "error",

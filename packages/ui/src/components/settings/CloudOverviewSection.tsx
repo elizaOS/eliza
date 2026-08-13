@@ -20,6 +20,7 @@ import { useCallback } from "react";
 import { useAgentElement } from "../../agent-surface";
 import { useAppSelectorShallow } from "../../state";
 import { claimCloudLoginWindow } from "../../state/cloud-login-launch";
+import { shellHistory } from "../../surface-realm-channel";
 import { Button } from "../ui/button";
 import { CloudAgentsSection } from "./CloudAgentsSection";
 import { SettingsGroup, SettingsRow, SettingsStack } from "./settings-layout";
@@ -104,13 +105,22 @@ export function CloudOverviewSection() {
     });
   }, [handleCloudSignOut, setActionNotice]);
 
+  const handleOpenCloud = useCallback(() => {
+    shellHistory.pushState(null, "", "/cloud");
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  }, []);
+
   const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
     id: "cloud-connect",
     role: "button",
     label: elizaCloudConnected ? "Open Eliza Cloud" : "Connect Eliza Cloud",
     group: "cloud",
     status: elizaCloudConnected ? "connected" : "available",
-    onActivate: elizaCloudLoginBusy ? undefined : handleConnect,
+    onActivate: elizaCloudLoginBusy
+      ? undefined
+      : elizaCloudConnected
+        ? handleOpenCloud
+        : handleConnect,
   });
 
   return (
@@ -127,7 +137,7 @@ export function CloudOverviewSection() {
           <Button
             ref={ref}
             size="sm"
-            onClick={handleConnect}
+            onClick={elizaCloudConnected ? handleOpenCloud : handleConnect}
             disabled={elizaCloudLoginBusy}
             {...agentProps}
           >
@@ -138,7 +148,7 @@ export function CloudOverviewSection() {
                 })
               : elizaCloudConnected
                 ? t("settings.cloudOverview.connectedCta", {
-                    defaultValue: "Cloud connected",
+                    defaultValue: "Open Cloud management",
                   })
                 : t("settings.cloudOverview.connectCta", {
                     defaultValue: "Connect Cloud",

@@ -123,7 +123,7 @@ in cloud mode instead of minting VPN credentials directly. The plugin calls
 `tailscale serve` locally. The route requires a Cloud user/API key with an
 active organization, charges org credits once using `TUNNEL_AUTH_KEY_COST_USD`,
 refunds on Headscale mint failure, forces `tag:eliza-tunnel`, and returns a
-generated `eliza-<org>-<random>-<expiry>-<signature>.tunnel.elizacloud.ai`
+generated `eliza-<org>-<random>-<expiry>-<signature>.tunnel.eliza.app`
 hostname. This is pay-as-needed infrastructure usage, not subscription SaaS. In
 production the hostname includes an expiry and HMAC suffix, so the Railway
 proxy only forwards unexpired hostnames minted by the Cloud Worker.
@@ -140,6 +140,6 @@ Prefer these implementation surfaces:
 - `packages/cloud/api/v1/apis/tunnels/tailscale/auth-key/route.ts`
 - `packages/cloud/api/v1/apps/[id]/charges/route.ts`
 - `packages/cloud/api/v1/x402/requests/route.ts`
-- `packages/cloud-frontend/src/dashboard/apps/_components/app-monetization-settings.tsx`
-- `packages/cloud-frontend/src/dashboard/apps/_components/app-earnings-dashboard.tsx`
+- `packages/ui/src/cloud/applications/components/app-monetization-settings.tsx`
+- `packages/ui/src/cloud/applications/components/app-earnings-dashboard.tsx`
 - `packages/cloud-frontend/src/pages/login/` (app-auth OAuth is served by the cloud-frontend, not a `/api` route)

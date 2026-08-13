@@ -17,8 +17,8 @@ Terraform roots for the Eliza Cloud edge and control plane. Active roots are
 See [`../RAILWAY.md`](../RAILWAY.md) for the canonical
 service/runtime/request-path map. Short version:
 
-- Frontends → Cloudflare Pages: `eliza-cloud` (apex) + `eliza-app`
-  (`app.elizacloud.ai`), both built from `packages/app`.
+- Frontend → one `eliza-app` Cloudflare Pages project serving `eliza.app` and
+  `cloud.eliza.app`, built from `packages/app` with the homepage embedded.
 - `eliza-cloud-api` → one Cloudflare Worker (REST API, auth, billing, model
   gateway, dedicated-agent proxy, batch voice routes).
 - `gateway-discord`, `gateway-webhook`, `voice-kokoro-tts`,
@@ -39,8 +39,8 @@ service/runtime/request-path map. Short version:
 - `gcp/` — partial GKE / foundation modules, not currently wired to CI. Keep
   for future GCP experimentation.
 - `hetzner/` — active control-plane, shared-app, and data-plane roots.
-- `cloudflare/pages-domains/` — active environment-scoped Pages custom-domain,
-  DNS, and certificate bindings for the console and app projects.
+- `cloudflare/pages-domains/` — canonical/legacy DNS, Pages custom-domain, and
+  dedicated-agent certificate bindings for the single frontend project.
 
 Wrangler still owns Cloudflare Worker routes and Pages deployments; the
 Cloudflare Terraform root owns only the stable public edge bindings.

@@ -1,5 +1,5 @@
 /**
- * "My Agent" page (`/dashboard/my-agents`) — the character library + agent
+ * "My Agent" page (`/cloud/my-agents`) — the character library + agent
  * console.
  */
 

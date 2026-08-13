@@ -2,8 +2,10 @@
 
 environment        = "production"
 hcloud_location    = "fsn1"
-cloudflare_zone_id = "<zone-id-for-elizacloud.ai>"
-apps_base_domain   = "apps.elizacloud.ai"
+cloudflare_zone_id = "<legacy-zone-id-for-elizacloud.ai>"
+eliza_app_zone_id  = "<canonical-zone-id-for-eliza.app>"
+legacy_apps_base_domain = "apps.elizacloud.ai"
+apps_base_domain   = "apps.eliza.app"
 
 app_node_count       = 2 # behind a load balancer (see main.tf STAN note)
 app_node_server_type = "ccx23"
@@ -16,4 +18,4 @@ ssh_public_keys = [
 ]
 
 # cloud-api origin for this env (the on-demand-TLS ask endpoint lives under it)
-cloud_api_origin         = "https://api.elizacloud.ai"
+cloud_api_origin         = "https://api.eliza.app"

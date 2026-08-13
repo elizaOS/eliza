@@ -60,6 +60,8 @@ app.post("/", rateLimit(RateLimitPresets.STRICT), async (c) => {
       "http://localhost:4455",
       "https://elizaos.ai",
       "https://www.elizaos.ai",
+      "https://os.eliza.app",
+      // Transitional legacy storefront origin.
       "https://os.elizacloud.ai",
       "https://eliza.ai",
       "https://www.eliza.ai",
@@ -219,12 +221,12 @@ app.post("/", rateLimit(RateLimitPresets.STRICT), async (c) => {
 
     const successUrl = hardwareSku
       ? `${baseUrl}/checkout/success?session_id={CHECKOUT_SESSION_ID}&sku=${hardwareSku}`
-      : `${baseUrl}/dashboard/billing/success?session_id={CHECKOUT_SESSION_ID}&from=${returnUrl}`;
+      : `${baseUrl}/cloud/billing/success?session_id={CHECKOUT_SESSION_ID}&from=${returnUrl}`;
     const cancelUrl = hardwareSku
       ? `${baseUrl}/checkout/cancel?sku=${hardwareSku}`
       : returnUrl === "settings"
-        ? `${baseUrl}/dashboard/settings?tab=billing`
-        : `${baseUrl}/dashboard/billing?canceled=true`;
+        ? `${baseUrl}/cloud/settings?tab=billing`
+        : `${baseUrl}/cloud/billing?canceled=true`;
 
     const session = await requireStripe().checkout.sessions.create({
       customer: customerId,

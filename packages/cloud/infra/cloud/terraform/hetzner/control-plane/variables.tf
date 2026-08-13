@@ -55,7 +55,12 @@ variable "ssh_public_keys" {
 }
 
 variable "cloudflare_zone_id" {
-  description = "Cloudflare zone for the elizacloud.ai domain — used to point control-plane DNS at the VM."
+  description = "Legacy Cloudflare zone for elizacloud.ai. Existing DNS records stay here during the redirect/compatibility window."
+  type        = string
+}
+
+variable "eliza_app_zone_id" {
+  description = "Canonical Cloudflare zone for eliza.app — used for control-plane and headscale DNS."
   type        = string
 }
 
@@ -73,7 +78,7 @@ variable "data_plane_subnet_cidr" {
 }
 
 variable "control_plane_hostname_prefix" {
-  description = "DNS subdomain prefix. Final record: <prefix>-<environment>-<n>.elizacloud.ai (e.g. eliza-production-1.elizacloud.ai)"
+  description = "DNS subdomain prefix. Canonical record: <prefix>-<environment>-<n>.eliza.app (e.g. eliza-production-1.eliza.app)."
   type        = string
   default     = "eliza"
 }
@@ -84,18 +89,27 @@ variable "control_plane_hostname_prefix" {
 # their tailscale `--login-server`, so it must NOT follow the per-VM-index
 # `eliza-<env>-N` naming (that changes on a CP rebuild). The convention is also
 # NOT a simple `headscale-<environment>` because prod drops the suffix:
-#   - production → headscale.elizacloud.ai
-#   - staging    → headscale-staging.elizacloud.ai
+#   - production → headscale.eliza.app
+#   - staging    → headscale-staging.eliza.app
 # so it's an explicit variable rather than derived from var.environment. This
 # record points at the CP's public ipv4 with proxied=false (Let's Encrypt
 # HTTP-01 on the box needs to terminate TLS itself for the headscale TS2021/
 # noise protocol — a proxied CF record would break the Upgrade handshake).
 variable "headscale_hostname" {
-  description = "Public FQDN for the headscale coordination server on this env's CP (prod: headscale.elizacloud.ai, staging: headscale-staging.elizacloud.ai). Must match HEADSCALE_PUBLIC_URL in the arm-headscale-control-plane workflow and the nginx vhost / LE cert that script provisions."
+  description = "Legacy headscale FQDN retained during migration (prod: headscale.elizacloud.ai, staging: headscale-staging.elizacloud.ai)."
   type        = string
   validation {
     condition     = endswith(var.headscale_hostname, ".elizacloud.ai")
     error_message = "headscale_hostname must be a subdomain of elizacloud.ai (the zone this module manages)"
+  }
+}
+
+variable "canonical_headscale_hostname" {
+  description = "Canonical public FQDN for headscale (prod: headscale.eliza.app, staging: headscale-staging.eliza.app). Must match HEADSCALE_PUBLIC_URL."
+  type        = string
+  validation {
+    condition     = endswith(var.canonical_headscale_hostname, ".eliza.app")
+    error_message = "canonical_headscale_hostname must be a subdomain of eliza.app"
   }
 }
 

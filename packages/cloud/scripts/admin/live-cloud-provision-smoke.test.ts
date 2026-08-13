@@ -15,7 +15,7 @@ import {
 
 type JsonObject = Record<string, unknown>;
 
-const BASE_URL = "https://api-staging.elizacloud.ai";
+const BASE_URL = "https://api-staging.eliza.app";
 const SUFFIX = "run12345";
 const AGENT_ID = "agent-shared-123";
 const AGENT_NAME = `shared-staging-smoke-${SUFFIX}`;
@@ -329,13 +329,13 @@ describe("shared staging onboarding smoke", () => {
   test("accepts only the exact api-staging origin", () => {
     expect(isExactSharedSmokeStagingOrigin(BASE_URL)).toBe(true);
     for (const refused of [
-      "https://api.elizacloud.ai",
-      "http://api-staging.elizacloud.ai",
-      "https://api-staging.elizacloud.ai/",
-      "https://api-staging.elizacloud.ai/api",
-      "https://api-staging.elizacloud.ai?target=prod",
-      "https://user@api-staging.elizacloud.ai",
-      "https://api-staging.elizacloud.ai.evil.test",
+      "https://api.eliza.app",
+      "http://api-staging.eliza.app",
+      "https://api-staging.eliza.app/",
+      "https://api-staging.eliza.app/api",
+      "https://api-staging.eliza.app?target=prod",
+      "https://user@api-staging.eliza.app",
+      "https://api-staging.eliza.app.evil.test",
     ]) {
       expect(isExactSharedSmokeStagingOrigin(refused), refused).toBe(false);
     }
@@ -437,7 +437,7 @@ describe("shared staging onboarding smoke", () => {
     const production = makeHarness();
     const productionEvidence = await runSharedStagingOnboardingSmoke({
       ...production.options,
-      baseUrl: "https://api.elizacloud.ai",
+      baseUrl: "https://api.eliza.app",
     });
     expect(productionEvidence.failure).toEqual({
       phase: "config",

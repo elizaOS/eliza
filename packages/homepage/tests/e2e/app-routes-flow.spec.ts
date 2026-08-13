@@ -31,7 +31,7 @@ const mockUser = {
 async function installHomepageApiMocks(page: Page) {
   let linkedPhone: string | null = null;
 
-  await page.route("https://elizacloud.ai/api/eliza-app/**/chat", (route) =>
+  await page.route("https://api.eliza.app/api/eliza-app/**/chat", (route) =>
     route.fulfill({
       json: {
         messages: [
@@ -46,7 +46,7 @@ async function installHomepageApiMocks(page: Page) {
     }),
   );
 
-  await page.route("https://elizacloud.ai/api/eliza-app/**", (route) => {
+  await page.route("https://api.eliza.app/api/eliza-app/**", (route) => {
     const url = new URL(route.request().url());
     const path = url.pathname;
 

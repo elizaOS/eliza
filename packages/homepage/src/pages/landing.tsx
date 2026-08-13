@@ -47,9 +47,11 @@ type DemoStep =
   | { kind: "user"; text: string }
   | { kind: "card"; card: DemoCard };
 
-type DemoItem =
-  | { id: number; from: "eliza" | "user"; kind: "text"; text: string }
-  | { id: number; from: "eliza"; kind: "card"; card: DemoCard };
+type DemoItemInput =
+  | { from: "eliza" | "user"; kind: "text"; text: string }
+  | { from: "eliza"; kind: "card"; card: DemoCard };
+
+type DemoItem = DemoItemInput & { id: number };
 
 const DEMO_INTRO: DemoStep[] = [
   { kind: "eliza", text: "Hey, it's Eliza — your new assistant." },
@@ -231,12 +233,12 @@ function PhoneMockup() {
     let cancelled = false;
     const sleep = (ms: number) =>
       new Promise<void>((resolve) => setTimeout(resolve, ms));
-    const append = (item: Omit<DemoItem, "id">) => {
+    const append = (item: DemoItemInput) => {
       const id = nextIdRef.current;
       nextIdRef.current += 1;
       setItems((prev) => [
         ...prev.slice(-(MAX_RENDERED_ITEMS - 1)),
-        { ...item, id } as DemoItem,
+        { ...item, id },
       ]);
     };
 
@@ -458,7 +460,7 @@ const KEYBOARD_ROWS = ["qwertyuiop", "asdfghjkl", "zxcvbnm"] as const;
 function DemoKeyboard({ composerText }: { composerText: string }) {
   const open = composerText !== "";
   const lastChar = composerText.slice(-1).toLowerCase();
-  const lastWord = composerText.split(/\s+/).at(-1) ?? "";
+  const lastWord = composerText.split(/\s+/).pop() ?? "";
   return (
     <div className="landing-keyboard" data-open={open}>
       <div className="landing-keyboard-inner">
@@ -579,7 +581,7 @@ export default function LandingPage() {
             defaultValue: "Eliza",
           })}
         >
-          Eliza
+          <img src="/eliza-logotext.svg" alt="Eliza" />
         </a>
         <a
           className="landing-cta landing-cta--white landing-header-cta"

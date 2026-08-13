@@ -1,22 +1,28 @@
-// Same-origin reverse proxy for the hosted-web Eliza app.
-//
-// `packages/app` is deployed to BOTH Cloudflare Pages projects: the
-// `elizacloud.ai` apex (`eliza-cloud`, the cloud console origin) and the
-// `app.elizacloud.ai` subdomain (`eliza-app`, the agent app). On both, the
+/**
+ * Same-origin reverse proxy for the unified Eliza web artifact.
+ *
+ * The same Pages deployment serves eliza.app and cloud.eliza.app. Browser
+ * requests stay same-origin while this function forwards protocol paths to
+ * the canonical API Worker, preserving host-only Steward cookies.
+ */
+import {
+  ELIZA_DOMAIN_CONTRACTS,
+  elizaCloudEnvironmentForHostname,
+} from "@elizaos/shared/elizacloud/domain-contract";
+
+// On every frontend host, the
 // browser talks to the Cloud API over same-origin `/api/*` and `/steward/*`
 // paths. This module forwards those paths to the Workers API so the Steward
 // cookie/JWT stays first-party and no CORS preflight is needed.
-//
-// packages/cloud-frontend (which previously served the apex) has been deleted;
-// the apex now serves this same proxy (see DECISIONS.md D6). Do NOT diverge the
-// upstream selection logic — the CORS/redirect/cookie allowlists on the backend
-// assume this apex origin and the `api.elizacloud.ai` upstream.
 
-const DEFAULT_UPSTREAM = "https://api.elizacloud.ai";
-const PREVIEW_UPSTREAM = "https://api-staging.elizacloud.ai";
+const DEFAULT_UPSTREAM = ELIZA_DOMAIN_CONTRACTS.production.cloudApiOrigin;
+const PREVIEW_UPSTREAM = ELIZA_DOMAIN_CONTRACTS.staging.cloudApiOrigin;
 
 export interface PagesProxyEnv {
   API_UPSTREAM?: string;
+  API_WORKER?: {
+    fetch(request: Request): Promise<Response>;
+  };
 }
 
 export interface PagesProxyContext {
@@ -29,9 +35,11 @@ export function resolveApiWorkerTarget(
   env: PagesProxyEnv,
 ): string {
   const incoming = new URL(requestUrl);
-  const fallbackUpstream = incoming.hostname.endsWith(".pages.dev")
-    ? PREVIEW_UPSTREAM
-    : DEFAULT_UPSTREAM;
+  const environment = elizaCloudEnvironmentForHostname(incoming.hostname);
+  const fallbackUpstream =
+    incoming.hostname.endsWith(".pages.dev") || environment === "staging"
+      ? PREVIEW_UPSTREAM
+      : DEFAULT_UPSTREAM;
   const upstream = (env.API_UPSTREAM ?? fallbackUpstream).replace(/\/+$/, "");
 
   return `${upstream}${incoming.pathname}${incoming.search}`;
@@ -43,15 +51,28 @@ export function proxyToApiWorker(
   const target = resolveApiWorkerTarget(context.request.url, context.env);
   const method = context.request.method.toUpperCase();
 
-  return fetch(
-    new Request(target, {
-      method,
-      headers: context.request.headers,
-      body:
-        method === "GET" || method === "HEAD"
-          ? undefined
-          : context.request.body,
-      redirect: "manual",
-    }),
-  );
+  const upstreamRequest = new Request(target, {
+    method,
+    headers: context.request.headers,
+    body:
+      method === "GET" || method === "HEAD" ? undefined : context.request.body,
+    redirect: "manual",
+  });
+
+  // A Pages Function and an API Worker on routes in the same Cloudflare zone
+  // cannot call each other through global fetch: the route is bypassed and
+  // Cloudflare attempts to resolve an origin, producing 1016. The service
+  // binding is therefore a required production invariant, not an optimization.
+  if (!context.env.API_WORKER) {
+    return Promise.resolve(
+      new Response("Cloud API binding unavailable", {
+        status: 503,
+        headers: {
+          "Cache-Control": "no-store",
+          "Content-Type": "text/plain; charset=utf-8",
+        },
+      }),
+    );
+  }
+  return context.env.API_WORKER.fetch(upstreamRequest);
 }

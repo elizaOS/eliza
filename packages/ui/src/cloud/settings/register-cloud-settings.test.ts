@@ -4,11 +4,9 @@
 /**
  * `registerCloudSettingsSections` populates the shared settings-section
  * registry: the Cloud group lands between System and Security and Developer
- * between Cloud and Security, the MVP IA keeps every sub-section (account,
- * billing, organization, developer, security additions) registered but gated
- * behind developer mode — the single "Eliza Cloud" overview tab is the one
- * plain-user Cloud surface — and the cloud Security additions merge into the
- * security group with non-colliding ids.
+ * between Cloud and Security, every account/management/security section is
+ * visible for a managed Cloud runtime, and the Cloud security additions merge
+ * into the security group with non-colliding ids.
  */
 
 import { beforeAll, describe, expect, it } from "vitest";
@@ -63,30 +61,26 @@ describe("register-cloud-settings", () => {
     expect(developer?.order).toBeLessThan(2);
   });
 
-  it("registers every Cloud-group section with group=cloud, gated behind developer mode for MVP", () => {
+  it("registers every Cloud-group section as a managed-runtime surface", () => {
     const byId = new Map(listSettingsSections().map((s) => [s.id, s]));
     for (const id of CLOUD_SECTION_IDS) {
       const section = byId.get(id);
       expect(section, `missing section ${id}`).toBeDefined();
       expect(section?.group).toBe(CLOUD_SETTINGS_GROUP_ID);
       expect(section?.Component).toBeTypeOf("function");
-      // MVP settings IA: the single "Eliza Cloud" overview tab is the one Cloud
-      // surface a plain user sees; Account / Billing / Organization stay
-      // registered (deep-links resolve) but hidden behind the developer gate.
-      expect(section?.developerOnly).toBe(true);
+      expect(section?.developerOnly).not.toBe(true);
+      expect(section?.cloudOnly).toBe(true);
     }
   });
 
-  it("hides the developer cloud sections from a plain user via the developer view gate", () => {
+  it("promotes API, applications, and monetization for managed runtimes", () => {
     const byId = new Map(listSettingsSections().map((s) => [s.id, s]));
     for (const id of DEVELOPER_SECTION_IDS) {
       const section = byId.get(id);
       expect(section, `missing section ${id}`).toBeDefined();
       expect(section?.group).toBe(DEVELOPER_SETTINGS_GROUP_ID);
-      // viewKind "developer" is the gate input the SettingsView reads to hide
-      // these from a non-developer USER role (dev builds default the toggle on;
-      // prod defaults it off).
-      expect(section?.viewKind).toBe("developer");
+      expect(section?.viewKind).toBe("release");
+      expect(section?.cloudOnly).toBe(true);
       expect(section?.Component).toBeTypeOf("function");
     }
   });
@@ -97,6 +91,7 @@ describe("register-cloud-settings", () => {
       const section = byId.get(id);
       expect(section, `missing section ${id}`).toBeDefined();
       expect(section?.group).toBe("security");
+      expect(section?.cloudOnly).toBe(true);
     }
     // The built-in local Security + Permissions sections must NOT be overridden.
     expect(byId.get("cloud-security")?.id).not.toBe("security");

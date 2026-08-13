@@ -48,7 +48,7 @@ export interface NodeBootstrapInput {
   prePullImages?: string[];
   /** Optional Docker image platform used for pre-pulls. */
   prePullPlatform?: string;
-  /** Default capacity advertised at registration. */
+  /** Explicit operator capacity advertised at registration. Omitted when absent. */
   capacity?: number;
 }
 
@@ -58,7 +58,13 @@ export interface NodeBootstrapInput {
  */
 export function buildContainerNodeUserData(input: NodeBootstrapInput): string {
   const network = containersEnv.dockerNetwork();
-  const capacity = input.capacity ?? 8;
+  if (
+    input.capacity !== undefined &&
+    (!Number.isSafeInteger(input.capacity) || input.capacity < 1 || input.capacity > 64)
+  ) {
+    throw new Error("[node-bootstrap] capacity must be a safe integer between 1 and 64");
+  }
+  const capacityField = input.capacity === undefined ? "" : `"capacity":${input.capacity},`;
   const prePull = input.prePullImages ?? [containersEnv.defaultAgentImage()];
   const prePullPlatform = input.prePullPlatform ?? containersEnv.defaultAgentImagePlatform();
   if (prePullPlatform) validateDockerPlatform(prePullPlatform);
@@ -129,13 +135,14 @@ export function buildContainerNodeUserData(input: NodeBootstrapInput): string {
     VCPU_COUNT=$(nproc 2>/dev/null)
     MEM_FIELD=""
     CPU_FIELD=""
+    CAPACITY_FIELD='${capacityField}'
     if [ -n "$VCPU_COUNT" ] && [ "$VCPU_COUNT" -gt 0 ] 2>/dev/null; then
       CPU_FIELD=$(printf '"vCpuCount":%d,' "$VCPU_COUNT")
     fi
     if [ -n "$MEM_TOTAL_MB" ] && [ "$MEM_TOTAL_MB" -gt 0 ] 2>/dev/null; then
       MEM_FIELD=$(printf '"memTotalMb":%d,' "$MEM_TOTAL_MB")
     fi
-    PAYLOAD=$(printf '{"nodeId":"%s","hostname":"%s","capacity":%d,%s%s"sshPort":22,"sshUser":"root","hostKeyFingerprint":"%s"}' '${nodeId}' "$PUBLIC_IP" ${capacity} "$MEM_FIELD" "$CPU_FIELD" "$HOST_KEY_FINGERPRINT")
+    PAYLOAD=$(printf '{"nodeId":"%s","hostname":"%s",%s%s%s"sshPort":22,"sshUser":"root","hostKeyFingerprint":"%s"}' '${nodeId}' "$PUBLIC_IP" "$CAPACITY_FIELD" "$MEM_FIELD" "$CPU_FIELD" "$HOST_KEY_FINGERPRINT")
     curl -fsS -X POST '${registerUrl}' \\
       -H 'Content-Type: application/json' \\
       ${registerSecret ? `-H 'X-Bootstrap-Secret: ${registerSecret}'` : ""} \\

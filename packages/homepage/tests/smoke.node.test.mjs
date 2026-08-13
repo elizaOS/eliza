@@ -13,11 +13,13 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const packageJsonPath = resolve(__dirname, "../package.json");
-const indexHtmlPath = resolve(__dirname, "../index.html");
-const pruneAssetsPath = resolve(
+const appPackageJsonPath = resolve(__dirname, "../../app/package.json");
+const appViteConfigPath = resolve(__dirname, "../../app/vite.config.ts");
+const appAssetSyncPath = resolve(
   __dirname,
-  "../scripts/prune-unused-static-assets.mjs",
+  "../../app/scripts/sync-homepage-assets.mjs",
 );
+const indexHtmlPath = resolve(__dirname, "../index.html");
 const landingPath = resolve(__dirname, "../src/pages/landing.tsx");
 const visualRegressionSpecPath = resolve(__dirname, "./e2e/visual.spec.ts");
 const cloudApiClientPath = resolve(__dirname, "../src/lib/api/client.ts");
@@ -63,7 +65,9 @@ test("landing ships its canonical profile assets", () => {
 
 test("landing stays a static surface with no animation-framework dependencies", () => {
   const packageJson = JSON.parse(readFileSync(packageJsonPath, "utf8"));
-  const pruneAssets = readFileSync(pruneAssetsPath, "utf8");
+  const appPackageJson = JSON.parse(readFileSync(appPackageJsonPath, "utf8"));
+  const appViteConfig = readFileSync(appViteConfigPath, "utf8");
+  const appAssetSync = readFileSync(appAssetSyncPath, "utf8");
   const landing = readFileSync(landingPath, "utf8");
 
   for (const dependency of [
@@ -84,8 +88,12 @@ test("landing stays a static surface with no animation-framework dependencies", 
     /const ShaderBackground = lazy\(/,
     "the shader background must stay behind a lazy boundary",
   );
-  assert.match(packageJson.scripts.postbuild, /prune-unused-static-assets/);
-  assert.match(pruneAssets, /"brand\/background", "product"/);
+  for (const script of ["dev", "build", "preview", "deploy:production"]) {
+    assert.equal(packageJson.scripts[script], undefined);
+  }
+  assert.match(appPackageJson.scripts.prebuild, /sync-homepage-assets/);
+  assert.match(appViteConfig, /find:\s*\/\^@homepage\\\//);
+  assert.match(appAssetSync, /\.\.\/homepage\/public/);
 });
 
 test("visual regression compares the quality-validated capture itself", () => {
@@ -99,8 +107,8 @@ test("visual regression compares the quality-validated capture itself", () => {
 });
 
 test("cloud API defaults, the e2e server, and route mocks use the apex origin", () => {
-  const apexOrigin = "https://elizacloud.ai";
-  const redirectedOrigin = "https://www.elizacloud.ai";
+  const apexOrigin = "https://api.eliza.app";
+  const redirectedOrigin = "https://elizacloud.ai";
   const client = readFileSync(cloudApiClientPath, "utf8");
   const launcher = readFileSync(playwrightLauncherPath, "utf8");
 

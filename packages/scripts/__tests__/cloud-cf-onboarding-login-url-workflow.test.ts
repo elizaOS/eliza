@@ -16,8 +16,8 @@ describe("staging onboarding login URL deployment", () => {
     expect(wrangler).toContain(
       'ELIZA_ONBOARDING_LOGIN_APP_URL = "https://eliza.app"',
     );
-    expect(wrangler).toContain("canonical deploy-homepage.yml workflow");
-    expect(wrangler).not.toContain("deploy-homepage-staging.yml");
+    expect(wrangler).toContain("host-aware eliza-app Pages artifact");
+    expect(wrangler).not.toContain("deploy-homepage.yml");
   });
 
   test("retires both legacy secret aliases immediately before staging deploy", () => {

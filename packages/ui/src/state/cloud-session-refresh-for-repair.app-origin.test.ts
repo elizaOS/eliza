@@ -1,9 +1,9 @@
 /**
  * @vitest-environment jsdom
- * @vitest-environment-options {"url":"https://app-staging.elizacloud.ai/apps"}
+ * @vitest-environment-options {"url":"https://cloud-staging.eliza.app/apps"}
  *
  * Exercises app-origin Cloud session repair through the real cookie probe,
- * token store, and staging API endpoint resolver with an HTTP-bound refresh
+ * token store, and same-origin Pages endpoint with an HTTP-bound refresh
  * double.
  */
 import {
@@ -39,18 +39,16 @@ function writeTestCookie(value: string): void {
 describe("app-origin Cloud session repair", () => {
   beforeEach(() => {
     localStorage.clear();
-    writeTestCookie(`${STAGING_AUTHED_COOKIE}=1; Domain=elizacloud.ai; Path=/`);
+    writeTestCookie(`${STAGING_AUTHED_COOKIE}=1; Path=/`);
   });
 
   afterEach(() => {
-    writeTestCookie(
-      `${STAGING_AUTHED_COOKIE}=; Max-Age=0; Domain=elizacloud.ai; Path=/`,
-    );
+    writeTestCookie(`${STAGING_AUTHED_COOKIE}=; Max-Age=0; Path=/`);
     localStorage.clear();
     vi.unstubAllGlobals();
   });
 
-  it("recovers an empty app-origin token mirror from the shared staging Cloud cookie", async () => {
+  it("recovers an empty app-origin token mirror from the host-only staging cookie", async () => {
     const fetchMock = vi.fn(async () =>
       Response.json({ token: "recovered-staging-token", expiresIn: 900 }),
     );
@@ -64,7 +62,7 @@ describe("app-origin Cloud session repair", () => {
     );
 
     expect(fetchMock).toHaveBeenCalledWith(
-      "https://api-staging.elizacloud.ai/api/auth/steward-refresh",
+      "https://cloud-staging.eliza.app/api/auth/steward-refresh",
       {
         method: "POST",
         credentials: "include",

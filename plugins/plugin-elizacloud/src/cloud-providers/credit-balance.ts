@@ -6,7 +6,7 @@ import type { CloudAuthService } from "../services/cloud-auth";
 import type { CreditBalanceResponse } from "../types/cloud";
 import { getCachedAccountSnapshot } from "./cloud-account";
 
-const TOP_UP_URL = "https://www.elizacloud.ai/dashboard/settings?tab=billing";
+const TOP_UP_URL = "https://cloud.eliza.app/cloud/billing";
 const creditCaches = new WeakMap<IAgentRuntime, { value: number; at: number }>();
 const TTL = 60_000;
 const MAX_CREDIT_TEXT_CHARS = 240;

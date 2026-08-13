@@ -218,7 +218,6 @@
     "packages/cloud/sdk",
     "packages/cloud/shared",
     "packages/cloud/services/*",
-    "packages/cloud/docs-redirect",
     "plugins/*",
     "packages/native/*",
     "packages/cloud/test-mocks",
