@@ -176,6 +176,13 @@ function isTextBackedContentType(contentType: string): boolean {
   );
 }
 
+function hasTextBackedFilename(filename: string): boolean {
+  const lowerFilename = filename.toLowerCase();
+  return [".md", ".mdx", ".txt", ".json", ".xml", ".csv", ".tsv"].some(
+    (extension) => lowerFilename.endsWith(extension),
+  );
+}
+
 function getOwnerEntityId(runtime: AgentRuntime | null): UUID | undefined {
   if (!runtime || typeof runtime.getSetting !== "function") return undefined;
   return asUuid(runtime.getSetting("ELIZA_ADMIN_ENTITY_ID"));
@@ -1133,7 +1140,8 @@ export async function handleDocumentsRoutes(
     let contentType = uploadedContentType;
     const warnings: string[] = [];
     const originalBytesAreTextBacked =
-      isTextBackedContentType(uploadedContentType);
+      isTextBackedContentType(uploadedContentType) ||
+      hasTextBackedFilename(document.filename);
 
     if (contentType.startsWith("image/")) {
       const includeDescriptions =
@@ -1173,7 +1181,13 @@ export async function handleDocumentsRoutes(
       contentType = "text/plain";
     }
 
-    const textBacked = isTextBackedContentType(contentType);
+    if (document.filename.endsWith(".mdx")) {
+      contentType = "text/markdown";
+    }
+
+    const textBacked =
+      isTextBackedContentType(contentType) ||
+      hasTextBackedFilename(document.filename);
 
     const uploadFilters = filtersFromUploadBody(document, actor);
     if (uploadFilters.error) {

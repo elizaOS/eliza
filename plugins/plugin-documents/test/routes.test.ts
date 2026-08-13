@@ -315,7 +315,7 @@ describe("document routes", () => {
     },
     {
       content: Buffer.from("pdf bytes").toString("base64"),
-      filename: "report.txt",
+      filename: "report.bin",
       contentType: "APPLICATION/PDF",
       expectedContentType: "application/pdf",
       expectedFileType: "APPLICATION/PDF",
@@ -383,6 +383,116 @@ describe("document routes", () => {
             contentType: expectedContentType,
             fileType: expectedFileType,
             textBacked: expectedTextBacked,
+          }),
+        }),
+      );
+    },
+  );
+
+  it.each(["single", "bulk"] as const)(
+    "uses the text filename fallback for original byte decoding in %s upload",
+    async (uploadKind) => {
+      const content = "plain text sent with a generic MIME type";
+      const document = {
+        content,
+        filename: "notes.txt",
+        contentType: "application/octet-stream",
+      };
+      const store = vi.fn(async () => ({
+        url: "/api/media/deadbeef.bin",
+        hash: "deadbeef",
+        fileName: "deadbeef.bin",
+        mimeType: "application/octet-stream",
+        size: Buffer.byteLength(content),
+      }));
+      addDocument.mockResolvedValueOnce({
+        clientDocumentId: "doc-id",
+        fragmentCount: 1,
+      });
+      const pathname =
+        uploadKind === "single" ? "/api/documents" : "/api/documents/bulk";
+      const { ctx, res } = buildCtx({
+        method: "POST",
+        pathname,
+        runtime: {
+          getService: vi.fn(() => ({ store })),
+        } as Partial<NonNullable<DocumentRouteContext["runtime"]>>,
+        body: uploadKind === "single" ? document : { documents: [document] },
+      });
+
+      await expect(handleDocumentsRoutes(ctx)).resolves.toBe(true);
+
+      expect(res.statusCode).toBe(200);
+      expect(store).toHaveBeenCalledWith(
+        expect.any(Buffer),
+        "application/octet-stream",
+      );
+      expect((store.mock.calls[0][0] as Buffer).toString("utf8")).toBe(content);
+      expect(addDocument).toHaveBeenCalledWith(
+        expect.objectContaining({
+          content,
+          contentType: "application/octet-stream",
+          metadata: expect.objectContaining({
+            contentType: "application/octet-stream",
+            fileType: "application/octet-stream",
+            textBacked: true,
+          }),
+        }),
+      );
+    },
+  );
+
+  it.each(["single", "bulk"] as const)(
+    "routes an omitted or fallback-MIME .mdx document as text/markdown in %s upload",
+    async (uploadKind) => {
+      const content = "# Compatibility note";
+      const document = {
+        content,
+        filename: "note.mdx",
+        ...(uploadKind === "bulk"
+          ? { contentType: "application/octet-stream" }
+          : {}),
+      };
+      const uploadedContentType =
+        uploadKind === "bulk" ? "application/octet-stream" : "text/plain";
+      const store = vi.fn(async () => ({
+        url: "/api/media/deadbeef.txt",
+        hash: "deadbeef",
+        fileName: "deadbeef.txt",
+        mimeType: uploadedContentType,
+        size: Buffer.byteLength(content),
+      }));
+      addDocument.mockResolvedValueOnce({
+        clientDocumentId: "doc-id",
+        fragmentCount: 1,
+      });
+      const pathname =
+        uploadKind === "single" ? "/api/documents" : "/api/documents/bulk";
+      const { ctx, res } = buildCtx({
+        method: "POST",
+        pathname,
+        runtime: {
+          getService: vi.fn(() => ({ store })),
+        } as Partial<NonNullable<DocumentRouteContext["runtime"]>>,
+        body: uploadKind === "single" ? document : { documents: [document] },
+      });
+
+      await expect(handleDocumentsRoutes(ctx)).resolves.toBe(true);
+
+      expect(res.statusCode).toBe(200);
+      expect(store).toHaveBeenCalledWith(
+        expect.any(Buffer),
+        uploadedContentType,
+      );
+      expect((store.mock.calls[0][0] as Buffer).toString("utf8")).toBe(content);
+      expect(addDocument).toHaveBeenCalledWith(
+        expect.objectContaining({
+          content,
+          contentType: "text/markdown",
+          metadata: expect.objectContaining({
+            contentType: "text/markdown",
+            fileType: uploadedContentType,
+            textBacked: true,
           }),
         }),
       );
