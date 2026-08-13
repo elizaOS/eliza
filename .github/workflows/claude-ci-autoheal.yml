@@ -3,7 +3,7 @@
 # (packages/scripts/ci-autoheal-context.mjs), and a Claude agent is asked to
 # find the ROOT CAUSE, fix it, prove the fix locally, and open a pull request.
 # The companion watcher (claude-autoheal-merge.yml) merges that PR only after
-# the same Develop PR Gate every human PR must clear reports green.
+# the same canonical CI gate every human PR must clear reports green.
 #
 # Safety model:
 #   - Heals ONLY failures on `develop` and on its own claude/autoheal/* branches
@@ -20,8 +20,7 @@ name: Claude CI Autoheal
 on:
   workflow_run:
     workflows:
-      - Develop PR
-      - ci
+      - CI
       - Develop Exhaustive Lane
       - Quality (Extended)
     types: [completed]

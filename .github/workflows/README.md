@@ -20,16 +20,19 @@ core smoke tests. It never publishes packages or creates releases.
 
 Several branch-scoped and path-scoped workflows run alongside the canonical CI
 gate for specific surfaces. This list is non-exhaustive; other specialized
-gates such as `gitleaks.yml`, `cloud-tests.yml`, `chat-shell-gestures.yml`, and
-the `pr.yaml` title check cover narrower contracts. None replaces the
-`CI / Required` status. Representative examples:
+gates such as `cloud-tests.yml`, `chat-shell-gestures.yml`, and the `pr.yaml`
+title check cover narrower contracts. None replaces the `CI / Required` status.
+Representative examples:
 
-- `develop-pr.yml` runs lint, typecheck, build, and changed-plugin tests for
-  `develop`-targeted PRs. `actionlint` reaches merge-critical workflows through
-  the pinned installer in `install-workflow-linters.sh`.
-- `quality.yml` builds the single `packages/app` frontend artifact, validates
-  the embedded homepage source contracts, and supplies the workspace format
-  gate for `main`-targeted PRs and post-merge pushes.
+- `develop-pr.yml` is called from canonical `ci.yml` for `develop`-targeted PRs
+  and runs lint, typecheck, build, changed-plugin tests, and pinned `actionlint`.
+  It has no direct pull-request trigger, so outside contributors encounter only
+  the canonical workflow's approval boundary.
+- `gitleaks.yml` scans protected-branch pushes. Canonical `ci.yml` owns the
+  equivalent diff-scoped pull-request secret scan on a hosted runner.
+- `quality.yml` supplies the extended homepage build and workspace format gate
+  for `main`-targeted PRs and post-merge pushes, including the single
+  `packages/app` frontend artifact and embedded homepage source contracts.
 - `scenario-pr.yml` supplies the opt-in scenario-runner and browser matrix for
   `main`-targeted PRs carrying the `ci:full` label.
 - `ui-e2e-gate.yml` and `ui-fixture-e2e.yml` run the packages/ui Chromium and

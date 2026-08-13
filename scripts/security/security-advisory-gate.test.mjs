@@ -216,7 +216,7 @@ describe("delayed fork-workflow approval", () => {
           checkLoads += 1;
           return [];
         },
-        loadActionRequiredPaths: async () => [".github/workflows/gitleaks.yml"],
+        loadActionRequiredPaths: async () => [".github/workflows/ci.yml"],
         timeoutMs: 1_200_000,
         completionGraceMs: 240_000,
         intervalMs: 30_000,
@@ -225,7 +225,7 @@ describe("delayed fork-workflow approval", () => {
           sleeps += 1;
         },
       }),
-      /required workflows awaiting maintainer approval: \.github\/workflows\/gitleaks\.yml; approve the listed workflows, then rerun this gate/,
+      /required workflows awaiting maintainer approval: \.github\/workflows\/ci\.yml; approve the listed workflows, then rerun this gate/,
     );
 
     assert.equal(checkLoads, 0);
