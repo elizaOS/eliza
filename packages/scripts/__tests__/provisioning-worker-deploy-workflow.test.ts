@@ -52,6 +52,18 @@ describe("provisioning worker deployment contract", () => {
     );
   });
 
+  it("reports the resolved branch and immutable deployment SHA in both Discord receipts", () => {
+    const receipt = [
+      "description: |",
+      "            Branch: $" + "{{ needs.determine-env.outputs.branch }}",
+      "            Commit: $" +
+        "{{ needs.determine-env.outputs.deployment_sha }}",
+    ].join("\n");
+    expect(workflow.split(receipt)).toHaveLength(3);
+    expect(workflow).not.toContain("Branch: develop");
+    expect(workflow).not.toContain("Commit: $" + "{{ github.sha }}");
+  });
+
   it("fails checkout cleanup loudly and covers all shared-package changes", () => {
     expect(workflow).toContain("git reset --hard HEAD\n");
     expect(workflow).not.toContain("git reset --hard HEAD 2>/dev/null || true");

@@ -367,7 +367,7 @@ function hasCloudLoginBackend(): boolean {
 function canPollCloudStatus(): boolean {
   const explicitBase =
     typeof client.getBaseUrl === "function" ? client.getBaseUrl().trim() : "";
-  if (isCapacitorNativeRuntime()) return true;
+  if (isCapacitorNativeRuntime() || isElectrobunRuntime()) return true;
   if (explicitBase && isConfiguredCloudSiteBase(explicitBase)) return true;
   return hasCloudLoginBackend() && supportsFullAppShellRoutes(explicitBase);
 }

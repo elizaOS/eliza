@@ -23,6 +23,7 @@ import { Button } from "../../components/ui/button";
 import { useCloudT } from "../shell/CloudI18nProvider";
 import {
   completePendingOnboardingContinuation,
+  type MessagingContinuationPreview,
   peekPendingOnboardingSession,
   previewPendingOnboardingContinuation,
   sanitizeOnboardingSessionToken,
@@ -31,6 +32,21 @@ import {
 import { useJoinSessionAuth } from "./lib/use-join-session";
 
 type GetStartedPhase = "checking" | "confirm" | "linking" | "done" | "error";
+
+function messagingPlatformLabel(
+  platform: MessagingContinuationPreview["platform"],
+): string {
+  switch (platform) {
+    case "discord":
+      return "Discord";
+    case "telegram":
+      return "Telegram";
+    case "blooio":
+      return "iMessage";
+    case "twilio":
+      return "SMS";
+  }
+}
 
 function describeContinuationError(err: unknown): string {
   if (err instanceof Error && err.message.trim()) return err.message;
@@ -43,10 +59,8 @@ export default function GetStartedPage(): React.JSX.Element {
   const [searchParams] = useSearchParams();
   const [phase, setPhase] = useState<GetStartedPhase>("checking");
   const [error, setError] = useState<string | null>(null);
-  const [discordIdentity, setDiscordIdentity] = useState<{
-    platformUserId: string;
-    platformDisplayName: string;
-  } | null>(null);
+  const [platformIdentity, setPlatformIdentity] =
+    useState<MessagingContinuationPreview | null>(null);
   // StrictMode double-mount guard: the redemption POST must run once.
   const startedRef = useRef(false);
 
@@ -97,7 +111,7 @@ export default function GetStartedPage(): React.JSX.Element {
     setError(null);
     try {
       const identity = await previewPendingOnboardingContinuation(token);
-      setDiscordIdentity(identity);
+      setPlatformIdentity(identity);
       setPhase("confirm");
     } catch (err) {
       setError(describeContinuationError(err));
@@ -138,16 +152,22 @@ export default function GetStartedPage(): React.JSX.Element {
           draggable={false}
         />
 
-        {phase === "confirm" && discordIdentity ? (
+        {phase === "confirm" && platformIdentity ? (
           <div className="flex flex-col items-center gap-4">
             <h1 className="font-poppins text-lg font-semibold text-white">
-              Connect your Discord account?
+              Connect your {messagingPlatformLabel(platformIdentity.platform)}{" "}
+              account?
             </h1>
             <p className="text-sm text-white/70">
               Continue with{" "}
-              <strong>{discordIdentity.platformDisplayName}</strong>
+              <strong>{platformIdentity.platformDisplayName}</strong>
               <span className="block text-xs text-white/50">
-                Discord ID {discordIdentity.platformUserId}
+                {platformIdentity.platform === "telegram"
+                  ? "Telegram ID"
+                  : platformIdentity.platform === "discord"
+                    ? "Discord ID"
+                    : "Phone"}{" "}
+                {platformIdentity.platformUserId}
               </span>
             </p>
             <Button
@@ -158,7 +178,8 @@ export default function GetStartedPage(): React.JSX.Element {
               }}
               className="bg-txt px-6 py-2.5 font-semibold text-bg"
             >
-              Connect this Discord account
+              Connect this {messagingPlatformLabel(platformIdentity.platform)}{" "}
+              account
             </Button>
           </div>
         ) : phase === "done" ? (
@@ -174,6 +195,16 @@ export default function GetStartedPage(): React.JSX.Element {
                   "Head back to your chat — your agent will pick up right where you left off. Setup finishes in the background.",
               })}
             </p>
+            {platformIdentity?.returnUrl ? (
+              <Button
+                asChild
+                className="bg-txt px-6 py-2.5 font-semibold text-bg transition-colors hover:bg-txt/90"
+              >
+                <a href={platformIdentity.returnUrl}>
+                  Back to {messagingPlatformLabel(platformIdentity.platform)}
+                </a>
+              </Button>
+            ) : null}
             <Button
               variant="ghost"
               type="button"
@@ -199,7 +230,7 @@ export default function GetStartedPage(): React.JSX.Element {
               onClick={() => {
                 const token = peekPendingOnboardingSession();
                 if (!token) return;
-                if (discordIdentity) void redeem(token);
+                if (platformIdentity) void redeem(token);
                 else void preview(token);
               }}
               className="bg-txt px-6 py-2.5 font-semibold text-bg transition-colors hover:bg-txt/90"

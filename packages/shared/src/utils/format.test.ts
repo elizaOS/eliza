@@ -1,12 +1,12 @@
 /**
- * Shared display formatters (uptime / byte size / USD). These render values in
- * dashboard views; the unit thresholds, precision, and fallback handling are
- * pinned so the displayed figures stay correct and stable.
+ * Shared display formatters render dashboard values with stable unit boundaries,
+ * precision, timestamp validation, and unavailable-state handling.
  */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   formatByteSize,
   formatDurationMs,
+  formatTime,
   formatUptime,
   formatUsd,
 } from "./format";
@@ -20,6 +20,13 @@ describe("formatUptime", () => {
     expect(formatUptime(3661)).toBe("1h 1m");
     expect(formatUptime(90000)).toBe("1d 1h");
   });
+
+  it.each([Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY])(
+    "falls back for non-finite uptime %s",
+    (seconds) => {
+      expect(formatUptime(seconds)).toBe("—");
+    },
+  );
 
   it("verbose mode lists each non-zero unit", () => {
     expect(formatUptime(3661, true)).toBe("1h 1m");
@@ -38,6 +45,26 @@ describe("formatByteSize", () => {
     expect(formatByteSize(1024 ** 3)).toBe("1.0 GB");
     expect(formatByteSize(1024 ** 4)).toBe("1.0 TB");
     expect(formatByteSize(1536, { precision: 2 })).toBe("1.50 KB");
+  });
+
+  it("promotes a value that rounds across a unit boundary instead of rendering an impossible magnitude", () => {
+    // 1024**2 - 1 bytes is 1023.999… KB; toFixed used to render "1024.0 KB",
+    // a magnitude the KB unit can never legitimately display.
+    expect(formatByteSize(1024 ** 2 - 1)).toBe("1.0 MB");
+    expect(formatByteSize(1024 ** 3 - 1)).toBe("1.0 GB");
+    expect(formatByteSize(1024 ** 4 - 1)).toBe("1.0 TB");
+    expect(formatByteSize(1024 ** 2 - 1, { precision: 2 })).toBe("1.00 MB");
+  });
+
+  it("keeps values that round below the boundary in their own unit", () => {
+    // 1023.94 KB rounds to "1023.9 KB" — no promotion.
+    expect(formatByteSize(Math.floor(1023.94 * 1024))).toBe("1023.9 KB");
+    // At precision 0 the KB threshold for promotion is 1023.5 KB.
+    expect(formatByteSize(1023 * 1024, { precision: 0 })).toBe("1023 KB");
+  });
+
+  it("lets TB display 1024 and above because there is no larger unit", () => {
+    expect(formatByteSize(1024 ** 5)).toBe("1024.0 TB");
   });
 });
 
@@ -81,5 +108,42 @@ describe("formatUsd", () => {
     expect(formatUsd(null)).toBe("—");
     expect(formatUsd("abc")).toBe("—");
     expect(formatUsd(undefined, { fallback: "n/a" })).toBe("n/a");
+  });
+});
+
+describe("formatTime", () => {
+  it.each([
+    ["missing", undefined],
+    ["empty", ""],
+    ["malformed", "not-a-date"],
+    ["numeric NaN", Number.NaN],
+    ["invalid Date", new Date(Number.NaN)],
+    ["outside TimeClip", 8.64e15 + 1],
+    ["calendar-invalid ISO timestamp", "2026-02-31T00:00:00Z"],
+    ["non-leap February 29", "2026-02-29T00:00:00Z"],
+    ["month zero", "2026-00-01T00:00:00Z"],
+  ])("returns the fallback for %s input", (_label, value) => {
+    expect(
+      formatTime(value, { fallback: "Unavailable", locale: "en-US" }),
+    ).toBe("Unavailable");
+  });
+
+  it("preserves valid epoch, Date, ISO, leap-day, and parseable string inputs", () => {
+    const localeSpy = vi
+      .spyOn(Date.prototype, "toLocaleTimeString")
+      .mockReturnValue("12:34:56 PM");
+
+    expect(formatTime(0, { locale: "en-US" })).toBe("12:34:56 PM");
+    expect(formatTime(new Date(0), { locale: "en-US" })).toBe("12:34:56 PM");
+    expect(formatTime("2026-06-05T10:00:00Z", { locale: "en-US" })).toBe(
+      "12:34:56 PM",
+    );
+    expect(formatTime("2024-02-29T00:00:00Z", { locale: "en-US" })).toBe(
+      "12:34:56 PM",
+    );
+    expect(formatTime("June 5, 2026 10:00:00", { locale: "en-US" })).toBe(
+      "12:34:56 PM",
+    );
+    expect(localeSpy).toHaveBeenCalledTimes(5);
   });
 });

@@ -1,6 +1,9 @@
 /**
- * Deployment contract for the two onboarding frontend origins: `/get-started`
- * belongs to the homepage, dashboard and billing links belong to the Cloud app.
+ * Deployment contract for the onboarding frontend origins. The messaging
+ * continuation Connect CTA (`/get-started`) and the dashboard/billing links now
+ * both live on the Cloud app: the CTA opens the app's authenticated
+ * `/get-started`, which sends signed-out users straight into Steward login and
+ * hands back to Discord, so there is no intermediate homepage sign-in card.
  *
  * The contract is checked through effective resolution, not string presence.
  * Each case parses one deployed environment's complete `[vars]` block out of the
@@ -98,10 +101,13 @@ async function resolveOnboardingOrigins(
  * Pages domain, same environment-peer rule as STAGING_ELIZA_APP_ORIGIN in
  * packages/ui/src/utils/cloud-agent-base.ts).
  *
- * `loginOrigin` is the homepage. Staging has no homepage deployment of its own,
- * so it still resolves the production one — a live release blocker recorded in
- * #18197, not an approved mapping. The expectation below documents the defect so
- * it cannot drift silently; closing #18197 must change it.
+ * `loginOrigin` is the messaging-continuation Connect CTA target. It now equals
+ * the Cloud *app* host: the CTA points at the app's authenticated
+ * `/get-started`, which bounces signed-out users straight to Steward login
+ * (`/login?returnTo=/get-started`) and hands back to Discord — no intermediate
+ * homepage sign-in card. Both origins therefore resolve to the same app host,
+ * per environment, and staging must resolve its own app peer so a staging token
+ * is redeemed against the staging endpoint.
  */
 const ONBOARDING_HOST_CONTRACT: ReadonlyArray<{
   section: string;
@@ -110,17 +116,17 @@ const ONBOARDING_HOST_CONTRACT: ReadonlyArray<{
 }> = [
   {
     section: "vars",
-    loginOrigin: "https://eliza.app",
+    loginOrigin: "https://app.elizacloud.ai",
     appOrigin: "https://app.elizacloud.ai",
   },
   {
     section: "env.production.vars",
-    loginOrigin: "https://eliza.app",
+    loginOrigin: "https://app.elizacloud.ai",
     appOrigin: "https://app.elizacloud.ai",
   },
   {
     section: "env.staging.vars",
-    loginOrigin: "https://eliza.app",
+    loginOrigin: "https://app-staging.elizacloud.ai",
     appOrigin: "https://app-staging.elizacloud.ai",
   },
 ];
@@ -138,16 +144,25 @@ describe("onboarding host deployment contract", () => {
   );
 
   test.each(ONBOARDING_HOST_CONTRACT)(
-    "$section keeps the login origin off the dashboard origin",
-    async ({ section }) => {
+    "$section routes the continuation Connect CTA into the Cloud app /get-started, not the homepage",
+    async ({ section, appOrigin }) => {
       const resolved = await resolveOnboardingOrigins(section);
-      expect(resolved.loginOrigin).not.toBe(resolved.appOrigin);
+      // The Steward-login handoff lives on the Cloud app, so login and app
+      // origins coincide by design; neither is the homepage (eliza.app).
+      expect(resolved.loginOrigin).toBe(appOrigin);
+      expect(resolved.loginOrigin).not.toBe("https://eliza.app");
+      expect(resolved.loginOrigin).not.toBe("https://staging.eliza.app");
     },
   );
 
   test("staging never resolves a production dashboard origin", async () => {
     const resolved = await resolveOnboardingOrigins("env.staging.vars");
     expect(PRODUCTION_APP_ORIGINS).not.toContain(resolved.appOrigin);
+  });
+
+  test("staging never resolves a production login origin for the continuation CTA", async () => {
+    const resolved = await resolveOnboardingOrigins("env.staging.vars");
+    expect(PRODUCTION_APP_ORIGINS).not.toContain(resolved.loginOrigin);
   });
 
   test("the staging section pins the app origin instead of inheriting one", () => {

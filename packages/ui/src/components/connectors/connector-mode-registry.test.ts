@@ -94,6 +94,96 @@ describe("connector mode registry seam", () => {
     expect(modeToSetupPluginId("discord", "bot")).toBe("discord");
   });
 
+  it("hides only co-located desktop modes in managed Cloud containers", () => {
+    expect(
+      getConnectorModes("discord", {
+        elizaCloudConnected: true,
+        cloudProvisioned: true,
+      }).map((mode) => mode.id),
+    ).toEqual(["managed", "bot"]);
+    expect(
+      getConnectorModes("imessage", {
+        elizaCloudConnected: true,
+        cloudProvisioned: true,
+      }).map((mode) => mode.id),
+    ).toEqual(["blooio", "cloud-bluebubbles", "bluebubbles"]);
+
+    expect(
+      getConnectorModes("telegram", {
+        elizaCloudConnected: true,
+        cloudProvisioned: true,
+      }).map((mode) => mode.id),
+    ).toContain("account");
+    expect(
+      getConnectorModes("signal", { cloudProvisioned: true }).map(
+        (mode) => mode.id,
+      ),
+    ).toContain("qr");
+    expect(
+      getConnectorModes("whatsapp", { cloudProvisioned: true }).map(
+        (mode) => mode.id,
+      ),
+    ).toContain("qr");
+    expect(
+      getConnectorModes("bluebubbles", { cloudProvisioned: true }).map(
+        (mode) => mode.id,
+      ),
+    ).toContain("local");
+  });
+
+  it("keeps co-located desktop modes outside managed Cloud containers", () => {
+    expect(
+      getConnectorModes("discord", {
+        elizaCloudConnected: true,
+        cloudProvisioned: false,
+      }).map((mode) => mode.id),
+    ).toContain("local");
+    expect(
+      getConnectorModes("imessage", {
+        elizaCloudConnected: true,
+        cloudProvisioned: false,
+      }).map((mode) => mode.id),
+    ).toContain("direct");
+  });
+
+  it("applies Cloud connectivity and managed-container filtering independently", () => {
+    registerConnectorModes("cloud-filter-seam", [
+      {
+        id: "cloud",
+        label: "Cloud",
+        description: "Requires an Eliza Cloud connection.",
+        setupPluginId: "cloud-filter-seam",
+        cloudOnly: true,
+      },
+      {
+        id: "desktop",
+        label: "Desktop",
+        description: "Requires a co-located desktop.",
+        setupPluginId: "cloud-filter-seam",
+        hideOnManagedCloud: true,
+      },
+      {
+        id: "always",
+        label: "Always",
+        description: "Available in every hosting configuration.",
+        setupPluginId: "cloud-filter-seam",
+      },
+    ]);
+
+    expect(
+      getConnectorModes("cloud-filter-seam", {
+        elizaCloudConnected: false,
+        cloudProvisioned: false,
+      }).map((mode) => mode.id),
+    ).toEqual(["desktop", "always"]);
+    expect(
+      getConnectorModes("cloud-filter-seam", {
+        elizaCloudConnected: true,
+        cloudProvisioned: true,
+      }).map((mode) => mode.id),
+    ).toEqual(["cloud", "always"]);
+  });
+
   it("offers BlueBubbles phone registration only when Eliza Cloud is connected", () => {
     const offline = getConnectorModes("bluebubbles", {
       elizaCloudConnected: false,

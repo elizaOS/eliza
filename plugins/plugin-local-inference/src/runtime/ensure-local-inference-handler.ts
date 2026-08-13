@@ -24,6 +24,7 @@
 import {
 	type AgentRuntime,
 	applyBackgroundInferenceBudget,
+	fetchRemoteMedia,
 	type GenerateTextParams,
 	getInferencePriorityGate,
 	type IAgentRuntime,
@@ -31,10 +32,11 @@ import {
 	type ImageDescriptionResult,
 	inferenceRamClassFromEnv,
 	logger,
+	type MobileDeviceBridgeService,
 	ModelType,
 	renderMessageHandlerStablePrefix,
 	resolveBackgroundInferenceBudget,
-	Service,
+	ServiceType,
 	type TextEmbeddingParams,
 	type TextToSpeechParams,
 	type TranscriptionParams,
@@ -57,7 +59,6 @@ import {
 	extractPromptCacheKey,
 	resolveLocalCacheKey,
 } from "../services/cache-bridge";
-import { deviceBridge } from "../services/device-bridge";
 import { localInferenceEngine } from "../services/engine";
 import { handlerRegistry } from "../services/handler-registry";
 import { probeHardware } from "../services/hardware";
@@ -65,10 +66,22 @@ import { tryGetMemoryArbiter } from "../services/memory-arbiter";
 import { listInstalledModels } from "../services/registry";
 import { installRouterHandler } from "../services/router-handler";
 import {
+	LOCAL_INFERENCE_LOADER_SERVICE_TYPE,
+	registerLocalInferenceLoaderService,
+	registerTimedAsrService,
+	TIMED_ASR_SERVICE_TYPE,
+} from "../services/runtime-services";
+import {
 	type ElizaHarnessSchema,
 	elizaHarnessSchemaFromSkeleton,
 } from "../services/structured-output";
 import type { AgentModelSlot } from "../services/types";
+import {
+	prepareVisionImageInput,
+	VISION_IMAGE_FETCH_TIMEOUT_MS,
+	VISION_IMAGE_MAX_BYTES,
+} from "../services/vision/image-input";
+import type { VisionImageInput } from "../services/vision/types";
 import { decodeMonoPcm16Wav, type TranscriptionAudio } from "../services/voice";
 import { extractRequestedKokoroVoiceId } from "../services/voice/requested-voice.js";
 import { DEFAULT_MODELS_DIR } from "./embedding-manager-support";
@@ -1006,7 +1019,7 @@ function makeTranscriptionHandler(): TranscriptionHandler {
 }
 
 function paramsToVisionRequest(params: ImageDescriptionParams | string): {
-	image: { kind: "dataUrl"; dataUrl: string } | { kind: "url"; url: string };
+	image: VisionImageInput;
 	prompt?: string;
 	signal?: AbortSignal;
 	onTextChunk?: (chunk: string) => void | Promise<void>;
@@ -1128,6 +1141,9 @@ function makeImageDescriptionHandler(): ImageDescriptionHandler {
 				? modelKeyCandidate
 				: "gemma-vl";
 		const request = paramsToVisionRequest(params);
+		request.image = await prepareVisionImageInput(runtime, request.image, {
+			signal: request.signal,
+		});
 		const result = await arbiter.requestVisionDescribe<
 			typeof request,
 			ImageDescriptionResult | string
@@ -1171,23 +1187,45 @@ export function float32ToBase64LE(pcm: Float32Array): string {
 }
 
 /** Resolve a vision request to base64 image bytes for the bionic host. */
-export async function imageRequestToBase64(image: {
-	kind: "dataUrl" | "url";
-	dataUrl?: string;
-	url?: string;
-}): Promise<string> {
+export async function imageRequestToBase64(
+	image: VisionImageInput,
+): Promise<string> {
 	if (image.kind === "dataUrl" && image.dataUrl) {
 		const comma = image.dataUrl.indexOf(",");
 		return comma >= 0 ? image.dataUrl.slice(comma + 1) : image.dataUrl;
 	}
-	if (image.kind === "url" && image.url) {
-		const resp = await fetch(image.url);
-		if (!resp.ok) {
+	if (image.kind === "base64") {
+		return image.base64;
+	}
+	if (image.kind === "bytes") {
+		return Buffer.from(image.bytes).toString("base64");
+	}
+	if (image.kind === "url") {
+		const url = typeof image.url === "string" ? image.url.trim() : "";
+		if (!url) {
 			throw new Error(
-				`[local-inference] IMAGE_DESCRIPTION failed to fetch ${image.url}: ${resp.status}`,
+				"[local-inference] IMAGE_DESCRIPTION requires a valid image URL",
 			);
 		}
-		return Buffer.from(await resp.arrayBuffer()).toString("base64");
+		try {
+			// Caller-supplied image URLs must go through the shared SSRF media
+			// guard; bare `fetch` would let vision describe internal hosts.
+			const media = await fetchRemoteMedia({
+				url,
+				maxBytes: VISION_IMAGE_MAX_BYTES,
+				timeoutMs: VISION_IMAGE_FETCH_TIMEOUT_MS,
+				maxRedirects: 5,
+			});
+			return media.buffer.toString("base64");
+		} catch (err) {
+			// error-policy:J2 context-adding rethrow — preserve guarded-fetch cause
+			throw new Error(
+				`[local-inference] IMAGE_DESCRIPTION failed to fetch ${url}: ${
+					err instanceof Error ? err.message : String(err)
+				}`,
+				{ cause: err },
+			);
+		}
 	}
 	throw new Error(
 		"[local-inference] IMAGE_DESCRIPTION could not resolve image bytes",
@@ -1224,75 +1262,15 @@ function makeBionicImageDescriptionHandler(): ImageDescriptionHandler {
 			);
 		}
 		const request = paramsToVisionRequest(params);
+		request.image = await prepareVisionImageInput(runtime, request.image, {
+			signal: request.signal,
+		});
 		const description = await loader.describeImage({
 			imageBase64: await imageRequestToBase64(request.image),
 			prompt: request.prompt,
 		});
 		return normalizeImageDescription(description);
 	};
-}
-
-/**
- * Register the device-bridge loader on the runtime. Accepts load/generate
- * calls whether or not a mobile device is currently connected — parked
- * calls resolve on reconnect (up to a timeout). Cheaper than waiting for
- * the first device register to register the service: ordering is already
- * handled inside `DeviceBridge.generate`.
- */
-function registerDeviceBridgeLoader(runtime: AgentRuntime): void {
-	const withRegistration = runtime as AgentRuntime & {
-		registerService?: (name: string, impl: unknown) => unknown;
-	};
-	if (typeof withRegistration.registerService !== "function") return;
-	const loader: LocalInferenceLoader = {
-		loadModel: (args) => deviceBridge.loadModel(args),
-		unloadModel: () => deviceBridge.unloadModel(),
-		currentModelPath: () => deviceBridge.currentModelPath(),
-		generate: (args) => deviceBridge.generate(args),
-		embed: (args) => deviceBridge.embed(args),
-	};
-	// Expose the process-wide MemoryArbiter through the registered
-	// `localInferenceLoader` service so provider.ts can route
-	// IMAGE_DESCRIPTION (WS2) and IMAGE (WS3) requests to the arbiter.
-	// Without this accessor the IMAGE handler unconditionally surfaces
-	// `capability_unavailable` because the registered service has no
-	// arbiter accessor — the singleton `localInferenceService` is not
-	// the same object that gets registered with the runtime.
-	const loaderWithArbiter = Object.assign(loader, {
-		getMemoryArbiter: () => tryGetMemoryArbiter(),
-	});
-	withRegistration.registerService("localInferenceLoader", loaderWithArbiter);
-}
-
-/**
- * Expose fused v12 word timings as an additive runtime service. Consumers such
- * as plugin-meetings can discover this structural seam without importing this
- * plugin or widening the string-only TRANSCRIPTION model contract.
- */
-class TimedAsrService extends Service {
-	static serviceType = "timedAsr";
-	capabilityDescription =
-		"Word-timed local ASR over the fused voice engine (transcribeWav returns per-word timings).";
-
-	static async start(runtime: IAgentRuntime): Promise<TimedAsrService> {
-		return new TimedAsrService(runtime);
-	}
-
-	async stop(): Promise<void> {}
-
-	isAvailable(): boolean {
-		return localInferenceEngine.voice() !== null;
-	}
-
-	async transcribeWav(wav: Uint8Array, signal?: AbortSignal) {
-		const audio = decodeMonoPcm16Wav(wav);
-		return localInferenceEngine.transcribePcmTimed(audio, signal);
-	}
-}
-
-async function registerTimedAsrService(runtime: AgentRuntime): Promise<void> {
-	if (typeof runtime.registerService !== "function") return;
-	await runtime.registerService(TimedAsrService);
 }
 
 /**
@@ -1353,18 +1331,17 @@ export function bionicInferenceSocketName(
  * AOSP / Capacitor / device-bridge loaders: the whole point is that the GPU is
  * out of reach for the in-process FFI path on this (musl) process.
  */
-function tryRegisterBionicHostLoader(runtime: AgentRuntime): boolean {
+async function tryRegisterBionicHostLoader(
+	runtime: AgentRuntime,
+): Promise<boolean> {
 	const socketName = bionicInferenceSocketName();
 	if (!socketName) return false;
-	const withRegistration = runtime as AgentRuntime & {
-		registerService?: (name: string, impl: unknown) => unknown;
-	};
-	if (typeof withRegistration.registerService !== "function") return false;
 	const loader: LocalInferenceLoader = new BionicHostLoader(socketName);
 	const loaderWithArbiter = Object.assign(loader, {
 		getMemoryArbiter: () => tryGetMemoryArbiter(),
 	});
-	withRegistration.registerService("localInferenceLoader", loaderWithArbiter);
+	await registerLocalInferenceLoaderService(runtime, loaderWithArbiter);
+	await runtime.getServiceLoadPromise(LOCAL_INFERENCE_LOADER_SERVICE_TYPE);
 	logger.info(
 		`[local-inference] Registered bionic-host loader; text generation delegates to the in-process GPU host over UDS "${socketName}"`,
 	);
@@ -1388,8 +1365,11 @@ async function tryRegisterAospLlamaLoader(
 			);
 			return false;
 		}
-		const result = await mod.registerAospLlamaLoader(runtime);
-		return Boolean(result);
+		const registered = Boolean(await mod.registerAospLlamaLoader(runtime));
+		if (registered) {
+			await runtime.getServiceLoadPromise(LOCAL_INFERENCE_LOADER_SERVICE_TYPE);
+		}
+		return registered;
 	} catch (err) {
 		logger.error(
 			"[local-inference] AOSP llama adapter unavailable while ELIZA_LOCAL_LLAMA=1:",
@@ -1412,9 +1392,9 @@ async function tryRegisterCapacitorLoader(
 		const { registerCapacitorLlamaLoader } = await import(
 			"@elizaos/capacitor-llama"
 		);
-		const capacitorRuntime: Parameters<typeof registerCapacitorLlamaLoader>[0] =
-			Object.create(runtime);
-		registerCapacitorLlamaLoader(capacitorRuntime);
+		const registered = await registerCapacitorLlamaLoader(runtime);
+		if (!registered) return false;
+		await runtime.getServiceLoadPromise(LOCAL_INFERENCE_LOADER_SERVICE_TYPE);
 		logger.info(
 			"[local-inference] Registered capacitor-llama loader for mobile on-device inference",
 		);
@@ -1426,6 +1406,26 @@ async function tryRegisterCapacitorLoader(
 		);
 	}
 	return false;
+}
+
+async function resolveMobileDeviceBridgeService(
+	runtime: AgentRuntime,
+): Promise<MobileDeviceBridgeService | null> {
+	if (!runtime.hasService(ServiceType.MOBILE_DEVICE_BRIDGE)) return null;
+	await runtime.getServiceLoadPromise(ServiceType.MOBILE_DEVICE_BRIDGE);
+	return runtime.getService<MobileDeviceBridgeService>(
+		ServiceType.MOBILE_DEVICE_BRIDGE,
+	);
+}
+
+function installLocalRouterAndMark(
+	runtime: AgentRuntime,
+	runtimeWithRegistration: RuntimeWithLocalInferenceFlag,
+): void {
+	installRouterHandler(runtime, {
+		skipSlots: isLocalEmbeddingDisabledByEnv() ? ["TEXT_EMBEDDING"] : [],
+	});
+	runtimeWithRegistration[LOCAL_INFERENCE_HANDLER_INSTALLED] = true;
 }
 
 /**
@@ -1532,6 +1532,7 @@ export async function ensureLocalInferenceHandler(
 	// registers during the rest of boot. Idempotent per-runtime.
 	handlerRegistry.installOn(runtime);
 	await registerTimedAsrService(runtime);
+	await runtime.getServiceLoadPromise(TIMED_ASR_SERVICE_TYPE);
 
 	// Loader precedence:
 	//   1. AOSP native FFI loader when running inside the AOSP agent process
@@ -1539,20 +1540,19 @@ export async function ensureLocalInferenceHandler(
 	//      libllama.so is dlopen'd directly, no IPC.
 	//   2. Capacitor native adapter when running on a mobile device with the
 	//      Capacitor APK shell.
-	//   3. Device-bridge (WebSocket to a paired phone) when explicitly
-	//      opted in via ELIZA_DEVICE_BRIDGE_ENABLED=1.
-	//   4. Standalone node-llama-cpp engine for desktop / server.
+	//   3. Standalone node-llama-cpp engine for desktop / server.
 	//
-	// All four satisfy the same `localInferenceLoader` service contract.
-	// A later registration overrides an earlier one, so we register in
-	// LOWEST-priority order first; the AOSP loader runs last so it wins on
-	// AOSP builds. Each `try*Loader` is idempotent and gated on its own env
-	// signal, so they're safe to chain.
+	// These backends satisfy the `localInferenceLoader` service contract. Select
+	// exactly one: duplicate service classes make `getService()` ambiguous and
+	// transfer teardown ownership away from the backend that actually won. The
+	// stock WebSocket device bridge is deliberately separate: capacitor-bridge
+	// owns it through `MobileDeviceBridgeService` and registers model handlers
+	// only after a paired device can serve them.
 	// Bionic-host delegation wins over every other loader: when set, the GPU is
 	// only reachable from the in-process app host, so the musl agent must NOT try
 	// the in-process FFI / device-bridge paths (the app shell already suppressed
 	// ELIZA_LOCAL_LLAMA in this case).
-	const bionicHostRegistered = tryRegisterBionicHostLoader(runtime);
+	const bionicHostRegistered = await tryRegisterBionicHostLoader(runtime);
 	const aospRegistered =
 		!bionicHostRegistered && (await tryRegisterAospLlamaLoader(runtime));
 	const capacitorRegistered =
@@ -1562,11 +1562,38 @@ export async function ensureLocalInferenceHandler(
 	const deviceBridgeEnabled =
 		!bionicHostRegistered &&
 		process.env.ELIZA_DEVICE_BRIDGE_ENABLED?.trim() === "1";
-	if (!aospRegistered && !capacitorRegistered && deviceBridgeEnabled) {
-		registerDeviceBridgeLoader(runtime);
+
+	// The AOSP bootstrap already registered its complete handler set before
+	// runtime.initialize() so embedding probes can use it. The post-init hook
+	// only starts/reuses that same service owner and installs routing metadata;
+	// adding generic handlers here would duplicate the same provider and revive
+	// the earlier-loader tie that leaked native ownership.
+	if (aospRegistered) {
+		installLocalRouterAndMark(runtime, runtimeWithRegistration);
 		logger.info(
-			"[local-inference] Registered device-bridge loader; inference routes to paired mobile device when connected",
+			"[local-inference] Reused the pre-initialize AOSP loader and handler set",
 		);
+		return;
+	}
+
+	// Stock device-bridge handlers belong to plugin-capacitor-bridge and are
+	// registered only after its canonical singleton has a real attached device.
+	// Resolve that singleton through the core service seam for lifecycle
+	// ownership, but never manufacture a second loader/provider from the env flag.
+	if (!capacitorRegistered && deviceBridgeEnabled) {
+		const bridgeService = await resolveMobileDeviceBridgeService(runtime);
+		if (bridgeService) {
+			const status = bridgeService.getMobileDeviceBridgeStatus();
+			logger.info(
+				`[local-inference] Canonical mobile device bridge service ready (${status.connected ? "device attached" : "waiting for attach"}); handler registration stays with the bridge owner`,
+			);
+		} else {
+			logger.warn(
+				"[local-inference] ELIZA_DEVICE_BRIDGE_ENABLED=1 but the canonical mobile device bridge service is not registered; leaving device handlers unregistered",
+			);
+		}
+		installLocalRouterAndMark(runtime, runtimeWithRegistration);
+		return;
 	}
 
 	// Text/voice availability and embedding availability are independent on
@@ -1580,9 +1607,7 @@ export async function ensureLocalInferenceHandler(
 	// is actually available.
 	const generalBackendAvailable =
 		bionicHostRegistered ||
-		aospRegistered ||
 		capacitorRegistered ||
-		deviceBridgeEnabled ||
 		(await localInferenceEngine.available());
 	if (!generalBackendAvailable) {
 		logger.debug(
@@ -1751,13 +1776,10 @@ export async function ensureLocalInferenceHandler(
 	// The router sits at Number.MAX_SAFE_INTEGER so the runtime dispatches
 	// to it first; at dispatch time it picks a real provider via
 	// `routing-policy` and calls that handler directly.
-	installRouterHandler(runtime, {
-		skipSlots: isLocalEmbeddingDisabledByEnv() ? ["TEXT_EMBEDDING"] : [],
-	});
+	installLocalRouterAndMark(runtime, runtimeWithRegistration);
 	logger.info(
 		"[local-inference] Installed top-priority router for cross-provider routing",
 	);
-	runtimeWithRegistration[LOCAL_INFERENCE_HANDLER_INSTALLED] = true;
 
 	// Warm-on-load (item I3): if a local model is already resident, KV-prefill
 	// the Stage-1 stable prefix onto the deterministic system-prefix slot so

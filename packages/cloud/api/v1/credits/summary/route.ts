@@ -31,36 +31,44 @@ const SUMMARY_RECENT_LIMIT = 5;
 app.get("/", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
-    const org = await organizationsService.getById(user.organization_id);
-    if (!org) throw NotFoundError("Organization not found");
 
-    const agentCountRows = await dbRead
-      .select({ value: count() })
-      .from(userCharacters)
-      .where(eq(userCharacters.organization_id, user.organization_id));
-    const recentAgents = await dbRead.query.userCharacters.findMany({
-      where: eq(userCharacters.organization_id, user.organization_id),
-      orderBy: desc(userCharacters.updated_at),
-      limit: SUMMARY_RECENT_LIMIT,
-    });
-    const agentBudgets = await agentBudgetService.getOrgBudgets(
-      user.organization_id,
-    );
-    const appCountRows = await dbRead
-      .select({ value: count() })
-      .from(apps)
-      .where(eq(apps.organization_id, user.organization_id));
-    const recentApps = await dbRead.query.apps.findMany({
-      where: eq(apps.organization_id, user.organization_id),
-      orderBy: desc(apps.updated_at),
-      limit: SUMMARY_RECENT_LIMIT,
-    });
-    const earnings = await redeemableEarningsService.getBalance(user.id);
-    const recentTransactions =
-      await creditsService.listTransactionsByOrganization(
-        user.organization_id,
-        10,
-      );
+    // All eight reads are independent after auth — run them in parallel to
+    // collapse the sequential DB round-trips into a single wall-clock wait.
+    const [
+      org,
+      agentCountRows,
+      recentAgents,
+      agentBudgets,
+      appCountRows,
+      recentApps,
+      earnings,
+      recentTransactions,
+    ] = await Promise.all([
+      organizationsService.getById(user.organization_id),
+      dbRead
+        .select({ value: count() })
+        .from(userCharacters)
+        .where(eq(userCharacters.organization_id, user.organization_id)),
+      dbRead.query.userCharacters.findMany({
+        where: eq(userCharacters.organization_id, user.organization_id),
+        orderBy: desc(userCharacters.updated_at),
+        limit: SUMMARY_RECENT_LIMIT,
+      }),
+      agentBudgetService.getOrgBudgets(user.organization_id),
+      dbRead
+        .select({ value: count() })
+        .from(apps)
+        .where(eq(apps.organization_id, user.organization_id)),
+      dbRead.query.apps.findMany({
+        where: eq(apps.organization_id, user.organization_id),
+        orderBy: desc(apps.updated_at),
+        limit: SUMMARY_RECENT_LIMIT,
+      }),
+      redeemableEarningsService.getBalance(user.id),
+      creditsService.listTransactionsByOrganization(user.organization_id, 10),
+    ]);
+
+    if (!org) throw NotFoundError("Organization not found");
 
     const agentTotal = agentCountRows[0]?.value ?? 0;
     const appTotal = appCountRows[0]?.value ?? 0;

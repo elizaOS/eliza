@@ -44,6 +44,8 @@ import {
   sendJson,
   sendJsonError,
   tryHandleTrajectoryReadRoutes,
+  writeJsonError,
+  writeJsonResponse,
 } from "@elizaos/core";
 import type {
   AppManagerLike,
@@ -345,6 +347,8 @@ import {
   createAgentSnapshot,
   createLocalAgentBackup,
   listLocalAgentBackups,
+  PGLITE_SNAPSHOT_UNAVAILABLE_TRANSIENT,
+  PGLITE_SNAPSHOT_UNAVAILABLE_TRANSIENT_CODE,
   restoreAgentSnapshot,
   restoreLocalAgentBackup,
 } from "../services/agent-backup.ts";
@@ -511,11 +515,11 @@ import {
 import {
   AGENT_EVENT_ALLOWED_STREAMS,
   aggregateSecrets,
-  BLOCKED_ENV_KEYS,
   CONFIG_WRITE_ALLOWED_TOP_KEYS,
   discoverInstalledPlugins,
   discoverPluginsFromManifest,
   getReleaseBundledPluginIds,
+  isBlockedEnvKey,
   maskValue,
   type PluginEntry,
 } from "./plugin-discovery-helpers.ts";
@@ -1834,13 +1838,27 @@ async function handleRequest(
       const snapshot = await createAgentSnapshot(state.runtime, state.config);
       json(res, snapshot);
     } catch (err) {
-      logger.error(
-        {
-          err: err instanceof Error ? err.message : String(err),
-        },
-        "[agent-backup] Snapshot failed",
-      );
-      error(res, err instanceof Error ? err.message : "Snapshot failed", 500);
+      const message = err instanceof Error ? err.message : String(err);
+      if (message === PGLITE_SNAPSHOT_UNAVAILABLE_TRANSIENT) {
+        // Transient teardown race (PGlite closing) — 503 so the caller retries
+        // or defers instead of tripping the fail-closed restart gate on a 500
+        // (2026-08-11 fleet incident: 500 here wedged healthy agent restarts).
+        logger.warn(
+          { err: message },
+          "[agent-backup] Snapshot temporarily unavailable",
+        );
+        json(
+          res,
+          {
+            error: message,
+            code: PGLITE_SNAPSHOT_UNAVAILABLE_TRANSIENT_CODE,
+          },
+          503,
+        );
+        return;
+      }
+      logger.error({ err: message }, "[agent-backup] Snapshot failed");
+      error(res, message, 500);
     }
     return;
   }
@@ -2427,7 +2445,7 @@ async function handleRequest(
         readJsonBody,
         scheduleRuntimeRestart,
         restartRuntime,
-        BLOCKED_ENV_KEYS,
+        isBlockedEnvKey,
         discoverInstalledPlugins,
         maskValue,
         aggregateSecrets,
@@ -2808,7 +2826,7 @@ async function handleRequest(
         isBlockedObjectKey,
         stripRedactedPlaceholderValuesDeep,
         patchTouchesProviderSelection,
-        BLOCKED_ENV_KEYS,
+        isBlockedEnvKey,
         CONFIG_WRITE_ALLOWED_TOP_KEYS,
         resolveMcpServersRejection,
         resolveMcpTerminalAuthorizationRejection,
@@ -3202,8 +3220,22 @@ async function handleRequest(
         pathname,
         url,
         state,
-        json,
-        error,
+        // The MCP marketplace route tracks client disconnects until the
+        // response write has actually been initiated. Keep these helpers
+        // awaitable without changing the fire-and-forget behavior of the
+        // other agent routes.
+        json: (response: http.ServerResponse, data: unknown, status?: number) =>
+          writeJsonResponse(response, data, status).catch((err) => {
+            logger.warn(`[api] MCP JSON response write failed: ${err}`);
+          }),
+        error: (
+          response: http.ServerResponse,
+          message: string,
+          status?: number,
+        ) =>
+          writeJsonError(response, message, status).catch((err) => {
+            logger.warn(`[api] MCP JSON error response write failed: ${err}`);
+          }),
         readJsonBody,
         saveElizaConfig,
         redactDeep,

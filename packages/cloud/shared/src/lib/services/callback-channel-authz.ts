@@ -1,10 +1,10 @@
-// Coordinates cloud service callback channel authz behavior behind route handlers.
+/** Authorizes payment callback room and agent pairs before message projection. */
 import { elizaRoomCharactersRepository } from "../../db/repositories/eliza-room-characters";
 import { logger } from "../utils/logger";
 
 /**
- * Confirms the room a payment-settlement callback would post into belongs to
- * the organization that created the charge.
+ * Confirms the room and agent a payment-settlement callback would post into
+ * belong to the organization that created the charge.
  *
  * A charge's `callback_channel.{roomId, agentId}` is attacker-controlled — it is
  * supplied by whoever created the charge and stored verbatim. Without this check
@@ -20,17 +20,19 @@ import { logger } from "../utils/logger";
  */
 export async function callbackRoomBelongsToOrganization(params: {
   roomId: string;
+  agentId: string;
   chargeOrganizationId: string;
   logContext: string;
 }): Promise<boolean> {
-  const { roomId, chargeOrganizationId, logContext } = params;
+  const { roomId, agentId, chargeOrganizationId, logContext } = params;
 
-  const roomOrganizationId = await elizaRoomCharactersRepository.findOrganizationIdByRoomId(roomId);
+  const roomOrganizationId =
+    await elizaRoomCharactersRepository.findOrganizationIdByRoomAndCharacterId(roomId, agentId);
 
   if (!roomOrganizationId) {
     logger.warn(
       `[${logContext}] refusing callback room-message: room has no organization mapping`,
-      { roomId, chargeOrganizationId },
+      { roomId, agentId, chargeOrganizationId },
     );
     return false;
   }
@@ -38,6 +40,7 @@ export async function callbackRoomBelongsToOrganization(params: {
   if (roomOrganizationId !== chargeOrganizationId) {
     logger.warn(`[${logContext}] refusing cross-tenant callback room-message`, {
       roomId,
+      agentId,
       roomOrganizationId,
       chargeOrganizationId,
     });

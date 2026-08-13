@@ -269,6 +269,18 @@ TUNNEL_AUTH_KEY_COST_USD = "0.01"
 #   STEWARD_REQUEST_SIGNING_SECRET     HMAC secret for signed Steward mutating requests
 #   STEWARD_REQUEST_SIGNING_SECRETS    Comma-separated Steward HMAC secrets; first is used for signing
 #   STEWARD_REQUEST_SIGNING_KEY_ID     Optional Steward tenant signing-key id
+#   STAGING_SESSION_EXCHANGE_ENABLED   Staging-only QA session bridge kill switch
+#   STAGING_SESSION_EXCHANGE_VERSION   Exact bridge/runtime contract version (v1)
+#   STAGING_SESSION_EXCHANGE_SIGNING_SECRET
+#                                      Dedicated QA-token HS256 key (never a Steward key)
+#   STAGING_SESSION_EXCHANGE_SIGNING_KEY_ID
+#                                      Dedicated protected-header kid (staging-qa-v1-*)
+#   STAGING_SESSION_EXCHANGE_ALLOWED_API_KEY_IDS
+#                                      Exact allowlisted source API-key UUIDs
+#   STAGING_SESSION_EXCHANGE_ALLOWED_USER_IDS
+#                                      Exact allowlisted Cloud user UUIDs
+#   STAGING_SESSION_EXCHANGE_ALLOWED_ORGANIZATION_IDS
+#                                      Exact allowlisted Cloud organization UUIDs
 #   STRIPE_SECRET_KEY                  Stripe billing
 #   STRIPE_WEBHOOK_SECRET              Stripe webhook signing (main billing endpoint)
 #   STRIPE_CONNECT_WEBHOOK_SECRET      Stripe Connect endpoint webhook signing (payouts; distinct secret — the Connect payout webhook fail-closes without it)
@@ -316,6 +328,10 @@ TUNNEL_AUTH_KEY_COST_USD = "0.01"
 #   CDP_API_KEY_ID / CDP_API_KEY_SECRET / CDP_WALLET_SECRET   x402
 #   DISCORD_BOT_TOKEN / DISCORD_CHANNEL_ID
 #   GATEWAY_BOOTSTRAP_SECRET / GATEWAY_INTERNAL_SECRET
+#   ELIZA_APP_WEBHOOK_GATEWAY_URL       Internal gateway-webhook service URL (Railway).
+#                                      Required for staging+prod webhook flows; without
+#                                      it, webhook routes 503 WEBHOOK_GATEWAY_NOT_CONFIGURED.
+#   ELIZA_APP_WEBHOOK_GATEWAY_SECRET    Shared secret for BFF→gateway forwarding (L3).
 #   JWT_SIGNING_PRIVATE_KEY / JWT_SIGNING_PUBLIC_KEY
 #   OIDC_SIGNING_JWKS                  OIDC provider key ring: JSON array of PRIVATE JWKs
 #                                      (element 0 signs, all published at jwks_uri).
@@ -435,13 +451,28 @@ ELIZA_APP_URL = "https://eliza.app"
 # Same environment-peer rule as STAGING_ELIZA_APP_ORIGIN in
 # packages/ui/src/utils/cloud-agent-base.ts (#15161).
 ELIZA_ONBOARDING_APP_URL = "https://app-staging.elizacloud.ai"
-# ELIZA_ONBOARDING_LOGIN_APP_URL is deliberately NOT pinned here. `/get-started`
-# is served by the homepage, and the homepage has exactly one deployment
-# (`eliza-app-home` -> eliza.app) whose bundle is compiled against the
-# production API. Pinning it would freeze a staging continuation token into a
-# production redemption endpoint that cannot resolve it. Staging keeps falling
-# through to the code default until a staging homepage exists; tracked as a
-# release blocker in #18197.
+# VESTIGIAL as of the CONNECT-DIRECT-STEWARD change: the messaging Connect CTA
+# now targets the Cloud app's own /get-started (ELIZA_ONBOARDING_APP_URL above)
+# for a direct Steward-login handoff, so onboarding-chat.ts no longer reads
+# ELIZA_ONBOARDING_LOGIN_APP_URL. Left in place (not deleted) because the
+# canonical Worker deploy still manages the paired out-of-band secret binding
+# around this key; deleting it here without updating that workflow could break
+# the secret-removal/restore dance. Safe to remove once that workflow drops it.
+# Login CTA base for onboarding DMs (`/get-started?onboardingSession=...`).
+# The staging homepage exists since 2026-08-11: CF Pages project
+# eliza-home-staging serves https://staging.eliza.app built with
+# VITE_ELIZACLOUD_API_URL=https://staging.elizacloud.ai (packages/homepage
+# .env.staging + the canonical deploy-homepage.yml workflow), so staging
+# continuation tokens land on a bundle that redeems them against the STAGING
+# API. Before that this had to stay unpinned (prod-only homepage would freeze
+# staging tokens into a prod redemption endpoint - #18197); the interim live
+# value was an out-of-band wrangler secret pointing at the same host, which
+# this committed var replaces so a plain redeploy cannot silently regress the
+# CTA to the code default (https://eliza.app = prod).
+# The canonical Worker deploy removes the two legacy out-of-band secret
+# bindings immediately before deployment and restores their staging value if
+# that deployment fails. The committed var is the steady-state authority.
+ELIZA_ONBOARDING_LOGIN_APP_URL = "https://staging.eliza.app"
 NEXT_PUBLIC_NETWORK = "base"
 NEXT_PUBLIC_SOLANA_RPC_URL = "https://api.mainnet-beta.solana.com"
 GITHUB_ORG_NAME = "eliza-cloud-apps"

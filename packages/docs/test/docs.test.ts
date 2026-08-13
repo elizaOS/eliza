@@ -26,6 +26,7 @@ function readDocsConfig() {
 
 function normalizeRoute(route) {
   const cleanRoute = route
+    .replaceAll("\\", "/")
     .split("#")[0]
     .split("?")[0]
     .replace(/^\/+/, "")
@@ -163,17 +164,39 @@ function resolveInternalTarget(sourceFile, href) {
 }
 
 function extractMarkdownFrontmatter(content) {
-  if (!content.startsWith("---\n")) {
+  const opening = /^---(\r?\n)/.exec(content);
+  if (!opening) {
     return null;
   }
 
-  const end = content.indexOf("\n---", 4);
+  const bodyStart = opening[0].length;
+  const end = content.indexOf(`${opening[1]}---`, bodyStart);
   if (end === -1) {
-    return { closed: false, body: content.slice(4) };
+    return { closed: false, body: content.slice(bodyStart) };
   }
 
-  return { closed: true, body: content.slice(4, end) };
+  return { closed: true, body: content.slice(bodyStart, end) };
 }
+
+describe("docs integrity helpers", () => {
+  it("normalizes Windows path separators", () => {
+    assert.strictEqual(
+      normalizeRoute("tracks\\agent\\lifecycle.mdx"),
+      "tracks/agent/lifecycle",
+    );
+  });
+
+  it("extracts frontmatter with LF and CRLF line endings", () => {
+    for (const newline of ["\n", "\r\n"]) {
+      const content = `---${newline}title: Example${newline}description: Test${newline}---${newline}Body`;
+
+      assert.deepStrictEqual(extractMarkdownFrontmatter(content), {
+        closed: true,
+        body: `title: Example${newline}description: Test`,
+      });
+    }
+  });
+});
 
 describe("docs.json configuration", () => {
   it("docs.json exists and is valid JSON", () => {
@@ -353,9 +376,7 @@ describe("documentation files", () => {
     );
     const packageFiles = new Set(["AGENTS", "CLAUDE", "README"]);
     const hiddenPages = collectMarkdownFiles()
-      .map((file) =>
-        normalizeRoute(relative(DOCS_DIR, file).replaceAll("\\\\", "/")),
-      )
+      .map((file) => normalizeRoute(relative(DOCS_DIR, file)))
       .filter((page) => !packageFiles.has(page) && !navigationPages.has(page));
 
     assert.deepStrictEqual(

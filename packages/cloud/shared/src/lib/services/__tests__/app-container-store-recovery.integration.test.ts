@@ -79,6 +79,7 @@ beforeAll(async () => {
       allocated_count integer NOT NULL DEFAULT 0,
       capacity integer NOT NULL,
       enabled boolean NOT NULL DEFAULT true,
+      placement_state text NOT NULL DEFAULT 'open',
       updated_at timestamp NOT NULL DEFAULT now()
     );
     CREATE TABLE agent_sandboxes (

@@ -28,7 +28,6 @@ export {
   type EscalationState,
   registerEscalationChannel,
 } from "./escalation.ts";
-export * from "./mcp-marketplace.ts";
 export * from "./overlay-app-presence.ts";
 export {
   type IPermissionsRegistry,

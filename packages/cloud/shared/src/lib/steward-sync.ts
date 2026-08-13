@@ -28,6 +28,7 @@ import { organizationsService } from "./services/organizations";
 import {
   runWithSignupGrantIpCapDetailed,
   type SignupGrantWithheldReason,
+  welcomeBonusWithheldSettingsPatch,
 } from "./services/signup-grant-guard";
 import { ensureStewardTenant } from "./services/steward-tenant-config";
 import { usersService } from "./services/users";
@@ -579,6 +580,18 @@ export async function syncUserFromSteward(params: StewardSyncParams): Promise<St
           welcomeBonusWithheldReason: grantDecision.withheldReason,
           welcomeBonusWithheldMessage: grantDecision.withheldMessage,
         };
+        // Record the withheld decision on the org so the agent credit gate can
+        // explain the $0-balance 402 this signup will hit at /join — the auth
+        // response is discarded long before provisioning runs. Service update
+        // (not a raw repo write) so the org cache stays coherent. The org was
+        // created moments ago with default `{}` settings, so overwriting is safe.
+        const withheldPatch = welcomeBonusWithheldSettingsPatch({
+          withheldReason: grantDecision.withheldReason,
+          withheldMessage: grantDecision.withheldMessage,
+        });
+        if (withheldPatch) {
+          await organizationsService.update(organization.id, { settings: withheldPatch });
+        }
       }
     } catch (error) {
       logger.error(

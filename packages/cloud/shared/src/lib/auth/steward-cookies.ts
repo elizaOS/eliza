@@ -26,10 +26,11 @@ const BASE_REFRESH = "steward-refresh-token";
 const BASE_AUTHED = "steward-authed";
 
 /**
- * The historical unsuffixed names. Production owns them; non-production may use
- * the legacy access cookie only as a bounded read fallback. Legacy refresh
- * cookies are not read in non-production, so pre-rename refresh-only sessions
- * re-authenticate instead of mutating production's cookie namespace.
+ * The historical unsuffixed names. Production owns them and still clears them on
+ * logout/session teardown. Non-production no longer reads them at all: the
+ * bounded read-only migration fallback closed on 2026-08-04 (#14130), so
+ * pre-rename sessions in non-production re-authenticate instead of touching
+ * production's cookie namespace.
  */
 export const LEGACY_STEWARD_COOKIES: StewardCookieNames = {
   token: BASE_TOKEN,
@@ -39,10 +40,10 @@ export const LEGACY_STEWARD_COOKIES: StewardCookieNames = {
 
 /**
  * Whether this Worker may mutate the historical unsuffixed cookie names.
- * Production owns those names on the shared parent domain; non-production may
- * read the legacy access cookie during the bounded migration window, but must
- * never clear or rotate the unsuffixed names because doing so logs out a live
- * production tab.
+ * Production owns those names on the shared parent domain and clears/rotates
+ * them; non-production must never clear or rotate the unsuffixed names because
+ * doing so logs out a live production tab. (Non-production also no longer reads
+ * them — the bounded read-only migration window closed on 2026-08-04, #14130.)
  */
 export function canMutateLegacyStewardCookies(environment: string | undefined): boolean {
   return !environment || environment === "production";
@@ -63,33 +64,17 @@ export function stewardCookieNames(environment: string | undefined): StewardCook
 }
 
 /**
- * Bounded read-only migration window for non-production environments to accept
- * the historical unsuffixed access cookie. This closes on 2026-08-04, one
- * 30-day refresh-cookie Max-Age after the 2026-07-05 scoped-cookie rollout.
- */
-export const LEGACY_STEWARD_COOKIE_FALLBACK_EXPIRES_AT_MS = Date.UTC(2026, 7, 4);
-
-/**
- * Read this environment's Steward access cookie, then the historical unsuffixed
- * cookie only during the bounded migration window. The fallback is read-only:
- * callers verify the access JWT but must not rotate or clear legacy cookies in
- * non-production.
+ * Read this environment's Steward access cookie. Each environment reads only
+ * its own scoped cookie — non-production never reads the historical unsuffixed
+ * cookie. The bounded read-only migration window that allowed non-production
+ * environments to fall back to the historical unsuffixed access cookie closed
+ * on 2026-08-04 (#14130); callers verify the access JWT but must not rotate or
+ * clear legacy cookies in non-production.
  */
 export function readStewardAccessCookieFromHeader(
   cookieHeader: string | null,
   environment: string | undefined,
-  nowMs = Date.now(),
 ): string | undefined {
   const names = stewardCookieNames(environment);
-  const ownCookie = getCookieValueFromHeader(cookieHeader, names.token);
-  if (ownCookie) return ownCookie;
-
-  if (
-    names.token === LEGACY_STEWARD_COOKIES.token ||
-    nowMs >= LEGACY_STEWARD_COOKIE_FALLBACK_EXPIRES_AT_MS
-  ) {
-    return undefined;
-  }
-
-  return getCookieValueFromHeader(cookieHeader, LEGACY_STEWARD_COOKIES.token);
+  return getCookieValueFromHeader(cookieHeader, names.token);
 }

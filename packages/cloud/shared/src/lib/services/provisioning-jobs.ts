@@ -46,9 +46,11 @@ import {
 } from "../../db/repositories/jobs";
 import {
   type AgentExecutionTier,
+  type AgentSandboxPoolStatus,
   type AgentSandboxStatus,
   agentSandboxes,
   UPGRADE_FAILURE_TARGET_MARKER_PREFIX,
+  WARM_POOL_ORG_ID,
 } from "../../db/schemas/agent-sandboxes";
 import { apps } from "../../db/schemas/apps";
 import { containers } from "../../db/schemas/containers";
@@ -90,6 +92,7 @@ import {
 } from "./eliza-provision-lock";
 import {
   AdminCanaryCleanupExpectationError,
+  type DeleteAuthorization,
   elizaSandboxService,
   SNAPSHOT_ENDPOINT_UNSUPPORTED,
 } from "./eliza-sandbox";
@@ -127,6 +130,7 @@ export interface AgentDeleteJobData {
   agentId: string;
   organizationId: string;
   userId: string;
+  authorization?: DeleteAuthorization;
 }
 
 export interface AgentSuspendJobData {
@@ -449,12 +453,19 @@ function isAgentProvisionJobData(value: unknown): value is AgentProvisionJobData
 }
 
 function isAgentDeleteJobData(value: unknown): value is AgentDeleteJobData {
+  const authorization =
+    typeof value === "object" && value !== null
+      ? (value as { authorization?: unknown }).authorization
+      : undefined;
   return (
     typeof value === "object" &&
     value !== null &&
     typeof (value as { agentId?: unknown }).agentId === "string" &&
     typeof (value as { organizationId?: unknown }).organizationId === "string" &&
-    typeof (value as { userId?: unknown }).userId === "string"
+    typeof (value as { userId?: unknown }).userId === "string" &&
+    (authorization === undefined ||
+      authorization === "user_request" ||
+      authorization === "billing_request")
   );
 }
 
@@ -768,6 +779,7 @@ interface LifecycleSandboxRow {
   replacement_cleanup_sandbox_id: string | null;
   deletion_attempt_id: string | null;
   deletion_started_at: Date | null;
+  pool_status: AgentSandboxPoolStatus | null;
 }
 
 interface LifecycleJobOptions<TData extends object> {
@@ -806,6 +818,7 @@ interface LifecycleJobOptions<TData extends object> {
    * provision's lifecycle-revision race check).
    */
   validateSandbox?: (sandbox: LifecycleSandboxRow) => void;
+  deleteAuthorization?: DeleteAuthorization;
   /**
    * Called with the hydrated existing job when an active pending/in_progress
    * job of the same type would be reused instead of inserting a new row.
@@ -1250,6 +1263,7 @@ export class ProvisioningJobService {
         replacement_cleanup_sandbox_id: agentSandboxes.replacement_cleanup_sandbox_id,
         deletion_attempt_id: agentSandboxes.deletion_attempt_id,
         deletion_started_at: agentSandboxes.deletion_started_at,
+        pool_status: agentSandboxes.pool_status,
       })
       .from(agentSandboxes)
       .where(
@@ -1295,6 +1309,23 @@ export class ProvisioningJobService {
     }
 
     opts.validateSandbox?.(sandbox);
+
+    // Mirrors prepareAgentDelete's admission policy in eliza-sandbox.ts: an
+    // unqualified delete of a running dedicated agent fails closed, while
+    // shared-runtime rows and unclaimed warm-pool rows stay deletable by
+    // cleanup paths. The row lookup above is scoped to opts.organizationId,
+    // so that value is the row's organization_id.
+    const isUnclaimedWarmPoolEntry =
+      opts.organizationId === WARM_POOL_ORG_ID && sandbox.pool_status === "unclaimed";
+    if (
+      opts.jobType === JOB_TYPES.AGENT_DELETE &&
+      sandbox.status === "running" &&
+      sandbox.execution_tier !== "shared" &&
+      !isUnclaimedWarmPoolEntry &&
+      !opts.deleteAuthorization
+    ) {
+      throw new ApiError(409, "session_not_ready", "Agent is running; suspend it before deletion");
+    }
 
     const configuredConflicts = opts.mutuallyExclusiveJobTypes ?? [];
     const symmetricConflicts =
@@ -1487,6 +1518,7 @@ export class ProvisioningJobService {
     organizationId: string;
     userId: string;
     webhookUrl?: string;
+    authorization?: DeleteAuthorization;
     expectedIdentity?: {
       agentName: string;
       createdAt: Date | string;
@@ -1508,12 +1540,14 @@ export class ProvisioningJobService {
         agentId: params.agentId,
         organizationId: params.organizationId,
         userId: params.userId,
+        authorization: params.authorization,
       },
       toRecord: agentDeleteJobDataToRecord,
       agentId: params.agentId,
       organizationId: params.organizationId,
       userId: params.userId,
       webhookUrl: params.webhookUrl,
+      deleteAuthorization: params.authorization,
       maxAttempts: 3,
       // SSH stop is fast (~10s graceful + ~5s force kill), DB cascade is
       // sub-second. 30s matches the Docker deletion-stop command timeout.
@@ -3997,6 +4031,11 @@ export class ProvisioningJobService {
           error: result.error,
         }),
       });
+      if (result.retryable) {
+        throw new RetryableProvisionTransportError(
+          result.error ?? "Snapshot capture temporarily unavailable",
+        );
+      }
       throw new Error(result.error ?? "Unknown agent_restart failure");
     }
 
@@ -4793,6 +4832,11 @@ export class ProvisioningJobService {
           error: result.error,
         }),
       });
+      if (result.retryable) {
+        throw new RetryableProvisionTransportError(
+          result.error ?? "Snapshot capture temporarily unavailable",
+        );
+      }
       throw new Error(result.error ?? "Unknown agent_snapshot failure");
     }
 
@@ -4838,7 +4882,11 @@ export class ProvisioningJobService {
     });
 
     await this.assertExecutionMutationLease(job);
-    const delResult = await elizaSandboxService.executeDeletion(data.agentId, data.organizationId);
+    const delResult = await elizaSandboxService.executeDeletion(
+      data.agentId,
+      data.organizationId,
+      data.authorization,
+    );
 
     if (!delResult.success) {
       // Persist a partial result and rethrow so the jobs runner counts an

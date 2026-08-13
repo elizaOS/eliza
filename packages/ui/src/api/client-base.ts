@@ -304,11 +304,46 @@ function findSseEventBreak(
     : { index: crlfBreak, length: 4 };
 }
 
-function parseStreamChatDataLine(line: string): StreamChatEvent | null {
+// Producers that predate the canonical JSON `type` (shared-runtime, sandbox,
+// bridge, and control-plane fallback chat) classify frames only through their
+// SSE event name. Map those names when `type` is absent so a terminal `done`
+// or `error` frame is never misread as another token (#17122). An explicit
+// JSON `type` always wins over the event name.
+const LEGACY_SSE_EVENT_TYPES: Record<string, string> = {
+  chunk: "token",
+  done: "done",
+  error: "error",
+};
+
+// Per the SSE spec the `event:` field names the whole event block regardless
+// of field order, and a later `event:` line overwrites an earlier one.
+function sseEventName(lines: readonly string[]): string | undefined {
+  let name: string | undefined;
+  for (const line of lines) {
+    if (line.startsWith("event:")) name = line.slice(6).trim() || undefined;
+  }
+  return name;
+}
+
+function parseStreamChatDataLine(
+  line: string,
+  eventName?: string,
+): StreamChatEvent | null {
   const payload = line.startsWith("data:") ? line.slice(5).trim() : "";
   if (!payload) return null;
   try {
     const parsed = JSON.parse(payload) as StreamChatEvent;
+    if (!parsed.type && eventName && LEGACY_SSE_EVENT_TYPES[eventName]) {
+      parsed.type = LEGACY_SSE_EVENT_TYPES[eventName];
+      if (
+        parsed.type === "done" &&
+        typeof parsed.fullText !== "string" &&
+        typeof parsed.text === "string"
+      ) {
+        // Legacy named done frames carried the authoritative reply in `text`.
+        parsed.fullText = parsed.text;
+      }
+    }
     if (!parsed.type && typeof parsed.text === "string") parsed.type = "token";
     return parsed;
   } catch {
@@ -411,8 +446,9 @@ function applyStreamChatDataLine(
   ) => void,
   onStatus?: (status: ChatTurnStatus) => void,
   onToolEvent?: (event: ChatToolCallEvent) => void,
+  eventName?: string,
 ): boolean {
-  const parsed = parseStreamChatDataLine(line);
+  const parsed = parseStreamChatDataLine(line, eventName);
   if (!parsed) return false;
   if (parsed.type === "token") {
     return applyStreamChatTokenEvent(parsed, state, onToken);
@@ -746,6 +782,10 @@ export class ElizaClient {
   // Fired exactly once per successful reconnect (never on the first connect)
   // so consumers can reconcile state that drifted during the network gap.
   private resyncListeners = new Set<() => void>();
+  // Fired synchronously on every setBaseUrl/repointBaseUrl, including the
+  // socket-less Cloud repoint path where ws-reconnected never fires — the
+  // only observable signal for "the active agent/server target changed".
+  private baseUrlChangeListeners = new Set<(baseUrl: string) => void>();
 
   // UI language propagation — set by AppContext so the backend can
   // localise responses when needed.
@@ -873,7 +913,9 @@ export class ElizaClient {
    * the credential.
    */
   private installToken(token: string | null, notify: boolean): void {
-    this._token = token?.trim() || null;
+    const nextToken = token?.trim() || null;
+    const tokenChanged = nextToken !== this._token;
+    this._token = nextToken;
     // Boot config is the canonical source. fetchWithCsrf and authBase read here.
     const config = getBootConfig();
     setBootConfig({ ...config, apiToken: this._token ?? undefined });
@@ -885,6 +927,7 @@ export class ElizaClient {
     if (notify && typeof window !== "undefined") {
       window.dispatchEvent(new CustomEvent("steward-token-sync"));
     }
+    if (tokenChanged && this.ws) this.rotateConnection();
   }
 
   getBaseUrl(): string {
@@ -897,10 +940,59 @@ export class ElizaClient {
     this._userSetBase = normalized.length > 0;
     this._baseUrl = normalized;
     this.disconnectWs();
-    if (!persist) {
-      return;
+    if (persist) {
+      this.persistBaseUrlFailClosed(normalized);
     }
-    this.persistBaseUrl(normalized);
+    this.notifyBaseUrlChange();
+  }
+
+  /** Subscribe to base-URL changes from {@link setBaseUrl} or {@link
+   * repointBaseUrl}. Fires synchronously with the resulting base URL after
+   * every change, including a Cloud repoint that never opens a socket and so
+   * never fires `ws-reconnected` — the only base-change signal that does not
+   * depend on the WebSocket transport. Returns an unsubscribe function. */
+  onBaseUrlChange(listener: (baseUrl: string) => void): () => void {
+    this.baseUrlChangeListeners.add(listener);
+    return () => {
+      this.baseUrlChangeListeners.delete(listener);
+    };
+  }
+
+  /**
+   * Isolate each listener so one throwing observer cannot swallow the base
+   * change for the rest — critical in {@link repointBaseUrl}, where this
+   * notification runs before `connectWs()` and the token-sync dispatch; an
+   * unguarded throw there would silently break reconnection (#18542).
+   */
+  private notifyBaseUrlChange(): void {
+    for (const listener of this.baseUrlChangeListeners) {
+      try {
+        listener(this._baseUrl);
+      } catch (err) {
+        logger.error(
+          { err },
+          "[ElizaClient] onBaseUrlChange listener threw; other listeners still notified",
+        );
+      }
+    }
+  }
+
+  /**
+   * Persist the base URL, but never let a storage failure (quota, disabled
+   * localStorage, private-mode restrictions) suppress {@link
+   * notifyBaseUrlChange}: `_baseUrl` is already mutated in memory and is the
+   * authoritative value, so dependent per-authority observers must still
+   * learn about the change even when persistence itself failed (#18542).
+   */
+  private persistBaseUrlFailClosed(normalized: string): void {
+    try {
+      this.persistBaseUrl(normalized);
+    } catch (err) {
+      // error-policy:J6 best-effort persistence — the in-memory base is
+      // already authoritative for this process; a storage failure must not
+      // block downstream notification of the change that already happened.
+      logger.warn({ err }, "[ElizaClient] persistBaseUrl failed");
+    }
   }
 
   /**
@@ -958,6 +1050,9 @@ export class ElizaClient {
    * REST/SSE keyed off the new `baseUrl`. The socket teardown + reconnect path
    * (steps 1 and 3, where `onopen` fires `ws-reconnected`) is exercised only for
    * non-cloud hosts — it is forward-cover for when a base actually uses `/ws`.
+   * {@link onBaseUrlChange} fires unconditionally regardless of transport, so
+   * a per-authority cache (e.g. the notification store, #18391) can observe
+   * this swap even when no socket is involved.
    * The "invisible" wins (no `disconnected` flap, no `StartupScreen`, no draft
    * clear) hold independent of whether a socket is involved.
    */
@@ -994,7 +1089,8 @@ export class ElizaClient {
     if (installsToken) this.installToken(token ?? null, false);
     this._userSetBase = normalized.length > 0;
     this._baseUrl = normalized;
-    this.persistBaseUrl(normalized);
+    this.persistBaseUrlFailClosed(normalized);
+    this.notifyBaseUrlChange();
 
     // Reconnect immediately against the new base. connectWs() derives the WS
     // host from this.baseUrl, so the socket comes up on the dedicated host; its
@@ -1154,6 +1250,9 @@ export class ElizaClient {
         message,
         code,
         retryAfter,
+        // Structured consumers (the /join credit-gate classifier) read fields
+        // the flattened message/code drop, e.g. `welcomeBonusWithheld`.
+        data: body,
       });
       // Structural agent-gone from a bound cloud agent host: drop the dead
       // binding at the request choke point so background callers (lifeops
@@ -1656,9 +1755,11 @@ export class ElizaClient {
     if (token) params.set("token", token);
     url += `?${params.toString()}`;
 
-    this.ws = new WebSocket(url);
+    const socket = new WebSocket(url);
+    this.ws = socket;
 
-    this.ws.onopen = () => {
+    socket.onopen = () => {
+      if (this.ws !== socket) return;
       const token = this.apiToken;
       if (token && this.ws?.readyState === WebSocket.OPEN) {
         this.ws.send(JSON.stringify({ type: "auth", token }));
@@ -1706,7 +1807,8 @@ export class ElizaClient {
       }
     };
 
-    this.ws.onmessage = (event) => {
+    socket.onmessage = (event) => {
+      if (this.ws !== socket) return;
       try {
         const data = JSON.parse(event.data as string) as Record<
           string,
@@ -1719,7 +1821,8 @@ export class ElizaClient {
       }
     };
 
-    this.ws.onclose = () => {
+    socket.onclose = () => {
+      if (this.ws !== socket) return;
       this.ws = null;
       // Track disconnection time if not already set
       if (this.disconnectedAt === null) {
@@ -1751,7 +1854,8 @@ export class ElizaClient {
       this.scheduleReconnect();
     };
 
-    this.ws.onerror = () => {
+    socket.onerror = () => {
+      if (this.ws !== socket) return;
       // close handler will fire
     };
   }
@@ -1848,6 +1952,45 @@ export class ElizaClient {
     return () => {
       this.resyncListeners.delete(listener);
     };
+  }
+
+  /**
+   * Force-close and immediately re-establish the live WebSocket against the
+   * SAME base — `_baseUrl`, persistence, and the token are untouched. Unlike
+   * {@link resetConnection}, which leaves an already-open socket alone, this
+   * always tears the socket down first, nulling its handlers before `close()`
+   * exactly like {@link repointBaseUrl}'s teardown, so nothing already in
+   * flight on it can be delivered afterward.
+   *
+   * For an authority-scoped observer (e.g. the notification store, #18542)
+   * whose authority changed WITHOUT a base URL change (an in-place identity
+   * switch or logout), neither {@link setBaseUrl} nor {@link repointBaseUrl}
+   * runs, so the socket would otherwise stay open across the switch — the one
+   * transport gap {@link onBaseUrlChange} does not cover. This closes it.
+   */
+  rotateConnection(): void {
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+    if (this.ws) {
+      this.ws.onopen = null;
+      this.ws.onclose = null;
+      this.ws.onerror = null;
+      this.ws.onmessage = null;
+      try {
+        this.ws.close();
+      } catch {
+        /* already closing */
+      }
+      this.ws = null;
+    }
+    this.wsSendQueue = [];
+    this.wsEventBacklog.clear();
+    this.backoffMs = 500;
+    this.reconnectAttempt = 0;
+    this.disconnectedAt = null;
+    this.connectWs();
   }
 
   /** Reset connection state and restart reconnection attempts. */
@@ -1981,8 +2124,19 @@ export class ElizaClient {
       this.networkStatusUnsubscribe();
       this.networkStatusUnsubscribe = null;
     }
-    this.ws?.close();
-    this.ws = null;
+    const socket = this.ws;
+    if (socket) {
+      socket.onopen = null;
+      socket.onclose = null;
+      socket.onerror = null;
+      socket.onmessage = null;
+      try {
+        socket.close();
+      } catch {
+        // error-policy:J6 intentional teardown of an already-closing socket.
+      }
+      if (this.ws === socket) this.ws = null;
+    }
     this.wsSendQueue = [];
     this.wsEventBacklog.clear();
     // Reset connection state on intentional disconnect
@@ -2195,7 +2349,9 @@ export class ElizaClient {
       while (eventBreak) {
         const rawEvent = buffer.slice(0, eventBreak.index);
         buffer = buffer.slice(eventBreak.index + eventBreak.length);
-        for (const line of rawEvent.split(/\r?\n/)) {
+        const eventLines = rawEvent.split(/\r?\n/);
+        const eventName = sseEventName(eventLines);
+        for (const line of eventLines) {
           if (!line.startsWith("data:")) continue;
           if (
             applyStreamChatDataLine(
@@ -2204,6 +2360,7 @@ export class ElizaClient {
               onToken,
               onStatus,
               onToolEvent,
+              eventName,
             )
           ) {
             buffer = "";
@@ -2221,7 +2378,9 @@ export class ElizaClient {
     }
 
     if (!streamState.receivedDone && buffer.trim()) {
-      for (const line of buffer.split(/\r?\n/)) {
+      const trailingLines = buffer.split(/\r?\n/);
+      const trailingEventName = sseEventName(trailingLines);
+      for (const line of trailingLines) {
         if (line.startsWith("data:")) {
           applyStreamChatDataLine(
             line,
@@ -2229,6 +2388,7 @@ export class ElizaClient {
             onToken,
             onStatus,
             onToolEvent,
+            trailingEventName,
           );
         }
       }

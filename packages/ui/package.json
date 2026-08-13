@@ -183,6 +183,11 @@
       "import": "./dist/api/index.js",
       "default": "./dist/api/index.js"
     },
+    "./auth-status": {
+      "types": "./dist/auth-status.d.ts",
+      "import": "./dist/auth-status.js",
+      "default": "./dist/auth-status.js"
+    },
     "./bridge": {
       "types": "./dist/bridge/index.d.ts",
       "import": "./dist/bridge/index.js",
@@ -416,7 +421,7 @@
     "@fontsource/poppins": "^5.2.7",
     "@json-render/core": "0.19.0",
     "@json-render/react": "0.19.0",
-    "@metamask/connect-evm": "2.1.0",
+    "@metamask/connect-evm": "2.1.1",
     "@pixiv/three-vrm": "^3.4.5",
     "@radix-ui/react-accordion": "^1.2.12",
     "@radix-ui/react-alert-dialog": "^1.1.15",
@@ -438,7 +443,7 @@
     "@radix-ui/react-toggle": "^1.1.10",
     "@radix-ui/react-tooltip": "^1.2.8",
     "@rainbow-me/rainbowkit": "^2.2.11",
-    "@shadcn/react": "0.2.1",
+    "@shadcn/react": "0.3.0",
     "@simplewebauthn/browser": "^13.0.0",
     "@solana/spl-token": "^0.4.14",
     "@solana/wallet-adapter-phantom": "^0.9.29",
@@ -474,7 +479,7 @@
     "vaul": "^1.1.2",
     "viem": "^2.48.8",
     "wagmi": "^2.19.5",
-    "ws": "^8.19.0"
+    "ws": "^8.21.3"
   },
   "devDependencies": {
     "@capacitor-community/bluetooth-le": "8.2.0",
@@ -491,7 +496,7 @@
     "@testing-library/dom": "^10.4.0",
     "@testing-library/react": "^16.3.2",
     "@testing-library/user-event": "^14.6.1",
-    "@types/jsdom": "^28.0.0",
+    "@types/jsdom": "^30.0.0",
     "@types/node": "25.6.2",
     "@types/nprogress": "^0.2.3",
     "@types/react": "^19.2.14",

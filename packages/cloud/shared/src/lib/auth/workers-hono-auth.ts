@@ -24,7 +24,8 @@ import {
   type PlaywrightTestAuthEnv,
   verifyPlaywrightTestSessionToken,
 } from "./playwright-test-session";
-import { verifyStewardTokenCached } from "./steward-client";
+import { loadVerifiedStagingSessionUser } from "./staging-session-binding";
+import { isStagingSessionTokenCandidate, verifyStewardTokenCached } from "./steward-client";
 import { readStewardAccessCookieFromHeader } from "./steward-cookies";
 
 function readStewardCookie(c: AppContext): string | null {
@@ -186,24 +187,32 @@ export async function getCurrentUser(c: AppContext): Promise<AuthedUser | null> 
     return null;
   }
 
-  const { usersService } = await import("../services/users");
-  let user = await usersService.getByStewardId(claims.userId);
-  if (!user) {
-    try {
-      const { syncUserFromSteward } = await import("../steward-sync");
-      user = await syncUserFromSteward({
-        stewardUserId: claims.userId,
-        email: claims.email,
-        walletAddress: claims.walletAddress,
-        walletChainType: claims.walletChain,
-      });
-    } catch (error) {
-      logger.error("[AUTH] Steward JIT sync failed", {
-        userId: claims.userId,
-        error: error instanceof Error ? error.message : String(error),
-      });
-      c.set("user", null);
-      return null;
+  let user: UserWithOrganization | undefined | null;
+  if (claims.stagingSessionBinding) {
+    user = await loadVerifiedStagingSessionUser({
+      binding: claims.stagingSessionBinding,
+      stewardUserId: claims.userId,
+    });
+  } else {
+    const { usersService } = await import("../services/users");
+    user = await usersService.getByStewardId(claims.userId);
+    if (!user) {
+      try {
+        const { syncUserFromSteward } = await import("../steward-sync");
+        user = await syncUserFromSteward({
+          stewardUserId: claims.userId,
+          email: claims.email,
+          walletAddress: claims.walletAddress,
+          walletChainType: claims.walletChain,
+        });
+      } catch (error) {
+        logger.error("[AUTH] Steward JIT sync failed", {
+          userId: claims.userId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+        c.set("user", null);
+        return null;
+      }
     }
   }
   if (!user) {
@@ -356,6 +365,12 @@ export async function sessionScopeHashPrefix(c: AppContext): Promise<string | nu
   return createHash("sha256").update(token).digest("hex").substring(0, 16);
 }
 
+/** Untrusted classification used only to select the stricter QA cache path. */
+export function isStagingSessionScopeCandidate(c: AppContext): boolean {
+  const token = readSessionCredential(c);
+  return token ? isStagingSessionTokenCandidate(token) : false;
+}
+
 /**
  * Re-verify a session credential WITHOUT the cold user/org+agent hydration, for
  * a scope-cache hit (#SHADOW-ACCOUNT-DEBUG). Runs the warm-cached steward JWT
@@ -368,12 +383,25 @@ export async function sessionScopeHashPrefix(c: AppContext): Promise<string | nu
 export async function revalidateSessionScope(
   c: AppContext,
   cachedStewardUserId: string,
+  cachedOrganizationId?: string,
 ): Promise<boolean> {
   const token = readSessionCredential(c);
   if (!token) return false;
   const claims = await verifyStewardTokenCached(c.env, token).catch(() => null);
   if (!claims) return false;
-  return claims.userId === cachedStewardUserId;
+  if (claims.userId !== cachedStewardUserId) return false;
+  if (!claims.stagingSessionBinding) return true;
+  if (
+    !cachedOrganizationId ||
+    claims.stagingSessionBinding.organizationId !== cachedOrganizationId
+  ) {
+    return false;
+  }
+  const user = await loadVerifiedStagingSessionUser({
+    binding: claims.stagingSessionBinding,
+    stewardUserId: claims.userId,
+  });
+  return user?.organization_id === cachedOrganizationId;
 }
 
 export async function requireUserOrApiKeyWithOrg(c: AppContext): Promise<AuthedUserWithOrg> {

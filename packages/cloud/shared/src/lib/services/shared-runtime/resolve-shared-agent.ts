@@ -13,6 +13,7 @@ import type { AppEnv, RuntimeDurableObjectNamespace } from "../../../types/cloud
 import { ApiError } from "../../api/cloud-worker-errors";
 import {
   apiKeyScopeHashPrefix,
+  isStagingSessionScopeCandidate,
   requireUserOrApiKeyWithOrgLookup,
   revalidateSessionScope,
   sessionScopeHashPrefix,
@@ -289,6 +290,7 @@ export async function resolveSharedAgent(
   const apiKeyPrefix = await apiKeyScopeHashPrefix(c);
   const sessionPrefix = apiKeyPrefix ? null : await sessionScopeHashPrefix(c);
   const isSessionScope = apiKeyPrefix == null && sessionPrefix != null;
+  const isStagingSessionScope = isSessionScope && isStagingSessionScopeCandidate(c);
   const scopeKeyPrefix = apiKeyPrefix ?? (sessionPrefix ? `s:${sessionPrefix}` : null);
   const scopeCacheKey = scopeKeyPrefix
     ? CacheKeys.sharedAgentScope.resolve(scopeKeyPrefix, agentId)
@@ -328,8 +330,9 @@ export async function resolveSharedAgent(
     try {
       stillAuthorized = isSessionScope
         ? cached.stewardUserId != null &&
-          (await revalidateSessionScope(c, cached.stewardUserId)) &&
-          (await revalidateSessionUserState(cached.orgId, cached.stewardUserId))
+          (await revalidateSessionScope(c, cached.stewardUserId, cached.orgId)) &&
+          (isStagingSessionScope ||
+            (await revalidateSessionUserState(cached.orgId, cached.stewardUserId)))
         : await revalidateCachedScope(c, cached.orgId, options.cacheOnly === true);
     } catch (error) {
       // error-policy:J4 a cache credential dependency failure cannot authorize
@@ -607,4 +610,41 @@ export async function resolveSharedAgent(
   }
 
   return { agent, agentId, orgId: entry.orgId, agentName: agent.agent_name ?? "Eliza" };
+}
+
+/**
+ * Seed the credential-scoped authorization entry the cache-only turn gate
+ * consults, from a request that ALREADY passed the authoritative create gate
+ * for this exact agent (CHAT-CORE-LATENCY §6: the fresh-create → immediate-send
+ * path otherwise misses `CacheKeys.sharedAgentScope.resolve` and bounces off
+ * "Agent authorization cache is warming" 503s). Derives the key with the SAME
+ * prefix functions `resolveSharedAgent` uses, so the seeded entry is the one
+ * the first message reads.
+ *
+ * This cannot weaken authorization: the entry is keyed by the creator's own
+ * credential, carries the org the agent row itself belongs to, and every hit
+ * still re-runs the per-request credential gate (`revalidateResolvedScope`)
+ * before being served. Requests carrying no supported credential seed nothing.
+ * `stewardUserId` must be the creating user's steward id on the session path;
+ * without it a session hit safely falls back to authoritative hydration.
+ */
+export async function seedSharedAgentScopeCache(
+  c: Context<AppEnv>,
+  agent: AgentSandbox,
+  stewardUserId?: string,
+): Promise<void> {
+  if (agent.execution_tier !== "shared") return;
+  const apiKeyPrefix = await apiKeyScopeHashPrefix(c);
+  const sessionPrefix = apiKeyPrefix ? null : await sessionScopeHashPrefix(c);
+  const scopeKeyPrefix = apiKeyPrefix ?? (sessionPrefix ? `s:${sessionPrefix}` : null);
+  if (!scopeKeyPrefix) return;
+  const scopeCacheKey = CacheKeys.sharedAgentScope.resolve(scopeKeyPrefix, agent.id);
+  const entry: CachedSharedAgentScope = {
+    orgId: agent.organization_id,
+    agent,
+    ...(apiKeyPrefix == null && stewardUserId ? { stewardUserId } : {}),
+    firstWrittenAtMs: Date.now(),
+  };
+  sharedAgentScopeMemoryCache.set(scopeCacheKey, entry);
+  await cache.set(scopeCacheKey, entry, CacheTTL.sharedAgentScope.resolve);
 }

@@ -4,7 +4,11 @@
  */
 // @vitest-environment jsdom
 
-import { STEWARD_TOKEN_KEY } from "@elizaos/shared/steward-session-client";
+import {
+  STEWARD_SESSION_CHANGE_EVENT,
+  STEWARD_TOKEN_KEY,
+  type StewardSessionChangeDetail,
+} from "@elizaos/shared/steward-session-client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const platform = vi.hoisted(() => ({
@@ -201,7 +205,14 @@ describe("dedicated Cloud account boundary on trusted app shells", () => {
       localStorage.setItem(STEWARD_TOKEN_KEY, "  rejected-token  ");
       const fetchSpy = mockTrustedShellResponse({ error: "unauthorized" }, 401);
       const syncListener = vi.fn();
+      const sessionTransitions: StewardSessionChangeDetail[] = [];
+      const sessionListener = (event: Event) => {
+        sessionTransitions.push(
+          (event as CustomEvent<StewardSessionChangeDetail>).detail,
+        );
+      };
       window.addEventListener("steward-token-sync", syncListener);
+      window.addEventListener(STEWARD_SESSION_CHANGE_EVENT, sessionListener);
       const client = new ElizaClient(DEDICATED_STAGING_BASE, "rejected-token");
 
       await expect(client.getCloudStatus()).resolves.toMatchObject({
@@ -210,6 +221,8 @@ describe("dedicated Cloud account boundary on trusted app shells", () => {
       });
       expect(localStorage.getItem(STEWARD_TOKEN_KEY)).toBeNull();
       expect(syncListener).toHaveBeenCalledTimes(1);
+      expect(sessionTransitions).toHaveLength(1);
+      expect(sessionTransitions[0]?.state).toBe("cleared");
 
       await expect(client.getCloudCompatAgents()).resolves.toMatchObject({
         success: false,
@@ -222,6 +235,7 @@ describe("dedicated Cloud account boundary on trusted app shells", () => {
         expect(fetchSpy).toHaveBeenCalledTimes(1);
       }
       window.removeEventListener("steward-token-sync", syncListener);
+      window.removeEventListener(STEWARD_SESSION_CHANGE_EVENT, sessionListener);
     },
   );
 

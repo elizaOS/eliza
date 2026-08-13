@@ -8,17 +8,22 @@
  * authorize-return/brand-button are doubled to isolate the mount.
  */
 
+import { StewardApiError } from "@stwd/sdk";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
 import { MemoryRouter } from "react-router-dom";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-// A never-resolving verify keeps the page in its "verifying" state — we only
-// need to observe the verify was REACHED, not its outcome.
-const { verifyEmailCallback } = vi.hoisted(() => ({
-  verifyEmailCallback: vi.fn(
-    (_token: string, _email: string) => new Promise(() => {}),
-  ),
+const callbackState = vi.hoisted(() => ({
+  verifyEmailCallback:
+    vi.fn<
+      (
+        token: string,
+        email: string,
+      ) => Promise<{ token: string; refreshToken?: string }>
+    >(),
+  pendingReturnTo: null as string | null,
 }));
 
 // Stub StewardAuthProvider with a marker that ALSO supplies the Steward context
@@ -42,7 +47,7 @@ vi.mock("../../../shell/StewardProvider", async () => {
             session: null,
             signOut: () => {},
             getToken: () => "",
-            verifyEmailCallback,
+            verifyEmailCallback: callbackState.verifyEmailCallback,
           }}
         >
           {children}
@@ -60,6 +65,14 @@ vi.mock("../../lib/use-page-title", () => ({ usePageTitle: () => {} }));
 vi.mock("../../lib/steward-session", () => ({
   syncStewardSessionCookie: vi.fn(),
 }));
+vi.mock("../../lib/login-return-to", () => ({
+  defaultLoginReturnTo: () => "/join",
+  consumePendingOAuthReturnTo: () => {
+    const value = callbackState.pendingReturnTo;
+    callbackState.pendingReturnTo = null;
+    return value;
+  },
+}));
 vi.mock("../../../../cloud-ui/components/auth/authorize-return", () => ({
   readStoredAppAuthorizeReturnTo: () => null,
   clearStoredAppAuthorizeReturnTo: () => {},
@@ -70,14 +83,26 @@ vi.mock("../../../../cloud-ui/components/brand/brand-button", () => ({
   ),
 }));
 
-import EmailCallbackPage from "./email-callback-page";
+import EmailCallbackPage, {
+  resolveEmailCallbackDestination,
+} from "./email-callback-page";
+
+beforeEach(() => {
+  callbackState.verifyEmailCallback.mockReset();
+  callbackState.pendingReturnTo = null;
+});
 
 afterEach(() => {
   cleanup();
+  vi.clearAllMocks();
 });
 
 describe("EmailCallbackPage", () => {
   it("mounts the callback inside StewardAuthProvider so the magic-link verify runs (not the 'unavailable' dead-end)", async () => {
+    callbackState.verifyEmailCallback.mockImplementation(
+      () => new Promise(() => {}),
+    );
+
     render(
       <MemoryRouter
         initialEntries={["/auth/callback/email?token=tok&email=a%40b.co"]}
@@ -94,7 +119,123 @@ describe("EmailCallbackPage", () => {
     // token/email. Without the wrapper `auth` is null and this never fires —
     // the page dead-ends on "Sign-in is unavailable".
     await waitFor(() =>
-      expect(verifyEmailCallback).toHaveBeenCalledWith("tok", "a@b.co"),
+      expect(callbackState.verifyEmailCallback).toHaveBeenCalledWith(
+        "tok",
+        "a@b.co",
+      ),
     );
+  });
+
+  it("keeps one-time verification single-flight across provider remounts", async () => {
+    callbackState.verifyEmailCallback.mockImplementation(
+      () => new Promise(() => {}),
+    );
+
+    const firstMount = render(
+      <MemoryRouter
+        initialEntries={[
+          "/auth/callback/email?token=strict-token&email=strict%40example.com",
+        ]}
+      >
+        <EmailCallbackPage />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() =>
+      expect(callbackState.verifyEmailCallback).toHaveBeenCalledTimes(1),
+    );
+    firstMount.unmount();
+
+    render(
+      <MemoryRouter
+        initialEntries={[
+          "/auth/callback/email?token=strict-token&email=strict%40example.com",
+        ]}
+      >
+        <EmailCallbackPage />
+      </MemoryRouter>,
+    );
+
+    expect(callbackState.verifyEmailCallback).toHaveBeenCalledTimes(1);
+    expect(callbackState.verifyEmailCallback).toHaveBeenCalledWith(
+      "strict-token",
+      "strict@example.com",
+    );
+  });
+
+  it("identifies an upstream one-time-link rejection as expired or already used", async () => {
+    callbackState.verifyEmailCallback.mockRejectedValue(
+      new StewardApiError("Invalid or expired magic link", 410),
+    );
+
+    const firstMount = render(
+      <MemoryRouter
+        initialEntries={[
+          "/auth/callback/email?token=used-token&email=used%40example.com",
+        ]}
+      >
+        <EmailCallbackPage />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() =>
+      expect(
+        screen.getByText(
+          "That sign-in link expired or was already used. Please sign in again.",
+        ),
+      ).toBeTruthy(),
+    );
+    expect(screen.queryByText("Invalid or expired magic link")).toBeNull();
+
+    firstMount.unmount();
+    render(
+      <MemoryRouter
+        initialEntries={[
+          "/auth/callback/email?token=used-token&email=used%40example.com",
+        ]}
+      >
+        <EmailCallbackPage />
+      </MemoryRouter>,
+    );
+    await waitFor(() =>
+      expect(callbackState.verifyEmailCallback).toHaveBeenCalledTimes(2),
+    );
+  });
+
+  it("restores a pending messaging continuation after magic-link verification", async () => {
+    expect(resolveEmailCallbackDestination(null, "/get-started")).toBe(
+      "/get-started",
+    );
+    expect(
+      resolveEmailCallbackDestination(
+        "/app-auth/authorize?id=1",
+        "/get-started",
+      ),
+    ).toBe("/app-auth/authorize?id=1");
+  });
+
+  it("rejects an incomplete callback and offers a safe keyboard-reachable recovery action", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <MemoryRouter initialEntries={["/auth/callback/email"]}>
+        <EmailCallbackPage />
+      </MemoryRouter>,
+    );
+
+    expect(
+      await screen.findByText(
+        "This sign-in link is missing its token or email.",
+      ),
+    ).toBeTruthy();
+    expect(await screen.findByRole("main")).toBeTruthy();
+    expect(
+      screen.getByRole("heading", { level: 1, name: "Sign-in failed" }),
+    ).toBeTruthy();
+    const recovery = screen.getByRole("link", { name: "Sign In Again" });
+    expect(recovery.getAttribute("href")).toBe("/login");
+    await user.tab();
+    expect(document.activeElement).toBe(recovery);
+    expect(callbackState.verifyEmailCallback).not.toHaveBeenCalled();
   });
 });

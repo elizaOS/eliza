@@ -1,20 +1,136 @@
 /**
- * Pure verdict logic for the iOS simulator voice round-trip lane
- * (`ios-voice-selftest-smoke.mjs`). Kept dependency-free so it is the single
- * source of truth for "did the REAL mic->ASR->agent->TTS loop pass?" shared by
- * the in-app WKWebView verifier (which mirrors this check to signal early) and
- * the host-side orchestrator (which re-derives the verdict from the raw report
- * as the authoritative hard gate), and unit-tested by
- * `ios-voice-selftest-lib.test.mjs`.
+ * Pure verdict and poll-policy helpers for the iOS simulator voice round-trip
+ * lane (`ios-voice-selftest-smoke.mjs`). Kept dependency-free so it is the
+ * single source of truth for "did the REAL mic->ASR->agent->TTS loop pass?"
+ * shared by the in-app WKWebView verifier (which mirrors this check to signal
+ * early) and the host-side orchestrator (which re-derives the verdict from the
+ * raw report as the authoritative hard gate), plus safe-integer parsing for
+ * host poll knobs. Unit-tested by `ios-voice-selftest-lib.test.mjs`.
  *
  * The no-false-green contract matches `voice-selftest.android.spec.ts`: overall
  * must be `pass` AND each of the asr/send/tts stages must be `pass`. A `skipped`
  * stage (e.g. local-inference ASR not provisioned) is NOT a pass — it fails the
  * lane loudly so "can't run here" never reads as "verified working".
+ *
+ * Poll env overrides (`IOS_VOICE_SELFTEST_ATTEMPTS` / `_DELAY_MS`) must be
+ * complete safe-integer decimals. Partial `Number.parseInt` forms cannot
+ * silently shrink the budget (e.g. `"30junk"` → 30) before the host times out.
  */
 
 /** The three stages every real voice round-trip must clear, in order. */
 export const REQUIRED_VOICE_STAGES = ["asr", "send", "tts"];
+
+/** Default host-side Preferences poll budget when env overrides are unset. */
+export const DEFAULT_VOICE_SELFTEST_ATTEMPTS = 300;
+
+/** Default delay between Preferences polls when env overrides are unset. */
+export const DEFAULT_VOICE_SELFTEST_DELAY_MS = 1000;
+
+/** Node clamps setTimeout delays above this value to 1 ms. */
+export const MAX_TIMER_DELAY_MS = 2_147_483_647;
+
+/**
+ * Accept only complete positive safe-integer decimal strings (or numbers).
+ * Rejects partial numbers, signed values, fractions, and non-positive values.
+ * @param {string | number} value
+ * @param {string} label
+ * @returns {number}
+ */
+export function parsePositiveSafeInteger(value, label) {
+  if (typeof value === "number") {
+    if (!Number.isSafeInteger(value) || value < 1) {
+      throw new Error(
+        `${label} must be a positive safe-integer decimal (received ${JSON.stringify(value)})`,
+      );
+    }
+    return value;
+  }
+  const raw = String(value ?? "");
+  if (!/^\d+$/.test(raw)) {
+    throw new Error(
+      `${label} must be a positive safe-integer decimal (received ${JSON.stringify(String(value ?? ""))})`,
+    );
+  }
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isSafeInteger(parsed) || parsed < 1 || String(parsed) !== raw) {
+    throw new Error(
+      `${label} must be a positive safe-integer decimal (received ${JSON.stringify(String(value ?? ""))})`,
+    );
+  }
+  return parsed;
+}
+
+/**
+ * Accept only complete non-negative safe-integer decimal strings (or numbers),
+ * including zero. Same reject set as {@link parsePositiveSafeInteger} except 0.
+ * An optional max enforces a runtime timer ceiling.
+ * @param {string | number} value
+ * @param {string} label
+ * @param {{ max?: number }} [options]
+ * @returns {number}
+ */
+export function parseNonNegativeSafeInteger(value, label, options = {}) {
+  const max = options.max ?? Number.MAX_SAFE_INTEGER;
+  const requirement =
+    max === Number.MAX_SAFE_INTEGER
+      ? "a non-negative safe-integer decimal"
+      : `a non-negative safe-integer decimal no greater than ${max}`;
+  if (typeof value === "number") {
+    if (!Number.isSafeInteger(value) || value < 0 || value > max) {
+      throw new Error(
+        `${label} must be ${requirement} (received ${JSON.stringify(value)})`,
+      );
+    }
+    return value;
+  }
+  const raw = String(value ?? "");
+  if (!/^\d+$/.test(raw)) {
+    throw new Error(
+      `${label} must be ${requirement} (received ${JSON.stringify(String(value ?? ""))})`,
+    );
+  }
+  const parsed = Number.parseInt(raw, 10);
+  if (
+    !Number.isSafeInteger(parsed) ||
+    parsed < 0 ||
+    parsed > max ||
+    String(parsed) !== raw
+  ) {
+    throw new Error(
+      `${label} must be ${requirement} (received ${JSON.stringify(String(value ?? ""))})`,
+    );
+  }
+  return parsed;
+}
+
+function isUnsetEnv(value) {
+  return value === undefined || value === null || String(value).trim() === "";
+}
+
+/**
+ * Resolve host-side Preferences poll policy from env. Unset/empty overrides
+ * keep the historical defaults (300 attempts / 1000 ms). Any other explicit
+ * value must be a complete safe-integer decimal or the lane fails closed
+ * before simulator boot or host-agent spawn.
+ * @param {{ env?: NodeJS.ProcessEnv }} [options]
+ * @returns {{ attempts: number, delayMs: number }}
+ */
+export function resolveVoiceSelfTestPollPolicy({ env = process.env } = {}) {
+  const attempts = isUnsetEnv(env.IOS_VOICE_SELFTEST_ATTEMPTS)
+    ? DEFAULT_VOICE_SELFTEST_ATTEMPTS
+    : parsePositiveSafeInteger(
+        String(env.IOS_VOICE_SELFTEST_ATTEMPTS),
+        "IOS_VOICE_SELFTEST_ATTEMPTS",
+      );
+  const delayMs = isUnsetEnv(env.IOS_VOICE_SELFTEST_DELAY_MS)
+    ? DEFAULT_VOICE_SELFTEST_DELAY_MS
+    : parseNonNegativeSafeInteger(
+        String(env.IOS_VOICE_SELFTEST_DELAY_MS),
+        "IOS_VOICE_SELFTEST_DELAY_MS",
+        { max: MAX_TIMER_DELAY_MS },
+      );
+  return { attempts, delayMs };
+}
 
 /**
  * Reduce a {@link VoiceSelfTestReport}-shaped object to a hard pass/fail verdict

@@ -1,5 +1,12 @@
 #!/usr/bin/env node
 
+/**
+ * Validates channel-scoped messaging gateway configuration at operator and CI
+ * boundaries. Strict mode exits non-zero when a selected channel is missing a
+ * required value; callers decide whether values are real deployment settings
+ * or deterministic contract sentinels.
+ */
+
 const args = new Set(process.argv.slice(2));
 const strict = args.has("--strict");
 const channelsArg = process.argv.find((arg) => arg.startsWith("--channels="));
@@ -133,6 +140,26 @@ function checkShared() {
     hasAny(["CEREBRAS_API_KEY"]),
     "Cerebras API key is configured",
     "Set CEREBRAS_API_KEY for the stateless onboarding worker.",
+  );
+  // The BFF forwarder in packages/cloud/api/eliza-app/webhook/_forward.ts reads
+  // these as a pair: the URL is the upstream webhook gateway it proxies to, and
+  // the secret is the shared "came from the BFF" proof the gateway validates
+  // (x-eliza-webhook-forwarder-secret). _forward.ts only stamps the header when
+  // the secret is set, so an absent secret silently downgrades the gateway's
+  // trust boundary — surface that here rather than at deploy time.
+  addCheck(
+    "shared",
+    "webhook gateway URL",
+    hasAny(["ELIZA_APP_WEBHOOK_GATEWAY_URL", "WEBHOOK_GATEWAY_URL", "GATEWAY_WEBHOOK_URL"]),
+    "Webhook gateway upstream URL is configured",
+    "Set ELIZA_APP_WEBHOOK_GATEWAY_URL (or WEBHOOK_GATEWAY_URL / GATEWAY_WEBHOOK_URL) to the gateway-webhook service URL.",
+  );
+  addCheck(
+    "shared",
+    "webhook gateway forwarder secret",
+    hasAny(["ELIZA_APP_WEBHOOK_GATEWAY_SECRET"]),
+    "Webhook gateway forwarder secret is configured",
+    "Set ELIZA_APP_WEBHOOK_GATEWAY_SECRET to the shared BFF→gateway trust secret.",
   );
 }
 

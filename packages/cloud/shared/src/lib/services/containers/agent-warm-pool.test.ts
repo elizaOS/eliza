@@ -9,14 +9,19 @@
  * branch matrix so that tuning can't silently change the contract.
  */
 
-import { describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import {
   decideDrain,
   decideReplenish,
   decideRollout,
+  envWarmPoolPolicy,
   type PoolStateSnapshot,
 } from "./agent-warm-pool";
-import { DEFAULT_WARM_POOL_POLICY, type WarmPoolPolicy } from "./agent-warm-pool-forecast";
+import {
+  computeForecast,
+  DEFAULT_WARM_POOL_POLICY,
+  type WarmPoolPolicy,
+} from "./agent-warm-pool-forecast";
 
 function policy(overrides: Partial<WarmPoolPolicy> = {}): WarmPoolPolicy {
   return { ...DEFAULT_WARM_POOL_POLICY, ...overrides };
@@ -245,5 +250,84 @@ describe("decideRollout", () => {
       "img:v2",
     );
     expect(d.toReplace).toEqual(["stale"]);
+  });
+});
+
+describe("envWarmPoolPolicy", () => {
+  const savedMin = process.env.WARM_POOL_MIN_SIZE;
+  const savedMax = process.env.WARM_POOL_MAX_SIZE;
+
+  beforeEach(() => {
+    delete process.env.WARM_POOL_MIN_SIZE;
+    delete process.env.WARM_POOL_MAX_SIZE;
+  });
+
+  afterEach(() => {
+    if (savedMin === undefined) delete process.env.WARM_POOL_MIN_SIZE;
+    else process.env.WARM_POOL_MIN_SIZE = savedMin;
+    if (savedMax === undefined) delete process.env.WARM_POOL_MAX_SIZE;
+    else process.env.WARM_POOL_MAX_SIZE = savedMax;
+  });
+
+  test("reads WARM_POOL_MIN_SIZE / WARM_POOL_MAX_SIZE, not the hardcoded 1/10", () => {
+    process.env.WARM_POOL_MIN_SIZE = "4";
+    process.env.WARM_POOL_MAX_SIZE = "20";
+    const p = envWarmPoolPolicy();
+    expect(p.minPoolSize).toBe(4);
+    expect(p.maxPoolSize).toBe(20);
+    // Every other knob stays on the default.
+    expect(p.emaAlpha).toBe(DEFAULT_WARM_POOL_POLICY.emaAlpha);
+    expect(p.replenishBurstLimit).toBe(DEFAULT_WARM_POOL_POLICY.replenishBurstLimit);
+    expect(p.idleScaleDownMs).toBe(DEFAULT_WARM_POOL_POLICY.idleScaleDownMs);
+  });
+
+  test("falls back to the default 1/10 when the env vars are unset", () => {
+    const p = envWarmPoolPolicy();
+    expect(p.minPoolSize).toBe(DEFAULT_WARM_POOL_POLICY.minPoolSize);
+    expect(p.maxPoolSize).toBe(DEFAULT_WARM_POOL_POLICY.maxPoolSize);
+  });
+
+  test("env floor raises the replenish target: idle pool with min=4 creates 3 (burst-limited)", () => {
+    process.env.WARM_POOL_MIN_SIZE = "4";
+    process.env.WARM_POOL_MAX_SIZE = "20";
+    const p = envWarmPoolPolicy();
+    // Zero demand history — target is exactly the floor.
+    const forecast = computeForecast({
+      bucketCounts: [0, 0, 0],
+      emaAlpha: p.emaAlpha,
+      leadTimeBuckets: p.leadTimeBuckets,
+      minPoolSize: p.minPoolSize,
+      maxPoolSize: p.maxPoolSize,
+    });
+    expect(forecast.targetPoolSize).toBe(4);
+    const d = decideReplenish(state({ readyCount: 0, targetPoolSize: forecast.targetPoolSize }), p);
+    expect(d.toCreate).toBe(3); // deficit 4, capped by default burst limit 3
+    expect(d.reason).toContain("burst limit 3");
+  });
+
+  test("clamps a floor above the ceiling down to the ceiling (cost cap wins)", () => {
+    process.env.WARM_POOL_MIN_SIZE = "30";
+    process.env.WARM_POOL_MAX_SIZE = "5";
+    const p = envWarmPoolPolicy();
+    expect(p.minPoolSize).toBe(5);
+    expect(p.maxPoolSize).toBe(5);
+    // Must not trip the computeForecast min<=max invariant.
+    expect(() =>
+      computeForecast({
+        bucketCounts: [0],
+        emaAlpha: p.emaAlpha,
+        leadTimeBuckets: p.leadTimeBuckets,
+        minPoolSize: p.minPoolSize,
+        maxPoolSize: p.maxPoolSize,
+      }),
+    ).not.toThrow();
+  });
+
+  test("ignores garbage env values and keeps the defaults", () => {
+    process.env.WARM_POOL_MIN_SIZE = "banana";
+    process.env.WARM_POOL_MAX_SIZE = "-3";
+    const p = envWarmPoolPolicy();
+    expect(p.minPoolSize).toBe(1);
+    expect(p.maxPoolSize).toBe(10);
   });
 });

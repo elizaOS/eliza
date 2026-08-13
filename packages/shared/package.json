@@ -428,6 +428,16 @@
       "import": "./dist/audio-redaction-verify.js",
       "default": "./dist/audio-redaction-verify.js"
     },
+    "./terminal/palette": {
+      "types": "./dist/terminal/palette.d.ts",
+      "eliza-source": {
+        "types": "./src/terminal/palette.ts",
+        "import": "./src/terminal/palette.ts",
+        "default": "./src/terminal/palette.ts"
+      },
+      "import": "./dist/terminal/palette.js",
+      "default": "./dist/terminal/palette.js"
+    },
     "./*.css": "./dist/*.css",
     "./*": {
       "types": "./dist/*.d.ts",

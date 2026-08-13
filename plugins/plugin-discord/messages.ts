@@ -1275,6 +1275,17 @@ export class MessageManager {
 	 * @param {DiscordMessage} message - The Discord message to be handled
 	 */
 	async handleMessage(message: DiscordMessage): Promise<void> {
+		// Choke point for gateway, direct/replay, and coordination-sweeper turns.
+		// Event-listener gates avoid wasted preprocessing, but only this check can
+		// guarantee no alternate caller registers work behind the drain snapshot.
+		if (
+			this.discordService.admitInboundMessage?.(
+				message.id,
+				message.channel.id,
+			) === false
+		) {
+			return;
+		}
 		const turn = this.runMessageTurn(message);
 		this.discordService.trackInFlightTurn?.(message.id, turn);
 		return turn;
@@ -1412,6 +1423,15 @@ export class MessageManager {
 		const isBotDirectlyAddressed = isBotAddressed || isBotPlatformMentioned;
 		const isInThread = message.channel.isThread();
 		const isDM = message.channel.type === DiscordChannelType.DM;
+		if (isDM) {
+			// Cold-start scan coverage (#18746): remember this DM channel so a
+			// restart after a hard kill can re-open and sweep it. Never throws.
+			this.discordService.recordDmChannel?.(
+				this.accountId,
+				message.channel.id,
+				message.author.id,
+			);
+		}
 		const strictModeEnabled =
 			this.discordSettings.shouldRespondOnlyToMentions === true;
 		const replyToMode = normalizeReplyToMode(this.discordSettings.replyToMode);

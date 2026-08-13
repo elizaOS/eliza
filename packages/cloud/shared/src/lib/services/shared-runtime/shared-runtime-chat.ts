@@ -29,6 +29,7 @@ import {
   recordUsageAnalytics,
 } from "../ai-billing";
 import { aiBillingRecordsService } from "../ai-billing-records";
+import { chatSseFrame } from "../chat-sse-frames";
 import type { CreditReconciliationResult, CreditReservation } from "../credits";
 import type { BridgeRequest, BridgeResponse } from "../eliza-sandbox-bridge";
 import { isInferenceAdmissionDispatchMarkError } from "../inference-admission-gate";
@@ -53,6 +54,7 @@ import {
   type SharedAgentTurnUsage,
   type SharedTurnMessage,
 } from "./run-shared-agent-turn";
+import { projectSharedAgentCharacter } from "./shared-agent-character";
 import { navIntentActionResult } from "./shared-nav-intent";
 import { SharedRuntimeCacheWarmingError } from "./shared-runtime-errors";
 import { MAX_HISTORY_MESSAGES } from "./shared-runtime-history-policy";
@@ -85,12 +87,6 @@ export { SharedRuntimeCacheWarmingError } from "./shared-runtime-errors";
 
 function stringValue(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
-}
-
-function stringList(value: unknown): string[] {
-  if (typeof value === "string" && value.trim()) return [value.trim()];
-  if (!Array.isArray(value)) return [];
-  return value.filter((item): item is string => typeof item === "string" && item.trim().length > 0);
 }
 
 function record(value: unknown): Record<string, unknown> | undefined {
@@ -185,8 +181,6 @@ async function characterFor(
     executionCtx?: BridgeExecutionContext;
   },
 ): Promise<SharedAgentCharacter> {
-  const config = record(agent.agent_config) ?? {};
-  const configuredCharacter = record(config.character) ?? config;
   let linked: UserCharacter | null | undefined;
   if (agent.character_id) {
     if (options.cacheOnly) {
@@ -242,38 +236,7 @@ async function characterFor(
     options.executionCtx.waitUntil(hydration);
     throw new SharedRuntimeCacheWarmingError("Character cache is warming. Retry shortly.");
   }
-  if (linked && linked.organization_id !== agent.organization_id) {
-    throw new Error("[shared-runtime] linked character organization mismatch");
-  }
-  const settings = record(linked?.settings);
-  const name =
-    stringValue(linked?.name) ??
-    stringValue(configuredCharacter.name) ??
-    stringValue(config.name) ??
-    agent.agent_name ??
-    "Eliza agent";
-  const system =
-    stringValue(linked?.system) ??
-    stringValue(configuredCharacter.system) ??
-    stringValue(config.system) ??
-    stringValue(configuredCharacter.prompt) ??
-    stringValue(config.prompt) ??
-    `You are ${name}, a helpful assistant.`;
-  const bio = [
-    ...stringList(linked?.bio),
-    ...stringList(configuredCharacter.bio),
-    ...stringList(config.bio),
-  ];
-  const model =
-    stringValue(settings?.model) ??
-    stringValue(configuredCharacter.model) ??
-    stringValue(config.model);
-  return {
-    name,
-    system,
-    ...(bio.length ? { bio } : {}),
-    ...(model ? { model } : {}),
-  };
+  return projectSharedAgentCharacter(agent, linked);
 }
 
 function billingPrompt(
@@ -530,7 +493,7 @@ function settleFailedProviderWorkOffPath(
 }
 
 function sseError(message: string): Response {
-  return new Response(`event: error\ndata: ${JSON.stringify({ message })}\n\n`, {
+  return new Response(chatSseFrame("error", { message }), {
     headers: { "Content-Type": "text/event-stream; charset=utf-8" },
   });
 }
@@ -755,9 +718,27 @@ export class SharedRuntimeChatService {
     if (turn.degraded) {
       detachRequestAbort();
       await billing?.settle(0);
-      return new Response(turn.reply ?? "", {
-        headers: { "Content-Type": "text/event-stream; charset=utf-8" },
-      });
+      const reply = turn.reply?.trim() ?? "";
+      if (!reply) return sseError("Shared runtime is unavailable");
+      return new Response(
+        chatSseFrame("chunk", {
+          messageId: messageIds.assistant,
+          userMessageId: messageIds.user,
+          chunk: reply,
+          text: reply,
+          fullText: reply,
+          timestamp: Date.now(),
+        }) +
+          chatSseFrame("done", {
+            messageId: messageIds.assistant,
+            userMessageId: messageIds.user,
+            text: reply,
+            fullText: reply,
+          }),
+        {
+          headers: { "Content-Type": "text/event-stream; charset=utf-8" },
+        },
+      );
     }
     if (!turn.parts) {
       detachRequestAbort();
@@ -834,7 +815,14 @@ export class SharedRuntimeChatService {
               if (consumerCanceled) continue;
               controller.enqueue(
                 encoder.encode(
-                  `event: chunk\ndata: ${JSON.stringify({ messageId: messageIds.assistant, userMessageId: messageIds.user, chunk: part.text, text: part.text, fullText: streamedReply, timestamp: Date.now() })}\n\n`,
+                  chatSseFrame("chunk", {
+                    messageId: messageIds.assistant,
+                    userMessageId: messageIds.user,
+                    chunk: part.text,
+                    text: part.text,
+                    fullText: streamedReply,
+                    timestamp: Date.now(),
+                  }),
                 ),
               );
               continue;
@@ -854,7 +842,9 @@ export class SharedRuntimeChatService {
               );
               controller.enqueue(
                 encoder.encode(
-                  `event: error\ndata: ${JSON.stringify({ message: "Shared runtime stream produced an empty reply" })}\n\n`,
+                  chatSseFrame("error", {
+                    message: "Shared runtime stream produced an empty reply",
+                  }),
                 ),
               );
               continue;
@@ -875,14 +865,16 @@ export class SharedRuntimeChatService {
                   messageId: messageIds.assistant,
                   userMessageId: messageIds.user,
                   text: finalReply,
+                  fullText: finalReply,
                   actionResults: [navIntentActionResult(turn.navIntent)],
                 }
               : {
                   messageId: messageIds.assistant,
                   userMessageId: messageIds.user,
                   text: finalReply,
+                  fullText: finalReply,
                 };
-            controller.enqueue(encoder.encode(`event: done\ndata: ${JSON.stringify(done)}\n\n`));
+            controller.enqueue(encoder.encode(chatSseFrame("done", done)));
           }
           if (!finished) {
             await finalizeMessages(streamedReply, true, () =>
@@ -891,7 +883,9 @@ export class SharedRuntimeChatService {
             if (!consumerCanceled) {
               controller.enqueue(
                 encoder.encode(
-                  `event: error\ndata: ${JSON.stringify({ message: "Shared runtime stream ended without completion" })}\n\n`,
+                  chatSseFrame("error", {
+                    message: "Shared runtime stream ended without completion",
+                  }),
                 ),
               );
             }
@@ -917,9 +911,7 @@ export class SharedRuntimeChatService {
           });
           if (!consumerCanceled) {
             controller.enqueue(
-              encoder.encode(
-                `event: error\ndata: ${JSON.stringify({ message: "Shared runtime stream failed" })}\n\n`,
-              ),
+              encoder.encode(chatSseFrame("error", { message: "Shared runtime stream failed" })),
             );
           }
         } finally {

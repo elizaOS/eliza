@@ -141,20 +141,24 @@ export async function getDocumentsService(
   let service = runtime.getService<Service & DocumentsServiceLike>("documents");
   if (service) return { service };
 
+  let timeout: ReturnType<typeof setTimeout> | undefined;
   try {
     const servicePromise = runtime.getServiceLoadPromise("documents");
     const timeoutMs = getDocumentsServiceTimeoutMs();
-    const timeout = new Promise<never>((_resolve, reject) => {
-      setTimeout(
+    const timeoutPromise = new Promise<never>((_resolve, reject) => {
+      timeout = setTimeout(
         () => reject(new Error("documents service timeout")),
         timeoutMs,
       );
     });
-    await Promise.race([servicePromise, timeout]);
+    await Promise.race([servicePromise, timeoutPromise]);
     service = runtime.getService<Service & DocumentsServiceLike>("documents");
     if (service) return { service };
     return { service: null, reason: "not_registered" };
   } catch {
+    // error-policy:J1 Translate load timeout/rejection into the typed loader result.
     return { service: null, reason: "timeout" };
+  } finally {
+    if (timeout) clearTimeout(timeout);
   }
 }

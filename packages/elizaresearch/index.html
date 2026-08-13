@@ -1,0 +1,420 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Eliza Research — AI and people</title>
+<meta name="description" content="Eliza Research builds products at the intersection of AI and people: Eliza, a personal superagent and open source operating system, and slop.cash, a swarm contribution platform." />
+<meta property="og:title" content="Eliza Research" />
+<meta property="og:description" content="Products at the intersection of AI and people." />
+<meta property="og:url" content="https://elizaresearch.ai" />
+<meta property="og:type" content="website" />
+<link rel="icon" type="image/svg+xml" href="assets/logo_orange_nobg.svg" />
+<style>
+  @font-face {
+    font-family: "Geist";
+    font-style: normal;
+    font-weight: 100 900;
+    font-display: swap;
+    src: url("assets/geist-sans-latin.woff2") format("woff2");
+    unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+  }
+  @font-face {
+    font-family: "Geist";
+    font-style: normal;
+    font-weight: 100 900;
+    font-display: swap;
+    src: url("assets/geist-sans-latin-ext.woff2") format("woff2");
+    unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+  }
+  :root {
+    --orange: #ff5800;
+    --orange-bright: #ff7a30;
+    --orange-deep: #b23d00;
+    --black: #0d0b0a;
+    --ink: #111111;
+    --bg: #ffffff;
+    --muted: #4d4a48;
+    --line: #e6e3e1;
+    --z-nav: 10;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    font-family: "Geist", Arial, sans-serif;
+    background: var(--bg);
+    color: var(--ink);
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+  h1, h2, h3 { text-wrap: balance; line-height: 1.02; }
+  p { text-wrap: pretty; max-width: 62ch; }
+  a { color: inherit; }
+  ::selection { background: var(--orange); color: white; }
+
+  .wrap { max-width: 1200px; margin-inline: auto; padding-inline: clamp(1.25rem, 4vw, 3rem); }
+
+  /* ---------- nav ---------- */
+  nav {
+    position: absolute; inset: 0 0 auto 0; z-index: var(--z-nav);
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 1.1rem clamp(1.25rem, 4vw, 3rem);
+    color: white;
+  }
+  nav .mark { display: inline-flex; align-items: center; gap: 0.6rem; font-weight: 800; font-size: 1.05rem; letter-spacing: -0.01em; text-decoration: none; }
+  nav .mark img { height: 1.7rem; width: auto; display: block; }
+  nav .links { display: flex; gap: 1.75rem; }
+  nav .links a { text-decoration: none; font-weight: 600; font-size: 0.92rem; opacity: 0.85; transition: opacity 0.2s; }
+  nav .links a:hover { opacity: 1; }
+
+  /* ---------- hero ---------- */
+  header {
+    position: relative; min-height: 100svh;
+    background: var(--orange);
+    color: white; overflow: hidden;
+    display: grid; align-content: end;
+  }
+  #swarm { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .hero-inner { position: relative; padding-block: clamp(3rem, 8vh, 6rem); }
+  .hero-inner h1 {
+    font-size: clamp(2.6rem, 8.5vw, 5.8rem);
+    font-weight: 850; letter-spacing: -0.03em;
+    text-transform: none;
+    max-width: 14ch;
+  }
+  .hero-inner .tag {
+    margin-top: 1.4rem; font-size: clamp(1.05rem, 2vw, 1.35rem);
+    font-weight: 500; max-width: 44ch; color: rgba(255,255,255,0.94);
+  }
+  .hero-inner .down {
+    display: inline-flex; align-items: center; gap: 0.5rem;
+    margin-top: 2.2rem; font-weight: 700; text-decoration: none;
+    border: 2px solid white; border-radius: 999px;
+    padding: 0.7rem 1.4rem; font-size: 0.95rem;
+    transition: background 0.2s, color 0.2s;
+  }
+  .hero-inner .down:hover { background: white; color: var(--orange-deep); }
+
+  /* ---------- statement ---------- */
+  .statement { padding-block: clamp(5rem, 14vh, 10rem); }
+  .statement p {
+    font-size: clamp(1.5rem, 3.4vw, 2.5rem);
+    font-weight: 640; letter-spacing: -0.02em; line-height: 1.22;
+    max-width: 26ch;
+  }
+  .statement em { font-style: normal; color: var(--orange); }
+
+  /* ---------- products ---------- */
+  .product { padding-block: clamp(4rem, 10vh, 7rem); }
+  .product .grid {
+    display: grid; gap: clamp(2rem, 5vw, 5rem);
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    align-items: center;
+  }
+  .product h2 {
+    font-size: clamp(2.2rem, 5.5vw, 4rem);
+    font-weight: 830; letter-spacing: -0.028em;
+  }
+  .product .role { margin-top: 0.5rem; font-weight: 700; font-size: 1.05rem; }
+  .product .body { margin-top: 1.25rem; font-size: 1.08rem; color: var(--muted); }
+  .product .cta {
+    display: inline-block; margin-top: 1.8rem; font-weight: 700;
+    text-decoration: none; border-bottom: 2px solid currentColor;
+    padding-bottom: 2px; transition: opacity 0.15s;
+  }
+  .product .cta:hover { opacity: 0.65; }
+
+  #eliza { border-top: 1px solid var(--line); }
+  #eliza .role { color: var(--orange); }
+  #eliza .cta { color: var(--orange); }
+
+  .figure {
+    aspect-ratio: 4 / 3; border-radius: 1.25rem; overflow: hidden;
+    display: grid; place-items: center; position: relative;
+  }
+  #eliza .figure { background: var(--orange); aspect-ratio: 1200 / 630; }
+  #eliza .figure img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  #slop .figure img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+  #slop {
+    background: var(--black); color: #f5f2f0;
+  }
+  #slop .role { color: var(--orange-bright); }
+  #slop .body { color: #c9c2be; }
+  #slop .cta { color: var(--orange-bright); }
+  #slop .figure { background: #1a1512; aspect-ratio: 1200 / 630; }
+
+  /* ---------- footer ---------- */
+  footer { background: var(--black); color: #f5f2f0; padding-block: clamp(3rem, 8vh, 5rem) 2rem; border-top: 1px solid #332b26; }
+  footer .big {
+    font-size: clamp(1.9rem, 5vw, 3.2rem); font-weight: 820;
+    letter-spacing: -0.025em;
+  }
+  footer a.mail {
+    color: var(--orange-bright); text-decoration: none; font-weight: 700;
+    border-bottom: 2px solid currentColor; padding-bottom: 2px;
+  }
+  footer a.mail:hover { opacity: 0.75; }
+  footer .row {
+    margin-top: clamp(2.5rem, 6vh, 4rem);
+    display: flex; flex-wrap: wrap; gap: 1rem 2rem; justify-content: space-between;
+    font-size: 0.9rem; color: #a89f9a;
+  }
+  footer .row a { color: inherit; text-decoration: none; }
+  footer .row a:hover { color: #eae5e2; }
+
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    * { animation: none !important; transition: none !important; }
+  }
+</style>
+</head>
+<body>
+
+<nav aria-label="Main">
+  <a class="mark" href="#"><img src="assets/logo_white_nobg.svg" alt="" />Eliza&nbsp;Research</a>
+  <div class="links">
+    <a href="#eliza">Products</a>
+    <a href="#contact">Contact</a>
+  </div>
+</nav>
+
+<header>
+  <canvas id="swarm" aria-hidden="true"></canvas>
+  <div class="wrap hero-inner">
+    <h1>AI, built around people.</h1>
+    <p class="tag">Eliza Research builds products at the intersection of artificial intelligence and the people who live with it.</p>
+    <a class="down" href="#eliza">See what we make ↓</a>
+  </div>
+</header>
+
+<section class="statement wrap">
+  <p>Intelligence is getting cheap. <em>Agency</em> is the scarce thing — software that acts for you, answers to you, and belongs to everyone.</p>
+</section>
+
+<section class="product" id="eliza">
+  <div class="wrap grid">
+    <div class="figure">
+      <img src="assets/eliza-og.png" alt="Eliza — an agent you can trust" />
+    </div>
+    <div>
+      <h2>Eliza</h2>
+      <p class="role">Your personal superagent — and an open source operating system.</p>
+      <p class="body">Eliza is an agent that lives with you: it remembers, schedules, connects to your tools, and acts on your behalf across every device you own. Underneath it is elizaOS, a fully open source operating system for agents — auditable, extensible, and yours to run anywhere, from a laptop to a phone to your own metal.</p>
+      <a class="cta" href="https://github.com/elizaOS/eliza">Explore elizaOS on GitHub →</a>
+    </div>
+  </div>
+</section>
+
+<section class="product" id="slop">
+  <div class="wrap grid">
+    <div class="figure">
+      <img src="assets/slop-og.png" alt="slop.cash — MAKE MONEY MAKING SLOP" />
+    </div>
+    <div>
+      <h2>slop.cash</h2>
+      <p class="role">A swarm contribution platform.</p>
+      <p class="body">Some problems are too big for any one machine or any one team. slop.cash incentivizes compute applied to swarm problems: post a problem, fund it, and let a swarm of contributors — human and machine — earn by moving it forward. Contribution is measured, rewarded, and open to anyone with cycles to spare.</p>
+      <a class="cta" href="https://slop.cash">Visit slop.cash →</a>
+    </div>
+  </div>
+</section>
+
+<footer id="contact">
+  <div class="wrap">
+    <p class="big">Work on this with us.</p>
+    <p style="margin-top:1rem; max-width:48ch; color:#c9c2be;">We're a small team building in the open. If that sounds like you, write to us: <a class="mail" href="mailto:hello@elizaresearch.ai">hello@elizaresearch.ai</a></p>
+    <div class="row">
+      <span>© 2026 Eliza Research</span>
+      <span style="display:flex; gap:1.5rem;">
+        <a href="https://github.com/elizaOS">GitHub</a>
+        <a href="https://x.com/elizaOS">X</a>
+        <a href="https://slop.cash">slop.cash</a>
+      </span>
+    </div>
+  </div>
+</footer>
+
+<script>
+// Hero: particles assemble the Eliza face wireframe, drift apart in pieces,
+// periodically re-form, and react to pointer/touch (hover repels, drag shoves).
+(() => {
+  const canvas = document.getElementById("swarm");
+  const header = canvas.parentElement;
+  const ctx = canvas.getContext("2d");
+  const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  let W = 0, H = 0, dpr = 1;
+  const boids = [];
+  let targets = [];
+  let linkD2 = 88 * 88;
+  const FADE_MS = 2600, MERGE_DELAY_MS = 0, MERGE_MS = 4000;
+  let born = 0;                       // timestamp of last formation
+  const pointer = { x: -1e4, y: -1e4, vx: 0, vy: 0, down: false, t: 0 };
+
+  function resize() {
+    dpr = Math.min(devicePixelRatio || 1, 2);
+    W = canvas.clientWidth; H = canvas.clientHeight;
+    canvas.width = W * dpr; canvas.height = H * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+  resize();
+  addEventListener("resize", resize);
+
+  // Sample particle targets from the face logo rendered offscreen.
+  const img = new Image();
+  img.src = "assets/logo_white_nobg.svg";
+  img.onload = () => { tryInit(); };
+  function sampleFace() {
+    const scale = Math.min(W, H) * 1.0;
+    const ow = Math.round(scale * (img.width / img.height)), oh = Math.round(scale);
+    const off = document.createElement("canvas");
+    off.width = ow; off.height = oh;
+    const octx = off.getContext("2d", { willReadFrequently: true });
+    octx.drawImage(img, 0, 0, ow, oh);
+    const data = octx.getImageData(0, 0, ow, oh).data;
+    const pts = [];
+    const stride = Math.max(5, Math.round(scale / 54));
+    const solid = (x, y) => {
+      if (x < 0 || y < 0 || x >= ow || y >= oh) return false;
+      return data[((y | 0) * ow + (x | 0)) * 4 + 3] > 128;
+    };
+    const e = Math.max(3, stride * 0.45);
+    const push = (x, y) => pts.push({
+      x: x + (W - ow) / 2 + (Math.random() - 0.5) * 2,
+      y: y + (H - oh) * 0.38 - H * 0.10 + (Math.random() - 0.5) * 2,
+    });
+    const isEdge = (x, y) =>
+      !solid(x - e, y) || !solid(x + e, y) || !solid(x, y - e) || !solid(x, y + e);
+    // dense contour pass keeps the outline legible as connected wire
+    const fine = Math.max(5, Math.round(stride * 0.55));
+    for (let y = 0; y < oh; y += fine) {
+      for (let x = 0; x < ow; x += fine) {
+        if (solid(x, y) && isEdge(x, y)) push(x, y);
+      }
+    }
+    // sparse interior mesh
+    for (let y = 0; y < oh; y += stride) {
+      for (let x = 0; x < ow; x += stride) {
+        if (solid(x, y) && !isEdge(x, y) && Math.random() < 0.36) push(x, y);
+      }
+    }
+    linkD2 = Math.pow(stride * 2.1, 2);
+    return pts;
+  }
+
+  function tryInit() {
+    if (!img.complete || !img.naturalWidth || W === 0) return;
+    targets = sampleFace();
+    let minx = 1e9, miny = 1e9, maxx = -1e9, maxy = -1e9;
+    for (const t of targets) {
+      if (t.x < minx) minx = t.x; if (t.x > maxx) maxx = t.x;
+      if (t.y < miny) miny = t.y; if (t.y > maxy) maxy = t.y;
+    }
+    boids.length = 0;
+    const origins = [];
+    for (const t of targets) {
+      // group = 3x3 cell over the face; each group spawns as one clustered piece
+      const gx = Math.min(2, ((t.x - minx) / (maxx - minx + 1) * 3) | 0);
+      const gy = Math.min(2, ((t.y - miny) / (maxy - miny + 1) * 3) | 0);
+      const gi = gy * 3 + gx;
+      if (!origins[gi]) {
+        // spawn each piece near the face region it belongs to, nudged outward
+        const gcx = minx + (gx + 0.5) * (maxx - minx) / 3;
+        const gcy = miny + (gy + 0.5) * (maxy - miny) / 3;
+        const oa = Math.random() * Math.PI * 2;
+        const od = Math.min(W, H) * (0.10 + Math.random() * 0.14);
+        origins[gi] = { x: gcx + Math.cos(oa) * od, y: gcy + Math.sin(oa) * od };
+      }
+      const a = Math.random() * Math.PI * 2;
+      const sx = origins[gi].x + (Math.random() - 0.5) * 235;
+      const sy = origins[gi].y + (Math.random() - 0.5) * 235;
+      boids.push({
+        x: sx, y: sy, sx, sy,
+        vx: Math.cos(a) * 0.3, vy: Math.sin(a) * 0.3, tx: t.x, ty: t.y,
+        jp: Math.random() * Math.PI * 2 });
+    }
+    born = performance.now();
+    if (reduced) draw(born + FADE_MS);
+  }
+
+  // Pointer interaction on the header (canvas sits behind the copy).
+  function toLocal(e) {
+    const r = canvas.getBoundingClientRect();
+    return { x: e.clientX - r.left, y: e.clientY - r.top };
+  }
+  header.addEventListener("pointermove", (e) => {
+    const p = toLocal(e);
+    const now = performance.now();
+    const dt = Math.max(16, now - pointer.t);
+    pointer.vx = (p.x - pointer.x) / dt * 16;
+    pointer.vy = (p.y - pointer.y) / dt * 16;
+    pointer.x = p.x; pointer.y = p.y; pointer.t = now;
+  }, { passive: true });
+  header.addEventListener("pointerdown", (e) => {
+    pointer.down = true;
+    const p = toLocal(e);
+    pointer.x = p.x; pointer.y = p.y; pointer.t = performance.now();
+  }, { passive: true });
+  addEventListener("pointerup", () => { pointer.down = false; }, { passive: true });
+  header.addEventListener("pointerleave", () => {
+    pointer.x = -1e4; pointer.y = -1e4; pointer.vx = pointer.vy = 0;
+  }, { passive: true });
+
+  function step(now) {
+    if (!boids.length) { tryInit(); return; }
+    for (const b of boids) {
+      const p = Math.min(1, Math.max(0, (now - born - MERGE_DELAY_MS) / MERGE_MS));
+      const e = p * p * (3 - 2 * p);
+      const wob = 2 + e * 8;
+      const jx = Math.sin(now * 0.00055 + b.jp) * wob;
+      const jy = Math.cos(now * 0.00042 + b.jp * 1.7) * wob;
+      const gx = b.sx + (b.tx - b.sx) * e + jx;
+      const gy = b.sy + (b.ty - b.sy) * e + jy;
+      b.vx += (gx - b.x) * 0.0022;
+      b.vy += (gy - b.y) * 0.0022;
+      b.vx *= 0.94; b.vy *= 0.94;
+
+      // pointer force: gentle repel on hover, strong shove while dragging
+      const px = b.x - pointer.x, py = b.y - pointer.y;
+      const pd2 = px * px + py * py;
+      const R = pointer.down ? 190 : 120;
+      if (pd2 < R * R && pd2 > 1) {
+        const pd = Math.sqrt(pd2);
+        const f = (1 - pd / R) * (pointer.down ? 1.6 : 0.5);
+        b.vx += (px / pd) * f + pointer.vx * f * 0.25;
+        b.vy += (py / pd) * f + pointer.vy * f * 0.25;
+      }
+
+      b.x += b.vx; b.y += b.vy;
+    }
+  }
+
+  function draw(now) {
+    ctx.clearRect(0, 0, W, H);
+    ctx.globalAlpha = reduced ? 1 : Math.min(1, (now - born) / FADE_MS);
+    ctx.strokeStyle = "rgba(255,255,255,0.22)";
+    ctx.lineWidth = 1;
+    const LINK = linkD2;
+    for (let i = 0; i < boids.length; i++) {
+      const a = boids[i];
+      for (let j = i + 1; j < boids.length; j++) {
+        const b = boids[j];
+        const dx = a.x - b.x, dy = a.y - b.y, d2 = dx * dx + dy * dy;
+        if (d2 < LINK) {
+          ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+        }
+      }
+    }
+    ctx.fillStyle = "rgba(255,255,255,0.9)";
+    for (const b of boids) {
+      ctx.beginPath(); ctx.arc(b.x, b.y, 2, 0, Math.PI * 2); ctx.fill();
+    }
+  }
+
+  function loop(now) { step(now); draw(now); requestAnimationFrame(loop); }
+  if (!reduced) requestAnimationFrame(loop);
+})();
+
+</script>
+</body>
+</html>

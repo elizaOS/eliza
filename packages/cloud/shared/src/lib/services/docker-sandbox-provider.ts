@@ -64,6 +64,11 @@ import {
   WEBUI_PORT_MIN,
 } from "./docker-sandbox-utils";
 import { classifyDockerSshProbeError, DockerSSHClient } from "./docker-ssh";
+import {
+  classifyMeshAuthStatus,
+  TS_AUTHKEY_EXPIRED_EXIT_CODE,
+  TS_AUTHKEY_EXPIRED_MARKER_BASENAME,
+} from "./headscale-auth-status";
 import { headscaleClient } from "./headscale-client";
 import { DEFAULT_REGISTRATION_TIMEOUT_MS, headscaleIntegration } from "./headscale-integration";
 import { buildKeylessOpenAIContainerEnv } from "./managed-eliza-env";
@@ -1054,9 +1059,16 @@ export class DockerSandboxProvider implements SandboxProvider {
     // getAvailableNode + incrementAllocated + getUsedDockerHostPorts are three sequential
     // DB round-trips without a transaction boundary; the UNIQUE port index and
     // retry logic provide safety against concurrent capacity changes.
+    // The ceiling admitted here is the same value applied to `docker create`
+    // below, so a node can never be accepted against one number and loaded with
+    // another. Zero means the operator disabled ceilings entirely, which opts
+    // this container out of memory admission rather than admitting it for free.
+    const containerMemoryMb =
+      config.container?.memoryMb ?? containersEnv.agentContainerMemoryLimitMb();
     let dbNode = await dockerNodeManager.getAvailableNode({
       requiredPlatform: imagePlatform,
       excludeNodeId: config.excludeNodeId,
+      ...(containerMemoryMb > 0 ? { requiredMemoryMb: containerMemoryMb } : {}),
     });
     if (!dbNode) {
       dbNode = await this.provisionAutoscaledNodeForAgent({
@@ -1455,9 +1467,7 @@ export class DockerSandboxProvider implements SandboxProvider {
         // an explicit per-agent `container.memory` wins; otherwise the
         // env-tunable fleet default applies so a boot-looping agent can never
         // OOM-starve its co-tenants again (staging fleet incident 2026-08-05).
-        ...buildAgentContainerMemoryFlags(
-          config.container?.memoryMb ?? containersEnv.agentContainerMemoryLimitMb(),
-        ),
+        ...buildAgentContainerMemoryFlags(containerMemoryMb),
         // Escape-hardening (#12230/#12302): drop ALL kernel capabilities, forbid
         // privilege escalation, and bound the process count — then, under
         // headscale only, re-add exactly NET_ADMIN + /dev/net/tun for the VPN.
@@ -2443,7 +2453,10 @@ export class DockerSandboxProvider implements SandboxProvider {
         );
       }
       if (unreachable) {
-        outcome = { kind: "not-running-unresolved", reason: "node-unreachable" };
+        outcome = {
+          kind: "not-running-unresolved",
+          reason: "node-unreachable",
+        };
         logger.warn(
           `[docker-sandbox] Node ${meta.hostname} unreachable during stop of ${meta.containerName}; ` +
             `completing delete while retaining its capacity until reconciliation — ` +
@@ -2771,6 +2784,12 @@ export class DockerSandboxProvider implements SandboxProvider {
         [
           `echo '--- inspect ---'`,
           `docker inspect --format 'state={{.State.Status}} health={{if .State.Health}}{{.State.Health.Status}}{{end}} exit={{.State.ExitCode}} error={{.State.Error}}' ${shellQuote(current.containerName)} || true`,
+          `echo '--- authkey marker ---'`,
+          // The entrypoint drops this marker in TS_STATE_DIR when it hits the
+          // auth-expired terminal state; a present marker is an unambiguous
+          // "needs re-key" signal even if logs have rotated. TS_STATE_DIR is a
+          // bind-mounted volume so this survives the container exit.
+          `docker exec ${shellQuote(current.containerName)} sh -c 'test -f "\${TS_STATE_DIR:-/var/lib/tailscale}/${TS_AUTHKEY_EXPIRED_MARKER_BASENAME}" && echo authkey-marker=present || echo authkey-marker=absent' 2>/dev/null || echo authkey-marker=unknown`,
           `echo '--- ports ---'`,
           `docker port ${shellQuote(current.containerName)} || true`,
           `echo '--- logs ---'`,
@@ -2783,6 +2802,30 @@ export class DockerSandboxProvider implements SandboxProvider {
         nodeId: current.nodeId,
         diagnostics: diagnostics.slice(-12_000),
       });
+
+      // Promote a distinct auth_expired signal when the diagnostics show the
+      // container is crash-looping specifically on expired mesh auth. This is
+      // observability-only here (the verdict below stays not_ready so existing
+      // recreate paths are unchanged), but it gives the control plane a
+      // greppable, unambiguous line to drive re-key/recreate instead of
+      // treating the loop as a generic health failure.
+      const exitMatch = /\bexit=(-?\d+)\b/.exec(diagnostics);
+      const meshAuthVerdict = classifyMeshAuthStatus({
+        exitCode: exitMatch ? Number.parseInt(exitMatch[1]!, 10) : undefined,
+        markerPresent: diagnostics.includes("authkey-marker=present"),
+        logs: diagnostics,
+      });
+      if (meshAuthVerdict === "auth_expired") {
+        logger.error(
+          "[docker-sandbox] Container failed mesh join: headscale auth key expired/rejected — needs re-key",
+          {
+            containerName: current.containerName,
+            nodeId: current.nodeId,
+            meshAuthVerdict,
+            authExpiredExitCode: TS_AUTHKEY_EXPIRED_EXIT_CODE,
+          },
+        );
+      }
     } catch (diagnosticsError) {
       logger.warn("[docker-sandbox] Failed to collect health timeout diagnostics", {
         containerName: current.containerName,

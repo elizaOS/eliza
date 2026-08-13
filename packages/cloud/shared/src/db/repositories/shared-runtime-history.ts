@@ -29,6 +29,18 @@ export class SharedRuntimeHistoryRepository {
   }
 
   /**
+   * List all channel IDs for an agent's shared-runtime history. Used during
+   * agent deletion to identify which Durable Object rooms need purging.
+   */
+  async listChannelsByAgent(agentId: string): Promise<string[]> {
+    const rows = await dbRead.query.sharedRuntimeHistory.findMany({
+      where: eq(sharedRuntimeHistory.agent_id, agentId),
+      columns: { channel_id: true },
+    });
+    return rows.map((r) => r.channel_id);
+  }
+
+  /**
    * Delete ALL shared-runtime history rows for an agent (every channel),
    * called when the agent itself is deleted. Without this, a shared agent's
    * cross-turn history is orphaned: the canonical `agent_sandboxes` row is

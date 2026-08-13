@@ -46,6 +46,7 @@ import type {
 } from "../../api/client-types-chat";
 import { isApiError } from "../../api/client-types-core";
 import { getCached, setCached } from "../../hooks/resource-cache";
+import { isNative } from "../../platform";
 import { useAppSelector, useTranslation } from "../../state";
 import { useRegisterViewChatBinding } from "../../state/view-chat-binding";
 import { confirmDesktopAction } from "../../utils/desktop-dialogs";
@@ -393,9 +394,9 @@ export function DocumentsView({
     { documentId: string; startMs: number } | undefined
   >();
   const [loadError, setLoadError] = useState<string | null>(null);
-  // Set when GET /api/documents 404s — the documents plugin isn't mounted on
-  // this surface (e.g. the mobile/Android agent). Degrade to a calm
-  // "unavailable here" panel instead of a red error + Retry loop (J4).
+  // Set only when a native mobile agent omits the documents route. Web and
+  // desktop treat the same 404 as a service failure because Knowledge is a
+  // supported surface there.
   const [documentsUnavailable, setDocumentsUnavailable] = useState(false);
   const [isServiceLoading, setIsServiceLoading] = useState(false);
   const serviceRetryRef = useRef(0);
@@ -463,25 +464,30 @@ export function DocumentsView({
         setDocumentsUnavailable(false);
         serviceRetryRef.current = 0;
       } catch (err) {
-        // error-policy:J4 — a 404 means the documents plugin isn't mounted on
-        // this surface (the mobile/Android agent omits it); degrade to a calm
-        // "unavailable here" panel, not a red error + Retry loop.
-        if (isApiError(err) && err.status === 404) {
+        // error-policy:J4 — native mobile intentionally omits the documents
+        // route, so only that platform gets the device-unavailable state.
+        if (isApiError(err) && err.status === 404 && isNative) {
           setIsServiceLoading(false);
           setDocumentsUnavailable(true);
           return;
         }
+        setDocumentsUnavailable(false);
         const status = (err as { status?: number }).status;
         if (status === 503) {
           setIsServiceLoading(true);
         } else {
           setIsServiceLoading(false);
           const msg =
-            err instanceof Error
-              ? err.message
-              : tRef.current("documentsview.FailedToLoadDocumentsData", {
-                  defaultValue: "Failed to load Knowledge data",
-                });
+            isApiError(err) && err.status === 404
+              ? tRef.current("documentsview.ServiceUnavailable", {
+                  defaultValue:
+                    "Knowledge service is unavailable. Please try again.",
+                })
+              : err instanceof Error
+                ? err.message
+                : tRef.current("documentsview.FailedToLoadDocumentsData", {
+                    defaultValue: "Failed to load Knowledge data",
+                  });
           setLoadError(msg);
           setActionNoticeRef.current(msg, "error");
         }
@@ -1095,7 +1101,9 @@ export function DocumentsView({
   ) : null;
 
   let listBody: ReactNode;
-  if (isShowingSearchResults) {
+  if (documentsUnavailable || loadError) {
+    listBody = null;
+  } else if (isShowingSearchResults) {
     listBody =
       visibleSearchResults.length === 0 ? (
         <PagePanel.Empty
@@ -1264,7 +1272,7 @@ export function DocumentsView({
         </PagePanel.Notice>
       )}
 
-      {!documentsUnavailable && (
+      {!documentsUnavailable && !loadError && (
         <div className="flex shrink-0 flex-col gap-0.5">
           <div className="flex items-center justify-between gap-2">
             {isShowingSearchResults ? <span aria-hidden /> : facetStrip}

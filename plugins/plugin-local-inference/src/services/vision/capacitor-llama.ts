@@ -33,7 +33,12 @@
  */
 
 import { existsSync, promises as fs } from "node:fs";
+import { fetchRemoteMedia } from "@elizaos/core";
 import { resolveImageBytes } from "./hash";
+import {
+	VISION_IMAGE_FETCH_TIMEOUT_MS,
+	VISION_IMAGE_MAX_BYTES,
+} from "./image-input.js";
 import type {
 	VisionDescribeBackend,
 	VisionDescribeBackendOptions,
@@ -232,16 +237,16 @@ async function imageInputToDataUrl(
 				const mimeType = input.mimeType ?? guessMimeFromPath(filePath);
 				return `data:${mimeType};base64,${bytes.toString("base64")}`;
 			}
-			const res = await fetch(url);
-			if (!res.ok) {
-				throw new Error(
-					`[vision/capacitor-llama] failed to fetch image: ${res.status} ${res.statusText}`,
-				);
-			}
-			const buf = new Uint8Array(await res.arrayBuffer());
-			const mimeType =
-				input.mimeType ?? res.headers.get("content-type") ?? "image/png";
-			return `data:${mimeType};base64,${Buffer.from(buf).toString("base64")}`;
+			// Remote http(s) URLs are caller-controlled — route through the
+			// shared SSRF media guard rather than bare `fetch`.
+			const media = await fetchRemoteMedia({
+				url,
+				maxBytes: VISION_IMAGE_MAX_BYTES,
+				timeoutMs: VISION_IMAGE_FETCH_TIMEOUT_MS,
+				maxRedirects: 5,
+			});
+			const mimeType = input.mimeType ?? media.contentType ?? "image/png";
+			return `data:${mimeType};base64,${media.buffer.toString("base64")}`;
 		}
 	}
 }

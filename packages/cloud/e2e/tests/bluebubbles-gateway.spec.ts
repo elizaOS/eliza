@@ -44,6 +44,8 @@ interface FakeBlueBubblesServer {
   url: string;
   sends: JsonRecord[];
   webhookCreates: JsonRecord[];
+  messageTargets: Map<string, string | null>;
+  messageLookups: string[];
 }
 
 function json(res: ServerResponse, status: number, body: unknown): void {
@@ -61,6 +63,8 @@ async function readJson(req: IncomingMessage): Promise<JsonRecord> {
 async function startFakeBlueBubbles(): Promise<FakeBlueBubblesServer> {
   const sends: JsonRecord[] = [];
   const webhookCreates: JsonRecord[] = [];
+  const messageTargets = new Map<string, string | null>();
+  const messageLookups: string[] = [];
   const server = createServer((req, res) => {
     void (async () => {
       const url = new URL(req.url ?? "/", "http://127.0.0.1");
@@ -73,6 +77,31 @@ async function startFakeBlueBubbles(): Promise<FakeBlueBubblesServer> {
       }
       if (req.method === "GET" && url.pathname === "/api/v1/webhook") {
         json(res, 200, { status: 200, data: [] });
+        return;
+      }
+      const messageMatch = url.pathname.match(/^\/api\/v1\/message\/(.+)$/);
+      if (req.method === "GET" && messageMatch) {
+        if (
+          url.searchParams.get("password") !== "e2e-password" ||
+          url.searchParams.get("with") !== "chats"
+        ) {
+          json(res, 401, { error: "invalid message lookup" });
+          return;
+        }
+        const guid = decodeURIComponent(messageMatch[1] ?? "");
+        messageLookups.push(guid);
+        if (!messageTargets.has(guid)) {
+          json(res, 404, { error: "message not found" });
+          return;
+        }
+        const target = messageTargets.get(guid);
+        json(res, 200, {
+          status: 200,
+          data: {
+            guid,
+            chats: target ? [{ lastAddressedHandle: target }] : [],
+          },
+        });
         return;
       }
       if (req.method === "POST" && url.pathname === "/api/v1/webhook") {
@@ -105,6 +134,8 @@ async function startFakeBlueBubbles(): Promise<FakeBlueBubblesServer> {
     url: `http://127.0.0.1:${address.port}`,
     sends,
     webhookCreates,
+    messageTargets,
+    messageLookups,
   };
 }
 
@@ -180,37 +211,6 @@ test.describe("registered BlueBubbles gateway", () => {
       slug: `bluebubbles-sender-${Date.now().toString(36)}`,
     });
     const senderPhone = `+1415${Date.now().toString().slice(-7)}`;
-    const createResponse = await fetch(
-      `${stack.urls.api}/api/v1/eliza/agents`,
-      {
-        method: "POST",
-        headers: {
-          ...authHeaders(senderUser.apiKey),
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({
-          agentName: `Sender-owned BlueBubbles E2E ${Date.now().toString(36)}`,
-          agentConfig: {
-            character: {
-              name: "Phone Eliza",
-              system: "Reply helpfully to messages arriving by phone.",
-              model: MODEL,
-            },
-          },
-        }),
-      },
-    );
-    expect(
-      [200, 201],
-      `agent create returned ${createResponse.status}: ${await createResponse.clone().text()}`,
-    ).toContain(createResponse.status);
-    const createBody = (await createResponse.json()) as {
-      data?: { id?: string; agentId?: string; executionTier?: string };
-    };
-    const agentId = createBody.data?.id ?? createBody.data?.agentId;
-    expect(agentId, "created agent id").toBeTruthy();
-    expect(createBody.data?.executionTier).toBe("shared");
-    if (!agentId) throw new Error("Agent creation returned no id");
 
     const registrationResponse = await fetch(
       `${stack.urls.api}/api/v1/phone-gateways/bluebubbles`,
@@ -276,6 +276,11 @@ test.describe("registered BlueBubbles gateway", () => {
 
     try {
       await waitForRelay(relayBaseUrl);
+      const onboardingGuid = `inbound-${crypto.randomUUID()}`;
+      fakeBlueBubbles.messageTargets.set(
+        onboardingGuid,
+        registration.phoneNumber,
+      );
       const onboardingInboundResponse = await fetch(
         `${relayBaseUrl}/webhooks/bluebubbles`,
         {
@@ -284,7 +289,7 @@ test.describe("registered BlueBubbles gateway", () => {
           body: JSON.stringify({
             type: "new-message",
             data: {
-              guid: `inbound-${crypto.randomUUID()}`,
+              guid: onboardingGuid,
               text: "My name is Casey",
               isFromMe: false,
               handle: { address: senderPhone, service: "iMessage" },
@@ -311,17 +316,20 @@ test.describe("registered BlueBubbles gateway", () => {
         replied: true,
         replyQueued: false,
       });
+      expect(fakeBlueBubbles.messageLookups).toEqual([onboardingGuid]);
       expect(stack.mocks.mockLlm?.requestCount()).toBe(0);
       expect(fakeBlueBubbles.sends).toHaveLength(1);
       const onboardingReply = String(fakeBlueBubbles.sends[0]?.message ?? "");
-      expect(onboardingReply).toContain("Connect Eliza Cloud here:");
+      // Copy is intentionally conversational and may evolve. The durable
+      // contract is an inline HTTPS continuation URL carrying the session.
       const onboardingUrl = onboardingReply.match(/https:\/\/\S+/)?.[0];
       expect(onboardingUrl, "onboarding continuation URL").toBeTruthy();
       if (!onboardingUrl)
         throw new Error("Onboarding reply did not contain a URL");
-      const continuationToken = new URL(onboardingUrl).searchParams.get(
-        "onboardingSession",
-      );
+      const parsedOnboardingUrl = new URL(onboardingUrl);
+      expect(parsedOnboardingUrl.protocol).toBe("https:");
+      const continuationToken =
+        parsedOnboardingUrl.searchParams.get("onboardingSession");
       expect(continuationToken).toMatch(/^[0-9a-f-]{36}$/);
       if (!continuationToken)
         throw new Error("Onboarding URL did not contain a session token");
@@ -350,7 +358,8 @@ test.describe("registered BlueBubbles gateway", () => {
           },
           body: JSON.stringify({
             sessionId: continuationToken,
-            platform: "blooio",
+            platform: "web",
+            confirmPlatformLink: true,
           }),
         },
       );
@@ -365,7 +374,34 @@ test.describe("registered BlueBubbles gateway", () => {
         };
       };
       expect(continuationBody.data?.requiresLogin).toBe(false);
-      expect(continuationBody.data?.provisioning?.agentId).toBe(agentId);
+      const agentId = continuationBody.data?.provisioning?.agentId;
+      expect(agentId, "onboarding provisioned agent id").toBeTruthy();
+      if (!agentId)
+        throw new Error("Onboarding returned no provisioned agent id");
+
+      const configureAgentResponse = await fetch(
+        `${stack.urls.api}/api/v1/eliza/agents/${agentId}`,
+        {
+          method: "PATCH",
+          headers: {
+            ...authHeaders(senderUser.apiKey),
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({
+            agentConfig: {
+              character: {
+                name: "Phone Eliza",
+                system: "Reply helpfully to messages arriving by phone.",
+                model: MODEL,
+              },
+            },
+          }),
+        },
+      );
+      expect(
+        configureAgentResponse.status,
+        `agent config returned ${configureAgentResponse.status}: ${await configureAgentResponse.clone().text()}`,
+      ).toBe(200);
 
       const { usersRepository } = await import(
         "@elizaos/cloud-shared/db/repositories/users"
@@ -377,6 +413,8 @@ test.describe("registered BlueBubbles gateway", () => {
         organization_id: senderUser.organizationId,
       });
 
+      const linkedGuid = `linked-${crypto.randomUUID()}`;
+      fakeBlueBubbles.messageTargets.set(linkedGuid, registration.phoneNumber);
       const linkedInboundResponse = await fetch(
         `${relayBaseUrl}/webhooks/bluebubbles`,
         {
@@ -385,7 +423,7 @@ test.describe("registered BlueBubbles gateway", () => {
           body: JSON.stringify({
             type: "new-message",
             data: {
-              guid: `linked-${crypto.randomUUID()}`,
+              guid: linkedGuid,
               text: "Reply through my linked phone gateway.",
               isFromMe: false,
               handle: { address: senderPhone, service: "iMessage" },
@@ -437,10 +475,81 @@ test.describe("registered BlueBubbles gateway", () => {
         replyQueued: false,
       });
 
+      const mismatchedGuid = `mismatched-${crypto.randomUUID()}`;
+      fakeBlueBubbles.messageTargets.set(mismatchedGuid, "+14155559999");
+      const mismatchedTargetResponse = await fetch(
+        `${relayBaseUrl}/webhooks/bluebubbles`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            type: "new-message",
+            data: {
+              guid: mismatchedGuid,
+              text: "This belongs to a different local number.",
+              isFromMe: false,
+              handle: { address: senderPhone, service: "iMessage" },
+              chats: [
+                {
+                  guid: `iMessage;-;${senderPhone}`,
+                  chatIdentifier: senderPhone,
+                },
+              ],
+            },
+          }),
+        },
+      );
+      expect(mismatchedTargetResponse.status).toBe(200);
+      await expect(mismatchedTargetResponse.json()).resolves.toMatchObject({
+        success: true,
+        skipped: "gateway_target_mismatch",
+        replied: false,
+        replyQueued: false,
+      });
+
+      const unverifiedGuid = `unverified-${crypto.randomUUID()}`;
+      const unverifiedTargetResponse = await fetch(
+        `${relayBaseUrl}/webhooks/bluebubbles`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            type: "new-message",
+            data: {
+              guid: unverifiedGuid,
+              text: "This target cannot be proven.",
+              isFromMe: false,
+              handle: { address: senderPhone, service: "iMessage" },
+              chats: [
+                {
+                  guid: `iMessage;-;${senderPhone}`,
+                  chatIdentifier: senderPhone,
+                },
+              ],
+            },
+          }),
+        },
+      );
+      expect(unverifiedTargetResponse.status).toBe(200);
+      await expect(unverifiedTargetResponse.json()).resolves.toMatchObject({
+        success: true,
+        skipped: "gateway_target_unverified",
+        replied: false,
+        replyQueued: false,
+      });
+      expect(fakeBlueBubbles.messageLookups).toEqual([
+        onboardingGuid,
+        linkedGuid,
+        mismatchedGuid,
+        unverifiedGuid,
+      ]);
+      expect(fakeBlueBubbles.sends).toHaveLength(2);
+      expect(stack.mocks.mockLlm?.requestCount()).toBe(1);
+
       await expect.poll(() => fakeBlueBubbles.webhookCreates.length).toBe(1);
       expect(fakeBlueBubbles.webhookCreates[0]).toEqual({
         url: `${relayBaseUrl}/webhooks/bluebubbles`,
-        events: ["new-message", "updated-message"],
+        events: ["new-message"],
       });
 
       const listResponse = await fetch(

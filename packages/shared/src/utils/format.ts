@@ -9,7 +9,7 @@
  * Otherwise the two most-significant units are returned (e.g. "2d 3h").
  */
 export function formatUptime(seconds?: number, verbose?: boolean): string {
-  if (seconds == null || seconds < 0) return "—";
+  if (seconds == null || !Number.isFinite(seconds) || seconds < 0) return "—";
   const d = Math.floor(seconds / 86400);
   const h = Math.floor((seconds % 86400) / 3600);
   const m = Math.floor((seconds % 3600) / 60);
@@ -72,6 +72,35 @@ type DurationFormatOptions = {
   t?: (key: string, vars?: Record<string, string | number>) => string;
 };
 
+const ISO_CALENDAR_DATE_PREFIX = /^(\d{4})-(\d{2})-(\d{2})(?:T|$)/;
+
+function hasValidIsoCalendarDate(value: string): boolean {
+  const match = ISO_CALENDAR_DATE_PREFIX.exec(value);
+  if (!match) return true;
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  if (month < 1 || month > 12 || day < 1) return false;
+
+  const isLeapYear = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const daysInMonth = [
+    31,
+    isLeapYear ? 29 : 28,
+    31,
+    30,
+    31,
+    30,
+    31,
+    31,
+    30,
+    31,
+    30,
+    31,
+  ];
+  return day <= daysInMonth[month - 1];
+}
+
 /**
  * Format a byte count in human-readable units.
  */
@@ -91,17 +120,26 @@ export function formatByteSize(
   if (bytes == null || !Number.isFinite(bytes) || bytes < 0) {
     return unknownLabel;
   }
-  if (bytes >= 1024 ** 4) {
-    return `${(bytes / 1024 ** 4).toFixed(tbPrecision)} TB`;
-  }
-  if (bytes >= 1024 ** 3) {
-    return `${(bytes / 1024 ** 3).toFixed(gbPrecision)} GB`;
-  }
-  if (bytes >= 1024 ** 2) {
-    return `${(bytes / 1024 ** 2).toFixed(mbPrecision)} MB`;
-  }
-  if (bytes >= 1024) {
-    return `${(bytes / 1024).toFixed(kbPrecision)} KB`;
+  // Largest unit first. A value just under a boundary can ROUND across it —
+  // 1024**2 - 1 bytes is 1023.999… KB, which toFixed renders as the impossible
+  // "1024.0 KB" — so when the rounded magnitude reaches 1024 the value is
+  // promoted to the next-larger unit instead (same defect class the duration
+  // formatter below guards against). TB, having no larger unit, legitimately
+  // displays magnitudes of 1024 and above.
+  const units = [
+    { size: 1024 ** 4, suffix: "TB", precision: tbPrecision },
+    { size: 1024 ** 3, suffix: "GB", precision: gbPrecision },
+    { size: 1024 ** 2, suffix: "MB", precision: mbPrecision },
+    { size: 1024, suffix: "KB", precision: kbPrecision },
+  ];
+  for (const [index, unit] of units.entries()) {
+    if (bytes < unit.size) continue;
+    const rounded = (bytes / unit.size).toFixed(unit.precision);
+    const larger = units[index - 1];
+    if (larger && Number(rounded) >= 1024) {
+      return `${(bytes / larger.size).toFixed(larger.precision)} ${larger.suffix}`;
+    }
+    return `${rounded} ${unit.suffix}`;
   }
   return `${bytes} B`;
 }
@@ -156,6 +194,9 @@ export function formatTime(
 ): string {
   const { fallback = "—", locale } = options;
   if (value == null || value === "") return fallback;
+  if (typeof value === "string" && !hasValidIsoCalendarDate(value)) {
+    return fallback;
+  }
   const parsed = value instanceof Date ? value : new Date(value);
   if (!Number.isFinite(parsed.getTime())) return fallback;
   return parsed.toLocaleTimeString(locale);

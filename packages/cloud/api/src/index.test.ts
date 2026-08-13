@@ -1,5 +1,5 @@
 /** Verifies Cloud Worker routing and thin-inference dispatch with deterministic fixtures. */
-import { describe, expect, test } from "bun:test";
+import { beforeEach, describe, expect, test } from "bun:test";
 import type { AppEnv } from "@/types/cloud-worker-env";
 import cloudApiWorker, {
   getFrontendAliasApiProxyTarget,
@@ -7,9 +7,11 @@ import cloudApiWorker, {
   getHostedFrontendServeRewrite,
   isCanonicalInferencePath,
   isThinInferenceEnabled,
+  isThinStewardPublicPath,
   redirectFrontendHost,
   SharedRuntimeConversation,
 } from "./index";
+import { resetProvidersResponseCacheForTests } from "./steward/embedded";
 
 test("exports the shared-runtime conversation Durable Object", () => {
   expect(typeof SharedRuntimeConversation).toBe("function");
@@ -91,6 +93,161 @@ describe("thin inference entry dispatch", () => {
 
     expect(response.status).toBe(401);
     expect(response.headers.get("x-eliza-inference-path")).toBe("thin");
+  });
+});
+
+describe("thin Steward public path dispatch (#18049)", () => {
+  const executionCtx = {
+    waitUntil: () => undefined,
+    passThroughOnException: () => undefined,
+  } as unknown as ExecutionContext;
+
+  const stewardEnv = {
+    ENVIRONMENT: "test",
+    NODE_ENV: "test",
+    ELIZA_DEPLOY_COMMIT: "test-commit-18049",
+    STEWARD_API_URL: "https://steward.example.test",
+    STEWARD_TENANT_ID: "elizacloud-staging",
+    GOOGLE_CLIENT_ID: "google-client-id",
+    GOOGLE_CLIENT_SECRET: "google-client-secret",
+    REDIS_RATE_LIMITING: "false",
+    BLOB: {},
+  } as unknown as AppEnv["Bindings"];
+
+  const originalFetch = globalThis.fetch;
+
+  beforeEach(() => {
+    resetProvidersResponseCacheForTests();
+    globalThis.fetch = originalFetch;
+  });
+
+  test("matches only login-critical Steward GETs", () => {
+    expect(isThinStewardPublicPath("/steward/auth/providers")).toBe(true);
+    expect(isThinStewardPublicPath("/steward/auth/providers/")).toBe(true);
+    expect(isThinStewardPublicPath("/steward/tenants/config")).toBe(true);
+    expect(isThinStewardPublicPath("/steward/auth/email/send")).toBe(false);
+    expect(isThinStewardPublicPath("/steward/auth/nonce")).toBe(false);
+    expect(isThinStewardPublicPath("/api/v1/oauth/providers")).toBe(false);
+  });
+
+  test("dispatches GET /steward/auth/providers through the thin shell", async () => {
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      const url =
+        typeof input === "string"
+          ? input
+          : input instanceof URL
+            ? input.toString()
+            : input.url;
+      expect(url).toBe("https://steward.example.test/auth/providers");
+      return Response.json({
+        ok: true,
+        data: {
+          passkey: true,
+          email: true,
+          siwe: false,
+          siws: false,
+          google: false,
+          discord: false,
+          github: false,
+          oauth: [],
+        },
+      });
+    }) as unknown as typeof fetch;
+
+    try {
+      const response = await cloudApiWorker.fetch(
+        new Request("https://api.elizacloud.ai/steward/auth/providers", {
+          method: "GET",
+          headers: { origin: "https://app.elizacloud.ai" },
+        }),
+        stewardEnv,
+        executionCtx,
+      );
+
+      expect(response.status).toBe(200);
+      expect(response.headers.get("x-eliza-steward-path")).toBe("thin");
+      expect(response.headers.get("server-timing")).toContain("entry_dispatch");
+      expect(response.headers.get("x-eliza-providers-cache")).toBe("miss");
+
+      const body = (await response.json()) as {
+        ok?: boolean;
+        data?: { google?: boolean; passkey?: boolean };
+      };
+      expect(body.ok).toBe(true);
+      expect(body.data?.passkey).toBe(true);
+      // Env OAuth creds patch google even when Steward reports false.
+      expect(body.data?.google).toBe(true);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  test("serves GET /steward/tenants/config from the thin shell without upstream", async () => {
+    let upstreamCalls = 0;
+    globalThis.fetch = (async () => {
+      upstreamCalls += 1;
+      return new Response("should-not-be-called", { status: 500 });
+    }) as unknown as typeof fetch;
+
+    try {
+      const response = await cloudApiWorker.fetch(
+        new Request("https://api.elizacloud.ai/steward/tenants/config", {
+          method: "GET",
+        }),
+        stewardEnv,
+        executionCtx,
+      );
+
+      expect(response.status).toBe(200);
+      expect(response.headers.get("x-eliza-steward-path")).toBe("thin");
+      expect(upstreamCalls).toBe(0);
+      const body = (await response.json()) as {
+        ok?: boolean;
+        data?: { features?: { enableSolana?: boolean } };
+      };
+      expect(body.ok).toBe(true);
+      expect(body.data?.features?.enableSolana).toBe(true);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  test("reuses isolate providers cache on the second GET", async () => {
+    let upstreamCalls = 0;
+    globalThis.fetch = (async () => {
+      upstreamCalls += 1;
+      return Response.json({
+        ok: true,
+        data: {
+          passkey: true,
+          email: true,
+          google: false,
+          oauth: [],
+        },
+      });
+    }) as unknown as typeof fetch;
+
+    try {
+      const first = await cloudApiWorker.fetch(
+        new Request("https://api.elizacloud.ai/steward/auth/providers"),
+        stewardEnv,
+        executionCtx,
+      );
+      const second = await cloudApiWorker.fetch(
+        new Request("https://api.elizacloud.ai/steward/auth/providers"),
+        stewardEnv,
+        executionCtx,
+      );
+
+      expect(first.status).toBe(200);
+      expect(second.status).toBe(200);
+      expect(first.headers.get("x-eliza-providers-cache")).toBe("miss");
+      expect(second.headers.get("x-eliza-providers-cache")).toBe("hit");
+      expect(upstreamCalls).toBe(1);
+      expect(second.headers.get("x-eliza-steward-path")).toBe("thin");
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 });
 
@@ -308,6 +465,100 @@ describe("cloud-api worker entrypoint", () => {
       status: "ok",
       region: "local-test",
       commit: "feedfacefeedfacefeedfacefeedfacefeedface",
+    });
+  });
+
+  test("reports only value-free staging session cutover readiness", async () => {
+    const response = await cloudApiWorker.fetch(
+      new Request("https://api-staging.elizacloud.ai/api/health", {
+        headers: { host: "api-staging.elizacloud.ai" },
+      }),
+      {
+        NODE_ENV: "production",
+        ENVIRONMENT: "staging",
+        ELIZA_DEPLOY_COMMIT: "cutover-commit",
+        STAGING_SESSION_EXCHANGE_ENABLED: "true",
+        STAGING_SESSION_EXCHANGE_VERSION: "v1",
+        STAGING_SESSION_EXCHANGE_SIGNING_SECRET:
+          "never-return-this-secret-0123456789abcdef",
+        ELIZA_SERVICE_JWT_SECRET:
+          "separate-service-bridge-secret-0123456789abcdef",
+        STAGING_SESSION_EXCHANGE_SIGNING_KEY_ID: "staging-qa-v1-test",
+        STEWARD_TENANT_ID: "staging-tenant",
+        STAGING_SESSION_EXCHANGE_ALLOWED_API_KEY_IDS:
+          "33333333-3333-4333-8333-333333333333",
+        STAGING_SESSION_EXCHANGE_ALLOWED_USER_IDS:
+          "11111111-1111-4111-8111-111111111111",
+        STAGING_SESSION_EXCHANGE_ALLOWED_ORGANIZATION_IDS:
+          "22222222-2222-4222-8222-222222222222",
+      } as never,
+      {} as never,
+    );
+
+    const text = await response.text();
+    expect(JSON.parse(text)).toMatchObject({
+      commit: "cutover-commit",
+      environment: "staging",
+      stagingSessionExchange: {
+        enabled: true,
+        ready: true,
+        version: "v1",
+      },
+    });
+    expect(text).not.toContain("never-return-this-secret");
+    expect(text).not.toContain("11111111-1111-4111-8111-111111111111");
+    expect(text).not.toContain("staging-qa-v1-test");
+
+    const malformedResponse = await cloudApiWorker.fetch(
+      new Request("https://api-staging.elizacloud.ai/api/health", {
+        headers: { host: "api-staging.elizacloud.ai" },
+      }),
+      {
+        NODE_ENV: "production",
+        ENVIRONMENT: "staging",
+        STAGING_SESSION_EXCHANGE_ENABLED: "true",
+        STAGING_SESSION_EXCHANGE_VERSION: "v1",
+        STAGING_SESSION_EXCHANGE_SIGNING_SECRET:
+          "never-return-this-secret-0123456789abcdef",
+        STAGING_SESSION_EXCHANGE_SIGNING_KEY_ID: "staging-qa-v1-test",
+        STEWARD_TENANT_ID: "staging-tenant",
+        STAGING_SESSION_EXCHANGE_ALLOWED_API_KEY_IDS:
+          "33333333-3333-4333-8333-333333333333",
+        STAGING_SESSION_EXCHANGE_ALLOWED_USER_IDS: "not-a-uuid",
+        STAGING_SESSION_EXCHANGE_ALLOWED_ORGANIZATION_IDS:
+          "22222222-2222-4222-8222-222222222222",
+      } as never,
+      {} as never,
+    );
+    expect(await malformedResponse.json()).toMatchObject({
+      stagingSessionExchange: { enabled: true, ready: false, version: "v1" },
+    });
+
+    const serviceCollisionResponse = await cloudApiWorker.fetch(
+      new Request("https://api-staging.elizacloud.ai/api/health", {
+        headers: { host: "api-staging.elizacloud.ai" },
+      }),
+      {
+        NODE_ENV: "production",
+        ENVIRONMENT: "staging",
+        STAGING_SESSION_EXCHANGE_ENABLED: "true",
+        STAGING_SESSION_EXCHANGE_VERSION: "v1",
+        STAGING_SESSION_EXCHANGE_SIGNING_SECRET:
+          "colliding-service-secret-0123456789abcdef",
+        ELIZA_SERVICE_JWT_SECRET: "colliding-service-secret-0123456789abcdef",
+        STAGING_SESSION_EXCHANGE_SIGNING_KEY_ID: "staging-qa-v1-test",
+        STEWARD_TENANT_ID: "staging-tenant",
+        STAGING_SESSION_EXCHANGE_ALLOWED_API_KEY_IDS:
+          "33333333-3333-4333-8333-333333333333",
+        STAGING_SESSION_EXCHANGE_ALLOWED_USER_IDS:
+          "11111111-1111-4111-8111-111111111111",
+        STAGING_SESSION_EXCHANGE_ALLOWED_ORGANIZATION_IDS:
+          "22222222-2222-4222-8222-222222222222",
+      } as never,
+      {} as never,
+    );
+    expect(await serviceCollisionResponse.json()).toMatchObject({
+      stagingSessionExchange: { enabled: true, ready: false, version: "v1" },
     });
   });
 

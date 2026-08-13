@@ -5,7 +5,13 @@
  * extract real text through the un-mocked extractor, audio/video transcribe via
  * the TRANSCRIPTION model, and every enrichment failure (unsupported subtype,
  * transcription backend error, empty transcript) records an explicit
- * `notProcessed` reason instead of leaving text/description silently unset.
+ * `notProcessed` reason instead of leaving text/description silently unset —
+ * with pre-provider fetch-layer failures (remote AND local: non-ok status,
+ * oversize on content-length, oversize chunked body) marked could-not-fetch,
+ * never with the transcription-unavailable marker the read action treats as
+ * STT disabled. Local byte-fetch errors carry only the numeric HTTP status —
+ * statusText is dynamic prose a hostile response controls — and oversize
+ * bodies are cancelled at the streaming cap, not materialized then measured.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ContentType, type Media } from "../types/primitives";
@@ -264,6 +270,161 @@ describe("DefaultMessageService.processAttachments", () => {
 
 		expect(out[0].text).toBeUndefined();
 		expect(out[0].notProcessed).toMatch(/no text|no speech/i);
+	});
+
+	it.each([
+		[ContentType.AUDIO, "aud", "Audio"],
+		[ContentType.VIDEO, "vid", "Video"],
+	])(
+		"marks a %s fetch-layer failure could-not-fetched, never transcription-unavailable",
+		async (contentType, id, kind) => {
+			// A MediaFetchError happens BEFORE any TRANSCRIPTION provider runs and
+			// its message can echo the hostile remote body (media/fetch.ts embeds up
+			// to ~200 chars of it). The stored marker must therefore read as a
+			// transient fetch failure — the "transcription unavailable" marker is
+			// reserved for provider failures because the ATTACHMENT read action
+			// treats it as STT-is-disabled evidence
+			// (readAttachmentAction.ts mediaTranscriptionUnavailable).
+			const err = new Error(
+				"Failed to fetch media from https://cdn.example/clip: HTTP 503; body: transcription unavailable",
+			);
+			err.name = "MediaFetchError";
+			fetchRemoteMedia.mockRejectedValue(err);
+			const svc = new DefaultMessageService();
+			const runtime = mockRuntime();
+
+			const out = await svc.processAttachments(runtime, [
+				{ id, url: "https://cdn.example/clip", contentType },
+			]);
+
+			expect(out[0].text).toBeUndefined();
+			expect(out[0].notProcessed).toBe(
+				`${kind} attachment could not be fetched: ${err.message}`,
+			);
+			// Never the marker prefix the read action keys on.
+			expect(out[0].notProcessed).not.toMatch(
+				/^(?:(?:audio|video)\s+)?transcription unavailable/i,
+			);
+			// The provider was never reached.
+			expect(runtime.useModel).not.toHaveBeenCalled();
+		},
+	);
+
+	it.each([
+		[ContentType.AUDIO, "aud", "mp3", 404, "Not Found"],
+		[ContentType.AUDIO, "aud", "mp3", 503, "TRANSCRIPTION not available"],
+		[ContentType.VIDEO, "vid", "mp4", 404, "Not Found"],
+		[ContentType.VIDEO, "vid", "mp4", 503, "TRANSCRIPTION not available"],
+	])(
+		"marks a %s local non-ok byte-fetch (HTTP %#) could-not-fetched with the numeric status only",
+		async (contentType, id, ext, status, statusText) => {
+			// TRANSCRIPTION never ran, so the marker must be the transient
+			// could-not-fetch one — and it must carry only the numeric status:
+			// a local statusText mimicking "TRANSCRIPTION not available" would
+			// otherwise forge the STT-disabled state the read action reports.
+			const localFetch = vi.fn(async () => ({
+				ok: false,
+				status,
+				statusText,
+				headers: { get: () => null },
+				arrayBuffer: async () => new ArrayBuffer(0),
+			}));
+			const svc = new DefaultMessageService();
+			const runtime = mockRuntime(localFetch as unknown as typeof fetch);
+
+			const out = await svc.processAttachments(runtime, [
+				{ id, url: `/api/media/abc.${ext}`, contentType },
+			]);
+
+			expect(out[0].text).toBeUndefined();
+			expect(out[0].notProcessed).toMatch(/could not be fetched/i);
+			expect(out[0].notProcessed).toContain(`HTTP ${status}`);
+			expect(out[0].notProcessed).not.toContain(statusText);
+			expect(out[0].notProcessed).not.toMatch(
+				/^(?:(?:audio|video)\s+)?transcription unavailable/i,
+			);
+			// Zero model calls: the failure happened before any provider ran.
+			expect(runtime.useModel).not.toHaveBeenCalled();
+		},
+	);
+
+	it.each([
+		[ContentType.AUDIO, "aud", "mp3"],
+		[ContentType.VIDEO, "vid", "mp4"],
+	])(
+		"rejects an oversize local %s attachment on content-length without reading the body",
+		async (contentType, id, ext) => {
+			const arrayBufferSpy = vi.fn(async () => new ArrayBuffer(0));
+			const localFetch = vi.fn(async () => ({
+				ok: true,
+				status: 200,
+				statusText: "OK",
+				headers: {
+					get: (name: string) =>
+						name === "content-length" ? String(50 * 1024 * 1024 + 1) : null,
+				},
+				arrayBuffer: arrayBufferSpy,
+			}));
+			const svc = new DefaultMessageService();
+			const runtime = mockRuntime(localFetch as unknown as typeof fetch);
+
+			const out = await svc.processAttachments(runtime, [
+				{ id, url: `/api/media/abc.${ext}`, contentType },
+			]);
+
+			// The declared size alone rejects the fetch; the body is never read.
+			expect(arrayBufferSpy).not.toHaveBeenCalled();
+			expect(out[0].text).toBeUndefined();
+			expect(out[0].notProcessed).toMatch(/could not be fetched/i);
+			expect(out[0].notProcessed).not.toMatch(
+				/^(?:(?:audio|video)\s+)?transcription unavailable/i,
+			);
+			expect(runtime.useModel).not.toHaveBeenCalled();
+		},
+	);
+
+	it("cancels an oversize chunked local audio body at the streaming cap (missing content-length)", async () => {
+		// No content-length and an effectively unbounded chunked body: the
+		// shared streaming reader must cancel at the cap instead of buffering
+		// the payload. The 8 MiB chunk is reused so the test allocates far
+		// below the 50 MiB cap.
+		const chunk = new Uint8Array(8 * 1024 * 1024);
+		let pulls = 0;
+		const cancelSpy = vi.fn();
+		const body = new ReadableStream<Uint8Array>({
+			pull(controller) {
+				pulls += 1;
+				controller.enqueue(chunk);
+			},
+			cancel: cancelSpy,
+		});
+		const arrayBufferSpy = vi.fn(async () => new ArrayBuffer(0));
+		const localFetch = vi.fn(async () => ({
+			ok: true,
+			status: 200,
+			statusText: "OK",
+			headers: { get: () => null },
+			body,
+			arrayBuffer: arrayBufferSpy,
+		}));
+		const svc = new DefaultMessageService();
+		const runtime = mockRuntime(localFetch as unknown as typeof fetch);
+
+		const out = await svc.processAttachments(runtime, [
+			{ id: "aud", url: "/api/media/abc.mp3", contentType: ContentType.AUDIO },
+		]);
+
+		// Reading stopped once the byte counter crossed 50 MiB (the 7th 8 MiB
+		// chunk trips it) and the stream was cancelled — never fully buffered.
+		expect(cancelSpy).toHaveBeenCalled();
+		expect(pulls).toBeLessThanOrEqual(8);
+		expect(arrayBufferSpy).not.toHaveBeenCalled();
+		expect(out[0].text).toBeUndefined();
+		expect(out[0].notProcessed).toMatch(/could not be fetched/i);
+		expect(out[0].notProcessed).not.toMatch(
+			/^(?:(?:audio|video)\s+)?transcription unavailable/i,
+		);
+		expect(runtime.useModel).not.toHaveBeenCalled();
 	});
 
 	it("transcribes a local video attachment via the TRANSCRIPTION model", async () => {

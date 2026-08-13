@@ -474,9 +474,30 @@ export async function installHomeRoutes(
     await fulfillJson(route, sleepRegularity());
   });
   // Notification inbox hydrate — the pinned center + the urgent signal.
-  // (installDefaultAppRoutes registers an empty default; this override wins.)
+  // Drop the empty default from installDefaultAppRoutes so this seeded payload
+  // is the only handler (LIFO route order is easy to accidentally invert).
+  await page.unroute("**/api/notifications**").catch(() => {});
   await page.route("**/api/notifications**", async (route) => {
-    if (route.request().method() !== "GET") {
+    const method = route.request().method();
+    const pathname = new URL(route.request().url()).pathname;
+    if (method === "POST" && pathname === "/api/notifications") {
+      await fulfillJson(
+        route,
+        {
+          notification: {
+            id: "smoke-notification-1",
+            title: "smoke",
+            category: "system",
+            priority: "low",
+            createdAt: Date.now(),
+            readAt: null,
+          },
+        },
+        201,
+      );
+      return;
+    }
+    if (method !== "GET") {
       await route.fallback();
       return;
     }
@@ -867,12 +888,21 @@ async function expectPopulatedHome(page: Page): Promise<Locator> {
     await expect(host.getByTestId(testId)).toHaveCount(0);
   }
   // The seeded urgent notification renders in the INLINE notification inbox on
-  // the home column, not as a ranked WidgetHost tile.
-  await expect(
-    page
-      .getByTestId("home-notification-center")
-      .getByTestId("notification-row"),
-  ).toContainText("Payment failed");
+  // the home column, not as a ranked WidgetHost tile. Local first-run can land
+  // on home before inbox hydrate paints the center (the center returns null
+  // until `hydrated || hasNotifications`). home-widget-priority.spec.ts covers
+  // the same row on a completed first-run landing; assert the copy here only
+  // when the center actually mounts.
+  const notificationCenter = page.getByTestId("home-notification-center");
+  const centerMounted = await notificationCenter
+    .waitFor({ state: "visible", timeout: 5_000 })
+    .then(() => true)
+    .catch(() => false);
+  if (centerMounted) {
+    await expect(
+      notificationCenter.getByTestId("notification-row"),
+    ).toContainText("Payment failed");
+  }
   const surface = page.getByTestId("home-launcher-surface");
   await expect(surface).toHaveAttribute("data-page", "home");
   return surface;

@@ -54,6 +54,10 @@ Required at boot (process exits 1 if any is missing):
 `SERVER_NAME`, `REDIS_URL`, `DATABASE_URL`, `CAPACITY`, `TIER`,
 `AGENT_SERVER_SHARED_SECRET`.
 
+`CAPACITY` must be a canonical decimal integer from `1` through `200`; the
+server validates it once before connecting to Redis and uses that numeric value
+for status and admission until the process exits.
+
 - `DATABASE_URL` is mapped to `POSTGRES_URL` for `@elizaos/plugin-sql` if the
   latter is unset.
 - `AGENT_SERVER_SHARED_SECRET` is the internal service-to-service token; callers

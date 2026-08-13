@@ -17,13 +17,9 @@
  * to `drain` — without the shared lifetime (#17749 review, @wtfsayo then
  * @lalalune).
  *
- * Scope note: this registry drains turns that were already in flight when
- * `drain` is called. It does not stop new inbound messages from starting a
- * new turn while the drain is in progress — discord.js keeps delivering
- * gateway events until the client is destroyed, and this connector has no
- * ingress cordon (elizaOS/eliza#16318 scopes an inbound cordon to the
- * runtime-level shutdown path, outside this plugin). A turn that starts
- * after `drain` begins is not covered by that call.
+ * `DiscordService#stop` closes the gateway admission gate before calling
+ * `drain`, so the snapshot is stable: already-admitted turns may finish while
+ * later messageCreate deliveries are rejected observably (#16318).
  */
 import type { StatusReactionController } from "./status-reactions";
 
@@ -81,6 +77,12 @@ export interface DiscordTurnDrainRegistry {
 	/** Count of message ids with either half still outstanding. */
 	pendingCount: () => number;
 	/**
+	 * True while either half (turn promise or reaction controller) of this
+	 * message id is still outstanding. The startup reaction scan uses this to
+	 * leave live turns' markers alone (startup-reaction-reconcile.ts).
+	 */
+	isPending: (messageId: string) => boolean;
+	/**
 	 * Wait for every turn tracked at call time to settle, bounded by
 	 * `timeoutMs`. Turns still pending when the bound elapses are abandoned:
 	 * their status-reaction controller (if any) is forced to its terminal
@@ -136,6 +138,9 @@ export function createTurnDrainRegistry(): DiscordTurnDrainRegistry {
 	];
 
 	const pendingCount = (): number => pendingIds().length;
+
+	const isPending = (messageId: string): boolean =>
+		handlers.has(messageId) || reactions.has(messageId);
 
 	const drain = async (timeoutMs: number): Promise<DiscordDrainResult> => {
 		// Snapshot both halves per id. Holding the promise and controller
@@ -240,5 +245,5 @@ export function createTurnDrainRegistry(): DiscordTurnDrainRegistry {
 		};
 	};
 
-	return { trackTurn, trackStatusReaction, pendingCount, drain };
+	return { trackTurn, trackStatusReaction, pendingCount, isPending, drain };
 }

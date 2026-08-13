@@ -1,15 +1,13 @@
+/**
+ * Compatibility routes that expose plugin configuration through the app-core
+ * HTTP surface while keeping every persisted enablement model synchronized.
+ */
+
 import fs from "node:fs";
 import type http from "node:http";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-// Consolidated from packages/app-core/src/api/plugins-routes.ts.
-// Moved from packages/app-core/src/api/plugins-routes.ts into the
-// @elizaos/plugin-registry plugin. Both agent-internal helpers
-// (@elizaos/agent) and app-core-internal helpers (@elizaos/app-core) are
-// imported through their respective public package surfaces; no more
-// `../registry`, `../services/*`, `./auth`, `./compat-route-shared`, or
-// `./response` cross-package deep imports.
 import {
   type AdvancedCapabilityPluginId,
   applyPluginRuntimeMutation,
@@ -17,6 +15,7 @@ import {
   discoverPluginsFromManifest,
   findPrimaryEnvKey,
   isAdvancedCapabilityPluginId,
+  isBlockedEnvKey,
   isVaultRef,
   loadElizaConfig,
   type PluginRuntimeApplyResult,
@@ -51,6 +50,11 @@ import {
 } from "@elizaos/registry/first-party";
 import { asRecord, CONNECTOR_PLUGINS } from "@elizaos/shared";
 import { VaultMissError } from "@elizaos/vault";
+import {
+  bridgePluginParamsToRuntime,
+  clearPluginParamValues,
+  collectAgentScopedPluginParamValues,
+} from "./bridge-plugin-settings.ts";
 
 const require = createRequire(import.meta.url);
 
@@ -513,10 +517,11 @@ function resolvePersistedPluginEnabled(
   configEntries: Record<string, { enabled?: unknown }>,
   config: Record<string, unknown>,
 ): boolean | undefined {
-  const pluginEnabled =
-    typeof configEntries[pluginId]?.enabled === "boolean"
-      ? Boolean(configEntries[pluginId]?.enabled)
-      : undefined;
+  const pluginEnabled = readPluginEntryEnabled(
+    pluginId,
+    npmName,
+    configEntries,
+  );
 
   if (category === "connector") {
     const connectorEnabled = readCompatSectionEnabled(
@@ -547,7 +552,86 @@ function shortPluginIdFromNpmName(npmName: string | null): string | null {
   if (npmName.startsWith("@elizaos/plugin-")) {
     return npmName.slice("@elizaos/plugin-".length);
   }
+  // First-party libraries can describe bundled features, but only plugin/app
+  // packages are runtime identities; the registry id owns every other case.
+  if (npmName.startsWith("@elizaos/")) {
+    return null;
+  }
   return normalizePluginId(npmName);
+}
+
+function canonicalPluginPackageName(
+  pluginId: string,
+  npmName: string | undefined,
+): string {
+  return shortPluginIdFromNpmName(npmName ?? null)
+    ? (npmName ?? pluginId)
+    : pluginId;
+}
+
+function canonicalPluginEntryId(
+  pluginId: string,
+  npmName: string | undefined,
+): string {
+  return shortPluginIdFromNpmName(npmName ?? null) ?? pluginId;
+}
+
+function readPluginEntryEnabled(
+  pluginId: string,
+  npmName: string | undefined,
+  configEntries: Record<string, { enabled?: unknown }>,
+): boolean | undefined {
+  const canonicalId = canonicalPluginEntryId(pluginId, npmName);
+  const canonicalEnabled = configEntries[canonicalId]?.enabled;
+  if (typeof canonicalEnabled === "boolean") return canonicalEnabled;
+
+  const compatibilityEnabled = configEntries[pluginId]?.enabled;
+  return typeof compatibilityEnabled === "boolean"
+    ? compatibilityEnabled
+    : undefined;
+}
+
+function writePluginAllowListEnabled(
+  config: ReturnType<typeof loadElizaConfig>,
+  pluginId: string,
+  npmName: string | undefined,
+  enabled: boolean,
+): void {
+  config.plugins ??= {};
+  config.plugins.allow ??= [];
+
+  const shortNpmId = shortPluginIdFromNpmName(npmName ?? null);
+  const canonicalPackageName = canonicalPluginPackageName(pluginId, npmName);
+  const canonicalAliases = new Set(
+    [canonicalPackageName, shortNpmId].filter(
+      (value): value is string => typeof value === "string" && value.length > 0,
+    ),
+  );
+  const staleAliases = new Set(
+    [
+      shortNpmId && pluginId !== shortNpmId ? pluginId : null,
+      npmName && npmName !== canonicalPackageName ? npmName : null,
+    ].filter((value): value is string => value !== null),
+  );
+
+  if (staleAliases.size > 0) {
+    config.plugins.allow = config.plugins.allow.filter(
+      (candidate) => !staleAliases.has(candidate),
+    );
+  }
+
+  if (enabled) {
+    if (
+      !config.plugins.allow.some((candidate) => canonicalAliases.has(candidate))
+    ) {
+      config.plugins.allow.push(canonicalPackageName);
+    }
+    return;
+  }
+
+  config.plugins.allow = config.plugins.allow.filter(
+    (candidate) => !canonicalAliases.has(candidate),
+  );
 }
 
 export function analyzePluginStateDrift(
@@ -564,6 +648,10 @@ export function analyzePluginStateDrift(
         ? plugin.npmName
         : null;
     const shortId = shortPluginIdFromNpmName(npmName) ?? pluginId;
+    const canonicalPackageName = canonicalPluginPackageName(
+      pluginId,
+      npmName ?? undefined,
+    );
     const uiEnabled = Boolean(plugin.enabled);
     const compatEnabled =
       category === "connector"
@@ -576,14 +664,15 @@ export function analyzePluginStateDrift(
             ),
           )
         : undefined;
-    const entryEnabled =
-      typeof configEntries[pluginId]?.enabled === "boolean"
-        ? Boolean(configEntries[pluginId]?.enabled)
-        : undefined;
+    const entryEnabled = readPluginEntryEnabled(
+      pluginId,
+      npmName ?? undefined,
+      configEntries,
+    );
     const enabledAllowList =
       allowList === null || npmName == null
         ? null
-        : allowList.has(npmName) || allowList.has(shortId);
+        : allowList.has(canonicalPackageName) || allowList.has(shortId);
     const isActive = Boolean(plugin.isActive);
     const driftFlags: PluginDriftFlag[] = [];
 
@@ -705,12 +794,10 @@ function maybeLogPluginStateDrift(report: PluginDriftDiagnosticsReport): void {
 
 // ── Enabled-state drift reconciliation ────────────────────────────────
 //
-// The write path (persistCompatPluginMutation) always updates both
-// plugins.entries[id].enabled AND the compat connector/streaming section.
-// However drift can occur if the config file is edited externally or a
-// migration only touched one location.  This pass detects any mismatch
-// and re-synchronises the compat section from plugins.entries, which is
-// the canonical source for the Settings UI.
+// The write path keeps plugins.entries, plugins.allow, and any connector
+// compatibility section aligned. External config edits can still split those
+// models, so this pass restores the Settings-owned compatibility section from
+// the canonical entries state.
 //
 // Runs once per process on the first buildPluginListResponse() call.
 
@@ -820,7 +907,10 @@ async function applyCompatRuntimeMutation(options: {
       previousConfig,
       nextConfig,
       changedPluginId: pluginId,
-      changedPluginPackage: plugin.npmName,
+      changedPluginPackage: canonicalPluginPackageName(
+        pluginId,
+        plugin.npmName,
+      ),
       config:
         body.config &&
         typeof body.config === "object" &&
@@ -1208,10 +1298,12 @@ export function buildPluginListResponse(runtime: AgentRuntime | null): {
     const existing = plugins.get(pluginId);
     if (existing) {
       existing.isActive = true;
-      if (
-        existing.enabled !== true &&
-        configEntries[pluginId]?.enabled == null
-      ) {
+      const persistedEnabled = readPluginEntryEnabled(
+        pluginId,
+        existing.npmName ?? pluginName,
+        configEntries,
+      );
+      if (existing.enabled !== true && persistedEnabled === undefined) {
         existing.enabled = true;
       }
       if (!existing.version) {
@@ -1229,9 +1321,7 @@ export function buildPluginListResponse(runtime: AgentRuntime | null): {
         "Loaded runtime plugin discovered without manifest metadata.",
       tags: [],
       enabled:
-        typeof configEntries[pluginId]?.enabled === "boolean"
-          ? Boolean(configEntries[pluginId]?.enabled)
-          : true,
+        readPluginEntryEnabled(pluginId, pluginName, configEntries) ?? true,
       configured: true,
       envKey: null,
       category: "feature",
@@ -1342,11 +1432,59 @@ export function persistCompatPluginMutation(
   const configRecord = config as Record<string, unknown>;
   config.plugins ??= {};
   config.plugins.entries ??= {};
-  config.plugins.entries[pluginId] ??= {};
-  const pluginEntry = config.plugins.entries[pluginId] as Record<
-    string,
-    unknown
-  >;
+  const canonicalEntryId = canonicalPluginEntryId(pluginId, plugin.npmName);
+  const npmDerivedEntryId = plugin.npmName
+    ? normalizePluginId(plugin.npmName)
+    : null;
+  const compatibilityEntry = config.plugins.entries[pluginId] as
+    | Record<string, unknown>
+    | undefined;
+  const npmDerivedEntry = npmDerivedEntryId
+    ? (config.plugins.entries[npmDerivedEntryId] as
+        | Record<string, unknown>
+        | undefined)
+    : undefined;
+  const canonicalEntry = config.plugins.entries[canonicalEntryId] as
+    | Record<string, unknown>
+    | undefined;
+  const allowAliases = new Set(
+    [
+      pluginId,
+      plugin.npmName,
+      npmDerivedEntryId,
+      canonicalPluginPackageName(pluginId, plugin.npmName),
+    ].filter((value): value is string => Boolean(value)),
+  );
+  const hadAllowList = Array.isArray(config.plugins.allow);
+  const wasAllowed = (config.plugins.allow ?? []).some((candidate) =>
+    allowAliases.has(candidate),
+  );
+  const pluginEntry = {
+    ...(compatibilityEntry ?? {}),
+    ...(npmDerivedEntry ?? {}),
+    ...(canonicalEntry ?? {}),
+  };
+  config.plugins.entries[canonicalEntryId] = pluginEntry;
+  for (const alias of new Set([pluginId, npmDerivedEntryId])) {
+    if (alias && alias !== canonicalEntryId) {
+      delete config.plugins.entries[alias];
+    }
+  }
+
+  const persistedEnabled =
+    typeof body.enabled === "boolean"
+      ? body.enabled
+      : typeof pluginEntry.enabled === "boolean"
+        ? pluginEntry.enabled
+        : undefined;
+  if (persistedEnabled !== undefined || hadAllowList) {
+    writePluginAllowListEnabled(
+      config,
+      pluginId,
+      plugin.npmName,
+      persistedEnabled ?? wasAllowed,
+    );
+  }
 
   if (typeof body.enabled === "boolean") {
     pluginEntry.enabled = body.enabled;
@@ -1534,6 +1672,52 @@ export async function handlePluginsCompatRoutes(
     const result = persistCompatPluginMutation(pluginId, body, plugin);
     if (result.status === 200) {
       const nextConfig = loadElizaConfig();
+      // Fold agent-scoped config into runtime.getSetting before hot reload —
+      // catalog isSet reads env, connectors read getSetting (#18713).
+      if (
+        body.config &&
+        typeof body.config === "object" &&
+        !Array.isArray(body.config)
+      ) {
+        const bridgedValues: Record<string, string | undefined> = {};
+        for (const [key, value] of Object.entries(
+          body.config as Record<string, unknown>,
+        )) {
+          if (typeof value !== "string") continue;
+          if (isBlockedEnvKey(key)) continue;
+          bridgedValues[key] = value.trim() ? value : undefined;
+        }
+        bridgePluginParamsToRuntime(
+          state.current,
+          plugin.parameters ?? [],
+          bridgedValues,
+          { isBlockedKey: isBlockedEnvKey },
+        );
+      } else if (typeof body.enabled === "boolean") {
+        if (body.enabled) {
+          const entry = asRecord(nextConfig.plugins?.entries?.[pluginId]);
+          const agentScoped = collectAgentScopedPluginParamValues(
+            plugin.parameters ?? [],
+            {
+              entryConfig: asRecord(entry?.config),
+              configEnv: asRecord(nextConfig.env),
+            },
+          );
+          bridgePluginParamsToRuntime(
+            state.current,
+            plugin.parameters ?? [],
+            agentScoped,
+            { isBlockedKey: isBlockedEnvKey },
+          );
+        } else {
+          bridgePluginParamsToRuntime(
+            state.current,
+            plugin.parameters ?? [],
+            clearPluginParamValues(plugin.parameters ?? []),
+            { isBlockedKey: isBlockedEnvKey },
+          );
+        }
+      }
       const runtimeApply = await applyCompatRuntimeMutation({
         state,
         pluginId,

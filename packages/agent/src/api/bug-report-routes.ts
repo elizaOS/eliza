@@ -11,7 +11,7 @@ import os from "node:os";
 import { logger, type RouteRequestContext } from "@elizaos/core";
 import { PostBugReportRequestSchema } from "@elizaos/shared";
 
-export const DEFAULT_BUG_REPORT_REPO = "eliza-ai/eliza";
+export const DEFAULT_BUG_REPORT_REPO = "elizaOS/eliza";
 export const BUG_REPORT_REPO_ENV_KEY = "ELIZA_BUG_REPORT_REPO";
 const BUG_REPORT_REPO_FALLBACK_ENV_KEY = "BUG_REPORT_REPO";
 

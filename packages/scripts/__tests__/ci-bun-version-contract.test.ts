@@ -465,6 +465,81 @@ jobs:
     expect(install?.classification).toBe("canonical");
   });
 
+  test("fails a base image reached through a non-BUN_VERSION ARG", () => {
+    // The shape the deployed cloud services use. The image reference never
+    // touches a FROM line, so the `FROM oven/bun:` matcher never sees it, and
+    // the ARG is not named BUN_VERSION, so the ARG scan skips it too — a
+    // floating canary rode into three production images past a contract whose
+    // headline promise is that no floating tag survives (#17044).
+    expectViolation(
+      buildRepo({
+        files: {
+          "services/gw/Dockerfile": [
+            "ARG BUN_BASE=oven/bun:canary-alpine",
+            // biome-ignore lint/suspicious/noTemplateCurlyInString: Dockerfile ARG interpolation, not a JS template
+            "FROM ${BUN_BASE} AS base",
+            "",
+          ].join("\n"),
+        },
+      }),
+      /ARG BUN_BASE=oven\/bun:canary-alpine/,
+    );
+    expectViolation(
+      buildRepo({
+        files: {
+          "services/gw/Dockerfile": [
+            "ENV BUN_IMAGE=oven/bun:latest",
+            // biome-ignore lint/suspicious/noTemplateCurlyInString: Dockerfile ARG interpolation, not a JS template
+            "FROM ${BUN_IMAGE}",
+            "",
+          ].join("\n"),
+        },
+      }),
+      /oven\/bun:latest/,
+    );
+  });
+
+  test("accepts a canonical base image reached through an ARG, variant included", () => {
+    const inventory = inventoryOf(
+      buildRepo({
+        files: {
+          "services/gw/Dockerfile": [
+            `ARG BUN_BASE=oven/bun:${CANONICAL}-alpine`,
+            // biome-ignore lint/suspicious/noTemplateCurlyInString: Dockerfile ARG interpolation, not a JS template
+            "FROM ${BUN_BASE} AS base",
+            "",
+          ].join("\n"),
+        },
+      }),
+    );
+    const arg = inventory.find(
+      (s) => s.surface === "dockerfile-base-image-arg",
+    );
+    expect(arg?.classification).toBe("canonical");
+    expect(arg?.value).toBe(`${CANONICAL}-alpine`);
+  });
+
+  test("leaves a non-oven ARG default alone (local RISC-V build override)", () => {
+    // riscv64 has no upstream oven/bun image, so these Dockerfiles document a
+    // locally built tag passed via --build-arg. It declares no oven/bun
+    // runtime and must not be forced onto the canonical pin.
+    const inventory = inventoryOf(
+      buildRepo({
+        files: {
+          "services/gw/Dockerfile": [
+            "ARG BUN_BASE=local/bun-riscv64:dev",
+            // biome-ignore lint/suspicious/noTemplateCurlyInString: Dockerfile ARG interpolation, not a JS template
+            "FROM ${BUN_BASE} AS base",
+            "",
+          ].join("\n"),
+        },
+      }),
+    );
+    expect(
+      inventory.filter((s) => s.surface === "dockerfile-base-image-arg"),
+    ).toEqual([]);
+  });
+
   test("fails a divergent oven-sh release download URL", () => {
     expectViolation(
       buildRepo({

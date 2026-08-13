@@ -1,0 +1,220 @@
+/**
+ * Locks the credential, target, evidence, and cleanup boundaries that make the
+ * managed dedicated canary safe to invoke from the consolidated live workflow.
+ */
+import { describe, expect, test } from "bun:test";
+import { existsSync, readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { parse } from "yaml";
+
+interface WorkflowStep {
+  env?: Record<string, string>;
+  id?: string;
+  if?: string;
+  name?: string;
+  run?: string;
+  uses?: string;
+  with?: Record<string, string | number | boolean>;
+}
+
+interface WorkflowJob {
+  concurrency?: {
+    "cancel-in-progress": boolean;
+    group: string;
+  };
+  env?: Record<string, string>;
+  environment?: string;
+  if?: string;
+  "runs-on"?: string;
+  steps: WorkflowStep[];
+  "timeout-minutes"?: number;
+}
+
+interface LiveSmokeWorkflow {
+  jobs: {
+    dedicated: WorkflowJob;
+    smoke: WorkflowJob;
+  };
+  on: {
+    workflow_dispatch: {
+      inputs: {
+        stale_canary_suffix: {
+          default: string;
+          required: boolean;
+          type: string;
+        };
+        suite: {
+          options: string[];
+        };
+      };
+    };
+  };
+}
+
+const repoRoot = resolve(import.meta.dirname, "../../../..");
+const workflowPath = resolve(repoRoot, ".github/workflows/live-smoke.yml");
+const retiredWorkflowPath = resolve(
+  repoRoot,
+  ".github/workflows/managed-dedicated-canary.yml",
+);
+const workflowSource = readFileSync(workflowPath, "utf8");
+const workflow = parse(workflowSource) as LiveSmokeWorkflow;
+const dedicated = workflow.jobs.dedicated;
+
+function githubExpression(body: string): string {
+  return ["$", "{{ ", body, " }}"].join("");
+}
+
+function bracedExpansion(body: string): string {
+  return ["$", "{", body, "}"].join("");
+}
+
+function namedStep(name: string): WorkflowStep {
+  const step = dedicated.steps.find((candidate) => candidate.name === name);
+  if (!step)
+    throw new Error(`Missing managed dedicated workflow step: ${name}`);
+  return step;
+}
+
+describe("managed dedicated live-smoke workflow contract", () => {
+  test("has one manual owner and a dedicated dispatch route", () => {
+    expect(Object.keys(workflow.on)).toEqual(["workflow_dispatch"]);
+    expect(workflow.on.workflow_dispatch.inputs.suite.options).toEqual([
+      "all",
+      "app",
+      "scenarios",
+      "cloud",
+      "voice",
+      "dedicated",
+    ]);
+    expect(
+      workflow.on.workflow_dispatch.inputs.stale_canary_suffix,
+    ).toMatchObject({ default: "", required: false, type: "string" });
+    expect(workflow.jobs.smoke.if).toBe("inputs.suite != 'dedicated'");
+    expect(dedicated.if).toBe(
+      "inputs.suite == 'all' || inputs.suite == 'dedicated'",
+    );
+    expect(existsSync(retiredWorkflowPath)).toBe(false);
+  });
+
+  test("serializes the bounded staging lifecycle", () => {
+    expect(dedicated["runs-on"]).toBe("ubuntu-24.04");
+    expect(dedicated.environment).toBe("staging");
+    expect(dedicated["timeout-minutes"]).toBe(45);
+    expect(dedicated.concurrency).toEqual({
+      group: "managed-dedicated-staging-canary",
+      "cancel-in-progress": false,
+    });
+  });
+
+  test("fails closed on credentials, target drift, and invalid recovery intent", () => {
+    expect(dedicated.env?.CLOUD_DEDICATED_CANARY_BASE_URL).toBe(
+      "https://api-staging.elizacloud.ai",
+    );
+    expect(dedicated.env?.CLOUD_DEDICATED_CANARY_EVIDENCE_PATH).toBe(
+      "reports/managed-dedicated-canary.json",
+    );
+    expect(dedicated.env?.CLOUD_DEDICATED_CANARY_STALE_CANARY_SUFFIX).toBe(
+      githubExpression("inputs.stale_canary_suffix || ''"),
+    );
+    expect(dedicated.env?.ELIZAOS_CLOUD_API_KEY).toBe(
+      githubExpression(
+        "secrets.ELIZAOS_CLOUD_API_KEY || secrets.ELIZACLOUD_API_KEY",
+      ),
+    );
+
+    const credential = namedStep("Require real Cloud credential").run ?? "";
+    expect(credential).toContain("cloud_key_without_whitespace");
+    expect(credential).toContain("refusing green-by-skip");
+    expect(credential).toContain("exit 1");
+
+    const target = namedStep("Require exact staging target").run ?? "";
+    expect(target).toContain(
+      'const expected = "https://api-staging.elizacloud.ai"',
+    );
+    expect(target).toContain("url.username");
+    expect(target).toContain("url.password");
+    expect(target).toContain("url.pathname");
+    expect(target).toContain("url.search");
+    expect(target).toContain("url.hash");
+
+    const recovery = namedStep("Bind stale-recovery intent");
+    expect(recovery.id).toBe("recovery_intent");
+    expect(recovery.run).toContain("/^r[1-9]\\d{7,19}a[1-9]\\d{0,3}$/");
+    expect(recovery.run).toContain("requested=$" + "{requested");
+  });
+
+  test("checks out full history and validates deterministic contracts", () => {
+    const checkout = namedStep("Checkout exact run commit");
+    expect(checkout.uses).toBe(
+      "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+    );
+    expect(checkout.with?.["fetch-depth"]).toBe(0);
+    expect(checkout.with?.submodules).toBe(false);
+
+    const setup = namedStep("Setup Bun");
+    expect(setup.uses).toBe(
+      "oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6",
+    );
+    expect(setup.with?.["bun-version"]).toBe("1.3.14");
+
+    const validation = namedStep("Validate canary and workflow contracts").run;
+    expect(validation).toContain("bridge-reply-verdict.test.ts");
+    expect(validation).toContain("managed-dedicated-canary.test.ts");
+    expect(validation).toContain("managed-dedicated-canary-workflow.test.ts");
+  });
+
+  test("uploads only canonical privacy-validated evidence", () => {
+    const live = namedStep("Run bounded managed dedicated canary");
+    expect(live.id).toBe("live");
+    expect(live.run).toContain("managed-dedicated-canary.ts");
+    expect(live.run).toContain("status=$?");
+    expect(live.run).toContain('echo "status=$status" >> "$GITHUB_OUTPUT"');
+
+    const privacy = namedStep("Validate privacy-safe evidence artifact");
+    expect(privacy.id).toBe("privacy");
+    expect(privacy.if).toBe(githubExpression("always()"));
+    expect(privacy.run).toContain("canonicalizeManagedDedicatedCanaryArtifact");
+    expect(privacy.run).toContain("errors.length > 0");
+    expect(privacy.run).toContain("mode: 0o600");
+    expect(privacy.run).toContain('echo "validated=true"');
+
+    const upload = namedStep("Upload privacy-safe timing and path evidence");
+    expect(upload.if).toBe(
+      githubExpression("always() && steps.privacy.outputs.validated == 'true'"),
+    );
+    expect(upload.uses).toBe(
+      "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a",
+    );
+    expect(upload.with?.path).toBe("reports/managed-dedicated-canary.json");
+    expect(upload.with?.["retention-days"]).toBe(14);
+  });
+
+  test("requires live success, the deployed ancestry, and exact cleanup", () => {
+    const enforce = namedStep("Enforce live proof, deployed SHA, and cleanup");
+    expect(enforce.if).toBe(githubExpression("always()"));
+    expect(enforce.env).toMatchObject({
+      EXPECTED_RECOVERY_REQUESTED: githubExpression(
+        "steps.recovery_intent.outputs.requested",
+      ),
+      EXPECTED_SOURCE_SHA: githubExpression("github.sha"),
+      LIVE_PROCESS_STATUS: githubExpression("steps.live.outputs.status"),
+      PRIVACY_VALIDATED: githubExpression("steps.privacy.outputs.validated"),
+    });
+    expect(enforce.run).toContain("validateManagedDedicatedCanaryEvidence");
+    expect(enforce.run).toContain("workflow_recovery_intent_mismatch");
+    expect(enforce.run).toContain(
+      `"${bracedExpansion("LIVE_PROCESS_STATUS:-missing")}" != "0"`,
+    );
+    expect(enforce.run).toContain(
+      `git cat-file -e "${bracedExpansion("deployed_commit")}^{commit}"`,
+    );
+    expect(enforce.run).toContain(
+      'git merge-base --is-ancestor "$expected_source_sha" "$deployed_commit"',
+    );
+    expect(enforce.run).toContain("evidence.cleanup.status");
+    expect(enforce.run).toContain(
+      "Managed dedicated canary passed with exact cleanup.",
+    );
+  });
+});

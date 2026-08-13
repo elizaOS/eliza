@@ -1,6 +1,6 @@
 /** Verifies approvals cloud-route registration through the package's configured test harness. */
 import { describe, expect, it } from "vitest";
-import { registerAllCloudSurfaces } from "../register-all";
+import { registerAllCloudSurfaces } from "../register-all-sync";
 import { listCloudRoutes } from "../shell/cloud-route-registry";
 import { APPROVALS_ROUTE_PATH } from "./index";
 

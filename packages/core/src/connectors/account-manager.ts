@@ -113,6 +113,8 @@ export interface ConnectorOAuthStartRequest {
 
 export interface ConnectorOAuthStartResult {
 	authUrl: string;
+	/** Canonical callback selected by the provider when callers do not own it. */
+	redirectUri?: string;
 	expiresAt?: number;
 	codeVerifier?: string;
 	metadata?: Metadata;
@@ -1193,6 +1195,14 @@ export class ConnectorAccountManager extends Service {
 	private fallbackStorage?: InMemoryConnectorAccountStorage;
 	private storageFacade?: ConnectorAccountStorage;
 	private migration: Promise<void> = Promise.resolve();
+	/**
+	 * Serializes the full backend-selection + operation-invocation sequence so
+	 * that concurrent facade calls cannot interleave across the fallback→durable
+	 * transition (#18110). Without this, a write queued on the fallback backend
+	 * can land after a concurrent read has already selected the durable backend,
+	 * stranding the write in a soon-to-be-cleared fallback.
+	 */
+	private operationQueue: Promise<unknown> = Promise.resolve();
 	private warnedFallback = false;
 
 	constructor(runtime?: IAgentRuntime, storage?: ConnectorAccountStorage) {
@@ -1327,31 +1337,51 @@ export class ConnectorAccountManager extends Service {
 	}
 
 	private createStorageFacade(): ConnectorAccountStorage {
-		const resolve = () => this.backendForOperation();
+		/**
+		 * Run a storage operation through the serialized operation queue so that
+		 * backend resolution + invocation are atomic (#18110). Each operation
+		 * resolves its backend and executes the call within the same queue
+		 * boundary — no concurrent operation can interleave between selection
+		 * and invocation.
+		 */
+		const runSerialized = <T>(
+			fn: (backend: ConnectorAccountStorage) => Promise<T>,
+		): Promise<T> => {
+			const result = this.operationQueue.then(() =>
+				this.backendForOperation().then(fn),
+			);
+			this.operationQueue = result.then(
+				() => undefined,
+				() => undefined,
+			);
+			return result;
+		};
+
 		return {
 			listAccounts: async (provider) =>
-				(await resolve()).listAccounts(provider),
+				runSerialized((b) => b.listAccounts(provider)),
 			getAccount: async (provider, accountId) =>
-				(await resolve()).getAccount(provider, accountId),
+				runSerialized((b) => b.getAccount(provider, accountId)),
 			upsertAccount: async (account) =>
-				(await resolve()).upsertAccount(account),
+				runSerialized((b) => b.upsertAccount(account)),
 			deleteAccount: async (provider, accountId) =>
-				(await resolve()).deleteAccount(provider, accountId),
-			createOAuthFlow: async (flow) => (await resolve()).createOAuthFlow(flow),
+				runSerialized((b) => b.deleteAccount(provider, accountId)),
+			createOAuthFlow: async (flow) =>
+				runSerialized((b) => b.createOAuthFlow(flow)),
 			getOAuthFlow: async (provider, flowIdOrState) =>
-				(await resolve()).getOAuthFlow(provider, flowIdOrState),
+				runSerialized((b) => b.getOAuthFlow(provider, flowIdOrState)),
 			updateOAuthFlow: async (provider, flowIdOrState, patch) =>
-				(await resolve()).updateOAuthFlow(provider, flowIdOrState, patch),
+				runSerialized((b) => b.updateOAuthFlow(provider, flowIdOrState, patch)),
 			consumeOAuthFlow: async (provider, state, consumedBy) =>
-				(await resolve()).consumeOAuthFlow(provider, state, consumedBy),
+				runSerialized((b) => b.consumeOAuthFlow(provider, state, consumedBy)),
 			deleteOAuthFlow: async (provider, flowIdOrState) =>
-				(await resolve()).deleteOAuthFlow(provider, flowIdOrState),
-			findOwnerBinding: async (lookup) => {
-				const backend = await resolve();
-				return typeof backend.findOwnerBinding === "function"
-					? backend.findOwnerBinding(lookup)
-					: null;
-			},
+				runSerialized((b) => b.deleteOAuthFlow(provider, flowIdOrState)),
+			findOwnerBinding: async (lookup) =>
+				runSerialized(async (b) =>
+					typeof b.findOwnerBinding === "function"
+						? b.findOwnerBinding(lookup)
+						: null,
+				),
 		};
 	}
 
@@ -1603,11 +1633,18 @@ export class ConnectorAccountManager extends Service {
 		}
 		const updated = await this.storage.updateOAuthFlow(providerId, flow.id, {
 			authUrl: result.authUrl,
+			redirectUri: result.redirectUri ?? flow.redirectUri,
 			expiresAt: result.expiresAt,
 			codeVerifier: result.codeVerifier,
 			metadata: result.metadata ?? flow.metadata,
 		});
-		return updated ?? { ...flow, authUrl: result.authUrl };
+		return (
+			updated ?? {
+				...flow,
+				authUrl: result.authUrl,
+				redirectUri: result.redirectUri ?? flow.redirectUri,
+			}
+		);
 	}
 
 	async getOAuthFlow(

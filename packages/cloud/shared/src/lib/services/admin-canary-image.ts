@@ -144,20 +144,23 @@ export function assertAdminCanaryRequestId(value: string): void {
   }
 }
 
-export function parseAdminCanaryDemoImage(image: string): {
+export function parseAdminCanaryDemoImage(
+  image: string,
+  field = "targetImage",
+): {
   repository: string;
   digest: string;
 } {
   const prefix = `${ADMIN_CANARY_DEMO_IMAGE_REPOSITORY}@`;
   if (!image.startsWith(prefix)) {
     throw ValidationError(
-      `targetImage must use the allowlisted ${ADMIN_CANARY_DEMO_IMAGE_REPOSITORY} repository`,
+      `${field} must use the allowlisted ${ADMIN_CANARY_DEMO_IMAGE_REPOSITORY} repository`,
     );
   }
   const digest = image.slice(prefix.length);
-  assertSha256Digest(digest, "targetImage digest");
+  assertSha256Digest(digest, `${field} digest`);
   if (image !== `${ADMIN_CANARY_DEMO_IMAGE_REPOSITORY}@${digest}`) {
-    throw ValidationError("targetImage must be an exact repository@sha256 digest reference");
+    throw ValidationError(`${field} must be an exact repository@sha256 digest reference`);
   }
   return { repository: ADMIN_CANARY_DEMO_IMAGE_REPOSITORY, digest };
 }
@@ -178,7 +181,30 @@ export function assertDemoSourceImage(image: string, field: string): void {
   }
 }
 
-function assertTargetExpectations(targets: AdminCanaryTargetExpectation[]): void {
+/**
+ * An upgrade starts on the canonical release image, but a later canary starts
+ * on the immutable demo image produced by the earlier canary. Demo sources
+ * therefore require an exact image/digest pair; canonical sources retain their
+ * existing tag-plus-digest contract.
+ */
+export function assertAdminCanaryCanonicalOrDemoPair(
+  image: string,
+  digest: string,
+  field: string,
+): void {
+  if (imageRepo(image) === ADMIN_CANARY_CANONICAL_IMAGE_REPOSITORY) return;
+
+  const source = parseAdminCanaryDemoImage(image, field);
+  if (source.digest !== digest) {
+    throw ValidationError(`${field} digest must equal its image digest`);
+  }
+}
+
+function assertTargetExpectations(
+  targets: AdminCanaryTargetExpectation[],
+  targetImage: string,
+  targetDigest: string,
+): void {
   if (targets.length < 1 || targets.length > ADMIN_CANARY_MAX_TARGETS) {
     throw ValidationError(`targets must contain between 1 and ${ADMIN_CANARY_MAX_TARGETS} agents`);
   }
@@ -193,7 +219,17 @@ function assertTargetExpectations(targets: AdminCanaryTargetExpectation[]): void
       throw ValidationError(`targets contains duplicate agent ${target.agentId}`);
     }
     seen.add(key);
-    assertCanonicalSourceImage(target.expectedSourceImage, `targets[${index}].expectedSourceImage`);
+    assertAdminCanaryCanonicalOrDemoPair(
+      target.expectedSourceImage,
+      target.expectedSourceDigest,
+      `targets[${index}].expectedSourceImage`,
+    );
+    if (
+      target.expectedSourceImage === targetImage &&
+      target.expectedSourceDigest === targetDigest
+    ) {
+      throw ValidationError(`targets[${index}] must change the current image pair`);
+    }
   }
 }
 
@@ -217,8 +253,8 @@ export function assertAdminCanaryRolloutInput(input: AdminCanaryRolloutInput): v
   }
 
   if (input.operation === "upgrade") {
-    assertTargetExpectations(input.targets);
-    parseAdminCanaryDemoImage(input.targetImage);
+    const target = parseAdminCanaryDemoImage(input.targetImage);
+    assertTargetExpectations(input.targets, input.targetImage, target.digest);
     return;
   }
 
@@ -365,7 +401,7 @@ export function assertAdminCanaryImageJobData(data: AdminCanaryImageJobData): vo
     if (data.sourceRolloutId !== undefined || data.sourceJobId !== undefined) {
       throw ValidationError("upgrade jobs cannot reference a rollback source");
     }
-    assertCanonicalSourceImage(data.sourceImage, "sourceImage");
+    assertAdminCanaryCanonicalOrDemoPair(data.sourceImage, data.sourceDigest, "sourceImage");
     const target = parseAdminCanaryDemoImage(data.targetImage);
     if (target.digest !== data.targetDigest) {
       throw ValidationError("targetImage digest must equal targetDigest");
@@ -374,11 +410,11 @@ export function assertAdminCanaryImageJobData(data: AdminCanaryImageJobData): vo
     if (data.sourceRolloutId === undefined || data.sourceJobId === undefined) {
       throw ValidationError("rollback jobs require the exact source rollout and job");
     }
-    const source = parseAdminCanaryDemoImage(data.sourceImage);
+    const source = parseAdminCanaryDemoImage(data.sourceImage, "sourceImage");
     if (source.digest !== data.sourceDigest) {
       throw ValidationError("sourceImage digest must equal sourceDigest");
     }
-    assertCanonicalSourceImage(data.targetImage, "targetImage");
+    assertAdminCanaryCanonicalOrDemoPair(data.targetImage, data.targetDigest, "targetImage");
   }
   if (data.userId !== data.actorUserId) {
     throw ValidationError("userId must equal actorUserId");

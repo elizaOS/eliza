@@ -4,7 +4,8 @@
  * character name for the agent, otherwise a display/username pair pulled from
  * message metadata (source-specific keys first). roomSourceTag renders a
  * "[source] name" room tag, and formatRelativeTimestamp renders a createdAt as a
- * coarse "just now / Nm / Nh / Nd ago" string.
+ * coarse "just now / Nm / Nh / Nd ago" string. Non-finite timestamps fail closed
+ * to an empty label rather than leaking "NaNd ago" into provider context.
  */
 import type { IAgentRuntime, Memory, Room } from "@elizaos/core";
 import { asNonEmptyString, asRecord } from "@elizaos/shared";
@@ -77,12 +78,19 @@ export function roomSourceTag(room: Room | null): string {
 
 /**
  * Format a createdAt timestamp as a human-readable relative string.
+ *
+ * Missing, zero, and non-finite inputs (NaN / ±Infinity / out-of-range Date
+ * values) return an empty string so provider context never shows garbage like
+ * "NaNd ago". Finite past timestamps keep the existing coarse buckets.
  */
 export function formatRelativeTimestamp(createdAt?: number): string {
-  if (!createdAt) return "";
-  const date = new Date(createdAt);
-  const now = Date.now();
-  const diffMs = now - date.getTime();
+  if (createdAt == null || createdAt === 0) return "";
+  // Construct Date first and require a finite getTime(). That rejects NaN /
+  // ±Infinity and finite values outside the Date range, which still pass
+  // Number.isFinite but yield NaN from getTime() and "NaNd ago" from floor.
+  const time = new Date(createdAt).getTime();
+  if (!Number.isFinite(time)) return "";
+  const diffMs = Date.now() - time;
   if (diffMs < 60_000) return "just now";
   const minutes = Math.floor(diffMs / 60_000);
   if (minutes < 60) return `${minutes}m ago`;
@@ -90,4 +98,10 @@ export function formatRelativeTimestamp(createdAt?: number): string {
   if (hours < 24) return `${hours}h ago`;
   const days = Math.floor(hours / 24);
   return `${days}d ago`;
+}
+
+/** Render a relative timestamp as an optional parenthesized line prefix. */
+export function formatRelativeTimestampPrefix(createdAt?: number): string {
+  const label = formatRelativeTimestamp(createdAt);
+  return label ? `(${label}) ` : "";
 }

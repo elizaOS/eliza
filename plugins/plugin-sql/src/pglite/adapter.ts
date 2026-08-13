@@ -152,6 +152,10 @@ export class PgliteDatabaseAdapter extends BaseDrizzleAdapter {
     return this.manager.getConnection();
   }
 
+  async dumpPgliteDataDir(compression: "gzip" = "gzip"): Promise<File | Blob> {
+    return await this.manager.dumpDataDir(compression);
+  }
+
   // ── Electric write-back notification overrides ─────────────────────────
   // Each override calls super[method] then fires manager.notifyWrite() so the
   // WriteBackService (Pattern 1 — Online Writes) can forward the change to the

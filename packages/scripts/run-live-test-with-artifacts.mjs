@@ -1,7 +1,12 @@
 #!/usr/bin/env node
-// Exercises run live test with artifacts automation behavior with deterministic script fixtures.
+/**
+ * Runs a live test command and writes a self-contained evidence bundle with
+ * streamed output, process events, structured LLM calls, and a local viewer.
+ * Timed runs own a process tree so a wedged descendant cannot block artifact
+ * finalization after the configured deadline.
+ */
 
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -12,6 +17,7 @@ const REPO_ROOT = path.resolve(
   "..",
 );
 const DEFAULT_REPORT_ROOT = path.join(REPO_ROOT, "reports", "live-test-runs");
+const TERMINATION_GRACE_MS = 5_000;
 
 function timestampId() {
   return new Date().toISOString().replace(/[:.]/g, "-");
@@ -208,6 +214,28 @@ function readStructuredLlmCalls(filePath) {
     });
 }
 
+function signalProcessTree(child, signal) {
+  if (!Number.isInteger(child.pid) || child.pid <= 0) return;
+  if (process.platform === "win32") {
+    const args = ["/pid", String(child.pid), "/t"];
+    if (signal === "SIGKILL") args.push("/f");
+    const result = spawnSync("taskkill", args, { stdio: "ignore" });
+    if (result.status === 0) return;
+  } else {
+    try {
+      process.kill(-child.pid, signal);
+      return;
+    } catch {
+      // error-policy:J6 The process group may have exited between observation and teardown.
+    }
+  }
+  try {
+    child.kill(signal);
+  } catch {
+    // error-policy:J6 The direct child also may have exited during group teardown.
+  }
+}
+
 function structuredLlmSummary(records) {
   const calls = records.filter((record) => record.type === "llm_call");
   return calls.reduce(
@@ -261,6 +289,7 @@ async function main() {
   ];
   const child = spawn(options.command[0], options.command.slice(1), {
     cwd: REPO_ROOT,
+    detached: options.timeoutMs > 0 && process.platform !== "win32",
     env: {
       ...process.env,
       ELIZA_LIVE_TEST_RUN_DIR: runDir,
@@ -285,7 +314,35 @@ async function main() {
     events.push({ type: "stderr", timestamp: new Date().toISOString(), text });
   });
   let timedOut = false;
-  const timer =
+  let timer = null;
+  let escalationTimer = null;
+  const parentSignalHandlers = new Map();
+  if (options.timeoutMs > 0 && process.platform !== "win32") {
+    for (const signal of ["SIGINT", "SIGTERM"]) {
+      const handler = () => {
+        if (timer) clearTimeout(timer);
+        events.push({
+          type: "parent_signal",
+          timestamp: new Date().toISOString(),
+          signal,
+        });
+        signalProcessTree(child, signal);
+        if (!escalationTimer) {
+          escalationTimer = setTimeout(() => {
+            events.push({
+              type: "signal_escalation",
+              timestamp: new Date().toISOString(),
+              signal: "SIGKILL",
+            });
+            signalProcessTree(child, "SIGKILL");
+          }, TERMINATION_GRACE_MS);
+        }
+      };
+      parentSignalHandlers.set(signal, handler);
+      process.once(signal, handler);
+    }
+  }
+  timer =
     options.timeoutMs > 0
       ? setTimeout(() => {
           timedOut = true;
@@ -294,28 +351,43 @@ async function main() {
             timestamp: new Date().toISOString(),
             timeoutMs: options.timeoutMs,
           });
-          child.kill("SIGTERM");
+          signalProcessTree(child, "SIGTERM");
+          escalationTimer = setTimeout(() => {
+            events.push({
+              type: "timeout_escalation",
+              timestamp: new Date().toISOString(),
+              signal: "SIGKILL",
+            });
+            signalProcessTree(child, "SIGKILL");
+          }, TERMINATION_GRACE_MS);
         }, options.timeoutMs)
       : null;
   const exitCode = await new Promise((resolve) => {
+    let spawnError = null;
     child.on("error", (error) => {
       if (timer) clearTimeout(timer);
+      if (escalationTimer) clearTimeout(escalationTimer);
+      spawnError = error;
       events.push({
         type: "error",
         timestamp: new Date().toISOString(),
         error: error instanceof Error ? error.message : String(error),
       });
-      resolve(1);
     });
-    child.on("exit", (code, signal) => {
+    child.on("close", (code, signal) => {
       if (timer) clearTimeout(timer);
+      if (escalationTimer) clearTimeout(escalationTimer);
+      for (const [parentSignal, handler] of parentSignalHandlers) {
+        process.removeListener(parentSignal, handler);
+      }
+      const finalCode = timedOut ? 124 : spawnError ? 1 : (code ?? 1);
       events.push({
         type: "exit",
         timestamp: new Date().toISOString(),
-        code: timedOut ? 124 : (code ?? 1),
+        code: finalCode,
         signal,
       });
-      resolve(timedOut ? 124 : (code ?? 1));
+      resolve(finalCode);
     });
   });
   const completedAt = new Date();
