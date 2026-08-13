@@ -51,8 +51,10 @@ import { privateKeyToAccount } from "viem/accounts";
 import { dbRead, dbWrite } from "../../db/client";
 import { redeemableEarnings, redeemableEarningsLedger } from "../../db/schemas/redeemable-earnings";
 import { tokenRedemptions } from "../../db/schemas/token-redemptions";
-import { type EvmPayoutNetwork, resolveEvmRpc } from "../config/evm-rpc";
+import { type EvmPayoutNetwork } from "../config/payout-evm-resolver";
+import { resolvePayoutEvm } from "../config/payout-evm-resolver";
 import { getPayoutTokenConfig } from "../config/payout-assets";
+import { assertRailEnabled } from "../config/payout-rail-allowlist";
 import { ELIZA_DECIMALS, ERC20_ABI, EVM_CHAINS } from "../config/token-constants";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import { logger } from "../utils/logger";
@@ -722,31 +724,47 @@ export class PayoutProcessorService {
       };
     }
 
-    const chain = EVM_CHAINS[network];
-    if (!chain) {
+    // Fail-closed launch allowlist (#13100): only enabled rails may execute.
+    // This is the execution gate — quote/create/approval also enforce, but the
+    // last line of defense before signing is here.
+    const asset = (redemption.asset ?? "usdc") as "usdc" | "eliza";
+    try {
+      assertRailEnabled(network, asset);
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      logger.error("[PayoutProcessor] Payout rail not on allowlist; refusing execution", {
+        redemptionId: redemption.id,
+        network,
+        asset,
+        reason,
+      });
       return {
         success: false,
-        error: `Unsupported EVM network: ${network}`,
+        error: `Payout rail not enabled: ${reason}`,
         retryable: false,
       };
     }
 
-    // Asset-aware (#10732): USDC (6 decimals) or the compatibility elizaOS token (9).
-    // `eliza_amount` holds the payout-token amount in either case.
-    const tokenConfig = getPayoutTokenConfig(network, redemption.asset);
-    const tokenAddress = tokenConfig.address as Address;
+    // Coherent payout resolution (#13100): chain + RPC + token asset are all
+    // from the same environment (mainnet or testnet). The shared resolveEvmRpc
+    // is NOT used here — it routes mainnet consumers (oracle, identity, admin
+    // RPC status) and must not be PAYOUT_TESTNET-dependent.
+    const resolution = resolvePayoutEvm(network as EvmPayoutNetwork, asset);
+    const chain = resolution.chain;
+    const rpcUrl = resolution.rpc.url;
+    const tokenAddress = resolution.asset.address as Address;
     const toAddress = redemption.payout_address as Address;
+    const tokenDecimals = resolution.asset.decimals;
     // Fail-closed parse: viem `parseUnits('', d) === 0n` would build a zero-token
     // transfer that broadcasts + marks completed with a real tx hash (fabricated
     // success). processRedemption already gates this, but re-validate here so a
     // direct call can never silently pay out nothing; parseUnits then does the
     // precise decimal-string conversion from the (now known-finite) value.
     parseRedemptionAmount("eliza_amount", redemption.eliza_amount);
-    const amount = parseUnits(redemption.eliza_amount.toString(), tokenConfig.decimals);
+    const amount = parseUnits(redemption.eliza_amount.toString(), tokenDecimals);
 
     const account = privateKeyToAccount(this.evmPrivateKey);
 
-    const { url: rpcUrl } = resolveEvmRpc(network as EvmPayoutNetwork);
     const publicClient = createPublicClient({
       chain,
       transport: http(rpcUrl),
@@ -1275,10 +1293,14 @@ export class PayoutProcessorService {
     if (this.evmPrivateKey) {
       const account = privateKeyToAccount(this.evmPrivateKey);
 
-      for (const [network, chain] of Object.entries(EVM_CHAINS)) {
-        const tokenAddress = ELIZA_TOKEN_ADDRESSES[network as SupportedNetwork] as Address;
-
-        const { url: rpcUrl } = resolveEvmRpc(network as EvmPayoutNetwork);
+      for (const [network] of Object.entries(EVM_CHAINS)) {
+        const evmNetwork = network as EvmPayoutNetwork;
+        // Coherent payout resolution (#13100): chain + RPC from the payout
+        // resolver, not the shared mainnet-only resolveEvmRpc.
+        const resolution = resolvePayoutEvm(evmNetwork, "eliza");
+        const chain = resolution.chain;
+        const tokenAddress = resolution.asset.address as Address;
+        const rpcUrl = resolution.rpc.url;
         const publicClient = createPublicClient({
           chain,
           transport: http(rpcUrl),

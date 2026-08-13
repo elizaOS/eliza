@@ -8,7 +8,7 @@
 import { type Address, createPublicClient, http, parseAbi } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { shouldBlockPayoutAssumeOperational } from "../config/deployment-environment";
-import { type EvmPayoutNetwork, resolveEvmRpc } from "../config/evm-rpc";
+import { type EvmPayoutNetwork, resolvePayoutEvm } from "../config/payout-evm-resolver";
 import { ELIZA_DECIMALS, EVM_CHAINS } from "../config/token-constants";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import { logger } from "../utils/logger";
@@ -433,13 +433,13 @@ class PayoutStatusService {
     const tokenAddress = ELIZA_TOKEN_ADDRESSES[network] as Address;
     const decimals = ELIZA_DECIMALS[network];
 
-    // RPC resolution / client construction can throw when a network's RPC is
-    // not configured; degrade that single network instead of throwing out of
-    // getStatus() and 500-ing the whole redemption flow.
+    // Coherent payout resolution (#13100): chain + RPC from the payout
+    // resolver, not the shared mainnet-only resolveEvmRpc.
     let publicClient: ReturnType<typeof createPublicClient>;
     try {
-      const chain = EVM_CHAINS[network];
-      const { url: rpcUrl } = resolveEvmRpc(network as EvmPayoutNetwork);
+      const resolution = resolvePayoutEvm(network as EvmPayoutNetwork, "eliza");
+      const chain = resolution.chain;
+      const rpcUrl = resolution.rpc.url;
       publicClient = createPublicClient({
         chain,
         transport: http(rpcUrl),

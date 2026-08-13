@@ -46,6 +46,7 @@ import {
   type PayoutAsset,
   USDC_PAYOUT_NETWORKS,
 } from "../config/payout-assets";
+import { isRailEnabled } from "../config/payout-rail-allowlist";
 import {
   checkKnownAddress,
   FRAUD_THRESHOLDS,
@@ -343,6 +344,17 @@ export class SecureTokenRedemptionService {
       return {
         success: false,
         error: `USDC payouts are available on ${USDC_PAYOUT_NETWORKS.join(" or ")} only.`,
+      };
+    }
+
+    // Fail-closed launch allowlist (#13100): only enabled rails may be
+    // created. The default allowlist is base:usdc only. This is the
+    // create-time gate — execution also enforces.
+    const railCheck = isRailEnabled(network, asset);
+    if (!railCheck.allowed) {
+      return {
+        success: false,
+        error: railCheck.reason ?? `Payout rail ${railCheck.rail} is not enabled for launch.`,
       };
     }
 
