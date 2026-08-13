@@ -246,3 +246,29 @@ describe("runEvaluator — over-window input trims to fit (never context_length_
 		expect(sentPairs).toEqual(JSON.parse(JSON.stringify(control)));
 	});
 });
+
+describe("runEvaluator — bottom-out guard (stable segments alone over budget)", () => {
+	it("fails fast with EVALUATOR_INPUT_OVER_BUDGET instead of calling the provider", async () => {
+		// Overflow in the STABLE prefix, which the degrade loop deliberately
+		// never trims: even at the 2k tool-result floor the input cannot fit,
+		// so the evaluator must throw a typed error before useModel.
+		const hugeStablePrompt = "characterization ".repeat(2_000_000);
+		const { runtime } = makeRuntime();
+
+		await expect(
+			runEvaluator({
+				runtime,
+				context: {
+					...CONTEXT,
+					staticPrefix: {
+						characterPrompt: { content: hugeStablePrompt, stable: true },
+					},
+				},
+				trajectory: makeTrajectory([makeStep(1, "small result")]),
+				effects: {},
+			}),
+		).rejects.toMatchObject({ code: "EVALUATOR_INPUT_OVER_BUDGET" });
+
+		expect(runtime.useModel).not.toHaveBeenCalled();
+	});
+});

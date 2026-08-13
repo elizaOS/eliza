@@ -4,6 +4,7 @@
  * decision (FINISH / CONTINUE / NEXT_RECOMMENDED) before the loop acts on it.
  * Also records each evaluation as a trajectory stage for offline review.
  */
+import { ElizaError } from "../errors";
 import { computeCallCostUsd } from "../features/trajectories/pricing";
 import { evaluatorSchema, evaluatorTemplate } from "../prompts/evaluator";
 import {
@@ -127,6 +128,25 @@ export async function runEvaluator(
 			messages: renderedInput.messages,
 			promptSegments: renderedInput.promptSegments,
 		});
+	}
+	// Bottom-out guard: if the input is still over the compaction threshold at
+	// the 2k floor, the overflow lives in the stable/context segments this loop
+	// deliberately never touches. Calling the provider anyway is a guaranteed
+	// context_length_exceeded 400 that burns a round trip and surfaces as an
+	// opaque provider error — fail fast with a typed error instead so the
+	// planner-loop's degrade/propagate policy sees the real cause.
+	if (modelInputBudget.shouldCompact) {
+		throw new ElizaError(
+			"Evaluator model input exceeds the context budget even after tool results were compacted to the floor",
+			{
+				code: "EVALUATOR_INPUT_OVER_BUDGET",
+				context: {
+					estimatedInputTokens: modelInputBudget.estimatedInputTokens,
+					compactionThresholdTokens: modelInputBudget.compactionThresholdTokens,
+					toolResultCap,
+				},
+			},
+		);
 	}
 	const prefixHashes = computePrefixHashes(renderedInput.promptSegments);
 	const cachePrefixHashes = computePrefixHashes(renderedInput.cacheKeySegments);
