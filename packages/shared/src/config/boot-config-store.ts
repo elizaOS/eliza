@@ -193,67 +193,10 @@ export function resolveCharacterCatalog(catalog: CharacterCatalogData): {
   };
 }
 
-function presentEnvValue(value: string | undefined): string | undefined {
-  if (typeof value !== "string") return undefined;
-  return value.trim() ? value : undefined;
-}
-
-function buildAliasPartnerMap(
-  aliases: readonly (readonly [string, string])[],
-): Map<string, string[]> {
-  const map = new Map<string, string[]>();
-  const link = (from: string, to: string): void => {
-    if (from === to) return;
-    const existing = map.get(from);
-    if (existing) {
-      if (!existing.includes(to)) existing.push(to);
-    } else {
-      map.set(from, [to]);
-    }
-  };
-  for (const [brandKey, elizaKey] of aliases) {
-    link(brandKey, elizaKey);
-    link(elizaKey, brandKey);
-  }
-  return map;
-}
-
-function getProcessEnv(): Record<string, string | undefined> | null {
-  try {
-    const p = (globalThis as { process?: { env?: Record<string, string | undefined> } })
-      .process;
-    return p?.env ?? null;
-  } catch {
-    // error-policy:J4 browser and edge runtimes may expose a hostile process
-    // shim; environment aliases are explicitly unavailable there.
-    return null;
-  }
-}
-
 /**
- * Additive, non-mutating brand↔ELIZA env-alias reader (#18056 local copy).
- * Mirrors `@elizaos/core` `resolveAliasedEnvValue` without importing bare core
- * (which Vite maps to the prebuilt browser blob).
+ * Additive, non-mutating brand↔ELIZA env-alias reader.
+ * Single implementation in `@elizaos/core` (`boot-env.ts`), also exported from
+ * `@elizaos/core/client-public`. Re-exported from source so vite.config eval
+ * does not need an unbuilt `dist/client-public.js` (#18056 / #18704).
  */
-export function resolveAliasedEnvValue(
-  key: string,
-  aliases: readonly (readonly [string, string])[] | undefined = getBootConfig()
-    .envAliases,
-  env: Record<string, string | undefined> | null = getProcessEnv(),
-): string | undefined {
-  if (!env) return undefined;
-
-  const direct = presentEnvValue(env[key]);
-  if (direct !== undefined) return direct;
-
-  if (!aliases || aliases.length === 0) return undefined;
-
-  const partners = buildAliasPartnerMap(aliases).get(key);
-  if (!partners) return undefined;
-
-  for (const partner of partners) {
-    const value = presentEnvValue(env[partner]);
-    if (value !== undefined) return value;
-  }
-  return undefined;
-}
+export { resolveAliasedEnvValue } from "../../../core/src/boot-env.ts";

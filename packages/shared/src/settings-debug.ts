@@ -3,9 +3,10 @@
  *
  * Canonical semantics match `@elizaos/core` `settings-debug.ts` (enable with
  * `ELIZA_SETTINGS_DEBUG=1` / `VITE_ELIZA_SETTINGS_DEBUG=1`, including branded
- * boot-config aliases such as `MILADY_SETTINGS_DEBUG`). Implemented here rather
- * than re-exported from bare `@elizaos/core` so the app renderer does not pull
- * the prebuilt ~2.4 MB browser blob on cold `/login` (#18056).
+ * boot-config aliases such as `MILADY_SETTINGS_DEBUG`). Env helpers are the
+ * core implementations re-exported from this package (same files
+ * `@elizaos/core/client-public` exports) so the renderer does not pull the
+ * prebuilt ~2.4 MB browser blob on cold `/login` (#18056 / #18704).
  */
 
 import { resolveAliasedEnvValue } from "./config/boot-config-store.js";
