@@ -85,6 +85,25 @@ export interface TelegramIdentityLink {
   telegram_photo_url?: string | null;
 }
 
+export interface FindOrCreatePhonePersonalAccountResult {
+  user: User;
+  organization: Organization;
+  isNew: boolean;
+}
+
+/** Non-merging outcome when a verified phone claims its provisional account. */
+export type PromotePhonePersonalAccountResult =
+  | { status: "promoted"; user: User; organization: Organization }
+  | { status: "already_promoted"; user: User; organization: Organization }
+  | { status: "not_found" }
+  | { status: "phone_owned_by_mature_account" }
+  | { status: "steward_subject_owned_by_other_user" }
+  | { status: "phone_account_inactive" }
+  | { status: "phone_account_deleted" }
+  | { status: "identity_projection_conflict" };
+
+class PhonePromotionProjectionConflictError extends Error {}
+
 /**
  * Repository for user database operations.
  *
@@ -405,6 +424,315 @@ export class UsersRepository {
   // ============================================================================
 
   /**
+   * Creates or reuses the personal account proven by a trusted inbound phone
+   * transport. The phone-scoped transaction lock makes concurrent first texts
+   * converge before any organization is inserted, so retries cannot leak
+   * orphan tenants or split one phone across multiple accounts.
+   */
+  async findOrCreatePhonePersonalAccount(params: {
+    phoneNumber: string;
+    displayName: string;
+    organizationName: string;
+    organizationSlug: string;
+  }): Promise<FindOrCreatePhonePersonalAccountResult> {
+    return dbWrite.transaction(async (tx) => {
+      await tx.execute(
+        sql`SELECT pg_advisory_xact_lock(hashtext(${`phone_personal_account:${params.phoneNumber}`}))`,
+      );
+
+      const [projected] = await tx
+        .select({ userId: userIdentities.user_id })
+        .from(userIdentities)
+        .where(eq(userIdentities.phone_number, params.phoneNumber))
+        .limit(1);
+      const [canonical] = await tx
+        .select()
+        .from(users)
+        .where(eq(users.phone_number, params.phoneNumber))
+        .limit(1);
+
+      if (projected && canonical && projected.userId !== canonical.id) {
+        throw new ElizaError("Phone identity projection disagrees with its canonical owner", {
+          code: "PHONE_PERSONAL_ACCOUNT_IDENTITY_CONFLICT",
+          context: { canonicalUserId: canonical.id, projectedUserId: projected.userId },
+          severity: "fatal",
+        });
+      }
+
+      const [existingUser] = projected
+        ? await tx.select().from(users).where(eq(users.id, projected.userId)).limit(1)
+        : canonical
+          ? [canonical]
+          : [];
+
+      if (projected && !existingUser) {
+        throw new ElizaError("Phone identity projection has no canonical owner", {
+          code: "PHONE_PERSONAL_ACCOUNT_IDENTITY_CONFLICT",
+          context: { projectedUserId: projected.userId },
+          severity: "fatal",
+        });
+      }
+
+      if (existingUser) {
+        if (existingUser.deleted_at) {
+          throw new ElizaError("Deleted phone personal account cannot receive inbound messages", {
+            code: "PHONE_PERSONAL_ACCOUNT_DELETED",
+            context: { userId: existingUser.id },
+            severity: "fatal",
+          });
+        }
+        if (!existingUser.is_active) {
+          throw new ElizaError("Inactive phone personal account cannot receive inbound messages", {
+            code: "PHONE_PERSONAL_ACCOUNT_INACTIVE",
+            context: { userId: existingUser.id },
+            severity: "fatal",
+          });
+        }
+        if (!existingUser.organization_id) {
+          throw new Error(`Phone account ${existingUser.id} has no organization`);
+        }
+        const [organization] = await tx
+          .select()
+          .from(organizations)
+          .where(eq(organizations.id, existingUser.organization_id))
+          .limit(1);
+        if (!organization) {
+          throw new Error(`Phone account ${existingUser.id} organization is missing`);
+        }
+        if (!organization.is_active) {
+          throw new ElizaError(
+            "Phone personal account organization cannot receive inbound messages",
+            {
+              code: "PHONE_PERSONAL_ACCOUNT_ORGANIZATION_INACTIVE",
+              context: { userId: existingUser.id, organizationId: organization.id },
+              severity: "fatal",
+            },
+          );
+        }
+
+        const now = new Date();
+        const [verifiedUser] = existingUser.phone_verified
+          ? [existingUser]
+          : await tx
+              .update(users)
+              .set({ phone_verified: true, updated_at: now })
+              .where(eq(users.id, existingUser.id))
+              .returning();
+        if (!verifiedUser) {
+          throw new Error(`Phone account ${existingUser.id} disappeared during verification`);
+        }
+        await tx
+          .insert(userIdentities)
+          .values({
+            user_id: verifiedUser.id,
+            steward_user_id: verifiedUser.steward_user_id,
+            is_anonymous: verifiedUser.is_anonymous,
+            anonymous_session_id: verifiedUser.anonymous_session_id,
+            expires_at: verifiedUser.expires_at,
+            phone_number: params.phoneNumber,
+            phone_verified: true,
+            updated_at: now,
+          })
+          .onConflictDoUpdate({
+            target: userIdentities.user_id,
+            set: {
+              phone_number: params.phoneNumber,
+              phone_verified: true,
+              updated_at: now,
+            },
+          });
+        return { user: verifiedUser, organization, isNew: false };
+      }
+
+      const [organization] = await tx
+        .insert(organizations)
+        .values({
+          name: params.organizationName,
+          slug: params.organizationSlug,
+          credit_balance: "0.00",
+        })
+        .returning();
+      if (!organization) {
+        throw new Error("Failed to create phone account organization");
+      }
+
+      const [user] = await tx
+        .insert(users)
+        .values({
+          steward_user_id: `phone:${params.phoneNumber}`,
+          phone_number: params.phoneNumber,
+          phone_verified: true,
+          name: params.displayName,
+          is_anonymous: false,
+          organization_id: organization.id,
+          role: "owner",
+          is_active: true,
+        })
+        .returning();
+      if (!user) {
+        throw new Error("Failed to create phone account user");
+      }
+      await tx.insert(userIdentities).values({
+        user_id: user.id,
+        steward_user_id: user.steward_user_id,
+        is_anonymous: false,
+        phone_number: params.phoneNumber,
+        phone_verified: true,
+      });
+      return { user, organization, isNew: true };
+    });
+  }
+
+  /**
+   * Claims the exact personal account created for a trusted inbound phone by
+   * replacing its temporary `phone:<E.164>` Steward subject. No mature-account
+   * merge is attempted: canonical and projected identities must agree, and a
+   * projection failure rolls the canonical update back.
+   */
+  async promotePhonePersonalAccountToSteward(params: {
+    phoneNumber: string;
+    stewardUserId: string;
+  }): Promise<PromotePhonePersonalAccountResult> {
+    try {
+      return await dbWrite.transaction(async (tx) => {
+        const lockKeys = [
+          `phone_personal_account:${params.phoneNumber}`,
+          `steward_subject:${params.stewardUserId}`,
+        ].sort();
+        for (const lockKey of lockKeys) {
+          await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${lockKey}))`);
+        }
+
+        const temporaryStewardUserId = `phone:${params.phoneNumber}`;
+        const [canonicalPhoneOwner] = await tx
+          .select()
+          .from(users)
+          .where(eq(users.phone_number, params.phoneNumber))
+          .limit(1);
+        const [projectedPhoneOwner] = await tx
+          .select()
+          .from(userIdentities)
+          .where(eq(userIdentities.phone_number, params.phoneNumber))
+          .limit(1);
+        const [canonicalStewardOwner] = await tx
+          .select({ id: users.id })
+          .from(users)
+          .where(eq(users.steward_user_id, params.stewardUserId))
+          .limit(1);
+        const [projectedStewardOwner] = await tx
+          .select({ userId: userIdentities.user_id })
+          .from(userIdentities)
+          .where(eq(userIdentities.steward_user_id, params.stewardUserId))
+          .limit(1);
+
+        if (!canonicalPhoneOwner) {
+          if (canonicalStewardOwner || projectedStewardOwner) {
+            return { status: "steward_subject_owned_by_other_user" };
+          }
+          return projectedPhoneOwner
+            ? { status: "identity_projection_conflict" }
+            : { status: "not_found" };
+        }
+
+        if (
+          (canonicalStewardOwner && canonicalStewardOwner.id !== canonicalPhoneOwner.id) ||
+          (projectedStewardOwner && projectedStewardOwner.userId !== canonicalPhoneOwner.id)
+        ) {
+          return { status: "steward_subject_owned_by_other_user" };
+        }
+        if (canonicalPhoneOwner.deleted_at) {
+          return { status: "phone_account_deleted" };
+        }
+        if (!canonicalPhoneOwner.is_active) {
+          return { status: "phone_account_inactive" };
+        }
+        if (
+          canonicalPhoneOwner.phone_verified !== true ||
+          canonicalPhoneOwner.is_anonymous ||
+          canonicalPhoneOwner.role !== "owner" ||
+          !canonicalPhoneOwner.organization_id ||
+          (canonicalPhoneOwner.steward_user_id !== temporaryStewardUserId &&
+            canonicalPhoneOwner.steward_user_id !== params.stewardUserId)
+        ) {
+          return { status: "phone_owned_by_mature_account" };
+        }
+
+        const [organization] = await tx
+          .select()
+          .from(organizations)
+          .where(eq(organizations.id, canonicalPhoneOwner.organization_id))
+          .limit(1);
+        if (!organization) {
+          return { status: "phone_owned_by_mature_account" };
+        }
+        if (!organization.is_active) {
+          return { status: "phone_account_inactive" };
+        }
+        if (
+          !projectedPhoneOwner ||
+          projectedPhoneOwner.user_id !== canonicalPhoneOwner.id ||
+          projectedPhoneOwner.phone_verified !== true ||
+          projectedPhoneOwner.is_anonymous
+        ) {
+          return { status: "identity_projection_conflict" };
+        }
+
+        if (canonicalPhoneOwner.steward_user_id === params.stewardUserId) {
+          return projectedPhoneOwner.steward_user_id === params.stewardUserId
+            ? { status: "already_promoted", user: canonicalPhoneOwner, organization }
+            : { status: "identity_projection_conflict" };
+        }
+
+        const updatedAt = new Date();
+        const [promotedUser] = await tx
+          .update(users)
+          .set({ steward_user_id: params.stewardUserId, updated_at: updatedAt })
+          .where(
+            and(
+              eq(users.id, canonicalPhoneOwner.id),
+              eq(users.steward_user_id, temporaryStewardUserId),
+              eq(users.phone_number, params.phoneNumber),
+              eq(users.phone_verified, true),
+              eq(users.is_anonymous, false),
+              eq(users.role, "owner"),
+              eq(users.is_active, true),
+              isNull(users.deleted_at),
+            ),
+          )
+          .returning();
+        if (!promotedUser) {
+          return { status: "phone_owned_by_mature_account" };
+        }
+
+        const [promotedIdentity] = await tx
+          .update(userIdentities)
+          .set({ steward_user_id: params.stewardUserId, updated_at: updatedAt })
+          .where(
+            and(
+              eq(userIdentities.user_id, promotedUser.id),
+              eq(userIdentities.steward_user_id, temporaryStewardUserId),
+              eq(userIdentities.phone_number, params.phoneNumber),
+              eq(userIdentities.phone_verified, true),
+              eq(userIdentities.is_anonymous, false),
+            ),
+          )
+          .returning({ id: userIdentities.id });
+        if (!promotedIdentity) {
+          throw new PhonePromotionProjectionConflictError();
+        }
+
+        return { status: "promoted", user: promotedUser, organization };
+      });
+    } catch (error) {
+      // error-policy:J1 The repository maps its private rollback sentinel to a typed sync result.
+      if (error instanceof PhonePromotionProjectionConflictError) {
+        return { status: "identity_projection_conflict" };
+      }
+      throw error;
+    }
+  }
+
+  /**
    * Creates or reuses the $0 personal account proven by Telegram's signed
    * webhook boundary. A sender-scoped transaction lock makes concurrent first
    * updates converge without an agent row or orphan organization.
@@ -659,21 +987,54 @@ export class UsersRepository {
           phone_verified: true,
           updated_at: now,
         })
-        .where(eq(users.id, id))
+        .where(
+          and(
+            eq(users.id, id),
+            or(
+              isNull(users.phone_number),
+              eq(users.phone_number, phoneNumber),
+              sql`${users.phone_verified} IS NOT TRUE`,
+            ),
+          ),
+        )
         .returning();
-      if (!updated) return undefined;
+      if (!updated) {
+        const [existing] = await tx
+          .select({ id: users.id })
+          .from(users)
+          .where(eq(users.id, id))
+          .limit(1);
+        if (!existing) return undefined;
+        throw new ElizaError("Refusing to replace a different verified phone identity", {
+          code: "VERIFIED_PHONE_MISMATCH",
+          context: { userId: id },
+          severity: "fatal",
+        });
+      }
 
       const [identity] = await tx
-        .update(userIdentities)
-        .set({
+        .insert(userIdentities)
+        .values({
+          user_id: updated.id,
+          steward_user_id: updated.steward_user_id,
+          is_anonymous: updated.is_anonymous,
+          anonymous_session_id: updated.anonymous_session_id,
+          expires_at: updated.expires_at,
           phone_number: phoneNumber,
           phone_verified: true,
           updated_at: now,
         })
-        .where(eq(userIdentities.user_id, id))
+        .onConflictDoUpdate({
+          target: userIdentities.user_id,
+          set: {
+            phone_number: phoneNumber,
+            phone_verified: true,
+            updated_at: now,
+          },
+        })
         .returning({ id: userIdentities.id });
       if (!identity) {
-        throw new Error(`User ${id} has no identity projection for phone linking`);
+        throw new Error(`Failed to project verified phone for user ${id}`);
       }
       return updated;
     });
