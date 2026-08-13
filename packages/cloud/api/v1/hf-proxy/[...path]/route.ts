@@ -33,7 +33,6 @@ import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import { logger, redact } from "@/lib/utils/logger";
 import type {
   AppEnv,
-  RuntimeDurableObjectNamespace,
   RuntimeDurableObjectStub,
 } from "@/types/cloud-worker-env";
 
@@ -129,7 +128,10 @@ function cacheHit(value: string | null): boolean | null {
 
 // ---- Durable Object gate client ----
 
-function getGateStub(env: AppEnv["Bindings"], orgId: string): RuntimeDurableObjectStub | null {
+function getGateStub(
+  env: AppEnv["Bindings"],
+  orgId: string,
+): RuntimeDurableObjectStub | null {
   const ns = env.HF_PROXY_GATES;
   if (!ns) return null;
   return ns.getByName(orgId);
@@ -169,14 +171,16 @@ async function gateReserve(
     error?: string;
     code?: string;
   };
-  if (response.status === 503) {
+  if (!response.ok && response.status !== 429) {
     throw new HfProxyGateError(
       body.error ?? "HF proxy gate is unavailable",
       body.code,
     );
   }
   if (!body || typeof body.admitted !== "boolean") {
-    throw new HfProxyGateError("HF proxy gate returned an invalid reserve response");
+    throw new HfProxyGateError(
+      "HF proxy gate returned an invalid reserve response",
+    );
   }
   return body as ReserveDecision;
 }
@@ -187,29 +191,22 @@ async function gateSettle(
   actualBytes: number,
   bucket: string,
 ): Promise<void> {
-  try {
-    await stub.fetch(
-      new Request(`${GATE_ORIGIN}/settle`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          requestId,
-          actualBytes,
-          monthBucket: bucket,
-        }),
-        signal: AbortSignal.timeout(GATE_TIMEOUT_MS),
+  const response = await stub.fetch(
+    new Request(`${GATE_ORIGIN}/settle`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        requestId,
+        actualBytes,
+        monthBucket: bucket,
       }),
+      signal: AbortSignal.timeout(GATE_TIMEOUT_MS),
+    }),
+  );
+  if (!response.ok) {
+    throw new HfProxyGateError(
+      `HF proxy gate settlement failed with status ${response.status}`,
     );
-  } catch (error) {
-    // Settlement is best-effort from the response path's perspective: the DO
-    // already pre-charged the estimate, so a settle failure means the estimate
-    // remains as the charge. Log but do not throw — the user already has the
-    // body they requested.
-    logger.warn("[hf-proxy] egress settle failed", {
-      requestId,
-      actualBytes,
-      error: error instanceof Error ? error.message : String(error),
-    });
   }
 }
 
@@ -218,20 +215,18 @@ async function gateCancel(
   requestId: string,
   bucket: string,
 ): Promise<void> {
-  try {
-    await stub.fetch(
-      new Request(`${GATE_ORIGIN}/cancel`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ requestId, monthBucket: bucket }),
-        signal: AbortSignal.timeout(GATE_TIMEOUT_MS),
-      }),
+  const response = await stub.fetch(
+    new Request(`${GATE_ORIGIN}/cancel`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ requestId, monthBucket: bucket }),
+      signal: AbortSignal.timeout(GATE_TIMEOUT_MS),
+    }),
+  );
+  if (!response.ok) {
+    throw new HfProxyGateError(
+      `HF proxy gate cancellation failed with status ${response.status}`,
     );
-  } catch (error) {
-    logger.warn("[hf-proxy] egress cancel failed", {
-      requestId,
-      error: error instanceof Error ? error.message : String(error),
-    });
   }
 }
 
@@ -275,10 +270,9 @@ function egressLimitResponse(
 /**
  * Wrap the upstream body so every byte is counted as it flows through, and the
  * final actual byte count is settled against the gate regardless of whether the
- * stream completes or is cancelled mid-way. Cancellation handling: the original
- * code only charged on `flush()`, so a client that cancelled after receiving
- * 90% of a multi-GB file escaped accounting. Now the `cancel` callback on the
- * transform charges the actual bytes streamed so far.
+ * stream completes or is cancelled mid-way. The explicit readable wrapper
+ * observes consumer cancellation reliably and reserves any bytes beyond the
+ * upstream Content-Length before forwarding them.
  */
 function streamWithEgressAccounting(args: {
   body: ReadableStream<Uint8Array>;
@@ -290,45 +284,98 @@ function streamWithEgressAccounting(args: {
   path: string;
   status: number;
   cacheStatusValue: string | null;
+  initialReservedBytes: number;
+  limitBytes: number;
+  maxConcurrent: number;
 }): ReadableStream<Uint8Array> {
+  const reader = args.body.getReader();
   let bytes = 0;
+  let reservedBytes = args.initialReservedBytes;
   let settled = false;
 
-  const settleOnce = (finalBytes: number) => {
+  const settleOnce = async (finalBytes: number): Promise<void> => {
     if (settled) return;
     settled = true;
-    gateSettle(args.gateStub, args.requestId, finalBytes, args.monthBucket).then(
-      () => {
-        logger.info("[hf-proxy] egress metric", {
-          organizationId: args.organizationId,
-          repo: args.repo,
-          path: args.path,
-          bytes: finalBytes,
-          status: args.status,
-          cacheStatus: args.cacheStatusValue,
-          cacheHit: cacheHit(args.cacheStatusValue),
-        });
-      },
-    );
+    try {
+      await gateSettle(
+        args.gateStub,
+        args.requestId,
+        finalBytes,
+        args.monthBucket,
+      );
+      logger.info("[hf-proxy] egress metric", {
+        organizationId: args.organizationId,
+        repo: args.repo,
+        path: args.path,
+        bytes: finalBytes,
+        status: args.status,
+        cacheStatus: args.cacheStatusValue,
+        cacheHit: cacheHit(args.cacheStatusValue),
+      });
+    } catch (error) {
+      // error-policy:J1 The response stream exposes failed settlement instead
+      // of reporting accounting success or silently leaking its slot.
+      logger.warn("[hf-proxy] egress settle failed", {
+        requestId: args.requestId,
+        actualBytes: finalBytes,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      throw error;
+    }
   };
 
-  return args.body.pipeThrough(
-    new TransformStream<Uint8Array, Uint8Array>({
-      transform(chunk, controller) {
-        bytes += chunk.byteLength;
-        controller.enqueue(chunk);
-      },
-      flush() {
-        settleOnce(bytes);
-      },
-      // Called when the consumer cancels the stream (client disconnect). The
-      // original code only charged on flush, so a cancelled partial download
-      // escaped accounting entirely.
-      cancel() {
-        settleOnce(bytes);
-      },
-    }),
-  );
+  return new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      try {
+        const result = await reader.read();
+        if (result.done) {
+          await settleOnce(bytes);
+          controller.close();
+          return;
+        }
+
+        const nextBytes = bytes + result.value.byteLength;
+        if (nextBytes > reservedBytes) {
+          const reserve = await gateReserve(
+            args.gateStub,
+            args.requestId,
+            nextBytes,
+            args.limitBytes,
+            args.maxConcurrent,
+            args.monthBucket,
+          );
+          if (!reserve.admitted) {
+            await reader.cancel("HF proxy egress limit reached");
+            await settleOnce(bytes);
+            controller.error(
+              new HfProxyGateError(
+                "HF proxy egress limit reached while streaming",
+              ),
+            );
+            return;
+          }
+          reservedBytes = nextBytes;
+        }
+
+        bytes = nextBytes;
+        controller.enqueue(result.value);
+      } catch (error) {
+        // error-policy:J1 The response stream exposes upstream/accounting
+        // failures to its consumer after settling bytes already delivered.
+        await settleOnce(bytes);
+        controller.error(error);
+      }
+    },
+    async cancel(reason) {
+      try {
+        await reader.cancel(reason);
+      } finally {
+        // error-policy:J6 Cancellation releases the upstream reader and settles
+        // the partial transfer before teardown completes.
+        await settleOnce(bytes);
+      }
+    },
+  });
 }
 
 app.get("/*", async (c) => {
@@ -409,8 +456,7 @@ app.get("/*", async (c) => {
         bucket,
       );
     } catch (error) {
-      const message =
-        error instanceof Error ? error.message : String(error);
+      const message = error instanceof Error ? error.message : String(error);
       logger.error("[hf-proxy] egress reserve failed", {
         requestId,
         orgId: redact.orgId(orgId),
@@ -510,14 +556,29 @@ app.get("/*", async (c) => {
       );
     }
 
-    // Pre-flight egress check: if content-length is known and exceeds the
-    // remaining budget, cancel the reservation and reject.
-    if (contentLength !== null && reserve.usedBytes + contentLength > limitBytes) {
-      await gateCancel(gateStub, requestId, bucket);
-      return c.json(
-        egressLimitResponse(orgId, limitBytes, reserve.usedBytes),
-        429,
+    // Atomically update the slot with Content-Length before any body byte is
+    // forwarded. Concurrent downloads therefore observe the pre-charge. When
+    // length is unknown, the stream reserves each chunk before enqueueing it.
+    if (contentLength !== null) {
+      const sizedReserve = await gateReserve(
+        gateStub,
+        requestId,
+        contentLength,
+        limitBytes,
+        maxConcurrent,
+        bucket,
       );
+      if (!sizedReserve.admitted) {
+        await gateCancel(gateStub, requestId, bucket);
+        return c.json(
+          egressLimitResponse(
+            orgId,
+            sizedReserve.limitBytes,
+            sizedReserve.usedBytes,
+          ),
+          429,
+        );
+      }
     }
 
     const responseHeaders = new Headers();
@@ -528,19 +589,34 @@ app.get("/*", async (c) => {
 
     const upstreamCacheStatus = cacheStatus(upstreamResponse.headers);
 
-    const body = upstreamResponse.body
-      ? streamWithEgressAccounting({
-          body: upstreamResponse.body,
-          gateStub,
-          requestId,
-          monthBucket: bucket,
-          organizationId: orgId,
-          repo,
-          path,
-          status: upstreamResponse.status,
-          cacheStatusValue: upstreamCacheStatus,
-        })
-      : null;
+    let body: ReadableStream<Uint8Array> | null = null;
+    if (upstreamResponse.body) {
+      body = streamWithEgressAccounting({
+        body: upstreamResponse.body,
+        gateStub,
+        requestId,
+        monthBucket: bucket,
+        organizationId: orgId,
+        repo,
+        path,
+        status: upstreamResponse.status,
+        cacheStatusValue: upstreamCacheStatus,
+        initialReservedBytes: contentLength ?? 0,
+        limitBytes,
+        maxConcurrent,
+      });
+    } else {
+      await gateSettle(gateStub, requestId, 0, bucket);
+      logger.info("[hf-proxy] egress metric", {
+        organizationId: orgId,
+        repo,
+        path,
+        bytes: 0,
+        status: upstreamResponse.status,
+        cacheStatus: upstreamCacheStatus,
+        cacheHit: cacheHit(upstreamCacheStatus),
+      });
+    }
 
     // Stream the body straight through — never buffer a multi-GB GGUF.
     return new Response(body, {
@@ -548,6 +624,7 @@ app.get("/*", async (c) => {
       headers: responseHeaders,
     });
   } catch (error) {
+    // error-policy:J1 The HTTP boundary translates route failures.
     return failureResponse(c, error);
   }
 });

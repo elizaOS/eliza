@@ -130,16 +130,16 @@ tag = "inference-admission-gates-v1"
 new_sqlite_classes = ["InferenceAdmissionGate"]
 
 [[migrations]]
-tag = "hf-proxy-gates-v1"
-new_sqlite_classes = ["HfProxyGate"]
-
-[[migrations]]
 tag = "anonymous-chat-gates-v1"
 new_sqlite_classes = ["AnonymousChatGate"]
 
 [[migrations]]
 tag = "onboarding-session-coordinator-v1"
 new_sqlite_classes = ["OnboardingSessionCoordinator"]
+
+[[migrations]]
+tag = "hf-proxy-gates-v1"
+new_sqlite_classes = ["HfProxyGate"]
 
 # General API limits and queues may use Railway Redis via REDIS_URL. Inference
 # routes never connect to it: Cloudflare Rate Limiting bindings protect ingress,

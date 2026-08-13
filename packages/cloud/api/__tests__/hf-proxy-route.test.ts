@@ -98,10 +98,7 @@ const RESOLVE_PATH = "elizaos/eliza-1/resolve/main/model.gguf";
  * atomic accounting behavior.
  */
 function fakeGateStub() {
-  const slots = new Map<
-    string,
-    { reservedBytes: number; startedAt: number }
-  >();
+  const slots = new Map<string, { reservedBytes: number; startedAt: number }>();
   let usedBytes = 0;
   const settleCalls: Array<{ requestId: string; actualBytes: number }> = [];
   const cancelCalls: string[] = [];
@@ -118,8 +115,24 @@ function fakeGateStub() {
         const limitBytes = body.limitBytes as number;
         const maxConcurrent = body.maxConcurrent as number;
 
-        // Idempotent
-        if (slots.has(requestId)) {
+        const existingSlot = slots.get(requestId);
+        if (existingSlot) {
+          const projectedBytes =
+            usedBytes - existingSlot.reservedBytes + estimatedBytes;
+          if (projectedBytes > limitBytes) {
+            return Response.json(
+              {
+                admitted: false,
+                usedBytes,
+                limitBytes,
+                activeDownloads: slots.size,
+                maxConcurrent,
+              },
+              { status: 429 },
+            );
+          }
+          usedBytes = projectedBytes;
+          existingSlot.reservedBytes = estimatedBytes;
           return Response.json({
             admitted: true,
             usedBytes,
@@ -266,10 +279,10 @@ describe("GET /api/v1/hf-proxy/[...path]", () => {
 
   test("rejects a non-/resolve/ path with 400", async () => {
     const gate = fakeGateStub();
-    const res = await app.fetch(
-      makeRequest("elizaos/eliza-1/tree/main"),
-      { HF_TOKEN: "hf-secret", HF_PROXY_GATES: fakeGateNamespace(gate) },
-    );
+    const res = await app.fetch(makeRequest("elizaos/eliza-1/tree/main"), {
+      HF_TOKEN: "hf-secret",
+      HF_PROXY_GATES: fakeGateNamespace(gate),
+    });
 
     expect(res.status).toBe(400);
     const body = (await res.json()) as { error?: string };
@@ -442,9 +455,8 @@ describe("GET /api/v1/hf-proxy/[...path]", () => {
     // Wait for settle.
     await Promise.resolve();
 
-    // Second request: 8 bytes already used, limit 12 — reserve sees
-    // projectedBytes (0 estimate) pass, but content-length pre-flight check
-    // catches 8 + 8 = 16 > 12.
+    // Second request: 8 bytes already used, limit 12. The atomic reservation
+    // adjustment rejects Content-Length 8 before any body byte is forwarded.
     const second = await app.fetch(makeRequest(RESOLVE_PATH), env);
     expect(second.status).toBe(429);
     const body = (await second.json()) as {
@@ -489,6 +501,64 @@ describe("GET /api/v1/hf-proxy/[...path]", () => {
     expect(body.code).toBe("HF_PROXY_CONCURRENCY_LIMIT");
     expect(body.active_downloads).toBe(2);
     expect(body.max_concurrent).toBe(2);
+  });
+
+  test("atomically pre-charges concurrent Content-Length responses", async () => {
+    const gate = fakeGateStub();
+    mockUpstream("12345678");
+    const env = {
+      HF_TOKEN: "hf-secret",
+      HF_PROXY_GATES: fakeGateNamespace(gate),
+      HF_PROXY_MONTHLY_EGRESS_LIMIT_BYTES: "12",
+    };
+
+    const first = await app.fetch(makeRequest(RESOLVE_PATH), env);
+    expect(first.status).toBe(200);
+    expect(gate._usedBytes()).toBe(8);
+
+    const second = await app.fetch(makeRequest(RESOLVE_PATH), env);
+    expect(second.status).toBe(429);
+    expect(await second.json()).toMatchObject({
+      code: "HF_PROXY_EGRESS_LIMIT",
+      used_bytes: 8,
+    });
+
+    expect(await first.text()).toBe("12345678");
+  });
+
+  test("reserves unknown-length chunks before forwarding them", async () => {
+    const gate = fakeGateStub();
+    const upstreamStream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode("AAAA"));
+        controller.enqueue(new TextEncoder().encode("BBBB"));
+        controller.close();
+      },
+    });
+    globalThis.fetch = mock(
+      async () =>
+        new Response(upstreamStream, {
+          status: 200,
+          headers: { "content-type": "application/octet-stream" },
+        }),
+    ) as unknown as typeof fetch;
+
+    const res = await app.fetch(makeRequest(RESOLVE_PATH), {
+      HF_TOKEN: "hf-secret",
+      HF_PROXY_GATES: fakeGateNamespace(gate),
+      HF_PROXY_MONTHLY_EGRESS_LIMIT_BYTES: "6",
+    });
+    const reader = res.body!.getReader();
+
+    expect(new TextDecoder().decode((await reader.read()).value)).toBe("AAAA");
+    await expect(reader.read()).rejects.toThrow(
+      "HF proxy egress limit reached while streaming",
+    );
+    expect(gate._usedBytes()).toBe(4);
+    expect(gate._settleCalls).toContainEqual({
+      requestId: expect.any(String),
+      actualBytes: 4,
+    });
   });
 
   test("charges actual bytes on cancelled partial streams", async () => {
@@ -563,6 +633,25 @@ describe("GET /api/v1/hf-proxy/[...path]", () => {
     expect(settleCall!.actualBytes).toBe(data.length);
   });
 
+  test("settles a bodyless upstream response", async () => {
+    const gate = fakeGateStub();
+    globalThis.fetch = mock(
+      async () => new Response(null, { status: 204 }),
+    ) as unknown as typeof fetch;
+
+    const res = await app.fetch(makeRequest(RESOLVE_PATH), {
+      HF_TOKEN: "hf-secret",
+      HF_PROXY_GATES: fakeGateNamespace(gate),
+    });
+
+    expect(res.status).toBe(204);
+    expect(gate._settleCalls).toContainEqual({
+      requestId: expect.any(String),
+      actualBytes: 0,
+    });
+    expect(gate._slots.size).toBe(0);
+  });
+
   test("releases the slot when upstream fetch throws", async () => {
     const gate = fakeGateStub();
     globalThis.fetch = mock(async () => {
@@ -579,6 +668,79 @@ describe("GET /api/v1/hf-proxy/[...path]", () => {
     expect(res.status).toBeGreaterThanOrEqual(500);
     // The slot must be cancelled so it doesn't leak.
     expect(gate._cancelCalls.length).toBeGreaterThanOrEqual(1);
+  });
+
+  test("does not treat non-2xx cancellation responses as success", async () => {
+    const slots = new Set<string>();
+    const stub = {
+      fetch: mock(async (request: Request) => {
+        const path = new URL(request.url).pathname;
+        const body = (await request.json()) as { requestId: string };
+        if (path === "/reserve") {
+          slots.add(body.requestId);
+          return Response.json({
+            admitted: true,
+            usedBytes: 0,
+            limitBytes: 100,
+            activeDownloads: slots.size,
+            maxConcurrent: 4,
+          });
+        }
+        if (path === "/cancel") {
+          return Response.json(
+            { error: "storage unavailable" },
+            { status: 503 },
+          );
+        }
+        return Response.json({ settled: true });
+      }),
+    };
+    globalThis.fetch = mock(
+      async () => new Response("private", { status: 403 }),
+    ) as unknown as typeof fetch;
+
+    const res = await app.fetch(makeRequest(RESOLVE_PATH), {
+      HF_TOKEN: "hf-secret",
+      HF_PROXY_GATES: { getByName: () => stub },
+    });
+
+    expect(res.status).toBeGreaterThanOrEqual(500);
+  });
+
+  test("surfaces non-2xx settlement responses to the stream consumer", async () => {
+    const stub = {
+      fetch: mock(async (request: Request) => {
+        const path = new URL(request.url).pathname;
+        if (path === "/settle") {
+          return Response.json(
+            { error: "storage unavailable" },
+            { status: 503 },
+          );
+        }
+        return Response.json({
+          admitted: true,
+          usedBytes: 4,
+          limitBytes: 100,
+          activeDownloads: 1,
+          maxConcurrent: 4,
+        });
+      }),
+    };
+    mockUpstream("data");
+
+    const res = await app.fetch(makeRequest(RESOLVE_PATH), {
+      HF_TOKEN: "hf-secret",
+      HF_PROXY_GATES: { getByName: () => stub },
+    });
+    const reader = res.body!.getReader();
+    expect(new TextDecoder().decode((await reader.read()).value)).toBe("data");
+    await expect(reader.read()).rejects.toThrow(
+      "HF proxy gate settlement failed with status 503",
+    );
+    expect(loggerInfo).not.toHaveBeenCalledWith(
+      "[hf-proxy] egress metric",
+      expect.anything(),
+    );
   });
 
   test("returns 429 when the gate itself rejects with egress exhausted", async () => {
@@ -598,8 +760,9 @@ describe("GET /api/v1/hf-proxy/[...path]", () => {
       ),
     };
 
-    globalThis.fetch = mock(async () => new Response("x", { status: 200 })) as
-      unknown as typeof fetch;
+    globalThis.fetch = mock(
+      async () => new Response("x", { status: 200 }),
+    ) as unknown as typeof fetch;
 
     const res = await app.fetch(makeRequest(RESOLVE_PATH), {
       HF_TOKEN: "hf-secret",

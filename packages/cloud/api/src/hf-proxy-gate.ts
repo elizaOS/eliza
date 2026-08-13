@@ -38,6 +38,8 @@ interface HfProxyLedger {
   activeDownloads: number;
   /** Active download slots keyed by requestId for cancellation/settlement. */
   slots: Record<string, HfProxySlot>;
+  /** Recently terminal request IDs retained to make retries idempotent. */
+  terminalRequestIds: string[];
 }
 
 interface HfProxySlot {
@@ -81,13 +83,14 @@ interface ReserveResponse {
 const LEDGER_KEY = "ledger";
 const SLOT_TTL_MS = 30 * 60_000;
 const MAX_ACTIVE_DOWNLOADS_HARD = 256;
-
-function isFiniteNonNegative(value: unknown): value is number {
-  return typeof value === "number" && Number.isFinite(value) && value >= 0;
-}
+const MAX_TERMINAL_REQUEST_IDS = 2_048;
 
 function validId(value: unknown): value is string {
   return typeof value === "string" && value.length > 0 && value.length <= 256;
+}
+
+function validMonthBucket(value: unknown): value is string {
+  return typeof value === "string" && /^\d{4}-(0[1-9]|1[0-2])$/.test(value);
 }
 
 function jsonError(message: string, status: 400 | 409 | 503): Response {
@@ -104,18 +107,17 @@ function cloneLedger(ledger: HfProxyLedger): HfProxyLedger {
     usedBytes: ledger.usedBytes,
     activeDownloads: ledger.activeDownloads,
     slots,
+    terminalRequestIds: [...ledger.terminalRequestIds],
   };
 }
 
 export class HfProxyGate {
   private readonly state: DurableObjectState;
-  private readonly env: AppEnv["Bindings"];
   private ledger: HfProxyLedger | undefined;
   private operationQueue: Promise<void> = Promise.resolve();
 
-  constructor(state: DurableObjectState, env: AppEnv["Bindings"]) {
+  constructor(state: DurableObjectState, _env: AppEnv["Bindings"]) {
     this.state = state;
-    this.env = env;
   }
 
   /**
@@ -127,24 +129,29 @@ export class HfProxyGate {
     this.ledger ??= await this.state.storage.get<HfProxyLedger>(LEDGER_KEY);
     if (this.ledger) {
       if (
-        !validId(this.ledger.monthBucket) ||
+        !validMonthBucket(this.ledger.monthBucket) ||
         !Number.isSafeInteger(this.ledger.usedBytes) ||
         this.ledger.usedBytes < 0 ||
         !Number.isSafeInteger(this.ledger.activeDownloads) ||
         this.ledger.activeDownloads < 0 ||
         this.ledger.activeDownloads > MAX_ACTIVE_DOWNLOADS_HARD ||
         typeof this.ledger.slots !== "object" ||
-        this.ledger.slots === null
+        this.ledger.slots === null ||
+        !Array.isArray(this.ledger.terminalRequestIds) ||
+        this.ledger.terminalRequestIds.length > MAX_TERMINAL_REQUEST_IDS ||
+        this.ledger.terminalRequestIds.some((requestId) => !validId(requestId))
       ) {
         throw new Error("HF proxy egress ledger is corrupt");
       }
-      // Month rollover: reset the counter and clear stale slots.
-      if (this.ledger.monthBucket !== monthBucket) {
-        this.ledger = {
+      // Month rollover only moves forward. A late settle/cancel from the prior
+      // month must never replace a newer ledger and erase its accounting.
+      if (this.ledger.monthBucket < monthBucket) {
+        return {
           monthBucket,
           usedBytes: 0,
           activeDownloads: 0,
           slots: {},
+          terminalRequestIds: [],
         };
       }
       return this.ledger;
@@ -154,7 +161,15 @@ export class HfProxyGate {
       usedBytes: 0,
       activeDownloads: 0,
       slots: {},
+      terminalRequestIds: [],
     };
+  }
+
+  private markTerminal(ledger: HfProxyLedger, requestId: string): void {
+    ledger.terminalRequestIds.push(requestId);
+    if (ledger.terminalRequestIds.length > MAX_TERMINAL_REQUEST_IDS) {
+      ledger.terminalRequestIds.shift();
+    }
   }
 
   private async save(ledger: HfProxyLedger): Promise<void> {
@@ -187,6 +202,7 @@ export class HfProxyGate {
         // adjusting the byte counter (the actual bytes are unknown).
         delete ledger.slots[requestId];
         ledger.activeDownloads = Math.max(0, ledger.activeDownloads - 1);
+        this.markTerminal(ledger, requestId);
         changed = true;
       }
     }
@@ -202,16 +218,54 @@ export class HfProxyGate {
       request.limitBytes <= 0 ||
       !Number.isSafeInteger(request.maxConcurrent) ||
       request.maxConcurrent <= 0 ||
-      !validId(request.monthBucket)
+      request.maxConcurrent > MAX_ACTIVE_DOWNLOADS_HARD ||
+      !validMonthBucket(request.monthBucket)
     ) {
       return jsonError("Invalid HF proxy reserve request", 400);
     }
 
-    const ledger = await this.load(request.monthBucket);
-    this.gcExpiredSlots(ledger);
+    const loaded = await this.load(request.monthBucket);
+    if (loaded.monthBucket !== request.monthBucket) {
+      return jsonError("HF proxy reserve month is stale", 409);
+    }
+    const ledger = cloneLedger(loaded);
+    if (this.gcExpiredSlots(ledger)) {
+      await this.save(ledger);
+    }
 
-    // Idempotent: duplicate reserve for the same requestId is a no-op.
-    if (ledger.slots[request.requestId]) {
+    if (ledger.terminalRequestIds.includes(request.requestId)) {
+      return jsonError("HF proxy reservation is already terminal", 409);
+    }
+
+    // Re-reserving an active request atomically adjusts its byte reservation.
+    // The route uses this after upstream headers arrive and for each chunk when
+    // Content-Length is unavailable.
+    const existingSlot = ledger.slots[request.requestId];
+    if (existingSlot) {
+      const targetBytes = Math.max(
+        existingSlot.reservedBytes,
+        request.estimatedBytes,
+      );
+      const projectedBytes =
+        ledger.usedBytes - existingSlot.reservedBytes + targetBytes;
+      if (
+        !Number.isSafeInteger(projectedBytes) ||
+        projectedBytes > request.limitBytes
+      ) {
+        return Response.json(
+          {
+            admitted: false,
+            usedBytes: ledger.usedBytes,
+            limitBytes: request.limitBytes,
+            activeDownloads: ledger.activeDownloads,
+            maxConcurrent: request.maxConcurrent,
+          } satisfies ReserveResponse,
+          { status: 429 },
+        );
+      }
+      ledger.usedBytes = projectedBytes;
+      existingSlot.reservedBytes = targetBytes;
+      await this.save(ledger);
       return Response.json({
         admitted: true,
         usedBytes: ledger.usedBytes,
@@ -234,11 +288,12 @@ export class HfProxyGate {
       );
     }
 
-    // Pre-charge the estimated bytes so concurrent requests see the updated
-    // counter. If the download is chunked (estimatedBytes === 0) only the slot
-    // is reserved; the actual charge happens at /settle.
+    // Pre-charge the estimated bytes so concurrent requests see the update.
     const projectedBytes = ledger.usedBytes + request.estimatedBytes;
-    if (projectedBytes > request.limitBytes) {
+    if (
+      !Number.isSafeInteger(projectedBytes) ||
+      projectedBytes > request.limitBytes
+    ) {
       return Response.json(
         {
           admitted: false,
@@ -273,19 +328,22 @@ export class HfProxyGate {
       !validId(request.requestId) ||
       !Number.isSafeInteger(request.actualBytes) ||
       request.actualBytes < 0 ||
-      !validId(request.monthBucket)
+      !validMonthBucket(request.monthBucket)
     ) {
       return jsonError("Invalid HF proxy settle request", 400);
     }
 
-    const ledger = await this.load(request.monthBucket);
+    const loaded = await this.load(request.monthBucket);
+    if (loaded.monthBucket !== request.monthBucket) {
+      return Response.json({ settled: true, stale: true });
+    }
+    const ledger = cloneLedger(loaded);
+    if (ledger.terminalRequestIds.includes(request.requestId)) {
+      return Response.json({ settled: true });
+    }
     const slot = ledger.slots[request.requestId];
     if (!slot) {
-      // Unknown requestId — could be a GC'd expired slot or a double-settle.
-      // Charge the actual bytes defensively and return success.
-      ledger.usedBytes += request.actualBytes;
-      await this.save(ledger);
-      return Response.json({ settled: true });
+      return jsonError("Unknown HF proxy reservation", 409);
     }
 
     // Adjust: remove the pre-charge, add the actual.
@@ -293,24 +351,33 @@ export class HfProxyGate {
     ledger.usedBytes += request.actualBytes;
     delete ledger.slots[request.requestId];
     ledger.activeDownloads = Math.max(0, ledger.activeDownloads - 1);
+    this.markTerminal(ledger, request.requestId);
     await this.save(ledger);
     return Response.json({ settled: true });
   }
 
   private async cancel(request: CancelRequest): Promise<Response> {
-    if (!validId(request.requestId) || !validId(request.monthBucket)) {
+    if (!validId(request.requestId) || !validMonthBucket(request.monthBucket)) {
       return jsonError("Invalid HF proxy cancel request", 400);
     }
 
-    const ledger = await this.load(request.monthBucket);
+    const loaded = await this.load(request.monthBucket);
+    if (loaded.monthBucket !== request.monthBucket) {
+      return Response.json({ cancelled: true, stale: true });
+    }
+    const ledger = cloneLedger(loaded);
+    if (ledger.terminalRequestIds.includes(request.requestId)) {
+      return Response.json({ cancelled: true });
+    }
     const slot = ledger.slots[request.requestId];
     if (!slot) {
-      return Response.json({ cancelled: true });
+      return jsonError("Unknown HF proxy reservation", 409);
     }
     // Remove the pre-charge and release the slot.
     ledger.usedBytes = Math.max(0, ledger.usedBytes - slot.reservedBytes);
     delete ledger.slots[request.requestId];
     ledger.activeDownloads = Math.max(0, ledger.activeDownloads - 1);
+    this.markTerminal(ledger, request.requestId);
     await this.save(ledger);
     return Response.json({ cancelled: true });
   }
@@ -326,6 +393,7 @@ export class HfProxyGate {
         | SettleRequest
         | CancelRequest;
     } catch {
+      // error-policy:J3 Request JSON is untrusted and invalid input is explicit.
       return jsonError("Invalid JSON body", 400);
     }
     if (!body) return jsonError("Invalid JSON body", 400);
@@ -342,6 +410,7 @@ export class HfProxyGate {
         return await this.serialize(() => this.cancel(body as CancelRequest));
       }
     } catch (error) {
+      // error-policy:J1 The Durable Object boundary translates failures to 503.
       // Corrupt ledger or storage failure — fail closed so an org never gets
       // unmetered egress because the counter crashed.
       logger.error("[hf-proxy-gate] operation failed", {
@@ -363,7 +432,8 @@ export class HfProxyGate {
   async alarm(): Promise<void> {
     // GC expired slots so abandoned downloads don't permanently hold a
     // concurrency slot. This runs on the Durable Object's alarm schedule.
-    const ledger = this.ledger ?? await this.state.storage.get<HfProxyLedger>(LEDGER_KEY);
+    const ledger =
+      this.ledger ?? (await this.state.storage.get<HfProxyLedger>(LEDGER_KEY));
     if (!ledger) return;
     const snapshot = cloneLedger(ledger);
     this.gcExpiredSlots(snapshot);
