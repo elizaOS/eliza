@@ -269,3 +269,139 @@ describe("wallet proxy steward agent id resolution", () => {
     expect(createStewardClient).not.toHaveBeenCalled();
   });
 });
+
+describe("steward-pending-approvals agent-scoped pagination (#19099)", () => {
+  type ApprovalRow = { agentId?: string } & Record<string, unknown>;
+
+  /** A global pending list interleaving this agent's rows with others'. */
+  function globalList(mineCount: number, othersPerMine: number): ApprovalRow[] {
+    const rows: ApprovalRow[] = [];
+    for (let i = 0; i < mineCount; i++) {
+      for (let o = 0; o < othersPerMine; o++) {
+        rows.push({ agentId: "other-agent", txId: `other-${i}-${o}` });
+      }
+      rows.push({
+        agentId: "cloud-client-address",
+        txId: `mine-${String(i).padStart(3, "0")}`,
+      });
+    }
+    return rows;
+  }
+
+  /** callWallet embeds the path only; approvals params ride on the req URL. */
+  async function callApprovals(query: string) {
+    requireUserOrApiKeyWithOrg.mockResolvedValue({
+      id: "user-1",
+      organization_id: "org-1",
+    });
+    getAgent.mockResolvedValue({ id: "sandbox-agent-1" });
+    createStewardClient.mockResolvedValue(stewardClient);
+    const context = {
+      req: {
+        url: `http://test.local/api/wallet/steward-pending-approvals${query}`,
+        header: () => undefined,
+        text: async () => "",
+      },
+    } as never;
+    return routeModule.handleDirectWalletRequest(
+      context,
+      Promise.resolve({
+        agentId: "sandbox-agent-1",
+        path: ["steward-pending-approvals"],
+      }),
+      "GET",
+    );
+  }
+
+  function serveGlobalList(rows: ApprovalRow[]) {
+    stewardClient.listApprovals.mockImplementation(async (opts?: unknown) => {
+      const { limit = 50, offset = 0 } = (opts ?? {}) as {
+        limit?: number;
+        offset?: number;
+      };
+      return rows.slice(offset, offset + limit);
+    });
+  }
+
+  test("a page filled with other agents' rows still returns this agent's approvals", async () => {
+    dbRows.push({ stewardAgentId: "cloud-client-address" });
+    // 5 of ours, each preceded by 30 others: ours all sit beyond the first
+    // source window, where the old slice-then-filter returned [].
+    serveGlobalList(globalList(5, 30));
+
+    const res = await callApprovals("?limit=5&offset=0");
+    const body = (await res.json()) as {
+      approvals: Array<{ txId: string }>;
+      total: number;
+    };
+
+    expect(body.approvals.map((a) => a.txId)).toEqual([
+      "mine-000",
+      "mine-001",
+      "mine-002",
+      "mine-003",
+      "mine-004",
+    ]);
+    expect(body.total).toBe(5);
+  });
+
+  test("offset pages through this agent's list, not the global list", async () => {
+    dbRows.push({ stewardAgentId: "cloud-client-address" });
+    serveGlobalList(globalList(12, 4));
+
+    const first = (await (await callApprovals("?limit=5&offset=0")).json()) as {
+      approvals: Array<{ txId: string }>;
+      total: number;
+    };
+    const second = (await (
+      await callApprovals("?limit=5&offset=5")
+    ).json()) as { approvals: Array<{ txId: string }>; total: number };
+
+    expect(first.approvals.map((a) => a.txId)).toEqual([
+      "mine-000",
+      "mine-001",
+      "mine-002",
+      "mine-003",
+      "mine-004",
+    ]);
+    expect(second.approvals.map((a) => a.txId)).toEqual([
+      "mine-005",
+      "mine-006",
+      "mine-007",
+      "mine-008",
+      "mine-009",
+    ]);
+    // total advances past the requested page so clients keep paging.
+    expect(second.total).toBeGreaterThan(10);
+  });
+
+  test("total is the agent's full pending count when the source is exhausted", async () => {
+    dbRows.push({ stewardAgentId: "cloud-client-address" });
+    serveGlobalList(globalList(7, 2));
+
+    const res = await callApprovals("?limit=50&offset=0");
+    const body = (await res.json()) as {
+      approvals: Array<{ txId: string }>;
+      total: number;
+    };
+
+    expect(body.approvals).toHaveLength(7);
+    expect(body.total).toBe(7);
+  });
+
+  test("an agent with no pending approvals gets an empty page, not others' rows", async () => {
+    dbRows.push({ stewardAgentId: "cloud-client-address" });
+    serveGlobalList(
+      Array.from({ length: 40 }, (_, i) => ({
+        agentId: "other-agent",
+        txId: `other-${i}`,
+      })),
+    );
+
+    const res = await callApprovals("?limit=5&offset=0");
+    const body = (await res.json()) as { approvals: unknown[]; total: number };
+
+    expect(body.approvals).toEqual([]);
+    expect(body.total).toBe(0);
+  });
+});

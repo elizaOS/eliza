@@ -486,10 +486,36 @@ export async function handleDirectWalletRequest(
       0,
       Number.MAX_SAFE_INTEGER,
     );
-    const approvals = (
-      await client.listApprovals({ status: "pending", limit, offset })
-    ).filter((entry) => entry.agentId === stewardAgentId);
-    return json({ approvals, total: approvals.length, offset, limit });
+    // Collect THIS agent's pending approvals before paginating: the Steward
+    // list API is global across agents with no agent scoping, so slicing it
+    // first paginates the wrong list — pages under-fill, other agents' rows
+    // push this agent's approvals off the page, and total describes one
+    // already-sliced page (#19099). Walk the global list in fixed windows
+    // until the requested page is satisfiable (plus one row so paging
+    // continues past it) or the source / scan ceiling is exhausted.
+    const SOURCE_WINDOW = 100;
+    const MAX_SCANNED_ROWS = 2_000;
+    const agentApprovals: Array<{ agentId?: string } & JsonObject> = [];
+    let scanned = 0;
+    for (
+      let sourceOffset = 0;
+      scanned < MAX_SCANNED_ROWS;
+      sourceOffset += SOURCE_WINDOW
+    ) {
+      const page = await client.listApprovals({
+        status: "pending",
+        limit: SOURCE_WINDOW,
+        offset: sourceOffset,
+      });
+      scanned += page.length;
+      agentApprovals.push(
+        ...page.filter((entry) => entry.agentId === stewardAgentId),
+      );
+      if (page.length < SOURCE_WINDOW) break;
+      if (agentApprovals.length >= offset + limit + 1) break;
+    }
+    const approvals = agentApprovals.slice(offset, offset + limit);
+    return json({ approvals, total: agentApprovals.length, offset, limit });
   }
 
   if (method === "POST" && walletPath === "steward-approve-tx") {
