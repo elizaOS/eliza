@@ -12,9 +12,9 @@
  */
 
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
+import type { SupportedNetwork } from "../services/eliza-token-price";
 import type { PayoutAsset } from "./payout-assets";
 import { isPayoutAsset } from "./payout-assets";
-import type { SupportedNetwork } from "../services/eliza-token-price";
 import type { EvmPayoutNetwork } from "./payout-evm-resolver";
 
 /** Portable process-env-like type for optional override parameters. */

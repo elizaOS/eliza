@@ -17,18 +17,13 @@
  * selects the intended environment in the actual Worker path.
  */
 
-import { type Chain, base, baseSepolia, bsc, bscTestnet, mainnet, sepolia } from "viem/chains";
-
-import type { PayoutAsset } from "./payout-assets";
-import {
-  USDC_TESTNET_TOKEN_ADDRESSES,
-  USDC_TOKEN_ADDRESSES,
-  USDC_DECIMALS,
-} from "./payout-assets";
-import { ELIZA_DECIMALS } from "./token-constants";
+import { base, baseSepolia, bsc, bscTestnet, type Chain, mainnet, sepolia } from "viem/chains";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import type { SupportedNetwork } from "../services/eliza-token-price";
 import { ELIZA_TOKEN_ADDRESSES } from "../services/eliza-token-price";
+import type { PayoutAsset } from "./payout-assets";
+import { USDC_DECIMALS, USDC_TESTNET_TOKEN_ADDRESSES, USDC_TOKEN_ADDRESSES } from "./payout-assets";
+import { ELIZA_DECIMALS } from "./token-constants";
 
 export type EvmPayoutNetwork = "ethereum" | "base" | "bnb";
 
@@ -112,13 +107,7 @@ export function resolvePayoutEnvironment(env?: ProcessEnvLike): PayoutEnvironmen
 
 export interface PayoutEvmRpcResolution {
   url: string;
-  source:
-    | "crypto_direct"
-    | "explicit"
-    | "x402"
-    | "alchemy"
-    | "infura"
-    | "public_default";
+  source: "crypto_direct" | "explicit" | "x402" | "alchemy" | "infura" | "public_default";
 }
 
 export interface PayoutTokenAsset {
@@ -158,10 +147,7 @@ function env(key: string, e: ProcessEnvLike): string | null {
   return typeof v === "string" && v.trim() ? v.trim() : null;
 }
 
-function resolveMainnetRpc(
-  network: EvmPayoutNetwork,
-  e: ProcessEnvLike,
-): PayoutEvmRpcResolution {
+function resolveMainnetRpc(network: EvmPayoutNetwork, e: ProcessEnvLike): PayoutEvmRpcResolution {
   const key = MAINNET_NETWORK_KEY[network];
 
   const direct = env(`CRYPTO_DIRECT_${key}_RPC_URL`, e);
@@ -199,10 +185,7 @@ function resolveMainnetRpc(
 // TESTNET RPC RESOLUTION
 // ---------------------------------------------------------------------------
 
-function resolveTestnetRpc(
-  network: EvmPayoutNetwork,
-  e: ProcessEnvLike,
-): PayoutEvmRpcResolution {
+function resolveTestnetRpc(network: EvmPayoutNetwork, e: ProcessEnvLike): PayoutEvmRpcResolution {
   const key = TESTNET_NETWORK_KEY[network];
 
   // Payout-specific testnet override (highest priority for staging).
@@ -284,10 +267,7 @@ export function resolvePayoutEvm(
  * payout environment). Used by consumers that need the viem Chain without the
  * full resolution object.
  */
-export function resolvePayoutChain(
-  network: EvmPayoutNetwork,
-  envOverride?: ProcessEnvLike,
-): Chain {
+export function resolvePayoutChain(network: EvmPayoutNetwork, envOverride?: ProcessEnvLike): Chain {
   const e = envOverride ?? getCloudAwareEnv();
   const isTestnet = resolvePayoutEnvironment(e) === "testnet";
   return isTestnet ? TESTNET_CHAINS[network] : MAINNET_CHAINS[network];
