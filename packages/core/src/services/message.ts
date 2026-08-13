@@ -363,6 +363,7 @@ import { sanitizeOutboundText } from "./message/outbound-sanitize";
 import {
 	isTranscriptVisibleEngagement,
 	recordOnMentionContinuityAnchor,
+	registerOnMentionContinuityDeliveryBarrier,
 	senderInActiveConversation,
 } from "./message/reply-gate-continuity";
 import {
@@ -10565,28 +10566,36 @@ export function wrapSingleTurnVisibleCallback(
 			response,
 			actionName,
 		);
-		const delivered = await callback(response, actionName);
-		if (rawUnsanitizedText) {
-			recordDeliveredVisibleText?.(rawUnsanitizedText);
-		}
-		if (typeof response?.text === "string" && response.text.trim()) {
-			recordDeliveredVisibleText?.(response.text);
-		}
 		// On_mention continuity: only a successfully delivered, transcript-visible
-		// reply may open/refresh the per-room engagement anchor. Rejected
-		// callbacks throw before this point; internal/IGNORE/action_result rows
-		// fail isTranscriptVisibleEngagement. Best-effort — never blocks delivery.
-		if (
+		// reply may open/refresh the per-room engagement anchor. Internal,
+		// IGNORE, and action_result rows fail isTranscriptVisibleEngagement; a
+		// rejected callback releases the handoff without recording an anchor.
+		const recordsContinuity =
 			typeof fullRuntime.setCache === "function" &&
 			isTranscriptVisibleEngagement(response) &&
 			message.entityId &&
 			message.entityId !== fullRuntime.agentId &&
-			message.roomId
-		) {
-			await recordOnMentionContinuityAnchor(fullRuntime, {
-				roomId: message.roomId,
-				senderId: message.entityId,
-			});
+			message.roomId;
+		const releaseContinuityBarrier = recordsContinuity
+			? registerOnMentionContinuityDeliveryBarrier(fullRuntime, message.roomId)
+			: undefined;
+		let delivered: Memory[];
+		try {
+			delivered = await callback(response, actionName);
+			if (rawUnsanitizedText) {
+				recordDeliveredVisibleText?.(rawUnsanitizedText);
+			}
+			if (typeof response?.text === "string" && response.text.trim()) {
+				recordDeliveredVisibleText?.(response.text);
+			}
+			if (recordsContinuity) {
+				await recordOnMentionContinuityAnchor(fullRuntime, {
+					roomId: message.roomId,
+					senderId: message.entityId,
+				});
+			}
+		} finally {
+			releaseContinuityBarrier?.();
 		}
 		// The voice rewrite (voiceActionReply below) restyles the wire text and
 		// stashes the action's original text in data.rawActionText. The planner's

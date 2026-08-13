@@ -7,6 +7,7 @@
  * inference unsafe). Fails CLOSED (false) on cache read errors so a storage
  * hiccup can never relax the over-reply mitigation.
  */
+import { ElizaError } from "../../errors";
 import type { Memory } from "../../types/memory";
 import type { Content, UUID } from "../../types/primitives";
 import type { IAgentRuntime } from "../../types/runtime";
@@ -16,6 +17,16 @@ export const CONTINUITY_WINDOW_MS = 5 * 60_000;
 
 /** Cache schema version — bump if the stored shape changes. */
 export const CONTINUITY_ANCHOR_VERSION = 1 as const;
+
+// A connector can finish delivery while another same-room turn is already
+// entering the reply gate. Keep the post-delivery cache write observable to
+// that turn, and serialize same-room writes so slower storage cannot let an
+// older delivery overwrite a newer engagement anchor.
+const continuityWriteQueues = new WeakMap<object, Map<string, Promise<void>>>();
+const continuityDeliveryBarriers = new WeakMap<
+	object,
+	Map<string, Set<Promise<void>>>
+>();
 
 export type OnMentionContinuityAnchor = {
 	v: typeof CONTINUITY_ANCHOR_VERSION;
@@ -27,6 +38,43 @@ export type OnMentionContinuityAnchor = {
 
 export function continuityAnchorCacheKey(agentId: UUID, roomId: UUID): string {
 	return `on_mention_continuity:${agentId}:${roomId}`;
+}
+
+/**
+ * Register the narrow interval in which a visible connector delivery can
+ * succeed before its continuity anchor is persisted. The caller must release
+ * the barrier after recording the successful delivery, or after rejection.
+ */
+export function registerOnMentionContinuityDeliveryBarrier(
+	runtime: Pick<IAgentRuntime, "agentId">,
+	roomId: UUID,
+): () => void {
+	const key = continuityAnchorCacheKey(runtime.agentId, roomId);
+	let barriersByKey = continuityDeliveryBarriers.get(runtime);
+	if (!barriersByKey) {
+		barriersByKey = new Map();
+		continuityDeliveryBarriers.set(runtime, barriersByKey);
+	}
+	let barriers = barriersByKey.get(key);
+	if (!barriers) {
+		barriers = new Set();
+		barriersByKey.set(key, barriers);
+	}
+	let releasePromise: (() => void) | undefined;
+	const barrier = new Promise<void>((resolve) => {
+		releasePromise = resolve;
+	});
+	barriers.add(barrier);
+	let released = false;
+	return () => {
+		if (released) return;
+		released = true;
+		barriers?.delete(barrier);
+		if (barriers?.size === 0) {
+			barriersByKey?.delete(key);
+		}
+		releasePromise?.();
+	};
 }
 
 /**
@@ -93,40 +141,66 @@ export async function recordOnMentionContinuityAnchor(
 		senderId: args.senderId,
 		deliveredAt,
 	};
-	try {
-		await runtime.setCache(
-			continuityAnchorCacheKey(runtime.agentId, args.roomId),
-			anchor,
-		);
-	} catch (error) {
-		// error-policy:J7 best-effort write — delivery already succeeded; missing
-		// continuity only keeps on_mention strict (fail closed on the next turn).
-		runtime.reportError("ReplyGateContinuity.record", error, {
-			roomId: args.roomId,
-			senderId: args.senderId,
+	const key = continuityAnchorCacheKey(runtime.agentId, args.roomId);
+	let queues = continuityWriteQueues.get(runtime);
+	if (!queues) {
+		queues = new Map();
+		continuityWriteQueues.set(runtime, queues);
+	}
+	const previous = queues.get(key) ?? Promise.resolve();
+	const write = previous
+		.then(async () => {
+			const stored = await runtime.setCache(key, anchor);
+			if (!stored) {
+				throw new ElizaError("Continuity anchor cache write was rejected", {
+					code: "REPLY_GATE_CONTINUITY_WRITE_REJECTED",
+					context: { roomId: args.roomId, senderId: args.senderId },
+					severity: "ephemeral",
+				});
+			}
+		})
+		.catch((error) => {
+			// error-policy:J7 delivery already succeeded; report the failed anchor
+			// write and keep the next on_mention decision strict.
+			runtime.reportError("ReplyGateContinuity.record", error, {
+				roomId: args.roomId,
+				senderId: args.senderId,
+			});
 		});
+	queues.set(key, write);
+	await write;
+	if (queues.get(key) === write) {
+		queues.delete(key);
 	}
 }
 
 /**
  * True when this inbound sender still holds the room's fresh delivered-engagement
- * anchor. `now` is the authoritative processing clock (defaults to Date.now());
- * event timestamps on the inbound message are never trusted for the TTL.
+ * anchor. `now` is an optional authoritative processing clock for deterministic
+ * callers; otherwise the clock is read after pending deliveries settle. Event
+ * timestamps on the inbound message are never trusted for the TTL.
  */
 export async function senderInActiveConversation(
 	runtime: Pick<IAgentRuntime, "agentId" | "getCache" | "reportError">,
 	message: Pick<Memory, "entityId" | "roomId">,
-	now: number = Date.now(),
+	now?: number,
 ): Promise<boolean> {
 	if (!message.entityId || !message.roomId) return false;
 	if (message.entityId === runtime.agentId) return false;
-	if (typeof now !== "number" || !Number.isFinite(now)) return false;
+	if (now !== undefined && !Number.isFinite(now)) return false;
+	const key = continuityAnchorCacheKey(runtime.agentId, message.roomId);
 
 	let raw: unknown;
 	try {
-		raw = await runtime.getCache<OnMentionContinuityAnchor>(
-			continuityAnchorCacheKey(runtime.agentId, message.roomId),
-		);
+		const pendingDeliveries = continuityDeliveryBarriers.get(runtime)?.get(key);
+		if (pendingDeliveries?.size) {
+			await Promise.all([...pendingDeliveries]);
+		}
+		// A transport callback can make the reply visible before its cache write
+		// settles. Wait for that narrow handoff so an immediate follow-up does not
+		// get dropped between successful delivery and anchor persistence.
+		await continuityWriteQueues.get(runtime)?.get(key);
+		raw = await runtime.getCache<OnMentionContinuityAnchor>(key);
 	} catch (error) {
 		// error-policy:J4 continuity is an optional relaxation of the reply
 		// gate; on lookup failure the gate keeps its strict on_mention
@@ -139,7 +213,7 @@ export async function senderInActiveConversation(
 
 	if (!isContinuityAnchor(raw)) return false;
 	if (raw.senderId !== message.entityId) return false;
-	const age = now - raw.deliveredAt;
+	const age = (now ?? Date.now()) - raw.deliveredAt;
 	// Reject negative ages (out-of-order / delayed historical events) and
 	// anything outside the continuity window.
 	if (!(age >= 0 && age <= CONTINUITY_WINDOW_MS)) return false;
