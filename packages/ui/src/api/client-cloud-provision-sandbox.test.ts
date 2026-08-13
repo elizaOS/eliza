@@ -64,8 +64,8 @@ describe("provisionCloudSandbox", () => {
         "/provision": () =>
           jsonResponse(200, {
             data: {
-              bridgeUrl: "https://agent-1.elizacloud.ai/rpc",
-              webUiUrl: "https://agent-1.elizacloud.ai",
+              bridgeUrl: "https://agent-1.cloud.eliza.app/rpc",
+              webUiUrl: "https://agent-1.cloud.eliza.app",
               executionTier: "dedicated",
             },
           }),
@@ -80,9 +80,9 @@ describe("provisionCloudSandbox", () => {
       onProgress,
     });
     expect(result).toEqual({
-      bridgeUrl: "https://agent-1.elizacloud.ai/rpc",
+      bridgeUrl: "https://agent-1.cloud.eliza.app/rpc",
       agentId: "agent-1",
-      webUiUrl: "https://agent-1.elizacloud.ai",
+      webUiUrl: "https://agent-1.cloud.eliza.app",
       executionTier: "dedicated",
     });
     expect(onProgress).toHaveBeenCalledWith("ready", "Sandbox ready!");

@@ -36,8 +36,8 @@ import {
 
 const IPC_BASE = "eliza-local-agent://ipc";
 const SHARED_CLOUD_BASE =
-  "https://api.elizacloud.ai/api/v1/eliza/agents/shared-agent-1";
-const DEDICATED_CLOUD_BASE = "https://agent-abc.elizacloud.ai";
+  "https://api.eliza.app/api/v1/eliza/agents/shared-agent-1";
+const DEDICATED_CLOUD_BASE = "https://agent-abc.cloud.eliza.app";
 
 function seedProfiles(profiles: Array<Partial<AgentProfile>>): void {
   const registry = {
@@ -155,7 +155,7 @@ describe("resolveWorkflowSurfaceTarget", () => {
     seedProfiles([
       {
         kind: "cloud",
-        apiBase: "https://agent-old.elizacloud.ai",
+        apiBase: "https://agent-old.cloud.eliza.app",
         accessToken: "jwt",
         lastConnectedAt: "2026-07-01T00:00:00.000Z",
       },

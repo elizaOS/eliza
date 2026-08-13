@@ -1,6 +1,6 @@
 /** Verifies ElizaClient direct Cloud auth served from a cloud web host through the package's configured test harness. */
 // @vitest-environment jsdom
-// @vitest-environment-options { "url": "https://app.elizacloud.ai/" }
+// @vitest-environment-options { "url": "https://cloud.eliza.app/" }
 
 /**
  * Unit coverage for direct-Cloud auth on hosted web (non-native path). Capacitor
@@ -8,7 +8,7 @@
  *
  * Two origins are exercised because the same-origin collapse in
  * `resolveBrowserCloudApiRequestUrl` is only valid when the page is served from a
- * cloud host: the file default (`app.elizacloud.ai`) proves the co-hosted proxy
+ * cloud host: the file default (`cloud.eliza.app`) proves the co-hosted proxy
  * path, and the `localhost` block proves the dev path, where the request must
  * stay an absolute cloud URL on shifted Vite ports.
  */
@@ -70,7 +70,7 @@ describe("ElizaClient direct Cloud auth served from a cloud web host", () => {
   beforeEach(() => {
     setBootConfig({
       branding: {},
-      cloudApiBase: "https://staging.elizacloud.ai",
+      cloudApiBase: "https://staging.eliza.app",
     });
   });
 
@@ -84,9 +84,7 @@ describe("ElizaClient direct Cloud auth served from a cloud web host", () => {
       .mockResolvedValue(jsonResponse({ ok: true }));
 
     const client = new ElizaClient("http://localhost:31337");
-    const result = await client.cloudLoginDirect(
-      "https://staging.elizacloud.ai",
-    );
+    const result = await client.cloudLoginDirect("https://staging.eliza.app");
 
     expect(fetchSpy).toHaveBeenCalledWith(
       "/api/auth/cli-session",
@@ -99,10 +97,10 @@ describe("ElizaClient direct Cloud auth served from a cloud web host", () => {
     expect(result).toEqual(
       expect.objectContaining({
         ok: true,
-        apiBase: "https://api-staging.elizacloud.ai",
+        apiBase: "https://api-staging.eliza.app",
         sessionId: expect.any(String),
         browserUrl: expect.stringMatching(
-          /^https:\/\/staging\.elizacloud\.ai\/auth\/cli-login\?session=/,
+          /^https:\/\/staging\.eliza\.app\/auth\/cli-login\?session=/,
         ),
       }),
     );
@@ -120,7 +118,7 @@ describe("ElizaClient direct Cloud auth served from a cloud web host", () => {
 
     const client = new ElizaClient("http://localhost:31337");
     const result = await client.cloudLoginPollDirect(
-      "https://api-staging.elizacloud.ai",
+      "https://api-staging.eliza.app",
       "session-1",
     );
 
@@ -142,7 +140,7 @@ describe("ElizaClient direct Cloud auth served from a cloud web host", () => {
     );
 
     const client = new ElizaClient(
-      "https://api-staging.elizacloud.ai",
+      "https://api-staging.eliza.app",
       "cloud-api-key",
     );
     const result = await client.getCloudStatus();
@@ -169,7 +167,7 @@ describe("ElizaClient direct Cloud auth served from localhost dev (port-shift)",
   beforeEach(() => {
     setBootConfig({
       branding: {},
-      cloudApiBase: "https://staging.elizacloud.ai",
+      cloudApiBase: "https://staging.eliza.app",
     });
     // The orchestrator shifts the Vite UI port when the default is taken; cloud
     // auth must still reach the cloud worker.
@@ -187,14 +185,12 @@ describe("ElizaClient direct Cloud auth served from localhost dev (port-shift)",
       .mockResolvedValue(jsonResponse({ ok: true }));
 
     const client = new ElizaClient("http://localhost:31337");
-    const result = await client.cloudLoginDirect(
-      "https://staging.elizacloud.ai",
-    );
+    const result = await client.cloudLoginDirect("https://staging.eliza.app");
 
     // The bug: a same-origin "/api/auth/cli-session" gets proxied to the local
     // agent API, whose default-deny gate 401s the unlisted /api/auth/* path.
     expect(fetchSpy).toHaveBeenCalledWith(
-      "https://api-staging.elizacloud.ai/api/auth/cli-session",
+      "https://api-staging.eliza.app/api/auth/cli-session",
       expect.objectContaining({ method: "POST" }),
     );
     expect(fetchSpy).not.toHaveBeenCalledWith(
@@ -204,11 +200,11 @@ describe("ElizaClient direct Cloud auth served from localhost dev (port-shift)",
     expect(result).toEqual(
       expect.objectContaining({
         ok: true,
-        apiBase: "https://api-staging.elizacloud.ai",
+        apiBase: "https://api-staging.eliza.app",
       }),
     );
     const browserUrl = new URL(result.browserUrl ?? "");
-    expect(browserUrl.origin).toBe("https://staging.elizacloud.ai");
+    expect(browserUrl.origin).toBe("https://staging.eliza.app");
     expect(browserUrl.pathname).toBe("/auth/cli-login");
     const sessionId = browserUrl.searchParams.get("session");
     expect(sessionId).toEqual(expect.any(String));
@@ -232,12 +228,12 @@ describe("ElizaClient direct Cloud auth served from localhost dev (port-shift)",
 
     const client = new ElizaClient("http://localhost:31337");
     const result = await client.cloudLoginPollDirect(
-      "https://api-staging.elizacloud.ai",
+      "https://api-staging.eliza.app",
       "session-1",
     );
 
     expect(fetchSpy).toHaveBeenCalledWith(
-      "https://api-staging.elizacloud.ai/api/auth/cli-session/session-1",
+      "https://api-staging.eliza.app/api/auth/cli-session/session-1",
     );
     expect(result).toEqual({
       status: "authenticated",
@@ -260,7 +256,7 @@ describe("ElizaClient direct Cloud auth served from localhost dev (port-shift)",
 
     const client = new ElizaClient("http://localhost:31337");
     const result = await client.cloudLoginPollDirect(
-      "https://api-staging.elizacloud.ai",
+      "https://api-staging.eliza.app",
       "session-1",
     );
 

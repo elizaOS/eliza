@@ -32,13 +32,13 @@ function runningDedicated(
     container_id: null,
     headscale_ip: null,
     bridge_url: null,
-    web_ui_url: "https://dedicated-1.elizacloud.ai",
+    web_ui_url: "https://dedicated-1.cloud.eliza.app",
     status: "running",
     agent_config: {},
     created_at: "2026-06-27T00:00:00.000Z",
     updated_at: "2026-06-27T00:00:00.000Z",
     containerUrl: "",
-    webUiUrl: "https://dedicated-1.elizacloud.ai",
+    webUiUrl: "https://dedicated-1.cloud.eliza.app",
     database_status: "ok",
     error_message: null,
     last_heartbeat_at: null,
@@ -56,7 +56,7 @@ function fakeClient(detailById: Record<string, CloudCompatAgent>) {
   return { client, getCloudCompatAgent };
 }
 
-const SHARED_BASE = "https://elizacloud.ai/api/v1/eliza/agents/shared-1/api";
+const SHARED_BASE = "https://api.eliza.app/api/v1/eliza/agents/shared-1/api";
 
 describe("startCloudAgentHandoff — dedicated migration target", () => {
   // The handoff reads the shared conversation over `fetch` (authedFetch). Stub
@@ -100,7 +100,7 @@ describe("startCloudAgentHandoff — dedicated migration target", () => {
       sharedApiBase: SHARED_BASE,
       conversationId: "shared-1",
       dedicatedAgentId: "dedicated-1",
-      cloudApiBase: "https://www.elizacloud.ai",
+      cloudApiBase: "https://eliza.app",
       authToken: "tok",
       onSwitch,
       intervalMs: 1,
@@ -112,12 +112,14 @@ describe("startCloudAgentHandoff — dedicated migration target", () => {
     expect(getCloudCompatAgent).not.toHaveBeenCalled();
     expect(getCloudCompatAgent).not.toHaveBeenCalledWith("shared-1");
     expect(fetch).toHaveBeenCalledWith(
-      "https://api.elizacloud.ai/api/v1/eliza/agents/dedicated-1",
+      "https://api.eliza.app/api/v1/eliza/agents/dedicated-1",
       expect.objectContaining({
         headers: expect.objectContaining({ Authorization: "Bearer tok" }),
       }),
     );
-    expect(onSwitch).toHaveBeenCalledWith("https://dedicated-1.elizacloud.ai");
+    expect(onSwitch).toHaveBeenCalledWith(
+      "https://dedicated-1.cloud.eliza.app",
+    );
     expect(
       result.status === "switched" || result.status === "switched-empty",
     ).toBe(true);
@@ -127,8 +129,8 @@ describe("startCloudAgentHandoff — dedicated migration target", () => {
     const { client, getCloudCompatAgent } = fakeClient({
       "agent-self": runningDedicated({
         agent_id: "agent-self",
-        web_ui_url: "https://agent-self.elizacloud.ai",
-        webUiUrl: "https://agent-self.elizacloud.ai",
+        web_ui_url: "https://agent-self.cloud.eliza.app",
+        webUiUrl: "https://agent-self.cloud.eliza.app",
       }),
     });
 
@@ -136,7 +138,7 @@ describe("startCloudAgentHandoff — dedicated migration target", () => {
       agentId: "agent-self",
       sharedApiBase: SHARED_BASE,
       conversationId: "agent-self",
-      cloudApiBase: "https://www.elizacloud.ai",
+      cloudApiBase: "https://eliza.app",
       authToken: "tok",
       onSwitch: vi.fn(),
       intervalMs: 1,
@@ -182,7 +184,7 @@ describe("startCloudAgentHandoff — proxy-readiness gate (#15901)", () => {
       sharedApiBase: SHARED_BASE,
       conversationId: "shared-1",
       dedicatedAgentId: "dedicated-1",
-      cloudApiBase: "https://www.elizacloud.ai",
+      cloudApiBase: "https://eliza.app",
       authToken: "tok",
       onSwitch,
       intervalMs: 1,
@@ -191,10 +193,12 @@ describe("startCloudAgentHandoff — proxy-readiness gate (#15901)", () => {
     });
 
     expect(healthProbes).toBe(3);
-    expect(onSwitch).toHaveBeenCalledWith("https://dedicated-1.elizacloud.ai");
+    expect(onSwitch).toHaveBeenCalledWith(
+      "https://dedicated-1.cloud.eliza.app",
+    );
     expect(result.status).toBe("switched-empty");
     expect(fetchMock).toHaveBeenCalledWith(
-      "https://dedicated-1.elizacloud.ai/api/health",
+      "https://dedicated-1.cloud.eliza.app/api/health",
       expect.anything(),
     );
   });
@@ -219,7 +223,7 @@ describe("startCloudAgentHandoff — proxy-readiness gate (#15901)", () => {
       sharedApiBase: SHARED_BASE,
       conversationId: "shared-1",
       dedicatedAgentId: "dedicated-1",
-      cloudApiBase: "https://www.elizacloud.ai",
+      cloudApiBase: "https://eliza.app",
       authToken: "tok",
       onSwitch,
       intervalMs: 1,
@@ -227,7 +231,9 @@ describe("startCloudAgentHandoff — proxy-readiness gate (#15901)", () => {
       log: () => {},
     });
 
-    expect(onSwitch).toHaveBeenCalledWith("https://dedicated-1.elizacloud.ai");
+    expect(onSwitch).toHaveBeenCalledWith(
+      "https://dedicated-1.cloud.eliza.app",
+    );
     expect(result.status).toBe("switched-empty");
   });
 
@@ -254,7 +260,7 @@ describe("startCloudAgentHandoff — proxy-readiness gate (#15901)", () => {
       sharedApiBase: SHARED_BASE,
       conversationId: "shared-1",
       dedicatedAgentId: "dedicated-1",
-      cloudApiBase: "https://www.elizacloud.ai",
+      cloudApiBase: "https://eliza.app",
       authToken: "tok",
       onSwitch,
       intervalMs: 1,
@@ -263,7 +269,9 @@ describe("startCloudAgentHandoff — proxy-readiness gate (#15901)", () => {
     });
 
     expect(healthProbes).toBe(2);
-    expect(onSwitch).toHaveBeenCalledWith("https://dedicated-1.elizacloud.ai");
+    expect(onSwitch).toHaveBeenCalledWith(
+      "https://dedicated-1.cloud.eliza.app",
+    );
     expect(result.status).toBe("switched-empty");
   });
 
@@ -287,7 +295,7 @@ describe("startCloudAgentHandoff — proxy-readiness gate (#15901)", () => {
       sharedApiBase: SHARED_BASE,
       conversationId: "shared-1",
       dedicatedAgentId: "dedicated-1",
-      cloudApiBase: "https://www.elizacloud.ai",
+      cloudApiBase: "https://eliza.app",
       authToken: "tok",
       onSwitch,
       intervalMs: 1,

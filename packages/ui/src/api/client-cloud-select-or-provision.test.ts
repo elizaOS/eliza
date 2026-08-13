@@ -80,7 +80,7 @@ function fakeClient() {
 }
 
 const BASE_OPTS = {
-  cloudApiBase: "https://api.elizacloud.ai/api/v1",
+  cloudApiBase: "https://api.eliza.app/api/v1",
   authToken: "test-token",
   name: "Eliza",
 };
@@ -157,15 +157,15 @@ describe("selectOrProvisionCloudAgent — never duplicate on a failed lookup", (
       data: [
         makeAgent({
           agent_id: "agent-dedicated",
-          web_ui_url: "https://agent-dedicated.elizacloud.ai",
-          webUiUrl: "https://agent-dedicated.elizacloud.ai",
+          web_ui_url: "https://agent-dedicated.cloud.eliza.app",
+          webUiUrl: "https://agent-dedicated.cloud.eliza.app",
         }),
       ],
     });
 
     const result = await client.selectOrProvisionCloudAgent(BASE_OPTS);
 
-    expect(result.apiBase).toBe("https://agent-dedicated.elizacloud.ai");
+    expect(result.apiBase).toBe("https://agent-dedicated.cloud.eliza.app");
     expect(result.requiresAgentPairing).toBe(false);
   });
 
@@ -176,8 +176,8 @@ describe("selectOrProvisionCloudAgent — never duplicate on a failed lookup", (
       data: [
         makeAgent({
           agent_id: "agent-dedicated",
-          web_ui_url: "https://agent-dedicated.elizacloud.ai",
-          webUiUrl: "https://agent-dedicated.elizacloud.ai",
+          web_ui_url: "https://agent-dedicated.cloud.eliza.app",
+          webUiUrl: "https://agent-dedicated.cloud.eliza.app",
         }),
       ],
     });
@@ -189,7 +189,7 @@ describe("selectOrProvisionCloudAgent — never duplicate on a failed lookup", (
     });
 
     expect(result.created).toBe(false);
-    expect(result.apiBase).toBe("https://agent-dedicated.elizacloud.ai");
+    expect(result.apiBase).toBe("https://agent-dedicated.cloud.eliza.app");
     expect(result.apiBase).not.toContain("/api/v1/eliza/agents/");
     expect(result.requiresAgentPairing).toBe(false);
   });
@@ -229,16 +229,16 @@ describe("selectOrProvisionCloudAgent — never duplicate on a failed lookup", (
           agent_id: "agent-staging",
           bridge_url: null,
           web_ui_url:
-            "https://api-staging.elizacloud.ai/api/v1/eliza/agents/agent-staging",
+            "https://api-staging.eliza.app/api/v1/eliza/agents/agent-staging",
           webUiUrl:
-            "https://api-staging.elizacloud.ai/api/v1/eliza/agents/agent-staging",
+            "https://api-staging.eliza.app/api/v1/eliza/agents/agent-staging",
         }),
       ],
     });
 
     const result = await client.selectOrProvisionCloudAgent({
       ...BASE_OPTS,
-      cloudApiBase: "https://api-staging.elizacloud.ai/api/v1",
+      cloudApiBase: "https://api-staging.eliza.app/api/v1",
     });
 
     expect(result.created).toBe(false);
@@ -267,7 +267,7 @@ describe("selectOrProvisionCloudAgent — never duplicate on a failed lookup", (
 
     const result = await client.selectOrProvisionCloudAgent({
       ...BASE_OPTS,
-      cloudApiBase: "https://api-staging.elizacloud.ai/api/v1",
+      cloudApiBase: "https://api-staging.eliza.app/api/v1",
       preferSharedTier: true,
     });
 
@@ -316,8 +316,8 @@ describe("selectOrProvisionCloudAgent — never duplicate on a failed lookup", (
       data: makeAgent({
         agent_id: "dedicated-target",
         status: "running",
-        web_ui_url: "https://dedicated-target.elizacloud.ai",
-        webUiUrl: "https://dedicated-target.elizacloud.ai",
+        web_ui_url: "https://dedicated-target.cloud.eliza.app",
+        webUiUrl: "https://dedicated-target.cloud.eliza.app",
       }),
     });
 
@@ -327,7 +327,7 @@ describe("selectOrProvisionCloudAgent — never duplicate on a failed lookup", (
       expect.objectContaining({ forceCreate: true }),
     );
     expect(result.agentId).toBe("dedicated-target");
-    expect(result.apiBase).toBe("https://dedicated-target.elizacloud.ai");
+    expect(result.apiBase).toBe("https://dedicated-target.cloud.eliza.app");
     expect(result.executionTier).toBe("dedicated-always");
   });
 
@@ -658,8 +658,8 @@ describe("selectOrProvisionCloudAgent — never duplicate on a failed lookup", (
           agent_id: "agent-new",
           status: "provisioning",
           bridge_url: null,
-          web_ui_url: "https://agent-new.elizacloud.ai",
-          webUiUrl: "https://agent-new.elizacloud.ai",
+          web_ui_url: "https://agent-new.cloud.eliza.app",
+          webUiUrl: "https://agent-new.cloud.eliza.app",
         }),
       })
       .mockResolvedValueOnce({
@@ -668,8 +668,8 @@ describe("selectOrProvisionCloudAgent — never duplicate on a failed lookup", (
           agent_id: "agent-new",
           status: "running",
           bridge_url: null,
-          web_ui_url: "https://agent-new.elizacloud.ai",
-          webUiUrl: "https://agent-new.elizacloud.ai",
+          web_ui_url: "https://agent-new.cloud.eliza.app",
+          webUiUrl: "https://agent-new.cloud.eliza.app",
         }),
       });
     resumeCloudCompatAgent.mockResolvedValue({ success: true });
@@ -682,7 +682,7 @@ describe("selectOrProvisionCloudAgent — never duplicate on a failed lookup", (
 
     expect(result.created).toBe(true);
     expect(result.agentId).toBe("agent-new");
-    expect(result.apiBase).toBe("https://agent-new.elizacloud.ai");
+    expect(result.apiBase).toBe("https://agent-new.cloud.eliza.app");
     expect(result.requiresAgentPairing).toBe(false);
     expect(resumeCloudCompatAgent).toHaveBeenCalledWith("agent-new");
   });
@@ -709,15 +709,15 @@ describe("selectOrProvisionCloudAgent — never duplicate on a failed lookup", (
       data: makeAgent({
         agent_id: "agent-warm",
         status: "running",
-        web_ui_url: "https://agent-warm.elizacloud.ai",
-        webUiUrl: "https://agent-warm.elizacloud.ai",
+        web_ui_url: "https://agent-warm.cloud.eliza.app",
+        webUiUrl: "https://agent-warm.cloud.eliza.app",
       }),
     });
 
     const result = await client.selectOrProvisionCloudAgent(BASE_OPTS);
 
     expect(result.created).toBe(true);
-    expect(result.apiBase).toContain("agent-warm.elizacloud.ai");
+    expect(result.apiBase).toContain("agent-warm.cloud.eliza.app");
     expect(result.requiresAgentPairing).toBe(false);
   });
 
@@ -741,8 +741,8 @@ describe("selectOrProvisionCloudAgent — never duplicate on a failed lookup", (
       data: makeAgent({
         agent_id: "agent-warm",
         status: "running",
-        web_ui_url: "https://agent-warm.elizacloud.ai",
-        webUiUrl: "https://agent-warm.elizacloud.ai",
+        web_ui_url: "https://agent-warm.cloud.eliza.app",
+        webUiUrl: "https://agent-warm.cloud.eliza.app",
       }),
     });
 
@@ -752,7 +752,7 @@ describe("selectOrProvisionCloudAgent — never duplicate on a failed lookup", (
     });
 
     expect(result.created).toBe(true);
-    expect(result.apiBase).toBe("https://agent-warm.elizacloud.ai");
+    expect(result.apiBase).toBe("https://agent-warm.cloud.eliza.app");
     expect(result.apiBase).not.toContain("/api/v1/eliza/agents/");
     expect(result.requiresAgentPairing).toBe(false);
   });

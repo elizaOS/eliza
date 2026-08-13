@@ -220,7 +220,7 @@ describe("Cloud active server persistence", () => {
     expect(loadPersistedActiveServer()).toBeNull();
   });
 
-  it("keeps a dedicated Eliza Cloud active server dedicated on restore", async () => {
+  it("canonicalizes a legacy dedicated Eliza Cloud server on restore", async () => {
     const server = createPersistedActiveServer({
       kind: "cloud",
       id: `cloud:${agentId}`,
@@ -237,7 +237,7 @@ describe("Cloud active server persistence", () => {
       clientRef: { setBaseUrl, setToken },
     });
 
-    const expectedApiBase = `https://${agentId}.elizacloud.ai`;
+    const expectedApiBase = `https://${agentId}.cloud.eliza.app`;
     expect(setBaseUrl).toHaveBeenCalledWith(expectedApiBase);
     expect(setToken).toHaveBeenCalledWith("cloud-token");
     expect(loadPersistedActiveServer()).toEqual(
@@ -249,7 +249,7 @@ describe("Cloud active server persistence", () => {
     );
   });
 
-  it("preserves a shared adapter until server-authoritative tier selection", async () => {
+  it("canonicalizes a legacy shared adapter until server-authoritative tier selection", async () => {
     const server = createPersistedActiveServer({
       kind: "cloud",
       id: `cloud:${agentId}`,
@@ -266,7 +266,7 @@ describe("Cloud active server persistence", () => {
       clientRef: { setBaseUrl, setToken },
     });
 
-    const expectedApiBase = `https://api.elizacloud.ai/api/v1/eliza/agents/${agentId}`;
+    const expectedApiBase = `https://api.eliza.app/api/v1/eliza/agents/${agentId}`;
     expect(setBaseUrl).toHaveBeenCalledWith(expectedApiBase);
     expect(setToken).toHaveBeenCalledWith("cloud-token");
     expect(loadPersistedActiveServer()).toEqual(

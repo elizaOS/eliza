@@ -47,7 +47,7 @@ describe("ElizaClient direct Cloud auth on native", () => {
   beforeEach(() => {
     setBootConfig({
       branding: {},
-      cloudApiBase: "https://www.elizacloud.ai",
+      cloudApiBase: "https://eliza.app",
     });
     capacitorMocks.get.mockReset();
     capacitorMocks.post.mockReset();
@@ -62,8 +62,8 @@ describe("ElizaClient direct Cloud auth on native", () => {
   it("creates native CLI sessions through the Cloud API host and opens the web auth host", async () => {
     capacitorMocks.post.mockResolvedValue({ status: 200, data: {} });
 
-    const client = new ElizaClient("https://www.elizacloud.ai");
-    const result = await client.cloudLoginDirect("https://www.elizacloud.ai");
+    const client = new ElizaClient("https://eliza.app");
+    const result = await client.cloudLoginDirect("https://eliza.app");
 
     expect(capacitorMocks.post).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -71,9 +71,9 @@ describe("ElizaClient direct Cloud auth on native", () => {
         data: expect.objectContaining({ sessionId: expect.any(String) }),
       }),
     );
-    // The browser URL normalizes the configured www base to the apex host: the
-    // opened window must never ride the www 308 edge (#15143 — the extra hop
-    // is where mobile Safari attributed its "document.txt" download).
+    // The browser URL stays on the canonical marketing host so the opened
+    // window never rides a redirect edge (#15143 — the extra hop is where
+    // mobile Safari attributed its "document.txt" download).
     expect(result).toEqual(
       expect.objectContaining({
         ok: true,
@@ -89,10 +89,8 @@ describe("ElizaClient direct Cloud auth on native", () => {
   it("creates staging CLI sessions through the staging API host and opens the staging web auth host", async () => {
     capacitorMocks.post.mockResolvedValue({ status: 200, data: {} });
 
-    const client = new ElizaClient("https://staging.elizacloud.ai");
-    const result = await client.cloudLoginDirect(
-      "https://staging.elizacloud.ai",
-    );
+    const client = new ElizaClient("https://staging.eliza.app");
+    const result = await client.cloudLoginDirect("https://staging.eliza.app");
 
     expect(capacitorMocks.post).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -114,9 +112,9 @@ describe("ElizaClient direct Cloud auth on native", () => {
   it("maps staging API bases back to the staging web auth host", async () => {
     capacitorMocks.post.mockResolvedValue({ status: 200, data: {} });
 
-    const client = new ElizaClient("https://api-staging.elizacloud.ai");
+    const client = new ElizaClient("https://api-staging.eliza.app");
     const result = await client.cloudLoginDirect(
-      "https://api-staging.elizacloud.ai",
+      "https://api-staging.eliza.app",
     );
 
     expect(capacitorMocks.post).toHaveBeenCalledWith(
@@ -137,18 +135,16 @@ describe("ElizaClient direct Cloud auth on native", () => {
 
   it("keeps a staging dedicated agent login on the staging auth host, not the production apex", async () => {
     // Regression for the staging dedicated-ingress fix: a session whose agent
-    // base is `<uuid>.staging.elizacloud.ai` belongs to the STAGING tenant.
+    // base is `<uuid>.cloud-staging.eliza.app` belongs to the STAGING tenant.
     // Auth for it must ride the staging API/auth hosts — a hop to the
     // production apex would mint a production session that can never see the
     // staging agent.
     capacitorMocks.post.mockResolvedValue({ status: 200, data: {} });
 
     const client = new ElizaClient(
-      "https://0b5fca39-8d55-4c96-a1a3-000000000000.staging.elizacloud.ai",
+      "https://0b5fca39-8d55-4c96-a1a3-000000000000.cloud-staging.eliza.app",
     );
-    const result = await client.cloudLoginDirect(
-      "https://staging.elizacloud.ai",
-    );
+    const result = await client.cloudLoginDirect("https://staging.eliza.app");
 
     expect(capacitorMocks.post).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -179,9 +175,9 @@ describe("ElizaClient direct Cloud auth on native", () => {
       },
     });
 
-    const client = new ElizaClient("https://www.elizacloud.ai");
+    const client = new ElizaClient("https://eliza.app");
     const result = await client.cloudLoginPollDirect(
-      "https://www.elizacloud.ai",
+      "https://eliza.app",
       "mobile-session",
     );
 
@@ -639,11 +635,11 @@ describe("ElizaClient direct Cloud auth on native", () => {
         data: {
           agentId: "agent-1",
           agentName: "My Agent",
-          appUrl: "https://app.elizacloud.ai/",
+          appUrl: "https://cloud.eliza.app/",
           launchSessionId: "launch-1",
           issuedAt: "2026-05-09T00:00:00.000Z",
           connection: {
-            apiBase: "https://agent-1.elizacloud.ai",
+            apiBase: "https://agent-1.cloud.eliza.app",
             token: "agent-token",
           },
         },
@@ -667,7 +663,7 @@ describe("ElizaClient direct Cloud auth on native", () => {
         success: true,
         data: expect.objectContaining({
           connection: {
-            apiBase: "https://agent-1.elizacloud.ai",
+            apiBase: "https://agent-1.cloud.eliza.app",
             token: "agent-token",
           },
         }),
@@ -884,7 +880,7 @@ describe("ElizaClient direct Cloud auth on native", () => {
     setBootConfig({
       branding: {},
       apiBase: "http://localhost:31337",
-      cloudApiBase: "https://www.elizacloud.ai",
+      cloudApiBase: "https://eliza.app",
     });
     const fetchSpy = vi
       .spyOn(globalThis, "fetch")
@@ -969,7 +965,7 @@ describe("ElizaClient direct Cloud auth on native", () => {
     // Native Cloud account setup starts without an agent binding. A non-empty
     // local/self-hosted base is intentionally kept on its own compat origin.
     const client = new ElizaClient("");
-    const login = await client.cloudLoginDirect("https://www.elizacloud.ai");
+    const login = await client.cloudLoginDirect("https://eliza.app");
     const poll = await client.cloudLoginPollDirect(
       login.apiBase ?? "https://api.eliza.app",
       login.sessionId ?? "missing-session",
@@ -1063,7 +1059,7 @@ describe("ElizaClient direct Cloud auth on native", () => {
               status: "completed",
               result: {
                 bridgeUrl: "https://sandbox-agent.example.test",
-                webUiUrl: "https://sandbox-agent.elizacloud.ai",
+                webUiUrl: "https://sandbox-agent.cloud.eliza.app",
               },
             },
           },
@@ -1074,7 +1070,7 @@ describe("ElizaClient direct Cloud auth on native", () => {
 
     const client = new ElizaClient("http://localhost:31337");
     const resultPromise = client.provisionCloudSandbox({
-      cloudApiBase: "https://www.elizacloud.ai",
+      cloudApiBase: "https://eliza.app",
       authToken: "dev-js-bearer",
       name: "Sandbox Agent",
       bio: ["Native package-mode test agent."],
@@ -1088,7 +1084,7 @@ describe("ElizaClient direct Cloud auth on native", () => {
     await expect(resultPromise).resolves.toEqual({
       agentId: "sandbox-agent",
       bridgeUrl: "https://sandbox-agent.example.test",
-      webUiUrl: "https://sandbox-agent.elizacloud.ai",
+      webUiUrl: "https://sandbox-agent.cloud.eliza.app",
     });
     expect(capacitorMocks.request).toHaveBeenCalledTimes(3);
     expect(capacitorMocks.request).toHaveBeenNthCalledWith(
@@ -1172,7 +1168,7 @@ describe("ElizaClient direct Cloud auth on native", () => {
     const client = new ElizaClient("http://localhost:31337");
     await expect(
       client.provisionCloudSandbox({
-        cloudApiBase: "https://www.elizacloud.ai",
+        cloudApiBase: "https://eliza.app",
         authToken: "dev-js-bearer",
         name: "Shared Agent",
         bio: ["Native package-mode test agent."],
@@ -1227,7 +1223,7 @@ describe("ElizaClient direct Cloud auth on native", () => {
 
     const client = new ElizaClient("http://localhost:31337");
     const result = await client.provisionCloudSandbox({
-      cloudApiBase: "https://www.elizacloud.ai",
+      cloudApiBase: "https://eliza.app",
       authToken: "dev-js-bearer",
       name: "Shared Agent",
       bio: ["Native package-mode test agent."],

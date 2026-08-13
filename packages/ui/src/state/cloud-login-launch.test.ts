@@ -1,6 +1,6 @@
 /** Verifies shouldUseSameTabCloudLogin through the package's configured test harness. */
 // @vitest-environment jsdom
-// @vitest-environment-options { "url": "https://app.elizacloud.ai/" }
+// @vitest-environment-options { "url": "https://cloud.eliza.app/" }
 //
 // Popup-vs-same-tab decision logic for the cloud sign-in (#15143). Exercises
 // the browser-agnostic runtime popup-blocked signal (null/closed handle), the
@@ -273,17 +273,17 @@ describe("releaseClaimedCloudLoginWindow", () => {
 describe("resolveCloudSignInPageUrl", () => {
   it("uses the same-origin login page with returnTo on hosted https web", () => {
     expect(resolveCloudSignInPageUrl("https://www.elizacloud.ai")).toBe(
-      "https://app.elizacloud.ai/login?returnTo=%2F",
+      "https://cloud.eliza.app/login?returnTo=%2F",
     );
   });
 
   it("maps API and www bases to the apex login page elsewhere", () => {
     stubHostname("localhost", "http:");
     expect(resolveCloudSignInPageUrl("https://api.elizacloud.ai")).toBe(
-      "https://elizacloud.ai/login",
+      "https://eliza.app/login",
     );
     expect(resolveCloudSignInPageUrl("https://www.elizacloud.ai")).toBe(
-      "https://elizacloud.ai/login",
+      "https://eliza.app/login",
     );
   });
 

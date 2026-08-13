@@ -30,8 +30,8 @@ import { ElizaClient } from "./client-base";
 import "./client-cloud";
 
 const DEDICATED_STAGING_BASE =
-  "https://11111111-1111-4111-8111-111111111111.staging.elizacloud.ai";
-const STAGING_CONTROL_PLANE = "https://api-staging.elizacloud.ai";
+  "https://11111111-1111-4111-8111-111111111111.cloud-staging.eliza.app";
+const STAGING_CONTROL_PLANE = "https://api-staging.eliza.app";
 const originalLocationDescriptor = Object.getOwnPropertyDescriptor(
   window,
   "location",
@@ -128,7 +128,7 @@ function assertStewardRequests(
 ): void {
   for (const [url, init] of calls) {
     expect(String(url)).toMatch(
-      /^https:\/\/api-staging\.elizacloud\.ai\/api\/v1\//,
+      /^https:\/\/api-staging\.eliza\.app\/api\/v1\//,
     );
     expect(String(url)).not.toContain("/api/cloud/compat/");
     expect(new Headers(init?.headers).get("authorization")).toBe(
@@ -144,7 +144,7 @@ beforeEach(() => {
   setElectrobunRuntime(false);
   setBootConfig({
     branding: {},
-    cloudApiBase: "https://staging.elizacloud.ai",
+    cloudApiBase: "https://staging.eliza.app",
   });
 });
 
@@ -412,7 +412,7 @@ describe("dedicated Cloud account boundary on trusted app shells", () => {
     expect(platform.request).toHaveBeenCalledTimes(3);
     for (const [request] of platform.request.mock.calls) {
       expect(request.url).toMatch(
-        /^https:\/\/api-staging\.elizacloud\.ai\/api\/v1\//,
+        /^https:\/\/api-staging\.eliza\.app\/api\/v1\//,
       );
       expect(request.url).not.toContain("/api/cloud/compat/");
       expect(request.headers.Authorization).toBe("Bearer steward-jwt");
@@ -438,7 +438,7 @@ describe("dedicated Cloud account boundary on trusted app shells", () => {
 
     await expect(
       client.selectOrProvisionCloudAgent({
-        cloudApiBase: "https://staging.elizacloud.ai",
+        cloudApiBase: "https://staging.eliza.app",
         authToken: "agent-bearer",
         name: "Disposable",
         forceCreate: true,
@@ -543,7 +543,7 @@ describe("dedicated Cloud account boundary on trusted app shells", () => {
 
       await expect(
         client.selectOrProvisionCloudAgent({
-          cloudApiBase: "https://staging.elizacloud.ai",
+          cloudApiBase: "https://staging.eliza.app",
           authToken: "agent-bearer",
           name: "Disposable",
           forceCreate: true,
@@ -656,7 +656,7 @@ describe("dedicated Cloud account boundary on trusted app shells", () => {
 
     await expect(
       client.selectOrProvisionCloudAgent({
-        cloudApiBase: "https://staging.elizacloud.ai",
+        cloudApiBase: "https://staging.eliza.app",
         authToken: "agent-bearer",
         name: "Disposable",
         forceCreate: true,

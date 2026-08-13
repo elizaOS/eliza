@@ -1,6 +1,6 @@
 /** Verifies useCloudState — handleCloudLogin same-tab fallback on hosted web through the package's configured test harness. */
 // @vitest-environment jsdom
-// @vitest-environment-options { "url": "https://app.elizacloud.ai/" }
+// @vitest-environment-options { "url": "https://cloud.eliza.app/" }
 //
 // `useCloudState.handleCloudLogin` popup→same-tab fallback (#15143). On hosted
 // web (direct cloud auth, no agent proxy) a dead popup handle — null from a
@@ -8,7 +8,7 @@
 // /login page with a returnTo instead of starting a device-code session whose
 // popup would never open, and must leave the first-run cloud-resume marker
 // intact for the round trip. A live popup handle keeps the device-code popup
-// flow. jsdom pinned to a hosted elizacloud origin with the API client mocked.
+// flow. jsdom pinned to the hosted managed-cloud origin with the API client mocked.
 
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -171,9 +171,9 @@ describe("useCloudState — handleCloudLogin same-tab fallback on hosted web", (
       await act(async () => {
         resolveSession?.({
           ok: true,
-          apiBase: "https://api.elizacloud.ai",
+          apiBase: "https://api.eliza.app",
           browserUrl:
-            "https://elizacloud.ai/auth/cli-login?session=sess-serialized",
+            "https://eliza.app/auth/cli-login?session=sess-serialized",
           sessionId: "sess-serialized",
         });
         await Promise.resolve();
@@ -181,7 +181,7 @@ describe("useCloudState — handleCloudLogin same-tab fallback on hosted web", (
       });
 
       expect(popup.location.href).toBe(
-        "https://elizacloud.ai/auth/cli-login?session=sess-serialized",
+        "https://eliza.app/auth/cli-login?session=sess-serialized",
       );
       expect(assignSpy).not.toHaveBeenCalled();
 
@@ -223,7 +223,7 @@ describe("useCloudState — handleCloudLogin same-tab fallback on hosted web", (
       configurable: true,
       value: {
         ...window.location,
-        href: `https://app.elizacloud.ai/chat${search}`,
+        href: `https://cloud.eliza.app/chat${search}`,
         pathname: "/chat",
         search,
         assign: assignSpy,
@@ -246,7 +246,7 @@ describe("useCloudState — handleCloudLogin same-tab fallback on hosted web", (
       expect(result.current.elizaCloudConnected).toBe(true);
     });
     expect(cloudLoginPollDirectSpy).toHaveBeenCalledWith(
-      "https://api.elizacloud.ai",
+      "https://api.eliza.app",
       "sess-return",
     );
     expect(params.setActionNotice).not.toHaveBeenCalled();
@@ -264,8 +264,8 @@ describe("useCloudState — handleCloudLogin same-tab fallback on hosted web", (
     const openSpy = vi.spyOn(window, "open").mockReturnValue(popup);
     cloudLoginDirectSpy.mockResolvedValue({
       ok: true,
-      apiBase: "https://api.elizacloud.ai/api/v1",
-      browserUrl: "https://elizacloud.ai/auth/cli-login?session=sess-1",
+      apiBase: "https://api.eliza.app/api/v1",
+      browserUrl: "https://eliza.app/auth/cli-login?session=sess-1",
       sessionId: "sess-1",
     });
 
@@ -279,14 +279,14 @@ describe("useCloudState — handleCloudLogin same-tab fallback on hosted web", (
 
       expect(cloudLoginDirectSpy).toHaveBeenCalledTimes(1);
       expect(popup.location.href).toBe(
-        "https://elizacloud.ai/auth/cli-login?session=sess-1",
+        "https://eliza.app/auth/cli-login?session=sess-1",
       );
       expect((popup as unknown as { opener: unknown }).opener).toBe(opener);
 
       await act(async () => {
         window.dispatchEvent(
           new MessageEvent("message", {
-            origin: "https://elizacloud.ai",
+            origin: "https://eliza.app",
             data: {
               type: "eliza-cloud-auth-complete",
               sessionId: "wrong-session",
@@ -299,7 +299,7 @@ describe("useCloudState — handleCloudLogin same-tab fallback on hosted web", (
       await act(async () => {
         window.dispatchEvent(
           new MessageEvent("message", {
-            origin: "https://elizacloud.ai",
+            origin: "https://eliza.app",
             data: {
               type: "eliza-cloud-auth-complete",
               sessionId: "sess-1",
@@ -330,8 +330,8 @@ describe("useCloudState — handleCloudLogin same-tab fallback on hosted web", (
     const openSpy = vi.spyOn(window, "open").mockReturnValue(popup);
     cloudLoginDirectSpy.mockResolvedValue({
       ok: true,
-      apiBase: "https://api.elizacloud.ai",
-      browserUrl: "https://elizacloud.ai/auth/cli-login?session=sess-poll",
+      apiBase: "https://api.eliza.app",
+      browserUrl: "https://eliza.app/auth/cli-login?session=sess-poll",
       sessionId: "sess-poll",
     });
     cloudLoginPollDirectSpy.mockResolvedValue({
@@ -350,7 +350,7 @@ describe("useCloudState — handleCloudLogin same-tab fallback on hosted web", (
       });
 
       expect(popup.location.href).toBe(
-        "https://elizacloud.ai/auth/cli-login?session=sess-poll",
+        "https://eliza.app/auth/cli-login?session=sess-poll",
       );
 
       await act(async () => {
@@ -384,8 +384,8 @@ describe("useCloudState — handleCloudLogin same-tab fallback on hosted web", (
     vi.spyOn(window, "open").mockReturnValue(popup);
     cloudLoginDirectSpy.mockResolvedValue({
       ok: true,
-      apiBase: "https://api.elizacloud.ai",
-      browserUrl: "https://elizacloud.ai/auth/cli-login?session=sess-last",
+      apiBase: "https://api.eliza.app",
+      browserUrl: "https://eliza.app/auth/cli-login?session=sess-last",
       sessionId: "sess-last",
     });
     cloudLoginPollDirectSpy.mockResolvedValue({
@@ -409,7 +409,7 @@ describe("useCloudState — handleCloudLogin same-tab fallback on hosted web", (
       });
 
       expect(cloudLoginPollDirectSpy).toHaveBeenCalledWith(
-        "https://api.elizacloud.ai",
+        "https://api.eliza.app",
         "sess-last",
       );
       expect(localStorage.getItem("steward_session_token")).toBe(
@@ -450,8 +450,8 @@ describe("useCloudState — handleCloudLogin same-tab fallback on hosted web", (
     const openSpy = vi.spyOn(window, "open").mockReturnValue(popup);
     cloudLoginDirectSpy.mockResolvedValue({
       ok: true,
-      apiBase: "https://api.elizacloud.ai",
-      browserUrl: "https://elizacloud.ai/auth/cli-login?session=sess-local",
+      apiBase: "https://api.eliza.app",
+      browserUrl: "https://eliza.app/auth/cli-login?session=sess-local",
       sessionId: "sess-local",
     });
     cloudLoginPollDirectSpy.mockResolvedValue({
@@ -470,7 +470,7 @@ describe("useCloudState — handleCloudLogin same-tab fallback on hosted web", (
       });
 
       expect(openSpy).toHaveBeenCalledWith(
-        "https://elizacloud.ai/auth/cli-login?session=sess-local",
+        "https://eliza.app/auth/cli-login?session=sess-local",
         CLOUD_LOGIN_POPUP_NAME,
       );
 
@@ -508,8 +508,8 @@ describe("useCloudState — handleCloudLogin same-tab fallback on hosted web", (
     vi.spyOn(window, "open").mockReturnValue(popup);
     cloudLoginDirectSpy.mockResolvedValue({
       ok: true,
-      apiBase: "https://api.elizacloud.ai",
-      browserUrl: "https://elizacloud.ai/auth/cli-login?session=sess-native",
+      apiBase: "https://api.eliza.app",
+      browserUrl: "https://eliza.app/auth/cli-login?session=sess-native",
       sessionId: "sess-native",
     });
     cloudLoginPollDirectSpy.mockResolvedValue({
@@ -528,14 +528,12 @@ describe("useCloudState — handleCloudLogin same-tab fallback on hosted web", (
       });
 
       expect(launcher).not.toHaveBeenCalled();
-      expect(cloudLoginDirectSpy).toHaveBeenCalledWith(
-        "https://api.elizacloud.ai",
-      );
+      expect(cloudLoginDirectSpy).toHaveBeenCalledWith("https://api.eliza.app");
       expect(popup.location.href).toBe(
-        "https://elizacloud.ai/auth/cli-login?session=sess-native",
+        "https://eliza.app/auth/cli-login?session=sess-native",
       );
       expect(result.current.elizaCloudLoginFallbackUrl).toBe(
-        "https://elizacloud.ai/auth/cli-login?session=sess-native",
+        "https://eliza.app/auth/cli-login?session=sess-native",
       );
 
       await act(async () => {
@@ -544,7 +542,7 @@ describe("useCloudState — handleCloudLogin same-tab fallback on hosted web", (
       });
 
       expect(cloudLoginPollDirectSpy).toHaveBeenCalledWith(
-        "https://api.elizacloud.ai",
+        "https://api.eliza.app",
         "sess-native",
       );
       expect(localStorage.getItem("steward_session_token")).toBe(
@@ -590,7 +588,7 @@ describe("useCloudState — pollCloudCredits status snapshot", () => {
       cloudVoiceProxyAvailable: true,
       userId: "user-9",
       reason: " degraded upstream ",
-      topUpUrl: "https://elizacloud.ai/top-up",
+      topUpUrl: "https://eliza.app/top-up",
     });
     getCloudCreditsSpy.mockResolvedValue({
       balance: 12.5,
@@ -609,9 +607,7 @@ describe("useCloudState — pollCloudCredits status snapshot", () => {
     expect(result.current.elizaCloudEnabled).toBe(true);
     expect(result.current.elizaCloudUserId).toBe("user-9");
     expect(result.current.elizaCloudStatusReason).toBe("degraded upstream");
-    expect(result.current.elizaCloudTopUpUrl).toBe(
-      "https://elizacloud.ai/top-up",
-    );
+    expect(result.current.elizaCloudTopUpUrl).toBe("https://eliza.app/top-up");
     expect(result.current.elizaCloudCredits).toBe(12.5);
     expect(result.current.elizaCloudCreditsLow).toBe(true);
     expect(result.current.elizaCloudCreditsCritical).toBe(false);
@@ -630,7 +626,7 @@ describe("useCloudState — pollCloudCredits status snapshot", () => {
     });
     getCloudCreditsSpy.mockResolvedValue({
       authRejected: true,
-      topUpUrl: "https://elizacloud.ai/top-up",
+      topUpUrl: "https://eliza.app/top-up",
     });
 
     const { result, unmount } = renderHook(() => useCloudState(makeParams()));

@@ -16,7 +16,8 @@ const clientCloudMocks = vi.hoisted(() => ({
   refreshCloudStewardSession: vi.fn(),
 }));
 
-vi.mock("../api/client-cloud", () => ({
+vi.mock("../api/client-cloud", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../api/client-cloud")>()),
   cloudTokenSecsRemaining: () => 0,
   refreshCloudStewardSession: clientCloudMocks.refreshCloudStewardSession,
 }));
@@ -41,7 +42,7 @@ describe("useCloudState — Electrobun Steward refresh endpoint", () => {
     localStorage.clear();
     setBootConfig({
       branding: {},
-      cloudApiBase: "https://www.elizacloud.ai",
+      cloudApiBase: "https://eliza.app",
     });
     clientCloudMocks.refreshCloudStewardSession.mockReset();
     clientCloudMocks.refreshCloudStewardSession.mockResolvedValue({
@@ -61,7 +62,7 @@ describe("useCloudState — Electrobun Steward refresh endpoint", () => {
 
     await waitFor(() =>
       expect(clientCloudMocks.refreshCloudStewardSession).toHaveBeenCalledWith({
-        endpoint: "https://api.elizacloud.ai/api/auth/steward-refresh",
+        endpoint: "https://api.eliza.app/api/auth/steward-refresh",
       }),
     );
   });

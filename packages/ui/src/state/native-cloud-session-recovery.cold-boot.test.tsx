@@ -18,7 +18,7 @@ const clientMock = vi.hoisted(() => ({
   getCloudCompatAgent: vi.fn(),
   getCloudCompatAgents: vi.fn(),
   hasToken: vi.fn(() => true),
-  getBaseUrl: vi.fn(() => "https://agent-123.elizacloud.ai"),
+  getBaseUrl: vi.fn(() => "https://agent-123.cloud.eliza.app"),
   setBaseUrl: vi.fn(),
   setToken: vi.fn(),
 }));
@@ -71,7 +71,7 @@ const originalFetch = globalThis.fetch;
 const originalCapacitor = (globalThis as Record<string, unknown>).Capacitor;
 const originalBootConfig = getBootConfig();
 const AGENT_ID = "55555555-5555-4555-8555-555555555555";
-const AGENT_BASE = `https://${AGENT_ID}.elizacloud.ai`;
+const AGENT_BASE = `https://${AGENT_ID}.cloud.eliza.app`;
 
 function createPollingDeps(): PollingBackendDeps {
   return {
@@ -116,7 +116,7 @@ describe("managed-native stale-session cold boot", () => {
     };
     setBootConfig({
       ...originalBootConfig,
-      cloudApiBase: "https://elizacloud.ai",
+      cloudApiBase: "https://eliza.app",
     });
     clientMock.hasToken.mockReturnValue(true);
     clientMock.getBaseUrl.mockReturnValue(AGENT_BASE);
@@ -167,7 +167,7 @@ describe("managed-native stale-session cold boot", () => {
             { status: 200, headers: { "content-type": "application/json" } },
           );
         }
-        if (url === "https://api.elizacloud.ai/api/auth/pair/native") {
+        if (url === "https://api.eliza.app/api/auth/pair/native") {
           return new Response(
             JSON.stringify({
               apiKey: "fresh-agent-bearer",

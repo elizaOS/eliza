@@ -178,7 +178,7 @@ describe("handleIosLocalAgentRequest", () => {
       modelId: "cloud-model",
     });
     expect(fetchMock).toHaveBeenCalledWith(
-      "https://api.elizacloud.ai/api/v1/eliza/agents/agent-1/bridge",
+      "https://api.eliza.app/api/v1/eliza/agents/agent-1/bridge",
       expect.objectContaining({
         method: "POST",
         headers: expect.objectContaining({
