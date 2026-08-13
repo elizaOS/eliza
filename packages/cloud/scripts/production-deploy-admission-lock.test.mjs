@@ -226,6 +226,16 @@ describe("committed Cloud CF workflow matches the policy", () => {
     expect(cloudCfRelease).not.toContain("cloud-cf-deploy-api-");
     expect(cloudCfRelease).not.toContain("cloud-cf-deploy-app-");
   });
+
+  test("PR Pages previews remain pinned to staging inputs", () => {
+    const buildPages = jobBlock(cloudCf, "build-pages");
+    expect(buildPages).not.toContain("inputs.target_environment");
+    expect(buildPages).toContain("VITE_API_URL: https://api-staging.eliza.app");
+    expect(buildPages).toContain(
+      "NEXT_PUBLIC_APP_URL: https://cloud-staging.eliza.app",
+    );
+    expect(buildPages).toContain("VITE_ENVIRONMENT: staging");
+  });
 });
 
 describe("committed AASA and provisioning workflows match the policy", () => {
