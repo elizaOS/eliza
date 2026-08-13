@@ -1,0 +1,342 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Eliza Research — AI and people</title>
+<meta name="description" content="Eliza Research builds products at the intersection of AI and people: Eliza, a personal superagent and open source operating system, and slop.cash, a swarm contribution platform." />
+<meta property="og:title" content="Eliza Research" />
+<meta property="og:description" content="Products at the intersection of AI and people." />
+<meta property="og:url" content="https://elizaresearch.ai" />
+<meta property="og:type" content="website" />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='14' fill='%2321a35b'/%3E%3Ccircle cx='16' cy='16' r='5' fill='white'/%3E%3C/svg%3E" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Archivo:ital,wdth,wght@0,62..125,100..900;1,62..125,100..900&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --green: oklch(0.62 0.155 148);
+    --green-bright: oklch(0.72 0.19 145);
+    --green-deep: oklch(0.32 0.09 150);
+    --green-ink: oklch(0.24 0.06 152);
+    --ink: oklch(0.18 0.01 150);
+    --bg: oklch(1 0 0);
+    --muted: oklch(0.42 0.02 150);
+    --line: oklch(0.9 0.01 150);
+    --z-nav: 10;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    font-family: "Archivo", system-ui, sans-serif;
+    font-variation-settings: "wdth" 100;
+    background: var(--bg);
+    color: var(--ink);
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+  h1, h2, h3 { text-wrap: balance; line-height: 1.02; }
+  p { text-wrap: pretty; max-width: 62ch; }
+  a { color: inherit; }
+  ::selection { background: var(--green); color: white; }
+
+  .wrap { max-width: 1200px; margin-inline: auto; padding-inline: clamp(1.25rem, 4vw, 3rem); }
+
+  /* ---------- nav ---------- */
+  nav {
+    position: absolute; inset: 0 0 auto 0; z-index: var(--z-nav);
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 1.1rem clamp(1.25rem, 4vw, 3rem);
+    color: white;
+  }
+  nav .mark { font-weight: 800; font-size: 1.05rem; letter-spacing: -0.01em; text-decoration: none; font-variation-settings: "wdth" 112; }
+  nav .links { display: flex; gap: 1.75rem; }
+  nav .links a { text-decoration: none; font-weight: 600; font-size: 0.92rem; opacity: 0.85; transition: opacity 0.2s; }
+  nav .links a:hover { opacity: 1; }
+
+  /* ---------- hero ---------- */
+  header {
+    position: relative; min-height: 100svh;
+    background: var(--green);
+    color: white; overflow: hidden;
+    display: grid; align-content: end;
+  }
+  #swarm { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .hero-inner { position: relative; padding-block: clamp(3rem, 8vh, 6rem); }
+  .hero-inner h1 {
+    font-size: clamp(2.6rem, 8.5vw, 5.8rem);
+    font-weight: 850; letter-spacing: -0.03em;
+    font-variation-settings: "wdth" 118;
+    text-transform: none;
+    max-width: 14ch;
+  }
+  .hero-inner .tag {
+    margin-top: 1.4rem; font-size: clamp(1.05rem, 2vw, 1.35rem);
+    font-weight: 500; max-width: 44ch; color: oklch(0.97 0.02 148);
+  }
+  .hero-inner .down {
+    display: inline-flex; align-items: center; gap: 0.5rem;
+    margin-top: 2.2rem; font-weight: 700; text-decoration: none;
+    border: 2px solid white; border-radius: 999px;
+    padding: 0.7rem 1.4rem; font-size: 0.95rem;
+    transition: background 0.2s, color 0.2s;
+  }
+  .hero-inner .down:hover { background: white; color: var(--green-deep); }
+
+  /* ---------- statement ---------- */
+  .statement { padding-block: clamp(5rem, 14vh, 10rem); }
+  .statement p {
+    font-size: clamp(1.5rem, 3.4vw, 2.5rem);
+    font-weight: 640; letter-spacing: -0.02em; line-height: 1.22;
+    max-width: 26ch;
+  }
+  .statement em { font-style: normal; color: var(--green); }
+
+  /* ---------- products ---------- */
+  .product { padding-block: clamp(4rem, 10vh, 7rem); }
+  .product .grid {
+    display: grid; gap: clamp(2rem, 5vw, 5rem);
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    align-items: center;
+  }
+  .product h2 {
+    font-size: clamp(2.2rem, 5.5vw, 4rem);
+    font-weight: 830; letter-spacing: -0.028em;
+    font-variation-settings: "wdth" 116;
+  }
+  .product .role { margin-top: 0.5rem; font-weight: 700; font-size: 1.05rem; }
+  .product .body { margin-top: 1.25rem; font-size: 1.08rem; color: var(--muted); }
+  .product .cta {
+    display: inline-block; margin-top: 1.8rem; font-weight: 700;
+    text-decoration: none; border-bottom: 2px solid currentColor;
+    padding-bottom: 2px; transition: opacity 0.15s;
+  }
+  .product .cta:hover { opacity: 0.65; }
+
+  #eliza { border-top: 1px solid var(--line); }
+  #eliza .role { color: var(--green); }
+  #eliza .cta { color: var(--green); }
+
+  .figure {
+    aspect-ratio: 4 / 3; border-radius: 1.25rem; overflow: hidden;
+    display: grid; place-items: center; position: relative;
+  }
+  #eliza .figure { background: var(--green-ink); }
+  #eliza .figure svg, #slop .figure svg { width: 100%; height: 100%; display: block; }
+
+  #slop {
+    background: var(--green-ink); color: oklch(0.96 0.015 148);
+  }
+  #slop .role { color: var(--green-bright); }
+  #slop .body { color: oklch(0.78 0.03 148); }
+  #slop .cta { color: var(--green-bright); }
+  #slop .figure { background: oklch(0.2 0.045 152); }
+
+  /* ---------- footer ---------- */
+  footer { background: var(--green-ink); color: oklch(0.96 0.015 148); padding-block: clamp(3rem, 8vh, 5rem) 2rem; border-top: 1px solid oklch(0.32 0.05 150); }
+  footer .big {
+    font-size: clamp(1.9rem, 5vw, 3.2rem); font-weight: 820;
+    letter-spacing: -0.025em; font-variation-settings: "wdth" 114;
+  }
+  footer a.mail {
+    color: var(--green-bright); text-decoration: none; font-weight: 700;
+    border-bottom: 2px solid currentColor; padding-bottom: 2px;
+  }
+  footer a.mail:hover { opacity: 0.75; }
+  footer .row {
+    margin-top: clamp(2.5rem, 6vh, 4rem);
+    display: flex; flex-wrap: wrap; gap: 1rem 2rem; justify-content: space-between;
+    font-size: 0.9rem; color: oklch(0.7 0.03 148);
+  }
+  footer .row a { color: inherit; text-decoration: none; }
+  footer .row a:hover { color: oklch(0.9 0.02 148); }
+
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    * { animation: none !important; transition: none !important; }
+  }
+</style>
+</head>
+<body>
+
+<nav aria-label="Main">
+  <a class="mark" href="#">Eliza&nbsp;Research</a>
+  <div class="links">
+    <a href="#eliza">Eliza</a>
+    <a href="#slop">slop.cash</a>
+    <a href="#contact">Contact</a>
+  </div>
+</nav>
+
+<header>
+  <canvas id="swarm" aria-hidden="true"></canvas>
+  <div class="wrap hero-inner">
+    <h1>AI, built around people.</h1>
+    <p class="tag">Eliza Research builds products at the intersection of artificial intelligence and the people who live with it.</p>
+    <a class="down" href="#eliza">See what we make ↓</a>
+  </div>
+</header>
+
+<section class="statement wrap">
+  <p>Intelligence is getting cheap. <em>Agency</em> is the scarce thing — software that acts for you, answers to you, and belongs to everyone.</p>
+</section>
+
+<section class="product" id="eliza">
+  <div class="wrap grid">
+    <div>
+      <h2>Eliza</h2>
+      <p class="role">Your personal superagent — and an open source operating system.</p>
+      <p class="body">Eliza is an agent that lives with you: it remembers, schedules, connects to your tools, and acts on your behalf across every device you own. Underneath it is elizaOS, a fully open source operating system for agents — auditable, extensible, and yours to run anywhere, from a laptop to a phone to your own metal.</p>
+      <a class="cta" href="https://github.com/elizaOS/eliza">Explore elizaOS on GitHub →</a>
+    </div>
+    <div class="figure" role="img" aria-label="Diagram of one agent orbited by the tools and devices it coordinates">
+      <svg viewBox="0 0 400 300">
+        <g stroke="oklch(0.72 0.19 145)" stroke-width="1.2" fill="none" opacity="0.65">
+          <circle cx="200" cy="150" r="58"/><circle cx="200" cy="150" r="96"/><circle cx="200" cy="150" r="132"/>
+        </g>
+        <g fill="oklch(0.72 0.19 145)">
+          <circle cx="200" cy="150" r="14"/>
+          <circle cx="258" cy="150" r="6"/><circle cx="152" cy="72" r="6"/><circle cx="104" cy="182" r="6"/>
+          <circle cx="296" cy="216" r="6"/><circle cx="278" cy="62" r="6"/><circle cx="88" cy="120" r="6"/>
+        </g>
+        <g stroke="oklch(0.72 0.19 145)" stroke-width="1.2" opacity="0.5">
+          <line x1="200" y1="150" x2="258" y2="150"/><line x1="200" y1="150" x2="152" y2="72"/>
+          <line x1="200" y1="150" x2="104" y2="182"/><line x1="200" y1="150" x2="296" y2="216"/>
+          <line x1="200" y1="150" x2="278" y2="62"/><line x1="200" y1="150" x2="88" y2="120"/>
+        </g>
+      </svg>
+    </div>
+  </div>
+</section>
+
+<section class="product" id="slop">
+  <div class="wrap grid">
+    <div class="figure" role="img" aria-label="Diagram of many small contributors converging on a shared problem">
+      <svg viewBox="0 0 400 300" id="slop-svg">
+        <g fill="oklch(0.72 0.19 145)" id="slop-dots"></g>
+        <circle cx="200" cy="150" r="26" fill="none" stroke="oklch(0.72 0.19 145)" stroke-width="2"/>
+        <circle cx="200" cy="150" r="8" fill="oklch(0.72 0.19 145)"/>
+      </svg>
+    </div>
+    <div>
+      <h2>slop.cash</h2>
+      <p class="role">A swarm contribution platform.</p>
+      <p class="body">Some problems are too big for any one machine or any one team. slop.cash incentivizes compute applied to swarm problems: post a problem, fund it, and let a swarm of contributors — human and machine — earn by moving it forward. Contribution is measured, rewarded, and open to anyone with cycles to spare.</p>
+      <a class="cta" href="https://slop.cash">Visit slop.cash →</a>
+    </div>
+  </div>
+</section>
+
+<footer id="contact">
+  <div class="wrap">
+    <p class="big">Work on this with us.</p>
+    <p style="margin-top:1rem; max-width:48ch; color:oklch(0.78 0.03 148);">We're a small team building in the open. If that sounds like you, write to us: <a class="mail" href="mailto:hello@elizaresearch.ai">hello@elizaresearch.ai</a></p>
+    <div class="row">
+      <span>© 2026 Eliza Research</span>
+      <span style="display:flex; gap:1.5rem;">
+        <a href="https://github.com/elizaOS">GitHub</a>
+        <a href="https://x.com/elizaOS">X</a>
+        <a href="https://slop.cash">slop.cash</a>
+      </span>
+    </div>
+  </div>
+</footer>
+
+<script>
+// Hero swarm: boid-like particles drifting with mild flocking, drawn in white on the green field.
+(() => {
+  const canvas = document.getElementById("swarm");
+  const ctx = canvas.getContext("2d");
+  const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  let W, H, dpr;
+  const N = 90;
+  const boids = [];
+
+  function resize() {
+    dpr = Math.min(devicePixelRatio || 1, 2);
+    W = canvas.clientWidth; H = canvas.clientHeight;
+    canvas.width = W * dpr; canvas.height = H * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+  resize();
+  addEventListener("resize", resize);
+
+  for (let i = 0; i < N; i++) {
+    const a = Math.random() * Math.PI * 2;
+    boids.push({ x: Math.random() * innerWidth, y: Math.random() * innerHeight,
+      vx: Math.cos(a) * 0.6, vy: Math.sin(a) * 0.6 });
+  }
+
+  function step() {
+    for (const b of boids) {
+      let ax = 0, ay = 0, cx = 0, cy = 0, n = 0;
+      for (const o of boids) {
+        if (o === b) continue;
+        const dx = o.x - b.x, dy = o.y - b.y, d2 = dx * dx + dy * dy;
+        if (d2 < 90 * 90) { cx += o.x; cy += o.y; ax += o.vx; ay += o.vy; n++; }
+        if (d2 < 26 * 26 && d2 > 0) { b.vx -= dx / d2 * 6; b.vy -= dy / d2 * 6; }
+      }
+      if (n) {
+        b.vx += ((cx / n - b.x) * 0.0012) + ((ax / n - b.vx) * 0.03);
+        b.vy += ((cy / n - b.y) * 0.0012) + ((ay / n - b.vy) * 0.03);
+      }
+      const sp = Math.hypot(b.vx, b.vy) || 1;
+      const target = 0.8;
+      b.vx = b.vx / sp * Math.min(Math.max(sp, 0.4), 1.4);
+      b.vy = b.vy / sp * Math.min(Math.max(sp, 0.4), 1.4);
+      b.x += b.vx; b.y += b.vy;
+      if (b.x < -10) b.x = W + 10; if (b.x > W + 10) b.x = -10;
+      if (b.y < -10) b.y = H + 10; if (b.y > H + 10) b.y = -10;
+    }
+  }
+
+  function draw() {
+    ctx.clearRect(0, 0, W, H);
+    ctx.strokeStyle = "rgba(255,255,255,0.18)";
+    ctx.lineWidth = 1;
+    for (let i = 0; i < boids.length; i++) {
+      for (let j = i + 1; j < boids.length; j++) {
+        const a = boids[i], b = boids[j];
+        const dx = a.x - b.x, dy = a.y - b.y;
+        if (dx * dx + dy * dy < 70 * 70) {
+          ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+        }
+      }
+    }
+    ctx.fillStyle = "rgba(255,255,255,0.9)";
+    for (const b of boids) {
+      ctx.beginPath(); ctx.arc(b.x, b.y, 2.2, 0, Math.PI * 2); ctx.fill();
+    }
+  }
+
+  function loop() { step(); draw(); requestAnimationFrame(loop); }
+  if (reduced) { step(); draw(); } else { loop(); }
+})();
+
+// slop.cash figure: static scatter of contributors with faint convergence lines.
+(() => {
+  const g = document.getElementById("slop-dots");
+  const svg = document.getElementById("slop-svg");
+  let lines = "";
+  let dots = "";
+  let seed = 7;
+  const rand = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  for (let i = 0; i < 46; i++) {
+    const a = rand() * Math.PI * 2;
+    const r = 60 + rand() * 120;
+    const x = 200 + Math.cos(a) * r * 1.25;
+    const y = 150 + Math.sin(a) * r * 0.85;
+    dots += `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${(2 + rand() * 2.4).toFixed(1)}"/>`;
+    if (rand() > 0.45) lines += `<line x1="${x.toFixed(1)}" y1="${y.toFixed(1)}" x2="200" y2="150"/>`;
+  }
+  g.innerHTML = dots;
+  const lg = document.createElementNS("http://www.w3.org/2000/svg", "g");
+  lg.setAttribute("stroke", "oklch(0.72 0.19 145)");
+  lg.setAttribute("stroke-width", "0.7");
+  lg.setAttribute("opacity", "0.35");
+  lg.innerHTML = lines;
+  svg.insertBefore(lg, g);
+})();
+</script>
+</body>
+</html>
