@@ -465,6 +465,55 @@ describe("composeState provider execution", () => {
 		await adapter.close();
 	});
 
+	it("keeps provider-internal model calls off the streaming path for a caller with no streaming context", async () => {
+		const adapter = new InMemoryDatabaseAdapter();
+		await adapter.init();
+		const runtime = new AgentRuntime({
+			character: { name: "provider-nonstreaming-caller" } as Character,
+			adapter,
+		});
+		const observed: { stream?: unknown; hasSignal: boolean }[] = [];
+		runtime.registerModel(
+			ModelType.TEXT_SMALL,
+			async (_runtime, params: unknown) => {
+				const streamingParams = params as {
+					stream?: boolean;
+					signal?: AbortSignal;
+				};
+				observed.push({
+					stream: streamingParams.stream,
+					hasSignal: streamingParams.signal !== undefined,
+				});
+				return "provider model result";
+			},
+			"provider-nonstreaming-caller-test",
+			0,
+			{ streamable: true },
+		);
+		runtime.registerProvider({
+			name: "USES_INTERNAL_MODEL",
+			get: async (providerRuntime) => ({
+				text: await providerRuntime.useModel(ModelType.TEXT_SMALL, {
+					prompt: "build private provider context",
+				}),
+			}),
+		});
+
+		// No ambient streaming context: an evaluator/autonomy/prompt-batcher
+		// compose. The execution-owned cancellation scope must still reach the
+		// nested call, but it carries no chunk consumer and must not flip the
+		// call onto the streaming code path.
+		const state = await runtime.composeState(
+			makeMessage("21212121-2121-2121-2121-212121212121"),
+			["USES_INTERNAL_MODEL"],
+			true,
+		);
+
+		expect(state.text).toBe("provider model result");
+		expect(observed).toEqual([{ stream: false, hasSignal: true }]);
+		await adapter.close();
+	});
+
 	it("does not start provider work for an owner that was already cancelled", async () => {
 		const runtime = new AgentRuntime({
 			character: { name: "provider-pre-aborted-owner" } as Character,
