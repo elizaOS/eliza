@@ -45,4 +45,50 @@ describe("loadShellConfig", () => {
       `SHELL_ALLOWED_DIRECTORY does not exist: ${missingDirectory}`,
     );
   });
+
+  it.each([
+    ["SHELL_TIMEOUT", "1oops"],
+    ["SHELL_MAX_OUTPUT_CHARS", "1e3"],
+    ["SHELL_PENDING_MAX_OUTPUT_CHARS", " 200000"],
+    ["SHELL_BACKGROUND_MS", "9007199254740992"],
+  ])("rejects malformed positive integer %s values", (name, value) => {
+    vi.stubEnv(name, value);
+
+    expect(() => loadShellConfig()).toThrow(
+      `Shell plugin configuration error: ${name} must be a positive decimal integer`,
+    );
+  });
+
+  it("preserves valid decimal values across every numeric setting", () => {
+    vi.stubEnv("SHELL_TIMEOUT", "45000");
+    vi.stubEnv("SHELL_MAX_OUTPUT_CHARS", "250000");
+    vi.stubEnv("SHELL_PENDING_MAX_OUTPUT_CHARS", "150000");
+    vi.stubEnv("SHELL_BACKGROUND_MS", "12000");
+
+    expect(loadShellConfig()).toMatchObject({
+      timeout: 45000,
+      maxOutputChars: 250000,
+      pendingMaxOutputChars: 150000,
+      defaultBackgroundMs: 12000,
+    });
+  });
+
+  it.each(["0", "-1"])(
+    "continues to reject non-positive timeout %s",
+    (value) => {
+      vi.stubEnv("SHELL_TIMEOUT", value);
+
+      expect(() => loadShellConfig()).toThrow(
+        "Shell plugin configuration error: SHELL_TIMEOUT must be a positive decimal integer",
+      );
+    },
+  );
+
+  it("rejects timeout values above Node's maximum timer delay", () => {
+    vi.stubEnv("SHELL_TIMEOUT", "2147483648");
+
+    expect(() => loadShellConfig()).toThrow(
+      "Shell plugin configuration error: SHELL_TIMEOUT must be a positive decimal integer no greater than 2147483647",
+    );
+  });
 });

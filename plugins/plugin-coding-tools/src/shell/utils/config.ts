@@ -20,6 +20,29 @@ const configSchema = z.object({
   allowBackground: z.boolean().default(true),
 });
 
+const MAX_TIMER_DELAY_MS = 2_147_483_647;
+
+function parsePositiveIntegerEnv(
+  name: string,
+  fallback: number,
+  maximum = Number.MAX_SAFE_INTEGER,
+): number {
+  const raw = process.env[name];
+  if (raw === undefined || raw === "") return fallback;
+  if (!/^[1-9]\d*$/.test(raw)) {
+    throw new Error(
+      `Shell plugin configuration error: ${name} must be a positive decimal integer`,
+    );
+  }
+  const parsed = Number(raw);
+  if (!Number.isSafeInteger(parsed) || parsed > maximum) {
+    throw new Error(
+      `Shell plugin configuration error: ${name} must be a positive decimal integer no greater than ${maximum}`,
+    );
+  }
+  return parsed;
+}
+
 export const DEFAULT_FORBIDDEN_COMMANDS: readonly string[] = [
   "rm -rf /",
   "rmdir",
@@ -50,18 +73,23 @@ export const DEFAULT_FORBIDDEN_COMMANDS: readonly string[] = [
 
 export function loadShellConfig(): ShellConfig {
   const allowedDirectory = process.env.SHELL_ALLOWED_DIRECTORY || process.cwd();
-  const timeout = parseInt(process.env.SHELL_TIMEOUT || "30000", 10);
-  const maxOutputChars = parseInt(
-    process.env.SHELL_MAX_OUTPUT_CHARS || "200000",
-    10,
+  const timeout = parsePositiveIntegerEnv(
+    "SHELL_TIMEOUT",
+    30000,
+    MAX_TIMER_DELAY_MS,
   );
-  const pendingMaxOutputChars = parseInt(
-    process.env.SHELL_PENDING_MAX_OUTPUT_CHARS || "200000",
-    10,
+  const maxOutputChars = parsePositiveIntegerEnv(
+    "SHELL_MAX_OUTPUT_CHARS",
+    200000,
   );
-  const defaultBackgroundMs = parseInt(
-    process.env.SHELL_BACKGROUND_MS || "10000",
-    10,
+  const pendingMaxOutputChars = parsePositiveIntegerEnv(
+    "SHELL_PENDING_MAX_OUTPUT_CHARS",
+    200000,
+  );
+  const defaultBackgroundMs = parsePositiveIntegerEnv(
+    "SHELL_BACKGROUND_MS",
+    10000,
+    MAX_TIMER_DELAY_MS,
   );
   const allowBackground = process.env.SHELL_ALLOW_BACKGROUND !== "false";
 
