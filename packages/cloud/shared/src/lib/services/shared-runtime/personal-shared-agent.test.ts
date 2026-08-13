@@ -1,7 +1,11 @@
 /** Verifies the rowless personal Eliza identity and default runtime projection. */
 
 import { describe, expect, test } from "bun:test";
-import { personalSharedAgent, personalSharedAgentId } from "./personal-shared-agent";
+import {
+  isPersonalSharedAgentId,
+  personalSharedAgent,
+  personalSharedAgentId,
+} from "./personal-shared-agent";
 
 const account = {
   organizationId: "00000000-0000-4000-8000-000000000001",
@@ -18,7 +22,11 @@ describe("personalSharedAgent", () => {
     });
 
     expect(first).toBe(second);
-    expect(first).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+    expect(first).toMatch(
+      /^personal:[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+    );
+    expect(isPersonalSharedAgentId(first)).toBe(true);
+    expect(isPersonalSharedAgentId(first.slice("personal:".length))).toBe(false);
     expect(otherUser).not.toBe(first);
   });
 

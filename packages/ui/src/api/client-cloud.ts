@@ -1596,6 +1596,15 @@ declare module "./client-base" {
       webUiUrl?: string | null;
       executionTier?: string;
     }>;
+    /** Resolve the signed-in account's rowless personal Shared Eliza. */
+    getPersonalSharedEliza(options: {
+      cloudApiBase: string;
+      authToken: string;
+    }): Promise<{
+      agentId: string;
+      agentName: string;
+      apiBase: string;
+    }>;
     /**
      * Reuse an existing cloud agent when one exists (so we don't mint a brand-new
      * agent on every sign-in), otherwise create + provision a fresh named one.
@@ -3989,6 +3998,46 @@ function pickPreferredCloudAgent(
   );
   return nonTerminal[0] ?? null;
 }
+
+ElizaClient.prototype.getPersonalSharedEliza = async (options) => {
+  const cloudApiBase = resolveDirectCloudAuthApiBase(options.cloudApiBase);
+  const url = `${cloudApiBase}/api/v1/eliza/shared/messages`;
+  const response = await directCloudJsonResponse<unknown>(url, {
+    headers: {
+      Accept: "application/json",
+      Authorization: `Bearer ${options.authToken}`,
+    },
+  });
+  if (!response.ok) {
+    throw Object.assign(
+      new Error(
+        directCloudResponseErrorMessage(response.status, response.data),
+      ),
+      { status: response.status, data: response.data, url },
+    );
+  }
+  const root = recordOrNull(response.data);
+  const data = recordOrNull(root?.data);
+  const identity = recordOrNull(data?.identity);
+  const agentId = firstString(identity?.id);
+  const agentName = firstString(identity?.displayName);
+  if (
+    root?.success !== true ||
+    identity?.runtime !== "shared" ||
+    !agentId ||
+    !agentId.startsWith("personal:") ||
+    !agentName
+  ) {
+    throw new Error(
+      "Eliza Cloud returned an invalid personal Shared identity.",
+    );
+  }
+  return {
+    agentId,
+    agentName,
+    apiBase: buildCloudSharedAgentApiBase(cloudApiBase, agentId),
+  };
+};
 
 ElizaClient.prototype.selectOrProvisionCloudAgent = async function (
   this: ElizaClient,

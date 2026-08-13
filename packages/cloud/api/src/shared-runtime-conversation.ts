@@ -32,6 +32,11 @@ type ConversationRequest =
       rpc: BridgeRequest;
     }
   | { operation: "stream"; agent: CachedAgentSandbox; rpc: BridgeRequest }
+  | {
+      operation: "personal-stream";
+      agent: SharedRuntimeAgent;
+      rpc: BridgeRequest;
+    }
   | { operation: "history"; agentId: string; roomId: string }
   | { operation: "delete"; agentId: string };
 
@@ -337,7 +342,8 @@ export class SharedRuntimeConversation {
         "@/lib/services/shared-runtime/shared-runtime-chat"
       );
       const agent =
-        payload.operation === "personal-bridge"
+        payload.operation === "personal-bridge" ||
+        payload.operation === "personal-stream"
           ? payload.agent
           : await import(
               "@/lib/services/shared-runtime/cached-agent-dates"
@@ -347,12 +353,19 @@ export class SharedRuntimeConversation {
       const executionCtx = {
         waitUntil: (promise: Promise<unknown>) => this.state.waitUntil(promise),
       };
-      if (payload.operation === "stream") {
+      if (
+        payload.operation === "stream" ||
+        payload.operation === "personal-stream"
+      ) {
         return await sharedRuntimeChatService.stream(agent, payload.rpc, {
           abortSignal: request.signal,
           executionCtx,
           historyStore,
           turnClaims,
+          funding:
+            payload.operation === "personal-stream"
+              ? "platform"
+              : "organization-credits",
         });
       }
       const result = await sharedRuntimeChatService.bridge(agent, payload.rpc, {

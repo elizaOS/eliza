@@ -6,7 +6,6 @@
  * deployment fault cannot fall through to repository-backed execution.
  */
 
-import type { AgentSandbox } from "../../../db/repositories/agent-sandboxes";
 import type { RuntimeDurableObjectNamespace } from "../../../types/cloud-worker-env";
 import { InsufficientCreditsError, RateLimitError } from "../../api/errors";
 import { logger } from "../../utils/logger";
@@ -142,7 +141,7 @@ export async function coordinateSharedBridge(
 }
 
 export async function coordinateSharedStream(
-  agent: AgentSandbox,
+  agent: SharedRuntimeAgent,
   rpc: BridgeRequest,
   options: SharedConversationCoordinatorOptions,
 ): Promise<Response> {
@@ -152,7 +151,11 @@ export async function coordinateSharedStream(
     .fetch("https://shared-runtime.internal/stream", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ operation: "stream", agent, rpc }),
+      body: JSON.stringify({
+        operation: options.agentKind === "personal" ? "personal-stream" : "stream",
+        agent,
+        rpc,
+      }),
       ...(options.abortSignal ? { signal: options.abortSignal } : {}),
     });
   return await requireCoordinatorResponse(response, "stream");
