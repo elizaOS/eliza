@@ -413,13 +413,24 @@ function isBrowserLinkableContinuationForAccount(
 /** Resolve an opaque messaging continuation without mutating or binding it. */
 export async function inspectOnboardingContinuation(
   continuationToken: string,
-  authenticatedAccount: { userId: string; organizationId: string },
+  authenticatedAccount: {
+    userId: string;
+    organizationId: string;
+    telegramId?: string;
+    discordId?: string;
+  },
 ): Promise<OnboardingContinuationPreview> {
   const sessionId = await resolveContinuationToken(continuationToken);
   const session = sessionId ? await loadOnboardingSessionForValidation(sessionId) : null;
   if (!isBrowserLinkableContinuationForAccount(session, authenticatedAccount)) {
     throw trustedBrowserContinuationError(session);
   }
+  // Preview is an authorization boundary too: it returns the attested platform
+  // identity before the mutating confirmation turn. A signed Discord or
+  // Telegram session for a different account must not learn that identity.
+  assertAuthenticatedPlatformIdentity(session, {
+    authenticatedUser: authenticatedAccount,
+  });
   return {
     platform: session.platform,
     platformUserId: session.platformUserId,

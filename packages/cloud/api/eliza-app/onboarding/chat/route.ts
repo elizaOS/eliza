@@ -80,11 +80,16 @@ app.get("/", async (c) => {
   } catch (error) {
     if (
       isElizaError(error) &&
-      error.code === "ONBOARDING_TRUSTED_CONTINUATION_INVALID"
+      (error.code === "ONBOARDING_PLATFORM_IDENTITY_MISMATCH" ||
+        error.code === "ONBOARDING_TRUSTED_CONTINUATION_INVALID")
     ) {
       return failureResponse(
         c,
-        ForbiddenError("This connection link is invalid or expired"),
+        ForbiddenError(
+          error.code === "ONBOARDING_PLATFORM_IDENTITY_MISMATCH"
+            ? "Authenticate with the same messaging account that started this onboarding session"
+            : "This connection link is invalid or expired",
+        ),
       );
     }
     return failureResponse(c, error);
