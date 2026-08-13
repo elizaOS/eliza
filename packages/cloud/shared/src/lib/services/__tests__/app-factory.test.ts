@@ -80,8 +80,7 @@ const DATA = {
   app_url: "https://demo.example.com",
 };
 
-const DEFAULT_TEMPLATE_IMAGE =
-  "ghcr.io/elizaos/example-edad@sha256:a1b32e421ac1a7a3b3e1485fa34ceced6dec756893baf8bc9022298c3f6d0f88";
+const DEFAULT_TEMPLATE_IMAGE = "ghcr.io/elizaos/example-edad:showcase";
 const buildOff = { resolveImage: undefined } as unknown as AppDeployRunnerDeps;
 
 function metaImageTag(metadata: unknown): string | undefined {

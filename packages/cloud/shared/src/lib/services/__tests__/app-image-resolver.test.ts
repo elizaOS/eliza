@@ -124,22 +124,18 @@ describe("makePrebuiltImageMapResolver", () => {
     expect(makePrebuiltImageMapResolver({ APP_PREBUILT_IMAGES: "not-json" })).toBeUndefined();
   });
 
-  test("pins first-party showcase mutable tags to digest refs (#13097)", async () => {
+  test("passes through refs unchanged — no speculative digest pinning (#13097)", async () => {
     const resolve = makePrebuiltImageMapResolver({
       APP_PREBUILT_IMAGES: JSON.stringify({
         "eDad Showcase": "ghcr.io/elizaos/example-edad:showcase",
-        "Clone Your Crush Showcase": "ghcr.io/elizaos/example-clone-ur-crush:showcase",
       }),
     });
 
     expect(resolve).toBeDefined();
+    // Refs are passed through as-is; the canonical CONTAINER_IMAGE_REQUIRE_DIGEST
+    // gate in app-deploy-runner.ts handles rejection of mutable tags when armed.
     await expect(resolve?.({ id: APP, name: "eDad Showcase 1a2b", metadata: {} })).resolves.toBe(
-      "ghcr.io/elizaos/example-edad@sha256:a1b32e421ac1a7a3b3e1485fa34ceced6dec756893baf8bc9022298c3f6d0f88",
-    );
-    await expect(
-      resolve?.({ id: APP, name: "Clone Your Crush Showcase 8f3a", metadata: {} }),
-    ).resolves.toBe(
-      "ghcr.io/elizaos/example-clone-ur-crush@sha256:0c69b045f44e799f4415d346450713c49129793c45caccb8512deeee5d6701f7",
+      "ghcr.io/elizaos/example-edad:showcase",
     );
   });
 

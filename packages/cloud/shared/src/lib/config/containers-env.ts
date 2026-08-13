@@ -11,7 +11,6 @@
 
 import * as fs from "node:fs";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
-import { isProductionDeployment } from "./deployment-environment";
 
 /**
  * Where the effective SSH private key for Docker-node connections resolves
@@ -343,21 +342,21 @@ export const containersEnv = {
    * First-party TEMPLATE image stamped onto a template app (one created WITHOUT a
    * user repo) at create time, so create -> deploy resolves to a prebuilt,
    * allowlisted image instead of failing with "no image to deploy".
-   *
-   * DEFAULT is pinned to a known sha256 digest of
-   * `ghcr.io/elizaos/example-edad:showcase` so the registry cannot swap the
-   * bytes behind the mutable `:showcase` tag after the deploy-time allowlist
-   * check passes. Resolved via `docker buildx imagetools inspect` on
-   * 2026-08-13; re-pin after every future production image publish.
-   *
-   * Override the whole ref via `APP_DEFAULT_TEMPLATE_IMAGE`.
-   */
+   /**
+    * Defaults to the retained `:showcase` template image. It sits under
+    * `ghcr.io/elizaos/*`, so the apps-deploy allowlist permits it unchanged.
+    * Override the whole ref via `APP_DEFAULT_TEMPLATE_IMAGE`.
+    *
+    * DIGEST PIN (#13097): when `CONTAINER_IMAGE_REQUIRE_DIGEST=true` is armed
+    * (the canonical gate in `requireDigestPinnedImages`), this default MUST be
+    * overridden with a digest-pinned ref — the deploy runner's gate rejects
+    * mutable tags. Until operator-accepted digest pins exist for the first-party
+    * showcase images (see issue #13097), the default remains a mutable tag and
+    * the canonical gate stays opt-in (default OFF).
+    */
   appDefaultTemplateImage(): string {
     const env = getCloudAwareEnv();
-    return (
-      pick(env.APP_DEFAULT_TEMPLATE_IMAGE) ??
-      "ghcr.io/elizaos/example-edad@sha256:a1b32e421ac1a7a3b3e1485fa34ceced6dec756893baf8bc9022298c3f6d0f88"
-    );
+    return pick(env.APP_DEFAULT_TEMPLATE_IMAGE) ?? "ghcr.io/elizaos/example-edad:showcase";
   },
 
   /**
@@ -383,39 +382,6 @@ export const containersEnv = {
         env.CONTAINERS_IMAGE_REQUIRE_DIGEST,
       ) === "true"
     );
-  },
-
-  /**
-   * Whether APPS-DEPLOY image refs MUST be pinned to a full `@sha256:<64hex>`
-   * digest — the apps-deploy-specific arm of the immutable-image gate
-   * ({@link requireDigestPinnedImages} is the shared-node gate; this one
-   * controls the apps-deploy build-from-repo lane specifically).
-   *
-   * SECURITY (#13097): a mutable tag (`:latest`, `:showcase`) lets the registry
-   * swap the bytes behind an allowed name after the allowlist gate passes. The
-   * apps-deploy build pipeline now captures the digest atomically from the build
-   * invocation (buildx `--metadata-file`), so a deployed ref is
-   * content-addressed end-to-end.
-   *
-   * OPT-OUT RESTRICTED TO NON-PRODUCTION: the immutable lane is the GA path for
-   * production and staging (the linked issue #13097 requires
-   * `CONTAINER_IMAGE_REQUIRE_DIGEST=true` in staging/prod). An operator MAY
-   * disable it for local/dev/verification builds with
-   * `APPS_DEPLOY_REQUIRE_DIGEST=false`, but that opt-out is REFUSED in
-   * production — a deployed production binding cannot silently reopen mutable
-   * apps. Default: ON (immutable is the safe direction).
-   */
-  appsDeployRequireDigest(env: Record<string, string | undefined> = process.env): boolean {
-    const raw = env.APPS_DEPLOY_REQUIRE_DIGEST;
-    if (raw === undefined) return true; // default ON
-    if (raw === "false" || raw === "0") {
-      // Opt-out is restricted to non-production only.
-      if (isProductionDeployment(env)) {
-        return true; // production override refused — immutable stays on
-      }
-      return false; // non-production opt-out honored
-    }
-    return raw === "true" || raw === "1";
   },
 
   /**

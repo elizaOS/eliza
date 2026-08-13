@@ -4,6 +4,7 @@
 // are pure functions operating on the raw JSON buildx writes to --metadata-file;
 // the impure file read lives in AppImageBuilder and is exercised separately.
 import { describe, expect, test } from "bun:test";
+import { ElizaError } from "@elizaos/core";
 import { BuildMetadataError, buildDigestPinnedRef, parseBuildxDigest } from "../build-metadata";
 
 const VALID_DIGEST = "sha256:a1b32e421ac1a7a3b3e1485fa34ceced6dec756893baf8bc9022298c3f6d0f88";
@@ -55,6 +56,18 @@ describe("parseBuildxDigest", () => {
     } catch (error) {
       expect(error).toBeInstanceOf(BuildMetadataError);
       expect((error as Error).cause).toBeDefined();
+    }
+  });
+
+  test("BuildMetadataError extends ElizaError with a stable code (#13097 P2 fix)", () => {
+    try {
+      parseBuildxDigest("not json");
+    } catch (error) {
+      expect(error).toBeInstanceOf(BuildMetadataError);
+      expect(error).toBeInstanceOf(ElizaError);
+      const elizaErr = error as ElizaError;
+      expect(elizaErr.code).toBe("BUILD_METADATA_DIGEST_NOT_CAPTURED");
+      expect(elizaErr.severity).toBe("fatal");
     }
   });
 });

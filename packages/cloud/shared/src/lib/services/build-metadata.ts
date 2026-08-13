@@ -13,6 +13,8 @@
  * ({@link AppImageBuilder}), which composes this.
  */
 
+import { ElizaError } from "@elizaos/core";
+
 const SHA256_DIGEST_RE = /^sha256:[a-f0-9]{64}$/i;
 
 /**
@@ -87,12 +89,23 @@ export function buildDigestPinnedRef(taggedRef: string, digest: string): string 
  * Typed build-boundary error for missing/invalid digest resolution. Thrown
  * instead of silently returning a mutable tag ref so the deploy fails fast at
  * the build boundary — not later at a confusing deploy-time digest gate
- * rejection (#13097). Follows the repository error policy (J1: invariant
- * violation at a designed boundary).
+ * rejection (#13097). Extends {@link ElizaError} so the stable `code` /
+ * structured `context` and `cause` chain follow the repository error policy
+ * (J2: context-adding rethrow at a designed boundary).
  */
-export class BuildMetadataError extends Error {
-  constructor(message: string, options?: ErrorOptions) {
-    super(message, options);
-    this.name = "BuildMetadataError";
+export class BuildMetadataError extends ElizaError {
+  constructor(
+    message: string,
+    options?: { cause?: unknown; metadataPath?: string; tagRef?: string },
+  ) {
+    super(message, {
+      code: "BUILD_METADATA_DIGEST_NOT_CAPTURED",
+      cause: options?.cause,
+      context: {
+        metadataPath: options?.metadataPath,
+        tagRef: options?.tagRef,
+      },
+      severity: "fatal",
+    });
   }
 }

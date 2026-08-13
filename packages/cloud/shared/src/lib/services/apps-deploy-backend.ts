@@ -34,7 +34,7 @@ import {
   makeDirectAppDeployRunner,
   makeNodeAppDeployRunner,
 } from "./app-deploy-runner";
-import { AppImageBuilder, type BuildExec } from "./app-image-builder";
+import { AppImageBuilder, type BuildExec, makeExecMetadataReader } from "./app-image-builder";
 import {
   type AppImageResolver,
   composeImageResolvers,
@@ -95,7 +95,13 @@ export function configureAppsDeployBackend(config: AppsDeployBackendConfig): voi
     if (!registry) {
       throw new Error("[apps-deploy-backend] registry is required when buildExec is set");
     }
-    const builder = new AppImageBuilder({ exec: buildExec });
+    const builder = new AppImageBuilder({
+      exec: buildExec,
+      // Wire the metadata reader so pushed builds capture the atomic digest
+      // (#13097 P0 fix: the production path now reads buildx --metadata-file
+      // via the same SSH exec that ran the build, yielding repo@sha256:<hex>).
+      metadataReader: makeExecMetadataReader(buildExec),
+    });
     buildResolver = makeBuildFromRepoResolver({ builder, registry, dockerfile });
   }
   const prebuiltMapResolver = makePrebuiltImageMapResolver();

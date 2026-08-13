@@ -5,7 +5,12 @@
 // atomic-digest contract: when pushing, the returned ref is digest-pinned from
 // the SAME build invocation's metadata file, never re-resolved by tag.
 import { describe, expect, test } from "bun:test";
-import { AppImageBuilder, type BuildExec, type MetadataReader } from "../app-image-builder";
+import {
+  AppImageBuilder,
+  type BuildExec,
+  type MetadataReader,
+  makeExecMetadataReader,
+} from "../app-image-builder";
 import { BuildMetadataError } from "../build-metadata";
 
 const APP = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
@@ -226,5 +231,58 @@ describe("AppImageBuilder — build isolation (unchanged from prior behavior)", 
     await expect(
       new AppImageBuilder({ exec }).build({ registry: "r", appId: APP, context: "/c" }),
     ).rejects.toThrow(/parse error/);
+  });
+});
+
+describe("AppImageBuilder — production composition (P0 fix)", () => {
+  test("makeExecMetadataReader reads via the same exec seam (production wiring)", async () => {
+    const exec = fakeExec();
+    const reader = makeExecMetadataReader(exec);
+    const result = await reader.read("/tmp/buildx-metadata-abc.json");
+    // The reader executes `cat <path>` via the same exec.
+    expect(exec.calls).toHaveLength(1);
+    expect(exec.calls[0].cmd).toContain("cat /tmp/buildx-metadata-abc.json");
+  });
+
+  test("a pushed build with an exec-based metadata reader captures the digest end-to-end", async () => {
+    const exec = fakeExec();
+    // The exec returns build output for the build command, but we need it to
+    // also return the metadata file content when cat'd. Override exec to handle
+    // both cases.
+    const calls: Array<{ cmd: string }> = [];
+    const multiExec: BuildExec = {
+      async exec(command: string) {
+        calls.push({ cmd: command });
+        if (command.startsWith("cat ")) {
+          return METADATA_JSON;
+        }
+        if (command.startsWith("rm ")) {
+          return "";
+        }
+        return "Successfully built abc123";
+      },
+    };
+    const reader = makeExecMetadataReader(multiExec);
+    const builder = new AppImageBuilder({ exec: multiExec, metadataReader: reader });
+    const res = await builder.build({
+      registry: "ghcr.io/elizaos",
+      appId: APP,
+      sourceRef: "a1b2c3d",
+      context: "/work/repo",
+      push: true,
+    });
+
+    // The returned ref is digest-pinned from the buildx metadata file.
+    expect(res.imageRef).toBe(PINNED_REF);
+    expect(res.digest).toBe(DIGEST);
+
+    // The build command used --metadata-file.
+    const buildCmd = calls.find((c) => c.cmd.includes("docker buildx"));
+    expect(buildCmd).toBeDefined();
+    expect(buildCmd!.cmd).toContain("--metadata-file ");
+
+    // The cleanup `rm -f` was called after the digest was captured.
+    const rmCmd = calls.find((c) => c.cmd.startsWith("rm "));
+    expect(rmCmd).toBeDefined();
   });
 });

@@ -48,6 +48,19 @@ export interface MetadataReader {
   read(path: string): Promise<string>;
 }
 
+/**
+ * Build a {@link MetadataReader} from a {@link BuildExec} so the metadata file
+ * written on the build host can be read back over the same SSH connection that
+ * ran the build. This is the production composition — the exec IS the host path.
+ */
+export function makeExecMetadataReader(exec: BuildExec): MetadataReader {
+  return {
+    async read(path) {
+      return exec.exec(`cat ${path}`);
+    },
+  };
+}
+
 export interface AppImageBuildRequest {
   /** Registry + namespace the image is tagged/pushed under. */
   registry: string;
@@ -165,6 +178,7 @@ export class AppImageBuilder {
       throw new BuildMetadataError(
         `Build pushed ${tagRef} but no metadata reader is configured — cannot capture the atomic digest. ` +
           `Inject a MetadataReader into AppImageBuilder to enable immutable image refs.`,
+        { tagRef },
       );
     }
 
@@ -172,15 +186,26 @@ export class AppImageBuilder {
     try {
       rawMetadata = await this.metadataReader.read(metadataFile);
     } catch (cause) {
+      // error-policy:J2 — wrap the IO failure with a typed build-boundary error
+      // preserving the original cause.
       throw new BuildMetadataError(
         `Failed to read buildx metadata-file at ${metadataFile} after pushing ${tagRef} — ` +
           `the digest was not captured from this build invocation`,
-        { cause },
+        { cause, metadataPath: metadataFile, tagRef },
       );
     }
 
     const digest = parseBuildxDigest(rawMetadata);
     const imageRef = buildDigestPinnedRef(tagRef, digest);
+
+    // Clean up the temp metadata file so /tmp doesn't grow forever (P2 fix).
+    try {
+      await this.exec.exec(`rm -f ${metadataFile}`);
+    } catch {
+      // error-policy:J6 — best-effort cleanup of a temp file on the build host;
+      // the build itself succeeded and the digest was captured.
+    }
+
     return { imageRef, tagRef, digest, buildOutput };
   }
 }

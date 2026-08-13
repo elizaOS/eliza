@@ -19,10 +19,6 @@
  */
 
 import { logger } from "../utils/logger";
-import {
-  type ImagePreflightEntry,
-  scanImageRefsForMutableTags,
-} from "./app-deploy-image-preflight";
 import type { AppImageBuilder } from "./app-image-builder";
 
 /**
@@ -56,54 +52,6 @@ function buildContextFor(repo: string, sourceRef?: string): string {
 }
 
 /**
- * Known first-party showcase image digests — pinned so the default
- * `APP_PREBUILT_IMAGES` mappings are content-addressed, not mutable tags
- * (#13097). Resolved via `docker buildx imagetools inspect` on 2026-08-13;
- * re-pin after every future production image publish.
- *
- * When an operator configures `APP_PREBUILT_IMAGES` with a mutable tag that
- * matches a known first-party repo, the digest is applied automatically. Custom
- * (non-first-party) refs are passed through as-is — the preflight scan flags
- * them if the digest gate is armed.
- */
-const FIRST_PARTY_DIGEST_PINS: Record<string, string> = {
-  "ghcr.io/elizaos/example-edad:showcase":
-    "ghcr.io/elizaos/example-edad@sha256:a1b32e421ac1a7a3b3e1485fa34ceced6dec756893baf8bc9022298c3f6d0f88",
-  "ghcr.io/elizaos/example-clone-ur-crush:showcase":
-    "ghcr.io/elizaos/example-clone-ur-crush@sha256:0c69b045f44e799f4415d346450713c49129793c45caccb8512deeee5d6701f7",
-};
-
-/**
- * Pin a known first-party mutable tag to its digest ref. Returns the original
- * ref unchanged when it is not a recognized first-party mutable tag (already
- * digest-pinned, a custom repo, or a tag without a published digest).
- */
-function pinFirstPartyDigest(ref: string): string {
-  const trimmed = ref.trim();
-  // Already digest-pinned — leave as-is.
-  if (trimmed.includes("@sha256:")) return trimmed;
-  const pinned = FIRST_PARTY_DIGEST_PINS[trimmed];
-  return pinned ?? trimmed;
-}
-
-/**
- * Scan configured + default image refs for mutable tags and log findings. Called
- * at preflight/startup before arming the digest gate so a misconfiguration
- * surfaces actionably instead of causing deploy-time rejections (#13097).
- *
- * Pure except for logging; takes the entries to scan + the digest requirement
- * flag. Returns the structured result so the caller can fail-closed on mutable
- * refs in production.
- */
-export function preflightImageRefs(entries: ImagePreflightEntry[], requireDigest: boolean) {
-  const result = scanImageRefsForMutableTags(entries, requireDigest);
-  for (const finding of result.mutableRefs) {
-    logger.warn(`[AppImageResolver] ${finding.warning}`);
-  }
-  return result;
-}
-
-/**
  * Per-app prebuilt-image resolver (#9300). Lets an operator deploy MORE THAN ONE
  * distinct prebuilt app on real staging without a per-app git build: a single
  * `APP_DEFAULT_IMAGE` can only point at one image, and `metadata.imageTag` is not
@@ -117,10 +65,10 @@ export function preflightImageRefs(entries: ImagePreflightEntry[], requireDigest
  * and returns the image whose prefix is the LONGEST match for `app.name` (so the
  * showcase specs' timestamped names — "eDad Showcase 1a2b3c" — still match).
  *
- * IMMUTABLE IMAGES (#13097): known first-party mutable tags are automatically
- * pinned to their digests (see {@link pinFirstPartyDigest}). Custom refs are
- * passed through — the preflight scan ({@link preflightImageRefs}) flags them
- * when the digest gate is armed.
+ * IMMUTABLE IMAGES (#13097): the canonical `CONTAINER_IMAGE_REQUIRE_DIGEST` gate
+ * in `app-deploy-runner.ts` rejects mutable tags when armed. An operator who
+ * arms that gate must configure `APP_PREBUILT_IMAGES` with digest-pinned refs;
+ * refs are passed through as-is.
  *
  * Returns `undefined` (no resolver) when the env is unset / empty / malformed, so
  * the deploy runner's existing build-from-repo → metadata.imageTag →
@@ -154,8 +102,9 @@ export function makePrebuiltImageMapResolver(
   return async (app) => {
     for (const [prefix, image] of entries) {
       if (app.name.startsWith(prefix)) {
-        // Pin known first-party mutable tags to their digest refs (#13097).
-        return pinFirstPartyDigest(image);
+        // Pass through as-is: the canonical CONTAINER_IMAGE_REQUIRE_DIGEST gate
+        // in app-deploy-runner.ts rejects mutable tags when armed (#13097).
+        return image;
       }
     }
     return undefined;

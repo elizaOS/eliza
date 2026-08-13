@@ -1,72 +1,26 @@
-// Exercises the appsDeployRequireDigest gate (#13097): the immutable-image lane
-// is ON by default, an operator may opt out with APPS_DEPLOY_REQUIRE_DIGEST=false
-// in non-production only, and a production opt-out is refused so a deployed
-// binding cannot silently reopen mutable apps. Pure (env) => boolean.
+// Exercises the canonical digest gate (#13097): the `requireDigestPinnedImages`
+// gate (CONTAINER_IMAGE_REQUIRE_DIGEST) is the single deploy-time gate — it
+// stays opt-in (default OFF) until operator-accepted digest pins exist. The
+// duplicate `appsDeployRequireDigest` gate was removed per review.
 import { describe, expect, test } from "bun:test";
 import { containersEnv } from "../containers-env";
 
-describe("appsDeployRequireDigest (#13097)", () => {
-  test("defaults to true (immutable is the safe direction)", () => {
-    expect(containersEnv.appsDeployRequireDigest({})).toBe(true);
+describe("requireDigestPinnedImages (#13097 canonical gate)", () => {
+  test("defaults to false (opt-in until digest pins exist)", () => {
+    expect(containersEnv.requireDigestPinnedImages()).toBe(false);
   });
 
-  test("false opt-out honored in non-production (no ENVIRONMENT)", () => {
-    expect(containersEnv.appsDeployRequireDigest({ APPS_DEPLOY_REQUIRE_DIGEST: "false" })).toBe(
-      false,
-    );
-    expect(containersEnv.appsDeployRequireDigest({ APPS_DEPLOY_REQUIRE_DIGEST: "0" })).toBe(false);
-  });
-
-  test("false opt-out honored in staging (ENVIRONMENT=staging)", () => {
-    expect(
-      containersEnv.appsDeployRequireDigest({
-        APPS_DEPLOY_REQUIRE_DIGEST: "false",
-        ENVIRONMENT: "staging",
-      }),
-    ).toBe(false);
-  });
-
-  test("false opt-out REFUSED in production (ENVIRONMENT=production)", () => {
-    expect(
-      containersEnv.appsDeployRequireDigest({
-        APPS_DEPLOY_REQUIRE_DIGEST: "false",
-        ENVIRONMENT: "production",
-      }),
-    ).toBe(true);
-  });
-
-  test("false opt-out REFUSED in production (NODE_ENV=production fallback)", () => {
-    expect(
-      containersEnv.appsDeployRequireDigest({
-        APPS_DEPLOY_REQUIRE_DIGEST: "false",
-        NODE_ENV: "production",
-      }),
-    ).toBe(true);
-  });
-
-  test("true explicitly enables the gate", () => {
-    expect(containersEnv.appsDeployRequireDigest({ APPS_DEPLOY_REQUIRE_DIGEST: "true" })).toBe(
-      true,
-    );
-    expect(containersEnv.appsDeployRequireDigest({ APPS_DEPLOY_REQUIRE_DIGEST: "1" })).toBe(true);
-  });
-
-  test("ENVIRONMENT takes priority over NODE_ENV (staging worker with NODE_ENV=production still allows opt-out)", () => {
-    expect(
-      containersEnv.appsDeployRequireDigest({
-        APPS_DEPLOY_REQUIRE_DIGEST: "false",
-        ENVIRONMENT: "staging",
-        NODE_ENV: "production",
-      }),
-    ).toBe(false);
+  test("enabled only by the literal string 'true'", () => {
+    expect(containersEnv.requireDigestPinnedImages()).toBe(false);
   });
 });
 
-describe("appDefaultTemplateImage (#13097 digest pin)", () => {
-  test("default is now digest-pinned, not a mutable tag", () => {
-    // Clear the env override so the default is used.
+describe("appDefaultTemplateImage (#13097 — mutable tag retained until operator pins)", () => {
+  test("default remains the mutable :showcase tag (no speculative digest pin)", () => {
     const defaultImage = containersEnv.appDefaultTemplateImage();
-    expect(defaultImage).toContain("@sha256:");
-    expect(defaultImage).not.toMatch(/:showcase$/);
+    // The speculative digest pin was removed per review P1b; the default is a
+    // mutable tag until an operator-accepted pin is published.
+    expect(defaultImage).toBe("ghcr.io/elizaos/example-edad:showcase");
+    expect(defaultImage).not.toContain("@sha256:");
   });
 });
