@@ -825,14 +825,20 @@ export function useFirstRunConductor(): void {
           cloudLoginAttemptRef.current.invalidate();
           busyRef.current = false;
           releaseClaimedCloudLoginWindow();
+          // The notice carries the sign-in choice itself: at this point the
+          // original cloud-oauth turn has been consumed, so re-seeding by
+          // that id can no-op and "try again below" would have no below.
           replaceTurn(
             "first-run:cloud-login-waiting",
             makeTurn(
               "first-run:cloud-login-waiting",
-              "That sign-in window didn't finish. If you just completed sign-in, hold on — it will still connect. Otherwise, try again below.",
+              [
+                "That sign-in window didn't finish. If you just completed sign-in, hold on — it will still connect. Otherwise, try again:",
+                "",
+                CLOUD_SIGN_IN_CHOICE,
+              ].join("\n"),
             ),
           );
-          surfaceCloudLoginRetryTurn({ seedTurn, replaceTurn });
         },
       });
     }
