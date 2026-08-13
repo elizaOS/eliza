@@ -20,6 +20,7 @@ import { fileURLToPath } from "node:url";
 import { runPool } from "./lib/test-task-pool.mjs";
 
 const MAX_TIMER_DELAY_MS = 2_147_483_647;
+export const SCRIPT_TEST_TIMEOUT_MS = 60_000;
 
 function positiveInteger(
   value,
@@ -83,17 +84,26 @@ function terminate(child) {
   }
 }
 
+export function buildBunTestArgs(file, options, fragmentPath) {
+  const args = [
+    `--config=${options.config}`,
+    "test",
+    "--conditions=eliza-source",
+    // Bun 1.3.14 does not apply [test].timeout from this custom bunfig at the
+    // isolated child boundary. Pass the suite's declared policy explicitly so
+    // real subprocess tests do not fall back to Bun's five-second default.
+    `--timeout=${SCRIPT_TEST_TIMEOUT_MS}`,
+  ];
+  if (fragmentPath) {
+    args.push("--reporter=junit", `--reporter-outfile=${fragmentPath}`);
+  }
+  args.push(file);
+  return args;
+}
+
 function runOne(file, options, fragmentPath, active) {
   return new Promise((resolve) => {
-    const args = [
-      `--config=${options.config}`,
-      "test",
-      "--conditions=eliza-source",
-    ];
-    if (fragmentPath) {
-      args.push("--reporter=junit", `--reporter-outfile=${fragmentPath}`);
-    }
-    args.push(file);
+    const args = buildBunTestArgs(file, options, fragmentPath);
     const child = spawn("bun", args, {
       cwd: process.cwd(),
       detached: process.platform !== "win32",

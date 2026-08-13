@@ -477,5 +477,7 @@ describe("real one-shot daemon entrypoint", () => {
     }
 
     expect(readWorkerConfig({}, []).runOnce).toBe(false);
-  }, 20_000);
+    // The internal 10s watchdog remains the daemon-exit contract. This outer
+    // bound also covers importing the real cloud graph on a contended runner.
+  }, 60_000);
 });

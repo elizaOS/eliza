@@ -1,7 +1,13 @@
 /** Exercises the repository-wide fail-closed contract for direct and indirect Hetzner runner routes. */
 
 import { describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -212,5 +218,17 @@ jobs:
     const result = validateHetznerFleetRouting(REAL_REPO_ROOT);
     expect(result.files).toBeGreaterThan(10);
     expect(result.selectors).toBeGreaterThan(30);
+  });
+
+  test("keeps bounded dev readiness on an isolated hosted runner", () => {
+    const source = readFileSync(
+      join(REAL_REPO_ROOT, ".github", "workflows", "dev-smoke.yml"),
+      "utf8",
+    );
+    const workflow = Bun.YAML.parse(source) as {
+      jobs?: Record<string, { "runs-on"?: string }>;
+    };
+
+    expect(workflow.jobs?.["dev-smoke"]?.["runs-on"]).toBe("ubuntu-24.04");
   });
 });

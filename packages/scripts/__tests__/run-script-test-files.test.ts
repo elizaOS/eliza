@@ -2,12 +2,18 @@
 
 import { describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { parseIsolatedScriptTestArgs } from "../run-script-test-files.mjs";
+import {
+  buildBunTestArgs,
+  parseIsolatedScriptTestArgs,
+  SCRIPT_TEST_TIMEOUT_MS,
+} from "../run-script-test-files.mjs";
 
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
 const driver = path.resolve(scriptDirectory, "..", "run-script-test-files.mjs");
+const config = path.resolve(scriptDirectory, "..", "bunfig.script-tests.toml");
 const testFile = "packages/scripts/example.test.ts";
 
 function parse(...options: string[]) {
@@ -66,5 +72,18 @@ describe("isolated script-test runner arguments", () => {
     );
     expect(result.stderr).not.toContain("timed out");
     expect(result.stderr).not.toContain("TimeoutOverflowWarning");
+  });
+
+  test("passes the declared per-test timeout explicitly to every Bun child", () => {
+    const options = parse();
+    const args = buildBunTestArgs(testFile, options, "/tmp/result.xml");
+    const configuredTimeout = Bun.TOML.parse(readFileSync(config, "utf8")).test
+      ?.timeout;
+
+    expect(SCRIPT_TEST_TIMEOUT_MS).toBe(configuredTimeout);
+    expect(args).toContain("--timeout=60000");
+    expect(args.indexOf("--timeout=60000")).toBeLessThan(
+      args.indexOf(testFile),
+    );
   });
 });

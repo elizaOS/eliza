@@ -69,7 +69,11 @@ jobs:
     name: bun run dev onboarding chat
     needs: changes
     if: github.event_name != 'pull_request' || needs.changes.outputs.dev_smoke == 'true'
-    runs-on: ${{ fromJSON(github.event_name == 'pull_request' && '["ubuntu-24.04"]' || vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    # Agent bootstrap and the live provider turn have bounded readiness budgets.
+    # A Hetzner host multiplexes several runner agents, so unrelated jobs can
+    # starve this process after its TCP listener opens. Keep the timing gate on
+    # the isolated runner class its budgets exercise.
+    runs-on: ubuntu-24.04
     timeout-minutes: 35
     env:
       PGLITE_WASM_MODE: node
