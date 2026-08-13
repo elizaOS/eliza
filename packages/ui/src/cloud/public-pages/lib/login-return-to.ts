@@ -1,8 +1,8 @@
 /**
  * Login `returnTo` resolution for the app-hosted Steward login surface.
  *
- * Sanitizes + persists the post-login destination across the OAuth redirect
- * round-trip (which can't carry it in the OAuth `redirect_uri`).
+ * Sanitizes + persists the post-login destination across OAuth and email-link
+ * round trips, which cannot safely carry it in their callback URLs.
  */
 
 // Every successful login enters through `/join`. On an app host, that flow

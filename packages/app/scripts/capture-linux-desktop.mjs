@@ -84,6 +84,8 @@ function recordVideo(ffmpeg, display, size, outPath, durationSec) {
 }
 
 async function main() {
+  const flags = parseFlags();
+  const durationSec = resolveCaptureDurationSeconds(flags);
   if (process.platform !== "linux") {
     skip(
       PLATFORM,
@@ -96,13 +98,11 @@ async function main() {
   }
   const ffmpeg = resolveRequiredFfmpeg({ log });
 
-  const flags = parseFlags();
   const base = evidenceBaseName({
     issue: flags.issue,
     slug: flags.slug,
     platform: PLATFORM,
   });
-  const durationSec = resolveCaptureDurationSeconds(flags);
   const size = screenSize(display);
   log(`capturing X11 desktop ${display} @ ${size}`);
 

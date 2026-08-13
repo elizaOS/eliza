@@ -37,7 +37,7 @@ import {
   startGoogleFlow,
 } from "./lib/oauth.mjs";
 import { buildRegistry, discoverPlan } from "./lib/registry.mjs";
-import { RunManager } from "./lib/runner.mjs";
+import { normalizeRunConcurrency, RunManager } from "./lib/runner.mjs";
 import {
   consoleDir,
   credentialsToEnv,
@@ -57,7 +57,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.ELIZA_TEST_CONSOLE_PORT || 31338);
 const HOST = "127.0.0.1";
 
-const runManager = new RunManager();
+export const runManager = new RunManager();
 const sseClients = new Set();
 
 runManager.on("event", (event) => {
@@ -133,7 +133,7 @@ function selectTasks({ mode, labels }) {
   return all;
 }
 
-const routes = {
+export const routes = {
   "GET /api/state": (req, res) => json(res, 200, currentState()),
 
   "POST /api/gates": async (req, res) => {
@@ -153,6 +153,17 @@ const routes = {
     } = await readBody(req);
     if (runManager.isRunning())
       return json(res, 409, { error: "run already in progress" });
+    let normalizedConcurrency;
+    try {
+      normalizedConcurrency = normalizeRunConcurrency(concurrency);
+    } catch (error) {
+      // error-policy:J1 API boundary — reject an invalid worker count before
+      // any live-lane side effect (task discovery, credential reads, token
+      // refresh/persist) runs.
+      return json(res, 400, {
+        error: error instanceof Error ? error.message : "invalid concurrency",
+      });
+    }
     const tasks = selectTasks({ mode, labels });
     if (tasks.length === 0)
       return json(res, 400, { error: "no tasks selected" });
@@ -194,7 +205,7 @@ const routes = {
       tasks,
       lane,
       extraEnv,
-      concurrency: Number(concurrency) || 3,
+      concurrency: normalizedConcurrency,
     });
     json(res, 200, { runId, taskCount: tasks.length });
   },
@@ -347,7 +358,11 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-server.listen(PORT, HOST, () => {
-  console.log(`[TestConsole] listening on http://${HOST}:${PORT}`);
-  console.log(`[TestConsole] state dir: ${consoleDir()}`);
-});
+// Keep route imports side-effect free while preserving startup through
+// canonical, symlinked, and URL-escaped entrypoint paths.
+if (import.meta.main) {
+  server.listen(PORT, HOST, () => {
+    console.log(`[TestConsole] listening on http://${HOST}:${PORT}`);
+    console.log(`[TestConsole] state dir: ${consoleDir()}`);
+  });
+}

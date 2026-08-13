@@ -451,22 +451,20 @@ function normalizeLastExecution(raw: WorkflowExecution): AutomationLastExecution
   const rawStatus = raw.status;
   if (typeof rawStatus !== 'string') return null;
   const STATUS_MAP: Record<string, AutomationLastExecution['status']> = {
-    success: 'success',
-    error: 'error',
-    crashed: 'error',
+    finished: 'success',
+    failed: 'error',
+    cancelled: 'error',
     running: 'running',
-    waiting: 'waiting',
+    queued: 'waiting',
+    'waiting-approval': 'waiting',
+    'waiting-event': 'waiting',
+    'waiting-timer': 'waiting',
   };
   const status = STATUS_MAP[rawStatus] ?? 'unknown';
   const startedAt = typeof raw.startedAt === 'string' ? raw.startedAt : null;
   if (!startedAt) return null;
   const stoppedAt = typeof raw.stoppedAt === 'string' ? raw.stoppedAt : null;
-  const errorMessage = (() => {
-    const data = isRecord(raw.data) ? raw.data : null;
-    const resultData = isRecord(data?.resultData) ? data.resultData : null;
-    const error = isRecord(resultData?.error) ? resultData.error : null;
-    return typeof error?.message === 'string' ? error.message : undefined;
-  })();
+  const errorMessage = raw.error?.message;
   return {
     status,
     startedAt,
@@ -482,13 +480,14 @@ function getWorkflowService(runtime: AgentRuntime): WorkflowService | null {
 
 function buildWorkflowStatus(service: WorkflowService | null): WorkflowStatusResponse {
   return {
-    mode: service ? 'local' : 'disabled',
-    host: 'in-process',
+    mode: service ? 'cloud' : 'disabled',
+    host: service ? 'eliza-cloud' : null,
     status: service ? 'ready' : 'error',
-    cloudConnected: false,
-    localEnabled: Boolean(service),
-    platform: 'desktop',
-    cloudHealth: 'unknown',
+    cloudConnected: Boolean(service),
+    localEnabled: false,
+    platform: 'cloud',
+    cloudHealth: service ? 'healthy' : 'unknown',
+    engine: 'smthrs',
     errorMessage: service ? null : 'Workflow service is not registered',
   };
 }

@@ -358,7 +358,8 @@ test.describe("registered BlueBubbles gateway", () => {
           },
           body: JSON.stringify({
             sessionId: continuationToken,
-            platform: "blooio",
+            platform: "web",
+            confirmPlatformLink: true,
           }),
         },
       );

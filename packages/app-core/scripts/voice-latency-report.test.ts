@@ -1,10 +1,30 @@
 /** Exercises voice latency report behavior with deterministic app-core test fixtures. */
+import { execFile, spawnSync } from "node:child_process";
+import { createServer } from "node:http";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
   fetchAndRenderVoiceLatency,
   renderVoiceLatencyReport,
 } from "./lib/voice-latency-report.mjs";
+import { parsePositiveLimit } from "./lib/voice-latency-report-limit.mjs";
 
+const SCRIPT_PATH = fileURLToPath(
+  new URL("./voice-latency-report.mjs", import.meta.url),
+);
+const INVALID_LIMIT_CASES = [
+  { label: "missing", raw: undefined, args: [] },
+  { label: "empty", raw: "", args: [""] },
+  { label: "zero", raw: "0", args: ["0"] },
+  { label: "negative", raw: "-3", args: ["-3"] },
+  { label: "fractional", raw: "1.5", args: ["1.5"] },
+  { label: "partial", raw: "10junk", args: ["10junk"] },
+  { label: "NaN", raw: "NaN", args: ["NaN"] },
+  { label: "infinite", raw: "Infinity", args: ["Infinity"] },
+  { label: "signed", raw: "+1", args: ["+1"] },
+  { label: "next flag", raw: "--json", args: ["--json"] },
+  { label: "out of range", raw: "2147483648", args: ["2147483648"] },
+];
 const SAMPLE_PAYLOAD = {
   generatedAtEpochMs: 1_700_000_000_000,
   checkpoints: ["vad-trigger", "llm-first-token", "tts-first-audio-chunk"],
@@ -67,6 +87,30 @@ const SAMPLE_PAYLOAD = {
     },
   },
 };
+
+function runCli(args: string[]): Promise<{ stdout: string; stderr: string }> {
+  return new Promise((resolve, reject) => {
+    execFile(
+      process.execPath,
+      [SCRIPT_PATH, ...args],
+      {
+        encoding: "utf8",
+        env: { ...process.env, ELIZA_API_PORT: "1" },
+      },
+      (error, stdout, stderr) => {
+        if (error) {
+          reject(
+            new Error(
+              `voice-latency-report failed: ${error.message}\n${stdout}${stderr}`,
+            ),
+          );
+          return;
+        }
+        resolve({ stdout, stderr });
+      },
+    );
+  });
+}
 
 describe("renderVoiceLatencyReport", () => {
   it("renders histograms and traces with — for null values", () => {
@@ -173,5 +217,69 @@ describe("fetchAndRenderVoiceLatency", () => {
     });
     expect(seenUrl).toContain("limit=7");
     expect(seenUrl).toContain("/api/dev/voice-latency");
+  });
+});
+
+describe("voice-latency-report --limit validation", () => {
+  it("accepts complete positive integers", () => {
+    expect(parsePositiveLimit("1")).toBe(1);
+    expect(parsePositiveLimit("7")).toBe(7);
+    expect(parsePositiveLimit("2147483647")).toBe(2147483647);
+  });
+
+  it.each(INVALID_LIMIT_CASES)("rejects invalid --limit: $label", ({ raw }) => {
+    expect(() => parsePositiveLimit(raw)).toThrow(/--limit/);
+  });
+
+  it.each(INVALID_LIMIT_CASES)(
+    "real CLI rejects $label before fetching",
+    ({ args }) => {
+      const result = spawnSync(
+        process.execPath,
+        [SCRIPT_PATH, "--limit", ...args],
+        {
+          encoding: "utf8",
+          env: { PATH: process.env.PATH ?? "", ELIZA_API_PORT: "1" },
+        },
+      );
+      expect(result.status).toBe(1);
+      expect(result.stderr).toMatch(/--limit/);
+      expect(result.stdout + result.stderr).not.toMatch(
+        /could not fetch|ECONNREFUSED/i,
+      );
+    },
+  );
+
+  it("real CLI sends a valid limit to the endpoint", async () => {
+    let seenUrl = "";
+    const server = createServer((req, res) => {
+      seenUrl = req.url ?? "";
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(SAMPLE_PAYLOAD));
+    });
+    await new Promise<void>((resolve, reject) => {
+      server.once("error", reject);
+      server.listen(0, "127.0.0.1", resolve);
+    });
+    try {
+      const address = server.address();
+      if (!address || typeof address === "string") {
+        throw new Error("voice latency test server did not expose a TCP port");
+      }
+      const result = await runCli([
+        "--limit",
+        "7",
+        "--base",
+        `http://127.0.0.1:${address.port}`,
+      ]);
+
+      expect(seenUrl).toBe("/api/dev/voice-latency?limit=7");
+      expect(result.stdout).toContain("2 trace(s)");
+      expect(result.stderr).toBe("");
+    } finally {
+      await new Promise<void>((resolve, reject) => {
+        server.close((error) => (error ? reject(error) : resolve()));
+      });
+    }
   });
 });

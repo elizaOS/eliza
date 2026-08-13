@@ -1,0 +1,9 @@
+name = "elizaresearch"
+compatibility_date = "2026-08-01"
+
+[assets]
+directory = "."
+
+[[routes]]
+pattern = "elizaresearch.ai"
+custom_domain = true

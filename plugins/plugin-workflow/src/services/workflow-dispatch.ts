@@ -44,10 +44,8 @@ export interface WorkflowDispatchResult {
 }
 
 /**
- * Optional, structured dispatch options. The `idempotencyKey` field is
- * the durable contract: same workflow + same key → at most one
- * execution. Passed inline through the legacy `payload` shape (key
- * `__idempotencyKey`) when the caller can't pass a second argument.
+ * Optional, structured dispatch options. The `idempotencyKey` field is the
+ * durable contract: same workflow + same key → at most one execution.
  */
 export interface WorkflowDispatchOptions {
   triggerData?: Record<string, unknown>;
@@ -65,24 +63,6 @@ export interface WorkflowDispatchService {
 interface WorkflowDispatchServiceEntry extends WorkflowDispatchService {
   stop(): Promise<void>;
   capabilityDescription: string;
-}
-
-/**
- * Pull `__idempotencyKey` out of the legacy `payload` shape so existing
- * callers (the trigger dispatcher's `event` payload) can attach a key
- * without growing the signature. The wrapper key is stripped before the
- * payload is forwarded as `triggerData`.
- */
-function partitionPayload(payload: Record<string, unknown> | undefined): {
-  triggerData: Record<string, unknown>;
-  idempotencyKey?: string;
-} {
-  if (!payload) return { triggerData: {} };
-  const { __idempotencyKey, ...rest } = payload;
-  return {
-    triggerData: rest,
-    idempotencyKey: typeof __idempotencyKey === 'string' ? __idempotencyKey : undefined,
-  };
 }
 
 interface RuntimeServiceRegistry {
@@ -119,10 +99,9 @@ function getRuntimeServiceRegistry(runtime: IAgentRuntime): RuntimeServiceRegist
  * Construct the dispatch service. Registered under `WORKFLOW_DISPATCH` on the
  * runtime by the plugin's `init` lifecycle hook.
  *
- * Idempotency contract: when a caller passes an `idempotencyKey` (either via
- * the explicit `options.idempotencyKey` or via the legacy
- * `payload.__idempotencyKey`), the dispatch service first looks up an
- * existing execution row for `(workflowId, idempotencyKey)`. If one exists,
+ * Idempotency contract: when a caller passes `options.idempotencyKey`, the
+ * dispatch service first looks up an existing execution row for
+ * `(workflowId, idempotencyKey)`. If one exists,
  * the new run is suppressed and the prior execution id is returned with
  * `{ ok: true, dedup: true }`. Scheduled workflow dispatches use a
  * minute-bucketed key so two simultaneous schedule fires collapse to one
@@ -155,12 +134,11 @@ export function createWorkflowDispatchService(runtime: IAgentRuntime): WorkflowD
         return { ok: false, error: 'embedded workflow service not registered' };
       }
 
-      const partitioned = partitionPayload(payload);
       const triggerData =
         options.triggerData && Object.keys(options.triggerData).length > 0
           ? options.triggerData
-          : partitioned.triggerData;
-      const idempotencyKey = options.idempotencyKey ?? partitioned.idempotencyKey;
+          : payload;
+      const idempotencyKey = options.idempotencyKey;
 
       if (idempotencyKey) {
         const existing = await service.findExecutionByIdempotencyKey(id, idempotencyKey);

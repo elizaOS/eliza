@@ -48,9 +48,35 @@ function opt(name, fallback) {
   return i >= 0 && process.argv[i + 1] ? process.argv[i + 1] : fallback;
 }
 
+function optRaw(name, fallback) {
+  const i = process.argv.indexOf(name);
+  return i >= 0 ? (process.argv[i + 1] ?? "") : fallback;
+}
+
+/**
+ * Parse the bounded item count without allowing JavaScript's permissive
+ * numeric coercion to reinterpret an operator's input. Zero is the explicit
+ * unlimited sentinel used by the runner; every other value is a safe decimal
+ * integer at or below MAX_SAFE_INTEGER.
+ */
+export function parseHarvestLimit(raw) {
+  if (typeof raw !== "string" || !/^\d+$/.test(raw)) {
+    throw new Error(
+      `--limit must be a non-negative decimal integer (got ${JSON.stringify(raw)})`,
+    );
+  }
+  const parsed = Number(raw);
+  if (!Number.isSafeInteger(parsed)) {
+    throw new Error(
+      `--limit must be a non-negative safe integer (got ${JSON.stringify(raw)})`,
+    );
+  }
+  return parsed;
+}
+
 const DRY_RUN = flag("--dry-run");
 const DETERMINISTIC = flag("--deterministic");
-const LIMIT = Number(opt("--limit", "0")) || 0; // 0 = no limit
+const LIMIT = parseHarvestLimit(optRaw("--limit", "0")); // 0 = no limit
 const FAMILY = opt("--family", "scenario");
 // --shard i/n : deterministic split of the discovered scenario list across N
 // parallel workers (worker i takes items where globalIndex % N === i). Lets the
@@ -297,4 +323,9 @@ function main() {
   );
 }
 
-main();
+if (
+  process.argv[1] &&
+  path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)
+) {
+  main();
+}

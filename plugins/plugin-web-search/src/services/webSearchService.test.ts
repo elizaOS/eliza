@@ -4,7 +4,7 @@
  * SSRF-closed page fetches via the real shared guard with an injected
  * transport (never stub the guard away).
  */
-import { type IAgentRuntime, SsrfBlockedError } from "@elizaos/core";
+import { ElizaError, type IAgentRuntime, SsrfBlockedError } from "@elizaos/core";
 import fc from "fast-check";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { SearchOptions } from "../types";
@@ -326,6 +326,107 @@ describe("WebSearchService", () => {
             "https://other.test/about",
         ]);
         expect(fetchImpl).toHaveBeenCalledOnce();
+    });
+
+    it("decodes astral numeric entities and preserves invalid Unicode code points", async () => {
+        const html = `<title>&#128512; &#x1F680; &#0; &#xD800; &#1114112;</title>`;
+        setPageInfoHttpTransportForTests({
+            fetchImpl: vi.fn(async () => new Response(html)),
+        });
+        const service = await WebSearchService.start(runtime({ TAVILY_API_KEY: "tvly-test" }));
+
+        const pageInfo = await service.getPageInfo("https://example.test/entities");
+
+        expect(pageInfo.title).toBe("😀 🚀 &#0; &#xD800; &#1114112;");
+    });
+
+    it("accepts page HTML exactly at the byte limit", async () => {
+        const exactLimitHtml = "a".repeat(1024 * 1024);
+        setPageInfoHttpTransportForTests({
+            fetchImpl: vi.fn(
+                async () =>
+                    new Response(exactLimitHtml, {
+                        headers: { "content-length": String(1024 * 1024) },
+                    })
+            ),
+        });
+        const service = await WebSearchService.start(runtime({ TAVILY_API_KEY: "tvly-test" }));
+
+        const pageInfo = await service.getPageInfo("https://example.test/exact-limit");
+
+        expect(pageInfo.content).toHaveLength(1024 * 1024);
+    });
+
+    it("rejects and cancels a body whose declared length exceeds the byte limit", async () => {
+        const cancel = vi.fn();
+        const pull = vi.fn();
+        const body = new ReadableStream<Uint8Array>({ cancel, pull });
+        setPageInfoHttpTransportForTests({
+            fetchImpl: vi.fn(
+                async () =>
+                    new Response(body, {
+                        headers: { "content-length": String(1024 * 1024 + 1) },
+                    })
+            ),
+        });
+        const service = await WebSearchService.start(runtime({ TAVILY_API_KEY: "tvly-test" }));
+
+        const error = await service
+            .getPageInfo("https://example.test/declared-oversize")
+            .catch((cause: unknown) => cause);
+
+        expect(error).toBeInstanceOf(ElizaError);
+        expect((error as ElizaError).code).toBe("PAGE_INFO_HTML_TOO_LARGE");
+        expect(cancel).toHaveBeenCalledWith("page info HTML exceeded size limit");
+    });
+
+    it("stops reading and cancels a streamed body as soon as it crosses the byte limit", async () => {
+        const cancel = vi.fn();
+        const chunks = [new Uint8Array(1024 * 1024), new Uint8Array([1])];
+        const body = new ReadableStream<Uint8Array>(
+            {
+                cancel,
+                pull(controller) {
+                    const chunk = chunks.shift();
+                    if (chunk) controller.enqueue(chunk);
+                    else controller.close();
+                },
+            },
+            { highWaterMark: 0 }
+        );
+        setPageInfoHttpTransportForTests({
+            fetchImpl: vi.fn(async () => new Response(body)),
+        });
+        const service = await WebSearchService.start(runtime({ TAVILY_API_KEY: "tvly-test" }));
+
+        const error = await service
+            .getPageInfo("https://example.test/streamed-oversize")
+            .catch((cause: unknown) => cause);
+
+        expect(error).toBeInstanceOf(ElizaError);
+        expect((error as ElizaError).code).toBe("PAGE_INFO_HTML_TOO_LARGE");
+        expect(cancel).toHaveBeenCalledWith("page info HTML exceeded size limit");
+    });
+
+    it("preserves a streamed body read failure as a typed boundary error", async () => {
+        const readFailure = new Error("socket reset");
+        const body = new ReadableStream<Uint8Array>({
+            pull() {
+                throw readFailure;
+            },
+        });
+        setPageInfoHttpTransportForTests({
+            fetchImpl: vi.fn(async () => new Response(body)),
+        });
+        const service = await WebSearchService.start(runtime({ TAVILY_API_KEY: "tvly-test" }));
+
+        const error = await service
+            .getPageInfo("https://example.test/read-failure")
+            .catch((cause: unknown) => cause);
+
+        expect(error).toBeInstanceOf(ElizaError);
+        expect((error as ElizaError).code).toBe("PAGE_INFO_BODY_READ_FAILED");
+        expect((error as ElizaError).cause).toBe(readFailure);
     });
 
     it("falls back to og:description when standard description meta tag is absent", async () => {
