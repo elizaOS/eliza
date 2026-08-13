@@ -167,6 +167,32 @@ describe("composeState provider execution", () => {
 		);
 	});
 
+	it.each(["AbortError", "TimeoutError"])(
+		"keeps a provider-originated %s observable as an ordinary failure",
+		async (errorName) => {
+			const runtime = new AgentRuntime({
+				character: { name: "provider-originated-error" } as Character,
+			});
+			runtime.registerProvider({
+				name: "BROKEN_REMOTE",
+				get: async () => {
+					const error = new Error("provider boundary failed");
+					error.name = errorName;
+					throw error;
+				},
+			});
+			const message = makeMessage("12121212-1212-1212-1212-121212121212");
+
+			const error = await runtime
+				.composeState(message, ["BROKEN_REMOTE"], true)
+				.catch((cause: unknown) => cause);
+
+			expect(error).toBeInstanceOf(ElizaError);
+			expect((error as ElizaError).code).toBe("PROVIDER_COMPOSITION_FAILED");
+			expect(runtime.stateCache.has(message.id as string)).toBe(false);
+		},
+	);
+
 	it("passes the active turn signal to providers and reports cancellation", async () => {
 		const runtime = new AgentRuntime({
 			character: { name: "provider-abort" } as Character,
@@ -231,6 +257,85 @@ describe("composeState provider execution", () => {
 				}),
 			]),
 		);
+	});
+
+	it("stops awaiting non-cooperative work and observes its detached rejection", async () => {
+		const runtime = new AgentRuntime({
+			character: { name: "provider-non-cooperative-abort" } as Character,
+		});
+		const started = deferred();
+		let rejectProvider!: (reason?: unknown) => void;
+		runtime.registerProvider({
+			name: "NON_COOPERATIVE",
+			get: async () => {
+				started.resolve();
+				return new Promise((_, reject) => {
+					rejectProvider = reject;
+				});
+			},
+		});
+		const message = makeMessage("13131313-1313-1313-1313-131313131313");
+		const controller = new AbortController();
+		const unhandled: unknown[] = [];
+		const onUnhandled = (reason: unknown) => unhandled.push(reason);
+		process.on("unhandledRejection", onUnhandled);
+
+		try {
+			const turn = runWithStreamingContext(
+				{ onStreamChunk: async () => {}, abortSignal: controller.signal },
+				() => runtime.composeState(message, ["NON_COOPERATIVE"], true),
+			);
+			await started.promise;
+			controller.abort("user stopped");
+
+			const outcome = await Promise.race([
+				turn.catch((cause: unknown) => cause),
+				new Promise((resolve) =>
+					setTimeout(() => resolve("still waiting"), 250),
+				),
+			]);
+			expect(outcome).toBeInstanceOf(TurnAbortedError);
+			expect(runtime.stateCache.has(message.id as string)).toBe(false);
+
+			rejectProvider(new Error("detached provider failed later"));
+			await new Promise<void>((resolve) => setImmediate(resolve));
+			expect(unhandled).toEqual([]);
+		} finally {
+			process.off("unhandledRejection", onUnhandled);
+		}
+	});
+
+	it("does not cache state when the owner aborts after providers settle", async () => {
+		const runtime = new AgentRuntime({
+			character: { name: "provider-post-settle-abort" } as Character,
+		});
+		const controller = new AbortController();
+		let abortTriggered = false;
+		const values: Record<string, string> = {};
+		Object.defineProperty(values, "abortDuringComposition", {
+			enumerable: true,
+			get: () => {
+				if (!abortTriggered) {
+					abortTriggered = true;
+					controller.abort("owner stopped after provider settlement");
+				}
+				return "observed";
+			},
+		});
+		runtime.registerProvider({
+			name: "SETTLED",
+			get: async () => ({ text: "settled", values }),
+		});
+		const message = makeMessage("14141414-1414-1414-1414-141414141414");
+
+		const outcome = await runWithStreamingContext(
+			{ onStreamChunk: async () => {}, abortSignal: controller.signal },
+			() => runtime.composeState(message, ["SETTLED"], true),
+		).catch((cause: unknown) => cause);
+
+		expect(abortTriggered).toBe(true);
+		expect(outcome).toBeInstanceOf(TurnAbortedError);
+		expect(runtime.stateCache.has(message.id as string)).toBe(false);
 	});
 
 	it("lets a coalesced waiter cancel its own turn without killing the owner (#17602)", async () => {
@@ -544,7 +649,7 @@ describe("composeState provider execution", () => {
 		expect(calls).toBe(2);
 	});
 
-	it("aborts in-flight provider work when the runtime stops", async () => {
+	it("runtime stop releases a signal-less caller from non-cooperative work", async () => {
 		// Stopping the runtime clears providerExecutionsInFlight. The execution's
 		// AbortController is reachable only through that map, so dropping the
 		// entries without firing it strands the provider call: nothing that
@@ -565,16 +670,7 @@ describe("composeState provider execution", () => {
 			) => {
 				receivedSignal = context?.signal;
 				started.resolve();
-				return new Promise((_, reject) => {
-					const signal = context?.signal;
-					if (!signal) {
-						reject(new Error("missing provider signal"));
-						return;
-					}
-					signal.addEventListener("abort", () => reject(signal.reason), {
-						once: true,
-					});
-				});
+				return new Promise(() => {});
 			},
 		});
 
@@ -588,10 +684,14 @@ describe("composeState provider execution", () => {
 		await started.promise;
 		expect(receivedSignal?.aborted).toBe(false);
 
-		await runtime.stop();
+		const stopped = runtime.stop();
 
+		await stopped;
 		expect(receivedSignal?.aborted).toBe(true);
-		// The compose settles rather than hanging past teardown.
-		await compose;
+		const outcome = await Promise.race([
+			compose,
+			new Promise((resolve) => setTimeout(() => resolve("still waiting"), 250)),
+		]);
+		expect(outcome).not.toBe("still waiting");
 	});
 });
