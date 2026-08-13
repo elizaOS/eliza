@@ -331,34 +331,21 @@ test("connected page exercises account menu, copy controls, link-phone form, and
   await expect(page).toHaveURL(/\/get-started\?method=discord&link=true/);
 });
 
-test("landing page renders its hero and messaging entrypoints", async ({
+test("landing makes iMessage the single zero-friction entrypoint", async ({
   page,
 }) => {
   await page.goto("/");
 
   await expect(
-    page.getByRole("heading", { name: /Four hours of your time back/ }),
+    page.getByRole("heading", { name: /personal Eliza starts/ }),
   ).toBeVisible({ timeout: 20_000 });
 
-  const textCta = page.getByRole("link", { name: "Text" });
+  const textCta = page.getByRole("link", { name: "Message Eliza" });
   await expect(textCta).toBeVisible();
   await expect(textCta).toHaveAttribute("href", /^sms:\+18087881821/);
-  const callCta = page.getByRole("link", { name: "Call" });
-  await expect(callCta).toBeVisible();
-  await expect(callCta).toHaveAttribute("href", "tel:+18087881821");
-
-  // Every alternate channel is reachable with a real deep link.
-  const channels = page.locator(".landing-hero-actions");
-  await expect(
-    channels.getByRole("link", { name: /Telegram/ }),
-  ).toHaveAttribute("href", /^https:\/\/t\.me\//);
-  await expect(channels.getByRole("link", { name: /Discord/ })).toHaveAttribute(
-    "href",
-    /^https:\/\/discord\.com\//,
-  );
-  await expect(
-    channels.getByRole("link", { name: /WhatsApp/ }),
-  ).toHaveAttribute("href", /^https:\/\/wa\.me\//);
+  await expect(page.getByText("+1 (808) 788-1821")).toBeVisible();
+  await expect(page.getByRole("link", { name: "Call" })).toHaveCount(0);
+  await expect(page.locator(".landing-channel")).toHaveCount(0);
 });
 
 test("landing keeps content reachable on a small viewport", async ({

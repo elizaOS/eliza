@@ -1,35 +1,21 @@
 /**
  * eliza.app landing page: a single-viewport, personal-feeling lander.
  *
- * One headline, "call me or text me" entrypoints (phone, iMessage, Telegram,
- * Discord, WhatsApp), and an iPhone-styled iMessage demo that plays a scripted
- * conversation: an intro that runs once, then a vignette reel that loops
- * seamlessly. Eliza's turns show a typing indicator; the user's turns type
- * character-by-character in the composer before sending; task results render
- * as iMessage-style embed cards. The demo is decorative (aria-hidden) and the
- * script is intentionally English-only. Under prefers-reduced-motion the demo
- * renders the settled intro with no playback, which also keeps screenshot
- * tests deterministic.
+ * The first action opens a real iMessage thread; account and app setup stay out
+ * of the way until someone wants the richer companion experience. The phone
+ * demo tells the exact Shared product truth: free text chat and memory, metered
+ * search, paid voice in the app, and an explicit Dedicated wall for actions.
+ * The demo is decorative and intentionally English-only. Reduced motion shows
+ * its settled intro, which also keeps screenshot tests deterministic.
  */
 
-import {
-  DiscordIcon,
-  IMessageIcon,
-  TelegramIcon,
-  WhatsAppIcon,
-} from "@elizaos/ui/cloud-ui/components/icons";
+import { IMessageIcon } from "@elizaos/ui/cloud-ui/components/icons";
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 // Imported through the bundler (not referenced from public/) so the wordmark
 // ships with whichever build consumes this source; a public/ path depends on
 // the host app's asset-sync allowlist and 404s when it drifts.
 import elizaLogotextUrl from "@/assets/eliza-logotext.svg";
-import {
-  buildElizaDiscordHref,
-  buildElizaSmsHref,
-  buildElizaTelegramHref,
-  buildElizaWhatsAppHref,
-  ELIZA_PHONE_NUMBER,
-} from "@/lib/contact";
+import { buildElizaSmsHref, ELIZA_PHONE_FORMATTED } from "@/lib/contact";
 import { resolveHomepageProductNavigation } from "@/lib/product-navigation";
 import { useT } from "@/providers/I18nProvider";
 
@@ -58,128 +44,90 @@ type DemoItemInput =
 type DemoItem = DemoItemInput & { id: number };
 
 const DEMO_INTRO: DemoStep[] = [
-  { kind: "eliza", text: "Hey, it's Eliza — your new assistant." },
-  { kind: "user", text: "what can you do?" },
+  { kind: "eliza", text: "Hey, it's Eliza. You can just text me here." },
+  { kind: "user", text: "can you remember things for me?" },
   {
     kind: "eliza",
-    text: "I'm here to save you time and take things off your plate. Should we start with your email?",
+    text: "Yes. This is your personal Eliza, so our conversation carries with you when you sign in later.",
   },
-  { kind: "user", text: "sure" },
+  { kind: "user", text: "remember I'm vegetarian and hate early flights" },
   {
     kind: "eliza",
-    text: "Looks like you've got 2 important emails you haven't followed up on — one looks like an important work thing. Should I draft a reply?",
-  },
-  { kind: "user", text: "sounds great" },
-  {
-    kind: "eliza",
-    text: "Okay, I've drafted the reply and saved it in your inbox. Want to look it over before I send it?",
+    text: "Got it. Vegetarian, and no early flights when we can avoid them.",
   },
   {
     kind: "card",
     card: {
-      label: "Mail",
-      title: "Re: Q3 partnership",
-      rows: ["Draft saved to your inbox"],
+      label: "Memory",
+      title: "Preferences remembered",
+      rows: ["Vegetarian", "Avoid early flights"],
+      status: "Saved",
     },
   },
-  { kind: "user", text: "yes please" },
+  { kind: "user", text: "find a quiet Italian place near Union Square" },
   {
     kind: "eliza",
-    text: "Sent to your inbox. Also — you've got a call in an hour with an investor. Want me to give you a ring a few minutes before so you don't forget?",
-  },
-  { kind: "user", text: "yes please!" },
-  {
-    kind: "eliza",
-    text: "Will do. I've also prepared a dossier for the call — they've made some similar investments, I think you'll be a good fit.",
+    text: "I searched the web and found three current options. Bocca di Bacco has vegetarian choices and the quietest reviews.",
   },
   {
     kind: "card",
     card: {
-      label: "Notes",
-      title: "Investor brief — Arc Capital",
-      rows: ["Recent: 3 similar investments", "2 pages"],
+      label: "Web search",
+      title: "Bocca di Bacco",
+      rows: ["Italian · Vegetarian options", "Quiet atmosphere"],
+      status: "Current result",
     },
+  },
+  { kind: "user", text: "put it on my calendar for Thursday" },
+  {
+    kind: "eliza",
+    text: "Calendar actions need Dedicated. I can keep helping here on Shared, and I won't upgrade or charge you unless you choose it.",
   },
   {
     kind: "card",
     card: {
-      label: "Calendar",
-      title: "Call with Arc Capital",
-      rows: ["Today, 2:00 PM"],
-      status: "I'll call you at 1:55",
+      label: "Dedicated",
+      title: "Optional upgrade",
+      rows: ["Calendar · Email · Coding · Files"],
+      status: "Nothing changed",
     },
+  },
+  { kind: "user", text: "can we talk instead?" },
+  {
+    kind: "eliza",
+    text: "Open the Eliza app for voice. Voice uses credits; texting me here stays free.",
   },
 ];
 
 const DEMO_LOOP: DemoStep[] = [
-  // A — dinner
   {
     kind: "eliza",
-    text: "How did the call go? Anything else I can take off your plate today?",
+    text: "Want to keep planning Thursday?",
   },
   {
     kind: "user",
-    text: "can you book dinner for 4 on thursday? somewhere italian",
+    text: "what was the place you found?",
   },
   {
     kind: "eliza",
-    text: "Via Carota has one table for 4 left at 7:30 on Thursday. Should I book it?",
+    text: "Bocca di Bacco near Union Square — quiet, Italian, with vegetarian options.",
   },
-  { kind: "user", text: "book it" },
+  { kind: "user", text: "nice. find me a friday flight to sf too" },
+  {
+    kind: "eliza",
+    text: "Searching current flights now. I'll favor later departures because you told me you hate early flights.",
+  },
   {
     kind: "card",
     card: {
-      label: "Reservation",
-      title: "Via Carota",
-      rows: ["Thursday, 7:30 PM", "Party of 4"],
-      status: "Booked",
+      label: "Memory + search",
+      title: "Friday to San Francisco",
+      rows: ["3 later departures", "Preferences applied"],
+      status: "Shared",
     },
   },
-  { kind: "eliza", text: "Done. Want me to send the details to the group?" },
-  // B — travel
-  { kind: "user", text: "oh and I fly to SF on friday" },
-  {
-    kind: "eliza",
-    text: "I see it — UA 512 out of JFK, 9:15 AM. Want me to check you in when it opens and grab your usual aisle seat?",
-  },
-  { kind: "user", text: "yes" },
-  {
-    kind: "card",
-    card: {
-      label: "Flight",
-      title: "UA 512 — JFK to SFO",
-      rows: ["Friday, 9:15 AM", "Seat 14C"],
-      status: "Check-in scheduled",
-    },
-  },
-  {
-    kind: "eliza",
-    text: "Set. One thing — your 9 AM standup overlaps with boarding. Should I move it?",
-  },
-  { kind: "user", text: "good catch, yeah" },
-  // C — memory
-  { kind: "user", text: "what was that wine we had at dinner last month?" },
-  {
-    kind: "eliza",
-    text: "The 2019 Barolo from Cascina Fontana. You mentioned wanting it for your dad's birthday — that's in 12 days. Should I order a bottle?",
-  },
-  { kind: "user", text: "you're the best. add a card too" },
-  {
-    kind: "card",
-    card: {
-      label: "Reminders",
-      title: "Dad's birthday",
-      rows: ["Barolo, Cascina Fontana '19", "Birthday card"],
-      status: "Reminder set",
-    },
-  },
-  // D — morning brief, seams back into A
-  {
-    kind: "eliza",
-    text: "Morning. Quick brief: 3 meetings today, rain at 4 so take a jacket. Inbox is triaged — nothing urgent.",
-  },
-  { kind: "user", text: "what would I do without you" },
-  { kind: "eliza", text: "Happy to help. What's next on your plate?" },
+  { kind: "user", text: "I'll decide later" },
+  { kind: "eliza", text: "Perfect. I'll be right here in Messages." },
 ];
 
 // Keep only the most recent messages in the DOM; the thread stays pinned to
@@ -540,36 +488,6 @@ export default function LandingPage() {
   const productNavigation = resolveHomepageProductNavigation(
     browserWindow?.location.hostname ?? "",
   );
-  const channels = [
-    {
-      key: "telegram",
-      href: buildElizaTelegramHref(),
-      external: true,
-      label: t("homepage_eliza.landing.channelTelegram", {
-        defaultValue: "Message Eliza on Telegram",
-      }),
-      icon: <TelegramIcon className="size-6" style={{ color: "#2AABEE" }} />,
-    },
-    {
-      key: "discord",
-      href: buildElizaDiscordHref(),
-      external: true,
-      label: t("homepage_eliza.landing.channelDiscord", {
-        defaultValue: "Message Eliza on Discord",
-      }),
-      icon: <DiscordIcon className="size-6" style={{ color: "#5865F2" }} />,
-    },
-    {
-      key: "whatsapp",
-      href: buildElizaWhatsAppHref(),
-      external: true,
-      label: t("homepage_eliza.landing.channelWhatsapp", {
-        defaultValue: "Message Eliza on WhatsApp",
-      }),
-      icon: <WhatsAppIcon className="size-6" style={{ color: "#25D366" }} />,
-    },
-  ];
-
   return (
     <div className="landing-page theme-app">
       <Suspense fallback={null}>
@@ -605,9 +523,15 @@ export default function LandingPage() {
         <div className="landing-hero-copy">
           <h1 className="landing-hero-heading">
             {t("homepage_eliza.landing.heroTitle", {
-              defaultValue: "Four hours of your time back every week.",
+              defaultValue: "Your personal Eliza starts with one message.",
             })}
           </h1>
+          <p className="landing-hero-lede">
+            {t("homepage_eliza.landing.heroLede", {
+              defaultValue:
+                "No account, app, card, or setup. Text Eliza and start free on Shared.",
+            })}
+          </p>
           <div className="landing-hero-actions">
             <a
               className="landing-cta landing-cta--black"
@@ -615,39 +539,17 @@ export default function LandingPage() {
             >
               <IMessageIcon className="size-5" />
               {t("homepage_eliza.landing.ctaText", {
-                defaultValue: "Text",
+                defaultValue: "Message Eliza",
               })}
             </a>
-            <a
-              className="landing-cta landing-cta--white"
-              href={`tel:${ELIZA_PHONE_NUMBER}`}
-            >
-              <svg
-                viewBox="0 0 24 24"
-                fill="currentColor"
-                className="size-5"
-                aria-hidden="true"
-              >
-                <path d="M6.62 10.79a15.05 15.05 0 0 0 6.59 6.59l2.2-2.2a1 1 0 0 1 1.02-.24 11.36 11.36 0 0 0 3.57.57 1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1 11.36 11.36 0 0 0 .57 3.57 1 1 0 0 1-.25 1.02Z" />
-              </svg>
-              {t("homepage_eliza.landing.ctaCall", {
-                defaultValue: "Call",
-              })}
-            </a>
-            {channels.map((channel) => (
-              <a
-                key={channel.key}
-                className="landing-channel"
-                href={channel.href}
-                aria-label={channel.label}
-                title={channel.label}
-                target={channel.external ? "_blank" : undefined}
-                rel={channel.external ? "noreferrer" : undefined}
-              >
-                {channel.icon}
-              </a>
-            ))}
           </div>
+          <p className="landing-phone-number">{ELIZA_PHONE_FORMATTED}</p>
+          <p className="landing-continuity-note">
+            {t("homepage_eliza.landing.continuity", {
+              defaultValue:
+                "Mostly live in Messages. Sign in with the same number later for voice, history, and controls in the app.",
+            })}
+          </p>
         </div>
         <PhoneMockup />
       </main>

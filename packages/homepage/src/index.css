@@ -1329,7 +1329,7 @@ body {
 
 /* ---------------------------------------------------------------------------
  * Landing page ("/"): a single orange-drenched viewport. One headline, the
- * call/text entrypoints, and an iPhone-styled iMessage preview. The only
+ * iMessage entrypoint, and an iPhone-styled Shared preview. The only
  * motion is the chat-bubble entrance, suppressed by the reduced-motion
  * override above.
  * ------------------------------------------------------------------------- */
@@ -1419,11 +1419,11 @@ body {
 }
 
 .landing-hero-lede {
-  margin: 1.5rem 0 0;
-  max-width: 30rem;
-  font-size: clamp(1.15rem, 1.8vw, 1.45rem);
+  margin: 1.25rem 0 0;
+  max-width: 31rem;
+  font-size: clamp(1.05rem, 1.6vw, 1.3rem);
   font-weight: 400;
-  line-height: 1.35;
+  line-height: 1.45;
   text-wrap: pretty;
 }
 
@@ -1434,6 +1434,22 @@ body {
   justify-content: center;
   gap: 0.85rem;
   margin-top: 2.25rem;
+}
+
+.landing-phone-number {
+  margin: 0.8rem 0 0;
+  font-size: 0.92rem;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+}
+
+.landing-continuity-note {
+  margin: 1.15rem 0 0;
+  max-width: 29rem;
+  color: rgb(0 0 0 / 68%);
+  font-size: 0.92rem;
+  line-height: 1.45;
+  text-wrap: pretty;
 }
 
 .landing-cta {
@@ -1476,25 +1492,6 @@ body {
 .landing-cta--white:hover {
   background: var(--brand-black);
   color: var(--brand-white);
-}
-
-.landing-channel {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 3.25rem;
-  height: 3.25rem;
-  border-radius: 50%;
-  background: #ffffff;
-  box-shadow: 0 6px 18px rgb(0 0 0 / 10%);
-  transition:
-    transform 0.15s ease,
-    box-shadow 0.15s ease;
-}
-
-.landing-channel:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 8px 20px rgb(0 0 0 / 18%);
 }
 
 /* iPhone-styled iMessage preview */
@@ -1986,15 +1983,5 @@ body {
     min-height: 2.75rem;
     padding: 0 1rem;
     font-size: 0.95rem;
-  }
-
-  .landing-channel {
-    width: 2.75rem;
-    height: 2.75rem;
-  }
-
-  .landing-channel svg {
-    width: 1.25rem;
-    height: 1.25rem;
   }
 }
