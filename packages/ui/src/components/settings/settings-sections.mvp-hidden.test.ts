@@ -1,7 +1,7 @@
 /**
  * Guards the MVP settings declutter: the tabs hidden for MVP (Capabilities,
- * Apps, Cloud Connectors, Runtime, My Runtimes, Wallet & RPC, and the
- * consolidated-away standalone Background) drop out of the nav when Developer
+ * Apps, Runtime, My Runtimes, Wallet & RPC, and the consolidated-away
+ * standalone Background) drop out of the nav when Developer
  * Mode is off, but stay REGISTERED (kept, not deleted) so their routes/
  * deep-links still resolve and they reappear when Developer Mode is on.
  */
@@ -13,7 +13,6 @@ const MVP_HIDDEN = [
   "capabilities",
   "apps",
   "app-permissions",
-  "cloud-connectors",
   "runtime",
   "my-runtimes",
   "wallet-rpc",
