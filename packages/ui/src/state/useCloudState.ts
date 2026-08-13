@@ -1536,6 +1536,11 @@ export function useCloudState({
       if (disposed) return;
       if (result?.token) {
         writeStoredStewardToken(result.token);
+      } else if (!readStoredStewardToken()?.trim()) {
+        // Terminal 401/403 drained the stored token inside
+        // refreshCloudStewardSession: surface auth-rejected immediately so
+        // the UI prompts re-auth instead of 401-looping.
+        setElizaCloudAuthRejected(true);
       }
     };
 

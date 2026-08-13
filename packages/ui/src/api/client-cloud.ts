@@ -583,6 +583,9 @@ export async function refreshCloudStewardSession(opts?: {
   if (shouldUseNativeStewardRefreshHttp(endpoint)) {
     const token = readStoredStewardToken()?.trim();
     if (!token) return null;
+    // Capture pre-request token so a concurrent same-tab login that rotates
+    // the stored token during the in-flight refresh is not erased on 401.
+    const sentToken = token;
     const response = await withDirectCloudHttpTimeout(
       CapacitorHttp.request({
         url: endpoint,
@@ -597,7 +600,12 @@ export async function refreshCloudStewardSession(opts?: {
       }),
       { method: "POST", url: endpoint },
     );
-    if (response.status < 200 || response.status >= 300) return null;
+    if (response.status < 200 || response.status >= 300) {
+      if (response.status === 401 || response.status === 403) {
+        clearStoredStewardTokenIfCurrent(sentToken);
+      }
+      return null;
+    }
     return parseDirectCloudJsonSafe(response.data) as {
       token?: string;
       expiresAt?: number;
@@ -606,11 +614,19 @@ export async function refreshCloudStewardSession(opts?: {
   }
 
   if (typeof fetch === "undefined") return null;
+  // Capture pre-request token for the same race: do not clear a fresh token
+  // that was stored while this cookie-based refresh was in flight.
+  const sentToken = readStoredStewardToken()?.trim() || null;
   const response = await fetch(endpoint, {
     method: "POST",
     credentials: "include",
   });
-  if (!response.ok) return null;
+  if (!response.ok) {
+    if ((response.status === 401 || response.status === 403) && sentToken) {
+      clearStoredStewardTokenIfCurrent(sentToken);
+    }
+    return null;
+  }
   // error-policy:J3 an unparseable refresh body reads as "no refreshed
   // session" (null) — callers keep/drop the stored token by its own expiry.
   return (await response.json().catch(() => null)) as {

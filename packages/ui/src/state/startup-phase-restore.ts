@@ -55,10 +55,12 @@ import {
   buildCloudSharedAgentApiBase,
   buildDedicatedCloudAgentApiBase,
   dedicatedCloudAgentIdFromBase,
+  ELIZA_CLOUD_CONTROL_PLANE_HOSTS,
   isDedicatedCloudAgentBase,
   isElizaCloudControlPlaneAgentlessBase,
   resolveCloudEnvironmentBase,
 } from "../utils/cloud-agent-base";
+import { DIRECT_ELIZA_CLOUD_API_BY_HOST } from "../api/direct-cloud-endpoints";
 import { getElizaApiBase, getElizaApiToken } from "../utils/eliza-globals";
 import {
   detectExistingFirstRunConnection,
@@ -479,13 +481,17 @@ async function resolveRestoredStewardToken(): Promise<string | null> {
     return refreshed.token;
   }
 
-  // Refresh failed / timed out. A truly-expired token is a dead credential —
+  // Refresh failed / timed out. A terminal 401 rejection already drained the
+  // stored token inside refreshCloudStewardSession — honor that and return
+  // unauthenticated. Otherwise, a truly-expired token is a dead credential —
   // drop it so we restore unauthenticated instead of a guaranteed-401 dial.
+  const stillStored = readStoredStewardToken()?.trim() || null;
+  if (!stillStored) return null;
   if (secs <= 0) {
     clearStoredStewardToken();
     return null;
   }
-  return stored;
+  return stillStored;
 }
 
 export async function applyRestoredConnection(args: {
@@ -549,6 +555,33 @@ export async function applyRestoredConnection(args: {
     // refresh it BEFORE handing it to the client so a returning user never
     // boots into a permanently-401ing session (see resolveRestoredStewardToken).
     const stewardToken = await stewardTokenPromise;
+    // Hosted startup must not adopt a persisted Cloud agent without a valid
+    // Steward session. Otherwise a stale cookie + cached agentId survives a
+    // dead refresh, boots against the wrong agent, and 401-loops with stale
+    // UI. Drop the persisted target so re-auth resolves from the org-scoped
+    // agent list instead. Guarded to Cloud control-plane hosts only so
+    // local/dedicated restores with a valid session are unaffected.
+    const hostedWithoutStewardSession =
+      !usesLocalDockerCredential &&
+      !stewardToken &&
+      typeof window !== "undefined" &&
+      (() => {
+        try {
+          const host = window.location.hostname.toLowerCase();
+          return (
+            ELIZA_CLOUD_CONTROL_PLANE_HOSTS.has(host) ||
+            DIRECT_ELIZA_CLOUD_API_BY_HOST.has(host)
+          );
+        } catch {
+          return false;
+        }
+      })();
+    if (hostedWithoutStewardSession) {
+      clearPersistedActiveServer();
+      clientRef.setToken(null);
+      clientRef.setBaseUrl(null);
+      return;
+    }
     // Dedicated agent subdomains and explicit local-Docker pair targets use an
     // agent-local bearer for `/api/*`. The edge-owned dedicated path can keep
     // its Steward recovery fallback; a loopback process must never receive a
