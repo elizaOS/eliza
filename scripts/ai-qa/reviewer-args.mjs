@@ -12,7 +12,9 @@ function requireUnique(seen, argument) {
 
 function takeValue(argv, index, argument) {
   const value = argv[index + 1];
-  if (!value || value.startsWith("--")) {
+  const isNegativeConcurrency =
+    argument === "--concurrency" && /^-\d/u.test(value ?? "");
+  if (!value || (value.startsWith("-") && !isNegativeConcurrency)) {
     throw new Error(`${argument} requires a value`);
   }
   return value;

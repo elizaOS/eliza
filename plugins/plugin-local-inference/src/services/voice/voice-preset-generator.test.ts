@@ -24,6 +24,7 @@ const SCRIPT = path.join(
 	"voice-preset",
 	"build-default-voice-preset.mjs",
 );
+const MAX_PLACEHOLDER_DIM = 1_073_741_817;
 
 function runGenerator(args: string[]): string {
 	return execFileSync("bun", [SCRIPT, ...args], {
@@ -136,6 +137,40 @@ describe("build-default-voice-preset.mjs", () => {
 	});
 
 	describe("fail-closed --dim / --concurrency (issue #18613)", () => {
+		it("accepts the largest format-representable --dim without allocating it", () => {
+			const out = path.join(dir, "max.bin");
+			const result = runGeneratorExpectFailure([
+				"--placeholder",
+				"--dim",
+				String(MAX_PLACEHOLDER_DIM),
+				"--out",
+				out,
+				"--probe-after-dim",
+			]);
+
+			expect(result.status).toBe(1);
+			expect(result.stderr).toMatch(/Unknown argument: --probe-after-dim/);
+			expect(result.stderr).not.toMatch(/--dim must/);
+			expect(existsSync(out)).toBe(false);
+		});
+
+		it("rejects the first unrepresentable --dim before allocation or output", () => {
+			const out = path.join(dir, "too-large.bin");
+			const result = runGeneratorExpectFailure([
+				"--placeholder",
+				"--dim",
+				String(MAX_PLACEHOLDER_DIM + 1),
+				"--out",
+				out,
+			]);
+
+			expect(result.status).toBe(1);
+			expect(result.stderr).toMatch(
+				new RegExp(`--dim.*no greater than ${MAX_PLACEHOLDER_DIM}`),
+			);
+			expect(existsSync(out)).toBe(false);
+		});
+
 		const malformedCases: Array<{
 			name: string;
 			/** Full argv after SCRIPT; must include --out pointing at a nested path. */

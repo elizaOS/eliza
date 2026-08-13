@@ -46,8 +46,10 @@ export function formatDate(date: string | null): string {
 }
 
 function formatTime(date: string | null): string {
-  if (!date) return "";
-  return new Date(date).toLocaleTimeString(undefined, {
+  if (!date) return "—";
+  const timestamp = new Date(date).getTime();
+  if (!Number.isFinite(timestamp)) return "—";
+  return new Date(timestamp).toLocaleTimeString(undefined, {
     hour: "2-digit",
     minute: "2-digit",
   });

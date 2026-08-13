@@ -87,3 +87,35 @@ describe("MiniMax static catalog", () => {
     expect(selectorModel?.description).toBe("Faster, lower-cost option");
   });
 });
+
+describe("OpenAI o-series selector metadata", () => {
+  test.each(["openai/o3", "openai/o3-pro", "openai/o4-mini"])(
+    "keeps %s in the reasoning family before generic variant heuristics",
+    (modelId) => {
+      const catalogModel = STATIC_TEXT_CATALOG_MODELS.find((model) => model.id === modelId);
+      const selectorModel = FALLBACK_TEXT_SELECTOR_MODELS.find(
+        (model) => model.modelId === modelId,
+      );
+
+      expect(catalogModel?.description).toBe("Reasoning-focused model");
+      expect(selectorModel?.description).toBe("Reasoning-focused model");
+    },
+  );
+
+  test("does not apply OpenAI o-series precedence to MiniMax or true mini models", () => {
+    const expectedDescriptions = new Map([
+      ["minimax/minimax-m3", "General-purpose language model"],
+      ["openai/gpt-5-mini", "Faster, lower-cost option"],
+    ]);
+
+    for (const [modelId, description] of expectedDescriptions) {
+      const catalogModel = STATIC_TEXT_CATALOG_MODELS.find((model) => model.id === modelId);
+      const selectorModel = FALLBACK_TEXT_SELECTOR_MODELS.find(
+        (model) => model.modelId === modelId,
+      );
+
+      expect(catalogModel?.description).toBe(description);
+      expect(selectorModel?.description).toBe(description);
+    }
+  });
+});

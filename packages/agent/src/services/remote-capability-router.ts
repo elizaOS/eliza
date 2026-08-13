@@ -61,6 +61,7 @@ import {
 import { parsePositiveInteger } from "@elizaos/shared";
 
 const DEFAULT_REQUEST_TIMEOUT_MS = 60_000;
+const MAX_REQUEST_TIMEOUT_MS = 2_147_483_647;
 
 export type RemoteCapabilityEndpointConfig = {
   id: string;
@@ -94,6 +95,7 @@ export class RemoteCapabilityRouterService
 
   private readonly broker: RuntimeBrokerCapabilityRouter;
   private readonly endpoints: RemoteCapabilityEndpointConfig[];
+  private readonly routerConfig: RemoteCapabilityRouterConfig;
   private readonly moduleEndpointById = new Map<
     string,
     RemoteCapabilityEndpointConfig
@@ -101,7 +103,7 @@ export class RemoteCapabilityRouterService
 
   constructor(
     runtime?: IAgentRuntime,
-    private readonly routerConfig: RemoteCapabilityRouterConfig = runtime
+    routerConfig: RemoteCapabilityRouterConfig = runtime
       ? resolveRemoteCapabilityRouterConfig(runtime)
       : (undefined as never),
   ) {
@@ -112,6 +114,12 @@ export class RemoteCapabilityRouterService
       });
     }
     super(runtime);
+    this.routerConfig = {
+      ...routerConfig,
+      requestTimeoutMs: normalizeRequestTimeoutMs(
+        routerConfig.requestTimeoutMs,
+      ),
+    };
     this.environment = routerConfig.environment;
     this.broker = new RuntimeBrokerCapabilityRouter({
       environment: routerConfig.environment,
@@ -377,6 +385,9 @@ export function resolveRemoteCapabilityRouterConfig(
     parseBoolean(get("ELIZA_CAPABILITY_ROUTER_ENABLED")) ??
     parseBoolean(get("ELIZA_REMOTE_CAPABILITY_ENABLED")) ??
     (Boolean(baseUrl) || endpoints.length > 0);
+  const requestTimeoutMs = parsePositiveInteger(
+    get("ELIZA_CAPABILITY_ROUTER_TIMEOUT_MS"),
+  );
   return {
     enabled,
     baseUrl: baseUrl ? stripTrailingSlash(baseUrl) : undefined,
@@ -386,10 +397,17 @@ export function resolveRemoteCapabilityRouterConfig(
     ...(endpoints.length === 0 ? {} : { endpoints }),
     environment:
       parseEnvironment(get("ELIZA_CAPABILITY_ROUTER_ENVIRONMENT")) ?? "server",
-    requestTimeoutMs:
-      parsePositiveInteger(get("ELIZA_CAPABILITY_ROUTER_TIMEOUT_MS")) ??
-      DEFAULT_REQUEST_TIMEOUT_MS,
+    requestTimeoutMs: normalizeRequestTimeoutMs(requestTimeoutMs),
   };
+}
+
+function normalizeRequestTimeoutMs(value: number | undefined): number {
+  return value !== undefined &&
+    Number.isSafeInteger(value) &&
+    value > 0 &&
+    value <= MAX_REQUEST_TIMEOUT_MS
+    ? value
+    : DEFAULT_REQUEST_TIMEOUT_MS;
 }
 
 export type RemoteCapabilityServer = {

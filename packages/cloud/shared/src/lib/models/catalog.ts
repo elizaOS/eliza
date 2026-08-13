@@ -411,11 +411,16 @@ function buildSelectorDescription(modelId: string): string {
   if (id.includes("haiku")) return "Fast Claude model";
   if (id.includes("flash-lite")) return "Lowest-latency Gemini option";
   if (id.includes("flash")) return "Fast general-purpose model";
+  // OpenAI o-series suffixes describe variants of the same reasoning family.
+  // Resolve that family before generic `pro` / `mini` labels, but keep the
+  // provider gate so unrelated vendors' similarly named models are untouched.
+  if (provider === "openai" && /^o(?:1|3|4)(?:-|$)/u.test(id)) {
+    return "Reasoning-focused model";
+  }
   if (id.includes("pro")) return "Highest-capability option";
   if (id.includes("mini")) return "Faster, lower-cost option";
   if (id.includes("nano")) return "Smallest, lowest-cost option";
   if (id.includes("oss")) return "Open-weight reasoning model";
-  if (/\/o[134]/.test(id) || id.endsWith("/o1")) return "Reasoning-focused model";
   if (id.includes("compound")) return "Groq compound system model";
   if (id.includes("4o")) return "General-purpose multimodal model";
   if (id.includes("4.1")) return "Reliable general-purpose model";

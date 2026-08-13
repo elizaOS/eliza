@@ -7,6 +7,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { spawnSync } from "../lib/spawn-sync-captured.mjs";
 import {
   DEFAULT_MAX_GB,
   maxBytesFromGb,
@@ -15,7 +16,6 @@ import {
   pruneTurboCache,
   resolveCacheDir,
 } from "../prune-turbo-cache.mjs";
-import { spawnSync } from "../lib/spawn-sync-captured.mjs";
 
 const SCRIPT = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -64,6 +64,21 @@ describe("parseMaxGb", () => {
   });
 });
 
+describe("maxBytesFromGb", () => {
+  test("rounds valid fractional gigabytes to a positive safe byte cap", () => {
+    expect(maxBytesFromGb(1.5)).toBe(1_610_612_736);
+    expect(maxBytesFromGb(1e-9)).toBe(1);
+  });
+
+  test("rejects underflow, overflow, and unsafe byte conversions", () => {
+    for (const value of [1e-20, 8_388_608, 1e300]) {
+      expect(() => maxBytesFromGb(value)).toThrow(
+        /--max-gb.*positive safe-integer byte cap/,
+      );
+    }
+  });
+});
+
 describe("parseArgs", () => {
   test("defaults to 20 GB when --max-gb is omitted", () => {
     const options = parseArgs(["--dry-run"]);
@@ -87,9 +102,12 @@ describe("parseArgs", () => {
       "--max-gb=abc",
       "--max-gb=NaN",
       "--max-gb=Infinity",
+      "--max-gb=1e-20",
+      "--max-gb=8388608",
+      "--max-gb=1e300",
     ]) {
       expect(() => parseArgs([arg])).toThrow(
-        /must be a positive finite number of gigabytes/,
+        /must (?:be a positive finite number of gigabytes|convert to a positive safe-integer byte cap)/,
       );
     }
   });
@@ -97,9 +115,9 @@ describe("parseArgs", () => {
 
 describe("resolveCacheDir", () => {
   test("prefers TURBO_CACHE_DIR over the default relative path", () => {
-    expect(resolveCacheDir({ TURBO_CACHE_DIR: "/tmp/custom-turbo" }, "/repo")).toBe(
-      path.resolve("/tmp/custom-turbo"),
-    );
+    expect(
+      resolveCacheDir({ TURBO_CACHE_DIR: "/tmp/custom-turbo" }, "/repo"),
+    ).toBe(path.resolve("/tmp/custom-turbo"));
     expect(resolveCacheDir({}, "/repo")).toBe(
       path.resolve("/repo", ".turbo/cache"),
     );
@@ -185,11 +203,14 @@ describe("prune-turbo-cache CLI", () => {
         "--max-gb=abc",
         "--max-gb=NaN",
         "--max-gb=Infinity",
+        "--max-gb=1e-20",
+        "--max-gb=8388608",
+        "--max-gb=1e300",
       ]) {
         const result = runCli([arg], { TURBO_CACHE_DIR: cacheDir });
         expect(result.status).toBe(2);
         expect(result.stderr).toMatch(
-          /must be a positive finite number of gigabytes/,
+          /must (?:be a positive finite number of gigabytes|convert to a positive safe-integer byte cap)/,
         );
         expect(fs.existsSync(keep)).toBe(true);
       }
