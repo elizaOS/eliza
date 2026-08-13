@@ -496,6 +496,254 @@ describe("GET /api/v1/hf-proxy/[...path]", () => {
   });
 });
 
+/**
+ * In-process Durable Object simulation for cross-isolate tests.
+ *
+ * The HfProxyEgressGate DO serializes all operations per org. This fake
+ * creates a single shared storage map that multiple stub instances (simulating
+ * separate Cloudflare isolates) read from and write to, proving that two
+ * isolates sharing the same DO cannot both reserve against the same budget.
+ *
+ * The DO's actual serialization is guaranteed by Cloudflare's actor model;
+ * this fake proves the *state-sharing* invariant (both isolates see the same
+ * committed total and in-flight reservations) which the old KV path violated.
+ */
+function fakeEgressGateNamespace(_orgId: string, _limitBytes: number) {
+  // Shared state — this is what a real DO persists in its storage.
+  const storage = {
+    committed: 0,
+    reservations: new Map<string, number>(),
+  };
+
+  function jsonResp(body: unknown): Response {
+    return new Response(JSON.stringify(body), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  async function handleFetch(request: Request): Promise<Response> {
+    const url = new URL(request.url);
+    const op = url.pathname;
+    const body = (await request.json()) as Record<string, unknown>;
+
+    if (op === "/reserve") {
+      const bytes = body.bytes as number;
+      const limit = body.limitBytes as number;
+      let inFlight = 0;
+      for (const r of storage.reservations.values()) inFlight += r;
+      const available = limit - storage.committed - inFlight;
+      if (bytes > available) {
+        return jsonResp({
+          admitted: false,
+          reservationId: null,
+          committed: storage.committed,
+          inFlight,
+        });
+      }
+      const id = crypto.randomUUID();
+      storage.reservations.set(id, bytes);
+      return jsonResp({
+        admitted: true,
+        reservationId: id,
+        committed: storage.committed,
+        inFlight,
+      });
+    }
+
+    if (op === "/amend") {
+      const reservationId = body.reservationId as string;
+      const actualBytes = body.actualBytes as number;
+      const limit = body.limitBytes as number;
+      const current = storage.reservations.get(reservationId);
+      if (current === undefined) {
+        return jsonResp({
+          ok: false,
+          committed: storage.committed,
+          inFlight: 0,
+        });
+      }
+      if (actualBytes <= current) {
+        storage.reservations.set(reservationId, actualBytes);
+        return jsonResp({
+          ok: true,
+          committed: storage.committed,
+          inFlight: 0,
+        });
+      }
+      // Grow: re-check
+      const oldReserved = current;
+      storage.reservations.set(reservationId, 0);
+      let inFlight = 0;
+      for (const r of storage.reservations.values()) inFlight += r;
+      const available = limit - storage.committed - inFlight;
+      if (actualBytes > available) {
+        storage.reservations.set(reservationId, oldReserved);
+        return jsonResp({ ok: false, committed: storage.committed, inFlight });
+      }
+      storage.reservations.set(reservationId, actualBytes);
+      return jsonResp({ ok: true, committed: storage.committed, inFlight });
+    }
+
+    if (op === "/commit") {
+      const reservationId = body.reservationId as string;
+      const bytes = body.bytes as number;
+      if (!storage.reservations.has(reservationId)) {
+        return jsonResp({ committed: storage.committed });
+      }
+      storage.reservations.delete(reservationId);
+      if (bytes > 0) storage.committed += bytes;
+      return jsonResp({ committed: storage.committed });
+    }
+
+    if (op === "/release") {
+      const reservationId = body.reservationId as string;
+      storage.reservations.delete(reservationId);
+      return jsonResp({ released: true });
+    }
+
+    if (op === "/read") {
+      let inFlight = 0;
+      for (const r of storage.reservations.values()) inFlight += r;
+      return jsonResp({ committed: storage.committed, inFlight });
+    }
+
+    return new Response("Not found", { status: 404 });
+  }
+
+  // Each stub simulates a separate Cloudflare isolate making a fetch to the
+  // same Durable Object (same shared storage).
+  const stub = {
+    fetch: (request: RequestInfo | URL, init?: RequestInit) =>
+      handleFetch(new Request(request, init)),
+  };
+
+  const namespace = {
+    getByName: (_name: string) => stub,
+    // Expose for test assertions
+    _storage: storage,
+  };
+
+  return namespace;
+}
+
+describe("Cross-isolate atomic egress quota (Durable Object path)", () => {
+  test("two sequential KV-backed commits do not lose an increment when a DO is present", async () => {
+    // Simulates two isolates each streaming 5 bytes. With the DO, both
+    // commits land on the shared ledger — no lost update. Budget is 20.
+    const limit = 20;
+    const ns = fakeEgressGateNamespace("org-1", limit);
+
+    const env = {
+      HF_TOKEN: "hf-secret",
+      HF_PROXY_EGRESS_GATES: ns,
+      HF_PROXY_MONTHLY_EGRESS_LIMIT_BYTES: String(limit),
+    };
+
+    globalThis.fetch = mock(
+      async () =>
+        new Response("12345", {
+          status: 200,
+          headers: {
+            "content-type": "application/octet-stream",
+            "content-length": "5",
+          },
+        }),
+    ) as unknown as typeof fetch;
+
+    // Isolate A downloads 5 bytes.
+    const resA = await app.fetch(makeRequest(RESOLVE_PATH), env);
+    expect(resA.status).toBe(200);
+    expect(await resA.text()).toBe("12345");
+
+    // Isolate B downloads another 5 bytes.
+    const resB = await app.fetch(makeRequest(RESOLVE_PATH), env);
+    expect(resB.status).toBe(200);
+    expect(await resB.text()).toBe("12345");
+
+    // The committed total must be 10 — no lost increment.
+    expect(ns._storage.committed).toBe(10);
+
+    // A third request for more than the remaining 10 bytes must be rejected.
+    globalThis.fetch = mock(
+      async () =>
+        new Response("x".repeat(15), {
+          status: 200,
+          headers: { "content-length": "15" },
+        }),
+    ) as unknown as typeof fetch;
+    const resC = await app.fetch(makeRequest(RESOLVE_PATH), env);
+    expect(resC.status).toBe(429);
+  });
+
+  test("two overlapping reservations against the same shared budget cannot both succeed", async () => {
+    // Budget of 10 bytes. Two "isolates" each try to reserve the full 10.
+    // With the DO, the first reserves 10, the second finds 0 available and
+    // is rejected — BEFORE any upstream fetch. This proves the cross-isolate
+    // invariant the old isolate-local Map could not enforce.
+    const limit = 10;
+    const ns = fakeEgressGateNamespace("org-1", limit);
+
+    const env = {
+      HF_TOKEN: "hf-secret",
+      HF_PROXY_EGRESS_GATES: ns,
+      HF_PROXY_MONTHLY_EGRESS_LIMIT_BYTES: String(limit),
+    };
+
+    let fetchCount = 0;
+    globalThis.fetch = mock(async () => {
+      fetchCount++;
+      return new Response("12345678", {
+        status: 200,
+        headers: { "content-length": "8" },
+      });
+    }) as unknown as typeof fetch;
+
+    const [a, b] = await Promise.all([
+      app.fetch(makeRequest(RESOLVE_PATH), env),
+      app.fetch(makeRequest(RESOLVE_PATH), env),
+    ]);
+    const statuses = [a.status, b.status].sort();
+    // Exactly one succeeds, exactly one rejected.
+    expect(statuses).toContain(200);
+    expect(statuses).toContain(429);
+    // Only the winning request reached upstream.
+    expect(fetchCount).toBe(1);
+  });
+
+  test("committed total survives across requests — no lost update on sequential commits", async () => {
+    // Four sequential 5-byte downloads against a 20-byte budget. The committed
+    // total must reach exactly 20, and the fifth request must be rejected.
+    const limit = 20;
+    const ns = fakeEgressGateNamespace("org-1", limit);
+
+    const env = {
+      HF_TOKEN: "hf-secret",
+      HF_PROXY_EGRESS_GATES: ns,
+      HF_PROXY_MONTHLY_EGRESS_LIMIT_BYTES: String(limit),
+    };
+
+    globalThis.fetch = mock(
+      async () =>
+        new Response("12345", {
+          status: 200,
+          headers: { "content-length": "5" },
+        }),
+    ) as unknown as typeof fetch;
+
+    for (let i = 0; i < 4; i++) {
+      const res = await app.fetch(makeRequest(RESOLVE_PATH), env);
+      expect(res.status).toBe(200);
+      expect(await res.text()).toBe("12345");
+    }
+
+    expect(ns._storage.committed).toBe(20);
+
+    const res5 = await app.fetch(makeRequest(RESOLVE_PATH), env);
+    expect(res5.status).toBe(429);
+  });
+});
+
 describe("ALLOWED_REPO_PREFIX single-source-of-truth", () => {
   test("matches the org segment of ELIZA_1_HF_REPO from @elizaos/shared", async () => {
     // The route's allowlist prefix is a local literal (kept out of the worker

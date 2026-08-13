@@ -79,6 +79,13 @@ export interface Bindings {
   INFERENCE_ADMISSION_GATES?: RuntimeDurableObjectNamespace;
 
   /**
+   * One strongly ordered egress-quota ledger per organization. Serializes
+   * HuggingFace proxy in-flight reservations and committed byte totals so two
+   * isolates cannot both reserve against the same remaining budget.
+   */
+  HF_PROXY_EGRESS_GATES?: RuntimeDurableObjectNamespace;
+
+  /**
    * One strongly ordered identity/quota cache per anonymous chat session.
    * Postgres hydration and counter mirrors run only outside the response path.
    */

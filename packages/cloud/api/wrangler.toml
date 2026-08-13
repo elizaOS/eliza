@@ -106,6 +106,10 @@ name = "SHARED_RUNTIME_CONVERSATIONS"
 class_name = "SharedRuntimeConversation"
 
 [[durable_objects.bindings]]
+name = "HF_PROXY_EGRESS_GATES"
+class_name = "HfProxyEgressGate"
+
+[[durable_objects.bindings]]
 name = "INFERENCE_ADMISSION_GATES"
 class_name = "InferenceAdmissionGate"
 
@@ -116,6 +120,10 @@ class_name = "AnonymousChatGate"
 [[durable_objects.bindings]]
 name = "ONBOARDING_SESSIONS"
 class_name = "OnboardingSessionCoordinator"
+
+[[migrations]]
+tag = "hf-proxy-egress-gates-v1"
+new_sqlite_classes = ["HfProxyEgressGate"]
 
 [[migrations]]
 tag = "shared-runtime-conversations-v1"

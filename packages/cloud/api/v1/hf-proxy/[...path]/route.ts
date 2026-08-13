@@ -19,23 +19,35 @@
  * eliza-1 org (`ALLOWED_REPO_PREFIX`): the cloud's own `HF_TOKEN` may only be
  * spent proxying the shipping catalog, never an arbitrary user-chosen repo.
  *
- * EGRESS QUOTA (issue #13115): per-org monthly byte budget enforced atomically.
- * The route reserves a hard cap UPFRONT before the upstream fetch, then — once
- * upstream headers arrive with the real content-length — atomically AMENDS the
- * reservation to the actual byte count. Unknown-length streams reserve the full
- * remaining org budget as a hard cap. While streaming, each chunk is checked
- * against the remaining allowance and the stream is ABORTED (with the already
- * streamed bytes committed) if it would exceed the budget. Partial bytes on
- * client disconnect are accounted through the readable stream's `cancel`
- * callback + a finally guard, never a TransformStream transformer (which lacks a
- * reliable cancellation hook for downstream-disconnect accounting).
+ * EGRESS QUOTA (issue #13115): per-org monthly byte budget enforced via a
+ * Durable Object (`HfProxyEgressGate`) that serializes all reservation,
+ * amendment, and commit operations for an org. The route reserves a hard cap
+ * UPFRONT before the upstream fetch, then — once upstream headers arrive with
+ * the real content-length — atomically AMENDS the reservation to the actual
+ * byte count. Unknown-length streams reserve the full remaining org budget as
+ * a hard cap. While streaming, each chunk is checked against the remaining
+ * allowance and the stream is ABORTED (with the already-streamed bytes
+ * committed) if it would exceed the budget. Partial bytes on client disconnect
+ * are accounted through the readable stream's `cancel` callback + a finally
+ * guard, never a TransformStream transformer (which lacks a reliable
+ * cancellation hook for downstream-disconnect accounting).
+ *
+ * FALLBACK: when the `HF_PROXY_EGRESS_GATES` Durable Object binding is absent
+ * (local development, test), the route falls back to an in-memory + KV path.
+ * That path is safe within a single isolate (single-threaded JS event loop)
+ * but does NOT guarantee cross-isolate atomicity — KV is eventually
+ * consistent and the read-modify-write commit is racy across isolates.
+ * Production deployments MUST bind the Durable Object for true atomicity.
  */
 
 import { Hono } from "hono";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import { logger, redact } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+import type {
+  AppEnv,
+  RuntimeDurableObjectStub,
+} from "@/types/cloud-worker-env";
 
 const HF_UPSTREAM_HOST = "https://huggingface.co";
 const DEFAULT_MONTHLY_EGRESS_LIMIT_BYTES = 500 * 1024 ** 3;
@@ -86,22 +98,27 @@ const PASSTHROUGH_RESPONSE_HEADERS = [
 const app = new Hono<AppEnv>();
 
 /**
- * Egress accounting state. Two tiers:
+ * Egress accounting state — two tiers:
  *
- * 1. **Reservation ledger** (`EgressCounter`): the committed running total for
- *    the org+month, persisted to KV (cross-isolate) or an in-memory Map
- *    (single-isolate fallback). This is the authoritative budget.
- * 2. **In-flight reservations**: `Map<reservationId, InFlightReservation>` —
- *    per-download holds that reserve bytes upfront and are amended/released when
- *    the download settles. These are isolate-local; KV does not support atomic
- *    holds, so cross-isolate concurrency against the same org is bounded by the
- *    commit-time check-and-decrement, which is the actual quota gate.
+ * 1. **Durable Object** (`HfProxyEgressGate`): one actor per org, owning the
+ *    committed running total and in-flight reservations. All operations are
+ *    serialized inside the actor's single-threaded execution, so two
+ *    isolates cannot both reserve against the same remaining budget or lose
+ *    an increment. This is the authoritative production path.
+ *
+ * 2. **In-memory fallback**: when the DO binding is absent (local dev, tests),
+ *    a process-local `Map` + KV read-modify-write is used. This is safe within
+ *    a single isolate but NOT cross-isolate (KV is eventually consistent and
+ *    the commit is a non-atomic read-modify-write).
  */
+
+/** KV-backed committed total (fallback path only). */
 interface EgressCounter {
   bytes: number;
   expiresAt: number;
 }
 
+/** Isolate-local in-flight reservation (fallback path only). */
 interface InFlightReservation {
   /** Bytes reserved (hard cap) when the hold was placed. */
   reserved: number;
@@ -111,6 +128,22 @@ interface InFlightReservation {
 
 const inMemoryEgressCounters = new Map<string, EgressCounter>();
 const inFlightReservations = new Map<string, InFlightReservation>();
+
+/** Origin used for Durable Object fetch calls (not a real HTTP origin). */
+const EGRESS_GATE_ORIGIN = "https://hf-proxy-egress-gate.internal";
+
+/**
+ * Resolve the egress gate DO stub for an org, or `null` if the binding is not
+ * present (fallback path). All route-level egress operations go through this.
+ */
+function egressGate(
+  env: AppEnv["Bindings"],
+  organizationId: string,
+): RuntimeDurableObjectStub | null {
+  const namespace = env.HF_PROXY_EGRESS_GATES;
+  if (!namespace) return null;
+  return namespace.getByName(organizationId);
+}
 
 function monthlyEgressLimitBytes(env: AppEnv["Bindings"]): number {
   const raw = env.HF_PROXY_MONTHLY_EGRESS_LIMIT_BYTES;
@@ -193,20 +226,12 @@ function inFlightReservedBytes(organizationId: string): number {
 }
 
 /**
- * Atomically attempt to reserve `bytes` against the org's monthly budget.
+ * Reserve `bytes` against the org's monthly budget.
  *
- * Computes available = limit - committed - inFlightReserved, and if
- * `bytes <= available`, registers an in-flight hold for exactly `bytes` and
- * returns the reservation id. If insufficient budget, returns `{ ok: false }`
- * with the current committed total so the caller can build a 429.
- *
- * The read-then-write is atomic with respect to other JS in this isolate
- * (single-threaded event loop), which is how the in-memory tier guarantees no
- * double-spend within an isolate. KV-backed committed totals are eventually
- * consistent across isolates; the in-flight holds are isolate-local, so two
- * isolates can both reserve against near-full budgets — the streaming-time
- * enforcement (check-and-commit on every chunk) is the hard backstop that
- * prevents actual over-egress regardless of reservation overlaps.
+ * When the Durable Object binding is present, this delegates to the DO, which
+ * serializes the reservation atomically across all isolates. Otherwise it
+ * falls back to the isolate-local in-memory path (safe within one isolate
+ * only).
  */
 async function tryReserveEgress(args: {
   env: AppEnv["Bindings"];
@@ -214,12 +239,42 @@ async function tryReserveEgress(args: {
   bytes: number;
   limitBytes: number;
 }): Promise<
-  { ok: true; reservationId: string; committedBefore: number } | {
-    ok: false;
-    committed: number;
-    inFlight: number;
-  }
+  | { ok: true; reservationId: string; committedBefore: number }
+  | {
+      ok: false;
+      committed: number;
+      inFlight: number;
+    }
 > {
+  const gate = egressGate(args.env, args.organizationId);
+  if (gate) {
+    const resp = await gate.fetch(
+      new Request(`${EGRESS_GATE_ORIGIN}/reserve`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          bytes: args.bytes,
+          limitBytes: args.limitBytes,
+        }),
+      }),
+    );
+    const body = (await resp.json()) as {
+      admitted: boolean;
+      reservationId: string | null;
+      committed: number;
+      inFlight: number;
+    };
+    if (!body.admitted) {
+      return { ok: false, committed: body.committed, inFlight: body.inFlight };
+    }
+    return {
+      ok: true,
+      reservationId: body.reservationId!,
+      committedBefore: body.committed,
+    };
+  }
+
+  // --- Fallback (in-memory, single-isolate) ---
   const committed = await readMonthlyEgress(args.env, args.organizationId);
   const inFlight = inFlightReservedBytes(args.organizationId);
   const available = args.limitBytes - committed - inFlight;
@@ -236,9 +291,8 @@ async function tryReserveEgress(args: {
 
 /**
  * Amend an in-flight reservation's reserved cap after the real content-length
- * is known. If the smaller actual size frees budget, the hold shrinks. If the
- * actual size is larger than the reservation, this re-checks the budget and may
- * reject. Returns `{ ok: false }` if the larger size no longer fits.
+ * is known. When the DO is present this is serialized in the actor. In the
+ * fallback path, shrinking is always allowed and growing re-checks the budget.
  */
 async function amendReservation(args: {
   env: AppEnv["Bindings"];
@@ -246,10 +300,31 @@ async function amendReservation(args: {
   reservationId: string;
   actualBytes: number;
   limitBytes: number;
-}): Promise<
-  | { ok: true }
-  | { ok: false; committed: number; inFlight: number }
-> {
+}): Promise<{ ok: true } | { ok: false; committed: number; inFlight: number }> {
+  const gate = egressGate(args.env, args.organizationId);
+  if (gate) {
+    const resp = await gate.fetch(
+      new Request(`${EGRESS_GATE_ORIGIN}/amend`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          reservationId: args.reservationId,
+          actualBytes: args.actualBytes,
+          limitBytes: args.limitBytes,
+        }),
+      }),
+    );
+    const body = (await resp.json()) as {
+      ok: boolean;
+      committed: number;
+      inFlight: number;
+    };
+    return body.ok
+      ? { ok: true }
+      : { ok: false, committed: body.committed, inFlight: body.inFlight };
+  }
+
+  // --- Fallback (in-memory, single-isolate) ---
   const res = inFlightReservations.get(args.reservationId);
   if (!res) return { ok: false, committed: 0, inFlight: 0 };
   if (args.actualBytes <= res.reserved) {
@@ -276,6 +351,10 @@ async function amendReservation(args: {
  * Commit `bytes` (the actual bytes streamed) to the org's monthly ledger and
  * release the reservation hold. Called exactly once per download via the
  * stream's cancel/start completion path. Idempotent: a second call is a no-op.
+ *
+ * When the DO is present, the increment happens inside the actor's
+ * single-threaded storage, which is impossible to race. In the fallback path
+ * it is a read-modify-write on KV/in-memory (racy across isolates).
  */
 async function commitReservation(args: {
   env: AppEnv["Bindings"];
@@ -283,6 +362,23 @@ async function commitReservation(args: {
   reservationId: string;
   bytes: number;
 }): Promise<number> {
+  const gate = egressGate(args.env, args.organizationId);
+  if (gate) {
+    const resp = await gate.fetch(
+      new Request(`${EGRESS_GATE_ORIGIN}/commit`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          reservationId: args.reservationId,
+          bytes: args.bytes,
+        }),
+      }),
+    );
+    const body = (await resp.json()) as { committed: number };
+    return body.committed;
+  }
+
+  // --- Fallback (in-memory, single-isolate) ---
   const res = inFlightReservations.get(args.reservationId);
   // Already committed (duplicate cancel/finally call) — return current total.
   if (res && res.committed >= 0) {
@@ -299,6 +395,31 @@ async function commitReservation(args: {
   const next = current + args.bytes;
   await writeMonthlyEgress(args.env, args.organizationId, next);
   return next;
+}
+
+/**
+ * Release a reservation without committing bytes (e.g. upstream 401/403, or
+ * upstream fetch error). In the DO path this removes the hold atomically.
+ */
+async function releaseReservation(args: {
+  env: AppEnv["Bindings"];
+  organizationId: string;
+  reservationId: string;
+}): Promise<void> {
+  const gate = egressGate(args.env, args.organizationId);
+  if (gate) {
+    await gate.fetch(
+      new Request(`${EGRESS_GATE_ORIGIN}/release`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reservationId: args.reservationId }),
+      }),
+    );
+    return;
+  }
+
+  // --- Fallback (in-memory, single-isolate) ---
+  inFlightReservations.delete(args.reservationId);
 }
 
 function parseContentLength(headers: Headers): number | null {
@@ -470,7 +591,11 @@ app.get("/*", async (c) => {
     const available = limitBytes - committedBefore - inFlightBefore;
     if (available <= 0) {
       return c.json(
-        egressLimitResponse(orgId, limitBytes, committedBefore + inFlightBefore),
+        egressLimitResponse(
+          orgId,
+          limitBytes,
+          committedBefore + inFlightBefore,
+        ),
         429,
       );
     }
@@ -507,7 +632,11 @@ app.get("/*", async (c) => {
       });
     } catch (fetchError) {
       // Upstream fetch failed — release the reservation so it doesn't leak.
-      inFlightReservations.delete(reserve.reservationId);
+      await releaseReservation({
+        env: c.env,
+        organizationId: orgId,
+        reservationId: reserve.reservationId,
+      });
       throw fetchError;
     }
 
@@ -518,9 +647,19 @@ app.get("/*", async (c) => {
       });
     }
 
+    if (upstreamResponse.status >= 400 && upstreamResponse.status < 500) {
+      // Client errors (4xx): no egress from a proxied body. Release the
+      // reservation so a 404/429/etc. does not needlessly hold the budget.
+      await releaseReservation({
+        env: c.env,
+        organizationId: orgId,
+        reservationId: reserve.reservationId,
+      });
+    }
+
     if (upstreamResponse.status === 401 || upstreamResponse.status === 403) {
-      // Gated/unauthorized: no egress, release the reservation.
-      inFlightReservations.delete(reserve.reservationId);
+      // Gated/unauthorized: the reservation was already released above; record
+      // the metric and return the structured error.
       const upstreamCacheStatus = cacheStatus(upstreamResponse.headers);
       logger.info("[hf-proxy] egress metric", {
         organizationId: orgId,
@@ -572,7 +711,11 @@ app.get("/*", async (c) => {
         limitBytes,
       });
       if (!amend.ok) {
-        inFlightReservations.delete(reserve.reservationId);
+        await releaseReservation({
+          env: c.env,
+          organizationId: orgId,
+          reservationId: reserve.reservationId,
+        });
         return c.json(
           egressLimitResponse(orgId, limitBytes, amend.committed),
           429,
@@ -591,24 +734,31 @@ app.get("/*", async (c) => {
       if (value) responseHeaders.set(name, value);
     }
 
-    const body = upstreamResponse.body
-      ? streamWithEgressEnforcement({
-          body: upstreamResponse.body,
-          env: c.env,
-          organizationId: orgId,
-          reservationId: reserve.reservationId,
-          remainingAllowance,
-          repo,
-          path,
-          status: upstreamResponse.status,
-          cacheStatus: cacheStatus(upstreamResponse.headers),
-        })
-      : (() => {
-          // No body (e.g. HEAD-style 2xx with no content) — commit zero and
-          // release the reservation.
-          inFlightReservations.delete(reserve.reservationId);
-          return null;
-        })();
+    // No body (e.g. HEAD-style 2xx with no content) — release the
+    // reservation and return an empty response.
+    if (!upstreamResponse.body) {
+      await releaseReservation({
+        env: c.env,
+        organizationId: orgId,
+        reservationId: reserve.reservationId,
+      });
+      return new Response(null, {
+        status: upstreamResponse.status,
+        headers: responseHeaders,
+      });
+    }
+
+    const body = streamWithEgressEnforcement({
+      body: upstreamResponse.body,
+      env: c.env,
+      organizationId: orgId,
+      reservationId: reserve.reservationId,
+      remainingAllowance,
+      repo,
+      path,
+      status: upstreamResponse.status,
+      cacheStatus: cacheStatus(upstreamResponse.headers),
+    });
 
     // Stream the body straight through — never buffer a multi-GB GGUF.
     return new Response(body, {
