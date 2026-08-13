@@ -182,13 +182,6 @@ export interface OptimizedPromptFrontierEntry {
 	feedback?: string;
 }
 
-export interface OptimizedPromptContextConfig {
-	providerSet?: readonly string[];
-	providerOrder?: readonly string[];
-	renderTemplates?: Readonly<Record<string, string>>;
-	budgetVector?: Readonly<Record<string, number>>;
-}
-
 /**
  * Snapshot of the noise-gate promotion decision that accepted this artifact,
  * including the two write-site provenance fields (`incumbentSource` /
@@ -225,13 +218,11 @@ export interface OptimizedPromptArtifact {
 	lineage: OptimizedPromptLineageEntry[];
 	frontier?: OptimizedPromptFrontierEntry[];
 	promotionDecision?: PromotionDecisionSummary;
-	contextConfig?: OptimizedPromptContextConfig;
 }
 
 export interface OptimizedPromptResolved {
 	prompt: string;
 	fewShotExamples?: OptimizedPromptFewShotExample[];
-	contextConfig?: OptimizedPromptContextConfig;
 	optimizerSource: OptimizerName;
 }
 
@@ -397,6 +388,10 @@ export function parseOptimizedPromptArtifact(
 	}
 	if (typeof raw.generatedAt !== "string") return null;
 	if (!Array.isArray(raw.lineage)) return null;
+	// The training plugin that consumed contextConfig was removed in #17695.
+	// Reject the orphaned channel instead of loading an artifact whose provider
+	// selection, ordering, templates, and budgets cannot affect the runtime.
+	if (raw.contextConfig !== undefined) return null;
 	const lineage: OptimizedPromptLineageEntry[] = [];
 	for (const entry of raw.lineage) {
 		if (!isStringRecord(entry)) continue;
@@ -437,7 +432,6 @@ export function parseOptimizedPromptArtifact(
 		fewShotExamples: fewShot,
 		frontier,
 		promotionDecision: coercePromotionDecision(raw.promotionDecision),
-		contextConfig: coerceContextConfig(raw.contextConfig),
 	};
 }
 
@@ -497,59 +491,6 @@ function coercePromotionDecision(
 	};
 	return Object.values(summary).some((entry) => entry !== undefined)
 		? summary
-		: undefined;
-}
-
-function coerceStringArray(value: unknown): string[] | undefined {
-	if (!Array.isArray(value)) return undefined;
-	const out = value.filter(
-		(entry): entry is string =>
-			typeof entry === "string" && entry.trim().length > 0,
-	);
-	return out.length > 0 ? out : undefined;
-}
-
-function coerceStringRecord(
-	value: unknown,
-): Readonly<Record<string, string>> | undefined {
-	if (!isStringRecord(value)) return undefined;
-	const out: Record<string, string> = {};
-	for (const [key, entry] of Object.entries(value)) {
-		if (typeof entry === "string" && entry.trim().length > 0) {
-			out[key] = entry;
-		}
-	}
-	return Object.keys(out).length > 0 ? out : undefined;
-}
-
-function coerceNumberRecord(
-	value: unknown,
-): Readonly<Record<string, number>> | undefined {
-	if (!isStringRecord(value)) return undefined;
-	const out: Record<string, number> = {};
-	for (const [key, entry] of Object.entries(value)) {
-		if (typeof entry === "number" && Number.isFinite(entry) && entry >= 0) {
-			out[key] = entry;
-		}
-	}
-	return Object.keys(out).length > 0 ? out : undefined;
-}
-
-function coerceContextConfig(
-	value: unknown,
-): OptimizedPromptContextConfig | undefined {
-	if (!isStringRecord(value)) return undefined;
-	const config: OptimizedPromptContextConfig = {
-		providerSet: coerceStringArray(value.providerSet),
-		providerOrder: coerceStringArray(value.providerOrder),
-		renderTemplates: coerceStringRecord(value.renderTemplates),
-		budgetVector: coerceNumberRecord(value.budgetVector),
-	};
-	return config.providerSet ||
-		config.providerOrder ||
-		config.renderTemplates ||
-		config.budgetVector
-		? config
 		: undefined;
 }
 
@@ -679,7 +620,6 @@ export class OptimizedPromptService extends Service {
 		return {
 			prompt: entry.artifact.prompt,
 			fewShotExamples: entry.artifact.fewShotExamples,
-			contextConfig: entry.artifact.contextConfig,
 			optimizerSource: entry.artifact.optimizer,
 		};
 	}

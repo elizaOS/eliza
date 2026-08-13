@@ -3,6 +3,8 @@
  * module mocked): asserts config CRUD, prototype-pollution key blocking, and
  * marketplace routing. Route logic is real; the registry client is stubbed.
  */
+
+import { EventEmitter } from "node:events";
 import type http from "node:http";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { getMcpServerDetails, searchMcpMarketplace } from "../src/mcp-marketplace.js";
@@ -46,6 +48,8 @@ function makeCtx(
     resolveMcpTerminalAuthorizationRejection?: McpRouteContext["resolveMcpTerminalAuthorizationRejection"];
     decodePathComponent?: McpRouteContext["decodePathComponent"];
     saveElizaConfig?: McpRouteContext["saveElizaConfig"];
+    json?: McpRouteContext["json"];
+    error?: McpRouteContext["error"];
   } = {}
 ): McpRouteContext & {
   response: { status: number; body: unknown };
@@ -53,8 +57,20 @@ function makeCtx(
 } {
   const response = { status: 0, body: undefined as unknown };
   const saveElizaConfig = vi.fn(options.saveElizaConfig ?? (() => {}));
-  const req = { headers: {} } as http.IncomingMessage;
-  const res = {} as http.ServerResponse;
+  const socket = Object.assign(new EventEmitter(), {
+    destroyed: false,
+    writable: true,
+  });
+  const req = Object.assign(new EventEmitter(), {
+    headers: {},
+    socket,
+    aborted: false,
+    destroyed: false,
+  }) as unknown as http.IncomingMessage;
+  const res = Object.assign(new EventEmitter(), {
+    writableEnded: false,
+    destroyed: false,
+  }) as unknown as http.ServerResponse;
 
   return {
     req,
@@ -66,14 +82,18 @@ function makeCtx(
       config: options.config ?? {},
       runtime: options.runtime ?? null,
     },
-    json: (_res, data, status = 200) => {
-      response.status = status;
-      response.body = data;
-    },
-    error: (_res, message, status = 500) => {
-      response.status = status;
-      response.body = { ok: false, error: message };
-    },
+    json:
+      options.json ??
+      ((_res, data, status = 200) => {
+        response.status = status;
+        response.body = data;
+      }),
+    error:
+      options.error ??
+      ((_res, message, status = 500) => {
+        response.status = status;
+        response.body = { ok: false, error: message };
+      }),
     readJsonBody: vi.fn(async () => options.body),
     saveElizaConfig,
     redactDeep: (value) => value,
@@ -117,7 +137,11 @@ describe("handleMcpRoutes", () => {
 
     await expect(handleMcpRoutes(ctx)).resolves.toBe(true);
 
-    expect(searchMcpMarketplace).toHaveBeenCalledWith("files", expectedLimit);
+    expect(searchMcpMarketplace).toHaveBeenCalledWith(
+      "files",
+      expectedLimit,
+      expect.objectContaining({ signal: expect.any(AbortSignal) })
+    );
     expect(ctx.response).toEqual({ status: 200, body: { ok: true, results: [] } });
   });
 
@@ -140,7 +164,10 @@ describe("handleMcpRoutes", () => {
 
     await expect(handleMcpRoutes(trimmed)).resolves.toBe(true);
 
-    expect(getMcpServerDetails).toHaveBeenCalledWith("files");
+    expect(getMcpServerDetails).toHaveBeenCalledWith(
+      "files",
+      expect.objectContaining({ signal: expect.any(AbortSignal) })
+    );
     expect(trimmed.response.status).toBe(404);
 
     vi.mocked(getMcpServerDetails).mockClear();
@@ -156,6 +183,90 @@ describe("handleMcpRoutes", () => {
       body: { ok: false, error: "Server name must be 200 characters or fewer" },
     });
     expect(getMcpServerDetails).not.toHaveBeenCalled();
+  });
+
+  it("supports the direct marketplace details path used by the live client", async () => {
+    vi.mocked(getMcpServerDetails).mockResolvedValue({
+      name: "io.example/files",
+      description: "",
+      version: "1.0.0",
+    });
+    const ctx = makeCtx("GET", "/api/mcp/marketplace/io.example%2Ffiles");
+
+    await expect(handleMcpRoutes(ctx)).resolves.toBe(true);
+
+    expect(getMcpServerDetails).toHaveBeenCalledWith(
+      "io.example/files",
+      expect.objectContaining({ signal: expect.any(AbortSignal) })
+    );
+    expect(ctx.response).toEqual({
+      status: 200,
+      body: {
+        ok: true,
+        server: {
+          name: "io.example/files",
+          description: "",
+          version: "1.0.0",
+        },
+      },
+    });
+  });
+
+  it("aborts marketplace I/O and does not write after the client disconnects", async () => {
+    let requestSignal: AbortSignal | undefined;
+    vi.mocked(searchMcpMarketplace).mockImplementation(async (_query, _limit, options) => {
+      requestSignal = options?.signal;
+      await new Promise<never>((_resolve, reject) => {
+        options?.signal?.addEventListener("abort", () => reject(options.signal?.reason), {
+          once: true,
+        });
+      });
+    });
+    const ctx = makeCtx("GET", "/api/mcp/marketplace/search", {
+      query: "?q=files",
+    });
+
+    const pending = handleMcpRoutes(ctx);
+    await vi.waitFor(() => expect(requestSignal).toBeDefined());
+    (ctx.req as unknown as EventEmitter).emit("aborted");
+    await expect(pending).resolves.toBe(true);
+
+    expect(requestSignal?.aborted).toBe(true);
+    expect(ctx.response).toEqual({ status: 0, body: undefined });
+  });
+
+  it("keeps abort tracking active until an asynchronous response write settles", async () => {
+    let requestSignal: AbortSignal | undefined;
+    let beginWrite!: () => void;
+    let finishWrite!: () => void;
+    const writeStarted = new Promise<void>((resolve) => {
+      beginWrite = resolve;
+    });
+    const writeFinished = new Promise<void>((resolve) => {
+      finishWrite = resolve;
+    });
+    vi.mocked(searchMcpMarketplace).mockImplementation(async (_query, _limit, options) => {
+      requestSignal = options?.signal;
+      return { results: [] };
+    });
+    const ctx = makeCtx("GET", "/api/mcp/marketplace/search", {
+      query: "?q=files",
+      json: async (_res, data, status = 200) => {
+        beginWrite();
+        await writeFinished;
+        ctx.response.status = status;
+        ctx.response.body = data;
+      },
+    });
+
+    const pending = handleMcpRoutes(ctx);
+    await writeStarted;
+    (ctx.req as unknown as EventEmitter).emit("aborted");
+    expect(requestSignal?.aborted).toBe(true);
+    finishWrite();
+    await expect(pending).resolves.toBe(true);
+
+    expect(ctx.response).toEqual({ status: 200, body: { ok: true, results: [] } });
   });
 
   it("rejects malformed config bodies before saving server config", async () => {

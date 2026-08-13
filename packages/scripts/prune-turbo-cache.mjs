@@ -12,9 +12,9 @@
  *      (each entry = `<hash>.tar.zst` + `<hash>-meta.json` + `<hash>-manifest.json`)
  *      until the cache is under the cap.
  *
- * `--max-gb` must be a positive finite number of gigabytes when provided.
- * Invalid overrides fail closed before any eviction so a typo cannot either
- * skip pruning (NaN cap) or wipe the cache (zero/negative cap).
+ * `--max-gb` must be a positive finite number that rounds to a positive,
+ * safely representable whole-byte cap. Invalid overrides fail closed before
+ * eviction so a typo cannot skip pruning or wipe the cache.
  *
  * Usage:
  *   node packages/scripts/prune-turbo-cache.mjs [--max-gb=20] [--dry-run]
@@ -51,12 +51,20 @@ export function parseMaxGb(value, label = "--max-gb") {
 }
 
 /**
- * Convert a gigabyte cap to a whole-byte budget.
+ * Convert a gigabyte cap to a nearest-whole-byte budget. A positive GB value
+ * is not usable when it rounds below one byte or exceeds safe integer range.
  * @param {number} maxGb
+ * @param {string} [label]
  * @returns {number}
  */
-export function maxBytesFromGb(maxGb) {
-  return Math.round(maxGb * BYTES_PER_GB);
+export function maxBytesFromGb(maxGb, label = "--max-gb") {
+  const maxBytes = Math.round(maxGb * BYTES_PER_GB);
+  if (!Number.isSafeInteger(maxBytes) || maxBytes < 1) {
+    throw new Error(
+      `${label} must convert to a positive safe-integer byte cap (received ${JSON.stringify(maxGb)})`,
+    );
+  }
+  return maxBytes;
 }
 
 /**
@@ -196,9 +204,7 @@ function main(argv = process.argv.slice(2), env = process.env) {
   });
 
   if (result.missing) {
-    console.log(
-      `[prune-turbo-cache] No cache at ${cacheDir}; nothing to do.`,
-    );
+    console.log(`[prune-turbo-cache] No cache at ${cacheDir}; nothing to do.`);
     return;
   }
 

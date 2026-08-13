@@ -87,7 +87,7 @@
     "ox": "1.6.0",
     "undici": "8.9.0",
     "viem": "^2.48.8",
-    "ws": "8.21.0"
+    "ws": "8.21.3"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.7",

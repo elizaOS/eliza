@@ -27,7 +27,7 @@ const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(SCRIPT_DIR, "../../..");
 const WRAPPER = path.resolve(SCRIPT_DIR, "../with-package-build-lock.mjs");
 const LOCK_ROOT = path.join(REPO_ROOT, ".turbo", "build-locks");
-const NODE_BIN = process.execPath;
+const NODE_BIN = "node";
 const cleanupPaths = new Set<string>();
 
 function uniquePackageKey(label: string): string {
@@ -50,16 +50,19 @@ function lockPathFor(packageKey: string): string {
 function runWrapper(
   packageKey: string,
   command: string[],
-  staleMs = "1000",
+  staleMs: string | null = "1000",
   timeout = 15_000,
 ) {
+  const env = { ...process.env };
+  if (staleMs === null) {
+    delete env.ELIZA_PACKAGE_BUILD_LOCK_STALE_MS;
+  } else {
+    env.ELIZA_PACKAGE_BUILD_LOCK_STALE_MS = staleMs;
+  }
   return spawnSync(NODE_BIN, [WRAPPER, packageKey, "--", ...command], {
     cwd: REPO_ROOT,
     encoding: "utf8",
-    env: {
-      ...process.env,
-      ELIZA_PACKAGE_BUILD_LOCK_STALE_MS: staleMs,
-    },
+    env,
     timeout,
   });
 }
@@ -108,6 +111,7 @@ async function waitForPath(target: string, timeoutMs = 5_000): Promise<void> {
 afterEach(() => {
   for (const target of cleanupPaths) {
     rmSync(target, { recursive: true, force: true });
+    if (!existsSync(path.dirname(target))) continue;
     for (const candidate of new Bun.Glob(`${path.basename(target)}.*`).scanSync(
       {
         cwd: path.dirname(target),
@@ -123,12 +127,19 @@ afterEach(() => {
 describe("with-package-build-lock", () => {
   test("rejects malformed stale thresholds before acquiring a lock", () => {
     for (const value of [
+      "",
+      " ",
+      "\t",
       "0",
       "-1",
       "+1",
       "1.5",
+      "1e3",
       "1junk",
       " 1",
+      "1 ",
+      "NaN",
+      "Infinity",
       "9007199254740992",
     ]) {
       const packageKey = uniquePackageKey("invalid-threshold");
@@ -139,6 +150,22 @@ describe("with-package-build-lock", () => {
         "ELIZA_PACKAGE_BUILD_LOCK_STALE_MS must be a positive decimal safe integer",
       );
       expect(result.stderr).not.toContain("at parseStaleAfterMs");
+      expect(existsSync(lockPath)).toBe(false);
+    }
+  });
+
+  test("accepts the unset default and complete positive safe integers", () => {
+    for (const value of [null, "1", "1800000", "9007199254740991"] as const) {
+      const packageKey = uniquePackageKey("valid-threshold");
+      const lockPath = lockPathFor(packageKey);
+      const result = runWrapper(
+        packageKey,
+        [NODE_BIN, "-e", "process.stdout.write('acquired')"],
+        value,
+      );
+      expect(result.status).toBe(0);
+      expect(result.stdout).toBe("acquired");
+      expect(result.stderr).toBe("");
       expect(existsSync(lockPath)).toBe(false);
     }
   });

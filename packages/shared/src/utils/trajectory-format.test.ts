@@ -74,9 +74,9 @@ describe("formatTrajectoryTokenCount", () => {
 
   it("fails closed on non-finite or negative values", () => {
     expect(formatTrajectoryTokenCount(Number.NaN, EMPTY)).toBe("—");
-    expect(
-      formatTrajectoryTokenCount(Number.POSITIVE_INFINITY, EMPTY),
-    ).toBe("—");
+    expect(formatTrajectoryTokenCount(Number.POSITIVE_INFINITY, EMPTY)).toBe(
+      "—",
+    );
     expect(formatTrajectoryTokenCount(-1, EMPTY)).toBe("—");
     // emptyLabel is honored, not hardcoded to "—"
     expect(formatTrajectoryTokenCount(Number.NaN, { emptyLabel: "n/a" })).toBe(
@@ -92,12 +92,12 @@ describe("formatTrajectoryTokenCount", () => {
   it("formats thousands with one decimal", () => {
     expect(formatTrajectoryTokenCount(1_000, EMPTY)).toBe("1.0k");
     expect(formatTrajectoryTokenCount(12_345, EMPTY)).toBe("12.3k");
-    expect(formatTrajectoryTokenCount(999_499, EMPTY)).toBe("999.5k");
+    expect(formatTrajectoryTokenCount(999_500, EMPTY)).toBe("999.5k");
+    expect(formatTrajectoryTokenCount(999_949, EMPTY)).toBe("999.9k");
   });
 
   it("promotes to M when rounding crosses the 1000k boundary", () => {
-    // 999.5k rounds to 1000.0k — must promote, "1000.0k" is impossible
-    expect(formatTrajectoryTokenCount(999_500, EMPTY)).toBe("1.0M");
+    // 999.95k rounds to 1000.0k — must promote, "1000.0k" is impossible
     expect(formatTrajectoryTokenCount(999_950, EMPTY)).toBe("1.0M");
   });
 
@@ -125,7 +125,13 @@ describe("formatTrajectoryTimestamp", () => {
   it("formats non-today dates with a short month and day", () => {
     const date = new Date(Date.now() - 3 * 86_400_000);
     const out = formatTrajectoryTimestamp(date.toISOString(), "smart");
-    expect(out).toMatch(/[A-Za-z]{3} \d{1,2}, \d{1,2}:\d{2}/);
+    const expected = new Intl.DateTimeFormat(undefined, {
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    }).format(date);
+    expect(out).toBe(expected);
   });
 
   it("formats detailed mode with seconds", () => {

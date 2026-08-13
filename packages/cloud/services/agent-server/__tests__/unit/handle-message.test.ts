@@ -56,7 +56,7 @@ const OK_RESULT = {
 
 describe("AgentManager.handleMessage fail-closed message pipeline", () => {
   test("throws a structural error when the runtime has no message service", async () => {
-    const manager = new AgentManager();
+    const manager = new AgentManager(1);
     withRunningAgent(manager, "agent-1", makeRuntime({ messageService: null }));
 
     await expect(
@@ -65,7 +65,7 @@ describe("AgentManager.handleMessage fail-closed message pipeline", () => {
   });
 
   test("does not fabricate a reply string when message service is missing", async () => {
-    const manager = new AgentManager();
+    const manager = new AgentManager(1);
     withRunningAgent(manager, "agent-1", makeRuntime({ messageService: null }));
 
     let thrown: unknown;
@@ -80,7 +80,7 @@ describe("AgentManager.handleMessage fail-closed message pipeline", () => {
   });
 
   test("returns accumulated response text from the message pipeline", async () => {
-    const manager = new AgentManager();
+    const manager = new AgentManager(1);
     const handleMessage = mock(
       async (_rt: IAgentRuntime, _mem: Memory, callback?: HandlerCallback) => {
         await callback?.({ text: "hello " });
@@ -99,7 +99,7 @@ describe("AgentManager.handleMessage fail-closed message pipeline", () => {
   });
 
   test("passes canonical connector provenance to the runtime message pipeline", async () => {
-    const manager = new AgentManager();
+    const manager = new AgentManager(1);
     let received: Memory | undefined;
     const handleMessage = mock(
       async (_rt: IAgentRuntime, mem: Memory, callback?: HandlerCallback) => {
@@ -149,7 +149,7 @@ describe("AgentManager.handleMessage fail-closed message pipeline", () => {
   });
 
   test("returns empty string (not a fabricated literal) on a deliberate no-response", async () => {
-    const manager = new AgentManager();
+    const manager = new AgentManager(1);
     const handleMessage = mock(
       async () =>
         ({
@@ -172,7 +172,7 @@ describe("AgentManager.handleMessage fail-closed message pipeline", () => {
   });
 
   test("still surfaces getRuntime not-found as its own error (unchanged)", async () => {
-    const manager = new AgentManager();
+    const manager = new AgentManager(1);
     await expect(
       manager.handleMessage("missing", "user-1", "hi"),
     ).rejects.toThrow("Agent not found");

@@ -83,9 +83,9 @@ export function collectBiomeVersionProblems(
   }
 
   const overrideVersion = dependencyVersion(rootManifest, "overrides");
-  if (overrideVersion !== canonicalVersion) {
+  if (overrideVersion !== undefined) {
     problems.push(
-      `package.json overrides: ${overrideVersion ?? "missing"} (expected ${canonicalVersion})`,
+      `package.json overrides: ${BIOME_PACKAGE} must be omitted so dependency updates change the resolved binary`,
     );
   }
 
@@ -139,9 +139,9 @@ export function collectBiomeVersionProblems(
   const lockOverride = lockOverrideBlock?.match(
     /"@biomejs\/biome"\s*:\s*"([^"]+)"/,
   )?.[1];
-  if (lockOverride !== canonicalVersion) {
+  if (lockOverride !== undefined) {
     problems.push(
-      `bun.lock override: ${lockOverride ?? "missing"} (expected ${canonicalVersion})`,
+      `bun.lock override: ${BIOME_PACKAGE} must be omitted so dependency updates change the resolved binary`,
     );
   }
 

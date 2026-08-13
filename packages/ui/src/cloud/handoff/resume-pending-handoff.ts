@@ -7,6 +7,7 @@ import {
   getCloudAuthToken,
   isDirectCloudSharedAgentBase,
 } from "../../api/client-cloud";
+import { getBootConfig } from "../../config/boot-config-store";
 import {
   CLOUD_HANDOFF_RETRY_EVENT,
   type CloudHandoffRetryDetail,
@@ -101,6 +102,15 @@ export function resumePendingCloudHandoff(): boolean {
 
   const pending = loadPendingCloudHandoff();
   if (!pending) return false;
+
+  if (getBootConfig().autoUpgradeSharedToDedicated !== true) {
+    // A marker can outlive the host policy that authorized it. Retire only the
+    // local resume instruction: the dedicated resource may already exist and
+    // must not be deleted implicitly, but default-off startup must perform no
+    // probe, handoff, or fresh billable mutation (#18204).
+    clearPendingCloudHandoff();
+    return false;
+  }
 
   const active = loadPersistedActiveServer();
   if (active?.kind !== "cloud" || !active.apiBase) {
@@ -239,6 +249,11 @@ async function runFreshDedicatedHandoff(
   pending: PendingCloudHandoff,
   authToken: string,
 ): Promise<void> {
+  // Consent is live configuration, not authority captured when the listener
+  // was armed. Revalidate immediately before the billable create so a host
+  // policy change cannot be bypassed by a stale Retry event (#18204).
+  if (getBootConfig().autoUpgradeSharedToDedicated !== true) return;
+
   try {
     const created = await client.createCloudCompatAgent({
       agentName: "Eliza",

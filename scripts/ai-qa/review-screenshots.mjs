@@ -19,7 +19,7 @@
  *
  * Usage:
  *   node scripts/ai-qa/review-screenshots.mjs [--run-dir reports/ai-qa/<id>]
- *     [--concurrency 4] [--strict] [--update-debt]
+ *     [--concurrency 4] [--strict | --update-debt]
  */
 
 import { existsSync } from "node:fs";

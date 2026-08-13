@@ -35,6 +35,9 @@ const sshMock = {
 mock.module("../../db/repositories/docker-nodes", () => ({
   dockerNodesRepository: {
     findEnabled: () => Promise.resolve(enabledNodes),
+    // Placement reads the placeable set; no node here is cordoned,
+    // so it mirrors findEnabled.
+    findPlaceable: () => Promise.resolve(enabledNodes),
     updateStatus: (nodeId: string, status: string) => {
       repoCalls.updateStatus.push({ nodeId, status });
       return Promise.resolve();

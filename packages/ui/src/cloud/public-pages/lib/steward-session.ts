@@ -258,7 +258,6 @@ async function clearRejectedCookieSession(): Promise<void> {
     );
   }
   clearStoredStewardToken();
-  dispatchStewardSessionChange("cleared");
 }
 
 /**

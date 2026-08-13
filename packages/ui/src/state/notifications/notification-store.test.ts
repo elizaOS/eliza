@@ -7,6 +7,10 @@
  * with the API client and bridges mocked — deterministic, no real server.
  */
 import type { AgentNotification } from "@elizaos/core";
+import {
+  clearStoredStewardToken,
+  writeStoredStewardToken,
+} from "@elizaos/shared/steward-session-client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "../../api/client-types-core";
 import {
@@ -1219,6 +1223,30 @@ describe("notification-store — authority isolation (#18391)", () => {
         expect(__getStateForTests().notifications).toHaveLength(1),
       );
       expect(__getStateForTests().notifications[0]?.id).toBe("b-row");
+    });
+
+    it("clears immediately when a canonical rejected-token path removes the Steward credential", async () => {
+      __setAuthStatusForTests(authenticated("user-a", "session-a"));
+      writeStoredStewardToken("rejected-steward-token");
+      const notifA = makeNotification({ id: "a-row", title: "A's row" });
+      listNotifications.mockResolvedValueOnce({
+        notifications: [notifA],
+        unreadCount: 1,
+      });
+      initNotifications();
+      await vi.waitFor(() =>
+        expect(__getStateForTests().notifications).toHaveLength(1),
+      );
+      rotateConnection.mockClear();
+
+      // client-cloud's dedicated-agent 401 path calls this canonical clear
+      // while the unrelated Eliza API bearer remains present.
+      expect(hasToken()).toBe(true);
+      clearStoredStewardToken();
+
+      expect(__getStateForTests().notifications).toHaveLength(0);
+      expect(__getStateForTests().hydrationStatus).toBe("idle");
+      expect(rotateConnection).toHaveBeenCalledTimes(1);
     });
 
     it("drops a stale WS event delivered during the credential-invalidated window", async () => {

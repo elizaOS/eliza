@@ -13,13 +13,12 @@
 
 import { Hono } from "hono";
 import { z } from "zod";
-import { failureResponse, NotFoundError } from "@/lib/api/cloud-worker-errors";
+import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import {
   RateLimitPresets,
   rateLimit,
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
-import { elizaSandboxService } from "@/lib/services/eliza-sandbox";
 import { getPaymentRequestsService } from "@/lib/services/payment-requests-default";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
@@ -52,7 +51,9 @@ const CreatePaymentRequestSchema = z.object({
   callbackUrl: z.string().url().optional(),
   callbackSecret: z.string().min(8).max(256).optional(),
   payerIdentityId: z.string().min(1).max(256).optional(),
-  agentId: z.string().min(1).max(256).optional(),
+  // Agent attribution is an internal payment-service concern. The public
+  // creation route has no consumer for it and must not accept an unowned ID.
+  agentId: z.never().optional(),
   successUrl: z.string().url().optional(),
   cancelUrl: z.string().url().optional(),
   success_url: z.string().url().optional(),
@@ -109,16 +110,6 @@ app.post("/", async (c) => {
       );
     }
 
-    if (parsed.data.agentId) {
-      const agent = await elizaSandboxService.getAgentForWrite(
-        parsed.data.agentId,
-        user.organization_id,
-      );
-      if (!agent) {
-        throw NotFoundError("Agent not found");
-      }
-    }
-
     const { successUrl, cancelUrl, metadata } = paymentMetadata(parsed.data);
     if (parsed.data.provider === "stripe" && (!successUrl || !cancelUrl)) {
       return c.json(
@@ -143,7 +134,6 @@ app.post("/", async (c) => {
       callbackSecret: parsed.data.callbackSecret,
       payerIdentityId: parsed.data.payerIdentityId,
       payerUserId: user.id,
-      agentId: parsed.data.agentId,
       metadata,
     });
 
