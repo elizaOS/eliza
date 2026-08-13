@@ -494,7 +494,7 @@ export class AdvancedMemoryStorageService extends Service implements MemoryStora
       source: updates.source ?? parsed.source,
       semanticMetadata: updates.metadata ?? parsed.metadata,
       updatedAt: updatedAt.toISOString(),
-      lastAccessedAt: updates.lastAccessedAt?.toISOString(),
+      lastAccessedAt: (updates.lastAccessedAt ?? parsed.lastAccessedAt)?.toISOString(),
       accessCount: updates.accessCount ?? parsed.accessCount ?? 0,
     });
     if (!advancedMemory) {

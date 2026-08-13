@@ -1,0 +1,70 @@
+import type { Entity, UUID } from "@elizaos/core";
+import { v4 as uuidv4 } from "uuid";
+import { afterEach, describe, expect, it } from "vitest";
+import { AdvancedMemoryStorageService } from "../services/advanced-memory-storage";
+import { createTestDatabase } from "./test-helpers";
+
+describe("AdvancedMemoryStorageService.updateLongTermMemory", () => {
+  const cleanups: Array<() => Promise<void>> = [];
+
+  afterEach(async () => {
+    await Promise.all(cleanups.splice(0).map((cleanup) => cleanup()));
+  });
+
+  it("retains the persisted access timestamp when an unrelated field is updated", async () => {
+    const agentId = uuidv4() as UUID;
+    const entityId = uuidv4() as UUID;
+    const { runtime, cleanup } = await createTestDatabase(agentId);
+    cleanups.push(cleanup);
+    await runtime.createEntities([
+      { id: entityId, agentId, names: ["Test Entity"], metadata: {} } as Entity,
+    ]);
+    const service = new AdvancedMemoryStorageService();
+    await service.initialize(runtime);
+    const lastAccessedAt = new Date("2026-08-02T15:30:00.000Z");
+
+    const stored = await service.storeLongTermMemory({
+      agentId,
+      entityId,
+      category: "semantic",
+      content: "Original memory",
+    });
+
+    await service.updateLongTermMemory(stored.id, agentId, entityId, { lastAccessedAt });
+    await service.updateLongTermMemory(stored.id, agentId, entityId, {
+      content: "Updated memory",
+    });
+
+    const [updated] = await service.getLongTermMemories(agentId, entityId);
+    expect(updated?.content).toBe("Updated memory");
+    expect(updated?.lastAccessedAt?.toISOString()).toBe(lastAccessedAt.toISOString());
+  });
+
+  it("replaces the access timestamp when an explicit value is supplied", async () => {
+    const agentId = uuidv4() as UUID;
+    const entityId = uuidv4() as UUID;
+    const { runtime, cleanup } = await createTestDatabase(agentId);
+    cleanups.push(cleanup);
+    await runtime.createEntities([
+      { id: entityId, agentId, names: ["Test Entity"], metadata: {} } as Entity,
+    ]);
+    const service = new AdvancedMemoryStorageService();
+    await service.initialize(runtime);
+    const replacement = new Date("2026-08-03T09:45:00.000Z");
+
+    const stored = await service.storeLongTermMemory({
+      agentId,
+      entityId,
+      category: "semantic",
+      content: "Original memory",
+      lastAccessedAt: new Date("2026-08-02T15:30:00.000Z"),
+    });
+
+    await service.updateLongTermMemory(stored.id, agentId, entityId, {
+      lastAccessedAt: replacement,
+    });
+
+    const [updated] = await service.getLongTermMemories(agentId, entityId);
+    expect(updated?.lastAccessedAt?.toISOString()).toBe(replacement.toISOString());
+  });
+});
