@@ -25,7 +25,6 @@ export const HOMEPAGE_PUBLIC_ASSETS = [
   "grain.webp",
   "install.ps1",
   "install.sh",
-  "product/elizaos-usb-key-concept.png",
   "tbg.webp",
 ];
 
