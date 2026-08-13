@@ -416,7 +416,77 @@ export async function forwardEventToServer(
 
 type TargetResult =
   | { ok: true; response: string }
-  | { ok: false; error: Error; isConnectionError: boolean };
+  | {
+      ok: false;
+      error: Error;
+      isConnectionError: boolean;
+      status?: number;
+    };
+
+const RUNTIME_AGENT_ID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Dedicated app hosts can expose a runtime agent id that differs from the
+ * cloud sandbox id used for routing. Resolve that id only from the authenticated
+ * canonical host, and only when exactly one running runtime is present.
+ */
+async function discoverCanonicalRuntimeAgentId(
+  canonicalBaseUrl: string,
+): Promise<string | null> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), FORWARD_TIMEOUT_MS);
+  const headers: Record<string, string> = {};
+  const sharedSecret = process.env.AGENT_SERVER_SHARED_SECRET;
+  if (sharedSecret) headers["X-Server-Token"] = sharedSecret;
+
+  try {
+    const res = await fetch(`${canonicalBaseUrl.replace(/\/$/, "")}/agents`, {
+      headers,
+      signal: controller.signal,
+    });
+    if (!res.ok) return null;
+
+    const data = (await res.json()) as {
+      agents?: Array<{ id?: unknown; status?: unknown }>;
+    };
+    const running = (data.agents ?? []).filter(
+      (agent): agent is { id: string; status?: unknown } =>
+        typeof agent.id === "string" &&
+        RUNTIME_AGENT_ID_PATTERN.test(agent.id) &&
+        agent.status === "running",
+    );
+    return running.length === 1 ? running[0].id : null;
+  } catch {
+    // error-policy:J4 Discovery is an optional compatibility path; the caller
+    // retains and reports the original canonical forwarding failure.
+    return null;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+async function tryCanonicalTarget(
+  canonicalBaseUrl: string,
+  endpointPath: string,
+  body: string,
+): Promise<TargetResult> {
+  const direct = await tryTarget(canonicalBaseUrl, endpointPath, body);
+  if (direct.ok || direct.status !== 404) return direct;
+
+  const match = endpointPath.match(/^\/agents\/[^/]+\/(message|event)$/);
+  if (!match) return direct;
+
+  const runtimeAgentId =
+    await discoverCanonicalRuntimeAgentId(canonicalBaseUrl);
+  if (!runtimeAgentId) return direct;
+
+  return tryTarget(
+    canonicalBaseUrl,
+    `/agents/${encodeURIComponent(runtimeAgentId)}/${match[1]}`,
+    body,
+  );
+}
 
 /**
  * Generic retry loop with hash-ring routing and KEDA wake-on-zero.
@@ -468,7 +538,7 @@ async function forwardWithRetry(
       targets[0].replace(/\/$/, "") !==
         connectionFallbackBaseUrl.replace(/\/$/, "")
     ) {
-      const canonical = await tryTarget(
+      const canonical = await tryCanonicalTarget(
         connectionFallbackBaseUrl,
         endpointPath,
         body,
@@ -537,6 +607,7 @@ async function tryTarget(
       ok: false,
       error: new Error(`Server returned ${res.status}: ${await res.text()}`),
       isConnectionError: false,
+      status: res.status,
     };
   } catch (err) {
     return {
