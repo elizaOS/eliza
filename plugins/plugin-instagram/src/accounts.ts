@@ -4,7 +4,7 @@
  * JSON map, and `character.settings.instagram` — merging per field. Supplies
  * `InstagramService` the account id list and credentials for each configured account.
  */
-import type { IAgentRuntime } from "@elizaos/core";
+import { ElizaError, type IAgentRuntime } from "@elizaos/core";
 import type { InstagramConfig } from "./types";
 
 export const DEFAULT_INSTAGRAM_ACCOUNT_ID = "default";
@@ -33,23 +33,43 @@ function parseAccountsJson(runtime: IAgentRuntime): Record<string, InstagramAcco
   const raw = stringSetting(runtime, "INSTAGRAM_ACCOUNTS");
   if (!raw) return {};
 
+  let parsed: unknown;
   try {
-    const parsed = JSON.parse(raw) as unknown;
-    if (Array.isArray(parsed)) {
-      return Object.fromEntries(
-        parsed
-          .filter(
-            (item): item is InstagramAccountConfig => Boolean(item) && typeof item === "object"
-          )
-          .map((item) => [normalizeInstagramAccountId(item.accountId ?? item.id), item])
-      );
-    }
-    return parsed && typeof parsed === "object"
-      ? (parsed as Record<string, InstagramAccountConfig>)
-      : {};
-  } catch {
-    return {};
+    parsed = JSON.parse(raw) as unknown;
+  } catch (error) {
+    // Fail closed like the Matrix and Google Chat account settings: a typo
+    // must surface as a config error, never as "no extra accounts" (#18969).
+    throw new ElizaError("Instagram accounts config is not valid JSON.", {
+      code: "INSTAGRAM_CONFIG_INVALID",
+      cause: error,
+      context: { setting: "INSTAGRAM_ACCOUNTS" },
+      severity: "fatal",
+    });
   }
+  if (Array.isArray(parsed)) {
+    return Object.fromEntries(
+      parsed
+        .filter((item): item is InstagramAccountConfig => Boolean(item) && typeof item === "object")
+        .map((item) => [normalizeInstagramAccountId(item.accountId ?? item.id), item])
+    );
+  }
+  if (!parsed || typeof parsed !== "object") {
+    throw new ElizaError("Instagram accounts config must be a JSON object or array.", {
+      code: "INSTAGRAM_CONFIG_INVALID",
+      context: { setting: "INSTAGRAM_ACCOUNTS" },
+      severity: "fatal",
+    });
+  }
+  // Normalize object-form keys at parse time so listInstagramAccountIds()
+  // (which trims when building the id list) and accountConfig() (which looks
+  // up the map key) agree: a padded " brand " key otherwise lists as `brand`
+  // but resolves to an empty config.
+  return Object.fromEntries(
+    Object.entries(parsed as Record<string, InstagramAccountConfig>).map(([key, value]) => [
+      normalizeInstagramAccountId(key),
+      value,
+    ])
+  );
 }
 
 function allAccountConfigs(runtime: IAgentRuntime): Record<string, InstagramAccountConfig> {

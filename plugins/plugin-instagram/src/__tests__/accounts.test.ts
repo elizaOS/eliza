@@ -48,6 +48,50 @@ describe("Instagram account config", () => {
   });
 });
 
+describe("INSTAGRAM_ACCOUNTS fail-closed parsing (#18969)", () => {
+  it("throws a typed config error on malformed JSON instead of an empty map", () => {
+    const rt = runtime({ INSTAGRAM_ACCOUNTS: "{not json" });
+
+    expect(() => listInstagramAccountIds(rt)).toThrowError(
+      /Instagram accounts config is not valid JSON/
+    );
+  });
+
+  it("throws on valid-JSON non-object payloads", () => {
+    const rt = runtime({ INSTAGRAM_ACCOUNTS: '"just-a-string"' });
+
+    expect(() => listInstagramAccountIds(rt)).toThrowError(/must be a JSON object or array/);
+  });
+
+  it("normalizes padded object keys so listing and lookup agree", () => {
+    const rt = runtime({
+      INSTAGRAM_DEFAULT_ACCOUNT_ID: "brand",
+      INSTAGRAM_ACCOUNTS: JSON.stringify({
+        " brand ": { username: "brand-user", password: "brand-password" },
+      }),
+    });
+
+    expect(listInstagramAccountIds(rt)).toContain("brand");
+    const config = resolveInstagramAccountConfig(rt);
+    expect(config.accountId).toBe("brand");
+    // Pre-#18969 the padded key listed as `brand` but resolved to an empty
+    // config (no username) because lookup used the raw map key.
+    expect(config.username).toBe("brand-user");
+  });
+
+  it("keeps well-formed object and array shapes working", () => {
+    const objectRt = runtime({
+      INSTAGRAM_ACCOUNTS: JSON.stringify({ a: { username: "a-user" } }),
+    });
+    expect(listInstagramAccountIds(objectRt)).toContain("a");
+
+    const arrayRt = runtime({
+      INSTAGRAM_ACCOUNTS: JSON.stringify([{ accountId: "b", username: "b-user" }]),
+    });
+    expect(listInstagramAccountIds(arrayRt)).toContain("b");
+  });
+});
+
 describe("Instagram connector accounts", () => {
   it("registers account-scoped connectors and routes sends through the requested account", async () => {
     const messageRegistrations: Array<
