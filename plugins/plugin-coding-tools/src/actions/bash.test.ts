@@ -841,6 +841,33 @@ describeIfPosix("shellAction", () => {
     expect(result.text).toContain("timeout");
   });
 
+  it("clamps a fractional CODING_TOOLS_SHELL_TIMEOUT_MS fallback to the timeout floor", async () => {
+    const { runtime } = await makeRuntime({ shellTimeoutMs: 45.5 });
+    const result = await shellAction.handler?.(
+      runtime,
+      makeMessage(),
+      undefined,
+      { command: "sleep 0.5" },
+    );
+    expect(result.success).toBe(false);
+    // Before the fix this reported the raw floored-but-unclamped value
+    // ("timed out after 45ms"); it must now report the clamped floor.
+    expect(result.text).toContain("timed out after 100ms");
+  });
+
+  it("clamps an unsafe CODING_TOOLS_SHELL_TIMEOUT_MS fallback instead of producing a near-instant broken timer", async () => {
+    const { runtime } = await makeRuntime({
+      shellTimeoutMs: 9_007_199_254_740_992,
+    });
+    const result = await shellAction.handler?.(
+      runtime,
+      makeMessage(),
+      undefined,
+      { command: "sleep 0.2" },
+    );
+    expect(result.success).toBe(true);
+  });
+
   it("times out shell pipelines without waiting for orphaned children", async () => {
     const started = Date.now();
     const { runtime } = await makeRuntime();

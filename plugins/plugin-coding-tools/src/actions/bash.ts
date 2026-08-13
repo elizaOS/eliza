@@ -334,8 +334,13 @@ function getBackgroundShellService(
 }
 
 function clampTimeout(value: number | undefined, fallback: number): number {
-  if (value === undefined || !Number.isFinite(value)) return fallback;
-  return Math.max(TIMEOUT_MIN_MS, Math.min(TIMEOUT_MAX_MS, Math.floor(value)));
+  const candidate =
+    value !== undefined && Number.isFinite(value) ? value : fallback;
+  if (!Number.isFinite(candidate)) return TIMEOUT_MIN_MS;
+  return Math.max(
+    TIMEOUT_MIN_MS,
+    Math.min(TIMEOUT_MAX_MS, Math.floor(candidate)),
+  );
 }
 
 function clampHistoryLimit(value: number | undefined): number {
