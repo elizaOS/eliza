@@ -7170,6 +7170,7 @@
   "cloud.oidcContinue.issuerUnconfigured": "Single sign-on is not configured for this deployment: {{envVar}} is unset, so there is no identity provider to return to.",
   "cloud.oidcContinue.metaTitle": "Signing in | Eliza Cloud",
   "cloud.oidcContinue.redirecting": "Completing sign-in…",
+  "cloud.oidcContinue.sessionUnavailable": "Your Eliza session could not be securely transferred to the identity provider. Sign in again to continue.",
   "cloud.organizationInfo.notAvailable": "N/A",
   "cloud.organizationInfo.title": "Organization",
   "cloud.organizationInfo.subtitle": "Information about your organization",
