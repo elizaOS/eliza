@@ -9,6 +9,8 @@ import { appsService } from "@/lib/services/apps";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
+const MAX_LIMIT = 100;
+
 /**
  * GET /api/v1/apps/[id]/users
  * Gets a list of users who have interacted with a specific app.
@@ -31,7 +33,7 @@ async function __hono_GET(
     const { searchParams } = new URL(request.url);
     const rawLimit = searchParams.get("limit");
     const limit = parsePositiveInteger(rawLimit);
-    if (rawLimit !== null && limit === undefined) {
+    if (rawLimit !== null && (limit === undefined || limit > MAX_LIMIT)) {
       return Response.json(
         { success: false, error: "Invalid limit" },
         { status: 400 },

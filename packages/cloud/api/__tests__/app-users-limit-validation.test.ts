@@ -47,12 +47,15 @@ describe("GET /api/v1/apps/:id/users limit validation", () => {
     expect(getAppUsers).toHaveBeenCalledWith("app-1", undefined);
   });
 
-  test("passes a valid positive base-10 integer unchanged", async () => {
-    const response = await listUsers("?limit=20");
+  test.each([20, 100])(
+    "passes a valid positive base-10 integer of %i unchanged",
+    async (limit) => {
+      const response = await listUsers(`?limit=${limit}`);
 
-    expect(response.status).toBe(200);
-    expect(getAppUsers).toHaveBeenCalledWith("app-1", 20);
-  });
+      expect(response.status).toBe(200);
+      expect(getAppUsers).toHaveBeenCalledWith("app-1", limit);
+    },
+  );
 
   test.each([
     ["empty", ""],
@@ -62,6 +65,8 @@ describe("GET /api/v1/apps/:id/users limit validation", () => {
     ["partial", "20abc"],
     ["fractional", "1.5"],
     ["exponent form", "2e3"],
+    ["above maximum", "101"],
+    ["safe pathological integer", "9007199254740991"],
     ["unsafe integer", "9007199254740992"],
   ])("rejects %s limits before app lookup", async (_name, limit) => {
     const response = await listUsers(`?limit=${encodeURIComponent(limit)}`);
