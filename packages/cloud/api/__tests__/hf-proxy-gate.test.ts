@@ -8,14 +8,15 @@ import { describe, expect, test } from "bun:test";
 import { HfProxyGate } from "../src/hf-proxy-gate";
 
 interface StoredLedger {
-  monthBucket: string;
-  usedBytes: number;
+  currentMonthBucket: string;
+  monthUsedBytes: Record<string, number>;
   activeDownloads: number;
 }
 
 class TestStorage {
   private readonly values = new Map<string, unknown>();
   failNextPut = false;
+  alarm: number | null = null;
 
   async get<T>(key: string): Promise<T | undefined> {
     const value = this.values.get(key);
@@ -28,6 +29,14 @@ class TestStorage {
       throw new Error("injected storage failure");
     }
     this.values.set(key, structuredClone(value));
+  }
+
+  async setAlarm(scheduledTime: number): Promise<void> {
+    this.alarm = scheduledTime;
+  }
+
+  async deleteAlarm(): Promise<void> {
+    this.alarm = null;
   }
 
   read<T>(key: string): T | undefined {
@@ -45,7 +54,7 @@ function createGate(storage = new TestStorage()): HfProxyGate {
 
 function post(
   gate: HfProxyGate,
-  path: "/reserve" | "/settle" | "/cancel",
+  path: "/reserve" | "/settle" | "/cancel" | "/heartbeat",
   body: Record<string, unknown>,
 ): Promise<Response> {
   return gate.fetch(
@@ -90,8 +99,8 @@ describe("HfProxyGate", () => {
     });
 
     expect(storage.read<StoredLedger>("ledger")).toMatchObject({
-      monthBucket: "2026-08",
-      usedBytes: 8,
+      currentMonthBucket: "2026-08",
+      monthUsedBytes: { "2026-08": 8 },
       activeDownloads: 2,
     });
   });
@@ -118,17 +127,23 @@ describe("HfProxyGate", () => {
     expect((await post(gate, "/cancel", cancellation)).status).toBe(200);
 
     expect(storage.read<StoredLedger>("ledger")).toMatchObject({
-      usedBytes: 4,
+      monthUsedBytes: { "2026-08": 4 },
       activeDownloads: 0,
     });
   });
 
-  test("late prior-month operations cannot replace a newer ledger", async () => {
+  test("preserves and settles active prior-month reservations", async () => {
     const storage = new TestStorage();
     const gate = createGate(storage);
 
     expect((await reserve(gate, "august", 7)).status).toBe(200);
     expect((await reserve(gate, "september", 3, "2026-09")).status).toBe(200);
+
+    expect(storage.read<StoredLedger>("ledger")).toMatchObject({
+      currentMonthBucket: "2026-09",
+      monthUsedBytes: { "2026-08": 7, "2026-09": 3 },
+      activeDownloads: 2,
+    });
 
     expect(
       (
@@ -149,10 +164,49 @@ describe("HfProxyGate", () => {
     ).toBe(200);
 
     expect(storage.read<StoredLedger>("ledger")).toMatchObject({
-      monthBucket: "2026-09",
-      usedBytes: 3,
+      currentMonthBucket: "2026-09",
+      monthUsedBytes: { "2026-08": 7, "2026-09": 3 },
       activeDownloads: 1,
     });
+  });
+
+  test("heartbeats keep active downloads leased and alarms reap abandoned slots", async () => {
+    const storage = new TestStorage();
+    const gate = createGate(storage);
+    const realNow = Date.now;
+    let now = 1_000;
+    Date.now = () => now;
+    try {
+      expect((await reserve(gate, "active", 4)).status).toBe(200);
+      expect(storage.alarm).toBe(now + 30 * 60_000);
+
+      now += 20 * 60_000;
+      expect(
+        (
+          await post(gate, "/heartbeat", {
+            requestId: "active",
+            monthBucket: "2026-08",
+          })
+        ).status,
+      ).toBe(200);
+
+      now += 20 * 60_000;
+      await gate.alarm();
+      expect(storage.read<StoredLedger>("ledger")).toMatchObject({
+        monthUsedBytes: { "2026-08": 4 },
+        activeDownloads: 1,
+      });
+
+      now += 11 * 60_000;
+      await gate.alarm();
+      expect(storage.read<StoredLedger>("ledger")).toMatchObject({
+        monthUsedBytes: { "2026-08": 4 },
+        activeDownloads: 0,
+      });
+      expect(storage.alarm).toBeNull();
+    } finally {
+      Date.now = realNow;
+    }
   });
 
   test("storage failures fail closed without mutating cached accounting", async () => {
@@ -165,7 +219,7 @@ describe("HfProxyGate", () => {
 
     expect((await reserve(gate, "request-a", 4)).status).toBe(200);
     expect(storage.read<StoredLedger>("ledger")).toMatchObject({
-      usedBytes: 4,
+      monthUsedBytes: { "2026-08": 4 },
       activeDownloads: 1,
     });
   });
@@ -173,8 +227,8 @@ describe("HfProxyGate", () => {
   test("corrupt persisted accounting fails closed", async () => {
     const storage = new TestStorage();
     await storage.put("ledger", {
-      monthBucket: "2026-08",
-      usedBytes: -1,
+      currentMonthBucket: "2026-08",
+      monthUsedBytes: { "2026-08": -1 },
       activeDownloads: 0,
       slots: {},
       terminalRequestIds: [],

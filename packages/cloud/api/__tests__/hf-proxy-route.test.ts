@@ -395,9 +395,15 @@ describe("GET /api/v1/hf-proxy/[...path]", () => {
 
   test("returns structured HF_GATED for upstream 401/403 and cancels the slot", async () => {
     const gate = fakeGateStub();
+    let upstreamCancelled = false;
+    const upstreamBody = new ReadableStream<Uint8Array>({
+      cancel() {
+        upstreamCancelled = true;
+      },
+    });
     globalThis.fetch = mock(
       async () =>
-        new Response("private", {
+        new Response(upstreamBody, {
           status: 403,
           headers: { "content-type": "text/plain" },
         }),
@@ -421,6 +427,34 @@ describe("GET /api/v1/hf-proxy/[...path]", () => {
     });
     // A gated upstream must release the concurrency slot.
     expect(gate._cancelCalls.length).toBeGreaterThanOrEqual(1);
+    expect(upstreamCancelled).toBe(true);
+  });
+
+  test("strictly parses numeric configuration and Content-Length", async () => {
+    const gate = fakeGateStub();
+    globalThis.fetch = mock(
+      async () =>
+        new Response("12345678", {
+          status: 200,
+          headers: {
+            "content-length": "9007199254740992",
+          },
+        }),
+    ) as unknown as typeof fetch;
+
+    const res = await app.fetch(makeRequest(RESOLVE_PATH), {
+      HF_TOKEN: "hf-secret",
+      HF_PROXY_GATES: fakeGateNamespace(gate),
+      HF_PROXY_MONTHLY_EGRESS_LIMIT_BYTES: "4junk",
+      HF_PROXY_MAX_CONCURRENT_DOWNLOADS: "2junk",
+    });
+
+    expect(res.status).toBe(200);
+    expect(await res.text()).toBe("12345678");
+    expect(gate._settleCalls).toContainEqual({
+      requestId: expect.any(String),
+      actualBytes: 8,
+    });
   });
 
   test("enforces per-org monthly egress budget before streaming", async () => {
@@ -524,6 +558,86 @@ describe("GET /api/v1/hf-proxy/[...path]", () => {
     });
 
     expect(await first.text()).toBe("12345678");
+  });
+
+  test("cancels the upstream body when Content-Length exceeds the budget", async () => {
+    const gate = fakeGateStub();
+    let upstreamCancelled = false;
+    const upstreamBody = new ReadableStream<Uint8Array>({
+      cancel() {
+        upstreamCancelled = true;
+      },
+    });
+    globalThis.fetch = mock(
+      async () =>
+        new Response(upstreamBody, {
+          status: 200,
+          headers: { "content-length": "8" },
+        }),
+    ) as unknown as typeof fetch;
+
+    const res = await app.fetch(makeRequest(RESOLVE_PATH), {
+      HF_TOKEN: "hf-secret",
+      HF_PROXY_GATES: fakeGateNamespace(gate),
+      HF_PROXY_MONTHLY_EGRESS_LIMIT_BYTES: "4",
+    });
+
+    expect(res.status).toBe(429);
+    expect(upstreamCancelled).toBe(true);
+    expect(gate._cancelCalls).toHaveLength(1);
+  });
+
+  test("cancels upstream and the slot when Content-Length sizing fails", async () => {
+    const cancelCalls: string[] = [];
+    let reserveCalls = 0;
+    const stub = {
+      fetch: mock(async (request: Request) => {
+        const path = new URL(request.url).pathname;
+        const body = (await request.json()) as { requestId: string };
+        if (path === "/reserve") {
+          reserveCalls += 1;
+          if (reserveCalls === 2) {
+            return Response.json(
+              { error: "storage unavailable" },
+              { status: 503 },
+            );
+          }
+          return Response.json({
+            admitted: true,
+            usedBytes: 0,
+            limitBytes: 100,
+            activeDownloads: 1,
+            maxConcurrent: 4,
+          });
+        }
+        if (path === "/cancel") {
+          cancelCalls.push(body.requestId);
+          return Response.json({ cancelled: true });
+        }
+        return Response.json({ renewed: true });
+      }),
+    };
+    let upstreamCancelled = false;
+    globalThis.fetch = mock(
+      async () =>
+        new Response(
+          new ReadableStream<Uint8Array>({
+            cancel() {
+              upstreamCancelled = true;
+            },
+          }),
+          { status: 200, headers: { "content-length": "8" } },
+        ),
+    ) as unknown as typeof fetch;
+
+    const res = await app.fetch(makeRequest(RESOLVE_PATH), {
+      HF_TOKEN: "hf-secret",
+      HF_PROXY_GATES: { getByName: () => stub },
+    });
+
+    expect(res.status).toBeGreaterThanOrEqual(500);
+    expect(upstreamCancelled).toBe(true);
+    expect(cancelCalls).toHaveLength(1);
   });
 
   test("reserves unknown-length chunks before forwarding them", async () => {

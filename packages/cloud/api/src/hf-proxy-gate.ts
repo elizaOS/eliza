@@ -30,10 +30,10 @@ import type { AppEnv } from "@/types/cloud-worker-env";
 
 /** Per-organization ledger of monthly egress and active downloads. */
 interface HfProxyLedger {
-  /** Month bucket key this ledger covers, e.g. "2026-08". */
-  monthBucket: string;
-  /** Bytes consumed this month (reserved + actual settled). */
-  usedBytes: number;
+  /** Latest month bucket admitted by this gate, e.g. "2026-08". */
+  currentMonthBucket: string;
+  /** Bytes consumed per month (reserved + actual settled). */
+  monthUsedBytes: Record<string, number>;
   /** Number of active concurrent download slots. */
   activeDownloads: number;
   /** Active download slots keyed by requestId for cancellation/settlement. */
@@ -46,7 +46,8 @@ interface HfProxySlot {
   requestId: string;
   /** Bytes reserved at /reserve time (content-length or 0 for chunked). */
   reservedBytes: number;
-  startedAt: number;
+  monthBucket: string;
+  lastHeartbeatAt: number;
 }
 
 interface ReserveRequest {
@@ -72,6 +73,11 @@ interface CancelRequest {
   monthBucket: string;
 }
 
+interface HeartbeatRequest {
+  requestId: string;
+  monthBucket: string;
+}
+
 interface ReserveResponse {
   admitted: boolean;
   usedBytes: number;
@@ -81,7 +87,7 @@ interface ReserveResponse {
 }
 
 const LEDGER_KEY = "ledger";
-const SLOT_TTL_MS = 30 * 60_000;
+const SLOT_LEASE_MS = 30 * 60_000;
 const MAX_ACTIVE_DOWNLOADS_HARD = 256;
 const MAX_TERMINAL_REQUEST_IDS = 2_048;
 
@@ -103,8 +109,8 @@ function cloneLedger(ledger: HfProxyLedger): HfProxyLedger {
     slots[key] = { ...slot };
   }
   return {
-    monthBucket: ledger.monthBucket,
-    usedBytes: ledger.usedBytes,
+    currentMonthBucket: ledger.currentMonthBucket,
+    monthUsedBytes: { ...ledger.monthUsedBytes },
     activeDownloads: ledger.activeDownloads,
     slots,
     terminalRequestIds: [...ledger.terminalRequestIds],
@@ -125,13 +131,19 @@ export class HfProxyGate {
    * old KV code silently treated malformed JSON as zero usage, which could
    * reset an org's monthly counter to zero mid-month.
    */
-  private async load(monthBucket: string): Promise<HfProxyLedger> {
+  private async load(): Promise<HfProxyLedger | undefined> {
     this.ledger ??= await this.state.storage.get<HfProxyLedger>(LEDGER_KEY);
     if (this.ledger) {
       if (
-        !validMonthBucket(this.ledger.monthBucket) ||
-        !Number.isSafeInteger(this.ledger.usedBytes) ||
-        this.ledger.usedBytes < 0 ||
+        !validMonthBucket(this.ledger.currentMonthBucket) ||
+        typeof this.ledger.monthUsedBytes !== "object" ||
+        this.ledger.monthUsedBytes === null ||
+        Object.entries(this.ledger.monthUsedBytes).some(
+          ([bucket, usedBytes]) =>
+            !validMonthBucket(bucket) ||
+            !Number.isSafeInteger(usedBytes) ||
+            usedBytes < 0,
+        ) ||
         !Number.isSafeInteger(this.ledger.activeDownloads) ||
         this.ledger.activeDownloads < 0 ||
         this.ledger.activeDownloads > MAX_ACTIVE_DOWNLOADS_HARD ||
@@ -139,30 +151,25 @@ export class HfProxyGate {
         this.ledger.slots === null ||
         !Array.isArray(this.ledger.terminalRequestIds) ||
         this.ledger.terminalRequestIds.length > MAX_TERMINAL_REQUEST_IDS ||
-        this.ledger.terminalRequestIds.some((requestId) => !validId(requestId))
+        this.ledger.terminalRequestIds.some(
+          (requestId) => !validId(requestId),
+        ) ||
+        Object.values(this.ledger.slots).some(
+          (slot) =>
+            !validId(slot.requestId) ||
+            !Number.isSafeInteger(slot.reservedBytes) ||
+            slot.reservedBytes < 0 ||
+            !validMonthBucket(slot.monthBucket) ||
+            !Number.isSafeInteger(slot.lastHeartbeatAt) ||
+            slot.lastHeartbeatAt < 0,
+        ) ||
+        this.ledger.activeDownloads !== Object.keys(this.ledger.slots).length
       ) {
         throw new Error("HF proxy egress ledger is corrupt");
       }
-      // Month rollover only moves forward. A late settle/cancel from the prior
-      // month must never replace a newer ledger and erase its accounting.
-      if (this.ledger.monthBucket < monthBucket) {
-        return {
-          monthBucket,
-          usedBytes: 0,
-          activeDownloads: 0,
-          slots: {},
-          terminalRequestIds: [],
-        };
-      }
       return this.ledger;
     }
-    return {
-      monthBucket,
-      usedBytes: 0,
-      activeDownloads: 0,
-      slots: {},
-      terminalRequestIds: [],
-    };
+    return undefined;
   }
 
   private markTerminal(ledger: HfProxyLedger, requestId: string): void {
@@ -176,6 +183,16 @@ export class HfProxyGate {
     const snapshot = cloneLedger(ledger);
     await this.state.storage.put(LEDGER_KEY, snapshot);
     this.ledger = snapshot;
+    if (snapshot.activeDownloads === 0) {
+      await this.state.storage.deleteAlarm();
+      return;
+    }
+    const nextExpiration = Math.min(
+      ...Object.values(snapshot.slots).map(
+        (slot) => slot.lastHeartbeatAt + SLOT_LEASE_MS,
+      ),
+    );
+    await this.state.storage.setAlarm(nextExpiration);
   }
 
   /** Serialize operations so internal state stays consistent under co-scheduling. */
@@ -197,7 +214,7 @@ export class HfProxyGate {
     const now = Date.now();
     let changed = false;
     for (const [requestId, slot] of Object.entries(ledger.slots)) {
-      if (now - slot.startedAt > SLOT_TTL_MS) {
+      if (now - slot.lastHeartbeatAt >= SLOT_LEASE_MS) {
         // A slot that exceeded the TTL never settled — release it without
         // adjusting the byte counter (the actual bytes are unknown).
         delete ledger.slots[requestId];
@@ -224,14 +241,28 @@ export class HfProxyGate {
       return jsonError("Invalid HF proxy reserve request", 400);
     }
 
-    const loaded = await this.load(request.monthBucket);
-    if (loaded.monthBucket !== request.monthBucket) {
+    const loaded = await this.load();
+    if (loaded && loaded.currentMonthBucket > request.monthBucket) {
       return jsonError("HF proxy reserve month is stale", 409);
     }
-    const ledger = cloneLedger(loaded);
+    const ledger = cloneLedger(
+      loaded ?? {
+        currentMonthBucket: request.monthBucket,
+        monthUsedBytes: { [request.monthBucket]: 0 },
+        activeDownloads: 0,
+        slots: {},
+        terminalRequestIds: [],
+      },
+    );
+    if (request.monthBucket > ledger.currentMonthBucket) {
+      ledger.currentMonthBucket = request.monthBucket;
+      ledger.monthUsedBytes[request.monthBucket] = 0;
+    }
     if (this.gcExpiredSlots(ledger)) {
       await this.save(ledger);
     }
+
+    const usedBytes = ledger.monthUsedBytes[request.monthBucket] ?? 0;
 
     if (ledger.terminalRequestIds.includes(request.requestId)) {
       return jsonError("HF proxy reservation is already terminal", 409);
@@ -246,8 +277,11 @@ export class HfProxyGate {
         existingSlot.reservedBytes,
         request.estimatedBytes,
       );
+      if (existingSlot.monthBucket !== request.monthBucket) {
+        return jsonError("HF proxy reservation month does not match", 409);
+      }
       const projectedBytes =
-        ledger.usedBytes - existingSlot.reservedBytes + targetBytes;
+        usedBytes - existingSlot.reservedBytes + targetBytes;
       if (
         !Number.isSafeInteger(projectedBytes) ||
         projectedBytes > request.limitBytes
@@ -255,7 +289,7 @@ export class HfProxyGate {
         return Response.json(
           {
             admitted: false,
-            usedBytes: ledger.usedBytes,
+            usedBytes,
             limitBytes: request.limitBytes,
             activeDownloads: ledger.activeDownloads,
             maxConcurrent: request.maxConcurrent,
@@ -263,12 +297,13 @@ export class HfProxyGate {
           { status: 429 },
         );
       }
-      ledger.usedBytes = projectedBytes;
+      ledger.monthUsedBytes[request.monthBucket] = projectedBytes;
       existingSlot.reservedBytes = targetBytes;
+      existingSlot.lastHeartbeatAt = Date.now();
       await this.save(ledger);
       return Response.json({
         admitted: true,
-        usedBytes: ledger.usedBytes,
+        usedBytes: projectedBytes,
         limitBytes: request.limitBytes,
         activeDownloads: ledger.activeDownloads,
         maxConcurrent: request.maxConcurrent,
@@ -279,7 +314,7 @@ export class HfProxyGate {
       return Response.json(
         {
           admitted: false,
-          usedBytes: ledger.usedBytes,
+          usedBytes,
           limitBytes: request.limitBytes,
           activeDownloads: ledger.activeDownloads,
           maxConcurrent: request.maxConcurrent,
@@ -289,7 +324,7 @@ export class HfProxyGate {
     }
 
     // Pre-charge the estimated bytes so concurrent requests see the update.
-    const projectedBytes = ledger.usedBytes + request.estimatedBytes;
+    const projectedBytes = usedBytes + request.estimatedBytes;
     if (
       !Number.isSafeInteger(projectedBytes) ||
       projectedBytes > request.limitBytes
@@ -297,7 +332,7 @@ export class HfProxyGate {
       return Response.json(
         {
           admitted: false,
-          usedBytes: ledger.usedBytes,
+          usedBytes,
           limitBytes: request.limitBytes,
           activeDownloads: ledger.activeDownloads,
           maxConcurrent: request.maxConcurrent,
@@ -306,17 +341,18 @@ export class HfProxyGate {
       );
     }
 
-    ledger.usedBytes = projectedBytes;
+    ledger.monthUsedBytes[request.monthBucket] = projectedBytes;
     ledger.activeDownloads += 1;
     ledger.slots[request.requestId] = {
       requestId: request.requestId,
       reservedBytes: request.estimatedBytes,
-      startedAt: Date.now(),
+      monthBucket: request.monthBucket,
+      lastHeartbeatAt: Date.now(),
     };
     await this.save(ledger);
     return Response.json({
       admitted: true,
-      usedBytes: ledger.usedBytes,
+      usedBytes: projectedBytes,
       limitBytes: request.limitBytes,
       activeDownloads: ledger.activeDownloads,
       maxConcurrent: request.maxConcurrent,
@@ -333,10 +369,8 @@ export class HfProxyGate {
       return jsonError("Invalid HF proxy settle request", 400);
     }
 
-    const loaded = await this.load(request.monthBucket);
-    if (loaded.monthBucket !== request.monthBucket) {
-      return Response.json({ settled: true, stale: true });
-    }
+    const loaded = await this.load();
+    if (!loaded) return jsonError("Unknown HF proxy reservation", 409);
     const ledger = cloneLedger(loaded);
     if (ledger.terminalRequestIds.includes(request.requestId)) {
       return Response.json({ settled: true });
@@ -345,10 +379,16 @@ export class HfProxyGate {
     if (!slot) {
       return jsonError("Unknown HF proxy reservation", 409);
     }
+    if (slot.monthBucket !== request.monthBucket) {
+      return jsonError("HF proxy reservation month does not match", 409);
+    }
 
     // Adjust: remove the pre-charge, add the actual.
-    ledger.usedBytes = Math.max(0, ledger.usedBytes - slot.reservedBytes);
-    ledger.usedBytes += request.actualBytes;
+    const usedBytes = ledger.monthUsedBytes[slot.monthBucket];
+    if (usedBytes === undefined)
+      throw new Error("HF proxy month ledger is missing");
+    ledger.monthUsedBytes[slot.monthBucket] =
+      Math.max(0, usedBytes - slot.reservedBytes) + request.actualBytes;
     delete ledger.slots[request.requestId];
     ledger.activeDownloads = Math.max(0, ledger.activeDownloads - 1);
     this.markTerminal(ledger, request.requestId);
@@ -361,10 +401,8 @@ export class HfProxyGate {
       return jsonError("Invalid HF proxy cancel request", 400);
     }
 
-    const loaded = await this.load(request.monthBucket);
-    if (loaded.monthBucket !== request.monthBucket) {
-      return Response.json({ cancelled: true, stale: true });
-    }
+    const loaded = await this.load();
+    if (!loaded) return jsonError("Unknown HF proxy reservation", 409);
     const ledger = cloneLedger(loaded);
     if (ledger.terminalRequestIds.includes(request.requestId)) {
       return Response.json({ cancelled: true });
@@ -373,8 +411,17 @@ export class HfProxyGate {
     if (!slot) {
       return jsonError("Unknown HF proxy reservation", 409);
     }
+    if (slot.monthBucket !== request.monthBucket) {
+      return jsonError("HF proxy reservation month does not match", 409);
+    }
     // Remove the pre-charge and release the slot.
-    ledger.usedBytes = Math.max(0, ledger.usedBytes - slot.reservedBytes);
+    const usedBytes = ledger.monthUsedBytes[slot.monthBucket];
+    if (usedBytes === undefined)
+      throw new Error("HF proxy month ledger is missing");
+    ledger.monthUsedBytes[slot.monthBucket] = Math.max(
+      0,
+      usedBytes - slot.reservedBytes,
+    );
     delete ledger.slots[request.requestId];
     ledger.activeDownloads = Math.max(0, ledger.activeDownloads - 1);
     this.markTerminal(ledger, request.requestId);
@@ -382,16 +429,47 @@ export class HfProxyGate {
     return Response.json({ cancelled: true });
   }
 
+  private async heartbeat(request: HeartbeatRequest): Promise<Response> {
+    if (!validId(request.requestId) || !validMonthBucket(request.monthBucket)) {
+      return jsonError("Invalid HF proxy heartbeat request", 400);
+    }
+    const loaded = await this.load();
+    if (!loaded) return jsonError("Unknown HF proxy reservation", 409);
+    const ledger = cloneLedger(loaded);
+    if (ledger.terminalRequestIds.includes(request.requestId)) {
+      return Response.json({ renewed: true });
+    }
+    const slot = ledger.slots[request.requestId];
+    if (!slot) return jsonError("Unknown HF proxy reservation", 409);
+    if (slot.monthBucket !== request.monthBucket) {
+      return jsonError("HF proxy reservation month does not match", 409);
+    }
+    slot.lastHeartbeatAt = Date.now();
+    await this.save(ledger);
+    return Response.json({ renewed: true });
+  }
+
+  async alarm(): Promise<void> {
+    await this.serialize(async () => {
+      const loaded = await this.load();
+      if (!loaded) return;
+      const ledger = cloneLedger(loaded);
+      this.gcExpiredSlots(ledger);
+      await this.save(ledger);
+    });
+  }
+
   async fetch(request: Request): Promise<Response> {
     if (request.method !== "POST") {
       return new Response("Method not allowed", { status: 405 });
     }
-    let body: ReserveRequest | SettleRequest | CancelRequest;
+    let body: ReserveRequest | SettleRequest | CancelRequest | HeartbeatRequest;
     try {
       body = (await request.json()) as
         | ReserveRequest
         | SettleRequest
-        | CancelRequest;
+        | CancelRequest
+        | HeartbeatRequest;
     } catch {
       // error-policy:J3 Request JSON is untrusted and invalid input is explicit.
       return jsonError("Invalid JSON body", 400);
@@ -408,6 +486,11 @@ export class HfProxyGate {
       }
       if (path === "/cancel") {
         return await this.serialize(() => this.cancel(body as CancelRequest));
+      }
+      if (path === "/heartbeat") {
+        return await this.serialize(() =>
+          this.heartbeat(body as HeartbeatRequest),
+        );
       }
     } catch (error) {
       // error-policy:J1 The Durable Object boundary translates failures to 503.
@@ -427,17 +510,5 @@ export class HfProxyGate {
       );
     }
     return new Response("Not found", { status: 404 });
-  }
-
-  async alarm(): Promise<void> {
-    // GC expired slots so abandoned downloads don't permanently hold a
-    // concurrency slot. This runs on the Durable Object's alarm schedule.
-    const ledger =
-      this.ledger ?? (await this.state.storage.get<HfProxyLedger>(LEDGER_KEY));
-    if (!ledger) return;
-    const snapshot = cloneLedger(ledger);
-    this.gcExpiredSlots(snapshot);
-    await this.state.storage.put(LEDGER_KEY, snapshot);
-    this.ledger = snapshot;
   }
 }

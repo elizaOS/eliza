@@ -41,6 +41,7 @@ const DEFAULT_MONTHLY_EGRESS_LIMIT_BYTES = 500 * 1024 ** 3;
 const DEFAULT_MAX_CONCURRENT_DOWNLOADS = 4;
 const GATE_ORIGIN = "https://hf-proxy-gate.internal";
 const GATE_TIMEOUT_MS = 3_000;
+const GATE_HEARTBEAT_INTERVAL_MS = 5 * 60_000;
 
 /**
  * Only repos under this org may be proxied. The curated eliza-1 catalog lives at
@@ -88,22 +89,26 @@ const app = new Hono<AppEnv>();
 
 // ---- Egress policy helpers ----
 
+function parseSafeInteger(value: unknown, minimum: number): number | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  if (!/^\d+$/.test(trimmed)) return null;
+  const parsed = Number(trimmed);
+  return Number.isSafeInteger(parsed) && parsed >= minimum ? parsed : null;
+}
+
 function monthlyEgressLimitBytes(env: AppEnv["Bindings"]): number {
-  const raw = env.HF_PROXY_MONTHLY_EGRESS_LIMIT_BYTES;
-  const parsed =
-    typeof raw === "string" ? Number.parseInt(raw.trim(), 10) : Number.NaN;
-  return Number.isFinite(parsed) && parsed > 0
-    ? parsed
-    : DEFAULT_MONTHLY_EGRESS_LIMIT_BYTES;
+  return (
+    parseSafeInteger(env.HF_PROXY_MONTHLY_EGRESS_LIMIT_BYTES, 1) ??
+    DEFAULT_MONTHLY_EGRESS_LIMIT_BYTES
+  );
 }
 
 function maxConcurrentDownloads(env: AppEnv["Bindings"]): number {
-  const raw = env.HF_PROXY_MAX_CONCURRENT_DOWNLOADS;
-  const parsed =
-    typeof raw === "string" ? Number.parseInt(raw.trim(), 10) : Number.NaN;
-  return Number.isFinite(parsed) && parsed > 0
-    ? parsed
-    : DEFAULT_MAX_CONCURRENT_DOWNLOADS;
+  return (
+    parseSafeInteger(env.HF_PROXY_MAX_CONCURRENT_DOWNLOADS, 1) ??
+    DEFAULT_MAX_CONCURRENT_DOWNLOADS
+  );
 }
 
 function monthBucket(now = new Date()): string {
@@ -113,8 +118,7 @@ function monthBucket(now = new Date()): string {
 function parseContentLength(headers: Headers): number | null {
   const value = headers.get("content-length");
   if (!value) return null;
-  const parsed = Number.parseInt(value, 10);
-  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+  return parseSafeInteger(value, 0);
 }
 
 function cacheStatus(headers: Headers): string | null {
@@ -230,6 +234,71 @@ async function gateCancel(
   }
 }
 
+async function gateHeartbeat(
+  stub: RuntimeDurableObjectStub,
+  requestId: string,
+  bucket: string,
+): Promise<void> {
+  const response = await stub.fetch(
+    new Request(`${GATE_ORIGIN}/heartbeat`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ requestId, monthBucket: bucket }),
+      signal: AbortSignal.timeout(GATE_TIMEOUT_MS),
+    }),
+  );
+  if (!response.ok) {
+    throw new HfProxyGateError(
+      `HF proxy gate heartbeat failed with status ${response.status}`,
+    );
+  }
+}
+
+function startGateHeartbeat(
+  stub: RuntimeDurableObjectStub,
+  requestId: string,
+  bucket: string,
+  onFailure: (error: unknown) => void,
+): () => void {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let stopped = false;
+  const schedule = (): void => {
+    if (stopped) return;
+    timer = setTimeout(async () => {
+      try {
+        await gateHeartbeat(stub, requestId, bucket);
+        schedule();
+      } catch (error) {
+        // error-policy:J1 The caller aborts the active upstream operation and
+        // exposes the lease failure at the response boundary.
+        stopped = true;
+        onFailure(error);
+      }
+    }, GATE_HEARTBEAT_INTERVAL_MS);
+  };
+  schedule();
+  return () => {
+    stopped = true;
+    if (timer !== undefined) clearTimeout(timer);
+    timer = undefined;
+  };
+}
+
+async function cancelUpstreamBody(
+  response: Response,
+  reason: string,
+): Promise<void> {
+  try {
+    await response.body?.cancel(reason);
+  } catch (error) {
+    // error-policy:J6 The proxy response is already terminal; upstream body
+    // cancellation is best-effort teardown and must not hide gate cleanup.
+    logger.warn("[hf-proxy] upstream body cancellation failed", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
 class HfProxyGateError extends Error {
   readonly code: string | undefined;
   constructor(message: string, code?: string) {
@@ -292,10 +361,45 @@ function streamWithEgressAccounting(args: {
   let bytes = 0;
   let reservedBytes = args.initialReservedBytes;
   let settled = false;
+  let heartbeatTimer: ReturnType<typeof setTimeout> | undefined;
+  let heartbeatFailure: unknown;
+
+  const stopHeartbeat = (): void => {
+    if (heartbeatTimer !== undefined) clearTimeout(heartbeatTimer);
+    heartbeatTimer = undefined;
+  };
+
+  const scheduleHeartbeat = (): void => {
+    if (settled) return;
+    heartbeatTimer = setTimeout(async () => {
+      try {
+        await gateHeartbeat(args.gateStub, args.requestId, args.monthBucket);
+        scheduleHeartbeat();
+      } catch (error) {
+        // error-policy:J1 The stream boundary exposes heartbeat failure to its
+        // consumer after cancelling the upstream reader here.
+        heartbeatFailure = error;
+        try {
+          await reader.cancel(error);
+        } catch (cancelError) {
+          // error-policy:J6 Heartbeat failure is already preserved for the
+          // consumer; reader cancellation is best-effort teardown.
+          logger.warn("[hf-proxy] upstream reader cancellation failed", {
+            error:
+              cancelError instanceof Error
+                ? cancelError.message
+                : String(cancelError),
+          });
+        }
+      }
+    }, GATE_HEARTBEAT_INTERVAL_MS);
+  };
+  scheduleHeartbeat();
 
   const settleOnce = async (finalBytes: number): Promise<void> => {
     if (settled) return;
     settled = true;
+    stopHeartbeat();
     try {
       await gateSettle(
         args.gateStub,
@@ -328,6 +432,7 @@ function streamWithEgressAccounting(args: {
     async pull(controller) {
       try {
         const result = await reader.read();
+        if (heartbeatFailure) throw heartbeatFailure;
         if (result.done) {
           await settleOnce(bytes);
           controller.close();
@@ -367,6 +472,7 @@ function streamWithEgressAccounting(args: {
       }
     },
     async cancel(reason) {
+      stopHeartbeat();
       try {
         await reader.cancel(reason);
       } finally {
@@ -500,17 +606,31 @@ app.get("/*", async (c) => {
     const range = c.req.header("range");
     if (range) headers.set("range", range);
 
+    const upstreamAbortController = new AbortController();
+    let upstreamHeartbeatFailure: unknown;
+    const stopUpstreamHeartbeat = startGateHeartbeat(
+      gateStub,
+      requestId,
+      bucket,
+      (error) => {
+        upstreamHeartbeatFailure = error;
+        upstreamAbortController.abort(error);
+      },
+    );
+
     let upstreamResponse: Response;
     try {
       upstreamResponse = await fetch(upstream, {
         method: "GET",
         headers,
         redirect: "follow",
+        signal: upstreamAbortController.signal,
       });
     } catch (error) {
       // Upstream fetch failed: release the slot without charging.
+      stopUpstreamHeartbeat();
       await gateCancel(gateStub, requestId, bucket);
-      throw error;
+      throw upstreamHeartbeatFailure ?? error;
     }
 
     if (upstreamResponse.status >= 400) {
@@ -545,6 +665,8 @@ app.get("/*", async (c) => {
         cacheHit: cacheHit(upstreamCacheStatus),
       });
       // Gated/unauthorized: release the concurrency slot without charging.
+      stopUpstreamHeartbeat();
+      await cancelUpstreamBody(upstreamResponse, "HF upstream unauthorized");
       await gateCancel(gateStub, requestId, bucket);
       return c.json(
         {
@@ -560,15 +682,31 @@ app.get("/*", async (c) => {
     // forwarded. Concurrent downloads therefore observe the pre-charge. When
     // length is unknown, the stream reserves each chunk before enqueueing it.
     if (contentLength !== null) {
-      const sizedReserve = await gateReserve(
-        gateStub,
-        requestId,
-        contentLength,
-        limitBytes,
-        maxConcurrent,
-        bucket,
-      );
+      let sizedReserve: ReserveDecision;
+      try {
+        sizedReserve = await gateReserve(
+          gateStub,
+          requestId,
+          contentLength,
+          limitBytes,
+          maxConcurrent,
+          bucket,
+        );
+      } catch (error) {
+        stopUpstreamHeartbeat();
+        await cancelUpstreamBody(
+          upstreamResponse,
+          "HF proxy gate sizing failed",
+        );
+        await gateCancel(gateStub, requestId, bucket);
+        throw error;
+      }
       if (!sizedReserve.admitted) {
+        stopUpstreamHeartbeat();
+        await cancelUpstreamBody(
+          upstreamResponse,
+          "HF proxy egress limit reached",
+        );
         await gateCancel(gateStub, requestId, bucket);
         return c.json(
           egressLimitResponse(
@@ -605,7 +743,9 @@ app.get("/*", async (c) => {
         limitBytes,
         maxConcurrent,
       });
+      stopUpstreamHeartbeat();
     } else {
+      stopUpstreamHeartbeat();
       await gateSettle(gateStub, requestId, 0, bucket);
       logger.info("[hf-proxy] egress metric", {
         organizationId: orgId,
