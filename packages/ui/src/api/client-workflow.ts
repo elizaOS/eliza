@@ -37,7 +37,10 @@ declare module "./client-base" {
     activateWorkflowDefinition(id: string): Promise<WorkflowDefinition>;
     deactivateWorkflowDefinition(id: string): Promise<WorkflowDefinition>;
     deleteWorkflowDefinition(id: string): Promise<{ ok: boolean }>;
-    runWorkflowDefinition(id: string): Promise<WorkflowExecution>;
+    runWorkflowDefinition(
+      id: string,
+      input?: Record<string, unknown>,
+    ): Promise<WorkflowExecution>;
     getWorkflowExecutions(
       id: string,
       limit?: number,
@@ -166,6 +169,7 @@ ElizaClient.prototype.deleteWorkflowDefinition = async function (
 ElizaClient.prototype.runWorkflowDefinition = async function (
   this: ElizaClient,
   id: string,
+  input?: Record<string, unknown>,
 ): Promise<WorkflowExecution> {
   const result = await workflowSurfaceClient(this).fetch<{
     execution?: WorkflowExecution;
@@ -173,6 +177,7 @@ ElizaClient.prototype.runWorkflowDefinition = async function (
     `/api/workflow/workflows/${encodeURIComponent(id)}/run`,
     {
       method: "POST",
+      body: JSON.stringify({ input: input ?? {} }),
     },
     // This route owns 202 as "execution accepted". Bypass the generic
     // dedicated-agent resume loop or the same workflow POST is retried.
