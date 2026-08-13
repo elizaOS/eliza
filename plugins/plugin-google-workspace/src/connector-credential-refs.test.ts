@@ -2,7 +2,9 @@
  * Writer/reader parity coverage for connector credential persistence: proves
  * that a credential persisted through `persistConnectorCredentialRefs` is
  * readable by `DefaultGoogleCredentialResolver` after a simulated process
- * restart, for every service name the writer can target. Deterministic
+ * restart, for every service name the writer can target, and that persistence
+ * fails closed (no secret, no ref) when only the volatile SECRETS store is
+ * available (#18080). Deterministic
  * harness — the runtime, credential store, vault, and SECRETS services are
  * in-memory fakes shaped like their production counterparts; "restart" means
  * new runtime/service instances sharing only the durable backing maps
@@ -259,18 +261,54 @@ describe("connector credential persist → restart → resolve round-trip", () =
     }
   });
 
-  it("documents the SECRETS-only fallback as volatile: the persisted ref dangles after a restart", async () => {
+  it("rejects persistence when only volatile SECRETS is available: no secret written, no dangling ref (#18080)", async () => {
     const state = newDurableState();
     state.accounts.set(ACCOUNT_ID, connectedAccount(ACCOUNT_ID));
     const storage = createStorage(state);
     const secrets = createVolatileSecretsService();
 
-    const vaultRef = await persistTokens(createRuntime(storage, { SECRETS: secrets }));
-    expect(secrets.entries.get(vaultRef)).toBe(TOKENS_JSON);
+    await expect(
+      persistConnectorCredentialRefs({
+        runtime: createRuntime(storage, { SECRETS: secrets }),
+        provider: "google",
+        accountIdForRef: ACCOUNT_ID,
+        storageAccountId: ACCOUNT_ID,
+        caller: "test",
+        credentials: [{ credentialType: "oauth.tokens", value: TOKENS_JSON }],
+      })
+    ).rejects.toThrow(/No durable connector credential store or vault writer/);
+
+    // Fail-closed contract: nothing landed in the volatile store and no
+    // credential ref was recorded, so a restart has nothing to dangle.
+    expect(secrets.entries.size).toBe(0);
+    expect(state.credentialRefs.size).toBe(0);
+    expect(state.vaultEntries.size).toBe(0);
+  });
+
+  it("rejects when the credential store failed to start (getService null) instead of demoting to SECRETS (#18080)", async () => {
+    const state = newDurableState();
+    state.accounts.set(ACCOUNT_ID, connectedAccount(ACCOUNT_ID));
+    const storage = createStorage(state);
+    const secrets = createVolatileSecretsService();
+    // A registered-but-failed store resolves to null through runtime.getService,
+    // exactly what the boot funnel's start failure produces.
+    const services: Record<string, unknown> = {
+      connector_credential_store: null,
+      SECRETS: secrets,
+    };
 
     await expect(
-      resolveAfterRestart(state, { SECRETS: createVolatileSecretsService() })
-    ).rejects.toThrow(/could not be read/);
+      persistConnectorCredentialRefs({
+        runtime: createRuntime(storage, services),
+        provider: "google",
+        accountIdForRef: ACCOUNT_ID,
+        storageAccountId: ACCOUNT_ID,
+        caller: "test",
+        credentials: [{ credentialType: "oauth.tokens", value: TOKENS_JSON }],
+      })
+    ).rejects.toThrow(/Refusing to mark OAuth account connected/);
+    expect(secrets.entries.size).toBe(0);
+    expect(state.credentialRefs.size).toBe(0);
   });
 });
 

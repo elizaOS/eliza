@@ -1,10 +1,15 @@
 /**
  * Persists OAuth credential material for a connector account and reads the
  * resulting refs back out. `persistConnectorCredentialRefs` writes each secret
- * to the first available durable vault (connector credential store, vault, or
- * SECRETS) and records a `vaultRef` pointer on the account via storage; it
- * refuses to proceed unless both a vault writer and a ref writer exist, so an
- * account is never marked connected without durable credentials.
+ * to the first available durable vault (connector credential store or vault)
+ * and records a `vaultRef` pointer on the account via storage; it refuses to
+ * proceed unless both a durable vault writer and a ref writer exist, so an
+ * account is never marked connected without durable credentials. The core
+ * SECRETS service is deliberately NOT an eligible writer: its global storage
+ * mutates `runtime.character.settings.secrets` in process memory only, so a
+ * credential written there dies with the process while its vaultRef dangles
+ * (#18080). SECRETS remains a read-side probe in `credential-resolver.ts` so
+ * refs written before this hardening still resolve within the same process.
  * `credentialRefRecordsFromMetadata` is the read side, extracting ref records
  * from account metadata for the credential resolver. Consumed by the connector
  * account provider on OAuth completion and by `DefaultGoogleCredentialResolver`.
@@ -104,7 +109,9 @@ export async function persistConnectorCredentialRefs(
   });
   if (vaultWriters.length === 0) {
     throw new Error(
-      `No durable connector credential store or vault writer is available for ${params.provider} account ${params.accountIdForRef}. Refusing to mark OAuth account connected without persisted credentials.`
+      `No durable connector credential store or vault writer is available for ${params.provider} account ${params.accountIdForRef}. ` +
+        "Refusing to mark OAuth account connected without persisted credentials: the core SECRETS store is process-memory only, so a credential written there would silently die at the next restart while its vaultRef dangles. " +
+        "Run under a host that installs a durable vault (so the connector credential store service registers), or retry after that service has started."
     );
   }
   if (!params.storageAccountId) {
@@ -258,38 +265,9 @@ function resolveVaultWriters(
     });
   }
 
-  const secrets = getService(runtime, CORE_SECRETS_SERVICE_TYPE) as {
-    setGlobal?: (
-      key: string,
-      value: string,
-      config?: { sensitive?: boolean }
-    ) => Promise<boolean> | boolean;
-    set?: (
-      key: string,
-      value: string,
-      context: JsonRecord,
-      config?: { sensitive?: boolean }
-    ) => Promise<boolean> | boolean;
-  } | null;
-  if (typeof secrets?.setGlobal === "function" || typeof secrets?.set === "function") {
-    writers.push({
-      name: "SECRETS",
-      write: async (vaultRef, credential) => {
-        if (typeof secrets.setGlobal === "function") {
-          await secrets.setGlobal(vaultRef, credential.value, { sensitive: true });
-          return vaultRef;
-        }
-        await secrets.set?.(
-          vaultRef,
-          credential.value,
-          { level: "global", agentId: runtime.agentId, requesterId: runtime.agentId },
-          { sensitive: true }
-        );
-        return vaultRef;
-      },
-    });
-  }
-
+  // Deliberately no SECRETS writer here: core SECRETS global storage is
+  // process-memory only, so accepting it records a connected account whose
+  // credential dies at the next restart (#18080). Fail closed instead.
   return writers;
 }
 
