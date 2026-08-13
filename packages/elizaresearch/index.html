@@ -9,20 +9,20 @@
 <meta property="og:description" content="Products at the intersection of AI and people." />
 <meta property="og:url" content="https://elizaresearch.ai" />
 <meta property="og:type" content="website" />
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='14' fill='%2321a35b'/%3E%3Ccircle cx='16' cy='16' r='5' fill='white'/%3E%3C/svg%3E" />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='14' fill='%23ff5800'/%3E%3Ccircle cx='16' cy='16' r='5' fill='white'/%3E%3C/svg%3E" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Archivo:ital,wdth,wght@0,62..125,100..900;1,62..125,100..900&display=swap" rel="stylesheet" />
 <style>
   :root {
-    --green: oklch(0.62 0.155 148);
-    --green-bright: oklch(0.72 0.19 145);
-    --green-deep: oklch(0.32 0.09 150);
-    --green-ink: oklch(0.24 0.06 152);
-    --ink: oklch(0.18 0.01 150);
-    --bg: oklch(1 0 0);
-    --muted: oklch(0.42 0.02 150);
-    --line: oklch(0.9 0.01 150);
+    --orange: #ff5800;
+    --orange-bright: #ff7a30;
+    --orange-deep: #b23d00;
+    --black: #0d0b0a;
+    --ink: #111111;
+    --bg: #ffffff;
+    --muted: #4d4a48;
+    --line: #e6e3e1;
     --z-nav: 10;
   }
   * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -38,7 +38,7 @@
   h1, h2, h3 { text-wrap: balance; line-height: 1.02; }
   p { text-wrap: pretty; max-width: 62ch; }
   a { color: inherit; }
-  ::selection { background: var(--green); color: white; }
+  ::selection { background: var(--orange); color: white; }
 
   .wrap { max-width: 1200px; margin-inline: auto; padding-inline: clamp(1.25rem, 4vw, 3rem); }
 
@@ -57,7 +57,7 @@
   /* ---------- hero ---------- */
   header {
     position: relative; min-height: 100svh;
-    background: var(--green);
+    background: var(--orange);
     color: white; overflow: hidden;
     display: grid; align-content: end;
   }
@@ -72,7 +72,7 @@
   }
   .hero-inner .tag {
     margin-top: 1.4rem; font-size: clamp(1.05rem, 2vw, 1.35rem);
-    font-weight: 500; max-width: 44ch; color: oklch(0.97 0.02 148);
+    font-weight: 500; max-width: 44ch; color: rgba(255,255,255,0.94);
   }
   .hero-inner .down {
     display: inline-flex; align-items: center; gap: 0.5rem;
@@ -81,7 +81,7 @@
     padding: 0.7rem 1.4rem; font-size: 0.95rem;
     transition: background 0.2s, color 0.2s;
   }
-  .hero-inner .down:hover { background: white; color: var(--green-deep); }
+  .hero-inner .down:hover { background: white; color: var(--orange-deep); }
 
   /* ---------- statement ---------- */
   .statement { padding-block: clamp(5rem, 14vh, 10rem); }
@@ -90,7 +90,7 @@
     font-weight: 640; letter-spacing: -0.02em; line-height: 1.22;
     max-width: 26ch;
   }
-  .statement em { font-style: normal; color: var(--green); }
+  .statement em { font-style: normal; color: var(--orange); }
 
   /* ---------- products ---------- */
   .product { padding-block: clamp(4rem, 10vh, 7rem); }
@@ -114,42 +114,42 @@
   .product .cta:hover { opacity: 0.65; }
 
   #eliza { border-top: 1px solid var(--line); }
-  #eliza .role { color: var(--green); }
-  #eliza .cta { color: var(--green); }
+  #eliza .role { color: var(--orange); }
+  #eliza .cta { color: var(--orange); }
 
   .figure {
     aspect-ratio: 4 / 3; border-radius: 1.25rem; overflow: hidden;
     display: grid; place-items: center; position: relative;
   }
-  #eliza .figure { background: var(--green-ink); }
+  #eliza .figure { background: var(--black); }
   #eliza .figure svg, #slop .figure svg { width: 100%; height: 100%; display: block; }
 
   #slop {
-    background: var(--green-ink); color: oklch(0.96 0.015 148);
+    background: var(--black); color: #f5f2f0;
   }
-  #slop .role { color: var(--green-bright); }
-  #slop .body { color: oklch(0.78 0.03 148); }
-  #slop .cta { color: var(--green-bright); }
-  #slop .figure { background: oklch(0.2 0.045 152); }
+  #slop .role { color: var(--orange-bright); }
+  #slop .body { color: #c9c2be; }
+  #slop .cta { color: var(--orange-bright); }
+  #slop .figure { background: #1a1512; }
 
   /* ---------- footer ---------- */
-  footer { background: var(--green-ink); color: oklch(0.96 0.015 148); padding-block: clamp(3rem, 8vh, 5rem) 2rem; border-top: 1px solid oklch(0.32 0.05 150); }
+  footer { background: var(--black); color: #f5f2f0; padding-block: clamp(3rem, 8vh, 5rem) 2rem; border-top: 1px solid #332b26; }
   footer .big {
     font-size: clamp(1.9rem, 5vw, 3.2rem); font-weight: 820;
     letter-spacing: -0.025em; font-variation-settings: "wdth" 114;
   }
   footer a.mail {
-    color: var(--green-bright); text-decoration: none; font-weight: 700;
+    color: var(--orange-bright); text-decoration: none; font-weight: 700;
     border-bottom: 2px solid currentColor; padding-bottom: 2px;
   }
   footer a.mail:hover { opacity: 0.75; }
   footer .row {
     margin-top: clamp(2.5rem, 6vh, 4rem);
     display: flex; flex-wrap: wrap; gap: 1rem 2rem; justify-content: space-between;
-    font-size: 0.9rem; color: oklch(0.7 0.03 148);
+    font-size: 0.9rem; color: #a89f9a;
   }
   footer .row a { color: inherit; text-decoration: none; }
-  footer .row a:hover { color: oklch(0.9 0.02 148); }
+  footer .row a:hover { color: #eae5e2; }
 
   @media (prefers-reduced-motion: reduce) {
     html { scroll-behavior: auto; }
@@ -162,8 +162,7 @@
 <nav aria-label="Main">
   <a class="mark" href="#">Eliza&nbsp;Research</a>
   <div class="links">
-    <a href="#eliza">Eliza</a>
-    <a href="#slop">slop.cash</a>
+    <a href="#eliza">Products</a>
     <a href="#contact">Contact</a>
   </div>
 </nav>
@@ -191,15 +190,15 @@
     </div>
     <div class="figure" role="img" aria-label="Diagram of one agent orbited by the tools and devices it coordinates">
       <svg viewBox="0 0 400 300">
-        <g stroke="oklch(0.72 0.19 145)" stroke-width="1.2" fill="none" opacity="0.65">
+        <g stroke="#ff7a30" stroke-width="1.2" fill="none" opacity="0.65">
           <circle cx="200" cy="150" r="58"/><circle cx="200" cy="150" r="96"/><circle cx="200" cy="150" r="132"/>
         </g>
-        <g fill="oklch(0.72 0.19 145)">
+        <g fill="#ff7a30">
           <circle cx="200" cy="150" r="14"/>
           <circle cx="258" cy="150" r="6"/><circle cx="152" cy="72" r="6"/><circle cx="104" cy="182" r="6"/>
           <circle cx="296" cy="216" r="6"/><circle cx="278" cy="62" r="6"/><circle cx="88" cy="120" r="6"/>
         </g>
-        <g stroke="oklch(0.72 0.19 145)" stroke-width="1.2" opacity="0.5">
+        <g stroke="#ff7a30" stroke-width="1.2" opacity="0.5">
           <line x1="200" y1="150" x2="258" y2="150"/><line x1="200" y1="150" x2="152" y2="72"/>
           <line x1="200" y1="150" x2="104" y2="182"/><line x1="200" y1="150" x2="296" y2="216"/>
           <line x1="200" y1="150" x2="278" y2="62"/><line x1="200" y1="150" x2="88" y2="120"/>
@@ -213,9 +212,9 @@
   <div class="wrap grid">
     <div class="figure" role="img" aria-label="Diagram of many small contributors converging on a shared problem">
       <svg viewBox="0 0 400 300" id="slop-svg">
-        <g fill="oklch(0.72 0.19 145)" id="slop-dots"></g>
-        <circle cx="200" cy="150" r="26" fill="none" stroke="oklch(0.72 0.19 145)" stroke-width="2"/>
-        <circle cx="200" cy="150" r="8" fill="oklch(0.72 0.19 145)"/>
+        <g fill="#ff7a30" id="slop-dots"></g>
+        <circle cx="200" cy="150" r="26" fill="none" stroke="#ff7a30" stroke-width="2"/>
+        <circle cx="200" cy="150" r="8" fill="#ff7a30"/>
       </svg>
     </div>
     <div>
@@ -230,7 +229,7 @@
 <footer id="contact">
   <div class="wrap">
     <p class="big">Work on this with us.</p>
-    <p style="margin-top:1rem; max-width:48ch; color:oklch(0.78 0.03 148);">We're a small team building in the open. If that sounds like you, write to us: <a class="mail" href="mailto:hello@elizaresearch.ai">hello@elizaresearch.ai</a></p>
+    <p style="margin-top:1rem; max-width:48ch; color:#c9c2be;">We're a small team building in the open. If that sounds like you, write to us: <a class="mail" href="mailto:hello@elizaresearch.ai">hello@elizaresearch.ai</a></p>
     <div class="row">
       <span>© 2026 Eliza Research</span>
       <span style="display:flex; gap:1.5rem;">
@@ -243,7 +242,7 @@
 </footer>
 
 <script>
-// Hero swarm: boid-like particles drifting with mild flocking, drawn in white on the green field.
+// Hero swarm: boid-like particles drifting with mild flocking, drawn in white on the orange field.
 (() => {
   const canvas = document.getElementById("swarm");
   const ctx = canvas.getContext("2d");
@@ -331,7 +330,7 @@
   }
   g.innerHTML = dots;
   const lg = document.createElementNS("http://www.w3.org/2000/svg", "g");
-  lg.setAttribute("stroke", "oklch(0.72 0.19 145)");
+  lg.setAttribute("stroke", "#ff7a30");
   lg.setAttribute("stroke-width", "0.7");
   lg.setAttribute("opacity", "0.35");
   lg.innerHTML = lines;
