@@ -270,13 +270,14 @@ export class TwitterPostService implements IPostService {
         );
       }
 
-      const posts: Post[] = tweets
-        .filter((tweet) => typeof tweet.id === "string")
-        // Fail closed: corrupt timestamps never surface as fresh (#18965).
-        .filter((tweet) => getEpochMs(tweet.timestamp) !== undefined)
-        .map((tweet) => {
-          const tweetId = tweet.id as string;
-          return {
+      const posts: Post[] = tweets.flatMap((tweet) => {
+        // Normalize once per row; rows without a usable identity or timestamp
+        // fail closed instead of surfacing as fresh posts (#18965).
+        const timestamp = getEpochMs(tweet.timestamp);
+        if (typeof tweet.id !== "string" || timestamp === undefined) return [];
+        const tweetId = tweet.id;
+        return [
+          {
             id: tweetId,
             agentId: options.agentId,
             roomId: createUniqueUuid(
@@ -286,7 +287,7 @@ export class TwitterPostService implements IPostService {
             userId: tweet.userId ?? "",
             username: tweet.username ?? "",
             text: tweet.text ?? "",
-            timestamp: getEpochMs(tweet.timestamp) ?? Date.now(),
+            timestamp,
             metrics: {
               likes: tweet.likes || 0,
               reposts: tweet.retweets || 0,
@@ -304,8 +305,9 @@ export class TwitterPostService implements IPostService {
               conversationId: tweet.conversationId,
               permanentUrl: tweet.permanentUrl,
             },
-          };
-        });
+          },
+        ];
+      });
 
       return posts;
     } catch (error) {
@@ -352,13 +354,14 @@ export class TwitterPostService implements IPostService {
         options?.before,
       );
 
-      const posts: Post[] = searchResult.tweets
-        .filter((tweet) => typeof tweet.id === "string")
-        // Fail closed: corrupt timestamps never surface as fresh (#18965).
-        .filter((tweet) => getEpochMs(tweet.timestamp) !== undefined)
-        .map((tweet) => {
-          const tweetId = tweet.id as string;
-          return {
+      const posts: Post[] = searchResult.tweets.flatMap((tweet) => {
+        // Normalize once per row; rows without a usable identity or timestamp
+        // fail closed instead of surfacing as fresh mentions (#18965).
+        const timestamp = getEpochMs(tweet.timestamp);
+        if (typeof tweet.id !== "string" || timestamp === undefined) return [];
+        const tweetId = tweet.id;
+        return [
+          {
             id: tweetId,
             agentId: agentId,
             roomId: createUniqueUuid(
@@ -368,7 +371,7 @@ export class TwitterPostService implements IPostService {
             userId: tweet.userId ?? "",
             username: tweet.username ?? "",
             text: tweet.text ?? "",
-            timestamp: getEpochMs(tweet.timestamp) ?? Date.now(),
+            timestamp,
             metrics: {
               likes: tweet.likes || 0,
               reposts: tweet.retweets || 0,
@@ -387,8 +390,9 @@ export class TwitterPostService implements IPostService {
               permanentUrl: tweet.permanentUrl,
               isMention: true,
             },
-          };
-        });
+          },
+        ];
+      });
 
       return posts;
     } catch (error) {

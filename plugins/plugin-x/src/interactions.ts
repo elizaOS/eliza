@@ -62,7 +62,7 @@ type ProcessableTweet = ClientTweet & {
   thread: ClientTweet[];
 };
 
-function normalizeTweet(tweet: ClientTweet): ProcessableTweet | null {
+export function normalizeTweet(tweet: ClientTweet): ProcessableTweet | null {
   if (
     typeof tweet.id !== "string" ||
     tweet.id.length === 0 ||
@@ -77,6 +77,13 @@ function normalizeTweet(tweet: ClientTweet): ProcessableTweet | null {
       ? tweet.username
       : "unknown";
 
+  // Normalize the timestamp exactly once at this row boundary: absent values
+  // mean "observed now", present values are unit-normalized to epoch ms, and
+  // a present-but-unusable value fails the whole row closed so it can never
+  // surface as a fresh tweet or an undated memory (#18965).
+  const timestamp = getEpochMs(tweet.timestamp);
+  if (timestamp === undefined) return null;
+
   return {
     ...tweet,
     id: tweet.id,
@@ -85,7 +92,7 @@ function normalizeTweet(tweet: ClientTweet): ProcessableTweet | null {
     name: tweet.name ?? username,
     conversationId: tweet.conversationId ?? tweet.id,
     text: tweet.text ?? "",
-    timestamp: tweet.timestamp ?? Date.now(),
+    timestamp,
     thread: tweet.thread?.length ? tweet.thread : [tweet],
   };
 }
@@ -385,13 +392,9 @@ export class TwitterInteractionClient {
         continue; // Already processed
       }
 
-      // Skip if tweet is too old (older than 24 hours). A present but
-      // unusable timestamp fails closed: never engage it as if it were new.
-      const tweetEpochMs = getEpochMs(tweet.timestamp);
-      if (tweetEpochMs === undefined) {
-        continue;
-      }
-      const tweetAge = Date.now() - tweetEpochMs;
+      // Skip if tweet is too old (older than 24 hours). normalizeTweet already
+      // failed unusable timestamps closed, so this value is validated epoch ms.
+      const tweetAge = Date.now() - tweet.timestamp;
       const maxAge = 24 * 60 * 60 * 1000; // 24 hours
 
       if (tweetAge > maxAge) {
@@ -483,9 +486,10 @@ export class TwitterInteractionClient {
       metadata: buildTwitterMessageMetadata(
         tweet,
         entityId,
+        tweet.timestamp,
         this.client.accountId,
       ),
-      createdAt: getEpochMs(tweet.timestamp),
+      createdAt: tweet.timestamp,
     };
   }
 
@@ -563,9 +567,10 @@ Choose any combination of [LIKE], [RETWEET], [QUOTE], and [REPLY] that are appro
         metadata: buildTwitterMessageMetadata(
           tweet,
           context.entityId,
+          tweet.timestamp,
           this.client.accountId,
         ),
-        createdAt: getEpochMs(tweet.timestamp),
+        createdAt: tweet.timestamp,
       };
 
       await createMemorySafe(this.runtime, tweetMemory, "messages");
@@ -959,9 +964,10 @@ ${tweet.text}`;
           metadata: buildTwitterMessageMetadata(
             tweet,
             entityId,
+            tweet.timestamp,
             this.client.accountId,
           ),
-          createdAt: getEpochMs(tweet.timestamp),
+          createdAt: tweet.timestamp,
         };
 
         logger.log("Saving tweet memory...");
