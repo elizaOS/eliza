@@ -17,6 +17,7 @@ import android.net.LocalSocket;
 import android.net.LocalSocketAddress;
 import android.os.Build;
 import android.os.IBinder;
+import android.os.SystemClock;
 import android.provider.Settings;
 import android.util.Log;
 
@@ -32,6 +33,7 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.net.SocketTimeoutException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -488,9 +490,10 @@ public class ElizaAgentService extends Service {
             .put("stream", true)
             .put("payload", payload);
 
-        LocalSocket socket = connectLocalAgentSocket(timeoutMs);
+        long deadlineElapsedMs = SystemClock.elapsedRealtime() + timeoutMs;
+        LocalSocket socket = connectLocalAgentSocket(deadlineElapsedMs);
         try {
-            socket.setSoTimeout(timeoutMs);
+            socket.setSoTimeout(remainingSocketTimeout(deadlineElapsedMs));
             writeFrameLine(socket.getOutputStream(), frame);
             InputStream in = socket.getInputStream();
             for (String line = readFrameLine(in); line != null; line = readFrameLine(in)) {
@@ -565,9 +568,10 @@ public class ElizaAgentService extends Service {
             .put("method", "http_request")
             .put("payload", payload);
 
-        LocalSocket socket = connectLocalAgentSocket(timeoutMs);
+        long deadlineElapsedMs = SystemClock.elapsedRealtime() + timeoutMs;
+        LocalSocket socket = connectLocalAgentSocket(deadlineElapsedMs);
         try {
-            socket.setSoTimeout(timeoutMs);
+            socket.setSoTimeout(remainingSocketTimeout(deadlineElapsedMs));
             writeFrameLine(socket.getOutputStream(), frame);
             String line = readFrameLine(socket.getInputStream());
             if (line == null || line.isEmpty()) {
@@ -593,10 +597,11 @@ public class ElizaAgentService extends Service {
      * the socket yet, or its accept loop is stalled mid-decode). Returns a
      * connected {@link LocalSocket}; the caller owns closing it.
      */
-    private static LocalSocket connectLocalAgentSocket(int timeoutMs) throws IOException {
+    private static LocalSocket connectLocalAgentSocket(long deadlineElapsedMs) throws IOException {
         final int connectRetries = 15;
         IOException lastError = null;
         for (int attempt = 0; attempt <= connectRetries; attempt++) {
+            remainingSocketTimeout(deadlineElapsedMs);
             LocalSocket socket = new LocalSocket();
             try {
                 socket.connect(new LocalSocketAddress(
@@ -607,8 +612,13 @@ public class ElizaAgentService extends Service {
                 lastError = connectError;
             }
             if (attempt < connectRetries) {
+                long remainingMs = deadlineElapsedMs - SystemClock.elapsedRealtime();
+                if (remainingMs <= 0L) {
+                    throw new SocketTimeoutException("local agent socket connect deadline exceeded");
+                }
+                long retryDelayMs = Math.min(250L * (attempt + 1), remainingMs);
                 try {
-                    Thread.sleep(250L * (attempt + 1));
+                    Thread.sleep(retryDelayMs);
                 } catch (InterruptedException interrupted) {
                     Thread.currentThread().interrupt();
                     throw lastError;
@@ -616,6 +626,14 @@ public class ElizaAgentService extends Service {
             }
         }
         throw lastError != null ? lastError : new IOException("local agent socket unreachable");
+    }
+
+    private static int remainingSocketTimeout(long deadlineElapsedMs) throws SocketTimeoutException {
+        long remainingMs = deadlineElapsedMs - SystemClock.elapsedRealtime();
+        if (remainingMs <= 0L) {
+            throw new SocketTimeoutException("local agent request deadline exceeded");
+        }
+        return (int) Math.min((long) Integer.MAX_VALUE, remainingMs);
     }
 
     /** Write one NDJSON frame line (UTF-8, newline-terminated) to the socket. */
@@ -823,7 +841,7 @@ public class ElizaAgentService extends Service {
             bionicInferenceServer = null;
         }
         if (requestedStop) {
-            stopAgentProcess();
+            stopAgentProcess(true);
         } else {
             // AMS tore this record down without an explicit stop request (an
             // ANR'd duplicate record whose startForeground never got processed
@@ -1741,7 +1759,7 @@ public class ElizaAgentService extends Service {
             startWorker = new Thread(() -> {
                 try {
                     if (restartFirst) {
-                        stopAgentProcess();
+                        stopAgentProcess(false);
                     }
                     startAgentProcess();
                 } finally {
@@ -1781,6 +1799,7 @@ public class ElizaAgentService extends Service {
             // an explicit ACTION_STOP still tears the adopted agent down.
             if (isLocalAgentSocketListening()) {
                 detachedAgentMode = true;
+                restoreAdoptedRuntimeOwnership();
                 if (!"running".equals(currentStatus)) {
                     currentStatus = "running";
                     updateNotification();
@@ -1918,7 +1937,7 @@ public class ElizaAgentService extends Service {
             currentTerminalRunToken = terminalToken;
             try {
                 writeLocalAgentTokenFile(token);
-                ElizaWorkScheduler.reconcile(getApplicationContext());
+                ElizaWorkScheduler.credentialProvisioned(getApplicationContext());
             } catch (IOException error) {
                 Log.w(TAG, "Failed to persist local-agent token file: " + error.getMessage());
             }
@@ -2715,7 +2734,7 @@ public class ElizaAgentService extends Service {
         }
     }
 
-    private void stopAgentProcess() {
+    private void stopAgentProcess(boolean terminalStop) {
         Process toStop;
         Thread outPump;
         Thread errPump;
@@ -2730,11 +2749,15 @@ public class ElizaAgentService extends Service {
             wasDetached = detachedAgentMode;
             detachedAgentMode = false;
             detachedLaunchStartedAtMs = 0L;
-            currentLocalAgentToken = null;
-            currentTerminalRunToken = null;
+            if (terminalStop) {
+                currentLocalAgentToken = null;
+                currentTerminalRunToken = null;
+            }
         }
-        deleteLocalAgentTokenFile();
-        ElizaWorkScheduler.reconcile(getApplicationContext());
+        if (terminalStop) {
+            ElizaWorkScheduler.runtimeStopped(getApplicationContext());
+            deleteLocalAgentTokenFile();
+        }
         persistDetachedLaunchTimestamp(0L);
         if (wasDetached) {
             appendDiagnosticEvent("stop-detached-agent", null);
@@ -2790,12 +2813,24 @@ public class ElizaAgentService extends Service {
         }
     }
 
+    /** Reasserts scheduler ownership when a restart adopts the prior socket. */
+    private void restoreAdoptedRuntimeOwnership() {
+        Context context = getApplicationContext();
+        String token = localAgentToken(context);
+        if (token == null || token.trim().isEmpty()) {
+            Log.w(TAG, "Adopted local agent has no durable credential; periodic wake remains disabled.");
+            ElizaWorkScheduler.reconcile(context);
+            return;
+        }
+        ElizaWorkScheduler.credentialProvisioned(context);
+    }
+
     /**
      * Persist the detached-agent launch timestamp so the cold-boot guard in
      * {@link #startAgentProcess()} survives service-instance churn (AMS
      * record teardown, process restart). 0 clears the stamp; written on every
-     * launch and cleared by {@link #stopAgentProcess()} (explicit stops and
-     * restart-first restarts).
+     * launch and cleared by {@link #stopAgentProcess(boolean)} (explicit stops
+     * and restart-first restarts).
      */
     private void persistDetachedLaunchTimestamp(long timestampMs) {
         getSharedPreferences(EXIT_INFO_PREFS, Context.MODE_PRIVATE)
@@ -3673,7 +3708,7 @@ public class ElizaAgentService extends Service {
                         + " consecutive).");
                     if (decision.restartRequired) {
                         Log.w(TAG, "Agent unresponsive — force-restarting.");
-                        stopAgentProcess();
+                        stopAgentProcess(false);
                         scheduleRestart();
                     }
                 }

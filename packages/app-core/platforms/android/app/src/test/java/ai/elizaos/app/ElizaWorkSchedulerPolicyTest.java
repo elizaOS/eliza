@@ -40,6 +40,31 @@ public class ElizaWorkSchedulerPolicyTest {
     }
 
     @Test
+    public void stoppedRuntimeCancelsEvenWhenTheStaleCredentialStillExists() {
+        assertCancel(
+            ElizaWorkScheduler.decide(true, "local", SECRET, true),
+            "runtime-stopped"
+        );
+    }
+
+    @Test
+    public void bootReceiverAcceptsBootAndPackageReplacementOnly() {
+        assertTrue(ElizaBootReceiver.shouldHandleAction("android.intent.action.BOOT_COMPLETED"));
+        assertTrue(
+            ElizaBootReceiver.shouldHandleAction(
+                "android.intent.action.LOCKED_BOOT_COMPLETED"
+            )
+        );
+        assertTrue(
+            ElizaBootReceiver.shouldHandleAction(
+                "android.intent.action.MY_PACKAGE_REPLACED"
+            )
+        );
+        assertFalse(ElizaBootReceiver.shouldHandleAction("android.intent.action.PACKAGE_ADDED"));
+        assertFalse(ElizaBootReceiver.shouldHandleAction(null));
+    }
+
+    @Test
     public void reconciliationCallsExactlyOneBackendOperation() {
         RecordingBackend schedule = new RecordingBackend();
         ElizaWorkScheduler.reconcileDecision(

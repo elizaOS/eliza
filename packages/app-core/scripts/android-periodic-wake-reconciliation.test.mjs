@@ -7,11 +7,16 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
+import { ensureElizaBootReceiverManifest } from "./run-mobile-build.mjs";
 
 const scriptsDir = path.dirname(fileURLToPath(import.meta.url));
 const javaRoot = path.resolve(
   scriptsDir,
   "../platforms/android/app/src/main/java/ai/elizaos/app",
+);
+const androidManifest = path.resolve(
+  scriptsDir,
+  "../platforms/android/app/src/main/AndroidManifest.xml",
 );
 
 function source(name) {
@@ -27,8 +32,37 @@ describe("Android periodic wake reconciliation (#17874)", () => {
       "ElizaWorkScheduler.reconcile(getApplicationContext())",
     );
     expect(bootReceiver).toContain("ElizaWorkScheduler.reconcile(context)");
+    expect(fs.readFileSync(androidManifest, "utf8")).toContain(
+      "android.intent.action.MY_PACKAGE_REPLACED",
+    );
     expect(activity).not.toContain("ElizaWorkScheduler.enqueuePeriodic");
     expect(bootReceiver).not.toContain("ElizaWorkScheduler.enqueuePeriodic");
+    expect(bootReceiver).toMatch(
+      /if \(!shouldHandleAction\(action\)\) \{\s*return;\s*\}[\s\S]*ElizaWorkScheduler\.reconcile\(context\)/,
+    );
+    expect(bootReceiver).toMatch(
+      /shouldHandleAction\(String action\)[\s\S]*MY_PACKAGE_REPLACED/,
+    );
+  });
+
+  it("preserves package replacement in the post-overlay receiver manifest", () => {
+    const input = `
+      <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+        <application>
+          <receiver android:name="ai.elizaos.app.ElizaBootReceiver">
+            <intent-filter>
+              <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+          </receiver>
+        </application>
+      </manifest>`;
+
+    const overlaid = ensureElizaBootReceiverManifest(input, "ai.elizaos.app");
+
+    expect(overlaid).toContain("android.intent.action.LOCKED_BOOT_COMPLETED");
+    expect(overlaid).toContain("android.intent.action.BOOT_COMPLETED");
+    expect(overlaid).toContain("android.intent.action.MY_PACKAGE_REPLACED");
+    expect(overlaid.match(/ElizaBootReceiver/g)).toHaveLength(1);
   });
 
   it("reconciles runtime/background preference changes while the app is alive", () => {
@@ -46,13 +80,44 @@ describe("Android periodic wake reconciliation (#17874)", () => {
 
   it("reconciles native token provisioning and removal", () => {
     const service = source("ElizaAgentService.java");
+    const scheduler = source("ElizaWorkScheduler.java");
 
     expect(service).toMatch(
-      /writeLocalAgentTokenFile\(token\);\s*ElizaWorkScheduler\.reconcile/,
+      /writeLocalAgentTokenFile\(token\);\s*ElizaWorkScheduler\.credentialProvisioned/,
     );
     expect(service).toMatch(
-      /deleteLocalAgentTokenFile\(\);\s*ElizaWorkScheduler\.reconcile/,
+      /ElizaWorkScheduler\.runtimeStopped\(getApplicationContext\(\)\);\s*deleteLocalAgentTokenFile\(\)/,
     );
+    expect(scheduler).toContain("putBoolean(RUNTIME_STOPPED_KEY, true)");
+    expect(scheduler).toMatch(
+      /ElizaAgentService\.localAgentToken\(context\),\s*ownershipPrefs\(context\)\.getBoolean\(RUNTIME_STOPPED_KEY, false\)/,
+    );
+    expect(service).toMatch(
+      /if \(restartFirst\) \{\s*stopAgentProcess\(false\);\s*\}\s*startAgentProcess\(\)/,
+    );
+    expect(service).toMatch(
+      /if \(terminalStop\) \{\s*ElizaWorkScheduler\.runtimeStopped\(getApplicationContext\(\)\);\s*deleteLocalAgentTokenFile\(\);\s*\}/,
+    );
+    expect(service).toMatch(
+      /if \(isLocalAgentSocketListening\(\)\) \{[\s\S]*restoreAdoptedRuntimeOwnership\(\);[\s\S]*return;/,
+    );
+    expect(service).toMatch(
+      /restoreAdoptedRuntimeOwnership\(\)[\s\S]*localAgentToken\(context\)[\s\S]*ElizaWorkScheduler\.credentialProvisioned\(context\)/,
+    );
+    expect(service).not.toContain("stopAgentProcess();");
+  });
+
+  it("serializes decisions and bounds socket retries by one deadline", () => {
+    const scheduler = source("ElizaWorkScheduler.java");
+    const service = source("ElizaAgentService.java");
+
+    expect(scheduler).toContain("static synchronized void reconcile");
+    expect(scheduler).toContain(
+      "static synchronized void credentialProvisioned",
+    );
+    expect(scheduler).toContain("static synchronized void runtimeStopped");
+    expect(service).toContain("remainingSocketTimeout(deadlineElapsedMs)");
+    expect(service).toContain("Math.min(250L * (attempt + 1), remainingMs)");
   });
 
   it("keeps the worker on authenticated app-owned IPC", () => {
