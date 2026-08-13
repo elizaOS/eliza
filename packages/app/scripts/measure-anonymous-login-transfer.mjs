@@ -40,7 +40,9 @@ import { createServer } from "node:http";
 import { dirname, extname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { gzipSync } from "node:zlib";
-import { chromium } from "@playwright/test";
+
+// Playwright is loaded lazily in main() so CLI-boundary unit tests can import
+// pure helpers without requiring a browser install in the script test lane.
 
 const here = dirname(fileURLToPath(import.meta.url));
 const appDir = resolve(here, "..");
@@ -323,6 +325,164 @@ export function assertNoRuntimeErrors(runtimeErrors, viewportId) {
   );
 }
 
+/**
+ * @typedef {{
+ *   ok: boolean,
+ *   failure: string,
+ *   rootChildren: number,
+ *   emailVisible: boolean,
+ *   headingVisible: boolean,
+ *   formVisible: boolean,
+ *   appMarker: string,
+ *   bodySample: string,
+ * }} LoginSurfaceProbe
+ */
+
+/**
+ * Inspect the settled `/login` DOM for a stable visible auth surface.
+ * Prefer a visible email field plus login heading/form; also accept the
+ * app-owned login marker together with a visible email field so a future
+ * marker-only pin remains possible without treating an empty shell as healthy.
+ *
+ * Runs inside the page (Playwright `evaluate`) and under unit fixtures.
+ *
+ * @returns {LoginSurfaceProbe}
+ */
+export function collectLoginSurfaceProbe() {
+  const isVisible = (element) => {
+    if (!element) return false;
+    const style =
+      typeof globalThis.getComputedStyle === "function"
+        ? globalThis.getComputedStyle(element)
+        : element.style || {};
+    if (
+      style.display === "none" ||
+      style.visibility === "hidden" ||
+      style.opacity === "0"
+    ) {
+      return false;
+    }
+    const rect =
+      typeof element.getBoundingClientRect === "function"
+        ? element.getBoundingClientRect()
+        : null;
+    if (!rect) return true;
+    return rect.width > 0 && rect.height > 0;
+  };
+
+  const root = document.getElementById("root");
+  const rootChildren = root ? root.children.length : 0;
+  const email =
+    document.getElementById("steward-login-email") ||
+    document.querySelector('input[type="email"]') ||
+    document.querySelector('input[name="email"]');
+  const emailVisible = isVisible(email);
+
+  const headings = Array.from(document.querySelectorAll("h1"));
+  const headingVisible = headings.some((heading) => {
+    if (!isVisible(heading)) return false;
+    const text = String(heading.textContent || "")
+      .trim()
+      .toLowerCase();
+    return (
+      text.includes("sign in") || text.includes("log in") || text.length > 0
+    );
+  });
+
+  const formVisible = Array.from(document.querySelectorAll("form")).some(
+    (form) => isVisible(form),
+  );
+  const mainVisible = Array.from(document.querySelectorAll("main")).some(
+    (main) => isVisible(main),
+  );
+
+  const markerEl =
+    document.querySelector('[data-testid="login-safe-area-fill"]') ||
+    document.querySelector('[data-login-surface="ready"]');
+  const appMarker = markerEl
+    ? markerEl.getAttribute("data-testid") ||
+      markerEl.getAttribute("data-login-surface") ||
+      "present"
+    : "";
+  const markerVisible = isVisible(markerEl);
+
+  const bodySample = String(document.body?.textContent || "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 120);
+
+  // Primary contract: visible email + (heading or form). This matches the
+  // shipped Steward login card and rejects empty/black #root shells.
+  if (emailVisible && (headingVisible || formVisible)) {
+    return {
+      ok: true,
+      failure: "",
+      rootChildren,
+      emailVisible,
+      headingVisible,
+      formVisible,
+      appMarker,
+      bodySample,
+    };
+  }
+
+  // Secondary contract: app-owned marker + visible email + main landmark.
+  // Keeps an explicit product marker usable without accepting blank shells.
+  if (markerVisible && emailVisible && mainVisible) {
+    return {
+      ok: true,
+      failure: "",
+      rootChildren,
+      emailVisible,
+      headingVisible,
+      formVisible,
+      appMarker,
+      bodySample,
+    };
+  }
+
+  let failure = "missing-login-surface";
+  if (!root) failure = "missing-root";
+  else if (rootChildren === 0) failure = "empty-root";
+  else if (!emailVisible && !headingVisible && !formVisible) {
+    failure = "blank-or-invalid-login-dom";
+  } else if (!emailVisible) failure = "missing-email";
+  else failure = "missing-login-chrome";
+
+  return {
+    ok: false,
+    failure,
+    rootChildren,
+    emailVisible,
+    headingVisible,
+    formVisible,
+    appMarker,
+    bodySample,
+  };
+}
+
+/**
+ * Fail closed when the settled page is not a usable login surface — even if
+ * zero console/page errors were emitted.
+ *
+ * @param {LoginSurfaceProbe} probe
+ * @param {string} viewportId
+ */
+export function assertLoginSurfaceReady(probe, viewportId) {
+  if (probe?.ok) return;
+  const diagnostic = [
+    `failure=${probe?.failure || "unknown"}`,
+    `rootChildren=${probe?.rootChildren ?? "?"}`,
+    `emailVisible=${Boolean(probe?.emailVisible)}`,
+    `headingVisible=${Boolean(probe?.headingVisible)}`,
+    `formVisible=${Boolean(probe?.formVisible)}`,
+    `appMarker=${probe?.appMarker || "none"}`,
+    `bodySample=${JSON.stringify(String(probe?.bodySample || "").slice(0, 80))}`,
+  ].join(" ");
+  const message = `${viewportId} /login failed visible login contract after settle: ${diagnostic}`;
+  throw new Error(message.slice(0, 480));
+}
+
 async function measureViewport(browser, { url, settleMs, timeout, viewport }) {
   const context = await browser.newContext({
     viewport: { width: viewport.width, height: viewport.height },
@@ -346,11 +506,19 @@ async function measureViewport(browser, { url, settleMs, timeout, viewport }) {
     await new Promise((r) => setTimeout(r, settleMs));
     const sample = await page.evaluate(sampleTransferInPage);
     assertNoRuntimeErrors(runtimeErrors, viewport.id);
+    const loginProbe = await page.evaluate(collectLoginSurfaceProbe);
+    assertLoginSurfaceReady(loginProbe, viewport.id);
     return {
       viewport: viewport.id,
       width: viewport.width,
       height: viewport.height,
       wallMs: Date.now() - started,
+      loginSurface: {
+        emailVisible: loginProbe.emailVisible,
+        headingVisible: loginProbe.headingVisible,
+        formVisible: loginProbe.formVisible,
+        appMarker: loginProbe.appMarker,
+      },
       ...sample,
     };
   } finally {
@@ -404,6 +572,7 @@ async function main(argv = process.argv) {
     `Measuring cold /login: url=${loginUrl} settleMs=${args.settleMs} sw=blocked cache=empty head=${head ?? "unknown"}`,
   );
 
+  const { chromium } = await import("@playwright/test");
   const browser = await chromium.launch({ headless: !args.headed });
   const samples = [];
   try {
