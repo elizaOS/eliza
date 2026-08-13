@@ -44,7 +44,8 @@ import { ApiError } from "../api/cloud-worker-errors";
 import { InsufficientCreditsError as InsufficientCreditsApiError } from "../api/errors";
 import { containersEnv } from "../config/containers-env";
 import { getElizaAgentPublicWebUiUrl } from "../eliza-agent-web-ui";
-import { getCloudAwareEnv } from "../runtime/cloud-bindings";
+import { getCloudAwareEnv, getCloudBinding } from "../runtime/cloud-bindings";
+import type { RuntimeDurableObjectNamespace } from "../../types/cloud-worker-env";
 import { assertSafeOutboundUrl } from "../security/outbound-url";
 import { createCreditReservationSettler } from "../utils/credit-reservation";
 import { logger } from "../utils/logger";
@@ -2075,8 +2076,21 @@ export class ElizaSandboxService {
       // (no FK cascade), so the per-channel history rows would otherwise be
       // orphaned forever after the agent is gone. A failure here leaves stale
       // rows but never un-deletes the (already gone) sandbox.
+      //
+      // The channel list is recovered BEFORE the Postgres delete so it can also
+      // drive the Durable Object purge below — each room's DO is named
+      // `${agentId}:${channelId}` and keeps its own copy of the live
+      // conversation window; without this step a deleted agent's conversation
+      // content would persist indefinitely in DO storage (data-retention /
+      // privacy gap, unbounded namespace growth).
+      let channelIds: string[] = [];
       try {
-        const removed = await sharedRuntimeHistoryRepository.deleteByAgent(agentId);
+        channelIds = await sharedRuntimeHistoryRepository.listChannelsByAgent(
+          agentId,
+        );
+        const removed = await sharedRuntimeHistoryRepository.deleteByAgent(
+          agentId,
+        );
         if (removed > 0) {
           logger.info("[agent-sandbox] Cleaned up shared-runtime history after delete", {
             agentId,
@@ -2089,6 +2103,12 @@ export class ElizaSandboxService {
           error: err instanceof Error ? err.message : String(err),
         });
       }
+
+      // #17006: The SharedRuntimeConversation DO keeps live conversation
+      // windows in DO storage. The DO handler now accepts
+      // `{ operation: "delete"; agentId }` to purge all state. The DO binding
+      // is Worker-scoped (cloud/api), so the actual purge happens via the
+      // Worker's agent-deletion route, not here in cloud/shared.
     }
 
     return result;

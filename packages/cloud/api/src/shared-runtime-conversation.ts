@@ -22,7 +22,8 @@ import type { AppEnv } from "@/types/cloud-worker-env";
 type ConversationRequest =
   | { operation: "bridge"; agent: CachedAgentSandbox; rpc: BridgeRequest }
   | { operation: "stream"; agent: CachedAgentSandbox; rpc: BridgeRequest }
-  | { operation: "history"; agentId: string; roomId: string };
+  | { operation: "history"; agentId: string; roomId: string }
+  | { operation: "delete"; agentId: string };
 
 interface StoredConversation {
   agentId: string;
@@ -238,6 +239,15 @@ export class SharedRuntimeConversation {
         );
       });
       return Response.json({ history });
+    }
+
+    // #17006: delete all DO-stored conversation state for this agent.
+    // Called from agent deletion to purge conversation content that would
+    // otherwise persist in DO storage indefinitely.
+    if (payload.operation === "delete") {
+      await this.state.storage.deleteAll();
+      this.conversation = null;
+      return Response.json({ success: true });
     }
 
     return await this.runWithBindings(async () => {
