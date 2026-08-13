@@ -14,7 +14,7 @@ const appRoot = path.resolve(
 const homepagePublic = path.resolve(appRoot, "../homepage/public");
 const appPublic = path.join(appRoot, "public");
 
-const ASSETS = [
+export const HOMEPAGE_PUBLIC_ASSETS = [
   ".well-known/apple-app-site-association",
   ".well-known/assetlinks.json",
   "eliza-logo.webp",
@@ -25,16 +25,27 @@ const ASSETS = [
   "grain.webp",
   "install.ps1",
   "install.sh",
-  "models/iphone-meshopt.glb",
   "product/elizaos-usb-key-concept.png",
   "tbg.webp",
 ];
 
-await Promise.all(
-  ASSETS.map(async (relativePath) => {
-    const source = path.join(homepagePublic, relativePath);
-    const destination = path.join(appPublic, relativePath);
-    await mkdir(path.dirname(destination), { recursive: true });
-    await copyFile(source, destination);
-  }),
-);
+export async function syncHomepageAssets({
+  sourceRoot = homepagePublic,
+  destinationRoot = appPublic,
+} = {}) {
+  await Promise.all(
+    HOMEPAGE_PUBLIC_ASSETS.map(async (relativePath) => {
+      const source = path.join(sourceRoot, relativePath);
+      const destination = path.join(destinationRoot, relativePath);
+      await mkdir(path.dirname(destination), { recursive: true });
+      await copyFile(source, destination);
+    }),
+  );
+}
+
+if (
+  process.argv[1] &&
+  path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)
+) {
+  await syncHomepageAssets();
+}

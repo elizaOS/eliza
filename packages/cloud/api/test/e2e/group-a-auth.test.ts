@@ -728,7 +728,12 @@ describeE2E("Group A: auth + sessions", () => {
       const res = await api.post(
         "/api/auth/logout",
         {},
-        { headers: bearerHeaders() },
+        {
+          headers: {
+            ...bearerHeaders(),
+            Origin: new URL(getBaseUrl()).origin,
+          },
+        },
       );
       expect(res.status).toBe(200);
       const body = (await res.json()) as { success?: boolean };
