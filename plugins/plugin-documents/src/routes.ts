@@ -162,6 +162,9 @@ function validateDocumentContentType(
 }
 
 function isTextBackedContentType(contentType: string): boolean {
+  // This selects the upload wire encoding, not every MIME type that can contain
+  // text. Existing callers base64-encode all non-text types outside this legacy
+  // set, so widening it would persist the encoded string instead of the bytes.
   return (
     contentType.startsWith("text/") ||
     contentType === "application/json" ||

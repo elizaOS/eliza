@@ -340,6 +340,21 @@ describe("document routes", () => {
       expectedTextBacked: false,
       expectedBytes: "#!/bin/sh\necho hello\n",
     },
+    ...[
+      "application/problem+json",
+      "application/soap+xml",
+      "application/typescript",
+      "application/yaml",
+      "application/x-yaml",
+    ].map((contentType) => ({
+      content: Buffer.from("wire-compatible bytes").toString("base64"),
+      filename: "payload.bin",
+      contentType,
+      expectedContentType: contentType,
+      expectedFileType: contentType,
+      expectedTextBacked: false,
+      expectedBytes: "wire-compatible bytes",
+    })),
   ])(
     "canonicalizes case and parameters before document service routing %#",
     async ({
