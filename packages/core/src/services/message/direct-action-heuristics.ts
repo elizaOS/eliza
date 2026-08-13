@@ -593,7 +593,8 @@ function looksLikeOwnerRoutineWriteRequest(text: string): boolean {
 	const isExplicitViewNavigation =
 		/\b(?:show|open|go\s+to|navigate\s+to|switch\s+to|list|view|browse|see)\b/iu.test(
 			normalized,
-		) && !/\b(?:create|track|schedule|remind|add|save|set|start|do)\b/iu.test(
+		) &&
+		!/\b(?:create|track|schedule|remind|add|save|set|start|do)\b/iu.test(
 			normalized,
 		);
 	if (isExplicitViewNavigation) return false;
@@ -603,7 +604,7 @@ function looksLikeOwnerRoutineWriteRequest(text: string): boolean {
 			normalized,
 		);
 	const hasHabitDomain =
-		/\b(?:habit|habits|routine|routines|workout|workouts|pushup|pushups|push[- ]?up|push[- ]?ups|exercise|exercises|meditate|meditation|gym|run|running|jog|yoga|stretch|walk|walking|habitual|discipline)\b/iu.test(
+		/\b(?:habit|habits|routine|routines|workout|workouts|pushup|pushups|push[- ]?up|push[- ]?ups|exercise|exercises|meditate|meditation|gym|run|runs|running|jog|yoga|stretch|walk|walking|habitual|discipline)\b/iu.test(
 			normalized,
 		);
 	// "N times a day/week" is a strong recurring-frequency signal on its own —
@@ -1144,7 +1145,7 @@ function findViewCapabilityActionName(
 			// appear in the message text as an adjacent phrase. This keeps
 			// "show my screen time" matching (the phrase is there) while blocking
 			// the "times"-only overlap.
-			if (targetTokens.length === 1) {
+			if (aliasTokens.length === 1) {
 				if (messageTokenSet.has(targetTokens[0])) {
 					return viewActionName;
 				}
@@ -1153,10 +1154,11 @@ function findViewCapabilityActionName(
 			if (!targetTokens.every((token) => messageTokenSet.has(token))) {
 				continue;
 			}
-			// Multiword capability: require the phrase (normalized to allow a
-			// single separator: hyphen, space, or nothing) to appear in the
-			// message as adjacent words.
-			const aliasPhraseRegex = multiwordCapabilityPhraseRegex(targetTokens);
+			// Multiword capability: require the complete alias phrase, including
+			// generic tokens such as SCREEN, to appear as adjacent words.
+			const aliasPhraseRegex = multiwordCapabilityPhraseRegex(
+				aliasTokens.map(normalizeSingularToken),
+			);
 			if (aliasPhraseRegex.test(messageText)) {
 				return viewActionName;
 			}
@@ -1169,9 +1171,7 @@ function findViewCapabilityActionName(
 // an adjacent phrase in the message, allowing a single optional separator
 // (hyphen, space, or underscore) between them. "screen-time" → matches
 // "screen time", "screen-time", "screentime"; does NOT match "3 times a day".
-function multiwordCapabilityPhraseRegex(
-	tokens: readonly string[],
-): RegExp {
+function multiwordCapabilityPhraseRegex(tokens: readonly string[]): RegExp {
 	const parts = tokens.map((token) => escapeRegex(token));
 	// Allow an optional separator between each token: the capability may be
 	// written as "screen time" (space), "screen-time" (hyphen), or "screentime".

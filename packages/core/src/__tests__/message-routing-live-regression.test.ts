@@ -1038,8 +1038,8 @@ describe("bare view-name voice navigation inference (#9950)", () => {
 // token ("times"), injected VIEWS, escalated the turn to a tool-REQUIRED
 // planner surface, rejected the planner's correct terminal answer
 // maxRequiredToolMisses times, and shipped the generic transient-failure
-// apology while discarding "391". The fix suppresses ONLY the weak
-// view-capability inference on that exact Stage-1 shape; model-emitted
+// apology while discarding "391". Multiword view capabilities now require the
+// full phrase, so incidental overlap never infers VIEWS; model-emitted
 // candidates, shell/coding/web inferences, explicit-surface view asks, and
 // bare-noun voice navigation keep today's escalation.
 describe("VIEWS hijack of answered simple turns (tj-501e594bfb23a7)", () => {
@@ -1109,7 +1109,7 @@ describe("VIEWS hijack of answered simple turns (tj-501e594bfb23a7)", () => {
 		expect(routed.plan.candidateActions).toContain("VIEWS");
 	});
 
-	it("suppression is keyed on the answered shape — an unanswered turn still escalates", () => {
+	it("does not infer VIEWS from arithmetic even when Stage 1 left it unanswered", () => {
 		const routed = messageHandlerFromFieldResult(
 			stageOneAnswered(""),
 			undefined,
@@ -1119,8 +1119,8 @@ describe("VIEWS hijack of answered simple turns (tj-501e594bfb23a7)", () => {
 			},
 		);
 
-		expect(routed.plan.requiresTool).toBe(true);
-		expect(routed.plan.candidateActions).toContain("VIEWS");
+		expect(routed.plan.requiresTool).toBe(false);
+		expect(routed.plan.candidateActions ?? []).toEqual([]);
 	});
 
 	it("the simple_registered_action_request evaluator does not re-promote the answered turn", () => {

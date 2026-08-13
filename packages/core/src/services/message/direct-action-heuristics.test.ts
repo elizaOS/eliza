@@ -858,10 +858,7 @@ describe("owner routine mutation precedence over VIEWS (#17028)", () => {
 			"what times are available",
 		]) {
 			expect(
-				inferDirectCurrentRequestCandidateInference(
-					[viewsAction],
-					message,
-				),
+				inferDirectCurrentRequestCandidateInference([viewsAction], message),
 			).toEqual({ names: [], kind: null });
 		}
 	});
