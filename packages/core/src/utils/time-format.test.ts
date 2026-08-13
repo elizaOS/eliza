@@ -73,6 +73,8 @@ describe("formatRelativeTime (compact)", () => {
 	});
 
 	it("falls back to a locale date at a week and beyond", () => {
+		expect(formatRelativeTime(NOW - 7 * DAY)).not.toMatch(/ago|now/);
+		expect(formatRelativeTime(NOW + 7 * DAY)).not.toMatch(/in |now/);
 		expect(formatRelativeTime(NOW - 8 * DAY)).not.toMatch(/ago|now/);
 		expect(formatRelativeTime(NOW + 8 * DAY)).not.toMatch(/in |now/);
 	});
