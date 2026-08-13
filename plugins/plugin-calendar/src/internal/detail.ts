@@ -91,3 +91,36 @@ export function parseCalendarJsonRecord<
   }
   return parsed as T;
 }
+
+/**
+ * Planner-authored calendarId carries the same junk problem as mode/side/
+ * grantId: placeholder tokens ("default", "all", "none") that name no real
+ * calendar. getCalendarFeed treats any non-empty calendarId as an explicit
+ * source filter, so junk excludes every calendar and a create turn dies with
+ * CALENDAR_MUTATION_CONTEXT_INCOMPLETE. Calendar ids have no whitelistable
+ * shape (Google email-like ids and "primary", Microsoft/Apple opaque ids), so
+ * this boundary drops the known placeholder vocabulary instead: unset yields
+ * the aggregated feed and provider-default target — which is what the
+ * placeholders meant. Real ids pass through untouched.
+ */
+const CALENDAR_ID_PLACEHOLDER_TOKENS = new Set([
+  "default",
+  "all",
+  "none",
+  "null",
+  "unset",
+  "unknown",
+  "any",
+  "auto",
+]);
+
+export function sanitizeCalendarId(
+  value: string | undefined,
+): string | undefined {
+  if (!value) return undefined;
+  const trimmed = value.trim();
+  if (trimmed.length === 0) return undefined;
+  return CALENDAR_ID_PLACEHOLDER_TOKENS.has(trimmed.toLowerCase())
+    ? undefined
+    : trimmed;
+}

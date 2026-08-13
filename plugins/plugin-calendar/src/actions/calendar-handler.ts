@@ -53,6 +53,7 @@ import {
   INTERNAL_URL,
   messageText,
   parseCalendarJsonRecord,
+  sanitizeCalendarId,
   toActionData,
 } from "../internal/detail.js";
 import {
@@ -224,35 +225,15 @@ function connectorGrantIdDetail(
     : undefined;
 }
 
-// Planner-authored calendarId has the same junk problem as mode/side/grantId:
-// the planner fills the schema key with placeholder tokens ("default", "all",
-// "none") that name no real calendar. getCalendarFeed treats any non-empty
-// calendarId as an explicit source filter, so junk excludes every calendar —
-// including the built-in Eliza calendar (id "primary") — and a create turn
-// dies with CALENDAR_MUTATION_CONTEXT_INCOMPLETE. Calendar ids have no
-// whitelistable shape (Google email-like ids and "primary", Microsoft opaque
-// ids, Apple ids), so this boundary drops the known placeholder vocabulary
-// instead: unset yields the aggregated feed and the provider-default target,
-// which is what the placeholders meant. Real ids pass through untouched.
-const CALENDAR_ID_PLACEHOLDER_TOKENS = new Set([
-  "default",
-  "all",
-  "none",
-  "null",
-  "unset",
-  "unknown",
-  "any",
-  "auto",
-]);
-
+// Placeholder filtering lives in sanitizeCalendarId (internal/detail.ts); it
+// must guard every path a planner-authored calendarId can travel — both the
+// direct details read here and the fallbackRequest carry-over in
+// buildCreateEventRequest, which replays an earlier planner request and can
+// smuggle the same junk back in.
 function calendarIdDetail(
   details: Record<string, unknown> | undefined,
 ): string | undefined {
-  const value = detailString(details, "calendarId");
-  if (!value) return undefined;
-  return CALENDAR_ID_PLACEHOLDER_TOKENS.has(value.toLowerCase())
-    ? undefined
-    : value;
+  return sanitizeCalendarId(detailString(details, "calendarId"));
 }
 
 type CreateEventTravelIntent = CalendarTravelIntent;
@@ -2712,7 +2693,7 @@ function buildCreateEventRequest(
       grantId: connectorGrantIdDetail(args.details),
       calendarId:
         calendarIdDetail(args.details) ??
-        args.fallbackRequest?.calendarId,
+        sanitizeCalendarId(args.fallbackRequest?.calendarId),
       title: title ?? "",
       description:
         pickCreateEventStringField(args, "description") ??
