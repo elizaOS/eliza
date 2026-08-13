@@ -26,6 +26,7 @@ import {
 import { splitChunks } from "../../utils";
 import { BatchProcessor } from "../../utils/batch-queue";
 import { getProviderRateLimits, validateModelConfig } from "./config.ts";
+import type { ModelConfig } from "./types.ts";
 import {
 	DEFAULT_CHUNK_OVERLAP_TOKENS,
 	DEFAULT_CHUNK_TOKEN_SIZE,
@@ -72,25 +73,29 @@ function getCtxDocumentsEnabled(runtime?: IAgentRuntime): boolean {
 	return result;
 }
 
-function shouldUseCustomLLM(runtime?: IAgentRuntime): boolean {
-	const get = (key: string) =>
-		(runtime?.getSetting(key) as string | undefined) ?? process.env[key];
-	const textProvider = get("TEXT_PROVIDER");
-	const textModel = get("TEXT_MODEL");
+function shouldUseCustomLLM(config: ModelConfig): boolean {
+	const textProvider = config.TEXT_PROVIDER;
+	const textModel = config.TEXT_MODEL;
 
 	if (!textProvider || !textModel) {
 		return false;
 	}
 
-	switch (textProvider.toLowerCase()) {
+	// config values are validated strings; guard toLowerCase to string-only
+	// so non-string can never throw (see #19147 P1). Blank/whitespace and
+	// model-gateway transformations are already resolved by validateModelConfig.
+	const normalizedProvider =
+		typeof textProvider === "string" ? textProvider.toLowerCase() : "";
+
+	switch (normalizedProvider) {
 		case "openrouter":
-			return !!get("OPENROUTER_API_KEY");
+			return !!config.OPENROUTER_API_KEY;
 		case "openai":
-			return !!get("OPENAI_API_KEY");
+			return !!config.OPENAI_API_KEY;
 		case "anthropic":
-			return !!get("ANTHROPIC_API_KEY");
+			return !!config.ANTHROPIC_API_KEY;
 		case "google":
-			return !!get("GOOGLE_API_KEY");
+			return !!config.GOOGLE_API_KEY;
 		default:
 			return false;
 	}
@@ -995,7 +1000,7 @@ async function generateContextsInBatch(
 
 			try {
 				const generateTextOperation = async () => {
-					if (shouldUseCustomLLM(runtime)) {
+					if (shouldUseCustomLLM(config)) {
 						if (item.usesCaching && item.promptText) {
 							return generateText(runtime, item.promptText, item.systemPrompt, {
 								cacheDocument: item.fullDocumentTextForContext,
