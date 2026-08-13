@@ -36,7 +36,8 @@ export type LifeOpsBriefEngagementEventType =
   | "kept"
   | "dismissed"
   | "ignored"
-  | "demoted";
+  | "demoted"
+  | "restored";
 
 export interface LifeOpsBriefStructuredItem {
   readonly itemId: string;
@@ -224,7 +225,12 @@ export function summarizeBriefEngagementRows(
   }[],
 ): readonly LifeOpsBriefItemEngagementSummary[] {
   const summaries = new Map<string, LifeOpsBriefItemEngagementSummary>();
-  for (const row of rows) {
+  const orderedRows = [...rows].sort(
+    (left, right) =>
+      left.eventAt.localeCompare(right.eventAt) ||
+      left.itemClass.localeCompare(right.itemClass),
+  );
+  for (const row of orderedRows) {
     const current =
       summaries.get(row.itemClass) ??
       ({
@@ -234,6 +240,16 @@ export function summarizeBriefEngagementRows(
         actedOnCount: 0,
         lastEventAt: null,
       } satisfies LifeOpsBriefItemEngagementSummary);
+    if (row.eventType === "restored") {
+      summaries.set(row.itemClass, {
+        itemClass: row.itemClass,
+        renderedCount: 0,
+        ignoredCount: 0,
+        actedOnCount: 0,
+        lastEventAt: row.eventAt,
+      });
+      continue;
+    }
     summaries.set(row.itemClass, {
       itemClass: row.itemClass,
       renderedCount:

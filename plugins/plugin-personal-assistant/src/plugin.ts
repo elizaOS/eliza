@@ -114,6 +114,7 @@ import {
 import { anticipationFeedbackEvaluator } from "./lifeops/anticipation/evaluator.js";
 import { createApprovalQueue } from "./lifeops/approval-queue.js";
 import { createTrackedWorkRecapDirectRoutingRule } from "./lifeops/briefing/direct-routing.js";
+import { handleBriefEngagementActionCompleted } from "./lifeops/briefing/engagement.js";
 import { registerLifeOpsCalendarGate } from "./lifeops/calendar-gate.js";
 import { OwnerCalendarMutationGatewayService } from "./lifeops/calendar-mutations/index.js";
 import {
@@ -840,6 +841,10 @@ const rawPersonalAssistantPlugin: Plugin = {
     // once-fired follow-up whose fire-time admission is the model moment
     // judge (#14676, riding the #14677 model_moment_check seam).
     [EventType.MESSAGE_SENT]: [handleAgentMessageSentForQuestionFollowup],
+    // Attribute only post-settlement effect receipts and rendered BRIEF
+    // artifacts. The handler reports persistence failures without rewriting
+    // an action outcome that has already been delivered to the owner.
+    [EventType.ACTION_COMPLETED]: [handleBriefEngagementActionCompleted],
     // Fold recognized voice turns into the entity/relationship graph via
     // the merge engine, then round-trip the binding to the voice-profile
     // owner. See lifeops/entities/voice-observer-bridge.ts.

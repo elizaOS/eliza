@@ -5,6 +5,8 @@
  *   - `compose_morning`  — `period: today` by default
  *   - `compose_evening`  — `period: today` by default
  *   - `compose_weekly`   — `period: this_week` by default
+ *   - `recalibrate`      — close expired impression windows and demote misses
+ *   - `reset_recalibration` — restore one or all currently demoted classes
  *
  * Pulls from each domain (calendar feed, inbox triage, life-domain due items,
  * money recurring charges) per the `include` arg, then runs a single LLM
@@ -18,6 +20,7 @@ import type {
   Action,
   ActionExample,
   ActionResult,
+  EffectResourceRef,
   HandlerCallback,
   HandlerOptions,
   IAgentRuntime,
@@ -25,6 +28,7 @@ import type {
   MessageRef,
 } from "@elizaos/core";
 import {
+  ElizaError,
   getDefaultTriageService,
   logger,
   ModelType,
@@ -34,9 +38,16 @@ import {
 import { FinancesService } from "@elizaos/plugin-finances/finances-service";
 import { hasLifeOpsAccess } from "../lifeops/access.js";
 import {
+  completeLifeOpsEffect,
+  lifeOpsAppliedEffect,
+  lifeOpsNoopEffect,
+} from "../lifeops/action-effect-result.js";
+import {
   buildBriefEditorialContract,
   type LifeOpsBriefItemEngagementSummary,
+  recalibrateBriefItemClasses,
 } from "../lifeops/briefing/editorial-judgment.js";
+import { requireBriefActionTimestamp } from "../lifeops/briefing/engagement.js";
 import {
   BRIEF_NARRATIVE_INSTRUCTIONS,
   MEETING_PREP_INSTRUCTIONS,
@@ -61,13 +72,17 @@ export {
 
 const ACTION_NAME = "BRIEF";
 
-const SUBACTIONS = [
+const COMPOSE_SUBACTIONS = [
   "compose_morning",
   "compose_evening",
   "compose_weekly",
 ] as const;
+const CONTROL_SUBACTIONS = ["recalibrate", "reset_recalibration"] as const;
+const SUBACTIONS = [...COMPOSE_SUBACTIONS, ...CONTROL_SUBACTIONS] as const;
 
 type Subaction = (typeof SUBACTIONS)[number];
+type ComposeSubaction = (typeof COMPOSE_SUBACTIONS)[number];
+type ControlSubaction = (typeof CONTROL_SUBACTIONS)[number];
 type BriefOptimizationTask = "morning_brief" | "meeting_prep";
 
 const SIMILE_NAMES: readonly string[] = [
@@ -81,6 +96,8 @@ const SIMILE_NAMES: readonly string[] = [
   "MEETING_PREP",
   "PREBRIEF",
   "MEETING_DOSSIER",
+  "RECALIBRATE_BRIEF",
+  "RESET_BRIEF_RECALIBRATION",
 ];
 
 const SIMILE_TO_SUBACTION: Readonly<Record<string, Subaction>> = {
@@ -88,16 +105,20 @@ const SIMILE_TO_SUBACTION: Readonly<Record<string, Subaction>> = {
   EVENING_BRIEF: "compose_evening",
   WEEKLY_BRIEF: "compose_weekly",
   DAILY_DIGEST: "compose_evening",
+  RECALIBRATE_BRIEF: "recalibrate",
+  RESET_BRIEF_RECALIBRATION: "reset_recalibration",
 };
 
-const SUBACTION_TO_KIND: Readonly<Record<Subaction, LifeOpsBriefingKind>> = {
+const SUBACTION_TO_KIND: Readonly<
+  Record<ComposeSubaction, LifeOpsBriefingKind>
+> = {
   compose_morning: "morning",
   compose_evening: "evening",
   compose_weekly: "weekly",
 };
 
 const SUBACTION_TO_DEFAULT_PERIOD: Readonly<
-  Record<Subaction, LifeOpsBriefingPeriod>
+  Record<ComposeSubaction, LifeOpsBriefingPeriod>
 > = {
   compose_morning: "today",
   compose_evening: "today",
@@ -119,6 +140,8 @@ interface BriefActionParameters {
   include?: BriefIncludeFlags;
   format?: "narrative" | "json";
   optimizationTask?: BriefOptimizationTask | string;
+  itemClass?: string;
+  ignoreAfterHours?: number;
 }
 
 const INTERNAL_URL = new URL("http://127.0.0.1/");
@@ -494,7 +517,7 @@ function resolveIncludeFlags(input: BriefIncludeFlags | undefined): {
 
 function resolvePeriod(
   params: BriefActionParameters,
-  subaction: Subaction,
+  subaction: ComposeSubaction,
 ): LifeOpsBriefingPeriod {
   const candidate =
     typeof params.period === "string"
@@ -508,6 +531,51 @@ function resolvePeriod(
     return candidate;
   }
   return SUBACTION_TO_DEFAULT_PERIOD[subaction];
+}
+
+function isComposeSubaction(value: Subaction): value is ComposeSubaction {
+  return (COMPOSE_SUBACTIONS as readonly string[]).includes(value);
+}
+
+function requireItemClass(value: unknown): string | null {
+  if (value === undefined) return null;
+  if (typeof value !== "string") {
+    throw new ElizaError("[BRIEF] itemClass must be a string", {
+      code: "BRIEF_ITEM_CLASS_INVALID",
+      context: {},
+      severity: "ephemeral",
+    });
+  }
+  const normalized = value.trim();
+  if (
+    normalized.length === 0 ||
+    normalized.length > 256 ||
+    !/^[a-z0-9][a-z0-9:_-]*$/u.test(normalized)
+  ) {
+    throw new ElizaError("[BRIEF] itemClass is malformed", {
+      code: "BRIEF_ITEM_CLASS_INVALID",
+      context: {},
+      severity: "ephemeral",
+    });
+  }
+  return normalized;
+}
+
+function resolveIgnoreAfterHours(value: unknown): number {
+  if (value === undefined) return 24;
+  if (
+    typeof value !== "number" ||
+    !Number.isInteger(value) ||
+    value < 1 ||
+    value > 168
+  ) {
+    throw new ElizaError("[BRIEF] ignoreAfterHours is invalid", {
+      code: "BRIEF_RECALIBRATION_WINDOW_INVALID",
+      context: { value },
+      severity: "ephemeral",
+    });
+  }
+  return value;
 }
 
 function newBriefingId(): string {
@@ -628,9 +696,125 @@ async function composeNarrative(args: {
   return typeof raw === "string" ? raw.trim() : undefined;
 }
 
+async function runBriefCalibration(args: {
+  runtime: IAgentRuntime;
+  message: Memory;
+  callback: HandlerCallback | undefined;
+  subaction: ControlSubaction;
+  params: BriefActionParameters;
+}): Promise<ActionResult> {
+  const repository = new LifeOpsRepository(args.runtime);
+  const eventAt = requireBriefActionTimestamp(args.message.createdAt);
+  const itemClass = requireItemClass(args.params.itemClass);
+  const ignoreAfterHours = resolveIgnoreAfterHours(
+    args.params.ignoreAfterHours,
+  );
+  const reconciled =
+    args.subaction === "recalibrate"
+      ? await repository.reconcileExpiredBriefItemEngagements({
+          agentId: args.runtime.agentId,
+          asOfIso: eventAt,
+          ignoreAfterHours,
+        })
+      : [];
+  const summaries = await repository.summarizeBriefItemEngagements(
+    args.runtime.agentId,
+  );
+  const demotedClasses = recalibrateBriefItemClasses(summaries);
+  const targetClasses =
+    args.subaction === "recalibrate"
+      ? demotedClasses.filter(
+          (candidate) => itemClass === null || candidate === itemClass,
+        )
+      : itemClass
+        ? demotedClasses.filter((candidate) => candidate === itemClass)
+        : demotedClasses;
+  const controls = await repository.recordBriefItemClassControls({
+    agentId: args.runtime.agentId,
+    itemClasses: targetClasses,
+    eventType: args.subaction === "recalibrate" ? "demoted" : "restored",
+    eventAt,
+    metadata: {
+      operation: args.subaction,
+      ignoreAfterHours,
+      ...(args.message.id ? { messageId: args.message.id } : {}),
+    },
+  });
+  const records = [...reconciled, ...controls];
+  const affectedItemClasses = [
+    ...new Set(controls.map((record) => record.itemClass)),
+  ].sort();
+  const artifacts: EffectResourceRef[] = records.slice(1).map((record) => ({
+    kind: "lifeops.brief_item_engagement",
+    id: record.id,
+    version: record.createdAt,
+  }));
+  const classSummary =
+    affectedItemClasses.length > 0 ? affectedItemClasses.join(", ") : "none";
+  const text =
+    args.subaction === "recalibrate"
+      ? `Recalibrated your brief from ${reconciled.length} expired item${reconciled.length === 1 ? "" : "s"}. Demoted classes: ${classSummary}. Items you completed or rescheduled remain promoted.`
+      : `Reset brief recalibration for: ${classSummary}. Future brief ranking will learn from new engagement.`;
+  const result: ActionResult = {
+    success: true,
+    text,
+    data: {
+      actionName: ACTION_NAME,
+      subaction: args.subaction,
+      ignoreAfterHours,
+      itemClass,
+      reconciledCount: reconciled.length,
+      affectedItemClasses,
+      summaries: await repository.summarizeBriefItemEngagements(
+        args.runtime.agentId,
+      ),
+    },
+  };
+  if (records.length === 0) {
+    return completeLifeOpsEffect(
+      args.callback,
+      result,
+      lifeOpsNoopEffect({
+        receiptId: `lifeops.brief_recalibration:${args.runtime.agentId}:${eventAt}`,
+        operation: `lifeops.brief_recalibration.${args.subaction}`,
+        resource: {
+          kind: "lifeops.brief_recalibration",
+          id: args.runtime.agentId,
+        },
+        artifacts: [],
+        idempotency: { key: args.message.id ?? null, replayed: false },
+        observedAt: eventAt,
+        reason: "No expired or demoted briefing item classes required a write.",
+      }),
+    );
+  }
+  const primary = records[0];
+  return completeLifeOpsEffect(
+    args.callback,
+    result,
+    lifeOpsAppliedEffect({
+      receiptId: `lifeops.brief_recalibration:${args.subaction}:${primary.id}`,
+      operation: `lifeops.brief_recalibration.${args.subaction}`,
+      resource: {
+        kind: "lifeops.brief_item_engagement",
+        id: primary.id,
+        version: primary.createdAt,
+      },
+      artifacts,
+      idempotency: { key: args.message.id ?? null, replayed: false },
+      observedAt: primary.createdAt,
+      commit: {
+        kind: "durable",
+        id: primary.id,
+        committedAt: primary.createdAt,
+      },
+    }),
+  );
+}
+
 async function assembleBriefing(args: {
   runtime: IAgentRuntime;
-  subaction: Subaction;
+  subaction: ComposeSubaction;
   period: LifeOpsBriefingPeriod;
   include: ReturnType<typeof resolveIncludeFlags>;
   format: "narrative" | "json";
@@ -737,14 +921,16 @@ export const briefAction: Action & {
     "resource:tracked-work",
     "capability:read",
     "capability:compose",
+    "capability:write",
+    "effect:receipt-required",
     "surface:internal",
   ],
   description:
-    "Compose owner LifeOpsBriefing: morning/evening/weekly; calendar feed, inbox triage, life due, money recurring charges. Subactions: compose_morning, compose_evening, compose_weekly.",
+    "Compose or recalibrate the owner's LifeOpsBriefing. Subactions: compose_morning, compose_evening, compose_weekly, recalibrate, reset_recalibration.",
   descriptionCompressed:
-    "BRIEF compose_morning|compose_evening|compose_weekly; LifeOpsBriefing",
+    "BRIEF compose_morning|compose_evening|compose_weekly|recalibrate|reset_recalibration",
   routingHint:
-    'briefing/digest ("morning brief", "evening summary", "this week", "daily digest") -> BRIEF; one-domain read -> CALENDAR.feed, MESSAGE.triage, etc.',
+    'briefing/digest or ranking calibration ("morning brief", "daily digest", "stop showing these", "reset brief learning") -> BRIEF.',
   contexts: ["briefing", "calendar", "inbox", "tasks", "finance"],
   roleGate: { minRole: "OWNER" },
   suppressPostActionContinuation: true,
@@ -753,7 +939,7 @@ export const briefAction: Action & {
     {
       name: "action",
       description:
-        "Brief op: compose_morning | compose_evening | compose_weekly.",
+        "Brief op: compose_morning | compose_evening | compose_weekly | recalibrate | reset_recalibration.",
       schema: { type: "string" as const, enum: [...SUBACTIONS] },
     },
     {
@@ -777,6 +963,18 @@ export const briefAction: Action & {
         "Format: narrative = LLM compose; json = LifeOpsBriefing only. Default narrative.",
       schema: { type: "string" as const, enum: ["narrative", "json"] },
     },
+    {
+      name: "itemClass",
+      description:
+        "Optional structural item class to recalibrate or reset, for example life:reminder.",
+      schema: { type: "string" as const },
+    },
+    {
+      name: "ignoreAfterHours",
+      description:
+        "Close rendered items with no observed response after this many hours (1-168, default 24).",
+      schema: { type: "number" as const, minimum: 1, maximum: 168 },
+    },
   ],
   examples,
   handler: async (
@@ -797,9 +995,19 @@ export const briefAction: Action & {
     if (!subaction) {
       return {
         success: false,
-        text: "Tell me which briefing to compose: compose_morning, compose_evening, or compose_weekly.",
+        text: "Tell me which briefing operation to run: compose_morning, compose_evening, compose_weekly, recalibrate, or reset_recalibration.",
         data: { error: "MISSING_SUBACTION" },
       };
+    }
+
+    if (!isComposeSubaction(subaction)) {
+      return runBriefCalibration({
+        runtime,
+        message,
+        callback,
+        subaction,
+        params,
+      });
     }
 
     const include = resolveIncludeFlags(params.include);
@@ -825,24 +1033,32 @@ export const briefAction: Action & {
       `[BRIEF] ${subaction} id=${briefing.id} period=${briefing.period} calendar=${briefing.sections.calendar?.length ?? 0} inbox=${briefing.sections.inbox?.length ?? 0} life=${briefing.sections.life?.length ?? 0} money=${briefing.sections.money?.length ?? 0}`,
     );
 
-    await callback?.({
-      text,
-      source: "action",
-      action: ACTION_NAME,
-    });
-
-    return {
-      success: true,
-      text,
-      userFacingText: text,
-      verifiedUserFacing: true,
-      turnComplete: true,
-      data: {
-        subaction,
-        optimizationTask,
-        briefing,
-        briefingId: briefing.id,
+    return completeLifeOpsEffect(
+      callback,
+      {
+        success: true,
+        text,
+        data: {
+          actionName: ACTION_NAME,
+          subaction,
+          optimizationTask,
+          briefing,
+          briefingId: briefing.id,
+        },
       },
-    };
+      lifeOpsNoopEffect({
+        receiptId: `lifeops.briefing.compose:${briefing.id}`,
+        operation: `lifeops.briefing.${subaction}`,
+        resource: {
+          kind: "lifeops.briefing",
+          id: briefing.id,
+        },
+        artifacts: [],
+        idempotency: { key: null, replayed: false },
+        observedAt: briefing.generatedAt,
+        reason:
+          "The briefing was composed from current data without mutating owner records.",
+      }),
+    );
   },
 };

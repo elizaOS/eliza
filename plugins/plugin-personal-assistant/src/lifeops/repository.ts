@@ -160,6 +160,7 @@ import {
   toBoolean,
   toNumber,
   toText,
+  withTransaction,
 } from "./sql.js";
 import { buildTelemetryEventFromSignal } from "./telemetry-mapping.js";
 
@@ -282,6 +283,214 @@ export type LifeOpsBriefItemEngagementWrite = Omit<
   id?: string;
   createdAt?: string;
 };
+
+const LIFEOPS_BRIEF_ITEM_SOURCES = new Set<LifeOpsBriefItemSource>([
+  "calendar",
+  "inbox",
+  "life",
+  "money",
+]);
+const LIFEOPS_BRIEF_ITEM_KINDS = new Set<LifeOpsBriefItemKind>([
+  "meeting",
+  "message",
+  "todo",
+  "reminder",
+  "habit",
+  "goal",
+  "recurring_charge",
+]);
+const LIFEOPS_BRIEF_ENGAGEMENT_EVENTS =
+  new Set<LifeOpsBriefEngagementEventType>([
+    "rendered",
+    "opened",
+    "replied",
+    "completed",
+    "rescheduled",
+    "kept",
+    "dismissed",
+    "ignored",
+    "demoted",
+    "restored",
+  ]);
+
+function requireBriefEngagementText(
+  value: string,
+  field: string,
+  maxLength = 256,
+): string {
+  const normalized = value.trim();
+  if (!normalized || normalized.length > maxLength) {
+    throw new ElizaError(
+      `[LifeOpsRepository] Invalid brief engagement ${field}`,
+      {
+        code: "LIFEOPS_BRIEF_ENGAGEMENT_INVALID",
+        context: { field },
+        severity: "ephemeral",
+      },
+    );
+  }
+  return normalized;
+}
+
+function requireBriefEngagementIso(value: string, field: string): string {
+  const timestamp = Date.parse(value);
+  if (!Number.isFinite(timestamp)) {
+    throw new ElizaError(
+      `[LifeOpsRepository] Invalid brief engagement ${field}`,
+      {
+        code: "LIFEOPS_BRIEF_ENGAGEMENT_INVALID",
+        context: { field },
+        severity: "ephemeral",
+      },
+    );
+  }
+  return new Date(timestamp).toISOString();
+}
+
+function validateBriefItemEngagementWrite(args: {
+  runtimeAgentId: string;
+  input: LifeOpsBriefItemEngagementWrite;
+}): LifeOpsBriefItemEngagementWrite {
+  const agentId = requireBriefEngagementText(args.input.agentId, "agentId");
+  if (agentId !== args.runtimeAgentId) {
+    throw new ElizaError(
+      "[LifeOpsRepository] Brief engagement belongs to another agent",
+      {
+        code: "LIFEOPS_BRIEF_ENGAGEMENT_AGENT_MISMATCH",
+        context: { agentId, runtimeAgentId: args.runtimeAgentId },
+        severity: "ephemeral",
+      },
+    );
+  }
+  const briefingId = requireBriefEngagementText(
+    args.input.briefingId,
+    "briefingId",
+  );
+  const itemId = requireBriefEngagementText(args.input.itemId, "itemId");
+  const sourceId = requireBriefEngagementText(args.input.sourceId, "sourceId");
+  const itemClass = requireBriefEngagementText(
+    args.input.itemClass,
+    "itemClass",
+  );
+  if (!LIFEOPS_BRIEF_ITEM_SOURCES.has(args.input.source)) {
+    throw new ElizaError("[LifeOpsRepository] Invalid brief item source", {
+      code: "LIFEOPS_BRIEF_ENGAGEMENT_INVALID",
+      context: { field: "source" },
+      severity: "ephemeral",
+    });
+  }
+  if (!LIFEOPS_BRIEF_ITEM_KINDS.has(args.input.kind)) {
+    throw new ElizaError("[LifeOpsRepository] Invalid brief item kind", {
+      code: "LIFEOPS_BRIEF_ENGAGEMENT_INVALID",
+      context: { field: "kind" },
+      severity: "ephemeral",
+    });
+  }
+  if (!LIFEOPS_BRIEF_ENGAGEMENT_EVENTS.has(args.input.eventType)) {
+    throw new ElizaError("[LifeOpsRepository] Invalid brief engagement event", {
+      code: "LIFEOPS_BRIEF_ENGAGEMENT_INVALID",
+      context: { field: "eventType" },
+      severity: "ephemeral",
+    });
+  }
+  if (itemId !== `${args.input.source}:${sourceId}`) {
+    throw new ElizaError(
+      "[LifeOpsRepository] Brief item identity does not match its source",
+      {
+        code: "LIFEOPS_BRIEF_ENGAGEMENT_IDENTITY_MISMATCH",
+        context: { itemId, source: args.input.source, sourceId },
+        severity: "ephemeral",
+      },
+    );
+  }
+  if (!Number.isFinite(args.input.weight)) {
+    throw new ElizaError(
+      "[LifeOpsRepository] Invalid brief engagement weight",
+      {
+        code: "LIFEOPS_BRIEF_ENGAGEMENT_INVALID",
+        context: { field: "weight" },
+        severity: "ephemeral",
+      },
+    );
+  }
+  return {
+    ...args.input,
+    agentId,
+    briefingId,
+    itemId,
+    sourceId,
+    itemClass,
+    eventAt: requireBriefEngagementIso(args.input.eventAt, "eventAt"),
+    ...(args.input.createdAt
+      ? {
+          createdAt: requireBriefEngagementIso(
+            args.input.createdAt,
+            "createdAt",
+          ),
+        }
+      : {}),
+  };
+}
+
+function briefItemEngagementId(input: LifeOpsBriefItemEngagementWrite): string {
+  return (
+    input.id ??
+    `brief_eng_${crypto
+      .createHash("sha256")
+      .update(
+        [
+          input.agentId,
+          input.briefingId,
+          input.itemId,
+          input.eventType,
+          input.eventAt,
+        ].join("\0"),
+      )
+      .digest("hex")
+      .slice(0, 20)}`
+  );
+}
+
+function briefItemEngagementUpsertSql(args: {
+  input: LifeOpsBriefItemEngagementWrite;
+  id: string;
+  createdAt: string;
+}): string {
+  const { input } = args;
+  return `INSERT INTO app_lifeops.life_brief_item_engagements (
+        id, agent_id, briefing_id, item_id, source, kind, source_id,
+        item_class, event_type, event_at, weight, metadata_json, created_at
+      ) VALUES (
+        ${sqlQuote(args.id)},
+        ${sqlQuote(input.agentId)},
+        ${sqlQuote(input.briefingId)},
+        ${sqlQuote(input.itemId)},
+        ${sqlQuote(input.source)},
+        ${sqlQuote(input.kind)},
+        ${sqlQuote(input.sourceId)},
+        ${sqlQuote(input.itemClass)},
+        ${sqlQuote(input.eventType)},
+        ${sqlQuote(input.eventAt)},
+        ${sqlNumber(input.weight)},
+        ${sqlJson(input.metadata)},
+        ${sqlQuote(args.createdAt)}
+      )
+      ON CONFLICT (agent_id, briefing_id, item_id, event_type, event_at)
+      DO NOTHING`;
+}
+
+function briefItemEngagementReloadSql(
+  input: LifeOpsBriefItemEngagementWrite,
+): string {
+  return `SELECT *
+         FROM app_lifeops.life_brief_item_engagements
+        WHERE agent_id = ${sqlQuote(input.agentId)}
+          AND briefing_id = ${sqlQuote(input.briefingId)}
+          AND item_id = ${sqlQuote(input.itemId)}
+          AND event_type = ${sqlQuote(input.eventType)}
+          AND event_at = ${sqlQuote(input.eventAt)}
+        LIMIT 1`;
+}
 
 // Finance tables were carved out of plugin-personal-assistant into
 // @elizaos/plugin-finances and now live under the `app_finances` PostgreSQL
@@ -2774,61 +2983,19 @@ export class LifeOpsRepository {
   async recordBriefItemEngagement(
     input: LifeOpsBriefItemEngagementWrite,
   ): Promise<LifeOpsBriefItemEngagementRecord> {
-    const createdAt = input.createdAt ?? isoNow();
-    const id =
-      input.id ??
-      `brief_eng_${crypto
-        .createHash("sha256")
-        .update(
-          [
-            input.agentId,
-            input.briefingId,
-            input.itemId,
-            input.eventType,
-            input.eventAt,
-          ].join("\0"),
-        )
-        .digest("hex")
-        .slice(0, 20)}`;
+    const validated = validateBriefItemEngagementWrite({
+      runtimeAgentId: this.runtime.agentId,
+      input,
+    });
+    const createdAt = validated.createdAt ?? isoNow();
+    const id = briefItemEngagementId(validated);
     await executeRawSql(
       this.runtime,
-      `INSERT INTO app_lifeops.life_brief_item_engagements (
-        id, agent_id, briefing_id, item_id, source, kind, source_id,
-        item_class, event_type, event_at, weight, metadata_json, created_at
-      ) VALUES (
-        ${sqlQuote(id)},
-        ${sqlQuote(input.agentId)},
-        ${sqlQuote(input.briefingId)},
-        ${sqlQuote(input.itemId)},
-        ${sqlQuote(input.source)},
-        ${sqlQuote(input.kind)},
-        ${sqlQuote(input.sourceId)},
-        ${sqlQuote(input.itemClass)},
-        ${sqlQuote(input.eventType)},
-        ${sqlQuote(input.eventAt)},
-        ${sqlNumber(input.weight)},
-        ${sqlJson(input.metadata)},
-        ${sqlQuote(createdAt)}
-      )
-      ON CONFLICT (agent_id, briefing_id, item_id, event_type, event_at)
-      DO UPDATE SET
-        source = EXCLUDED.source,
-        kind = EXCLUDED.kind,
-        source_id = EXCLUDED.source_id,
-        item_class = EXCLUDED.item_class,
-        weight = EXCLUDED.weight,
-        metadata_json = EXCLUDED.metadata_json`,
+      briefItemEngagementUpsertSql({ input: validated, id, createdAt }),
     );
     const rows = await executeRawSql(
       this.runtime,
-      `SELECT *
-         FROM app_lifeops.life_brief_item_engagements
-        WHERE agent_id = ${sqlQuote(input.agentId)}
-          AND briefing_id = ${sqlQuote(input.briefingId)}
-          AND item_id = ${sqlQuote(input.itemId)}
-          AND event_type = ${sqlQuote(input.eventType)}
-          AND event_at = ${sqlQuote(input.eventAt)}
-        LIMIT 1`,
+      briefItemEngagementReloadSql(validated),
     );
     const row = rows[0] ? parseBriefItemEngagement(rows[0]) : null;
     if (!row) {
@@ -2837,17 +3004,66 @@ export class LifeOpsRepository {
         {
           code: "LIFEOPS_BRIEF_ENGAGEMENT_RELOAD_FAILED",
           context: {
-            agentId: input.agentId,
-            briefingId: input.briefingId,
-            itemId: input.itemId,
-            eventType: input.eventType,
-            eventAt: input.eventAt,
+            agentId: validated.agentId,
+            briefingId: validated.briefingId,
+            itemId: validated.itemId,
+            eventType: validated.eventType,
+            eventAt: validated.eventAt,
           },
           severity: "fatal",
         },
       );
     }
     return row;
+  }
+
+  async recordBriefItemEngagementsAtomic(
+    inputs: readonly LifeOpsBriefItemEngagementWrite[],
+  ): Promise<LifeOpsBriefItemEngagementRecord[]> {
+    if (inputs.length === 0) return [];
+    const validated = inputs.map((input) =>
+      validateBriefItemEngagementWrite({
+        runtimeAgentId: this.runtime.agentId,
+        input,
+      }),
+    );
+    return withTransaction(this.runtime, async (tx) => {
+      const records: LifeOpsBriefItemEngagementRecord[] = [];
+      for (const input of validated) {
+        const createdAt = input.createdAt ?? isoNow();
+        await executeRawSqlTx(
+          tx,
+          briefItemEngagementUpsertSql({
+            input,
+            id: briefItemEngagementId(input),
+            createdAt,
+          }),
+        );
+        const rows = await executeRawSqlTx(
+          tx,
+          briefItemEngagementReloadSql(input),
+        );
+        const row = rows[0] ? parseBriefItemEngagement(rows[0]) : null;
+        if (!row) {
+          throw new ElizaError(
+            "[LifeOpsRepository] Failed to reload atomic brief engagement",
+            {
+              code: "LIFEOPS_BRIEF_ENGAGEMENT_RELOAD_FAILED",
+              context: {
+                agentId: input.agentId,
+                briefingId: input.briefingId,
+                itemId: input.itemId,
+                eventType: input.eventType,
+                eventAt: input.eventAt,
+              },
+              severity: "fatal",
+            },
+          );
+        }
+        records.push(row);
+      }
+      return records;
+    });
   }
 
   async getBriefItemEngagement(
@@ -2896,6 +3112,254 @@ export class LifeOpsRepository {
         ORDER BY event_at ASC, created_at ASC`,
     );
     return rows.map(parseBriefItemEngagement);
+  }
+
+  async findLatestRenderedBriefItem(
+    agentId: string,
+    options: {
+      source?: LifeOpsBriefItemSource;
+      sourceId?: string;
+      itemClass?: string;
+      sinceIso?: string;
+      untilIso?: string;
+    },
+  ): Promise<LifeOpsBriefItemEngagementRecord | null> {
+    if (agentId !== this.runtime.agentId) {
+      throw new ElizaError(
+        "[LifeOpsRepository] Brief engagement lookup belongs to another agent",
+        {
+          code: "LIFEOPS_BRIEF_ENGAGEMENT_AGENT_MISMATCH",
+          context: { agentId, runtimeAgentId: this.runtime.agentId },
+          severity: "ephemeral",
+        },
+      );
+    }
+    const where = [
+      `agent_id = ${sqlQuote(agentId)}`,
+      `event_type = 'rendered'`,
+    ];
+    if (options.source) {
+      where.push(`source = ${sqlQuote(options.source)}`);
+    }
+    if (options.sourceId) {
+      where.push(
+        `source_id = ${sqlQuote(requireBriefEngagementText(options.sourceId, "sourceId"))}`,
+      );
+    }
+    if (options.itemClass) {
+      where.push(
+        `item_class = ${sqlQuote(requireBriefEngagementText(options.itemClass, "itemClass"))}`,
+      );
+    }
+    if (options.sinceIso) {
+      where.push(
+        `event_at >= ${sqlQuote(requireBriefEngagementIso(options.sinceIso, "sinceIso"))}`,
+      );
+    }
+    if (options.untilIso) {
+      where.push(
+        `event_at <= ${sqlQuote(requireBriefEngagementIso(options.untilIso, "untilIso"))}`,
+      );
+    }
+    const rows = await executeRawSql(
+      this.runtime,
+      `SELECT *
+         FROM app_lifeops.life_brief_item_engagements
+        WHERE ${where.join(" AND ")}
+        ORDER BY event_at DESC, created_at DESC, id DESC
+        LIMIT 1`,
+    );
+    return rows[0] ? parseBriefItemEngagement(rows[0]) : null;
+  }
+
+  async reconcileExpiredBriefItemEngagements(args: {
+    agentId: string;
+    asOfIso: string;
+    ignoreAfterHours: number;
+  }): Promise<LifeOpsBriefItemEngagementRecord[]> {
+    if (args.agentId !== this.runtime.agentId) {
+      throw new ElizaError(
+        "[LifeOpsRepository] Brief reconciliation belongs to another agent",
+        {
+          code: "LIFEOPS_BRIEF_ENGAGEMENT_AGENT_MISMATCH",
+          context: {
+            agentId: args.agentId,
+            runtimeAgentId: this.runtime.agentId,
+          },
+          severity: "ephemeral",
+        },
+      );
+    }
+    if (
+      !Number.isInteger(args.ignoreAfterHours) ||
+      args.ignoreAfterHours < 1 ||
+      args.ignoreAfterHours > 168
+    ) {
+      throw new ElizaError(
+        "[LifeOpsRepository] Brief reconciliation window is invalid",
+        {
+          code: "LIFEOPS_BRIEF_ENGAGEMENT_WINDOW_INVALID",
+          context: { ignoreAfterHours: args.ignoreAfterHours },
+          severity: "ephemeral",
+        },
+      );
+    }
+    const asOfIso = requireBriefEngagementIso(args.asOfIso, "asOfIso");
+    const cutoffIso = new Date(
+      Date.parse(asOfIso) - args.ignoreAfterHours * 60 * 60 * 1000,
+    ).toISOString();
+    return withTransaction(this.runtime, async (tx) => {
+      const rows = await executeRawSqlTx(
+        tx,
+        `SELECT rendered.*
+             FROM app_lifeops.life_brief_item_engagements rendered
+            WHERE rendered.agent_id = ${sqlQuote(args.agentId)}
+              AND rendered.event_type = 'rendered'
+              AND rendered.event_at <= ${sqlQuote(cutoffIso)}
+              AND NOT EXISTS (
+                SELECT 1
+                  FROM app_lifeops.life_brief_item_engagements terminal
+                 WHERE terminal.agent_id = rendered.agent_id
+                   AND terminal.briefing_id = rendered.briefing_id
+                   AND terminal.item_id = rendered.item_id
+                   AND terminal.event_type IN (
+                     'opened', 'replied', 'completed', 'rescheduled', 'kept',
+                     'dismissed', 'ignored'
+                   )
+              )
+            ORDER BY rendered.event_at ASC, rendered.id ASC`,
+      );
+      const reconciled: LifeOpsBriefItemEngagementRecord[] = [];
+      for (const candidateRow of rows) {
+        const candidate = parseBriefItemEngagement(candidateRow);
+        const eventAt = new Date(
+          Date.parse(candidate.eventAt) +
+            args.ignoreAfterHours * 60 * 60 * 1000,
+        ).toISOString();
+        const input = validateBriefItemEngagementWrite({
+          runtimeAgentId: this.runtime.agentId,
+          input: {
+            agentId: candidate.agentId,
+            briefingId: candidate.briefingId,
+            itemId: candidate.itemId,
+            source: candidate.source,
+            kind: candidate.kind,
+            sourceId: candidate.sourceId,
+            itemClass: candidate.itemClass,
+            eventType: "ignored",
+            eventAt,
+            weight: -1,
+            metadata: {
+              reconciledFromRenderedEventId: candidate.id,
+              ignoreAfterHours: args.ignoreAfterHours,
+            },
+          },
+        });
+        const createdAt = isoNow();
+        await executeRawSqlTx(
+          tx,
+          briefItemEngagementUpsertSql({
+            input,
+            id: briefItemEngagementId(input),
+            createdAt,
+          }),
+        );
+        const persistedRows = await executeRawSqlTx(
+          tx,
+          briefItemEngagementReloadSql(input),
+        );
+        if (!persistedRows[0]) {
+          throw new ElizaError(
+            "[LifeOpsRepository] Failed to reload reconciled engagement",
+            {
+              code: "LIFEOPS_BRIEF_ENGAGEMENT_RELOAD_FAILED",
+              context: {
+                agentId: input.agentId,
+                briefingId: input.briefingId,
+                itemId: input.itemId,
+              },
+              severity: "fatal",
+            },
+          );
+        }
+        reconciled.push(parseBriefItemEngagement(persistedRows[0]));
+      }
+      return reconciled;
+    });
+  }
+
+  async recordBriefItemClassControls(args: {
+    agentId: string;
+    itemClasses: readonly string[];
+    eventType: "demoted" | "restored";
+    eventAt: string;
+    metadata?: Record<string, unknown>;
+  }): Promise<LifeOpsBriefItemEngagementRecord[]> {
+    if (args.agentId !== this.runtime.agentId) {
+      throw new ElizaError(
+        "[LifeOpsRepository] Brief class control belongs to another agent",
+        {
+          code: "LIFEOPS_BRIEF_ENGAGEMENT_AGENT_MISMATCH",
+          context: {
+            agentId: args.agentId,
+            runtimeAgentId: this.runtime.agentId,
+          },
+          severity: "ephemeral",
+        },
+      );
+    }
+    const eventAt = requireBriefEngagementIso(args.eventAt, "eventAt");
+    const uniqueClasses = [
+      ...new Set(
+        args.itemClasses.map((value) =>
+          requireBriefEngagementText(value, "itemClass"),
+        ),
+      ),
+    ]
+      .filter(Boolean)
+      .sort();
+    if (uniqueClasses.length === 0) return [];
+    const writes: LifeOpsBriefItemEngagementWrite[] = [];
+    for (const itemClass of uniqueClasses) {
+      const controls = await this.listBriefItemEngagements(args.agentId, {
+        itemClass,
+      });
+      const latestControl = [...controls]
+        .reverse()
+        .find(
+          (row) => row.eventType === "demoted" || row.eventType === "restored",
+        );
+      if (latestControl?.eventType === args.eventType) {
+        continue;
+      }
+      const latest = await this.findLatestRenderedBriefItem(args.agentId, {
+        itemClass,
+      });
+      if (!latest) {
+        throw new ElizaError(
+          "[LifeOpsRepository] Cannot control an unknown brief item class",
+          {
+            code: "LIFEOPS_BRIEF_ENGAGEMENT_CLASS_UNKNOWN",
+            context: { agentId: args.agentId, itemClass },
+            severity: "ephemeral",
+          },
+        );
+      }
+      writes.push({
+        agentId: latest.agentId,
+        briefingId: latest.briefingId,
+        itemId: latest.itemId,
+        source: latest.source,
+        kind: latest.kind,
+        sourceId: latest.sourceId,
+        itemClass: latest.itemClass,
+        eventType: args.eventType,
+        eventAt,
+        weight: 0,
+        metadata: args.metadata ?? {},
+      });
+    }
+    return this.recordBriefItemEngagementsAtomic(writes);
   }
 
   async summarizeBriefItemEngagements(

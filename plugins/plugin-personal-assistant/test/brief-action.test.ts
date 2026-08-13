@@ -69,6 +69,7 @@ function makeMessage(text = "give me my brief"): Memory {
     id: "msg-brief-1" as UUID,
     entityId: "owner-1" as UUID,
     roomId: "room-brief-1" as UUID,
+    createdAt: Date.parse("2026-07-10T08:00:00.000Z"),
     content: { text },
   } as Memory;
 }
@@ -129,10 +130,105 @@ describe("BRIEF umbrella action — Daily Operations", () => {
     it("rejects callers that fail the owner-access check", async () => {
       mocks.hasOwnerAccess.mockResolvedValueOnce(false);
       const result = await callBrief(makeRuntime(), makeMessage(), {
-        subaction: "compose_morning",
+        subaction: "recalibrate",
       });
       expect(result.success).toBe(false);
       expect(result.data).toMatchObject({ error: "PERMISSION_DENIED" });
+    });
+  });
+
+  describe("recalibration controls", () => {
+    it("reports durable demotion and lets the owner reset it", async () => {
+      const runtimeResult = await createLifeOpsTestRuntime();
+      try {
+        await LifeOpsRepository.bootstrapSchema(runtimeResult.runtime);
+        const repository = new LifeOpsRepository(runtimeResult.runtime);
+        for (let day = 1; day <= 5; day += 1) {
+          await repository.recordBriefItemEngagement({
+            agentId: runtimeResult.runtime.agentId,
+            briefingId: `brief-control-${day}`,
+            itemId: `life:habit-${day}`,
+            source: "life",
+            kind: "habit",
+            sourceId: `habit-${day}`,
+            itemClass: "life:habit",
+            eventType: "rendered",
+            eventAt: `2026-07-0${day}T08:00:00.000Z`,
+            weight: 1,
+            metadata: {},
+          });
+        }
+
+        const recalibrated = await callBrief(
+          runtimeResult.runtime,
+          makeMessage("Recalibrate my brief."),
+          { subaction: "recalibrate", ignoreAfterHours: 24 },
+        );
+        expect(recalibrated.success).toBe(true);
+        expect(recalibrated.text).toContain("Demoted classes: life:habit");
+        expect(recalibrated.data).toMatchObject({
+          subaction: "recalibrate",
+          reconciledCount: 5,
+          affectedItemClasses: ["life:habit"],
+        });
+        expect(recalibrated.effectReceipts?.[0]).toMatchObject({
+          outcome: "applied",
+          operation: "lifeops.brief_recalibration.recalibrate",
+          commit: { kind: "durable" },
+        });
+        const recalibrationReplay = await callBrief(
+          runtimeResult.runtime,
+          makeMessage("Recalibrate my brief."),
+          { subaction: "recalibrate", ignoreAfterHours: 24 },
+        );
+        expect(recalibrationReplay.effectReceipts?.[0]).toMatchObject({
+          outcome: "noop",
+          operation: "lifeops.brief_recalibration.recalibrate",
+        });
+
+        const resetMessage = {
+          ...makeMessage("Reset my brief learning."),
+          id: "msg-brief-reset" as UUID,
+          createdAt: Date.parse("2026-07-10T09:00:00.000Z"),
+        } as Memory;
+        const reset = await callBrief(runtimeResult.runtime, resetMessage, {
+          subaction: "reset_recalibration",
+          itemClass: "life:habit",
+        });
+        expect(reset.success).toBe(true);
+        expect(reset.text).toContain(
+          "Reset brief recalibration for: life:habit",
+        );
+        expect(reset.effectReceipts?.[0]).toMatchObject({
+          outcome: "applied",
+          operation: "lifeops.brief_recalibration.reset_recalibration",
+        });
+        const resetReplay = await callBrief(
+          runtimeResult.runtime,
+          resetMessage,
+          {
+            subaction: "reset_recalibration",
+            itemClass: "life:habit",
+          },
+        );
+        expect(resetReplay.effectReceipts?.[0]).toMatchObject({
+          outcome: "noop",
+          operation: "lifeops.brief_recalibration.reset_recalibration",
+        });
+        expect(
+          await repository.summarizeBriefItemEngagements(
+            runtimeResult.runtime.agentId,
+          ),
+        ).toContainEqual({
+          itemClass: "life:habit",
+          renderedCount: 0,
+          ignoredCount: 0,
+          actedOnCount: 0,
+          lastEventAt: "2026-07-10T09:00:00.000Z",
+        });
+      } finally {
+        await runtimeResult.cleanup();
+      }
     });
   });
 
