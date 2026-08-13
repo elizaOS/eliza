@@ -45,6 +45,27 @@ vi.mock("../platform/browser.js", () => {
   };
 });
 
+vi.mock("../platform/capabilities.js", () => ({
+  detectPlatformCapabilities: vi.fn(() => ({
+    screenshot: { available: false, tool: "test" },
+    computerUse: { available: false, tool: "test" },
+    windowList: { available: false, tool: "test" },
+    browser: { available: true, tool: "test" },
+    terminal: { available: false, tool: "test" },
+    fileSystem: { available: true, tool: "test" },
+    clipboard: { available: false, tool: "test" },
+  })),
+}));
+
+vi.mock("../platform/windows-list.js", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("../platform/windows-list.js")>();
+  return {
+    ...actual,
+    getScreenSize: vi.fn(() => ({ width: 1280, height: 720 })),
+  };
+});
+
 const browser = await import("../platform/browser.js");
 const { ComputerUseService } = await import(
   "../services/computer-use-service.js"
