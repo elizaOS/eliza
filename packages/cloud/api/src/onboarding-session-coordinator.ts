@@ -4,6 +4,7 @@
  * browser continuation-token lookup and migration from pre-coordinator data.
  */
 
+import { isElizaError } from "@elizaos/core";
 import { runWithCloudBindingsAsync } from "@/lib/runtime/cloud-bindings";
 import type {
   OnboardingChatInput,
@@ -890,9 +891,18 @@ export class OnboardingSessionCoordinator {
       } catch (error) {
         // error-policy:J1 Durable Object transport boundary; inner onboarding
         // failures remain observable as a failed request and are never replaced
-        // with an empty or successful-looking result.
+        // with an empty or successful-looking result. A typed failure also
+        // carries its `code`/`context` in the body: the stub boundary is the
+        // only place the authorization outcome could be downgraded to an
+        // untyped 500, and the HTTP route maps the code — not this status —
+        // onto the response the failure was raised for.
         return Response.json(
-          { error: error instanceof Error ? error.message : String(error) },
+          {
+            error: error instanceof Error ? error.message : String(error),
+            ...(isElizaError(error)
+              ? { code: error.code, context: error.context }
+              : {}),
+          },
           { status: 500 },
         );
       }

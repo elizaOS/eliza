@@ -1534,9 +1534,64 @@ function onboardingCoordinator(): RuntimeDurableObjectNamespace | undefined {
   return getCloudBinding<RuntimeDurableObjectNamespace>("ONBOARDING_SESSIONS");
 }
 
+interface CoordinatorFailure {
+  error: string;
+  code?: string;
+  context?: Record<string, unknown>;
+}
+
+/**
+ * The coordinator failure body is transport input, so an unrecognised shape
+ * yields an explicit null rather than a partially-trusted object. Only a body
+ * that actually carries a string `code` can produce a typed rejection; nothing
+ * here invents one.
+ */
+function parseCoordinatorFailure(value: unknown): CoordinatorFailure | null {
+  if (!value || typeof value !== "object") return null;
+  const body = value as Record<string, unknown>;
+  if (typeof body.error !== "string") return null;
+  return {
+    error: body.error,
+    code: typeof body.code === "string" && body.code ? body.code : undefined,
+    context:
+      body.context && typeof body.context === "object" && !Array.isArray(body.context)
+        ? (body.context as Record<string, unknown>)
+        : undefined,
+  };
+}
+
+/**
+ * The Durable Object answers every inner failure with HTTP 500, so the code the
+ * coordinator serialized — not the status — is what identifies an authorization
+ * or conflict outcome. Rebuilding the `ElizaError` here is what keeps the typed
+ * branches at the HTTP boundary reachable in Worker deployments.
+ */
 async function readCoordinatorResult(response: Response): Promise<OnboardingChatResult> {
   if (!response.ok) {
-    throw new Error(`onboarding session coordinator failed (${response.status})`);
+    let body: unknown = null;
+    try {
+      body = await response.json();
+    } catch (error) {
+      // error-policy:J3 an unreadable body is untrusted transport input; it
+      // degrades to the status-only failure below and never becomes a typed
+      // authorization outcome.
+      logger.warn("[eliza-app onboarding] coordinator failure body unreadable", {
+        status: response.status,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+    const failure = parseCoordinatorFailure(body);
+    if (failure?.code) {
+      throw new ElizaError(failure.error, {
+        code: failure.code,
+        context: failure.context,
+      });
+    }
+    throw new Error(
+      `onboarding session coordinator failed (${response.status})${
+        failure ? `: ${failure.error}` : ""
+      }`,
+    );
   }
   return (await response.json()) as OnboardingChatResult;
 }
