@@ -187,6 +187,11 @@ export default defineConfig({
     : "./test-results",
   use: {
     baseURL: `http://127.0.0.1:${uiSmokePort}`,
+    // UI smoke owns deterministic route fixtures, while service-worker fetch
+    // behavior has dedicated unit coverage. Blocking the production worker
+    // here also prevents route transitions from turning intentionally aborted
+    // dynamic imports into synthetic 503 "Offline" console errors.
+    serviceWorkers: "block",
     trace: recording ? "on" : "retain-on-failure",
     video: videoMode,
     screenshot: recording ? "on" : "only-on-failure",
