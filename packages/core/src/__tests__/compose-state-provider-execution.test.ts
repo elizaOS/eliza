@@ -4,16 +4,18 @@
  * and turn cancellation reaches provider-owned boundaries.
  */
 import { describe, expect, it } from "vitest";
+import { InMemoryDatabaseAdapter } from "../database/inMemoryAdapter";
 import { ElizaError } from "../errors";
 import { AgentRuntime } from "../runtime";
 import { TurnAbortedError } from "../runtime/turn-controller";
 import { runWithStreamingContext } from "../streaming-context";
-import type {
-	Character,
-	Memory,
-	Provider,
-	ProviderExecutionContext,
-	UUID,
+import {
+	type Character,
+	type Memory,
+	ModelType,
+	type Provider,
+	type ProviderExecutionContext,
+	type UUID,
 } from "../types";
 
 const ROOM_ID = "11111111-1111-1111-1111-111111111111" as UUID;
@@ -303,6 +305,116 @@ describe("composeState provider execution", () => {
 		} finally {
 			process.off("unhandledRejection", onUnhandled);
 		}
+	});
+
+	it("observes host cancellation through the merged owner inside a room turn", async () => {
+		const runtime = new AgentRuntime({
+			character: { name: "provider-merged-host-owner" } as Character,
+		});
+		const started = deferred();
+		runtime.registerProvider({
+			name: "HOST_CANCELLED",
+			get: async () => {
+				started.resolve();
+				return new Promise(() => {});
+			},
+		});
+		const hostController = new AbortController();
+		const message = makeMessage("18181818-1818-1818-1818-181818181818");
+
+		const compose = runtime.turnControllers.runWith(ROOM_ID, (roomSignal) =>
+			runWithStreamingContext(
+				{
+					onStreamChunk: async () => {},
+					abortSignal: AbortSignal.any([hostController.signal, roomSignal]),
+				},
+				() => runtime.composeState(message, ["HOST_CANCELLED"], true),
+			),
+		);
+		await started.promise;
+		hostController.abort("request disconnected");
+
+		const outcome = await Promise.race([
+			compose.catch((cause: unknown) => cause),
+			new Promise((resolve) => setTimeout(() => resolve("still waiting"), 250)),
+		]);
+		expect(outcome).toBeInstanceOf(TurnAbortedError);
+		expect((outcome as TurnAbortedError).reason).toBe("request disconnected");
+		expect(runtime.stateCache.has(message.id as string)).toBe(false);
+	});
+
+	it("keeps nested model work on the shared execution when its creator cancels", async () => {
+		const adapter = new InMemoryDatabaseAdapter();
+		await adapter.init();
+		const runtime = new AgentRuntime({
+			character: { name: "provider-nested-model-owner" } as Character,
+			adapter,
+		});
+		const modelStarted = deferred();
+		const releaseModel = deferred();
+		let nestedModelSignal: AbortSignal | undefined;
+		let providerCalls = 0;
+		runtime.registerModel(
+			ModelType.TEXT_SMALL,
+			async (_runtime, params: unknown) => {
+				const signal = (params as { signal?: AbortSignal }).signal;
+				nestedModelSignal = signal;
+				modelStarted.resolve();
+				return new Promise<string>((resolve, reject) => {
+					const rejectFromAbort = () => reject(signal?.reason);
+					if (signal?.aborted) {
+						rejectFromAbort();
+						return;
+					}
+					signal?.addEventListener("abort", rejectFromAbort, { once: true });
+					void releaseModel.promise.then(() => {
+						signal?.removeEventListener("abort", rejectFromAbort);
+						resolve("nested model result");
+					});
+				});
+			},
+			"provider-nested-model-test",
+		);
+		runtime.registerProvider({
+			name: "USES_MODEL",
+			get: async (providerRuntime) => {
+				providerCalls += 1;
+				const text = await providerRuntime.useModel(ModelType.TEXT_SMALL, {
+					prompt: "shared recall query",
+				});
+				return { text };
+			},
+		});
+		const message = makeMessage("19191919-1919-1919-1919-191919191919");
+		const creatorController = new AbortController();
+		const waiterController = new AbortController();
+		const creator = runWithStreamingContext(
+			{
+				onStreamChunk: async () => {},
+				abortSignal: creatorController.signal,
+			},
+			() => runtime.composeState(message, ["USES_MODEL"], true),
+		);
+		await modelStarted.promise;
+		const waiter = runWithStreamingContext(
+			{
+				onStreamChunk: async () => {},
+				abortSignal: waiterController.signal,
+			},
+			() => runtime.composeState(message, ["USES_MODEL"], true),
+		);
+		await new Promise<void>((resolve) => setImmediate(resolve));
+
+		creatorController.abort("creator disconnected");
+		const creatorOutcome = await creator.catch((cause: unknown) => cause);
+		expect(creatorOutcome).toBeInstanceOf(TurnAbortedError);
+		expect(nestedModelSignal?.aborted).toBe(false);
+
+		releaseModel.resolve();
+		const waiterState = await waiter;
+		expect(waiterState.text).toBe("nested model result");
+		expect(providerCalls).toBe(1);
+		await adapter.close();
 	});
 
 	it("does not start provider work for an owner that was already cancelled", async () => {

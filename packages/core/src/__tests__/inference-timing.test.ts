@@ -487,6 +487,7 @@ describe("emit + format + registry", () => {
 			expect.objectContaining({
 				providerName: "SLOW",
 				errors: 1,
+				deadlineExceeded: 0,
 				coalesced: 1,
 				execution: expect.objectContaining({ p95: 120 }),
 			}),
