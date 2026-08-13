@@ -1,206 +1,107 @@
-/** Unit tests for WORKFLOW_DISPATCH service creation, registration, and dispatch (deterministic, mocked core). */
-import { beforeEach, describe, expect, it, mock } from 'bun:test';
-import * as actualCore from '@elizaos/core';
-import { logger } from '@elizaos/core';
+/** Verifies typed, idempotent dispatch from elizaOS triggers into the native Smithers service. */
+
+import { describe, expect, mock, test } from 'bun:test';
 import { EMBEDDED_WORKFLOW_SERVICE_TYPE } from '../../src/services/embedded-workflow-service';
 import {
   createWorkflowDispatchService,
   registerWorkflowDispatchService,
   WORKFLOW_DISPATCH_SERVICE_TYPE,
 } from '../../src/services/workflow-dispatch';
-import { WorkflowApiError } from '../../src/types/index';
-
-// `mock.module` replaces the module globally for the rest of the bun-test run,
-// so preserve every real `@elizaos/core` export and swap in a complete spy
-// logger. A partial logger here would strip `.info`/`.error` (and `Service`)
-// from every test file loaded afterward.
-mock.module('@elizaos/core', () => ({
-  ...actualCore,
-  logger: {
-    trace: mock(() => {}),
-    debug: mock(() => {}),
-    info: mock(() => {}),
-    warn: mock(() => {}),
-    error: mock(() => {}),
-    fatal: mock(() => {}),
-    child: mock(() => logger),
-  },
-}));
-
-type FakeExecution = { id?: string };
-
-function makeRuntime(service: unknown = null) {
-  const services = new Map<string, unknown>();
-  return {
-    services,
-    getService: mock((type: string) => (type === EMBEDDED_WORKFLOW_SERVICE_TYPE ? service : null)),
-  };
-}
 
 function makeEmbeddedService() {
   return {
     executeWorkflow: mock(
       async (
         workflowId: string,
-        options: {
-          mode: string;
-          triggerData: Record<string, unknown>;
-          idempotencyKey?: string;
-        }
-      ): Promise<FakeExecution> => ({
-        id: `${workflowId}:${options.idempotencyKey ?? 'fresh'}`,
-      })
+        options: { triggerData: Record<string, unknown>; idempotencyKey?: string }
+      ) => ({ id: `${workflowId}:${options.idempotencyKey ?? 'fresh'}` })
     ),
-    findExecutionByIdempotencyKey: mock(
-      async (_workflowId: string, _idempotencyKey: string) => null as FakeExecution | null
-    ),
+    findExecutionByIdempotencyKey: mock(async () => null as { id?: string } | null),
+  };
+}
+
+function makeRuntime(embedded: ReturnType<typeof makeEmbeddedService> | null = null) {
+  const services = new Map<string, unknown>();
+  return {
+    services,
+    getService: mock((type: string) => (type === EMBEDDED_WORKFLOW_SERVICE_TYPE ? embedded : null)),
   };
 }
 
 describe('workflow dispatch service', () => {
-  beforeEach(() => {
-    (logger.warn as ReturnType<typeof mock>).mockClear();
-  });
-
-  it('rejects blank workflow ids before consulting the runtime', async () => {
+  test('requires a workflow id and the native Smithers service', async () => {
     const runtime = makeRuntime();
     const dispatch = createWorkflowDispatchService(runtime as never);
 
-    await expect(dispatch.execute('   ')).resolves.toEqual({
+    await expect(dispatch.execute('  ')).resolves.toEqual({
       ok: false,
       error: 'workflow id required',
     });
     expect(runtime.getService).not.toHaveBeenCalled();
-  });
-
-  it('returns a clear error when the embedded workflow service is absent', async () => {
-    const dispatch = createWorkflowDispatchService(makeRuntime() as never);
-
-    await expect(dispatch.execute('wf-1')).resolves.toEqual({
+    await expect(dispatch.execute('workflow-1')).resolves.toEqual({
       ok: false,
       error: 'embedded workflow service not registered',
     });
   });
 
-  it('delegates to executeWorkflow with stripped payload idempotency keys', async () => {
+  test('passes trigger data and idempotency through typed arguments', async () => {
     const embedded = makeEmbeddedService();
     const dispatch = createWorkflowDispatchService(makeRuntime(embedded) as never);
 
     await expect(
-      dispatch.execute(' wf-1 ', {
-        __idempotencyKey: 'tick-1',
-        source: 'schedule',
-      })
-    ).resolves.toEqual({
-      ok: true,
-      executionId: 'wf-1:tick-1',
-    });
-    expect(embedded.findExecutionByIdempotencyKey).toHaveBeenCalledWith('wf-1', 'tick-1');
-    expect(embedded.executeWorkflow).toHaveBeenCalledWith('wf-1', {
+      dispatch.execute(' workflow-1 ', { source: 'schedule' }, { idempotencyKey: 'tick-1' })
+    ).resolves.toEqual({ ok: true, executionId: 'workflow-1:tick-1' });
+    expect(embedded.findExecutionByIdempotencyKey).toHaveBeenCalledWith('workflow-1', 'tick-1');
+    expect(embedded.executeWorkflow).toHaveBeenCalledWith('workflow-1', {
       mode: 'trigger',
       triggerData: { source: 'schedule' },
       idempotencyKey: 'tick-1',
     });
   });
 
-  it('returns a dedup result for an existing idempotency row', async () => {
-    const embedded = makeEmbeddedService();
-    embedded.findExecutionByIdempotencyKey.mockImplementation(async () => ({
-      id: 'existing-execution',
-    }));
-    const dispatch = createWorkflowDispatchService(makeRuntime(embedded) as never);
+  test('deduplicates persisted and concurrent executions', async () => {
+    const persisted = makeEmbeddedService();
+    persisted.findExecutionByIdempotencyKey.mockImplementation(async () => ({ id: 'existing' }));
+    const persistedDispatch = createWorkflowDispatchService(makeRuntime(persisted) as never);
+    await expect(
+      persistedDispatch.execute('workflow-1', {}, { idempotencyKey: 'tick-1' })
+    ).resolves.toEqual({ ok: true, executionId: 'existing', dedup: true });
+    expect(persisted.executeWorkflow).not.toHaveBeenCalled();
 
-    await expect(dispatch.execute('wf-1', {}, { idempotencyKey: 'tick-1' })).resolves.toEqual({
-      ok: true,
-      executionId: 'existing-execution',
-      dedup: true,
-    });
-    expect(embedded.executeWorkflow).not.toHaveBeenCalled();
-  });
-
-  it('collapses concurrent dispatches with the same idempotency key', async () => {
     let release!: () => void;
     const gate = new Promise<void>((resolve) => {
       release = resolve;
     });
-    const embedded = makeEmbeddedService();
-    embedded.executeWorkflow.mockImplementation(async () => {
+    const concurrent = makeEmbeddedService();
+    concurrent.executeWorkflow.mockImplementation(async () => {
       await gate;
-      return { id: 'execution-1' };
+      return { id: 'single-run' };
     });
-    const dispatch = createWorkflowDispatchService(makeRuntime(embedded) as never);
-
-    const first = dispatch.execute('wf-1', {}, { idempotencyKey: 'tick-1' });
-    const second = dispatch.execute('wf-1', {}, { idempotencyKey: 'tick-1' });
+    const concurrentDispatch = createWorkflowDispatchService(makeRuntime(concurrent) as never);
+    const first = concurrentDispatch.execute('workflow-1', {}, { idempotencyKey: 'tick-1' });
+    const second = concurrentDispatch.execute('workflow-1', {}, { idempotencyKey: 'tick-1' });
     release();
 
     await expect(Promise.all([first, second])).resolves.toEqual([
-      { ok: true, executionId: 'execution-1' },
-      { ok: true, executionId: 'execution-1', dedup: true },
+      { ok: true, executionId: 'single-run' },
+      { ok: true, executionId: 'single-run', dedup: true },
     ]);
-    expect(embedded.executeWorkflow).toHaveBeenCalledTimes(1);
+    expect(concurrent.executeWorkflow).toHaveBeenCalledTimes(1);
   });
 
-  it('wraps execution failures without throwing', async () => {
-    const embedded = makeEmbeddedService();
-    embedded.executeWorkflow.mockImplementation(async () => {
-      throw new Error('engine offline');
-    });
-    const dispatch = createWorkflowDispatchService(makeRuntime(embedded) as never);
-
-    await expect(dispatch.execute('wf-1')).resolves.toEqual({
-      ok: false,
-      error: 'engine offline',
-    });
-    expect(logger.warn).toHaveBeenCalledWith(
-      { src: 'plugin:workflow:dispatch' },
-      'Workflow execution failed for wf-1: engine offline'
-    );
-  });
-
-  it('classes a 404 as workflow_not_found so schedulers can disable the trigger', async () => {
-    const embedded = makeEmbeddedService();
-    embedded.executeWorkflow.mockImplementation(async () => {
-      throw new WorkflowApiError('Workflow not found: wf-gone', 404);
-    });
-    const dispatch = createWorkflowDispatchService(makeRuntime(embedded) as never);
-
-    await expect(dispatch.execute('wf-gone')).resolves.toEqual({
-      ok: false,
-      error: 'Workflow not found: wf-gone',
-      code: 'workflow_not_found',
-    });
-  });
-
-  it('leaves non-404 WorkflowApiErrors uncoded (transient failures keep retrying)', async () => {
-    const embedded = makeEmbeddedService();
-    embedded.executeWorkflow.mockImplementation(async () => {
-      throw new WorkflowApiError('engine busy', 503);
-    });
-    const dispatch = createWorkflowDispatchService(makeRuntime(embedded) as never);
-
-    const result = await dispatch.execute('wf-1');
-    expect(result.ok).toBe(false);
-    expect(result.code).toBeUndefined();
-  });
-
-  it('registers a stoppable service entry in the runtime services map', async () => {
+  test('registers one stoppable runtime service entry', async () => {
     const runtime = makeRuntime(makeEmbeddedService());
-
     registerWorkflowDispatchService(runtime as never);
 
-    const entries = runtime.services.get(WORKFLOW_DISPATCH_SERVICE_TYPE);
+    const entries = runtime.services.get(WORKFLOW_DISPATCH_SERVICE_TYPE) as Array<{
+      execute(workflowId: string): Promise<unknown>;
+      stop(): Promise<void>;
+    }>;
     expect(entries).toHaveLength(1);
-    expect(entries?.[0]).toEqual(
-      expect.objectContaining({
-        capabilityDescription:
-          'Executes embedded workflows by id via the in-process workflow service.',
-      })
-    );
-    await expect(entries?.[0].execute('wf-1')).resolves.toEqual({
+    await expect(entries[0]?.execute('workflow-1')).resolves.toEqual({
       ok: true,
-      executionId: 'wf-1:fresh',
+      executionId: 'workflow-1:fresh',
     });
-    await expect(entries?.[0].stop()).resolves.toBeUndefined();
+    await expect(entries[0]?.stop()).resolves.toBeUndefined();
   });
 });

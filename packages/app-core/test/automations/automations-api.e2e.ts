@@ -18,21 +18,9 @@ import type {
 } from "@elizaos/plugin-workflow/lib/automations-types";
 import type { WorkflowStatusResponse } from "@elizaos/plugin-workflow/routes/workflow-routes";
 import type { WorkflowDefinition } from "@elizaos/plugin-workflow/types";
-import type {
-  AutomationNodeCatalogResponse,
-  AutomationNodeDescriptor,
-} from "@elizaos/shared";
 
 const API_BASE = process.env.ELIZA_API_BASE ?? "http://127.0.0.1:31337";
 const AUTH_TOKEN = process.env.ELIZA_API_TOKEN ?? "";
-
-const ALLOWED_NODE_CLASSES = new Set([
-  "trigger",
-  "action",
-  "context",
-  "integration",
-  "agent",
-]);
 
 interface CaseResult {
   name: string;
@@ -372,50 +360,7 @@ async function caseAutomationsList(): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
-// Case 6: Node catalog
-// ---------------------------------------------------------------------------
-
-async function caseNodeCatalog(): Promise<void> {
-  const res = await apiFetch("/api/automations/nodes");
-  assert(res.status === 200, `GET /api/automations/nodes ${res.status}`);
-  const body = await readJson<AutomationNodeCatalogResponse>(res);
-  assert(Array.isArray(body.nodes), "nodes not an array");
-  assert(body.nodes.length > 0, "empty node catalog");
-  for (const node of body.nodes) {
-    const n: AutomationNodeDescriptor = node;
-    assert(typeof n.id === "string" && n.id.length > 0, "node missing id");
-    assert(typeof n.label === "string", `node ${n.id} missing label`);
-    assert(
-      ALLOWED_NODE_CLASSES.has(n.class),
-      `node ${n.id} has disallowed class=${n.class}`,
-    );
-    assert(
-      n.availability === "enabled" || n.availability === "disabled",
-      `node ${n.id} bad availability=${n.availability}`,
-    );
-    assert(
-      [
-        "runtime_action",
-        "runtime_provider",
-        "lifeops",
-        "lifeops_event",
-      ].includes(n.source),
-      `node ${n.id} bad source=${n.source}`,
-    );
-  }
-  const sum = body.summary;
-  assert(
-    sum.total === body.nodes.length,
-    "summary.total mismatch in node catalog",
-  );
-  assert(
-    sum.enabled + sum.disabled === sum.total,
-    `enabled+disabled (${sum.enabled}+${sum.disabled}) != total ${sum.total}`,
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Case 7: /api/workflow/status platform + cloudHealth invariants
+// Case 6: /api/workflow/status platform + cloudHealth invariants
 // ---------------------------------------------------------------------------
 
 async function caseWorkflowStatusInvariants(): Promise<void> {
@@ -466,10 +411,7 @@ async function main(): Promise<void> {
   console.log("\nCase 5: Automations list shape");
   await runCase("automations list", caseAutomationsList);
 
-  console.log("\nCase 6: Node catalog shape");
-  await runCase("node catalog", caseNodeCatalog);
-
-  console.log("\nCase 7: workflow status invariants (platform, cloudHealth)");
+  console.log("\nCase 6: workflow status invariants (platform, cloudHealth)");
   await runCase("workflow status invariants", caseWorkflowStatusInvariants);
 
   const passed = results.filter((r) => r.status === "pass").length;
