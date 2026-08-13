@@ -65,30 +65,42 @@ const ADVANCED_CAPABILITY_SERVICE_BY_PLUGIN_ID: Partial<
 
 function createRuntimeSettingReader(
   runtime: AgentRuntime | null,
-): ((key: string) => string | undefined) | undefined {
-  if (!runtime || typeof (runtime as unknown as { getSetting?: unknown }).getSetting !== "function") {
+): ((key: string) => string | boolean | number | undefined) | undefined {
+  if (
+    !runtime ||
+    typeof (runtime as unknown as { getSetting?: unknown }).getSetting !==
+      "function"
+  ) {
     return undefined;
   }
   return (key: string) => {
     const value = (runtime as AgentRuntime).getSetting(key);
-    return typeof value === "string" && value.trim() ? value.trim() : undefined;
+    if (typeof value === "string") {
+      return value.trim() || undefined;
+    }
+    return typeof value === "boolean" || typeof value === "number"
+      ? value
+      : undefined;
   };
 }
 
-function resolvePluginServiceHealth(
+function resolveDiscordServiceHealth(
   runtime: AgentRuntime | null,
-  pluginId: string,
 ): boolean | null {
-  if (!runtime || typeof (runtime as unknown as { getService?: unknown }).getService !== "function") {
+  if (
+    !runtime ||
+    typeof (runtime as unknown as { getService?: unknown }).getService !==
+      "function"
+  ) {
     return null;
   }
-  const service = (runtime as AgentRuntime).getService(pluginId) as
-    | { isHealthy?: () => boolean }
-    | null;
+  const service = (runtime as AgentRuntime).getService("discord") as {
+    isHealthy?: () => boolean;
+  } | null;
   if (!service || typeof service.isHealthy !== "function") {
-    return null;
+    return false;
   }
-  return Boolean(service.isHealthy());
+  return service.isHealthy();
 }
 
 // ---------------------------------------------------------------------------
@@ -633,11 +645,15 @@ export async function handlePluginRoutes(
       for (const param of plugin.parameters) {
         const envValue = process.env[param.key]?.trim() || undefined;
         const runtimeValue = readRuntimeSetting?.(param.key);
-        const effectiveValue = runtimeValue ?? envValue;
-        // When runtime exists, getSetting is authoritative — connectors never fall through to process.env
-        const isSet = readRuntimeSetting ? Boolean(runtimeValue) : Boolean(envValue);
+        // When a runtime exists, getSetting is authoritative: connector
+        // services do not fall through to the process-wide environment.
+        const isSet = readRuntimeSetting
+          ? runtimeValue !== undefined
+          : Boolean(envValue);
         param.isSet = isSet;
-        const displayValue = effectiveValue ?? "";
+        const displayValue = String(
+          (readRuntimeSetting ? runtimeValue : envValue) ?? "",
+        );
         param.currentValue = isSet
           ? param.sensitive
             ? maskValue(displayValue)
@@ -647,8 +663,11 @@ export async function handlePluginRoutes(
       // Validate against effective isSet, not stale process.env. This keeps
       // `configured` honest when getSetting is empty but process.env is set (#18713).
       const validationErrors = plugin.parameters
-        .filter((p) => p.required && !p.isSet)
-        .map((p) => ({ field: p.key, message: `${p.key} is required but not set` }));
+        .filter((p) => p.required && !p.default && !p.isSet)
+        .map((p) => ({
+          field: p.key,
+          message: `${p.key} is required but not set`,
+        }));
       const validation = validatePluginConfig(
         plugin.id,
         plugin.category,
@@ -664,19 +683,26 @@ export async function handlePluginRoutes(
           default: p.default,
         })),
       );
-      // Merge format warnings from validatePluginConfig, but replace required errors with authoritative ones
+      // Format/default diagnostics remain warnings. Required-field errors use
+      // the authoritative runtime-backed presence calculated above.
       plugin.validationErrors = validationErrors;
       plugin.validationWarnings = validation.warnings;
       plugin.configured = validationErrors.length === 0;
     }
-    // Health gate: demote isActive when service reports unhealthy (Discord gateway never connected)
+    // A loaded Discord package is not an active connector until its service
+    // exists and the Discord client reports ready. Other plugins retain their
+    // existing loaded-package semantics; they do not share this health API.
     for (const plugin of allPlugins) {
-      if (!plugin.isActive) continue;
-      if (resolvePluginServiceHealth(state.runtime, plugin.id) === false) {
+      if (plugin.id !== "discord" || !plugin.isActive) continue;
+      if (resolveDiscordServiceHealth(state.runtime) === false) {
         plugin.isActive = false;
         plugin.validationWarnings = [
           ...(plugin.validationWarnings ?? []),
-          { message: "Service is loaded but reports unhealthy: the connection is not established. Check credentials and connectivity." },
+          {
+            field: "DISCORD_API_TOKEN",
+            message:
+              "Discord is loaded but not connected. Check credentials and connectivity.",
+          },
         ];
       }
     }
@@ -974,9 +1000,9 @@ export async function handlePluginRoutes(
         for (const param of plugin.parameters) {
           const rtVal = rtReader?.(param.key);
           const envVal = process.env[param.key]?.trim() || undefined;
-          const isSet = rtReader ? Boolean(rtVal) : Boolean(envVal);
+          const isSet = rtReader ? rtVal !== undefined : Boolean(envVal);
           param.isSet = isSet;
-          const eff = rtVal ?? envVal ?? "";
+          const eff = String((rtReader ? rtVal : envVal) ?? "");
           param.currentValue = isSet
             ? param.sensitive
               ? maskValue(eff)
@@ -984,15 +1010,21 @@ export async function handlePluginRoutes(
             : null;
         }
         const errs = plugin.parameters
-          .filter((p) => p.required && !p.isSet)
-          .map((p) => ({ field: p.key, message: `${p.key} is required but not set` }));
+          .filter((p) => p.required && !p.default && !p.isSet)
+          .map((p) => ({
+            field: p.key,
+            message: `${p.key} is required but not set`,
+          }));
         plugin.validationErrors = errs;
         plugin.configured = errs.length === 0;
       } else {
         // No config touched, but still recompute configured from current isSet
         const errs = plugin.parameters
-          .filter((p) => p.required && !p.isSet)
-          .map((p) => ({ field: p.key, message: `${p.key} is required but not set` }));
+          .filter((p) => p.required && !p.default && !p.isSet)
+          .map((p) => ({
+            field: p.key,
+            message: `${p.key} is required but not set`,
+          }));
         if (errs.length > 0) plugin.validationErrors = errs;
         plugin.configured = (plugin.validationErrors?.length ?? 0) === 0;
       }
@@ -1014,8 +1046,8 @@ export async function handlePluginRoutes(
     for (const param of plugin.parameters) {
       const rtVal = rtReader2?.(param.key);
       const envVal = process.env[param.key]?.trim() || undefined;
-      param.isSet = rtReader2 ? Boolean(rtVal) : Boolean(envVal);
-      const eff = rtVal ?? envVal ?? "";
+      param.isSet = rtReader2 ? rtVal !== undefined : Boolean(envVal);
+      const eff = String((rtReader2 ? rtVal : envVal) ?? "");
       param.currentValue = param.isSet
         ? param.sensitive
           ? maskValue(eff)
@@ -1023,8 +1055,11 @@ export async function handlePluginRoutes(
         : null;
     }
     const requiredErrs = plugin.parameters
-      .filter((p) => p.required && !p.isSet)
-      .map((p) => ({ field: p.key, message: `${p.key} is required but not set` }));
+      .filter((p) => p.required && !p.default && !p.isSet)
+      .map((p) => ({
+        field: p.key,
+        message: `${p.key} is required but not set`,
+      }));
     // Preserve format warnings from validatePluginConfig but use authoritative required errors
     const refreshParamInfos: PluginParamInfo[] = plugin.parameters.map((p) => ({
       key: p.key,
