@@ -159,7 +159,11 @@ describe("Cloud CF PR preview workflow contract", () => {
 
   test("keeps PR builds reachable and gates canonical Pages on the API", () => {
     const buildJob = producer.jobs?.["build-pages"];
-    expect(buildJob?.needs).toBe("migrate-db");
+    expect(buildJob?.needs).toEqual([
+      "migrate-db",
+      "resolve-pages-environment-config",
+      "resolve-pages-preview-config",
+    ]);
     expect(buildJob?.if).toContain(
       "github.event_name == 'pull_request' && needs.migrate-db.result == 'skipped'",
     );

@@ -5,5 +5,6 @@ export {
   embeddedExecutions,
   embeddedTags,
   embeddedWorkflows,
+  workflowRevisions,
   workflowSchema,
 } from './schema';

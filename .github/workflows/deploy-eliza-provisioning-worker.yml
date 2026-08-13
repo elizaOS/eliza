@@ -43,10 +43,10 @@ on:
         required: false
         type: string
 
-# Per-env concurrency: a develop push (staging) and a main push (production)
-# can deploy in parallel without one cancelling the other.
+# Per-run admission so two dispatches of the same SHA both reach
+# determine-env (#18092). The deploy job is the SSH critical section.
 concurrency:
-  group: deploy-eliza-provisioning-worker-${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'production' || 'staging') }}
+  group: deploy-eliza-provisioning-worker-${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'production' || 'staging') }}-${{ format('run-{0}', github.run_id) }}
   cancel-in-progress: false
 
 # Default to least privilege. Override per-job where needed.
@@ -115,6 +115,10 @@ jobs:
     name: Deploy worker to Hetzner host (${{ needs.determine-env.outputs.environment }} @ ${{ needs.determine-env.outputs.deployment_sha }})
     runs-on: [self-hosted, Linux, X64]
     needs: determine-env
+    concurrency:
+      group: deploy-eliza-provisioning-worker-mutate-${{ needs.determine-env.outputs.environment }}
+      cancel-in-progress: false
+      queue: max
     environment: ${{ needs.determine-env.outputs.environment }}
     # The three bounded remote phases (5m prerequisites, 20m deploy, 5m health)
     # can each use their ceiling without the enclosing job becoming the first
@@ -546,19 +550,21 @@ jobs:
             sudo systemctl restart eliza-agent-router.service
             echo "=== Restart issued for both daemons ==="
 
-            # The canonical edge origin must terminate in the same nginx vhost
-            # as the legacy control-plane hostname. Without this alias, nginx
+            # The canonical edge origin must terminate in the nginx vhost that
+            # proxies the agent-router daemon. Without this alias, nginx
             # serves its default blank web shell with HTTP 200; lifecycle calls
             # then parse HTML as a snapshot and safe restarts wedge. Amend the
             # existing, operator-reviewed router vhost rather than creating a
             # second listener or certificate configuration.
             mapfile -t router_vhosts < <(
               sudo grep -RIl \
-                "server_name.*${LEGACY_AGENT_ROUTER_PUBLIC_HOST}" \
-                /etc/nginx 2>/dev/null || true
+                'proxy_pass[[:space:]]\+http://127\.0\.0\.1:3458' \
+                /etc/nginx/sites-enabled /etc/nginx/conf.d 2>/dev/null \
+                | xargs -r readlink -f \
+                | sort -u
             )
             if [ "${#router_vhosts[@]}" -eq 0 ]; then
-              echo "::error::No nginx vhost owns legacy agent-router host ${LEGACY_AGENT_ROUTER_PUBLIC_HOST}"
+              echo "::error::No enabled nginx vhost proxies the agent-router upstream on 127.0.0.1:3458"
               exit 1
             fi
             for vhost in "${router_vhosts[@]}"; do
@@ -566,13 +572,25 @@ jobs:
                 continue
               fi
               sudo sed -Ei \
-                "/server_name[^;]*${LEGACY_AGENT_ROUTER_PUBLIC_HOST}/ s/[[:space:]]*;/ ${AGENT_ROUTER_PUBLIC_HOST};/" \
+                "/server_name[^;]*;/ s/[[:space:]]*;/ ${AGENT_ROUTER_PUBLIC_HOST};/" \
                 "$vhost"
             done
             sudo nginx -t
             sudo systemctl reload nginx
-            curl -fsS "https://${AGENT_ROUTER_PUBLIC_HOST}/healthz" \
-              | grep -Eq '"ok"[[:space:]]*:[[:space:]]*true'
+            canonical_router_ready=false
+            for attempt in $(seq 1 30); do
+              if curl -fsS "https://${AGENT_ROUTER_PUBLIC_HOST}/healthz" \
+                | grep -Eq '"ok"[[:space:]]*:[[:space:]]*true'; then
+                canonical_router_ready=true
+                break
+              fi
+              echo "Canonical agent-router health not ready (attempt ${attempt}/30)"
+              sleep 2
+            done
+            if [ "$canonical_router_ready" != "true" ]; then
+              echo "::error::Canonical agent-router did not return JSON health after 30 attempts"
+              exit 1
+            fi
             echo "Verified canonical agent-router nginx host alias: ${AGENT_ROUTER_PUBLIC_HOST}"
 
       - name: Health check

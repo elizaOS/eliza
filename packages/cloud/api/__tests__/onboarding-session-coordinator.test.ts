@@ -166,7 +166,11 @@ function turn(
   sessionId: string,
   message: string,
   idempotencyKey: string,
-  authenticatedUser?: { userId: string; organizationId: string },
+  authenticatedUser?: {
+    userId: string;
+    organizationId: string;
+    discordId?: string;
+  },
 ): Promise<Response> {
   return coordinator.fetch(
     new Request("https://onboarding.test/turn", {
@@ -182,6 +186,36 @@ function turn(
           trustedPlatformIdentity: true,
           idempotencyKey,
           authenticatedUser,
+        },
+      }),
+    }),
+  );
+}
+
+function browserDiscordTurn(
+  coordinator: OnboardingSessionCoordinator,
+  sessionId: string,
+  message: string,
+  idempotencyKey: string,
+  discordId: string,
+): Promise<Response> {
+  return coordinator.fetch(
+    new Request("https://onboarding.test/turn", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        sessionId,
+        input: {
+          sessionId,
+          message,
+          platform: "web",
+          trustedPlatformIdentity: false,
+          idempotencyKey,
+          authenticatedUser: {
+            userId: "user-a",
+            organizationId: "org-a",
+            discordId,
+          },
         },
       }),
     }),
@@ -336,7 +370,7 @@ describe("OnboardingSessionCoordinator", () => {
     );
     const scope = `platform:${encodeURIComponent(harness.sessionId)}`;
     const replayKey = `replay:${scope}:${encodeURIComponent(
-      "standard:no-telegram:discord:message-1",
+      "standard:no-telegram:no-discord:discord:message-1",
     )}`;
     const storage = harness.storageFor(harness.sessionId);
     const stored = await storage.get<{ expiresAt: number }>(replayKey);
@@ -367,7 +401,7 @@ describe("OnboardingSessionCoordinator", () => {
     );
     const scope = `platform:${encodeURIComponent(harness.sessionId)}`;
     const replayKey = `replay:${scope}:${encodeURIComponent(
-      "standard:no-telegram:discord:message-1",
+      "standard:no-telegram:no-discord:discord:message-1",
     )}`;
     const storage = harness.storageFor(harness.sessionId);
     const stored = await storage.get<{ expiresAt: number }>(replayKey);
@@ -504,12 +538,12 @@ describe("OnboardingSessionCoordinator", () => {
     ).toMatchObject({ userId: "user-b" });
     expect(
       await storage.get(
-        `replay:${accountAScope}:${encodeURIComponent("standard:no-telegram:discord:message-1")}`,
+        `replay:${accountAScope}:${encodeURIComponent("standard:no-telegram:no-discord:discord:message-1")}`,
       ),
     ).toBeDefined();
     expect(
       await storage.get(
-        `replay:${accountBScope}:${encodeURIComponent("standard:no-telegram:discord:message-1")}`,
+        `replay:${accountBScope}:${encodeURIComponent("standard:no-telegram:no-discord:discord:message-1")}`,
       ),
     ).toBeDefined();
 
@@ -523,6 +557,43 @@ describe("OnboardingSessionCoordinator", () => {
       ),
     );
     expect(replay).toEqual(first);
+  });
+
+  test("never replays an accepted browser turn across signed Discord identities", async () => {
+    const harness = createCoordinatorHarness();
+    await turn(
+      harness.coordinator,
+      harness.sessionId,
+      "My name is Sam",
+      "discord:message-1",
+    );
+    const platformUserId = harness.sessionId.slice("platform:discord:".length);
+    const accepted = await browserDiscordTurn(
+      harness.coordinator,
+      harness.sessionId,
+      "Continue",
+      "browser:continue",
+      platformUserId,
+    );
+    expect(accepted.status).toBe(200);
+
+    const mismatch = await browserDiscordTurn(
+      harness.coordinator,
+      harness.sessionId,
+      "must not replay",
+      "browser:continue",
+      "different-discord-user",
+    );
+    expect(mismatch.status).toBe(500);
+    expect((await mismatch.json()) as unknown).toEqual({
+      error:
+        "The authenticated messaging identity does not match this onboarding session",
+      code: "ONBOARDING_PLATFORM_IDENTITY_MISMATCH",
+      context: {
+        platform: "discord",
+        hasSignedPlatformIdentity: true,
+      },
+    });
   });
 
   test("inspects the exact session before and after account-scope migration", async () => {

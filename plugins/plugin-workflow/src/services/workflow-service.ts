@@ -14,6 +14,7 @@ import type {
   WorkflowRevision,
 } from '../types/index';
 import { WorkflowApiError } from '../types/index';
+import { getLocalOwnerEntityId } from '../utils/context';
 import {
   EMBEDDED_WORKFLOW_SERVICE_TYPE,
   type EmbeddedWorkflowService,
@@ -33,6 +34,8 @@ export interface WorkflowGenerationOptions {
   triggerContext?: TriggerContext;
   existingWorkflow?: WorkflowDefinitionResponse;
 }
+
+const OWNER_METADATA_KEY = 'elizaOwnerEntityId';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -107,7 +110,7 @@ Source contract:
 - Use Smithers Workflow, Task, Sequence, Parallel, Branch, Loop, Approval, Signal, Timer, UI, and TUI primitives as appropriate.
 - Make Task ids stable and identical to ids in steps.
 - Include a UI component and widget manifest when the workflow has useful interactive output.
-- Do not use Smithers Gateway, gateway-react, gateway-ui, HTTP calls to a Smithers server, n8n concepts, node catalogs, or legacy Smithers package names.
+- Do not use Smithers Gateway, gateway-react, gateway-ui, HTTP calls to a Smithers server, foreign workflow concepts, node catalogs, or legacy Smithers package names.
 - Do not use placeholders for the workflow logic. The module must run.
 
 Return JSON only.`;
@@ -131,6 +134,51 @@ export class WorkflowService extends Service {
     );
     if (!service) throw new WorkflowApiError('Smithers workflow runtime is unavailable', 503);
     return service;
+  }
+
+  private ownerOf(workflow: WorkflowDefinition): string | null {
+    const value = workflow.metadata?.[OWNER_METADATA_KEY];
+    return typeof value === 'string' && value.trim() ? value.trim() : null;
+  }
+
+  private isOwnedBy(workflow: WorkflowDefinition, ownerEntityId: string): boolean {
+    const owner = this.ownerOf(workflow);
+    if (owner) return owner === ownerEntityId;
+    return ownerEntityId === getLocalOwnerEntityId(this.runtime);
+  }
+
+  private publicWorkflow(workflow: WorkflowDefinitionResponse): WorkflowDefinitionResponse {
+    if (!workflow.metadata || !(OWNER_METADATA_KEY in workflow.metadata)) return workflow;
+    const { [OWNER_METADATA_KEY]: _owner, ...metadata } = workflow.metadata;
+    return {
+      ...workflow,
+      metadata: Object.keys(metadata).length > 0 ? metadata : undefined,
+    };
+  }
+
+  private requireOwned(
+    workflow: WorkflowDefinitionResponse,
+    ownerEntityId?: string
+  ): WorkflowDefinitionResponse {
+    if (!ownerEntityId || this.isOwnedBy(workflow, ownerEntityId)) {
+      return this.publicWorkflow(workflow);
+    }
+    throw new WorkflowApiError(`Workflow not found: ${workflow.id}`, 404);
+  }
+
+  private ownedDefinition(workflow: WorkflowDefinition, ownerEntityId: string): WorkflowDefinition {
+    return {
+      ...workflow,
+      metadata: { ...(workflow.metadata ?? {}), [OWNER_METADATA_KEY]: ownerEntityId },
+    };
+  }
+
+  private async requireExecutionOwner(
+    execution: WorkflowExecution,
+    ownerEntityId?: string
+  ): Promise<WorkflowExecution> {
+    if (ownerEntityId) await this.getWorkflow(execution.workflowId, ownerEntityId);
+    return execution;
   }
 
   async generateWorkflowDraft(
@@ -161,15 +209,20 @@ export class WorkflowService extends Service {
 
   async deployWorkflow(
     workflow: WorkflowDefinition,
-    _ownerEntityId: string,
+    ownerEntityId: string,
     options: { activate?: boolean } = {}
   ): Promise<WorkflowCreationResult> {
-    const deployed = workflow.id
-      ? await this.embedded().updateWorkflow(workflow.id, workflow)
-      : await this.embedded().createWorkflow({
-          ...workflow,
-          active: options.activate ?? workflow.active ?? false,
-        });
+    const owned = this.ownedDefinition(workflow, ownerEntityId);
+    let deployed: WorkflowDefinitionResponse;
+    if (workflow.id) {
+      await this.getWorkflow(workflow.id, ownerEntityId);
+      deployed = await this.embedded().updateWorkflow(workflow.id, owned);
+    } else {
+      deployed = await this.embedded().createWorkflow({
+        ...owned,
+        active: options.activate ?? workflow.active ?? false,
+      });
+    }
     if (options.activate === true && !deployed.active)
       await this.embedded().activateWorkflow(deployed.id);
     if (options.activate === false && deployed.active)
@@ -182,8 +235,12 @@ export class WorkflowService extends Service {
     };
   }
 
-  async listWorkflows(_ownerEntityId?: string): Promise<WorkflowDefinitionResponse[]> {
-    return (await this.embedded().listWorkflows()).data;
+  async listWorkflows(ownerEntityId?: string): Promise<WorkflowDefinitionResponse[]> {
+    const workflows = (await this.embedded().listWorkflows()).data;
+    const owned = ownerEntityId
+      ? workflows.filter((workflow) => this.isOwnedBy(workflow, ownerEntityId))
+      : workflows;
+    return owned.map((workflow) => this.publicWorkflow(workflow));
   }
 
   async searchWorkflows(
@@ -206,67 +263,90 @@ export class WorkflowService extends Service {
       .map(({ workflow }) => workflow);
   }
 
-  async getWorkflow(id: string, _ownerEntityId?: string): Promise<WorkflowDefinitionResponse> {
-    return this.embedded().getWorkflow(id);
+  async getWorkflow(id: string, ownerEntityId?: string): Promise<WorkflowDefinitionResponse> {
+    return this.requireOwned(await this.embedded().getWorkflow(id), ownerEntityId);
   }
 
   async updateWorkflow(
     id: string,
     workflow: WorkflowDefinition,
-    _ownerEntityId?: string
+    ownerEntityId?: string
   ): Promise<WorkflowDefinitionResponse> {
-    return this.embedded().updateWorkflow(id, workflow);
+    const current = await this.embedded().getWorkflow(id);
+    this.requireOwned(current, ownerEntityId);
+    const owner = ownerEntityId ?? this.ownerOf(current);
+    return this.publicWorkflow(
+      await this.embedded().updateWorkflow(
+        id,
+        owner ? this.ownedDefinition(workflow, owner) : workflow
+      )
+    );
   }
 
-  async deleteWorkflow(id: string, _ownerEntityId?: string): Promise<void> {
+  async deleteWorkflow(id: string, ownerEntityId?: string): Promise<void> {
+    await this.getWorkflow(id, ownerEntityId);
     return this.embedded().deleteWorkflow(id);
   }
 
-  async activateWorkflow(id: string, _ownerEntityId?: string): Promise<WorkflowDefinitionResponse> {
-    return this.embedded().activateWorkflow(id);
+  async activateWorkflow(id: string, ownerEntityId?: string): Promise<WorkflowDefinitionResponse> {
+    await this.getWorkflow(id, ownerEntityId);
+    return this.publicWorkflow(await this.embedded().activateWorkflow(id));
   }
 
   async deactivateWorkflow(
     id: string,
-    _ownerEntityId?: string
+    ownerEntityId?: string
   ): Promise<WorkflowDefinitionResponse> {
-    return this.embedded().deactivateWorkflow(id);
+    await this.getWorkflow(id, ownerEntityId);
+    return this.publicWorkflow(await this.embedded().deactivateWorkflow(id));
   }
 
   async startWorkflow(
     id: string,
-    options: ExecuteWorkflowOptions = {}
+    options: ExecuteWorkflowOptions = {},
+    ownerEntityId?: string
   ): Promise<WorkflowExecution> {
+    await this.getWorkflow(id, ownerEntityId);
     return this.embedded().startWorkflow(id, options);
   }
 
   async executeWorkflow(
     id: string,
-    options: ExecuteWorkflowOptions = {}
+    options: ExecuteWorkflowOptions = {},
+    ownerEntityId?: string
   ): Promise<WorkflowExecution> {
+    await this.getWorkflow(id, ownerEntityId);
     return this.embedded().executeWorkflow(id, options);
   }
 
   async getWorkflowExecutions(
     id: string,
     limit = 20,
-    _ownerEntityId?: string
+    ownerEntityId?: string
   ): Promise<WorkflowExecution[]> {
+    await this.getWorkflow(id, ownerEntityId);
     return (await this.embedded().listExecutions({ workflowId: id, limit })).data;
   }
 
   async listExecutions(
     params: { workflowId?: string; limit?: number } = {},
-    _ownerEntityId?: string
+    ownerEntityId?: string
   ): Promise<{ data: WorkflowExecution[] }> {
-    return this.embedded().listExecutions(params);
+    if (params.workflowId) await this.getWorkflow(params.workflowId, ownerEntityId);
+    const result = await this.embedded().listExecutions(params);
+    if (!ownerEntityId || params.workflowId) return result;
+    const workflowIds = new Set(
+      (await this.listWorkflows(ownerEntityId)).map((workflow) => workflow.id)
+    );
+    return { data: result.data.filter((execution) => workflowIds.has(execution.workflowId)) };
   }
 
-  async getExecutionDetail(id: string, _ownerEntityId?: string): Promise<WorkflowExecution> {
-    return this.embedded().getExecution(id);
+  async getExecutionDetail(id: string, ownerEntityId?: string): Promise<WorkflowExecution> {
+    return this.requireExecutionOwner(await this.embedded().getExecution(id), ownerEntityId);
   }
 
-  async cancelExecution(id: string, _ownerEntityId?: string): Promise<WorkflowExecution> {
+  async cancelExecution(id: string, ownerEntityId?: string): Promise<WorkflowExecution> {
+    await this.getExecutionDetail(id, ownerEntityId);
     return this.embedded().cancelExecution(id);
   }
 
@@ -277,6 +357,7 @@ export class WorkflowService extends Service {
     approved: boolean,
     options: { note?: string; decidedBy?: string; decision?: unknown } = {}
   ): Promise<WorkflowExecution> {
+    if (options.decidedBy) await this.getExecutionDetail(runId, options.decidedBy);
     return this.embedded().decideApproval(runId, nodeId, iteration, approved, options);
   }
 
@@ -286,23 +367,26 @@ export class WorkflowService extends Service {
     payload: unknown,
     receivedBy?: string
   ): Promise<WorkflowExecution> {
+    if (receivedBy) await this.getExecutionDetail(runId, receivedBy);
     return this.embedded().signalExecution(runId, signal, payload, receivedBy);
   }
 
   async getWorkflowRevisions(
     id: string,
     limit = 20,
-    _ownerEntityId?: string
+    ownerEntityId?: string
   ): Promise<WorkflowRevision[]> {
+    await this.getWorkflow(id, ownerEntityId);
     return (await this.embedded().listWorkflowRevisions(id, limit)).data;
   }
 
   async restoreWorkflowRevision(
     id: string,
     versionId: string,
-    _ownerEntityId?: string
+    ownerEntityId?: string
   ): Promise<WorkflowDefinitionResponse> {
-    return this.embedded().restoreWorkflowRevision(id, versionId);
+    await this.getWorkflow(id, ownerEntityId);
+    return this.publicWorkflow(await this.embedded().restoreWorkflowRevision(id, versionId));
   }
 
   async getWorkflowEvaluationSuite(

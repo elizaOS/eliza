@@ -67,6 +67,7 @@ import {
 import { parseClampedInteger } from "@elizaos/shared/utils/number-parsing";
 import { type WebSocket, WebSocketServer } from "ws";
 import { installPlugin as installPluginDirect } from "../services/plugin-installer.ts";
+import { writeAgentBackupJsonResponse } from "./backup-json-response.ts";
 import { handleStandaloneCloudPairRoute } from "./cloud-pair-route.ts";
 import { handlePluginDirectoryRoutes } from "./plugin-directory-routes.ts";
 
@@ -1836,7 +1837,7 @@ async function handleRequest(
     }
     try {
       const snapshot = await createAgentSnapshot(state.runtime, state.config);
-      json(res, snapshot);
+      await writeAgentBackupJsonResponse(res, snapshot);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       if (message === PGLITE_SNAPSHOT_UNAVAILABLE_TRANSIENT) {
@@ -1858,6 +1859,12 @@ async function handleRequest(
         return;
       }
       logger.error({ err: message }, "[agent-backup] Snapshot failed");
+      if (res.headersSent) {
+        // error-policy:J1 Streaming may fail after the response is committed;
+        // terminate that transport instead of appending a false JSON error.
+        res.destroy(err instanceof Error ? err : new Error(message));
+        return;
+      }
       error(res, message, 500);
     }
     return;

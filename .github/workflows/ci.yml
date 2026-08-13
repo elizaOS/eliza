@@ -14,8 +14,12 @@ on:
   workflow_call:
   workflow_dispatch:
 
+# A manual run is a diagnostic: it must not share the push ref group, or a
+# develop push storm parks it `pending` forever and then supersedes it, so
+# branch health can never be read on demand. Give workflow_dispatch its own
+# run-scoped identity — the same shape test.yml already uses.
 concurrency:
-  group: ci-${{ github.event.pull_request.number || github.ref || github.run_id }}
+  group: ci-${{ github.event_name == 'workflow_dispatch' && format('dispatch-{0}', github.run_id) || github.event.pull_request.number || github.ref || github.run_id }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'push' }}
 
 permissions:

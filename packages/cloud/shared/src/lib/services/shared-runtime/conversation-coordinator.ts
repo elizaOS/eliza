@@ -13,7 +13,7 @@ import { logger } from "../../utils/logger";
 import type { BridgeRequest, BridgeResponse } from "../eliza-sandbox-bridge";
 import type { SharedTurnMessage } from "./run-shared-agent-turn";
 import type { BridgeExecutionContext } from "./shared-runtime-chat";
-import { SharedRuntimeCacheWarmingError } from "./shared-runtime-errors";
+import { SharedRuntimeCacheWarmingError, SharedTurnConflictError } from "./shared-runtime-errors";
 
 export interface SharedConversationCoordinatorOptions {
   namespace: RuntimeDurableObjectNamespace;
@@ -99,6 +99,13 @@ async function requireCoordinatorResponse(response: Response, surface: string): 
   // route/stream callers translate it to their canonical 402 instead of a 500.
   if (response.status === 402) {
     throw new InsufficientCreditsError((await readErrorMessage()) ?? "Insufficient credits");
+  }
+  // A reused clientMessageId with a different payload is a structured 409 from
+  // the Durable Object claim boundary; rehydrate the typed error so routes can
+  // render the canonical non-retryable conflict instead of a 500.
+  if (response.status === 409) {
+    const message = await readErrorMessage();
+    throw message ? new SharedTurnConflictError(message) : new SharedTurnConflictError();
   }
   if (response.status === 429) {
     const retryAfter = Number.parseInt(response.headers.get("Retry-After") ?? "", 10);
