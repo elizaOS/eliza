@@ -28,6 +28,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, mock, test } from "bun:test";
 import * as realViem from "viem";
 import * as realViemAccounts from "viem/accounts";
+import { base } from "viem/chains";
 import * as realCloudBindings from "../../runtime/cloud-bindings";
 
 process.env.DATABASE_URL = "pglite://memory";
@@ -74,7 +75,9 @@ mock.module("../../runtime/cloud-bindings", () => ({
 }));
 
 mock.module("../../config/evm-rpc", () => ({
-  resolveEvmRpc: () => ({ source: "test", url: "https://rpc.test.invalid" }),
+  listEvmPayoutNetworks: () => ["ethereum", "base", "bnb"],
+  payoutEvmChain: () => base,
+  resolvePayoutEvmRpc: () => ({ source: "test", url: "https://rpc.test.invalid" }),
 }));
 
 // Spread the real viem module (token-constants pulls parseAbi, parseUnits, …

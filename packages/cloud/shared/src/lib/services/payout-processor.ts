@@ -53,9 +53,9 @@ import { redeemableEarnings, redeemableEarningsLedger } from "../../db/schemas/r
 import { tokenRedemptions } from "../../db/schemas/token-redemptions";
 import {
   type EvmPayoutNetwork,
-  evmChain,
   listEvmPayoutNetworks,
-  resolveEvmRpc,
+  payoutEvmChain,
+  resolvePayoutEvmRpc,
 } from "../config/evm-rpc";
 import { getMonitoringPayoutAsset, getPayoutTokenConfig } from "../config/payout-assets";
 import { ERC20_ABI } from "../config/token-constants";
@@ -723,7 +723,7 @@ export class PayoutProcessorService {
       };
     }
 
-    const chain = evmChain(network as EvmPayoutNetwork);
+    const chain = payoutEvmChain(network as EvmPayoutNetwork);
     if (!chain) {
       return {
         success: false,
@@ -747,7 +747,7 @@ export class PayoutProcessorService {
 
     const account = privateKeyToAccount(this.evmPrivateKey);
 
-    const { url: rpcUrl } = resolveEvmRpc(network as EvmPayoutNetwork);
+    const { url: rpcUrl } = resolvePayoutEvmRpc(network as EvmPayoutNetwork);
     const publicClient = createPublicClient({
       chain,
       transport: http(rpcUrl),
@@ -1285,10 +1285,10 @@ export class PayoutProcessorService {
         // advertised a different asset and network than the payout rail.
         const tokenConfig = getPayoutTokenConfig(network as SupportedNetwork, monitoringAsset);
         const tokenAddress = tokenConfig.address as Address;
-        const chain = evmChain(network);
+        const chain = payoutEvmChain(network);
         const decimals = tokenConfig.decimals;
 
-        const { url: rpcUrl } = resolveEvmRpc(network);
+        const { url: rpcUrl } = resolvePayoutEvmRpc(network);
         const publicClient = createPublicClient({
           chain,
           transport: http(rpcUrl),

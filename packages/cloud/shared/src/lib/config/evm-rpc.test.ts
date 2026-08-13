@@ -1,7 +1,13 @@
 // Exercises evm rpc behavior with deterministic cloud-shared lib fixtures.
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 
-import { listEvmPayoutNetworks, resolveEvmRpc } from "./evm-rpc";
+import {
+  listEvmPayoutNetworks,
+  payoutEvmChain,
+  resolveEvmRpc,
+  resolvePayoutEvmRpc,
+} from "./evm-rpc";
+import { getPayoutTokenConfig, USDC_TESTNET_TOKEN_ADDRESSES } from "./payout-assets";
 
 const ENV_KEYS = [
   "CRYPTO_DIRECT_ETHEREUM_RPC_URL",
@@ -15,6 +21,10 @@ const ENV_KEYS = [
   "X402_BSC_RPC_URL",
   "ALCHEMY_API_KEY",
   "INFURA_API_KEY",
+  "PAYOUT_TESTNET",
+  "SEPOLIA_RPC_URL",
+  "BASE_SEPOLIA_RPC_URL",
+  "BNB_TESTNET_RPC_URL",
 ];
 
 function clearEnv() {
@@ -72,5 +82,33 @@ describe("resolveEvmRpc", () => {
 
   test("listEvmPayoutNetworks returns all three EVM networks", () => {
     expect(listEvmPayoutNetworks()).toEqual(["ethereum", "base", "bnb"]);
+  });
+
+  test("shared resolver remains mainnet-only when payout testnet mode is enabled", () => {
+    process.env.PAYOUT_TESTNET = "true";
+    process.env.BASE_RPC_URL = "https://mainnet.example/base";
+    process.env.BASE_SEPOLIA_RPC_URL = "https://testnet.example/base";
+
+    expect(resolveEvmRpc("base")).toEqual({
+      url: "https://mainnet.example/base",
+      source: "explicit",
+    });
+  });
+
+  test("Base staging payout chain, RPC, and USDC contract resolve coherently", () => {
+    process.env.PAYOUT_TESTNET = "true";
+    process.env.BASE_RPC_URL = "https://mainnet.example/base";
+    process.env.BASE_SEPOLIA_RPC_URL = "https://testnet.example/base";
+
+    expect(payoutEvmChain("base").id).toBe(84532);
+    expect(resolvePayoutEvmRpc("base")).toEqual({
+      url: "https://testnet.example/base",
+      source: "explicit",
+    });
+
+    const token = getPayoutTokenConfig("base", "usdc");
+    expect(token.address).toBe(USDC_TESTNET_TOKEN_ADDRESSES.base);
+    expect(token.address).toBe("0x036CbD53842c5426634e7929541eC2318f3dCF7e");
+    expect(token.decimals).toBe(6);
   });
 });

@@ -8,18 +8,11 @@
 import { type Address, createPublicClient, http, parseAbi } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { shouldBlockPayoutAssumeOperational } from "../config/deployment-environment";
-import {
-  type EvmPayoutNetwork,
-  evmChain,
-  resolveEvmRpc,
-} from "../config/evm-rpc";
-import {
-  getMonitoringPayoutAsset,
-  getPayoutTokenConfig,
-} from "../config/payout-assets";
+import { type EvmPayoutNetwork, payoutEvmChain, resolvePayoutEvmRpc } from "../config/evm-rpc";
+import { getMonitoringPayoutAsset, getPayoutTokenConfig } from "../config/payout-assets";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import { logger } from "../utils/logger";
-import { type SupportedNetwork } from "./eliza-token-price";
+import type { SupportedNetwork } from "./eliza-token-price";
 
 // ============================================================================
 // TYPES
@@ -437,16 +430,17 @@ class PayoutStatusService {
       };
     }
 
-    const tokenAddress = ELIZA_TOKEN_ADDRESSES[network] as Address;
-    const decimals = ELIZA_DECIMALS[network];
+    const tokenConfig = getPayoutTokenConfig(network, getMonitoringPayoutAsset());
+    const tokenAddress = tokenConfig.address as Address;
+    const decimals = tokenConfig.decimals;
 
     // RPC resolution / client construction can throw when a network's RPC is
     // not configured; degrade that single network instead of throwing out of
     // getStatus() and 500-ing the whole redemption flow.
     let publicClient: ReturnType<typeof createPublicClient>;
     try {
-      const chain = EVM_CHAINS[network];
-      const { url: rpcUrl } = resolveEvmRpc(network as EvmPayoutNetwork);
+      const chain = payoutEvmChain(network as EvmPayoutNetwork);
+      const { url: rpcUrl } = resolvePayoutEvmRpc(network as EvmPayoutNetwork);
       publicClient = createPublicClient({
         chain,
         transport: http(rpcUrl),
@@ -536,7 +530,8 @@ class PayoutStatusService {
     const { getAssociatedTokenAddress, getAccount } =
       require("@solana/spl-token") as typeof import("@solana/spl-token");
     const connection = new Connection(solanaRpc, "confirmed");
-    const mintAddress = new PublicKey(ELIZA_TOKEN_ADDRESSES.solana);
+    const tokenConfig = getPayoutTokenConfig("solana", getMonitoringPayoutAsset());
+    const mintAddress = new PublicKey(tokenConfig.address);
     const walletPubkey = new PublicKey(walletAddress);
 
     const ata = await getAssociatedTokenAddress(mintAddress, walletPubkey);
@@ -558,11 +553,11 @@ class PayoutStatusService {
     // Fail-closed on an unreadable on-chain balance: a corrupt account.amount
     // that did not throw must degrade Solana to not_configured, never fabricate
     // "operational" (see classifyPayoutNetworkBalance).
-    const classification = classifyPayoutNetworkBalance(account.amount, ELIZA_DECIMALS.solana);
+    const classification = classifyPayoutNetworkBalance(account.amount, tokenConfig.decimals);
     if (classification.status === "not_configured") {
       logger.warn("[PayoutStatus] solana balance is unreadable; treating as unconfigured", {
         rawBalance: String(account.amount),
-        decimals: ELIZA_DECIMALS.solana,
+        decimals: tokenConfig.decimals,
       });
     }
     return {

@@ -8,14 +8,18 @@
  * degrades that single network to "not_configured" and getStatus() never throws.
  */
 import { afterAll, beforeEach, expect, mock, test } from "bun:test";
+import { base } from "viem/chains";
 import * as realCloudBindings from "../../runtime/cloud-bindings";
 
 const getCloudAwareEnv = mock();
 const REAL_CLOUD_BINDINGS = { ...realCloudBindings };
 mock.module("../../runtime/cloud-bindings", () => ({ ...REAL_CLOUD_BINDINGS, getCloudAwareEnv }));
 
-const resolveEvmRpc = mock();
-mock.module("../../config/evm-rpc", () => ({ resolveEvmRpc }));
+const resolvePayoutEvmRpc = mock();
+mock.module("../../config/evm-rpc", () => ({
+  payoutEvmChain: () => base,
+  resolvePayoutEvmRpc,
+}));
 
 const { payoutStatusService } = await import("../payout-status");
 
@@ -25,8 +29,8 @@ afterAll(() => {
 
 beforeEach(() => {
   getCloudAwareEnv.mockReset();
-  resolveEvmRpc.mockReset();
-  resolveEvmRpc.mockReturnValue({
+  resolvePayoutEvmRpc.mockReset();
+  resolvePayoutEvmRpc.mockReturnValue({
     source: "test",
     url: "https://rpc.invalid.example",
   });
@@ -49,7 +53,7 @@ test("getStatus() degrades a network whose RPC setup throws (no 500)", async () 
   getCloudAwareEnv.mockReturnValue({
     EVM_PAYOUT_PRIVATE_KEY: `0x${"1".repeat(64)}`,
   });
-  resolveEvmRpc.mockImplementation(() => {
+  resolvePayoutEvmRpc.mockImplementation(() => {
     throw new Error("RPC not configured for network");
   });
 

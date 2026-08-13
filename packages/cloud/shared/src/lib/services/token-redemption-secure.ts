@@ -40,8 +40,14 @@ import {
   tokenRedemptions,
 } from "../../db/schemas/token-redemptions";
 import { shouldBlockPayoutAssumeOperational } from "../config/deployment-environment";
-import { type EvmPayoutNetwork, resolveEvmRpc } from "../config/evm-rpc";
 import {
+  type EvmPayoutNetwork,
+  payoutEvmChain,
+  resolveEvmRpc,
+  resolvePayoutEvmRpc,
+} from "../config/evm-rpc";
+import {
+  getPayoutTokenConfig,
   isUsdcPayoutNetwork,
   type PayoutAsset,
   USDC_PAYOUT_NETWORKS,
@@ -53,7 +59,7 @@ import {
   getWalletRecommendation,
 } from "../config/redemption-addresses";
 import { ARBITRAGE_PROTECTION } from "../config/redemption-security";
-import { ELIZA_DECIMALS, ERC20_ABI, EVM_CHAINS } from "../config/token-constants";
+import { ERC20_ABI, EVM_CHAINS } from "../config/token-constants";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import { logger } from "../utils/logger";
 import { ELIZA_TOKEN_ADDRESSES, type SupportedNetwork } from "./eliza-token-price";
@@ -442,10 +448,9 @@ export class SecureTokenRedemptionService {
     // PRICING PHASE
     // ========================================
     //
-    // USDC (#10732): 1 USDC ≈ $1, so there is no price oracle, no safety spread,
-    // and no elizaOS-token availability check — the payout amount is simply the
-    // USD value and the payout processor guards the USDC hot-wallet balance
-    // before broadcast. The elizaOS path keeps the full TWAP pricing (Fix #8,#14).
+    // USDC (#10732): 1 USDC ≈ $1, so there is no price oracle or safety spread.
+    // Both asset paths still verify the matching hot-wallet balance before the
+    // request is accepted; payout execution repeats that gate before broadcast.
     const usdValue = new Decimal(pointsAmount).div(100);
     let twapPrice: Decimal;
     let elizaAmount: Decimal;
@@ -475,22 +480,22 @@ export class SecureTokenRedemptionService {
       if (quoteResult.warnings?.length) {
         warnings.push(...quoteResult.warnings);
       }
+    }
 
-      // Check hot wallet has enough elizaOS tokens (elizaOS payouts only).
-      const tokenCheck = await this.checkTokenAvailability(network, elizaAmount.toNumber());
-      if (!tokenCheck.available) {
-        logger.warn("[SecureRedemption] Insufficient hot wallet balance", {
-          network,
-          required: elizaAmount.toString(),
-          available: tokenCheck.balance,
-        });
-        return {
-          success: false,
-          error:
-            tokenCheck.error ||
-            `Sorry, we don't have enough elizaOS tokens on ${network}. Try again later or choose a different network.`,
-        };
-      }
+    const tokenCheck = await this.checkTokenAvailability(network, elizaAmount.toNumber(), asset);
+    if (!tokenCheck.available) {
+      logger.warn("[SecureRedemption] Insufficient hot wallet balance", {
+        network,
+        asset,
+        required: elizaAmount.toString(),
+        available: tokenCheck.balance,
+      });
+      return {
+        success: false,
+        error:
+          tokenCheck.error ||
+          `Sorry, we don't have enough ${asset === "usdc" ? "USDC" : "elizaOS tokens"} on ${network}. Try again later or choose a different network.`,
+      };
     }
 
     // ========================================
@@ -1038,6 +1043,7 @@ export class SecureTokenRedemptionService {
   async checkTokenAvailability(
     network: SupportedNetwork,
     requiredAmount: number,
+    asset: PayoutAsset = "eliza",
   ): Promise<{ available: boolean; balance: number; error?: string }> {
     const env = getCloudAwareEnv();
     if (shouldBlockPayoutAssumeOperational(env)) {
@@ -1071,7 +1077,7 @@ export class SecureTokenRedemptionService {
           error: "Solana payouts not configured",
         };
       }
-      return await this.checkSolanaBalance(solanaAddress, requiredAmount);
+      return await this.checkSolanaBalance(solanaAddress, requiredAmount, asset);
     } else {
       // Try explicit wallet address first, then derive from private key
       let evmAddress = env.EVM_PAYOUT_WALLET_ADDRESS;
@@ -1095,7 +1101,7 @@ export class SecureTokenRedemptionService {
           error: "EVM payouts not configured",
         };
       }
-      return await this.checkEvmBalance(network, evmAddress, requiredAmount);
+      return await this.checkEvmBalance(network, evmAddress, requiredAmount, asset);
     }
   }
 
@@ -1103,9 +1109,9 @@ export class SecureTokenRedemptionService {
     network: SupportedNetwork,
     walletAddress: string,
     requiredAmount: number,
+    asset: PayoutAsset,
   ): Promise<{ available: boolean; balance: number; error?: string }> {
-    const chain = EVM_CHAINS[network as keyof typeof EVM_CHAINS];
-    if (!chain) {
+    if (network === "solana") {
       return {
         available: false,
         balance: 0,
@@ -1113,10 +1119,13 @@ export class SecureTokenRedemptionService {
       };
     }
 
-    const tokenAddress = ELIZA_TOKEN_ADDRESSES[network] as Address;
-    const decimals = ELIZA_DECIMALS[network];
+    const evmNetwork = network as EvmPayoutNetwork;
+    const chain = payoutEvmChain(evmNetwork);
+    const tokenConfig = getPayoutTokenConfig(network, asset);
+    const tokenAddress = tokenConfig.address as Address;
+    const decimals = tokenConfig.decimals;
 
-    const { url: rpcUrl } = resolveEvmRpc(network as EvmPayoutNetwork);
+    const { url: rpcUrl } = resolvePayoutEvmRpc(evmNetwork);
     const publicClient = createPublicClient({
       chain,
       transport: http(rpcUrl),
@@ -1147,6 +1156,7 @@ export class SecureTokenRedemptionService {
   private async checkSolanaBalance(
     walletAddress: string,
     requiredAmount: number,
+    asset: PayoutAsset,
   ): Promise<{ available: boolean; balance: number; error?: string }> {
     const env = getCloudAwareEnv();
     const solanaRpc = env.SOLANA_RPC_URL || "https://api.mainnet-beta.solana.com";
@@ -1155,7 +1165,8 @@ export class SecureTokenRedemptionService {
     const { getAssociatedTokenAddress, getAccount } =
       require("@solana/spl-token") as typeof import("@solana/spl-token");
     const connection = new Connection(solanaRpc, "confirmed");
-    const mintAddress = new PublicKey(ELIZA_TOKEN_ADDRESSES.solana);
+    const tokenConfig = getPayoutTokenConfig("solana", asset);
+    const mintAddress = new PublicKey(tokenConfig.address);
     const walletPubkey = new PublicKey(walletAddress);
 
     const ata = await getAssociatedTokenAddress(mintAddress, walletPubkey);
@@ -1170,7 +1181,7 @@ export class SecureTokenRedemptionService {
       };
     }
 
-    const balance = Number(account.amount) / 10 ** ELIZA_DECIMALS.solana;
+    const balance = Number(account.amount) / 10 ** tokenConfig.decimals;
     const available = balance >= requiredAmount;
 
     logger.debug("[SecureRedemption] Solana balance check", {
