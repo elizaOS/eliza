@@ -10,6 +10,7 @@ import {
   detailNumber,
   detailString,
   messageText,
+  normalizePlannerCalendarWindow,
   parseCalendarJsonRecord,
   sanitizeCalendarId,
 } from "../src/internal/detail.js";
@@ -90,5 +91,27 @@ describe("sanitizeCalendarId (#18946)", () => {
     expect(sanitizeCalendarId(undefined)).toBeUndefined();
     expect(sanitizeCalendarId("")).toBeUndefined();
     expect(sanitizeCalendarId("   ")).toBeUndefined();
+  });
+});
+
+describe("normalizePlannerCalendarWindow (#18946)", () => {
+  it.each([
+    ["2026-08-05T09:00:00Z", "not-a-date"],
+    ["not-a-date", "2026-08-05T10:00:00Z"],
+    ["2026-08-05T10:00:00Z", "2026-08-05T09:00:00Z"],
+  ])("drops the entire pair for incomplete or reversed bounds", (min, max) => {
+    expect(normalizePlannerCalendarWindow(min, max)).toBeUndefined();
+  });
+
+  it("canonicalizes an ordered offset-bearing pair", () => {
+    expect(
+      normalizePlannerCalendarWindow(
+        "2026-08-05T09:00:00-07:00",
+        "2026-08-05T10:00:00-07:00",
+      ),
+    ).toEqual({
+      timeMin: "2026-08-05T16:00:00.000Z",
+      timeMax: "2026-08-05T17:00:00.000Z",
+    });
   });
 });

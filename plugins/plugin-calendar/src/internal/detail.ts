@@ -31,6 +31,34 @@ export function detailString(
     : undefined;
 }
 
+export type PlannerCalendarWindow = {
+  timeMin: string;
+  timeMax: string;
+};
+
+/**
+ * Accepts a planner window only when both bounds parse and form a forward
+ * interval. Returning the pair atomically prevents a valid half-window from
+ * reaching the strict calendar-service boundary after its partner is dropped.
+ */
+export function normalizePlannerCalendarWindow(
+  timeMin: unknown,
+  timeMax: unknown,
+): PlannerCalendarWindow | undefined {
+  if (typeof timeMin !== "string" || typeof timeMax !== "string") {
+    return undefined;
+  }
+  const minMs = Date.parse(timeMin.trim());
+  const maxMs = Date.parse(timeMax.trim());
+  if (!Number.isFinite(minMs) || !Number.isFinite(maxMs) || minMs >= maxMs) {
+    return undefined;
+  }
+  return {
+    timeMin: new Date(minMs).toISOString(),
+    timeMax: new Date(maxMs).toISOString(),
+  };
+}
+
 export function detailNumber(
   details: Record<string, unknown> | undefined,
   key: string,

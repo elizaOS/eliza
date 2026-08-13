@@ -52,6 +52,7 @@ import {
   detailString,
   INTERNAL_URL,
   messageText,
+  normalizePlannerCalendarWindow,
   parseCalendarJsonRecord,
   sanitizeCalendarId,
   toActionData,
@@ -236,11 +237,22 @@ function calendarIdDetail(
   return sanitizeCalendarId(detailString(details, "calendarId"));
 }
 
-function isoDetailString(
+function plannerWindowDetail(
   details: Record<string, unknown> | undefined,
-  key: "timeMin" | "timeMax",
-): string | undefined {
-  return normalizeIsoDateTime(detailString(details, key));
+): { timeMin: string; timeMax: string } | undefined {
+  return normalizePlannerCalendarWindow(details?.timeMin, details?.timeMax);
+}
+
+function plannerWindowInputProvided(
+  details: Record<string, unknown> | undefined,
+  llmPlan: CalendarLlmPlan,
+): boolean {
+  return Boolean(
+    detailString(details, "timeMin") ||
+      detailString(details, "timeMax") ||
+      llmPlan.timeMin ||
+      llmPlan.timeMax,
+  );
 }
 
 type CreateEventTravelIntent = CalendarTravelIntent;
@@ -1451,8 +1463,7 @@ function resolveStructuredCalendarSubaction(
     detailString(details, "query") ||
     (params.queries?.length ?? 0) > 0 ||
     (detailArray(details, "queries")?.length ?? 0) > 0 ||
-    isoDetailString(details, "timeMin") ||
-    isoDetailString(details, "timeMax")
+    plannerWindowDetail(details)
   ) {
     return "search_events";
   }
@@ -2082,11 +2093,14 @@ function resolveCalendarLlmWindow(
   timeZone: string,
   llmPlan: CalendarLlmPlan | undefined,
 ): { timeMin: string; timeMax: string; label: string } | null {
-  const timeMin = normalizeIsoDateTime(llmPlan?.timeMin);
-  const timeMax = normalizeIsoDateTime(llmPlan?.timeMax);
-  if (!timeMin || !timeMax) {
+  const window = normalizePlannerCalendarWindow(
+    llmPlan?.timeMin,
+    llmPlan?.timeMax,
+  );
+  if (!window) {
     return null;
   }
+  const { timeMin, timeMax } = window;
 
   const minMs = Date.parse(timeMin);
   const maxMs = Date.parse(timeMax);
@@ -2130,17 +2144,15 @@ function resolveCalendarWindow(
   label: string;
   explicitWindow: boolean;
 } {
-  const timeMin = isoDetailString(details, "timeMin");
-  const timeMax = isoDetailString(details, "timeMax");
+  const plannerWindow = plannerWindowDetail(details);
   const calendarId = calendarIdDetail(details);
   const timeZone = resolveCalendarTimeZone(details);
   const forceSync = detailBoolean(details, "forceSync");
-  if (timeMin || timeMax) {
+  if (plannerWindow) {
     return {
       request: {
         calendarId,
-        timeMin: timeMin ?? undefined,
-        timeMax: timeMax ?? undefined,
+        ...plannerWindow,
         timeZone,
         forceSync,
       },
@@ -2213,17 +2225,15 @@ function resolveTripWindowRequest(
   details: Record<string, unknown> | undefined,
   llmPlan?: CalendarLlmPlan,
 ): GetLifeOpsCalendarFeedRequest {
-  const timeMin = isoDetailString(details, "timeMin");
-  const timeMax = isoDetailString(details, "timeMax");
+  const plannerWindow = plannerWindowDetail(details);
   const calendarId = calendarIdDetail(details);
   const timeZone = resolveCalendarTimeZone(details);
   const forceSync = detailBoolean(details, "forceSync");
 
-  if (timeMin || timeMax) {
+  if (plannerWindow) {
     return {
       calendarId,
-      timeMin: timeMin ?? undefined,
-      timeMax: timeMax ?? undefined,
+      ...plannerWindow,
       timeZone,
       forceSync,
     };
@@ -4164,17 +4174,13 @@ const calendarAction: CalendarHandlerAction = {
               }),
             });
           }
-          const feedRequest =
-            isoDetailString(details, "timeMin") ||
-            isoDetailString(details, "timeMax") ||
-            llmPlan.timeMin ||
-            llmPlan.timeMax
-              ? resolveCalendarWindow(intent, details, true, llmPlan).request
-              : {
-                  calendarId: calendarIdDetail(details),
-                  timeZone: resolveCalendarTimeZone(details),
-                  ...buildWideLookupRange(resolveCalendarTimeZone(details)),
-                };
+          const feedRequest = plannerWindowInputProvided(details, llmPlan)
+            ? resolveCalendarWindow(intent, details, true, llmPlan).request
+            : {
+                calendarId: calendarIdDetail(details),
+                timeZone: resolveCalendarTimeZone(details),
+                ...buildWideLookupRange(resolveCalendarTimeZone(details)),
+              };
           const feed = requireCompleteFreshCalendarFeed(
             await service.getCalendarFeed(INTERNAL_URL, {
               includeHiddenCalendars: true,
@@ -4498,17 +4504,13 @@ const calendarAction: CalendarHandlerAction = {
               }),
             });
           }
-          const feedRequest =
-            isoDetailString(details, "timeMin") ||
-            isoDetailString(details, "timeMax") ||
-            llmPlan.timeMin ||
-            llmPlan.timeMax
-              ? resolveCalendarWindow(intent, details, true, llmPlan).request
-              : {
-                  calendarId: calendarIdDetail(details),
-                  timeZone: resolveCalendarTimeZone(details),
-                  ...buildWideLookupRange(resolveCalendarTimeZone(details)),
-                };
+          const feedRequest = plannerWindowInputProvided(details, llmPlan)
+            ? resolveCalendarWindow(intent, details, true, llmPlan).request
+            : {
+                calendarId: calendarIdDetail(details),
+                timeZone: resolveCalendarTimeZone(details),
+                ...buildWideLookupRange(resolveCalendarTimeZone(details)),
+              };
           const feed = requireCompleteFreshCalendarFeed(
             await service.getCalendarFeed(INTERNAL_URL, {
               includeHiddenCalendars: true,
@@ -5058,8 +5060,8 @@ const calendarAction: CalendarHandlerAction = {
           code: error.code ?? `CALENDAR_SERVICE_${error.status}`,
           detail: error.message,
           calendarId: calendarIdDetail(details) ?? "unset",
-          timeMin: isoDetailString(details, "timeMin") ?? "unset",
-          timeMax: isoDetailString(details, "timeMax") ?? "unset",
+          timeMin: plannerWindowDetail(details)?.timeMin ?? "unset",
+          timeMax: plannerWindowDetail(details)?.timeMax ?? "unset",
           timeZone: detailString(details, "timeZone") ?? "unset",
           mode: detailString(details, "mode") ?? "unset",
           side: detailString(details, "side") ?? "unset",
