@@ -68,15 +68,81 @@ function opt(name, fallback) {
   return i >= 0 && process.argv[i + 1] ? process.argv[i + 1] : fallback;
 }
 
+function optRaw(name, fallback) {
+  const i = process.argv.indexOf(name);
+  return i >= 0 ? (process.argv[i + 1] ?? "") : fallback;
+}
+
+function parseDecimalInteger(raw, flagName, minimum) {
+  if (typeof raw !== "string" || !/^\d+$/.test(raw)) {
+    throw new Error(
+      `${flagName} must be a decimal integer (got ${JSON.stringify(raw)})`,
+    );
+  }
+  const parsed = Number(raw);
+  if (!Number.isSafeInteger(parsed) || parsed < minimum) {
+    throw new Error(
+      `${flagName} must be a safe integer greater than or equal to ${minimum} (got ${JSON.stringify(raw)})`,
+    );
+  }
+  return parsed;
+}
+
+/**
+ * Parse the bounded item count without allowing JavaScript's permissive
+ * numeric coercion to reinterpret an operator's input. Zero is the explicit
+ * unlimited sentinel used by the runner.
+ */
+export function parseHarvestLimit(raw, flagName = "--limit") {
+  return parseDecimalInteger(raw, flagName, 0);
+}
+
+/** Parse the per-item timeout as a positive, safe decimal integer. */
+export function parseItemTimeoutMs(raw, flagName = "--item-timeout-ms") {
+  return parseDecimalInteger(raw, flagName, 1);
+}
+
+/** Parse an i/n shard where n is positive and i is within [0, n). */
+export function parseHarvestShard(raw, flagName = "--shard") {
+  const match =
+    typeof raw === "string" ? /^(\d+)\/(\d+)$/.exec(raw) : null;
+  if (!match) {
+    throw new Error(
+      `${flagName} must have the form i/n using decimal integers (got ${JSON.stringify(raw)})`,
+    );
+  }
+  const index = Number(match[1]);
+  const count = Number(match[2]);
+  if (!Number.isSafeInteger(index) || !Number.isSafeInteger(count)) {
+    throw new Error(
+      `${flagName} components must be safe integers (got ${JSON.stringify(raw)})`,
+    );
+  }
+  if (count < 1) {
+    throw new Error(
+      `${flagName} count must be at least 1 (got ${JSON.stringify(raw)})`,
+    );
+  }
+  if (index >= count) {
+    throw new Error(
+      `${flagName} index must be less than shard count (got ${JSON.stringify(raw)})`,
+    );
+  }
+  return [index, count];
+}
+
 const DRY_RUN = flag("--dry-run");
 const DETERMINISTIC = flag("--deterministic");
 const RESUME = flag("--resume");
-const LIMIT = Number(opt("--limit", "0")) || 0;
+const LIMIT = parseHarvestLimit(optRaw("--limit", "0"));
 const FAMILY = opt("--family", "e2e");
-const SHARD = opt("--shard", null);
-const [SHARD_I, SHARD_N] = SHARD ? SHARD.split("/").map(Number) : [0, 1];
+const [SHARD_I, SHARD_N] = process.argv.includes("--shard")
+  ? parseHarvestShard(optRaw("--shard", ""))
+  : [0, 1];
 const LANE_FILTER = opt("--lane", null); // e2e lane path substring filter
-const ITEM_TIMEOUT_MS = Number(opt("--item-timeout-ms", "900000")) || 900000;
+const ITEM_TIMEOUT_MS = parseItemTimeoutMs(
+  optRaw("--item-timeout-ms", "900000"),
+);
 const HARVEST_ROOT = path.resolve(
   opt(
     "--harvest-root",
@@ -363,4 +429,9 @@ function main() {
   );
 }
 
-main();
+if (
+  process.argv[1] &&
+  path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)
+) {
+  main();
+}
