@@ -38,6 +38,7 @@ describe("parsePositiveSafeInteger", () => {
     for (const value of [
       "",
       "  ",
+      " 60000 ",
       "abc",
       "60junk",
       "1.5",
@@ -94,6 +95,11 @@ describe("resolveStartupSmokeTiming", () => {
     ).toThrow(/ELIZA_DEV_STARTUP_BUDGET_MS/);
     expect(() =>
       resolveStartupSmokeTiming({
+        ELIZA_DEV_STARTUP_BUDGET_MS: " 60000 ",
+      }),
+    ).toThrow(/ELIZA_DEV_STARTUP_BUDGET_MS/);
+    expect(() =>
+      resolveStartupSmokeTiming({
         ELIZA_DEV_STARTUP_HARD_KILL_MS: "1.5",
       }),
     ).toThrow(/ELIZA_DEV_STARTUP_HARD_KILL_MS/);
@@ -134,5 +140,15 @@ describe("dev-startup-smoke CLI boundary", () => {
     const result = runCli({ ELIZA_DEV_STARTUP_BUDGET_MS: "0" });
     expect(result.status).toBe(1);
     expect(result.stderr).toMatch(/ELIZA_DEV_STARTUP_BUDGET_MS/);
+  });
+
+  it("rejects padded budget env before spawning the dev stack", () => {
+    const result = runCli({ ELIZA_DEV_STARTUP_BUDGET_MS: " 60000 " });
+    expect(result.status).toBe(1);
+    expect(result.stderr).toMatch(/ELIZA_DEV_STARTUP_BUDGET_MS/);
+    expect(result.stdout + result.stderr).not.toMatch(
+      /\[dev-startup-smoke\] budget=/,
+    );
+    expect(result.stdout + result.stderr).not.toMatch(/process spawned/);
   });
 });

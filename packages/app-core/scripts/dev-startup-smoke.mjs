@@ -43,8 +43,8 @@ export const MAX_TIMER_DELAY_MS = 2_147_483_647;
 
 /**
  * Accept only complete positive safe-integer decimal strings (or numbers).
- * Rejects partial numbers, signed values, fractions, zero, and values above
- * an optional max (defaults to Number.MAX_SAFE_INTEGER).
+ * Rejects partial numbers, padded tokens, signed values, fractions, zero, and
+ * values above an optional max (defaults to Number.MAX_SAFE_INTEGER).
  * @param {string | number} value
  * @param {string} label
  * @param {{ max?: number }} [options]
@@ -66,7 +66,7 @@ export function parsePositiveSafeInteger(value, label, options = {}) {
     }
     return value;
   }
-  const raw = String(value ?? "").trim();
+  const raw = String(value ?? "");
   if (!/^\d+$/.test(raw)) {
     throw new Error(
       `${label} must be ${rangeHint} (received ${received(value)})`,
