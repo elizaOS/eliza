@@ -78,6 +78,12 @@ function extractFrontmatter(content: string): {
   };
 }
 
+/**
+ * Parse a skill document into a plain frontmatter record and its markdown body.
+ * Malformed YAML throws an {@link ElizaError} with
+ * {@link INVALID_SKILL_FRONTMATTER_YAML}; callers that ingest untrusted files
+ * must translate that typed failure at their boundary.
+ */
 export function parseFrontmatter<
   T extends Record<string, unknown> = Record<string, unknown>,
 >(content: string): ParsedFrontmatter<T> {
@@ -102,6 +108,10 @@ export function parseFrontmatter<
   return { frontmatter: {} as T, body };
 }
 
+/**
+ * Return a skill document's body without its frontmatter block.
+ * Malformed YAML propagates the same typed error as {@link parseFrontmatter}.
+ */
 export function stripFrontmatter(content: string): string {
   return parseFrontmatter(content).body;
 }

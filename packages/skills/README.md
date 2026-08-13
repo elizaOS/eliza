@@ -158,3 +158,8 @@ Detailed instructions for the AI agent...
 - `resolveSkillMetadata(frontmatter)` - Resolve `SkillMetadata` from frontmatter
 - `resolveSkillInvocationPolicy(frontmatter)` - Resolve `SkillInvocationPolicy`
 - `resolveSkillProvenance(frontmatter)` - Resolve `SkillProvenance` (returns `undefined` if missing/malformed)
+
+`parseFrontmatter` and `stripFrontmatter` throw an `ElizaError` with code
+`INVALID_SKILL_FRONTMATTER_YAML` when a frontmatter block contains malformed
+YAML. File-discovery callers translate that typed failure into a warning and do
+not load the invalid skill.
