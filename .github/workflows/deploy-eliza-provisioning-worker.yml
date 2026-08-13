@@ -43,10 +43,12 @@ on:
         required: false
         type: string
 
-# Per-env concurrency: a develop push (staging) and a main push (production)
-# can deploy in parallel without one cancelling the other.
+# Per-SHA workflow groups so an environment-approval wait cannot head-of-line
+# block a newer SHA (#18092). Staging and production still cannot share a
+# group. The deploy job's mutate lock is the one that SSHes the host and
+# never cancels in-flight work.
 concurrency:
-  group: deploy-eliza-provisioning-worker-${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'production' || 'staging') }}
+  group: deploy-eliza-provisioning-worker-${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'production' || 'staging') }}-${{ github.sha }}
   cancel-in-progress: false
 
 # Default to least privilege. Override per-job where needed.
@@ -115,6 +117,9 @@ jobs:
     name: Deploy worker to Hetzner host (${{ needs.determine-env.outputs.environment }} @ ${{ needs.determine-env.outputs.deployment_sha }})
     runs-on: [self-hosted, Linux, X64]
     needs: determine-env
+    concurrency:
+      group: deploy-eliza-provisioning-worker-mutate-${{ needs.determine-env.outputs.environment }}
+      cancel-in-progress: false
     environment: ${{ needs.determine-env.outputs.environment }}
     # The three bounded remote phases (5m prerequisites, 20m deploy, 5m health)
     # can each use their ceiling without the enclosing job becoming the first
