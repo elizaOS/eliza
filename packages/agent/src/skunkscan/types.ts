@@ -1036,16 +1036,40 @@ export type WalletComplianceScreeningSummary = {
     | "possible_match"
     | "confirmed_match";
 
+  // Mirror sanctionsStatus/adverseMediaStatus exactly, sourced from
+  // WalletExposureSummary's hasKnownScamExposure/hasKnownRugPullExposure/
+  // hasKnownSuspiciousExposure booleans - the internal registry these
+  // reflect was already claimed as "connected" in sourcesChecked below,
+  // but until this addition nothing in this file's own matches/status
+  // fields actually surfaced those 3 categories.
+  scamStatus:
+    | "not_screened"
+    | "no_match_in_connected_sources"
+    | "possible_match"
+    | "confirmed_match";
+
+  rugPullStatus:
+    | "not_screened"
+    | "no_match_in_connected_sources"
+    | "possible_match"
+    | "confirmed_match";
+
+  suspiciousStatus:
+    | "not_screened"
+    | "no_match_in_connected_sources"
+    | "possible_match"
+    | "confirmed_match";
+
   evidenceConfidence: "low" | "medium" | "high";
 
   confidenceAnalysis?: WalletConfidenceAnalysis;
 
   screeningConfidence: "low" | "medium" | "high";
-  
+
   sourcesChecked: WalletComplianceScreeningSource[];
-  
+
   matches: {
-    type: "sanctions" | "adverse_media";
+    type: "sanctions" | "adverse_media" | "scam" | "rug_pull" | "suspicious";
     source: string;
     label: string;
     confidence: "low" | "medium" | "high";

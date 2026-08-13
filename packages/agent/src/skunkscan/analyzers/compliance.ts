@@ -11,22 +11,34 @@ export function analyzeWalletCompliance(
 ): WalletComplianceScreeningSummary {
   const matches: WalletComplianceScreeningSummary["matches"] = [];
 
+  // Was previously filtered to sanctioned/adverse_media only, silently
+  // dropping scam/rug_pull/suspicious hits even though the
+  // "SkunkScan Internal Registry" source below already claimed connected
+  // coverage for exactly those 3 categories - a real compliance-
+  // completeness gap, not a display duplication (see the investigation
+  // behind this fix). Now forwards all 5 categories exposure.matches can
+  // produce, mapping category directly to type with no new detection
+  // logic - the underlying registry hit is the same data, just no longer
+  // discarded here.
+  const complianceMatchType: Record<
+    (typeof exposure.matches)[number]["category"],
+    WalletComplianceScreeningSummary["matches"][number]["type"]
+  > = {
+    sanctioned: "sanctions",
+    adverse_media: "adverse_media",
+    scam: "scam",
+    rug_pull: "rug_pull",
+    suspicious: "suspicious",
+  };
+
   for (const match of exposure.matches) {
-    if (
-      match.category === "sanctioned" ||
-      match.category === "adverse_media"
-    ) {
-      matches.push({
-        type:
-          match.category === "sanctioned"
-            ? "sanctions"
-            : "adverse_media",
-        source: match.source,
-        label: match.label,
-        confidence: match.confidence,
-        notes: [`Relationship: ${match.relationship}`],
-      });
-    }
+    matches.push({
+      type: complianceMatchType[match.category],
+      source: match.source,
+      label: match.label,
+      confidence: match.confidence,
+      notes: [`Relationship: ${match.relationship}`],
+    });
   }
 
   const sourcesChecked: WalletComplianceScreeningSummary["sourcesChecked"] = [
@@ -106,6 +118,22 @@ export function analyzeWalletCompliance(
       matches.some((match) => match.type === "adverse_media")
         ? "possible_match"
         : "no_match_in_connected_sources",
+
+    // Sourced directly from exposure's own booleans, not re-derived via
+    // matches.some(...) like sanctions/adverse_media above - exposure.ts
+    // already computes these at no extra cost, and reusing them keeps this
+    // file from re-implementing logic exposure.ts owns.
+    scamStatus: exposure.hasKnownScamExposure
+      ? "possible_match"
+      : "no_match_in_connected_sources",
+
+    rugPullStatus: exposure.hasKnownRugPullExposure
+      ? "possible_match"
+      : "no_match_in_connected_sources",
+
+    suspiciousStatus: exposure.hasKnownSuspiciousExposure
+      ? "possible_match"
+      : "no_match_in_connected_sources",
 
     evidenceConfidence: confidenceAnalysis.level,
 
