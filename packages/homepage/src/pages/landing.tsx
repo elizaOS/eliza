@@ -179,13 +179,13 @@ const DEMO_LOOP: DemoStep[] = [
 // Keep only the most recent messages in the DOM; the thread stays pinned to
 // the bottom so pruning older rows is invisible.
 const MAX_RENDERED_ITEMS = 14;
-const USER_KEYSTROKE_MS = 48;
-const ELIZA_TYPING_MS = 1750;
-const BEAT_PAUSE_MS = 1125;
-const PRE_USER_MS = 625;
-const PRE_ELIZA_MS = 625;
-const PRE_CARD_MS = 750;
-const SEND_HOLD_MS = 500;
+const USER_KEYSTROKE_MS = 62;
+const ELIZA_TYPING_MS = 2275;
+const BEAT_PAUSE_MS = 1465;
+const PRE_USER_MS = 815;
+const PRE_ELIZA_MS = 815;
+const PRE_CARD_MS = 975;
+const SEND_HOLD_MS = 650;
 
 function settledIntroItems(): DemoItem[] {
   return DEMO_INTRO.map((step, index) =>
