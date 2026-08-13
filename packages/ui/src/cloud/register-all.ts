@@ -25,12 +25,10 @@
  * login critical graph.
  *
  * Account-management surfaces (account, security, plugin grants, billing,
- * API keys, monetization, connectors) are mounted twice on purpose: as in-app
- * Settings sections (the app's own settings hub) AND as standalone
- * `dashboard/*` console pages. The standalone mounts are what make the apex
- * console (elizacloud.ai) work — the agent app never boots there (see
- * `AppCatchAllRoute`), so the console pages are the only reachable home for
- * add-funds / API keys / account on a control-plane host.
+ * API keys, monetization, connectors) register as in-app Settings sections and
+ * as `/cloud/*` pages rendered by the normal Eliza app shell. There is no
+ * separate dashboard shell; `/dashboard/*` exists only as redirect
+ * compatibility in the web router.
  */
 
 // Side-effecting domain modules: importing them runs their top-level
@@ -53,6 +51,7 @@ import { registerApprovalsCloudRoute } from "./approvals";
 import { registerJoinFlow } from "./join/register";
 import { registerMcpsCloudRoute } from "./mcps";
 import { registerPublicPages } from "./public-pages/register";
+import { registerManagedCloudAppShellPage } from "./register-managed-cloud-page";
 import { registerCloudSettingsSections } from "./settings";
 
 let registered = false;
@@ -78,4 +77,5 @@ export function registerAllCloudSurfaces(): void {
   registerMcpsCloudRoute();
 
   registerCloudSettingsSections();
+  registerManagedCloudAppShellPage();
 }

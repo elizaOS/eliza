@@ -99,7 +99,7 @@ export function AnalyticsFilters() {
     for (const [key, value] of Object.entries(updates)) {
       params.set(key, value);
     }
-    navigate(`/dashboard/analytics?${params.toString()}`);
+    navigate(`/cloud/analytics?${params.toString()}`);
   };
 
   return (

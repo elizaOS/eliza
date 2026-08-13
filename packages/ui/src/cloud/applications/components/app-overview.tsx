@@ -689,7 +689,7 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
                 variant="ghost"
                 type="button"
                 onClick={() =>
-                  navigate(`/dashboard/apps/${app.id}?tab=monetization`)
+                  navigate(`/cloud/apps/${app.id}?tab=monetization`)
                 }
                 className="p-2 hover:bg-bg-hover rounded-sm transition-colors"
               >
@@ -710,7 +710,7 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
           <Button
             variant="ghost"
             type="button"
-            onClick={() => navigate(`/dashboard/apps/${app.id}?tab=settings`)}
+            onClick={() => navigate(`/cloud/apps/${app.id}?tab=settings`)}
             className="text-xs text-neutral-400 hover:text-txt transition-colors"
           >
             Edit

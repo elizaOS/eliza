@@ -302,6 +302,14 @@ describe("BrowserWorkspaceView fullscreen chrome (Notes/Calendar parity)", () =>
     const iframe = await screen.findByTitle("Apple");
     fireEvent.pointerDown(iframe);
     const address = screen.getByTestId("browser-workspace-address-input");
+    // The iframe can mount before the active-tab URL synchronization effect
+    // has committed. Wait for that initial value so the effect cannot overwrite
+    // the simulated edit on a loaded runner.
+    await waitFor(() =>
+      expect((address as HTMLInputElement).value).toBe(
+        "https://www.apple.com/",
+      ),
+    );
     address.focus();
     fireEvent.change(address, { target: { value: "https://example.com/" } });
     await waitFor(() =>

@@ -95,7 +95,7 @@ app.get("/", rateLimit(RateLimitPresets.STANDARD), async (c) => {
     return c.json({ error: "MCP not accessible for this agent" }, 403);
   }
 
-  const baseUrl = c.env.NEXT_PUBLIC_APP_URL || "https://www.elizacloud.ai";
+  const baseUrl = c.env.NEXT_PUBLIC_APP_URL || "https://cloud.eliza.app";
   const bioText = Array.isArray(character.bio)
     ? character.bio.join("\n")
     : character.bio;

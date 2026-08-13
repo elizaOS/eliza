@@ -9,7 +9,7 @@ Perfect for building your first agents!
 
 GET STARTED IN 3 EASY STEPS:
 
-1. Explore Your Dashboard
+1. Explore Your Cloud View
    View your balance, usage analytics, and account settings
 
 2. Create Your First Agent
@@ -18,7 +18,7 @@ GET STARTED IN 3 EASY STEPS:
 3. Integrate with Your App
    Use our API to connect Eliza agents to your applications
 
-→ View Dashboard: {{dashboardUrl}}
+→ Open Eliza Cloud: {{dashboardUrl}}
 → Read Documentation: {{docsUrl}}
 
 NEED HELP?

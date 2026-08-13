@@ -5,11 +5,10 @@
 import { lazy } from "react";
 import { registerCloudRoute } from "../shell/cloud-route-registry";
 
-export const APPLICATIONS_LIST_ROUTE_PATH = "dashboard/apps";
-export const APPLICATIONS_DETAIL_ROUTE_PATH = "dashboard/apps/:id";
-export const APPLICATIONS_LEGACY_LIST_ROUTE_PATH = "dashboard/applications";
-export const APPLICATIONS_LEGACY_DETAIL_ROUTE_PATH =
-  "dashboard/applications/:id";
+export const APPLICATIONS_LIST_ROUTE_PATH = "cloud/apps";
+export const APPLICATIONS_DETAIL_ROUTE_PATH = "cloud/apps/:id";
+export const APPLICATIONS_LEGACY_LIST_ROUTE_PATH = "cloud/applications";
+export const APPLICATIONS_LEGACY_DETAIL_ROUTE_PATH = "cloud/applications/:id";
 
 /** Register every console Applications spelling to the moved-route handoff. */
 export function registerMovedApplicationsCloudRoutes(): void {
@@ -23,7 +22,7 @@ export function registerMovedApplicationsCloudRoutes(): void {
     registerCloudRoute({
       path,
       element: AppsMovedRoute,
-      group: "dashboard",
+      group: "cloud",
     });
   }
 }

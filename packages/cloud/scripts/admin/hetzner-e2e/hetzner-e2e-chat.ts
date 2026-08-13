@@ -25,7 +25,7 @@ import { randomBytes } from "node:crypto";
 import { classifyBridgeReply } from "../bridge-reply-verdict";
 import { readState } from "./state-file";
 
-const DEFAULT_BASE_URL = "https://api-staging.elizacloud.ai";
+const DEFAULT_BASE_URL = "https://api-staging.eliza.app";
 const DEFAULT_TIMEOUT_MS = 240_000;
 const RETRY_DELAY_MS = 5_000;
 // Per-attempt cap: the Worker's bridge tries up to four inner transports at

@@ -9,8 +9,12 @@ import {
   STEWARD_TOKEN_KEY,
 } from "@elizaos/shared/steward-session-client";
 import { createContext } from "react";
-import { scrubPersistedAgentProfileTokens } from "../../state/agent-profiles";
+import {
+  removeManagedSharedCloudAgentProfiles,
+  scrubPersistedAgentProfileTokens,
+} from "../../state/agent-profiles";
 import { scrubPersistedActiveServerToken } from "../../state/persistence";
+import { clearSharedCloudAccountBinding } from "../../state/shared-cloud-account-binding";
 import { decodeJwtPayload } from "../lib/jwt";
 import { ELIZA_CLOUD_DIRECT_API_BY_HOST } from "./steward-url";
 
@@ -30,9 +34,11 @@ function trimTrailingSlash(value: string): string {
   return value.replace(/\/+$/, "");
 }
 
-// On co-hosted elizacloud.ai surfaces, session-sync + refresh bypass the
-// Pages/Worker proxy and call each host's OWN API worker directly (the shared
-// host → worker map in steward-url.ts). Everywhere else they stay same-origin.
+// On canonical Eliza UI hosts, session-sync and refresh stay same-origin via
+// the Pages/Worker proxy. Steward cookies are host-only, so sending these calls
+// directly to api.eliza.app would plant cookies on the API host and make them
+// invisible to eliza.app/cloud.eliza.app. The host map is environment-aware;
+// unknown/native origins may still use an explicit API base below.
 function directCloudApiBase(): string | undefined {
   if (typeof window === "undefined") return undefined;
   return ELIZA_CLOUD_DIRECT_API_BY_HOST[window.location.hostname.toLowerCase()];
@@ -69,16 +75,6 @@ export type LocalStewardAuthValue = {
 export const LocalStewardAuthContext =
   createContext<LocalStewardAuthValue | null>(null);
 
-function isLocalhostApiBase(value: string): boolean {
-  return /^https?:\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0)(?::\d+)?(?:\/|$)/i.test(
-    value.trim(),
-  );
-}
-
-function isBrowserOnElizaHost(): boolean {
-  return directCloudApiBase() !== undefined;
-}
-
 function configuredApiBase(): string | undefined {
   return (
     import.meta.env?.VITE_API_URL ||
@@ -90,29 +86,25 @@ function configuredApiBase(): string | undefined {
 }
 
 export function configuredSessionEndpoint(): string {
-  const apiBase = configuredApiBase();
-  if (apiBase && !isPlaceholderValue(apiBase)) {
-    if (!(isBrowserOnElizaHost() && isLocalhostApiBase(apiBase))) {
-      return `${trimTrailingSlash(apiBase)}${STEWARD_SESSION_ENDPOINT}`;
-    }
-  }
   const direct = directStewardSessionEndpoint();
   if (direct) {
     return direct;
+  }
+  const apiBase = configuredApiBase();
+  if (apiBase && !isPlaceholderValue(apiBase)) {
+    return `${trimTrailingSlash(apiBase)}${STEWARD_SESSION_ENDPOINT}`;
   }
   return STEWARD_SESSION_ENDPOINT;
 }
 
 export function configuredRefreshEndpoint(): string {
-  const apiBase = configuredApiBase();
-  if (apiBase && !isPlaceholderValue(apiBase)) {
-    if (!(isBrowserOnElizaHost() && isLocalhostApiBase(apiBase))) {
-      return `${trimTrailingSlash(apiBase)}${STEWARD_REFRESH_ENDPOINT}`;
-    }
-  }
   const direct = directStewardRefreshEndpoint();
   if (direct) {
     return direct;
+  }
+  const apiBase = configuredApiBase();
+  if (apiBase && !isPlaceholderValue(apiBase)) {
+    return `${trimTrailingSlash(apiBase)}${STEWARD_REFRESH_ENDPOINT}`;
   }
   return STEWARD_REFRESH_ENDPOINT;
 }
@@ -169,11 +161,24 @@ export function tokenSecsRemaining(token: string): number | null {
 export function clearStaleStewardSession(): void {
   if (typeof window === "undefined") return;
   clearStoredStewardToken();
+  // Every shared-agent profile belongs to the ending Steward account, even
+  // when a dedicated or self-hosted target happens to be active at sign-out.
+  removeManagedSharedCloudAgentProfiles();
   // SECURITY: also scrub the persisted accessToken mirrors so the secondary
   // sign-out / 401-self-heal paths that route through here (native apps-studio
   // signOut, the authorize-content edge, StewardProviderRuntime 401 clears) don't
   // leave a usable cloud bearer/API-key at rest in localStorage.
-  scrubPersistedActiveServerToken();
+  if (clearSharedCloudAccountBinding()) {
+    // Shared runtime authorization is the Steward account itself. Once that
+    // account session ends, retaining its selected agent id can bind the next
+    // login to an agent outside the newly authenticated organization. Remove
+    // the selection so the normal post-login flow resolves the current
+    // account's organization-scoped agent list before mounting chat.
+  } else {
+    // Dedicated/self-hosted targets have an independent agent-local recovery
+    // path, so preserve their selection while removing the rejected bearer.
+    scrubPersistedActiveServerToken();
+  }
   scrubPersistedAgentProfileTokens();
   clearServerStewardSessionCookies();
   try {

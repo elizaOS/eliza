@@ -377,11 +377,11 @@ describe("run-all-tests plan mode", () => {
     ]);
   });
 
-  test("routes homepage e2e to its dedicated deployment lane instead of root PR smoke", () => {
+  test("keeps the source-only homepage visual harness out of root PR smoke", () => {
     const prResult = runPlan([
       "--plan=json",
       "--only=e2e",
-      "--filter=^eliza-app \\(packages/homepage\\)#test:e2e$",
+      "--filter=^@elizaos/homepage-source \\(packages/homepage\\)#test:e2e$",
     ]);
     expect(prResult.status).toBe(0);
     expect(JSON.parse(prResult.stdout).tasks).toEqual([]);

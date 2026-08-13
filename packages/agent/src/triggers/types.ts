@@ -56,6 +56,7 @@ export interface NormalizedTriggerDraft {
   scheduledAtIso?: string;
   cronExpression?: string;
   eventKind?: string;
+  eventFilter?: Record<string, unknown>;
   maxRuns?: number;
   kind: import("@elizaos/core").TriggerKind;
   // Present only for `kind === "workflow"`. `buildTriggerConfig` produces the

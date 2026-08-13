@@ -273,7 +273,7 @@ export function createApp(): Hono<AppEnv> {
   app.use("*", corsMiddleware);
 
   // Security response headers for every API response. The SPA already ships
-  // these via Pages `_headers`, but the Worker (api.elizacloud.ai) shipped
+  // these via Pages `_headers`, but the Worker (api.eliza.app) shipped
   // none — a ZAP scan flagged the missing X-Content-Type-Options and HSTS.
   // Registered right after CORS: `credentials: true` makes the CORS middleware
   // touch `c.res` on every request, so Hono re-wraps handler responses with a
@@ -443,7 +443,7 @@ export function createApp(): Hono<AppEnv> {
 
   app.get("/", (c) => {
     const hostname = new URL(c.req.url).hostname;
-    if (hostname === "x402.elizacloud.ai" || hostname === "x402.elizaos.ai") {
+    if (hostname === "x402.eliza.app" || hostname === "x402.elizaos.ai") {
       return c.json({
         name: "eliza-x402",
         description: "Eliza Cloud x402 facilitator",
@@ -457,7 +457,7 @@ export function createApp(): Hono<AppEnv> {
     return c.json({
       name: "eliza-cloud-api",
       description: "Eliza Cloud API",
-      docs: "https://elizacloud.ai/docs",
+      docs: "https://eliza.app/docs",
       health: "/api/health",
       openapi: "/api/openapi.json",
     });

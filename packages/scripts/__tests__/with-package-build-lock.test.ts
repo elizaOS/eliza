@@ -230,9 +230,9 @@ describe("with-package-build-lock", () => {
   test("serializes simultaneous takeovers of one dead-owner lock", async () => {
     const packageKey = uniquePackageKey("dead-race");
     const lockPath = lockPathFor(packageKey);
-    mkdirSync(lockPath, { recursive: true });
+    mkdirSync(path.dirname(lockPath), { recursive: true });
     writeFileSync(
-      path.join(lockPath, "metadata.json"),
+      lockPath,
       `${JSON.stringify({ pid: 2_147_483_647, ownerId: "dead", createdAt: new Date().toISOString() })}\n`,
     );
     const evidenceDir = mkdtempSync(path.join(tmpdir(), "eliza-lock-race-"));
@@ -246,6 +246,30 @@ describe("with-package-build-lock", () => {
     const outcomes = await Promise.all([collect(left), collect(right)]);
 
     expect(outcomes.map((outcome) => outcome.code)).toEqual([0, 0]);
+    expect(existsSync(overlapPath)).toBe(false);
+  });
+
+  test("keeps replacement owners exclusive during repeated stale takeovers", async () => {
+    const packageKey = uniquePackageKey("takeover-stress");
+    const lockPath = lockPathFor(packageKey);
+    mkdirSync(path.dirname(lockPath), { recursive: true });
+    writeFileSync(
+      lockPath,
+      `${JSON.stringify({ pid: 2_147_483_647, ownerId: "dead", createdAt: new Date().toISOString() })}\n`,
+    );
+    const evidenceDir = mkdtempSync(path.join(tmpdir(), "eliza-lock-stress-"));
+    cleanupPaths.add(evidenceDir);
+    const activePath = path.join(evidenceDir, "active");
+    const overlapPath = path.join(evidenceDir, "overlap");
+    const childCode = `const fs=require("node:fs");const active=${JSON.stringify(activePath)};const overlap=${JSON.stringify(overlapPath)};if(fs.existsSync(active))fs.appendFileSync(overlap,"overlap\\n");fs.writeFileSync(active,String(process.pid));setTimeout(()=>fs.rmSync(active,{force:true}),40);`;
+
+    const outcomes = await Promise.all(
+      Array.from({ length: 8 }, () =>
+        collect(spawnWrapper(packageKey, [NODE_BIN, "-e", childCode])),
+      ),
+    );
+
+    expect(outcomes.every((outcome) => outcome.code === 0)).toBe(true);
     expect(existsSync(overlapPath)).toBe(false);
   });
 

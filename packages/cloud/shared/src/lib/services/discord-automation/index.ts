@@ -32,7 +32,7 @@ const _DISCORD_CDN_BASE = "https://cdn.discordapp.com";
 const DISCORD_CLIENT_ID = process.env.DISCORD_CLIENT_ID;
 const DISCORD_CLIENT_SECRET = process.env.DISCORD_CLIENT_SECRET;
 const DISCORD_BOT_TOKEN = process.env.DISCORD_BOT_TOKEN;
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL || "https://www.elizacloud.ai";
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL || "https://cloud.eliza.app";
 
 // OAuth2 scopes and permissions
 const OAUTH_SCOPES = "identify guilds bot applications.commands";

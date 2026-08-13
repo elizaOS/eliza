@@ -183,7 +183,7 @@ describe("OrganizationTab — connect-link landing intent", () => {
     window.history.replaceState(
       null,
       "",
-      "/dashboard/organization?tab=credentials&contribute=1",
+      "/cloud/organization?tab=credentials&contribute=1",
     );
 
     withClient(<OrganizationTab user={user} />);

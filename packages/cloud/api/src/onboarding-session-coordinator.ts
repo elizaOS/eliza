@@ -11,6 +11,7 @@ import type {
   OnboardingChatResult,
   OnboardingSession,
 } from "@/lib/services/eliza-app/onboarding-chat";
+import { onboardingCoordinatorErrorResponse } from "@/lib/services/eliza-app/onboarding-coordinator-transport";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -47,6 +48,30 @@ interface LegacyCoordinatorLedger {
 
 interface StoredSession extends Omit<OnboardingSession, "history"> {
   historyChunkCount: number;
+}
+
+/**
+ * What the platform scope holds once an authenticated turn has moved that
+ * conversation into its account-owned scope.
+ *
+ * A messaging turn arrives anonymous — the gateway knows the sender's platform
+ * id, not their account — so `scopeFor` files it under `platform:<sessionId>`
+ * and that key is the ONLY one such a turn can address. Deleting it at migration
+ * left the next message from the same sender with nothing to read, so it started
+ * a brand-new session and answered the login greeting again, forever.
+ *
+ * The pointer is what makes the hand-back durable. It is deliberately not a
+ * session: the transcript has exactly one owner (the account scope), and this
+ * key only says where that owner lives.
+ */
+interface StoredSessionAlias {
+  aliasScope: string;
+}
+
+function isStoredSessionAlias(value: unknown): value is StoredSessionAlias {
+  if (!value || typeof value !== "object") return false;
+  const { aliasScope } = value as Record<string, unknown>;
+  return typeof aliasScope === "string" && aliasScope.length > 0;
 }
 
 const SESSION_KEY_PREFIX = "session:";
@@ -141,7 +166,7 @@ function replayStorageKey(
   idempotencyKey: string,
   input: OnboardingChatInput,
 ): string {
-  const identity = `${input.continuationMode ?? "standard"}:${input.authenticatedUser?.telegramId ?? "no-telegram"}:${idempotencyKey}`;
+  const identity = `${input.continuationMode ?? "standard"}:${input.authenticatedUser?.telegramId ?? "no-telegram"}:${input.authenticatedUser?.discordId ?? "no-discord"}:${idempotencyKey}`;
   return `${REPLAY_KEY_PREFIX}${scope}:${storageComponent(identity)}`;
 }
 
@@ -149,10 +174,13 @@ async function loadStoredSession(
   storage: DurableObjectStorage,
   scope: string,
 ): Promise<OnboardingSession | undefined> {
-  const stored = await storage.get<StoredSession | OnboardingSession>(
-    sessionStorageKey(scope),
-  );
-  if (!stored) return undefined;
+  const stored = await storage.get<
+    StoredSession | OnboardingSession | StoredSessionAlias
+  >(sessionStorageKey(scope));
+  // A pointer is not a transcript. Returning one here would hand the caller a
+  // session-shaped object with no history and no bindings, and — on the
+  // authenticated fallback below — would read a scope this caller does not own.
+  if (!stored || isStoredSessionAlias(stored)) return undefined;
   if (!("historyChunkCount" in stored)) return stored;
 
   const chunks = await Promise.all(
@@ -194,6 +222,31 @@ function storedSessionEntries(
     entries[historyStorageKey(scope, index)] = chunk;
   }
   return entries;
+}
+
+/**
+ * Resolves the scope a turn actually reads and writes.
+ *
+ * Only the platform scope is ever aliased, and only to an account scope, so one
+ * hop is the entire chain — a record that points at itself, or at a scope that
+ * is itself a pointer, is treated as no pointer rather than followed. An
+ * authenticated turn already names its own account scope and must never follow
+ * this key: the platform identity is public, so following it from an account
+ * scope would be an ownership hole.
+ */
+async function resolveTurnScope(
+  storage: DurableObjectStorage,
+  requestedScope: string,
+  platformScope: string,
+): Promise<string> {
+  if (requestedScope !== platformScope) return requestedScope;
+  const record = await storage.get<unknown>(sessionStorageKey(platformScope));
+  if (!isStoredSessionAlias(record)) return requestedScope;
+  if (record.aliasScope === platformScope) return requestedScope;
+  const target = await storage.get<unknown>(
+    sessionStorageKey(record.aliasScope),
+  );
+  return isStoredSessionAlias(target) ? requestedScope : record.aliasScope;
 }
 
 async function historyStorageKeys(
@@ -632,9 +685,16 @@ export class OnboardingSessionCoordinator {
       loadCachedOnboardingSession,
       runOnboardingChatWithStore,
     } = await import("@/lib/services/eliza-app/onboarding-chat");
-    const scope = scopeFor(request.input, request.sessionId);
     const platformScope = `platform:${storageComponent(request.sessionId)}`;
     const platformSessionKey = sessionStorageKey(platformScope);
+    // A messaging turn is anonymous, so it can only ever name the platform
+    // scope. When that scope has already been migrated, the pointer left behind
+    // is what sends this turn to the account scope instead of to a hole.
+    const scope = await resolveTurnScope(
+      this.state.storage,
+      scopeFor(request.input, request.sessionId),
+      platformScope,
+    );
     const legacy =
       await this.state.storage.get<LegacyCoordinatorLedger>(LEGACY_LEDGER_KEY);
 
@@ -647,10 +707,16 @@ export class OnboardingSessionCoordinator {
         : undefined;
     const storedSession = scopedSession ?? platformSession;
     const legacySession = legacySessionFor(legacy, request.input);
-    let nextSession =
-      storedSession ??
-      legacySession ??
-      (await loadCachedOnboardingSession(request.sessionId));
+    // The cache read is a one-way migration ramp for sessions written before
+    // this object owned them, nothing more. It must never be the only path back
+    // to a live session: `cache.get` answers null for an outage and for a miss
+    // alike, so a conversation that depends on it restarts on the first bad
+    // minute. Durable storage above is the authority in both scopes.
+    const cachedSession =
+      storedSession || legacySession
+        ? null
+        : await loadCachedOnboardingSession(request.sessionId);
+    let nextSession = storedSession ?? legacySession ?? cachedSession ?? null;
     if (request.input.continuationMode === "trusted-telegram") {
       assertTrustedTelegramContinuation(nextSession, request.input);
     }
@@ -697,16 +763,28 @@ export class OnboardingSessionCoordinator {
     if (replay) {
       writes[replayStorageKey(scope, replay.key, request.input)] = replay;
     }
-    const platformHistoryKeys =
-      platformSession && result.session.id === request.sessionId
-        ? await historyStorageKeys(this.state.storage, platformScope)
-        : [];
+    // A different authenticated account is deliberately given a fresh session.
+    // In that case, keep the platform scope pointing at its original owner;
+    // retargeting it to the rejected caller would hijack every later DM.
+    const migratedPlatformSession =
+      (platformSession ?? legacySession ?? cachedSession)?.id ===
+        request.sessionId && result.session.id === request.sessionId;
+    const platformHistoryKeys = migratedPlatformSession
+      ? await historyStorageKeys(this.state.storage, platformScope)
+      : [];
     const currentAlarm = await this.state.storage.getAlarm();
     await this.state.storage.transaction(async (transaction) => {
       await transaction.put(writes);
       if (legacySession) await transaction.delete(LEGACY_LEDGER_KEY);
-      if (platformSession && result.session.id === request.sessionId) {
-        await transaction.delete(platformSessionKey);
+      if (migratedPlatformSession) {
+        // The transcript now lives in the account scope and the platform copy
+        // is retired — but the key itself must keep answering, because the
+        // sender's next message can address nothing else. Replace the session
+        // with a pointer in the SAME transaction that moves it, so the
+        // conversation is never, at any instant, unreachable from Telegram.
+        await transaction.put(platformSessionKey, {
+          aliasScope: scope,
+        } satisfies StoredSessionAlias);
         for (const key of platformHistoryKeys) await transaction.delete(key);
       }
       if (
@@ -891,10 +969,7 @@ export class OnboardingSessionCoordinator {
         // error-policy:J1 Durable Object transport boundary; inner onboarding
         // failures remain observable as a failed request and are never replaced
         // with an empty or successful-looking result.
-        return Response.json(
-          { error: error instanceof Error ? error.message : String(error) },
-          { status: 500 },
-        );
+        return onboardingCoordinatorErrorResponse(error);
       }
     });
   }

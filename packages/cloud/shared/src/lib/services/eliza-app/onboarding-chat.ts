@@ -16,7 +16,9 @@ import {
   hasCloudBindingsContext,
 } from "../../runtime/cloud-bindings";
 import { logger } from "../../utils/logger";
+import { normalizePhoneNumber } from "../../utils/phone-normalization";
 import { launchManagedElizaAgent } from "../eliza-managed-launch";
+import { readOnboardingCoordinatorResult } from "./onboarding-coordinator-transport";
 import {
   enqueueDiscordProactiveGreeting,
   PROACTIVE_GREETING_QUEUE_PREFIX,
@@ -54,6 +56,12 @@ export interface OnboardingSession {
   platformUserId?: string;
   platformDisplayName?: string;
   /**
+   * Trusted transport address that opens the originating conversation after
+   * browser authentication. Phone gateways set this to their receiving number;
+   * browser callers cannot set it through the public route.
+   */
+  platformReplyAddress?: string;
+  /**
    * True once a trusted transport (internal gateway auth) has attested the
    * platform identity on this session. Only trusted platform identities may
    * be linked to a cloud account after login.
@@ -74,10 +82,12 @@ export interface OnboardingChatInput {
   platform?: OnboardingPlatform;
   platformUserId?: string;
   platformDisplayName?: string;
+  platformReplyAddress?: string;
   authenticatedUser?: {
     userId: string;
     organizationId: string;
     telegramId?: string;
+    discordId?: string;
   } | null;
   trustedPlatformIdentity?: boolean;
   /** Requests fail-closed redemption of an existing trusted Telegram session. */
@@ -96,9 +106,10 @@ export interface OnboardingChatInput {
 }
 
 export interface OnboardingContinuationPreview {
-  platform: "discord" | "telegram";
+  platform: "discord" | "telegram" | "blooio" | "twilio";
   platformUserId: string;
   platformDisplayName: string;
+  returnUrl: string | null;
 }
 
 export interface OnboardingChatCta {
@@ -143,8 +154,8 @@ const MAX_HISTORY_MESSAGES = 200;
 const MAX_MESSAGE_LENGTH = 4000;
 // The Cloud app host. Serves the authenticated `/get-started` continuation
 // landing (Steward login -> identity confirm -> back-to-Discord handoff) that
-// the messaging Connect CTA now targets directly, plus dashboard/billing links.
-const DEFAULT_ONBOARDING_APP_URL = "https://app.elizacloud.ai";
+// the messaging Connect CTA now targets directly, plus in-app Cloud links.
+const DEFAULT_ONBOARDING_APP_URL = "https://cloud.eliza.app";
 const ELIZA_APP_INITIAL_CREDIT_USD = "$5";
 /** Label for platforms that render the login link as a UI affordance. */
 const ONBOARDING_CTA_LABEL = "Connect";
@@ -174,7 +185,8 @@ function resultCacheKey(
     : "transport";
   const mode = input.continuationMode ?? "standard";
   const telegramId = input.authenticatedUser?.telegramId ?? "no-telegram";
-  return `eliza-app:onboarding-result:${sessionId}:${scope}:${mode}:${encodeURIComponent(telegramId)}:${idempotencyKey}`;
+  const discordId = input.authenticatedUser?.discordId ?? "no-discord";
+  return `eliza-app:onboarding-result:${sessionId}:${scope}:${mode}:${encodeURIComponent(telegramId)}:${encodeURIComponent(discordId)}:${idempotencyKey}`;
 }
 
 function nowIso(): string {
@@ -334,15 +346,38 @@ async function loadOnboardingSessionForValidation(
  * authenticated browser continuation: possession of the opaque continuation
  * token (delivered only inside the platform DM) plus an explicit in-browser
  * confirmation is the ownership proof — the model #18161 shipped for Discord,
- * now shared by Telegram. Phone-shaped platforms are excluded: their identity
- * IS the phone number and links through the dedicated phone path.
+ * now shared by Telegram and phone gateways. Phone-shaped platforms still use
+ * the dedicated phone linker after confirmation.
  */
-type BrowserLinkablePlatform = "discord" | "telegram";
+type BrowserLinkablePlatform = "discord" | "telegram" | "blooio" | "twilio";
 
 function isBrowserLinkablePlatform(
   platform: OnboardingPlatform | undefined,
 ): platform is BrowserLinkablePlatform {
-  return platform === "discord" || platform === "telegram";
+  return (
+    platform === "discord" ||
+    platform === "telegram" ||
+    platform === "blooio" ||
+    platform === "twilio"
+  );
+}
+
+function buildMessagingReturnUrl(session: OnboardingSession): string | null {
+  if (session.platform !== "blooio" && session.platform !== "twilio") {
+    return null;
+  }
+  const env = getCloudAwareEnv();
+  // Sessions issued before platformReplyAddress shipped still need to return
+  // to Messages after deployment. The configured Eliza gateway number is the
+  // trusted migration fallback; new sessions retain their exact gateway value.
+  const configuredReplyAddress =
+    session.platform === "blooio"
+      ? env.ELIZA_APP_BLOOIO_PHONE_NUMBER || env.BLOOIO_FROM_NUMBER
+      : env.ELIZA_APP_TWILIO_PHONE_NUMBER || env.TWILIO_PHONE_NUMBER;
+  const replyAddress = normalizePhoneNumber(
+    session.platformReplyAddress ?? configuredReplyAddress ?? "",
+  );
+  return replyAddress ? `sms:${replyAddress}` : null;
 }
 
 function trustedBrowserContinuationError(session: OnboardingSession | null): ElizaError {
@@ -357,7 +392,7 @@ function isBrowserLinkableContinuationForAccount(
   session: OnboardingSession | null,
   authenticatedAccount: { userId: string; organizationId: string },
 ): session is OnboardingSession & {
-  platform: "discord" | "telegram";
+  platform: BrowserLinkablePlatform;
   platformUserId: string;
 } {
   const hasUserBinding = session?.userId !== undefined;
@@ -378,17 +413,29 @@ function isBrowserLinkableContinuationForAccount(
 /** Resolve an opaque messaging continuation without mutating or binding it. */
 export async function inspectOnboardingContinuation(
   continuationToken: string,
-  authenticatedAccount: { userId: string; organizationId: string },
+  authenticatedAccount: {
+    userId: string;
+    organizationId: string;
+    telegramId?: string;
+    discordId?: string;
+  },
 ): Promise<OnboardingContinuationPreview> {
   const sessionId = await resolveContinuationToken(continuationToken);
   const session = sessionId ? await loadOnboardingSessionForValidation(sessionId) : null;
   if (!isBrowserLinkableContinuationForAccount(session, authenticatedAccount)) {
     throw trustedBrowserContinuationError(session);
   }
+  // Preview is an authorization boundary too: it returns the attested platform
+  // identity before the mutating confirmation turn. A signed Discord or
+  // Telegram session for a different account must not learn that identity.
+  assertAuthenticatedPlatformIdentity(session, {
+    authenticatedUser: authenticatedAccount,
+  });
   return {
     platform: session.platform,
     platformUserId: session.platformUserId,
     platformDisplayName: session.platformDisplayName?.trim() || session.platformUserId,
+    returnUrl: buildMessagingReturnUrl(session),
   };
 }
 
@@ -720,8 +767,17 @@ function isPhoneLikePlatformIdentity(args: {
   );
 }
 
-function platformLinkLabel(platform: "discord" | "telegram"): string {
-  return platform === "discord" ? "Discord" : "Telegram";
+function platformLinkLabel(platform: BrowserLinkablePlatform): string {
+  switch (platform) {
+    case "discord":
+      return "Discord";
+    case "telegram":
+      return "Telegram";
+    case "blooio":
+      return "iMessage";
+    case "twilio":
+      return "SMS";
+  }
 }
 
 async function maybeLinkAuthenticatedPlatformIdentity(
@@ -738,11 +794,11 @@ async function maybeLinkAuthenticatedPlatformIdentity(
     return session;
   }
 
-  // Discord / Telegram: a PRIOR gateway turn attested "this session belongs
-  // to platform user X"; the user then authenticated (e.g. Steward email
-  // login) via the opaque continuation credential. Bind the platform identity
-  // so the gateway router resolves their DMs to the provisioned agent instead
-  // of onboarding forever. Skipped on gateway turns themselves
+  // Browser-linkable platforms: a PRIOR gateway turn attested "this session
+  // belongs to platform user X"; the user then authenticated (e.g. Steward
+  // email login) via the opaque continuation credential. Bind the platform
+  // identity so the gateway router resolves their messages to the provisioned
+  // agent instead of onboarding forever. Skipped on gateway turns themselves
   // (input.trustedPlatformIdentity): there the authenticated account was
   // RESOLVED FROM the user_identities projection, so the link already exists
   // and re-linking would just add a DB round trip to every DM turn. Also
@@ -757,6 +813,12 @@ async function maybeLinkAuthenticatedPlatformIdentity(
     const platform = session.platform;
     if (platform === "telegram" && input.authenticatedUser.telegramId === session.platformUserId) {
       // Already linked (eliza-app JWT carries the signed Telegram id).
+      return session;
+    }
+    if (platform === "discord" && input.authenticatedUser.discordId === session.platformUserId) {
+      // Already linked (eliza-app JWT carries the signed Discord id): the user
+      // authenticated via Discord OAuth as the same account that sent the DM,
+      // so the identity is proven and no confirmation detour is needed.
       return session;
     }
     if (input.confirmPlatformLink !== true) {
@@ -780,10 +842,15 @@ async function maybeLinkAuthenticatedPlatformIdentity(
             discordId: session.platformUserId,
             username: displayName,
           })
-        : await elizaAppUserService.linkTelegramToUser(input.authenticatedUser.userId, {
-            id: session.platformUserId,
-            username: displayName,
-          });
+        : platform === "telegram"
+          ? await elizaAppUserService.linkTelegramToUser(input.authenticatedUser.userId, {
+              id: session.platformUserId,
+              username: displayName,
+            })
+          : await elizaAppUserService.linkPhoneToUser(
+              input.authenticatedUser.userId,
+              session.platformUserId,
+            );
     if (!link.success) {
       throw new ElizaError(
         link.error || `${platformLinkLabel(platform)} identity could not be linked`,
@@ -832,7 +899,7 @@ async function maybeLinkAuthenticatedPlatformIdentity(
   return session;
 }
 
-function assertAuthenticatedTelegramIdentity(
+function assertAuthenticatedPlatformIdentity(
   session: OnboardingSession,
   input: OnboardingChatInput,
 ): void {
@@ -847,21 +914,26 @@ function assertAuthenticatedTelegramIdentity(
     return;
   }
 
-  if (session.platform !== "telegram") {
+  if (session.platform !== "telegram" && session.platform !== "discord") {
     return;
   }
-  const signedPlatformId = input.authenticatedUser.telegramId;
+  const signedPlatformId =
+    session.platform === "discord"
+      ? input.authenticatedUser.discordId
+      : input.authenticatedUser.telegramId;
   if (signedPlatformId === session.platformUserId) {
     return;
   }
 
-  // A Steward browser continuation carries no signed Telegram identity — the
-  // opaque continuation token (delivered only inside the Telegram DM) plus the
+  // A Steward browser continuation carries no signed platform identity — the
+  // opaque continuation token (delivered only inside the platform DM) plus the
   // explicit confirmPlatformLink turn is the ownership proof, exactly like the
   // Discord continuation path (#18161). Strict trusted-telegram redemption
   // (the legacy widget auth route) always carries the signed id and never
-  // takes this branch. A caller whose token DOES carry a Telegram id that
-  // differs from the session's stays a hard mismatch.
+  // takes this branch. A caller whose token DOES carry a signed id for the
+  // session's platform that differs from the session's stays a hard mismatch:
+  // a Discord-OAuth (or Telegram-widget) authenticated browser that owns a
+  // DIFFERENT platform account must not adopt this DM session (#18058).
   if (signedPlatformId === undefined && input.continuationMode !== "trusted-telegram") {
     return;
   }
@@ -902,7 +974,7 @@ export function assertTrustedTelegramContinuation(
     throw trustedContinuationError(session);
   }
 
-  assertAuthenticatedTelegramIdentity(session, input);
+  assertAuthenticatedPlatformIdentity(session, input);
 }
 
 function getOnboardingAppUrl(): string {
@@ -921,8 +993,8 @@ function onboardingAppPath(path: string): string {
 
 /**
  * The messaging-continuation Connect CTA target: the Cloud app's own
- * `/get-started` (ELIZA_ONBOARDING_APP_URL — app.elizacloud.ai /
- * app-staging.elizacloud.ai), NOT the homepage.
+ * `/get-started` (ELIZA_ONBOARDING_APP_URL — cloud.eliza.app /
+ * cloud-staging.eliza.app), not the public homepage.
  *
  * That Cloud-app route is authenticated, so a signed-out visitor is bounced
  * straight to `/login?returnTo=/get-started` (the Steward auth flow) with the
@@ -1066,7 +1138,7 @@ function fallbackReply(args: {
     return `last attempt failed, ${name}. I've queued another one, nothing for you to do. keep chatting here.`;
   }
   if (args.provisioning.status === "insufficient_credits") {
-    return `you're out of credits, ${name}. top up at ${onboardingAppPath("/dashboard/billing")} and I'll get your agent going.`;
+    return `you're out of credits, ${name}. top up at ${onboardingAppPath("/cloud/billing")} and I'll get your agent going.`;
   }
   return `on it, ${name}. your agent is spinning up now, takes a minute or two. keep chatting here in the meantime.`;
 }
@@ -1190,7 +1262,7 @@ async function copyTranscriptToManagedAgent(session: OnboardingSession): Promise
 }
 
 function controlPanelUrl(agentId?: string | null): string {
-  return onboardingAppPath(agentId ? `/dashboard/agents/${agentId}` : "/dashboard/agents");
+  return onboardingAppPath(agentId ? `/cloud/agents/${agentId}` : "/cloud/agents");
 }
 
 function newSession(id: string, input: OnboardingChatInput): OnboardingSession {
@@ -1203,6 +1275,8 @@ function newSession(id: string, input: OnboardingChatInput): OnboardingSession {
     platform: input.platform,
     platformUserId: input.platformUserId,
     platformDisplayName: input.platformDisplayName,
+    platformReplyAddress:
+      input.trustedPlatformIdentity === true ? input.platformReplyAddress : undefined,
     history: [],
   };
 }
@@ -1274,6 +1348,9 @@ export async function runOnboardingChatWithStore(
     platform: session.platform ?? input.platform,
     platformUserId: session.platformUserId ?? input.platformUserId,
     platformDisplayName: input.platformDisplayName ?? session.platformDisplayName,
+    platformReplyAddress:
+      session.platformReplyAddress ??
+      (input.trustedPlatformIdentity === true ? input.platformReplyAddress : undefined),
     updatedAt: nowIso(),
   };
 
@@ -1283,7 +1360,7 @@ export async function runOnboardingChatWithStore(
 
   const wasUnboundBeforeThisTurn = !session.userId;
   if (input.authenticatedUser) {
-    assertAuthenticatedTelegramIdentity(session, input);
+    assertAuthenticatedPlatformIdentity(session, input);
     session = {
       ...session,
       userId: input.authenticatedUser.userId,
@@ -1482,19 +1559,12 @@ function onboardingCoordinator(): RuntimeDurableObjectNamespace | undefined {
   return getCloudBinding<RuntimeDurableObjectNamespace>("ONBOARDING_SESSIONS");
 }
 
-async function readCoordinatorResult(response: Response): Promise<OnboardingChatResult> {
-  if (!response.ok) {
-    throw new Error(`onboarding session coordinator failed (${response.status})`);
-  }
-  return (await response.json()) as OnboardingChatResult;
-}
-
 async function runViaCoordinator(
   stub: RuntimeDurableObjectStub,
   input: OnboardingChatInput,
   sessionId: string,
 ): Promise<OnboardingChatResult> {
-  return readCoordinatorResult(
+  return readOnboardingCoordinatorResult<OnboardingChatResult>(
     await stub.fetch("https://onboarding.internal/turn", {
       method: "POST",
       headers: { "content-type": "application/json" },

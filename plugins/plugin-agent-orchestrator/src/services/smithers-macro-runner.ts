@@ -146,7 +146,7 @@ async function resolvePluginRoot(): Promise<string> {
 
 function createMacroScript(): string {
   return String.raw`
-    import { Smithers } from '@smithers-orchestrator/engine';
+    import { Smithers } from 'smthrs';
     import { Effect, Schema } from 'effect';
     import { createInterface } from 'node:readline/promises';
 
@@ -335,9 +335,9 @@ export async function runSmithersObservabilityMacro(
     databasePath,
     phases,
     watch: {
-      monitorCommand: `bunx smithers-orchestrator monitor ${runId}`,
-      inspectCommand: `bunx smithers-orchestrator inspect ${runId}`,
-      replayCommand: `bunx smithers-orchestrator events ${runId} --json`,
+      monitorCommand: `bunx smthrs monitor ${runId}`,
+      inspectCommand: `bunx smthrs inspect ${runId}`,
+      replayCommand: `bunx smthrs events ${runId} --json`,
     },
   };
 }

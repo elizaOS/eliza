@@ -4,10 +4,10 @@
   <p><strong>Your agentic operating system.</strong></p>
   <p>
     <a href="https://eliza.app">Eliza</a> ·
-    <a href="https://app.elizacloud.ai">Eliza Cloud</a> ·
-    <a href="https://os.elizacloud.ai">elizaOS downloads</a> ·
+    <a href="https://cloud.eliza.app">Eliza Cloud</a> ·
+    <a href="https://os.eliza.app">elizaOS downloads</a> ·
     <a href="https://docs.elizaos.ai/">Documentation</a> ·
-    <a href="https://plugins.elizacloud.ai">App catalog</a>
+    <a href="https://plugins.eliza.app">App catalog</a>
   </p>
 </div>
 
@@ -21,7 +21,7 @@ Android distributions live in the separate
 
 | Goal | Start here |
 | --- | --- |
-| Use Eliza | [Open the web app](https://app.elizacloud.ai), visit [Eliza downloads](https://eliza.app/downloads), or use a published [GitHub release](https://github.com/elizaOS/eliza/releases) |
+| Use Eliza | [Open the web app](https://cloud.eliza.app), visit [Eliza downloads](https://eliza.app/downloads), or use a published [GitHub release](https://github.com/elizaOS/eliza/releases) |
 | Run this repository | Follow [Run Eliza from source](#run-eliza-from-source) |
 | Build an agent or plugin | Install the [`elizaos`](#build-with-elizaos) CLI and read the [developer docs](https://docs.elizaos.ai/) |
 | Contribute | Read [CONTRIBUTING.md](CONTRIBUTING.md) and the repository guide in [AGENTS.md](AGENTS.md) |
@@ -110,7 +110,7 @@ route each model capability to local, direct-provider, or Eliza Cloud backends.
 
 ### Eliza Cloud
 
-[Eliza Cloud](https://app.elizacloud.ai) is optional. It provides account and
+[Eliza Cloud](https://cloud.eliza.app) is optional. It provides account and
 authentication services, hosted model routing, application and agent
 deployment, remote connectivity, and cross-device product services. The local
 runtime and direct model-provider configuration remain first-class paths.

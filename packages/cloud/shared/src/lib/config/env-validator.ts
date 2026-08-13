@@ -52,9 +52,18 @@ const ENV_VARS = {
     },
     errorMessage: "Must be an http(s) URL or same-origin /steward path",
   },
+  STEWARD_JWT_SECRET: {
+    required: false,
+    failOnInvalid: true,
+    description:
+      "Canonical HS256 secret used to verify Steward session JWTs (must match Steward host)",
+    validate: (value: string) => value.trim().length >= 32,
+    errorMessage: "Must be at least 32 characters",
+  },
   STEWARD_SESSION_SECRET: {
-    required: true,
-    description: "HS256 secret used to verify Steward session JWTs (must match Steward host)",
+    required: false,
+    failOnInvalid: true,
+    description: "Deprecated alias for STEWARD_JWT_SECRET used during credential migration",
     validate: (value: string) => value.trim().length >= 32,
     errorMessage: "Must be at least 32 characters",
   },
@@ -231,6 +240,15 @@ const ENV_VARS = {
 export function validateEnvironment(): EnvValidationResult {
   const errors: EnvValidationError[] = [];
   const warnings: EnvValidationError[] = [];
+
+  if (!process.env.STEWARD_JWT_SECRET && !process.env.STEWARD_SESSION_SECRET) {
+    errors.push({
+      variable: "STEWARD_JWT_SECRET",
+      message:
+        "STEWARD_JWT_SECRET is required but not set (STEWARD_SESSION_SECRET is accepted as a deprecated fallback).",
+      required: true,
+    });
+  }
 
   for (const [variable, config] of Object.entries(ENV_VARS)) {
     const value = process.env[variable];

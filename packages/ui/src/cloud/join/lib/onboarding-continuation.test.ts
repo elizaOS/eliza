@@ -83,6 +83,7 @@ describe("previewPendingOnboardingContinuation", () => {
         platform: "discord",
         platformUserId: "1234567890",
         platformDisplayName: "attested-user",
+        returnUrl: null,
       },
     });
     const preview = await previewPendingOnboardingContinuation(TOKEN, {
@@ -93,6 +94,24 @@ describe("previewPendingOnboardingContinuation", () => {
       `/api/eliza-app/onboarding/chat?sessionId=${encodeURIComponent(TOKEN)}`,
     );
     expect(preview.platformDisplayName).toBe("attested-user");
+  });
+
+  it("carries a trusted iMessage return deep link", async () => {
+    const preview = await previewPendingOnboardingContinuation(TOKEN, {
+      get: vi.fn().mockResolvedValue({
+        data: {
+          platform: "blooio",
+          platformUserId: "+14155550123",
+          platformDisplayName: "Shaw",
+          returnUrl: "sms:+18087881821",
+        },
+      }),
+      post: vi.fn(),
+    });
+    expect(preview).toMatchObject({
+      platform: "blooio",
+      returnUrl: "sms:+18087881821",
+    });
   });
 });
 

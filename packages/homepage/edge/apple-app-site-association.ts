@@ -3,7 +3,7 @@
  *
  * The production Cloudflare route owns only the exact AASA URL and forwards
  * every other request unchanged to the Pages origin. The release identity
- * remains edge-only so ordinary homepage builds continue serving their
+ * remains edge-only so ordinary unified app builds continue serving their
  * deliberately inert file.
  */
 

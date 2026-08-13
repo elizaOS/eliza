@@ -1,6 +1,6 @@
 /**
  * Apps ingress route builders (Apps / Product 2) — pure construction of the
- * Caddy admin-API objects that make `<shortid>.apps.elizacloud.ai` reverse-proxy
+ * Caddy admin-API objects that make `<shortid>.apps.eliza.app` reverse-proxy
  * to an app's container on its node.
  *
  * The front door: stock Caddy on the app node terminates TLS (on-demand, gated
@@ -18,7 +18,7 @@
  */
 
 export interface AppRouteInput {
-  /** The app's public host, e.g. `abc12345.apps.elizacloud.ai`. */
+  /** The app's public host, e.g. `abc12345.apps.eliza.app`. */
   hostname: string;
   /**
    * Additional hostnames to host-match on the SAME route — the app's verified

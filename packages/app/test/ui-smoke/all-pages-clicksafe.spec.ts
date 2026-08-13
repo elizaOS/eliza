@@ -316,12 +316,6 @@ const CORE_ROUTE_PROBES: readonly RouteProbe[] = [
     viewHeaderTitle: "Character",
   },
   {
-    name: "automation node catalog deep link",
-    path: "/automations/node-catalog",
-    readyChecks: [{ selector: '[data-testid="automations-shell"]' }],
-    timeoutMs: 60_000,
-  },
-  {
     // installDesktopPermissionsBridge injects __ELIZA_ELECTROBUN_RPC__, so
     // isElectrobunRuntime() is true here and /desktop renders the full desktop
     // workspace branch (not the "tools only available" fallback). Assert on the

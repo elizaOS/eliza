@@ -27,8 +27,8 @@ import {
   failureToActionResult,
   fencePreformatted,
   readBoolParam,
+  readBoundedIntSetting,
   readNumberParam,
-  readPositiveIntSetting,
   readStringParam,
   successActionResult,
   truncate,
@@ -335,7 +335,10 @@ function getBackgroundShellService(
 }
 
 function clampTimeout(value: number | undefined, fallback: number): number {
-  if (value === undefined || !Number.isFinite(value)) return fallback;
+  const boundedFallback = Number.isFinite(fallback)
+    ? Math.max(TIMEOUT_MIN_MS, Math.min(TIMEOUT_MAX_MS, Math.floor(fallback)))
+    : DEFAULT_TIMEOUT_MS;
+  if (value === undefined || !Number.isFinite(value)) return boundedFallback;
   return Math.max(TIMEOUT_MIN_MS, Math.min(TIMEOUT_MAX_MS, Math.floor(value)));
 }
 
@@ -1687,6 +1690,20 @@ export const shellAction: Action = {
       }
     }
 
+    // Validate the operator timeout before any action can create a child.
+    const timeoutSetting = readBoundedIntSetting(
+      runtime,
+      "CODING_TOOLS_SHELL_TIMEOUT_MS",
+      TIMEOUT_MIN_MS,
+      TIMEOUT_MAX_MS,
+    );
+    if (timeoutSetting && "error" in timeoutSetting) {
+      return failureToActionResult({
+        reason: "invalid_param",
+        message: timeoutSetting.error,
+      });
+    }
+
     if (subaction === "start_background") {
       const backgroundShell = getBackgroundShellService(runtime);
       if (!backgroundShell) {
@@ -1739,11 +1756,7 @@ export const shellAction: Action = {
       }
     }
 
-    const defaultTimeout = readPositiveIntSetting(
-      runtime,
-      "CODING_TOOLS_SHELL_TIMEOUT_MS",
-      DEFAULT_TIMEOUT_MS,
-    );
+    const defaultTimeout = timeoutSetting?.value ?? DEFAULT_TIMEOUT_MS;
     const timeout = clampTimeout(
       readNumberParam(options, "timeout"),
       defaultTimeout,

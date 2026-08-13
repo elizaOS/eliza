@@ -111,35 +111,35 @@ describe("SsoBridgeRoute — inert role", () => {
   });
 });
 
-describe("SsoBridgeRoute — mint leg (dashboard host)", () => {
+describe("SsoBridgeRoute — mint leg (eliza.app auth host)", () => {
   const MINT_QS = `?state=${STATE}&challenge=${CHALLENGE}&returnTo=%2Fchat`;
 
   it("without a well-formed state nonce the visit is treated as any unknown path", () => {
-    setReferrer("https://app.elizacloud.ai/");
+    setReferrer("https://cloud.eliza.app/");
     stubNetwork(() => json(500, {}));
-    renderBridge("elizacloud.ai", `?challenge=${CHALLENGE}&returnTo=%2Fchat`);
+    renderBridge("eliza.app", `?challenge=${CHALLENGE}&returnTo=%2Fchat`);
     expect(screen.getByTestId("home-page")).toBeTruthy();
     expect(fetchLog).toEqual([]);
   });
 
   it("without a well-formed challenge the visit is treated as any unknown path — no unbound codes", () => {
-    setReferrer("https://app.elizacloud.ai/");
+    setReferrer("https://cloud.eliza.app/");
     stubNetwork(() => json(500, {}));
-    renderBridge("elizacloud.ai", `?state=${STATE}&returnTo=%2Fchat`);
+    renderBridge("eliza.app", `?state=${STATE}&returnTo=%2Fchat`);
     expect(screen.getByTestId("home-page")).toBeTruthy();
     expect(fetchLog).toEqual([]);
   });
 
-  it("a cross-site or absent referrer mints NOTHING — a third-party page cannot use the dashboard as a minting oracle", async () => {
+  it("a cross-site or absent referrer mints NOTHING — a third-party page cannot use eliza.app as a minting oracle", async () => {
     localStorage.setItem(STEWARD_TOKEN_KEY, liveToken());
     for (const referrer of [
       "",
       "https://evil.example/",
-      "https://elizacloud.ai/",
+      "https://eliza.app/",
     ]) {
       setReferrer(referrer);
       stubNetwork(() => json(200, { ok: true, code: CODE }));
-      renderBridge("elizacloud.ai", MINT_QS);
+      renderBridge("eliza.app", MINT_QS);
       expect(await screen.findByTestId("home-page")).toBeTruthy();
       expect(fetchLog).toEqual([]);
       expect(replacedUrls).toEqual([]);
@@ -147,59 +147,57 @@ describe("SsoBridgeRoute — mint leg (dashboard host)", () => {
     }
   });
 
-  it("signed out on the dashboard → straight to the APP host's own login", async () => {
-    setReferrer("https://app.elizacloud.ai/");
+  it("signed out on eliza.app → the canonical login with the bridge leg preserved", async () => {
+    setReferrer("https://cloud.eliza.app/");
     stubNetwork(() => json(500, {}));
-    renderBridge("elizacloud.ai", MINT_QS);
+    renderBridge("eliza.app", MINT_QS);
     await waitFor(() =>
       expect(replacedUrls).toEqual([
-        "https://app.elizacloud.ai/login?returnTo=%2Fchat",
+        `/login?returnTo=${encodeURIComponent(`/auth/bridge?state=${STATE}&challenge=${CHALLENGE}&returnTo=%2Fchat`)}`,
       ]),
     );
     expect(fetchLog).toEqual([]);
   });
 
   it("signed in + app-initiated → mints with Bearer + challenge and bounces to the app exchange leg, state echoed, challenge NOT echoed", async () => {
-    setReferrer("https://app.elizacloud.ai/");
+    setReferrer("https://cloud.eliza.app/");
     localStorage.setItem(STEWARD_TOKEN_KEY, liveToken());
     stubNetwork(() => json(200, { ok: true, code: CODE }));
-    renderBridge("elizacloud.ai", MINT_QS);
+    renderBridge("eliza.app", MINT_QS);
 
     await waitFor(() =>
       expect(replacedUrls).toEqual([
-        `https://app.elizacloud.ai/auth/bridge?code=${CODE}&state=${STATE}&returnTo=%2Fchat`,
+        `https://cloud.eliza.app/auth/bridge?code=${CODE}&state=${STATE}&returnTo=%2Fchat`,
       ]),
     );
-    expect(fetchLog[0].url).toBe(
-      "https://api.elizacloud.ai/api/auth/sso-bridge/mint",
-    );
+    expect(fetchLog[0].url).toBe("https://eliza.app/api/auth/sso-bridge/mint");
     expect(JSON.parse(String(fetchLog[0].init?.body))).toEqual({
       codeChallenge: CHALLENGE,
     });
   });
 
   it("mint failure → the app host's own login, never a loop back here", async () => {
-    setReferrer("https://app.elizacloud.ai/");
+    setReferrer("https://cloud.eliza.app/");
     localStorage.setItem(STEWARD_TOKEN_KEY, liveToken());
     stubNetwork(() => json(503, { error: "sso_unavailable" }));
-    renderBridge("elizacloud.ai", MINT_QS);
+    renderBridge("eliza.app", MINT_QS);
     await waitFor(() =>
       expect(replacedUrls).toEqual([
-        "https://app.elizacloud.ai/login?returnTo=%2Fchat",
+        "https://cloud.eliza.app/login?returnTo=%2Fchat",
       ]),
     );
   });
 
   it("open-redirect returnTo collapses to /", async () => {
-    setReferrer("https://app.elizacloud.ai/");
+    setReferrer("https://cloud.eliza.app/");
     stubNetwork(() => json(500, {}));
     renderBridge(
-      "elizacloud.ai",
+      "eliza.app",
       `?state=${STATE}&challenge=${CHALLENGE}&returnTo=${encodeURIComponent("//evil.com")}`,
     );
     await waitFor(() =>
       expect(replacedUrls).toEqual([
-        "https://app.elizacloud.ai/login?returnTo=%2F",
+        `/login?returnTo=${encodeURIComponent(`/auth/bridge?state=${STATE}&challenge=${CHALLENGE}&returnTo=%2F`)}`,
       ]),
     );
   });
@@ -215,7 +213,7 @@ describe("SsoBridgeRoute — exchange leg (app host)", () => {
   function expectBurnOnly(): void {
     expect(fetchLog).toHaveLength(1);
     expect(fetchLog[0].url).toBe(
-      "https://api.elizacloud.ai/api/auth/sso-bridge/exchange",
+      "https://cloud.eliza.app/api/auth/sso-bridge/exchange",
     );
     expect(JSON.parse(String(fetchLog[0].init?.body))).toEqual({ code: CODE });
   }
@@ -224,7 +222,7 @@ describe("SsoBridgeRoute — exchange leg (app host)", () => {
     armHandshake(OTHER_STATE);
     stubNetwork(() => json(401, { error: "invalid_code" }));
     renderBridge(
-      "app.elizacloud.ai",
+      "cloud.eliza.app",
       `?code=${CODE}&state=${STATE}&returnTo=%2Fchat`,
     );
 
@@ -240,7 +238,7 @@ describe("SsoBridgeRoute — exchange leg (app host)", () => {
   it("missing stored state (handshake this origin never initiated) aborts to login and burns the code", async () => {
     stubNetwork(() => json(401, { error: "invalid_code" }));
     renderBridge(
-      "app.elizacloud.ai",
+      "cloud.eliza.app",
       `?code=${CODE}&state=${STATE}&returnTo=%2Fchat`,
     );
     expect(await screen.findByTestId("login-page")).toBeTruthy();
@@ -251,7 +249,7 @@ describe("SsoBridgeRoute — exchange leg (app host)", () => {
     sessionStorage.setItem(SSO_STATE_KEY, STATE);
     stubNetwork(() => json(401, { error: "invalid_code" }));
     renderBridge(
-      "app.elizacloud.ai",
+      "cloud.eliza.app",
       `?code=${CODE}&state=${STATE}&returnTo=%2Fchat`,
     );
     expect(await screen.findByTestId("login-page")).toBeTruthy();
@@ -262,7 +260,7 @@ describe("SsoBridgeRoute — exchange leg (app host)", () => {
     armHandshake();
     stubNetwork(() => json(200, { ok: true, token: liveToken() }));
     renderBridge(
-      "app.elizacloud.ai",
+      "cloud.eliza.app",
       `?code=not-a-code&state=${STATE}&returnTo=%2Fchat`,
     );
     expect(await screen.findByTestId("login-page")).toBeTruthy();
@@ -278,14 +276,14 @@ describe("SsoBridgeRoute — exchange leg (app host)", () => {
         : json(200, { ok: true }),
     );
     renderBridge(
-      "app.elizacloud.ai",
+      "cloud.eliza.app",
       `?code=${CODE}&state=${STATE}&returnTo=%2Fchat`,
     );
 
     expect((await screen.findByTestId("landed")).textContent).toBe("/chat");
     expect(localStorage.getItem(STEWARD_TOKEN_KEY)).toBe(token);
     expect(fetchLog[0].url).toBe(
-      "https://api.elizacloud.ai/api/auth/sso-bridge/exchange",
+      "https://cloud.eliza.app/api/auth/sso-bridge/exchange",
     );
     expect(JSON.parse(String(fetchLog[0].init?.body))).toEqual({
       code: CODE,
@@ -297,7 +295,7 @@ describe("SsoBridgeRoute — exchange leg (app host)", () => {
     armHandshake();
     stubNetwork(() => json(401, { error: "invalid_code" }));
     renderBridge(
-      "app.elizacloud.ai",
+      "cloud.eliza.app",
       `?code=${CODE}&state=${STATE}&returnTo=%2Fchat`,
     );
     expect(await screen.findByTestId("login-page")).toBeTruthy();
@@ -312,7 +310,7 @@ describe("SsoBridgeRoute — exchange leg (app host)", () => {
         : json(200, { ok: true }),
     );
     renderBridge(
-      "app.elizacloud.ai",
+      "cloud.eliza.app",
       `?code=${CODE}&state=${STATE}&returnTo=${encodeURIComponent("//evil.com")}`,
     );
     expect(await screen.findByTestId("home-page")).toBeTruthy();

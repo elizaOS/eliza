@@ -18,6 +18,7 @@ import {
   Plus,
   Rocket,
   Workflow,
+  X,
 } from "lucide-react";
 import {
   type ReactNode,
@@ -250,6 +251,7 @@ export function AutomationsFeed({
     ReadonlySet<string>
   >(() => new Set());
   const [filter, setFilter] = useState<FeedFilter>("all");
+  const [createOpen, setCreateOpen] = useState(false);
   const { link, setLink } = useAutomationDeepLink();
   // Scheduled-task rows open a LifeOps verb panel. They are not part of the
   // workflow/task deep-link schema (they route to the runner, not workflow
@@ -493,9 +495,7 @@ export function AutomationsFeed({
   );
   const openDedicatedUpgrade = useCallback((agentId: string) => {
     void openExternalUrl(
-      resolveCloudConsoleUrl(
-        `/dashboard/agents/${encodeURIComponent(agentId)}`,
-      ),
+      resolveCloudConsoleUrl(`/cloud/agents/${encodeURIComponent(agentId)}`),
     );
   }, []);
 
@@ -545,37 +545,28 @@ export function AutomationsFeed({
     [allRows],
   );
 
-  const overviewStats = useMemo(
-    () => [
-      {
-        key: "total",
-        label: t("automationsfeed.statTotal", { defaultValue: "Total" }),
-        value: allRows.length,
-      },
-      {
-        key: "active",
-        label: t("automationsfeed.statActive", { defaultValue: "Active" }),
-        value: filterCounts.active,
-      },
-      {
-        key: "passed",
-        label: t("automationsfeed.statPassed", { defaultValue: "Passed" }),
-        value: allRows.filter((row) => row.lastRunStatus === "success").length,
-      },
-      {
-        key: "failed",
-        label: t("automationsfeed.statFailed", { defaultValue: "Failed" }),
-        value: allRows.filter((row) => row.lastRunStatus === "error").length,
-      },
-    ],
-    [allRows, filterCounts.active, t],
-  );
   const newAutomationAction = useAgentElement<HTMLButtonElement>({
     id: "action-new",
     role: "button",
     label: t("automationsfeed.newAutomation", {
       defaultValue: "New automation",
     }),
+    group: "automations-actions",
+    description: "Choose a workflow or prompt automation",
+    onActivate: () => setCreateOpen(true),
+  });
+  const newWorkflowAction = useAgentElement<HTMLButtonElement>({
+    id: "action-new-workflow",
+    role: "button",
+    label: "New workflow",
+    group: "automations-actions",
+    description: "Open the Smithers workflow studio",
+    onActivate: () => setEditor({ kind: "workflow", workflowId: null }),
+  });
+  const newPromptAction = useAgentElement<HTMLButtonElement>({
+    id: "action-new-prompt",
+    role: "button",
+    label: "New prompt automation",
     group: "automations-actions",
     description: "Open the prompt automation editor",
     onActivate: () => setEditor({ kind: "task", taskId: null }),
@@ -658,20 +649,60 @@ export function AutomationsFeed({
         <ViewHeader
           title={t("automationsfeed.title", { defaultValue: "Automations" })}
           right={
-            <Button
-              ref={newAutomationAction.ref}
-              type="button"
-              variant="ghost"
-              size="icon-sm"
-              aria-label={t("automationsfeed.addAutomation", {
-                defaultValue: "Add automation",
-              })}
-              className="h-9 w-9 rounded-md text-muted-strong hover:bg-bg-hover hover:text-txt"
-              onClick={() => setEditor({ kind: "task", taskId: null })}
-              {...newAutomationAction.agentProps}
-            >
-              <Plus className="h-4 w-4" aria-hidden />
-            </Button>
+            <div className="relative">
+              <Button
+                ref={newAutomationAction.ref}
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                aria-label={t("automationsfeed.addAutomation", {
+                  defaultValue: "Add automation",
+                })}
+                aria-expanded={createOpen}
+                className="h-9 w-9 rounded-md text-muted-strong hover:bg-bg-hover hover:text-txt"
+                onClick={() => setCreateOpen((current) => !current)}
+                {...newAutomationAction.agentProps}
+              >
+                {createOpen ? (
+                  <X className="h-4 w-4" aria-hidden />
+                ) : (
+                  <Plus className="h-4 w-4" aria-hidden />
+                )}
+              </Button>
+              {createOpen ? (
+                <div
+                  className="absolute right-0 top-11 z-30 flex gap-1 rounded-xl border border-border/60 bg-card p-1.5 shadow-xl"
+                  data-testid="automation-create-menu"
+                >
+                  <Button
+                    ref={newWorkflowAction.ref}
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    aria-label="New workflow"
+                    title="Workflow"
+                    onClick={() =>
+                      setEditor({ kind: "workflow", workflowId: null })
+                    }
+                    {...newWorkflowAction.agentProps}
+                  >
+                    <Workflow className="h-4 w-4 text-accent-muted dark:text-accent" />
+                  </Button>
+                  <Button
+                    ref={newPromptAction.ref}
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    aria-label="New prompt automation"
+                    title="Prompt"
+                    onClick={() => setEditor({ kind: "task", taskId: null })}
+                    {...newPromptAction.agentProps}
+                  >
+                    <CheckCircle2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              ) : null}
+            </div>
           }
         />
         {/* This direct-rendered route has no TabContentView wrapper, so it owns
@@ -688,17 +719,6 @@ export function AutomationsFeed({
           >
             {data && !(workflowServiceIssue && rows.length === 0) ? (
               <>
-                <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                  {overviewStats.map((stat) => (
-                    <OverviewStat
-                      key={stat.key}
-                      statKey={stat.key}
-                      label={stat.label}
-                      value={stat.value}
-                    />
-                  ))}
-                </div>
-
                 {/* Filter chips */}
                 <div className="flex flex-wrap gap-1.5">
                   {(Object.keys(FILTER_LABELS) as FeedFilter[]).map((key) => (
@@ -771,19 +791,11 @@ export function AutomationsFeed({
                   className="flex flex-col items-center gap-5 px-6 py-14 text-center [@media(orientation:landscape)_and_(max-height:520px)]:gap-2 [@media(orientation:landscape)_and_(max-height:520px)]:px-4 [@media(orientation:landscape)_and_(max-height:520px)]:py-3"
                 >
                   <AutomationEmptyIllustration />
-                  <div className="space-y-1">
-                    <p className="text-sm font-medium text-txt">
-                      {t("automationsfeed.emptyHeadline", {
-                        defaultValue: "Nothing scheduled yet",
-                      })}
-                    </p>
-                    <p className="text-xs text-muted-strong">
-                      {t("automationsfeed.emptySub", {
-                        defaultValue:
-                          "Ask in chat to set up a workflow and it will run here.",
-                      })}
-                    </p>
-                  </div>
+                  <p className="text-sm font-medium text-txt">
+                    {t("automationsfeed.emptyHeadline", {
+                      defaultValue: "Nothing scheduled yet",
+                    })}
+                  </p>
                 </div>
               ) : (
                 <ul>
@@ -900,30 +912,6 @@ function WorkflowServiceIssuePanel({
   );
 }
 
-function OverviewStat({
-  statKey,
-  label,
-  value,
-}: {
-  statKey: string;
-  label: string;
-  value: number;
-}) {
-  return (
-    // Flat — no card border/fill (#10710, "no card chrome"): the grid gap +
-    // label/value type hierarchy group the stats; the surrounding surface shows
-    // through, matching the minimal eliza aesthetic (cf. SettingsView flat rows).
-    <div className="py-1" data-testid={`automation-stat-${statKey}`}>
-      <div className="text-2xs font-medium uppercase tracking-normal text-muted-strong">
-        {label}
-      </div>
-      <div className="mt-1 text-lg font-semibold leading-none tabular-nums text-txt">
-        {value}
-      </div>
-    </div>
-  );
-}
-
 function FilterChipButton({
   filter,
   label,
@@ -965,7 +953,15 @@ function FilterChipButton({
       {...agentProps}
     >
       <span className="[&>svg]:h-3.5 [&>svg]:w-3.5">{icon}</span>
-      <span>{label}</span>
+      <span
+        className={
+          isActive
+            ? undefined
+            : "hidden sm:inline [@media(orientation:landscape)_and_(max-height:520px)]:hidden"
+        }
+      >
+        {label}
+      </span>
       {count > 0 ? (
         <span className="text-[0.65rem] font-semibold tabular-nums">
           {count}

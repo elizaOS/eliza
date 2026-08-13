@@ -4,6 +4,7 @@
  * / Remote device pairing, then posts a completion message to the opener.
  */
 
+import { isElizaCloudControlPlaneHostname } from "@elizaos/shared/elizacloud";
 import { AlertCircle, CheckCircle2, Key, Loader2 } from "lucide-react";
 import type { ComponentType, ReactNode } from "react";
 import { useEffect, useRef, useState } from "react";
@@ -63,11 +64,7 @@ function isAllowedCliReturnHost(hostname: string): boolean {
     host === "127.0.0.1" ||
     host === "::1" ||
     host === "[::1]" ||
-    host === "elizacloud.ai" ||
-    host === "www.elizacloud.ai" ||
-    host === "staging.elizacloud.ai" ||
-    host === "app.elizacloud.ai" ||
-    host === "app-staging.elizacloud.ai"
+    isElizaCloudControlPlaneHostname(host)
   );
 }
 
@@ -86,7 +83,7 @@ function sanitizeCliLoginReturnTo(value: string | null): string | null {
 }
 
 function resolveCliLoginMessageTargetOrigin(returnTo: string | null): string {
-  if (typeof window === "undefined") return "https://elizacloud.ai";
+  if (typeof window === "undefined") return "https://eliza.app";
   if (!returnTo) return window.location.origin;
   return new URL(returnTo).origin;
 }

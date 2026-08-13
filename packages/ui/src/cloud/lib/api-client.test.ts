@@ -85,9 +85,7 @@ describe("cloud api-client transport bridge", () => {
     it("STILL throws CROSS_ORIGIN_API_URL on a cross-origin Cloud API URL", async () => {
       const fetchSpy = vi.spyOn(globalThis, "fetch");
 
-      await expectCrossOriginThrow(
-        api("https://api.elizacloud.ai/api/v1/apps"),
-      );
+      await expectCrossOriginThrow(api("https://api.eliza.app/api/v1/apps"));
 
       // The throw fires before any transport is touched.
       expect(fetchSpy).not.toHaveBeenCalled();
@@ -149,7 +147,7 @@ describe("cloud api-client transport bridge", () => {
       expect(capacitorMocks.request).toHaveBeenCalledWith(
         expect.objectContaining({
           // www.elizacloud.ai (boot config) normalized to the API host.
-          url: "https://api.elizacloud.ai/api/v1/apps",
+          url: "https://api.eliza.app/api/v1/apps",
           method: "GET",
           // WHATWG Headers lowercases keys; HTTP header names are
           // case-insensitive, so the server reads this identically.
@@ -168,13 +166,13 @@ describe("cloud api-client transport bridge", () => {
       });
 
       const result = await api<{ ok: boolean }>(
-        "https://api.elizacloud.ai/api/v1/apps/app-1",
+        "https://api.eliza.app/api/v1/apps/app-1",
       );
 
       expect(result).toEqual({ ok: true });
       expect(capacitorMocks.request).toHaveBeenCalledWith(
         expect.objectContaining({
-          url: "https://api.elizacloud.ai/api/v1/apps/app-1",
+          url: "https://api.eliza.app/api/v1/apps/app-1",
         }),
       );
     });
@@ -193,7 +191,7 @@ describe("cloud api-client transport bridge", () => {
 
       expect(capacitorMocks.request).toHaveBeenCalledWith(
         expect.objectContaining({
-          url: "https://api.elizacloud.ai/api/v1/apps",
+          url: "https://api.eliza.app/api/v1/apps",
           method: "POST",
           data: { name: "My App" },
           headers: expect.objectContaining({
@@ -253,7 +251,7 @@ describe("cloud api-client transport bridge", () => {
       expect(fetchSpy).not.toHaveBeenCalled();
       expect(capacitorMocks.request).toHaveBeenCalledWith(
         expect.objectContaining({
-          url: "https://api.elizacloud.ai/api/v1/apps",
+          url: "https://api.eliza.app/api/v1/apps",
         }),
       );
     });
@@ -292,7 +290,7 @@ describe("cloud api-client transport bridge", () => {
 
       expect(capacitorMocks.request).toHaveBeenCalledWith(
         expect.objectContaining({
-          url: "https://api.elizacloud.ai/api/v1/apps",
+          url: "https://api.eliza.app/api/v1/apps",
           headers: expect.objectContaining({
             authorization: `Bearer ${CLOUD_API_KEY}`,
           }),
@@ -313,7 +311,7 @@ describe("cloud api-client transport bridge", () => {
       await api("/api/v1/apps");
 
       const call = capacitorMocks.request.mock.calls[0]?.[0];
-      expect(call?.url).toBe("https://api.elizacloud.ai/api/v1/apps");
+      expect(call?.url).toBe("https://api.eliza.app/api/v1/apps");
       expect(call?.headers.authorization).toBeUndefined();
     });
 

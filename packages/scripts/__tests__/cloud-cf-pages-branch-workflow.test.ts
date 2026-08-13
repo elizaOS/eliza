@@ -3,7 +3,7 @@
  *
  * Pull requests build unprivileged artifacts. A default-branch workflow_run
  * consumer validates the source, stages static output without PR-authored
- * Functions/configuration, and deploys both surfaces to `pr-<number>`.
+ * Functions/configuration, and deploys the unified frontend to `pr-<number>`.
  */
 import { describe, expect, test } from "bun:test";
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
@@ -64,7 +64,7 @@ interface Workflow {
 
 const producer = Bun.YAML.parse(producerSource) as Workflow;
 const consumer = Bun.YAML.parse(consumerSource) as Workflow;
-const deployJobs = ["deploy-console", "deploy-app"] as const;
+const deployJobs = ["deploy-app"] as const;
 const GNU_BASH = resolveGnuBash();
 const executedDescribe = GNU_BASH ? describe : describe.skip;
 
@@ -90,7 +90,6 @@ interface ResolverInput {
   sourceEvent?: string;
   sourceRunAttempt?: string;
   sourceRunId?: string;
-  surface?: "app" | "console";
 }
 
 function injectCanonicalPrResult(script: string, branch: "develop" | "main") {
@@ -119,14 +118,9 @@ function runTrustedResolver(
 
   const directory = mkdtempSync(join(tmpdir(), "cloud-cf-pages-branch-"));
   const outputPath = join(directory, "github-output");
-  const surface = input.surface ?? "console";
-  const expandedScript = step.run.replaceAll(
-    "$" + "{{ matrix.surface }}",
-    surface,
-  );
   const script = faultBranch
-    ? injectCanonicalPrResult(expandedScript, faultBranch)
-    : expandedScript;
+    ? injectCanonicalPrResult(step.run, faultBranch)
+    : step.run;
 
   try {
     const result = spawnSync(GNU_BASH, ["-c", script], {
@@ -165,7 +159,11 @@ describe("Cloud CF PR preview workflow contract", () => {
 
   test("keeps PR builds reachable and gates canonical Pages on the API", () => {
     const buildJob = producer.jobs?.["build-pages"];
-    expect(buildJob?.needs).toBe("migrate-db");
+    expect(buildJob?.needs).toEqual([
+      "migrate-db",
+      "resolve-pages-environment-config",
+      "resolve-pages-preview-config",
+    ]);
     expect(buildJob?.if).toContain(
       "github.event_name == 'pull_request' && needs.migrate-db.result == 'skipped'",
     );
@@ -219,14 +217,8 @@ describe("Cloud CF PR preview workflow contract", () => {
     expect(stage.run).toContain('find "$ARTIFACT_DIR/dist" -name _worker.js');
   });
 
-  test("binds both final Wrangler deploys to the intended project and resolved branch", () => {
-    expect(
-      consumer.jobs?.["deploy-preview"]?.strategy?.matrix?.include,
-    ).toEqual([
-      { surface: "console", project: "eliza-cloud" },
-      { surface: "app", project: "eliza-app" },
-    ]);
-
+  test("binds the final Wrangler deploy to the unified project and resolved branch", () => {
+    expect(consumer.jobs?.["deploy-preview"]?.strategy).toBeUndefined();
     const deploy = namedStep(
       consumer,
       "deploy-preview",
@@ -234,7 +226,7 @@ describe("Cloud CF PR preview workflow contract", () => {
     );
     expect(deploy.env).toMatchObject({
       PAGES_BRANCH: "$" + "{{ steps.source.outputs.branch }}",
-      PAGES_PROJECT: "$" + "{{ matrix.project }}",
+      PAGES_PROJECT: "eliza-app",
     });
     expect(deploy.run).toContain(
       'wrangler@4.100.0 pages deploy ./dist --project-name="$PAGES_PROJECT" --branch="$PAGES_BRANCH"',
@@ -243,16 +235,14 @@ describe("Cloud CF PR preview workflow contract", () => {
 });
 
 executedDescribe("trusted Cloud CF PR preview resolver", () => {
-  test("isolates ordinary and develop-to-main PRs for both surfaces", () => {
-    for (const surface of ["console", "app"] as const) {
-      for (const prNumber of ["18088", "18028"]) {
-        const result = runTrustedResolver({ prNumber, surface });
-        expect(result.status).toBe(0);
-        expect(result.output).toBe(
-          `branch=pr-${prNumber}\nartifact=pages-${surface}-123456-2\n`,
-        );
-        expect(result.output).not.toMatch(/branch=(?:main|develop)\n/);
-      }
+  test("isolates ordinary and develop-to-main PRs", () => {
+    for (const prNumber of ["18088", "18028"]) {
+      const result = runTrustedResolver({ prNumber });
+      expect(result.status).toBe(0);
+      expect(result.output).toBe(
+        `branch=pr-${prNumber}\nartifact=pages-app-123456-2\n`,
+      );
+      expect(result.output).not.toMatch(/branch=(?:main|develop)\n/);
     }
   });
 

@@ -61,7 +61,7 @@ Status terms:
 
 | Requirement | Status | Remaining work |
 |---|---:|---|
-| "My Agent" tab in Cloud | Owned by Cloud stream | Verify in cloud-ui branch; homepage points to `/dashboard/my-agents`. |
+| "My Agent" tab in Cloud | Consolidated | Cloud agent management is mounted in the normal app shell at `/cloud/agents`; public handoffs use `cloud.eliza.app`. |
 | Remove consumer generation studio/character chat from cloud console | Owned by Cloud stream | Verify route removals and sidebar state in Cloud PR. |
 | API keys, docs, billing, settings, payment | Owned by Cloud stream | Verify developer dashboard routes after Cloud stream merges. |
 | App connects to provisioned Cloud agent | Repo-owned / external blocker | End-to-end provision, auth link, and bridge URL smoke in deployed Cloud. |
@@ -70,7 +70,7 @@ Status terms:
 
 | Requirement | Status | Remaining work |
 |---|---:|---|
-| Homepage typecheck/build/e2e | Repo-ready | CI now runs homepage e2e in homepage quality gates. |
+| Homepage source checks + unified app build | Repo-ready | CI validates homepage source contracts and builds only `packages/app`. |
 | Release-data contract | Repo-ready | `check:release-data` blocks deploy when metadata/artifacts are missing. |
 | Release publication | Repo-ready | `.github/workflows/release.yaml` is the single manual npm release authority; desktop and store builds are operator-run evidence. |
 | Checksums | Repo-ready / external blocker | Android release jobs now attach checksums for AAB/APK outputs. Desktop release assets still need consistently published checksums before `check:release-data` can require them globally. |
@@ -83,10 +83,10 @@ Run these locally and in CI:
 
 ```bash
 bun run --cwd packages/homepage typecheck
-bun run --cwd packages/homepage build
 bun run --cwd packages/homepage test:e2e
 bun run --cwd packages/homepage check:release-data
+bun run --cwd packages/app build:web
 ```
 
-Expected current state: the first three pass; `check:release-data` fails until
+Expected current state: the source checks pass; `check:release-data` fails until
 real release assets exist. That failure is the correct public-launch blocker.

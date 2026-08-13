@@ -126,6 +126,7 @@ jobs:
         with:
           bun-version: ${{ env.BUN_VERSION }}
           install-command: bun install --frozen-lockfile
+          cache-bun-install: "false"
           install-native-deps: "false"
           skip-avatar-clone: "true"
           no-vision-deps: "true"
@@ -197,6 +198,7 @@ jobs:
         with:
           bun-version: ${{ env.BUN_VERSION }}
           install-command: bun install --frozen-lockfile
+          cache-bun-install: "false"
           install-native-deps: "false"
           skip-avatar-clone: "true"
           no-vision-deps: "true"

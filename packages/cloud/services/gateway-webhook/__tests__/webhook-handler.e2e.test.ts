@@ -207,6 +207,7 @@ describe("gateway webhook handler e2e routing", () => {
       platform: "twilio",
       platformUserId: "+15551234567",
       platformDisplayName: "Ada",
+      platformReplyAddress: "+15550000000",
     });
   });
 

@@ -77,179 +77,6 @@ body {
   }
 }
 
-/* Landing page scrollbar */
-.landing-scroll::-webkit-scrollbar {
-  width: 6px;
-}
-.landing-scroll::-webkit-scrollbar-track {
-  background: var(--bg-accent);
-}
-.landing-scroll::-webkit-scrollbar-thumb {
-  background: var(--accent);
-  border-radius: 3px;
-}
-.landing-scroll {
-  scrollbar-width: thin;
-  scrollbar-color: var(--accent) var(--bg-accent);
-}
-
-@keyframes blink {
-  0%,
-  50% {
-    opacity: 1;
-  }
-  51%,
-  100% {
-    opacity: 0;
-  }
-}
-.animate-blink {
-  animation: blink 1s step-end infinite;
-}
-
-/* Intro SVG wordmark */
-.intro-logo .letter-e {
-  fill: var(--accent);
-}
-.intro-logo .letter-l {
-  fill: none;
-  stroke: url(#l-grad);
-  stroke-linecap: round;
-  stroke-miterlimit: 10;
-  stroke-width: 30px;
-  stroke-dasharray: 1;
-  stroke-dashoffset: 1;
-  opacity: 0;
-}
-.intro-logo .letter-l.draw {
-  animation: draw-line 1000ms ease forwards;
-  opacity: 1;
-}
-.intro-logo .letter-i {
-  fill: var(--muted);
-}
-.intro-logo .letter-z-fill {
-  fill: var(--card);
-  stroke: var(--accent-hover);
-  stroke-width: 1px;
-  stroke-miterlimit: 10;
-  stroke-dasharray: 0 30;
-  stroke-opacity: 0;
-}
-.intro-logo .letter-z-fill.reveal {
-  stroke-opacity: 1;
-  animation:
-    z1-reveal 800ms ease-out forwards,
-    dash-march 1.5s linear 800ms infinite;
-}
-
-@keyframes z1-reveal {
-  to {
-    stroke-dasharray: 20 10;
-  }
-}
-
-@keyframes dash-march {
-  to {
-    stroke-dashoffset: -30;
-  }
-}
-.intro-logo .letter-z-shadow {
-  fill: var(--accent-hover);
-  stroke: none;
-}
-.intro-logo .letter-a-shadow {
-  fill: var(--sky-0);
-}
-.intro-logo .letter-a {
-  fill: var(--ok);
-}
-
-@keyframes draw-line {
-  to {
-    stroke-dashoffset: 0;
-  }
-}
-
-@keyframes reveal-ltr {
-  0% {
-    clip-path: inset(-5% 100% -5% 0);
-    transform: translateX(-5px);
-    opacity: 0;
-  }
-  10% {
-    opacity: 1;
-  }
-  40% {
-    clip-path: inset(-5% -25% -5% 0);
-    transform: translateX(12px);
-  }
-  58% {
-    clip-path: inset(-5% 15% -5% 0);
-    transform: translateX(-6px);
-  }
-  72% {
-    clip-path: inset(-5% -10% -5% 0);
-    transform: translateX(4px);
-  }
-  85% {
-    clip-path: inset(-5% 3% -5% 0);
-    transform: translateX(-1px);
-  }
-  100% {
-    clip-path: inset(-5% 0% -5% 0);
-    transform: translateX(0);
-    opacity: 1;
-  }
-}
-
-@keyframes reveal-trbl {
-  0% {
-    clip-path: inset(-5% -5% 100% 100%);
-    transform: translate(5px, -5px);
-    opacity: 0;
-  }
-  10% {
-    opacity: 1;
-  }
-  40% {
-    clip-path: inset(-5% -5% -25% -25%);
-    transform: translate(-10px, 10px);
-  }
-  58% {
-    clip-path: inset(-5% -5% 15% 15%);
-    transform: translate(5px, -5px);
-  }
-  72% {
-    clip-path: inset(-5% -5% -10% -10%);
-    transform: translate(-3px, 3px);
-  }
-  85% {
-    clip-path: inset(-5% -5% 3% 3%);
-    transform: translate(1px, -1px);
-  }
-  100% {
-    clip-path: inset(-5% -5% -5% -5%);
-    transform: translate(0, 0);
-    opacity: 1;
-  }
-}
-
-.intro-logo .z-piece-lr {
-  clip-path: inset(-5% 100% -5% 0);
-  opacity: 0;
-}
-.intro-logo .z-piece-lr.reveal {
-  animation: reveal-ltr 600ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
-}
-.intro-logo .z-piece-trbl {
-  clip-path: inset(-5% -5% 100% 100%);
-  opacity: 0;
-}
-.intro-logo .z-piece-trbl.reveal {
-  animation: reveal-trbl 600ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
-}
-
 /* Eliza App marketing */
 .app-shell {
   min-height: 100vh;
@@ -1257,17 +1084,6 @@ body {
   }
 }
 
-.landing-platform-switcher {
-  width: max-content;
-  max-width: calc(100vw - 1rem);
-}
-
-.landing-platform-switcher-row {
-  max-width: 100%;
-  flex-wrap: wrap;
-  justify-content: center;
-}
-
 /* Reduced motion: this standalone homepage owns animated wordmarks, pulse loops,
    reveal transitions, and smooth scrolling, so the global override intentionally
    wins over component-level animation declarations for accessibility. */
@@ -1508,5 +1324,677 @@ body {
   .profile-edit-card {
     padding: 24px 20px;
     box-shadow: 6px 6px 0 #111;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ * Landing page ("/"): a single orange-drenched viewport. One headline, the
+ * call/text entrypoints, and an iPhone-styled iMessage preview. The only
+ * motion is the chat-bubble entrance, suppressed by the reduced-motion
+ * override above.
+ * ------------------------------------------------------------------------- */
+.landing-page {
+  --landing-orange: #ff5800;
+  min-height: 100svh;
+  display: flex;
+  flex-direction: column;
+  background: var(--brand-white);
+  color: var(--brand-black);
+  font-family: "Geist", Arial, sans-serif;
+}
+
+/* Grain overlay: plain CSS rather than a Tailwind arbitrary-value class, which
+   is not compiled when this source is consumed by the app shell's build. */
+.landing-grain {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  mix-blend-mode: overlay;
+  background-image: url("/grain.webp");
+}
+
+.landing-header {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1.1rem clamp(1.25rem, 4vw, 3rem) 0;
+}
+
+.landing-brand {
+  display: inline-flex;
+  align-items: center;
+  text-decoration: none;
+}
+
+.landing-brand img {
+  height: 2.1rem;
+  width: auto;
+}
+
+.landing-header-cta {
+  min-height: 2.6rem;
+  padding: 0 1.2rem;
+  font-size: 0.95rem;
+}
+
+.landing-hero {
+  position: relative;
+  z-index: 1;
+  flex: 1;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: clamp(2.5rem, 6vw, 5rem);
+  align-items: center;
+  width: min(100%, 72rem);
+  margin: 0 auto;
+  padding: clamp(1.5rem, 4vw, 3rem) clamp(1.25rem, 4vw, 3rem)
+    clamp(3rem, 6vw, 5rem);
+}
+
+@media (min-width: 900px) {
+  .landing-hero {
+    grid-template-columns: minmax(0, 1.1fr) minmax(20rem, 0.9fr);
+  }
+}
+
+.landing-hero-copy {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+.landing-hero-heading {
+  margin: 0;
+  max-width: 18ch;
+  font-size: clamp(1.9rem, 3.4vw, 2.9rem);
+  font-weight: 700;
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+  text-wrap: balance;
+  color: var(--brand-black);
+}
+
+.landing-hero-lede {
+  margin: 1.5rem 0 0;
+  max-width: 30rem;
+  font-size: clamp(1.15rem, 1.8vw, 1.45rem);
+  font-weight: 400;
+  line-height: 1.35;
+  text-wrap: pretty;
+}
+
+.landing-hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 0.85rem;
+  margin-top: 2.25rem;
+}
+
+.landing-cta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.55rem;
+  min-height: 3.25rem;
+  padding: 0 1.6rem;
+  border-radius: 999px;
+  font-weight: 600;
+  font-size: 1.05rem;
+  text-decoration: none;
+  white-space: nowrap;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.landing-cta--black {
+  background: var(--brand-black);
+  color: var(--brand-white);
+}
+
+.landing-cta--black:hover {
+  background: rgb(0 0 0 / 82%);
+  color: var(--brand-white);
+}
+
+.landing-cta--white {
+  background: #ffffff;
+  color: var(--brand-black);
+  box-shadow: 0 10px 30px rgb(0 0 0 / 10%);
+}
+
+.landing-cta--white:hover {
+  background: var(--brand-black);
+  color: var(--brand-white);
+}
+
+.landing-channel {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 3.25rem;
+  height: 3.25rem;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: 0 6px 18px rgb(0 0 0 / 10%);
+  transition:
+    transform 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.landing-channel:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgb(0 0 0 / 18%);
+}
+
+/* iPhone-styled iMessage preview */
+.landing-iphone {
+  justify-self: center;
+  width: min(100%, 19.5rem);
+  border-radius: 3.2rem;
+  padding: 0.55rem;
+  background: #0b0b0f;
+  box-shadow:
+    0 40px 90px rgb(0 0 0 / 30%),
+    inset 0 0 0 2px rgb(255 255 255 / 14%);
+}
+
+.landing-iphone-screen {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  /* Real iPhone display proportions (390x844 points ≈ 9:19.5). */
+  aspect-ratio: 390 / 844;
+  border-radius: 2.7rem;
+  background: #ffffff;
+  overflow: hidden;
+}
+
+.landing-phone-top {
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+  z-index: 2;
+  /* iOS 27: no bar, just a soft white fade so scrolling messages dissolve
+     behind the contact header. */
+  background: linear-gradient(
+    to bottom,
+    #ffffff 0%,
+    #ffffff 62%,
+    rgb(255 255 255 / 0%) 100%
+  );
+  padding-bottom: 1.6rem;
+}
+
+.landing-iphone-statusbar {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.85rem 1.6rem 0.35rem;
+}
+
+.landing-iphone-time {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #111;
+  font-variant-numeric: tabular-nums;
+}
+
+.landing-iphone-island {
+  position: absolute;
+  left: 50%;
+  top: 0.65rem;
+  transform: translateX(-50%);
+  width: 6.2rem;
+  height: 1.55rem;
+  border-radius: 999px;
+  background: #0b0b0f;
+}
+
+.landing-iphone-signal {
+  display: inline-flex;
+  width: 2.9rem;
+  color: #111;
+}
+
+.landing-iphone-homebar {
+  align-self: center;
+  width: 7.5rem;
+  height: 0.3rem;
+  margin: 0.35rem 0 0.55rem;
+  border-radius: 999px;
+  background: rgb(0 0 0 / 28%);
+}
+
+.landing-phone-header {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.35rem 0.9rem 0.6rem;
+}
+
+.landing-phone-contact {
+  display: grid;
+  justify-items: center;
+  gap: 0.2rem;
+}
+
+.landing-phone-avatar {
+  width: 3.1rem;
+  height: 3.1rem;
+  border-radius: 50%;
+  object-fit: cover;
+  background: var(--landing-orange);
+  box-shadow: 0 2px 6px rgb(0 0 0 / 12%);
+}
+
+.landing-phone-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.1rem;
+  padding: 0.14rem 0.5rem 0.14rem 0.7rem;
+  border-radius: 999px;
+  background: #ffffff;
+  box-shadow: 0 1px 4px rgb(0 0 0 / 8%);
+  font-weight: 600;
+  font-size: 0.82rem;
+  color: #111;
+}
+
+.landing-phone-name svg {
+  width: 0.8rem;
+  height: 0.8rem;
+  color: #b0b0b6;
+}
+
+.landing-thread-preamble {
+  display: grid;
+  justify-items: center;
+  gap: 0.18rem;
+  padding: 0.4rem 0 0.6rem;
+}
+
+.landing-thread-timestamp {
+  margin-top: 0.3rem;
+  font-size: 0.7rem;
+  color: #8e8e93;
+}
+
+.landing-phone-thread {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  gap: 0.5rem;
+  /* Top padding clears the floating status bar + contact header so the
+     conversation starts below it and scrolls underneath the frosted chrome. */
+  padding: 8.6rem 0.9rem 1.1rem;
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+
+.landing-phone-thread::-webkit-scrollbar {
+  display: none;
+}
+
+.landing-bubble {
+  margin: 0;
+  max-width: 82%;
+  padding: 0.55rem 0.85rem;
+  border-radius: 1.15rem;
+  font-size: 0.95rem;
+  line-height: 1.3;
+  opacity: 0;
+  transform: translateY(8px);
+  animation: landing-bubble-in 420ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.landing-bubble--user {
+  align-self: flex-end;
+  background: #0a84ff;
+  color: #ffffff;
+  border-bottom-right-radius: 0.3rem;
+}
+
+.landing-bubble--eliza {
+  align-self: flex-start;
+  background: #e9e9eb;
+  color: #111;
+  border-bottom-left-radius: 0.3rem;
+}
+
+@keyframes landing-bubble-in {
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.landing-composer-row {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  margin: 0 0.7rem;
+}
+
+.landing-composer-plus {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 2.1rem;
+  height: 2.1rem;
+  border-radius: 50%;
+  background: #eeeef0;
+  color: #3c3c43;
+}
+
+.landing-composer-plus svg {
+  width: 1.05rem;
+  height: 1.05rem;
+}
+
+.landing-phone-composer {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex: 1;
+  min-width: 0;
+  padding: 0.45rem 0.5rem 0.45rem 1rem;
+  border: 1px solid rgb(0 0 0 / 14%);
+  border-radius: 1.15rem;
+  color: #8e8e93;
+  font-size: 0.9rem;
+}
+
+.landing-composer-text {
+  display: flex;
+  justify-content: flex-end;
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+/* The inner span never shrinks below the field width, so short text sits
+   left-aligned; once it outgrows the field, the flex-end alignment clips the
+   beginning and keeps the newest characters visible, like a real field. */
+.landing-composer-typed {
+  flex-shrink: 0;
+  min-width: 100%;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.landing-composer-mic {
+  flex: 0 0 auto;
+  width: 1.15rem;
+  height: 1.15rem;
+  margin-right: 0.35rem;
+  color: #8e8e93;
+}
+
+.landing-composer-send {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 1.65rem;
+  height: 1.65rem;
+  border-radius: 50%;
+  background: #0a84ff;
+  color: #ffffff;
+}
+
+.landing-composer-send svg {
+  width: 0.95rem;
+  height: 0.95rem;
+}
+
+.landing-phone-composer[data-typing="true"] {
+  color: #111;
+}
+
+.landing-composer-caret {
+  display: inline-block;
+  width: 2px;
+  height: 1em;
+  margin-left: 1px;
+  vertical-align: text-bottom;
+  background: #0a84ff;
+  animation: landing-caret-blink 1s step-end infinite;
+}
+
+@keyframes landing-caret-blink {
+  0%,
+  50% {
+    opacity: 1;
+  }
+  51%,
+  100% {
+    opacity: 0;
+  }
+}
+
+/* Eliza's three-dot typing indicator */
+.landing-typing {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.28rem;
+  min-height: 2rem;
+}
+
+.landing-typing span {
+  width: 0.45rem;
+  height: 0.45rem;
+  border-radius: 50%;
+  background: #9a9aa0;
+  animation: landing-typing-bounce 1.2s ease-in-out infinite;
+}
+
+.landing-typing span:nth-child(2) {
+  animation-delay: 0.15s;
+}
+
+.landing-typing span:nth-child(3) {
+  animation-delay: 0.3s;
+}
+
+@keyframes landing-typing-bounce {
+  0%,
+  60%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.55;
+  }
+  30% {
+    transform: translateY(-3px);
+    opacity: 1;
+  }
+}
+
+/* iMessage-style embed cards */
+.landing-bubble-card {
+  align-self: flex-start;
+  max-width: 88%;
+  animation: landing-bubble-in 420ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  opacity: 0;
+  transform: translateY(8px);
+}
+
+.landing-demo-card {
+  display: grid;
+  gap: 0.18rem;
+  padding: 0.7rem 0.9rem;
+  border: 1px solid rgb(0 0 0 / 10%);
+  border-radius: 1rem;
+  background: #ffffff;
+  box-shadow: 0 4px 14px rgb(0 0 0 / 6%);
+  font-size: 0.88rem;
+  line-height: 1.3;
+}
+
+.landing-demo-card-label {
+  font-size: 0.68rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #8e8e93;
+}
+
+.landing-demo-card strong {
+  color: #111;
+  font-size: 0.95rem;
+}
+
+.landing-demo-card-row {
+  color: #5b5b60;
+}
+
+.landing-demo-card-status {
+  margin-top: 0.25rem;
+  width: fit-content;
+  padding: 0.12rem 0.55rem;
+  border-radius: 999px;
+  background: rgb(52 199 89 / 14%);
+  color: #1d7a3d;
+  font-size: 0.76rem;
+  font-weight: 600;
+}
+
+/* iOS-style keyboard shown while the demo user is typing */
+.landing-keyboard {
+  overflow: hidden;
+  max-height: 0;
+  opacity: 0;
+  transition:
+    max-height 320ms cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 200ms ease;
+  background: #d3d6dd;
+}
+
+.landing-keyboard[data-open="true"] {
+  max-height: 14rem;
+  opacity: 1;
+}
+
+.landing-keyboard-inner {
+  display: grid;
+  gap: 0.4rem;
+  padding: 0.5rem 0.25rem 0.4rem;
+}
+
+.landing-kb-suggestions {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  align-items: center;
+  min-height: 1.7rem;
+  color: #111;
+  font-size: 0.82rem;
+  text-align: center;
+}
+
+.landing-kb-suggestions span {
+  overflow: hidden;
+  white-space: nowrap;
+  border-right: 1px solid rgb(0 0 0 / 12%);
+}
+
+.landing-kb-suggestions span:last-child {
+  border-right: 0;
+}
+
+.landing-kb-row {
+  display: flex;
+  justify-content: center;
+  gap: 0.28rem;
+  padding: 0 0.15rem;
+}
+
+.landing-kb-key {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1 1 0;
+  max-width: 2rem;
+  min-height: 2.1rem;
+  border-radius: 0.32rem;
+  background: #ffffff;
+  box-shadow: 0 1px 0 rgb(0 0 0 / 30%);
+  color: #111;
+  font-size: 0.95rem;
+  transition: background 80ms ease;
+}
+
+.landing-kb-key[data-active="true"] {
+  background: #b8bcc6;
+}
+
+.landing-kb-key--special {
+  max-width: 2.6rem;
+  background: #b3b9c4;
+  font-size: 0.72rem;
+}
+
+.landing-kb-key--space {
+  max-width: none;
+  flex: 5 1 0;
+}
+
+.landing-kb-key--return {
+  max-width: 4.4rem;
+  flex: 2 1 0;
+  background: #b3b9c4;
+  font-size: 0.78rem;
+}
+
+.landing-kb-bottom {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.1rem 1.4rem 0.3rem;
+  color: #50555e;
+}
+
+.landing-kb-bottom svg {
+  width: 1.35rem;
+  height: 1.35rem;
+}
+
+@media (max-width: 640px) {
+  .landing-hero-heading {
+    font-size: clamp(1.6rem, 7.5vw, 2.1rem);
+  }
+
+  .landing-hero-actions {
+    gap: 0.5rem;
+  }
+
+  .landing-cta {
+    min-height: 2.75rem;
+    padding: 0 1rem;
+    font-size: 0.95rem;
+  }
+
+  .landing-channel {
+    width: 2.75rem;
+    height: 2.75rem;
+  }
+
+  .landing-channel svg {
+    width: 1.25rem;
+    height: 1.25rem;
   }
 }

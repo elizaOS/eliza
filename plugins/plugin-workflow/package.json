@@ -101,9 +101,9 @@
   },
   "dependencies": {
     "@elizaos/shared": "workspace:*",
-    "@smithers-orchestrator/engine": "0.32.0",
+    "smthrs": "0.33.0",
+    "zod": "^4.4.3",
     "drizzle-orm": "0.45.2",
-    "effect": "4.0.0-beta.102",
-    "quickjs-emscripten": "0.32.0"
+    "effect": "4.0.0-beta.102"
   }
 }

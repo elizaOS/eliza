@@ -829,14 +829,18 @@ describe("shared agent messages/stream", () => {
     resolveSharedAgent.mockResolvedValue({
       error: "Agent authorization cache is warming. Retry shortly.",
       status: 503,
+      code: "agent_cache_warming",
+      retryAfterSeconds: 1,
     });
 
     const res = await postStream({ text: "must not dispatch" });
 
     expect(res.status).toBe(503);
+    expect(res.headers.get("Retry-After")).toBe("1");
     await expect(res.json()).resolves.toEqual({
       success: false,
       error: "Agent authorization cache is warming. Retry shortly.",
+      code: "agent_cache_warming",
       retryable: true,
     });
     expect(coordinatorFetch).not.toHaveBeenCalled();

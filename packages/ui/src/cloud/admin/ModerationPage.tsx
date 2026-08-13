@@ -1,5 +1,5 @@
 /**
- * /dashboard/admin — moderation panel.
+ * /cloud/admin — moderation panel.
  *
  * The route-level role gate ({@link AdminGate}) decides visibility; this body
  * assumes it is already past the gate and reads the role only to scope

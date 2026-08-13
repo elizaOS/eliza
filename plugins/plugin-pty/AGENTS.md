@@ -144,7 +144,7 @@ bun run --cwd plugins/plugin-pty lint
 
 `buildElizaCodeCerebrasSpec` sets the provider env consumed by eliza-code:
 `ELIZA_CODE_PROVIDER=openai`, `ELIZA_CODE_CODING_ONLY=1`, `OPENAI_API_KEY`, `OPENAI_BASE_URL`
-(`https://api.elizacloud.ai/v1`), and `OPENAI_{SMALL,MEDIUM,LARGE}_MODEL`. The
+(`https://api.eliza.app/v1`), and `OPENAI_{SMALL,MEDIUM,LARGE}_MODEL`. The
 `tier` (`fast`/`smart`) controls which model small/medium lead with; large is
 always the smart model so heavy calls escalate. `CODING_TOOLS_WORKSPACE_ROOTS`
 and `SHELL_ALLOWED_DIRECTORY` confine eliza-code's own file/shell tools to the

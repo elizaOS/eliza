@@ -2,22 +2,28 @@
 // @vitest-environment jsdom
 
 /**
- * Steward auth-endpoint resolution and token-expiry helpers: staging/prod app
- * hosts route directly to their api worker (never same-origin), unknown hosts
+ * Steward auth-endpoint resolution and token-expiry helpers: staging/prod UI
+ * hosts route through their same-origin proxy so host-only cookies remain visible, unknown hosts
  * fall back to the same-origin relative path, and `tokenIsExpired` reads the
  * JWT `exp` claim.
  */
 
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  loadPersistedActiveServer,
+  savePersistedActiveServer,
+} from "../../state/persistence";
 
-import { tokenIsExpired } from "./StewardProviderShared";
+import {
+  clearStaleStewardSession,
+  tokenIsExpired,
+} from "./StewardProviderShared";
 
 // The Steward auth endpoints are resolved per browser host: co-hosted cloud
-// surfaces bypass the Pages/Worker proxy and call the matching API worker
-// directly. The invariant under guard: `staging.elizacloud.ai` MUST map to
-// api-staging (not prod api, not the same-origin relative path). Without a
-// direct mapping, session-sync + refresh fall through to a stale worker proxy
-// that 401s and wipes a valid session — the sign-in loop.
+// surfaces use their same-origin Pages/Worker proxy. The invariant under guard:
+// staging and production never cross environments, even when a build-time API
+// base is present; otherwise host-only cookies land on the API hostname and the
+// SSO bridge cannot observe the browser session.
 
 function setHostname(hostname: string): void {
   Object.defineProperty(window, "location", {
@@ -43,55 +49,55 @@ async function loadEndpoints() {
 }
 
 describe("Steward auth endpoint resolution", () => {
-  it("routes staging to the api-staging worker directly (not prod, not same-origin)", async () => {
-    setHostname("staging.elizacloud.ai");
+  it("keeps canonical staging session cookies on the staging marketing host", async () => {
+    setHostname("staging.eliza.app");
     const { configuredSessionEndpoint, configuredRefreshEndpoint } =
       await loadEndpoints();
 
     expect(configuredSessionEndpoint()).toBe(
-      "https://api-staging.elizacloud.ai/api/auth/steward-session",
+      "https://staging.eliza.app/api/auth/steward-session",
     );
     expect(configuredRefreshEndpoint()).toBe(
-      "https://api-staging.elizacloud.ai/api/auth/steward-refresh",
+      "https://staging.eliza.app/api/auth/steward-refresh",
     );
   });
 
-  it("routes the staging app host to the api-staging worker directly", async () => {
-    setHostname("app-staging.elizacloud.ai");
+  it("keeps canonical staging session cookies on the managed app host", async () => {
+    setHostname("cloud-staging.eliza.app");
     const { configuredSessionEndpoint, configuredRefreshEndpoint } =
       await loadEndpoints();
 
     expect(configuredSessionEndpoint()).toBe(
-      "https://api-staging.elizacloud.ai/api/auth/steward-session",
+      "https://cloud-staging.eliza.app/api/auth/steward-session",
     );
     expect(configuredRefreshEndpoint()).toBe(
-      "https://api-staging.elizacloud.ai/api/auth/steward-refresh",
+      "https://cloud-staging.eliza.app/api/auth/steward-refresh",
     );
   });
 
-  it("routes prod to the prod api worker directly", async () => {
-    setHostname("elizacloud.ai");
+  it("keeps canonical production session cookies on eliza.app", async () => {
+    setHostname("eliza.app");
     const { configuredSessionEndpoint, configuredRefreshEndpoint } =
       await loadEndpoints();
 
     expect(configuredSessionEndpoint()).toBe(
-      "https://api.elizacloud.ai/api/auth/steward-session",
+      "https://eliza.app/api/auth/steward-session",
     );
     expect(configuredRefreshEndpoint()).toBe(
-      "https://api.elizacloud.ai/api/auth/steward-refresh",
+      "https://eliza.app/api/auth/steward-refresh",
     );
   });
 
-  it("routes the prod app host to the prod api worker directly", async () => {
-    setHostname("app.elizacloud.ai");
+  it("keeps canonical production session cookies on cloud.eliza.app", async () => {
+    setHostname("cloud.eliza.app");
     const { configuredSessionEndpoint, configuredRefreshEndpoint } =
       await loadEndpoints();
 
     expect(configuredSessionEndpoint()).toBe(
-      "https://api.elizacloud.ai/api/auth/steward-session",
+      "https://cloud.eliza.app/api/auth/steward-session",
     );
     expect(configuredRefreshEndpoint()).toBe(
-      "https://api.elizacloud.ai/api/auth/steward-refresh",
+      "https://cloud.eliza.app/api/auth/steward-refresh",
     );
   });
 
@@ -113,6 +119,45 @@ function makeJwt(payload: Record<string, unknown>): string {
       .replace(/=+$/, "");
   return `${b64url({ alg: "HS256", typ: "JWT" })}.${b64url(payload)}.sig`;
 }
+
+describe("clearStaleStewardSession", () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  it("drops a shared Cloud agent selection so the next account resolves its own agent", () => {
+    savePersistedActiveServer({
+      id: "cloud:old-agent",
+      kind: "cloud",
+      label: "Eliza Cloud",
+      apiBase: "https://api.eliza.app/api/v1/eliza/agents/old-agent",
+      accessToken: "expired-steward-token",
+    });
+
+    clearStaleStewardSession();
+
+    expect(loadPersistedActiveServer()).toBeNull();
+  });
+
+  it("preserves a dedicated target selection while scrubbing its rejected bearer", () => {
+    savePersistedActiveServer({
+      id: "cloud:dedicated-agent",
+      kind: "cloud",
+      label: "Eliza Cloud",
+      apiBase: "https://dedicated-agent.eliza.app",
+      accessToken: "rejected-agent-token",
+    });
+
+    clearStaleStewardSession();
+
+    expect(loadPersistedActiveServer()).toEqual({
+      id: "cloud:dedicated-agent",
+      kind: "cloud",
+      label: "Eliza Cloud",
+      apiBase: "https://dedicated-agent.eliza.app",
+    });
+  });
+});
 
 describe("tokenIsExpired", () => {
   it("keeps a token with a future exp", () => {

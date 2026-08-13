@@ -376,6 +376,11 @@ ${matchingApp.website_url ? `🌐 Website: ${matchingApp.website_url}` : ""}`;
     const telegramUserId = String(ctx.from?.id ?? chatId);
     const telegramUsername = ctx.from?.username ?? `telegram-${telegramUserId}`;
     const isPrivateChat = ctx.chat?.type === "private";
+    const matchingApp = activeApps.find(
+      (app) =>
+        app.telegram_automation?.channelId === String(chatId) ||
+        app.telegram_automation?.groupId === String(chatId),
+    );
 
     if (isPrivateChat) {
       const routed = await agentGatewayRouterService.routeTelegramMessage({
@@ -388,6 +393,10 @@ ${matchingApp.website_url ? `🌐 Website: ${matchingApp.website_url}` : ""}`;
           username: telegramUsername,
           ...(userName ? { displayName: userName } : {}),
         },
+        // An explicitly configured app automation owns unknown first-contact
+        // traffic. Known users still route to their agent because the router
+        // consults this flag only after identity resolution returns no owner.
+        onboardUnknownOwner: !matchingApp?.telegram_automation?.autoReply,
       });
 
       if (routed.handled) {
@@ -400,12 +409,6 @@ ${matchingApp.website_url ? `🌐 Website: ${matchingApp.website_url}` : ""}`;
     }
 
     // Route to app automation
-    const matchingApp = activeApps.find(
-      (app) =>
-        app.telegram_automation?.channelId === String(chatId) ||
-        app.telegram_automation?.groupId === String(chatId),
-    );
-
     if (matchingApp?.telegram_automation?.autoReply) {
       try {
         await telegramAppAutomationService.handleIncomingMessage(

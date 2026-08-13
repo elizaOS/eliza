@@ -13,6 +13,7 @@ const routeToSession = mock();
 const bridge = mock();
 const runOnboardingChat = mock();
 const findByDiscordIdWithOrganization = mock();
+const findByTelegramIdWithOrganization = mock();
 const readManagedAgentDiscordBinding = mock(() => null as unknown);
 const readManagedAgentDiscordGateway = mock(() => null as unknown);
 
@@ -67,7 +68,7 @@ mock.module("../../db/repositories/users", () => ({
     findByPhoneNumberWithOrganization,
     findByEmailWithOrganization: mock(),
     findByDiscordIdWithOrganization,
-    findByTelegramIdWithOrganization: mock(),
+    findByTelegramIdWithOrganization,
     findByPrivyDidWithOrganization: mock(),
   },
 }));
@@ -182,6 +183,7 @@ function routeArgs(overrides: Record<string, unknown> = {}) {
 // either suite valid when test ordering or filtering changes.
 beforeEach(() => {
   findByDiscordIdWithOrganization.mockReset();
+  findByTelegramIdWithOrganization.mockReset();
   findByManagedDiscordGuildId.mockReset();
   readManagedAgentDiscordBinding.mockReset();
   readManagedAgentDiscordBinding.mockReturnValue(null);
@@ -436,6 +438,7 @@ describe("AgentGatewayRouterService phone routing", () => {
         message: "hello",
         platform: "blooio",
         platformUserId: "+1 (555) 555-0100",
+        platformReplyAddress: "+14159611510",
         sessionId: "platform:blooio:+1 (555) 555-0100",
         trustedPlatformIdentity: true,
         idempotencyKey: "blooio:msg-1",
@@ -500,6 +503,7 @@ describe("AgentGatewayRouterService phone routing", () => {
     });
     expect(runOnboardingChat).toHaveBeenCalledWith(
       expect.objectContaining({
+        platformReplyAddress: "+14159611510",
         trustedPlatformIdentity: true,
         idempotencyKey: "blooio:msg-1",
       }),
@@ -536,6 +540,7 @@ describe("AgentGatewayRouterService phone routing", () => {
     });
     expect(runOnboardingChat).toHaveBeenCalledWith(
       expect.objectContaining({
+        platformReplyAddress: "+14159611510",
         authenticatedUser: {
           userId: "known-user",
           organizationId: "known-org",
@@ -621,6 +626,7 @@ describe("AgentGatewayRouterService phone routing", () => {
     });
     expect(runOnboardingChat).toHaveBeenCalledWith(
       expect.objectContaining({
+        platformReplyAddress: "+14159611510",
         authenticatedUser: {
           userId: "known-user",
           organizationId: "known-org",
@@ -859,6 +865,131 @@ describe("AgentGatewayRouterService discord DM onboarding (#17341)", () => {
     expect(result.handled).toBe(false);
     expect(result.reason).toBe("owner_agent_not_running");
     expect(result.agentId).toBe("sb-stopped");
+    expect(runOnboardingChat).not.toHaveBeenCalled();
+  });
+});
+
+describe("AgentGatewayRouterService telegram onboarding", () => {
+  beforeEach(() => {
+    listOwnerSessions.mockReset();
+    listByOrganization.mockReset();
+    runOnboardingChat.mockReset();
+  });
+
+  function telegramArgs(overrides: Record<string, unknown> = {}) {
+    return {
+      organizationId: "org-1",
+      chatId: "chat-1",
+      messageId: "tg-msg-1",
+      content: "hi eliza",
+      sender: { id: "telegram-user-1", username: "newuser", displayName: "New User" },
+      onboardUnknownOwner: true,
+      ...overrides,
+    };
+  }
+
+  test("an unknown telegram_id onboards instead of silence", async () => {
+    findByTelegramIdWithOrganization.mockResolvedValue(null);
+    runOnboardingChat.mockResolvedValue({
+      reply: "Welcome! Here is your login link.",
+      cta: null,
+      session: { userId: undefined, organizationId: undefined },
+      provisioning: { agentId: null },
+    });
+
+    const result = await newRouter().routeTelegramMessage(telegramArgs());
+
+    // handled:true is load-bearing: the webhook route only delivers replyText
+    // when the router claims the message, otherwise it falls through to the
+    // app-automation canned response.
+    expect(result.handled).toBe(true);
+    expect(result.reason).toBe("unknown_owner");
+    expect(result.replyText).toBe("Welcome! Here is your login link.");
+    expect(runOnboardingChat).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: "hi eliza",
+        platform: "telegram",
+        platformUserId: "telegram-user-1",
+        platformDisplayName: "New User",
+        // Same key the gateway webhook uses, so both Telegram entry points
+        // append to one transcript instead of restarting the greeting.
+        sessionId: "platform:telegram:telegram-user-1",
+        trustedPlatformIdentity: true,
+        idempotencyKey: "telegram:org-1:chat-1:tg-msg-1",
+      }),
+    );
+  });
+
+  test("overlapping message ids stay isolated across organization bot chats", async () => {
+    findByTelegramIdWithOrganization.mockResolvedValue(null);
+    runOnboardingChat.mockResolvedValue({
+      reply: "Connect",
+      cta: null,
+      session: { userId: undefined, organizationId: undefined },
+      provisioning: { agentId: null },
+    });
+
+    await newRouter().routeTelegramMessage(telegramArgs());
+    await newRouter().routeTelegramMessage(
+      telegramArgs({ organizationId: "org-2", chatId: "chat-2" }),
+    );
+
+    expect(runOnboardingChat).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        idempotencyKey: "telegram:org-1:chat-1:tg-msg-1",
+      }),
+    );
+    expect(runOnboardingChat).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        idempotencyKey: "telegram:org-2:chat-2:tg-msg-1",
+      }),
+    );
+  });
+
+  test("an active app automation can retain unknown-owner precedence", async () => {
+    findByTelegramIdWithOrganization.mockResolvedValue(null);
+
+    const result = await newRouter().routeTelegramMessage(
+      telegramArgs({ onboardUnknownOwner: false }),
+    );
+
+    expect(result).toEqual({ handled: false, reason: "unknown_owner" });
+    expect(runOnboardingChat).not.toHaveBeenCalled();
+  });
+
+  test("the onboarding identity is carried back on the result", async () => {
+    findByTelegramIdWithOrganization.mockResolvedValue(null);
+    runOnboardingChat.mockResolvedValue({
+      reply: "Your agent is provisioning.",
+      cta: null,
+      session: { userId: "user-9", organizationId: "org-9" },
+      provisioning: { agentId: "sb-new" },
+    });
+
+    const result = await newRouter().routeTelegramMessage(telegramArgs());
+
+    expect(result).toMatchObject({
+      handled: true,
+      reason: "unknown_owner",
+      userId: "user-9",
+      organizationId: "org-9",
+      agentId: "sb-new",
+    });
+  });
+
+  test("a sender known under another organization keeps today's silence", async () => {
+    // Onboarding here would run a personal setup flow on somebody else's bot.
+    findByTelegramIdWithOrganization.mockResolvedValue({
+      id: "user-1",
+      organization_id: "other-org",
+    });
+
+    const result = await newRouter().routeTelegramMessage(telegramArgs());
+
+    expect(result.handled).toBe(false);
+    expect(result.reason).toBe("owner_org_mismatch");
     expect(runOnboardingChat).not.toHaveBeenCalled();
   });
 });

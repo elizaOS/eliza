@@ -2,8 +2,7 @@ name: Quality (Extended)
 
 # Additional quality gates layered on top of `ci.yaml`. These are the
 # eliza-derived checks that have no equivalent job in the canonical
-# eliza CI: the homepage build (so PRs that touch packages/homepage
-# don't first regress on `develop` push) and a workspace-level
+# eliza CI: the consolidated web build (including homepage source) and a workspace-level
 # typecheck/biome format gate.
 
 on:
@@ -44,8 +43,11 @@ on:
 # pending, which cannot starve the fleet. merge_group and schedule events are
 # also not in the cancel set, so the merge queue and nightly runs always
 # complete.
+# workflow_dispatch is excluded from the shared ref group: a manual run is an
+# on-demand health read, and parking it behind the push queue means it is
+# superseded before it ever starts.
 concurrency:
-  group: quality-${{ github.event.pull_request.number || github.ref }}
+  group: quality-${{ github.event_name == 'workflow_dispatch' && format('dispatch-{0}', github.run_id) || github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
@@ -57,10 +59,8 @@ permissions:
   contents: read
 
 jobs:
-  homepage-build:
-    name: Homepage Build (PR smoke)
-    # The visual suite needs a provisionable browser image and predictable
-    # software-GPU timing; the general fleet supplies neither consistently.
+  consolidated-frontend-build:
+    name: Consolidated Frontend Build
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
@@ -87,8 +87,8 @@ jobs:
           skip-avatar-clone: "true"
           no-vision-deps: "true"
 
-      - name: Check homepage smoke scope
-        id: homepage-scope
+      - name: Check consolidated frontend scope
+        id: frontend-scope
         shell: bash
         run: |
           set -euo pipefail
@@ -105,51 +105,39 @@ jobs:
             echo "No merge base found with origin/${{ github.base_ref }}; falling back to direct base/head diff." >&2
             changed_files="$(git diff --name-only "origin/${{ github.base_ref }}" HEAD)"
           fi
-          if grep -Eq '^(packages/homepage/|packages/shared/|packages/app-core/scripts/write-homepage-release-data\.mjs|\.github/workflows/(deploy-homepage|release-electrobun|release-orchestrator)\.yml)' <<< "${changed_files}"; then
+          if grep -Eq '^(packages/homepage/|packages/shared/|packages/app/|packages/app-core/scripts/write-homepage-release-data\.mjs|\.github/workflows/(cloud-cf-deploy|release-electrobun|release-orchestrator)\.yml)' <<< "${changed_files}"; then
             echo "run=true" >> "$GITHUB_OUTPUT"
           else
             echo "run=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Skip unrelated homepage smoke
-        if: steps.homepage-scope.outputs.run != 'true'
-        run: echo "Skipping homepage smoke; this PR does not touch homepage release surfaces."
+      - name: Skip unrelated frontend build
+        if: steps.frontend-scope.outputs.run != 'true'
+        run: echo "Skipping consolidated frontend build; this PR does not touch its source or release surfaces."
 
-      - name: Build homepage
-        if: steps.homepage-scope.outputs.run == 'true'
+      - name: Validate homepage source contracts
+        if: steps.frontend-scope.outputs.run == 'true'
         working-directory: packages/homepage
-        run: bun run build
+        run: bun run typecheck && bun run lint:check && bun run test && bun run check:snapshot-inventory
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Install homepage browser
-        if: steps.homepage-scope.outputs.run == 'true'
-        run: PLAYWRIGHT_INSTALL_CWD=packages/homepage .github/scripts/install-playwright-browsers.sh chromium
+      # The install above uses --ignore-scripts, so no workspace dist exists.
+      # packages/app/vite.config.ts imports ../shared/src/runtime-env.ts, whose
+      # barrels re-export from @elizaos/core, and Vite bundles the config with
+      # esbuild under default export conditions -- it cannot see core's
+      # eliza-source condition, so it needs core's real dist. cloud-cf-deploy.yml
+      # builds core the same way before the same build:web.
+      - name: Build linked elizaOS core workspace once
+        if: steps.frontend-scope.outputs.run == 'true'
+        run: bun run build:core
 
-      - name: Validate homepage snapshot inventory
-        if: steps.homepage-scope.outputs.run == 'true'
-        working-directory: packages/homepage
-        # Derive the expected inventory from the route and viewport matrix used
-        # by the visual suite so adding a route cannot leave this gate behind.
-        run: bun run check:snapshot-inventory
-
-      - name: Test homepage
-        if: steps.homepage-scope.outputs.run == 'true'
-        working-directory: packages/homepage
-        run: bun run test:e2e -- --reporter=list,html
+      - name: Build the only deployable frontend
+        if: steps.frontend-scope.outputs.run == 'true'
+        working-directory: packages/app
+        run: bun run build:web
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Upload homepage Playwright report
-        if: always() && steps.homepage-scope.outputs.run == 'true'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
-        with:
-          name: homepage-playwright-${{ github.run_id }}-${{ github.run_attempt }}
-          path: |
-            packages/homepage/playwright-report/
-            packages/homepage/test-results/
-          if-no-files-found: ignore
-          retention-days: 7
 
   comment-only-diff:
     name: Comment-only diff guard

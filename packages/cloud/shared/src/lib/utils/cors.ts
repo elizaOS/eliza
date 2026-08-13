@@ -4,11 +4,14 @@ import { APP_LOCAL_ORIGIN_RE, APP_SCHEME_ORIGIN_RE, CORS_ALLOW_HEADERS } from ".
 const ALLOWED_ORIGINS = [
   process.env.NEXT_PUBLIC_APP_URL,
   "https://eliza.app",
+  "https://cloud.eliza.app",
+  "https://staging.eliza.app",
+  "https://cloud-staging.eliza.app",
   "https://eliza.ai",
   "https://www.eliza.ai",
+  // Legacy origins are accepted only during the redirect migration window.
   "https://elizacloud.ai",
   "https://www.elizacloud.ai",
-  // The Eliza agent app on its own subdomain (Pages project `eliza-app`).
   "https://app.elizacloud.ai",
   "https://app-staging.elizacloud.ai",
   // Exact develop branch alias for staging QA. Do not add a broad *.pages.dev

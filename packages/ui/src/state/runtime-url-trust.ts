@@ -12,6 +12,7 @@ import {
   isCloudPairAgentId,
   isCloudPairLoopbackOrigin,
 } from "@elizaos/shared/contracts";
+import { classifyElizaHostname } from "@elizaos/shared/elizacloud";
 import { isMobileLocalAgentIpcBase } from "../first-run/mobile-runtime-mode";
 import { ELIZA_CLOUD_CONTROL_PLANE_HOSTS } from "../utils/cloud-agent-base";
 
@@ -138,15 +139,16 @@ export function isTrustedCloudApiBaseUrl(
     return candidate !== null && agentIdMatches(candidate, expected);
   }
 
-  const stagingSuffix = ".staging.elizacloud.ai";
-  const productionSuffix = ".elizacloud.ai";
-  const suffix = host.endsWith(stagingSuffix)
-    ? stagingSuffix
-    : host.endsWith(productionSuffix)
-      ? productionSuffix
-      : null;
-  if (!suffix || normalizedPath !== "") return false;
-  const candidate = host.slice(0, -suffix.length);
+  const classified = classifyElizaHostname(host);
+  if (
+    (classified.role !== "dedicated-agent" &&
+      classified.role !== "legacy-dedicated-agent") ||
+    !classified.agentId ||
+    normalizedPath !== ""
+  ) {
+    return false;
+  }
+  const candidate = classified.agentId;
   if (!isCloudPairAgentId(candidate)) return false;
   return agentIdMatches(candidate, expected);
 }

@@ -49,8 +49,8 @@ function resolveOAuthReturnTarget(
   managedFlow: boolean,
 ): URL {
   const fallbackPath = managedFlow
-    ? "/dashboard/settings?tab=agents"
-    : "/dashboard/settings?tab=connections";
+    ? "/cloud/settings?tab=agents"
+    : "/cloud/settings?tab=connections";
 
   if (managedFlow && returnUrl) {
     if (returnUrl.startsWith("/")) {

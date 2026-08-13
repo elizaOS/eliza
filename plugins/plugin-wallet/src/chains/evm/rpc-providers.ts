@@ -269,7 +269,7 @@ export function initRPCProviderManager(runtime: IAgentRuntime): RPCProviderManag
       const cloudBase =
         getStringSetting(runtime, "ELIZAOS_CLOUD_BASE_URL") ??
         (process.env.ELIZAOS_CLOUD_BASE_URL?.trim() || undefined) ??
-        "https://elizacloud.ai/api/v1";
+        "https://api.eliza.app/api/v1";
       providers.push(createElizaCloudProvider(cloudKey, cloudBase));
     }
   }

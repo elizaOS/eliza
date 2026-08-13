@@ -14,7 +14,7 @@ import type { AppEnv } from "@/types/cloud-worker-env";
  * Caddy on-demand-TLS `ask` endpoint for the apps front door. Before issuing a
  * Let's Encrypt cert for a host, the app node's Caddy calls this with the
  * requested SNI in `?domain=`. We return **200** iff that host is one of:
- *   1. the system `<shortid>.apps.elizacloud.ai` host of a RUNNING / deploying
+ *   1. the system `<shortid>.apps.eliza.app` host of a RUNNING / deploying
  *      app container (exact `containers.public_hostname` match), or
  *   2. a user's own **verified, active custom domain** bound to an active,
  *      approved app (e.g. `elocute.fun`) — mirroring the reviewed predicate in

@@ -631,7 +631,9 @@ export default function StewardLoginSection() {
     persistStewardToken(token);
     await syncStewardSessionCookie(token, refreshToken);
     toast.success("Signed in!");
-    setRedirectTo(resolveLoginReturnTo(searchParams));
+    setRedirectTo(
+      resolveLoginReturnTo(searchParams, consumePendingOAuthReturnTo()),
+    );
     setStep("success");
   }
 
@@ -743,6 +745,10 @@ export default function StewardLoginSection() {
     setLoading("email");
     setError(null);
     try {
+      // The magic link can open in a new same-origin tab. Persist the pending
+      // destination before asking Steward to send it so the callback can
+      // resume an onboarding continuation instead of falling back to /join.
+      storePendingOAuthReturnTo(searchParams);
       const challenge = await startStewardEmailLogin(
         { baseUrl: stewardApiUrl, tenantId: STEWARD_TENANT_ID },
         email.trim(),
@@ -814,7 +820,7 @@ export default function StewardLoginSection() {
     setError(null);
     const host = window.location.hostname.toLowerCase();
     const oauthOrigin = host.endsWith(".pages.dev")
-      ? "https://staging.elizacloud.ai"
+      ? "https://staging.eliza.app"
       : window.location.origin;
     let codeChallenge: string;
     try {
@@ -895,7 +901,7 @@ export default function StewardLoginSection() {
           <div className="h-8 w-8 animate-spin rounded-full border-2 border-border-strong border-t-accent motion-reduce:animate-none" />
           <p className="text-sm text-muted">
             {t("cloud.login.redirecting", {
-              defaultValue: "Redirecting to dashboard...",
+              defaultValue: "Redirecting to Eliza...",
             })}
           </p>
         </div>

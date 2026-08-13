@@ -1,16 +1,10 @@
 /**
  * Environment-scoped Steward auth cookie names.
  *
- * Every elizacloud.ai environment shares the parent-zone cookie domain (see
- * `cookie-domain.ts`) so sibling subdomains (staging. + api-staging., apex +
- * api.) can ride one session — which also meant production and staging fought
- * over a SINGLE `steward-refresh-token` slot. Refresh tokens rotate on every
- * refresh, so whichever environment refreshed last overwrote the other's live
- * refresh token; the loser's next refresh 401'd and force-signed the user out
- * (#13728 — anyone with prod + staging tabs in one browser). Non-production
- * environments therefore suffix their cookie names with the environment;
- * production keeps the historical unsuffixed names so live sessions are
- * untouched by the rename.
+ * Steward sessions are host-only (see `cookie-domain.ts`) and transferred
+ * between public and managed-app hosts only through the one-time SSO bridge.
+ * Environment suffixes remain for compatibility with existing deployments and
+ * to keep preview/staging cookie state unambiguous.
  */
 
 import { getCookieValueFromHeader } from "../http/cookie-header";
@@ -26,11 +20,9 @@ const BASE_REFRESH = "steward-refresh-token";
 const BASE_AUTHED = "steward-authed";
 
 /**
- * The historical unsuffixed names. Production owns them and still clears them on
- * logout/session teardown. Non-production no longer reads them at all: the
- * bounded read-only migration fallback closed on 2026-08-04 (#14130), so
- * pre-rename sessions in non-production re-authenticate instead of touching
- * production's cookie namespace.
+ * The historical unsuffixed names. Production keeps them for compatibility.
+ * Non-production uses suffixed names so previews and older deployments cannot
+ * accidentally interpret a different environment's browser state.
  */
 export const LEGACY_STEWARD_COOKIES: StewardCookieNames = {
   token: BASE_TOKEN,
@@ -40,10 +32,9 @@ export const LEGACY_STEWARD_COOKIES: StewardCookieNames = {
 
 /**
  * Whether this Worker may mutate the historical unsuffixed cookie names.
- * Production owns those names on the shared parent domain and clears/rotates
- * them; non-production must never clear or rotate the unsuffixed names because
- * doing so logs out a live production tab. (Non-production also no longer reads
- * them — the bounded read-only migration window closed on 2026-08-04, #14130.)
+ * Production owns those names and clears/rotates them; non-production must not
+ * mutate them. Host-only cookies now isolate canonical deployments, while this
+ * rule preserves compatibility with older and preview host layouts.
  */
 export function canMutateLegacyStewardCookies(environment: string | undefined): boolean {
   return !environment || environment === "production";
@@ -67,9 +58,9 @@ export function stewardCookieNames(environment: string | undefined): StewardCook
  * Read this environment's Steward access cookie. Each environment reads only
  * its own scoped cookie — non-production never reads the historical unsuffixed
  * cookie. The bounded read-only migration window that allowed non-production
- * environments to fall back to the historical unsuffixed access cookie closed
- * on 2026-08-04 (#14130); callers verify the access JWT but must not rotate or
- * clear legacy cookies in non-production.
+ * environments to fall back to the historical unsuffixed access cookie is
+ * closed; callers verify the access JWT but do not rotate or clear legacy
+ * cookies in non-production.
  */
 export function readStewardAccessCookieFromHeader(
   cookieHeader: string | null,

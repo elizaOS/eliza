@@ -51,7 +51,7 @@ bun run cloud:e2e:headed
 bun run cloud:e2e:ui
 
 # real-wallet SIWE login gate (dev/CI), separate from the suite
-bun run cloud:login:test-wallet            # defaults to https://api.elizacloud.ai
+bun run cloud:login:test-wallet            # defaults to https://api.eliza.app
 bun run cloud:login:test-wallet --base <local-stack-url>
 ```
 

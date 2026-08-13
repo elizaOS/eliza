@@ -8,7 +8,12 @@
  */
 
 import { afterEach, describe, expect, it } from "vitest";
-import { defaultLoginReturnTo, resolveLoginReturnTo } from "./login-return-to";
+import {
+  consumePendingOAuthReturnTo,
+  defaultLoginReturnTo,
+  resolveLoginReturnTo,
+  storePendingOAuthReturnTo,
+} from "./login-return-to";
 
 const realLocation = window.location;
 function setHostname(hostname: string): void {
@@ -24,6 +29,8 @@ function params(returnTo?: string) {
 
 describe("login return-to resolution", () => {
   afterEach(() => {
+    window.sessionStorage.clear();
+    window.localStorage.clear();
     Object.defineProperty(window, "location", {
       configurable: true,
       value: realLocation,
@@ -56,5 +63,22 @@ describe("login return-to resolution", () => {
     setHostname("elizacloud.ai");
     expect(resolveLoginReturnTo(params("//evil.example"))).toBe("/join");
     expect(resolveLoginReturnTo(params("https://evil.example"))).toBe("/join");
+  });
+
+  it("restores /get-started in another same-origin tab after login", () => {
+    storePendingOAuthReturnTo(params("/get-started"));
+
+    // sessionStorage is tab-scoped; localStorage is the hand-through used by
+    // OAuth popups and email magic links opened in a new tab.
+    window.sessionStorage.clear();
+    expect(resolveLoginReturnTo(params(), consumePendingOAuthReturnTo())).toBe(
+      "/get-started",
+    );
+    expect(consumePendingOAuthReturnTo()).toBeNull();
+  });
+
+  it("never persists an external login destination", () => {
+    storePendingOAuthReturnTo(params("https://evil.example/get-started"));
+    expect(consumePendingOAuthReturnTo()).toBeNull();
   });
 });
