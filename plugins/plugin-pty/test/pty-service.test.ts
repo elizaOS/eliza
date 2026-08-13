@@ -7,7 +7,7 @@ import os from "node:os";
 import type { ElizaError } from "@elizaos/core";
 import { createMockRuntime } from "@elizaos/core/testing";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { PtyService } from "../services/pty-service";
+import { PtyService, resolveIdleTimeoutMs } from "../services/pty-service";
 import type { PtySpawnSpec } from "../services/pty-types";
 import { makeFakeSpawn } from "./fake-pty";
 
@@ -93,15 +93,26 @@ describe("PtyService", () => {
 });
 
 describe("PtyService idle-timeout configuration", () => {
-  it("starts with the documented default when neither source is configured", async () => {
+  it("leaves the store on its documented default when neither source is configured", async () => {
     vi.stubEnv("PTY_IDLE_TIMEOUT_MS", "");
+    expect(resolveIdleTimeoutMs(runtimeWithIdleTimeout(null))).toBeUndefined();
     const service = await PtyService.start(runtimeWithIdleTimeout(null));
     await service.stop();
   });
 
-  it.each(["0", 0, "900000", 900_000, " 900000 ", 2_147_483_647])(
-    "starts with supported timeout value %j",
-    async (value) => {
+  it.each([
+    ["0", 0],
+    [0, 0],
+    ["900000", 900_000],
+    [900_000, 900_000],
+    [" 900000 ", 900_000],
+    [2_147_483_647, 2_147_483_647],
+  ] as const)(
+    "resolves supported timeout %j to %i",
+    async (value, expected) => {
+      expect(resolveIdleTimeoutMs(runtimeWithIdleTimeout(value))).toBe(
+        expected,
+      );
       const service = await PtyService.start(runtimeWithIdleTimeout(value));
       await service.stop();
     },
@@ -145,6 +156,9 @@ describe("PtyService idle-timeout configuration", () => {
 
   it("prefers a runtime setting over the environment fallback", async () => {
     vi.stubEnv("PTY_IDLE_TIMEOUT_MS", "-1");
+    expect(resolveIdleTimeoutMs(runtimeWithIdleTimeout(" 900000 "))).toBe(
+      900_000,
+    );
     const service = await PtyService.start(runtimeWithIdleTimeout(" 900000 "));
     await service.stop();
   });

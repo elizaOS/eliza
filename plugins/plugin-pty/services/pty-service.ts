@@ -23,7 +23,14 @@ function resolveAllowedRoot(runtime?: IAgentRuntime): string {
   return raw;
 }
 
-function resolveIdleTimeoutMs(runtime?: IAgentRuntime): number | undefined {
+/**
+ * Resolve the operator-configured idle-reap timeout, preferring the runtime
+ * setting over the process environment. Exported so tests can pin the resolved
+ * value, not just the accept/reject outcome.
+ */
+export function resolveIdleTimeoutMs(
+  runtime?: IAgentRuntime,
+): number | undefined {
   const fromSetting = runtime?.getSetting?.(PTY_IDLE_TIMEOUT_SETTING);
   const normalizedSetting =
     typeof fromSetting === "string" ? fromSetting.trim() : fromSetting;
