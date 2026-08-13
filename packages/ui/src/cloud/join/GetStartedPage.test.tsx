@@ -175,7 +175,9 @@ describe("GetStartedPage", () => {
     );
     expect(await screen.findByText("You're connected")).toBeTruthy();
     expect(
-      screen.getByRole("button", { name: "Back to iMessage" }),
-    ).toBeTruthy();
+      screen
+        .getByRole("link", { name: "Back to iMessage" })
+        .getAttribute("href"),
+    ).toBe("sms:+18087881821");
   });
 });

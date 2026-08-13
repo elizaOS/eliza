@@ -197,13 +197,12 @@ export default function GetStartedPage(): React.JSX.Element {
             </p>
             {platformIdentity?.returnUrl ? (
               <Button
-                type="button"
-                onClick={() =>
-                  window.location.assign(platformIdentity.returnUrl ?? "/join")
-                }
+                asChild
                 className="bg-txt px-6 py-2.5 font-semibold text-bg transition-colors hover:bg-txt/90"
               >
-                Back to {messagingPlatformLabel(platformIdentity.platform)}
+                <a href={platformIdentity.returnUrl}>
+                  Back to {messagingPlatformLabel(platformIdentity.platform)}
+                </a>
               </Button>
             ) : null}
             <Button

@@ -682,8 +682,8 @@ test.describe("cloud-surfaces aesthetic audit (#10725/#11342)", () => {
             .getByRole("button", { name: "Connect this iMessage account" })
             .click();
           await expect(
-            page.getByRole("button", { name: "Back to iMessage" }),
-          ).toBeVisible();
+            page.getByRole("link", { name: "Back to iMessage" }),
+          ).toHaveAttribute("href", "sms:+18087881821");
         }
 
         // Routes with expectedFinalPath always redirect on localhost (the
