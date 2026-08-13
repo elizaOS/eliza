@@ -275,7 +275,7 @@ describe("VideoService deterministic behavior", () => {
       ],
     });
 
-    const parsed = service["parseCaption"](captionJson);
+    const parsed = service.parseCaption(captionJson);
     expect(parsed).toBe("first second third fourth fifth ");
     expect(parsed).not.toContain("\r");
   });
