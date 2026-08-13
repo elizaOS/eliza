@@ -2713,7 +2713,7 @@ export function BrowserWorkspaceView(): React.JSX.Element {
         })}
         data-testid="browser-workspace-address-input"
         disabled={busyAction !== null || selectedTabIsInternal}
-        className="col-span-2 h-11 min-w-[10rem] flex-1 rounded-full border-border/40 bg-card/70 px-4 text-sm text-txt sm:col-span-1"
+        className="col-span-2 h-11 min-w-[10rem] flex-1 rounded-full border-0 bg-card/70 px-4 text-sm text-txt sm:col-span-1"
       />
       <BrowserNavButton
         agentId="go"
@@ -2725,7 +2725,7 @@ export function BrowserWorkspaceView(): React.JSX.Element {
             await navigateSelectedBrowserWorkspaceTab(locationInput);
           })
         }
-        variant="outline"
+        variant="surface"
         size="sm"
         className="h-11 shrink-0 px-3"
         aria-label={goLabel}

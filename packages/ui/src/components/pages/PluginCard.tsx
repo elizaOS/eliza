@@ -120,12 +120,12 @@ export const PluginCard = memo(function PluginCard({
         : "ok";
   const toggleHealthClass =
     toggleHealth === "ok"
-      ? "border-ok bg-ok text-white hover:bg-ok/90"
+      ? "bg-ok text-white hover:bg-ok/90"
       : toggleHealth === "attention"
-        ? "border-accent bg-accent text-accent-fg hover:bg-accent/90"
+        ? "bg-accent text-accent-fg hover:bg-accent/90"
         : toggleHealth === "error"
-          ? "border-destructive bg-destructive text-white hover:bg-destructive/90"
-          : "border-border bg-transparent text-muted hover:border-accent/50 hover:text-txt";
+          ? "bg-destructive text-white hover:bg-destructive/90"
+          : "bg-card/50 text-muted hover:bg-surface hover:text-txt";
   const toggleTitle =
     toggleHealth === "error"
       ? p.loadError || inactiveLabel
@@ -191,10 +191,10 @@ export const PluginCard = memo(function PluginCard({
       ) : (
         <Button
           ref={toggleControl.ref}
-          variant="outline"
+          variant="ghost"
           size="sm"
           data-plugin-toggle={p.id}
-          className={`min-h-11 shrink-0 rounded-full border px-3 py-2 text-2xs font-bold tracking-wider transition-colors duration-150 ${toggleHealthClass} ${
+          className={`min-h-11 shrink-0 rounded-full px-3 py-2 text-2xs font-bold tracking-wider transition-colors duration-150 ${toggleHealthClass} ${
             toggleDisabled ? "cursor-not-allowed opacity-60" : "cursor-pointer"
           }`}
           title={toggleTitle}
