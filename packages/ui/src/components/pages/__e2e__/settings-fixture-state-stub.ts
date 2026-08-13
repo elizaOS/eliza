@@ -1,10 +1,11 @@
 /**
  * Fixture stand-in for the `src/state` barrel used by run-settings-e2e.mjs.
  * Supplies the fields SettingsView itself reads (t, loadPlugins,
- * walletEnabled) plus benign defaults for the common fields section bodies
- * select. Authored in CJS form (module.exports) so ANY named import a section
- * pulls from the barrel resolves at runtime (undefined when unlisted) instead
- * of failing the esbuild bundle. Deep `state/*` submodule imports stay real.
+ * walletEnabled, startupCoordinator) plus benign defaults for the common
+ * fields section bodies select. Authored in CJS form (module.exports) so ANY
+ * named import a section pulls from the barrel resolves at runtime (undefined
+ * when unlisted) instead of failing the esbuild bundle. Deep `state/*`
+ * submodule imports stay real.
  */
 
 import {

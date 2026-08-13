@@ -217,8 +217,24 @@ const p = await context.newPage();
 const pageErrors = [];
 p.on("pageerror", (e) => pageErrors.push(String(e)));
 
-await p.goto(url, { waitUntil: "domcontentloaded" });
-await p.waitForSelector('[data-testid="desktop-settings-navigation"]');
+const firstPageError = new Promise((_, reject) => {
+  p.once("pageerror", (error) => {
+    reject(
+      new Error(
+        "Settings fixture failed before rendering its desktop navigation",
+        { cause: error },
+      ),
+    );
+  });
+});
+await Promise.race([
+  p
+    .goto(url, { waitUntil: "domcontentloaded" })
+    .then(() =>
+      p.waitForSelector('[data-testid="desktop-settings-navigation"]'),
+    ),
+  firstPageError,
+]);
 
 // ── 1. Persistent desktop rail structure ────────────────────────────────────
 const railText = await p

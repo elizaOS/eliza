@@ -214,6 +214,10 @@ describe("eliza.app AASA edge Worker", () => {
     // structurally below: observing Apple's cache can never itself mutate.
     expect(workflow).not.toContain("verify-apple-cdn:");
     expect(workflow).toContain("--apple-cdn-live");
+    const publishJob = workflow.split("  deploy-and-verify-origin:")[1];
+    expect(publishJob).toBeDefined();
+    expect(publishJob).toContain("group: deploy-aasa-edge-mutate");
+    expect(publishJob).toContain("queue: max");
 
     const cdnWait = workflow.indexOf("Wait for Apple's unmodified CDN cache");
     const rollback = workflow.indexOf(

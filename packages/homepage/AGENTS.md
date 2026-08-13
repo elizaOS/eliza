@@ -157,7 +157,7 @@ Use `elizacloudFetch` (public) or `elizacloudAuthFetch` (sends Bearer token) fro
   redirects, assets, and Functions behavior must be emitted by the app.
 - **Port 4444 belongs only to the optional Playwright source harness.** Normal
   development uses `packages/app`; `bun run dev:all` never launches this package.
-- **The production AASA response is owned by the exact-path Worker** in `edge/apple-app-site-association.ts`; it serves the exact bytes of the reviewed edge-only JSON manifest and forwards every non-exact request to the existing Pages origin. The public AASA file deliberately keeps its placeholder Team ID so `develop` Pages builds cannot publish production trust. `.github/workflows/deploy-aasa.yml` publishes only from protected `main`, rolls back an invalid origin before observing Apple's CDN in a separate job, and never treats cache-bypass behavior as release evidence.
+- **The production AASA response is owned by the exact-path Worker** in `edge/apple-app-site-association.ts`; it serves the exact bytes of the reviewed edge-only JSON manifest and forwards every non-exact request to the existing Pages origin. The public AASA file deliberately keeps its placeholder Team ID so `develop` Pages builds cannot publish production trust. `.github/workflows/deploy-aasa.yml` publishes only from protected `main`, rolls back an invalid origin before observing Apple's CDN in the same locked publish job, and never treats cache-bypass behavior as release evidence.
 - **SIWS test signer:** Playwright e2e injects `window.__siwsTestSigner` to simulate Solana wallet sign-in without a real wallet extension.
 - For logging, architecture, and naming conventions see the root `CLAUDE.md`.
 

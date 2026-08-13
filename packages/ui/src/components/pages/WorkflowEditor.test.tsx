@@ -279,6 +279,7 @@ describe("WorkflowEditor", () => {
     expect(
       await screen.findByRole("button", { name: "Restore revision" }),
     ).toBeTruthy();
+    expect(screen.getByText("8/12/2026, 12:00:00 PM")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Restore revision" }));
     expect(api.restoreWorkflowRevision).not.toHaveBeenCalled();
     fireEvent.click(
