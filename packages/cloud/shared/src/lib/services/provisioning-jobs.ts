@@ -258,6 +258,11 @@ export interface AgentDeleteJobResult {
   containerStopped: boolean;
   rowDeleted: boolean;
   error?: string;
+  /** Free (attempt-preserving) requeues this delete has spent waiting for a
+   *  transient pre-deletion capture. Persisted on the job result because
+   *  `retryLaterWithoutIncrementingAttempts` deliberately leaves `attempts`
+   *  untouched, so this is the only record that bounds the loop. */
+  captureRetryCount?: number;
 }
 
 export interface AgentSuspendJobResult {
@@ -345,6 +350,17 @@ function agentDeleteJobDataToRecord(data: AgentDeleteJobData): Record<string, un
 
 function agentDeleteJobResultToRecord(result: AgentDeleteJobResult): Record<string, unknown> {
   return { ...result };
+}
+
+/**
+ * Reads the free-requeue tally off a persisted agent_delete result. The stored
+ * value is untrusted JSON, so anything that is not a non-negative integer reads
+ * as zero rather than as a fabricated budget.
+ */
+function readAgentDeleteCaptureRetryCount(result: unknown): number {
+  if (!result || typeof result !== "object") return 0;
+  const value = (result as { captureRetryCount?: unknown }).captureRetryCount;
+  return typeof value === "number" && Number.isInteger(value) && value >= 0 ? value : 0;
 }
 
 function agentSuspendJobDataToRecord(data: AgentSuspendJobData): Record<string, unknown> {
@@ -910,6 +926,12 @@ export const PER_JOB_TIMEOUT_MS = parsePositiveIntEnv(
  *  operators enable the lane. */
 const SNAPSHOT_GATE_RETRY_DELAY_MS = 10 * 60 * 1000;
 const PROVISION_TRANSPORT_RETRY_DELAY_MS = 2 * 60 * 1000;
+/** How many times a transient pre-deletion capture may requeue WITHOUT
+ *  consuming the delete's attempt budget. At the transport retry delay above
+ *  this is ~20 minutes of tolerance for a capture outage; past it the failure
+ *  escalates to an attempt-consuming one so a user-requested delete cannot
+ *  become an immortal (still billed) agent. */
+const PRE_DELETE_CAPTURE_MAX_FREE_RETRIES = 10;
 const WARM_CLAIM_RECOVERY_ORPHAN_GRACE_MS = 2 * 60 * 1000;
 const EXECUTION_LEASE_MS = 60_000;
 const EXECUTION_LEASE_HEARTBEAT_MS = 15_000;
@@ -1023,6 +1045,22 @@ class RetryableProvisionTransportError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "RetryableProvisionTransportError";
+  }
+}
+
+/**
+ * A pre-deletion capture stayed transient past its free-requeue budget. The
+ * free requeue exists so a momentary capture outage does not burn the delete's
+ * finite attempts, but an outage that never clears would requeue forever and
+ * keep a user-requested delete alive (and billed) indefinitely. Past the cap
+ * the failure escalates to an ordinary attempt-consuming failure, so the job
+ * ends in `deletion_failed` where the stuck-delete reconciler and ops can see
+ * it — fail closed, never a fabricated success.
+ */
+class PreDeleteCaptureExhaustedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "PreDeleteCaptureExhaustedError";
   }
 }
 
@@ -4889,6 +4927,15 @@ export class ProvisioningJobService {
     );
 
     if (!delResult.success) {
+      // The free requeue is bounded. `retryLaterWithoutIncrementingAttempts`
+      // leaves `attempts` alone by design, so a capture failure that stays
+      // transient would requeue forever and a user-requested delete would
+      // become an immortal — still billed — agent. Count the free requeues on
+      // the job result and escalate past the cap.
+      const priorCaptureRetries = readAgentDeleteCaptureRetryCount(job.result);
+      const captureRetryExhausted =
+        delResult.retryable && priorCaptureRetries >= PRE_DELETE_CAPTURE_MAX_FREE_RETRIES;
+      const captureRetryCount = delResult.retryable ? priorCaptureRetries + 1 : priorCaptureRetries;
       // Persist a partial result and rethrow so the jobs runner counts an
       // attempt and retries (or marks failed on exhaustion).
       await this.updateClaimedExecution(job, {
@@ -4897,15 +4944,33 @@ export class ProvisioningJobService {
           containerStopped: delResult.containerStopped,
           rowDeleted: false,
           error: delResult.error,
+          ...(captureRetryCount > 0 ? { captureRetryCount } : {}),
         }),
       });
-      if (delResult.retryable) {
+      if (delResult.retryable && !captureRetryExhausted) {
         // A transient pre-deletion capture failure retries for free (same
         // rule the restart/snapshot handlers apply to shutdown's identical
         // signal) so the PGlite-closing race cannot exhaust the attempt
         // budget and strand the deletion (#18517).
         throw new RetryableProvisionTransportError(
           delResult.error ?? "Pre-deletion capture temporarily unavailable",
+        );
+      }
+      if (captureRetryExhausted) {
+        logger.error(
+          "[provisioning-jobs] agent_delete pre-deletion capture exhausted its free-retry budget",
+          {
+            jobId: job.id,
+            agentId: data.agentId,
+            captureRetryCount: priorCaptureRetries,
+            maxFreeRetries: PRE_DELETE_CAPTURE_MAX_FREE_RETRIES,
+            error: delResult.error,
+          },
+        );
+        throw new PreDeleteCaptureExhaustedError(
+          `Pre-deletion capture stayed unavailable across ${priorCaptureRetries} attempt-preserving retries: ${
+            delResult.error ?? "unknown capture failure"
+          }`,
         );
       }
       throw new Error(delResult.error ?? "Unknown agent_delete failure");

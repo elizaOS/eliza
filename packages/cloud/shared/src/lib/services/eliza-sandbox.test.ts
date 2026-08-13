@@ -3919,7 +3919,6 @@ describe("ElizaSandboxService.deleteAgent fail-closed pre-deletion capture (#185
         success: false,
         error: "Agent is running; suspend it before deletion",
       });
-      expect(getForWrite).not.toHaveBeenCalled();
       expect(fetchSnap).not.toHaveBeenCalled();
       expect(prepare).toHaveBeenCalledWith(rec.id, rec.organization_id, undefined, {
         snapshot: null,
@@ -3928,6 +3927,51 @@ describe("ElizaSandboxService.deleteAgent fail-closed pre-deletion capture (#185
       });
     } finally {
       getForWrite.mockRestore();
+      fetchSnap.mockRestore();
+      prepare.mockRestore();
+    }
+  });
+
+  test("the reconciler's unauthorized re-enqueue of a deletion_pending row still captures", async () => {
+    // ProvisioningJobService.reEnqueueFailedDeletions re-arms stuck deletes with
+    // NO authorization (the original job's grant is not carried through). Gating
+    // phase 0 on `options.authorization` sent those jobs into prepareAgentDelete
+    // with `snapshot: null` against a capture-requiring row, so every attempt was
+    // refused as "lifecycle generation moved" — deadlocking exactly the stuck
+    // deletions this guard protects. Only the still-`running` unauthorized case
+    // may skip the capture.
+    const { svc, spyTarget } = await makeCaptureSvc();
+    const rec = {
+      ...customSandbox(),
+      status: "deletion_pending" as const,
+      deletion_attempt_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      deletion_started_at: new Date("2026-08-13T00:00:00.000Z"),
+    };
+    const getForWrite = spyOn(spyTarget, "getAgentForWrite").mockResolvedValue(rec);
+    const priorBackup = spyOn(agentSandboxesRepository, "getLatestBackupByType").mockResolvedValue(
+      undefined,
+    );
+    const snapshot = {
+      stateData: { tables: { memories: 1 } },
+      sizeBytes: 21,
+      bridgeUrl: rec.bridge_url as string,
+    };
+    const fetchSnap = spyOn(spyTarget, "fetchSnapshotState").mockResolvedValue(snapshot);
+    const prepare = spyOn(spyTarget, "prepareAgentDelete").mockResolvedValue({
+      ok: false,
+      error: "halted by test after capture phase",
+    });
+    try {
+      await svc.deleteAgent(rec.id, rec.organization_id);
+      expect(fetchSnap).toHaveBeenCalledTimes(1);
+      expect(prepare).toHaveBeenCalledWith(rec.id, rec.organization_id, undefined, {
+        snapshot,
+        captureUnsupported: false,
+        alreadyPersisted: false,
+      });
+    } finally {
+      getForWrite.mockRestore();
+      priorBackup.mockRestore();
       fetchSnap.mockRestore();
       prepare.mockRestore();
     }

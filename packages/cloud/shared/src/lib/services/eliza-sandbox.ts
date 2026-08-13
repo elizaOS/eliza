@@ -1944,14 +1944,24 @@ export class ElizaSandboxService {
       sizeBytes: number;
       bridgeUrl: string;
     } | null = null;
-    // Only an AUTHORIZED delete can proceed past the running-row gate, so an
-    // unauthorized one skips the capture and keeps its original "suspend it
-    // before deletion" refusal — a capture outage must not change which
-    // refusal an unauthorized caller sees, nor cost a doomed HTTP round-trip.
-    const snapshotSource = options.authorization
-      ? await this.getAgentForWrite(agentId, orgId)
-      : undefined;
-    if (this.requiresPreDeleteCapture(snapshotSource)) {
+    const snapshotSource = await this.getAgentForWrite(agentId, orgId);
+    // An unauthorized delete of a still-`running` row is refused by
+    // prepareAgentDelete no matter what happens here, so it skips the capture
+    // and keeps its original "suspend it before deletion" refusal — a capture
+    // outage must not change which refusal an unauthorized caller sees, nor
+    // cost a doomed HTTP round-trip.
+    //
+    // A `deletion_pending` row is NOT that case: the enqueue already carried
+    // the authorization when it stamped the status, and the re-enqueue of a
+    // stuck deletion (ProvisioningJobService.reEnqueueFailedDeletions) passes
+    // none. Gating phase 0 on `options.authorization` therefore left exactly
+    // those jobs arriving at prepareAgentDelete with `snapshot: null` against
+    // a capture-requiring row — refused as "lifecycle generation moved" on
+    // every attempt, deadlocking the stuck-delete population this guard
+    // exists to protect.
+    const captureSkippedForUnauthorizedRunning =
+      !options.authorization && snapshotSource?.status === "running";
+    if (!captureSkippedForUnauthorizedRunning && this.requiresPreDeleteCapture(snapshotSource)) {
       // A deletion retry whose earlier attempt already captured (and whose
       // container may since have been torn down) must not refuse forever
       // against a dead bridge: a `pre-delete` backup taken at or after this
