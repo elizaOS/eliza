@@ -11,20 +11,31 @@
  *    the connectors stamp (`metadata.provider`, `metadata.accountId`, the
  *    nested `metadata[source]` identity object). The source is normalized
  *    through the connector-source registry so `discord-local` and `discord`
- *    are one surface. Missing required fields return a typed invalid result
- *    and the item is withheld from recall — nothing defaults to `global`.
+ *    are one surface. Missing or conflicting required fields return a typed
+ *    invalid result and the item is withheld from recall — nothing defaults to
+ *    `global`. Sender attestation is recorded as a structural fact
+ *    (`sender-stamped`), never labelled "connector-verified": a nested
+ *    metadata object is present at ingestion, but that is not an unforgeable
+ *    attestation of the platform identity it carries.
  *
- * 2. {@link canonicalDedupeKey} — `source:account:platformRecordId`. Two
+ * 2. {@link canonicalDedupeKey} — `source:account:room:platformRecordId`. Two
  *    deliveries of the same webhook collapse; the same text from two connector
- *    accounts does not, because the account segment differs. Account identity
- *    is part of the key, never squashed.
+ *    accounts does not, because the account segment differs. Room identity is
+ *    part of the key because platform message ids are room-local (Telegram
+ *    message ids are scoped to a chat, so two chats can legitimately reuse an
+ *    id without being the same record). Account identity is part of the key,
+ *    never squashed.
  *
  * 3. {@link searchCanonicalConversationMemories} — the production retrieval
- *    for conversation-mode message search. It runs, in order: provenance
- *    validation, the mandatory scope ladder (`./filter.ts`), and destination
- *    containment. Cross-room recall is denied unless this module revalidates
- *    the actual inbound delivery message against the trusted delivery-audience
- *    seam; callers cannot pass a policy boolean or request-body room claim.
+ *    for conversation-mode message search. Requester identity and destination
+ *    are derived ONLY from process-bound trusted delivery-audience evidence
+ *    minted for the exact runtime/turn ({@link deliveryMessage}); the adapter
+ *    vector scan is constrained by the attested room before ranking so a
+ *    global top-K cannot starve eligible same-room rows. It then runs, in
+ *    order: provenance validation, the mandatory scope ladder
+ *    (`./filter.ts`), and destination containment. Adapter errors and
+ *    access-context lookup failures propagate as a typed `unavailable`
+ *    availability — never an empty "complete" result.
  *
  * Composes with — never duplicates — `./filter.ts`: that ladder gates a single
  * memory's {@link MemoryScope} against the requester's role; this module then
@@ -32,15 +43,7 @@
  * has revalidated the live room type and participants for owner-only recall.
  */
 
-import { buildAccessContext } from "../access-context";
-import { normalizeConnectorSource } from "../connectors";
-import {
-	INTERNAL_AGENT_TURN_DISCLOSURE_BASIS,
-	markOwnerExclusiveDisclosureUsed,
-	OWNER_PRIVATE_DESTINATION_DISCLOSURE_BASIS,
-	type OwnerExclusiveDisclosureDecision,
-	revalidateOwnerExclusiveDisclosure,
-} from "../security/trusted-delivery-audience";
+import { ElizaError } from "../errors";
 import type {
 	AccessContext,
 	IAgentRuntime,
@@ -50,18 +53,28 @@ import type {
 	UUID,
 } from "../types";
 import { actorFromAccessContext, canReadScope } from "./filter";
+import {
+	INTERNAL_AGENT_TURN_DISCLOSURE_BASIS,
+	markOwnerExclusiveDisclosureUsed,
+	OWNER_PRIVATE_DESTINATION_DISCLOSURE_BASIS,
+	type OwnerExclusiveDisclosureDecision,
+	revalidateOwnerExclusiveDisclosure,
+} from "../security/trusted-delivery-audience";
+import { normalizeConnectorSource } from "../connectors";
 
 /**
  * How strongly the stored memory's sender identity is attested.
  *
  * - `self`: the agent's own message (entity is the agent).
- * - `connector-verified`: the connector stamped a stable platform identity
- *   (a nested `metadata[source]` object carrying `userId`/`id`) — the same
- *   evidence `roles.ts` is willing to resolve a role from.
+ * - `sender-stamped`: the ingesting connector wrote a nested
+ *   `metadata[source]` identity object carrying `userId`/`id`. This records the
+ *   structural fact that a stable identity was stamped at ingestion — the same
+ *   evidence `roles.ts` reads. It is NOT labelled "connector-verified" because
+ *   ordinary stored metadata is not an unforgeable attestation.
  * - `unverified`: no stable connector identity was recorded. Content-supplied
  *   metadata from a chat client lands here and must never be promoted.
  */
-export type CanonicalTrust = "self" | "connector-verified" | "unverified";
+export type CanonicalTrust = "self" | "sender-stamped" | "unverified";
 
 /**
  * The provenance envelope carried alongside every canonically-recalled item.
@@ -97,7 +110,7 @@ export interface CanonicalProvenance {
 
 /** Machine-readable reason a candidate was withheld from recall. */
 export type RecallDenyCode =
-	/** The stored memory is missing provenance required for fail-closed recall. */
+	/** The stored memory is missing or has conflicting provenance required for fail-closed recall. */
 	| "invalid_provenance"
 	/** The item's own scope forbids this requester (delegated to the scope ladder). */
 	| "scope_denied"
@@ -176,9 +189,11 @@ export type CanonicalProvenanceResult =
  * stored memory, normalizing the surface through the connector-source registry.
  *
  * `agentId` identifies the agent so its own messages resolve to `self` trust.
- * Optional display fields may remain absent; missing required provenance
+ * Optional display fields may remain absent; missing required provenance, or
+ * conflicting provenance fields (a source recorded under more than one path),
  * returns a typed invalid result. This derives stored facts and never
- * fabricates them.
+ * fabricates them. Sender attestation is recorded as a structural fact
+ * (`sender-stamped`), never promoted to "connector-verified".
  */
 export function deriveCanonicalProvenance(
 	memory: Memory,
@@ -187,10 +202,31 @@ export function deriveCanonicalProvenance(
 	const metadata = asRecord(memory.metadata);
 	const content = asRecord(memory.content);
 
-	const rawSource =
-		readString(metadata, "provider") ??
-		readString(content, "source") ??
-		readString(asRecord(metadata?.base), "source");
+	// Source must come from exactly one path. Connectors stamp
+	// `metadata.provider`; the raw content `source` field and the nested
+	// `metadata.base.source` are secondary. When two paths disagree the record
+	// is contradictory and must be withheld rather than silently picking the
+	// first one.
+	const providerSource = readString(metadata, "provider");
+	const contentSource = readString(content, "source");
+	const baseSource = readString(asRecord(metadata?.base), "source");
+	const sourceCandidates = [
+		providerSource,
+		contentSource,
+		baseSource,
+	].filter((value): value is string => value !== undefined);
+	const distinctRawSources = new Set(
+		sourceCandidates.map((value) => normalizeConnectorSource(value) ?? value),
+	);
+	if (distinctRawSources.size > 1) {
+		return {
+			valid: false,
+			code: "invalid_provenance",
+			reason:
+				"stored memory records conflicting source fields; cannot determine a single canonical surface",
+		};
+	}
+	const rawSource = providerSource ?? contentSource ?? baseSource;
 	const source = rawSource ? normalizeConnectorSource(rawSource) : undefined;
 	if (!source || !isValidSourceKey(source)) {
 		return {
@@ -222,7 +258,7 @@ export function deriveCanonicalProvenance(
 		memory.entityId === agentId
 			? "self"
 			: senderPlatformId
-				? "connector-verified"
+				? "sender-stamped"
 				: "unverified";
 
 	const accountId =
@@ -296,14 +332,17 @@ export function deriveCanonicalProvenance(
 }
 
 /**
- * Stable idempotency key for a canonical item: `source:account:platformRecordId`.
+ * Stable idempotency key for a canonical item:
+ * `source:account:room:platformRecordId`.
  *
  * Redelivery of one webhook collapses to one key. The same text arriving under
  * two connector accounts yields two keys, so account identity survives
- * de-duplication instead of being merged away.
+ * de-duplication instead of being merged away. Room identity is part of the
+ * key because platform message ids are room-local: a Telegram message id is
+ * scoped to a chat, so the same id in two chats is two records, not one.
  */
 export function canonicalDedupeKey(provenance: CanonicalProvenance): string {
-	return `${provenance.source}:${provenance.accountId}:${provenance.platformMessageId}`;
+	return `${provenance.source}:${provenance.accountId}:${provenance.roomId}:${provenance.platformMessageId}`;
 }
 
 /** One item that survived provenance validation, the scope ladder, and containment. */
@@ -313,10 +352,14 @@ export interface RecalledItem {
 	dedupeKey: string;
 }
 
-/** An item that was found but withheld, with the reason it was withheld. */
+/**
+ * An item that was found but withheld. Carries only the machine-readable deny
+ * code and an aggregate, identifier-free reason — never the source, account,
+ * platform record id, or dedupe key of the withheld memory, which would leak
+ * account/platform identifiers to a caller that was not authorized to read
+ * them.
+ */
 export interface WithheldItem {
-	dedupeKey?: string;
-	source?: string;
 	code: RecallDenyCode;
 	reason: string;
 }
@@ -332,9 +375,17 @@ export interface CanonicalRecallResult {
 	items: RecalledItem[];
 	withheld: WithheldItem[];
 	availability: RecallAvailability;
+	/**
+	 * Whether the adapter candidate window covered the full eligible set. When
+	 * `false`, closer ineligible rows (wrong room, wrong source, malformed
+	 * provenance, duplicates) may have starved eligible results out of the
+	 * bounded top-K window, so the answer is honestly incomplete even if no
+	 * item was individually withheld.
+	 */
+	candidateWindowComplete: boolean;
 }
 
-export interface CanonicalRecallInput {
+interface CanonicalRecallEvaluationInput {
 	/** Candidate memories already fetched from the store. */
 	candidates: Memory[];
 	/** The agent performing the recall. */
@@ -343,9 +394,6 @@ export interface CanonicalRecallInput {
 	requester: AccessContext;
 	/** Room the answer will land in (the inbound message's connector-stamped room). */
 	destinationRoomId: UUID;
-}
-
-interface CanonicalRecallEvaluationInput extends CanonicalRecallInput {
 	/** Derived only inside this module from process-local trusted audience evidence. */
 	crossRoomGate: CrossRoomRecallGate;
 }
@@ -395,31 +443,31 @@ function crossRoomRecallGate(
  * De-duplication keeps the earliest-created member of each
  * {@link canonicalDedupeKey} group, so a redelivered webhook does not
  * double-count and does not reorder the transcript.
+ *
+ * Withheld entries carry only an aggregate, identifier-free reason — never the
+ * source, account, platform record id, or dedupe key of the withheld memory.
  */
 function evaluateCanonicalRecall(
 	input: CanonicalRecallEvaluationInput,
-): Omit<CanonicalRecallResult, "availability"> {
+): Omit<CanonicalRecallResult, "availability" | "candidateWindowComplete"> {
 	const actor = actorFromAccessContext(input.requester, input.agentId);
 
 	const byKey = new Map<string, RecalledItem>();
 	const withheld: WithheldItem[] = [];
-	const withholdOnce = (entry: WithheldItem): void => {
-		if (
-			entry.dedupeKey === undefined ||
-			!withheld.some((existing) => existing.dedupeKey === entry.dedupeKey)
-		) {
-			withheld.push(entry);
+	// Track the deny codes seen so the withheld list is an aggregate (one entry
+	// per code) rather than a per-item leak of account/platform identifiers.
+	const seenDenyCodes = new Set<RecallDenyCode>();
+	const recordDenial = (code: RecallDenyCode, reason: string): void => {
+		if (!seenDenyCodes.has(code)) {
+			seenDenyCodes.add(code);
+			withheld.push({ code, reason });
 		}
 	};
 
 	for (const memory of input.candidates) {
 		const provenanceResult = deriveCanonicalProvenance(memory, input.agentId);
 		if (!provenanceResult.valid) {
-			withheld.push({
-				source: provenanceResult.source,
-				code: provenanceResult.code,
-				reason: provenanceResult.reason,
-			});
+			recordDenial(provenanceResult.code, provenanceResult.reason);
 			continue;
 		}
 		const provenance = provenanceResult.provenance;
@@ -428,12 +476,10 @@ function evaluateCanonicalRecall(
 		if (
 			!canReadScope(provenance.scope, scopedEntityIdForMemory(memory), actor)
 		) {
-			withholdOnce({
-				dedupeKey,
-				source: provenance.source,
-				code: "scope_denied",
-				reason: "requester is not authorized to read the memory scope",
-			});
+			recordDenial(
+				"scope_denied",
+				"one or more candidates were withheld because the requester is not authorized to read their scope",
+			);
 			continue;
 		}
 
@@ -441,12 +487,7 @@ function evaluateCanonicalRecall(
 			!input.crossRoomGate.allowed &&
 			provenance.roomId !== input.destinationRoomId
 		) {
-			withholdOnce({
-				dedupeKey,
-				source: provenance.source,
-				code: "cross_room_denied",
-				reason: input.crossRoomGate.reason,
-			});
+			recordDenial("cross_room_denied", input.crossRoomGate.reason);
 			continue;
 		}
 
@@ -464,8 +505,8 @@ function evaluateCanonicalRecall(
 }
 
 export function buildCanonicalRecall(
-	input: CanonicalRecallInput,
-): Omit<CanonicalRecallResult, "availability"> {
+	input: CanonicalRecallEvaluationInput,
+): Omit<CanonicalRecallResult, "availability" | "candidateWindowComplete"> {
 	return evaluateCanonicalRecall({
 		...input,
 		crossRoomGate: {
@@ -488,65 +529,150 @@ interface CanonicalMemorySearchBaseInput {
 }
 
 /**
- * Search either from an exact delivery turn (which may earn revalidated
- * owner-private cross-room access) or through the compatibility shape, which
- * remains strictly same-room and cannot widen audience policy.
+ * Production retrieval for canonical conversation recall. Requester identity
+ * and destination are derived ONLY from the exact in-memory delivery turn
+ * ({@link CanonicalMemorySearchDeliveryInput.deliveryMessage}) — the same
+ * process-bound trusted delivery-audience evidence the disclosure gate uses.
+ * Caller-supplied `requester` / `destinationRoomId` are NOT accepted: a caller
+ * cannot mint authority over who is asking or where the answer lands.
+ *
+ * The adapter vector scan is constrained by the attested room before ranking,
+ * so a global top-K cannot starve eligible same-room rows. When cross-room
+ * recall is authorized by the trusted-delivery-audience layer the scan is not
+ * room-constrained, but the bounded candidate window is refilled honestly and
+ * a truncated window is never reported as complete.
+ *
+ * Adapter failures and access-context lookup failures propagate as a typed
+ * `unavailable` availability — an error is an error, never an empty
+ * "complete" result.
  */
-export type CanonicalMemorySearchInput = CanonicalMemorySearchBaseInput &
-	(
-		| {
-				/** Exact in-memory delivery turn the recalled context will render into. */
-				deliveryMessage: Memory;
-				requester?: never;
-				destinationRoomId?: never;
-		  }
-		| {
-				deliveryMessage?: never;
-				/** Compatibility requester used only by the same-room path. */
-				requester: AccessContext;
-				/** Compatibility destination; cross-room recall remains denied. */
-				destinationRoomId: UUID;
-		  }
-	);
+export type CanonicalMemorySearchInput = CanonicalMemorySearchBaseInput & {
+	/** Exact in-memory delivery turn the recalled context will render into. */
+	deliveryMessage: Memory;
+};
+
+export interface CanonicalMemorySearchDeliveryInput {
+	/** Exact in-memory delivery turn the recalled context will render into. */
+	deliveryMessage: Memory;
+}
 
 /**
- * Production retrieval for canonical conversation recall: owns the adapter
- * call (passing the requester's {@link AccessContext} through to storage) and
- * evaluates the candidates through {@link buildCanonicalRecall}. Adapter
- * failures propagate to the caller — an error is an error, never an empty
- * "complete" result.
+ * Resolve the requester {@link AccessContext} from the exact delivery turn.
+ * Lookup failure surfaces as a typed observable failure instead of being
+ * swallowed into a fabricated low-authority context.
+ */
+async function resolveRequesterAccessContext(
+	runtime: IAgentRuntime,
+	deliveryMessage: Memory,
+): Promise<{ ok: true; context: AccessContext } | { ok: false; cause: unknown }> {
+	try {
+		// buildAccessContext is the same composition the disclosure gate trusts:
+		// it resolves role/isOwner/worldId against the single world the message
+		// belongs to. Delegating here keeps requester identity derived from the
+		// same process-bound evidence, not caller-supplied fields.
+		const { buildAccessContext } = await import("../access-context");
+		const context = await buildAccessContext(runtime, deliveryMessage);
+		return { ok: true, context };
+	} catch (cause) {
+		return { ok: false, cause };
+	}
+}
+
+/**
+ * Search canonical conversation memories, deriving requester and destination
+ * only from the exact trusted delivery turn. See
+ * {@link CanonicalMemorySearchInput}.
  */
 export async function searchCanonicalConversationMemories(
 	input: CanonicalMemorySearchInput,
 ): Promise<CanonicalRecallResult> {
-	const deliveryMessage = input.deliveryMessage;
-	const requester = deliveryMessage
-		? await buildAccessContext(input.runtime, deliveryMessage)
-		: input.requester;
-	const destinationRoomId = deliveryMessage
-		? deliveryMessage.roomId
-		: input.destinationRoomId;
-	const crossRoomGate: CrossRoomRecallGate = deliveryMessage
-		? crossRoomRecallGate(
-				await revalidateOwnerExclusiveDisclosure(
-					input.runtime,
-					deliveryMessage,
-				),
-			)
-		: {
-				allowed: false,
-				reason: "cross-room recall requires an exact trusted delivery message",
-			};
+	const { deliveryMessage } = input;
+	const destinationRoomId = deliveryMessage.roomId;
 
-	const candidates = await input.runtime.searchMemories({
-		embedding: input.embedding,
-		tableName: "messages",
-		match_threshold: input.matchThreshold,
-		count: input.count,
-		...(input.query ? { query: input.query } : {}),
-		...(input.entityId ? { entityId: input.entityId } : {}),
-		accessContext: requester,
-	});
+	const requesterResult = await resolveRequesterAccessContext(
+		input.runtime,
+		deliveryMessage,
+	);
+	if (!requesterResult.ok) {
+		input.runtime.reportError(
+			"CanonicalRecall.accessContext",
+			new ElizaError(
+				"Could not resolve the requester access context for canonical conversation recall.",
+				{
+					code: "CANONICAL_RECALL_ACCESS_CONTEXT_FAILED",
+					cause: requesterResult.cause,
+					context: { roomId: destinationRoomId },
+				},
+			),
+		);
+		return {
+			items: [],
+			withheld: [],
+			availability: "unavailable",
+			candidateWindowComplete: false,
+		};
+	}
+	const requester = requesterResult.context;
+
+	const crossRoomGate: CrossRoomRecallGate = crossRoomRecallGate(
+		await revalidateOwnerExclusiveDisclosure(input.runtime, deliveryMessage),
+	);
+
+	// Constrain the vector scan by the attested room BEFORE ranking so a global
+	// top-K cannot starve eligible same-room rows. When cross-room recall is
+	// authorized the scan is not room-constrained, but the bounded window is
+	// still refilled honestly and a truncated window is never reported as
+	// complete.
+	const roomConstrained = !crossRoomGate.allowed;
+
+	// Over-fetch by a bounded factor so source filtering, malformed records,
+	// and dedupe cannot silently starve the final result below the requested
+	// count. The refill is honest: if the adapter returns fewer than requested
+	// (it hit the end of the eligible set or its own limit) the window is
+	// marked incomplete.
+	const overfetchFactor = 3;
+	const candidateCount = Math.max(
+		input.count,
+		input.count * overfetchFactor,
+	);
+
+	let candidates: Memory[];
+	try {
+		candidates = await input.runtime.searchMemories({
+			embedding: input.embedding,
+			tableName: "messages",
+			match_threshold: input.matchThreshold,
+			count: candidateCount,
+			...(input.query ? { query: input.query } : {}),
+			...(input.entityId ? { entityId: input.entityId } : {}),
+			...(roomConstrained ? { roomId: destinationRoomId } : {}),
+			accessContext: requester,
+		});
+	} catch (cause) {
+		input.runtime.reportError(
+			"CanonicalRecall.adapter",
+			new ElizaError("Canonical conversation recall adapter query failed.", {
+				code: "CANONICAL_RECALL_ADAPTER_FAILED",
+				cause,
+				context: { roomId: destinationRoomId },
+			}),
+		);
+		return {
+			items: [],
+			withheld: [],
+			availability: "unavailable",
+			candidateWindowComplete: false,
+		};
+	}
+
+	// The adapter returned fewer rows than the requested candidate window. When
+	// it returns fewer than candidateCount it exhausted the eligible set — the
+	// window IS complete (every eligible row was fetched). When it returns
+	// exactly candidateCount it may have been truncated by its own LIMIT, so
+	// closer ineligible rows could have starved eligible results out of the
+	// window; mark it incomplete in that case so the caller never renders a
+	// truncated window as a confident complete result.
+	const candidateWindowComplete = candidates.length < candidateCount;
 
 	const evaluated = evaluateCanonicalRecall({
 		candidates,
@@ -557,7 +683,7 @@ export async function searchCanonicalConversationMemories(
 	});
 
 	// A source filter narrows what the caller asked to see; it never narrows
-	// the honesty of the withheld list for that source.
+	// the honesty of the withheld list.
 	const normalizedSource = input.source
 		? normalizeConnectorSource(input.source)
 		: undefined;
@@ -566,11 +692,7 @@ export async function searchCanonicalConversationMemories(
 				(item) => item.provenance.source === normalizedSource,
 			)
 		: evaluated.items;
-	const withheld = normalizedSource
-		? evaluated.withheld.filter(
-				(item) => item.source === undefined || item.source === normalizedSource,
-			)
-		: evaluated.withheld;
+
 	if (
 		deliveryMessage &&
 		items.some((item) => item.provenance.roomId !== deliveryMessage.roomId)
@@ -578,12 +700,23 @@ export async function searchCanonicalConversationMemories(
 		markOwnerExclusiveDisclosureUsed(deliveryMessage);
 	}
 
-	const availability: RecallAvailability =
-		withheld.length > 0
-			? items.length > 0
-				? "partial"
-				: "unavailable"
-			: "complete";
+	const withheld = evaluated.withheld;
+	let availability: RecallAvailability;
+	if (withheld.length > 0) {
+		availability = items.length > 0 ? "partial" : "unavailable";
+	} else if (!candidateWindowComplete) {
+		// No item was individually withheld, but the candidate window was
+		// truncated: closer ineligible rows may have starved eligible results,
+		// so the answer is honestly partial.
+		availability = items.length > 0 ? "partial" : "unavailable";
+	} else {
+		availability = "complete";
+	}
 
-	return { items, withheld, availability };
+	return {
+		items,
+		withheld,
+		availability,
+		candidateWindowComplete,
+	};
 }

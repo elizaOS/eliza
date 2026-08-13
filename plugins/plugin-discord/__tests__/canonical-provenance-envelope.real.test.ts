@@ -8,13 +8,15 @@
  *   - typed invalid provenance for every missing required field (no fabrication)
  *   - the mandatory scope ladder runs and cannot be bypassed
  *   - same-room containment: cross-room candidates are withheld with a typed code
- *   - `source:account:platformRecordId` dedupe across distinct DB primary keys
+ *   - `source:account:room:platformRecordId` dedupe across distinct DB primary keys
  *   - the REAL Discord connector ingestion (`buildMemoryFromMessage`) and the
  *     REAL Telegram sent-memory shape stamp scope + provenance that the
  *     envelope accepts (trusted scope stamping, not read-time guessing)
  *   - the production MESSAGE action search path returns only disclosable items
  */
 import {
+	attestDeliveryAudienceFromCanonicalRoom,
+	type CanonicalProvenance,
 	ChannelType,
 	canonicalDedupeKey,
 	deriveCanonicalProvenance,
@@ -114,6 +116,33 @@ function messageMemory(overrides: MemoryOverrides = {}): Memory {
 	};
 }
 
+/**
+ * Build a delivery turn in a DM room with just the requester + agent, then
+ * attest the trusted delivery audience so the revalidation gate passes and
+ * cross-room recall is authorized (owner-private destination).
+ */
+async function ownerDeliveryTurn(
+	runtime: IAgentRuntime,
+	roomId: UUID,
+	requesterEntityId: UUID,
+): Promise<Memory> {
+	await createRoom(runtime, roomId, ChannelType.DM, [requesterEntityId]);
+	const delivery = messageMemory({
+		agentId: runtime.agentId,
+		roomId,
+		entityId: requesterEntityId,
+		metadata: {
+			provider: "discord",
+			accountId: "discord-account-1",
+			messageIdFull: "delivery-message",
+			scope: "room",
+			discord: { userId: "discord-user-delivery" },
+		},
+	});
+	await attestDeliveryAudienceFromCanonicalRoom(runtime, delivery);
+	return delivery;
+}
+
 describe("canonical provenance envelope", () => {
 	it.each([
 		[
@@ -162,11 +191,27 @@ describe("canonical provenance envelope", () => {
 		}
 	});
 
+	it("rejects conflicting source fields instead of silently picking the first", () => {
+		const memory = messageMemory({
+			content: { source: "telegram" },
+		});
+		// metadata.provider is "discord" but content.source is "telegram" —
+		// conflicting provenance must be rejected, not silently resolved.
+		const provenance = deriveCanonicalProvenance(memory, id("agent"));
+		expect(provenance).toEqual(
+			expect.objectContaining({
+				valid: false,
+				code: "invalid_provenance",
+			}),
+		);
+	});
+
 	it("withholds missing scope instead of fabricating global access", async () => {
 		const harness = track(await createTestRuntimeWithModelProvider({}));
 		const { runtime } = harness;
 		const roomId = id("missing-scope-room");
-		await createRoom(runtime, roomId, ChannelType.DM, [id("sender")]);
+		const requester = id("sender");
+		const delivery = await ownerDeliveryTurn(runtime, roomId, requester);
 		const candidate = messageMemory({ agentId: runtime.agentId, roomId });
 		delete (candidate.metadata as Record<string, unknown>).scope;
 		vi.spyOn(runtime, "searchMemories").mockResolvedValue([candidate]);
@@ -175,8 +220,7 @@ describe("canonical provenance envelope", () => {
 			runtime,
 			embedding: [0.1, 0.2],
 			agentId: runtime.agentId,
-			requester: { requesterEntityId: id("sender") },
-			destinationRoomId: roomId,
+			deliveryMessage: delivery,
 			count: 10,
 		});
 
@@ -194,7 +238,8 @@ describe("canonical provenance envelope", () => {
 		const harness = track(await createTestRuntimeWithModelProvider({}));
 		const { runtime } = harness;
 		const roomId = id("scope-ladder-room");
-		await createRoom(runtime, roomId, ChannelType.DM, [id("ordinary-user")]);
+		const requester = id("ordinary-user");
+		const delivery = await ownerDeliveryTurn(runtime, roomId, requester);
 		const ownerScoped = messageMemory({
 			agentId: runtime.agentId,
 			roomId,
@@ -207,8 +252,7 @@ describe("canonical provenance envelope", () => {
 			runtime,
 			embedding: [0.1, 0.2],
 			agentId: runtime.agentId,
-			requester: { requesterEntityId: id("ordinary-user"), role: "USER" },
-			destinationRoomId: roomId,
+			deliveryMessage: delivery,
 			count: 10,
 		});
 
@@ -222,9 +266,12 @@ describe("canonical provenance envelope", () => {
 		const harness = track(await createTestRuntimeWithModelProvider({}));
 		const { runtime } = harness;
 		const destinationRoomId = id("destination-room");
-		await createRoom(runtime, destinationRoomId, ChannelType.DM, [
-			id("sender"),
-		]);
+		const requester = id("sender");
+		// The delivery turn is in a DM — but it is NOT owner-private relative to
+		// the agent because the requester is an ordinary user, not the canonical
+		// owner. Cross-room recall is denied by the gate, so same-room
+		// containment applies and the cross-room candidate is withheld.
+		const delivery = await ownerDeliveryTurn(runtime, destinationRoomId, requester);
 		vi.spyOn(runtime, "searchMemories").mockResolvedValue([
 			messageMemory({ agentId: runtime.agentId, roomId: id("other-room") }),
 		]);
@@ -233,8 +280,7 @@ describe("canonical provenance envelope", () => {
 			runtime,
 			embedding: [0.1, 0.2],
 			agentId: runtime.agentId,
-			requester: { requesterEntityId: id("sender") },
-			destinationRoomId,
+			deliveryMessage: delivery,
 			count: 10,
 		});
 
@@ -242,30 +288,34 @@ describe("canonical provenance envelope", () => {
 		expect(recall.withheld[0]?.code).toBe("cross_room_denied");
 	});
 
-	it("propagates adapter failure instead of reporting an empty complete result", async () => {
+	it("surfaces adapter failure as unavailable instead of an empty complete result", async () => {
 		const harness = track(await createTestRuntimeWithModelProvider({}));
 		const { runtime } = harness;
+		const roomId = id("adapter-failure-room");
+		const delivery = await ownerDeliveryTurn(runtime, roomId, id("sender"));
 		vi.spyOn(runtime, "searchMemories").mockRejectedValue(
 			new Error("adapter offline"),
 		);
 
-		await expect(
-			searchCanonicalConversationMemories({
-				runtime,
-				embedding: [0.1, 0.2],
-				agentId: runtime.agentId,
-				requester: { requesterEntityId: id("requester") },
-				destinationRoomId: id("destination"),
-				count: 10,
-			}),
-		).rejects.toThrow("adapter offline");
+		const recall = await searchCanonicalConversationMemories({
+			runtime,
+			embedding: [0.1, 0.2],
+			agentId: runtime.agentId,
+			deliveryMessage: delivery,
+			count: 10,
+		});
+
+		expect(recall.items).toHaveLength(0);
+		expect(recall.availability).toBe("unavailable");
+		expect(recall.candidateWindowComplete).toBe(false);
 	});
 
-	it("dedupes by source/account/platform id across distinct database primary keys", async () => {
+	it("dedupes by source/account/room/platform id across distinct database primary keys", async () => {
 		const harness = track(await createTestRuntimeWithModelProvider({}));
 		const { runtime } = harness;
 		const roomId = id("dedupe-room");
-		await createRoom(runtime, roomId, ChannelType.DM, [id("sender")]);
+		const requester = id("sender");
+		const delivery = await ownerDeliveryTurn(runtime, roomId, requester);
 		const first = messageMemory({
 			id: id("duplicate-memory-a"),
 			agentId: runtime.agentId,
@@ -316,8 +366,7 @@ describe("canonical provenance envelope", () => {
 			runtime,
 			embedding: [0.1, 0.2],
 			agentId: runtime.agentId,
-			requester: { requesterEntityId: id("sender") },
-			destinationRoomId: roomId,
+			deliveryMessage: delivery,
 			count: 10,
 		});
 
@@ -326,6 +375,87 @@ describe("canonical provenance envelope", () => {
 		expect(
 			recall.items.map((item) => item.provenance.accountId).sort(),
 		).toEqual(["discord-account-1", "discord-account-2"]);
+	});
+
+	it("includes room identity in the dedupe key so Telegram chat-local ids do not collide", () => {
+		// Telegram message ids are scoped to a chat. The same id in two chats
+		// is two records, not one — the room segment in the key prevents a
+		// collision.
+		const baseMeta = {
+			type: "message",
+			provider: "telegram",
+			accountId: "telegram-main",
+			scope: "room",
+			messageIdFull: "telegram-message-42",
+			telegram: { userId: "telegram-user-1" },
+		};
+		const roomA = messageMemory({
+			id: id("telegram-room-a-msg"),
+			roomId: id("telegram-chat-a"),
+			metadata: baseMeta,
+		});
+		const roomB = messageMemory({
+			id: id("telegram-room-b-msg"),
+			roomId: id("telegram-chat-b"),
+			metadata: baseMeta,
+		});
+		const provA = deriveCanonicalProvenance(roomA, id("agent"));
+		const provB = deriveCanonicalProvenance(roomB, id("agent"));
+		expect(provA.valid).toBe(true);
+		expect(provB.valid).toBe(true);
+		if (!provA.valid || !provB.valid) return;
+		expect(canonicalDedupeKey(provA.provenance)).not.toBe(
+			canonicalDedupeKey(provB.provenance),
+		);
+	});
+
+	it("does not label structural metadata as connector-verified", () => {
+		// A nested metadata[source] object carrying userId is a structural fact
+		// (the connector stamped an identity at ingestion), NOT an unforgeable
+		// attestation. The trust level must be "sender-stamped", never
+		// "connector-verified".
+		const memory = messageMemory({
+			entityId: id("non-agent-sender"),
+		});
+		const provenance = deriveCanonicalProvenance(memory, id("agent"));
+		expect(provenance.valid).toBe(true);
+		if (!provenance.valid) return;
+		expect(provenance.provenance.trust).toBe("sender-stamped");
+	});
+
+	it("withheld diagnostics do not leak account or platform identifiers", async () => {
+		const harness = track(await createTestRuntimeWithModelProvider({}));
+		const { runtime } = harness;
+		const roomId = id("no-leak-room");
+		const requester = id("sender");
+		const delivery = await ownerDeliveryTurn(runtime, roomId, requester);
+		const crossRoom = messageMemory({
+			agentId: runtime.agentId,
+			roomId: id("leak-other-room"),
+			metadata: {
+				accountId: "discord-account-secret",
+				messageIdFull: "discord-secret-message-id",
+			},
+		});
+		vi.spyOn(runtime, "searchMemories").mockResolvedValue([crossRoom]);
+
+		const recall = await searchCanonicalConversationMemories({
+			runtime,
+			embedding: [0.1, 0.2],
+			agentId: runtime.agentId,
+			deliveryMessage: delivery,
+			count: 10,
+		});
+
+		expect(recall.items).toHaveLength(0);
+		// The withheld entry must NOT carry the source, accountId,
+		// platformMessageId, or dedupeKey of the withheld memory.
+		for (const withheld of recall.withheld) {
+			expect(withheld).not.toHaveProperty("source");
+			expect(withheld).not.toHaveProperty("dedupeKey");
+			expect(withheld.reason).not.toContain("discord-account-secret");
+			expect(withheld.reason).not.toContain("discord-secret-message-id");
+		}
 	});
 
 	it("accepts the REAL Discord connector ingestion output (trusted scope stamping)", async () => {
@@ -384,12 +514,12 @@ describe("canonical provenance envelope", () => {
 				accountId: "discord-account-1",
 				platformMessageId: "3333333333333333333",
 				senderPlatformId: authorId,
-				trust: "connector-verified",
+				trust: "sender-stamped",
 				scope: "room",
 			}),
 		);
 		expect(canonicalDedupeKey(provenance.provenance)).toBe(
-			"discord:discord-account-1:3333333333333333333",
+			`discord:discord-account-1:${provenance.provenance.roomId}:3333333333333333333`,
 		);
 	});
 
