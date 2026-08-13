@@ -15,6 +15,7 @@ import * as React from "react";
 import { lazy, Suspense, useEffect } from "react";
 import { createRoot } from "react-dom/client";
 import { renderBootFailure } from "./boot-failure";
+import { seedPublicWebBootConfig } from "./public-web-boot-config";
 import { registerViewServiceWorker } from "./sw-registration";
 
 const MarketingHomePage = lazy(() => import("@homepage/embedded-home"));
@@ -45,6 +46,8 @@ function FullAppHandoff(): React.JSX.Element {
 function mountPublicWebEntry(): void {
   const rootElement = document.getElementById("root");
   if (!rootElement) throw new Error("Root element #root not found");
+  // Seed env-derived Cloud API base before join/auth routes read boot config.
+  seedPublicWebBootConfig();
   registerViewServiceWorker();
   registerPublicCloudSurfaces();
   createRoot(rootElement).render(
