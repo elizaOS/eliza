@@ -56,8 +56,8 @@ export function parseRelationshipsQueryInteger(
   if (value === null || !/^\d+$/.test(value)) {
     return undefined;
   }
-  const parsed = Number.parseInt(value, 10);
-  if (!Number.isFinite(parsed)) {
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed)) {
     return undefined;
   }
   if (typeof options?.min === "number" && parsed < options.min) {
