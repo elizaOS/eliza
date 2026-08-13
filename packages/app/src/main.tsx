@@ -1192,8 +1192,9 @@ function setReactTextareaValue(el: HTMLTextAreaElement, value: string): void {
 /**
  * Drive one real chat turn in-app and return the rendered assistant reply, so
  * the harness can enforce the shared liveness contract (#14359) against a
- * live-provider host. Only invoked when the smoke request opts in
- * (`liveness: true`); against the deterministic stub host it is skipped.
+ * live-provider host. The SIWE cloud lane always drives it (#16936); the
+ * remote-connect lane still opts in with `liveness: true`, because that lane
+ * also runs against the deterministic stub host.
  */
 async function driveIosLivenessChatTurn(prompt: string): Promise<string> {
   const composer = await waitForIosOnboardingElement<HTMLTextAreaElement>(
@@ -1236,26 +1237,22 @@ async function driveIosLivenessChatTurn(prompt: string): Promise<string> {
 function parseIosCloudOnboardingSmokeRequest(raw: string | null): {
   mode: "tap" | "autologin";
   // Liveness contract (#14359 / #16936): liveness is intrinsic to every SIWE
-  // cloud-onboarding lane. The harness always sets liveness: true; the default
-  // is also true so a bare request ("1") still drives the real chat turn.
-  liveness: boolean;
+  // cloud-onboarding lane, so the request carries only the prompt — there is no
+  // opt-out field to parse. A bare request ("1") still drives the real turn.
   livenessPrompt: string;
 } {
   const fallback = {
     mode: "tap" as const,
-    liveness: true,
     livenessPrompt: "In one short sentence, say hello.",
   };
   if (!raw || raw === "1") return fallback;
   try {
     const parsed = JSON.parse(raw) as {
       mode?: unknown;
-      liveness?: unknown;
       livenessPrompt?: unknown;
     };
     return {
       mode: parsed.mode === "autologin" ? "autologin" : fallback.mode,
-      liveness: parsed.liveness !== false,
       livenessPrompt:
         typeof parsed.livenessPrompt === "string" &&
         parsed.livenessPrompt.trim()
