@@ -544,7 +544,7 @@ export default function LandingPage() {
       label: t("homepage_eliza.landing.channelTelegram", {
         defaultValue: "Message Eliza on Telegram",
       }),
-      icon: <TelegramIcon className="size-6 text-[#2AABEE]" />,
+      icon: <TelegramIcon className="size-6" style={{ color: "#2AABEE" }} />,
     },
     {
       key: "discord",
@@ -553,7 +553,7 @@ export default function LandingPage() {
       label: t("homepage_eliza.landing.channelDiscord", {
         defaultValue: "Message Eliza on Discord",
       }),
-      icon: <DiscordIcon className="size-6 text-[#5865F2]" />,
+      icon: <DiscordIcon className="size-6" style={{ color: "#5865F2" }} />,
     },
     {
       key: "whatsapp",
@@ -562,7 +562,7 @@ export default function LandingPage() {
       label: t("homepage_eliza.landing.channelWhatsapp", {
         defaultValue: "Message Eliza on WhatsApp",
       }),
-      icon: <WhatsAppIcon className="size-6 text-[#25D366]" />,
+      icon: <WhatsAppIcon className="size-6" style={{ color: "#25D366" }} />,
     },
   ];
 
@@ -571,10 +571,7 @@ export default function LandingPage() {
       <Suspense fallback={null}>
         <ShaderBackground />
       </Suspense>
-      <div
-        aria-hidden="true"
-        className="fixed inset-0 pointer-events-none mix-blend-overlay bg-[url('/grain.webp')] z-0"
-      />
+      <div aria-hidden="true" className="landing-grain" />
       <header className="landing-header">
         <a
           className="landing-brand"
