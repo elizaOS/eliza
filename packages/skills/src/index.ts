@@ -30,7 +30,6 @@ export {
   formatSkillsList,
 } from "./formatter.js";
 export {
-  INVALID_SKILL_FRONTMATTER_YAML,
   type ParsedFrontmatter,
   parseFrontmatter,
   resolveSkillInvocationPolicy,

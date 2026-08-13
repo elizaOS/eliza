@@ -124,68 +124,9 @@ describe("EmbeddingGenerationService drain config", () => {
 		expect(service.getQueueSize()).toBe(0);
 		expect(updateMemory).not.toHaveBeenCalled();
 	});
-
-	test("queues empty vectors but skips memories with a non-empty vector", async () => {
-		const runtime = makeRuntime({ batch: false });
-		const service = (await EmbeddingGenerationService.start(
-			runtime,
-		)) as EmbeddingGenerationService;
-		const emptyVector = makeItem("id-empty-vector", "needs embedding");
-		// biome-ignore lint/suspicious/noExplicitAny: exercise malformed persisted vector state
-		(emptyVector.memory as any).embedding = [];
-		const existingVector = makeItem("id-existing-vector", "already embedded");
-		// biome-ignore lint/suspicious/noExplicitAny: exercise valid persisted vector idempotency
-		(existingVector.memory as any).embedding = [9];
-
-		// biome-ignore lint/suspicious/noExplicitAny: exercise the private event handler directly
-		await (service as any).handleEmbeddingRequest({
-			memory: emptyVector.memory,
-			priority: "normal",
-		});
-		// biome-ignore lint/suspicious/noExplicitAny: exercise the private event handler directly
-		await (service as any).handleEmbeddingRequest({
-			memory: existingVector.memory,
-			priority: "normal",
-		});
-
-		expect(service.getQueueSize()).toBe(1);
-		process.env.ELIZA_FAST_SHUTDOWN = "1";
-		await service.stop();
-	});
 });
 
 describe("EmbeddingGenerationService processBatch", () => {
-	test("single-item generation retries an empty vector but preserves idempotency", async () => {
-		const written: { id: string; embedding: number[] }[] = [];
-		const embedHandler = vi.fn(async () => [0.2, 0.4]);
-		const runtime = makeRuntime({
-			batch: false,
-			embedHandler,
-			updateMemory: async ({ id, embedding }) => {
-				written.push({ id, embedding });
-			},
-		});
-		const service = (await EmbeddingGenerationService.start(
-			runtime,
-		)) as EmbeddingGenerationService;
-
-		const empty = makeItem("id-empty-vector", "needs embedding");
-		// biome-ignore lint/suspicious/noExplicitAny: exercise malformed persisted vector state
-		(empty.memory as any).embedding = [];
-		// biome-ignore lint/suspicious/noExplicitAny: exercise the private per-item processor directly
-		await (service as any).generateEmbedding(empty);
-
-		const existing = makeItem("id-existing-vector", "already embedded");
-		// biome-ignore lint/suspicious/noExplicitAny: exercise valid persisted vector idempotency
-		(existing.memory as any).embedding = [9];
-		// biome-ignore lint/suspicious/noExplicitAny: exercise the private per-item processor directly
-		await (service as any).generateEmbedding(existing);
-
-		expect(embedHandler).toHaveBeenCalledTimes(1);
-		expect(written).toEqual([{ id: "id-empty-vector", embedding: [0.2, 0.4] }]);
-		await service.stop();
-	});
-
 	test("batches multiple items into ONE TEXT_EMBEDDING_BATCH call and writes back per id", async () => {
 		let batchCalls = 0;
 		let lastTexts: string[] = [];
@@ -296,7 +237,7 @@ describe("EmbeddingGenerationService processBatch", () => {
 		await service.stop();
 	});
 
-	test("skips missing-text / already-embedded items but still embeds empty vectors", async () => {
+	test("skips empty / already-embedded items but still embeds the rest in one call", async () => {
 		let batchCalls = 0;
 		let lastTexts: string[] = [];
 		const written: string[] = [];
@@ -322,24 +263,20 @@ describe("EmbeddingGenerationService processBatch", () => {
 		const alreadyEmbedded = makeItem("id-skip", "ignored");
 		// biome-ignore lint/suspicious/noExplicitAny: set a pre-existing vector
 		(alreadyEmbedded.memory as any).embedding = [9];
-		const emptyVector = makeItem("id-empty-vector", "needs embedding");
-		// biome-ignore lint/suspicious/noExplicitAny: exercise malformed persisted vector state
-		(emptyVector.memory as any).embedding = [];
 		const items = [
 			makeItem("id-real", "real text"),
 			makeItem("id-empty", undefined),
 			alreadyEmbedded,
-			emptyVector,
 		];
 		const outcomes = await processBatch(items);
 
 		expect(batchCalls).toBe(1);
-		expect(lastTexts).toEqual(["real text", "needs embedding"]);
-		// All four outcomes succeed (two skipped, two embedded); only the real
-		// and empty-vector items are written back.
-		expect(outcomes).toHaveLength(4);
+		expect(lastTexts).toEqual(["real text"]);
+		// All three outcomes succeed (two skipped, one embedded); only the real
+		// one is written back.
+		expect(outcomes).toHaveLength(3);
 		expect(outcomes.every((o) => o.success)).toBe(true);
-		expect(written).toEqual(["id-real", "id-empty-vector"]);
+		expect(written).toEqual(["id-real"]);
 
 		await service.stop();
 	});

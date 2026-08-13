@@ -4,7 +4,6 @@
  * it, and writes it back. Provenance records whether a skill is human-authored,
  * agent-generated, or agent-refined (see types.ts).
  */
-import { ElizaError } from "@elizaos/core";
 import { parse, stringify } from "yaml";
 import type {
   SkillFrontmatter,
@@ -17,9 +16,6 @@ export interface ParsedFrontmatter<T extends Record<string, unknown>> {
   frontmatter: T;
   body: string;
 }
-
-/** Stable error code raised when a SKILL.md frontmatter block is invalid YAML. */
-export const INVALID_SKILL_FRONTMATTER_YAML = "INVALID_SKILL_FRONTMATTER_YAML";
 
 function normalizeNewlines(value: string): string {
   return value.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
@@ -85,19 +81,13 @@ export function parseFrontmatter<
   if (!yamlString) {
     return { frontmatter: {} as T, body };
   }
-  let parsed: unknown;
   try {
-    parsed = parse(yamlString);
-  } catch (cause: unknown) {
-    // error-policy:J2 preserve the YAML parser failure behind a stable domain code
-    throw new ElizaError("Skill frontmatter contains invalid YAML", {
-      code: INVALID_SKILL_FRONTMATTER_YAML,
-      context: { parser: "yaml" },
-      cause,
-    });
-  }
-  if (isRecord(parsed)) {
-    return { frontmatter: parsed as T, body };
+    const parsed = parse(yamlString);
+    if (isRecord(parsed)) {
+      return { frontmatter: parsed as T, body };
+    }
+  } catch {
+    // error-policy:J3 untrusted YAML frontmatter parse fails closed to empty record
   }
   return { frontmatter: {} as T, body };
 }

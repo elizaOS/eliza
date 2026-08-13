@@ -18,10 +18,11 @@
  * as a terminal login failure.
  *
  * Discord's bot API cannot enumerate existing DM channels. The DM leg can
- * therefore scan only channels already present in `client.channels.cache`;
- * after a cold restart that cache may be empty until a DM gateway event arrives.
- * Cached DMs are scanned before guild channels so the shared channel cap cannot
- * starve the DM coverage that is available on warm reconnects.
+ * therefore scan only channels already present in `client.channels.cache`
+ * plus any DMs re-opened from the persisted registry (elizaOS/eliza#18746);
+ * after a cold restart the cache may be empty until a DM gateway event
+ * arrives. DMs are scanned before guild channels so the shared channel cap
+ * cannot starve DM coverage.
  *
  * The scan must never eat a marker the CURRENT process just placed: message
  * listeners bind before login resolves, so a turn can start (and stamp ⏳/🤔)
@@ -36,7 +37,7 @@ import { IN_PROGRESS_STATUS_EMOJIS } from "./status-reactions";
 /** Setting/env name; set to "0" or "false" to disable the scan entirely. */
 export const STARTUP_REACTION_SCAN_SETTING = "DISCORD_STARTUP_REACTION_SCAN";
 
-/** Hard cap on channels inspected across cached DMs plus all guilds. */
+/** Hard cap on channels inspected across DMs plus all guilds. */
 export const STARTUP_SCAN_MAX_CHANNELS = 50;
 
 /** Recent messages fetched per channel (one fetch per channel). */
