@@ -25,9 +25,10 @@ system) from trusted in-cluster callers and forwards those to agents.
   `PlatformAdapter`, `WebhookConfig` contracts). An adapter implements
   `verifyWebhook` / `extractEvent` / `sendReply` / `sendTypingIndicator`.
 - `src/webhook-handler.ts` — the core flow: sync phase (resolve config → verify
-  signature → extract event → dedup), then a fire-and-forget async phase
-  (resolve identity → forward to agent-server → send reply). Unlinked senders
-  are routed to the cloud onboarding chat.
+  signature → extract event → dedup), then an asynchronous phase (resolve
+  identity → route → send reply). A trusted first Twilio/Blooio turn creates or
+  reuses the phone-owned Cloud account and enters its rowless personal Shared
+  conversation; other unlinked platforms use the onboarding chat.
 - `src/server-router.ts` — `resolveIdentity`, `resolveAgentServer`,
   `forwardToServer` / `forwardEventToServer` (retry + fallback + KEDA
   wake-on-zero), and `refreshKedaActivity`.
@@ -173,11 +174,12 @@ Other:
 - **Stateless service.** All shared state lives in Redis (dedup keys, identity
   cache, webhook-config cache, KEDA activity, agent→server routing). The hash
   ring is rebuilt from k8s EndpointSlices, not persisted.
-- **Ack fast, work later.** Webhook and internal-event handlers do the minimum
+- **Ack fast, work later.** Twilio/Blooio webhook and internal-event handlers do the minimum
   synchronously and return 200 immediately, then process in a detached promise.
   Errors in the async phase are logged, not surfaced to the caller — watch the
   `[gateway-webhook]` logs for `Forward to server failed`, `No server found for
-  agent`, etc. There is no dead-letter queue.
+  agent`, etc. Telegram stays synchronous through its no-replay egress claim.
+  There is no dead-letter queue.
 - **Two auth paths, do not confuse them:** outbound calls to the cloud API use
   the JWT from `auth.ts` (`getAuthHeader()`); inbound `/internal/event` is
   gated by `internal-auth.ts` (`X-Internal-Secret`, constant-time compare).
