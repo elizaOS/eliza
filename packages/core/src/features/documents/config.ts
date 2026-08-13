@@ -53,8 +53,18 @@ export function validateModelConfig(runtime?: IAgentRuntime): ModelConfig {
 		const getNumericSetting = (key: string, defaultValue?: string) => {
 			if (runtime) {
 				const runtimeValue = runtime.getSetting(key);
-				if (runtimeValue !== null && runtimeValue !== undefined) {
-					return runtimeValue;
+				// Blank-is-unset for the RUNTIME value only (#18842, #18897): a blank
+				// runtime alias must fall through to the environment value instead of
+				// short-circuiting the caller's ?? chain with "" and letting the
+				// provider default win. The env value stays raw so a blank env entry
+				// still reaches schema validation (e.g. blank MAX_CONCURRENT_REQUESTS
+				// is rejected, not silently defaulted).
+				const normalizedRuntimeValue =
+					typeof runtimeValue === "string"
+						? normalizeEnvValue(runtimeValue)
+						: (runtimeValue ?? undefined);
+				if (normalizedRuntimeValue !== undefined) {
+					return normalizedRuntimeValue;
 				}
 			}
 			return process.env[key] ?? defaultValue;

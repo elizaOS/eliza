@@ -188,6 +188,39 @@ describe("validateModelConfig numeric boundary", () => {
 		});
 	});
 
+	it.each([
+		["EMBEDDING_DIMENSION", "3072", 3072],
+		["OPENAI_EMBEDDING_DIMENSIONS", "3072", 3072],
+	] as const)(
+		"lets a valid %s env value win over a blank runtime alias (#18897)",
+		(setting, envValue, expected) => {
+			vi.stubEnv("EMBEDDING_PROVIDER", "openai");
+			vi.stubEnv("OPENAI_API_KEY", "test-openai-key");
+			vi.stubEnv(setting, envValue);
+			const runtime = {
+				getSetting: (key: string) => (key === setting ? "   " : undefined),
+			} as never;
+
+			expect(validateModelConfig(runtime)).toMatchObject({
+				EMBEDDING_PROVIDER: "openai",
+				EMBEDDING_DIMENSION: expected,
+			});
+		},
+	);
+
+	it("falls to the provider default when the runtime alias is blank and no env alias is set (#18897)", () => {
+		vi.stubEnv("EMBEDDING_PROVIDER", "openai");
+		vi.stubEnv("OPENAI_API_KEY", "test-openai-key");
+		const runtime = {
+			getSetting: (key: string) =>
+				key === "EMBEDDING_DIMENSION" ? "" : undefined,
+		} as never;
+
+		expect(validateModelConfig(runtime)).toMatchObject({
+			EMBEDDING_DIMENSION: 1536,
+		});
+	});
+
 	it("ignores inactive local and OpenAI aliases for Google embeddings", () => {
 		vi.stubEnv("EMBEDDING_PROVIDER", "google");
 		vi.stubEnv("GOOGLE_API_KEY", "test-google-key");
