@@ -73,6 +73,29 @@ describe("redactSensitiveText (pattern detection)", () => {
 		expect(redactedPasswordOnly).not.toContain("password-only-value-123456789");
 	});
 
+	it("rewrites the userinfo span, never the scheme, for short user names", () => {
+		// A first-occurrence `replace(userinfo, "***")` matches inside the scheme
+		// whenever the userinfo is a substring of it: "https://s@host/x" became
+		// "http***://s@host/x", leaving the credential fully intact.
+		const shortUser = redactSensitiveText("https://s@host/x");
+		expect(shortUser).toBe("https://***@host/x");
+		expect(shortUser).toContain("https://");
+
+		const postgres = redactSensitiveText("postgres://p@db");
+		expect(postgres).toBe("postgres://***@db");
+		expect(postgres).toContain("postgres://");
+	});
+
+	it("masks the leading userinfo of a password containing a literal @", () => {
+		// Documented residual: the userinfo class cannot cross an `@`, so only the
+		// span up to the first `@` is masked. The scheme must still survive intact
+		// and the leading credential must be gone.
+		const out = redactSensitiveText("https://user:p@ss@host/db");
+		expect(out).toContain("https://");
+		expect(out).not.toContain("user:p");
+		expect(out.startsWith("https://***@")).toBe(true);
+	});
+
 	it("redacts both spaced and equals-form credential flags", () => {
 		const spaced = "run --token flag-secret-value-123456789";
 		const equals = "run --password=flag-password-value-123456789";
