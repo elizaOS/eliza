@@ -62,39 +62,9 @@ jobs:
     # `ci:full` label. Every downstream job needs this one, so an unlabeled PR
     # skips the whole workflow without touching a runner.
     if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'ci:full')
-    # Path classifier is a git-diff + node script: no self-hosted resources.
-    # Keep it on GitHub-hosted so a drained hetzner fleet cannot leave it
-    # queued indefinitely and pile up runs (#13617/#8501).
-    runs-on: ${{ fromJSON(github.event_name == 'pull_request' && '["ubuntu-24.04"]' || vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
-    timeout-minutes: 10
-    outputs:
-      run_scenario_pr: ${{ steps.filter.outputs.run_scenario_pr }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-        with:
-          fetch-depth: 0
-          submodules: false
-
-      - name: Setup Node.js for path gate
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-
-      - name: Determine affected CI surface
-        id: filter
-        shell: bash
-        env:
-          PR_LABELS: ${{ github.event_name == 'pull_request' && join(github.event.pull_request.labels.*.name, ',') || '' }}
-        run: |
-          set -euo pipefail
-          node packages/scripts/ci-path-gate.mjs \
-            --config scenario-pr \
-            --event "${{ github.event_name }}" \
-            --base "${{ github.event.pull_request.base.sha }}" \
-            --head "${{ github.event.pull_request.head.sha }}" \
-            --labels "$PR_LABELS" \
-            --output "$GITHUB_OUTPUT" \
-            --summary "$GITHUB_STEP_SUMMARY"
+    uses: ./.github/workflows/classify-paths.yml
+    with:
+      config: scenario-pr
 
   scenario-unit-coverage:
     name: Zero-Key unit + UI coverage

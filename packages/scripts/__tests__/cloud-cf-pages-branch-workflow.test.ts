@@ -21,6 +21,13 @@ const consumerSource = readFileSync(
   new URL(".github/workflows/cloud-cf-pr-preview-deploy.yml", repoRoot),
   "utf8",
 );
+// The unprivileged pull-request producer stays in the entry workflow. Canonical
+// Pages deployment moved into the reusable release workflow the entry calls
+// after admission, so its API gate is asserted there.
+const releaseSource = readFileSync(
+  new URL(".github/workflows/cloud-cf-release.yml", repoRoot),
+  "utf8",
+);
 
 interface WorkflowStep {
   env?: Record<string, string>;
@@ -37,6 +44,7 @@ interface WorkflowJob {
   if?: string;
   needs?: string | string[];
   steps?: WorkflowStep[];
+  uses?: string;
   strategy?: {
     matrix?: {
       include?: Array<Record<string, string>>;
@@ -64,6 +72,7 @@ interface Workflow {
 
 const producer = Bun.YAML.parse(producerSource) as Workflow;
 const consumer = Bun.YAML.parse(consumerSource) as Workflow;
+const release = Bun.YAML.parse(releaseSource) as Workflow;
 const deployJobs = ["deploy-app"] as const;
 const GNU_BASH = resolveGnuBash();
 const executedDescribe = GNU_BASH ? describe : describe.skip;
@@ -160,20 +169,30 @@ describe("Cloud CF PR preview workflow contract", () => {
   test("keeps PR builds reachable and gates canonical Pages on the API", () => {
     const buildJob = producer.jobs?.["build-pages"];
     expect(buildJob?.needs).toEqual([
-      "migrate-db",
-      "resolve-pages-environment-config",
+      "validate-deploy-source",
       "resolve-pages-preview-config",
     ]);
-    expect(buildJob?.if).toContain(
-      "github.event_name == 'pull_request' && needs.migrate-db.result == 'skipped'",
+    expect(buildJob?.if).toBe(
+      "$" +
+        "{{ github.event_name == 'pull_request' && needs.resolve-pages-preview-config.result == 'success' }}",
     );
     expect(
       namedStep(producer, "build-pages", "Validate PR preview identity").if,
     ).toBe("github.event_name == 'pull_request'");
     expect(JSON.stringify(buildJob)).not.toContain("secrets.");
 
+    // The entry workflow owns no Cloudflare mutation of its own: every deploy
+    // job lives behind the approved release call, which pull requests can
+    // never reach.
+    for (const jobId of [...deployJobs, "deploy-api", "migrate-db"] as const) {
+      expect(producer.jobs?.[jobId]).toBeUndefined();
+    }
+    const releaseCall = producer.jobs?.release;
+    expect(releaseCall?.uses).toBe("./.github/workflows/cloud-cf-release.yml");
+    expect(releaseCall?.if).toContain("github.event_name != 'pull_request'");
+
     for (const jobId of deployJobs) {
-      const job = producer.jobs?.[jobId];
+      const job = release.jobs?.[jobId];
       expect(job?.needs).toEqual(["deploy-api", "build-pages"]);
       expect(job?.if).toBe(
         "$" +

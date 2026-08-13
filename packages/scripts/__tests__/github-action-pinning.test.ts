@@ -219,6 +219,7 @@ describe("GitHub action supply-chain references", () => {
     expect(source).toContain(
       "ELIZA_VAULT_PASSPHRASE: dev-smoke-headless-vault-only",
     );
+    expect(source.match(/cache-bun-install: "false"/g)).toHaveLength(2);
   });
 
   test("installs both app browser engines before deterministic smoke E2E", () => {
@@ -305,29 +306,52 @@ describe("GitHub action supply-chain references", () => {
   });
 
   test("routes homepage deploys through the consolidated Cloudflare workflow", () => {
+    // The entry workflow owns the homepage trigger paths and the unprivileged
+    // preview build; the Pages project it deploys into is bound in the reusable
+    // release workflow it calls.
     const source = readFileSync(
       join(githubRoot, "workflows", "cloud-cf-deploy.yml"),
       "utf8",
     );
+    const releaseSource = readFileSync(
+      join(githubRoot, "workflows", "cloud-cf-release.yml"),
+      "utf8",
+    );
     expect(source).toContain('      - "packages/homepage/**"');
     expect(source).toContain("Build consolidated frontend artifact");
-    expect(source).toContain("PAGES_PROJECT: eliza-app");
-    expect(source).not.toContain("PAGES_PROJECT: eliza-app-home");
-    expect(source).not.toContain("git push");
+    expect(releaseSource).toContain("Build consolidated frontend artifact");
+    expect(releaseSource).toContain("PAGES_PROJECT: eliza-app");
+    for (const workflowSource of [source, releaseSource]) {
+      expect(workflowSource).not.toContain("PAGES_PROJECT: eliza-app-home");
+      expect(workflowSource).not.toContain("git push");
+    }
   });
 
-  test("keeps the Docker smoke on a runner with a Docker daemon", () => {
+  test("keeps the Docker smoke classifier unconditionally hosted (SPOF guard)", () => {
     const source = readFileSync(
       join(githubRoot, "workflows", "docker-ci-smoke.yml"),
       "utf8",
     );
     const workflow = Bun.YAML.parse(source) as {
-      jobs?: Record<string, { "runs-on"?: string }>;
+      jobs?: Record<
+        string,
+        { "runs-on"?: string; uses?: string; with?: Record<string, unknown> }
+      >;
     };
     const classifier = workflow.jobs?.changes;
     const job = workflow.jobs?.["docker-ci-smoke"];
 
-    expect(classifier?.["runs-on"]).toBe("ubuntu-24.04");
+    // docker-ci-smoke.yml delegates to the reusable classify-paths workflow.
+    expect(classifier?.uses).toContain("classify-paths.yml");
+
+    // The classifier must pass force_hosted: true — docker-ci-smoke.yml was
+    // unconditionally ubuntu-24.04 before consolidation and has no
+    // pull_request trigger, so ALL its events are non-PR. Without
+    // force_hosted, the reusable workflow's fleet-aware conditional would
+    // route the classifier to self-hosted (#13617 SPOF regression).
+    expect(classifier?.with?.force_hosted).toBe(true);
+
+    // The actual smoke job stays on hosted runners (needs a Docker daemon).
     expect(job?.["runs-on"]).toBe("ubuntu-24.04");
   });
 });
