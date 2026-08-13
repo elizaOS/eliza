@@ -224,6 +224,37 @@ function connectorGrantIdDetail(
     : undefined;
 }
 
+// Planner-authored calendarId has the same junk problem as mode/side/grantId:
+// the planner fills the schema key with placeholder tokens ("default", "all",
+// "none") that name no real calendar. getCalendarFeed treats any non-empty
+// calendarId as an explicit source filter, so junk excludes every calendar —
+// including the built-in Eliza calendar (id "primary") — and a create turn
+// dies with CALENDAR_MUTATION_CONTEXT_INCOMPLETE. Calendar ids have no
+// whitelistable shape (Google email-like ids and "primary", Microsoft opaque
+// ids, Apple ids), so this boundary drops the known placeholder vocabulary
+// instead: unset yields the aggregated feed and the provider-default target,
+// which is what the placeholders meant. Real ids pass through untouched.
+const CALENDAR_ID_PLACEHOLDER_TOKENS = new Set([
+  "default",
+  "all",
+  "none",
+  "null",
+  "unset",
+  "unknown",
+  "any",
+  "auto",
+]);
+
+function calendarIdDetail(
+  details: Record<string, unknown> | undefined,
+): string | undefined {
+  const value = detailString(details, "calendarId");
+  if (!value) return undefined;
+  return CALENDAR_ID_PLACEHOLDER_TOKENS.has(value.toLowerCase())
+    ? undefined
+    : value;
+}
+
 type CreateEventTravelIntent = CalendarTravelIntent;
 
 type CalendarSubaction =
@@ -1969,7 +2000,7 @@ async function loadCreateEventCalendarContext(
     mode: connectorModeDetail(details),
     side: connectorSideDetail(details),
     grantId: connectorGrantIdDetail(details),
-    calendarId: detailString(details, "calendarId"),
+    calendarId: calendarIdDetail(details),
     timeZone: requestTimeZone,
     forceSync: true,
     ...buildLocalDayRange(requestTimeZone, 0, 14),
@@ -2680,7 +2711,7 @@ function buildCreateEventRequest(
       side: connectorSideDetail(args.details) ?? args.fallbackRequest?.side,
       grantId: connectorGrantIdDetail(args.details),
       calendarId:
-        detailString(args.details, "calendarId") ??
+        calendarIdDetail(args.details) ??
         args.fallbackRequest?.calendarId,
       title: title ?? "",
       description:
