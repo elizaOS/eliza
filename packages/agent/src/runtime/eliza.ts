@@ -187,6 +187,28 @@ import {
   hasDurableHostVault,
 } from "./host-bridge.ts";
 
+const NODE_TIMER_MAX_MS = 2_147_483_647;
+const DEFERRED_PLUGIN_REGISTRATION_TIMEOUT_DEFAULT_MS = 30_000;
+
+export function resolveDeferredPluginRegistrationTimeoutMs(
+  raw: string | undefined = process.env
+    .ELIZA_DEFERRED_PLUGIN_REGISTRATION_TIMEOUT_MS,
+): number {
+  const value = raw?.trim();
+  if (!value) return DEFERRED_PLUGIN_REGISTRATION_TIMEOUT_DEFAULT_MS;
+
+  const parsed = Number.parseInt(value, 10);
+  if (Number.isFinite(parsed) && parsed > NODE_TIMER_MAX_MS) {
+    logger.warn(
+      `[eliza] ELIZA_DEFERRED_PLUGIN_REGISTRATION_TIMEOUT_MS exceeds Node's ${NODE_TIMER_MAX_MS}ms timer limit; using the ${DEFERRED_PLUGIN_REGISTRATION_TIMEOUT_DEFAULT_MS}ms default`,
+    );
+    return DEFERRED_PLUGIN_REGISTRATION_TIMEOUT_DEFAULT_MS;
+  }
+  return Number.isFinite(parsed) && parsed > 0
+    ? parsed
+    : DEFERRED_PLUGIN_REGISTRATION_TIMEOUT_DEFAULT_MS;
+}
+
 // Host capabilities (wallet-key hydration, vault bootstrap/access, account
 // pool, build variant) are INJECTED downward by the app-core host via
 // `setAgentHostBridge` before boot — agent never imports `@elizaos/app-core`.
@@ -5515,13 +5537,7 @@ export async function startEliza(
       ...deferredPluginsForRuntime,
     ]);
 
-    const timeoutMs = (() => {
-      const raw =
-        process.env.ELIZA_DEFERRED_PLUGIN_REGISTRATION_TIMEOUT_MS?.trim();
-      if (!raw) return 30_000;
-      const parsed = Number.parseInt(raw, 10);
-      return Number.isFinite(parsed) && parsed > 0 ? parsed : 30_000;
-    })();
+    const timeoutMs = resolveDeferredPluginRegistrationTimeoutMs();
     const registerDeferredPlugin = async (
       plugin: (typeof deferredPluginsForRuntime)[number],
     ): Promise<void> => {

@@ -75,6 +75,9 @@ describe("deferred plugin boot ordering", () => {
 
     expect(body).toContain("await runtime.registerPlugin(plugin)");
     expect(body).toContain("registrationWatchdog = setTimeout");
+    expect(body).toContain(
+      "const timeoutMs = resolveDeferredPluginRegistrationTimeoutMs()",
+    );
     expect(body).not.toContain("Promise.race([");
     expect(body).not.toContain("Math.max(timeoutMs, 60_000)");
   });
