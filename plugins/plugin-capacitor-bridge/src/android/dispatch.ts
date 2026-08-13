@@ -25,6 +25,7 @@ import type {
 	RouteHandlerResult,
 } from "@elizaos/core";
 import { NotificationService, ServiceType } from "@elizaos/core";
+import { readAliasedEnv } from "@elizaos/shared";
 import type { StdioBridgeStreamSink } from "../shared/stdio-bridge.ts";
 
 /** In-process route dispatcher (from `@elizaos/agent/api`). */
@@ -154,6 +155,122 @@ function jsonResponse(
 		bodyBase64: Buffer.from(text, "utf8").toString("base64"),
 		bodyEncoding: "base64",
 	};
+}
+
+interface AndroidTaskServiceLike {
+	runDueTasks(options?: { maxWallTimeMs?: number }): Promise<unknown>;
+}
+
+let androidWakeInFlight: Promise<unknown> | null = null;
+
+function headerValue(
+	headers: Record<string, string>,
+	name: string,
+): string | null {
+	const match = Object.entries(headers).find(
+		([key]) => key.toLowerCase() === name.toLowerCase(),
+	);
+	return match?.[1] ?? null;
+}
+
+function secretsEqual(presented: string, expected: string): boolean {
+	if (presented.length !== expected.length) return false;
+	let diff = 0;
+	for (let index = 0; index < presented.length; index += 1) {
+		diff |= presented.charCodeAt(index) ^ expected.charCodeAt(index);
+	}
+	return diff === 0;
+}
+
+function parseAndroidWakeBody(
+	body: unknown,
+): { kind: "refresh" | "processing"; deadlineMs: number } | null {
+	let candidate = body;
+	if (typeof body === "string") {
+		try {
+			candidate = JSON.parse(body);
+		} catch {
+			// error-policy:J3 native request bodies are untrusted until parsed.
+			return null;
+		}
+	}
+	if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) {
+		return null;
+	}
+	const record = candidate as Record<string, unknown>;
+	if (record.kind !== "refresh" && record.kind !== "processing") return null;
+	if (
+		typeof record.deadlineMs !== "number" ||
+		!Number.isFinite(record.deadlineMs)
+	) {
+		return null;
+	}
+	return { kind: record.kind, deadlineMs: record.deadlineMs };
+}
+
+async function directAndroidWakeRoute(
+	runtime: IAgentRuntime,
+	method: string,
+	pathname: string,
+	headers: Record<string, string>,
+	body: unknown,
+): Promise<AndroidBufferedResponse | null> {
+	if (method !== "POST" || pathname !== "/api/internal/wake") return null;
+
+	const expected = readAliasedEnv("ELIZA_API_TOKEN")?.trim();
+	const authorization = headerValue(headers, "authorization");
+	const presented = authorization?.toLowerCase().startsWith("bearer ")
+		? authorization.slice(7).trim()
+		: null;
+	if (!expected || !presented || !secretsEqual(presented, expected)) {
+		return jsonResponse(401, { ok: false, error: "unauthorized" });
+	}
+
+	const parsed = parseAndroidWakeBody(body);
+	if (!parsed) {
+		return jsonResponse(400, {
+			ok: false,
+			error:
+				'invalid body: expected { kind: "refresh" | "processing", deadlineMs: number }',
+		});
+	}
+
+	const service = runtime.getService(ServiceType.TASK);
+	if (!service || typeof Reflect.get(service, "runDueTasks") !== "function") {
+		return jsonResponse(503, {
+			ok: false,
+			error: "task_service_unavailable",
+		});
+	}
+
+	const startedAt = Date.now();
+	const maxWallTimeMs = Math.max(1_000, parsed.deadlineMs - startedAt);
+	let coalesced = false;
+	try {
+		if (androidWakeInFlight) {
+			coalesced = true;
+			await androidWakeInFlight;
+		} else {
+			androidWakeInFlight = (
+				service as typeof service & AndroidTaskServiceLike
+			).runDueTasks({ maxWallTimeMs });
+			try {
+				await androidWakeInFlight;
+			} finally {
+				androidWakeInFlight = null;
+			}
+		}
+		return jsonResponse(200, {
+			ok: true,
+			durationMs: Date.now() - startedAt,
+			coalesced,
+			lastWakeFiredAt: startedAt,
+		});
+	} catch (error) {
+		// error-policy:J1 the native transport converts task failures to JSON.
+		const message = error instanceof Error ? error.message : String(error);
+		return jsonResponse(500, { ok: false, error: message });
+	}
 }
 
 function runtimeAgentName(runtime: IAgentRuntime): string {
@@ -519,6 +636,14 @@ export async function dispatchBufferedRequest(
 	const method = normalizeMethod(payload.method);
 	const headers = normalizeHeaderRecord(payload.headers);
 	const { pathname, query } = splitPathAndQuery(rawPath);
+	const wake = await directAndroidWakeRoute(
+		runtime,
+		method,
+		pathname,
+		headers,
+		payloadBody(payload),
+	);
+	if (wake) return wake;
 
 	const direct = directAndroidCoreRoute(runtime, method, pathname, coreRoutes);
 	if (direct) return direct;

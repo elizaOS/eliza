@@ -15,7 +15,7 @@ import {
 	type Service,
 	ServiceType,
 } from "@elizaos/core";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { StdioBridgeStreamSink } from "../shared/stdio-bridge.ts";
 import {
 	type AndroidCoreRouteDeps,
@@ -100,6 +100,71 @@ function coreDeps(overrides: Partial<AndroidCoreRouteDeps> = {}): {
 }
 
 describe("dispatchBufferedRequest", () => {
+	it("runs authenticated Android internal wakes through TaskService", async () => {
+		const previousToken = process.env.ELIZA_API_TOKEN;
+		process.env.ELIZA_API_TOKEN = "a".repeat(64);
+		const runDueTasks = vi.fn(async () => {});
+		const wakeRuntime = {
+			getService: (type: ServiceType) =>
+				type === ServiceType.TASK ? { runDueTasks } : null,
+		} as unknown as IAgentRuntime;
+		const { route, calls } = fixedRoute(null);
+		try {
+			const response = await dispatchBufferedRequest(wakeRuntime, route, {
+				method: "POST",
+				path: "/api/internal/wake",
+				headers: { Authorization: `Bearer ${"a".repeat(64)}` },
+				body: JSON.stringify({
+					kind: "refresh",
+					deadlineMs: Date.now() + 5_000,
+				}),
+			});
+			expect(response.status).toBe(200);
+			expect(JSON.parse(response.body)).toMatchObject({
+				ok: true,
+				coalesced: false,
+			});
+			expect(runDueTasks).toHaveBeenCalledOnce();
+			expect(runDueTasks).toHaveBeenCalledWith({
+				maxWallTimeMs: expect.any(Number),
+			});
+			expect(calls).toHaveLength(0);
+		} finally {
+			if (previousToken === undefined) delete process.env.ELIZA_API_TOKEN;
+			else process.env.ELIZA_API_TOKEN = previousToken;
+		}
+	});
+
+	it("rejects unauthenticated and invalid Android internal wakes", async () => {
+		const previousToken = process.env.ELIZA_API_TOKEN;
+		process.env.ELIZA_API_TOKEN = "b".repeat(64);
+		const runDueTasks = vi.fn(async () => {});
+		const wakeRuntime = {
+			getService: () => ({ runDueTasks }),
+		} as unknown as IAgentRuntime;
+		const { route } = fixedRoute(null);
+		try {
+			const unauthorized = await dispatchBufferedRequest(wakeRuntime, route, {
+				method: "POST",
+				path: "/api/internal/wake",
+				body: { kind: "refresh", deadlineMs: Date.now() + 5_000 },
+			});
+			expect(unauthorized.status).toBe(401);
+
+			const invalid = await dispatchBufferedRequest(wakeRuntime, route, {
+				method: "POST",
+				path: "/api/internal/wake",
+				headers: { authorization: `Bearer ${"b".repeat(64)}` },
+				body: "not-json",
+			});
+			expect(invalid.status).toBe(400);
+			expect(runDueTasks).not.toHaveBeenCalled();
+		} finally {
+			if (previousToken === undefined) delete process.env.ELIZA_API_TOKEN;
+			else process.env.ELIZA_API_TOKEN = previousToken;
+		}
+	});
+
 	it("serves Android local startup app-core routes before dispatchRoute", async () => {
 		const { route, calls } = fixedRoute(null);
 		const { deps } = coreDeps({

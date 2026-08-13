@@ -2,6 +2,7 @@ package ai.elizaos.app;
 
 import android.Manifest;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.os.Build;
 import android.os.Bundle;
@@ -28,6 +29,15 @@ public class MainActivity extends BridgeActivity {
     private static final String TAG = "ElizaMainActivity";
 
     private static final int REQUEST_CODE_POST_NOTIFICATIONS = 1001;
+
+    private SharedPreferences wakePreferences;
+    private final SharedPreferences.OnSharedPreferenceChangeListener wakePreferenceListener =
+        (preferences, key) -> {
+            if (ElizaWorkScheduler.RUNTIME_MODE_KEY.equals(key)
+                    || ElizaWorkScheduler.BACKGROUND_ENABLED_KEY.equals(key)) {
+                ElizaWorkScheduler.reconcile(getApplicationContext());
+            }
+        };
 
     /**
      * One UA marker entry. The MainActivity reads `systemProp` via
@@ -159,7 +169,12 @@ public class MainActivity extends BridgeActivity {
             }
         }
 
-        ElizaWorkScheduler.enqueuePeriodic(getApplicationContext());
+        wakePreferences = getSharedPreferences(
+            ElizaWorkScheduler.CAPACITOR_PREFS_GROUP,
+            MODE_PRIVATE
+        );
+        wakePreferences.registerOnSharedPreferenceChangeListener(wakePreferenceListener);
+        ElizaWorkScheduler.reconcile(getApplicationContext());
     }
 
     @Override
@@ -287,6 +302,10 @@ public class MainActivity extends BridgeActivity {
 
     @Override
     public void onDestroy() {
+        if (wakePreferences != null) {
+            wakePreferences.unregisterOnSharedPreferenceChangeListener(wakePreferenceListener);
+            wakePreferences = null;
+        }
         // When the activity is fully destroyed (user swipe-kills the app),
         // tear down the foreground service to avoid an orphaned notification.
         // START_STICKY will restart the service if the system killed it, but
