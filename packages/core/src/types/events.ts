@@ -377,6 +377,10 @@ export interface PiiScrubRequestPayload extends EventPayload {
  * Payload for {@link EventType.PII_SCRUB_COMPLETED} / {@link EventType.PII_SCRUB_FAILED}.
  * `tier0Only` is true when the deterministic detectors covered everything and
  * no model call was made. `error` is set only on the FAILED variant.
+ * `scrubbedText` (COMPLETED only) carries the write-back transform: the original
+ * text with tier-0 spans redacted and model `pii` verdicts applied — the
+ * artifact that replaces the source. `verdicts` carries the per-span decisions
+ * for audit / write-back listeners.
  */
 export interface PiiScrubResultPayload extends EventPayload {
 	content: string;
@@ -386,6 +390,10 @@ export interface PiiScrubResultPayload extends EventPayload {
 	tier0Only?: boolean;
 	modelId?: string;
 	error?: Error | string;
+	/** COMPLETED only: the scrubbed text (tier-0 redacted + verdicts applied). */
+	scrubbedText?: string;
+	/** COMPLETED only: the model verdicts for audit / write-back. */
+	verdicts?: readonly import("./model.js").PiiScrubVerdict[];
 }
 
 /**

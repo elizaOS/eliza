@@ -38,6 +38,7 @@
  * the model seam itself (already merged).
  */
 
+import { applyScrubWriteBack } from "../security/pii-scrub-pipeline.js";
 import {
 	getScrubMarker,
 	isScrubDone,
@@ -45,10 +46,12 @@ import {
 } from "../security/pii-scrub-markers.js";
 import {
 	PiiScrubFabricationError,
+	type Tier0Span,
 	scrubWithEscalation,
 } from "../security/pii-scrub-seam.js";
 import type { PiiScrubRequestPayload } from "../types/events.js";
 import { EventType } from "../types/events.js";
+import type { PiiScrubVerdict } from "../types/model.js";
 import type { IAgentRuntime } from "../types/runtime.js";
 import { Service } from "../types/service.js";
 import { BatchQueue } from "../utils/batch-queue.js";
@@ -224,6 +227,8 @@ export class PiiScrubService extends Service {
 
 		let escalated: boolean;
 		let modelId: string;
+		let verdicts: readonly PiiScrubVerdict[] = [];
+		let tier0Spans: readonly Tier0Span[] = [];
 		try {
 			const result = await scrubWithEscalation(this.runtime, {
 				text: item.content,
@@ -235,6 +240,8 @@ export class PiiScrubService extends Service {
 			});
 			escalated = result.escalated;
 			modelId = result.escalation?.modelId ?? "tier0";
+			verdicts = result.escalation?.verdicts ?? [];
+			tier0Spans = result.tier0;
 		} catch (error) {
 			// error-policy:J2 Queue retry policy owns recovery; this layer adds job
 			// diagnostics and rethrows without manufacturing a scrubbed result.
@@ -255,6 +262,17 @@ export class PiiScrubService extends Service {
 			throw error;
 		}
 
+		// Apply the validated verdicts + tier-0 redaction to produce the scrubbed
+		// text — the write-back transform. This closes the gap where the service
+		// discarded verdicts and marked done without committing the rewrite. The
+		// scrubbedText is emitted on PII_SCRUB_COMPLETED so write-back listeners
+		// (memory/document updaters) can commit the transformed artifact.
+		const scrubbedText = applyScrubWriteBack(
+			item.content,
+			tier0Spans,
+			verdicts,
+		);
+
 		// Success: write the content-addressed done-marker so a re-scrub of this
 		// exact content under this ruleset no-ops, and a crash-restart resumes
 		// past it with zero duplicate work.
@@ -267,6 +285,8 @@ export class PiiScrubService extends Service {
 		await this.runtime.emitEvent(EventType.PII_SCRUB_COMPLETED, {
 			runtime: this.runtime,
 			content: item.content,
+			scrubbedText,
+			verdicts,
 			rulesetVersion: item.rulesetVersion,
 			jobId: item.jobId,
 			itemRef: item.itemRef,

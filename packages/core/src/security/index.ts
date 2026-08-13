@@ -68,6 +68,19 @@ export {
 	sourcesFromRuntime,
 } from "./pii-context-pack.js";
 export {
+	applyScrubVerdicts,
+	applyScrubWriteBack,
+	applyVerdictsToText,
+	enqueuePiiScrub,
+	mineTier0Candidates,
+	type PiiScrubPipelineItem,
+	type PiiScrubPipelineOptions,
+	type PiiScrubPipelineResult,
+	redactTier0Spans,
+	runPiiScrubPipeline,
+	TIER0_REDACTION_PLACEHOLDER,
+} from "./pii-scrub-pipeline.js";
+export {
 	cardBrand,
 	detectPii,
 	ibanValid,
