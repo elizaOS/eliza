@@ -1,30 +1,64 @@
 /**
- * Deterministic unit tests for on_mention continuity anchors: a typed
- * per-room/per-sender record written only after successful transcript-visible
- * delivery, then consulted (fail-closed) for unaddressed follow-ups.
+ * Deterministic tests for runtime-local on_mention continuity. The harness
+ * treats returned Memory rows as connector receipts and never infers delivery
+ * from callback resolution or response intent.
  */
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type {
+	PersonalitySlot,
+	ReplyGateMode,
+} from "../../features/advanced-capabilities/personality/types";
 import type { Memory } from "../../types/memory";
 import type { Content, UUID } from "../../types/primitives";
 import type { IAgentRuntime } from "../../types/runtime";
 import { wrapSingleTurnVisibleCallback } from "../message";
 import {
-	CONTINUITY_ANCHOR_VERSION,
 	CONTINUITY_WINDOW_MS,
-	continuityAnchorCacheKey,
 	isTranscriptVisibleEngagement,
-	type OnMentionContinuityAnchor,
-	recordOnMentionContinuityAnchor,
+	MAX_CONTINUITY_ANCHORS_PER_RUNTIME,
+	recordOnMentionContinuityDelivery,
 	senderInActiveConversation,
 } from "./reply-gate-continuity";
 
 const AGENT_ID = "00000000-0000-0000-0000-00000000000a" as UUID;
 const ROOM_ID = "00000000-0000-0000-0000-00000000000b" as UUID;
+const OTHER_ROOM_ID = "00000000-0000-0000-0000-00000000000f" as UUID;
 const SHAW_ID = "00000000-0000-0000-0000-00000000000c" as UUID;
 const ALICE_ID = "00000000-0000-0000-0000-00000000000e" as UUID;
-
-/** Fixed processing clock for TTL assertions. */
 const NOW = 1_700_000_000_000;
+
+type TestRuntime = IAgentRuntime & {
+	getCache: ReturnType<typeof vi.fn>;
+	setCache: ReturnType<typeof vi.fn>;
+	reportError: ReturnType<typeof vi.fn>;
+};
+
+function makeRuntime(
+	replyGate: ReplyGateMode | null = "on_mention",
+): TestRuntime {
+	const store = {
+		getSlot: (entityId: UUID | "global") =>
+			(entityId === "global" || replyGate === null
+				? {}
+				: { reply_gate: replyGate }) as PersonalitySlot,
+	};
+	return {
+		agentId: AGENT_ID,
+		getCache: vi.fn(),
+		setCache: vi.fn(),
+		reportError: vi.fn(),
+		logger: {
+			debug: vi.fn(),
+			info: vi.fn(),
+			warn: vi.fn(),
+			error: vi.fn(),
+		},
+		getService: vi.fn(() => store),
+		getSetting: vi.fn((key: string) =>
+			key === "ACTION_CALLBACK_VOICE_REWRITE" ? "false" : undefined,
+		),
+	} as unknown as TestRuntime;
+}
 
 function inbound(
 	entityId: UUID,
@@ -33,53 +67,34 @@ function inbound(
 	return { entityId, roomId };
 }
 
-function makeRuntime(args?: {
-	cache?: Map<string, unknown>;
-	getError?: Error;
-	setError?: Error;
-	setResult?: boolean;
-	setCache?: (key: string, value: unknown) => Promise<boolean>;
-}): IAgentRuntime & {
-	reportError: ReturnType<typeof vi.fn>;
-	getCache: ReturnType<typeof vi.fn>;
-	setCache: ReturnType<typeof vi.fn>;
-	cache: Map<string, unknown>;
-} {
-	const cache = args?.cache ?? new Map<string, unknown>();
-	const getCache = vi.fn(async (key: string) => {
-		if (args?.getError) throw args.getError;
-		return cache.get(key);
-	});
-	const setCache = vi.fn(
-		args?.setCache ??
-			(async (key: string, value: unknown) => {
-				if (args?.setError) throw args.setError;
-				cache.set(key, value);
-				return args?.setResult ?? true;
-			}),
-	);
+function receipt(args?: {
+	agentId?: UUID;
+	entityId?: UUID;
+	roomId?: UUID;
+	createdAt?: number;
+	content?: Content;
+}): Memory {
 	return {
-		agentId: AGENT_ID,
-		cache,
-		getCache,
-		setCache,
-		reportError: vi.fn(),
-		logger: {
-			debug: vi.fn(),
-			info: vi.fn(),
-			warn: vi.fn(),
-			error: vi.fn(),
-		},
-		getSetting: vi.fn((key: string) =>
-			key === "ACTION_CALLBACK_VOICE_REWRITE" ? "false" : undefined,
-		),
-	} as unknown as IAgentRuntime & {
-		reportError: ReturnType<typeof vi.fn>;
-		getCache: ReturnType<typeof vi.fn>;
-		setCache: ReturnType<typeof vi.fn>;
-		cache: Map<string, unknown>;
+		id: "00000000-0000-0000-0000-000000000099" as UUID,
+		agentId: args?.agentId ?? AGENT_ID,
+		entityId: args?.entityId ?? AGENT_ID,
+		roomId: args?.roomId ?? ROOM_ID,
+		createdAt: args?.createdAt ?? NOW,
+		content: args?.content ?? { text: "delivered", actions: ["REPLY"] },
 	};
 }
+
+function roomIdFor(index: number): UUID {
+	return `00000000-0000-0000-0001-${String(index).padStart(12, "0")}` as UUID;
+}
+
+beforeEach(() => {
+	vi.spyOn(Date, "now").mockReturnValue(NOW);
+});
+
+afterEach(() => {
+	vi.restoreAllMocks();
+});
 
 describe("isTranscriptVisibleEngagement", () => {
 	it("accepts ordinary reply text", () => {
@@ -87,16 +102,16 @@ describe("isTranscriptVisibleEngagement", () => {
 			isTranscriptVisibleEngagement({
 				text: "here is the answer",
 				actions: ["REPLY"],
-			} as Content),
+			}),
 		).toBe(true);
 	});
 
-	it("rejects internal, action_result, empty, and pure IGNORE/STOP rows", () => {
+	it("rejects internal, action_result, blank, and pure IGNORE/STOP rows", () => {
 		expect(
 			isTranscriptVisibleEngagement({
 				text: "secret",
 				transcriptVisibility: "internal",
-			} as Content),
+			}),
 		).toBe(false);
 		expect(
 			isTranscriptVisibleEngagement({
@@ -104,369 +119,405 @@ describe("isTranscriptVisibleEngagement", () => {
 				type: "action_result",
 			} as Content),
 		).toBe(false);
-		expect(isTranscriptVisibleEngagement({ text: "   " } as Content)).toBe(
-			false,
-		);
+		expect(isTranscriptVisibleEngagement({ text: "   " })).toBe(false);
 		expect(
-			isTranscriptVisibleEngagement({
-				text: "ignored",
-				actions: ["IGNORE"],
-			} as Content),
+			isTranscriptVisibleEngagement({ text: "ignored", actions: ["IGNORE"] }),
 		).toBe(false);
 		expect(
-			isTranscriptVisibleEngagement({
-				text: "stop",
-				actions: ["STOP"],
-			} as Content),
+			isTranscriptVisibleEngagement({ text: "stop", actions: ["STOP"] }),
 		).toBe(false);
 	});
 });
 
-describe("recordOnMentionContinuityAnchor + senderInActiveConversation", () => {
-	it("true for a fresh follow-up after a delivered engagement with this sender", async () => {
+describe("receipt ordering and bounded lifecycle", () => {
+	it("opens only for a matching agent+room visible receipt", async () => {
 		const runtime = makeRuntime();
-		await recordOnMentionContinuityAnchor(runtime, {
+		recordOnMentionContinuityDelivery(runtime, {
 			roomId: ROOM_ID,
 			senderId: SHAW_ID,
-			deliveredAt: NOW - 50_000,
+			delivered: [receipt()],
 		});
 		await expect(
-			senderInActiveConversation(runtime, inbound(SHAW_ID), NOW),
-		).resolves.toBe(true);
-		expect(runtime.setCache).toHaveBeenCalledWith(
-			continuityAnchorCacheKey(AGENT_ID, ROOM_ID),
-			{
-				v: CONTINUITY_ANCHOR_VERSION,
-				senderId: SHAW_ID,
-				deliveredAt: NOW - 50_000,
-			} satisfies OnMentionContinuityAnchor,
-		);
-	});
-
-	it("false when the anchor engaged a different sender (interleaving)", async () => {
-		const runtime = makeRuntime();
-		await recordOnMentionContinuityAnchor(runtime, {
-			roomId: ROOM_ID,
-			senderId: ALICE_ID,
-			deliveredAt: NOW - 10_000,
-		});
-		await expect(
-			senderInActiveConversation(runtime, inbound(SHAW_ID), NOW),
-		).resolves.toBe(false);
-	});
-
-	it("false when the anchor is older than CONTINUITY_WINDOW_MS", async () => {
-		const runtime = makeRuntime();
-		await recordOnMentionContinuityAnchor(runtime, {
-			roomId: ROOM_ID,
-			senderId: SHAW_ID,
-			deliveredAt: NOW - CONTINUITY_WINDOW_MS - 1,
-		});
-		await expect(
-			senderInActiveConversation(runtime, inbound(SHAW_ID), NOW),
-		).resolves.toBe(false);
-	});
-
-	it("false for negative ages (delayed / out-of-order event clocks)", async () => {
-		const runtime = makeRuntime();
-		await recordOnMentionContinuityAnchor(runtime, {
-			roomId: ROOM_ID,
-			senderId: SHAW_ID,
-			deliveredAt: NOW + 30_000,
-		});
-		// Processing clock is BEFORE the recorded delivery — must not open the gate.
-		await expect(
-			senderInActiveConversation(runtime, inbound(SHAW_ID), NOW),
-		).resolves.toBe(false);
-	});
-
-	it("false when no anchor has been recorded (no delivered engagement)", async () => {
-		const runtime = makeRuntime();
-		await expect(
-			senderInActiveConversation(runtime, inbound(SHAW_ID), NOW),
-		).resolves.toBe(false);
-	});
-
-	it("room-scoped: Alice's room anchor does not open Shaw's room", async () => {
-		const otherRoom = "00000000-0000-0000-0000-0000000000ff" as UUID;
-		const runtime = makeRuntime();
-		await recordOnMentionContinuityAnchor(runtime, {
-			roomId: otherRoom,
-			senderId: SHAW_ID,
-			deliveredAt: NOW - 5_000,
-		});
-		await expect(
-			senderInActiveConversation(runtime, inbound(SHAW_ID, ROOM_ID), NOW),
-		).resolves.toBe(false);
-	});
-
-	it("latest delivered sender wins — overwrites prior room anchor", async () => {
-		const runtime = makeRuntime();
-		await recordOnMentionContinuityAnchor(runtime, {
-			roomId: ROOM_ID,
-			senderId: SHAW_ID,
-			deliveredAt: NOW - 40_000,
-		});
-		await recordOnMentionContinuityAnchor(runtime, {
-			roomId: ROOM_ID,
-			senderId: ALICE_ID,
-			deliveredAt: NOW - 5_000,
-		});
-		await expect(
-			senderInActiveConversation(runtime, inbound(SHAW_ID), NOW),
-		).resolves.toBe(false);
-		await expect(
-			senderInActiveConversation(runtime, inbound(ALICE_ID), NOW),
+			senderInActiveConversation(runtime, inbound(SHAW_ID), NOW + 1),
 		).resolves.toBe(true);
 	});
 
-	it("fails CLOSED on getCache error and reports it", async () => {
-		const runtime = makeRuntime({ getError: new Error("db down") });
-		await expect(
-			senderInActiveConversation(runtime, inbound(SHAW_ID), NOW),
-		).resolves.toBe(false);
-		expect(runtime.reportError).toHaveBeenCalledWith(
-			"ReplyGateContinuity.history",
-			expect.any(Error),
-			{ roomId: ROOM_ID },
-		);
-	});
-
-	it("record is best-effort: setCache failure reports and does not throw", async () => {
-		const runtime = makeRuntime({ setError: new Error("cache full") });
-		await expect(
-			recordOnMentionContinuityAnchor(runtime, {
-				roomId: ROOM_ID,
-				senderId: SHAW_ID,
-				deliveredAt: NOW,
-			}),
-		).resolves.toBeUndefined();
-		expect(runtime.reportError).toHaveBeenCalledWith(
-			"ReplyGateContinuity.record",
-			expect.any(Error),
-			{ roomId: ROOM_ID, senderId: SHAW_ID },
-		);
-	});
-
-	it("reports a false cache-write result as a rejected anchor", async () => {
-		const runtime = makeRuntime({ setResult: false });
-		await expect(
-			recordOnMentionContinuityAnchor(runtime, {
-				roomId: ROOM_ID,
-				senderId: SHAW_ID,
-				deliveredAt: NOW,
-			}),
-		).resolves.toBeUndefined();
-		expect(runtime.reportError).toHaveBeenCalledWith(
-			"ReplyGateContinuity.record",
-			expect.objectContaining({
-				code: "REPLY_GATE_CONTINUITY_WRITE_REJECTED",
-			}),
-			{ roomId: ROOM_ID, senderId: SHAW_ID },
-		);
-	});
-
-	it("waits for a visible reply's pending anchor before checking a follow-up", async () => {
-		let releaseWrite: (() => void) | undefined;
-		const writeStarted = new Promise<void>((resolve) => {
-			releaseWrite = resolve;
-		});
-		let unblockWrite: (() => void) | undefined;
-		const blockedWrite = new Promise<void>((resolve) => {
-			unblockWrite = resolve;
-		});
-		const cache = new Map<string, unknown>();
-		const runtime = makeRuntime({
-			cache,
-			setCache: async (key, value) => {
-				releaseWrite?.();
-				await blockedWrite;
-				cache.set(key, value);
-				return true;
-			},
-		});
-		const recording = recordOnMentionContinuityAnchor(runtime, {
-			roomId: ROOM_ID,
-			senderId: SHAW_ID,
-			deliveredAt: NOW,
-		});
-		await writeStarted;
-		const lookup = senderInActiveConversation(
-			runtime,
-			inbound(SHAW_ID),
-			NOW + 1,
-		);
-		expect(runtime.getCache).not.toHaveBeenCalled();
-		unblockWrite?.();
-		await recording;
-		await expect(lookup).resolves.toBe(true);
-	});
-
-	it("serializes same-room writes so an older slow delivery cannot overwrite a newer one", async () => {
-		let markFirstStarted: (() => void) | undefined;
-		const firstStarted = new Promise<void>((resolve) => {
-			markFirstStarted = resolve;
-		});
-		let releaseFirst: (() => void) | undefined;
-		const firstBlocked = new Promise<void>((resolve) => {
-			releaseFirst = resolve;
-		});
-		const cache = new Map<string, unknown>();
-		let writes = 0;
-		const runtime = makeRuntime({
-			cache,
-			setCache: async (key, value) => {
-				writes += 1;
-				if (writes === 1) {
-					markFirstStarted?.();
-					await firstBlocked;
-				}
-				cache.set(key, value);
-				return true;
-			},
-		});
-		const older = recordOnMentionContinuityAnchor(runtime, {
-			roomId: ROOM_ID,
-			senderId: SHAW_ID,
-			deliveredAt: NOW,
-		});
-		await firstStarted;
-		const newer = recordOnMentionContinuityAnchor(runtime, {
-			roomId: ROOM_ID,
-			senderId: ALICE_ID,
-			deliveredAt: NOW + 1,
-		});
-		await Promise.resolve();
-		expect(writes).toBe(1);
-		releaseFirst?.();
-		await Promise.all([older, newer]);
-		expect(
-			cache.get(continuityAnchorCacheKey(AGENT_ID, ROOM_ID)),
-		).toMatchObject({ senderId: ALICE_ID, deliveredAt: NOW + 1 });
-	});
-
-	it("never records an anchor for the agent entity itself", async () => {
+	it("uses the maximum finite provider createdAt", async () => {
 		const runtime = makeRuntime();
-		await recordOnMentionContinuityAnchor(runtime, {
+		recordOnMentionContinuityDelivery(runtime, {
 			roomId: ROOM_ID,
-			senderId: AGENT_ID,
-			deliveredAt: NOW,
-		});
-		expect(runtime.setCache).not.toHaveBeenCalled();
-	});
-
-	it("rejects malformed cache payloads", async () => {
-		const runtime = makeRuntime({
-			cache: new Map([
-				[
-					continuityAnchorCacheKey(AGENT_ID, ROOM_ID),
-					{ v: 1, senderId: SHAW_ID } /* missing deliveredAt */,
-				],
-			]),
-		});
-		await expect(
-			senderInActiveConversation(runtime, inbound(SHAW_ID), NOW),
-		).resolves.toBe(false);
-	});
-});
-
-describe("isTranscriptVisibleEngagement does not treat non-dialogue as engagement", () => {
-	it("documents that IGNORE/action_result never open continuity (sticky-open / theft guard)", () => {
-		// These shapes are what core persists under the agent entity; if they were
-		// accepted as engagement anchors the five-minute window would stick open
-		// or steal the room target from a genuine delivered reply.
-		expect(
-			isTranscriptVisibleEngagement({
-				thought: "Agent decided not to respond",
-				actions: ["IGNORE"],
-			} as Content),
-		).toBe(false);
-		expect(
-			isTranscriptVisibleEngagement({
-				text: "tool finished",
-				type: "action_result",
-				actions: ["REPLY"],
-			} as Content),
-		).toBe(false);
-	});
-});
-
-describe("delivery-boundary continuity contract (wrapSingleTurnVisibleCallback seam)", () => {
-	it("records the room/sender anchor when a visible reply callback resolves", async () => {
-		const runtime = makeRuntime();
-		const message = { roomId: ROOM_ID, entityId: SHAW_ID };
-		const callback = vi.fn(async () => []);
-		const wrapped = wrapSingleTurnVisibleCallback(runtime, message, callback);
-		await wrapped?.({ text: "answer", actions: ["REPLY"] } as Content);
-		expect(callback).toHaveBeenCalled();
-		const stored = runtime.cache.get(
-			continuityAnchorCacheKey(AGENT_ID, ROOM_ID),
-		) as OnMentionContinuityAnchor;
-		expect(stored).toMatchObject({
-			v: CONTINUITY_ANCHOR_VERSION,
 			senderId: SHAW_ID,
+			delivered: [
+				receipt({ createdAt: NOW - CONTINUITY_WINDOW_MS + 10 }),
+				receipt({ createdAt: NOW }),
+				receipt({ createdAt: Number.NaN }),
+			],
 		});
-		expect(typeof stored.deliveredAt).toBe("number");
 		await expect(
 			senderInActiveConversation(
 				runtime,
 				inbound(SHAW_ID),
-				stored.deliveredAt + 1_000,
+				NOW + CONTINUITY_WINDOW_MS,
 			),
 		).resolves.toBe(true);
 	});
 
-	it("does not record when the connector callback rejects (failed delivery)", async () => {
+	it("keeps a newer receipt when an older callback finishes later", async () => {
 		const runtime = makeRuntime();
-		const message = { roomId: ROOM_ID, entityId: SHAW_ID };
-		const callback = vi.fn(async () => {
-			throw new Error("connector down");
+		recordOnMentionContinuityDelivery(runtime, {
+			roomId: ROOM_ID,
+			senderId: ALICE_ID,
+			delivered: [receipt({ createdAt: NOW })],
 		});
-		const wrapped = wrapSingleTurnVisibleCallback(runtime, message, callback);
+		recordOnMentionContinuityDelivery(runtime, {
+			roomId: ROOM_ID,
+			senderId: SHAW_ID,
+			delivered: [receipt({ createdAt: NOW - 1 })],
+		});
 		await expect(
-			wrapped?.({ text: "answer", actions: ["REPLY"] } as Content),
-		).rejects.toThrow("connector down");
-		expect(runtime.cache.size).toBe(0);
+			senderInActiveConversation(runtime, inbound(ALICE_ID), NOW + 1),
+		).resolves.toBe(true);
+		await expect(
+			senderInActiveConversation(runtime, inbound(SHAW_ID), NOW + 1),
+		).resolves.toBe(false);
 	});
 
-	it("holds an immediate follow-up until the delivered reply anchor is stored", async () => {
+	it("invalidates equal-time receipts from different senders until a newer receipt", async () => {
 		const runtime = makeRuntime();
-		const message = { roomId: ROOM_ID, entityId: SHAW_ID };
-		let markVisible: (() => void) | undefined;
-		const visible = new Promise<void>((resolve) => {
-			markVisible = resolve;
+		for (const senderId of [SHAW_ID, ALICE_ID]) {
+			recordOnMentionContinuityDelivery(runtime, {
+				roomId: ROOM_ID,
+				senderId,
+				delivered: [receipt()],
+			});
+		}
+		await expect(
+			senderInActiveConversation(runtime, inbound(SHAW_ID), NOW + 1),
+		).resolves.toBe(false);
+		await expect(
+			senderInActiveConversation(runtime, inbound(ALICE_ID), NOW + 1),
+		).resolves.toBe(false);
+
+		recordOnMentionContinuityDelivery(runtime, {
+			roomId: ROOM_ID,
+			senderId: SHAW_ID,
+			delivered: [receipt({ createdAt: NOW - 1 })],
+		});
+		await expect(
+			senderInActiveConversation(runtime, inbound(SHAW_ID), NOW + 1),
+		).resolves.toBe(false);
+
+		recordOnMentionContinuityDelivery(runtime, {
+			roomId: ROOM_ID,
+			senderId: ALICE_ID,
+			delivered: [receipt({ createdAt: NOW + 1 })],
+		});
+		await expect(
+			senderInActiveConversation(runtime, inbound(ALICE_ID), NOW + 2),
+		).resolves.toBe(true);
+	});
+
+	it("keeps equal-time receipts idempotent for the same sender", async () => {
+		const runtime = makeRuntime();
+		for (let index = 0; index < 2; index++) {
+			recordOnMentionContinuityDelivery(runtime, {
+				roomId: ROOM_ID,
+				senderId: SHAW_ID,
+				delivered: [receipt()],
+			});
+		}
+		await expect(
+			senderInActiveConversation(runtime, inbound(SHAW_ID), NOW + 1),
+		).resolves.toBe(true);
+	});
+
+	it("expires old receipts and deletes future-clock receipts fail closed", async () => {
+		const runtime = makeRuntime();
+		recordOnMentionContinuityDelivery(runtime, {
+			roomId: ROOM_ID,
+			senderId: SHAW_ID,
+			delivered: [receipt({ createdAt: NOW - CONTINUITY_WINDOW_MS - 1 })],
+		});
+		await expect(
+			senderInActiveConversation(runtime, inbound(SHAW_ID), NOW),
+		).resolves.toBe(false);
+
+		recordOnMentionContinuityDelivery(runtime, {
+			roomId: ROOM_ID,
+			senderId: SHAW_ID,
+			delivered: [receipt({ createdAt: NOW + 30_000 })],
+		});
+		await expect(
+			senderInActiveConversation(runtime, inbound(SHAW_ID), NOW),
+		).resolves.toBe(false);
+		await expect(
+			senderInActiveConversation(runtime, inbound(SHAW_ID), NOW + 30_001),
+		).resolves.toBe(false);
+	});
+
+	it("is scoped by room and sender", async () => {
+		const runtime = makeRuntime();
+		recordOnMentionContinuityDelivery(runtime, {
+			roomId: OTHER_ROOM_ID,
+			senderId: ALICE_ID,
+			delivered: [receipt({ roomId: OTHER_ROOM_ID })],
+		});
+		await expect(
+			senderInActiveConversation(runtime, inbound(ALICE_ID), NOW + 1),
+		).resolves.toBe(false);
+		await expect(
+			senderInActiveConversation(
+				runtime,
+				inbound(ALICE_ID, OTHER_ROOM_ID),
+				NOW + 1,
+			),
+		).resolves.toBe(true);
+	});
+
+	it("bounds per-runtime room anchors and evicts the oldest", async () => {
+		const runtime = makeRuntime();
+		for (let index = 0; index <= MAX_CONTINUITY_ANCHORS_PER_RUNTIME; index++) {
+			const roomId = roomIdFor(index);
+			recordOnMentionContinuityDelivery(runtime, {
+				roomId,
+				senderId: SHAW_ID,
+				delivered: [
+					receipt({
+						roomId,
+						createdAt: NOW - MAX_CONTINUITY_ANCHORS_PER_RUNTIME + index,
+					}),
+				],
+			});
+		}
+		await expect(
+			senderInActiveConversation(runtime, inbound(SHAW_ID, roomIdFor(0)), NOW),
+		).resolves.toBe(false);
+		await expect(
+			senderInActiveConversation(
+				runtime,
+				inbound(SHAW_ID, roomIdFor(MAX_CONTINUITY_ANCHORS_PER_RUNTIME)),
+				NOW,
+			),
+		).resolves.toBe(true);
+	});
+
+	it("does not allocate an anchor for empty or mismatched receipt arrays", async () => {
+		const runtime = makeRuntime();
+		for (const delivered of [
+			[],
+			null,
+			{},
+			[null],
+			[receipt({ roomId: OTHER_ROOM_ID })],
+			[receipt({ agentId: ALICE_ID })],
+			[receipt({ entityId: ALICE_ID })],
+			[
+				receipt({
+					content: { text: "hidden", transcriptVisibility: "internal" },
+				}),
+			],
+		]) {
+			recordOnMentionContinuityDelivery(runtime, {
+				roomId: ROOM_ID,
+				senderId: SHAW_ID,
+				delivered,
+			});
+		}
+		await expect(
+			senderInActiveConversation(runtime, inbound(SHAW_ID), NOW + 1),
+		).resolves.toBe(false);
+	});
+});
+
+describe("delivery-boundary contract", () => {
+	it("records a matching returned Memory receipt without using persistent cache", async () => {
+		const runtime = makeRuntime();
+		const callback = vi.fn(async () => [receipt()]);
+		const wrapped = wrapSingleTurnVisibleCallback(
+			runtime,
+			{ roomId: ROOM_ID, entityId: SHAW_ID },
+			callback,
+		);
+		await wrapped?.({ text: "response intent", actions: ["REPLY"] });
+		await expect(
+			senderInActiveConversation(runtime, inbound(SHAW_ID), NOW + 1),
+		).resolves.toBe(true);
+		expect(runtime.getCache).not.toHaveBeenCalled();
+		expect(runtime.setCache).not.toHaveBeenCalled();
+	});
+
+	it("does not treat callback resolution with [] as delivery", async () => {
+		const runtime = makeRuntime();
+		const callback = vi.fn(async () => []);
+		const wrapped = wrapSingleTurnVisibleCallback(
+			runtime,
+			{ roomId: ROOM_ID, entityId: SHAW_ID },
+			callback,
+		);
+		await wrapped?.({ text: "response intent", actions: ["REPLY"] });
+		await expect(
+			senderInActiveConversation(runtime, inbound(SHAW_ID), NOW + 1),
+		).resolves.toBe(false);
+	});
+
+	it("does not record a wrong-room, wrong-agent, or internal returned receipt", async () => {
+		const runtime = makeRuntime();
+		const callback = vi.fn(async () => [
+			receipt({ roomId: OTHER_ROOM_ID }),
+			receipt({ agentId: ALICE_ID }),
+			receipt({ entityId: ALICE_ID }),
+			receipt({
+				content: { text: "hidden", transcriptVisibility: "internal" },
+			}),
+		]);
+		const wrapped = wrapSingleTurnVisibleCallback(
+			runtime,
+			{ roomId: ROOM_ID, entityId: SHAW_ID },
+			callback,
+		);
+		await wrapped?.({ text: "response intent", actions: ["REPLY"] });
+		await expect(
+			senderInActiveConversation(runtime, inbound(SHAW_ID), NOW + 1),
+		).resolves.toBe(false);
+	});
+
+	it("releases the barrier without recording when the connector rejects", async () => {
+		const runtime = makeRuntime();
+		const callback = vi.fn(async (): Promise<Memory[]> => {
+			throw new Error("connector down");
+		});
+		const wrapped = wrapSingleTurnVisibleCallback(
+			runtime,
+			{ roomId: ROOM_ID, entityId: SHAW_ID },
+			callback,
+		);
+		await expect(
+			wrapped?.({ text: "answer", actions: ["REPLY"] }),
+		).rejects.toThrow("connector down");
+		await expect(
+			senderInActiveConversation(runtime, inbound(SHAW_ID), NOW + 1),
+		).resolves.toBe(false);
+	});
+
+	it("holds an immediate follow-up until the connector returns its receipt", async () => {
+		const runtime = makeRuntime();
+		let markStarted: (() => void) | undefined;
+		const started = new Promise<void>((resolve) => {
+			markStarted = resolve;
 		});
 		let finishCallback: (() => void) | undefined;
-		const callbackBlocked = new Promise<void>((resolve) => {
+		const blocked = new Promise<void>((resolve) => {
 			finishCallback = resolve;
 		});
 		const callback = vi.fn(async () => {
-			markVisible?.();
-			await callbackBlocked;
-			return [];
+			markStarted?.();
+			await blocked;
+			return [receipt()];
 		});
-		const wrapped = wrapSingleTurnVisibleCallback(runtime, message, callback);
-		const delivery = wrapped?.({
-			text: "answer",
-			actions: ["REPLY"],
-		} as Content);
-		await visible;
-		const followUp = senderInActiveConversation(runtime, inbound(SHAW_ID));
-		expect(runtime.getCache).not.toHaveBeenCalled();
+		const wrapped = wrapSingleTurnVisibleCallback(
+			runtime,
+			{ roomId: ROOM_ID, entityId: SHAW_ID },
+			callback,
+		);
+		const delivery = wrapped?.({ text: "answer", actions: ["REPLY"] });
+		await started;
+		let settled = false;
+		const followUp = senderInActiveConversation(runtime, inbound(SHAW_ID)).then(
+			(result) => {
+				settled = true;
+				return result;
+			},
+		);
+		await Promise.resolve();
+		expect(settled).toBe(false);
 		finishCallback?.();
 		await delivery;
 		await expect(followUp).resolves.toBe(true);
 	});
 
-	it("does not record IGNORE terminal deliveries", async () => {
+	it("orders overlapping callbacks by receipt timestamp, not completion", async () => {
 		const runtime = makeRuntime();
-		const message = { roomId: ROOM_ID, entityId: SHAW_ID };
-		const callback = vi.fn(async () => []);
-		const wrapped = wrapSingleTurnVisibleCallback(runtime, message, callback);
-		await wrapped?.({
-			thought: "Agent decided not to respond",
-			actions: ["IGNORE"],
-		} as Content);
-		expect(runtime.cache.size).toBe(0);
+		let startOlder: (() => void) | undefined;
+		const olderStarted = new Promise<void>((resolve) => {
+			startOlder = resolve;
+		});
+		let finishOlder: (() => void) | undefined;
+		const olderBlocked = new Promise<void>((resolve) => {
+			finishOlder = resolve;
+		});
+		const olderCallback = vi.fn(async () => {
+			startOlder?.();
+			await olderBlocked;
+			return [receipt({ createdAt: NOW - 1 })];
+		});
+		const newerCallback = vi.fn(async () => [receipt({ createdAt: NOW })]);
+		const olderWrapped = wrapSingleTurnVisibleCallback(
+			runtime,
+			{ roomId: ROOM_ID, entityId: SHAW_ID },
+			olderCallback,
+		);
+		const newerWrapped = wrapSingleTurnVisibleCallback(
+			runtime,
+			{ roomId: ROOM_ID, entityId: ALICE_ID },
+			newerCallback,
+		);
+		const olderDelivery = olderWrapped?.({ text: "older", actions: ["REPLY"] });
+		await olderStarted;
+		await newerWrapped?.({ text: "newer", actions: ["REPLY"] });
+		finishOlder?.();
+		await olderDelivery;
+		await expect(
+			senderInActiveConversation(runtime, inbound(ALICE_ID), NOW + 1),
+		).resolves.toBe(true);
+		await expect(
+			senderInActiveConversation(runtime, inbound(SHAW_ID), NOW + 1),
+		).resolves.toBe(false);
+	});
+
+	it.each<ReplyGateMode>([
+		"always",
+		"addressed_or_ambient",
+		"never_until_lift",
+	])("does not record while effective reply gate is %s", async (mode) => {
+		const runtime = makeRuntime(mode);
+		const callback = vi.fn(async () => [receipt()]);
+		const wrapped = wrapSingleTurnVisibleCallback(
+			runtime,
+			{ roomId: ROOM_ID, entityId: SHAW_ID },
+			callback,
+		);
+		await wrapped?.({ text: "answer", actions: ["REPLY"] });
+		await expect(
+			senderInActiveConversation(runtime, inbound(SHAW_ID), NOW + 1),
+		).resolves.toBe(false);
+	});
+
+	it("does not record without a personality store", async () => {
+		const runtime = makeRuntime();
+		runtime.getService = vi.fn(() => null);
+		const callback = vi.fn(async () => [receipt()]);
+		const wrapped = wrapSingleTurnVisibleCallback(
+			runtime,
+			{ roomId: ROOM_ID, entityId: SHAW_ID },
+			callback,
+		);
+		await wrapped?.({ text: "answer", actions: ["REPLY"] });
+		await expect(
+			senderInActiveConversation(runtime, inbound(SHAW_ID), NOW + 1),
+		).resolves.toBe(false);
+	});
+
+	it("does not record receipts for the agent's own inbound turn", async () => {
+		const runtime = makeRuntime();
+		const callback = vi.fn(async () => [receipt()]);
+		const wrapped = wrapSingleTurnVisibleCallback(
+			runtime,
+			{ roomId: ROOM_ID, entityId: AGENT_ID },
+			callback,
+		);
+		await wrapped?.({ text: "answer", actions: ["REPLY"] });
+		await expect(
+			senderInActiveConversation(runtime, inbound(SHAW_ID), NOW + 1),
+		).resolves.toBe(false);
 	});
 });

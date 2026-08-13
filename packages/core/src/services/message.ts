@@ -361,8 +361,7 @@ import {
 import { resolveEffectiveMuteState } from "./message/mute-state";
 import { sanitizeOutboundText } from "./message/outbound-sanitize";
 import {
-	isTranscriptVisibleEngagement,
-	recordOnMentionContinuityAnchor,
+	recordOnMentionContinuityDelivery,
 	registerOnMentionContinuityDeliveryBarrier,
 	senderInActiveConversation,
 } from "./message/reply-gate-continuity";
@@ -10488,12 +10487,8 @@ export async function deliverFirstSentenceVoice(
 export function wrapSingleTurnVisibleCallback(
 	// reportError is required: the fail-closed envelope guard inside `deliver`
 	// must be able to surface a blocked leak even from partial test runtimes.
-	// getCache/setCache are optional on partial test runtimes; continuity
-	// recording no-ops when setCache is absent.
 	runtime: Pick<IAgentRuntime, "agentId" | "logger" | "reportError"> &
-		Partial<
-			Pick<IAgentRuntime, "character" | "useModel" | "getCache" | "setCache">
-		> & {
+		Partial<Pick<IAgentRuntime, "character" | "useModel">> & {
 			getService?: IAgentRuntime["getService"];
 		},
 	message: Pick<Memory, "id" | "roomId" | "entityId">,
@@ -10502,6 +10497,20 @@ export function wrapSingleTurnVisibleCallback(
 ): HandlerCallback | undefined {
 	if (!callback) return callback;
 	const fullRuntime = runtime as IAgentRuntime;
+	const personalityStore =
+		typeof fullRuntime.getService === "function"
+			? getPersonalityStore(fullRuntime)
+			: null;
+	const userSlot =
+		personalityStore &&
+		message.entityId &&
+		message.entityId !== fullRuntime.agentId
+			? personalityStore.getSlot(message.entityId)
+			: null;
+	const globalSlot = personalityStore?.getSlot("global") ?? null;
+	const tracksOnMentionContinuity =
+		personalityStore !== null &&
+		resolveEffectiveReplyGate(userSlot, globalSlot).mode === "on_mention";
 	const deliver = async (response: Content, actionName?: string) => {
 		const fullMessage = message as Memory;
 		response = await enforceTrustedDeliveryAudienceAtEgress(
@@ -10566,13 +10575,11 @@ export function wrapSingleTurnVisibleCallback(
 			response,
 			actionName,
 		);
-		// On_mention continuity: only a successfully delivered, transcript-visible
-		// reply may open/refresh the per-room engagement anchor. Internal,
-		// IGNORE, and action_result rows fail isTranscriptVisibleEngagement; a
-		// rejected callback releases the handoff without recording an anchor.
+		// On_mention continuity waits for the connector's returned persisted
+		// memories. Response intent alone is not a delivery receipt: an empty
+		// collection, a rejected callback, or mismatched/internal rows stay closed.
 		const recordsContinuity =
-			typeof fullRuntime.setCache === "function" &&
-			isTranscriptVisibleEngagement(response) &&
+			tracksOnMentionContinuity &&
 			message.entityId &&
 			message.entityId !== fullRuntime.agentId &&
 			message.roomId;
@@ -10589,9 +10596,10 @@ export function wrapSingleTurnVisibleCallback(
 				recordDeliveredVisibleText?.(response.text);
 			}
 			if (recordsContinuity) {
-				await recordOnMentionContinuityAnchor(fullRuntime, {
+				recordOnMentionContinuityDelivery(fullRuntime, {
 					roomId: message.roomId,
 					senderId: message.entityId,
+					delivered,
 				});
 			}
 		} finally {
@@ -10663,16 +10671,10 @@ export function wrapSingleTurnVisibleCallback(
 	// Resolve verbosity once per turn — cheap because PersonalityStore is
 	// in-memory. Returning the original callback when no override is set
 	// keeps the hot path zero-cost.
-	const store = getPersonalityStore(fullRuntime);
-	if (!store) {
+	if (!personalityStore) {
 		return async (response, actionName) =>
 			deliver(await voiceActionReply(response, actionName), actionName);
 	}
-	const userSlot =
-		message.entityId && message.entityId !== fullRuntime.agentId
-			? store.getSlot(message.entityId)
-			: null;
-	const globalSlot = store.getSlot("global");
 	const verbosity = userSlot?.verbosity ?? globalSlot?.verbosity ?? null;
 	if (verbosity !== "terse") {
 		return async (response, actionName) =>

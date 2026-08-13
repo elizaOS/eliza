@@ -1,13 +1,9 @@
 /**
- * Active-conversation continuity for the personality reply-gate's on_mention
- * mode. Continuity is a typed per-room anchor written ONLY after a successfully
- * delivered, transcript-visible reply to a human sender — never inferred from
- * recent message history (IGNORE/STOP/action_result rows, rejected deliveries,
- * truncated windows, and untrusted event timestamps all make transcript
- * inference unsafe). Fails CLOSED (false) on cache read errors so a storage
- * hiccup can never relax the over-reply mitigation.
+ * Runtime-local continuity for the personality reply gate's on_mention mode.
+ * A room opens only from a connector's transcript-visible delivery receipt,
+ * never from response intent or transcript inference. State is weakly owned by
+ * the runtime, expires after five minutes, and is capped per runtime.
  */
-import { ElizaError } from "../../errors";
 import type { Memory } from "../../types/memory";
 import type { Content, UUID } from "../../types/primitives";
 import type { IAgentRuntime } from "../../types/runtime";
@@ -15,54 +11,79 @@ import type { IAgentRuntime } from "../../types/runtime";
 /** Follow-ups older than this are a new approach, not a continuation. */
 export const CONTINUITY_WINDOW_MS = 5 * 60_000;
 
-/** Cache schema version — bump if the stored shape changes. */
-export const CONTINUITY_ANCHOR_VERSION = 1 as const;
-
-// A connector can finish delivery while another same-room turn is already
-// entering the reply gate. Keep the post-delivery cache write observable to
-// that turn, and serialize same-room writes so slower storage cannot let an
-// older delivery overwrite a newer engagement anchor.
-const continuityWriteQueues = new WeakMap<object, Map<string, Promise<void>>>();
-const continuityDeliveryBarriers = new WeakMap<
-	object,
-	Map<string, Set<Promise<void>>>
->();
+/** Bounds per-runtime room state independently of room churn. */
+export const MAX_CONTINUITY_ANCHORS_PER_RUNTIME = 256;
 
 export type OnMentionContinuityAnchor = {
-	v: typeof CONTINUITY_ANCHOR_VERSION;
-	/** Human sender the most recent delivered visible reply engaged. */
-	senderId: UUID;
-	/** Authoritative wall-clock receipt time of that successful delivery. */
+	/** Null marks equal-time receipts for different senders as ambiguous. */
+	senderId: UUID | null;
+	/** Maximum finite createdAt from the connector's matching delivery receipt. */
 	deliveredAt: number;
 };
 
-export function continuityAnchorCacheKey(agentId: UUID, roomId: UUID): string {
-	return `on_mention_continuity:${agentId}:${roomId}`;
+type ContinuityRuntimeState = {
+	anchors: Map<UUID, OnMentionContinuityAnchor>;
+	pendingDeliveries: Map<UUID, Set<Promise<void>>>;
+};
+
+const continuityStates = new WeakMap<object, ContinuityRuntimeState>();
+
+function getContinuityState(
+	runtime: object,
+	create: boolean,
+): ContinuityRuntimeState | undefined {
+	const existing = continuityStates.get(runtime);
+	if (existing || !create) return existing;
+	const created: ContinuityRuntimeState = {
+		anchors: new Map(),
+		pendingDeliveries: new Map(),
+	};
+	continuityStates.set(runtime, created);
+	return created;
+}
+
+function sweepExpiredAnchors(state: ContinuityRuntimeState, now: number): void {
+	for (const [roomId, anchor] of state.anchors) {
+		const age = now - anchor.deliveredAt;
+		if (!(age >= 0 && age <= CONTINUITY_WINDOW_MS)) {
+			state.anchors.delete(roomId);
+		}
+	}
+}
+
+function evictOldestAnchor(state: ContinuityRuntimeState): void {
+	let oldest: { roomId: UUID; deliveredAt: number } | undefined;
+	for (const [roomId, anchor] of state.anchors) {
+		if (
+			!oldest ||
+			anchor.deliveredAt < oldest.deliveredAt ||
+			(anchor.deliveredAt === oldest.deliveredAt && roomId < oldest.roomId)
+		) {
+			oldest = { roomId, deliveredAt: anchor.deliveredAt };
+		}
+	}
+	if (oldest) state.anchors.delete(oldest.roomId);
 }
 
 /**
- * Register the narrow interval in which a visible connector delivery can
- * succeed before its continuity anchor is persisted. The caller must release
- * the barrier after recording the successful delivery, or after rejection.
+ * Register a candidate delivery before calling the connector. An immediate
+ * same-room follow-up waits until the connector either returns its receipt or
+ * rejects; release is idempotent and removes the transient room allocation.
  */
 export function registerOnMentionContinuityDeliveryBarrier(
 	runtime: Pick<IAgentRuntime, "agentId">,
 	roomId: UUID,
 ): () => void {
-	const key = continuityAnchorCacheKey(runtime.agentId, roomId);
-	let barriersByKey = continuityDeliveryBarriers.get(runtime);
-	if (!barriersByKey) {
-		barriersByKey = new Map();
-		continuityDeliveryBarriers.set(runtime, barriersByKey);
-	}
-	let barriers = barriersByKey.get(key);
+	const state = getContinuityState(runtime, true);
+	if (!state) return () => undefined;
+	let barriers = state.pendingDeliveries.get(roomId);
 	if (!barriers) {
 		barriers = new Set();
-		barriersByKey.set(key, barriers);
+		state.pendingDeliveries.set(roomId, barriers);
 	}
-	let releasePromise: (() => void) | undefined;
+	let resolveBarrier: (() => void) | undefined;
 	const barrier = new Promise<void>((resolve) => {
-		releasePromise = resolve;
+		resolveBarrier = resolve;
 	});
 	barriers.add(barrier);
 	let released = false;
@@ -71,16 +92,16 @@ export function registerOnMentionContinuityDeliveryBarrier(
 		released = true;
 		barriers?.delete(barrier);
 		if (barriers?.size === 0) {
-			barriersByKey?.delete(key);
+			state.pendingDeliveries.delete(roomId);
 		}
-		releasePromise?.();
+		resolveBarrier?.();
 	};
 }
 
 /**
- * True when outbound content is a transcript-visible engagement reply that may
- * open the on_mention continuity window. Internal rows, terminal silence
- * (IGNORE/STOP without user text), and action_result bookkeeping never qualify.
+ * True for transcript-visible dialogue. Internal rows, action-result
+ * bookkeeping, blank text, and pure IGNORE/STOP terminal rows do not engage a
+ * sender even if a connector returns them in its receipt array.
  */
 export function isTranscriptVisibleEngagement(
 	content: Content | null | undefined,
@@ -92,130 +113,105 @@ export function isTranscriptVisibleEngagement(
 	const text = typeof content.text === "string" ? content.text.trim() : "";
 	if (!text) return false;
 	const actions = Array.isArray(content.actions)
-		? content.actions.map((a) => String(a).toUpperCase())
+		? content.actions.map((action) => String(action).toUpperCase())
 		: [];
-	// Pure terminal silence must not refresh continuity even if a thought leaked
-	// into text somehow — require that IGNORE/STOP is not the sole action set
-	// unless REPLY (or no actions) is also present with real text.
-	const hasTerminal = actions.some((a) => a === "IGNORE" || a === "STOP");
-	const hasReply = actions.some((a) => a === "REPLY");
-	if (hasTerminal && !hasReply) return false;
-	return true;
+	const hasTerminal = actions.some(
+		(action) => action === "IGNORE" || action === "STOP",
+	);
+	const hasReply = actions.some((action) => action === "REPLY");
+	return !hasTerminal || hasReply;
 }
 
-function isContinuityAnchor(
-	value: unknown,
-): value is OnMentionContinuityAnchor {
-	if (!value || typeof value !== "object") return false;
-	const v = value as Partial<OnMentionContinuityAnchor>;
-	return (
-		v.v === CONTINUITY_ANCHOR_VERSION &&
-		typeof v.senderId === "string" &&
-		v.senderId.length > 0 &&
-		typeof v.deliveredAt === "number" &&
-		Number.isFinite(v.deliveredAt)
-	);
+function latestTrustedDeliveryTimestamp(
+	runtime: Pick<IAgentRuntime, "agentId">,
+	roomId: UUID,
+	delivered: unknown,
+): number | undefined {
+	if (!Array.isArray(delivered) || delivered.length === 0) return undefined;
+	let latest: number | undefined;
+	for (const candidate of delivered) {
+		if (!candidate || typeof candidate !== "object") continue;
+		const receipt = candidate as Partial<Memory>;
+		if (
+			receipt.agentId !== runtime.agentId ||
+			receipt.entityId !== runtime.agentId ||
+			receipt.roomId !== roomId ||
+			typeof receipt.createdAt !== "number" ||
+			!Number.isFinite(receipt.createdAt) ||
+			!isTranscriptVisibleEngagement(receipt.content)
+		) {
+			continue;
+		}
+		latest =
+			latest === undefined
+				? receipt.createdAt
+				: Math.max(latest, receipt.createdAt);
+	}
+	return latest;
 }
 
 /**
- * Persist the room's current engagement target after a successful user-visible
- * delivery. Best-effort: a cache write failure must not break the turn.
+ * Record a connector-confirmed delivery for this inbound sender. Timestamp
+ * ordering, rather than callback completion order, owns the room: older
+ * receipts cannot overwrite newer ones, while equal timestamps from different
+ * senders invalidate the room until a strictly newer receipt arrives.
  */
-export async function recordOnMentionContinuityAnchor(
-	runtime: Pick<IAgentRuntime, "agentId" | "setCache" | "reportError">,
+export function recordOnMentionContinuityDelivery(
+	runtime: Pick<IAgentRuntime, "agentId">,
 	args: {
 		roomId: UUID;
 		senderId: UUID;
-		/** Authoritative processing clock; defaults to Date.now(). */
-		deliveredAt?: number;
+		delivered: unknown;
 	},
-): Promise<void> {
-	if (!args.roomId || !args.senderId) return;
-	if (args.senderId === runtime.agentId) return;
-	const deliveredAt =
-		typeof args.deliveredAt === "number" && Number.isFinite(args.deliveredAt)
-			? args.deliveredAt
-			: Date.now();
-	const anchor: OnMentionContinuityAnchor = {
-		v: CONTINUITY_ANCHOR_VERSION,
-		senderId: args.senderId,
-		deliveredAt,
-	};
-	const key = continuityAnchorCacheKey(runtime.agentId, args.roomId);
-	let queues = continuityWriteQueues.get(runtime);
-	if (!queues) {
-		queues = new Map();
-		continuityWriteQueues.set(runtime, queues);
-	}
-	const previous = queues.get(key) ?? Promise.resolve();
-	const write = previous
-		.then(async () => {
-			const stored = await runtime.setCache(key, anchor);
-			if (!stored) {
-				throw new ElizaError("Continuity anchor cache write was rejected", {
-					code: "REPLY_GATE_CONTINUITY_WRITE_REJECTED",
-					context: { roomId: args.roomId, senderId: args.senderId },
-					severity: "ephemeral",
-				});
+): void {
+	if (!args.roomId || !args.senderId || args.senderId === runtime.agentId)
+		return;
+	const deliveredAt = latestTrustedDeliveryTimestamp(
+		runtime,
+		args.roomId,
+		args.delivered,
+	);
+	if (deliveredAt === undefined) return;
+
+	const state = getContinuityState(runtime, true);
+	if (!state) return;
+	sweepExpiredAnchors(state, Date.now());
+	const current = state.anchors.get(args.roomId);
+	if (current) {
+		if (deliveredAt < current.deliveredAt) return;
+		if (deliveredAt === current.deliveredAt) {
+			if (current.senderId !== args.senderId) {
+				state.anchors.set(args.roomId, { senderId: null, deliveredAt });
 			}
-		})
-		.catch((error) => {
-			// error-policy:J7 delivery already succeeded; report the failed anchor
-			// write and keep the next on_mention decision strict.
-			runtime.reportError("ReplyGateContinuity.record", error, {
-				roomId: args.roomId,
-				senderId: args.senderId,
-			});
-		});
-	queues.set(key, write);
-	await write;
-	if (queues.get(key) === write) {
-		queues.delete(key);
+			return;
+		}
 	}
+	if (!current && state.anchors.size >= MAX_CONTINUITY_ANCHORS_PER_RUNTIME) {
+		evictOldestAnchor(state);
+	}
+	state.anchors.set(args.roomId, { senderId: args.senderId, deliveredAt });
 }
 
 /**
- * True when this inbound sender still holds the room's fresh delivered-engagement
- * anchor. `now` is an optional authoritative processing clock for deterministic
- * callers; otherwise the clock is read after pending deliveries settle. Event
- * timestamps on the inbound message are never trusted for the TTL.
+ * True when this inbound sender still owns the room's fresh, unambiguous
+ * delivery receipt. `now` exists for deterministic callers; event timestamps
+ * on the inbound message are deliberately ignored.
  */
 export async function senderInActiveConversation(
-	runtime: Pick<IAgentRuntime, "agentId" | "getCache" | "reportError">,
+	runtime: Pick<IAgentRuntime, "agentId">,
 	message: Pick<Memory, "entityId" | "roomId">,
 	now?: number,
 ): Promise<boolean> {
 	if (!message.entityId || !message.roomId) return false;
 	if (message.entityId === runtime.agentId) return false;
 	if (now !== undefined && !Number.isFinite(now)) return false;
-	const key = continuityAnchorCacheKey(runtime.agentId, message.roomId);
+	const state = getContinuityState(runtime, false);
+	if (!state) return false;
 
-	let raw: unknown;
-	try {
-		const pendingDeliveries = continuityDeliveryBarriers.get(runtime)?.get(key);
-		if (pendingDeliveries?.size) {
-			await Promise.all([...pendingDeliveries]);
-		}
-		// A transport callback can make the reply visible before its cache write
-		// settles. Wait for that narrow handoff so an immediate follow-up does not
-		// get dropped between successful delivery and anchor persistence.
-		await continuityWriteQueues.get(runtime)?.get(key);
-		raw = await runtime.getCache<OnMentionContinuityAnchor>(key);
-	} catch (error) {
-		// error-policy:J4 continuity is an optional relaxation of the reply
-		// gate; on lookup failure the gate keeps its strict on_mention
-		// behavior (fail closed) and the failure surfaces via RECENT_ERRORS.
-		runtime.reportError("ReplyGateContinuity.history", error, {
-			roomId: message.roomId,
-		});
-		return false;
-	}
-
-	if (!isContinuityAnchor(raw)) return false;
-	if (raw.senderId !== message.entityId) return false;
-	const age = (now ?? Date.now()) - raw.deliveredAt;
-	// Reject negative ages (out-of-order / delayed historical events) and
-	// anything outside the continuity window.
-	if (!(age >= 0 && age <= CONTINUITY_WINDOW_MS)) return false;
-	return true;
+	const pending = state.pendingDeliveries.get(message.roomId);
+	if (pending?.size) await Promise.all([...pending]);
+	const checkedAt = now ?? Date.now();
+	sweepExpiredAnchors(state, checkedAt);
+	const anchor = state.anchors.get(message.roomId);
+	return anchor?.senderId === message.entityId;
 }
