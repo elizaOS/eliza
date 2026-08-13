@@ -108,6 +108,13 @@ export interface ConnectorOAuthStartRequest {
 	accountId?: string;
 	label?: string;
 	scopes?: string[];
+	/**
+	 * Externally served origin of the request that started the flow (derived
+	 * server-side from proxy metadata / the Host header, never from the client
+	 * body). Providers whose callback must reach this origin validate against
+	 * it; callers with no HTTP request (chat actions, snapshots) omit it.
+	 */
+	servedOrigin?: string;
 	metadata?: Metadata;
 }
 
@@ -1575,6 +1582,7 @@ export class ConnectorAccountManager extends Service {
 			accountId?: string;
 			label?: string;
 			scopes?: string[];
+			servedOrigin?: string;
 			metadata?: Metadata;
 		} = {},
 	): Promise<ConnectorOAuthFlow> {
@@ -1610,6 +1618,7 @@ export class ConnectorAccountManager extends Service {
 					accountId: input.accountId,
 					label: input.label,
 					scopes: input.scopes,
+					servedOrigin: input.servedOrigin,
 					metadata: input.metadata,
 				},
 				this,

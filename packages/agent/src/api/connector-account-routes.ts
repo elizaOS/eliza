@@ -26,6 +26,7 @@ import {
 import type { ReadJsonBodyOptions } from "@elizaos/shared";
 import type { infer as ZodInfer } from "zod";
 import * as zod from "zod";
+import { resolveRequestOrigin } from "./cloud-pair-route.ts";
 import { isBlockedObjectKey } from "./server-helpers-config.ts";
 
 const z = (zod as typeof zod & { z?: typeof zod }).z ?? zod;
@@ -917,8 +918,13 @@ export async function handleConnectorAccountRoutes(
         return true;
       }
       try {
+        // Served origin is derived from the request (proxy metadata included),
+        // never from the client body: providers validate that their OAuth
+        // callback can actually reach the origin serving this API.
+        const servedOrigin = resolveRequestOrigin(req);
         const flow = await manager.startOAuth(provider, {
           ...parsed.data,
+          ...(servedOrigin ? { servedOrigin } : {}),
           metadata: cleanMetadata(parsed.data.metadata),
         });
         json(res, { provider, flow: serializeFlow(flow) }, 201);

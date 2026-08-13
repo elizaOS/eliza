@@ -42,7 +42,10 @@ const coreMocks = vi.hoisted(() => {
   };
   type TestProvider = {
     provider: string;
-    startOAuth?: (request: { flow: TestFlow }) => Promise<{ authUrl: string }>;
+    startOAuth?: (request: {
+      flow: TestFlow;
+      servedOrigin?: string;
+    }) => Promise<{ authUrl: string }>;
     completeOAuth?: (request: {
       flow: TestFlow;
       code?: string;
@@ -184,7 +187,7 @@ const coreMocks = vi.hoisted(() => {
 
     async startOAuth(
       provider: string,
-      input?: { metadata?: Record<string, unknown> },
+      input?: { servedOrigin?: string; metadata?: Record<string, unknown> },
     ) {
       const normalized = provider.toLowerCase();
       const registered = this.providers.get(normalized);
@@ -200,7 +203,12 @@ const coreMocks = vi.hoisted(() => {
         metadata: input?.metadata,
       };
       await this.storage.createOAuthFlow(flow);
-      const started = await registered.startOAuth({ flow });
+      // Mirror the real manager: the served origin captured at the HTTP
+      // boundary is forwarded to the provider's start handler.
+      const started = await registered.startOAuth({
+        flow,
+        servedOrigin: input?.servedOrigin,
+      });
       return (
         (await this.storage.updateOAuthFlow(normalized, flow.id, {
           authUrl: started.authUrl,
@@ -344,6 +352,7 @@ function createConnectorAccountHarness(options: {
   method: string;
   pathname: string;
   body?: Record<string, unknown>;
+  headers?: Record<string, string>;
   storage?: TestStorage;
   adapter?: unknown;
   authorize?: ConnectorAccountRouteContext["authorize"] | null;
@@ -354,6 +363,7 @@ function createConnectorAccountHarness(options: {
   runtime.adapter = options.adapter;
   const req = {
     url: options.pathname,
+    headers: options.headers ?? {},
     on: vi.fn(),
   } as unknown as IncomingMessage;
   const res = {
@@ -535,6 +545,58 @@ describe("connector account routes", () => {
       ok: true,
       accountId: "acct_callback",
     });
+  });
+
+  it("forwards the externally served origin, proxy metadata first, into OAuth start", async () => {
+    const { ctx, captured, runtime, storage } = createConnectorAccountHarness({
+      method: "POST",
+      pathname: "/api/connectors/google/oauth/start",
+      body: {},
+      headers: {
+        host: "127.0.0.1:2138",
+        "x-forwarded-proto": "https",
+        "x-forwarded-host": "eliza.example",
+      },
+    });
+    const manager = getConnectorAccountManager(runtime as never, storage);
+    const seen: Array<string | undefined> = [];
+    manager.registerProvider({
+      provider: "google",
+      startOAuth: async ({ flow, servedOrigin }) => {
+        seen.push(servedOrigin);
+        return {
+          authUrl: `https://accounts.google.example/?state=${flow.state}`,
+        };
+      },
+    });
+
+    await expect(handleConnectorAccountRoutes(ctx)).resolves.toBe(true);
+    expect(captured.status).toBe(201);
+    expect(seen).toEqual(["https://eliza.example"]);
+  });
+
+  it("derives the served origin from the Host header when no proxy metadata exists", async () => {
+    const { ctx, captured, runtime, storage } = createConnectorAccountHarness({
+      method: "POST",
+      pathname: "/api/connectors/google/oauth/start",
+      body: {},
+      headers: { host: "127.0.0.1:2138" },
+    });
+    const manager = getConnectorAccountManager(runtime as never, storage);
+    const seen: Array<string | undefined> = [];
+    manager.registerProvider({
+      provider: "google",
+      startOAuth: async ({ flow, servedOrigin }) => {
+        seen.push(servedOrigin);
+        return {
+          authUrl: `https://accounts.google.example/?state=${flow.state}`,
+        };
+      },
+    });
+
+    await expect(handleConnectorAccountRoutes(ctx)).resolves.toBe(true);
+    expect(captured.status).toBe(201);
+    expect(seen).toEqual(["http://127.0.0.1:2138"]);
   });
 
   it("persists OAuth start state through the connector account storage contract", async () => {

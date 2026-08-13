@@ -17,6 +17,7 @@ import type {
   StartLifeOpsGoogleConnectorRequest,
   StartLifeOpsGoogleConnectorResponse,
 } from "../../contracts/index.js";
+import { INTERNAL_URL } from "../access.js";
 import {
   disconnectedGoogleStatus,
   googleAccountIdFromGrantId,
@@ -35,6 +36,16 @@ import {
   normalizeOptionalConnectorMode,
   normalizeOptionalConnectorSide,
 } from "../service-normalize-connector.js";
+
+/**
+ * Chat actions and provider snapshots have no HTTP request; they pass the
+ * synthetic INTERNAL_URL sentinel (`http://127.0.0.1/`). That is not a served
+ * origin, so host/port callback comparison only runs for real request URLs —
+ * a production callback must not be rejected against the sentinel.
+ */
+function servedOriginFromRequestUrl(requestUrl: URL): URL | undefined {
+  return requestUrl.href === INTERNAL_URL.href ? undefined : requestUrl;
+}
 
 function roleForSide(side: LifeOpsConnectorSide): "OWNER" | "AGENT" {
   return side === "agent" ? "AGENT" : "OWNER";
@@ -75,6 +86,17 @@ function assertLocalMode(mode?: LifeOpsConnectorMode): void {
   }
 }
 
+function googleOAuthCallbackDegradations(
+  assessment: ReturnType<typeof assessGoogleOAuthCallbackConfig>,
+): NonNullable<LifeOpsGoogleConnectorStatus["degradations"]> {
+  return assessment.issues.map((issue) => ({
+    axis: "disconnected" as const,
+    code: `google_oauth_callback_${issue.code}`,
+    message: issue.message,
+    retryable: true,
+  }));
+}
+
 function googleOAuthCallbackMisconfigStatus(
   side: LifeOpsConnectorSide,
   assessment: ReturnType<typeof assessGoogleOAuthCallbackConfig>,
@@ -98,12 +120,7 @@ function googleOAuthCallbackMisconfigStatus(
     expiresAt: null,
     hasRefreshToken: false,
     grant: null,
-    degradations: assessment.issues.map((issue) => ({
-      axis: "disconnected",
-      code: `google_oauth_callback_${issue.code}`,
-      message: issue.message,
-      retryable: true,
-    })),
+    degradations: googleOAuthCallbackDegradations(assessment),
   };
 }
 
@@ -369,22 +386,36 @@ export class GoogleDomain {
     if (!manager?.getProvider?.("google")) {
       return googlePluginUnavailableStatus(side);
     }
-    // Resolve the persisted account BEFORE assessing callback readiness: an
-    // existing grant works through its stored/refresh tokens regardless of the
-    // callback config, so a config mistake must not make it look disconnected
-    // (#18455). Callback readiness only gates starting a new OAuth flow.
+    // Resolve the persisted account BEFORE assessing callback readiness: a
+    // CONNECTED grant works through its stored/refresh tokens regardless of
+    // the callback config, so a config mistake must not make it look
+    // disconnected (#18455). Pending/error accounts need a fresh OAuth flow,
+    // which the callback gates — those keep the callback diagnostics.
     const account = await resolveGoogleConnectorAccount({
       runtime: this.ctx.runtime,
       requestedSide: side,
       grantId,
     });
-    if (account) {
+    if (account?.status === "connected") {
       return this.googleAccountStatus(account);
     }
+    const servedOrigin = servedOriginFromRequestUrl(requestUrl);
     const callbackAssessment = assessGoogleOAuthCallbackConfig(
       this.ctx.runtime,
-      { servedOrigin: requestUrl },
+      servedOrigin ? { servedOrigin } : undefined,
     );
+    if (account) {
+      const status = this.googleAccountStatus(account);
+      return callbackAssessment.configured
+        ? status
+        : {
+            ...status,
+            degradations: [
+              ...(status.degradations ?? []),
+              ...googleOAuthCallbackDegradations(callbackAssessment),
+            ],
+          };
+    }
     if (!callbackAssessment.configured) {
       return googleOAuthCallbackMisconfigStatus(side, callbackAssessment);
     }
@@ -448,9 +479,12 @@ export class GoogleDomain {
     }
     // Fail closed before redirecting the user to Google: a callback that
     // cannot reach the origin serving this request would strand the grant.
+    // Chat has no request origin (INTERNAL_URL sentinel); scheme/path/port
+    // shape is still validated, host/port comparison is skipped.
+    const servedOrigin = servedOriginFromRequestUrl(requestUrl);
     const callbackAssessment = assessGoogleOAuthCallbackConfig(
       this.ctx.runtime,
-      { servedOrigin: requestUrl },
+      servedOrigin ? { servedOrigin } : undefined,
     );
     if (!callbackAssessment.configured) {
       fail(
@@ -465,6 +499,7 @@ export class GoogleDomain {
     const flow = await manager.startOAuth("google", {
       accountId: requestedAccountId ?? undefined,
       scopes: requestedScopesForCapabilities(requestedCapabilities),
+      servedOrigin: servedOrigin?.href,
       metadata: {
         lifeops: true,
         side: requestedSide,

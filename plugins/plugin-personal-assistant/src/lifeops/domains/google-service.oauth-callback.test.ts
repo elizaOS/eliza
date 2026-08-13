@@ -51,6 +51,31 @@ function domainWith(accounts: unknown[], settings: Record<string, string>) {
   return new GoogleDomain(ctx as never);
 }
 
+/** Domain wired for OAuth start: a manager whose startOAuth echoes the callback. */
+function startDomainWith(redirectUri: string) {
+  const startOAuth = vi.fn(async () => ({
+    redirectUri,
+    authUrl: "https://accounts.google.com/o/oauth2/v2/auth?client_id=test",
+  }));
+  const runtime = {
+    getSetting: (key: string) =>
+      ({
+        GOOGLE_CLIENT_ID: "client-id",
+        GOOGLE_CLIENT_SECRET: "client-secret",
+        GOOGLE_REDIRECT_URI: redirectUri,
+      })[key],
+  };
+  const domain = new GoogleDomain({
+    runtime,
+    agentId: () => "agent-1",
+  } as never);
+  vi.spyOn(domain as never, "googleConnectorManager").mockReturnValue({
+    getProvider: () => ({ provider: "google" }),
+    startOAuth,
+  } as never);
+  return { domain, startOAuth };
+}
+
 describe("GoogleDomain OAuth callback parity", () => {
   it("starts OAuth with GOOGLE_REDIRECT_URI, not a portless INTERNAL_URL origin", async () => {
     const startOAuth = vi.fn(async () => ({
@@ -161,6 +186,83 @@ describe("GoogleDomain OAuth callback parity", () => {
     expect(status.connected).toBe(false);
     expect(status.configured).toBe(false);
     expect(status.reason).toBe("config_missing");
+    expect(
+      status.degradations?.some(
+        (degradation) =>
+          degradation.code === "google_oauth_callback_portless_loopback",
+      ),
+    ).toBe(true);
+  });
+
+  it("starts OAuth from chat (INTERNAL_URL sentinel) against a production callback", async () => {
+    // Shaw's production probe: chat has no HTTP request, so the synthetic
+    // INTERNAL_URL must not masquerade as the served origin and reject a
+    // valid https callback as wrong_host.
+    const production =
+      "https://eliza.example/api/connectors/google/oauth/callback";
+    const { domain, startOAuth } = startDomainWith(production);
+    const response = await domain.startGoogleConnector(
+      { side: "owner" },
+      new URL("http://127.0.0.1/"),
+    );
+    expect(response.redirectUri).toBe(production);
+    expect(response.authUrl).not.toBe("");
+    expect(startOAuth).toHaveBeenCalledWith(
+      "google",
+      expect.objectContaining({ servedOrigin: undefined }),
+    );
+  });
+
+  it("starts OAuth from chat against a local loopback callback", async () => {
+    const { domain } = startDomainWith(CANONICAL);
+    const response = await domain.startGoogleConnector(
+      { side: "owner" },
+      new URL("http://127.0.0.1/"),
+    );
+    expect(response.redirectUri).toBe(CANONICAL);
+  });
+
+  it("forwards the real served origin to the connector start boundary", async () => {
+    const staging =
+      "https://staging.eliza.example/api/connectors/google/oauth/callback";
+    const { domain, startOAuth } = startDomainWith(staging);
+    const requestUrl = new URL(
+      "https://staging.eliza.example/api/lifeops/connectors/google/start",
+    );
+    await domain.startGoogleConnector({ side: "owner" }, requestUrl);
+    expect(startOAuth).toHaveBeenCalledWith(
+      "google",
+      expect.objectContaining({ servedOrigin: requestUrl.href }),
+    );
+  });
+
+  it("still fails closed when a real served origin does not match the callback", async () => {
+    const { domain } = startDomainWith(
+      "https://eliza.example/api/connectors/google/oauth/callback",
+    );
+    await expect(
+      domain.startGoogleConnector(
+        { side: "owner" },
+        new URL("https://other.example/api/lifeops/connectors/google/start"),
+      ),
+    ).rejects.toThrow(/callback is not usable/);
+  });
+
+  it("keeps callback diagnostics for an errored account that needs a new flow", async () => {
+    // Shaw's readiness probe: an errored persisted account plus a broken
+    // portless callback must report needs_reauth AND the callback degradation,
+    // so the operator can fix the callback before retrying reauth.
+    const domain = domainWith([{ ...connectedAccount(), status: "error" }], {
+      GOOGLE_REDIRECT_URI:
+        "http://127.0.0.1/api/connectors/google/oauth/callback",
+    });
+    const status = await domain.getGoogleConnectorStatus(
+      new URL("http://127.0.0.1:2138/api/lifeops/connectors/google"),
+      "local",
+      "owner",
+    );
+    expect(status.connected).toBe(false);
+    expect(status.reason).toBe("needs_reauth");
     expect(
       status.degradations?.some(
         (degradation) =>

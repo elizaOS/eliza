@@ -160,4 +160,32 @@ describe("google oauth callback contract", () => {
       expect(assessment.configured).toBe(true);
     });
   });
+
+  describe("loopback host classification", () => {
+    it("rejects a DNS name beginning with 127. as a plain-http callback host", () => {
+      const probe = "http://127.0.0.1.attacker.example:31437/api/connectors/google/oauth/callback";
+      const assessment = assessGoogleOAuthCallbackConfig(runtimeWithRedirect(probe));
+      expect(assessment.configured).toBe(false);
+      expect(assessment.issues.some((issue) => issue.code === "wrong_scheme")).toBe(true);
+    });
+
+    it("does not treat a 127.-prefixed DNS name as host-equivalent to a served loopback origin", () => {
+      const assessment = assessGoogleOAuthCallbackConfig(
+        runtimeWithRedirect(
+          "https://127.0.0.1.attacker.example:31437/api/connectors/google/oauth/callback"
+        ),
+        { servedOrigin: new URL("http://127.0.0.1:31437/api/lifeops/connectors/google") }
+      );
+      expect(assessment.configured).toBe(false);
+      expect(assessment.issues.some((issue) => issue.code === "wrong_host")).toBe(true);
+    });
+
+    it("keeps genuinely numeric 127.0.0.0/8 addresses loopback", () => {
+      const assessment = assessGoogleOAuthCallbackConfig(
+        runtimeWithRedirect("http://127.0.0.2:31437/api/connectors/google/oauth/callback"),
+        { servedOrigin: new URL("http://127.0.0.1:31437/") }
+      );
+      expect(assessment.configured).toBe(true);
+    });
+  });
 });

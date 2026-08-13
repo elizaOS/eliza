@@ -56,7 +56,12 @@ function resolveCloudAuthRoot(): string {
   return resolveCloudApiBaseUrl().replace(/\/api\/v1\/?$/, "");
 }
 
-function resolveRequestOrigin(req: http.IncomingMessage): string {
+/**
+ * Externally served origin of a request: proxy metadata (X-Forwarded-Proto /
+ * X-Forwarded-Host) first, then the TLS state and Host header. Empty string
+ * when the request carries no host at all.
+ */
+export function resolveRequestOrigin(req: http.IncomingMessage): string {
   const proto =
     (req.headers["x-forwarded-proto"] as string | undefined) ||
     (req.socket && "encrypted" in req.socket && req.socket.encrypted

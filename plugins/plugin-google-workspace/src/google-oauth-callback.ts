@@ -64,7 +64,12 @@ function isLoopbackHost(hostname: string): boolean {
     .trim()
     .toLowerCase()
     .replace(/^\[|\]$/g, "");
-  return normalized === "localhost" || normalized === "::1" || normalized.startsWith("127.");
+  // Loopback IPv4 must be a genuinely numeric dotted quad in 127.0.0.0/8: a DNS
+  // name like 127.0.0.1.attacker.example is an external host, never loopback.
+  // The URL parser already canonicalizes IPv4 shorthand (127.1 → 127.0.0.1).
+  return (
+    normalized === "localhost" || normalized === "::1" || /^127(?:\.\d{1,3}){3}$/.test(normalized)
+  );
 }
 
 /**

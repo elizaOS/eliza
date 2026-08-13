@@ -109,14 +109,20 @@ function readSetting(runtime: IAgentRuntime, key: string): string | undefined {
   return nonEmptyString(runtime.getSetting?.(key));
 }
 
-function readClientConfig(runtime: IAgentRuntime): {
+function readClientConfig(
+  runtime: IAgentRuntime,
+  servedOrigin?: string
+): {
   clientId: string;
   clientSecret: string;
   redirectUri: string;
 } {
   const clientId = readSetting(runtime, "GOOGLE_CLIENT_ID");
   const clientSecret = readSetting(runtime, "GOOGLE_CLIENT_SECRET");
-  const redirectUri = resolveGoogleConnectorOAuthCallbackUrl(runtime);
+  const redirectUri = resolveGoogleConnectorOAuthCallbackUrl(
+    runtime,
+    servedOrigin ? { servedOrigin } : undefined
+  );
   if (!clientId || !clientSecret) {
     throw new Error(
       "Google OAuth requires GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, and GOOGLE_REDIRECT_URI to be configured."
@@ -454,7 +460,10 @@ export function createGoogleConnectorAccountProvider(
       request: ConnectorOAuthStartRequest,
       manager: ConnectorAccountManager
     ): Promise<ConnectorOAuthStartResult> => {
-      const config = readClientConfig(runtime);
+      // The manager forwards the served origin captured at the HTTP boundary
+      // (Settings route) or by LifeOps; callback validation runs against it so
+      // an unreachable callback fails here instead of stranding the grant.
+      const config = readClientConfig(runtime, request.servedOrigin);
       const redirectUri = config.redirectUri;
       const capabilities = normalizeRequestedCapabilities(
         await resolveRequestedScopes(request, manager)
