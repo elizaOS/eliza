@@ -9,8 +9,12 @@ import {
   STEWARD_TOKEN_KEY,
 } from "@elizaos/shared/steward-session-client";
 import { createContext } from "react";
-import { scrubPersistedAgentProfileTokens } from "../../state/agent-profiles";
+import {
+  removeManagedSharedCloudAgentProfiles,
+  scrubPersistedAgentProfileTokens,
+} from "../../state/agent-profiles";
 import { scrubPersistedActiveServerToken } from "../../state/persistence";
+import { clearSharedCloudAccountBinding } from "../../state/shared-cloud-account-binding";
 import { decodeJwtPayload } from "../lib/jwt";
 import { ELIZA_CLOUD_DIRECT_API_BY_HOST } from "./steward-url";
 
@@ -157,11 +161,24 @@ export function tokenSecsRemaining(token: string): number | null {
 export function clearStaleStewardSession(): void {
   if (typeof window === "undefined") return;
   clearStoredStewardToken();
+  // Every shared-agent profile belongs to the ending Steward account, even
+  // when a dedicated or self-hosted target happens to be active at sign-out.
+  removeManagedSharedCloudAgentProfiles();
   // SECURITY: also scrub the persisted accessToken mirrors so the secondary
   // sign-out / 401-self-heal paths that route through here (native apps-studio
   // signOut, the authorize-content edge, StewardProviderRuntime 401 clears) don't
   // leave a usable cloud bearer/API-key at rest in localStorage.
-  scrubPersistedActiveServerToken();
+  if (clearSharedCloudAccountBinding()) {
+    // Shared runtime authorization is the Steward account itself. Once that
+    // account session ends, retaining its selected agent id can bind the next
+    // login to an agent outside the newly authenticated organization. Remove
+    // the selection so the normal post-login flow resolves the current
+    // account's organization-scoped agent list before mounting chat.
+  } else {
+    // Dedicated/self-hosted targets have an independent agent-local recovery
+    // path, so preserve their selection while removing the rejected bearer.
+    scrubPersistedActiveServerToken();
+  }
   scrubPersistedAgentProfileTokens();
   clearServerStewardSessionCookies();
   try {
