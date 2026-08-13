@@ -225,11 +225,38 @@ function resolveRuntimeConfigs(runtime: IAgentRuntime): RuntimeServiceConfig[] {
   }
 
   if (configs.length > 0) {
+    assertUniqueCloudApiPhoneNumberIds(configs);
     return configs;
   }
 
   const legacy = resolveRuntimeConfig(runtime);
   return legacy ? [legacy] : [];
+}
+
+/**
+ * Rejects startup when two or more Cloud API accounts share the same
+ * `phoneNumberId`. A duplicate would let an inbound webhook (which is scoped by
+ * `metadata.phone_number_id`) resolve to the wrong account, cross-pollinating
+ * credentials, rooms, and identity. Throws before any client connects.
+ */
+function assertUniqueCloudApiPhoneNumberIds(configs: RuntimeServiceConfig[]): void {
+  const seen = new Map<string, string>();
+  for (const config of configs) {
+    if (config.transport !== "cloudapi") {
+      continue;
+    }
+    const phoneId = config.phoneNumberId.trim();
+    if (!phoneId) {
+      continue;
+    }
+    const existingAccountId = seen.get(phoneId);
+    if (existingAccountId !== undefined && existingAccountId !== config.accountId) {
+      throw new Error(
+        `WhatsApp Cloud API accounts "${existingAccountId}" and "${config.accountId}" share the same phone_number_id "${phoneId}"; each Cloud API account must resolve to one canonical phone number`
+      );
+    }
+    seen.set(phoneId, config.accountId);
+  }
 }
 
 function toTimestampMs(value: number | string | undefined): number {
@@ -595,6 +622,16 @@ export class WhatsAppConnectorService extends Service {
   config: RuntimeServiceConfig | undefined = undefined;
   private knownTargets: Map<string, KnownWhatsAppTarget> = new Map();
 
+  /**
+   * In-process inbound delivery guard. Meta redelivers a webhook when it does
+   * not see a 200 quickly enough, and a single webhook batch can contain the
+   * same message id twice. This set prevents duplicate side effects (replies,
+   * memory writes, connection records) across concurrent redelivery within one
+   * process lifetime; the durable check in `processIncomingMessage` covers
+   * restarts. Bounded: entries are cleared once a turn finishes.
+   */
+  private inflightInboundMessageIds: Set<string> = new Set();
+
   constructor(runtime?: IAgentRuntime) {
     super(runtime);
     if (runtime) {
@@ -936,6 +973,25 @@ export class WhatsAppConnectorService extends Service {
         const phoneNumberId =
           typeof metadata.phone_number_id === "string" ? metadata.phone_number_id : undefined;
         const accountId = this.resolveWebhookAccountId(phoneNumberId);
+
+        // Fail closed: when Cloud API accounts are configured, a webhook whose
+        // phone_number_id does not match any of them is rejected before any
+        // side effect. This prevents cross-account misattribution — an unknown
+        // or cross-account sender must never inherit the default account's
+        // credentials, rooms, or identity. display_phone_number is only trusted
+        // once the webhook has been bound to a known account.
+        if (accountId === null) {
+          this.runtime.logger.warn(
+            {
+              src: "plugin:whatsapp",
+              agentId: this.runtime.agentId,
+              phoneNumberId: phoneNumberId ?? null,
+            },
+            "WhatsApp webhook phone_number_id does not match any configured Cloud API account; dropping webhook to prevent cross-account misattribution"
+          );
+          continue;
+        }
+
         if (typeof metadata.display_phone_number === "string") {
           this.phoneNumbers.set(accountId, metadata.display_phone_number);
           if (accountId === this.defaultAccountId) {
@@ -981,9 +1037,21 @@ export class WhatsAppConnectorService extends Service {
     return null;
   }
 
-  private resolveWebhookAccountId(phoneNumberId?: string | null): string {
+  /**
+   * Resolves a webhook's account from its `metadata.phone_number_id`.
+   *
+   * Fail-closed: when at least one Cloud API account is configured, a webhook
+   * whose phone_number_id matches none of them returns `null` so `handleWebhook`
+   * can drop it before side effects. Only the single-account, env-only, or
+   * Baileys-only deployments (where the webhook carries no scoping id) fall back
+   * to the default account — and only when that default is the sole possibility.
+   */
+  private resolveWebhookAccountId(phoneNumberId?: string | null): string | null {
     const normalizedPhoneNumberId =
-      typeof phoneNumberId === "string" && phoneNumberId.trim() ? phoneNumberId.trim() : undefined;
+      typeof phoneNumberId === "string" && phoneNumberId.trim()
+        ? phoneNumberId.trim()
+        : undefined;
+
     if (normalizedPhoneNumberId) {
       for (const [accountId, config] of this.configs) {
         if (config.transport === "cloudapi" && config.phoneNumberId === normalizedPhoneNumberId) {
@@ -991,7 +1059,21 @@ export class WhatsAppConnectorService extends Service {
         }
       }
     }
-    return this.defaultAccountId;
+
+    // No Cloud API accounts are configured at all (Baileys-only, or the service
+    // is unconfigured). The webhook cannot be account-scoped, so the default is
+    // the only resolution. This path is not reached for real Cloud API traffic.
+    const hasCloudApiAccount = Array.from(this.configs.values()).some(
+      (config) => config.transport === "cloudapi"
+    );
+    if (!hasCloudApiAccount) {
+      return this.defaultAccountId;
+    }
+
+    // Cloud API account(s) are configured but the webhook's phone_number_id did
+    // not match any of them (or was missing). Fail closed rather than inherit
+    // the default account.
+    return null;
   }
 
   private bindClientEvents(client: BaileysClient | WhatsAppClient, accountId: string): void {
@@ -1124,6 +1206,66 @@ export class WhatsAppConnectorService extends Service {
     const isGroup = isWhatsAppGroupJid(params.chatId);
     const normalizedSender = normalizeWhatsAppTarget(params.senderId) ?? params.senderId;
 
+    // Delivery idempotency: Meta redelivers a webhook when it does not see a
+    // 200 quickly, and a single batch can repeat a message id. The inbound
+    // memory id is a deterministic function of (accountId, chatId, external
+    // message id), so a duplicate maps to the same UUID. Guard two layers:
+    //   1. in-process set — collapses concurrent redelivery before any side
+    //      effect fires, and is cleared once the turn completes;
+    //   2. durable getMemoryById — survives restarts and process recycling.
+    // Both checks run before ensureConnection / room / reply side effects, so a
+    // redelivered message creates no duplicate contact, room, model input, or
+    // auto-reply. Policy-denied messages still return early below.
+    const chatKey =
+      accountId === DEFAULT_ACCOUNT_ID ? params.chatId : `${accountId}:${params.chatId}`;
+    const dedupeKey = `${accountId}:${params.externalMessageId}`;
+    if (this.inflightInboundMessageIds.has(dedupeKey)) {
+      this.runtime.logger.debug(
+        {
+          src: "plugin:whatsapp",
+          agentId: this.runtime.agentId,
+          accountId,
+          externalMessageId: params.externalMessageId,
+        },
+        "WhatsApp inbound message is already being processed in-process; skipping duplicate delivery"
+      );
+      return;
+    }
+    this.inflightInboundMessageIds.add(dedupeKey);
+    try {
+      const inboundMemoryId = toMemoryId(this.runtime, chatKey, params.externalMessageId);
+      if (typeof this.runtime.getMemoryById === "function") {
+        const existing = await this.runtime.getMemoryById(inboundMemoryId);
+        if (existing) {
+          this.runtime.logger.debug(
+            {
+              src: "plugin:whatsapp",
+              agentId: this.runtime.agentId,
+              accountId,
+              externalMessageId: params.externalMessageId,
+            },
+            "WhatsApp inbound message already ingested; skipping duplicate delivery"
+          );
+          return;
+        }
+      }
+    } catch (dedupeError) {
+      // A transient storage failure must not drop the message; fall through to
+      // normal processing. The in-process guard still collapses concurrent
+      // redelivery within this process.
+      this.runtime.logger.warn(
+        {
+          src: "plugin:whatsapp",
+          agentId: this.runtime.agentId,
+          accountId,
+          externalMessageId: params.externalMessageId,
+          error: dedupeError instanceof Error ? dedupeError.message : String(dedupeError),
+        },
+        "WhatsApp inbound idempotency storage check failed; proceeding with normal processing"
+      );
+    }
+
+    try {
     const accountConfig = {
       dmPolicy: config?.dmPolicy,
       groupPolicy: config?.groupPolicy,
@@ -1334,6 +1476,9 @@ export class WhatsAppConnectorService extends Service {
     }
 
     await this.runtime.messageService.handleMessage(this.runtime, inboundMemory, callback);
+    } finally {
+      this.inflightInboundMessageIds.delete(dedupeKey);
+    }
   }
 
   private async sendTextMessage(
