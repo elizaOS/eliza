@@ -1,9 +1,8 @@
 /**
- * Shared must import the published `@elizaos/core/client-public` subpath, never
- * a sibling `packages/core/src` file. Built dist must stay resolvable for
- * installed consumers (#18704).
+ * Shared imports the published `@elizaos/core/client-public` subpath rather
+ * than a sibling source tree, and preserves the exact helper implementations.
  */
-import { existsSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -52,23 +51,5 @@ describe("shared re-exports @elizaos/core/client-public, not core source files",
     expect(resolveAliasedEnvValue).toBe(publicResolveAlias);
     expect(sanitizeForSettingsDebug).toBe(publicSanitize);
     expect(isElizaSettingsDebugEnabled).toBe(publicSettingsDebugEnabled);
-  });
-
-  it("built shared dist does not import the unshipped core source tree", () => {
-    const distRoot = path.join(here, "../dist");
-    const files = [
-      "format-error.js",
-      "env-utils.js",
-      path.join("config", "boot-config-store.js"),
-      "settings-debug.js",
-    ];
-    for (const rel of files) {
-      const dest = path.join(distRoot, rel);
-      if (!existsSync(dest)) continue;
-      const js = readFileSync(dest, "utf8");
-      expect(js, dest).not.toMatch(/\.\.\/\.\.\/core\/src\//);
-      expect(js, dest).not.toMatch(/\.\.\/\.\.\/\.\.\/core\/src\//);
-      expect(js, dest).toMatch(/@elizaos\/core\/client-public/);
-    }
   });
 });

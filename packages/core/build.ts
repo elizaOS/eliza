@@ -1157,11 +1157,6 @@ export async function generateTypeScriptDeclarations() {
 		"dist/roles.js",
 		`// Roles subpath entry point (explicit)\nexport * from './node/roles.js';\n`,
 	);
-	await fs.writeFile(
-		"dist/client-public.js",
-		`// Client-public subpath entry point (explicit)\nexport * from './node/client-public.js';\n`,
-	);
-
 	// Create main index.d.ts to re-export all types from node build
 	// This ensures TypeScript resolves all exports when using moduleResolution: bundler
 	// Note: Use .js extension for NodeNext module resolution compatibility

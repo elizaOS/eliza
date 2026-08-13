@@ -83,8 +83,22 @@
 				"import": "./src/client-public.ts",
 				"default": "./src/client-public.ts"
 			},
-			"import": "./dist/client-public.js",
-			"default": "./dist/client-public.js"
+			"browser": {
+				"types": "./dist/client-public.d.ts",
+				"import": "./dist/browser/client-public.js",
+				"default": "./dist/browser/client-public.js"
+			},
+			"node": {
+				"types": "./dist/client-public.d.ts",
+				"import": "./dist/node/client-public.js",
+				"default": "./dist/node/client-public.js"
+			},
+			"bun": {
+				"types": "./dist/client-public.d.ts",
+				"import": "./dist/node/client-public.js",
+				"default": "./dist/node/client-public.js"
+			},
+			"default": "./dist/node/client-public.js"
 		},
 		"./testing": {
 			"types": "./dist/testing/index.d.ts",
