@@ -83,6 +83,7 @@ async function recordVideo(udid, outPath, durationSec) {
 
 async function main() {
   const flags = parseFlags();
+  const durationSec = resolveCaptureDurationSeconds(flags);
   if (process.platform !== "darwin") {
     skip(PLATFORM, "not macOS — xcrun simctl unavailable");
   }
@@ -100,7 +101,6 @@ async function main() {
     slug: flags.slug,
     platform: PLATFORM,
   });
-  const durationSec = resolveCaptureDurationSeconds(flags);
 
   const pngPath = evidencePath(base, "png");
   simctl(["io", udid, "screenshot", "--type=png", pngPath]);
