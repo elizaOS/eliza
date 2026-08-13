@@ -130,14 +130,30 @@ describe("readBoundedIntSetting", () => {
 
   it("accepts omitted, canonical integer, and numeric settings in range", () => {
     expect(
-      readBoundedIntSetting(rt(undefined), "k", 100, 600_000),
+      readBoundedIntSetting(rt(undefined), "k", 100, 600_000, {}),
     ).toBeUndefined();
-    expect(readBoundedIntSetting(rt(null), "k", 100, 600_000)).toBeUndefined();
-    expect(readBoundedIntSetting(rt("200"), "k", 100, 600_000)).toEqual({
+    expect(
+      readBoundedIntSetting(rt(null), "k", 100, 600_000, {}),
+    ).toBeUndefined();
+    expect(readBoundedIntSetting(rt("200"), "k", 100, 600_000, {})).toEqual({
       value: 200,
     });
-    expect(readBoundedIntSetting(rt(600_000), "k", 100, 600_000)).toEqual({
+    expect(readBoundedIntSetting(rt(600_000), "k", 100, 600_000, {})).toEqual({
       value: 600_000,
+    });
+  });
+
+  it("reads the environment only on runtime omission", () => {
+    expect(
+      readBoundedIntSetting(rt(null), "k", 100, 600_000, { k: "200" }),
+    ).toEqual({ value: 200 });
+    expect(
+      readBoundedIntSetting(rt("300"), "k", 100, 600_000, { k: "200" }),
+    ).toEqual({ value: 300 });
+    expect(
+      readBoundedIntSetting(rt(""), "k", 100, 600_000, { k: "200" }),
+    ).toEqual({
+      error: "k must be a canonical decimal integer between 100 and 600000.",
     });
   });
 
@@ -162,12 +178,24 @@ describe("readBoundedIntSetting", () => {
         "CODING_TOOLS_SHELL_TIMEOUT_MS",
         100,
         600_000,
+        {},
       ),
     ).toEqual({
       error:
         "CODING_TOOLS_SHELL_TIMEOUT_MS must be a canonical decimal integer between 100 and 600000.",
     });
   });
+
+  it.each(["", "45.5", " 200", "600001"])(
+    "rejects invalid environment settings: %j",
+    (value) => {
+      expect(
+        readBoundedIntSetting(rt(null), "k", 100, 600_000, { k: value }),
+      ).toEqual({
+        error: "k must be a canonical decimal integer between 100 and 600000.",
+      });
+    },
+  );
 });
 
 describe("fencePreformatted", () => {

@@ -87,6 +87,22 @@ async function pathExists(target: string): Promise<boolean> {
   }
 }
 
+async function withShellTimeoutEnv<T>(
+  value: string | undefined,
+  run: () => Promise<T>,
+): Promise<T> {
+  const key = "CODING_TOOLS_SHELL_TIMEOUT_MS";
+  const previousValue = process.env[key];
+  if (value === undefined) delete process.env[key];
+  else process.env[key] = value;
+  try {
+    return await run();
+  } finally {
+    if (previousValue === undefined) delete process.env[key];
+    else process.env[key] = previousValue;
+  }
+}
+
 interface RuntimeOptions {
   blockedPaths?: string;
   shellTimeoutMs?: unknown;
@@ -1908,6 +1924,81 @@ describe("shell timeout operator setting", () => {
     expect(result?.success).toBe(true);
     expect(calls).toHaveLength(1);
     expect(calls[0]?.timeoutMs).toBe(250);
+  });
+
+  it("uses the environment timeout when the runtime setting is omitted", async () => {
+    await withShellTimeoutEnv("200", async () => {
+      const calls: Array<{ timeoutMs?: number }> = [];
+      const router = makeShellRouter(async (params) => {
+        calls.push(params);
+        return { output: "ok\n", exitCode: 0, timedOut: false };
+      });
+      const { runtime } = await makeRuntime({
+        shellTimeoutMs: null,
+        capabilityRouter: router,
+      });
+
+      const result = await shellAction.handler?.(
+        runtime,
+        makeMessage(),
+        undefined,
+        { command: "echo ok" },
+      );
+
+      expect(result?.success).toBe(true);
+      expect(calls).toHaveLength(1);
+      expect(calls[0]?.timeoutMs).toBe(200);
+    });
+  });
+
+  it("rejects a malformed environment timeout before dispatch", async () => {
+    await withShellTimeoutEnv("45.5", async () => {
+      const calls: Array<{ timeoutMs?: number }> = [];
+      const router = makeShellRouter(async (params) => {
+        calls.push(params);
+        return { output: "unexpected\n", exitCode: 0, timedOut: false };
+      });
+      const { runtime } = await makeRuntime({
+        shellTimeoutMs: null,
+        capabilityRouter: router,
+      });
+
+      const result = await shellAction.handler?.(
+        runtime,
+        makeMessage(),
+        undefined,
+        { command: "echo must-not-run" },
+      );
+
+      expect(result?.success).toBe(false);
+      expect(result?.text).toContain("CODING_TOOLS_SHELL_TIMEOUT_MS");
+      expect(calls).toHaveLength(0);
+    });
+  });
+
+  it("prefers the explicit runtime setting over the environment", async () => {
+    await withShellTimeoutEnv("200", async () => {
+      const calls: Array<{ timeoutMs?: number }> = [];
+      const router = makeShellRouter(async (params) => {
+        calls.push(params);
+        return { output: "ok\n", exitCode: 0, timedOut: false };
+      });
+      const { runtime } = await makeRuntime({
+        shellTimeoutMs: "300",
+        capabilityRouter: router,
+      });
+
+      const result = await shellAction.handler?.(
+        runtime,
+        makeMessage(),
+        undefined,
+        { command: "echo ok" },
+      );
+
+      expect(result?.success).toBe(true);
+      expect(calls).toHaveLength(1);
+      expect(calls[0]?.timeoutMs).toBe(300);
+    });
   });
 
   it("rejects invalid background settings without starting a child", async () => {

@@ -180,10 +180,13 @@ export function readBoundedIntSetting(
   key: string,
   min: number,
   max: number,
+  env: Readonly<Record<string, string | undefined>> = process.env,
 ): { value: number } | { error: string } | undefined {
-  const raw = runtime.getSetting(key);
-  // AgentRuntime normalizes a missing setting to null. Only that absence
-  // signal defaults; explicit strings (including "") still validate below.
+  const runtimeValue = runtime.getSetting(key);
+  // AgentRuntime normalizes a missing setting to null. A runtime value wins;
+  // only a runtime miss consults the documented raw environment fallback.
+  // Explicit strings (including "") from either source validate below.
+  const raw = runtimeValue ?? env[key];
   if (raw == null) return undefined;
 
   const valid =
