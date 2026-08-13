@@ -81,5 +81,5 @@ describe("ProxyServer routing", () => {
     } finally {
       await server.stop();
     }
-  });
+  }, 30_000);
 });

@@ -1343,6 +1343,17 @@ body {
   font-family: "Geist", Arial, sans-serif;
 }
 
+/* Grain overlay: plain CSS rather than a Tailwind arbitrary-value class, which
+   is not compiled when this source is consumed by the app shell's build. */
+.landing-grain {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  mix-blend-mode: overlay;
+  background-image: url("/grain.webp");
+}
+
 .landing-header {
   position: relative;
   z-index: 1;

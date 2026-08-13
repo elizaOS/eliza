@@ -13,6 +13,7 @@ function runtime(): IAgentRuntime {
   return {
     agentId: "00000000-0000-0000-0000-000000000001",
     createMemory: vi.fn(async () => "00000000-0000-0000-0000-000000000004"),
+    redactSecrets: vi.fn((text: string) => text),
   } as unknown as IAgentRuntime;
 }
 
@@ -182,6 +183,129 @@ describe("terminal action effect proof", () => {
     });
   });
 
+  it("summarizes multiline stdout without marking it canonical", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => terminalResponse({ stdout: "first\nsecond\n" })),
+    );
+
+    const result = await terminalAction.handler(
+      runtime(),
+      message(),
+      undefined,
+      options("printf 'first\\nsecond\\n'"),
+    );
+
+    expect(result).toMatchObject({
+      success: true,
+      userFacingText:
+        "The command finished (exit 0) with 2 lines of output; ask me about specifics instead of dumping it into chat.",
+      verifiedUserFacing: false,
+    });
+    expect(result?.text).toContain("first\nsecond");
+  });
+
+  it("summarizes carriage-return-delimited stdout", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => terminalResponse({ stdout: "first\rsecond" })),
+    );
+
+    const result = await terminalAction.handler(
+      runtime(),
+      message(),
+      undefined,
+      options("printf 'first\\rsecond'"),
+    );
+
+    expect(result).toMatchObject({
+      success: true,
+      userFacingText:
+        "The command finished (exit 0) with 2 lines of output; ask me about specifics instead of dumping it into chat.",
+      verifiedUserFacing: false,
+    });
+  });
+
+  it("summarizes single-line stdout over the relay limit", async () => {
+    const stdout = "x".repeat(201);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => terminalResponse({ stdout })),
+    );
+
+    const result = await terminalAction.handler(
+      runtime(),
+      message(),
+      undefined,
+      options("generate-long-output"),
+    );
+
+    expect(result).toMatchObject({
+      userFacingText:
+        "The command finished (exit 0) with 1 line of output; ask me about specifics instead of dumping it into chat.",
+      verifiedUserFacing: false,
+    });
+    expect(result?.text).toContain(stdout);
+  });
+
+  it("relays a single line at the exact size limit without marking it canonical", async () => {
+    const stdout = "x".repeat(200);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => terminalResponse({ stdout })),
+    );
+
+    const result = await terminalAction.handler(
+      runtime(),
+      message(),
+      undefined,
+      options("generate-bounded-output"),
+    );
+
+    expect(result).toMatchObject({
+      userFacingText: stdout,
+      verifiedUserFacing: false,
+    });
+  });
+
+  it("keeps action-owned empty, stderr, truncated, and timeout statuses canonical", async () => {
+    const cases = [
+      {
+        override: { stdout: "" },
+        text: "The command finished successfully with exit code 0.",
+      },
+      {
+        override: { stdout: "partial", stderr: "warning" },
+        text: "The command finished successfully with exit code 0.",
+      },
+      {
+        override: { stdout: "partial", truncated: true },
+        text: "The command finished successfully with exit code 0.",
+      },
+      {
+        override: { stdout: "partial", timedOut: true, maxDurationMs: 30_000 },
+        text: "The command timed out after 30000 ms; I can't verify that it completed.",
+      },
+    ];
+
+    for (const testCase of cases) {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async () => terminalResponse(testCase.override)),
+      );
+      const result = await terminalAction.handler(
+        runtime(),
+        message(),
+        undefined,
+        options(),
+      );
+      expect(result).toMatchObject({
+        userFacingText: testCase.text,
+        verifiedUserFacing: true,
+      });
+    }
+  });
+
   it("rejects a response that omits its exit code instead of fabricating zero", async () => {
     const response = terminalResponse();
     const payload = (await response.json()) as Record<string, unknown>;
@@ -219,7 +343,7 @@ describe("terminal action effect proof", () => {
   });
 });
 
-describe("terminal command-line secret hygiene", () => {
+describe("terminal secret hygiene", () => {
   beforeEach(() => {
     vi.stubEnv("ELIZA_BUILD_VARIANT", "direct");
   });
@@ -229,13 +353,22 @@ describe("terminal command-line secret hygiene", () => {
     vi.unstubAllGlobals();
   });
 
-  it("redacts secrets embedded in the command line before any consumer sees it", async () => {
-    const secret = "sk-proj-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
-    const leakyCommand = `curl -H "Authorization: Bearer ${secret}" https://api.example.com`;
+  it("removes configured, argument, output, and URI secrets from every returned and persisted surface", async () => {
+    const configuredSecret = "plain-character-secret-123456789";
+    const bearerSecret = "sk-proj-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
+    const flagSecret = "flag-secret-value-123456789";
+    const urlPassword = "url-password-value-123456789";
+    const leakyCommand =
+      `curl --token=${flagSecret} -H "Authorization: Bearer ${bearerSecret}" ` +
+      `https://operator:${urlPassword}@api.example.com/${configuredSecret}`;
     vi.stubGlobal(
       "fetch",
       vi.fn(async () =>
-        terminalResponse({ command: leakyCommand, stdout: "ok\n" }),
+        terminalResponse({
+          command: leakyCommand,
+          stdout: `result ${configuredSecret} ${bearerSecret}\n`,
+          stderr: `postgres://service:${urlPassword}@db.example.com/app`,
+        }),
       ),
     );
 
@@ -245,21 +378,32 @@ describe("terminal command-line secret hygiene", () => {
     const rt = {
       agentId: "00000000-0000-0000-0000-000000000001",
       createMemory,
+      redactSecrets: vi.fn((text: string) =>
+        text.replaceAll(configuredSecret, "[REDACTED:CONFIGURED_SECRET]"),
+      ),
     } as unknown as IAgentRuntime;
 
-    const result = (await terminalAction.handler(
+    const result = await terminalAction.handler(
       rt,
       message(),
       undefined,
       options(leakyCommand),
-    )) as { text?: string; data?: unknown };
+    );
+    const surfaces = JSON.stringify({
+      result,
+      memory: createMemory.mock.calls,
+    });
 
-    const surfaces = [
-      result.text ?? "",
-      JSON.stringify(result.data ?? {}),
-      JSON.stringify(createMemory.mock.calls),
-    ].join("\n");
-    expect(surfaces).not.toContain(secret);
-    expect(surfaces).toContain("curl");
+    for (const secret of [
+      configuredSecret,
+      bearerSecret,
+      flagSecret,
+      urlPassword,
+    ]) {
+      expect(surfaces).not.toContain(secret);
+    }
+    expect(surfaces).toContain("api.example.com");
+    expect(surfaces).toContain("db.example.com");
+    expect(surfaces).toContain("[REDACTED:CONFIGURED_SECRET]");
   });
 });
