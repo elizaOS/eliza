@@ -9,11 +9,24 @@
 <meta property="og:description" content="Products at the intersection of AI and people." />
 <meta property="og:url" content="https://elizaresearch.ai" />
 <meta property="og:type" content="website" />
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='14' fill='%23ff5800'/%3E%3Ccircle cx='16' cy='16' r='5' fill='white'/%3E%3C/svg%3E" />
-<link rel="preconnect" href="https://fonts.googleapis.com" />
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=Archivo:ital,wdth,wght@0,62..125,100..900;1,62..125,100..900&display=swap" rel="stylesheet" />
+<link rel="icon" type="image/svg+xml" href="assets/logo_orange_nobg.svg" />
 <style>
+  @font-face {
+    font-family: "Geist";
+    font-style: normal;
+    font-weight: 100 900;
+    font-display: swap;
+    src: url("assets/geist-sans-latin.woff2") format("woff2");
+    unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+  }
+  @font-face {
+    font-family: "Geist";
+    font-style: normal;
+    font-weight: 100 900;
+    font-display: swap;
+    src: url("assets/geist-sans-latin-ext.woff2") format("woff2");
+    unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+  }
   :root {
     --orange: #ff5800;
     --orange-bright: #ff7a30;
@@ -28,8 +41,7 @@
   * { margin: 0; padding: 0; box-sizing: border-box; }
   html { scroll-behavior: smooth; }
   body {
-    font-family: "Archivo", system-ui, sans-serif;
-    font-variation-settings: "wdth" 100;
+    font-family: "Geist", Arial, sans-serif;
     background: var(--bg);
     color: var(--ink);
     line-height: 1.55;
@@ -49,7 +61,8 @@
     padding: 1.1rem clamp(1.25rem, 4vw, 3rem);
     color: white;
   }
-  nav .mark { font-weight: 800; font-size: 1.05rem; letter-spacing: -0.01em; text-decoration: none; font-variation-settings: "wdth" 112; }
+  nav .mark { display: inline-flex; align-items: center; gap: 0.6rem; font-weight: 800; font-size: 1.05rem; letter-spacing: -0.01em; text-decoration: none; }
+  nav .mark img { height: 1.7rem; width: auto; display: block; }
   nav .links { display: flex; gap: 1.75rem; }
   nav .links a { text-decoration: none; font-weight: 600; font-size: 0.92rem; opacity: 0.85; transition: opacity 0.2s; }
   nav .links a:hover { opacity: 1; }
@@ -66,7 +79,6 @@
   .hero-inner h1 {
     font-size: clamp(2.6rem, 8.5vw, 5.8rem);
     font-weight: 850; letter-spacing: -0.03em;
-    font-variation-settings: "wdth" 118;
     text-transform: none;
     max-width: 14ch;
   }
@@ -102,7 +114,6 @@
   .product h2 {
     font-size: clamp(2.2rem, 5.5vw, 4rem);
     font-weight: 830; letter-spacing: -0.028em;
-    font-variation-settings: "wdth" 116;
   }
   .product .role { margin-top: 0.5rem; font-weight: 700; font-size: 1.05rem; }
   .product .body { margin-top: 1.25rem; font-size: 1.08rem; color: var(--muted); }
@@ -122,7 +133,8 @@
     display: grid; place-items: center; position: relative;
   }
   #eliza .figure { background: var(--black); }
-  #eliza .figure svg, #slop .figure svg { width: 100%; height: 100%; display: block; }
+  #eliza .figure svg { width: 100%; height: 100%; display: block; }
+  #slop .figure img { width: 100%; height: 100%; object-fit: cover; display: block; }
 
   #slop {
     background: var(--black); color: #f5f2f0;
@@ -130,13 +142,13 @@
   #slop .role { color: var(--orange-bright); }
   #slop .body { color: #c9c2be; }
   #slop .cta { color: var(--orange-bright); }
-  #slop .figure { background: #1a1512; }
+  #slop .figure { background: #1a1512; aspect-ratio: 1200 / 630; }
 
   /* ---------- footer ---------- */
   footer { background: var(--black); color: #f5f2f0; padding-block: clamp(3rem, 8vh, 5rem) 2rem; border-top: 1px solid #332b26; }
   footer .big {
     font-size: clamp(1.9rem, 5vw, 3.2rem); font-weight: 820;
-    letter-spacing: -0.025em; font-variation-settings: "wdth" 114;
+    letter-spacing: -0.025em;
   }
   footer a.mail {
     color: var(--orange-bright); text-decoration: none; font-weight: 700;
@@ -160,7 +172,7 @@
 <body>
 
 <nav aria-label="Main">
-  <a class="mark" href="#">Eliza&nbsp;Research</a>
+  <a class="mark" href="#"><img src="assets/logo_white_nobg.svg" alt="" />Eliza&nbsp;Research</a>
   <div class="links">
     <a href="#eliza">Products</a>
     <a href="#contact">Contact</a>
@@ -210,12 +222,8 @@
 
 <section class="product" id="slop">
   <div class="wrap grid">
-    <div class="figure" role="img" aria-label="Diagram of many small contributors converging on a shared problem">
-      <svg viewBox="0 0 400 300" id="slop-svg">
-        <g fill="#ff7a30" id="slop-dots"></g>
-        <circle cx="200" cy="150" r="26" fill="none" stroke="#ff7a30" stroke-width="2"/>
-        <circle cx="200" cy="150" r="8" fill="#ff7a30"/>
-      </svg>
+    <div class="figure">
+      <img src="assets/slop-og.png" alt="slop.cash — MAKE MONEY MAKING SLOP" />
     </div>
     <div>
       <h2>slop.cash</h2>
@@ -312,30 +320,6 @@
   if (reduced) { step(); draw(); } else { loop(); }
 })();
 
-// slop.cash figure: static scatter of contributors with faint convergence lines.
-(() => {
-  const g = document.getElementById("slop-dots");
-  const svg = document.getElementById("slop-svg");
-  let lines = "";
-  let dots = "";
-  let seed = 7;
-  const rand = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
-  for (let i = 0; i < 46; i++) {
-    const a = rand() * Math.PI * 2;
-    const r = 60 + rand() * 120;
-    const x = 200 + Math.cos(a) * r * 1.25;
-    const y = 150 + Math.sin(a) * r * 0.85;
-    dots += `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${(2 + rand() * 2.4).toFixed(1)}"/>`;
-    if (rand() > 0.45) lines += `<line x1="${x.toFixed(1)}" y1="${y.toFixed(1)}" x2="200" y2="150"/>`;
-  }
-  g.innerHTML = dots;
-  const lg = document.createElementNS("http://www.w3.org/2000/svg", "g");
-  lg.setAttribute("stroke", "#ff7a30");
-  lg.setAttribute("stroke-width", "0.7");
-  lg.setAttribute("opacity", "0.35");
-  lg.innerHTML = lines;
-  svg.insertBefore(lg, g);
-})();
 </script>
 </body>
 </html>
