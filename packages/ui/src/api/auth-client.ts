@@ -10,7 +10,11 @@
 
 import type { RoleGateRole } from "@elizaos/core";
 import { getElizaApiToken } from "@elizaos/shared";
-import { readStoredStewardToken } from "@elizaos/shared/steward-session-client";
+import {
+  clearStoredStewardToken,
+  readStoredStewardToken,
+  writeStoredStewardToken,
+} from "@elizaos/shared/steward-session-client";
 import { invokeDesktopBridgeRequest } from "../bridge/electrobun-rpc";
 import { isElectrobunRuntime } from "../bridge/electrobun-runtime";
 import { normalizeCloudApiKeyToken } from "../cloud/lib/cloud-api-key-token";
@@ -18,7 +22,10 @@ import { getBootConfig } from "../config/boot-config";
 import { isNative } from "../platform";
 import { clearSharedCloudAccountBinding } from "../state/shared-cloud-account-binding";
 import { isManagedCloudSharedAgentBase } from "../utils/cloud-agent-base";
-import { cloudTokenSecsRemaining } from "./client-cloud";
+import {
+  cloudTokenSecsRemaining,
+  refreshCloudStewardSession,
+} from "./client-cloud";
 import { fetchWithCsrf } from "./csrf-client";
 import { isDesktopExternalApiBaseUrl } from "./desktop-external-api-base";
 
@@ -313,7 +320,7 @@ export async function authMe(): Promise<AuthMeResult> {
   // shell "authenticated", allowing protected pollers and chat sends to loop
   // on 401 while stale agent content remained visible.
   if (isManagedCloudSharedAgentBase(authBase())) {
-    const token = readStoredStewardToken()?.trim();
+    let token = readStoredStewardToken()?.trim();
     const hasNativeOwnerApiKey =
       (isNative || isElectrobunRuntime()) &&
       Boolean(
@@ -327,12 +334,19 @@ export async function authMe(): Promise<AuthMeResult> {
       secondsRemaining <= 0 &&
       !hasNativeOwnerApiKey
     ) {
-      // Expiry alone is not terminal: a backgrounded browser may still have a
-      // valid HttpOnly refresh cookie, and native owns a separate absolute-URL
-      // refresh transport. Keep the shell fail-closed while the existing
-      // single-owner refresh lifecycle rotates or clears the token; its
-      // canonical session-change event then re-probes or invalidates us.
-      return { ok: false, status: 503 };
+      try {
+        const refreshed = await refreshCloudStewardSession();
+        token = refreshed?.token?.trim() || undefined;
+        if (token) writeStoredStewardToken(token);
+      } catch {
+        // error-policy:J1 this auth boundary translates a failed terminal
+        // refresh into the same explicit signed-out state as a rejected one.
+        token = undefined;
+      }
+      if (!token) {
+        clearStoredStewardToken();
+        clearSharedCloudAccountBinding();
+      }
     }
     if (!token && !hasNativeOwnerApiKey) {
       clearSharedCloudAccountBinding();

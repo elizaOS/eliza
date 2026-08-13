@@ -528,6 +528,14 @@ export async function applyRestoredConnection(args: {
       return;
     }
     const restoreProbeToken = readStoredStewardToken()?.trim() || null;
+    // Capture the host-injected owner key before clientRef.setToken(null)
+    // mutates boot config. Native/Electrobun device-code sessions may have no
+    // persisted active-server token and rely exclusively on this credential.
+    const nativeOwnerApiKey =
+      isNative || isElectrobunRuntime()
+        ? (normalizeCloudApiKeyToken(resolved.accessToken) ??
+          normalizeCloudApiKeyToken(getElizaApiToken()))
+        : null;
     const usesLocalDockerCredential = isCloudPairLoopbackOrigin(
       resolved.apiBase,
     );
@@ -547,24 +555,36 @@ export async function applyRestoredConnection(args: {
     )
       ? reconcileLegacyDedicatedCloudApiBase(resolved, restoreProbeToken)
       : Promise.resolve(null);
-    const nativeOwnerApiKey =
-      isNative || isElectrobunRuntime()
-        ? (normalizeCloudApiKeyToken(resolved.accessToken) ??
-          normalizeCloudApiKeyToken(getElizaApiToken()))
-        : null;
+    let stewardTokenPromise: Promise<string | null>;
     if (nativeOwnerApiKey && restoreProbeToken) {
       const secs = cloudTokenSecsRemaining(restoreProbeToken);
-      if (secs !== null && secs <= 0 && typeof window !== "undefined") {
-        // The owner key remains a valid native transport credential, but the
-        // canonical getter prefers any stored Steward token. Drain the dead JWT
-        // without publishing terminal logout so subsequent requests reach the
-        // supported owner-key fallback.
-        window.localStorage.removeItem(STEWARD_TOKEN_KEY);
+      if (secs !== null && secs < STEWARD_RESTORE_REFRESH_AHEAD_SECS) {
+        // A near-expiry Steward JWT would shadow the valid owner-key fallback.
+        // Try rotation once; on failure remove only that JWT so native Cloud
+        // requests continue with the independently valid owner key.
+        stewardTokenPromise = refreshCloudStewardSession()
+          .then((refreshed) => {
+            const fresh = refreshed?.token?.trim() || null;
+            if (fresh) writeStoredStewardToken(fresh);
+            else if (typeof window !== "undefined")
+              window.localStorage.removeItem(STEWARD_TOKEN_KEY);
+            return fresh;
+          })
+          .catch(() => {
+            // error-policy:J4 the valid native owner key remains available;
+            // remove the shadowing near-expiry JWT and visibly continue with it.
+            if (typeof window !== "undefined")
+              window.localStorage.removeItem(STEWARD_TOKEN_KEY);
+            return null;
+          });
+      } else {
+        stewardTokenPromise = Promise.resolve(restoreProbeToken);
       }
+    } else {
+      stewardTokenPromise = nativeOwnerApiKey
+        ? Promise.resolve(null)
+        : resolveRestoredStewardToken();
     }
-    const stewardTokenPromise = nativeOwnerApiKey
-      ? Promise.resolve(null)
-      : resolveRestoredStewardToken();
     // Cloud = Steward everywhere (DECISIONS.md D3): prefer the live Steward
     // session token over the token captured at provision time (which may have
     // rotated since). If that stored JWT expired while the app was closed,
