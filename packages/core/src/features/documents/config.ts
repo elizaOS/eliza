@@ -65,17 +65,12 @@ export function validateModelConfig(runtime?: IAgentRuntime): ModelConfig {
 		);
 		const embeddingProvider = getSetting("EMBEDDING_PROVIDER");
 		const localEmbeddingModel = getSetting("LOCAL_EMBEDDING_MODEL");
-		// Alias dimension reads follow the same blank-is-unset convention as
-		// normalizeEnvValue: a blank/whitespace-only alias falls through to the
-		// provider default instead of reaching the numeric schema.
-		const getDimensionAlias = (key: string) => {
-			const raw = getNumericSetting(key);
-			return typeof raw === "string" ? normalizeEnvValue(raw) : raw;
-		};
-		const localEmbeddingDimensions = getDimensionAlias(
+		// Keep numeric aliases raw so explicit blanks reach schema validation;
+		// provider scoping below prevents an inactive alias from leaking across.
+		const localEmbeddingDimensions = getNumericSetting(
 			"LOCAL_EMBEDDING_DIMENSIONS",
 		);
-		const openaiEmbeddingDimensions = getDimensionAlias(
+		const openaiEmbeddingDimensions = getNumericSetting(
 			"OPENAI_EMBEDDING_DIMENSIONS",
 		);
 		const inferredLocalEmbeddings =
