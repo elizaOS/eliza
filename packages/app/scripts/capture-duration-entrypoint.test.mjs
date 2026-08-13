@@ -5,8 +5,8 @@
  */
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import path from "node:path";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 
 const SCRIPTS = [
   "capture-android-emu.mjs",
@@ -20,7 +20,7 @@ for (const script of SCRIPTS) {
   test(`${script} rejects malformed duration before platform setup`, () => {
     const result = spawnSync(
       process.execPath,
-      [path.resolve("packages/app/scripts", script), "--duration", "junk"],
+      [fileURLToPath(new URL(script, import.meta.url)), "--duration", "junk"],
       {
         encoding: "utf8",
         timeout: 5_000,
