@@ -1049,7 +1049,7 @@ export function WorkflowEditor({
                 </div>
                 <div className="min-w-0 flex-1">
                   <p className="text-[11px] text-muted-foreground">
-                    {new Date(revision.capturedAt).toLocaleString()}
+                    {new Date(revision.capturedAt).toLocaleString("en-US")}
                   </p>
                 </div>
                 <Button

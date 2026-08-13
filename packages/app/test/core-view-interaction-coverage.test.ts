@@ -147,11 +147,11 @@ const CORE_VIEW_INTERACTIONS: Readonly<Record<string, CoreViewInteraction>> = {
       {
         spec: "packages/app/test/ui-smoke/workflow-editor.spec.ts",
         proves:
-          "Opens the Automations WorkflowEditor, saves a connected graph, and reloads the persisted definition.",
+          "Authors, persists, executes, inspects, and reloads a native Smithers workflow.",
         signals: [
-          "workflow editor saves a connected graph",
-          "workflow save should receive a 2xx POST",
-          "matrix smoke digest",
+          "workflow studio creates, executes, inspects, and reloads a Smithers workflow",
+          "smithers-source-editor",
+          "workflow.finished",
         ],
       },
     ],

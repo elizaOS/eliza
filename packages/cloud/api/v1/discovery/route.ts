@@ -21,7 +21,8 @@ import { userMcpsService } from "@/lib/services/user-mcps";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
-type ServiceType = "agent" | "mcp" | "a2a" | "app";
+const serviceTypeSchema = z.enum(["agent", "mcp"]);
+type ServiceType = z.infer<typeof serviceTypeSchema>;
 type ServiceSource = "cloud" | "local";
 
 interface ServicePricing {
@@ -124,7 +125,8 @@ const querySchema = z.object({
   query: z.string().optional(),
   types: z
     .string()
-    .transform((s) => s.split(",") as ServiceType[])
+    .transform((value) => value.split(",").map((type) => type.trim()))
+    .pipe(z.array(serviceTypeSchema).min(1))
     .optional(),
   categories: z
     .string()
@@ -188,7 +190,7 @@ app.get("/", async (c) => {
     logger.debug("[Discovery] Cache miss, fetching fresh data", { params });
 
     const services: DiscoveredService[] = [];
-    const types = params.types ?? ["agent", "mcp", "app"];
+    const types: ServiceType[] = params.types ?? ["agent", "mcp"];
 
     if (types.includes("agent")) {
       const localAgents = await fetchLocalAgents(
