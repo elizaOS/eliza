@@ -734,6 +734,12 @@ const WARMING_MAX_RETRIES = 4;
 const WARMING_DEFAULT_DELAY_MS = 1_000;
 const WARMING_MIN_DELAY_MS = 250;
 const WARMING_MAX_DELAY_MS = 5_000;
+// Total elapsed absorption budget across ALL warming waits for one logical
+// request. The first-turn UX contract (#18045) is a short ~5s warm-up, not
+// WARMING_MAX_RETRIES × WARMING_MAX_DELAY_MS: an oversized `Retry-After` gets
+// its wait clamped to whatever budget remains, and once the deadline passes
+// the structured warming error surfaces instead of another retry.
+const WARMING_TOTAL_BUDGET_MS = 5_000;
 
 /** Clamp the warming barrier's advertised `Retry-After` (seconds) into ms. */
 function warmingRetryDelayMs(retryAfterSeconds: number | undefined): number {
@@ -1172,60 +1178,91 @@ export class ElizaClient {
     // setBaseUrl cannot attribute another host's 404 to the new binding.
     const requestBase = this.baseUrl;
     const requestUrl = this.rawRequestUrl(path);
-    const token =
+    let token =
       this.apiToken ?? (await hydrateAndroidLocalAgentTokenForUrl(requestUrl));
-    let res = await this.rawRequestOnce(path, requestUrl, init, options, token);
-    if (res.status === 401) {
-      const hydratedToken = await hydrateAndroidLocalAgentTokenForUrl(
-        requestUrl,
-        { force: true },
-      );
-      const retryToken = hydratedToken ?? (!token ? this.apiToken : null);
-      if (retryToken && retryToken !== token) {
-        res = await this.rawRequestOnce(
-          path,
-          requestUrl,
-          init,
-          options,
-          retryToken,
-        );
+    // One bounded classification loop: EVERY response — first attempt or any
+    // retry — re-enters the same 401/202/warming classifier, so the states
+    // compose in any order (warming → 202, 401 → warming, …). The token is a
+    // mutable local: a mid-flight 401 refresh writes it back so every later
+    // resume/warming re-issue carries the refreshed credential, not the one
+    // captured before the refresh.
+    let authRetried = false;
+    let notifiedWaiting = false;
+    const notifyWaiting = () => {
+      if (!notifiedWaiting) {
+        notifiedWaiting = true;
+        options?.onResuming?.();
       }
-    }
-    // 202 Accepted: a non-running dedicated cloud agent is auto-resuming (#8628).
-    // Wait the advertised Retry-After and re-issue, bounded, so callers see the
-    // eventual response instead of a 202 placeholder. Non-202 responses skip this
-    // loop entirely, so ordinary requests are byte-for-byte unaffected.
+    };
     let resumeRetries = 0;
-    if (res.status === 202) options?.onResuming?.();
-    // Status/readiness poll opts out of the wait-and-retry loop: it wants the
-    // live 202 progress body back immediately so it can render honest progress
-    // (#14040 sub-defect 2). Return the first 202 response untouched.
-    if (res.status === 202 && options?.skipResume) {
-      return res;
-    }
-    while (res.status === 202 && resumeRetries < RESUME_MAX_RETRIES) {
-      if (init?.signal?.aborted) break;
-      await sleepUnlessAborted(resumeRetryDelayMs(res), init?.signal);
-      if (init?.signal?.aborted) break;
-      resumeRetries += 1;
-      res = await this.rawRequestOnce(path, requestUrl, init, options, token);
-    }
-    // Resume budget exhausted while the agent is still 202 (resuming): surface a
-    // distinguishable error instead of returning the empty 202 placeholder as a
-    // success — otherwise the chat/stream path renders an empty reply. allowNonOk
-    // callers and aborted requests still get the raw response.
-    if (res.status === 202 && !options?.allowNonOk && !init?.signal?.aborted) {
-      throw new ApiError({
-        kind: "http",
-        path,
-        status: 202,
-        message: "Agent is still starting up — please try again in a moment.",
-        code: "agent_resuming",
-        retryAfter: resumeRetryDelayMs(res) / 1000,
-      });
-    }
     let warmingRetries = 0;
-    while (!res.ok) {
+    let warmingDeadline: number | null = null;
+    let res = await this.rawRequestOnce(path, requestUrl, init, options, token);
+    while (true) {
+      // 401: one token refresh per logical request, wherever in the retry
+      // sequence it appears (a warming retry can race token expiry).
+      if (res.status === 401 && !authRetried) {
+        authRetried = true;
+        const hydratedToken = await hydrateAndroidLocalAgentTokenForUrl(
+          requestUrl,
+          { force: true },
+        );
+        const retryToken = hydratedToken ?? (!token ? this.apiToken : null);
+        if (retryToken && retryToken !== token) {
+          token = retryToken;
+          res = await this.rawRequestOnce(
+            path,
+            requestUrl,
+            init,
+            options,
+            token,
+          );
+          continue;
+        }
+      }
+      // 202 Accepted: a non-running dedicated cloud agent is auto-resuming
+      // (#8628). Wait the advertised Retry-After and re-issue, bounded, so
+      // callers see the eventual response instead of a 202 placeholder — also
+      // when the 202 arrives only AFTER warming 503s were absorbed.
+      if (res.status === 202) {
+        notifyWaiting();
+        // Status/readiness poll opts out of the wait-and-retry loop: it wants
+        // the live 202 progress body back immediately so it can render honest
+        // progress (#14040 sub-defect 2). Return the 202 response untouched.
+        if (options?.skipResume) return res;
+        if (resumeRetries < RESUME_MAX_RETRIES && !init?.signal?.aborted) {
+          await sleepUnlessAborted(resumeRetryDelayMs(res), init?.signal);
+          if (!init?.signal?.aborted) {
+            resumeRetries += 1;
+            res = await this.rawRequestOnce(
+              path,
+              requestUrl,
+              init,
+              options,
+              token,
+            );
+            continue;
+          }
+        }
+        // Resume budget exhausted while the agent is still 202 (resuming):
+        // surface a distinguishable error instead of returning the empty 202
+        // placeholder as a success — otherwise the chat/stream path renders an
+        // empty reply. allowNonOk callers and aborted requests still get the
+        // raw response.
+        if (!options?.allowNonOk && !init?.signal?.aborted) {
+          throw new ApiError({
+            kind: "http",
+            path,
+            status: 202,
+            message:
+              "Agent is still starting up — please try again in a moment.",
+            code: "agent_resuming",
+            retryAfter: resumeRetryDelayMs(res) / 1000,
+          });
+        }
+        return res;
+      }
+      if (res.ok) return res;
       const rawText = await this.readBodyText(
         res,
         path,
@@ -1268,7 +1305,9 @@ export class ElizaClient {
           : undefined;
       const retryAfter = bodyRetryAfter ?? headerRetryAfter;
       // Named first-turn warming barrier: wait the advertised Retry-After and
-      // re-issue the same request, bounded (see WARMING_* above). `allowNonOk`
+      // re-issue the same request, bounded by BOTH an attempt cap and a total
+      // elapsed deadline (see WARMING_* above) so the absorbed warm-up stays a
+      // ~5s first-turn budget rather than attempts × max-delay. `allowNonOk`
       // probes keep the raw 503 — they render their own progress states.
       if (
         res.status === 503 &&
@@ -1278,20 +1317,31 @@ export class ElizaClient {
         warmingRetries < WARMING_MAX_RETRIES &&
         !init?.signal?.aborted
       ) {
-        warmingRetries += 1;
-        // Surface the wait like the 202 resume path does — the chat maps this
-        // to a `waking` status so the send shows warm-up, not stalled dots.
-        if (warmingRetries === 1) options?.onResuming?.();
-        await sleepUnlessAborted(warmingRetryDelayMs(retryAfter), init?.signal);
-        if (!init?.signal?.aborted) {
-          res = await this.rawRequestOnce(
-            path,
-            requestUrl,
-            init,
-            options,
-            token,
+        const now = Date.now();
+        if (warmingDeadline === null) {
+          warmingDeadline = now + WARMING_TOTAL_BUDGET_MS;
+        }
+        if (now < warmingDeadline) {
+          warmingRetries += 1;
+          // Surface the wait like the 202 resume path does — the chat maps
+          // this to a `waking` status so the send shows warm-up, not stalled
+          // dots.
+          notifyWaiting();
+          const delay = Math.min(
+            warmingRetryDelayMs(retryAfter),
+            warmingDeadline - now,
           );
-          continue;
+          await sleepUnlessAborted(delay, init?.signal);
+          if (!init?.signal?.aborted) {
+            res = await this.rawRequestOnce(
+              path,
+              requestUrl,
+              init,
+              options,
+              token,
+            );
+            continue;
+          }
         }
       }
       const error = new ApiError({
@@ -1323,7 +1373,6 @@ export class ElizaClient {
         headers: res.headers,
       });
     }
-    return res;
   }
 
   /**

@@ -1,6 +1,5 @@
 /**
- * Classify a failed join-flow error as the Cloud's insufficient-credits gate
- * (HTTP 402, canonical body from `insufficientCredits402` server-side) so the
+ * Join-flow interpretation of the Cloud's insufficient-credits gate so the
  * /join surface can render a first-class "add funds" state instead of the raw
  * transport message.
  *
@@ -13,10 +12,12 @@
  * (`welcomeBonusWithheld` + a friendly message); surface it and route the user
  * to billing.
  *
- * Error shapes handled (both walk the `cause` chain):
- *  - `ApiError` from the client fetch path: `status`, `code`, message = body.error.
- *  - The direct-cloud request error: `status` + the parsed JSON body on `data`.
+ * The 402 recognition itself (status/code match, cause-chain walk, fail-closed
+ * default) is the domain-neutral `describeCreditGateError` in `api/`; this
+ * wrapper only adds the join-owned welcome-bonus reading of the body.
  */
+
+import { describeCreditGateError } from "../../../api/credit-gate-error";
 
 export interface JoinCreditGateError {
   /** The server's user-facing explanation (the 402 body's `error`). */
@@ -25,15 +26,6 @@ export interface JoinCreditGateError {
   welcomeBonusWithheld: boolean;
   /** Server-authored reason used for reason-specific explanatory UI. */
   welcomeBonusWithheldReason?: "ip_daily_cap" | "count_unavailable";
-}
-
-const INSUFFICIENT_CREDITS_CODE = "insufficient_credits";
-
-function bodyFrom(error: Error): Record<string, unknown> | null {
-  const data = (error as Error & { data?: unknown }).data;
-  return typeof data === "object" && data !== null && !Array.isArray(data)
-    ? (data as Record<string, unknown>)
-    : null;
 }
 
 /**
@@ -45,32 +37,14 @@ function bodyFrom(error: Error): Record<string, unknown> | null {
 export function describeJoinCreditGateError(
   error: unknown,
 ): JoinCreditGateError | null {
-  let current: unknown = error;
-  for (let depth = 0; depth < 5 && current instanceof Error; depth += 1) {
-    const { status, code } = current as Error & {
-      status?: unknown;
-      code?: unknown;
-    };
-    const body = bodyFrom(current);
-    const bodyCode = body?.code;
-    if (
-      status === 402 &&
-      (code === INSUFFICIENT_CREDITS_CODE ||
-        bodyCode === INSUFFICIENT_CREDITS_CODE)
-    ) {
-      const bodyError =
-        typeof body?.error === "string" ? body.error.trim() : "";
-      const message = bodyError || current.message.trim();
-      const reason = body?.welcomeBonusWithheldReason;
-      return {
-        message,
-        welcomeBonusWithheld: body?.welcomeBonusWithheld === true,
-        ...(reason === "ip_daily_cap" || reason === "count_unavailable"
-          ? { welcomeBonusWithheldReason: reason }
-          : {}),
-      };
-    }
-    current = (current as Error & { cause?: unknown }).cause;
-  }
-  return null;
+  const gate = describeCreditGateError(error);
+  if (!gate) return null;
+  const reason = gate.body?.welcomeBonusWithheldReason;
+  return {
+    message: gate.message,
+    welcomeBonusWithheld: gate.body?.welcomeBonusWithheld === true,
+    ...(reason === "ip_daily_cap" || reason === "count_unavailable"
+      ? { welcomeBonusWithheldReason: reason }
+      : {}),
+  };
 }

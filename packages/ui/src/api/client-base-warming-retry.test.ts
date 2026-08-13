@@ -171,3 +171,206 @@ describe("ElizaClient warming 503 absorption (#18045)", () => {
     expect(request).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("ElizaClient unified response classification loop (#19186 CR)", () => {
+  beforeEach(() => {
+    setBootConfig({ branding: {} });
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("runs the 202 resume contract after an absorbed warming 503 (no placeholder success)", async () => {
+    const request = vi
+      .fn<AgentRequestTransport["request"]>()
+      .mockResolvedValueOnce(warming503("agent_cache_warming"))
+      .mockResolvedValueOnce(
+        jsonResponse(202, { resuming: true }, { "retry-after": "1" }),
+      )
+      .mockResolvedValueOnce(jsonResponse(200, { ok: true }));
+
+    const client = makeClient(request);
+    const pending = client.fetch<{ ok: boolean }>("/api/messages", {
+      method: "POST",
+      body: SEND_BODY,
+    });
+    await vi.runAllTimersAsync();
+    const out = await pending;
+
+    // warming retry → 202 → resume retry → 200; the 202 placeholder body is
+    // never surfaced as the reply.
+    expect(request).toHaveBeenCalledTimes(3);
+    expect(out).toEqual(expect.objectContaining({ ok: true }));
+  });
+
+  it("refreshes the token on a 401 that follows an absorbed warming 503", async () => {
+    const client = new ElizaClient("http://agent.example:2138");
+    const request = vi
+      .fn<AgentRequestTransport["request"]>()
+      .mockResolvedValueOnce(warming503("agent_cache_warming"))
+      .mockImplementationOnce(() => {
+        // The token lands mid-flight (login race): the refresh path must pick
+        // it up and the retry must carry it.
+        client.setToken("fresh-token");
+        return Promise.resolve(
+          jsonResponse(401, { error: "Unauthorized", code: "unauthorized" }),
+        );
+      })
+      .mockResolvedValueOnce(jsonResponse(200, { ok: true }));
+    client.setRequestTransport({ request });
+
+    const pending = client.fetch<{ ok: boolean }>("/api/messages", {
+      method: "POST",
+      body: SEND_BODY,
+    });
+    await vi.runAllTimersAsync();
+    const out = await pending;
+
+    expect(request).toHaveBeenCalledTimes(3);
+    expect(out).toEqual(expect.objectContaining({ ok: true }));
+    const headersOf = (call: number) =>
+      request.mock.calls[call][1]?.headers as Record<string, string>;
+    expect(headersOf(1).Authorization).toBeUndefined();
+    expect(headersOf(2).Authorization).toBe("Bearer fresh-token");
+  });
+
+  it("uses the refreshed token — not the stale one — for warming retries after a 401", async () => {
+    const client = new ElizaClient("http://agent.example:2138");
+    const request = vi
+      .fn<AgentRequestTransport["request"]>()
+      .mockImplementationOnce(() => {
+        client.setToken("fresh-token");
+        return Promise.resolve(
+          jsonResponse(401, { error: "Unauthorized", code: "unauthorized" }),
+        );
+      })
+      .mockResolvedValueOnce(warming503("shared_runtime_cache_warming"))
+      .mockResolvedValueOnce(jsonResponse(200, { ok: true }));
+    client.setRequestTransport({ request });
+
+    const pending = client.fetch<{ ok: boolean }>("/api/messages", {
+      method: "POST",
+      body: SEND_BODY,
+    });
+    await vi.runAllTimersAsync();
+    const out = await pending;
+
+    expect(request).toHaveBeenCalledTimes(3);
+    expect(out).toEqual(expect.objectContaining({ ok: true }));
+    const headersOf = (call: number) =>
+      request.mock.calls[call][1]?.headers as Record<string, string>;
+    // Post-refresh retries (including the warming re-issue) all carry the
+    // refreshed credential.
+    expect(headersOf(1).Authorization).toBe("Bearer fresh-token");
+    expect(headersOf(2).Authorization).toBe("Bearer fresh-token");
+    // The re-issued body is still byte-identical (same clientMessageId).
+    for (const call of request.mock.calls) {
+      expect(call[1]?.body).toBe(SEND_BODY);
+    }
+  });
+
+  it("stops when the caller aborts during the 202 resume wait that follows warming", async () => {
+    const controller = new AbortController();
+    const request = vi
+      .fn<AgentRequestTransport["request"]>()
+      .mockResolvedValueOnce(warming503("agent_cache_warming"))
+      .mockResolvedValue(
+        jsonResponse(202, { resuming: true }, { "retry-after": "5" }),
+      );
+
+    const client = makeClient(request);
+    const pending = client
+      .fetch("/api/messages", {
+        method: "POST",
+        body: SEND_BODY,
+        signal: controller.signal,
+      })
+      .catch(() => undefined);
+    // Let the warming wait elapse so the 202 arrives, then abort during the
+    // resume wait.
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(request).toHaveBeenCalledTimes(2);
+    controller.abort();
+    await vi.runAllTimersAsync();
+    await pending;
+
+    expect(request).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([
+    ["missing", undefined, 1_000],
+    ["integer seconds", "1", 1_000],
+    ["fractional", "0.25", 250],
+    ["negative", "-1", 250],
+    ["malformed", "nope", 1_000],
+    ["empty", "", 250],
+  ] as const)(
+    "clamps a %s Retry-After into the bounded warming wait",
+    async (_label, header, expectedMs) => {
+      const request = vi
+        .fn<AgentRequestTransport["request"]>()
+        .mockResolvedValueOnce(
+          jsonResponse(
+            503,
+            {
+              error: "Cache is warming. Retry shortly.",
+              code: "agent_cache_warming",
+              retryable: true,
+            },
+            header === undefined ? {} : { "retry-after": header },
+          ),
+        )
+        .mockResolvedValueOnce(jsonResponse(200, { ok: true }));
+
+      const client = makeClient(request);
+      const pending = client.fetch<{ ok: boolean }>("/api/messages", {
+        method: "POST",
+        body: SEND_BODY,
+      });
+      await vi.advanceTimersByTimeAsync(expectedMs - 1);
+      expect(request).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(request).toHaveBeenCalledTimes(2);
+      await expect(pending).resolves.toEqual(
+        expect.objectContaining({ ok: true }),
+      );
+    },
+  );
+
+  it("caps TOTAL absorbed wait at the ~5s elapsed budget for an oversized Retry-After", async () => {
+    const request = vi
+      .fn<AgentRequestTransport["request"]>()
+      .mockImplementation(() =>
+        Promise.resolve(
+          jsonResponse(
+            503,
+            {
+              error: "Cache is warming. Retry shortly.",
+              code: "agent_cache_warming",
+              retryable: true,
+            },
+            { "retry-after": "60" },
+          ),
+        ),
+      );
+
+    const client = makeClient(request);
+    const started = Date.now();
+    let caught: unknown;
+    const pending = client
+      .fetch("/api/messages", { method: "POST", body: SEND_BODY })
+      .catch((e) => {
+        caught = e;
+      });
+    await vi.runAllTimersAsync();
+    await pending;
+
+    // One clamped wait consumes the whole elapsed budget: 1 initial attempt +
+    // 1 retry at the deadline — NOT 4 × 5s.
+    expect(request).toHaveBeenCalledTimes(2);
+    expect(Date.now() - started).toBe(5_000);
+    expect((caught as { status?: number }).status).toBe(503);
+    expect((caught as { code?: string }).code).toBe("agent_cache_warming");
+  });
+});

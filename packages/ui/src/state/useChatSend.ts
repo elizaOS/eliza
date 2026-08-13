@@ -26,12 +26,12 @@ import {
   generateChatClientMessageId,
   isStreamGenerationError,
 } from "../api/client-base";
+import { describeCreditGateError } from "../api/credit-gate-error";
 import {
   expandSavedCustomCommand,
   loadSavedCustomCommands,
   normalizeSlashCommandName,
 } from "../chat";
-import { describeJoinCreditGateError } from "../cloud/join/lib/join-credit-gate-error";
 import { dispatchWorkflowActionHandoff } from "../components/pages/workflow-action-handoff";
 import {
   CLOUD_HANDOFF_PHASE_EVENT,
@@ -1780,8 +1780,9 @@ export function useChatSend(deps: UseChatSendDeps) {
         // empty balance. Render the existing out-of-credits turn (banner +
         // "Add credits" CTA) instead of falling through to the generic
         // provider_issue Retry chip below (#18045). The classifier is the
-        // same fail-closed 402 walk the /join surface uses.
-        const creditGate = describeJoinCreditGateError(err);
+        // same fail-closed 402 walk the /join surface layers its
+        // welcome-bonus reading on.
+        const creditGate = describeCreditGateError(err);
         if (creditGate) {
           applyStreamingModificationForConversation(convId, {
             messageId: assistantMsgId,
