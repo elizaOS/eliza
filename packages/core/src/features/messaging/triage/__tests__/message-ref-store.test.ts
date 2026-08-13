@@ -146,6 +146,28 @@ describe("MessageRefStore write-recency eviction", () => {
 		expect(store.getDraft("draft-0")).toBeNull();
 	});
 
+	it.each([
+		{
+			name: "adding an existing tag",
+			mutate: (store: MessageRefStore) => store.addTag("message-0", "keep"),
+		},
+		{
+			name: "removing an absent tag from a nonempty tag list",
+			mutate: (store: MessageRefStore) =>
+				store.removeTag("message-0", "absent"),
+		},
+	])("does not refresh recency when $name", ({ mutate }) => {
+		const store = new MessageRefStore();
+		store.saveMessage(message(0, { tags: ["keep"] }));
+		fillMessagesAfter(store, 1);
+
+		expect(mutate(store)?.tags).toEqual(["keep"]);
+		store.saveMessage(message(MESSAGE_CAPACITY));
+
+		expect(store.getMessage("message-0")).toBeNull();
+		expect(store.getMessage("message-1")).not.toBeNull();
+	});
+
 	it("keeps an overwritten draft and evicts the oldest untouched draft", () => {
 		const store = new MessageRefStore();
 		fillDrafts(store);
