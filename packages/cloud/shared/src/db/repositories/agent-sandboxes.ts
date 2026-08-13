@@ -20,6 +20,7 @@ import {
   isNotNull,
   isNull,
   lt,
+  lte,
   ne,
   notInArray,
   type SQL,
@@ -46,8 +47,9 @@ import {
 } from "../../lib/services/provisioning-job-types";
 import { mergeWarmClaimEnvironmentVars } from "../../lib/services/warm-claim-character-push";
 import { ObjectNamespaces } from "../../lib/storage/object-namespace";
-import { getObjectText, offloadJsonField } from "../../lib/storage/object-store";
+import { deleteObject, getObjectText, offloadJsonField } from "../../lib/storage/object-store";
 import { logger } from "../../lib/utils/logger";
+import type { DbTransaction } from "../client";
 import { decryptAgentBackupStateData, encryptAgentBackupStateData } from "../crypto/agent-backups";
 import { ensureAgentSandboxSchema } from "../ensure-agent-sandbox-schema";
 import { sqlRows } from "../execute-helpers";
@@ -129,6 +131,15 @@ const MAX_RECONSTRUCTED_BACKUP_CHAIN_DEPTH = 100;
  * backup wire payload — it is what gets handed to restore (#17172).
  */
 const MAX_RECONSTRUCTED_BACKUP_CHAIN_BYTES = MAX_RESTORABLE_AGENT_BACKUP_BYTES;
+
+/** Successful agent deletes retain one final recovery point for 30 days. */
+export const PRE_DELETE_BACKUP_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
+export const PRE_DELETE_BACKUP_CLEANUP_BATCH_SIZE = 100;
+
+export interface PreDeleteBackupCleanupResult {
+  deletedRows: number;
+  deletedObjects: number;
+}
 
 /**
  * Correlates a sandbox row with the queue operations that legitimately own its
@@ -1969,6 +1980,128 @@ export class AgentSandboxesRepository {
 
   // Backups
 
+  /**
+   * Detach the exact pre-delete snapshot owned by a successful deletion while
+   * the sandbox row is locked. Every other attached backup remains subject to
+   * the existing parent FK cascade.
+   */
+  async retainPreDeleteBackupForDeletedAgent(
+    tx: DbTransaction,
+    params: {
+      backupId: string;
+      sandboxRecordId: string;
+      organizationId: string;
+      deletionAttemptId: string;
+      expiresAt: Date;
+    },
+  ): Promise<boolean> {
+    const [retained] = await tx
+      .update(agentSandboxBackups)
+      .set({
+        sandbox_record_id: null,
+        recovery_organization_id: params.organizationId,
+        recovery_agent_id: params.sandboxRecordId,
+        recovery_deletion_attempt_id: params.deletionAttemptId,
+        recovery_expires_at: params.expiresAt,
+      })
+      .where(
+        and(
+          eq(agentSandboxBackups.id, params.backupId),
+          eq(agentSandboxBackups.sandbox_record_id, params.sandboxRecordId),
+          eq(agentSandboxBackups.snapshot_type, "pre-delete"),
+          isNull(agentSandboxBackups.recovery_organization_id),
+          isNull(agentSandboxBackups.recovery_agent_id),
+          isNull(agentSandboxBackups.recovery_deletion_attempt_id),
+          isNull(agentSandboxBackups.recovery_expires_at),
+        ),
+      )
+      .returning({ id: agentSandboxBackups.id });
+    return retained !== undefined;
+  }
+
+  /** Return the newest unexpired recovery point visible to this organization. */
+  async getPreDeleteRecoveryBackup(
+    organizationId: string,
+    deletedAgentId: string,
+    now = new Date(),
+  ): Promise<AgentSandboxBackup | undefined> {
+    const [row] = await dbRead
+      .select()
+      .from(agentSandboxBackups)
+      .where(
+        and(
+          isNull(agentSandboxBackups.sandbox_record_id),
+          eq(agentSandboxBackups.snapshot_type, "pre-delete"),
+          eq(agentSandboxBackups.recovery_organization_id, organizationId),
+          eq(agentSandboxBackups.recovery_agent_id, deletedAgentId),
+          gt(agentSandboxBackups.recovery_expires_at, now),
+        ),
+      )
+      .orderBy(desc(agentSandboxBackups.created_at))
+      .limit(1);
+    return row ? await hydrateAgentSandboxBackup(row) : undefined;
+  }
+
+  /**
+   * Delete a bounded batch of expired detached recovery rows. Offloaded bytes
+   * are removed first; a storage failure leaves the row for a later retry.
+   */
+  async cleanupExpiredPreDeleteRecoveryBackups(
+    now = new Date(),
+    limit = PRE_DELETE_BACKUP_CLEANUP_BATCH_SIZE,
+  ): Promise<PreDeleteBackupCleanupResult> {
+    const boundedLimit = Math.max(1, Math.min(limit, PRE_DELETE_BACKUP_CLEANUP_BATCH_SIZE));
+    const candidates = await dbRead
+      .select({
+        id: agentSandboxBackups.id,
+        stateDataStorage: agentSandboxBackups.state_data_storage,
+        stateDataKey: agentSandboxBackups.state_data_key,
+      })
+      .from(agentSandboxBackups)
+      .where(
+        and(
+          isNull(agentSandboxBackups.sandbox_record_id),
+          eq(agentSandboxBackups.snapshot_type, "pre-delete"),
+          isNotNull(agentSandboxBackups.recovery_organization_id),
+          isNotNull(agentSandboxBackups.recovery_agent_id),
+          isNotNull(agentSandboxBackups.recovery_deletion_attempt_id),
+          lte(agentSandboxBackups.recovery_expires_at, now),
+        ),
+      )
+      .orderBy(agentSandboxBackups.recovery_expires_at)
+      .limit(boundedLimit);
+
+    let deletedRows = 0;
+    let deletedObjects = 0;
+    for (const candidate of candidates) {
+      if (candidate.stateDataStorage === "r2") {
+        if (!candidate.stateDataKey) {
+          throw new ElizaError("Expired recovery backup is missing its object-storage key", {
+            code: "AGENT_RECOVERY_BACKUP_OBJECT_KEY_MISSING",
+            context: { backupId: candidate.id },
+            severity: "fatal",
+          });
+        }
+        await deleteObject(candidate.stateDataKey);
+        deletedObjects += 1;
+      }
+
+      const removed = await dbWrite
+        .delete(agentSandboxBackups)
+        .where(
+          and(
+            eq(agentSandboxBackups.id, candidate.id),
+            isNull(agentSandboxBackups.sandbox_record_id),
+            lte(agentSandboxBackups.recovery_expires_at, now),
+          ),
+        )
+        .returning({ id: agentSandboxBackups.id });
+      deletedRows += removed.length;
+    }
+
+    return { deletedRows, deletedObjects };
+  }
+
   async createBackup(data: NewAgentSandboxBackup): Promise<AgentSandboxBackup> {
     const insertData = await prepareAgentBackupInsertData(data);
     const [r] = await dbWrite.insert(agentSandboxBackups).values(insertData).returning();
@@ -2004,6 +2137,10 @@ export class AgentSandboxesRepository {
         verification_status: agentSandboxBackups.verification_status,
         verified_at: agentSandboxBackups.verified_at,
         verification_error: agentSandboxBackups.verification_error,
+        recovery_organization_id: agentSandboxBackups.recovery_organization_id,
+        recovery_agent_id: agentSandboxBackups.recovery_agent_id,
+        recovery_deletion_attempt_id: agentSandboxBackups.recovery_deletion_attempt_id,
+        recovery_expires_at: agentSandboxBackups.recovery_expires_at,
         created_at: agentSandboxBackups.created_at,
       })
       .from(agentSandboxBackups)

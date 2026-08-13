@@ -73,8 +73,9 @@ The backup lands through the existing backup row and heavy-payload storage path:
   ([`src/lib/services/agent-backup-diff.ts`](../src/lib/services/agent-backup-diff.ts)).
   Do NOT add a second backup table or a parallel snapshot store.
 - **Snapshot types:** the real manifest still flows through `snapshot_type`
-  (`auto` | `manual` | `pre-shutdown` | `pre-upgrade`). The `pre-upgrade` type
-  is the restore point `executeDowngrade` replays on rollback (#9964).
+  (`auto` | `manual` | `pre-shutdown` | `pre-upgrade` | `pre-delete`). The
+  `pre-upgrade` type is the restore point `executeDowngrade` replays on rollback
+  (#9964); `pre-delete` is the final recovery point described below.
 - **Restore:** reuse `getReconstructedBackupState()` for chain replay and the
   bridge `/api/restore` push.
 - **Rollback:** `executeUpgrade` refuses to swap without a manifest-bearing
@@ -94,6 +95,32 @@ and daemon rollback job execution.
 Full PR evidence still requires a live staging run: backup -> wipe -> restore,
 plus upgrade -> rollback, with real agent logs, DB/media artifacts,
 screenshots/video, and a live LLM trajectory per `AGENTS.md`.
+
+## Successful deletion recovery retention
+
+A live dedicated agent is snapshotted before teardown. When its deletion
+transaction succeeds, that transaction detaches only the exact `pre-delete`
+row associated with the deletion attempt, then deletes the sandbox. The
+existing `ON DELETE CASCADE` still removes every attached scheduled, manual,
+shutdown, and upgrade backup. Unsupported legacy images that cannot snapshot
+do not fabricate a recovery record.
+
+The detached row keeps explicit `recovery_organization_id`,
+`recovery_agent_id`, and `recovery_deletion_attempt_id` fields because its
+parent sandbox no longer exists. Recovery lookup requires both organization
+and deleted-agent IDs and ignores expired rows, preventing a backup ID or agent
+ID from crossing a tenant boundary. The payload remains encrypted with the
+organization's KMS key and uses the same inline/R2 storage path as every other
+agent backup.
+
+Recovery records expire 30 days after the successful delete commits. The
+provisioning worker removes expired rows in batches of at most 100 during its
+infrastructure-maintenance sweep. For R2/S3-offloaded payloads it deletes the
+object first and only then removes the database row; storage failure leaves the
+row as a retryable cleanup handle. Deleting the organization cascades its
+detached recovery rows immediately, while the object-store lifecycle policy
+remains the final safeguard for any external bytes whose synchronous deletion
+could not complete.
 
 ## Image upgrade ↔ rollback & DB-migration discipline (#9964)
 

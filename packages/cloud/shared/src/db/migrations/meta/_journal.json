@@ -1422,6 +1422,13 @@
       "when": 1787256000000,
       "tag": "0203_shared_scheduled_task_tenant_key",
       "breakpoints": true
+    },
+    {
+      "idx": 203,
+      "version": "7",
+      "when": 1787342400000,
+      "tag": "0204_retain_pre_delete_backup",
+      "breakpoints": true
     }
   ]
 }

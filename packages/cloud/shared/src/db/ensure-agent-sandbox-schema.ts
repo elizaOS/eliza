@@ -197,12 +197,16 @@ async function runEnsureAgentSandboxSchema(): Promise<void> {
   await dbWrite.execute(sql`
     CREATE TABLE IF NOT EXISTS "agent_sandbox_backups" (
       "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-      "sandbox_record_id" uuid NOT NULL REFERENCES "agent_sandboxes"("id") ON DELETE CASCADE,
+      "sandbox_record_id" uuid REFERENCES "agent_sandboxes"("id") ON DELETE CASCADE,
       "snapshot_type" text NOT NULL,
       "state_data" jsonb NOT NULL,
       "state_data_storage" text NOT NULL DEFAULT 'inline',
       "state_data_key" text,
       "size_bytes" bigint,
+      "recovery_organization_id" uuid REFERENCES "organizations"("id") ON DELETE CASCADE,
+      "recovery_agent_id" uuid,
+      "recovery_deletion_attempt_id" uuid,
+      "recovery_expires_at" timestamptz,
       "created_at" timestamptz NOT NULL DEFAULT now()
     )
   `);
@@ -217,7 +221,46 @@ async function runEnsureAgentSandboxSchema(): Promise<void> {
       ADD COLUMN IF NOT EXISTS "content_hash" text,
       ADD COLUMN IF NOT EXISTS "verification_status" text,
       ADD COLUMN IF NOT EXISTS "verified_at" timestamptz,
-      ADD COLUMN IF NOT EXISTS "verification_error" text
+      ADD COLUMN IF NOT EXISTS "verification_error" text,
+      ADD COLUMN IF NOT EXISTS "recovery_organization_id" uuid,
+      ADD COLUMN IF NOT EXISTS "recovery_agent_id" uuid,
+      ADD COLUMN IF NOT EXISTS "recovery_deletion_attempt_id" uuid,
+      ADD COLUMN IF NOT EXISTS "recovery_expires_at" timestamptz,
+      ALTER COLUMN "sandbox_record_id" DROP NOT NULL
+  `);
+
+  await dbWrite.execute(sql`
+    DO $$ BEGIN
+      ALTER TABLE "agent_sandbox_backups"
+        ADD CONSTRAINT "agent_sandbox_backups_recovery_organization_id_fkey"
+        FOREIGN KEY ("recovery_organization_id")
+        REFERENCES "organizations"("id") ON DELETE CASCADE;
+    EXCEPTION
+      WHEN duplicate_object THEN null;
+    END $$
+  `);
+
+  await dbWrite.execute(sql`
+    DO $$ BEGIN
+      ALTER TABLE "agent_sandbox_backups"
+        ADD CONSTRAINT "agent_sandbox_backups_recovery_shape_check"
+        CHECK ((
+          "sandbox_record_id" IS NOT NULL
+          AND "recovery_organization_id" IS NULL
+          AND "recovery_agent_id" IS NULL
+          AND "recovery_deletion_attempt_id" IS NULL
+          AND "recovery_expires_at" IS NULL
+        ) OR (
+          "sandbox_record_id" IS NULL
+          AND "snapshot_type" = 'pre-delete'
+          AND "recovery_organization_id" IS NOT NULL
+          AND "recovery_agent_id" IS NOT NULL
+          AND "recovery_deletion_attempt_id" IS NOT NULL
+          AND "recovery_expires_at" IS NOT NULL
+        ));
+    EXCEPTION
+      WHEN duplicate_object THEN null;
+    END $$
   `);
 
   await dbWrite.execute(sql`
@@ -243,6 +286,26 @@ async function runEnsureAgentSandboxSchema(): Promise<void> {
   await dbWrite.execute(sql`
     CREATE INDEX IF NOT EXISTS "agent_sandbox_backups_sandbox_latest_idx"
       ON "agent_sandbox_backups" ("sandbox_record_id", "created_at" DESC)
+  `);
+
+  await dbWrite.execute(sql`
+    CREATE INDEX IF NOT EXISTS "agent_sandbox_backups_recovery_lookup_idx"
+      ON "agent_sandbox_backups"
+      ("recovery_organization_id", "recovery_agent_id", "created_at" DESC)
+      WHERE "sandbox_record_id" IS NULL
+  `);
+
+  await dbWrite.execute(sql`
+    CREATE INDEX IF NOT EXISTS "agent_sandbox_backups_recovery_expires_idx"
+      ON "agent_sandbox_backups" ("recovery_expires_at")
+      WHERE "sandbox_record_id" IS NULL
+  `);
+
+  await dbWrite.execute(sql`
+    CREATE UNIQUE INDEX IF NOT EXISTS "agent_sandbox_backups_recovery_attempt_uidx"
+      ON "agent_sandbox_backups"
+      ("recovery_organization_id", "recovery_agent_id", "recovery_deletion_attempt_id")
+      WHERE "sandbox_record_id" IS NULL
   `);
 
   await dbWrite.execute(sql`

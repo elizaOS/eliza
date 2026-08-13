@@ -3782,7 +3782,7 @@ describe("ElizaSandboxService.deleteAgent fail-closed pre-deletion capture (#185
     getAgentForWrite: (agentId: string, orgId: string) => Promise<unknown>;
     fetchSnapshotState: (rec: unknown) => Promise<unknown>;
     prepareAgentDelete: (...args: unknown[]) => Promise<unknown>;
-    persistSnapshotWithinTransaction: (...args: unknown[]) => Promise<void>;
+    persistSnapshotWithinTransaction: (...args: unknown[]) => Promise<string>;
     lockLifecycle: (...args: unknown[]) => Promise<void>;
     getAgentForLifecycleMutation: (...args: unknown[]) => Promise<unknown>;
     hasActiveProvisionJobTx: (...args: unknown[]) => Promise<boolean>;
@@ -3862,7 +3862,7 @@ describe("ElizaSandboxService.deleteAgent fail-closed pre-deletion capture (#185
       expect(prepare).toHaveBeenCalledWith(rec.id, rec.organization_id, "user_request", {
         snapshot: null,
         captureUnsupported: true,
-        alreadyPersisted: false,
+        existingBackupId: null,
       });
     } finally {
       getForWrite.mockRestore();
@@ -3886,7 +3886,7 @@ describe("ElizaSandboxService.deleteAgent fail-closed pre-deletion capture (#185
       expect(prepare).toHaveBeenCalledWith(rec.id, rec.organization_id, undefined, {
         snapshot: null,
         captureUnsupported: false,
-        alreadyPersisted: false,
+        existingBackupId: null,
       });
     } finally {
       getForWrite.mockRestore();
@@ -3945,7 +3945,9 @@ describe("ElizaSandboxService.deleteAgent fail-closed pre-deletion capture (#185
       deletion_started_at: new Date("2026-08-13T00:00:00.000Z"),
     };
     const getForWrite = spyOn(spyTarget, "getAgentForWrite").mockResolvedValue(rec);
+    const priorBackupId = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
     const priorBackup = spyOn(agentSandboxesRepository, "getLatestBackupByType").mockResolvedValue({
+      id: priorBackupId,
       created_at: new Date("2026-08-13T00:05:00.000Z"),
     } as never);
     const fetchSnap = spyOn(spyTarget, "fetchSnapshotState");
@@ -3959,7 +3961,7 @@ describe("ElizaSandboxService.deleteAgent fail-closed pre-deletion capture (#185
       expect(prepare).toHaveBeenCalledWith(rec.id, rec.organization_id, "user_request", {
         snapshot: null,
         captureUnsupported: false,
-        alreadyPersisted: true,
+        existingBackupId: priorBackupId,
       });
     } finally {
       getForWrite.mockRestore();
@@ -3991,7 +3993,7 @@ describe("ElizaSandboxService.deleteAgent fail-closed pre-deletion capture (#185
       expect(prepare).toHaveBeenCalledWith(rec.id, rec.organization_id, undefined, {
         snapshot: null,
         captureUnsupported: false,
-        alreadyPersisted: false,
+        existingBackupId: null,
       });
     } finally {
       getForWrite.mockRestore();
@@ -4035,7 +4037,7 @@ describe("ElizaSandboxService.deleteAgent fail-closed pre-deletion capture (#185
       expect(prepare).toHaveBeenCalledWith(rec.id, rec.organization_id, undefined, {
         snapshot,
         captureUnsupported: false,
-        alreadyPersisted: false,
+        existingBackupId: null,
       });
     } finally {
       getForWrite.mockRestore();
@@ -4099,8 +4101,9 @@ describe("ElizaSandboxService.deleteAgent fail-closed pre-deletion capture (#185
     const activeReplacement = spyOn(spyTarget, "hasActiveReplacementJobTx").mockResolvedValue(
       false,
     );
+    const persistedBackupId = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
     const persist = spyOn(spyTarget, "persistSnapshotWithinTransaction").mockResolvedValue(
-      undefined,
+      persistedBackupId,
     );
     const stateData = { tables: { memories: 3 } };
     const update = mock(() => ({
@@ -4128,6 +4131,7 @@ describe("ElizaSandboxService.deleteAgent fail-closed pre-deletion capture (#185
         captureUnsupported: false,
       })) as { ok: boolean };
       expect(result.ok).toBe(true);
+      expect(result).toMatchObject({ preDeleteBackupId: persistedBackupId });
       expect(persist).toHaveBeenCalledTimes(1);
       const call = persist.mock.calls[0] as unknown[];
       expect(call.slice(1)).toEqual([live.id, live.organization_id, "pre-delete", stateData, 34]);
@@ -4177,7 +4181,7 @@ describe("ElizaSandboxService.deleteAgent teardown cap (#9066)", () => {
         }
       | { ok: false; error: string }
     >;
-    commitAgentRowDelete(agentId: string, orgId: string): Promise<unknown>;
+    commitAgentRowDelete(agentId: string, orgId: string, ownership?: unknown): Promise<unknown>;
     commitAgentReconciliationPending(agentId: string, orgId: string): Promise<unknown>;
     runBoundedSandboxStop(sandboxId: string): Promise<unknown>;
   };
@@ -4553,13 +4557,19 @@ describe("ElizaSandboxService.deleteAgent teardown cap (#9066)", () => {
     const svc = await makeSvc();
     const order: string[] = [];
     const sourcePoolId = "44444444-4444-4444-8444-444444444444";
+    const preDeleteBackupId = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
     const prepare = spyOn(svc, "prepareAgentDelete").mockImplementation(async () => {
       order.push("prepare");
       return {
         ok: true,
         sandboxId: SANDBOX_ID,
+        nodeId: null,
         status: "running",
         sourcePoolId,
+        environmentRevision: 4,
+        lifecycleRevision: 9,
+        deletionAttemptId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        preDeleteBackupId,
       };
     });
     const stop = spyOn(svc, "runBoundedSandboxStop").mockImplementation(async () => {
@@ -4591,6 +4601,11 @@ describe("ElizaSandboxService.deleteAgent teardown cap (#9066)", () => {
         `revoke:${sourcePoolId}`,
         "commit",
       ]);
+      expect(commit).toHaveBeenCalledWith(
+        AGENT,
+        ORG,
+        expect.objectContaining({ preDeleteBackupId }),
+      );
     } finally {
       prepare.mockRestore();
       stop.mockRestore();

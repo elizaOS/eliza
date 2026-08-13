@@ -40,6 +40,7 @@ import {
   pgTable,
   text,
   timestamp,
+  uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
 import { organizations } from "./organizations";
@@ -527,9 +528,9 @@ export const agentSandboxBackups = pgTable(
   "agent_sandbox_backups",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    sandbox_record_id: uuid("sandbox_record_id")
-      .notNull()
-      .references(() => agentSandboxes.id, { onDelete: "cascade" }),
+    sandbox_record_id: uuid("sandbox_record_id").references(() => agentSandboxes.id, {
+      onDelete: "cascade",
+    }),
     snapshot_type: text("snapshot_type").$type<AgentBackupSnapshotType>().notNull(),
     /**
      * For `full` backups, `state_data` is the complete state. For
@@ -559,6 +560,18 @@ export const agentSandboxBackups = pgTable(
     verification_status: text("verification_status").$type<AgentBackupVerificationStatus>(),
     verified_at: timestamp("verified_at", { withTimezone: true }),
     verification_error: text("verification_error"),
+    /**
+     * Recovery metadata is populated only when a successful agent deletion
+     * detaches its final `pre-delete` backup from the cascading sandbox FK.
+     * Tenant ownership remains explicit after the parent row is gone, and the
+     * expiry is the privacy boundary enforced by the provisioning worker.
+     */
+    recovery_organization_id: uuid("recovery_organization_id").references(() => organizations.id, {
+      onDelete: "cascade",
+    }),
+    recovery_agent_id: uuid("recovery_agent_id"),
+    recovery_deletion_attempt_id: uuid("recovery_deletion_attempt_id"),
+    recovery_expires_at: timestamp("recovery_expires_at", { withTimezone: true }),
     created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
@@ -573,6 +586,36 @@ export const agentSandboxBackups = pgTable(
       table.created_at.desc(),
     ),
     parent_backup_idx: index("agent_sandbox_backups_parent_idx").on(table.parent_backup_id),
+    recovery_shape_check: check(
+      "agent_sandbox_backups_recovery_shape_check",
+      sql`(
+        ${table.sandbox_record_id} IS NOT NULL
+        AND ${table.recovery_organization_id} IS NULL
+        AND ${table.recovery_agent_id} IS NULL
+        AND ${table.recovery_deletion_attempt_id} IS NULL
+        AND ${table.recovery_expires_at} IS NULL
+      ) OR (
+        ${table.sandbox_record_id} IS NULL
+        AND ${table.snapshot_type} = 'pre-delete'
+        AND ${table.recovery_organization_id} IS NOT NULL
+        AND ${table.recovery_agent_id} IS NOT NULL
+        AND ${table.recovery_deletion_attempt_id} IS NOT NULL
+        AND ${table.recovery_expires_at} IS NOT NULL
+      )`,
+    ),
+    recovery_lookup_idx: index("agent_sandbox_backups_recovery_lookup_idx")
+      .on(table.recovery_organization_id, table.recovery_agent_id, table.created_at.desc())
+      .where(sql`${table.sandbox_record_id} IS NULL`),
+    recovery_expires_idx: index("agent_sandbox_backups_recovery_expires_idx")
+      .on(table.recovery_expires_at)
+      .where(sql`${table.sandbox_record_id} IS NULL`),
+    recovery_attempt_uidx: uniqueIndex("agent_sandbox_backups_recovery_attempt_uidx")
+      .on(
+        table.recovery_organization_id,
+        table.recovery_agent_id,
+        table.recovery_deletion_attempt_id,
+      )
+      .where(sql`${table.sandbox_record_id} IS NULL`),
   }),
 );
 
@@ -597,7 +640,8 @@ export type AgentSandboxBackup = Omit<StoredAgentSandboxBackup, "state_data"> & 
 };
 export type NewAgentSandboxBackup = Omit<
   InferInsertModel<typeof agentSandboxBackups>,
-  "state_data"
+  "sandbox_record_id" | "state_data"
 > & {
+  sandbox_record_id: string;
   state_data: AgentBackupStoredStateData;
 };
