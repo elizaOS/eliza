@@ -52,9 +52,10 @@ token must be scoped to the selected project/environment. The signing secret
 must be the same environment-owned value published to the Cloud Worker by
 `cloud-cf-deploy.yml`.
 
-The workflow mints a replacement reusable `tag:eliza-proxy` Headscale preauth
-key over SSH, sends both sensitive Railway values through CLI stdin, creates or
-verifies the `/var/lib/tunnel-proxy` volume, uploads this directory, and
+The workflow creates or verifies the `/var/lib/tunnel-proxy` volume and waits
+for Railway's eventually consistent service attachment before it mints a
+replacement reusable `tag:eliza-proxy` Headscale preauth key over SSH. It sends
+both sensitive Railway values through CLI stdin, uploads this directory, and
 converges the exact apex and wildcard Railway custom domains. It expires prior
 matching reusable keys only after the canonical `/health` endpoint returns
 `{"status":"pass"}` and an arbitrary unsigned wildcard hostname returns 404.

@@ -411,6 +411,22 @@ command -v headscale >/dev/null 2>&1 || {
   exit 1
 }
 
+if ! getent group headscale >/dev/null; then
+  sudo groupadd --system headscale
+fi
+if ! id -u headscale >/dev/null 2>&1; then
+  sudo useradd \\
+    --system \\
+    --gid headscale \\
+    --home-dir ${HEADSCALE_STATE_DIR} \\
+    --no-create-home \\
+    --shell /usr/sbin/nologin \\
+    headscale
+elif ! id -nG headscale | grep -Eq '(^|[[:space:]])headscale([[:space:]]|$)'; then
+  echo "existing headscale user is not a member of the headscale group"
+  exit 1
+fi
+
 sudo install -d -m 0755 /etc/headscale
 sudo install -d -o headscale -g headscale -m 0750 ${HEADSCALE_STATE_DIR}
 
