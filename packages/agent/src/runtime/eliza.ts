@@ -181,11 +181,7 @@ import {
 import { buildDefaultElizaCloudServiceRouting } from "@elizaos/shared/contracts/service-routing";
 import { resolveDefaultVaultDataDir } from "@elizaos/vault";
 import { registerDesktopScreenCaptureBridgeService } from "./desktop-screen-capture-bridge-service.ts";
-import {
-  type AgentHostBridge,
-  getAgentHostBridge,
-  hasDurableHostVault,
-} from "./host-bridge.ts";
+import { type AgentHostBridge, getAgentHostBridge } from "./host-bridge.ts";
 
 // Host capabilities (wallet-key hydration, vault bootstrap/access, account
 // pool, build variant) are INJECTED downward by the app-core host via
@@ -4882,19 +4878,14 @@ export async function startEliza(
 
   // Durable storage for connector OAuth credential refs. Connector plugins
   // resolve `connector_credential_store` for BOTH the write at OAuth-callback
-  // time and the read after restart; without this service their token writes
-  // fall through to the in-memory SECRETS global store and die with the
-  // process (the dangling vaultRef then fails every post-restart credential
-  // read). Registered only when the host vault is real — wrapping the no-op
-  // default vault would swallow writes instead.
+  // time and the read after restart; before this service existed their token
+  // writes fell through to the in-memory SECRETS global store and died with
+  // the process (the dangling vaultRef then failed every post-restart
+  // credential read — #18080). Registered unconditionally: the service uses
+  // the host vault when a durable bridge is installed and opens its own
+  // state-dir PGlite vault on hostless/standalone/Cloud boots.
   const registerConnectorCredentialStoreService = async (): Promise<void> => {
     try {
-      if (!hasDurableHostVault()) {
-        logger.debug(
-          "[eliza] ConnectorCredentialStoreService skipped: no durable host vault",
-        );
-        return;
-      }
       const { ConnectorCredentialStoreService } = await import(
         "../services/connector-credential-store.ts"
       );
@@ -4916,7 +4907,6 @@ export async function startEliza(
   // surface a failure loudly — a missing store is exactly the silent-token-
   // loss condition this service exists to prevent.
   const ensureConnectorCredentialStoreStarted = async (): Promise<void> => {
-    if (!hasDurableHostVault()) return;
     try {
       await runtime.getServiceLoadPromise("connector_credential_store");
     } catch (err) {
