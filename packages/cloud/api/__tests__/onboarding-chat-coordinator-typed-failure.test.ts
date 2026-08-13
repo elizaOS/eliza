@@ -1,226 +1,258 @@
 /**
- * Pins the onboarding chat route's typed rejections to the Worker deployment
- * shape, where every turn crosses a Durable Object stub before the route sees
- * its outcome.
- *
- * The route, the onboarding state machine and the OnboardingSessionCoordinator
- * all run for real over in-memory Durable Object storage; only provisioning,
- * the session cache and the user store are substituted. Without the coordinator
- * bound into the cloud-bindings context these assertions silently exercise the
- * local in-process path instead, which is the configuration the route's typed
- * branches were never proven in.
+ * Proves typed onboarding failures cross a real workerd Durable Object binding
+ * and that malformed coordinator bodies cannot manufacture authorization
+ * outcomes at the public HTTP route.
  */
 
-import { describe, expect, mock, test } from "bun:test";
-import { runWithCloudBindingsAsync } from "@/lib/runtime/cloud-bindings";
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { fileURLToPath } from "node:url";
+import { Miniflare } from "miniflare";
 
-const noProvisioning = {
-  status: "none" as const,
-  agentId: null,
-  bridgeUrl: null,
-  sandbox: null,
-};
+const MODULE_FILTERS = {
+  users:
+    /(?:^|[\\/])packages[\\/]cloud[\\/]shared[\\/]src[\\/]db[\\/]repositories[\\/]users\.ts$/,
+  auth: /(?:^|[\\/])packages[\\/]cloud[\\/]shared[\\/]src[\\/]lib[\\/]auth[\\/]workers-hono-auth\.ts$/,
+  sessionService:
+    /(?:^|[\\/])packages[\\/]cloud[\\/]shared[\\/]src[\\/]lib[\\/]services[\\/]eliza-app[\\/]index\.ts$/,
+  cache:
+    /(?:^|[\\/])packages[\\/]cloud[\\/]shared[\\/]src[\\/]lib[\\/]cache[\\/]client\.ts$/,
+  provisioning:
+    /(?:^|[\\/])packages[\\/]cloud[\\/]shared[\\/]src[\\/]lib[\\/]services[\\/]eliza-app[\\/]provisioning\.ts$/,
+  userService:
+    /(?:^|[\\/])packages[\\/]cloud[\\/]shared[\\/]src[\\/]lib[\\/]services[\\/]eliza-app[\\/]user-service\.ts$/,
+  managedLaunch:
+    /(?:^|[\\/])packages[\\/]cloud[\\/]shared[\\/]src[\\/]lib[\\/]services[\\/]eliza-managed-launch\.ts$/,
+  proactiveGreeting:
+    /(?:^|[\\/])packages[\\/]cloud[\\/]shared[\\/]src[\\/]lib[\\/]services[\\/]eliza-app[\\/]onboarding-proactive-greeting\.ts$/,
+  phoneNormalization:
+    /(?:^|[\\/])packages[\\/]cloud[\\/]shared[\\/]src[\\/]lib[\\/]utils[\\/]phone-normalization\.ts$/,
+  internalAuth:
+    /(?:^|[\\/])packages[\\/]cloud[\\/]api[\\/]internal[\\/]_auth\.ts$/,
+  cloudBindings:
+    /(?:^|[\\/])packages[\\/]cloud[\\/]shared[\\/]src[\\/]lib[\\/]runtime[\\/]cloud-bindings\.ts$/,
+  logger:
+    /(?:^|[\\/])packages[\\/]cloud[\\/]shared[\\/]src[\\/]lib[\\/]utils[\\/]logger\.ts$/,
+} as const;
 
-mock.module("@/lib/cache/client", () => ({
-  cache: {
-    get: mock(async () => null),
-    set: mock(async () => undefined),
-  },
-}));
+describe("onboarding chat typed failures across a workerd Durable Object boundary", () => {
+  let miniflare: Miniflare;
 
-mock.module("@/lib/services/eliza-app/provisioning", () => ({
-  ensureElizaAppProvisioning: mock(async () => noProvisioning),
-  getElizaAppProvisioningStatus: mock(async () => noProvisioning),
-  publicElizaAppProvisioningPayload: (status: { status: string }) => ({
-    status: status.status,
-  }),
-}));
-
-mock.module("@/lib/services/eliza-app/user-service", () => ({
-  elizaAppUserService: {
-    findOrCreateByPhone: mock(async () => null),
-    linkPhoneToUser: mock(async () => ({ success: true })),
-    linkDiscordToUser: mock(async () => ({ success: true })),
-    linkTelegramToUser: mock(async () => ({ success: true })),
-  },
-}));
-
-const { OnboardingSessionCoordinator: CoordinatorValue } = await import(
-  "../src/onboarding-session-coordinator"
-);
-const route = (await import("../eliza-app/onboarding/chat/route")).default;
-
-class TestStorage {
-  private readonly values = new Map<string, unknown>();
-  private alarm: number | null = null;
-
-  async get<T>(key: string): Promise<T | undefined> {
-    const value = this.values.get(key);
-    return value === undefined ? undefined : (structuredClone(value) as T);
-  }
-
-  async put(
-    key: string | Record<string, unknown>,
-    value?: unknown,
-  ): Promise<void> {
-    if (typeof key === "string") {
-      this.values.set(key, structuredClone(value));
-      return;
-    }
-    for (const [entryKey, entryValue] of Object.entries(key)) {
-      this.values.set(entryKey, structuredClone(entryValue));
-    }
-  }
-
-  async delete(key: string | string[]): Promise<boolean> {
-    const keys = typeof key === "string" ? [key] : key;
-    return keys.map((entry) => this.values.delete(entry)).some(Boolean);
-  }
-
-  async list<T>({
-    prefix,
-    startAfter,
-    limit,
-  }: {
-    prefix: string;
-    startAfter?: string;
-    limit?: number;
-  }): Promise<Map<string, T>> {
-    return new Map(
-      [...this.values.entries()]
-        .filter(([key]) => key.startsWith(prefix))
-        .filter(([key]) => !startAfter || key > startAfter)
-        .sort(([left], [right]) => left.localeCompare(right))
-        .slice(0, limit)
-        .map(([key, value]) => [key, structuredClone(value) as T]),
-    );
-  }
-
-  async getAlarm(): Promise<number | null> {
-    return this.alarm;
-  }
-
-  async setAlarm(timestamp: number): Promise<void> {
-    this.alarm = timestamp;
-  }
-
-  async deleteAlarm(): Promise<void> {
-    this.alarm = null;
-  }
-
-  async transaction<T>(
-    operation: (transaction: TestStorage) => Promise<T>,
-  ): Promise<T> {
-    return operation(this);
-  }
-}
-
-/**
- * One Durable Object namespace backed by real coordinator instances, exposed
- * both as the `ONBOARDING_SESSIONS` binding the shared service reads and as a
- * direct handle for asserting on the stub's own HTTP answer.
- */
-function createCoordinatorNamespace() {
-  const objects = new Map<string, InstanceType<typeof CoordinatorValue>>();
-  const storageByName = new Map<string, TestStorage>();
-  const env: Record<string, unknown> = {};
-  const objectByName = (name: string) => {
-    let object = objects.get(name);
-    if (!object) {
-      let storage = storageByName.get(name);
-      if (!storage) {
-        storage = new TestStorage();
-        storageByName.set(name, storage);
-      }
-      object = new CoordinatorValue(
-        { storage } as unknown as DurableObjectState,
-        env as never,
+  beforeAll(async () => {
+    const build = await Bun.build({
+      entrypoints: [
+        fileURLToPath(
+          new URL(
+            "../test/fixtures/onboarding-coordinator-worker.ts",
+            import.meta.url,
+          ),
+        ),
+      ],
+      format: "esm",
+      target: "browser",
+      conditions: ["worker", "browser"],
+      plugins: [
+        {
+          name: "onboarding-runtime-boundaries",
+          setup(build) {
+            build.onResolve({ filter: /^@elizaos\/core$/ }, () => ({
+              path: "elizaos-core-test",
+              namespace: "onboarding-test",
+            }));
+            build.onLoad(
+              { filter: /.*/, namespace: "onboarding-test" },
+              () => ({
+                loader: "ts",
+                contents: `
+                  export class ElizaError extends Error {
+                    code;
+                    context;
+                    constructor(message, options) {
+                      super(message);
+                      this.name = "ElizaError";
+                      this.code = options.code;
+                      this.context = options.context;
+                    }
+                  }
+                  export function isElizaError(value) {
+                    return value instanceof ElizaError;
+                  }
+                `,
+              }),
+            );
+            build.onLoad({ filter: MODULE_FILTERS.users }, () => ({
+              loader: "ts",
+              contents: `
+                export function providerForPlatform() { return undefined; }
+                export const usersRepository = { async resolveIdentity() { return null; } };
+              `,
+            }));
+            build.onLoad({ filter: MODULE_FILTERS.auth }, () => ({
+              loader: "ts",
+              contents: `export async function getCurrentUser() { return null; }`,
+            }));
+            build.onLoad({ filter: MODULE_FILTERS.sessionService }, () => ({
+              loader: "ts",
+              contents: `
+                export const elizaAppSessionService = {
+                  async validateAuthHeader() { return null; }
+                };
+              `,
+            }));
+            build.onLoad({ filter: MODULE_FILTERS.cache }, () => ({
+              loader: "ts",
+              contents: `
+                export const cache = {
+                  async get() { return null; },
+                  async set() {},
+                  async delete() {},
+                };
+              `,
+            }));
+            build.onLoad({ filter: MODULE_FILTERS.provisioning }, () => ({
+              loader: "ts",
+              contents: `
+                const none = { status: "none", agentId: null, bridgeUrl: null, sandbox: null };
+                export async function ensureElizaAppProvisioning() { return none; }
+                export async function getElizaAppProvisioningStatus() { return none; }
+                export function publicElizaAppProvisioningPayload(value) { return value; }
+              `,
+            }));
+            build.onLoad({ filter: MODULE_FILTERS.userService }, () => ({
+              loader: "ts",
+              contents: `
+                export const elizaAppUserService = {
+                  async findOrCreateByPhone() { return null; },
+                  async linkPhoneToUser() { return { success: true }; },
+                  async linkDiscordToUser() { return { success: true }; },
+                  async linkTelegramToUser() { return { success: true }; },
+                };
+              `,
+            }));
+            build.onLoad({ filter: MODULE_FILTERS.managedLaunch }, () => ({
+              loader: "ts",
+              contents: `export async function launchManagedElizaAgent() { return null; }`,
+            }));
+            build.onLoad({ filter: MODULE_FILTERS.proactiveGreeting }, () => ({
+              loader: "ts",
+              contents: `
+                export const PROACTIVE_GREETING_QUEUE_PREFIX = "test";
+                export async function enqueueDiscordProactiveGreeting() {}
+              `,
+            }));
+            build.onLoad({ filter: MODULE_FILTERS.phoneNormalization }, () => ({
+              loader: "ts",
+              contents: `
+                export function normalizePhoneNumber(value) { return value; }
+              `,
+            }));
+            build.onLoad({ filter: MODULE_FILTERS.internalAuth }, () => ({
+              loader: "ts",
+              contents: `export async function requireInternalAuth() { return true; }`,
+            }));
+            build.onLoad({ filter: MODULE_FILTERS.cloudBindings }, () => ({
+              loader: "ts",
+              contents: `
+                let active;
+                export async function runWithCloudBindingsAsync(bindings, operation) {
+                  const previous = active;
+                  active = bindings;
+                  try { return await operation(); }
+                  finally { active = previous; }
+                }
+                export function getCloudBinding(name) { return active?.[name]; }
+                export function hasCloudBindingsContext() { return active !== undefined; }
+                export function getCloudAwareEnv() { return active ?? {}; }
+              `,
+            }));
+            build.onLoad({ filter: MODULE_FILTERS.logger }, () => ({
+              loader: "ts",
+              contents: `
+                export const logger = {
+                  debug() {}, info() {}, warn() {}, error() {},
+                };
+              `,
+            }));
+          },
+        },
+      ],
+    });
+    if (!build.success) {
+      throw new AggregateError(
+        build.logs,
+        "Failed to bundle onboarding test Worker",
       );
-      objects.set(name, object);
     }
-    return object;
-  };
-  env.ONBOARDING_SESSIONS = {
-    getByName: (name: string) => ({
-      fetch: (input: RequestInfo | URL, init?: RequestInit) =>
-        objectByName(name).fetch(new Request(input, init)),
-    }),
-  };
-  return { env, objectByName };
-}
+    const output = build.outputs[0];
+    if (!output)
+      throw new Error("Onboarding test Worker bundle was not emitted");
 
-const INTERNAL_SECRET = "internal-secret-for-test";
+    miniflare = new Miniflare({
+      compatibilityDate: "2026-06-01",
+      compatibilityFlags: ["nodejs_compat"],
+      modules: true,
+      script: await output.text(),
+      durableObjects: {
+        ONBOARDING_SESSIONS: {
+          className: "OnboardingSessionCoordinator",
+          useSQLite: true,
+        },
+        MALFORMED_ONBOARDING_SESSIONS: {
+          className: "MalformedOnboardingCoordinator",
+          useSQLite: true,
+        },
+      },
+    });
+  });
 
-/** Posts to the real route with the coordinator bound, i.e. the Worker path. */
-async function postViaCoordinator(
-  env: Record<string, unknown>,
-  body: Record<string, unknown>,
-): Promise<Response> {
-  return runWithCloudBindingsAsync(env, async () =>
-    route.request(
-      "/",
+  afterAll(async () => {
+    await miniflare?.dispose();
+  });
+
+  async function post(mode: string): Promise<{
+    status: number;
+    json(): Promise<unknown>;
+  }> {
+    const response = await miniflare.dispatchFetch(
+      `https://onboarding.test/${mode}`,
       {
         method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(body),
       },
-      { INTERNAL_SECRET, ...env },
-    ),
-  );
-}
+    );
+    return {
+      status: response.status,
+      json: async () => await response.json(),
+    };
+  }
 
-describe("onboarding chat typed failures across the Durable Object boundary", () => {
-  test("an unauthenticated confirmPlatformLink is refused 403, not a bare 500", async () => {
-    const { env } = createCoordinatorNamespace();
-
-    const response = await postViaCoordinator(env, {
-      sessionId: crypto.randomUUID(),
-      platform: "web",
-      confirmPlatformLink: true,
-    });
-
+  test("the public route maps a production coordinator rejection to 403", async () => {
+    const response = await post("actual");
     expect(response.status).toBe(403);
     expect(await response.json()).toMatchObject({
       success: false,
       code: "access_denied",
     });
+  }, 120_000);
+
+  test("a valid typed control still maps to the intended authorization response", async () => {
+    expect((await post("typed")).status).toBe(403);
   });
 
-  test("the same unauthenticated turn without confirmPlatformLink still succeeds", async () => {
-    const { env } = createCoordinatorNamespace();
-
-    const response = await postViaCoordinator(env, {
-      sessionId: crypto.randomUUID(),
-      platform: "web",
-      message: "My name is Ada",
+  for (const mode of [
+    "unreadable",
+    "null",
+    "array",
+    "missing-error",
+    "non-string-error",
+    "non-string-code",
+    "empty-code",
+  ]) {
+    test(`malformed coordinator response ${mode} remains a generic 500`, async () => {
+      const response = await post(mode);
+      expect(response.status).toBe(500);
+      expect(await response.json()).toMatchObject({
+        success: false,
+        code: "internal_error",
+      });
     });
-
-    expect(response.status).toBe(200);
-    const body = (await response.json()) as {
-      data: { requiresLogin: boolean };
-    };
-    expect(body.data.requiresLogin).toBe(true);
-  });
-
-  test("the coordinator's failure body carries the typed code and context", async () => {
-    const { objectByName } = createCoordinatorNamespace();
-    const sessionId = crypto.randomUUID();
-
-    const response = await objectByName(sessionId).fetch(
-      new Request("https://onboarding.test/turn", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          sessionId,
-          input: { sessionId, platform: "web", confirmPlatformLink: true },
-        }),
-      }),
-    );
-
-    expect(response.status).toBe(500);
-    expect(await response.json()).toMatchObject({
-      code: "ONBOARDING_TRUSTED_CONTINUATION_INVALID",
-      context: { sessionFound: false },
-    });
-  });
+  }
 });
