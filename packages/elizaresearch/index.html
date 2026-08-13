@@ -273,7 +273,7 @@
     octx.drawImage(img, 0, 0, ow, oh);
     const data = octx.getImageData(0, 0, ow, oh).data;
     const pts = [];
-    const stride = Math.max(6, Math.round(scale / 44));
+    const stride = Math.max(5, Math.round(scale / 54));
     const solid = (x, y) => {
       if (x < 0 || y < 0 || x >= ow || y >= oh) return false;
       return data[((y | 0) * ow + (x | 0)) * 4 + 3] > 128;
@@ -295,7 +295,7 @@
     // sparse interior mesh
     for (let y = 0; y < oh; y += stride) {
       for (let x = 0; x < ow; x += stride) {
-        if (solid(x, y) && !isEdge(x, y) && Math.random() < 0.3) push(x, y);
+        if (solid(x, y) && !isEdge(x, y) && Math.random() < 0.36) push(x, y);
       }
     }
     linkD2 = Math.pow(stride * 2.1, 2);
