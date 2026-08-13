@@ -1,253 +1,343 @@
 /**
- * Durable staged inbound delivery claims for the WhatsApp connector.
+ * Owns durable WhatsApp inbound delivery leases in the runtime document store.
  *
- * Meta redelivers a webhook when it does not see a 200 quickly enough, and a
- * single webhook batch can repeat a message id. The deterministic UUID
- * derived from `(accountId, externalMessageId)` keys a claim row in the
- * runtime's memory store. The claim transitions through a staged lifecycle —
- * `processing → processed / failed` with `abandoned` for crashed hosts — so a
- * second host or a process restart converges instead of duplicating side
- * effects (ensureConnection, room creation, model turn, auto-reply).
- *
- * Generation fencing: each claim carries a monotonic generation counter
- * (wall-clock claimedAt). A stale `processing` claim (host died mid-turn) is
- * fenced to a new generation only after the staleness threshold elapses.
- * Completion and failure transitions check the expected generation before
- * writing, so a zombie host that wakes up after its successor has taken over
- * cannot overwrite the successor's terminal state.
- *
- * Best-effort note: the runtime memory API does not expose conditional
- * (CAS) updates, so the read-then-write in `fenceStaleClaim` and
- * `transitionClaim` has a narrow TOCTOU window. The in-process Set guard in
- * `WhatsAppConnectorService` closes the common concurrent-redelivery path;
- * the durable claim closes restart and multi-host paths. SQL adapters apply
- * `ON CONFLICT DO NOTHING` on `createMemory(unique=true)`, so two hosts
- * racing to insert the same claim id results in exactly one persisted row —
- * the loser reads back the winner's generation and yields.
+ * A deterministic claim document is distinct from the inbound message row. New
+ * claims use the memory store's unique insert; reclaim and terminal transitions
+ * use the adapter's document compare-and-swap contract, whose SQL implementation
+ * locks the row and checks its revision in the same transaction. A random lease
+ * token fences every owner without relying on wall-clock uniqueness.
  */
 
-import { hostname } from "node:os";
-import type { IAgentRuntime, Memory, MemoryMetadata, UUID } from "@elizaos/core";
+import { randomUUID } from "node:crypto";
+import {
+  ChannelType,
+  createUniqueUuid,
+  ElizaError,
+  type IAgentRuntime,
+  type Memory,
+  type MemoryMetadata,
+  MemoryType,
+  type UUID,
+} from "@elizaos/core";
 
-/** Staged lifecycle of a durable inbound claim. */
 export type InboundClaimStage = "processing" | "processed" | "failed" | "abandoned";
 
-/** Metadata persisted alongside the claim memory row. */
 export interface InboundClaimState {
   stage: InboundClaimStage;
-  /** Monotonic ownership epoch — wall-clock ms at claim time. */
-  generation: number;
-  /** `hostname:pid` of the host that owns this generation. */
-  hostId: string;
+  /** Collision-resistant ownership token checked together with revision. */
+  generation: UUID;
+  /** Document CAS revision owned by this generation. */
+  revision: number;
   accountId: string;
   externalMessageId: string;
   claimedAt: number;
   updatedAt: number;
-  /** Present when `stage === "failed"`. */
   error?: string;
 }
 
-/** Memory table used for durable claim rows. */
-export const WHATSAPP_INBOUND_CLAIM_TABLE = "whatsapp_inbound_claims";
-
-/**
- * Elapsed time after which a `processing` claim is considered stale (host
- * crashed or was OOM-killed mid-turn). Meta webhooks are expected to complete
- * within 30 s; 5 min gives generous headroom for model latency.
- */
+export const WHATSAPP_INBOUND_CLAIM_TABLE = "documents";
 const STALE_PROCESSING_MS = 5 * 60 * 1000;
+const CLAIM_SOURCE = "whatsapp-inbound-claim";
+const namespacePromises = new WeakMap<IAgentRuntime, Promise<void>>();
 
-const CLAIM_METADATA_TYPE = "whatsapp_inbound_claim";
-
-function currentHostId(): string {
-  return `${hostname()}:${process.pid}`;
+function claimWorldId(runtime: IAgentRuntime): UUID {
+  return createUniqueUuid(runtime, "whatsapp:inbound-claims:world") as UUID;
 }
 
-/**
- * Extracts the claim state from a memory row's metadata, or `null` if the
- * row is not a claim (e.g. it is the inbound message itself).
- */
+function claimRoomId(runtime: IAgentRuntime): UUID {
+  return createUniqueUuid(runtime, "whatsapp:inbound-claims:room") as UUID;
+}
+
+async function ensureClaimNamespace(runtime: IAgentRuntime): Promise<void> {
+  const existing = namespacePromises.get(runtime);
+  if (existing) return existing;
+
+  const setup = (async () => {
+    const worldId = claimWorldId(runtime);
+    try {
+      await runtime.ensureWorldExists({
+        id: worldId,
+        name: "WhatsApp inbound claims",
+        agentId: runtime.agentId,
+      });
+    } catch (error) {
+      // error-policy:J1 A cross-host duplicate-key race is translated into
+      // success only after the durable adapter confirms the expected world.
+      const [persisted] = await runtime.adapter.getWorldsByIds([worldId]);
+      if (!persisted) throw error;
+    }
+
+    const roomId = claimRoomId(runtime);
+    try {
+      await runtime.ensureRoomExists({
+        id: roomId,
+        name: "WhatsApp inbound claims",
+        source: CLAIM_SOURCE,
+        type: ChannelType.API,
+        channelId: `whatsapp-inbound-claims-${runtime.agentId}`,
+        worldId,
+      });
+    } catch (error) {
+      // error-policy:J1 Apply the same verified duplicate-key translation to
+      // the shared claim room; all other persistence failures still escape.
+      const [persisted] = await runtime.adapter.getRoomsByIds([roomId]);
+      if (!persisted || persisted.worldId !== worldId) throw error;
+    }
+  })();
+  namespacePromises.set(runtime, setup);
+  return setup;
+}
+
+export function createInboundClaimId(
+  runtime: IAgentRuntime,
+  accountId: string,
+  externalMessageId: string
+): UUID {
+  return createUniqueUuid(
+    runtime,
+    `whatsapp:inbound-claim:${accountId}:${externalMessageId}`
+  ) as UUID;
+}
+
 function parseClaim(memory: Memory | null): InboundClaimState | null {
-  if (!memory?.metadata) return null;
-  const raw = (memory.metadata as Record<string, unknown>)?.whatsappClaim;
+  if (memory?.metadata?.type !== MemoryType.DOCUMENT) return null;
+  const raw = (memory.metadata as Record<string, unknown>).whatsappClaim;
   if (!raw || typeof raw !== "object") return null;
-  return raw as InboundClaimState;
+  const state = raw as Partial<InboundClaimState>;
+  if (
+    !["processing", "processed", "failed", "abandoned"].includes(String(state.stage)) ||
+    typeof state.generation !== "string" ||
+    !Number.isSafeInteger(state.revision) ||
+    typeof state.accountId !== "string" ||
+    typeof state.externalMessageId !== "string" ||
+    typeof state.claimedAt !== "number" ||
+    typeof state.updatedAt !== "number"
+  ) {
+    return null;
+  }
+  return state as InboundClaimState;
 }
 
 function buildClaimMetadata(state: InboundClaimState): MemoryMetadata {
   return {
-    type: CLAIM_METADATA_TYPE,
+    type: MemoryType.DOCUMENT,
+    scope: "agent-private",
+    source: CLAIM_SOURCE,
+    timestamp: state.claimedAt,
+    documentRevision: state.revision,
     whatsappClaim: state,
   } as unknown as MemoryMetadata;
 }
 
-function buildClaimMemory(claimId: UUID, state: InboundClaimState, runtime: IAgentRuntime): Memory {
+function buildClaimMemory(
+  claimId: UUID,
+  state: InboundClaimState,
+  runtime: IAgentRuntime,
+  createdAt = state.claimedAt
+): Memory {
   return {
     id: claimId,
     entityId: runtime.agentId,
     agentId: runtime.agentId,
-    roomId: claimId,
-    content: { text: "" },
+    roomId: claimRoomId(runtime),
+    worldId: claimWorldId(runtime),
+    content: { text: "WhatsApp inbound delivery claim" },
     metadata: buildClaimMetadata(state),
-    createdAt: state.claimedAt,
+    createdAt,
+    unique: true,
   };
 }
 
-/**
- * Determines whether a `processing` claim is stale enough to fence.
- */
+function requester(runtime: IAgentRuntime) {
+  return {
+    agentId: runtime.agentId,
+    requesterEntityId: runtime.agentId,
+    requesterRoomIds: [claimRoomId(runtime)],
+    requesterRole: "RUNTIME" as const,
+  };
+}
+
+async function readClaimDocument(runtime: IAgentRuntime, claimId: UUID): Promise<Memory | null> {
+  return runtime.adapter.getDocument({
+    ...requester(runtime),
+    documentId: claimId,
+  });
+}
+
+function assertClaimStorage(runtime: IAgentRuntime): void {
+  const adapter = runtime.adapter;
+  if (
+    adapter?.documentListQueryCapability !== 2 ||
+    typeof adapter.getDocument !== "function" ||
+    typeof adapter.compareAndSwapDocument !== "function" ||
+    typeof runtime.createMemory !== "function"
+  ) {
+    throw new ElizaError("WhatsApp idempotency storage is unavailable", {
+      code: "WHATSAPP_IDEMPOTENCY_STORAGE_UNAVAILABLE",
+      context: { agentId: runtime.agentId },
+    });
+  }
+}
+
 export function isStaleProcessing(state: InboundClaimState, now = Date.now()): boolean {
   return state.stage === "processing" && now - state.updatedAt > STALE_PROCESSING_MS;
 }
 
-/**
- * Result of attempting to acquire a durable claim.
- */
 export interface ClaimResult {
-  /** `true` when this host owns the claim and may proceed with side effects. */
   won: boolean;
-  /** The current persisted state (null if no store was available). */
   state: InboundClaimState | null;
 }
 
-/**
- * Attempts to atomically acquire (or re-acquire after crash) a durable
- * inbound claim. Returns `{ won: true }` when this host should process the
- * message; `{ won: false }` when another host or a prior delivery already
- * completed or is actively processing it.
- *
- * Flow:
- * 1. Read the existing claim (if any).
- * 2. If `processed` — skip (already done).
- * 3. If `processing` and not stale — skip (another host is handling it).
- * 4. If `processing` and stale, or `failed`/`abandoned` — fence/re-claim.
- * 5. If no claim exists — insert a new `processing` claim (ON CONFLICT DO
- *    NOTHING in SQL), then read back to confirm ownership.
- */
+function freshProcessingState(
+  accountId: string,
+  externalMessageId: string,
+  revision: number,
+  now: number
+): InboundClaimState {
+  return {
+    stage: "processing",
+    generation: randomUUID() as UUID,
+    revision,
+    accountId,
+    externalMessageId,
+    claimedAt: now,
+    updatedAt: now,
+  };
+}
+
 export async function tryClaim(
   runtime: IAgentRuntime,
   claimId: UUID,
   accountId: string,
   externalMessageId: string
 ): Promise<ClaimResult> {
-  const hostId = currentHostId();
+  assertClaimStorage(runtime);
+  await ensureClaimNamespace(runtime);
   const now = Date.now();
-  const generation = now;
+  let document = await readClaimDocument(runtime, claimId);
 
-  if (typeof runtime.getMemoryById !== "function") {
-    return { won: true, state: null };
-  }
-
-  const existing = await runtime.getMemoryById(claimId);
-  const existingClaim = parseClaim(existing);
-
-  if (!existingClaim) {
-    // Fresh claim — insert as processing. SQL ON CONFLICT DO NOTHING
-    // means a concurrent inserter's row persists; we detect loss by
-    // reading back and comparing hostId + generation.
-    const state: InboundClaimState = {
-      stage: "processing",
-      generation,
-      hostId,
-      accountId,
-      externalMessageId,
-      claimedAt: now,
-      updatedAt: now,
+  if (!document) {
+    const proposed = freshProcessingState(accountId, externalMessageId, 0, now);
+    await runtime.createMemory(
+      buildClaimMemory(claimId, proposed, runtime),
+      WHATSAPP_INBOUND_CLAIM_TABLE,
+      true
+    );
+    document = await readClaimDocument(runtime, claimId);
+    const persisted = parseClaim(document);
+    if (!persisted) {
+      throw new ElizaError("WhatsApp claim insert produced no readable claim", {
+        code: "WHATSAPP_INBOUND_CLAIM_INVALID",
+        context: { accountId, externalMessageId, claimId },
+      });
+    }
+    return {
+      won: persisted.generation === proposed.generation,
+      state: persisted,
     };
-    if (typeof runtime.createMemory === "function") {
-      await runtime.createMemory(
-        buildClaimMemory(claimId, state, runtime),
-        WHATSAPP_INBOUND_CLAIM_TABLE,
-        true
-      );
-    }
-    const after = await runtime.getMemoryById(claimId);
-    const afterClaim = parseClaim(after);
-    if (afterClaim && afterClaim.hostId === hostId && afterClaim.generation === generation) {
-      return { won: true, state: afterClaim };
-    }
-    return { won: false, state: afterClaim };
   }
 
-  // Existing claim present — check stage
-  if (existingClaim.stage === "processed") {
-    return { won: false, state: existingClaim };
+  const existing = parseClaim(document);
+  if (!existing) {
+    throw new ElizaError("WhatsApp claim row has invalid metadata", {
+      code: "WHATSAPP_INBOUND_CLAIM_INVALID",
+      context: { accountId, externalMessageId, claimId },
+    });
+  }
+  if (existing.stage === "processed") return { won: false, state: existing };
+  if (existing.stage === "processing" && !isStaleProcessing(existing, now)) {
+    return { won: false, state: existing };
   }
 
-  if (existingClaim.stage === "processing" && !isStaleProcessing(existingClaim, now)) {
-    return { won: false, state: existingClaim };
-  }
-
-  // Reclaimable: stale processing, failed, or abandoned.
-  // Fence the stale owner (if any) and take ownership.
-  const newState: InboundClaimState = {
-    ...existingClaim,
-    stage: "processing",
-    generation,
-    hostId,
-    updatedAt: now,
-    error: undefined,
-  };
-  await runtime.updateMemory({
-    id: claimId,
-    metadata: buildClaimMetadata(newState),
+  const replacement = freshProcessingState(
+    accountId,
+    externalMessageId,
+    existing.revision + 1,
+    now
+  );
+  const result = await runtime.adapter.compareAndSwapDocument({
+    ...requester(runtime),
+    documentId: claimId,
+    expected: {
+      scope: "agent-private",
+      roomId: claimRoomId(runtime),
+      entityId: runtime.agentId,
+      revision: existing.revision,
+    },
+    replacement: buildClaimMemory(claimId, replacement, runtime, document.createdAt),
   });
+  if (result.status === "updated") return { won: true, state: replacement };
 
-  return { won: true, state: newState };
+  const current = parseClaim(await readClaimDocument(runtime, claimId));
+  return { won: false, state: current };
 }
 
-/**
- * Transitions a claim to `processed`. Checks the expected generation first;
- * if a successor has fenced this claim, the transition is a no-op (the
- * successor's terminal state must not be overwritten by a zombie).
- */
+async function transitionClaim(
+  runtime: IAgentRuntime,
+  claimId: UUID,
+  expected: InboundClaimState,
+  stage: "processed" | "failed" | "abandoned",
+  error?: string
+): Promise<void> {
+  assertClaimStorage(runtime);
+  const document = await readClaimDocument(runtime, claimId);
+  const current = parseClaim(document);
+  if (
+    !document ||
+    !current ||
+    current.generation !== expected.generation ||
+    current.revision !== expected.revision
+  ) {
+    throw new ElizaError("WhatsApp inbound claim ownership was lost", {
+      code: "WHATSAPP_INBOUND_CLAIM_CONFLICT",
+      context: { claimId, expectedGeneration: expected.generation, stage },
+    });
+  }
+
+  const next: InboundClaimState = {
+    ...expected,
+    stage,
+    revision: expected.revision + 1,
+    updatedAt: Date.now(),
+    ...(error ? { error } : { error: undefined }),
+  };
+  const result = await runtime.adapter.compareAndSwapDocument({
+    ...requester(runtime),
+    documentId: claimId,
+    expected: {
+      scope: "agent-private",
+      roomId: claimRoomId(runtime),
+      entityId: runtime.agentId,
+      revision: expected.revision,
+    },
+    replacement: buildClaimMemory(claimId, next, runtime, document.createdAt),
+  });
+  if (result.status !== "updated") {
+    throw new ElizaError("WhatsApp inbound claim transition lost its CAS", {
+      code: "WHATSAPP_INBOUND_CLAIM_CONFLICT",
+      context: {
+        claimId,
+        expectedGeneration: expected.generation,
+        stage,
+        status: result.status,
+      },
+    });
+  }
+}
+
 export async function completeClaim(
   runtime: IAgentRuntime,
   claimId: UUID,
   expected: InboundClaimState
 ): Promise<void> {
-  if (typeof runtime.getMemoryById !== "function") return;
-  const current = await runtime.getMemoryById(claimId);
-  const currentClaim = parseClaim(current);
-  if (currentClaim && currentClaim.generation !== expected.generation) {
-    // We were fenced — do not overwrite the successor's state.
-    return;
-  }
-  const now = Date.now();
-  await runtime.updateMemory({
-    id: claimId,
-    metadata: buildClaimMetadata({
-      ...expected,
-      stage: "processed",
-      updatedAt: now,
-    }),
-  });
+  await transitionClaim(runtime, claimId, expected, "processed");
 }
 
-/**
- * Transitions a claim to `failed`. Same generation guard as
- * `completeClaim`.
- */
 export async function failClaim(
   runtime: IAgentRuntime,
   claimId: UUID,
   expected: InboundClaimState,
   error: string
 ): Promise<void> {
-  if (typeof runtime.getMemoryById !== "function") return;
-  const current = await runtime.getMemoryById(claimId);
-  const currentClaim = parseClaim(current);
-  if (currentClaim && currentClaim.generation !== expected.generation) {
-    return;
-  }
-  const now = Date.now();
-  await runtime.updateMemory({
-    id: claimId,
-    metadata: buildClaimMetadata({
-      ...expected,
-      stage: "failed",
-      updatedAt: now,
-      error,
-    }),
-  });
+  await transitionClaim(runtime, claimId, expected, "failed", error);
 }

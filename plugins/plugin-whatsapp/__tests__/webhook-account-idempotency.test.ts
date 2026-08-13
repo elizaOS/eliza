@@ -1,21 +1,26 @@
 /**
  * Verifies WhatsApp Cloud API webhook account routing, durable inbound
- * delivery idempotency with generation fencing and restart convergence, and
+ * delivery idempotency with CAS fencing and restart convergence, and
  * account-slice acceptance paths (named-account credential inheritance,
  * duplicate normalized account ids, account-bound send/status/recovery).
  *
- * The harness uses a shared in-memory store backing multiple service
- * instances to prove multi-host exclusion and restart convergence without
- * network access. The store implements getMemoryById, createMemory, and
- * updateMemory with the same semantics as the runtime adapter (ON CONFLICT
- * DO NOTHING on createMemory with unique=true).
+ * The deterministic harness models the adapter's unique insert and atomic
+ * document compare-and-swap contract. A separate PGLite suite exercises the
+ * production adapter and schema without mocks.
  */
-import type { IAgentRuntime, Memory, MemoryMetadata, UUID } from "@elizaos/core";
+import {
+	type IAgentRuntime,
+	type Memory,
+	type MemoryMetadata,
+	type UUID,
+} from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { WhatsAppConnectorService } from "../src/runtime-service";
 import {
+	createInboundClaimId,
 	isStaleProcessing,
 	type InboundClaimState,
+	tryClaim,
 } from "../src/inbound-claim";
 
 // ── Shared in-memory store ────────────────────────────────────────────
@@ -55,6 +60,26 @@ class SharedMemoryStore {
 		if (!entry) return false;
 		entry.memory = { ...entry.memory, ...memory } as Memory;
 		return true;
+	}
+
+	async compareAndSwapDocument(params: {
+		documentId: UUID;
+		expected: { revision: number; roomId: UUID; entityId: UUID; scope: string };
+		replacement: Memory;
+	}): Promise<{ status: "updated" | "conflict" | "not_found" }> {
+		const entry = this.entries.get(String(params.documentId));
+		if (!entry) return { status: "not_found" };
+		const metadata = entry.memory.metadata as Record<string, unknown> | undefined;
+		if (
+			metadata?.documentRevision !== params.expected.revision ||
+			metadata.scope !== params.expected.scope ||
+			entry.memory.roomId !== params.expected.roomId ||
+			entry.memory.entityId !== params.expected.entityId
+		) {
+			return { status: "conflict" };
+		}
+		entry.memory = { ...params.replacement };
+		return { status: "updated" };
 	}
 
 	/** Snapshot for assertions. */
@@ -103,7 +128,18 @@ function makeRuntimeWithStore(
 			async (memory: Partial<Memory> & { id: UUID; metadata?: MemoryMetadata }) =>
 				store.updateMemory(memory),
 		),
+		adapter: {
+			documentListQueryCapability: 2,
+			getDocument: vi.fn(async ({ documentId }: { documentId: UUID }) =>
+				store.getMemoryById(documentId),
+			),
+			compareAndSwapDocument: vi.fn(
+				async (params: Parameters<SharedMemoryStore["compareAndSwapDocument"]>[0]) =>
+					store.compareAndSwapDocument(params),
+			),
+		},
 		ensureConnection: vi.fn(async () => undefined),
+		ensureWorldExists: vi.fn(async () => undefined),
 		ensureRoomExists: vi.fn(async () => undefined),
 		messageService: { handleMessage: vi.fn(async () => undefined) },
 		logger: {
@@ -112,6 +148,7 @@ function makeRuntimeWithStore(
 			info: vi.fn(),
 			debug: vi.fn(),
 		},
+		reportError: vi.fn(),
 	} as never as IAgentRuntime;
 
 	return runtime;
@@ -375,36 +412,85 @@ describe("WhatsApp inbound delivery idempotency — durable staged claims", () =
 		expect(inflightSize(service)).toBe(0);
 	});
 
+	it("fails closed when durable idempotency storage is unavailable", async () => {
+		const store = new SharedMemoryStore();
+		const runtime = makeRuntimeWithStore(store);
+		Object.assign(runtime, { adapter: undefined });
+		const service = configuredService(runtime);
+
+		await expect(service.handleWebhook(webhook("phone-default"))).rejects.toMatchObject({
+			code: "WHATSAPP_IDEMPOTENCY_STORAGE_UNAVAILABLE",
+		});
+		expect(runtime.ensureConnection).not.toHaveBeenCalled();
+		expect(inflightSize(service)).toBe(0);
+	});
+
+	it("propagates terminal claim transition failures", async () => {
+		const store = new SharedMemoryStore();
+		const runtime = makeRuntimeWithStore(store);
+		const service = configuredService(runtime);
+		(
+			runtime.adapter.compareAndSwapDocument as ReturnType<typeof vi.fn>
+		).mockRejectedValueOnce(new Error("claim transition write failed"));
+
+		await expect(service.handleWebhook(webhook("phone-default"))).rejects.toThrow(
+			"claim transition write failed",
+		);
+		expect(inflightSize(service)).toBe(0);
+	});
+
+	it("reports a failed-state transition without hiding the processing cause", async () => {
+		const store = new SharedMemoryStore();
+		const runtime = makeRuntimeWithStore(store);
+		const service = configuredService(runtime);
+		(runtime.ensureConnection as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
+			new Error("original processing failure"),
+		);
+		(
+			runtime.adapter.compareAndSwapDocument as ReturnType<typeof vi.fn>
+		).mockRejectedValueOnce(new Error("failed-state CAS failure"));
+
+		await expect(service.handleWebhook(webhook("phone-default"))).rejects.toMatchObject({
+			code: "WHATSAPP_INBOUND_CLAIM_TRANSITION_FAILED",
+			cause: expect.objectContaining({ message: "original processing failure" }),
+		});
+		expect(runtime.reportError).toHaveBeenCalledWith(
+			"plugin:whatsapp:inbound-claim",
+			expect.objectContaining({ message: "failed-state CAS failure" }),
+			expect.objectContaining({ externalMessageId: "wamid.1" }),
+		);
+		expect(inflightSize(service)).toBe(0);
+	});
+
 	it("reclaims a stale processing claim after the staleness threshold", async () => {
 		const store = new SharedMemoryStore();
+		const runtime = makeRuntimeWithStore(store);
+		const claimId = createInboundClaimId(runtime, "default", "wamid.stale");
+		const initial = await tryClaim(runtime, claimId, "default", "wamid.stale");
+		if (!initial.state) throw new Error("Initial deterministic claim has no state");
 
-		// Simulate a crashed host: insert a processing claim with an old
-		// updatedAt timestamp directly into the store.
+		// Simulate a crashed host by aging the actual claim document while
+		// retaining its production namespace and revision metadata.
 		const staleState: InboundClaimState = {
-			stage: "processing",
-			generation: Date.now() - 10 * 60 * 1000,
-			hostId: "dead-host:9999",
-			accountId: "default",
-			externalMessageId: "wamid.stale",
+			...initial.state,
 			claimedAt: Date.now() - 10 * 60 * 1000,
 			updatedAt: Date.now() - 10 * 60 * 1000,
 		};
-		const claimMemory: Memory = {
-			id: "stale-claim-id" as UUID,
-			entityId: "agent-1" as UUID,
-			agentId: "agent-1" as UUID,
-			roomId: "stale-claim-id" as UUID,
-			content: { text: "" },
-			metadata: { type: "whatsapp_inbound_claim", whatsappClaim: staleState } as unknown as MemoryMetadata,
-			createdAt: Date.now() - 10 * 60 * 1000,
-		};
-		await store.createMemory(claimMemory, "whatsapp_inbound_claims", true);
+		const claimMemory = await store.getMemoryById(claimId);
+		if (!claimMemory) throw new Error("Initial deterministic claim was not stored");
+		await store.updateMemory({
+			id: claimId,
+			metadata: {
+				...claimMemory.metadata,
+				whatsappClaim: staleState,
+			} as unknown as MemoryMetadata,
+		});
+		(runtime.createMemory as ReturnType<typeof vi.fn>).mockClear();
 
 		// isStaleProcessing should return true for this old claim
 		expect(isStaleProcessing(staleState)).toBe(true);
 
 		// A new service instance should be able to reclaim and process it
-		const runtime = makeRuntimeWithStore(store);
 		const service = configuredService(runtime);
 		await service.handleWebhook(webhook("phone-default", "wamid.stale"));
 
@@ -499,18 +585,30 @@ describe("WhatsApp account-slice acceptance paths", () => {
 			},
 		});
 
-		// This should either deduplicate or reject — currently the code uses
-		// a Map so only one survives. Verify no crash and exactly one account.
+		const service = new WhatsAppConnectorService(runtime);
+		await expect(service.initialize()).rejects.toThrow(
+			'WhatsApp account IDs "Alpha" and "alpha" both normalize to "alpha"',
+		);
+	});
+
+	it("does not inherit base provider identity when a named account omits it", async () => {
+		const store = new SharedMemoryStore();
+		const runtime = makeRuntimeWithStore(store, {
+			whatsapp: {
+				accessToken: "base-token",
+				phoneNumberId: "base-phone",
+				dmPolicy: "open",
+				accounts: { named: { accessToken: "named-token", dmPolicy: "open" } },
+			},
+		});
+
 		const service = new WhatsAppConnectorService(runtime);
 		await service.initialize();
-
 		const configs = (
-			service as unknown as { configs: Map<string, unknown> }
+			service as unknown as { configs: Map<string, { phoneNumberId: string }> }
 		).configs;
-
-		// Both normalize to "alpha", so only one config exists in the Map.
-		expect(configs.has("alpha")).toBe(true);
-		expect(configs.size).toBeLessThanOrEqual(1);
+		expect(configs.has("default")).toBe(true);
+		expect(configs.has("named")).toBe(false);
 	});
 
 	it("account-bound webhook delivery resolves the correct account", async () => {

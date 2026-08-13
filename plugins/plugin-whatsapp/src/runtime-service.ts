@@ -20,6 +20,7 @@ import {
   ChannelType,
   type Content,
   createUniqueUuid,
+  ElizaError,
   type IAgentRuntime,
   lifeOpsPassiveConnectorsEnabled,
   type Media,
@@ -29,18 +30,24 @@ import {
   type UUID,
 } from "@elizaos/core";
 import {
+  assertUniqueWhatsAppAccountIds,
   checkWhatsAppUserAccess,
   DEFAULT_ACCOUNT_ID,
-  getMultiAccountConfig,
   listWhatsAppAccountIds,
   normalizeAccountId as normalizeWhatsAppAccountId,
   resolveDefaultWhatsAppAccountId,
   resolveWhatsAppAccount,
-  type WhatsAppAccountRuntimeConfig,
+  resolveWhatsAppAccountConfig,
 } from "./accounts";
 import { WhatsAppClient } from "./client";
 import { BaileysClient } from "./clients/baileys-client";
-import { completeClaim, failClaim, type InboundClaimState, tryClaim } from "./inbound-claim";
+import {
+  completeClaim,
+  createInboundClaimId,
+  failClaim,
+  type InboundClaimState,
+  tryClaim,
+} from "./inbound-claim";
 import {
   buildWhatsAppUserJid,
   chunkWhatsAppText,
@@ -162,33 +169,13 @@ function resolveRuntimeConfig(runtime: IAgentRuntime): RuntimeServiceConfig | nu
   return null;
 }
 
-function configuredAccountForId(
-  config: ReturnType<typeof getMultiAccountConfig>,
-  accountId: string
-): WhatsAppAccountRuntimeConfig {
-  const normalized = normalizeWhatsAppAccountId(accountId);
-  const accountConfig =
-    config.accounts?.[accountId] ??
-    Object.entries(config.accounts ?? {}).find(
-      ([key]) => normalizeWhatsAppAccountId(key) === normalized
-    )?.[1] ??
-    {};
-  return {
-    ...config,
-    accounts: undefined,
-    groups: undefined,
-    ...accountConfig,
-  } as WhatsAppAccountRuntimeConfig;
-}
-
 function resolveRuntimeConfigs(runtime: IAgentRuntime): RuntimeServiceConfig[] {
-  const multiConfig = getMultiAccountConfig(runtime);
   const accountIds = listWhatsAppAccountIds(runtime);
   const configs: RuntimeServiceConfig[] = [];
 
   for (const accountId of accountIds) {
     const normalizedAccountId = normalizeWhatsAppAccountId(accountId);
-    const accountConfig = configuredAccountForId(multiConfig, normalizedAccountId);
+    const accountConfig = resolveWhatsAppAccountConfig(runtime, normalizedAccountId);
     const authDir = accountConfig.authDir?.trim();
     const transport = accountConfig.transport ?? (authDir ? "baileys" : "cloudapi");
 
@@ -910,6 +897,7 @@ export class WhatsAppConnectorService extends Service {
   }
 
   async initialize(): Promise<void> {
+    assertUniqueWhatsAppAccountIds(this.runtime);
     this.defaultAccountId = resolveDefaultWhatsAppAccountId(this.runtime);
     const configs = resolveRuntimeConfigs(this.runtime);
     if (configs.length === 0) {
@@ -1234,14 +1222,15 @@ export class WhatsAppConnectorService extends Service {
     this.inflightInboundMessageIds.add(dedupeKey);
     let claim: InboundClaimState | null = null;
     let claimHandled = false;
+    const inboundMemoryId = toMemoryId(this.runtime, chatKey, params.externalMessageId);
+    const claimId = createInboundClaimId(this.runtime, accountId, params.externalMessageId);
     try {
       // Durable staged claim: atomically acquire a processing claim in the
       // memory store. Returns won=false if another host or prior delivery
       // already completed or is actively processing this message.
-      const inboundMemoryId = toMemoryId(this.runtime, chatKey, params.externalMessageId);
       const claimResult = await tryClaim(
         this.runtime,
-        inboundMemoryId,
+        claimId,
         accountId,
         params.externalMessageId
       );
@@ -1258,7 +1247,28 @@ export class WhatsAppConnectorService extends Service {
         );
         return;
       }
+      if (!claimResult.state) {
+        throw new ElizaError("WhatsApp claim acquisition returned no ownership state", {
+          code: "WHATSAPP_INBOUND_CLAIM_INVALID",
+          context: { accountId, externalMessageId: params.externalMessageId, claimId },
+        });
+      }
       claim = claimResult.state;
+
+      // A previous host may have persisted the real inbound message and died
+      // before committing its claim. Converge on that durable side effect
+      // before creating connections, rooms, replies, or another model turn.
+      const existingInbound = await this.runtime.getMemoryById(inboundMemoryId);
+      const existingMetadata = existingInbound?.metadata as Record<string, unknown> | undefined;
+      if (
+        existingInbound &&
+        existingMetadata?.type === "message" &&
+        existingMetadata.source === "whatsapp"
+      ) {
+        await completeClaim(this.runtime, claimId, claimResult.state);
+        claimHandled = true;
+        return;
+      }
 
       const accountConfig = {
         dmPolicy: config?.dmPolicy,
@@ -1473,24 +1483,48 @@ export class WhatsAppConnectorService extends Service {
       // restart or second host can retry. Generation fencing prevents a
       // zombie from overwriting a successor's state.
       claimHandled = true;
-      const claimId = toMemoryId(this.runtime, chatKey, params.externalMessageId);
       if (claim) {
-        await failClaim(
-          this.runtime,
-          claimId,
-          claim,
-          err instanceof Error ? err.message : String(err)
-        ).catch(() => {});
+        try {
+          await failClaim(
+            this.runtime,
+            claimId,
+            claim,
+            err instanceof Error ? err.message : String(err)
+          );
+        } catch (transitionError) {
+          // error-policy:J2 Report the ownership failure and preserve the
+          // original processing error as the cause returned to the boundary.
+          this.runtime.reportError("plugin:whatsapp:inbound-claim", transitionError, {
+            accountId,
+            externalMessageId: params.externalMessageId,
+            claimId,
+          });
+          throw new ElizaError("WhatsApp inbound processing and claim transition failed", {
+            code: "WHATSAPP_INBOUND_CLAIM_TRANSITION_FAILED",
+            context: {
+              accountId,
+              externalMessageId: params.externalMessageId,
+              claimId,
+              transitionError:
+                transitionError instanceof Error
+                  ? transitionError.message
+                  : String(transitionError),
+            },
+            cause: err,
+          });
+        }
       }
       throw err;
     } finally {
       // On the success path, transition the claim to processed. The error
       // path is handled by the catch block above (claimHandled flag).
-      if (!claimHandled && claim) {
-        const claimId = toMemoryId(this.runtime, chatKey, params.externalMessageId);
-        await completeClaim(this.runtime, claimId, claim).catch(() => {});
+      try {
+        if (!claimHandled && claim) {
+          await completeClaim(this.runtime, claimId, claim);
+        }
+      } finally {
+        this.inflightInboundMessageIds.delete(dedupeKey);
       }
-      this.inflightInboundMessageIds.delete(dedupeKey);
     }
   }
 
