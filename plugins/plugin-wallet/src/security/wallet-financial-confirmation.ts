@@ -74,9 +74,14 @@ export function walletFinancialRangeKey(
 }
 
 export function requiresWalletFinancialConfirmation(
-  params: Pick<WalletFinancialWriteParams, "subaction" | "dryRun">,
+  params: Pick<WalletFinancialWriteParams, "subaction" | "dryRun" | "mode">,
 ): boolean {
   if (params.dryRun) {
+    return false;
+  }
+  // simulate mode never signs or broadcasts, so it cannot move funds and
+  // must not require user confirmation the way a real submit does.
+  if (params.mode === "simulate") {
     return false;
   }
   return ON_CHAIN_SUBACTIONS.has(params.subaction);

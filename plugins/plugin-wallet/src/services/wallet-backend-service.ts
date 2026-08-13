@@ -151,6 +151,27 @@ export class WalletBackendService extends Service {
       return required;
     }
 
+    if (params.mode === "simulate") {
+      // Simulate mode builds the real transaction (live quote/build) and runs
+      // a non-broadcasting RPC simulation against an unsigned transaction,
+      // so it must reach the handler. It never signs or sends and is
+      // therefore exempt from the financial-confirmation gate upstream.
+      try {
+        const result = await handler.execute(params, this.createContext());
+        return {
+          ok: true,
+          handler: this.toMetadata(handler),
+          result,
+        };
+      } catch (error) {
+        return {
+          ok: false,
+          error: "EXECUTION_FAILED",
+          detail: error instanceof Error ? error.message : String(error),
+        };
+      }
+    }
+
     if (params.dryRun || params.mode === "prepare") {
       if (
         params.dryRun &&

@@ -45,6 +45,7 @@ import type {
   WalletRouterSubaction,
 } from "../types/wallet-router.js";
 import {
+  WALLET_ROUTER_MODES,
   isWalletRouterSubaction,
   parseWalletRouterParams,
 } from "../types/wallet-router.js";
@@ -324,6 +325,15 @@ function resultText(result: WalletRouterResult): string {
     return formatFailure(result);
   }
   const execution = result.result;
+  if (execution.status === "simulated") {
+    const sim = execution.simulation;
+    const okText = sim?.ok ? "succeeded" : "would revert";
+    const units =
+      sim?.unitsConsumed !== undefined
+        ? `, ${sim.unitsConsumed} compute units`
+        : "";
+    return `Simulated ${execution.subaction} on ${result.handler.chain}: ${okText}${units}.`;
+  }
   if (execution.status === "prepared") {
     const dryRunText = execution.dryRun ? "Dry run prepared" : "Prepared";
     return `${dryRunText} ${execution.subaction} on ${result.handler.chain}.`;
@@ -451,9 +461,16 @@ async function runWalletRouter(
     return walletFinancialGateActionResult(confirmationGate);
   }
 
+  // simulate mode must reach the handler unchanged (it builds + simulates
+  // without signing), so only escalate the legacy default/prepare to execute
+  // when the action was confirmed.
+  const gateRequiresConfirmation = requiresWalletFinancialConfirmation(params);
   const executionParams: WalletRouterParams = {
     ...params,
-    mode: requiresWalletFinancialConfirmation(params) ? "execute" : params.mode,
+    mode:
+      gateRequiresConfirmation && params.mode !== "simulate"
+        ? "execute"
+        : params.mode,
   };
 
   const routed = await service.routeWalletAction(executionParams);
@@ -486,6 +503,7 @@ async function runWalletRouter(
       ? {
           walletActionSucceeded: routed.result.status === "submitted",
           walletActionPrepared: routed.result.status === "prepared",
+          walletActionSimulated: routed.result.status === "simulated",
           walletChain: routed.handler.chain,
           walletSubaction: routed.result
             .subaction satisfies WalletRouterSubaction,
@@ -596,14 +614,14 @@ export const walletRouterAction: Action = {
     {
       name: "mode",
       description:
-        "Prepare without submitting, or request execution. On-chain submission still requires the user to reply yes on a follow-up turn (LLM cannot authorize via mode or confirmed flags).",
+        "prepare without submitting, execute (after user confirmation), or simulate (build the real transaction and run a non-broadcasting RPC simulation that needs only a public key — never signs or sends).",
       required: false,
       schema: {
         type: "string",
-        enum: ["prepare", "execute"],
+        enum: [...WALLET_ROUTER_MODES],
         default: "prepare",
       },
-      examples: ["prepare", "execute"],
+      examples: ["prepare", "execute", "simulate"],
     },
     {
       name: "dryRun",

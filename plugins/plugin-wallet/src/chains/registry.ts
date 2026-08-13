@@ -39,6 +39,7 @@ import type {
   WalletRouterContext,
   WalletRouterExecution,
   WalletRouterParams,
+  WalletSimulationMetadata,
 } from "../types/wallet-router.js";
 import type { SolanaSigner } from "../wallet/backend.js";
 import { buildSendTxParams } from "./evm/actions/helpers";
@@ -403,6 +404,38 @@ function getSolanaConnection(runtime: IAgentRuntime): Connection {
   return new Connection(rpcUrl);
 }
 
+/**
+ * Run a non-broadcasting RPC simulation against an unsigned versioned
+ * transaction. `replaceRecentBlockhash: true` lets the RPC supply a fresh
+ * blockhash so an unsigned Jupiter/PumpPortal-built transaction simulates
+ * correctly without a local signer.
+ */
+async function simulateVersionedTransaction(
+  connection: Connection,
+  transaction: VersionedTransaction,
+  extraMetadata?: Record<string, unknown>,
+): Promise<WalletSimulationMetadata> {
+  const simulation = await connection.simulateTransaction(transaction, {
+    sigVerify: false,
+    replaceRecentBlockhash: true,
+  });
+  const unitsConsumed =
+    typeof simulation.value.unitsConsumed === "bigint"
+      ? Number(simulation.value.unitsConsumed)
+      : simulation.value.unitsConsumed ?? undefined;
+  return {
+    ok: simulation.value.err === null,
+    logs: simulation.value.logs ?? [],
+    err: simulation.value.err
+      ? typeof simulation.value.err === "string"
+        ? simulation.value.err
+        : JSON.stringify(simulation.value.err)
+      : null,
+    unitsConsumed,
+    ...extraMetadata,
+  };
+}
+
 type BrowserAutomationService = {
   execute: (
     command: Record<string, unknown>,
@@ -514,6 +547,27 @@ async function resolvePumpFunSigner(context: WalletRouterContext): Promise<{
       return copy;
     },
   };
+}
+
+/**
+ * Resolve the agent's Solana public key without requiring a private key.
+ * Used by simulate mode, which never signs.
+ */
+async function resolveSolanaPublicKey(
+  context: WalletRouterContext,
+): Promise<PublicKey> {
+  if (context.walletBackend) {
+    const signer = context.walletBackend.getSolanaSignerOrNull?.();
+    if (signer) {
+      return signer.publicKey;
+    }
+  }
+  const { publicKey, keypair } = await getWalletKey(context.runtime, false);
+  const resolved = publicKey ?? keypair?.publicKey;
+  if (!resolved) {
+    throw new Error("Solana public key is not available.");
+  }
+  return resolved;
 }
 
 async function executePumpFunBuy(
@@ -800,6 +854,32 @@ async function executeSolanaSwap(
   const transaction = VersionedTransaction.deserialize(
     Buffer.from(swapData.swapTransaction, "base64"),
   );
+
+  if (params.mode === "simulate") {
+    // Build the real transaction, then simulate without signing or sending.
+    const simulation = await simulateVersionedTransaction(
+      connection,
+      transaction,
+      {
+        quote: quoteData,
+        from: walletPublicKey.toBase58(),
+      },
+    );
+    return {
+      status: "simulated",
+      chain: "solana",
+      chainId: "solana-mainnet",
+      subaction: "swap",
+      dryRun: false,
+      mode: "simulate",
+      from: walletPublicKey.toBase58(),
+      amount: params.amount,
+      fromToken: inputMint,
+      toToken: outputMint,
+      simulation,
+    };
+  }
+
   const { keypair } = await getWalletKey(context.runtime, true);
   if (!keypair) {
     throw new Error("Solana keypair is not available.");

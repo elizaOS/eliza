@@ -26,7 +26,7 @@ export const WALLET_ROUTER_SUBACTIONS = [
 
 export type WalletRouterSubaction = (typeof WALLET_ROUTER_SUBACTIONS)[number];
 
-export const WALLET_ROUTER_MODES = ["prepare", "execute"] as const;
+export const WALLET_ROUTER_MODES = ["prepare", "execute", "simulate"] as const;
 
 export type WalletRouterMode = (typeof WALLET_ROUTER_MODES)[number];
 
@@ -93,8 +93,21 @@ export interface WalletRouterContext {
   readonly tokenDataService: ITokenDataService | null;
 }
 
+export interface WalletSimulationMetadata {
+  /** True when the simulated transaction would succeed on-chain. */
+  readonly ok: boolean;
+  /** Simulation logs, when available. */
+  readonly logs: readonly string[];
+  /** Transaction-level error when the simulation would revert. */
+  readonly err?: string | null;
+  /** Compute units consumed by the simulated transaction. */
+  readonly unitsConsumed?: number;
+  /** Additional quote/route details surfaced from the builder. */
+  readonly [key: string]: unknown;
+}
+
 export interface WalletRouterExecution {
-  readonly status: "prepared" | "submitted";
+  readonly status: "prepared" | "simulated" | "submitted";
   readonly chain: string;
   readonly chainId: string;
   readonly subaction: WalletRouterSubaction;
@@ -107,6 +120,7 @@ export interface WalletRouterExecution {
   readonly amount?: string;
   readonly fromToken?: string;
   readonly toToken?: string;
+  readonly simulation?: WalletSimulationMetadata;
   readonly metadata?: Record<string, unknown>;
 }
 
