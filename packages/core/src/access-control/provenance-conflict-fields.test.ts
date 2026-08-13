@@ -106,7 +106,12 @@ describe("provenance conflict-field rejection", () => {
 			}
 		});
 
-		it("rejects when metadata.messageIdFull differs from metadata.sourceId", () => {
+		it("ignores metadata.sourceId when an authoritative message id is present", () => {
+			// sourceId is a derived/internal identifier (the Discord connector
+			// writes a synthesized memory-source UUID there), NOT the platform
+			// record id, so it is only a last-resort fallback and must never be
+			// diffed against a real message id. A real Discord ingestion always
+			// carries messageIdFull alongside a differing sourceId.
 			const mem = makeMemory({
 				platformMessageId: undefined,
 				messageIdFull: "msg-full-001",
@@ -114,10 +119,24 @@ describe("provenance conflict-field rejection", () => {
 			});
 
 			const result = deriveCanonicalProvenance(mem, AGENT_ID);
-			expect(result.valid).toBe(false);
-			if (!result.valid) {
-				expect(result.code).toBe("invalid_provenance");
-				expect(result.reason).toContain("conflicting platform message id");
+			expect(result.valid).toBe(true);
+			if (result.valid) {
+				expect(result.provenance.platformMessageId).toBe("msg-full-001");
+			}
+		});
+
+		it("falls back to metadata.sourceId only when no authoritative id exists", () => {
+			const mem = makeMemory({
+				platformMessageId: undefined,
+				messageIdFull: undefined,
+				sourceId: "msg-src-fallback",
+			});
+			delete (mem.metadata as Record<string, unknown>).discord;
+
+			const result = deriveCanonicalProvenance(mem, AGENT_ID);
+			expect(result.valid).toBe(true);
+			if (result.valid) {
+				expect(result.provenance.platformMessageId).toBe("msg-src-fallback");
 			}
 		});
 

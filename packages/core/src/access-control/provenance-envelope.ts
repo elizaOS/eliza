@@ -291,14 +291,18 @@ export function deriveCanonicalProvenance(
 		};
 	}
 
-	// Platform message id must be consistent across paths. Each candidate
-	// path can stamp a different key; when two are present and differ the
-	// record is contradictory — reject instead of first-wins.
+	// The authoritative platform-record-id paths must agree when co-present.
+	// Each connector may stamp the same id under more than one of these keys;
+	// when two are present and differ the record is contradictory — reject
+	// instead of first-wins. `metadata.sourceId` is deliberately NOT in this
+	// set: it is a derived/internal identifier (e.g. the synthesized memory
+	// source UUID the Discord connector writes), not the platform record id, so
+	// it only serves as a last-resort fallback and must never be diffed against
+	// a real message id.
 	const pmiCandidates = [
 		readString(metadata, "platformMessageId"),
 		readString(metadata, "messageIdFull"),
 		readString(nested, "messageId"),
-		readString(metadata, "sourceId"),
 	].filter((value): value is string => value !== undefined);
 	const distinctPmi = new Set(pmiCandidates);
 	if (distinctPmi.size > 1) {
@@ -311,7 +315,8 @@ export function deriveCanonicalProvenance(
 		};
 	}
 	const platformMessageId =
-		distinctPmi.size === 1 ? [...distinctPmi][0] : undefined;
+		(distinctPmi.size === 1 ? [...distinctPmi][0] : undefined) ??
+		readString(metadata, "sourceId");
 	if (!platformMessageId) {
 		return {
 			valid: false,
