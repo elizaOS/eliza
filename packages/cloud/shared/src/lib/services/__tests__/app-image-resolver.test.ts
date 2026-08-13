@@ -1,6 +1,8 @@
-// Exercises app image resolver behavior with deterministic cloud-shared lib fixtures.
+// Exercises app image resolver behavior with deterministic cloud-shared lib
+// fixtures. Verifies the #13097 contract: pushed builds return digest-pinned
+// refs (not mutable tags) captured atomically from the build invocation.
 import { describe, expect, test } from "bun:test";
-import { AppImageBuilder, type BuildExec } from "../app-image-builder";
+import { AppImageBuilder, type BuildExec, type MetadataReader } from "../app-image-builder";
 import {
   composeImageResolvers,
   makeBuildFromRepoResolver,
@@ -8,6 +10,7 @@ import {
 } from "../app-image-resolver";
 
 const APP = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+const DIGEST = "sha256:a1b32e421ac1a7a3b3e1485fa34ceced6dec756893baf8bc9022298c3f6d0f88";
 
 function recordingBuilder(): { builder: AppImageBuilder; cmds: string[] } {
   const cmds: string[] = [];
@@ -17,7 +20,15 @@ function recordingBuilder(): { builder: AppImageBuilder; cmds: string[] } {
       return "built";
     },
   };
-  return { builder: new AppImageBuilder({ exec, isolatedBuilder: false }), cmds };
+  const reader: MetadataReader = {
+    async read() {
+      return JSON.stringify({ "containerimage.digest": DIGEST });
+    },
+  };
+  return {
+    builder: new AppImageBuilder({ exec, metadataReader: reader, isolatedBuilder: false }),
+    cmds,
+  };
 }
 
 describe("makeBuildFromRepoResolver", () => {
@@ -31,7 +42,7 @@ describe("makeBuildFromRepoResolver", () => {
       repoUrl: "https://github.com/u/repo.git",
     });
 
-    expect(ref).toBe("ghcr.io/elizaos/app-aaaaaaaaaaaa4aaa8aaaaaaa:a1b2c3d");
+    expect(ref).toBe(`ghcr.io/elizaos/app-aaaaaaaaaaaa4aaa8aaaaaaa@${DIGEST}`);
     expect(cmds[0]).toContain("docker buildx build");
     expect(cmds[0]).toContain("--push");
     expect(cmds[0]).toContain("'https://github.com/u/repo.git#a1b2c3d'");
@@ -41,7 +52,7 @@ describe("makeBuildFromRepoResolver", () => {
     const { builder, cmds } = recordingBuilder();
     const resolve = makeBuildFromRepoResolver({ builder, registry: "r" });
     const ref = await resolve({ id: APP, name: "demo", metadata: { repoUrl: "/local/ctx" } });
-    expect(ref).toBe("r/app-aaaaaaaaaaaa4aaa8aaaaaaa:latest");
+    expect(ref).toBe(`r/app-aaaaaaaaaaaa4aaa8aaaaaaa@${DIGEST}`);
     expect(cmds[0]).toContain("'/local/ctx'");
   });
 
@@ -63,7 +74,7 @@ describe("makeBuildFromRepoResolver", () => {
       repoUrl: "https://github.com/linked/repo.git",
     });
 
-    expect(ref).toBe("r/app-aaaaaaaaaaaa4aaa8aaaaaaa:develop");
+    expect(ref).toBe(`r/app-aaaaaaaaaaaa4aaa8aaaaaaa@${DIGEST}`);
     expect(cmds[0]).toContain("--file 'apps/example/Dockerfile.cloud'");
     expect(cmds[0]).toContain("'https://github.com/elizaOS/eliza.git#develop'");
     expect(cmds[0]).not.toContain("https://github.com/linked/repo.git");
@@ -122,9 +133,7 @@ describe("makePrebuiltImageMapResolver", () => {
     });
 
     expect(resolve).toBeDefined();
-    await expect(
-      resolve?.({ id: APP, name: "eDad Showcase 1a2b", metadata: {} }),
-    ).resolves.toBe(
+    await expect(resolve?.({ id: APP, name: "eDad Showcase 1a2b", metadata: {} })).resolves.toBe(
       "ghcr.io/elizaos/example-edad@sha256:a1b32e421ac1a7a3b3e1485fa34ceced6dec756893baf8bc9022298c3f6d0f88",
     );
     await expect(
@@ -142,9 +151,9 @@ describe("makePrebuiltImageMapResolver", () => {
     });
 
     expect(resolve).toBeDefined();
-    await expect(
-      resolve?.({ id: APP, name: "Custom App 1", metadata: {} }),
-    ).resolves.toBe("ghcr.io/custom/app:v1");
+    await expect(resolve?.({ id: APP, name: "Custom App 1", metadata: {} })).resolves.toBe(
+      "ghcr.io/custom/app:v1",
+    );
   });
 
   test("passes through already-digest-pinned refs unchanged", async () => {
@@ -154,9 +163,7 @@ describe("makePrebuiltImageMapResolver", () => {
     });
 
     expect(resolve).toBeDefined();
-    await expect(
-      resolve?.({ id: APP, name: "Pinned App 1", metadata: {} }),
-    ).resolves.toBe(pinned);
+    await expect(resolve?.({ id: APP, name: "Pinned App 1", metadata: {} })).resolves.toBe(pinned);
   });
 });
 

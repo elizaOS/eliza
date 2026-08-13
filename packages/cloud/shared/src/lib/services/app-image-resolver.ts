@@ -19,12 +19,11 @@
  */
 
 import { logger } from "../utils/logger";
-import { containersEnv } from "../config/containers-env";
-import type { AppImageBuilder } from "./app-image-builder";
 import {
-  scanImageRefsForMutableTags,
   type ImagePreflightEntry,
+  scanImageRefsForMutableTags,
 } from "./app-deploy-image-preflight";
+import type { AppImageBuilder } from "./app-image-builder";
 
 /**
  * A `resolveImage` the deploy runner calls; undefined → fall through. Matches
@@ -96,10 +95,7 @@ function pinFirstPartyDigest(ref: string): string {
  * flag. Returns the structured result so the caller can fail-closed on mutable
  * refs in production.
  */
-export function preflightImageRefs(
-  entries: ImagePreflightEntry[],
-  requireDigest: boolean,
-) {
+export function preflightImageRefs(entries: ImagePreflightEntry[], requireDigest: boolean) {
   const result = scanImageRefsForMutableTags(entries, requireDigest);
   for (const finding of result.mutableRefs) {
     logger.warn(`[AppImageResolver] ${finding.warning}`);

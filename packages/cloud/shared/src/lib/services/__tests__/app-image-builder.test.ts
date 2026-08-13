@@ -24,9 +24,7 @@ function fakeExec(): BuildExec & { calls: Array<{ cmd: string; timeoutMs?: numbe
   };
 }
 
-function fakeMetadataReader(
-  content: string,
-): MetadataReader & { calls: string[] } {
+function fakeMetadataReader(content: string): MetadataReader & { calls: string[] } {
   const calls: string[] = [];
   return {
     calls,
@@ -73,6 +71,7 @@ describe("AppImageBuilder — atomic digest capture (#13097)", () => {
     const res = await builder.build({
       registry: "ghcr.io/elizaos",
       appId: APP,
+      sourceRef: "a1b2c3d",
       context: "/work/repo",
       // push not set — local build only
     });

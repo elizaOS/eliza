@@ -45,7 +45,9 @@ describe("appsDeployRequireDigest (#13097)", () => {
   });
 
   test("true explicitly enables the gate", () => {
-    expect(containersEnv.appsDeployRequireDigest({ APPS_DEPLOY_REQUIRE_DIGEST: "true" })).toBe(true);
+    expect(containersEnv.appsDeployRequireDigest({ APPS_DEPLOY_REQUIRE_DIGEST: "true" })).toBe(
+      true,
+    );
     expect(containersEnv.appsDeployRequireDigest({ APPS_DEPLOY_REQUIRE_DIGEST: "1" })).toBe(true);
   });
 

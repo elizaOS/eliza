@@ -36,11 +36,7 @@ import {
   isolatedBuilderName,
 } from "./app-build-cmd";
 import { buildAppImageRef } from "./app-image-ref";
-import {
-  BuildMetadataError,
-  buildDigestPinnedRef,
-  parseBuildxDigest,
-} from "./build-metadata";
+import { BuildMetadataError, buildDigestPinnedRef, parseBuildxDigest } from "./build-metadata";
 
 /** Command-exec seam — structurally the same as `AppContainerSsh` (reusable). */
 export interface BuildExec {

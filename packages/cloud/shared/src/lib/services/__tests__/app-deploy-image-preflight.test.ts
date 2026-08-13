@@ -5,7 +5,10 @@
 // arming the digest gate so a misconfiguration surfaces actionably instead of
 // causing a confusing deploy-time rejection.
 import { describe, expect, test } from "bun:test";
-import { scanImageRefsForMutableTags, type ImagePreflightEntry } from "../app-deploy-image-preflight";
+import {
+  type ImagePreflightEntry,
+  scanImageRefsForMutableTags,
+} from "../app-deploy-image-preflight";
 
 const DIGEST_REF = "ghcr.io/elizaos/app@sha256:" + "a".repeat(64);
 const TAG_REF = "ghcr.io/elizaos/app:v1";
@@ -23,9 +26,7 @@ describe("scanImageRefsForMutableTags", () => {
   });
 
   test("flags a mutable tag ref with its source", () => {
-    const entries: ImagePreflightEntry[] = [
-      { source: "APP_DEFAULT_TEMPLATE_IMAGE", ref: TAG_REF },
-    ];
+    const entries: ImagePreflightEntry[] = [{ source: "APP_DEFAULT_TEMPLATE_IMAGE", ref: TAG_REF }];
     const result = scanImageRefsForMutableTags(entries, true);
     expect(result.allPinned).toBe(false);
     expect(result.mutableRefs).toHaveLength(1);
@@ -36,9 +37,7 @@ describe("scanImageRefsForMutableTags", () => {
   });
 
   test("flags an implicit-latest ref (no tag, no digest)", () => {
-    const entries: ImagePreflightEntry[] = [
-      { source: "APP_DEFAULT_IMAGE", ref: LATEST_REF },
-    ];
+    const entries: ImagePreflightEntry[] = [{ source: "APP_DEFAULT_IMAGE", ref: LATEST_REF }];
     const result = scanImageRefsForMutableTags(entries, true);
     expect(result.mutableRefs).toHaveLength(1);
     expect(result.mutableRefs[0].pinning).toBe("implicit-latest");
@@ -46,9 +45,7 @@ describe("scanImageRefsForMutableTags", () => {
   });
 
   test("advisory warning when digest gate is off (requireDigest=false)", () => {
-    const entries: ImagePreflightEntry[] = [
-      { source: "test", ref: TAG_REF },
-    ];
+    const entries: ImagePreflightEntry[] = [{ source: "test", ref: TAG_REF }];
     const result = scanImageRefsForMutableTags(entries, false);
     expect(result.mutableRefs).toHaveLength(1);
     expect(result.mutableRefs[0].warning).toContain("advisory");

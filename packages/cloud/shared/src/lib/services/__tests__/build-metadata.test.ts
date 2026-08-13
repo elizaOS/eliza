@@ -4,11 +4,7 @@
 // are pure functions operating on the raw JSON buildx writes to --metadata-file;
 // the impure file read lives in AppImageBuilder and is exercised separately.
 import { describe, expect, test } from "bun:test";
-import {
-  BuildMetadataError,
-  buildDigestPinnedRef,
-  parseBuildxDigest,
-} from "../build-metadata";
+import { BuildMetadataError, buildDigestPinnedRef, parseBuildxDigest } from "../build-metadata";
 
 const VALID_DIGEST = "sha256:a1b32e421ac1a7a3b3e1485fa34ceced6dec756893baf8bc9022298c3f6d0f88";
 
@@ -46,13 +42,11 @@ describe("parseBuildxDigest", () => {
       parseBuildxDigest(JSON.stringify({ "containerimage.digest": "sha256:short" })),
     ).toThrow(BuildMetadataError);
     expect(() =>
-      parseBuildxDigest(
-        JSON.stringify({ "containerimage.digest": "sha256:GG".repeat(32) }),
-      ),
+      parseBuildxDigest(JSON.stringify({ "containerimage.digest": "sha256:GG".repeat(32) })),
     ).toThrow(BuildMetadataError);
-    expect(() =>
-      parseBuildxDigest(JSON.stringify({ "containerimage.digest": 42 })),
-    ).toThrow(BuildMetadataError);
+    expect(() => parseBuildxDigest(JSON.stringify({ "containerimage.digest": 42 }))).toThrow(
+      BuildMetadataError,
+    );
   });
 
   test("preserves the cause chain when JSON.parse fails", () => {
@@ -90,8 +84,8 @@ describe("buildDigestPinnedRef", () => {
   });
 
   test("throws on an invalid digest", () => {
-    expect(() =>
-      buildDigestPinnedRef("ghcr.io/elizaos/app:v1", "not-a-digest"),
-    ).toThrow(/invalid digest/);
+    expect(() => buildDigestPinnedRef("ghcr.io/elizaos/app:v1", "not-a-digest")).toThrow(
+      /invalid digest/,
+    );
   });
 });
