@@ -11,6 +11,7 @@ import type {
   OnboardingChatResult,
   OnboardingSession,
 } from "@/lib/services/eliza-app/onboarding-chat";
+import { onboardingCoordinatorErrorResponse } from "@/lib/services/eliza-app/onboarding-coordinator-transport";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -965,10 +966,7 @@ export class OnboardingSessionCoordinator {
         // error-policy:J1 Durable Object transport boundary; inner onboarding
         // failures remain observable as a failed request and are never replaced
         // with an empty or successful-looking result.
-        return Response.json(
-          { error: error instanceof Error ? error.message : String(error) },
-          { status: 500 },
-        );
+        return onboardingCoordinatorErrorResponse(error);
       }
     });
   }
