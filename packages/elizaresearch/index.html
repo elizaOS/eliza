@@ -247,7 +247,7 @@
   const boids = [];
   let targets = [];
   let linkD2 = 88 * 88;
-  const FADE_MS = 2600;
+  const FADE_MS = 2600, MERGE_DELAY_MS = 1000, MERGE_MS = 12000;
   let born = 0;                       // timestamp of last formation
   const pointer = { x: -1e4, y: -1e4, vx: 0, vy: 0, down: false, t: 0 };
 
@@ -265,7 +265,7 @@
   img.src = "assets/logo_white_nobg.svg";
   img.onload = () => { tryInit(); };
   function sampleFace() {
-    const scale = Math.min(W, H) * 0.9;
+    const scale = Math.min(W, H) * 1.0;
     const ow = Math.round(scale * (img.width / img.height)), oh = Math.round(scale);
     const off = document.createElement("canvas");
     off.width = ow; off.height = oh;
@@ -321,9 +321,10 @@
         origins[gi] = { x: Math.random() * W, y: Math.random() * H };
       }
       const a = Math.random() * Math.PI * 2;
+      const sx = origins[gi].x + (Math.random() - 0.5) * 160;
+      const sy = origins[gi].y + (Math.random() - 0.5) * 160;
       boids.push({
-        x: origins[gi].x + (Math.random() - 0.5) * 160,
-        y: origins[gi].y + (Math.random() - 0.5) * 160,
+        x: sx, y: sy, sx, sy,
         vx: Math.cos(a) * 0.3, vy: Math.sin(a) * 0.3, tx: t.x, ty: t.y,
         jp: Math.random() * Math.PI * 2 });
     }
@@ -359,8 +360,10 @@
     for (const b of boids) {
       const jx = Math.sin(now * 0.00055 + b.jp) * 5;
       const jy = Math.cos(now * 0.00042 + b.jp * 1.7) * 5;
-      const gx = b.tx + jx;
-      const gy = b.ty + jy;
+      const p = Math.min(1, Math.max(0, (now - born - MERGE_DELAY_MS) / MERGE_MS));
+      const e = p * p * (3 - 2 * p);
+      const gx = b.sx + (b.tx - b.sx) * e + jx;
+      const gy = b.sy + (b.ty - b.sy) * e + jy;
       b.vx += (gx - b.x) * 0.0022;
       b.vy += (gy - b.y) * 0.0022;
       b.vx *= 0.94; b.vy *= 0.94;
