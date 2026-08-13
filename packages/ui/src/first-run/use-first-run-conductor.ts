@@ -83,6 +83,10 @@ import { hasUsableStoredStewardToken } from "../state/cloud-steward-login";
 import { startTutorial } from "../tutorial/tutorial-service";
 import { clearFirstRunTranscriptMessages } from "./clear-first-run-transcript";
 import {
+  armCloudLoginWaitDeadline,
+  createAttemptGuard,
+} from "./cloud-login-wait-deadline";
+import {
   peekDeviceRamTierAssessment,
   resolveDeviceRamTierAssessment,
 } from "./device-ram-gate";
@@ -465,6 +469,9 @@ export function useFirstRunConductor(): void {
   // True while a finish/provision call is in flight; every other first-run
   // pick is consumed as a no-op until it settles (see handleFirstRunAction).
   const busyRef = React.useRef(false);
+  // Generation guard for cloud sign-in attempts (#19255): outcomes of an
+  // attempt the deadline abandoned must not mutate newer state.
+  const cloudLoginAttemptRef = React.useRef(createAttemptGuard());
   // Latched by the first tutorial pick: the store flip unregisters the handler
   // only on the next commit, so a double-tap could otherwise re-fire
   // completeFirstRun/startTutorial in the gap.
@@ -798,6 +805,13 @@ export function useFirstRunConductor(): void {
     // popup/tab — the sign-in CTA must not look idle (#18001). A silent cloud
     // entry (#15133) reuses a stored session and never opens a window, so it
     // must stay silent: no waiting turn until the flow turns interactive.
+    const attempt = cloudLoginAttemptRef.current.begin();
+    // The wait is BOUNDED (#19255): a callback failure dead-ends cross-origin
+    // in the popup and an abandoned popup never settles, so nothing in the
+    // promise chain below rejects. On deadline the wait converts into the
+    // recoverable retry turn and this attempt goes stale; a sign-in that
+    // completes after abandonment is picked up by the auto-resume effect.
+    let loginDeadline: { cancel(): void } | null = null;
     if (!silentCloudEntryRef.current) {
       seedTurn(
         makeTurn(
@@ -805,6 +819,22 @@ export function useFirstRunConductor(): void {
           "Waiting for sign-in in the window we opened… Finish there, then this tab will continue. If nothing opened, use the link in Settings → Cloud or tap Sign in again.",
         ),
       );
+      loginDeadline = armCloudLoginWaitDeadline({
+        onDeadline: () => {
+          if (!cloudLoginAttemptRef.current.isCurrent(attempt)) return;
+          cloudLoginAttemptRef.current.invalidate();
+          busyRef.current = false;
+          releaseClaimedCloudLoginWindow();
+          replaceTurn(
+            "first-run:cloud-login-waiting",
+            makeTurn(
+              "first-run:cloud-login-waiting",
+              "That sign-in window didn't finish. If you just completed sign-in, hold on — it will still connect. Otherwise, try again below.",
+            ),
+          );
+          surfaceCloudLoginRetryTurn({ seedTurn, replaceTurn });
+        },
+      });
     }
     // Pre-open the cloud-login popup synchronously NOW — the action handler is
     // still inside the user gesture, but the provision flow below awaits
@@ -815,6 +845,11 @@ export function useFirstRunConductor(): void {
     claimCloudLoginWindow();
     void listOrAutoProvisionCloudAgent(draftRef.current, portsRef.current)
       .then((outcome) => {
+        loginDeadline?.cancel();
+        // Stale attempt: the deadline already surfaced the retry turn — this
+        // outcome must not mutate newer state. A genuinely late successful
+        // sign-in reaches the store and the auto-resume effect instead.
+        if (!cloudLoginAttemptRef.current.isCurrent(attempt)) return;
         if (
           outcome.kind === "done" ||
           outcome.kind === "pick-cloud-agent" ||
@@ -830,15 +865,23 @@ export function useFirstRunConductor(): void {
       // seedError), these cloud entrypoints can reject (OAuth/network);
       // without this a rejected OAuth/provision call strands the user with no
       // recovery action.
-      .catch((err: unknown) => seedError(cloudFailureMessage(err)))
+      .catch((err: unknown) => {
+        loginDeadline?.cancel();
+        if (!cloudLoginAttemptRef.current.isCurrent(attempt)) return;
+        seedError(cloudFailureMessage(err));
+      })
       .finally(() => {
-        busyRef.current = false;
+        // Only the current attempt owns the busy latch — a deadline may have
+        // released it and a newer attempt claimed it.
+        if (cloudLoginAttemptRef.current.isCurrent(attempt)) {
+          busyRef.current = false;
+        }
         // Paths that never reach interactive login (already-authenticated
         // cloud sessions short-circuit before the popup is consumed) must not
         // leave the gesture-claimed about:blank window open.
         releaseClaimedCloudLoginWindow();
       });
-  }, [handleOutcome, seedError, seedTurn]);
+  }, [handleOutcome, seedError, seedTurn, replaceTurn]);
 
   const startProviderFinish = React.useCallback(() => {
     busyRef.current = true;
