@@ -5,9 +5,10 @@
  * `@elizaos/*` package to resolve to its TypeScript source (independent of
  * build order), plus the three subpath specials the runtime touches:
  * `@elizaos/core/testing`, `@elizaos/core/node`, `@elizaos/core/connectors`,
- * and `@elizaos/plugin-sql`
- * (the node entry). Shared and per-plugin real-runtime configs need this, and so
- * does every per-plugin runtime config that imports `@elizaos/core/testing`.
+ * and `@elizaos/plugin-sql` (the node entry), plus provider-owned endpoint
+ * diagnostic subpaths whose published entry points require prebuilt dist
+ * output. Shared and per-plugin real-runtime configs need this, and so does
+ * every per-plugin runtime config that imports `@elizaos/core/testing`.
  * Both consume this one builder so the alias set never drifts.
  */
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
@@ -179,6 +180,24 @@ export function buildWorkspaceSourceAliases(
     {
       find: /^@elizaos\/plugin-sql$/,
       replacement: path.join(repoRoot, "plugins/plugin-sql/src/index.node.ts"),
+    },
+    {
+      find: /^@elizaos\/plugin-anthropic\/endpoint-config$/,
+      replacement: path.join(
+        repoRoot,
+        "plugins/plugin-anthropic/utils/config.ts",
+      ),
+    },
+    {
+      find: /^@elizaos\/plugin-elizacloud\/endpoint-config$/,
+      replacement: path.join(
+        repoRoot,
+        "plugins/plugin-elizacloud/src/utils/config.ts",
+      ),
+    },
+    {
+      find: /^@elizaos\/plugin-openai\/endpoint-config$/,
+      replacement: path.join(repoRoot, "plugins/plugin-openai/utils/config.ts"),
     },
     ...workspaceSourceAliases,
   ];

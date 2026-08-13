@@ -22,6 +22,18 @@ describe("workspace source aliases", () => {
         specifier: "@elizaos/core/security/kms",
         target: "packages/core/src/security/kms/index.ts",
       },
+      {
+        specifier: "@elizaos/plugin-anthropic/endpoint-config",
+        target: "plugins/plugin-anthropic/utils/config.ts",
+      },
+      {
+        specifier: "@elizaos/plugin-elizacloud/endpoint-config",
+        target: "plugins/plugin-elizacloud/src/utils/config.ts",
+      },
+      {
+        specifier: "@elizaos/plugin-openai/endpoint-config",
+        target: "plugins/plugin-openai/utils/config.ts",
+      },
     ] as const;
 
     for (const { specifier, target } of cases) {
@@ -31,9 +43,11 @@ describe("workspace source aliases", () => {
         alias?.find ?? /$^/,
         alias?.replacement ?? "",
       );
-      const resolved = target.endsWith("/index.ts")
-        ? path.join(replacement, "index.ts")
-        : `${replacement}.ts`;
+      const resolved = replacement.endsWith(".ts")
+        ? replacement
+        : target.endsWith("/index.ts")
+          ? path.join(replacement, "index.ts")
+          : `${replacement}.ts`;
       expect(resolved).toBe(path.join(workspaceRepoRoot, target));
     }
   });
