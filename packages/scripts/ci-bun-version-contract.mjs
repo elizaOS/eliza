@@ -1,4 +1,8 @@
 #!/usr/bin/env node
+import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { basename, dirname, join, resolve, sep } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import { isMap, isScalar, isSeq, parseDocument } from "yaml";
 /**
  * Contract for the pinned Bun runtime (#13402 item 2 + item 5, #17044). Keeps
  * every authoritative install path in the repository on ONE published concrete
@@ -76,10 +80,6 @@
  * version-checked here.
  */
 import { spawnSync } from "./lib/spawn-sync-captured.mjs";
-import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
-import { basename, dirname, join, resolve, sep } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
-import { isMap, isScalar, isSeq, parseDocument } from "yaml";
 
 const DEFAULT_REPO_ROOT = resolve(
   dirname(fileURLToPath(import.meta.url)),
@@ -138,9 +138,10 @@ const EXCLUDED_SURFACES = [
 
 // Required, scheduled, and deploy-critical install lanes that must wire the
 // concrete pin directly (not merely resolve through indirection). The required
-// `ci-ok` aggregate (test.yml), the develop PR gate, and the cloud deploy
-// entry/release pair are the load-bearing paths.
-const GATE_WORKFLOWS = [
+// `ci-ok` aggregate (`test.yml`), the develop PR gate (`develop-pr.yml`), and
+// the Cloud deploy entry/release pair (`cloud-cf-deploy.yml` and
+// `cloud-cf-release.yml`) are the load-bearing paths.
+export const GATE_WORKFLOWS = [
   "test.yml",
   "develop-pr.yml",
   "cloud-cf-deploy.yml",

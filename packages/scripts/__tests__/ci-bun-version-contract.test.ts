@@ -20,9 +20,6 @@
  * (fail-fast, not skip). Deterministic — no workflow runs, no network.
  */
 import { describe, expect, test } from "bun:test";
-// Bun's test runner can return empty stdio pipes from node:child_process
-// spawnSync; the captured adapter routes output through files instead.
-import { spawnSync } from "../lib/spawn-sync-captured.mjs";
 import {
   mkdirSync,
   mkdtempSync,
@@ -33,8 +30,11 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+// Bun's test runner can return empty stdio pipes from node:child_process
+// spawnSync; the captured adapter routes output through files instead.
+import { spawnSync } from "../lib/spawn-sync-captured.mjs";
 
-const { runContract, classifyTypeRange } = await import(
+const { GATE_WORKFLOWS, runContract, classifyTypeRange } = await import(
   new URL("../ci-bun-version-contract.mjs", import.meta.url).href
 );
 
@@ -56,13 +56,6 @@ interface InventorySite {
 
 const CANONICAL = "1.3.14";
 const SHA = "0c5077e51419868618aeaa5fe8019c62421857d6";
-
-const GATE_WORKFLOWS = [
-  "test.yml",
-  "develop-pr.yml",
-  "cloud-cf-deploy.yml",
-  "cloud-cf-release.yml",
-];
 
 // A gate stub that pins via a BUN_VERSION env literal and references it from
 // the step by expression — the shape the real gates use. The comment naming
