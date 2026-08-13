@@ -70,6 +70,21 @@ describe("buildAppImageBuildCmd", () => {
     const cmd = buildAppImageBuildCmd({ context: "/c", imageRef: REF, noCache: true });
     expect(cmd).toContain("--no-cache");
   });
+
+  test("metadataFile adds --metadata-file for atomic digest capture (#13097)", () => {
+    const cmd = buildAppImageBuildCmd({
+      context: "/c",
+      imageRef: REF,
+      push: true,
+      metadataFile: "/tmp/buildx-meta.json",
+    });
+    expect(cmd).toContain("--metadata-file '/tmp/buildx-meta.json'");
+  });
+
+  test("metadataFile is omitted when not set", () => {
+    const cmd = buildAppImageBuildCmd({ context: "/c", imageRef: REF, push: true });
+    expect(cmd).not.toContain("--metadata-file");
+  });
 });
 
 describe("isolatedBuilderName", () => {

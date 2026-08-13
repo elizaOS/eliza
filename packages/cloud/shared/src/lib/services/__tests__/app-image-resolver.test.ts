@@ -112,6 +112,52 @@ describe("makePrebuiltImageMapResolver", () => {
   test("ignores invalid JSON maps", () => {
     expect(makePrebuiltImageMapResolver({ APP_PREBUILT_IMAGES: "not-json" })).toBeUndefined();
   });
+
+  test("pins first-party showcase mutable tags to digest refs (#13097)", async () => {
+    const resolve = makePrebuiltImageMapResolver({
+      APP_PREBUILT_IMAGES: JSON.stringify({
+        "eDad Showcase": "ghcr.io/elizaos/example-edad:showcase",
+        "Clone Your Crush Showcase": "ghcr.io/elizaos/example-clone-ur-crush:showcase",
+      }),
+    });
+
+    expect(resolve).toBeDefined();
+    await expect(
+      resolve?.({ id: APP, name: "eDad Showcase 1a2b", metadata: {} }),
+    ).resolves.toBe(
+      "ghcr.io/elizaos/example-edad@sha256:a1b32e421ac1a7a3b3e1485fa34ceced6dec756893baf8bc9022298c3f6d0f88",
+    );
+    await expect(
+      resolve?.({ id: APP, name: "Clone Your Crush Showcase 8f3a", metadata: {} }),
+    ).resolves.toBe(
+      "ghcr.io/elizaos/example-clone-ur-crush@sha256:0c69b045f44e799f4415d346450713c49129793c45caccb8512deeee5d6701f7",
+    );
+  });
+
+  test("passes through non-first-party refs unchanged", async () => {
+    const resolve = makePrebuiltImageMapResolver({
+      APP_PREBUILT_IMAGES: JSON.stringify({
+        "Custom App": "ghcr.io/custom/app:v1",
+      }),
+    });
+
+    expect(resolve).toBeDefined();
+    await expect(
+      resolve?.({ id: APP, name: "Custom App 1", metadata: {} }),
+    ).resolves.toBe("ghcr.io/custom/app:v1");
+  });
+
+  test("passes through already-digest-pinned refs unchanged", async () => {
+    const pinned = "ghcr.io/elizaos/app@sha256:" + "a".repeat(64);
+    const resolve = makePrebuiltImageMapResolver({
+      APP_PREBUILT_IMAGES: JSON.stringify({ "Pinned App": pinned }),
+    });
+
+    expect(resolve).toBeDefined();
+    await expect(
+      resolve?.({ id: APP, name: "Pinned App 1", metadata: {} }),
+    ).resolves.toBe(pinned);
+  });
 });
 
 describe("composeImageResolvers", () => {

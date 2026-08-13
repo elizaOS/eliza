@@ -53,6 +53,13 @@ export interface AppBuildCmdParams {
   builderName?: string;
   /** Pass `--no-cache` (untrusted builds skip any shared cache). */
   noCache?: boolean;
+  /**
+   * Path where buildx writes its JSON build metadata (the atomic digest source).
+   * When set, the build command adds `--metadata-file <path>` so the push
+   * digest is captured from the SAME build invocation — never re-resolved by
+   * tag afterwards (see app-image-builder.ts).
+   */
+  metadataFile?: string;
 }
 
 /** Assemble the docker build command for a user app image. */
@@ -64,6 +71,9 @@ export function buildAppImageBuildCmd(params: AppBuildCmdParams): string {
     parts.push(`--builder ${shellQuote(params.builderName)}`);
   }
   parts.push(`--tag ${shellQuote(params.imageRef)}`);
+  if (params.metadataFile) {
+    parts.push(`--metadata-file ${shellQuote(params.metadataFile)}`);
+  }
   if (params.dockerfile) {
     parts.push(`--file ${shellQuote(params.dockerfile)}`);
   }
@@ -128,7 +138,14 @@ export interface IsolatedAppBuildScriptParams extends Omit<AppBuildCmdParams, "b
  */
 export function buildIsolatedAppImageScript(params: IsolatedAppBuildScriptParams): string {
   const builder = shellQuote(params.builderName);
-  const buildCmd = buildAppImageBuildCmd({ ...params, buildx: true, noCache: params.noCache });
+  const buildCmd = buildAppImageBuildCmd({
+    ...params,
+    buildx: true,
+    noCache: params.noCache,
+    // Only buildx writes --metadata-file; pass it through so the isolated
+    // builder's push digest is captured atomically by this build invocation.
+    metadataFile: params.metadataFile,
+  });
   return [
     "set -e",
     `docker buildx create --driver docker-container --name ${builder} --bootstrap >/dev/null`,
