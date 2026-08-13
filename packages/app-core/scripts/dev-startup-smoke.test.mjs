@@ -40,6 +40,8 @@ describe("parsePositiveSafeInteger", () => {
       "  ",
       "abc",
       "60junk",
+      " 60000 ",
+      "8000\n",
       "1.5",
       "+1000",
       "-3",
@@ -89,6 +91,16 @@ describe("resolveStartupSmokeTiming", () => {
   it("fails closed on malformed budget or hard-kill overrides", () => {
     expect(() =>
       resolveStartupSmokeTiming({
+        ELIZA_DEV_STARTUP_BUDGET_MS: " 60000 ",
+      }),
+    ).toThrow(/ELIZA_DEV_STARTUP_BUDGET_MS/);
+    expect(() =>
+      resolveStartupSmokeTiming({
+        ELIZA_DEV_STARTUP_HARD_KILL_MS: "8000\n",
+      }),
+    ).toThrow(/ELIZA_DEV_STARTUP_HARD_KILL_MS/);
+    expect(() =>
+      resolveStartupSmokeTiming({
         ELIZA_DEV_STARTUP_BUDGET_MS: "60junk",
       }),
     ).toThrow(/ELIZA_DEV_STARTUP_BUDGET_MS/);
@@ -111,6 +123,18 @@ describe("resolveStartupSmokeTiming", () => {
 });
 
 describe("dev-startup-smoke CLI boundary", () => {
+  it.each([
+    ["ELIZA_DEV_STARTUP_BUDGET_MS", " 60000 "],
+    ["ELIZA_DEV_STARTUP_HARD_KILL_MS", "8000\n"],
+  ])("rejects padded %s before spawning the dev stack", (key, value) => {
+    const result = runCli({ [key]: value });
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(key);
+    expect(result.stdout + result.stderr).not.toMatch(
+      /\[dev-startup-smoke\] budget=/,
+    );
+  });
+
   it("rejects invalid budget env before spawning the dev stack", () => {
     const result = runCli({ ELIZA_DEV_STARTUP_BUDGET_MS: "60junk" });
     expect(result.status).toBe(1);
