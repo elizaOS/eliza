@@ -392,12 +392,7 @@ export function parseOptimizedPromptArtifact(
 	// retired with its training consumer; accepting it (or any future extra)
 	// here would let an unconsumed producer field cross the signing boundary.
 	for (const key of Object.keys(raw)) {
-		// Preserve compatibility with producers that materialize an optional
-		// retired field as `undefined`; it is omitted from the canonical output.
-		if (
-			!OPTIMIZED_PROMPT_ARTIFACT_KEYS.has(key) &&
-			!(key === "contextConfig" && raw.contextConfig === undefined)
-		) {
+		if (!OPTIMIZED_PROMPT_ARTIFACT_KEYS.has(key)) {
 			return null;
 		}
 	}
@@ -417,10 +412,6 @@ export function parseOptimizedPromptArtifact(
 	}
 	if (typeof raw.generatedAt !== "string") return null;
 	if (!Array.isArray(raw.lineage)) return null;
-	// The training plugin that consumed contextConfig was removed in #17695.
-	// Reject the orphaned channel instead of loading an artifact whose provider
-	// selection, ordering, templates, and budgets cannot affect the runtime.
-	if (raw.contextConfig !== undefined) return null;
 	const lineage: OptimizedPromptLineageEntry[] = [];
 	for (const entry of raw.lineage) {
 		if (!isStringRecord(entry)) continue;
@@ -702,8 +693,15 @@ export class OptimizedPromptService extends Service {
 			);
 		}
 		if (validatedArtifact.task !== task) {
-			throw new Error(
-				`[OptimizedPromptService] artifact.task=${validatedArtifact.task} does not match target task=${task}`,
+			throw new ElizaError(
+				"Optimized prompt artifact task does not match the target task",
+				{
+					code: "OPTIMIZED_PROMPT_ARTIFACT_TASK_MISMATCH",
+					context: {
+						expectedTask: task,
+						actualTask: validatedArtifact.task,
+					},
+				},
 			);
 		}
 		const dir = join(this.storeRoot, task);

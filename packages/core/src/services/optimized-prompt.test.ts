@@ -184,6 +184,15 @@ describe("OptimizedPromptService — symlink-based versioning", () => {
 		expect(parsed).toBeNull();
 	});
 
+	it("rejects contextConfig even when the own-property value is undefined", () => {
+		const parsed = parseOptimizedPromptArtifact({
+			...makeArtifact(1),
+			contextConfig: undefined,
+		} as unknown);
+
+		expect(parsed).toBeNull();
+	});
+
 	it("rejects invalid public artifacts before signing, persistence, or caching", async () => {
 		const invalidArtifacts = [
 			{
@@ -209,15 +218,35 @@ describe("OptimizedPromptService — symlink-based versioning", () => {
 		expect(service.getPrompt("action_planner")).toBeNull();
 	});
 
-	it("preserves valid artifacts across set, get, and refresh", async () => {
+	it("rejects an artifact task mismatch with typed expected/actual context", async () => {
+		const artifact = makeArtifact(1);
+		await expect(service.setPrompt("response", artifact)).rejects.toMatchObject(
+			{
+				name: "ElizaError",
+				code: "OPTIMIZED_PROMPT_ARTIFACT_TASK_MISMATCH",
+				context: {
+					expectedTask: "response",
+					actualTask: "action_planner",
+				},
+			},
+		);
+		expect(existsSync(join(storeRoot, "response"))).toBe(false);
+		expect(service.getPrompt("response")).toBeNull();
+	});
+
+	it("preserves valid artifacts across set, get, and a fresh-service reload", async () => {
 		const artifact = makeArtifact(1);
 		const path = await service.setPrompt("action_planner", artifact);
 
 		expect(path).toBe(join(storeRoot, "action_planner", "v1.json"));
 		expect(service.getPrompt("action_planner")?.prompt).toBe(artifact.prompt);
 
-		await service.refresh();
-		expect(service.getPrompt("action_planner")?.prompt).toBe(artifact.prompt);
+		const restartedService = createService();
+		restartedService.setStoreRoot(storeRoot);
+		await restartedService.refresh();
+		expect(restartedService.getPrompt("action_planner")?.prompt).toBe(
+			artifact.prompt,
+		);
 	});
 
 	it("retains the most recent OPTIMIZED_PROMPT_RETAIN_VERSIONS artifacts", async () => {
