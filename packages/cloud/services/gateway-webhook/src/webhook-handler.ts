@@ -255,36 +255,29 @@ async function processMessage(
   );
 
   if (!identity) {
-    logger.info("Identity not linked; routing message to onboarding chat", {
+    logger.info("Identity not linked; routing message to personal chat", {
       project,
       platform: adapter.platform,
       senderId: event.senderId,
     });
-    await sendOnboardingReply(adapter, config, event, deps, beforeEgress);
+    await sendUnlinkedReply(adapter, config, event, deps, beforeEgress);
     return;
   }
 
-  // A per-agent webhook URL names the agent to serve, so among senders who
-  // reach this point it keeps precedence over whatever they happen to own —
-  // diverting a sender with a cloud account but no sandbox onto personal
-  // onboarding would run that flow on somebody else's bot. (A sender with no
-  // account at all is already onboarded by the branch above, per-agent URL or
-  // not; that predates this routing and is unchanged here.)
+  // A per-agent webhook URL names the agent to serve, so among linked senders
+  // it keeps precedence over their account-native personal Eliza. Diverting a
+  // linked sender onto Shared here would answer from the wrong identity on
+  // somebody else's bot.
   //
   // On the shared webhook the decision is "is there an agent that can actually
   // serve this message", which needs both the sandbox row AND its registry key:
-  // the row appears the moment provisioning starts, the key only once a
-  // container has booted. Branching on the row alone would answer the first
-  // message and then go silent again for every message until boot — for good,
-  // if provisioning ends in error. Never branch on `sandbox.status`: a stopped
-  // agent is still a resolved agent, and re-onboarding one would provision a
-  // duplicate (the single guard against that is the early return on an
-  // existing sandbox in ensureElizaAppProvisioning).
+  // the row appears the moment Dedicated provisioning starts, but the key only
+  // once a container has booted. Until then the shared webhook must keep using
+  // the personal Shared identity so activation never creates a chat blackout.
+  // Never branch on `sandbox.status`: the registry is the serving authority.
   //
-  // `unreachable` is deliberately NOT onboarding: that is an established agent
-  // whose pod stopped heartbeating, and the onboarding state machine would tell
-  // its owner "you're live" while the message goes nowhere, then copy the
-  // transcript into the agent's memory a second time.
+  // `unreachable` is deliberately not rerouted: that agent previously served
+  // traffic, so falling back would split one conversation across two runtimes.
   const agentId = explicitAgentId ?? identity.agentId;
   const server = agentId
     ? await resolveAgentServer(redis, agentId)
@@ -299,13 +292,16 @@ async function processMessage(
       });
       return;
     }
-    logger.info("Sender has no running agent; routing message to onboarding", {
-      project,
-      platform: adapter.platform,
-      senderId: event.senderId,
-      agentId,
-    });
-    await sendOnboardingReply(adapter, config, event, deps);
+    logger.info(
+      "Sender has no running agent; routing message to personal chat",
+      {
+        project,
+        platform: adapter.platform,
+        senderId: event.senderId,
+        agentId,
+      },
+    );
+    await sendUnlinkedReply(adapter, config, event, deps);
     return;
   }
 
@@ -373,6 +369,76 @@ async function processMessage(
     });
     throw err;
   }
+}
+
+async function sendUnlinkedReply(
+  adapter: PlatformAdapter,
+  config: WebhookConfig,
+  event: ChatEvent,
+  deps: HandlerDeps,
+  beforeEgress?: () => Promise<void>,
+): Promise<void> {
+  if (adapter.platform === "twilio" || adapter.platform === "blooio") {
+    await sendPersonalSharedReply(adapter, config, event, deps, beforeEgress);
+    return;
+  }
+  await sendOnboardingReply(adapter, config, event, deps, beforeEgress);
+}
+
+async function sendPersonalSharedReply(
+  adapter: PlatformAdapter,
+  config: WebhookConfig,
+  event: ChatEvent,
+  deps: HandlerDeps,
+  beforeEgress?: () => Promise<void>,
+): Promise<void> {
+  const { cloudBaseUrl, getAuthHeader } = deps;
+  const reauth = deps.reacquireAuthHeader ?? reacquireAuthHeader;
+
+  const postMessage = (authHeader: Record<string, string>) =>
+    fetch(`${cloudBaseUrl}/api/internal/eliza-app/personal-shared/messages`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...authHeader,
+      },
+      body: JSON.stringify({
+        platform: adapter.platform,
+        phoneNumber: event.senderId,
+        messageId: event.messageId,
+        message: event.text,
+      }),
+      signal: AbortSignal.timeout(30_000),
+    });
+
+  let response = await postMessage(getAuthHeader());
+  if (response.status === 401) {
+    response = await postMessage(await reauth());
+  }
+  if (!response.ok) {
+    let diagnostics: string;
+    try {
+      diagnostics = (await response.text()).slice(0, 200);
+    } catch (error) {
+      // error-policy:J1 The HTTP status is authoritative at this delivery
+      // boundary; preserve a failed optional body read in its diagnostic.
+      diagnostics = `unable to read response body: ${error instanceof Error ? error.message : String(error)}`;
+    }
+    throw new Error(
+      `personal shared chat failed (${response.status}) ${diagnostics}`,
+    );
+  }
+
+  const body: unknown = await response.json();
+  const reply =
+    body && typeof body === "object" && "data" in body
+      ? (body.data as { reply?: unknown } | null)?.reply
+      : undefined;
+  if (typeof reply !== "string" || reply.trim().length === 0) {
+    throw new Error("personal shared chat returned no reply");
+  }
+  await beforeEgress?.();
+  await adapter.sendReply(config, event, reply);
 }
 
 async function sendOnboardingReply(
