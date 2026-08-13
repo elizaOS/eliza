@@ -7379,5 +7379,13 @@
   "desktop.tray.hideWindow": "Ocultar janela",
   "desktop.tray.quit": "Sair",
   "desktop.tray.testNotification.title": "Desktop",
-  "desktop.tray.testNotification.body": "As ações da bandeja do renderizador estão conectadas e respondendo."
+  "desktop.tray.testNotification.body": "As ações da bandeja do renderizador estão conectadas e respondendo.",
+  "cloud.getStarted.continuationCancel": "Descartar conexão",
+  "cloud.getStarted.continuationInvalidBody": "Volte ao aplicativo de mensagens e solicite um novo link de acesso.",
+  "cloud.getStarted.continuationInvalidTitle": "Este link de conexão não é válido",
+  "cloud.getStarted.continuationPausedBody": "Esta página não verificou nem vinculou esta conexão. O fluxo atual do Cloud também pode adicionar crédito e iniciar processamento Dedicated, portanto as conexões de mensagens ficam indisponíveis até que exista um fluxo seguro. Continue conversando no aplicativo de mensagens por enquanto.",
+  "cloud.getStarted.continuationPausedTitle": "Conexão de mensagens pausada",
+  "cloud.getStarted.setupBody": "Esta página não inicia um agente. Continue somente quando estiver pronto: a configuração do Cloud pode selecionar ou criar um agente, iniciar processamento e usar o crédito da conta.",
+  "cloud.getStarted.setupCta": "Continuar para a configuração do Cloud",
+  "cloud.getStarted.setupTitle": "Configurar o Eliza Cloud"
 }

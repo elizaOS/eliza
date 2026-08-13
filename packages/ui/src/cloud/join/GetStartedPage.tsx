@@ -1,148 +1,208 @@
 /**
- * `/get-started` on the cloud app hosts — the messaging → cloud signup
- * continuation landing.
+ * `/get-started` is the explicit Cloud setup boundary and the fail-closed
+ * landing for messaging-to-Cloud continuations.
  *
- * A messaging onboarding funnel (Discord DM today) hands the browser
- * `?onboardingSession=<opaque token>`. This page persists the token across the
- * Steward login round trip, then redeems it server-side with the Steward
- * bearer: the onboarding chat endpoint binds the session to the account, links
- * the gateway-attested platform identity (e.g. discord_id, so DMs route to the
- * provisioned agent instead of onboarding forever), and starts provisioning.
- * On success the user is told to head back to their DM, with a button into the
- * in-app chat (`/join`) as the alternative.
- *
- * Signed-out visitors bounce to `/login?returnTo=/get-started`; the token
- * survives in storage, not the URL. A visit with no pending token just
- * forwards to `/join` — the page is harmless as a bare deep link.
+ * The current continuation API resolves authentication through a path that
+ * can create an account, grant legacy credit, and provision compute. Until the
+ * server publishes a non-mutating identity-link contract, this page never
+ * calls it. A bare visit likewise stays on a truthful consent screen until the
+ * user explicitly chooses to enter the existing Cloud setup flow.
  */
 
 import { BRAND_PATHS, LOGO_FILES } from "@elizaos/shared/brand";
-import { useCallback, useEffect, useRef, useState } from "react";
-import { Navigate, useSearchParams } from "react-router-dom";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
+import { Link, useSearchParams } from "react-router-dom";
 import { Button } from "../../components/ui/button";
 import { useCloudT } from "../shell/CloudI18nProvider";
 import {
-  completePendingOnboardingContinuation,
-  type MessagingContinuationPreview,
+  clearPendingOnboardingSession,
   peekPendingOnboardingSession,
-  previewPendingOnboardingContinuation,
   sanitizeOnboardingSessionToken,
   storePendingOnboardingSession,
 } from "./lib/onboarding-continuation";
-import { useJoinSessionAuth } from "./lib/use-join-session";
 
-type GetStartedPhase = "checking" | "confirm" | "linking" | "done" | "error";
+type EntryState =
+  | { kind: "paused-continuation" }
+  | { kind: "invalid-continuation" }
+  | { kind: "setup-consent" };
 
-function messagingPlatformLabel(
-  platform: MessagingContinuationPreview["platform"],
-): string {
-  switch (platform) {
-    case "discord":
-      return "Discord";
-    case "telegram":
-      return "Telegram";
-    case "blooio":
-      return "iMessage";
-    case "twilio":
-      return "SMS";
-  }
+function removeOnboardingSessionFromUrl(): void {
+  const nextUrl = new URL(window.location.href);
+  nextUrl.searchParams.delete("onboardingSession");
+  window.history.replaceState(
+    window.history.state,
+    "",
+    `${nextUrl.pathname}${nextUrl.search}${nextUrl.hash}`,
+  );
 }
 
-function describeContinuationError(err: unknown): string {
-  if (err instanceof Error && err.message.trim()) return err.message;
-  return "Could not finish connecting your account. Try again.";
+interface InitialEntry {
+  entry: EntryState;
+  rawToken: string | null;
+  restoreStoredToken: boolean;
+}
+
+function resolveInitialEntry(searchParams: URLSearchParams): InitialEntry {
+  if (!searchParams.has("onboardingSession")) {
+    return {
+      entry: { kind: "setup-consent" },
+      rawToken: null,
+      restoreStoredToken: true,
+    };
+  }
+
+  const rawToken = sanitizeOnboardingSessionToken(
+    searchParams.get("onboardingSession"),
+  );
+  return rawToken
+    ? {
+        entry: { kind: "paused-continuation" },
+        rawToken,
+        restoreStoredToken: false,
+      }
+    : {
+        entry: { kind: "invalid-continuation" },
+        rawToken: null,
+        restoreStoredToken: false,
+      };
 }
 
 export default function GetStartedPage(): React.JSX.Element {
   const t = useCloudT();
-  const session = useJoinSessionAuth();
   const [searchParams] = useSearchParams();
-  const [phase, setPhase] = useState<GetStartedPhase>("checking");
-  const [error, setError] = useState<string | null>(null);
-  const [platformIdentity, setPlatformIdentity] =
-    useState<MessagingContinuationPreview | null>(null);
-  // StrictMode double-mount guard: the redemption POST must run once.
-  const startedRef = useRef(false);
+  const [{ entry: firstEntry, rawToken, restoreStoredToken }] = useState(() =>
+    resolveInitialEntry(searchParams),
+  );
+  const [entry, setEntry] = useState<EntryState>(firstEntry);
+  const headingRef = useRef<HTMLHeadingElement>(null);
 
-  // Ingest the URL credential exactly once. The state initializer persists it
-  // before a login redirect can drop the query string, then removes it from the
-  // address bar so a remount cannot resurrect a successfully consumed token.
-  const [urlToken] = useState(() => {
-    const token = sanitizeOnboardingSessionToken(
-      searchParams.get("onboardingSession"),
-    );
-    if (!token) return null;
-
-    storePendingOnboardingSession(token);
-    const nextUrl = new URL(window.location.href);
-    nextUrl.searchParams.delete("onboardingSession");
-    window.history.replaceState(
-      window.history.state,
-      "",
-      `${nextUrl.pathname}${nextUrl.search}${nextUrl.hash}`,
-    );
-    return token;
-  });
-
-  const pendingToken = urlToken ?? peekPendingOnboardingSession();
-
-  // Stable identity (no deps): the effect below keys on session readiness
-  // only, so a re-render can never re-trigger — or abort — an in-flight
-  // redemption POST (the #695 useEffect-deps failure mode).
-  const redeem = useCallback(async (token: string) => {
-    setPhase("linking");
-    setError(null);
-    try {
-      await completePendingOnboardingContinuation(token);
-      setPhase("done");
-    } catch (err) {
-      setError(describeContinuationError(err));
-      setPhase("error");
+  useLayoutEffect(() => {
+    if (rawToken) {
+      if (storePendingOnboardingSession(rawToken)) {
+        removeOnboardingSessionFromUrl();
+      }
+      return;
     }
-  }, []);
-
-  // Preview failures must retry the read-only preview, never jump directly to
-  // the mutating redemption with confirmPlatformLink=true. Otherwise a
-  // transient preview failure would turn the generic Retry button into an
-  // uninformed identity-link confirmation (the confused-deputy path this page
-  // exists to prevent).
-  const preview = useCallback(async (token: string) => {
-    setPhase("checking");
-    setError(null);
-    try {
-      const identity = await previewPendingOnboardingContinuation(token);
-      setPlatformIdentity(identity);
-      setPhase("confirm");
-    } catch (err) {
-      setError(describeContinuationError(err));
-      setPhase("error");
+    if (restoreStoredToken && peekPendingOnboardingSession()) {
+      setEntry({ kind: "paused-continuation" });
     }
+  }, [rawToken, restoreStoredToken]);
+
+  const dismissContinuation = useCallback(() => {
+    clearPendingOnboardingSession();
+    removeOnboardingSessionFromUrl();
+    setEntry({ kind: "setup-consent" });
   }, []);
 
   useEffect(() => {
-    if (!session.ready || !session.authenticated) return;
-    if (startedRef.current) return;
-    const token = peekPendingOnboardingSession();
-    if (!token) return;
-    startedRef.current = true;
-    void preview(token);
-  }, [session.ready, session.authenticated, preview]);
+    const heading = headingRef.current;
+    if (heading?.dataset.entryKind === entry.kind) heading.focus();
+  }, [entry.kind]);
 
-  if (session.ready && !session.authenticated) {
-    // The token is already persisted in storage; the URL param never needs to
-    // survive the login round trip.
-    return <Navigate to="/login?returnTo=/get-started" replace />;
-  }
-
-  if (session.ready && session.authenticated && !pendingToken) {
-    // Nothing to redeem — treat as a plain post-login entry.
-    return <Navigate to="/join" replace />;
-  }
+  const content =
+    entry.kind === "setup-consent" ? (
+      <div className="flex flex-col items-center gap-4">
+        <h1
+          ref={headingRef}
+          data-entry-kind={entry.kind}
+          tabIndex={-1}
+          className="font-poppins text-xl font-semibold text-white outline-none"
+        >
+          {t("cloud.getStarted.setupTitle", {
+            defaultValue: "Set up Eliza Cloud",
+          })}
+        </h1>
+        <p className="text-sm leading-6 text-white/70">
+          {t("cloud.getStarted.setupBody", {
+            defaultValue:
+              "This page does not start an agent. Continue only when you're ready: Cloud setup may select or create an agent, start compute, and use account credit.",
+          })}
+        </p>
+        <Button
+          asChild
+          className="hosted-signin-focus-emphasis h-auto min-h-11 max-w-full whitespace-normal bg-txt px-6 py-2.5 text-center font-semibold text-bg transition-colors hover:bg-txt/90"
+        >
+          <Link to="/join">
+            {t("cloud.getStarted.setupCta", {
+              defaultValue: "Continue to Cloud setup",
+            })}
+          </Link>
+        </Button>
+      </div>
+    ) : entry.kind === "invalid-continuation" ? (
+      <div className="flex flex-col items-center gap-4" role="alert">
+        <h1
+          ref={headingRef}
+          data-entry-kind={entry.kind}
+          tabIndex={-1}
+          className="font-poppins text-lg font-semibold text-white outline-none"
+        >
+          {t("cloud.getStarted.continuationInvalidTitle", {
+            defaultValue: "This connection link isn't valid",
+          })}
+        </h1>
+        <p className="text-sm leading-6 text-white/70">
+          {t("cloud.getStarted.continuationInvalidBody", {
+            defaultValue:
+              "Return to your messaging app and request a new sign-in link.",
+          })}
+        </p>
+        <Button
+          type="button"
+          variant="outline"
+          onClick={dismissContinuation}
+          className="hosted-signin-focus-emphasis h-auto min-h-11 max-w-full whitespace-normal px-6 py-2.5 text-center font-semibold"
+        >
+          {t("cloud.getStarted.continuationCancel", {
+            defaultValue: "Dismiss connection",
+          })}
+        </Button>
+      </div>
+    ) : (
+      <div className="flex flex-col items-center gap-4" role="status">
+        <h1
+          ref={headingRef}
+          data-entry-kind={entry.kind}
+          tabIndex={-1}
+          className="font-poppins text-lg font-semibold text-white outline-none"
+        >
+          {t("cloud.getStarted.continuationPausedTitle", {
+            defaultValue: "Messaging connection paused",
+          })}
+        </h1>
+        <p className="text-sm leading-6 text-white/70">
+          {t("cloud.getStarted.continuationPausedBody", {
+            defaultValue:
+              "This page did not verify or link this connection. The current Cloud flow can also add credit and start Dedicated compute, so messaging connections are unavailable until a safe linking flow ships. Keep chatting in your messaging app for now.",
+          })}
+        </p>
+        <Button
+          type="button"
+          variant="outline"
+          onClick={dismissContinuation}
+          className="hosted-signin-focus-emphasis h-auto min-h-11 max-w-full whitespace-normal px-6 py-2.5 text-center font-semibold"
+        >
+          {t("cloud.getStarted.continuationCancel", {
+            defaultValue: "Dismiss connection",
+          })}
+        </Button>
+      </div>
+    );
 
   return (
     <div
-      className="theme-cloud flex min-h-screen w-full flex-col items-center justify-center bg-black px-4 text-white"
-      style={{ background: "var(--background)" }}
+      className="theme-cloud flex min-h-dvh w-full flex-col items-center justify-center overflow-y-auto bg-black px-4 text-white"
+      style={{
+        background: "var(--background)",
+        paddingTop: "max(1.5rem, env(safe-area-inset-top))",
+        paddingBottom: "max(1.5rem, env(safe-area-inset-bottom))",
+      }}
     >
       <div className="flex w-full max-w-sm flex-col items-center gap-6 text-center">
         <img
@@ -151,110 +211,7 @@ export default function GetStartedPage(): React.JSX.Element {
           className="h-8 w-auto"
           draggable={false}
         />
-
-        {phase === "confirm" && platformIdentity ? (
-          <div className="flex flex-col items-center gap-4">
-            <h1 className="font-poppins text-lg font-semibold text-white">
-              Connect your {messagingPlatformLabel(platformIdentity.platform)}{" "}
-              account?
-            </h1>
-            <p className="text-sm text-white/70">
-              Continue with{" "}
-              <strong>{platformIdentity.platformDisplayName}</strong>
-              <span className="block text-xs text-white/50">
-                {platformIdentity.platform === "telegram"
-                  ? "Telegram ID"
-                  : platformIdentity.platform === "discord"
-                    ? "Discord ID"
-                    : "Phone"}{" "}
-                {platformIdentity.platformUserId}
-              </span>
-            </p>
-            <Button
-              type="button"
-              onClick={() => {
-                const token = peekPendingOnboardingSession();
-                if (token) void redeem(token);
-              }}
-              className="bg-txt px-6 py-2.5 font-semibold text-bg"
-            >
-              Connect this {messagingPlatformLabel(platformIdentity.platform)}{" "}
-              account
-            </Button>
-          </div>
-        ) : phase === "done" ? (
-          <div className="flex flex-col items-center gap-4">
-            <h1 className="font-poppins text-lg font-semibold text-white">
-              {t("cloud.getStarted.linkedTitle", {
-                defaultValue: "You're connected",
-              })}
-            </h1>
-            <p className="text-sm text-white/70">
-              {t("cloud.getStarted.linkedBody", {
-                defaultValue:
-                  "Head back to your chat — your agent will pick up right where you left off. Setup finishes in the background.",
-              })}
-            </p>
-            {platformIdentity?.returnUrl ? (
-              <Button
-                asChild
-                className="bg-txt px-6 py-2.5 font-semibold text-bg transition-colors hover:bg-txt/90"
-              >
-                <a href={platformIdentity.returnUrl}>
-                  Back to {messagingPlatformLabel(platformIdentity.platform)}
-                </a>
-              </Button>
-            ) : null}
-            <Button
-              variant="ghost"
-              type="button"
-              onClick={() => window.location.assign("/join")}
-              className="bg-txt px-6 py-2.5 font-semibold text-bg transition-colors hover:bg-txt/90"
-            >
-              {t("cloud.getStarted.openChat", {
-                defaultValue: "Or chat here instead",
-              })}
-            </Button>
-          </div>
-        ) : phase === "error" ? (
-          <div className="flex flex-col items-center gap-4">
-            <h1 className="font-poppins text-lg font-semibold text-white">
-              {t("cloud.getStarted.errorTitle", {
-                defaultValue: "Couldn't connect your account",
-              })}
-            </h1>
-            <p className="text-sm text-white/70">{error}</p>
-            <Button
-              variant="ghost"
-              type="button"
-              onClick={() => {
-                const token = peekPendingOnboardingSession();
-                if (!token) return;
-                if (platformIdentity) void redeem(token);
-                else void preview(token);
-              }}
-              className="bg-txt px-6 py-2.5 font-semibold text-bg transition-colors hover:bg-txt/90"
-            >
-              {t("cloud.getStarted.retry", { defaultValue: "Try again" })}
-            </Button>
-          </div>
-        ) : (
-          <div
-            className="flex flex-col items-center gap-4"
-            role="status"
-            aria-busy="true"
-          >
-            <div className="h-8 w-8 animate-spin rounded-full border-2 border-white/80 border-t-transparent" />
-            <p className="text-sm text-white/72">
-              {t("cloud.getStarted.linking", {
-                defaultValue:
-                  phase === "checking"
-                    ? "Checking your connection..."
-                    : "Connecting your account...",
-              })}
-            </p>
-          </div>
-        )}
+        {content}
       </div>
     </div>
   );

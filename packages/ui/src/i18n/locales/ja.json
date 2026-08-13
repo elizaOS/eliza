@@ -7379,5 +7379,13 @@
   "desktop.tray.hideWindow": "ウィンドウを非表示",
   "desktop.tray.quit": "終了",
   "desktop.tray.testNotification.title": "デスクトップ",
-  "desktop.tray.testNotification.body": "レンダラーのトレイアクションが正常に機能しています。"
+  "desktop.tray.testNotification.body": "レンダラーのトレイアクションが正常に機能しています。",
+  "cloud.getStarted.continuationCancel": "接続を破棄",
+  "cloud.getStarted.continuationInvalidBody": "メッセージアプリに戻り、新しいサインインリンクをリクエストしてください。",
+  "cloud.getStarted.continuationInvalidTitle": "この接続リンクは無効です",
+  "cloud.getStarted.continuationPausedBody": "このページでは接続の確認やリンクを行っていません。現在のCloudフローではクレジット追加やDedicatedコンピュートの開始も行われる可能性があるため、安全なリンクフローが提供されるまでメッセージ接続は利用できません。今はメッセージアプリでチャットを続けてください。",
+  "cloud.getStarted.continuationPausedTitle": "メッセージ接続は一時停止中です",
+  "cloud.getStarted.setupBody": "このページではエージェントを起動しません。準備ができた場合のみ続行してください。Cloudセットアップでは、エージェントの選択または作成、コンピュートの起動、アカウントクレジットの使用が行われる場合があります。",
+  "cloud.getStarted.setupCta": "Cloudセットアップに進む",
+  "cloud.getStarted.setupTitle": "Eliza Cloudをセットアップ"
 }

@@ -7379,5 +7379,13 @@
   "desktop.tray.hideWindow": "Ẩn cửa sổ",
   "desktop.tray.quit": "Thoát",
   "desktop.tray.testNotification.title": "Máy tính để bàn",
-  "desktop.tray.testNotification.body": "Hành động khay renderer đã được kết nối và đang phản hồi."
+  "desktop.tray.testNotification.body": "Hành động khay renderer đã được kết nối và đang phản hồi.",
+  "cloud.getStarted.continuationCancel": "Bỏ kết nối",
+  "cloud.getStarted.continuationInvalidBody": "Quay lại ứng dụng nhắn tin và yêu cầu liên kết đăng nhập mới.",
+  "cloud.getStarted.continuationInvalidTitle": "Liên kết kết nối này không hợp lệ",
+  "cloud.getStarted.continuationPausedBody": "Trang này chưa xác minh hoặc liên kết kết nối này. Luồng Cloud hiện tại cũng có thể thêm tín dụng và khởi động tài nguyên Dedicated, vì vậy kết nối nhắn tin chưa khả dụng cho đến khi có luồng liên kết an toàn. Hiện tại, hãy tiếp tục trò chuyện trong ứng dụng nhắn tin.",
+  "cloud.getStarted.continuationPausedTitle": "Kết nối nhắn tin đã tạm dừng",
+  "cloud.getStarted.setupBody": "Trang này không khởi động tác nhân. Chỉ tiếp tục khi bạn đã sẵn sàng: quá trình thiết lập Cloud có thể chọn hoặc tạo tác nhân, khởi động tài nguyên điện toán và sử dụng tín dụng tài khoản.",
+  "cloud.getStarted.setupCta": "Tiếp tục thiết lập Cloud",
+  "cloud.getStarted.setupTitle": "Thiết lập Eliza Cloud"
 }

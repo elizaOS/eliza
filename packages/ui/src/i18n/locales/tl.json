@@ -7379,5 +7379,13 @@
   "desktop.tray.hideWindow": "Itago ang Window",
   "desktop.tray.quit": "Huminto",
   "desktop.tray.testNotification.title": "Desktop",
-  "desktop.tray.testNotification.body": "Nakakonekta at sumasagot ang mga renderer tray action."
+  "desktop.tray.testNotification.body": "Nakakonekta at sumasagot ang mga renderer tray action.",
+  "cloud.getStarted.continuationCancel": "Isara ang koneksyon",
+  "cloud.getStarted.continuationInvalidBody": "Bumalik sa iyong messaging app at humiling ng bagong sign-in link.",
+  "cloud.getStarted.continuationInvalidTitle": "Hindi wasto ang link ng koneksyong ito",
+  "cloud.getStarted.continuationPausedBody": "Hindi na-verify o na-link ng page na ito ang koneksyong ito. Maaari ring magdagdag ng credit at magsimula ng Dedicated compute ang kasalukuyang Cloud flow, kaya hindi available ang messaging connections hanggang magkaroon ng ligtas na linking flow. Magpatuloy muna sa pag-chat sa iyong messaging app.",
+  "cloud.getStarted.continuationPausedTitle": "Naka-pause ang messaging connection",
+  "cloud.getStarted.setupBody": "Hindi nagsisimula ng agent ang page na ito. Magpatuloy lamang kapag handa ka na: maaaring pumili o gumawa ng agent, magsimula ng compute, at gumamit ng account credit ang Cloud setup.",
+  "cloud.getStarted.setupCta": "Magpatuloy sa Cloud setup",
+  "cloud.getStarted.setupTitle": "I-set up ang Eliza Cloud"
 }

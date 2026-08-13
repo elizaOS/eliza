@@ -1,183 +1,205 @@
-/** Regression coverage for one-shot messaging onboarding continuation redemption. */
+/** Verifies the fail-closed continuation and explicit Cloud setup boundary. */
 // @vitest-environment jsdom
 
-import {
-  cleanup,
-  fireEvent,
-  render,
-  screen,
-  waitFor,
-} from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  clearPendingOnboardingSession,
-  completePendingOnboardingContinuation,
+  createTranslator,
+  ensureLanguageLoaded,
+  MESSAGES,
+  UI_LANGUAGES,
+} from "../../i18n";
+import {
   peekPendingOnboardingSession,
-  previewPendingOnboardingContinuation,
+  storePendingOnboardingSession,
 } from "./lib/onboarding-continuation";
 
 const TOKEN = "aaaaaaaa-test-test-test-tokentoken01";
-
-vi.mock("./lib/use-join-session", () => ({
-  useJoinSessionAuth: () => ({ ready: true, authenticated: true }),
-}));
+const GET_STARTED_KEYS = [
+  "cloud.getStarted.continuationCancel",
+  "cloud.getStarted.continuationInvalidBody",
+  "cloud.getStarted.continuationInvalidTitle",
+  "cloud.getStarted.continuationPausedBody",
+  "cloud.getStarted.continuationPausedTitle",
+  "cloud.getStarted.setupBody",
+  "cloud.getStarted.setupCta",
+  "cloud.getStarted.setupTitle",
+] as const;
 
 vi.mock("../shell/CloudI18nProvider", () => ({
-  useCloudT: () => (_key: string, options?: { defaultValue?: string }) =>
-    options?.defaultValue ?? _key,
+  useCloudT:
+    () =>
+    (
+      key: string,
+      options?: { defaultValue?: string; [name: string]: unknown },
+    ) =>
+      options?.defaultValue ?? key,
 }));
-
-vi.mock("./lib/onboarding-continuation", async (importOriginal) => {
-  const actual =
-    await importOriginal<typeof import("./lib/onboarding-continuation")>();
-  return {
-    ...actual,
-    previewPendingOnboardingContinuation: vi.fn(async () => ({
-      platform: "discord" as const,
-      platformUserId: "1234567890",
-      platformDisplayName: "attested-discord-user",
-      returnUrl: null,
-    })),
-    completePendingOnboardingContinuation: vi.fn(async () => {
-      actual.clearPendingOnboardingSession();
-    }),
-  };
-});
 
 const { default: GetStartedPage } = await import("./GetStartedPage");
 
-beforeEach(() => {
-  vi.mocked(previewPendingOnboardingContinuation).mockReset();
-  vi.mocked(previewPendingOnboardingContinuation).mockResolvedValue({
-    platform: "discord",
-    platformUserId: "1234567890",
-    platformDisplayName: "attested-discord-user",
-    returnUrl: null,
-  });
-  vi.mocked(completePendingOnboardingContinuation).mockReset();
-  vi.mocked(completePendingOnboardingContinuation).mockImplementation(
-    async () => {
-      clearPendingOnboardingSession();
-    },
+function renderPage(entry = `/get-started?onboardingSession=${TOKEN}`) {
+  window.history.replaceState(null, "", entry);
+  return render(
+    <MemoryRouter initialEntries={[entry]}>
+      <Routes>
+        <Route path="/get-started" element={<GetStartedPage />} />
+        <Route
+          path="/join"
+          element={<div data-testid="join-route">join</div>}
+        />
+      </Routes>
+    </MemoryRouter>,
   );
-});
+}
 
 afterEach(() => {
   cleanup();
-  clearPendingOnboardingSession();
   window.sessionStorage.clear();
   window.localStorage.clear();
   window.history.replaceState(null, "", "/");
+  vi.restoreAllMocks();
+  vi.useRealTimers();
 });
 
 describe("GetStartedPage", () => {
-  it("does not restore a URL continuation after a successful redemption rerender", async () => {
-    const entry = `/get-started?onboardingSession=${TOKEN}`;
-    window.history.replaceState(null, "", entry);
-
-    render(
-      <MemoryRouter initialEntries={[entry]}>
-        <Routes>
-          <Route path="/get-started" element={<GetStartedPage />} />
-          <Route path="/join" element={<div>join</div>} />
-        </Routes>
-      </MemoryRouter>,
-    );
-
-    expect(await screen.findByText("attested-discord-user")).toBeTruthy();
-    expect(screen.queryByText("You're connected")).toBeNull();
-    fireEvent.click(
-      screen.getByRole("button", { name: /Connect this Discord account/ }),
-    );
-    expect(await screen.findByText("You're connected")).toBeTruthy();
-    await waitFor(() => {
-      expect(peekPendingOnboardingSession()).toBeNull();
-      expect(window.sessionStorage.length).toBe(0);
-      expect(window.localStorage.length).toBe(0);
-    });
-    expect(window.location.search).not.toContain("onboardingSession");
+  it("loads every production state from every supported locale", async () => {
+    for (const language of UI_LANGUAGES) {
+      await ensureLanguageLoaded(language);
+      const translate = createTranslator(language);
+      for (const key of GET_STARTED_KEYS) {
+        expect(MESSAGES[language][key], `${language}:${key}`).toEqual(
+          expect.any(String),
+        );
+        expect(MESSAGES[language][key].trim(), `${language}:${key}`).not.toBe(
+          "",
+        );
+        expect(translate(key)).not.toBe(key);
+      }
+    }
   });
 
-  it("retries a failed preview without silently confirming the identity link", async () => {
-    vi.mocked(previewPendingOnboardingContinuation).mockRejectedValueOnce(
-      new Error("preview temporarily unavailable"),
-    );
-    const entry = `/get-started?onboardingSession=${TOKEN}`;
-    window.history.replaceState(null, "", entry);
+  it.each([
+    ["signed-out bare", "/get-started", false, "Set up Eliza Cloud"],
+    ["signed-in bare", "/get-started", true, "Set up Eliza Cloud"],
+    [
+      "signed-out continuation",
+      `/get-started?onboardingSession=${TOKEN}`,
+      false,
+      "Messaging connection paused",
+    ],
+    [
+      "signed-in continuation",
+      `/get-started?onboardingSession=${TOKEN}`,
+      true,
+      "Messaging connection paused",
+    ],
+  ])(
+    "makes no initial network request for %s entry",
+    (_name, entry, signedIn, heading) => {
+      if (signedIn) {
+        window.localStorage.setItem(
+          "steward_session_token",
+          "signed-in-test-token",
+        );
+      }
+      const fetchSpy = vi.spyOn(globalThis, "fetch");
 
-    render(
-      <MemoryRouter initialEntries={[entry]}>
-        <Routes>
-          <Route path="/get-started" element={<GetStartedPage />} />
-        </Routes>
-      </MemoryRouter>,
+      renderPage(entry);
+
+      expect(screen.getByRole("heading", { name: heading })).toBe(
+        document.activeElement,
+      );
+      expect(screen.queryByTestId("join-route")).toBeNull();
+      expect(fetchSpy).not.toHaveBeenCalled();
+    },
+  );
+
+  it("enters the existing Cloud setup flow only after explicit consent", () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    renderPage("/get-started");
+
+    fireEvent.click(
+      screen.getByRole("link", { name: "Continue to Cloud setup" }),
     );
+
+    expect(screen.getByTestId("join-route")).toBeTruthy();
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("retains a valid continuation locally without verifying or linking it", () => {
+    renderPage();
 
     expect(
-      await screen.findByText("preview temporarily unavailable"),
+      screen.getByText(
+        "This page did not verify or link this connection. The current Cloud flow can also add credit and start Dedicated compute, so messaging connections are unavailable until a safe linking flow ships. Keep chatting in your messaging app for now.",
+      ),
     ).toBeTruthy();
-    fireEvent.click(screen.getByText("Try again"));
-
-    expect(await screen.findByText("attested-discord-user")).toBeTruthy();
-    expect(completePendingOnboardingContinuation).not.toHaveBeenCalled();
-    expect(previewPendingOnboardingContinuation).toHaveBeenCalledTimes(2);
+    expect(peekPendingOnboardingSession()).toBe(TOKEN);
+    expect(window.location.search).toBe("");
   });
 
-  it("renders the Telegram identity preview and confirm for a telegram continuation", async () => {
-    vi.mocked(previewPendingOnboardingContinuation).mockResolvedValue({
-      platform: "telegram",
-      platformUserId: "123456789",
-      platformDisplayName: "attested-telegram-user",
-      returnUrl: null,
-    });
-    const entry = `/get-started?onboardingSession=${TOKEN}`;
-    window.history.replaceState(null, "", entry);
+  it("fails closed on a malformed raw continuation", () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    renderPage("/get-started?onboardingSession=short");
 
-    render(
-      <MemoryRouter initialEntries={[entry]}>
-        <Routes>
-          <Route path="/get-started" element={<GetStartedPage />} />
-        </Routes>
-      </MemoryRouter>,
-    );
-
-    expect(await screen.findByText("attested-telegram-user")).toBeTruthy();
-    expect(screen.getByText(/Connect your/)).toBeTruthy();
-    expect(screen.queryByText(/Discord/)).toBeNull();
-    fireEvent.click(
-      screen.getByRole("button", { name: /Connect this Telegram account/ }),
-    );
-    expect(await screen.findByText("You're connected")).toBeTruthy();
-  });
-
-  it("offers a deep link back to the originating iMessage conversation", async () => {
-    vi.mocked(previewPendingOnboardingContinuation).mockResolvedValue({
-      platform: "blooio",
-      platformUserId: "+14155550123",
-      platformDisplayName: "Shaw",
-      returnUrl: "sms:+18087881821",
-    });
-    const entry = `/get-started?onboardingSession=${TOKEN}`;
-    window.history.replaceState(null, "", entry);
-
-    render(
-      <MemoryRouter initialEntries={[entry]}>
-        <Routes>
-          <Route path="/get-started" element={<GetStartedPage />} />
-        </Routes>
-      </MemoryRouter>,
-    );
-
-    expect(await screen.findByText("Shaw")).toBeTruthy();
-    fireEvent.click(
-      screen.getByRole("button", { name: /Connect this iMessage account/ }),
-    );
-    expect(await screen.findByText("You're connected")).toBeTruthy();
     expect(
-      screen
-        .getByRole("link", { name: "Back to iMessage" })
-        .getAttribute("href"),
-    ).toBe("sms:+18087881821");
+      screen.getByRole("heading", {
+        name: "This connection link isn't valid",
+      }),
+    ).toBe(document.activeElement);
+    expect(screen.queryByTestId("join-route")).toBeNull();
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("restores a persisted continuation without a network request", () => {
+    storePendingOnboardingSession(TOKEN);
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+
+    renderPage("/get-started");
+
+    expect(
+      screen.getByRole("heading", { name: "Messaging connection paused" }),
+    ).toBeTruthy();
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("keeps the URL credential when cross-tab storage is unavailable", () => {
+    const originalSetItem = Storage.prototype.setItem;
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(function (
+      this: Storage,
+      key: string,
+      value: string,
+    ) {
+      if (this === window.localStorage)
+        throw new Error("local storage blocked");
+      originalSetItem.call(this, key, value);
+    });
+
+    renderPage();
+
+    expect(
+      screen.getByRole("heading", { name: "Messaging connection paused" }),
+    ).toBeTruthy();
+    expect(window.location.search).toContain(`onboardingSession=${TOKEN}`);
+    expect(peekPendingOnboardingSession()).toBe(TOKEN);
+  });
+
+  it("dismisses and forgets a continuation before showing setup consent", () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    renderPage();
+    expect(peekPendingOnboardingSession()).toBe(TOKEN);
+
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss connection" }));
+
+    expect(peekPendingOnboardingSession()).toBeNull();
+    expect(window.localStorage.length).toBe(0);
+    expect(window.sessionStorage.length).toBe(0);
+    expect(window.location.search).toBe("");
+    expect(screen.getByRole("heading", { name: "Set up Eliza Cloud" })).toBe(
+      document.activeElement,
+    );
+    expect(fetchSpy).not.toHaveBeenCalled();
   });
 });

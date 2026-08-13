@@ -1,31 +1,12 @@
 /**
- * Onboarding continuation hand-through for the messaging → cloud signup funnel.
+ * Browser persistence for the messaging-to-Cloud continuation credential.
  *
- * A messaging transport (Discord DM today) hands the browser an opaque
- * continuation token (`?onboardingSession=<token>`) proving ownership of the
- * platform-scoped onboarding session. The token must survive the Steward login
- * round trip (OAuth popup, email magic link, OTP) that loses URL params, so it
- * is persisted here — mirroring the pending-OAuth `returnTo` pattern in
- * `public-pages/lib/login-return-to.ts` — and redeemed exactly once after
- * authentication by POSTing the onboarding chat endpoint with the Steward
- * bearer. That server-side exchange is what binds the session to the account,
- * links the attested platform identity (e.g. discord_id), and kicks agent
- * provisioning. The redirect itself is never trusted with any of that.
- *
- * Client-side single-use: the stored token is cleared only after the exchange
- * succeeds, so a transient failure keeps it for retry. Server-side the token
- * has its own TTL and first-bind-wins semantics (a session bound to another
- * account is never handed over).
+ * The credential is retained while the production linking boundary is paused,
+ * but no transport consumes it. The user is the only authority that clears it.
  */
 
-import { api } from "../../lib/api-client";
-
 const PENDING_ONBOARDING_SESSION_KEY = "eliza.join.onboardingSession";
-/** Long enough for an email magic-link round trip; short enough not to haunt
- * the browser for weeks. The server enforces its own (longer) session TTL. */
 const PENDING_ONBOARDING_SESSION_TTL_MS = 60 * 60 * 1000;
-
-/** Mirrors the server's onboarding session-id shape (SESSION_ID_PATTERN). */
 const ONBOARDING_TOKEN_PATTERN = /^[a-zA-Z0-9:+_-]{8,180}$/;
 
 interface StoredPendingOnboardingSession {
@@ -33,54 +14,56 @@ interface StoredPendingOnboardingSession {
   expiresAt: number;
 }
 
-/**
- * Validate a raw `?onboardingSession=` value. Platform-scoped ids
- * (`platform:...`) are rejected: those are derived from guessable messaging
- * ids and only a trusted gateway may present them — the browser leg always
- * carries the opaque continuation credential.
- */
+interface AvailableStorage {
+  crossTab: boolean;
+  storage: Storage;
+}
+
 export function sanitizeOnboardingSessionToken(
   value: string | null | undefined,
 ): string | null {
   const trimmed = value?.trim();
-  if (!trimmed) return null;
-  if (!ONBOARDING_TOKEN_PATTERN.test(trimmed)) return null;
-  if (trimmed.startsWith("platform:")) return null;
-  return trimmed;
+  if (!trimmed || !ONBOARDING_TOKEN_PATTERN.test(trimmed)) return null;
+  return trimmed.startsWith("platform:") ? null : trimmed;
 }
 
-function eachStorage(): Storage[] {
+function eachStorage(): AvailableStorage[] {
   if (typeof window === "undefined") return [];
-  const storages: Storage[] = [];
+  const storages: AvailableStorage[] = [];
   try {
-    storages.push(window.sessionStorage);
+    storages.push({ storage: window.localStorage, crossTab: true });
   } catch {
-    // Storage can be disabled entirely (private browsing hard mode).
+    // error-policy:J3 storage may be disabled entirely by the browser.
   }
   try {
-    storages.push(window.localStorage);
+    storages.push({ storage: window.sessionStorage, crossTab: false });
   } catch {
-    // Same as above — the funnel degrades to the URL-param path only.
+    // error-policy:J3 the credential remains in the same-origin URL instead.
   }
   return storages;
 }
 
-/** Persist the pending continuation token across the login round trip. */
-export function storePendingOnboardingSession(token: string): void {
+/**
+ * Persist the credential and report whether it is available across tabs. The
+ * caller keeps the URL parameter unless localStorage succeeds.
+ */
+export function storePendingOnboardingSession(token: string): boolean {
   const sanitized = sanitizeOnboardingSessionToken(token);
-  if (!sanitized) return;
+  if (!sanitized) return false;
   const stored = JSON.stringify({
     token: sanitized,
     expiresAt: Date.now() + PENDING_ONBOARDING_SESSION_TTL_MS,
   } satisfies StoredPendingOnboardingSession);
-  for (const storage of eachStorage()) {
+  let crossTabPersisted = false;
+  for (const { storage, crossTab } of eachStorage()) {
     try {
       storage.setItem(PENDING_ONBOARDING_SESSION_KEY, stored);
+      crossTabPersisted ||= crossTab;
     } catch {
-      // error-policy:J3 unwritable storage — losing the pending token degrades
-      // to a signup without the messaging link, never a failed login.
+      // error-policy:J3 unwritable storage leaves the URL credential intact.
     }
   }
+  return crossTabPersisted;
 }
 
 function parseStored(value: string | null): string | null {
@@ -96,86 +79,36 @@ function parseStored(value: string | null): string | null {
     }
     return null;
   } catch {
+    // error-policy:J3 malformed persisted input is not a usable credential.
     return null;
   }
 }
 
-/** Read the pending token WITHOUT consuming it (cleared only on success). */
 export function peekPendingOnboardingSession(): string | null {
-  for (const storage of eachStorage()) {
+  let pendingToken: string | null = null;
+  for (const { storage } of eachStorage()) {
     try {
-      const token = parseStored(
-        storage.getItem(PENDING_ONBOARDING_SESSION_KEY),
-      );
-      if (token) return token;
+      const value = storage.getItem(PENDING_ONBOARDING_SESSION_KEY);
+      if (!value) continue;
+      const token = parseStored(value);
+      if (token) {
+        pendingToken ??= token;
+      } else {
+        storage.removeItem(PENDING_ONBOARDING_SESSION_KEY);
+      }
     } catch {
-      // error-policy:J3 unreadable storage reads as no pending token.
+      // error-policy:J3 unreadable storage means no pending credential.
     }
   }
-  return null;
+  return pendingToken;
 }
 
-/** Drop the pending token from every storage (post-success, single-use). */
 export function clearPendingOnboardingSession(): void {
-  for (const storage of eachStorage()) {
+  for (const { storage } of eachStorage()) {
     try {
       storage.removeItem(PENDING_ONBOARDING_SESSION_KEY);
     } catch {
-      // error-policy:J6 best-effort cleanup; an expired leftover is inert.
+      // error-policy:J6 best-effort browser-only credential cleanup.
     }
   }
-}
-
-/** The transport seam, injectable for tests. */
-export interface OnboardingContinuationTransport {
-  post(path: string, body: Record<string, unknown>): Promise<unknown>;
-  get?(path: string): Promise<unknown>;
-}
-
-const defaultTransport: OnboardingContinuationTransport = {
-  post: (path, body) => api(path, { method: "POST", json: body }),
-  get: (path) => api(path),
-};
-
-export interface MessagingContinuationPreview {
-  platform: "discord" | "telegram" | "blooio" | "twilio";
-  platformUserId: string;
-  platformDisplayName: string;
-  returnUrl: string | null;
-}
-
-export async function previewPendingOnboardingContinuation(
-  token: string,
-  transport: OnboardingContinuationTransport = defaultTransport,
-): Promise<MessagingContinuationPreview> {
-  const sanitized = sanitizeOnboardingSessionToken(token);
-  if (!sanitized || !transport.get)
-    throw new Error("Invalid onboarding connection link");
-  const response = (await transport.get(
-    `/api/eliza-app/onboarding/chat?sessionId=${encodeURIComponent(sanitized)}`,
-  )) as { data?: MessagingContinuationPreview };
-  if (!response?.data)
-    throw new Error("Could not verify the messaging account to connect");
-  return response.data;
-}
-
-/**
- * Redeem the continuation server-side with the caller's Steward session: the
- * onboarding chat endpoint resolves the opaque token to the platform session,
- * binds it to the authenticated account, links the trusted platform identity,
- * and starts provisioning. Success clears the stored token (single-use);
- * failure throws AND keeps it so a retry can redeem it.
- */
-export async function completePendingOnboardingContinuation(
-  token: string,
-  transport: OnboardingContinuationTransport = defaultTransport,
-): Promise<void> {
-  const sanitized = sanitizeOnboardingSessionToken(token);
-  if (!sanitized) return;
-  await transport.post("/api/eliza-app/onboarding/chat", {
-    sessionId: sanitized,
-    platform: "web",
-    confirmPlatformLink: true,
-  });
-  clearPendingOnboardingSession();
 }
