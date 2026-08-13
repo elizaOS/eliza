@@ -11,6 +11,8 @@ import {
 } from "./pty-session-store";
 import type { PtySessionInfo, PtySpawnSpec } from "./pty-types";
 
+const MAX_TIMER_DELAY_MS = 2_147_483_647;
+
 function resolveAllowedRoot(runtime?: IAgentRuntime): string {
   const fromSetting = runtime?.getSetting?.("PTY_ALLOWED_DIRECTORY");
   const raw =
@@ -20,14 +22,30 @@ function resolveAllowedRoot(runtime?: IAgentRuntime): string {
   return raw;
 }
 
-function resolveIdleTimeoutMs(runtime?: IAgentRuntime): number | undefined {
+export function resolveIdleTimeoutMs(
+  runtime?: IAgentRuntime,
+): number | undefined {
   const fromSetting = runtime?.getSetting?.("PTY_IDLE_TIMEOUT_MS");
   const raw =
     (typeof fromSetting === "string" && fromSetting.trim()) ||
     process.env.PTY_IDLE_TIMEOUT_MS?.trim();
   if (!raw) return undefined;
+  if (!/^\d+$/.test(raw)) {
+    throw new TypeError(
+      `PTY_IDLE_TIMEOUT_MS must be a decimal integer from 0 to ${MAX_TIMER_DELAY_MS}; received ${JSON.stringify(raw)}`,
+    );
+  }
   const parsed = Number(raw);
-  return Number.isFinite(parsed) ? parsed : undefined;
+  if (
+    !Number.isSafeInteger(parsed) ||
+    parsed < 0 ||
+    parsed > MAX_TIMER_DELAY_MS
+  ) {
+    throw new TypeError(
+      `PTY_IDLE_TIMEOUT_MS must be a decimal integer from 0 to ${MAX_TIMER_DELAY_MS}; received ${JSON.stringify(raw)}`,
+    );
+  }
+  return parsed;
 }
 
 export class PtyService extends Service {

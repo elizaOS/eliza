@@ -5,7 +5,7 @@
  */
 import os from "node:os";
 import { describe, expect, it } from "vitest";
-import { PtyService } from "../services/pty-service";
+import { PtyService, resolveIdleTimeoutMs } from "../services/pty-service";
 import type { PtySpawnSpec } from "../services/pty-types";
 import { makeFakeSpawn } from "./fake-pty";
 
@@ -78,4 +78,30 @@ describe("PtyService", () => {
     expect(svc.listSessions()).toHaveLength(0);
     expect(fake.ptys.every((p) => p.killed)).toBe(true);
   });
+});
+
+describe("resolveIdleTimeoutMs", () => {
+  it("preserves the documented disabled and normal timeout values", () => {
+    expect(
+      resolveIdleTimeoutMs({
+        getSetting: () => "0",
+      } as never),
+    ).toBe(0);
+    expect(
+      resolveIdleTimeoutMs({
+        getSetting: () => "900000",
+      } as never),
+    ).toBe(900_000);
+  });
+
+  it.each(["1.5", "-1", "2147483648", "900000oops"])(
+    "rejects invalid operator timeout %s before it reaches setTimeout",
+    (value) => {
+      expect(() =>
+        resolveIdleTimeoutMs({
+          getSetting: () => value,
+        } as never),
+      ).toThrow(/PTY_IDLE_TIMEOUT_MS must be a decimal integer/);
+    },
+  );
 });
