@@ -9,6 +9,7 @@ import { join, resolve } from "node:path";
 
 const REPORT_SCHEMA = "eliza_story_gate_v1";
 const SHARD_PATTERN = /^[1-9]\d*\/[1-9]\d*$/;
+const STORY_VERDICTS = new Set(["good", "broken", "needs-runtime"]);
 
 function entriesFromCatalog(catalog) {
   return Object.values(catalog?.entries ?? catalog?.stories ?? {});
@@ -104,6 +105,18 @@ function summarize(results) {
   };
 }
 
+function validateResult(result) {
+  if (!result || typeof result !== "object") {
+    throw new Error("invalid story result");
+  }
+  if (typeof result.id !== "string" || !result.id) {
+    throw new Error("story result is missing an id");
+  }
+  if (!STORY_VERDICTS.has(result.verdict)) {
+    throw new Error(`invalid story verdict for ${result.id}: ${result.verdict ?? "missing"}`);
+  }
+}
+
 export function mergeStoryGateReports({ catalog, reports, expectedShards }) {
   if (!Array.isArray(expectedShards) || expectedShards.length === 0) {
     throw new Error("expectedShards must be a non-empty array");
@@ -120,7 +133,7 @@ export function mergeStoryGateReports({ catalog, reports, expectedShards }) {
   const unexpected = [];
 
   for (const result of results) {
-    if (typeof result?.id !== "string") throw new Error("story result is missing an id");
+    validateResult(result);
     if (seen.has(result.id)) duplicates.push(result.id);
     seen.add(result.id);
     if (!catalogSet.has(result.id)) unexpected.push(result.id);
@@ -136,6 +149,18 @@ export function mergeStoryGateReports({ catalog, reports, expectedShards }) {
   const missing = catalogIds.filter((id) => !seen.has(id));
   if (missing.length) throw new Error(`missing story ids: ${list(missing)}`);
 
+  const summary = summarize(results);
+  if (
+    results.length > 5 &&
+    summary.good === 0 &&
+    summary.broken === 0 &&
+    summary.needsRuntime === results.length
+  ) {
+    throw new Error(
+      `aggregate self-check failed: all ${results.length} stories are needs-runtime and none rendered good`,
+    );
+  }
+
   const failures = reports.flatMap((report) =>
     report.failures.map((failure) => ({ ...failure, shard: report.shard })),
   );
@@ -147,7 +172,7 @@ export function mergeStoryGateReports({ catalog, reports, expectedShards }) {
       receivedShards: reports.map((report) => report.shard).sort(),
       catalogStories: catalogIds.length,
     },
-    totals: { ...summarize(results), failures: failures.length },
+    totals: { ...summary, failures: failures.length },
     failures,
     results,
   };

@@ -216,4 +216,37 @@ describe("story-gate report aggregation", () => {
       }),
     ).toThrow(/invalid shard failure entry/);
   });
+
+  it("rejects a result with no supported verdict", () => {
+    expect(() =>
+      mergeStoryGateReports({
+        catalog: { entries: { a: { type: "story", id: "a--story" } } },
+        reports: [
+          report("1/1", [{ ...story("a--story"), verdict: undefined }]),
+        ],
+        expectedShards: ["1/1"],
+      }),
+    ).toThrow(/invalid story verdict for a--story: missing/);
+  });
+
+  it("rejects a complete catalog when every story is only needs-runtime", () => {
+    const entries = Object.fromEntries(
+      Array.from({ length: 6 }, (_, index) => [
+        `story-${index}`,
+        { type: "story", id: `story-${index}` },
+      ]),
+    );
+    const results = Object.values(entries).map(({ id }) => ({
+      ...story(id),
+      verdict: "needs-runtime",
+    }));
+
+    expect(() =>
+      mergeStoryGateReports({
+        catalog: { entries },
+        reports: [report("1/1", results)],
+        expectedShards: ["1/1"],
+      }),
+    ).toThrow(/aggregate self-check failed/);
+  });
 });
