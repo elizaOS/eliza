@@ -1,7 +1,7 @@
 /**
  * Deterministic peer-coherence gate for the spawned-worker Effect prerelease
  * family (#18810). Walks the real module-resolution chain the Smithers worker
- * uses — this plugin → @smthrs/engine → @effect/platform-bun →
+ * uses — this plugin → smthrs → @smthrs/engine → @effect/platform-bun →
  * @effect/platform-node-shared — through Bun's isolated store, and fails when
  * any link's declared dependency or peer range on `effect` (or on another
  * family member) is not satisfied by the version that link actually resolves,
@@ -74,7 +74,7 @@ function declaredEdges(manifest: FamilyManifest): Array<[string, string]> {
 describe('spawned-worker Effect family peer coherence (#18810)', () => {
   // The worker resolves from the plugin root (smithers-runtime spawns with
   // cwd=pluginRoot and imports `effect` directly), so the chain is seeded
-  // with the plugin's own manifest — plugin→effect and plugin→engine are
+  // with the plugin's own manifest — plugin→effect and plugin→smthrs are
   // asserted edges, not assumptions.
   const pluginManifestPath = path.resolve(
     path.dirname(fileURLToPath(import.meta.url)),

@@ -9,7 +9,11 @@
 import type { BridgeRequest } from "@/lib/services/eliza-sandbox";
 import type { CachedAgentSandbox } from "@/lib/services/shared-runtime/cached-agent-dates";
 import type { SharedTurnMessage } from "@/lib/services/shared-runtime/run-shared-agent-turn";
-import type { SharedRuntimeHistoryStore } from "@/lib/services/shared-runtime/shared-runtime-chat";
+import type {
+  SharedRuntimeHistoryStore,
+  SharedTurnClaimStore,
+  SharedTurnTerminalResult,
+} from "@/lib/services/shared-runtime/shared-runtime-chat";
 import {
   MAX_HISTORY_MESSAGES,
   mergeSharedRuntimeHistoryMessages,
@@ -35,6 +39,36 @@ interface StoredConversation {
 
 const CONVERSATION_KEY = "conversation";
 const RETRY_DELAY_MS = 30_000;
+
+/**
+ * Durable claim ledger for client-keyed turns (#18045), stored as one bounded
+ * value. The room queue fully serializes turns, so read-modify-write is safe.
+ * Bounds keep the value under the storage limit; an evicted claim degrades to
+ * a fresh execution whose deterministic billing identities still dedupe the
+ * charge at the admission gate.
+ */
+const TURN_CLAIMS_KEY = "turn-claims";
+// ponytail: single bounded value = ~32-turn replay window; per-claim rows if a room ever needs more.
+const MAX_TURN_CLAIMS = 32;
+const MAX_TURN_CLAIMS_BYTES = 256_000;
+
+interface StoredTurnClaim {
+  key: string;
+  hash: string;
+  result?: SharedTurnTerminalResult;
+}
+
+function boundTurnClaims(claims: StoredTurnClaim[]): StoredTurnClaim[] {
+  let bounded = claims.slice(-MAX_TURN_CLAIMS);
+  while (
+    bounded.length > 1 &&
+    new TextEncoder().encode(JSON.stringify(bounded)).length >
+      MAX_TURN_CLAIMS_BYTES
+  ) {
+    bounded = bounded.slice(1);
+  }
+  return bounded;
+}
 
 /**
  * SQLite-backed Durable Object storage rejects values over 2 MiB. History is
@@ -224,9 +258,49 @@ export class SharedRuntimeConversation {
     };
   }
 
+  private turnClaims(): SharedTurnClaimStore {
+    return {
+      claim: async (key, payloadHash) => {
+        const claims =
+          (await this.state.storage.get<StoredTurnClaim[]>(TURN_CLAIMS_KEY)) ??
+          [];
+        const existing = claims.find((claim) => claim.key === key);
+        if (existing) {
+          if (existing.hash !== payloadHash) return { state: "conflict" };
+          if (existing.result) {
+            return { state: "replay", result: existing.result };
+          }
+          // Pending claim with a matching payload: the prior execution failed
+          // before landing (the room queue serializes turns, so nothing is in
+          // flight) — re-execution under the same claim is the recovery path.
+          return { state: "claimed" };
+        }
+        await this.state.storage.put(
+          TURN_CLAIMS_KEY,
+          boundTurnClaims([...claims, { key, hash: payloadHash }]),
+        );
+        return { state: "claimed" };
+      },
+      complete: async (key, result) => {
+        const claims =
+          (await this.state.storage.get<StoredTurnClaim[]>(TURN_CLAIMS_KEY)) ??
+          [];
+        await this.state.storage.put(
+          TURN_CLAIMS_KEY,
+          boundTurnClaims(
+            claims.map((claim) =>
+              claim.key === key ? { ...claim, result } : claim,
+            ),
+          ),
+        );
+      },
+    };
+  }
+
   private async handle(request: Request): Promise<Response> {
     const payload = (await request.json()) as ConversationRequest;
     const historyStore = this.historyStore();
+    const turnClaims = this.turnClaims();
     if (payload.operation === "history") {
       const history = await this.runWithBindings(async () => {
         const { sharedRuntimeChatService } = await import(
@@ -267,11 +341,13 @@ export class SharedRuntimeConversation {
           abortSignal: request.signal,
           executionCtx,
           historyStore,
+          turnClaims,
         });
       }
       const result = await sharedRuntimeChatService.bridge(agent, payload.rpc, {
         executionCtx,
         historyStore,
+        turnClaims,
       });
       return Response.json(result);
     });
@@ -335,6 +411,17 @@ export class SharedRuntimeConversation {
       // identity cannot survive the stub fetch boundary); every other failure
       // remains observable to Workers.
       release();
+      if (error instanceof Error && error.name === "SharedTurnConflictError") {
+        return Response.json(
+          {
+            success: false,
+            error: error.message,
+            code: "client_message_conflict",
+            retryable: false,
+          },
+          { status: 409 },
+        );
+      }
       if (
         error instanceof ConversationCacheWarmingError ||
         (error instanceof Error &&

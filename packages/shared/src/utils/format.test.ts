@@ -5,11 +5,19 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   formatByteSize,
+  formatDateTime,
   formatDurationMs,
+  formatShortDate,
   formatTime,
   formatUptime,
   formatUsd,
 } from "./format";
+
+const DATE_FORMATTERS = [
+  ["date and time", formatDateTime],
+  ["time", formatTime],
+  ["short date", formatShortDate],
+] as const;
 
 describe("formatUptime", () => {
   it("renders compact units and handles invalid input", () => {
@@ -144,6 +152,65 @@ describe("formatTime", () => {
     expect(formatTime("June 5, 2026 10:00:00", { locale: "en-US" })).toBe(
       "12:34:56 PM",
     );
+    expect(localeSpy).toHaveBeenCalledTimes(5);
+  });
+});
+
+describe.each(DATE_FORMATTERS)("formatting %s", (_label, formatter) => {
+  it.each([
+    ["missing", undefined],
+    ["empty", ""],
+    ["malformed", "not-a-date"],
+    ["numeric NaN", Number.NaN],
+    ["invalid Date", new Date(Number.NaN)],
+    ["outside TimeClip", 8.64e15 + 1],
+    ["calendar-invalid ISO timestamp", "2026-02-31T00:00:00Z"],
+    ["non-leap February 29", "2026-02-29"],
+    ["month zero", "2026-00-01"],
+    ["month thirteen", "2026-13-01"],
+    ["day zero", "2026-01-00"],
+    ["thirty-first day in April", "2026-04-31"],
+  ])("returns the configured fallback for %s input", (_case, value) => {
+    expect(formatter(value, { fallback: "Unavailable", locale: "en-US" })).toBe(
+      "Unavailable",
+    );
+  });
+});
+
+describe("date display formatter compatibility", () => {
+  it("preserves supported date-and-time input shapes", () => {
+    const localeSpy = vi
+      .spyOn(Date.prototype, "toLocaleString")
+      .mockReturnValue("June 5, 2026 at 10:00 AM");
+
+    for (const value of [
+      0,
+      new Date(0),
+      "2026-06-05T10:00:00Z",
+      "2024-02-29T00:00:00Z",
+      "June 5, 2026 10:00:00",
+    ]) {
+      expect(formatDateTime(value, { locale: "en-US" })).toBe(
+        "June 5, 2026 at 10:00 AM",
+      );
+    }
+    expect(localeSpy).toHaveBeenCalledTimes(5);
+  });
+
+  it("preserves supported short-date input shapes", () => {
+    const localeSpy = vi
+      .spyOn(Date.prototype, "toLocaleDateString")
+      .mockReturnValue("Jun 5, 2026");
+
+    for (const value of [
+      0,
+      new Date(0),
+      "2026-06-05T10:00:00Z",
+      "2024-02-29",
+      "June 5, 2026 10:00:00",
+    ]) {
+      expect(formatShortDate(value, { locale: "en-US" })).toBe("Jun 5, 2026");
+    }
     expect(localeSpy).toHaveBeenCalledTimes(5);
   });
 });

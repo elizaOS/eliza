@@ -82,6 +82,20 @@ export function directCloudSharedAgentIdFromBase(
   }
 }
 
+/**
+ * True only for shared-runtime adapter paths on a trusted Eliza Cloud
+ * control-plane host. Path-only classification is intentionally broader for
+ * protocol routing, but account-session ownership must not capture a
+ * self-hosted server that happens to expose the same path shape.
+ */
+export function isManagedCloudSharedAgentBase(
+  value: string | null | undefined,
+): boolean {
+  if (directCloudSharedAgentIdFromBase(value) === null || !value) return false;
+  const url = normalizeHttpUrl(value.trim());
+  return Boolean(url && isElizaCloudControlPlaneHostname(url.hostname));
+}
+
 function hostnameOf(origin: string): string {
   return new URL(origin).hostname;
 }

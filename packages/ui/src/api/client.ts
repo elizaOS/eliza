@@ -109,6 +109,12 @@ export type {
 } from "./android-native-agent-transport";
 // Re-export the class from client-base (no circular dependency issues)
 export { ElizaClient } from "./client-base";
+export {
+  CloudAgentWakeError,
+  type CloudAgentWakePhase,
+  waitForCloudAgentRunning,
+  waitForCloudProvisionJob,
+} from "./client-cloud";
 export type {
   ComputerUseApprovalMode,
   ComputerUseApprovalResolution,

@@ -4,7 +4,7 @@ Eliza Cloud integration — multi-model inference, container provisioning, agent
 
 ## Purpose / role
 
-Connects an Eliza agent to Eliza Cloud for hosted AI inference (text, embeddings, TTS, STT, image), container lifecycle management, real-time agent bridging via WebSocket, and billing/credit flows. Auto-enables when `ELIZAOS_CLOUD_API_KEY` or `ELIZAOS_CLOUD_ENABLED=true` is present (see `auto-enable.ts`). This plugin has priority 50, which means it wins the default text-generation slot over other direct provider plugins (priority 0) when no explicit routing preference is configured — **unless the host writes `ELIZAOS_CLOUD_USE_INFERENCE=false`** (`applyCloudConfigToEnv`), in which case the chat-brain handlers (`TEXT_*`, `RESPONSE_HANDLER`, `ACTION_PLANNER`) are not registered at all and only the capability handlers (IMAGE, IMAGE_DESCRIPTION, TEXT_TO_SPEECH, TRANSCRIPTION, embeddings, RESEARCH) stay active. This capability-only mode is how an agent keeps Cloud image/media/TTS while an external provider (a CLI/SDK subscription brain, a local model) owns the text brain (elizaOS/eliza#10819).
+Connects an Eliza agent to Eliza Cloud for hosted AI inference (text, embeddings, TTS, STT, image), container lifecycle management, real-time agent bridging via WebSocket, and billing/credit flows. Auto-enables when `ELIZAOS_CLOUD_API_KEY` or `ELIZAOS_CLOUD_ENABLED=true` is present (see `auto-enable.ts`). This plugin has priority 50, which means it wins the default text-generation slot over other direct provider plugins (priority 0) when no explicit routing preference is configured — **unless the host writes `ELIZAOS_CLOUD_USE_INFERENCE=false`** (`applyCloudConfigToEnv`), in which case the chat-brain handlers (`TEXT_*`, `RESPONSE_HANDLER`, `ACTION_PLANNER`) are not registered at all and only the capability handlers (IMAGE, IMAGE_DESCRIPTION, TEXT_TO_SPEECH, TRANSCRIPTION, embeddings) stay active. This capability-only mode is how an agent keeps Cloud image/media/TTS while an external provider (a CLI/SDK subscription brain, a local model) owns the text brain (elizaOS/eliza#10819).
 
 The plugin has two distinct export surfaces:
 
@@ -23,7 +23,6 @@ compete with the chat brain and must survive an external text provider:
 | Slot | Handler | File |
 |---|---|---|
 | `TEXT_EMBEDDING` | `handleTextEmbedding` | `src/models/embeddings.ts` |
-| `RESEARCH` | `handleResearch` | `src/models/research.ts` |
 | `IMAGE` | `handleImageGeneration` | `src/models/image.ts` |
 | `IMAGE_DESCRIPTION` | `handleImageDescription` | `src/models/image.ts` |
 | `TEXT_TO_SPEECH` | `handleTextToSpeech` | `src/models/speech.ts` |
@@ -100,7 +99,6 @@ plugins/plugin-elizacloud/
       embeddings.ts                 TEXT_EMBEDDING handler
       image.ts                      IMAGE and IMAGE_DESCRIPTION handlers
       speech.ts                     TEXT_TO_SPEECH handler + CloudTtsUnavailableError
-      research.ts                   RESEARCH handler
       transcription.ts              TRANSCRIPTION handler
       tokenization.ts               TEXT_TOKENIZER_ENCODE/DECODE handlers
       index.ts                      Re-exports all model handlers
@@ -230,7 +228,6 @@ All settings are optional except `ELIZAOS_CLOUD_API_KEY` (required for any authe
 | `ELIZAOS_CLOUD_MEGA_MODEL` | `MEGA_MODEL` | falls back to large |
 | `ELIZAOS_CLOUD_RESPONSE_HANDLER_MODEL` | `RESPONSE_HANDLER_MODEL` | falls back to small model |
 | `ELIZAOS_CLOUD_ACTION_PLANNER_MODEL` | `ACTION_PLANNER_MODEL` | falls back to large model |
-| `ELIZAOS_CLOUD_RESEARCH_MODEL` | `RESEARCH_MODEL` | `o3-deep-research` |
 
 ### Optional — embeddings
 
