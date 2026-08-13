@@ -1277,6 +1277,24 @@ describe("runOnboardingChat", () => {
       expect(linkPhoneToUser).toHaveBeenCalledWith("user-1", PHONE);
     });
 
+    test("returns legacy iMessage sessions through the configured gateway number", async () => {
+      cloudEnv = { ELIZA_APP_BLOOIO_PHONE_NUMBER: "+18087881821" };
+      const gatewayTurn = await runOnboardingChat({
+        message: "My name is Sam",
+        platform: "blooio",
+        platformUserId: PHONE,
+        sessionId: PLATFORM_SESSION,
+        trustedPlatformIdentity: true,
+      });
+
+      await expect(
+        inspectOnboardingContinuation(continuationToken(gatewayTurn), {
+          userId: "user-1",
+          organizationId: "org-1",
+        }),
+      ).resolves.toMatchObject({ returnUrl: "sms:+18087881821" });
+    });
+
     test("requires explicit confirmation before linking a trusted iMessage identity", async () => {
       const gatewayTurn = await runTrustedPhoneTurn("My name is Sam");
       await expect(

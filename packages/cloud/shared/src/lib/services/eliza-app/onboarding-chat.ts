@@ -363,7 +363,17 @@ function buildMessagingReturnUrl(session: OnboardingSession): string | null {
   if (session.platform !== "blooio" && session.platform !== "twilio") {
     return null;
   }
-  const replyAddress = normalizePhoneNumber(session.platformReplyAddress ?? "");
+  const env = getCloudAwareEnv();
+  // Sessions issued before platformReplyAddress shipped still need to return
+  // to Messages after deployment. The configured Eliza gateway number is the
+  // trusted migration fallback; new sessions retain their exact gateway value.
+  const configuredReplyAddress =
+    session.platform === "blooio"
+      ? env.ELIZA_APP_BLOOIO_PHONE_NUMBER || env.BLOOIO_FROM_NUMBER
+      : env.ELIZA_APP_TWILIO_PHONE_NUMBER || env.TWILIO_PHONE_NUMBER;
+  const replyAddress = normalizePhoneNumber(
+    session.platformReplyAddress ?? configuredReplyAddress ?? "",
+  );
   return replyAddress ? `sms:${replyAddress}` : null;
 }
 
