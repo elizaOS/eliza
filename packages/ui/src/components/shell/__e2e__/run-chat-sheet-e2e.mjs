@@ -3882,26 +3882,21 @@ try {
     await p.waitForTimeout(SETTLE);
 
     // FLICK up from the pill → reaches the chat (history present), not a stop.
-    let after = await chatState(p);
-    for (let attempt = 0; attempt < 3; attempt += 1) {
-      if ((await detent(p)) !== "pill") {
-        await gesture(p, -160, { pointer: "touch", slow: false, steps: 1 });
-        await p.waitForTimeout(SETTLE);
-        await settleDetent(p, "pill");
-      }
-      await gesture(p, 140, {
-        pointer: "mouse",
-        slow: false,
-        steps: 2,
-        target: "chat-pill",
-      });
+    // Keep this to one processed gesture: retrying a wrong resulting state can
+    // hide the exact regression this assertion is meant to catch.
+    if ((await detent(p)) !== "pill") {
+      await gesture(p, -160, { pointer: "touch", slow: false, steps: 1 });
       await p.waitForTimeout(SETTLE);
-      after = await chatState(p);
-      if (after === "OPEN_HALF_OR_OVER" || after === "OPEN_UNDER_HALF") break;
-      console.log(
-        `  ℹ PILL-MORPH: flick attempt ${attempt + 1} stopped at ${after} on a loaded renderer — retrying from the pill`,
-      );
+      await settleDetent(p, "pill");
     }
+    await gesture(p, 140, {
+      pointer: "mouse",
+      slow: false,
+      steps: 2,
+      target: "chat-pill",
+    });
+    await p.waitForTimeout(SETTLE);
+    const after = await chatState(p);
     assert(
       after === "OPEN_HALF_OR_OVER" || after === "OPEN_UNDER_HALF",
       `PILL-MORPH: a flick from the pill reaches the chat (got ${after})`,
