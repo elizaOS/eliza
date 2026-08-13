@@ -1,6 +1,7 @@
 /**
  * Todo action tests cover the TODO umbrella action and CURRENT_TODOS provider
- * against a deterministic in-memory service with no live database.
+ * against a deterministic in-memory service with no live database. They also
+ * exercise service input guards directly to prove rejection precedes DB access.
  */
 import type {
   ActionResult,
@@ -11,6 +12,7 @@ import type {
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { currentTodosProvider } from "../providers/current-todos.js";
+import { TodosService } from "../service.js";
 import { TODOS_SERVICE_TYPE } from "../types.js";
 import { todoAction } from "./todo.js";
 
@@ -572,13 +574,34 @@ describe("TODO action", () => {
       [-1, "negative"],
       [1.5, "fractional"],
       [Number.NaN, "NaN"],
+      [Number.POSITIVE_INFINITY, "infinite"],
+      [Number.MAX_SAFE_INTEGER + 1, "unsafe integer"],
       ["1", "numeric string"],
+      [null, "null"],
+      [true, "boolean"],
     ])("rejects %s (%s) before persistence", async (limit) => {
       service.failOn = "list";
       const result = await invoke(runtime, { action: "list", limit });
       expect(result.success).toBe(false);
       expect(result.text).toContain("invalid_param");
       expect(result.text).toContain("positive safe integer");
+    });
+
+    it("rejects an invalid service limit before reading runtime.db", async () => {
+      let dbReads = 0;
+      const guardedRuntime = {
+        agentId: AGENT,
+        get db(): never {
+          dbReads++;
+          throw new Error("runtime.db must not be read for an invalid limit");
+        },
+      } as unknown as IAgentRuntime;
+      const guardedService = new TodosService(guardedRuntime);
+
+      await expect(
+        guardedService.list({ entityId: ENTITY, limit: 0 }),
+      ).rejects.toMatchObject({ code: "todos.list.invalid_limit" });
+      expect(dbReads).toBe(0);
     });
   });
 

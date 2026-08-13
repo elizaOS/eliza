@@ -3,7 +3,13 @@
  * scoped by `(agentId, entityId)` with optional `roomId`/`worldId` narrowing.
  * Requires `runtime.db` from `@elizaos/plugin-sql`; throws if it is absent.
  */
-import { type IAgentRuntime, logger, Service, type UUID } from "@elizaos/core";
+import {
+  ElizaError,
+  type IAgentRuntime,
+  logger,
+  Service,
+  type UUID,
+} from "@elizaos/core";
 import { and, desc, eq, inArray } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 
@@ -133,8 +139,16 @@ export class TodosService extends Service {
 
   async list(filter: TodoFilter): Promise<Todo[]> {
     if (filter.limit !== undefined && !isValidTodoLimit(filter.limit)) {
-      throw new Error(
+      throw new ElizaError(
         `${TODOS_LOG_PREFIX} limit must be a positive safe integer when provided`,
+        {
+          code: "todos.list.invalid_limit",
+          context: {
+            receivedLimit: String(filter.limit),
+            receivedType: typeof filter.limit,
+          },
+          severity: "fatal",
+        },
       );
     }
     const db = this.getDb();

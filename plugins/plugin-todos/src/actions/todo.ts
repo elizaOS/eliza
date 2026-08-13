@@ -579,7 +579,11 @@ export const todoAction: Action = {
       name: "limit",
       description: "Max rows to return for action=list.",
       required: false,
-      schema: { type: "number" as const },
+      schema: {
+        type: "integer" as const,
+        minimum: 1,
+        maximum: Number.MAX_SAFE_INTEGER,
+      },
     },
   ],
   validate: async (runtime: IAgentRuntime) => Boolean(getTodosService(runtime)),
