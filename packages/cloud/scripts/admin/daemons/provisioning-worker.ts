@@ -1922,7 +1922,7 @@ async function armAppsDeployBackendIfEnabled(
   // user's repo on the app node via buildx and pushes to this registry — the
   // Vercel-like path). Unset → prebuilt images (imageTag/APP_DEFAULT_IMAGE).
   const registry = process.env.APPS_IMAGE_REGISTRY;
-  configureAppsDeployBackend({ port, registry });
+  await configureAppsDeployBackend({ port, registry });
   logger.info("[provisioning-worker] apps deploy backend armed", {
     tenantDbAdminDsn: process.env.APPS_TENANT_ADMIN_DSN
       ? "env-sourced"

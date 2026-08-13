@@ -388,21 +388,6 @@ export const containersEnv = {
   },
 
   /**
-   * Whether the APPS-DEPLOY lane (Product 2 app deploys) must reject a mutable
-   * `:tag`/implicit-latest image ref even when the global
-   * {@link requireDigestPinnedImages} gate is off.
-   *
-   * Source builds are digest-pinned, but supported prebuilt/default image
-   * sources may still use mutable tags. Keep enforcement opt-in until those
-   * operator configurations have been migrated. Only the literal string
-   * `"true"` enables it.
-   */
-  appsDeployRequireDigest(): boolean {
-    const env = getCloudAwareEnv();
-    return pick(env.APPS_DEPLOY_REQUIRE_DIGEST, env.ELIZA_APPS_DEPLOY_REQUIRE_DIGEST) === "true";
-  },
-
-  /**
    * Auto-recover a node whose dockerd image-pull coordinator has wedged: after
    * repeated failed pre-pulls the provisioning worker restarts docker on the
    * node itself (rate-limited) instead of requiring a manual `systemctl

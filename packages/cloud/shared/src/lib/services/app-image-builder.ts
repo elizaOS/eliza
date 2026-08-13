@@ -107,12 +107,12 @@ export class AppImageBuilder {
       ? `/tmp/eliza-app-build-${randomBytes(12).toString("hex")}.json`
       : undefined;
 
-    let command: string;
+    let buildCommand: string;
     if (this.isolatedBuilder) {
       // Random per-build suffix so two concurrent untrusted builds never share a
       // BuildKit instance; the script tears the builder down on EXIT.
       const builderName = isolatedBuilderName(req.appId, randomBytes(6).toString("hex"));
-      command = buildIsolatedAppImageScript({
+      buildCommand = buildIsolatedAppImageScript({
         context: req.context,
         dockerfile: req.dockerfile,
         imageRef,
@@ -122,7 +122,7 @@ export class AppImageBuilder {
         metadataFile,
       });
     } else {
-      command = buildAppImageBuildCmd({
+      buildCommand = buildAppImageBuildCmd({
         context: req.context,
         dockerfile: req.dockerfile,
         imageRef,
@@ -132,16 +132,33 @@ export class AppImageBuilder {
       });
     }
 
-    const buildOutput = await this.exec.exec(command, this.timeoutMs);
+    if (!metadataFile) {
+      const buildOutput = await this.exec.exec(buildCommand, this.timeoutMs);
+      return { imageRef, buildOutput };
+    }
 
-    if (!metadataFile) return { imageRef, buildOutput };
+    const metadataMarker = `ELIZA_APP_BUILD_METADATA_${randomBytes(12).toString("hex")}`;
+    const cleanupCommand = `rm -f ${shellQuote(metadataFile)}`;
+    const command = [
+      "set -e",
+      `trap ${shellQuote(cleanupCommand)} EXIT`,
+      "(",
+      buildCommand,
+      ")",
+      `printf '\n%s\n' ${shellQuote(metadataMarker)}`,
+      `if ! cat ${shellQuote(metadataFile)}; then printf '{"elizaMetadataReadError":true}'; fi`,
+    ].join("\n");
+    const output = await this.exec.exec(command, this.timeoutMs);
+    const separator = `\n${metadataMarker}\n`;
+    const markerIndex = output.lastIndexOf(separator);
+    const buildOutput = markerIndex >= 0 ? output.slice(0, markerIndex) : output;
+    const metadataOutput = markerIndex >= 0 ? output.slice(markerIndex + separator.length) : "";
 
     let digest: string | null;
     try {
-      const metadataOutput = await this.exec.exec(
-        `cat ${shellQuote(metadataFile)}; status=$?; rm -f ${shellQuote(metadataFile)}; exit $status`,
-        this.timeoutMs,
-      );
+      const metadata = JSON.parse(metadataOutput) as { elizaMetadataReadError?: unknown };
+      if (metadata.elizaMetadataReadError === true)
+        throw new Error("BuildKit metadata read failed");
       digest = parseBuildMetadataDigest(metadataOutput);
     } catch (error) {
       // error-policy:J2 BuildKit metadata belongs to this exact push; preserve

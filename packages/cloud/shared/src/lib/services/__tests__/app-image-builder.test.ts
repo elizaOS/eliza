@@ -1,4 +1,4 @@
-// Exercises app image builder behavior with deterministic cloud-shared lib fixtures.
+/** Exercises app image builder behavior with deterministic cloud-shared lib fixtures. */
 
 import { describe, expect, test } from "bun:test";
 import { ElizaError } from "@elizaos/core";
@@ -15,10 +15,10 @@ function fakeExec(): BuildExec & { calls: Array<{ cmd: string; timeoutMs?: numbe
     calls,
     async exec(cmd: string, timeoutMs?: number) {
       calls.push({ cmd, timeoutMs });
-      if (cmd.startsWith("cat ")) {
-        return JSON.stringify({ "containerimage.digest": DIGEST });
-      }
-      return "Successfully built abc123";
+      const marker = cmd.match(/ELIZA_APP_BUILD_METADATA_[0-9a-f]{24}/)?.[0];
+      return marker
+        ? `Successfully built abc123\n${marker}\n${JSON.stringify({ "containerimage.digest": DIGEST })}`
+        : "Successfully built abc123";
     },
   };
 }
@@ -118,11 +118,13 @@ describe("AppImageBuilder", () => {
     });
     // The pushed ref is pinned to the resolved manifest digest.
     expect(res.imageRef).toBe(PINNED_REF);
-    // Two exec calls: the build, then reading its unique BuildKit metadata.
-    expect(exec.calls).toHaveLength(2);
-    expect(exec.calls[1].cmd).toMatch(
-      /^cat '\/tmp\/eliza-app-build-[0-9a-f]{24}\.json'; status=\$\?; rm -f '\/tmp\/eliza-app-build-[0-9a-f]{24}\.json'; exit \$status$/,
-    );
+    // Build, metadata read, and cleanup share one shell invocation so EXIT
+    // cleanup runs on success, build failure, timeout, or interruption.
+    expect(exec.calls).toHaveLength(1);
+    const command = exec.calls[0].cmd;
+    expect(command).toMatch(/trap .*rm -f .*eliza-app-build-[0-9a-f]{24}\.json.* EXIT/);
+    expect(command).toMatch(/if ! cat '\/tmp\/eliza-app-build-[0-9a-f]{24}\.json'/);
+    expect(command.indexOf("trap ")).toBeLessThan(command.indexOf("docker buildx build"));
   });
 
   test("push fails when BuildKit metadata contains no digest", async () => {
@@ -130,8 +132,8 @@ describe("AppImageBuilder", () => {
       calls: [],
       async exec(cmd: string) {
         this.calls.push({ cmd });
-        if (cmd.startsWith("cat ")) return JSON.stringify({});
-        return "built";
+        const marker = cmd.match(/ELIZA_APP_BUILD_METADATA_[0-9a-f]{24}/)?.[0];
+        return marker ? `built\n${marker}\n{}` : "built";
       },
     };
     await expect(
@@ -149,8 +151,8 @@ describe("AppImageBuilder", () => {
       calls: [],
       async exec(cmd: string) {
         this.calls.push({ cmd });
-        if (cmd.startsWith("cat ")) throw new Error("metadata read failed");
-        return "built";
+        const marker = cmd.match(/ELIZA_APP_BUILD_METADATA_[0-9a-f]{24}/)?.[0];
+        return marker ? `built\n${marker}\n{"elizaMetadataReadError":true}` : "built";
       },
     };
     const failure = new AppImageBuilder({ exec }).build({
@@ -162,7 +164,7 @@ describe("AppImageBuilder", () => {
     await expect(failure).rejects.toBeInstanceOf(ElizaError);
     await expect(failure).rejects.toMatchObject({
       code: "APP_IMAGE_BUILD_METADATA_READ_FAILED",
-      cause: expect.objectContaining({ message: "metadata read failed" }),
+      cause: expect.objectContaining({ message: "BuildKit metadata read failed" }),
     });
   });
 

@@ -125,7 +125,7 @@ export async function armAppsDeployBackend(
   // APPS_IMAGE_REGISTRY set → BUILD-FROM-REPO (buildx on the app node, push to
   // this registry). Unset → prebuilt images (imageTag / APP_DEFAULT_IMAGE).
   const registry = process.env.APPS_IMAGE_REGISTRY;
-  configureAppsDeployBackend({ port, registry });
+  await configureAppsDeployBackend({ port, registry });
   logger.info("[apps-worker] apps deploy backend armed", {
     tenantDbAdminDsn: process.env.APPS_TENANT_ADMIN_DSN
       ? "env-sourced"

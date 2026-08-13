@@ -28,6 +28,7 @@
 
 import { logger } from "../utils/logger";
 import { setAppDbDeprovisioner } from "./app-db-deprovision-job-service";
+import { assertAppsDeployImagesImmutable } from "./app-deploy-image-preflight";
 import { setAppDeployRunner } from "./app-deploy-job-service";
 import {
   type DefaultAppDeployRunner,
@@ -71,7 +72,9 @@ export interface AppsDeployBackendConfig {
  * unconditionally — provisioning only runs when a real deploy / CONTAINER_* job
  * is processed.
  */
-export function configureAppsDeployBackend(config: AppsDeployBackendConfig): void {
+export async function configureAppsDeployBackend(config: AppsDeployBackendConfig): Promise<void> {
+  await assertAppsDeployImagesImmutable();
+
   // BUILD-FROM-REPO ("Vercel-like": the platform builds the user's repo, no
   // manual image push) is NOT armed by a registry alone. `APPS_IMAGE_REGISTRY`
   // only sets the push/pull target; build-from-repo additionally requires a

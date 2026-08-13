@@ -12,7 +12,7 @@
  * repo URL is passed straight through as the build context — no clone step.
  */
 
-import { logger } from "../utils/logger";
+import { ElizaError } from "@elizaos/core";
 import type { AppImageBuilder } from "./app-image-builder";
 
 /**
@@ -59,30 +59,52 @@ function buildContextFor(repo: string, sourceRef?: string): string {
  * and returns the image whose prefix is the LONGEST match for `app.name` (so the
  * showcase specs' timestamped names — "eDad Showcase 1a2b3c" — still match).
  *
- * Returns `undefined` (no resolver) when the env is unset / empty / malformed, so
- * the deploy runner's existing build-from-repo → metadata.imageTag →
- * APP_DEFAULT_IMAGE chain is completely unchanged when an operator has not
- * configured the map.
+ * Returns `undefined` when the env is unset or empty. Malformed maps fail fast
+ * so an operator cannot unknowingly fall through to another image source.
  */
+export function parsePrebuiltImageMap(raw: string): Array<[string, string]> {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw) as unknown;
+  } catch (error) {
+    // error-policy:J3 operator configuration is untrusted input; reject malformed
+    // JSON explicitly instead of degrading to an absent map.
+    throw new ElizaError("APP_PREBUILT_IMAGES must be valid JSON", {
+      code: "APPS_PREBUILT_IMAGES_INVALID",
+      cause: error,
+      severity: "fatal",
+    });
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new ElizaError("APP_PREBUILT_IMAGES must be a JSON object", {
+      code: "APPS_PREBUILT_IMAGES_INVALID",
+      severity: "fatal",
+    });
+  }
+
+  const entries = Object.entries(parsed);
+  for (const [prefix, image] of entries) {
+    if (!prefix.trim() || typeof image !== "string" || !image.trim()) {
+      throw new ElizaError(
+        "APP_PREBUILT_IMAGES keys and image references must be non-empty strings",
+        {
+          code: "APPS_PREBUILT_IMAGES_INVALID",
+          context: { prefix },
+          severity: "fatal",
+        },
+      );
+    }
+  }
+  return entries as Array<[string, string]>;
+}
+
 export function makePrebuiltImageMapResolver(
   env: NodeJS.ProcessEnv = process.env,
 ): AppImageResolver | undefined {
   const raw = env.APP_PREBUILT_IMAGES;
   if (!raw || !raw.trim()) return undefined;
 
-  let entries: Array<[string, string]>;
-  try {
-    const parsed = JSON.parse(raw) as Record<string, unknown>;
-    entries = Object.entries(parsed).filter(
-      (e): e is [string, string] =>
-        typeof e[0] === "string" && e[0].length > 0 && typeof e[1] === "string" && e[1].length > 0,
-    );
-  } catch {
-    logger.warn(
-      "[AppImageResolver] APP_PREBUILT_IMAGES is not valid JSON; ignoring the per-app prebuilt image map",
-    );
-    return undefined;
-  }
+  const entries = parsePrebuiltImageMap(raw);
   if (entries.length === 0) return undefined;
 
   // Longest prefix first → the most specific configured name wins deterministically.

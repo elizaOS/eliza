@@ -179,25 +179,15 @@ export async function resolveImageRef(
         `to grant the namespace to your organization (settings.allowed_image_namespaces).`,
     );
   }
-  // SECURITY (#13097): the apps-deploy lane can enforce immutability via the
-  // lane-scoped opt-in `appsDeployRequireDigest()` gate, and inherits the global
-  // `requireDigestPinnedImages()` gate when armed. Either being on rejects a
-  // mutable `:tag`/`:latest` reference so the registry cannot swap the bytes
-  // behind an allowed name after this check. This is the SAME gate the two
-  // container routes (`/v1/containers`, `/v1/coding-containers`) enforce via the
-  // global flag; an app deploy is the third shared-node image path, so it must
-  // enforce it too — otherwise the global flag would still let an app deploy run
-  // a mutable tag while the routes reject it. Source-build output is pinned;
-  // operators must migrate prebuilt/default refs before arming the lane gate.
-  const requireDigest =
-    containersEnv.appsDeployRequireDigest() || containersEnv.requireDigestPinnedImages();
-  if (imageRequiresDigestPin(image, requireDigest)) {
+  // SECURITY (#13097): every production app deploy must use a content-addressed
+  // image. Source builds return the exact pushed digest, while startup preflight
+  // inventories persisted and operator-configured prebuilt refs. Enforce again at
+  // this final common boundary so no flag or alternate source can reopen mutable
+  // `:tag`/implicit-latest deployment after the allowlist check.
+  if (imageRequiresDigestPin(image, true)) {
     throw new Error(
       `Image '${image}' for app ${app.id} must be pinned to a full sha256 digest ` +
-        `(e.g. repo@sha256:<64 hex>): the digest-pin gate ` +
-        `(APPS_DEPLOY_REQUIRE_DIGEST or CONTAINER_IMAGE_REQUIRE_DIGEST) is enabled ` +
-        `and a mutable tag can be ` +
-        `swapped after this check.`,
+        `(e.g. repo@sha256:<64 hex>): mutable app images are not deployable.`,
     );
   }
   return image;

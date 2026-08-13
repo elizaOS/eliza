@@ -1,4 +1,4 @@
-// Exercises app image resolver behavior with deterministic cloud-shared lib fixtures.
+/** Exercises app image resolver behavior with deterministic cloud-shared lib fixtures. */
 import { describe, expect, test } from "bun:test";
 import { AppImageBuilder, type BuildExec } from "../app-image-builder";
 import {
@@ -15,13 +15,13 @@ function recordingBuilder(): { builder: AppImageBuilder; cmds: string[] } {
     async exec(cmd) {
       cmds.push(cmd);
       // BuildKit records the exact pushed manifest digest in per-build metadata.
-      if (cmd.startsWith("cat ")) {
-        return JSON.stringify({
-          "containerimage.digest":
-            "sha256:abc123def4567890abc123def4567890abc123def4567890abc123def4567890",
-        });
-      }
-      return "built";
+      const marker = cmd.match(/ELIZA_APP_BUILD_METADATA_[0-9a-f]{24}/)?.[0];
+      return marker
+        ? `built\n${marker}\n${JSON.stringify({
+            "containerimage.digest":
+              "sha256:abc123def4567890abc123def4567890abc123def4567890abc123def4567890",
+          })}`
+        : "built";
     },
   };
   return { builder: new AppImageBuilder({ exec, isolatedBuilder: false }), cmds };
@@ -120,8 +120,10 @@ describe("makePrebuiltImageMapResolver", () => {
     await expect(resolve?.({ id: APP, name: "Other App", metadata: {} })).resolves.toBeUndefined();
   });
 
-  test("ignores invalid JSON maps", () => {
-    expect(makePrebuiltImageMapResolver({ APP_PREBUILT_IMAGES: "not-json" })).toBeUndefined();
+  test("rejects invalid JSON maps", () => {
+    expect(() => makePrebuiltImageMapResolver({ APP_PREBUILT_IMAGES: "not-json" })).toThrow(
+      /must be valid JSON/,
+    );
   });
 });
 

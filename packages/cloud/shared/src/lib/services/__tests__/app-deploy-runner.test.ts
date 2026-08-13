@@ -1,10 +1,7 @@
-// Exercises app deploy runner behavior with deterministic cloud-shared lib fixtures.
+/** Exercises app deploy runner behavior with deterministic cloud-shared lib fixtures. */
 import { afterEach, describe, expect, test } from "bun:test";
-import { runWithCloudBindingsAsync } from "../../runtime/cloud-bindings";
 import type { AppDeployRunnerDeps } from "../app-deploy-runner";
 import { containerNameForApp, resolveImageRef } from "../app-deploy-runner";
-
-const DIGEST_GATE_ON = { APPS_DEPLOY_REQUIRE_DIGEST: "true" };
 
 // A first-party digest-pinned ref (passes both the allowlist and digest gates).
 const PINNED = `ghcr.io/elizaos/eliza@sha256:a${"0".repeat(63)}`;
@@ -57,9 +54,9 @@ describe("resolveImageRef: build-from-repo-disabled guard", () => {
       repoUrl: REPO,
       // Allowlisted first-party namespace (the image allowlist gate runs on the
       // resolved image — see the gate describe block below).
-      metadata: { imageTag: "ghcr.io/elizaos/myapp:v1" },
+      metadata: { imageTag: PINNED },
     });
-    expect(img).toBe("ghcr.io/elizaos/myapp:v1");
+    expect(img).toBe(PINNED);
   });
 
   test("repo app + build on -> uses the built image", async () => {
@@ -101,9 +98,9 @@ describe("resolveImageRef: image allowlist gate", () => {
   test("allows an imageTag inside the default first-party allowlist", async () => {
     const img = await resolveImageRef(buildOff, {
       ...baseApp,
-      metadata: { imageTag: "ghcr.io/elizaos/myapp:v1" },
+      metadata: { imageTag: PINNED },
     });
-    expect(img).toBe("ghcr.io/elizaos/myapp:v1");
+    expect(img).toBe(PINNED);
   });
 
   test("the default agent image passes the default allowlist", async () => {
@@ -126,9 +123,9 @@ describe("resolveImageRef: image allowlist gate", () => {
     ).rejects.toThrow(/is not permitted/);
     const img = await resolveImageRef(buildOff, {
       ...baseApp,
-      metadata: { imageTag: "ghcr.io/onlyme/app:v1" },
+      metadata: { imageTag: `ghcr.io/onlyme/app@sha256:e${"0".repeat(63)}` },
     });
-    expect(img).toBe("ghcr.io/onlyme/app:v1");
+    expect(img).toBe(`ghcr.io/onlyme/app@sha256:e${"0".repeat(63)}`);
   });
 });
 
@@ -308,60 +305,64 @@ describe("resolveImageRef: per-org namespace extension", () => {
   });
 });
 
-// #9853 follow-up — an app deploy is the THIRD shared-node image path (alongside
-// the /v1/containers and /v1/coding-containers routes). When the digest-pin gate
-// is armed, all three must reject a mutable `:tag`/`:latest` ref so the registry
-// cannot swap the bytes behind an allowed name after the check.
-//
-// #13097 — source builds return immutable refs. Lane-wide enforcement remains
-// opt-in until supported prebuilt/default image configurations are migrated.
-// The global `CONTAINER_IMAGE_REQUIRE_DIGEST` gate is also inherited when armed.
-describe("resolveImageRef: digest-pin gate (#13097, #9853 follow-up)", () => {
+// #13097 — every app-deploy image source is immutable at the final common
+// resolution boundary. No environment flag can reopen mutable deployment.
+describe("resolveImageRef: immutable image enforcement (#13097)", () => {
   const baseApp = { id: "app-1", name: "demo", metadata: {} as Record<string, unknown> };
   const buildOff = { resolveImage: undefined } as unknown as AppDeployRunnerDeps;
 
-  test("DEFAULT (apps-deploy gate off): a supported mutable :tag app image passes", async () => {
+  afterEach(() => {
+    delete process.env.APP_DEFAULT_IMAGE;
+    delete process.env.APPS_DEPLOY_REQUIRE_DIGEST;
+  });
+
+  test("rejects a mutable image returned by resolveImage", async () => {
+    const deps = {
+      resolveImage: async () => "ghcr.io/elizaos/myapp:v1",
+    } as unknown as AppDeployRunnerDeps;
+    await expect(resolveImageRef(deps, baseApp)).rejects.toThrow(
+      /must be pinned to a full sha256 digest/,
+    );
+  });
+
+  test("rejects a mutable metadata.imageTag", async () => {
     await expect(
       resolveImageRef(buildOff, {
         ...baseApp,
         metadata: { imageTag: "ghcr.io/elizaos/myapp:v1" },
       }),
-    ).resolves.toBe("ghcr.io/elizaos/myapp:v1");
+    ).rejects.toThrow(/must be pinned to a full sha256 digest/);
   });
 
-  test("APPS_DEPLOY_REQUIRE_DIGEST=true rejects an implicit-latest app image", async () => {
-    await runWithCloudBindingsAsync(DIGEST_GATE_ON, async () => {
-      await expect(
-        resolveImageRef(buildOff, { ...baseApp, metadata: { imageTag: "ghcr.io/elizaos/myapp" } }),
-      ).rejects.toThrow(/must be pinned to a full sha256 digest/);
-    });
-  });
-
-  test("APPS_DEPLOY_REQUIRE_DIGEST=true accepts a digest-pinned app image", async () => {
-    await runWithCloudBindingsAsync(DIGEST_GATE_ON, async () => {
-      const img = await resolveImageRef(buildOff, { ...baseApp, metadata: { imageTag: PINNED } });
-      expect(img).toBe(PINNED);
-    });
-  });
-
-  test("global CONTAINER_IMAGE_REQUIRE_DIGEST=true arms the gate even when the apps-deploy flag is off", async () => {
-    await runWithCloudBindingsAsync(
-      { CONTAINER_IMAGE_REQUIRE_DIGEST: "true", APPS_DEPLOY_REQUIRE_DIGEST: "false" },
-      async () => {
-        await expect(
-          resolveImageRef(buildOff, {
-            ...baseApp,
-            metadata: { imageTag: "ghcr.io/elizaos/myapp:v1" },
-          }),
-        ).rejects.toThrow(/must be pinned to a full sha256 digest/);
-      },
+  test("rejects a mutable APP_DEFAULT_IMAGE", async () => {
+    process.env.APP_DEFAULT_IMAGE = "ghcr.io/elizaos/myapp:latest";
+    await expect(resolveImageRef(buildOff, baseApp)).rejects.toThrow(
+      /must be pinned to a full sha256 digest/,
     );
   });
 
-  test("global flag ON: a digest-pinned app image passes", async () => {
-    await runWithCloudBindingsAsync({ CONTAINER_IMAGE_REQUIRE_DIGEST: "true" }, async () => {
-      const img = await resolveImageRef(buildOff, { ...baseApp, metadata: { imageTag: PINNED } });
-      expect(img).toBe(PINNED);
-    });
+  test("rejects an implicit-latest image", async () => {
+    await expect(
+      resolveImageRef(buildOff, {
+        ...baseApp,
+        metadata: { imageTag: "ghcr.io/elizaos/myapp" },
+      }),
+    ).rejects.toThrow(/must be pinned to a full sha256 digest/);
+  });
+
+  test("APPS_DEPLOY_REQUIRE_DIGEST=false cannot bypass enforcement", async () => {
+    process.env.APPS_DEPLOY_REQUIRE_DIGEST = "false";
+    await expect(
+      resolveImageRef(buildOff, {
+        ...baseApp,
+        metadata: { imageTag: "ghcr.io/elizaos/myapp:v1" },
+      }),
+    ).rejects.toThrow(/must be pinned to a full sha256 digest/);
+  });
+
+  test("accepts a full digest-pinned image without a flag", async () => {
+    await expect(
+      resolveImageRef(buildOff, { ...baseApp, metadata: { imageTag: PINNED } }),
+    ).resolves.toBe(PINNED);
   });
 });
