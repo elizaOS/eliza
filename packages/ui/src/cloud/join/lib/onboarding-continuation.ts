@@ -138,9 +138,10 @@ const defaultTransport: OnboardingContinuationTransport = {
 };
 
 export interface MessagingContinuationPreview {
-  platform: "discord" | "telegram";
+  platform: "discord" | "telegram" | "blooio" | "twilio";
   platformUserId: string;
   platformDisplayName: string;
+  returnUrl: string | null;
 }
 
 export async function previewPendingOnboardingContinuation(

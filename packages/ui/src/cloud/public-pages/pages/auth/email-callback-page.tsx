@@ -19,7 +19,10 @@ import {
   LocalStewardAuthContext,
   StewardAuthProvider,
 } from "../../../shell/StewardProvider";
-import { defaultLoginReturnTo } from "../../lib/login-return-to";
+import {
+  consumePendingOAuthReturnTo,
+  defaultLoginReturnTo,
+} from "../../lib/login-return-to";
 import { syncStewardSessionCookie } from "../../lib/steward-session";
 import { usePageTitle } from "../../lib/use-page-title";
 
@@ -29,6 +32,13 @@ type EmailVerificationResult = {
   token: string;
   refreshToken?: string;
 };
+
+export function resolveEmailCallbackDestination(
+  appAuthorizeReturnTo: string | null,
+  pendingLoginReturnTo: string | null,
+): string {
+  return appAuthorizeReturnTo ?? pendingLoginReturnTo ?? defaultLoginReturnTo();
+}
 
 const pendingEmailVerifications = new Map<
   string,
@@ -99,6 +109,7 @@ function EmailCallbackContent() {
   const [searchParams] = useSearchParams();
   const auth = useContext(LocalStewardAuthContext);
   const attemptedRef = useRef(false);
+  const successDestinationRef = useRef<string | null>(null);
   const [status, setStatus] = useState<CallbackStatus>("verifying");
   const [error, setError] = useState<string | null>(null);
 
@@ -125,10 +136,13 @@ function EmailCallbackContent() {
       return;
     }
 
-    const destination = returnTo ?? defaultLoginReturnTo();
-
     let redirectTimer: ReturnType<typeof setTimeout> | null = null;
     const finishSuccess = () => {
+      const destination = resolveEmailCallbackDestination(
+        returnTo,
+        consumePendingOAuthReturnTo(),
+      );
+      successDestinationRef.current = destination;
       clearStoredAppAuthorizeReturnTo();
       setStatus("success");
       redirectTimer = setTimeout(() => {
@@ -219,7 +233,11 @@ function EmailCallbackContent() {
         </p>
         <BrandButton
           className="mt-2"
-          onClick={() => returnTo && window.location.assign(returnTo)}
+          onClick={() =>
+            window.location.assign(
+              successDestinationRef.current ?? defaultLoginReturnTo(),
+            )
+          }
         >
           {t("cloud.emailCallback.continue", {
             defaultValue: "Continue to app authorization",

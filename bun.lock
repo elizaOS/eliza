@@ -832,6 +832,10 @@
         "vitest": "^4.0.17",
       },
     },
+    "packages/elizaresearch": {
+      "name": "@elizaos/elizaresearch-site",
+      "version": "0.1.0",
+    },
     "packages/evidence": {
       "name": "@elizaos/evidence",
       "version": "0.0.0",
@@ -3854,6 +3858,8 @@
     "@elizaos/docs-elizacloud-redirect": ["@elizaos/docs-elizacloud-redirect@workspace:packages/cloud/docs-redirect"],
 
     "@elizaos/electrobun": ["@elizaos/electrobun@workspace:packages/app-core/platforms/electrobun"],
+
+    "@elizaos/elizaresearch-site": ["@elizaos/elizaresearch-site@workspace:packages/elizaresearch"],
 
     "@elizaos/evidence": ["@elizaos/evidence@workspace:packages/evidence"],
 
