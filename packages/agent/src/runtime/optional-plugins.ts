@@ -73,6 +73,9 @@ export const OPTIONAL_STATIC_PLUGIN_PACKAGES: readonly string[] = [
 export const UNBUNDLED_OPTIONAL_PLUGINS: readonly string[] = [
   "@elizaos/plugin-gitpathologist",
   "@elizaos/plugin-zerollama",
+  // Desktop/node ESP32 companion bridge. Device is the WebSocket server;
+  // this package is a client. Skip mobile — not in the APK bundle.
+  "@elizaos/plugin-companion",
 ];
 
 /**
@@ -163,6 +166,7 @@ export const OPTIONAL_STATIC_PLUGIN_OVERRIDES: Readonly<
   // Ollama is a desktop/server HTTP daemon; never spend a mobile boot timeout
   // trying to import a provider that cannot run on the phone itself.
   "@elizaos/plugin-zerollama": { skipOnMobile: true },
+  "@elizaos/plugin-companion": { skipOnMobile: true },
   // Root barrel exports the InboxView React components; the runtime plugin
   // object lives at the ./plugin subpath (src/plugin.ts). Bundling the root
   // would drag react/.tsx into the bun-target mobile agent bundle. (In
