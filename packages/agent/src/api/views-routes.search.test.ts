@@ -196,6 +196,10 @@ describe("GET /api/views/search keyword scoring", () => {
     const high = resultsFrom(jsonHigh);
     expect(high.length).toBeLessThanOrEqual(20);
     expect(high.length).toBe(2);
+
+    const { ctx: ctxZero, json: jsonZero } = makeSearchCtx("?q=wallet&limit=0");
+    await expect(handleViewsRoutes(ctxZero)).resolves.toBe(true);
+    expect(resultsFrom(jsonZero)).toHaveLength(1);
   });
 
   it("filters to tui views when viewType=tui is requested", async () => {

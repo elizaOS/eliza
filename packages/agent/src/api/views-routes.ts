@@ -336,7 +336,7 @@ export async function handleViewsRoutes(
     const query = url.searchParams.get("q") ?? "";
     const limitParam = url.searchParams.get("limit");
     const topK = limitParam
-      ? Math.min(Math.max(parseInt(limitParam, 10) || 5, 1), 20)
+      ? Math.min(Math.max(parseInt(limitParam, 10) || 1, 1), 20)
       : 5;
 
     if (!query.trim()) {
