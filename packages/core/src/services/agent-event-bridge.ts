@@ -4,6 +4,7 @@
  * in present observers are reported without interrupting the message loop.
  */
 
+import { getConnectorSourceMetadata } from "../connectors.ts";
 import { logger } from "../logger.ts";
 import type { MessageEventData } from "../types/agentEvent.ts";
 import type {
@@ -13,9 +14,9 @@ import type {
 	RunEventPayload,
 } from "../types/events.ts";
 import type { IAgentRuntime } from "../types/index.ts";
-import { MESSAGE_SOURCE_CLIENT_CHAT } from "../types/message-source.ts";
 import type { NotificationInput } from "../types/notification.ts";
 import type { JsonValue } from "../types/primitives.ts";
+import { ChannelType } from "../types/primitives.ts";
 import { ServiceType } from "../types/service.ts";
 import type { AgentEventService } from "./agentEvent.ts";
 
@@ -295,19 +296,38 @@ function isBotMessage(metadata: Record<string, unknown>): boolean {
 	);
 }
 
+const USER_FACING_NOTIFICATION_CHANNEL_TYPES: ReadonlySet<string> = new Set(
+	[
+		ChannelType.DM,
+		ChannelType.GROUP,
+		ChannelType.VOICE_DM,
+		ChannelType.VOICE_GROUP,
+		ChannelType.FEED,
+		ChannelType.THREAD,
+		ChannelType.WORLD,
+		ChannelType.FORUM,
+	].map((value) => value.toLowerCase()),
+);
+
+function hasTrustedNotificationProvenance(
+	payload: MessagePayload,
+	source: string,
+): boolean {
+	const connector = getConnectorSourceMetadata(source);
+	if (!connector?.aliases?.length) return false;
+	const channelType = readString(payload.message.content.channelType);
+	return Boolean(
+		channelType &&
+			USER_FACING_NOTIFICATION_CHANNEL_TYPES.has(channelType.toLowerCase()),
+	);
+}
+
 function shouldNotifyForInboundMessage(
 	payload: MessagePayload,
 	source: string,
 ): boolean {
 	const metadata = messageMetadata(payload);
-	const normalizedSource = source.toLowerCase();
-	if (
-		normalizedSource === MESSAGE_SOURCE_CLIENT_CHAT ||
-		normalizedSource === "api" ||
-		normalizedSource === "web" ||
-		normalizedSource === "message" ||
-		normalizedSource === "messageservice"
-	) {
+	if (!hasTrustedNotificationProvenance(payload, source)) {
 		return false;
 	}
 	if (payload.message.entityId === payload.runtime.agentId) {
@@ -379,6 +399,8 @@ function normalizeRawConnectorMessage(
 	eventType: string,
 	payload: unknown,
 ): RawConnectorMessageSummary | null {
+	const source = CONNECTOR_EVENT_SOURCES[eventType];
+	if (!source) return null;
 	const root = readRecord(payload);
 	const runtime = readRuntime(root.runtime);
 	if (!runtime) return null;
@@ -391,8 +413,6 @@ function normalizeRawConnectorMessage(
 	const user = readRecord(root.user ?? message.user ?? message.sender);
 	const twitchUser = readRecord(message.user);
 
-	const source =
-		firstString(root.source, CONNECTOR_EVENT_SOURCES[eventType]) ?? "connector";
 	const channel = firstString(
 		message.channel,
 		lineSource.type,

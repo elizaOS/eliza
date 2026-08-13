@@ -98,6 +98,20 @@ function getNotifier(runtime: IAgentRuntime): NotificationEmitter | null {
   return svc && typeof svc.notify === "function" ? svc : null;
 }
 
+export function triggerNotificationsEnabled(runtime: IAgentRuntime): boolean {
+  const value = runtime.getSetting("ELIZA_DEBUG_TRIGGER_NOTIFICATIONS");
+  return value === true || value === "true" || value === "1";
+}
+
+function shouldNotifyForTriggerOutcome(
+  runtime: IAgentRuntime,
+  trigger: TriggerConfig,
+): boolean {
+  return (
+    trigger.notifyOnOutcome === true || triggerNotificationsEnabled(runtime)
+  );
+}
+
 const metricsByAgent = new Map<UUID, TriggerMetricsState>();
 
 function getMetrics(agentId: UUID): TriggerMetricsState {
@@ -603,31 +617,33 @@ export async function executeTriggerTask(
     // Scheduled automations run without the user in the chat loop, so a
     // dispatch failure is otherwise invisible. Surface it on the notification
     // rail (fire-and-forget; never let a notify failure mask the trigger error).
-    void getNotifier(runtime)
-      ?.notify({
-        title: workflowGone
-          ? `Automation "${trigger.displayName}" disabled`
-          : `Automation "${trigger.displayName}" failed`,
-        body: workflowGone
-          ? "Its workflow no longer exists, so the schedule was removed. Recreate the automation if you still need it."
-          : errorMessage.slice(0, 200),
-        category: "workflow",
-        priority: "high",
-        source: "trigger",
-        groupKey: `trigger:${task.id ?? trigger.triggerId}`,
-        data: {
-          taskId: task.id,
-          triggerId: trigger.triggerId,
-          error: errorMessage,
-        },
-      })
-      .catch((error) => {
-        // error-policy:J7 notification diagnostics must not mask dispatch failure.
-        runtime.reportError("TriggerRuntime.notifyFailure", error, {
-          taskId: task.id,
-          triggerId: trigger.triggerId,
+    if (shouldNotifyForTriggerOutcome(runtime, trigger)) {
+      void getNotifier(runtime)
+        ?.notify({
+          title: workflowGone
+            ? `Automation "${trigger.displayName}" disabled`
+            : `Automation "${trigger.displayName}" failed`,
+          body: workflowGone
+            ? "Its workflow no longer exists, so the schedule was removed. Recreate the automation if you still need it."
+            : errorMessage.slice(0, 200),
+          category: "workflow",
+          priority: "high",
+          source: "trigger",
+          groupKey: `trigger:${task.id ?? trigger.triggerId}`,
+          data: {
+            taskId: task.id,
+            triggerId: trigger.triggerId,
+            error: errorMessage,
+          },
+        })
+        .catch((error) => {
+          // error-policy:J7 notification diagnostics must not mask dispatch failure.
+          runtime.reportError("TriggerRuntime.notifyFailure", error, {
+            taskId: task.id,
+            triggerId: trigger.triggerId,
+          });
         });
-      });
+    }
   }
 
   if (status === "success") {
@@ -648,26 +664,28 @@ export async function executeTriggerTask(
     // can see the agent finished the task. Grouped per trigger so a frequently
     // scheduled automation updates ONE rail entry instead of spamming, and
     // fire-and-forget so a notify failure never masks the successful run.
-    void getNotifier(runtime)
-      ?.notify({
-        title: `Automation "${trigger.displayName}" completed`,
-        category: "workflow",
-        priority: "low",
-        source: "trigger",
-        groupKey: `trigger:${task.id ?? trigger.triggerId}`,
-        data: {
-          taskId: task.id,
-          triggerId: trigger.triggerId,
-          workflowExecutionId,
-        },
-      })
-      .catch((error) => {
-        // error-policy:J7 notification diagnostics must not change run success.
-        runtime.reportError("TriggerRuntime.notifySuccess", error, {
-          taskId: task.id,
-          triggerId: trigger.triggerId,
+    if (shouldNotifyForTriggerOutcome(runtime, trigger)) {
+      void getNotifier(runtime)
+        ?.notify({
+          title: `Automation "${trigger.displayName}" completed`,
+          category: "workflow",
+          priority: "low",
+          source: "trigger",
+          groupKey: `trigger:${task.id ?? trigger.triggerId}`,
+          data: {
+            taskId: task.id,
+            triggerId: trigger.triggerId,
+            workflowExecutionId,
+          },
+        })
+        .catch((error) => {
+          // error-policy:J7 notification diagnostics must not change run success.
+          runtime.reportError("TriggerRuntime.notifySuccess", error, {
+            taskId: task.id,
+            triggerId: trigger.triggerId,
+          });
         });
-      });
+    }
   }
 
   const finishedAt = Date.now();

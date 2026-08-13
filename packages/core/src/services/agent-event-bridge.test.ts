@@ -6,6 +6,7 @@
  */
 import { afterEach, describe, expect, it } from "vitest";
 import { createCharacter } from "../character.ts";
+import { registerConnectorSourceMetadata } from "../connectors.ts";
 import { InMemoryDatabaseAdapter } from "../database/inMemoryAdapter.ts";
 import { AgentRuntime } from "../runtime.ts";
 import type { AgentEventPayload } from "../types/agentEvent.ts";
@@ -14,6 +15,7 @@ import type {
 	EvaluatorEventPayload,
 	MessagePayload,
 } from "../types/events.ts";
+import { ChannelType } from "../types/primitives.ts";
 import type { IAgentRuntime } from "../types/runtime.ts";
 import { ServiceType } from "../types/service.ts";
 import {
@@ -113,6 +115,7 @@ function messagePayload(
 			content: {
 				text: "Can you check this?",
 				source: "discord",
+				channelType: ChannelType.DM,
 				url: "https://discord.example/message/1",
 			},
 			metadata: {
@@ -295,7 +298,7 @@ describe("agent-event-bridge", () => {
 		expect(messageEvent?.sessionKey).toBe("discord:room:1");
 		expect(messageEvent?.data).toMatchObject({
 			type: "received",
-			channel: "discord",
+			channel: ChannelType.DM,
 			userId: "55555555-5555-5555-5555-555555555555",
 			roomId: ROOM_ID,
 			content: "Can you check this?",
@@ -306,7 +309,7 @@ describe("agent-event-bridge", () => {
 		const notifications = notificationService.list();
 		expect(notifications).toHaveLength(1);
 		expect(notifications[0]).toMatchObject({
-			title: "New discord message from alice",
+			title: "New DM message from alice",
 			body: "Can you check this?",
 			category: "message",
 			priority: "high",
@@ -339,6 +342,53 @@ describe("agent-event-bridge", () => {
 		expect(events.filter((e) => e.stream === "message")).toHaveLength(2);
 		if (!notificationService) throw new Error("NotificationService not loaded");
 		expect(notificationService.list()).toHaveLength(0);
+	});
+
+	it("fails closed for unknown, API, and missing-channel message provenance", async () => {
+		const { runtime, events, notificationService } = await createCtx();
+		for (const [source, channelType] of [
+			["unknown-connector", ChannelType.DM],
+			["discord", ChannelType.API],
+			["discord", undefined],
+		] as const) {
+			await bridgeMessageReceivedToStreams(
+				messagePayload(runtime, {
+					source,
+					message: {
+						...messagePayload(runtime).message,
+						content: { text: "not user-facing", source, channelType },
+					},
+				} as Partial<MessagePayload>),
+			);
+		}
+		expect(events.filter((event) => event.stream === "message")).toHaveLength(
+			3,
+		);
+		if (!notificationService) throw new Error("NotificationService not loaded");
+		expect(notificationService.list()).toHaveLength(0);
+	});
+
+	it("allows registered connector extensions only on user-facing channels", async () => {
+		const { runtime, notificationService } = await createCtx();
+		registerConnectorSourceMetadata("custom-gateway", {
+			aliases: ["custom-gateway"],
+			sourceKind: "active",
+		});
+		await bridgeMessageReceivedToStreams(
+			messagePayload(runtime, {
+				source: "custom-gateway",
+				message: {
+					...messagePayload(runtime).message,
+					content: {
+						text: "registered extension",
+						source: "custom-gateway",
+						channelType: ChannelType.THREAD,
+					},
+				},
+			} as Partial<MessagePayload>),
+		);
+		if (!notificationService) throw new Error("NotificationService not loaded");
+		expect(notificationService.list()).toHaveLength(1);
 	});
 
 	it("bridges raw connector message events that lack canonical Memory payloads", async () => {
@@ -395,6 +445,20 @@ describe("agent-event-bridge", () => {
 				accountId: "main",
 			},
 		});
+	});
+
+	it("rejects unregistered raw connector event types even with spoofed source", async () => {
+		const { runtime, events, notificationService } = await createCtx();
+		await bridgeConnectorMessageReceivedToStreams("INTERNAL_MESSAGE_RECEIVED", {
+			runtime,
+			source: "discord",
+			message: { id: "internal-1", channel: "ops", text: "spoofed" },
+		});
+		expect(events.filter((event) => event.stream === "message")).toHaveLength(
+			0,
+		);
+		if (!notificationService) throw new Error("NotificationService not loaded");
+		expect(notificationService.list()).toHaveLength(0);
 	});
 
 	it("is a no-op (never throws) when AgentEventService is absent", async () => {

@@ -58,6 +58,7 @@ interface MockRuntimeHandle {
   ) => void;
   setWorkflowServicePresent: (present: boolean) => void;
   setNotifyError: (error: Error | null) => void;
+  setRuntimeSetting: (name: string, value: unknown) => void;
 }
 
 function makeRuntime(): MockRuntimeHandle {
@@ -69,6 +70,7 @@ function makeRuntime(): MockRuntimeHandle {
   const notifyCalls: Array<Record<string, unknown>> = [];
   const reportedErrors: MockRuntimeHandle["reportedErrors"] = [];
   let notifyError: Error | null = null;
+  const runtimeSettings = new Map<string, unknown>();
 
   const messageService = {
     async handleMessage(
@@ -131,6 +133,7 @@ function makeRuntime(): MockRuntimeHandle {
       if (name === ServiceType.NOTIFICATION) return notificationService;
       return null;
     },
+    getSetting: (name: string) => runtimeSettings.get(name),
     deleteTask: vi.fn(async (id: UUID) => {
       deletedTaskIds.push(id);
     }),
@@ -164,6 +167,7 @@ function makeRuntime(): MockRuntimeHandle {
     setNotifyError: (error) => {
       notifyError = error;
     },
+    setRuntimeSetting: (name, value) => runtimeSettings.set(name, value),
   };
 }
 
@@ -258,10 +262,32 @@ describe("executeTriggerTask", () => {
     expect(persisted?.lastStatus).toBe("success");
   });
 
+  it("does not notify for legacy or system triggers without explicit provenance", async () => {
+    const task = makeTriggerTask({
+      triggerType: "interval",
+      displayName: "User-sounding internal health check",
+      createdBy: String(stringToUuid("internal-scheduler")),
+      notifyOnOutcome: false,
+    });
+    await executeTriggerTask(handle.runtime, task, { source: "scheduler" });
+    expect(handle.notifyCalls).toHaveLength(0);
+  });
+
+  it("allows an explicit per-runtime diagnostic override", async () => {
+    handle.setRuntimeSetting("ELIZA_DEBUG_TRIGGER_NOTIFICATIONS", "1");
+    const task = makeTriggerTask({
+      triggerType: "interval",
+      notifyOnOutcome: false,
+    });
+    await executeTriggerTask(handle.runtime, task, { source: "scheduler" });
+    expect(handle.notifyCalls).toHaveLength(1);
+  });
+
   it("emits a low-priority completion notification on a successful run (#10697)", async () => {
     const task = makeTriggerTask({
       triggerType: "interval",
       displayName: "Nightly backup",
+      notifyOnOutcome: true,
     });
 
     await executeTriggerTask(handle.runtime, task, { source: "scheduler" });
@@ -282,6 +308,7 @@ describe("executeTriggerTask", () => {
     const task = makeTriggerTask({
       triggerType: "interval",
       displayName: "Nightly backup",
+      notifyOnOutcome: true,
     });
 
     const result = await executeTriggerTask(handle.runtime, task, {
@@ -300,7 +327,10 @@ describe("executeTriggerTask", () => {
   it("reports notification failures without changing trigger success", async () => {
     const notifyError = new Error("notification store unavailable");
     handle.setNotifyError(notifyError);
-    const task = makeTriggerTask({ triggerType: "interval" });
+    const task = makeTriggerTask({
+      triggerType: "interval",
+      notifyOnOutcome: true,
+    });
 
     const result = await executeTriggerTask(handle.runtime, task, {
       source: "scheduler",
@@ -633,6 +663,7 @@ describe("executeTriggerTask", () => {
     const task = makeTriggerTask({
       triggerType: "interval",
       displayName: "Device health check",
+      notifyOnOutcome: true,
     });
 
     const result = await executeTriggerTask(handle.runtime, task, {
