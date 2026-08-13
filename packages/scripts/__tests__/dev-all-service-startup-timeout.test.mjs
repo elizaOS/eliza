@@ -35,7 +35,6 @@ describe("parsePositiveSafeInteger", () => {
     expect(parsePositiveSafeInteger("1", "label")).toBe(1);
     expect(parsePositiveSafeInteger("120000", "label")).toBe(120000);
     expect(parsePositiveSafeInteger(90, "label")).toBe(90);
-    expect(parsePositiveSafeInteger(" 5000 ", "label")).toBe(5000);
   });
 
   test("rejects zero, negative, partial, signed, fractional, and non-decimal forms", () => {
@@ -67,7 +66,7 @@ describe("parsePositiveSafeInteger", () => {
 });
 
 describe("resolveServiceStartupTimeoutMs", () => {
-  test("uses default when unset or empty", () => {
+  test("uses default only when unset or exactly empty", () => {
     expect(resolveServiceStartupTimeoutMs({})).toBe(
       DEFAULT_SERVICE_STARTUP_TIMEOUT_MS,
     );
@@ -76,11 +75,13 @@ describe("resolveServiceStartupTimeoutMs", () => {
         DEV_ALL_SERVICE_STARTUP_TIMEOUT_MS: "",
       }),
     ).toBe(DEFAULT_SERVICE_STARTUP_TIMEOUT_MS);
-    expect(
+    expect(() =>
       resolveServiceStartupTimeoutMs({
         DEV_ALL_SERVICE_STARTUP_TIMEOUT_MS: "   ",
       }),
-    ).toBe(DEFAULT_SERVICE_STARTUP_TIMEOUT_MS);
+    ).toThrow(
+      /DEV_ALL_SERVICE_STARTUP_TIMEOUT_MS must be a positive safe-integer decimal/,
+    );
   });
 
   test("accepts a valid explicit timeout", () => {
@@ -100,6 +101,7 @@ describe("resolveServiceStartupTimeoutMs", () => {
       "+120000",
       "-5",
       "0120000",
+      " 120000 ",
     ]) {
       expect(() =>
         resolveServiceStartupTimeoutMs({
@@ -114,7 +116,16 @@ describe("resolveServiceStartupTimeoutMs", () => {
 
 describe("dev-all CLI boundary", () => {
   test("rejects invalid DEV_ALL_SERVICE_STARTUP_TIMEOUT_MS before plan output", () => {
-    for (const value of ["0", "1junk", "notanumber", "1.5", "+120000"]) {
+    for (const value of [
+      "0",
+      "1junk",
+      "notanumber",
+      "1.5",
+      "+120000",
+      "   ",
+      " 90000 ",
+      "090000",
+    ]) {
       const result = runCli(["--dry-run", "--no-prepare"], {
         DEV_ALL_SERVICE_STARTUP_TIMEOUT_MS: value,
       });
