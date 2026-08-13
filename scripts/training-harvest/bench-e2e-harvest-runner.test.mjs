@@ -5,8 +5,11 @@
  */
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
+import { mkdtempSync, realpathSync, rmSync, symlinkSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import test from "node:test";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import {
   parseHarvestLimit,
   parseHarvestShard,
@@ -93,16 +96,43 @@ test("parseHarvestShard rejects malformed, unsafe, and out-of-range shards", () 
 test("invalid CLI input fails before deterministic planning", () => {
   const result = spawnSync(
     process.execPath,
-    [
-      runner,
-      "--dry-run",
-      "--deterministic",
-      "--item-timeout-ms",
-      "1e2",
-    ],
+    [runner, "--dry-run", "--deterministic", "--item-timeout-ms", "1e2"],
     { encoding: "utf8" },
   );
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /--item-timeout-ms/);
+  assert.doesNotMatch(result.stdout, /would harvest|summary/);
+});
+
+test("import ignores poisoned ambient argv and does not run main", async () => {
+  const originalArgv = [...process.argv];
+  process.argv.splice(1, process.argv.length - 1, "--limit", "not-a-number");
+  try {
+    const imported = await import(
+      `${pathToFileURL(runner).href}?ambient-argv=${Date.now()}`
+    );
+    assert.equal(typeof imported.parseRunnerConfig, "function");
+  } finally {
+    process.argv.splice(0, process.argv.length, ...originalArgv);
+  }
+});
+
+test("direct execution works through a symlink in a spaced path", (t) => {
+  const tempDir = mkdtempSync(path.join(tmpdir(), "eliza harvest "));
+  t.after(() => rmSync(tempDir, { recursive: true, force: true }));
+  const linkedRunner = path.join(tempDir, "runner link.mjs");
+  symlinkSync(runner, linkedRunner);
+  assert.equal(realpathSync(linkedRunner), realpathSync(runner));
+
+  const result = spawnSync(
+    process.execPath,
+    [linkedRunner, "--limit", "not-a-number"],
+    { encoding: "utf8" },
+  );
+  assert.notEqual(result.status, 0);
+  assert.match(
+    result.stderr,
+    /--limit must be a decimal integer \(got "not-a-number"\)/,
+  );
   assert.doesNotMatch(result.stdout, /would harvest|summary/);
 });

@@ -47,7 +47,13 @@
  *   node bench-e2e-harvest-runner.mjs --family e2e --deterministic --dry-run   # self-test
  */
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  realpathSync,
+  writeFileSync,
+} from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -60,17 +66,17 @@ const NATIVE_EXPORT_TS = path.join(
 );
 const CLI_BACKENDS = new Set(["claude", "claude-sdk", "codex", "codex-sdk"]);
 
-function flag(name) {
-  return process.argv.includes(name);
+function flag(argv, name) {
+  return argv.includes(name);
 }
-function opt(name, fallback) {
-  const i = process.argv.indexOf(name);
-  return i >= 0 && process.argv[i + 1] ? process.argv[i + 1] : fallback;
+function opt(argv, name, fallback) {
+  const i = argv.indexOf(name);
+  return i >= 0 && argv[i + 1] ? argv[i + 1] : fallback;
 }
 
-function optRaw(name, fallback) {
-  const i = process.argv.indexOf(name);
-  return i >= 0 ? (process.argv[i + 1] ?? "") : fallback;
+function optRaw(argv, name, fallback) {
+  const i = argv.indexOf(name);
+  return i >= 0 ? (argv[i + 1] ?? "") : fallback;
 }
 
 function parseDecimalInteger(raw, flagName, minimum) {
@@ -104,8 +110,7 @@ export function parseItemTimeoutMs(raw, flagName = "--item-timeout-ms") {
 
 /** Parse an i/n shard where n is positive and i is within [0, n). */
 export function parseHarvestShard(raw, flagName = "--shard") {
-  const match =
-    typeof raw === "string" ? /^(\d+)\/(\d+)$/.exec(raw) : null;
+  const match = typeof raw === "string" ? /^(\d+)\/(\d+)$/.exec(raw) : null;
   if (!match) {
     throw new Error(
       `${flagName} must have the form i/n using decimal integers (got ${JSON.stringify(raw)})`,
@@ -131,24 +136,45 @@ export function parseHarvestShard(raw, flagName = "--shard") {
   return [index, count];
 }
 
-const DRY_RUN = flag("--dry-run");
-const DETERMINISTIC = flag("--deterministic");
-const RESUME = flag("--resume");
-const LIMIT = parseHarvestLimit(optRaw("--limit", "0"));
-const FAMILY = opt("--family", "e2e");
-const [SHARD_I, SHARD_N] = process.argv.includes("--shard")
-  ? parseHarvestShard(optRaw("--shard", ""))
-  : [0, 1];
-const LANE_FILTER = opt("--lane", null); // e2e lane path substring filter
-const ITEM_TIMEOUT_MS = parseItemTimeoutMs(
-  optRaw("--item-timeout-ms", "900000"),
-);
-const HARVEST_ROOT = path.resolve(
-  opt(
-    "--harvest-root",
-    path.join(REPO_ROOT, "reports", "training-harvest", "gpt55", "harvest"),
-  ),
-);
+export function parseRunnerConfig(argv) {
+  const dryRun = flag(argv, "--dry-run");
+  const deterministic = flag(argv, "--deterministic");
+  const resume = flag(argv, "--resume");
+  const limit = parseHarvestLimit(optRaw(argv, "--limit", "0"));
+  const family = opt(argv, "--family", "e2e");
+  const [shardIndex, shardCount] = argv.includes("--shard")
+    ? parseHarvestShard(optRaw(argv, "--shard", ""))
+    : [0, 1];
+  const laneFilter = opt(argv, "--lane", null);
+  const itemTimeoutMs = parseItemTimeoutMs(
+    optRaw(argv, "--item-timeout-ms", "900000"),
+  );
+  const harvestRoot = path.resolve(
+    opt(
+      argv,
+      "--harvest-root",
+      path.join(REPO_ROOT, "reports", "training-harvest", "gpt55", "harvest"),
+    ),
+  );
+
+  return {
+    dryRun,
+    deterministic,
+    resume,
+    limit,
+    family,
+    shardIndex,
+    shardCount,
+    laneFilter,
+    itemTimeoutMs,
+    harvestRoot,
+    providerEnvFile: opt(
+      argv,
+      "--provider-env",
+      process.env.HARVEST_PROVIDER_ENV_FILE,
+    ),
+  };
+}
 
 // ── Corpus definitions ──────────────────────────────────────────────────────
 
@@ -181,15 +207,15 @@ const E2E_HARVESTABLE_LANES = [
 
 // ── Provider env (shared precedence with harvest-runner.mjs) ─────────────────
 
-function loadProviderEnv() {
-  const file = opt("--provider-env", process.env.HARVEST_PROVIDER_ENV_FILE);
+function loadProviderEnv(config) {
+  const file = config.providerEnvFile;
   if (file && existsSync(file)) {
     return {
       source: `file:${file}`,
       env: JSON.parse(readFileSync(file, "utf8")),
     };
   }
-  if (DETERMINISTIC) {
+  if (config.deterministic) {
     return { source: "deterministic-enumerate-only", env: {} };
   }
   if (process.env.ELIZA_CHAT_VIA_CLI) {
@@ -260,14 +286,14 @@ function nativeExport(runDir, outPath) {
 
 // ── E2E family ───────────────────────────────────────────────────────────────
 
-function runE2eItem(laneRel, runEnv) {
+function runE2eItem(laneRel, runEnv, config) {
   // These lanes run through the package's own vitest config (which mirrors the
   // workspace `exports` so @elizaos/* resolves to source with dist absent), via
   // the shared run-vitest.mjs wrapper (resolves an external Node — the codex
   // bundled Node cannot run Vitest). The harvestable set is app-core-only.
   const pkgDir = path.join(REPO_ROOT, laneRel.split("/").slice(0, 2).join("/"));
   const runVitest = path.join(REPO_ROOT, "packages/scripts/run-vitest.mjs");
-  const itemDir = path.join(HARVEST_ROOT, "e2e", slug(laneRel));
+  const itemDir = path.join(config.harvestRoot, "e2e", slug(laneRel));
   const trajDir = path.join(itemDir, "run", "trajectories");
   mkdirSync(trajDir, { recursive: true });
   const laneAbs = path.join(REPO_ROOT, laneRel);
@@ -287,7 +313,7 @@ function runE2eItem(laneRel, runEnv) {
     {
       cwd: pkgDir,
       encoding: "utf8",
-      timeout: ITEM_TIMEOUT_MS,
+      timeout: config.itemTimeoutMs,
       env: {
         ...process.env,
         ...runEnv,
@@ -364,52 +390,57 @@ function writeVerdict(itemDir, verdict) {
 
 // ── Main ─────────────────────────────────────────────────────────────────────
 
-function main() {
-  const provider = loadProviderEnv();
+function main(argv = process.argv) {
+  const config = parseRunnerConfig(argv);
+  const provider = loadProviderEnv(config);
   const runEnv = withCliRunEnv(provider.env);
-  mkdirSync(HARVEST_ROOT, { recursive: true });
+  mkdirSync(config.harvestRoot, { recursive: true });
 
-  if (FAMILY !== "e2e") {
+  if (config.family !== "e2e") {
     throw new Error(
-      `unknown --family ${FAMILY} (expected e2e; the benchmark family moved to https://github.com/elizaOS/benchmarks)`,
+      `unknown --family ${config.family} (expected e2e; the benchmark family moved to https://github.com/elizaOS/benchmarks)`,
     );
   }
   const corpus = E2E_HARVESTABLE_LANES.filter(
-    (lane) => !LANE_FILTER || lane.includes(LANE_FILTER),
+    (lane) => !config.laneFilter || lane.includes(config.laneFilter),
   ).map((lane) => ({ lane }));
 
   const summary = {
     startedAt: new Date().toISOString(),
-    family: FAMILY,
-    harvestRoot: HARVEST_ROOT,
+    family: config.family,
+    harvestRoot: config.harvestRoot,
     providerSource: provider.source,
     providerEnvKeys: Object.keys(runEnv),
     totalDiscovered: corpus.length,
-    shard: `${SHARD_I}/${SHARD_N}`,
-    dryRun: DRY_RUN,
-    limit: LIMIT,
+    shard: `${config.shardIndex}/${config.shardCount}`,
+    dryRun: config.dryRun,
+    limit: config.limit,
     items: [],
   };
 
   let ran = 0;
   for (let gi = 0; gi < corpus.length; gi += 1) {
-    if (SHARD_N > 1 && gi % SHARD_N !== SHARD_I) continue;
-    if (LIMIT && ran >= LIMIT) break;
+    if (config.shardCount > 1 && gi % config.shardCount !== config.shardIndex) {
+      continue;
+    }
+    if (config.limit && ran >= config.limit) break;
     const item = corpus[gi];
     const id = item.lane;
-    const itemDir = path.join(HARVEST_ROOT, "e2e", slug(id));
-    if (RESUME && existsSync(path.join(itemDir, "verdict.json"))) {
-      console.log(`[resume] skip (already harvested) ${FAMILY} :: ${id}`);
+    const itemDir = path.join(config.harvestRoot, "e2e", slug(id));
+    if (config.resume && existsSync(path.join(itemDir, "verdict.json"))) {
+      console.log(
+        `[resume] skip (already harvested) ${config.family} :: ${id}`,
+      );
       continue;
     }
     ran += 1;
-    if (DRY_RUN || DETERMINISTIC) {
-      console.log(`[dry-run] would harvest ${FAMILY} :: ${id}`);
+    if (config.dryRun || config.deterministic) {
+      console.log(`[dry-run] would harvest ${config.family} :: ${id}`);
       summary.items.push({ item: id, gi, planned: true });
       continue;
     }
-    console.log(`[harvest #${gi}] ${FAMILY} :: ${id}`);
-    const verdict = runE2eItem(id, runEnv);
+    console.log(`[harvest #${gi}] ${config.family} :: ${id}`);
+    const verdict = runE2eItem(id, runEnv, config);
     summary.items.push(verdict);
     console.log(
       `[harvest]   → status=${verdict.status} rows=${verdict.rows} exit=${verdict.exitCode}`,
@@ -419,19 +450,28 @@ function main() {
   summary.finishedAt = new Date().toISOString();
   summary.count = summary.items.length;
   const summaryPath = path.join(
-    HARVEST_ROOT,
-    `harvest-${FAMILY}-summary-${DRY_RUN || DETERMINISTIC ? "dryrun" : "run"}-${Date.now()}.json`,
+    config.harvestRoot,
+    `harvest-${config.family}-summary-${config.dryRun || config.deterministic ? "dryrun" : "run"}-${Date.now()}.json`,
   );
   writeFileSync(summaryPath, JSON.stringify(summary, null, 2));
   console.log(`\nsummary → ${summaryPath}`);
   console.log(
-    `family=${FAMILY} items=${summary.count} provider=${provider.source}`,
+    `family=${config.family} items=${summary.count} provider=${provider.source}`,
   );
 }
 
-if (
-  process.argv[1] &&
-  path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)
-) {
+function isDirectExecution(argvEntry) {
+  if (!argvEntry) return false;
+  try {
+    return (
+      realpathSync(path.resolve(argvEntry)) ===
+      realpathSync(fileURLToPath(import.meta.url))
+    );
+  } catch {
+    return false;
+  }
+}
+
+if (isDirectExecution(process.argv[1])) {
   main();
 }
