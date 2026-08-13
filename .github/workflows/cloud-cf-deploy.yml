@@ -1254,6 +1254,10 @@ jobs:
     name: Build Pages artifacts
     needs: migrate-db
     if: ${{ !cancelled() && (needs.migrate-db.result == 'success' || (github.event_name == 'pull_request' && needs.migrate-db.result == 'skipped')) }}
+    # Bound to the selected environment so environment-scoped vars (e.g.
+    # VITE_TELEGRAM_BOT_ID) are visible to the Vite build (#19121). PR runs
+    # bind to staging; the staging environment must allow PR branches.
+    environment: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'production' || 'staging' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     # GitHub preserves outputs from successful jobs when only failed jobs are
@@ -1327,6 +1331,7 @@ jobs:
           VITE_ENVIRONMENT: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'production' || 'staging' }}
           VITE_VOICE_REALTIME_WS: ${{ !((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && contains(fromJSON('["1","true","TRUE","True","yes","YES","Yes","on","ON","On"]'), vars.VOICE_REALTIME_WS_ENABLED) && '1' || '0' }}
           VITE_VOICE_REALTIME_FORCE: "0"
+          VITE_TELEGRAM_BOT_ID: ${{ vars.VITE_TELEGRAM_BOT_ID }}
           NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID: ${{ vars.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID }}
 
       - name: Verify frontend chunk safety
@@ -1356,6 +1361,9 @@ jobs:
       group: cloud-cf-deploy-app-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || (((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'production' || 'staging') }}
       cancel-in-progress: ${{ github.event_name == 'pull_request' }}
     # Hosted unconditionally to preserve CI/placement workload separation.
+    # Bound to the selected environment so the legacy inline fallback build
+    # sees the same environment-scoped vars as build-pages (#19121).
+    environment: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'production' || 'staging' }}
     runs-on: ubuntu-latest
     timeout-minutes: 75
     # Release gate (#11208/#18088): canonical Pages aliases wait for the matching
@@ -1583,6 +1591,7 @@ jobs:
           VITE_ENVIRONMENT: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'production' || 'staging' }}
           VITE_VOICE_REALTIME_WS: ${{ !((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && contains(fromJSON('["1","true","TRUE","True","yes","YES","Yes","on","ON","On"]'), vars.VOICE_REALTIME_WS_ENABLED) && '1' || '0' }}
           VITE_VOICE_REALTIME_FORCE: "0"
+          VITE_TELEGRAM_BOT_ID: ${{ vars.VITE_TELEGRAM_BOT_ID }}
           NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID: ${{ vars.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID }}
 
       # Refuse to deploy a bundle where the bn.js/crypto graph folded into an
