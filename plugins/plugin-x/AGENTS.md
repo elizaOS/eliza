@@ -78,7 +78,7 @@ plugins/plugin-x/
     utils/
       settings.ts                  getSetting(runtime, key) — checks runtime settings then process.env
       memory.ts                    createMemorySafe, ensureTwitterContext, isTweetProcessed, buildTwitterMessageMetadata
-      time.ts                      getEpochMs
+      time.ts                      getEpochMs / parseEpochMs — fail closed on non-finite tweet timestamps
       error-handler.ts             Shared API error handling helpers
 ```
 

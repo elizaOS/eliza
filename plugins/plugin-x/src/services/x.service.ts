@@ -43,6 +43,7 @@ import { TwitterPostClient } from "../post";
 import { TwitterTimelineClient } from "../timeline";
 import type { ITwitterClient, TwitterClientState } from "../types";
 import { getSetting } from "../utils/settings";
+import { getEpochMs, isInvalidTweetTimestamp } from "../utils/time";
 import { TwitterPostService } from "./PostService";
 
 const X_CONNECTOR_CONTEXTS = ["social", "connectors"];
@@ -937,20 +938,22 @@ export class XService extends Service {
             before: params.cursor,
           });
 
-    return posts.map((post) =>
-      this.buildXPostMemory(runtime, {
-        id: post.id,
-        userId: post.userId,
-        username: post.username,
-        text: post.text,
-        timestamp: post.timestamp,
-        inReplyTo: post.inReplyTo,
-        roomId: post.roomId,
-        metadata: post.metadata,
-        metrics: post.metrics,
-        accountId,
-      }),
-    );
+    return posts
+      .filter((post) => !isInvalidTweetTimestamp(post.timestamp))
+      .map((post) =>
+        this.buildXPostMemory(runtime, {
+          id: post.id,
+          userId: post.userId,
+          username: post.username,
+          text: post.text,
+          timestamp: post.timestamp,
+          inReplyTo: post.inReplyTo,
+          roomId: post.roomId,
+          metadata: post.metadata,
+          metrics: post.metrics,
+          accountId,
+        }),
+      );
   }
 
   async searchConnectorPosts(
@@ -975,23 +978,25 @@ export class XService extends Service {
       SearchMode.Latest,
       params.cursor,
     );
-    return result.tweets.map((tweet) =>
-      this.buildXPostMemory(runtime, {
-        id: tweet.id ?? "unknown",
-        userId: tweet.userId ?? "unknown",
-        username: tweet.username ?? undefined,
-        text: tweet.text ?? "",
-        timestamp: tweet.timestamp,
-        inReplyTo: tweet.inReplyToStatusId,
-        metrics: {
-          likes: tweet.likes,
-          reposts: tweet.retweets,
-          replies: tweet.replies,
-          quotes: tweet.quotes,
-        },
-        accountId,
-      }),
-    );
+    return result.tweets
+      .filter((tweet) => !isInvalidTweetTimestamp(tweet.timestamp))
+      .map((tweet) =>
+        this.buildXPostMemory(runtime, {
+          id: tweet.id ?? "unknown",
+          userId: tweet.userId ?? "unknown",
+          username: tweet.username ?? undefined,
+          text: tweet.text ?? "",
+          timestamp: tweet.timestamp,
+          inReplyTo: tweet.inReplyToStatusId,
+          metrics: {
+            likes: tweet.likes,
+            reposts: tweet.retweets,
+            replies: tweet.replies,
+            quotes: tweet.quotes,
+          },
+          accountId,
+        }),
+      );
   }
 
   async fetchConnectorMessages(
@@ -1353,9 +1358,7 @@ export class XService extends Service {
       post.accountId ?? this.defaultAccountId,
     );
     const authorId = post.userId || "unknown";
-    const createdAt = Number.isFinite(post.timestamp)
-      ? post.timestamp
-      : Date.now();
+    const createdAt = getEpochMs(post.timestamp);
     const entityId =
       authorId === runtime.agentId
         ? runtime.agentId

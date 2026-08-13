@@ -247,6 +247,51 @@ describe("XService trusted account routing", () => {
     );
   });
 
+  it("normalizes Unix-second tweet times and drops unusable created_at values", async () => {
+    const runtime = runtimeWithSettings({});
+    const service = new XService(runtime);
+    const fetchSearchTweets = vi.fn(async () => ({
+      tweets: [
+        {
+          id: "good",
+          userId: "1",
+          username: "alice",
+          text: "valid",
+          timestamp: 1_710_969_600,
+        },
+        {
+          id: "bad",
+          userId: "2",
+          username: "bob",
+          text: "invalid",
+          timestamp: Number.NaN,
+        },
+      ],
+    }));
+    vi.spyOn(
+      service as unknown as {
+        getTwitterClientForAccount: (accountId: unknown) => Promise<{
+          client: { fetchSearchTweets: typeof fetchSearchTweets };
+        }>;
+      },
+      "getTwitterClientForAccount",
+    ).mockResolvedValue({ client: { fetchSearchTweets } });
+
+    const memories = await service.searchConnectorPosts(
+      {
+        runtime,
+        source: "x",
+        accountId: "default",
+      },
+      { query: "timestamps" },
+    );
+
+    expect(memories).toHaveLength(1);
+    expect(memories[0]?.id).toBeDefined();
+    expect(memories[0]?.createdAt).toBe(1_710_969_600_000);
+    expect(memories[0]?.content.text).toBe("valid");
+  });
+
   it("ignores spoofed content account metadata in the unscoped send handler", async () => {
     const runtime = runtimeWithSettings({});
     const service = new XService(runtime);

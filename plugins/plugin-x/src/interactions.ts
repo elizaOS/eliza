@@ -49,7 +49,7 @@ import {
   isTweetProcessed,
 } from "./utils/memory";
 import { getSetting } from "./utils/settings";
-import { getEpochMs } from "./utils/time";
+import { getEpochMs, isInvalidTweetTimestamp } from "./utils/time";
 
 type ProcessableTweet = ClientTweet & {
   id: string;
@@ -385,7 +385,11 @@ export class TwitterInteractionClient {
         continue; // Already processed
       }
 
-      // Skip if tweet is too old (older than 24 hours)
+      // Skip if tweet is too old (older than 24 hours). Unusable timestamps
+      // must not look like age 0 / just-posted.
+      if (isInvalidTweetTimestamp(tweet.timestamp)) {
+        continue;
+      }
       const tweetAge = Date.now() - getEpochMs(tweet.timestamp);
       const maxAge = 24 * 60 * 60 * 1000; // 24 hours
 
@@ -436,7 +440,9 @@ export class TwitterInteractionClient {
       }
 
       const relevantTweets = timelineTweets.filter((tweet) => {
-        // Filter for tweets from the last 12 hours
+        if (isInvalidTweetTimestamp(tweet.timestamp)) {
+          return false;
+        }
         const tweetAge = Date.now() - getEpochMs(tweet.timestamp);
         return tweetAge < 12 * 60 * 60 * 1000;
       });
