@@ -4,9 +4,12 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { validateStagingSessionCutoverConfig } from "../../cloud/scripts/validate-staging-session-cutover.mjs";
 
+// The mutating `deploy-api` job lives in the reusable release workflow that
+// `cloud-cf-deploy.yml` calls once admission and approval have passed; the
+// cutover contract is asserted where the mutation actually runs.
 const repoRoot = new URL("../../../", import.meta.url);
 const workflowSource = readFileSync(
-  new URL(".github/workflows/cloud-cf-deploy.yml", repoRoot),
+  new URL(".github/workflows/cloud-cf-release.yml", repoRoot),
   "utf8",
 );
 

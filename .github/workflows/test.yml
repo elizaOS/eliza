@@ -6,8 +6,8 @@ name: Tests
 # build+core-test gate; this workflow adds the broader integration surface.
 
 on:
-  # Post-merge integration surface. PRs to `develop` run the lightweight
-  # lint/typecheck/build gate (develop-pr.yml); the full suite runs here once
+  # Post-merge integration surface. Canonical CI calls the lightweight
+  # lint/typecheck/build gate for `develop` PRs; the full suite runs here once
   # changes land on `develop`, plus nightly and on demand.
   push:
     branches: [develop]
