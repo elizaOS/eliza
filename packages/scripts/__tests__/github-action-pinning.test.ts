@@ -306,15 +306,25 @@ describe("GitHub action supply-chain references", () => {
   });
 
   test("routes homepage deploys through the consolidated Cloudflare workflow", () => {
+    // The entry workflow owns the homepage trigger paths and the unprivileged
+    // preview build; the Pages project it deploys into is bound in the reusable
+    // release workflow it calls.
     const source = readFileSync(
       join(githubRoot, "workflows", "cloud-cf-deploy.yml"),
       "utf8",
     );
+    const releaseSource = readFileSync(
+      join(githubRoot, "workflows", "cloud-cf-release.yml"),
+      "utf8",
+    );
     expect(source).toContain('      - "packages/homepage/**"');
     expect(source).toContain("Build consolidated frontend artifact");
-    expect(source).toContain("PAGES_PROJECT: eliza-app");
-    expect(source).not.toContain("PAGES_PROJECT: eliza-app-home");
-    expect(source).not.toContain("git push");
+    expect(releaseSource).toContain("Build consolidated frontend artifact");
+    expect(releaseSource).toContain("PAGES_PROJECT: eliza-app");
+    for (const workflowSource of [source, releaseSource]) {
+      expect(workflowSource).not.toContain("PAGES_PROJECT: eliza-app-home");
+      expect(workflowSource).not.toContain("git push");
+    }
   });
 
   test("keeps the Docker smoke on a runner with a Docker daemon", () => {
