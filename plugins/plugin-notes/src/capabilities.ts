@@ -43,7 +43,7 @@ const ID_PARAM = {
 const TITLE_PARAM: ViewCapabilityParameter = {
   type: "string",
   description:
-    "Exact first-line label of a note to identify it. Must match a known note label exactly.",
+    "First-line label of a note to identify it. Matched case-insensitively with whitespace normalized.",
   minLength: 1,
   maxLength: 240,
   pattern: "\\S",
@@ -60,7 +60,8 @@ export const NOTES_CAPABILITIES: ViewCapability[] = [
   },
   {
     id: "get-note",
-    description: "Read one note by id, exact first-line label, or unique text it contains.",
+    description:
+      "Read one note by id, exact first-line label, or unique text it contains.",
     params: {
       id: { ...ID_PARAM.id, required: false },
       title: TITLE_PARAM,

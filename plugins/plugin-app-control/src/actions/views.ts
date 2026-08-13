@@ -1434,7 +1434,7 @@ function extractIntentTextAfter(
 }
 
 function extractReferencedTitle(intent: string): string | null {
-	const quoted = /\b(?:titled?|named)\s+["']([^"']{1,240})["']/i.exec(
+	const quoted = /\b(?:titled?|named)\s+["“'‘]([^"”'’]{1,240})["”'’]/i.exec(
 		intent,
 	)?.[1];
 	if (quoted?.trim()) return quoted.trim();

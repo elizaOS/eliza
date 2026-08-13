@@ -3229,8 +3229,7 @@ describe("view management actions", () => {
 									},
 									query: {
 										type: "string",
-										description:
-											"Unique text contained anywhere in the note.",
+										description: "Unique text contained anywhere in the note.",
 										minLength: 1,
 										maxLength: 20_000,
 									},
@@ -3316,8 +3315,7 @@ describe("view management actions", () => {
 									},
 									query: {
 										type: "string",
-										description:
-											"Unique text contained anywhere in the note.",
+										description: "Unique text contained anywhere in the note.",
 										minLength: 1,
 										maxLength: 20_000,
 									},
@@ -3385,6 +3383,82 @@ describe("view management actions", () => {
 		);
 	});
 
+	it("derives title from a smart-quoted named label (#18449 nit)", async () => {
+		const { runtime } = createRuntime();
+		const callback = vi.fn();
+		const action = createViewsAction({
+			client: {
+				listViews: vi.fn(async () => [
+					view({
+						id: "notes",
+						label: "Notes",
+						path: "/notes",
+						tags: ["notes", "sticky notes"],
+						capabilities: [
+							{
+								id: "delete-note",
+								description:
+									"Delete one note by stable id, exact first-line label, or unique contained text.",
+								params: {
+									title: {
+										type: "string",
+										description: "First-line label of a note to identify it.",
+										minLength: 1,
+										maxLength: 240,
+									},
+								},
+							},
+						],
+					}),
+				]),
+				getCurrentView: vi.fn(async () => ({
+					viewId: "notes",
+					viewLabel: "Notes",
+					viewType: "gui" as const,
+					viewPath: "/notes",
+				})),
+			},
+			hasOwnerAccess: vi.fn(async () => true),
+		});
+		vi.mocked(globalThis.fetch).mockResolvedValueOnce({
+			ok: true,
+			status: 200,
+			json: async () => ({
+				success: true,
+				result: { success: true, text: "Deleted note." },
+			}),
+		} as Response);
+
+		const label = "Shopping List";
+		const result = await action.handler(
+			runtime as never,
+			// Smart quotes (curly) instead of ASCII quotes — must still
+			// extract a title, matching extractDeleteTargetText behavior.
+			message(`Delete the note named \u201c${label}\u201d`) as never,
+			undefined,
+			{
+				action: "interact",
+				view: "notes",
+				capability: "delete-note",
+			},
+			callback,
+		);
+
+		expect(result?.success).toBe(true);
+		expect(globalThis.fetch).toHaveBeenCalledWith(
+			"http://127.0.0.1:3456/api/views/notes/interact?viewType=gui",
+			expect.objectContaining({
+				method: "POST",
+				body: JSON.stringify({
+					capability: "delete-note",
+					params: { title: label },
+					timeoutMs: 5_000,
+					viewType: "gui",
+				}),
+			}),
+		);
+	});
+
 	it("uses query for an unquoted free-form delete target", async () => {
 		const { runtime } = createRuntime();
 		const callback = vi.fn();
@@ -3404,8 +3478,7 @@ describe("view management actions", () => {
 								params: {
 									query: {
 										type: "string",
-										description:
-											"Unique text contained anywhere in the note.",
+										description: "Unique text contained anywhere in the note.",
 										minLength: 1,
 										maxLength: 20_000,
 									},
