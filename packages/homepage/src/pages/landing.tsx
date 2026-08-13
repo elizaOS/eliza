@@ -158,7 +158,8 @@ export default function LandingPage() {
         <div className="landing-hero-copy">
           <h1 className="landing-hero-heading">
             {t("homepage_eliza.landing.heroTitle", {
-              defaultValue: "Save 4 hours a week.",
+              defaultValue:
+                "Get 4 hours of your time back every week with Eliza.",
             })}
           </h1>
           <p className="landing-hero-lede">
@@ -178,7 +179,7 @@ export default function LandingPage() {
               })}
             </a>
             <a
-              className="landing-cta landing-cta--outline"
+              className="landing-cta landing-cta--white"
               href={`tel:${ELIZA_PHONE_NUMBER}`}
             >
               <PhoneIcon className="size-5" />

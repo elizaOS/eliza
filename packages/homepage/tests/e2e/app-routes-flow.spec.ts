@@ -337,7 +337,7 @@ test("landing page renders its hero and messaging entrypoints", async ({
   await page.goto("/");
 
   await expect(
-    page.getByRole("heading", { name: /Save 4 hours a week/ }),
+    page.getByRole("heading", { name: /Get 4 hours of your time back/ }),
   ).toBeVisible({ timeout: 20_000 });
 
   const textCta = page.getByRole("link", { name: "Text me" });

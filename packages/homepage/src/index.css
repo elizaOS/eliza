@@ -1370,9 +1370,10 @@ body {
 
 .landing-hero-heading {
   margin: 0;
-  font-size: clamp(3rem, 7vw, 5.75rem);
+  max-width: 14ch;
+  font-size: clamp(2.6rem, 5.5vw, 4.6rem);
   font-weight: 500;
-  line-height: 0.95;
+  line-height: 1;
   letter-spacing: -0.02em;
   text-wrap: balance;
   color: var(--brand-white);
@@ -1427,12 +1428,12 @@ body {
   color: var(--brand-white);
 }
 
-.landing-cta--outline {
-  border: 2px solid var(--brand-black);
+.landing-cta--white {
+  background: #ffffff;
   color: var(--brand-black);
 }
 
-.landing-cta--outline:hover {
+.landing-cta--white:hover {
   background: var(--brand-black);
   color: var(--brand-white);
 }

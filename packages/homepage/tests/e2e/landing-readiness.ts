@@ -11,7 +11,7 @@ const READINESS_TIMEOUT_MS = 30_000;
 export async function waitForLandingIntro(page: Page) {
   await page.evaluate(() => document.fonts.ready);
   await expect(
-    page.getByRole("heading", { name: /Save 4 hours a week/ }),
+    page.getByRole("heading", { name: /Get 4 hours of your time back/ }),
   ).toBeVisible({ timeout: READINESS_TIMEOUT_MS });
 
   const lastBubble = page.locator(".landing-bubble").last();
