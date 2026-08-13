@@ -7,9 +7,9 @@
  * coverage instrumentation, whose open file descriptors collide with the
  * 159 MB Kokoro GGUF mmap (`gguf_init_from_file ... Too many open files`).
  * This script runs under bun directly (no coverage harness): it loads the
- * fused `libelizainference`, loads the real Kokoro model, synthesizes a phrase,
- * and asserts non-empty 24 kHz PCM with a first-audible chunk inside the
- * mobile-class TTFA budget — the same in-process fused path mobile ships.
+ * fused `libelizainference`, synthesizes from a cold handle, and asserts
+ * non-empty 24 kHz PCM with a first-audible chunk inside the configured TTFA
+ * budget.
  *
  * Exits 0 on pass, 1 on a real failure, 2 when the lib/model aren't staged (a
  * developer box without them is skipped; a CI lane that staged them then
@@ -26,14 +26,19 @@
  *     goes RED when they are absent rather than passing silently (#9588 gate).
  */
 
+import { wordErrorRate } from "@elizaos/shared/voice-wer";
 import { resolveFusedLibraryPath } from "../src/services/desktop-fused-ffi-backend-runtime";
 import {
 	createKokoroSpeakerPreset,
 	createKokoroTtsBackend,
 } from "../src/services/voice/engine-bridge";
-import { loadElizaInferenceFfi } from "../src/services/voice/ffi-bindings";
+import {
+	type ElizaInferenceContextHandle,
+	loadElizaInferenceFfi,
+} from "../src/services/voice/ffi-bindings";
 import { resolveKokoroTtfaBudgetMs } from "../src/services/voice/kokoro/kokoro-ttfa-budget";
 import { resolveKokoroEngineConfig } from "../src/services/voice/kokoro/kokoro-engine-discovery";
+import { VoiceLifecycleError } from "../src/services/voice/lifecycle";
 import type { Phrase } from "../src/services/voice/types";
 
 const kokoroSmokeRequireStaged = (() => {
@@ -50,37 +55,15 @@ function skip(msg: string): never {
 	console.log(`[kokoro-real-smoke] SKIP: ${msg}`);
 	process.exit(2);
 }
-function fail(msg: string): never {
-	console.error(`[kokoro-real-smoke] FAIL: ${msg}`);
-	process.exit(1);
+class KokoroSmokeFailure extends Error {
+	constructor(message: string) {
+		super(message);
+		this.name = "KokoroSmokeFailure";
+	}
 }
 
-/** Word-level error rate (Levenshtein over normalized word tokens). */
-function wordErrorRate(reference: string, hypothesis: string): number {
-	const norm = (s: string) =>
-		s
-			.toLowerCase()
-			.replace(/[^a-z0-9\s]/g, " ")
-			.split(/\s+/)
-			.filter(Boolean);
-	const r = norm(reference);
-	const h = norm(hypothesis);
-	if (r.length === 0) return h.length === 0 ? 0 : 1;
-	const d: number[][] = Array.from({ length: r.length + 1 }, () =>
-		new Array<number>(h.length + 1).fill(0),
-	);
-	for (let i = 0; i <= r.length; i++) d[i]![0] = i;
-	for (let j = 0; j <= h.length; j++) d[0]![j] = j;
-	for (let i = 1; i <= r.length; i++) {
-		for (let j = 1; j <= h.length; j++) {
-			d[i]![j] =
-				r[i - 1] === h[j - 1]
-					? d[i - 1]![j - 1]!
-					: 1 +
-						Math.min(d[i - 1]![j - 1]!, d[i - 1]![j]!, d[i]![j - 1]!);
-		}
-	}
-	return d[r.length]![h.length]! / r.length;
+function fail(msg: string): never {
+	throw new KokoroSmokeFailure(msg);
 }
 
 if (typeof (globalThis as { Bun?: unknown }).Bun === "undefined") {
@@ -216,16 +199,24 @@ try {
 				"(non-empty PCM only). Set it to a dir with asr/eliza-1-asr.gguf + -mmproj.gguf to gate intelligibility (WER).",
 		);
 	} else {
-		const asrCtx = ffi.create(asrBundle);
+		let asrCtx: ElizaInferenceContextHandle | undefined;
+		let asrAcquired = false;
 		let transcript: string;
 		try {
+			asrCtx = ffi.create(asrBundle);
 			ffi.mmapAcquire(asrCtx, "asr");
+			asrAcquired = true;
 			transcript = ffi
 				.asrTranscribe({ ctx: asrCtx, pcm: pcmAll, sampleRateHz: sampleRate })
 				.trim();
 		} finally {
-			ffi.mmapEvict(asrCtx, "asr");
-			ffi.destroy(asrCtx);
+			try {
+				if (asrCtx !== undefined && asrAcquired) {
+					ffi.mmapEvict(asrCtx, "asr");
+				}
+			} finally {
+				if (asrCtx !== undefined) ffi.destroy(asrCtx);
+			}
 		}
 		const wer = wordErrorRate(phrase.text, transcript);
 		const WER_BUDGET = 0.5;
@@ -247,6 +238,16 @@ try {
 		fail(`TTFA ${ttfa}ms exceeds the budget ${ttfaBudgetMs}ms`);
 	}
 	console.log("[kokoro-real-smoke] PASS");
+} catch (error) {
+	// error-policy:J1 CLI boundary translates an expected smoke failure to exit status.
+	if (
+		!(error instanceof KokoroSmokeFailure) &&
+		!(error instanceof VoiceLifecycleError)
+	) {
+		throw error;
+	}
+	console.error(`[kokoro-real-smoke] FAIL: ${error.message}`);
+	process.exitCode = 1;
 } finally {
 	backend.dispose();
 	(ffi as unknown as { close?: () => void }).close?.();

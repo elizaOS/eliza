@@ -69,6 +69,8 @@ Key environment variables (all optional unless noted):
 | `SD_CPP_BIN` | Absolute path to sd.cpp binary |
 | `MFLUX_BIN` | Absolute path to mflux binary |
 | `ELIZA_KOKORO_DEFAULT_VOICE_ID` | Default Kokoro TTS voice |
+| `ELIZA_ASR_USE_GPU` | Override fused ASR acceleration (`1`/`true`/`yes`/`on` or `0`/`false`/`no`/`off`). Apple silicon defaults to the correctness-proven CPU path; invalid values fail activation, and GPU should be enabled only for Metal parity testing |
+| `KOKORO_SMOKE_TTFA_BUDGET_MS` | Override the 700 ms mobile TTFA gate when the real smoke is proving a different host performance class |
 
 ## Per-target local inference recommendations
 

@@ -1,12 +1,18 @@
 /** Covers building the per-tier model lifecycle matrix and its markdown rendering. Deterministic, synthetic catalog/probe. */
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
 	buildLocalModelLifecycleMatrix,
+	collectLocalLifecycleFileChecks,
 	formatLocalModelLifecycleMatrixMarkdown,
 	type LifecycleLoadRunCheck,
 	type LifecycleLocalFileCheck,
 	type LifecycleRemoteCheck,
+	listLocalModelLifecycleArtifacts,
 } from "./local-model-lifecycle-matrix";
+import type { Eliza1Manifest } from "./manifest";
 import type { CatalogModel, HardwareProbe, InstalledModel } from "./types";
 
 function hardware(overrides: Partial<HardwareProbe> = {}): HardwareProbe {
@@ -305,6 +311,81 @@ describe("buildLocalModelLifecycleMatrix", () => {
 		expect(embedding?.checks.installed.status).toBe("skipped");
 		expect(embedding?.checks.loadsAndRunsOnDevice.status).toBe("skipped");
 		expect(embedding?.blockers).toEqual([]);
+	});
+
+	it("reports unhosted LiteRT as a publish gap instead of a deployable artifact", () => {
+		const model = catalogModel({ id: "eliza-1-2b", displayName: "eliza-1-2B" });
+		const components = { ...model.sourceModel?.components };
+		delete components.litert;
+		const matrix = buildLocalModelLifecycleMatrix({
+			catalog: [
+				{
+					...model,
+					sourceModel: { finetuned: false, components },
+				},
+			],
+			installed: [],
+			assignments: {},
+			hardware: hardware(),
+			observedAt: "2026-07-02T00:00:00.000Z",
+		});
+
+		const litert = matrix.rows.find((row) => row.component === "litert");
+		expect(litert?.knownGap?.kind).toBe("publish-pending");
+		expect(litert?.catalogAdvertised).toBe(false);
+		expect(litert?.downloadUrl).toBeNull();
+		expect(litert?.checks.implemented.status).toBe("pass");
+		expect(litert?.checks.published.status).toBe("fail");
+		expect(litert?.checks.published.detail).toContain(
+			"ELIZA_1_HOSTED_LITERT_TIER_IDS",
+		);
+		expect(litert?.checks.downloadable.status).toBe("fail");
+		expect(litert?.checks.installed.status).toBe("skipped");
+		expect(litert?.checks.loadsAndRunsOnDevice.status).toBe("skipped");
+	});
+
+	it("resolves and stats installed Kokoro bytes from a differing manifest path", async () => {
+		const model = catalogModel();
+		const root = mkdtempSync(path.join(os.tmpdir(), "eliza-lifecycle-voice-"));
+		const q4Path = "tts/kokoro/kokoro-82m-v1_0-Q4_K_M.gguf";
+		const absoluteQ4Path = path.join(root, q4Path);
+		mkdirSync(path.dirname(absoluteQ4Path), { recursive: true });
+		writeFileSync(absoluteQ4Path, "kokoro-bytes");
+		const installed = installedModel({
+			path: path.join(root, "text/eliza-1-4b-128k.gguf"),
+			bundleRoot: root,
+			manifestPath: path.join(root, "eliza-1.manifest.json"),
+		});
+		const manifestLoader = () =>
+			({
+				files: {
+					voice: [{ path: q4Path, sha256: "a".repeat(64) }],
+				},
+			}) as Eliza1Manifest;
+		try {
+			const artifacts = listLocalModelLifecycleArtifacts([model]);
+			const localFileChecks = await collectLocalLifecycleFileChecks(
+				artifacts,
+				[installed],
+				manifestLoader,
+			);
+			const matrix = buildLocalModelLifecycleMatrix({
+				catalog: [model],
+				installed: [installed],
+				assignments: {},
+				hardware: hardware(),
+				observedAt: "2026-07-02T00:00:00.000Z",
+				manifestLoader,
+				localFileChecks,
+			});
+
+			const voice = matrix.rows.find((row) => row.component === "voice");
+			expect(voice?.local.componentPath).toBe(absoluteQ4Path);
+			expect(voice?.local.componentFile?.status).toBe("present");
+			expect(voice?.checks.installed.status).toBe("pass");
+		} finally {
+			rmSync(root, { recursive: true, force: true });
+		}
 	});
 
 	it("still fails genuinely missing components (asr) even with known-gap reconciliation", () => {

@@ -147,6 +147,15 @@ int eliza_inference_mmap_acquire(
             "[libelizainference-stub] mmap_acquire: invalid region_name (expected tts|asr|text|mtp|vad|wakeword)");
         return ELIZA_ERR_INVALID_ARG;
     }
+    if (strcmp(region_name, "asr") == 0) {
+        const char * asr_gpu = getenv("ELIZA_ASR_USE_GPU");
+        char message[256];
+        snprintf(message, sizeof(message),
+            "[libelizainference-stub] mmap_acquire: unsupported in ABI-only build — fused build required; native getenv ELIZA_ASR_USE_GPU=%s",
+            asr_gpu ? asr_gpu : "<unset>");
+        set_error(out_error, message);
+        return ELIZA_ERR_NOT_IMPLEMENTED;
+    }
     set_error(out_error,
         "[libelizainference-stub] mmap_acquire: unsupported in ABI-only build — fused build required");
     return ELIZA_ERR_NOT_IMPLEMENTED;

@@ -9,6 +9,7 @@
 import { describe, expect, it } from "vitest";
 import {
   ELIZA_1_BUNDLE_SLUGS,
+  ELIZA_1_HOSTED_LITERT_TIER_IDS,
   ELIZA_1_HOSTED_MTP_TIER_IDS,
   ELIZA_1_MTP_TIER_IDS,
   ELIZA_1_ON_DEVICE_TIER_IDS,
@@ -244,7 +245,8 @@ describe("Eliza-1 runtime quant metadata", () => {
     }
   });
 
-  it("advertises the mobile QAT Q4_0 + LiteRT-LM bundle on every on-device tier", () => {
+  it("keeps mobile QAT visible without advertising unpublished LiteRT downloads", () => {
+    expect(ELIZA_1_HOSTED_LITERT_TIER_IDS).toEqual([]);
     for (const id of ELIZA_1_ON_DEVICE_TIER_IDS) {
       const entry = MODEL_CATALOG.find((model) => model.id === id);
       const variants = entry?.quantization?.variants ?? [];
@@ -256,6 +258,8 @@ describe("Eliza-1 runtime quant metadata", () => {
       const litert = variants.find((variant) => variant.id === "wna8o8");
       expect(litert?.artifactFormat).toBe("litertlm");
       expect(litert?.ggufFile).toMatch(/\.litertlm$/);
+      expect(litert?.status).toBe("planned");
+      expect(entry?.sourceModel?.components.litert).toBeUndefined();
     }
   });
 
