@@ -1,3 +1,8 @@
+/**
+ * Deterministic parser and real child-process CLI boundary tests for the
+ * training-harvest runner. No provider, network, or integration service is
+ * accessed; the CLI case uses the local deterministic mode only.
+ */
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import test from "node:test";
