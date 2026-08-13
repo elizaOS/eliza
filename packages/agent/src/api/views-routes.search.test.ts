@@ -200,6 +200,15 @@ describe("GET /api/views/search keyword scoring", () => {
     const { ctx: ctxZero, json: jsonZero } = makeSearchCtx("?q=wallet&limit=0");
     await expect(handleViewsRoutes(ctxZero)).resolves.toBe(true);
     expect(resultsFrom(jsonZero)).toHaveLength(1);
+
+    // Nonempty values that contain no parseable integer retain the historical
+    // fallback of 5; the zero-specific fix must not turn malformed input into
+    // the minimum page size.
+    for (const malformed of ["abc", "%20", "NaN"]) {
+      const { ctx, json } = makeSearchCtx(`?q=wallet&limit=${malformed}`);
+      await expect(handleViewsRoutes(ctx)).resolves.toBe(true);
+      expect(resultsFrom(json)).toHaveLength(2);
+    }
   });
 
   it("filters to tui views when viewType=tui is requested", async () => {
