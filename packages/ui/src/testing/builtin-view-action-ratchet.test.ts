@@ -112,7 +112,7 @@ describe("builtin view action ratchet (#14369)", () => {
         }),
         expect.objectContaining({
           viewId: "automations",
-          semanticActions: ["SCHEDULED_TASKS", "TRIGGER"],
+          semanticActions: ["SCHEDULED_TASKS", "TRIGGER", "WORKFLOW"],
         }),
         expect.objectContaining({
           viewId: "my-apps",

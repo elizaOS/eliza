@@ -70,9 +70,9 @@ function walk(dir, out) {
 function collectStringConsts(src) {
   const consts = new Map();
   for (const m of src.matchAll(
-    /\bconst\s+([A-Za-z_$][A-Za-z0-9_$]*)\s*(?::\s*[^=]+)?=\s*"([^"\n]*)"/g,
+    /\bconst\s+([A-Za-z_$][A-Za-z0-9_$]*)\s*(?::\s*[^=]+)?=\s*(["'])([^"'\n]*)\2/g,
   )) {
-    consts.set(m[1], m[2]);
+    consts.set(m[1], m[3]);
   }
   return consts;
 }
@@ -145,8 +145,8 @@ function topLevelNameToken(src, braceStart) {
       const prev = before[before.length - 1];
       if (prev === "{" || prev === ",") {
         const rest = src.slice(i);
-        const lit = rest.match(/^name\s*:\s*"([^"\n]*)"/);
-        if (lit) return { kind: "literal", value: lit[1] };
+        const lit = rest.match(/^name\s*:\s*(["'])([^"'\n]*)\1/);
+        if (lit) return { kind: "literal", value: lit[2] };
         const ident = rest.match(/^name\s*:\s*([A-Za-z_$][A-Za-z0-9_$]*)/);
         if (ident) return { kind: "ident", value: ident[1] };
         return null;
@@ -167,7 +167,7 @@ const ACTION_DECL_PATTERNS = [
 // const x: Action = someFactory("NAME") — alias factories pass the id as the
 // first argument (e.g. createViewsAliasAction("CLOSE_ALL_VIEWS")).
 const ACTION_FACTORY_PATTERN =
-  /\b(?:export\s+)?const\s+[A-Za-z_$][A-Za-z0-9_$]*\s*:\s*Action(?:\s*&\s*\{[\s\S]*?\})?\s*=\s*[A-Za-z_$][A-Za-z0-9_$.]*\(\s*"([A-Z][A-Z0-9_]*)"/g;
+  /\b(?:export\s+)?const\s+[A-Za-z_$][A-Za-z0-9_$]*\s*:\s*Action(?:\s*&\s*\{[\s\S]*?\})?\s*=\s*[A-Za-z_$][A-Za-z0-9_$.]*\(\s*(["'])([A-Z][A-Z0-9_]*)\1/g;
 
 /**
  * Action ids declared in one source file (UPPER_SNAKE names only). Not covered
@@ -193,7 +193,7 @@ export function extractActionNames(src) {
   }
   ACTION_FACTORY_PATTERN.lastIndex = 0;
   for (const m of src.matchAll(ACTION_FACTORY_PATTERN)) {
-    names.add(m[1]);
+    names.add(m[2]);
   }
   return names;
 }
@@ -205,8 +205,8 @@ export function extractActionNames(src) {
  */
 function extractScopedActionNames(src) {
   const names = new Set();
-  for (const m of src.matchAll(/\bname:\s*"(VIEW_[A-Z0-9_]+)"/g)) {
-    names.add(m[1]);
+  for (const m of src.matchAll(/\bname:\s*(["'])(VIEW_[A-Z0-9_]+)\1/g)) {
+    names.add(m[2]);
   }
   return names;
 }

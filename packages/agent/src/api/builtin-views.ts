@@ -216,9 +216,9 @@ export const BUILTIN_VIEWS: ViewDeclaration[] = [
     path: "/automations",
     order: 55,
     tags: ["automation", "tasks", "scheduling"],
-    // SCHEDULED_TASKS is the umbrella over the one scheduler (workflows are
-    // ScheduledTask records); TRIGGER pairs the trigger editor (#14369).
-    relatedActions: ["SCHEDULED_TASKS", "TRIGGER"],
+    // Task and trigger editors pair with the shared scheduler actions; native
+    // Smithers workflow controls pair with WORKFLOW (#14369).
+    relatedActions: ["SCHEDULED_TASKS", "TRIGGER", "WORKFLOW"],
     anticipatoryIntent:
       "Offer to create a new scheduled workflow or check on existing automations — flag any recently failed runs — grounded in the live task list.",
     visibleInManager: true,

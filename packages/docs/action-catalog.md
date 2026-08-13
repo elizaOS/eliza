@@ -15,7 +15,7 @@ This catalog is generated from `packages/prompts/specs/**` by `bun run --cwd pac
 - **Plugin overlay actions:** 11
 - **Canonical providers:** 23
 - **Core providers:** 23
-- **Registered runtime actions:** 166
+- **Registered runtime actions:** 167
 
 ## Actions
 
@@ -513,6 +513,7 @@ list. Regenerate this document after changing the registered action surface.
 - `WINDOW` — `plugins/plugin-computeruse/src/actions/window.ts`
 - `WITHDRAW_APP_EARNINGS` — `plugins/plugin-cloud-apps/src/actions/withdraw-app-earnings.ts`
 - `WORK_THREAD` — `plugins/plugin-personal-assistant/src/actions/work-thread.ts`
+- `WORKFLOW` — `plugins/plugin-workflow/src/actions/workflow.ts`
 - `WORKTREE` — `plugins/plugin-coding-tools/src/actions/worktree.ts`
 
 ## Providers
