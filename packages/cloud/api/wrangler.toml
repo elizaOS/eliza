@@ -260,7 +260,8 @@ TUNNEL_AUTH_KEY_COST_USD = "0.01"
 #   REDIS_URL                          Railway TCP Redis (primary cache/queue/rate-limit; rediss://...)
 #   STEWARD_API_URL                    Optional Steward base URL override;
 #       defaults to NEXT_PUBLIC_STEWARD_API_URL or NEXT_PUBLIC_API_URL + /steward
-#   STEWARD_SESSION_SECRET             HS256 secret for Steward JWT verify (jose); MUST match Steward host
+#   STEWARD_JWT_SECRET                 Canonical HS256 secret for Steward JWT verify (jose); MUST match Steward host
+#   STEWARD_SESSION_SECRET             Deprecated compatibility alias for STEWARD_JWT_SECRET
 #   STEWARD_MASTER_PASSWORD            Steward vault encryption master password; required for wallet/key ops
 #   STEWARD_TENANT_ID                  Default tenant scope; verifier rejects other tenants
 #   STEWARD_DEFAULT_TENANT_ID          Embedded Steward default tenant id (optional; defaults to elizacloud)
