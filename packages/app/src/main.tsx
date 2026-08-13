@@ -1235,13 +1235,34 @@ async function driveIosLivenessChatTurn(prompt: string): Promise<string> {
 
 function parseIosCloudOnboardingSmokeRequest(raw: string | null): {
   mode: "tap" | "autologin";
+  // Liveness contract (#14359 / #16936): when the harness points the lane at a
+  // live-provider backend it sets `liveness: true` so the verifier drives one
+  // real chat turn after landing on home and reports the reply for the shared
+  // non-stub assertion. Default false — the deterministic host is stub-backed.
+  liveness: boolean;
+  livenessPrompt: string;
 } {
-  if (!raw || raw === "1") return { mode: "tap" };
+  const fallback = {
+    mode: "tap" as const,
+    liveness: false,
+    livenessPrompt: "In one short sentence, say hello.",
+  };
+  if (!raw || raw === "1") return fallback;
   try {
-    const parsed = JSON.parse(raw) as { mode?: unknown };
-    return parsed.mode === "autologin"
-      ? { mode: "autologin" }
-      : { mode: "tap" };
+    const parsed = JSON.parse(raw) as {
+      mode?: unknown;
+      liveness?: unknown;
+      livenessPrompt?: unknown;
+    };
+    return {
+      mode: parsed.mode === "autologin" ? "autologin" : fallback.mode,
+      liveness: parsed.liveness === true,
+      livenessPrompt:
+        typeof parsed.livenessPrompt === "string" &&
+        parsed.livenessPrompt.trim()
+          ? parsed.livenessPrompt.trim()
+          : fallback.livenessPrompt,
+    };
   } catch (error) {
     // error-policy:J2 corrupt smoke-request blob cannot drive a valid path
     throw new Error("Invalid iOS cloud-onboarding smoke request", {
@@ -1365,6 +1386,14 @@ async function runIosCloudOnboardingSmokeIfRequested(): Promise<boolean> {
       '[data-testid="first-run-chat"], [data-testid="startup-first-run-background"]',
     );
 
+    // Liveness contract (#14359 / #16936): against a live-provider cloud
+    // backend, end the lane with one real chat turn and report the reply for
+    // the harness's shared non-stub assertion. Skipped for the default
+    // deterministic (stub) host.
+    const livenessReply = request.liveness
+      ? await driveIosLivenessChatTurn(request.livenessPrompt)
+      : null;
+
     await writeIosCloudOnboardingSmokeResult({
       ok:
         Boolean(home) &&
@@ -1382,6 +1411,8 @@ async function runIosCloudOnboardingSmokeIfRequested(): Promise<boolean> {
       firstRunPostCount,
       cloudActiveServer,
       storage,
+      livenessRequested: request.liveness,
+      livenessReply,
     });
   } catch (error) {
     // error-policy:J1 smoke boundary — the failure is written to the

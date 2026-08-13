@@ -5,9 +5,23 @@
 // lets the app complete the real Eliza Cloud login/provisioning path. No API
 // route is mocked; the test records `/api/first-run` attempts to enforce the
 // Cloud architecture boundary while proving durable completion state.
+//
+// Liveness contract (#14359 / #16936): every onboarding lane ends with a real
+// chat turn. When ELIZA_ONBOARDING_LIVENESS=1 is set (pointing at a
+// live-provider backend), the final turn asserts a non-stub reply through the
+// shared liveness contract. Without the flag, the lane drives the chat turn but
+// only asserts a non-empty reply (the cloud agent is real, but the caller gates
+// the strict non-stub assertion so CI-only runs without a model key still pass
+// the contract surface wiring).
 import path from "node:path";
 import { startAndroidScreenRecord } from "../../scripts/lib/android-capture.mjs";
+import {
+  assertOnboardingLiveness,
+  sendChatAndReadReply,
+} from "../liveness-contract";
 import { expect, ORIGIN, test } from "./android-harness";
+
+const LIVENESS_ENABLED = process.env.ELIZA_ONBOARDING_LIVENESS === "1";
 
 const ARTIFACT_DIR = path.join(
   process.cwd(),
@@ -245,6 +259,32 @@ async function runCloudOnboardingMode({
     expect(state.stewardSessionPresent).toBe(true);
     expect(state.activeServer).toMatchObject({ kind: "cloud" });
     expect(state.bodyText).not.toMatch(/First, where should your agent run/i);
+
+    // Liveness contract (#14359 / #16936): every SIWE cloud onboarding lane ends
+    // with a real chat turn. The cloud agent is live (SIWE-provisioned), so a
+    // non-empty reply is the baseline; when ELIZA_ONBOARDING_LIVENESS=1 is set,
+    // the reply must also pass the strict non-stub assertion.
+    if (LIVENESS_ENABLED) {
+      const reply = await assertOnboardingLiveness(page, {
+        label: `android-cloud-onboarding-${mode}`,
+      });
+      await testInfo.attach(`liveness reply (${mode})`, {
+        body: reply,
+        contentType: "text/plain",
+      });
+    } else {
+      const reply = await sendChatAndReadReply(page, {
+        label: `android-cloud-onboarding-${mode}`,
+      });
+      expect(
+        reply.length,
+        "cloud onboarding chat turn must produce a non-empty reply",
+      ).toBeGreaterThan(0);
+      await testInfo.attach(`chat reply (${mode})`, {
+        body: reply,
+        contentType: "text/plain",
+      });
+    }
   } finally {
     const videoPath = await recording.stop();
     if (videoPath) {

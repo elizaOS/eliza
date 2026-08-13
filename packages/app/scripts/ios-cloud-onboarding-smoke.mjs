@@ -13,6 +13,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { STUB_FIXTURE_MARKER } from "../test/liveness-contract.mjs";
 import {
   captureIosSimulatorScreenshot,
   startIosSimulatorVideo,
@@ -317,11 +318,20 @@ async function runMode({ udid, appId, mode, privateKey }) {
   installLatestApp(udid, appId);
   for (const key of FIRST_RUN_STATE_KEYS) defaultsDelete(udid, appId, key);
 
+  const livenessEnabled =
+    process.env.ELIZA_ONBOARDING_LIVENESS === "1" ||
+    process.env.IOS_CLOUD_ONBOARDING_LIVENESS === "1";
+
   defaultsWriteString(udid, appId, E2E_WALLET_KEY, privateKey);
   if (mode === "autologin") {
     defaultsWriteString(udid, appId, E2E_WALLET_AUTOLOGIN_KEY, "1");
   }
-  defaultsWriteString(udid, appId, REQUEST_KEY, JSON.stringify({ mode }));
+  defaultsWriteString(
+    udid,
+    appId,
+    REQUEST_KEY,
+    JSON.stringify({ mode, liveness: livenessEnabled }),
+  );
   defaultsWriteString(
     udid,
     appId,
@@ -355,6 +365,25 @@ async function runMode({ udid, appId, mode, privateKey }) {
     }
     if (mode === "tap" && result.signInGreetingVisible !== true) {
       throw new Error("tap mode did not prove the sign-in greeting");
+    }
+    // Liveness contract (#14359 / #16936): when liveness was requested, the
+    // result must carry a non-empty reply that passes the shared non-stub
+    // assertion. A missing or stub-marked reply means the cloud agent did not
+    // produce a real answer — the lane fails.
+    if (livenessEnabled) {
+      if (
+        typeof result.livenessReply !== "string" ||
+        !result.livenessReply.trim()
+      ) {
+        throw new Error(
+          `iOS cloud onboarding ${mode} liveness was requested but no reply was captured`,
+        );
+      }
+      if (result.livenessReply.includes(STUB_FIXTURE_MARKER)) {
+        throw new Error(
+          `iOS cloud onboarding ${mode} liveness reply carried the stub fixture marker — a real model did not answer`,
+        );
+      }
     }
     fs.writeFileSync(
       path.join(artifactDir, "result.json"),
