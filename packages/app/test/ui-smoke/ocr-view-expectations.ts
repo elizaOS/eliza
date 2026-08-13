@@ -267,6 +267,7 @@ export const VIEW_OCR_POLICIES = {
   ),
   "plugin-finances-gui": expected({
     requireAny: ["Balance", "Transactions", "Recurring"],
+    forbid: ["Loading"],
   }),
   "plugin-goals-gui": expected({
     requireAny: ["Active", "needs a review", "paused"],

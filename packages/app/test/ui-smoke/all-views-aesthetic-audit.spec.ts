@@ -306,8 +306,11 @@ interface ViewPaintState {
   readableChars: number;
   semanticReady: boolean;
   overlayPresent: boolean;
-  loadingViewPresent: boolean;
+  /** Visible terminal loading labels or explicit loading-state markers. */
+  loadingStateLabels: string[];
 }
+
+const TERMINAL_LOADING_LABEL = /^loading(?:\s+view)?(?:\s*(?:…|\.{1,3}))?$/i;
 
 const ACTIVE_VIEW_ROOT_SELECTOR =
   '[data-view-lifecycle-slot][data-view-hidden="false"]';
@@ -323,8 +326,8 @@ async function readViewPaint(
   overlay: Locator,
   expectation: OcrExpectation,
 ): Promise<ViewPaintState> {
-  const { readableText, loadingViewPresent } = await viewRoot.evaluate(
-    (root) => {
+  const { readableText, loadingStateLabels } = await viewRoot.evaluate(
+    (root, terminalLoadingPattern) => {
       const rootElement = root as HTMLElement;
       const isVisibleInViewport = (element: Element): boolean => {
         if (!element.isConnected || element.getClientRects().length === 0) {
@@ -394,12 +397,32 @@ async function readViewPaint(
         ...rootElement.querySelectorAll("*"),
       ];
       const visibleText: string[] = [];
+      const loadingLabels = new Set<string>();
       for (const element of elements) {
         if (!isVisibleInViewport(element)) continue;
+        const directText = Array.from(element.childNodes)
+          .filter((child) => child.nodeType === Node.TEXT_NODE)
+          .map((child) => child.textContent?.trim() ?? "")
+          .filter(Boolean)
+          .join(" ")
+          .replace(/\s+/g, " ")
+          .trim();
         for (const child of element.childNodes) {
           if (child.nodeType !== Node.TEXT_NODE) continue;
           const text = child.textContent?.trim();
           if (text) visibleText.push(text);
+        }
+        const explicitLoading =
+          element.getAttribute("data-view-status") === "loading";
+        const exactLoadingLabel = new RegExp(terminalLoadingPattern, "i").test(
+          directText,
+        );
+        if (explicitLoading || exactLoadingLabel) {
+          loadingLabels.add(
+            directText ||
+              element.textContent?.trim().replace(/\s+/g, " ") ||
+              '[data-view-status="loading"]',
+          );
         }
         if (
           element instanceof HTMLInputElement ||
@@ -415,13 +438,10 @@ async function readViewPaint(
 
       return {
         readableText: visibleText.join(" ").replace(/\s+/g, " ").trim(),
-        loadingViewPresent: elements.some(
-          (element) =>
-            element.getAttribute("data-view-status") === "loading" &&
-            isVisibleInViewport(element),
-        ),
+        loadingStateLabels: [...loadingLabels],
       };
     },
+    TERMINAL_LOADING_LABEL.source,
   );
   const semanticReady = positiveExpectationMatches(
     normalize(readableText),
@@ -445,8 +465,37 @@ async function readViewPaint(
     readableChars: readableText.length,
     semanticReady,
     overlayPresent,
-    loadingViewPresent,
+    loadingStateLabels,
   };
+}
+
+async function waitForSettledViewPaint(
+  page: Page,
+  readPaint: () => Promise<ViewPaintState>,
+  overlayRequired: boolean,
+): Promise<ViewPaintState> {
+  let paint = await readPaint();
+  for (
+    let attempt = 0;
+    attempt < 12 &&
+    (!paint.semanticReady ||
+      (overlayRequired && !paint.overlayPresent) ||
+      paint.loadingStateLabels.length > 0);
+    attempt += 1
+  ) {
+    await page.waitForTimeout(1000);
+    paint = await readPaint();
+  }
+  return paint;
+}
+
+function loadingRenderStateIssues(paint: ViewPaintState): string[] {
+  if (paint.loadingStateLabels.length === 0) return [];
+  return [
+    `dynamic view remained in its loading state after 12 seconds: ${paint.loadingStateLabels.join(
+      ", ",
+    )}`,
+  ];
 }
 
 async function settleHomeEntrance(page: Page): Promise<void> {
@@ -1411,7 +1460,7 @@ test.describe("all-views aesthetic audit (#8796)", () => {
       readableChars: "Loading…".length,
       semanticReady: false,
       overlayPresent: true,
-      loadingViewPresent: false,
+      loadingStateLabels: ["Loading…"],
     });
 
     await viewRoot.evaluate((root) => {
@@ -1430,7 +1479,7 @@ test.describe("all-views aesthetic audit (#8796)", () => {
       readableChars: "Idle".length,
       semanticReady: true,
       overlayPresent: true,
-      loadingViewPresent: false,
+      loadingStateLabels: [],
     });
 
     await viewRoot.evaluate((root) => {
@@ -1449,7 +1498,7 @@ test.describe("all-views aesthetic audit (#8796)", () => {
       readViewPaint(viewRoot, overlay, appsPolicy.expectation),
     ).resolves.toMatchObject({
       semanticReady: true,
-      loadingViewPresent: false,
+      loadingStateLabels: [],
     });
 
     await viewRoot.evaluate((root) => {
@@ -1460,7 +1509,52 @@ test.describe("all-views aesthetic audit (#8796)", () => {
       readViewPaint(viewRoot, overlay, appsPolicy.expectation),
     ).resolves.toMatchObject({
       semanticReady: true,
-      loadingViewPresent: true,
+      loadingStateLabels: ["Loading view"],
+    });
+
+    await viewRoot.evaluate((root) => {
+      root.innerHTML =
+        "<h1>Tasks</h1><div>Loading</div><div>Loading history</div>";
+    });
+    const terminalLoading = await readViewPaint(
+      viewRoot,
+      overlay,
+      tasksPolicy.expectation,
+    );
+    expect(terminalLoading).toMatchObject({
+      semanticReady: true,
+      loadingStateLabels: ["Loading"],
+    });
+    expect(loadingRenderStateIssues(terminalLoading)).toEqual([
+      "dynamic view remained in its loading state after 12 seconds: Loading",
+    ]);
+
+    await viewRoot.evaluate((root) => {
+      root.innerHTML =
+        '<h1>Tasks</h1><div hidden>Loading</div><div style="display: none">Loading...</div><div style="position: relative; overflow: hidden; width: 100px; height: 1px"><div style="position: absolute; top: 20px">Loading view</div></div><p>No coding tasks yet</p>';
+    });
+    await expect(
+      readViewPaint(viewRoot, overlay, tasksPolicy.expectation),
+    ).resolves.toMatchObject({
+      semanticReady: true,
+      loadingStateLabels: [],
+    });
+
+    await viewRoot.evaluate((root) => {
+      root.innerHTML = "<h1>Tasks</h1><div>Loading...</div>";
+      window.setTimeout(() => {
+        root.innerHTML = "<h1>Tasks</h1><p>No coding tasks yet</p>";
+      }, 20);
+    });
+    await expect(
+      waitForSettledViewPaint(
+        page,
+        () => readViewPaint(viewRoot, overlay, tasksPolicy.expectation),
+        true,
+      ),
+    ).resolves.toMatchObject({
+      semanticReady: true,
+      loadingStateLabels: [],
     });
 
     await page.setContent(`
@@ -1583,24 +1677,15 @@ test.describe("all-views aesthetic audit (#8796)", () => {
             page.locator(overlaySelector),
             semanticExpectation,
           );
-        let paint = await readPaint();
-        for (
-          let attempt = 0;
-          attempt < 12 &&
-          (!paint.semanticReady ||
-            (overlayRequired && !paint.overlayPresent) ||
-            paint.loadingViewPresent);
-          attempt += 1
-        ) {
-          await page.waitForTimeout(1000);
-          paint = await readPaint();
-        }
+        const paint = await waitForSettledViewPaint(
+          page,
+          readPaint,
+          overlayRequired,
+        );
         await settleHomeEntrance(page);
         const { readableChars, semanticReady, overlayPresent } = paint;
         const renderStateIssues = [
-          ...(paint.loadingViewPresent
-            ? ["dynamic view remained in its loading state after 12 seconds"]
-            : []),
+          ...loadingRenderStateIssues(paint),
           ...(!paint.semanticReady
             ? [
                 "view did not reach its declared semantic content after 12 seconds",
