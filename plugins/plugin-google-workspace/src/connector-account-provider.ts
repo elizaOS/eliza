@@ -482,7 +482,7 @@ export function createGoogleConnectorAccountProvider(
         prompt: "consent",
         code_challenge: codeChallenge,
         code_challenge_method: "S256",
-        include_granted_scopes: "true",
+        include_granted_scopes: "false",
       });
 
       return {

@@ -36,6 +36,10 @@ import googlePlugin, {
   scopesForGoogleCapabilities,
 } from "./index.js";
 
+function expectIncrementalGrantingDisabled(url: URL): void {
+  expect(url.searchParams.get("include_granted_scopes")).toBe("false");
+}
+
 describe("google plugin", () => {
   afterEach(() => {
     vi.restoreAllMocks();
@@ -82,7 +86,7 @@ describe("google plugin", () => {
     ).toEqual(GOOGLE_CAPABILITIES);
   });
 
-  it("normalizes capability input and preserves opt-in OAuth metadata", () => {
+  it("normalizes capability input and preserves opt-in OAuth metadata without incremental grants", () => {
     const config = getGoogleOAuthProviderConfig(
       normalizeGoogleCapabilities(["drive.read", "drive.read", "meet.read", "unknown"])
     );
@@ -92,7 +96,7 @@ describe("google plugin", () => {
     expect(config.scopes).toContain(GOOGLE_OAUTH_SCOPES.drive.read);
     expect(config.scopes).toContain(GOOGLE_OAUTH_SCOPES.meet.read);
     expect(config.scopes).not.toContain(GOOGLE_OAUTH_SCOPES.gmail.send);
-    expect(config.authorizationParams.include_granted_scopes).toBe("true");
+    expect(config.authorizationParams.include_granted_scopes).toBe("false");
   });
 
   it("rejects unknown connector OAuth capabilities instead of widening access", async () => {
@@ -240,6 +244,7 @@ describe("google plugin", () => {
 
     expect(getAccount).toHaveBeenCalledWith("google", "acct-reauth-1");
     const url = new URL(result?.authUrl ?? "");
+    expectIncrementalGrantingDisabled(url);
     const requestedScopes = new Set(
       (url.searchParams.get("scope") ?? "").split(" ").filter(Boolean)
     );
@@ -372,6 +377,7 @@ describe("google plugin", () => {
 
     expect(getAccount).not.toHaveBeenCalled();
     const url = new URL(result?.authUrl ?? "");
+    expectIncrementalGrantingDisabled(url);
     const requestedScopes = new Set(
       (url.searchParams.get("scope") ?? "").split(" ").filter(Boolean)
     );
@@ -408,6 +414,7 @@ describe("google plugin", () => {
       {} as never
     );
     const url = new URL(result?.authUrl ?? "");
+    expectIncrementalGrantingDisabled(url);
     const requestedScopes = new Set(
       (url.searchParams.get("scope") ?? "").split(" ").filter(Boolean)
     );
@@ -458,6 +465,7 @@ describe("google plugin", () => {
       {} as never
     );
     const url = new URL(result?.authUrl ?? "");
+    expectIncrementalGrantingDisabled(url);
     const requestedScopes = new Set(
       (url.searchParams.get("scope") ?? "").split(" ").filter(Boolean)
     );
