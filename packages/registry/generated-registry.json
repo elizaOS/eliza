@@ -1234,6 +1234,52 @@
       "registryKind": "plugin",
       "directory": null
     },
+    "elizaos-plugin-invinoveritas": {
+      "git": {
+        "repo": "babyblueviper1/invinoveritas",
+        "v0": {
+          "branch": null
+        },
+        "v1": {
+          "branch": null
+        },
+        "v2": {
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "elizaos-plugin-invinoveritas",
+        "v0": null,
+        "v1": null,
+        "v2": "0.2.0"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "An automated, independent second opinion an agent calls before a high-stakes action: one API call returns approve/concerns/reject and the agent weighs it and decides — no human in the loop, never blocks, degrades to a no-op if unavailable. Plus free proof verification (BIP-340 schnorr vs a published key), verified 100% locally with zero network calls when the caller supplies the full proof event — the independent check an agent can't self-issue.",
+      "homepage": "https://api.babyblueviper.com/install",
+      "topics": [
+        "verification",
+        "autonomous",
+        "second-opinion",
+        "review",
+        "onchain",
+        "x402"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "origin": "third-party",
+      "source": "community",
+      "support": "community",
+      "builtIn": false,
+      "firstParty": false,
+      "thirdParty": true,
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": null
+    },
     "elizaos-plugin-neynar-search": {
       "git": {
         "repo": "xavier-arosemena/elizaos-plugin-neynar-search",
