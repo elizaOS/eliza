@@ -13,7 +13,9 @@ const REMINDER_CREATE_PATTERNS: readonly RegExp[] = [
 ];
 
 const REMINDER_META_PREFIX =
-  /^(?:what|when|where|who|why|how|is|are|can you explain|explain|define|tell me(?: about| how| what| whether| if)|can you tell me(?: about| how| what| whether| if)|give (?:me )?an? example|write (?:a )?story|tell (?:me )?a story|quote)\b/iu;
+  /^(?:(?:please\s+)?(?:(?:can|could|would|will)\s+you\s+)?(?:what|when|where|who|why|how|is|are|explain|define|tell me(?: about| how| what| whether| if)|give (?:me )?an? example|write (?:a )?story|tell (?:me )?a story|quote)|(?:suppose|imagine|if i say)|(?:in|as)\s+(?:(?:this|that|an?|the)\s+)?(?:example|story|quote))\b/iu;
+const REMINDER_META_SUFFIX =
+  /\b(?:remind\s+me|(?:add|create|schedule|set)\s+(?:(?:me|my)\s+)?(?:an?\s+)?reminder)\b[\s\S]{0,120}\b(?:is|was|would be)\s+(?:an?\s+|the\s+)?(?:example|command|phrase|quote|syntax)\b/iu;
 const REMINDER_NEGATION =
   /\b(?:don['’]?t|do not|never|no longer|stop|cancel|remove|delete|disable|skip)\b[\s\S]{0,60}\b(?:remind(?:er)?|remind\s+me)\b|\bremind\s+me\b[\s\S]{0,40}\b(?:not|don['’]?t|do not|never|cancel|stop)\b/iu;
 const REMINDER_RECALL =
@@ -28,6 +30,7 @@ export function looksLikeOwnerReminderCreateRequest(text: string): boolean {
   return (
     normalized.length > 0 &&
     !REMINDER_META_PREFIX.test(normalized) &&
+    !REMINDER_META_SUFFIX.test(normalized) &&
     !REMINDER_NEGATION.test(normalized) &&
     !REMINDER_RECALL.test(normalized) &&
     !THIRD_PARTY_REMINDER.test(normalized) &&

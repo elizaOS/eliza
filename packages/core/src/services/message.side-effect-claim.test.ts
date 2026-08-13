@@ -647,6 +647,95 @@ describe(DIRECT_ROUTE_EVALUATOR_NAME, () => {
 		});
 	});
 
+	it("preserves unrelated Stage-1 candidates while replacing the owned fallback", async () => {
+		const runtime = testRuntime.runtime;
+		__resetDirectActionRoutingRulesForTests(runtime);
+		runtime.actions = [ownerReminderAction()];
+		registerDirectActionRoutingRule(runtime, {
+			id: "test.owner-reminder-authoritative",
+			actionNames: ["OWNER_REMINDERS"],
+			replacesActionNames: ["TRIGGER_CREATE"],
+			requiredActionTags: [
+				"domain:reminders",
+				"capability:write",
+				"capability:schedule",
+				"effect:receipt-required",
+			],
+			contexts: ["tasks", "productivity"],
+			matches: (text) => /\bremind\s+me\b/iu.test(text),
+		});
+		const context = makeContext(
+			{
+				processMessage: "RESPOND",
+				thought: "",
+				plan: {
+					contexts: ["tasks", "messaging"],
+					requiresTool: true,
+					candidateActions: ["TRIGGER_CREATE", "MESSAGE_SEND"],
+					reply: "On it.",
+				},
+			},
+			{ userText: "Remind me to message Pat tomorrow." },
+		);
+		const evaluator = getEvaluator();
+		const patch = (await evaluator.evaluate(context)) as ResponseHandlerPatch;
+		expect(patch).toMatchObject({
+			clearCandidateActions: true,
+			addCandidateActions: ["MESSAGE_SEND", "OWNER_REMINDERS"],
+		});
+	});
+
+	it("does not fall through to an adjacent route when the declared owner is unavailable", async () => {
+		const runtime = testRuntime.runtime;
+		__resetDirectActionRoutingRulesForTests(runtime);
+		runtime.actions = [
+			{
+				name: "BRIEF",
+				description: "Read tracked work.",
+				contexts: ["tasks"],
+				tags: ["resource:tracked-work", "capability:read"],
+				validate: async () => true,
+				handler: async () => ({ success: true, text: "Recap." }),
+			},
+		];
+		registerDirectActionRoutingRule(runtime, {
+			id: "test.owner-reminder-authoritative",
+			actionNames: ["OWNER_REMINDERS"],
+			replacesActionNames: ["TRIGGER_CREATE"],
+			requiredActionTags: [
+				"domain:reminders",
+				"capability:write",
+				"capability:schedule",
+				"effect:receipt-required",
+			],
+			contexts: ["tasks"],
+			matches: (text) => /\bremind\s+me\b/iu.test(text),
+		});
+		registerDirectActionRoutingRule(runtime, {
+			id: "test.tracked-work-recap",
+			actionNames: ["BRIEF"],
+			requiredActionTags: ["resource:tracked-work", "capability:read"],
+			contexts: ["tasks"],
+			matches: (text) => /\brecap my day\b/iu.test(text),
+		});
+		const context = makeContext(
+			{
+				processMessage: "RESPOND",
+				thought: "",
+				plan: {
+					contexts: ["tasks"],
+					requiresTool: true,
+					candidateActions: ["TRIGGER_CREATE"],
+					reply: "On it.",
+				},
+			},
+			{ userText: "Remind me to recap my day tomorrow." },
+		);
+		const evaluator = getEvaluator();
+		expect(await evaluator.shouldRun(context)).toBe(true);
+		expect(await evaluator.evaluate(context)).toBeUndefined();
+	});
+
 	it.each([
 		"missing action",
 		"missing required tag",

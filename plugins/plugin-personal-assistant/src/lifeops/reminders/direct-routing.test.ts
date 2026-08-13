@@ -38,6 +38,9 @@ describe("owner reminder direct routing", () => {
     "Tell me how to set a reminder.",
     "Give me an example: remind me to call Pat.",
     "Remind me what I said about Pat.",
+    "Could you explain how remind me to call Pat works?",
+    "In this example, remind me to call Pat tomorrow.",
+    "Remind me to call Pat tomorrow is the command under test.",
   ])("does not claim adjacent or read-only intent: %s", (text) => {
     expect(looksLikeOwnerReminderCreateRequest(text)).toBe(false);
   });

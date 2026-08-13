@@ -4062,6 +4062,17 @@ export const BUILTIN_RESPONSE_HANDLER_EVALUATORS: readonly ResponseHandlerEvalua
 				runtime,
 				userRoles,
 			}) => {
+				const text = getUserMessageText(message)?.trim() ?? "";
+				const declaredReplacementRules = new Set(
+					getDirectActionRoutingRules(runtime).filter(
+						(rule) =>
+							rule.matches(text) &&
+							routeReplacesStage1Candidate(
+								rule,
+								messageHandler.plan.candidateActions,
+							),
+					),
+				);
 				const routes = await resolveEligibleDirectActionRoutes({
 					runtime,
 					message,
@@ -4069,17 +4080,34 @@ export const BUILTIN_RESPONSE_HANDLER_EVALUATORS: readonly ResponseHandlerEvalua
 					userRoles,
 				});
 				if (routes.length === 0) return undefined;
-				const replacingRoutes = routes.filter(({ rule }) =>
-					routeReplacesStage1Candidate(
-						rule,
-						messageHandler.plan.candidateActions,
-					),
-				);
+				// A declared owner keeps exclusive reconciliation authority even when
+				// its action is unavailable. Falling through to a second text-matching
+				// direct route could execute adjacent work now instead of preserving the
+				// original Stage-1 fallback.
+				const replacingRoutes =
+					declaredReplacementRules.size > 0
+						? routes.filter(({ rule }) => declaredReplacementRules.has(rule))
+						: [];
+				if (declaredReplacementRules.size > 0 && replacingRoutes.length === 0) {
+					return undefined;
+				}
 				const selectedRoutes =
 					replacingRoutes.length > 0 ? replacingRoutes : routes;
-				const candidateActions = uniqueActionNames(
-					selectedRoutes.map(({ action }) => action.name),
+				const replacedActionNames = new Set(
+					replacingRoutes.flatMap(({ rule }) =>
+						(rule.replacesActionNames ?? []).map(normalizeActionIdentifier),
+					),
 				);
+				const retainedStage1Candidates = (
+					messageHandler.plan.candidateActions ?? []
+				).filter(
+					(candidate) =>
+						!replacedActionNames.has(normalizeActionIdentifier(candidate)),
+				);
+				const candidateActions = uniqueActionNames([
+					...retainedStage1Candidates,
+					...selectedRoutes.map(({ action }) => action.name),
+				]);
 				const contexts = mergeAgentContexts(
 					...selectedRoutes.map(({ rule }) => rule.contexts),
 				);
