@@ -10,6 +10,7 @@
 
 import { StewardApiError } from "@stwd/sdk";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -81,6 +82,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  vi.clearAllMocks();
 });
 
 describe("EmailCallbackPage", () => {
@@ -188,9 +190,11 @@ describe("EmailCallbackPage", () => {
     );
   });
 
-  it("rejects an incomplete callback without calling the consume endpoint", async () => {
+  it("rejects an incomplete callback and offers a safe keyboard-reachable recovery action", async () => {
+    const user = userEvent.setup();
+
     render(
-      <MemoryRouter initialEntries={["/auth/callback/email?email=a%40b.co"]}>
+      <MemoryRouter initialEntries={["/auth/callback/email"]}>
         <EmailCallbackPage />
       </MemoryRouter>,
     );
@@ -200,6 +204,14 @@ describe("EmailCallbackPage", () => {
         "This sign-in link is missing its token or email.",
       ),
     ).toBeTruthy();
+    expect(await screen.findByRole("main")).toBeTruthy();
+    expect(
+      screen.getByRole("heading", { level: 1, name: "Sign-in failed" }),
+    ).toBeTruthy();
+    const recovery = screen.getByRole("link", { name: "Sign In Again" });
+    expect(recovery.getAttribute("href")).toBe("/login");
+    await user.tab();
+    expect(document.activeElement).toBe(recovery);
     expect(callbackState.verifyEmailCallback).not.toHaveBeenCalled();
   });
 });
