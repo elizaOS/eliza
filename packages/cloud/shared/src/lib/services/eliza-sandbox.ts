@@ -394,7 +394,7 @@ export type DeleteAgentResult =
       reconciliationPending: true;
       deletedSandbox: AgentSandbox;
     }
-  | { success: false; error: string };
+  | { success: false; error: string; retryable?: true };
 
 export type DeleteAuthorization = "user_request" | "billing_request";
 
@@ -1928,6 +1928,84 @@ export class ElizaSandboxService {
     orgId: string,
     options: { authorization?: DeleteAuthorization } = {},
   ): Promise<DeleteAgentResult> {
+    // Phase 0 — fail-closed pre-deletion capture (#18517), the discipline
+    // shutdown() applies before stopping: a live dedicated container is never
+    // destroyed without a current backup. Two delete surfaces reach here. The
+    // synchronous compat path sees the row still `running`, so a refusal
+    // leaves it untouched with nothing for the reconciler to re-arm. The
+    // primary v1 path stamps `deletion_pending` at enqueue time and calls
+    // this later from the job worker — there the container is still live with
+    // its bridge intact, the capture happens before any teardown, and a
+    // refusal leaves a recoverable tombstone the next attempt retries.
+    let captureUnsupported = false;
+    let captureAlreadyPersisted = false;
+    let preDeleteSnapshot: {
+      stateData: AgentBackupStateData;
+      sizeBytes: number;
+      bridgeUrl: string;
+    } | null = null;
+    // Only an AUTHORIZED delete can proceed past the running-row gate, so an
+    // unauthorized one skips the capture and keeps its original "suspend it
+    // before deletion" refusal — a capture outage must not change which
+    // refusal an unauthorized caller sees, nor cost a doomed HTTP round-trip.
+    const snapshotSource = options.authorization
+      ? await this.getAgentForWrite(agentId, orgId)
+      : undefined;
+    if (this.requiresPreDeleteCapture(snapshotSource)) {
+      // A deletion retry whose earlier attempt already captured (and whose
+      // container may since have been torn down) must not refuse forever
+      // against a dead bridge: a `pre-delete` backup taken at or after this
+      // deletion's start proves the capture happened for THIS intent.
+      const priorBackup =
+        snapshotSource.deletion_started_at !== null
+          ? await agentSandboxesRepository.getLatestBackupByType(agentId, "pre-delete")
+          : undefined;
+      if (
+        priorBackup &&
+        snapshotSource.deletion_started_at !== null &&
+        priorBackup.created_at >= snapshotSource.deletion_started_at
+      ) {
+        captureAlreadyPersisted = true;
+      } else {
+        try {
+          preDeleteSnapshot = await this.fetchSnapshotState(snapshotSource);
+        } catch (error) {
+          // error-policy:J1 the delete command boundary translates capture
+          // failures into an explicit refusal; a transient capture failure is
+          // marked retryable so the delete job re-attempts without burning
+          // its budget (shutdown's rule for the identical signal), and only
+          // an image that cannot snapshot by construction proceeds.
+          const message = error instanceof Error ? error.message : String(error);
+          if (message === SNAPSHOT_ENDPOINT_UNSUPPORTED) {
+            captureUnsupported = true;
+            logger.warn(
+              "[agent-sandbox] Delete proceeding without capture: image has no snapshot endpoint",
+              { agentId },
+            );
+          } else if (message === SNAPSHOT_CAPTURE_TRANSIENT) {
+            logger.warn(
+              "[agent-sandbox] Delete deferred: pre-deletion capture transiently unavailable, will retry",
+              { agentId },
+            );
+            return {
+              success: false,
+              retryable: true,
+              error: `Refusing to delete without a current backup: ${message}`,
+            };
+          } else {
+            logger.error("[agent-sandbox] Delete refused: pre-deletion capture failed", {
+              agentId,
+              error: message,
+            });
+            return {
+              success: false,
+              error: `Refusing to delete without a current backup: ${message}`,
+            };
+          }
+        }
+      }
+    }
+
     // Phase 1 — short transaction: take the lifecycle lock, validate
     // preconditions, and capture the fields needed for teardown. We deliberately
     // do NOT run the container teardown inside this transaction:
@@ -1936,7 +2014,11 @@ export class ElizaSandboxService {
     // + write transaction + a pooled connection for the full teardown cap (up to
     // SANDBOX_DELETE_STOP_TIMEOUT_MS) would wedge concurrent lifecycle ops on the
     // same agent/org. The lock + transaction are released the moment this returns.
-    const precheck = await this.prepareAgentDelete(agentId, orgId, options.authorization);
+    const precheck = await this.prepareAgentDelete(agentId, orgId, options.authorization, {
+      snapshot: preDeleteSnapshot,
+      captureUnsupported,
+      alreadyPersisted: captureAlreadyPersisted,
+    });
 
     if (!precheck.ok) {
       return { success: false, error: precheck.error };
@@ -2139,6 +2221,24 @@ export class ElizaSandboxService {
     return result;
   }
 
+  /** Whether deleting this row must first prove a current backup (#18517): a
+   *  live dedicated container holds unreplicated local state, while shared
+   *  runtimes and unclaimed warm-pool entries hold none of the org's data.
+   *  `deletion_pending` with a live bridge is the primary v1 path — the
+   *  enqueue stamps the status before the job worker ever calls deleteAgent,
+   *  so the container has not been stopped and still needs its capture. */
+  private requiresPreDeleteCapture(
+    rec: AgentSandbox | null | undefined,
+  ): rec is AgentSandbox & { bridge_url: string } {
+    return (
+      !!rec &&
+      (rec.status === "running" || rec.status === "deletion_pending") &&
+      Boolean(rec.bridge_url) &&
+      rec.execution_tier !== "shared" &&
+      !(rec.organization_id === WARM_POOL_ORG_ID && rec.pool_status === "unclaimed")
+    );
+  }
+
   /**
    * Phase 1 of `deleteAgent` (see there): short write transaction that takes
    * the lifecycle lock, validates delete preconditions, and captures the
@@ -2150,6 +2250,15 @@ export class ElizaSandboxService {
     agentId: string,
     orgId: string,
     authorization?: DeleteAuthorization,
+    preDeleteCapture?: {
+      snapshot: {
+        stateData: AgentBackupStateData;
+        sizeBytes: number;
+        bridgeUrl: string;
+      } | null;
+      captureUnsupported: boolean;
+      alreadyPersisted?: boolean;
+    },
   ): Promise<
     | {
         ok: true;
@@ -2199,6 +2308,34 @@ export class ElizaSandboxService {
           error: "Agent is running; suspend it before deletion",
         };
       }
+      if (
+        this.requiresPreDeleteCapture(rec) &&
+        !preDeleteCapture?.captureUnsupported &&
+        !preDeleteCapture?.alreadyPersisted
+      ) {
+        const snapshot = preDeleteCapture?.snapshot ?? null;
+        // The capture must be OF THIS generation (shutdown's rule): a capture
+        // taken against a different bridge_url is another container's state,
+        // and stamping deletion intent without a current capture would let the
+        // reconciler finish a delete that skipped it. Both refuse, leaving the
+        // row untouched for a retry.
+        if (!snapshot || rec.bridge_url !== snapshot.bridgeUrl) {
+          return {
+            ok: false as const,
+            error:
+              "Refusing to delete: the agent's lifecycle generation moved after the pre-deletion capture; retry the delete.",
+          };
+        }
+        await this.persistSnapshotWithinTransaction(
+          tx,
+          rec.id,
+          rec.organization_id,
+          "pre-delete",
+          snapshot.stateData,
+          snapshot.sizeBytes,
+        );
+      }
+
       const deletionAttemptId = rec.deletion_attempt_id ?? crypto.randomUUID();
       // A retry preserves the original audit timestamp while taking a fresh
       // database generation for the new teardown attempt.
@@ -2476,6 +2613,7 @@ export class ElizaSandboxService {
     containerStopped: boolean;
     rowDeleted: boolean;
     error?: string;
+    retryable?: true;
   }> {
     const result = await this.deleteAgent(agentId, orgId, { authorization });
     if (!result.success) {
@@ -2490,6 +2628,7 @@ export class ElizaSandboxService {
         containerStopped: false,
         rowDeleted: false,
         error: result.error,
+        retryable: result.retryable,
       };
     }
 

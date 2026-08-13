@@ -4899,6 +4899,15 @@ export class ProvisioningJobService {
           error: delResult.error,
         }),
       });
+      if (delResult.retryable) {
+        // A transient pre-deletion capture failure retries for free (same
+        // rule the restart/snapshot handlers apply to shutdown's identical
+        // signal) so the PGlite-closing race cannot exhaust the attempt
+        // budget and strand the deletion (#18517).
+        throw new RetryableProvisionTransportError(
+          delResult.error ?? "Pre-deletion capture temporarily unavailable",
+        );
+      }
       throw new Error(delResult.error ?? "Unknown agent_delete failure");
     }
 
