@@ -127,7 +127,9 @@ describe("createApp: template-image wiring (no-repo apps)", () => {
       createGitHubRepo: false,
       imageTag: `ghcr.io/elizaos/myapp@sha256:e${"0".repeat(63)}`,
     });
-    expect(metaImageTag(result.app.metadata)).toBe(`ghcr.io/elizaos/myapp@sha256:e${"0".repeat(63)}`);
+    expect(metaImageTag(result.app.metadata)).toBe(
+      `ghcr.io/elizaos/myapp@sha256:e${"0".repeat(63)}`,
+    );
   });
 
   test("a pre-existing metadata.imageTag is never overwritten (no redundant update)", async () => {

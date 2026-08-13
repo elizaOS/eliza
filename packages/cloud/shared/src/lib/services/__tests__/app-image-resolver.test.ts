@@ -14,10 +14,12 @@ function recordingBuilder(): { builder: AppImageBuilder; cmds: string[] } {
   const exec: BuildExec = {
     async exec(cmd) {
       cmds.push(cmd);
-      // The builder inspects pushed images to resolve the manifest digest
-      // (#13097); return a digest so the resolver yields a pinned ref.
-      if (cmd.startsWith("docker buildx imagetools inspect")) {
-        return `Name:      ref\nDigest:    sha256:abc123def4567890abc123def4567890abc123def4567890abc123def4567890\n`;
+      // BuildKit records the exact pushed manifest digest in per-build metadata.
+      if (cmd.startsWith("cat ")) {
+        return JSON.stringify({
+          "containerimage.digest":
+            "sha256:abc123def4567890abc123def4567890abc123def4567890abc123def4567890",
+        });
       }
       return "built";
     },

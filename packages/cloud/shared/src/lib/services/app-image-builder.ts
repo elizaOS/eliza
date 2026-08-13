@@ -20,6 +20,7 @@
  */
 
 import { randomBytes } from "node:crypto";
+import { ElizaError } from "@elizaos/core";
 import {
   buildAppImageBuildCmd,
   buildIsolatedAppImageScript,
@@ -54,8 +55,8 @@ export interface AppImageBuildResult {
    * The resolvable image reference the deploy step runs.
    *
    * When the build PUSHED, this is the immutable digest-pinned ref
-   * (`<registry>/app-<slug>:<tag>@sha256:<64hex>`) resolved from the registry's
-   * pushed manifest via `docker buildx imagetools inspect`. A mutable
+   * (`<registry>/app-<slug>:<tag>@sha256:<64hex>`) captured atomically from
+   * BuildKit's metadata for this exact build. A mutable
    * `<registry>/app-<slug>:<tag>` ref lets the registry swap the bytes behind
    * the name after the deploy-time allowlist check, so the digest pin makes the
    * image content-addressed end-to-end and passes the armed digest-pin gate.
@@ -71,26 +72,15 @@ export interface AppImageBuildResult {
 }
 
 /**
- * Parse the immutable sha256 digest from `docker buildx imagetools inspect`
- * output. The manifest list / manifest digest is reported on the `Digest:`
- * line, e.g.
- *   Name:      ghcr.io/elizaos/app-xxx:tag
- *   MediaType: application/vnd.oci.image.index.v1+json
- *   Digest:    sha256:2c68b639eec00fad1b35e978f5463f1543b392c96680ec496fd0c0a9eddc8241
- *
- * Returns the FIRST full `sha256:<64 hex>` digest found, preferring the
- * top-level manifest digest over the per-platform child digests. Returns null
- * when no digest is present so the caller can fall back to the mutable ref with
- * a warning instead of failing the whole build.
+ * Parse the immutable manifest digest BuildKit records for the exact build.
  */
-export function parseImagetoolsDigest(output: string): string | null {
-  const match = output.match(/sha256:[0-9a-f]{64}/i);
-  return match ? match[0].toLowerCase() : null;
-}
-
-/** Assemble the `docker buildx imagetools inspect <ref>` command. */
-export function buildImagetoolsInspectCmd(imageRef: string): string {
-  return `docker buildx imagetools inspect ${shellQuote(imageRef)}`;
+export function parseBuildMetadataDigest(output: string): string | null {
+  const metadata = JSON.parse(output) as unknown;
+  if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) return null;
+  const digest = (metadata as Record<string, unknown>)["containerimage.digest"];
+  return typeof digest === "string" && /^sha256:[0-9a-f]{64}$/i.test(digest)
+    ? digest.toLowerCase()
+    : null;
 }
 
 export class AppImageBuilder {
@@ -113,6 +103,9 @@ export class AppImageBuilder {
       appId: req.appId,
       sourceRef: req.sourceRef,
     });
+    const metadataFile = req.push
+      ? `/tmp/eliza-app-build-${randomBytes(12).toString("hex")}.json`
+      : undefined;
 
     let command: string;
     if (this.isolatedBuilder) {
@@ -126,6 +119,7 @@ export class AppImageBuilder {
         push: req.push,
         buildArgs: req.buildArgs,
         builderName,
+        metadataFile,
       });
     } else {
       command = buildAppImageBuildCmd({
@@ -134,36 +128,39 @@ export class AppImageBuilder {
         imageRef,
         push: req.push,
         buildArgs: req.buildArgs,
+        metadataFile,
       });
     }
 
     const buildOutput = await this.exec.exec(command, this.timeoutMs);
 
-    // When the image was PUSHED, resolve the immutable digest from the registry
-    // so the returned ref is content-addressed end-to-end (#13097). The mutable
-    // `<registry>/app-<slug>:<tag>` ref the build produced lets the registry
-    // swap the bytes behind the name after the deploy-time allowlist check;
-    // pinning the pushed manifest digest defeats that. A failed inspect is
-    // non-fatal — the build succeeded, so fall back to the mutable ref with a
-    // warning rather than throwing away a good build (the digest-pin gate will
-    // reject it downstream when armed, which is the correct escalation).
-    let resolvedRef = imageRef;
-    if (req.push) {
-      try {
-        const inspectOutput = await this.exec.exec(
-          buildImagetoolsInspectCmd(imageRef),
-          this.timeoutMs,
-        );
-        const digest = parseImagetoolsDigest(inspectOutput);
-        if (digest) {
-          resolvedRef = `${imageRef}@${digest}`;
-        }
-      } catch {
-        // Inspect failed (registry lag, transient auth, offline verification).
-        // Keep the mutable ref; the deploy gate handles the mismatch.
-      }
+    if (!metadataFile) return { imageRef, buildOutput };
+
+    let digest: string | null;
+    try {
+      const metadataOutput = await this.exec.exec(
+        `cat ${shellQuote(metadataFile)}; status=$?; rm -f ${shellQuote(metadataFile)}; exit $status`,
+        this.timeoutMs,
+      );
+      digest = parseBuildMetadataDigest(metadataOutput);
+    } catch (error) {
+      // error-policy:J2 BuildKit metadata belongs to this exact push; preserve
+      // the read/parse failure rather than silently returning a mutable tag.
+      throw new ElizaError("Failed to read pushed app image build metadata", {
+        code: "APP_IMAGE_BUILD_METADATA_READ_FAILED",
+        cause: error,
+        context: { appId: req.appId, imageRef },
+        severity: "ephemeral",
+      });
+    }
+    if (!digest) {
+      throw new ElizaError("Pushed app image build metadata did not contain a full digest", {
+        code: "APP_IMAGE_BUILD_DIGEST_MISSING",
+        context: { appId: req.appId, imageRef },
+        severity: "fatal",
+      });
     }
 
-    return { imageRef: resolvedRef, buildOutput };
+    return { imageRef: `${imageRef}@${digest}`, buildOutput };
   }
 }

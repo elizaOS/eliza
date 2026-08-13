@@ -53,6 +53,8 @@ export interface AppBuildCmdParams {
   builderName?: string;
   /** Pass `--no-cache` (untrusted builds skip any shared cache). */
   noCache?: boolean;
+  /** Write BuildKit's exact build result metadata to this file. */
+  metadataFile?: string;
 }
 
 /** Assemble the docker build command for a user app image. */
@@ -69,6 +71,9 @@ export function buildAppImageBuildCmd(params: AppBuildCmdParams): string {
   }
   if (params.noCache) {
     parts.push("--no-cache");
+  }
+  if (params.metadataFile) {
+    parts.push(`--metadata-file ${shellQuote(params.metadataFile)}`);
   }
   for (const [key, value] of Object.entries(params.buildArgs ?? {})) {
     parts.push(`--build-arg ${shellQuote(`${key}=${value}`)}`);

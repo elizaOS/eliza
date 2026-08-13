@@ -392,18 +392,14 @@ export const containersEnv = {
    * `:tag`/implicit-latest image ref even when the global
    * {@link requireDigestPinnedImages} gate is off.
    *
-   * SECURITY (#13097): the first-party template default and source-build output
-   * are now digest-pinned end-to-end, so the apps-deploy lane can enforce
-   * immutability by DEFAULT without breaking the GA path. This is ON by default;
-   * an operator that still needs a mutable-tag app deploy can opt out with
-   * `APPS_DEPLOY_REQUIRE_DIGEST=false`. Read via `APPS_DEPLOY_REQUIRE_DIGEST`
-   * (with `ELIZA_` fallback); any value other than `"false"`/`"0"` keeps the
-   * gate armed.
+   * Source builds are digest-pinned, but supported prebuilt/default image
+   * sources may still use mutable tags. Keep enforcement opt-in until those
+   * operator configurations have been migrated. Only the literal string
+   * `"true"` enables it.
    */
   appsDeployRequireDigest(): boolean {
     const env = getCloudAwareEnv();
-    const raw = pick(env.APPS_DEPLOY_REQUIRE_DIGEST, env.ELIZA_APPS_DEPLOY_REQUIRE_DIGEST);
-    return raw !== "false" && raw !== "0";
+    return pick(env.APPS_DEPLOY_REQUIRE_DIGEST, env.ELIZA_APPS_DEPLOY_REQUIRE_DIGEST) === "true";
   },
 
   /**

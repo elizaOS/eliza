@@ -1,11 +1,8 @@
 // Exercises app image builder behavior with deterministic cloud-shared lib fixtures.
+
 import { describe, expect, test } from "bun:test";
-import {
-  AppImageBuilder,
-  buildImagetoolsInspectCmd,
-  type BuildExec,
-  parseImagetoolsDigest,
-} from "../app-image-builder";
+import { ElizaError } from "@elizaos/core";
+import { AppImageBuilder, type BuildExec, parseBuildMetadataDigest } from "../app-image-builder";
 
 const APP = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const REF = "ghcr.io/elizaos/app-aaaaaaaaaaaa4aaa8aaaaaaa:a1b2c3d";
@@ -18,37 +15,34 @@ function fakeExec(): BuildExec & { calls: Array<{ cmd: string; timeoutMs?: numbe
     calls,
     async exec(cmd: string, timeoutMs?: number) {
       calls.push({ cmd, timeoutMs });
-      // When the builder inspects the pushed image, return a manifest digest so
-      // the builder can pin the returned ref. Otherwise return build output.
-      if (cmd.startsWith("docker buildx imagetools inspect")) {
-        return `Name:      ${REF}\nMediaType: application/vnd.oci.image.index.v1+json\nDigest:    ${DIGEST}\n`;
+      if (cmd.startsWith("cat ")) {
+        return JSON.stringify({ "containerimage.digest": DIGEST });
       }
       return "Successfully built abc123";
     },
   };
 }
 
-describe("parseImagetoolsDigest", () => {
-  test("extracts the first sha256:<64hex> digest", () => {
+describe("parseBuildMetadataDigest", () => {
+  test("extracts the exact BuildKit container image digest", () => {
     expect(
-      parseImagetoolsDigest(
-        `Name:      ${REF}\nMediaType: application/vnd.oci.image.index.v1+json\nDigest:    sha256:abc123def4567890abc123def4567890abc123def4567890abc123def4567890\n`,
+      parseBuildMetadataDigest(
+        JSON.stringify({
+          "containerimage.digest":
+            "sha256:abc123def4567890abc123def4567890abc123def4567890abc123def4567890",
+        }),
       ),
     ).toBe("sha256:abc123def4567890abc123def4567890abc123def4567890abc123def4567890");
   });
 
   test("returns null when no digest is present", () => {
-    expect(parseImagetoolsDigest("no digest here")).toBeNull();
+    expect(parseBuildMetadataDigest(JSON.stringify({}))).toBeNull();
   });
 
   test("ignores partial digests (<64 hex)", () => {
-    expect(parseImagetoolsDigest("sha256:abc123")).toBeNull();
-  });
-});
-
-describe("buildImagetoolsInspectCmd", () => {
-  test("assembles the imagetools inspect command with a quoted ref", () => {
-    expect(buildImagetoolsInspectCmd(REF)).toBe(`docker buildx imagetools inspect '${REF}'`);
+    expect(
+      parseBuildMetadataDigest(JSON.stringify({ "containerimage.digest": "sha256:abc123" })),
+    ).toBeNull();
   });
 });
 
@@ -108,6 +102,7 @@ describe("AppImageBuilder", () => {
     const buildCmd = exec.calls[0].cmd;
     expect(buildCmd).toContain("docker buildx build --builder 'apps-build-");
     expect(buildCmd).toContain("--push");
+    expect(buildCmd).toContain("--metadata-file '/tmp/eliza-app-build-");
     expect(buildCmd).not.toContain("--load");
     expect(buildCmd).toContain("docker buildx create --driver docker-container");
   });
@@ -123,52 +118,52 @@ describe("AppImageBuilder", () => {
     });
     // The pushed ref is pinned to the resolved manifest digest.
     expect(res.imageRef).toBe(PINNED_REF);
-    // Two exec calls: the build, then the imagetools inspect.
+    // Two exec calls: the build, then reading its unique BuildKit metadata.
     expect(exec.calls).toHaveLength(2);
-    expect(exec.calls[1].cmd).toBe(`docker buildx imagetools inspect '${REF}'`);
+    expect(exec.calls[1].cmd).toMatch(
+      /^cat '\/tmp\/eliza-app-build-[0-9a-f]{24}\.json'; status=\$\?; rm -f '\/tmp\/eliza-app-build-[0-9a-f]{24}\.json'; exit \$status$/,
+    );
   });
 
-  test("push falls back to the mutable ref when inspect returns no digest", async () => {
-    const latestRef = "ghcr.io/elizaos/app-aaaaaaaaaaaa4aaa8aaaaaaa:latest";
+  test("push fails when BuildKit metadata contains no digest", async () => {
     const exec: BuildExec & { calls: Array<{ cmd: string }> } = {
       calls: [],
       async exec(cmd: string) {
         this.calls.push({ cmd });
-        if (cmd.startsWith("docker buildx imagetools inspect")) {
-          return "no digest available";
-        }
+        if (cmd.startsWith("cat ")) return JSON.stringify({});
         return "built";
       },
     };
-    const res = await new AppImageBuilder({ exec }).build({
+    await expect(
+      new AppImageBuilder({ exec }).build({
+        registry: "ghcr.io/elizaos",
+        appId: APP,
+        context: "/c",
+        push: true,
+      }),
+    ).rejects.toMatchObject({ code: "APP_IMAGE_BUILD_DIGEST_MISSING" });
+  });
+
+  test("push preserves a BuildKit metadata read failure", async () => {
+    const exec: BuildExec & { calls: Array<{ cmd: string }> } = {
+      calls: [],
+      async exec(cmd: string) {
+        this.calls.push({ cmd });
+        if (cmd.startsWith("cat ")) throw new Error("metadata read failed");
+        return "built";
+      },
+    };
+    const failure = new AppImageBuilder({ exec }).build({
       registry: "ghcr.io/elizaos",
       appId: APP,
       context: "/c",
       push: true,
     });
-    // Inspect ran but found no digest → fall back to the mutable ref (non-fatal).
-    expect(res.imageRef).toBe(latestRef);
-  });
-
-  test("push falls back to the mutable ref when inspect throws (registry lag)", async () => {
-    const latestRef = "ghcr.io/elizaos/app-aaaaaaaaaaaa4aaa8aaaaaaa:latest";
-    const exec: BuildExec & { calls: Array<{ cmd: string }> } = {
-      calls: [],
-      async exec(cmd: string) {
-        this.calls.push({ cmd });
-        if (cmd.startsWith("docker buildx imagetools inspect")) {
-          throw new Error("registry timeout");
-        }
-        return "built";
-      },
-    };
-    const res = await new AppImageBuilder({ exec }).build({
-      registry: "ghcr.io/elizaos",
-      appId: APP,
-      context: "/c",
-      push: true,
+    await expect(failure).rejects.toBeInstanceOf(ElizaError);
+    await expect(failure).rejects.toMatchObject({
+      code: "APP_IMAGE_BUILD_METADATA_READ_FAILED",
+      cause: expect.objectContaining({ message: "metadata read failed" }),
     });
-    expect(res.imageRef).toBe(latestRef);
   });
 
   test("isolatedBuilder:false runs the plain host-daemon build (trusted/verification only)", async () => {
