@@ -1326,6 +1326,21 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 		const roomIds = params.roomIds ?? [];
 		const tbl = params.tableName ?? "messages";
 		const u = params.unique;
+		// Mirror the metadata matcher getMemories applies (per-key JSON.stringify
+		// equality) so a metadata-filtered count matches the number of memories
+		// getMemories would return.
+		const filterMeta = params.metadata as Record<string, unknown> | undefined;
+		const matchesMetadata = (m: Memory): boolean => {
+			if (!filterMeta) return true;
+			if (!m.metadata) return false;
+			const memMeta = m.metadata as Record<string, unknown>;
+			for (const [key, value] of Object.entries(filterMeta)) {
+				if (!(key in memMeta)) return false;
+				if (JSON.stringify(memMeta[key]) !== JSON.stringify(value))
+					return false;
+			}
+			return true;
+		};
 		let total = 0;
 		if (roomIds.length === 0) {
 			// No room filter: count all memories matching tableName and other filters (consistent with SQL/store behavior)
@@ -1337,6 +1352,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 					list = list.filter((m) => m.entityId === params.entityId);
 				if (params.agentId)
 					list = list.filter((m) => m.agentId === params.agentId);
+				if (filterMeta) list = list.filter(matchesMetadata);
 				total += u ? list.filter((m) => m.unique).length : list.length;
 			}
 			return total;
@@ -1349,6 +1365,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 				list = list.filter((m) => m.entityId === params.entityId);
 			if (params.agentId)
 				list = list.filter((m) => m.agentId === params.agentId);
+			if (filterMeta) list = list.filter(matchesMetadata);
 			total += u ? list.filter((m) => m.unique).length : list.length;
 		}
 		return total;
