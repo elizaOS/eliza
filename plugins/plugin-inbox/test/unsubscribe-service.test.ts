@@ -172,13 +172,20 @@ function makeService(
 
 const fetchSpy = vi.fn();
 
-function trackedResponse(status: number, headers?: HeadersInit) {
+function trackedResponse(
+  status: number,
+  headers?: HeadersInit,
+  cancelError?: Error,
+) {
   const body = new ReadableStream<Uint8Array>({
     start(controller) {
       controller.enqueue(new Uint8Array([1]));
     },
   });
   const cancel = vi.spyOn(body, "cancel");
+  if (cancelError) {
+    cancel.mockRejectedValueOnce(cancelError);
+  }
   return {
     response: new Response(body, { status, headers }),
     cancel,
@@ -322,6 +329,34 @@ describe("InboxUnsubscribeService", () => {
 
       expect(record.status).toBe("failed");
       expect(record.httpStatusCode).toBe(503);
+      expect(tracked.cancel).toHaveBeenCalledTimes(1);
+    });
+
+    it("keeps a successful unsubscribe successful when body cancellation fails", async () => {
+      const tracked = trackedResponse(
+        200,
+        undefined,
+        new Error("response stream already closed"),
+      );
+      fetchSpy.mockResolvedValue(tracked.response);
+      const gateway = makeGateway({
+        messages: [
+          gmailMessage({
+            id: "m1",
+            fromEmail: "news@brand.com",
+            listUnsubscribe: "<https://brand.com/unsub>",
+          }),
+        ],
+      });
+      const { service } = makeService(gateway);
+
+      const { record } = await service.unsubscribeEmailSender({
+        senderEmail: "news@brand.com",
+        userAuthorization: true,
+      });
+
+      expect(record.status).toBe("succeeded");
+      expect(record.httpStatusCode).toBe(200);
       expect(tracked.cancel).toHaveBeenCalledTimes(1);
     });
 

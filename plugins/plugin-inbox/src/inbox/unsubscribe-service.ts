@@ -24,7 +24,7 @@
  */
 
 import crypto from "node:crypto";
-import { fetchWithSsrfGuard, type IAgentRuntime } from "@elizaos/core";
+import { fetchWithSsrfGuard, type IAgentRuntime, logger } from "@elizaos/core";
 import {
   fail,
   type LifeOpsGmailMessageSummary,
@@ -202,6 +202,16 @@ async function performHttpUnsubscribe(args: {
     // responses cannot retain an open connection or stream.
     try {
       await guarded.response.body?.cancel();
+    } catch (error) {
+      // error-policy:J6 The unsubscribe request has already completed; body
+      // cancellation is teardown-only and must not fabricate a remote failure.
+      logger.warn(
+        {
+          src: "inbox-unsubscribe",
+          error: error instanceof Error ? error.message : String(error),
+        },
+        "[InboxUnsubscribeService] Failed to cancel unread unsubscribe response body",
+      );
     } finally {
       await guarded.release();
     }
