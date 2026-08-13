@@ -588,6 +588,11 @@ describe("OnboardingSessionCoordinator", () => {
     expect((await mismatch.json()) as unknown).toEqual({
       error:
         "The authenticated messaging identity does not match this onboarding session",
+      code: "ONBOARDING_PLATFORM_IDENTITY_MISMATCH",
+      context: {
+        platform: "discord",
+        hasSignedPlatformIdentity: true,
+      },
     });
   });
 
