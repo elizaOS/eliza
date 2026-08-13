@@ -64,11 +64,12 @@
     padding: 1.1rem clamp(1.25rem, 4vw, 3rem);
     color: var(--hero-ink);
   }
-  .brand { display: inline-flex; align-items: center; gap: 0.65rem; font-family: "Syne", sans-serif; font-weight: 750; text-decoration: none; }
+  .brand { display: inline-flex; min-height: 2.75rem; align-items: center; gap: 0.65rem; font-family: "Syne", sans-serif; font-weight: 750; text-decoration: none; }
   .brand img { display: block; width: 1.8rem; height: 1.8rem; object-fit: contain; }
   .nav-links { display: flex; gap: clamp(1rem, 3vw, 2rem); }
-  .nav-links a { font-size: 0.9rem; font-weight: 650; text-decoration: none; opacity: 0.86; }
-  .nav-links a:hover { opacity: 1; }
+  .nav-links a { display: inline-flex; min-height: 2.75rem; align-items: center; font-size: 0.9rem; font-weight: 650; text-decoration: none; }
+  .nav-links a:hover { text-decoration: underline; text-underline-offset: 0.3em; }
+  nav :where(a, button):focus-visible { outline-color: white; }
 
   header {
     position: relative;
@@ -214,7 +215,7 @@
     <p class="contact">We are a small team building in the open. <a href="mailto:hello@elizaresearch.ai">hello@elizaresearch.ai</a></p>
     <div class="footer-row">
       <span>© 2026 Eliza Research</span>
-      <span class="footer-links"><a href="/reflow">Reflow cut</a><a href="https://github.com/elizaOS">GitHub</a><a href="https://x.com/elizaOS">X</a><a href="https://slop.cash">slop.cash</a></span>
+      <span class="footer-links"><a href="/reflow-compare">Compare Reflow cuts</a><a href="https://github.com/elizaOS">GitHub</a><a href="https://x.com/elizaOS">X</a><a href="https://slop.cash">slop.cash</a></span>
     </div>
   </div>
 </footer>

@@ -1,18 +1,21 @@
 /**
  * Renders the Eliza mark as a dense, interactive particle field shared by both
  * site layouts. Fixed SVG-mask homes preserve facial detail, a grouped opening
- * formation gives the mark a deliberate entrance, and a compact cursor field
- * bends nearby dots without changing their color or opening a radial void.
+ * formation gives the mark a deliberate entrance, quiet home-space motion
+ * keeps the settled face alive, and a compact cursor field bends nearby dots
+ * without changing their color or opening a radial void.
  * Its mask-and-particle lineage comes from rauchg's v0 Logo particles template
  * through NubsCarson/reflow; the formation adapts Shaw's grouped face merge.
  */
 (() => {
   const baseParticleCount = 8500;
   const referenceArea = 1440 * 1080;
-  const formationMs = 4800;
-  const fadeMs = 900;
-  const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
+  const formationMs = 3000;
+  const fadeMs = 700;
   const fullTurn = Math.PI * 2;
+  const idleFrameMs = 1000 / 18;
+  const driftAngularVelocity = fullTurn / 8200;
+  const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
 
   for (const canvas of document.querySelectorAll(
     "canvas[data-particle-logo]",
@@ -34,6 +37,7 @@
     let height = 0;
     let particles = [];
     let frame = 0;
+    let idleTimer = 0;
     let resizeTimer = 0;
     let inView = true;
     let generation = 0;
@@ -138,19 +142,37 @@
       const faceY = geometry.top + geometry.size * 0.5;
       const groupSize = geometry.size / 3;
       const spread = clamp(geometry.size * 0.08, 24, 72);
+      const motionScale = clamp(geometry.size / 600, 0.8, 1.3);
 
       particles = sampleHomes(geometry).map((home) => {
-        if (!animateEntrance) {
-          return {
-            homeX: home.x,
-            homeY: home.y,
-            startX: home.x,
-            startY: home.y,
-            offsetX: 0,
-            offsetY: 0,
-            size: Math.random() + 0.5,
-          };
+        const homeDeltaX = home.x - faceX;
+        const homeDeltaY = home.y - faceY;
+        const homeDistance = Math.hypot(homeDeltaX, homeDeltaY);
+        let tangentX = 1;
+        let tangentY = 0;
+        if (homeDistance > 1) {
+          tangentX = -homeDeltaY / homeDistance;
+          tangentY = homeDeltaX / homeDistance;
         }
+        const motionAmplitude = (0.45 + Math.random() * 0.65) * motionScale;
+        const motionPhase =
+          (home.x - geometry.left) * 0.021 +
+          (home.y - geometry.top) * 0.015 +
+          Math.random() * 0.35;
+        const particle = {
+          homeX: home.x,
+          homeY: home.y,
+          startX: home.x,
+          startY: home.y,
+          offsetX: 0,
+          offsetY: 0,
+          motionX: tangentX * motionAmplitude,
+          motionY: tangentY * motionAmplitude,
+          phaseSin: Math.sin(motionPhase),
+          phaseCos: Math.cos(motionPhase),
+          size: Math.random() + 0.5,
+        };
+        if (!animateEntrance) return particle;
 
         const column = clamp(
           Math.floor(((home.x - geometry.left) / geometry.size) * 3),
@@ -179,15 +201,9 @@
         const angle = Math.random() * fullTurn;
         const radius = spread * Math.sqrt(Math.random());
 
-        return {
-          homeX: home.x,
-          homeY: home.y,
-          startX: originX + Math.cos(angle) * radius,
-          startY: originY + Math.sin(angle) * radius,
-          offsetX: 0,
-          offsetY: 0,
-          size: Math.random() + 0.5,
-        };
+        particle.startX = originX + Math.cos(angle) * radius;
+        particle.startY = originY + Math.sin(angle) * radius;
+        return particle;
       });
     }
 
@@ -199,6 +215,17 @@
         formation *
         (formation * (formation * 6 - 15) + 10);
       const opacity = forming ? clamp((now - born) / fadeMs, 0, 1) : 1;
+      const livingProgress = reducedMotion.matches
+        ? 0
+        : clamp((formation - 0.88) / 0.12, 0, 1);
+      const livingMix =
+        livingProgress *
+        livingProgress *
+        livingProgress *
+        (livingProgress * (livingProgress * 6 - 15) + 10);
+      const driftAngle = now * driftAngularVelocity;
+      const driftSin = Math.sin(driftAngle);
+      const driftCos = Math.cos(driftAngle);
       let moving = forming && formation < 1;
       if (formation === 1) forming = false;
 
@@ -223,10 +250,20 @@
       context.beginPath();
 
       for (const particle of particles) {
+        const wave =
+          driftSin * particle.phaseCos + driftCos * particle.phaseSin;
+        const orbit =
+          driftCos * particle.phaseCos - driftSin * particle.phaseSin;
         const baseX =
-          particle.startX + (particle.homeX - particle.startX) * eased;
+          particle.startX +
+          (particle.homeX - particle.startX) * eased +
+          (particle.motionX * wave - particle.motionY * orbit * 0.22) *
+            livingMix;
         const baseY =
-          particle.startY + (particle.homeY - particle.startY) * eased;
+          particle.startY +
+          (particle.homeY - particle.startY) * eased +
+          (particle.motionY * wave + particle.motionX * orbit * 0.22) *
+            livingMix;
         let desiredX = 0;
         let desiredY = 0;
 
@@ -276,24 +313,13 @@
 
     function stop() {
       if (frame) cancelAnimationFrame(frame);
+      if (idleTimer) clearTimeout(idleTimer);
       frame = 0;
+      idleTimer = 0;
     }
 
-    function loop(now) {
-      frame = 0;
-      const delta = Math.min((now - lastFrame) / 1000, 0.05);
-      lastFrame = now;
-      if (
-        draw(now, delta) &&
-        !reducedMotion.matches &&
-        !document.hidden &&
-        inView
-      ) {
-        frame = requestAnimationFrame(loop);
-      }
-    }
-
-    function start() {
+    function wakeIdle() {
+      idleTimer = 0;
       if (
         frame ||
         reducedMotion.matches ||
@@ -306,15 +332,47 @@
       frame = requestAnimationFrame(loop);
     }
 
+    function loop(now) {
+      frame = 0;
+      const delta = Math.min((now - lastFrame) / 1000, 0.05);
+      lastFrame = now;
+      const moving = draw(now, delta);
+      if (reducedMotion.matches || document.hidden || !inView) return;
+      if (moving) frame = requestAnimationFrame(loop);
+      else idleTimer = setTimeout(wakeIdle, idleFrameMs);
+    }
+
+    function start() {
+      if (idleTimer) {
+        clearTimeout(idleTimer);
+        idleTimer = 0;
+      }
+      if (
+        frame ||
+        reducedMotion.matches ||
+        document.hidden ||
+        !inView ||
+        !particles.length
+      )
+        return;
+      lastFrame = performance.now();
+      frame = requestAnimationFrame(loop);
+    }
+
+    function cacheCanvasBounds() {
+      const bounds = canvas.getBoundingClientRect();
+      canvasLeft = bounds.left;
+      canvasTop = bounds.top;
+      return bounds;
+    }
+
     async function rebuild(expectedGeneration = generation) {
       await image.decode();
       if (expectedGeneration !== generation) return;
       stop();
-      const bounds = canvas.getBoundingClientRect();
+      const bounds = cacheCanvasBounds();
       width = Math.max(1, Math.round(bounds.width));
       height = Math.max(1, Math.round(bounds.height));
-      canvasLeft = bounds.left;
-      canvasTop = bounds.top;
       const pixelRatio = Math.min(devicePixelRatio, 2);
       canvas.width = Math.round(width * pixelRatio);
       canvas.height = Math.round(height * pixelRatio);
@@ -407,6 +465,10 @@
       },
       { passive: true },
     );
+    addEventListener("scroll", cacheCanvasBounds, {
+      passive: true,
+      capture: true,
+    });
     document.addEventListener("visibilitychange", () =>
       document.hidden ? stop() : start(),
     );
