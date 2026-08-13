@@ -5,7 +5,9 @@
  */
 import assert from "node:assert";
 import { describe, it } from "node:test";
+import { ElizaError } from "@elizaos/core";
 import {
+  INVALID_SKILL_FRONTMATTER_YAML,
   parseFrontmatter,
   resolveSkillInvocationPolicy,
   resolveSkillMetadata,
@@ -91,14 +93,24 @@ Body`;
     assert.strictEqual(result.frontmatter["user-invocable"], false);
   });
 
-  it("handles malformed YAML syntax without throwing", () => {
+  it("throws a typed error for malformed YAML and preserves the parser cause", () => {
     const content = `---
 invalid: : : yaml syntax error
 ---
 Body content`;
-    const result = parseFrontmatter(content);
-    assert.deepStrictEqual(result.frontmatter, {});
-    assert.strictEqual(result.body, "Body content");
+    assert.throws(
+      () => parseFrontmatter(content),
+      (error: unknown) => {
+        assert.ok(error instanceof ElizaError);
+        assert.strictEqual(error.code, INVALID_SKILL_FRONTMATTER_YAML);
+        assert.strictEqual(
+          error.message,
+          "Skill frontmatter contains invalid YAML",
+        );
+        assert.ok(error.cause instanceof Error);
+        return true;
+      },
+    );
   });
 
   it("returns empty frontmatter for non-object YAML frontmatter blocks", () => {
@@ -178,6 +190,15 @@ name: test
 ---`;
     const body = stripFrontmatter(content);
     assert.strictEqual(body, "");
+  });
+
+  it("does not hide malformed YAML while stripping frontmatter", () => {
+    assert.throws(
+      () => stripFrontmatter("---\ninvalid: : : yaml syntax error\n---\nBody"),
+      (error: unknown) =>
+        error instanceof ElizaError &&
+        error.code === INVALID_SKILL_FRONTMATTER_YAML,
+    );
   });
 });
 

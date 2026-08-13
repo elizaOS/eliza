@@ -224,6 +224,15 @@ export interface BuildMemoryFromMessageOptions {
 }
 
 export interface IDiscordService {
+	/**
+	 * Record an observed DM channel for cold-start scan coverage (#18746).
+	 * Optional for compat facades; implementations must never throw.
+	 */
+	recordDmChannel?: (
+		accountId: string,
+		channelId: string,
+		recipientId: string,
+	) => void;
 	accountId?: string;
 	client: DiscordJsClient | null;
 	/**

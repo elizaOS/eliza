@@ -135,6 +135,16 @@ export interface ProvisioningWorkerConfig {
    */
   orphanReconcilerEnabled: boolean;
   /**
+   * When true (default), the infra-maintenance sweep re-arms orphaned
+   * `deletion_pending` / `deletion_failed` sandboxes via
+   * `reEnqueueFailedDeletions` so their teardown actually runs and the node
+   * slots they clog are freed within one sweep instead of dwelling until the
+   * 6-hourly agent-backups cron. Idempotent, capped DB writes only — no
+   * container teardown happens here. Opt-out via `DELETION_RECONCILE_ENABLED`
+   * (`0`/`false` disables, e.g. while ops investigates a deletion storm).
+   */
+  deletionReconcileEnabled: boolean;
+  /**
    * DB liveness threshold (#15160): when the newest `jobs` row is older than
    * this many hours, the worker logs a loud error naming the DB host —
    * "this database looks abandoned; check DATABASE_URL points where the API
@@ -225,6 +235,9 @@ export function readWorkerConfig(
       DEFAULT_WATCHDOG_CONSECUTIVE_TICKS,
     ),
     orphanReconcilerEnabled: env.ORPHAN_RECONCILER_ENABLED === "1",
+    deletionReconcileEnabled: parseBooleanDefaultTrue(
+      env.DELETION_RECONCILE_ENABLED,
+    ),
     dbLivenessMaxAgeHours: parsePositiveInt(
       env.CONTAINERS_DB_LIVENESS_MAX_AGE_HOURS,
       DEFAULT_DB_LIVENESS_MAX_AGE_HOURS,
@@ -858,6 +871,50 @@ export async function processBackupVerificationCycle(): Promise<
 > {
   const { runBackupVerificationCycle } = await loadDeps();
   return runBackupVerificationCycle();
+}
+
+/**
+ * Grace period before an orphaned deletion row is re-armed. Long enough that a
+ * delete whose job is mid-retry settles first (the sweep's NOT-EXISTS predicate
+ * already skips rows with an active agent_delete job; the age cutoff keeps it
+ * clear of a just-flipped row), short enough that an orphan dwells minutes —
+ * not the hours the 6-hourly agent-backups cron allowed.
+ */
+const DELETION_RECONCILE_MIN_AGE_MS = 10 * 60_000;
+
+/**
+ * Per-sweep cap on re-armed rows. Sized to clear the observed prod backlog
+ * (47 of 73 sandboxes orphaned) in a single sweep with headroom; each item is
+ * one idempotent enqueue (a cheap DB write), and the phase budget bounds the
+ * sweep's wall clock regardless.
+ */
+const DELETION_RECONCILE_MAX_AGENTS = 200;
+
+type DeletionReconcileSummary = Awaited<
+  ReturnType<WorkerService["reEnqueueFailedDeletions"]>
+>;
+
+/**
+ * Re-arm sandboxes stranded in `deletion_pending` with no draining
+ * `agent_delete` job (or dead-ended in `deletion_failed`) so the worker
+ * finishes their teardown and frees the node slots they occupy. Warm-pool
+ * rotation mints these orphans faster than the 6-hourly agent-backups cron —
+ * today's only caller of `reEnqueueFailedDeletions` — clears them, and a node
+ * full of them stops hosting new provisions ("Registered Docker nodes exist
+ * but none available"). Running the same idempotent, capped service sweep on
+ * every infra maintenance cycle bounds orphan dwell to minutes. Returns null
+ * without touching the service when `DELETION_RECONCILE_ENABLED` is off.
+ * Exported for the daemon-phase wiring test.
+ */
+export async function processDeletionReconcileCycle(
+  config: ProvisioningWorkerConfig,
+): Promise<DeletionReconcileSummary | null> {
+  if (!config.deletionReconcileEnabled) return null;
+  const { provisioningJobService } = await loadDeps();
+  return provisioningJobService.reEnqueueFailedDeletions({
+    minAgeMs: DELETION_RECONCILE_MIN_AGE_MS,
+    maxAgents: DELETION_RECONCILE_MAX_AGENTS,
+  });
 }
 
 /**
@@ -1663,7 +1720,8 @@ async function pollCycle(
   }
 }
 
-async function runInfraMaintenanceCycle(
+/** Exported for the daemon-phase wiring tests; production entry is pollCycle. */
+export async function runInfraMaintenanceCycle(
   logger: WorkerLogger,
   config: ProvisioningWorkerConfig,
 ): Promise<void> {
@@ -1740,6 +1798,32 @@ async function runInfraMaintenanceCycle(
             oversizeSkipped: summary.oversizeSkipped,
             budgetDeferred: summary.budgetDeferred,
             escalated: summary.escalated,
+          },
+        );
+      }
+    },
+  );
+
+  // Deletion reconciliation: re-arm `deletion_pending`/`deletion_failed`
+  // orphans so their teardown drains and the node slots they clog free up
+  // within one sweep. DB writes only (idempotent enqueues, capped per sweep) —
+  // the actual container teardown runs through the normal agent_delete job
+  // path with all its safety checks. Self-gated by DELETION_RECONCILE_ENABLED
+  // (default on) inside the phase, which reports null when off.
+  await runBoundedPhase(
+    logger,
+    "deletion reconciliation cycle",
+    () => processDeletionReconcileCycle(config),
+    (summary) => {
+      if (summary && summary.scanned > 0) {
+        logger.info(
+          "[provisioning-worker] deletion reconciliation cycle complete",
+          {
+            event: "deletion_reconcile.cycle",
+            scanned: summary.scanned,
+            reEnqueued: summary.reEnqueued,
+            failed: summary.failed,
+            abandoned: summary.abandoned,
           },
         );
       }

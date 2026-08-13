@@ -56,6 +56,8 @@ function recordVideo(ffmpeg, outPath, durationSec) {
 }
 
 async function main() {
+  const flags = parseFlags();
+  const durationSec = resolveCaptureDurationSeconds(flags);
   if (process.platform !== "darwin") {
     skip(
       PLATFORM,
@@ -67,13 +69,11 @@ async function main() {
   }
   const ffmpeg = resolveRequiredFfmpeg({ log });
 
-  const flags = parseFlags();
   const base = evidenceBaseName({
     issue: flags.issue,
     slug: flags.slug,
     platform: PLATFORM,
   });
-  const durationSec = resolveCaptureDurationSeconds(flags);
 
   const pngPath = evidencePath(base, "png");
   if (captureScreenshot(pngPath)) {

@@ -1423,6 +1423,15 @@ export class MessageManager {
 		const isBotDirectlyAddressed = isBotAddressed || isBotPlatformMentioned;
 		const isInThread = message.channel.isThread();
 		const isDM = message.channel.type === DiscordChannelType.DM;
+		if (isDM) {
+			// Cold-start scan coverage (#18746): remember this DM channel so a
+			// restart after a hard kill can re-open and sweep it. Never throws.
+			this.discordService.recordDmChannel?.(
+				this.accountId,
+				message.channel.id,
+				message.author.id,
+			);
+		}
 		const strictModeEnabled =
 			this.discordSettings.shouldRespondOnlyToMentions === true;
 		const replyToMode = normalizeReplyToMode(this.discordSettings.replyToMode);

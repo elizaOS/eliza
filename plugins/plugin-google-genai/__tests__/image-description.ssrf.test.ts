@@ -39,6 +39,11 @@ vi.mock("../utils/tokenization", () => ({
 }));
 
 import { handleImageDescription } from "../models/image";
+import { installNodeImageUrlFetcher } from "../models/image-url.node";
+
+// The Node entrypoint installs this in production; tests import models
+// directly, so install the same guarded fetcher here.
+installNodeImageUrlFetcher();
 
 function createRuntime(): IAgentRuntime {
   return {
