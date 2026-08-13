@@ -90,6 +90,14 @@ export interface CharacterRouteContext extends RouteRequestContext {
   ) => CharacterValidationResult;
 }
 
+/** Parse the optional character-history limit without silently truncating input. */
+export function parseCharacterHistoryLimit(raw: string | null): number | null {
+  if (raw === null) return 20;
+  if (!/^\d+$/.test(raw)) return null;
+  const parsed = Number(raw);
+  return Number.isSafeInteger(parsed) ? parsed : null;
+}
+
 type CharacterMessageExample = {
   name: string;
   content: {
@@ -373,9 +381,11 @@ export async function handleCharacterRoutes(
     }
 
     const url = new URL(req.url ?? pathname, "http://localhost");
-    const rawLimit = url.searchParams.get("limit");
-    const parsedLimit = rawLimit ? Number.parseInt(rawLimit, 10) : 20;
-    const limit = Number.isFinite(parsedLimit) ? parsedLimit : 20;
+    const limit = parseCharacterHistoryLimit(url.searchParams.get("limit"));
+    if (limit === null) {
+      error(res, "Invalid character history limit.", 400);
+      return true;
+    }
     const history = await listCharacterHistory(state.runtime, limit);
 
     json(res, { history, agentName: state.agentName });
