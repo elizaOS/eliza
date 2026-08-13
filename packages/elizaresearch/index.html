@@ -279,7 +279,7 @@
     octx.drawImage(img, 0, 0, ow, oh);
     const data = octx.getImageData(0, 0, ow, oh).data;
     const pts = [];
-    const stride = Math.max(5, Math.round(scale / 54));
+    const stride = Math.max(4, Math.round(scale / 78));
     const solid = (x, y) => {
       if (x < 0 || y < 0 || x >= ow || y >= oh) return false;
       return data[((y | 0) * ow + (x | 0)) * 4 + 3] > 128;
@@ -292,7 +292,7 @@
     const isEdge = (x, y) =>
       !solid(x - e, y) || !solid(x + e, y) || !solid(x, y - e) || !solid(x, y + e);
     // dense contour pass keeps the outline legible as connected wire
-    const fine = Math.max(5, Math.round(stride * 0.55));
+    const fine = Math.max(3, Math.round(stride * 0.62));
     for (let y = 0; y < oh; y += fine) {
       for (let x = 0; x < ow; x += fine) {
         if (solid(x, y) && isEdge(x, y)) push(x, y);
@@ -301,10 +301,10 @@
     // sparse interior mesh
     for (let y = 0; y < oh; y += stride) {
       for (let x = 0; x < ow; x += stride) {
-        if (solid(x, y) && !isEdge(x, y) && Math.random() < 0.36) push(x, y);
+        if (solid(x, y) && !isEdge(x, y) && Math.random() < 0.42) push(x, y);
       }
     }
-    linkD2 = Math.pow(stride * 2.1, 2);
+    linkD2 = Math.pow(stride * 2.3, 2);
     return pts;
   }
 
@@ -400,20 +400,37 @@
     ctx.globalAlpha = reduced ? 1 : Math.min(1, (now - born) / FADE_MS);
     ctx.strokeStyle = "rgba(255,255,255,0.22)";
     ctx.lineWidth = 1;
+    // uniform grid keeps the link pass linear in particle count
     const LINK = linkD2;
-    for (let i = 0; i < boids.length; i++) {
-      const a = boids[i];
-      for (let j = i + 1; j < boids.length; j++) {
-        const b = boids[j];
-        const dx = a.x - b.x, dy = a.y - b.y, d2 = dx * dx + dy * dy;
-        if (d2 < LINK) {
-          ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+    const cell = Math.sqrt(LINK);
+    const cols = Math.max(1, Math.ceil(W / cell) + 2);
+    const grid = new Map();
+    const key = (cx, cy) => cy * cols + cx;
+    for (const b of boids) {
+      const k = key(((b.x / cell) | 0) + 1, ((b.y / cell) | 0) + 1);
+      const bucket = grid.get(k);
+      if (bucket) bucket.push(b); else grid.set(k, [b]);
+    }
+    ctx.beginPath();
+    for (const b of boids) {
+      const cx = ((b.x / cell) | 0) + 1, cy = ((b.y / cell) | 0) + 1;
+      for (let oy = 0; oy <= 1; oy++) {
+        for (let ox = (oy === 0 ? 0 : -1); ox <= 1; ox++) {
+          const bucket = grid.get(key(cx + ox, cy + oy));
+          if (!bucket) continue;
+          for (const o of bucket) {
+            if (o === b) continue;
+            if (ox === 0 && oy === 0 && o.x < b.x) continue; // each pair once
+            const dx = b.x - o.x, dy = b.y - o.y;
+            if (dx * dx + dy * dy < LINK) { ctx.moveTo(b.x, b.y); ctx.lineTo(o.x, o.y); }
+          }
         }
       }
     }
+    ctx.stroke();
     ctx.fillStyle = "rgba(255,255,255,0.9)";
     for (const b of boids) {
-      ctx.beginPath(); ctx.arc(b.x, b.y, 2, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(b.x, b.y, 1.7, 0, Math.PI * 2); ctx.fill();
     }
   }
 
