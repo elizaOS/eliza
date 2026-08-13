@@ -49,3 +49,39 @@ setInterval(() => {}, 1000);
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+test("settles promptly when a descendant honors SIGTERM", {
+  timeout: 10_000,
+}, () => {
+  const root = mkdtempSync(path.join(os.tmpdir(), "run-with-deadline-grace-"));
+  const descendant = path.join(root, "descendant.mjs");
+  const child = path.join(root, "child.mjs");
+  writeFileSync(
+    descendant,
+    `const timer = setInterval(() => {}, 1000);
+process.on("SIGTERM", () => { clearInterval(timer); process.exit(0); });
+`,
+  );
+  writeFileSync(
+    child,
+    `import { spawn } from "node:child_process";
+spawn(process.execPath, [${JSON.stringify(descendant)}], { stdio: "ignore" });
+process.on("SIGTERM", () => process.exit(0));
+setInterval(() => {}, 1000);
+`,
+  );
+
+  try {
+    const startedAt = Date.now();
+    const result = spawnSync(
+      process.execPath,
+      [SCRIPT, "100", "--", process.execPath, child],
+      { encoding: "utf8", timeout: 10_000 },
+    );
+    assert.equal(result.status, 124, `${result.stdout}\n${result.stderr}`);
+    assert.ok(Date.now() - startedAt < 5_000, "graceful teardown was delayed");
+    assert.doesNotMatch(result.stderr, /termination grace expired/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});

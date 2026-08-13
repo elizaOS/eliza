@@ -113,8 +113,8 @@ function main(argv) {
     }
   };
 
-  const waitForProcessGroupGone = async () => {
-    const deadline = Date.now() + PROCESS_GROUP_REAP_TIMEOUT_MS;
+  const waitForProcessGroupGone = async (timeoutMs) => {
+    const deadline = Date.now() + timeoutMs;
     while (processGroupExists() && Date.now() < deadline) {
       await new Promise((resolve) =>
         setTimeout(resolve, PROCESS_GROUP_REAP_POLL_MS),
@@ -147,12 +147,21 @@ function main(argv) {
     );
     killGroup("SIGTERM");
     void (async () => {
-      await new Promise((resolve) => setTimeout(resolve, TERMINATION_GRACE_MS));
+      const gracefullyReaped = await waitForProcessGroupGone(
+        TERMINATION_GRACE_MS,
+      );
+      if (gracefullyReaped) {
+        timeoutDone = true;
+        finish();
+        return;
+      }
       console.error(
         `[run-with-deadline] termination grace expired; escalating "${command}" process group to SIGKILL`,
       );
       killGroup("SIGKILL");
-      const reaped = await waitForProcessGroupGone();
+      const reaped = await waitForProcessGroupGone(
+        PROCESS_GROUP_REAP_TIMEOUT_MS,
+      );
       if (!reaped) {
         console.error(
           `[run-with-deadline] process group for "${command}" did not confirm reaping after SIGKILL`,
