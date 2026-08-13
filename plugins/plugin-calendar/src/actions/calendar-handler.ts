@@ -243,15 +243,19 @@ function plannerWindowDetail(
   return normalizePlannerCalendarWindow(details?.timeMin, details?.timeMax);
 }
 
-function plannerWindowInputProvided(
+// Whether the planner supplied a window we can actually search with. This has
+// to key off the NORMALIZED pair, not raw presence: an unusable window (one
+// bound, unparseable, reversed) that still counted as "provided" would send an
+// event lookup down the 30-day search default instead of buildWideLookupRange
+// (-365d..+5y), so update/delete-by-title for an event two months out would
+// silently resolve to "not found".
+function plannerWindowUsable(
   details: Record<string, unknown> | undefined,
   llmPlan: CalendarLlmPlan,
 ): boolean {
   return Boolean(
-    detailString(details, "timeMin") ||
-      detailString(details, "timeMax") ||
-      llmPlan.timeMin ||
-      llmPlan.timeMax,
+    plannerWindowDetail(details) ??
+      normalizePlannerCalendarWindow(llmPlan.timeMin, llmPlan.timeMax),
   );
 }
 
@@ -4174,7 +4178,7 @@ const calendarAction: CalendarHandlerAction = {
               }),
             });
           }
-          const feedRequest = plannerWindowInputProvided(details, llmPlan)
+          const feedRequest = plannerWindowUsable(details, llmPlan)
             ? resolveCalendarWindow(intent, details, true, llmPlan).request
             : {
                 calendarId: calendarIdDetail(details),
@@ -4504,7 +4508,7 @@ const calendarAction: CalendarHandlerAction = {
               }),
             });
           }
-          const feedRequest = plannerWindowInputProvided(details, llmPlan)
+          const feedRequest = plannerWindowUsable(details, llmPlan)
             ? resolveCalendarWindow(intent, details, true, llmPlan).request
             : {
                 calendarId: calendarIdDetail(details),
@@ -5059,9 +5063,18 @@ const calendarAction: CalendarHandlerAction = {
           status: error.status,
           code: error.code ?? `CALENDAR_SERVICE_${error.status}`,
           detail: error.message,
-          calendarId: calendarIdDetail(details) ?? "unset",
-          timeMin: plannerWindowDetail(details)?.timeMin ?? "unset",
-          timeMax: plannerWindowDetail(details)?.timeMax ?? "unset",
+          // Raw, deliberately: this diagnostic exists to show the operator what
+          // the planner actually authored. Reporting the sanitized values would
+          // render a placeholder id or a reversed window as "unset" and delete
+          // the evidence for the exact input class the sanitizers absorb, so
+          // both are reported — raw for diagnosis, effective for what ran.
+          calendarId: detailString(details, "calendarId") ?? "unset",
+          effectiveCalendarId: calendarIdDetail(details) ?? "unset",
+          timeMin: detailString(details, "timeMin") ?? "unset",
+          timeMax: detailString(details, "timeMax") ?? "unset",
+          effectiveWindow: plannerWindowDetail(details)
+            ? `${plannerWindowDetail(details)?.timeMin}..${plannerWindowDetail(details)?.timeMax}`
+            : "unset",
           timeZone: detailString(details, "timeZone") ?? "unset",
           mode: detailString(details, "mode") ?? "unset",
           side: detailString(details, "side") ?? "unset",

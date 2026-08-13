@@ -514,10 +514,17 @@ describe("CALENDAR effect receipt settlement", () => {
     });
 
     expect(getCalendarFeed).toHaveBeenCalledOnce();
+    // A rejected planner window is ABSENT, not "provided but unusable": the
+    // lookup has to fall through to the wide by-title range (-365d..+5y), not
+    // the 30-day search default, or an event a couple of months out silently
+    // resolves to "not found".
     expect(
       Date.parse(lookupRequests[0]?.timeMax as string) -
         Date.parse(lookupRequests[0]?.timeMin as string),
-    ).toBe(30 * 24 * 60 * 60 * 1000);
+    ).toBeGreaterThan(365 * 24 * 60 * 60 * 1000);
+    expect(Date.parse(lookupRequests[0]?.timeMin as string)).toBeLessThan(
+      Date.now(),
+    );
     expect(getConditionalCalendarMutationTarget).not.toHaveBeenCalled();
     expect(updateCalendarEvent).toHaveBeenCalledWith(
       expect.any(URL),
@@ -622,10 +629,17 @@ describe("CALENDAR effect receipt settlement", () => {
     });
 
     expect(getCalendarFeed).toHaveBeenCalledOnce();
+    // A rejected planner window is ABSENT, not "provided but unusable": the
+    // lookup has to fall through to the wide by-title range (-365d..+5y), not
+    // the 30-day search default, or an event a couple of months out silently
+    // resolves to "not found".
     expect(
       Date.parse(lookupRequests[0]?.timeMax as string) -
         Date.parse(lookupRequests[0]?.timeMin as string),
-    ).toBe(30 * 24 * 60 * 60 * 1000);
+    ).toBeGreaterThan(365 * 24 * 60 * 60 * 1000);
+    expect(Date.parse(lookupRequests[0]?.timeMin as string)).toBeLessThan(
+      Date.now(),
+    );
     expect(deleteCalendarEvent).toHaveBeenCalledWith(
       expect.any(URL),
       expect.objectContaining({
