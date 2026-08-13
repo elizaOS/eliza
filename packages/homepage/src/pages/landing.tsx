@@ -172,8 +172,7 @@ export default function LandingPage() {
         <div className="landing-hero-copy">
           <h1 className="landing-hero-heading">
             {t("homepage_eliza.landing.heroTitle", {
-              defaultValue:
-                "Get 4 hours of your time back every week with Eliza.",
+              defaultValue: "Get 4 hours of your time back every week.",
             })}
           </h1>
           <p className="landing-hero-lede">
