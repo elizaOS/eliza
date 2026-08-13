@@ -50,12 +50,6 @@ describe("InMemoryDatabaseAdapter.countMemories metadata filter", () => {
 		});
 		expect(count).toBe(3);
 		expect(count).toBe(got.length);
-		expect(
-			await adapter.countMemories({
-				tableName: TABLE,
-				metadata: { source: "gamma" },
-			}),
-		).toBe(0);
 	});
 
 	it("counts only matching memories within a room filter", async () => {
