@@ -51,6 +51,7 @@ function workflowResponse(overrides: Record<string, unknown> = {}) {
     active: true,
     language: 'typescript',
     source: 'export default async function main() { return 1; }',
+    versionId: 'version-current',
     createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-01-01T00:00:00.000Z',
     ...overrides,
@@ -108,6 +109,13 @@ function makeWorkflowService(state: FakeServiceState) {
     getWorkflowExecutions: record('getWorkflowExecutions', [
       { id: 'exec-001', workflowId: 'wf-001', status: 'success' },
     ]),
+    getWorkflowRevisions: record('getWorkflowRevisions', [
+      { id: 'revision-001', versionId: 'version-old' },
+    ]),
+    restoreWorkflowRevision: record(
+      'restoreWorkflowRevision',
+      workflowResponse({ versionId: 'version-old' })
+    ),
   };
 }
 
@@ -226,16 +234,31 @@ describe('plugin-workflow rawPath routes through real dispatch (#19044)', () => 
     expect(state.calls.find((c) => c.method === 'deployWorkflow')).toBeUndefined();
   });
 
+  test('the dispatcher rejects malformed JSON before the workflow handler runs', async () => {
+    const state: FakeServiceState = { calls: [] };
+    const base = await startServer(makeRuntime({ state }));
+
+    const res = await fetch(`${base}/api/workflow/workflows`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: '{',
+    });
+
+    expect(res.status).toBe(400);
+    expect(await res.json()).toMatchObject({ error: 'Invalid JSON body' });
+    expect(state.calls).toEqual([]);
+  });
+
   test('GET /api/workflow/workflows/:id dispatches the decoded id parameter', async () => {
     const state: FakeServiceState = { calls: [] };
     const base = await startServer(makeRuntime({ state }));
 
-    const res = await fetch(`${base}/api/workflow/workflows/wf-001`);
+    const res = await fetch(`${base}/api/workflow/workflows/wf%20one`);
 
     expect(res.status).toBe(200);
     expect(await res.json()).toMatchObject({ id: 'wf-001' });
     const call = state.calls.find((c) => c.method === 'getWorkflow');
-    expect(call?.args[0]).toBe('wf-001');
+    expect(call?.args[0]).toBe('wf one');
   });
 
   test('POST /api/workflow/workflows/:id/run starts a manual execution and answers 202', async () => {
@@ -270,6 +293,39 @@ describe('plugin-workflow rawPath routes through real dispatch (#19044)', () => 
     });
     const call = state.calls.find((c) => c.method === 'cancelExecution');
     expect(call?.args[0]).toBe('exec-001');
+  });
+
+  test('GET /api/workflow/executions/:id returns execution detail for the owner', async () => {
+    const state: FakeServiceState = { calls: [] };
+    const base = await startServer(makeRuntime({ state }));
+
+    const res = await fetch(`${base}/api/workflow/executions/exec-001`);
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({
+      execution: { id: 'exec-001', status: 'success' },
+    });
+    const call = state.calls.find((candidate) => candidate.method === 'getExecutionDetail');
+    expect(call?.args[0]).toBe('exec-001');
+    expect(typeof call?.args[1]).toBe('string');
+  });
+
+  test('POST /api/workflow/workflows/:id/revisions/:versionId/restore decodes both ids', async () => {
+    const state: FakeServiceState = { calls: [] };
+    const base = await startServer(makeRuntime({ state }));
+
+    const res = await postJson(
+      base,
+      '/api/workflow/workflows/wf%20one/revisions/version%20old/restore',
+      {}
+    );
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ id: 'wf-001', versionId: 'version-old' });
+    const call = state.calls.find((candidate) => candidate.method === 'restoreWorkflowRevision');
+    expect(call?.args[0]).toBe('wf one');
+    expect(call?.args[1]).toBe('version old');
+    expect(typeof call?.args[2]).toBe('string');
   });
 
   test('the dispatcher auth gate rejects unauthenticated calls before any handler runs', async () => {
