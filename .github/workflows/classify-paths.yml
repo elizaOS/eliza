@@ -1,0 +1,121 @@
+# Reusable path-classification workflow — consolidates the classifier job that
+# was duplicated across 4+ workflow files into one reusable contract (#14051
+# Tier B). Each consumer workflow calls this via `uses:` and reads the lane
+# outputs it needs.
+#
+# Runner routing: GitHub-hosted for PR events (SPOF guard #13617/#8501 — a
+# drained self-hosted fleet must not leave the classifier queued). Non-PR
+# events (push, schedule, workflow_dispatch) retain the fleet-aware
+# conditional so a self-hosted runner can serve the post-merge classifier when
+# the fleet is online, matching the routing the consumers previously used.
+name: Classify Paths
+
+on:
+  workflow_call:
+    inputs:
+      config:
+        description: "ci-path-gate config name: test, scenario-pr, docker, dev-smoke"
+        required: true
+        type: string
+      run_windows_contract:
+        description: "Run the Windows command-coverage contract (ci.yml only)"
+        required: false
+        type: boolean
+        default: false
+    # Reusable workflows must declare outputs at the workflow_call level so
+    # callers can read them via needs.<job>.outputs.<name>. Without this block
+    # every consumer's needs.changes.outputs.* would be null/undefined.
+    outputs:
+      server:
+        description: "Server lane affected"
+        value: ${{ jobs.classify.outputs.server }}
+      client:
+        description: "Client lane affected"
+        value: ${{ jobs.classify.outputs.client }}
+      plugins:
+        description: "Plugins lane affected"
+        value: ${{ jobs.classify.outputs.plugins }}
+      desktop:
+        description: "Desktop lane affected"
+        value: ${{ jobs.classify.outputs.desktop }}
+      zero_key:
+        description: "Zero-key E2E lane affected"
+        value: ${{ jobs.classify.outputs.zero_key }}
+      cloud:
+        description: "Cloud lane affected"
+        value: ${{ jobs.classify.outputs.cloud }}
+      android_aab:
+        description: "Android release AAB lane affected"
+        value: ${{ jobs.classify.outputs.android_aab }}
+      dev_smoke:
+        description: "Dev-smoke lane affected"
+        value: ${{ jobs.classify.outputs.dev_smoke }}
+      docker:
+        description: "Docker smoke lane affected"
+        value: ${{ jobs.classify.outputs.docker }}
+      run_scenario_pr:
+        description: "Scenario PR lane affected"
+        value: ${{ jobs.classify.outputs.run_scenario_pr }}
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: "24.15.0"
+
+jobs:
+  classify:
+    name: Classify changed paths
+    # PR events use GitHub-hosted runners (SPOF guard #13617/#8501). Non-PR
+    # events (push, schedule, dispatch) use the fleet-aware conditional so a
+    # self-hosted runner can serve the classifier when the fleet is online —
+    # matching the routing dev-smoke.yml and scenario-pr.yml previously used.
+    runs-on: ${{ fromJSON(github.event_name == 'pull_request' && '["ubuntu-24.04"]' || vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    timeout-minutes: 10
+    outputs:
+      server: ${{ steps.filter.outputs.server }}
+      client: ${{ steps.filter.outputs.client }}
+      plugins: ${{ steps.filter.outputs.plugins }}
+      desktop: ${{ steps.filter.outputs.desktop }}
+      zero_key: ${{ steps.filter.outputs.zero_key }}
+      cloud: ${{ steps.filter.outputs.cloud }}
+      android_aab: ${{ steps.filter.outputs.android_aab }}
+      dev_smoke: ${{ steps.filter.outputs.dev_smoke }}
+      docker: ${{ steps.filter.outputs.docker }}
+      run_scenario_pr: ${{ steps.filter.outputs.run_scenario_pr }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          submodules: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      # Deterministic contract: every lane command the workflows reference must
+      # keep its Windows coverage inventory in sync. This check was previously
+      # embedded in ci.yml's classify job; it is opt-in here so lightweight
+      # consumers (dev-smoke, scenario-pr, docker) do not pay for it.
+      - name: Validate Windows command coverage contract
+        if: inputs.run_windows_contract
+        run: node packages/scripts/ci-windows-command-coverage-contract.mjs
+
+      - name: Classify affected test surfaces
+        id: filter
+        shell: bash
+        env:
+          GATE_CONFIG: ${{ inputs.config }}
+          PR_LABELS: ${{ github.event_name == 'pull_request' && join(github.event.pull_request.labels.*.name, ',') || '' }}
+          BASE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || '' }}
+          HEAD_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || '' }}
+        run: |
+          set -euo pipefail
+          node packages/scripts/ci-path-gate.mjs \
+            --config "$GATE_CONFIG" \
+            --event "${GITHUB_EVENT_NAME}" \
+            --base "$BASE_SHA" \
+            --head "$HEAD_SHA" \
+            --labels "$PR_LABELS" \
+            --output "$GITHUB_OUTPUT" \
+            --summary "$GITHUB_STEP_SUMMARY"

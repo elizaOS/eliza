@@ -322,12 +322,15 @@ describe("GitHub action supply-chain references", () => {
       "utf8",
     );
     const workflow = Bun.YAML.parse(source) as {
-      jobs?: Record<string, { "runs-on"?: string }>;
+      jobs?: Record<string, { "runs-on"?: string; uses?: string }>;
     };
     const classifier = workflow.jobs?.changes;
     const job = workflow.jobs?.["docker-ci-smoke"];
 
-    expect(classifier?.["runs-on"]).toBe("ubuntu-24.04");
+    // The classifier is now delegated to the reusable classify-paths workflow,
+    // which is hardcoded to ubuntu-24.04. Verify the delegation exists; the
+    // reusable workflow's own contract test enforces its runs-on.
+    expect(classifier?.uses).toContain("classify-paths.yml");
     expect(job?.["runs-on"]).toBe("ubuntu-24.04");
   });
 });

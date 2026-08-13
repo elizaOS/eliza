@@ -31,48 +31,10 @@ env:
 jobs:
   changes:
     name: Classify changes
-    runs-on: ubuntu-24.04
-    outputs:
-      server: ${{ steps.filter.outputs.server }}
-      client: ${{ steps.filter.outputs.client }}
-      plugins: ${{ steps.filter.outputs.plugins }}
-      desktop: ${{ steps.filter.outputs.desktop }}
-      zero_key: ${{ steps.filter.outputs.zero_key }}
-      cloud: ${{ steps.filter.outputs.cloud }}
-      android_aab: ${{ steps.filter.outputs.android_aab }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-        with:
-          fetch-depth: 0
-          submodules: false
-
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-
-      # Deterministic contract: every lane command the workflows reference must
-      # keep its Windows coverage inventory in sync (pre-consolidation this ran
-      # from the Tests classify job).
-      - name: Validate Windows command coverage contract
-        run: node packages/scripts/ci-windows-command-coverage-contract.mjs
-
-      - name: Classify affected test surfaces
-        id: filter
-        shell: bash
-        env:
-          PR_LABELS: ${{ github.event_name == 'pull_request' && join(github.event.pull_request.labels.*.name, ',') || '' }}
-          BASE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || '' }}
-          HEAD_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || '' }}
-        run: |
-          set -euo pipefail
-          node packages/scripts/ci-path-gate.mjs \
-            --config test \
-            --event "${GITHUB_EVENT_NAME}" \
-            --base "$BASE_SHA" \
-            --head "$HEAD_SHA" \
-            --labels "$PR_LABELS" \
-            --output "$GITHUB_OUTPUT" \
-            --summary "$GITHUB_STEP_SUMMARY"
+    uses: ./.github/workflows/classify-paths.yml
+    with:
+      config: test
+      run_windows_contract: true
 
   quality:
     name: Quality
