@@ -18,6 +18,7 @@ import {
 import { logger } from "../../utils/logger";
 import { normalizePhoneNumber } from "../../utils/phone-normalization";
 import { launchManagedElizaAgent } from "../eliza-managed-launch";
+import { readOnboardingCoordinatorResult } from "./onboarding-coordinator-transport";
 import {
   enqueueDiscordProactiveGreeting,
   PROACTIVE_GREETING_QUEUE_PREFIX,
@@ -1534,19 +1535,12 @@ function onboardingCoordinator(): RuntimeDurableObjectNamespace | undefined {
   return getCloudBinding<RuntimeDurableObjectNamespace>("ONBOARDING_SESSIONS");
 }
 
-async function readCoordinatorResult(response: Response): Promise<OnboardingChatResult> {
-  if (!response.ok) {
-    throw new Error(`onboarding session coordinator failed (${response.status})`);
-  }
-  return (await response.json()) as OnboardingChatResult;
-}
-
 async function runViaCoordinator(
   stub: RuntimeDurableObjectStub,
   input: OnboardingChatInput,
   sessionId: string,
 ): Promise<OnboardingChatResult> {
-  return readCoordinatorResult(
+  return readOnboardingCoordinatorResult<OnboardingChatResult>(
     await stub.fetch("https://onboarding.internal/turn", {
       method: "POST",
       headers: { "content-type": "application/json" },
