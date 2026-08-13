@@ -6,10 +6,13 @@
  */
 
 import { beforeAll, describe, expect, mock, test } from "bun:test";
+import { spawn } from "node:child_process";
+import { once } from "node:events";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { Readable } from "node:stream";
+import { fileURLToPath } from "node:url";
 
 import {
   classifyResult,
@@ -213,6 +216,78 @@ describe("registry (real plan discovery)", () => {
     });
     expect(suiteState(withKey)).toBe("armed");
   }, 30_000);
+});
+
+describe("server entrypoint", () => {
+  test("starts through a symlinked path containing spaces", async () => {
+    const tempDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "eliza test-console-entrypoint-"),
+    );
+    const linkedServer = path.join(tempDir, "linked server.mjs");
+    fs.symlinkSync(
+      fileURLToPath(new URL("../server.mjs", import.meta.url)),
+      linkedServer,
+    );
+
+    const child = spawn("node", [linkedServer], {
+      env: {
+        ...process.env,
+        ELIZA_TEST_CONSOLE_DIR: path.join(tempDir, "state"),
+        ELIZA_TEST_CONSOLE_PORT: "0",
+      },
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    child.stdout.setEncoding("utf8");
+    child.stderr.setEncoding("utf8");
+
+    let stdout = "";
+    let stderr = "";
+    child.stdout.on("data", (chunk) => {
+      stdout += chunk;
+    });
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk;
+    });
+
+    let startupTimer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await Promise.race([
+        new Promise<void>((resolve) => {
+          child.stdout.on("data", () => {
+            if (stdout.includes("[TestConsole] listening")) resolve();
+          });
+        }),
+        new Promise<never>((_, reject) => {
+          child.once("exit", (code, signal) => {
+            reject(
+              new Error(
+                `test console exited before listening (code=${code}, signal=${signal}, stderr=${stderr})`,
+              ),
+            );
+          });
+        }),
+        new Promise<never>((_, reject) => {
+          startupTimer = setTimeout(
+            () =>
+              reject(
+                new Error(
+                  `timed out waiting for test console startup (stdout=${stdout}, stderr=${stderr})`,
+                ),
+              ),
+            5_000,
+          );
+        }),
+      ]);
+      expect(child.exitCode).toBeNull();
+    } finally {
+      if (startupTimer) clearTimeout(startupTimer);
+      if (child.exitCode === null) {
+        child.kill("SIGTERM");
+        await once(child, "exit");
+      }
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+  }, 10_000);
 });
 
 describe("route: POST /api/run rejects invalid concurrency before live-lane side effects", () => {

@@ -358,9 +358,9 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-// Guard the listen so importing this module (route-level tests) never binds
-// a real port; only running it directly (`bun run test:console`) starts it.
-if (import.meta.url === `file://${process.argv[1]}`) {
+// Keep route imports side-effect free while preserving startup through
+// canonical, symlinked, and URL-escaped entrypoint paths.
+if (import.meta.main) {
   server.listen(PORT, HOST, () => {
     console.log(`[TestConsole] listening on http://${HOST}:${PORT}`);
     console.log(`[TestConsole] state dir: ${consoleDir()}`);
