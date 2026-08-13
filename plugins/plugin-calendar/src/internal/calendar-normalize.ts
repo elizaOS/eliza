@@ -46,12 +46,17 @@ export function normalizeCalendarTimeZone(value: unknown): string {
 }
 
 function validateExplicitCalendarDate(text: string, field: string): void {
-  const match = /^(\d{4})-(\d{1,2})-(\d{1,2})(?:[T ]|$)/.exec(text);
-  if (!match) return;
+  const match =
+    /^(?<year>[+-]?\d{4,6})-(?<month>\d{1,2})-(?<day>\d{1,2})(?:(?:T| )\d{1,2}:\d{2}(?::\d{2}(?:\.\d{1,9})?)?)?(?:[zZ]|[+-]\d{2}:?\d{2})$/.exec(
+      text,
+    );
+  if (!match?.groups) {
+    fail(400, `${field} must be a valid ISO datetime`);
+  }
 
-  const year = Number(match[1]);
-  const month = Number(match[2]);
-  const day = Number(match[3]);
+  const year = Number(match.groups.year);
+  const month = Number(match.groups.month);
+  const day = Number(match.groups.day);
   const leapYear = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
   const daysInMonth = [
     31,
@@ -87,7 +92,7 @@ export function normalizeCalendarDateTimeInTimeZone(
     return undefined;
   }
   const text = requireNonEmptyString(value, field);
-  if (/[zZ]|[+-]\d{2}:\d{2}$/.test(text)) {
+  if (/[zZ]$|[+-]\d{2}:?\d{2}$/.test(text)) {
     validateExplicitCalendarDate(text, field);
     return normalizeIsoString(text, field);
   }
