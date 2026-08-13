@@ -1,27 +1,6 @@
 /**
- * Fail-closed money boundary for `payment_requests.amount_cents` reads
- * (#13416, cloud-shared DB-repository fallback-slop sweep).
- *
- * `amount_cents` is a NOT NULL `bigint` column. Before this slice `toDomain`
- * read it with a bare `Number(row.amount_cents)`, which fails open two ways and
- * flows straight into the Stripe adapter:
- *
- *   - `Number(veryLargeBigInt)` loses precision above `2^53 - 1`, so the
- *     `unit_amount: request.amountCents` sent to Stripe no longer equals the
- *     authorized amount — a mischarge with no error.
- *   - `Number(<malformed string from a raw-query/driver path>)` is `NaN`, and
- *     the adapter's reject guard `if (request.amountCents <= 0)` evaluates
- *     `NaN <= 0` as `false`, so a request with no readable amount slips past the
- *     zero/negative check and a checkout session is created for `NaN`.
- *
- * The parser suite pins the boundary exhaustively (deterministic, no DB). The
- * PGlite wiring test proves `getPaymentRequest` round-trips a real stored amount
- * (incl. a large-but-safe value) through the parser without precision loss and
- * returns `null` — not a fabricated row — for a genuinely-missing id. A corrupt
- * bigint cannot be *stored* in Postgres/PGlite, so the corrupt/oversized
- * fail-closed behavior is proven at the parser boundary the method calls (the
- * regression cases below), which is exactly the read-time driver-quirk /
- * raw-query failure mode this guards.
+ * Exercises amount parsing and lifecycle compare-and-set behavior with deterministic fixtures.
+ * Parser cases cover malformed driver values; repository cases use an isolated real PGlite database.
  */
 
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
@@ -36,6 +15,8 @@ process.env.NODE_ENV ||= "test";
 process.env.MOCK_REDIS = "1";
 
 import { pushSchema } from "drizzle-kit/api";
+import { eq } from "drizzle-orm";
+import { createPaymentRequestsService } from "../../../lib/services/payment-requests";
 import { closeDatabaseConnectionsForTests, dbWrite } from "../../client";
 import {
   appDeploymentStatusEnum,
@@ -44,7 +25,7 @@ import {
   userDatabaseStatusEnum,
 } from "../../schemas/apps";
 import { organizations } from "../../schemas/organizations";
-import { paymentRequests } from "../../schemas/payment-requests";
+import { paymentRequestEvents, paymentRequests } from "../../schemas/payment-requests";
 import { users } from "../../schemas/users";
 import { PaymentRequestsRepository } from "../payment-requests";
 import { parsePaymentAmountCents } from "../payment-requests-numeric";
@@ -123,7 +104,7 @@ describe("parsePaymentAmountCents", () => {
   });
 });
 
-describe("PaymentRequestsRepository.getPaymentRequest fail-closed wiring", () => {
+describe("PaymentRequestsRepository real PGlite wiring", () => {
   const PGLITE_TIMEOUT = 60_000;
   const repo = new PaymentRequestsRepository();
   let pgliteReady = true;
@@ -148,6 +129,7 @@ describe("PaymentRequestsRepository.getPaymentRequest fail-closed wiring", () =>
         users,
         apps,
         paymentRequests,
+        paymentRequestEvents,
         appDeploymentStatusEnum,
         appReviewStatusEnum,
         userDatabaseStatusEnum,
@@ -165,6 +147,7 @@ describe("PaymentRequestsRepository.getPaymentRequest fail-closed wiring", () =>
 
   beforeEach(async () => {
     expect(pgliteReady).toBe(true);
+    await dbWrite.delete(paymentRequestEvents);
     await dbWrite.delete(paymentRequests);
     await dbWrite.delete(organizations);
   });
@@ -238,5 +221,217 @@ describe("PaymentRequestsRepository.getPaymentRequest fail-closed wiring", () =>
 
     const fetched = await repo.getPaymentRequest(created.id);
     expect(fetched?.amountCents).toBe(0);
+  });
+
+  const createRequest = (organizationId: string, expiresAt: Date) =>
+    repo.createPaymentRequest({
+      organizationId,
+      provider: "stripe",
+      amountCents: 500,
+      currency: "usd",
+      paymentContext: { kind: "any_payer" },
+      expiresAt,
+    });
+
+  const eventsFor = (paymentRequestId: string) =>
+    dbWrite
+      .select()
+      .from(paymentRequestEvents)
+      .where(eq(paymentRequestEvents.payment_request_id, paymentRequestId));
+
+  const transitionEventsFor = async (paymentRequestId: string) =>
+    (await eventsFor(paymentRequestId)).filter((event) => event.event_name !== "payment.created");
+
+  test("creates the request and its lifecycle event atomically", async () => {
+    const created = await createRequest(await seedOrg(), new Date("2030-01-01T00:00:00Z"));
+
+    expect((await eventsFor(created.id)).map((event) => event.event_name)).toEqual([
+      "payment.created",
+    ]);
+  });
+
+  test("duplicate settlement callbacks commit one transition and event", async () => {
+    const created = await createRequest(await seedOrg(), new Date("2030-01-01T00:00:00Z"));
+    const recordedAt = new Date("2029-12-31T23:59:59Z");
+
+    const results = await Promise.all([
+      repo.settlePaymentRequest(created.id, recordedAt, "pi-same", {}),
+      repo.settlePaymentRequest(created.id, recordedAt, "pi-same", {}),
+    ]);
+
+    expect(results.filter(Boolean)).toHaveLength(1);
+    expect((await repo.getPaymentRequest(created.id))?.settlementTxRef).toBe("pi-same");
+    expect((await transitionEventsFor(created.id)).map((event) => event.event_name)).toEqual([
+      "payment.settled",
+    ]);
+  });
+
+  test("settle and fail cannot commit mixed terminal state", async () => {
+    const created = await createRequest(await seedOrg(), new Date("2030-01-01T00:00:00Z"));
+    const recordedAt = new Date("2029-12-31T23:59:59Z");
+
+    const results = await Promise.all([
+      repo.settlePaymentRequest(created.id, recordedAt, "pi-race", { event: "synthetic" }),
+      repo.failPaymentRequest(created.id, "synthetic failure", recordedAt),
+    ]);
+    expect(results.filter(Boolean)).toHaveLength(1);
+
+    const row = await repo.getPaymentRequest(created.id);
+    const events = await transitionEventsFor(created.id);
+    if (row?.status === "settled") {
+      expect(row.settlementTxRef).toBe("pi-race");
+      expect(events.map((event) => event.event_name)).toEqual(["payment.settled"]);
+    } else {
+      expect(row).toMatchObject({
+        status: "failed",
+        settledAt: null,
+        settlementTxRef: null,
+        settlementProof: null,
+      });
+      expect(events.map((event) => event.event_name)).toEqual(["payment.failed"]);
+    }
+  });
+
+  test("settle and cancel commit one matching terminal event", async () => {
+    const organizationId = await seedOrg();
+    const created = await createRequest(organizationId, new Date("2030-01-01T00:00:00Z"));
+    const recordedAt = new Date("2029-12-31T23:59:59Z");
+
+    const results = await Promise.all([
+      repo.settlePaymentRequest(created.id, recordedAt, "pi-cancel-race", {}),
+      repo.cancelPaymentRequest(created.id, organizationId, "synthetic cancel", recordedAt),
+    ]);
+    expect(results.filter(Boolean)).toHaveLength(1);
+
+    const row = await repo.getPaymentRequest(created.id);
+    const events = await transitionEventsFor(created.id);
+    expect(row?.status === "settled" ? row.settlementTxRef : row?.status).toBe(
+      row?.status === "settled" ? "pi-cancel-race" : "canceled",
+    );
+    expect(events.map((event) => event.event_name)).toEqual([
+      row?.status === "settled" ? "payment.settled" : "payment.canceled",
+    ]);
+  });
+
+  test("expiry wins at the exact deadline before checkout initialization", async () => {
+    const deadline = new Date("2030-01-01T00:00:00Z");
+    const created = await createRequest(await seedOrg(), deadline);
+
+    const [initialized, expired] = await Promise.all([
+      repo.initializePaymentRequest(
+        created.id,
+        { stripe_session_id: "cs_too_late" },
+        "https://checkout.example.test/too-late",
+        deadline,
+      ),
+      repo.expirePastPaymentRequest(created.id, deadline),
+    ]);
+
+    expect(initialized).toBeNull();
+    expect(expired).toBe(true);
+    expect(await repo.getPaymentRequest(created.id)).toMatchObject({
+      status: "expired",
+      hostedUrl: null,
+      providerIntent: {},
+    });
+    expect((await transitionEventsFor(created.id)).map((event) => event.event_name)).toEqual([
+      "payment.expired",
+    ]);
+  });
+
+  test("keeps a delivered request settlement-eligible after its public deadline", async () => {
+    const deadline = new Date("2030-01-01T00:00:00Z");
+    const created = await createRequest(await seedOrg(), deadline);
+    const delivered = await repo.initializePaymentRequest(
+      created.id,
+      { stripe_session_id: "cs_delivered" },
+      "https://checkout.example.test/delivered",
+      new Date("2029-12-31T23:59:59Z"),
+    );
+
+    expect(delivered?.status).toBe("delivered");
+    expect(await repo.expirePastPaymentRequests(deadline)).toEqual([]);
+    expect(
+      await repo.settlePaymentRequest(
+        created.id,
+        new Date("2030-01-01T00:00:01Z"),
+        "pi-after-deadline",
+        {},
+      ),
+    ).toMatchObject({ status: "settled", settlementTxRef: "pi-after-deadline" });
+    expect((await transitionEventsFor(created.id)).map((event) => event.event_name)).toEqual([
+      "payment.delivered",
+      "payment.settled",
+    ]);
+  });
+
+  test("create cannot persist or return a provider URL after expiry wins", async () => {
+    let releaseIntent: (() => void) | undefined;
+    const intentBlocked = new Promise<void>((resolve) => {
+      releaseIntent = resolve;
+    });
+    let requestCreated:
+      | ((row: Awaited<ReturnType<typeof repo.createPaymentRequest>>) => void)
+      | undefined;
+    const createdRequest = new Promise<Awaited<ReturnType<typeof repo.createPaymentRequest>>>(
+      (resolve) => {
+        requestCreated = resolve;
+      },
+    );
+    const service = createPaymentRequestsService({
+      repository: repo,
+      adapters: [
+        {
+          provider: "stripe",
+          async createIntent({ request }) {
+            requestCreated?.(request);
+            await intentBlocked;
+            return {
+              hostedUrl: "https://checkout.example.test/orphan",
+              providerIntent: { stripe_session_id: "cs_orphan" },
+            };
+          },
+        },
+      ],
+    });
+
+    const creating = service.create({
+      organizationId: await seedOrg(),
+      provider: "stripe",
+      amountCents: 500,
+      currency: "usd",
+      paymentContext: { kind: "any_payer" },
+    });
+    const created = await createdRequest;
+    expect(await repo.expirePastPaymentRequest(created.id, created.expiresAt)).toBe(true);
+    releaseIntent?.();
+
+    await expect(creating).rejects.toThrow('already in terminal status "expired"');
+    expect(await repo.getPaymentRequest(created.id)).toMatchObject({
+      status: "expired",
+      hostedUrl: null,
+      providerIntent: {},
+    });
+    expect((await eventsFor(created.id)).map((event) => event.event_name)).toEqual([
+      "payment.created",
+      "payment.expired",
+    ]);
+  });
+
+  test("expiry sweep commits an event for each transitioned request", async () => {
+    const organizationId = await seedOrg();
+    const deadline = new Date("2030-01-01T00:00:00Z");
+    const first = await createRequest(organizationId, deadline);
+    const second = await createRequest(organizationId, deadline);
+
+    expect((await repo.expirePastPaymentRequests(deadline)).sort()).toEqual(
+      [first.id, second.id].sort(),
+    );
+    expect((await transitionEventsFor(first.id)).map((event) => event.event_name)).toEqual([
+      "payment.expired",
+    ]);
+    expect((await transitionEventsFor(second.id)).map((event) => event.event_name)).toEqual([
+      "payment.expired",
+    ]);
   });
 });
