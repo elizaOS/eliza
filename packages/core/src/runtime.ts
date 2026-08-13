@@ -151,6 +151,7 @@ import {
 	getStreamingContext,
 	runInsideModelStreamChunkDelivery,
 	runWithStreamingContext,
+	runWithSuppressedModelStream,
 } from "./streaming-context";
 import {
 	getTrajectoryContext,
@@ -5089,10 +5090,12 @@ export class AgentRuntime implements IAgentRuntime {
 									abortSignal: workController.signal,
 								},
 								() =>
-									withProviderStep(providerRuntime, provider.name, () =>
-										provider.get(providerRuntime, message, cachedState, {
-											signal: workController.signal,
-										}),
+									runWithSuppressedModelStream(() =>
+										withProviderStep(providerRuntime, provider.name, () =>
+											provider.get(providerRuntime, message, cachedState, {
+												signal: workController.signal,
+											}),
+										),
 									),
 							),
 						workController.signal,
