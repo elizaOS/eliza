@@ -107,6 +107,17 @@ export function optionalStringArray(
 
 const GITHUB_OWNER_PATTERN = /^(?=.{1,39}$)[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*$/;
 const GITHUB_REPO_PATTERN = /^[A-Za-z0-9._-]{1,100}$/;
+const RAW_DOT_SEGMENT_PATTERN = /^(?:\.|%2e){1,2}$/i;
+
+function hasRawControlOrBackslash(value: string): boolean {
+  for (const character of value) {
+    const code = character.charCodeAt(0);
+    if (character === "\\" || code <= 0x1f || code === 0x7f) {
+      return true;
+    }
+  }
+  return false;
+}
 
 /**
  * Parses a GitHub repository locator into its owner and repository name.
@@ -115,12 +126,19 @@ const GITHUB_REPO_PATTERN = /^[A-Za-z0-9._-]{1,100}$/;
  * credentials and non-default ports. WHATWG URL parsing normalizes explicit
  * default ports, so `:80` on HTTP and `:443` on HTTPS remain valid. Alternate
  * hosts are rejected because this plugin's Octokit client has no GHE base URL.
+ * Outer whitespace is trimmed, but raw ASCII controls, backslashes, and raw or
+ * percent-encoded dot path segments are rejected before WHATWG normalization
+ * can retarget the locator. Query and fragment contents are discarded.
  */
 export function splitRepo(
   repo: string,
 ): { owner: string; name: string } | null {
+  if (hasRawControlOrBackslash(repo)) {
+    return null;
+  }
+
   const cleaned = repo.trim();
-  if (!cleaned || cleaned.includes("\\")) {
+  if (!cleaned) {
     return null;
   }
 
@@ -130,15 +148,27 @@ export function splitRepo(
   let path = cleaned;
 
   if (isHttpUrl || isBareGitHubUrl) {
-    const authority = cleaned.match(/^(?:https?:\/\/)?([^/?#]*)/i)?.[1];
-    if (!authority || authority.includes("@")) {
+    const rawUrl = isBareGitHubUrl ? `https://${cleaned}` : cleaned;
+    const rawParts = /^https?:\/\/([^/?#]+)(\/[^?#]*)?(?:[?#][\s\S]*)?$/i.exec(
+      rawUrl,
+    );
+    const authority = rawParts?.[1];
+    const rawPath = rawParts?.[2] ?? "";
+    if (
+      !authority ||
+      authority.includes("@") ||
+      rawPath
+        .split("/")
+        .some((segment) => RAW_DOT_SEGMENT_PATTERN.test(segment))
+    ) {
       return null;
     }
 
     let parsed: URL;
     try {
-      parsed = new URL(isBareGitHubUrl ? `https://${cleaned}` : cleaned);
+      parsed = new URL(rawUrl);
     } catch {
+      // error-policy:J3 Malformed repository URLs remain explicitly invalid.
       return null;
     }
 
