@@ -242,7 +242,7 @@
   const ctx = canvas.getContext("2d");
   const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
   let W, H, dpr;
-  const N = 90;
+  const N = 55;
   const boids = [];
 
   function resize() {
@@ -254,29 +254,31 @@
   resize();
   addEventListener("resize", resize);
 
-  for (let i = 0; i < N; i++) {
-    const a = Math.random() * Math.PI * 2;
-    boids.push({ x: Math.random() * innerWidth, y: Math.random() * innerHeight,
-      vx: Math.cos(a) * 0.6, vy: Math.sin(a) * 0.6 });
+  function seed() {
+    for (let i = 0; i < N; i++) {
+      const a = Math.random() * Math.PI * 2;
+      boids.push({ x: Math.random() * W, y: Math.random() * H,
+        vx: Math.cos(a) * 0.22, vy: Math.sin(a) * 0.22 });
+    }
   }
 
   function step() {
+    if (!boids.length) { if (W > 0 && H > 0) seed(); else return; }
     for (const b of boids) {
       let ax = 0, ay = 0, cx = 0, cy = 0, n = 0;
       for (const o of boids) {
         if (o === b) continue;
         const dx = o.x - b.x, dy = o.y - b.y, d2 = dx * dx + dy * dy;
-        if (d2 < 90 * 90) { cx += o.x; cy += o.y; ax += o.vx; ay += o.vy; n++; }
-        if (d2 < 26 * 26 && d2 > 0) { b.vx -= dx / d2 * 6; b.vy -= dy / d2 * 6; }
+        if (d2 < 190 * 190) { cx += o.x; cy += o.y; ax += o.vx; ay += o.vy; n++; }
+        if (d2 < 90 * 90 && d2 > 0) { b.vx -= dx / d2 * 7; b.vy -= dy / d2 * 7; }
       }
       if (n) {
-        b.vx += ((cx / n - b.x) * 0.0012) + ((ax / n - b.vx) * 0.03);
-        b.vy += ((cy / n - b.y) * 0.0012) + ((ay / n - b.vy) * 0.03);
+        b.vx += ((cx / n - b.x) * 0.0004) + ((ax / n - b.vx) * 0.015);
+        b.vy += ((cy / n - b.y) * 0.0004) + ((ay / n - b.vy) * 0.015);
       }
       const sp = Math.hypot(b.vx, b.vy) || 1;
-      const target = 0.8;
-      b.vx = b.vx / sp * Math.min(Math.max(sp, 0.4), 1.4);
-      b.vy = b.vy / sp * Math.min(Math.max(sp, 0.4), 1.4);
+      b.vx = b.vx / sp * Math.min(Math.max(sp, 0.12), 0.45);
+      b.vy = b.vy / sp * Math.min(Math.max(sp, 0.12), 0.45);
       b.x += b.vx; b.y += b.vy;
       if (b.x < -10) b.x = W + 10; if (b.x > W + 10) b.x = -10;
       if (b.y < -10) b.y = H + 10; if (b.y > H + 10) b.y = -10;
@@ -291,7 +293,7 @@
       for (let j = i + 1; j < boids.length; j++) {
         const a = boids[i], b = boids[j];
         const dx = a.x - b.x, dy = a.y - b.y;
-        if (dx * dx + dy * dy < 70 * 70) {
+        if (dx * dx + dy * dy < 150 * 150) {
           ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
         }
       }
