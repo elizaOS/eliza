@@ -26,6 +26,9 @@ Create a repo-root `deploy/deploy.env` and override only what differs from `depl
 ## Common Commands
 
 ```bash
+# Build the cloud-agent image from the repository-root context.
+bun run packages/cloud/scripts/admin/dev/build-cloud-agent-image.mjs
+
 # Build a local image and walk through setup.
 cd deploy
 bash ../eliza/packages/app-core/deploy/docker-setup.sh

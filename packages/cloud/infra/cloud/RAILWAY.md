@@ -37,6 +37,14 @@ The `operator` service (Pepr Kubernetes operator) and the kind cluster under
 [`local/`](./local/) are **local development only** — nothing in production
 runs on Kubernetes.
 
+The OrbStack profiles under [`orbstack/`](./orbstack/) emulate this current
+map without claiming the providers themselves run on Kubernetes: local
+StatefulSets stand in for Railway PostgreSQL/Redis, Wrangler local mode runs
+the Worker under workerd, the Bun container control plane retains its process
+boundary, and dedicated agents run as real Docker containers. Cloudflare edge
+placement, account policy, DNS/TLS, Railway and Hetzner management planes,
+headscale routing, and real third-party delivery remain provider-only concerns.
+
 Steward (the auth provider) runs **embedded in the Worker**: `bootstrap-app.ts`
 mounts the embedded handler at `/steward*`
 (`packages/cloud/api/src/steward/embedded.ts`); the `STEWARD_*` secrets in

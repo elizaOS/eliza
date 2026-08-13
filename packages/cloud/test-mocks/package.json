@@ -7,15 +7,18 @@
   "exports": {
     ".": "./src/index.ts",
     "./hetzner": "./src/hetzner/index.ts",
-    "./control-plane": "./src/control-plane/index.ts"
+    "./control-plane": "./src/control-plane/index.ts",
+    "./openai": "./src/openai/index.ts"
   },
   "bin": {
     "hetzner-mock": "./bin/hetzner-mock.ts",
-    "control-plane-mock": "./bin/control-plane-mock.ts"
+    "control-plane-mock": "./bin/control-plane-mock.ts",
+    "openai-mock": "./bin/openai-mock.ts"
   },
   "scripts": {
     "start:hetzner": "bun run ./bin/hetzner-mock.ts",
     "start:control-plane": "bun run ./bin/control-plane-mock.ts",
+    "start:openai": "bun run ./bin/openai-mock.ts",
     "test": "bun test",
     "format": "bunx @biomejs/biome format --write package.json src test bin",
     "format:check": "bunx @biomejs/biome format package.json src test bin"

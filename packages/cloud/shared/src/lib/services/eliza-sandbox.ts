@@ -3450,6 +3450,13 @@ export class ElizaSandboxService {
     if (!this.isCloudflareWorkerRuntime()) return null;
 
     const env = getCloudAwareEnv();
+    // Local parity runs the real Worker runtime, but its agents are Docker
+    // containers with loopback-published endpoints rather than router-managed
+    // production hosts. Both bindings are required so a deployed environment
+    // cannot silently bypass the authenticated agent-router path.
+    if (env.ENVIRONMENT === "local" && env.ELIZA_LOCAL_DOCKER_PROVIDER === "1") {
+      return null;
+    }
     const originHost = this.getRequiredWorkerRoutingHost(
       "AGENT_ROUTER_ORIGIN_HOST",
       env.AGENT_ROUTER_ORIGIN_HOST,
@@ -3614,8 +3621,36 @@ export class ElizaSandboxService {
   }
 
   private async getTrustedDockerBridgeBaseUrl(
-    sandbox: Pick<AgentSandbox, "node_id" | "bridge_port" | "headscale_ip">,
+    sandbox: Pick<AgentSandbox, "bridge_url" | "node_id" | "bridge_port" | "headscale_ip">,
   ): Promise<string | null> {
+    const env = getCloudAwareEnv();
+    const localSuffix = env.ELIZA_LOCAL_DOCKER_HOST_SUFFIX?.trim().toLowerCase();
+    if (
+      env.ENVIRONMENT === "local" &&
+      env.ELIZA_LOCAL_DOCKER_PROVIDER === "1" &&
+      localSuffix &&
+      /^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$/.test(localSuffix) &&
+      sandbox.bridge_url
+    ) {
+      try {
+        const localBridge = new URL(sandbox.bridge_url);
+        if (
+          localBridge.protocol === "http:" &&
+          localBridge.hostname.toLowerCase().endsWith(`.${localSuffix}`) &&
+          !localBridge.username &&
+          !localBridge.password &&
+          localBridge.pathname === "/" &&
+          !localBridge.search &&
+          !localBridge.hash
+        ) {
+          return localBridge.origin;
+        }
+      } catch {
+        // error-policy:J3 malformed local bridge metadata is rejected before
+        // continuing to the independently validated Docker-node metadata path.
+      }
+    }
+
     if (!sandbox.node_id || !sandbox.bridge_port) {
       return null;
     }
@@ -5236,6 +5271,36 @@ export class ElizaSandboxService {
       };
     }
 
+    const healthRes = await this.fetchAgentApi(rec, "/api/health", {
+      method: "GET",
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (healthRes.ok) {
+      const health = (await healthRes.json()) as { runtimeReady?: unknown };
+      const ready = health.runtimeReady !== false;
+      return {
+        jsonrpc: "2.0",
+        id: rpc.id,
+        result: {
+          status: ready ? "running" : "starting",
+          ready,
+          agentId: rec.id,
+          runtime: "health",
+          chat: ready,
+        },
+      };
+    }
+    if (healthRes.status !== 404) {
+      return {
+        jsonrpc: "2.0",
+        id: rpc.id,
+        error: {
+          code: -32000,
+          message: `Bridge returned HTTP ${healthRes.status}`,
+        },
+      };
+    }
+
     const rootRes = await this.fetchAgentWeb(rec, "/", {
       method: "GET",
       signal: AbortSignal.timeout(10_000),
@@ -5372,16 +5437,21 @@ export class ElizaSandboxService {
     if (!rec.bridge_url) {
       throw new BridgeRouteUnavailableError("Sandbox has no bridge_url", 0);
     }
-    const res = await this.fetchAgentApi(rec, "/bridge", {
-      method: "POST",
-      body: JSON.stringify({
-        jsonrpc: "2.0",
-        id: rpc.id ?? null,
-        method: "message.send",
-        params: rpc.params ?? {},
-      }),
-      signal: AbortSignal.timeout(60_000),
-    });
+    const endpoint = await this.getSafeBridgeEndpoint(rec, "/bridge");
+    const res = await this.fetchAgentTarget(
+      rec,
+      { url: endpoint },
+      {
+        method: "POST",
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: rpc.id ?? null,
+          method: "message.send",
+          params: rpc.params ?? {},
+        }),
+        signal: AbortSignal.timeout(60_000),
+      },
+    );
     if (res.status === 404) {
       throw new BridgeRouteUnavailableError(
         "Cloud-agent /bridge route not present (legacy image?)",

@@ -2,6 +2,14 @@
 
 Stateful, in-process mocks of third-party cloud APIs used by Eliza Cloud. Designed for use in unit / integration tests and local development without hitting real provider APIs.
 
+The package also exposes a deterministic OpenAI-compatible HTTP server for
+offline inference seams:
+
+```bash
+bun run --cwd packages/cloud/test-mocks start:openai
+# OPENAI_BASE_URL=http://127.0.0.1:8080/v1
+```
+
 ## Hetzner Cloud mock
 
 Implements the subset of the Hetzner Cloud API that the autoscaler client in

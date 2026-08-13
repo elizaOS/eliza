@@ -18,12 +18,12 @@ ARG TAILSCALE_VERSION=1.90.8
 # ─────────────────────────────────────────────────────────────────────────────
 FROM node:24-bookworm-slim AS entrypoint-build
 WORKDIR /build
-COPY eliza/packages/app-core/deploy/cloud-agent-entrypoint.ts ./cloud-agent-entrypoint.ts
-COPY eliza/packages/app-core/deploy/cloud-agent-shared.ts ./cloud-agent-shared.ts
+COPY packages/app-core/deploy/cloud-agent-entrypoint.ts ./cloud-agent-entrypoint.ts
+COPY packages/app-core/deploy/cloud-agent-shared.ts ./cloud-agent-shared.ts
 # cloud-agent-shared.ts imports this via ../../shared/... in the repo layout.
 # The builder copies TS files into /build, so mirror that relative path here for
 # esbuild's resolver without adding a runtime dependency on @elizaos/shared.
-COPY eliza/packages/shared/src/restart-exit-code.json /shared/src/restart-exit-code.json
+COPY packages/shared/src/restart-exit-code.json /shared/src/restart-exit-code.json
 RUN npx --yes esbuild@0.28.1 cloud-agent-entrypoint.ts \
       --bundle --platform=node --format=esm --target=node24 \
       --packages=external \
@@ -63,7 +63,7 @@ WORKDIR /app
 # stage). The container runs this with plain `node` — no `tsx` transpile on the
 # cold-start path.
 COPY --from=entrypoint-build /build/entrypoint.js ./entrypoint.js
-COPY eliza/packages/app-core/deploy/cloud-agent-docker-entrypoint.sh /usr/local/bin/cloud-agent-docker-entrypoint
+COPY packages/app-core/deploy/cloud-agent-docker-entrypoint.sh /usr/local/bin/cloud-agent-docker-entrypoint
 RUN chmod +x /usr/local/bin/cloud-agent-docker-entrypoint
 
 # Install elizaOS runtime + plugins so the dynamic imports inside
@@ -74,7 +74,9 @@ RUN chmod +x /usr/local/bin/cloud-agent-docker-entrypoint
 # pin). The entrypoint already tolerates their absence.
 RUN npm install --omit=dev --no-audit --no-fund --loglevel=error \
       @elizaos/core@alpha \
+      @elizaos/plugin-openai@alpha \
       @elizaos/plugin-sql@alpha \
+    && npm pkg set type=module \
     && npm cache clean --force
 
 # Ensure the entrypoint can resolve packages from /app/node_modules

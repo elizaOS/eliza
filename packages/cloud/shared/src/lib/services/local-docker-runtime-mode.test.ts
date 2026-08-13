@@ -18,4 +18,13 @@ describe("local Docker runtime mode", () => {
       ELIZA_CLOUD_PAIR_DIRECT_RELAY: "1",
     });
   });
+
+  test("moves the managed root PGlite path under the image runtime user", () => {
+    expect(applyLocalDockerRuntimeMode({ PGLITE_DATA_DIR: "/root/.eliza/.pgdata" })).toMatchObject({
+      PGLITE_DATA_DIR: "/home/agent/.eliza/.pgdata",
+    });
+    expect(applyLocalDockerRuntimeMode({ PGLITE_DATA_DIR: "/custom/pgdata" })).toMatchObject({
+      PGLITE_DATA_DIR: "/custom/pgdata",
+    });
+  });
 });

@@ -73,6 +73,8 @@ bun run test:server    # server package lane
 bun run test:client    # client package lane
 bun run test:e2e       # end-to-end lane
 bun run cloud:mock     # start the local cloud stack with mocks
+bun run cloud:local up --profile staging     # start current-topology cloud locally on OrbStack
+bun run cloud:local smoke --profile staging  # prove SIWE, provision, chat, persistence, and delete
 bun run clean          # remove generated build, cache, install, and local-state output
 bun run reset          # clean, reinstall, and rebuild
 ```

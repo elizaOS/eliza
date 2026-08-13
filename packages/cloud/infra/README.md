@@ -7,6 +7,7 @@ Infrastructure-as-code for the elizaOS Cloud stack. Contains Kubernetes manifest
 | Directory | Purpose |
 |---|---|
 | `cloud/local/` | kind cluster setup for local development (scripts, Helm values, K8s manifests) |
+| `cloud/orbstack/` | Current-topology local staging/production profiles on OrbStack |
 | `cloud/docker-compose.yml` | Self-hosted Supabase Storage for offline object-storage testing |
 | `cloud/terraform/hetzner/control-plane/` | Terraform for the elizaOS Cloud Hetzner control-plane VMs |
 | `cloud/terraform/cloudflare/pages-domains/` | Terraform for Pages custom domains, DNS, and certificate bindings |
@@ -39,6 +40,27 @@ Short version:
 - Object storage → Cloudflare R2
 
 ## Local development cluster
+
+For full local product testing, use the OrbStack profile. It keeps the current
+production boundaries: Kubernetes-backed PostgreSQL/Redis, Wrangler workerd,
+the real Bun control plane, Vite app, and Docker-backed dedicated agents.
+
+```bash
+bun run cloud:local up --profile staging
+bun run cloud:local smoke --profile staging
+bun run cloud:local status --profile staging
+bun run cloud:local down --profile staging   # keeps PVC data
+bun run cloud:local reset --profile staging  # deletes this profile only
+```
+
+The production profile uses the same manifest and images with a separate
+namespace, ports, and state directory: replace `staging` with `production`.
+Both Docker and Kubernetes contexts must be exactly `orbstack`; the command
+refuses any other target. The environment uses only synthetic credentials and
+never calls Cloudflare, Railway, or Hetzner management APIs.
+
+The older kind cluster below remains the operator/CRD integration harness; it
+does not represent the current hosted topology.
 
 Brings up a `kind` cluster with Postgres 17 (CloudNativePG), Redis (Bitnami), a redis-rest REST adapter, and an optional shared Eliza agent.
 

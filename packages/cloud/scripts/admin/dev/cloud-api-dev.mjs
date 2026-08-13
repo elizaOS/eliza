@@ -5,7 +5,8 @@
  * DATABASE_URL is configured, runs db:cloud:migrate, then launches
  * `wrangler dev` with local-only vars injected via `--var` (wrangler.toml
  * carries production values). `--with-control-plane` also boots the
- * container-control-plane service on :8791 so provisioning jobs get picked up.
+ * container-control-plane service on its configured local port so provisioning
+ * jobs get picked up.
  */
 import { spawn, spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
@@ -19,13 +20,20 @@ const cloudApiDir = path.join(repoRoot, "packages", "cloud", "api");
 const require = createRequire(import.meta.url);
 const rawArgs = process.argv.slice(2);
 const withControlPlane = rawArgs.includes("--with-control-plane");
-const args = rawArgs.filter((a) => a !== "--with-control-plane");
+const allowPrivateNetwork = rawArgs.includes("--allow-private-network");
+const args = rawArgs.filter(
+  (a) => a !== "--with-control-plane" && a !== "--allow-private-network",
+);
 const host = process.env.PGLITE_HOST || "127.0.0.1";
 const port = Number.parseInt(
   process.env.DEV_CLOUD_PGLITE_PORT || process.env.PGLITE_PORT || "55432",
   10,
 );
 const apiPort = process.env.API_DEV_PORT || "8787";
+const controlPlanePort =
+  process.env.CONTAINER_CONTROL_PLANE_PORT ||
+  process.env.CONTROL_PLANE_PORT ||
+  "8791";
 const maxConnections = process.env.PGLITE_MAX_CONNECTIONS || "16";
 const startupTimeoutMs = Number.parseInt(
   process.env.DEV_CLOUD_STARTUP_TIMEOUT_MS || "120000",
@@ -294,10 +302,28 @@ async function main() {
         ];
 
   const useNodeWrangler = env.CLOUD_E2E === "1" && env.NODE_ENV === "test";
-  const wranglerCmd = useNodeWrangler ? nodeExecutable() : bun;
-  const wranglerSpawnArgs = useNodeWrangler
-    ? [wranglerScript(), ...wranglerArgs]
-    : ["run", "wrangler", ...wranglerArgs];
+  const wranglerCmd = allowPrivateNetwork
+    ? bun
+    : useNodeWrangler
+      ? nodeExecutable()
+      : bun;
+  const wranglerSpawnArgs = allowPrivateNetwork
+    ? [
+        "run",
+        path.join(
+          repoRoot,
+          "packages",
+          "cloud",
+          "scripts",
+          "admin",
+          "dev",
+          "workerd-private-network-dev.mjs",
+        ),
+        ...wranglerArgs,
+      ]
+    : useNodeWrangler
+      ? [wranglerScript(), ...wranglerArgs]
+      : ["run", "wrangler", ...wranglerArgs];
   const wrangler = spawn(wranglerCmd, wranglerSpawnArgs, {
     cwd: cloudApiDir,
     env,
@@ -322,31 +348,50 @@ async function main() {
       NEXT_PUBLIC_API_URL:
         env.NEXT_PUBLIC_API_URL || `http://127.0.0.1:${apiPort}`,
     };
-    console.log("[cloud-api-dev] starting container-control-plane on :8791");
+    controlPlaneEnv.PORT = controlPlanePort;
+    console.log(
+      `[cloud-api-dev] starting container-control-plane on :${controlPlanePort}`,
+    );
     controlPlane = spawn(bun, ["run", "start"], {
       cwd: path.join(
         repoRoot,
         "packages",
-        "cloud-services",
+        "cloud",
+        "services",
         "container-control-plane",
       ),
       env: controlPlaneEnv,
       stdio: "inherit",
+      detached: process.platform !== "win32",
     });
     controlPlane.on("exit", (code) => {
       console.warn(`[cloud-api-dev] control-plane exited (code ${code})`);
     });
   }
 
+  const stopControlPlane = () => {
+    if (!controlPlane?.pid) return;
+    try {
+      if (process.platform === "win32") {
+        controlPlane.kill("SIGTERM");
+      } else {
+        process.kill(-controlPlane.pid, "SIGTERM");
+      }
+    } catch {
+      // error-policy:J6 shutdown may race a control plane that already exited.
+    }
+  };
+
   const shutdown = () => {
     wrangler.kill("SIGTERM");
-    controlPlane?.kill("SIGTERM");
+    stopControlPlane();
     pgliteChild?.kill("SIGTERM");
   };
   process.once("SIGINT", shutdown);
   process.once("SIGTERM", shutdown);
 
   wrangler.on("exit", (code, signal) => {
+    stopControlPlane();
     pgliteChild?.kill("SIGTERM");
     if (signal) {
       process.kill(process.pid, signal);

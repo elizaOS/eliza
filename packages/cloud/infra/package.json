@@ -5,7 +5,8 @@
   "type": "module",
   "description": "Cloud infrastructure: local-dev values files, Kubernetes manifests, and Terraform for the elizaOS cloud stack.",
   "scripts": {
-    "test": "bun test tests"
+    "test": "bun test tests",
+    "local": "bun cloud/orbstack/local-parity.mjs"
   },
   "devDependencies": {
     "yaml": "^2.9.0"

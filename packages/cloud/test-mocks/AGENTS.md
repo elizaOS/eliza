@@ -23,11 +23,13 @@ exits.
   returns `{ url, port, store, stop, tick, processDbBackedJobs, cleanupStuck }`.
   Also exports `buildControlPlaneApp`, `ControlPlaneStore`, and the
   `Job`/`JobStatus`/`JobType`/`Sandbox`/`SandboxStatus` types.
+- `src/openai/` (export `./openai`) — deterministic OpenAI-compatible chat
+  completions over a real HTTP boundary, with context echoes and token usage.
 - `src/fetch-server.ts` — shared `startFetchServer(fetch, opts)`; uses
   `Bun.serve` when running under Bun, falls back to a `node:http` adapter
   otherwise.
-- `bin/hetzner-mock.ts`, `bin/control-plane-mock.ts` — standalone runnable
-  entrypoints (bin names `hetzner-mock`, `control-plane-mock`).
+- `bin/hetzner-mock.ts`, `bin/control-plane-mock.ts`, `bin/openai-mock.ts` —
+  standalone runnable entrypoints.
 - `mockoon/*.json` — **stateless** Mockoon environments for read-only endpoints
   (Hetzner catalog, control-plane read endpoints), for designer workflows /
   quick demos that don't need the stateful Hono mocks.
@@ -40,6 +42,7 @@ exits.
 # Run the standalone servers (defaults: hetzner 4567, control-plane 8791)
 bun run --cwd packages/cloud/test-mocks start:hetzner -- --port 4567
 bun run --cwd packages/cloud/test-mocks start:control-plane
+bun run --cwd packages/cloud/test-mocks start:openai
 
 # Test
 bun run --cwd packages/cloud/test-mocks test     # runs `bun test`

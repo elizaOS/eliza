@@ -426,6 +426,11 @@ export function startCloudAgent(userConfig: CloudAgentConfig = {}): void {
         .catch(logPluginLoadFailure("@elizaos/plugin-sql"));
       if (sqlPlugin) plugins.push(sqlPlugin);
 
+      const openAiPlugin = await import("@elizaos/plugin-openai")
+        .then((m) => m.default)
+        .catch(logPluginLoadFailure("@elizaos/plugin-openai"));
+      if (openAiPlugin) plugins.push(openAiPlugin);
+
       const workflowPlugin = await import("@elizaos/plugin-workflow")
         .then((m) => m.default)
         .catch(logPluginLoadFailure("@elizaos/plugin-workflow"));

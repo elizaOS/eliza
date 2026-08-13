@@ -1,7 +1,7 @@
 /**
  * Verifies that Worker-side agent API calls stay on the configured control-plane
  * origin while preserving the public agent identity and protecting its bearer
- * credential. Non-Worker coverage locks the existing direct tailnet route.
+ * credential. Local-Docker and non-Worker coverage lock the direct runtime route.
  */
 import { afterEach, describe, expect, mock, spyOn, test } from "bun:test";
 
@@ -39,6 +39,15 @@ type AgentRouterHarness = {
     rec: AgentRecord,
     state: { memories: unknown[]; config: Record<string, unknown>; workspaceFiles: object },
   ): Promise<void>;
+  bridgeStatus(
+    rec: AgentRecord,
+    rpc: { jsonrpc: "2.0"; id: string; method: "heartbeat" },
+  ): Promise<Record<string, unknown>>;
+  bridgeNativeJsonRpcSend(
+    rec: AgentRecord,
+    rpc: { jsonrpc: "2.0"; id: string; method: "message.send"; params: { text: string } },
+    params: { text: string },
+  ): Promise<Record<string, unknown>>;
 };
 
 function service(): AgentRouterHarness {
@@ -206,6 +215,126 @@ describe("ElizaSandboxService Worker agent-router fetch", () => {
       ),
     ).rejects.toThrow(`Agent proxy requires an API token for ${sandbox.id}`);
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  test("routes an explicitly local Docker Worker directly to its recorded runtime", async () => {
+    enterWorkerRuntime();
+    const requests: Array<{ url: string; headers: Headers }> = [];
+    globalThis.fetch = mock(async (input: RequestInfo | URL, init?: RequestInit) => {
+      requests.push({
+        url: typeof input === "string" ? input : input.toString(),
+        headers: new Headers(init?.headers),
+      });
+      return Response.json({ status: "healthy" });
+    });
+
+    const response = await runWithCloudBindings(
+      {
+        ENVIRONMENT: "local",
+        ELIZA_LOCAL_DOCKER_PROVIDER: "1",
+        ELIZA_CLOUD_AGENT_BASE_DOMAIN: "https://",
+      },
+      () => service().fetchAgentApi(sandbox, "/api/health"),
+    );
+
+    expect(response.ok).toBe(true);
+    expect(requests).toHaveLength(1);
+    expect(requests[0]?.url).toBe("http://100.64.0.10:23816/api/health");
+    expect(requests[0]?.headers.get("authorization")).toBe("Bearer agent-token");
+    expect(requests[0]?.headers.has("x-forwarded-host")).toBe(false);
+    expect(requests[0]?.headers.has("x-forwarded-proto")).toBe(false);
+  });
+
+  test("uses the runtime health route when a local image has no agent-list route", async () => {
+    enterWorkerRuntime();
+    const requests: string[] = [];
+    globalThis.fetch = mock(async (input: RequestInfo | URL) => {
+      const url = typeof input === "string" ? input : input.toString();
+      requests.push(url);
+      if (url.endsWith("/api/agents")) return new Response("Not Found", { status: 404 });
+      return Response.json({ status: "healthy", runtimeReady: true });
+    });
+
+    const response = await runWithCloudBindings(
+      { ENVIRONMENT: "local", ELIZA_LOCAL_DOCKER_PROVIDER: "1" },
+      () =>
+        service().bridgeStatus(sandbox, {
+          jsonrpc: "2.0",
+          id: "heartbeat",
+          method: "heartbeat",
+        }),
+    );
+
+    expect(requests).toEqual([
+      "http://100.64.0.10:23816/api/agents",
+      "http://100.64.0.10:23816/api/health",
+    ]);
+    expect(response).toMatchObject({
+      result: { status: "running", ready: true, runtime: "health" },
+    });
+  });
+
+  test("keeps local health in starting state until the embedded runtime is ready", async () => {
+    enterWorkerRuntime();
+    globalThis.fetch = mock(async (input: RequestInfo | URL) => {
+      const url = typeof input === "string" ? input : input.toString();
+      if (url.endsWith("/api/agents")) return new Response("Not Found", { status: 404 });
+      return Response.json({ status: "initializing", runtimeReady: false });
+    });
+
+    const response = await runWithCloudBindings(
+      { ENVIRONMENT: "local", ELIZA_LOCAL_DOCKER_PROVIDER: "1" },
+      () =>
+        service().bridgeStatus(sandbox, {
+          jsonrpc: "2.0",
+          id: "heartbeat",
+          method: "heartbeat",
+        }),
+    );
+
+    expect(response).toMatchObject({
+      result: { status: "starting", ready: false, runtime: "health", chat: false },
+    });
+  });
+
+  test("sends native bridge calls to the trusted local Docker bridge port", async () => {
+    enterWorkerRuntime();
+    const requests: string[] = [];
+    globalThis.fetch = mock(async (input: RequestInfo | URL) => {
+      requests.push(typeof input === "string" ? input : input.toString());
+      return Response.json({ jsonrpc: "2.0", id: "message.send", result: { text: "amber" } });
+    });
+    const localSandbox = {
+      ...sandbox,
+      bridge_url: `http://agent-${sandbox.id}.orb.local:18790`,
+      health_url: `http://agent-${sandbox.id}.orb.local:2138/api`,
+      node_id: null,
+      bridge_port: null,
+      web_ui_port: null,
+      headscale_ip: null,
+    } as unknown as AgentRecord;
+
+    const response = await runWithCloudBindings(
+      {
+        ENVIRONMENT: "local",
+        ELIZA_LOCAL_DOCKER_PROVIDER: "1",
+        ELIZA_LOCAL_DOCKER_HOST_SUFFIX: "orb.local",
+      },
+      () =>
+        service().bridgeNativeJsonRpcSend(
+          localSandbox,
+          {
+            jsonrpc: "2.0",
+            id: "message.send",
+            method: "message.send",
+            params: { text: "remember amber" },
+          },
+          { text: "remember amber" },
+        ),
+    );
+
+    expect(requests).toEqual([`http://agent-${sandbox.id}.orb.local:18790/bridge`]);
+    expect(response).toMatchObject({ result: { text: "amber", transport: "native-jsonrpc" } });
   });
 
   test("fails closed before fetch when Worker routing configuration is missing or malformed", async () => {

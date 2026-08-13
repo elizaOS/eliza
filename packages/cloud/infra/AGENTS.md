@@ -6,7 +6,7 @@ Infrastructure-as-code and local-dev tooling for the elizaOS Cloud stack: Kubern
 
 `cloud-infra` owns two classes of artifacts:
 
-1. **Local dev cluster** — everything needed to spin up a `kind` Kubernetes cluster that mirrors the cloud services on a developer workstation (`cloud/local/`).
+1. **Local environments** — the production-topology OrbStack profiles under `cloud/orbstack/`, plus the older kind/operator harness under `cloud/local/`.
 2. **Production Terraform** — Hetzner Cloud control-plane VMs (`cloud/terraform/hetzner/control-plane/`), Hetzner apps-data-plane and apps-shared roots, and experimental GCP roots (`cloud/terraform/gcp/`).
 
 Nothing in this package is imported by TypeScript code. The YAML/Terraform/shell files are consumed directly by `kubectl`, `helm`, `terraform`, `docker compose`, and the chainsaw integration-test runner.
@@ -20,6 +20,10 @@ packages/cloud/infra/
     docker-compose.yml             # Self-hosted Supabase Storage (Postgres + storage-api)
     AWS_RETIREMENT.md              # AWS → Hetzner/Railway migration record (completed; open: KMS sunset + stale gateway role-ARN GitHub env vars)
     RAILWAY.md                     # Canonical service/runtime/request-path map — where each surface runs
+    orbstack/                      # Isolated staging/production profiles matching the current cloud boundaries
+      dependencies.yaml           # PostgreSQL + Redis StatefulSets rendered per namespace
+      local-parity.mjs             # up/status/logs/smoke/down/reset lifecycle
+      smoke.ts                     # SIWE → provision → chat → persistence → deprovision proof
     bitrouter/                     # RETIRED — only CLOUDFLARE_MIGRATION_PLAN.md remains (the Worker is the model gateway now)
     charts/
       README.md                    # Charts overview (local/shared charts only; the gateway-discord chart was deleted with the EKS retirement)
@@ -89,6 +93,19 @@ packages/cloud/infra/
 
 ## Key subsystems
 
+### OrbStack cloud parity (`cloud/orbstack/`)
+
+This is the full local product path. It runs PostgreSQL and Redis in isolated
+OrbStack Kubernetes namespaces, the API with Wrangler's local workerd runtime,
+the real container control plane as a Bun process, the app through Vite, and
+dedicated agents as real OrbStack Docker containers. Both profiles use the same
+manifest and image; only namespace, state directory, and host ports differ.
+
+Every mutating command fails closed unless both Docker and Kubernetes contexts
+are exactly `orbstack`. All credentials are synthetic local values. `down`
+preserves the profile PVCs; `reset` removes only the selected namespace,
+profile-labeled agent containers, and `.eliza/local-parity/<profile>`.
+
 ### Local dev cluster (`cloud/local/`)
 
 `setup.sh` brings up a `kind` cluster with namespaces `eliza-agents` and `eliza-infra`, applies the manifests (redis alias, redis-rest REST adapter, external-service aliases), then Helm-installs KEDA, metrics-server, the CloudNativePG operator + a CNPG Postgres cluster, and Bitnami Redis using the values files in this directory. It also builds the Pepr Server operator (from `cloud/services/operator`) and the `agent-server` image, then applies the `shared-*.yaml` Server CRs.
@@ -135,6 +152,10 @@ Numbered [Chainsaw](https://kyverno.github.io/chainsaw/) suites (`cloud/tests/0*
 
 ```bash
 bun run --cwd packages/cloud/infra test       # Run YAML/manifest smoke tests (Bun test)
+bun run cloud:local up --profile staging      # Start the current-topology local environment
+bun run cloud:local smoke --profile staging   # Exercise the real local E2E path
+bun run cloud:local down --profile staging    # Stop while preserving database state
+bun run cloud:local reset --profile staging   # Delete only this profile's local state
 ```
 
 Local cluster scripts (run directly, not via bun):
@@ -188,6 +209,7 @@ Local cluster service env vars (copy from `.env.*.example`):
 - **Data-plane cores are not in Terraform.** Dedicated robot nodes (`eliza-core-{env}-N`, OS host `eliza-{env}-robot-N`) live in the `docker_nodes` table (authoritative; `CONTAINERS_DOCKER_NODES` env only seeds when empty); autoscaled burst nodes (`eliza-core-<hex>`) are runtime-provisioned by `node-autoscaler.ts`. Only the control-plane VM is managed here.
 - **Remote state uses Cloudflare R2**, not an S3 bucket — export the R2 token as `AWS_ACCESS_KEY_ID` + `AWS_SECRET_ACCESS_KEY` before `terraform init`.
 - **Production secrets are not in docker-compose.** The compose file only serves local dev. Real secrets live where each runtime reads them: `wrangler secret put` for the Worker (published on deploy by `cloud-cf-deploy.yml`), the `staging`/`production` GitHub Environments for deploy workflows, per-service Railway env vars (see each `railway.toml` header), and `/opt/eliza/cloud/.env.local` on the control-plane VM. Nothing production runs on Kubernetes, so there is no cluster secret store.
+- **OrbStack emulates runtime boundaries, not provider control planes.** Workerd substitutes for Cloudflare's edge, local Kubernetes StatefulSets substitute for Railway data services, and local Docker substitutes for Hetzner nodes. DNS, certificates, global placement, Railway/Hetzner management APIs, Cloudflare account policy, and real third-party delivery are intentionally outside the offline proof.
 - **`cloud/local/setup.sh` installs the `vector` and `uuid-ossp` Postgres extensions** via `postInitApplicationSQL` in `values-pg-local.yaml` — these are required by `packages/app-core`.
 - **`user_data` and `image` changes do not recreate the Hetzner VM** — `lifecycle { ignore_changes }` is set in `main.tf`. To rebuild with a new image, use `terraform taint`.
 - **Tests in `tests/` are pure YAML-parse smoke tests** — they do not require a running cluster or any cloud credentials.

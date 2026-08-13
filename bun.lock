@@ -749,6 +749,7 @@
       "bin": {
         "hetzner-mock": "./bin/hetzner-mock.ts",
         "control-plane-mock": "./bin/control-plane-mock.ts",
+        "openai-mock": "./bin/openai-mock.ts",
       },
       "dependencies": {
         "@elizaos/cloud-shared": "workspace:*",

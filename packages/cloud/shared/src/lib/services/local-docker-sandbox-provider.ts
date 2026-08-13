@@ -4,8 +4,8 @@
  *
  * Targets local development only. Skips all production sandbox concerns
  * (SSH to remote nodes, Headscale VPN, Steward tenant registration,
- * docker_nodes DB rows). Containers are addressed via 127.0.0.1 with a
- * host-published port in [LOCAL_BRIDGE_PORT_MIN, LOCAL_BRIDGE_PORT_MAX).
+ * docker_nodes DB rows). Containers normally use loopback-published ports;
+ * local runtimes with a trusted container-DNS suffix may address them directly.
  */
 
 import { execFile } from "node:child_process";
@@ -69,6 +69,27 @@ function resolveContainerPort(config: SandboxCreateConfig): string {
     throw new Error(`${LOG_PREFIX} Invalid container port: ${requested}`);
   }
   return requested;
+}
+
+export function resolveLocalDockerEndpointHost(containerName: string): string | null {
+  const suffix = process.env.ELIZA_LOCAL_DOCKER_HOST_SUFFIX?.trim().toLowerCase();
+  if (!suffix) return null;
+  if (
+    suffix.length > 253 ||
+    !suffix
+      .split(".")
+      .every(
+        (label) =>
+          label.length > 0 && label.length <= 63 && /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/.test(label),
+      )
+  ) {
+    throw new Error(`${LOG_PREFIX} Invalid local Docker host suffix: ${suffix}`);
+  }
+  return `${containerName}.${suffix}`;
+}
+
+export function rewriteLocalDockerLoopback(value: string): string {
+  return value.replace(/\b(127\.0\.0\.1|localhost)\b/g, "host.docker.internal");
 }
 
 // ---------------------------------------------------------------------------
@@ -218,11 +239,9 @@ export class LocalDockerSandboxProvider implements SandboxProvider {
     // host.docker.internal so the container can reach host services like the
     // PGlite TCP bridge. Docker Desktop maps this automatically; on Linux
     // the --add-host flag below provides the same binding.
-    const rewriteForContainer = (value: string): string =>
-      value.replace(/\b(127\.0\.0\.1|localhost)\b/g, "host.docker.internal");
     const rewrittenEnv: Record<string, string> = {};
     for (const [k, v] of Object.entries(environmentVars)) {
-      rewrittenEnv[k] = rewriteForContainer(v);
+      rewrittenEnv[k] = rewriteLocalDockerLoopback(v);
     }
 
     // Drop the cloud's DATABASE_URL — local PGlite TCP bridge can't reliably
@@ -255,6 +274,7 @@ export class LocalDockerSandboxProvider implements SandboxProvider {
       "OPENROUTER_API_KEY",
       "OPENROUTER_BASE_URL",
       "OPENAI_API_KEY",
+      "OPENAI_BASE_URL",
       "ANTHROPIC_API_KEY",
       "GOOGLE_API_KEY",
       "XAI_API_KEY",
@@ -262,7 +282,7 @@ export class LocalDockerSandboxProvider implements SandboxProvider {
     ]) {
       const value = hostEnv[key];
       if (typeof value === "string" && value.length > 0 && !rewrittenEnv[key]) {
-        llmPassthrough[key] = value;
+        llmPassthrough[key] = rewriteLocalDockerLoopback(value);
       }
     }
 
@@ -308,6 +328,9 @@ export class LocalDockerSandboxProvider implements SandboxProvider {
         organizationId: config.organizationId ?? "",
         containerClass: "user",
       }).flatMap(([key, value]) => ["--label", `${key}=${value}`]),
+      ...(process.env.ELIZA_LOCAL_PARITY_PROFILE
+        ? ["--label", `ai.elizaos.local-parity-profile=${process.env.ELIZA_LOCAL_PARITY_PROFILE}`]
+        : []),
       "--restart",
       "unless-stopped",
       // Make host.docker.internal resolvable on Linux Docker too; on Docker
@@ -360,8 +383,13 @@ export class LocalDockerSandboxProvider implements SandboxProvider {
     };
     this.containers.set(containerName, meta);
 
-    const bridgeUrl = `http://127.0.0.1:${bridgePort}`;
-    const healthUrl = `http://127.0.0.1:${healthPort}/api`;
+    const directHost = resolveLocalDockerEndpointHost(containerName);
+    const bridgeUrl = directHost
+      ? `http://${directHost}:${agentBridgePort}`
+      : `http://127.0.0.1:${bridgePort}`;
+    const healthUrl = directHost
+      ? `http://${directHost}:${agentPort}/api`
+      : `http://127.0.0.1:${healthPort}/api`;
     const metadata: LocalDockerSandboxMetadata = {
       provider: "local-docker",
       containerName,
