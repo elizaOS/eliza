@@ -57,7 +57,12 @@ interface InventorySite {
 const CANONICAL = "1.3.14";
 const SHA = "0c5077e51419868618aeaa5fe8019c62421857d6";
 
-const GATE_WORKFLOWS = ["test.yml", "develop-pr.yml", "cloud-cf-deploy.yml"];
+const GATE_WORKFLOWS = [
+  "test.yml",
+  "develop-pr.yml",
+  "cloud-cf-deploy.yml",
+  "cloud-cf-release.yml",
+];
 
 // A gate stub that pins via a BUN_VERSION env literal and references it from
 // the step by expression — the shape the real gates use. The comment naming
@@ -202,6 +207,13 @@ describe("ci-bun-version-contract", () => {
     );
   });
 
+  test("fails when the canonical cloud release workflow floats back to canary", () => {
+    expectViolation(
+      buildRepo({ overrides: { "cloud-cf-release.yml": GATE_FLOATING } }),
+      /cloud-cf-release\.yml: is a deterministic CI lane but wires floating Bun/,
+    );
+  });
+
   test("fails when a gate workflow drops the canonical pin entirely", () => {
     expectViolation(
       buildRepo({ overrides: { "cloud-cf-deploy.yml": GATE_NO_PIN } }),
@@ -209,10 +221,24 @@ describe("ci-bun-version-contract", () => {
     );
   });
 
+  test("fails when the canonical cloud release workflow drops the pin", () => {
+    expectViolation(
+      buildRepo({ overrides: { "cloud-cf-release.yml": GATE_NO_PIN } }),
+      /cloud-cf-release\.yml: is a deterministic CI lane but does not wire the canonical Bun pin/,
+    );
+  });
+
   test("fails loudly when a gate workflow is missing, instead of skipping", () => {
     expectViolation(
       buildRepo({ overrides: { "cloud-cf-deploy.yml": null } }),
       /cloud-cf-deploy\.yml/,
+    );
+  });
+
+  test("fails loudly when the canonical cloud release workflow is missing", () => {
+    expectViolation(
+      buildRepo({ overrides: { "cloud-cf-release.yml": null } }),
+      /cloud-cf-release\.yml/,
     );
   });
 

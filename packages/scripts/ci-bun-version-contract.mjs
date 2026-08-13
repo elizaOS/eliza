@@ -138,9 +138,14 @@ const EXCLUDED_SURFACES = [
 
 // Required, scheduled, and deploy-critical install lanes that must wire the
 // concrete pin directly (not merely resolve through indirection). The required
-// `ci-ok` aggregate (test.yml), the develop PR gate, and the canonical cloud
-// deploy are the load-bearing paths.
-const GATE_WORKFLOWS = ["test.yml", "develop-pr.yml", "cloud-cf-deploy.yml"];
+// `ci-ok` aggregate (test.yml), the develop PR gate, and the cloud deploy
+// entry/release pair are the load-bearing paths.
+const GATE_WORKFLOWS = [
+  "test.yml",
+  "develop-pr.yml",
+  "cloud-cf-deploy.yml",
+  "cloud-cf-release.yml",
+];
 
 // Both the post-merge suite and the required develop PR gate must execute the
 // contract and publish its exact-head inventory. Keeping the PR lane here is
