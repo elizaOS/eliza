@@ -760,6 +760,61 @@ describe("app plugin compatibility routes", () => {
     );
   });
 
+  it("keeps a live runtime miss unset even when process.env has the token", () => {
+    useDiscordRegistry();
+    process.env.DISCORD_API_TOKEN = "stale-host-token";
+
+    const response = buildPluginListResponse({
+      plugins: [],
+      getSetting: () => null,
+      getService: () => null,
+    } as never);
+
+    const discord = response.plugins.find((plugin) => plugin.id === "discord");
+    expect(discord?.parameters[0]).toEqual(
+      expect.objectContaining({
+        key: "DISCORD_API_TOKEN",
+        isSet: false,
+        currentValue: null,
+      }),
+    );
+    expect(discord).toEqual(expect.objectContaining({ configured: false }));
+    expect(discord?.validationErrors).toEqual([
+      expect.objectContaining({ field: "DISCORD_API_TOKEN" }),
+    ]);
+  });
+
+  it("keeps a live runtime miss unset even when config.env and the saved entry have tokens", () => {
+    useDiscordRegistry();
+    currentConfig = {
+      env: { DISCORD_API_TOKEN: "stale-config-env-token" },
+      plugins: {
+        entries: {
+          discord: {
+            enabled: true,
+            config: { DISCORD_API_TOKEN: "stale-saved-token" },
+          },
+        },
+      },
+    };
+
+    const response = buildPluginListResponse({
+      plugins: [],
+      getSetting: () => null,
+      getService: () => null,
+    } as never);
+
+    const discord = response.plugins.find((plugin) => plugin.id === "discord");
+    expect(discord?.parameters[0]).toEqual(
+      expect.objectContaining({
+        key: "DISCORD_API_TOKEN",
+        isSet: false,
+        currentValue: null,
+      }),
+    );
+    expect(discord).toEqual(expect.objectContaining({ configured: false }));
+  });
+
   it("reports a required param unset when no env, saved, or runtime value exists", () => {
     useDiscordRegistry();
 

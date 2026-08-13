@@ -947,8 +947,10 @@ function inferSensitiveConfigKey(key: string): boolean {
 /**
  * Reads a declared plugin param through the live runtime's `getSetting`
  * surface. Connectors resolve credentials via `runtime.getSetting()`, which
- * deliberately never falls through to `process.env`, so the catalog must ask
- * the runtime first to report what a connector will actually observe (#18713).
+ * deliberately never falls through to `process.env`, so when this reader
+ * exists it is the only source the catalog may report from — a live miss
+ * stays a miss (#18713). Returning `undefined` here means "no live runtime";
+ * only then may the catalog fall back to env/saved config.
  */
 function createRuntimeSettingReader(
   runtime: AgentRuntime | null,
@@ -1021,13 +1023,15 @@ function buildPluginParamDefs(
   });
 
   return filteredEntries.map(([key, definition]) => {
-    const runtimeValue = getRuntimeSetting?.(key);
+    // A live runtime's getSetting() is authoritative: connectors resolve
+    // credentials only through it and it never falls through to host env, so
+    // a live miss must not be papered over by stale process.env or saved
+    // config (#18713). Env/saved fallbacks serve only runtime-null builds.
     const envValue = process.env[key]?.trim() || undefined;
-    const savedValue = savedValues?.[key];
-    const effectiveValue =
-      runtimeValue ??
-      envValue ??
-      (savedValue ? savedValue.trim() || undefined : undefined);
+    const savedValue = savedValues?.[key]?.trim() || undefined;
+    const effectiveValue = getRuntimeSetting
+      ? getRuntimeSetting(key)
+      : (envValue ?? savedValue);
     const isSet = Boolean(effectiveValue);
     const sensitive =
       typeof definition.sensitive === "boolean"
