@@ -360,7 +360,11 @@ import {
 } from "./message/generate-text-result";
 import { resolveEffectiveMuteState } from "./message/mute-state";
 import { sanitizeOutboundText } from "./message/outbound-sanitize";
-import { senderInActiveConversation } from "./message/reply-gate-continuity";
+import {
+	isTranscriptVisibleEngagement,
+	recordOnMentionContinuityAnchor,
+	senderInActiveConversation,
+} from "./message/reply-gate-continuity";
 import {
 	GROUP_TRIAGE_MESSAGE_HANDLER_TEMPLATE,
 	isStage1GroupTriageTierEnabled,
@@ -10483,8 +10487,12 @@ export async function deliverFirstSentenceVoice(
 export function wrapSingleTurnVisibleCallback(
 	// reportError is required: the fail-closed envelope guard inside `deliver`
 	// must be able to surface a blocked leak even from partial test runtimes.
+	// getCache/setCache are optional on partial test runtimes; continuity
+	// recording no-ops when setCache is absent.
 	runtime: Pick<IAgentRuntime, "agentId" | "logger" | "reportError"> &
-		Partial<Pick<IAgentRuntime, "character" | "useModel">> & {
+		Partial<
+			Pick<IAgentRuntime, "character" | "useModel" | "getCache" | "setCache">
+		> & {
 			getService?: IAgentRuntime["getService"];
 		},
 	message: Pick<Memory, "id" | "roomId" | "entityId">,
@@ -10563,6 +10571,22 @@ export function wrapSingleTurnVisibleCallback(
 		}
 		if (typeof response?.text === "string" && response.text.trim()) {
 			recordDeliveredVisibleText?.(response.text);
+		}
+		// On_mention continuity: only a successfully delivered, transcript-visible
+		// reply may open/refresh the per-room engagement anchor. Rejected
+		// callbacks throw before this point; internal/IGNORE/action_result rows
+		// fail isTranscriptVisibleEngagement. Best-effort — never blocks delivery.
+		if (
+			typeof fullRuntime.setCache === "function" &&
+			isTranscriptVisibleEngagement(response) &&
+			message.entityId &&
+			message.entityId !== fullRuntime.agentId &&
+			message.roomId
+		) {
+			await recordOnMentionContinuityAnchor(fullRuntime, {
+				roomId: message.roomId,
+				senderId: message.entityId,
+			});
 		}
 		// The voice rewrite (voiceActionReply below) restyles the wire text and
 		// stashes the action's original text in data.rawActionText. The planner's
@@ -11903,8 +11927,8 @@ export class DefaultMessageService implements IMessageService {
 			const userSlot = personalityStore.getSlot(message.entityId);
 			const globalSlot = personalityStore.getSlot("global");
 			// Continuity probe is lazy: only an on_mention gate that is about to
-			// drop an unaddressed turn pays the recent-history lookup — addressed
-			// turns and every other mode stay zero-cost.
+			// drop an unaddressed turn pays the delivered-engagement anchor
+			// lookup — addressed turns and every other mode stay zero-cost.
 			const recentlyEngagedWithSender =
 				resolveEffectiveReplyGate(userSlot, globalSlot).mode === "on_mention" &&
 				!explicitlyAddressesAgent

@@ -43,8 +43,8 @@ export interface ReplyGateInput {
 	messageText: string | undefined;
 	explicitlyAddressesAgent: boolean;
 	/**
-	 * Caller-computed: the agent's most recent message in this room is fresh
-	 * AND was engaged with THIS sender (see services/message/reply-gate-continuity.ts).
+	 * Caller-computed: a successfully delivered, transcript-visible reply in
+	 * this room recently engaged THIS sender (see services/message/reply-gate-continuity.ts).
 	 * Consulted ONLY by the on_mention branch — an unaddressed follow-up that
 	 * continues an active exchange is not an unsolicited reply. Muting
 	 * (never_until_lift) deliberately ignores it.
