@@ -786,8 +786,7 @@ async function detectBlank(pngBuffer, sharp) {
 async function main() {
   const stories = await loadStories();
   if (!stories.length) {
-    console.error("story-gate: no stories matched the filters");
-    process.exit(2);
+    throw new Error("story-gate: no stories matched the filters");
   }
   console.log(
     `story-gate: ${stories.length} stories | concurrency=${args.concurrency}` +
@@ -879,6 +878,7 @@ async function main() {
   const broken = results.filter((r) => r.verdict === "broken");
   const report = {
     schema: "eliza_story_gate_v1",
+    shard: args.shard,
     generatedAt: new Date().toISOString(),
     frozenEpochMs: FROZEN_EPOCH_MS,
     totals: {
@@ -941,7 +941,9 @@ async function main() {
         `matching Storybook's rendered state (sb-show-* class target moved?). ` +
         `The gate is testing nothing. See renderStory() settle logic.`,
     );
-    process.exit(3);
+    throw new Error(
+      `story-gate SELF-CHECK FAILED - all ${results.length} stories classified 'needs-runtime' and zero rendered 'good'`,
+    );
   }
 
   // -------------------------------------------------------------------------
@@ -1116,7 +1118,29 @@ if (
   process.argv[1] &&
   import.meta.url === pathToFileURL(process.argv[1]).href
 ) {
-  main().catch((err) => {
+  main().catch(async (err) => {
+    if (args.shard) {
+      try {
+        await mkdir(outDir, { recursive: true });
+        await writeFile(
+          join(outDir, "report.json"),
+          JSON.stringify(
+            {
+              schema: "eliza_story_gate_v1",
+              shard: args.shard,
+              generatedAt: new Date().toISOString(),
+              totals: { stories: 0, failures: 1 },
+              failures: [{ kind: "fatal", detail: String(err?.message ?? err) }],
+              results: [],
+            },
+            null,
+            2,
+          ),
+        );
+      } catch (writeError) {
+        console.error("story-gate: failed to write fatal shard report", writeError);
+      }
+    }
     console.error("story-gate: fatal", err);
     process.exit(1);
   });
