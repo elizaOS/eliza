@@ -22,6 +22,7 @@
  */
 import { describe, expect, it, vi } from "vitest";
 import { InMemoryDatabaseAdapter } from "../../database/inMemoryAdapter";
+import type { ElizaError } from "../../errors";
 import {
 	AgentRuntime,
 	EmbeddingDimensionProbeError,
@@ -94,6 +95,39 @@ describe("AgentRuntime.ensureEmbeddingDimension provider failover", () => {
 		);
 		expect(existing.embedding).toEqual([9]);
 		expect(embedHandler).toHaveBeenCalledTimes(1);
+	});
+
+	it("rejects an empty provider result before a caller can persist the memory", async () => {
+		const runtime = makeRuntime();
+		runtime.registerModel(
+			ModelType.TEXT_EMBEDDING,
+			async () => [],
+			"direct",
+			0,
+		);
+		const memory = {
+			...makeMemory("provider returned no vector"),
+			id: "00000000-0000-0000-0000-000000000003" as UUID,
+		};
+		const createMemory = vi.spyOn(runtime, "createMemory");
+
+		const embedThenPersist = async (): Promise<void> => {
+			await runtime.addEmbeddingToMemory(memory);
+			await runtime.createMemory(memory, "documents");
+		};
+
+		await expect(embedThenPersist()).rejects.toMatchObject<Partial<ElizaError>>(
+			{
+				code: "EMBEDDING_MODEL_OUTPUT_INVALID",
+				severity: "fatal",
+				context: {
+					memoryId: memory.id,
+					outputKind: "empty-array",
+				},
+			},
+		);
+		expect(createMemory).not.toHaveBeenCalled();
+		await expect(runtime.getMemoryById(memory.id)).resolves.toBeNull();
 	});
 
 	it("queues empty vectors while skipping non-empty vectors", async () => {
