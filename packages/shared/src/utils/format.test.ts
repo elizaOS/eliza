@@ -1,12 +1,12 @@
 /**
- * Shared display formatters (uptime / byte size / USD). These render values in
- * dashboard views; the unit thresholds, precision, and fallback handling are
- * pinned so the displayed figures stay correct and stable.
+ * Shared display formatters render dashboard values with stable unit boundaries,
+ * precision, timestamp validation, and unavailable-state handling.
  */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   formatByteSize,
   formatDurationMs,
+  formatTime,
   formatUptime,
   formatUsd,
 } from "./format";
@@ -108,5 +108,42 @@ describe("formatUsd", () => {
     expect(formatUsd(null)).toBe("—");
     expect(formatUsd("abc")).toBe("—");
     expect(formatUsd(undefined, { fallback: "n/a" })).toBe("n/a");
+  });
+});
+
+describe("formatTime", () => {
+  it.each([
+    ["missing", undefined],
+    ["empty", ""],
+    ["malformed", "not-a-date"],
+    ["numeric NaN", Number.NaN],
+    ["invalid Date", new Date(Number.NaN)],
+    ["outside TimeClip", 8.64e15 + 1],
+    ["calendar-invalid ISO timestamp", "2026-02-31T00:00:00Z"],
+    ["non-leap February 29", "2026-02-29T00:00:00Z"],
+    ["month zero", "2026-00-01T00:00:00Z"],
+  ])("returns the fallback for %s input", (_label, value) => {
+    expect(
+      formatTime(value, { fallback: "Unavailable", locale: "en-US" }),
+    ).toBe("Unavailable");
+  });
+
+  it("preserves valid epoch, Date, ISO, leap-day, and parseable string inputs", () => {
+    const localeSpy = vi
+      .spyOn(Date.prototype, "toLocaleTimeString")
+      .mockReturnValue("12:34:56 PM");
+
+    expect(formatTime(0, { locale: "en-US" })).toBe("12:34:56 PM");
+    expect(formatTime(new Date(0), { locale: "en-US" })).toBe("12:34:56 PM");
+    expect(formatTime("2026-06-05T10:00:00Z", { locale: "en-US" })).toBe(
+      "12:34:56 PM",
+    );
+    expect(formatTime("2024-02-29T00:00:00Z", { locale: "en-US" })).toBe(
+      "12:34:56 PM",
+    );
+    expect(formatTime("June 5, 2026 10:00:00", { locale: "en-US" })).toBe(
+      "12:34:56 PM",
+    );
+    expect(localeSpy).toHaveBeenCalledTimes(5);
   });
 });
