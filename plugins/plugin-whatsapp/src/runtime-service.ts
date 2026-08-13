@@ -40,6 +40,7 @@ import {
 } from "./accounts";
 import { WhatsAppClient } from "./client";
 import { BaileysClient } from "./clients/baileys-client";
+import { completeClaim, failClaim, type InboundClaimState, tryClaim } from "./inbound-claim";
 import {
   buildWhatsAppUserJid,
   chunkWhatsAppText,
@@ -623,12 +624,13 @@ export class WhatsAppConnectorService extends Service {
   private knownTargets: Map<string, KnownWhatsAppTarget> = new Map();
 
   /**
-   * In-process inbound delivery guard. Meta redelivers a webhook when it does
-   * not see a 200 quickly enough, and a single webhook batch can contain the
-   * same message id twice. This set prevents duplicate side effects (replies,
-   * memory writes, connection records) across concurrent redelivery within one
-   * process lifetime; the durable check in `processIncomingMessage` covers
-   * restarts. Bounded: entries are cleared once a turn finishes.
+   * In-process inbound delivery guard for concurrent redelivery within one
+   * process lifetime. Meta redelivers a webhook when it does not see a 200
+   * quickly, and a single webhook batch can repeat a message id. This set
+   * is the fast path — it collapses concurrent redelivery before any side
+   * effect fires. The durable staged claim in `processIncomingMessage`
+   * (`inbound-claim.ts`) covers restarts and multi-host scenarios. Bounded:
+   * entries are cleared once the turn finishes.
    */
   private inflightInboundMessageIds: Set<string> = new Set();
 
@@ -1205,15 +1207,15 @@ export class WhatsAppConnectorService extends Service {
     const normalizedSender = normalizeWhatsAppTarget(params.senderId) ?? params.senderId;
 
     // Delivery idempotency: Meta redelivers a webhook when it does not see a
-    // 200 quickly, and a single batch can repeat a message id. The inbound
-    // memory id is a deterministic function of (accountId, chatId, external
-    // message id), so a duplicate maps to the same UUID. Guard two layers:
-    //   1. in-process set — collapses concurrent redelivery before any side
-    //      effect fires, and is cleared once the turn completes;
-    //   2. durable getMemoryById — survives restarts and process recycling.
-    // Both checks run before ensureConnection / room / reply side effects, so a
-    // redelivered message creates no duplicate contact, room, model input, or
-    // auto-reply. Policy-denied messages still return early below.
+    // 200 quickly, and a single batch can repeat a message id. Guard three
+    // layers, all before ensureConnection / room / reply side effects:
+    //   1. in-process set — fast path for concurrent redelivery within one
+    //      process, cleared once the turn completes;
+    //   2. durable staged claim (`inbound-claim.ts`) — survives restarts and
+    //      multi-host deployments with generation fencing and restart
+    //      convergence;
+    //   3. inbound message existence — the deterministic message id catches
+    //      a prior successful delivery that pre-dates the claim table.
     const chatKey =
       accountId === DEFAULT_ACCOUNT_ID ? params.chatId : `${accountId}:${params.chatId}`;
     const dedupeKey = `${accountId}:${params.externalMessageId}`;
@@ -1230,23 +1232,33 @@ export class WhatsAppConnectorService extends Service {
       return;
     }
     this.inflightInboundMessageIds.add(dedupeKey);
+    let claim: InboundClaimState | null = null;
+    let claimHandled = false;
     try {
+      // Durable staged claim: atomically acquire a processing claim in the
+      // memory store. Returns won=false if another host or prior delivery
+      // already completed or is actively processing this message.
       const inboundMemoryId = toMemoryId(this.runtime, chatKey, params.externalMessageId);
-      if (typeof this.runtime.getMemoryById === "function") {
-        const existing = await this.runtime.getMemoryById(inboundMemoryId);
-        if (existing) {
-          this.runtime.logger.debug(
-            {
-              src: "plugin:whatsapp",
-              agentId: this.runtime.agentId,
-              accountId,
-              externalMessageId: params.externalMessageId,
-            },
-            "WhatsApp inbound message already ingested; skipping duplicate delivery"
-          );
-          return;
-        }
+      const claimResult = await tryClaim(
+        this.runtime,
+        inboundMemoryId,
+        accountId,
+        params.externalMessageId
+      );
+      if (!claimResult.won) {
+        this.runtime.logger.debug(
+          {
+            src: "plugin:whatsapp",
+            agentId: this.runtime.agentId,
+            accountId,
+            externalMessageId: params.externalMessageId,
+            claimStage: claimResult.state?.stage,
+          },
+          "WhatsApp inbound message already claimed or processed; skipping duplicate delivery"
+        );
+        return;
       }
+      claim = claimResult.state;
 
       const accountConfig = {
         dmPolicy: config?.dmPolicy,
@@ -1456,7 +1468,28 @@ export class WhatsAppConnectorService extends Service {
       }
 
       await this.runtime.messageService.handleMessage(this.runtime, inboundMemory, callback);
+    } catch (err) {
+      // Transition the durable claim to failed before re-throwing, so a
+      // restart or second host can retry. Generation fencing prevents a
+      // zombie from overwriting a successor's state.
+      claimHandled = true;
+      const claimId = toMemoryId(this.runtime, chatKey, params.externalMessageId);
+      if (claim) {
+        await failClaim(
+          this.runtime,
+          claimId,
+          claim,
+          err instanceof Error ? err.message : String(err)
+        ).catch(() => {});
+      }
+      throw err;
     } finally {
+      // On the success path, transition the claim to processed. The error
+      // path is handled by the catch block above (claimHandled flag).
+      if (!claimHandled && claim) {
+        const claimId = toMemoryId(this.runtime, chatKey, params.externalMessageId);
+        await completeClaim(this.runtime, claimId, claim).catch(() => {});
+      }
       this.inflightInboundMessageIds.delete(dedupeKey);
     }
   }
