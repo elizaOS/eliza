@@ -26,8 +26,8 @@ export function validateActionKeywords(
 	}
 
 	const normalizedKeywords = keywords
-		.map((keyword) => keyword.trim().toLowerCase())
-		.filter((keyword) => keyword.length > 0);
+		.filter((keyword) => keyword.trim().length > 0)
+		.map((keyword) => keyword.toLowerCase());
 	if (normalizedKeywords.length === 0) {
 		return false;
 	}

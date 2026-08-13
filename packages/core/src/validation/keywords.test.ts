@@ -1,3 +1,7 @@
+/**
+ * Deterministic pure coverage for action keyword validation over current and
+ * recent message text; no runtime, provider, or database harness is used.
+ */
 import { describe, expect, it } from "vitest";
 import type { Memory } from "../types";
 import { validateActionKeywords } from "./keywords.ts";
@@ -13,13 +17,23 @@ describe("validateActionKeywords", () => {
 	it("ignores empty entries while matching meaningful keywords", () => {
 		expect(
 			validateActionKeywords(
-				memory("Please connect Discord"),
+				memory("Please connect  Discord  "),
 				[],
 				["", " discord "],
 			),
 		).toBe(true);
 		expect(
 			validateActionKeywords(memory("Please connect"), [], ["", "slack"]),
+		).toBe(false);
+	});
+
+	it("returns false when current and recent messages have no text", () => {
+		expect(
+			validateActionKeywords(
+				memory(),
+				[memory(), memory(undefined)],
+				["hello"],
+			),
 		).toBe(false);
 	});
 
