@@ -201,10 +201,9 @@ describe("GET /api/views/search keyword scoring", () => {
     await expect(handleViewsRoutes(ctxZero)).resolves.toBe(true);
     expect(resultsFrom(jsonZero)).toHaveLength(1);
 
-    // Nonempty values that contain no parseable integer retain the historical
-    // fallback of 5; the zero-specific fix must not turn malformed input into
-    // the minimum page size.
-    for (const malformed of ["abc", "%20", "NaN"]) {
+    // Malformed and partial values retain the historical fallback of 5; the
+    // zero-specific fix must not turn them into the minimum page size.
+    for (const malformed of ["abc", "%20", "NaN", "1junk", "1.5"]) {
       const { ctx, json } = makeSearchCtx(`?q=wallet&limit=${malformed}`);
       await expect(handleViewsRoutes(ctx)).resolves.toBe(true);
       expect(resultsFrom(json)).toHaveLength(2);

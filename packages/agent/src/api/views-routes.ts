@@ -33,6 +33,7 @@ import {
 } from "@elizaos/core";
 import {
   createShellNavigateViewWsFrame,
+  parseClampedInteger,
   type RouteHelpers,
   readJsonBody,
   type ShellNavigateViewPayload,
@@ -335,17 +336,11 @@ export async function handleViewsRoutes(
   if (method === "GET" && pathname === `${PREFIX}/search`) {
     const query = url.searchParams.get("q") ?? "";
     const limitParam = url.searchParams.get("limit");
-    const topK = limitParam
-      ? (() => {
-          const parsed = parseInt(limitParam, 10);
-          // Preserve the established fallback for nonempty values that do not
-          // contain a parseable integer while still treating an explicit zero
-          // as the documented minimum page size.
-          return Number.isNaN(parsed)
-            ? 5
-            : Math.min(Math.max(parsed || 1, 1), 20);
-        })()
-      : 5;
+    const topK = parseClampedInteger(limitParam, {
+      min: 1,
+      max: 20,
+      fallback: 5,
+    });
 
     if (!query.trim()) {
       json(res, { results: [], query });
