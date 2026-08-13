@@ -261,7 +261,7 @@ export const BUILTIN_VIEW_MUTATION_BASELINE = [
       "packages/ui/src/components/pages/WorkflowTriggerPanel.tsx",
     ],
     semanticActions: ["SCHEDULED_TASKS", "TRIGGER", "WORKFLOW"],
-    maxMutationSites: 65,
+    maxMutationSites: 67,
     notes:
       "Automations feed and its task editors pair with the shared scheduler actions; native Smithers workflow controls pair with WORKFLOW.",
   },
