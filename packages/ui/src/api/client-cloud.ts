@@ -3492,7 +3492,14 @@ export type CloudAgentWakePhase =
  * the backend's Retry-After) when present. `agentId`/`jobId` are the
  * operator-safe correlation ids for the attempt.
  */
-export class CloudAgentWakeError extends ElizaError {
+// The isolated-browser fixture harnesses (src/**/__e2e__/run-*-e2e.mjs) stub
+// `@elizaos/core` with a CJS Proxy whose named exports arrive as `undefined`
+// through esbuild's ESM interop. A `class … extends undefined` crashes the
+// fixture bundle at evaluation time, so guard the base: real builds always see
+// the real ElizaError; only stubbed fixture bundles degrade to plain Error.
+const WakeErrorBase = (ElizaError ?? Error) as typeof ElizaError;
+
+export class CloudAgentWakeError extends WakeErrorBase {
   override readonly name = "CloudAgentWakeError";
   readonly phase: CloudAgentWakePhase;
   readonly agentId: string;
