@@ -562,15 +562,15 @@
     },
     {
       "name": "useMessageScroller",
-      "source": "../../node_modules/.bun/@shadcn+react@0.2.1+b2e33729a97476bf/node_modules/@shadcn/react/dist/message-scroller/index.d.ts"
+      "source": "../../node_modules/.bun/@shadcn+react@0.3.0+b2e33729a97476bf/node_modules/@shadcn/react/dist/message-scroller/index.d.ts"
     },
     {
       "name": "useMessageScrollerScrollable",
-      "source": "../../node_modules/.bun/@shadcn+react@0.2.1+b2e33729a97476bf/node_modules/@shadcn/react/dist/message-scroller/index.d.ts"
+      "source": "../../node_modules/.bun/@shadcn+react@0.3.0+b2e33729a97476bf/node_modules/@shadcn/react/dist/message-scroller/index.d.ts"
     },
     {
       "name": "useMessageScrollerVisibility",
-      "source": "../../node_modules/.bun/@shadcn+react@0.2.1+b2e33729a97476bf/node_modules/@shadcn/react/dist/message-scroller/index.d.ts"
+      "source": "../../node_modules/.bun/@shadcn+react@0.3.0+b2e33729a97476bf/node_modules/@shadcn/react/dist/message-scroller/index.d.ts"
     }
   ],
   "count": 143
