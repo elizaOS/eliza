@@ -5044,9 +5044,13 @@ export class AgentRuntime implements IAgentRuntime {
 			trajLogger = null;
 		}
 		const composeStartedAt = Date.now();
+		// The host installs its merged request/room owner in streaming context.
+		// Prefer that composite signal over the raw room controller so a client
+		// disconnect remains observable while a room turn is active.
 		const providerSignal =
+			getStreamingContext()?.abortSignal ??
 			this.turnControllers.signalFor(message.roomId) ??
-			getStreamingContext()?.abortSignal;
+			undefined;
 		const providerData: ProviderExecutionRecord[] = await Promise.all(
 			providersToRun.map(async (provider) => {
 				const providerRuntime: IAgentRuntime = this;
@@ -5066,6 +5070,7 @@ export class AgentRuntime implements IAgentRuntime {
 				if (!execution) {
 					const startedAt = Date.now();
 					const startedAtMonotonic = performance.now();
+					const callerStreamingContext = getStreamingContext();
 					// The work is deliberately NOT wired to this caller's signal:
 					// coalesced waiters each race the shared promise against their own
 					// signal in awaitProviderExecution, and the dedicated controller
@@ -5073,10 +5078,22 @@ export class AgentRuntime implements IAgentRuntime {
 					const workController = new AbortController();
 					const promise = runProviderExecution(
 						() =>
-							withProviderStep(providerRuntime, provider.name, () =>
-								provider.get(providerRuntime, message, cachedState, {
-									signal: workController.signal,
-								}),
+							runWithStreamingContext(
+								{
+									...(callerStreamingContext ?? {
+										onStreamChunk: async () => undefined,
+									}),
+									// Nested useModel calls read cancellation from this
+									// scope. They belong to the shared execution, not to
+									// whichever caller happened to create it.
+									abortSignal: workController.signal,
+								},
+								() =>
+									withProviderStep(providerRuntime, provider.name, () =>
+										provider.get(providerRuntime, message, cachedState, {
+											signal: workController.signal,
+										}),
+									),
 							),
 						workController.signal,
 					);

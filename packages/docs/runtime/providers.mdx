@@ -72,6 +72,10 @@ stops. There is no provider-local wall-clock deadline or degraded timeout
 result: latency and backing-service failures remain observable instead of being
 replaced with fabricated context.
 
+The deprecated `timeoutMs` and `timeoutMode` declaration fields remain as
+ignored source-compatibility shims for existing provider literals. New code
+must not use them; they neither schedule a deadline nor change failure handling.
+
 Provider `get()` must not commit external side effects. The runtime stops
 awaiting a provider when its lifecycle owner cancels, but non-cooperative work
 may still be running if its dependency ignores the signal.
