@@ -119,7 +119,12 @@ export type MintBalance = {
 
 export type SolanaWalletSubaction = "transfer" | "swap";
 
-export type SolanaWalletActionMode = "prepare" | "execute";
+// Mirrors WalletRouterMode structurally (executeWalletRouterAction below
+// forwards WalletRouterParams.mode as-is) so this stays type-consistent with
+// the router's widened enum. This orphaned path is not wired into
+// routeWalletAction (see chains/registry.ts for the real, live simulate
+// implementation) and does not itself implement simulate semantics.
+export type SolanaWalletActionMode = "prepare" | "execute" | "simulate";
 
 export type SolanaTransferParams = {
   tokenAddress?: string | null;

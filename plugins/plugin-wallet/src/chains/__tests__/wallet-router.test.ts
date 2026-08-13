@@ -65,6 +65,10 @@ function handler(
     "transfer",
     "swap",
   ],
+  // Omitted (default []) reproduces a handler that never opted into
+  // simulate: no `simulation` capability and no `simulate` function at all,
+  // matching every non-Solana handler today.
+  simulateActions: WalletChainHandler["supportedActions"] = [],
 ): WalletChainHandler {
   const execute = vi.fn(
     async (params: WalletRouterParams): Promise<WalletRouterExecution> => ({
@@ -82,6 +86,31 @@ function handler(
       to: params.recipient,
     }),
   );
+  const simulate =
+    simulateActions.length > 0
+      ? vi.fn(
+          async (
+            params: WalletRouterParams,
+          ): Promise<WalletRouterExecution> => ({
+            status: "simulated",
+            chain,
+            chainId,
+            subaction: params.subaction,
+            dryRun: params.dryRun,
+            mode: params.mode,
+            amount: params.amount,
+            fromToken: params.fromToken,
+            toToken: params.toToken,
+            simulation: {
+              success: true,
+              err: null,
+              logs: ["Program log: ok"],
+              unitsConsumed: 1_000,
+              summary: {},
+            },
+          }),
+        )
+      : undefined;
   return {
     chain,
     name,
@@ -111,7 +140,11 @@ function handler(
       supported: true,
       supportedActions,
     },
+    ...(simulateActions.length > 0
+      ? { simulation: { supported: true, supportedActions: simulateActions } }
+      : {}),
     execute,
+    simulate,
   };
 }
 
@@ -399,6 +432,117 @@ describe("wallet router action", () => {
       signer: { kind: "evm", required: true },
       dryRun: { supported: true },
     });
+    expect(base.execute).not.toHaveBeenCalled();
+  });
+
+  it("dispatches mode=simulate to handler.simulate without calling execute or the confirmation gate", async () => {
+    const { runtime, service } = createService();
+    const solana = handler(
+      "solana",
+      "Solana",
+      "solana-mainnet",
+      "solana",
+      ["transfer", "swap"],
+      ["swap"],
+    );
+    service.registerChainHandler(solana);
+
+    // run(), not runConfirmed(): mode=simulate must skip the confirmation
+    // gate entirely (it never signs or broadcasts), so a single turn with no
+    // prior "yes" reply must still reach the handler.
+    const result = await run(runtime, {
+      subaction: "swap",
+      chain: "solana",
+      fromToken: "SOL",
+      toToken: "USDC",
+      amount: "1",
+      mode: "simulate",
+    });
+
+    expect(result?.success).toBe(true);
+    expect(result?.data?.status).toBe("simulated");
+    expect(result?.text).toBe(
+      "Simulated swap on solana: ok, ~1000 compute units.",
+    );
+    expect(solana.simulate).toHaveBeenCalledTimes(1);
+    expect(solana.simulate).toHaveBeenCalledWith(
+      expect.objectContaining({ subaction: "swap", mode: "simulate" }),
+      expect.any(Object),
+    );
+    expect(solana.execute).not.toHaveBeenCalled();
+  });
+
+  it("renders a distinct 'would fail' line for a simulate result with success:false", async () => {
+    const { runtime, service } = createService();
+    const failingSimulate = vi.fn(
+      async (params: WalletRouterParams): Promise<WalletRouterExecution> => ({
+        status: "simulated",
+        chain: "solana",
+        chainId: "solana-mainnet",
+        subaction: params.subaction,
+        dryRun: params.dryRun,
+        mode: params.mode,
+        amount: params.amount,
+        fromToken: params.fromToken,
+        toToken: params.toToken,
+        simulation: {
+          success: false,
+          err: "InstructionError",
+          logs: ["Program log: failed", "Program log: insufficient funds"],
+          unitsConsumed: 500,
+          summary: { inToken: "SOL", outToken: "USDC" },
+        },
+      }),
+    );
+    const solana: WalletChainHandler = {
+      chain: "solana",
+      name: "Solana",
+      chainId: "solana-mainnet",
+      aliases: ["solana", "sol"],
+      supportedActions: ["swap"],
+      tokens: [],
+      signer: { required: true, kind: "solana", source: "test" },
+      dryRun: { supported: true, supportedActions: ["swap"] },
+      simulation: { supported: true, supportedActions: ["swap"] },
+      execute: vi.fn(),
+      simulate: failingSimulate,
+    };
+    service.registerChainHandler(solana);
+
+    const result = await run(runtime, {
+      subaction: "swap",
+      chain: "solana",
+      fromToken: "SOL",
+      toToken: "USDC",
+      amount: "1",
+      mode: "simulate",
+    });
+
+    expect(result?.success).toBe(true);
+    expect(result?.text).toContain("would fail");
+    expect(result?.text).toContain("InstructionError");
+    expect(result?.text).toContain("Program log: failed");
+    expect(solana.execute).not.toHaveBeenCalled();
+  });
+
+  it("returns a typed SIMULATION_UNSUPPORTED failure for a handler that never opted in, without fabricating a prepared result", async () => {
+    const { runtime, service } = createService();
+    const base = handler("base", "Base", "8453", "evm"); // no simulateActions passed
+    service.registerChainHandler(base);
+
+    const result = await run(runtime, {
+      subaction: "swap",
+      chain: "base",
+      fromToken: "ETH",
+      toToken: "USDC",
+      amount: "1",
+      mode: "simulate",
+    });
+
+    expect(result?.success).toBe(false);
+    expect(result?.data?.error).toBe("SIMULATION_UNSUPPORTED");
+    expect(String(result?.text)).toContain("does not support simulation");
+    expect(result?.data?.status).toBeUndefined();
     expect(base.execute).not.toHaveBeenCalled();
   });
 });

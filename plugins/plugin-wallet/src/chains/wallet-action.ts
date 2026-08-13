@@ -39,9 +39,11 @@ import {
   type WalletBackendService,
 } from "../services/wallet-backend-service.js";
 import type {
+  WalletRouterExecution,
   WalletRouterFailure,
   WalletRouterParams,
   WalletRouterResult,
+  WalletRouterSimulation,
   WalletRouterSubaction,
 } from "../types/wallet-router.js";
 import {
@@ -319,11 +321,51 @@ function formatFailure(failure: WalletRouterFailure): string {
   return failure.detail;
 }
 
+function formatSimulationSummary(
+  summary: WalletRouterSimulation["summary"],
+): string {
+  return Object.entries(summary)
+    .filter(([, value]) => value !== null && value !== undefined)
+    .map(([key, value]) => `${key}=${value}`)
+    .join(", ");
+}
+
+// Renders `mode="simulate"` results (GH #16613): a typed, non-broadcasting
+// preview built from the real unsigned transaction and
+// `connection.simulateTransaction`, distinct from both "prepared" (offline
+// echo, no network call) and "submitted" (broadcast, has a signature/hash).
+function simulationResultText(
+  execution: WalletRouterExecution,
+  chain: string,
+): string {
+  const simulation = execution.simulation;
+  if (!simulation) {
+    return `Simulated ${execution.subaction} on ${chain}.`;
+  }
+  const summaryText = formatSimulationSummary(simulation.summary);
+  if (simulation.success) {
+    const unitsText =
+      simulation.unitsConsumed === null
+        ? "unknown"
+        : String(simulation.unitsConsumed);
+    return `Simulated ${execution.subaction} on ${chain}: ok, ~${unitsText} compute units${
+      summaryText ? ` (${summaryText})` : ""
+    }.`;
+  }
+  const logsText = simulation.logs.slice(0, 3).join(" | ");
+  return `Simulated ${execution.subaction} on ${chain}: would fail — ${
+    simulation.err ?? "unknown error"
+  }${logsText ? ` (${logsText})` : ""}${summaryText ? ` [${summaryText}]` : ""}.`;
+}
+
 function resultText(result: WalletRouterResult): string {
   if (!result.ok) {
     return formatFailure(result);
   }
   const execution = result.result;
+  if (execution.status === "simulated") {
+    return simulationResultText(execution, result.handler.chain);
+  }
   if (execution.status === "prepared") {
     const dryRunText = execution.dryRun ? "Dry run prepared" : "Prepared";
     return `${dryRunText} ${execution.subaction} on ${result.handler.chain}.`;
@@ -486,6 +528,7 @@ async function runWalletRouter(
       ? {
           walletActionSucceeded: routed.result.status === "submitted",
           walletActionPrepared: routed.result.status === "prepared",
+          walletActionSimulated: routed.result.status === "simulated",
           walletChain: routed.handler.chain,
           walletSubaction: routed.result
             .subaction satisfies WalletRouterSubaction,
@@ -596,14 +639,14 @@ export const walletRouterAction: Action = {
     {
       name: "mode",
       description:
-        "Prepare without submitting, or request execution. On-chain submission still requires the user to reply yes on a follow-up turn (LLM cannot authorize via mode or confirmed flags).",
+        "Prepare without submitting, request execution, or simulate. On-chain submission still requires the user to reply yes on a follow-up turn (LLM cannot authorize via mode or confirmed flags). simulate builds the real transaction and runs connection.simulateTransaction against it — it never signs or broadcasts, so it cannot authorize or lead to a live submission, and it skips the confirmation gate entirely. Supported only for swap (Solana/Jupiter) and pump_fun_buy today; other subactions return SIMULATION_UNSUPPORTED.",
       required: false,
       schema: {
         type: "string",
-        enum: ["prepare", "execute"],
+        enum: ["prepare", "execute", "simulate"],
         default: "prepare",
       },
-      examples: ["prepare", "execute"],
+      examples: ["prepare", "execute", "simulate"],
     },
     {
       name: "dryRun",

@@ -6,7 +6,11 @@
  * `registerDefaultWalletChainHandlers`. Also defines the Zod schema
  * (`WalletRouterParamsSchema`) that parses and normalizes raw action input
  * (string/number coercion, comma-separated array parsing, truthy-string
- * booleans) into a validated `WalletRouterParams`.
+ * booleans) into a validated `WalletRouterParams`. `mode: "simulate"` is a
+ * third, non-broadcasting mode alongside `prepare`/`execute`: a handler that
+ * opts in via `simulate`/`simulation` builds the real unsigned transaction
+ * and runs it through `connection.simulateTransaction`, returning a typed
+ * `WalletRouterSimulation` instead of ever signing or submitting.
  */
 import type {
   IAgentRuntime,
@@ -26,7 +30,7 @@ export const WALLET_ROUTER_SUBACTIONS = [
 
 export type WalletRouterSubaction = (typeof WALLET_ROUTER_SUBACTIONS)[number];
 
-export const WALLET_ROUTER_MODES = ["prepare", "execute"] as const;
+export const WALLET_ROUTER_MODES = ["prepare", "execute", "simulate"] as const;
 
 export type WalletRouterMode = (typeof WALLET_ROUTER_MODES)[number];
 
@@ -75,6 +79,18 @@ export interface WalletDryRunMetadata {
   readonly description?: string;
 }
 
+/**
+ * Declares whether a handler can build the real unsigned transaction for a
+ * subaction and run it through `connection.simulateTransaction` (no signing,
+ * no broadcast). Optional and per-handler, mirroring {@link
+ * WalletDryRunMetadata}: only handlers that opt in populate this.
+ */
+export interface WalletSimulationMetadata {
+  readonly supported: boolean;
+  readonly supportedActions: readonly WalletRouterSubaction[];
+  readonly description?: string;
+}
+
 export interface WalletChainHandlerMetadata {
   readonly chainId: string;
   readonly chain: string;
@@ -84,6 +100,7 @@ export interface WalletChainHandlerMetadata {
   readonly tokens: readonly WalletTokenMetadata[];
   readonly signer: WalletSignerMetadata;
   readonly dryRun: WalletDryRunMetadata;
+  readonly simulation?: WalletSimulationMetadata;
 }
 
 export interface WalletRouterContext {
@@ -93,8 +110,26 @@ export interface WalletRouterContext {
   readonly tokenDataService: ITokenDataService | null;
 }
 
+/**
+ * Result of running a handler's real unsigned transaction through
+ * `connection.simulateTransaction({ sigVerify: false, replaceRecentBlockhash:
+ * true })`. An RPC-reported revert is a *successful* simulation with
+ * `success: false` and a populated `err`/`logs` — never a thrown error, and
+ * never fabricated success. `summary` echoes the subaction-specific
+ * quote/build fields (swap: inToken/outToken/inAmount/outAmount/
+ * priceImpactPct from the Jupiter quote; pump_fun_buy: mint/solAmount) so
+ * callers can render a result without re-deriving it from `metadata`.
+ */
+export interface WalletRouterSimulation {
+  readonly success: boolean;
+  readonly err: string | null;
+  readonly logs: readonly string[];
+  readonly unitsConsumed: number | null;
+  readonly summary: Readonly<Record<string, string | number | null>>;
+}
+
 export interface WalletRouterExecution {
-  readonly status: "prepared" | "submitted";
+  readonly status: "prepared" | "submitted" | "simulated";
   readonly chain: string;
   readonly chainId: string;
   readonly subaction: WalletRouterSubaction;
@@ -108,10 +143,22 @@ export interface WalletRouterExecution {
   readonly fromToken?: string;
   readonly toToken?: string;
   readonly metadata?: Record<string, unknown>;
+  readonly simulation?: WalletRouterSimulation;
 }
 
 export interface WalletChainHandler extends WalletChainHandlerMetadata {
   execute(
+    params: WalletRouterParams,
+    context: WalletRouterContext,
+  ): Promise<WalletRouterExecution>;
+  /**
+   * Builds the real unsigned transaction for a subaction and returns its
+   * `connection.simulateTransaction` result instead of signing or
+   * broadcasting. Present only on handlers that declare `simulation.supported`
+   * for the subaction; the router treats a missing/unsupported combination as
+   * a typed `SIMULATION_UNSUPPORTED` failure, never a fallback to `execute`.
+   */
+  simulate?(
     params: WalletRouterParams,
     context: WalletRouterContext,
   ): Promise<WalletRouterExecution>;
@@ -123,6 +170,7 @@ export type WalletRouterErrorCode =
   | "UNSUPPORTED_SUBACTION"
   | "AMBIGUOUS_CHAIN"
   | "DRY_RUN_UNSUPPORTED"
+  | "SIMULATION_UNSUPPORTED"
   | "EXECUTION_FAILED";
 
 export interface WalletRouterFailure {
