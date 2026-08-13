@@ -1496,18 +1496,17 @@ async function openSheetToFull(p, pointer) {
 async function scrollReaderUp(p, pointer) {
   const selector = testIdSelector("chat-thread-scroll");
   const before = await threadScrollState(p);
-  let after = before;
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    if (pointer === "mouse") {
-      await p.getByTestId("chat-thread-scroll").hover();
-      await p.mouse.wheel(0, -420);
-    } else {
-      await touchSwipe(p, selector, 0, 280, { steps: 16, stepDelayMs: 16 });
-    }
-    await p.waitForTimeout(360);
-    after = await threadScrollState(p);
-    if (!!before && !!after && after.scrollTop < before.scrollTop - 80) break;
+  // Exactly one gesture: the assertion below IS the contract that a single real
+  // wheel/touch scroll moves the reader into history, so retrying the gesture
+  // would hide the regression it exists to catch.
+  if (pointer === "mouse") {
+    await p.getByTestId("chat-thread-scroll").hover();
+    await p.mouse.wheel(0, -420);
+  } else {
+    await touchSwipe(p, selector, 0, 280, { steps: 16, stepDelayMs: 16 });
   }
+  await p.waitForTimeout(360);
+  const after = await threadScrollState(p);
   assert(
     !!before && !!after && after.scrollTop < before.scrollTop - 80,
     `[${pointer}] AUTOSCROLL real ${pointer === "mouse" ? "wheel" : "touch"} scroll moves reader into history (${Math.round(before?.scrollTop ?? 0)} → ${Math.round(after?.scrollTop ?? 0)})`,
