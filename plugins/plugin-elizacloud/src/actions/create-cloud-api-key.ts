@@ -26,7 +26,7 @@ import { cloudAccountAuthenticated, NO_CLOUD_MESSAGE } from "./cloud-account-sta
 
 const RESERVED_PREFIX = "agent-sandbox:";
 const SESSION_REQUIRED_MESSAGE =
-  "Eliza Cloud only allows API keys to be created from a signed-in session — my agent credential can't mint them. Open the Cloud app in the launcher (or the console at elizacloud.ai → dashboard → API keys) to create one.";
+  "Eliza Cloud only allows API keys to be created from a signed-in session — my agent credential can't mint them. Open Cloud in Eliza or visit cloud.eliza.app/cloud/api-keys to create one.";
 const ERROR_MESSAGE =
   "I couldn't create the API key right now — the Cloud API returned an error. Try again in a moment.";
 
@@ -97,7 +97,7 @@ export const createCloudApiKeyAction: Action = {
         "",
         plainKey,
         "",
-        "Copy it now — this is the only time the full key is shown. Manage or revoke it from the console (elizacloud.ai → dashboard → API keys).",
+        "Copy it now — this is the only time the full key is shown. Manage or revoke it from Cloud in the Eliza app or cloud.eliza.app/cloud/api-keys.",
       ].join("\n");
 
       await callback?.({ text: reply, actions: ["CLOUD_CREATE_API_KEY"] });

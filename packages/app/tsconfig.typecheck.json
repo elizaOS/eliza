@@ -3,6 +3,8 @@
   "extends": "./tsconfig.base.json",
   "compilerOptions": {
     "paths": {
+      "@homepage/*": ["../homepage/src/*"],
+      "@/*": ["../homepage/src/*"],
       "@elizaos/app-core": ["../app-core/dist/index.d.ts"],
       "@elizaos/app-core/*": ["../app-core/dist/*"],
       "@elizaos/app-core/first-run/first-run-config": [

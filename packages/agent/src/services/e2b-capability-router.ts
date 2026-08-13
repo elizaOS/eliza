@@ -63,7 +63,7 @@ const DEFAULT_TIMEOUT_MS = 30 * 60 * 1000;
 const DEFAULT_REQUEST_TIMEOUT_MS = 60 * 1000;
 const MAX_READ_BYTES = 5 * 1024 * 1024;
 const MAX_LIST_LIMIT = 1000;
-const DEFAULT_ELIZA_CLOUD_API_BASE_URL = "https://api.elizacloud.ai/api/v1";
+const DEFAULT_ELIZA_CLOUD_API_BASE_URL = "https://api.eliza.app/api/v1";
 
 export type CodingAgentRunner = "claude-code" | "codex" | "opencode";
 

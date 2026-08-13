@@ -19,9 +19,9 @@ import {
   scrubCloudSecretsFromEnv,
 } from "./cloud-secrets";
 
-const DEFAULT_CLOUD_API_BASE_URL = "https://elizacloud.ai/api/v1";
+const DEFAULT_CLOUD_API_BASE_URL = "https://api.eliza.app/api/v1";
 export const CLOUD_BILLING_URL =
-  "https://www.elizacloud.ai/dashboard/settings?tab=billing";
+  "https://cloud.eliza.app/cloud/billing";
 
 const CLOUD_ENV_KEYS = [
   "ELIZAOS_CLOUD_API_KEY",

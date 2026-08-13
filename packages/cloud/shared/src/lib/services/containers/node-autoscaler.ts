@@ -55,7 +55,7 @@ export interface AutoscalePolicy {
   defaultLocation: string;
   /** Image used for the OS install (cloud-init compatible). */
   defaultImage: string;
-  /** Default per-node capacity (slot count) for newly provisioned nodes. */
+  /** Policy fallback retained in provisional metadata until hardware attests. */
   defaultCapacity: number;
 }
 
@@ -144,6 +144,7 @@ export class NodeAutoscaler {
     const healthyEnabled = enabled.filter(
       (n) =>
         n.status === "healthy" &&
+        n.metadata.capacityProvisional !== true &&
         isArchitectureCompatibleWithPlatform(
           inferNodeArchitectureFromMetadata(n.metadata),
           requiredPlatform,
@@ -239,7 +240,7 @@ export class NodeAutoscaler {
     const serverType = request.serverType ?? this.policy.defaultServerType;
     const location = request.location ?? this.policy.defaultLocation;
     const image = request.image ?? this.policy.defaultImage;
-    const capacity = request.capacity ?? this.policy.defaultCapacity;
+    const policyCapacity = this.policy.defaultCapacity;
     const prePullImages = request.prePullImages ?? [containersEnv.defaultAgentImage()];
     const networkIds = containersEnv.defaultHcloudNetworkIds();
 
@@ -250,7 +251,7 @@ export class NodeAutoscaler {
       registrationSecret: bootstrap.registrationSecret,
       prePullImages,
       prePullPlatform: containersEnv.defaultAgentImagePlatform(),
-      capacity,
+      ...(request.capacity === undefined ? {} : { capacity: request.capacity }),
     });
 
     const client = this.computeProvider();
@@ -290,7 +291,10 @@ export class NodeAutoscaler {
       node_id: nodeId,
       hostname: ip,
       ssh_port: 22,
-      capacity,
+      // Zero is the data-level fail-closed fence. Several legacy placement
+      // paths still query `allocated_count < capacity` directly, so a
+      // non-zero provisional value could bypass metadata-aware selectors.
+      capacity: 0,
       enabled: true,
       status: "unknown",
       allocated_count: 0,
@@ -304,6 +308,9 @@ export class NodeAutoscaler {
         image,
         architecture: inferArchitectureFromHetznerServerType(serverType),
         provisionedAt: new Date().toISOString(),
+        capacityProvisional: true,
+        capacityRequested: request.capacity ?? null,
+        capacityPolicyFallback: policyCapacity,
       },
     });
 
@@ -313,6 +320,7 @@ export class NodeAutoscaler {
       ip,
       serverType,
       location,
+      capacityProvisional: true,
     });
 
     return {

@@ -20,7 +20,7 @@
  *     --host <control-plane-ip> \
  *     --ssh-key <path-to-key-for-the-cp-deploy-user> \
  *     --app-node <id:ip:capacity>            # e.g. apps-node-1:167.233.112.155:20
- *     --base-domain apps-staging.elizacloud.ai \
+ *     --base-domain apps-staging.eliza.app \
  *     --caddy-admin http://167.233.112.155:2019 \
  *     --tenant-admin-dsn 'postgresql://postgres:***@10.30.1.10:5432/postgres?sslmode=require' \
  *     --node-ssh-key-path /home/deploy/.ssh/apps-node \   # key the APP NODE's deploy user accepts

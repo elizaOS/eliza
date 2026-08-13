@@ -14,6 +14,7 @@
  * differ only in case.
  */
 
+import { ELIZA_DOMAIN_CONTRACTS } from "@elizaos/shared/elizacloud";
 import { normalizeWallet } from "../db/crypto/field-crypto";
 import { organizationInvitesRepository } from "../db/repositories/organization-invites";
 import { usersRepository } from "../db/repositories/users";
@@ -871,6 +872,6 @@ async function queueWelcomeEmail(data: {
 }): Promise<void> {
   await emailService.sendWelcomeEmail({
     ...data,
-    dashboardUrl: `${process.env.NEXT_PUBLIC_APP_URL}/dashboard`,
+    dashboardUrl: `${process.env.NEXT_PUBLIC_APP_URL || ELIZA_DOMAIN_CONTRACTS.production.cloudAppOrigin}/cloud`,
   });
 }

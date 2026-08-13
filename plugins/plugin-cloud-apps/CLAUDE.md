@@ -15,7 +15,7 @@ is specific to the plugin.
 ## Auth
 
 Reads `ELIZAOS_CLOUD_API_KEY` (+ optional `ELIZAOS_CLOUD_BASE_URL`, defaults to
-`https://www.elizacloud.ai/api/v1`) via `runtime.getSetting` — the same
+`https://api.eliza.app/api/v1`) via `runtime.getSetting` — the same
 credentials `plugin-elizacloud` uses. With no key, `validate` returns false,
 every action degrades gracefully with a "no key" message, and the provider
 stays empty. Construction lives in `src/client.ts` (`getCloudClient`).

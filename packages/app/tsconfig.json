@@ -3,6 +3,8 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "paths": {
+      "@homepage/*": ["../homepage/src/*"],
+      "@/*": ["../homepage/src/*"],
       "@elizaos/app-core": ["../app-core/src/index.ts"],
       "@elizaos/plugin-task-coordinator": [
         "../../plugins/plugin-task-coordinator/src/index.ts"

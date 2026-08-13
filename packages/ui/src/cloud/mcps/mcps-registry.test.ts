@@ -165,9 +165,9 @@ describe("mcps domain registration", () => {
   it("registers the standalone dashboard/mcps route at import time", async () => {
     await import("./index");
     const { getCloudRoute } = await import("../shell/cloud-route-registry");
-    const route = getCloudRoute("dashboard/mcps");
+    const route = getCloudRoute("cloud/mcps");
     expect(route).toBeDefined();
-    expect(route?.group).toBe("dashboard");
+    expect(route?.group).toBe("cloud");
   }, 30_000);
 
   it("registers a Settings section under the system group on demand", async () => {

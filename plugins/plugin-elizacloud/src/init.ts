@@ -12,7 +12,7 @@ export function initializeOpenAI(
         logger.warn(
           "ELIZAOS_CLOUD_API_KEY is not set in environment - ElizaOS Cloud functionality will be limited"
         );
-        logger.info("Get your API key from https://www.elizacloud.ai/dashboard/api-keys");
+        logger.info("Get your API key from https://cloud.eliza.app/cloud/api-keys");
         return;
       }
       try {
@@ -33,7 +33,7 @@ export function initializeOpenAI(
       logger.warn(
         `ElizaOS Cloud plugin configuration issue: ${message} - You need to configure the ELIZAOS_CLOUD_API_KEY in your environment variables`
       );
-      logger.info("Get your API key from https://www.elizacloud.ai/dashboard/api-keys");
+      logger.info("Get your API key from https://cloud.eliza.app/cloud/api-keys");
     }
   })();
 }

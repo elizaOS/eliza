@@ -11,6 +11,7 @@ import { isViewVisible } from "@elizaos/core";
 import { isPermissionId, type PermissionId } from "@elizaos/shared";
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useAgentElement } from "../../agent-surface";
+import { isManagedCloudRuntime } from "../../cloud/managed-cloud-runtime";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
 import { ContentLayout } from "../../layouts/content-layout";
 import { cn } from "../../lib/utils";
@@ -231,6 +232,8 @@ export function SettingsView({
     walletEnabled: s.walletEnabled,
   }));
   const plugins = useAppSelector((s) => s.plugins);
+  const runtimeTarget = useAppSelector((s) => s.startupCoordinator.target);
+  const managedCloudRuntime = isManagedCloudRuntime(runtimeTarget);
   const enabledKinds = useEnabledViewKinds();
   const isDesktop = useMediaQuery("(min-width: 1024px)");
   const [activeSection, setActiveSection] = useState<string | null>(
@@ -246,11 +249,12 @@ export function SettingsView({
   const visibleSections = useMemo(() => {
     return getAllSettingsSections().filter((section) => {
       if (section.id === "wallet-rpc" && walletEnabled === false) return false;
+      if (section.cloudOnly && !managedCloudRuntime) return false;
       if (!isViewVisible(section, enabledKinds)) return false;
       if (section.hideOnCloud && isAndroidCloudBuild()) return false;
       return true;
     });
-  }, [walletEnabled, enabledKinds]);
+  }, [walletEnabled, managedCloudRuntime, enabledKinds]);
   const visibleSectionIds = useMemo(
     () => new Set(visibleSections.map((section) => section.id)),
     [visibleSections],

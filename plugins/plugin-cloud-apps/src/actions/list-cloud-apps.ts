@@ -22,7 +22,7 @@ import {
 } from "../client.js";
 
 const NO_KEY_MESSAGE =
-  "I can't reach Eliza Cloud yet — no Cloud API key is configured. Add your ELIZAOS_CLOUD_API_KEY (from elizacloud.ai → dashboard → API keys) and I can list your apps.";
+  "I can't reach Eliza Cloud yet — no Cloud API key is configured. Add your ELIZAOS_CLOUD_API_KEY (from cloud.eliza.app → dashboard → API keys) and I can list your apps.";
 const EMPTY_MESSAGE =
   "You haven't created any apps on Eliza Cloud yet. You can build one from the Apps view or just ask me to create an app.";
 const ERROR_MESSAGE =
@@ -142,7 +142,7 @@ export const listCloudAppsAction: Action = {
       {
         name: "{{agent}}",
         content: {
-          text: "You have 2 apps on Eliza Cloud:\n• Acme Bot — https://acme.elizacloud.ai — deployed\n• Side Project — https://side.example.com — draft",
+          text: "You have 2 apps on Eliza Cloud:\n• Acme Bot — https://acme.apps.eliza.app — deployed\n• Side Project — https://side.example.com — draft",
           actions: ["LIST_CLOUD_APPS"],
         },
       },

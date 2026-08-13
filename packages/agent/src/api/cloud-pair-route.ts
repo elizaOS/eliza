@@ -48,7 +48,7 @@ function resolveCloudApiBaseUrl(): string {
   const raw =
     process.env.ELIZAOS_CLOUD_BASE_URL ||
     process.env.NEXT_PUBLIC_API_URL ||
-    "https://api.elizacloud.ai/api/v1";
+    "https://api.eliza.app/api/v1";
   return raw.replace(/\/+$/, "");
 }
 
@@ -103,6 +103,9 @@ function escapeHtml(value: string): string {
  * Update both if the canonical staging host set changes.
  */
 const STAGING_CLOUD_HOSTS: ReadonlySet<string> = new Set([
+  "staging.eliza.app",
+  "api-staging.eliza.app",
+  "cloud-staging.eliza.app",
   "staging.elizacloud.ai",
   "api-staging.elizacloud.ai",
   "app-staging.elizacloud.ai",
@@ -111,7 +114,9 @@ const STAGING_CLOUD_HOSTS: ReadonlySet<string> = new Set([
 function isStagingCloudHostname(hostname: string): boolean {
   const host = hostname.toLowerCase();
   return (
-    STAGING_CLOUD_HOSTS.has(host) || host.endsWith(".staging.elizacloud.ai")
+    STAGING_CLOUD_HOSTS.has(host) ||
+    host.endsWith(".cloud-staging.eliza.app") ||
+    host.endsWith(".staging.elizacloud.ai")
   );
 }
 
@@ -126,12 +131,12 @@ function resolveCloudConsoleUrl(): string {
   try {
     const hostname = new URL(resolveCloudAuthRoot()).hostname.toLowerCase();
     if (isStagingCloudHostname(hostname)) {
-      return "https://staging.elizacloud.ai/dashboard/agents";
+      return "https://cloud-staging.eliza.app/cloud/agents";
     }
   } catch {
     // error-policy:J3 malformed auth root yields the production default.
   }
-  return "https://www.elizacloud.ai/dashboard/agents";
+  return "https://cloud.eliza.app/cloud/agents";
 }
 
 function renderErrorHtml(

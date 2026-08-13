@@ -3,7 +3,7 @@
 // Run: node test/_lifecycle-fuzz.mjs  (from packages/cloud/api)
 import { Wallet } from "ethers";
 
-const API = process.env.CLOUD_API || "https://api.elizacloud.ai";
+const API = process.env.CLOUD_API || "https://api.eliza.app";
 const log = (...a) => console.log(new Date().toISOString().slice(11, 19), ...a);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 let KEY = "";
@@ -69,7 +69,7 @@ async function createAgent(label) {
   return { id, status: c.s, tier: cd.executionTier || cd.execution_tier };
 }
 async function waitReady(id, budgetMs = 5 * 60 * 1000) {
-  const pub = `https://${id}.elizacloud.ai`;
+  const pub = `https://${id}.cloud.eliza.app`;
   const t0 = Date.now();
   while (Date.now() - t0 < budgetMs) {
     let st = 0;
@@ -83,7 +83,7 @@ async function waitReady(id, budgetMs = 5 * 60 * 1000) {
   return { ready: false, sec: Math.round((Date.now() - t0) / 1000) };
 }
 async function talk(id, text) {
-  const pub = `https://${id}.elizacloud.ai`;
+  const pub = `https://${id}.cloud.eliza.app`;
   const conv = await j("POST", "/api/conversations", { base: pub, body: {} });
   const cid = conv.d?.conversation?.id || conv.d?.id || id;
   const chat = await j("POST", `/api/conversations/${cid}/messages`, {

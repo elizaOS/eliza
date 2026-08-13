@@ -138,8 +138,7 @@ export async function installE2eWalletIfRequested(): Promise<boolean> {
     const { siweLoginWithInjectedWallet } = await import(
       "../state/cloud-siwe-login"
     );
-    const cloudApiBase =
-      getBootConfig().cloudApiBase || "https://elizacloud.ai";
+    const cloudApiBase = getBootConfig().cloudApiBase || "https://eliza.app";
     try {
       await siweLoginWithInjectedWallet(cloudApiBase);
     } catch (err) {

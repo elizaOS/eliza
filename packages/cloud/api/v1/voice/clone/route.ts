@@ -53,7 +53,7 @@ const MAX_FILES = 10;
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB per file
 const MAX_TOTAL_SIZE = 100 * 1024 * 1024; // 100MB combined
 const ELEVENLABS_API = "https://api.elevenlabs.io";
-const DEFAULT_R2_PUBLIC_HOST = "blob.elizacloud.ai";
+const DEFAULT_R2_PUBLIC_HOST = "blob.eliza.app";
 
 type CloneType = "instant" | "professional";
 

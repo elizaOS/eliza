@@ -191,7 +191,7 @@ describe("handleStandaloneCloudPairRoute", () => {
       "default-src 'none'",
     );
     expect(fetchMock).toHaveBeenCalledWith(
-      "https://api.elizacloud.ai/api/auth/pair",
+      "https://api.eliza.app/api/auth/pair",
       expect.objectContaining({
         method: "POST",
         headers: expect.objectContaining({
@@ -275,7 +275,7 @@ describe("handleStandaloneCloudPairRoute", () => {
     );
     expect(loopbackHarness.status()).toBe(200);
     expect(fetchMock).toHaveBeenCalledWith(
-      "https://api.elizacloud.ai/api/auth/pair",
+      "https://api.eliza.app/api/auth/pair",
       expect.objectContaining({
         headers: expect.objectContaining({ origin: "http://127.0.0.1:43123" }),
         body: JSON.stringify({ token: "pair-token", agentId: AGENT_ID }),
@@ -484,9 +484,7 @@ describe("handleStandaloneCloudPairRoute", () => {
       harness.res,
     );
 
-    expect(harness.body()).toContain(
-      "https://www.elizacloud.ai/dashboard/agents",
-    );
+    expect(harness.body()).toContain("https://cloud.eliza.app/cloud/agents");
     expect(harness.body()).not.toContain("staging.elizacloud.ai");
   });
 
@@ -507,7 +505,7 @@ describe("handleStandaloneCloudPairRoute", () => {
     );
 
     expect(harness.body()).toContain(
-      "https://staging.elizacloud.ai/dashboard/agents",
+      "https://cloud-staging.eliza.app/cloud/agents",
     );
     expect(harness.body()).not.toContain("www.elizacloud.ai");
   });
@@ -529,7 +527,7 @@ describe("handleStandaloneCloudPairRoute", () => {
     );
 
     expect(harness.body()).toContain(
-      "https://staging.elizacloud.ai/dashboard/agents",
+      "https://cloud-staging.eliza.app/cloud/agents",
     );
   });
 
@@ -549,7 +547,7 @@ describe("handleStandaloneCloudPairRoute", () => {
     );
 
     expect(harness.body()).toContain(
-      "https://staging.elizacloud.ai/dashboard/agents",
+      "https://cloud-staging.eliza.app/cloud/agents",
     );
     expect(harness.body()).not.toContain("www.elizacloud.ai");
   });
@@ -571,7 +569,7 @@ describe("handleStandaloneCloudPairRoute", () => {
     );
 
     expect(harness.body()).toContain(
-      "https://staging.elizacloud.ai/dashboard/agents",
+      "https://cloud-staging.eliza.app/cloud/agents",
     );
     expect(harness.body()).not.toContain("www.elizacloud.ai");
   });

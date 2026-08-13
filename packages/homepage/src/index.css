@@ -28,14 +28,6 @@
     U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
 }
 
-@font-face {
-  font-family: "Poppins";
-  font-style: normal;
-  font-weight: 300;
-  font-display: swap;
-  src: url("/poppins-latin-300.woff2") format("woff2");
-}
-
 :root {
   --font-sans: "Geist", Arial, sans-serif;
   --font-mono: "Geist Mono", monospace;
@@ -1364,11 +1356,11 @@ body {
   display: inline-flex;
   align-items: center;
   text-decoration: none;
-  color: var(--brand-black);
-  font-family: "Poppins", "Geist", Arial, sans-serif;
-  font-weight: 300;
-  font-size: 1.6rem;
-  letter-spacing: 0;
+}
+
+.landing-brand img {
+  height: 2.1rem;
+  width: auto;
 }
 
 .landing-header-cta {

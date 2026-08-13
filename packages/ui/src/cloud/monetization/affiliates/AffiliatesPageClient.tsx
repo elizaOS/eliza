@@ -214,7 +214,7 @@ export function AffiliatesPageClient() {
                   "When a user signs up using your link, you get a direct cut (your markup percentage) of their activity forever. You can track this revenue in your",
               })}
               <Link
-                to="/dashboard/earnings"
+                to="/cloud/monetization"
                 className="text-accent hover:underline mx-1"
               >
                 {t("cloud.affiliates.earnings", {
@@ -516,7 +516,7 @@ export function AffiliatesPageClient() {
               className="h-6 w-6 p-0"
               onClick={() => {
                 void (async () => {
-                  const codeSnippet = `curl -X POST https://api.elizacloud.ai/v1/chat/completions \\
+                  const codeSnippet = `curl -X POST https://api.eliza.app/v1/chat/completions \\
   -H "Authorization: Bearer YOUR_API_KEY" \\
   -H "X-Affiliate-Code: ${affiliateData?.code || "YOUR_CODE_HERE"}" \\
   -d '{
@@ -545,7 +545,7 @@ export function AffiliatesPageClient() {
           </div>
           <pre className="p-4 overflow-x-auto text-sm font-mono text-txt leading-relaxed">
             <span className="text-status-success">curl</span> -X POST
-            https://api.elizacloud.ai/v1/chat/completions \<br />
+            https://api.eliza.app/v1/chat/completions \<br />
             {"  "}-H{" "}
             <span className="text-status-warning">
               "Authorization: Bearer YOUR_API_KEY"

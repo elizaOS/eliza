@@ -156,7 +156,7 @@ export async function handleProviderSwitchRoutes(
           }
 
           if (normalizedProvider === "elizacloud" && trimmedApiKey) {
-            const cloudBaseUrl = "https://www.elizacloud.ai";
+            const cloudBaseUrl = "https://cloud.eliza.app";
             process.env.ANTHROPIC_BASE_URL = `${cloudBaseUrl}/api/v1`;
             process.env.ANTHROPIC_API_KEY = trimmedApiKey;
             process.env.OPENAI_BASE_URL = `${cloudBaseUrl}/api/v1`;

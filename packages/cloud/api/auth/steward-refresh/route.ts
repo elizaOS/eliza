@@ -28,6 +28,11 @@
 import type { StewardSessionErrorCode } from "@elizaos/shared/steward-session-client";
 import { Hono } from "hono";
 import { getCookie, setCookie } from "hono/cookie";
+import {
+  browserOriginHost,
+  checkElizaMutatingRequestOrigin,
+  isPermittedElizaBrowserOrigin,
+} from "@/lib/auth/browser-origin-policy";
 import { cookieDomainForHost } from "@/lib/auth/cookie-domain";
 import {
   mintStewardTokenFromClaims,
@@ -43,66 +48,11 @@ import type { AppEnv } from "@/types/cloud-worker-env";
 const STEWARD_REFRESH_COOKIE_MAX_AGE = 30 * 24 * 60 * 60;
 const BEARER_REFRESH_TTL_SECONDS = 60 * 60;
 
-// ─── CSRF origin allowlist (must stay in lockstep with steward-session) ───
-const PERMITTED_ORIGIN_HOSTS = new Set<string>([
-  "elizacloud.ai",
-  "www.elizacloud.ai",
-  "dev.elizacloud.ai",
-  "staging.elizacloud.ai",
-  "elizaos.ai",
-  "www.elizaos.ai",
-]);
-const LOCAL_DEV_ORIGIN_HOSTS = new Set<string>([
-  "localhost",
-  "127.0.0.1",
-  "0.0.0.0",
-]);
-
-function originHost(rawOrigin: string | undefined): string | null {
-  if (!rawOrigin) return null;
-  try {
-    return new URL(rawOrigin).hostname.toLowerCase();
-  } catch {
-    return null;
-  }
-}
-
-function isPermittedOrigin(
-  origin: string | null,
-  requestHost: string | null,
-  isProduction: boolean,
-): boolean {
-  if (!origin) return false;
-  if (PERMITTED_ORIGIN_HOSTS.has(origin)) return true;
-  if (origin.endsWith(".elizacloud.ai") || origin.endsWith(".elizaos.ai")) {
-    return true;
-  }
-  if (requestHost && origin === requestHost) return true;
-  if (!isProduction && LOCAL_DEV_ORIGIN_HOSTS.has(origin)) return true;
-  return false;
-}
-
 function checkOrigin(
   c: { req: { header: (name: string) => string | undefined } },
   isProduction: boolean,
 ): { ok: true } | { ok: false; reason: string } {
-  const rawOrigin = c.req.header("origin");
-  const rawReferer = c.req.header("referer");
-  const origin = originHost(rawOrigin);
-  const referer = originHost(rawReferer);
-  const host = (c.req.header("host") ?? "").split(":")[0]?.toLowerCase() ?? "";
-  if (!origin && !referer) {
-    return { ok: false, reason: "missing_origin_and_referer" };
-  }
-  if (origin && isPermittedOrigin(origin, host, isProduction))
-    return { ok: true };
-  if (!origin && referer && isPermittedOrigin(referer, host, isProduction)) {
-    return { ok: true };
-  }
-  return {
-    ok: false,
-    reason: `origin=${origin ?? "null"} referer=${referer ?? "null"}`,
-  };
+  return checkElizaMutatingRequestOrigin(c.req, isProduction);
 }
 
 function shouldReturnClientToken(
@@ -110,14 +60,15 @@ function shouldReturnClientToken(
   isProduction: boolean,
 ): boolean {
   const origin =
-    originHost(c.req.header("origin")) ?? originHost(c.req.header("referer"));
+    browserOriginHost(c.req.header("origin")) ??
+    browserOriginHost(c.req.header("referer"));
   const host = (c.req.header("host") ?? "").split(":")[0]?.toLowerCase() ?? "";
   if (!origin) return false;
   // The SPA still uses a localStorage access-token mirror for synchronous
   // route auth. Cookie refresh must hydrate that mirror for every origin the
   // CSRF check already accepts, otherwise valid HttpOnly-cookie sessions can
   // bounce back to /login on previews/custom same-origin hosts.
-  return isPermittedOrigin(origin, host, isProduction);
+  return isPermittedElizaBrowserOrigin(origin, host, isProduction);
 }
 
 function readBearerToken(c: {
@@ -329,13 +280,9 @@ app.post("/", async (c) => {
   }
 
   const cookieNames = stewardCookieNames(c.env.ENVIRONMENT);
-  // Read only THIS environment's own refresh cookie. The legacy unsuffixed slot
-  // lives on the shared parent zone (Domain=elizacloud.ai) where it is
-  // production's LIVE refresh token. A non-prod refresh must never read-and-send
-  // it to Steward (refresh rotates the token, invalidating prod's copy) nor
-  // delete it — that is exactly the deterministic cross-env sign-out of #13728.
-  // Pre-rename non-prod sessions simply re-login once as their legacy cookie
-  // expires naturally; prod is unaffected (names are identical there).
+  // Read only this environment's named refresh cookie. Cookies are host-only;
+  // the environment suffix remains a compatibility invariant and prevents a
+  // preview accidentally treating an older unsuffixed cookie as its session.
   const refreshToken = getCookie(c, cookieNames.refreshToken);
   if (!refreshToken) {
     logRefresh("missing-refresh-cookie");
@@ -386,13 +333,12 @@ app.post("/", async (c) => {
   if (refresh.kind === "error") {
     logRefresh(`upstream-${refresh.status}`);
     // Steward 401s BOTH for a genuinely dead token AND for the loser of a
-    // refresh-token ROTATION RACE: tokens are single-use, the console and the
-    // app share one domain-wide cookie, and their 15-min timers eventually
-    // fire together — the second request presents the just-consumed token.
-    // This branch used to deleteCookie() the whole session domain-wide on any
-    // 401, which turned every lost race into "signed out everywhere" (and the
+    // refresh-token ROTATION RACE: tokens are single-use and two tabs on the
+    // same host can fire their 15-min timers together — the second request
+    // presents the just-consumed token. This branch used to deleteCookie() the
+    // whole host session on any 401, which turned every lost race into sign-out (and the
     // delete could land AFTER the winner's Set-Cookie, destroying the fresh
-    // session too). Keep the cookies instead: in the race case the browser
+    // host session too). Keep the cookies instead: in the race case the browser
     // jar already holds the winner's NEW token, so the very next refresh
     // succeeds and the session self-heals; for a genuinely dead token every
     // future refresh 401s and the login surface shows regardless — same

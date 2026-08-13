@@ -246,7 +246,7 @@ export function AppEarningsDashboard({ appId }: AppEarningsDashboardProps) {
               </p>
               <Button
                 onClick={() => {
-                  navigate(`/dashboard/apps/${appId}?tab=monetization`);
+                  navigate(`/cloud/apps/${appId}?tab=monetization`);
                 }}
                 className="bg-txt hover:bg-txt/90 text-bg"
               >

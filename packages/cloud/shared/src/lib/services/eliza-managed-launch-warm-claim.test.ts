@@ -42,6 +42,20 @@ function claimedSandbox(
   } as unknown as AgentSandbox;
 }
 
+function genericSandbox(status: "running" | "stopped"): AgentSandbox {
+  return {
+    ...claimedSandbox("ready"),
+    agent_name: "Generic Agent",
+    status,
+    claimed_at: null,
+    warm_claim_credential_state: null,
+    warm_claim_key_fingerprint: null,
+    warm_claim_attested_at: null,
+    warm_claim_attested_environment_revision: null,
+    health_url: status === "running" ? "https://old-agent.example" : null,
+  } as unknown as AgentSandbox;
+}
+
 afterEach(() => {
   globalThis.fetch = originalFetch;
 });
@@ -104,6 +118,94 @@ describe("managed launch warm-claim credential boundary", () => {
     } finally {
       getAgent.mockRestore();
       createKey.mockRestore();
+      cacheAvailable.mockRestore();
+      cacheSet.mockRestore();
+    }
+  });
+});
+
+describe("managed launch credential rotation ordering", () => {
+  test("a refused shutdown leaves the running credential untouched", async () => {
+    const running = genericSandbox("running");
+    const getAgent = spyOn(elizaSandboxService, "getAgent").mockResolvedValue(running);
+    const shutdown = spyOn(elizaSandboxService, "shutdown").mockResolvedValue({
+      success: false,
+      error: "Refusing to stop without a current backup",
+    });
+    const prepare = spyOn(elizaSandboxService, "prepareManagedLaunchEnvironment");
+    const provision = spyOn(elizaSandboxService, "provision");
+    try {
+      const error = await launchManagedElizaAgent({
+        agentId: AGENT_ID,
+        organizationId: ORG_ID,
+        userId: USER_ID,
+      }).catch((caught) => caught);
+
+      expect(error).toBeInstanceOf(ManagedElizaLaunchError);
+      expect((error as ManagedElizaLaunchError).status).toBe(409);
+      expect(shutdown).toHaveBeenCalledTimes(1);
+      expect(prepare).not.toHaveBeenCalled();
+      expect(provision).not.toHaveBeenCalled();
+    } finally {
+      getAgent.mockRestore();
+      shutdown.mockRestore();
+      prepare.mockRestore();
+      provision.mockRestore();
+    }
+  });
+
+  test("stops a running generation before rotating and provisioning its replacement", async () => {
+    const running = genericSandbox("running");
+    const stopped = genericSandbox("stopped");
+    const replacement = {
+      ...genericSandbox("running"),
+      health_url: "https://new-agent.example",
+    } as AgentSandbox;
+    const order: string[] = [];
+    const getAgent = spyOn(elizaSandboxService, "getAgent")
+      .mockResolvedValueOnce(running)
+      .mockResolvedValueOnce(stopped);
+    const shutdown = spyOn(elizaSandboxService, "shutdown").mockImplementation(async () => {
+      order.push("shutdown");
+      return { success: true };
+    });
+    const prepare = spyOn(
+      elizaSandboxService,
+      "prepareManagedLaunchEnvironment",
+    ).mockImplementation(async () => {
+      order.push("rotate");
+      return {
+        sandbox: stopped,
+        environment: {
+          apiToken: "replacement-transport-token",
+          agentApiKey: "eliza_replacement_key",
+          changed: true,
+          environmentVars: {},
+          revokedKeyHashes: [],
+        },
+      };
+    });
+    const provision = spyOn(elizaSandboxService, "provision").mockImplementation(async () => {
+      order.push("provision");
+      return { success: true, sandboxRecord: replacement } as never;
+    });
+    const cacheAvailable = spyOn(cache, "isAvailable").mockReturnValue(true);
+    const cacheSet = spyOn(cache, "set").mockResolvedValue(undefined);
+    globalThis.fetch = (async () => Response.json({ complete: true })) as typeof fetch;
+    try {
+      const result = await launchManagedElizaAgent({
+        agentId: AGENT_ID,
+        organizationId: ORG_ID,
+        userId: USER_ID,
+      });
+
+      expect(order).toEqual(["shutdown", "rotate", "provision"]);
+      expect(result.connection.token).toBe("replacement-transport-token");
+    } finally {
+      getAgent.mockRestore();
+      shutdown.mockRestore();
+      prepare.mockRestore();
+      provision.mockRestore();
       cacheAvailable.mockRestore();
       cacheSet.mockRestore();
     }

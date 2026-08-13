@@ -99,7 +99,7 @@ export function ElizaAgentActions({
             defaultValue: "Agent deleted",
           }),
         );
-        navigate("/dashboard/agents");
+        navigate("/cloud/agents");
         return;
       }
       if (action === "sleep") {
@@ -263,7 +263,7 @@ export function ElizaAgentActions({
             defaultValue: "Agent deleted",
           }),
         );
-        navigate("/dashboard/agents");
+        navigate("/cloud/agents");
         return;
       }
 
@@ -331,7 +331,7 @@ export function ElizaAgentActions({
           data?.error ??
             t("cloud.containers.agentActions.upgradeInsufficientCredits", {
               defaultValue:
-                "Not enough credits to upgrade. Add funds at /dashboard/billing and try again.",
+                "Not enough credits to upgrade. Add funds at /cloud/billing and try again.",
             }),
         );
         return;
@@ -397,7 +397,7 @@ export function ElizaAgentActions({
             }),
           );
         }
-        navigate(`/dashboard/agents/${dedicatedAgentId}`);
+        navigate(`/cloud/agents/${dedicatedAgentId}`);
         return;
       }
 
