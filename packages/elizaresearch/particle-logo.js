@@ -1,15 +1,18 @@
 /**
- * Renders the Eliza mark with the particle behavior from NubsCarson/reflow's
- * Cool component. Both pages share the same mask geometry, density, shimmer,
- * pointer scatter, and return timing; only their CSS colors differ. The SVG is
- * decoded into a private alpha mask, so only particles reach the visible canvas.
+ * Renders the Eliza mark as a dense, interactive particle field shared by both
+ * site layouts. Fixed SVG-mask homes preserve facial detail, a grouped opening
+ * formation gives the mark a deliberate entrance, and a compact cursor field
+ * bends nearby dots without changing their color or opening a radial void.
+ * Its mask-and-particle lineage comes from rauchg's v0 Logo particles template
+ * through NubsCarson/reflow; the formation adapts Shaw's grouped face merge.
  */
 (() => {
   const baseParticleCount = 8500;
   const referenceArea = 1440 * 1080;
-  const maxDistance = 240;
-  const scatterDistance = 60;
+  const formationMs = 4800;
+  const fadeMs = 900;
   const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
+  const fullTurn = Math.PI * 2;
 
   for (const canvas of document.querySelectorAll(
     "canvas[data-particle-logo]",
@@ -30,14 +33,29 @@
     let width = 0;
     let height = 0;
     let particles = [];
-    let homes = [];
     let frame = 0;
     let resizeTimer = 0;
     let inView = true;
     let generation = 0;
+    let hasBuilt = false;
+    let forming = false;
+    let born = 0;
+    let lastFrame = 0;
     let restColor = "#ffffff";
-    let scatterColor = "#ffd2bd";
-    const pointer = { x: -9999, y: -9999, active: false, down: false };
+    let pointerRadius = 120;
+    let pointerShift = 14;
+    let canvasLeft = 0;
+    let canvasTop = 0;
+    const pointer = {
+      x: 0,
+      y: 0,
+      targetX: 0,
+      targetY: 0,
+      active: false,
+      down: false,
+      flowX: 0.92,
+      flowY: -0.39,
+    };
 
     const clamp = (value, minimum, maximum) =>
       Math.min(maximum, Math.max(minimum, value));
@@ -49,17 +67,20 @@
       let desiredLeft;
       if (width < 768) {
         const shortLandscape = height < 400;
+        const shortPortrait = !shortLandscape && height < 720;
         desiredSize = Math.min(
-          width * (shortLandscape ? 0.45 : 0.82),
-          height * (shortLandscape ? 0.34 : 0.42),
+          width * (shortLandscape ? 0.45 : shortPortrait ? 0.51 : 0.82),
+          height * (shortLandscape ? 0.34 : shortPortrait ? 0.285 : 0.42),
         );
-        desiredTop = shortLandscape
-          ? height * 0.14
-          : (height - desiredSize) * 0.48;
+        desiredTop =
+          shortLandscape || shortPortrait
+            ? height * (shortLandscape ? 0.14 : 0.09)
+            : (height - desiredSize) * 0.4;
+        if (shortLandscape) desiredLeft = width * 0.78 - desiredSize * 0.5;
       } else if (height < 500) {
         desiredSize = Math.min(height * 0.9, width * 0.42);
         desiredTop = (height - desiredSize) * 0.5;
-        desiredLeft = width * 0.62 - desiredSize * 0.5;
+        desiredLeft = width * 0.7 - desiredSize * 0.5;
       } else {
         desiredSize = Math.min(height * 0.94, width * 0.96);
         desiredTop = (height - desiredSize) * 0.5;
@@ -75,75 +96,182 @@
       return { left, top, size };
     }
 
-    function sampleHomes() {
-      const geometry = markGeometry();
+    function sampleHomes(geometry) {
       const maskSize = Math.max(1, Math.round(geometry.size));
       maskCanvas.width = maskSize;
       maskCanvas.height = maskSize;
       maskContext.clearRect(0, 0, maskSize, maskSize);
       maskContext.drawImage(image, 0, 0, maskSize, maskSize);
       const pixels = maskContext.getImageData(0, 0, maskSize, maskSize).data;
-      const nextHomes = [];
+      const eligible = [];
       for (let index = 3; index < pixels.length; index += 4) {
-        if (pixels[index] > 128) {
-          const pixel = (index - 3) / 4;
-          nextHomes.push({
-            x: geometry.left + (pixel % maskSize),
-            y: geometry.top + Math.floor(pixel / maskSize),
-          });
-        }
+        if (pixels[index] > 128) eligible.push((index - 3) / 4);
       }
-      if (!nextHomes.length)
+      if (!eligible.length)
         throw new Error("Eliza mark produced no particle targets");
-      return nextHomes;
-    }
 
-    function createParticle() {
-      const home = homes[Math.floor(Math.random() * homes.length)];
-      return {
-        x: home.x,
-        y: home.y,
-        baseX: home.x,
-        baseY: home.y,
-        size: Math.random() + 0.5,
-        life: Math.random() * 100 + 50,
-      };
-    }
-
-    function seedParticles() {
-      const count = Math.floor(
-        baseParticleCount * Math.sqrt((width * height) / referenceArea),
+      const targetCount = Math.min(
+        eligible.length,
+        Math.floor(
+          baseParticleCount * Math.sqrt((width * height) / referenceArea),
+        ),
       );
-      particles = Array.from({ length: count }, createParticle);
+      const homes = [];
+      for (let index = 0; index < targetCount; index += 1) {
+        const selected =
+          index + Math.floor(Math.random() * (eligible.length - index));
+        [eligible[index], eligible[selected]] = [
+          eligible[selected],
+          eligible[index],
+        ];
+        const pixel = eligible[index];
+        homes.push({
+          x: geometry.left + (pixel % maskSize),
+          y: geometry.top + Math.floor(pixel / maskSize),
+        });
+      }
+      return homes;
     }
 
-    function draw(animate) {
-      context.clearRect(0, 0, width, height);
-      for (let index = 0; index < particles.length; index += 1) {
-        const particle = particles[index];
-        const dx = pointer.x - particle.x;
-        const dy = pointer.y - particle.y;
-        const distance = Math.sqrt(dx * dx + dy * dy);
-        if (pointer.active && distance < maxDistance) {
-          const force = (maxDistance - distance) / maxDistance;
-          const angle = Math.atan2(dy, dx);
-          particle.x =
-            particle.baseX - Math.cos(angle) * force * scatterDistance;
-          particle.y =
-            particle.baseY - Math.sin(angle) * force * scatterDistance;
-          context.fillStyle = scatterColor;
-        } else {
-          particle.x += (particle.baseX - particle.x) * 0.1;
-          particle.y += (particle.baseY - particle.y) * 0.1;
-          context.fillStyle = restColor;
-        }
-        context.fillRect(particle.x, particle.y, particle.size, particle.size);
+    function seedParticles(geometry, animateEntrance) {
+      const faceX = geometry.left + geometry.size * 0.5;
+      const faceY = geometry.top + geometry.size * 0.5;
+      const groupSize = geometry.size / 3;
+      const spread = clamp(geometry.size * 0.08, 24, 72);
 
-        if (animate) {
-          particle.life -= 1;
-          if (particle.life <= 0) particles[index] = createParticle();
+      particles = sampleHomes(geometry).map((home) => {
+        if (!animateEntrance) {
+          return {
+            homeX: home.x,
+            homeY: home.y,
+            startX: home.x,
+            startY: home.y,
+            offsetX: 0,
+            offsetY: 0,
+            size: Math.random() + 0.5,
+          };
         }
+
+        const column = clamp(
+          Math.floor(((home.x - geometry.left) / geometry.size) * 3),
+          0,
+          2,
+        );
+        const row = clamp(
+          Math.floor(((home.y - geometry.top) / geometry.size) * 3),
+          0,
+          2,
+        );
+        const groupX = geometry.left + (column + 0.5) * groupSize;
+        const groupY = geometry.top + (row + 0.5) * groupSize;
+        let outwardX = groupX - faceX;
+        let outwardY = groupY - faceY;
+        const outwardLength = Math.hypot(outwardX, outwardY);
+        if (outwardLength < 1) {
+          outwardX = 0;
+          outwardY = -1;
+        } else {
+          outwardX /= outwardLength;
+          outwardY /= outwardLength;
+        }
+        const originX = groupX + outwardX * geometry.size * 0.14;
+        const originY = groupY + outwardY * geometry.size * 0.14;
+        const angle = Math.random() * fullTurn;
+        const radius = spread * Math.sqrt(Math.random());
+
+        return {
+          homeX: home.x,
+          homeY: home.y,
+          startX: originX + Math.cos(angle) * radius,
+          startY: originY + Math.sin(angle) * radius,
+          offsetX: 0,
+          offsetY: 0,
+          size: Math.random() + 0.5,
+        };
+      });
+    }
+
+    function draw(now, delta) {
+      const formation = forming ? clamp((now - born) / formationMs, 0, 1) : 1;
+      const eased =
+        formation *
+        formation *
+        formation *
+        (formation * (formation * 6 - 15) + 10);
+      const opacity = forming ? clamp((now - born) / fadeMs, 0, 1) : 1;
+      let moving = forming && formation < 1;
+      if (formation === 1) forming = false;
+
+      if (pointer.active) {
+        const pointerResponse = 1 - Math.exp(-10 * delta);
+        const pointerErrorX = pointer.targetX - pointer.x;
+        const pointerErrorY = pointer.targetY - pointer.y;
+        pointer.x += pointerErrorX * pointerResponse;
+        pointer.y += pointerErrorY * pointerResponse;
+        if (Math.abs(pointerErrorX) + Math.abs(pointerErrorY) > 0.05)
+          moving = true;
       }
+
+      const offsetResponse =
+        1 - Math.exp(-(pointer.active ? 7.5 : 4.5) * delta);
+      const activeShift = pointer.down ? (width < 768 ? 16 : 20) : pointerShift;
+      const acrossRadius = pointerRadius * 0.72;
+
+      context.clearRect(0, 0, width, height);
+      context.fillStyle = restColor;
+      context.globalAlpha = opacity * opacity * (3 - 2 * opacity);
+      context.beginPath();
+
+      for (const particle of particles) {
+        const baseX =
+          particle.startX + (particle.homeX - particle.startX) * eased;
+        const baseY =
+          particle.startY + (particle.homeY - particle.startY) * eased;
+        let desiredX = 0;
+        let desiredY = 0;
+
+        if (pointer.active && !reducedMotion.matches) {
+          const dx = baseX - pointer.x;
+          const dy = baseY - pointer.y;
+          const along = dx * pointer.flowX + dy * pointer.flowY;
+          const across = -dx * pointer.flowY + dy * pointer.flowX;
+          const normalizedAlong = along / pointerRadius;
+          const normalizedAcross = across / acrossRadius;
+          const field =
+            normalizedAlong * normalizedAlong +
+            normalizedAcross * normalizedAcross;
+          if (field < 3.2) {
+            const bend = activeShift * Math.exp(-2.2 * field);
+            const shear = 0.16 * Math.tanh(across / (pointerRadius * 0.45));
+            desiredX = bend * (pointer.flowX - pointer.flowY * shear);
+            desiredY = bend * (pointer.flowY + pointer.flowX * shear);
+          }
+        }
+
+        const offsetErrorX = desiredX - particle.offsetX;
+        const offsetErrorY = desiredY - particle.offsetY;
+        particle.offsetX += offsetErrorX * offsetResponse;
+        particle.offsetY += offsetErrorY * offsetResponse;
+        if (
+          !pointer.active &&
+          Math.abs(particle.offsetX) + Math.abs(particle.offsetY) < 0.02
+        ) {
+          particle.offsetX = 0;
+          particle.offsetY = 0;
+        } else if (Math.abs(offsetErrorX) + Math.abs(offsetErrorY) > 0.02) {
+          moving = true;
+        }
+
+        const x = baseX + particle.offsetX;
+        const y = baseY + particle.offsetY;
+        const radius = particle.size * 0.5;
+        context.moveTo(x + radius, y);
+        context.arc(x, y, radius, 0, fullTurn);
+      }
+
+      context.fill();
+      context.globalAlpha = 1;
+      return moving;
     }
 
     function stop() {
@@ -151,9 +279,18 @@
       frame = 0;
     }
 
-    function loop() {
-      draw(true);
-      frame = requestAnimationFrame(loop);
+    function loop(now) {
+      frame = 0;
+      const delta = Math.min((now - lastFrame) / 1000, 0.05);
+      lastFrame = now;
+      if (
+        draw(now, delta) &&
+        !reducedMotion.matches &&
+        !document.hidden &&
+        inView
+      ) {
+        frame = requestAnimationFrame(loop);
+      }
     }
 
     function start() {
@@ -165,6 +302,7 @@
         !particles.length
       )
         return;
+      lastFrame = performance.now();
       frame = requestAnimationFrame(loop);
     }
 
@@ -175,29 +313,51 @@
       const bounds = canvas.getBoundingClientRect();
       width = Math.max(1, Math.round(bounds.width));
       height = Math.max(1, Math.round(bounds.height));
-      canvas.width = width;
-      canvas.height = height;
-      const style = getComputedStyle(canvas);
-      restColor = style.getPropertyValue("--particle-rest").trim() || "#ffffff";
-      scatterColor =
-        style.getPropertyValue("--particle-scatter").trim() || "#ffd2bd";
-      homes = sampleHomes();
-      seedParticles();
-      draw(false);
+      canvasLeft = bounds.left;
+      canvasTop = bounds.top;
+      const pixelRatio = Math.min(devicePixelRatio, 2);
+      canvas.width = Math.round(width * pixelRatio);
+      canvas.height = Math.round(height * pixelRatio);
+      context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+      restColor =
+        getComputedStyle(canvas).getPropertyValue("--particle-rest").trim() ||
+        "#ffffff";
+      pointerRadius = clamp(Math.min(width, height) * 0.13, 72, 120);
+      pointerShift = width < 768 ? 10 : 14;
+      const animateEntrance = !hasBuilt && !reducedMotion.matches;
+      seedParticles(markGeometry(), animateEntrance);
+      hasBuilt = true;
+      forming = animateEntrance;
+      born = performance.now();
+      draw(born, 1 / 60);
       start();
     }
 
     function updatePointer(event) {
-      const bounds = canvas.getBoundingClientRect();
-      pointer.x = event.clientX - bounds.left;
-      pointer.y = event.clientY - bounds.top;
+      const x = event.clientX - canvasLeft;
+      const y = event.clientY - canvasTop;
+      if (pointer.active) {
+        const movementX = x - pointer.targetX;
+        const movementY = y - pointer.targetY;
+        const movement = Math.hypot(movementX, movementY);
+        if (movement > 1) {
+          pointer.flowX = pointer.flowX * 0.78 + (movementX / movement) * 0.22;
+          pointer.flowY = pointer.flowY * 0.78 + (movementY / movement) * 0.22;
+          const flowLength = Math.hypot(pointer.flowX, pointer.flowY);
+          pointer.flowX /= flowLength;
+          pointer.flowY /= flowLength;
+        }
+      } else {
+        pointer.x = x;
+        pointer.y = y;
+      }
+      pointer.targetX = x;
+      pointer.targetY = y;
       pointer.active = true;
       start();
     }
 
     function resetPointer() {
-      pointer.x = -9999;
-      pointer.y = -9999;
       pointer.active = false;
       pointer.down = false;
       start();
@@ -233,6 +393,7 @@
       (event) => {
         pointer.down = false;
         if (event.pointerType === "touch") resetPointer();
+        else start();
       },
       { passive: true },
     );

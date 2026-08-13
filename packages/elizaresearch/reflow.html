@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Eliza Research — particle interface</title>
-<meta name="description" content="Eliza Research builds open agents, shared intelligence, and software that answers to people.">
+<title>Eliza Research — AI, built around people</title>
+<meta name="description" content="Eliza Research builds products at the intersection of artificial intelligence and the people who live with it.">
 <link rel="icon" type="image/svg+xml" href="assets/logo_orange_nobg.svg">
 <style>
   @font-face {
@@ -14,12 +14,23 @@
     font-display: swap;
     src: url("assets/geist-sans-latin.woff2") format("woff2");
   }
+  @font-face {
+    font-family: "Syne";
+    font-style: normal;
+    font-weight: 400 800;
+    font-display: swap;
+    src: url("assets/syne-latin.woff2") format("woff2");
+  }
   :root { --orange: #ff5800; --black: #0b0908; --rail: 6rem; }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   html, body { min-width: 320px; min-height: 100%; overflow: hidden; }
   body { background: var(--black); color: #fffaf6; font-family: "Geist", Arial, sans-serif; -webkit-font-smoothing: antialiased; }
   a, button { color: inherit; font: inherit; }
   :where(a, button):focus-visible { outline: 2px solid var(--orange); outline-offset: 4px; }
+  @keyframes contact-sheen {
+    0%, 100% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+  }
 
   .rail {
     position: fixed;
@@ -56,7 +67,6 @@
   .stage { position: relative; min-height: 100svh; margin-left: var(--rail); overflow: hidden; background: var(--black); }
   #reflow-swarm {
     --particle-rest: #ff7630;
-    --particle-scatter: #fff0e8;
     position: fixed;
     z-index: 0;
     inset: 0 0 0 var(--rail);
@@ -71,8 +81,15 @@
     left: clamp(2rem, 6vw, 6rem);
     width: min(31rem, calc(100% - 24rem));
   }
-  .identity h1 { font-size: clamp(1.8rem, 3vw, 2.5rem); font-weight: 850; letter-spacing: -0.045em; filter: drop-shadow(0 0 12px rgba(255,88,0,0.36)); }
-  .identity p { margin-top: 0.9rem; color: #ff9c6a; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.75rem; line-height: 1.7; letter-spacing: 0.05em; }
+  .identity h1 {
+    font-family: "Syne", sans-serif;
+    font-size: clamp(2rem, 3.4vw, 3rem);
+    font-weight: 750;
+    letter-spacing: -0.02em;
+    line-height: 0.94;
+    text-rendering: geometricPrecision;
+  }
+  .identity p { max-width: 42rem; margin-top: 1rem; color: #ffb088; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.76rem; line-height: 1.65; letter-spacing: 0.035em; }
   .contact-chip {
     position: absolute;
     z-index: 3;
@@ -82,16 +99,23 @@
     padding: 0.9rem 1.5rem;
     border: 0;
     border-radius: 0.65rem 0 0 0.65rem;
-    background: #c84200;
-    color: white;
+    background: var(--orange);
+    color: #241008;
     font-size: 0.82rem;
-    font-weight: 720;
-    letter-spacing: 0.06em;
+    font-family: "Syne", sans-serif;
+    font-weight: 700;
+    letter-spacing: 0.14em;
     cursor: pointer;
     transition: filter 0.2s ease, background 0.2s ease;
   }
   .contact-chip:hover { filter: brightness(1.12); }
-  .contact-chip[data-feedback="success"] { background: linear-gradient(90deg, #fff5ee, #ffb38c, #ff5800); color: #160c08; }
+  .contact-chip[data-feedback="success"] {
+    background: linear-gradient(90deg, #fff5ee, #ffd2bd, #ff9a62, #ff5800);
+    background-size: 200% 200%;
+    color: #160c08;
+    filter: drop-shadow(0 0 12px rgba(255,154,98,0.62));
+    animation: contact-sheen 3s ease infinite;
+  }
   .contact-chip[data-feedback="error"] { background: #fff5ee; color: #8c2f00; }
 
   @media (max-width: 767px), (max-height: 480px) {
@@ -130,6 +154,7 @@
   }
   @media (prefers-reduced-motion: reduce) {
     .rail-logo img, .rail-nav a, .socials a, .contact-chip { transition: none; }
+    .contact-chip[data-feedback="success"] { animation: none; }
   }
 </style>
 </head>
@@ -152,9 +177,9 @@
   <canvas id="reflow-swarm" data-particle-logo="assets/logo_white_nobg.svg" aria-hidden="true"></canvas>
   <section class="identity" aria-labelledby="reflow-title">
     <h1 id="reflow-title">Eliza Research</h1>
-    <p>Open agents, shared intelligence, and software that answers to the people it serves.</p>
+    <p>Eliza Research builds products at the intersection of artificial intelligence and the people who live with it.</p>
   </section>
-  <button class="contact-chip" id="contact-chip" type="button" aria-live="polite">HELLO@ELIZARESEARCH.AI</button>
+  <button class="contact-chip" id="contact-chip" type="button" aria-label="Copy hello@elizaresearch.ai" aria-live="polite">HELLO@ELIZARESEARCH.AI</button>
 </main>
 
 <script src="particle-logo.js" defer></script>
@@ -169,7 +194,7 @@
     try {
       await navigator.clipboard.writeText("hello@elizaresearch.ai");
       contact.dataset.feedback = "success";
-      contact.textContent = "COPIED";
+      contact.textContent = "COPIED!";
       setTimeout(() => {
         delete contact.dataset.feedback;
         contact.textContent = "HELLO@ELIZARESEARCH.AI";

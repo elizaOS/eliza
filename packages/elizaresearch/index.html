@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Eliza Research — AI, built around people</title>
-<meta name="description" content="Eliza Research builds open agents and contribution systems that increase human agency.">
+<meta name="description" content="Eliza Research builds products at the intersection of artificial intelligence and the people who live with it.">
 <meta property="og:title" content="Eliza Research">
 <meta property="og:description" content="AI, built around people.">
 <meta property="og:url" content="https://elizaresearch.ai">
@@ -18,10 +18,18 @@
     font-display: swap;
     src: url("assets/geist-sans-latin.woff2") format("woff2");
   }
+  @font-face {
+    font-family: "Syne";
+    font-style: normal;
+    font-weight: 400 800;
+    font-display: swap;
+    src: url("assets/syne-latin.woff2") format("woff2");
+  }
   :root {
     --orange: #ff5800;
     --orange-light: #ff9a62;
-    --hero: #c84200;
+    --orange-text: #b23d00;
+    --hero-ink: #351208;
     --black: #0d0b0a;
     --ink: #171310;
     --paper: #fffdfb;
@@ -39,11 +47,11 @@
     line-height: 1.55;
     -webkit-font-smoothing: antialiased;
   }
-  h1, h2 { line-height: 1; text-wrap: balance; }
+  h1, h2 { font-family: "Syne", sans-serif; line-height: 1; text-wrap: balance; }
   p { max-width: 62ch; text-wrap: pretty; }
   a { color: inherit; }
   ::selection { background: var(--orange); color: white; }
-  :where(a, button):focus-visible { outline: 2px solid var(--orange-light); outline-offset: 4px; }
+  :where(a, button):focus-visible { outline: 2px solid var(--orange-text); outline-offset: 4px; }
   .wrap { width: min(100%, 1200px); margin-inline: auto; padding-inline: clamp(1.25rem, 4vw, 3rem); }
 
   nav {
@@ -54,9 +62,9 @@
     align-items: center;
     justify-content: space-between;
     padding: 1.1rem clamp(1.25rem, 4vw, 3rem);
-    color: white;
+    color: var(--hero-ink);
   }
-  .brand { display: inline-flex; align-items: center; gap: 0.65rem; font-weight: 800; text-decoration: none; }
+  .brand { display: inline-flex; align-items: center; gap: 0.65rem; font-family: "Syne", sans-serif; font-weight: 750; text-decoration: none; }
   .brand img { display: block; width: 1.8rem; height: 1.8rem; object-fit: contain; }
   .nav-links { display: flex; gap: clamp(1rem, 3vw, 2rem); }
   .nav-links a { font-size: 0.9rem; font-weight: 650; text-decoration: none; opacity: 0.86; }
@@ -68,20 +76,12 @@
     min-height: 100svh;
     overflow: hidden;
     align-content: end;
-    background: var(--hero);
+    background: var(--orange);
     color: white;
   }
-  header::after {
-    content: "";
-    position: absolute;
-    z-index: 1;
-    inset: 48% 0 0;
-    pointer-events: none;
-    background: linear-gradient(0deg, rgba(82, 20, 0, 0.3), transparent);
-  }
+  header :where(a, button):focus-visible { outline-color: white; }
   #swarm {
     --particle-rest: #fffaf6;
-    --particle-scatter: #ffd0b7;
     position: absolute;
     inset: 0;
     width: 100%;
@@ -91,22 +91,23 @@
   .hero-copy { position: relative; z-index: 2; padding-block: clamp(3rem, 8vh, 6rem); }
   .hero-copy h1 {
     max-width: 12ch;
-    font-size: clamp(3rem, 8.5vw, 6.5rem);
-    font-weight: 850;
-    letter-spacing: -0.045em;
+    font-size: clamp(3rem, 8.5vw, 6rem);
+    font-weight: 800;
+    letter-spacing: -0.025em;
   }
-  .hero-copy p { margin-top: 1.4rem; color: rgba(255,255,255,0.94); font-size: clamp(1rem, 2vw, 1.3rem); }
+  .hero-copy p { margin-top: 1.4rem; color: var(--hero-ink); font-size: clamp(1rem, 2vw, 1.3rem); }
   .hero-copy a {
     display: inline-flex;
     margin-top: 2rem;
     padding: 0.72rem 1.35rem;
-    border: 2px solid white;
+    border: 2px solid var(--hero-ink);
     border-radius: 999px;
+    color: var(--hero-ink);
     font-size: 0.92rem;
     font-weight: 720;
     text-decoration: none;
   }
-  .hero-copy a:hover { background: white; color: var(--hero); }
+  .hero-copy a:hover { background: var(--hero-ink); color: white; }
 
   .statement { padding-block: clamp(5rem, 14vh, 10rem); }
   .statement p { max-width: 25ch; font-size: clamp(1.6rem, 3.5vw, 2.7rem); font-weight: 650; letter-spacing: -0.025em; line-height: 1.2; }
@@ -116,18 +117,18 @@
   .product-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: clamp(2.5rem, 7vw, 6rem); align-items: center; }
   .product-visual { overflow: hidden; aspect-ratio: 1200 / 630; border-radius: 1rem; background: var(--orange); }
   .product-visual img { display: block; width: 100%; height: 100%; object-fit: cover; }
-  .product h2 { font-size: clamp(3rem, 6vw, 5rem); font-weight: 830; letter-spacing: -0.04em; }
+  .product h2 { font-size: clamp(3rem, 6vw, 5rem); font-weight: 800; letter-spacing: -0.025em; }
   .role { margin-top: 0.8rem; font-size: 1.08rem; font-weight: 720; }
   .body { margin-top: 1.3rem; color: var(--muted); font-size: 1.04rem; }
   .text-link { display: inline-block; margin-top: 1.8rem; font-weight: 720; text-underline-offset: 0.3em; }
-  .role, .text-link { color: var(--hero); }
+  .role, .text-link { color: var(--orange-text); }
   #slop { border: 0; background: var(--black); color: #f8f2ed; }
   #slop .product-visual { order: 2; background: #19120e; }
   #slop .role, #slop .text-link { color: var(--orange-light); }
   #slop .body { color: #baada5; }
 
   footer { padding-block: clamp(4rem, 10vw, 7rem) 2rem; background: var(--black); color: #f8f2ed; border-top: 1px solid #392c26; }
-  footer h2 { max-width: 12ch; font-size: clamp(2.8rem, 6vw, 5.5rem); font-weight: 820; letter-spacing: -0.04em; }
+  footer h2 { max-width: 12ch; font-size: clamp(2.8rem, 6vw, 5.5rem); font-weight: 800; letter-spacing: -0.025em; }
   footer .contact { margin-top: 1.2rem; color: #baada5; }
   footer .contact a { color: var(--orange-light); font-weight: 720; }
   .footer-row { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 1rem 2rem; margin-top: clamp(4rem, 8vw, 7rem); padding-top: 1.2rem; border-top: 1px solid #392c26; color: #93857d; font-size: 0.82rem; }
@@ -136,10 +137,26 @@
 
   @media (max-width: 760px) {
     .product-grid { grid-template-columns: minmax(0, 1fr); }
+    .product h2 { font-size: clamp(2.25rem, 11vw, 3rem); }
     #slop .product-visual { order: initial; }
-    .brand span { max-width: 5rem; line-height: 1.05; }
+    .hero-copy { padding-block: 0 2rem; }
+    .brand span { display: block; max-width: 5rem; line-height: 1.05; }
     .nav-links { gap: 0.85rem; }
     .nav-links a { font-size: 0.78rem; }
+  }
+  @media (max-width: 760px) and (max-height: 719px) {
+    .hero-copy { padding-bottom: 1rem; }
+  }
+  @media (max-width: 760px) and (max-height: 500px) {
+    .hero-copy h1 { font-size: clamp(2.6rem, 7vw, 3rem); }
+    .hero-copy p { max-width: 42ch; margin-top: 0.75rem; font-size: 0.9rem; }
+    .hero-copy a { margin-top: 1rem; }
+  }
+  @media (min-width: 761px) and (max-height: 500px) {
+    .hero-copy { padding-block: 2rem; }
+    .hero-copy h1 { font-size: clamp(3.2rem, 8vw, 4rem); }
+    .hero-copy p { max-width: 38ch; margin-top: 1rem; font-size: 0.95rem; }
+    .hero-copy a { margin-top: 1.25rem; }
   }
   @media (prefers-reduced-motion: reduce) {
     html { scroll-behavior: auto; }
@@ -156,7 +173,7 @@
   <canvas id="swarm" data-particle-logo="assets/logo_white_nobg.svg" aria-hidden="true"></canvas>
   <div class="wrap hero-copy">
     <h1>AI, built around people.</h1>
-    <p>Open agents that remember context, use your tools, and act under your control.</p>
+    <p>Eliza Research builds products at the intersection of artificial intelligence and the people who live with it.</p>
     <a href="#eliza">See what we make ↓</a>
   </div>
 </header>
