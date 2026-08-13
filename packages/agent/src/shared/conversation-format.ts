@@ -99,3 +99,9 @@ export function formatRelativeTimestamp(createdAt?: number): string {
   const days = Math.floor(hours / 24);
   return `${days}d ago`;
 }
+
+/** Render a relative timestamp as an optional parenthesized line prefix. */
+export function formatRelativeTimestampPrefix(createdAt?: number): string {
+  const label = formatRelativeTimestamp(createdAt);
+  return label ? `(${label}) ` : "";
+}

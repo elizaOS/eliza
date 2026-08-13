@@ -40,7 +40,7 @@ import {
 } from "../api/conversation-metadata.ts";
 import { HASH_MEMORY_SOURCE, rankByKeyword } from "../api/memory-routes.ts";
 import {
-  formatRelativeTimestamp,
+  formatRelativeTimestampPrefix,
   formatSpeakerLabel,
   roomSourceTag,
 } from "../shared/conversation-format.ts";
@@ -283,7 +283,7 @@ export const relevantConversationsProvider: Provider = {
       for (const mem of filtered) {
         const room = roomCache.get(mem.roomId) ?? null;
         const tag = roomSourceTag(room);
-        const ts = formatRelativeTimestamp(mem.createdAt);
+        const age = formatRelativeTimestampPrefix(mem.createdAt);
         const speaker = formatSpeakerLabel(runtime, mem);
         const source = (mem.content as { source?: string } | undefined)?.source;
         const snippetLength =
@@ -291,7 +291,7 @@ export const relevantConversationsProvider: Provider = {
             ? HASH_MEMORY_SNIPPET_LENGTH
             : RELEVANT_SNIPPET_LENGTH;
         const msgText = truncateWellFormed(memoryText(mem), snippetLength);
-        lines.push(`${tag} (${ts}) ${speaker}: ${msgText}`);
+        lines.push(`${tag} ${age}${speaker}: ${msgText}`);
       }
 
       return {
