@@ -28,8 +28,10 @@ on:
 
 # A reusable caller's scope separates it from the standalone ref domain. PRs
 # still supersede obsolete work; scheduled and exhaustive work always completes.
+# A manual run also gets a run-scoped identity so an on-demand health read is
+# not parked behind — and then superseded by — the develop push queue.
 concurrency:
-  group: scenario-pr-e2e-${{ inputs.concurrency_scope || 'standalone' }}-${{ github.event.pull_request.number || github.ref }}
+  group: scenario-pr-e2e-${{ inputs.concurrency_scope || 'standalone' }}-${{ github.event_name == 'workflow_dispatch' && format('dispatch-{0}', github.run_id) || github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
