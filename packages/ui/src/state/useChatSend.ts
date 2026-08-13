@@ -31,6 +31,7 @@ import {
   loadSavedCustomCommands,
   normalizeSlashCommandName,
 } from "../chat";
+import { describeJoinCreditGateError } from "../cloud/join/lib/join-credit-gate-error";
 import { dispatchWorkflowActionHandoff } from "../components/pages/workflow-action-handoff";
 import {
   CLOUD_HANDOFF_PHASE_EVENT,
@@ -1770,6 +1771,26 @@ export function useChatSend(deps: UseChatSendDeps) {
               fullText: "",
               accountConnect: err.accountConnect,
             });
+          }
+          return;
+        }
+
+        // A thrown JSON 402 (`code: insufficient_credits`) is a terminal
+        // billing gate, not a transport hiccup: retrying re-hits the same
+        // empty balance. Render the existing out-of-credits turn (banner +
+        // "Add credits" CTA) instead of falling through to the generic
+        // provider_issue Retry chip below (#18045). The classifier is the
+        // same fail-closed 402 walk the /join surface uses.
+        const creditGate = describeJoinCreditGateError(err);
+        if (creditGate) {
+          applyStreamingModificationForConversation(convId, {
+            messageId: assistantMsgId,
+            mode: "complete",
+            fullText: creditGate.message,
+            failureKind: "insufficient_credits",
+          });
+          if (elizaCloudEnabled || elizaCloudConnected) {
+            void pollCloudCredits();
           }
           return;
         }

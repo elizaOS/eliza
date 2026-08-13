@@ -714,6 +714,36 @@ function resumeRetryDelayMs(res: Response): number {
   return Math.min(RESUME_MAX_DELAY_MS, Math.max(RESUME_MIN_DELAY_MS, ms));
 }
 
+// ---------------------------------------------------------------------------
+// Shared-agent cache-warming (HTTP 503) absorption
+// ---------------------------------------------------------------------------
+
+// The first turn against a fresh shared agent can hit two pre-admission
+// warming barriers, each a `503` with a stable machine code and
+// `Retry-After: 1` (#18045). Both reject BEFORE the request is admitted, so
+// re-issuing the identical request — same body, same `clientMessageId` — is
+// idempotent by server contract. Absorb them here at the request choke point,
+// bounded, so every surface keeps the send pending instead of surfacing an
+// expected warm-up as a user-visible failure. Only these named codes retry; a
+// generic 503 (or any 402) stays a real failure.
+const WARMING_RETRYABLE_CODES = new Set([
+  "agent_cache_warming",
+  "shared_runtime_cache_warming",
+]);
+const WARMING_MAX_RETRIES = 4;
+const WARMING_DEFAULT_DELAY_MS = 1_000;
+const WARMING_MIN_DELAY_MS = 250;
+const WARMING_MAX_DELAY_MS = 5_000;
+
+/** Clamp the warming barrier's advertised `Retry-After` (seconds) into ms. */
+function warmingRetryDelayMs(retryAfterSeconds: number | undefined): number {
+  const ms =
+    retryAfterSeconds !== undefined && Number.isFinite(retryAfterSeconds)
+      ? retryAfterSeconds * 1_000
+      : WARMING_DEFAULT_DELAY_MS;
+  return Math.min(WARMING_MAX_DELAY_MS, Math.max(WARMING_MIN_DELAY_MS, ms));
+}
+
 /** Resolve after `ms`, or early if `signal` aborts. Never rejects. */
 function sleepUnlessAborted(
   ms: number,
@@ -1114,9 +1144,11 @@ export class ElizaClient {
     options?: {
       allowNonOk?: boolean;
       timeoutMs?: number;
-      /** Invoked once when a non-running cloud agent answers 202 and the resume
-       *  loop starts waiting (#8628). Lets the chat surface a `waking` status
-       *  while the agent boots. */
+      /** Invoked once when the client starts waiting on the server's behalf: a
+       *  non-running cloud agent answered 202 and the resume loop began
+       *  (#8628), or a named first-turn cache-warming 503 is being absorbed
+       *  (#18045). Lets the chat surface a `waking` status instead of stalled
+       *  dots. */
       onResuming?: () => void;
       /** Skip the bounded 202 resume-retry loop and return the FIRST 202 body
        *  as-is (#14040 sub-defect 2). The chat/stream path wants the eventual
@@ -1192,7 +1224,8 @@ export class ElizaClient {
         retryAfter: resumeRetryDelayMs(res) / 1000,
       });
     }
-    if (!res.ok) {
+    let warmingRetries = 0;
+    while (!res.ok) {
       const rawText = await this.readBodyText(
         res,
         path,
@@ -1234,6 +1267,33 @@ export class ElizaClient {
           ? rawBodyRetryAfter
           : undefined;
       const retryAfter = bodyRetryAfter ?? headerRetryAfter;
+      // Named first-turn warming barrier: wait the advertised Retry-After and
+      // re-issue the same request, bounded (see WARMING_* above). `allowNonOk`
+      // probes keep the raw 503 — they render their own progress states.
+      if (
+        res.status === 503 &&
+        code !== undefined &&
+        WARMING_RETRYABLE_CODES.has(code) &&
+        !options?.allowNonOk &&
+        warmingRetries < WARMING_MAX_RETRIES &&
+        !init?.signal?.aborted
+      ) {
+        warmingRetries += 1;
+        // Surface the wait like the 202 resume path does — the chat maps this
+        // to a `waking` status so the send shows warm-up, not stalled dots.
+        if (warmingRetries === 1) options?.onResuming?.();
+        await sleepUnlessAborted(warmingRetryDelayMs(retryAfter), init?.signal);
+        if (!init?.signal?.aborted) {
+          res = await this.rawRequestOnce(
+            path,
+            requestUrl,
+            init,
+            options,
+            token,
+          );
+          continue;
+        }
+      }
       const error = new ApiError({
         kind: "http",
         path,
