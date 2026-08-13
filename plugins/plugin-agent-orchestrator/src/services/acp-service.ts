@@ -463,15 +463,25 @@ function run(argv, opts = {}) {
 // processes with an exclusive lockfile in the worktree's own git dir (where HEAD
 // lives), so isolated worktrees — which have distinct git dirs and HEADs — never
 // contend, while shared ones can't interleave.
-const LOCK_POLL_MS = Number.parseInt(process.env.ACP_COMMIT_LOCK_POLL_MS || "25", 10);
-const LOCK_WAIT_MS = Number.parseInt(process.env.ACP_COMMIT_LOCK_WAIT_MS || "120000", 10);
+// Strict, because parseInt is lenient in both directions here: "abc" yields NaN
+// (a NaN deadline never trips, and Atomics.wait coerces a NaN timeout to
+// +Infinity, so the wrapper blocks forever instead of timing out), while "2m"
+// silently yields 2 — a 2ms acquire deadline that disables the serialization
+// this lock exists to provide, reopening #14183. Number() rejects trailing
+// garbage outright; anything not a positive safe integer falls back.
+function readPositiveIntMs(envKey, fallback) {
+  const parsed = Number((process.env[envKey] || "").trim());
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : fallback;
+}
+const LOCK_POLL_MS = readPositiveIntMs("ACP_COMMIT_LOCK_POLL_MS", 25);
+const LOCK_WAIT_MS = readPositiveIntMs("ACP_COMMIT_LOCK_WAIT_MS", 120000);
 // A lock becomes reclaimable once its mtime is older than this. It sits below
 // LOCK_WAIT_MS so a crashed holder whose PID was recycled to an unrelated live
 // process is reclaimed by a waiter before that waiter's acquire deadline (#14202)
 // — otherwise the dead lock would wedge the worktree until the 120s timeout.
 // Live holders keep the mtime fresh through a detached heartbeat because the
 // wrapper blocks in spawnSync while git commit/pre-commit hooks run.
-const LOCK_STALE_MS = Number.parseInt(process.env.ACP_COMMIT_LOCK_STALE_MS || "30000", 10);
+const LOCK_STALE_MS = readPositiveIntMs("ACP_COMMIT_LOCK_STALE_MS", 30000);
 function sleepSync(ms) {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 }
