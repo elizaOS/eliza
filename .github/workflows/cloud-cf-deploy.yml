@@ -92,16 +92,13 @@ on:
         type: boolean
 
 concurrency:
-  # Production releases remain a FIFO, queue-never-cancel stream. Staging
-  # approval happens in a separate, non-secret environment before any shared
-  # mutation lock is acquired, so each staging SHA gets an independent workflow
-  # group and cannot head-of-line block a newer approval.
-  # The v4 suffix retires the wedged v3 groups: a stale 2026-05-15 queued run
-  # (25907128646) wedged v3-staging admission, so dispatched staging deploys sat
-  # pending with zero jobs while cancel and force-cancel both returned HTTP 500.
-  # Same retirement pattern as v2 -> v3; cancel stale deploys instead of
-  # rejecting environment gates.
-  group: cloud-cf-deploy-v4-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || (((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'production' || format('staging-{0}', github.sha)) }}
+  # #18092: workflow groups are per SHA so a protected-environment wait cannot
+  # own a shared mutation lock. A newer main/develop SHA always creates jobs
+  # and can reach an explicit approval state. Mutation still serializes at
+  # migrate-db, deploy-api, and deploy-app (cancel-in-progress: false except
+  # PR previews). The v5 suffix retires wedged v4-production groups the same
+  # way v4 retired v3.
+  group: cloud-cf-deploy-v5-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || format('{0}-{1}', ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'production' || 'staging', github.sha) }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 # Default to least privilege. Override per-job where needed.
