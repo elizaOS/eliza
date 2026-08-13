@@ -1048,9 +1048,7 @@ export class WhatsAppConnectorService extends Service {
    */
   private resolveWebhookAccountId(phoneNumberId?: string | null): string | null {
     const normalizedPhoneNumberId =
-      typeof phoneNumberId === "string" && phoneNumberId.trim()
-        ? phoneNumberId.trim()
-        : undefined;
+      typeof phoneNumberId === "string" && phoneNumberId.trim() ? phoneNumberId.trim() : undefined;
 
     if (normalizedPhoneNumberId) {
       for (const [accountId, config] of this.configs) {
@@ -1249,233 +1247,215 @@ export class WhatsAppConnectorService extends Service {
           return;
         }
       }
-    } catch (dedupeError) {
-      // A transient storage failure must not drop the message; fall through to
-      // normal processing. The in-process guard still collapses concurrent
-      // redelivery within this process.
-      this.runtime.logger.warn(
-        {
-          src: "plugin:whatsapp",
-          agentId: this.runtime.agentId,
-          accountId,
-          externalMessageId: params.externalMessageId,
-          error: dedupeError instanceof Error ? dedupeError.message : String(dedupeError),
-        },
-        "WhatsApp inbound idempotency storage check failed; proceeding with normal processing"
-      );
-    }
 
-    try {
-    const accountConfig = {
-      dmPolicy: config?.dmPolicy,
-      groupPolicy: config?.groupPolicy,
-      allowFrom: config?.allowFrom,
-      groupAllowFrom: config?.groupAllowFrom,
-    };
+      const accountConfig = {
+        dmPolicy: config?.dmPolicy,
+        groupPolicy: config?.groupPolicy,
+        allowFrom: config?.allowFrom,
+        groupAllowFrom: config?.groupAllowFrom,
+      };
 
-    const access = await checkWhatsAppUserAccess({
-      runtime: this.runtime,
-      identifier: normalizedSender,
-      accountConfig,
-      isGroup,
-      ...(isGroup ? { groupId: params.chatId } : {}),
-      metadata: { accountId, senderId: normalizedSender },
-    });
-
-    if (!access.allowed) {
-      if (access.replyMessage) {
-        await this.sendTextMessage(params.chatId, access.replyMessage, undefined, accountId);
-      }
-      return;
-    }
-
-    const channelType = isGroup ? ChannelType.GROUP : ChannelType.DM;
-    const roomId = this.roomIdFor(params.chatId, accountId);
-    const worldId = this.worldIdFor(params.chatId, accountId);
-    const entityId = this.entityIdFor(normalizedSender, accountId);
-    const inboundMemoryId = toMemoryId(
-      this.runtime,
-      accountId === DEFAULT_ACCOUNT_ID ? params.chatId : `${accountId}:${params.chatId}`,
-      params.externalMessageId
-    );
-
-    await this.runtime.ensureConnection({
-      entityId,
-      roomId,
-      userId: normalizedSender,
-      userName: normalizedSender,
-      name: normalizedSender,
-      source: "whatsapp",
-      channelId: params.chatId,
-      type: channelType,
-      worldId,
-      worldName: resolveWhatsAppSystemLocation({
-        chatType: isGroup ? "group" : "user",
-        chatId: params.chatId,
-      }),
-      metadata: {
-        accountId,
-        chatId: params.chatId,
+      const access = await checkWhatsAppUserAccess({
+        runtime: this.runtime,
+        identifier: normalizedSender,
+        accountConfig,
         isGroup,
-      },
-    });
-    if (typeof this.runtime.ensureRoomExists === "function") {
-      await this.runtime.ensureRoomExists({
-        id: roomId,
-        name: resolveWhatsAppSystemLocation({
+        ...(isGroup ? { groupId: params.chatId } : {}),
+        metadata: { accountId, senderId: normalizedSender },
+      });
+
+      if (!access.allowed) {
+        if (access.replyMessage) {
+          await this.sendTextMessage(params.chatId, access.replyMessage, undefined, accountId);
+        }
+        return;
+      }
+
+      const channelType = isGroup ? ChannelType.GROUP : ChannelType.DM;
+      const roomId = this.roomIdFor(params.chatId, accountId);
+      const worldId = this.worldIdFor(params.chatId, accountId);
+      const entityId = this.entityIdFor(normalizedSender, accountId);
+
+      await this.runtime.ensureConnection({
+        entityId,
+        roomId,
+        userId: normalizedSender,
+        userName: normalizedSender,
+        name: normalizedSender,
+        source: "whatsapp",
+        channelId: params.chatId,
+        type: channelType,
+        worldId,
+        worldName: resolveWhatsAppSystemLocation({
           chatType: isGroup ? "group" : "user",
           chatId: params.chatId,
         }),
-        agentId: this.runtime.agentId,
-        source: "whatsapp",
-        type: channelType,
-        channelId: params.chatId,
-        worldId,
         metadata: {
           accountId,
           chatId: params.chatId,
           isGroup,
         },
-      } as Room);
-    }
-
-    this.rememberTarget({
-      accountId,
-      chatId: params.chatId,
-      senderId: normalizedSender,
-      label: resolveWhatsAppSystemLocation({
-        chatType: isGroup ? "group" : "user",
-        chatId: params.chatId,
-      }),
-      isGroup,
-      lastMessageAt: params.createdAt,
-      roomId,
-    });
-
-    const inboundMemory: Memory = {
-      id: inboundMemoryId,
-      entityId,
-      agentId: this.runtime.agentId,
-      roomId,
-      content: {
-        text: params.text,
-        source: "whatsapp",
-        channelType,
-        from: normalizedSender,
-        messageId: params.externalMessageId,
-        ...(params.replyToExternalMessageId
-          ? {
-              inReplyTo: toMemoryId(
-                this.runtime,
-                accountId === DEFAULT_ACCOUNT_ID ? params.chatId : `${accountId}:${params.chatId}`,
-                params.replyToExternalMessageId
-              ),
-            }
-          : {}),
-      },
-      metadata: {
-        type: "message",
-        source: "whatsapp",
-        provider: "whatsapp",
-        accountId,
-        timestamp: params.createdAt,
-        entityName: normalizedSender,
-        entityUserName: normalizedSender,
-        fromBot: false,
-        fromId: normalizedSender,
-        sourceId: entityId,
-        chatType: channelType,
-        messageIdFull: params.externalMessageId,
-        sender: {
-          id: normalizedSender,
-          name: normalizedSender,
-          username: normalizedSender,
-        },
-        whatsapp: {
-          contactId: normalizedSender,
-          messageId: params.externalMessageId,
-        },
-        rawChatId: params.chatId,
-        rawSenderId: params.senderId,
-      } satisfies Memory["metadata"],
-      createdAt: params.createdAt,
-    };
-
-    const callback = async (content: Content): Promise<Memory[]> => {
-      const text = typeof content.text === "string" ? content.text.trim() : "";
-      if (!text) {
-        return [];
-      }
-
-      const chunks = chunkWhatsAppText(text);
-      const responseMemories: Memory[] = [];
-
-      for (const [index, chunk] of chunks.entries()) {
-        const response = await this.sendTextMessage(
-          params.chatId,
-          chunk,
-          params.externalMessageId,
-          accountId
-        );
-        const externalResponseId =
-          response.messages[0]?.id ?? `${params.externalMessageId}:response:${index}:${Date.now()}`;
-
-        responseMemories.push({
-          id: toMemoryId(
-            this.runtime,
-            accountId === DEFAULT_ACCOUNT_ID ? params.chatId : `${accountId}:${params.chatId}`,
-            externalResponseId
-          ),
-          entityId: this.runtime.agentId,
+      });
+      if (typeof this.runtime.ensureRoomExists === "function") {
+        await this.runtime.ensureRoomExists({
+          id: roomId,
+          name: resolveWhatsAppSystemLocation({
+            chatType: isGroup ? "group" : "user",
+            chatId: params.chatId,
+          }),
           agentId: this.runtime.agentId,
-          roomId,
-          content: {
-            ...content,
-            text: chunk,
-            source: "whatsapp",
-            channelType,
-            inReplyTo: inboundMemoryId,
-          },
+          source: "whatsapp",
+          type: channelType,
+          channelId: params.chatId,
+          worldId,
           metadata: {
-            type: "message",
-            source: "whatsapp",
-            provider: "whatsapp",
             accountId,
-            timestamp: Date.now(),
-            fromBot: true,
-            fromId: this.runtime.agentId,
-            sourceId: this.runtime.agentId,
-            chatType: channelType,
-            messageIdFull: externalResponseId,
-            whatsapp: {
-              contactId: params.chatId,
-              messageId: externalResponseId,
-            },
-            rawChatId: params.chatId,
-            externalMessageId: externalResponseId,
-          } satisfies Memory["metadata"],
-          createdAt: Date.now(),
-        });
+            chatId: params.chatId,
+            isGroup,
+          },
+        } as Room);
       }
 
-      return responseMemories;
-    };
+      this.rememberTarget({
+        accountId,
+        chatId: params.chatId,
+        senderId: normalizedSender,
+        label: resolveWhatsAppSystemLocation({
+          chatType: isGroup ? "group" : "user",
+          chatId: params.chatId,
+        }),
+        isGroup,
+        lastMessageAt: params.createdAt,
+        roomId,
+      });
 
-    // Inbound messages are always ingested into memory. The agent only
-    // auto-generates a reply when WHATSAPP_AUTO_REPLY is explicitly enabled —
-    // default-off prevents the runtime from speaking on the user's behalf to
-    // real WhatsApp contacts.
-    const autoReplyRaw = this.runtime.getSetting("WHATSAPP_AUTO_REPLY");
-    const autoReply =
-      !lifeOpsPassiveConnectorsEnabled(this.runtime) &&
-      (autoReplyRaw === true || autoReplyRaw === "true");
+      const inboundMemory: Memory = {
+        id: inboundMemoryId,
+        entityId,
+        agentId: this.runtime.agentId,
+        roomId,
+        content: {
+          text: params.text,
+          source: "whatsapp",
+          channelType,
+          from: normalizedSender,
+          messageId: params.externalMessageId,
+          ...(params.replyToExternalMessageId
+            ? {
+                inReplyTo: toMemoryId(
+                  this.runtime,
+                  accountId === DEFAULT_ACCOUNT_ID
+                    ? params.chatId
+                    : `${accountId}:${params.chatId}`,
+                  params.replyToExternalMessageId
+                ),
+              }
+            : {}),
+        },
+        metadata: {
+          type: "message",
+          source: "whatsapp",
+          provider: "whatsapp",
+          accountId,
+          timestamp: params.createdAt,
+          entityName: normalizedSender,
+          entityUserName: normalizedSender,
+          fromBot: false,
+          fromId: normalizedSender,
+          sourceId: entityId,
+          chatType: channelType,
+          messageIdFull: params.externalMessageId,
+          sender: {
+            id: normalizedSender,
+            name: normalizedSender,
+            username: normalizedSender,
+          },
+          whatsapp: {
+            contactId: normalizedSender,
+            messageId: params.externalMessageId,
+          },
+          rawChatId: params.chatId,
+          rawSenderId: params.senderId,
+        } satisfies Memory["metadata"],
+        createdAt: params.createdAt,
+      };
 
-    if (!autoReply) {
-      await this.runtime.createMemory(inboundMemory, "messages");
-      return;
-    }
+      const callback = async (content: Content): Promise<Memory[]> => {
+        const text = typeof content.text === "string" ? content.text.trim() : "";
+        if (!text) {
+          return [];
+        }
 
-    await this.runtime.messageService.handleMessage(this.runtime, inboundMemory, callback);
+        const chunks = chunkWhatsAppText(text);
+        const responseMemories: Memory[] = [];
+
+        for (const [index, chunk] of chunks.entries()) {
+          const response = await this.sendTextMessage(
+            params.chatId,
+            chunk,
+            params.externalMessageId,
+            accountId
+          );
+          const externalResponseId =
+            response.messages[0]?.id ??
+            `${params.externalMessageId}:response:${index}:${Date.now()}`;
+
+          responseMemories.push({
+            id: toMemoryId(
+              this.runtime,
+              accountId === DEFAULT_ACCOUNT_ID ? params.chatId : `${accountId}:${params.chatId}`,
+              externalResponseId
+            ),
+            entityId: this.runtime.agentId,
+            agentId: this.runtime.agentId,
+            roomId,
+            content: {
+              ...content,
+              text: chunk,
+              source: "whatsapp",
+              channelType,
+              inReplyTo: inboundMemoryId,
+            },
+            metadata: {
+              type: "message",
+              source: "whatsapp",
+              provider: "whatsapp",
+              accountId,
+              timestamp: Date.now(),
+              fromBot: true,
+              fromId: this.runtime.agentId,
+              sourceId: this.runtime.agentId,
+              chatType: channelType,
+              messageIdFull: externalResponseId,
+              whatsapp: {
+                contactId: params.chatId,
+                messageId: externalResponseId,
+              },
+              rawChatId: params.chatId,
+              externalMessageId: externalResponseId,
+            } satisfies Memory["metadata"],
+            createdAt: Date.now(),
+          });
+        }
+
+        return responseMemories;
+      };
+
+      // Inbound messages are always ingested into memory. The agent only
+      // auto-generates a reply when WHATSAPP_AUTO_REPLY is explicitly enabled —
+      // default-off prevents the runtime from speaking on the user's behalf to
+      // real WhatsApp contacts.
+      const autoReplyRaw = this.runtime.getSetting("WHATSAPP_AUTO_REPLY");
+      const autoReply =
+        !lifeOpsPassiveConnectorsEnabled(this.runtime) &&
+        (autoReplyRaw === true || autoReplyRaw === "true");
+
+      if (!autoReply) {
+        await this.runtime.createMemory(inboundMemory, "messages");
+        return;
+      }
+
+      await this.runtime.messageService.handleMessage(this.runtime, inboundMemory, callback);
     } finally {
       this.inflightInboundMessageIds.delete(dedupeKey);
     }
