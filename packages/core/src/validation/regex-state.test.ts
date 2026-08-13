@@ -1,3 +1,7 @@
+/**
+ * Deterministic pure coverage for reusable global/sticky regex state during
+ * action validation; no runtime, provider, or database harness is used.
+ */
 import { describe, expect, it } from "vitest";
 import type { Memory } from "../types";
 import { validateActionRegex } from "./keywords.ts";
