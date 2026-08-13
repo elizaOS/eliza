@@ -291,6 +291,16 @@ describe("DocumentService character document ingestion boot races", () => {
 			code: "DOCUMENT_FRAGMENT_EMBED_FAILED",
 			context: { documentId: expect.any(String), position: 1 },
 		});
+		expect(thrown.cause.cause).toBeInstanceOf(ElizaError);
+		if (!(thrown.cause.cause instanceof ElizaError)) {
+			throw new Error(
+				"Expected fragment failure to preserve its embedding cause",
+			);
+		}
+		expect(thrown.cause.cause).toMatchObject({
+			code: "EMBEDDING_MODEL_OUTPUT_INVALID",
+			context: { outputKind: "empty-array" },
+		});
 		expect(embeddings).toBe(2);
 		await expect(getStoredMemories(runtime, DOCUMENTS_TABLE)).resolves.toEqual(
 			[],

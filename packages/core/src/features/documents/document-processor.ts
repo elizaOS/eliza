@@ -468,7 +468,17 @@ export async function preparePreChunkedFragmentMemories({
 			unique: false,
 		};
 		if (hasDocumentEmbeddingModel(runtime)) {
-			await runtime.addEmbeddingToMemory(memory);
+			try {
+				await runtime.addEmbeddingToMemory(memory);
+			} catch (error) {
+				// error-policy:J2 Preserve the provider failure under the
+				// document-fragment contract.
+				throw new ElizaError("Pre-chunked document fragment embedding failed", {
+					code: "DOCUMENT_FRAGMENT_EMBED_FAILED",
+					context: { documentId, position },
+					cause: error,
+				});
+			}
 			if (!memory.embedding || memory.embedding.length === 0) {
 				throw new ElizaError(
 					"Pre-chunked document fragment embedding is unavailable",
