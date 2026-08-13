@@ -1,0 +1,15 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "full-plugin",
+  "version": "1.2.0",
+  "description": "Full example Agent Plugin",
+  "author": {
+    "name": "Example Author",
+    "email": "author@example.com",
+    "url": "https://example.com"
+  },
+  "homepage": "https://docs.example.com/plugin",
+  "repository": "https://github.com/example/plugin",
+  "license": "MIT",
+  "keywords": ["summarize", "example"]
+}

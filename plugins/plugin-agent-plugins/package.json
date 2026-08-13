@@ -1,0 +1,108 @@
+{
+  "name": "@elizaos/plugin-agent-plugins",
+  "version": "2.0.3-beta.7",
+  "description": "Agent Plugins 1.0.0 client for elizaOS — load plugin.json + skills/ + mcp.json packages",
+  "main": "dist/index.js",
+  "type": "module",
+  "types": "dist/index.d.ts",
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "types": "./dist/index.d.ts",
+      "eliza-source": {
+        "types": "./src/index.ts",
+        "import": "./src/index.ts",
+        "default": "./src/index.ts"
+      },
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./*": {
+      "types": "./dist/*.d.ts",
+      "eliza-source": {
+        "types": "./src/*.ts",
+        "import": "./src/*.ts",
+        "default": "./src/*.ts"
+      },
+      "import": "./dist/*.js",
+      "default": "./dist/*.js"
+    }
+  },
+  "files": [
+    "registry-entry.json",
+    "dist",
+    "auto-enable.ts"
+  ],
+  "elizaos": {
+    "plugin": {
+      "autoEnableModule": "./auto-enable.ts",
+      "capabilities": [
+        "agent-plugins"
+      ]
+    }
+  },
+  "keywords": [
+    "elizaos",
+    "plugin",
+    "agent-plugins",
+    "agent-skills",
+    "mcp",
+    "agents"
+  ],
+  "dependencies": {
+    "@elizaos/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.7",
+    "tsup": "^8.5.1",
+    "@typescript/native": "npm:typescript@^7.0.2",
+    "typescript": "^6.0.3",
+    "vitest": "^4.0.0"
+  },
+  "scripts": {
+    "build": "tsup && tsc6 --declaration --emitDeclarationOnly --noEmit false --noCheck",
+    "dev": "tsup --watch",
+    "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist",
+    "lint": "bunx @biomejs/biome check --write --unsafe --config-path ./biome.json .",
+    "lint:check": "bunx @biomejs/biome lint --config-path ./biome.json . --no-errors-on-unmatched",
+    "format": "bunx @biomejs/biome format --write . --no-errors-on-unmatched",
+    "format:check": "bunx @biomejs/biome format . --no-errors-on-unmatched",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --config ./vitest.config.ts"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "agentConfig": {
+    "pluginType": "elizaos:plugin:1.0.0",
+    "pluginParameters": {
+      "AGENT_PLUGINS_DIR": {
+        "type": "string",
+        "description": "Directory of installed Agent Plugin packages (each subdir is a plugin root)",
+        "required": false,
+        "example": "./agent-plugins"
+      },
+      "AGENT_PLUGIN_PATHS": {
+        "type": "string",
+        "description": "Comma-separated extra Agent Plugin roots to load without copying",
+        "required": false,
+        "example": "./vendor/my-plugin,./local/other-plugin"
+      },
+      "AGENT_PLUGINS_ENABLE_MCP": {
+        "type": "boolean",
+        "description": "If true, attempt to connect discovered MCP servers via @elizaos/plugin-mcp when that service is present. Default false.",
+        "required": false,
+        "example": "false"
+      }
+    }
+  },
+  "eliza": {
+    "platforms": [
+      "node"
+    ],
+    "runtime": "node",
+    "platformDetails": {
+      "node": "Node.js via main entry point"
+    }
+  }
+}
