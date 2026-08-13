@@ -106,6 +106,20 @@ All settings are read via `runtime.getSetting(key)` or `process.env`. None are r
 | `CODING_TOOLS_MAX_FILE_SIZE_BYTES` | `262144` | Pre-stat byte cap on FILE action=read. Larger files are rejected. |
 | `CODING_TOOLS_GREP_HEAD_LIMIT` | `250` | Default `head_limit` for GREP output. Set to 0 to disable. |
 
+The folded `ShellService` also retains compatibility settings for external
+consumers of `runtime.getService("shell").exec()` / `executeCommand()`. The
+canonical SHELL action above continues to use the `CODING_TOOLS_*` settings.
+
+| Compatibility setting | Default | Accepted values / effect |
+|---|---:|---|
+| `SHELL_ALLOWED_DIRECTORY` | `process.cwd()` | Existing directory exposed to the compatibility service. |
+| `SHELL_TIMEOUT` | `30000` | Exact decimal milliseconds, `1..2147483647`, for simple command execution. |
+| `SHELL_MAX_OUTPUT_CHARS` | `200000` | Exact decimal retained-session cap, `1..1000000`. |
+| `SHELL_PENDING_MAX_OUTPUT_CHARS` | `200000` | Exact decimal unread-output cap, `1..1000000` (also bounded by the retained-session cap). |
+| `SHELL_BACKGROUND_MS` | `10000` | Exact decimal foreground yield window, `10..120000`. |
+| `SHELL_ALLOW_BACKGROUND` | `true` | Set to exact `false` to disable compatibility-service background/yield behavior. |
+| `SHELL_FORBIDDEN_COMMANDS` | — | Comma-separated additions to the built-in forbidden-command set. |
+
 Auto-enable keys (in agent `config.features`):
 - `config.features.codingTools` (canonical) — `true` or `{ enabled: true }`.
 - `config.features["coding-agent"]` (legacy alias).
