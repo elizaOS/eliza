@@ -166,17 +166,24 @@ protected GitHub Environment variables rather than committing live values.
    will attach to `eliza-app`.
 4. Dispatch `Infrastructure` with `component=pages-domains`,
    `environment=staging`, and `operation=plan`. The successful run uploads a
-   three-day `terraform-plan-<run-id>` artifact. The plan must show imports for
-   every pre-existing DNS/certificate object, DNS-only Railway tunnel records,
-   new canonical Pages bindings, and only additive certificate creation. Stop
-   on any DNS or certificate destroy, replace, duplicate-create, or unexpected
-   content change.
+   three-day encrypted `terraform-plan-<run-id>-<run-attempt>` artifact and
+   reports its exact artifact id and GitHub service digest. The protected
+   Environment must contain a distinct RSA
+   `TERRAFORM_PLAN_ARTIFACT_PUBLIC_KEY` variable and apply-only
+   `TERRAFORM_PLAN_ARTIFACT_PRIVATE_KEY` secret; plaintext saved plans never
+   enter Actions artifact storage, and plan runs cannot decrypt prior plans.
+   The plan must show imports for every pre-existing DNS/certificate object,
+   DNS-only Railway tunnel records, new canonical Pages bindings, and only
+   additive certificate creation. Stop on any DNS or certificate destroy,
+   replace, duplicate-create, or unexpected content change.
 5. Deploy the staging Worker routes before converting legacy site/tunnel DNS to
    proxied redirect ingress. Dispatch `operation=apply` with the exact successful
-   plan run id. The apply job verifies the source workflow, environment, branch,
-   commit, artifact metadata, and SHA-256 before using that saved plan; it never
-   creates a fresh unreviewed plan. Wait for all Pages bindings and every new
-   advanced pack to report `active`.
+   plan run id, run attempt, artifact id, and service digest copied from that
+   run's summary. The apply job verifies the source workflow, environment,
+   branch, commit, exact immutable artifact identity, authenticated metadata,
+   and plaintext SHA-256 before using that saved plan; it never creates a fresh
+   unreviewed plan. Wait for all Pages bindings and every new advanced pack to
+   report `active`.
 6. Verify the homepage, hosted app, API proxy, a managed-agent hostname, a hosted
    site hostname, and every legacy 308 family over real TLS. Verify path/query
    preservation and confirm `docs.elizacloud.ai` lands on `https://eliza.app`.

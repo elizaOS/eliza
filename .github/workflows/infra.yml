@@ -31,6 +31,18 @@ on:
         description: Successful Infrastructure plan run id required for apply
         required: false
         type: string
+      plan_run_attempt:
+        description: Exact run attempt that produced the reviewed plan
+        required: false
+        type: string
+      plan_artifact_id:
+        description: Exact GitHub artifact id shown by the reviewed plan run
+        required: false
+        type: string
+      plan_artifact_digest:
+        description: Exact sha256 artifact digest shown by the reviewed plan run
+        required: false
+        type: string
 
 concurrency:
   group: terraform-${{ inputs.component }}-${{ inputs.environment }}
@@ -76,6 +88,7 @@ jobs:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       AWS_ACCESS_KEY_ID: ${{ secrets.R2_STATE_ACCESS_KEY_ID }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_STATE_SECRET_ACCESS_KEY }}
+      TERRAFORM_PLAN_ARTIFACT_PUBLIC_KEY: ${{ vars.TERRAFORM_PLAN_ARTIFACT_PUBLIC_KEY }}
       TF_VAR_environment: ${{ inputs.environment }}
       TF_VAR_cloudflare_account_id: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       TF_VAR_cloudflare_zone_id: ${{ secrets.APPS_CLOUDFLARE_ZONE_ID || vars.APPS_CLOUDFLARE_ZONE_ID }}
@@ -109,11 +122,16 @@ jobs:
         shell: bash
         env:
           PLAN_RUN_ID: ${{ inputs.plan_run_id }}
+          PLAN_RUN_ATTEMPT: ${{ inputs.plan_run_attempt }}
           TARGET_ENVIRONMENT: ${{ inputs.environment }}
         run: |
           set -euo pipefail
           if [[ ! "$PLAN_RUN_ID" =~ ^[1-9][0-9]*$ ]]; then
             echo "::error::apply requires the numeric run id of a successful Infrastructure plan"
+            exit 1
+          fi
+          if [[ ! "$PLAN_RUN_ATTEMPT" =~ ^[1-9][0-9]*$ ]]; then
+            echo "::error::apply requires the exact numeric attempt of the reviewed plan run"
             exit 1
           fi
           if [ "$TARGET_ENVIRONMENT" = "production" ]; then
@@ -122,7 +140,7 @@ jobs:
             expected_branch="develop"
           fi
           run_json=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$PLAN_RUN_ID")
-          RUN_JSON="$run_json" EXPECTED_BRANCH="$expected_branch" node - <<'NODE'
+          RUN_JSON="$run_json" EXPECTED_BRANCH="$expected_branch" EXPECTED_RUN_ATTEMPT="$PLAN_RUN_ATTEMPT" node - <<'NODE'
           const run = JSON.parse(process.env.RUN_JSON);
           const failures = [];
           if (run.name !== "Infrastructure") failures.push("workflow name");
@@ -130,6 +148,7 @@ jobs:
           if (run.event !== "workflow_dispatch") failures.push("event");
           if (run.status !== "completed" || run.conclusion !== "success") failures.push("successful conclusion");
           if (run.head_branch !== process.env.EXPECTED_BRANCH) failures.push("canonical source branch");
+          if (String(run.run_attempt) !== process.env.EXPECTED_RUN_ATTEMPT) failures.push("run attempt");
           if (failures.length > 0) {
             console.error(`::error::Reviewed plan run failed verification: ${failures.join(", ")}`);
             process.exit(1);
@@ -139,11 +158,46 @@ jobs:
           source_sha=$(printf '%s' "$run_json" | jq -r '.head_sha')
           echo "source_sha=$source_sha" >> "$GITHUB_OUTPUT"
 
+      - name: Resolve reviewed plan artifact
+        if: inputs.operation == 'apply'
+        shell: bash
+        env:
+          EXPECTED_ARTIFACT_ID: ${{ inputs.plan_artifact_id }}
+          EXPECTED_ARTIFACT_DIGEST: ${{ inputs.plan_artifact_digest }}
+          EXPECTED_RUN_ID: ${{ inputs.plan_run_id }}
+          EXPECTED_RUN_ATTEMPT: ${{ inputs.plan_run_attempt }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$EXPECTED_ARTIFACT_ID" =~ ^[1-9][0-9]*$ ]]; then
+            echo "::error::apply requires the exact numeric GitHub artifact id"
+            exit 1
+          fi
+          if [[ ! "$EXPECTED_ARTIFACT_DIGEST" =~ ^sha256:[a-f0-9]{64}$ ]]; then
+            echo "::error::apply requires the exact GitHub sha256 artifact digest"
+            exit 1
+          fi
+          artifact_json=$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$EXPECTED_ARTIFACT_ID")
+          ARTIFACT_JSON="$artifact_json" node - <<'NODE'
+          const artifact = JSON.parse(process.env.ARTIFACT_JSON);
+          const expectedName = `terraform-plan-${process.env.EXPECTED_RUN_ID}-${process.env.EXPECTED_RUN_ATTEMPT}`;
+          const failures = [];
+          if (String(artifact.id) !== process.env.EXPECTED_ARTIFACT_ID) failures.push("artifact id");
+          if (artifact.name !== expectedName) failures.push("attempt-scoped artifact name");
+          if (artifact.digest !== process.env.EXPECTED_ARTIFACT_DIGEST) failures.push("GitHub artifact digest");
+          if (artifact.expired !== false) failures.push("unexpired artifact");
+          if (String(artifact.workflow_run?.id) !== process.env.EXPECTED_RUN_ID) failures.push("workflow run id");
+          if (failures.length > 0) {
+            console.error(`::error::Reviewed GitHub artifact failed verification: ${failures.join(", ")}`);
+            process.exit(1);
+          }
+          console.log("Reviewed GitHub artifact identity and service digest verified.");
+          NODE
+
       - name: Download reviewed plan artifact
         if: inputs.operation == 'apply'
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
-          name: terraform-plan-${{ inputs.plan_run_id }}
+          artifact-ids: ${{ inputs.plan_artifact_id }}
           path: ${{ runner.temp }}/reviewed-terraform-plan
           github-token: ${{ github.token }}
           repository: ${{ github.repository }}
@@ -157,36 +211,37 @@ jobs:
           EXPECTED_COMPONENT: ${{ inputs.component }}
           EXPECTED_ENVIRONMENT: ${{ inputs.environment }}
           EXPECTED_RUN_ID: ${{ inputs.plan_run_id }}
+          EXPECTED_RUN_ATTEMPT: ${{ inputs.plan_run_attempt }}
           EXPECTED_SOURCE_SHA: ${{ steps.reviewed-plan-run.outputs.source_sha }}
         run: |
           set -euo pipefail
           artifact_dir="$RUNNER_TEMP/reviewed-terraform-plan"
           metadata_path="$artifact_dir/plan-metadata.json"
-          plan_path="$artifact_dir/selected.tfplan"
+          plan_path="$artifact_dir/selected.tfplan.enc"
           [ -f "$metadata_path" ] || { echo "::error::Reviewed plan artifact has no metadata"; exit 1; }
-          [ -f "$plan_path" ] || { echo "::error::Reviewed plan artifact has no Terraform plan"; exit 1; }
-          actual_digest=$(sha256sum "$plan_path" | awk '{print $1}')
-          node - "$metadata_path" "$actual_digest" <<'NODE'
+          [ -f "$plan_path" ] || { echo "::error::Reviewed plan artifact has no encrypted Terraform plan"; exit 1; }
+          [ ! -e "$artifact_dir/selected.tfplan" ] || { echo "::error::Reviewed artifact contains a plaintext Terraform plan"; exit 1; }
+          node - "$metadata_path" <<'NODE'
           const fs = require("node:fs");
           const metadata = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
-          const actualDigest = process.argv[3];
           const expected = {
             component: process.env.EXPECTED_COMPONENT,
             environment: process.env.EXPECTED_ENVIRONMENT,
             operation: "plan",
             runId: process.env.EXPECTED_RUN_ID,
+            runAttempt: process.env.EXPECTED_RUN_ATTEMPT,
             sourceRef: `refs/heads/${process.env.EXPECTED_ENVIRONMENT === "production" ? "main" : "develop"}`,
             sourceSha: process.env.EXPECTED_SOURCE_SHA,
           };
           const failures = Object.entries(expected)
             .filter(([key, value]) => metadata[key] !== value)
             .map(([key]) => key);
-          if (metadata.planSha256 !== actualDigest) failures.push("planSha256");
+          if (!/^[a-f0-9]{64}$/.test(metadata.planSha256)) failures.push("planSha256");
           if (failures.length > 0) {
             console.error(`::error::Reviewed plan artifact failed verification: ${failures.join(", ")}`);
             process.exit(1);
           }
-          console.log("Reviewed plan metadata and digest verified; protected values were not printed.");
+          console.log("Reviewed plan metadata verified; protected values were not printed.");
           NODE
           echo "source_sha=$EXPECTED_SOURCE_SHA" >> "$GITHUB_OUTPUT"
 
@@ -224,6 +279,7 @@ jobs:
       - name: Validate credentials and state operation
         shell: bash
         env:
+          HAS_TERRAFORM_PLAN_ARTIFACT_PRIVATE_KEY: ${{ secrets.TERRAFORM_PLAN_ARTIFACT_PRIVATE_KEY != '' }}
           OPERATION: ${{ inputs.operation }}
           STATE_ADDRESS: ${{ inputs.state_address }}
         run: |
@@ -274,9 +330,11 @@ jobs:
               exit 1
             fi
           fi
-          if [ "$OPERATION" = "apply" ] && [[ ! "${{ inputs.plan_run_id }}" =~ ^[1-9][0-9]*$ ]]; then
-            echo "::error::plan_run_id is required for apply"
-            exit 1
+          if [ "$OPERATION" = "plan" ] || [ "$OPERATION" = "apply" ]; then
+            [ -n "$TERRAFORM_PLAN_ARTIFACT_PUBLIC_KEY" ] || { echo "::error::TERRAFORM_PLAN_ARTIFACT_PUBLIC_KEY is required"; exit 1; }
+          fi
+          if [ "$OPERATION" = "apply" ]; then
+            [ "$HAS_TERRAFORM_PLAN_ARTIFACT_PRIVATE_KEY" = "true" ] || { echo "::error::TERRAFORM_PLAN_ARTIFACT_PRIVATE_KEY is required"; exit 1; }
           fi
 
       - name: Validate canonical environment contract
@@ -330,34 +388,85 @@ jobs:
           set -euo pipefail
           artifact_dir="$RUNNER_TEMP/terraform-plan-artifact"
           install -d -m 0700 "$artifact_dir"
-          cp selected.tfplan "$artifact_dir/selected.tfplan"
           plan_digest=$(sha256sum selected.tfplan | awk '{print $1}')
           jq -n \
             --arg component "$COMPONENT" \
             --arg environment "$TARGET_ENVIRONMENT" \
             --arg operation "plan" \
             --arg runId "$GITHUB_RUN_ID" \
+            --arg runAttempt "$GITHUB_RUN_ATTEMPT" \
             --arg sourceRef "$GITHUB_REF" \
             --arg sourceSha "$GITHUB_SHA" \
             --arg planSha256 "$plan_digest" \
-            '{component:$component,environment:$environment,operation:$operation,runId:$runId,sourceRef:$sourceRef,sourceSha:$sourceSha,planSha256:$planSha256}' \
+            '{component:$component,environment:$environment,operation:$operation,runId:$runId,runAttempt:$runAttempt,sourceRef:$sourceRef,sourceSha:$sourceSha,planSha256:$planSha256}' \
             > "$artifact_dir/plan-metadata.json"
+          node "$GITHUB_WORKSPACE/packages/scripts/terraform-plan-envelope.mjs" \
+            encrypt \
+            selected.tfplan \
+            "$artifact_dir/selected.tfplan.enc" \
+            "$artifact_dir/plan-metadata.json"
 
       - name: Upload reviewed plan artifact
         if: inputs.operation == 'plan'
+        id: upload-plan
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: terraform-plan-${{ github.run_id }}
+          name: terraform-plan-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/terraform-plan-artifact
           if-no-files-found: error
           retention-days: 3
 
+      - name: Summarize reviewed plan identity
+        if: inputs.operation == 'plan' && success()
+        shell: bash
+        env:
+          ARTIFACT_ID: ${{ steps.upload-plan.outputs.artifact-id }}
+          ARTIFACT_DIGEST: ${{ steps.upload-plan.outputs.artifact-digest }}
+        run: |
+          {
+            echo "### Protected Terraform plan"
+            echo "- Run id: $GITHUB_RUN_ID"
+            echo "- Run attempt: $GITHUB_RUN_ATTEMPT"
+            echo "- Artifact id: $ARTIFACT_ID"
+            echo "- Artifact digest: sha256:$ARTIFACT_DIGEST"
+            echo ""
+            echo "Supply all four exact values to the protected apply dispatch."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Remove plaintext planned state
+        if: always() && inputs.operation == 'plan' && steps.root.outcome == 'success'
+        working-directory: ${{ steps.root.outputs.directory }}
+        shell: bash
+        run: |
+          if [ -f selected.tfplan ]; then
+            shred -u selected.tfplan
+          fi
+
+      - name: Decrypt reviewed plan
+        if: inputs.operation == 'apply'
+        working-directory: ${{ steps.root.outputs.directory }}
+        shell: bash
+        env:
+          TERRAFORM_PLAN_ARTIFACT_PRIVATE_KEY: ${{ secrets.TERRAFORM_PLAN_ARTIFACT_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          artifact_dir="$RUNNER_TEMP/reviewed-terraform-plan"
+          node "$GITHUB_WORKSPACE/packages/scripts/terraform-plan-envelope.mjs" \
+            decrypt \
+            "$artifact_dir/selected.tfplan.enc" \
+            selected.tfplan \
+            "$artifact_dir/plan-metadata.json"
+          expected_digest=$(jq -r '.planSha256' "$artifact_dir/plan-metadata.json")
+          actual_digest=$(sha256sum selected.tfplan | awk '{print $1}')
+          if [ "$actual_digest" != "$expected_digest" ]; then
+            echo "::error::Decrypted Terraform plan digest does not match reviewed metadata"
+            exit 1
+          fi
+
       - name: Apply reviewed plan
         if: inputs.operation == 'apply'
         working-directory: ${{ steps.root.outputs.directory }}
-        run: |
-          cp "$RUNNER_TEMP/reviewed-terraform-plan/selected.tfplan" selected.tfplan
-          terraform apply -no-color -input=false selected.tfplan
+        run: terraform apply -no-color -input=false selected.tfplan
 
       - name: Verify Pages domain and certificate state
         if: inputs.component == 'pages-domains' && inputs.operation == 'apply'
@@ -451,3 +560,12 @@ jobs:
         env:
           STATE_ADDRESS: ${{ inputs.state_address }}
         run: terraform state rm "$STATE_ADDRESS"
+
+      - name: Remove plaintext reviewed plan
+        if: always() && inputs.operation == 'apply' && steps.root.outcome == 'success'
+        working-directory: ${{ steps.root.outputs.directory }}
+        shell: bash
+        run: |
+          if [ -f selected.tfplan ]; then
+            shred -u selected.tfplan
+          fi
