@@ -92,12 +92,12 @@ describe("formatTrajectoryTokenCount", () => {
   it("formats thousands with one decimal", () => {
     expect(formatTrajectoryTokenCount(1_000, EMPTY)).toBe("1.0k");
     expect(formatTrajectoryTokenCount(12_345, EMPTY)).toBe("12.3k");
-    expect(formatTrajectoryTokenCount(999_499, EMPTY)).toBe("999.5k");
+    expect(formatTrajectoryTokenCount(999_500, EMPTY)).toBe("999.5k");
+    expect(formatTrajectoryTokenCount(999_949, EMPTY)).toBe("999.9k");
   });
 
   it("promotes to M when rounding crosses the 1000k boundary", () => {
-    // 999.5k rounds to 1000.0k — must promote, "1000.0k" is impossible
-    expect(formatTrajectoryTokenCount(999_500, EMPTY)).toBe("1.0M");
+    // 999.95k rounds to 1000.0k — must promote, "1000.0k" is impossible
     expect(formatTrajectoryTokenCount(999_950, EMPTY)).toBe("1.0M");
   });
 

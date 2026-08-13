@@ -1,4 +1,10 @@
+/**
+ * Exercises the workflow editor against deterministic HTTP fixtures, including
+ * persistence, graph rendering, and invalid execution timestamps at desktop and
+ * mobile sizes. The route fixtures are the system boundary under test here.
+ */
 // @eliza-live-audit allow-route-fixtures
+
 import { expect, type Page, test } from "@playwright/test";
 import {
   installDefaultAppRoutes,
@@ -34,6 +40,29 @@ type WorkflowDefinition = WorkflowWriteRequest & {
   nodeCount: number;
 };
 
+const SAVED_WORKFLOW: WorkflowDefinition = {
+  ...workflowDraft(),
+  id: "workflow-matrix-digest",
+  active: false,
+  versionId: "version-1",
+  nodeCount: 2,
+};
+
+const INVALID_DATE_EXECUTION = {
+  id: "execution-invalid-stop",
+  workflowId: SAVED_WORKFLOW.id,
+  status: "success",
+  startedAt: "2026-06-23T00:00:00.000Z",
+  stoppedAt: "",
+  mode: "manual",
+  data: {
+    resultData: {
+      lastNodeExecuted: "Add Summary Param",
+      runData: {},
+    },
+  },
+};
+
 function workflowDraft(): WorkflowWriteRequest {
   return {
     name: "Matrix message digest",
@@ -64,11 +93,15 @@ function workflowDraft(): WorkflowWriteRequest {
   };
 }
 
-async function installWorkflowApi(page: Page): Promise<{
+async function installWorkflowApi(
+  page: Page,
+  initialWorkflow: WorkflowDefinition | null = null,
+  executions: Array<typeof INVALID_DATE_EXECUTION> = [],
+): Promise<{
   getSavedWorkflow: () => WorkflowDefinition | null;
   getLastSaveBody: () => WorkflowWriteRequest | null;
 }> {
-  let savedWorkflow: WorkflowDefinition | null = null;
+  let savedWorkflow: WorkflowDefinition | null = initialWorkflow;
   let lastSaveBody: WorkflowWriteRequest | null = null;
 
   await page.route("**/api/lifeops/scheduled-tasks**", async (route) => {
@@ -140,7 +173,7 @@ async function installWorkflowApi(page: Page): Promise<{
       await route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify({ executions: [] }),
+        body: JSON.stringify({ executions }),
       });
       return;
     }
@@ -263,4 +296,36 @@ test("workflow editor saves a connected graph and reloads the persisted definiti
       timeout: 15_000,
     },
   );
+});
+
+test("workflow run renders an explicit invalid-date state on desktop and mobile", async ({
+  page,
+}) => {
+  await installWorkflowApi(page, SAVED_WORKFLOW, [INVALID_DATE_EXECUTION]);
+  const consoleErrors: string[] = [];
+  const failedRequests: string[] = [];
+  page.on("console", (message) => {
+    if (message.type() === "error") consoleErrors.push(message.text());
+  });
+  page.on("requestfailed", (request) => {
+    if (new URL(request.url()).pathname.startsWith("/api/")) {
+      failedRequests.push(`${request.method()} ${request.url()}`);
+    }
+  });
+
+  await openAppPath(page, `/automations#automations/${SAVED_WORKFLOW.id}`);
+  await expect(page.getByTestId("workflow-editor-json")).toHaveValue(
+    /Matrix message digest/,
+    { timeout: 60_000 },
+  );
+  await expect(page.getByText("Invalid date", { exact: false })).toHaveCount(2);
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page
+    .getByText("Invalid date", { exact: false })
+    .first()
+    .scrollIntoViewIfNeeded();
+  await expect(page.getByText("Invalid date", { exact: false })).toHaveCount(2);
+  expect(consoleErrors).toEqual([]);
+  expect(failedRequests).toEqual([]);
 });

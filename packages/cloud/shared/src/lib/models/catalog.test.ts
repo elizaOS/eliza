@@ -8,6 +8,7 @@ import {
   CEREBRAS_DEFAULT_TEXT_SMALL_MODEL,
   FALLBACK_TEXT_SELECTOR_MODELS,
   STATIC_TEXT_CATALOG_MODELS,
+  toSelectorModel,
 } from "./catalog";
 
 /**
@@ -69,10 +70,72 @@ describe("#8426 text catalog recommendation invariants", () => {
 });
 
 describe("MiniMax static catalog", () => {
-  test("includes MiniMax M3 in the catalog and selector", () => {
+  test("generates the complete flagship M3 selector entry", () => {
     const modelId = "minimax/minimax-m3";
+    const catalogModel = STATIC_TEXT_CATALOG_MODELS.find((model) => model.id === modelId);
+    const selectorModel = FALLBACK_TEXT_SELECTOR_MODELS.find((model) => model.modelId === modelId);
 
-    expect(STATIC_TEXT_CATALOG_MODELS.some((model) => model.id === modelId)).toBe(true);
-    expect(FALLBACK_TEXT_SELECTOR_MODELS.some((model) => model.modelId === modelId)).toBe(true);
+    expect(catalogModel?.description).toBe("Flagship long-context agentic coding model");
+    expect(selectorModel).toEqual({
+      id: modelId,
+      modelId,
+      provider: "minimax",
+      name: "Minimax M3",
+      description: "Flagship long-context agentic coding model",
+    });
+  });
+
+  test("does not derive a mini tier from the provider prefix", () => {
+    const selectorModel = toSelectorModel({
+      id: "minimax/agent-base",
+      object: "model",
+      created: 0,
+      owned_by: "minimax",
+    });
+
+    expect(selectorModel.description).toBe("General-purpose language model");
+  });
+
+  test("keeps the mini heuristic for model names that explicitly use it", () => {
+    const selectorModel = toSelectorModel({
+      id: "minimax/agent-mini",
+      object: "model",
+      created: 0,
+      owned_by: "minimax",
+    });
+
+    expect(selectorModel.description).toBe("Faster, lower-cost option");
+  });
+});
+
+describe("OpenAI o-series selector metadata", () => {
+  test.each(["openai/o3", "openai/o3-pro", "openai/o4-mini"])(
+    "keeps %s in the reasoning family before generic variant heuristics",
+    (modelId) => {
+      const catalogModel = STATIC_TEXT_CATALOG_MODELS.find((model) => model.id === modelId);
+      const selectorModel = FALLBACK_TEXT_SELECTOR_MODELS.find(
+        (model) => model.modelId === modelId,
+      );
+
+      expect(catalogModel?.description).toBe("Reasoning-focused model");
+      expect(selectorModel?.description).toBe("Reasoning-focused model");
+    },
+  );
+
+  test("does not apply OpenAI o-series precedence to MiniMax or true mini models", () => {
+    const expectedDescriptions = new Map([
+      ["minimax/minimax-m3", "Flagship long-context agentic coding model"],
+      ["openai/gpt-5-mini", "Faster, lower-cost option"],
+    ]);
+
+    for (const [modelId, description] of expectedDescriptions) {
+      const catalogModel = STATIC_TEXT_CATALOG_MODELS.find((model) => model.id === modelId);
+      const selectorModel = FALLBACK_TEXT_SELECTOR_MODELS.find(
+        (model) => model.modelId === modelId,
+      );
+
+      expect(catalogModel?.description).toBe(description);
+      expect(selectorModel?.description).toBe(description);
+    }
   });
 });

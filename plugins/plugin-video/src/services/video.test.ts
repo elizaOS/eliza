@@ -1,4 +1,6 @@
-import type { IAgentRuntime, Media } from "@elizaos/core";
+/** Exercises VideoService metadata and parsing boundaries with deterministic binary doubles. */
+
+import type { ElizaError, IAgentRuntime, Media } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import type { BinaryResolver } from "./binaries";
 import { VideoService } from "./video";
@@ -88,6 +90,146 @@ describe("VideoService deterministic behavior", () => {
     expect(info.formats).toEqual([]);
   });
 
+  it("rejects malformed yt-dlp format collections with a typed error", async () => {
+    const { service } = createServiceWithYtDlp([
+      { title: "Malformed metadata", formats: { format_id: "not-an-array" } },
+      { formats: [null] },
+      "not-json-metadata",
+    ]);
+
+    await expect(
+      service.getVideoInfo("https://youtu.be/malformed"),
+    ).rejects.toMatchObject({
+      code: "VIDEO_METADATA_FORMATS_INVALID",
+    } satisfies Partial<ElizaError>);
+    await expect(
+      service.getAvailableFormats("https://youtu.be/malformed"),
+    ).rejects.toMatchObject({
+      code: "VIDEO_METADATA_FORMAT_ENTRY_INVALID",
+      context: { index: 0 },
+    } satisfies Partial<ElizaError>);
+    await expect(
+      service.getAvailableFormats("https://youtu.be/malformed"),
+    ).rejects.toMatchObject({
+      code: "VIDEO_METADATA_INVALID",
+    } satisfies Partial<ElizaError>);
+  });
+
+  it("rejects malformed fields before they enter the public format DTO", async () => {
+    const malformedFields: Array<[string, unknown]> = [
+      ["format_id", 123],
+      ["url", {}],
+      ["ext", false],
+      ["quality", {}],
+      ["quality", Number.POSITIVE_INFINITY],
+      ["filesize", "huge"],
+      ["filesize", -1],
+      ["vcodec", 123],
+      ["acodec", false],
+      ["resolution", []],
+      ["fps", Number.POSITIVE_INFINITY],
+      ["fps", -1],
+      ["tbr", Number.NaN],
+      ["tbr", -1],
+    ];
+
+    for (const [field, value] of malformedFields) {
+      const { service } = createServiceWithYtDlp([
+        { formats: [{ [field]: value }] },
+      ]);
+
+      await expect(
+        service.getVideoInfo("https://youtu.be/malformed-field"),
+      ).rejects.toMatchObject({
+        code: "VIDEO_METADATA_FORMAT_FIELD_INVALID",
+        context: { index: 0, field },
+      } satisfies Partial<ElizaError>);
+    }
+  });
+
+  it("normalizes legitimate missing format fields without leaking null", async () => {
+    const { service } = createServiceWithYtDlp([
+      {
+        formats: [
+          {
+            format_id: "720p",
+            url: "https://example.com/video",
+            ext: "mp4",
+            quality: 7,
+            filesize: null,
+            vcodec: null,
+            acodec: "aac",
+            resolution: "1280x720",
+            fps: 30,
+            tbr: 2500,
+          },
+        ],
+      },
+    ]);
+
+    await expect(
+      service.getAvailableFormats("https://youtu.be/valid-format"),
+    ).resolves.toEqual([
+      {
+        formatId: "720p",
+        url: "https://example.com/video",
+        extension: "mp4",
+        quality: "7",
+        fileSize: undefined,
+        videoCodec: undefined,
+        audioCodec: "aac",
+        resolution: "1280x720",
+        fps: 30,
+        bitrate: 2500,
+      },
+    ]);
+  });
+
+  it("preserves the original yt-dlp failure", async () => {
+    const upstreamFailure = new Error("yt-dlp unavailable");
+    const { service } = createServiceWithYtDlp([upstreamFailure]);
+
+    await expect(
+      service.getAvailableFormats("https://youtu.be/upstream-failure"),
+    ).rejects.toBe(upstreamFailure);
+  });
+
+  it("rejects calendar-invalid compact upload_date values that Date would overflow", async () => {
+    const { service, runYtDlp } = createServiceWithYtDlp([
+      {
+        title: "Feb 31",
+        upload_date: "20240231",
+        formats: [],
+      },
+      {
+        title: "Non-leap Feb 29",
+        upload_date: "20230229",
+        formats: [],
+      },
+      {
+        title: "Apr 31",
+        upload_date: "20240431",
+        formats: [],
+      },
+      {
+        title: "Leap Feb 29",
+        upload_date: "20240229",
+        formats: [],
+      },
+    ]);
+
+    const feb31 = await service.getVideoInfo("https://youtu.be/feb31");
+    const nonLeap = await service.getVideoInfo("https://youtu.be/nonleap");
+    const apr31 = await service.getVideoInfo("https://youtu.be/apr31");
+    const leap = await service.getVideoInfo("https://youtu.be/leap");
+
+    expect(feb31.uploadDate).toBeUndefined();
+    expect(nonLeap.uploadDate).toBeUndefined();
+    expect(apr31.uploadDate).toBeUndefined();
+    expect(leap.uploadDate?.toISOString()).toBe("2024-02-29T00:00:00.000Z");
+    expect(runYtDlp).toHaveBeenCalledTimes(4);
+  });
+
   it("parses SRT subtitles with CRLF line endings cleanly", () => {
     const { service } = createServiceWithYtDlp([]);
     const srtContent = [
@@ -124,6 +266,20 @@ describe("VideoService deterministic behavior", () => {
     expect(parsed).toBe("First line second line Third line ");
   });
 
+  it("normalizes CRLF and bare CR inside caption segments without leaking \\r", () => {
+    const { service } = createServiceWithYtDlp([]);
+    const captionJson = JSON.stringify({
+      events: [
+        { segs: [{ utf8: "first\r\nsecond" }, { utf8: "\rthird\r" }] },
+        { segs: [{ utf8: "fourth\rfifth\n" }] },
+      ],
+    });
+
+    const parsed = service["parseCaption"](captionJson);
+    expect(parsed).toBe("first second third fourth fifth ");
+    expect(parsed).not.toContain("\r");
+  });
+
   it("handles invalid or malformed caption JSON gracefully", () => {
     const { service } = createServiceWithYtDlp([]);
     expect(service.parseCaption("")).toBe("");
@@ -133,5 +289,11 @@ describe("VideoService deterministic behavior", () => {
     expect(service.parseCaption(JSON.stringify({ events: "invalid" }))).toBe(
       "Error: Unable to parse captions",
     );
+  });
+
+  it("returns false for non-string video URL input", () => {
+    const { service } = createServiceWithYtDlp([]);
+    expect(service.isVideoUrl(null as unknown as string)).toBe(false);
+    expect(service.isVideoUrl({} as unknown as string)).toBe(false);
   });
 });

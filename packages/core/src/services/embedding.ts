@@ -167,7 +167,7 @@ export class EmbeddingGenerationService extends Service {
 
 		const { memory, priority = "normal", runId } = payload;
 
-		if (memory.embedding) {
+		if (Array.isArray(memory.embedding) && memory.embedding.length > 0) {
 			this.runtime.logger.debug(
 				{
 					src: "plugin:basic-capabilities:service:embedding",
@@ -218,7 +218,7 @@ export class EmbeddingGenerationService extends Service {
 		}
 
 		// Idempotency: skip a memory that already carries a vector.
-		if (memory.embedding) {
+		if (Array.isArray(memory.embedding) && memory.embedding.length > 0) {
 			return;
 		}
 
@@ -334,7 +334,11 @@ export class EmbeddingGenerationService extends Service {
 			const text = item.memory.content.text;
 			// Same trim rule as the per-item path — backends reject
 			// whitespace-only text as terminally invalid.
-			if (!text?.trim() || item.memory.embedding) {
+			if (
+				!text?.trim() ||
+				(Array.isArray(item.memory.embedding) &&
+					item.memory.embedding.length > 0)
+			) {
 				skipped.push(item);
 			} else {
 				toEmbed.push({ item, text });

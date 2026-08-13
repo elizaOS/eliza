@@ -1,8 +1,6 @@
 /**
- * Exercises payment-request agent ownership at the authenticated API boundary.
- * Bun test with mocked auth, sandbox, and payment-request service modules; the
- * real Hono route under test must reject foreign/missing agents with 404
- * before any provider intent is created.
+ * Exercises the payment-request creation boundary with mocked authentication
+ * and payment services, proving public callers cannot attach agent identity.
  */
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { Hono } from "hono";
@@ -11,17 +9,11 @@ const requireUserOrApiKeyWithOrg = mock(async () => ({
   id: "user-a",
   organization_id: "org-a",
 }));
-const getAgentForWrite = mock(
-  async (): Promise<{ id: string; organization_id: string } | undefined> => ({
-    id: "agent-a",
-    organization_id: "org-a",
-  }),
-);
 const createPaymentRequest = mock(async (input: Record<string, unknown>) => ({
   paymentRequest: {
     id: "payment-request-a",
     organizationId: input.organizationId,
-    agentId: input.agentId,
+    agentId: null,
   },
   hostedUrl: "https://pay.example/request-a",
 }));
@@ -29,10 +21,6 @@ const listPaymentRequests = mock(async () => []);
 
 mock.module("@/lib/auth/workers-hono-auth", () => ({
   requireUserOrApiKeyWithOrg,
-}));
-
-mock.module("@/lib/services/eliza-sandbox", () => ({
-  elizaSandboxService: { getAgentForWrite },
 }));
 
 mock.module("@/lib/services/payment-requests-default", () => ({
@@ -59,7 +47,7 @@ const { default: paymentRequestsRoute } = await import("./route");
 const app = new Hono();
 app.route("/api/v1/payment-requests", paymentRequestsRoute);
 
-function createRequest(agentId: string): Request {
+function createRequest(body: Record<string, unknown> = {}): Request {
   return new Request("https://api.example.test/api/v1/payment-requests", {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -67,21 +55,16 @@ function createRequest(agentId: string): Request {
       provider: "oxapay",
       amountCents: 100,
       paymentContext: "any_payer",
-      agentId,
+      ...body,
     }),
   });
 }
 
-describe("POST /api/v1/payment-requests agent ownership", () => {
+describe("POST /api/v1/payment-requests agent identity", () => {
   beforeEach(() => {
     requireUserOrApiKeyWithOrg.mockReset();
     requireUserOrApiKeyWithOrg.mockResolvedValue({
       id: "user-a",
-      organization_id: "org-a",
-    });
-    getAgentForWrite.mockReset();
-    getAgentForWrite.mockResolvedValue({
-      id: "agent-a",
       organization_id: "org-a",
     });
     createPaymentRequest.mockReset();
@@ -89,38 +72,32 @@ describe("POST /api/v1/payment-requests agent ownership", () => {
       paymentRequest: {
         id: "payment-request-a",
         organizationId: "org-a",
-        agentId: "agent-a",
+        agentId: null,
       },
       hostedUrl: "https://pay.example/request-a",
     });
   });
 
-  test("allows an agent owned by the caller's organization", async () => {
-    const response = await app.fetch(createRequest("agent-a"));
+  test("creates a payment request when agent identity is omitted", async () => {
+    const response = await app.fetch(createRequest());
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({ success: true });
-    expect(getAgentForWrite).toHaveBeenCalledWith("agent-a", "org-a");
     expect(createPaymentRequest).toHaveBeenCalledWith(
-      expect.objectContaining({ organizationId: "org-a", agentId: "agent-a" }),
+      expect.not.objectContaining({ agentId: expect.anything() }),
     );
   });
 
-  test.each(["foreign-agent", "missing-agent"])(
-    "rejects a %s before creating a payment request",
-    async (agentId) => {
-      getAgentForWrite.mockResolvedValueOnce(undefined);
+  test("rejects agent identity before creating a provider intent", async () => {
+    const response = await app.fetch(
+      createRequest({ agentId: "00000000-0000-4000-8000-000000000001" }),
+    );
 
-      const response = await app.fetch(createRequest(agentId));
-
-      expect(response.status).toBe(404);
-      await expect(response.json()).resolves.toMatchObject({
-        success: false,
-        error: "Agent not found",
-        code: "resource_not_found",
-      });
-      expect(getAgentForWrite).toHaveBeenCalledWith(agentId, "org-a");
-      expect(createPaymentRequest).not.toHaveBeenCalled();
-    },
-  );
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      success: false,
+      error: "Invalid request",
+    });
+    expect(createPaymentRequest).not.toHaveBeenCalled();
+  });
 });

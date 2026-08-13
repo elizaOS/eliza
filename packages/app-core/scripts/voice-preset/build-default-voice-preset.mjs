@@ -35,8 +35,9 @@
  *   --concurrency N  Parallel TTS dispatches when synthesizing phrases. Default 2.
  *
  * `--dim` and `--concurrency` accept only complete positive safe-integer
- * decimals. Suffixes, fractions, signs, zero, and missing/flag-shaped values
- * fail at the CLI boundary before any output path is created.
+ * decimals; `--dim` is additionally capped by the v1 format's uint32 section
+ * layout. Suffixes, fractions, signs, zero, out-of-range dimensions, and
+ * missing/flag-shaped values fail before any output path is created.
  *
  * Run with `bun` (it resolves the `.ts` imports):
  *   bun packages/app-core/scripts/voice-preset/build-default-voice-preset.mjs --placeholder
@@ -46,18 +47,31 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
 const PLACEHOLDER_DEFAULT_DIM = 256;
+const UINT32_MAX = 0xffff_ffff;
+const VOICE_PRESET_V1_HEADER_BYTES = 24;
+
+// v1 stores the embedding byte length and the following phrase-section offset
+// as uint32. The embedding must leave that offset representable.
+export const MAX_PLACEHOLDER_DIM = Math.floor(
+  (UINT32_MAX - VOICE_PRESET_V1_HEADER_BYTES) / Float32Array.BYTES_PER_ELEMENT,
+);
 
 /**
- * Accept only complete positive safe-integer decimals (1..MAX_SAFE_INTEGER).
+ * Accept only complete positive safe-integer decimals up to `maximum`.
  * Rejects suffixes (`1junk`), fractions, signs, zero, leading zeros, whitespace,
  * empty values, and non-decimal forms so the CLI never silently truncates or
  * falls back to a different dimension/concurrency than the operator requested.
  *
  * @param {unknown} value
  * @param {string} flag
+ * @param {number} [maximum]
  * @returns {number}
  */
-export function parsePositiveSafeInteger(value, flag) {
+export function parsePositiveSafeInteger(
+  value,
+  flag,
+  maximum = Number.MAX_SAFE_INTEGER,
+) {
   if (value === undefined || value === null) {
     throw new Error(`${flag} requires a positive safe integer value`);
   }
@@ -68,9 +82,9 @@ export function parsePositiveSafeInteger(value, flag) {
     );
   }
   const n = Number.parseInt(raw, 10);
-  if (!Number.isSafeInteger(n) || n < 1 || String(n) !== raw) {
+  if (!Number.isSafeInteger(n) || n < 1 || n > maximum || String(n) !== raw) {
     throw new Error(
-      `${flag} must be a positive safe integer (received ${JSON.stringify(raw)})`,
+      `${flag} must be a positive safe integer no greater than ${maximum} (received ${JSON.stringify(raw)})`,
     );
   }
   return n;
@@ -129,7 +143,11 @@ export function parseArgs(argv) {
       case "--dim": {
         const taken = takeFlagValue(argv, i, "--dim");
         i = taken.nextIndex;
-        args.dim = parsePositiveSafeInteger(taken.value, "--dim");
+        args.dim = parsePositiveSafeInteger(
+          taken.value,
+          "--dim",
+          MAX_PLACEHOLDER_DIM,
+        );
         break;
       }
       case "--concurrency": {
@@ -160,7 +178,7 @@ function printUsageAndExit(code) {
       "  build-default-voice-preset.mjs --embedding PATH [--bundle ROOT] [--no-phrases]",
       "                                 [--out PATH] [--concurrency N]",
       "",
-      "  --dim N           Placeholder embedding dimension (positive safe integer, default 256).",
+      `  --dim N           Placeholder embedding dimension (1..${MAX_PLACEHOLDER_DIM}, default 256).`,
       "  --concurrency N   Parallel TTS phrase synthesis workers (positive safe integer, default 2).",
       "",
     ].join("\n"),

@@ -86,6 +86,24 @@ describe("connector account catalog defaults", () => {
       expect(entry?.supportsOAuth).toBe(expected.supportsOAuth);
     });
   }
+
+  it("declares Google's OAuth capability ids once for generic consumers", () => {
+    expect(
+      getConnectorAccountCatalogEntry("google")?.oauthCapabilities?.map(
+        (capability) => capability.id,
+      ),
+    ).toEqual([
+      "gmail.read",
+      "gmail.send",
+      "gmail.manage",
+      "calendar.read",
+      "calendar.write",
+      "drive.read",
+      "drive.write",
+      "meet.create",
+      "meet.read",
+    ]);
+  });
 });
 
 describe("connector account catalog lookup + normalization", () => {

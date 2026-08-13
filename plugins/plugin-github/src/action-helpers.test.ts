@@ -14,6 +14,8 @@ import {
  * malformed (so a bad param can't reach the GitHub API as a half-valid call),
  * and isConfirmed must ALWAYS be false — LLM `confirmed` is never authoritative;
  * the runtime confirmation gate is the real check.
+ * This deterministic unit harness calls the production helpers directly; no
+ * Octokit or runtime mock stands in for splitRepo.
  */
 
 describe("requireString", () => {
@@ -50,30 +52,84 @@ describe("requireStringArray / optionalStringArray", () => {
 });
 
 describe("splitRepo", () => {
-  it("splits owner/repo, null on malformed", () => {
-    expect(splitRepo("elizaOS/eliza")).toEqual({
-      owner: "elizaOS",
-      name: "eliza",
-    });
-    expect(splitRepo("  elizaOS/eliza  ")).toEqual({
-      owner: "elizaOS",
-      name: "eliza",
-    });
-    expect(splitRepo("elizaOS/eliza.git")).toEqual({
-      owner: "elizaOS",
-      name: "eliza",
-    });
-    expect(splitRepo("https://github.com/elizaOS/eliza")).toEqual({
-      owner: "elizaOS",
-      name: "eliza",
-    });
-    expect(splitRepo("https://github.com/elizaOS/eliza.git")).toEqual({
-      owner: "elizaOS",
-      name: "eliza",
-    });
-    expect(splitRepo("noslash")).toBeNull();
-    expect(splitRepo("a/b/c")).toBeNull();
-    expect(splitRepo("/eliza")).toBeNull();
+  const expected = { owner: "elizaOS", name: "eliza" };
+
+  it.each([
+    "elizaOS/eliza",
+    "  elizaOS/eliza  ",
+    "elizaOS/eliza.git",
+    "github.com/elizaOS/eliza",
+    "https://github.com/elizaOS/eliza",
+    "http://github.com/elizaOS/eliza",
+    "HTTPS://GITHUB.COM/elizaOS/eliza",
+    "https://github.com/elizaOS/eliza/",
+    "https://github.com/elizaOS/eliza.git/",
+    "https://github.com/elizaOS/eliza?tab=readme",
+    "https://github.com/elizaOS/eliza?query=hello world",
+    "https://github.com/elizaOS/eliza?next=/../other",
+    "https://github.com/elizaOS/eliza#readme",
+    "https://github.com/elizaOS/eliza#%2e%2e",
+    "https://github.com/elizaOS/eliza.git?tab=readme#install",
+    "https://github.com:443/elizaOS/eliza",
+    "http://github.com:80/elizaOS/eliza",
+  ])("parses %s", (input) => {
+    expect(splitRepo(input)).toEqual(expected);
+  });
+
+  it.each([
+    "",
+    "noslash",
+    "a/b/c",
+    "/eliza",
+    "elizaOS/",
+    "elizaOS//eliza",
+    "elizaOS/eliza/",
+    "elizaOS/eliza?tab=readme",
+    "elizaOS /eliza",
+    "elizaOS/el iza",
+    "https://github.com/elizaOS/eliza/issues",
+    "https://github.com/elizaOS/eliza//",
+    "https://user@github.com/elizaOS/eliza",
+    "https://user:token@github.com/elizaOS/eliza",
+    "https://@github.com/elizaOS/eliza",
+    "https://github.com:8443/elizaOS/eliza",
+    "https://www.github.com/elizaOS/eliza",
+    "https://api.github.com/elizaOS/eliza",
+    "https://github.example.com/elizaOS/eliza",
+    "https://github.com.evil.test/elizaOS/eliza",
+    "ftp://github.com/elizaOS/eliza",
+    "git://github.com/elizaOS/eliza",
+    "ssh://git@github.com/elizaOS/eliza",
+    "https:github.com/elizaOS/eliza",
+    "https://github.com/elizaOS/eliza%20repo",
+    "https://github.com/elizaOS/eliza%2Frepo",
+    "https://github.com/elizaOS\\eliza",
+    "https://github.com/evil/x/../../elizaOS/eliza",
+    "https://github.com/evil/x/%2e%2e/%2E%2e/elizaOS/eliza",
+    "https://github.com/elizaOS/./eliza",
+    "https://github.com/elizaOS/%2e/eliza",
+    "https://github.com/evil/.%2e/elizaOS/eliza",
+    "https://github.com/evil/%2e./elizaOS/eliza",
+    "github.com/evil/x/../../elizaOS/eliza",
+    "https://github.com/eli\tzaOS/eliza",
+    "https://github.com/elizaOS/eli\nza",
+    "https://github.com/eli\rzaOS/eliza",
+    "https://github.com/elizaOS/eli\0za",
+    "https://github.com/elizaOS/eli\x1fza",
+    "https://github.com/elizaOS/eli\x7fza",
+    "https://github.com/evil/.\t./elizaOS/eliza",
+    "https://github.com/evil\\..\\elizaOS\\eliza",
+    "-elizaOS/eliza",
+    "elizaOS-/eliza",
+    "eliza--OS/eliza",
+    `${"a".repeat(40)}/eliza`,
+    "elizaOS/eli@za",
+    `elizaOS/${"a".repeat(101)}`,
+    "elizaOS/.",
+    "elizaOS/..",
+    "elizaOS/.git",
+  ])("rejects malformed locator %s", (input) => {
+    expect(splitRepo(input)).toBeNull();
   });
 });
 

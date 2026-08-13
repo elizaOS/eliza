@@ -2840,6 +2840,7 @@
   "documentsview.SearchTips": "Try a filename, topic, or phrase from the document body.",
   "documentsview.ServiceDidNotBecomeAvailable": "Knowledge service did not become available. Please reload the page.",
   "documentsview.ServiceIsLoading": "Knowledge service is loading...",
+  "documentsview.ServiceUnavailable": "Knowledge service is unavailable. Please try again.",
   "documentsview.TitleOptional": "Title (optional)",
   "documentsview.Type": "Type:",
   "documentsview.UnknownDeleteError": "Unknown delete error",

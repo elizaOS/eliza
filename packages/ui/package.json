@@ -443,7 +443,7 @@
     "@radix-ui/react-toggle": "^1.1.10",
     "@radix-ui/react-tooltip": "^1.2.8",
     "@rainbow-me/rainbowkit": "^2.2.11",
-    "@shadcn/react": "0.2.1",
+    "@shadcn/react": "0.3.0",
     "@simplewebauthn/browser": "^13.0.0",
     "@solana/spl-token": "^0.4.14",
     "@solana/wallet-adapter-phantom": "^0.9.29",
@@ -479,7 +479,7 @@
     "vaul": "^1.1.2",
     "viem": "^2.48.8",
     "wagmi": "^2.19.5",
-    "ws": "^8.19.0"
+    "ws": "^8.21.3"
   },
   "devDependencies": {
     "@capacitor-community/bluetooth-le": "8.2.0",

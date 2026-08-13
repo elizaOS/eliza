@@ -60,8 +60,9 @@ export class MessageRefStore {
 	addTag(messageId: string, tag: string): MessageRef | null {
 		const existing = this.messages.get(messageId);
 		if (!existing) return null;
+		if (existing.tags?.includes(tag)) return existing;
 		const tags = existing.tags ? [...existing.tags] : [];
-		if (!tags.includes(tag)) tags.push(tag);
+		tags.push(tag);
 		const next: MessageRef = { ...existing, tags };
 		setMostRecent(this.messages, messageId, next);
 		return next;
@@ -72,6 +73,7 @@ export class MessageRefStore {
 		if (!existing) return null;
 		if (!existing.tags || existing.tags.length === 0) return existing;
 		const tags = existing.tags.filter((t) => t !== tag);
+		if (tags.length === existing.tags.length) return existing;
 		const next: MessageRef = { ...existing, tags };
 		setMostRecent(this.messages, messageId, next);
 		return next;

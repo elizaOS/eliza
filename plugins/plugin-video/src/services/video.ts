@@ -1,9 +1,12 @@
 /// <reference path="../types/fluent-ffmpeg.d.ts" />
 
+/** Provides validated video metadata, download, conversion, and transcription services. */
+
 import fs from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import {
+  ElizaError,
   elizaLogger,
   type IAgentRuntime,
   type ITranscriptionService,
@@ -19,6 +22,7 @@ import {
 } from "@elizaos/core";
 import ffmpeg from "fluent-ffmpeg";
 import { BinaryResolver } from "./binaries";
+import { normalizeCaptionNewlines, parseYtDlpUploadDate } from "./video-parse";
 
 /** Minimal yt-dlp JSON shape used by this service (fields vary by extractor). */
 interface YtDlpSubtitleTrack {
@@ -33,23 +37,10 @@ interface YtDlpJson {
   thumbnail?: string;
   view_count?: number;
   upload_date?: string;
-  formats?: YtDlpFormatRow[];
+  formats?: unknown;
   categories?: string[];
   subtitles?: Record<string, YtDlpSubtitleTrack[]>;
   automatic_captions?: Record<string, YtDlpSubtitleTrack[]>;
-}
-
-interface YtDlpFormatRow {
-  format_id?: string;
-  url?: string;
-  ext?: string;
-  quality?: string | number;
-  filesize?: number;
-  vcodec?: string;
-  acodec?: string;
-  resolution?: string;
-  fps?: number;
-  tbr?: number;
 }
 
 interface CaptionSegment {
@@ -68,16 +59,94 @@ function loggableError(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-function parseYtDlpUploadDate(value: string | undefined): Date | undefined {
-  if (!value) return undefined;
-  const compact = value.match(/^(\d{4})(\d{2})(\d{2})$/);
-  if (compact) {
-    const [, year, month, day] = compact;
-    const parsed = new Date(`${year}-${month}-${day}T00:00:00.000Z`);
-    return Number.isNaN(parsed.getTime()) ? undefined : parsed;
+function invalidFormatField(
+  index: number,
+  field: string,
+  value: unknown,
+): never {
+  throw new ElizaError("yt-dlp returned an invalid format field.", {
+    code: "VIDEO_METADATA_FORMAT_FIELD_INVALID",
+    context: { index, field, receivedType: typeof value },
+    severity: "ephemeral",
+  });
+}
+
+function optionalFormatString(
+  format: Record<string, unknown>,
+  field: string,
+  index: number,
+): string | undefined {
+  const value = format[field];
+  if (value === undefined || value === null) return undefined;
+  if (typeof value !== "string") invalidFormatField(index, field, value);
+  return value;
+}
+
+function optionalFormatNumber(
+  format: Record<string, unknown>,
+  field: string,
+  index: number,
+): number | undefined {
+  const value = format[field];
+  if (value === undefined || value === null) return undefined;
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
+    invalidFormatField(index, field, value);
   }
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? undefined : parsed;
+  return value;
+}
+
+function formatQuality(format: Record<string, unknown>, index: number): string {
+  const value = format.quality;
+  if (value === undefined || value === null || value === "") return "unknown";
+  if (typeof value === "string") return value;
+  if (typeof value === "number" && Number.isFinite(value) && value >= 0) {
+    return String(value);
+  }
+  return invalidFormatField(index, "quality", value);
+}
+
+function toVideoFormat(
+  format: Record<string, unknown>,
+  index: number,
+): VideoFormat {
+  return {
+    formatId: optionalFormatString(format, "format_id", index) ?? "",
+    url: optionalFormatString(format, "url", index) ?? "",
+    extension: optionalFormatString(format, "ext", index) ?? "",
+    quality: formatQuality(format, index),
+    fileSize: optionalFormatNumber(format, "filesize", index),
+    videoCodec: optionalFormatString(format, "vcodec", index),
+    audioCodec: optionalFormatString(format, "acodec", index),
+    resolution: optionalFormatString(format, "resolution", index),
+    fps: optionalFormatNumber(format, "fps", index),
+    bitrate: optionalFormatNumber(format, "tbr", index),
+  };
+}
+
+function parseYtDlpFormats(value: unknown): VideoFormat[] {
+  if (value === undefined || value === null) return [];
+  if (!Array.isArray(value)) {
+    throw new ElizaError("yt-dlp returned a non-array formats field.", {
+      code: "VIDEO_METADATA_FORMATS_INVALID",
+      context: { receivedType: typeof value },
+      severity: "ephemeral",
+    });
+  }
+
+  return value.map((format, index) => {
+    if (
+      typeof format !== "object" ||
+      format === null ||
+      Array.isArray(format)
+    ) {
+      throw new ElizaError("yt-dlp returned an invalid format entry.", {
+        code: "VIDEO_METADATA_FORMAT_ENTRY_INVALID",
+        context: { index, receivedType: typeof format },
+        severity: "ephemeral",
+      });
+    }
+    return toVideoFormat(format as Record<string, unknown>, index);
+  });
 }
 
 export class VideoService extends IVideoService {
@@ -129,23 +198,7 @@ export class VideoService extends IVideoService {
   // Required abstract methods from IVideoService
   async getVideoInfo(url: string): Promise<VideoInfo> {
     const videoInfo = await this.fetchVideoInfo(url);
-    const formats: VideoFormat[] = (videoInfo.formats ?? []).map(
-      (f: YtDlpFormatRow) => ({
-        formatId: f.format_id ?? "",
-        url: f.url ?? "",
-        extension: f.ext ?? "",
-        quality:
-          f.quality !== undefined && f.quality !== ""
-            ? String(f.quality)
-            : "unknown",
-        fileSize: f.filesize,
-        videoCodec: f.vcodec,
-        audioCodec: f.acodec,
-        resolution: f.resolution,
-        fps: f.fps,
-        bitrate: f.tbr,
-      }),
-    );
+    const formats = parseYtDlpFormats(videoInfo.formats);
     return {
       title: videoInfo.title,
       duration: videoInfo.duration,
@@ -315,47 +368,32 @@ export class VideoService extends IVideoService {
   }
 
   async getAvailableFormats(url: string): Promise<VideoFormat[]> {
-    try {
-      const result = await this.binaries.runYtDlp(url, {
-        dumpJson: true,
-        verbose: true,
-        callHome: false,
-        noCheckCertificates: true,
-        preferFreeFormats: true,
-        youtubeSkipDashManifest: true,
-        skipDownload: true,
+    const result = await this.binaries.runYtDlp(url, {
+      dumpJson: true,
+      verbose: true,
+      callHome: false,
+      noCheckCertificates: true,
+      preferFreeFormats: true,
+      youtubeSkipDashManifest: true,
+      skipDownload: true,
+    });
+
+    if (
+      typeof result !== "object" ||
+      result === null ||
+      Array.isArray(result)
+    ) {
+      throw new ElizaError("yt-dlp returned invalid metadata.", {
+        code: "VIDEO_METADATA_INVALID",
+        context: { receivedType: typeof result },
+        severity: "ephemeral",
       });
-
-      if (
-        typeof result === "object" &&
-        result !== null &&
-        "formats" in result
-      ) {
-        const parsed = result as YtDlpJson;
-        if (Array.isArray(parsed.formats) && parsed.formats.length) {
-          return parsed.formats.map((format: YtDlpFormatRow) => ({
-            formatId: format.format_id ?? "",
-            url: format.url ?? "",
-            extension: format.ext ?? "",
-            quality:
-              format.quality !== undefined && format.quality !== ""
-                ? String(format.quality)
-                : "unknown",
-            fileSize: format.filesize,
-            videoCodec: format.vcodec,
-            audioCodec: format.acodec,
-            resolution: format.resolution,
-            fps: format.fps,
-            bitrate: format.tbr,
-          }));
-        }
-      }
-
-      return [];
-    } catch (error) {
-      elizaLogger.log("Error getting available formats:", loggableError(error));
-      throw new Error("Failed to get available formats");
     }
+    if (!("formats" in result)) {
+      return [];
+    }
+
+    return parseYtDlpFormats((result as Record<string, unknown>).formats);
   }
 
   private ensureDataDirectoryExists() {
@@ -375,6 +413,7 @@ export class VideoService extends IVideoService {
         hostname.endsWith(".vimeo.com")
       );
     } catch {
+      // error-policy:J3 Invalid URL input is the negative result of this predicate.
       return false;
     }
   }
@@ -554,7 +593,7 @@ export class VideoService extends IVideoService {
     try {
       const jsonContent = JSON.parse(captionContent) as CaptionJson;
       if (Array.isArray(jsonContent?.events)) {
-        return jsonContent.events
+        const joined = jsonContent.events
           .filter((event): event is { segs: CaptionSegment[] } =>
             Array.isArray(event?.segs),
           )
@@ -563,8 +602,8 @@ export class VideoService extends IVideoService {
               .map((seg) => (typeof seg?.utf8 === "string" ? seg.utf8 : ""))
               .join(""),
           )
-          .join("")
-          .replace(/\n/g, " ");
+          .join("");
+        return normalizeCaptionNewlines(joined);
       } else {
         elizaLogger.log(
           "Unexpected caption format:",

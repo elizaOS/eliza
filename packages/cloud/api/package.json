@@ -37,7 +37,7 @@
     "ai": "^6.0.170",
     "drizzle-orm": "0.45.2",
     "file-type": "^22.0.1",
-    "hono": "4.12.34",
+    "hono": "4.13.1",
     "jose": "^6.0.0",
     "music-metadata": "^11.12.3",
     "nanoid": "^6.0.0",
@@ -52,13 +52,13 @@
   "devDependencies": {
     "@biomejs/biome": "2.5.7",
     "@msgpack/msgpack": "3.1.3",
-    "@types/pg": "^8.16.0",
+    "@types/pg": "^8.21.0",
     "@types/ws": "^8.18.1",
     "@typescript/native": "npm:typescript@^7.0.2",
     "dotenv": "^17.4.2",
     "miniflare": "4.20260730.0",
-    "pg": "^8.20.0",
+    "pg": "^8.23.0",
     "typescript": "^6.0.3",
-    "ws": "^8.21.0"
+    "ws": "^8.21.3"
   }
 }
