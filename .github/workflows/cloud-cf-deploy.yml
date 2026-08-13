@@ -1256,6 +1256,9 @@ jobs:
     if: ${{ !cancelled() && (needs.migrate-db.result == 'success' || (github.event_name == 'pull_request' && needs.migrate-db.result == 'skipped')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    # Staging now stores VITE_TELEGRAM_BOT_ID on the GitHub environment.
+    # Bind this producer so vars.VITE_TELEGRAM_BOT_ID resolves during Vite.
+    environment: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'production' || 'staging' }}
     # GitHub preserves outputs from successful jobs when only failed jobs are
     # rerun. Consumers must therefore use the producer's attempt, not their own
     # newer github.run_attempt. A full rerun executes this job again and emits
@@ -1328,6 +1331,7 @@ jobs:
           VITE_VOICE_REALTIME_WS: ${{ !((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && contains(fromJSON('["1","true","TRUE","True","yes","YES","Yes","on","ON","On"]'), vars.VOICE_REALTIME_WS_ENABLED) && '1' || '0' }}
           VITE_VOICE_REALTIME_FORCE: "0"
           NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID: ${{ vars.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID }}
+          VITE_TELEGRAM_BOT_ID: ${{ vars.VITE_TELEGRAM_BOT_ID }}
 
       - name: Verify frontend chunk safety
         run: bun run --cwd packages/app verify:chunks
@@ -1584,6 +1588,7 @@ jobs:
           VITE_VOICE_REALTIME_WS: ${{ !((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && contains(fromJSON('["1","true","TRUE","True","yes","YES","Yes","on","ON","On"]'), vars.VOICE_REALTIME_WS_ENABLED) && '1' || '0' }}
           VITE_VOICE_REALTIME_FORCE: "0"
           NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID: ${{ vars.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID }}
+          VITE_TELEGRAM_BOT_ID: ${{ vars.VITE_TELEGRAM_BOT_ID }}
 
       # Refuse to deploy a bundle where the bn.js/crypto graph folded into an
       # eager chunk (the "Class constructor cannot be invoked without 'new'"
