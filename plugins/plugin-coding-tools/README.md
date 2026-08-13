@@ -55,6 +55,7 @@ All settings are optional. Configure via environment variables or agent settings
 | `CODING_TOOLS_MAX_READ_LINES` | `2000` | Max lines returned by FILE action=read. |
 | `CODING_TOOLS_MAX_FILE_SIZE_BYTES` | `262144` | File size cap for reads (bytes). Larger files are rejected. |
 | `CODING_TOOLS_GREP_HEAD_LIMIT` | `250` | Max output lines for GREP. Set to 0 to disable. |
+| `ELIZA_SHELL_ECHO_TRANSCRIPT` | unset (off) | Set to `1`/`true` to re-enable the dev-facing SHELL transcript echo (`$ cmd` / `[exit N]` / `--- stdout ---`) as its own chat message ahead of the answer. Off by default: the ActionResult already carries the full output for the planner, so the echo is machinery noise in consumer channels. Command output and the command line are secret-redacted on every path regardless of this setting. |
 
 The folded `ShellService` retains these compatibility settings for external
 callers of `runtime.getService("shell").exec()` / `executeCommand()`; the
