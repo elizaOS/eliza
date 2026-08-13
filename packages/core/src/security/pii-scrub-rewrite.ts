@@ -127,8 +127,7 @@ export function applyScrubVerdicts(
 
 	let result = content;
 	for (const rep of nonOverlapping) {
-		result =
-			result.slice(0, rep.start) + rep.text + result.slice(rep.end);
+		result = result.slice(0, rep.start) + rep.text + result.slice(rep.end);
 	}
 	return result;
 }

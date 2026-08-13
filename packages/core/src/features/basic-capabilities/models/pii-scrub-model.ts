@@ -36,9 +36,7 @@ const HANDLER_PRIORITY = 0;
  * The classification prompt sent to TEXT_SMALL. Asks for a strict JSON array
  * of `{span, kind}` objects. The handler parses this into typed verdicts.
  */
-function buildScrubPrompt(
-	params: PiiScrubParams,
-): string {
+function buildScrubPrompt(params: PiiScrubParams): string {
 	const spanList = params.candidateSpans
 		.map((s, i) => `${i + 1}. "${s}"`)
 		.join("\n");
@@ -93,9 +91,7 @@ function parseVerdictResponse(
 	}
 
 	if (!Array.isArray(parsed)) {
-		throw new Error(
-			"PII_SCRUB handler: model response is not a JSON array",
-		);
+		throw new Error("PII_SCRUB handler: model response is not a JSON array");
 	}
 
 	const verdicts: PiiScrubVerdict[] = [];
@@ -110,9 +106,7 @@ function parseVerdictResponse(
 			entityClusterId?: unknown;
 		};
 		if (typeof v.span !== "string" || v.span.length === 0) {
-			throw new Error(
-				"PII_SCRUB handler: verdict missing non-empty span",
-			);
+			throw new Error("PII_SCRUB handler: verdict missing non-empty span");
 		}
 		if (v.kind !== "pii" && v.kind !== "safe") {
 			throw new Error(
@@ -128,8 +122,7 @@ function parseVerdictResponse(
 			...(v.kind === "pii"
 				? {
 						replacement:
-							typeof v.replacement === "string" &&
-							v.replacement.length > 0
+							typeof v.replacement === "string" && v.replacement.length > 0
 								? v.replacement
 								: defaultSurrogate(v.span),
 					}
@@ -197,7 +190,10 @@ export async function piiScrubModelHandler(
 	});
 
 	// useModel for TEXT_SMALL returns a TextStreamResult or string.
-	const raw = typeof result === "string" ? result : (result as { text?: string }).text ?? "";
+	const raw =
+		typeof result === "string"
+			? result
+			: ((result as { text?: string }).text ?? "");
 
 	const scrubResult = parseVerdictResponse(raw, params);
 
@@ -225,8 +221,7 @@ function attachClusterIds(
 	}
 	const verdicts = result.verdicts.map((v) => {
 		if (v.entityClusterId) return v;
-		const clusterId =
-			v.replacement && surrogateToCluster.get(v.replacement);
+		const clusterId = v.replacement && surrogateToCluster.get(v.replacement);
 		return clusterId ? { ...v, entityClusterId: clusterId } : v;
 	});
 	return { ...result, verdicts };

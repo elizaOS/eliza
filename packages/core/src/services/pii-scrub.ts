@@ -43,13 +43,16 @@ import {
 	isScrubDone,
 	markScrubDone,
 } from "../security/pii-scrub-markers.js";
+import { applyPiiScrubWriteBack } from "../security/pii-scrub-pipeline.js";
+import { applyScrubVerdicts } from "../security/pii-scrub-rewrite.js";
 import {
 	PiiScrubFabricationError,
 	scrubWithEscalation,
 } from "../security/pii-scrub-seam.js";
-import { applyScrubVerdicts } from "../security/pii-scrub-rewrite.js";
-import { applyPiiScrubWriteBack } from "../security/pii-scrub-pipeline.js";
-import type { EventPayload, PiiScrubRequestPayload } from "../types/events.js";
+import type {
+	PiiScrubRequestPayload,
+	PiiScrubResultPayload,
+} from "../types/events.js";
 import { EventType } from "../types/events.js";
 import type { IAgentRuntime } from "../types/runtime.js";
 import { Service } from "../types/service.js";
@@ -326,9 +329,15 @@ export class PiiScrubService extends Service {
 		});
 
 		await this.runtime.emitEvent(EventType.PII_SCRUB_COMPLETED, {
-				runtime: this.runtime,
-				source: "piiScrubService",
-			} as EventPayload);
+			runtime: this.runtime,
+			source: "piiScrubService",
+			content: item.content,
+			rulesetVersion: item.rulesetVersion,
+			jobId: item.jobId,
+			itemRef: item.itemRef,
+			tier0Only: !escalated,
+			modelId,
+		} as PiiScrubResultPayload);
 	}
 
 	/** Emit FAILED + report the error after retries are exhausted. */

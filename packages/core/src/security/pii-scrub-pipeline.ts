@@ -33,26 +33,25 @@
  * `scrubItem` for the invariant.
  */
 
-import { detectPii } from "./pii-detectors.js";
-import {
-	applyScrubVerdicts,
-	type ApplyVerdictOptions,
-} from "./pii-scrub-rewrite.js";
-import type {
-	PiiContextPack,
-	PiiScrubCandidate,
-	PiiContextSources,
-} from "./pii-context-pack.js";
-import { assembleContextPack } from "./pii-context-pack.js";
-import { scrubWithEscalation } from "./pii-scrub-seam.js";
-import type { CorpusPseudonymMap } from "./pii-pseudonym-map.js";
 import type {
 	PiiScrubRequestPayload,
 	PiiScrubResultPayload,
 } from "../types/events.js";
 import { EventType } from "../types/events.js";
-import type { IAgentRuntime } from "../types/runtime.js";
 import type { UUID } from "../types/index.js";
+import type { IAgentRuntime } from "../types/runtime.js";
+import type {
+	PiiContextPack,
+	PiiContextSources,
+	PiiScrubCandidate,
+} from "./pii-context-pack.js";
+import { assembleContextPack } from "./pii-context-pack.js";
+import type { CorpusPseudonymMap } from "./pii-pseudonym-map.js";
+import {
+	type ApplyVerdictOptions,
+	applyScrubVerdicts,
+} from "./pii-scrub-rewrite.js";
+import { scrubWithEscalation } from "./pii-scrub-seam.js";
 
 /**
  * The active scrub ruleset version. A bump re-scrubs all content because the
