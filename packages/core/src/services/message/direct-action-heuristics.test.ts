@@ -520,6 +520,21 @@ describe("inferDirectCurrentRequestCandidateActions owner-goal routing", () => {
 			),
 		).toEqual([]);
 	});
+
+	it("routes owner-goal mutations ahead of matching VIEWS capability tags", () => {
+		const viewsAction = {
+			name: "VIEWS",
+			similes: [],
+			tags: ["goals", "savings"],
+		} as unknown as Pick<Action, "name" | "similes" | "tags">;
+
+		expect(
+			inferDirectCurrentRequestCandidateInference(
+				[viewsAction, ...actions],
+				"add a savings goal to save 500 dollars by march",
+			),
+		).toEqual({ names: ["OWNER_GOALS"], kind: "owner-goals" });
+	});
 });
 
 describe("shell-direct coupling grep guard (#12636)", () => {
@@ -573,6 +588,27 @@ describe("inferDirectCurrentRequestCandidateInference kinds", () => {
 				"whats 17 times 23?",
 			),
 		).toEqual({ names: [], kind: null });
+	});
+
+	it("matches plural multiword capability phrases after token normalization", () => {
+		const savedItemsView: Pick<Action, "name" | "similes" | "tags"> = {
+			name: "VIEWS",
+			similes: [],
+			tags: ["saved-items"],
+		};
+
+		expect(
+			inferDirectCurrentRequestCandidateInference(
+				[savedItemsView],
+				"show saved items",
+			),
+		).toEqual({ names: ["VIEWS"], kind: "view-capability" });
+		expect(
+			inferDirectCurrentRequestCandidateInference(
+				[savedItemsView],
+				"show saved item",
+			),
+		).toEqual({ names: ["VIEWS"], kind: "view-capability" });
 	});
 
 	it("classifies explicit surface asks and bare-noun navigation as strong evidence", () => {
@@ -848,6 +884,23 @@ describe("owner routine mutation precedence over VIEWS (#17028)", () => {
 		}
 	});
 
+	it("does not classify unrelated activity words as owner-routine mutations", () => {
+		for (const message of [
+			"what do you think about yoga?",
+			"how many hours are in every day?",
+			"set backups every day",
+			"do running tests",
+			"log running errors",
+		]) {
+			expect(
+				inferDirectCurrentRequestCandidateInference(
+					[ownerRoutinesAction],
+					message,
+				),
+			).toEqual({ names: [], kind: null });
+		}
+	});
+
 	it("arithmetic with 'times' and 'get time' do not match screen-time", () => {
 		// The multiword-specificity fix: TIME alone (from "times") is not
 		// "screen time" — the full phrase must appear.
@@ -887,6 +940,12 @@ describe("owner routine mutation precedence over VIEWS (#17028)", () => {
 			inferDirectCurrentRequestCandidateInference(
 				[viewsAction],
 				"25 pushups, 3 times a day",
+			),
+		).toEqual({ names: [], kind: null });
+		expect(
+			inferDirectCurrentRequestCandidateInference(
+				[viewsAction],
+				"add this habit",
 			),
 		).toEqual({ names: [], kind: null });
 	});

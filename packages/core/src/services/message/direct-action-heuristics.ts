@@ -484,6 +484,7 @@ function looksLikeGoalDetailFollowup(text: string): boolean {
 }
 
 function looksLikeGoalDraftConfirmation(text: string): boolean {
+	if (/\b(?:habit|routine)s?\b/iu.test(text)) return false;
 	return /\b(?:ok(?:ay)?|yes|yep|yeah|sure)?\s*(?:save|set|confirm|approve)\s+(?:that|this|it|that\s+one|this\s+one)(?:\s+goal)?\b/iu.test(
 		text,
 	);
@@ -600,7 +601,7 @@ function looksLikeOwnerRoutineWriteRequest(text: string): boolean {
 	if (isExplicitViewNavigation) return false;
 
 	const hasMutationVerb =
-		/\b(?:create|schedule|track|remind|complete|add|save|set|start|do|repeat|log|build|practice|keep\s+up)\b/iu.test(
+		/\b(?:create|schedule|track|remind|complete|add|save|set|start|repeat)\b/iu.test(
 			normalized,
 		);
 	const hasHabitDomain =
@@ -622,7 +623,7 @@ function looksLikeOwnerRoutineWriteRequest(text: string): boolean {
 	// without an explicit mutation verb ("25 pushups, 3 times a day").
 	if (hasFrequencyClause) {
 		const hasConcreteActivity =
-			/\b(?:pushup|pushups|push[- ]?up|push[- ]?ups|situp|situps|sit[- ]?up|sit[- ]?ups|squat|squats|rep|reps|set|sets|lap|laps|mile|miles|km|minute|minutes|hour|hours|walk|run|jog|meditate|stretch|yoga|exercise|workout|gym|repetition|repetitions)\b/iu.test(
+			/\b(?:pushup|pushups|push[- ]?up|push[- ]?ups|situp|situps|sit[- ]?up|sit[- ]?ups|squat|squats|rep|reps|lap|laps|mile|miles|km|walk|run|jog|meditate|stretch|yoga|exercise|workout|gym|repetition|repetitions)\b/iu.test(
 				normalized,
 			) || hasHabitDomain;
 		if (hasConcreteActivity) return true;
@@ -681,19 +682,27 @@ export function inferDirectCurrentRequestCandidateInference(
 			return { names: [settingsAction], kind: "settings-write" };
 		}
 	}
+	// Owner goal mutations must win precedence over matching VIEWS tags.
+	if (looksLikeOwnerGoalWriteRequest(messageText)) {
+		const ownerGoalsAction = findOwnerGoalsActionName(actions);
+		if (ownerGoalsAction) {
+			return { names: [ownerGoalsAction], kind: "owner-goals" };
+		}
+		return EMPTY_DIRECT_CANDIDATE_INFERENCE;
+	}
 	// Owner habit/routine mutations must win PRECEDENCE over view navigation.
 	// VIEWS declares `routines`, `habits`, `health`, `screen-time`, `tasks` as
 	// capability tags and says to navigate "when in doubt", so without this leg
 	// a workout turn ("25 pushups, 3 times a day") is hijacked by incidental
 	// token overlap (TIME ← "times") into the view-capability path. Resolved
-	// against a registered OWNER_ROUTINES action; a runtime without it yields no
-	// candidate here so the turn falls back to the planner's own recovery path
-	// instead of being captured by VIEWS (#17028).
+	// against a registered OWNER_ROUTINES action; a runtime without it terminates
+	// with no candidate instead of being captured by VIEWS (#17028).
 	if (looksLikeOwnerRoutineWriteRequest(messageText)) {
 		const ownerRoutinesAction = findOwnerRoutinesActionName(actions);
 		if (ownerRoutinesAction) {
 			return { names: [ownerRoutinesAction], kind: "owner-routines" };
 		}
+		return EMPTY_DIRECT_CANDIDATE_INFERENCE;
 	}
 	const viewShellAction = findViewShellActionName(actions, messageText);
 	if (viewShellAction) {
@@ -742,12 +751,6 @@ export function inferDirectCurrentRequestCandidateInference(
 	if (looksLikeWebSearchRequest(messageText)) {
 		const lookupActions = findWebLookupActionNames(actions);
 		if (lookupActions.length > 0) return { names: lookupActions, kind: "web" };
-	}
-	if (looksLikeOwnerGoalWriteRequest(messageText)) {
-		const ownerGoalsAction = findOwnerGoalsActionName(actions);
-		if (ownerGoalsAction) {
-			return { names: [ownerGoalsAction], kind: "owner-goals" };
-		}
 	}
 	return EMPTY_DIRECT_CANDIDATE_INFERENCE;
 }
@@ -1156,10 +1159,9 @@ function findViewCapabilityActionName(
 			}
 			// Multiword capability: require the complete alias phrase, including
 			// generic tokens such as SCREEN, to appear as adjacent words.
-			const aliasPhraseRegex = multiwordCapabilityPhraseRegex(
-				aliasTokens.map(normalizeSingularToken),
-			);
-			if (aliasPhraseRegex.test(messageText)) {
+			if (
+				containsContiguousNormalizedTokenSequence(messageTokens, aliasTokens)
+			) {
 				return viewActionName;
 			}
 		}
@@ -1167,22 +1169,18 @@ function findViewCapabilityActionName(
 	return undefined;
 }
 
-// Build a case-insensitive regex that matches the multiword capability tokens as
-// an adjacent phrase in the message, allowing a single optional separator
-// (hyphen, space, or underscore) between them. "screen-time" → matches
-// "screen time", "screen-time", "screentime"; does NOT match "3 times a day".
-function multiwordCapabilityPhraseRegex(tokens: readonly string[]): RegExp {
-	const parts = tokens.map((token) => escapeRegex(token));
-	// Allow an optional separator between each token: the capability may be
-	// written as "screen time" (space), "screen-time" (hyphen), or "screentime".
-	const body = parts.join("[-\\s_]*");
-	// Match case-insensitively against the original message text (not the
-	// tokenized/uppercased form) so ordinary casing works.
-	return new RegExp(`\\b${body}\\b`, "iu");
-}
-
-function escapeRegex(value: string): string {
-	return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+function containsContiguousNormalizedTokenSequence(
+	messageTokens: readonly string[],
+	aliasTokens: readonly string[],
+): boolean {
+	const normalizedMessageTokens = messageTokens.map(normalizeSingularToken);
+	const normalizedAliasTokens = aliasTokens.map(normalizeSingularToken);
+	return normalizedMessageTokens.some((_, startIndex) =>
+		normalizedAliasTokens.every(
+			(aliasToken, offset) =>
+				normalizedMessageTokens[startIndex + offset] === aliasToken,
+		),
+	);
 }
 
 function looksLikeInstructionalViewQuestion(messageText: string): boolean {
