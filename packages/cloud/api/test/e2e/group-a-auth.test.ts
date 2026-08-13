@@ -572,7 +572,7 @@ describeE2E("Group A: auth + sessions", () => {
       // Handler issues c.redirect → Hono's default 302. Public path, no 401.
       expect(res.status).toBe(302);
       const location = res.headers.get("location") ?? "";
-      expect(location).toMatch(/\/dashboard\/chat/);
+      expect(new URL(location).pathname).toBe("/cloud/chat");
     });
 
     test("happy path: discord platform returns HTML success page", async () => {
