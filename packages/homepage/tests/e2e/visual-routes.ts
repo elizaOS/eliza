@@ -9,15 +9,12 @@
  */
 
 export const VISUAL_ROUTES = [
-  // TODO(homepage-redesign): the landing/leaderboard baselines were removed
-  // with the redesign and must be regenerated on the Linux renderer via the
-  // "Regenerate Homepage Baselines" workflow; restore both routes here when
-  // committing that artifact. Their functional coverage lives in
-  // visual-readiness.spec.ts / app-routes-flow.spec.ts meanwhile.
+  { path: "/", name: "landing" },
   { path: "/downloads", name: "downloads" },
   { path: "/login", name: "login" },
   { path: "/connected", name: "connected" },
   { path: "/get-started", name: "get-started" },
+  { path: "/leaderboard", name: "leaderboard" },
   { path: "/profile/edit", name: "profile-edit", authed: true },
   // "*" is the App.tsx catch-all; exercised via a representative unknown path.
   { path: "*", name: "not-found", goto: "/this-page-does-not-exist" },
