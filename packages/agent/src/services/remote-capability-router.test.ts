@@ -28,6 +28,7 @@ const originalFetch = globalThis.fetch;
 describe("remote capability router", () => {
   afterEach(() => {
     globalThis.fetch = originalFetch;
+    vi.restoreAllMocks();
   });
 
   it("resolves canonical env names", () => {
@@ -67,6 +68,55 @@ describe("remote capability router", () => {
 
     expect(config.requestTimeoutMs).toBe(60_000);
   });
+
+  it.each([
+    ["runtime timer maximum", "2147483647", 2_147_483_647],
+    ["above runtime timer maximum", "2147483648", 60_000],
+  ])("resolves %s timeout", (_description, value, expected) => {
+    const config = resolveRemoteCapabilityRouterConfig(
+      makeRuntime({ ELIZA_CAPABILITY_ROUTER_TIMEOUT_MS: value }),
+    );
+
+    expect(config.requestTimeoutMs).toBe(expected);
+  });
+
+  it.each([
+    ["runtime timer maximum", 2_147_483_647, 2_147_483_647],
+    ["above runtime timer maximum", 2_147_483_648, 60_000],
+  ])(
+    "uses %s at the request timer boundary",
+    async (_description, value, expected) => {
+      globalThis.fetch = vi.fn(async () =>
+        jsonResponse({
+          environment: "server",
+          available: true,
+          capabilities: {
+            fs: true,
+            pty: true,
+            git: true,
+            model: true,
+            plugin: true,
+          },
+        }),
+      ) as unknown as typeof fetch;
+      const setTimeoutSpy = vi
+        .spyOn(globalThis, "setTimeout")
+        .mockImplementation((() => 1) as unknown as typeof setTimeout);
+      const service = new RemoteCapabilityRouterService(makeRuntime(), {
+        enabled: true,
+        baseUrl: "https://capability.example",
+        environment: "server",
+        requestTimeoutMs: value,
+      });
+
+      await service.availability();
+
+      expect(setTimeoutSpy).toHaveBeenCalledWith(
+        expect.any(Function),
+        expected,
+      );
+    },
+  );
 
   it("resolves multiple canonical remote endpoint URLs", () => {
     const config = resolveRemoteCapabilityRouterConfig(
