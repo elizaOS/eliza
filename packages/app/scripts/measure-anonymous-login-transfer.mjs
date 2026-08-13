@@ -92,13 +92,6 @@ export function parseDecimalInt(raw, flag, opts = {}) {
       `${flag} must be a decimal integer from ${min} to ${max}, got "${raw}"`,
     );
   }
-  // Leading zeros like "08" are rejected so the canonical decimal form is
-  // unambiguous (matches other CLI gates in packages/app scripts).
-  if (raw.length > 1 && raw.startsWith("0")) {
-    throw new Error(
-      `${flag} must be a decimal integer from ${min} to ${max}, got "${raw}"`,
-    );
-  }
   const value = Number(raw);
   if (!Number.isSafeInteger(value) || value < min || value > max) {
     throw new Error(

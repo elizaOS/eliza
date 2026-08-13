@@ -28,6 +28,8 @@ describe("parseDecimalInt", () => {
   it("accepts non-negative decimal integers through an explicit max", () => {
     expect(parseDecimalInt("0", "--settle-ms", { min: 0 })).toBe(0);
     expect(parseDecimalInt("1", "--timeout", { min: 1 })).toBe(1);
+    expect(parseDecimalInt("08", "--settle-ms")).toBe(8);
+    expect(parseDecimalInt("090000", "--timeout", { min: 1 })).toBe(90_000);
     expect(parseDecimalInt("6000", "--settle-ms")).toBe(6000);
     expect(
       parseDecimalInt(String(MAX_TIMER_DELAY_MS), "--timeout", {
@@ -47,7 +49,6 @@ describe("parseDecimalInt", () => {
     "1e3",
     "+2",
     " 3",
-    "08",
     "NaN",
     "Infinity",
     "--url",
@@ -92,6 +93,19 @@ describe("parseArgs --settle-ms / --timeout", () => {
     expect(args.settleMs).toBe(0);
     expect(args.timeout).toBe(5000);
     expect(args.url).toBe("http://127.0.0.1:4173/login");
+  });
+
+  it("preserves complete decimal overrides with leading zeros", () => {
+    const args = parseArgs([
+      "node",
+      "measure-anonymous-login-transfer.mjs",
+      "--settle-ms",
+      "08",
+      "--timeout",
+      "090000",
+    ]);
+    expect(args.settleMs).toBe(8);
+    expect(args.timeout).toBe(90_000);
   });
 
   it("fails closed when --settle-ms is missing or malformed", () => {
@@ -240,9 +254,9 @@ describe("measure-anonymous-login-transfer CLI", () => {
         [
           linkedScript,
           "--settle-ms",
-          "0",
+          "08",
           "--timeout",
-          "1",
+          "000001",
           "--url",
           "http://127.0.0.1:9/login",
         ],
@@ -250,6 +264,7 @@ describe("measure-anonymous-login-transfer CLI", () => {
       );
       expect(valid.status).not.toBe(0);
       expect(valid.stdout).toMatch(/Measuring cold \/login/);
+      expect(valid.stdout).toMatch(/settleMs=8/);
       expect(valid.stderr).not.toMatch(/--settle-ms|--timeout/);
     } finally {
       rmSync(directory, { recursive: true, force: true });
