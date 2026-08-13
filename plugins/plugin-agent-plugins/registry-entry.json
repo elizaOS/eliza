@@ -1,0 +1,55 @@
+{
+  "id": "agent-plugins",
+  "name": "Agent Plugins",
+  "description": "Agent Plugins 1.0.0 client for elizaOS — load plugin.json + skills/ + mcp.json packages",
+  "npmName": "@elizaos/plugin-agent-plugins",
+  "version": "2.0.0-beta.0",
+  "source": "bundled",
+  "tags": [
+    "agent-plugins",
+    "agent-skills",
+    "mcp",
+    "plugins",
+    "agents",
+    "agent"
+  ],
+  "config": {
+    "AGENT_PLUGINS_DIR": {
+      "type": "file-path",
+      "required": false,
+      "sensitive": false,
+      "label": "Plugins Dir",
+      "help": "Directory of installed Agent Plugin packages (default: ./agent-plugins)",
+      "advanced": false
+    },
+    "AGENT_PLUGIN_PATHS": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Extra Paths",
+      "help": "Comma-separated extra Agent Plugin roots to load without copying",
+      "advanced": false
+    },
+    "AGENT_PLUGINS_ENABLE_MCP": {
+      "type": "boolean",
+      "required": false,
+      "sensitive": false,
+      "label": "Enable MCP Connect",
+      "help": "Connect discovered MCP servers via plugin-mcp. Default false — listing only.",
+      "advanced": true
+    }
+  },
+  "render": {
+    "visible": true,
+    "pinTo": [],
+    "style": "card",
+    "icon": "Package",
+    "group": "agents",
+    "groupOrder": 8,
+    "actions": ["enable", "configure"]
+  },
+  "resources": {},
+  "dependsOn": [],
+  "kind": "plugin",
+  "subtype": "agents"
+}
