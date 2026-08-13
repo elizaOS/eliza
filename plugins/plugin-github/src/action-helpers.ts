@@ -105,23 +105,116 @@ export function optionalStringArray(
   return requireStringArray(options, key) ?? undefined;
 }
 
-/** Splits "owner/repo" (or GitHub repository URLs and .git references) into owner and repo name. Returns null on malformed input. */
+const GITHUB_OWNER_PATTERN = /^(?=.{1,39}$)[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*$/;
+const GITHUB_REPO_PATTERN = /^[A-Za-z0-9._-]{1,100}$/;
+const RAW_DOT_SEGMENT_PATTERN = /^(?:\.|%2e){1,2}$/i;
+
+function hasRawControlOrBackslash(value: string): boolean {
+  for (const character of value) {
+    const code = character.charCodeAt(0);
+    if (character === "\\" || code <= 0x1f || code === 0x7f) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Parses a GitHub repository locator into its owner and repository name.
+ *
+ * Absolute URLs must use HTTP(S), target exactly `github.com`, and omit
+ * credentials and non-default ports. WHATWG URL parsing normalizes explicit
+ * default ports, so `:80` on HTTP and `:443` on HTTPS remain valid. Alternate
+ * hosts are rejected because this plugin's Octokit client has no GHE base URL.
+ * Outer whitespace is trimmed, but raw ASCII controls, backslashes, and raw or
+ * percent-encoded dot path segments are rejected before WHATWG normalization
+ * can retarget the locator. Query and fragment contents are discarded.
+ */
 export function splitRepo(
   repo: string,
 ): { owner: string; name: string } | null {
-  let cleaned = repo.trim();
-  if (cleaned.endsWith(".git")) {
-    cleaned = cleaned.slice(0, -4);
-  }
-  cleaned = cleaned
-    .replace(/^https?:\/\/github\.com\//i, "")
-    .replace(/^github\.com\//i, "");
-
-  const parts = cleaned.split("/");
-  if (parts.length !== 2 || !parts[0] || !parts[1]) {
+  if (hasRawControlOrBackslash(repo)) {
     return null;
   }
-  return { owner: parts[0], name: parts[1] };
+
+  const cleaned = repo.trim();
+  if (!cleaned) {
+    return null;
+  }
+
+  const isHttpUrl = /^https?:\/\//i.test(cleaned);
+  const isBareGitHubUrl = /^github\.com\//i.test(cleaned);
+  const hasScheme = /^[A-Za-z][A-Za-z\d+.-]*:/.test(cleaned);
+  let path = cleaned;
+
+  if (isHttpUrl || isBareGitHubUrl) {
+    const rawUrl = isBareGitHubUrl ? `https://${cleaned}` : cleaned;
+    const rawParts = /^https?:\/\/([^/?#]+)(\/[^?#]*)?(?:[?#][\s\S]*)?$/i.exec(
+      rawUrl,
+    );
+    const authority = rawParts?.[1];
+    const rawPath = rawParts?.[2] ?? "";
+    if (
+      !authority ||
+      authority.includes("@") ||
+      rawPath
+        .split("/")
+        .some((segment) => RAW_DOT_SEGMENT_PATTERN.test(segment))
+    ) {
+      return null;
+    }
+
+    let parsed: URL;
+    try {
+      parsed = new URL(rawUrl);
+    } catch {
+      // error-policy:J3 Malformed repository URLs remain explicitly invalid.
+      return null;
+    }
+
+    if (
+      (parsed.protocol !== "http:" && parsed.protocol !== "https:") ||
+      parsed.hostname !== "github.com" ||
+      parsed.username !== "" ||
+      parsed.password !== "" ||
+      parsed.port !== ""
+    ) {
+      return null;
+    }
+
+    path = parsed.pathname;
+    if (path.endsWith("/")) {
+      path = path.slice(0, -1);
+    }
+    if (!path.startsWith("/")) {
+      return null;
+    }
+    path = path.slice(1);
+  } else if (hasScheme) {
+    return null;
+  }
+
+  const parts = path.split("/");
+  if (parts.length !== 2) {
+    return null;
+  }
+
+  const owner = parts[0];
+  let name = parts[1];
+  if (name.endsWith(".git")) {
+    name = name.slice(0, -4);
+  }
+
+  if (
+    !GITHUB_OWNER_PATTERN.test(owner) ||
+    !GITHUB_REPO_PATTERN.test(name) ||
+    name === "." ||
+    name === ".."
+  ) {
+    return null;
+  }
+
+  return { owner, name };
 }
 
 /** @deprecated LLM `confirmed` is never authoritative — use {@link requireConfirmation}. */
