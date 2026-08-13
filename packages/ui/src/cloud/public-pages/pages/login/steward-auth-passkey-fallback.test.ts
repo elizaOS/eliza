@@ -1,3 +1,7 @@
+/**
+ * Verifies the patched Steward SDK's opt-out from implicit passkey enrollment
+ * using its real client implementation with only the HTTP boundary replaced.
+ */
 // @vitest-environment jsdom
 
 import { type StewardApiError, StewardAuth } from "@stwd/sdk";
