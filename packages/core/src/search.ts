@@ -1365,6 +1365,10 @@ export class BM25 {
 			results.splice(insertAt, 0, result);
 			results.pop();
 		}
+		// The array is only sorted once it fills to `topK`; when fewer than
+		// `topK` documents score above zero that path never runs, so ensure the
+		// returned array honors the documented descending-score order here.
+		results.sort((a, b) => b.score - a.score);
 		return results;
 	}
 

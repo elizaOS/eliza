@@ -5,7 +5,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { rankMessageSearch } from "./search.ts";
+import { BM25, rankMessageSearch } from "./search.ts";
 
 describe("rankMessageSearch", () => {
 	it("matches a typo by trigram similarity, not only exact substrings", () => {
@@ -62,5 +62,23 @@ describe("rankMessageSearch", () => {
 		);
 
 		expect(hits).toEqual([]);
+	});
+});
+
+describe("BM25", () => {
+	it("returns results in descending score order when fewer than topK documents match", () => {
+		const bm25 = new BM25([
+			{ content: "alpha beta" },
+			{ content: "alpha alpha alpha alpha alpha" },
+			{ content: "alpha alpha gamma" },
+			{ content: "nothing here" },
+		]);
+
+		// Three documents score above zero for "alpha", and topK (4) is larger,
+		// so the fill-phase sort that runs at `results.length === topK` never
+		// fires. The returned array must still be sorted by descending score.
+		const scores = bm25.search("alpha", 4).map((result) => result.score);
+
+		expect(scores).toEqual([...scores].sort((a, b) => b - a));
 	});
 });
