@@ -7461,7 +7461,7 @@
   "cloud.getStarted.continuationInvalidTitle": "이 연결 링크는 유효하지 않습니다",
   "cloud.getStarted.continuationPausedBody": "이 페이지에서는 연결을 확인하거나 연결하지 않았습니다. 현재 Cloud 흐름은 크레딧을 추가하고 Dedicated 컴퓨팅을 시작할 수도 있으므로 안전한 연결 흐름이 제공될 때까지 메시징 연결을 사용할 수 없습니다. 지금은 메시징 앱에서 계속 채팅하세요.",
   "cloud.getStarted.continuationPausedTitle": "메시징 연결 일시 중지",
-  "cloud.getStarted.continuationStorageErrorBody": "이 페이지에서 연결을 안전하게 저장하거나 지울 수 없습니다. Cloud 요청은 전송되지 않았습니다. 브라우저 저장소 설정을 확인한 다음 연결을 다시 닫으세요.",
+  "cloud.getStarted.continuationStorageErrorBody": "이 페이지에서 연결을 안전하게 읽거나 저장하거나 지울 수 없습니다. Cloud 요청은 전송되지 않았습니다. 브라우저 저장소 설정을 확인한 후 다시 시도하세요.",
   "cloud.getStarted.continuationStorageErrorTitle": "브라우저 저장소가 이 연결을 차단했습니다",
   "cloud.getStarted.setupBody": "이 페이지에서는 에이전트를 시작하지 않습니다. 준비되었을 때만 계속하세요. Cloud 설정은 에이전트를 선택하거나 만들고, 컴퓨팅을 시작하고, 계정 크레딧을 사용할 수 있습니다.",
   "cloud.getStarted.setupCta": "Cloud 설정으로 계속",

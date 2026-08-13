@@ -14,6 +14,16 @@ interface StoredPendingOnboardingSession {
   expiresAt: number;
 }
 
+export type PendingOnboardingSessionPresence =
+  | "present"
+  | "absent"
+  | "indeterminate";
+
+const BROWSER_STORAGE_ACCESSORS = [
+  () => window.localStorage,
+  () => window.sessionStorage,
+] as const;
+
 export function sanitizeOnboardingSessionToken(
   value: string | null | undefined,
 ): string | null {
@@ -22,91 +32,93 @@ export function sanitizeOnboardingSessionToken(
   return trimmed.startsWith("platform:") ? null : trimmed;
 }
 
-function eachStorage(): Storage[] {
-  if (typeof window === "undefined") return [];
-  const storages: Storage[] = [];
-  try {
-    storages.push(window.localStorage);
-  } catch {
-    // error-policy:J3 storage may be disabled entirely by the browser.
-  }
-  try {
-    storages.push(window.sessionStorage);
-  } catch {
-    // error-policy:J3 the credential remains in the same-origin URL instead.
-  }
-  return storages;
-}
-
 /**
  * Persist the credential and report whether either browser store verifies the
  * exact write. The caller may remove the URL parameter only after success.
  */
-export function storePendingOnboardingSession(token: string): boolean {
+export function storePendingOnboardingSession(
+  token: string,
+): PendingOnboardingSessionPresence {
   const sanitized = sanitizeOnboardingSessionToken(token);
-  if (!sanitized) return false;
+  if (!sanitized || typeof window === "undefined") return "indeterminate";
   const stored = JSON.stringify({
     token: sanitized,
     expiresAt: Date.now() + PENDING_ONBOARDING_SESSION_TTL_MS,
   } satisfies StoredPendingOnboardingSession);
   let persisted = false;
-  for (const storage of eachStorage()) {
+  for (const getStorage of BROWSER_STORAGE_ACCESSORS) {
     try {
+      const storage = getStorage();
       storage.setItem(PENDING_ONBOARDING_SESSION_KEY, stored);
       persisted ||= storage.getItem(PENDING_ONBOARDING_SESSION_KEY) === stored;
     } catch {
       // error-policy:J3 unwritable storage leaves the URL credential intact.
     }
   }
-  return persisted;
+  return persisted ? "present" : "indeterminate";
 }
 
-function parseStored(value: string | null): string | null {
-  if (!value) return null;
+function hasValidStoredSession(value: string | null): boolean {
+  if (!value) return false;
   try {
     const parsed = JSON.parse(value) as Partial<StoredPendingOnboardingSession>;
-    if (
+    return Boolean(
       typeof parsed.token === "string" &&
-      typeof parsed.expiresAt === "number" &&
-      parsed.expiresAt >= Date.now()
-    ) {
-      return sanitizeOnboardingSessionToken(parsed.token);
-    }
-    return null;
+        sanitizeOnboardingSessionToken(parsed.token) &&
+        typeof parsed.expiresAt === "number" &&
+        parsed.expiresAt >= Date.now(),
+    );
   } catch {
     // error-policy:J3 malformed persisted input is not a usable credential.
-    return null;
+    return false;
   }
 }
 
-export function peekPendingOnboardingSession(): string | null {
-  let pendingToken: string | null = null;
-  for (const storage of eachStorage()) {
-    try {
-      const value = storage.getItem(PENDING_ONBOARDING_SESSION_KEY);
-      if (!value) continue;
-      const token = parseStored(value);
-      if (token) {
-        pendingToken ??= token;
-      } else {
-        storage.removeItem(PENDING_ONBOARDING_SESSION_KEY);
-      }
-    } catch {
-      // error-policy:J3 unreadable storage means no pending credential.
-    }
+function peekStoragePresence(
+  getStorage: (typeof BROWSER_STORAGE_ACCESSORS)[number],
+): PendingOnboardingSessionPresence {
+  let storage: Storage;
+  let value: string | null;
+  try {
+    storage = getStorage();
+    value = storage.getItem(PENDING_ONBOARDING_SESSION_KEY);
+  } catch {
+    // error-policy:J4 an unreadable slot may still own a credential, so setup must remain visibly blocked.
+    return "indeterminate";
   }
-  return pendingToken;
+  if (value === null) return "absent";
+
+  if (hasValidStoredSession(value)) return "present";
+
+  try {
+    storage.removeItem(PENDING_ONBOARDING_SESSION_KEY);
+    const remaining = storage.getItem(PENDING_ONBOARDING_SESSION_KEY);
+    if (remaining === null) return "absent";
+    return hasValidStoredSession(remaining) ? "present" : "indeterminate";
+  } catch {
+    // error-policy:J4 failed cleanup cannot prove that the unusable credential is absent.
+    return "indeterminate";
+  }
+}
+
+export function peekPendingOnboardingSession(): PendingOnboardingSessionPresence {
+  if (typeof window === "undefined") return "indeterminate";
+  let present = false;
+  let indeterminate = false;
+  for (const getStorage of BROWSER_STORAGE_ACCESSORS) {
+    const presence = peekStoragePresence(getStorage);
+    if (presence === "present") present = true;
+    if (presence === "indeterminate") indeterminate = true;
+  }
+  if (present) return "present";
+  return indeterminate ? "indeterminate" : "absent";
 }
 
 /** Remove and verify both browser copies before the page reports dismissal. */
-export function clearPendingOnboardingSession(): boolean {
-  if (typeof window === "undefined") return false;
+export function clearPendingOnboardingSession(): PendingOnboardingSessionPresence {
+  if (typeof window === "undefined") return "indeterminate";
   let cleared = true;
-  const accessors = [
-    () => window.localStorage,
-    () => window.sessionStorage,
-  ] as const;
-  for (const getStorage of accessors) {
+  for (const getStorage of BROWSER_STORAGE_ACCESSORS) {
     let storage: Storage;
     try {
       storage = getStorage();
@@ -129,5 +141,5 @@ export function clearPendingOnboardingSession(): boolean {
       cleared = false;
     }
   }
-  return cleared;
+  return cleared ? "absent" : "indeterminate";
 }

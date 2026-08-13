@@ -1,8 +1,21 @@
 /** Verifies the fail-closed continuation and explicit Cloud setup boundary. */
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { MemoryRouter, Route, Routes } from "react-router-dom";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
+import { StrictMode, useState } from "react";
+import {
+  BrowserRouter,
+  Route,
+  Routes,
+  useLocation,
+  useNavigate,
+} from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createTranslator,
@@ -16,6 +29,7 @@ import {
 } from "./lib/onboarding-continuation";
 
 const TOKEN = "aaaaaaaa-test-test-test-tokentoken01";
+const STORAGE_KEY = "eliza.join.onboardingSession";
 const GET_STARTED_KEYS = [
   "cloud.getStarted.continuationCancel",
   "cloud.getStarted.continuationInvalidBody",
@@ -41,10 +55,13 @@ vi.mock("../shell/CloudI18nProvider", () => ({
 
 const { default: GetStartedPage } = await import("./GetStartedPage");
 
-function renderPage(entry = `/get-started?onboardingSession=${TOKEN}`) {
+function renderPage(
+  entry = `/get-started?onboardingSession=${TOKEN}`,
+  strictMode = false,
+) {
   window.history.replaceState(null, "", entry);
-  return render(
-    <MemoryRouter initialEntries={[entry]}>
+  const page = (
+    <BrowserRouter>
       <Routes>
         <Route path="/get-started" element={<GetStartedPage />} />
         <Route
@@ -52,7 +69,37 @@ function renderPage(entry = `/get-started?onboardingSession=${TOKEN}`) {
           element={<div data-testid="join-route">join</div>}
         />
       </Routes>
-    </MemoryRouter>,
+    </BrowserRouter>
+  );
+  return render(strictMode ? <StrictMode>{page}</StrictMode> : page);
+}
+
+function RemountHarness(): React.JSX.Element {
+  const [mounted, setMounted] = useState(true);
+  const location = useLocation();
+  const navigate = useNavigate();
+  return (
+    <>
+      <output data-testid="router-location">
+        {location.pathname}
+        {location.search}
+        {location.hash}
+      </output>
+      <button type="button" onClick={() => setMounted((value) => !value)}>
+        {mounted ? "Unmount page" : "Remount page"}
+      </button>
+      <button
+        type="button"
+        onClick={() =>
+          navigate(
+            `/get-started?source=messaging&onboardingSession=${TOKEN}#review`,
+          )
+        }
+      >
+        Add continuation
+      </button>
+      {mounted ? <GetStartedPage /> : null}
+    </>
   );
 }
 
@@ -131,15 +178,160 @@ describe("GetStartedPage", () => {
   });
 
   it("retains a valid continuation locally without verifying or linking it", () => {
-    renderPage();
+    renderPage(`/get-started?onboardingSession=${TOKEN}`, true);
 
     expect(
       screen.getByText(
         "This page did not verify or link this connection. The current Cloud flow can also add credit and start Dedicated compute, so messaging connections are unavailable until a safe linking flow ships. Keep chatting in your messaging app for now.",
       ),
     ).toBeTruthy();
-    expect(peekPendingOnboardingSession()).toBe(TOKEN);
+    expect(peekPendingOnboardingSession()).toBe("present");
     expect(window.location.search).toBe("");
+  });
+
+  it("removes the token from router state once across StrictMode and remounts", async () => {
+    const initialTime = Date.parse("2026-08-13T12:00:00.000Z");
+    const nowSpy = vi.spyOn(Date, "now").mockReturnValue(initialTime);
+    const originalSetItem = Storage.prototype.setItem;
+    const tokenWrites: Array<{ storage: Storage; value: string }> = [];
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(function (
+      this: Storage,
+      key: string,
+      value: string,
+    ) {
+      if (key.includes("onboardingSession")) {
+        tokenWrites.push({ storage: this, value });
+      }
+      originalSetItem.call(this, key, value);
+    });
+    window.history.replaceState(
+      { source: "test" },
+      "",
+      `/get-started?source=messaging&onboardingSession=${TOKEN}#review`,
+    );
+
+    render(
+      <StrictMode>
+        <BrowserRouter>
+          <RemountHarness />
+        </BrowserRouter>
+      </StrictMode>,
+    );
+
+    await waitFor(() =>
+      expect(screen.getByTestId("router-location").textContent).toBe(
+        "/get-started?source=messaging#review",
+      ),
+    );
+    expect(window.location.search).toBe("?source=messaging");
+    expect(window.location.hash).toBe("#review");
+    expect(tokenWrites).toHaveLength(2);
+    const initialLocalRecord = tokenWrites.find(
+      ({ storage }) => storage === window.localStorage,
+    )?.value;
+    const initialSessionRecord = tokenWrites.find(
+      ({ storage }) => storage === window.sessionStorage,
+    )?.value;
+    expect(initialLocalRecord).toEqual(expect.any(String));
+    expect(initialSessionRecord).toEqual(expect.any(String));
+
+    nowSpy.mockReturnValue(initialTime + 30 * 60 * 1000);
+    fireEvent.click(screen.getByRole("button", { name: "Unmount page" }));
+    fireEvent.click(screen.getByRole("button", { name: "Remount page" }));
+
+    expect(
+      screen.getByRole("heading", { name: "Messaging connection paused" }),
+    ).toBeTruthy();
+    expect(screen.getByTestId("router-location").textContent).toBe(
+      "/get-started?source=messaging#review",
+    );
+    expect(tokenWrites).toHaveLength(2);
+    expect(window.localStorage.getItem(STORAGE_KEY)).toBe(initialLocalRecord);
+    expect(window.sessionStorage.getItem(STORAGE_KEY)).toBe(
+      initialSessionRecord,
+    );
+  });
+
+  it("processes a continuation that arrives on the mounted route", async () => {
+    window.history.replaceState(null, "", "/get-started?source=messaging");
+    render(
+      <BrowserRouter>
+        <RemountHarness />
+      </BrowserRouter>,
+    );
+    expect(screen.getByRole("heading", { name: "Set up Eliza Cloud" })).toBe(
+      document.activeElement,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Add continuation" }));
+
+    await waitFor(() =>
+      expect(
+        screen.getByRole("heading", { name: "Messaging connection paused" }),
+      ).toBe(document.activeElement),
+    );
+    expect(screen.getByTestId("router-location").textContent).toBe(
+      "/get-started?source=messaging#review",
+    );
+    expect(peekPendingOnboardingSession()).toBe("present");
+  });
+
+  it("allows verified dismissal when persistence remains blocked", () => {
+    window.localStorage.setItem(STORAGE_KEY, "local-residual");
+    window.sessionStorage.setItem(STORAGE_KEY, "session-residual");
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new Error("storage blocked");
+    });
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    renderPage(`/get-started?onboardingSession=${TOKEN}`, true);
+
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+    expect(
+      screen.getByRole("heading", {
+        name: "Browser storage blocked this connection",
+      }),
+    ).toBe(document.activeElement);
+    expect(window.location.search).toContain(`onboardingSession=${TOKEN}`);
+
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss connection" }));
+
+    expect(screen.getByRole("heading", { name: "Set up Eliza Cloud" })).toBe(
+      document.activeElement,
+    );
+    expect(window.location.search).toBe("");
+    expect(window.localStorage.getItem(STORAGE_KEY)).toBeNull();
+    expect(window.sessionStorage.getItem(STORAGE_KEY)).toBeNull();
+    expect(peekPendingOnboardingSession()).toBe("absent");
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("dismisses an indeterminate peek only after both stores verify absence", () => {
+    window.localStorage.setItem(STORAGE_KEY, "residual");
+    const originalGetItem = Storage.prototype.getItem;
+    vi.spyOn(Storage.prototype, "getItem")
+      .mockImplementationOnce(() => {
+        throw new Error("temporary read failure");
+      })
+      .mockImplementation(function (this: Storage, key: string) {
+        return originalGetItem.call(this, key);
+      });
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    renderPage("/get-started");
+    expect(
+      screen.getByRole("heading", {
+        name: "Browser storage blocked this connection",
+      }),
+    ).toBe(document.activeElement);
+
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss connection" }));
+
+    expect(screen.getByRole("heading", { name: "Set up Eliza Cloud" })).toBe(
+      document.activeElement,
+    );
+    expect(window.localStorage.length).toBe(0);
+    expect(window.sessionStorage.length).toBe(0);
+    expect(window.localStorage.getItem(STORAGE_KEY)).toBeNull();
+    expect(fetchSpy).not.toHaveBeenCalled();
   });
 
   it("fails closed on a malformed raw continuation", () => {
@@ -191,16 +383,18 @@ describe("GetStartedPage", () => {
       ).toBeTruthy();
       expect(window.location.search).toBe("");
       expect(retainedStorage().length).toBe(1);
-      expect(peekPendingOnboardingSession()).toBe(TOKEN);
+      expect(peekPendingOnboardingSession()).toBe("present");
       expect(screen.queryByTestId("join-route")).toBeNull();
       expect(fetchSpy).not.toHaveBeenCalled();
     },
   );
 
   it("keeps the URL and shows a designed failure when neither store persists", () => {
-    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
-      throw new Error("storage blocked");
-    });
+    const setSpy = vi
+      .spyOn(Storage.prototype, "setItem")
+      .mockImplementation(() => {
+        throw new Error("storage blocked");
+      });
     const fetchSpy = vi.spyOn(globalThis, "fetch");
 
     renderPage();
@@ -211,19 +405,73 @@ describe("GetStartedPage", () => {
       }),
     ).toBe(document.activeElement);
     expect(window.location.search).toContain(`onboardingSession=${TOKEN}`);
-    expect(peekPendingOnboardingSession()).toBeNull();
+    expect(peekPendingOnboardingSession()).toBe("absent");
     expect(screen.queryByTestId("join-route")).toBeNull();
     expect(fetchSpy).not.toHaveBeenCalled();
+
+    setSpy.mockRestore();
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+    expect(
+      screen.getByRole("heading", { name: "Messaging connection paused" }),
+    ).toBe(document.activeElement);
+    expect(window.location.search).toBe("");
+    expect(fetchSpy).not.toHaveBeenCalled();
   });
+
+  it.each(["local", "session"])(
+    "blocks setup when a residual %s credential is unreadable, then restores it on retry",
+    (blockedName) => {
+      storePendingOnboardingSession(TOKEN);
+      const blockedStorage =
+        blockedName === "local" ? window.localStorage : window.sessionStorage;
+      const readableStorage =
+        blockedName === "local" ? window.sessionStorage : window.localStorage;
+      readableStorage.clear();
+      const originalGetItem = Storage.prototype.getItem;
+      const getSpy = vi
+        .spyOn(Storage.prototype, "getItem")
+        .mockImplementation(function (this: Storage, key: string) {
+          if (this === blockedStorage) throw new Error("storage unreadable");
+          return originalGetItem.call(this, key);
+        });
+      const fetchSpy = vi.spyOn(globalThis, "fetch");
+
+      renderPage("/get-started");
+
+      expect(
+        screen.getByRole("heading", {
+          name: "Browser storage blocked this connection",
+        }),
+      ).toBe(document.activeElement);
+      expect(
+        screen.queryByRole("link", { name: "Continue to Cloud setup" }),
+      ).toBeNull();
+      expect(screen.queryByTestId("join-route")).toBeNull();
+      expect(fetchSpy).not.toHaveBeenCalled();
+
+      getSpy.mockRestore();
+      fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+
+      expect(
+        screen.getByRole("heading", { name: "Messaging connection paused" }),
+      ).toBe(document.activeElement);
+      expect(peekPendingOnboardingSession()).toBe("present");
+      expect(
+        screen.queryByRole("link", { name: "Continue to Cloud setup" }),
+      ).toBeNull();
+      expect(screen.queryByTestId("join-route")).toBeNull();
+      expect(fetchSpy).not.toHaveBeenCalled();
+    },
+  );
 
   it("dismisses and forgets a continuation before showing setup consent", () => {
     const fetchSpy = vi.spyOn(globalThis, "fetch");
     renderPage();
-    expect(peekPendingOnboardingSession()).toBe(TOKEN);
+    expect(peekPendingOnboardingSession()).toBe("present");
 
     fireEvent.click(screen.getByRole("button", { name: "Dismiss connection" }));
 
-    expect(peekPendingOnboardingSession()).toBeNull();
+    expect(peekPendingOnboardingSession()).toBe("absent");
     expect(window.localStorage.length).toBe(0);
     expect(window.sessionStorage.length).toBe(0);
     expect(window.location.search).toBe("");
@@ -272,9 +520,7 @@ describe("GetStartedPage", () => {
       expect(fetchSpy).not.toHaveBeenCalled();
 
       removeSpy.mockRestore();
-      fireEvent.click(
-        screen.getByRole("button", { name: "Dismiss connection" }),
-      );
+      fireEvent.click(screen.getByRole("button", { name: "Try again" }));
       expect(window.localStorage.length).toBe(0);
       expect(window.sessionStorage.length).toBe(0);
       expect(screen.getByRole("heading", { name: "Set up Eliza Cloud" })).toBe(

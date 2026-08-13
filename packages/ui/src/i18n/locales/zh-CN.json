@@ -7385,7 +7385,7 @@
   "cloud.getStarted.continuationInvalidTitle": "此连接链接无效",
   "cloud.getStarted.continuationPausedBody": "此页面未验证或关联该连接。当前 Cloud 流程还可能增加额度并启动 Dedicated 计算，因此在安全关联流程发布前，消息连接暂不可用。请先继续在消息应用中聊天。",
   "cloud.getStarted.continuationPausedTitle": "消息连接已暂停",
-  "cloud.getStarted.continuationStorageErrorBody": "此页面无法安全地保存或清除该连接。未发送任何 Cloud 请求。请检查浏览器存储设置，然后再次取消该连接。",
+  "cloud.getStarted.continuationStorageErrorBody": "此页面无法安全地读取、保存或清除该连接。未发送任何 Cloud 请求。请检查浏览器存储设置，然后重试。",
   "cloud.getStarted.continuationStorageErrorTitle": "浏览器存储阻止了此连接",
   "cloud.getStarted.setupBody": "此页面不会启动智能体。请仅在准备好后继续：Cloud 设置可能会选择或创建智能体、启动计算并使用账户额度。",
   "cloud.getStarted.setupCta": "继续进行 Cloud 设置",
