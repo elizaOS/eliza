@@ -1682,4 +1682,3 @@ jobs:
           node packages/cloud/scripts/verify-environment-routing-cli.mjs \
             --environment "${{ steps.env.outputs.environment }}" \
             --require-beacon
-
