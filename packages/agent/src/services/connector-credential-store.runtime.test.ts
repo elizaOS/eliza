@@ -163,4 +163,29 @@ describe("ConnectorCredentialStoreService start semantics (real runtime)", () =>
       "restart-surviving-material",
     );
   }, 240_000);
+
+  it("leaves a registered-but-failed store null in getService while still listed in the registry — the exact fail-closed signal (#18080)", async () => {
+    // The shipped store's start() cannot fail organically (it only constructs
+    // over the already-installed bridge vault), so the failure is injected at
+    // the same seam a real environmental fault would hit: the static start the
+    // service loader awaits. Registration and lookup semantics stay real.
+    class FailingConnectorCredentialStoreService extends ConnectorCredentialStoreService {
+      static override async start(): Promise<never> {
+        throw new Error("injected start failure");
+      }
+    }
+
+    const runtime = await bootRuntime(new Map());
+    await runtime.registerService(FailingConnectorCredentialStoreService);
+    await expect(runtime.getServiceLoadPromise(SERVICE_TYPE)).rejects.toThrow(
+      /failed to start/,
+    );
+
+    // The two-sided signal persistConnectorCredentialRefs keys on: getService
+    // resolves null, while the registry still lists the type. Durability was
+    // expected here, so OAuth completion must fail closed instead of demoting
+    // the write to volatile SECRETS.
+    expect(runtime.getService(SERVICE_TYPE)).toBeNull();
+    expect(runtime.getRegisteredServiceTypes()).toContain(SERVICE_TYPE);
+  }, 120_000);
 });

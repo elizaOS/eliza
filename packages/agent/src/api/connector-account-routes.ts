@@ -20,6 +20,7 @@ import {
   type ConnectorOAuthFlow,
   DEFAULT_PRIVACY_LEVEL,
   getConnectorAccountManager,
+  isElizaError,
   isPrivacyLevel,
   type Metadata,
 } from "@elizaos/core";
@@ -1000,6 +1001,25 @@ export async function handleConnectorAccountRoutes(
           redirectUrl: result.redirectUrl,
         });
       } catch (err) {
+        // error-policy:J1 Boundary translation: an ElizaError from the
+        // completion path (e.g. CONNECTOR_CREDENTIAL_WRITER_UNAVAILABLE from
+        // #18080's fail-closed contract) keeps its stable code and non-secret
+        // context in the structured response so callers can classify the
+        // failure instead of parsing prose.
+        if (isElizaError(err)) {
+          json(
+            res,
+            {
+              provider,
+              ok: false,
+              error: err.message,
+              code: err.code,
+              ...(err.context ? { context: err.context } : {}),
+            },
+            400,
+          );
+          return true;
+        }
         error(
           res,
           err instanceof Error ? err.message : "Failed to complete OAuth flow",

@@ -2,14 +2,17 @@
  * Persists OAuth credential material for a connector account and reads the
  * resulting refs back out. `persistConnectorCredentialRefs` writes each secret
  * to the first available durable vault (connector credential store or vault)
- * and records a `vaultRef` pointer on the account via storage; it refuses to
- * proceed unless both a durable vault writer and a ref writer exist, so an
- * account is never marked connected without durable credentials. The core
- * SECRETS service is deliberately NOT an eligible writer: its global storage
- * mutates `runtime.character.settings.secrets` in process memory only, so a
- * credential written there dies with the process while its vaultRef dangles
- * (#18080). SECRETS remains a read-side probe in `credential-resolver.ts` so
- * refs written before this hardening still resolve within the same process.
+ * and records a `vaultRef` pointer on the account via storage. With no durable
+ * writer the #18080 product contract applies: durability-expected topologies
+ * (Cloud-provisioned containers via `ELIZA_CLOUD_PROVISIONED`, hosts whose
+ * credential store registered but failed to start, or operators who set
+ * `ELIZA_REQUIRE_DURABLE_CONNECTOR_CREDENTIALS=1`) fail closed with a typed
+ * `CONNECTOR_CREDENTIAL_WRITER_UNAVAILABLE` error and record neither secret
+ * nor ref, while hostless local desktop/dev runtimes keep the pre-existing
+ * volatile SECRETS keep-until-restart write, flagged `volatile` in the result
+ * and warned in the log (the credential dies with the process). SECRETS also
+ * remains a read-side probe in `credential-resolver.ts` so previously written
+ * refs still resolve within the same process.
  * `credentialRefRecordsFromMetadata` is the read side, extracting ref records
  * from account metadata for the credential resolver. Consumed by the connector
  * account provider on OAuth completion and by `DefaultGoogleCredentialResolver`.
@@ -17,7 +20,10 @@
 import {
   CONNECTOR_ACCOUNT_STORAGE_SERVICE_TYPE,
   type ConnectorAccountManager,
+  ElizaError,
   type IAgentRuntime,
+  logger,
+  resolveSetting,
 } from "@elizaos/core";
 
 type JsonValue =
@@ -49,6 +55,22 @@ export const CONNECTOR_VAULT_SERVICE_TYPES = ["vault", "VAULT"] as const;
 
 export const CORE_SECRETS_SERVICE_TYPE = "SECRETS";
 
+/**
+ * Stable ElizaError code thrown when OAuth completion must fail closed because
+ * no durable credential writer can hold the token material (#18080).
+ */
+export const CONNECTOR_CREDENTIAL_WRITER_UNAVAILABLE_CODE =
+  "CONNECTOR_CREDENTIAL_WRITER_UNAVAILABLE";
+
+/**
+ * Opt-in strict mode for hostless local runtimes: set to `1`/`true` to fail
+ * OAuth completion closed instead of accepting the volatile keep-until-restart
+ * SECRETS write. Durability-expected topologies (Cloud-provisioned containers,
+ * hosts whose credential store registered) fail closed regardless.
+ */
+export const REQUIRE_DURABLE_CONNECTOR_CREDENTIALS_SETTING =
+  "ELIZA_REQUIRE_DURABLE_CONNECTOR_CREDENTIALS";
+
 export interface ConnectorCredentialRefMetadata extends JsonRecord {
   credentialType: string;
   vaultRef: string;
@@ -69,6 +91,12 @@ export interface ConnectorCredentialPersistResult {
   refs: ConnectorCredentialRefMetadata[];
   vaultAvailable: boolean;
   storageAvailable: boolean;
+  /**
+   * True when the secret landed in the volatile SECRETS store (hostless local
+   * desktop/dev keep-until-restart mode): the credential works now but dies
+   * with the process, and the ref will dangle after a restart.
+   */
+  volatile: boolean;
 }
 
 interface ConnectorCredentialInput {
@@ -102,17 +130,61 @@ export async function persistConnectorCredentialRefs(
   params: PersistConnectorCredentialRefsParams
 ): Promise<ConnectorCredentialPersistResult> {
   const refs: ConnectorCredentialRefMetadata[] = [];
-  const vaultWriters = resolveVaultWriters(params.runtime, {
+  const writerContext = {
     provider: params.provider,
     accountId: params.accountIdForRef,
     caller: params.caller,
-  });
+  };
+  const vaultWriters = resolveVaultWriters(params.runtime, writerContext);
+  let volatileWrite = false;
   if (vaultWriters.length === 0) {
-    throw new Error(
-      `No durable connector credential store or vault writer is available for ${params.provider} account ${params.accountIdForRef}. ` +
-        "Refusing to mark OAuth account connected without persisted credentials: the core SECRETS store is process-memory only, so a credential written there would silently die at the next restart while its vaultRef dangles. " +
-        "Run under a host that installs a durable vault (so the connector credential store service registers), or retry after that service has started."
+    // Product contract from #18080: durability-expected topologies fail
+    // closed; hostless local desktop/dev keeps the pre-existing volatile
+    // keep-until-restart behavior unless the operator opts into strict mode.
+    const cloudProvisioned = flagIsSet(params.runtime, "ELIZA_CLOUD_PROVISIONED");
+    const requireDurable = flagIsSet(params.runtime, REQUIRE_DURABLE_CONNECTOR_CREDENTIALS_SETTING);
+    // A durable store/vault service name that is REGISTERED on the runtime but
+    // resolved no writer means the store failed to start — a transient boot
+    // failure must fail closed, not silently demote persistence.
+    const registeredDurableServices = registeredDurableServiceTypes(params.runtime);
+    const volatileWriter = resolveVolatileSecretsWriter(params.runtime);
+    if (
+      cloudProvisioned ||
+      requireDurable ||
+      registeredDurableServices.length > 0 ||
+      !volatileWriter
+    ) {
+      throw new ElizaError(
+        `No durable connector credential store or vault writer is available for ${params.provider} account ${params.accountIdForRef}. ` +
+          "Refusing to mark OAuth account connected without persisted credentials: the core SECRETS store is process-memory only, so a credential written there would silently die at the next restart while its vaultRef dangles. " +
+          "Run under a host that installs a durable vault (so the connector credential store service registers), or retry after that service has started.",
+        {
+          code: CONNECTOR_CREDENTIAL_WRITER_UNAVAILABLE_CODE,
+          severity: "fatal",
+          context: {
+            provider: params.provider,
+            accountId: params.accountIdForRef,
+            caller: params.caller,
+            probedStoreServices: [...CONNECTOR_CREDENTIAL_STORE_SERVICE_TYPES],
+            probedVaultServices: [...CONNECTOR_VAULT_SERVICE_TYPES],
+            registeredDurableServices,
+            cloudProvisioned,
+            requireDurable,
+            volatileFallbackAvailable: Boolean(volatileWriter),
+          },
+        }
+      );
+    }
+    logger.warn(
+      {
+        src: "plugin:google:credential-refs",
+        provider: params.provider,
+        accountId: params.accountIdForRef,
+      },
+      "[persistConnectorCredentialRefs] No durable credential writer; persisting through the volatile SECRETS store (hostless local mode). The credential works until the process restarts. Install a durable host vault, or set ELIZA_REQUIRE_DURABLE_CONNECTOR_CREDENTIALS=1 to fail closed instead."
     );
+    vaultWriters.push(volatileWriter);
+    volatileWrite = true;
   }
   if (!params.storageAccountId) {
     throw new Error(
@@ -152,8 +224,9 @@ export async function persistConnectorCredentialRefs(
 
   return {
     refs,
-    vaultAvailable: vaultWriters.length > 0,
+    vaultAvailable: vaultWriters.length > 0 && !volatileWrite,
     storageAvailable: storageWriters.length > 0,
+    volatile: volatileWrite,
   };
 }
 
@@ -266,9 +339,73 @@ function resolveVaultWriters(
   }
 
   // Deliberately no SECRETS writer here: core SECRETS global storage is
-  // process-memory only, so accepting it records a connected account whose
-  // credential dies at the next restart (#18080). Fail closed instead.
+  // process-memory only, so accepting it as a durable writer records a
+  // connected account whose credential dies at the next restart (#18080).
+  // `persistConnectorCredentialRefs` decides whether the volatile fallback
+  // below is allowed to stand in when this list comes back empty.
   return writers;
+}
+
+/**
+ * Volatile keep-until-restart writer over the core SECRETS store — the
+ * pre-#18080 behavior, now allowed ONLY on hostless local desktop/dev
+ * runtimes where no durability was ever expected.
+ */
+function resolveVolatileSecretsWriter(runtime: IAgentRuntime): VaultWriter | null {
+  const secrets = getService(runtime, CORE_SECRETS_SERVICE_TYPE) as {
+    setGlobal?: (
+      key: string,
+      value: string,
+      config?: { sensitive?: boolean }
+    ) => Promise<boolean> | boolean;
+    set?: (
+      key: string,
+      value: string,
+      context: JsonRecord,
+      config?: { sensitive?: boolean }
+    ) => Promise<boolean> | boolean;
+  } | null;
+  if (typeof secrets?.setGlobal !== "function" && typeof secrets?.set !== "function") {
+    return null;
+  }
+  return {
+    name: "SECRETS",
+    write: async (vaultRef, credential) => {
+      if (typeof secrets.setGlobal === "function") {
+        await secrets.setGlobal(vaultRef, credential.value, { sensitive: true });
+        return vaultRef;
+      }
+      await secrets.set?.(
+        vaultRef,
+        credential.value,
+        { level: "global", agentId: runtime.agentId, requesterId: runtime.agentId },
+        { sensitive: true }
+      );
+      return vaultRef;
+    },
+  };
+}
+
+/**
+ * Durable store/vault service names registered on this runtime, regardless of
+ * whether they resolved to a usable writer. A non-empty result with zero
+ * writers means the durable store failed to start.
+ */
+function registeredDurableServiceTypes(runtime: IAgentRuntime): string[] {
+  const registered = (
+    runtime as { getRegisteredServiceTypes?: () => string[] }
+  ).getRegisteredServiceTypes?.();
+  if (!Array.isArray(registered)) return [];
+  const durableNames = new Set<string>([
+    ...CONNECTOR_CREDENTIAL_STORE_SERVICE_TYPES,
+    ...CONNECTOR_VAULT_SERVICE_TYPES,
+  ]);
+  return registered.filter((name) => durableNames.has(name));
+}
+
+function flagIsSet(runtime: IAgentRuntime, key: string): boolean {
+  const value = resolveSetting(runtime, key)?.toLowerCase();
+  return value === "1" || value === "true";
 }
 
 function resolveCredentialRefWriters(

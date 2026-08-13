@@ -316,6 +316,7 @@ vi.mock("@elizaos/core", async (importOriginal) => ({
 const { getConnectorAccountManager, InMemoryConnectorAccountStorage } =
   coreMocks;
 
+import { ElizaError } from "@elizaos/core";
 import {
   type ConnectorAccountRouteContext,
   handleConnectorAccountRoutes,
@@ -631,6 +632,52 @@ describe("connector account routes", () => {
     await expect(handleConnectorAccountRoutes(ctx)).resolves.toBe(true);
     expect(captured.status, JSON.stringify(captured.body)).toBe(201);
     expect(seen).toEqual(["http://127.0.0.1:2138"]);
+  });
+
+  it("serializes an ElizaError's stable code and context through the callback boundary and fails the flow (#18080)", async () => {
+    const { ctx, captured, runtime, storage } = createConnectorAccountHarness({
+      method: "GET",
+      pathname: "/api/connectors/slack/oauth/callback?state=state-cred&code=ok",
+    });
+    const manager = getConnectorAccountManager(runtime as never, storage);
+    manager.registerProvider({
+      provider: "slack",
+      completeOAuth: () => {
+        throw new ElizaError(
+          "No durable connector credential store or vault writer is available",
+          {
+            code: "CONNECTOR_CREDENTIAL_WRITER_UNAVAILABLE",
+            severity: "fatal",
+            context: { provider: "slack", accountId: "acct_cred" },
+          },
+        );
+      },
+    });
+    await storage.createOAuthFlow({
+      id: "flow-cred",
+      provider: "slack",
+      state: "state-cred",
+      status: "pending",
+      createdAt: 1,
+      updatedAt: 1,
+      expiresAt: Date.now() + 60_000,
+    });
+
+    await expect(handleConnectorAccountRoutes(ctx)).resolves.toBe(true);
+
+    // The runtime-classifiable structured failure, not prose-only.
+    expect(captured.status).toBe(400);
+    expect(captured.body).toMatchObject({
+      ok: false,
+      code: "CONNECTOR_CREDENTIAL_WRITER_UNAVAILABLE",
+      context: { provider: "slack", accountId: "acct_cred" },
+    });
+    expect((captured.body as { error?: string }).error).toMatch(
+      /No durable connector credential store/,
+    );
+    // Failed-flow persistence on provider throw is covered against the REAL
+    // manager in core's account-manager.test.ts and the plugin's
+    // connector-oauth-manager-flow.test.ts; this harness manager is a double.
   });
 
   it("persists OAuth start state through the connector account storage contract", async () => {

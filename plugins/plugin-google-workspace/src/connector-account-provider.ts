@@ -45,6 +45,18 @@ import { GOOGLE_SERVICE_NAME } from "./types.js";
 
 const GOOGLE_USERINFO_ENDPOINT = "https://openidconnect.googleapis.com/v1/userinfo";
 
+/**
+ * Resolve an OAuth endpoint, honoring `ELIZA_MOCK_GOOGLE_BASE` (the same
+ * local-mock override the googleapis client factory documents) so tests and
+ * topology regressions can stub only Google's HTTP responses while every
+ * other code path stays real.
+ */
+function googleOAuthEndpoint(realEndpoint: string, mockPath: string): string {
+  const base = process.env.ELIZA_MOCK_GOOGLE_BASE?.trim();
+  if (!base) return realEndpoint;
+  return new URL(mockPath, base.endsWith("/") ? base : `${base}/`).toString();
+}
+
 const GROUP_PURPOSE: Record<GoogleCapabilityGroup, ConnectorAccountPurpose> = {
   gmail: "messaging" as ConnectorAccountPurpose,
   calendar: "calendar" as ConnectorAccountPurpose,
@@ -350,7 +362,7 @@ function parseIdTokenClaims(idToken: string | undefined): GoogleIdentity {
 }
 
 async function fetchGoogleUserInfo(accessToken: string): Promise<GoogleIdentity> {
-  const response = await fetch(GOOGLE_USERINFO_ENDPOINT, {
+  const response = await fetch(googleOAuthEndpoint(GOOGLE_USERINFO_ENDPOINT, "userinfo"), {
     headers: { Authorization: `Bearer ${accessToken}` },
   });
   if (!response.ok) {
@@ -381,11 +393,14 @@ async function exchangeAuthorizationCode(args: {
     params.set("code_verifier", args.codeVerifier);
   }
 
-  const response = await fetch(GOOGLE_OAUTH_PROVIDER_METADATA.tokenEndpoint, {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: params.toString(),
-  });
+  const response = await fetch(
+    googleOAuthEndpoint(GOOGLE_OAUTH_PROVIDER_METADATA.tokenEndpoint, "token"),
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: params.toString(),
+    }
+  );
   if (!response.ok) {
     const body = await response.text();
     throw new Error(`Google token exchange failed with ${response.status}: ${body}`);
@@ -651,6 +666,7 @@ export function createGoogleConnectorAccountProvider(
           credentialRefStorage: {
             vaultAvailable: credentialPersist.vaultAvailable,
             storageAvailable: credentialPersist.storageAvailable,
+            volatile: credentialPersist.volatile,
           },
         },
       };

@@ -18,6 +18,7 @@
  * process-local map and referenced by an opaque `codeVerifierRef` written to
  * flow metadata, so stored rows never carry the raw secret.
  */
+import { isElizaError } from "../errors";
 import { logger } from "../logger";
 import type { Action, ActionParameters } from "../types/components";
 import type {
@@ -1761,6 +1762,32 @@ export class ConnectorAccountManager extends Service {
 				account,
 				redirectUrl: result.redirectUrl,
 			};
+		} catch (err) {
+			// error-policy:J2 The state was already consumed above, so without a
+			// terminal status the flow would report "pending" forever while every
+			// retry hits the consumed-state guard. Persist the explicit failed
+			// state before preserving the provider failure.
+			try {
+				await this.storage.updateOAuthFlow(providerId, flow.id, {
+					status: "failed",
+					error: err instanceof Error ? err.message : String(err),
+					...(isElizaError(err)
+						? {
+								metadata: {
+									...cloneMetadata(flow.metadata),
+									errorCode: err.code,
+								},
+							}
+						: {}),
+				});
+			} catch (persistenceError) {
+				// error-policy:J2 Preserve both the OAuth and state-write failures.
+				throw new AggregateError(
+					[err, persistenceError],
+					`OAuth completion and failure-state persistence failed for ${providerId}`,
+				);
+			}
+			throw err;
 		} finally {
 			deleteOAuthCodeVerifier(
 				stringMetadataValue(flow.metadata, "codeVerifierRef"),

@@ -6,6 +6,7 @@
  */
 import { describe, expect, it, vi } from "vitest";
 import { InMemoryDatabaseAdapter } from "../database/inMemoryAdapter";
+import { ElizaError } from "../errors";
 import type { TargetInfo } from "../types";
 import type {
 	IAgentRuntime,
@@ -201,6 +202,71 @@ describe("ConnectorAccountManager", () => {
 				code: "code-2",
 			}),
 		).rejects.toThrow(/already used|unknown|expired/i);
+	});
+
+	it("persists an explicit failed flow when the provider throws mid-completeOAuth (#18080)", async () => {
+		const runtime = makeRuntime();
+		const manager = getConnectorAccountManager(runtime);
+		manager.registerProvider({
+			provider: "oauth-fail",
+			startOAuth: () => ({ authUrl: "https://auth.example/start" }),
+			completeOAuth: () => {
+				throw new ElizaError("no durable credential writer", {
+					code: "CONNECTOR_CREDENTIAL_WRITER_UNAVAILABLE",
+					severity: "fatal",
+				});
+			},
+		});
+		const flow = await manager.startOAuth("oauth-fail");
+
+		await expect(
+			manager.completeOAuth("oauth-fail", {
+				state: flow.state,
+				code: "code-1",
+			}),
+		).rejects.toThrow(/no durable credential writer/);
+
+		// The consumed state must resolve to a terminal, explained failure —
+		// not a flow that reports "pending" forever.
+		const failed = await manager.getOAuthFlow("oauth-fail", flow.state);
+		expect(failed?.status).toBe("failed");
+		expect(failed?.error).toMatch(/no durable credential writer/);
+		expect(failed?.metadata?.errorCode).toBe(
+			"CONNECTOR_CREDENTIAL_WRITER_UNAVAILABLE",
+		);
+	});
+
+	it("preserves both failures when the failed-flow write itself fails during completeOAuth", async () => {
+		const runtime = makeRuntime();
+		const manager = getConnectorAccountManager(runtime);
+		manager.registerProvider({
+			provider: "oauth-doublefail",
+			startOAuth: () => ({ authUrl: "https://auth.example/start" }),
+			completeOAuth: () => {
+				throw new Error("provider exploded");
+			},
+		});
+		const flow = await manager.startOAuth("oauth-doublefail");
+
+		const storage = manager.getStorage();
+		const originalUpdate = storage.updateOAuthFlow.bind(storage);
+		storage.updateOAuthFlow = async (provider, flowIdOrState, patch) => {
+			if (patch.status === "failed") {
+				throw new Error("status write exploded");
+			}
+			return originalUpdate(provider, flowIdOrState, patch);
+		};
+
+		const attempt = manager.completeOAuth("oauth-doublefail", {
+			state: flow.state,
+			code: "code-1",
+		});
+		await expect(attempt).rejects.toThrow(AggregateError);
+		const err = (await attempt.catch((e) => e)) as AggregateError;
+		expect(err.errors.map((e) => (e as Error).message)).toEqual([
+			"provider exploded",
+			"status write exploded",
+		]);
 	});
 
 	it("preserves PKCE code verifier through database-backed OAuth flow storage", async () => {

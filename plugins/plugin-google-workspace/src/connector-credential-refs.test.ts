@@ -3,8 +3,10 @@
  * that a credential persisted through `persistConnectorCredentialRefs` is
  * readable by `DefaultGoogleCredentialResolver` after a simulated process
  * restart, for every service name the writer can target, and that persistence
- * fails closed (no secret, no ref) when only the volatile SECRETS store is
- * available (#18080). Deterministic
+ * enforces the #18080 product contract when only the volatile SECRETS store is
+ * available: fail closed (typed error, no secret, no ref) on Cloud-provisioned
+ * or durability-expected runtimes, keep-until-restart volatile writes flagged
+ * `volatile` on hostless local desktop/dev. Deterministic
  * harness — the runtime, credential store, vault, and SECRETS services are
  * in-memory fakes shaped like their production counterparts; "restart" means
  * new runtime/service instances sharing only the durable backing maps
@@ -17,10 +19,12 @@ import {
   getConnectorAccountManager,
   type IAgentRuntime,
   InMemoryDatabaseAdapter,
+  isElizaError,
 } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import {
   CONNECTOR_CREDENTIAL_STORE_SERVICE_TYPES,
+  CONNECTOR_CREDENTIAL_WRITER_UNAVAILABLE_CODE,
   CONNECTOR_VAULT_SERVICE_TYPES,
   persistConnectorCredentialRefs,
 } from "./connector-credential-refs.js";
@@ -159,17 +163,21 @@ function createVolatileSecretsService() {
 
 function createRuntime(
   storage: ReturnType<typeof createStorage>,
-  services: Record<string, unknown>
+  services: Record<string, unknown>,
+  settings: Record<string, string> = {}
 ): IAgentRuntime {
   return {
     agentId: AGENT_ID,
     getService: (name: string) => services[name] ?? null,
+    // Mirrors the real runtime: a registered-but-failed service stays in the
+    // registry while getService resolves null.
+    getRegisteredServiceTypes: () => Object.keys(services),
     getSetting: (key: string) =>
       key === "GOOGLE_CLIENT_ID"
         ? "client-id"
         : key === "GOOGLE_CLIENT_SECRET"
           ? "client-secret"
-          : undefined,
+          : settings[key],
     adapter: storage,
   } as unknown as IAgentRuntime;
 }
@@ -261,22 +269,29 @@ describe("connector credential persist → restart → resolve round-trip", () =
     }
   });
 
-  it("rejects persistence when only volatile SECRETS is available: no secret written, no dangling ref (#18080)", async () => {
+  it("fails closed on a Cloud-provisioned container when only volatile SECRETS is available: typed error, no secret, no dangling ref (#18080)", async () => {
     const state = newDurableState();
     state.accounts.set(ACCOUNT_ID, connectedAccount(ACCOUNT_ID));
     const storage = createStorage(state);
     const secrets = createVolatileSecretsService();
 
-    await expect(
-      persistConnectorCredentialRefs({
-        runtime: createRuntime(storage, { SECRETS: secrets }),
-        provider: "google",
-        accountIdForRef: ACCOUNT_ID,
-        storageAccountId: ACCOUNT_ID,
-        caller: "test",
-        credentials: [{ credentialType: "oauth.tokens", value: TOKENS_JSON }],
-      })
-    ).rejects.toThrow(/No durable connector credential store or vault writer/);
+    const attempt = persistConnectorCredentialRefs({
+      runtime: createRuntime(storage, { SECRETS: secrets }, { ELIZA_CLOUD_PROVISIONED: "1" }),
+      provider: "google",
+      accountIdForRef: ACCOUNT_ID,
+      storageAccountId: ACCOUNT_ID,
+      caller: "test",
+      credentials: [{ credentialType: "oauth.tokens", value: TOKENS_JSON }],
+    });
+    await expect(attempt).rejects.toThrow(/No durable connector credential store or vault writer/);
+    const err = await attempt.catch((e) => e);
+    expect(isElizaError(err)).toBe(true);
+    expect(err.code).toBe(CONNECTOR_CREDENTIAL_WRITER_UNAVAILABLE_CODE);
+    expect(err.context).toMatchObject({
+      provider: "google",
+      accountId: ACCOUNT_ID,
+      cloudProvisioned: true,
+    });
 
     // Fail-closed contract: nothing landed in the volatile store and no
     // credential ref was recorded, so a restart has nothing to dangle.
@@ -285,28 +300,96 @@ describe("connector credential persist → restart → resolve round-trip", () =
     expect(state.vaultEntries.size).toBe(0);
   });
 
-  it("rejects when the credential store failed to start (getService null) instead of demoting to SECRETS (#18080)", async () => {
+  it("keeps hostless local desktop/dev keep-until-restart: volatile SECRETS write succeeds and is flagged volatile (#18080)", async () => {
     const state = newDurableState();
     state.accounts.set(ACCOUNT_ID, connectedAccount(ACCOUNT_ID));
     const storage = createStorage(state);
     const secrets = createVolatileSecretsService();
-    // A registered-but-failed store resolves to null through runtime.getService,
-    // exactly what the boot funnel's start failure produces.
-    const services: Record<string, unknown> = {
-      connector_credential_store: null,
-      SECRETS: secrets,
-    };
+
+    const result = await persistConnectorCredentialRefs({
+      runtime: createRuntime(storage, { SECRETS: secrets }),
+      provider: "google",
+      accountIdForRef: ACCOUNT_ID,
+      storageAccountId: ACCOUNT_ID,
+      caller: "test",
+      credentials: [{ credentialType: "oauth.tokens", value: TOKENS_JSON }],
+    });
+
+    expect(result.volatile).toBe(true);
+    expect(result.vaultAvailable).toBe(false);
+    expect(secrets.entries.size).toBe(1);
+    expect(state.credentialRefs.size).toBe(1);
+  });
+
+  it("fails closed on a hostless runtime when ELIZA_REQUIRE_DURABLE_CONNECTOR_CREDENTIALS=1 (#18080)", async () => {
+    const state = newDurableState();
+    state.accounts.set(ACCOUNT_ID, connectedAccount(ACCOUNT_ID));
+    const storage = createStorage(state);
+    const secrets = createVolatileSecretsService();
 
     await expect(
       persistConnectorCredentialRefs({
-        runtime: createRuntime(storage, services),
+        runtime: createRuntime(
+          storage,
+          { SECRETS: secrets },
+          { ELIZA_REQUIRE_DURABLE_CONNECTOR_CREDENTIALS: "1" }
+        ),
         provider: "google",
         accountIdForRef: ACCOUNT_ID,
         storageAccountId: ACCOUNT_ID,
         caller: "test",
         credentials: [{ credentialType: "oauth.tokens", value: TOKENS_JSON }],
       })
-    ).rejects.toThrow(/Refusing to mark OAuth account connected/);
+    ).rejects.toThrow(/No durable connector credential store or vault writer/);
+    expect(secrets.entries.size).toBe(0);
+    expect(state.credentialRefs.size).toBe(0);
+  });
+
+  it("fails closed when no writer of any kind exists (not even SECRETS)", async () => {
+    const state = newDurableState();
+    state.accounts.set(ACCOUNT_ID, connectedAccount(ACCOUNT_ID));
+    const storage = createStorage(state);
+
+    const attempt = persistConnectorCredentialRefs({
+      runtime: createRuntime(storage, {}),
+      provider: "google",
+      accountIdForRef: ACCOUNT_ID,
+      storageAccountId: ACCOUNT_ID,
+      caller: "test",
+      credentials: [{ credentialType: "oauth.tokens", value: TOKENS_JSON }],
+    });
+    await expect(attempt).rejects.toThrow(/No durable connector credential store or vault writer/);
+    const err = await attempt.catch((e) => e);
+    expect(err.code).toBe(CONNECTOR_CREDENTIAL_WRITER_UNAVAILABLE_CODE);
+    expect(err.context?.volatileFallbackAvailable).toBe(false);
+  });
+
+  it("rejects when the credential store registered but failed to start (getService null) instead of demoting to SECRETS (#18080)", async () => {
+    const state = newDurableState();
+    state.accounts.set(ACCOUNT_ID, connectedAccount(ACCOUNT_ID));
+    const storage = createStorage(state);
+    const secrets = createVolatileSecretsService();
+    // A registered-but-failed store stays in the service registry while
+    // runtime.getService resolves null, exactly what the boot funnel's start
+    // failure produces. Durability was expected here, so even a hostless
+    // runtime must not demote the write to volatile SECRETS.
+    const services: Record<string, unknown> = {
+      connector_credential_store: null,
+      SECRETS: secrets,
+    };
+
+    const attempt = persistConnectorCredentialRefs({
+      runtime: createRuntime(storage, services),
+      provider: "google",
+      accountIdForRef: ACCOUNT_ID,
+      storageAccountId: ACCOUNT_ID,
+      caller: "test",
+      credentials: [{ credentialType: "oauth.tokens", value: TOKENS_JSON }],
+    });
+    await expect(attempt).rejects.toThrow(/Refusing to mark OAuth account connected/);
+    const err = await attempt.catch((e) => e);
+    expect(err.code).toBe(CONNECTOR_CREDENTIAL_WRITER_UNAVAILABLE_CODE);
+    expect(err.context?.registeredDurableServices).toEqual(["connector_credential_store"]);
     expect(secrets.entries.size).toBe(0);
     expect(state.credentialRefs.size).toBe(0);
   });
