@@ -189,10 +189,12 @@ describe("Cloudflare Pages domain durability", () => {
   });
 
   test("adopts pre-attached canonical Pages bindings deterministically", () => {
-    expect(imports).toContain("pages_domain_imports = local.canonical_pages_domains");
+    expect(imports).toContain(
+      "pages_domain_imports = local.canonical_pages_domains",
+    );
     expect(imports).toContain("cloudflare_pages_domain.public[each.key]");
     expect(imports).toContain(
-      '${var.cloudflare_account_id}/${each.value.project_name}/${each.value.domain}',
+      `\${var.cloudflare_account_id}/\${each.value.project_name}/\${each.value.domain}`,
     );
     expect(readme).toContain("configuration-driven imports");
   });
