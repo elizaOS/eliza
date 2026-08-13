@@ -3,10 +3,11 @@
  * browser-target consumer bundles can load the documented URL path (#18699).
  * It fails closed on literal loopback/private/link-local/metadata hosts before
  * the request using the same core SSRF policy helpers the Node guard uses,
- * re-validates the final landing host after the browser's opaque redirect
- * handling, enforces the shared byte cap while streaming, and bounds wall time
- * with an abort timer. A browser cannot pin DNS, so rebinding defense remains
- * a Node-path property; same-origin policy/CORS bounds what a page can read.
+ * refuses redirects outright (`redirect: "error"`) so no hop request is ever
+ * issued, fails closed when the response exposes no final URL, enforces the
+ * shared byte cap while streaming, and bounds wall time with an abort timer.
+ * A browser cannot pin DNS, so rebinding defense remains a Node-path property;
+ * same-origin policy/CORS bounds what a page can read.
  */
 import {
   isBlockedHostname,
@@ -108,20 +109,27 @@ export function installBrowserImageUrlFetcher(): void {
       IMAGE_DESCRIPTION_FETCH_TIMEOUT_MS,
     );
     try {
+      // The Fetch Standard performs redirect hops before fetch() resolves, so
+      // a landing-host recheck runs only after the hop request was already
+      // sent. "error" makes any redirect a network failure with no hop issued.
       const response = await fetch(parsed.toString(), {
-        redirect: "follow",
+        redirect: "error",
         signal: controller.signal,
       });
-      // The browser follows redirects opaquely; the only observable hop is the
-      // final landing URL, so re-run the host policy on it before reading bytes.
-      if (response.url) {
-        try {
-          assertAllowedImageUrl(response.url, "image redirect target");
-        } catch (error) {
-          // error-policy:J2 Release the connection before rethrowing the policy failure.
-          await response.body?.cancel();
-          throw error;
-        }
+      // Defense in depth: the response must still land on an allowed host,
+      // and a missing final URL is opaque, so it fails closed too.
+      if (!response.url) {
+        await response.body?.cancel();
+        throw new SsrfBlockedError(
+          "Blocked image redirect target: missing final URL",
+        );
+      }
+      try {
+        assertAllowedImageUrl(response.url, "image redirect target");
+      } catch (error) {
+        // error-policy:J2 Release the connection before rethrowing the policy failure.
+        await response.body?.cancel();
+        throw error;
       }
       if (!response.ok) {
         throw new Error(

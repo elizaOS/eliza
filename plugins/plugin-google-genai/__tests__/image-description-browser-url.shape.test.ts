@@ -1,9 +1,10 @@
 /**
  * Unit tests for the browser image-URL boundary (#18699): literal
  * private/loopback/link-local/metadata hosts fail closed before any network
- * call, redirect landing hosts are re-validated, the shared byte cap is
- * enforced, and the happy path reaches the guarded fetch → provider flow with
- * the fetched bytes inlined as base64. Config, tokenization, and
+ * call, redirects are refused before any hop request is issued, a response
+ * with no final URL fails closed, the shared byte cap is enforced, and the
+ * happy path reaches the guarded fetch → provider flow with the fetched
+ * bytes inlined as base64. Config, tokenization, and
  * `recordLlmCall` are mocked; the transport is a stubbed global fetch —
  * deterministic, no live network.
  */
@@ -41,6 +42,7 @@ vi.mock("../utils/tokenization", () => ({
   countTokens: mocks.countTokens,
 }));
 
+import { SsrfBlockedError } from "@elizaos/core";
 import { handleImageDescription } from "../models/image";
 import { IMAGE_DESCRIPTION_MAX_BYTES } from "../models/image-url";
 import { installBrowserImageUrlFetcher } from "../models/image-url.browser";
@@ -58,6 +60,12 @@ function createRuntime(): IAgentRuntime {
   return {
     getSetting: vi.fn(() => null),
   } as unknown as IAgentRuntime;
+}
+
+/** `new Response()` leaves `url` as "" — give mocks the final URL a real fetch exposes. */
+function withUrl(response: Response, url: string): Response {
+  Object.defineProperty(response, "url", { value: url });
+  return response;
 }
 
 function mockModelOk() {
@@ -114,7 +122,40 @@ describe("browser image URL boundary fails closed", () => {
     expect(mocks.recordLlmCall).not.toHaveBeenCalled();
   });
 
-  it("blocks a redirect that lands on a private host without calling the model", async () => {
+  it("refuses redirects before any hop request can be issued", async () => {
+    const requested: string[] = [];
+    const privateTarget = "http://169.254.169.254/latest/meta-data/";
+    // Emulates the Fetch Standard: the platform performs the redirect hop
+    // internally before fetch() resolves unless redirect is "error"/"manual",
+    // so a mode of "follow" means the hop request has already been sent.
+    const fetchMock = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        requested.push(String(input));
+        if (init?.redirect === "follow") {
+          requested.push(privateTarget);
+          const landed = new Response(PNG_BYTES, {
+            status: 200,
+            headers: { "Content-Type": "image/png" },
+          });
+          return withUrl(landed, privateTarget);
+        }
+        throw new TypeError("Failed to fetch: unexpected redirect");
+      },
+    );
+    vi.spyOn(globalThis, "fetch").mockImplementation(fetchMock as typeof fetch);
+
+    await expect(
+      handleImageDescription(
+        createRuntime(),
+        "https://cdn.example.com/redirects.png",
+      ),
+    ).rejects.toThrow();
+    expect(requested).toEqual(["https://cdn.example.com/redirects.png"]);
+    expect(mocks.generateContent).not.toHaveBeenCalled();
+    expect(mocks.recordLlmCall).not.toHaveBeenCalled();
+  });
+
+  it("blocks a response that lands on a private host without calling the model", async () => {
     const landed = new Response(PNG_BYTES, {
       status: 200,
       headers: { "Content-Type": "image/png" },
@@ -136,14 +177,41 @@ describe("browser image URL boundary fails closed", () => {
     expect(mocks.recordLlmCall).not.toHaveBeenCalled();
   });
 
-  it("rejects a declared content length over the shared byte cap", async () => {
-    const oversized = new Response(PNG_BYTES, {
+  it("fails closed when the response exposes no final URL", async () => {
+    // A WhatWG `new Response(bytes)` (and some polyfills) leaves `url` as "".
+    const anonymous = new Response(PNG_BYTES, {
       status: 200,
-      headers: {
-        "Content-Type": "image/png",
-        "Content-Length": String(IMAGE_DESCRIPTION_MAX_BYTES + 1),
-      },
+      headers: { "Content-Type": "image/png" },
     });
+    const cancelSpy = vi.spyOn(
+      anonymous.body as ReadableStream<Uint8Array>,
+      "cancel",
+    );
+    const fetchMock = vi.fn(async () => anonymous);
+    vi.spyOn(globalThis, "fetch").mockImplementation(fetchMock as typeof fetch);
+
+    await expect(
+      handleImageDescription(
+        createRuntime(),
+        "https://cdn.example.com/anonymous.png",
+      ),
+    ).rejects.toThrow(SsrfBlockedError);
+    expect(cancelSpy).toHaveBeenCalled();
+    expect(mocks.generateContent).not.toHaveBeenCalled();
+    expect(mocks.recordLlmCall).not.toHaveBeenCalled();
+  });
+
+  it("rejects a declared content length over the shared byte cap", async () => {
+    const oversized = withUrl(
+      new Response(PNG_BYTES, {
+        status: 200,
+        headers: {
+          "Content-Type": "image/png",
+          "Content-Length": String(IMAGE_DESCRIPTION_MAX_BYTES + 1),
+        },
+      }),
+      "https://cdn.example.com/huge.png",
+    );
     const fetchMock = vi.fn(async () => oversized);
     vi.spyOn(globalThis, "fetch").mockImplementation(fetchMock as typeof fetch);
 
@@ -169,12 +237,14 @@ describe("browser image URL boundary fails closed", () => {
         controller.enqueue(chunk);
       },
     });
-    const fetchMock = vi.fn(
-      async () =>
+    const fetchMock = vi.fn(async () =>
+      withUrl(
         new Response(body, {
           status: 200,
           headers: { "Content-Type": "image/png" },
         }),
+        "https://cdn.example.com/unbounded.png",
+      ),
     );
     vi.spyOn(globalThis, "fetch").mockImplementation(fetchMock as typeof fetch);
 
@@ -188,9 +258,11 @@ describe("browser image URL boundary fails closed", () => {
   });
 
   it("throws on HTTP errors without calling the model", async () => {
-    const fetchMock = vi.fn(
-      async () =>
+    const fetchMock = vi.fn(async () =>
+      withUrl(
         new Response("nope", { status: 404, statusText: "Not Found" }),
+        "https://cdn.example.com/missing.png",
+      ),
     );
     vi.spyOn(globalThis, "fetch").mockImplementation(fetchMock as typeof fetch);
 
@@ -220,12 +292,14 @@ describe("browser image URL happy path", () => {
   });
 
   it("fetches allowed image URLs through the guard then inlines them for the model", async () => {
-    const fetchMock = vi.fn(
-      async () =>
+    const fetchMock = vi.fn(async () =>
+      withUrl(
         new Response(PNG_BYTES, {
           status: 200,
           headers: { "Content-Type": "image/png" },
         }),
+        "https://cdn.example.com/cat.png",
+      ),
     );
     vi.spyOn(globalThis, "fetch").mockImplementation(fetchMock as typeof fetch);
 
