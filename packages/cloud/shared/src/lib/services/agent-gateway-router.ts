@@ -1136,9 +1136,29 @@ export class AgentGatewayRouterService {
     const owner = await usersRepository.findByTelegramIdWithOrganization(senderTelegramId);
 
     if (!owner) {
+      // Parity with the Discord DM and phone first-contact paths: an unlinked
+      // sender is an onboarding candidate, not silence. This route only ever
+      // sees private chats (the webhook and the gateway adapter both drop group
+      // traffic), so the Discord public-channel guard has nothing to protect
+      // here. The session key matches the one the gateway webhook already uses
+      // so both Telegram entry points share a single onboarding transcript.
+      const onboarding = await this.runOnboardingChat({
+        message: args.content,
+        platform: "telegram",
+        platformUserId: senderTelegramId,
+        platformDisplayName: args.sender.displayName ?? args.sender.username,
+        sessionId: `platform:telegram:${senderTelegramId}`,
+        trustedPlatformIdentity: true,
+        idempotencyKey: `telegram:${args.messageId}`,
+      });
+
       return {
-        handled: false,
+        handled: true,
+        replyText: onboarding.reply,
         reason: "unknown_owner",
+        userId: onboarding.session.userId,
+        organizationId: onboarding.session.organizationId,
+        agentId: onboarding.provisioning.agentId ?? undefined,
       };
     }
 
