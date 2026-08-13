@@ -127,6 +127,32 @@ describe("provisioning worker deployment contract", () => {
     expect((occurrences ?? []).length).toBe(3);
   });
 
+  it("checks the canonical router only after local readiness and fails with diagnostics", () => {
+    const routerPort = "$" + "{ROUTER_PORT}";
+    const publicHost = "$" + "{AGENT_ROUTER_PUBLIC_HOST}";
+    const healthStep = workflow.indexOf("- name: Health check");
+    const localHealth = workflow.indexOf(
+      `curl -sf -m 3 "http://127.0.0.1:${routerPort}/healthz"`,
+    );
+    const canonicalHealth = workflow.indexOf(
+      `curl -fsS -m 5 "https://${publicHost}/healthz"`,
+    );
+
+    expect(healthStep).toBeGreaterThan(-1);
+    expect(localHealth).toBeGreaterThan(healthStep);
+    expect(canonicalHealth).toBeGreaterThan(localHealth);
+    expect(workflow.slice(0, healthStep)).not.toContain(
+      `"https://${publicHost}/healthz"`,
+    );
+    expect(workflow).toContain(
+      "Canonical agent-router host failed after local readiness",
+    );
+    expect(workflow).toContain("report_public_route_failure");
+    expect(workflow).toContain(
+      "sudo systemctl status eliza-agent-router.service --no-pager || true",
+    );
+  });
+
   it("keeps replacement workload memory inside the control-plane service fence", () => {
     const oldSpaceMatches = [
       ...provisioningService.matchAll(
