@@ -10,10 +10,10 @@ import {
   logger,
   type Memory,
   type Provider,
-  redactSensitiveText,
   type State,
 } from "@elizaos/core";
 import { requireProviderSpec } from "../generated/specs/spec-helpers";
+import { redactShellText } from "../redaction";
 import type { ShellService } from "../services/shellService";
 import type { CommandHistoryEntry, FileOperation } from "../types";
 
@@ -63,22 +63,24 @@ export const shellHistoryProvider: Provider = {
         };
       }
       const history = shellService.getCommandHistory(conversationId, 10);
-      const cwd = shellService.getCurrentDirectory(conversationId);
-      const allowedDir = shellService.getAllowedDirectory();
+      const cwd = redactShellText(
+        runtime,
+        shellService.getCurrentDirectory(conversationId),
+      );
+      const allowedDir = redactShellText(
+        runtime,
+        shellService.getAllowedDirectory(),
+      );
 
       let historyText = "No commands in history.";
       if (history.length > 0) {
         historyText = history
           .map((entry: CommandHistoryEntry) => {
-            const stdout = redactSensitiveText(entry.stdout ?? "", {
-              mode: "tools",
-            });
-            const stderr = redactSensitiveText(entry.stderr ?? "", {
-              mode: "tools",
-            });
-            let entryStr = redactSensitiveText(
+            const stdout = redactShellText(runtime, entry.stdout ?? "");
+            const stderr = redactShellText(runtime, entry.stderr ?? "");
+            let entryStr = redactShellText(
+              runtime,
               `[${new Date(entry.timestamp).toISOString()}] ${entry.workingDirectory}> ${entry.command}`,
-              { mode: "tools" },
             );
 
             if (stdout) {
@@ -103,9 +105,9 @@ export const shellHistoryProvider: Provider = {
               entryStr += "\n  File Operations:";
               entry.fileOperations.forEach((op: FileOperation) => {
                 if (op.secondaryTarget) {
-                  entryStr += `\n    - ${op.type}: ${op.target} → ${op.secondaryTarget}`;
+                  entryStr += `\n    - ${op.type}: ${redactShellText(runtime, op.target)} → ${redactShellText(runtime, op.secondaryTarget)}`;
                 } else {
-                  entryStr += `\n    - ${op.type}: ${op.target}`;
+                  entryStr += `\n    - ${op.type}: ${redactShellText(runtime, op.target)}`;
                 }
               });
             }
@@ -132,9 +134,9 @@ export const shellHistoryProvider: Provider = {
             recentFileOps
               .map((op: FileOperation) => {
                 if (op.secondaryTarget) {
-                  return `- ${op.type}: ${op.target} → ${op.secondaryTarget}`;
+                  return `- ${op.type}: ${redactShellText(runtime, op.target)} → ${redactShellText(runtime, op.secondaryTarget)}`;
                 }
-                return `- ${op.type}: ${op.target}`;
+                return `- ${op.type}: ${redactShellText(runtime, op.target)}`;
               })
               .join("\n"),
           );
@@ -175,7 +177,10 @@ ${addHeader("# Shell History (Last 10)", historyText)}${fileOpsText}`;
       // become observable to the agent), and drives owner escalation. It never
       // throws. Fall back to logger.error on runtimes/test doubles that predate
       // it so the failure is never silently swallowed.
-      const errMsg = error instanceof Error ? error.message : String(error);
+      const errMsg = redactShellText(
+        runtime,
+        error instanceof Error ? error.message : String(error),
+      );
       if (typeof runtime?.reportError === "function") {
         runtime.reportError("shellHistoryProvider", error, {
           roomId: message.roomId,
@@ -183,7 +188,7 @@ ${addHeader("# Shell History (Last 10)", historyText)}${fileOpsText}`;
         });
       } else {
         logger.error(
-          { src: "shellHistoryProvider", error },
+          { src: "shellHistoryProvider", error: errMsg },
           `[shellHistoryProvider] Failed to build shell history context: ${errMsg}`,
         );
       }

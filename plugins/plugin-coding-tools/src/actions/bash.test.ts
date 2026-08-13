@@ -105,6 +105,7 @@ interface RuntimeOptions {
   withShellHistoryService?: boolean;
   capabilityRouter?: ElizaCapabilityRouter;
   backgroundBufferChars?: number;
+  configuredSecret?: string;
 }
 
 function requireActionResult(result: ActionResult | undefined): ActionResult {
@@ -137,6 +138,11 @@ async function makeRuntime(opts: RuntimeOptions = {}): Promise<{
     agentId: "11111111-1111-1111-1111-111111111111" as UUID,
     getSetting: vi.fn((key: string) => settings[key]),
     getService: vi.fn(<T>(type: string) => services.get(type) as T | null),
+    redactSecrets: vi.fn((text: string) =>
+      opts.configuredSecret
+        ? text.replaceAll(opts.configuredSecret, "[REDACTED:TEST_SECRET]")
+        : text,
+    ),
   } as IAgentRuntime;
 
   const sandbox = await SandboxService.start(runtime);
@@ -1830,15 +1836,18 @@ describeIfPosix("shellAction", () => {
     expect(data?.action).toBe("view_history");
   });
 
-  it("redacts credentials from foreground text, callback, data, and user-facing output", async () => {
+  it("redacts a configured bare secret from foreground text, callback, data, and user-facing output", async () => {
     process.env.ELIZA_SHELL_ECHO_TRANSCRIPT = "1";
-    const secret = "sk-proj-BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB";
+    const secret = "orchid42";
     const router = makeShellRouter(async () => ({
       output: `${secret}\n`,
       exitCode: 0,
       timedOut: false,
     }));
-    const { runtime } = await makeRuntime({ capabilityRouter: router });
+    const { runtime } = await makeRuntime({
+      capabilityRouter: router,
+      configuredSecret: secret,
+    });
     const posts: Array<{ text: string }> = [];
 
     const result = requireActionResult(
@@ -1858,9 +1867,9 @@ describeIfPosix("shellAction", () => {
     expect(exposed).not.toContain(secret);
   });
 
-  it("redacts credentials from every background session projection", async () => {
-    const secret = "sk-proj-CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC";
-    const { runtime } = await makeRuntime();
+  it("redacts a configured bare secret from every background session projection", async () => {
+    const secret = "violet73";
+    const { runtime } = await makeRuntime({ configuredSecret: secret });
     const actor = makeMessage();
     const start = requireActionResult(
       await shellAction.handler?.(runtime, actor, undefined, {
@@ -1879,7 +1888,7 @@ describeIfPosix("shellAction", () => {
       await shellAction.handler?.(runtime, actor, undefined, {
         action: "poll_background",
         handle,
-        stdout_offset: 12,
+        stdout_offset: 3,
       }),
     );
     const list = requireActionResult(

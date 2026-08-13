@@ -17,7 +17,6 @@ import {
   type HandlerCallback,
   type IAgentRuntime,
   type Memory,
-  redactSensitiveText,
   type State,
 } from "@elizaos/core";
 import { resolveRuntimeExecutionMode } from "@elizaos/shared";
@@ -38,6 +37,7 @@ import { resolveHostShell } from "../lib/terminal-capabilities.js";
 import type { BackgroundShellService } from "../services/background-shell-service.js";
 import type { SandboxService } from "../services/sandbox-service.js";
 import type { SessionCwdService } from "../services/session-cwd-service.js";
+import { redactShellText } from "../shell/redaction.js";
 import {
   BACKGROUND_SHELL_SERVICE,
   CODING_TOOLS_CONTEXTS,
@@ -1316,10 +1316,8 @@ export const shellAction: Action = {
             .map((entry, index) => {
               const command =
                 typeof entry.command === "string"
-                  ? redactSensitiveText(entry.command, { mode: "tools" })
-                  : redactSensitiveText(JSON.stringify(entry), {
-                      mode: "tools",
-                    });
+                  ? redactShellText(runtime, entry.command)
+                  : redactShellText(runtime, JSON.stringify(entry));
               return `${index + 1}. ${command}`;
             })
             .join("\n")
@@ -1479,9 +1477,7 @@ export const shellAction: Action = {
         // tool failures.
         return failureToActionResult({
           reason: "internal",
-          message: redactSensitiveText((err as Error).message, {
-            mode: "tools",
-          }),
+          message: redactShellText(runtime, (err as Error).message),
         });
       }
     }
@@ -1536,7 +1532,7 @@ export const shellAction: Action = {
         if (!stat.isDirectory()) {
           return failureToActionResult({
             reason: "invalid_param",
-            message: `cwd is not a directory: ${cwdParam}`,
+            message: `cwd is not a directory: ${redactShellText(runtime, cwdParam)}`,
           });
         }
       } catch (err) {
@@ -1547,7 +1543,7 @@ export const shellAction: Action = {
         if (!isMissingPathError(err)) {
           return failureToActionResult({
             reason: "io_error",
-            message: `cwd stat failed: ${(err as Error).message}`,
+            message: `cwd stat failed: ${redactShellText(runtime, (err as Error).message)}`,
           });
         }
         const fallback = await session.getExistingCwd(conversationId);
@@ -1641,9 +1637,11 @@ export const shellAction: Action = {
               "ask the user to confirm the exact operation, then re-run with confirm=true.",
           },
           {
-            command: redactSensitiveText(command, { mode: "tools" }),
+            command: redactShellText(runtime, command),
             destructive_reason: verdict.reason,
-            targets: verdict.targets,
+            targets: verdict.targets.map((target) =>
+              redactShellText(runtime, target),
+            ),
           },
         );
       }
@@ -1691,6 +1689,8 @@ export const shellAction: Action = {
       }
     }
 
+    const redactedCwd = redactShellText(runtime, cwd);
+
     if (subaction === "start_background") {
       const backgroundShell = getBackgroundShellService(runtime);
       if (!backgroundShell) {
@@ -1705,10 +1705,10 @@ export const shellAction: Action = {
           command,
           cwd,
         });
-        const redactedCommand = redactSensitiveText(command, { mode: "tools" });
+        const redactedCommand = redactShellText(runtime, command);
         const text = [
           `$ ${redactedCommand}`,
-          `[background ${session.handle}] (pid=${session.pid ?? "unknown"}, cwd=${cwd})`,
+          `[background ${session.handle}] (pid=${session.pid ?? "unknown"}, cwd=${redactedCwd})`,
           `poll with stdout_offset=${session.stdoutOffset} stderr_offset=${session.stderrOffset}`,
         ].join("\n");
         // Starting a background process is itself the requested operation, so
@@ -1722,7 +1722,7 @@ export const shellAction: Action = {
           actionName: "SHELL",
           [CANONICAL_SUBACTION_KEY]: "start_background",
           command: redactedCommand,
-          cwd,
+          cwd: redactedCwd,
           handle: session.handle,
           session,
           execution_route: session.sandbox === "host" ? "host" : "sandbox",
@@ -1735,13 +1735,11 @@ export const shellAction: Action = {
         return failureToActionResult(
           {
             reason: "internal",
-            message: redactSensitiveText((err as Error).message, {
-              mode: "tools",
-            }),
+            message: redactShellText(runtime, (err as Error).message),
           },
           {
-            command: redactSensitiveText(command, { mode: "tools" }),
-            cwd,
+            command: redactShellText(runtime, command),
+            cwd: redactedCwd,
           },
         );
       }
@@ -1772,28 +1770,25 @@ export const shellAction: Action = {
       // error-policy:J1 SHELL action boundary; a dispatch failure is logged and
       // returned as a success:false ActionResult carrying the real message, so
       // the planner loop shows the failure to the model.
-      const message = redactSensitiveText((err as Error).message, {
-        mode: "tools",
-      });
+      const message = redactShellText(runtime, (err as Error).message);
       coreLogger.error(
         `${CODING_TOOLS_LOG_PREFIX} SHELL dispatch failed: ${message}`,
       );
-      return failureToActionResult({ reason: "internal", message }, { cwd });
+      return failureToActionResult(
+        { reason: "internal", message },
+        { cwd: redactedCwd },
+      );
     }
 
     const took = Date.now() - startedAt;
     const timedOut = result.timedOut;
     const signal = result.signal;
-    const redactedCommand = redactSensitiveText(command, { mode: "tools" });
-    const redactedStdout = redactSensitiveText(result.stdout, {
-      mode: "tools",
-    });
-    const redactedStderr = redactSensitiveText(result.stderr, {
-      mode: "tools",
-    });
+    const redactedCommand = redactShellText(runtime, command);
+    const redactedStdout = redactShellText(runtime, result.stdout);
+    const redactedStderr = redactShellText(runtime, result.stderr);
     const head = timedOut
-      ? `$ ${redactedCommand}\n[timeout ${timeout}ms] (cwd=${cwd}, took=${took}ms)`
-      : `$ ${redactedCommand}\n[exit ${result.exitCode}] (cwd=${cwd}, took=${took}ms)`;
+      ? `$ ${redactedCommand}\n[timeout ${timeout}ms] (cwd=${redactedCwd}, took=${took}ms)`
+      : `$ ${redactedCommand}\n[exit ${result.exitCode}] (cwd=${redactedCwd}, took=${took}ms)`;
     const streams = formatStreams(redactedStdout, redactedStderr, {
       showEmptyStreams: !result.stdout && !result.stderr,
     });
@@ -1810,7 +1805,7 @@ export const shellAction: Action = {
     if (timedOut) {
       return failureToActionResult(
         { reason: "timeout", message: `command timed out after ${timeout}ms` },
-        { command: redactedCommand, cwd, output: text },
+        { command: redactedCommand, cwd: redactedCwd, output: text },
       );
     }
     if (result.exitCode !== 0) {
@@ -1822,7 +1817,7 @@ export const shellAction: Action = {
         {
           command: redactedCommand,
           exit_code: result.exitCode,
-          cwd,
+          cwd: redactedCwd,
           output: text,
         },
       );
@@ -1830,7 +1825,7 @@ export const shellAction: Action = {
     const actionResult = successActionResult(text, {
       command: redactedCommand,
       exit_code: result.exitCode,
-      cwd,
+      cwd: redactedCwd,
       execution_route: result.sandbox === "host" ? "host" : "sandbox",
       sandbox_backend: result.sandbox,
       signal,
