@@ -110,6 +110,7 @@ async function resolveCaller(
     userId: string;
     organizationId: string;
     telegramId?: string;
+    discordId?: string;
   } | null;
   trustedPlatformIdentity: boolean;
 }> {
@@ -125,6 +126,7 @@ async function resolveCaller(
         userId: session.userId,
         organizationId: session.organizationId,
         telegramId: session.telegramId,
+        discordId: session.discordId,
       },
       trustedPlatformIdentity: false,
     };
