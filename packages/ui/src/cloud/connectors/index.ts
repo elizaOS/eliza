@@ -60,8 +60,8 @@ export function registerCloudConnectorsSettingsSection(): void {
     group: "agent",
     titleKey: "settings.sections.cloudConnectors.title",
     defaultTitle: "Cloud Connectors",
-    // Hidden for MVP (kept registered so its route/deep-link still resolves).
-    viewKind: "release",
+    // Hidden for MVP while remaining registered for route/deep-link resolution.
+    viewKind: "developer",
     cloudOnly: true,
     Component: CloudConnectorsSettingsSection,
   });

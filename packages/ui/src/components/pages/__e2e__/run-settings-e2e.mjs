@@ -205,6 +205,7 @@ const HIDDEN_SECTIONS = [
   "wallet-rpc",
   "secrets",
   "app-permissions",
+  "cloud-connectors",
 ];
 
 const browser = await chromium.launch();
