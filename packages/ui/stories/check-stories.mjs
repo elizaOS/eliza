@@ -11,13 +11,26 @@ const arg = (name, def) => {
   const i = process.argv.indexOf(name);
   return i >= 0 ? process.argv[i + 1] : def;
 };
+const integerArg = (name, def, min, max = Number.MAX_SAFE_INTEGER) => {
+  const i = process.argv.indexOf(name);
+  if (i < 0) return def;
+  const raw = process.argv[i + 1];
+  if (raw === undefined || !/^(0|[1-9]\d*)$/.test(raw)) {
+    throw new Error(`${name} must be an integer between ${min} and ${max}`);
+  }
+  const value = Number(raw);
+  if (!Number.isSafeInteger(value) || value < min || value > max) {
+    throw new Error(`${name} must be an integer between ${min} and ${max}`);
+  }
+  return value;
+};
 const base = arg("--base", "http://localhost:6006");
-const limit = Number(arg("--limit", "0")) || 0;
+const limit = integerArg("--limit", 0, 1);
 const filter = arg("--filter", "");
 const globals = arg("--globals", "");
 
 const idsFile = arg("--ids-file", "");
-const settle = Number(arg("--settle", "600")) || 600;
+const settle = integerArg("--settle", 600, 0, 2_147_483_647);
 const isTransientNavigationError = (message) =>
   /net::ERR_(ABORTED|CONNECTION_REFUSED)|Execution context was destroyed/i.test(
     message,
