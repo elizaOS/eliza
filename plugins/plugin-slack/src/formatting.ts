@@ -317,9 +317,12 @@ export function formatSlackDate(
   format: string = "{date_short_pretty} at {time}",
   fallbackText?: string,
 ): string {
-  const unix = Math.floor(
-    (typeof timestamp === "number" ? timestamp : timestamp.getTime()) / 1000,
-  );
+  const timeMs =
+    typeof timestamp === "number" ? timestamp : timestamp.getTime();
+  if (!Number.isFinite(timeMs)) {
+    return fallbackText || "Invalid date";
+  }
+  const unix = Math.floor(timeMs / 1000);
   const fallback = fallbackText || new Date(unix * 1000).toISOString();
   return `<!date^${unix}^${format}|${fallback}>`;
 }
@@ -328,7 +331,7 @@ export function formatSlackDate(
  * Extracts user ID from a Slack mention
  */
 export function extractUserIdFromMention(mention: string): string | null {
-  const match = mention.match(/^<@([UW][A-Z0-9]+)(?:\|[^>]*)?>$/i);
+  const match = mention.match(/^<@([UWBEA][A-Z0-9]+)(?:\|[^>]*)?>$/i);
   return match ? match[1] : null;
 }
 
@@ -446,7 +449,7 @@ export function stripSlackFormatting(text: string): string {
     .replace(/_([^_]+)_/g, "$1") // Italic
     .replace(/~([^~]+)~/g, "$1") // Strikethrough
     .replace(/`([^`]+)`/g, "$1") // Inline code
-    .replace(/<@[UW][A-Z0-9]+(?:\|[^>]*)?>/gi, "") // User mentions
+    .replace(/<@[UWBEA][A-Z0-9]+(?:\|[^>]*)?>/gi, "") // User mentions
     .replace(/<#[CGD][A-Z0-9]+(?:\|[^>]*)?>/gi, "") // Channel mentions
     .replace(/<!subteam\^[A-Z0-9]+(?:\|[^>]*)?>/gi, "") // User group mentions
     .replace(/<!(?:here|channel|everyone)(?:\|[^>]*)?>/gi, "") // Special mentions

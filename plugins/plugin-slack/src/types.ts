@@ -361,8 +361,8 @@ export function isValidChannelId(id: string): boolean {
  * Validates a Slack user ID format
  */
 export function isValidUserId(id: string): boolean {
-  // Slack user IDs start with U or W (enterprise grid)
-  return /^[UW][A-Z0-9]{8,}$/i.test(id);
+  // Slack user/bot/app/enterprise IDs start with U, W, B, E, or A
+  return /^[UWBEA][A-Z0-9]{8,}$/i.test(id);
 }
 
 /**
@@ -393,8 +393,13 @@ export function parseSlackMessageLink(
 
   const channelId = match[1];
   const ts = match[2];
+  if (ts.length < 10) return null;
+
   // Convert the timestamp: p1234567890123456 -> 1234567890.123456
-  const messageTs = `${ts.slice(0, 10)}.${ts.slice(10)}`;
+  const fractional = ts.slice(10);
+  const messageTs = fractional
+    ? `${ts.slice(0, 10)}.${fractional}`
+    : ts.slice(0, 10);
 
   return { channelId, messageTs };
 }

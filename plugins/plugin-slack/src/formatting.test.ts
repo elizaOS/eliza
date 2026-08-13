@@ -13,6 +13,7 @@ import {
   extractUrlFromSlackLink,
   extractUserIdFromMention,
   formatSlackChannelMention,
+  formatSlackDate,
   formatSlackLink,
   formatSlackSpecialMention,
   formatSlackUserGroupMention,
@@ -22,6 +23,7 @@ import {
   stripSlackFormatting,
   truncateText,
 } from "./formatting.ts";
+import { isValidUserId, parseSlackMessageLink } from "./types.ts";
 
 describe("escapeSlackMrkdwn", () => {
   it("escapes the three Slack control chars, leaves clean text untouched", () => {
@@ -40,11 +42,23 @@ describe("markdownToSlackMrkdwn", () => {
 });
 
 describe("mention builders + extractors round-trip", () => {
-  it("user mention", () => {
+  it("user mention with U, W, B, E, A prefixes", () => {
     const m = formatSlackUserMention("U12345");
     expect(m).toBe("<@U12345>");
     expect(extractUserIdFromMention(m)).toBe("U12345");
+    expect(extractUserIdFromMention("<@B98765432>")).toBe("B98765432");
+    expect(extractUserIdFromMention("<@E11223344>")).toBe("E11223344");
+    expect(extractUserIdFromMention("<@A55667788>")).toBe("A55667788");
     expect(extractUserIdFromMention("not a mention")).toBeNull();
+  });
+
+  it("isValidUserId validates bot, app, and enterprise IDs", () => {
+    expect(isValidUserId("U12345678")).toBe(true);
+    expect(isValidUserId("W12345678")).toBe(true);
+    expect(isValidUserId("B12345678")).toBe(true);
+    expect(isValidUserId("E12345678")).toBe(true);
+    expect(isValidUserId("A12345678")).toBe(true);
+    expect(isValidUserId("invalid")).toBe(false);
   });
 
   it("channel mention", () => {
@@ -180,6 +194,41 @@ describe("permalink build/parse round-trip", () => {
       parseSlackMessagePermalink(
         "https://acme.slack.com/archives/C0ABCDE/p12345",
       ),
+    ).toBeNull();
+  });
+});
+
+describe("formatSlackDate", () => {
+  it("formats valid Date or timestamp into Slack <!date...>", () => {
+    const d = new Date(1700000000000);
+    expect(formatSlackDate(d)).toBe(
+      "<!date^1700000000^{date_short_pretty} at {time}|2023-11-14T22:13:20.000Z>",
+    );
+  });
+
+  it("safely handles invalid dates and non-finite timestamps", () => {
+    expect(formatSlackDate(new Date("invalid"))).toBe("Invalid date");
+    expect(formatSlackDate(NaN, "{date}", "Fallback")).toBe("Fallback");
+    expect(formatSlackDate(Infinity)).toBe("Invalid date");
+  });
+});
+
+describe("parseSlackMessageLink", () => {
+  it("parses archives link without leaving trailing dot on 10-digit timestamps", () => {
+    expect(
+      parseSlackMessageLink(
+        "https://acme.slack.com/archives/C12345678/p1700000000123456",
+      ),
+    ).toEqual({ channelId: "C12345678", messageTs: "1700000000.123456" });
+
+    expect(
+      parseSlackMessageLink(
+        "https://acme.slack.com/archives/C12345678/p1700000000",
+      ),
+    ).toEqual({ channelId: "C12345678", messageTs: "1700000000" });
+
+    expect(
+      parseSlackMessageLink("https://acme.slack.com/archives/C12345678/p123"),
     ).toBeNull();
   });
 });
