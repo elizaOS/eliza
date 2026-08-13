@@ -65,10 +65,23 @@ export function validateModelConfig(runtime?: IAgentRuntime): ModelConfig {
 		);
 		const embeddingProvider = getSetting("EMBEDDING_PROVIDER");
 		const localEmbeddingModel = getSetting("LOCAL_EMBEDDING_MODEL");
-		const localEmbeddingDimensions = getSetting("LOCAL_EMBEDDING_DIMENSIONS");
+		// Alias dimension reads follow the same blank-is-unset convention as
+		// normalizeEnvValue: a blank/whitespace-only alias falls through to the
+		// provider default instead of reaching the numeric schema.
+		const getDimensionAlias = (key: string) => {
+			const raw = getNumericSetting(key);
+			return typeof raw === "string" ? normalizeEnvValue(raw) : raw;
+		};
+		const localEmbeddingDimensions = getDimensionAlias(
+			"LOCAL_EMBEDDING_DIMENSIONS",
+		);
+		const openaiEmbeddingDimensions = getDimensionAlias(
+			"OPENAI_EMBEDDING_DIMENSIONS",
+		);
 		const inferredLocalEmbeddings =
 			!embeddingProvider &&
-			Boolean(localEmbeddingModel || localEmbeddingDimensions);
+			(localEmbeddingModel !== undefined ||
+				localEmbeddingDimensions !== undefined);
 		const resolvedEmbeddingProvider =
 			embeddingProvider || (inferredLocalEmbeddings ? "local" : undefined);
 		const assumePluginOpenAI = !resolvedEmbeddingProvider;
@@ -81,12 +94,16 @@ export function validateModelConfig(runtime?: IAgentRuntime): ModelConfig {
 			(resolvedEmbeddingProvider === "local"
 				? "local-embedding"
 				: "text-embedding-3-small");
+		const providerEmbeddingDimension =
+			resolvedEmbeddingProvider === "local"
+				? localEmbeddingDimensions
+				: resolvedEmbeddingProvider === "openai" || assumePluginOpenAI
+					? openaiEmbeddingDimensions
+					: undefined;
 		const embeddingDimension =
 			getNumericSetting("EMBEDDING_DIMENSION") ??
-			((resolvedEmbeddingProvider === "local"
-				? localEmbeddingDimensions
-				: getSetting("OPENAI_EMBEDDING_DIMENSIONS")) ||
-				(resolvedEmbeddingProvider === "local" ? "384" : "1536"));
+			providerEmbeddingDimension ??
+			(resolvedEmbeddingProvider === "local" ? "384" : "1536");
 
 		const rawOpenaiApiKey = getSetting("OPENAI_API_KEY");
 		const rawOpenaiBaseURL = getSetting("OPENAI_BASE_URL");
