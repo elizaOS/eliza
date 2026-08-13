@@ -196,6 +196,7 @@ import {
   registerFamilyRegistry,
   registerWorkflowStepRegistry,
 } from "./lifeops/registries/index.js";
+import { createOwnerReminderDirectRoutingRule } from "./lifeops/reminders/direct-routing.js";
 import { LifeOpsRepository } from "./lifeops/repository.js";
 import {
   createResourceCapacityAction,
@@ -1039,6 +1040,10 @@ const rawPersonalAssistantPlugin: Plugin = {
     registerDirectActionRoutingRule(
       runtime,
       createTrackedWorkRecapDirectRoutingRule(),
+    );
+    registerDirectActionRoutingRule(
+      runtime,
+      createOwnerReminderDirectRoutingRule(),
     );
 
     // First-party adapters backed by LifeOps services. Gmail and X replace the

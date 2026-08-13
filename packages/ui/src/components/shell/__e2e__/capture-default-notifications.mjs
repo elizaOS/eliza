@@ -34,8 +34,28 @@ const stubElizaCore = {
       // would blank the rested state and fake a regression.
       contents: `
         const noop = new Proxy(() => noop, { get: () => noop });
+        // The wake/provision path (client-cloud.ts) subclasses the real
+        // ElizaError; esbuild's ESM interop copies only this object's own keys,
+        // so a Proxy fallback would surface undefined here and break the
+        // subclass at evaluation time. Export a real class with core's shape so
+        // the fixture bundle exercises the same error type production does.
+        class ElizaError extends Error {
+          constructor(message, options = {}) {
+            super(
+              message,
+              options.cause !== undefined ? { cause: options.cause } : undefined,
+            );
+            this.name = "ElizaError";
+            this.code = options.code;
+            this.context = options.context;
+            this.severity = options.severity;
+            Object.setPrototypeOf(this, new.target.prototype);
+          }
+        }
         module.exports = new Proxy(
           {
+            ElizaError,
+            isElizaError: (v) => v instanceof ElizaError,
             DEFAULT_NOTIFICATION_CATEGORY: "general",
             DEFAULT_NOTIFICATION_PRIORITY: "normal",
             tierForPriority: (priority) =>

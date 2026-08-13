@@ -110,9 +110,11 @@
       },
       "CODING_TOOLS_SHELL_TIMEOUT_MS": {
         "type": "number",
-        "description": "Default SHELL timeout in milliseconds. Hard ceiling enforced before backgrounding kicks in.",
+        "description": "Default SHELL timeout in milliseconds. Must be a canonical decimal integer from 100 through 600000; invalid values fail before execution.",
         "required": false,
         "default": 120000,
+        "min": 100,
+        "max": 600000,
         "sensitive": false
       },
       "CODING_TOOLS_SHELL_BG_BUDGET_MS": {

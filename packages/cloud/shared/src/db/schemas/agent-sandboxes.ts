@@ -375,6 +375,7 @@ export type AgentBackupSnapshotType =
   | "auto"
   | "manual"
   | "pre-shutdown"
+  | "pre-delete"
   | "pre-upgrade"
   | "pre-move";
 

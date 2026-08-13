@@ -147,9 +147,26 @@ async function __hono_POST(
           {
             success: false,
             error: error.message,
+            code: "shared_runtime_cache_warming",
             retryable: true,
           },
-          { status: 503 },
+          { status: 503, headers: { "Retry-After": "1" } },
+        ),
+        CORS_METHODS,
+      );
+    }
+    // A reused clientMessageId with different text must not replace the landed
+    // turn — non-retryable; the caller picks a new id (#18045).
+    if (error instanceof Error && error.name === "SharedTurnConflictError") {
+      return applyCorsHeaders(
+        Response.json(
+          {
+            success: false,
+            error: error.message,
+            code: "client_message_conflict",
+            retryable: false,
+          },
+          { status: 409 },
         ),
         CORS_METHODS,
       );
@@ -186,6 +203,7 @@ __hono_app.post("/", async (c) => {
         {
           success: false,
           error: scope.error,
+          ...(scope.code ? { code: scope.code } : {}),
           ...(scope.status === 503 ? { retryable: true } : {}),
         },
         {

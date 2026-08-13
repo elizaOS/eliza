@@ -320,8 +320,17 @@ export function retrieveActions(
 	input: RetrieveActionsInput,
 ): ActionRetrievalResponse {
 	const candidateActions = dedupeNormalizedStrings(input.candidateActions);
+	const catalogParentNames = new Set(
+		input.catalog.parents.map((parent) => parent.normalizedName),
+	);
 	const parentActionHints = dedupeNormalizedStrings([
 		...(input.parentActionHints ?? []),
+		// A Stage-1 candidate that names an exposed parent is already an exact
+		// catalog reference. Preserve that signal instead of forcing it through
+		// fuzzy retrieval, where unrelated keyword-heavy parents can outrank it.
+		...candidateActions.filter((actionName) =>
+			catalogParentNames.has(normalizeActionName(actionName)),
+		),
 		...candidateActions.flatMap((actionName) =>
 			candidateNamespaceParentExists(input.catalog.parents, actionName)
 				? []

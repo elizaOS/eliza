@@ -230,12 +230,6 @@ export function getImageGenerationModel(runtime: IAgentRuntime): string {
   );
 }
 
-export function getResearchModel(runtime: IAgentRuntime): string {
-  return (
-    getSetting(runtime, "ELIZAOS_CLOUD_RESEARCH_MODEL") ??
-    (getSetting(runtime, "RESEARCH_MODEL", "o3-deep-research") as string)
-  );
-}
 
 export function getTTSModel(runtime: IAgentRuntime): string {
   return getSetting(runtime, "ELIZAOS_CLOUD_TTS_MODEL", "gpt-5-mini-tts") as string;
