@@ -72,6 +72,7 @@ describe("sanitizeCalendarId (#18946)", () => {
       "unknown",
       "any",
       "AUTO",
+      "  Auto  ",
     ]) {
       expect(sanitizeCalendarId(junk)).toBeUndefined();
     }
@@ -80,9 +81,9 @@ describe("sanitizeCalendarId (#18946)", () => {
   it("passes real calendar ids through trimmed", () => {
     expect(sanitizeCalendarId("primary")).toBe("primary");
     expect(sanitizeCalendarId(" user@example.com ")).toBe("user@example.com");
-    expect(
-      sanitizeCalendarId("AQMkADAwATM3ZmYAZS0xYjIz"),
-    ).toBe("AQMkADAwATM3ZmYAZS0xYjIz");
+    expect(sanitizeCalendarId("AQMkADAwATM3ZmYAZS0xYjIz")).toBe(
+      "AQMkADAwATM3ZmYAZS0xYjIz",
+    );
   });
 
   it("treats empty and whitespace-only values as unset", () => {

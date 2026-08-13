@@ -235,19 +235,21 @@ describe("CALENDAR effect receipt settlement", () => {
       text: "Approval request calendar-approval-request-1 is ready.",
     };
     const schedule = vi.fn(async () => approval);
+    const getCalendarFeed = vi.fn(async () => feed([]));
+    const prepareCalendarEventCreate = vi.fn(
+      async (_url: URL, request: Record<string, unknown>) => ({
+        ...request,
+        side: "owner" as const,
+        grantId: "connector-account:calendar-owner",
+        calendarId: "primary",
+        startAt: "2026-07-28T22:00:00.000Z",
+        endAt: "2026-07-28T22:30:00.000Z",
+        timeZone: "UTC",
+      }),
+    );
     const service = {
-      getCalendarFeed: vi.fn(async () => feed([])),
-      prepareCalendarEventCreate: vi.fn(
-        async (_url: URL, request: Record<string, unknown>) => ({
-          ...request,
-          side: "owner" as const,
-          grantId: "connector-account:calendar-owner",
-          calendarId: "primary",
-          startAt: "2026-07-28T22:00:00.000Z",
-          endAt: "2026-07-28T22:30:00.000Z",
-          timeZone: "UTC",
-        }),
-      ),
+      getCalendarFeed,
+      prepareCalendarEventCreate,
     };
     const action = createCalendarActionRunner(
       deps({
@@ -268,6 +270,7 @@ describe("CALENDAR effect receipt settlement", () => {
         subaction: "create_event",
         title: "School pickup",
         details: {
+          calendarId: "  Default  ",
           startAt: "2026-07-28T22:00:00.000Z",
           endAt: "2026-07-28T22:30:00.000Z",
           timeZone: "UTC",
@@ -277,6 +280,14 @@ describe("CALENDAR effect receipt settlement", () => {
     });
 
     expect(schedule, JSON.stringify(result)).toHaveBeenCalledOnce();
+    expect(getCalendarFeed).toHaveBeenCalledWith(
+      expect.any(URL),
+      expect.objectContaining({ calendarId: undefined }),
+    );
+    expect(prepareCalendarEventCreate).toHaveBeenCalledWith(
+      expect.any(URL),
+      expect.objectContaining({ calendarId: undefined }),
+    );
     expect(result.effectReceipts, JSON.stringify(result)).toEqual([
       expect.objectContaining({
         operation: "calendar.approval.schedule_event",
@@ -760,6 +771,7 @@ describe("CALENDAR effect receipt settlement", () => {
           mode: "read",
           side: "owner",
           grantId: "primary",
+          calendarId: "default",
           timeZone: "UTC",
           timeMin: "2026-07-27T00:00:00.000Z",
           timeMax: "2026-08-03T00:00:00.000Z",
@@ -782,10 +794,40 @@ describe("CALENDAR effect receipt settlement", () => {
     // window reaches the service well-formed.
     expect(request.mode).toBeUndefined();
     expect(request.grantId).toBeUndefined();
+    expect(request.calendarId).toBeUndefined();
     expect(request.side).toBe("owner");
     expect(request.timeZone).toBe("UTC");
     expect(request.timeMin).toBe("2026-07-27T00:00:00.000Z");
     expect(request.timeMax).toBe("2026-08-03T00:00:00.000Z");
+  });
+
+  it("drops invalid planner time bounds instead of forwarding malformed ISO", async () => {
+    const getCalendarFeed = vi.fn(
+      async (_url: URL, _request?: Record<string, unknown>) => feed(),
+    );
+    const action = createCalendarActionRunner(deps());
+
+    await execute({
+      action,
+      service: { getCalendarFeed },
+      actor: message("Show my calendar."),
+      parameters: {
+        subaction: "feed",
+        details: {
+          timeMin: ",time_min:",
+          timeMax: "not-a-date",
+          timeZone: "UTC",
+        },
+      },
+      delivered: [],
+    });
+
+    const request = getCalendarFeed.mock.calls[0]?.[1] as Record<
+      string,
+      unknown
+    >;
+    expect(request.timeMin).not.toBe(",time_min:");
+    expect(request.timeMax).not.toBe("not-a-date");
   });
 
   it("passes a real grant id through untouched", async () => {
