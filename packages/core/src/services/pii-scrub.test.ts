@@ -48,17 +48,25 @@ function makeRuntime(opts: RuntimeMockOpts = {}): MockRuntime {
 	const runtime = {
 		agentId: AGENT_ID,
 		logger: { info: noop, warn: noop, debug: noop, error: noop },
-		getModel: (type: string) =>
-			type === ModelType.PII_SCRUB && opts.scrubHandler
-				? opts.scrubHandler
-				: undefined,
-		useModel: async (type: string, params: unknown) => {
-			if (type !== ModelType.PII_SCRUB || !opts.scrubHandler) {
-				throw new Error(`No handler for ${type}`);
+		getModel: (type: string) => {
+			if (type === ModelType.PII_SCRUB) {
+				if (opts.scrubHandler) {
+					return async (_runtime: IAgentRuntime, params: unknown) =>
+						opts.scrubHandler?.(params);
+				}
 			}
-			useModelCalls++;
-			return opts.scrubHandler(params);
+			return undefined;
 		},
+		useModel: async (type: string, params: unknown) => {
+			if (type === ModelType.PII_SCRUB) {
+				useModelCalls++;
+				if (opts.scrubHandler) return opts.scrubHandler(params);
+			}
+			throw new Error(`No handler for ${type}`);
+		},
+		getService: () => null,
+		getEntityById: async () => null,
+		adapter: { searchMessages: vi.fn(async () => []) },
 		getCache: async <T>(key: string): Promise<T | undefined> =>
 			cache.has(key) ? (cache.get(key) as T) : undefined,
 		setCache: async <T>(key: string, value: T): Promise<boolean> => {
@@ -113,7 +121,11 @@ async function enqueue(
 	payload: Record<string, unknown>,
 ): Promise<void> {
 	// biome-ignore lint/suspicious/noExplicitAny: exercise the event handler directly
-	await (service as any).handleScrubRequest(payload);
+	await (service as any).handleScrubRequest({
+		itemRef: "test:item",
+		writeBack: async () => {},
+		...payload,
+	});
 }
 
 describe("PiiScrubService drain config", () => {
@@ -148,14 +160,17 @@ describe("PiiScrubService drain config", () => {
 	});
 
 	test("scrubs persisted memories through the production hook and durable write-back", async () => {
-		const runtime = makeRuntime();
+		const originalText = "pay 4111 1111 1111 1111";
+		const runtime = makeRuntime({
+			scrubHandler: async () => cleanResult(originalText, "2026.08"),
+		});
 		const service = (await PiiScrubService.start(runtime)) as PiiScrubService;
 		const memoryId = "00000000-0000-0000-0000-000000000010" as UUID;
 		let stored: Memory = {
 			id: memoryId,
 			entityId: "00000000-0000-0000-0000-000000000011" as UUID,
 			roomId: "00000000-0000-0000-0000-000000000012" as UUID,
-			content: { text: "pay 4111 1111 1111 1111" },
+			content: { text: originalText },
 		};
 		runtime.getMemoryById = vi.fn(async () => stored);
 		runtime.updateMemory = vi.fn(
@@ -187,7 +202,69 @@ describe("PiiScrubService drain config", () => {
 
 		expect(stored.content.text).toBe("pay [REDACTED]");
 		expect(
-			await service.getMarker("pay 4111 1111 1111 1111", "2026.08"),
+			await service.getMarker(originalText, "2026.08", memoryId),
+		).toBeDefined();
+		await service.stop();
+	});
+
+	test("routes lowercase free text through live context and the dedicated PII model", async () => {
+		const runtime = makeRuntime({
+			scrubHandler: async () => ({
+				modelId: "test-local-privacy-gguf",
+				rulesetVersion: "2026.08",
+				verdicts: [
+					{
+						span: "met jordan yesterday",
+						kind: "pii",
+						replacement: "met Person 1 yesterday",
+					},
+				],
+			}),
+		});
+		const service = (await PiiScrubService.start(runtime)) as PiiScrubService;
+		const memoryId = "00000000-0000-0000-0000-000000000020" as UUID;
+		let stored: Memory = {
+			id: memoryId,
+			entityId: "00000000-0000-0000-0000-000000000021" as UUID,
+			roomId: "00000000-0000-0000-0000-000000000022" as UUID,
+			content: { text: "met jordan yesterday" },
+		};
+		runtime.getMemoryById = vi.fn(async () => stored);
+		runtime.updateMemory = vi.fn(
+			async (update: Parameters<IAgentRuntime["updateMemory"]>[0]) => {
+				stored = { ...stored, ...update };
+				return true;
+			},
+		);
+		const registered = runtime.registerPipelineHook as unknown as {
+			mock: { calls: Array<[PipelineHookSpec]> };
+		};
+		const hook = registered.mock.calls
+			.map(([spec]) => spec)
+			.find((spec) => spec.id === "core:pii-scrub:after-memory-persisted");
+
+		await hook?.handler(runtime, {
+			phase: "after_memory_persisted",
+			memory: stored,
+			tableName: "memories",
+			memoryId,
+		});
+		const requested = runtime.__events.find(
+			(event) => event.type === "PII_SCRUB_REQUESTED",
+		);
+		expect(requested?.payload.candidateSpans).toEqual(["met jordan yesterday"]);
+		expect(requested?.payload.contextPack).toEqual(expect.any(String));
+
+		await enqueue(service, requested?.payload ?? {});
+		await drain(service);
+
+		expect(runtime.__useModelCalls).toBe(1);
+		expect(stored.content.text).toBe("met Person 1 yesterday");
+		expect(
+			await service.getMarker(stored.content.text, "2026.08", memoryId),
+		).toBeUndefined();
+		expect(
+			await service.getMarker("met jordan yesterday", "2026.08", memoryId),
 		).toBeDefined();
 		await service.stop();
 	});
@@ -205,7 +282,7 @@ describe("PiiScrubService enqueue -> drain -> scrub applied", () => {
 		await drain(service);
 
 		expect(runtime.__useModelCalls).toBe(0);
-		const marker = await service.getMarker(content, RULESET);
+		const marker = await service.getMarker(content, RULESET, "test:item");
 		expect(marker).toBeDefined();
 		expect(marker?.tier0Only).toBe(true);
 		expect(marker?.modelId).toBe("tier0");
@@ -264,7 +341,7 @@ describe("PiiScrubService enqueue -> drain -> scrub applied", () => {
 		await drain(service);
 
 		expect(runtime.__useModelCalls).toBe(1);
-		const marker = await service.getMarker(content, RULESET);
+		const marker = await service.getMarker(content, RULESET, "test:item");
 		expect(marker?.tier0Only).toBe(false);
 		expect(marker?.modelId).toBe("test-local-gguf");
 		expect(
@@ -275,6 +352,53 @@ describe("PiiScrubService enqueue -> drain -> scrub applied", () => {
 });
 
 describe("PiiScrubService content-hash idempotency", () => {
+	test("requires a source reference and durable write-back before enqueue", async () => {
+		const runtime = makeRuntime();
+		const service = (await PiiScrubService.start(runtime)) as PiiScrubService;
+		await expect(
+			enqueue(service, {
+				content: "my card is 4111 1111 1111 1111",
+				rulesetVersion: RULESET,
+				writeBack: undefined,
+			}),
+		).rejects.toMatchObject({ code: "PII_SCRUB_WRITE_BACK_REQUIRED" });
+		await service.stop();
+	});
+
+	test("scrubs identical content independently for distinct source artifacts", async () => {
+		const runtime = makeRuntime({
+			scrubHandler: async () => cleanResult("Alex Doe"),
+		});
+		const service = (await PiiScrubService.start(runtime)) as PiiScrubService;
+		const content = "met Alex Doe";
+		const firstWriteBack = vi.fn(async () => {});
+		const secondWriteBack = vi.fn(async () => {});
+
+		await enqueue(service, {
+			content,
+			rulesetVersion: RULESET,
+			candidateSpans: ["Alex Doe"],
+			itemRef: "memory:a",
+			writeBack: firstWriteBack,
+		});
+		await drain(service);
+		await enqueue(service, {
+			content,
+			rulesetVersion: RULESET,
+			candidateSpans: ["Alex Doe"],
+			itemRef: "memory:b",
+			writeBack: secondWriteBack,
+		});
+		await drain(service);
+
+		expect(runtime.__useModelCalls).toBe(2);
+		expect(firstWriteBack).toHaveBeenCalledOnce();
+		expect(secondWriteBack).toHaveBeenCalledOnce();
+		expect(await service.getMarker(content, RULESET, "memory:a")).toBeDefined();
+		expect(await service.getMarker(content, RULESET, "memory:b")).toBeDefined();
+		await service.stop();
+	});
+
 	test("re-enqueue of UNCHANGED content skips before the queue (no drain work)", async () => {
 		const runtime = makeRuntime({
 			scrubHandler: async () => cleanResult("Alex Doe"),
@@ -329,6 +453,8 @@ describe("PiiScrubService content-hash idempotency", () => {
 			candidateSpans: ["Sam Vale"],
 			priority: "low",
 			inferencePriority: "background",
+			itemRef: "test:item",
+			writeBack: async () => {},
 		});
 		expect(service.getQueueSize()).toBe(1);
 		await drain(service);
@@ -362,8 +488,12 @@ describe("PiiScrubService content-hash idempotency", () => {
 		});
 		await drain(service);
 		expect(runtime.__useModelCalls).toBe(2);
-		expect(await service.getMarker(content, "2026.07")).toBeDefined();
-		expect(await service.getMarker(content, "2026.08")).toBeDefined();
+		expect(
+			await service.getMarker(content, "2026.07", "test:item"),
+		).toBeDefined();
+		expect(
+			await service.getMarker(content, "2026.08", "test:item"),
+		).toBeDefined();
 		await service.stop();
 	});
 });
@@ -389,7 +519,9 @@ describe("PiiScrubService crash/retry safety (fail-closed)", () => {
 
 		// The content is NEVER marked done: it stays quarantined for a later
 		// retry once a model is registered.
-		expect(await service.getMarker(content, RULESET)).toBeUndefined();
+		expect(
+			await service.getMarker(content, RULESET, "test:item"),
+		).toBeUndefined();
 		// Exhaustion surfaced a FAILED event + a reportError.
 		expect(runtime.__events.some((e) => e.type === "PII_SCRUB_FAILED")).toBe(
 			true,
@@ -423,7 +555,7 @@ describe("PiiScrubService crash/retry safety (fail-closed)", () => {
 		});
 
 		await drain(service);
-		const marker = await service.getMarker(content, RULESET);
+		const marker = await service.getMarker(content, RULESET, "test:item");
 		expect(marker).toBeDefined();
 		expect(marker?.tier0Only).toBe(false);
 		expect(attempts).toBeGreaterThanOrEqual(2);

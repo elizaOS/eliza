@@ -10,11 +10,9 @@
  * No new scheduler, no new queue - the rails already exist in-repo.
  *
  * Per item it:
- *   1. Computes the content-addressed done-marker
- *      `pii:<sha256(content)>:v<rulesetVersion>` and SKIPS if already present
- *      (idempotency: a re-scrub of unchanged content is a no-op - zero model
- *      calls, zero duplicate writes). This is what makes crash-and-rerun safe
- *      with zero cursor state.
+ *   1. Computes the source-scoped done-marker
+ *      `pii:<sha256(content)>:v<rulesetVersion>:source:<sha256(itemRef)>` and
+ *      skips only when that source artifact is already complete.
  *   2. Escalates through the merged seam
  *      (`scrubWithEscalation`, #14980/#14809): tier-0 deterministic detectors
  *      run first (free, no model call); only residue candidates hit the
@@ -28,17 +26,27 @@
  *      `PII_SCRUB_FAILED` and are surfaced via `runtime.reportError`
  *      (RECENT_ERRORS provider + owner escalation).
  *
- * When no `PII_SCRUB` model is registered the service still starts (tier-0-only
- * content - fully-covered structured PII - completes without a model), matching
- * the embedding service's "start even when no model" behavior; content with
- * un-inspectable residue then fails-closed at the seam, as intended.
+ * `PII_SCRUB` is supplied by a dedicated privacy provider such as the
+ * local-inference plugin. If no dedicated handler can inspect residue, the item
+ * fails closed and remains unmarked; core never forwards raw PII through a
+ * general-purpose text route.
  *
  * OUT OF SCOPE for this service (sibling issues / later slices): the CLOUD lane
- * (routing/resolve/jobsRepository/Redis+cron), the scrub prompt/semantics, and
- * the model seam itself (already merged).
+ * (routing/resolve/jobsRepository/Redis+cron) and alternate provider-specific
+ * scrub handlers.
  */
 
 import { ElizaError } from "../errors.js";
+import {
+	PII_ENTITY_RECOGNIZER_SERVICE,
+	type PiiEntityRecognizerService,
+} from "../security/entity-recognizer.js";
+import {
+	entityResolverFromStore,
+	type PiiEntityResolverStore,
+	type PiiScrubCandidate,
+	sourcesFromRuntime,
+} from "../security/pii-context-pack.js";
 import {
 	getScrubMarker,
 	isScrubDone,
@@ -71,13 +79,86 @@ interface PiiScrubQueueItem {
 	priority: "high" | "normal" | "low";
 	inferencePriority: "interactive" | "background";
 	jobId?: string;
-	itemRef?: string;
-	writeBack?: PiiScrubRequestPayload["writeBack"];
+	itemRef: string;
+	writeBack: PiiScrubRequestPayload["writeBack"];
 }
 
 const SRC = "plugin:basic-capabilities:service:pii-scrub";
 const MEMORY_HOOK_ID = "core:pii-scrub:after-memory-persisted";
 export const PII_SCRUB_RULESET_VERSION = "2026.08";
+
+interface KnowledgeGraphServiceView extends Service {
+	getEntityStore(): PiiEntityResolverStore;
+}
+
+const PROPER_NAME_PATTERN =
+	/\b[A-Z][\p{L}'-]{1,}(?:\s+[A-Z][\p{L}'-]{1,}){1,3}\b/gu;
+
+function addCandidate(
+	candidates: PiiScrubCandidate[],
+	seen: Set<string>,
+	candidate: PiiScrubCandidate,
+): void {
+	const value = candidate.surfaceForm.trim();
+	if (!value || seen.has(value)) return;
+	seen.add(value);
+	candidates.push({ ...candidate, surfaceForm: value });
+}
+
+async function mineLiveCandidates(
+	runtime: IAgentRuntime,
+	text: string,
+	entityId: string,
+): Promise<PiiScrubCandidate[]> {
+	const candidates: PiiScrubCandidate[] = [];
+	const seen = new Set<string>();
+	for (const candidate of mineTier0Candidates(text)) {
+		addCandidate(candidates, seen, candidate);
+	}
+
+	const recognizerService = runtime.getService<
+		Service & PiiEntityRecognizerService
+	>(PII_ENTITY_RECOGNIZER_SERVICE);
+	const recognizer = recognizerService?.getRecognizer();
+	if (recognizer) {
+		for (const span of await recognizer.recognize(text)) {
+			addCandidate(candidates, seen, {
+				surfaceForm: span.value,
+				kind: span.kind,
+				...(span.start !== undefined && span.end !== undefined
+					? { span: { start: span.start, end: span.end } }
+					: {}),
+			});
+		}
+	}
+
+	const sourceEntity = await runtime.getEntityById(entityId);
+	for (const name of sourceEntity?.names ?? []) {
+		const start = text.indexOf(name);
+		if (start >= 0) {
+			addCandidate(candidates, seen, {
+				surfaceForm: name,
+				kind: "person",
+				span: { start, end: start + name.length },
+			});
+		}
+	}
+
+	for (const match of text.matchAll(PROPER_NAME_PATTERN)) {
+		const start = match.index;
+		addCandidate(candidates, seen, {
+			surfaceForm: match[0],
+			kind: "person",
+			span: { start, end: start + match[0].length },
+		});
+	}
+	addCandidate(candidates, seen, {
+		surfaceForm: text,
+		kind: "free_text",
+		span: { start: 0, end: text.length },
+	});
+	return candidates;
+}
 
 /**
  * Service responsible for running the corpus PII scrub asynchronously on the
@@ -86,7 +167,7 @@ export const PII_SCRUB_RULESET_VERSION = "2026.08";
 export class PiiScrubService extends Service {
 	static serviceType = "pii-scrub";
 	capabilityDescription =
-		"Runs the corpus PII scrub asynchronously on the core task queue (content-hash idempotent, non-blocking)";
+		"Runs the corpus PII scrub asynchronously on the core task queue (source-scoped idempotency, non-blocking)";
 
 	private batchQueue: BatchQueue<PiiScrubQueueItem> | null = null;
 	private isDisabled = false;
@@ -128,8 +209,26 @@ export class PiiScrubService extends Service {
 				if (typeof originalText !== "string" || originalText.length === 0) {
 					return;
 				}
-				const candidates = mineTier0Candidates(originalText);
-				if (candidates.length === 0) return;
+				const candidates = await mineLiveCandidates(
+					this.runtime,
+					originalText,
+					ctx.memory.entityId,
+				);
+				const knowledgeGraph =
+					this.runtime.getService<KnowledgeGraphServiceView>(
+						"eliza_knowledge_graph",
+					);
+				const sources = sourcesFromRuntime(this.runtime, {
+					roomIds: [ctx.memory.roomId],
+					localOnly: true,
+					...(knowledgeGraph
+						? {
+								resolveEntity: entityResolverFromStore(
+									knowledgeGraph.getEntityStore(),
+								),
+							}
+						: {}),
+				});
 
 				await enqueuePiiScrub(
 					this.runtime,
@@ -172,7 +271,7 @@ export class PiiScrubService extends Service {
 							}
 						},
 					},
-					{ rulesetVersion: PII_SCRUB_RULESET_VERSION },
+					{ rulesetVersion: PII_SCRUB_RULESET_VERSION, sources },
 				);
 			},
 		});
@@ -181,7 +280,7 @@ export class PiiScrubService extends Service {
 		// system owns WHEN (repeat PII_SCRUB_DRAIN tick), we own WHAT (dequeue,
 		// escalate, mark-done). No maxSize: the bottleneck is model I/O, not
 		// queue length. No processBatch: the seam is a per-item escalation with
-		// per-item content-addressed idempotency, so there is no single-call
+		// per-source content-addressed idempotency, so there is no single-call
 		// batch collapse to exploit (each item's tier-0 residue is distinct).
 		this.batchQueue = new BatchQueue<PiiScrubQueueItem>({
 			name: PiiScrubService.SCRUB_DRAIN_TASK,
@@ -234,12 +333,33 @@ export class PiiScrubService extends Service {
 			);
 			return;
 		}
+		if (typeof payload.itemRef !== "string" || payload.itemRef.length === 0) {
+			throw new ElizaError(
+				"PII scrub request is missing its source reference",
+				{
+					code: "PII_SCRUB_SOURCE_REF_REQUIRED",
+				},
+			);
+		}
+		if (typeof payload.writeBack !== "function") {
+			throw new ElizaError("PII scrub request is missing durable write-back", {
+				code: "PII_SCRUB_WRITE_BACK_REQUIRED",
+				context: { itemRef: payload.itemRef },
+			});
+		}
 
 		// Cheap pre-enqueue idempotency: if this exact content+ruleset is already
 		// scrubbed, do not even queue it. The drain re-checks under the hood so a
 		// race (two enqueues of the same content) still no-ops, but this avoids
 		// the queue churn for the common re-scrub case.
-		if (await isScrubDone(this.runtime, content, payload.rulesetVersion)) {
+		if (
+			await isScrubDone(
+				this.runtime,
+				content,
+				payload.rulesetVersion,
+				payload.itemRef,
+			)
+		) {
 			this.runtime.logger.debug(
 				{ src: SRC, agentId: this.runtime.agentId, itemRef: payload.itemRef },
 				"Content already scrubbed under this ruleset, skipping enqueue",
@@ -285,7 +405,14 @@ export class PiiScrubService extends Service {
 		// Idempotency re-check inside the drain: covers the race where the same
 		// content was enqueued twice before either drained. A hit means another
 		// drain already completed this exact content+ruleset - nothing to do.
-		if (await isScrubDone(this.runtime, item.content, item.rulesetVersion)) {
+		if (
+			await isScrubDone(
+				this.runtime,
+				item.content,
+				item.rulesetVersion,
+				item.itemRef,
+			)
+		) {
 			this.runtime.logger.debug(
 				{ src: SRC, agentId: this.runtime.agentId, itemRef: item.itemRef },
 				"Item already scrubbed (drain-time idempotency hit), skipping",
@@ -343,18 +470,20 @@ export class PiiScrubService extends Service {
 
 		// The source adapter must confirm its durable write before this item can
 		// become an idempotency hit. Rejections throw into the queue retry path.
-		if (item.writeBack) {
-			await item.writeBack(scrubbedText);
-		}
+		await item.writeBack(scrubbedText);
 
-		// Success: write the content-addressed done-marker so a re-scrub of this
-		// exact content under this ruleset no-ops, and a crash-restart resumes
-		// past it with zero duplicate work.
-		await markScrubDone(this.runtime, item.content, {
-			rulesetVersion: item.rulesetVersion,
-			modelId,
-			tier0Only: !escalated,
-		});
+		// Success: write the source-scoped done-marker so this artifact's unchanged
+		// content no-ops, without suppressing write-back for a second source.
+		await markScrubDone(
+			this.runtime,
+			item.content,
+			{
+				rulesetVersion: item.rulesetVersion,
+				modelId,
+				tier0Only: !escalated,
+			},
+			item.itemRef,
+		);
 
 		await this.runtime.emitEvent(EventType.PII_SCRUB_COMPLETED, {
 			runtime: this.runtime,
@@ -436,8 +565,8 @@ export class PiiScrubService extends Service {
 	}
 
 	/** Test/audit helper: read the done-marker for a piece of content. */
-	async getMarker(content: string, rulesetVersion: string) {
-		return getScrubMarker(this.runtime, content, rulesetVersion);
+	async getMarker(content: string, rulesetVersion: string, itemRef?: string) {
+		return getScrubMarker(this.runtime, content, rulesetVersion, itemRef);
 	}
 }
 

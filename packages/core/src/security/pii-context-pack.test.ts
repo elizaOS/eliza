@@ -372,6 +372,22 @@ describe("sourcesFromRuntime", () => {
 		expect(full.resolveEntity).toBeTypeOf("function");
 	});
 
+	test("local-only mode omits retrieval that may route through embeddings", () => {
+		const { runtime } = makeRuntime({
+			embeddingModel: true,
+			documentsService: true,
+		});
+		const sources = sourcesFromRuntime(runtime, {
+			localOnly: true,
+			roomIds: [AGENT_ID],
+			resolveEntity: async () => [],
+		});
+		expect(sources.searchDocuments).toBeUndefined();
+		expect(sources.searchMemories).toBeUndefined();
+		expect(sources.searchMessages).toBeTypeOf("function");
+		expect(sources.resolveEntity).toBeTypeOf("function");
+	});
+
 	test("documents source maps StoredDocument hits into scored fragments", async () => {
 		const { runtime, searchDocuments } = makeRuntime({
 			documentsService: true,
@@ -444,6 +460,7 @@ describe("buildScrubRequestDraft", () => {
 			rulesetVersion: RULESET,
 			pack,
 			itemRef: "memory:abc",
+			writeBack: async () => {},
 		});
 		expect(draft.content).toBe("Lunch with John Smith");
 		expect(draft.rulesetVersion).toBe(RULESET);

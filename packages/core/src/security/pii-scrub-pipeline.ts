@@ -138,7 +138,9 @@ export function applyVerdictsToText(
 	verdicts: readonly PiiScrubVerdict[],
 ): string {
 	let result = text;
-	for (const verdict of verdicts) {
+	for (const verdict of [...verdicts].sort(
+		(a, b) => b.span.length - a.span.length,
+	)) {
 		if (verdict.kind === "pii" && verdict.replacement) {
 			result = result.split(verdict.span).join(verdict.replacement);
 		}
@@ -154,8 +156,7 @@ export const TIER0_REDACTION_PLACEHOLDER = "[REDACTED]";
 
 /**
  * Redact tier-0 deterministic spans in text. Each matched span is replaced
- * with {@link TIER0_REDACTION_PLACEHOLDER}. Runs before model-verdict
- * application so a structured value a detector caught is never left in place.
+ * with {@link TIER0_REDACTION_PLACEHOLDER}.
  */
 export function redactTier0Spans(
 	text: string,
@@ -171,7 +172,10 @@ export function redactTier0Spans(
 }
 
 /**
- * Full write-back transform: tier-0 redaction + model verdict application.
+ * Full write-back transform: longest model verdicts first, then tier-0
+ * redaction, followed by a fresh deterministic scan of the rewritten output.
+ * Whole-chunk verdicts can therefore rewrite unstructured PII without allowing
+ * a normalized structured value to evade the original detector spans.
  * Produces the artifact that replaces the original — guaranteed to contain
  * zero surviving PII when the detectors + verdicts cover all sensitive spans.
  */
@@ -180,7 +184,14 @@ export function applyScrubWriteBack(
 	tier0Spans: readonly { readonly span: string }[],
 	verdicts: readonly PiiScrubVerdict[],
 ): string {
-	return applyVerdictsToText(redactTier0Spans(text, tier0Spans), verdicts);
+	const rewritten = redactTier0Spans(
+		applyVerdictsToText(text, verdicts),
+		tier0Spans,
+	);
+	const rewrittenTier0 = detectPii(rewritten).map((match) => ({
+		span: match.value,
+	}));
+	return redactTier0Spans(rewritten, rewrittenTier0);
 }
 
 /**
@@ -206,7 +217,9 @@ export function applyScrubVerdicts(
 	let result = substitution.text;
 
 	// 2. Layer model verdicts for the residue: replace each `pii` span.
-	for (const verdict of verdicts) {
+	for (const verdict of [...verdicts].sort(
+		(a, b) => b.span.length - a.span.length,
+	)) {
 		if (verdict.kind === "pii" && verdict.replacement) {
 			// Escape regex special characters in the span for a safe split-join.
 			result = result.split(verdict.span).join(verdict.replacement);
@@ -245,7 +258,7 @@ export async function runPiiScrubPipeline(
 
 	// Marker checks happen before context retrieval or inference. Repeated direct
 	// calls and repeated enqueue attempts therefore perform zero paid work.
-	if (await isScrubDone(runtime, item.content, rulesetVersion)) {
+	if (await isScrubDone(runtime, item.content, rulesetVersion, item.itemRef)) {
 		return {
 			scrubbedText: item.content,
 			escalated: false,
@@ -318,11 +331,16 @@ export async function runPiiScrubPipeline(
 	// The source artifact is committed before the marker. A failed write never
 	// becomes an idempotency hit and can safely retry.
 	await item.writeBack(scrubbedText);
-	await markScrubDone(runtime, item.content, {
-		rulesetVersion,
-		modelId,
-		tier0Only: !escalation.escalated,
-	});
+	await markScrubDone(
+		runtime,
+		item.content,
+		{
+			rulesetVersion,
+			modelId,
+			tier0Only: !escalation.escalated,
+		},
+		item.itemRef,
+	);
 
 	return {
 		scrubbedText,

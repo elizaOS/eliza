@@ -340,13 +340,13 @@ export interface EmbeddingGenerationPayload extends EventPayload {
 /**
  * Payload for {@link EventType.PII_SCRUB_REQUESTED}: one enqueue of content onto
  * the async scrub rails (#14808). The service hashes `content` into the
- * content-addressed done-marker (`pii:<sha256(content)>:v<rulesetVersion>`) and
- * skips the item entirely when that marker is already present (idempotent
- * re-scrub no-op). `candidateSpans` are the model-judgment residue the caller
- * mined; when empty the seam runs tier-0 only and never invokes a model.
+ * source-scoped done-marker
+ * (`pii:<sha256(content)>:v<rulesetVersion>:source:<sha256(itemRef)>`) and skips
+ * only when that source artifact is already complete. `candidateSpans` are the
+ * model-judgment residue the caller mined; when empty the seam runs tier-0 only.
  */
 export interface PiiScrubRequestPayload extends EventPayload {
-	/** The exact content to scrub. Its sha256 is the idempotency handle. */
+	/** The exact content to scrub. Its sha256 is half of the idempotency handle. */
 	content: string;
 	/** Active ruleset version: the `v<...>` half of the done-marker key. */
 	rulesetVersion: string;
@@ -369,13 +369,13 @@ export interface PiiScrubRequestPayload extends EventPayload {
 	inferencePriority?: LocalInferencePriority;
 	/** Correlates all items belonging to one scrub job (progress/observability). */
 	jobId?: UUID;
-	/** Opaque caller ref (e.g. the memory/document id) for audit correlation. */
-	itemRef?: string;
+	/** Stable source ref; scopes idempotency and durable write-back to one artifact. */
+	itemRef: string;
 	/**
 	 * Local durable write-back owned by the source adapter. The scrub service
 	 * awaits this before writing the done marker; a rejection triggers retry.
 	 */
-	writeBack?: (scrubbedText: string) => Promise<void>;
+	writeBack: (scrubbedText: string) => Promise<void>;
 }
 
 /**

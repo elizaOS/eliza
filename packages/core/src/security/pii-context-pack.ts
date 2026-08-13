@@ -376,6 +376,11 @@ export function entityResolverFromStore(
 
 export interface RuntimeContextSourceOptions {
 	/**
+	 * Restrict retrieval to local database/entity surfaces. This omits document
+	 * and memory searches that may invoke a remotely routed embedding model.
+	 */
+	readonly localOnly?: boolean;
+	/**
 	 * Rooms for conversation FTS (`adapter.searchMessages` requires explicit
 	 * roomIds — enumerate via `getRoomsByWorld` / `getRoomsForParticipant`).
 	 * When omitted, the messages source is structurally absent.
@@ -424,7 +429,11 @@ export function sourcesFromRuntime(
 		| (Service & Partial<DocumentSearchService>)
 		| null;
 	const searchDocumentsFn = documents?.searchDocuments;
-	if (documents && typeof searchDocumentsFn === "function") {
+	if (
+		!options.localOnly &&
+		documents &&
+		typeof searchDocumentsFn === "function"
+	) {
 		sources.searchDocuments = async (query) => {
 			const results = await searchDocumentsFn.call(documents, {
 				entityId: runtime.agentId,
@@ -442,7 +451,7 @@ export function sourcesFromRuntime(
 		};
 	}
 
-	if (runtime.getModel(ModelType.TEXT_EMBEDDING)) {
+	if (!options.localOnly && runtime.getModel(ModelType.TEXT_EMBEDDING)) {
 		sources.searchMemories = async (query) => {
 			const params: TextEmbeddingParams = { text: query };
 			// Embeddings doctrine: a failure here THROWS (#9324) — the pass never
@@ -508,7 +517,8 @@ export function buildScrubRequestDraft(input: {
 	readonly priority?: PiiScrubRequestPayload["priority"];
 	readonly inferencePriority?: PiiScrubRequestPayload["inferencePriority"];
 	readonly jobId?: PiiScrubRequestPayload["jobId"];
-	readonly itemRef?: string;
+	readonly itemRef: string;
+	readonly writeBack: PiiScrubRequestPayload["writeBack"];
 }): Omit<PiiScrubRequestPayload, "runtime"> {
 	return {
 		content: input.content,
@@ -520,6 +530,7 @@ export function buildScrubRequestDraft(input: {
 		inferencePriority: input.inferencePriority,
 		jobId: input.jobId,
 		itemRef: input.itemRef,
+		writeBack: input.writeBack,
 		source: "pii-context-pack",
 	};
 }

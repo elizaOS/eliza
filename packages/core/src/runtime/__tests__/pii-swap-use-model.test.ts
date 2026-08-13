@@ -16,7 +16,7 @@ import {
 	PseudonymSession,
 } from "../../security/index.js";
 import { runWithTrajectoryContext } from "../../trajectory-context";
-import { type Character, ModelType } from "../../types";
+import { type Character, ModelType, type PiiScrubParams } from "../../types";
 
 function makeRuntime(enabled: boolean): AgentRuntime {
 	return new AgentRuntime({
@@ -49,6 +49,49 @@ function injectNerService(
 }
 
 describe("AgentRuntime.useModel PII swap — ingress", () => {
+	it("leaves dedicated PII_SCRUB inputs exact under PII and secret swapping", async () => {
+		const runtime = new AgentRuntime({
+			character: {
+				name: "PiiSwapAgent",
+				bio: "test",
+				secrets: { API_TOKEN: "secret-token-value" },
+				settings: {
+					ELIZA_PII_SWAP_ENABLED: true,
+					ELIZA_SECRET_SWAP_ENABLED: true,
+				},
+			} as Character,
+			adapter: new InMemoryDatabaseAdapter(),
+			logLevel: "fatal",
+		});
+		injectNerService(runtime, [{ kind: "person", value: "Dana Whitfield" }]);
+		let seen: PiiScrubParams | undefined;
+		runtime.registerModel(
+			ModelType.PII_SCRUB,
+			async (_rt, params: PiiScrubParams) => {
+				seen = params;
+				return {
+					modelId: "local-privacy",
+					rulesetVersion: params.rulesetVersion,
+					verdicts: params.candidateSpans.map((span) => ({
+						span,
+						kind: "safe" as const,
+					})),
+				};
+			},
+			"local-privacy",
+		);
+
+		const text = "Dana Whitfield used secret-token-value";
+		await runtime.useModel(ModelType.PII_SCRUB, {
+			text,
+			candidateSpans: [text],
+			rulesetVersion: "2026.08",
+		});
+
+		expect(seen?.text).toBe(text);
+		expect(seen?.candidateSpans).toEqual([text]);
+	});
+
 	it("sends realistic surrogates (no real PII) to the provider via the injected NER service", async () => {
 		const runtime = makeRuntime(true);
 		injectNerService(runtime, [

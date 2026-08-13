@@ -84,6 +84,7 @@ function makeRuntime(opts: {
 			events.push({ type, payload });
 		},
 		registerEvent: vi.fn(),
+		registerModel: vi.fn(),
 		registerPipelineHook: vi.fn(),
 		unregisterPipelineHook: vi.fn(),
 		registerTaskWorker: vi.fn(),
@@ -249,6 +250,7 @@ describe("corpus-wide pseudonym consistency through the rails", () => {
 					rulesetVersion: RULESET,
 					pack,
 					itemRef: artifact.itemRef,
+					writeBack: async () => {},
 				}) as unknown as Record<string, unknown>,
 			);
 		}
@@ -260,7 +262,12 @@ describe("corpus-wide pseudonym consistency through the rails", () => {
 		);
 		expect(completed).toHaveLength(CORPUS.length);
 		for (const artifact of CORPUS) {
-			const marker = await getScrubMarker(runtime, artifact.content, RULESET);
+			const marker = await getScrubMarker(
+				runtime,
+				artifact.content,
+				RULESET,
+				artifact.itemRef,
+			);
 			expect(marker?.modelId).toBe("test-local-privacy-gguf");
 		}
 
@@ -335,6 +342,7 @@ describe("corpus-wide pseudonym consistency through the rails", () => {
 				rulesetVersion,
 				pack,
 				itemRef: artifact.itemRef,
+				writeBack: async () => {},
 			}) as unknown as Record<string, unknown>;
 		};
 
@@ -360,7 +368,7 @@ describe("corpus-wide pseudonym consistency through the rails", () => {
 		await drain(service);
 		expect(runtime.__useModelCalls).toBe(2);
 		expect(
-			await getScrubMarker(runtime, artifact.content, bumped),
+			await getScrubMarker(runtime, artifact.content, bumped, artifact.itemRef),
 		).toBeTruthy();
 
 		await service.stop();
@@ -385,11 +393,17 @@ describe("corpus-wide pseudonym consistency through the rails", () => {
 				rulesetVersion: RULESET,
 				pack,
 				itemRef: "document:card",
+				writeBack: async () => {},
 			}) as unknown as Record<string, unknown>,
 		);
 		await drain(service);
 		expect(runtime.__useModelCalls).toBe(0);
-		const marker = await getScrubMarker(runtime, content, RULESET);
+		const marker = await getScrubMarker(
+			runtime,
+			content,
+			RULESET,
+			"document:card",
+		);
 		expect(marker?.tier0Only).toBe(true);
 		await service.stop();
 	});
@@ -429,6 +443,7 @@ describe("corpus-wide pseudonym consistency through the rails", () => {
 				rulesetVersion: RULESET,
 				pack,
 				itemRef: artifact.itemRef,
+				writeBack: async () => {},
 			}) as unknown as Record<string, unknown>,
 		);
 		// Drain enough to exhaust retries (maxRetriesAfterFailure: 3).
@@ -443,7 +458,12 @@ describe("corpus-wide pseudonym consistency through the rails", () => {
 			runtime.__events.filter((e) => e.type === "PII_SCRUB_COMPLETED"),
 		).toHaveLength(0);
 		expect(
-			await getScrubMarker(runtime, artifact.content, RULESET),
+			await getScrubMarker(
+				runtime,
+				artifact.content,
+				RULESET,
+				artifact.itemRef,
+			),
 		).toBeUndefined();
 		await service.stop();
 	});

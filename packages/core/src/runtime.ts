@@ -6773,14 +6773,16 @@ export class AgentRuntime implements IAgentRuntime {
 					ModelType.AUDIO,
 					ModelType.VIDEO,
 				];
-				// PII swap skips binary-input modalities (nothing to swap) and TEXT_EMBEDDING
-				// (a random per-turn surrogate would destabilize embeddings), but — unlike
-				// the secret gate — swaps IMAGE prompts, whose text can carry real names.
+				const secretSwapSkipModels = [...binaryModels, ModelType.PII_SCRUB];
+				// PII swap skips binary-input modalities, TEXT_EMBEDDING (surrogates
+				// destabilize vectors), and PII_SCRUB (the dedicated privacy handler must
+				// inspect and return verdicts over the exact original spans).
 				const PII_SWAP_SKIP_MODELS: string[] = [
 					ModelType.TRANSCRIPTION,
 					ModelType.AUDIO,
 					ModelType.VIDEO,
 					ModelType.TEXT_EMBEDDING,
+					ModelType.PII_SCRUB,
 				];
 				let modelParams: ModelParamsMap[T];
 				const paramsClone = isPlainObject(params)
@@ -7051,7 +7053,7 @@ export class AgentRuntime implements IAgentRuntime {
 
 				if (
 					this.isSecretSwapEnabled() &&
-					!binaryModels.includes(resolvedModelKey)
+					!secretSwapSkipModels.includes(resolvedModelKey)
 				) {
 					// Reuse one session per turn so every model call in the turn shares a
 					// nonce and the action-execution boundary can restore what this call
@@ -7071,11 +7073,9 @@ export class AgentRuntime implements IAgentRuntime {
 							: secretSwapSession.substituteText(effectiveSystemPrompt);
 				}
 
-				// Models the PII swap must NOT touch: binary-input modalities (nothing to
-				// swap) and — unlike the secret gate — IMAGE is INCLUDED (its text prompt
-				// can carry real names), while TEXT_EMBEDDING is EXCLUDED (a per-turn-random
-				// surrogate would embed the same real text differently every turn and wreck
-				// semantic memory retrieval; embeddings stay on the real text).
+				// Models the PII swap must NOT touch. IMAGE remains included because its
+				// prompt can carry names; PII_SCRUB is excluded because it is itself the
+				// privacy boundary and validates verdict spans against original input.
 				let piiIngressText = "";
 				if (
 					this.isPiiSwapEnabled() &&

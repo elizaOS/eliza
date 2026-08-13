@@ -3,20 +3,17 @@
  *
  * The scrub job is long-running compute that must survive crash/restart with
  * ZERO lost or duplicated work. The issue's chosen resume mechanism is a
- * content-addressed per-item done-marker keyed
+ * source-scoped, content-addressed per-item done-marker keyed
  *
- *     pii:<sha256(content)>:v<rulesetVersion>
+ *     pii:<sha256(content)>:v<rulesetVersion>:source:<sha256(itemRef)>
  *
  * exactly like the media store's content-addressing and the compensating-write
  * `recon:<txid>:refund` precedent. It has two properties the job relies on:
  *
- *   1. **Content-addressed idempotency.** The key is derived only from the
- *      content bytes + the active ruleset version. Re-enqueuing the SAME content
- *      under the SAME ruleset resolves to the SAME marker, so a re-scrub of
- *      unchanged content is a no-op (`isScrubDone` short-circuits before any
- *      model call). Editing the content (different sha) OR bumping the ruleset
- *      (different `v<...>`) produces a NEW key, so genuinely-changed content is
- *      re-scrubbed rather than incorrectly skipped.
+ *   1. **Per-source idempotency.** The key combines the source reference,
+ *      content bytes, and active ruleset version. Re-enqueuing the SAME source
+ *      with unchanged content is a no-op, while two source artifacts containing
+ *      identical text retain independent write-back obligations.
  *
  *   2. **Crash-and-rerun with zero cursor state.** The marker is written to the
  *      runtime cache (a DB-backed durable store), so a `kill -9` mid-run loses
@@ -102,8 +99,10 @@ export function scrubMarkerKey(
 export function scrubMarkerKeyForContent(
 	content: string,
 	rulesetVersion: string,
+	itemRef?: string,
 ): string {
-	return scrubMarkerKey(hashScrubContent(content), rulesetVersion);
+	const base = scrubMarkerKey(hashScrubContent(content), rulesetVersion);
+	return itemRef ? `${base}:source:${hashScrubContent(itemRef)}` : base;
 }
 
 /**
@@ -126,8 +125,9 @@ export async function isScrubDone(
 	cache: ScrubMarkerCache,
 	content: string,
 	rulesetVersion: string,
+	itemRef?: string,
 ): Promise<boolean> {
-	const key = scrubMarkerKeyForContent(content, rulesetVersion);
+	const key = scrubMarkerKeyForContent(content, rulesetVersion, itemRef);
 	const marker = await cache.getCache<PiiScrubDoneMarker>(key);
 	return marker !== undefined && marker !== null;
 }
@@ -144,9 +144,10 @@ export async function markScrubDone(
 	marker: Omit<PiiScrubDoneMarker, "contentHash" | "completedAt"> & {
 		completedAt?: number;
 	},
+	itemRef?: string,
 ): Promise<boolean> {
 	const contentHash = hashScrubContent(content);
-	const key = scrubMarkerKey(contentHash, marker.rulesetVersion);
+	const key = scrubMarkerKeyForContent(content, marker.rulesetVersion, itemRef);
 	const record: PiiScrubDoneMarker = {
 		contentHash,
 		rulesetVersion: marker.rulesetVersion,
@@ -165,8 +166,9 @@ export async function getScrubMarker(
 	cache: ScrubMarkerCache,
 	content: string,
 	rulesetVersion: string,
+	itemRef?: string,
 ): Promise<PiiScrubDoneMarker | undefined> {
-	const key = scrubMarkerKeyForContent(content, rulesetVersion);
+	const key = scrubMarkerKeyForContent(content, rulesetVersion, itemRef);
 	const marker = await cache.getCache<PiiScrubDoneMarker>(key);
 	return marker ?? undefined;
 }

@@ -1,7 +1,8 @@
 /**
  * Defines the local-inference `Plugin` object and the model-handler factory that
- * fronts every Eliza-1 model slot (`TEXT_SMALL`/`TEXT_LARGE`/`TEXT_EMBEDDING`/
- * `IMAGE`/`IMAGE_DESCRIPTION`/`TEXT_TO_SPEECH`/`TRANSCRIPTION`). Each handler
+ * fronts every Eliza-1 model slot (`TEXT_SMALL`/`TEXT_LARGE`/`PII_SCRUB`/
+ * `TEXT_EMBEDDING`/`IMAGE`/`IMAGE_DESCRIPTION`/`TEXT_TO_SPEECH`/
+ * `TRANSCRIPTION`). Each handler
  * resolves the runtime loader service (bionic host / AOSP adapter / device
  * bridge) and dispatches through it, gating text generation on the process-wide
  * interactive-over-background priority lane; vision and image generation route
@@ -47,6 +48,7 @@ import {
 	startTranscriptionAction,
 	stopTranscriptionAction,
 } from "./actions/transcription-control.js";
+import { createLocalPiiScrubHandler } from "./pii/scrub-handler.js";
 import { LocalPiiRecognizerService } from "./pii/service.js";
 import { transcriptsRoutes } from "./routes/transcripts-routes.js";
 import { voiceProfilePluginRoutes } from "./routes/voice-profile-plugin-routes.js";
@@ -66,6 +68,7 @@ export const LOCAL_INFERENCE_TEXT_MODEL_TYPES = [
 
 export const LOCAL_INFERENCE_MODEL_TYPES = [
 	...LOCAL_INFERENCE_TEXT_MODEL_TYPES,
+	ModelType.PII_SCRUB,
 	ModelType.TEXT_EMBEDDING,
 	ModelType.IMAGE,
 	ModelType.IMAGE_DESCRIPTION,
@@ -1131,9 +1134,11 @@ const TIER_TO_DEFAULT_IMAGE_MODEL_KEY: Readonly<Record<string, string>> = {
 export function createLocalInferenceModelHandlers(): NonNullable<
 	Plugin["models"]
 > {
+	const localTextHandler = createTextHandler(ModelType.TEXT_SMALL);
 	return {
-		[ModelType.TEXT_SMALL]: createTextHandler(ModelType.TEXT_SMALL),
+		[ModelType.TEXT_SMALL]: localTextHandler,
 		[ModelType.TEXT_LARGE]: createTextHandler(ModelType.TEXT_LARGE),
+		[ModelType.PII_SCRUB]: createLocalPiiScrubHandler(localTextHandler),
 		[ModelType.TEXT_EMBEDDING]: createEmbeddingHandler(),
 		[ModelType.IMAGE]: createImageGenerationHandler(),
 		[ModelType.IMAGE_DESCRIPTION]: createImageDescriptionHandler(),

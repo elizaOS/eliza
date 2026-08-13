@@ -11,12 +11,29 @@ import type { IAgentRuntime } from "../types/runtime.js";
 import type { PseudonymMapStore } from "./pii-pseudonym-map-store.js";
 import { scrubMarkerKeyForContent } from "./pii-scrub-markers.js";
 import {
+	applyScrubWriteBack,
 	enqueuePiiScrub,
 	mineTier0Candidates,
 	runPiiScrubPipeline,
 } from "./pii-scrub-pipeline.js";
 
 const RULESET = "2026.08";
+
+test("re-detects structured PII introduced or normalized by a whole-text rewrite", () => {
+	const original = "card 4111 1111 1111 1111";
+	const rewritten = applyScrubWriteBack(
+		original,
+		[{ span: "4111 1111 1111 1111" }],
+		[
+			{
+				span: original,
+				kind: "pii",
+				replacement: "card 4111111111111111",
+			},
+		],
+	);
+	expect(rewritten).toBe("card [REDACTED]");
+});
 
 function makeMapStore(): PseudonymMapStore {
 	return {
@@ -81,7 +98,9 @@ describe("runPiiScrubPipeline", () => {
 		expect(result.scrubbedText).toBe("pay [REDACTED] today");
 		expect(result.modelId).toBe("tier0");
 		expect(order).toEqual(["writeBack", "marker"]);
-		expect(cache.has(scrubMarkerKeyForContent(content, RULESET))).toBe(true);
+		expect(
+			cache.has(scrubMarkerKeyForContent(content, RULESET, "memory:card")),
+		).toBe(true);
 	});
 
 	test("async mode builds a rails payload without running paid inference", async () => {
@@ -144,6 +163,46 @@ describe("runPiiScrubPipeline", () => {
 		expect(item.writeBack).toHaveBeenCalledTimes(1);
 	});
 
+	test("identical content in a second source still performs its write-back", async () => {
+		const content = "met Jordan Rivers";
+		const modelResult: PiiScrubResult = {
+			modelId: "local-test",
+			rulesetVersion: RULESET,
+			verdicts: [
+				{ span: "Jordan Rivers", kind: "pii", replacement: "Person 1" },
+			],
+		};
+		const { runtime, modelCalls } = makeRuntime(modelResult);
+		const firstWriteBack = vi.fn(async () => {});
+		const secondWriteBack = vi.fn(async () => {});
+		const options = { rulesetVersion: RULESET, mapStore: makeMapStore() };
+
+		await runPiiScrubPipeline(
+			runtime,
+			{
+				content,
+				itemRef: "memory:a",
+				candidates: [{ surfaceForm: "Jordan Rivers", kind: "person" }],
+				writeBack: firstWriteBack,
+			},
+			options,
+		);
+		await runPiiScrubPipeline(
+			runtime,
+			{
+				content,
+				itemRef: "memory:b",
+				candidates: [{ surfaceForm: "Jordan Rivers", kind: "person" }],
+				writeBack: secondWriteBack,
+			},
+			options,
+		);
+
+		expect(modelCalls()).toBe(2);
+		expect(firstWriteBack).toHaveBeenCalledOnce();
+		expect(secondWriteBack).toHaveBeenCalledOnce();
+	});
+
 	test("write-back failure leaves the source unmarked for retry", async () => {
 		const content = "pay 4111 1111 1111 1111 today";
 		const { runtime, cache } = makeRuntime();
@@ -162,7 +221,9 @@ describe("runPiiScrubPipeline", () => {
 				{ rulesetVersion: RULESET, mapStore: makeMapStore() },
 			),
 		).rejects.toThrow("disk unavailable");
-		expect(cache.has(scrubMarkerKeyForContent(content, RULESET))).toBe(false);
+		expect(
+			cache.has(scrubMarkerKeyForContent(content, RULESET, "memory:card")),
+		).toBe(false);
 	});
 });
 
