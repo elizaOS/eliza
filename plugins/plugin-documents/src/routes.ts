@@ -165,14 +165,8 @@ function isTextBackedContentType(contentType: string): boolean {
   return (
     contentType.startsWith("text/") ||
     contentType === "application/json" ||
-    contentType.endsWith("+json") ||
     contentType === "application/xml" ||
-    contentType.endsWith("+xml") ||
-    contentType === "application/javascript" ||
-    contentType === "application/typescript" ||
-    contentType === "application/yaml" ||
-    contentType === "application/x-yaml" ||
-    contentType === "application/x-sh"
+    contentType === "application/javascript"
   );
 }
 

@@ -331,6 +331,15 @@ describe("document routes", () => {
       expectedTextBacked: false,
       expectedBytes: "pdf bytes",
     },
+    {
+      content: Buffer.from("#!/bin/sh\necho hello\n").toString("base64"),
+      filename: "run.bin",
+      contentType: "application/x-sh",
+      expectedContentType: "application/x-sh",
+      expectedFileType: "application/x-sh",
+      expectedTextBacked: false,
+      expectedBytes: "#!/bin/sh\necho hello\n",
+    },
   ])(
     "canonicalizes case and parameters before document service routing %#",
     async ({
