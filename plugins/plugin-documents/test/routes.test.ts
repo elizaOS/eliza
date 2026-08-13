@@ -149,6 +149,86 @@ describe("document routes", () => {
     expect(addDocument).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ["empty", ""],
+    ["whitespace", "   "],
+    ["empty essence", "; charset=UTF-8"],
+    ["non-string", 42],
+    ["null", null],
+    ["malformed", "not-a-mime"],
+  ])(
+    "rejects a supplied %s contentType before single-upload persistence",
+    async (_label, contentType) => {
+      const store = vi.fn();
+      const getService = vi.fn(() => ({ store }));
+      const { ctx, res } = buildCtx({
+        method: "POST",
+        pathname: "/api/documents",
+        runtime: { getService } as Partial<
+          NonNullable<DocumentRouteContext["runtime"]>
+        >,
+        body: {
+          content: "hello",
+          filename: "doc.txt",
+          contentType,
+        },
+      });
+
+      await expect(handleDocumentsRoutes(ctx)).resolves.toBe(true);
+
+      expect(res.statusCode).toBe(400);
+      expect(res.body).toEqual({
+        error:
+          "contentType must be a valid non-empty MIME type string when provided",
+      });
+      expect(getService).not.toHaveBeenCalled();
+      expect(store).not.toHaveBeenCalled();
+      expect(addDocument).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([
+    ["empty", ""],
+    ["whitespace", "   "],
+    ["empty essence", "; charset=UTF-8"],
+    ["non-string", { type: "text/plain" }],
+    ["null", null],
+    ["malformed", "not-a-mime"],
+  ])(
+    "rejects a supplied %s contentType before bulk-upload persistence",
+    async (_label, contentType) => {
+      const store = vi.fn();
+      const getService = vi.fn(() => ({ store }));
+      const { ctx, res } = buildCtx({
+        method: "POST",
+        pathname: "/api/documents/bulk",
+        runtime: { getService } as Partial<
+          NonNullable<DocumentRouteContext["runtime"]>
+        >,
+        body: {
+          documents: [
+            {
+              content: "hello",
+              filename: "doc.txt",
+              contentType,
+            },
+          ],
+        },
+      });
+
+      await expect(handleDocumentsRoutes(ctx)).resolves.toBe(true);
+
+      expect(res.statusCode).toBe(400);
+      expect(res.body).toEqual({
+        error:
+          "contentType must be a valid non-empty MIME type string when provided",
+      });
+      expect(getService).not.toHaveBeenCalled();
+      expect(store).not.toHaveBeenCalled();
+      expect(addDocument).not.toHaveBeenCalled();
+    },
+  );
+
   it("rejects image uploads that would otherwise store placeholder text", async () => {
     const { ctx, res } = buildCtx({
       method: "POST",
@@ -200,6 +280,11 @@ describe("document routes", () => {
         contentType: "text/plain",
         content:
           "[Image: receipt.png]\n\nA receipt for coffee with total $4.50.",
+        metadata: expect.objectContaining({
+          contentType: "text/plain",
+          fileType: "image/png",
+          textBacked: true,
+        }),
       }),
     );
     expect(res.body).toEqual({
@@ -213,16 +298,27 @@ describe("document routes", () => {
     {
       content: "hello world",
       filename: "notes.txt",
+      contentType: undefined,
+      expectedContentType: "text/plain",
+      expectedFileType: "text/plain",
+      expectedTextBacked: true,
+      expectedBytes: "hello world",
+    },
+    {
+      content: "hello world",
+      filename: "notes.txt",
       contentType: "TEXT/PLAIN; charset=UTF-8",
       expectedContentType: "text/plain",
+      expectedFileType: "TEXT/PLAIN; charset=UTF-8",
       expectedTextBacked: true,
       expectedBytes: "hello world",
     },
     {
       content: Buffer.from("pdf bytes").toString("base64"),
-      filename: "report.bin",
+      filename: "report.txt",
       contentType: "APPLICATION/PDF",
       expectedContentType: "application/pdf",
+      expectedFileType: "APPLICATION/PDF",
       expectedTextBacked: false,
       expectedBytes: "pdf bytes",
     },
@@ -231,6 +327,7 @@ describe("document routes", () => {
       filename: "report.bin",
       contentType: "application/pdf; charset=UTF-8",
       expectedContentType: "application/pdf",
+      expectedFileType: "application/pdf; charset=UTF-8",
       expectedTextBacked: false,
       expectedBytes: "pdf bytes",
     },
@@ -241,6 +338,7 @@ describe("document routes", () => {
       filename,
       contentType,
       expectedContentType,
+      expectedFileType,
       expectedTextBacked,
       expectedBytes,
     }) => {
@@ -248,7 +346,7 @@ describe("document routes", () => {
         url: "/api/media/deadbeef.bin",
         hash: "deadbeef",
         fileName: "deadbeef.bin",
-        mimeType: contentType,
+        mimeType: expectedContentType,
         size: expectedBytes.length,
       }));
       addDocument.mockResolvedValueOnce({
@@ -261,13 +359,21 @@ describe("document routes", () => {
         runtime: {
           getService: vi.fn(() => ({ store })),
         } as Partial<NonNullable<DocumentRouteContext["runtime"]>>,
-        body: { content, filename, contentType },
+        body: {
+          content,
+          filename,
+          ...(contentType === undefined ? {} : { contentType }),
+        },
       });
 
       await expect(handleDocumentsRoutes(ctx)).resolves.toBe(true);
 
       expect(res.statusCode).toBe(200);
       expect(store.mock.calls).toHaveLength(1);
+      expect(store).toHaveBeenCalledWith(
+        expect.any(Buffer),
+        expectedContentType,
+      );
       const storedContent = store.mock.calls[0][0] as Buffer;
       expect(storedContent.toString("utf8")).toBe(expectedBytes);
       expect(addDocument).toHaveBeenCalledWith(
@@ -275,7 +381,7 @@ describe("document routes", () => {
           contentType: expectedContentType,
           metadata: expect.objectContaining({
             contentType: expectedContentType,
-            fileType: contentType,
+            fileType: expectedFileType,
             textBacked: expectedTextBacked,
           }),
         }),

@@ -77,6 +77,10 @@ const DOCUMENT_FRAGMENTS_TABLE = "document_fragments";
 const FRAGMENT_BATCH_SIZE = 500;
 const DOCUMENT_UPLOAD_MAX_BODY_BYTES = 32 * 1_048_576; // 32 MB
 const MAX_BULK_DOCUMENTS = 100;
+const DOCUMENT_CONTENT_TYPE_VALIDATION_ERROR =
+  "contentType must be a valid non-empty MIME type string when provided";
+const MIME_ESSENCE_PATTERN =
+  /^[a-z0-9][a-z0-9!#$%&'*+.^_`|~-]*\/[a-z0-9][a-z0-9!#$%&'*+.^_`|~-]*$/;
 
 type DocumentFilter = SharedDocumentFilter & {
   /**
@@ -119,7 +123,7 @@ function parseKnowledgeFacet(
 type DocumentUploadBody = {
   content: string;
   filename: string;
-  contentType?: string;
+  contentType?: unknown;
   metadata?: Record<string, unknown>;
   roomId?: string;
   worldId?: string;
@@ -129,30 +133,46 @@ type DocumentUploadBody = {
   addedFrom?: string;
 };
 
-function isTextBackedContentType(
-  contentType: string,
-  filename: string,
-): boolean {
-  const normalizedContentType = normalizeDocumentContentType(contentType);
-  if (normalizedContentType.startsWith("text/")) return true;
-  if (
-    normalizedContentType === "application/json" ||
-    normalizedContentType === "application/xml" ||
-    normalizedContentType === "application/javascript" ||
-    normalizedContentType === "text/markdown"
-  ) {
-    return true;
+type ValidatedDocumentContentType = {
+  essence: string;
+  original: string;
+};
+
+function validateDocumentContentType(
+  contentType: unknown,
+):
+  | { ok: true; value: ValidatedDocumentContentType }
+  | { ok: false; error: string } {
+  if (contentType === undefined) {
+    return {
+      ok: true,
+      value: { essence: "text/plain", original: "text/plain" },
+    };
+  }
+  if (typeof contentType !== "string") {
+    return { ok: false, error: DOCUMENT_CONTENT_TYPE_VALIDATION_ERROR };
   }
 
-  const lowerFilename = filename.toLowerCase();
+  const essence = normalizeDocumentContentType(contentType);
+  if (!MIME_ESSENCE_PATTERN.test(essence)) {
+    return { ok: false, error: DOCUMENT_CONTENT_TYPE_VALIDATION_ERROR };
+  }
+
+  return { ok: true, value: { essence, original: contentType } };
+}
+
+function isTextBackedContentType(contentType: string): boolean {
   return (
-    lowerFilename.endsWith(".md") ||
-    lowerFilename.endsWith(".mdx") ||
-    lowerFilename.endsWith(".txt") ||
-    lowerFilename.endsWith(".json") ||
-    lowerFilename.endsWith(".xml") ||
-    lowerFilename.endsWith(".csv") ||
-    lowerFilename.endsWith(".tsv")
+    contentType.startsWith("text/") ||
+    contentType === "application/json" ||
+    contentType.endsWith("+json") ||
+    contentType === "application/xml" ||
+    contentType.endsWith("+xml") ||
+    contentType === "application/javascript" ||
+    contentType === "application/typescript" ||
+    contentType === "application/yaml" ||
+    contentType === "application/x-yaml" ||
+    contentType === "application/x-sh"
   );
 }
 
@@ -1097,6 +1117,7 @@ export async function handleDocumentsRoutes(
   async function addDocument(
     service: DocumentsServiceLike,
     document: DocumentUploadBody,
+    validatedContentType: ValidatedDocumentContentType,
     actor: RouteActor,
   ): Promise<{
     documentId: UUID;
@@ -1107,14 +1128,12 @@ export async function handleDocumentsRoutes(
     // Capture the bytes exactly as uploaded before any content rewrite (e.g.
     // image → description text), so the linked original-bytes file is faithful.
     const originalContent = document.content;
-    const originalContentType = document.contentType || "text/plain";
-    let contentType =
-      normalizeDocumentContentType(originalContentType) || "text/plain";
+    const originalContentType = validatedContentType.original;
+    const uploadedContentType = validatedContentType.essence;
+    let contentType = uploadedContentType;
     const warnings: string[] = [];
-    const textBacked = isTextBackedContentType(
-      originalContentType,
-      document.filename,
-    );
+    const originalBytesAreTextBacked =
+      isTextBackedContentType(uploadedContentType);
 
     if (contentType.startsWith("image/")) {
       const includeDescriptions =
@@ -1154,9 +1173,7 @@ export async function handleDocumentsRoutes(
       contentType = "text/plain";
     }
 
-    if (document.filename.endsWith(".mdx")) {
-      contentType = "text/markdown";
-    }
+    const textBacked = isTextBackedContentType(contentType);
 
     const uploadFilters = filtersFromUploadBody(document, actor);
     if (uploadFilters.error) {
@@ -1196,10 +1213,10 @@ export async function handleDocumentsRoutes(
         if (fileStorage) {
           // Text uploads carry UTF-8 text; binary/non-text uploads (images,
           // PDFs, …) arrive base64-encoded in `content`.
-          const bytes = textBacked
+          const bytes = originalBytesAreTextBacked
             ? Buffer.from(originalContent, "utf8")
             : Buffer.from(originalContent, "base64");
-          const stored = await fileStorage.store(bytes, originalContentType);
+          const stored = await fileStorage.store(bytes, uploadedContentType);
           mediaLink = {
             mediaUrl: stored.url,
             mediaHash: stored.hash,
@@ -1278,13 +1295,24 @@ export async function handleDocumentsRoutes(
       return true;
     }
 
+    const contentType = validateDocumentContentType(body.contentType);
+    if (!contentType.ok) {
+      error(res, contentType.error, 400);
+      return true;
+    }
+
     let result: {
       documentId: string;
       fragmentCount: number;
       warnings?: string[];
     };
     try {
-      result = await addDocument(documentsService, body, routeActor);
+      result = await addDocument(
+        documentsService,
+        body,
+        contentType.value,
+        routeActor,
+      );
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       error(
@@ -1331,6 +1359,26 @@ export async function handleDocumentsRoutes(
       return true;
     }
 
+    const validatedContentTypes = new Map<
+      number,
+      ValidatedDocumentContentType
+    >();
+    for (const [index, document] of body.documents.entries()) {
+      if (
+        !document ||
+        typeof document !== "object" ||
+        Array.isArray(document)
+      ) {
+        continue;
+      }
+      const contentType = validateDocumentContentType(document.contentType);
+      if (!contentType.ok) {
+        error(res, contentType.error, 400);
+        return true;
+      }
+      validatedContentTypes.set(index, contentType.value);
+    }
+
     const results: Array<{
       index: number;
       ok: boolean;
@@ -1354,6 +1402,12 @@ export async function handleDocumentsRoutes(
           error: "content and filename must be non-empty strings",
         });
         continue;
+      }
+
+      const contentType = validatedContentTypes.get(index);
+      if (!contentType) {
+        error(res, DOCUMENT_CONTENT_TYPE_VALIDATION_ERROR, 400);
+        return true;
       }
 
       const filename = document.filename || `document-${index + 1}`;
@@ -1384,6 +1438,7 @@ export async function handleDocumentsRoutes(
         const uploadResult = await addDocument(
           documentsService,
           normalizedDocument,
+          contentType,
           routeActor,
         );
         results.push({
