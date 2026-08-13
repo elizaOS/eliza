@@ -10,7 +10,6 @@ import { describe, expect, it } from "vitest";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const checker = resolve(here, "../stories/check-stories.mjs");
-const unreachableBase = "http://127.0.0.1:1";
 
 function run(...args) {
   return spawnSync(process.execPath, [checker, ...args], {
@@ -21,6 +20,7 @@ function run(...args) {
 
 describe("check-stories numeric CLI validation (#18934)", () => {
   it.each([
+    "",
     "0",
     "-1",
     "+1",
@@ -39,6 +39,7 @@ describe("check-stories numeric CLI validation (#18934)", () => {
   });
 
   it.each([
+    "",
     "-1",
     "+1",
     "1.5",
@@ -78,25 +79,27 @@ describe("check-stories numeric CLI validation (#18934)", () => {
   });
 
   it.each([
-    ["omitted defaults", ["--base", unreachableBase]],
+    ["omitted defaults", [], { limit: 0, settle: 600 }],
     [
       "--limit 7 with --settle 0",
-      ["--limit", "7", "--settle", "0", "--base", unreachableBase],
+      ["--limit", "7", "--settle", "0"],
+      { limit: 7, settle: 0 },
     ],
     [
       "the maximum safe --limit",
-      ["--limit", "9007199254740991", "--base", unreachableBase],
+      ["--limit", "9007199254740991"],
+      { limit: 9007199254740991, settle: 600 },
     ],
     [
       "the maximum Node timer --settle",
-      ["--settle", "2147483647", "--base", unreachableBase],
+      ["--settle", "2147483647"],
+      { limit: 0, settle: 2147483647 },
     ],
-  ])("accepts %s", (_label, args) => {
-    const result = run(...args);
-    const output = `${result.stdout}\n${result.stderr}`;
+  ])("accepts %s", (_label, args, expected) => {
+    const result = run(...args, "--print-options");
 
-    expect(result.status).not.toBe(0);
-    expect(output).toContain(`${unreachableBase}/index.json`);
-    expect(output).not.toContain("must be an integer between");
+    expect(result.status).toBe(0);
+    expect(JSON.parse(result.stdout)).toEqual(expected);
+    expect(result.stderr).toBe("");
   });
 });

@@ -3,7 +3,7 @@
  * render errors (SB error overlay, page errors, console.error).
  *
  * Usage:
- *   node stories/check-stories.mjs [--base http://localhost:6006] [--limit N] [--filter substr] [--globals theme:light]
+ *   node stories/check-stories.mjs [--base http://localhost:6006] [--limit N] [--filter substr] [--globals theme:light] [--print-options]
  */
 import { chromium } from "playwright";
 
@@ -31,6 +31,10 @@ const globals = arg("--globals", "");
 
 const idsFile = arg("--ids-file", "");
 const settle = integerArg("--settle", 600, 0, 2_147_483_647);
+if (process.argv.includes("--print-options")) {
+  console.log(JSON.stringify({ limit, settle }));
+  process.exit(0);
+}
 const isTransientNavigationError = (message) =>
   /net::ERR_(ABORTED|CONNECTION_REFUSED)|Execution context was destroyed/i.test(
     message,
