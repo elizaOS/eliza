@@ -59,17 +59,22 @@ Providers without explicit routing default to general context. Prefer
 `contexts` or `contextGate` for turn-scoped information. Reserve
 `alwaysInResponseState` for cheap signals that truly belong in every response.
 
-## Timeouts and cancellation
+## Cancellation and lifecycle ownership
 
-Providers that perform I/O should propagate `context.signal` to the database,
-network, or subprocess boundary. `timeoutMs` can set a provider-specific
-budget. The default `timeoutMode` is `fail`; `degrade` is only for optional
-context whose consumers can display or reason about an explicit unavailable
-state.
+The runtime supplies `context.signal` to every provider execution. Providers
+that perform I/O should propagate it to the database, network, or subprocess
+boundary so a cancelled turn or runtime shutdown releases resources promptly.
 
-Provider `get()` must not commit external side effects. A timed-out provider
-may still be running if its dependency ignores cancellation, so writes would
-be unsafe.
+Concurrent composition calls for the same message may share provider work. An
+individual caller can cancel without interrupting other interested callers;
+the shared provider signal aborts when the final caller leaves or the runtime
+stops. There is no provider-local wall-clock deadline or degraded timeout
+result: latency and backing-service failures remain observable instead of being
+replaced with fabricated context.
+
+Provider `get()` must not commit external side effects. The runtime stops
+awaiting a provider when its lifecycle owner cancels, but non-cooperative work
+may still be running if its dependency ignores the signal.
 
 ## Selection and privacy
 

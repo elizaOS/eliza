@@ -305,6 +305,35 @@ describe("composeState provider execution", () => {
 		}
 	});
 
+	it("does not start provider work for an owner that was already cancelled", async () => {
+		const runtime = new AgentRuntime({
+			character: { name: "provider-pre-aborted-owner" } as Character,
+		});
+		let calls = 0;
+		runtime.registerProvider({
+			name: "MUST_NOT_START",
+			get: async () => {
+				calls += 1;
+				return { text: "too late" };
+			},
+		});
+		const controller = new AbortController();
+		controller.abort("owner already stopped");
+
+		const outcome = await runWithStreamingContext(
+			{ onStreamChunk: async () => {}, abortSignal: controller.signal },
+			() =>
+				runtime.composeState(
+					makeMessage("15151515-1515-1515-1515-151515151515"),
+					["MUST_NOT_START"],
+					true,
+				),
+		).catch((cause: unknown) => cause);
+
+		expect(outcome).toBeInstanceOf(TurnAbortedError);
+		expect(calls).toBe(0);
+	});
+
 	it("does not cache state when the owner aborts after providers settle", async () => {
 		const runtime = new AgentRuntime({
 			character: { name: "provider-post-settle-abort" } as Character,
@@ -335,6 +364,35 @@ describe("composeState provider execution", () => {
 
 		expect(abortTriggered).toBe(true);
 		expect(outcome).toBeInstanceOf(TurnAbortedError);
+		expect(runtime.stateCache.has(message.id as string)).toBe(false);
+	});
+
+	it("does not finish composition after runtime shutdown begins post-settlement", async () => {
+		const runtime = new AgentRuntime({
+			character: { name: "provider-post-settle-runtime-stop" } as Character,
+		});
+		let stopPromise: Promise<void> | undefined;
+		const values: Record<string, string> = {};
+		Object.defineProperty(values, "stopDuringComposition", {
+			enumerable: true,
+			get: () => {
+				stopPromise ??= runtime.stop();
+				return "observed";
+			},
+		});
+		runtime.registerProvider({
+			name: "SETTLED_BEFORE_STOP",
+			get: async () => ({ text: "settled", values }),
+		});
+		const message = makeMessage("17171717-1717-1717-1717-171717171717");
+
+		const outcome = await runtime
+			.composeState(message, ["SETTLED_BEFORE_STOP"], true)
+			.catch((cause: unknown) => cause);
+		await stopPromise;
+
+		expect(outcome).toBeInstanceOf(TurnAbortedError);
+		expect((outcome as TurnAbortedError).reason).toBe("runtime-stop");
 		expect(runtime.stateCache.has(message.id as string)).toBe(false);
 	});
 
@@ -626,7 +684,7 @@ describe("composeState provider execution", () => {
 		// between) issue a fresh composeState for the SAME message with a
 		// fresh, unaborted signal. controller.abort() is synchronous but the
 		// in-flight map entry is only evicted once the shared promise finishes
-		// unwinding through withProviderDeadline/withProviderStep, so a caller
+		// unwinding through runProviderExecution/withProviderStep, so a caller
 		// landing in that window can still find and attach to the dying
 		// execution instead of starting its own.
 		ownerController.abort("owner stopped");
@@ -694,4 +752,49 @@ describe("composeState provider execution", () => {
 		]);
 		expect(outcome).not.toBe("still waiting");
 	});
+
+	it.each(["explicit refresh", "message without id"])(
+		"runtime stop also releases one-off provider work for %s",
+		async (mode) => {
+			const runtime = new AgentRuntime({
+				character: { name: "provider-stop-one-off" } as Character,
+			});
+			const started = deferred();
+			let receivedSignal: AbortSignal | undefined;
+			runtime.registerProvider({
+				name: "ONE_OFF_HANGING",
+				get: async (_runtime, _message, _state, context) => {
+					receivedSignal = context?.signal;
+					started.resolve();
+					return new Promise(() => {});
+				},
+			});
+			const message = makeMessage("16161616-1616-1616-1616-161616161616");
+			if (mode === "message without id") {
+				Reflect.deleteProperty(message, "id");
+			}
+			const refreshProviders =
+				mode === "explicit refresh" ? ["ONE_OFF_HANGING"] : null;
+			const compose = runtime
+				.composeState(
+					message,
+					["ONE_OFF_HANGING"],
+					true,
+					false,
+					refreshProviders,
+				)
+				.catch((cause: unknown) => cause);
+			await started.promise;
+
+			await runtime.stop();
+			expect(receivedSignal?.aborted).toBe(true);
+			const outcome = await Promise.race([
+				compose,
+				new Promise((resolve) =>
+					setTimeout(() => resolve("still waiting"), 250),
+				),
+			]);
+			expect(outcome).not.toBe("still waiting");
+		},
+	);
 });
