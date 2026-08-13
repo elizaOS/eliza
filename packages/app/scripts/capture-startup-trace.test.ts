@@ -127,33 +127,64 @@ describe("parseArgs --runs / --timeout", () => {
 });
 
 describe("CLI --runs / --timeout fail-closed", () => {
+  const invalidCliCases: Array<[string, string[], RegExp]> = [
+    ["--runs junk", ["--runs", "junk"], /^\[startup-trace\] --runs must/m],
+    ["--runs 10junk", ["--runs", "10junk"], /^\[startup-trace\] --runs must/m],
+    ["--runs 0", ["--runs", "0"], /^\[startup-trace\] --runs must/m],
+    ["--runs -3", ["--runs", "-3"], /^\[startup-trace\] --runs must/m],
+    ["missing --runs value", ["--runs"], /^\[startup-trace\] --runs requires/m],
+    [
+      "--runs followed by another option",
+      ["--runs", "--url", "http://127.0.0.1:1"],
+      /^\[startup-trace\] --runs requires/m,
+    ],
+    [
+      "--timeout junk",
+      ["--timeout", "junk"],
+      /^\[startup-trace\] --timeout must/m,
+    ],
+    [
+      "--timeout 10junk",
+      ["--timeout", "10junk"],
+      /^\[startup-trace\] --timeout must/m,
+    ],
+    ["--timeout 0", ["--timeout", "0"], /^\[startup-trace\] --timeout must/m],
+    [
+      "missing --timeout value",
+      ["--timeout"],
+      /^\[startup-trace\] --timeout requires/m,
+    ],
+    [
+      "overflowing --timeout",
+      ["--timeout", String(MAX_TIMER_DELAY_MS + 1)],
+      /^\[startup-trace\] --timeout must/m,
+    ],
+  ];
+
   function runCli(extraArgs: string[]) {
     return spawnSync(process.execPath, [SCRIPT_PATH, ...extraArgs], {
       encoding: "utf8",
+      killSignal: "SIGKILL",
+      maxBuffer: 256 * 1024,
+      timeout: 3_000,
     });
   }
 
-  it("rejects malformed and missing values before launching a capture", () => {
-    for (const args of [
-      ["--runs", "junk"],
-      ["--runs", "10junk"],
-      ["--runs", "0"],
-      ["--runs", "-3"],
-      ["--runs"],
-      ["--runs", "--url", "http://127.0.0.1:1"],
-      ["--timeout", "junk"],
-      ["--timeout", "10junk"],
-      ["--timeout", "0"],
-      ["--timeout"],
-      ["--timeout", String(MAX_TIMER_DELAY_MS + 1)],
-    ]) {
+  it.each(invalidCliCases)(
+    "rejects %s before launching a capture",
+    (_label, args, expectedDiagnostic) => {
       const result = runCli(args);
+      expect(result.error, args.join(" ")).toBeUndefined();
+      expect(result.signal, args.join(" ")).toBeNull();
       expect(result.status, args.join(" ")).not.toBe(0);
-      expect(result.stderr, args.join(" ")).toMatch(/startup-trace/i);
+      // Anchor on the CLI boundary prefix and the exact flag. A bootstrap or
+      // import failure can mention capture-startup-trace.mjs without ever
+      // reaching parseArgs, and must not satisfy this regression.
+      expect(result.stderr, args.join(" ")).toMatch(expectedDiagnostic);
       // Must not reach the capture banner that prints after successful parse.
       expect(result.stdout, args.join(" ")).not.toMatch(
         /Capturing startup trace:/,
       );
-    }
-  });
+    },
+  );
 });
