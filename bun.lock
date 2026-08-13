@@ -3412,6 +3412,7 @@
     "miniflare": "4.20260611.0",
     "next": "16.2.11",
     "ox": "0.14.20",
+    "pdfjs-dist": "6.2.108",
     "pg": "^8.20.0",
     "pg-native": "npm:empty-npm-package@1.0.0",
     "playwright": "1.61.1",
