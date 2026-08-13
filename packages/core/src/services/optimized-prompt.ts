@@ -364,6 +364,22 @@ function isTask(value: unknown): value is OptimizedPromptTask {
 	);
 }
 
+const OPTIMIZED_PROMPT_ARTIFACT_KEYS = new Set([
+	"task",
+	"optimizer",
+	"baseline",
+	"prompt",
+	"score",
+	"baselineScore",
+	"datasetId",
+	"datasetSize",
+	"generatedAt",
+	"fewShotExamples",
+	"lineage",
+	"frontier",
+	"promotionDecision",
+]);
+
 /**
  * Strict parser. We reject artifacts that are missing required fields so a
  * corrupt file cannot silently shadow the baseline prompt with garbage.
@@ -372,6 +388,12 @@ export function parseOptimizedPromptArtifact(
 	raw: unknown,
 ): OptimizedPromptArtifact | null {
 	if (!isStringRecord(raw)) return null;
+	// Keep the persisted contract closed. In particular, contextConfig was
+	// retired with its training consumer; accepting it (or any future extra)
+	// here would let an unconsumed producer field cross the signing boundary.
+	for (const key of Object.keys(raw)) {
+		if (!OPTIMIZED_PROMPT_ARTIFACT_KEYS.has(key)) return null;
+	}
 	if (!isTask(raw.task)) return null;
 	if (!isOptimizerName(raw.optimizer)) return null;
 	if (typeof raw.baseline !== "string" || typeof raw.prompt !== "string") {
@@ -662,13 +684,25 @@ export class OptimizedPromptService extends Service {
 		task: OptimizedPromptTask,
 		artifact: OptimizedPromptArtifact,
 	): Promise<string> {
-		if (artifact.task !== task) {
+		const validatedArtifact = parseOptimizedPromptArtifact(artifact);
+		if (!validatedArtifact) {
+			throw new ElizaError(
+				"Optimized prompt artifact failed strict validation",
+				{
+					code: "OPTIMIZED_PROMPT_ARTIFACT_INVALID",
+					context: { task },
+				},
+			);
+		}
+		if (validatedArtifact.task !== task) {
 			throw new Error(
-				`[OptimizedPromptService] artifact.task=${artifact.task} does not match target task=${task}`,
+				`[OptimizedPromptService] artifact.task=${validatedArtifact.task} does not match target task=${task}`,
 			);
 		}
 		const dir = join(this.storeRoot, task);
-		return runExclusive(dir, () => this.writeArtifact(task, dir, artifact));
+		return runExclusive(dir, () =>
+			this.writeArtifact(task, dir, validatedArtifact),
+		);
 	}
 
 	private async writeArtifact(
