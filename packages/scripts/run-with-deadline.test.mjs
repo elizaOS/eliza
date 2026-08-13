@@ -14,8 +14,11 @@ import {
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 
-const SCRIPT = path.resolve("packages/scripts/run-with-deadline.mjs");
+const SCRIPT = fileURLToPath(
+  new URL("./run-with-deadline.mjs", import.meta.url),
+);
 
 test("waits for SIGKILL escalation when the direct child closes first", {
   timeout: 20_000,
