@@ -10,7 +10,11 @@
  * Solana RPC. All execute paths assume the caller has already passed the
  * financial-confirmation gate upstream.
  */
-import type { IAgentRuntime, ITokenDataService } from "@elizaos/core";
+import {
+  ElizaError,
+  type IAgentRuntime,
+  type ITokenDataService,
+} from "@elizaos/core";
 import {
   createAssociatedTokenAccountInstruction,
   createTransferInstruction,
@@ -50,6 +54,10 @@ import { initWalletProvider } from "./evm/providers/wallet";
 import type { SupportedChain, Transaction } from "./evm/types";
 import BigNumber from "./solana/bn";
 import { SOLANA_SERVICE_NAME } from "./solana/constants";
+import {
+  fetchJupiterJson,
+  resolveJupiterApiBaseUrl,
+} from "./solana/jupiter-api";
 import { getWalletKey } from "./solana/keypairUtils";
 import type { SolanaService } from "./solana/service";
 
@@ -754,15 +762,19 @@ async function executeSolanaSwap(
     quoteParams.set("dynamicSlippage", "true");
   }
 
-  const quoteResponse = await fetch(
-    `https://quote-api.jup.ag/v6/quote?${quoteParams.toString()}`,
+  const jupiterApiBaseUrl = resolveJupiterApiBaseUrl(context.runtime);
+  const fetchFn = context.runtime.fetch || globalThis.fetch;
+  const quoteData = await fetchJupiterJson(
+    fetchFn,
+    `${jupiterApiBaseUrl}/quote?${quoteParams.toString()}`,
+    "quote",
   );
-  const quoteData = (await quoteResponse.json()) as {
-    error?: string;
-    [key: string]: unknown;
-  };
-  if (quoteData.error) {
-    throw new Error(`Failed to get Jupiter quote: ${quoteData.error}`);
+  if (typeof quoteData.error === "string") {
+    throw new ElizaError(`Jupiter rejected the quote: ${quoteData.error}`, {
+      code: "JUPITER_QUOTE_REJECTED",
+      context: { error: quoteData.error },
+      severity: "fatal",
+    });
   }
 
   const { publicKey: walletPublicKey } = await getWalletKey(
@@ -773,28 +785,33 @@ async function executeSolanaSwap(
     throw new Error("Solana public key is not available.");
   }
 
-  const swapResponse = await fetch("https://quote-api.jup.ag/v6/swap", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      quoteResponse: quoteData,
-      userPublicKey: walletPublicKey.toBase58(),
-      dynamicComputeUnitLimit: true,
-      dynamicSlippage: params.slippageBps === undefined,
-      priorityLevelWithMaxLamports: {
-        maxLamports: 4_000_000,
-        priorityLevel: "veryHigh",
+  const swapData = await fetchJupiterJson(
+    fetchFn,
+    `${jupiterApiBaseUrl}/swap`,
+    "swap",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        quoteResponse: quoteData,
+        userPublicKey: walletPublicKey.toBase58(),
+        dynamicComputeUnitLimit: true,
+        dynamicSlippage: params.slippageBps === undefined,
+        priorityLevelWithMaxLamports: {
+          maxLamports: 4_000_000,
+          priorityLevel: "veryHigh",
+        },
+      }),
+    },
+  );
+  if (typeof swapData.swapTransaction !== "string") {
+    throw new ElizaError("Jupiter did not return a swap transaction", {
+      code: "JUPITER_SWAP_INVALID_RESPONSE",
+      context: {
+        error: typeof swapData.error === "string" ? swapData.error : undefined,
       },
-    }),
-  });
-  const swapData = (await swapResponse.json()) as {
-    error?: string;
-    swapTransaction?: string;
-  };
-  if (!swapData.swapTransaction) {
-    throw new Error(
-      `Failed to build Jupiter swap: ${swapData.error ?? "No swap transaction returned"}`,
-    );
+      severity: "fatal",
+    });
   }
 
   const transaction = VersionedTransaction.deserialize(
