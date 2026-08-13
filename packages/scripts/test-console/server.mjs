@@ -57,7 +57,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.ELIZA_TEST_CONSOLE_PORT || 31338);
 const HOST = "127.0.0.1";
 
-const runManager = new RunManager();
+export const runManager = new RunManager();
 const sseClients = new Set();
 
 runManager.on("event", (event) => {
@@ -133,7 +133,7 @@ function selectTasks({ mode, labels }) {
   return all;
 }
 
-const routes = {
+export const routes = {
   "GET /api/state": (req, res) => json(res, 200, currentState()),
 
   "POST /api/gates": async (req, res) => {
@@ -153,6 +153,17 @@ const routes = {
     } = await readBody(req);
     if (runManager.isRunning())
       return json(res, 409, { error: "run already in progress" });
+    let normalizedConcurrency;
+    try {
+      normalizedConcurrency = normalizeRunConcurrency(concurrency);
+    } catch (error) {
+      // error-policy:J1 API boundary — reject an invalid worker count before
+      // any live-lane side effect (task discovery, credential reads, token
+      // refresh/persist) runs.
+      return json(res, 400, {
+        error: error instanceof Error ? error.message : "invalid concurrency",
+      });
+    }
     const tasks = selectTasks({ mode, labels });
     if (tasks.length === 0)
       return json(res, 400, { error: "no tasks selected" });
@@ -189,16 +200,6 @@ const routes = {
           message: `Google token refresh failed: ${error?.message ?? error}`,
         });
       }
-    }
-    let normalizedConcurrency;
-    try {
-      normalizedConcurrency = normalizeRunConcurrency(concurrency);
-    } catch (error) {
-      // error-policy:J1 API boundary — reject an invalid worker count before
-      // it can fan out repository test processes.
-      return json(res, 400, {
-        error: error instanceof Error ? error.message : "invalid concurrency",
-      });
     }
     const runId = runManager.startRun({
       tasks,
@@ -357,7 +358,11 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-server.listen(PORT, HOST, () => {
-  console.log(`[TestConsole] listening on http://${HOST}:${PORT}`);
-  console.log(`[TestConsole] state dir: ${consoleDir()}`);
-});
+// Guard the listen so importing this module (route-level tests) never binds
+// a real port; only running it directly (`bun run test:console`) starts it.
+if (import.meta.url === `file://${process.argv[1]}`) {
+  server.listen(PORT, HOST, () => {
+    console.log(`[TestConsole] listening on http://${HOST}:${PORT}`);
+    console.log(`[TestConsole] state dir: ${consoleDir()}`);
+  });
+}

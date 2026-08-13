@@ -5,10 +5,11 @@
  * one slow test — it shells the actual run-all-tests plan, no mocks).
  */
 
-import { beforeAll, describe, expect, test } from "bun:test";
+import { beforeAll, describe, expect, mock, test } from "bun:test";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { Readable } from "node:stream";
 
 import {
   classifyResult,
@@ -212,4 +213,74 @@ describe("registry (real plan discovery)", () => {
     });
     expect(suiteState(withKey)).toBe("armed");
   }, 30_000);
+});
+
+describe("route: POST /api/run rejects invalid concurrency before live-lane side effects", () => {
+  const refreshGoogleAccessTokenMock = mock(async () => ({
+    accessToken: "fake-access-token",
+  }));
+
+  let store: typeof import("../lib/store.mjs");
+  let server: typeof import("../server.mjs");
+
+  beforeAll(async () => {
+    const testConsoleDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "eliza-test-console-route-"),
+    );
+    process.env.ELIZA_TEST_CONSOLE_DIR = testConsoleDir;
+
+    // Stub the Google OAuth client so a request that *does* reach the
+    // refresh step would succeed and persist a token — proving the ordering
+    // fix (not an unreachable network call) is what keeps it from firing.
+    mock.module("../lib/oauth.mjs", () => ({
+      completeGoogleFlow: mock(),
+      DEFAULT_CLOUD_BASE_URL: "https://cloud.example.test",
+      pollCloudLogin: mock(),
+      refreshGoogleAccessToken: refreshGoogleAccessTokenMock,
+      startCloudLogin: mock(),
+      startGoogleFlow: mock(),
+    }));
+
+    store = await import("../lib/store.mjs");
+    store.setConnection("google-oauth", {
+      GOOGLE_CLIENT_ID: "test-client-id",
+      GOOGLE_CLIENT_SECRET: "test-client-secret",
+      GOOGLE_OAUTH_REFRESH_TOKEN: "test-refresh-token",
+    });
+
+    server = await import("../server.mjs");
+  });
+
+  function postRun(body: unknown): Promise<{ status: number }> {
+    return new Promise((resolve, reject) => {
+      const req = Readable.from([Buffer.from(JSON.stringify(body))]);
+      let status = 0;
+      const res = {
+        writeHead(code: number) {
+          status = code;
+        },
+        end() {
+          resolve({ status });
+        },
+      };
+      Promise.resolve(
+        server.routes["POST /api/run"](req as never, res as never),
+      ).catch(reject);
+    });
+  }
+
+  test("returns 400 without ever refreshing/persisting Google credentials or starting a run", async () => {
+    refreshGoogleAccessTokenMock.mockClear();
+
+    const result = await postRun({
+      mode: "all",
+      lane: "live",
+      concurrency: "Infinity",
+    });
+
+    expect(result.status).toBe(400);
+    expect(refreshGoogleAccessTokenMock).not.toHaveBeenCalled();
+    expect(store.loadCredentials()["google-calendar"]).toBeUndefined();
+    expect(server.runManager.isRunning()).toBe(false);
+  });
 });
