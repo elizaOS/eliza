@@ -73,8 +73,18 @@ describe("formatRelativeTime (compact)", () => {
 	});
 
 	it("falls back to a locale date at a week and beyond", () => {
+		expect(formatRelativeTime(NOW - 7 * DAY)).not.toMatch(/ago|now/);
+		expect(formatRelativeTime(NOW + 7 * DAY)).not.toMatch(/in |now/);
 		expect(formatRelativeTime(NOW - 8 * DAY)).not.toMatch(/ago|now/);
 		expect(formatRelativeTime(NOW + 8 * DAY)).not.toMatch(/in |now/);
+	});
+
+	it("keeps a future moment inside the week relative instead of an early date", () => {
+		// A future 6d + 1ms ceils to 7 days but is still inside the week, so it
+		// must render "in 7d" rather than jump to an absolute date a full day
+		// before a week has elapsed (matching the packages/ui WEEK_MS gate).
+		expect(formatRelativeTime(NOW + 6 * DAY + 1)).toBe("in 7d");
+		expect(formatRelativeTime(NOW + 7 * DAY - 1)).toBe("in 7d");
 	});
 });
 

@@ -23,6 +23,9 @@ const warmInferenceAdmissionSnapshot = mock(async () => {
   calls.push("admission");
 });
 const coordinateSharedHistory = mock(async () => [] as unknown[]);
+const seedSharedAgentScopeCache = mock(async () => {
+  calls.push("authorization-scope");
+});
 const loggerWarn = mock(() => {});
 
 mock.module("../../pricing", () => ({
@@ -34,6 +37,9 @@ mock.module("../characters/characters", () => ({ charactersService: { getById } 
 mock.module("../inference-admission-snapshot", () => ({ warmInferenceAdmissionSnapshot }));
 mock.module("./conversation-coordinator", () => ({
   coordinateSharedHistory,
+}));
+mock.module("./resolve-shared-agent", () => ({
+  seedSharedAgentScopeCache,
 }));
 mock.module("../../utils/logger", () => ({
   logger: { debug: mock(), error: mock(), info: mock(), warn: loggerWarn },
@@ -67,6 +73,10 @@ beforeEach(() => {
   warmInferenceAdmissionSnapshot.mockClear();
   coordinateSharedHistory.mockClear();
   coordinateSharedHistory.mockImplementation(async () => []);
+  seedSharedAgentScopeCache.mockClear();
+  seedSharedAgentScopeCache.mockImplementation(async () => {
+    calls.push("authorization-scope");
+  });
   loggerWarn.mockClear();
 });
 
@@ -106,6 +116,47 @@ describe("prewarmSharedAgentTurnCaches model pricing", () => {
     expect(getById).toHaveBeenCalledWith("character-1");
     expect(calculateCost).toHaveBeenCalledWith("gpt-oss-120b", "cerebras", 1, 1, "bitrouter");
     expect(calls.indexOf("character")).toBeLessThan(calls.indexOf("pricing:cerebras:gpt-oss-120b"));
+  });
+
+  test("requestContext runs the authorization-scope leg with the creating credential + steward id", async () => {
+    const requestContext = { req: { header: () => undefined } };
+
+    await prewarmSharedAgentTurnCaches(agent({}), {
+      requestContext: requestContext as never,
+      stewardUserId: "steward-user-1",
+    });
+
+    expect(seedSharedAgentScopeCache).toHaveBeenCalledTimes(1);
+    const [ctx, seededAgent, stewardUserId] = seedSharedAgentScopeCache.mock
+      .calls[0] as unknown as [unknown, { id: string }, string | undefined];
+    expect(ctx).toBe(requestContext);
+    expect(seededAgent.id).toBe("agent-1");
+    expect(stewardUserId).toBe("steward-user-1");
+  });
+
+  test("without a requestContext the authorization-scope leg is skipped", async () => {
+    await prewarmSharedAgentTurnCaches(agent({}));
+    expect(seedSharedAgentScopeCache).not.toHaveBeenCalled();
+  });
+
+  test("logs an authorization-scope seeding rejection observed by allSettled", async () => {
+    const error = new Error("cache backend unavailable");
+    seedSharedAgentScopeCache.mockRejectedValue(error);
+
+    await expect(
+      prewarmSharedAgentTurnCaches(agent({}), {
+        requestContext: { req: { header: () => undefined } } as never,
+      }),
+    ).resolves.toBeUndefined();
+
+    expect(loggerWarn).toHaveBeenCalledWith(
+      "[shared-runtime prewarm] leg failed; first turn falls back to warming 503s",
+      expect.objectContaining({
+        agentId: "agent-1",
+        leg: "authorization-scope",
+        error: error.message,
+      }),
+    );
   });
 
   test("logs a conversation hydration rejection observed by allSettled", async () => {

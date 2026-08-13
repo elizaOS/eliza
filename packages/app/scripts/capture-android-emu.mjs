@@ -160,6 +160,7 @@ function captureLogcat(adb, serial, outPath) {
 
 async function main() {
   const flags = parseFlags();
+  const durationSec = resolveCaptureDurationSeconds(flags);
 
   let adb;
   try {
@@ -184,7 +185,6 @@ async function main() {
     slug: flags.slug,
     platform: PLATFORM,
   });
-  const durationSec = resolveCaptureDurationSeconds(flags);
 
   const pngPath = evidencePath(base, "png");
   if (captureScreenshot(adb, serial, pngPath)) {

@@ -8,11 +8,13 @@
  * rather than crashing boot. `getPageInfo` scrapes title, description, meta
  * tags, images, and links from untrusted HTML; the page bytes are always
  * fetched through `fetchWithSsrfGuard` so private / loopback / link-local
- * targets fail closed and redirect hops are revalidated. Videos reuse web
- * search since Tavily has no video endpoint.
+ * targets fail closed, redirect hops are revalidated, and response bodies are
+ * streamed through a byte cap before parsing. Videos reuse web search since
+ * Tavily has no video endpoint.
  */
 
 import {
+    ElizaError,
     fetchWithSsrfGuard,
     type IAgentRuntime,
     IWebSearchService,
@@ -35,6 +37,8 @@ export type TavilyClient = ReturnType<typeof tavily>;
 const PAGE_INFO_HTTP_TIMEOUT_MS = 15_000;
 /** Cap redirect hops so a hostile chain cannot spin the guard forever. */
 const PAGE_INFO_HTTP_MAX_REDIRECTS = 5;
+/** Bound untrusted page HTML before it reaches the regex extraction layer. */
+const PAGE_INFO_MAX_HTML_BYTES = 1024 * 1024;
 
 /**
  * Deterministic-test seam for the SSRF-guarded page-info transport.
@@ -203,6 +207,19 @@ function freshnessToDays(freshness: NewsSearchOptions["freshness"]): number {
 }
 
 function decodeHtmlEntities(text: string): string {
+    const decodeNumericEntity = (entity: string, digits: string, radix: number): string => {
+        const codePoint = Number.parseInt(digits, radix);
+        if (
+            !Number.isSafeInteger(codePoint) ||
+            codePoint <= 0 ||
+            codePoint > 0x10ffff ||
+            (codePoint >= 0xd800 && codePoint <= 0xdfff)
+        ) {
+            return entity;
+        }
+        return String.fromCodePoint(codePoint);
+    };
+
     return text
         .replace(/&amp;/g, "&")
         .replace(/&lt;/g, "<")
@@ -210,14 +227,85 @@ function decodeHtmlEntities(text: string): string {
         .replace(/&quot;/g, '"')
         .replace(/&#39;/g, "'")
         .replace(/&apos;/g, "'")
-        .replace(/&#(\d+);/g, (_, code) => {
-            const num = Number(code);
-            return Number.isFinite(num) ? String.fromCharCode(num) : _;
-        })
-        .replace(/&#x([0-9a-fA-F]+);/g, (_, hex) => {
-            const num = parseInt(hex, 16);
-            return Number.isFinite(num) ? String.fromCharCode(num) : _;
+        .replace(/&#(\d+);/g, (entity, digits: string) => decodeNumericEntity(entity, digits, 10))
+        .replace(/&#x([0-9a-fA-F]+);/g, (entity, digits: string) =>
+            decodeNumericEntity(entity, digits, 16)
+        );
+}
+
+type PageBodyCanceller = {
+    cancel(reason?: unknown): Promise<void>;
+};
+
+function pageInfoTooLargeError(cause?: unknown): ElizaError {
+    return new ElizaError("Page info HTML exceeds the response-size limit.", {
+        code: "PAGE_INFO_HTML_TOO_LARGE",
+        context: { limit: PAGE_INFO_MAX_HTML_BYTES },
+        cause,
+        severity: "fatal",
+    });
+}
+
+async function rejectOversizePageHtml(canceller?: PageBodyCanceller): Promise<never> {
+    if (canceller) {
+        try {
+            await canceller.cancel("page info HTML exceeded size limit");
+        } catch (cause) {
+            // error-policy:J2 Keep the size violation authoritative while
+            // preserving a transport cancellation failure for diagnostics.
+            throw pageInfoTooLargeError(cause);
+        }
+    }
+    throw pageInfoTooLargeError();
+}
+
+async function readBoundedPageHtml(response: Response): Promise<string> {
+    const declaredLength = response.headers.get("content-length");
+    if (
+        declaredLength &&
+        /^\d+$/.test(declaredLength) &&
+        Number(declaredLength) > PAGE_INFO_MAX_HTML_BYTES
+    ) {
+        return rejectOversizePageHtml(response.body ?? undefined);
+    }
+    if (!response.body) {
+        throw new ElizaError("Page info response has no body.", {
+            code: "PAGE_INFO_BODY_MISSING",
+            severity: "fatal",
         });
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let byteLength = 0;
+    let content = "";
+
+    try {
+        while (true) {
+            let chunk: ReadableStreamReadResult<Uint8Array>;
+            try {
+                chunk = await reader.read();
+            } catch (cause) {
+                // error-policy:J2 Preserve the transport failure while naming
+                // the page-info boundary that could not finish reading.
+                throw new ElizaError("Page info response body read failed.", {
+                    code: "PAGE_INFO_BODY_READ_FAILED",
+                    cause,
+                    severity: "ephemeral",
+                });
+            }
+            if (chunk.done) break;
+            byteLength += chunk.value.byteLength;
+            if (byteLength > PAGE_INFO_MAX_HTML_BYTES) {
+                return rejectOversizePageHtml(reader);
+            }
+            content += decoder.decode(chunk.value, { stream: true });
+        }
+        content += decoder.decode();
+        return content;
+    } finally {
+        reader.releaseLock();
+    }
 }
 
 function extractTitle(content: string, fallbackUrl: string): string {
@@ -470,7 +558,7 @@ export class WebSearchService extends IWebSearchService {
                     `Failed to fetch page info: ${guarded.response.status} ${guarded.response.statusText}`
                 );
             }
-            const content = await guarded.response.text();
+            const content = await readBoundedPageHtml(guarded.response);
             // Prefer the post-redirect URL for relative image/link resolution.
             let baseUrl = parsedUrl;
             try {

@@ -1,5 +1,12 @@
 #!/usr/bin/env node
 
+/**
+ * Validates channel-scoped messaging gateway configuration at operator and CI
+ * boundaries. Strict mode exits non-zero when a selected channel is missing a
+ * required value; callers decide whether values are real deployment settings
+ * or deterministic contract sentinels.
+ */
+
 const args = new Set(process.argv.slice(2));
 const strict = args.has("--strict");
 const channelsArg = process.argv.find((arg) => arg.startsWith("--channels="));
