@@ -74,7 +74,7 @@ describe("terminal action effect proof", () => {
     expect(result).toMatchObject({
       success: true,
       userFacingText: "hello",
-      verifiedUserFacing: true,
+      verifiedUserFacing: false,
       userFacingEffectReceiptIds: [
         "terminal-run:run-7f72b2d2-741f-48d9-8571-4ac9918d6a6e",
       ],
@@ -115,6 +115,7 @@ describe("terminal action effect proof", () => {
       success: false,
       error: "TERMINAL_EXECUTION_FAILED",
       userFacingText: "The command failed with exit code 7.",
+      verifiedUserFacing: true,
       effectReceipts: [
         {
           outcome: "failed",
@@ -125,6 +126,59 @@ describe("terminal action effect proof", () => {
           },
         },
       ],
+    });
+  });
+
+  it("does not stamp raw stdout as verified user-facing text", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        terminalResponse({
+          command:
+            "git ls-remote --heads https://github.com/elizaOS/eliza develop",
+          stdout:
+            "ebcf7fff00000000000000000000000000000000\trefs/heads/develop\n",
+        }),
+      ),
+    );
+
+    const result = await terminalAction.handler(
+      runtime(),
+      message(),
+      undefined,
+      options("git ls-remote --heads https://github.com/elizaOS/eliza develop"),
+    );
+
+    // Kept as the deterministic fallback relay…
+    expect(result).toMatchObject({
+      success: true,
+      userFacingText:
+        "ebcf7fff00000000000000000000000000000000\trefs/heads/develop",
+    });
+    // …but never verbatim-verified: that stamp is what let the relay ship the
+    // raw SHA line as a standalone leading paragraph before the natural reply.
+    expect(
+      (result as { verifiedUserFacing?: boolean }).verifiedUserFacing,
+    ).toBe(false);
+  });
+
+  it("keeps the deterministic empty-stdout success sentence verified", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => terminalResponse({ stdout: "" })),
+    );
+
+    const result = await terminalAction.handler(
+      runtime(),
+      message(),
+      undefined,
+      options("true"),
+    );
+
+    expect(result).toMatchObject({
+      success: true,
+      userFacingText: "The command finished successfully with exit code 0.",
+      verifiedUserFacing: true,
     });
   });
 
