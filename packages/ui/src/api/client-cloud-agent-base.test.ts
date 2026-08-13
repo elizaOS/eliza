@@ -16,6 +16,7 @@ import {
   directCloudSharedAgentIdFromBase,
   isCloudAgentsCollectionBase,
   isElizaCloudControlPlaneAgentlessBase,
+  isManagedCloudSharedAgentBase,
   resolveCloudEnvironmentBase,
 } from "../utils/cloud-agent-base";
 import { resolveCloudAgentApiBase } from "./client-cloud";
@@ -137,6 +138,19 @@ describe("resolveCloudAgentApiBase", () => {
 });
 
 describe("cloud-agent-base helpers", () => {
+  it("restricts account-scoped shared-agent classification to managed Cloud hosts", () => {
+    expect(
+      isManagedCloudSharedAgentBase(
+        "https://api.eliza.app/api/v1/eliza/agents/agent-123",
+      ),
+    ).toBe(true);
+    expect(
+      isManagedCloudSharedAgentBase(
+        "https://vps.example/api/v1/eliza/agents/agent-123",
+      ),
+    ).toBe(false);
+  });
+
   it("buildCloudSharedAgentApiBase appends the per-agent REST path", () => {
     expect(
       buildCloudSharedAgentApiBase("https://api.elizacloud.ai/", "abc"),

@@ -45,6 +45,8 @@ export interface SettingsSwitchRowProps {
   disabled?: boolean;
   /** Agent-surface grouping key. */
   group?: string;
+  /** Override the agent-surface status token (defaults to on/off). */
+  agentStatus?: string;
   className?: string;
 }
 
@@ -59,6 +61,7 @@ export function SettingsSwitchRow({
   onCheckedChange,
   disabled = false,
   group = "settings",
+  agentStatus,
   className,
 }: SettingsSwitchRowProps) {
   const resolvedLabel = agentLabel ?? labelToString(label, agentId);
@@ -68,7 +71,7 @@ export function SettingsSwitchRow({
     label: resolvedLabel,
     group,
     description: typeof description === "string" ? description : undefined,
-    status: checked ? "on" : "off",
+    status: agentStatus ?? (checked ? "on" : "off"),
     getValue: () => checked,
     onActivate: disabled ? undefined : () => onCheckedChange(!checked),
   });
@@ -80,9 +83,11 @@ export function SettingsSwitchRow({
       label={label}
       description={description}
       className={className}
+      htmlFor={agentId}
       control={
         <Switch
           ref={ref}
+          id={agentId}
           checked={checked}
           onCheckedChange={onCheckedChange}
           disabled={disabled}

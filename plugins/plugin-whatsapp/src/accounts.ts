@@ -198,6 +198,24 @@ export function listWhatsAppAccountIds(runtime: IAgentRuntime): string[] {
   return result.slice().sort((a, b) => a.localeCompare(b));
 }
 
+/** Rejects aliases that normalize to the same runtime account boundary. */
+export function assertUniqueWhatsAppAccountIds(runtime: IAgentRuntime): void {
+  const accounts = getMultiAccountConfig(runtime).accounts;
+  if (!accounts || typeof accounts !== "object") return;
+
+  const seen = new Map<string, string>();
+  for (const rawId of Object.keys(accounts)) {
+    const normalized = normalizeAccountId(rawId);
+    const previous = seen.get(normalized);
+    if (previous !== undefined) {
+      throw new Error(
+        `WhatsApp account IDs "${previous}" and "${rawId}" both normalize to "${normalized}"; account IDs must be unique after trimming and lowercasing`
+      );
+    }
+    seen.set(normalized, rawId);
+  }
+}
+
 /**
  * Resolves the default account ID to use
  */
@@ -276,7 +294,7 @@ function filterDefined<T extends object>(obj: T): Partial<T> {
   return Object.fromEntries(Object.entries(obj).filter(([, v]) => v !== undefined)) as Partial<T>;
 }
 
-function mergeWhatsAppAccountConfig(
+export function resolveWhatsAppAccountConfig(
   runtime: IAgentRuntime,
   accountId: string
 ): WhatsAppAccountRuntimeConfig {
@@ -307,11 +325,23 @@ function mergeWhatsAppAccountConfig(
     groupPolicy: envGroupPolicy as WhatsAppAccountRuntimeConfig["groupPolicy"] | undefined,
   };
 
-  // Merge order: env defaults < base config < account config
-  // Filter undefined values to prevent them from overwriting defined values
+  // Only the default account may inherit transport credentials from env/base.
+  // Named accounts share policy defaults but own every provider identity and
+  // credential, preventing accidental cross-account webhook or send routing.
+  const namedBaseConfig: WhatsAppAccountRuntimeConfig = {
+    enabled: baseConfig.enabled,
+    dmPolicy: baseConfig.dmPolicy,
+    groupPolicy: baseConfig.groupPolicy,
+    mediaMaxMb: baseConfig.mediaMaxMb,
+    textChunkLimit: baseConfig.textChunkLimit,
+  };
+  const inherited =
+    accountId === DEFAULT_ACCOUNT_ID
+      ? { ...filterDefined(envConfig), ...filterDefined(baseConfig) }
+      : filterDefined(namedBaseConfig);
+
   return {
-    ...filterDefined(envConfig),
-    ...filterDefined(baseConfig),
+    ...inherited,
     ...filterDefined(accountConfig),
   };
 }
@@ -327,7 +357,7 @@ export function resolveWhatsAppAccount(
   const multiConfig = getMultiAccountConfig(runtime);
 
   const baseEnabled = multiConfig.enabled !== false;
-  const merged = mergeWhatsAppAccountConfig(runtime, normalizedAccountId);
+  const merged = resolveWhatsAppAccountConfig(runtime, normalizedAccountId);
   const accountEnabled = merged.enabled !== false;
   const enabled = baseEnabled && accountEnabled;
 

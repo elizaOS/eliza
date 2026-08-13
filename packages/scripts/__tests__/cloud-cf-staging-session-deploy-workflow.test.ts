@@ -127,6 +127,22 @@ describe("Cloud CF staging session cutover", () => {
     expect(validateStagingSessionCutoverConfig(VALID)).toEqual([]);
     expect(workflowSource).toContain("ELIZA_SERVICE_JWT_SECRET:");
     expect(workflowSource).toContain("secrets.ELIZA_SERVICE_JWT_SECRET");
+    expect(workflowSource).toContain(
+      `STAGING_SESSION_EXCHANGE_SIGNING_SECRET: \${{ steps.env.outputs.deploy_environment == 'staging' && secrets.STAGING_SESSION_EXCHANGE_SIGNING_SECRET || '' }}`,
+    );
+    expect(workflowSource).toContain(
+      `STAGING_SESSION_EXCHANGE_SIGNING_KEY_ID: \${{ steps.env.outputs.deploy_environment == 'staging' && vars.STAGING_SESSION_EXCHANGE_SIGNING_KEY_ID || '' }}`,
+    );
+    for (const name of [
+      "STAGING_SESSION_EXCHANGE_ALLOWED_API_KEY_IDS",
+      "STAGING_SESSION_EXCHANGE_ALLOWED_USER_IDS",
+      "STAGING_SESSION_EXCHANGE_ALLOWED_ORGANIZATION_IDS",
+    ]) {
+      expect(workflowSource).toContain(
+        `${name}: \${{ steps.env.outputs.deploy_environment == 'staging' && vars.${name} || '' }}`,
+      );
+      expect(workflowSource).not.toContain(`secrets.${name}`);
+    }
     expect(
       validateStagingSessionCutoverConfig({
         ...VALID,

@@ -184,17 +184,22 @@ function readLiveNativeStewardToken(token: string): string | null {
  * fallback never applies — it resolves to the steward token or nothing.
  */
 export function readCloudBearerToken(): string | null {
+  const nativeRuntime = isNativeCloudRuntime();
+  // Resolve the supported owner-key fallback before expiry cleanup dispatches
+  // the canonical session-clear event. That event may synchronously remove the
+  // rejected account target from boot config; the already-validated fallback
+  // must remain usable for this request on native/Electrobun (#11930).
+  const nativeCloudApiKey = nativeRuntime
+    ? (normalizeCloudApiKeyToken(getBootConfig().apiToken) ??
+      normalizeCloudApiKeyToken(getElizaApiToken()))
+    : null;
   const stewardToken = readStewardToken()?.trim();
   if (stewardToken) {
-    if (!isNativeCloudRuntime()) return stewardToken;
+    if (!nativeRuntime) return stewardToken;
     const liveToken = readLiveNativeStewardToken(stewardToken);
     if (liveToken) return liveToken;
   }
-  if (!isNativeCloudRuntime()) return null;
-  return (
-    normalizeCloudApiKeyToken(getBootConfig().apiToken) ??
-    normalizeCloudApiKeyToken(getElizaApiToken())
-  );
+  return nativeCloudApiKey;
 }
 
 // ---------------------------------------------------------------------------

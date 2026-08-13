@@ -105,6 +105,13 @@ Other:
   unset, every internal-event request is rejected (logged as a warning at boot).
 - `AGENT_SERVER_SHARED_SECRET` — sent as `X-Server-Token` on forwards to
   agent-server pods.
+- `AGENT_ROUTER_ORIGIN_HOST` — canonical dedicated-agent router origin used
+  after a direct transport failure. The gateway sends the validated
+  `<agent-id>.<ELIZA_CLOUD_AGENT_BASE_DOMAIN>` value as `X-Forwarded-Host`.
+  Validation applies to the complete generated hostname, including the
+  253-character total and 63-character per-label DNS limits.
+- `ELIZA_CLOUD_AGENT_BASE_DOMAIN` — dedicated-agent hostname suffix used with
+  the router origin (default `cloud.eliza.app`).
 - `PORT` (default 3000; `dev`/`start` scripts set 3002), `POD_NAME` /
   `HOSTNAME`.
 - `KEDA_COOLDOWN_SECONDS` (default 900) — TTL on the KEDA activity key.
