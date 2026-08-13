@@ -687,6 +687,228 @@ describe("app plugin compatibility routes", () => {
     );
   });
 
+  function makeDiscordRegistryEntry() {
+    return {
+      id: "discord",
+      name: "Discord",
+      npmName: "@elizaos/plugin-discord",
+      description: "",
+      tags: [],
+      kind: "connector",
+      subtype: "chat",
+      config: {
+        DISCORD_API_TOKEN: {
+          type: "secret",
+          label: "Bot token",
+          required: true,
+          sensitive: true,
+        },
+      },
+      render: {},
+      resources: {},
+      version: "1.0.0",
+    };
+  }
+
+  function useDiscordRegistry() {
+    const discordEntry = makeDiscordRegistryEntry();
+    mocks.loadRegistry.mockReturnValue({
+      all: [discordEntry],
+      byId: new Map([["discord", discordEntry]]),
+    });
+  }
+
+  it("marks a required param set from runtime.getSetting without process.env", () => {
+    useDiscordRegistry();
+
+    const response = buildPluginListResponse({
+      plugins: [],
+      getSetting: (key: string) =>
+        key === "DISCORD_API_TOKEN" ? "runtime-token" : undefined,
+      getService: () => null,
+    } as never);
+
+    const discord = response.plugins.find((plugin) => plugin.id === "discord");
+    expect(discord).toEqual(
+      expect.objectContaining({ configured: true, validationErrors: [] }),
+    );
+    expect(discord?.parameters[0]).toEqual(
+      expect.objectContaining({ key: "DISCORD_API_TOKEN", isSet: true }),
+    );
+  });
+
+  it("marks a required param set from the saved plugin entry config", () => {
+    useDiscordRegistry();
+    currentConfig = {
+      env: {},
+      plugins: {
+        entries: {
+          discord: {
+            enabled: true,
+            config: { DISCORD_API_TOKEN: "saved-token" },
+          },
+        },
+      },
+    };
+
+    const response = buildPluginListResponse(null);
+
+    const discord = response.plugins.find((plugin) => plugin.id === "discord");
+    expect(discord).toEqual(expect.objectContaining({ configured: true }));
+    expect(discord?.parameters[0]).toEqual(
+      expect.objectContaining({ key: "DISCORD_API_TOKEN", isSet: true }),
+    );
+  });
+
+  it("reports a required param unset when no env, saved, or runtime value exists", () => {
+    useDiscordRegistry();
+
+    const response = buildPluginListResponse(null);
+
+    const discord = response.plugins.find((plugin) => plugin.id === "discord");
+    expect(discord).toEqual(expect.objectContaining({ configured: false }));
+    expect(discord?.parameters[0]).toEqual(
+      expect.objectContaining({ isSet: false }),
+    );
+  });
+
+  it("does not report a loaded plugin active when its service is unhealthy", () => {
+    useDiscordRegistry();
+
+    const response = buildPluginListResponse({
+      plugins: [{ name: "@elizaos/plugin-discord" }],
+      getSetting: (key: string) =>
+        key === "DISCORD_API_TOKEN" ? "invalid-token" : undefined,
+      getService: (name: string) =>
+        name === "discord" ? { isHealthy: () => false } : null,
+    } as never);
+
+    const discord = response.plugins.find((plugin) => plugin.id === "discord");
+    expect(discord).toEqual(
+      expect.objectContaining({ configured: true, isActive: false }),
+    );
+    expect(discord?.validationWarnings).toEqual([
+      expect.objectContaining({
+        message: expect.stringContaining("unhealthy"),
+      }),
+    ]);
+  });
+
+  it("reports a loaded plugin active when its service is healthy", () => {
+    useDiscordRegistry();
+
+    const response = buildPluginListResponse({
+      plugins: [{ name: "@elizaos/plugin-discord" }],
+      getSetting: (key: string) =>
+        key === "DISCORD_API_TOKEN" ? "valid-token" : undefined,
+      getService: (name: string) =>
+        name === "discord" ? { isHealthy: () => true } : null,
+    } as never);
+
+    expect(response.plugins.find((plugin) => plugin.id === "discord")).toEqual(
+      expect.objectContaining({
+        configured: true,
+        isActive: true,
+        validationWarnings: [],
+      }),
+    );
+  });
+
+  it("keeps loaded-name activity for plugins without a health surface", () => {
+    useDiscordRegistry();
+
+    const response = buildPluginListResponse({
+      plugins: [{ name: "@elizaos/plugin-discord" }],
+      getSetting: () => undefined,
+      getService: () => null,
+    } as never);
+
+    expect(response.plugins.find((plugin) => plugin.id === "discord")).toEqual(
+      expect.objectContaining({ isActive: true }),
+    );
+  });
+
+  it("reflects a save into catalog isSet while login failure stays inactive", () => {
+    useDiscordRegistry();
+    const runtimeSettings: Record<string, string> = {};
+
+    const saveResult = persistCompatPluginMutation(
+      "discord",
+      { config: { DISCORD_API_TOKEN: "typo-token" } },
+      makePlugin(),
+    );
+    expect(saveResult.status).toBe(200);
+    // The settings bridge (#18718) folds the save into runtime.getSetting.
+    runtimeSettings.DISCORD_API_TOKEN = "typo-token";
+    currentConfig = clone(savedConfig ?? currentConfig);
+    delete process.env.DISCORD_API_TOKEN;
+
+    const response = buildPluginListResponse({
+      plugins: [{ name: "@elizaos/plugin-discord" }],
+      getSetting: (key: string) => runtimeSettings[key],
+      getService: (name: string) =>
+        name === "discord" ? { isHealthy: () => false } : null,
+    } as never);
+
+    const discord = response.plugins.find((plugin) => plugin.id === "discord");
+    expect(discord?.parameters[0]).toEqual(
+      expect.objectContaining({ isSet: true }),
+    );
+    expect(discord).toEqual(
+      expect.objectContaining({ configured: true, isActive: false }),
+    );
+  });
+
+  it("returns 422 from the test probe when the service reports unhealthy", async () => {
+    const handled = await handlePluginsCompatRoutes(
+      {
+        method: "POST",
+        url: "/api/plugins/discord/test",
+      } as never,
+      {} as never,
+      {
+        current: {
+          plugins: [{ name: "@elizaos/plugin-discord" }],
+          getSetting: () => undefined,
+          getService: (name: string) =>
+            name === "discord" ? { isHealthy: () => false } : null,
+        },
+      } as never,
+    );
+
+    expect(handled).toBe(true);
+    expect(mocks.sendJson).toHaveBeenCalledWith(
+      expect.anything(),
+      422,
+      expect.objectContaining({ success: false, pluginId: "discord" }),
+    );
+  });
+
+  it("returns success from the test probe when the service reports healthy", async () => {
+    const handled = await handlePluginsCompatRoutes(
+      {
+        method: "POST",
+        url: "/api/plugins/discord/test",
+      } as never,
+      {} as never,
+      {
+        current: {
+          plugins: [{ name: "@elizaos/plugin-discord" }],
+          getSetting: () => undefined,
+          getService: (name: string) =>
+            name === "discord" ? { isHealthy: () => true } : null,
+        },
+      } as never,
+    );
+
+    expect(handled).toBe(true);
+    expect(mocks.sendJson).toHaveBeenCalledWith(
+      expect.anything(),
+      200,
+      expect.objectContaining({ success: true, pluginId: "discord" }),
+    );
+  });
+
   it("returns 400 instead of throwing on malformed encoded plugin path", async () => {
     const saveCallCount = mocks.saveElizaConfig.mock.calls.length;
 
