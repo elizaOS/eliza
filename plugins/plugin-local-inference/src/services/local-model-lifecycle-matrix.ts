@@ -10,6 +10,7 @@ import path from "node:path";
 import { EMBEDDING_PRESETS } from "../runtime/embedding-presets";
 import {
 	buildHuggingFaceResolveUrlForPath,
+	ELIZA_1_HOSTED_LITERT_TIER_IDS,
 	ELIZA_1_MTP_TIER_IDS,
 	ELIZA_1_ON_DEVICE_TIER_IDS,
 	ELIZA_1_VISION_TIER_IDS,
@@ -18,6 +19,7 @@ import {
 } from "./catalog";
 import type { Eliza1Backend } from "./manifest";
 import { SUPPORTED_BACKENDS_BY_TIER } from "./manifest";
+import { defaultManifestLoader, type ManifestLoader } from "./ram-budget";
 import {
 	deviceCapsFromProbe,
 	selectBestQuantizationVariant,
@@ -221,6 +223,8 @@ export interface BuildLocalModelLifecycleMatrixOptions {
 	localFileChecks?: Readonly<Record<string, LifecycleLocalFileCheck>>;
 	/** Keyed by model id; applies to the model's `text` row. */
 	loadRunChecks?: Readonly<Record<string, LifecycleLoadRunCheck>>;
+	/** Reads a validated installed manifest for component-path reconciliation. */
+	manifestLoader?: ManifestLoader;
 }
 
 const COMPONENTS_WITH_LOCAL_RUNTIME: ReadonlySet<LocalModelLifecycleComponent> =
@@ -321,6 +325,16 @@ function knownGapFor(
 				`${model.hfRepo} (candidates/gemma-2b-base-v1/mtp/MISSING.txt); the ` +
 				"catalog gates advertisement on ELIZA_1_HOSTED_MTP_TIER_IDS " +
 				"(currently empty) so the downloader never fetches a missing artifact",
+		};
+	}
+	if (component === "litert" && hasTier(ELIZA_1_ON_DEVICE_TIER_IDS, model.id)) {
+		return {
+			kind: "publish-pending",
+			reason:
+				"the on-device LiteRT-LM runtime and planned wna8o8 variant exist, " +
+				"but no .litertlm bundle is hosted yet; the catalog gates download " +
+				"metadata on ELIZA_1_HOSTED_LITERT_TIER_IDS " +
+				`(currently ${ELIZA_1_HOSTED_LITERT_TIER_IDS.length === 0 ? "empty" : "limited"})`,
 		};
 	}
 	if (component === "embedding") {
@@ -451,10 +465,33 @@ function quantizationForModel(
 function componentPathFor(
 	model: InstalledModel,
 	artifact: LocalModelLifecycleArtifact,
+	manifestLoader: ManifestLoader,
 ): string | null {
 	if (!artifact.bundleFile) return null;
 	if (artifact.component === "text") return model.path;
 	const root = model.bundleRoot ?? path.dirname(model.path);
+	if (artifact.component === "voice") {
+		const manifest = manifestLoader(model.id, model);
+		const catalogFile = artifact.bundleFile.replace(/^\/+/, "");
+		const voiceEntries = manifest?.files.voice ?? [];
+		const manifestEntry =
+			voiceEntries.find((entry) => entry.path === catalogFile) ??
+			voiceEntries.find((entry) =>
+				/(?:^|\/)kokoro\/[^/]+\.gguf$/i.test(entry.path),
+			);
+		if (manifestEntry) {
+			const resolvedRoot = path.resolve(root);
+			const resolvedEntry = path.resolve(resolvedRoot, manifestEntry.path);
+			const relative = path.relative(resolvedRoot, resolvedEntry);
+			if (
+				relative !== ".." &&
+				!relative.startsWith(`..${path.sep}`) &&
+				!path.isAbsolute(relative)
+			) {
+				return resolvedEntry;
+			}
+		}
+	}
 	return path.join(root, artifact.bundleFile);
 }
 
@@ -698,6 +735,7 @@ export function buildLocalModelLifecycleMatrix(
 ): LocalModelLifecycleMatrix {
 	const catalog = options.catalog ?? MODEL_CATALOG;
 	const observedAt = options.observedAt ?? new Date().toISOString();
+	const manifestLoader = options.manifestLoader ?? defaultManifestLoader;
 	const byInstalledId = installedById(options.installed);
 	const caps = deviceCapsFromProbe(options.hardware);
 	const deviceBackends = [...caps.availableBackends];
@@ -717,7 +755,7 @@ export function buildLocalModelLifecycleMatrix(
 		);
 		const installed = byInstalledId.get(model.id);
 		const componentPath = installed
-			? componentPathFor(installed, artifact)
+			? componentPathFor(installed, artifact, manifestLoader)
 			: null;
 		const fileCheck = componentPath
 			? (options.localFileChecks?.[artifact.key] ?? null)
@@ -740,12 +778,11 @@ export function buildLocalModelLifecycleMatrix(
 		);
 		const bundleCheck = options.bundleChecks?.[model.id];
 		const bundleClosure = bundleClosureCheck(model, bundleCheck);
-		const servedByAlternate =
-			artifact.knownGap?.kind === "served-by-alternate-runtime";
-		const installedStatus = servedByAlternate
+		const installCheckSkipped = artifact.knownGap !== undefined;
+		const installedStatus = installCheckSkipped
 			? status("skipped", artifact.knownGap?.reason ?? "")
 			: installedCheck(installed, fileCheck);
-		const loadRun = servedByAlternate
+		const loadRun = installCheckSkipped
 			? status("skipped", artifact.knownGap?.reason ?? "")
 			: loadRunCheck(
 					installed,
@@ -828,13 +865,14 @@ export function buildLocalModelLifecycleMatrix(
 export async function collectLocalLifecycleFileChecks(
 	artifacts: ReadonlyArray<LocalModelLifecycleArtifact>,
 	installed: ReadonlyArray<InstalledModel>,
+	manifestLoader: ManifestLoader = defaultManifestLoader,
 ): Promise<Record<string, LifecycleLocalFileCheck>> {
 	const byInstalledId = installedById(installed);
 	const checks: Record<string, LifecycleLocalFileCheck> = {};
 	for (const artifact of artifacts) {
 		const model = byInstalledId.get(artifact.modelId);
 		if (!model) continue;
-		const componentPath = componentPathFor(model, artifact);
+		const componentPath = componentPathFor(model, artifact, manifestLoader);
 		if (!componentPath) continue;
 		try {
 			const stat = await fs.stat(componentPath);

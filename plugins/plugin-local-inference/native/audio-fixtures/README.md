@@ -8,6 +8,8 @@ pipeline (ASR decode, per-word timing, VAD, wake-word negatives).
 A real ~22.05 kHz mono speech recording (~761 KB). Its transcript is a known
 quantity that the ASR/decode tests assert against, so it must not be
 substituted or regenerated — the tests compare against this exact clip.
+`freeman.txt` is the adjacent reference transcript used by the real ASR smoke's
+word-error-rate gate.
 
 Relocated here out of the removed standalone `omnivoice.cpp` submodule
 (`native/omnivoice.cpp/examples/freeman.wav`), which was retired along with the

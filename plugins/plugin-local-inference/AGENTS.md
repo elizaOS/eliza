@@ -161,6 +161,8 @@ bun run --cwd plugins/plugin-local-inference clean        # rm dist .turbo node_
 | `ELIZA_DEVICE_PAIRING_TOKEN` | No | Pairing token for device bridge |
 | `ELIZA_DEVICE_GENERATE_TIMEOUT_MS` | No | Timeout in ms for device-bridge inference calls |
 | `ELIZA_KOKORO_DEFAULT_VOICE_ID` | No | Default Kokoro TTS voice id |
+| `ELIZA_ASR_USE_GPU` | No | Override fused ASR acceleration (`1`/`true`/`yes`/`on` or `0`/`false`/`no`/`off`). Apple silicon defaults to the correctness-proven CPU path; invalid values fail activation, and GPU should be enabled only for Metal parity testing |
+| `KOKORO_SMOKE_TTFA_BUDGET_MS` | No | Override the 700 ms mobile TTFA gate when the real smoke is proving a different host performance class |
 | `ELIZA_LOCAL_IDLE_UNLOAD_MS` | No | Idle timeout (ms) before an inactive model is unloaded to free memory |
 | `ELIZA_LOCAL_SESSION_POOL_SIZE` | No | Number of parallel inference sessions to maintain in the session pool |
 | `ELIZA_LOCAL_MAX_SPECULATIVE_RESPONSES` | No | Maximum speculative decode responses buffered per request |

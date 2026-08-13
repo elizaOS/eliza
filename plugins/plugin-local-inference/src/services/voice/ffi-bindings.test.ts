@@ -19,6 +19,8 @@
  *        return ELIZA_ERR_NOT_IMPLEMENTED and the binding surfaces it
  *        as a structured `VoiceLifecycleError` — never a crash, never
  *        a fabricated successful response,
+ *      - Apple-silicon ASR policy reaches libc before the native region load,
+ *        including explicit CPU/GPU overrides and structured setenv failure,
  *      - ABI version mismatch is caught at load time.
  *
  * Per `packages/inference/AGENTS.md` §3 + §9 every failure path is a
@@ -498,6 +500,66 @@ describeGeneratedStubIntegration(
 			expect(report.errorMessage).toMatch(/unsupported in ABI-only build/);
 		});
 
+		it.skipIf(process.platform !== "darwin" || process.arch !== "arm64")(
+			"synchronizes absent and explicit ASR accelerator policy into native getenv",
+			() => {
+				for (const [input, expected] of [
+					[null, "0"],
+					["0", "0"],
+					["1", "1"],
+				] as const) {
+					const report = runBunHarness({
+						scenario: "asr-native-env",
+						asrGpuValue: input,
+					});
+					expectHarnessOk(report);
+					expect(report.threwLifecycleError).toBe(true);
+					expect(report.errorCode).toBe("kernel-missing");
+					expect(report.nativeAsrGpu).toBe(expected);
+				}
+			},
+		);
+
+		it.skipIf(process.platform !== "darwin" || process.arch !== "arm64")(
+			"surfaces native setenv failure as a structured arm error",
+			() => {
+				const report = runBunHarness({
+					scenario: "asr-native-setenv-fails",
+					asrGpuValue: "0",
+				});
+				expectHarnessOk(report);
+				expect(report.threwLifecycleError).toBe(true);
+				expect(report.errorCode).toBe("arm-failed");
+				expect(report.errorMessage).toMatch(
+					/setenv\(ELIZA_ASR_USE_GPU=0\) failed with rc=73/,
+				);
+				expect(report.errorMessage).not.toMatch(/mmap_acquire|native getenv/);
+				expect(report.setenvCalls).toBe(1);
+				expect(report.systemClosed).toBe(true);
+			},
+		);
+
+		it.skipIf(process.platform !== "darwin" || process.arch !== "arm64")(
+			"surfaces libSystem loader failure as a structured arm error",
+			() => {
+				const report = runBunHarness({
+					scenario: "asr-native-libsystem-open-fails",
+					asrGpuValue: "0",
+				});
+				expectHarnessOk(report);
+				expect(report.threwLifecycleError).toBe(true);
+				expect(report.errorCode).toBe("arm-failed");
+				expect(report.errorMessage).toMatch(
+					/Cannot open libSystem to synchronize ASR policy/,
+				);
+				expect(report.errorMessage).toMatch(/sentinel-libsystem-open-failure/);
+				expect(report.errorMessage).not.toMatch(/mmap_acquire|native getenv/);
+				expect(report.libSystemOpenCalls).toBe(1);
+				expect(report.setenvCalls).toBe(0);
+				expect(report.systemClosed).toBe(false);
+			},
+		);
+
 		it("stub advertises native VAD unsupported", () => {
 			const report = runBunHarness({ scenario: "vad-unsupported" });
 			expectHarnessOk(report);
@@ -537,6 +599,10 @@ interface HarnessReport {
 	threwLifecycleError?: boolean;
 	errorCode?: string;
 	errorMessage?: string;
+	nativeAsrGpu?: string;
+	libSystemOpenCalls?: number;
+	setenvCalls?: number;
+	systemClosed?: boolean;
 	vadSupported?: boolean;
 	unexpectedError?: string;
 }
@@ -547,9 +613,13 @@ interface HarnessOptions {
 		| "create-empty-fails"
 		| "tts-not-implemented"
 		| "mmap-acquire-not-implemented"
+		| "asr-native-env"
+		| "asr-native-libsystem-open-fails"
+		| "asr-native-setenv-fails"
 		| "mmap-evict-not-implemented"
 		| "vad-unsupported"
 		| "abi-mismatch";
+	asrGpuValue?: "0" | "1" | null;
 }
 
 function expectHarnessOk(report: HarnessReport): void {
@@ -614,6 +684,7 @@ import { loadElizaInferenceFfi, ELIZA_INFERENCE_ABI_VERSION } from ${JSON.string
 import { VoiceLifecycleError } from ${JSON.stringify(lifecyclePath)};
 
 const SCENARIO = ${JSON.stringify(opts.scenario)};
+const ASR_GPU_VALUE = ${JSON.stringify(opts.asrGpuValue)};
 const DYLIB = ${JSON.stringify(dylibPath)};
 const REPORT_PATH = ${JSON.stringify(reportPath)};
 
@@ -729,6 +800,109 @@ function asLifecycleErr(e) {
     return;
   }
 
+  if (SCENARIO === "asr-native-env") {
+    const ffi = loadElizaInferenceFfi(DYLIB);
+    const ctx = ffi.create("/tmp/elizainference-test-bundle");
+    let thrown;
+    try {
+      if (ASR_GPU_VALUE === null) {
+        delete process.env.ELIZA_ASR_USE_GPU;
+      } else {
+        process.env.ELIZA_ASR_USE_GPU = ASR_GPU_VALUE;
+      }
+      ffi.mmapAcquire(ctx, "asr");
+    } catch (e) {
+      thrown = e;
+    }
+    ffi.destroy(ctx);
+    ffi.close();
+    const lc = asLifecycleErr(thrown);
+    const nativeAsrGpu = lc?.message.match(
+      /native getenv ELIZA_ASR_USE_GPU=(0|1|<unset>)/,
+    )?.[1];
+    emit({
+      ok: true,
+      scenario: SCENARIO,
+      threwLifecycleError: lc !== null,
+      errorCode: lc?.code,
+      errorMessage: lc?.message,
+      nativeAsrGpu,
+    });
+    return;
+  }
+
+  if (
+    SCENARIO === "asr-native-libsystem-open-fails" ||
+    SCENARIO === "asr-native-setenv-fails"
+  ) {
+    const realRequire = require;
+    const realBunFfi = realRequire("bun:ffi");
+    const originalBunRequire = globalThis.Bun.__require;
+    let libSystemOpenCalls = 0;
+    let setenvCalls = 0;
+    let systemClosed = false;
+    const wrappedBunFfi = {
+      ...realBunFfi,
+      dlopen(libraryPath, definitions) {
+        if (
+          libraryPath === "/usr/lib/libSystem.B.dylib" &&
+          definitions?.setenv
+        ) {
+          libSystemOpenCalls += 1;
+          if (SCENARIO === "asr-native-libsystem-open-fails") {
+            throw new Error("sentinel-libsystem-open-failure");
+          }
+          return {
+            symbols: {
+              setenv: () => {
+                setenvCalls += 1;
+                return 73;
+              },
+            },
+            close: () => {
+              systemClosed = true;
+            },
+          };
+        }
+        return realBunFfi.dlopen(libraryPath, definitions);
+      },
+    };
+    globalThis.Bun.__require = (id) =>
+      id === "bun:ffi" ? wrappedBunFfi : realRequire(id);
+
+    let ffi;
+    let ctx;
+    let thrown;
+    try {
+      ffi = loadElizaInferenceFfi(DYLIB);
+      ctx = ffi.create("/tmp/elizainference-test-bundle");
+      if (ASR_GPU_VALUE === null) {
+        delete process.env.ELIZA_ASR_USE_GPU;
+      } else {
+        process.env.ELIZA_ASR_USE_GPU = ASR_GPU_VALUE;
+      }
+      ffi.mmapAcquire(ctx, "asr");
+    } catch (e) {
+      thrown = e;
+    } finally {
+      globalThis.Bun.__require = originalBunRequire;
+      if (ffi && ctx) ffi.destroy(ctx);
+      if (ffi) ffi.close();
+    }
+    const lc = asLifecycleErr(thrown);
+    emit({
+      ok: true,
+      scenario: SCENARIO,
+      threwLifecycleError: lc !== null,
+      errorCode: lc?.code,
+      errorMessage: lc?.message,
+      libSystemOpenCalls,
+      setenvCalls,
+      systemClosed,
+    });
+    return;
+  }
+
   if (SCENARIO === "vad-unsupported") {
     const ffi = loadElizaInferenceFfi(DYLIB);
     const supported = ffi.vadSupported();
@@ -795,9 +969,13 @@ function asLifecycleErr(e) {
 
 	const bun = bunOnPath() ?? "bun";
 	writeFileSync(scriptPath, script);
+	const childEnv = bunSubprocessEnvironment();
+	if (opts.scenario.startsWith("asr-native-")) {
+		delete childEnv.ELIZA_ASR_USE_GPU;
+	}
 	const result = spawnSync(bun, [scriptPath], {
 		encoding: "utf8",
-		env: bunSubprocessEnvironment(),
+		env: childEnv,
 		timeout: 30_000,
 	});
 

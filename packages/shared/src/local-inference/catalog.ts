@@ -88,6 +88,22 @@ function hostedMtpDrafterAvailableForTier(id: Eliza1TierId): boolean {
 }
 
 /**
+ * Tiers whose LiteRT-LM bundles are actually hosted under
+ * `bundles/<tier>/text/eliza-1-<tier>.litertlm`.
+ *
+ * The mobile runtime and planned `wna8o8` catalog variants remain visible for
+ * roadmap purposes, but source-component metadata is a download contract. Add
+ * a tier here only after the artifact exists remotely so the lifecycle matrix
+ * never reports a planned 404 as deployable.
+ */
+export const ELIZA_1_HOSTED_LITERT_TIER_IDS =
+  [] as const satisfies ReadonlyArray<Eliza1TierId>;
+
+function hostedLiteRtAvailableForTier(id: Eliza1TierId): boolean {
+  return ELIZA_1_HOSTED_LITERT_TIER_IDS.some((litertId) => litertId === id);
+}
+
+/**
  * On-device (mobile-class) tiers. These are the tiers small enough to run on
  * a phone, so they advertise the Gemma-4 QAT `Q4_0` quant as the
  * mobile-preferred variant and ship a LiteRT `.litertlm` bundle for the
@@ -429,8 +445,9 @@ function sourceModelForTier(id: Eliza1TierId): CatalogModel["sourceModel"] {
 
   // LiteRT-LM single-file bundle for the on-device runtime: text + vision +
   // audio + MTP packed into one QAT (.litertlm) artifact, parallel to the
-  // GGUF `text` component. Only the mobile-class tiers ship it.
-  if (isOnDeviceTier(id)) {
+  // GGUF `text` component. Only explicitly hosted mobile-class tiers
+  // advertise it as downloadable.
+  if (hostedLiteRtAvailableForTier(id)) {
     components.litert = bundleComponent(
       id,
       `text/eliza-1-${tierBundleSlug(id)}.litertlm`,

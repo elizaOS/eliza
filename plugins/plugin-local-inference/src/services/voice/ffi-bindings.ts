@@ -25,6 +25,7 @@
 
 import path from "node:path";
 
+import { resolveAsrRuntimeSetting } from "./asr-runtime-policy";
 import { VoiceLifecycleError } from "./lifecycle";
 
 /**
@@ -1203,6 +1204,13 @@ interface BunFfiLib {
 	close(): void;
 }
 
+interface BunLibSystemHandle {
+	symbols: {
+		setenv(name: unknown, value: unknown, overwrite: number): number;
+	};
+	close(): void;
+}
+
 interface BunFfiJSCallback {
 	readonly ptr: bigint | number;
 	close(): void;
@@ -2084,6 +2092,52 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 		return { ptr: ffi.ptr(buf), bytes: bytes.byteLength, buffer: buf };
 	}
 
+	/**
+	 * Bun's JavaScript `process.env` writes are not reflected through libc's
+	 * `getenv` on macOS, while the fused C++ runtime reads ASR policy with
+	 * `getenv`. Normalize and synchronize the resolved setting through POSIX
+	 * `setenv` immediately before the ASR region loads; `setenv` copies both
+	 * strings, including explicit CPU/GPU overrides.
+	 */
+	function applyNativeAsrRuntimeSetting(): void {
+		let value: "0" | "1" | null;
+		try {
+			value = resolveAsrRuntimeSetting();
+		} catch (error) {
+			// error-policy:J1 Native configuration boundary returns a structured arm failure.
+			throw new VoiceLifecycleError(
+				"arm-failed",
+				`[ffi-bindings] Invalid ASR accelerator policy: ${formatFfiError(error)}`,
+			);
+		}
+		if (value === null) return;
+		let system: BunLibSystemHandle;
+		try {
+			system = ffi.dlopen("/usr/lib/libSystem.B.dylib", {
+				setenv: { args: [T.ptr, T.ptr, T.i32], returns: T.i32 },
+			}) as unknown as BunLibSystemHandle;
+		} catch (error) {
+			// error-policy:J1 Native loader boundary returns a structured arm failure.
+			throw new VoiceLifecycleError(
+				"arm-failed",
+				`[ffi-bindings] Cannot open libSystem to synchronize ASR policy: ${formatFfiError(error)}`,
+			);
+		}
+		const nameArg = cstr("ELIZA_ASR_USE_GPU");
+		const valueArg = cstr(value);
+		try {
+			const rc = system.symbols.setenv(nameArg.ptr, valueArg.ptr, 1);
+			if (rc !== 0) {
+				throw new VoiceLifecycleError(
+					"arm-failed",
+					`[ffi-bindings] setenv(ELIZA_ASR_USE_GPU=${value}) failed with rc=${rc}`,
+				);
+			}
+		} finally {
+			system.close();
+		}
+	}
+
 	function failureCode(rc: number): VoiceLifecycleError["code"] {
 		if (rc === ELIZA_ERR_OOM) return "ram-pressure";
 		if (rc === ELIZA_ERR_FFI_FAULT) return "mmap-fail";
@@ -2122,6 +2176,7 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 		},
 
 		mmapAcquire(ctx, region) {
+			if (region === "asr") applyNativeAsrRuntimeSetting();
 			const err = makeOutErr();
 			const regionArg = cstr(region);
 			const rc = loadedLib.symbols.eliza_inference_mmap_acquire(
