@@ -6,7 +6,11 @@ import type { IAgentRuntime, Task, UUID } from '@elizaos/core';
 import { drizzle } from 'drizzle-orm/pglite';
 import * as schema from '../../src/db/schema';
 import { EmbeddedWorkflowService } from '../../src/services/embedded-workflow-service';
-import type { WorkflowDefinition } from '../../src/types/index';
+import type {
+  WorkflowDefinition,
+  WorkflowDefinitionResponse,
+  WorkflowExecution,
+} from '../../src/types/index';
 
 const clients: PGlite[] = [];
 
@@ -55,6 +59,19 @@ async function harness() {
       PRIMARY KEY (agent_id, id),
       UNIQUE (agent_id, workflow_id, version_id)
     );
+    CREATE TABLE workflow.embedded_executions (
+      agent_id text NOT NULL,
+      id text NOT NULL,
+      workflow_id text NOT NULL,
+      status text NOT NULL,
+      mode text NOT NULL,
+      finished boolean NOT NULL DEFAULT false,
+      started_at text NOT NULL,
+      stopped_at text,
+      execution jsonb NOT NULL,
+      idempotency_key text,
+      PRIMARY KEY (agent_id, id)
+    );
   `);
   const tasks: Task[] = [];
   const runtime = {
@@ -73,7 +90,12 @@ async function harness() {
       if (index >= 0) tasks.splice(index, 1);
     },
   } as unknown as IAgentRuntime;
-  return { service: await EmbeddedWorkflowService.start(runtime), tasks };
+  return {
+    service: await EmbeddedWorkflowService.start(runtime),
+    tasks,
+    client,
+    runtime,
+  };
 }
 
 afterEach(async () => {
@@ -111,5 +133,59 @@ describe('embedded native workflow lifecycle', () => {
     expect((await service.listWorkflows()).data).toHaveLength(0);
     expect(tasks).toHaveLength(0);
     expect((await service.listWorkflowRevisions('review')).data[0].operation).toBe('delete');
+  });
+
+  test('resumes an unfinished persisted run with its exact workflow version', async () => {
+    const { service, client, runtime } = await harness();
+    const workflow = await service.createWorkflow({
+      ...definition('Recovery'),
+      id: 'recovery',
+      schedule: undefined,
+    });
+    const execution: WorkflowExecution = {
+      id: 'persisted-run',
+      workflowId: workflow.id,
+      workflowVersionId: workflow.versionId,
+      workflowName: workflow.name,
+      mode: 'manual',
+      status: 'running',
+      finished: false,
+      startedAt: '2026-08-13T00:00:00.000Z',
+      input: { topic: 'resume' },
+      events: [],
+    };
+    await client.query(
+      `INSERT INTO workflow.embedded_executions
+       (agent_id, id, workflow_id, status, mode, finished, started_at, execution)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb)`,
+      [
+        runtime.agentId,
+        execution.id,
+        execution.workflowId,
+        execution.status,
+        execution.mode,
+        execution.finished,
+        execution.startedAt,
+        JSON.stringify(execution),
+      ]
+    );
+
+    const resumedVersions: string[] = [];
+    const restarted = new EmbeddedWorkflowService(runtime);
+    const internals = restarted as unknown as {
+      runInBackground: (
+        workflow: WorkflowDefinitionResponse,
+        pending: WorkflowExecution
+      ) => Promise<WorkflowExecution>;
+      resumeInterruptedExecutions: () => Promise<void>;
+    };
+    internals.runInBackground = async (definition, pending) => {
+      resumedVersions.push(definition.versionId);
+      return { ...pending, status: 'finished', finished: true };
+    };
+    await internals.resumeInterruptedExecutions();
+    await Bun.sleep(0);
+
+    expect(resumedVersions).toEqual([workflow.versionId]);
   });
 });

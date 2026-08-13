@@ -31,6 +31,21 @@ type WorkflowDefinition = {
 };
 
 async function installWorkflowApi(page: Page) {
+  const sourceWorkflow: WorkflowDefinition = {
+    id: "research-pipeline",
+    name: "Research pipeline",
+    description: "",
+    source: "",
+    language: "tsx",
+    active: true,
+    steps: [
+      { id: "collect", label: "Collect", kind: "task", agent: "researcher" },
+    ],
+    widgets: [],
+    versionId: "source-v1",
+    createdAt: "2026-01-01T00:00:00.000Z",
+    updatedAt: "2026-01-01T00:00:00.000Z",
+  };
   let saved: WorkflowDefinition | null = null;
   let createCount = 0;
   let runCount = 0;
@@ -125,7 +140,9 @@ async function installWorkflowApi(page: Page) {
       await route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify({ workflows: saved ? [saved] : [] }),
+        body: JSON.stringify({
+          workflows: saved ? [saved, sourceWorkflow] : [sourceWorkflow],
+        }),
       });
       return;
     }
@@ -272,12 +289,20 @@ export default smithers(() => <Workflow name="digest"><Task id="digest" output={
 
   await page.getByRole("button", { name: "Add workflow trigger" }).click();
   await page.getByRole("button", { name: "Event" }).click();
-  await page
-    .getByTestId("workflow-trigger-form")
-    .getByRole("combobox")
-    .selectOption("task.completed");
+  await page.getByLabel("Event source").selectOption("step");
+  await page.getByLabel("Source workflow").selectOption("research-pipeline");
+  await page.getByLabel("Source step").selectOption("collect");
   await page.getByRole("button", { name: "Save trigger" }).click();
-  await expect.poll(() => api.getTrigger()?.eventKind).toBe("task.completed");
+  await expect
+    .poll(() => api.getTrigger()?.eventKind)
+    .toBe("workflow_run_event");
+  expect(api.getTrigger()?.eventFilter).toEqual({
+    event: {
+      type: "NodeFinished",
+      workflowId: "research-pipeline",
+      nodeId: "collect",
+    },
+  });
   await page.getByRole("button", { name: "Enable workflow" }).click();
   await expect.poll(() => api.getSaved()?.active).toBe(true);
 
@@ -302,7 +327,7 @@ export default smithers(() => <Workflow name="digest"><Task id="digest" output={
     /Create the digest/,
     { timeout: 60_000 },
   );
-  await expect(page.getByTitle(/task\.completed/)).toBeVisible();
+  await expect(page.getByTitle(/After Collect/)).toBeVisible();
   expect(api.getCreateCount()).toBe(1);
   expect(api.getRunCount()).toBe(1);
 });

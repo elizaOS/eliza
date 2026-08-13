@@ -118,6 +118,7 @@ export class EmbeddedWorkflowService extends Service {
 
   static async start(runtime: IAgentRuntime): Promise<EmbeddedWorkflowService> {
     const service = new EmbeddedWorkflowService(runtime);
+    await service.resumeInterruptedExecutions();
     logger.info({ src: 'plugin:workflow:embedded' }, 'Native Smithers workflow service ready');
     return service;
   }
@@ -163,6 +164,98 @@ export class EmbeddedWorkflowService extends Service {
       updatedAt: row.updatedAt,
       versionId: row.versionId,
     };
+  }
+
+  private async workflowVersionForExecution(
+    execution: WorkflowExecution
+  ): Promise<WorkflowDefinitionResponse> {
+    const currentRows = await this.getDb()
+      .select()
+      .from(embeddedWorkflows)
+      .where(
+        and(
+          eq(embeddedWorkflows.agentId, this.tenantId),
+          eq(embeddedWorkflows.id, execution.workflowId),
+          eq(embeddedWorkflows.versionId, execution.workflowVersionId)
+        )
+      )
+      .limit(1);
+    const current = currentRows[0];
+    if (current) {
+      return responseFromStored({
+        workflow: current.workflow,
+        createdAt: current.createdAt,
+        updatedAt: current.updatedAt,
+        versionId: current.versionId,
+      });
+    }
+    const revisionRows = await this.getDb()
+      .select()
+      .from(workflowRevisions)
+      .where(
+        and(
+          eq(workflowRevisions.agentId, this.tenantId),
+          eq(workflowRevisions.workflowId, execution.workflowId),
+          eq(workflowRevisions.versionId, execution.workflowVersionId)
+        )
+      )
+      .limit(1);
+    const revision = revisionRows[0];
+    if (!revision) {
+      throw new WorkflowApiError(
+        `Workflow version not found: ${execution.workflowId}/${execution.workflowVersionId}`,
+        404
+      );
+    }
+    return responseFromStored({
+      workflow: revision.workflow,
+      createdAt: revision.createdAt,
+      updatedAt: revision.updatedAt,
+      versionId: revision.versionId,
+    });
+  }
+
+  private async resumeExecution(execution: WorkflowExecution): Promise<void> {
+    if (execution.finished || this.running.has(execution.id)) return;
+    const workflow = await this.workflowVersionForExecution(execution);
+    const controller = new AbortController();
+    this.controllers.set(execution.id, controller);
+    const executionPromise = this.runInBackground(workflow, execution, controller).finally(() => {
+      this.controllers.delete(execution.id);
+      this.running.delete(execution.id);
+    });
+    this.running.set(execution.id, executionPromise);
+  }
+
+  private async resumeInterruptedExecutions(): Promise<void> {
+    const interrupted = (await this.listExecutions()).data.filter(
+      (execution) => !execution.finished
+    );
+    for (const execution of interrupted) {
+      try {
+        await this.resumeExecution(execution);
+      } catch (error) {
+        // error-policy:J4 an unrecoverable persisted run becomes an explicit
+        // failed execution instead of remaining in a healthy-looking wait state.
+        const failed: WorkflowExecution = {
+          ...execution,
+          status: 'failed',
+          finished: true,
+          stoppedAt: nowIso(),
+          error: { message: error instanceof Error ? error.message : String(error) },
+        };
+        await this.saveExecution(failed);
+        logger.error(
+          {
+            src: 'plugin:workflow:embedded',
+            runId: execution.id,
+            workflowId: execution.workflowId,
+            error: failed.error?.message,
+          },
+          'Unable to resume persisted Smithers workflow run'
+        );
+      }
+    }
   }
 
   private async captureRevision(
@@ -544,6 +637,7 @@ export class EmbeddedWorkflowService extends Service {
       },
     ];
     await this.saveExecution(execution);
+    await this.resumeExecution(execution);
     return execution;
   }
 
@@ -562,6 +656,7 @@ export class EmbeddedWorkflowService extends Service {
       payload,
       ...(receivedBy ? { receivedBy } : {}),
     });
+    await this.resumeExecution(execution);
     return execution;
   }
 

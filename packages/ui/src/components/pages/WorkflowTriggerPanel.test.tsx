@@ -16,6 +16,7 @@ vi.mock("../../api", () => ({
     createTrigger: vi.fn(),
     deleteTrigger: vi.fn(),
     getTriggers: vi.fn(),
+    listWorkflowDefinitions: vi.fn(),
   },
 }));
 
@@ -26,6 +27,19 @@ beforeEach(() => {
   api.getTriggers.mockResolvedValue({ triggers: [] });
   api.createTrigger.mockResolvedValue({ trigger: { id: "trigger-new" } });
   api.deleteTrigger.mockResolvedValue({});
+  api.listWorkflowDefinitions.mockResolvedValue([
+    {
+      id: "source-workflow",
+      name: "Research",
+      active: true,
+      versionId: "v1",
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+      source: "",
+      language: "tsx",
+      steps: [{ id: "collect", label: "Collect", kind: "task" }],
+    },
+  ]);
 });
 
 afterEach(cleanup);
@@ -99,6 +113,42 @@ describe("WorkflowTriggerPanel", () => {
       expect(
         screen.queryByRole("button", { name: "Delete Cron trigger" }),
       ).toBeNull(),
+    );
+  });
+
+  it("targets an exact Smithers step with a native filtered event", async () => {
+    render(
+      <WorkflowTriggerPanel
+        workflowId="workflow-1"
+        workflowName="Digest"
+        onNeedsSave={vi.fn().mockResolvedValue("workflow-1")}
+      />,
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "Add workflow trigger" }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Event" }));
+    await waitFor(() =>
+      expect(api.listWorkflowDefinitions).toHaveBeenCalledTimes(1),
+    );
+    fireEvent.change(screen.getByLabelText("Event source"), {
+      target: { value: "step" },
+    });
+    await screen.findByRole("option", { name: "Collect" });
+    fireEvent.click(screen.getByRole("button", { name: "Save trigger" }));
+
+    await waitFor(() => expect(api.createTrigger).toHaveBeenCalledTimes(1));
+    expect(api.createTrigger).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventKind: "workflow_run_event",
+        eventFilter: {
+          event: {
+            type: "NodeFinished",
+            workflowId: "source-workflow",
+            nodeId: "collect",
+          },
+        },
+      }),
     );
   });
 

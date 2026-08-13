@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { client } from "../../api";
+import type { WorkflowDefinition } from "../../api/client-types-chat";
 import type {
   CreateTriggerRequest,
   TriggerSummary,
@@ -20,12 +21,17 @@ import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Spinner } from "../ui/spinner";
 
-const EVENT_OPTIONS = [
-  ["message.received", "Message"],
-  ["workflow.finished", "Workflow done"],
-  ["task.completed", "Task done"],
-  ["calendar.event.ended", "Calendar"],
-] as const;
+const WORKFLOW_RUN_EVENT = "workflow_run_event";
+type EventMode = "message" | "workflow" | "step";
+
+const EVENT_OPTIONS: ReadonlyArray<{
+  value: EventMode;
+  label: string;
+}> = [
+  { value: "message", label: "Message" },
+  { value: "workflow", label: "Workflow" },
+  { value: "step", label: "Step" },
+];
 
 const TYPE_META: Record<TriggerType, { label: string; icon: typeof Clock3 }> = {
   once: { label: "Once", icon: CalendarClock },
@@ -43,6 +49,7 @@ function triggerSummary(trigger: TriggerSummary): string {
     return minutes % 60 === 0 ? `${minutes / 60}h` : `${Math.round(minutes)}m`;
   }
   if (trigger.triggerType === "cron") return trigger.cronExpression ?? "—";
+  if (trigger.triggerType === "event") return trigger.displayName;
   return trigger.eventKind ?? "—";
 }
 
@@ -58,6 +65,10 @@ export function WorkflowTriggerPanel({
   const [triggers, setTriggers] = useState<TriggerSummary[]>([]);
   const [type, setType] = useState<TriggerType | null>(null);
   const [value, setValue] = useState("");
+  const [eventMode, setEventMode] = useState<EventMode>("message");
+  const [sources, setSources] = useState<WorkflowDefinition[]>([]);
+  const [sourceWorkflowId, setSourceWorkflowId] = useState("");
+  const [sourceStepId, setSourceStepId] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -79,6 +90,34 @@ export function WorkflowTriggerPanel({
       setError(cause instanceof Error ? cause.message : "Triggers unavailable");
     });
   }, [refresh]);
+
+  const loadEventSources = useCallback(async () => {
+    const definitions = (await client.listWorkflowDefinitions()).filter(
+      (definition) => definition.id !== workflowId,
+    );
+    setSources(definitions);
+    setSourceWorkflowId((current) =>
+      definitions.some((definition) => definition.id === current)
+        ? current
+        : (definitions[0]?.id ?? ""),
+    );
+  }, [workflowId]);
+
+  const sourceWorkflow = sources.find(
+    (definition) => definition.id === sourceWorkflowId,
+  );
+  const sourceStep = sourceWorkflow?.steps?.find(
+    (step) => step.id === sourceStepId,
+  );
+
+  useEffect(() => {
+    const steps = sourceWorkflow?.steps ?? [];
+    setSourceStepId((current) =>
+      steps.some((step) => step.id === current)
+        ? current
+        : (steps[0]?.id ?? ""),
+    );
+  }, [sourceWorkflow]);
 
   const create = useCallback(async () => {
     if (!type) return;
@@ -103,7 +142,25 @@ export function WorkflowTriggerPanel({
         request.scheduledAtIso = new Date(value).toISOString();
       if (type === "interval") request.intervalMs = Number(value) * 60_000;
       if (type === "cron") request.cronExpression = value;
-      if (type === "event") request.eventKind = value;
+      if (type === "event") {
+        if (eventMode === "message") {
+          request.eventKind = "MESSAGE_RECEIVED";
+          request.displayName = "Message";
+        } else {
+          request.eventKind = WORKFLOW_RUN_EVENT;
+          request.eventFilter = {
+            event: {
+              type: eventMode === "workflow" ? "RunFinished" : "NodeFinished",
+              workflowId: sourceWorkflowId,
+              ...(eventMode === "step" ? { nodeId: sourceStepId } : {}),
+            },
+          };
+          request.displayName =
+            eventMode === "workflow"
+              ? `After ${sourceWorkflow?.name ?? sourceWorkflowId}`
+              : `After ${sourceStep?.label ?? sourceStepId}`;
+        }
+      }
       await client.createTrigger(request);
       setType(null);
       setValue("");
@@ -116,7 +173,24 @@ export function WorkflowTriggerPanel({
     } finally {
       setBusy(false);
     }
-  }, [onNeedsSave, refresh, type, value, workflowName]);
+  }, [
+    eventMode,
+    onNeedsSave,
+    refresh,
+    sourceStepId,
+    sourceStep?.label,
+    sourceWorkflowId,
+    sourceWorkflow?.name,
+    type,
+    value,
+    workflowName,
+  ]);
+
+  const eventReady =
+    eventMode === "message" ||
+    (Boolean(sourceWorkflowId) &&
+      (eventMode === "workflow" || Boolean(sourceStepId)));
+  const canCreate = type === "event" ? eventReady : Boolean(value);
 
   return (
     <section
@@ -198,7 +272,18 @@ export function WorkflowTriggerPanel({
                 title={TYPE_META[option].label}
                 onClick={() => {
                   setType(option);
-                  setValue(option === "event" ? EVENT_OPTIONS[0][0] : "");
+                  setValue("");
+                  if (option === "event") {
+                    setEventMode("message");
+                    void loadEventSources().catch((cause) => {
+                      // error-policy:J4 source loading failures leave message events available.
+                      setError(
+                        cause instanceof Error
+                          ? cause.message
+                          : "Workflows unavailable",
+                      );
+                    });
+                  }
                 }}
               >
                 <Icon className="h-4 w-4" />
@@ -206,18 +291,56 @@ export function WorkflowTriggerPanel({
             );
           })}
           {type === "event" ? (
-            <select
-              aria-label="Event"
-              value={value}
-              onChange={(event) => setValue(event.target.value)}
-              className="h-8 min-w-40 flex-1 rounded-md border border-input bg-background px-2 text-xs"
-            >
-              {EVENT_OPTIONS.map(([eventKind, label]) => (
-                <option key={eventKind} value={eventKind}>
-                  {label}
-                </option>
-              ))}
-            </select>
+            <>
+              <select
+                aria-label="Event source"
+                value={eventMode}
+                onChange={(event) =>
+                  setEventMode(event.target.value as EventMode)
+                }
+                className="h-8 min-w-28 rounded-md border border-input bg-background px-2 text-xs"
+              >
+                {EVENT_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+              {eventMode !== "message" ? (
+                <select
+                  aria-label="Source workflow"
+                  value={sourceWorkflowId}
+                  onChange={(event) => setSourceWorkflowId(event.target.value)}
+                  className="h-8 min-w-32 flex-1 rounded-md border border-input bg-background px-2 text-xs"
+                >
+                  {sources.length === 0 ? (
+                    <option value="">No source</option>
+                  ) : null}
+                  {sources.map((definition) => (
+                    <option key={definition.id} value={definition.id}>
+                      {definition.name}
+                    </option>
+                  ))}
+                </select>
+              ) : null}
+              {eventMode === "step" ? (
+                <select
+                  aria-label="Source step"
+                  value={sourceStepId}
+                  onChange={(event) => setSourceStepId(event.target.value)}
+                  className="h-8 min-w-28 flex-1 rounded-md border border-input bg-background px-2 text-xs"
+                >
+                  {(sourceWorkflow?.steps ?? []).length === 0 ? (
+                    <option value="">No steps</option>
+                  ) : null}
+                  {(sourceWorkflow?.steps ?? []).map((step) => (
+                    <option key={step.id} value={step.id}>
+                      {step.label}
+                    </option>
+                  ))}
+                </select>
+              ) : null}
+            </>
           ) : (
             <Input
               type={
@@ -250,7 +373,7 @@ export function WorkflowTriggerPanel({
           <Button
             size="icon-sm"
             aria-label="Save trigger"
-            disabled={busy || !value}
+            disabled={busy || !canCreate}
             onClick={() => void create()}
           >
             {busy ? (

@@ -125,7 +125,6 @@ const CONVERTED_SUBCOMPONENTS = [
   "pages/relationships/RelationshipsPersonPanels",
   "pages/skill-detail-panel",
   "pages/skill-installer",
-  "pages/WorkflowGraphViewer",
   "settings/AdvancedSection",
   "settings/AppearanceSettingsSection",
   "settings/AppsManagementSection",
