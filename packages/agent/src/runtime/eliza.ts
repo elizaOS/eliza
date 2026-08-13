@@ -154,6 +154,7 @@ import {
   type Plugin,
   type Provider,
   type RuntimeStopOptions,
+  readCanonicalModel,
   requireConfirmedSendHandlerDelivery,
   type ServiceClass,
   stringToUuid,
@@ -3280,10 +3281,40 @@ export function installRuntimeMethodBindings(runtime: AgentRuntime): void {
     // to forward to coding agents via this comma-separated key list (e.g. MCP server tokens).
     "CUSTOM_CREDENTIAL_KEYS",
   ]);
+  // Boot-seeded provider model keys (GOOGLE_/GROQ_/CEREBRAS_*_MODEL) that
+  // `applyProviderModelEnvDefaults()` writes into process.env once at boot.
+  // These are process-global, so in a multi-agent process one agent's
+  // boot-seeded lane default can mask another agent's per-agent model choice.
+  // Map them to the canonical pair tier so a per-agent character setting
+  // (ELIZA_MODEL_SMALL / ELIZA_MODEL_LARGE) outranks the boot-seeded value.
+  const BOOT_SEEDED_MODEL_KEY_TIER: Record<string, "small" | "large"> = {
+    GOOGLE_SMALL_MODEL: "small",
+    GOOGLE_LARGE_MODEL: "large",
+    GROQ_SMALL_MODEL: "small",
+    GROQ_LARGE_MODEL: "large",
+    CEREBRAS_SMALL_MODEL: "small",
+    CEREBRAS_LARGE_MODEL: "large",
+  };
+
   const originalGetSetting = runtime.getSetting.bind(runtime);
   runtime.getSetting = (key: string) => {
     const result = originalGetSetting(key);
     if (result !== null && result !== undefined) return result;
+
+    // Before falling back to a process-global boot-seeded env value, honor the
+    // per-agent canonical pair. A character that sets ELIZA_MODEL_SMALL/LARGE
+    // must win over a boot-seeded GOOGLE_/GROQ_/CEREBRAS_*_MODEL default for
+    // the matching tier, so one agent's per-agent selection is never masked by
+    // process-global boot defaults (#16592).
+    const tier = BOOT_SEEDED_MODEL_KEY_TIER[key];
+    if (tier) {
+      const canonical = readCanonicalModel(
+        { getSetting: originalGetSetting },
+        tier,
+      );
+      if (canonical) return canonical;
+    }
+
     if (GETSETTING_ENV_ALLOWLIST.has(key)) {
       const envVal = process.env[key];
       if (envVal !== undefined && envVal.trim() !== "") return envVal;
