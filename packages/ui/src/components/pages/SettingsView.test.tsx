@@ -43,6 +43,7 @@ const permissionPrimingMock = vi.hoisted(() => ({
 const crashControl = vi.hoisted(() => ({ shouldThrow: true }));
 const settingsRegistryMock = vi.hoisted(() => ({
   includeLateSection: false,
+  lateSectionCloudOnly: false,
   version: 0,
   listeners: new Set<() => void>(),
 }));
@@ -157,7 +158,13 @@ vi.mock("../settings/settings-sections", async () => {
   };
   const registeredSections = () =>
     settingsRegistryMock.includeLateSection
-      ? [...sections, lateSection]
+      ? [
+          ...sections,
+          {
+            ...lateSection,
+            cloudOnly: settingsRegistryMock.lateSectionCloudOnly,
+          },
+        ]
       : sections;
   const groupLabels: Record<string, string> = {
     agent: "Agent",
@@ -263,6 +270,7 @@ beforeEach(() => {
   permissionPrimingMock.calls = [];
   crashControl.shouldThrow = true;
   settingsRegistryMock.includeLateSection = false;
+  settingsRegistryMock.lateSectionCloudOnly = false;
   settingsRegistryMock.version = 0;
   settingsRegistryMock.listeners.clear();
 });
@@ -326,6 +334,23 @@ describe("SettingsView", () => {
     );
   });
 
+  it("blocks a Cloud-only deep link outside a managed Cloud runtime", () => {
+    window.history.replaceState(null, "", "/settings#cloud-management");
+    render(<SettingsView initialSection="cloud-management" />);
+
+    expect(screen.getByTestId("settings-hub-list")).toBeTruthy();
+    expect(screen.queryByTestId("stub-cloud-management")).toBeNull();
+  });
+
+  it("allows a Cloud-only deep link in a managed Cloud runtime", () => {
+    appMock.value = makeContext({
+      startupCoordinator: { target: "cloud-managed" },
+    });
+    render(<SettingsView initialSection="cloud-management" />);
+
+    expect(screen.getByTestId("stub-cloud-management")).toBeTruthy();
+  });
+
   it("tapping a hub row opens that section as a subview under the same header", () => {
     render(<SettingsView />);
 
@@ -377,6 +402,21 @@ describe("SettingsView", () => {
     expect(screen.getByTestId("view-header").textContent).toContain(
       "Late Cloud",
     );
+  });
+
+  it("does not resolve a late Cloud-only deep link on a local runtime", () => {
+    window.history.replaceState(null, "", "/settings#late-cloud");
+    render(<SettingsView />);
+
+    act(() => {
+      settingsRegistryMock.lateSectionCloudOnly = true;
+      settingsRegistryMock.includeLateSection = true;
+      settingsRegistryMock.version += 1;
+      for (const listener of settingsRegistryMock.listeners) listener();
+    });
+
+    expect(screen.getByTestId("settings-hub-list")).toBeTruthy();
+    expect(screen.queryByTestId("stub-late-cloud")).toBeNull();
   });
 
   it("opens a targeted permission priming modal from a settings navigate payload", async () => {

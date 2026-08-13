@@ -260,22 +260,26 @@ export function SettingsView({
     null,
   );
 
-  const visibleSections = useMemo(() => {
+  const eligibleSections = useMemo(() => {
     // The version is an invalidation input; the registry read below returns
     // the actual section definitions after a host/plugin mutation.
     void settingsRegistryVersion;
-    return getAllSettingsSections().filter((section) => {
+    return getAllSettingsSections().filter(
+      (section) => !section.cloudOnly || managedCloudRuntime,
+    );
+  }, [managedCloudRuntime, settingsRegistryVersion]);
+  const eligibleSectionIds = useMemo(
+    () => new Set(eligibleSections.map((section) => section.id)),
+    [eligibleSections],
+  );
+  const visibleSections = useMemo(() => {
+    return eligibleSections.filter((section) => {
       if (section.id === "wallet-rpc" && walletEnabled === false) return false;
-      if (section.cloudOnly && !managedCloudRuntime) return false;
       if (!isViewVisible(section, enabledKinds)) return false;
       if (section.hideOnCloud && isAndroidCloudBuild()) return false;
       return true;
     });
-  }, [walletEnabled, managedCloudRuntime, enabledKinds, settingsRegistryVersion]);
-  const visibleSectionIds = useMemo(
-    () => new Set(visibleSections.map((section) => section.id)),
-    [visibleSections],
-  );
+  }, [eligibleSections, walletEnabled, enabledKinds]);
   const grouped: GroupedSettingsSections = useMemo(
     () => groupSettingsSections(visibleSections),
     [visibleSections],
@@ -370,11 +374,7 @@ export function SettingsView({
       const route = readSettingsHashRoute();
       setSettingsRoute(route);
       const nextSection = readSettingsHashSection();
-      if (
-        nextSection &&
-        (visibleSectionIds.has(nextSection) ||
-          getAllSettingsSections().some((s) => s.id === nextSection))
-      ) {
+      if (nextSection && eligibleSectionIds.has(nextSection)) {
         setActiveSection(nextSection);
       } else {
         setActiveSection(null);
@@ -386,7 +386,7 @@ export function SettingsView({
       window.removeEventListener("hashchange", handleLocationChange);
       window.removeEventListener("popstate", handleLocationChange);
     };
-  }, [visibleSectionIds]);
+  }, [eligibleSectionIds]);
 
   // Hosts may register sections after Settings mounts (for example, the web
   // shell dynamically imports private Cloud surfaces). Reconcile a retained
@@ -397,19 +397,22 @@ export function SettingsView({
     if (typeof window === "undefined") return;
     const nextSection = readSettingsHashSection();
     if (!nextSection) return;
+    if (!eligibleSectionIds.has(nextSection)) {
+      setActiveSection(null);
+      return;
+    }
     setSettingsRoute(readSettingsHashRoute());
     setActiveSection(nextSection);
-  }, [settingsRegistryVersion]);
+  }, [eligibleSectionIds, settingsRegistryVersion]);
 
   // Explicit navigation (hash / initialSection / agent anchor) resolves
-  // against the full registry, not just the visible hub rows: hidden sections
-  // stay registered exactly so their deep-links keep working (the mvp-hidden
-  // contract). The hub itself only lists visible sections.
+  // against the runtime-eligible registry, not just the visible hub rows:
+  // hidden sections stay registered exactly so their deep-links keep working
+  // (the mvp-hidden contract), while Cloud controls remain unavailable to
+  // local and VPS runtimes. The hub itself only lists visible sections.
   const activeSectionDef: SettingsSectionDef | null = activeSection
     ? (visibleSections.find((section) => section.id === activeSection) ??
-      getAllSettingsSections().find(
-        (section) => section.id === activeSection,
-      ) ??
+      eligibleSections.find((section) => section.id === activeSection) ??
       null)
     : null;
   // A desktop workspace always has useful content beside its persistent rail.
