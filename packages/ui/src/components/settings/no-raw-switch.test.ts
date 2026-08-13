@@ -38,6 +38,10 @@ const RAW_SWITCH_ALLOWLIST = new Map<string, string>([
   ],
 ]);
 
+function posixRelative(from: string, to: string): string {
+  return relative(from, to).replaceAll("\\", "/");
+}
+
 function listTsxFiles(dir: string): string[] {
   const out: string[] = [];
   for (const name of readdirSync(dir)) {
@@ -58,7 +62,7 @@ function listTsxFiles(dir: string): string[] {
 describe("settings controls: no raw <Switch outside the allowlist", () => {
   const files = listTsxFiles(settingsRoot);
 
-  it.each(files.map((file) => relative(settingsRoot, file)))(
+  it.each(files.map((file) => posixRelative(settingsRoot, file)))(
     "%s uses SettingsSwitchRow instead of a raw <Switch, or is allowlisted",
     (relPath) => {
       const source = readFileSync(resolve(settingsRoot, relPath), "utf8");

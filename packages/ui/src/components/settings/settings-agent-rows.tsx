@@ -16,7 +16,14 @@ import * as React from "react";
 import { useAgentElement } from "../../agent-surface";
 import { cn } from "../../lib/utils";
 import { Button, type ButtonProps } from "../ui/button";
-import { Select, SelectContent, SelectItem, SelectValue } from "../ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectValue,
+} from "../ui/select";
 import {
   SettingsInput,
   type SettingsInputVariant,
@@ -103,6 +110,14 @@ export function SettingsSwitchRow({
 export interface SettingsSelectRowOption {
   value: string;
   label: React.ReactNode;
+  hint?: string;
+  /** Plain-text typeahead value. Defaults to a string label; omitted for JSX. */
+  textValue?: string;
+}
+
+export interface SettingsSelectRowGroup {
+  label: string;
+  items: SettingsSelectRowOption[];
 }
 
 export interface SettingsSelectRowProps {
@@ -114,11 +129,46 @@ export interface SettingsSelectRowProps {
   iconClassName?: string;
   value: string;
   onValueChange: (value: string) => void;
-  options: SettingsSelectRowOption[];
+  options?: SettingsSelectRowOption[];
+  groups?: SettingsSelectRowGroup[];
   placeholder?: string;
   disabled?: boolean;
   group?: string;
   triggerClassName?: string;
+  contentClassName?: string;
+  /** Trailing control kept with the select (preview, merge, etc.). */
+  trailing?: React.ReactNode;
+  /** Stack the trailing control under the select until `sm`. */
+  trailingStackUntilSm?: boolean;
+  testId?: string;
+}
+
+function flattenSelectOptions(
+  options: SettingsSelectRowOption[] | undefined,
+  groups: SettingsSelectRowGroup[] | undefined,
+): SettingsSelectRowOption[] {
+  if (groups && groups.length > 0) {
+    return groups.flatMap((group) => group.items);
+  }
+  return options ?? [];
+}
+
+function renderSelectOption(option: SettingsSelectRowOption) {
+  const textValue =
+    option.textValue ??
+    (typeof option.label === "string" ? option.label : undefined);
+  return (
+    <SelectItem key={option.value} value={option.value} textValue={textValue}>
+      {option.hint ? (
+        <div className="flex w-full items-center justify-between gap-2">
+          <span className="font-semibold">{option.label}</span>
+          <span className="text-muted text-xs">{option.hint}</span>
+        </div>
+      ) : (
+        option.label
+      )}
+    </SelectItem>
+  );
 }
 
 export function SettingsSelectRow({
@@ -131,12 +181,18 @@ export function SettingsSelectRow({
   value,
   onValueChange,
   options,
+  groups,
   placeholder,
   disabled = false,
   group = "settings",
   triggerClassName,
+  contentClassName,
+  trailing,
+  trailingStackUntilSm = false,
+  testId,
 }: SettingsSelectRowProps) {
   const resolvedLabel = agentLabel ?? labelToString(label, agentId);
+  const flattened = flattenSelectOptions(options, groups);
   const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
     id: agentId,
     role: "select",
@@ -144,10 +200,38 @@ export function SettingsSelectRow({
     group,
     description: typeof description === "string" ? description : undefined,
     status: value || undefined,
-    options: options.map((option) => option.value),
+    options: flattened.map((option) => option.value),
     getValue: () => value,
     onFill: disabled ? undefined : (next: string) => onValueChange(next),
   });
+
+  const select = (
+    <Select value={value} onValueChange={onValueChange} disabled={disabled}>
+      <SettingsSelectTrigger
+        ref={ref}
+        id={agentId}
+        variant="touch"
+        className={cn(trailing && "min-w-0 flex-1", triggerClassName)}
+        aria-label={resolvedLabel}
+        data-testid={testId}
+        {...agentProps}
+      >
+        <SelectValue placeholder={placeholder} />
+      </SettingsSelectTrigger>
+      <SelectContent className={contentClassName}>
+        {groups && groups.length > 0
+          ? groups.map((optionGroup) => (
+              <SelectGroup key={optionGroup.label}>
+                <SelectLabel className="px-2.5 py-1 text-2xs font-semibold text-muted">
+                  {optionGroup.label}
+                </SelectLabel>
+                {optionGroup.items.map(renderSelectOption)}
+              </SelectGroup>
+            ))
+          : flattened.map(renderSelectOption)}
+      </SelectContent>
+    </Select>
+  );
 
   return (
     <SettingsRow
@@ -155,26 +239,23 @@ export function SettingsSelectRow({
       iconClassName={iconClassName}
       label={label}
       description={description}
+      htmlFor={agentId}
       stacked
     >
-      <Select value={value} onValueChange={onValueChange} disabled={disabled}>
-        <SettingsSelectTrigger
-          ref={ref}
-          variant="touch"
-          className={triggerClassName}
-          aria-label={resolvedLabel}
-          {...agentProps}
+      {trailing ? (
+        <div
+          className={
+            trailingStackUntilSm
+              ? "grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end"
+              : "flex items-center gap-2"
+          }
         >
-          <SelectValue placeholder={placeholder} />
-        </SettingsSelectTrigger>
-        <SelectContent>
-          {options.map((option) => (
-            <SelectItem key={option.value} value={option.value}>
-              {option.label}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+          {select}
+          {trailing}
+        </div>
+      ) : (
+        select
+      )}
     </SettingsRow>
   );
 }

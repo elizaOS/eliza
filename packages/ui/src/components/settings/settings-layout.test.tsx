@@ -151,5 +151,32 @@ describe("agent-addressable rows", () => {
     const trigger = screen.getByLabelText("Theme");
     expect(trigger.getAttribute("data-agent-id")).toBe("pick-theme");
     expect(trigger.getAttribute("data-agent-role")).toBe("select");
+    expect(trigger.getAttribute("id")).toBe("pick-theme");
+    expect(screen.getByText("Theme").tagName).toBe("LABEL");
+  });
+
+  it("SettingsSelectRow renders grouped options and a trailing control", () => {
+    render(
+      <SettingsSelectRow
+        agentId="identity-voice"
+        label="Voice"
+        value="alloy"
+        onValueChange={() => {}}
+        groups={[
+          {
+            label: "Premade",
+            items: [
+              { value: "alloy", label: "Alloy", hint: "fast" },
+              { value: "verse", label: "Verse" },
+            ],
+          },
+        ]}
+        trailing={<button type="button">Preview</button>}
+        testId="identity-voice-trigger"
+      />,
+    );
+    const trigger = screen.getByTestId("identity-voice-trigger");
+    expect(trigger.getAttribute("data-agent-id")).toBe("identity-voice");
+    expect(screen.getByText("Preview")).toBeTruthy();
   });
 });
