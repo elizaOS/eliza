@@ -172,6 +172,33 @@ async function restoreChangedLock(quarantinePath, movedSnapshot) {
 
 async function quarantineAndRemove(snapshot, reason) {
   const quarantinePath = `${lockPath}.${reason}-${process.pid}-${randomUUID()}`;
+  if (snapshot.stats.isFile()) {
+    try {
+      await fs.link(lockPath, quarantinePath);
+    } catch (error) {
+      if (error?.code === "ENOENT") return false;
+      throw error;
+    }
+
+    const linkedSnapshot = await readLockSnapshot(quarantinePath);
+    const currentSnapshot = await readLockSnapshot();
+    if (
+      !sameSnapshot(snapshot, linkedSnapshot) ||
+      !sameSnapshot(snapshot, currentSnapshot)
+    ) {
+      await removePath(quarantinePath);
+      return false;
+    }
+
+    try {
+      await fs.unlink(lockPath);
+    } catch (error) {
+      if (error?.code !== "ENOENT") throw error;
+    }
+    await removePath(quarantinePath);
+    return true;
+  }
+
   try {
     await fs.rename(lockPath, quarantinePath);
   } catch (error) {

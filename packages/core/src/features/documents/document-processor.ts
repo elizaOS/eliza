@@ -39,6 +39,7 @@ import { generateText } from "./llm.ts";
 import type {
 	DocumentFragmentMemoryMetadata,
 	DocumentMemoryMetadata,
+	ModelConfig,
 	PreChunkedFragmentInput,
 } from "./types.ts";
 import {
@@ -72,29 +73,33 @@ function getCtxDocumentsEnabled(runtime?: IAgentRuntime): boolean {
 	return result;
 }
 
-function shouldUseCustomLLM(): boolean {
-	const textProvider = process.env.TEXT_PROVIDER;
-	const textModel = process.env.TEXT_MODEL;
+function shouldUseCustomLLM(config: ModelConfig): boolean {
+	const textProvider = config.TEXT_PROVIDER;
+	const textModel = config.TEXT_MODEL;
 
 	if (!textProvider || !textModel) {
 		return false;
 	}
 
-	switch (textProvider.toLowerCase()) {
+	// config values are validated strings; guard toLowerCase to string-only
+	// so non-string can never throw (see #19147 P1). Blank/whitespace and
+	// model-gateway transformations are already resolved by validateModelConfig.
+	const normalizedProvider =
+		typeof textProvider === "string" ? textProvider.toLowerCase() : "";
+
+	switch (normalizedProvider) {
 		case "openrouter":
-			return !!process.env.OPENROUTER_API_KEY;
+			return !!config.OPENROUTER_API_KEY;
 		case "openai":
-			return !!process.env.OPENAI_API_KEY;
+			return !!config.OPENAI_API_KEY;
 		case "anthropic":
-			return !!process.env.ANTHROPIC_API_KEY;
+			return !!config.ANTHROPIC_API_KEY;
 		case "google":
-			return !!process.env.GOOGLE_API_KEY;
+			return !!config.GOOGLE_API_KEY;
 		default:
 			return false;
 	}
 }
-
-const useCustomLLM = shouldUseCustomLLM();
 
 /** Whether vector enrichment is available for newly ingested documents. */
 export function hasDocumentEmbeddingModel(runtime: IAgentRuntime): boolean {
@@ -961,6 +966,10 @@ async function generateContextsInBatch(
 	);
 
 	const config = validateModelConfig(runtime);
+	// Resolved once per batch: the gate is configuration, not per-chunk state, so
+	// deriving it inside generateTextOperation below re-ran it for every chunk
+	// AND every rate-limit retry.
+	const useCustomLLM = shouldUseCustomLLM(config);
 	const isUsingOpenRouter = config.TEXT_PROVIDER === "openrouter";
 	const isUsingCacheCapableModel =
 		isUsingOpenRouter &&

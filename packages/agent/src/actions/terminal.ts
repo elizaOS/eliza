@@ -35,6 +35,11 @@ import { normalizeTerminalCommand } from "../utils/terminal-command.ts";
 
 const TERMINAL_ACTION_NAME = "TERMINAL_SHELL";
 const MAX_TERMINAL_DATA_CHARS = 16000;
+// Max sanitized stdout, in chars, that may be relayed verbatim as the user-facing
+// message. Small single-line results (a SHA, a count, a path) are useful to
+// echo for "run X and tell me the value" turns; anything larger — or with
+// multiple lines — must NOT be dumped to the (possibly shared) channel.
+const TERMINAL_RELAY_MAX_CHARS = 200;
 
 type TerminalActionParameters = {
   arguments?: JsonValue;
@@ -303,15 +308,6 @@ function terminalEffectReceipt(
   };
 }
 
-// Max raw stdout, in chars, that may be relayed verbatim as the user-facing
-// message. Small single-line results (a SHA, a count, a path) are useful to
-// echo for "run X and tell me the value" turns; anything larger — or with
-// multiple lines — must NOT be dumped to the (possibly shared) channel, or a
-// `cat`/`grep` of a config or secrets file leaks its contents. Larger output
-// stays available to the model through the action's diagnostic `text`, so it
-// can still answer specifics from context without the raw dump.
-const TERMINAL_RELAY_MAX_CHARS = 200;
-
 function terminalUserFacingText(
   result: CapturedTerminalRun,
   cleanStdout: string,
@@ -325,11 +321,27 @@ function terminalUserFacingText(
   if (!cleanStdout) {
     return "The command finished successfully with exit code 0.";
   }
-  const lineCount = cleanStdout.split("\n").length;
-  if (cleanStdout.length <= TERMINAL_RELAY_MAX_CHARS && lineCount <= 1) {
+  // Treat every JavaScript line terminator as a channel-visible line break.
+  // In particular, terminal programs commonly emit bare carriage returns;
+  // counting only `\n` would let a short multi-line payload bypass the relay cap.
+  const lineCount = cleanStdout.split(/\r\n|[\n\r\u2028\u2029]/u).length;
+  if (cleanStdout.length <= TERMINAL_RELAY_MAX_CHARS && lineCount === 1) {
     return cleanStdout;
   }
   return `The command finished (exit 0) with ${lineCount} line${lineCount === 1 ? "" : "s"} of output; ask me about specifics instead of dumping it into chat.`;
+}
+
+/**
+ * One projection boundary for every terminal consumer: runtime-known secrets
+ * first (character-configured values), then shape-based tools redaction
+ * (Bearer, CLI flags, URI userinfo, token prefixes). Lightweight/test runtimes
+ * may stub `redactSecrets` as identity, so the pattern pass remains required.
+ */
+function redactCapturedTerminalText(
+  runtime: IAgentRuntime,
+  text: string,
+): string {
+  return redactSensitiveText(runtime.redactSecrets(text), { mode: "tools" });
 }
 
 function buildCapturedResponseText(
@@ -464,20 +476,13 @@ export const terminalAction: Action = {
       });
     }
     const rawRun = normalizeCapturedRun(command, responseBody);
-    // Secret hygiene: scrub known secret shapes (API keys, tokens, Bearer
-    // headers, PEM private keys, credential env/JSON fields) out of stdout and
-    // stderr at the source, so no downstream path — the model-facing diagnostic
-    // preview, the user-facing chat relay, or the stored output attachment —
-    // can echo a plaintext secret that happened to appear in command output.
-    // The command LINE itself is a leak vector too (curl -H "Authorization:
-    // Bearer <token>", psql postgres://user:pass@host): scrub it once here so
-    // every consumer — "Command:" artifact header, attachment title and
-    // description, and the model-facing action text — sees the redacted form.
+    // Sanitize once before constructing model text, bounded action data, the
+    // user-facing relay, attachments, or persisted attachment memory.
     const capturedRun: CapturedTerminalRun = {
       ...rawRun,
-      command: redactSensitiveText(rawRun.command, { mode: "tools" }),
-      stdout: redactSensitiveText(rawRun.stdout, { mode: "tools" }),
-      stderr: redactSensitiveText(rawRun.stderr, { mode: "tools" }),
+      command: redactCapturedTerminalText(runtime, rawRun.command),
+      stdout: redactCapturedTerminalText(runtime, rawRun.stdout),
+      stderr: redactCapturedTerminalText(runtime, rawRun.stderr),
     };
     const boundedRun = {
       ...capturedRun,
