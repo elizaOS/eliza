@@ -94,6 +94,7 @@ import {
   isRoutineDevMemoryHeartbeatEnabled,
   logRoutineDevMemoryHeartbeat,
 } from "./dev-memory-heartbeat.js";
+import { warnStalePluginDists } from "./dev-plugin-dist-staleness";
 
 /**
  * The `./eliza` module is the entire agent-runtime / startEliza graph
@@ -474,6 +475,30 @@ process.once("SIGTERM", () => void shutdown());
 
 async function main() {
   const startupStart = Date.now();
+
+  // Stale-dist tripwire (#18737): workspace plugins resolve to dist/, so an
+  // edited plugin whose dist was not rebuilt silently runs old code under
+  // this dev server. One loud warning per stale plugin at boot; never
+  // blocks, never changes resolution. Fires only here - production builds
+  // never run this entrypoint.
+  try {
+    const path = await import("node:path");
+    const { existsSync } = await import("node:fs");
+    const pluginsRoot = path.join(process.cwd(), "plugins");
+    if (existsSync(pluginsRoot)) {
+      const sweep = warnStalePluginDists({
+        pluginsRoot,
+        warn: (message) => console.warn(message),
+      });
+      if (sweep.stale.length > 0) {
+        console.warn(
+          `[eliza] ${sweep.stale.length} of ${sweep.scanned} workspace plugin(s) have stale dist/ output; see warnings above.`,
+        );
+      }
+    }
+  } catch {
+    // A staleness heuristic must never affect boot.
+  }
 
   // Register the in-process restart handler so the RESTART_AGENT action
   // (and the POST /api@elizaos/agent/restart endpoint) work without killing the
