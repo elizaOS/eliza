@@ -19,6 +19,7 @@ import {
   logFor,
   mirrorToRecordings,
   parseFlags,
+  resolveCaptureDurationSeconds,
   skip,
 } from "./lib/capture-output.mjs";
 import { analyzeScreenshot } from "./lib/visual-qa.mjs";
@@ -82,6 +83,7 @@ async function recordVideo(udid, outPath, durationSec) {
 
 async function main() {
   const flags = parseFlags();
+  const durationSec = resolveCaptureDurationSeconds(flags);
   if (process.platform !== "darwin") {
     skip(PLATFORM, "not macOS — xcrun simctl unavailable");
   }
@@ -99,7 +101,6 @@ async function main() {
     slug: flags.slug,
     platform: PLATFORM,
   });
-  const durationSec = Number(flags.duration ?? 6);
 
   const pngPath = evidencePath(base, "png");
   simctl(["io", udid, "screenshot", "--type=png", pngPath]);

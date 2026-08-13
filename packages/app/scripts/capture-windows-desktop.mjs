@@ -18,6 +18,7 @@ import {
   logFor,
   mirrorToRecordings,
   parseFlags,
+  resolveCaptureDurationSeconds,
   skip,
 } from "./lib/capture-output.mjs";
 import { resolveRequiredFfmpeg } from "./lib/ffmpeg.mjs";
@@ -60,6 +61,8 @@ function recordVideo(ffmpeg, outPath, durationSec) {
 }
 
 async function main() {
+  const flags = parseFlags();
+  const durationSec = resolveCaptureDurationSeconds(flags);
   if (process.platform !== "win32") {
     skip(
       PLATFORM,
@@ -68,13 +71,11 @@ async function main() {
   }
   const ffmpeg = resolveRequiredFfmpeg({ log });
 
-  const flags = parseFlags();
   const base = evidenceBaseName({
     issue: flags.issue,
     slug: flags.slug,
     platform: PLATFORM,
   });
-  const durationSec = Number(flags.duration ?? 6);
   log("capturing windows desktop via gdigrab");
 
   const pngPath = evidencePath(base, "png");

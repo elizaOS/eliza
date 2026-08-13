@@ -23,7 +23,7 @@ export const CLOUD_PUBLIC_ROUTE_ACCESS = "cloud-public-route-reviewed" as const;
  */
 
 export interface CloudRouteDef {
-  /** Route path relative to the cloud mount (e.g. `"dashboard/apps"`). */
+  /** Route path relative to the cloud mount (e.g. `"cloud/agents"`). */
   path: string;
   /**
    * Element to render. Either an already-`React.lazy`-wrapped component
@@ -60,6 +60,7 @@ export type CloudRouteGate = ComponentType<{ children: ReactNode }>;
 interface CloudRouteRegistryStore {
   entries: Map<string, CloudRouteDef>;
   seq: number;
+  listeners: Set<() => void>;
 }
 
 function registryKey(): symbol {
@@ -70,13 +71,41 @@ function getStore(): CloudRouteRegistryStore {
   const globalObject = globalThis as Record<PropertyKey, unknown>;
   const key = registryKey();
   const existing = globalObject[key] as CloudRouteRegistryStore | undefined;
-  if (existing) return existing;
+  if (existing) {
+    if (!existing.listeners) existing.listeners = new Set();
+    return existing;
+  }
   const created: CloudRouteRegistryStore = {
     entries: new Map<string, CloudRouteDef>(),
     seq: 0,
+    listeners: new Set(),
   };
   globalObject[key] = created;
   return created;
+}
+
+function notifyCloudRouteListeners(): void {
+  for (const listener of getStore().listeners) {
+    listener();
+  }
+}
+
+/**
+ * Subscribe to route-registry mutations (registration / override). Used by
+ * {@link CloudRouterShell} so public routes can paint before private domains
+ * finish dynamically importing (#18056).
+ */
+export function subscribeCloudRoutes(onStoreChange: () => void): () => void {
+  const store = getStore();
+  store.listeners.add(onStoreChange);
+  return () => {
+    store.listeners.delete(onStoreChange);
+  };
+}
+
+/** Snapshot version for `useSyncExternalStore` — increments on each mutation. */
+export function getCloudRouteRegistryVersion(): number {
+  return getStore().seq;
 }
 
 interface CloudRouteEntry extends CloudRouteDef {
@@ -112,6 +141,7 @@ export function registerCloudRoute(def: CloudRouteDef): void {
   const entry: CloudRouteEntry = { ...def, order: store.seq };
   store.seq += 1;
   store.entries.set(def.path, entry);
+  notifyCloudRouteListeners();
 }
 
 function isDevMode(): boolean {

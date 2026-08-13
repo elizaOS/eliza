@@ -153,6 +153,7 @@ import {
   MESSAGE_SOURCE_CLIENT_CHAT,
   type Plugin,
   type Provider,
+  type RuntimeStopOptions,
   requireConfirmedSendHandlerDelivery,
   type ServiceClass,
   stringToUuid,
@@ -1603,6 +1604,12 @@ type RuntimeAdapterWithClose = {
   close?: () => Promise<void> | void;
 };
 
+// Discord's bounded connector teardown may use 10 s for turn drain and 2 s
+// for reaction reconciliation. Keep signal shutdown fast/concurrent while
+// granting that contract a small cleanup margin under the dev supervisor's
+// 15 s hard ceiling.
+const SIGNAL_SERVICE_STOP_TIMEOUT_MS = 13_000;
+
 /**
  * Best-effort runtime shutdown that also closes the database adapter.
  *
@@ -1613,7 +1620,7 @@ type RuntimeAdapterWithClose = {
 export async function shutdownRuntime(
   runtime: AgentRuntime | null | undefined,
   context: string,
-  options: { fast?: boolean } = {},
+  options: RuntimeStopOptions = {},
 ): Promise<void> {
   let firstError: unknown = null;
 
@@ -1651,7 +1658,7 @@ export async function shutdownRuntime(
   try {
     // Interactive/signal teardown asks for the capped fast path so Ctrl-C does
     // not block on a slow deferred service start or a long embedding drain.
-    await runtime.stop(options.fast ? { fast: true } : undefined);
+    await runtime.stop(options.fast ? options : undefined);
   } catch (err) {
     if (!firstError) firstError = err;
     logger.warn(`[eliza] ${context}: runtime stop failed: ${formatError(err)}`);
@@ -2188,7 +2195,7 @@ export async function autoFetchCloudGithubToken(
   // Need cloud credentials and an agent ID
   const cloudApiKey = process.env.ELIZAOS_CLOUD_API_KEY?.trim();
   const cloudBaseUrl =
-    process.env.ELIZAOS_CLOUD_BASE_URL?.trim() || "https://api.elizacloud.ai";
+    process.env.ELIZAOS_CLOUD_BASE_URL?.trim() || "https://api.eliza.app";
   if (!cloudApiKey || !agentId) return;
 
   const managedNs = readAliasedEnv("ELIZA_CLOUD_MANAGED_AGENTS_API_SEGMENT");
@@ -5914,6 +5921,7 @@ export async function startEliza(
     disposeRuntime: (reason) =>
       shutdownRuntime(runtime, reason, {
         fast: true,
+        serviceStopTimeoutMs: SIGNAL_SERVICE_STOP_TIMEOUT_MS,
       }),
     disposeSandbox: sandboxManager
       ? async () => {

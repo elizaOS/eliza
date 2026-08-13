@@ -3,14 +3,14 @@
  *
  * Two origin classes, two policies:
  *
- * 1. First-party origins (the SPA on `elizacloud.ai` etc. talking to the Worker
- *    on `api.elizacloud.ai`) authenticate with cookies (`steward-token`, …).
+ * 1. First-party origins (the eliza.app SPA talking to the API directly or
+ *    through its same-origin Pages proxy) authenticate with cookies.
  *    Cookies only flow cross-origin when CORS reflects the specific origin AND
  *    sets `Access-Control-Allow-Credentials: true`. These origins are
  *    allow-listed and get the credentialed policy.
  *
  * 2. Every other browser origin — third-party apps registered on Eliza Cloud
- *    (e.g. `supakan.nubs.site`, `*.apps.elizacloud.ai`) calling explicit
+ *    (e.g. `supakan.nubs.site`, `*.apps.eliza.app`) calling explicit
  *    public, token-authed API paths (`/api/v1/chat/completions`,
  *    `/api/v1/app-credits/*`, `/api/v1/models`, …). These callers
  *    authenticate with a `Bearer eliza_*` key, never cookies, so CORS is open
@@ -24,6 +24,7 @@
  * Non-browser callers (servers, SDKs) don't enforce CORS and are unaffected.
  */
 
+import { ELIZA_DOMAIN_CONTRACTS, LEGACY_ELIZA_DOMAIN_CONTRACTS } from "@elizaos/shared/elizacloud";
 import type { MiddlewareHandler } from "hono";
 import { cors } from "hono/cors";
 
@@ -36,33 +37,34 @@ import {
 } from "../cors-constants";
 
 const STATIC_ALLOWED_ORIGINS = new Set<string>([
-  "https://elizacloud.ai",
-  "https://www.elizacloud.ai",
-  "https://staging.elizacloud.ai",
-  "https://dev.elizacloud.ai",
-  // The Eliza agent app (its own Pages project / subdomain — see
-  // packages/app/wrangler.toml). First-party: shares the `.elizacloud.ai`
-  // Steward cookie zone, so its credentialed API calls must be reflected with
-  // `Access-Control-Allow-Credentials`.
-  "https://app.elizacloud.ai",
-  "https://app-staging.elizacloud.ai",
+  ...Object.values(ELIZA_DOMAIN_CONTRACTS).flatMap((contract) => [
+    contract.marketingOrigin,
+    contract.cloudAppOrigin,
+    contract.cloudApiOrigin,
+  ]),
+  `https://www.${new URL(ELIZA_DOMAIN_CONTRACTS.production.marketingOrigin).hostname}`,
+  ...Object.values(LEGACY_ELIZA_DOMAIN_CONTRACTS).flatMap((contract) => [
+    ...contract.marketingHostnames.map((host) => `https://${host}`),
+    ...contract.cloudAppHostnames.map((host) => `https://${host}`),
+    ...contract.cloudApiHostnames.map((host) => `https://${host}`),
+  ]),
   // Exact develop branch alias for staging QA. Do not add a broad *.pages.dev
   // wildcard here; session-capable routes must remain first-party-only.
   "https://develop.eliza-app.pages.dev",
   "https://elizaos.ai",
   "https://www.elizaos.ai",
   "https://os.elizacloud.ai",
+  "https://os.eliza.app",
   "https://eliza.ai",
   "https://www.eliza.ai",
 ]);
-const PAGES_PREVIEW_SUFFIX = ".eliza-cloud-enq.pages.dev";
 
 /**
  * The Eliza mobile/desktop app's Capacitor/Electrobun WebView document origins.
  * On native the WebView origin is `https://localhost` (android/iosScheme="https",
  * see packages/app/capacitor.config.ts) or `capacitor://localhost` (iOS default);
  * desktop uses `electrobun://`. These talk to a SHARED-runtime agent's REST surface
- * on `api.elizacloud.ai` (`/api/v1/eliza/agents/:id/api/...`) and must read SSE chat
+ * on `api.eliza.app` (`/api/v1/eliza/agents/:id/api/...`) and must read SSE chat
  * streams cross-origin via the native browser fetch (CapacitorWebFetch). That read
  * is credentialed/browser-enforced, so CORS must reflect the specific origin +
  * `Access-Control-Allow-Credentials` (a `*` wildcard is rejected) and name the
@@ -104,12 +106,7 @@ export function isFirstPartyOrigin(origin: string): boolean {
   if (APP_LOCAL_ORIGIN_RE.test(origin) || APP_SCHEME_ORIGIN_RE.test(origin)) {
     return true;
   }
-  try {
-    const host = new URL(origin).hostname;
-    return host.endsWith(PAGES_PREVIEW_SUFFIX) || host === PAGES_PREVIEW_SUFFIX.slice(1);
-  } catch {
-    return false;
-  }
+  return false;
 }
 
 export function isPublicTokenApiPath(pathname: string): boolean {

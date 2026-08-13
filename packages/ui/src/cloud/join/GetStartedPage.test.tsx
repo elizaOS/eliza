@@ -37,6 +37,7 @@ vi.mock("./lib/onboarding-continuation", async (importOriginal) => {
       platform: "discord" as const,
       platformUserId: "1234567890",
       platformDisplayName: "attested-discord-user",
+      returnUrl: null,
     })),
     completePendingOnboardingContinuation: vi.fn(async () => {
       actual.clearPendingOnboardingSession();
@@ -52,6 +53,7 @@ beforeEach(() => {
     platform: "discord",
     platformUserId: "1234567890",
     platformDisplayName: "attested-discord-user",
+    returnUrl: null,
   });
   vi.mocked(completePendingOnboardingContinuation).mockReset();
   vi.mocked(completePendingOnboardingContinuation).mockImplementation(
@@ -85,7 +87,9 @@ describe("GetStartedPage", () => {
 
     expect(await screen.findByText("attested-discord-user")).toBeTruthy();
     expect(screen.queryByText("You're connected")).toBeNull();
-    fireEvent.click(screen.getByText("Connect this Discord account"));
+    fireEvent.click(
+      screen.getByRole("button", { name: /Connect this Discord account/ }),
+    );
     expect(await screen.findByText("You're connected")).toBeTruthy();
     await waitFor(() => {
       expect(peekPendingOnboardingSession()).toBeNull();
@@ -118,5 +122,62 @@ describe("GetStartedPage", () => {
     expect(await screen.findByText("attested-discord-user")).toBeTruthy();
     expect(completePendingOnboardingContinuation).not.toHaveBeenCalled();
     expect(previewPendingOnboardingContinuation).toHaveBeenCalledTimes(2);
+  });
+
+  it("renders the Telegram identity preview and confirm for a telegram continuation", async () => {
+    vi.mocked(previewPendingOnboardingContinuation).mockResolvedValue({
+      platform: "telegram",
+      platformUserId: "123456789",
+      platformDisplayName: "attested-telegram-user",
+      returnUrl: null,
+    });
+    const entry = `/get-started?onboardingSession=${TOKEN}`;
+    window.history.replaceState(null, "", entry);
+
+    render(
+      <MemoryRouter initialEntries={[entry]}>
+        <Routes>
+          <Route path="/get-started" element={<GetStartedPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText("attested-telegram-user")).toBeTruthy();
+    expect(screen.getByText(/Connect your/)).toBeTruthy();
+    expect(screen.queryByText(/Discord/)).toBeNull();
+    fireEvent.click(
+      screen.getByRole("button", { name: /Connect this Telegram account/ }),
+    );
+    expect(await screen.findByText("You're connected")).toBeTruthy();
+  });
+
+  it("offers a deep link back to the originating iMessage conversation", async () => {
+    vi.mocked(previewPendingOnboardingContinuation).mockResolvedValue({
+      platform: "blooio",
+      platformUserId: "+14155550123",
+      platformDisplayName: "Shaw",
+      returnUrl: "sms:+18087881821",
+    });
+    const entry = `/get-started?onboardingSession=${TOKEN}`;
+    window.history.replaceState(null, "", entry);
+
+    render(
+      <MemoryRouter initialEntries={[entry]}>
+        <Routes>
+          <Route path="/get-started" element={<GetStartedPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText("Shaw")).toBeTruthy();
+    fireEvent.click(
+      screen.getByRole("button", { name: /Connect this iMessage account/ }),
+    );
+    expect(await screen.findByText("You're connected")).toBeTruthy();
+    expect(
+      screen
+        .getByRole("link", { name: "Back to iMessage" })
+        .getAttribute("href"),
+    ).toBe("sms:+18087881821");
   });
 });

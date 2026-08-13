@@ -12,19 +12,45 @@
 
 import "./worker-polyfills";
 
+import {
+  canonicalElizaServiceHostname,
+  classifyElizaHostname,
+  ELIZA_DOMAIN_CONTRACTS,
+} from "@elizaos/shared/elizacloud";
 import type { Hono } from "hono";
 import { makeCronHandler } from "@/lib/cron/cloudflare-cron";
 import type { AppEnv } from "@/types/cloud-worker-env";
 import { serveBlobHostRequest } from "./blob-host";
 import { serveRegistryHostRequest } from "./registry-host";
+import { isThinStewardPublicPath } from "./steward/public-paths";
 
 export { AnonymousChatGate } from "./anonymous-chat-gate";
 export { InferenceAdmissionGate } from "./inference-admission-gate";
 export { OnboardingSessionCoordinator } from "./onboarding-session-coordinator";
 export { SharedRuntimeConversation } from "./shared-runtime-conversation";
+export { isThinStewardPublicPath } from "./steward/public-paths";
 
 let appPromise: Promise<Hono<AppEnv>> | undefined;
 const inferenceAppPromises = new Map<string, Promise<Hono<AppEnv>>>();
+/** Lazy thin shell for login-critical Steward GETs (#18049). */
+let stewardThinAppPromise: Promise<Hono<AppEnv>> | undefined;
+
+const STAGING_SESSION_UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const STAGING_SESSION_KEY_ID_RE = /^staging-qa-v1-[A-Za-z0-9._-]{1,48}$/;
+
+function hasExactStagingSessionUuidList(value: string | undefined): boolean {
+  const entries = value
+    ?.split(/[\s,]+/)
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+  return Boolean(
+    entries &&
+      entries.length > 0 &&
+      entries.length <= 100 &&
+      entries.every((entry) => STAGING_SESSION_UUID_RE.test(entry)),
+  );
+}
 
 interface InferenceRouteSpec {
   key: string;
@@ -116,22 +142,23 @@ const INFERENCE_ROUTES: readonly InferenceRouteSpec[] = [
 ];
 const AGENT_ID_RE =
   /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
-const DEFAULT_AGENT_BASE_DOMAIN = "elizacloud.ai";
+const DEFAULT_AGENT_BASE_DOMAIN =
+  ELIZA_DOMAIN_CONTRACTS.production.dedicatedAgentHostnameSuffix.slice(1);
 const FRONTEND_ALIAS_TARGETS: Record<
   string,
   { appHost: string; apiHost: string }
 > = {
-  "app.elizacloud.ai": {
+  "cloud.eliza.app": {
     appHost: "eliza-app.pages.dev",
-    apiHost: "api.elizacloud.ai",
+    apiHost: "api.eliza.app",
   },
-  "app-staging.elizacloud.ai": {
+  "cloud-staging.eliza.app": {
     appHost: "develop.eliza-app.pages.dev",
-    apiHost: "api-staging.elizacloud.ai",
+    apiHost: "api-staging.eliza.app",
   },
-  "staging.elizacloud.ai": {
-    appHost: "develop.eliza-cloud-enq.pages.dev",
-    apiHost: "api-staging.elizacloud.ai",
+  "staging.eliza.app": {
+    appHost: "develop.eliza-app.pages.dev",
+    apiHost: "api-staging.eliza.app",
   },
 };
 type AgentDomainBindings = Pick<
@@ -142,6 +169,51 @@ type AgentDomainBindings = Pick<
 async function getApp(): Promise<Hono<AppEnv>> {
   appPromise ??= import("./bootstrap-app").then((m) => m.createApp());
   return appPromise;
+}
+
+async function getStewardThinApp(): Promise<Hono<AppEnv>> {
+  stewardThinAppPromise ??= import("./steward/thin-app").then((m) =>
+    m.createStewardThinApp(),
+  );
+  return stewardThinAppPromise;
+}
+
+async function dispatchThinSteward(
+  request: Request,
+  env: AppEnv["Bindings"],
+  ctx: ExecutionContext,
+): Promise<Response | null> {
+  const method = request.method.toUpperCase();
+  if (method !== "GET" && method !== "HEAD" && method !== "OPTIONS") {
+    return null;
+  }
+  const pathname = new URL(request.url).pathname;
+  if (!isThinStewardPublicPath(pathname)) return null;
+
+  const dispatchStartedAt = performance.now();
+  const moduleWasInitialized = stewardThinAppPromise !== undefined;
+  const app = await getStewardThinApp();
+  const moduleInitMs = performance.now() - dispatchStartedAt;
+  const response = await app.fetch(request, env, ctx);
+  const dispatchMs = performance.now() - dispatchStartedAt;
+
+  const headers = new Headers(response.headers);
+  headers.set("X-Eliza-Steward-Path", "thin");
+  headers.append(
+    "Server-Timing",
+    `entry_dispatch;dur=${dispatchMs.toFixed(1)}`,
+  );
+  if (!moduleWasInitialized) {
+    headers.append(
+      "Server-Timing",
+      `steward_module_init;dur=${moduleInitMs.toFixed(1)}`,
+    );
+  }
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
 }
 
 async function getInferenceApp(
@@ -204,22 +276,62 @@ async function dispatchInference(
 }
 
 function healthResponse(env: AppEnv["Bindings"]): Response {
+  const stagingSessionVersion =
+    env.STAGING_SESSION_EXCHANGE_VERSION?.trim() || null;
+  const stagingSessionSigningSecret =
+    env.STAGING_SESSION_EXCHANGE_SIGNING_SECRET?.trim() ?? "";
+  const stagingSessionEnabled =
+    env.NODE_ENV === "production" &&
+    env.ENVIRONMENT === "staging" &&
+    env.STAGING_SESSION_EXCHANGE_ENABLED === "true" &&
+    env.STAGING_SESSION_EXCHANGE_VERSION === "v1";
+  const stagingSessionReady =
+    stagingSessionEnabled &&
+    stagingSessionSigningSecret.length >= 32 &&
+    stagingSessionSigningSecret !== env.STEWARD_JWT_SECRET?.trim() &&
+    stagingSessionSigningSecret !== env.STEWARD_SESSION_SECRET?.trim() &&
+    stagingSessionSigningSecret !== env.ELIZA_SERVICE_JWT_SECRET?.trim() &&
+    STAGING_SESSION_KEY_ID_RE.test(
+      env.STAGING_SESSION_EXCHANGE_SIGNING_KEY_ID?.trim() ?? "",
+    ) &&
+    Boolean(env.STEWARD_TENANT_ID?.trim()) &&
+    hasExactStagingSessionUuidList(
+      env.STAGING_SESSION_EXCHANGE_ALLOWED_API_KEY_IDS,
+    ) &&
+    hasExactStagingSessionUuidList(
+      env.STAGING_SESSION_EXCHANGE_ALLOWED_USER_IDS,
+    ) &&
+    hasExactStagingSessionUuidList(
+      env.STAGING_SESSION_EXCHANGE_ALLOWED_ORGANIZATION_IDS,
+    );
   return Response.json(
     {
       status: "ok",
       timestamp: Date.now(),
       region: (env as { CF_REGION?: string }).CF_REGION ?? "unknown",
       commit: env.ELIZA_DEPLOY_COMMIT ?? null,
-      // Self-identify which deployment env answered. The staging worker and the
-      // prod worker share the `*.elizacloud.ai` zone; the staging worker only
-      // owns `staging.*`/`app-staging.*`/`api-staging.*` by claiming those
-      // routes MORE specifically than prod's `*.elizacloud.ai/*` wildcard
+      // Self-identify which deployment env answered. Production and staging
+      // share the eliza.app zone. Staging claims its
+      // exact control-plane names and `*.cloud-staging.eliza.app` before the
+      // production managed-agent wildcard can handle the request.
       // (wrangler.toml [env.staging].routes). If that claim ever lapses, a
       // staging subdomain silently falls into the prod wildcard and starts
       // serving prod — invisible except by asking who answered. This field is
       // the beacon the cross-environment routing verifier probes
       // (packages/cloud/scripts/verify-environment-routing.mjs).
       environment: env.ENVIRONMENT ?? null,
+      // Value-free cutover receipt for the default-off staging QA bridge. The
+      // deploy workflow proves exact code first, flips the secret last, then
+      // requires this beacon to report the expected version/readiness. No key,
+      // allowlist, kid, or subject value is exposed.
+      stagingSessionExchange:
+        env.ENVIRONMENT === "staging"
+          ? {
+              enabled: stagingSessionEnabled,
+              ready: stagingSessionReady,
+              version: stagingSessionVersion,
+            }
+          : null,
     },
     {
       status: 200,
@@ -233,7 +345,7 @@ function normalizeHostname(hostname: string | undefined): string | null {
   return normalized || null;
 }
 
-function getGeneratedAgentId(
+export function getGeneratedAgentId(
   url: URL,
   env: AgentDomainBindings,
 ): string | null {
@@ -242,30 +354,91 @@ function getGeneratedAgentId(
     DEFAULT_AGENT_BASE_DOMAIN;
   const suffix = `.${baseDomain}`;
   const hostname = normalizeHostname(url.hostname);
-  if (!hostname?.endsWith(suffix)) return null;
-  const subdomain = hostname.slice(0, -suffix.length);
-  return AGENT_ID_RE.test(subdomain) ? subdomain : null;
+  if (hostname?.endsWith(suffix)) {
+    const subdomain = hostname.slice(0, -suffix.length);
+    if (AGENT_ID_RE.test(subdomain)) return subdomain;
+  }
+
+  // Keep legacy UUID agent hosts on the authenticated dedicated-agent proxy
+  // until the canonical nested-wildcard DNS and certificate cutover is live.
+  // Redirecting these bridge requests first strips them from the only working
+  // host and makes fail-closed snapshots/restarts time out (#19047).
+  const classified = hostname ? classifyElizaHostname(hostname) : null;
+  return classified?.role === "legacy-dedicated-agent" &&
+    classified.agentId &&
+    AGENT_ID_RE.test(classified.agentId)
+    ? classified.agentId
+    : null;
 }
 
 export function redirectFrontendHost(
   url: URL,
-  env: AgentDomainBindings,
+  _env: AgentDomainBindings,
 ): Response | null {
-  const baseDomain =
-    normalizeHostname(env.ELIZA_CLOUD_AGENT_BASE_DOMAIN) ??
-    DEFAULT_AGENT_BASE_DOMAIN;
   const hostname = normalizeHostname(url.hostname);
-  // `www.` 308s to the apex (the canonical lander + dashboard / "console"
-  // origin), preserving path + query. `app.<base>` is deliberately NOT
-  // redirected: under the D5 topology split it serves the Eliza agent app
-  // (the `eliza-app` Pages project), a separate surface from the apex console.
-  // Redirecting it here would bury the app under the console.
-  if (hostname !== `www.${baseDomain}`) {
+  if (!hostname) return null;
+  // docs.elizacloud.ai is retired, not migrated as a separate product. Send
+  // every stale bookmark to the canonical Eliza homepage instead of keeping a
+  // second Cloud-branded docs entrypoint alive.
+  if (hostname === "docs.elizacloud.ai") {
+    return Response.redirect(
+      ELIZA_DOMAIN_CONTRACTS.production.marketingOrigin,
+      308,
+    );
+  }
+  const classified = classifyElizaHostname(hostname);
+  let canonicalHostname: string | null = null;
+  if (hostname === "www.eliza.app") {
+    canonicalHostname = new URL(
+      ELIZA_DOMAIN_CONTRACTS.production.marketingOrigin,
+    ).hostname;
+  } else if (classified.role === "legacy-marketing") {
+    const contract =
+      ELIZA_DOMAIN_CONTRACTS[classified.environment ?? "production"];
+    if (isFrontendAliasBackendPath(url)) {
+      canonicalHostname = new URL(contract.cloudApiOrigin).hostname;
+    } else if (
+      url.pathname === "/dashboard" ||
+      url.pathname.startsWith("/dashboard/")
+    ) {
+      canonicalHostname = new URL(contract.cloudAppOrigin).hostname;
+      url.pathname = url.pathname.replace(/^\/dashboard(?=\/|$)/, "/cloud");
+    } else {
+      canonicalHostname = classified.canonicalHostname;
+    }
+  } else if (
+    classified.role === "legacy-cloud-app" ||
+    classified.role === "legacy-cloud-api"
+  ) {
+    canonicalHostname = classified.canonicalHostname;
+  } else if (
+    classified.role === "legacy-dedicated-agent" &&
+    classified.agentId &&
+    AGENT_ID_RE.test(classified.agentId)
+  ) {
+    // UUID agent hosts remain on the legacy hostname until the canonical
+    // nested-wildcard DNS/certificate cutover is complete. The worker proxies
+    // them below through the same authenticated dedicated-agent path.
     return null;
+  } else {
+    canonicalHostname = canonicalElizaServiceHostname(hostname);
+    if (!canonicalHostname && hostname === "os.elizacloud.ai") {
+      canonicalHostname = "os.eliza.app";
+    }
+  }
+  if (!canonicalHostname || canonicalHostname === hostname) return null;
+
+  if (
+    (classified.role === "legacy-marketing" ||
+      classified.role === "legacy-cloud-app" ||
+      classified.role === "legacy-dedicated-agent") &&
+    (url.pathname === "/dashboard" || url.pathname.startsWith("/dashboard/"))
+  ) {
+    url.pathname = url.pathname.replace(/^\/dashboard(?=\/|$)/, "/cloud");
   }
 
   const targetUrl = new URL(url);
-  targetUrl.hostname = baseDomain;
+  targetUrl.hostname = canonicalHostname;
   return Response.redirect(targetUrl.toString(), 308);
 }
 
@@ -442,6 +615,12 @@ export default {
         frontendAliasApiTarget.toString(),
         createFrontendAliasProxyInit(request, url),
       );
+      const stewardThinResponse = await dispatchThinSteward(
+        apiRequest,
+        env,
+        ctx,
+      );
+      if (stewardThinResponse) return stewardThinResponse;
       const inferenceResponse = await dispatchInference(apiRequest, env, ctx);
       if (inferenceResponse) return inferenceResponse;
       return (await getApp()).fetch(apiRequest, env, ctx);
@@ -449,14 +628,14 @@ export default {
 
     const frontendAliasResponse = proxyFrontendAliasRequest(request, url);
     if (frontendAliasResponse) return frontendAliasResponse;
+    const frontendRedirect = redirectFrontendHost(url, env);
+    if (frontendRedirect) return frontendRedirect;
     const blobResponse = await serveBlobHostRequest(request, url, env);
     if (blobResponse) return blobResponse;
     const registryResponse = await serveRegistryHostRequest(request, url, env);
     if (registryResponse) return registryResponse;
     const agentProxyResponse = proxyGeneratedAgentRequest(request, env, url);
     if (agentProxyResponse) return agentProxyResponse;
-    const frontendRedirect = redirectFrontendHost(url, env);
-    if (frontendRedirect) return frontendRedirect;
 
     const hostedFrontendServe = getHostedFrontendServeRewrite(url, env);
     if (hostedFrontendServe) {
@@ -471,11 +650,15 @@ export default {
       return healthResponse(env);
     }
 
+    // Login-critical Steward GETs before full-app bootstrap (#18049).
+    const stewardThinResponse = await dispatchThinSteward(request, env, ctx);
+    if (stewardThinResponse) return stewardThinResponse;
+
     const inferenceResponse = await dispatchInference(request, env, ctx);
     if (inferenceResponse) return inferenceResponse;
 
     // OpenAI-compat prefix rewrite. Dedicated agents whose cloud base/embedding
-    // URL got stamped as the bare host (`https://api.elizacloud.ai`) hit
+    // URL got stamped as the bare host (`https://api.eliza.app`) hit
     // `/v1/embeddings` / `/embeddings` (and would for `/chat/completions`),
     // which 404 because the canonical routes live under `/api/v1/*`. Accept the
     // OpenAI-style prefixes by rewriting to `/api/v1/*` so embeddings + inference

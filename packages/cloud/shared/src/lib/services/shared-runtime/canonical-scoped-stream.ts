@@ -9,10 +9,11 @@ import type { AgentSandbox } from "../../../db/repositories/agent-sandboxes";
 import type { RuntimeDurableObjectNamespace } from "../../../types/cloud-worker-env";
 import { InsufficientCreditsError, RateLimitError } from "../../api/errors";
 import { logger } from "../../utils/logger";
+import { chatSseFrame } from "../chat-sse-frames";
 import type { BridgeRequest } from "../eliza-sandbox-bridge";
 import { applyCorsHeaders } from "../proxy/cors";
 import { coordinateSharedStream } from "./conversation-coordinator";
-import type { BridgeExecutionContext } from "./shared-runtime-chat";
+import { type BridgeExecutionContext, sharedTurnClientMessageId } from "./shared-runtime-chat";
 
 const CORS_METHODS = "POST, OPTIONS";
 const STREAM_HEADERS = {
@@ -79,6 +80,7 @@ export async function handleCanonicalScopedAgentStream(
     typeof (request.body as { text?: unknown }).text === "string"
       ? (request.body as { text: string }).text
       : "";
+  const clientMessageId = sharedTurnClientMessageId(request.body);
   timings.parse = elapsedMs(parseStartedAt);
   if (!text.trim()) {
     return applyCorsHeaders(
@@ -90,11 +92,14 @@ export async function handleCanonicalScopedAgentStream(
 
   const rpc: BridgeRequest = {
     jsonrpc: "2.0",
-    id: crypto.randomUUID(),
+    id: clientMessageId ?? crypto.randomUUID(),
     method: "message.send",
+    // params.clientMessageId marks the id as CLIENT-supplied: only those enter
+    // the coordinator's durable claim/replay/conflict boundary (#18045).
     params: {
       text,
       roomId: request.conversationId,
+      ...(clientMessageId ? { clientMessageId } : {}),
       ...(request.userId ? { userId: request.userId, source: "voice" } : {}),
     },
   };
@@ -156,6 +161,26 @@ export async function handleCanonicalScopedAgentStream(
         timings,
       );
     }
+    if (error instanceof Error && error.name === "SharedTurnConflictError") {
+      // A reused clientMessageId with different text must not replace the
+      // landed turn — non-retryable; the caller picks a new id (#18045).
+      return addStreamTimingHeaders(
+        applyCorsHeaders(
+          Response.json(
+            {
+              success: false,
+              error: error.message,
+              code: "client_message_conflict",
+              retryable: false,
+            },
+            { status: 409 },
+          ),
+          CORS_METHODS,
+          request.origin,
+        ),
+        timings,
+      );
+    }
     if (error instanceof Error && error.name === "SharedRuntimeCacheWarmingError") {
       return addStreamTimingHeaders(
         applyCorsHeaders(
@@ -166,7 +191,7 @@ export async function handleCanonicalScopedAgentStream(
               code: "shared_runtime_cache_warming",
               retryable: true,
             },
-            { status: 503 },
+            { status: 503, headers: { "Retry-After": "1" } },
           ),
           CORS_METHODS,
           request.origin,
@@ -184,9 +209,9 @@ export async function handleCanonicalScopedAgentStream(
   }
 
   if (!upstream.body) {
-    const body = `event: error\ndata: ${JSON.stringify({
+    const body = chatSseFrame("error", {
       message: "Agent produced no streamed response",
-    })}\n\n`;
+    });
     return addStreamTimingHeaders(
       applyCorsHeaders(
         new Response(body, { headers: STREAM_HEADERS }),

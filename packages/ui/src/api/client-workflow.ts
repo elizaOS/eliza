@@ -10,9 +10,6 @@
 import { ElizaClient } from "./client-base";
 import type {
   WorkflowDefinition,
-  WorkflowDefinitionGenerateRequest,
-  WorkflowDefinitionGenerateResponse,
-  WorkflowDefinitionResolveClarificationRequest,
   WorkflowDefinitionWriteRequest,
   WorkflowEvaluationSuite,
   WorkflowExecution,
@@ -37,21 +34,31 @@ declare module "./client-base" {
       id: string,
       request: WorkflowDefinitionWriteRequest,
     ): Promise<WorkflowDefinition>;
-    generateWorkflowDefinition(
-      request: WorkflowDefinitionGenerateRequest,
-    ): Promise<WorkflowDefinitionGenerateResponse>;
-    resolveWorkflowClarification(
-      request: WorkflowDefinitionResolveClarificationRequest,
-    ): Promise<WorkflowDefinitionGenerateResponse>;
     activateWorkflowDefinition(id: string): Promise<WorkflowDefinition>;
     deactivateWorkflowDefinition(id: string): Promise<WorkflowDefinition>;
     deleteWorkflowDefinition(id: string): Promise<{ ok: boolean }>;
-    runWorkflowDefinition(id: string): Promise<WorkflowExecution>;
+    runWorkflowDefinition(
+      id: string,
+      input?: Record<string, unknown>,
+    ): Promise<WorkflowExecution>;
     getWorkflowExecutions(
       id: string,
       limit?: number,
     ): Promise<WorkflowExecution[]>;
     getWorkflowExecution(id: string): Promise<WorkflowExecution>;
+    cancelWorkflowExecution(id: string): Promise<WorkflowExecution>;
+    decideWorkflowApproval(
+      runId: string,
+      nodeId: string,
+      iteration: number,
+      approved: boolean,
+      decision?: unknown,
+    ): Promise<WorkflowExecution>;
+    signalWorkflowExecution(
+      runId: string,
+      signal: string,
+      payload?: unknown,
+    ): Promise<WorkflowExecution>;
     getWorkflowEvaluationSamples(
       id: string,
       limit?: number,
@@ -127,44 +134,6 @@ ElizaClient.prototype.updateWorkflowDefinition = async function (
   );
 };
 
-ElizaClient.prototype.generateWorkflowDefinition = async function (
-  this: ElizaClient,
-  request: WorkflowDefinitionGenerateRequest,
-): Promise<WorkflowDefinitionGenerateResponse> {
-  // LLM-driven workflow generation runs keyword extraction, node search,
-  // generation, multiple correction passes, and feasibility assessment
-  // sequentially — easily 30-90s on a cold cache. The 10s default fetch
-  // timeout is far too aggressive and surfaces as
-  // "Request timed out after 10000ms" in the Automations UI even when
-  // the backend would have succeeded a few seconds later.
-  return workflowSurfaceClient(this).fetch<WorkflowDefinitionGenerateResponse>(
-    "/api/workflow/workflows/generate",
-    {
-      method: "POST",
-      body: JSON.stringify(request),
-    },
-    { timeoutMs: 330_000 },
-  );
-};
-
-ElizaClient.prototype.resolveWorkflowClarification = async function (
-  this: ElizaClient,
-  request: WorkflowDefinitionResolveClarificationRequest,
-): Promise<WorkflowDefinitionGenerateResponse> {
-  // Patch + deploy is server-side and synchronous from the user's view, but
-  // it still runs validateAndRepair + a deploy round-trip. Reuse the same
-  // generous timeout as the generate call so a slow workflow write does not
-  // surface as a misleading "Request timed out" toast.
-  return workflowSurfaceClient(this).fetch<WorkflowDefinitionGenerateResponse>(
-    "/api/workflow/workflows/resolve-clarification",
-    {
-      method: "POST",
-      body: JSON.stringify(request),
-    },
-    { timeoutMs: 330_000 },
-  );
-};
-
 ElizaClient.prototype.activateWorkflowDefinition = async function (
   this: ElizaClient,
   id: string,
@@ -200,6 +169,7 @@ ElizaClient.prototype.deleteWorkflowDefinition = async function (
 ElizaClient.prototype.runWorkflowDefinition = async function (
   this: ElizaClient,
   id: string,
+  input?: Record<string, unknown>,
 ): Promise<WorkflowExecution> {
   const result = await workflowSurfaceClient(this).fetch<{
     execution?: WorkflowExecution;
@@ -207,12 +177,11 @@ ElizaClient.prototype.runWorkflowDefinition = async function (
     `/api/workflow/workflows/${encodeURIComponent(id)}/run`,
     {
       method: "POST",
+      body: JSON.stringify({ input: input ?? {} }),
     },
-    // The run route returns the completed execution synchronously. Smithers
-    // workflows can legitimately outlive the generic 10-second JSON budget;
-    // aborting only the client makes a successful server run look failed and
-    // encourages an unsafe duplicate retry.
-    { timeoutMs: 11 * 60_000 },
+    // This route owns 202 as "execution accepted". Bypass the generic
+    // dedicated-agent resume loop or the same workflow POST is retried.
+    { timeoutMs: 30_000, skipResume: true },
   );
   if (!result.execution) {
     throw new Error("Workflow run response did not include an execution.");
@@ -245,6 +214,59 @@ ElizaClient.prototype.getWorkflowExecution = async function (
       "Workflow execution response did not include an execution.",
     );
   }
+  return result.execution;
+};
+
+ElizaClient.prototype.cancelWorkflowExecution = async function (
+  this: ElizaClient,
+  id: string,
+): Promise<WorkflowExecution> {
+  const result = await workflowSurfaceClient(this).fetch<{
+    execution?: WorkflowExecution;
+  }>(`/api/workflow/executions/${encodeURIComponent(id)}/cancel`, {
+    method: "POST",
+  });
+  if (!result.execution) {
+    throw new Error(
+      "Workflow cancellation response did not include an execution.",
+    );
+  }
+  return result.execution;
+};
+
+ElizaClient.prototype.decideWorkflowApproval = async function (
+  this: ElizaClient,
+  runId: string,
+  nodeId: string,
+  iteration: number,
+  approved: boolean,
+  decision?: unknown,
+): Promise<WorkflowExecution> {
+  const result = await workflowSurfaceClient(this).fetch<{
+    execution?: WorkflowExecution;
+  }>(
+    `/api/workflow/executions/${encodeURIComponent(runId)}/approvals/${encodeURIComponent(nodeId)}/${iteration}`,
+    { method: "POST", body: JSON.stringify({ approved, decision }) },
+  );
+  if (!result.execution)
+    throw new Error("Approval response did not include an execution.");
+  return result.execution;
+};
+
+ElizaClient.prototype.signalWorkflowExecution = async function (
+  this: ElizaClient,
+  runId: string,
+  signal: string,
+  payload?: unknown,
+): Promise<WorkflowExecution> {
+  const result = await workflowSurfaceClient(this).fetch<{
+    execution?: WorkflowExecution;
+  }>(
+    `/api/workflow/executions/${encodeURIComponent(runId)}/signals/${encodeURIComponent(signal)}`,
+    { method: "POST", body: JSON.stringify({ payload }) },
+  );
+  if (!result.execution)
+    throw new Error("Signal response did not include an execution.");
   return result.execution;
 };
 

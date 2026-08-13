@@ -1,5 +1,5 @@
 /**
- * Cloud TTS helpers — proxy to Eliza Cloud (`elizacloud.ai`).
+ * Cloud TTS helpers — proxy to Eliza Cloud (`api.eliza.app`).
  *
  * Pure / config-driven helpers (TTS API key resolution, base URL resolution,
  * voice / model id normalization, compat header mirroring) live in

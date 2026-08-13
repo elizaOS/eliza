@@ -51,7 +51,9 @@ const CreatePaymentRequestSchema = z.object({
   callbackUrl: z.string().url().optional(),
   callbackSecret: z.string().min(8).max(256).optional(),
   payerIdentityId: z.string().min(1).max(256).optional(),
-  agentId: z.string().min(1).max(256).optional(),
+  // Agent attribution is an internal payment-service concern. The public
+  // creation route has no consumer for it and must not accept an unowned ID.
+  agentId: z.never().optional(),
   successUrl: z.string().url().optional(),
   cancelUrl: z.string().url().optional(),
   success_url: z.string().url().optional(),
@@ -132,7 +134,6 @@ app.post("/", async (c) => {
       callbackSecret: parsed.data.callbackSecret,
       payerIdentityId: parsed.data.payerIdentityId,
       payerUserId: user.id,
-      agentId: parsed.data.agentId,
       metadata,
     });
 

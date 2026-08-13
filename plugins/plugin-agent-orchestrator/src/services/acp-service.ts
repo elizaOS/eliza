@@ -463,15 +463,30 @@ function run(argv, opts = {}) {
 // processes with an exclusive lockfile in the worktree's own git dir (where HEAD
 // lives), so isolated worktrees — which have distinct git dirs and HEADs — never
 // contend, while shared ones can't interleave.
-const LOCK_POLL_MS = Number.parseInt(process.env.ACP_COMMIT_LOCK_POLL_MS || "25", 10);
-const LOCK_WAIT_MS = Number.parseInt(process.env.ACP_COMMIT_LOCK_WAIT_MS || "120000", 10);
+// Strict, because parseInt is lenient in both directions here: "abc" yields NaN
+// (a NaN deadline never trips, and Atomics.wait coerces a NaN timeout to
+// +Infinity, so the wrapper blocks forever instead of timing out), while "2m"
+// silently yields 2 — a 2ms acquire deadline that disables the serialization
+// this lock exists to provide, reopening #14183. Number() rejects trailing
+// garbage outright; anything outside the bounded positive-integer range falls
+// back. The upper bound keeps deadline arithmetic and synchronous waits within
+// the same range Node uses for millisecond timers.
+const MAX_LOCK_TIMING_MS = 2147483647;
+function readPositiveIntMs(envKey, fallback) {
+  const parsed = Number((process.env[envKey] || "").trim());
+  return Number.isSafeInteger(parsed) && parsed > 0 && parsed <= MAX_LOCK_TIMING_MS
+    ? parsed
+    : fallback;
+}
+const LOCK_POLL_MS = readPositiveIntMs("ACP_COMMIT_LOCK_POLL_MS", 25);
+const LOCK_WAIT_MS = readPositiveIntMs("ACP_COMMIT_LOCK_WAIT_MS", 120000);
 // A lock becomes reclaimable once its mtime is older than this. It sits below
 // LOCK_WAIT_MS so a crashed holder whose PID was recycled to an unrelated live
 // process is reclaimed by a waiter before that waiter's acquire deadline (#14202)
 // — otherwise the dead lock would wedge the worktree until the 120s timeout.
 // Live holders keep the mtime fresh through a detached heartbeat because the
 // wrapper blocks in spawnSync while git commit/pre-commit hooks run.
-const LOCK_STALE_MS = Number.parseInt(process.env.ACP_COMMIT_LOCK_STALE_MS || "30000", 10);
+const LOCK_STALE_MS = readPositiveIntMs("ACP_COMMIT_LOCK_STALE_MS", 30000);
 function sleepSync(ms) {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 }
@@ -598,8 +613,12 @@ function acquireCommitLock(gitDir) {
       if (staleLock && stealStaleLock(lockPath, staleLock.raw)) {
         continue;
       }
-      if (Date.now() >= deadline) throw new Error("eliza-acp: timed out acquiring commit lock at " + lockPath);
-      sleepSync(LOCK_POLL_MS);
+      const remainingMs = deadline - Date.now();
+      if (remainingMs <= 0) throw new Error("eliza-acp: timed out acquiring commit lock at " + lockPath);
+      // A poll interval is a cadence, not permission to exceed the acquisition
+      // deadline. This also keeps an otherwise valid long poll bounded by a
+      // shorter wait override.
+      sleepSync(Math.min(LOCK_POLL_MS, remainingMs));
       continue;
     }
     fs.writeSync(fd, owner);
@@ -811,6 +830,15 @@ export class AcpService extends Service {
   private spawnReservationLock: Promise<void> = Promise.resolve();
   private readonly sessionTimeoutMs?: number;
   private readonly sessionCallbacks: SessionEventCallback[] = [];
+  // The immutable session identity at the start of the active prompt turn.
+  // A keepAlive session may be re-homed as soon as its prompt returns, while
+  // async event subscribers are still draining the terminal event. Passing
+  // this snapshot with every event prevents those subscribers from resolving
+  // the completed turn through the session's next task metadata (#18490).
+  private readonly promptTurns = new Map<
+    string,
+    { id: string; sessionSnapshot: SessionInfo }
+  >();
   private readonly acpCallbacks: AcpEventCallback[] = [];
   private readonly activeProcesses = new Map<string, ProcessRecord>();
   private readonly nativeClients = new Map<string, NativeAcpClient>();
@@ -2068,6 +2096,32 @@ export class AcpService extends Service {
   ): Promise<PromptResult> {
     this.ensureStarted();
     const session = await this.requireSession(sessionId);
+    if (this.promptTurns.has(sessionId)) {
+      throw new Error(`ACP session is already busy: ${sessionId}`);
+    }
+    const turn = {
+      id: randomUUID(),
+      sessionSnapshot: {
+        ...session,
+        metadata: session.metadata ? { ...session.metadata } : undefined,
+      },
+    };
+    this.promptTurns.set(sessionId, turn);
+    try {
+      return await this.sendPromptTurn(session, text, opts);
+    } finally {
+      if (this.promptTurns.get(sessionId)?.id === turn.id) {
+        this.promptTurns.delete(sessionId);
+      }
+    }
+  }
+
+  private async sendPromptTurn(
+    session: SessionInfo,
+    text: string,
+    opts: SendOptions,
+  ): Promise<PromptResult> {
+    const sessionId = session.id;
     const transportMode = sessionTransportMode(session, this.transportMode);
     if (
       transportMode !== "native" &&
@@ -2342,6 +2396,7 @@ export class AcpService extends Service {
     await this.removeOwnedScratchWorkdir(session);
     await this.removeOwnedGitIndex(session);
     await this.store.delete(sessionId);
+    this.promptTurns.delete(sessionId);
     this.outputBuffers.delete(sessionId);
     this.turnOutputBuffers.delete(sessionId);
     this.eventTrails.delete(sessionId);
@@ -3911,9 +3966,10 @@ export class AcpService extends Service {
     data: unknown,
   ): void {
     this.recordEventTrail(sessionId, event, data);
+    const turn = this.promptTurns.get(sessionId);
     for (const callback of [...this.sessionCallbacks]) {
       try {
-        callback(sessionId, event, data);
+        callback(sessionId, event, data, turn?.sessionSnapshot, turn?.id);
       } catch (err) {
         // error-policy:J7 isolate a throwing subscriber so the remaining session
         // callbacks still run; the failure is warn-logged.

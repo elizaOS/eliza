@@ -4,18 +4,19 @@
  * Two modes, selected by query param:
  *
  * - default: registers every cloud surface (the real `registerAllCloudSurfaces`
- *   boot hook) and mounts the real {@link CloudRouterShell} with a probe
- *   catch-all, so the harness can drive the `/dashboard/*` console routes (the
- *   standalone dual-mount pages + the legacy → canonical redirects) and the
- *   in-app `/settings#<section>` hash surface. The probe stands in for the
- *   agent app under the catch-all: `/settings` falls through to it (it is an
- *   in-app view, not a registered cloud route), so it reports the landed
- *   location and the settings section the hash contract resolves.
+ *   boot hook) and mounts the real {@link CloudRouterShell} with an app-shell
+ *   boundary probe. The harness verifies `/cloud/*` management routes delegate
+ *   to the normal app, legacy URLs normalize before that delegation, and the
+ *   `/settings#<section>` hash contract still resolves for compatibility.
  *
  * - `?surface=<billing|monetization|security|api-keys|account>`: mounts that
  *   surface's REAL registered settings section (the exact zero-prop component
  *   `registerCloudSettingsSections` hands to the settings registry), fetching
  *   real data from the mock cloud stack proxied on the page origin.
+ *
+ * Bundled as IIFE for the e2e harness — no top-level await. Full registration
+ * uses the synchronous {@link registerAllCloudSurfaces} from `../register-all`
+ * (the preserved develop contract).
  */
 
 import { useEffect, useState } from "react";
@@ -33,11 +34,13 @@ import { CloudRouterShell } from "../shell/CloudRouterShell";
 // uses to open a section from `/settings#<hash>`.
 import { readSettingsHashSection } from "../../components/settings/settings-sections";
 
+// Synchronous full registration — required for IIFE output format (no TLA).
 registerAllCloudSurfaces();
 
 /**
- * Catch-all probe standing in for the tab/view app: shows where the router
- * landed and which settings section the app-side hash contract resolves.
+ * Boundary probe standing in for the tab/view app. The full renderer's app
+ * chrome is covered by packages/app Playwright; this fixture proves the cloud
+ * router delegates to that boundary without mounting standalone console chrome.
  */
 function CatchAllProbe() {
   // Re-read on hashchange — same-document hash navigation does not re-render
@@ -51,9 +54,12 @@ function CatchAllProbe() {
   const { pathname, search, hash } = window.location;
   const section = readSettingsHashSection();
   return (
-    <div className="min-h-screen bg-black p-10 font-mono text-sm text-white">
+    <div
+      className="min-h-screen bg-black p-10 font-mono text-sm text-white"
+      data-app-shell-root=""
+    >
       <h1 className="mb-6 text-lg font-semibold">
-        app catch-all (tab/view app placeholder)
+        managed Cloud app boundary
       </h1>
       <dl className="space-y-2">
         <div>

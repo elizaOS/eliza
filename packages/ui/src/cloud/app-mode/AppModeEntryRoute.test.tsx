@@ -6,6 +6,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { afterEach, describe, expect, it } from "vitest";
+import { savePersistedActiveServer } from "../../state/persistence";
 import { AppModeEntryRoute } from "./AppModeEntryRoute";
 import { type AppModeAgent, appModeNavigation } from "./app-mode";
 
@@ -32,6 +33,15 @@ function stewardToken(): string {
 
 function signIn(): void {
   localStorage.setItem(STEWARD_TOKEN_KEY, stewardToken());
+}
+
+function bindCloudAgent(id = "agent-1"): void {
+  savePersistedActiveServer({
+    id: `cloud:${id}`,
+    kind: "cloud",
+    label: "Eliza Cloud",
+    apiBase: `https://api.eliza.app/api/v1/eliza/agents/${id}`,
+  });
 }
 
 function agent(
@@ -110,7 +120,7 @@ function renderEntry(initialPath = "/"): void {
         <Routes>
           <Route path="/login" element={<LoginProbe />} />
           <Route
-            path="/dashboard/agents"
+            path="/cloud/agents"
             element={<div data-testid="instances-page" />}
           />
           <Route path="/join" element={<div data-testid="join-page" />} />
@@ -166,6 +176,7 @@ describe("AppModeEntryRoute — chat-floor routing table", () => {
     // "Sign-in link expired" page. Entry must render the chat app instead and
     // issue zero pairing traffic.
     signIn();
+    bindCloudAgent();
     stubNetwork({ agents: agentsOk([agent({ id: "agent-1" })]) });
     renderEntry();
 
@@ -178,6 +189,7 @@ describe("AppModeEntryRoute — chat-floor routing table", () => {
 
   it("several running dedicated agents → still the chat app (no chooser interstitial at entry)", async () => {
     signIn();
+    bindCloudAgent("fresh");
     stubNetwork({
       agents: agentsOk([
         agent({ id: "stale", lastHeartbeatAt: "2026-08-01T00:00:00.000Z" }),
@@ -195,6 +207,7 @@ describe("AppModeEntryRoute — chat-floor routing table", () => {
 
   it("dedicated agents exist but none running → the same-origin chat app (never the console)", async () => {
     signIn();
+    bindCloudAgent();
     stubNetwork({
       agents: agentsOk([agent({ id: "agent-1", status: "stopped" })]),
     });
@@ -206,6 +219,7 @@ describe("AppModeEntryRoute — chat-floor routing table", () => {
 
   it("an errored dedicated agent (failed provision) → the same-origin chat app, not a dashboard bounce", async () => {
     signIn();
+    bindCloudAgent();
     stubNetwork({
       agents: agentsOk([agent({ id: "agent-1", status: "error" })]),
     });
@@ -217,6 +231,7 @@ describe("AppModeEntryRoute — chat-floor routing table", () => {
 
   it("a provisioning (cold-starting) dedicated agent → the chat app, no doomed pairing hop", async () => {
     signIn();
+    bindCloudAgent();
     stubNetwork({
       agents: agentsOk([agent({ id: "agent-1", status: "provisioning" })]),
     });
@@ -239,6 +254,7 @@ describe("AppModeEntryRoute — chat-floor routing table", () => {
 
   it("shared-tier-only org → the same-origin chat app, unchanged", async () => {
     signIn();
+    bindCloudAgent("s1");
     stubNetwork({
       agents: agentsOk([agent({ id: "s1", executionTier: "shared" })]),
     });
@@ -250,6 +266,7 @@ describe("AppModeEntryRoute — chat-floor routing table", () => {
 
   it("agents fetch failure → graceful fallback to the same-origin chat app", async () => {
     signIn();
+    bindCloudAgent();
     stubNetwork({
       agents: () => jsonResponse(500, { error: "backend down" }),
     });
@@ -260,6 +277,7 @@ describe("AppModeEntryRoute — chat-floor routing table", () => {
 
   it("never renders the instances console from entry, in any state", async () => {
     signIn();
+    bindCloudAgent("r1");
     stubNetwork({
       agents: agentsOk([
         agent({ id: "e1", status: "error" }),
@@ -273,5 +291,22 @@ describe("AppModeEntryRoute — chat-floor routing table", () => {
     await waitFor(() =>
       expect(screen.queryByTestId("instances-page")).toBeNull(),
     );
+  });
+
+  it("existing agents in a fresh browser enter /join to persist an active Cloud binding", async () => {
+    signIn();
+    stubNetwork({ agents: agentsOk([agent({ id: "agent-1" })]) });
+    renderEntry();
+
+    expect(await screen.findByTestId("join-page")).toBeTruthy();
+    expect(screen.queryByTestId("agent-app")).toBeNull();
+  });
+
+  it("keeps Cloud management reachable before an active-agent binding exists", async () => {
+    signIn();
+    stubNetwork({ agents: agentsOk([agent({ id: "agent-1" })]) });
+    renderEntry("/cloud/billing");
+
+    expect(await screen.findByTestId("agent-app")).toBeTruthy();
   });
 });

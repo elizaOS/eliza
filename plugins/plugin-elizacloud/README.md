@@ -40,7 +40,7 @@ helpers in `src/utils/sdk-client.ts`:
 | `src/utils/cloud-api.ts` | Backwards-compatible re-export of SDK classes and types |
 
 `ELIZAOS_CLOUD_BASE_URL` remains the API base URL and defaults to
-`https://elizacloud.ai/api/v1`. `createElizaCloudClient` derives the site
+`https://api.eliza.app/api/v1`. `createElizaCloudClient` derives the site
 root from that API URL when generated SDK route wrappers need `/api/v1/...`
 paths.
 
@@ -54,7 +54,6 @@ It is not a hand-rolled Cloud API fetch path.
 | --- | --- |
 | Text generation (`TEXT_NANO`, `TEXT_SMALL`, `TEXT_MEDIUM`, `TEXT_LARGE`, `TEXT_MEGA`, response handler, planner) | `CloudApiClient.requestRaw("POST", "/responses", ...)` |
 | Structured object generation | `CloudApiClient.requestRaw("POST", "/responses", ...)` |
-| Research generation | `CloudApiClient.requestRaw("POST", "/responses", ...)` |
 | Text embeddings | `CloudApiClient.requestRaw("POST", "/embeddings", ...)` |
 | Image generation | `ElizaCloudClient.generateImage(...)` |
 | Image description | generated SDK route `client.routes.postApiV1ChatCompletionsRaw(...)` |
@@ -100,12 +99,12 @@ can be written back into the room where the charge was initiated.
 ## Configuration
 
 Get an API key from
-[https://www.elizacloud.ai/dashboard/api-keys](https://www.elizacloud.ai/dashboard/api-keys).
+[https://cloud.eliza.app/cloud/api-keys](https://cloud.eliza.app/cloud/api-keys).
 
 | Setting | Description | Default |
 | --- | --- | --- |
 | `ELIZAOS_CLOUD_API_KEY` | API key used for authenticated Cloud requests | Required |
-| `ELIZAOS_CLOUD_BASE_URL` | Eliza Cloud API base URL | `https://elizacloud.ai/api/v1` |
+| `ELIZAOS_CLOUD_BASE_URL` | Eliza Cloud API base URL | `https://api.eliza.app/api/v1` |
 | `ELIZAOS_CLOUD_ENABLED` | Enables container provisioning, device auth, bridge, and backup services | `false` |
 | `ELIZAOS_CLOUD_NANO_MODEL` | Nano/cheapest model override | `NANO_MODEL` or `gemma-4-31b` |
 | `ELIZAOS_CLOUD_SMALL_MODEL` | Small/fast model override | `SMALL_MODEL` or `gemma-4-31b` |
@@ -114,7 +113,6 @@ Get an API key from
 | `ELIZAOS_CLOUD_MEGA_MODEL` | Mega model override | `MEGA_MODEL` or large model |
 | `ELIZAOS_CLOUD_RESPONSE_HANDLER_MODEL` | Response handler model override | small model |
 | `ELIZAOS_CLOUD_ACTION_PLANNER_MODEL` | Action planner model override | large model |
-| `ELIZAOS_CLOUD_RESEARCH_MODEL` | Research model override | large model |
 | `ELIZAOS_CLOUD_EMBEDDING_MODEL` | Embedding model | `text-embedding-3-small` |
 | `ELIZAOS_CLOUD_EMBEDDING_URL` | Optional custom embedding API base URL | unset |
 | `ELIZAOS_CLOUD_EMBEDDING_API_KEY` | Optional custom embedding API key | `ELIZAOS_CLOUD_API_KEY` |
@@ -162,6 +160,7 @@ const speech = await runtime.useModel(ModelType.TEXT_TO_SPEECH, {
 // core TranscriptionParams ({ audioUrl }). URL fetches go through the
 // SSRF guard. Requires ELIZAOS_CLOUD_ENABLED=true or ELIZAOS_CLOUD_USE_STT=true.
 const transcript = await runtime.useModel(ModelType.TRANSCRIPTION, audioBuffer);
+
 ```
 
 ## Adding Cloud Calls

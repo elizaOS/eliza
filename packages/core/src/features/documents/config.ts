@@ -50,16 +50,48 @@ export function validateModelConfig(runtime?: IAgentRuntime): ModelConfig {
 			}
 			return normalizeEnvValue(process.env[key]) || defaultValue;
 		};
+		const getNumericSetting = (key: string, defaultValue?: string) => {
+			if (runtime) {
+				const runtimeValue = runtime.getSetting(key);
+				// Blank-is-unset for the RUNTIME value only (#18842, #18897): a blank
+				// runtime alias must fall through to the environment value instead of
+				// short-circuiting the caller's ?? chain with "" and letting the
+				// provider default win. The env value stays raw so a blank env entry
+				// still reaches schema validation (e.g. blank MAX_CONCURRENT_REQUESTS
+				// is rejected, not silently defaulted).
+				const normalizedRuntimeValue =
+					typeof runtimeValue === "string"
+						? normalizeEnvValue(runtimeValue)
+						: (runtimeValue ?? undefined);
+				if (normalizedRuntimeValue !== undefined) {
+					return normalizedRuntimeValue;
+				}
+			}
+			return process.env[key] ?? defaultValue;
+		};
 
 		const ctxDocumentsEnabled = parseBooleanEnv(
 			getSetting("CTX_DOCUMENTS_ENABLED", "false"),
 		);
 		const embeddingProvider = getSetting("EMBEDDING_PROVIDER");
 		const localEmbeddingModel = getSetting("LOCAL_EMBEDDING_MODEL");
-		const localEmbeddingDimensions = getSetting("LOCAL_EMBEDDING_DIMENSIONS");
+		// Alias dimension reads follow the same blank-is-unset convention as
+		// normalizeEnvValue: a blank/whitespace-only alias falls through to the
+		// provider default instead of reaching the numeric schema.
+		const getDimensionAlias = (key: string) => {
+			const raw = getNumericSetting(key);
+			return typeof raw === "string" ? normalizeEnvValue(raw) : raw;
+		};
+		const localEmbeddingDimensions = getDimensionAlias(
+			"LOCAL_EMBEDDING_DIMENSIONS",
+		);
+		const openaiEmbeddingDimensions = getDimensionAlias(
+			"OPENAI_EMBEDDING_DIMENSIONS",
+		);
 		const inferredLocalEmbeddings =
 			!embeddingProvider &&
-			Boolean(localEmbeddingModel || localEmbeddingDimensions);
+			(localEmbeddingModel !== undefined ||
+				localEmbeddingDimensions !== undefined);
 		const resolvedEmbeddingProvider =
 			embeddingProvider || (inferredLocalEmbeddings ? "local" : undefined);
 		const assumePluginOpenAI = !resolvedEmbeddingProvider;
@@ -72,11 +104,15 @@ export function validateModelConfig(runtime?: IAgentRuntime): ModelConfig {
 			(resolvedEmbeddingProvider === "local"
 				? "local-embedding"
 				: "text-embedding-3-small");
-		const embeddingDimension =
-			getSetting("EMBEDDING_DIMENSION") ||
-			(resolvedEmbeddingProvider === "local"
+		const providerEmbeddingDimension =
+			resolvedEmbeddingProvider === "local"
 				? localEmbeddingDimensions
-				: getSetting("OPENAI_EMBEDDING_DIMENSIONS")) ||
+				: resolvedEmbeddingProvider === "openai" || assumePluginOpenAI
+					? openaiEmbeddingDimensions
+					: undefined;
+		const embeddingDimension =
+			getNumericSetting("EMBEDDING_DIMENSION") ??
+			providerEmbeddingDimension ??
 			(resolvedEmbeddingProvider === "local" ? "384" : "1536");
 
 		const rawOpenaiApiKey = getSetting("OPENAI_API_KEY");
@@ -111,8 +147,8 @@ export function validateModelConfig(runtime?: IAgentRuntime): ModelConfig {
 			TEXT_EMBEDDING_MODEL: textEmbeddingModel,
 			TEXT_MODEL: getSetting("TEXT_MODEL"),
 
-			MAX_INPUT_TOKENS: getSetting("MAX_INPUT_TOKENS", "4000"),
-			MAX_OUTPUT_TOKENS: getSetting("MAX_OUTPUT_TOKENS", "4096"),
+			MAX_INPUT_TOKENS: getNumericSetting("MAX_INPUT_TOKENS", "4000"),
+			MAX_OUTPUT_TOKENS: getNumericSetting("MAX_OUTPUT_TOKENS", "4096"),
 
 			EMBEDDING_DIMENSION: embeddingDimension,
 
@@ -122,10 +158,13 @@ export function validateModelConfig(runtime?: IAgentRuntime): ModelConfig {
 			RATE_LIMIT_ENABLED: parseBooleanEnv(
 				getSetting("RATE_LIMIT_ENABLED", "true"),
 			),
-			MAX_CONCURRENT_REQUESTS: getSetting("MAX_CONCURRENT_REQUESTS", "100"),
-			REQUESTS_PER_MINUTE: getSetting("REQUESTS_PER_MINUTE", "500"),
-			TOKENS_PER_MINUTE: getSetting("TOKENS_PER_MINUTE", "1000000"),
-			BATCH_DELAY_MS: getSetting("BATCH_DELAY_MS", "100"),
+			MAX_CONCURRENT_REQUESTS: getNumericSetting(
+				"MAX_CONCURRENT_REQUESTS",
+				"100",
+			),
+			REQUESTS_PER_MINUTE: getNumericSetting("REQUESTS_PER_MINUTE", "500"),
+			TOKENS_PER_MINUTE: getNumericSetting("TOKENS_PER_MINUTE", "1000000"),
+			BATCH_DELAY_MS: getNumericSetting("BATCH_DELAY_MS", "100"),
 		});
 		validateConfigRequirements(config, assumePluginOpenAI);
 		return config;

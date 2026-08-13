@@ -1,10 +1,10 @@
 /**
  * Plugin-registry artifact serving for the registry host
- * (`plugins.elizacloud.ai` / `plugins.staging.elizacloud.ai`).
+ * (`plugins.eliza.app` / `plugins-staging.eliza.app`).
  *
  * The canonical registry data URL (`packages/registry` README + types) is
- * `plugins.elizacloud.ai/generated-registry.json`, but the wildcard
- * `*.elizacloud.ai/*` Worker route shadows the host — the same disease the
+ * `plugins.eliza.app/generated-registry.json`, but the managed-agent wildcard
+ * Worker route shadows the host — the same disease the
  * blob host has (see `blob-host.ts`) — so every registry fetch 404'd on this
  * worker's JSON router even though the artifact is committed in-repo and raw
  * GitHub serves it fine.
@@ -16,9 +16,8 @@
  * than a promote-lagged copy). Anything else on the host stays a JSON 404.
  */
 
+import { ELIZA_SERVICE_DOMAIN_CONTRACTS } from "@elizaos/shared/elizacloud";
 import type { AppEnv } from "@/types/cloud-worker-env";
-
-const DEFAULT_BASE_DOMAIN = "elizacloud.ai";
 
 /**
  * Deny-by-default allowlist of served artifact paths → upstream raw-GitHub
@@ -42,12 +41,13 @@ type RegistryHostBindings = Pick<
 >;
 
 function registryHosts(env: RegistryHostBindings): readonly string[] {
-  const base =
-    typeof env.ELIZA_CLOUD_AGENT_BASE_DOMAIN === "string" &&
-    env.ELIZA_CLOUD_AGENT_BASE_DOMAIN.trim().length > 0
-      ? env.ELIZA_CLOUD_AGENT_BASE_DOMAIN.trim().toLowerCase()
-      : DEFAULT_BASE_DOMAIN;
-  return [`plugins.${base}`, `plugins.staging.${base}`];
+  const environment = env.ELIZA_CLOUD_AGENT_BASE_DOMAIN?.includes("staging")
+    ? "staging"
+    : "production";
+  return [
+    new URL(ELIZA_SERVICE_DOMAIN_CONTRACTS[environment].pluginRegistryOrigin)
+      .hostname,
+  ];
 }
 
 function notFound(): Response {

@@ -443,12 +443,14 @@ app.delete("/", async (c) => {
       const result = await elizaSandboxService.deleteAgent(
         agentId,
         user.organization_id,
+        { authorization: "user_request" },
       );
       if (!result.success) {
         const status =
           result.error === "Agent not found"
             ? 404
-            : result.error === "Agent provisioning is in progress"
+            : result.error === "Agent provisioning is in progress" ||
+                result.error === "Agent is running; suspend it before deletion"
               ? 409
               : 500;
         if (status !== 500) {
@@ -498,6 +500,7 @@ app.delete("/", async (c) => {
       agentId,
       organizationId: user.organization_id,
       userId: user.id,
+      authorization: "user_request",
       expectedIdentity,
     });
 

@@ -92,6 +92,52 @@
       "registryKind": "plugin",
       "directory": "eliza-plugin-agentradar"
     },
+    "@davyjones0x/plugin-peer-cash": {
+      "git": {
+        "repo": "ADWilkinson/plugin-peer-cash",
+        "v0": {
+          "branch": null
+        },
+        "v1": {
+          "branch": null
+        },
+        "v2": {
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@davyjones0x/plugin-peer-cash",
+        "v0": null,
+        "v1": null,
+        "v2": "0.1.1"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Peer Cash offramp actions: cash out Base USDC to Venmo, Revolut, Wise, Zelle, and more at the live oracle market rate, with order tracking, withdraw, and top-up.",
+      "homepage": "https://peer.xyz/cash-sdk",
+      "topics": [
+        "offramp",
+        "usdc",
+        "base",
+        "crypto-to-fiat",
+        "payments",
+        "zkp2p"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "origin": "third-party",
+      "source": "community",
+      "support": "community",
+      "builtIn": false,
+      "firstParty": false,
+      "thirdParty": true,
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": null
+    },
     "@human.tech/plugin-waap": {
       "git": {
         "repo": "holonym-foundation/eliza-plugin-waap",
@@ -1092,6 +1138,51 @@
       "registryKind": "plugin",
       "directory": null
     },
+    "elizaos-plugin-adanos": {
+      "git": {
+        "repo": "adanos-software/elizaos-plugin-adanos",
+        "v0": {
+          "branch": null
+        },
+        "v1": {
+          "branch": null
+        },
+        "v2": {
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "elizaos-plugin-adanos",
+        "v0": null,
+        "v1": null,
+        "v2": "0.1.0"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Read-only Adanos stock and crypto market sentiment for elizaOS agents.",
+      "homepage": "https://adanos.org/",
+      "topics": [
+        "market-sentiment",
+        "stocks",
+        "crypto",
+        "alternative-data",
+        "adanos"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "origin": "third-party",
+      "source": "community",
+      "support": "community",
+      "builtIn": false,
+      "firstParty": false,
+      "thirdParty": true,
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": null
+    },
     "elizaos-plugin-coinrailz": {
       "git": {
         "repo": "tdnupe3/elizaos-plugin-coinrailz",
@@ -1130,6 +1221,52 @@
         "micropayments",
         "iot",
         "satellite"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "origin": "third-party",
+      "source": "community",
+      "support": "community",
+      "builtIn": false,
+      "firstParty": false,
+      "thirdParty": true,
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": null
+    },
+    "elizaos-plugin-invinoveritas": {
+      "git": {
+        "repo": "babyblueviper1/invinoveritas",
+        "v0": {
+          "branch": null
+        },
+        "v1": {
+          "branch": null
+        },
+        "v2": {
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "elizaos-plugin-invinoveritas",
+        "v0": null,
+        "v1": null,
+        "v2": "0.2.3"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "An automated, independent second opinion an agent calls before a high-stakes action: one API call returns approve/concerns/reject and the agent weighs it and decides — no human in the loop, never blocks, degrades to a no-op if unavailable. Plus free proof verification (BIP-340 schnorr vs a published key), verified 100% locally with zero network calls when the caller supplies the full proof event — the independent check an agent can't self-issue.",
+      "homepage": "https://api.babyblueviper.com/install",
+      "topics": [
+        "verification",
+        "autonomous",
+        "second-opinion",
+        "review",
+        "onchain",
+        "x402"
       ],
       "stargazers_count": 0,
       "language": "TypeScript",
@@ -1458,6 +1595,107 @@
         "sec-edgar",
         "micropayments",
         "no-api-key"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "origin": "third-party",
+      "source": "community",
+      "support": "community",
+      "builtIn": false,
+      "firstParty": false,
+      "thirdParty": true,
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": null
+    },
+    "plugin-gblin": {
+      "git": {
+        "repo": "gblinproject/GBLIN_PLUGIN",
+        "v0": {
+          "branch": null
+        },
+        "v1": {
+          "branch": null
+        },
+        "v2": {
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "plugin-gblin",
+        "v0": null,
+        "v1": null,
+        "v2": "0.4.0"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "ElizaOS plugin for GBLIN on Base — a gasless treasury rail for AI agents. Routes surplus agent capital into the MEV-protected GBLIN index (cbBTC/WETH/USDC, mint/redeem at NAV — managed crypto exposure, not a USDC substitute) and JIT-swaps back to USDC for x402 invoices. GBLIN is a discoverable ERC-8004 agent (#59286) on Base.",
+      "homepage": "https://gblin.digital/agents",
+      "topics": [
+        "gblin",
+        "x402",
+        "base",
+        "usdc",
+        "cbbtc",
+        "weth",
+        "treasury",
+        "defi",
+        "mev-protection",
+        "jit-swap",
+        "ai-agent",
+        "index",
+        "erc-8004"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "origin": "third-party",
+      "source": "community",
+      "support": "community",
+      "builtIn": false,
+      "firstParty": false,
+      "thirdParty": true,
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": null
+    },
+    "plugin-pulsenetwork": {
+      "git": {
+        "repo": "GTCC777/plugin-pulsenetwork",
+        "v0": {
+          "branch": null
+        },
+        "v1": {
+          "branch": null
+        },
+        "v2": {
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "plugin-pulsenetwork",
+        "v0": null,
+        "v1": null,
+        "v2": "0.2.0"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Pulse Network paid data for agents: free catalog search across the x402 fleet (finance, crypto, macro, travel, sports, health, legal), pre-trade token safety scans, and pay-per-call fetches — USDC on Base, no API keys. Quote-first: every paid call previews its exact price, asset, and recipient and executes only on a content-bound user confirmation, under a per-call cap, a daily budget, and an execute-once ledger.",
+      "homepage": "https://pulse.theaslangroupllc.com",
+      "topics": [
+        "x402",
+        "micropayments",
+        "paid-data",
+        "token-safety",
+        "usdc",
+        "base",
+        "finance",
+        "crypto-data"
       ],
       "stargazers_count": 0,
       "language": "TypeScript",

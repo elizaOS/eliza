@@ -102,9 +102,80 @@ describe("handleCanonicalScopedAgentStream", () => {
     const res = await handleCanonicalScopedAgentStream(BASE);
 
     expect(res.status).toBe(503);
+    expect(res.headers.get("Retry-After")).toBe("1");
     await expect(res.json()).resolves.toMatchObject({
       code: "shared_runtime_cache_warming",
       retryable: true,
+    });
+  });
+
+  test("a client-supplied clientMessageId becomes the bridge RPC id (retry idempotency, #18045)", async () => {
+    const res = await handleCanonicalScopedAgentStream({
+      ...BASE,
+      body: { text: "hello", clientMessageId: "client-id-9" },
+    });
+
+    expect(res.status).toBe(200);
+    const rpc = (coordinateSharedStream.mock.calls[0] as unknown[])[1];
+    expect(rpc).toMatchObject({
+      id: "client-id-9",
+      method: "message.send",
+      // The params marker is what admits the id to the coordinator's durable
+      // claim/replay/conflict boundary — a generated id must never carry it.
+      params: { clientMessageId: "client-id-9" },
+    });
+  });
+
+  test("an absent, blank, or oversized clientMessageId falls back to a fresh RPC id", async () => {
+    // A Response body is single-use; three handler calls need three upstreams.
+    coordinateSharedStream.mockImplementation(
+      async () =>
+        new Response("event: done\ndata: {}\n\n", {
+          headers: { "Content-Type": "text/event-stream; charset=utf-8" },
+        }),
+    );
+    await handleCanonicalScopedAgentStream(BASE);
+    await handleCanonicalScopedAgentStream({
+      ...BASE,
+      body: { text: "hello", clientMessageId: "   " },
+    });
+    await handleCanonicalScopedAgentStream({
+      ...BASE,
+      body: { text: "hello", clientMessageId: "x".repeat(129) },
+    });
+
+    const ids = coordinateSharedStream.mock.calls.map(
+      (call) => ((call as unknown[])[1] as { id?: unknown }).id,
+    );
+    expect(ids).toHaveLength(3);
+    for (const call of coordinateSharedStream.mock.calls) {
+      expect(((call as unknown[])[1] as { params: object }).params).not.toHaveProperty(
+        "clientMessageId",
+      );
+    }
+    for (const id of ids) {
+      expect(typeof id).toBe("string");
+      expect(id).not.toBe("   ");
+      expect((id as string).length).toBeLessThan(129);
+    }
+    expect(new Set(ids).size).toBe(3);
+  });
+
+  test("emits a canonical typed SSE error when the coordinator has no body", async () => {
+    coordinateSharedStream.mockResolvedValueOnce(
+      new Response(null, { headers: { "Content-Type": "text/event-stream" } }),
+    );
+
+    const res = await handleCanonicalScopedAgentStream(BASE);
+    const body = await res.text();
+    expect(body).toContain("event: error");
+    const data = JSON.parse(body.split("data: ")[1]?.split("\n")[0] ?? "{}") as Record<
+      string,
+      unknown
+    >;
+    expect(data).toEqual({
+      message: "Agent produced no streamed response",
+      type: "error",
     });
   });
 });

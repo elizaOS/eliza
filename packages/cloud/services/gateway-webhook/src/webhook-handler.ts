@@ -404,6 +404,12 @@ async function sendOnboardingReply(
         platform: adapter.platform,
         platformUserId: event.senderId,
         platformDisplayName: event.senderName,
+        platformReplyAddress:
+          adapter.platform === "blooio"
+            ? config.fromNumber
+            : adapter.platform === "twilio"
+              ? config.phoneNumber
+              : undefined,
       }),
       signal: AbortSignal.timeout(30_000),
     });

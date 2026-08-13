@@ -3,6 +3,13 @@
  * endpoint (sniffing the container via `detectAudioMimeType` to pick an upload
  * filename), and `handleTextToSpeech` synthesizes speech via the TTS endpoint.
  * Both accept the core param shapes as well as raw Blob/File/Buffer input.
+ *
+ * Caller-supplied audio URLs load only through the platform-installed guarded
+ * fetcher (`models/transcription-url.ts`) so agents and tools cannot aim
+ * transcription at loopback, link-local, or private hosts, and so this shared
+ * module never names a Node-only core subpath a browser bundle would follow.
+ * Provider endpoint calls (OpenAI-compatible base URL) stay on the configured
+ * API path and are not remote-media fetches.
  */
 import type {
   TextToSpeechParams as CoreTextToSpeechParams,
@@ -27,6 +34,7 @@ import {
   getTTSModel,
   getTTSVoice,
 } from "../utils/config";
+import { fetchAudioFromUrl } from "./transcription-url";
 
 type AudioInput = Blob | File | Buffer;
 type TranscriptionInput = AudioInput | LocalTranscriptionParams | CoreTranscriptionParams | string;
@@ -37,7 +45,8 @@ function isBlobOrFile(value: unknown): value is Blob | File {
 }
 
 function isBuffer(value: unknown): value is Buffer {
-  return Buffer.isBuffer(value);
+  // A real browser has no Buffer global; referencing it bare throws.
+  return typeof Buffer !== "undefined" && Buffer.isBuffer(value);
 }
 
 function isLocalTranscriptionParams(value: unknown): value is LocalTranscriptionParams {
@@ -59,14 +68,6 @@ function isCoreTranscriptionParams(value: unknown): value is CoreTranscriptionPa
   );
 }
 
-async function fetchAudioFromUrl(url: string): Promise<Blob> {
-  // @trajectory-allow Fetches caller-provided audio bytes; no model inference happens here.
-  const response = await fetch(url);
-  if (!response.ok) {
-    throw new Error(`Failed to fetch audio from URL: ${response.status}`);
-  }
-  return response.blob();
-}
 export async function handleTranscription(
   runtime: IAgentRuntime,
   input: TranscriptionInput

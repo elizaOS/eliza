@@ -32,6 +32,14 @@ const FIXTURE_PLUGIN_PATH = path.resolve(
 	path.dirname(__filename),
 	"../../../test/fixtures/sandbox-plugin/plugin.ts",
 );
+const NO_ACTIONS_PLUGIN_PATH = path.resolve(
+	path.dirname(__filename),
+	"../../../test/fixtures/no-actions-plugin/plugin.ts",
+);
+const SHADOWED_ACTIONS_PLUGIN_PATH = path.resolve(
+	path.dirname(__filename),
+	"../../../test/fixtures/shadowed-actions-plugin/plugin.ts",
+);
 
 describe("AppWorkerHostService worker bridge", () => {
 	let service: AppWorkerHostService;
@@ -261,6 +269,44 @@ describe("AppWorkerHostService worker bridge", () => {
 			expect(service.list().some((w) => w.slug === "fixture-bad-plugin")).toBe(
 				false,
 			);
+		});
+
+		it("rejects a providers/routes-only plugin with an explicit failure (no false success)", async () => {
+			// Regression for #18240 + jmforj review: a plugin that contributes
+			// only providers/routes/services has no reachable surface inside the
+			// worker sandbox (which only bridges actions). The original fix
+			// emitted a `warn` message the host silently dropped — producing a
+			// healthy-looking but inert worker. This now fails explicitly so a
+			// misconfigured isolation:"worker" app is surfaced as a config error.
+			await expect(
+				service.spawn({
+					slug: "fixture-no-actions",
+					isolation: "worker",
+					pluginEntryPath: NO_ACTIONS_PLUGIN_PATH,
+				}),
+			).rejects.toThrow(/contributes no actions/);
+			expect(service.list().some((w) => w.slug === "fixture-no-actions")).toBe(
+				false,
+			);
+		});
+
+		it("prefers an actions-bearing named export over a metadata-only default export", async () => {
+			// A metadata-only default export is a valid plugin shape; if
+			// candidate selection stopped at the first valid export it would
+			// shadow the sibling actions-bearing `plugin` export and the
+			// zero-action gate would reject a module the worker can serve.
+			await service.spawn({
+				slug: "fixture-shadowed-actions",
+				isolation: "worker",
+				pluginEntryPath: SHADOWED_ACTIONS_PLUGIN_PATH,
+			});
+			const reply = await service.invoke<{
+				pong: boolean;
+				actions: string[];
+			}>("fixture-shadowed-actions", "ping");
+			expect(reply.ok).toBe(true);
+			if (!reply.ok) return;
+			expect(reply.result.actions).toEqual(["SHADOWED_ECHO"]);
 		});
 	});
 

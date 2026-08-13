@@ -270,6 +270,56 @@ describe("action catalogue and retrieval", () => {
 		});
 	});
 
+	it("treats a canonical candidate parent as an exact hint", () => {
+		const catalog = buildActionCatalog([
+			{
+				name: "CALENDAR",
+				description:
+					"Manage calendar events, meetings, schedules, dates, times, and reminders.",
+			},
+			{
+				name: "OWNER_REMINDERS",
+				description: "Create and manage exact-time owner reminders.",
+			},
+		]);
+
+		for (const messageText of [
+			"remind me in 2 minutes to check the mail",
+			"remind me at 9pm to check the oven",
+		]) {
+			const response = retrieveActions({
+				catalog,
+				messageText,
+				candidateActions: ["owner reminders"],
+			});
+
+			expect(response.query.parentActionHints).toEqual(["owner reminders"]);
+			expect(response.results[0]).toMatchObject({
+				name: "OWNER_REMINDERS",
+				score: 1,
+				matchedBy: expect.arrayContaining(["exact"]),
+			});
+			expect(
+				response.results.findIndex(
+					(result) => result.name === "OWNER_REMINDERS",
+				),
+			).toBeLessThan(
+				response.results.findIndex((result) => result.name === "CALENDAR"),
+			);
+		}
+
+		const appointment = retrieveActions({
+			catalog,
+			messageText: "add a dentist appointment Thursday at 2pm",
+			candidateActions: ["CALENDAR"],
+		});
+		expect(appointment.results[0]).toMatchObject({
+			name: "CALENDAR",
+			score: 1,
+			matchedBy: expect.arrayContaining(["exact"]),
+		});
+	});
+
 	it("matches candidate action namespaces and child names with regex scoring", () => {
 		const catalog = buildActionCatalog(actions);
 		const namespaceResponse = retrieveActions({

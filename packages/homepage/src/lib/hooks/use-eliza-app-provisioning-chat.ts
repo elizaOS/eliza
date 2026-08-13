@@ -58,6 +58,7 @@ function uid(): string {
 }
 
 const POLL_INTERVAL_MS = 5_000;
+const POLL_DEADLINE_MS = 5 * 60 * 1000;
 
 const WELCOME: ProvisioningChatMessage = {
   id: "welcome",
@@ -102,8 +103,12 @@ export function useElizaAppProvisioningChat(
   const [bridgeUrl, setBridgeUrl] = useState<string | null>(null);
   const [agentId, setAgentId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [provisioningError, setProvisioningError] = useState<string | null>(
+    null,
+  );
   const stoppedRef = useRef(false);
   const provisionedRef = useRef(false);
+  const pollStartRef = useRef<number | null>(null);
 
   const isReady = containerStatus === "running" && bridgeUrl !== null;
   const usesSharedOnboarding = Boolean(onboardingSessionId);
@@ -163,22 +168,93 @@ export function useElizaAppProvisioningChat(
     usesSharedOnboarding,
   ]);
 
+  const generationRef = useRef(0);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastSessionIdRef = useRef<string | null | undefined>(undefined);
+  const containerStatusRef = useRef(containerStatus);
+  const agentIdRef = useRef(agentId);
+  const bridgeUrlRef = useRef(bridgeUrl);
+
   useEffect(() => {
-    if (!active || isReady) return;
+    containerStatusRef.current = containerStatus;
+  }, [containerStatus]);
+  useEffect(() => {
+    agentIdRef.current = agentId;
+  }, [agentId]);
+  useEffect(() => {
+    bridgeUrlRef.current = bridgeUrl;
+  }, [bridgeUrl]);
+
+  const retryProvisioning = useCallback(() => {
+    setProvisioningError(null);
+    pollStartRef.current = Date.now();
     stoppedRef.current = false;
+    generationRef.current += 1;
+  }, []);
+
+  useEffect(() => {
+    const isSameSession = lastSessionIdRef.current === onboardingSessionId;
+    if (!isSameSession) {
+      lastSessionIdRef.current = onboardingSessionId;
+      setProvisioningError(null);
+      pollStartRef.current = Date.now();
+      stoppedRef.current = false;
+      generationRef.current += 1;
+      provisionedRef.current = false;
+      setContainerStatus("pending");
+      setAgentId(null);
+      setBridgeUrl(null);
+      setMessages([WELCOME]);
+      setIsLoading(false);
+      if (timeoutRef.current) {
+        window.clearTimeout(timeoutRef.current);
+        timeoutRef.current = null;
+      }
+    }
+  }, [onboardingSessionId]);
+
+  useEffect(() => {
+    if (!active || isReady || provisioningError) return;
+    stoppedRef.current = false;
+    if (pollStartRef.current === null) pollStartRef.current = Date.now();
+    generationRef.current += 1;
+    const generation = generationRef.current;
+    let cancelled = false;
 
     const poll = async () => {
-      if (stoppedRef.current) return;
+      if (
+        stoppedRef.current ||
+        cancelled ||
+        generation !== generationRef.current
+      )
+        return;
+      const elapsed = pollStartRef.current
+        ? Date.now() - pollStartRef.current
+        : 0;
+      if (elapsed > POLL_DEADLINE_MS) {
+        if (generation !== generationRef.current) return;
+        stoppedRef.current = true;
+        setProvisioningError(
+          "Provisioning timed out. Please refresh or contact support.",
+        );
+        return;
+      }
       try {
         if (!usesSharedOnboarding) {
           const res = await elizacloudAuthFetch<LegacyStatusResponse>(
             "/api/eliza-app/provisioning-agent",
           );
-          if (stoppedRef.current) return;
+          if (
+            stoppedRef.current ||
+            cancelled ||
+            generation !== generationRef.current
+          )
+            return;
           if (res.success && res.data) {
-            const newStatus = res.data.status ?? containerStatus;
+            const newStatus = res.data.status ?? containerStatusRef.current;
             setContainerStatus(newStatus);
-            if (res.data.agentId && !agentId) setAgentId(res.data.agentId);
+            if (res.data.agentId && !agentIdRef.current)
+              setAgentId(res.data.agentId);
             if (res.data.bridgeUrl) {
               setBridgeUrl(res.data.bridgeUrl);
             }
@@ -193,53 +269,87 @@ export function useElizaAppProvisioningChat(
                     "Your AI space is ready! You can start chatting in full now.",
                 },
               ]);
+              return;
+            }
+            if (newStatus === "error") {
+              stoppedRef.current = true;
+              setProvisioningError(
+                "Provisioning failed. Please try again or contact support.",
+              );
+              return;
             }
           }
-          return;
-        }
-
-        const res = await elizacloudAuthFetch<ChatResponse>(
-          "/api/eliza-app/onboarding/chat",
-          {
-            method: "POST",
-            body: JSON.stringify(
-              buildProvisioningPollBody(onboardingSessionId),
-            ),
-          },
-        );
-        if (stoppedRef.current) return;
-        if (res.success && res.data) {
-          const provisioning = res.data.provisioning;
-          const newStatus = provisioning?.status ?? containerStatus;
-          setContainerStatus(newStatus);
-          if (provisioning?.agentId && !agentId)
-            setAgentId(provisioning.agentId);
-          if (provisioning?.bridgeUrl) {
-            setBridgeUrl(provisioning.bridgeUrl);
-          }
-          if (newStatus === "running" && provisioning?.bridgeUrl) {
-            stoppedRef.current = true;
-            applyOnboardingResponse(res.data);
+        } else {
+          const res = await elizacloudAuthFetch<ChatResponse>(
+            "/api/eliza-app/onboarding/chat",
+            {
+              method: "POST",
+              body: JSON.stringify(
+                buildProvisioningPollBody(onboardingSessionId),
+              ),
+            },
+          );
+          if (
+            stoppedRef.current ||
+            cancelled ||
+            generation !== generationRef.current
+          )
+            return;
+          if (res.success && res.data) {
+            const provisioning = res.data.provisioning;
+            const newStatus =
+              provisioning?.status ?? containerStatusRef.current;
+            setContainerStatus(newStatus);
+            if (provisioning?.agentId && !agentIdRef.current)
+              setAgentId(provisioning.agentId);
+            if (provisioning?.bridgeUrl) {
+              setBridgeUrl(provisioning.bridgeUrl);
+            }
+            if (newStatus === "running" && provisioning?.bridgeUrl) {
+              stoppedRef.current = true;
+              applyOnboardingResponse(res.data);
+              return;
+            }
+            if (newStatus === "error") {
+              stoppedRef.current = true;
+              setProvisioningError(
+                "Provisioning failed. Please try again or contact support.",
+              );
+              return;
+            }
           }
         }
       } catch {
         return;
+      } finally {
+        if (
+          !cancelled &&
+          !stoppedRef.current &&
+          generation === generationRef.current
+        ) {
+          timeoutRef.current = window.setTimeout(
+            () => void poll(),
+            POLL_INTERVAL_MS,
+          );
+        }
       }
     };
 
     void poll();
-    const timer = setInterval(() => void poll(), POLL_INTERVAL_MS);
     return () => {
+      cancelled = true;
       stoppedRef.current = true;
-      clearInterval(timer);
+      if (timeoutRef.current) {
+        window.clearTimeout(timeoutRef.current);
+        timeoutRef.current = null;
+      }
     };
   }, [
     active,
-    agentId,
     applyOnboardingResponse,
-    containerStatus,
     isReady,
     onboardingSessionId,
+    provisioningError,
     usesSharedOnboarding,
   ]);
 
@@ -328,5 +438,7 @@ export function useElizaAppProvisioningChat(
     agentId,
     isLoading,
     isReady,
+    provisioningError,
+    retryProvisioning,
   };
 }

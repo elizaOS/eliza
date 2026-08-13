@@ -11,16 +11,14 @@ import type {
 import { Hono } from "hono";
 import { deleteCookie, setCookie } from "hono/cookie";
 import { getAuditDispatcher } from "@/api-app/services/audit-dispatcher-singleton";
+import { checkElizaMutatingRequestOrigin } from "@/lib/auth/browser-origin-policy";
 import { cookieDomainForHost } from "@/lib/auth/cookie-domain";
+import { loadVerifiedStagingSessionUser } from "@/lib/auth/staging-session-binding";
 import {
   type StewardVerifyEnv,
   verifyStewardTokenCached,
 } from "@/lib/auth/steward-client";
-import {
-  canMutateLegacyStewardCookies,
-  LEGACY_STEWARD_COOKIES,
-  stewardCookieNames,
-} from "@/lib/auth/steward-cookies";
+import { stewardCookieNames } from "@/lib/auth/steward-cookies";
 import {
   getIpKey,
   RateLimitPresets,
@@ -38,65 +36,6 @@ function stewardSecretConfigured(env: StewardVerifyEnv): boolean {
 const STEWARD_REFRESH_COOKIE_MAX_AGE = 30 * 24 * 60 * 60;
 
 /**
- * Origins permitted to set / clear Steward session cookies. Anything else
- * gets a 403 — same-origin XHR from `*.elizacloud.ai` and the cross-origin
- * `elizaos.ai` checkout POST are the only two legitimate browser callers.
- * Explicit, exact hosts only. The `*.pages.dev` wildcard is intentionally
- * NOT included — anyone can deploy to `*.pages.dev`, so it's a CSRF surface
- * in production. Preview deploys use the explicit `dev.` / `staging.` hosts
- * already in the allowlist.
- */
-const PERMITTED_ORIGIN_HOSTS = new Set<string>([
-  "elizacloud.ai",
-  "www.elizacloud.ai",
-  "dev.elizacloud.ai",
-  "staging.elizacloud.ai",
-  "elizaos.ai",
-  "www.elizaos.ai",
-]);
-
-/**
- * Local development origins. Only honored when the worker is NOT running in
- * production. Production deploys never trust localhost as an Origin.
- */
-const LOCAL_DEV_ORIGIN_HOSTS = new Set<string>([
-  "localhost",
-  "127.0.0.1",
-  "0.0.0.0",
-]);
-
-function originHost(rawOrigin: string | undefined): string | null {
-  if (!rawOrigin) return null;
-  try {
-    return new URL(rawOrigin).hostname.toLowerCase();
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Validate Origin / Referer against the request host to block cross-site
- * POST/DELETE. The cookie is SameSite=Lax (and the route is called via XHR,
- * which makes Lax effectively Strict for these requests), so this header
- * check is the second layer specifically for the cross-origin POST case
- * (elizaos.ai → api.elizacloud.ai).
- */
-function isPermittedOrigin(
-  origin: string | null,
-  requestHost: string | null,
-  isProduction: boolean,
-): boolean {
-  if (!origin) return false;
-  if (PERMITTED_ORIGIN_HOSTS.has(origin)) return true;
-  if (origin.endsWith(".elizacloud.ai") || origin.endsWith(".elizaos.ai")) {
-    return true;
-  }
-  if (requestHost && origin === requestHost) return true;
-  if (!isProduction && LOCAL_DEV_ORIGIN_HOSTS.has(origin)) return true;
-  return false;
-}
-
-/**
  * CSRF check. Modern browsers always send Origin on cross-origin POST/DELETE
  * (Fetch spec) and on same-origin POST too since 2020. We REQUIRE Origin or
  * Referer on every mutating request — no header-less fallthrough. Tooling
@@ -109,23 +48,7 @@ function checkOrigin(
   c: { req: { header: (name: string) => string | undefined } },
   isProduction: boolean,
 ): { ok: true } | { ok: false; reason: string } {
-  const rawOrigin = c.req.header("origin");
-  const rawReferer = c.req.header("referer");
-  const origin = originHost(rawOrigin);
-  const referer = originHost(rawReferer);
-  const host = (c.req.header("host") ?? "").split(":")[0]?.toLowerCase() ?? "";
-  if (!origin && !referer) {
-    return { ok: false, reason: "missing_origin_and_referer" };
-  }
-  if (origin && isPermittedOrigin(origin, host, isProduction))
-    return { ok: true };
-  if (!origin && referer && isPermittedOrigin(referer, host, isProduction)) {
-    return { ok: true };
-  }
-  return {
-    ok: false,
-    reason: `origin=${origin ?? "null"} referer=${referer ?? "null"}`,
-  };
+  return checkElizaMutatingRequestOrigin(c.req, isProduction);
 }
 
 let stewardAuthMetricCounter = 0;
@@ -268,25 +191,37 @@ app.post("/", async (c) => {
     }
 
     let cloudUser: Awaited<ReturnType<typeof syncUserFromSteward>>;
-    try {
-      cloudUser = await syncUserFromSteward({
+    if (claims.stagingSessionBinding) {
+      const boundCloudUser = await loadVerifiedStagingSessionUser({
+        binding: claims.stagingSessionBinding,
         stewardUserId: claims.userId,
-        email: claims.email,
-        walletAddress: claims.walletAddress ?? claims.address,
-        walletChainType: claims.walletChain,
       });
-    } catch (error) {
-      logStewardAuth("sync-failed", null);
-      // Workers Logs indexes only the message STRING — an Error passed in the
-      // context object is dropped entirely. Inline everything (same fix as the
-      // steward-nonce-exchange twin catch).
-      logger.error(
-        `[steward-auth] Failed to sync Steward user before setting cookie (stewardUserId=${claims.userId}): ${describeSyncError(error)}`,
-      );
-      return c.json(
-        errorBody("Could not sync Steward user", "steward_user_sync_failed"),
-        500,
-      );
+      if (!boundCloudUser) {
+        logStewardAuth("invalid-bound-subject", null);
+        return c.json(errorBody("Invalid token", "invalid_token"), 401);
+      }
+      cloudUser = boundCloudUser;
+    } else {
+      try {
+        cloudUser = await syncUserFromSteward({
+          stewardUserId: claims.userId,
+          email: claims.email,
+          walletAddress: claims.walletAddress ?? claims.address,
+          walletChainType: claims.walletChain,
+        });
+      } catch (error) {
+        logStewardAuth("sync-failed", null);
+        // Workers Logs indexes only the message STRING — an Error passed in the
+        // context object is dropped entirely. Inline everything (same fix as the
+        // steward-nonce-exchange twin catch).
+        logger.error(
+          `[steward-auth] Failed to sync Steward user before setting cookie (stewardUserId=${claims.userId}): ${describeSyncError(error)}`,
+        );
+        return c.json(
+          errorBody("Could not sync Steward user", "steward_user_sync_failed"),
+          500,
+        );
+      }
     }
 
     const ttl = claims.expiration
@@ -307,7 +242,15 @@ app.post("/", async (c) => {
       ...(typeof ttl === "number" ? { maxAge: ttl } : {}),
     });
 
-    if (typeof refreshToken === "string" && refreshToken.length > 0) {
+    if (claims.stagingSessionBinding) {
+      // QA sessions have a signed absolute expiry and are deliberately not
+      // renewable. Remove any older refresh cookie so it cannot silently
+      // replace the QA session with an ordinary long-lived Steward session.
+      deleteCookie(c, cookieNames.refreshToken, {
+        path: "/",
+        ...(domain ? { domain } : {}),
+      });
+    } else if (typeof refreshToken === "string" && refreshToken.length > 0) {
       setCookie(c, cookieNames.refreshToken, refreshToken, {
         httpOnly: true,
         secure,
@@ -324,7 +267,10 @@ app.post("/", async (c) => {
       sameSite: "Lax",
       path: "/",
       ...(domain ? { domain } : {}),
-      maxAge: STEWARD_REFRESH_COOKIE_MAX_AGE,
+      maxAge:
+        claims.stagingSessionBinding && typeof ttl === "number"
+          ? ttl
+          : STEWARD_REFRESH_COOKIE_MAX_AGE,
     });
 
     logStewardAuth("ok", ttl);
@@ -376,19 +322,13 @@ app.delete("/", (c) => {
   }
   const domain = cookieDomainForHost(c.req.header("host"));
   const opts = domain ? { path: "/", domain } : { path: "/" };
-  // Non-production must not clear the unsuffixed legacy names: on the shared
-  // parent domain those names are production's live cookies. Production/unset
-  // still owns and clears them; non-production clears only its suffixed names
-  // and lets the bounded legacy read fallback expire naturally (#13728).
+  // Production's cookieNames resolve to the same unsuffixed names as
+  // LEGACY_STEWARD_COOKIES, so a single set of deleteCookie calls covers both
+  // eras. The separate legacy clear block was redundant (#14130).
   const names = stewardCookieNames(c.env.ENVIRONMENT);
   deleteCookie(c, names.token, opts);
   deleteCookie(c, names.refreshToken, opts);
   deleteCookie(c, names.authed, opts);
-  if (canMutateLegacyStewardCookies(c.env.ENVIRONMENT)) {
-    deleteCookie(c, LEGACY_STEWARD_COOKIES.token, opts);
-    deleteCookie(c, LEGACY_STEWARD_COOKIES.refreshToken, opts);
-    deleteCookie(c, LEGACY_STEWARD_COOKIES.authed, opts);
-  }
   logStewardAuth("deleted", null);
   return c.json({ ok: true });
 });

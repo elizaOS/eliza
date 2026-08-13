@@ -272,29 +272,33 @@ export async function runElizaAuthReset(
   return { ok: true };
 }
 
-const DEFAULT_CLOUD_API_BASE = "https://api.elizacloud.ai";
+const DEFAULT_CLOUD_API_BASE = "https://api.eliza.app";
 
 /**
  * Web host → API host for each Eliza Cloud deployment, mirroring the app's
  * `resolveDirectCloudAuthApiBase` (`ui/src/api/client-cloud.ts`).
  *
- * An explicit map, not a pattern rewrite: a blanket "any *.elizacloud.ai →
- * api.elizacloud.ai" rule silently redirected `api-staging`/`staging` to
- * PRODUCTION, so `dev-login --cloud https://api-staging.elizacloud.ai` minted a
- * prod key while reporting success — making it impossible to obtain a staging
- * credential and easy to believe you had one. Each environment's hosts map only
- * within that environment; an unlisted host (self-hosted, loopback) is left
- * exactly as given.
+ * An explicit map, not a pattern rewrite: a blanket subdomain rewrite can
+ * silently redirect staging to production, so each canonical and transitional
+ * host maps only within its own environment. An unlisted host (self-hosted or
+ * loopback) is left exactly as given.
  */
 const CLOUD_API_BASE_BY_WEB_HOST = new Map<string, string>([
-  ["elizacloud.ai", "api.elizacloud.ai"],
-  ["www.elizacloud.ai", "api.elizacloud.ai"],
-  ["app.elizacloud.ai", "api.elizacloud.ai"],
-  ["dev.elizacloud.ai", "api.elizacloud.ai"],
-  ["api.elizacloud.ai", "api.elizacloud.ai"],
-  ["staging.elizacloud.ai", "api-staging.elizacloud.ai"],
-  ["app-staging.elizacloud.ai", "api-staging.elizacloud.ai"],
-  ["api-staging.elizacloud.ai", "api-staging.elizacloud.ai"],
+  ["eliza.app", "api.eliza.app"],
+  ["www.eliza.app", "api.eliza.app"],
+  ["cloud.eliza.app", "api.eliza.app"],
+  ["api.eliza.app", "api.eliza.app"],
+  ["staging.eliza.app", "api-staging.eliza.app"],
+  ["cloud-staging.eliza.app", "api-staging.eliza.app"],
+  ["api-staging.eliza.app", "api-staging.eliza.app"],
+  ["elizacloud.ai", "api.eliza.app"],
+  ["www.elizacloud.ai", "api.eliza.app"],
+  ["app.elizacloud.ai", "api.eliza.app"],
+  ["dev.elizacloud.ai", "api.eliza.app"],
+  ["api.elizacloud.ai", "api.eliza.app"],
+  ["staging.elizacloud.ai", "api-staging.eliza.app"],
+  ["app-staging.elizacloud.ai", "api-staging.eliza.app"],
+  ["api-staging.elizacloud.ai", "api-staging.eliza.app"],
 ]);
 
 /** @internal Exported for testing. */
@@ -549,7 +553,7 @@ export function registerAuthCommand(program: Command) {
     )
     .option(
       "--cloud <url>",
-      "Cloud API base (default https://api.elizacloud.ai or $ELIZAOS_CLOUD_BASE_URL)",
+      "Cloud API base (default https://api.eliza.app or $ELIZAOS_CLOUD_BASE_URL)",
     )
     .option("--no-save", "Print the key only; do not persist it to the config")
     .option("--json", "Emit the result as JSON (for scripting)")

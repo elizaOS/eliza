@@ -15,6 +15,10 @@ import {
   renderCloudPairHandoffHtml,
   resolveCloudPairAgentIdFromEnv,
 } from "@elizaos/shared/contracts";
+import {
+  classifyElizaHostname,
+  ELIZA_DOMAIN_CONTRACTS,
+} from "@elizaos/shared/elizacloud/domain-contract";
 import { getSensitiveLimiter } from "./auth/sensitive-rate-limit";
 
 const RELAY_TIMEOUT_MS = 15_000;
@@ -24,7 +28,7 @@ function resolveCloudApiBaseUrl(): string {
   const raw =
     process.env.ELIZAOS_CLOUD_BASE_URL ||
     process.env.NEXT_PUBLIC_API_URL ||
-    "https://api.elizacloud.ai/api/v1";
+    "https://api.eliza.app/api/v1";
   return raw.replace(/\/+$/, "");
 }
 
@@ -72,15 +76,36 @@ function canUseManagedDirectRelay(req: http.IncomingMessage): boolean {
   );
 }
 
+function escapeHtml(value: string): string {
+  return value.replace(/[<>&"]/g, (character) => {
+    if (character === "<") return "&lt;";
+    if (character === ">") return "&gt;";
+    if (character === "&") return "&amp;";
+    return "&quot;";
+  });
+}
+
+function resolveCloudConsoleUrl(): string {
+  try {
+    const classified = classifyElizaHostname(
+      new URL(resolveCloudAuthRoot()).hostname,
+    );
+    if (classified.environment) {
+      return `${ELIZA_DOMAIN_CONTRACTS[classified.environment].cloudAppOrigin}/cloud/agents`;
+    }
+  } catch {
+    // error-policy:J3 malformed operator configuration uses the production
+    // recovery destination instead of rendering an untrusted href.
+  }
+  return `${ELIZA_DOMAIN_CONTRACTS.production.cloudAppOrigin}/cloud/agents`;
+}
+
 function renderErrorHtml(title: string, message: string): string {
-  // Static error page — no token, no inline data, just a back link to the
-  // dashboard so the user can re-trigger the popup.
-  const safeTitle = title.replace(/[<>&]/g, (c) =>
-    c === "<" ? "&lt;" : c === ">" ? "&gt;" : "&amp;",
-  );
-  const safeMessage = message.replace(/[<>&]/g, (c) =>
-    c === "<" ? "&lt;" : c === ">" ? "&gt;" : "&amp;",
-  );
+  // Static error page — no token or inline user data, only a canonical
+  // environment-aware recovery link so staging failures never cross to prod.
+  const safeTitle = escapeHtml(title);
+  const safeMessage = escapeHtml(message);
+  const safeRecoveryUrl = escapeHtml(resolveCloudConsoleUrl());
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -120,7 +145,7 @@ function renderErrorHtml(title: string, message: string): string {
   <div class="card">
     <h1>${safeTitle}</h1>
     <p>${safeMessage}</p>
-    <a href="https://www.elizacloud.ai/dashboard/agents" target="_top" rel="noopener">Back to Eliza Cloud →</a>
+    <a href="${safeRecoveryUrl}" target="_top" rel="noopener">Back to Eliza Cloud →</a>
   </div>
 </body>
 </html>`;

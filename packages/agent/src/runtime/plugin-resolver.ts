@@ -82,6 +82,7 @@ const RUNTIME_APP_PLUGIN_SUBPATHS = new Set([
   "@elizaos/plugin-personal-assistant",
   "@elizaos/plugin-phone",
   "@elizaos/plugin-notes",
+  "@elizaos/plugin-documents",
   "@elizaos/plugin-wifi",
 ]);
 

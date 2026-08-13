@@ -9,7 +9,7 @@
  *   1. selectOrProvisionCloudAgent — reuse the user's existing Cloud agent, or
  *      provision one (shared tier = instant). Returns a per-agent REST base.
  *   2. choose the connection base — prefer the dedicated container subdomain
- *      (`https://<agentId>.elizacloud.ai`) for the full runtime (real /ws,
+ *      (`https://<agentId>.cloud.eliza.app`) for the full runtime (real /ws,
  *      /api/conversations) when the agent reports one; else the shared-tier REST
  *      adapter base.
  *   3. point the live client at it (setBaseUrl + setToken) AND persist the
@@ -26,6 +26,7 @@
  * an agent within seconds.
  */
 
+import { isElizaDedicatedAgentHostname } from "@elizaos/shared/elizacloud";
 import { isCloudAgentGoneError } from "../../../api/client-types-core";
 import {
   buildCloudSharedAgentApiBase,
@@ -40,6 +41,7 @@ export interface JoinFlowClient {
     name: string;
     bio?: string[];
     preferAgentId?: string | null;
+    preferSharedTier?: boolean;
     forceCreate?: boolean;
     onProgress?: (status: string, detail?: string) => void;
   }): Promise<{
@@ -77,6 +79,8 @@ export interface RunJoinFlowArgs {
   bio?: string[];
   /** Reuse this agent id when it still exists (e.g. last-active). */
   preferAgentId?: string | null;
+  /** Prefer the shared tier when provisioning (prevents billed dedicated). */
+  preferSharedTier?: boolean;
   /** Always create a new agent ("Create new" gesture). */
   forceCreate?: boolean;
   onProgress?: (status: string, detail?: string) => void;
@@ -95,8 +99,8 @@ export interface JoinFlowResult {
 
 /**
  * The dedicated container subdomain for an agent, when `apiBase` already points
- * at one (`https://<agentId>.elizacloud.ai`). Shared-tier agents serve at the
- * control-plane REST adapter (`api.elizacloud.ai/api/v1/eliza/agents/<id>`), so
+ * at one (`https://<agentId>.cloud.eliza.app`). Shared-tier agents serve at the
+ * control-plane REST adapter (`api.eliza.app/api/v1/eliza/agents/<id>`), so
  * those return `null`. The Cloud only returns a reachable dedicated `web_ui_url`
  * once the per-agent ingress is live; until then this is naturally `null` and we
  * fall back to the shared-tier REST base (instant chat).
@@ -107,8 +111,8 @@ export function dedicatedSubdomainBase(apiBase: string): string | null {
     if (url.protocol !== "https:") return null;
     const host = url.hostname.toLowerCase();
     if (ELIZA_CLOUD_CONTROL_PLANE_HOSTS.has(host)) return null;
-    if (!host.endsWith(".elizacloud.ai")) return null;
-    // The dedicated container's apex (`https://<id>.elizacloud.ai`), no REST
+    if (!isElizaDedicatedAgentHostname(host)) return null;
+    // The dedicated container's apex (`https://<id>.cloud.eliza.app`), no REST
     // adapter path — that is the full-runtime origin.
     return `${url.protocol}//${url.host}`;
   } catch {
@@ -134,6 +138,7 @@ export async function runJoinFlow(
     agentName,
     bio,
     preferAgentId,
+    preferSharedTier,
     forceCreate,
     onProgress,
   } = args;
@@ -143,6 +148,7 @@ export async function runJoinFlow(
     authToken,
     name: agentName,
     ...(bio?.length ? { bio } : {}),
+    ...(preferSharedTier ? { preferSharedTier } : {}),
     ...(forceCreate ? { forceCreate } : {}),
     ...(onProgress ? { onProgress } : {}),
   };

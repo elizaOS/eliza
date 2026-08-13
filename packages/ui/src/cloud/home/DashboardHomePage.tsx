@@ -1,6 +1,6 @@
 /**
  * Cloud console home mounted by the cloud router shell at `dashboard` — the
- * authenticated landing for apex control-plane hosts (elizacloud.ai), where
+ * authenticated landing for the managed Cloud app (`cloud.eliza.app`), where
  * the agent app never mounts (see `AppCatchAllRoute`). One screen answers
  * "where is everything": the org credit balance with an add-funds path, and
  * directory cards for the promoted console surfaces. Cards navigate to the
@@ -81,7 +81,7 @@ function BalanceCard() {
         )}
       </div>
       <Link
-        to="/dashboard/billing"
+        to="/cloud/billing"
         className="shrink-0 rounded-md bg-accent px-4 py-2 text-sm font-medium text-accent-foreground transition-colors hover:bg-accent/85"
       >
         {t("cloud.home.addFunds", { defaultValue: "Add funds" })}

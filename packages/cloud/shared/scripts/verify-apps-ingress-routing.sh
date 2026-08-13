@@ -10,7 +10,7 @@ cd "$(dirname "$0")/.." || exit 1 # -> packages/cloud/shared
 NET=apps-ing-net
 APP=apps-ing-app
 CADDY=apps-ing-caddy
-HOST=abc12345.apps.elizacloud.ai
+HOST=abc12345.apps.eliza.app
 PROXY_PORT=18080
 ADMIN_PORT=12019
 PASS=0
@@ -69,7 +69,7 @@ echo "$RESP" | grep -q "ROUTED-TO-APP" &&
   check fail "routing" "got: $RESP"
 
 echo "=== an UNKNOWN host is NOT routed ==="
-RESP_X=$(curl -s -H "Host: nope.apps.elizacloud.ai" "http://localhost:$PROXY_PORT/")
+RESP_X=$(curl -s -H "Host: nope.apps.eliza.app" "http://localhost:$PROXY_PORT/")
 echo "$RESP_X" | grep -q "ROUTED-TO-APP" &&
   check fail "unknown host isolation" "leaked: $RESP_X" ||
   check ok "unknown host is NOT routed to the app"

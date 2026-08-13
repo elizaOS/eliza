@@ -26,10 +26,24 @@ export interface Bindings {
   /**
    * Wrangler environment name (`"production"` | `"staging"`); unset in local
    * dev/tests. Drives environment-scoped behavior that must not collide across
-   * envs sharing the elizacloud.ai cookie zone — e.g. Steward auth cookie
-   * names (`lib/auth/steward-cookies.ts`) and cache key prefixes.
+   * envs and previews — e.g. Steward auth cookie names
+   * (`lib/auth/steward-cookies.ts`) and cache key prefixes.
    */
   ENVIRONMENT?: string;
+  /** Staging-only QA session bridge kill switch; absent/anything but "true" is off. */
+  STAGING_SESSION_EXCHANGE_ENABLED?: string;
+  /** Exact runtime/code contract version; currently only "v1" is accepted. */
+  STAGING_SESSION_EXCHANGE_VERSION?: string;
+  /** Dedicated HS256 key; must differ from every ordinary Steward JWT secret. */
+  STAGING_SESSION_EXCHANGE_SIGNING_SECRET?: string;
+  /** Dedicated protected-header kid (`staging-qa-v1-*`). */
+  STAGING_SESSION_EXCHANGE_SIGNING_KEY_ID?: string;
+  /** Exact API-key UUIDs permitted to mint a full QA browser session. */
+  STAGING_SESSION_EXCHANGE_ALLOWED_API_KEY_IDS?: string;
+  /** Exact Cloud user UUIDs eligible for the staging QA session bridge. */
+  STAGING_SESSION_EXCHANGE_ALLOWED_USER_IDS?: string;
+  /** Exact Cloud organization UUIDs eligible for the staging QA session bridge. */
+  STAGING_SESSION_EXCHANGE_ALLOWED_ORGANIZATION_IDS?: string;
   /**
    * Routes chat completions through the lazy chat-only Worker application.
    * Default off provides an immediate rollback to the monolithic router.
@@ -222,12 +236,12 @@ export interface Bindings {
   VERCEL_OIDC_TOKEN?: string;
   /**
    * Public hostname that serves the BLOB R2 bucket. Used to construct sample
-   * URLs returned to clients. Defaults to "blob.elizacloud.ai" if unset.
+   * URLs returned to clients. Defaults to "blob.eliza.app" if unset.
    */
   R2_PUBLIC_HOST?: string;
   /**
    * Base domain for managed frontend hosting system hosts. When set (e.g.
-   * "sites.elizacloud.ai"), a request to `<app-slug>.<suffix>` is served from
+   * "sites.eliza.app"), a request to `<app-slug>.<suffix>` is served from
    * the app's active frontend deployment by the Worker entry (see
    * `getHostedFrontendServeRewrite` in `packages/cloud/api/src/index.ts`).
    */
@@ -249,6 +263,8 @@ export interface Bindings {
   GOOGLE_CLIENT_ID?: string;
   GOOGLE_CLIENT_SECRET?: string;
   STEWARD_JWT_SECRET?: string;
+  /** HS256 service-account bridge secret; must never equal the staging QA signer. */
+  ELIZA_SERVICE_JWT_SECRET?: string;
   /** Steward vault encryption master password. Required for wallet/key operations. */
   STEWARD_MASTER_PASSWORD?: string;
   /** Tenant scoping. */
@@ -271,7 +287,7 @@ export interface Bindings {
    * token, and the only host the OIDC endpoints answer on. Relying parties
    * byte-compare it, so a trailing slash or host change invalidates every
    * existing account link. Must be a host this Worker is routed for — the
-   * apex `elizacloud.ai` is the SPA and never reaches the Worker.
+   * public homepage is a Pages app and never reaches the Worker directly.
    */
   OIDC_ISSUER_URL?: string;
   /**

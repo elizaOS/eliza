@@ -2,7 +2,7 @@
  * GET /api/v1/dashboard
  *
  * Aggregated payload for the SPA's dashboard home page
- * (`apps/frontend/src/dashboard/Page.tsx`).
+ * (`packages/ui/src/cloud/home/DashboardHomePage.tsx`).
  *
  * Stats are assembled by the dashboard repository so route handlers do not
  * depend on Drizzle table shapes.

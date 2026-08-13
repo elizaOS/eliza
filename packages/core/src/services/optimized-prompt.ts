@@ -182,13 +182,6 @@ export interface OptimizedPromptFrontierEntry {
 	feedback?: string;
 }
 
-export interface OptimizedPromptContextConfig {
-	providerSet?: readonly string[];
-	providerOrder?: readonly string[];
-	renderTemplates?: Readonly<Record<string, string>>;
-	budgetVector?: Readonly<Record<string, number>>;
-}
-
 /**
  * Snapshot of the noise-gate promotion decision that accepted this artifact,
  * including the two write-site provenance fields (`incumbentSource` /
@@ -225,13 +218,11 @@ export interface OptimizedPromptArtifact {
 	lineage: OptimizedPromptLineageEntry[];
 	frontier?: OptimizedPromptFrontierEntry[];
 	promotionDecision?: PromotionDecisionSummary;
-	contextConfig?: OptimizedPromptContextConfig;
 }
 
 export interface OptimizedPromptResolved {
 	prompt: string;
 	fewShotExamples?: OptimizedPromptFewShotExample[];
-	contextConfig?: OptimizedPromptContextConfig;
 	optimizerSource: OptimizerName;
 }
 
@@ -373,6 +364,22 @@ function isTask(value: unknown): value is OptimizedPromptTask {
 	);
 }
 
+const OPTIMIZED_PROMPT_ARTIFACT_KEYS = new Set([
+	"task",
+	"optimizer",
+	"baseline",
+	"prompt",
+	"score",
+	"baselineScore",
+	"datasetId",
+	"datasetSize",
+	"generatedAt",
+	"fewShotExamples",
+	"lineage",
+	"frontier",
+	"promotionDecision",
+]);
+
 /**
  * Strict parser. We reject artifacts that are missing required fields so a
  * corrupt file cannot silently shadow the baseline prompt with garbage.
@@ -381,6 +388,14 @@ export function parseOptimizedPromptArtifact(
 	raw: unknown,
 ): OptimizedPromptArtifact | null {
 	if (!isStringRecord(raw)) return null;
+	// Keep the persisted contract closed. In particular, contextConfig was
+	// retired with its training consumer; accepting it (or any future extra)
+	// here would let an unconsumed producer field cross the signing boundary.
+	for (const key of Object.keys(raw)) {
+		if (!OPTIMIZED_PROMPT_ARTIFACT_KEYS.has(key)) {
+			return null;
+		}
+	}
 	if (!isTask(raw.task)) return null;
 	if (!isOptimizerName(raw.optimizer)) return null;
 	if (typeof raw.baseline !== "string" || typeof raw.prompt !== "string") {
@@ -437,7 +452,6 @@ export function parseOptimizedPromptArtifact(
 		fewShotExamples: fewShot,
 		frontier,
 		promotionDecision: coercePromotionDecision(raw.promotionDecision),
-		contextConfig: coerceContextConfig(raw.contextConfig),
 	};
 }
 
@@ -497,59 +511,6 @@ function coercePromotionDecision(
 	};
 	return Object.values(summary).some((entry) => entry !== undefined)
 		? summary
-		: undefined;
-}
-
-function coerceStringArray(value: unknown): string[] | undefined {
-	if (!Array.isArray(value)) return undefined;
-	const out = value.filter(
-		(entry): entry is string =>
-			typeof entry === "string" && entry.trim().length > 0,
-	);
-	return out.length > 0 ? out : undefined;
-}
-
-function coerceStringRecord(
-	value: unknown,
-): Readonly<Record<string, string>> | undefined {
-	if (!isStringRecord(value)) return undefined;
-	const out: Record<string, string> = {};
-	for (const [key, entry] of Object.entries(value)) {
-		if (typeof entry === "string" && entry.trim().length > 0) {
-			out[key] = entry;
-		}
-	}
-	return Object.keys(out).length > 0 ? out : undefined;
-}
-
-function coerceNumberRecord(
-	value: unknown,
-): Readonly<Record<string, number>> | undefined {
-	if (!isStringRecord(value)) return undefined;
-	const out: Record<string, number> = {};
-	for (const [key, entry] of Object.entries(value)) {
-		if (typeof entry === "number" && Number.isFinite(entry) && entry >= 0) {
-			out[key] = entry;
-		}
-	}
-	return Object.keys(out).length > 0 ? out : undefined;
-}
-
-function coerceContextConfig(
-	value: unknown,
-): OptimizedPromptContextConfig | undefined {
-	if (!isStringRecord(value)) return undefined;
-	const config: OptimizedPromptContextConfig = {
-		providerSet: coerceStringArray(value.providerSet),
-		providerOrder: coerceStringArray(value.providerOrder),
-		renderTemplates: coerceStringRecord(value.renderTemplates),
-		budgetVector: coerceNumberRecord(value.budgetVector),
-	};
-	return config.providerSet ||
-		config.providerOrder ||
-		config.renderTemplates ||
-		config.budgetVector
-		? config
 		: undefined;
 }
 
@@ -679,7 +640,6 @@ export class OptimizedPromptService extends Service {
 		return {
 			prompt: entry.artifact.prompt,
 			fewShotExamples: entry.artifact.fewShotExamples,
-			contextConfig: entry.artifact.contextConfig,
 			optimizerSource: entry.artifact.optimizer,
 		};
 	}
@@ -722,13 +682,32 @@ export class OptimizedPromptService extends Service {
 		task: OptimizedPromptTask,
 		artifact: OptimizedPromptArtifact,
 	): Promise<string> {
-		if (artifact.task !== task) {
-			throw new Error(
-				`[OptimizedPromptService] artifact.task=${artifact.task} does not match target task=${task}`,
+		const validatedArtifact = parseOptimizedPromptArtifact(artifact);
+		if (!validatedArtifact) {
+			throw new ElizaError(
+				"Optimized prompt artifact failed strict validation",
+				{
+					code: "OPTIMIZED_PROMPT_ARTIFACT_INVALID",
+					context: { task },
+				},
+			);
+		}
+		if (validatedArtifact.task !== task) {
+			throw new ElizaError(
+				"Optimized prompt artifact task does not match the target task",
+				{
+					code: "OPTIMIZED_PROMPT_ARTIFACT_TASK_MISMATCH",
+					context: {
+						expectedTask: task,
+						actualTask: validatedArtifact.task,
+					},
+				},
 			);
 		}
 		const dir = join(this.storeRoot, task);
-		return runExclusive(dir, () => this.writeArtifact(task, dir, artifact));
+		return runExclusive(dir, () =>
+			this.writeArtifact(task, dir, validatedArtifact),
+		);
 	}
 
 	private async writeArtifact(

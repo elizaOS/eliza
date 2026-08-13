@@ -72,7 +72,7 @@ function RelativeTimeImpl({
 
   return (
     <time className={className} dateTime={iso} data-testid={testId}>
-      {short ? formatRelativeTimeShort(ts) : formatRelativeTime(ts, t)}
+      {short ? formatRelativeTimeShort(ts, t) : formatRelativeTime(ts, t)}
     </time>
   );
 }

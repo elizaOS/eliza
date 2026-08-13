@@ -69,6 +69,7 @@ interface SeedOpts {
   bridgeUrl?: string | null;
   poolStatus?: string | null;
   lastBackupAt?: Date | null;
+  lastHeartbeatAt?: Date | null;
 }
 
 async function seedSandbox(opts: SeedOpts = {}): Promise<string> {
@@ -85,6 +86,7 @@ async function seedSandbox(opts: SeedOpts = {}): Promise<string> {
       bridge_url: opts.bridgeUrl === undefined ? REACHABLE_BRIDGE : opts.bridgeUrl,
       pool_status: (opts.poolStatus ?? null) as never,
       last_backup_at: opts.lastBackupAt ?? null,
+      last_heartbeat_at: opts.lastHeartbeatAt ?? null,
     })
     .returning();
   return sandbox.id;
@@ -286,7 +288,9 @@ describe("enqueueScheduledBackups — enqueue behavior", () => {
  * predicate is a red test rather than a silent bad row on the queue.
  */
 describe("enqueueAgent*Once — real lifecycle-job inserts", () => {
-  async function seedAgent(): Promise<{
+  async function seedAgent(
+    opts: { status?: string; lastHeartbeatAt?: Date | null; executionTier?: string } = {},
+  ): Promise<{
     agentId: string;
     orgId: string;
     userId: string;
@@ -299,8 +303,10 @@ describe("enqueueAgent*Once — real lifecycle-job inserts", () => {
         organization_id: orgId,
         user_id: userId,
         agent_name: uniq("agent"),
-        status: "running" as never,
+        status: (opts.status ?? "running") as never,
+        execution_tier: (opts.executionTier ?? "shared") as never,
         bridge_url: REACHABLE_BRIDGE,
+        last_heartbeat_at: opts.lastHeartbeatAt ?? null,
       })
       .returning();
     return {
@@ -511,7 +517,7 @@ describe("enqueueAgent*Once — real lifecycle-job inserts", () => {
   });
 
   test("delete flips the sandbox to deletion_pending and cancels other in-flight jobs", async () => {
-    const { agentId, orgId, userId } = await seedAgent();
+    const { agentId, orgId, userId } = await seedAgent({ status: "running" });
     // A queued suspend that the delete must supersede.
     await provisioningJobService.enqueueAgentSuspendOnce({
       agentId,
@@ -523,9 +529,11 @@ describe("enqueueAgent*Once — real lifecycle-job inserts", () => {
       agentId,
       organizationId: orgId,
       userId,
+      authorization: "user_request",
     });
     expect(del.created).toBe(true);
     expect(del.job.type).toBe(JOB_TYPES.AGENT_DELETE);
+    expect((del.job.data as { authorization?: string }).authorization).toBe("user_request");
 
     const [sandbox] = await dbWrite
       .select()
@@ -538,6 +546,35 @@ describe("enqueueAgent*Once — real lifecycle-job inserts", () => {
     expect(suspendRows[0]?.status).toBe("cancelled");
     const deleteRows = await jobsOfType(agentId, JOB_TYPES.AGENT_DELETE);
     expect(deleteRows[0]?.status).toBe("pending");
+  });
+
+  test("delete refuses a running sandbox before recording deletion intent", async () => {
+    const { agentId, orgId, userId } = await seedAgent({
+      status: "running",
+      lastHeartbeatAt: new Date(Date.now() - 5 * 60_000),
+      executionTier: "dedicated-always",
+    });
+
+    await expect(
+      provisioningJobService.enqueueAgentDeleteOnce({
+        agentId,
+        organizationId: orgId,
+        userId,
+      }),
+    ).rejects.toMatchObject({
+      status: 409,
+      code: "session_not_ready",
+      message: "Agent is running; suspend it before deletion",
+    });
+
+    const [sandbox] = await dbWrite
+      .select()
+      .from(agentSandboxes)
+      .where(eq(agentSandboxes.id, agentId));
+    expect(sandbox?.status).toBe("running");
+    expect(sandbox?.deletion_attempt_id).toBeNull();
+    expect(sandbox?.deletion_started_at).toBeNull();
+    expect(await jobsOfType(agentId, JOB_TYPES.AGENT_DELETE)).toHaveLength(0);
   });
 
   test("conditional delete atomically owns the exact stale provisioning identity", async () => {

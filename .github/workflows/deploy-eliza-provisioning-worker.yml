@@ -43,10 +43,10 @@ on:
         required: false
         type: string
 
-# Per-env concurrency: a develop push (staging) and a main push (production)
-# can deploy in parallel without one cancelling the other.
+# Per-run admission so two dispatches of the same SHA both reach
+# determine-env (#18092). The deploy job is the SSH critical section.
 concurrency:
-  group: deploy-eliza-provisioning-worker-${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'production' || 'staging') }}
+  group: deploy-eliza-provisioning-worker-${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'production' || 'staging') }}-${{ format('run-{0}', github.run_id) }}
   cancel-in-progress: false
 
 # Default to least privilege. Override per-job where needed.
@@ -56,7 +56,7 @@ permissions:
 jobs:
   determine-env:
     name: Determine environment
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, Linux, X64]
     outputs:
       environment: ${{ steps.env.outputs.environment }}
       branch: ${{ steps.env.outputs.branch }}
@@ -113,8 +113,12 @@ jobs:
 
   deploy:
     name: Deploy worker to Hetzner host (${{ needs.determine-env.outputs.environment }} @ ${{ needs.determine-env.outputs.deployment_sha }})
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, Linux, X64]
     needs: determine-env
+    concurrency:
+      group: deploy-eliza-provisioning-worker-mutate-${{ needs.determine-env.outputs.environment }}
+      cancel-in-progress: false
+      queue: max
     environment: ${{ needs.determine-env.outputs.environment }}
     # The three bounded remote phases (5m prerequisites, 20m deploy, 5m health)
     # can each use their ceiling without the enclosing job becoming the first
@@ -141,9 +145,8 @@ jobs:
       # Sandbox-registry Redis (TCP redis:// proxy, sandbox-reachable — never a
       # *.railway.internal host) so provisioned sandboxes self-register and
       # Discord/Telegram inbound routing works (#8621 / #8756). Reconciled into
-      # /opt/eliza/cloud/.env.local the same way as HEADSCALE_*; when the secret
-      # is unset the reconcile loop skips it and preserves any hand-set value,
-      # so this is a no-op until the operator sets the GH secret.
+      # /opt/eliza/cloud/.env.local the same way as HEADSCALE_*. This integration
+      # remains optional and skip-empty preserves a hand-set value when absent.
       SANDBOX_REGISTRY_REDIS_URL: ${{ secrets.SANDBOX_REGISTRY_REDIS_URL }}
       # Cloud database DSN for the provisioning worker + agent router. Same
       # fallback chain as the migrator jobs (cloud-cf-deploy.yml /
@@ -151,16 +154,15 @@ jobs:
       # DB the Worker schema is migrated against. Before this, DATABASE_URL
       # only lived hand-edited on the box: when staging moved Neon → Railway
       # the CP silently kept polling the abandoned Neon DB for 3 weeks
-      # (#15160). Reconciled into /opt/eliza/cloud/.env.local with the same
-      # skip-when-unset semantics as HEADSCALE_* — an environment without any
-      # of these secrets keeps its current hand-set value.
+      # (#15160). The deploy preflight now rejects an absent value before SSH;
+      # the host can no longer silently preserve a stale hand-set database.
       DATABASE_URL: ${{ secrets.DATABASE_URL || secrets.RAILWAY_DATABASE_URL || secrets.NEON_DATABASE_URL }}
       # Field-encryption root secret used to unwrap per-org DEKs for encrypted
       # agent environment variables. Must match the Cloudflare Worker secret:
       # the Worker writes encrypted env vars, and this provisioning worker
-      # decrypts them while creating the agent container (#15385). Skip-empty
-      # reconcile semantics below preserve hand-set values until the secret is
-      # wired for an environment.
+      # decrypts them while creating the agent container (#15385). Cloudflare
+      # never reveals an existing value, so an absent GitHub secret preserves the
+      # host value; the remote preflight verifies only that the name is populated.
       SECRETS_MASTER_KEY: ${{ secrets.SECRETS_MASTER_KEY }}
       # Operator pin for the canonical managed-agent image
       # (containersEnv.defaultAgentImageOverride; falls back to
@@ -175,32 +177,74 @@ jobs:
       ELIZA_AGENT_IMAGE: ${{ vars.ELIZA_AGENT_IMAGE }}
       # The edge Worker forwards the original per-agent host to this daemon.
       # Keep the daemon's parser on the same environment-specific suffix or a
-      # staging host (`<uuid>.staging.elizacloud.ai`) is rejected as malformed.
-      ELIZA_CLOUD_AGENT_BASE_DOMAIN: ${{ needs.determine-env.outputs.environment == 'production' && 'elizacloud.ai' || 'staging.elizacloud.ai' }}
+      # staging host (`<uuid>.cloud-staging.eliza.app`) is rejected as malformed.
+      ELIZA_CLOUD_AGENT_BASE_DOMAIN: ${{ needs.determine-env.outputs.environment == 'production' && 'cloud.eliza.app' || 'cloud-staging.eliza.app' }}
+      # Public hostname the edge Worker uses to reach this agent-router. The
+      # host's nginx config predates the eliza.app consolidation and must accept
+      # both this canonical name and the legacy elizacloud.ai name during the
+      # compatibility window.
+      AGENT_ROUTER_PUBLIC_HOST: ${{ needs.determine-env.outputs.environment == 'production' && 'eliza-production-1.eliza.app' || 'eliza-staging-1.eliza.app' }}
+      LEGACY_AGENT_ROUTER_PUBLIC_HOST: ${{ needs.determine-env.outputs.environment == 'production' && 'eliza-production-1.elizacloud.ai' || 'eliza-staging-1.elizacloud.ai' }}
     steps:
-      - name: Check deploy configuration
+      - name: Validate canonical deploy configuration and shared secrets
         id: deploy_config
+        env:
+          TARGET_ENVIRONMENT: ${{ needs.determine-env.outputs.environment }}
         run: |
-          if [ -z "$DEPLOY_HOST" ] || [ -z "$DEPLOY_SSH_KEY" ]; then
+          set -euo pipefail
+
+          # Only settings GitHub authoritatively reconciles are required here.
+          # Host-preserved secrets are checked by name after SSH, without values.
+          required_deploy_settings=(
+            DEPLOY_HOST
+            DEPLOY_SSH_KEY
+            HEADSCALE_API_URL
+            HEADSCALE_PUBLIC_URL
+            HEADSCALE_API_KEY
+            DATABASE_URL
+          )
+          missing=()
+          for name in "${required_deploy_settings[@]}"; do
+            value="${!name:-}"
+            if [ -z "${value//[[:space:]]/}" ]; then
+              missing+=("$name")
+            fi
+          done
+          if [ "${#missing[@]}" -gt 0 ]; then
             echo "configured=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::Missing ELIZA_PROVISIONING_HOST or ELIZA_PROVISIONING_SSH_KEY; skipping provisioning-worker deploy."
+            echo "::error::Missing required provisioning settings for GitHub environment $TARGET_ENVIRONMENT: ${missing[*]}"
             {
-              echo "### Provisioning worker deploy skipped"
+              echo "### Provisioning worker deploy blocked"
               echo ""
-              echo "Missing \`ELIZA_PROVISIONING_HOST\` or \`ELIZA_PROVISIONING_SSH_KEY\` for GitHub environment \`production\`."
-              echo ""
-              echo "Bootstrap the Hetzner host and secrets with:"
-              echo ""
-              echo "\`\`\`bash"
-              echo "HCLOUD_TOKEN=... bun run packages/cloud/scripts/admin/bootstrap-provisioning-worker-host.mjs"
-              echo "\`\`\`"
+              echo "GitHub environment \`$TARGET_ENVIRONMENT\` is missing required setting name(s): \`${missing[*]}\`."
+              echo "No protected values were printed. Configure the environment before retrying."
             } >> "$GITHUB_STEP_SUMMARY"
-            if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-              echo "::error::Manual deployment requires ELIZA_PROVISIONING_HOST and ELIZA_PROVISIONING_SSH_KEY."
+            exit 1
+          fi
+
+          require_exact() {
+            local name="$1"
+            local actual="$2"
+            local expected="$3"
+            if [ "$actual" != "$expected" ]; then
+              echo "configured=false" >> "$GITHUB_OUTPUT"
+              echo "::error::$name does not match the canonical $TARGET_ENVIRONMENT environment contract"
               exit 1
             fi
-            exit 0
+          }
+
+          if [ "$TARGET_ENVIRONMENT" = "production" ]; then
+            require_exact DEPLOY_BRANCH "$DEPLOY_BRANCH" "main"
+            require_exact HEADSCALE_API_URL "$HEADSCALE_API_URL" "https://headscale.eliza.app"
+            require_exact HEADSCALE_PUBLIC_URL "$HEADSCALE_PUBLIC_URL" "https://headscale.eliza.app"
+            require_exact ELIZA_CLOUD_AGENT_BASE_DOMAIN "$ELIZA_CLOUD_AGENT_BASE_DOMAIN" "cloud.eliza.app"
+          else
+            require_exact DEPLOY_BRANCH "$DEPLOY_BRANCH" "develop"
+            require_exact HEADSCALE_API_URL "$HEADSCALE_API_URL" "https://headscale-staging.eliza.app"
+            require_exact HEADSCALE_PUBLIC_URL "$HEADSCALE_PUBLIC_URL" "https://headscale-staging.eliza.app"
+            require_exact ELIZA_CLOUD_AGENT_BASE_DOMAIN "$ELIZA_CLOUD_AGENT_BASE_DOMAIN" "cloud-staging.eliza.app"
           fi
+
           echo "configured=true" >> "$GITHUB_OUTPUT"
 
       - name: Ensure host prereqs (Node 24, swap, bunx symlink)
@@ -256,7 +300,7 @@ jobs:
           # Preserve setup/build headroom without weakening the preflight's own
           # eight-minute fail-closed fence near the end of this remote script.
           command_timeout: 20m
-          envs: DEPLOY_BRANCH,DEPLOY_SHA,SYSTEMD_UNIT,HEADSCALE_API_URL,HEADSCALE_PUBLIC_URL,HEADSCALE_API_KEY,CONTAINERS_SSH_KEY,SANDBOX_REGISTRY_REDIS_URL,DATABASE_URL,SECRETS_MASTER_KEY,ELIZA_AGENT_IMAGE,ELIZA_CLOUD_AGENT_BASE_DOMAIN
+          envs: DEPLOY_BRANCH,DEPLOY_SHA,SYSTEMD_UNIT,HEADSCALE_API_URL,HEADSCALE_PUBLIC_URL,HEADSCALE_API_KEY,CONTAINERS_SSH_KEY,SANDBOX_REGISTRY_REDIS_URL,DATABASE_URL,SECRETS_MASTER_KEY,ELIZA_AGENT_IMAGE,ELIZA_CLOUD_AGENT_BASE_DOMAIN,AGENT_ROUTER_PUBLIC_HOST,LEGACY_AGENT_ROUTER_PUBLIC_HOST
           script: |
             set -euo pipefail
             echo "=== Deploying eliza-provisioning-worker (branch: $DEPLOY_BRANCH sha: $DEPLOY_SHA) ==="
@@ -391,8 +435,9 @@ jobs:
             # Reconcile control-plane secrets (HEADSCALE_API_URL /
             # HEADSCALE_PUBLIC_URL / HEADSCALE_API_KEY /
             # SANDBOX_REGISTRY_REDIS_URL / DATABASE_URL / SECRETS_MASTER_KEY)
-            # into the systemd EnvironmentFile so CI is the single source of
-            # truth and the box self-heals on every deploy. The daemon +
+            # into the systemd EnvironmentFile when the protected GitHub
+            # environment supplies them. Older unrecoverable host values remain
+            # intact when GitHub is blank. The daemon +
             # cloud-shared read these straight from process.env
             # (headscale-client.ts, headscale-integration.ts,
             # docker-sandbox-provider.ts, the DB client, and encrypted
@@ -443,6 +488,39 @@ jobs:
             done
             sudo chmod 600 "$ENV_FILE"
 
+            # Some live secrets predate GitHub environment inventory and cannot
+            # be recovered from Cloudflare. Empty CI values deliberately preserve
+            # their host entries above. Fail before restart unless every daemon-
+            # required name has a nonblank value, while never printing a value.
+            required_host_settings=(
+              HEADSCALE_API_URL
+              HEADSCALE_PUBLIC_URL
+              HEADSCALE_API_KEY
+              CONTAINERS_SSH_KEY
+              DATABASE_URL
+              SECRETS_MASTER_KEY
+              ELIZA_CLOUD_AGENT_BASE_DOMAIN
+            )
+            missing_host_settings=()
+            for name in "${required_host_settings[@]}"; do
+              if ! sudo awk -F= -v required_name="$name" '
+                $1 == required_name {
+                  sub(/^[^=]*=/, "")
+                  value = $0
+                  gsub(/[[:space:]]/, "", value)
+                  if (length(value) > 0) found = 1
+                }
+                END { exit found ? 0 : 1 }
+              ' "$ENV_FILE"; then
+                missing_host_settings+=("$name")
+              fi
+            done
+            if [ "${#missing_host_settings[@]}" -gt 0 ]; then
+              echo "::error::Provisioning host is missing required setting name(s): ${missing_host_settings[*]}"
+              exit 1
+            fi
+            echo "Verified required provisioning-host setting names; values were not printed."
+
             # This workflow can reach the restart independently of the cloud
             # deploy workflow's migrate-db job. Bind activation to the exact
             # catalog and migration hash instead of assuming another workflow
@@ -471,6 +549,49 @@ jobs:
             sudo systemctl restart "$SYSTEMD_UNIT"
             sudo systemctl restart eliza-agent-router.service
             echo "=== Restart issued for both daemons ==="
+
+            # The canonical edge origin must terminate in the nginx vhost that
+            # proxies the agent-router daemon. Without this alias, nginx
+            # serves its default blank web shell with HTTP 200; lifecycle calls
+            # then parse HTML as a snapshot and safe restarts wedge. Amend the
+            # existing, operator-reviewed router vhost rather than creating a
+            # second listener or certificate configuration.
+            mapfile -t router_vhosts < <(
+              sudo grep -RIl \
+                'proxy_pass[[:space:]]\+http://127\.0\.0\.1:3458' \
+                /etc/nginx/sites-enabled /etc/nginx/conf.d 2>/dev/null \
+                | xargs -r readlink -f \
+                | sort -u
+            )
+            if [ "${#router_vhosts[@]}" -eq 0 ]; then
+              echo "::error::No enabled nginx vhost proxies the agent-router upstream on 127.0.0.1:3458"
+              exit 1
+            fi
+            for vhost in "${router_vhosts[@]}"; do
+              if sudo grep -Eq "server_name[^;]*${AGENT_ROUTER_PUBLIC_HOST}([[:space:]]|;)" "$vhost"; then
+                continue
+              fi
+              sudo sed -Ei \
+                "/server_name[^;]*;/ s/[[:space:]]*;/ ${AGENT_ROUTER_PUBLIC_HOST};/" \
+                "$vhost"
+            done
+            sudo nginx -t
+            sudo systemctl reload nginx
+            canonical_router_ready=false
+            for attempt in $(seq 1 30); do
+              if curl -fsS "https://${AGENT_ROUTER_PUBLIC_HOST}/healthz" \
+                | grep -Eq '"ok"[[:space:]]*:[[:space:]]*true'; then
+                canonical_router_ready=true
+                break
+              fi
+              echo "Canonical agent-router health not ready (attempt ${attempt}/30)"
+              sleep 2
+            done
+            if [ "$canonical_router_ready" != "true" ]; then
+              echo "::error::Canonical agent-router did not return JSON health after 30 attempts"
+              exit 1
+            fi
+            echo "Verified canonical agent-router nginx host alias: ${AGENT_ROUTER_PUBLIC_HOST}"
 
       - name: Health check
         if: steps.deploy_config.outputs.configured == 'true'
@@ -562,8 +683,8 @@ jobs:
           title: "🚀 Eliza Provisioning Worker Deployed"
           nodetail: true
           description: |
-            Branch: develop
-            Commit: ${{ github.sha }}
+            Branch: ${{ needs.determine-env.outputs.branch }}
+            Commit: ${{ needs.determine-env.outputs.deployment_sha }}
           color: 0x00ff00
 
       - name: Notify Discord (Failure)
@@ -575,8 +696,8 @@ jobs:
           title: "❌ Eliza Provisioning Worker Deploy Failed"
           nodetail: true
           description: |
-            Branch: develop
-            Commit: ${{ github.sha }}
+            Branch: ${{ needs.determine-env.outputs.branch }}
+            Commit: ${{ needs.determine-env.outputs.deployment_sha }}
           color: 0xff0000
 
 # ci-touch: re-trigger prod daemon deploy (dispatch runs were runner-starved) 2026-06-21

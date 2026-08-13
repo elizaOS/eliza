@@ -2,15 +2,15 @@
  * Silent cloud-session recovery for the agent-subdomain re-pair path (#15132
  * follow-up: the "Open this agent from Eliza Cloud" dead-end).
  *
- * THE BUG THIS CLOSES: a returning PWA user opens a dedicated cloud agent
- * origin (`<id>.elizacloud.ai`) directly. Their persisted agent credential is
+ * THE BUG THIS CLOSES: a returning PWA user opens the hosted Cloud app
+ * directly. Their persisted agent credential is
  * stale (container upgraded / SW-refreshed), so `/api/auth/me` 401s with
  * `remote_auth_required`. The top-level auth gate wants to transparently
  * re-pair, but re-pairing needs a cloud session token, and
  * `getCloudAuthToken()` reads the APP-ORIGIN localStorage mirror — which a
- * cold PWA relaunch on the agent subdomain may not have. The shared,
- * HttpOnly `.elizacloud.ai` session cookie IS present (they're signed in to
- * Eliza Cloud), but nothing was consulting it at the recovery gate, so the
+ * cold PWA relaunch may not have. A host-only HttpOnly session cookie can
+ * still be present on that same app origin, but nothing was consulting it at
+ * the recovery gate, so the
  * user fell straight through to the terminal `CloudHostedAgentAuthNotice`
  * ("Re-open from Eliza Cloud") dead-end instead of a silent re-pair.
  *
@@ -32,6 +32,7 @@
 import {
   hasStewardAuthedCookie,
   readStoredStewardToken,
+  STEWARD_REFRESH_ENDPOINT,
   writeStoredStewardToken,
 } from "@elizaos/shared/steward-session-client";
 import { refreshCloudStewardSession } from "../api/client-cloud";
@@ -64,9 +65,16 @@ function defaultRaceTimeout<T>(p: Promise<T>, ms: number): Promise<T | null> {
   });
 }
 
+function resolveRepairRefreshEndpoint(): string | undefined {
+  if (typeof window === "undefined") return undefined;
+  // Refresh cookies are host-only. Pages proxies this same-origin endpoint to
+  // the matching API Worker, preserving the browser cookie boundary.
+  return `${window.location.origin}${STEWARD_REFRESH_ENDPOINT}`;
+}
+
 /**
  * Ensure an app-origin cloud session token exists for the re-pair exchange,
- * recovering it from the shared HttpOnly Eliza Cloud cookie when the
+ * recovering it from the same-origin HttpOnly Eliza Cloud cookie when the
  * localStorage mirror is empty.
  *
  * Returns the usable cloud token, or `null` when none can be recovered (no
@@ -92,9 +100,9 @@ export async function ensureCloudSessionForRepair(
   const existing = readToken()?.trim();
   if (existing) return existing;
 
-  // No app-origin token. Only the shared HttpOnly `.elizacloud.ai` session
-  // cookie can recover one; without it there is genuinely no cloud session and
-  // the notice/wall is the honest surface.
+  // No app-origin token. Only this host's HttpOnly session cookie can recover
+  // one; without it there is genuinely no cloud session and the notice/wall is
+  // the honest surface.
   if (typeof window === "undefined") return null;
   if (!hasCookie()) return null;
 
@@ -103,7 +111,7 @@ export async function ensureCloudSessionForRepair(
     // error-policy:J4 a failed/absent cookie refresh yields null → the caller
     // keeps the wall; it NEVER fabricates a session.
     recovered = await raceTimeout(
-      refreshFn().catch(() => null),
+      refreshFn({ endpoint: resolveRepairRefreshEndpoint() }).catch(() => null),
       timeoutMs,
     );
   } catch {

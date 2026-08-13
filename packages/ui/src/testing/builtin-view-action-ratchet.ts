@@ -258,10 +258,10 @@ export const BUILTIN_VIEW_MUTATION_BASELINE = [
       "packages/ui/src/components/pages/TaskEditor.tsx",
       "packages/ui/src/components/pages/ScheduledTaskEditor.tsx",
       "packages/ui/src/components/pages/WorkflowEditor.tsx",
-      "packages/ui/src/components/pages/WorkflowGraphViewer.tsx",
+      "packages/ui/src/components/pages/WorkflowTriggerPanel.tsx",
     ],
     semanticActions: ["SCHEDULED_TASKS", "TRIGGER"],
-    maxMutationSites: 71,
+    maxMutationSites: 65,
     notes:
       "Automations feed plus its task/workflow editors all write ScheduledTask records through the one scheduler; SCHEDULED_TASKS is the umbrella twin and TRIGGER pairs the trigger steps inside workflow editing.",
   },

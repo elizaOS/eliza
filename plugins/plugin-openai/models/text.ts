@@ -49,9 +49,11 @@ import {
   getMegaModel,
   getNanoModel,
   getResponseHandlerModel,
+  getSetting,
   getSmallModel,
   getUsageProvider,
   isCerebrasMode,
+  isProxyMode,
 } from "../utils/config";
 import { emitModelUsageEvent, type ModelRetryTelemetry } from "../utils/events";
 
@@ -328,10 +330,10 @@ function isCerebrasReasoningModel(modelName: string | undefined): boolean {
   return id === "gpt-oss-120b" || id === "zai-glm-4.7";
 }
 
-/** Detects OpenCode Go only when it is the effective request endpoint. */
-function isOpenCodeGoMode(runtime: IAgentRuntime): boolean {
+function isOpenCodeGoEndpoint(value: string | undefined): boolean {
+  if (!value) return false;
   try {
-    const url = new URL(getBaseURL(runtime));
+    const url = new URL(value);
     return (
       url.protocol === "https:" &&
       url.hostname.toLowerCase() === "opencode.ai" &&
@@ -341,6 +343,21 @@ function isOpenCodeGoMode(runtime: IAgentRuntime): boolean {
     // error-policy:J3 Malformed configuration is not a matching provider URL.
     return false;
   }
+}
+
+/**
+ * Detects the endpoint contract that translates `reasoning_effort: "none"`.
+ *
+ * Browser requests terminate at an opaque proxy, so the direct base URL is not
+ * proof of the proxy's upstream. Proxy deployments must declare their actual
+ * upstream explicitly before this provider-specific wire value is emitted.
+ */
+function isOpenCodeGoMode(runtime: IAgentRuntime): boolean {
+  if (isOpenCodeGoEndpoint(getBaseURL(runtime))) return true;
+  return (
+    isProxyMode(runtime) &&
+    isOpenCodeGoEndpoint(getSetting(runtime, "OPENAI_BROWSER_UPSTREAM_BASE_URL"))
+  );
 }
 
 /** Maps thinking suppression only for exact model ids on proven endpoints. */
@@ -1208,7 +1225,7 @@ function hasIllegalStrictRoot(node: Record<string, unknown>): boolean {
 
 // Constraint keywords that strict-grammar providers reject with a hard 400
 // that fails the ENTIRE request. The exact set was bisected live against
-// api.elizacloud.ai / gpt-oss-120b (Cerebras): maxItems/minItems/maxLength/
+// api.eliza.app / gpt-oss-120b (Cerebras): maxItems/minItems/maxLength/
 // minLength/pattern/format/min-maxProperties are rejected; numeric bounds
 // (minimum/maximum/multipleOf) and uniqueItems are accepted, so they are NOT
 // stripped. Each maps to a human phrase folded into `description` so the model
@@ -1350,7 +1367,7 @@ function sanitizeJsonSchema(
   // funnels through here, so strip the strict-unsupported constraint keywords
   // centrally instead of relying on each schema author to remember the rule.
   // UNCONDITIONAL, not Cerebras-gated: isCerebrasMode is proxy-blind — an agent
-  // pointed at api.elizacloud.ai with OPENAI_API_KEY looks like plain OpenAI,
+  // pointed at api.eliza.app with OPENAI_API_KEY looks like plain OpenAI,
   // which is exactly the deployment where the 400 fired (#11123/#11141). The
   // recursion below reaches nested nodes via properties/items/unions.
   stripStrictUnsupportedConstraints(sanitized);
@@ -1395,7 +1412,7 @@ function sanitizeJsonSchema(
   if (sanitized.type === "object" && sanitized.additionalProperties !== false) {
     // Strict-grammar providers reject open maps (schema-valued or `true`
     // additionalProperties) with a hard 400, and provider strictness is
-    // proxy-blind (an agent on api.elizacloud.ai with OPENAI_API_KEY may still
+    // proxy-blind (an agent on api.eliza.app with OPENAI_API_KEY may still
     // route to strict Cerebras — #11123/#11156), so we must always close the
     // object on the wire. But a DECLARED free-form map (e.g. contact
     // customFields = `additionalProperties: { type: "string" }`) was collapsed

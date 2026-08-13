@@ -45,6 +45,12 @@ import {
   registerBuiltInCompletionChecks,
 } from "./completion-check-registry.js";
 import {
+  dispatchViaMessageConnector,
+  isConnectorDispatchIntent,
+  resolveConnectorDispatchTarget,
+  runtimeHasMessageConnector,
+} from "./connector-dispatch.js";
+import {
   type AnchorRegistry,
   type ConsolidationRegistry,
   createAnchorRegistry,
@@ -208,13 +214,17 @@ function getNotifier(runtime: IAgentRuntime): NotificationEmitter | null {
 }
 
 /**
- * Default dispatcher with no channel registry: routes everything through a
- * local NOTIFICATION emit (when a notification service is present) and reports
- * delivered. This is the honest "no connector wired" behavior — the in_app
- * notification reaches the device even on a stock mobile boot.
+ * Default dispatcher with no channel registry: channel-destination dispatches
+ * whose channel key matches a live message connector go out through the
+ * runtime's connector transport (`sendMessageToTarget`); everything else
+ * routes through a local NOTIFICATION emit (when a notification service is
+ * present) and reports delivered. The notification path remains the honest
+ * "no connector wired" behavior — the in_app notification reaches the device
+ * even on a stock mobile boot.
  */
 function createDefaultScheduledTaskDispatcher(
   runtime: IAgentRuntime,
+  store: ScheduledTaskStore,
 ): ScheduledTaskDispatcher {
   return {
     async dispatch(record): Promise<DispatchResult> {
@@ -222,11 +232,39 @@ function createDefaultScheduledTaskDispatcher(
       // notification body must be the model's rendering of it. A model-free
       // runtime receives a neutral deterministic fallback; a present-but-failed
       // model call is a typed, retryable dispatch failure.
+      const connectorTarget = resolveConnectorDispatchTarget(record);
+      if (isConnectorDispatchIntent(record) && !connectorTarget) {
+        return {
+          ok: false,
+          reason: "unknown_recipient",
+          acceptance: "not_accepted",
+          userActionable: true,
+          message: `Channel "${record.channelKey}" has no valid connector target.`,
+        };
+      }
+      if (
+        connectorTarget &&
+        !runtimeHasMessageConnector(runtime, connectorTarget.source)
+      ) {
+        return {
+          ok: false,
+          reason: "disconnected",
+          acceptance: "not_accepted",
+          userActionable: true,
+          message: `Channel "${connectorTarget.source}" has no registered message connector.`,
+        };
+      }
+
       let body: string;
-      let title: string;
       try {
-        body = await renderScheduledDispatchMessage(runtime, record);
-        title = await renderScheduledDispatchTitle(runtime, record, body);
+        const preparedMessage = connectorTarget
+          ? (await store.get(record.taskId))?.metadata?.dispatchPreparedMessage
+          : undefined;
+        body =
+          typeof preparedMessage === "string" &&
+          preparedMessage.trim().length > 0
+            ? preparedMessage
+            : await renderScheduledDispatchMessage(runtime, record);
       } catch (error) {
         // error-policy:J1 boundary translation — dispatch outcomes are the
         // runner's typed contract; the failure also reaches RECENT_ERRORS and
@@ -241,9 +279,73 @@ function createDefaultScheduledTaskDispatcher(
         );
         return renderFailureDispatchResult(error);
       }
+      if (connectorTarget) {
+        const current = await store.get(record.taskId);
+        if (!current) {
+          return {
+            ok: false,
+            reason: "transport_error",
+            acceptance: "not_accepted",
+            userActionable: false,
+            message: "Scheduled task disappeared before connector dispatch.",
+          };
+        }
+        const existingKey = current.metadata?.dispatchIdempotencyKey;
+        const dispatchIdempotencyKey =
+          typeof existingKey === "string" && existingKey.trim().length > 0
+            ? existingKey.trim()
+            : `${record.taskId}:${record.firedAtIso}`;
+        current.metadata = {
+          ...(current.metadata ?? {}),
+          dispatchPreparedMessage: body,
+          dispatchIdempotencyKey,
+          dispatchAttempt: {
+            status: "prepared",
+            preparedAtIso: new Date().toISOString(),
+            firedAtIso: record.firedAtIso,
+          },
+        };
+        await store.upsert(current);
+        if (record.metadata) {
+          Object.assign(record.metadata, current.metadata);
+        } else {
+          record.metadata = current.metadata;
+        }
+      }
+      // Channel-destination dispatch through a live message connector (e.g.
+      // `output: { destination: "channel", target: "discord:user:<id>" }` on
+      // a standalone runtime with plugin-discord). Falls through to the
+      // notification surface when the path does not apply.
+      const connectorResult = await dispatchViaMessageConnector(
+        runtime,
+        record,
+        body,
+      );
+      if (connectorResult) return connectorResult;
+      let title: string;
+      try {
+        title = await renderScheduledDispatchTitle(runtime, record, body);
+      } catch (error) {
+        runtime.reportError(
+          "scheduling:scheduled-task:dispatch-render",
+          error,
+          { taskId: record.taskId, channelKey: record.channelKey },
+        );
+        return renderFailureDispatchResult(error);
+      }
       const isUrgent = record.intensity === "urgent";
-      void getNotifier(runtime)
-        ?.notify({
+      const notifier = getNotifier(runtime);
+      if (!notifier) {
+        return {
+          ok: false,
+          reason: "disconnected",
+          acceptance: "not_accepted",
+          userActionable: true,
+          message: "No notification service is registered for in-app delivery.",
+        };
+      }
+      try {
+        await notifier.notify({
           title,
           body,
           category: isUrgent ? "approval" : "reminder",
@@ -256,13 +358,23 @@ function createDefaultScheduledTaskDispatcher(
             firedAtIso: record.firedAtIso,
             channelKey: record.channelKey,
           },
-        })
-        .catch((error: unknown) => {
-          logger.debug(
-            { src: SERVICE_TYPE, error },
-            "Default dispatcher notification emit failed",
-          );
         });
+      } catch (error) {
+        // error-policy:J1 the notification transport boundary returns an
+        // honest typed failure instead of recording a fabricated delivery.
+        runtime.reportError(
+          "scheduling:scheduled-task:notification-dispatch",
+          error,
+          { taskId: record.taskId, channelKey: record.channelKey },
+        );
+        return {
+          ok: false,
+          reason: "transport_error",
+          acceptance: "unknown",
+          userActionable: false,
+          message: error instanceof Error ? error.message : String(error),
+        };
+      }
       return {
         ok: true,
         messageId: `in_app:${record.taskId}:${record.firedAtIso}`,
@@ -323,14 +435,15 @@ function defaultRunnerDeps(
   agentId: string,
 ): ScheduledTaskRunnerDepsBundle {
   const hasRuntimeDb = getRuntimeDb(runtime) !== null;
+  const store = hasRuntimeDb
+    ? createSchedulingSqlScheduledTaskStore({ runtime, agentId })
+    : createInMemoryScheduledTaskStore();
   return {
-    store: hasRuntimeDb
-      ? createSchedulingSqlScheduledTaskStore({ runtime, agentId })
-      : createInMemoryScheduledTaskStore(),
+    store,
     logStore: hasRuntimeDb
       ? createSchedulingSqlScheduledTaskLogStore({ runtime, agentId })
       : createInMemoryScheduledTaskLogStore(),
-    dispatcher: createDefaultScheduledTaskDispatcher(runtime),
+    dispatcher: createDefaultScheduledTaskDispatcher(runtime, store),
     ownerFacts: () => ({}) as OwnerFactsView,
     globalPause: ALWAYS_ALLOW_GLOBAL_PAUSE,
     activity: makeMissingActivityBusView(runtime),

@@ -1317,11 +1317,10 @@ for (const packageJsonPath of packageJsonPaths) {
         continue;
       }
     }
-    // Homepage screenshot baselines, contact sheets, and functional browser
-    // flows are authoritative in the dedicated homepage deployment lane. The
-    // root PR job still protects every other deterministic E2E package; running
-    // homepage here repeats that gate and regularly consumes the entire two-hour
-    // job budget before later integration packages can report a result.
+    // The homepage directory is a source/test module, not a deployable app.
+    // Its legacy visual harness remains operator-run because software-GPU timing
+    // can consume the entire root E2E budget; quality CI instead runs its source
+    // contracts and builds the real packages/app integration artifact.
     if (
       TEST_LANE === "pr" &&
       scriptName === "test:e2e" &&

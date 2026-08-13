@@ -1,19 +1,18 @@
 /**
- * Cross-host SSO bridge between the dashboard origin (elizacloud.ai) and the
- * Eliza app-mode origin (app.elizacloud.ai):
+ * Cross-host SSO bridge between the public/auth origin (eliza.app) and the
+ * managed Eliza app origin (cloud.eliza.app):
  *
  *   POST /api/auth/sso-bridge/mint      (Bearer-authenticated) → { code }
  *   POST /api/auth/sso-bridge/exchange  (public, code+verifier) → { token }
  *
  * WHY A HANDSHAKE AND NOT A SHARED JS-READABLE COOKIE: the SPA session is a
  * per-origin localStorage JWT, and this platform serves user-controlled
- * content on sibling `*.elizacloud.ai` hosts — user apps on
- * `<id>.apps.elizacloud.ai` (services/app-url.ts), dedicated-agent web UIs on
- * `<sandboxId>.elizacloud.ai` (eliza-agent-web-ui.ts), uploaded blobs on
- * `blob.elizacloud.ai` (blob-host.ts). A non-HttpOnly `Domain=elizacloud.ai`
- * cookie would hand every one of those origins the token, and cookies cannot
- * scope to "apex + one subdomain only". So the app origin redirects through
- * the dashboard, which mints a 60-second single-use opaque code that the app
+ * content on sibling canonical hosts — user apps on `<id>.apps.eliza.app`,
+ * dedicated-agent web UIs on `<sandboxId>.cloud.eliza.app`, and uploaded blobs
+ * on `blob.eliza.app`. A non-HttpOnly parent-domain cookie would hand every one
+ * of those origins the token, and cookies cannot scope to "apex + one
+ * subdomain only". So the managed app redirects through the eliza.app auth
+ * origin, which mints a 60-second single-use opaque code that the app
  * origin exchanges for a token over POST — no token ever appears in a URL.
  *
  * The code store is POSTGRES, not the cache: the deployed Worker cache is
@@ -27,18 +26,18 @@
  * sessionStorage and sent only in the exchange POST body). Both handshake
  * URLs carry only the code/challenge, so an attacker who can read HTTP logs
  * or browser history on either origin still cannot redeem the code. The
- * exchange never returns the stored dashboard token — it re-mints a fresh
+ * exchange never returns the stored auth-origin token — it re-mints a fresh
  * token from the claims verified at mint, capped to the original expiry, so
  * no session JWT is ever at rest in the store.
  *
  * Mint authenticates by BEARER ONLY, never the steward cookie: JS on any
- * `*.elizacloud.ai` host can PLANT a parent-domain cookie (it cannot read the
+ * sibling host can PLANT a parent-domain cookie (it cannot read the
  * HttpOnly ones, but the Cookie header carries no attribute provenance), so a
  * cookie-authenticated mint would let a related-domain attacker fixate their
- * session into the handshake. The Bearer token comes from the dashboard
+ * session into the handshake. The Bearer token comes from the auth-origin
  * SPA's own localStorage, which no sibling origin can write.
  *
- * Origin gating is a strict per-role exact-host allowlist (mint = dashboard
+ * Origin gating is a strict per-role exact-host allowlist (mint = eliza.app
  * hosts, exchange = app hosts), enforced on the `Origin` header ONLY — a
  * `Referer` fallback would just widen the forgeable-input surface. Explicit
  * logout stamps a per-user Postgres marker (`/api/auth/logout`) and BOTH legs
@@ -46,6 +45,7 @@
  * pair; a marker-store failure fails CLOSED (503 → normal per-origin login).
  */
 
+import { ELIZA_DOMAIN_CONTRACTS } from "@elizaos/shared/elizacloud";
 import { Hono } from "hono";
 import {
   mintStewardTokenFromClaims,
@@ -67,17 +67,17 @@ import {
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
-/** Dashboard hosts that may MINT codes. Exact hosts only — no suffix match. */
+/** Public/auth hosts that may MINT codes. Exact hosts only — no suffix match. */
 const MINT_ORIGIN_HOSTS = new Set<string>([
-  "elizacloud.ai",
-  "www.elizacloud.ai",
-  "staging.elizacloud.ai",
+  new URL(ELIZA_DOMAIN_CONTRACTS.production.marketingOrigin).hostname,
+  `www.${new URL(ELIZA_DOMAIN_CONTRACTS.production.marketingOrigin).hostname}`,
+  new URL(ELIZA_DOMAIN_CONTRACTS.staging.marketingOrigin).hostname,
 ]);
 
 /** App hosts that may EXCHANGE codes. Exact hosts only — no suffix match. */
 const EXCHANGE_ORIGIN_HOSTS = new Set<string>([
-  "app.elizacloud.ai",
-  "app-staging.elizacloud.ai",
+  new URL(ELIZA_DOMAIN_CONTRACTS.production.cloudAppOrigin).hostname,
+  new URL(ELIZA_DOMAIN_CONTRACTS.staging.cloudAppOrigin).hostname,
 ]);
 
 /** Only honored when the worker is NOT production (local dev / tests). */
@@ -100,7 +100,7 @@ function originHost(rawOrigin: string | undefined): string | null {
 
 /**
  * Strict per-role Origin check. Unlike the general steward-session CSRF check
- * there is deliberately NO `.elizacloud.ai` suffix acceptance, no same-host
+ * there is deliberately no sibling-domain suffix acceptance, no same-host
  * fallback, and no Referer fallback (browsers always send Origin on POST;
  * non-browser callers forge both, so a fallback only widens the accepted
  * input surface): the bridge's callers are exactly the two SPA host sets,
@@ -187,6 +187,13 @@ app.post("/mint", async (c) => {
 
     const claims = await verifyStewardTokenCached(c.env, token);
     if (!claims) {
+      return c.json(errorBody("Invalid token", "invalid_token"), 401);
+    }
+    // QA sessions have their own versioned code namespace. Letting one enter
+    // the legacy `esso_` bridge would leave a pending code that an older
+    // deployment could consume with the ordinary Steward signer after a
+    // rollback, stripping the continuous source-binding checks.
+    if (claims.stagingSessionBinding) {
       return c.json(errorBody("Invalid token", "invalid_token"), 401);
     }
 

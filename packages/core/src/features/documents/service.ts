@@ -74,6 +74,7 @@ import {
 	isBinaryContentType,
 	isTextBackedDocumentContent,
 	looksLikeBase64,
+	normalizeDocumentContentType,
 	stripDocumentFilenameExtension,
 } from "./utils.ts";
 
@@ -964,8 +965,9 @@ export class DocumentService extends Service {
 			let fileBuffer: Buffer | null = null;
 			let extractedText: string;
 			let documentContentToStore: string;
+			const normalizedContentType = normalizeDocumentContentType(contentType);
 			const isPdfFile =
-				contentType === "application/pdf" ||
+				normalizedContentType === "application/pdf" ||
 				originalFilename.toLowerCase().endsWith(".pdf");
 
 			if (isPdfFile) {
@@ -989,11 +991,11 @@ export class DocumentService extends Service {
 				}
 				extractedText = await extractTextFromDocument(
 					fileBuffer,
-					contentType,
+					normalizedContentType,
 					originalFilename,
 				);
 				documentContentToStore = content;
-			} else if (isBinaryContentType(contentType, originalFilename)) {
+			} else if (isBinaryContentType(normalizedContentType, originalFilename)) {
 				try {
 					fileBuffer = Buffer.from(content, "base64");
 				} catch (e) {
@@ -1014,7 +1016,7 @@ export class DocumentService extends Service {
 				}
 				extractedText = await extractTextFromDocument(
 					fileBuffer,
-					contentType,
+					normalizedContentType,
 					originalFilename,
 				);
 				documentContentToStore = extractedText;

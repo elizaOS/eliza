@@ -1,10 +1,24 @@
 #!/usr/bin/env node
-// Drives repo automation dev all with explicit CLI and CI behavior.
+/**
+ * Local full-stack developer launcher (`bun run dev:all`). Spawns agent API,
+ * the unified app frontend and cloud services with a shared prepare path, then waits
+ * for readiness using `DEV_ALL_SERVICE_STARTUP_TIMEOUT_MS` before treating a
+ * port as failed to start.
+ *
+ * Timeout overrides must be complete positive safe-integer decimals. Partial
+ * `Number.parseInt` accepts (`1junk` → 1) previously shortened readiness waits
+ * into false timeouts that looked like service startup failures.
+ */
 import { execFileSync, spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import net from "node:net";
+import path from "node:path";
 import process from "node:process";
+import { pathToFileURL } from "node:url";
 import { resolveDevAllSkipPlugins } from "./lib/script-metadata.mjs";
+
+/** Default wall-clock budget for each service readiness wait (ms). */
+export const DEFAULT_SERVICE_STARTUP_TIMEOUT_MS = 120_000;
 
 const args = new Set(process.argv.slice(2));
 const dryRun = args.has("--dry-run");
@@ -41,10 +55,59 @@ function envDefault(key, value) {
   return process.env[key]?.trim() || value;
 }
 
+/**
+ * Accept only complete positive safe-integer decimal strings (or numbers).
+ * Rejects partial numbers, signed values, fractions, leading zeros, and
+ * non-positive values so a typo cannot silently become a 1 ms readiness wait.
+ * @param {string | number} value
+ * @param {string} label
+ * @returns {number}
+ */
+export function parsePositiveSafeInteger(value, label) {
+  if (typeof value === "number") {
+    if (!Number.isSafeInteger(value) || value < 1) {
+      throw new Error(
+        `${label} must be a positive safe-integer decimal (received ${JSON.stringify(value)})`,
+      );
+    }
+    return value;
+  }
+  const raw = String(value ?? "").trim();
+  if (!/^\d+$/.test(raw)) {
+    throw new Error(
+      `${label} must be a positive safe-integer decimal (received ${JSON.stringify(String(value ?? ""))})`,
+    );
+  }
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isSafeInteger(parsed) || parsed < 1 || String(parsed) !== raw) {
+    throw new Error(
+      `${label} must be a positive safe-integer decimal (received ${JSON.stringify(String(value ?? ""))})`,
+    );
+  }
+  return parsed;
+}
+
+/**
+ * Resolve `DEV_ALL_SERVICE_STARTUP_TIMEOUT_MS`: unset/empty keeps the default;
+ * any other explicit value must be a positive safe integer or the command
+ * fails closed.
+ * @param {NodeJS.ProcessEnv} [env]
+ * @returns {number}
+ */
+export function resolveServiceStartupTimeoutMs(env = process.env) {
+  const raw = env.DEV_ALL_SERVICE_STARTUP_TIMEOUT_MS;
+  if (raw === undefined || String(raw).trim() === "") {
+    return DEFAULT_SERVICE_STARTUP_TIMEOUT_MS;
+  }
+  return parsePositiveSafeInteger(
+    String(raw).trim(),
+    "DEV_ALL_SERVICE_STARTUP_TIMEOUT_MS",
+  );
+}
+
 const ports = {
   agentApi: envDefault("DEV_ALL_AGENT_API_PORT", "31337"),
   frontend: envDefault("DEV_ALL_FRONTEND_PORT", "2138"),
-  homepage: envDefault("DEV_ALL_HOMEPAGE_PORT", "4444"),
   cloudWeb: envDefault("DEV_ALL_CLOUD_WEB_PORT", "3000"),
   cloudApi: envDefault("DEV_ALL_CLOUD_API_PORT", "8787"),
   cloudDb: envDefault("DEV_ALL_CLOUD_DB_PORT", "55432"),
@@ -53,7 +116,6 @@ const ports = {
 const urls = {
   agentApi: `http://127.0.0.1:${ports.agentApi}`,
   frontend: `http://localhost:${ports.frontend}`,
-  homepage: `http://localhost:${ports.homepage}`,
   osHomepage: envDefault("ELIZA_OS_URL", "https://os.elizaos.ai"),
   cloudWeb: `http://localhost:${ports.cloudWeb}`,
   cloudApi: `http://localhost:${ports.cloudApi}`,
@@ -62,10 +124,6 @@ const urls = {
 const localTestAuthSecret = envDefault(
   "PLAYWRIGHT_TEST_AUTH_SECRET",
   "playwright-local-auth-secret",
-);
-const serviceStartupTimeoutMs = Number.parseInt(
-  envDefault("DEV_ALL_SERVICE_STARTUP_TIMEOUT_MS", "120000"),
-  10,
 );
 
 const packagedCloudAvailable = existsSync(
@@ -87,11 +145,11 @@ const cloudSharedEnv = {
   ELIZA_CLOUD_LOCAL_API_URL: urls.cloudApi,
   NEXT_PUBLIC_APP_URL: urls.cloudWeb,
   NEXT_PUBLIC_API_URL: urls.cloudApi,
-  NEXT_PUBLIC_ELIZA_APP_URL: urls.homepage,
+  NEXT_PUBLIC_ELIZA_APP_URL: urls.cloudWeb,
   NEXT_PUBLIC_ELIZA_API_URL: urls.cloudApi,
   NEXT_PUBLIC_ELIZA_PROXY_URL: urls.cloudWeb,
   NEXT_PUBLIC_STEWARD_API_URL: `${urls.cloudApi}/steward`,
-  VITE_ELIZA_APP_URL: urls.homepage,
+  VITE_ELIZA_APP_URL: urls.cloudWeb,
   VITE_ELIZA_CLOUD_URL: urls.cloudWeb,
   VITE_ELIZA_OS_URL: urls.osHomepage,
   ...(enableTestAuth
@@ -158,21 +216,12 @@ const frontendEnv = {
   VITE_ELIZACLOUD_API_URL: urls.cloudApi,
   VITE_ASSET_BASE_URL: envDefault(
     "VITE_ASSET_BASE_URL",
-    "https://blob.elizacloud.ai",
+    "https://blob.eliza.app",
   ),
-  VITE_ELIZA_APP_URL: urls.homepage,
+  VITE_ELIZA_APP_URL: urls.cloudWeb,
   VITE_ELIZA_CLOUD_URL: urls.cloudWeb,
   VITE_ELIZA_OS_URL: urls.osHomepage,
   ELIZA_APP_VITE_NO_DISCOVERY: envDefault("ELIZA_APP_VITE_NO_DISCOVERY", "1"),
-  ...(enableTestAuth ? { VITE_PLAYWRIGHT_TEST_AUTH: "true" } : {}),
-};
-const homepageEnv = {
-  ...commonEnv,
-  PORT: ports.homepage,
-  VITE_ELIZACLOUD_API_URL: urls.cloudApi,
-  VITE_ELIZA_APP_URL: urls.homepage,
-  VITE_ELIZA_CLOUD_URL: urls.cloudWeb,
-  VITE_ELIZA_OS_URL: urls.osHomepage,
   ...(enableTestAuth ? { VITE_PLAYWRIGHT_TEST_AUTH: "true" } : {}),
 };
 const cloudDbEnv = {
@@ -247,22 +296,6 @@ const services = [
       "--strictPort",
     ],
     env: frontendEnv,
-  },
-  {
-    name: "homepage",
-    cwd: "packages/homepage",
-    command: [
-      bunBin,
-      "run",
-      "dev",
-      "--",
-      "--host",
-      "0.0.0.0",
-      "--port",
-      ports.homepage,
-      "--strictPort",
-    ],
-    env: homepageEnv,
   },
 ].filter(Boolean);
 
@@ -347,7 +380,6 @@ function printPlan() {
   console.log("[dev:all] local stack");
   console.log(`  agent API:  ${urls.agentApi}`);
   console.log(`  frontend:   ${urls.frontend}`);
-  console.log(`  app home:   ${urls.homepage}`);
   console.log(`  OS home:    ${urls.osHomepage} (external)`);
   console.log(`  cloud web:  ${urls.cloudWeb}`);
   console.log(`  cloud API:  ${urls.cloudApi}`);
@@ -377,9 +409,9 @@ function canConnect(host, port) {
   });
 }
 
-async function waitForPort(label, host, port) {
+async function waitForPort(label, host, port, timeoutMs) {
   const startedAt = Date.now();
-  while (Date.now() - startedAt < serviceStartupTimeoutMs) {
+  while (Date.now() - startedAt < timeoutMs) {
     if (await canConnect(host, port)) return;
     await new Promise((resolve) => setTimeout(resolve, 500));
   }
@@ -403,7 +435,6 @@ async function assertPortsAvailable() {
     ["cloud web", "127.0.0.1", ports.cloudWeb],
     ["agent API", "127.0.0.1", ports.agentApi],
     ["frontend", "127.0.0.1", ports.frontend],
-    ["app home", "127.0.0.1", ports.homepage],
   ].filter(Boolean);
 
   const occupied = [];
@@ -538,6 +569,10 @@ function stopChildrenAndExit(children, code) {
 }
 
 async function main() {
+  // Validate before any prepare or spawn so a typo cannot start services under
+  // a 1 ms / NaN readiness budget that looks like a stack failure.
+  const serviceStartupTimeoutMs = resolveServiceStartupTimeoutMs(process.env);
+
   printPlan();
   if (!dryRun) await assertPortsAvailable();
 
@@ -570,7 +605,12 @@ async function main() {
     const cloudDb = startService(cloudDbService);
     if (cloudDb) children.push(cloudDb);
     console.log(`[dev:all] waiting for cloud DB on 127.0.0.1:${ports.cloudDb}`);
-    await waitForPort("cloud DB", "127.0.0.1", ports.cloudDb);
+    await waitForPort(
+      "cloud DB",
+      "127.0.0.1",
+      ports.cloudDb,
+      serviceStartupTimeoutMs,
+    );
   }
 
   for (const service of services) {
@@ -607,9 +647,16 @@ async function main() {
   }
 }
 
-main().catch((error) => {
-  console.error(
-    `[dev:all] ${error instanceof Error ? error.message : String(error)}`,
-  );
-  process.exit(1);
-});
+const isDirectRun =
+  import.meta.main === true ||
+  (typeof process.argv[1] === "string" &&
+    import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href);
+
+if (isDirectRun) {
+  main().catch((error) => {
+    console.error(
+      `[dev:all] ${error instanceof Error ? error.message : String(error)}`,
+    );
+    process.exit(1);
+  });
+}

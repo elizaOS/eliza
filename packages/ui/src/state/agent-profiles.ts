@@ -7,6 +7,7 @@
 
 import { logger } from "@elizaos/logger";
 import { shellLocalStorage } from "../surface-realm-channel";
+import { isManagedCloudSharedAgentBase } from "../utils/cloud-agent-base";
 import type { AgentProfile, AgentProfileRegistry } from "./agent-profile-types";
 import {
   type PersistedActiveServer,
@@ -272,6 +273,23 @@ export function activeServerIdForAgentProfile(profile: AgentProfile): string {
   return profile.kind === "cloud" && profile.cloudAgentId
     ? `cloud:${profile.cloudAgentId}`
     : profile.id;
+}
+
+/** Remove every profile owned by the ending shared Cloud account session. */
+export function removeManagedSharedCloudAgentProfiles(): void {
+  const registry = loadAgentProfileRegistry();
+  const profiles = registry.profiles.filter(
+    (profile) => !isManagedCloudSharedAgentBase(profile.apiBase),
+  );
+  if (profiles.length === registry.profiles.length) return;
+  const activeStillPresent = profiles.some(
+    (profile) => profile.id === registry.activeProfileId,
+  );
+  saveAgentProfileRegistry({
+    version: 1,
+    activeProfileId: activeStillPresent ? registry.activeProfileId : null,
+    profiles,
+  });
 }
 
 export function removeAgentProfile(id: string): void {

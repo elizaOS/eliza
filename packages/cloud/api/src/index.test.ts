@@ -1,15 +1,18 @@
 /** Verifies Cloud Worker routing and thin-inference dispatch with deterministic fixtures. */
-import { describe, expect, test } from "bun:test";
+import { beforeEach, describe, expect, test } from "bun:test";
 import type { AppEnv } from "@/types/cloud-worker-env";
 import cloudApiWorker, {
   getFrontendAliasApiProxyTarget,
   getFrontendAliasProxyTarget,
+  getGeneratedAgentId,
   getHostedFrontendServeRewrite,
   isCanonicalInferencePath,
   isThinInferenceEnabled,
+  isThinStewardPublicPath,
   redirectFrontendHost,
   SharedRuntimeConversation,
 } from "./index";
+import { resetProvidersResponseCacheForTests } from "./steward/embedded";
 
 test("exports the shared-runtime conversation Durable Object", () => {
   expect(typeof SharedRuntimeConversation).toBe("function");
@@ -58,7 +61,7 @@ describe("thin inference entry dispatch", () => {
 
   test("dispatches canonical chat requests through the thin app when enabled", async () => {
     const response = await cloudApiWorker.fetch(
-      new Request("https://api.elizacloud.ai/api/v1/chat/completions", {
+      new Request("https://api.eliza.app/api/v1/chat/completions", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
@@ -77,7 +80,7 @@ describe("thin inference entry dispatch", () => {
 
   test("dispatches OpenAI-compatible chat rewrites through the thin app", async () => {
     const response = await cloudApiWorker.fetch(
-      new Request("https://api.elizacloud.ai/chat/completions", {
+      new Request("https://api.eliza.app/chat/completions", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
@@ -94,13 +97,168 @@ describe("thin inference entry dispatch", () => {
   });
 });
 
+describe("thin Steward public path dispatch (#18049)", () => {
+  const executionCtx = {
+    waitUntil: () => undefined,
+    passThroughOnException: () => undefined,
+  } as unknown as ExecutionContext;
+
+  const stewardEnv = {
+    ENVIRONMENT: "test",
+    NODE_ENV: "test",
+    ELIZA_DEPLOY_COMMIT: "test-commit-18049",
+    STEWARD_API_URL: "https://steward.example.test",
+    STEWARD_TENANT_ID: "elizacloud-staging",
+    GOOGLE_CLIENT_ID: "google-client-id",
+    GOOGLE_CLIENT_SECRET: "google-client-secret",
+    REDIS_RATE_LIMITING: "false",
+    BLOB: {},
+  } as unknown as AppEnv["Bindings"];
+
+  const originalFetch = globalThis.fetch;
+
+  beforeEach(() => {
+    resetProvidersResponseCacheForTests();
+    globalThis.fetch = originalFetch;
+  });
+
+  test("matches only login-critical Steward GETs", () => {
+    expect(isThinStewardPublicPath("/steward/auth/providers")).toBe(true);
+    expect(isThinStewardPublicPath("/steward/auth/providers/")).toBe(true);
+    expect(isThinStewardPublicPath("/steward/tenants/config")).toBe(true);
+    expect(isThinStewardPublicPath("/steward/auth/email/send")).toBe(false);
+    expect(isThinStewardPublicPath("/steward/auth/nonce")).toBe(false);
+    expect(isThinStewardPublicPath("/api/v1/oauth/providers")).toBe(false);
+  });
+
+  test("dispatches GET /steward/auth/providers through the thin shell", async () => {
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      const url =
+        typeof input === "string"
+          ? input
+          : input instanceof URL
+            ? input.toString()
+            : input.url;
+      expect(url).toBe("https://steward.example.test/auth/providers");
+      return Response.json({
+        ok: true,
+        data: {
+          passkey: true,
+          email: true,
+          siwe: false,
+          siws: false,
+          google: false,
+          discord: false,
+          github: false,
+          oauth: [],
+        },
+      });
+    }) as unknown as typeof fetch;
+
+    try {
+      const response = await cloudApiWorker.fetch(
+        new Request("https://api.eliza.app/steward/auth/providers", {
+          method: "GET",
+          headers: { origin: "https://cloud.eliza.app" },
+        }),
+        stewardEnv,
+        executionCtx,
+      );
+
+      expect(response.status).toBe(200);
+      expect(response.headers.get("x-eliza-steward-path")).toBe("thin");
+      expect(response.headers.get("server-timing")).toContain("entry_dispatch");
+      expect(response.headers.get("x-eliza-providers-cache")).toBe("miss");
+
+      const body = (await response.json()) as {
+        ok?: boolean;
+        data?: { google?: boolean; passkey?: boolean };
+      };
+      expect(body.ok).toBe(true);
+      expect(body.data?.passkey).toBe(true);
+      // Env OAuth creds patch google even when Steward reports false.
+      expect(body.data?.google).toBe(true);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  test("serves GET /steward/tenants/config from the thin shell without upstream", async () => {
+    let upstreamCalls = 0;
+    globalThis.fetch = (async () => {
+      upstreamCalls += 1;
+      return new Response("should-not-be-called", { status: 500 });
+    }) as unknown as typeof fetch;
+
+    try {
+      const response = await cloudApiWorker.fetch(
+        new Request("https://api.eliza.app/steward/tenants/config", {
+          method: "GET",
+        }),
+        stewardEnv,
+        executionCtx,
+      );
+
+      expect(response.status).toBe(200);
+      expect(response.headers.get("x-eliza-steward-path")).toBe("thin");
+      expect(upstreamCalls).toBe(0);
+      const body = (await response.json()) as {
+        ok?: boolean;
+        data?: { features?: { enableSolana?: boolean } };
+      };
+      expect(body.ok).toBe(true);
+      expect(body.data?.features?.enableSolana).toBe(true);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  test("reuses isolate providers cache on the second GET", async () => {
+    let upstreamCalls = 0;
+    globalThis.fetch = (async () => {
+      upstreamCalls += 1;
+      return Response.json({
+        ok: true,
+        data: {
+          passkey: true,
+          email: true,
+          google: false,
+          oauth: [],
+        },
+      });
+    }) as unknown as typeof fetch;
+
+    try {
+      const first = await cloudApiWorker.fetch(
+        new Request("https://api.eliza.app/steward/auth/providers"),
+        stewardEnv,
+        executionCtx,
+      );
+      const second = await cloudApiWorker.fetch(
+        new Request("https://api.eliza.app/steward/auth/providers"),
+        stewardEnv,
+        executionCtx,
+      );
+
+      expect(first.status).toBe(200);
+      expect(second.status).toBe(200);
+      expect(first.headers.get("x-eliza-providers-cache")).toBe("miss");
+      expect(second.headers.get("x-eliza-providers-cache")).toBe("hit");
+      expect(upstreamCalls).toBe(1);
+      expect(second.headers.get("x-eliza-steward-path")).toBe("thin");
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+});
+
 describe("getHostedFrontendServeRewrite (managed frontend hosting)", () => {
-  const env = { ELIZA_FRONTEND_HOST_SUFFIX: "sites.elizacloud.ai" };
+  const env = { ELIZA_FRONTEND_HOST_SUFFIX: "sites.eliza.app" };
 
   test("is a no-op when the suffix env is unset (opt-in)", () => {
     expect(
       getHostedFrontendServeRewrite(
-        new URL("https://acme.sites.elizacloud.ai/"),
+        new URL("https://acme.sites.eliza.app/"),
         {},
       ),
     ).toBeNull();
@@ -108,16 +266,16 @@ describe("getHostedFrontendServeRewrite (managed frontend hosting)", () => {
 
   test("rewrites a system-host page request to the internal serve route", () => {
     const out = getHostedFrontendServeRewrite(
-      new URL("https://acme.sites.elizacloud.ai/dashboard"),
+      new URL("https://acme.sites.eliza.app/dashboard"),
       env,
     );
     expect(out?.pathname).toBe("/api/v1/hosted-frontend/serve/dashboard");
-    expect(out?.searchParams.get("host")).toBe("acme.sites.elizacloud.ai");
+    expect(out?.searchParams.get("host")).toBe("acme.sites.eliza.app");
   });
 
   test("rewrites the root path", () => {
     const out = getHostedFrontendServeRewrite(
-      new URL("https://acme.sites.elizacloud.ai/"),
+      new URL("https://acme.sites.eliza.app/"),
       env,
     );
     expect(out?.pathname).toBe("/api/v1/hosted-frontend/serve");
@@ -126,13 +284,13 @@ describe("getHostedFrontendServeRewrite (managed frontend hosting)", () => {
   test("does NOT rewrite /api or /steward on a system host (beacon + APIs work)", () => {
     expect(
       getHostedFrontendServeRewrite(
-        new URL("https://acme.sites.elizacloud.ai/api/v1/track/pageview"),
+        new URL("https://acme.sites.eliza.app/api/v1/track/pageview"),
         env,
       ),
     ).toBeNull();
     expect(
       getHostedFrontendServeRewrite(
-        new URL("https://acme.sites.elizacloud.ai/steward"),
+        new URL("https://acme.sites.eliza.app/steward"),
         env,
       ),
     ).toBeNull();
@@ -144,7 +302,7 @@ describe("getHostedFrontendServeRewrite (managed frontend hosting)", () => {
     ).toBeNull();
     expect(
       getHostedFrontendServeRewrite(
-        new URL("https://a.b.sites.elizacloud.ai/"),
+        new URL("https://a.b.sites.eliza.app/"),
         env,
       ),
     ).toBeNull();
@@ -152,66 +310,171 @@ describe("getHostedFrontendServeRewrite (managed frontend hosting)", () => {
 });
 
 describe("cloud-api worker entrypoint", () => {
-  test("redirects www frontend host to apex without dropping path or query", () => {
+  test("redirects the canonical www host to the marketing apex", () => {
     const response = redirectFrontendHost(
-      new URL(
-        "https://www.elizacloud.ai/dashboard/agents/e06bb509-6c52-4c33-a9f7-66addc43e8c8?tab=chat",
-      ),
-      { ELIZA_CLOUD_AGENT_BASE_DOMAIN: "elizacloud.ai" },
+      new URL("https://www.eliza.app/downloads?platform=mac#install"),
+      { ELIZA_CLOUD_AGENT_BASE_DOMAIN: "cloud.eliza.app" },
     );
 
     expect(response?.status).toBe(308);
     expect(response?.headers.get("location")).toBe(
-      "https://elizacloud.ai/dashboard/agents/e06bb509-6c52-4c33-a9f7-66addc43e8c8?tab=chat",
+      "https://eliza.app/downloads?platform=mac#install",
     );
   });
 
-  test("does NOT redirect app.* — it serves the Eliza agent app (D5 topology split)", () => {
-    // Under D5, app.elizacloud.ai is the `eliza-app` Pages project, not the
-    // apex console. The Worker must not 308 it to the apex.
-    expect(
-      redirectFrontendHost(
-        new URL("https://app.elizacloud.ai/login?next=%2Fdashboard"),
-        { ELIZA_CLOUD_AGENT_BASE_DOMAIN: "elizacloud.ai" },
-      ),
-    ).toBeNull();
+  test("redirects every legacy browser and API role to its canonical host", () => {
+    const cases = [
+      [
+        "https://elizacloud.ai/dashboard?tab=agents#active",
+        "https://cloud.eliza.app/cloud?tab=agents#active",
+      ],
+      [
+        "https://www.elizacloud.ai/downloads?platform=mac",
+        "https://eliza.app/downloads?platform=mac",
+      ],
+      [
+        "https://app.elizacloud.ai/login?next=%2Fdashboard",
+        "https://cloud.eliza.app/login?next=%2Fdashboard",
+      ],
+      [
+        "https://app.elizacloud.ai/dashboard/billing?from=legacy",
+        "https://cloud.eliza.app/cloud/billing?from=legacy",
+      ],
+      [
+        "https://api.elizacloud.ai/api/health?probe=1",
+        "https://api.eliza.app/api/health?probe=1",
+      ],
+      [
+        "https://staging.elizacloud.ai/dashboard",
+        "https://cloud-staging.eliza.app/cloud",
+      ],
+      [
+        "https://app-staging.elizacloud.ai/login",
+        "https://cloud-staging.eliza.app/login",
+      ],
+      [
+        "https://api-staging.elizacloud.ai/api/health",
+        "https://api-staging.eliza.app/api/health",
+      ],
+      [
+        "https://elizacloud.ai/api/v1/models?source=legacy",
+        "https://api.eliza.app/api/v1/models?source=legacy",
+      ],
+      [
+        "https://os.elizacloud.ai/downloads?platform=linux",
+        "https://os.eliza.app/downloads?platform=linux",
+      ],
+      [
+        "https://docs.elizacloud.ai/docs/api/agents?source=legacy",
+        "https://eliza.app",
+      ],
+    ] as const;
+
+    for (const [legacyUrl, canonicalUrl] of cases) {
+      const response = redirectFrontendHost(new URL(legacyUrl), {
+        ELIZA_CLOUD_AGENT_BASE_DOMAIN: "cloud.eliza.app",
+      });
+      expect(response?.status).toBe(308);
+      expect(response?.headers.get("location")).toBe(canonicalUrl);
+    }
   });
 
-  test("does not redirect the apex or the api host", () => {
-    expect(
-      redirectFrontendHost(new URL("https://elizacloud.ai/login"), {
-        ELIZA_CLOUD_AGENT_BASE_DOMAIN: "elizacloud.ai",
-      }),
-    ).toBeNull();
-    expect(
-      redirectFrontendHost(new URL("https://api.elizacloud.ai/api/health"), {
-        ELIZA_CLOUD_AGENT_BASE_DOMAIN: "elizacloud.ai",
-      }),
-    ).toBeNull();
+  test("does not redirect canonical marketing, app, or API hosts", () => {
+    for (const canonicalUrl of [
+      "https://eliza.app/login",
+      "https://cloud.eliza.app/dashboard",
+      "https://api.eliza.app/api/health",
+      "https://staging.eliza.app/login",
+      "https://cloud-staging.eliza.app/dashboard",
+      "https://api-staging.eliza.app/api/health",
+    ]) {
+      expect(
+        redirectFrontendHost(new URL(canonicalUrl), {
+          ELIZA_CLOUD_AGENT_BASE_DOMAIN: "cloud.eliza.app",
+        }),
+      ).toBeNull();
+    }
   });
 
-  test("does not redirect generated agent subdomains", () => {
+  test("keeps legacy UUID agents proxied while redirecting public service hosts", () => {
     const response = redirectFrontendHost(
-      new URL("https://e06bb509-6c52-4c33-a9f7-66addc43e8c8.elizacloud.ai/"),
-      { ELIZA_CLOUD_AGENT_BASE_DOMAIN: "elizacloud.ai" },
+      new URL(
+        "https://e06bb509-6c52-4c33-a9f7-66addc43e8c8.elizacloud.ai/chat?room=1",
+      ),
+      { ELIZA_CLOUD_AGENT_BASE_DOMAIN: "cloud.eliza.app" },
     );
 
     expect(response).toBeNull();
+    const serviceCases = [
+      [
+        "https://blob.elizacloud.ai/object.bin",
+        "https://blob.eliza.app/object.bin",
+      ],
+      ["https://x402.elizacloud.ai/pay", "https://x402.eliza.app/pay"],
+      [
+        "https://relay.elizacloud.ai/v1/agent-tunnel",
+        "https://relay.eliza.app/v1/agent-tunnel",
+      ],
+      [
+        "https://relay-staging.elizacloud.ai/v1/agent-tunnel",
+        "https://relay-staging.eliza.app/v1/agent-tunnel",
+      ],
+      [
+        "https://session-7.tunnel.elizacloud.ai/ws?token=1",
+        "https://session-7.tunnel.eliza.app/ws?token=1",
+      ],
+      [
+        "https://plugins.elizacloud.ai/generated-registry.json",
+        "https://plugins.eliza.app/generated-registry.json",
+      ],
+      [
+        "https://site-7.sites.elizacloud.ai/?ref=legacy",
+        "https://site-7.sites.eliza.app/?ref=legacy",
+      ],
+    ] as const;
+    for (const [legacyUrl, canonicalUrl] of serviceCases) {
+      const serviceResponse = redirectFrontendHost(new URL(legacyUrl), {
+        ELIZA_CLOUD_AGENT_BASE_DOMAIN: "cloud.eliza.app",
+      });
+      expect(serviceResponse?.status).toBe(308);
+      expect(serviceResponse?.headers.get("location")).toBe(canonicalUrl);
+    }
   });
 
-  test("proxies staging frontend aliases to the Pages develop branch", () => {
+  test("extracts canonical and legacy UUID hosts for the dedicated-agent proxy", () => {
+    const env = { ELIZA_CLOUD_AGENT_BASE_DOMAIN: "cloud.eliza.app" };
+    const agentId = "e06bb509-6c52-4c33-a9f7-66addc43e8c8";
+
+    expect(
+      getGeneratedAgentId(
+        new URL(`https://${agentId}.cloud.eliza.app/api/health`),
+        env,
+      ),
+    ).toBe(agentId);
+    expect(
+      getGeneratedAgentId(
+        new URL(`https://${agentId}.elizacloud.ai/api/health`),
+        env,
+      ),
+    ).toBe(agentId);
+    expect(
+      getGeneratedAgentId(new URL("https://blob.elizacloud.ai/object"), env),
+    ).toBeNull();
+  });
+
+  test("proxies canonical staging marketing to the unified Pages develop branch", () => {
     const target = getFrontendAliasProxyTarget(
-      new URL("https://staging.elizacloud.ai/dashboard?tab=agents"),
+      new URL("https://staging.eliza.app/dashboard?tab=agents"),
     );
 
     expect(target?.toString()).toBe(
-      "https://develop.eliza-cloud-enq.pages.dev/dashboard?tab=agents",
+      "https://develop.eliza-app.pages.dev/dashboard?tab=agents",
     );
   });
 
-  test("proxies app frontend aliases to the app Pages project", () => {
+  test("proxies the canonical managed app to the unified Pages project", () => {
     const target = getFrontendAliasProxyTarget(
-      new URL("https://app.elizacloud.ai/?runtime=first-run"),
+      new URL("https://cloud.eliza.app/?runtime=first-run"),
     );
 
     expect(target?.toString()).toBe(
@@ -219,9 +482,9 @@ describe("cloud-api worker entrypoint", () => {
     );
   });
 
-  test("proxies staging app frontend aliases to the app Pages develop branch", () => {
+  test("proxies the canonical staging app to the Pages develop branch", () => {
     const target = getFrontendAliasProxyTarget(
-      new URL("https://app-staging.elizacloud.ai/?runtime=first-run"),
+      new URL("https://cloud-staging.eliza.app/?runtime=first-run"),
     );
 
     expect(target?.toString()).toBe(
@@ -231,35 +494,29 @@ describe("cloud-api worker entrypoint", () => {
 
   test("proxies staging API aliases to the staging API worker", () => {
     const target = getFrontendAliasProxyTarget(
-      new URL("https://staging.elizacloud.ai/api/health"),
+      new URL("https://staging.eliza.app/api/health"),
     );
 
-    expect(target?.toString()).toBe(
-      "https://api-staging.elizacloud.ai/api/health",
-    );
+    expect(target?.toString()).toBe("https://api-staging.eliza.app/api/health");
   });
 
-  test("proxies staging app API aliases to the staging API worker", () => {
+  test("proxies staging managed-app API aliases to the staging API worker", () => {
     const target = getFrontendAliasProxyTarget(
-      new URL("https://app-staging.elizacloud.ai/api/health"),
+      new URL("https://cloud-staging.eliza.app/api/health"),
     );
 
-    expect(target?.toString()).toBe(
-      "https://api-staging.elizacloud.ai/api/health",
-    );
+    expect(target?.toString()).toBe("https://api-staging.eliza.app/api/health");
   });
 
   test("exposes frontend alias API targets for in-process handling", () => {
     const target = getFrontendAliasApiProxyTarget(
-      new URL("https://app-staging.elizacloud.ai/api/status"),
+      new URL("https://cloud-staging.eliza.app/api/status"),
     );
 
-    expect(target?.toString()).toBe(
-      "https://api-staging.elizacloud.ai/api/status",
-    );
+    expect(target?.toString()).toBe("https://api-staging.eliza.app/api/status");
   });
 
-  test("handles app-staging API health in-process without external proxying", async () => {
+  test("handles staging managed-app API health in-process without external proxying", async () => {
     const originalFetch = globalThis.fetch;
     let didProxyExternally = false;
 
@@ -270,11 +527,11 @@ describe("cloud-api worker entrypoint", () => {
 
     try {
       const response = await cloudApiWorker.fetch(
-        new Request("https://app-staging.elizacloud.ai/api/health", {
+        new Request("https://cloud-staging.eliza.app/api/health", {
           headers: {
             "cf-connecting-ip": "203.0.113.7",
             "cf-ray": "test-ray",
-            host: "app-staging.elizacloud.ai",
+            host: "cloud-staging.eliza.app",
           },
         }),
         {} as never,
@@ -291,9 +548,9 @@ describe("cloud-api worker entrypoint", () => {
 
   test("includes the deploy commit in API health for stale-run deploy guards", async () => {
     const response = await cloudApiWorker.fetch(
-      new Request("https://api-staging.elizacloud.ai/api/health", {
+      new Request("https://api-staging.eliza.app/api/health", {
         headers: {
-          host: "api-staging.elizacloud.ai",
+          host: "api-staging.eliza.app",
         },
       }),
       {
@@ -311,12 +568,109 @@ describe("cloud-api worker entrypoint", () => {
     });
   });
 
-  test("routes app-staging custom domain to the staging Worker", async () => {
+  test("reports only value-free staging session cutover readiness", async () => {
+    const response = await cloudApiWorker.fetch(
+      new Request("https://api-staging.eliza.app/api/health", {
+        headers: { host: "api-staging.eliza.app" },
+      }),
+      {
+        NODE_ENV: "production",
+        ENVIRONMENT: "staging",
+        ELIZA_DEPLOY_COMMIT: "cutover-commit",
+        STAGING_SESSION_EXCHANGE_ENABLED: "true",
+        STAGING_SESSION_EXCHANGE_VERSION: "v1",
+        STAGING_SESSION_EXCHANGE_SIGNING_SECRET:
+          "never-return-this-secret-0123456789abcdef",
+        ELIZA_SERVICE_JWT_SECRET:
+          "separate-service-bridge-secret-0123456789abcdef",
+        STAGING_SESSION_EXCHANGE_SIGNING_KEY_ID: "staging-qa-v1-test",
+        STEWARD_TENANT_ID: "staging-tenant",
+        STAGING_SESSION_EXCHANGE_ALLOWED_API_KEY_IDS:
+          "33333333-3333-4333-8333-333333333333",
+        STAGING_SESSION_EXCHANGE_ALLOWED_USER_IDS:
+          "11111111-1111-4111-8111-111111111111",
+        STAGING_SESSION_EXCHANGE_ALLOWED_ORGANIZATION_IDS:
+          "22222222-2222-4222-8222-222222222222",
+      } as never,
+      {} as never,
+    );
+
+    const text = await response.text();
+    expect(JSON.parse(text)).toMatchObject({
+      commit: "cutover-commit",
+      environment: "staging",
+      stagingSessionExchange: {
+        enabled: true,
+        ready: true,
+        version: "v1",
+      },
+    });
+    expect(text).not.toContain("never-return-this-secret");
+    expect(text).not.toContain("11111111-1111-4111-8111-111111111111");
+    expect(text).not.toContain("staging-qa-v1-test");
+
+    const malformedResponse = await cloudApiWorker.fetch(
+      new Request("https://api-staging.eliza.app/api/health", {
+        headers: { host: "api-staging.eliza.app" },
+      }),
+      {
+        NODE_ENV: "production",
+        ENVIRONMENT: "staging",
+        STAGING_SESSION_EXCHANGE_ENABLED: "true",
+        STAGING_SESSION_EXCHANGE_VERSION: "v1",
+        STAGING_SESSION_EXCHANGE_SIGNING_SECRET:
+          "never-return-this-secret-0123456789abcdef",
+        STAGING_SESSION_EXCHANGE_SIGNING_KEY_ID: "staging-qa-v1-test",
+        STEWARD_TENANT_ID: "staging-tenant",
+        STAGING_SESSION_EXCHANGE_ALLOWED_API_KEY_IDS:
+          "33333333-3333-4333-8333-333333333333",
+        STAGING_SESSION_EXCHANGE_ALLOWED_USER_IDS: "not-a-uuid",
+        STAGING_SESSION_EXCHANGE_ALLOWED_ORGANIZATION_IDS:
+          "22222222-2222-4222-8222-222222222222",
+      } as never,
+      {} as never,
+    );
+    expect(await malformedResponse.json()).toMatchObject({
+      stagingSessionExchange: { enabled: true, ready: false, version: "v1" },
+    });
+
+    const serviceCollisionResponse = await cloudApiWorker.fetch(
+      new Request("https://api-staging.eliza.app/api/health", {
+        headers: { host: "api-staging.eliza.app" },
+      }),
+      {
+        NODE_ENV: "production",
+        ENVIRONMENT: "staging",
+        STAGING_SESSION_EXCHANGE_ENABLED: "true",
+        STAGING_SESSION_EXCHANGE_VERSION: "v1",
+        STAGING_SESSION_EXCHANGE_SIGNING_SECRET:
+          "colliding-service-secret-0123456789abcdef",
+        ELIZA_SERVICE_JWT_SECRET: "colliding-service-secret-0123456789abcdef",
+        STAGING_SESSION_EXCHANGE_SIGNING_KEY_ID: "staging-qa-v1-test",
+        STEWARD_TENANT_ID: "staging-tenant",
+        STAGING_SESSION_EXCHANGE_ALLOWED_API_KEY_IDS:
+          "33333333-3333-4333-8333-333333333333",
+        STAGING_SESSION_EXCHANGE_ALLOWED_USER_IDS:
+          "11111111-1111-4111-8111-111111111111",
+        STAGING_SESSION_EXCHANGE_ALLOWED_ORGANIZATION_IDS:
+          "22222222-2222-4222-8222-222222222222",
+      } as never,
+      {} as never,
+    );
+    expect(await serviceCollisionResponse.json()).toMatchObject({
+      stagingSessionExchange: { enabled: true, ready: false, version: "v1" },
+    });
+  });
+
+  test("leaves canonical frontend domains on Pages and routes only API and agent traffic to the staging Worker", async () => {
     const config = Bun.TOML.parse(
       await Bun.file(new URL("../wrangler.toml", import.meta.url)).text(),
     ) as {
       env?: {
         staging?: {
+          routes?: Array<{ pattern?: string }>;
+        };
+        production?: {
           routes?: Array<{ pattern?: string }>;
         };
       };
@@ -325,7 +679,18 @@ describe("cloud-api worker entrypoint", () => {
     const stagingRoutes =
       config.env?.staging?.routes?.map((route) => route.pattern) ?? [];
 
-    expect(stagingRoutes).toContain("app-staging.elizacloud.ai/*");
+    expect(stagingRoutes).not.toContain("cloud-staging.eliza.app/*");
+    expect(stagingRoutes).not.toContain("staging.eliza.app/*");
+    expect(stagingRoutes).toContain("api-staging.eliza.app/*");
+    expect(stagingRoutes).toContain("relay-staging.eliza.app/*");
+    expect(stagingRoutes).toContain("*.cloud-staging.eliza.app/*");
+
+    const productionRoutes =
+      config.env?.production?.routes?.map((route) => route.pattern) ?? [];
+    expect(productionRoutes).not.toContain("cloud.eliza.app/*");
+    expect(productionRoutes).toContain("api.eliza.app/*");
+    expect(productionRoutes).toContain("relay.eliza.app/*");
+    expect(productionRoutes).toContain("*.cloud.eliza.app/*");
   });
 
   test("binds the global native limiter in every Worker environment and keeps inference routes gate-free", async () => {

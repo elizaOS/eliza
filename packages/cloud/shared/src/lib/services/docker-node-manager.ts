@@ -213,6 +213,250 @@ export function parseIoPressureFullAvg60(section: string): number | null {
   return Number.isFinite(value) ? value : null;
 }
 
+/**
+ * Memory the host keeps outside every agent ceiling: dockerd, tailscaled, the
+ * page cache, and the embedding sidecar — which is launched with no `--memory`
+ * of its own, so its footprint has to be absorbed here or the reserve is
+ * fiction.
+ */
+export const HOST_RESERVE_MB = 1024;
+
+/** Separates the meminfo and committed-ceiling sections in the readiness probe. */
+const READINESS_PROBE_MEMINFO_MARKER = "---MEMINFO---";
+const READINESS_PROBE_COMMITTED_MARKER = "---MEM-COMMITTED---";
+
+/**
+ * Slice one section out of the readiness probe's concatenated output.
+ *
+ * `marker === null` returns everything before the first marker, i.e. the
+ * `docker info` reply. Sections are addressed by name rather than by position
+ * so a probe that omits one (a caller that skips the memory gate) cannot shift
+ * the meaning of the others.
+ */
+export function readProbeSection(output: string, marker: string | null): string {
+  const anyMarker = /---[A-Z-]+---/;
+  if (marker === null) {
+    const first = output.search(anyMarker);
+    return first === -1 ? output : output.slice(0, first);
+  }
+  const start = output.indexOf(marker);
+  if (start === -1) return "";
+  const rest = output.slice(start + marker.length);
+  const next = rest.search(anyMarker);
+  return next === -1 ? rest : rest.slice(0, next);
+}
+
+export interface NodeMemorySnapshot {
+  memTotalMb: number;
+  memAvailableMb: number;
+  /** Sum of the explicit `--memory` ceilings of the containers resident on the node. */
+  declaredCeilingMb: number;
+}
+
+/**
+ * Read the node's memory facts out of the readiness probe.
+ *
+ * Returns null when the signal is absent or unparseable. Absence must not block
+ * placement — the same policy the IO-pressure gate follows — so a node whose
+ * kernel or Docker output we cannot read stays eligible rather than freezing
+ * the fleet.
+ */
+export function parseNodeMemorySnapshot(
+  meminfoSection: string,
+  committedSection: string,
+): NodeMemorySnapshot | null {
+  const total = meminfoSection.match(/^MemTotal:\s+(\d+)\s+kB/m);
+  const availableMatch = meminfoSection.match(/^MemAvailable:\s+(\d+)\s+kB/m);
+  if (!total || !availableMatch) return null;
+
+  const memTotalMb = Math.floor(Number.parseInt(total[1]!, 10) / 1024);
+  const memAvailableMb = Math.floor(Number.parseInt(availableMatch[1]!, 10) / 1024);
+  if (!Number.isFinite(memTotalMb) || !Number.isFinite(memAvailableMb) || memTotalMb <= 0) {
+    return null;
+  }
+
+  // `docker inspect -f '{{.HostConfig.Memory}}'` prints one byte count per
+  // container; 0 means that container runs unbounded and contributes nothing
+  // measurable here. Unbounded containers are recovered through used memory in
+  // `admitsRequiredMemory`, so they are not silently free.
+  let declaredCeilingMb = 0;
+  for (const line of committedSection.split("\n")) {
+    const trimmed = line.trim();
+    if (!/^\d+$/.test(trimmed)) continue;
+    declaredCeilingMb += Math.floor(Number.parseInt(trimmed, 10) / (1024 * 1024));
+  }
+
+  return { memTotalMb, memAvailableMb, declaredCeilingMb };
+}
+
+export interface MemoryAdmissionVerdict {
+  admitted: boolean;
+  /** The larger of the declared ceilings and what the node is actually using. */
+  effectiveCommittedMb: number;
+  /** Memory the node may commit in total, i.e. `memTotalMb - HOST_RESERVE_MB`. */
+  budgetMb: number;
+}
+
+/**
+ * Decide whether a node can take one more container of `requiredMemoryMb`.
+ *
+ * The gate is the sum of *committed ceilings*, not free memory. Free memory
+ * only collapses once the new agent is already allocating, so a MemAvailable
+ * check passes at the moment of the decision and the kernel OOM-kills seconds
+ * later — which is exactly how a 7745 MiB node accepted a third 3072 MiB
+ * ceiling and then killed the booting agent every ~29s.
+ *
+ * Used memory is taken as a floor for the commitment because a container
+ * launched without a ceiling declares nothing while still occupying the node.
+ */
+export function admitsRequiredMemory(
+  snapshot: NodeMemorySnapshot,
+  requiredMemoryMb: number,
+): MemoryAdmissionVerdict {
+  const usedMb = Math.max(0, snapshot.memTotalMb - snapshot.memAvailableMb);
+  const effectiveCommittedMb = Math.max(snapshot.declaredCeilingMb, usedMb);
+  const budgetMb = snapshot.memTotalMb - HOST_RESERVE_MB;
+  return {
+    admitted: effectiveCommittedMb + requiredMemoryMb <= budgetMb,
+    effectiveCommittedMb,
+    budgetMb,
+  };
+}
+
+/**
+ * CPU a node keeps for itself: dockerd, tailscaled, the embedding sidecar, and
+ * the SSH work the control plane does on it.
+ */
+export const HOST_RESERVE_VCPU = 1;
+
+/**
+ * vCPU budgeted per agent container.
+ *
+ * A policy number, not a measurement — agent containers ship with NO `--cpus`
+ * limit, so nothing enforces this and nothing can measure a per-agent share
+ * from a running box. It encodes the sizing the code was designed around
+ * (ccx33 + capacity 8, i.e. one core per agent) so that capacity stops being
+ * blind to CPU entirely. Override per fleet once real contention data exists.
+ */
+export const DEFAULT_AGENT_VCPU_BUDGET = 1;
+
+export interface NodeCapacityBreakdown {
+  /** The binding value: the smallest dimension. */
+  capacity: number;
+  byMemory: number | null;
+  byCpu: number | null;
+  /** Which dimension decided, for the operator reading the log. */
+  boundBy: "memory" | "cpu" | "unknown";
+}
+
+/**
+ * How many agent containers a node can actually hold, across every dimension
+ * we can size statically.
+ *
+ * Capacity was a slot counter stamped from one global env var, unrelated to the
+ * machine. That number is wrong in both directions, and both were measured on
+ * the fleet: it licensed 4 x 3072 MiB of ceilings onto 7745 MiB / 4 vCPU boxes
+ * (the global OOM the admission gate closed), and it would hand a
+ * 257626 MiB / 12 vCPU robot the blind default of 8.
+ *
+ * The dimensions do not agree, which is the whole point of taking the minimum:
+ * that robot has ~21 GiB of RAM per core against the cloud box's ~1.9, so
+ * sizing it on memory alone would over-subscribe its CPU by roughly sevenfold.
+ *
+ * Memory uses the SAME reserve as {@link admitsRequiredMemory}. If the two
+ * diverged, a node would advertise slots that admission refuses on every
+ * placement: a pool that believes it has room and rejects all work.
+ *
+ * IO is deliberately absent. It is a transient signal, already enforced where
+ * it belongs — `ensureNodeReady` refuses placement above
+ * PLACEMENT_MAX_IO_PRESSURE_FULL_AVG60 — and a static IO slot count would be a
+ * fiction. Disk space has its own monitor.
+ *
+ * This is a ceiling, not a promise: it reads totals, not what is free, so a box
+ * shared with other workloads can still advertise more than it has room for
+ * right now. The admission gate measures what is committed at placement time.
+ */
+export function deriveNodeCapacity(opts: {
+  memTotalMb?: number | null;
+  vCpuCount?: number | null;
+  agentMemoryLimitMb: number;
+  agentVCpuBudget?: number;
+}): NodeCapacityBreakdown {
+  const byMemory = deriveCapacityDimension(
+    opts.memTotalMb,
+    HOST_RESERVE_MB,
+    opts.agentMemoryLimitMb,
+  );
+  const byCpu = deriveCapacityDimension(
+    opts.vCpuCount,
+    HOST_RESERVE_VCPU,
+    opts.agentVCpuBudget ?? DEFAULT_AGENT_VCPU_BUDGET,
+  );
+
+  const known = [
+    { value: byMemory, name: "memory" as const },
+    { value: byCpu, name: "cpu" as const },
+  ].filter((d): d is { value: number; name: "memory" | "cpu" } => d.value !== null);
+
+  if (known.length === 0) {
+    return { capacity: 0, byMemory, byCpu, boundBy: "unknown" };
+  }
+  const binding = known.reduce((a, b) => (b.value < a.value ? b : a));
+  return { capacity: binding.value, byMemory, byCpu, boundBy: binding.name };
+}
+
+/** Total minus what the host keeps, divided by what one agent takes. */
+function deriveCapacityDimension(
+  total: number | null | undefined,
+  hostReserve: number,
+  perAgent: number,
+): number | null {
+  if (typeof total !== "number" || !Number.isFinite(total) || total <= 0) return null;
+  if (!Number.isFinite(perAgent) || perAgent <= 0) return null;
+  const budget = total - hostReserve;
+  if (budget <= 0) return 0;
+  return Math.floor(budget / perAgent);
+}
+
+export function resolveNodeCapacity(opts: {
+  requestedCapacity?: number | null;
+  memTotalMb?: number | null;
+  vCpuCount?: number | null;
+  agentMemoryLimitMb: number;
+  agentVCpuBudget?: number;
+  fallbackCapacity: number;
+}): {
+  capacity: number;
+  derived: boolean;
+  clampedFrom?: number;
+  boundBy: NodeCapacityBreakdown["boundBy"];
+} {
+  const breakdown = deriveNodeCapacity({
+    memTotalMb: opts.memTotalMb,
+    vCpuCount: opts.vCpuCount,
+    agentMemoryLimitMb: opts.agentMemoryLimitMb,
+    agentVCpuBudget: opts.agentVCpuBudget,
+  });
+  const supported = breakdown.boundBy === "unknown" ? null : breakdown.capacity;
+
+  if (typeof opts.requestedCapacity === "number" && opts.requestedCapacity > 0) {
+    if (supported !== null && opts.requestedCapacity > supported) {
+      return {
+        capacity: supported,
+        derived: false,
+        clampedFrom: opts.requestedCapacity,
+        boundBy: breakdown.boundBy,
+      };
+    }
+    return { capacity: opts.requestedCapacity, derived: false, boundBy: breakdown.boundBy };
+  }
+
+  if (supported !== null) {
+    return { capacity: supported, derived: true, boundBy: breakdown.boundBy };
+  }
+  return { capacity: opts.fallbackCapacity, derived: false, boundBy: breakdown.boundBy };
+}
+
 // ---------------------------------------------------------------------------
 // Embedding-sidecar self-heal bookkeeping
 // ---------------------------------------------------------------------------
@@ -278,6 +522,13 @@ export interface NodeSelectionOptions {
    * stateful routing and autoscaler readiness must remain liveness-only.
    */
   enforcePlacementIoPressure?: boolean;
+  /**
+   * The `--memory` ceiling the caller is about to apply to the container. When
+   * set, a node is refused unless it can still commit that much on top of what
+   * it has already committed. Callers must pass the value they will actually
+   * hand to `docker create`, so the admitted and applied ceilings cannot drift.
+   */
+  requiredMemoryMb?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -385,7 +636,7 @@ export class DockerNodeManager {
    * Returns null if no capacity is available.
    */
   async getAvailableNode(options: NodeSelectionOptions = {}): Promise<DockerNode | null> {
-    const nodes = await dockerNodesRepository.findEnabled();
+    const nodes = await dockerNodesRepository.findPlaceable();
     const candidates = (
       await Promise.all(
         nodes.map(async (node) => {
@@ -754,11 +1005,27 @@ export class DockerNodeManager {
       // callers use this method as a liveness probe for sticky stateful routing
       // and autoscaler bootstrap, where transient pressure must not reroute or
       // reject the node.
-      const probeCommand = options.enforcePlacementIoPressure
-        ? `${dockerInfoCommand} && { echo '${READINESS_PROBE_PSI_MARKER}'; cat /proc/pressure/io 2>/dev/null || true; }`
-        : dockerInfoCommand;
+      const extraSections: string[] = [];
+      if (options.enforcePlacementIoPressure) {
+        extraSections.push(
+          `echo '${READINESS_PROBE_PSI_MARKER}'; cat /proc/pressure/io 2>/dev/null || true`,
+        );
+      }
+      // The memory facts ride the same round trip: reading them separately would
+      // race the placement they are meant to gate.
+      if (typeof options.requiredMemoryMb === "number") {
+        extraSections.push(
+          `echo '${READINESS_PROBE_MEMINFO_MARKER}'; cat /proc/meminfo 2>/dev/null || true`,
+          `echo '${READINESS_PROBE_COMMITTED_MARKER}'; docker ps -q | xargs -r docker inspect -f '{{.HostConfig.Memory}}' 2>/dev/null || true`,
+        );
+      }
+      const probeCommand =
+        extraSections.length > 0
+          ? `${dockerInfoCommand} && { ${extraSections.join("; ")}; }`
+          : dockerInfoCommand;
       const probeOutput = await ssh.exec(probeCommand, 10_000);
-      const [dockerSection = "", psiSection = ""] = probeOutput.split(READINESS_PROBE_PSI_MARKER);
+      const dockerSection = readProbeSection(probeOutput, null);
+      const psiSection = readProbeSection(probeOutput, READINESS_PROBE_PSI_MARKER);
       const { dockerId, architecture } = parseDockerInfoProbe(dockerSection);
       if (dockerId.trim()) {
         if (
@@ -785,6 +1052,48 @@ export class DockerNodeManager {
             max: PLACEMENT_MAX_IO_PRESSURE_FULL_AVG60,
           });
           return false;
+        }
+        if (typeof options.requiredMemoryMb === "number") {
+          const meminfoSection = readProbeSection(probeOutput, READINESS_PROBE_MEMINFO_MARKER);
+          const committedSection = readProbeSection(probeOutput, READINESS_PROBE_COMMITTED_MARKER);
+          const snapshot = parseNodeMemorySnapshot(meminfoSection, committedSection);
+          if (!snapshot) {
+            // Admitting here is the deliberate direction, but it is the one
+            // branch that restores pre-gate behaviour, so it must never be
+            // silent: an edit to the probe command or the section grammar
+            // would otherwise turn this gate into a permanent no-op that
+            // neither the logs nor CI would notice.
+            logger.warn(
+              "[docker-node-manager] Memory admission skipped: node did not report readable memory facts",
+              {
+                nodeId: node.node_id,
+                requiredMemoryMb: options.requiredMemoryMb,
+                meminfoBytes: meminfoSection.length,
+                committedBytes: committedSection.length,
+              },
+            );
+          }
+          if (snapshot) {
+            const verdict = admitsRequiredMemory(snapshot, options.requiredMemoryMb);
+            if (!verdict.admitted) {
+              // No DB status write, for the same reason as IO: the node is
+              // healthy, it is simply full. Marking it degraded would hide a
+              // capacity problem behind an infrastructure one.
+              logger.warn(
+                "[docker-node-manager] Node refused for placement: memory would be oversubscribed",
+                {
+                  nodeId: node.node_id,
+                  requiredMemoryMb: options.requiredMemoryMb,
+                  effectiveCommittedMb: verdict.effectiveCommittedMb,
+                  budgetMb: verdict.budgetMb,
+                  memTotalMb: snapshot.memTotalMb,
+                  memAvailableMb: snapshot.memAvailableMb,
+                  declaredCeilingMb: snapshot.declaredCeilingMb,
+                },
+              );
+              return false;
+            }
+          }
         }
         await dockerNodesRepository.updateStatus(node.node_id, "healthy");
         return true;

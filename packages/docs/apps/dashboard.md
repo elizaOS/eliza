@@ -13,7 +13,7 @@ The dashboard runs as a web application served by the Eliza agent runtime.
 | Method | Details |
 |--------|---------|
 | **Default URL** | `http://localhost:2138` |
-| **CLI shortcut** | Run `eliza dashboard` to open the dashboard in your default browser |
+| **Project checkout** | Run `bun run start` or `bun run dev`, then open the URL printed at startup |
 | **Desktop app** | The Electrobun desktop app embeds the dashboard directly (no browser required) |
 
 On first launch you will see first-run setup. If the selected server still
@@ -131,7 +131,7 @@ Theme picker with 6 built-in themes displayed as a button grid (3 columns on mob
 | **haxor** | Terminal green |
 | **psycho** | Pure chaos |
 
-The active theme is highlighted. Theme selection is persisted to local storage and applied immediately. See [Themes & Avatars](/configuration#ui-theme) for details.
+The active theme is highlighted. Theme selection is persisted to local storage and applied immediately. See [Appearance settings](/apps/dashboard/settings#1-appearance) for details.
 
 #### 2. AI Model
 

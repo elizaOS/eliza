@@ -19,9 +19,11 @@ on:
       - "packages/cloud/scripts/**"
       - "packages/scripts/test-cloud-run.mjs"
       - "packages/scripts/test-cloud-run-helpers.mjs"
+      - "packages/scripts/__tests__/test-cloud-run.test.mjs"
       - "packages/scripts/test-cloud-run-flush.self-test.mjs"
       - "packages/scripts/test-cloud-run-helpers.self-test.mjs"
       - "packages/scripts/test-cloud-run-preflight.self-test.mjs"
+      - "packages/scripts/test-cloud-run-watchdog.self-test.mjs"
       - "package.json"
       - "bun.lock"
       - ".github/workflows/cloud-tests.yml"
@@ -38,9 +40,11 @@ on:
       - "packages/cloud/scripts/**"
       - "packages/scripts/test-cloud-run.mjs"
       - "packages/scripts/test-cloud-run-helpers.mjs"
+      - "packages/scripts/__tests__/test-cloud-run.test.mjs"
       - "packages/scripts/test-cloud-run-flush.self-test.mjs"
       - "packages/scripts/test-cloud-run-helpers.self-test.mjs"
       - "packages/scripts/test-cloud-run-preflight.self-test.mjs"
+      - "packages/scripts/test-cloud-run-watchdog.self-test.mjs"
       - "package.json"
       - "bun.lock"
       - ".github/workflows/cloud-tests.yml"
@@ -71,7 +75,7 @@ permissions:
 
 jobs:
   lint-and-types:
-    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    runs-on: ${{ fromJSON(github.event_name == 'pull_request' && '["ubuntu-24.04"]' || vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -89,7 +93,7 @@ jobs:
   # twice per PR on the saturated runner fleet.
 
   unit-tests:
-    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    runs-on: ${{ fromJSON(github.event_name == 'pull_request' && '["ubuntu-24.04"]' || vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     # Cloud unit tests can run past 25m on saturated self-hosted runners while still passing.
     timeout-minutes: 40
     env:
@@ -104,6 +108,12 @@ jobs:
         run: node packages/scripts/test-cloud-run-flush.self-test.mjs
       - name: Batch runner helper self-test
         run: node packages/scripts/test-cloud-run-helpers.self-test.mjs
+      - name: Batch runner unit tests
+        run: bun test packages/scripts/__tests__/test-cloud-run.test.mjs
+      # Guards the wall-clock watchdog (#17245): a wedged child and its
+      # descendants must be terminated without stalling the remaining batches.
+      - name: Batch runner process-tree watchdog self-test
+        run: node packages/scripts/test-cloud-run-watchdog.self-test.mjs
       # Guards the clean-install preflight (#16187): `bun run test:cloud` must
       # build the missing @elizaos/core dist / generated keyword modules itself
       # instead of dying in `Cannot find module` cascades after a frozen
@@ -122,7 +132,7 @@ jobs:
         run: bun run --cwd packages/cloud/shared test:vitest
 
   integration-tests:
-    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    runs-on: ${{ fromJSON(github.event_name == 'pull_request' && '["ubuntu-24.04"]' || vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 25
     env:
       NODE_ENV: test

@@ -446,6 +446,11 @@ export class CreditsService {
           UPDATE organizations AS o
           SET
             credit_balance = org.current_balance + ${String(amount)}::numeric,
+            settings = CASE
+              WHEN ${transactionType} = 'credit'
+                THEN COALESCE(o.settings, '{}'::jsonb) - 'welcomeBonusWithheld'
+              ELSE o.settings
+            END,
             updated_at = NOW()
           FROM org
           WHERE o.id = org.id
@@ -994,7 +999,7 @@ export class CreditsService {
         organizationName: org.name,
         currentBalance,
         threshold,
-        billingUrl: `${process.env.NEXT_PUBLIC_APP_URL}/dashboard/billing`,
+        billingUrl: `${process.env.NEXT_PUBLIC_APP_URL}/cloud/billing`,
       });
 
       if (sent) {

@@ -78,6 +78,26 @@
       "import": "./dist/types/index.js",
       "default": "./dist/types/index.js"
     },
+    "./elizacloud": {
+      "types": "./dist/elizacloud/index.d.ts",
+      "eliza-source": {
+        "types": "./src/elizacloud/index.ts",
+        "import": "./src/elizacloud/index.ts",
+        "default": "./src/elizacloud/index.ts"
+      },
+      "import": "./dist/elizacloud/index.js",
+      "default": "./dist/elizacloud/index.js"
+    },
+    "./elizacloud/domain-contract": {
+      "types": "./dist/elizacloud/domain-contract.d.ts",
+      "eliza-source": {
+        "types": "./src/elizacloud/domain-contract.ts",
+        "import": "./src/elizacloud/domain-contract.ts",
+        "default": "./src/elizacloud/domain-contract.ts"
+      },
+      "import": "./dist/elizacloud/domain-contract.js",
+      "default": "./dist/elizacloud/domain-contract.js"
+    },
     "./config/allowed-hosts": {
       "types": "./dist/config/allowed-hosts.d.ts",
       "import": "./dist/config/allowed-hosts.js",
@@ -427,6 +447,16 @@
       },
       "import": "./dist/audio-redaction-verify.js",
       "default": "./dist/audio-redaction-verify.js"
+    },
+    "./terminal/palette": {
+      "types": "./dist/terminal/palette.d.ts",
+      "eliza-source": {
+        "types": "./src/terminal/palette.ts",
+        "import": "./src/terminal/palette.ts",
+        "default": "./src/terminal/palette.ts"
+      },
+      "import": "./dist/terminal/palette.js",
+      "default": "./dist/terminal/palette.js"
     },
     "./*.css": "./dist/*.css",
     "./*": {

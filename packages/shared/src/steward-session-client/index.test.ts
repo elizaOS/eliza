@@ -1,5 +1,18 @@
+/** Tests the shared Steward browser-session contract with deterministic DOM state. */
+// @vitest-environment jsdom
+
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { hasStewardAuthedCookie, stewardAuthedCookieName } from "./index";
+import {
+  clearStoredStewardToken,
+  hasStewardAuthedCookie,
+  readStoredStewardToken,
+  STEWARD_REFRESH_TOKEN_KEY,
+  STEWARD_SESSION_CHANGE_EVENT,
+  STEWARD_TOKEN_KEY,
+  type StewardSessionChangeDetail,
+  stewardAuthedCookieName,
+  writeStoredStewardToken,
+} from "./index";
 
 function stubDocumentCookie(cookie: string): void {
   vi.stubGlobal("document", { cookie });
@@ -26,5 +39,123 @@ describe("steward session marker cookie", () => {
 
     stubDocumentCookie("steward-authed-staging=1; steward-authed=1");
     expect(hasStewardAuthedCookie("staging")).toBe(true);
+  });
+});
+
+describe("Steward session storage transitions", () => {
+  afterEach(() => {
+    localStorage.clear();
+  });
+
+  it("publishes ordered typed transitions after canonical writes and clears", () => {
+    const transitions: StewardSessionChangeDetail[] = [];
+    const listener = (event: Event) => {
+      transitions.push(
+        (event as CustomEvent<StewardSessionChangeDetail>).detail,
+      );
+    };
+    window.addEventListener(STEWARD_SESSION_CHANGE_EVENT, listener);
+
+    try {
+      writeStoredStewardToken("steward-token");
+      expect(localStorage.getItem(STEWARD_TOKEN_KEY)).toBe("steward-token");
+      clearStoredStewardToken();
+      expect(localStorage.getItem(STEWARD_TOKEN_KEY)).toBeNull();
+    } finally {
+      window.removeEventListener(STEWARD_SESSION_CHANGE_EVENT, listener);
+    }
+
+    expect(transitions).toHaveLength(2);
+    expect(transitions[0]?.state).toBe("present");
+    expect(transitions[1]?.state).toBe("cleared");
+    expect(transitions[1]?.sessionEpoch).toBeGreaterThan(
+      transitions[0]?.sessionEpoch ?? 0,
+    );
+  });
+
+  it("publishes canonical invalidation before stale refresh-key cleanup can fail", () => {
+    localStorage.setItem(STEWARD_TOKEN_KEY, "steward-token");
+    localStorage.setItem(STEWARD_REFRESH_TOKEN_KEY, "legacy-refresh-token");
+    const storageFailure = new Error("legacy refresh storage unavailable");
+    const originalRemoveItem = Storage.prototype.removeItem;
+    const removeItem = vi
+      .spyOn(Storage.prototype, "removeItem")
+      .mockImplementation(function (this: Storage, key: string) {
+        if (key === STEWARD_REFRESH_TOKEN_KEY) throw storageFailure;
+        return Reflect.apply(originalRemoveItem, this, [key]);
+      });
+    const transitions: StewardSessionChangeDetail[] = [];
+    const listener = (event: Event) => {
+      transitions.push(
+        (event as CustomEvent<StewardSessionChangeDetail>).detail,
+      );
+    };
+    window.addEventListener(STEWARD_SESSION_CHANGE_EVENT, listener);
+
+    try {
+      expect(() => clearStoredStewardToken()).toThrow(storageFailure);
+    } finally {
+      window.removeEventListener(STEWARD_SESSION_CHANGE_EVENT, listener);
+      removeItem.mockRestore();
+    }
+
+    expect(localStorage.getItem(STEWARD_TOKEN_KEY)).toBeNull();
+    expect(localStorage.getItem(STEWARD_REFRESH_TOKEN_KEY)).toBe(
+      "legacy-refresh-token",
+    );
+    expect(transitions.map(({ state }) => state)).toEqual(["cleared"]);
+  });
+
+  it("fails fast without publishing when canonical storage mutations fail", () => {
+    const storageFailure = new Error("canonical storage unavailable");
+    const transitions: StewardSessionChangeDetail[] = [];
+    const listener = (event: Event) => {
+      transitions.push(
+        (event as CustomEvent<StewardSessionChangeDetail>).detail,
+      );
+    };
+    window.addEventListener(STEWARD_SESSION_CHANGE_EVENT, listener);
+    const setItem = vi
+      .spyOn(Storage.prototype, "setItem")
+      .mockImplementation(() => {
+        throw storageFailure;
+      });
+
+    try {
+      expect(() => writeStoredStewardToken("steward-token")).toThrow(
+        storageFailure,
+      );
+    } finally {
+      setItem.mockRestore();
+    }
+
+    const removeItem = vi
+      .spyOn(Storage.prototype, "removeItem")
+      .mockImplementation(() => {
+        throw storageFailure;
+      });
+    try {
+      expect(() => clearStoredStewardToken()).toThrow(storageFailure);
+    } finally {
+      removeItem.mockRestore();
+      window.removeEventListener(STEWARD_SESSION_CHANGE_EVENT, listener);
+    }
+
+    expect(transitions).toEqual([]);
+  });
+
+  it("does not disguise a failed canonical read as a missing session", () => {
+    const storageFailure = new Error("canonical storage unavailable");
+    const getItem = vi
+      .spyOn(Storage.prototype, "getItem")
+      .mockImplementation(() => {
+        throw storageFailure;
+      });
+
+    try {
+      expect(() => readStoredStewardToken()).toThrow(storageFailure);
+    } finally {
+      getItem.mockRestore();
+    }
   });
 });

@@ -34,10 +34,26 @@ export interface RateLimiter {
 
 export function createRateLimiter(opts: RateLimiterOptions): RateLimiter {
   const { windowMs } = opts;
+  if (
+    typeof windowMs !== "number" ||
+    !Number.isFinite(windowMs) ||
+    windowMs <= 0
+  ) {
+    throw new RangeError("windowMs must be a positive finite number");
+  }
+  if (
+    opts.sweepIntervalMs !== undefined &&
+    (typeof opts.sweepIntervalMs !== "number" ||
+      !Number.isFinite(opts.sweepIntervalMs) ||
+      opts.sweepIntervalMs <= 0)
+  ) {
+    throw new RangeError("sweepIntervalMs must be a positive finite number");
+  }
+
   const sweepIntervalMs = opts.sweepIntervalMs ?? Math.ceil(windowMs * 1.5);
   const map = new Map<string, number>(); // key → lastActionAt
 
-  const sweepTimer = setInterval(() => {
+  let sweepTimer: ReturnType<typeof setInterval> | null = setInterval(() => {
     const cutoff = Date.now() - windowMs * 2;
     for (const [key, ts] of map) {
       if (ts < cutoff) map.delete(key);
@@ -45,7 +61,7 @@ export function createRateLimiter(opts: RateLimiterOptions): RateLimiter {
   }, sweepIntervalMs);
 
   // Allow the process to exit without this timer holding it
-  if (typeof sweepTimer === "object" && "unref" in sweepTimer) {
+  if (sweepTimer && typeof sweepTimer === "object" && "unref" in sweepTimer) {
     (sweepTimer as NodeJS.Timeout).unref();
   }
 
@@ -56,7 +72,7 @@ export function createRateLimiter(opts: RateLimiterOptions): RateLimiter {
     if (elapsed >= windowMs) return { allowed: true, retryAfterSeconds: 0 };
     return {
       allowed: false,
-      retryAfterSeconds: Math.ceil((windowMs - elapsed) / 1000),
+      retryAfterSeconds: Math.max(1, Math.ceil((windowMs - elapsed) / 1000)),
     };
   }
 
@@ -73,7 +89,10 @@ export function createRateLimiter(opts: RateLimiterOptions): RateLimiter {
       map.clear();
     },
     dispose() {
-      clearInterval(sweepTimer);
+      if (sweepTimer !== null) {
+        clearInterval(sweepTimer);
+        sweepTimer = null;
+      }
       map.clear();
     },
   };

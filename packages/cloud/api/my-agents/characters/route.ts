@@ -47,7 +47,9 @@ app.get("/", async (c) => {
 
     const offset = (page - 1) * limit;
     const filters = { search, category, source: "cloud" as const };
-    const sortOptions = { sortBy, order };
+    // my-agents listing sorted only by the requested field — not featured-first
+    // (unlike marketplace/public search). See elizaOS/eliza#18339 review.
+    const sortOptions = { sortBy, order, pinFeatured: false as const };
 
     // Push filtering, sorting, and pagination to the DB so we never fetch
     // the entire characters table into memory. Run count and page in parallel.

@@ -43,17 +43,13 @@ import { BackgroundRunner } from "@capacitor/background-runner";
 import { Capacitor, type PluginListenerHandle } from "@capacitor/core";
 import { Keyboard, KeyboardResize } from "@capacitor/keyboard";
 import { Preferences } from "@capacitor/preferences";
-import {
-  buildLocalizedTrayMenu,
-  DesktopSurfaceNavigationRuntime,
-  DesktopTrayRuntime,
-  DetachedShellRoot,
-  runIosFullBunSmokeIfRequested,
-} from "@elizaos/app-core";
+// #18056: desktop shell is loaded only via dynamic import / React.lazy so the
+// cold anonymous /login entry does not static-import app-core/ui browser graphs.
 import {
   installIosLocalAgentFetchBridge,
   installIosLocalAgentNativeRequestBridge,
 } from "@elizaos/app-core/api/ios-local-agent-transport";
+import type { DetachedShellRootProps } from "@elizaos/app-core/desktop-shell";
 import { Agent } from "@elizaos/capacitor-agent";
 import { Desktop } from "@elizaos/capacitor-desktop";
 import type { DeviceBridgeClient } from "@elizaos/capacitor-llama";
@@ -69,7 +65,7 @@ import {
   isCloudPairAgentId,
   isCloudPairLoopbackOrigin,
 } from "@elizaos/shared/contracts";
-import { App } from "@elizaos/ui/App";
+import { isElizaDedicatedAgentHostname } from "@elizaos/shared/elizacloud";
 import { client } from "@elizaos/ui/api";
 import { installAndroidNativeAgentFetchBridge } from "@elizaos/ui/api/android-native-agent-transport";
 import {
@@ -83,7 +79,6 @@ import {
   setStorageValue,
 } from "@elizaos/ui/bridge/storage-bridge";
 import { RenderTelemetryProfiler } from "@elizaos/ui/cloud-ui/runtime/render-telemetry";
-import { AppWindowRenderer } from "@elizaos/ui/components/apps/AppWindowRenderer";
 import { ShellModalityProvider } from "@elizaos/ui/components/ShellModalityProvider";
 import { ShellRoleProvider } from "@elizaos/ui/components/ShellRoleProvider";
 import type {
@@ -148,7 +143,7 @@ import {
   shouldInstallMainWindowFirstRunPatches,
   syncDetachedShellLocation,
 } from "@elizaos/ui/platform/window-shell";
-import { AppProvider } from "@elizaos/ui/state";
+import { AppProvider } from "@elizaos/ui/state/AppContext";
 import { upsertAndActivateAgentProfile } from "@elizaos/ui/state/agent-profiles";
 import { resolveDedicatedAgentId } from "@elizaos/ui/state/agent-session-recovery";
 import { initOcrBridge } from "@elizaos/ui/state/ocr-bridge";
@@ -291,9 +286,59 @@ function lazyNamedComponent<TProps>(
   return lazy(async () => ({ default: await load() })) as ComponentType<TProps>;
 }
 
+/**
+ * Tab/view App is dynamically imported so anonymous `/login` (CloudRouterShell
+ * public routes) does not static-import the full agent dashboard graph into the
+ * entry modulepreload list (#18056). Native / non-shell paths still mount it
+ * under the same Suspense boundary as the rest of the tree.
+ */
+const App = lazy(async () => {
+  const mod = await import("@elizaos/ui/App");
+  return { default: mod.App };
+});
+
+const AppWindowRenderer = lazyNamedComponent<{ slug: string }>(async () => {
+  const mod = await import("@elizaos/ui/components/apps/AppWindowRenderer");
+  return mod.AppWindowRenderer;
+});
+
+/** Desktop-only shell widgets — never static-import into the login entry. */
+const DesktopSurfaceNavigationRuntime = lazyNamedComponent<
+  Record<string, never>
+>(async () => {
+  const mod = await import("@elizaos/app-core/desktop-shell");
+  return mod.DesktopSurfaceNavigationRuntime;
+});
+const DesktopTrayRuntime = lazyNamedComponent<Record<string, never>>(
+  async () => {
+    const mod = await import("@elizaos/app-core/desktop-shell");
+    return mod.DesktopTrayRuntime;
+  },
+);
+const DetachedShellRoot = lazyNamedComponent<DetachedShellRootProps>(
+  async () => {
+    const mod = await import("@elizaos/app-core/desktop-shell");
+    return mod.DetachedShellRoot;
+  },
+);
+
 const PhoneCompanionApp = lazyNamedComponent<Record<string, never>>(
   async () => (await importAppPhone()).PhoneCompanionApp,
 );
+
+async function runIosFullBunSmokeFromDesktopShell(): Promise<boolean> {
+  const mod = await import("@elizaos/app-core/desktop-shell");
+  return mod.runIosFullBunSmokeIfRequested();
+}
+
+async function buildLocalizedTrayMenuAsync(
+  ...args: Parameters<
+    typeof import("@elizaos/app-core/desktop-shell").buildLocalizedTrayMenu
+  >
+) {
+  const mod = await import("@elizaos/app-core/desktop-shell");
+  return mod.buildLocalizedTrayMenu(...args);
+}
 const AppBlockerSettingsCard = lazyNamedComponent<AppBlockerSettingsCardProps>(
   async () => (await importPersonalAssistant()).AppBlockerSettingsCard,
 );
@@ -1241,7 +1286,7 @@ async function waitForIosCloudSignInGreeting(): Promise<boolean> {
   const deadline = Date.now() + IOS_ONBOARDING_SMOKE_TIMEOUT_MS;
   while (Date.now() < deadline) {
     const text = document.body?.innerText ?? "";
-    if (/Sign in to Eliza Cloud/i.test(text)) return true;
+    if (/Sign in to Eliza(?: Cloud)?/i.test(text)) return true;
     await new Promise((resolve) => window.setTimeout(resolve, 250));
   }
   throw new Error("Timed out waiting for the Eliza Cloud sign-in greeting");
@@ -1711,7 +1756,7 @@ async function initializePlatform(): Promise<void> {
   await initializeStorageBridge();
   initializeCapacitorBridge();
   installNativeTranscriptPlatformBridge();
-  void runIosFullBunSmokeIfRequested();
+  void runIosFullBunSmokeFromDesktopShell();
   void runIosOnboardingSmokeIfRequested();
   void runIosCloudOnboardingSmokeIfRequested();
   void runIosOnboardingRelaunchSmokeIfRequested();
@@ -2349,7 +2394,7 @@ async function initializeDesktopShell(): Promise<void> {
   });
 
   await Desktop.setTrayMenu({
-    menu: buildLocalizedTrayMenu(createTranslator(loadUiLanguage())),
+    menu: await buildLocalizedTrayMenuAsync(createTranslator(loadUiLanguage())),
   });
 
   await Desktop.addListener(
@@ -2482,12 +2527,33 @@ const CloudRouterShell = lazy(async () => {
   // no cloud/auth/payment route resolves. Both imports live inside this
   // `__ELIZA_WEB_SHELL__`-guarded factory, so a cloud-free build drops them
   // statically.
-  const [{ registerAllCloudSurfaces }, mod] = await Promise.all([
-    import("@elizaos/ui/cloud/register-all"),
+  // Progressive public boot (#18056): import register-public, NOT register-all.
+  // register-all remains the synchronous full-table contract for unmodified
+  // consumers; this entrypoint only registers public/auth routes so idle
+  // /login never pulls private dashboard chunks.
+  const [{ registerPublicCloudSurfaces }, mod] = await Promise.all([
+    import("@elizaos/ui/cloud/register-public"),
     import("@elizaos/ui/cloud/shell/CloudRouterShell"),
   ]);
-  registerAllCloudSurfaces();
+  // Public/auth only on shell boot. Private dashboard domains are loaded by
+  // CloudRouterShell when a /cloud/* path is visited — never from idle /login.
+  registerPublicCloudSurfaces();
   return { default: mod.CloudRouterShell };
+});
+
+/** Approved marketing surfaces bundled only into the hosted web shell. */
+const MarketingHomePage = lazy(async () => {
+  if (__ELIZA_WEB_SHELL__ !== true) {
+    throw new Error("MarketingHomePage is web-build-only");
+  }
+  return import("@homepage/embedded-home");
+});
+
+const MarketingDownloadsPage = lazy(async () => {
+  if (__ELIZA_WEB_SHELL__ !== true) {
+    throw new Error("MarketingDownloadsPage is web-build-only");
+  }
+  return import("@homepage/embedded-downloads");
 });
 
 /**
@@ -2552,6 +2618,8 @@ function mountReactApp(): void {
       <ChatWidgetHarness />
     ) : shouldMountWebShell() && !isSpecialWindowShell ? (
       <CloudRouterShell
+        marketingHomeElement={<MarketingHomePage />}
+        downloadsElement={<MarketingDownloadsPage />}
         appElement={
           <AppProvider branding={APP_BRANDING}>{appSubtree}</AppProvider>
         }
@@ -2624,21 +2692,12 @@ function isLoopbackApiHost(host: string): boolean {
 }
 
 /**
- * Dedicated Cloud agents serve their full runtime at a per-agent subdomain
- * (`https://<agentId>.elizacloud.ai`). Trust those HTTPS subdomains so the join
- * flow can connect to a dedicated container's real `/ws` + `/api/conversations`
- * (the full Eliza experience) — the apex `elizacloud.ai` / `api.elizacloud.ai`
- * control-plane hosts are already trusted via `isConfiguredCloudApiHost` /
- * `isCurrentOriginHost`. Caller enforces `protocol === "https:"`.
+ * Dedicated Cloud agents serve their runtime on the canonical managed-agent
+ * hostname family. The shared classifier also recognizes legacy agent hosts
+ * during the DNS migration; control-plane hosts never match this predicate.
  */
 function isElizaCloudAgentSubdomain(host: string): boolean {
-  const normalized = host.toLowerCase();
-  return (
-    normalized.endsWith(".elizacloud.ai") &&
-    normalized !== "www.elizacloud.ai" &&
-    normalized !== "api.elizacloud.ai" &&
-    normalized !== "dev.elizacloud.ai"
-  );
+  return isElizaDedicatedAgentHostname(host);
 }
 
 function isNativeIosStoreBuild(): boolean {
@@ -3226,7 +3285,7 @@ async function main(): Promise<void> {
       initializeCapacitorBridge,
       installNativeRequestBridge: installIosLocalAgentNativeRequestBridge,
       installFetchBridge: installIosLocalAgentFetchBridge,
-      runSmoke: runIosFullBunSmokeIfRequested,
+      runSmoke: runIosFullBunSmokeFromDesktopShell,
     })
   ) {
     return;

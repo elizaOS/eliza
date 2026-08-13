@@ -11,7 +11,7 @@ their schemas** (they model different things):
 
 - **`.` (community / third-party)** — the third-party plugin registry **data**
   plus the **tooling** to validate it and build the wire format the runtime
-  fetches. Consumed as registry data (over HTTP at `plugins.elizacloud.ai`) and,
+  fetches. Consumed as registry data (over HTTP at `plugins.eliza.app`) and,
   optionally, as a typed loader via `workspace:*`. Its validation is
   deliberately hand-written so the published JSON Schema and runtime wire
   contract remain explicit.

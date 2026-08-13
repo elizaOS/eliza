@@ -2,7 +2,10 @@
  * Browser fetch helpers for calling the Eliza Cloud API from the static
  * homepage.
  */
-const ELIZACLOUD_DEFAULT_URL = "https://www.elizacloud.ai";
+// Browser calls use the canonical API host directly because CORS preflights do
+// not follow redirects. Marketing and hosted-app origins never proxy these
+// source-module requests in the optional isolated harness.
+const ELIZACLOUD_DEFAULT_URL = "https://api.eliza.app";
 
 function getBaseUrl(): string {
   return (

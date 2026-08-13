@@ -15,6 +15,11 @@
 		"./package.json": "./package.json",
 		".": {
 			"types": "./dist/index.d.ts",
+			"eliza-source": {
+				"types": "./index.ts",
+				"import": "./index.ts",
+				"default": "./index.ts"
+			},
 			"import": "./dist/index.js",
 			"default": "./dist/index.js"
 		},
@@ -93,7 +98,7 @@
 		"zod": "^4.4.3"
 	},
 	"devDependencies": {
-		"@biomejs/biome": "2.5.6",
+		"@biomejs/biome": "2.5.7",
 		"@types/fluent-ffmpeg": "^2.1.28",
 		"@types/node": "^25.0.3",
 		"@typescript/native": "npm:typescript@^7.0.2",
@@ -168,6 +173,24 @@
 				"description": "Comma-separated list of Discord channel IDs where the bot will only listen (not respond).",
 				"required": false,
 				"sensitive": false
+			},
+			"ELIZA_DISCORD_OWNER_USER_IDS_JSON": {
+				"type": "string",
+				"description": "JSON array of Discord user snowflakes that alias to the canonical Eliza owner entity (e.g. [\"123456789012345678\"]). Required for reliable owner recognition when the Discord application team cannot be inferred.",
+				"required": false,
+				"sensitive": false
+			},
+			"DISCORD_DM_POLICY": {
+				"type": "string",
+				"description": "Direct-message access policy: open, allowlist, pairing (default), or disabled.",
+				"required": false,
+				"sensitive": false
+			},
+			"DISCORD_ALLOW_FROM": {
+				"type": "string",
+				"description": "Comma-separated Discord user snowflakes allowed to DM the bot when DISCORD_DM_POLICY is allowlist (also used as the static pairing allowlist seed).",
+				"required": false,
+				"sensitive": false
 			}
 		},
 		"configUiHints": {
@@ -180,6 +203,24 @@
 				"label": "Application ID",
 				"order": 2,
 				"group": "connection"
+			},
+			"ELIZA_DISCORD_OWNER_USER_IDS_JSON": {
+				"label": "Owner user IDs (JSON)",
+				"order": 3,
+				"group": "connection",
+				"requires": "DISCORD_API_TOKEN"
+			},
+			"DISCORD_DM_POLICY": {
+				"label": "DM policy",
+				"order": 4,
+				"group": "connection",
+				"requires": "DISCORD_API_TOKEN"
+			},
+			"DISCORD_ALLOW_FROM": {
+				"label": "DM allowlist",
+				"order": 5,
+				"group": "connection",
+				"requires": "DISCORD_API_TOKEN"
 			},
 			"CHANNEL_IDS": {
 				"label": "Respond in channels",

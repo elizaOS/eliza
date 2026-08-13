@@ -79,8 +79,34 @@ describe("agent-addressable rows", () => {
     const sw = screen.getByRole("switch");
     expect(sw.getAttribute("data-agent-id")).toBe("toggle-dark");
     expect(sw.getAttribute("data-agent-role")).toBe("toggle");
+    expect(sw.getAttribute("data-agent-label")).toBe("Dark mode");
+    expect(sw.getAttribute("id")).toBe("toggle-dark");
+    expect(screen.getByText("Dark mode").tagName).toBe("LABEL");
+    expect(screen.getByText("Dark mode").getAttribute("for")).toBe(
+      "toggle-dark",
+    );
     fireEvent.click(sw);
     expect(onCheckedChange).toHaveBeenCalledWith(true);
+  });
+
+  it("SettingsSwitchRow stays disabled when the agent status is unavailable", () => {
+    render(
+      <SettingsSwitchRow
+        agentId="notifications-push-toggle"
+        label="Push notifications"
+        agentLabel="Toggle push notifications"
+        checked={false}
+        agentStatus="unavailable"
+        disabled
+        onCheckedChange={() => {}}
+      />,
+    );
+    const sw = screen.getByRole("switch");
+    expect(sw.getAttribute("data-agent-id")).toBe("notifications-push-toggle");
+    expect(sw.getAttribute("data-agent-label")).toBe(
+      "Toggle push notifications",
+    );
+    expect(sw).toHaveProperty("disabled", true);
   });
 
   it("SettingsSelectRow registers as an agent-addressable select", () => {

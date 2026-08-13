@@ -152,15 +152,27 @@ export interface AppBootConfig {
   /** Website blocker settings card provided by the host app. */
   websiteBlockerSettingsCard?: ComponentType<WebsiteBlockerSettingsCardProps>;
   /**
-   * Prefer the instant shared cloud tier during first-run, then hand off to a
-   * dedicated agent in the background. Default ON (the #15518 decision and the
-   * packages/shared copy of this config agree): a fresh signup must get a
-   * usable chat in seconds from the shared runtime while the dedicated
-   * container boots behind it. `false` is the dedicated-direct kill-switch for
-   * hosts that explicitly want to block on the dedicated boot (measured
-   * 90s+ on staging, minutes under node pressure) instead.
+   * Prefer the instant shared cloud tier during first-run onboarding. Default
+   * ON: a fresh signup gets a usable chat in seconds from the shared runtime
+   * with zero billable dedicated mutation. The user stays on the shared agent
+   * until they explicitly choose a dedicated upgrade from Settings (the
+   * #15355 confirmation flow with pricing/credit guard). `false` is the
+   * dedicated-direct kill-switch for hosts that explicitly want to block on the
+   * dedicated boot (measured 90s+ on staging, minutes under node pressure)
+   * instead. See {@link autoUpgradeSharedToDedicated} for the explicit opt-in
+   * that re-enables the background shared→dedicated handoff (#18204).
    */
   preferSharedCloudTier?: boolean;
+  /**
+   * Explicit opt-in to automatically upgrade a shared-first onboarding agent
+   * to a billed dedicated container in the background. Default OFF (#18204):
+   * when `preferSharedCloudTier` is true the user lands on a shared agent and
+   * no dedicated mutation happens until the user explicitly chooses an upgrade.
+   * Set this to `true` only when the host accepts the automatic credit burn
+   * described by the #15518 shared→dedicated handoff design — every other path
+   * must leave it at its default so onboarding stays shared-only.
+   */
+  autoUpgradeSharedToDedicated?: boolean;
   /** Character catalog data — replaces cross-package import of catalog.json. */
   characterCatalog?: CharacterCatalogData;
   /**
@@ -178,8 +190,12 @@ export interface AppBootConfig {
 
 export const DEFAULT_BOOT_CONFIG: AppBootConfig = {
   branding: {},
-  cloudApiBase: "https://elizacloud.ai",
+  cloudApiBase: "https://eliza.app",
   preferSharedCloudTier: true,
+  // Default OFF: the shared-first onboarding path stays shared-only. No billed
+  // dedicated agent is created without explicit opt-in (#18204). Hosts that
+  // accept the automatic background upgrade set this to `true`.
+  autoUpgradeSharedToDedicated: false,
 };
 
 // ---------------------------------------------------------------------------

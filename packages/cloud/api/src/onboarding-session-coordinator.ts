@@ -11,6 +11,7 @@ import type {
   OnboardingChatResult,
   OnboardingSession,
 } from "@/lib/services/eliza-app/onboarding-chat";
+import { onboardingCoordinatorErrorResponse } from "@/lib/services/eliza-app/onboarding-coordinator-transport";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -49,8 +50,86 @@ interface StoredSession extends Omit<OnboardingSession, "history"> {
   historyChunkCount: number;
 }
 
+/**
+ * What the platform scope holds once an authenticated turn has moved that
+ * conversation into its account-owned scope.
+ *
+ * A messaging turn arrives anonymous — the gateway knows the sender's platform
+ * id, not their account — so `scopeFor` files it under `platform:<sessionId>`
+ * and that key is the ONLY one such a turn can address. Deleting it at migration
+ * left the next message from the same sender with nothing to read, so it started
+ * a brand-new session and answered the login greeting again, forever.
+ *
+ * The pointer is what makes the hand-back durable. It is deliberately not a
+ * session: the transcript has exactly one owner (the account scope), and this
+ * key only says where that owner lives.
+ */
+interface StoredSessionAlias {
+  aliasScope: string;
+}
+
+function isStoredSessionAlias(value: unknown): value is StoredSessionAlias {
+  if (!value || typeof value !== "object") return false;
+  const { aliasScope } = value as Record<string, unknown>;
+  return typeof aliasScope === "string" && aliasScope.length > 0;
+}
+
 const SESSION_KEY_PREFIX = "session:";
 const HISTORY_KEY_PREFIX = "history:";
+const GREETING_KEY_PREFIX = "greeting:";
+// Mirrors GREETING_TTL_MS in onboarding-proactive-greeting.ts: stale greetings
+// are dropped at drain time, never delivered.
+const GREETING_TTL_MS = 15 * 60 * 1000;
+const GREETING_LEASE_MS = 2 * 60 * 1000;
+const GREETING_DRAIN_LIMIT_MAX = 50;
+const GREETING_SCAN_LIMIT = 128;
+
+interface StoredGreeting {
+  sessionId: string;
+  platformUserId: string;
+  message: string;
+  createdAt: string;
+  deliveryNonce: string;
+  lease?: { id: string; expiresAt: number };
+}
+
+function isValidGreeting(value: unknown): value is StoredGreeting {
+  if (!value || typeof value !== "object") return false;
+  const record = value as Record<string, unknown>;
+  return (
+    typeof record.sessionId === "string" &&
+    record.sessionId.length >= 8 &&
+    record.sessionId.length <= 180 &&
+    typeof record.platformUserId === "string" &&
+    record.platformUserId.length >= 1 &&
+    record.platformUserId.length <= 64 &&
+    typeof record.message === "string" &&
+    record.message.length >= 1 &&
+    record.message.length <= 2000 &&
+    typeof record.createdAt === "string" &&
+    Number.isFinite(Date.parse(record.createdAt)) &&
+    typeof record.deliveryNonce === "string" &&
+    /^[A-Za-z0-9_-]{1,25}$/.test(record.deliveryNonce) &&
+    (record.lease === undefined || isValidGreetingLease(record.lease))
+  );
+}
+
+function isValidGreetingLease(
+  value: unknown,
+): value is StoredGreeting["lease"] {
+  if (!value || typeof value !== "object") return false;
+  const record = value as Record<string, unknown>;
+  return (
+    typeof record.id === "string" &&
+    /^[A-Za-z0-9_-]{1,25}$/.test(record.id) &&
+    typeof record.expiresAt === "number" &&
+    Number.isFinite(record.expiresAt)
+  );
+}
+
+function greetingLeaseId(): string {
+  return crypto.randomUUID().replaceAll("-", "").slice(0, 25);
+}
 const REPLAY_KEY_PREFIX = "replay:";
 const REPLAY_CLEANUP_STATE_KEY = "replay-cleanup-state";
 const LEGACY_LEDGER_KEY = "ledger";
@@ -87,7 +166,7 @@ function replayStorageKey(
   idempotencyKey: string,
   input: OnboardingChatInput,
 ): string {
-  const identity = `${input.continuationMode ?? "standard"}:${input.authenticatedUser?.telegramId ?? "no-telegram"}:${idempotencyKey}`;
+  const identity = `${input.continuationMode ?? "standard"}:${input.authenticatedUser?.telegramId ?? "no-telegram"}:${input.authenticatedUser?.discordId ?? "no-discord"}:${idempotencyKey}`;
   return `${REPLAY_KEY_PREFIX}${scope}:${storageComponent(identity)}`;
 }
 
@@ -95,10 +174,13 @@ async function loadStoredSession(
   storage: DurableObjectStorage,
   scope: string,
 ): Promise<OnboardingSession | undefined> {
-  const stored = await storage.get<StoredSession | OnboardingSession>(
-    sessionStorageKey(scope),
-  );
-  if (!stored) return undefined;
+  const stored = await storage.get<
+    StoredSession | OnboardingSession | StoredSessionAlias
+  >(sessionStorageKey(scope));
+  // A pointer is not a transcript. Returning one here would hand the caller a
+  // session-shaped object with no history and no bindings, and — on the
+  // authenticated fallback below — would read a scope this caller does not own.
+  if (!stored || isStoredSessionAlias(stored)) return undefined;
   if (!("historyChunkCount" in stored)) return stored;
 
   const chunks = await Promise.all(
@@ -140,6 +222,31 @@ function storedSessionEntries(
     entries[historyStorageKey(scope, index)] = chunk;
   }
   return entries;
+}
+
+/**
+ * Resolves the scope a turn actually reads and writes.
+ *
+ * Only the platform scope is ever aliased, and only to an account scope, so one
+ * hop is the entire chain — a record that points at itself, or at a scope that
+ * is itself a pointer, is treated as no pointer rather than followed. An
+ * authenticated turn already names its own account scope and must never follow
+ * this key: the platform identity is public, so following it from an account
+ * scope would be an ownership hole.
+ */
+async function resolveTurnScope(
+  storage: DurableObjectStorage,
+  requestedScope: string,
+  platformScope: string,
+): Promise<string> {
+  if (requestedScope !== platformScope) return requestedScope;
+  const record = await storage.get<unknown>(sessionStorageKey(platformScope));
+  if (!isStoredSessionAlias(record)) return requestedScope;
+  if (record.aliasScope === platformScope) return requestedScope;
+  const target = await storage.get<unknown>(
+    sessionStorageKey(record.aliasScope),
+  );
+  return isStoredSessionAlias(target) ? requestedScope : record.aliasScope;
 }
 
 async function historyStorageKeys(
@@ -445,6 +552,108 @@ export class OnboardingSessionCoordinator {
     return Response.json({ status: "completed" });
   }
 
+  /**
+   * Records a pending proactive greeting, keyed by session id (set semantics:
+   * a replayed authenticated turn is a no-op rather than a duplicate). Lives on
+   * the well-known `proactive-greetings:<platform>` instance, not per-session
+   * coordinators, so one drain call claims the whole platform queue.
+   */
+  private async enqueueGreeting(request: Request): Promise<Response> {
+    const body: unknown = await request.json();
+    if (!isValidGreeting(body)) {
+      return Response.json({ error: "Invalid greeting" }, { status: 400 });
+    }
+    const key = `${GREETING_KEY_PREFIX}${storageComponent(body.sessionId)}`;
+    const existing = await this.state.storage.get<StoredGreeting>(key);
+    if (!isValidGreeting(existing)) await this.state.storage.put(key, body);
+    return Response.json({ success: true });
+  }
+
+  /**
+   * Atomically leases pending greetings. A live lease excludes competing
+   * pollers, but the entry remains durable until a matching acknowledgement;
+   * a crash or lost response therefore becomes recoverable after lease expiry.
+   */
+  private async drainGreetings(request: Request): Promise<Response> {
+    const body: unknown = await request.json();
+    const requested =
+      body && typeof body === "object" && "limit" in body
+        ? Number((body as { limit?: unknown }).limit)
+        : Number.NaN;
+    const limit =
+      Number.isInteger(requested) && requested > 0
+        ? Math.min(requested, GREETING_DRAIN_LIMIT_MAX)
+        : GREETING_DRAIN_LIMIT_MAX;
+    const entries = await this.state.storage.list<StoredGreeting>({
+      prefix: GREETING_KEY_PREFIX,
+      limit: GREETING_SCAN_LIMIT,
+    });
+    const now = Date.now();
+    const claimed: Array<StoredGreeting & { leaseId: string }> = [];
+    const deletions: string[] = [];
+    for (const [key, entry] of entries) {
+      if (
+        !isValidGreeting(entry) ||
+        now - Date.parse(entry.createdAt) > GREETING_TTL_MS
+      ) {
+        deletions.push(key);
+        logger.warn(
+          "[OnboardingSessionCoordinator] dropped stale proactive greeting",
+          { key },
+        );
+        continue;
+      }
+      if (claimed.length >= limit) continue;
+      if (entry.lease && entry.lease.expiresAt > now) continue;
+      const leaseId = greetingLeaseId();
+      const leased = {
+        ...entry,
+        lease: { id: leaseId, expiresAt: now + GREETING_LEASE_MS },
+      };
+      await this.state.storage.put(key, leased);
+      claimed.push({ ...entry, leaseId });
+    }
+    if (deletions.length > 0) {
+      await this.state.storage.delete(deletions);
+    }
+    return Response.json({ greetings: claimed });
+  }
+
+  /** Deletes only greetings still owned by the acknowledging lease. */
+  private async acknowledgeGreetings(request: Request): Promise<Response> {
+    const body: unknown = await request.json();
+    const acknowledgements =
+      body && typeof body === "object" && "acknowledgements" in body
+        ? (body as { acknowledgements?: unknown }).acknowledgements
+        : undefined;
+    if (!Array.isArray(acknowledgements) || acknowledgements.length > 50) {
+      return Response.json(
+        { error: "Invalid greeting acknowledgements" },
+        { status: 400 },
+      );
+    }
+    let acknowledged = 0;
+    for (const value of acknowledgements) {
+      if (!value || typeof value !== "object") continue;
+      const { sessionId, leaseId } = value as Record<string, unknown>;
+      if (
+        typeof sessionId !== "string" ||
+        sessionId.length < 8 ||
+        sessionId.length > 180 ||
+        typeof leaseId !== "string" ||
+        !/^[A-Za-z0-9_-]{1,25}$/.test(leaseId)
+      ) {
+        continue;
+      }
+      const key = `${GREETING_KEY_PREFIX}${storageComponent(sessionId)}`;
+      const entry = await this.state.storage.get<StoredGreeting>(key);
+      if (!isValidGreeting(entry) || entry.lease?.id !== leaseId) continue;
+      await this.state.storage.delete(key);
+      acknowledged += 1;
+    }
+    return Response.json({ acknowledged });
+  }
+
   private async mirrorSessionBestEffort(
     session: OnboardingSession,
   ): Promise<void> {
@@ -472,12 +681,20 @@ export class OnboardingSessionCoordinator {
     // bootstrap boundary used by the main Hono application.
     const {
       assertTrustedTelegramContinuation,
+      deliverCommittedProactiveGreeting,
       loadCachedOnboardingSession,
       runOnboardingChatWithStore,
     } = await import("@/lib/services/eliza-app/onboarding-chat");
-    const scope = scopeFor(request.input, request.sessionId);
     const platformScope = `platform:${storageComponent(request.sessionId)}`;
     const platformSessionKey = sessionStorageKey(platformScope);
+    // A messaging turn is anonymous, so it can only ever name the platform
+    // scope. When that scope has already been migrated, the pointer left behind
+    // is what sends this turn to the account scope instead of to a hole.
+    const scope = await resolveTurnScope(
+      this.state.storage,
+      scopeFor(request.input, request.sessionId),
+      platformScope,
+    );
     const legacy =
       await this.state.storage.get<LegacyCoordinatorLedger>(LEGACY_LEDGER_KEY);
 
@@ -490,10 +707,16 @@ export class OnboardingSessionCoordinator {
         : undefined;
     const storedSession = scopedSession ?? platformSession;
     const legacySession = legacySessionFor(legacy, request.input);
-    let nextSession =
-      storedSession ??
-      legacySession ??
-      (await loadCachedOnboardingSession(request.sessionId));
+    // The cache read is a one-way migration ramp for sessions written before
+    // this object owned them, nothing more. It must never be the only path back
+    // to a live session: `cache.get` answers null for an outage and for a miss
+    // alike, so a conversation that depends on it restarts on the first bad
+    // minute. Durable storage above is the authority in both scopes.
+    const cachedSession =
+      storedSession || legacySession
+        ? null
+        : await loadCachedOnboardingSession(request.sessionId);
+    let nextSession = storedSession ?? legacySession ?? cachedSession ?? null;
     if (request.input.continuationMode === "trusted-telegram") {
       assertTrustedTelegramContinuation(nextSession, request.input);
     }
@@ -528,22 +751,40 @@ export class OnboardingSessionCoordinator {
     );
 
     const writes = storedSessionEntries(scope, result.session);
+    // The replay ledger stores the COMMITTED shape of the result: the
+    // greeting handoff is stripped below before this turn returns, and a
+    // replayed turn must never re-enqueue a greeting.
     const replay = request.input.idempotencyKey
-      ? storedReplay(request.input.idempotencyKey, result)
+      ? storedReplay(request.input.idempotencyKey, {
+          ...result,
+          proactiveGreeting: undefined,
+        })
       : undefined;
     if (replay) {
       writes[replayStorageKey(scope, replay.key, request.input)] = replay;
     }
-    const platformHistoryKeys =
-      platformSession && result.session.id === request.sessionId
-        ? await historyStorageKeys(this.state.storage, platformScope)
-        : [];
+    // A different authenticated account is deliberately given a fresh session.
+    // In that case, keep the platform scope pointing at its original owner;
+    // retargeting it to the rejected caller would hijack every later DM.
+    const migratedPlatformSession =
+      (platformSession ?? legacySession ?? cachedSession)?.id ===
+        request.sessionId && result.session.id === request.sessionId;
+    const platformHistoryKeys = migratedPlatformSession
+      ? await historyStorageKeys(this.state.storage, platformScope)
+      : [];
     const currentAlarm = await this.state.storage.getAlarm();
     await this.state.storage.transaction(async (transaction) => {
       await transaction.put(writes);
       if (legacySession) await transaction.delete(LEGACY_LEDGER_KEY);
-      if (platformSession && result.session.id === request.sessionId) {
-        await transaction.delete(platformSessionKey);
+      if (migratedPlatformSession) {
+        // The transcript now lives in the account scope and the platform copy
+        // is retired — but the key itself must keep answering, because the
+        // sender's next message can address nothing else. Replace the session
+        // with a pointer in the SAME transaction that moves it, so the
+        // conversation is never, at any instant, unreachable from Telegram.
+        await transaction.put(platformSessionKey, {
+          aliasScope: scope,
+        } satisfies StoredSessionAlias);
         for (const key of platformHistoryKeys) await transaction.delete(key);
       }
       if (
@@ -553,9 +794,25 @@ export class OnboardingSessionCoordinator {
         await transaction.setAlarm(replay.expiresAt);
       }
     });
+    // Commit ordering for the false-success DM hazard: the storage
+    // transaction above is the turn's durable commit. Only now — with the
+    // userId binding persisted — may the recorded greeting enqueue. A turn
+    // that threw before this point (for example a provisioning outage) never
+    // reaches here, so the user is never told "you're all set" for a sign-in
+    // that did not durably complete. Enqueue itself stays best-effort.
+    //
+    // The enqueue runs BEFORE the fallible cross-DO `bindContinuation` below.
+    // If it ran after, a transient /bind failure would permanently suppress
+    // the greeting: the failed turn's retry lands in the replay branch (which
+    // stores the stripped, committed shape and must never re-enqueue), and a
+    // fresh-key retry sees an already-bound session and records no handoff.
+    // Enqueue-then-bind is safe in the failure direction: the sign-in itself
+    // IS durably committed at this point, so greeting a user whose
+    // continuation re-bind needs one more retry is correct, not premature.
+    const committed = await deliverCommittedProactiveGreeting(result);
     await this.bindContinuation(result.session);
-    await this.mirrorSessionBestEffort(result.session);
-    return result;
+    await this.mirrorSessionBestEffort(committed.session);
+    return committed;
   }
 
   async alarm(): Promise<void> {
@@ -610,6 +867,15 @@ export class OnboardingSessionCoordinator {
         }
         if (pathname === "/claim") {
           return this.claimContinuation(request);
+        }
+        if (pathname === "/enqueue-greeting") {
+          return this.enqueueGreeting(request);
+        }
+        if (pathname === "/drain-greetings") {
+          return this.drainGreetings(request);
+        }
+        if (pathname === "/ack-greetings") {
+          return this.acknowledgeGreetings(request);
         }
         if (pathname === "/complete-claim") {
           return this.completeContinuationClaim(request);
@@ -703,10 +969,7 @@ export class OnboardingSessionCoordinator {
         // error-policy:J1 Durable Object transport boundary; inner onboarding
         // failures remain observable as a failed request and are never replaced
         // with an empty or successful-looking result.
-        return Response.json(
-          { error: error instanceof Error ? error.message : String(error) },
-          { status: 500 },
-        );
+        return onboardingCoordinatorErrorResponse(error);
       }
     });
   }

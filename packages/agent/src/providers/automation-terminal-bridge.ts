@@ -20,7 +20,7 @@ import {
 } from "../api/conversation-metadata.ts";
 import { hasAdminAccess } from "../security/access.ts";
 import {
-  formatRelativeTimestamp,
+  formatRelativeTimestampPrefix,
   formatSpeakerLabel,
 } from "../shared/conversation-format.ts";
 
@@ -81,9 +81,9 @@ export const automationTerminalBridgeProvider: Provider = {
       const lines = ["Linked terminal conversation:"];
       for (const mem of visibleMessages) {
         const speaker = formatSpeakerLabel(runtime, mem);
-        const ts = formatRelativeTimestamp(mem.createdAt);
+        const age = formatRelativeTimestampPrefix(mem.createdAt);
         const text = (mem.content.text ?? "").slice(0, 300);
-        lines.push(`(${ts}) ${speaker}: ${text}`);
+        lines.push(`${age}${speaker}: ${text}`);
       }
 
       return {

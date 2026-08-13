@@ -13,6 +13,11 @@ import {
 } from "./core-plugins.ts";
 
 describe("CORE_PLUGINS", () => {
+  it("loads the documents route plugin for web and hosted agent defaults", () => {
+    expect(CORE_PLUGINS).toContain("@elizaos/plugin-documents");
+    expect(DEFERRED_CORE_PLUGINS).toContain("@elizaos/plugin-documents");
+  });
+
   it("does not load plugin-google-workspace or plugin-personal-assistant by default", () => {
     // These two plugins pull in heavy native/cloud deps (googleapis and
     // @capacitor/core) that the slim Docker runtime image intentionally does

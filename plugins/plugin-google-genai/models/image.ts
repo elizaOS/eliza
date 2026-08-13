@@ -4,9 +4,13 @@
  * model's JSON output and falls back to regex title extraction from prose. The
  * call is wrapped in `recordLlmCall` for trajectory capture.
  *
- * Provider failures (image fetch error, bad key, model-not-found, rate-limit,
- * timeout, safety block, empty completion) surface as typed errors so the caller
- * and model see a real failure — they are never fabricated into a
+ * Image bytes are loaded only through the platform-installed guarded fetcher
+ * (`models/image-url.ts`) so caller-supplied URLs cannot reach loopback,
+ * link-local, or private network targets (SSRF), and so this shared module
+ * never names a Node-only core subpath a browser bundle would follow. Provider
+ * failures (image fetch error, bad key, model-not-found, rate-limit, timeout,
+ * safety block, empty completion) surface as typed errors so the caller and
+ * model see a real failure — they are never fabricated into a
  * `{ title, description }` result the runtime would read as a real description.
  */
 import type {
@@ -22,6 +26,7 @@ import {
   getSafetySettings,
 } from "../utils/config";
 import { countTokens } from "../utils/tokenization";
+import { fetchImageFromUrl } from "./image-url";
 
 export async function handleImageDescription(
   runtime: IAgentRuntime,
@@ -48,16 +53,17 @@ export async function handleImageDescription(
       "Please analyze this image and provide a title and detailed description.";
   }
 
-  try {
-    const imageResponse = await fetch(imageUrl);
-    if (!imageResponse.ok) {
-      throw new Error(`Failed to fetch image: ${imageResponse.statusText}`);
-    }
+  if (!imageUrl || imageUrl.trim().length === 0) {
+    throw new Error("IMAGE_DESCRIPTION requires a valid image URL");
+  }
 
-    const imageData = await imageResponse.arrayBuffer();
-    const base64Image = Buffer.from(imageData).toString("base64");
-    const contentType =
-      imageResponse.headers.get("content-type") || "image/jpeg";
+  try {
+    // Untrusted agent/tool image URLs must not hit private or metadata hosts.
+    // Each build entrypoint installs its platform's guarded fetcher, so this
+    // shared module never names the Node-only `@elizaos/core/node` subpath.
+    const media = await fetchImageFromUrl(imageUrl);
+    const base64Image = media.base64;
+    const contentType = media.contentType || "image/jpeg";
 
     const details: RecordLlmCallDetails = {
       model: modelName,

@@ -164,12 +164,14 @@ async function __hono_DELETE(
     const deleted = await elizaSandboxService.deleteAgent(
       agentId,
       user.organization_id,
+      { authorization: "user_request" },
     );
     if (!deleted.success) {
       const status =
         deleted.error === "Agent not found"
           ? 404
-          : deleted.error === "Agent provisioning is in progress"
+          : deleted.error === "Agent provisioning is in progress" ||
+              deleted.error === "Agent is running; suspend it before deletion"
             ? 409
             : 500;
       return withCompatCors(

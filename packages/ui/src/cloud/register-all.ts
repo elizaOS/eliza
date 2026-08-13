@@ -8,18 +8,27 @@
  * explicit `registerX()` function. None of those run unless the modules are
  * imported and the functions are called once at boot.
  *
- * `registerAllCloudSurfaces()` is that single boot hook: the app shell calls it
- * before mounting `CloudRouterShell` so the registry is populated. It is
- * idempotent — every underlying registration guards against double-register or
- * is keyed by route path / section id — so calling it more than once is safe.
+ * `registerAllCloudSurfaces()` is that single boot hook: hosts that need the
+ * complete private + public route table before the next statement call it
+ * synchronously. It is idempotent — every underlying registration guards
+ * against double-register or is keyed by route path / section id — so calling
+ * it more than once is safe.
+ *
+ * **Contract:** this module preserves the develop synchronous
+ * `registerAllCloudSurfaces(): void` API on `@elizaos/ui/cloud/register-all`.
+ * Callers that import this subpath and read the registry on the next line must
+ * observe a complete table.
+ *
+ * Progressive public-only boot for anonymous `/login` (#18056) lives on a
+ * **different** entrypoint: `@elizaos/ui/cloud/register-public`. That path is
+ * what `packages/app` uses so private dashboard domains stay out of the idle
+ * login critical graph.
  *
  * Account-management surfaces (account, security, plugin grants, billing,
- * API keys, monetization, connectors) are mounted twice on purpose: as in-app
- * Settings sections (the app's own settings hub) AND as standalone
- * `dashboard/*` console pages. The standalone mounts are what make the apex
- * console (elizacloud.ai) work — the agent app never boots there (see
- * `AppCatchAllRoute`), so the console pages are the only reachable home for
- * add-funds / API keys / account on a control-plane host.
+ * API keys, monetization, connectors) register as in-app Settings sections and
+ * as `/cloud/*` pages rendered by the normal Eliza app shell. There is no
+ * separate dashboard shell; `/dashboard/*` exists only as redirect
+ * compatibility in the web router.
  */
 
 // Side-effecting domain modules: importing them runs their top-level
@@ -33,26 +42,24 @@ import "./account-security/routes";
 import "./monetization/routes";
 import "./connectors/routes";
 import "./organization/routes";
+import "./applications";
 
-import { lazy } from "react";
 import { registerAdminCloudRoutes } from "./admin";
 import { registerApiExplorerCloudRoute } from "./api-explorer";
-import {
-  APPLICATIONS_DETAIL_ROUTE_PATH,
-  APPLICATIONS_LIST_ROUTE_PATH,
-} from "./applications";
+import { registerMovedApplicationsCloudRoutes } from "./applications/register-moved-routes";
 import { registerApprovalsCloudRoute } from "./approvals";
-import { registerJoinFlow } from "./join";
+import { registerJoinFlow } from "./join/register";
 import { registerMcpsCloudRoute } from "./mcps";
-import { registerPublicPages } from "./public-pages";
+import { registerPublicPages } from "./public-pages/register";
+import { registerManagedCloudAppShellPage } from "./register-managed-cloud-page";
 import { registerCloudSettingsSections } from "./settings";
-import { registerCloudRoute } from "./shell/cloud-route-registry";
 
 let registered = false;
 
 /**
  * Register every cloud route + settings section against the shared registries.
- * Idempotent and safe to call from the app shell on every boot.
+ * Synchronous, idempotent, and safe to call from any host that needs a complete
+ * table before the next statement (legacy develop contract).
  */
 export function registerAllCloudSurfaces(): void {
   if (registered) return;
@@ -63,24 +70,12 @@ export function registerAllCloudSurfaces(): void {
 
   registerApiExplorerCloudRoute();
   registerApprovalsCloudRoute();
-  // The Applications module self-registers its real routes at import time (line
-  // 40's `import "./applications"` chain), but the console no longer surfaces
-  // Apps — management moved into the Eliza app. Override both paths (later
-  // same-path registration wins) so a stale /dashboard/apps link redirects to
-  // the dashboard. The Applications components stay in the tab/view app.
-  const AppsMovedRoute = lazy(() => import("./applications/AppsMovedRoute"));
-  registerCloudRoute({
-    path: APPLICATIONS_LIST_ROUTE_PATH,
-    element: AppsMovedRoute,
-    group: "dashboard",
-  });
-  registerCloudRoute({
-    path: APPLICATIONS_DETAIL_ROUTE_PATH,
-    element: AppsMovedRoute,
-    group: "dashboard",
-  });
+  // The Applications module self-registers at import time; override its paths
+  // and retain the older plural aliases so stale links reach the dashboard.
+  registerMovedApplicationsCloudRoutes();
   registerAdminCloudRoutes();
   registerMcpsCloudRoute();
 
   registerCloudSettingsSections();
+  registerManagedCloudAppShellPage();
 }

@@ -25,7 +25,7 @@ MCP (Model Context Protocol) is a standard for connecting AI models to external 
 elizaOS Cloud exposes an MCP-compatible endpoint:
 
 ```
-https://elizacloud.ai/api/mcp
+https://api.eliza.app/api/mcp
 ```
 
 ## Protocol Methods
@@ -33,7 +33,7 @@ https://elizacloud.ai/api/mcp
 ### Initialize
 
 ```bash
-curl -X POST "https://elizacloud.ai/api/mcp" \
+curl -X POST "https://api.eliza.app/api/mcp" \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
@@ -222,7 +222,7 @@ curl -X POST "https://elizacloud.ai/api/mcp" \
 Standard HTTP POST requests:
 
 ```bash
-curl -X POST "https://elizacloud.ai/api/mcp" \
+curl -X POST "https://api.eliza.app/api/mcp" \
   -H "Content-Type: application/json" \
   -d '{"jsonrpc": "2.0", ...}'
 ```
@@ -232,7 +232,7 @@ curl -X POST "https://elizacloud.ai/api/mcp" \
 For streaming responses:
 
 ```bash
-curl -X GET "https://elizacloud.ai/api/mcp/stream" \
+curl -X GET "https://api.eliza.app/api/mcp/stream" \
   -H "Accept: text/event-stream"
 ```
 
@@ -258,7 +258,7 @@ elizaOS Cloud provides these built-in MCP tools:
 ### Add MCP Server
 
 ```bash
-curl -X POST "https://elizacloud.ai/api/v1/mcps" \
+curl -X POST "https://api.eliza.app/api/v1/mcps" \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
@@ -276,7 +276,7 @@ curl -X POST "https://elizacloud.ai/api/v1/mcps" \
 Access external MCPs through elizaOS:
 
 ```bash
-curl -X POST "https://elizacloud.ai/api/mcp/proxy/{mcpId}" \
+curl -X POST "https://api.eliza.app/api/mcp/proxy/{mcpId}" \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{

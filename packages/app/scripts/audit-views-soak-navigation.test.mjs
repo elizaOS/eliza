@@ -26,11 +26,10 @@ test("cleanup navigates through the shell event instead of raw History", () => {
 });
 
 test("navigation uses an independent cold-load timeout with target diagnostics", () => {
+  expect(source).toContain("resolveSoakTiming");
+  expect(source).toContain("DEFAULT_NAV_TIMEOUT_MS");
   expect(source).toContain(
-    "const NAV_TIMEOUT_MS = Number(process.env.NAV_TIMEOUT_MS || 10_000);",
-  );
-  expect(source).toContain(
-    "{ timeout: Math.max(NAV_TIMEOUT_MS, NAV_WAIT_MS * 3) }",
+    "{ timeout: resolveNavigationTimeoutMs(NAV_TIMEOUT_MS, NAV_WAIT_MS) }",
   );
   expect(source).toContain("navigation to view");
   expect(source).toContain("did not reach");

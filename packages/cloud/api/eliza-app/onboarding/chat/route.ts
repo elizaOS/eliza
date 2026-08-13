@@ -19,7 +19,7 @@ import {
 import { getCurrentUser } from "@/lib/auth/workers-hono-auth";
 import { elizaAppSessionService } from "@/lib/services/eliza-app";
 import {
-  inspectDiscordOnboardingContinuation,
+  inspectOnboardingContinuation,
   type OnboardingPlatform,
   runOnboardingChat,
 } from "@/lib/services/eliza-app/onboarding-chat";
@@ -59,6 +59,7 @@ const chatSchema = z.object({
   platform: platformSchema.optional(),
   platformUserId: z.string().trim().max(256).optional(),
   platformDisplayName: z.string().trim().max(120).optional(),
+  platformReplyAddress: z.string().trim().max(256).optional(),
   statusOnly: z.boolean().optional(),
   confirmPlatformLink: z.boolean().optional(),
 });
@@ -71,7 +72,7 @@ app.get("/", async (c) => {
     if (!caller.authenticatedUser || caller.trustedPlatformIdentity) {
       throw ForbiddenError("Browser authentication required");
     }
-    const preview = await inspectDiscordOnboardingContinuation(
+    const preview = await inspectOnboardingContinuation(
       token,
       caller.authenticatedUser,
     );
@@ -79,11 +80,16 @@ app.get("/", async (c) => {
   } catch (error) {
     if (
       isElizaError(error) &&
-      error.code === "ONBOARDING_TRUSTED_CONTINUATION_INVALID"
+      (error.code === "ONBOARDING_PLATFORM_IDENTITY_MISMATCH" ||
+        error.code === "ONBOARDING_TRUSTED_CONTINUATION_INVALID")
     ) {
       return failureResponse(
         c,
-        ForbiddenError("This Discord connection link is invalid or expired"),
+        ForbiddenError(
+          error.code === "ONBOARDING_PLATFORM_IDENTITY_MISMATCH"
+            ? "Authenticate with the same messaging account that started this onboarding session"
+            : "This connection link is invalid or expired",
+        ),
       );
     }
     return failureResponse(c, error);
@@ -109,6 +115,7 @@ async function resolveCaller(
     userId: string;
     organizationId: string;
     telegramId?: string;
+    discordId?: string;
   } | null;
   trustedPlatformIdentity: boolean;
 }> {
@@ -124,12 +131,13 @@ async function resolveCaller(
         userId: session.userId,
         organizationId: session.organizationId,
         telegramId: session.telegramId,
+        discordId: session.discordId,
       },
       trustedPlatformIdentity: false,
     };
   }
 
-  // Steward session — the branded email/OAuth login on *.elizacloud.ai —
+  // Steward session — the branded email/OAuth login on the eliza.app hosts —
   // accepted by BEARER ONLY, never the steward-token cookie: this POST binds
   // sessions, links identities and starts provisioning, and Hono's
   // `req.json()` parses a cross-site text/plain simple request, so a
@@ -232,6 +240,9 @@ app.post("/", async (c) => {
       platform: parsed.data.platform as OnboardingPlatform | undefined,
       platformUserId: parsed.data.platformUserId,
       platformDisplayName: parsed.data.platformDisplayName,
+      platformReplyAddress: caller.trustedPlatformIdentity
+        ? parsed.data.platformReplyAddress
+        : undefined,
       authenticatedUser: caller.authenticatedUser,
       trustedPlatformIdentity: caller.trustedPlatformIdentity,
       idempotencyKey: idempotencyKey || undefined,
@@ -293,7 +304,7 @@ app.post("/", async (c) => {
         new ApiError(
           409,
           "session_not_ready",
-          "Confirm the Discord account before connecting it",
+          "Confirm the messaging account before connecting it",
         ),
       );
     }
@@ -306,7 +317,7 @@ app.post("/", async (c) => {
         new ApiError(
           409,
           "identity_conflict",
-          "This Discord account is already linked to another account",
+          "This messaging account is already linked to another account",
         ),
       );
     }

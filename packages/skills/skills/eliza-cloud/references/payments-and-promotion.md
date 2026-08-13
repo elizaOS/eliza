@@ -183,7 +183,7 @@ The service adds platform/service fees to the amount charged. Treat
 `amountUsd` as the creator-requested amount and show the returned payment
 metadata to the payer instead of hand-calculating totals in the worker.
 
-Default hosted facilitator/status base is `https://x402.elizacloud.ai`. Keep
+Default hosted facilitator/status base is `https://x402.eliza.app`. Keep
 `x402.elizaos.ai` only as a legacy compatibility hostname.
 
 High-level SDK helpers are available on `ElizaCloudClient`:

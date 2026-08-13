@@ -46,6 +46,7 @@ plugins/plugin-wechat/
     connector-account-provider.ts # ConnectorAccountProvider for ConnectorAccountManager
     utils/qrcode.ts           # displayQRUrl — prints QR code login URL to terminal
     index.test.ts             # Unit tests
+    callback-server.test.ts   # Webhook URL/payload fail-closed tests
     connector-account-provider.test.ts # Unit tests for ConnectorAccountProvider
 ```
 
@@ -127,6 +128,9 @@ mapping to `WECHAT_TYPE_MAP` in `src/callback-server.ts`.
   `ELIZA_WECHAT_WEBHOOK_PORT` → `config.webhookPort` → `18790`. In multi-account
   mode, accounts sharing a port share one server; each gets its own URL path
   (`/webhook/wechat/<accountId>`). Port conflicts throw at startup.
+- **Webhook fail-closed.** Malformed percent-encoding in an account path returns
+  404. JSON primitives and non-object `data` produce no inbound message; missing
+  timestamps default to receipt time, while unusable timestamps are dropped.
 - **Message dedup.** `Bot` tracks seen message IDs in a 30-minute window (max
   1 000 entries) to prevent double-processing webhook retries.
 - **Chunking.** `ReplyDispatcher` breaks outgoing text at 2 000-character

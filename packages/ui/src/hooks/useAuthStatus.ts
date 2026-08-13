@@ -16,6 +16,10 @@
  * fresh result instead of serializing a new probe after first paint.
  */
 
+import {
+  STEWARD_SESSION_CHANGE_EVENT,
+  STEWARD_TOKEN_KEY,
+} from "@elizaos/shared/steward-session-client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   type AuthAccessInfo,
@@ -25,7 +29,10 @@ import {
 } from "../api/auth-client";
 import { getBootConfig, setBootConfig } from "../config/boot-config-store";
 import { scrubRejectedActiveServerCredential } from "../state/active-server-credential";
+import { scrubPersistedAgentProfileTokens } from "../state/agent-profiles";
 import { loadPersistedActiveServer } from "../state/persistence";
+import { clearSharedCloudAccountBinding } from "../state/shared-cloud-account-binding";
+import { isManagedCloudSharedAgentBase } from "../utils/cloud-agent-base";
 
 export type AuthStatusState =
   | { phase: "loading" }
@@ -74,6 +81,7 @@ let authStatusSnapshot: AuthStatusState = { phase: "loading" };
 let authStatusFetch: Promise<void> | null = null;
 let authStatusPrime: Promise<void> | null = null;
 let authStatusPrimeSettledAt = 0;
+let authStatusEpoch = 0;
 // A primed result is only trusted by the activation path for a boot-scale
 // window; a hook that (re)activates later re-probes exactly as before, so a
 // stale prime can never stand in for the session's current auth state.
@@ -113,9 +121,11 @@ async function fetchAuthStatus(): Promise<void> {
   // backend still enforces auth while the UI retains its mounted shell until an
   // authoritative authenticated/unauthenticated/unavailable result arrives.
 
+  const probeEpoch = authStatusEpoch;
   authStatusFetch = (async () => {
     for (let attempt = 0; ; attempt += 1) {
       const result = await authMeWithRejectedBearerRecovery();
+      if (probeEpoch !== authStatusEpoch) return;
       if (result.ok === true) {
         publishAuthStatus({
           phase: "authenticated",
@@ -130,6 +140,7 @@ async function fetchAuthStatus(): Promise<void> {
           await new Promise((resolve) =>
             setTimeout(resolve, SERVER_UNAVAILABLE_RETRY_MS),
           );
+          if (probeEpoch !== authStatusEpoch) return;
           continue;
         }
         publishAuthStatus({ phase: "server_unavailable" });
@@ -173,8 +184,10 @@ async function fetchAuthStatus(): Promise<void> {
 export function primeAuthStatusProbe(): void {
   if (authStatusPrime || authStatusFetch) return;
   if (authStatusSnapshot.phase !== "loading") return;
+  const probeEpoch = authStatusEpoch;
   authStatusPrime = (async () => {
     const result = await authMeWithRejectedBearerRecovery();
+    if (probeEpoch !== authStatusEpoch) return;
     // A real fetch started (or a state was published) while the prime was in
     // flight — that path owns the snapshot; drop the primed result.
     if (authStatusFetch || authStatusSnapshot.phase !== "loading") return;
@@ -251,6 +264,16 @@ export function isAuthenticatedNow(): boolean {
 }
 
 /**
+ * Non-hook read of the full shared auth-status snapshot, for module seams
+ * that need the resolved identity/session (not just the authenticated
+ * boolean) to key state per authority — e.g. the notification store
+ * isolating its inbox per user/agent (#18391). Mirrors {@link isAuthenticatedNow}.
+ */
+export function getAuthStatusSnapshot(): AuthStatusState {
+  return authStatusSnapshot;
+}
+
+/**
  * Subscribe to auth-status changes outside React (companion to
  * {@link isAuthenticatedNow}). The listener fires on every publish with the new
  * snapshot; returns an unsubscribe. Lets a module seam re-arm work it deferred
@@ -293,6 +316,7 @@ export function __resetAuthStatusForTests(): void {
   authStatusFetch = null;
   authStatusPrime = null;
   authStatusPrimeSettledAt = 0;
+  authStatusEpoch += 1;
   publishAuthStatus({ phase: "loading" });
 }
 
@@ -333,19 +357,81 @@ export function useAuthStatus(options: UseAuthStatusOptions = {}): {
   }, [skip, observeOnly, activate]);
 
   useEffect(() => {
-    if (skip || observeOnly || pollIntervalMs === 0) return;
-    const id = setInterval(() => {
-      if (
-        typeof document !== "undefined" &&
-        document.visibilityState === "hidden"
-      ) {
+    if (skip || observeOnly) return;
+
+    const stewardSessionHandler = (event: Event) => {
+      const detail = (event as CustomEvent<{ state?: string }>).detail;
+      if (detail?.state === "cleared") {
+        if (isManagedCloudSharedAgentBase(getBootConfig().apiBase)) {
+          // Any auth request started under the ending account is no longer
+          // authoritative and must not overwrite the terminal state below.
+          authStatusEpoch += 1;
+          clearSharedCloudAccountBinding();
+          scrubPersistedAgentProfileTokens();
+          // The shared runtime has no independent agent session: terminal
+          // Steward expiry is authoritative immediately. Publishing here
+          // unmounts every useIsAuthenticated-gated poller and moves the shell
+          // to Cloud reauthentication instead of waiting for the five-minute
+          // auth poll while protected requests loop on 401.
+          const {
+            apiBase: _apiBase,
+            apiToken: _apiToken,
+            ...accountConfig
+          } = getBootConfig();
+          setBootConfig(accountConfig);
+          publishAuthStatus({
+            phase: "unauthenticated",
+            reason: "remote_auth_required",
+            access: {
+              mode: "remote",
+              passwordConfigured: false,
+              ownerConfigured: true,
+            },
+          });
+        }
         return;
       }
-      void fetch();
-    }, pollIntervalMs);
+      // A new Steward session may have landed after reauthentication. Only
+      // re-probe when an account-scoped target is already bound; terminal
+      // shared-session cleanup deliberately removed the old account's target,
+      // and authenticating against its in-memory base before agent selection
+      // would remount stale chat. Full-page SSO reload or onboarding owns the
+      // targetless account-resolution path.
+      if (loadPersistedActiveServer()) void fetch();
+    };
+    window.addEventListener(
+      STEWARD_SESSION_CHANGE_EVENT,
+      stewardSessionHandler,
+    );
+    const stewardStorageHandler = (event: StorageEvent) => {
+      if (event.key !== STEWARD_TOKEN_KEY) return;
+      stewardSessionHandler(
+        new CustomEvent(STEWARD_SESSION_CHANGE_EVENT, {
+          detail: { state: event.newValue ? "present" : "cleared" },
+        }),
+      );
+    };
+    window.addEventListener("storage", stewardStorageHandler);
+    const stewardTokenSyncHandler = () => {
+      if (isManagedCloudSharedAgentBase(getBootConfig().apiBase)) void fetch();
+    };
+    window.addEventListener("steward-token-sync", stewardTokenSyncHandler);
+
+    const id =
+      pollIntervalMs === 0
+        ? null
+        : setInterval(() => {
+            if (
+              typeof document !== "undefined" &&
+              document.visibilityState === "hidden"
+            ) {
+              return;
+            }
+            void fetch();
+          }, pollIntervalMs);
 
     const visibilityHandler =
-      typeof document !== "undefined"
+      pollIntervalMs !== 0 && typeof document !== "undefined"
         ? () => {
             if (document.visibilityState === "visible") void fetch();
           }
@@ -355,7 +441,13 @@ export function useAuthStatus(options: UseAuthStatusOptions = {}): {
     }
 
     return () => {
-      clearInterval(id);
+      window.removeEventListener(
+        STEWARD_SESSION_CHANGE_EVENT,
+        stewardSessionHandler,
+      );
+      window.removeEventListener("storage", stewardStorageHandler);
+      window.removeEventListener("steward-token-sync", stewardTokenSyncHandler);
+      if (id !== null) clearInterval(id);
       if (visibilityHandler && typeof document !== "undefined") {
         document.removeEventListener("visibilitychange", visibilityHandler);
       }

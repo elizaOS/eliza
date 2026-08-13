@@ -5,6 +5,7 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { ensureMacPermissionUsageDescriptions } from "./postwrap-diagnostics";
 
 type MachOKind = "executable" | "library" | null;
 type ExecFileSyncFn = typeof execFileSync;
@@ -341,6 +342,16 @@ export function ensureMacBuildAppIcon(
 }
 
 function main(): void {
+  const bundlePath = resolveBuildBundlePath(process.env);
+  if (bundlePath) {
+    const inserted = ensureMacPermissionUsageDescriptions(bundlePath, "macos");
+    if (inserted.length > 0) {
+      console.log(
+        `[runtime-sign] added macOS Info.plist entries: ${inserted.join(", ")}`,
+      );
+    }
+  }
+
   if (ensureMacBuildAppIcon()) {
     console.log("[runtime-sign] installed AppIcon.icns");
   }

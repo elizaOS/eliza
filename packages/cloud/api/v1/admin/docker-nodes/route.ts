@@ -9,9 +9,14 @@
 
 import { Hono } from "hono";
 import { z } from "zod";
-import { dockerNodesRepository } from "@/db/repositories/docker-nodes";
+import {
+  dockerNodesRepository,
+  stampDockerNodeEnvironmentMetadata,
+} from "@/db/repositories/docker-nodes";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireAdmin } from "@/lib/auth/workers-hono-auth";
+import { containersEnv } from "@/lib/config/containers-env";
+import { resolveNodeCapacity } from "@/lib/services/docker-node-manager";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -87,6 +92,9 @@ function isReservedAddress(hostname: string): boolean {
   return reserved.some((re) => re.test(hostname));
 }
 
+/** Only when the operator supplies neither a capacity nor the box's RAM. */
+const DEFAULT_REGISTERED_CAPACITY = 8;
+
 const createNodeSchema = z.object({
   nodeId: z.string().min(1, "nodeId is required"),
   hostname: z
@@ -97,7 +105,13 @@ const createNodeSchema = z.object({
       "Hostname cannot be a private/reserved IP address (loopback, RFC-1918, link-local, metadata)",
     ),
   sshPort: z.number().int().min(1).max(65535).optional().default(22),
-  capacity: z.number().int().min(1).optional().default(8),
+  // No default and an explicit ceiling: absent means "derive from the machine",
+  // and an operator can no longer register an unbounded slot count.
+  capacity: z.number().int().min(1).max(1024).optional(),
+  /** MemTotal of the box, in MiB, when the operator knows it. */
+  memTotalMb: z.number().int().min(1).optional(),
+  /** vCPU the node reports, from nproc. */
+  vCpuCount: z.number().int().min(1).max(512).optional(),
   sshUser: z.string().min(1).optional().default("root"),
   hostKeyFingerprint: z.string().min(1),
 });
@@ -131,8 +145,16 @@ app.post("/", async (c) => {
       );
     }
 
-    const { nodeId, hostname, sshPort, capacity, sshUser, hostKeyFingerprint } =
-      parsed.data;
+    const {
+      nodeId,
+      hostname,
+      sshPort,
+      capacity,
+      memTotalMb,
+      vCpuCount,
+      sshUser,
+      hostKeyFingerprint,
+    } = parsed.data;
 
     const existing = await dockerNodesRepository.findByNodeId(nodeId);
     if (existing) {
@@ -142,19 +164,45 @@ app.post("/", async (c) => {
       );
     }
 
+    const resolved = resolveNodeCapacity({
+      requestedCapacity: capacity,
+      memTotalMb,
+      vCpuCount,
+      agentMemoryLimitMb: containersEnv.agentContainerMemoryLimitMb(),
+      fallbackCapacity: DEFAULT_REGISTERED_CAPACITY,
+    });
+    if (resolved.clampedFrom !== undefined) {
+      logger.error(
+        "[Admin Docker Nodes] requested capacity exceeds what this node's RAM can hold",
+        {
+          nodeId,
+          requested: resolved.clampedFrom,
+          capacity: resolved.capacity,
+          memTotalMb,
+        },
+      );
+    }
+
     const node = await dockerNodesRepository.create({
       node_id: nodeId,
       hostname,
       ssh_port: sshPort,
-      capacity,
+      capacity: resolved.capacity,
       ssh_user: sshUser,
       host_key_fingerprint: hostKeyFingerprint,
+      metadata: stampDockerNodeEnvironmentMetadata({
+        ...(memTotalMb === undefined ? {} : { memTotalMb }),
+        ...(vCpuCount === undefined ? {} : { vCpuCount }),
+        capacityBoundBy: resolved.boundBy,
+        capacityDerivedFromMemory: resolved.derived,
+      }),
     });
 
     logger.info("[Admin Docker Nodes] Node registered", {
       nodeId,
       hostname,
-      capacity,
+      capacity: resolved.capacity,
+      derivedFromMemory: resolved.derived,
     });
 
     const responseData: {

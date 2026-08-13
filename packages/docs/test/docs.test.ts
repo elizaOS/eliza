@@ -2,7 +2,9 @@
  * Docs site integrity tests for Mintlify navigation, metadata, and links.
  *
  * Runs against the real files on disk so docs.json, redirects, frontmatter,
- * local assets, and internal links stay deployable together.
+ * local assets, and internal links stay deployable together. Also rejects
+ * public pages that prescribe retired `eliza start` / `eliza dashboard`
+ * binaries as if they were published commands.
  */
 
 import assert from "node:assert";
@@ -26,6 +28,7 @@ function readDocsConfig() {
 
 function normalizeRoute(route) {
   const cleanRoute = route
+    .replaceAll("\\", "/")
     .split("#")[0]
     .split("?")[0]
     .replace(/^\/+/, "")
@@ -163,17 +166,72 @@ function resolveInternalTarget(sourceFile, href) {
 }
 
 function extractMarkdownFrontmatter(content) {
-  if (!content.startsWith("---\n")) {
+  const opening = /^---(\r?\n)/.exec(content);
+  if (!opening) {
     return null;
   }
 
-  const end = content.indexOf("\n---", 4);
+  const bodyStart = opening[0].length;
+  const end = content.indexOf(`${opening[1]}---`, bodyStart);
   if (end === -1) {
-    return { closed: false, body: content.slice(4) };
+    return { closed: false, body: content.slice(bodyStart) };
   }
 
-  return { closed: true, body: content.slice(4, end) };
+  return { closed: true, body: content.slice(bodyStart, end) };
 }
+
+function retiredCommandIsExplicitlyNegated(content, commandIndex) {
+  const prefix = content.slice(0, commandIndex);
+  const sentenceStart = Math.max(
+    prefix.lastIndexOf("."),
+    prefix.lastIndexOf("!"),
+    prefix.lastIndexOf("?"),
+  );
+  const sentencePrefix = prefix.slice(sentenceStart + 1);
+
+  return /\b(?:there is no|no such command)\b/i.test(sentencePrefix);
+}
+
+describe("docs integrity helpers", () => {
+  it("normalizes Windows path separators", () => {
+    assert.strictEqual(
+      normalizeRoute("tracks\\agent\\lifecycle.mdx"),
+      "tracks/agent/lifecycle",
+    );
+  });
+
+  it("extracts frontmatter with LF and CRLF line endings", () => {
+    for (const newline of ["\n", "\r\n"]) {
+      const content = `---${newline}title: Example${newline}description: Test${newline}---${newline}Body`;
+
+      assert.deepStrictEqual(extractMarkdownFrontmatter(content), {
+        closed: true,
+        body: `title: Example${newline}description: Test`,
+      });
+    }
+  });
+
+  it("limits retired-command negation to the current sentence", () => {
+    const explicitNegation = "There is no `eliza start` command.";
+    assert.strictEqual(
+      retiredCommandIsExplicitlyNegated(
+        explicitNegation,
+        explicitNegation.indexOf("eliza start"),
+      ),
+      true,
+    );
+
+    const laterPrescription =
+      "There is no `eliza start` command. Run `eliza dashboard` now.";
+    assert.strictEqual(
+      retiredCommandIsExplicitlyNegated(
+        laterPrescription,
+        laterPrescription.indexOf("eliza dashboard"),
+      ),
+      false,
+    );
+  });
+});
 
 describe("docs.json configuration", () => {
   it("docs.json exists and is valid JSON", () => {
@@ -353,9 +411,7 @@ describe("documentation files", () => {
     );
     const packageFiles = new Set(["AGENTS", "CLAUDE", "README"]);
     const hiddenPages = collectMarkdownFiles()
-      .map((file) =>
-        normalizeRoute(relative(DOCS_DIR, file).replaceAll("\\\\", "/")),
-      )
+      .map((file) => normalizeRoute(relative(DOCS_DIR, file)))
       .filter((page) => !packageFiles.has(page) && !navigationPages.has(page));
 
     assert.deepStrictEqual(
@@ -606,6 +662,25 @@ describe("documentation files", () => {
     }
 
     assert.deepStrictEqual(missingScripts, []);
+  });
+
+  it("does not prescribe retired eliza start or dashboard binaries", () => {
+    const prescribed = [];
+
+    for (const file of collectMarkdownFiles()) {
+      const content = readFileSync(file, "utf-8");
+      const normalized = content.replace(/\s+/g, " ");
+      const retiredCommand = /\b(?:eliza|elizaos)\s+(?:start|dashboard)\b/g;
+
+      for (const match of normalized.matchAll(retiredCommand)) {
+        const start = match.index ?? 0;
+        if (!retiredCommandIsExplicitlyNegated(normalized, start)) {
+          prescribed.push(`${relative(DOCS_DIR, file)} -> ${match[0]}`);
+        }
+      }
+    }
+
+    assert.deepStrictEqual(prescribed, []);
   });
 
   it("documented Eliza Cloud API paths exist in the generated router", () => {

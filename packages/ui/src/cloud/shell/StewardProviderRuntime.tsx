@@ -31,6 +31,7 @@ import {
   useMemo,
   useRef,
 } from "react";
+import { dispatchStewardSessionChange } from "../../events/steward-session-event";
 import { scrubPersistedAgentProfileTokens } from "../../state/agent-profiles";
 import { scrubPersistedActiveServerToken } from "../../state/persistence";
 import { reportRendererDiagnostic } from "../../utils/renderer-diagnostics";
@@ -125,6 +126,7 @@ function AuthTokenSync({ children }: { children: ReactNode }) {
       })
         .then(async (res) => {
           if (res.ok) {
+            dispatchStewardSessionChange("present");
             window.dispatchEvent(
               new CustomEvent("steward-token-sync", {
                 detail: { token, userId: user?.id },

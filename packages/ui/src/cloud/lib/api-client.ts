@@ -27,6 +27,11 @@
 import { Capacitor, CapacitorHttp } from "@capacitor/core";
 import { getElizaApiToken } from "@elizaos/shared";
 import { STEWARD_TOKEN_KEY } from "@elizaos/shared/steward-session-client";
+import {
+  DEFAULT_DIRECT_CLOUD_API_BASE_URL,
+  resolveDirectCloudAuthApiBase,
+  STAGING_DIRECT_CLOUD_API_BASE_URL,
+} from "../../api/direct-cloud-endpoints";
 import { isElectrobunRuntime } from "../../bridge/electrobun-runtime";
 import { getBootConfig } from "../../config/boot-config";
 import { normalizeCloudApiKeyToken } from "./cloud-api-key-token";
@@ -35,16 +40,9 @@ import { decodeJwtPayload } from "./jwt";
 // The single Eliza Cloud API host the native/Electrobun transport is allowed to
 // reach cross-origin. Kept deliberately narrow: only this exact host relaxes the
 // same-origin throw — every other absolute cross-origin URL still throws.
-const ELIZA_CLOUD_API_HOST = "api.elizacloud.ai";
-const DEFAULT_DIRECT_CLOUD_API_BASE_URL = "https://api.elizacloud.ai";
-// Eliza Cloud web/auth hosts that front the same control plane. A configured
-// `cloudApiBase` pointing at one of these normalizes to the API host above —
-// mirrors `resolveDirectCloudAuthApiBase` in the agent client so the dashboard
-// and the agent client resolve to the identical Cloud API base.
-const ELIZA_CLOUD_WEB_HOSTS = new Set([
-  "elizacloud.ai",
-  "www.elizacloud.ai",
-  "dev.elizacloud.ai",
+const ELIZA_CLOUD_API_HOSTS = new Set([
+  new URL(DEFAULT_DIRECT_CLOUD_API_BASE_URL).hostname,
+  new URL(STAGING_DIRECT_CLOUD_API_BASE_URL).hostname,
 ]);
 
 /**
@@ -66,23 +64,14 @@ function isNativeCloudRuntime(): boolean {
 function resolveNativeCloudApiBase(): string {
   const configured =
     getBootConfig().cloudApiBase?.trim() || DEFAULT_DIRECT_CLOUD_API_BASE_URL;
-  const normalized = configured.replace(/\/+$/, "");
-  try {
-    const host = new URL(normalized).hostname.toLowerCase();
-    if (host === ELIZA_CLOUD_API_HOST || ELIZA_CLOUD_WEB_HOSTS.has(host)) {
-      return DEFAULT_DIRECT_CLOUD_API_BASE_URL;
-    }
-  } catch {
-    // Not a parseable absolute URL — fall back to the configured value below.
-  }
-  return normalized;
+  return resolveDirectCloudAuthApiBase(configured);
 }
 
 /** The single allowlisted cross-origin Cloud API target (https + exact host). */
 function isAllowlistedCloudApiHost(url: URL): boolean {
   return (
     url.protocol === "https:" &&
-    url.hostname.toLowerCase() === ELIZA_CLOUD_API_HOST
+    ELIZA_CLOUD_API_HOSTS.has(url.hostname.toLowerCase())
   );
 }
 
@@ -195,17 +184,22 @@ function readLiveNativeStewardToken(token: string): string | null {
  * fallback never applies — it resolves to the steward token or nothing.
  */
 export function readCloudBearerToken(): string | null {
+  const nativeRuntime = isNativeCloudRuntime();
+  // Resolve the supported owner-key fallback before expiry cleanup dispatches
+  // the canonical session-clear event. That event may synchronously remove the
+  // rejected account target from boot config; the already-validated fallback
+  // must remain usable for this request on native/Electrobun (#11930).
+  const nativeCloudApiKey = nativeRuntime
+    ? (normalizeCloudApiKeyToken(getBootConfig().apiToken) ??
+      normalizeCloudApiKeyToken(getElizaApiToken()))
+    : null;
   const stewardToken = readStewardToken()?.trim();
   if (stewardToken) {
-    if (!isNativeCloudRuntime()) return stewardToken;
+    if (!nativeRuntime) return stewardToken;
     const liveToken = readLiveNativeStewardToken(stewardToken);
     if (liveToken) return liveToken;
   }
-  if (!isNativeCloudRuntime()) return null;
-  return (
-    normalizeCloudApiKeyToken(getBootConfig().apiToken) ??
-    normalizeCloudApiKeyToken(getElizaApiToken())
-  );
+  return nativeCloudApiKey;
 }
 
 // ---------------------------------------------------------------------------

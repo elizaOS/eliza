@@ -4,6 +4,7 @@
  * / Remote device pairing, then posts a completion message to the opener.
  */
 
+import { isElizaCloudControlPlaneHostname } from "@elizaos/shared/elizacloud";
 import { AlertCircle, CheckCircle2, Key, Loader2 } from "lucide-react";
 import type { ComponentType, ReactNode } from "react";
 import { useEffect, useRef, useState } from "react";
@@ -63,11 +64,7 @@ function isAllowedCliReturnHost(hostname: string): boolean {
     host === "127.0.0.1" ||
     host === "::1" ||
     host === "[::1]" ||
-    host === "elizacloud.ai" ||
-    host === "www.elizacloud.ai" ||
-    host === "staging.elizacloud.ai" ||
-    host === "app.elizacloud.ai" ||
-    host === "app-staging.elizacloud.ai"
+    isElizaCloudControlPlaneHostname(host)
   );
 }
 
@@ -86,7 +83,7 @@ function sanitizeCliLoginReturnTo(value: string | null): string | null {
 }
 
 function resolveCliLoginMessageTargetOrigin(returnTo: string | null): string {
-  if (typeof window === "undefined") return "https://elizacloud.ai";
+  if (typeof window === "undefined") return "https://eliza.app";
   if (!returnTo) return window.location.origin;
   return new URL(returnTo).origin;
 }
@@ -169,7 +166,7 @@ function CliLoginPanel({
     // `my-auto` centers when it fits and scrolls-from-top when it overflows.
     // Regressed on short screens (Light Phone III, 1080×1240) where the action
     // buttons fell below an unscrollable fold — see cli-login-page.test.tsx.
-    <div className="theme-cloud relative flex min-h-[100dvh] flex-col items-center overflow-y-auto bg-bg p-4">
+    <main className="theme-cloud relative flex min-h-[100dvh] flex-col items-center overflow-y-auto bg-bg p-4">
       <div className="relative my-auto w-full max-w-md bg-card border border-border p-8">
         <div className="flex flex-col items-center gap-6 text-center">
           <div
@@ -180,14 +177,14 @@ function CliLoginPanel({
             />
           </div>
           <div className="space-y-1">
-            <h2 className="text-xl font-semibold text-txt">{title}</h2>
+            <h1 className="text-xl font-semibold text-txt">{title}</h1>
             <div className="text-sm text-muted">{description}</div>
           </div>
           {children}
           {actions ? <div className="w-full space-y-2">{actions}</div> : null}
         </div>
       </div>
-    </div>
+    </main>
   );
 }
 
@@ -366,15 +363,16 @@ export default function CliLoginPage() {
     return (
       <CliLoginPanel
         actions={
-          sessionId ? (
-            <a href={signInHref} className="w-full">
-              <Button className="w-full h-11 bg-accent hover:bg-accent-hover text-accent-foreground">
-                {t("cloud.cliLogin.signInAgain", {
-                  defaultValue: "Sign In Again",
-                })}
-              </Button>
+          <Button
+            asChild
+            className="hosted-signin-focus-emphasis w-full h-11 bg-accent hover:bg-accent-hover text-accent-foreground"
+          >
+            <a href={sessionId ? signInHref : "/login"}>
+              {t("cloud.cliLogin.signInAgain", {
+                defaultValue: "Sign In Again",
+              })}
             </a>
-          ) : null
+          </Button>
         }
         description={pageState.errorMessage}
         icon={AlertCircle}

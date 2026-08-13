@@ -3,7 +3,12 @@
  * exercising the assignments/installed-model/loader state via hoisted mocks
  * rather than a real backend load.
  */
-import { type AgentRuntime, ModelType } from "@elizaos/core";
+import {
+	type AgentRuntime,
+	ModelType,
+	type Service,
+	type ServiceClass,
+} from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const modeState = vi.hoisted(() => ({ mode: "local" }));
@@ -129,6 +134,8 @@ function makeRuntime(): {
 	};
 } {
 	const registrations: Registration[] = [];
+	const serviceClasses = new Map<string, ServiceClass>();
+	const services = new Map<string, Service>();
 	const loader = {
 		currentModelPath: vi.fn(() => loaderState.currentPath),
 		loadModel: vi.fn(async (args: unknown) => {
@@ -146,15 +153,26 @@ function makeRuntime(): {
 		}),
 		embed: vi.fn(async () => ({ embedding: [0.1, 0.2], tokens: 2 })),
 	};
-	const runtime = {
+	let runtime!: AgentRuntime;
+	runtime = {
 		agentId: "agent-test",
 		getModel: vi.fn(() => undefined),
 		getSetting: vi.fn((key: string) =>
 			key === "ELIZA_RUNTIME_MODE" ? modeState.mode : undefined,
 		),
 		getService: vi.fn((name: string) =>
-			name === "localInferenceLoader" ? loader : null,
+			name === "localInferenceLoader" ? loader : (services.get(name) ?? null),
 		),
+		getServiceLoadPromise: vi.fn(async (serviceType: string) => {
+			const running = services.get(serviceType);
+			if (running) return running;
+			const serviceClass = serviceClasses.get(serviceType);
+			if (!serviceClass)
+				throw new Error(`Service ${serviceType} not registered`);
+			const service = await serviceClass.start(runtime);
+			services.set(serviceType, service);
+			return service;
+		}),
 		registerModel: vi.fn(
 			(
 				modelType: string | number,
@@ -165,7 +183,9 @@ function makeRuntime(): {
 				registrations.push({ modelType, provider, priority, handler });
 			},
 		),
-		registerService: vi.fn(),
+		registerService: vi.fn(async (serviceClass: ServiceClass) => {
+			serviceClasses.set(serviceClass.serviceType, serviceClass);
+		}),
 	} as unknown as AgentRuntime;
 	return { registrations, runtime, loader };
 }

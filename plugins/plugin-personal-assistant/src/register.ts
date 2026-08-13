@@ -6,8 +6,12 @@
  * activity-signal capture as a lifecycle-scoped renderer service: the host
  * starts it only in main app windows (never popouts, detached shells, the
  * phone companion, app windows, or the model tester), retains the returned
- * stop function, and invokes it on page teardown, host replacement, and HMR
- * re-registration (#16504).
+ * (now async-capable) stop, and invokes it on page teardown, host
+ * replacement, and HMR re-registration (#16504). The host's per-instance
+ * context (shell/abort signal) is passed straight through so the capture
+ * matches the renderer-service `start` contract and the registry can
+ * serialize a successor's start behind this instance's async cleanup
+ * (#17110).
  */
 import { registerRendererService } from "@elizaos/ui/platform/renderer-services";
 import { startLifeOpsActivitySignalCapture } from "./lifeops/activity-signals-capture.js";
@@ -15,5 +19,5 @@ import { startLifeOpsActivitySignalCapture } from "./lifeops/activity-signals-ca
 registerRendererService({
   id: "personal-assistant.lifeops-activity-signals",
   shells: ["main"],
-  start: () => startLifeOpsActivitySignalCapture(),
+  start: (context) => startLifeOpsActivitySignalCapture(true, context),
 });

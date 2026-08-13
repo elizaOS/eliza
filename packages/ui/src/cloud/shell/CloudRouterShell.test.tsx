@@ -2,11 +2,21 @@
 // @vitest-environment jsdom
 import { STEWARD_TOKEN_KEY } from "@elizaos/shared/steward-session-client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, describe, expect, it } from "vitest";
+import { savePersistedActiveServer } from "../../state/persistence";
 import { appModeNavigation } from "../app-mode/app-mode";
-import { AppCatchAllRoute, DASHBOARD_REDIRECTS } from "./CloudRouterShell";
+import {
+  resetPrivateCloudRegistrationForTests,
+  setPrivateCloudLoadForTests,
+} from "../private-cloud-registration";
+import {
+  AppCatchAllRoute,
+  CLOUD_MANAGEMENT_COMPAT_REDIRECTS,
+  LEGACY_DASHBOARD_REDIRECTS,
+  resolveLegacyCloudSettingsTarget,
+} from "./CloudRouterShell";
 
 /**
  * Apex catch-all regression coverage. elizacloud.ai (an apex control-plane
@@ -14,7 +24,7 @@ import { AppCatchAllRoute, DASHBOARD_REDIRECTS } from "./CloudRouterShell";
  * app must NEVER boot there: it 404-storms on /api/* and the failed
  * /api/first-run/status probe throws the first-run onboarding chooser over the
  * console (the 2026-07-04 prod bug). The catch-all sends unauthenticated apex
- * visitors to /login and authenticated ones to the /dashboard console home —
+ * visitors to /login and authenticated ones to the in-app /cloud view —
  * for EVERY path, not just the bare root — while all other hosts (per-agent
  * subdomains, app.elizacloud.ai, localhost) fall through to the agent app
  * unchanged.
@@ -51,10 +61,10 @@ function renderCatchAll(initialPath = "/"): void {
     <MemoryRouter initialEntries={[initialPath]}>
       <Routes>
         <Route path="/login" element={<div data-testid="login-page" />} />
-        {/* The console home target. The real app renders the dashboard
-            overview here; the test just needs a marker to prove the apex
+        {/* The Cloud home target. The real app renders the management
+            view here; the test just needs a marker to prove the apex
             catch-all redirected to it. */}
-        <Route path="/dashboard" element={<div data-testid="console-home" />} />
+        <Route path="/cloud" element={<div data-testid="console-home" />} />
         <Route
           path="*"
           element={
@@ -78,12 +88,9 @@ function renderCatchAllWithAppModeMarkers(initialPath = "/"): void {
       <MemoryRouter initialEntries={[initialPath]}>
         <Routes>
           <Route path="/login" element={<div data-testid="login-page" />} />
+          <Route path="/cloud" element={<div data-testid="console-home" />} />
           <Route
-            path="/dashboard"
-            element={<div data-testid="console-home" />}
-          />
-          <Route
-            path="/dashboard/agents"
+            path="/cloud/agents"
             element={<div data-testid="instances-page" />}
           />
           <Route path="/join" element={<div data-testid="join-page" />} />
@@ -131,6 +138,7 @@ describe("CloudRouterShell apex catch-all", () => {
   afterEach(() => {
     cleanup();
     localStorage.clear();
+    resetPrivateCloudRegistrationForTests();
     Object.defineProperty(window, "location", {
       configurable: true,
       value: realLocation,
@@ -154,7 +162,7 @@ describe("CloudRouterShell apex catch-all", () => {
     expect(screen.queryByText("Signing you in…")).toBeNull();
   });
 
-  it("redirects an authenticated apex ROOT visitor to the /dashboard console home, not chat", () => {
+  it("redirects an authenticated apex ROOT visitor to the /cloud view, not chat", () => {
     setHostname("elizacloud.ai");
     localStorage.setItem(STEWARD_TOKEN_KEY, stewardToken(FUTURE_EXP));
     renderCatchAll("/");
@@ -211,6 +219,7 @@ describe("CloudRouterShell apex catch-all — zero app-mode network", () => {
   afterEach(() => {
     cleanup();
     localStorage.clear();
+    resetPrivateCloudRegistrationForTests();
     globalThis.fetch = realFetch;
     Object.defineProperty(window, "location", {
       configurable: true,
@@ -246,6 +255,7 @@ describe("CloudRouterShell app-mode catch-all (app.elizacloud.ai)", () => {
   afterEach(() => {
     cleanup();
     localStorage.clear();
+    resetPrivateCloudRegistrationForTests();
     globalThis.fetch = realFetch;
     appModeNavigation.assign = realAssign;
     appModeNavigation.replace = realReplace;
@@ -256,6 +266,10 @@ describe("CloudRouterShell app-mode catch-all (app.elizacloud.ai)", () => {
   });
 
   it("sends an unauthenticated app-host visitor through the login flow, not the agent app", async () => {
+    let privateLoads = 0;
+    setPrivateCloudLoadForTests(async () => {
+      privateLoads += 1;
+    });
     setHostname("app.elizacloud.ai");
     installFetchRecorder();
     renderCatchAllWithAppModeMarkers();
@@ -263,6 +277,8 @@ describe("CloudRouterShell app-mode catch-all (app.elizacloud.ai)", () => {
     expect(await screen.findByTestId("login-page")).toBeTruthy();
     expect(screen.queryByTestId("agent-app")).toBeNull();
     expect(fetchLog).toEqual([]);
+    await flushMicrotasks();
+    expect(privateLoads).toBe(0);
   });
 
   it("gates every non-registered (marketing/app) path on the app host, not just the root", async () => {
@@ -279,6 +295,10 @@ describe("CloudRouterShell app-mode catch-all (app.elizacloud.ai)", () => {
     // per-agent /pair URL; a cold-starting container cannot consume the token
     // inside its TTL, so entry dead-ended on "Sign-in link expired". Entry
     // must render the chat app and issue zero pairing traffic.
+    let privateLoads = 0;
+    setPrivateCloudLoadForTests(async () => {
+      privateLoads += 1;
+    });
     setHostname("app.elizacloud.ai");
     installFetchRecorder((url, init) => {
       if (url === "/api/v1/eliza/agents" && (init?.method ?? "GET") === "GET") {
@@ -312,9 +332,17 @@ describe("CloudRouterShell app-mode catch-all (app.elizacloud.ai)", () => {
       assignedUrls.push(url);
     };
     localStorage.setItem(STEWARD_TOKEN_KEY, stewardToken(FUTURE_EXP));
+    savePersistedActiveServer({
+      id: "cloud:agent-1",
+      kind: "cloud",
+      label: "Eliza Cloud",
+    });
     renderCatchAllWithAppModeMarkers();
 
     expect(await screen.findByTestId("agent-app")).toBeTruthy();
+    await waitFor(() => {
+      expect(privateLoads).toBe(1);
+    });
     expect(fetchLog.filter((line) => line.includes("pairing-token"))).toEqual(
       [],
     );
@@ -330,11 +358,8 @@ describe("CloudRouterShell app-mode catch-all (app.elizacloud.ai)", () => {
   });
 });
 
-describe("CloudRouterShell dashboard compat redirects", () => {
-  it("carries NO redirects for surfaces that are standalone console routes", () => {
-    // billing / api-keys / monetization / account / security / permissions are
-    // registered routes now (see register-all.test.ts); a same-path redirect
-    // entry would be dead weight that could shadow them if ordering changed.
+describe("CloudRouterShell retired dashboard redirects", () => {
+  it("lets the generic dashboard fallback own direct surface migrations", () => {
     const standalone = new Set([
       "dashboard/billing",
       "dashboard/api-keys",
@@ -343,7 +368,7 @@ describe("CloudRouterShell dashboard compat redirects", () => {
       "dashboard/security",
       "dashboard/security/permissions",
     ]);
-    for (const r of DASHBOARD_REDIRECTS) {
+    for (const r of LEGACY_DASHBOARD_REDIRECTS) {
       expect(standalone.has(r.from), `unexpected redirect for ${r.from}`).toBe(
         false,
       );
@@ -352,9 +377,33 @@ describe("CloudRouterShell dashboard compat redirects", () => {
 
   it("resolves legacy earnings + affiliates links to the monetization console page", () => {
     const targets = Object.fromEntries(
-      DASHBOARD_REDIRECTS.map((r) => [r.from, r.to]),
+      LEGACY_DASHBOARD_REDIRECTS.map((r) => [r.from, r.to]),
     );
-    expect(targets["dashboard/earnings"]).toBe("/dashboard/monetization");
-    expect(targets["dashboard/affiliates"]).toBe("/dashboard/monetization");
+    expect(targets["dashboard/earnings"]).toBe("/cloud/monetization");
+    expect(targets["dashboard/affiliates"]).toBe("/cloud/monetization");
+  });
+
+  it("keeps retired cloud earnings aliases on the canonical monetization page", () => {
+    const targets = Object.fromEntries(
+      CLOUD_MANAGEMENT_COMPAT_REDIRECTS.map((route) => [route.from, route.to]),
+    );
+    expect(targets["cloud/earnings"]).toBe("/cloud/monetization");
+    expect(targets["cloud/affiliates"]).toBe("/cloud/monetization");
+  });
+
+  it("maps legacy settings tabs to canonical managed Cloud pages", () => {
+    expect(resolveLegacyCloudSettingsTarget("?tab=connections")).toBe(
+      "/cloud/connectors",
+    );
+    expect(
+      resolveLegacyCloudSettingsTarget("?tab=billing&payment=success"),
+    ).toBe("/cloud/billing");
+    expect(resolveLegacyCloudSettingsTarget("?tab=organization")).toBe(
+      "/cloud/organization",
+    );
+    expect(resolveLegacyCloudSettingsTarget("?tab=agents")).toBe(
+      "/cloud/agents",
+    );
+    expect(resolveLegacyCloudSettingsTarget("?tab=unknown")).toBe("/cloud");
   });
 });

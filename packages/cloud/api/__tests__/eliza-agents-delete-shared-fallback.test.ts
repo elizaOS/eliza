@@ -172,11 +172,14 @@ describe("DELETE /api/v1/eliza/agents/:agentId", () => {
         status: "pending",
       },
     });
-    expect(deleteAgent).toHaveBeenCalledWith("agent-1", "org-1");
+    expect(deleteAgent).toHaveBeenCalledWith("agent-1", "org-1", {
+      authorization: "user_request",
+    });
     expect(enqueueAgentDeleteOnce).toHaveBeenCalledWith({
       agentId: "agent-1",
       organizationId: "org-1",
       userId: "user-1",
+      authorization: "user_request",
     });
     expect(triggerImmediate).toHaveBeenCalledTimes(1);
     expect(loggerWarn).toHaveBeenCalledWith(
@@ -250,6 +253,7 @@ describe("DELETE /api/v1/eliza/agents/:agentId", () => {
       agentId: "agent-1",
       organizationId: "org-1",
       userId: "user-1",
+      authorization: "user_request",
       expectedIdentity: {
         agentName: "Canary Agent",
         createdAt: "2026-07-07T08:00:00.000Z",

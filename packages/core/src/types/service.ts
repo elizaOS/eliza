@@ -181,6 +181,13 @@ export abstract class Service {
 
 	abstract stop(): Promise<void>;
 
+	/**
+	 * Optional synchronous shutdown-admission hook. Runtime invokes this for all
+	 * services before awaiting any drain, so connectors can reject new inbound
+	 * work while allowing already-admitted work to settle.
+	 */
+	prepareStop?(_reason: string): void;
+
 	/** Service type */
 	static serviceType: string;
 

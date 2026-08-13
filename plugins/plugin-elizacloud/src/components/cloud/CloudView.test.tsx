@@ -26,7 +26,7 @@ const CREDITS = {
   balance: 12.34,
   low: false,
   critical: false,
-  topUpUrl: "https://elizacloud.ai/dashboard/settings?tab=billing",
+  topUpUrl: "https://cloud.eliza.app/cloud/billing",
 };
 
 const AGENT = {
@@ -58,7 +58,7 @@ function fetchers(overrides: Partial<CloudViewFetchers> = {}): CloudViewFetchers
         { id: "k1", name: "ci", keyPrefix: "eliza_abc1", createdAt: null },
         { id: "k2", name: "dev", keyPrefix: "eliza_abc2", createdAt: null },
       ],
-      manageUrl: "https://elizacloud.ai/dashboard/api-keys",
+      manageUrl: "https://cloud.eliza.app/cloud/api-keys",
     }),
     fetchBillingSummary: async () => ({
       balance: 12.34,
@@ -178,7 +178,7 @@ describe("CloudView", () => {
       fetchers({
         fetchApiKeys: async () => ({
           keys: null,
-          manageUrl: "https://elizacloud.ai/dashboard/api-keys",
+          manageUrl: "https://cloud.eliza.app/cloud/api-keys",
           reason: "session-required" as const,
         }),
       }),

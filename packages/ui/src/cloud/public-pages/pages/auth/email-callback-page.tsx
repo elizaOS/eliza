@@ -1,7 +1,7 @@
 /**
  * Steward email magic-link callback (public). Verifies the token/email via the
  * Steward auth context, syncs the session cookie, then redirects to the stored
- * app-authorize returnTo (third-party app integration) or /dashboard.
+ * app-authorize returnTo (third-party app integration) or /cloud.
  */
 
 import { AlertTriangle, CheckCircle2, Loader2 } from "lucide-react";
@@ -13,16 +13,81 @@ import {
   readStoredAppAuthorizeReturnTo,
 } from "../../../../cloud-ui/components/auth/authorize-return";
 import { BrandButton } from "../../../../cloud-ui/components/brand/brand-button";
+import { Button } from "../../../../components/primitives";
 import { useCloudT } from "../../../shell/CloudI18nProvider";
 import {
   LocalStewardAuthContext,
   StewardAuthProvider,
 } from "../../../shell/StewardProvider";
-import { defaultLoginReturnTo } from "../../lib/login-return-to";
+import {
+  consumePendingOAuthReturnTo,
+  defaultLoginReturnTo,
+} from "../../lib/login-return-to";
 import { syncStewardSessionCookie } from "../../lib/steward-session";
 import { usePageTitle } from "../../lib/use-page-title";
 
 type CallbackStatus = "verifying" | "success" | "error";
+
+type EmailVerificationResult = {
+  token: string;
+  refreshToken?: string;
+};
+
+export function resolveEmailCallbackDestination(
+  appAuthorizeReturnTo: string | null,
+  pendingLoginReturnTo: string | null,
+): string {
+  return appAuthorizeReturnTo ?? pendingLoginReturnTo ?? defaultLoginReturnTo();
+}
+
+const pendingEmailVerifications = new Map<
+  string,
+  Promise<EmailVerificationResult>
+>();
+
+function verifyEmailCallbackSingleFlight(
+  verify: (token: string, email: string) => Promise<EmailVerificationResult>,
+  token: string,
+  email: string,
+): Promise<EmailVerificationResult> {
+  const key = `${email}\0${token}`;
+  const pending = pendingEmailVerifications.get(key);
+  if (pending) return pending;
+
+  // Deferring the call lets us publish the promise before a non-conforming
+  // verifier can throw synchronously. Entries live only while the upstream
+  // consume is in flight, so a later deliberate replay still reaches Steward.
+  const verification = Promise.resolve()
+    .then(() => verify(token, email))
+    .finally(() => {
+      if (pendingEmailVerifications.get(key) === verification) {
+        pendingEmailVerifications.delete(key);
+      }
+    });
+  pendingEmailVerifications.set(key, verification);
+  return verification;
+}
+
+function describeVerificationError(
+  error: unknown,
+  t: ReturnType<typeof useCloudT>,
+): string {
+  const status =
+    error !== null && typeof error === "object" && "status" in error
+      ? Reflect.get(error, "status")
+      : undefined;
+  if (status === 401 || status === 403 || status === 410) {
+    return t("cloud.login.callback.codeRejected", {
+      defaultValue:
+        "That sign-in link expired or was already used. Please sign in again.",
+    });
+  }
+  return error instanceof Error
+    ? error.message
+    : t("cloud.emailCallback.verifyFailed", {
+        defaultValue: "Could not verify this sign-in link.",
+      });
+}
 
 // `public: true` routes render WITHOUT the per-route Steward wrapper (see
 // `CloudRouteElement` / `app-authorize-page` #9881), so this page must mount the
@@ -44,6 +109,7 @@ function EmailCallbackContent() {
   const [searchParams] = useSearchParams();
   const auth = useContext(LocalStewardAuthContext);
   const attemptedRef = useRef(false);
+  const successDestinationRef = useRef<string | null>(null);
   const [status, setStatus] = useState<CallbackStatus>("verifying");
   const [error, setError] = useState<string | null>(null);
 
@@ -70,10 +136,13 @@ function EmailCallbackContent() {
       return;
     }
 
-    const destination = returnTo ?? defaultLoginReturnTo();
-
     let redirectTimer: ReturnType<typeof setTimeout> | null = null;
     const finishSuccess = () => {
+      const destination = resolveEmailCallbackDestination(
+        returnTo,
+        consumePendingOAuthReturnTo(),
+      );
+      successDestinationRef.current = destination;
       clearStoredAppAuthorizeReturnTo();
       setStatus("success");
       redirectTimer = setTimeout(() => {
@@ -104,18 +173,21 @@ function EmailCallbackContent() {
       try {
         // The Steward context's verifyEmailCallback already throws on MFA, so
         // the result here is always a completed { token, refreshToken? }.
-        const result = await auth.verifyEmailCallback(token, email);
+        // The module-level single-flight survives StrictMode/provider remounts;
+        // a component-local ref does not, and two concurrent POSTs can consume
+        // the same one-time link before either mount observes authentication.
+        const result = await verifyEmailCallbackSingleFlight(
+          auth.verifyEmailCallback,
+          token,
+          email,
+        );
         await syncStewardSessionCookie(result.token, result.refreshToken);
         finishSuccess();
       } catch (err) {
+        // error-policy:J4 expected rejected/expired one-time links render a
+        // distinct recovery message; unexpected failures retain their detail.
         setStatus("error");
-        setError(
-          err instanceof Error
-            ? err.message
-            : t("cloud.emailCallback.verifyFailed", {
-                defaultValue: "Could not verify this sign-in link.",
-              }),
-        );
+        setError(describeVerificationError(err, t));
       }
     })();
 
@@ -136,6 +208,13 @@ function EmailCallbackContent() {
           })}
         </h1>
         <p className="max-w-xs text-center text-sm text-muted">{error}</p>
+        <Button asChild className="hosted-signin-focus-emphasis mt-2">
+          <a href="/login">
+            {t("cloud.cliLogin.signInAgain", {
+              defaultValue: "Sign In Again",
+            })}
+          </a>
+        </Button>
       </Frame>
     );
   }
@@ -154,7 +233,11 @@ function EmailCallbackContent() {
         </p>
         <BrandButton
           className="mt-2"
-          onClick={() => returnTo && window.location.assign(returnTo)}
+          onClick={() =>
+            window.location.assign(
+              successDestinationRef.current ?? defaultLoginReturnTo(),
+            )
+          }
         >
           {t("cloud.emailCallback.continue", {
             defaultValue: "Continue to app authorization",
@@ -178,12 +261,12 @@ function EmailCallbackContent() {
 
 function Frame({ children }: { children: ReactNode }) {
   return (
-    <div className="theme-cloud relative flex min-h-[100dvh] w-full flex-col overflow-hidden bg-bg font-sans text-txt">
+    <main className="theme-cloud relative flex min-h-[100dvh] w-full flex-col overflow-hidden bg-bg font-sans text-txt">
       <div className="relative z-10 flex flex-1 items-center justify-center p-4">
         <div className="w-full max-w-md border border-border bg-card p-8">
           <div className="flex flex-col items-center gap-6">{children}</div>
         </div>
       </div>
-    </div>
+    </main>
   );
 }

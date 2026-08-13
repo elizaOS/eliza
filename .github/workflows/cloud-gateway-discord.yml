@@ -58,7 +58,7 @@ permissions:
 jobs:
   test:
     name: Test
-    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    runs-on: ${{ fromJSON(github.event_name == 'pull_request' && '["ubuntu-24.04"]' || vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -70,8 +70,39 @@ jobs:
       - name: Install root dependencies
         run: bun install --frozen-lockfile --no-save && git diff --exit-code -- bun.lock
 
-      - name: Run messaging gateway preflight
-        run: bun run preflight:messaging-gateways
+      - name: Run fork-safe messaging gateway preflight
+        if: github.event_name == 'pull_request'
+        # Pull requests from forks cannot read repository configuration. Fixed
+        # non-secret sentinels exercise the strict parser and channel contract
+        # without turning missing fork credentials into a guaranteed red lane.
+        run: bun run preflight:messaging-gateways:strict -- --channels=shared,telegram,discord
+        env:
+          ELIZACLOUD_API_URL: https://api.example.invalid
+          CEREBRAS_API_KEY: ci-contract-value
+          ELIZA_APP_WEBHOOK_GATEWAY_URL: https://gateway.example.invalid
+          ELIZA_APP_WEBHOOK_GATEWAY_SECRET: ci-contract-value
+          ELIZA_APP_TELEGRAM_BOT_TOKEN: ci-contract-value
+          ELIZA_APP_TELEGRAM_WEBHOOK_SECRET: ci-contract-value
+          ELIZA_APP_DISCORD_APPLICATION_ID: ci-contract-value
+          ELIZA_APP_DISCORD_CLIENT_SECRET: ci-contract-value
+          ELIZA_APP_DISCORD_BOT_TOKEN: ci-contract-value
+
+      - name: Enforce trusted messaging gateway configuration
+        if: github.event_name != 'pull_request'
+        # Trusted branch runs enforce the repository's real deployment
+        # configuration. The gateway URL is a repository variable in the
+        # canonical Cloudflare deploy workflow; credentials remain secrets.
+        run: bun run preflight:messaging-gateways:strict -- --channels=shared,telegram,discord
+        env:
+          ELIZACLOUD_API_URL: ${{ secrets.ELIZACLOUD_API_URL }}
+          CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
+          ELIZA_APP_WEBHOOK_GATEWAY_URL: ${{ vars.ELIZA_APP_WEBHOOK_GATEWAY_URL }}
+          ELIZA_APP_WEBHOOK_GATEWAY_SECRET: ${{ secrets.ELIZA_APP_WEBHOOK_GATEWAY_SECRET }}
+          ELIZA_APP_TELEGRAM_BOT_TOKEN: ${{ secrets.ELIZA_APP_TELEGRAM_BOT_TOKEN }}
+          ELIZA_APP_TELEGRAM_WEBHOOK_SECRET: ${{ secrets.ELIZA_APP_TELEGRAM_WEBHOOK_SECRET }}
+          ELIZA_APP_DISCORD_APPLICATION_ID: ${{ secrets.ELIZA_APP_DISCORD_APPLICATION_ID }}
+          ELIZA_APP_DISCORD_CLIENT_SECRET: ${{ secrets.ELIZA_APP_DISCORD_CLIENT_SECRET }}
+          ELIZA_APP_DISCORD_BOT_TOKEN: ${{ secrets.ELIZA_APP_DISCORD_BOT_TOKEN }}
 
       - name: Run service tests
         working-directory: packages/cloud/services/gateway-discord

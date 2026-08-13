@@ -1,22 +1,18 @@
 /**
  * Login `returnTo` resolution for the app-hosted Steward login surface.
  *
- * Sanitizes + persists the post-login destination across the OAuth redirect
- * round-trip (which can't carry it in the OAuth `redirect_uri`).
+ * Sanitizes + persists the post-login destination across OAuth and email-link
+ * round trips, which cannot safely carry it in their callback URLs.
  */
 
-import { isApexControlPlaneHost } from "../../shell/apex-host";
-
-// The post-login landing is host-dependent. On the app domains the join flow
-// (`/join`) select-or-provisions a Cloud agent and drops the user straight
-// into chat (the headline migration outcome). On an apex control-plane host
-// (elizacloud.ai — the CONSOLE) chat doesn't exist and the agent app never
-// boots (see AppCatchAllRoute), so login lands on the `/dashboard` console
-// overview instead of running an agent-provisioning flow the console can't
-// use. Called by every post-auth surface (login, email magic-link callback,
-// invite accept) so they all agree.
+// Every successful login enters through `/join`. On an app host, that flow
+// selects or provisions the user's agent and opens chat. On an apex console
+// host, JoinPage immediately hands off to the paired app host before making
+// provisioning calls. Keeping the destination as a same-origin path preserves
+// OAuth returnTo safety while ensuring the billing console remains an explicit
+// destination, never the default login landing.
 export function defaultLoginReturnTo(): string {
-  return isApexControlPlaneHost() ? "/dashboard" : "/join";
+  return "/join";
 }
 const PENDING_OAUTH_RETURN_TO_KEY = "eliza.login.oauth.returnTo";
 const PENDING_OAUTH_RETURN_TO_TTL_MS = 10 * 60 * 1000;

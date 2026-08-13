@@ -13,6 +13,7 @@ import {
   clearStoredStewardToken,
   hasStewardAuthedCookie,
   readStoredStewardToken,
+  STEWARD_TOKEN_KEY,
   writeStoredStewardToken,
 } from "@elizaos/shared/steward-session-client";
 import { client, type FirstRunOptions } from "../api";
@@ -27,6 +28,7 @@ import {
   invokeDesktopBridgeRequestWithTimeout,
   isElectrobunRuntime,
 } from "../bridge";
+import { normalizeCloudApiKeyToken } from "../cloud/lib/cloud-api-key-token";
 import { getBootConfig } from "../config/boot-config";
 import {
   ANDROID_LOCAL_AGENT_IPC_BASE,
@@ -57,6 +59,8 @@ import {
   dedicatedCloudAgentIdFromBase,
   isDedicatedCloudAgentBase,
   isElizaCloudControlPlaneAgentlessBase,
+  isManagedCloudSharedAgentBase,
+  resolveCloudEnvironmentBase,
 } from "../utils/cloud-agent-base";
 import { getElizaApiBase, getElizaApiToken } from "../utils/eliza-globals";
 import {
@@ -76,6 +80,7 @@ import {
   isTrustedCloudApiBaseUrl,
   isTrustedRestoreApiBaseUrl,
 } from "./runtime-url-trust";
+import { clearSharedCloudAccountBinding } from "./shared-cloud-account-binding";
 import type { StartupEvent } from "./startup-coordinator";
 import { buildStaticFirstRunOptions } from "./startup-first-run-options";
 import { runStartupProbeWithTimeout } from "./startup-probe";
@@ -106,7 +111,7 @@ const CLOUD_AGENT_TIER_PROBE_TIMEOUT_MS =
 /** Steward refresh endpoint path (same-origin on web; `api.` host on native). */
 const STEWARD_REFRESH_PATH = "/api/auth/steward-refresh";
 /** Default direct Cloud site base used to derive the native refresh endpoint. */
-const RESTORE_DEFAULT_DIRECT_CLOUD_BASE_URL = "https://elizacloud.ai";
+const RESTORE_DEFAULT_DIRECT_CLOUD_BASE_URL = "https://eliza.app";
 
 function recoverCloudAgentId(active: PersistedActiveServer): string | null {
   const rawId = active.id?.startsWith("cloud:")
@@ -124,13 +129,20 @@ function recoverCloudAgentId(active: PersistedActiveServer): string | null {
  */
 async function reconcileLegacyDedicatedCloudApiBase(
   active: PersistedActiveServer,
-  stewardToken: string | null,
+  ownerToken: string | null,
 ): Promise<PersistedActiveServer | null> {
-  if (!stewardToken || !isDedicatedCloudAgentBase(active.apiBase)) return null;
+  if (!ownerToken || !isDedicatedCloudAgentBase(active.apiBase)) return null;
   const agentId = recoverCloudAgentId(active);
   if (!agentId) return null;
+  const pageHostname =
+    typeof window !== "undefined" ? window.location.hostname : "";
   const cloudApiBase = resolveDirectCloudAuthApiBase(
-    getBootConfig().cloudApiBase || RESTORE_DEFAULT_DIRECT_CLOUD_BASE_URL,
+    resolveCloudEnvironmentBase({
+      pageHostname,
+      apiBase: active.apiBase,
+      bootCloudApiBase: getBootConfig().cloudApiBase,
+      fallback: RESTORE_DEFAULT_DIRECT_CLOUD_BASE_URL,
+    }),
   );
   try {
     const response = await fetch(
@@ -138,7 +150,7 @@ async function reconcileLegacyDedicatedCloudApiBase(
       {
         headers: {
           Accept: "application/json",
-          Authorization: `Bearer ${stewardToken}`,
+          Authorization: `Bearer ${ownerToken}`,
         },
         signal: AbortSignal.timeout(CLOUD_AGENT_TIER_PROBE_TIMEOUT_MS),
       },
@@ -164,6 +176,12 @@ async function reconcileLegacyDedicatedCloudApiBase(
 /**
  * Repair a restored managed-cloud target using the current environment and,
  * for legacy dedicated-looking records, the server-authoritative runtime tier.
+ *
+ * Environment priority for dedicated ingress rebuild:
+ * live Cloud page host → already-staging persisted base → boot config → prod
+ * default. Agent-subdomain UI bundles ship the production boot default, so
+ * trusting boot alone rewrote staging dedicated hosts onto production and
+ * CORS-wedged `/api/*` probes during restore.
  */
 function backfillCloudApiBase(
   active: PersistedActiveServer,
@@ -171,14 +189,27 @@ function backfillCloudApiBase(
   if (active.kind !== "cloud") return active;
   const agentId = recoverCloudAgentId(active);
   if (!agentId) return active;
-  const cloudApiBase =
-    getBootConfig().cloudApiBase ||
-    active.apiBase ||
-    RESTORE_DEFAULT_DIRECT_CLOUD_BASE_URL;
-  const dedicatedApiBase = buildDedicatedCloudAgentApiBase(
-    agentId,
-    cloudApiBase,
-  );
+  const pageHostname =
+    typeof window !== "undefined" ? window.location.hostname : "";
+  const cloudApiBase = resolveCloudEnvironmentBase({
+    pageHostname,
+    apiBase: active.apiBase,
+    bootCloudApiBase: getBootConfig().cloudApiBase,
+    fallback: RESTORE_DEFAULT_DIRECT_CLOUD_BASE_URL,
+  });
+  // When the user is already on this agent's dedicated ingress, keep that
+  // origin — do not rebuild through a mismatched boot-config environment.
+  const pageOrigin =
+    typeof window !== "undefined"
+      ? `${window.location.protocol}//${window.location.host}`
+      : "";
+  const pageAgentId = pageOrigin
+    ? dedicatedCloudAgentIdFromBase(pageOrigin)
+    : null;
+  const dedicatedApiBase =
+    pageAgentId && pageAgentId.toLowerCase() === agentId.toLowerCase()
+      ? pageOrigin
+      : buildDedicatedCloudAgentApiBase(agentId, cloudApiBase);
   if (!dedicatedApiBase) return active;
   const sharedApiBase = buildCloudSharedAgentApiBase(
     resolveDirectCloudAuthApiBase(cloudApiBase),
@@ -354,15 +385,7 @@ function resolveRestoreStewardRefreshEndpoint(): string | undefined {
     getBootConfig().cloudApiBase?.trim() ||
     RESTORE_DEFAULT_DIRECT_CLOUD_BASE_URL;
   try {
-    const url = new URL(cloudBase);
-    const host = url.hostname.toLowerCase();
-    const apiHost =
-      host === "elizacloud.ai" ||
-      host === "www.elizacloud.ai" ||
-      host === "dev.elizacloud.ai"
-        ? "api.elizacloud.ai"
-        : host;
-    return `${url.protocol}//${apiHost}${STEWARD_REFRESH_PATH}`;
+    return `${resolveDirectCloudAuthApiBase(cloudBase)}${STEWARD_REFRESH_PATH}`;
   } catch {
     return undefined;
   }
@@ -392,9 +415,9 @@ function resolveRestoreStewardRefreshEndpoint(): string | undefined {
 async function resolveRestoredStewardToken(): Promise<string | null> {
   const stored = readStoredStewardToken()?.trim();
   if (!stored) {
-    // No app-origin token, but the shared, HttpOnly .elizacloud.ai session
+    // No app-origin token, but the host-only Eliza session
     // cookie is present — the user signed in on the console (or another
-    // *.elizacloud.ai tab). Recover the access token from it (bounded, same as
+    // managed Eliza tab). Recover the access token from it (bounded, same as
     // the /login page) instead of forcing a redundant re-sign-in; on success
     // the top-level LoginView gate and the first-run conductor both skip.
     if (typeof window !== "undefined" && hasStewardAuthedCookie()) {
@@ -464,6 +487,7 @@ async function resolveRestoredStewardToken(): Promise<string | null> {
   // drop it so we restore unauthenticated instead of a guaranteed-401 dial.
   if (secs <= 0) {
     clearStoredStewardToken();
+    clearSharedCloudAccountBinding();
     return null;
   }
   return stored;
@@ -490,8 +514,9 @@ export async function applyRestoredConnection(args: {
     // Environment reconciliation is synchronous. The selected target's known
     // credential is cleared before the base changes, then the selected record's
     // known credential is installed. A slower Steward refresh may replace it.
-    // Never send an agent-local paired token to the Cloud control plane. The
-    // Steward session store is the only valid credential for this owner lookup.
+    // Never send an agent-local paired token to the Cloud control plane. A
+    // refreshed Steward session, or the native host's Cloud owner key, is the
+    // valid authority for this owner lookup.
     const resolved = backfillCloudApiBase(restoredActiveServer);
     const agentId = recoverCloudAgentId(resolved);
     if (!isTrustedCloudApiBaseUrl(resolved.apiBase, agentId)) {
@@ -504,6 +529,14 @@ export async function applyRestoredConnection(args: {
       return;
     }
     const restoreProbeToken = readStoredStewardToken()?.trim() || null;
+    // Capture the host-injected owner key before clientRef.setToken(null)
+    // mutates boot config. Native/Electrobun device-code sessions may have no
+    // persisted active-server token and rely exclusively on this credential.
+    const nativeOwnerApiKey =
+      isNative || isElectrobunRuntime()
+        ? (normalizeCloudApiKeyToken(resolved.accessToken) ??
+          normalizeCloudApiKeyToken(getElizaApiToken()))
+        : null;
     const usesLocalDockerCredential = isCloudPairLoopbackOrigin(
       resolved.apiBase,
     );
@@ -518,18 +551,64 @@ export async function applyRestoredConnection(args: {
     clientRef.setToken(null);
     clientRef.setBaseUrl(resolved.apiBase ?? null);
     clientRef.setToken(initialToken);
-    const tierRepairPromise = isDedicatedCloudAgentBase(
-      restoredActiveServer.apiBase,
-    )
-      ? reconcileLegacyDedicatedCloudApiBase(resolved, restoreProbeToken)
-      : Promise.resolve(null);
-    const stewardTokenPromise = resolveRestoredStewardToken();
+    let stewardTokenPromise: Promise<string | null>;
+    if (nativeOwnerApiKey && restoreProbeToken) {
+      const secs = cloudTokenSecsRemaining(restoreProbeToken);
+      if (secs !== null && secs < STEWARD_RESTORE_REFRESH_AHEAD_SECS) {
+        // A near-expiry Steward JWT would shadow the valid owner-key fallback.
+        // Try rotation once; on failure remove only that JWT so native Cloud
+        // requests continue with the independently valid owner key.
+        stewardTokenPromise = refreshCloudStewardSession()
+          .then((refreshed) => {
+            const fresh = refreshed?.token?.trim() || null;
+            if (fresh) writeStoredStewardToken(fresh);
+            else if (typeof window !== "undefined")
+              window.localStorage.removeItem(STEWARD_TOKEN_KEY);
+            return fresh;
+          })
+          .catch(() => {
+            // error-policy:J4 the valid native owner key remains available;
+            // remove the shadowing near-expiry JWT and visibly continue with it.
+            if (typeof window !== "undefined")
+              window.localStorage.removeItem(STEWARD_TOKEN_KEY);
+            return null;
+          });
+      } else {
+        stewardTokenPromise = Promise.resolve(restoreProbeToken);
+      }
+    } else {
+      stewardTokenPromise = nativeOwnerApiKey
+        ? Promise.resolve(null)
+        : resolveRestoredStewardToken();
+    }
     // Cloud = Steward everywhere (DECISIONS.md D3): prefer the live Steward
     // session token over the token captured at provision time (which may have
     // rotated since). If that stored JWT expired while the app was closed,
     // refresh it BEFORE handing it to the client so a returning user never
     // boots into a permanently-401ing session (see resolveRestoredStewardToken).
     const stewardToken = await stewardTokenPromise;
+    if (
+      isManagedCloudSharedAgentBase(resolved.apiBase) &&
+      !stewardToken &&
+      !nativeOwnerApiKey
+    ) {
+      // Terminal refresh failure or a missing account session makes the saved
+      // shared target unsafe. Clear every account-scoped mirror before startup
+      // can reinstall the provision-time token or poll the previous agent.
+      clearSharedCloudAccountBinding();
+      clientRef.setToken(null);
+      clientRef.setBaseUrl(null);
+      return;
+    }
+    // The compatibility lookup must use the post-refresh authority. The stored
+    // pre-refresh JWT can be expired, while native/Electrobun restores may
+    // intentionally rely on a host-injected Cloud owner key instead.
+    const controlPlaneOwnerToken = stewardToken ?? nativeOwnerApiKey;
+    const tierRepairPromise = isDedicatedCloudAgentBase(
+      restoredActiveServer.apiBase,
+    )
+      ? reconcileLegacyDedicatedCloudApiBase(resolved, controlPlaneOwnerToken)
+      : Promise.resolve(null);
     // Dedicated agent subdomains and explicit local-Docker pair targets use an
     // agent-local bearer for `/api/*`. The edge-owned dedicated path can keep
     // its Steward recovery fallback; a loopback process must never receive a
@@ -540,8 +619,8 @@ export async function applyRestoredConnection(args: {
         : isDedicatedCloudAgentBase(resolved.apiBase)
           ? resolved.accessToken || stewardToken || null
           : isAgentlessControlPlane
-            ? stewardToken || null
-            : stewardToken || resolved.accessToken || null,
+            ? stewardToken || nativeOwnerApiKey || null
+            : stewardToken || nativeOwnerApiKey || resolved.accessToken || null,
     );
     void tierRepairPromise.then((repaired) => {
       if (!repaired || repaired.apiBase === resolved.apiBase) return;
@@ -559,7 +638,9 @@ export async function applyRestoredConnection(args: {
       savePersistedActiveServer(repaired);
       clientRef.setToken(null);
       clientRef.setBaseUrl(repaired.apiBase ?? null);
-      clientRef.setToken(stewardToken || repaired.accessToken || null);
+      // A shared adapter is a Cloud control-plane target. The same owner
+      // authority that proved the tier must remain installed after rerouting.
+      clientRef.setToken(controlPlaneOwnerToken);
     });
     return;
   }
@@ -885,6 +966,17 @@ export async function runRestoringSession(
       }
     },
   });
+
+  if (
+    isManagedCloudSharedAgentBase(restoredActiveServer.apiBase) &&
+    !loadPersistedActiveServer()
+  ) {
+    deps.setFirstRunOptions(buildStaticFirstRunOptions(deps.uiLanguage));
+    deps.setFirstRunComplete(false);
+    deps.setFirstRunLoading(false);
+    dispatch({ type: "NO_SESSION", hadPriorFirstRun: hadPrior });
+    return;
+  }
 
   // The connection is applied (base URL + token are what the post-paint auth
   // gate will use), so start the /api/auth/me probe now — it overlaps the

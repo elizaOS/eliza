@@ -49,12 +49,26 @@ All settings are optional. Configure via environment variables or agent settings
 | `CODING_TOOLS_WORKSPACE_ROOTS` | `process.cwd()` | Comma-separated absolute paths the tools may access. Files outside these roots are rejected. |
 | `CODING_TOOLS_BLOCKED_PATHS` | (built-in) | Comma-separated absolute paths to block — replaces the default blocklist. |
 | `CODING_TOOLS_BLOCKED_PATHS_ADD` | — | Paths to add to the default blocklist. |
-| `CODING_TOOLS_SHELL_TIMEOUT_MS` | `120000` | Default SHELL timeout (ms); per-call `timeout` clamps to `[100, 600000]`. |
+| `CODING_TOOLS_SHELL_TIMEOUT_MS` | `120000` | Optional canonical decimal integer from `100` through `600000` used as the default SHELL timeout (ms); invalid values fail before execution and per-call `timeout` takes precedence within the same range. |
 | `CODING_TOOLS_BACKGROUND_SHELL_BUFFER_CHARS` | `64000` | Per-stream retained stdout/stderr ring size for background shell polling. |
 | `CODING_TOOLS_BACKGROUND_SHELL_KILL_GRACE_MS` | `1500` | Grace period between SIGTERM and SIGKILL for background shell termination. |
 | `CODING_TOOLS_MAX_READ_LINES` | `2000` | Max lines returned by FILE action=read. |
 | `CODING_TOOLS_MAX_FILE_SIZE_BYTES` | `262144` | File size cap for reads (bytes). Larger files are rejected. |
 | `CODING_TOOLS_GREP_HEAD_LIMIT` | `250` | Max output lines for GREP. Set to 0 to disable. |
+
+The folded `ShellService` retains these compatibility settings for external
+callers of `runtime.getService("shell").exec()` / `executeCommand()`; the
+canonical SHELL action continues to use the `CODING_TOOLS_*` settings above.
+
+| Compatibility setting | Default | Accepted values / effect |
+|---|---:|---|
+| `SHELL_ALLOWED_DIRECTORY` | `process.cwd()` | Existing directory exposed to the compatibility service. |
+| `SHELL_TIMEOUT` | `30000` | Exact decimal milliseconds, `1..2147483647`, for simple command execution. |
+| `SHELL_MAX_OUTPUT_CHARS` | `200000` | Exact decimal retained-session cap, `1..1000000`. |
+| `SHELL_PENDING_MAX_OUTPUT_CHARS` | `200000` | Exact decimal unread-output cap, `1..1000000` (also bounded by the retained-session cap). |
+| `SHELL_BACKGROUND_MS` | `10000` | Exact decimal foreground yield window, `10..120000`. |
+| `SHELL_ALLOW_BACKGROUND` | `true` | Set to exact `false` to disable compatibility-service background/yield behavior. |
+| `SHELL_FORBIDDEN_COMMANDS` | — | Comma-separated additions to the built-in forbidden-command set. |
 
 ## Default path blocklist
 

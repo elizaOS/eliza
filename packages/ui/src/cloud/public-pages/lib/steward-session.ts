@@ -14,6 +14,7 @@ import {
   type StewardNonceExchangeResponse,
   StewardSessionError,
 } from "@elizaos/shared/steward-session-client";
+import { dispatchStewardSessionChange } from "../../../events/steward-session-event";
 import { ELIZA_CLOUD_DIRECT_API_BY_HOST } from "../../shell/steward-url";
 
 export function resolveStewardAuthEndpoint(
@@ -54,7 +55,7 @@ async function readSessionError(response: Response): Promise<{
 
 /**
  * Steward JWT → HttpOnly cookie sync. Production cloud hosts post directly to
- * api.elizacloud.ai so auth callbacks do not depend on a same-origin redirect.
+ * api.eliza.app so auth callbacks do not depend on a same-origin redirect.
  */
 export async function syncStewardSessionCookie(
   token: string,
@@ -73,6 +74,7 @@ export async function syncStewardSessionCookie(
   }
 
   if (typeof window !== "undefined") {
+    dispatchStewardSessionChange("present");
     window.dispatchEvent(
       new CustomEvent("steward-token-sync", { detail: { token } }),
     );

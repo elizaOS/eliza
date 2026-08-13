@@ -196,6 +196,7 @@ import {
   registerFamilyRegistry,
   registerWorkflowStepRegistry,
 } from "./lifeops/registries/index.js";
+import { createOwnerReminderDirectRoutingRule } from "./lifeops/reminders/direct-routing.js";
 import { LifeOpsRepository } from "./lifeops/repository.js";
 import {
   createResourceCapacityAction,
@@ -684,6 +685,9 @@ const rawPersonalAssistantPlugin: Plugin = {
   // always-loaded (CORE + MOBILE), but declaring the dependency guarantees the
   // runner host is registered before PA's init injects deps + seeds.
   dependencies: [GOOGLE_CONNECTOR_PLUGIN_PACKAGE, "@elizaos/plugin-scheduling"],
+  // LifeOps owns the reply pipeline: connectors ingest but do not auto-reply
+  // unless the operator explicitly disables passive mode.
+  passiveConnectorsByDefault: true,
   schema: lifeOpsSchema,
   actions: [
     // Canonical owner-operation umbrellas. Each umbrella registers itself + its
@@ -1036,6 +1040,10 @@ const rawPersonalAssistantPlugin: Plugin = {
     registerDirectActionRoutingRule(
       runtime,
       createTrackedWorkRecapDirectRoutingRule(),
+    );
+    registerDirectActionRoutingRule(
+      runtime,
+      createOwnerReminderDirectRoutingRule(),
     );
 
     // First-party adapters backed by LifeOps services. Gmail and X replace the

@@ -44,6 +44,10 @@ const publicPathPrefixes = [
   "/api/auth/steward-session",
   "/api/auth/steward-nonce-exchange",
   "/api/auth/steward-refresh",
+  // Disabled-by-default staging QA bridge. Both legs self-authenticate: mint
+  // requires a strongly revalidated allowlisted API key, while exchange burns
+  // a 60-second Postgres-backed PKCE code before every subsequent check.
+  "/api/auth/staging-session-exchange",
   // Cross-host SSO bridge: /mint self-authenticates (Bearer verified in the
   // handler — the global gate's cookie acceptance must NOT vouch for it, see
   // the route's plant-a-cookie rationale), /exchange is authenticated by the
@@ -163,12 +167,12 @@ const publicPathPrefixes = [
 ];
 
 // Out-of-band token pages (sensitive-request links, approval-signer links,
-// ballot links) are visited by sessionless recipients. Only the signer-facing
+// ballot links, payment-request links) are visited by sessionless recipients. Only the signer-facing
 // subpaths bypass the session gate; the per-org list/create/admin endpoints on
 // the same resources stay gated, and the handlers themselves enforce the token
 // (sensitive-requests/ballots) or the redacted `?public=1` view + signature
 // (approval-requests). The session gate must NOT short-circuit them first.
-function isPublicOutOfBandTokenPath(pathname: string): boolean {
+function isPublicOutOfBandTokenPath(pathname: string, method = "GET"): boolean {
   // GET sensitive request detail + POST submit — both gated on the URL/body
   // token by the route handler (single-use token hash).
   if (/^\/api\/v1\/sensitive-requests\/[^/]+\/?$/.test(pathname)) return true;
@@ -188,10 +192,18 @@ function isPublicOutOfBandTokenPath(pathname: string): boolean {
   // on the scoped per-participant token). Tally/distribute/cancel stay gated.
   if (/^\/api\/v1\/ballots\/[^/]+\/?$/.test(pathname)) return true;
   if (/^\/api\/v1\/ballots\/[^/]+\/vote\/?$/.test(pathname)) return true;
+  // Public payment-request detail is redacted by the route when `public=1`.
+  // Keep collection and mutation endpoints behind the session gate.
+  if (
+    (method === "GET" || method === "HEAD") &&
+    /^\/api\/v1\/payment-requests\/[^/]+\/?$/.test(pathname)
+  ) {
+    return true;
+  }
   return false;
 }
 
-export function isPublicPath(pathname: string): boolean {
+export function isPublicPath(pathname: string, method = "GET"): boolean {
   // Local Docker's loopback browser relay is public because its one-time token
   // and loopback Origin are both checked by the route. Remote managed pairing
   // terminates on the agent-subdomain edge. Native pairing is a distinct
@@ -211,7 +223,7 @@ export function isPublicPath(pathname: string): boolean {
   if (/^\/api\/v1\/apps\/[^/]+\/public\/?$/.test(pathname)) return true;
   if (/^\/api\/v1\/apps\/[^/]+\/charges\/[^/]+\/?$/.test(pathname)) return true;
   if (/^\/api\/characters\/[^/]+\/public\/?$/.test(pathname)) return true;
-  if (isPublicOutOfBandTokenPath(pathname)) return true;
+  if (isPublicOutOfBandTokenPath(pathname, method)) return true;
   return publicPathPrefixes.some(
     (p) => pathname === p || pathname.startsWith(`${p}/`),
   );
@@ -300,7 +312,7 @@ export const authMiddleware: MiddlewareHandler<AppEnv> = async (c, next) => {
     return;
   }
 
-  if (isPublicPath(pathname)) {
+  if (isPublicPath(pathname, c.req.method)) {
     await next();
     return;
   }

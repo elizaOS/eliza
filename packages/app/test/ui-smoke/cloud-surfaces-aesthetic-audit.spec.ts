@@ -94,7 +94,7 @@ interface CloudAuditCase {
   path: string;
   /** The registered route pattern this case exercises. */
   route: string;
-  /** Seed the persisted Steward token before boot (authed dashboard pages). */
+  /** Seed the persisted Steward token before boot (authed cloud pages). */
   auth: boolean;
   /**
    * Routes that always redirect on localhost (role-gated, environment-bound)
@@ -119,86 +119,100 @@ const PUBLIC = false;
 const CLOUD_AUDIT_CASES: CloudAuditCase[] = [
   // home/
   {
-    slug: "dashboard",
-    path: "/dashboard",
-    route: "dashboard",
+    slug: "cloud",
+    path: "/cloud",
+    route: "cloud",
     auth: AUTH,
   },
   // instances/
   {
-    slug: "dashboard-agents",
-    path: "/dashboard/agents",
-    route: "dashboard/agents",
+    slug: "cloud-agents",
+    path: "/cloud/agents",
+    route: "cloud/agents",
     auth: AUTH,
   },
   {
-    slug: "dashboard-agents-detail",
-    path: "/dashboard/agents/agent-smoke-1",
-    route: "dashboard/agents/:id",
+    slug: "cloud-agents-detail",
+    path: "/cloud/agents/agent-smoke-1",
+    route: "cloud/agents/:id",
     auth: AUTH,
   },
   {
-    slug: "dashboard-my-agents",
-    path: "/dashboard/my-agents",
-    route: "dashboard/my-agents",
+    slug: "cloud-my-agents",
+    path: "/cloud/my-agents",
+    route: "cloud/my-agents",
     auth: AUTH,
   },
   // analytics/
   {
-    slug: "dashboard-analytics",
-    path: "/dashboard/analytics",
-    route: "dashboard/analytics",
+    slug: "cloud-analytics",
+    path: "/cloud/analytics",
+    route: "cloud/analytics",
     auth: AUTH,
   },
   // billing/
   {
-    slug: "dashboard-billing",
-    path: "/dashboard/billing",
-    route: "dashboard/billing",
+    slug: "cloud-billing",
+    path: "/cloud/billing",
+    route: "cloud/billing",
     auth: AUTH,
   },
   {
-    slug: "dashboard-billing-success",
-    path: "/dashboard/billing/success",
-    route: "dashboard/billing/success",
+    slug: "cloud-billing-success",
+    path: "/cloud/billing/success",
+    route: "cloud/billing/success",
     auth: AUTH,
   },
   {
-    slug: "dashboard-invoice-detail",
-    path: "/dashboard/invoices/invoice-smoke-1",
-    route: "dashboard/invoices/:id",
+    slug: "cloud-invoice-detail",
+    path: "/cloud/invoices/invoice-smoke-1",
+    route: "cloud/invoices/:id",
     auth: AUTH,
   },
   // organization/
   {
-    slug: "dashboard-organization",
-    path: "/dashboard/organization",
-    route: "dashboard/organization",
+    slug: "cloud-organization",
+    path: "/cloud/organization",
+    route: "cloud/organization",
     auth: AUTH,
   },
   // account-security/
   {
-    slug: "dashboard-account",
-    path: "/dashboard/account",
-    route: "dashboard/account",
+    slug: "cloud-account",
+    path: "/cloud/account",
+    route: "cloud/account",
     auth: AUTH,
   },
   {
-    slug: "dashboard-security",
-    path: "/dashboard/security",
-    route: "dashboard/security",
+    slug: "cloud-security",
+    path: "/cloud/security",
+    route: "cloud/security",
     auth: AUTH,
   },
   {
-    slug: "dashboard-security-permissions",
-    path: "/dashboard/security/permissions",
-    route: "dashboard/security/permissions",
+    slug: "cloud-security-permissions",
+    path: "/cloud/security/permissions",
+    route: "cloud/security/permissions",
     auth: AUTH,
   },
   // join/ — signed-out /join redirects to /login (audited separately), so
   // audit the signed-in flow; agent provisioning POSTs fall through to the
   // stub backend's 501, landing on the designed "couldn't connect" error card.
   { slug: "join", path: "/join", route: "join", auth: AUTH },
+  // get-started/ — a continuation token is required to exercise the real
+  // messaging handoff page instead of its missing-token redirect.
+  {
+    slug: "get-started-confirm",
+    path: "/get-started?onboardingSession=audit-continuation-token",
+    route: "get-started",
+    auth: AUTH,
+  },
+  {
+    slug: "get-started-success",
+    path: "/get-started?onboardingSession=audit-continuation-token",
+    route: "get-started",
+    auth: AUTH,
+  },
   // public-pages/ — payment + approval + governance token pages
   {
     slug: "payment-request",
@@ -211,16 +225,16 @@ const CLOUD_AUDIT_CASES: CloudAuditCase[] = [
     path: "/payment/success",
     route: "payment/success",
     // PaymentSuccessPage renders a brief "Payment Received" confirmation then
-    // redirects to /dashboard/settings?tab=billing&payment=success. A
+    // redirects to /cloud/settings?tab=billing&payment=success. A
     // LegacySettingsTabRedirect in CloudRouterShell then rewrites that to
-    // /dashboard/billing (the standalone billing page). Both redirects fire
+    // /cloud/billing (the standalone billing page). Both redirects fire
     // before the audit's settle delay + screenshot, so without expectedFinalPath
     // the probe suite screenshots the billing page and mislabels its measurements
     // as payment-success coverage. Treat this as a redirect-only reachability
     // check (same pattern as auth-bridge): assert the terminal redirect path,
     // then skip aesthetic collection.
     auth: AUTH,
-    expectedFinalPath: /^\/dashboard\/billing$/,
+    expectedFinalPath: /^\/cloud\/billing$/,
   },
   {
     slug: "payment-app-charge",
@@ -339,77 +353,77 @@ const CLOUD_AUDIT_CASES: CloudAuditCase[] = [
   { slug: "bsc", path: "/bsc", route: "bsc", auth: PUBLIC },
   // api-explorer/
   {
-    slug: "dashboard-api-explorer",
-    path: "/dashboard/api-explorer",
-    route: "dashboard/api-explorer",
+    slug: "cloud-api-explorer",
+    path: "/cloud/api-explorer",
+    route: "cloud/api-explorer",
     auth: AUTH,
   },
   // api-keys/
   {
-    slug: "dashboard-api-keys",
-    path: "/dashboard/api-keys",
-    route: "dashboard/api-keys",
+    slug: "cloud-api-keys",
+    path: "/cloud/api-keys",
+    route: "cloud/api-keys",
     auth: AUTH,
   },
   // monetization/
   {
-    slug: "dashboard-monetization",
-    path: "/dashboard/monetization",
-    route: "dashboard/monetization",
+    slug: "cloud-monetization",
+    path: "/cloud/monetization",
+    route: "cloud/monetization",
     auth: AUTH,
   },
   // connectors/
   {
-    slug: "dashboard-connectors",
-    path: "/dashboard/connectors",
-    route: "dashboard/connectors",
+    slug: "cloud-connectors",
+    path: "/cloud/connectors",
+    route: "cloud/connectors",
     auth: AUTH,
   },
   // applications/
   {
-    slug: "dashboard-apps",
-    path: "/dashboard/apps",
-    route: "dashboard/apps",
+    slug: "cloud-apps",
+    path: "/cloud/apps",
+    route: "cloud/apps",
     auth: AUTH,
   },
   {
     // ApplicationDetailPage redirects unless :id is a valid UUID.
-    slug: "dashboard-apps-detail",
-    path: "/dashboard/apps/6f9619ff-8b86-4d01-b42d-00c04fc964ff",
-    route: "dashboard/apps/:id",
+    slug: "cloud-apps-detail",
+    path: "/cloud/apps/6f9619ff-8b86-4d01-b42d-00c04fc964ff",
+    route: "cloud/apps/:id",
     auth: AUTH,
   },
   // approvals/
   {
-    slug: "dashboard-approvals",
-    path: "/dashboard/approvals",
-    route: "dashboard/approvals",
+    slug: "cloud-approvals",
+    path: "/cloud/approvals",
+    route: "cloud/approvals",
     auth: AUTH,
   },
   // admin/
   {
-    slug: "dashboard-admin",
-    path: "/dashboard/admin",
-    route: "dashboard/admin",
+    slug: "cloud-admin",
+    path: "/cloud/admin",
+    route: "cloud/admin",
     auth: AUTH,
   },
   {
-    slug: "dashboard-admin-redemptions",
-    path: "/dashboard/admin/redemptions",
-    route: "dashboard/admin/redemptions",
+    slug: "cloud-admin-redemptions",
+    path: "/cloud/admin/redemptions",
+    route: "cloud/admin/redemptions",
     auth: AUTH,
   },
   {
-    slug: "dashboard-admin-rpc-status",
-    path: "/dashboard/admin/rpc-status",
-    route: "dashboard/admin/rpc-status",
+    slug: "cloud-admin-rpc-status",
+    path: "/cloud/admin/rpc-status",
+    route: "cloud/admin/rpc-status",
     auth: AUTH,
   },
   // mcps/
   {
-    slug: "dashboard-mcps",
-    path: "/dashboard/mcps",
-    route: "dashboard/mcps",
+    slug: "cloud-mcps",
+    path: "/cloud/mcps",
+    route: "cloud/mcps",
     auth: AUTH,
   },
 ];
@@ -504,7 +518,7 @@ test.describe("cloud-surfaces aesthetic audit (#10725/#11342)", () => {
     ).toBe(true);
     await seedStewardToken(page);
     await installCloudApiStubs(page);
-    await page.goto("/dashboard/agents", { waitUntil: "domcontentloaded" });
+    await page.goto("/cloud/agents", { waitUntil: "domcontentloaded" });
     // Give StewardProvider a beat to resolve the seeded session (or bounce).
     await page.waitForTimeout(1_500);
     expect(
@@ -535,7 +549,7 @@ test.describe("cloud-surfaces aesthetic audit (#10725/#11342)", () => {
   test("coverage matches the registered cloud routes", async ({ page }) => {
     await seedStewardToken(page);
     await installCloudApiStubs(page);
-    await page.goto("/dashboard/agents", { waitUntil: "domcontentloaded" });
+    await page.goto("/cloud/agents", { waitUntil: "domcontentloaded" });
     const readRegistryPaths = async () => {
       try {
         return await page.evaluate(() => {
@@ -614,7 +628,63 @@ test.describe("cloud-surfaces aesthetic audit (#10725/#11342)", () => {
           await seedStewardToken(page);
         }
         await installCloudApiStubs(page);
+        if (auditCase.slug.startsWith("get-started-")) {
+          await page.route(
+            "**/api/eliza-app/onboarding/chat**",
+            async (route) => {
+              const request = route.request();
+              if (request.method() === "GET") {
+                await route.fulfill({
+                  status: 200,
+                  contentType: "application/json",
+                  body: JSON.stringify({
+                    success: true,
+                    data: {
+                      platform: "blooio",
+                      platformUserId: "+14155550123",
+                      platformDisplayName: "+14155550123",
+                      returnUrl: "sms:+18087881821",
+                    },
+                  }),
+                });
+                return;
+              }
+              await route.fulfill({
+                status: 200,
+                contentType: "application/json",
+                body: JSON.stringify({ success: true, data: {} }),
+              });
+            },
+          );
+        }
+        if (auditCase.slug === "join") {
+          await page.route("**/api/cloud/compat/agents**", async (route) => {
+            await route.fulfill({
+              status: 402,
+              contentType: "application/json",
+              body: JSON.stringify({
+                success: false,
+                code: "insufficient_credits",
+                error:
+                  "Welcome credit unavailable because this network reached the daily free-credit limit. Add funds to start an agent.",
+                requiredBalance: 0.1,
+                currentBalance: 0,
+                welcomeBonusWithheld: true,
+                welcomeBonusWithheldReason: "ip_daily_cap",
+              }),
+            });
+          });
+        }
         await page.goto(auditCase.path, { waitUntil: "domcontentloaded" });
+
+        if (auditCase.slug === "get-started-success") {
+          await page
+            .getByRole("button", { name: "Connect this iMessage account" })
+            .click();
+          await expect(
+            page.getByRole("link", { name: "Back to iMessage" }),
+          ).toHaveAttribute("href", "sms:+18087881821");
+        }
 
         // Routes with expectedFinalPath always redirect on localhost (the
         // harness hostname is 127.0.0.1). Assert the final URL matches the

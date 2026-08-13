@@ -7,7 +7,7 @@
  */
 
 import { Plus } from "lucide-react";
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type {
   ConnectorAccountCreateInput,
   ConnectorAccountRecord,
@@ -21,6 +21,8 @@ import { cn } from "../../lib/utils";
 import { Button } from "../ui/button";
 import { Spinner } from "../ui/spinner";
 import { ConnectorAccountCard } from "./ConnectorAccountCard";
+import { ConnectorOAuthCapabilityPicker } from "./ConnectorOAuthCapabilityPicker";
+import { getConnectorPluginManagedAccountOption } from "./connector-account-options";
 
 /**
  * Pseudo-role for accounts whose server role is unrecognized/missing (#12087
@@ -138,6 +140,14 @@ export function ConnectorAccountList({
   const connectorAccounts = externalAccounts ?? internalAccounts;
   const setConnectorSelectedAccountId = connectorAccounts.setSelectedAccountId;
   const effectiveTitle = title ?? defaultTitleForRole(accountRole);
+  const oauthCapabilities =
+    (
+      getConnectorPluginManagedAccountOption(connectorId) ??
+      getConnectorPluginManagedAccountOption(provider)
+    )?.oauthCapabilities ?? [];
+  const [selectedOAuthCapabilities, setSelectedOAuthCapabilities] = useState(
+    () => new Set<string>(),
+  );
 
   useEffect(() => {
     if (selectedAccountId !== undefined) {
@@ -182,7 +192,13 @@ export function ConnectorAccountList({
         ? accountRole
         : "OWNER";
     const result = await connectorAccounts.startOAuth({
+      ...(oauthCapabilities.length > 0
+        ? { scopes: [...selectedOAuthCapabilities] }
+        : {}),
       metadata: {
+        ...(oauthCapabilities.length > 0
+          ? { requestedCapabilities: [...selectedOAuthCapabilities] }
+          : {}),
         requestedRole,
         privacy: requestedRole === "OWNER" ? "owner_only" : "team_visible",
       },
@@ -193,6 +209,18 @@ export function ConnectorAccountList({
   const addBusy =
     connectorAccounts.saving.has(`add:${provider}:${connectorId}`) ||
     connectorAccounts.saving.has(`oauth:${provider}:${connectorId}:new`);
+  const addDisabled =
+    addBusy ||
+    (oauthCapabilities.length > 0 && selectedOAuthCapabilities.size === 0);
+
+  const updateOAuthCapability = (capabilityId: string, selected: boolean) => {
+    setSelectedOAuthCapabilities((current) => {
+      const next = new Set(current);
+      if (selected) next.add(capabilityId);
+      else next.delete(capabilityId);
+      return next;
+    });
+  };
 
   return (
     <div
@@ -210,7 +238,7 @@ export function ConnectorAccountList({
             type="button"
             variant="default"
             size="sm"
-            disabled={addBusy}
+            disabled={addDisabled}
             onClick={() => void handleAdd()}
             className="h-8 gap-1 px-2.5 text-xs"
           >
@@ -223,6 +251,14 @@ export function ConnectorAccountList({
           </Button>
         ) : null}
       </div>
+
+      {canAddAccount && oauthCapabilities.length > 0 ? (
+        <ConnectorOAuthCapabilityPicker
+          capabilities={oauthCapabilities}
+          selected={selectedOAuthCapabilities}
+          onChange={updateOAuthCapability}
+        />
+      ) : null}
 
       {connectorAccounts.loading && !connectorAccounts.data ? (
         <div className="flex items-center gap-2 text-xs text-muted">

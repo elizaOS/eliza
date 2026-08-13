@@ -41,6 +41,9 @@ jobs:
         with:
           node-version: "24.15.0"
 
+      - name: Run batch watchdog process-tree self-test
+        run: node packages/scripts/test-cloud-run-watchdog.self-test.mjs
+
       - name: Install dependencies
         run: bun install --frozen-lockfile --ignore-scripts
 

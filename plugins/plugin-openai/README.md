@@ -102,6 +102,7 @@ Set these as environment variables or in your character's `settings` object.
 | Variable | Default | Description |
 |---|---|---|
 | `OPENAI_BROWSER_BASE_URL` | — | Proxy URL for browser builds (keeps key server-side) |
+| `OPENAI_BROWSER_UPSTREAM_BASE_URL` | — | Actual proxy upstream used for endpoint-specific capability checks |
 | `OPENAI_BROWSER_EMBEDDING_URL` | — | Proxy URL for browser embedding requests |
 | `OPENAI_ALLOW_BROWSER_API_KEY` | `false` | Send auth header in browser builds (opt-in) |
 
@@ -167,10 +168,13 @@ const audio = await runtime.useModel(ModelType.TEXT_TO_SPEECH, {
 });
 
 // Deep research (may take minutes)
+const researchController = new AbortController();
 const report = await runtime.useModel(ModelType.RESEARCH, {
   input: "What are the latest advances in fusion energy?",
   tools: [{ type: "web_search_preview" }],
+  signal: researchController.signal,
 });
+// Call researchController.abort() when the result is no longer needed.
 console.log(report.text, report.annotations);
 ```
 
@@ -222,7 +226,7 @@ await runtime.useModel(ModelType.TEXT_LARGE, {
 
 ## Free-form record/map tool arguments degrade under strict schema
 
-A tool parameter that declares a free-form record/map — `additionalProperties: true` or a value schema (e.g. a contact `customFields: { type: "object", additionalProperties: { type: "string" } }`) — **cannot round-trip today**. The plugin's single schema choke point forces `additionalProperties: false` on every object before it reaches the wire, because strict-grammar backends (Cerebras / Eliza Cloud) reject open maps with a hard 400 and provider strictness is proxy-blind (an agent pointed at `api.elizacloud.ai` with `OPENAI_API_KEY` looks like plain OpenAI but may still route to strict Cerebras — see #11123 / #11156). With the object closed, the model can emit no arbitrary keys, so the map arg arrives **empty**.
+A tool parameter that declares a free-form record/map — `additionalProperties: true` or a value schema (e.g. a contact `customFields: { type: "object", additionalProperties: { type: "string" } }`) — **cannot round-trip today**. The plugin's single schema choke point forces `additionalProperties: false` on every object before it reaches the wire, because strict-grammar backends (Cerebras / Eliza Cloud) reject open maps with a hard 400 and provider strictness is proxy-blind (an agent pointed at `api.eliza.app` with `OPENAI_API_KEY` looks like plain OpenAI but may still route to strict Cerebras — see #11123 / #11156). With the object closed, the model can emit no arbitrary keys, so the map arg arrives **empty**.
 
 This is a known limitation, not a silent one: the declared intent is folded into the property `description`, and when a tool's parameters contain such a record the plugin emits **one structured `logger.warn` per tool** (`[OpenAI] Tool "…" declares N free-form record/map argument(s) …`) listing each offending path so the degradation is observable in logs. The warning is scoped to **tool parameters only** — `response_format` is intentionally excluded.
 

@@ -84,6 +84,22 @@ describe("isPublicPath — out-of-band token pages", () => {
       isPublicPath("/api/v1/advertising/campaigns/campaign-1/report/share"),
     ).toBe(false);
   });
+
+  test("payment-request detail is public but collection and mutations stay gated", () => {
+    expect(isPublicPath("/api/v1/payment-requests/req-123")).toBe(true);
+    expect(isPublicPath("/api/v1/payment-requests/req-123/")).toBe(true);
+    expect(isPublicPath("/api/v1/payment-requests")).toBe(false);
+    expect(isPublicPath("/api/v1/payment-requests/req-123/cancel")).toBe(false);
+    expect(isPublicPath("/api/v1/payment-requests/req-123/expire")).toBe(false);
+    expect(isPublicPath("/api/v1/payment-requests/req-123/extra")).toBe(false);
+    expect(isPublicPath("/api/v1/payment-requests/req-123", "HEAD")).toBe(true);
+    expect(isPublicPath("/api/v1/payment-requests/req-123", "POST")).toBe(
+      false,
+    );
+    expect(isPublicPath("/api/v1/payment-requests/req-123", "PATCH")).toBe(
+      false,
+    );
+  });
 });
 
 describe("isPublicPath — removed dead eliza-app gateway (#12043)", () => {

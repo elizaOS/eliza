@@ -33,6 +33,7 @@ import {
 } from "@elizaos/core";
 import {
   createShellNavigateViewWsFrame,
+  parseClampedInteger,
   type RouteHelpers,
   readJsonBody,
   type ShellNavigateViewPayload,
@@ -335,9 +336,11 @@ export async function handleViewsRoutes(
   if (method === "GET" && pathname === `${PREFIX}/search`) {
     const query = url.searchParams.get("q") ?? "";
     const limitParam = url.searchParams.get("limit");
-    const topK = limitParam
-      ? Math.min(Math.max(parseInt(limitParam, 10) || 5, 1), 20)
-      : 5;
+    const topK = parseClampedInteger(limitParam, {
+      min: 1,
+      max: 20,
+      fallback: 5,
+    });
 
     if (!query.trim()) {
       json(res, { results: [], query });
