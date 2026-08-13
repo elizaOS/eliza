@@ -3,6 +3,7 @@ import { describe, expect, test } from "bun:test";
 import {
   getPayoutTokenConfig,
   isPayoutAsset,
+  isPayoutLaunchRail,
   isUsdcPayoutNetwork,
   PAYOUT_ASSETS,
   USDC_DECIMALS,
@@ -27,6 +28,14 @@ describe("payout assets", () => {
     expect(isUsdcPayoutNetwork("base")).toBe(true);
     expect(isUsdcPayoutNetwork("ethereum")).toBe(false);
     expect(isUsdcPayoutNetwork("bnb")).toBe(false);
+  });
+
+  test("initial launch enables Base USDC only", () => {
+    expect(isPayoutLaunchRail("base", "usdc")).toBe(true);
+    expect(isPayoutLaunchRail("solana", "usdc")).toBe(false);
+    expect(isPayoutLaunchRail("ethereum", "usdc")).toBe(false);
+    expect(isPayoutLaunchRail("bnb", "usdc")).toBe(false);
+    expect(isPayoutLaunchRail("base", "eliza")).toBe(false);
   });
 
   test("USDC uses 6 decimals; resolver returns a USDC mint for the mode", () => {

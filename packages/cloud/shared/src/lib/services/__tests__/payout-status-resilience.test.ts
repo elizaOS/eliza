@@ -86,6 +86,7 @@ test("production refuses PAYOUT_STATUS_ASSUME_OPERATIONAL instead of reporting n
 
   expect(status.operational).toBe(false);
   expect(status.warnings[0]).toContain("PAYOUT_STATUS_ASSUME_OPERATIONAL");
+  expect(status.networks.map((network) => network.network)).toEqual(["base"]);
   expect(status.networks.every((network) => network.status !== "operational")).toBe(true);
 
   const result = await payoutStatusService.isNetworkAvailable("base");

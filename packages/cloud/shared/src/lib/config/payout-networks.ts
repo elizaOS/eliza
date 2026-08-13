@@ -11,6 +11,7 @@
 
 import type { Chain } from "viem";
 import { base, baseSepolia, bsc, bscTestnet, mainnet, sepolia } from "viem/chains";
+import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import { logger } from "../utils/logger";
 
 // ============================================================================
@@ -210,9 +211,10 @@ export const NETWORK_CONFIGS: Record<PayoutNetwork, NetworkConfig> = {
  * Get the current payout environment
  */
 export function getPayoutEnvironment(): "mainnet" | "testnet" {
-  if (process.env.PAYOUT_TESTNET === "true") return "testnet";
-  if (process.env.NODE_ENV === "development") return "testnet";
-  if (process.env.NODE_ENV === "test") return "testnet";
+  const env = getCloudAwareEnv();
+  if (env.PAYOUT_TESTNET === "true") return "testnet";
+  if (env.NODE_ENV === "development") return "testnet";
+  if (env.NODE_ENV === "test") return "testnet";
   return "mainnet";
 }
 

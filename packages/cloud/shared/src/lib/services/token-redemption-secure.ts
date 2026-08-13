@@ -48,9 +48,10 @@ import {
 } from "../config/evm-rpc";
 import {
   getPayoutTokenConfig,
-  isUsdcPayoutNetwork,
+  isPayoutLaunchRail,
+  PAYOUT_LAUNCH_ASSET,
+  PAYOUT_LAUNCH_NETWORK,
   type PayoutAsset,
-  USDC_PAYOUT_NETWORKS,
 } from "../config/payout-assets";
 import {
   checkKnownAddress,
@@ -344,11 +345,11 @@ export class SecureTokenRedemptionService {
       return { success: false, error: `Unsupported network: ${network}` };
     }
 
-    // USDC payouts (#10732) are offered on Solana + Base only.
-    if (asset === "usdc" && !isUsdcPayoutNetwork(network)) {
+    // Initial launch policy (#13100): Base USDC is the only accepted rail.
+    if (!isPayoutLaunchRail(network, asset)) {
       return {
         success: false,
-        error: `USDC payouts are available on ${USDC_PAYOUT_NETWORKS.join(" or ")} only.`,
+        error: `Payouts are available as ${PAYOUT_LAUNCH_ASSET.toUpperCase()} on ${PAYOUT_LAUNCH_NETWORK} only.`,
       };
     }
 

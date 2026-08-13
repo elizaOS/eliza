@@ -9,14 +9,11 @@
  * `status='approved'`, and approved rows always have a NULL
  * `processing_started_at`, so it was unreachable dead code.
  *
- * The fix adds a SEPARATE recovery pass over stuck `processing` rows that
- * re-approves a row ONLY when it provably never broadcast a transaction
- * (`broadcast_tx_hash IS NULL`). The broadcast hash is persisted BEFORE the
- * transaction is broadcast (#10588: EVM signs locally then sends a raw tx; Solana
- * records the deterministic signature before the raw send) — so recovery can tell
- * "never broadcast" (safe to retry) from "broadcast, awaiting confirmation"
- * (must reconcile on-chain; re-broadcasting would DOUBLE-PAY). The previous flow
- * recorded the hash AFTER the broadcast, leaving a sub-second double-pay window.
+ * The fix surfaces stuck `processing` rows without automatically taking them
+ * over. A timed-out worker can still resume before any broadcast hash is stored,
+ * so a replacement must not re-approve or broadcast the same redemption. Each
+ * active attempt also owns a unique processing-worker fence checked before the
+ * broadcast hash is persisted and before the raw transaction is sent.
  *
  * These tests run the REAL `PayoutProcessorService.processBatch` against
  * in-process PGlite. Only the chain clients (viem) and the RPC/env helpers are
@@ -119,6 +116,7 @@ let pgliteReady = true;
 interface SeedOpts {
   status: string;
   network?: string;
+  asset?: "eliza" | "usdc";
   broadcastTxHash?: string | null;
   retryCount?: number;
   /** processing_started_at, expressed as minutes in the PAST (undefined → NULL). */
@@ -151,11 +149,11 @@ async function seedRedemption(opts: SeedOpts): Promise<string> {
   await dbWrite.execute(
     `INSERT INTO token_redemptions
        (id, user_id, points_amount, usd_value, eliza_price_usd, eliza_amount,
-        price_quote_expires_at, network, payout_address, status,
+        price_quote_expires_at, asset, network, payout_address, status,
         processing_started_at, broadcast_tx_hash, retry_count)
      VALUES
        ('${id}', '${userId}', '1000.00', '10.0000', '0.10000000', '100.00000000',
-        now() + interval '1 hour', '${opts.network ?? "base"}', '${opts.payoutAddress ?? OK_ADDRESS}', '${opts.status}',
+        now() + interval '1 hour', '${opts.asset ?? "usdc"}', '${opts.network ?? "base"}', '${opts.payoutAddress ?? OK_ADDRESS}', '${opts.status}',
         ${started}, ${broadcast}, '${opts.retryCount ?? 0}');`,
   );
   return id;
@@ -168,10 +166,11 @@ async function readRedemption(id: string): Promise<{
   tx_hash: string | null;
   retry_count: string;
   processing_started_at: string | null;
+  processing_worker_id: string | null;
   requires_review: boolean;
 }> {
   const rows = await dbWrite.execute(
-    `SELECT status, failure_reason, broadcast_tx_hash, tx_hash, retry_count, processing_started_at, requires_review
+    `SELECT status, failure_reason, broadcast_tx_hash, tx_hash, retry_count, processing_started_at, processing_worker_id, requires_review
      FROM token_redemptions WHERE id = '${id}';`,
   );
   return rows.rows[0] as {
@@ -181,6 +180,7 @@ async function readRedemption(id: string): Promise<{
     tx_hash: string | null;
     retry_count: string;
     processing_started_at: string | null;
+    processing_worker_id: string | null;
     requires_review: boolean;
   };
 }
@@ -321,7 +321,24 @@ beforeEach(async () => {
 
 describe("payout stale-lock recovery (#10553)", () => {
   test(
-    "(a) a stale 'processing' row with NO broadcast hash is recovered, re-approved, and paid out",
+    "launch policy rejects every approved rail except Base USDC before broadcast",
+    async () => {
+      if (!pgliteReady) return;
+      const legacyBase = await seedRedemption({ status: "approved", asset: "eliza" });
+      const solanaUsdc = await seedRedemption({ status: "approved", network: "solana" });
+
+      const stats = await service.processBatch();
+
+      expect(stats.processed).toBe(2);
+      expect((await readRedemption(legacyBase)).status).toBe("failed");
+      expect((await readRedemption(solanaUsdc)).status).toBe("failed");
+      expect(sendRawTxMock.mock.calls.length).toBe(0);
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "(a) a stale EVM row with NO broadcast hash is left for manual reconciliation",
     async () => {
       if (!pgliteReady) return;
       const id = await seedRedemption({
@@ -334,16 +351,12 @@ describe("payout stale-lock recovery (#10553)", () => {
       await service.processBatch();
 
       const row = await readRedemption(id);
-      // It started in 'processing' (NOT selectable by the approved-select), so
-      // reaching 'completed' proves recovery re-approved it and the batch then
-      // paid it out.
-      expect(row.status).toBe("completed");
-      expect(row.tx_hash).toBe(BROADCAST_HASH);
-      expect(row.broadcast_tx_hash).toBe(BROADCAST_HASH);
-      // recovery incremented retry_count on the way back to 'approved'.
-      expect(Number(row.retry_count)).toBe(1);
-      // A real transaction was broadcast exactly once.
-      expect(sendRawTxMock.mock.calls.length).toBe(1);
+      expect(row.status).toBe("processing");
+      expect(row.tx_hash).toBeNull();
+      expect(row.broadcast_tx_hash).toBeNull();
+      expect(Number(row.retry_count)).toBe(0);
+      expect(sendRawTxMock.mock.calls.length).toBe(0);
+      expect(sendAlertMock.mock.calls.length).toBe(1);
     },
     PGLITE_TIMEOUT,
   );
@@ -376,7 +389,7 @@ describe("payout stale-lock recovery (#10553)", () => {
   );
 
   test(
-    "(b2) #10628: stale Solana rows without a broadcast hash are escalated, not re-approved",
+    "(b2) stale Solana rows without a broadcast hash are also left in processing",
     async () => {
       if (!pgliteReady) return;
       const id = await seedRedemption({
@@ -391,13 +404,13 @@ describe("payout stale-lock recovery (#10553)", () => {
 
       const row = await readRedemption(id);
       expect(stats.processed).toBe(0);
-      expect(row.status).toBe("failed");
+      expect(row.status).toBe("processing");
       expect(row.broadcast_tx_hash).toBeNull();
       expect(row.tx_hash).toBeNull();
-      expect(Number(row.retry_count)).toBe(1);
-      expect(row.processing_started_at).toBeNull();
-      expect(row.requires_review).toBe(true);
-      expect(row.failure_reason).toContain("Solana stale processing lock");
+      expect(Number(row.retry_count)).toBe(0);
+      expect(row.processing_started_at).not.toBeNull();
+      expect(row.requires_review).toBe(false);
+      expect(row.failure_reason).toBeNull();
       expect(sendRawTxMock.mock.calls.length).toBe(0);
       expect(sendAlertMock.mock.calls.length).toBe(1);
     },
@@ -490,6 +503,33 @@ describe("payout stale-lock recovery (#10553)", () => {
   );
 
   test(
+    "(d3) a worker that loses its processing fence cannot persist or broadcast",
+    async () => {
+      if (!pgliteReady) return;
+      const id = await seedRedemption({ status: "approved" });
+
+      prepareTxMock.mockImplementation(async (args: { data: `0x${string}` }) => {
+        await dbWrite.execute(
+          `UPDATE token_redemptions
+             SET processing_worker_id = 'replacement-worker'
+           WHERE id = '${id}';`,
+        );
+        return { ...args, nonce: 0 };
+      });
+
+      const stats = await service.processBatch();
+
+      const row = await readRedemption(id);
+      expect(stats.failed).toBe(1);
+      expect(row.status).toBe("processing");
+      expect(row.processing_worker_id).toBe("replacement-worker");
+      expect(row.broadcast_tx_hash).toBeNull();
+      expect(sendRawTxMock.mock.calls.length).toBe(0);
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
     "(e) a FRESH 'processing' row (within LOCK_TIMEOUT) is left alone for the live worker",
     async () => {
       if (!pgliteReady) return;
@@ -512,7 +552,7 @@ describe("payout stale-lock recovery (#10553)", () => {
   );
 
   test(
-    "(f) a provably-safe stale row with retries exhausted is failed for manual intervention",
+    "(f) a stale row is never auto-transitioned even when retries are exhausted",
     async () => {
       if (!pgliteReady) return;
       const id = await seedRedemption({
@@ -525,9 +565,10 @@ describe("payout stale-lock recovery (#10553)", () => {
       await service.processBatch();
 
       const row = await readRedemption(id);
-      expect(row.status).toBe("failed");
+      expect(row.status).toBe("processing");
       expect(row.broadcast_tx_hash).toBeNull();
-      expect(row.requires_review).toBe(true);
+      expect(row.requires_review).toBe(false);
+      expect(Number(row.retry_count)).toBe(3);
       // Never silently re-broadcast.
       expect(sendRawTxMock.mock.calls.length).toBe(0);
       expect(sendAlertMock.mock.calls.length).toBe(1);
@@ -536,7 +577,7 @@ describe("payout stale-lock recovery (#10553)", () => {
   );
 
   test(
-    "(f2) #10628: stale-lock recovery fails the row when its recovery strike reaches the retry ceiling",
+    "(f2) stale-lock observation does not increment the retry counter",
     async () => {
       if (!pgliteReady) return;
       const id = await seedRedemption({
@@ -550,11 +591,11 @@ describe("payout stale-lock recovery (#10553)", () => {
 
       const row = await readRedemption(id);
       expect(stats.processed).toBe(0);
-      expect(row.status).toBe("failed");
-      expect(Number(row.retry_count)).toBe(3);
+      expect(row.status).toBe("processing");
+      expect(Number(row.retry_count)).toBe(2);
       expect(row.broadcast_tx_hash).toBeNull();
-      expect(row.processing_started_at).toBeNull();
-      expect(row.requires_review).toBe(true);
+      expect(row.processing_started_at).not.toBeNull();
+      expect(row.requires_review).toBe(false);
       expect(sendRawTxMock.mock.calls.length).toBe(0);
       expect(sendAlertMock.mock.calls.length).toBe(1);
     },
@@ -630,7 +671,7 @@ describe("payout stale-lock recovery (#10553)", () => {
   );
 
   test(
-    "(g) a retries-exhausted redemption returns its locked earnings to available_balance exactly once",
+    "(g) a stale redemption is not refunded while its original worker may resume",
     async () => {
       if (!pgliteReady) return;
       // Seeded: total_pending=10 (locked), available_balance=90, usd_value=10.
@@ -648,21 +689,21 @@ describe("payout stale-lock recovery (#10553)", () => {
       await service.processBatch();
 
       const row = await readRedemption(id);
-      expect(row.status).toBe("failed");
+      expect(row.status).toBe("processing");
       expect(row.broadcast_tx_hash).toBeNull();
 
-      // The $10 was returned from total_pending to available_balance (previously
-      // stranded forever — rejectRedemption only touches 'pending' rows).
+      // The original worker may still broadcast, so funds remain locked until
+      // operators reconcile the worker and chain state.
       const after = await readEarnings(id);
-      expect(after.available_balance).toBeCloseTo(100, 4);
-      expect(after.total_pending).toBeCloseTo(0, 4);
-      expect(await refundLedgerCount(id)).toBe(1);
+      expect(after.available_balance).toBeCloseTo(90, 4);
+      expect(after.total_pending).toBeCloseTo(10, 4);
+      expect(await refundLedgerCount(id)).toBe(0);
 
       // Idempotent: a second batch does NOT refund again (ledger guard).
       await service.processBatch();
       const after2 = await readEarnings(id);
-      expect(after2.available_balance).toBeCloseTo(100, 4);
-      expect(await refundLedgerCount(id)).toBe(1);
+      expect(after2.available_balance).toBeCloseTo(90, 4);
+      expect(await refundLedgerCount(id)).toBe(0);
     },
     PGLITE_TIMEOUT,
   );

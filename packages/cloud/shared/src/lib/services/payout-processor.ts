@@ -37,7 +37,7 @@
  */
 
 import bs58 from "bs58";
-import { and, eq, gte, isNotNull, isNull, lt, ne, sql } from "drizzle-orm";
+import { and, eq, isNull, lt, sql } from "drizzle-orm";
 import {
   type Address,
   createPublicClient,
@@ -57,7 +57,13 @@ import {
   payoutEvmChain,
   resolvePayoutEvmRpc,
 } from "../config/evm-rpc";
-import { getMonitoringPayoutAsset, getPayoutTokenConfig } from "../config/payout-assets";
+import {
+  getMonitoringPayoutAsset,
+  getPayoutTokenConfig,
+  isPayoutLaunchRail,
+  PAYOUT_LAUNCH_ASSET,
+  PAYOUT_LAUNCH_NETWORK,
+} from "../config/payout-assets";
 import { ERC20_ABI } from "../config/token-constants";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import { logger } from "../utils/logger";
@@ -269,9 +275,9 @@ export class PayoutProcessorService {
 
     // Find approved redemptions ready for payout. Approved rows always have a
     // NULL `processing_started_at` (acquireLock sets it on the way to
-    // `processing`; markFailed/recovery clear it on the way back to `approved`),
-    // so stale-lock recovery is handled exclusively by recoverStaleProcessing()
-    // above — there is no stale-lock branch to express here.
+    // `processing`; retryable markFailed clears it on the way back to
+    // `approved`). Stale processing rows remain fenced and are surfaced by
+    // recoverStaleProcessing() instead of being selected here.
     const redemptions = await dbRead
       .select()
       .from(tokenRedemptions)
@@ -289,10 +295,11 @@ export class PayoutProcessorService {
 
     for (const redemption of redemptions) {
       stats.processed++;
+      const processingWorkerId = `${payoutConfig.WORKER_ID}:${crypto.randomUUID()}`;
 
       try {
         // Try to acquire lock
-        const locked = await this.acquireLock(redemption.id);
+        const locked = await this.acquireLock(redemption.id, processingWorkerId);
         if (!locked) {
           stats.skipped++;
           continue;
@@ -300,18 +307,23 @@ export class PayoutProcessorService {
 
         // Isolate each redemption: a throw (RPC error, eviction, bug) must not
         // abort the rest of the batch, and must never silently re-broadcast.
-        const result = await this.processRedemption(redemption);
+        const result = await this.processRedemption(redemption, processingWorkerId);
 
         if (result.success) {
-          await this.markCompleted(redemption, result.txHash!);
+          await this.markCompleted(redemption, result.txHash!, processingWorkerId);
           stats.succeeded++;
         } else {
-          await this.markFailed(redemption.id, result.error!, result.retryable ?? true);
+          await this.markFailed(
+            redemption.id,
+            result.error!,
+            result.retryable ?? true,
+            processingWorkerId,
+          );
           stats.failed++;
         }
       } catch (error) {
         stats.failed++;
-        await this.handleProcessingThrow(redemption.id, error);
+        await this.handleProcessingThrow(redemption.id, error, processingWorkerId);
       }
     }
 
@@ -320,103 +332,15 @@ export class PayoutProcessorService {
   }
 
   /**
-   * Recover redemptions stuck in `processing` past the lock timeout.
-   *
-   * Splits stuck rows by what is PROVABLY known about their on-chain state:
-   *
-   *  - No broadcast tx hash recorded on an EVM payout → the payout never left
-   *    this process. Safe to return to `approved` and retry, bounded by
-   *    MAX_RETRY_ATTEMPTS.
-   *  - No broadcast tx hash recorded on a Solana payout → escalate instead of
-   *    re-approving. A slow-but-alive worker can still later sign with a fresh
-   *    blockhash, so auto-retry would risk two distinct Solana transfers.
-   *  - No broadcast hash but retries exhausted → fail for manual intervention
-   *    (mirrors the non-retryable markFailed path; never silently re-tried).
-   *  - A broadcast hash IS recorded → a transaction may already be confirmed
-   *    on-chain. Re-approving would re-broadcast and double-pay, so these are
-   *    LEFT in `processing` and surfaced for on-chain reconciliation. This is
-   *    the safety floor: recovery never auto re-broadcasts a broadcast payout.
+   * Surface stale processing leases without taking them over automatically.
+   * A worker that exceeds the timeout may still resume, sign, and broadcast, so
+   * neither a NULL broadcast hash nor an EVM account nonce proves that a
+   * replacement worker can safely pay the same redemption. Operators must
+   * reconcile the worker and chain state before changing the row.
    */
   private async recoverStaleProcessing(): Promise<void> {
     const config = getPayoutConfig();
     const staleThreshold = new Date(Date.now() - config.LOCK_TIMEOUT_MS);
-
-    // (1) Solana stale locks are not provably safe to re-approve. Unlike EVM,
-    // there is no account-nonce fence; a slow-but-alive worker can still later
-    // sign and send a distinct transaction with a fresh blockhash.
-    const solanaEscalated = await dbWrite
-      .update(tokenRedemptions)
-      .set({
-        status: "failed",
-        failure_reason:
-          "Solana stale processing lock requires manual review (no nonce fence; no broadcast detected)",
-        retry_count: sql`LEAST(CAST(${tokenRedemptions.retry_count} AS INTEGER) + 1, ${config.MAX_RETRY_ATTEMPTS})`,
-        requires_review: true,
-        processing_started_at: null,
-        processing_worker_id: null,
-        updated_at: new Date(),
-      })
-      .where(
-        and(
-          eq(tokenRedemptions.status, "processing"),
-          eq(tokenRedemptions.network, "solana"),
-          lt(tokenRedemptions.processing_started_at, staleThreshold),
-          isNull(tokenRedemptions.broadcast_tx_hash),
-        ),
-      )
-      .returning({ id: tokenRedemptions.id });
-
-    // (2) Provably-safe EVM rows, retries remaining after this recovery strike →
-    // re-approve for retry. The `< MAX_RETRY_ATTEMPTS - 1` boundary is
-    // intentional: recovery increments retry_count here, and approved rows with
-    // retry_count >= MAX_RETRY_ATTEMPTS are never selected by processBatch().
-    const reapproved = await dbWrite
-      .update(tokenRedemptions)
-      .set({
-        status: "approved",
-        processing_started_at: null,
-        processing_worker_id: null,
-        failure_reason: "Recovered stale processing lock (no broadcast detected)",
-        retry_count: sql`${tokenRedemptions.retry_count} + 1`,
-        updated_at: new Date(),
-      })
-      .where(
-        and(
-          eq(tokenRedemptions.status, "processing"),
-          ne(tokenRedemptions.network, "solana"),
-          lt(tokenRedemptions.processing_started_at, staleThreshold),
-          isNull(tokenRedemptions.broadcast_tx_hash),
-          lt(sql`CAST(${tokenRedemptions.retry_count} AS INTEGER)`, config.MAX_RETRY_ATTEMPTS - 1),
-        ),
-      )
-      .returning({ id: tokenRedemptions.id });
-
-    // (3) Provably-safe EVM rows, retries exhausted by this recovery strike → fail
-    // (manual intervention) instead of orphaning an approved row at the retry
-    // ceiling.
-    const exhausted = await dbWrite
-      .update(tokenRedemptions)
-      .set({
-        status: "failed",
-        failure_reason: "Stale processing lock reached MAX_RETRY_ATTEMPTS (no broadcast detected)",
-        retry_count: sql`LEAST(CAST(${tokenRedemptions.retry_count} AS INTEGER) + 1, ${config.MAX_RETRY_ATTEMPTS})`,
-        requires_review: true,
-        processing_started_at: null,
-        processing_worker_id: null,
-        updated_at: new Date(),
-      })
-      .where(
-        and(
-          eq(tokenRedemptions.status, "processing"),
-          ne(tokenRedemptions.network, "solana"),
-          lt(tokenRedemptions.processing_started_at, staleThreshold),
-          isNull(tokenRedemptions.broadcast_tx_hash),
-          gte(sql`CAST(${tokenRedemptions.retry_count} AS INTEGER)`, config.MAX_RETRY_ATTEMPTS - 1),
-        ),
-      )
-      .returning({ id: tokenRedemptions.id });
-
-    // (4) Broadcast-but-unconfirmed → NEVER re-approve. Surface for reconciliation.
     const stuck = await dbWrite
       .select({
         id: tokenRedemptions.id,
@@ -428,60 +352,18 @@ export class PayoutProcessorService {
         and(
           eq(tokenRedemptions.status, "processing"),
           lt(tokenRedemptions.processing_started_at, staleThreshold),
-          isNotNull(tokenRedemptions.broadcast_tx_hash),
         ),
       );
 
-    if (solanaEscalated.length > 0) {
-      logger.error(
-        "[PayoutProcessor] Solana stale processing locks require manual review (NOT auto-retried to avoid double-pay)",
-        {
-          count: solanaEscalated.length,
-          redemptionIds: solanaEscalated.map((r) => r.id),
-        },
-      );
-      await payoutAlertsService.sendAlert({
-        severity: "high",
-        title: "Solana payout stale lock requires review",
-        message: `${solanaEscalated.length} Solana redemption(s) exceeded the processing lock timeout before any broadcast was detected. They were not auto-retried because Solana lacks an account-nonce fence; manual review is required to release or refund the payout.`,
-        details: { redemptionIds: solanaEscalated.map((r) => r.id) },
-      });
-    }
-    if (reapproved.length > 0) {
-      logger.warn("[PayoutProcessor] Recovered stale processing locks for retry", {
-        count: reapproved.length,
-        redemptionIds: reapproved.map((r) => r.id),
-      });
-    }
-    if (exhausted.length > 0) {
-      logger.error("[PayoutProcessor] Stale processing locks exhausted retries; marked failed", {
-        count: exhausted.length,
-        redemptionIds: exhausted.map((r) => r.id),
-      });
-      await payoutAlertsService.sendAlert({
-        severity: "high",
-        title: "Payout retries exhausted",
-        message: `${exhausted.length} stale redemption(s) exceeded retry attempts before any broadcast was detected. Locked earnings are being returned to the users' available balance.`,
-        details: { redemptionIds: exhausted.map((r) => r.id) },
-      });
-      // These are provably-un-broadcast EVM rows (WHERE ne solana + broadcast_tx_hash
-      // IS NULL), so no tokens were sent — return the locked earnings to the users.
-      for (const r of exhausted) {
-        await this.refundStrandedRedemption(
-          r.id,
-          "Stale processing lock reached MAX_RETRY_ATTEMPTS (no broadcast detected)",
-        );
-      }
-    }
     if (stuck.length > 0) {
       logger.error(
-        "[PayoutProcessor] Stale processing locks with a broadcast tx require on-chain reconciliation (NOT auto-retried to avoid double-pay)",
+        "[PayoutProcessor] Stale processing locks require worker and on-chain reconciliation (NOT auto-retried to avoid double-pay)",
         { count: stuck.length, redemptions: stuck },
       );
       await payoutAlertsService.sendAlert({
         severity: "high",
-        title: "Payout stuck after broadcast",
-        message: `${stuck.length} redemption(s) broadcast a transaction but never confirmed. Manual on-chain reconciliation required — these are intentionally NOT auto-retried to avoid double-paying.`,
+        title: "Payout processing lease stale",
+        message: `${stuck.length} redemption(s) exceeded the processing timeout. Manual worker and on-chain reconciliation is required; they were intentionally left in processing and were not auto-retried.`,
         details: { redemptions: stuck },
       });
     }
@@ -497,7 +379,11 @@ export class PayoutProcessorService {
    *    recoverStaleProcessing()/operators.
    *  - No broadcast hash → nothing left our process; safe retryable failure.
    */
-  private async handleProcessingThrow(redemptionId: string, error: unknown): Promise<void> {
+  private async handleProcessingThrow(
+    redemptionId: string,
+    error: unknown,
+    processingWorkerId: string,
+  ): Promise<void> {
     const reason = error instanceof Error ? error.message : String(error);
 
     const [row] = await dbRead
@@ -516,7 +402,13 @@ export class PayoutProcessorService {
           failure_reason: `Threw after broadcast (awaiting on-chain reconciliation): ${reason}`,
           updated_at: new Date(),
         })
-        .where(eq(tokenRedemptions.id, redemptionId));
+        .where(
+          and(
+            eq(tokenRedemptions.id, redemptionId),
+            eq(tokenRedemptions.status, "processing"),
+            eq(tokenRedemptions.processing_worker_id, processingWorkerId),
+          ),
+        );
       return;
     }
 
@@ -524,20 +416,19 @@ export class PayoutProcessorService {
       redemptionId,
       reason,
     });
-    await this.markFailed(redemptionId, reason, true);
+    await this.markFailed(redemptionId, reason, true, processingWorkerId);
   }
 
   /**
    * Acquire processing lock on a redemption.
    */
-  private async acquireLock(redemptionId: string): Promise<boolean> {
-    const config = getPayoutConfig();
+  private async acquireLock(redemptionId: string, processingWorkerId: string): Promise<boolean> {
     const [updated] = await dbWrite
       .update(tokenRedemptions)
       .set({
         status: "processing",
         processing_started_at: new Date(),
-        processing_worker_id: config.WORKER_ID,
+        processing_worker_id: processingWorkerId,
         updated_at: new Date(),
       })
       .where(and(eq(tokenRedemptions.id, redemptionId), eq(tokenRedemptions.status, "approved")))
@@ -551,9 +442,22 @@ export class PayoutProcessorService {
    */
   private async processRedemption(
     redemption: typeof tokenRedemptions.$inferSelect,
+    processingWorkerId: string,
   ): Promise<PayoutResult> {
     const config = getPayoutConfig();
     const network = redemption.network as SupportedNetwork;
+
+    // Defense in depth for already-approved or directly inserted rows: the
+    // initial launch permits Base USDC only (#13100). Never execute a legacy
+    // elizaOS, Solana, Ethereum, or BNB payout even if it bypassed request
+    // validation.
+    if (!isPayoutLaunchRail(network, redemption.asset)) {
+      return {
+        success: false,
+        error: `Unsupported payout rail: launch permits ${PAYOUT_LAUNCH_ASSET.toUpperCase()} on ${PAYOUT_LAUNCH_NETWORK} only`,
+        retryable: false,
+      };
+    }
 
     // Fail closed on a corrupt NUMERIC payout amount BEFORE anything is signed or
     // broadcast. A non-finite / empty `eliza_amount` otherwise coerces to a
@@ -679,9 +583,9 @@ export class PayoutProcessorService {
 
     // Execute payout based on network
     if (network === "solana") {
-      return await this.executeSolanaPayout(redemption);
+      return await this.executeSolanaPayout(redemption, processingWorkerId);
     } else {
-      return await this.executeEvmPayout(redemption, network);
+      return await this.executeEvmPayout(redemption, network, processingWorkerId);
     }
   }
 
@@ -714,6 +618,7 @@ export class PayoutProcessorService {
   private async executeEvmPayout(
     redemption: typeof tokenRedemptions.$inferSelect,
     network: SupportedNetwork,
+    processingWorkerId: string,
   ): Promise<PayoutResult> {
     if (!this.evmPrivateKey) {
       return {
@@ -809,7 +714,7 @@ export class PayoutProcessorService {
 
     // Persist BEFORE broadcasting. A crash before this commit means the tx was
     // never sent (sendRawTransaction is below) → recovery safely re-approves.
-    await this.recordBroadcast(redemption.id, txHash);
+    await this.recordBroadcast(redemption.id, txHash, processingWorkerId);
 
     // Broadcast the pre-signed transaction. A throw here routes through
     // handleProcessingThrow, which sees the persisted hash and reconciles rather
@@ -846,6 +751,7 @@ export class PayoutProcessorService {
    */
   private async executeSolanaPayout(
     redemption: typeof tokenRedemptions.$inferSelect,
+    processingWorkerId: string,
   ): Promise<PayoutResult> {
     if (!this.solanaKeypair || !this.solanaConnection) {
       return {
@@ -975,7 +881,7 @@ export class PayoutProcessorService {
       };
     }
     const signature = bs58.encode(signatureBytes);
-    await this.recordBroadcast(redemption.id, signature);
+    await this.recordBroadcast(redemption.id, signature, processingWorkerId);
 
     await this.solanaConnection.sendRawTransaction(serializedTransaction);
 
@@ -1009,6 +915,7 @@ export class PayoutProcessorService {
   private async markCompleted(
     redemption: typeof tokenRedemptions.$inferSelect,
     txHash: string,
+    processingWorkerId: string,
   ): Promise<void> {
     const completedAt = new Date();
     const usdValue = redemption.usd_value.toString();
@@ -1017,7 +924,7 @@ export class PayoutProcessorService {
     const usdNumber = parseRedemptionAmount("usd_value", redemption.usd_value);
 
     await dbWrite.transaction(async (tx) => {
-      await tx
+      const [completedRedemption] = await tx
         .update(tokenRedemptions)
         .set({
           status: "completed",
@@ -1025,7 +932,19 @@ export class PayoutProcessorService {
           completed_at: completedAt,
           updated_at: completedAt,
         })
-        .where(eq(tokenRedemptions.id, redemption.id));
+        .where(
+          and(
+            eq(tokenRedemptions.id, redemption.id),
+            eq(tokenRedemptions.status, "processing"),
+            eq(tokenRedemptions.processing_worker_id, processingWorkerId),
+            eq(tokenRedemptions.broadcast_tx_hash, txHash),
+          ),
+        )
+        .returning({ id: tokenRedemptions.id });
+
+      if (!completedRedemption) {
+        throw new Error("Payout processing lease lost before completion");
+      }
 
       const [updatedEarnings] = await tx
         .update(redeemableEarnings)
@@ -1064,14 +983,30 @@ export class PayoutProcessorService {
    * before waiting for confirmation. This is the recovery signal: a `processing`
    * row with a recorded broadcast hash must never be re-broadcast.
    */
-  private async recordBroadcast(redemptionId: string, broadcastTxHash: string): Promise<void> {
-    await dbWrite
+  private async recordBroadcast(
+    redemptionId: string,
+    broadcastTxHash: string,
+    processingWorkerId: string,
+  ): Promise<void> {
+    const [updated] = await dbWrite
       .update(tokenRedemptions)
       .set({
         broadcast_tx_hash: broadcastTxHash,
         updated_at: new Date(),
       })
-      .where(eq(tokenRedemptions.id, redemptionId));
+      .where(
+        and(
+          eq(tokenRedemptions.id, redemptionId),
+          eq(tokenRedemptions.status, "processing"),
+          eq(tokenRedemptions.processing_worker_id, processingWorkerId),
+          isNull(tokenRedemptions.broadcast_tx_hash),
+        ),
+      )
+      .returning({ id: tokenRedemptions.id });
+
+    if (!updated) {
+      throw new Error("Payout processing lease lost before broadcast");
+    }
   }
 
   /**
@@ -1081,6 +1016,7 @@ export class PayoutProcessorService {
     redemptionId: string,
     reason: string,
     retryable: boolean,
+    processingWorkerId: string,
   ): Promise<void> {
     if (retryable) {
       const config = getPayoutConfig();
@@ -1099,6 +1035,7 @@ export class PayoutProcessorService {
           and(
             eq(tokenRedemptions.id, redemptionId),
             eq(tokenRedemptions.status, "processing"),
+            eq(tokenRedemptions.processing_worker_id, processingWorkerId),
             lt(
               sql`CAST(${tokenRedemptions.retry_count} AS INTEGER)`,
               config.MAX_RETRY_ATTEMPTS - 1,
@@ -1121,7 +1058,11 @@ export class PayoutProcessorService {
             updated_at: new Date(),
           })
           .where(
-            and(eq(tokenRedemptions.id, redemptionId), eq(tokenRedemptions.status, "processing")),
+            and(
+              eq(tokenRedemptions.id, redemptionId),
+              eq(tokenRedemptions.status, "processing"),
+              eq(tokenRedemptions.processing_worker_id, processingWorkerId),
+            ),
           )
           .returning({ id: tokenRedemptions.id });
 
@@ -1153,7 +1094,11 @@ export class PayoutProcessorService {
           updated_at: new Date(),
         })
         .where(
-          and(eq(tokenRedemptions.id, redemptionId), eq(tokenRedemptions.status, "processing")),
+          and(
+            eq(tokenRedemptions.id, redemptionId),
+            eq(tokenRedemptions.status, "processing"),
+            eq(tokenRedemptions.processing_worker_id, processingWorkerId),
+          ),
         )
         .returning({ id: tokenRedemptions.id });
 

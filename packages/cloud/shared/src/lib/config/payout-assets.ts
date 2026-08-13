@@ -19,6 +19,14 @@ export type PayoutAsset = "eliza" | "usdc";
 
 export const PAYOUT_ASSETS: readonly PayoutAsset[] = ["eliza", "usdc"] as const;
 
+/** The only payout rail enabled for the initial launch (#13100). */
+export const PAYOUT_LAUNCH_NETWORK = "base" as const satisfies SupportedNetwork;
+export const PAYOUT_LAUNCH_ASSET = "usdc" as const satisfies PayoutAsset;
+
+export function isPayoutLaunchRail(network: SupportedNetwork, asset: PayoutAsset): boolean {
+  return network === PAYOUT_LAUNCH_NETWORK && asset === PAYOUT_LAUNCH_ASSET;
+}
+
 export function isPayoutAsset(value: string): value is PayoutAsset {
   return value === "eliza" || value === "usdc";
 }

@@ -9,7 +9,11 @@ import { type Address, createPublicClient, http, parseAbi } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { shouldBlockPayoutAssumeOperational } from "../config/deployment-environment";
 import { type EvmPayoutNetwork, payoutEvmChain, resolvePayoutEvmRpc } from "../config/evm-rpc";
-import { getMonitoringPayoutAsset, getPayoutTokenConfig } from "../config/payout-assets";
+import {
+  getMonitoringPayoutAsset,
+  getPayoutTokenConfig,
+  PAYOUT_LAUNCH_NETWORK,
+} from "../config/payout-assets";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import { logger } from "../utils/logger";
 import type { SupportedNetwork } from "./eliza-token-price";
@@ -156,7 +160,7 @@ class PayoutStatusService {
     // real balance before transferring, so money cannot move on a bad assumption.
     const assumeOperational = env.PAYOUT_STATUS_ASSUME_OPERATIONAL === "1";
 
-    // Check EVM networks (support both naming conventions)
+    // Initial launch policy (#13100): advertise and monitor Base USDC only.
     const evmPrivateKey = env.EVM_PAYOUT_PRIVATE_KEY || env.EVM_PRIVATE_KEY;
     const evmConfigured = Boolean(evmPrivateKey || env.EVM_PAYOUT_WALLET_ADDRESS);
     const evmWalletAddress = skipLiveBalanceChecks
@@ -165,47 +169,20 @@ class PayoutStatusService {
         ? this.getEvmWalletAddress(evmPrivateKey)
         : null;
 
-    for (const network of ["ethereum", "base", "bnb"] as const) {
-      const status = await this.resolveNetworkStatus(network, evmConfigured, () =>
-        skipLiveBalanceChecks
-          ? this.buildSkippedBalanceStatus(
-              network,
-              evmConfigured,
-              evmWalletAddress,
-              assumeOperational,
-            )
-          : this.checkEvmNetwork(network, evmWalletAddress),
-      );
-      networks.push(status);
-
-      if (status.status !== "operational") {
-        warnings.push(`${network}: ${status.message}`);
-      }
-    }
-
-    // Check Solana
-    const solanaPrivateKey = env.SOLANA_PAYOUT_PRIVATE_KEY;
-    const solanaConfigured = Boolean(solanaPrivateKey || env.SOLANA_PAYOUT_WALLET_ADDRESS);
-    const solanaWalletAddress = skipLiveBalanceChecks
-      ? (env.SOLANA_PAYOUT_WALLET_ADDRESS ?? (solanaPrivateKey ? "configured" : null))
-      : solanaPrivateKey
-        ? this.getSolanaWalletAddress(solanaPrivateKey)
-        : null;
-
-    const solanaStatus = await this.resolveNetworkStatus("solana", solanaConfigured, () =>
+    const baseStatus = await this.resolveNetworkStatus(PAYOUT_LAUNCH_NETWORK, evmConfigured, () =>
       skipLiveBalanceChecks
         ? this.buildSkippedBalanceStatus(
-            "solana",
-            solanaConfigured,
-            solanaWalletAddress,
+            PAYOUT_LAUNCH_NETWORK,
+            evmConfigured,
+            evmWalletAddress,
             assumeOperational,
           )
-        : this.checkSolanaNetwork(solanaWalletAddress),
+        : this.checkEvmNetwork(PAYOUT_LAUNCH_NETWORK, evmWalletAddress),
     );
-    networks.push(solanaStatus);
+    networks.push(baseStatus);
 
-    if (solanaStatus.status !== "operational") {
-      warnings.push(`solana: ${solanaStatus.message}`);
+    if (baseStatus.status !== "operational") {
+      warnings.push(`${PAYOUT_LAUNCH_NETWORK}: ${baseStatus.message}`);
     }
 
     // Determine overall operational status
@@ -266,19 +243,12 @@ class PayoutStatusService {
   getUserMessage(network?: SupportedNetwork): string | null {
     const env = getCloudAwareEnv();
     const evmConfigured = !!(env.EVM_PAYOUT_PRIVATE_KEY || env.EVM_PRIVATE_KEY);
-    const solanaConfigured = !!env.SOLANA_PAYOUT_PRIVATE_KEY;
-
-    if (!evmConfigured && !solanaConfigured) {
+    if (!evmConfigured) {
       return "Token redemption is temporarily unavailable. We're setting up our payout infrastructure. Please check back soon!";
     }
 
-    if (network) {
-      if (network === "solana" && !solanaConfigured) {
-        return "Solana payouts are not currently available. Please try a different network (Ethereum, Base, or BNB).";
-      }
-      if (network !== "solana" && !evmConfigured) {
-        return "EVM payouts are not currently available. Please try Solana instead.";
-      }
+    if (network && network !== PAYOUT_LAUNCH_NETWORK) {
+      return "Payouts are currently available as USDC on Base only.";
     }
 
     return null;
@@ -299,22 +269,17 @@ class PayoutStatusService {
     const evmConfigured = Boolean(
       env.EVM_PAYOUT_PRIVATE_KEY || env.EVM_PRIVATE_KEY || env.EVM_PAYOUT_WALLET_ADDRESS,
     );
-    const solanaConfigured = Boolean(
-      env.SOLANA_PAYOUT_PRIVATE_KEY || env.SOLANA_PAYOUT_WALLET_ADDRESS,
-    );
-
-    return (["ethereum", "base", "bnb", "solana"] as const).map((network) => {
-      const configured = network === "solana" ? solanaConfigured : evmConfigured;
-      return {
-        network,
-        configured,
+    return [
+      {
+        network: PAYOUT_LAUNCH_NETWORK,
+        configured: evmConfigured,
         walletAddress: null,
         balance: 0,
         hasBalance: false,
         status: "not_configured",
         message,
-      };
-    });
+      },
+    ];
   }
 
   private buildSkippedBalanceStatus(
