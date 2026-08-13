@@ -219,7 +219,7 @@ export function parseIoPressureFullAvg60(section: string): number | null {
  * of its own, so its footprint has to be absorbed here or the reserve is
  * fiction.
  */
-const HOST_RESERVE_MB = 1024;
+export const HOST_RESERVE_MB = 1024;
 
 /** Separates the meminfo and committed-ceiling sections in the readiness probe. */
 const READINESS_PROBE_MEMINFO_MARKER = "---MEMINFO---";
@@ -321,6 +321,140 @@ export function admitsRequiredMemory(
     effectiveCommittedMb,
     budgetMb,
   };
+}
+
+/**
+ * CPU a node keeps for itself: dockerd, tailscaled, the embedding sidecar, and
+ * the SSH work the control plane does on it.
+ */
+export const HOST_RESERVE_VCPU = 1;
+
+/**
+ * vCPU budgeted per agent container.
+ *
+ * A policy number, not a measurement — agent containers ship with NO `--cpus`
+ * limit, so nothing enforces this and nothing can measure a per-agent share
+ * from a running box. It encodes the sizing the code was designed around
+ * (ccx33 + capacity 8, i.e. one core per agent) so that capacity stops being
+ * blind to CPU entirely. Override per fleet once real contention data exists.
+ */
+export const DEFAULT_AGENT_VCPU_BUDGET = 1;
+
+export interface NodeCapacityBreakdown {
+  /** The binding value: the smallest dimension. */
+  capacity: number;
+  byMemory: number | null;
+  byCpu: number | null;
+  /** Which dimension decided, for the operator reading the log. */
+  boundBy: "memory" | "cpu" | "unknown";
+}
+
+/**
+ * How many agent containers a node can actually hold, across every dimension
+ * we can size statically.
+ *
+ * Capacity was a slot counter stamped from one global env var, unrelated to the
+ * machine. That number is wrong in both directions, and both were measured on
+ * the fleet: it licensed 4 x 3072 MiB of ceilings onto 7745 MiB / 4 vCPU boxes
+ * (the global OOM the admission gate closed), and it would hand a
+ * 257626 MiB / 12 vCPU robot the blind default of 8.
+ *
+ * The dimensions do not agree, which is the whole point of taking the minimum:
+ * that robot has ~21 GiB of RAM per core against the cloud box's ~1.9, so
+ * sizing it on memory alone would over-subscribe its CPU by roughly sevenfold.
+ *
+ * Memory uses the SAME reserve as {@link admitsRequiredMemory}. If the two
+ * diverged, a node would advertise slots that admission refuses on every
+ * placement: a pool that believes it has room and rejects all work.
+ *
+ * IO is deliberately absent. It is a transient signal, already enforced where
+ * it belongs — `ensureNodeReady` refuses placement above
+ * PLACEMENT_MAX_IO_PRESSURE_FULL_AVG60 — and a static IO slot count would be a
+ * fiction. Disk space has its own monitor.
+ *
+ * This is a ceiling, not a promise: it reads totals, not what is free, so a box
+ * shared with other workloads can still advertise more than it has room for
+ * right now. The admission gate measures what is committed at placement time.
+ */
+export function deriveNodeCapacity(opts: {
+  memTotalMb?: number | null;
+  vCpuCount?: number | null;
+  agentMemoryLimitMb: number;
+  agentVCpuBudget?: number;
+}): NodeCapacityBreakdown {
+  const byMemory = deriveCapacityDimension(
+    opts.memTotalMb,
+    HOST_RESERVE_MB,
+    opts.agentMemoryLimitMb,
+  );
+  const byCpu = deriveCapacityDimension(
+    opts.vCpuCount,
+    HOST_RESERVE_VCPU,
+    opts.agentVCpuBudget ?? DEFAULT_AGENT_VCPU_BUDGET,
+  );
+
+  const known = [
+    { value: byMemory, name: "memory" as const },
+    { value: byCpu, name: "cpu" as const },
+  ].filter((d): d is { value: number; name: "memory" | "cpu" } => d.value !== null);
+
+  if (known.length === 0) {
+    return { capacity: 0, byMemory, byCpu, boundBy: "unknown" };
+  }
+  const binding = known.reduce((a, b) => (b.value < a.value ? b : a));
+  return { capacity: binding.value, byMemory, byCpu, boundBy: binding.name };
+}
+
+/** Total minus what the host keeps, divided by what one agent takes. */
+function deriveCapacityDimension(
+  total: number | null | undefined,
+  hostReserve: number,
+  perAgent: number,
+): number | null {
+  if (typeof total !== "number" || !Number.isFinite(total) || total <= 0) return null;
+  if (!Number.isFinite(perAgent) || perAgent <= 0) return null;
+  const budget = total - hostReserve;
+  if (budget <= 0) return null;
+  return Math.max(1, Math.floor(budget / perAgent));
+}
+
+export function resolveNodeCapacity(opts: {
+  requestedCapacity?: number | null;
+  memTotalMb?: number | null;
+  vCpuCount?: number | null;
+  agentMemoryLimitMb: number;
+  agentVCpuBudget?: number;
+  fallbackCapacity: number;
+}): {
+  capacity: number;
+  derived: boolean;
+  clampedFrom?: number;
+  boundBy: NodeCapacityBreakdown["boundBy"];
+} {
+  const breakdown = deriveNodeCapacity({
+    memTotalMb: opts.memTotalMb,
+    vCpuCount: opts.vCpuCount,
+    agentMemoryLimitMb: opts.agentMemoryLimitMb,
+    agentVCpuBudget: opts.agentVCpuBudget,
+  });
+  const supported = breakdown.boundBy === "unknown" ? null : breakdown.capacity;
+
+  if (typeof opts.requestedCapacity === "number" && opts.requestedCapacity > 0) {
+    if (supported !== null && opts.requestedCapacity > supported) {
+      return {
+        capacity: supported,
+        derived: false,
+        clampedFrom: opts.requestedCapacity,
+        boundBy: breakdown.boundBy,
+      };
+    }
+    return { capacity: opts.requestedCapacity, derived: false, boundBy: breakdown.boundBy };
+  }
+
+  if (supported !== null) {
+    return { capacity: supported, derived: true, boundBy: breakdown.boundBy };
+  }
+  return { capacity: opts.fallbackCapacity, derived: false, boundBy: breakdown.boundBy };
 }
 
 // ---------------------------------------------------------------------------
@@ -502,7 +636,7 @@ export class DockerNodeManager {
    * Returns null if no capacity is available.
    */
   async getAvailableNode(options: NodeSelectionOptions = {}): Promise<DockerNode | null> {
-    const nodes = await dockerNodesRepository.findEnabled();
+    const nodes = await dockerNodesRepository.findPlaceable();
     const candidates = (
       await Promise.all(
         nodes.map(async (node) => {

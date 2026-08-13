@@ -15,22 +15,26 @@ const mocks = vi.hoisted(() => ({
   countTokens: vi.fn(),
   recordLlmCall: vi.fn(),
   fetchRemoteMedia: vi.fn(),
-}));
-
-vi.mock("@elizaos/core", () => ({
   logger: {
     debug: vi.fn(),
     error: vi.fn(),
     log: vi.fn(),
     warn: vi.fn(),
   },
+}));
+
+vi.mock("@elizaos/core", () => ({
+  logger: mocks.logger,
   recordLlmCall: mocks.recordLlmCall,
 }));
 
 // The handler loads `fetchRemoteMedia` lazily from the node entry so the
-// browser bundle never pulls it in; mock that entry, not `@elizaos/core`.
+// browser bundle never pulls it in. The package test config aliases the core
+// import to that same entry, so expose both direct imports through this mock.
 vi.mock("@elizaos/core/node", () => ({
   fetchRemoteMedia: mocks.fetchRemoteMedia,
+  logger: mocks.logger,
+  recordLlmCall: mocks.recordLlmCall,
 }));
 
 vi.mock("../utils/config", () => ({

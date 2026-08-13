@@ -4,8 +4,9 @@
  * messages, terminal/others' reactions are untouched, every dimension of the
  * scan is hard-capped, failures are counted and logged, never thrown, and the
  * scan never eats a marker belonging to the CURRENT process (post-scan-start
- * messages and registry-active turns are excluded). Uses plain-object
- * discord.js fakes, matching service-shutdown-drain.test.ts.
+ * messages and registry-active turns are excluded). Cached DMs are prioritized
+ * inside the shared channel cap. Uses plain-object discord.js fakes, matching
+ * service-shutdown-drain.test.ts.
  */
 import { describe, expect, it, vi } from "vitest";
 import {
@@ -282,6 +283,22 @@ describe("reconcileStrandedStatusReactions", () => {
 
 		expect(summary.channelsScanned).toBe(1);
 		expect(dmReaction.users.remove).toHaveBeenCalledWith(BOT_ID);
+	});
+
+	it("scans cached DMs before guild channels consume the shared cap", async () => {
+		const guildFirst = makeChannel([makeMessage()]);
+		const guildSecond = makeChannel([makeMessage()]);
+		const dm = makeChannel([makeMessage()]);
+
+		const summary = await scan(
+			makeClient([guildFirst, guildSecond], { dmChannels: [dm] }),
+			{ maxChannels: 2 },
+		);
+
+		expect(summary.channelsScanned).toBe(2);
+		expect(dm.messages.fetch).toHaveBeenCalledTimes(1);
+		expect(guildFirst.messages.fetch).toHaveBeenCalledTimes(1);
+		expect(guildSecond.messages.fetch).not.toHaveBeenCalled();
 	});
 
 	it("skips entirely and warns when the client has no user id", async () => {

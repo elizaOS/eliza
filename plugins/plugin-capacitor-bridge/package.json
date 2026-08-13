@@ -71,7 +71,7 @@
 	"dependencies": {
 		"@elizaos/core": "workspace:*",
 		"@elizaos/shared": "workspace:*",
-		"ws": "^8.18.0"
+		"ws": "^8.21.3"
 	},
 	"peerDependencies": {
 		"@elizaos/core": "workspace:*"

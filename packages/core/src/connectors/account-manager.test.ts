@@ -270,6 +270,25 @@ describe("ConnectorAccountManager", () => {
 		).rejects.toThrow(/already used|unknown|expired/i);
 	});
 
+	it("persists the canonical redirect URI selected by an OAuth provider", async () => {
+		const runtime = makeRuntime();
+		const manager = getConnectorAccountManager(runtime);
+		manager.registerProvider({
+			provider: "oauth-canonical",
+			startOAuth: () => ({
+				authUrl: "https://auth.example/start",
+				redirectUri:
+					"http://127.0.0.1:31437/api/connectors/example/oauth/callback",
+			}),
+		});
+
+		const flow = await manager.startOAuth("oauth-canonical");
+
+		expect(flow.redirectUri).toBe(
+			"http://127.0.0.1:31437/api/connectors/example/oauth/callback",
+		);
+	});
+
 	it("requires a verified owner-binding lookup for owner-bound policies", async () => {
 		const runtime = makeRuntime();
 		const manager = getConnectorAccountManager(runtime);
@@ -457,6 +476,35 @@ describe("fallback-to-durable state handoff", () => {
 		// A restart (fresh runtime + manager over the same adapter) keeps it.
 		const restarted = getConnectorAccountManager(makeRuntime(adapter));
 		await expect(restarted.listAccounts("google")).resolves.toHaveLength(1);
+	});
+
+	it("lands an in-flight upsert on the durable backend when the adapter attaches mid-call", async () => {
+		// The #18110 interleaving: a facade write starts while only the fallback
+		// exists, and the adapter attaches in the same synchronous frame. The
+		// serialized facade must resolve the backend at execution time — not at
+		// call time — so the write lands durably instead of stranding in the
+		// boot-time fallback.
+		const runtime = makeRuntime();
+		const manager = getConnectorAccountManager(runtime);
+		const storage = manager.getStorage();
+
+		const adapter = new InMemoryDatabaseAdapter();
+		await adapter.initialize();
+
+		const pendingUpsert = storage.upsertAccount(BOOT_ACCOUNT);
+		(runtime as unknown as { adapter?: InMemoryDatabaseAdapter }).adapter =
+			adapter;
+		await pendingUpsert;
+
+		// The account must be visible on the durable backend itself...
+		const record = await adapter.getConnectorAccount({
+			provider: "google",
+			accountKey: "user@example.com",
+		});
+		expect(record).not.toBeNull();
+		expect(record?.status).toBe("connected");
+		// ...and through the manager, without a stranded fallback copy.
+		await expect(manager.listAccounts("google")).resolves.toHaveLength(1);
 	});
 
 	it("completes an OAuth flow whose provider attaches the adapter mid-startOAuth", async () => {

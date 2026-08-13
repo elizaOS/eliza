@@ -17,7 +17,17 @@ import {
 	resolveArtifactDisclosure,
 	selectDisclosedArtifactUrl,
 } from "../../access-control/artifact-disclosure.ts";
+import {
+	fetchRemoteMedia,
+	MediaFetchError,
+	readResponseWithLimit,
+} from "../../media/fetch.ts";
 import { describeImageCached } from "../../media/index.ts";
+import {
+	trustedLocalMediaUrl,
+	VISION_IMAGE_FETCH_TIMEOUT_MS,
+	VISION_IMAGE_MAX_BYTES,
+} from "../../media/local-store.ts";
 import {
 	type AccessContext,
 	ContentType,
@@ -49,6 +59,7 @@ function attachmentLocator(attachment: Media): string {
 function isUnreadableFallbackDescription(value: string): boolean {
 	return [
 		"An image attachment (recognition failed)",
+		"An image attachment (image bytes unavailable)",
 		"An audio/video attachment (transcription failed)",
 		"User-uploaded audio/video attachment (no transcription available)",
 		"Could not process video attachment because the required service is not available.",
@@ -160,6 +171,58 @@ function selectAttachmentForRequester(
 	};
 }
 
+/**
+ * Resolves an attachment URL to inline data-URL bytes so the vision model
+ * never fetches a caller-controlled URL itself — the same contract the
+ * inbound attachment path upholds in DefaultMessageService.processAttachments.
+ * Only canonical media-store handles (per `trustedLocalMediaUrl`) use the
+ * trusted runtime fetch; genuinely remote URLs go through the SSRF-guarded
+ * fetcher; local-looking non-canonical URLs throw rather than acquiring
+ * runtime authority. All failures throw `MediaFetchError` with path/status
+ * context — never a silent null.
+ */
+async function inlineAttachmentImage(
+	runtime: IAgentRuntime,
+	rawUrl: string,
+): Promise<string> {
+	const localUrl = trustedLocalMediaUrl(rawUrl);
+	if (!localUrl) {
+		if (!/^(http|https):\/\//.test(rawUrl.trim())) {
+			throw new MediaFetchError(
+				"fetch_failed",
+				`attachment URL is neither a canonical media-store handle nor a remote http(s) URL: ${rawUrl}`,
+			);
+		}
+		const { buffer, contentType } = await fetchRemoteMedia({
+			url: rawUrl,
+			maxBytes: VISION_IMAGE_MAX_BYTES,
+			timeoutMs: VISION_IMAGE_FETCH_TIMEOUT_MS,
+		});
+		return `data:${contentType ?? "application/octet-stream"};base64,${buffer.toString("base64")}`;
+	}
+	const runtimeFetch = runtime.fetch ?? globalThis.fetch;
+	const res = await runtimeFetch(localUrl.href, {
+		signal: AbortSignal.timeout(VISION_IMAGE_FETCH_TIMEOUT_MS),
+	});
+	if (!res.ok) {
+		throw new MediaFetchError(
+			"http_error",
+			`local media-store fetch failed (HTTP ${res.status}) for ${localUrl.pathname}`,
+		);
+	}
+	const buffer = await readResponseWithLimit(res, VISION_IMAGE_MAX_BYTES);
+	const contentType =
+		res.headers.get("content-type") || "application/octet-stream";
+	return `data:${contentType};base64,${buffer.toString("base64")}`;
+}
+
+/**
+ * Visibly distinct unavailable state for a describe attempt whose image bytes
+ * could not be resolved; recognized by isUnreadableFallbackDescription so a
+ * stored copy is never mistaken for readable content.
+ */
+const IMAGE_BYTES_UNAVAILABLE = "An image attachment (image bytes unavailable)";
+
 async function describeImageAttachment(
 	runtime: IAgentRuntime,
 	attachment: AttachmentWithInlineData,
@@ -170,8 +233,18 @@ async function describeImageAttachment(
 		typeof attachment._mimeType === "string"
 	) {
 		imageUrl = `data:${attachment._mimeType};base64,${attachment._data}`;
-	} else if (/^(http|https):\/\//.test(attachment.url)) {
-		imageUrl = attachment.url;
+	} else if (typeof attachment.url === "string" && attachment.url.trim()) {
+		try {
+			imageUrl = await inlineAttachmentImage(runtime, attachment.url);
+		} catch (error) {
+			// error-policy:J4 recall degrades to the visibly distinct
+			// bytes-unavailable state (never an empty-looking success); the
+			// typed fetch failure is reported for diagnostics.
+			runtime.reportError("WorkingMemory.describeImageAttachment", error, {
+				url: attachment.url,
+			});
+			return IMAGE_BYTES_UNAVAILABLE;
+		}
 	}
 	if (!imageUrl) {
 		return "";

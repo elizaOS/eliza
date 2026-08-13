@@ -15,6 +15,11 @@
 		"./package.json": "./package.json",
 		".": {
 			"types": "./dist/index.d.ts",
+			"eliza-source": {
+				"types": "./index.ts",
+				"import": "./index.ts",
+				"default": "./index.ts"
+			},
 			"import": "./dist/index.js",
 			"default": "./dist/index.js"
 		},

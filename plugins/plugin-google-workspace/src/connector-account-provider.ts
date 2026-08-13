@@ -6,11 +6,11 @@
  * can list, create, patch, delete, and run the OAuth flow for Google accounts
  * using a single consolidated grant covering Gmail, Calendar, Drive, and Meet.
  *
- * Single OAuth grant per account: callers may pass `scopes` to the manager's
- * startOAuth to limit which capabilities are requested. By default all
- * capabilities (gmail.read+send+manage, calendar.read+write, drive.read+write,
- * meet.create+read) are requested; granted capabilities are recorded on the
- * returned account so downstream consumers know which surfaces are usable.
+ * Single OAuth grant per account: callers must pass an explicit `scopes`
+ * capability subset to the manager's startOAuth. Omitted or empty scope lists
+ * fail closed instead of expanding to every supported capability. Granted
+ * capabilities are recorded on the returned account so downstream consumers
+ * know which surfaces are usable.
  */
 
 import { createHash, randomBytes } from "node:crypto";
@@ -32,6 +32,7 @@ import {
 import { GOOGLE_OAUTH_PROVIDER_METADATA } from "./auth.js";
 import { persistConnectorCredentialRefs } from "./connector-credential-refs.js";
 import { createGmailMessageConnector } from "./gmail-message-connector.js";
+import { resolveGoogleConnectorOAuthCallbackUrl } from "./google-oauth-callback.js";
 import {
   GOOGLE_CAPABILITIES,
   GOOGLE_IDENTITY_SCOPES,
@@ -115,8 +116,8 @@ function readClientConfig(runtime: IAgentRuntime): {
 } {
   const clientId = readSetting(runtime, "GOOGLE_CLIENT_ID");
   const clientSecret = readSetting(runtime, "GOOGLE_CLIENT_SECRET");
-  const redirectUri = readSetting(runtime, "GOOGLE_REDIRECT_URI");
-  if (!clientId || !clientSecret || !redirectUri) {
+  const redirectUri = resolveGoogleConnectorOAuthCallbackUrl(runtime);
+  if (!clientId || !clientSecret) {
     throw new Error(
       "Google OAuth requires GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, and GOOGLE_REDIRECT_URI to be configured."
     );
@@ -124,9 +125,48 @@ function readClientConfig(runtime: IAgentRuntime): {
   return { clientId, clientSecret, redirectUri };
 }
 
+/**
+ * Re-auth of an existing account that OMITS `scopes` defaults to exactly the
+ * account's recorded granted capabilities — least privilege, re-requesting
+ * what was granted and never expanding it (#18543).
+ *
+ * Branch on property semantics, not length: an explicitly supplied array
+ * (including an empty `[]`) is returned unchanged so it flows to
+ * normalizeRequestedCapabilities, which fails closed on empty. Per #18454 an
+ * explicit empty selection is NOT consent to restore prior authority; only a
+ * genuinely omitted field consults the account. New-account starts (no usable
+ * `accountId`, no recorded grant) also keep failing closed downstream.
+ */
+async function resolveRequestedScopes(
+  request: ConnectorOAuthStartRequest,
+  manager: ConnectorAccountManager
+): Promise<readonly string[] | undefined> {
+  if (request.scopes !== undefined) {
+    return request.scopes;
+  }
+  const accountId = nonEmptyString(request.accountId);
+  if (!accountId) {
+    return request.scopes;
+  }
+  const account = await manager.getAccount(GOOGLE_SERVICE_NAME, accountId);
+  const recorded = (account?.metadata as Record<string, unknown> | undefined)?.grantedCapabilities;
+  if (!Array.isArray(recorded)) {
+    return request.scopes;
+  }
+  const granted = recorded.filter((value): value is GoogleCapability => isGoogleCapability(value));
+  return granted.length > 0 ? granted : request.scopes;
+}
+
 function normalizeRequestedCapabilities(scopes: readonly string[] | undefined): GoogleCapability[] {
   if (!scopes || scopes.length === 0) {
-    return [...GOOGLE_CAPABILITIES];
+    throw new ElizaError(
+      "Google OAuth requires an explicit Gmail, Calendar, Drive, or Meet capability selection.",
+      {
+        code: "GOOGLE_OAUTH_CAPABILITY_REQUIRED",
+        context: { scopes: scopes ?? null },
+        severity: "fatal",
+      }
+    );
   }
   // The caller passes either capability identifiers (e.g. "gmail.read") OR raw
   // OAuth scope URLs. Both shapes are accepted so the manager's startOAuth API
@@ -412,11 +452,13 @@ export function createGoogleConnectorAccountProvider(
 
     startOAuth: async (
       request: ConnectorOAuthStartRequest,
-      _manager: ConnectorAccountManager
+      manager: ConnectorAccountManager
     ): Promise<ConnectorOAuthStartResult> => {
       const config = readClientConfig(runtime);
-      const redirectUri = request.redirectUri ?? config.redirectUri;
-      const capabilities = normalizeRequestedCapabilities(request.scopes);
+      const redirectUri = config.redirectUri;
+      const capabilities = normalizeRequestedCapabilities(
+        await resolveRequestedScopes(request, manager)
+      );
       const oauthScopes = scopesForGoogleCapabilities(capabilities);
       const codeVerifier = createCodeVerifier();
       const codeChallenge = createCodeChallenge(codeVerifier);
@@ -436,6 +478,10 @@ export function createGoogleConnectorAccountProvider(
 
       return {
         authUrl: `${GOOGLE_OAUTH_PROVIDER_METADATA.authorizationEndpoint}?${params.toString()}`,
+        // Provider-owned canonical callback: the manager persists
+        // result.redirectUri ?? flow.redirectUri, so returning it keeps the
+        // stored flow callback populated when the caller supplies none.
+        redirectUri,
         codeVerifier,
         metadata: {
           ...request.metadata,

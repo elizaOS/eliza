@@ -36,7 +36,7 @@ export function formatTrajectoryDuration(ms: number | null): string {
 /**
  * Formats a token count as a human-readable string, promoting to "k" at 1,000
  * and "M" at 1,000,000, including when rounding crosses the boundary
- * (e.g. 999,500 rounds to "1.0M", 1,000,000 -> "1.0M").
+ * (e.g. 999,950 rounds to "1.0M", 1,000,000 -> "1.0M").
  */
 export function formatTrajectoryTokenCount(
   count: number | undefined,
@@ -56,10 +56,9 @@ export function formatTrajectoryTokenCount(
   if (count < 1000) return String(count);
   const thousands = count / 1000;
   if (thousands < 1000) {
-    // Round in raw thousands so 999.5k (0.9995M) promotes to "1.0M" instead
-    // of rendering the impossible "1000.0k".
-    if (Math.round(thousands) >= 1000) return "1.0M";
-    return `${thousands.toFixed(1)}k`;
+    const roundedThousands = Math.round(thousands * 10) / 10;
+    if (roundedThousands >= 1000) return "1.0M";
+    return `${roundedThousands.toFixed(1)}k`;
   }
   return `${(count / 1_000_000).toFixed(1)}M`;
 }

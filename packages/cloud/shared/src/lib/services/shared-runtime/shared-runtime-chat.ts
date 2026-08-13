@@ -54,6 +54,7 @@ import {
   type SharedAgentTurnUsage,
   type SharedTurnMessage,
 } from "./run-shared-agent-turn";
+import { projectSharedAgentCharacter } from "./shared-agent-character";
 import { navIntentActionResult } from "./shared-nav-intent";
 import { SharedRuntimeCacheWarmingError } from "./shared-runtime-errors";
 import { MAX_HISTORY_MESSAGES } from "./shared-runtime-history-policy";
@@ -86,12 +87,6 @@ export { SharedRuntimeCacheWarmingError } from "./shared-runtime-errors";
 
 function stringValue(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
-}
-
-function stringList(value: unknown): string[] {
-  if (typeof value === "string" && value.trim()) return [value.trim()];
-  if (!Array.isArray(value)) return [];
-  return value.filter((item): item is string => typeof item === "string" && item.trim().length > 0);
 }
 
 function record(value: unknown): Record<string, unknown> | undefined {
@@ -186,8 +181,6 @@ async function characterFor(
     executionCtx?: BridgeExecutionContext;
   },
 ): Promise<SharedAgentCharacter> {
-  const config = record(agent.agent_config) ?? {};
-  const configuredCharacter = record(config.character) ?? config;
   let linked: UserCharacter | null | undefined;
   if (agent.character_id) {
     if (options.cacheOnly) {
@@ -243,38 +236,7 @@ async function characterFor(
     options.executionCtx.waitUntil(hydration);
     throw new SharedRuntimeCacheWarmingError("Character cache is warming. Retry shortly.");
   }
-  if (linked && linked.organization_id !== agent.organization_id) {
-    throw new Error("[shared-runtime] linked character organization mismatch");
-  }
-  const settings = record(linked?.settings);
-  const name =
-    stringValue(linked?.name) ??
-    stringValue(configuredCharacter.name) ??
-    stringValue(config.name) ??
-    agent.agent_name ??
-    "Eliza agent";
-  const system =
-    stringValue(linked?.system) ??
-    stringValue(configuredCharacter.system) ??
-    stringValue(config.system) ??
-    stringValue(configuredCharacter.prompt) ??
-    stringValue(config.prompt) ??
-    `You are ${name}, a helpful assistant.`;
-  const bio = [
-    ...stringList(linked?.bio),
-    ...stringList(configuredCharacter.bio),
-    ...stringList(config.bio),
-  ];
-  const model =
-    stringValue(settings?.model) ??
-    stringValue(configuredCharacter.model) ??
-    stringValue(config.model);
-  return {
-    name,
-    system,
-    ...(bio.length ? { bio } : {}),
-    ...(model ? { model } : {}),
-  };
+  return projectSharedAgentCharacter(agent, linked);
 }
 
 function billingPrompt(

@@ -10,10 +10,16 @@ import type { DraftRecord, MessageRef, MessageSource } from "./types.ts";
 
 // Process-local stores grow one entry per message/draft ever seen by triage.
 // Without a bound, a long-running agent that triages many messages leaks memory.
-// Cap with FIFO eviction (Map insertion order) — oldest refs drop once over the
-// cap; active turns reference recently-saved messages, which stay resident.
+// Cap by last-write order (Map insertion order refreshed on writes) — oldest
+// refs drop once over the cap while recently-saved active entries stay resident.
 const MAX_MESSAGES = 5000;
 const MAX_DRAFTS = 2000;
+
+function setMostRecent<K, V>(map: Map<K, V>, key: K, value: V): void {
+	// Map.set preserves an existing key's insertion slot, so delete it first.
+	map.delete(key);
+	map.set(key, value);
+}
 
 function capMap<K, V>(map: Map<K, V>, max: number): void {
 	while (map.size > max) {
@@ -28,12 +34,12 @@ export class MessageRefStore {
 	private drafts = new Map<string, DraftRecord>();
 
 	saveMessage(ref: MessageRef): void {
-		this.messages.set(ref.id, ref);
+		setMostRecent(this.messages, ref.id, ref);
 		capMap(this.messages, MAX_MESSAGES);
 	}
 
 	saveMessages(refs: readonly MessageRef[]): void {
-		for (const r of refs) this.messages.set(r.id, r);
+		for (const r of refs) setMostRecent(this.messages, r.id, r);
 		capMap(this.messages, MAX_MESSAGES);
 	}
 
@@ -54,10 +60,11 @@ export class MessageRefStore {
 	addTag(messageId: string, tag: string): MessageRef | null {
 		const existing = this.messages.get(messageId);
 		if (!existing) return null;
+		if (existing.tags?.includes(tag)) return existing;
 		const tags = existing.tags ? [...existing.tags] : [];
-		if (!tags.includes(tag)) tags.push(tag);
+		tags.push(tag);
 		const next: MessageRef = { ...existing, tags };
-		this.messages.set(messageId, next);
+		setMostRecent(this.messages, messageId, next);
 		return next;
 	}
 
@@ -66,13 +73,14 @@ export class MessageRefStore {
 		if (!existing) return null;
 		if (!existing.tags || existing.tags.length === 0) return existing;
 		const tags = existing.tags.filter((t) => t !== tag);
+		if (tags.length === existing.tags.length) return existing;
 		const next: MessageRef = { ...existing, tags };
-		this.messages.set(messageId, next);
+		setMostRecent(this.messages, messageId, next);
 		return next;
 	}
 
 	saveDraft(record: DraftRecord): void {
-		this.drafts.set(record.draftId, record);
+		setMostRecent(this.drafts, record.draftId, record);
 		capMap(this.drafts, MAX_DRAFTS);
 	}
 
@@ -88,7 +96,7 @@ export class MessageRefStore {
 			sent: true,
 			sentExternalId: externalId,
 		};
-		this.drafts.set(draftId, next);
+		setMostRecent(this.drafts, draftId, next);
 		return next;
 	}
 
@@ -106,7 +114,7 @@ export class MessageRefStore {
 			scheduledId,
 			scheduleCommit,
 		};
-		this.drafts.set(draftId, next);
+		setMostRecent(this.drafts, draftId, next);
 		return next;
 	}
 

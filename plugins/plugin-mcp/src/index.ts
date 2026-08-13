@@ -49,4 +49,15 @@ const mcpPlugin: Plugin = {
 
 export default mcpPlugin;
 
+export {
+  DEFAULT_MCP_MARKETPLACE_MAX_RESPONSE_BYTES,
+  DEFAULT_MCP_MARKETPLACE_TIMEOUT_MS,
+  getMcpServerDetails,
+  McpMarketplaceError,
+  type McpMarketplaceErrorCode,
+  type McpMarketplaceRequestOptions,
+  type McpMarketplaceSearchItem,
+  type McpRegistryServer,
+  searchMcpMarketplace,
+} from "./mcp-marketplace.js";
 export { handleMcpRoutes, type McpRouteContext } from "./routes-mcp.js";

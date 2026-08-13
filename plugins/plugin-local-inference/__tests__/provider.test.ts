@@ -4,7 +4,7 @@
  * handlers behave when no backend service is present. Uses a mock runtime.
  */
 import { ModelType } from "@elizaos/core";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
 	createLocalInferenceModelHandlers,
 	isLocalInferenceUnavailableError,
@@ -12,13 +12,21 @@ import {
 	LocalInferenceUnavailableError,
 } from "../src/provider.ts";
 
-function runtimeWithService(service: Record<string, unknown>) {
+function runtimeWithService(
+	service: Record<string, unknown>,
+	fetchImpl?: typeof fetch,
+) {
 	return {
+		...(fetchImpl ? { fetch: fetchImpl } : {}),
 		getService: vi.fn((name: string) =>
 			name === "localInferenceLoader" ? service : null,
 		),
 	};
 }
+
+afterEach(() => {
+	vi.unstubAllEnvs();
+});
 
 describe("local inference provider", () => {
 	it("delegates text generation to the runtime local inference service", async () => {
@@ -165,6 +173,41 @@ describe("local inference provider", () => {
 		});
 		expect(describeImage).toHaveBeenCalledWith({
 			imageUrl: "data:image/png;base64,AAAA",
+			prompt: "describe it",
+		});
+	});
+
+	it("inlines a canonical local media-store image before legacy backend dispatch", async () => {
+		vi.stubEnv("SERVER_PORT", "4317");
+		const describeImage = vi.fn(async () => ({
+			title: "A stored image",
+			description: "The runtime-owned attachment.",
+		}));
+		const fetchImpl = vi.fn(
+			async () =>
+				new Response(Uint8Array.from([1, 2, 3]), {
+					headers: { "content-type": "image/png" },
+				}),
+		) as unknown as typeof fetch;
+		const runtime = runtimeWithService({ describeImage }, fetchImpl);
+		const handlers = createLocalInferenceModelHandlers();
+		const imageUrl = `/api/media/${"a".repeat(64)}.png`;
+
+		await expect(
+			handlers[ModelType.IMAGE_DESCRIPTION]?.(runtime as never, {
+				imageUrl,
+				prompt: "describe it",
+			} as never),
+		).resolves.toEqual({
+			title: "A stored image",
+			description: "The runtime-owned attachment.",
+		});
+		expect(fetchImpl).toHaveBeenCalledWith(
+			`http://localhost:4317${imageUrl}`,
+			expect.objectContaining({ signal: expect.any(AbortSignal) }),
+		);
+		expect(describeImage).toHaveBeenCalledWith({
+			imageUrl: "data:image/png;base64,AQID",
 			prompt: "describe it",
 		});
 	});

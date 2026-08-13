@@ -76,6 +76,12 @@ import {
 	elizaHarnessSchemaFromSkeleton,
 } from "../services/structured-output";
 import type { AgentModelSlot } from "../services/types";
+import {
+	prepareVisionImageInput,
+	VISION_IMAGE_FETCH_TIMEOUT_MS,
+	VISION_IMAGE_MAX_BYTES,
+} from "../services/vision/image-input";
+import type { VisionImageInput } from "../services/vision/types";
 import { decodeMonoPcm16Wav, type TranscriptionAudio } from "../services/voice";
 import { extractRequestedKokoroVoiceId } from "../services/voice/requested-voice.js";
 import { DEFAULT_MODELS_DIR } from "./embedding-manager-support";
@@ -1013,7 +1019,7 @@ function makeTranscriptionHandler(): TranscriptionHandler {
 }
 
 function paramsToVisionRequest(params: ImageDescriptionParams | string): {
-	image: { kind: "dataUrl"; dataUrl: string } | { kind: "url"; url: string };
+	image: VisionImageInput;
 	prompt?: string;
 	signal?: AbortSignal;
 	onTextChunk?: (chunk: string) => void | Promise<void>;
@@ -1135,6 +1141,9 @@ function makeImageDescriptionHandler(): ImageDescriptionHandler {
 				? modelKeyCandidate
 				: "gemma-vl";
 		const request = paramsToVisionRequest(params);
+		request.image = await prepareVisionImageInput(runtime, request.image, {
+			signal: request.signal,
+		});
 		const result = await arbiter.requestVisionDescribe<
 			typeof request,
 			ImageDescriptionResult | string
@@ -1177,20 +1186,19 @@ export function float32ToBase64LE(pcm: Float32Array): string {
 	return buf.toString("base64");
 }
 
-/** Cap remote vision image downloads so a malicious URL cannot force unbounded memory. */
-const IMAGE_DESCRIPTION_MAX_BYTES = 20 * 1024 * 1024;
-/** Bound remote image fetch time for IMAGE_DESCRIPTION URL inputs. */
-const IMAGE_DESCRIPTION_FETCH_TIMEOUT_MS = 15_000;
-
 /** Resolve a vision request to base64 image bytes for the bionic host. */
-export async function imageRequestToBase64(image: {
-	kind: "dataUrl" | "url";
-	dataUrl?: string;
-	url?: string;
-}): Promise<string> {
+export async function imageRequestToBase64(
+	image: VisionImageInput,
+): Promise<string> {
 	if (image.kind === "dataUrl" && image.dataUrl) {
 		const comma = image.dataUrl.indexOf(",");
 		return comma >= 0 ? image.dataUrl.slice(comma + 1) : image.dataUrl;
+	}
+	if (image.kind === "base64") {
+		return image.base64;
+	}
+	if (image.kind === "bytes") {
+		return Buffer.from(image.bytes).toString("base64");
 	}
 	if (image.kind === "url") {
 		const url = typeof image.url === "string" ? image.url.trim() : "";
@@ -1204,8 +1212,8 @@ export async function imageRequestToBase64(image: {
 			// guard; bare `fetch` would let vision describe internal hosts.
 			const media = await fetchRemoteMedia({
 				url,
-				maxBytes: IMAGE_DESCRIPTION_MAX_BYTES,
-				timeoutMs: IMAGE_DESCRIPTION_FETCH_TIMEOUT_MS,
+				maxBytes: VISION_IMAGE_MAX_BYTES,
+				timeoutMs: VISION_IMAGE_FETCH_TIMEOUT_MS,
 				maxRedirects: 5,
 			});
 			return media.buffer.toString("base64");
@@ -1254,6 +1262,9 @@ function makeBionicImageDescriptionHandler(): ImageDescriptionHandler {
 			);
 		}
 		const request = paramsToVisionRequest(params);
+		request.image = await prepareVisionImageInput(runtime, request.image, {
+			signal: request.signal,
+		});
 		const description = await loader.describeImage({
 			imageBase64: await imageRequestToBase64(request.image),
 			prompt: request.prompt,

@@ -12,7 +12,9 @@ function requireUnique(seen, argument) {
 
 function takeValue(argv, index, argument) {
   const value = argv[index + 1];
-  if (!value || value.startsWith("--")) {
+  const isNegativeConcurrency =
+    argument === "--concurrency" && /^-\d/u.test(value ?? "");
+  if (!value || (value.startsWith("-") && !isNegativeConcurrency)) {
     throw new Error(`${argument} requires a value`);
   }
   return value;
@@ -60,6 +62,10 @@ export function parseReviewerArgs(argv, { defaultVerdictMd } = {}) {
       continue;
     }
     throw new Error(`unknown argument: ${argument}`);
+  }
+
+  if (options.strict && options.updateDebt) {
+    throw new Error("--strict and --update-debt cannot be combined");
   }
 
   return options;

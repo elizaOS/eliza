@@ -257,6 +257,7 @@ const MISTRAL_TEXT_MODEL_IDS = [
   "mistralai/ministral-8b",
 ] as const;
 const MINIMAX_TEXT_MODEL_IDS = [
+  "minimax/minimax-m3",
   "minimax/minimax-m2.7",
   "minimax/minimax-m2.5",
   "minimax/minimax-m2.1-lightning",
@@ -398,8 +399,13 @@ function buildSelectorName(modelId: string): string {
 }
 
 function buildSelectorDescription(modelId: string): string {
-  const id = modelId.toLowerCase();
+  const normalizedModelId = modelId.toLowerCase();
+  const [provider = "", rawName = normalizedModelId] = normalizedModelId.split("/", 2);
+  const id = rawName.startsWith(`${provider}-`) ? rawName.slice(provider.length + 1) : rawName;
 
+  if (normalizedModelId === "minimax/minimax-m3") {
+    return "Flagship long-context agentic coding model";
+  }
   if (id.includes("codex")) return "Coding-focused model";
   if (id.includes("deep-research")) return "Research-focused reasoning model";
   if (id.includes("thinking")) return "Extended reasoning model";
@@ -409,11 +415,16 @@ function buildSelectorDescription(modelId: string): string {
   if (id.includes("haiku")) return "Fast Claude model";
   if (id.includes("flash-lite")) return "Lowest-latency Gemini option";
   if (id.includes("flash")) return "Fast general-purpose model";
+  // OpenAI o-series suffixes describe variants of the same reasoning family.
+  // Resolve that family before generic `pro` / `mini` labels, but keep the
+  // provider gate so unrelated vendors' similarly named models are untouched.
+  if (provider === "openai" && /^o(?:1|3|4)(?:-|$)/u.test(id)) {
+    return "Reasoning-focused model";
+  }
   if (id.includes("pro")) return "Highest-capability option";
   if (id.includes("mini")) return "Faster, lower-cost option";
   if (id.includes("nano")) return "Smallest, lowest-cost option";
   if (id.includes("oss")) return "Open-weight reasoning model";
-  if (/\/o[134]/.test(id) || id.endsWith("/o1")) return "Reasoning-focused model";
   if (id.includes("compound")) return "Groq compound system model";
   if (id.includes("4o")) return "General-purpose multimodal model";
   if (id.includes("4.1")) return "Reliable general-purpose model";

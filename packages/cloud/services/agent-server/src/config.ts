@@ -6,6 +6,8 @@ export interface AutoStartAgentConfig {
   characterRef: string;
 }
 
+const MAX_AGENT_CAPACITY = 200;
+
 export function normalizeServerName(
   value: string | undefined,
 ): string | undefined {
@@ -45,6 +47,28 @@ export function getRequiredEnv(name: string, env: Env = process.env): string {
     throw new Error(`Missing required env var: ${name}`);
   }
   return value;
+}
+
+/** Returns the validated per-pod agent limit from the process environment. */
+export function getAgentCapacity(env: Env = process.env): number {
+  const value = env.CAPACITY;
+  if (value === undefined || value.length === 0) {
+    throw new Error("Missing required env var: CAPACITY");
+  }
+  if (!/^[1-9][0-9]*$/.test(value)) {
+    throw new Error(
+      `CAPACITY must be a canonical decimal integer from 1 to ${MAX_AGENT_CAPACITY}`,
+    );
+  }
+
+  const capacity = Number(value);
+  if (!Number.isSafeInteger(capacity) || capacity > MAX_AGENT_CAPACITY) {
+    throw new Error(
+      `CAPACITY must be a canonical decimal integer from 1 to ${MAX_AGENT_CAPACITY}`,
+    );
+  }
+
+  return capacity;
 }
 
 export function getAutoStartAgentConfig(

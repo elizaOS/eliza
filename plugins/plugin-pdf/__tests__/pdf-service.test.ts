@@ -1,3 +1,7 @@
+/**
+ * Tests PdfService parsing and validation with deterministic unpdf boundary mocks.
+ */
+
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { IAgentRuntime } from "@elizaos/core";
 import { MAX_PDF_BUFFER_BYTES, PdfService } from "../services/pdf";
@@ -9,14 +13,14 @@ vi.mock("unpdf", () => ({
 }));
 
 interface MockPageInput {
-	items: unknown[];
+	items: unknown;
 	width?: number;
 	height?: number;
 }
 
 function makePdf(
 	pages: MockPageInput[],
-	info: Record<string, string | undefined> = {}
+	info: Record<string, unknown> | null | undefined = {}
 ) {
 	return {
 		numPages: pages.length,
@@ -59,7 +63,9 @@ describe("PdfService", () => {
 		await expect(service().convertPdfToText(validPdfBuffer())).resolves.toBe(
 			"Hello world\nSecond page"
 		);
-		expect(getDocumentProxyMock).toHaveBeenCalledWith(expect.any(Uint8Array));
+		const parserInput = getDocumentProxyMock.mock.calls[0]?.[0];
+		expect(parserInput).toBeInstanceOf(Uint8Array);
+		expect(Buffer.isBuffer(parserInput)).toBe(false);
 	});
 
 	it("honors start/end page bounds and returns page count for ranged extraction", async () => {
@@ -244,5 +250,102 @@ describe("PdfService", () => {
 		const prefixedPdf = Buffer.concat([Buffer.from([0, 1, 2]), validPdfBuffer()]);
 
 		await expect(service().convertPdfToText(prefixedPdf)).resolves.toBe("offset header");
+	});
+
+	it("handles missing or null metadata info objects without throwing", async () => {
+		getDocumentProxyMock.mockResolvedValue({
+			numPages: 1,
+			getPage: vi.fn(async () => ({
+				getTextContent: vi.fn(async () => ({ items: [{ str: "hello" }] })),
+				getViewport: vi.fn(() => ({ width: 100, height: 200 })),
+			})),
+			getMetadata: vi.fn(async () => ({ info: undefined })),
+		});
+
+		const info = await service().getDocumentInfo(validPdfBuffer());
+		expect(info.pageCount).toBe(1);
+		expect(info.metadata.title).toBeUndefined();
+		expect(info.metadata.creationDate).toBeUndefined();
+	});
+
+	it("omits null metadata creationDate instead of returning epoch 1970 date", async () => {
+		getDocumentProxyMock.mockResolvedValue({
+			numPages: 1,
+			getPage: vi.fn(async () => ({
+				getTextContent: vi.fn(async () => ({ items: [{ str: "hello" }] })),
+				getViewport: vi.fn(() => ({ width: 100, height: 200 })),
+			})),
+			getMetadata: vi.fn(async () => ({
+				info: { CreationDate: null as unknown as string, Title: 123 as unknown as string },
+			})),
+		});
+
+		const info = await service().getDocumentInfo(validPdfBuffer());
+		expect(info.metadata.creationDate).toBeUndefined();
+		expect(info.metadata.title).toBeUndefined();
+	});
+
+	it("omits non-string metadata dates instead of coercing fabricated epochs", async () => {
+		getDocumentProxyMock.mockResolvedValue(
+			makePdf([{ items: [{ str: "hello" }] }], {
+				CreationDate: 0,
+				ModDate: false,
+				Title: 123,
+				Author: { name: "Ada" },
+			})
+		);
+
+		const info = await service().getDocumentInfo(validPdfBuffer());
+		expect(info.metadata).toEqual({
+			title: undefined,
+			author: undefined,
+			subject: undefined,
+			keywords: undefined,
+			creator: undefined,
+			producer: undefined,
+			creationDate: undefined,
+			modificationDate: undefined,
+		});
+	});
+
+	it("accepts finite Date metadata objects and omits invalid Date objects", async () => {
+		const creationDate = new Date("2024-03-04T05:06:07.000Z");
+		getDocumentProxyMock.mockResolvedValue(
+			makePdf([{ items: [{ str: "hello" }] }], {
+				CreationDate: creationDate,
+				ModDate: new Date(Number.NaN),
+			})
+		);
+
+		const info = await service().getDocumentInfo(validPdfBuffer());
+		expect(info.metadata.creationDate).toBe(creationDate);
+		expect(info.metadata.modificationDate).toBeUndefined();
+	});
+
+	it.each([null, undefined, {}, "not-an-array", 42])(
+		"fails explicitly when unpdf returns non-array text items: %j",
+		async (items) => {
+			getDocumentProxyMock.mockResolvedValue(makePdf([{ items }]));
+			await expect(service().convertPdfToText(validPdfBuffer())).rejects.toThrow(
+				"PDF text content items must be an array"
+			);
+
+			getDocumentProxyMock.mockResolvedValue(makePdf([{ items }]));
+			await expect(
+				service().convertPdfToTextWithOptions(validPdfBuffer())
+			).resolves.toEqual({
+				success: false,
+				error: "PDF text content items must be an array",
+			});
+
+			getDocumentProxyMock.mockResolvedValue(makePdf([{ items }]));
+			await expect(service().getDocumentInfo(validPdfBuffer())).rejects.toThrow(
+				"PDF text content items must be an array"
+			);
+		}
+	);
+
+	it("fails cleanup on malformed caller input instead of returning uncleaned content", () => {
+		expect(() => service().cleanUpContent(null as never)).toThrow();
 	});
 });

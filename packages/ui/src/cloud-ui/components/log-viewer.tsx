@@ -3,6 +3,7 @@
 /**
  * Log viewer with copy/download and follow-tail, used by the cloud agent-logs surface.
  */
+import { formatTime } from "@elizaos/shared/utils/format";
 import {
   Copy,
   Download,
@@ -117,11 +118,6 @@ export interface LogViewerProps {
   entryLevelBorderColor?: (level: string) => string;
   onCopyEntry?: (entry: LogViewerStructuredEntry) => void;
   className?: string;
-}
-
-function formatTimestamp(value: LogViewerStructuredEntry["timestamp"]): string {
-  if (!value) return "";
-  return new Date(value).toLocaleTimeString();
 }
 
 function getDefaultLineClassName(line: string): string {
@@ -259,9 +255,9 @@ export function LogViewer({
               ))}
             </div>
             {subtitle && <p className="text-sm text-white/60">{subtitle}</p>}
-            {fetchedAt && (
+            {fetchedAt != null && fetchedAt !== "" && (
               <p className="mt-1 text-xs text-white/60">
-                Refreshed at {new Date(fetchedAt).toLocaleTimeString()}
+                Refreshed at {formatTime(fetchedAt)}
               </p>
             )}
           </div>
@@ -501,9 +497,9 @@ export function LogViewer({
                       {entry.level.toUpperCase()}
                     </Badge>
                   )}
-                  {entry.timestamp && (
+                  {entry.timestamp != null && entry.timestamp !== "" && (
                     <span className="min-w-[70px] shrink-0 text-xs text-white/60">
-                      {formatTimestamp(entry.timestamp)}
+                      {formatTime(entry.timestamp)}
                     </span>
                   )}
                   <span className="flex-1 whitespace-pre-wrap break-all text-white/80">

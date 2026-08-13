@@ -1,11 +1,14 @@
 // Wires hosted Eliza agent lifecycle behavior for cloud runtime services.
 import { type AgentRuntime, elizaLogger } from "@elizaos/core";
+import { parsePositiveInteger } from "@elizaos/shared/utils/number-parsing";
 
 const DEFAULT_RUNTIME_LIFECYCLE_TIMEOUT_MS = 10_000;
+// Node coerces larger setTimeout delays to 1 ms and emits an overflow warning.
+const MAX_NODE_TIMEOUT_MS = 2_147_483_647;
 
 function getRuntimeLifecycleTimeoutMs(): number {
-  const configured = Number.parseInt(process.env.RUNTIME_LIFECYCLE_TIMEOUT_MS ?? "", 10);
-  return Number.isFinite(configured) && configured > 0
+  const configured = parsePositiveInteger(process.env.RUNTIME_LIFECYCLE_TIMEOUT_MS);
+  return configured !== undefined && configured <= MAX_NODE_TIMEOUT_MS
     ? configured
     : DEFAULT_RUNTIME_LIFECYCLE_TIMEOUT_MS;
 }

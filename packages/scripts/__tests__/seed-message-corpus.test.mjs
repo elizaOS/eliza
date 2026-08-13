@@ -39,7 +39,6 @@ describe("parseTcpPort", () => {
     expect(parseTcpPort(String(DEFAULT_API_PORT), "--api-port")).toBe(
       DEFAULT_API_PORT,
     );
-    expect(parseTcpPort(" 31337 ", "ELIZA_API_PORT")).toBe(31337);
   });
 
   test("rejects zero, out-of-range, partial, signed, and non-decimal forms", () => {
@@ -50,6 +49,8 @@ describe("parseTcpPort", () => {
       "-1",
       "1.5",
       "31337junk",
+      "31337=garbage",
+      " 31337 ",
       "0x10",
       "1e2",
       "031337",
@@ -90,7 +91,7 @@ describe("resolveApiPortFromEnv", () => {
 describe("parseArgs port wiring", () => {
   test("CLI --api-port overrides env and default", () => {
     const options = parseArgs(["--api-port=44444"], {
-      ELIZA_API_PORT: "40000",
+      ELIZA_API_PORT: "notaport",
     });
     expect(options.apiPort).toBe(44444);
   });
@@ -115,7 +116,16 @@ describe("seed-message-corpus CLI boundary", () => {
   });
 
   test("rejects invalid --api-port before any seed request", () => {
-    for (const value of ["0", "99999", "65536", "31337junk", "-1", "1.5"]) {
+    for (const value of [
+      "0",
+      "99999",
+      "65536",
+      "31337junk",
+      "31337=garbage",
+      " 31337 ",
+      "-1",
+      "1.5",
+    ]) {
       const result = runCli([`--api-port=${value}`]);
       expect(result.status).not.toBe(0);
       const combined = `${result.stdout}${result.stderr}`;
@@ -127,7 +137,7 @@ describe("seed-message-corpus CLI boundary", () => {
   });
 
   test("rejects invalid ELIZA_API_PORT before any seed request", () => {
-    for (const value of ["0", "notaport", "31337junk", "99999"]) {
+    for (const value of ["0", "notaport", "31337junk", " 31337 ", "99999"]) {
       const result = runCli([], { ELIZA_API_PORT: value });
       expect(result.status).not.toBe(0);
       const combined = `${result.stdout}${result.stderr}`;
@@ -136,5 +146,23 @@ describe("seed-message-corpus CLI boundary", () => {
       );
       expect(combined).not.toContain("Seeding backdated message corpus");
     }
+  });
+
+  test("valid CLI port overrides invalid env without entering network work", () => {
+    const result = runCli(["--api-port=44444", "--messages=not-an-integer"], {
+      ELIZA_API_PORT: "notaport",
+    });
+    const combined = `${result.stdout}${result.stderr}`;
+    expect(result.status).not.toBe(0);
+    expect(combined).toContain("--messages must be an integer");
+    expect(combined).not.toContain("ELIZA_API_PORT must be");
+    expect(combined).not.toContain("Seeding backdated message corpus");
+  });
+
+  test("--help bypasses an invalid environment port", () => {
+    const result = runCli(["--help"], { ELIZA_API_PORT: "notaport" });
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain("Usage:");
+    expect(result.stderr).toBe("");
   });
 });

@@ -49,6 +49,9 @@ mock.module("../utils/logger", () => ({
 mock.module("../../db/repositories/docker-nodes", () => ({
   dockerNodesRepository: {
     findEnabled: () => Promise.resolve(enabledNodes),
+    // Placement reads the placeable set; no node here is cordoned,
+    // so it mirrors findEnabled.
+    findPlaceable: () => Promise.resolve(enabledNodes),
     updateStatus: () => Promise.resolve(),
     setHostKeyFingerprint: () => Promise.resolve(),
   },
