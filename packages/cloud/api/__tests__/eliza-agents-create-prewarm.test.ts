@@ -27,6 +27,7 @@ import { Hono } from "hono";
 const requireUserOrApiKeyWithOrg = mock(async () => ({
   id: "user-1",
   organization_id: "org-1",
+  steward_id: "steward-user-1",
 }));
 
 const createAgent = mock();
@@ -228,9 +229,20 @@ describe("POST /api/v1/eliza/agents — shared create schedules the turn-cache p
     await Promise.all(registered.promises);
     expect(prewarmSharedAgentTurnCaches).toHaveBeenCalledTimes(1);
     const [prewarmedAgent, prewarmOptions] = prewarmSharedAgentTurnCaches.mock
-      .calls[0] as unknown as [{ id: string }, { namespace?: unknown }];
+      .calls[0] as unknown as [
+      { id: string },
+      {
+        namespace?: unknown;
+        requestContext?: { req?: unknown };
+        stewardUserId?: string;
+      },
+    ];
     expect(prewarmedAgent.id).toBe(agent.id);
     expect(prewarmOptions.namespace).toBe(NAMESPACE);
+    // The creating request's credential/context reaches the prewarm so it can
+    // seed the credential-scoped authorization entry the first message reads.
+    expect(prewarmOptions.requestContext?.req).toBeDefined();
+    expect(prewarmOptions.stewardUserId).toBe("steward-user-1");
   });
 
   test("response does not await the prewarm (off the response path)", async () => {
