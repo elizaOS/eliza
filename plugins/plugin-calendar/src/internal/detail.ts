@@ -31,6 +31,34 @@ export function detailString(
     : undefined;
 }
 
+/**
+ * Treats model placeholder vocabulary as an omitted calendar selector.
+ * Authenticated route inputs remain strict; this helper is only for the
+ * planner-detail boundary, where an explicit junk selector would hide every
+ * discovered calendar.
+ */
+const CALENDAR_ID_PLACEHOLDER_TOKENS = new Set([
+  "default",
+  "all",
+  "none",
+  "null",
+  "unset",
+  "unknown",
+  "any",
+  "auto",
+]);
+
+export function sanitizeCalendarId(
+  value: string | undefined,
+): string | undefined {
+  if (!value) return undefined;
+  const trimmed = value.trim();
+  if (!trimmed) return undefined;
+  return CALENDAR_ID_PLACEHOLDER_TOKENS.has(trimmed.toLowerCase())
+    ? undefined
+    : trimmed;
+}
+
 export function detailNumber(
   details: Record<string, unknown> | undefined,
   key: string,

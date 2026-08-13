@@ -760,6 +760,7 @@ describe("CALENDAR effect receipt settlement", () => {
           mode: "read",
           side: "owner",
           grantId: "primary",
+          calendarId: "default",
           timeZone: "UTC",
           timeMin: "2026-07-27T00:00:00.000Z",
           timeMax: "2026-08-03T00:00:00.000Z",
@@ -782,10 +783,40 @@ describe("CALENDAR effect receipt settlement", () => {
     // window reaches the service well-formed.
     expect(request.mode).toBeUndefined();
     expect(request.grantId).toBeUndefined();
+    expect(request.calendarId).toBeUndefined();
     expect(request.side).toBe("owner");
     expect(request.timeZone).toBe("UTC");
     expect(request.timeMin).toBe("2026-07-27T00:00:00.000Z");
     expect(request.timeMax).toBe("2026-08-03T00:00:00.000Z");
+  });
+
+  it("drops invalid planner time bounds instead of forwarding malformed ISO", async () => {
+    const getCalendarFeed = vi.fn(
+      async (_url: URL, _request?: Record<string, unknown>) => feed(),
+    );
+    const action = createCalendarActionRunner(deps());
+
+    await execute({
+      action,
+      service: { getCalendarFeed },
+      actor: message("Show my calendar."),
+      parameters: {
+        subaction: "feed",
+        details: {
+          timeMin: ",time_min:",
+          timeMax: "not-a-date",
+          timeZone: "UTC",
+        },
+      },
+      delivered: [],
+    });
+
+    const request = getCalendarFeed.mock.calls[0]?.[1] as Record<
+      string,
+      unknown
+    >;
+    expect(request.timeMin).not.toBe(",time_min:");
+    expect(request.timeMax).not.toBe("not-a-date");
   });
 
   it("passes a real grant id through untouched", async () => {

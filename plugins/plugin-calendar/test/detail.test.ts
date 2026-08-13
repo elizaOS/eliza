@@ -11,6 +11,7 @@ import {
   detailString,
   messageText,
   parseCalendarJsonRecord,
+  sanitizeCalendarId,
 } from "../src/internal/detail.js";
 
 /**
@@ -56,5 +57,29 @@ describe("parseCalendarJsonRecord", () => {
     expect(parseCalendarJsonRecord("[1,2]")).toBeNull();
     expect(parseCalendarJsonRecord("not json")).toBeNull();
     expect(parseCalendarJsonRecord("")).toBeNull();
+  });
+});
+
+describe("sanitizeCalendarId", () => {
+  it("drops model placeholders and preserves real provider ids", () => {
+    for (const placeholder of [
+      "default",
+      "ALL",
+      "none",
+      "null",
+      "unset",
+      "unknown",
+      "any",
+      "auto",
+      "  Auto  ",
+    ]) {
+      expect(sanitizeCalendarId(placeholder)).toBeUndefined();
+    }
+
+    expect(sanitizeCalendarId("primary")).toBe("primary");
+    expect(sanitizeCalendarId(" user@example.com ")).toBe("user@example.com");
+    expect(sanitizeCalendarId("AQMkADAwATM3ZmYAZS0xYjIz")).toBe(
+      "AQMkADAwATM3ZmYAZS0xYjIz",
+    );
   });
 });

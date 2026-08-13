@@ -53,6 +53,7 @@ import {
   INTERNAL_URL,
   messageText,
   parseCalendarJsonRecord,
+  sanitizeCalendarId,
   toActionData,
 } from "../internal/detail.js";
 import {
@@ -222,6 +223,19 @@ function connectorGrantIdDetail(
     value.startsWith(GOOGLE_CONNECTOR_ACCOUNT_GRANT_PREFIX)
     ? value
     : undefined;
+}
+
+function calendarIdDetail(
+  details: Record<string, unknown> | undefined,
+): string | undefined {
+  return sanitizeCalendarId(detailString(details, "calendarId"));
+}
+
+function isoDetailString(
+  details: Record<string, unknown> | undefined,
+  key: "timeMin" | "timeMax",
+): string | undefined {
+  return normalizeIsoDateTime(detailString(details, key));
 }
 
 type CreateEventTravelIntent = CalendarTravelIntent;
@@ -1432,8 +1446,8 @@ function resolveStructuredCalendarSubaction(
     detailString(details, "query") ||
     (params.queries?.length ?? 0) > 0 ||
     (detailArray(details, "queries")?.length ?? 0) > 0 ||
-    detailString(details, "timeMin") ||
-    detailString(details, "timeMax")
+    isoDetailString(details, "timeMin") ||
+    isoDetailString(details, "timeMax")
   ) {
     return "search_events";
   }
@@ -1969,7 +1983,7 @@ async function loadCreateEventCalendarContext(
     mode: connectorModeDetail(details),
     side: connectorSideDetail(details),
     grantId: connectorGrantIdDetail(details),
-    calendarId: detailString(details, "calendarId"),
+    calendarId: calendarIdDetail(details),
     timeZone: requestTimeZone,
     forceSync: true,
     ...buildLocalDayRange(requestTimeZone, 0, 14),
@@ -2111,9 +2125,9 @@ function resolveCalendarWindow(
   label: string;
   explicitWindow: boolean;
 } {
-  const timeMin = detailString(details, "timeMin");
-  const timeMax = detailString(details, "timeMax");
-  const calendarId = detailString(details, "calendarId");
+  const timeMin = isoDetailString(details, "timeMin");
+  const timeMax = isoDetailString(details, "timeMax");
+  const calendarId = calendarIdDetail(details);
   const timeZone = resolveCalendarTimeZone(details);
   const forceSync = detailBoolean(details, "forceSync");
   if (timeMin || timeMax) {
@@ -2194,9 +2208,9 @@ function resolveTripWindowRequest(
   details: Record<string, unknown> | undefined,
   llmPlan?: CalendarLlmPlan,
 ): GetLifeOpsCalendarFeedRequest {
-  const timeMin = detailString(details, "timeMin");
-  const timeMax = detailString(details, "timeMax");
-  const calendarId = detailString(details, "calendarId");
+  const timeMin = isoDetailString(details, "timeMin");
+  const timeMax = isoDetailString(details, "timeMax");
+  const calendarId = calendarIdDetail(details);
   const timeZone = resolveCalendarTimeZone(details);
   const forceSync = detailBoolean(details, "forceSync");
 
@@ -2680,8 +2694,8 @@ function buildCreateEventRequest(
       side: connectorSideDetail(args.details) ?? args.fallbackRequest?.side,
       grantId: connectorGrantIdDetail(args.details),
       calendarId:
-        detailString(args.details, "calendarId") ??
-        args.fallbackRequest?.calendarId,
+        calendarIdDetail(args.details) ??
+        sanitizeCalendarId(args.fallbackRequest?.calendarId),
       title: title ?? "",
       description:
         pickCreateEventStringField(args, "description") ??
@@ -3893,7 +3907,7 @@ const calendarAction: CalendarHandlerAction = {
         const context = await service.getNextCalendarEventContext(
           INTERNAL_URL,
           {
-            calendarId: detailString(details, "calendarId"),
+            calendarId: calendarIdDetail(details),
             timeZone: resolveCalendarTimeZone(details),
           },
         );
@@ -4123,7 +4137,7 @@ const calendarAction: CalendarHandlerAction = {
       if (subaction === "update_event") {
         const explicitEventId = detailString(details, "eventId");
         let resolvedEventId = explicitEventId;
-        let resolvedCalendarId = detailString(details, "calendarId");
+        let resolvedCalendarId = calendarIdDetail(details);
         let targetEvent: LifeOpsCalendarEvent | null = null;
         if (!resolvedEventId) {
           const titleHint = searchQueries[0];
@@ -4146,13 +4160,13 @@ const calendarAction: CalendarHandlerAction = {
             });
           }
           const feedRequest =
-            detailString(details, "timeMin") ||
-            detailString(details, "timeMax") ||
+            isoDetailString(details, "timeMin") ||
+            isoDetailString(details, "timeMax") ||
             llmPlan.timeMin ||
             llmPlan.timeMax
               ? resolveCalendarWindow(intent, details, true, llmPlan).request
               : {
-                  calendarId: detailString(details, "calendarId"),
+                  calendarId: calendarIdDetail(details),
                   timeZone: resolveCalendarTimeZone(details),
                   ...buildWideLookupRange(resolveCalendarTimeZone(details)),
                 };
@@ -4480,13 +4494,13 @@ const calendarAction: CalendarHandlerAction = {
             });
           }
           const feedRequest =
-            detailString(details, "timeMin") ||
-            detailString(details, "timeMax") ||
+            isoDetailString(details, "timeMin") ||
+            isoDetailString(details, "timeMax") ||
             llmPlan.timeMin ||
             llmPlan.timeMax
               ? resolveCalendarWindow(intent, details, true, llmPlan).request
               : {
-                  calendarId: detailString(details, "calendarId"),
+                  calendarId: calendarIdDetail(details),
                   timeZone: resolveCalendarTimeZone(details),
                   ...buildWideLookupRange(resolveCalendarTimeZone(details)),
                 };
@@ -4556,7 +4570,7 @@ const calendarAction: CalendarHandlerAction = {
               mode: connectorModeDetail(details),
               side: connectorSideDetail(details),
               grantId: connectorGrantIdDetail(details),
-              calendarId: detailString(details, "calendarId"),
+              calendarId: calendarIdDetail(details),
               eventId: explicitEventId,
             },
           );
@@ -5038,9 +5052,9 @@ const calendarAction: CalendarHandlerAction = {
           status: error.status,
           code: error.code ?? `CALENDAR_SERVICE_${error.status}`,
           detail: error.message,
-          calendarId: detailString(details, "calendarId") ?? "unset",
-          timeMin: detailString(details, "timeMin") ?? "unset",
-          timeMax: detailString(details, "timeMax") ?? "unset",
+          calendarId: calendarIdDetail(details) ?? "unset",
+          timeMin: isoDetailString(details, "timeMin") ?? "unset",
+          timeMax: isoDetailString(details, "timeMax") ?? "unset",
           timeZone: detailString(details, "timeZone") ?? "unset",
           mode: detailString(details, "mode") ?? "unset",
           side: detailString(details, "side") ?? "unset",
