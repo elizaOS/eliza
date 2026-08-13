@@ -1,5 +1,10 @@
+/**
+ * Implements local PDF input validation, text extraction, metadata parsing,
+ * and content cleanup for the runtime PDF service.
+ */
+
 import type { IAgentRuntime } from "@elizaos/core";
-import { logger, Service, ServiceType } from "@elizaos/core";
+import { Service, ServiceType } from "@elizaos/core";
 import { getDocumentProxy } from "unpdf";
 
 import type {
@@ -26,7 +31,11 @@ function isTextItem(item: unknown): item is PdfTextItem {
   );
 }
 
-function collectTextStrings(items: readonly unknown[]): string[] {
+function collectTextStrings(items: unknown): string[] {
+  if (!Array.isArray(items)) {
+    throw new TypeError("PDF text content items must be an array");
+  }
+
   const textItems: string[] = [];
   for (const item of items) {
     if (isTextItem(item)) {
@@ -70,7 +79,7 @@ function validatePdfInput(input: unknown): Uint8Array {
     throw new TypeError("PDF input is not a supported PDF document");
   }
 
-  return input;
+  return new Uint8Array(input.buffer, input.byteOffset, input.byteLength);
 }
 
 function validatePageOption(value: unknown, name: string): number | undefined {
@@ -104,10 +113,13 @@ function normalizeExtractionOptions(
   };
 }
 
-function parseMetadataDate(value: string | Date | undefined | null): Date | undefined {
-  if (value === undefined || value === null) return undefined;
+function parseMetadataDate(value: unknown): Date | undefined {
+  if (typeof value !== "string" && !(value instanceof Date)) {
+    return undefined;
+  }
+
   const date = value instanceof Date ? value : new Date(value);
-  return Number.isNaN(date.getTime()) ? undefined : date;
+  return Number.isFinite(date.getTime()) ? date : undefined;
 }
 
 export class PdfService extends Service {
@@ -129,29 +141,21 @@ export class PdfService extends Service {
   async stop(): Promise<void> {}
 
   async convertPdfToText(pdfBuffer: Buffer | Uint8Array): Promise<string> {
-    try {
-      const uint8Array = validatePdfInput(pdfBuffer);
-      const pdf = await getDocumentProxy(uint8Array);
-      const numPages = pdf.numPages;
+    const uint8Array = validatePdfInput(pdfBuffer);
+    const pdf = await getDocumentProxy(uint8Array);
+    const numPages = pdf.numPages;
 
-      const textPages: string[] = [];
+    const textPages: string[] = [];
 
-      for (let pageNum = 1; pageNum <= numPages; pageNum++) {
-        const page = await pdf.getPage(pageNum);
-        const textContent = await page.getTextContent();
-        const pageText = collectTextStrings(textContent.items).join(" ");
-        textPages.push(pageText);
-      }
-
-      const rawText = textPages.join("\n");
-      return this.cleanUpContent(rawText);
-    } catch (error) {
-      const bufferSize = pdfBuffer instanceof Uint8Array ? pdfBuffer.length : "unknown";
-      logger.error(
-        `PdfService: Failed to convert PDF to text - error: ${error}, bufferSize: ${bufferSize}`
-      );
-      throw error;
+    for (let pageNum = 1; pageNum <= numPages; pageNum++) {
+      const page = await pdf.getPage(pageNum);
+      const textContent = await page.getTextContent();
+      const pageText = collectTextStrings(textContent.items).join(" ");
+      textPages.push(pageText);
     }
+
+    const rawText = textPages.join("\n");
+    return this.cleanUpContent(rawText);
   }
 
   async convertPdfToTextWithOptions(
@@ -188,6 +192,7 @@ export class PdfService extends Service {
         pageCount: numPages,
       };
     } catch (error) {
+      // error-policy:J1 PdfConversionResult is this public method's structured failure boundary.
       return {
         success: false,
         error: error instanceof Error ? error.message : String(error),
@@ -201,7 +206,10 @@ export class PdfService extends Service {
     const numPages = pdf.numPages;
 
     const metadataResult = await pdf.getMetadata();
-    const info = (metadataResult.info ?? {}) as Record<string, string | Date | undefined | null>;
+    const info =
+      typeof metadataResult.info === "object" && metadataResult.info !== null
+        ? (metadataResult.info as Record<string, unknown>)
+        : {};
 
     const metadata: PdfMetadata = {
       title: typeof info.Title === "string" ? info.Title : undefined,
@@ -243,33 +251,24 @@ export class PdfService extends Service {
   }
 
   cleanUpContent(content: string): string {
-    try {
-      const filtered = content
-        .split("")
-        .filter((char) => {
-          const charCode = char.charCodeAt(0);
-          return !(
-            charCode === 0 ||
-            (charCode >= 1 && charCode <= 8) ||
-            (charCode >= 11 && charCode <= 12) ||
-            (charCode >= 14 && charCode <= 31) ||
-            charCode === 127
-          );
-        })
-        .join("");
+    const filtered = content
+      .split("")
+      .filter((char) => {
+        const charCode = char.charCodeAt(0);
+        return !(
+          charCode === 0 ||
+          (charCode >= 1 && charCode <= 8) ||
+          (charCode >= 11 && charCode <= 12) ||
+          (charCode >= 14 && charCode <= 31) ||
+          charCode === 127
+        );
+      })
+      .join("");
 
-      const cleaned = filtered
-        .replace(/[^\S\r\n]+/g, " ")
-        .replace(/[ \t]+(\r?\n)/g, "$1")
-        .trim();
-
-      return cleaned;
-    } catch (error) {
-      logger.error(
-        `PdfService: Failed to clean up content - error: ${error}, contentLength: ${content.length}`
-      );
-      return content;
-    }
+    return filtered
+      .replace(/[^\S\r\n]+/g, " ")
+      .replace(/[ \t]+(\r?\n)/g, "$1")
+      .trim();
   }
 }
 
