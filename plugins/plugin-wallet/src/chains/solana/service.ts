@@ -121,10 +121,20 @@ export type SolanaWalletSubaction = "transfer" | "swap";
 
 // Mirrors WalletRouterMode structurally (executeWalletRouterAction below
 // forwards WalletRouterParams.mode as-is) so this stays type-consistent with
-// the router's widened enum. This orphaned path is not wired into
-// routeWalletAction (see chains/registry.ts for the real, live simulate
-// implementation) and does not itself implement simulate semantics.
+// the router's widened enum. This path implements no simulate semantics —
+// the live implementation is the router's chain handler in
+// chains/registry.ts — so every entry point here fails closed on
+// mode="simulate" rather than falling through to a signing/broadcast path
+// (a mode named simulate must never be able to submit; #19243 review, P1).
 export type SolanaWalletActionMode = "prepare" | "execute" | "simulate";
+
+function assertNotSimulateMode(mode: SolanaWalletActionMode | undefined, entryPoint: string): void {
+  if (mode === "simulate") {
+    throw new Error(
+      `SolanaService.${entryPoint} does not support mode="simulate"; route simulation through WalletBackendService.routeWalletAction, which dispatches to the chain handler's non-broadcasting simulate() implementation.`
+    );
+  }
+}
 
 export type SolanaTransferParams = {
   tokenAddress?: string | null;
@@ -435,6 +445,7 @@ export class SolanaService extends Service {
   public async executeWalletRouterAction(
     params: WalletRouterParams
   ): Promise<WalletRouterExecution> {
+    assertNotSimulateMode(params.mode, "executeWalletRouterAction");
     const mode = params.mode;
     const dryRun = params.dryRun || mode === "prepare";
 
@@ -578,6 +589,7 @@ export class SolanaService extends Service {
   }
 
   public async transfer(params: SolanaTransferParams): Promise<SolanaTransferResult> {
+    assertNotSimulateMode(params.mode, "transfer");
     const tokenAddress = this.normalizeSolanaTokenAddress(params.tokenAddress ?? params.fromToken);
     const amount = this.normalizePositiveAmount(params.amount);
     const recipientPubkey = new PublicKey(params.recipient);
@@ -654,6 +666,7 @@ export class SolanaService extends Service {
   }
 
   public async swap(params: SolanaSwapParams): Promise<SolanaSwapResult> {
+    assertNotSimulateMode(params.mode, "swap");
     const inputTokenCA = this.normalizeRequiredTokenAddress(
       params.inputTokenCA ?? params.fromToken,
       "input token"

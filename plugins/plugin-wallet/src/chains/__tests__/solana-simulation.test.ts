@@ -3,11 +3,13 @@
  * #16613 (`simulateSolanaSwap`, `simulatePumpFunBuy` in `../registry`).
  * `fetch` is faked with real-shaped Jupiter/PumpPortal payloads (including a
  * real base58/base64 `VersionedTransaction` built with `@solana/web3.js`),
- * and `Connection` is a hand-rolled double whose `simulateTransaction` is
- * asserted to be the only RPC call made — `sendTransaction`,
+ * and `Connection` is a hand-rolled double. The invariant under test is that
+ * simulation performs no signing and no broadcast RPCs — `sendTransaction`,
  * `sendRawTransaction`, and `confirmTransaction` are spies that throw if
  * touched, and `VersionedTransaction.prototype.sign` is spied to throw for
- * the dedicated no-signing test. No live network or chain is exercised.
+ * the dedicated no-signing test. Read-only lookups (`simulateTransaction`,
+ * `getParsedAccountInfo` for non-SOL input mints) are permitted and asserted
+ * where relevant. No live network or chain is exercised.
  */
 import type { IAgentRuntime } from "@elizaos/core";
 import {
@@ -23,6 +25,7 @@ import type {
 } from "../../types/wallet-router";
 import { simulatePumpFunBuy, simulateSolanaSwap } from "../registry";
 import { SOLANA_SERVICE_NAME } from "../solana/constants";
+import { SolanaService } from "../solana/service";
 
 const PUMPFUN_TRADE_LOCAL_URL = "https://pumpportal.fun/api/trade-local";
 
@@ -101,6 +104,7 @@ interface FakeConnection {
   readonly sendRawTransaction: ReturnType<typeof vi.fn>;
   readonly confirmTransaction: ReturnType<typeof vi.fn>;
   readonly getLatestBlockhash: ReturnType<typeof vi.fn>;
+  readonly getParsedAccountInfo: ReturnType<typeof vi.fn>;
 }
 
 function createFakeConnection(): FakeConnection {
@@ -133,6 +137,11 @@ function createFakeConnection(): FakeConnection {
         "getLatestBlockhash must not be called during simulation",
       );
     }),
+    getParsedAccountInfo: vi.fn(async () => {
+      throw new Error(
+        "getParsedAccountInfo is only expected for non-SOL input mints; override it in the test that needs it",
+      );
+    }),
   };
 }
 
@@ -148,6 +157,7 @@ function createRuntime(
       name === SOLANA_SERVICE_NAME ? fakeSolanaService : null,
     ),
     getSetting: vi.fn((key: string) => settings[key] ?? null),
+    setSetting: vi.fn(),
     logger: {
       debug: vi.fn(),
       info: vi.fn(),
@@ -222,7 +232,17 @@ describe("Solana simulate mode (GH #16613)", () => {
           outputMint,
           outAmount: "150000000",
           priceImpactPct: "0.0012",
-          routePlan: [],
+          slippageBps: 50,
+          routePlan: [
+            {
+              swapInfo: {
+                label: "Orca",
+                inputMint: "So11111111111111111111111111111111111111112",
+                outputMint,
+              },
+              percent: 100,
+            },
+          ],
         });
       }
       if (url === "https://quote-api.jup.ag/v6/swap") {
@@ -254,6 +274,18 @@ describe("Solana simulate mode (GH #16613)", () => {
       outAmount: "150000000",
       priceImpactPct: "0.0012",
     });
+    // Typed route/slippage (review on #19243): consumers must be able to
+    // evaluate the actual route and slippage, not only amounts.
+    expect(result.simulation?.route).toEqual([
+      {
+        label: "Orca",
+        inputMint: "So11111111111111111111111111111111111111112",
+        outputMint,
+        percent: 100,
+      },
+    ]);
+    expect(result.simulation?.requestedSlippageBps).toBeNull();
+    expect(result.simulation?.effectiveSlippageBps).toBe(50);
 
     expect(fakeConnection.simulateTransaction).toHaveBeenCalledTimes(1);
     expect(fakeConnection.simulateTransaction).toHaveBeenCalledWith(
@@ -446,5 +478,143 @@ describe("Solana simulate mode (GH #16613)", () => {
       simulatePumpFunBuy(pumpFunParams(mint), createContext(runtime)),
     ).rejects.toThrow(/PumpPortal trade-local failed \(500\)/);
     expect(fakeConnection.simulateTransaction).not.toHaveBeenCalled();
+  });
+
+  it("resolves decimals for a non-SOL input mint via getParsedAccountInfo without broadcasting (#19243 review)", async () => {
+    const fakeTx = buildFakeVersionedTransaction();
+    const swapTxBase64 = Buffer.from(fakeTx.serialize()).toString("base64");
+    const inputMint = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+    const outputMint = Keypair.generate().publicKey.toBase58();
+
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = typeof input === "string" ? input : input.toString();
+      if (url.startsWith("https://quote-api.jup.ag/v6/quote")) {
+        return jsonResponse({
+          inputMint,
+          inAmount: "1000000",
+          outputMint,
+          outAmount: "990000",
+          priceImpactPct: "0.0001",
+          slippageBps: 50,
+          routePlan: [],
+        });
+      }
+      if (url === "https://quote-api.jup.ag/v6/swap") {
+        return jsonResponse({ swapTransaction: swapTxBase64 });
+      }
+      throw new Error(`unexpected fetch url: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const fakeConnection = createFakeConnection();
+    fakeConnection.getParsedAccountInfo.mockResolvedValue({
+      value: { data: { parsed: { info: { decimals: 6 } } } },
+    });
+    const runtime = createRuntime(fakeConnection, {
+      SOLANA_PUBLIC_KEY: walletPublicKey.toBase58(),
+    });
+
+    const result = await simulateSolanaSwap(
+      swapParams({ fromToken: inputMint, toToken: outputMint }),
+      createContext(runtime),
+    );
+
+    expect(result.status).toBe("simulated");
+    expect(fakeConnection.getParsedAccountInfo).toHaveBeenCalledTimes(1);
+    expect(fakeConnection.sendTransaction).not.toHaveBeenCalled();
+    expect(fakeConnection.sendRawTransaction).not.toHaveBeenCalled();
+    expect(fakeConnection.confirmTransaction).not.toHaveBeenCalled();
+  });
+
+  it("reports requested/effective slippage for pump.fun simulation (#19243 review)", async () => {
+    const fakeTx = buildFakeVersionedTransaction();
+    const mint = Keypair.generate().publicKey.toBase58();
+
+    const fetchMock = vi.fn(async () => binaryResponse(fakeTx.serialize()));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const fakeConnection = createFakeConnection();
+    const runtime = createRuntime(fakeConnection, {
+      SOLANA_PUBLIC_KEY: walletPublicKey.toBase58(),
+    });
+
+    const result = await simulatePumpFunBuy(
+      pumpFunParams(mint, { slippageBps: 100 }),
+      createContext(runtime),
+    );
+
+    expect(result.simulation?.route).toEqual([]);
+    expect(result.simulation?.requestedSlippageBps).toBe(100);
+    expect(result.simulation?.effectiveSlippageBps).toBe(100);
+  });
+
+  it("never creates or persists a wallet key when simulating without one configured (#19243 review, P2)", async () => {
+    const fakeTx = buildFakeVersionedTransaction();
+    const swapTxBase64 = Buffer.from(fakeTx.serialize()).toString("base64");
+    const mint = Keypair.generate().publicKey.toBase58();
+
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = typeof input === "string" ? input : input.toString();
+      if (url.startsWith("https://quote-api.jup.ag/v6/quote")) {
+        return jsonResponse({ inAmount: "1", outAmount: "1", routePlan: [] });
+      }
+      if (url === "https://quote-api.jup.ag/v6/swap") {
+        return jsonResponse({ swapTransaction: swapTxBase64 });
+      }
+      return binaryResponse(fakeTx.serialize());
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const fakeConnection = createFakeConnection();
+    // No SOLANA_PUBLIC_KEY / SOLANA_PRIVATE_KEY settings at all.
+    const runtime = createRuntime(fakeConnection, {});
+
+    await expect(
+      simulatePumpFunBuy(pumpFunParams(mint), createContext(runtime)),
+    ).rejects.toThrow(/no.*key|not configured/i);
+    await expect(
+      simulateSolanaSwap(swapParams(), createContext(runtime)),
+    ).rejects.toThrow(/no.*key|not configured/i);
+
+    // The read-only simulation must never mint a secret as a side effect.
+    expect(
+      (runtime as unknown as { setSetting: ReturnType<typeof vi.fn> })
+        .setSetting,
+    ).not.toHaveBeenCalled();
+    expect(fakeConnection.simulateTransaction).not.toHaveBeenCalled();
+  });
+
+  it("SolanaService fails closed for mode=simulate on every direct entry (#19243 review, P1)", async () => {
+    const runtime = createRuntime(createFakeConnection(), {
+      SOLANA_RPC_URL: "https://api.mainnet-beta.solana.com",
+    }) as unknown as IAgentRuntime & {
+      getServiceLoadPromise: () => Promise<unknown>;
+    };
+    (
+      runtime as unknown as { getServiceLoadPromise: unknown }
+    ).getServiceLoadPromise = () => new Promise(() => {});
+
+    const service = new SolanaService(runtime);
+
+    await expect(
+      service.transfer({
+        recipient: Keypair.generate().publicKey.toBase58(),
+        amount: "1",
+        mode: "simulate",
+        dryRun: false,
+      }),
+    ).rejects.toThrow(/simulate/);
+    await expect(
+      service.swap({
+        inputTokenCA: "So11111111111111111111111111111111111111112",
+        outputTokenCA: Keypair.generate().publicKey.toBase58(),
+        amount: 1,
+        mode: "simulate",
+        dryRun: false,
+      }),
+    ).rejects.toThrow(/simulate/);
+    await expect(
+      service.executeWalletRouterAction(swapParams({ chain: "solana" })),
+    ).rejects.toThrow(/simulate/);
   });
 });

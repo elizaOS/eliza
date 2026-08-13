@@ -346,9 +346,9 @@ function simulationResultText(
   if (simulation.success) {
     const unitsText =
       simulation.unitsConsumed === null
-        ? "unknown"
-        : String(simulation.unitsConsumed);
-    return `Simulated ${execution.subaction} on ${chain}: ok, ~${unitsText} compute units${
+        ? "compute units unknown"
+        : `~${simulation.unitsConsumed} compute units`;
+    return `Simulated ${execution.subaction} on ${chain}: ok, ${unitsText}${
       summaryText ? ` (${summaryText})` : ""
     }.`;
   }

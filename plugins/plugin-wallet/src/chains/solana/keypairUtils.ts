@@ -42,6 +42,40 @@ function generateAndStoreKeypair(runtime: IAgentRuntime): Keypair {
   return keypair;
 }
 
+/**
+ * Read-only public-key lookup: returns the configured wallet's public key or
+ * null when no wallet exists. Unlike `getWalletKey`, this NEVER generates or
+ * persists a keypair — read-only flows (transaction simulation, #16613) must
+ * not mint a secret as a side effect of a lookup.
+ */
+export function getExistingSolanaPublicKey(runtime: IAgentRuntime): PublicKey | null {
+  const publicKeyString =
+    getStringSetting(runtime, "SOLANA_PUBLIC_KEY") ??
+    getStringSetting(runtime, "WALLET_PUBLIC_KEY");
+  if (publicKeyString) {
+    return new PublicKey(publicKeyString);
+  }
+  const privateKeyString =
+    getStringSetting(runtime, "SOLANA_PRIVATE_KEY") ??
+    getStringSetting(runtime, "WALLET_PRIVATE_KEY");
+  if (!privateKeyString) {
+    return null;
+  }
+  try {
+    return Keypair.fromSecretKey(bs58.decode(privateKeyString)).publicKey;
+  } catch {
+    try {
+      return Keypair.fromSecretKey(Uint8Array.from(Buffer.from(privateKeyString, "base64")))
+        .publicKey;
+    } catch {
+      // error-policy:J3 an unparseable configured key yields "no key
+      // available" for this read-only lookup; the signing path
+      // (getWalletKey) is the boundary that surfaces the format error.
+      return null;
+    }
+  }
+}
+
 export async function getWalletKey(
   runtime: IAgentRuntime,
   requirePrivateKey = true

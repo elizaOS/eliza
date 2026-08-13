@@ -120,11 +120,29 @@ export interface WalletRouterContext {
  * priceImpactPct from the Jupiter quote; pump_fun_buy: mint/solAmount) so
  * callers can render a result without re-deriving it from `metadata`.
  */
+/**
+ * One leg of the route the simulated transaction would take (Jupiter
+ * `routePlan` shape, condensed). Empty for venues with a single fixed route
+ * (pump.fun bonding curve).
+ */
+export interface WalletSimulationRouteLeg {
+  readonly label: string | null;
+  readonly inputMint: string;
+  readonly outputMint: string;
+  readonly percent: number | null;
+}
+
 export interface WalletRouterSimulation {
   readonly success: boolean;
   readonly err: string | null;
   readonly logs: readonly string[];
   readonly unitsConsumed: number | null;
+  /** The venue-reported route the built transaction would take. */
+  readonly route: readonly WalletSimulationRouteLeg[];
+  /** Slippage the caller asked for (bps), null when they did not specify. */
+  readonly requestedSlippageBps: number | null;
+  /** Slippage the venue actually applied to the built transaction (bps). */
+  readonly effectiveSlippageBps: number | null;
   readonly summary: Readonly<Record<string, string | number | null>>;
 }
 

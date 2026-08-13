@@ -70,7 +70,10 @@ import {
   fetchJupiterJson,
   resolveJupiterApiBaseUrl,
 } from "./solana/jupiter-api";
-import { getWalletKey } from "./solana/keypairUtils";
+import {
+  getExistingSolanaPublicKey,
+  getWalletKey,
+} from "./solana/keypairUtils";
 import type { SolanaService } from "./solana/service";
 
 const SOL_MINT = "So11111111111111111111111111111111111111112";
@@ -435,7 +438,12 @@ function getSolanaConnection(runtime: IAgentRuntime): Connection {
 async function simulateVersionedTransaction(
   connection: Connection,
   transaction: VersionedTransaction,
-): Promise<Omit<WalletRouterSimulation, "summary">> {
+): Promise<
+  Omit<
+    WalletRouterSimulation,
+    "summary" | "route" | "requestedSlippageBps" | "effectiveSlippageBps"
+  >
+> {
   const { value } = await connection.simulateTransaction(transaction, {
     sigVerify: false,
     replaceRecentBlockhash: true,
@@ -564,25 +572,28 @@ async function resolvePumpFunSigner(context: WalletRouterContext): Promise<{
 }
 
 /**
- * Public-key-only resolution for `simulate` (GH #16613): PumpPortal only
- * needs `publicKey` to build the trade-local transaction, so this never
- * requires private key material and never touches a `WalletBackend` signer.
+ * Public-key-only resolution for `simulate` (GH #16613): building an
+ * unsigned transaction needs only `publicKey`, so this never requires
+ * private key material and never touches a `WalletBackend` signer.
  * `getAddresses().solana` (unlike `getSolanaSigner()`) is populated for
  * backends that can hold a Solana address without being able to sign for it
  * yet (e.g. Steward today), so simulate can work even where execute cannot.
+ * Unlike the execute paths' `getWalletKey`, a missing wallet is a typed
+ * failure here — a read-only simulation must never generate and persist a
+ * keypair as a side effect of a lookup (#19243 review, P2).
  */
-async function resolvePumpFunPublicKey(
-  context: WalletRouterContext,
-): Promise<PublicKey> {
+function resolveSimulationPublicKey(context: WalletRouterContext): PublicKey {
   const backendPublicKey = context.walletBackend?.getAddresses().solana;
   if (backendPublicKey) {
     return backendPublicKey;
   }
-  const { publicKey } = await getWalletKey(context.runtime, false);
-  if (!publicKey) {
-    throw new Error("Solana public key is not available.");
+  const existing = getExistingSolanaPublicKey(context.runtime);
+  if (!existing) {
+    throw new Error(
+      "No Solana wallet key is configured; simulation requires an existing public key and will not create one.",
+    );
   }
-  return publicKey;
+  return existing;
 }
 
 function validatePumpFunBuyParams(params: WalletRouterParams): {
@@ -739,7 +750,7 @@ export async function simulatePumpFunBuy(
   context: WalletRouterContext,
 ): Promise<WalletRouterExecution> {
   const { mint, amountSol } = validatePumpFunBuyParams(params);
-  const publicKey = await resolvePumpFunPublicKey(context);
+  const publicKey = resolveSimulationPublicKey(context);
   const settings = resolvePumpFunTradeLocalSettings(context.runtime, params);
 
   const transaction = await fetchPumpFunTransaction(
@@ -767,6 +778,11 @@ export async function simulatePumpFunBuy(
     toToken: mint,
     simulation: {
       ...simulation,
+      // pump.fun's bonding curve is a single fixed venue — no route legs.
+      route: [],
+      requestedSlippageBps: params.slippageBps ?? PUMPFUN_DEFAULT_SLIPPAGE_BPS,
+      // trade-local applies exactly the slippage we send it.
+      effectiveSlippageBps: params.slippageBps ?? PUMPFUN_DEFAULT_SLIPPAGE_BPS,
       summary: {
         mint,
         solAmount: amountSol,
@@ -892,6 +908,8 @@ interface JupiterSwapBuild {
   readonly transaction: VersionedTransaction;
   readonly inputMint: string;
   readonly outputMint: string;
+  readonly route: WalletRouterSimulation["route"];
+  readonly effectiveSlippageBps: number | null;
   readonly quoteSummary: Readonly<Record<string, string | number | null>>;
 }
 
@@ -905,6 +923,7 @@ async function fetchJupiterSwapTransaction(
   params: WalletRouterParams,
   context: WalletRouterContext,
   connection: Connection,
+  userPublicKey: PublicKey,
 ): Promise<JupiterSwapBuild> {
   const inputMint = resolveSolanaMint(params.fromToken);
   const outputMint = resolveSolanaMint(params.toToken);
@@ -928,25 +947,30 @@ async function fetchJupiterSwapTransaction(
 
   const jupiterApiBaseUrl = resolveJupiterApiBaseUrl(context.runtime);
   const fetchFn = context.runtime.fetch || globalThis.fetch;
-  const quoteData = await fetchJupiterJson(
+  const quoteData = (await fetchJupiterJson(
     fetchFn,
     `${jupiterApiBaseUrl}/quote?${quoteParams.toString()}`,
     "quote",
-  );
+  )) as Record<string, unknown> & {
+    inAmount?: string;
+    outAmount?: string;
+    priceImpactPct?: string;
+    slippageBps?: number;
+    routePlan?: readonly {
+      readonly swapInfo?: {
+        readonly label?: string;
+        readonly inputMint?: string;
+        readonly outputMint?: string;
+      };
+      readonly percent?: number;
+    }[];
+  };
   if (typeof quoteData.error === "string") {
     throw new ElizaError(`Jupiter rejected the quote: ${quoteData.error}`, {
       code: "JUPITER_QUOTE_REJECTED",
       context: { error: quoteData.error },
       severity: "fatal",
     });
-  }
-
-  const { publicKey: walletPublicKey } = await getWalletKey(
-    context.runtime,
-    false,
-  );
-  if (!walletPublicKey) {
-    throw new Error("Solana public key is not available.");
   }
 
   const swapData = await fetchJupiterJson(
@@ -958,7 +982,7 @@ async function fetchJupiterSwapTransaction(
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         quoteResponse: quoteData,
-        userPublicKey: walletPublicKey.toBase58(),
+        userPublicKey: userPublicKey.toBase58(),
         dynamicComputeUnitLimit: true,
         dynamicSlippage: params.slippageBps === undefined,
         priorityLevelWithMaxLamports: {
@@ -986,6 +1010,14 @@ async function fetchJupiterSwapTransaction(
     transaction,
     inputMint,
     outputMint,
+    route: (quoteData.routePlan ?? []).map((leg) => ({
+      label: leg.swapInfo?.label ?? null,
+      inputMint: leg.swapInfo?.inputMint ?? inputMint,
+      outputMint: leg.swapInfo?.outputMint ?? outputMint,
+      percent: typeof leg.percent === "number" ? leg.percent : null,
+    })),
+    effectiveSlippageBps:
+      typeof quoteData.slippageBps === "number" ? quoteData.slippageBps : null,
     quoteSummary: {
       inToken: inputMint,
       outToken: outputMint,
@@ -1008,8 +1040,22 @@ async function executeSolanaSwap(
   context: WalletRouterContext,
 ): Promise<WalletRouterExecution> {
   const connection = getSolanaConnection(context.runtime);
+  // Execute keeps getWalletKey's auto-provisioning lookup (pre-existing
+  // behavior); only the read-only simulate path forbids key creation.
+  const { publicKey: walletPublicKey } = await getWalletKey(
+    context.runtime,
+    false,
+  );
+  if (!walletPublicKey) {
+    throw new Error("Solana public key is not available.");
+  }
   const { transaction, inputMint, outputMint } =
-    await fetchJupiterSwapTransaction(params, context, connection);
+    await fetchJupiterSwapTransaction(
+      params,
+      context,
+      connection,
+      walletPublicKey,
+    );
 
   const { keypair } = await getWalletKey(context.runtime, true);
   if (!keypair) {
@@ -1066,8 +1112,20 @@ export async function simulateSolanaSwap(
   context: WalletRouterContext,
 ): Promise<WalletRouterExecution> {
   const connection = getSolanaConnection(context.runtime);
-  const { transaction, inputMint, outputMint, quoteSummary } =
-    await fetchJupiterSwapTransaction(params, context, connection);
+  const userPublicKey = resolveSimulationPublicKey(context);
+  const {
+    transaction,
+    inputMint,
+    outputMint,
+    route,
+    effectiveSlippageBps,
+    quoteSummary,
+  } = await fetchJupiterSwapTransaction(
+    params,
+    context,
+    connection,
+    userPublicKey,
+  );
 
   const simulation = await simulateVersionedTransaction(
     connection,
@@ -1086,6 +1144,9 @@ export async function simulateSolanaSwap(
     toToken: outputMint,
     simulation: {
       ...simulation,
+      route,
+      requestedSlippageBps: params.slippageBps ?? null,
+      effectiveSlippageBps,
       summary: quoteSummary,
     },
   };
