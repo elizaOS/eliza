@@ -266,6 +266,35 @@ describe("PaymentRequestsRepository real PGlite wiring", () => {
     ]);
   });
 
+  test("settle and expiry commit one matching terminal state and event", async () => {
+    const deadline = new Date("2030-01-01T00:00:00Z");
+    const created = await createRequest(await seedOrg(), deadline);
+
+    const results = await Promise.all([
+      repo.settlePaymentRequest(created.id, deadline, "pi-expiry-race", { event: "synthetic" }),
+      repo.expirePastPaymentRequest(created.id, deadline),
+    ]);
+    expect(results.filter(Boolean)).toHaveLength(1);
+
+    const row = await repo.getPaymentRequest(created.id);
+    const events = await transitionEventsFor(created.id);
+    if (row?.status === "settled") {
+      expect(row).toMatchObject({
+        settlementTxRef: "pi-expiry-race",
+        settlementProof: { event: "synthetic" },
+      });
+      expect(events.map((event) => event.event_name)).toEqual(["payment.settled"]);
+    } else {
+      expect(row).toMatchObject({
+        status: "expired",
+        settledAt: null,
+        settlementTxRef: null,
+        settlementProof: null,
+      });
+      expect(events.map((event) => event.event_name)).toEqual(["payment.expired"]);
+    }
+  });
+
   test("settle and fail cannot commit mixed terminal state", async () => {
     const created = await createRequest(await seedOrg(), new Date("2030-01-01T00:00:00Z"));
     const recordedAt = new Date("2029-12-31T23:59:59Z");
