@@ -214,7 +214,7 @@ describe("selectOrProvisionCloudAgent — never duplicate on a failed lookup", (
 
     expect(result.created).toBe(false);
     expect(result.agentId).toBe("agent-no-urls");
-    expect(result.apiBase).toBe("https://agent-no-urls.elizacloud.ai");
+    expect(result.apiBase).toBe("https://agent-no-urls.cloud.eliza.app");
     expect(result.apiBase).not.toContain("/api/v1/eliza/agents/");
     expect(createCloudCompatAgent).not.toHaveBeenCalled();
   });
@@ -242,7 +242,9 @@ describe("selectOrProvisionCloudAgent — never duplicate on a failed lookup", (
     });
 
     expect(result.created).toBe(false);
-    expect(result.apiBase).toBe("https://agent-staging.staging.elizacloud.ai");
+    expect(result.apiBase).toBe(
+      "https://agent-staging.cloud-staging.eliza.app",
+    );
     expect(createCloudCompatAgent).not.toHaveBeenCalled();
   });
 
@@ -272,7 +274,7 @@ describe("selectOrProvisionCloudAgent — never duplicate on a failed lookup", (
     expect(result.created).toBe(false);
     expect(result.executionTier).toBe("shared");
     expect(result.apiBase).toBe(
-      "https://api-staging.elizacloud.ai/api/v1/eliza/agents/agent-shared",
+      "https://api-staging.eliza.app/api/v1/eliza/agents/agent-shared",
     );
     expect(createCloudCompatAgent).not.toHaveBeenCalled();
   });

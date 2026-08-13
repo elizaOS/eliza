@@ -23,7 +23,7 @@ import { ElizaClient } from "./client-base";
 // Side-effect import: patches provisionCloudSandbox onto the prototype.
 import "./client-cloud";
 
-const CLOUD_API_BASE = "https://api.elizacloud.ai";
+const CLOUD_API_BASE = "https://api.eliza.app";
 
 function jsonResponse(status: number, body: unknown) {
   return {
@@ -177,7 +177,7 @@ describe("provisionCloudSandbox", () => {
     });
     expect(result.executionTier).toBe("shared");
     expect(result.webUiUrl).toBe(
-      "https://api.elizacloud.ai/api/v1/eliza/agents/agent-1",
+      "https://api.eliza.app/api/v1/eliza/agents/agent-1",
     );
   });
 });

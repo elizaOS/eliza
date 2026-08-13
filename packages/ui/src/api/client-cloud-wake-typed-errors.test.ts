@@ -14,6 +14,7 @@ vi.mock("@capacitor/core", () => ({
   CapacitorHttp: { get: vi.fn(), post: vi.fn(), request: vi.fn() },
 }));
 
+import { CloudAgentWakeError as PublicCloudAgentWakeError } from "./client";
 import { ElizaClient } from "./client-base";
 import {
   CloudAgentWakeError,
@@ -21,6 +22,7 @@ import {
   waitForCloudProvisionJob,
 } from "./client-cloud";
 import type { CloudCompatAgent } from "./client-types-cloud";
+import { isCloudAgentGoneError } from "./client-types-core";
 
 function makeAgent(
   overrides: Partial<CloudCompatAgent> = {},
@@ -67,6 +69,31 @@ function fakeClient(mocks: Record<string, unknown>): ElizaClient {
 const FAST = { pollIntervalMs: 1, timeoutMs: 60 };
 
 describe("waitForCloudAgentRunning — typed non-transient failures", () => {
+  it("exports the typed error through the public API barrel", () => {
+    expect(PublicCloudAgentWakeError).toBe(CloudAgentWakeError);
+  });
+
+  it("surfaces a resolved resume rejection instead of entering the status poll", async () => {
+    const client = fakeClient({
+      resumeCloudCompatAgent: vi.fn(async () => ({
+        success: false,
+        error: "Eliza Cloud login session is missing. Sign in again.",
+        data: { status: "auth-missing" },
+      })),
+      getCloudCompatAgent: vi.fn(),
+    });
+    const error = await waitForCloudAgentRunning(client, {
+      agentId: "agent-1",
+      ...FAST,
+    }).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(CloudAgentWakeError);
+    expect((error as CloudAgentWakeError).phase).toBe("resume");
+    expect((error as CloudAgentWakeError).code).toBe(
+      "CLOUD_AGENT_RESUME_REJECTED",
+    );
+    expect(client.getCloudCompatAgent).not.toHaveBeenCalled();
+  });
+
   it("surfaces a 402 resume rejection immediately with status and Retry-After", async () => {
     const client = fakeClient({
       resumeCloudCompatAgent: vi
@@ -107,6 +134,62 @@ describe("waitForCloudAgentRunning — typed non-transient failures", () => {
     expect(client.getCloudCompatAgent).toHaveBeenCalledTimes(1);
   });
 
+  it("surfaces a resolved detail-read rejection instead of timing out", async () => {
+    const client = fakeClient({
+      resumeCloudCompatAgent: vi.fn(async () => ({ success: true })),
+      getCloudCompatAgent: vi.fn(async () => ({
+        success: false,
+        error: "Cloud session expired",
+        data: makeAgent({ status: "auth-missing" }),
+      })),
+    });
+    const error = await waitForCloudAgentRunning(client, {
+      agentId: "agent-1",
+      ...FAST,
+    }).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(CloudAgentWakeError);
+    expect((error as CloudAgentWakeError).phase).toBe("status-poll");
+    expect((error as CloudAgentWakeError).message).toBe(
+      "Cloud session expired",
+    );
+    expect(client.getCloudCompatAgent).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not retry an unclassified client HTTP rejection", async () => {
+    const client = fakeClient({
+      resumeCloudCompatAgent: vi
+        .fn()
+        .mockRejectedValue(httpError(400, { code: "invalid_request" })),
+      getCloudCompatAgent: vi.fn(),
+    });
+    const error = await waitForCloudAgentRunning(client, {
+      agentId: "agent-1",
+      ...FAST,
+    }).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(CloudAgentWakeError);
+    expect((error as CloudAgentWakeError).status).toBe(400);
+    expect((error as CloudAgentWakeError).code).toBe("invalid_request");
+    expect(client.getCloudCompatAgent).not.toHaveBeenCalled();
+  });
+
+  it("preserves agent_not_found through the typed wrapper for stale-binding recovery", async () => {
+    const client = fakeClient({
+      resumeCloudCompatAgent: vi.fn(async () => ({ success: true })),
+      getCloudCompatAgent: vi.fn().mockRejectedValue(
+        httpError(404, {
+          data: { code: "agent_not_found", error: "Agent not found" },
+        }),
+      ),
+    });
+    const error = await waitForCloudAgentRunning(client, {
+      agentId: "agent-1",
+      ...FAST,
+    }).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(CloudAgentWakeError);
+    expect((error as CloudAgentWakeError).code).toBe("agent_not_found");
+    expect(isCloudAgentGoneError(error)).toBe(true);
+  });
+
   it("reads Retry-After out of a direct-cloud 503 error body", async () => {
     const client = fakeClient({
       resumeCloudCompatAgent: vi.fn(async () => ({ success: true })),
@@ -121,6 +204,43 @@ describe("waitForCloudAgentRunning — typed non-transient failures", () => {
     expect(error).toBeInstanceOf(CloudAgentWakeError);
     expect((error as CloudAgentWakeError).status).toBe(503);
     expect((error as CloudAgentWakeError).retryAfter).toBe(45);
+  });
+
+  it("preserves a direct-cloud Retry-After header and structured code", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          success: false,
+          code: "provisioning_capacity_unavailable",
+          error: "No provisioning worker is currently available",
+        }),
+        {
+          status: 503,
+          headers: {
+            "Content-Type": "application/json",
+            "Retry-After": "17",
+          },
+        },
+      ),
+    );
+    try {
+      const client = new ElizaClient("https://api.eliza.app", "test-token");
+      const error = await waitForCloudAgentRunning(client, {
+        agentId: "agent-1",
+        ...FAST,
+      }).catch((e: unknown) => e);
+      expect(error).toBeInstanceOf(CloudAgentWakeError);
+      const wake = error as CloudAgentWakeError;
+      expect(wake.status).toBe(503);
+      expect(wake.retryAfter).toBe(17);
+      expect(wake.code).toBe("provisioning_capacity_unavailable");
+      expect(fetchSpy).toHaveBeenCalledTimes(1);
+      expect(String(fetchSpy.mock.calls[0]?.[0])).toContain(
+        "/api/v1/eliza/agents/agent-1/resume",
+      );
+    } finally {
+      fetchSpy.mockRestore();
+    }
   });
 
   it("keeps polling through transient failures (network / other 5xx) and resolves", async () => {
@@ -163,6 +283,26 @@ describe("waitForCloudAgentRunning — typed non-transient failures", () => {
 });
 
 describe("waitForCloudProvisionJob — canonical job followed to terminal", () => {
+  it("surfaces a resolved job-read rejection instead of treating it as progress", async () => {
+    const client = fakeClient({
+      getCloudCompatJobStatus: vi.fn(async () => ({
+        success: false,
+        error: "Eliza Cloud login session is missing. Sign in again.",
+        data: { status: "failed", state: "failed" },
+      })),
+    });
+    const error = await waitForCloudProvisionJob(client, {
+      agentId: "agent-1",
+      jobId: "job-1",
+      ...FAST,
+    }).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(CloudAgentWakeError);
+    expect((error as CloudAgentWakeError).code).toBe(
+      "CLOUD_PROVISION_JOB_STATUS_REJECTED",
+    );
+    expect(client.getCloudCompatJobStatus).toHaveBeenCalledTimes(1);
+  });
+
   it("resolves when the job completes", async () => {
     const client = fakeClient({
       getCloudCompatJobStatus: vi
