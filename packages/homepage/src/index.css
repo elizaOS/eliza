@@ -1497,7 +1497,7 @@ body {
   align-items: center;
   justify-content: space-between;
   padding: 0.85rem 1.6rem 0.35rem;
-  background: #f7f7f9;
+  background: #ffffff;
 }
 
 .landing-iphone-time {
@@ -1536,47 +1536,15 @@ body {
 .landing-phone-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 0.55rem 0.9rem 0.7rem;
-  border-bottom: 1px solid rgb(0 0 0 / 8%);
-  background: #f7f7f9;
-}
-
-.landing-phone-back {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.1rem;
-  color: #0a84ff;
-}
-
-.landing-phone-back svg {
-  width: 1.35rem;
-  height: 1.35rem;
-}
-
-.landing-phone-unread {
-  padding: 0.1rem 0.55rem;
-  border-radius: 999px;
-  background: #0b0b0f;
-  color: #ffffff;
-  font-size: 0.72rem;
-  font-weight: 600;
+  justify-content: center;
+  padding: 0.35rem 0.9rem 0.6rem;
+  background: #ffffff;
 }
 
 .landing-phone-contact {
   display: grid;
   justify-items: center;
   gap: 0.2rem;
-}
-
-.landing-phone-video {
-  display: inline-flex;
-  color: #0a84ff;
-}
-
-.landing-phone-video svg {
-  width: 1.6rem;
-  height: 1.6rem;
 }
 
 .landing-phone-avatar {
@@ -1612,25 +1580,6 @@ body {
   justify-items: center;
   gap: 0.18rem;
   padding: 0.4rem 0 0.6rem;
-}
-
-.landing-thread-service {
-  font-size: 0.74rem;
-  font-weight: 600;
-  color: #8e8e93;
-}
-
-.landing-thread-encrypted {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.22rem;
-  font-size: 0.72rem;
-  color: #8e8e93;
-}
-
-.landing-thread-encrypted svg {
-  width: 0.72rem;
-  height: 0.72rem;
 }
 
 .landing-thread-timestamp {

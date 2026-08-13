@@ -300,7 +300,7 @@ function PhoneMockup() {
     >
       <div className="landing-iphone-screen">
         <div className="landing-iphone-statusbar">
-          <span className="landing-iphone-time">9:41</span>
+          <span className="landing-iphone-time">4:15</span>
           <span className="landing-iphone-island" />
           <span className="landing-iphone-signal">
             <svg viewBox="0 0 46 12" fill="currentColor" aria-hidden="true">
@@ -323,20 +323,6 @@ function PhoneMockup() {
           </span>
         </div>
         <div className="landing-phone-header">
-          <span className="landing-phone-back">
-            <svg
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2.6"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              aria-hidden="true"
-            >
-              <path d="M15 18l-6-6 6-6" />
-            </svg>
-            <span className="landing-phone-unread">12</span>
-          </span>
           <span className="landing-phone-contact">
             <img
               className="landing-phone-avatar"
@@ -360,30 +346,9 @@ function PhoneMockup() {
               </svg>
             </span>
           </span>
-          <span className="landing-phone-video">
-            <svg
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.9"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              aria-hidden="true"
-            >
-              <rect x="2.5" y="6" width="13" height="12" rx="3" />
-              <path d="M15.5 10.5l6-3.5v10l-6-3.5" />
-            </svg>
-          </span>
         </div>
         <div className="landing-phone-thread" ref={threadRef}>
           <div className="landing-thread-preamble">
-            <span className="landing-thread-service">iMessage</span>
-            <span className="landing-thread-encrypted">
-              <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-                <path d="M12 2a5 5 0 0 0-5 5v3H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8a2 2 0 0 0-2-2h-1V7a5 5 0 0 0-5-5Zm-3 8V7a3 3 0 0 1 6 0v3H9Z" />
-              </svg>
-              Encrypted
-            </span>
             <span className="landing-thread-timestamp">Today 4:15 PM</span>
           </div>
           {items.map((item) =>
