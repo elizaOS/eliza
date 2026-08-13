@@ -247,10 +247,8 @@
   const boids = [];
   let targets = [];
   let linkD2 = 88 * 88;
-  const FADE_MS = 2600, HOLD_MS = 6000, DRIFT_MS = 10000, PULL_MS = 9000;
-  const CYCLE_MS = HOLD_MS + DRIFT_MS + PULL_MS;
+  const FADE_MS = 2600, SETTLE_MS = 7000, CYCLE_MS = 26000;
   let born = 0;                       // timestamp of last formation
-  let wasForming = true;
   const pointer = { x: -1e4, y: -1e4, vx: 0, vy: 0, down: false, t: 0 };
 
   function resize() {
@@ -267,7 +265,7 @@
   img.src = "assets/logo_white_nobg.svg";
   img.onload = () => { tryInit(); };
   function sampleFace() {
-    const scale = Math.min(W, H) * 0.62;
+    const scale = Math.min(W, H) * 1.2;
     const ow = Math.round(scale * (img.width / img.height)), oh = Math.round(scale);
     const off = document.createElement("canvas");
     off.width = ow; off.height = oh;
@@ -307,11 +305,26 @@
   function tryInit() {
     if (!img.complete || !img.naturalWidth || W === 0) return;
     targets = sampleFace();
+    let minx = 1e9, miny = 1e9, maxx = -1e9, maxy = -1e9;
+    for (const t of targets) {
+      if (t.x < minx) minx = t.x; if (t.x > maxx) maxx = t.x;
+      if (t.y < miny) miny = t.y; if (t.y > maxy) maxy = t.y;
+    }
+    const cx0 = (minx + maxx) / 2, cy0 = (miny + maxy) / 2;
     boids.length = 0;
     for (const t of targets) {
+      // group = 3x3 cell over the face; the cell's outward bearing is its drift direction
+      const gx = Math.min(2, ((t.x - minx) / (maxx - minx + 1) * 3) | 0);
+      const gy = Math.min(2, ((t.y - miny) / (maxy - miny + 1) * 3) | 0);
+      const gcx = minx + (gx + 0.5) * (maxx - minx) / 3;
+      const gcy = miny + (gy + 0.5) * (maxy - miny) / 3;
+      let dx = gcx - cx0, dy = gcy - cy0;
+      const dl = Math.hypot(dx, dy) || 1;
+      dx /= dl; dy /= dl;
       const a = Math.random() * Math.PI * 2;
       boids.push({ x: Math.random() * W, y: Math.random() * H,
-        vx: Math.cos(a) * 0.3, vy: Math.sin(a) * 0.3, tx: t.x, ty: t.y });
+        vx: Math.cos(a) * 0.3, vy: Math.sin(a) * 0.3, tx: t.x, ty: t.y,
+        dx, dy, amp: 0.75 + Math.random() * 0.5, jp: Math.random() * Math.PI * 2 });
     }
     born = performance.now();
     if (reduced) draw(born + FADE_MS);
@@ -342,44 +355,19 @@
 
   function step(now) {
     if (!boids.length) { tryInit(); return; }
-    const phase = (now - born) % CYCLE_MS;
-    // converge into the face, hold it, then let groups drift apart — and repeat
-    const forming = window.__frozen === true || phase < PULL_MS + HOLD_MS;
-    if (wasForming && !forming) {
-      // release: shove chunks outward from the face centroid so pieces break off
-      let mx = 0, my = 0;
-      for (const b of boids) { mx += b.x; my += b.y; }
-      mx /= boids.length; my /= boids.length;
-      for (const b of boids) {
-        const dx = b.x - mx, dy = b.y - my, d = Math.hypot(dx, dy) || 1;
-        const kick = 0.5 + Math.random() * 0.4;
-        b.vx += dx / d * kick; b.vy += dy / d * kick;
-      }
-    }
-    wasForming = forming;
+    // breathing offset: 0 -> apart -> 0, smooth; groups slide out along their own bearing
+    const t = (Math.max(0, now - born - SETTLE_MS) % CYCLE_MS) / CYCLE_MS;
+    const spread = window.__frozen === true ? 0
+      : (1 - Math.cos(t * Math.PI * 2)) / 2 * Math.min(W, H) * 0.34;
 
     for (const b of boids) {
-      if (forming) {
-        b.vx += (b.tx - b.x) * 0.0022;
-        b.vy += (b.ty - b.y) * 0.0022;
-        b.vx *= 0.94; b.vy *= 0.94;
-      } else {
-        // free flight: local flocking in loose pieces
-        let ax = 0, ay = 0, cx = 0, cy = 0, n = 0;
-        for (const o of boids) {
-          if (o === b) continue;
-          const dx = o.x - b.x, dy = o.y - b.y, d2 = dx * dx + dy * dy;
-          if (d2 < 110 * 110) { cx += o.x; cy += o.y; ax += o.vx; ay += o.vy; n++; }
-          if (d2 < 46 * 46 && d2 > 0) { b.vx -= dx / d2 * 3.2; b.vy -= dy / d2 * 3.2; }
-        }
-        if (n) {
-          b.vx += ((cx / n - b.x) * 0.0004) + ((ax / n - b.vx) * 0.02);
-          b.vy += ((cy / n - b.y) * 0.0004) + ((ay / n - b.vy) * 0.02);
-        }
-        const sp = Math.hypot(b.vx, b.vy) || 1;
-        b.vx = b.vx / sp * Math.min(Math.max(sp, 0.1), 0.4);
-        b.vy = b.vy / sp * Math.min(Math.max(sp, 0.1), 0.4);
-      }
+      const jx = Math.sin(now * 0.00055 + b.jp) * 9;
+      const jy = Math.cos(now * 0.00042 + b.jp * 1.7) * 9;
+      const gx = b.tx + b.dx * spread * b.amp + jx;
+      const gy = b.ty + b.dy * spread * b.amp + jy;
+      b.vx += (gx - b.x) * 0.0022;
+      b.vy += (gy - b.y) * 0.0022;
+      b.vx *= 0.94; b.vy *= 0.94;
 
       // pointer force: gentle repel on hover, strong shove while dragging
       const px = b.x - pointer.x, py = b.y - pointer.y;
@@ -393,10 +381,6 @@
       }
 
       b.x += b.vx; b.y += b.vy;
-      if (!forming) {
-        if (b.x < -12) b.x = W + 12; if (b.x > W + 12) b.x = -12;
-        if (b.y < -12) b.y = H + 12; if (b.y > H + 12) b.y = -12;
-      }
     }
   }
 
