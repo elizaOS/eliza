@@ -87,11 +87,15 @@ export function validateModelConfig(runtime?: IAgentRuntime): ModelConfig {
 			(resolvedEmbeddingProvider === "local"
 				? "local-embedding"
 				: "text-embedding-3-small");
+		const providerEmbeddingDimension =
+			resolvedEmbeddingProvider === "local"
+				? localEmbeddingDimensions
+				: resolvedEmbeddingProvider === "openai" || assumePluginOpenAI
+					? openaiEmbeddingDimensions
+					: undefined;
 		const embeddingDimension =
 			getNumericSetting("EMBEDDING_DIMENSION") ??
-			(resolvedEmbeddingProvider === "local"
-				? localEmbeddingDimensions
-				: openaiEmbeddingDimensions) ??
+			providerEmbeddingDimension ??
 			(resolvedEmbeddingProvider === "local" ? "384" : "1536");
 
 		const rawOpenaiApiKey = getSetting("OPENAI_API_KEY");

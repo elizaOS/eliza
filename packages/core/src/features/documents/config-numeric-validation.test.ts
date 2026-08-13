@@ -1,8 +1,10 @@
 /**
  * Exercises strict document numeric-setting schemas and the real
- * validateModelConfig boundary with deterministic environment inputs.
+ * validateModelConfig boundary with deterministic environment and runtime-
+ * setting inputs.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { IAgentRuntime } from "../../types";
 import { validateModelConfig } from "./config.ts";
 import { ModelConfigSchema } from "./types.ts";
 
@@ -37,6 +39,14 @@ const malformedValues = [
 	-1,
 	-0,
 ];
+
+function runtimeWithSettings(
+	settings: Record<string, string | undefined>,
+): IAgentRuntime {
+	return {
+		getSetting: (key: string) => settings[key],
+	} as unknown as IAgentRuntime;
+}
 
 describe("ModelConfigSchema numeric settings", () => {
 	it.each(positiveIntegerFields)(
@@ -162,6 +172,42 @@ describe("validateModelConfig numeric boundary", () => {
 		expect(() => validateModelConfig()).toThrow(
 			/Model configuration validation failed: EMBEDDING_DIMENSION:/,
 		);
+	});
+
+	it("rejects a blank OpenAI alias when OpenAI is inferred", () => {
+		vi.stubEnv("EMBEDDING_PROVIDER", undefined);
+		vi.stubEnv("OPENAI_EMBEDDING_DIMENSIONS", "");
+
+		expect(() => validateModelConfig()).toThrow(
+			/Model configuration validation failed: EMBEDDING_DIMENSION:/,
+		);
+	});
+
+	it("ignores inactive local and OpenAI aliases for Google embeddings", () => {
+		vi.stubEnv("EMBEDDING_PROVIDER", "google");
+		vi.stubEnv("GOOGLE_API_KEY", "test-google-key");
+		vi.stubEnv("LOCAL_EMBEDDING_DIMENSIONS", "   ");
+		vi.stubEnv("OPENAI_EMBEDDING_DIMENSIONS", "");
+
+		expect(validateModelConfig()).toMatchObject({
+			EMBEDDING_PROVIDER: "google",
+			EMBEDDING_DIMENSION: 1536,
+		});
+	});
+
+	it("lets a Google runtime ignore its inactive blank OpenAI alias", () => {
+		vi.stubEnv("OPENAI_EMBEDDING_DIMENSIONS", "4096");
+		vi.stubEnv("EMBEDDING_DIMENSION", undefined);
+		const runtime = runtimeWithSettings({
+			EMBEDDING_PROVIDER: "google",
+			GOOGLE_API_KEY: "test-google-key",
+			OPENAI_EMBEDDING_DIMENSIONS: "",
+		});
+
+		expect(validateModelConfig(runtime)).toMatchObject({
+			EMBEDDING_PROVIDER: "google",
+			EMBEDDING_DIMENSION: 1536,
+		});
 	});
 
 	it("preserves the real configuration-boundary defaults", () => {
