@@ -597,7 +597,12 @@ export async function refreshCloudStewardSession(opts?: {
       }),
       { method: "POST", url: endpoint },
     );
-    if (response.status < 200 || response.status >= 300) return null;
+    if (response.status < 200 || response.status >= 300) {
+      if (response.status === 401 || response.status === 403) {
+        clearStoredStewardTokenIfCurrent(token);
+      }
+      return null;
+    }
     return parseDirectCloudJsonSafe(response.data) as {
       token?: string;
       expiresAt?: number;
@@ -610,7 +615,13 @@ export async function refreshCloudStewardSession(opts?: {
     method: "POST",
     credentials: "include",
   });
-  if (!response.ok) return null;
+  if (!response.ok) {
+    if (response.status === 401 || response.status === 403) {
+      const rejected = readStoredStewardToken()?.trim();
+      if (rejected) clearStoredStewardTokenIfCurrent(rejected);
+    }
+    return null;
+  }
   // error-policy:J3 an unparseable refresh body reads as "no refreshed
   // session" (null) — callers keep/drop the stored token by its own expiry.
   return (await response.json().catch(() => null)) as {

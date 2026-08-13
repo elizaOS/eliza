@@ -1527,6 +1527,9 @@ export function useCloudState({
       // error-policy:J4 pre-emptive token refresh; a failed refresh keeps the
       // still-valid stored token until it actually expires (the next authed
       // call then surfaces the re-auth path). No token rotation on failure.
+      // A terminal 401/403 rejection (invalid/expired refresh) clears the
+      // rejected Cloud session state inside refreshCloudStewardSession so a
+      // stale token never loops against a dead agent target.
       const result = await refreshCloudStewardSession({
         endpoint: resolveStewardRefreshEndpoint(),
       }).catch((err: unknown) => {
@@ -1536,6 +1539,10 @@ export function useCloudState({
       if (disposed) return;
       if (result?.token) {
         writeStoredStewardToken(result.token);
+      } else if (!readStoredStewardToken()?.trim()) {
+        // Terminal rejection drained the stored token: surface auth-rejected
+        // immediately so the UI prompts re-auth instead of 401-looping.
+        setElizaCloudAuthRejected(true);
       }
     };
 
