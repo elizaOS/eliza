@@ -13,6 +13,15 @@ const RETRY_INCREMENT_MS = 1_000;
 const IDENTITY_CACHE_TTL_SECONDS = 300;
 const AGENT_ID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const DNS_HOSTNAME_PATTERN =
+  /^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)*[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/i;
+
+interface CanonicalAgentFallbackTarget {
+  baseUrl: string;
+  forwardedHost?: string;
+}
+
+type CanonicalAgentFallbackEnv = Record<string, string | undefined>;
 
 interface ServerRoute {
   serverName: string;
@@ -33,10 +42,36 @@ export interface ResolvedIdentity {
   agentId: string | null;
 }
 
-/** Returns the fixed-domain public route for a validated cloud agent id. */
-export function getCanonicalAgentFallbackBase(agentId: string): string | null {
+/** Resolves a validated public or router-origin fallback for a cloud agent. */
+export function getCanonicalAgentFallbackTarget(
+  agentId: string,
+  env: CanonicalAgentFallbackEnv = process.env,
+): CanonicalAgentFallbackTarget | null {
   if (!AGENT_ID_PATTERN.test(agentId)) return null;
-  return `https://${agentId.toLowerCase()}.elizacloud.ai/api`;
+  const normalizedAgentId = agentId.toLowerCase();
+  const routerOriginHost = env.AGENT_ROUTER_ORIGIN_HOST?.trim();
+  if (!routerOriginHost) {
+    return {
+      baseUrl: `https://${normalizedAgentId}.elizacloud.ai/api`,
+    };
+  }
+  const agentBaseDomain =
+    env.ELIZA_CLOUD_AGENT_BASE_DOMAIN?.trim() || "cloud.eliza.app";
+  if (
+    !DNS_HOSTNAME_PATTERN.test(routerOriginHost) ||
+    !DNS_HOSTNAME_PATTERN.test(agentBaseDomain)
+  ) {
+    return null;
+  }
+  return {
+    baseUrl: `https://${routerOriginHost}/api`,
+    forwardedHost: `${normalizedAgentId}.${agentBaseDomain.toLowerCase()}`,
+  };
+}
+
+/** Returns the selected fallback base URL for compatibility callers. */
+export function getCanonicalAgentFallbackBase(agentId: string): string | null {
+  return getCanonicalAgentFallbackTarget(agentId)?.baseUrl ?? null;
 }
 
 export async function resolveIdentity(
@@ -351,7 +386,7 @@ export async function forwardToServer(
     userId,
     `/agents/${agentId}/message`,
     JSON.stringify(body),
-    getCanonicalAgentFallbackBase(agentId),
+    getCanonicalAgentFallbackTarget(agentId),
   );
   return parseAgentResponse(raw, agentId);
 }
@@ -410,7 +445,7 @@ export async function forwardEventToServer(
     userId,
     `/agents/${agentId}/event`,
     JSON.stringify({ userId, type, payload }),
-    getCanonicalAgentFallbackBase(agentId),
+    getCanonicalAgentFallbackTarget(agentId),
   );
 }
 
@@ -432,19 +467,25 @@ const RUNTIME_AGENT_ID_PATTERN =
  * canonical host, and only when exactly one running runtime is present.
  */
 async function discoverCanonicalRuntimeAgentId(
-  canonicalBaseUrl: string,
+  canonicalTarget: CanonicalAgentFallbackTarget,
 ): Promise<string | null> {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), FORWARD_TIMEOUT_MS);
   const headers: Record<string, string> = {};
   const sharedSecret = process.env.AGENT_SERVER_SHARED_SECRET;
   if (sharedSecret) headers["X-Server-Token"] = sharedSecret;
+  if (canonicalTarget.forwardedHost) {
+    headers["X-Forwarded-Host"] = canonicalTarget.forwardedHost;
+  }
 
   try {
-    const res = await fetch(`${canonicalBaseUrl.replace(/\/$/, "")}/agents`, {
-      headers,
-      signal: controller.signal,
-    });
+    const res = await fetch(
+      `${canonicalTarget.baseUrl.replace(/\/$/, "")}/agents`,
+      {
+        headers,
+        signal: controller.signal,
+      },
+    );
     if (!res.ok) return null;
 
     const data = (await res.json()) as {
@@ -467,24 +508,29 @@ async function discoverCanonicalRuntimeAgentId(
 }
 
 async function tryCanonicalTarget(
-  canonicalBaseUrl: string,
+  canonicalTarget: CanonicalAgentFallbackTarget,
   endpointPath: string,
   body: string,
 ): Promise<TargetResult> {
-  const direct = await tryTarget(canonicalBaseUrl, endpointPath, body);
+  const direct = await tryTarget(
+    canonicalTarget.baseUrl,
+    endpointPath,
+    body,
+    canonicalTarget.forwardedHost,
+  );
   if (direct.ok || direct.status !== 404) return direct;
 
   const match = endpointPath.match(/^\/agents\/[^/]+\/(message|event)$/);
   if (!match) return direct;
 
-  const runtimeAgentId =
-    await discoverCanonicalRuntimeAgentId(canonicalBaseUrl);
+  const runtimeAgentId = await discoverCanonicalRuntimeAgentId(canonicalTarget);
   if (!runtimeAgentId) return direct;
 
   return tryTarget(
-    canonicalBaseUrl,
+    canonicalTarget.baseUrl,
     `/agents/${encodeURIComponent(runtimeAgentId)}/${match[1]}`,
     body,
+    canonicalTarget.forwardedHost,
   );
 }
 
@@ -500,7 +546,7 @@ async function forwardWithRetry(
   hashKey: string,
   endpointPath: string,
   body: string,
-  connectionFallbackBaseUrl?: string | null,
+  connectionFallback?: CanonicalAgentFallbackTarget | null,
 ): Promise<string> {
   let lastError: Error | null = null;
   let woken = false;
@@ -534,12 +580,12 @@ async function forwardWithRetry(
     // authoritative and must not be bypassed through a second ingress.
     if (
       result.isConnectionError &&
-      connectionFallbackBaseUrl &&
+      connectionFallback &&
       targets[0].replace(/\/$/, "") !==
-        connectionFallbackBaseUrl.replace(/\/$/, "")
+        connectionFallback.baseUrl.replace(/\/$/, "")
     ) {
       const canonical = await tryCanonicalTarget(
-        connectionFallbackBaseUrl,
+        connectionFallback,
         endpointPath,
         body,
       );
@@ -574,6 +620,7 @@ async function tryTarget(
   target: string,
   endpointPath: string,
   body: string,
+  forwardedHost?: string,
 ): Promise<TargetResult> {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), FORWARD_TIMEOUT_MS);
@@ -584,6 +631,9 @@ async function tryTarget(
   const sharedSecret = process.env.AGENT_SERVER_SHARED_SECRET;
   if (sharedSecret) {
     headers["X-Server-Token"] = sharedSecret;
+  }
+  if (forwardedHost) {
+    headers["X-Forwarded-Host"] = forwardedHost;
   }
 
   try {
