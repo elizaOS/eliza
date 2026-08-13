@@ -8,5 +8,5 @@ import { appModeOriginForApexHostname } from "../../app-mode/app-mode";
  */
 export function resolveApexJoinHandoff(hostname: string): string | null {
   const appOrigin = appModeOriginForApexHostname(hostname);
-  return appOrigin ? `${appOrigin}/` : null;
+  return appOrigin ? `${appOrigin}/join` : null;
 }
