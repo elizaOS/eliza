@@ -1,14 +1,25 @@
-/**
- * Parses the optional `start_date`/`end_date` query bounds shared by the app
- * analytics routes. An unparseable value must be rejected at the request
- * boundary: an Invalid Date flows into Drizzle's timestamp serializer, whose
- * `toISOString()` throws, so a caller typo surfaces as a 500 instead of a 400.
- *
- * Returns `undefined` when the parameter is absent and `null` when it was
- * supplied but unparseable, so callers can tell "no bound" from "bad bound".
- */
-export function parseDateParam(raw: string | null): Date | undefined | null {
-  if (raw === null) return undefined;
-  const date = new Date(raw);
-  return Number.isNaN(date.getTime()) ? null : date;
+/** Validates the optional date range shared by app analytics routes. */
+export type DateRangeParams =
+  | { success: true; startDate?: Date; endDate?: Date }
+  | { success: false; error: string };
+
+export function parseDateRangeParams(searchParams: URLSearchParams): DateRangeParams {
+  const rawStart = searchParams.get("start_date");
+  const rawEnd = searchParams.get("end_date");
+  const startDate = rawStart === null ? undefined : new Date(rawStart);
+  const endDate = rawEnd === null ? undefined : new Date(rawEnd);
+
+  if (startDate && Number.isNaN(startDate.getTime())) {
+    return { success: false, error: "Invalid start_date" };
+  }
+  if (endDate && Number.isNaN(endDate.getTime())) {
+    return { success: false, error: "Invalid end_date" };
+  }
+  if (startDate && endDate && startDate > endDate) {
+    return {
+      success: false,
+      error: "start_date must not be after end_date",
+    };
+  }
+  return { success: true, startDate, endDate };
 }

@@ -1,7 +1,7 @@
-// Handles v1 cloud API v1 apps id analytics requests route traffic with route-local auth expectations.
+/** Handles app request analytics views with shared date-range validation. */
 import { Hono } from "hono";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { parseDateParam } from "@/lib/api/date-range-params";
+import { parseDateRangeParams } from "@/lib/api/date-range-params";
 import { nextStyleParams } from "@/lib/api/hono-next-style-params";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
 import { isAppKeyOutOfScope } from "@/lib/auth/app-key-scope";
@@ -39,17 +39,11 @@ async function handleGET(
     const { user, apiKey } = await requireAuthOrApiKeyWithOrg(request);
     const { id } = await params;
     const { searchParams } = new URL(request.url);
-    const startDate = parseDateParam(searchParams.get("start_date"));
-    const endDate = parseDateParam(searchParams.get("end_date"));
-    if (startDate === null || endDate === null) {
-      return Response.json(
-        {
-          success: false,
-          error: `Invalid ${startDate === null ? "start_date" : "end_date"}`,
-        },
-        { status: 400 },
-      );
+    const dateRange = parseDateRangeParams(searchParams);
+    if (!dateRange.success) {
+      return Response.json(dateRange, { status: 400 });
     }
+    const { startDate, endDate } = dateRange;
 
     const existingApp = await appsService.getById(id);
 
@@ -168,6 +162,7 @@ async function handleGET(
       }
     }
   } catch (error) {
+    // error-policy:J1 This route boundary translates failures into structured HTTP errors.
     logger.error("Failed to get app request analytics:", error);
     return Response.json(
       {

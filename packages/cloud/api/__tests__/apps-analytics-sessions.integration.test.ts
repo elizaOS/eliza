@@ -129,6 +129,8 @@ describe("app analytics sessions route (#11349)", () => {
     expect(getSessionAnalytics).toHaveBeenCalledWith(
       APP_ID,
       expect.objectContaining({
+        startDate: undefined,
+        endDate: undefined,
         limit: 40,
         funnelSteps: ["/", "/checkout"],
       }),
@@ -159,6 +161,41 @@ describe("app analytics sessions route (#11349)", () => {
     }
     expect(getById).not.toHaveBeenCalled();
     expect(getSessionAnalytics).not.toHaveBeenCalled();
+  });
+
+  test("rejects reversed date bounds before any read", async () => {
+    const app = buildApp();
+    const res = await app.request(
+      `/api/v1/apps/${APP_ID}/analytics/requests?view=sessions&start_date=2026-07-03&end_date=2026-07-02`,
+      {},
+      ENV,
+    );
+
+    expect(res.status).toBe(400);
+    expect((await res.json()) as { success: boolean; error: string }).toEqual({
+      success: false,
+      error: "start_date must not be after end_date",
+    });
+    expect(getById).not.toHaveBeenCalled();
+    expect(getSessionAnalytics).not.toHaveBeenCalled();
+  });
+
+  test("passes valid supplied bounds unchanged", async () => {
+    const app = buildApp();
+    const res = await app.request(
+      `/api/v1/apps/${APP_ID}/analytics/requests?view=sessions&start_date=2026-07-01T12:30:00.000Z&end_date=2026-07-02T15:45:00.000Z`,
+      {},
+      ENV,
+    );
+
+    expect(res.status).toBe(200);
+    expect(getSessionAnalytics).toHaveBeenCalledWith(
+      APP_ID,
+      expect.objectContaining({
+        startDate: new Date("2026-07-01T12:30:00.000Z"),
+        endDate: new Date("2026-07-02T15:45:00.000Z"),
+      }),
+    );
   });
 
   test("denies another org before reading session analytics", async () => {

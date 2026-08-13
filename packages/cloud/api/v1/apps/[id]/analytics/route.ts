@@ -1,7 +1,7 @@
-// Handles v1 cloud API v1 apps id analytics route traffic with route-local auth expectations.
+/** Handles app analytics summaries with shared date-range validation. */
 import { Hono } from "hono";
 
-import { parseDateParam } from "@/lib/api/date-range-params";
+import { parseDateRangeParams } from "@/lib/api/date-range-params";
 import { isAppKeyOutOfScope } from "@/lib/auth/app-key-scope";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import { appsService } from "@/lib/services/apps";
@@ -27,20 +27,11 @@ app.get("/", async (c) => {
       | "hourly"
       | "daily"
       | "monthly";
-    const suppliedStart = parseDateParam(searchParams.get("start_date"));
-    const suppliedEnd = parseDateParam(searchParams.get("end_date"));
-    if (suppliedStart === null || suppliedEnd === null) {
-      return c.json(
-        {
-          success: false,
-          error: `Invalid ${suppliedStart === null ? "start_date" : "end_date"}`,
-        },
-        400,
-      );
-    }
+    const dateRange = parseDateRangeParams(searchParams);
+    if (!dateRange.success) return c.json(dateRange, 400);
     const startDate =
-      suppliedStart ?? new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-    const endDate = suppliedEnd ?? new Date();
+      dateRange.startDate ?? new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const endDate = dateRange.endDate ?? new Date();
 
     const existingApp = await appsService.getById(id);
 
