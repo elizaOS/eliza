@@ -375,6 +375,8 @@ export interface SettingsInputRowProps {
   group?: string;
   /** Marks the field invalid for assistive tech and danger styling. */
   invalid?: boolean;
+  /** Validation error announced below the field. Implies invalid. */
+  error?: React.ReactNode;
   /** Optional stable test id applied to the input. */
   testId?: string;
   className?: string;
@@ -399,20 +401,30 @@ export function SettingsInputRow({
   disabled = false,
   group = "settings",
   invalid = false,
+  error,
   testId,
   className,
   inputClassName,
 }: SettingsInputRowProps) {
   const resolvedLabel = agentLabel ?? labelToString(label, agentId);
+  const showError = Boolean(error);
+  const isInvalid = invalid || showError;
+  const errorId = `${agentId}-error`;
   const { ref, agentProps } = useAgentElement<HTMLInputElement>({
     id: agentId,
     role: type === "number" ? "number-input" : "text-input",
     label: resolvedLabel,
     group,
-    description: typeof description === "string" ? description : undefined,
+    description:
+      typeof error === "string"
+        ? error
+        : typeof description === "string"
+          ? description
+          : undefined,
     getValue: () => value,
     onFill: disabled ? undefined : (next: string) => onValueChange(next),
   });
+  const { "aria-label": _ignoredAccessibleName, ...rowAgentProps } = agentProps;
 
   return (
     <SettingsRow
@@ -435,12 +447,17 @@ export function SettingsInputRow({
         inputMode={inputMode}
         autoComplete={autoComplete}
         disabled={disabled}
-        aria-invalid={invalid || undefined}
-        aria-label={resolvedLabel}
+        aria-invalid={isInvalid || undefined}
+        aria-describedby={showError ? errorId : undefined}
         data-testid={testId}
-        className={cn(invalid && "border-danger", inputClassName)}
-        {...agentProps}
+        className={cn(isInvalid && "border-danger", inputClassName)}
+        {...rowAgentProps}
       />
+      {showError ? (
+        <p id={errorId} role="alert" className="mt-1 text-xs text-danger">
+          {error}
+        </p>
+      ) : null}
     </SettingsRow>
   );
 }

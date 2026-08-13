@@ -1,7 +1,8 @@
 /**
- * Static source-scan guard: labelled text/password settings fields must use
- * SettingsInputRow instead of a hand-rolled Label + Input pair. Reads files
- * off disk — no render. Remaining raw Input sites are an explicit allowlist.
+ * Occurrence ratchet for raw `<Input` in the settings surface. A labelled
+ * text/password field must use SettingsInputRow. Remaining raw Input sites
+ * are recorded by exact count so an extra occurrence in an already-known
+ * file fails. Reads files off disk — no render.
  */
 
 import { readdirSync, readFileSync, statSync } from "node:fs";
@@ -11,54 +12,97 @@ import { describe, expect, it } from "vitest";
 const settingsRoot = resolve(import.meta.dirname);
 
 /**
- * Files that still own a raw `<Input` because they are not a 1:1 labelled
- * text/password settings field. Adding a new file here is a product decision;
- * the default is `SettingsInputRow`.
+ * Exact remaining raw `<Input` counts. Raising a count is a product decision;
+ * the default is SettingsInputRow. A new occurrence in any of these files
+ * fails until the count is deliberately updated.
  */
-const RAW_INPUT_ALLOWLIST = new Map<string, string>([
+const RAW_INPUT_OCCURRENCES = new Map<
+  string,
+  { count: number; reason: string }
+>([
   [
     "AdvancedSection.tsx",
-    "radio list of backup files, not a labelled text field",
+    {
+      count: 1,
+      reason: "radio list of backup files, not a labelled text field",
+    },
   ],
   [
     "BackgroundSettingsControls.tsx",
-    "hidden file picker for wallpaper upload, not a labelled text field",
+    {
+      count: 1,
+      reason:
+        "hidden file picker for wallpaper upload, not a labelled text field",
+    },
   ],
   [
     "CloudAgentsSection.tsx",
-    "inline rename and create-name fields sit beside action buttons",
+    {
+      count: 2,
+      reason: "inline rename and create-name fields sit beside action buttons",
+    },
   ],
   [
     "SubscriptionStatus.tsx",
-    "billing/checkout form fields live in a custom card, not a settings row",
+    {
+      count: 2,
+      reason:
+        "billing/checkout form fields live in a custom card, not a settings row",
+    },
   ],
   [
     "VaultInventoryPanel.tsx",
-    "vault credential editor is a custom multi-field form, not a settings row",
+    {
+      count: 8,
+      reason:
+        "vault credential editor is a custom multi-field form, not a settings row",
+    },
   ],
   [
     "VoiceConfigView.tsx",
-    "compact wake-word and device fields inside a custom status chip",
+    {
+      count: 3,
+      reason: "compact wake-word and device fields inside a custom status chip",
+    },
   ],
   [
     "VoiceProfileSection.tsx",
-    "inline rename field; remaining Label usages are merge/sample checkboxes",
+    {
+      count: 1,
+      reason:
+        "inline rename field; remaining Label usages are merge/sample checkboxes",
+    },
   ],
   [
     "VoiceSection.tsx",
-    "checkbox consent controls, not labelled text/password fields",
+    {
+      count: 4,
+      reason: "checkbox consent controls, not labelled text/password fields",
+    },
   ],
   [
     "vault-tabs/LoginsTab.tsx",
-    "vault login editor is a custom multi-field form, not a settings row",
+    {
+      count: 4,
+      reason:
+        "vault login editor is a custom multi-field form, not a settings row",
+    },
   ],
   [
     "vault-tabs/OverviewTab.tsx",
-    "vault overview editor is a custom multi-field form, not a settings row",
+    {
+      count: 7,
+      reason:
+        "vault overview editor is a custom multi-field form, not a settings row",
+    },
   ],
   [
     "vault-tabs/RoutingTab.tsx",
-    "vault routing editor is a custom multi-field form, not a settings row",
+    {
+      count: 2,
+      reason:
+        "vault routing editor is a custom multi-field form, not a settings row",
+    },
   ],
 ]);
 
@@ -83,36 +127,79 @@ function listTsxFiles(dir: string): string[] {
   return out;
 }
 
-describe("settings controls: no raw labelled <Input outside the allowlist", () => {
+function countRawInputs(source: string): number {
+  return source.split("<Input").length - 1;
+}
+
+function rawInputVerdict(
+  relPath: string,
+  source: string,
+): { ok: true } | { ok: false; message: string } {
+  const count = countRawInputs(source);
+  const allowed = RAW_INPUT_OCCURRENCES.get(relPath);
+  if (!allowed) {
+    if (count === 0) return { ok: true };
+    return {
+      ok: false,
+      message:
+        `${relPath} has ${count} raw <Input occurrence(s). Use SettingsInputRow ` +
+        `from ./settings-agent-rows, or record the exact remaining count in ` +
+        `RAW_INPUT_OCCURRENCES with a reason.`,
+    };
+  }
+  if (count !== allowed.count) {
+    return {
+      ok: false,
+      message:
+        `${relPath} has ${count} raw <Input occurrence(s); the ratchet allows ` +
+        `${allowed.count} (${allowed.reason}).`,
+    };
+  }
+  return { ok: true };
+}
+
+describe("settings controls: raw <Input occurrences are ratcheted", () => {
   const files = listTsxFiles(settingsRoot);
 
   it.each(files.map((file) => posixRelative(settingsRoot, file)))(
-    "%s uses SettingsInputRow instead of a raw <Input, or is allowlisted",
+    "%s stays at its recorded raw <Input count",
     (relPath) => {
       const source = readFileSync(resolve(settingsRoot, relPath), "utf8");
-      const hasRawInput = source.includes("<Input");
-      if (!hasRawInput) {
-        expect(RAW_INPUT_ALLOWLIST.has(relPath)).toBe(false);
-        return;
-      }
-      expect(
-        RAW_INPUT_ALLOWLIST.has(relPath),
-        `${relPath} hand-rolls a raw <Input. Use SettingsInputRow from ` +
-          `./settings-agent-rows for labelled text/password settings. If this ` +
-          `file is not a settings text field, add it to RAW_INPUT_ALLOWLIST ` +
-          `with a reason.`,
-      ).toBe(true);
+      const verdict = rawInputVerdict(relPath, source);
+      expect(verdict.ok, !verdict.ok ? verdict.message : undefined).toBe(true);
     },
   );
 
-  it("documents a reason for every allowlisted raw Input file", () => {
-    for (const [relPath, reason] of RAW_INPUT_ALLOWLIST) {
-      expect(reason.trim().length).toBeGreaterThan(8);
+  it("documents a reason and exact count for every recorded file", () => {
+    for (const [relPath, entry] of RAW_INPUT_OCCURRENCES) {
+      expect(entry.reason.trim().length).toBeGreaterThan(8);
+      expect(entry.count).toBeGreaterThan(0);
       const source = readFileSync(resolve(settingsRoot, relPath), "utf8");
-      expect(
-        source.includes("<Input"),
-        `${relPath} is allowlisted but no longer contains <Input; remove it from the allowlist`,
-      ).toBe(true);
+      expect(countRawInputs(source)).toBe(entry.count);
     }
+  });
+
+  it("fails when an already-recorded file gains another raw <Input", () => {
+    const source = readFileSync(
+      resolve(settingsRoot, "VoiceProfileSection.tsx"),
+      "utf8",
+    );
+    const extra = `${source}\n<Input value="" onChange={() => {}} />\n`;
+    const verdict = rawInputVerdict("VoiceProfileSection.tsx", extra);
+    expect(verdict.ok).toBe(false);
+    expect(verdict.ok ? "" : verdict.message).toContain(
+      "has 2 raw <Input occurrence(s); the ratchet allows 1",
+    );
+  });
+
+  it("fails when a new settings file introduces a raw <Input", () => {
+    const verdict = rawInputVerdict(
+      "NewSettingsSection.tsx",
+      '<Input value="" onChange={() => {}} />',
+    );
+    expect(verdict.ok).toBe(false);
+    expect(verdict.ok ? "" : verdict.message).toContain(
+      "has 1 raw <Input occurrence(s)",
+    );
   });
 });

@@ -998,8 +998,7 @@ function RemotePasswordSection({
             if (state.phase === "error") setState({ phase: "idle" });
           }}
           disabled={isSubmitting}
-          invalid={confirmMismatch}
-          description={
+          error={
             confirmMismatch
               ? t("security.password.error.mismatchShort", {
                   defaultValue: "Passwords do not match.",

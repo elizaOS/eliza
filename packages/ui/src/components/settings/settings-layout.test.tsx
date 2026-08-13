@@ -122,17 +122,44 @@ describe("agent-addressable rows", () => {
         type="password"
         value=""
         onValueChange={onValueChange}
-        invalid
+        testId="security-password-new-input"
       />,
     );
     const input = screen.getByLabelText("New password");
     expect(input.getAttribute("data-agent-id")).toBe("security-password-new");
     expect(input.getAttribute("data-agent-role")).toBe("text-input");
     expect(input.getAttribute("id")).toBe("security-password-new");
-    expect(input.getAttribute("aria-invalid")).toBe("true");
+    expect(input.getAttribute("data-testid")).toBe(
+      "security-password-new-input",
+    );
+    expect(input.getAttribute("aria-label")).toBeNull();
     expect(screen.getByText("New password").tagName).toBe("LABEL");
+    expect(screen.getByText("New password").getAttribute("for")).toBe(
+      "security-password-new",
+    );
     fireEvent.change(input, { target: { value: "abcdefghijkl" } });
     expect(onValueChange).toHaveBeenCalledWith("abcdefghijkl");
+  });
+
+  it("SettingsInputRow announces a validation error below the field", () => {
+    render(
+      <SettingsInputRow
+        agentId="security-password-confirm"
+        label="Confirm new password"
+        type="password"
+        value="nope"
+        onValueChange={() => {}}
+        error="Passwords do not match."
+      />,
+    );
+    const input = screen.getByLabelText("Confirm new password");
+    const alert = screen.getByRole("alert");
+    expect(alert.textContent).toBe("Passwords do not match.");
+    expect(input.getAttribute("aria-invalid")).toBe("true");
+    expect(input.getAttribute("aria-describedby")).toBe(
+      "security-password-confirm-error",
+    );
+    expect(alert.className).toContain("text-danger");
   });
 
   it("SettingsSelectRow registers as an agent-addressable select", () => {
