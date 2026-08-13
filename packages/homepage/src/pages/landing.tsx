@@ -51,6 +51,12 @@ type DemoItem =
   | { id: number; from: "eliza" | "user"; kind: "text"; text: string }
   | { id: number; from: "eliza"; kind: "card"; card: DemoCard };
 
+// Built-in Omit maps a union through only its shared keys, which would erase
+// the text/card payload that the discriminant guarantees. Keep each member
+// intact while removing the id assigned by the renderer.
+type WithoutId<Item> = Item extends { id: unknown } ? Omit<Item, "id"> : never;
+type DemoItemDraft = WithoutId<DemoItem>;
+
 const DEMO_INTRO: DemoStep[] = [
   { kind: "eliza", text: "Hey, it's Eliza — your new assistant." },
   { kind: "user", text: "what can you do?" },
@@ -231,12 +237,12 @@ function PhoneMockup() {
     let cancelled = false;
     const sleep = (ms: number) =>
       new Promise<void>((resolve) => setTimeout(resolve, ms));
-    const append = (item: Omit<DemoItem, "id">) => {
+    const append = (item: DemoItemDraft) => {
       const id = nextIdRef.current;
       nextIdRef.current += 1;
       setItems((prev) => [
         ...prev.slice(-(MAX_RENDERED_ITEMS - 1)),
-        { ...item, id } as DemoItem,
+        { ...item, id },
       ]);
     };
 
@@ -458,7 +464,7 @@ const KEYBOARD_ROWS = ["qwertyuiop", "asdfghjkl", "zxcvbnm"] as const;
 function DemoKeyboard({ composerText }: { composerText: string }) {
   const open = composerText !== "";
   const lastChar = composerText.slice(-1).toLowerCase();
-  const lastWord = composerText.split(/\s+/).at(-1) ?? "";
+  const lastWord = composerText.split(/\s+/).pop() ?? "";
   return (
     <div className="landing-keyboard" data-open={open}>
       <div className="landing-keyboard-inner">
