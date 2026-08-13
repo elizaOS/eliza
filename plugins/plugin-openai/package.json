@@ -15,6 +15,11 @@
     "./package.json": "./package.json",
     "./endpoint-config": {
       "types": "./dist/endpoint-config.d.ts",
+      "eliza-source": {
+        "types": "./utils/config.ts",
+        "import": "./utils/config.ts",
+        "default": "./utils/config.ts"
+      },
       "import": "./dist/endpoint-config.js",
       "default": "./dist/endpoint-config.js"
     },
