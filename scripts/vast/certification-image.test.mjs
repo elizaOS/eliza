@@ -36,6 +36,9 @@ test("publication workflow rebuilds the image consumed by vast", async () => {
 
   assert.match(workflow, /file: scripts\/vast\/Dockerfile\.gpu/);
   assert.match(workflow, /packages: write/);
+  assert.match(workflow, /name: Ensure Docker daemon access/);
+  assert.match(workflow, /sudo -n setfacl -m "u:\$\(id -u\):rw"/);
+  assert.match(workflow, /RUNNER_ENVIRONMENT:-/);
   assert.match(
     workflow,
     /type=raw,value=latest,enable=\$\{\{ github\.ref == 'refs\/heads\/develop' \}\}/,
