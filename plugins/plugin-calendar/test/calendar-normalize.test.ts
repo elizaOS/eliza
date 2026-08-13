@@ -100,6 +100,16 @@ describe("normalizeCalendarDateTimeInTimeZone", () => {
     ).toBe("2026-03-04T15:30:00.000Z");
   });
 
+  it.each([
+    "2026-02-30T09:00:00Z",
+    "2026-02-29T09:00:00+00:00",
+    "2026-04-31T09:00:00Z",
+  ])("rejects an impossible explicit calendar date: %s", (value) => {
+    expect(() =>
+      normalizeCalendarDateTimeInTimeZone(value, "startAt", "UTC"),
+    ).toThrow(CalendarServiceError);
+  });
+
   it("interprets a bare local datetime in the supplied zone", () => {
     // 09:00 local in UTC stays 09:00Z.
     expect(
