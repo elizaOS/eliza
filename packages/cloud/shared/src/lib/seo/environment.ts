@@ -2,7 +2,7 @@
 import { getAppHost, getAppUrl } from "../utils/app-url";
 import type { Metadata, MetadataRoute } from "./metadata-types";
 
-const DEFAULT_INDEXABLE_HOSTS = ["elizacloud.ai", "www.elizacloud.ai"] as const;
+const DEFAULT_INDEXABLE_HOSTS = ["eliza.app", "www.eliza.app"] as const;
 
 function normalizeHost(host: string): string {
   return host.trim().toLowerCase();

@@ -4,6 +4,7 @@
 export const ELIZA_PHONE_NUMBER = "+18087881821";
 export const ELIZA_PHONE_FORMATTED = "+1 (808) 788-1821";
 export const ELIZA_TELEGRAM_BOT_USERNAME = "Elizav2_Bot";
+export const ELIZA_TELEGRAM_BOT_ID = "7684336618";
 export const ELIZA_DISCORD_APPLICATION_ID = "1468649258654630063";
 const DEFAULT_WHATSAPP_PHONE_NUMBER = "+14159611510";
 const IMESSAGE_GREETING = "Hey Eliza, what can you do?";
@@ -18,6 +19,10 @@ export function getTelegramBotUsername(): string {
   return (
     import.meta.env.VITE_TELEGRAM_BOT_USERNAME || ELIZA_TELEGRAM_BOT_USERNAME
   ).trim();
+}
+
+export function getTelegramBotId(): string {
+  return (import.meta.env.VITE_TELEGRAM_BOT_ID || ELIZA_TELEGRAM_BOT_ID).trim();
 }
 
 export function getDiscordBotApplicationId(): string {

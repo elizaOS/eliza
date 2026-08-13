@@ -559,7 +559,7 @@ export const containersEnv = {
 
   /**
    * Base domain for per-container public hostnames (e.g.
-   * `containers.elizacloud.ai`). When set, every new container gets
+   * `cloud.eliza.app`). When set, every new container gets
    * `<short-id>.<base-domain>` written to `public_hostname` and is
    * surfaced in the ingress map. Operators run a reverse proxy that
    * resolves these to the corresponding node:port upstream.
@@ -571,7 +571,7 @@ export const containersEnv = {
 
   /**
    * Apps-only base domain for per-app public hostnames. Reads
-   * `CONTAINERS_PUBLIC_BASE_DOMAIN` (set to e.g. `apps.elizacloud.ai` on the apps
+   * `CONTAINERS_PUBLIC_BASE_DOMAIN` (set to e.g. `apps.eliza.app` on the apps
    * data plane by the apps-data-plane terraform) with NO fallback to the agent
    * sandbox domain (`ELIZA_CLOUD_AGENT_BASE_DOMAIN`) — unlike
    * {@link publicBaseDomain}. So an app never silently inherits the agent

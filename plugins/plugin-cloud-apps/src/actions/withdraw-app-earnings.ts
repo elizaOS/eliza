@@ -299,7 +299,7 @@ export const withdrawAppEarningsAction: Action = {
         pending.metadata.cta ??
         buildConnectorCta(
           `Open ${target.name}'s earnings dashboard`,
-          `${resolveCloudSiteBaseUrl(runtime)}/dashboard/apps/${target.id}?tab=earnings`,
+          `${resolveCloudSiteBaseUrl(runtime)}/cloud/apps/${target.id}?tab=earnings`,
           "link",
         );
       try {
@@ -486,7 +486,7 @@ export const withdrawAppEarningsAction: Action = {
     }
 
     // Connector-agnostic CTA — label + https URL only; never a secret/amount-token.
-    const dashboardUrl = `${resolveCloudSiteBaseUrl(runtime)}/dashboard/apps/${
+    const dashboardUrl = `${resolveCloudSiteBaseUrl(runtime)}/cloud/apps/${
       target.id
     }?tab=earnings`;
     let cta: ConnectorCta;
@@ -630,7 +630,7 @@ export const withdrawAppEarningsAction: Action = {
       {
         name: "{{agent}}",
         content: {
-          text: 'Requested a payout of $42.00 from "Acme Bot". $42.00 marked as withdrawn. Check your Earnings page to redeem as elizaOS tokens. Finish the cash-out here: https://www.elizacloud.ai/dashboard/apps/…?tab=earnings',
+          text: 'Requested a payout of $42.00 from "Acme Bot". $42.00 marked as withdrawn. Check your Earnings page to redeem as elizaOS tokens. Finish the cash-out here: https://cloud.eliza.app/cloud/apps/…?tab=earnings',
           actions: ["WITHDRAW_APP_EARNINGS"],
         },
       },

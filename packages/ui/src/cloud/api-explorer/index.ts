@@ -8,9 +8,9 @@
  *
  *  - {@link ApiExplorerSurface} is the zero-prop embeddable surface. It gates
  *    on the Steward session itself, so it is safe to mount bare.
- *  - {@link apiExplorerCloudRoute} registers `dashboard/api-explorer` at import
+ *  - {@link apiExplorerCloudRoute} registers `cloud/api-explorer` at import
  *    time. This path is the *target* of the CloudRouterShell
- *    `dashboard/{image,video,gallery,voices}` redirects (the legacy media
+ *    `cloud/{image,video,gallery,voices}` redirects (the legacy media
  *    generators were folded into the explorer), so it must stay registered for
  *    those redirects to land.
  */
@@ -35,7 +35,7 @@ export {
 
 /** Stable view/section id + URL path slug for the API Explorer surface. */
 export const API_EXPLORER_SECTION_ID = "api-explorer";
-export const API_EXPLORER_ROUTE_PATH = "dashboard/api-explorer";
+export const API_EXPLORER_ROUTE_PATH = "cloud/api-explorer";
 
 /** Lazy route element for the standalone API Explorer surface (code-split). */
 const ApiExplorerRouteLazy = lazy(() => import("./ApiExplorerPage"));
@@ -44,13 +44,13 @@ const ApiExplorerRouteLazy = lazy(() => import("./ApiExplorerPage"));
 export const apiExplorerCloudRoute: CloudRouteDef = {
   path: API_EXPLORER_ROUTE_PATH,
   element: ApiExplorerRouteLazy,
-  group: "dashboard",
+  group: "cloud",
 };
 
 /**
  * Register (or re-register) the standalone API Explorer route. Exported for an
  * explicit custom-path mount; the default registration below runs at import time
- * since `dashboard/api-explorer` is a redirect target, not a `from`, in the
+ * since `cloud/api-explorer` is a redirect target, not a `from`, in the
  * shell's redirect map.
  */
 export function registerApiExplorerCloudRoute(

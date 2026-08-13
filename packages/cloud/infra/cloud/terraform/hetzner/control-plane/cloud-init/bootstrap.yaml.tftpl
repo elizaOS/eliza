@@ -14,13 +14,13 @@
 # in a follow-up step (one-shot, out-of-band) using `scp` or the existing
 # `packages/cloud/scripts/admin/bootstrap-provisioning-worker-host.mjs` script.
 #
-# Ingress is terminated by Cloudflare (zone elizacloud.ai, SSL mode = "Full",
+# Ingress is terminated by Cloudflare (zone eliza.app, SSL mode = "Full",
 # DNS record for this VM is proxied through CF). nginx on this host accepts
-# the CF→origin connection on :80 and :443 and forwards `*.elizacloud.ai` to
+# the CF→origin connection on :80 and :443 and forwards `*.eliza.app` to
 # the agent-router daemon listening on 127.0.0.1:3458. The :443 listener uses
 # a self-signed cert that's only ever seen by CF Workers — they don't verify
 # origin certs at "Full" mode (only "Full (Strict)" does). The cert subject
-# is `*.elizacloud.ai` so direct curl with `--resolve` also works for ops.
+# is `*.eliza.app` so direct curl with `--resolve` also works for ops.
 
 hostname: ${hostname}
 manage_etc_hosts: true
@@ -92,7 +92,7 @@ write_files:
       server {
         listen 80;
         listen [::]:80;
-        server_name .elizacloud.ai;
+        server_name .eliza.app .elizacloud.ai;
         client_max_body_size 50m;
 
         location / {
@@ -113,7 +113,7 @@ write_files:
       server {
         listen 443 ssl;
         listen [::]:443 ssl;
-        server_name .elizacloud.ai;
+        server_name .eliza.app .elizacloud.ai;
         client_max_body_size 50m;
         ssl_certificate /etc/nginx/ssl/eliza-agent-router.crt;
         ssl_certificate_key /etc/nginx/ssl/eliza-agent-router.key;
@@ -217,7 +217,7 @@ runcmd:
   # regenerates. If anyone flips the zone to Strict the chain breaks
   # silently — track this as an operational gotcha.
   - install -d -m 0755 /etc/nginx/ssl
-  - openssl req -x509 -nodes -newkey rsa:2048 -days 3650 -keyout /etc/nginx/ssl/eliza-agent-router.key -out /etc/nginx/ssl/eliza-agent-router.crt -subj "/CN=*.elizacloud.ai" -addext "subjectAltName=DNS:*.elizacloud.ai,DNS:elizacloud.ai"
+  - openssl req -x509 -nodes -newkey rsa:2048 -days 3650 -keyout /etc/nginx/ssl/eliza-agent-router.key -out /etc/nginx/ssl/eliza-agent-router.crt -subj "/CN=*.eliza.app" -addext "subjectAltName=DNS:*.eliza.app,DNS:eliza.app,DNS:*.elizacloud.ai,DNS:elizacloud.ai"
   - chmod 600 /etc/nginx/ssl/eliza-agent-router.key
   # Activate the new vhost FIRST, then remove the default. Split nginx -t
   # from `systemctl reload` so a failing vhost surfaces in cloud-init logs

@@ -35,7 +35,7 @@ const PROBE_TIMEOUT_MS = 10_000;
 const DETAIL_MAX_CHARS = 300;
 const SECRET_ENV_NAME_PATTERN =
   /(TOKEN|SECRET|KEY|PASSWORD|AUTH|SID|SESSION|CLIENT_ID|ACCOUNT_NUMBER|PHONE_NUMBER)/;
-const DEFAULT_CLOUD_BASE = "https://api.elizacloud.ai";
+const DEFAULT_CLOUD_BASE = "https://api.eliza.app";
 
 /** True when an env var name looks like it holds a credential or PII value. */
 export function isSecretEnvName(name) {

@@ -540,17 +540,25 @@ export async function readChromiumCookies(
 // ── Eliza Cloud (browser cookie auto-import) ─────────────────────────
 
 async function scanElizaCloudBrowserSession(): Promise<DetectedProvider | null> {
-  // Check if user has an active elizacloud.ai session in their browser.
+  // Check the host-only canonical auth cookies first, then the transitional
+  // legacy host while users' existing browser sessions age out.
   // The privy-token JWT is in-memory only (not persisted to SQLite),
   // but privy-session indicates an active browser session exists.
-  const cookies = await readChromiumCookies("www.elizacloud.ai", [
-    "privy-session",
-  ]);
-
-  const hasSession = cookies.some((c) => c.name === "privy-session");
+  let hasSession = false;
+  for (const hostname of [
+    "eliza.app",
+    "cloud.eliza.app",
+    "www.elizacloud.ai",
+  ]) {
+    const cookies = await readChromiumCookies(hostname, ["privy-session"]);
+    if (cookies.some((cookie) => cookie.name === "privy-session")) {
+      hasSession = true;
+      break;
+    }
+  }
   if (!hasSession) return null;
 
-  // The user is logged into elizacloud.ai in their browser.
+  // The user is logged into Eliza in their browser.
   // The "Deploy to Cloud" flow will open the browser and complete
   // auth instantly since they already have a session (no re-login).
   return {

@@ -7,13 +7,11 @@
  * esbuild, serves it same-origin with an /api proxy, and drives headless
  * Chromium through:
  *
- *  1. the /dashboard/* console routing contract — the account-management
- *     surfaces are DUAL-mounted (register-all.ts header; register-all.test.ts +
- *     CloudRouterShell.test.tsx), so this leg proves (a) each standalone
- *     `/dashboard/<surface>` console page resolves to its own registered route
- *     (never a `/settings` redirect), (b) only the genuinely-removed spellings
- *     (earnings/affiliates, `/dashboard/settings?tab=<x>`) redirect — to their
- *     canonical `/dashboard/*` page — and (c) the in-app `/settings#<section>`
+ *  1. the managed Cloud app routing contract — this leg proves (a) each
+ *     `/cloud/<surface>` page delegates through the normal app-shell boundary,
+ *     (b) only the genuinely-removed spellings
+ *     (earnings/affiliates, `/cloud/settings?tab=<x>`) redirect — to their
+ *     canonical `/cloud/*` page — and (c) the in-app `/settings#<section>`
  *     hash surface resolves every registered cloud section via
  *     `readSettingsHashSection`, including the legacy `#billing` / `#api-keys`
  *     aliases;
@@ -376,77 +374,64 @@ async function snap(name, target = page) {
 
 const ORIGIN = `http://127.0.0.1:${PAGE_PORT}`;
 
-// --- leg 1: the /dashboard/* console routing contract ------------------------
+// --- leg 1: the managed Cloud app routing contract ---------------------------
 //
-// The #11341 cloud-surface unification did NOT collapse the account-management
-// surfaces into one-way `/dashboard/* → /settings#<section>` redirects. The
-// apex-console migration DUAL-MOUNTS every such surface (register-all.ts header;
-// asserted by register-all.test.ts + CloudRouterShell.test.tsx):
-//   • a standalone `/dashboard/<surface>` console page — the only reachable home
-//     on an apex control-plane host (elizacloud.ai), where the agent app (and
-//     thus the in-app Settings view) never boots (see AppCatchAllRoute); AND
-//   • an in-app `/settings#cloud-<surface>` section (the agent app's own hub).
+// Cloud management is registered under `/cloud/*`, but CloudRouterShell does not
+// render a separate ConsoleShell. It delegates every management route into the
+// tab/view app boundary; packages/app's Playwright suite proves the real shell
+// marker + route-specific header while this isolated fixture proves delegation.
 // Only genuinely-removed spellings (earnings/affiliates, the legacy
-// `/dashboard/settings?tab=<x>` OAuth/Stripe return shape) still redirect — to
-// their canonical `/dashboard/*` page, never to `/settings`. This leg verifies
-// all three facets against the REAL registered routes + settings sections.
-//
-// The console-page facets assert the ConsoleShell chrome mounted (its
-// "Eliza Cloud overview" logo link — present iff a registered `dashboard/*`
-// route resolved) and that the path neither fell through to the agent-app
-// catch-all (no CatchAllProbe) nor 404'd (no CloudNotFound heading).
+// `/cloud/settings?tab=<x>` OAuth/Stripe return shape) still redirect — to
+// their canonical `/cloud/*` page, never to `/settings`. This leg verifies
+// delegation, compatibility redirects, and the retained Settings aliases.
 
-const overviewLogo = () =>
-  page.getByRole("link", { name: "Eliza Cloud overview" }).first();
-
-async function assertConsolePage(from, expectedPath) {
+async function assertManagedAppRoute(from, expectedPath) {
   await page.goto(`${ORIGIN}${from}`, { waitUntil: "load" });
-  await overviewLogo().waitFor({ timeout: 30_000 });
+  await page.locator("[data-app-shell-root]").waitFor({ timeout: 30_000 });
   const loc = await page.evaluate(
     () => `${location.pathname}${location.search}`,
   );
-  assert(loc === expectedPath, `${from} → console route ${expectedPath} (got ${loc})`);
+  assert(loc === expectedPath, `${from} → managed route ${expectedPath} (got ${loc})`);
   const probeCount = await page.getByTestId("probe-location").count();
-  assert(probeCount === 0, `${from} does not fall through to the agent app`);
-  const notFound = await page
-    .getByRole("heading", { name: "Not found", exact: true })
+  assert(probeCount === 1, `${from} delegates into the app-shell boundary`);
+  const standaloneChrome = await page
+    .getByRole("link", { name: "Eliza Cloud overview" })
     .count();
-  assert(notFound === 0, `${from} is a registered console route, not a 404`);
-  await snap(`console-${from.replace(/[/?#=]+/g, "-").replace(/^-|-$/g, "")}`);
+  assert(standaloneChrome === 0, `${from} does not mount retired console chrome`);
+  await snap(`cloud-app-${from.replace(/[/?#=]+/g, "-").replace(/^-|-$/g, "")}`);
 }
 
-// 1a. Standalone /dashboard/* console pages resolve to their own route (query
-//     preserved), never redirecting to /settings.
-console.log("== leg 1a: standalone console pages ==");
-const consolePages = [
-  ["/dashboard/billing", "/dashboard/billing"],
-  ["/dashboard/billing?canceled=true", "/dashboard/billing?canceled=true"],
-  ["/dashboard/api-keys", "/dashboard/api-keys"],
-  ["/dashboard/account", "/dashboard/account"],
-  ["/dashboard/security", "/dashboard/security"],
-  ["/dashboard/security/permissions", "/dashboard/security/permissions"],
-  ["/dashboard/monetization", "/dashboard/monetization"],
-  ["/dashboard/connectors", "/dashboard/connectors"],
-  ["/dashboard/organization", "/dashboard/organization"],
+// 1a. Canonical management pages delegate to the app with the path/query intact.
+console.log("== leg 1a: managed Cloud app pages ==");
+const managementPages = [
+  ["/cloud/billing", "/cloud/billing"],
+  ["/cloud/billing?canceled=true", "/cloud/billing?canceled=true"],
+  ["/cloud/api-keys", "/cloud/api-keys"],
+  ["/cloud/account", "/cloud/account"],
+  ["/cloud/security", "/cloud/security"],
+  ["/cloud/security/permissions", "/cloud/security/permissions"],
+  ["/cloud/monetization", "/cloud/monetization"],
+  ["/cloud/connectors", "/cloud/connectors"],
+  ["/cloud/organization", "/cloud/organization"],
 ];
-for (const [from, expectedPath] of consolePages) {
-  await assertConsolePage(from, expectedPath);
+for (const [from, expectedPath] of managementPages) {
+  await assertManagedAppRoute(from, expectedPath);
 }
 
 // 1b. The genuinely-removed legacy spellings redirect to their canonical
-//     /dashboard/* console page (the query string is carried through).
-console.log("== leg 1b: legacy → canonical console redirects ==");
+//     managed Cloud page (the query string is carried through).
+console.log("== leg 1b: legacy → canonical Cloud redirects ==");
 const redirectCases = [
-  ["/dashboard/earnings", "/dashboard/monetization"],
-  ["/dashboard/affiliates", "/dashboard/monetization"],
+  ["/cloud/earnings", "/cloud/monetization"],
+  ["/cloud/affiliates", "/cloud/monetization"],
   [
-    "/dashboard/settings?tab=connections",
-    "/dashboard/connectors?tab=connections",
+    "/cloud/settings?tab=connections",
+    "/cloud/connectors?tab=connections",
   ],
-  ["/dashboard/settings?tab=billing", "/dashboard/billing?tab=billing"],
+  ["/cloud/settings?tab=billing", "/cloud/billing?tab=billing"],
 ];
 for (const [from, expectedPath] of redirectCases) {
-  await assertConsolePage(from, expectedPath);
+  await assertManagedAppRoute(from, expectedPath);
 }
 
 // 1c. The in-app /settings#<section> hash surface — the app-side half of the
@@ -589,7 +574,7 @@ await writeFile(
       issue: 11341,
       failures,
       screenshots: shot,
-      consolePages: consolePages.map(([from, to]) => ({ from, to })),
+      managementPages: managementPages.map(([from, to]) => ({ from, to })),
       redirectCases: redirectCases.map(([from, to]) => ({ from, to })),
       settingsHashSections: hashCases.map(([from, section]) => ({
         from,

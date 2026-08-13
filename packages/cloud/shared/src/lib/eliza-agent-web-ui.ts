@@ -1,7 +1,7 @@
 // Defines cloud shared eliza agent web ui behavior for backend service consumers.
 import type { AgentSandbox } from "../db/schemas/agent-sandboxes";
 
-const DEFAULT_AGENT_BASE_DOMAIN = "elizacloud.ai";
+const DEFAULT_AGENT_BASE_DOMAIN = "cloud.eliza.app";
 
 type ElizaAgentWebUiTarget = Pick<
   AgentSandbox,
@@ -17,7 +17,7 @@ export interface ElizaAgentWebUiUrlOptions {
   path?: string;
 }
 
-/** Resolved base domain for the current deployment (e.g. "elizacloud.ai"). */
+/** Resolved base domain for the current deployment (e.g. "cloud.eliza.app"). */
 export function getAgentBaseDomain(): string {
   return (
     normalizeAgentBaseDomain(process.env.ELIZA_CLOUD_AGENT_BASE_DOMAIN) ?? DEFAULT_AGENT_BASE_DOMAIN
@@ -60,7 +60,7 @@ function applyPath(baseUrl: string, path = "/"): string {
  * Public HTTPS URL `{sandbox.id}.{domain}`.
  *
  * **Omit `baseDomain` or set it to `undefined`:** resolve from `ELIZA_CLOUD_AGENT_BASE_DOMAIN`,
- * then the built-in default domain (`elizacloud.ai`). Empty env is treated like unset (same as
+ * then the built-in default domain (`cloud.eliza.app`). Empty env is treated like unset (same as
  * {@link getAgentBaseDomain}).
  *
  * **Pass any other `baseDomain` (including `null` or `""`):** use only that value after

@@ -123,7 +123,7 @@ function toDocsUrlPath(contentDir: string, filePath: string): string {
 
 function normalizeBaseUrl(raw?: string): string {
   const base = (raw || "").trim();
-  if (!base) return "https://elizacloud.ai";
+  if (!base) return "https://eliza.app";
   if (base.startsWith("http://") || base.startsWith("https://"))
     return base.replace(/\/+$/, "");
   // If someone passes a bare host, treat as https

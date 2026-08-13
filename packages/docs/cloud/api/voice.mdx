@@ -42,7 +42,7 @@ Convert text to speech audio using premium AI voices.
   <Tab title="cURL">
 
 ```bash
-curl -X POST "https://elizacloud.ai/api/v1/voice/tts" \
+curl -X POST "https://api.eliza.app/api/v1/voice/tts" \
   -H "X-API-Key: YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
@@ -56,7 +56,7 @@ curl -X POST "https://elizacloud.ai/api/v1/voice/tts" \
   <Tab title="JavaScript">
 
 ```javascript
-const response = await fetch('https://elizacloud.ai/api/v1/voice/tts', {
+const response = await fetch('https://api.eliza.app/api/v1/voice/tts', {
   method: 'POST',
   headers: {
     'X-API-Key': 'YOUR_API_KEY',
@@ -80,7 +80,7 @@ const audioUrl = URL.createObjectURL(audioBlob);
 import requests
 
 response = requests.post(
-    'https://elizacloud.ai/api/v1/voice/tts',
+    'https://api.eliza.app/api/v1/voice/tts',
     headers={
         'X-API-Key': 'YOUR_API_KEY',
         'Content-Type': 'application/json',
@@ -147,7 +147,7 @@ Transcribe audio to text.
 Upload audio as `multipart/form-data`:
 
 ```bash
-curl -X POST "https://elizacloud.ai/api/v1/voice/stt" \
+curl -X POST "https://api.eliza.app/api/v1/voice/stt" \
   -H "X-API-Key: YOUR_API_KEY" \
   -F "audio=@recording.mp3"
 ```
@@ -237,7 +237,7 @@ Create a voice clone from audio samples.
 Upload audio samples as `multipart/form-data`:
 
 ```bash
-curl -X POST "https://elizacloud.ai/api/v1/voice/clone" \
+curl -X POST "https://api.eliza.app/api/v1/voice/clone" \
   -H "X-API-Key: YOUR_API_KEY" \
   -F "name=My Voice" \
   -F "cloneType=instant" \
@@ -278,7 +278,7 @@ curl -X POST "https://elizacloud.ai/api/v1/voice/clone" \
 Get details for a specific voice by its internal UUID.
 
 ```bash
-curl "https://elizacloud.ai/api/v1/voice/123e4567-e89b-12d3-a456-426614174000" \
+curl "https://api.eliza.app/api/v1/voice/123e4567-e89b-12d3-a456-426614174000" \
   -H "X-API-Key: YOUR_API_KEY"
 ```
 
@@ -294,7 +294,7 @@ curl "https://elizacloud.ai/api/v1/voice/123e4567-e89b-12d3-a456-426614174000" \
 Update a voice's metadata.
 
 ```bash
-curl -X PATCH "https://elizacloud.ai/api/v1/voice/123e4567-e89b-12d3-a456-426614174000" \
+curl -X PATCH "https://api.eliza.app/api/v1/voice/123e4567-e89b-12d3-a456-426614174000" \
   -H "X-API-Key: YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{"name": "Updated Voice Name", "isActive": true}'
@@ -316,7 +316,7 @@ curl -X PATCH "https://elizacloud.ai/api/v1/voice/123e4567-e89b-12d3-a456-426614
 Delete a cloned voice from your account.
 
 ```bash
-curl -X DELETE "https://elizacloud.ai/api/v1/voice/123e4567-e89b-12d3-a456-426614174000" \
+curl -X DELETE "https://api.eliza.app/api/v1/voice/123e4567-e89b-12d3-a456-426614174000" \
   -H "X-API-Key: YOUR_API_KEY"
 ```
 

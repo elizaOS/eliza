@@ -40,7 +40,7 @@ and returns a real API key for a free account. The stack runs the worker with
 two requests. `asSeededUser(login)` adapts the result to the `SeededUser` shape.
 
 The same flow is available as a dev/CI gate: `bun run cloud:login:test-wallet`
-(defaults to `https://api.elizacloud.ai`; pass `--base <url>` for a local stack).
+(defaults to `https://api.eliza.app`; pass `--base <url>` for a local stack).
 It exits non-zero if login or the authenticated probe fails.
 
 **The `seededUser` fixture now uses this real path for every spec.** Instead of

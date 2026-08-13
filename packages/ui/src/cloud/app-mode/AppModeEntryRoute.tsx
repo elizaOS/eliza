@@ -1,8 +1,8 @@
 /**
- * App-mode entry gate for the Eliza app hosts (app.elizacloud.ai). Rendered by
+ * App-mode entry gate for the Eliza app hosts (cloud.eliza.app). Rendered by
  * the cloud router shell's catch-all INSTEAD of the tab/view app whenever
  * `isAppModeHost()` is true, so it owns every non-registered path on the app
- * hosts; registered cloud routes (login / auth / dashboard / payment / join)
+ * hosts; registered Cloud routes (login / auth / management / payment / join)
  * match before the catch-all and stay reachable.
  *
  * After the existing Steward session auth resolves, the gate fetches the org's
@@ -12,7 +12,7 @@
  * entry-time pairing redirect was removed); no agents at all → the `/join`
  * deploy-first-agent flow. Unauthenticated visitors first get one shot at the
  * cross-host SSO bridge (`../sso-bridge/sso-bridge` — only when the
- * domain-wide session marker says the dashboard pair holds a live session and
+ * domain-wide session marker says the eliza.app auth origin holds a live session and
  * the user did not explicitly sign out here), then the normal login flow, and
  * return here. None of this mounts on apex control-plane hosts — the shell's
  * apex branch runs first — so the apex console never issues app-mode network
@@ -21,6 +21,7 @@
 
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { Navigate, useLocation } from "react-router-dom";
+import { loadPersistedActiveServer } from "../../state/persistence";
 import { useAgents } from "../instances/lib/data/eliza-agents";
 import { useSessionAuth } from "../lib/use-session-auth";
 import {
@@ -51,15 +52,17 @@ export function AppModeEntryRoute({
   appElement,
 }: {
   appElement: ReactNode;
-}): React.JSX.Element {
+}): ReactNode {
   const { ready, authenticated } = useSessionAuth();
   const location = useLocation();
   const agentsQuery = useAgents();
+  const isCloudManagementPath =
+    location.pathname === "/cloud" || location.pathname.startsWith("/cloud/");
 
   // Unauthenticated visits may ride the cross-host SSO bridge instead of the
-  // local login: when the domain-wide session marker says the dashboard pair
+  // local login: when the domain-wide session marker says the auth origin
   // holds a live session (and the user did not explicitly sign out here), the
-  // effect performs the full-page bounce to the dashboard mint leg. The
+  // effect performs the full-page bounce to the eliza.app mint leg. The
   // decision runs in an effect — never during render — because it reads
   // cookies/storage/clock, and it is single-shot per mount.
   const ssoDecisionRef = useRef(false);
@@ -92,7 +95,7 @@ export function AppModeEntryRoute({
   if (!authenticated) {
     if (ssoBridging !== false) {
       // Decision pending (first paint before the effect) or the full-page
-      // bounce to the dashboard mint leg is in flight — hold a notice, never
+      // bounce to the auth-origin mint leg is in flight — hold a notice, never
       // flash the login page under a navigation that is already leaving.
       return <EntryNotice label="Signing you in" />;
     }
@@ -105,10 +108,16 @@ export function AppModeEntryRoute({
   }
 
   if (agentsQuery.isError) {
-    // Never a blank screen — and never the console either: the same-origin
-    // chat app is the app host's own surface, so a control-plane hiccup on
-    // the agents list keeps the visitor in the product.
-    return <>{appElement}</>;
+    // Management routes own their own unavailable/error states and remain
+    // usable for account recovery. Ordinary entry can only boot chat when a
+    // Cloud binding already identifies the runtime; otherwise /join retries
+    // selection instead of starting an unbound agent shell.
+    return isCloudManagementPath ||
+      loadPersistedActiveServer()?.kind === "cloud" ? (
+      appElement
+    ) : (
+      <Navigate to="/join" replace />
+    );
   }
 
   if (agentsQuery.data === undefined) {
@@ -116,8 +125,19 @@ export function AppModeEntryRoute({
   }
 
   const route = decideAppModeRoute(agentsQuery.data);
-  if (route.kind === "create") {
-    return <Navigate to={route.to} replace />;
+  // Account/billing/admin management remains reachable before an org creates
+  // its first agent. Ordinary product entry needs both an agent and a durable
+  // Cloud binding; /join reuses an existing agent or provisions the first one
+  // and persists that binding before returning to chat.
+  if (!isCloudManagementPath) {
+    if (
+      route.kind === "create" ||
+      loadPersistedActiveServer()?.kind !== "cloud"
+    ) {
+      return (
+        <Navigate to={route.kind === "create" ? route.to : "/join"} replace />
+      );
+    }
   }
   return <>{appElement}</>;
 }

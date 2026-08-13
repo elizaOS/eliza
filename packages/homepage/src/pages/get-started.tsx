@@ -47,6 +47,7 @@ import {
   ELIZA_PHONE_FORMATTED,
   ELIZA_PHONE_NUMBER,
   getDiscordBotApplicationId,
+  getTelegramBotId,
   getTelegramBotUsername,
   getWhatsAppNumber,
 } from "@/lib/contact";
@@ -133,12 +134,8 @@ type OnboardingStep =
   | "DISCORD_SETUP_GUIDE"
   | "PROVISIONING_CHAT";
 
-function getTelegramBotId(): string {
-  return (import.meta.env.VITE_TELEGRAM_BOT_ID || "").trim();
-}
-
 function getDiscordClientId(): string {
-  return (import.meta.env.VITE_DISCORD_CLIENT_ID || "").trim();
+  return getDiscordBotApplicationId();
 }
 
 const SANS = "Geist, system-ui, sans-serif";
@@ -495,7 +492,7 @@ function ProvisioningChatStep({
             className="ml-auto text-xs text-neutral-400 hover:text-neutral-600 underline underline-offset-2"
           >
             {t("homepage_eliza.getStarted.skipToDashboard", {
-              defaultValue: "Skip to dashboard",
+              defaultValue: "Skip to Eliza",
             })}
           </button>
         )}
@@ -633,7 +630,7 @@ function ProvisioningChatStep({
         >
           <Check className="size-4 mr-2" />
           {t("homepage_eliza.getStarted.continueToDashboard", {
-            defaultValue: "Continue to dashboard",
+            defaultValue: "Continue to Eliza",
           })}
         </Button>
       )}
@@ -945,7 +942,7 @@ export default function GetStartedPage() {
       if (result.success) {
         if (onboardingSessionId && !isLinkMode) {
           // Platform continuation: continue into the identity-link handoff
-          // with the new credentials instead of bouncing to the dashboard.
+          // with the new credentials instead of leaving the onboarding flow.
           setSuppressRedirect(true);
           setStep("CONTINUATION_LINK");
           return;

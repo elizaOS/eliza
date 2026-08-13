@@ -22,7 +22,7 @@ concurrency:
 
 jobs:
   deploy-preview:
-    name: Deploy ${{ matrix.surface }} preview
+    name: Deploy consolidated frontend preview
     if: >-
       ${{
         github.event.workflow_run.event == 'pull_request' &&
@@ -33,14 +33,6 @@ jobs:
       }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - surface: console
-            project: eliza-cloud
-          - surface: app
-            project: eliza-app
     steps:
       - name: Validate trusted source and resolve Pages branch
         id: source
@@ -77,7 +69,7 @@ jobs:
               ;;
           esac
           echo "branch=$pages_branch" >> "$GITHUB_OUTPUT"
-          echo "artifact=pages-${{ matrix.surface }}-${SOURCE_RUN_ID}-${SOURCE_RUN_ATTEMPT}" >> "$GITHUB_OUTPUT"
+          echo "artifact=pages-app-${SOURCE_RUN_ID}-${SOURCE_RUN_ATTEMPT}" >> "$GITHUB_OUTPUT"
 
       - name: Download immutable untrusted Pages artifact
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
@@ -119,7 +111,7 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           PAGES_BRANCH: ${{ steps.source.outputs.branch }}
-          PAGES_PROJECT: ${{ matrix.project }}
+          PAGES_PROJECT: eliza-app
         run: |
           set -euo pipefail
           if [ -z "$CLOUDFLARE_API_TOKEN" ] || [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then

@@ -15,8 +15,8 @@ import { buildOidcDiscoveryDocument } from "./metadata";
 
 const config = resolveOidcConfig({
   OIDC_ENABLED: "true",
-  OIDC_ISSUER_URL: "https://api.elizacloud.test",
-  ELIZA_CLOUD_URL: "https://console.elizacloud.test",
+  OIDC_ISSUER_URL: "https://api.eliza.test",
+  ELIZA_ONBOARDING_LOGIN_APP_URL: "https://eliza.test",
 });
 if (!config) throw new Error("test config did not resolve");
 

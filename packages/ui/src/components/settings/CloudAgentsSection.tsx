@@ -107,7 +107,7 @@ export function CloudAgentsSection() {
   const refreshRequestIdRef = useRef(0);
   const activeId = useMemo(() => activeCloudAgentId(), []);
 
-  const cloudApiBase = getBootConfig().cloudApiBase || "https://elizacloud.ai";
+  const cloudApiBase = getBootConfig().cloudApiBase || "https://eliza.app";
 
   const refresh = useCallback(async () => {
     const requestId = ++refreshRequestIdRef.current;

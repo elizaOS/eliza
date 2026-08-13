@@ -46,9 +46,9 @@ process.env.NODE_ENV = "test";
 
 setDefaultTimeout(90_000);
 
-const API_ORIGIN = "https://api-staging.elizacloud.ai";
-const API_HOST = "api-staging.elizacloud.ai";
-const APP_ORIGIN = "https://app-staging.elizacloud.ai";
+const API_ORIGIN = "https://api-staging.eliza.app";
+const API_HOST = "api-staging.eliza.app";
+const APP_ORIGIN = "https://cloud-staging.eliza.app";
 const ORGANIZATION_ID = "11111111-1111-4111-8111-111111111111";
 const USER_ID = "22222222-2222-4222-8222-222222222222";
 const API_KEY_ID = "33333333-3333-4333-8333-333333333333";
@@ -284,7 +284,7 @@ async function callLegacySso(
         host: API_HOST,
         origin:
           input.origin ??
-          (path === "/mint" ? "https://staging.elizacloud.ai" : APP_ORIGIN),
+          (path === "/mint" ? "https://staging.eliza.app" : APP_ORIGIN),
       },
       body: JSON.stringify(input.body),
     },
@@ -623,13 +623,13 @@ describe("staging triple gate and exact request surface", () => {
       { env: testEnv({ NODE_ENV: "test" }) },
       { env: testEnv({ ENVIRONMENT: "production" }) },
       { url: "http://localhost:8787/mint", host: "localhost:8787" },
-      { url: "https://api.elizacloud.ai/mint", host: "api.elizacloud.ai" },
+      { url: "https://api.eliza.app/mint", host: "api.eliza.app" },
       {
-        url: "https://api-staging.elizacloud.ai.evil.test/mint",
-        host: "api-staging.elizacloud.ai.evil.test",
+        url: "https://api-staging.eliza.app.evil.test/mint",
+        host: "api-staging.eliza.app.evil.test",
       },
-      { host: "api-staging.elizacloud.ai:443" },
-      { host: "app-staging.elizacloud.ai" },
+      { host: "api-staging.eliza.app:443" },
+      { host: "cloud-staging.eliza.app" },
     ];
 
     for (const options of cases) {
@@ -649,10 +649,10 @@ describe("staging triple gate and exact request surface", () => {
     const { challenge } = await makeVerifierPair();
     for (const origin of [
       null,
-      "https://app.elizacloud.ai",
-      "http://app-staging.elizacloud.ai",
-      "https://app-staging.elizacloud.ai:443",
-      "https://app-staging.elizacloud.ai.evil.test",
+      "https://cloud.eliza.app",
+      "http://cloud-staging.eliza.app",
+      "https://cloud-staging.eliza.app:443",
+      "https://cloud-staging.eliza.app.evil.test",
     ]) {
       const response = await call("/mint", {
         apiKey: RAW_API_KEY,

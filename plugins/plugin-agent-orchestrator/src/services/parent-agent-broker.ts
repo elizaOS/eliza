@@ -34,7 +34,7 @@ const REQUEST_MAX_CHARS = 4000;
 const ACTION_LIST_LIMIT_DEFAULT = 60;
 const ACTION_LIST_LIMIT_MAX = 200;
 const CLOUD_RESPONSE_MAX_CHARS = 8000;
-const DEFAULT_CLOUD_BASE_URL = "https://elizacloud.ai";
+const DEFAULT_CLOUD_BASE_URL = "https://api.eliza.app";
 
 export const PARENT_AGENT_BROKER_SLUG = "parent-agent";
 

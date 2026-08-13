@@ -168,7 +168,7 @@ function resolveCloudBaseUrl(options: VisionCloudFallbackOptions): string {
 	return (
 		options.baseUrl?.trim() ||
 		process.env.ELIZA_CLOUD_BASE_URL?.trim() ||
-		"https://api.elizacloud.ai"
+		"https://api.eliza.app"
 	).replace(/\/+$/, "");
 }
 

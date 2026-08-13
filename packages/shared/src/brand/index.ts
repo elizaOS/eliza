@@ -17,8 +17,9 @@
  */
 export const EXTERNAL_URLS = {
   marketing: "https://eliza.app",
-  app: "https://app.elizacloud.ai",
-  cloud: "https://elizacloud.ai",
+  app: "https://cloud.eliza.app",
+  cloud: "https://cloud.eliza.app",
+  cloudApi: "https://api.eliza.app",
   os: "https://os.eliza.app",
   docs: "https://docs.elizaos.ai",
   github: "https://github.com/elizaOS/eliza",

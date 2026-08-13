@@ -239,6 +239,8 @@ interface BuiltinSectionDefinition {
   developerOnly?: boolean;
   /** Hide on the cloud mobile build (no host machine). */
   hideOnCloud?: boolean;
+  /** Show only for a managed Eliza Cloud runtime target. */
+  cloudOnly?: boolean;
   /**
    * Explicit sort order override. Catalog sections default to their META list
    * index; the late-registered Cloud/runtime sections declare fractional orders
@@ -521,6 +523,7 @@ const BUILTIN_SECTION_DEFINITIONS: readonly BuiltinSectionDefinition[] = [
     titleKey: "settings.sections.cloudOverview.title",
     defaultTitle: "Eliza Cloud",
     order: 1.45,
+    cloudOnly: true,
     Component: CloudOverviewSection,
   },
   // Eliza Cloud agent manager — surfaces in Settings (list / switch /
@@ -540,6 +543,7 @@ const BUILTIN_SECTION_DEFINITIONS: readonly BuiltinSectionDefinition[] = [
     // Hidden for MVP — agent management renders inside the single "Eliza
     // Cloud" tab (CloudOverviewSection). Deep-link still resolves.
     developerOnly: true,
+    cloudOnly: true,
     Component: CloudAgentsSection,
   },
   // "My Runtimes" — manage + switch between local / cloud-dedicated /
@@ -583,6 +587,7 @@ function toSettingsSectionDef(
     bodyClassName: def.bodyClassName,
     developerOnly: def.developerOnly,
     hideOnCloud: def.hideOnCloud,
+    cloudOnly: def.cloudOnly,
     order: def.order ?? order,
     Component: def.Component,
   };
