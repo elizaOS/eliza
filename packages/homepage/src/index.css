@@ -31,9 +31,9 @@
 @font-face {
   font-family: "Poppins";
   font-style: normal;
-  font-weight: 600;
+  font-weight: 300;
   font-display: swap;
-  src: url("/poppins-latin-600.woff2") format("woff2");
+  src: url("/poppins-latin-300.woff2") format("woff2");
 }
 
 :root {
@@ -1366,9 +1366,9 @@ body {
   text-decoration: none;
   color: var(--brand-black);
   font-family: "Poppins", "Geist", Arial, sans-serif;
-  font-weight: 600;
-  font-size: 1.5rem;
-  letter-spacing: -0.01em;
+  font-weight: 300;
+  font-size: 1.6rem;
+  letter-spacing: 0;
 }
 
 .landing-header-cta {
