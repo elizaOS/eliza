@@ -333,7 +333,9 @@ test("cold create → first send → retry: one dispatch, one admission, one cha
   const rebuilt = makeNamespace(data, background);
   const replayAfterRestart = await postMessage(rebuilt, send);
   expect(replayAfterRestart.status).toBe(200);
-  expect((await replayAfterRestart.json()) as { text: string }).toEqual(firstBody);
+  expect((await replayAfterRestart.json()) as { text: string }).toEqual(
+    firstBody,
+  );
   expect(providerDispatches).toBe(1);
   expect(admissions).toBe(1);
   expect(billSettlements).toBe(1);
