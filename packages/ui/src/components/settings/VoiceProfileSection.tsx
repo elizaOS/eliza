@@ -31,6 +31,7 @@ import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { Select, SelectContent, SelectItem, SelectValue } from "../ui/select";
 import { SettingsSelectTrigger } from "../ui/settings-controls";
+import { SettingsInputRow } from "./settings-agent-rows";
 
 export interface VoiceProfileSectionProps {
   /** Adapter supplied by the parent that holds the `ElizaClient`. */
@@ -268,32 +269,28 @@ function VoiceProfileLifecycleEditor({
       {!profile.entityId ? (
         <div className="grid gap-2">
           <div className="grid gap-2 sm:grid-cols-2">
-            <div className="grid gap-1.5">
-              <Label htmlFor={`voice-profile-entity-${profile.id}`}>
-                {t("voiceprofile.bind.entity", { defaultValue: "Entity ID" })}
-              </Label>
-              <Input
-                id={`voice-profile-entity-${profile.id}`}
-                value={entityId}
-                onChange={(event) => setEntityId(event.target.value)}
-                className="h-11"
-                data-testid={`voice-profile-bind-entity-${profile.id}`}
-              />
-            </div>
-            <div className="grid gap-1.5">
-              <Label htmlFor={`voice-profile-entity-label-${profile.id}`}>
-                {t("voiceprofile.bind.label", {
-                  defaultValue: "Binding label (optional)",
-                })}
-              </Label>
-              <Input
-                id={`voice-profile-entity-label-${profile.id}`}
-                value={entityLabel}
-                onChange={(event) => setEntityLabel(event.target.value)}
-                className="h-11"
-                data-testid={`voice-profile-bind-label-${profile.id}`}
-              />
-            </div>
+            <SettingsInputRow
+              agentId={`voice-profile-entity-${profile.id}`}
+              group="voice-profiles"
+              label={t("voiceprofile.bind.entity", {
+                defaultValue: "Entity ID",
+              })}
+              value={entityId}
+              onValueChange={setEntityId}
+              testId={`voice-profile-bind-entity-${profile.id}`}
+              inputClassName="h-11"
+            />
+            <SettingsInputRow
+              agentId={`voice-profile-entity-label-${profile.id}`}
+              group="voice-profiles"
+              label={t("voiceprofile.bind.label", {
+                defaultValue: "Binding label (optional)",
+              })}
+              value={entityLabel}
+              onValueChange={setEntityLabel}
+              testId={`voice-profile-bind-label-${profile.id}`}
+              inputClassName="h-11"
+            />
           </div>
           <Button
             type="button"
