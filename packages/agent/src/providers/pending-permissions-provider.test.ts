@@ -6,9 +6,13 @@
  * buildPendingPermissionsContext (the PENDING PERMISSIONS section, empty when
  * nothing is pending), and pendingPermissionsProvider itself (silent when the
  * permissions registry is absent or empty, populated otherwise, registered at
- * position -5). Deterministic: the registry and runtime are in-memory vi fakes.
+ * position -5, and retained across narrow planner-context routing).
+ * Deterministic: the registry and runtime are in-memory vi fakes.
  */
-import type { IAgentRuntime } from "@elizaos/core";
+import {
+  type IAgentRuntime,
+  selectV5PlannerStateProviderNames,
+} from "@elizaos/core";
 import type { IPermissionsRegistry, PermissionState } from "@elizaos/shared";
 import { describe, expect, it, vi } from "vitest";
 import {
@@ -271,5 +275,25 @@ describe("pendingPermissionsProvider", () => {
 
   it("registers at position -5", () => {
     expect(pendingPermissionsProvider.position).toBe(-5);
+  });
+
+  it("opts into response-state composition across narrow planner contexts", () => {
+    expect(pendingPermissionsProvider.alwaysInResponseState).toBe(true);
+    for (const selectedContexts of [["settings"], ["tasks"], ["code"], []]) {
+      const selected = selectV5PlannerStateProviderNames({
+        runtime: {
+          providers: [pendingPermissionsProvider],
+        } as unknown as IAgentRuntime,
+        message: {
+          id: "00000000-0000-0000-0000-000000000001",
+          entityId: "00000000-0000-0000-0000-000000000002",
+          roomId: "00000000-0000-0000-0000-000000000003",
+          content: { text: "Why was reminders blocked?" },
+        } as never,
+        selectedContexts: selectedContexts as never,
+        userRoles: ["MEMBER"],
+      });
+      expect(selected).toContain("elizaPendingPermissions");
+    }
   });
 });

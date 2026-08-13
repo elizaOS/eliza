@@ -119,6 +119,11 @@ export const pendingPermissionsProvider: Provider = {
     "Surfaces permissions blocked or not-yet-granted so the planner can decide whether to re-request.",
   descriptionCompressed: "surface blocked permission for planner",
   dynamic: true,
+  // Pending permission state is a cheap, empty-when-healthy planner signal.
+  // It must survive narrow context routing so a blocked capability is visible
+  // on the very turn that needs it instead of being materialized as `general`
+  // and filtered out before the model call.
+  alwaysInResponseState: true,
   position: -5,
   cacheStable: false,
   cacheScope: "turn",
