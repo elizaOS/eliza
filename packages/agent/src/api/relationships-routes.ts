@@ -49,24 +49,27 @@ function isRelationshipsServiceWithGraph(
   );
 }
 
-function parseQuery(reqUrl: string | undefined): RelationshipsGraphQuery {
+export function parseRelationshipsQueryInteger(
+  value: string | null,
+  options?: { min?: number },
+): number | undefined {
+  if (value === null || !/^\d+$/.test(value)) {
+    return undefined;
+  }
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isFinite(parsed)) {
+    return undefined;
+  }
+  if (typeof options?.min === "number" && parsed < options.min) {
+    return undefined;
+  }
+  return parsed;
+}
+
+export function parseRelationshipsQuery(
+  reqUrl: string | undefined,
+): RelationshipsGraphQuery {
   const url = new URL(reqUrl ?? "/api/relationships/graph", "http://localhost");
-  const parseInteger = (
-    value: string | null,
-    options?: { min?: number },
-  ): number | undefined => {
-    if (!value) {
-      return undefined;
-    }
-    const parsed = Number.parseInt(value, 10);
-    if (!Number.isFinite(parsed)) {
-      return undefined;
-    }
-    if (typeof options?.min === "number" && parsed < options.min) {
-      return undefined;
-    }
-    return parsed;
-  };
   const scopeParam = url.searchParams.get("scope");
   const scope =
     scopeParam === "relevant" || scopeParam === "all" ? scopeParam : undefined;
@@ -74,8 +77,12 @@ function parseQuery(reqUrl: string | undefined): RelationshipsGraphQuery {
   return {
     search: url.searchParams.get("search"),
     platform: url.searchParams.get("platform"),
-    limit: parseInteger(url.searchParams.get("limit"), { min: 1 }),
-    offset: parseInteger(url.searchParams.get("offset"), { min: 0 }),
+    limit: parseRelationshipsQueryInteger(url.searchParams.get("limit"), {
+      min: 1,
+    }),
+    offset: parseRelationshipsQueryInteger(url.searchParams.get("offset"), {
+      min: 0,
+    }),
     scope,
   };
 }
@@ -244,7 +251,7 @@ export async function handleRelationshipsRoutes(
 
   if (pathname === "/api/relationships/graph") {
     const snapshot = await relationshipsGraph.getGraphSnapshot(
-      parseQuery(req.url),
+      parseRelationshipsQuery(req.url),
     );
     json(res, { data: snapshot }, 200);
     return true;
@@ -252,7 +259,7 @@ export async function handleRelationshipsRoutes(
 
   if (pathname === "/api/relationships/people") {
     const snapshot = await relationshipsGraph.getGraphSnapshot(
-      parseQuery(req.url),
+      parseRelationshipsQuery(req.url),
     );
     json(
       res,
