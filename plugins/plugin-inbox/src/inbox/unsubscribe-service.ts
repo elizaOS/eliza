@@ -197,7 +197,14 @@ async function performHttpUnsubscribe(args: {
       method: args.oneClick ? "http_one_click" : "http_get",
     };
   } finally {
-    await guarded.release();
+    // The unsubscribe boundary only needs the status and final URL. Cancel
+    // any unread body before releasing the guard so attacker-controlled
+    // responses cannot retain an open connection or stream.
+    try {
+      await guarded.response.body?.cancel();
+    } finally {
+      await guarded.release();
+    }
   }
 }
 

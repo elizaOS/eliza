@@ -172,6 +172,19 @@ function makeService(
 
 const fetchSpy = vi.fn();
 
+function trackedResponse(status: number, headers?: HeadersInit) {
+  const body = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(new Uint8Array([1]));
+    },
+  });
+  const cancel = vi.spyOn(body, "cancel");
+  return {
+    response: new Response(body, { status, headers }),
+    cancel,
+  };
+}
+
 describe("InboxUnsubscribeService", () => {
   beforeEach(() => {
     fetchSpy.mockReset();
@@ -252,14 +265,11 @@ describe("InboxUnsubscribeService", () => {
 
   describe("unsubscribeEmailSender execution", () => {
     it("performs an HTTP one-click POST and records success", async () => {
+      const tracked = trackedResponse(200);
       fetchSpy.mockImplementation(async (input: RequestInfo | URL) => {
         const url = String(input);
         expect(url).toBe("https://brand.com/unsub");
-        return new Response(null, {
-          status: 200,
-          // Guard reports finalUrl from the request URL; response.url is not
-          // always populated by the Response constructor.
-        });
+        return tracked.response;
       });
       const gateway = makeGateway({
         messages: [
@@ -288,6 +298,31 @@ describe("InboxUnsubscribeService", () => {
       expect(record.httpFinalUrl).toBe("https://brand.com/unsub");
       expect(records).toHaveLength(1);
       expect(records[0]?.metadata.connectorAccountId).toBe("acct-1");
+      expect(tracked.cancel).toHaveBeenCalledTimes(1);
+    });
+
+    it("cancels a non-success HTTP response body before recording failure", async () => {
+      const tracked = trackedResponse(503);
+      fetchSpy.mockResolvedValue(tracked.response);
+      const gateway = makeGateway({
+        messages: [
+          gmailMessage({
+            id: "m1",
+            fromEmail: "news@brand.com",
+            listUnsubscribe: "<https://brand.com/unsub>",
+          }),
+        ],
+      });
+      const { service } = makeService(gateway);
+
+      const { record } = await service.unsubscribeEmailSender({
+        senderEmail: "news@brand.com",
+        userAuthorization: true,
+      });
+
+      expect(record.status).toBe("failed");
+      expect(record.httpStatusCode).toBe(503);
+      expect(tracked.cancel).toHaveBeenCalledTimes(1);
     });
 
     it("sends a mailto unsubscribe through the Gmail gateway", async () => {
@@ -426,12 +461,10 @@ describe("InboxUnsubscribeService", () => {
     });
 
     it("fails closed when a public unsubscribe URL redirects to a loopback target", async () => {
-      fetchSpy.mockImplementation(async () => {
-        return new Response(null, {
-          status: 302,
-          headers: { location: "http://127.0.0.1/secret" },
-        });
+      const tracked = trackedResponse(302, {
+        location: "http://127.0.0.1/secret",
       });
+      fetchSpy.mockResolvedValue(tracked.response);
       const gateway = makeGateway({
         messages: [
           gmailMessage({
@@ -453,6 +486,8 @@ describe("InboxUnsubscribeService", () => {
       expect(record.status).toBe("failed");
       expect(record.errorMessage).toMatch(/blocked/i);
       expect(records).toHaveLength(1);
+      await Promise.resolve();
+      expect(tracked.cancel).toHaveBeenCalledTimes(1);
     });
   });
 
