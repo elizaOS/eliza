@@ -43,7 +43,18 @@
  * has revalidated the live room type and participants for owner-only recall.
  */
 
+import { normalizeConnectorSource } from "../connectors";
 import { ElizaError } from "../errors";
+import {
+	evaluateOwnerExclusiveDisclosure,
+	INTERNAL_AGENT_TURN_DISCLOSURE_BASIS,
+	markOwnerExclusiveDisclosureUsed,
+	OWNER_PRIVATE_DESTINATION_DISCLOSURE_BASIS,
+	type OwnerExclusiveDisclosureDecision,
+	type OwnerExclusiveDisclosureDenial,
+	revalidateOwnerExclusiveDisclosure,
+	trustedDeliveryAudienceIsBoundToRuntime,
+} from "../security/trusted-delivery-audience";
 import type {
 	AccessContext,
 	IAgentRuntime,
@@ -53,14 +64,6 @@ import type {
 	UUID,
 } from "../types";
 import { actorFromAccessContext, canReadScope } from "./filter";
-import {
-	INTERNAL_AGENT_TURN_DISCLOSURE_BASIS,
-	markOwnerExclusiveDisclosureUsed,
-	OWNER_PRIVATE_DESTINATION_DISCLOSURE_BASIS,
-	type OwnerExclusiveDisclosureDecision,
-	revalidateOwnerExclusiveDisclosure,
-} from "../security/trusted-delivery-audience";
-import { normalizeConnectorSource } from "../connectors";
 
 /**
  * How strongly the stored memory's sender identity is attested.
@@ -210,11 +213,9 @@ export function deriveCanonicalProvenance(
 	const providerSource = readString(metadata, "provider");
 	const contentSource = readString(content, "source");
 	const baseSource = readString(asRecord(metadata?.base), "source");
-	const sourceCandidates = [
-		providerSource,
-		contentSource,
-		baseSource,
-	].filter((value): value is string => value !== undefined);
+	const sourceCandidates = [providerSource, contentSource, baseSource].filter(
+		(value): value is string => value !== undefined,
+	);
 	const distinctRawSources = new Set(
 		sourceCandidates.map((value) => normalizeConnectorSource(value) ?? value),
 	);
@@ -385,7 +386,7 @@ export interface CanonicalRecallResult {
 	candidateWindowComplete: boolean;
 }
 
-interface CanonicalRecallEvaluationInput {
+export interface CanonicalRecallInput {
 	/** Candidate memories already fetched from the store. */
 	candidates: Memory[];
 	/** The agent performing the recall. */
@@ -394,6 +395,9 @@ interface CanonicalRecallEvaluationInput {
 	requester: AccessContext;
 	/** Room the answer will land in (the inbound message's connector-stamped room). */
 	destinationRoomId: UUID;
+}
+
+interface CanonicalRecallEvaluationInput extends CanonicalRecallInput {
 	/** Derived only inside this module from process-local trusted audience evidence. */
 	crossRoomGate: CrossRoomRecallGate;
 }
@@ -505,7 +509,7 @@ function evaluateCanonicalRecall(
 }
 
 export function buildCanonicalRecall(
-	input: CanonicalRecallEvaluationInput,
+	input: CanonicalRecallInput,
 ): Omit<CanonicalRecallResult, "availability" | "candidateWindowComplete"> {
 	return evaluateCanonicalRecall({
 		...input,
@@ -520,7 +524,8 @@ interface CanonicalMemorySearchBaseInput {
 	runtime: IAgentRuntime;
 	embedding: number[];
 	query?: string;
-	agentId: UUID;
+	/** @deprecated Production recall derives the agent from `runtime.agentId`. */
+	agentId?: UUID;
 	count: number;
 	matchThreshold?: number;
 	entityId?: UUID;
@@ -556,15 +561,36 @@ export interface CanonicalMemorySearchDeliveryInput {
 	deliveryMessage: Memory;
 }
 
-/**
- * Resolve the requester {@link AccessContext} from the exact delivery turn.
- * Lookup failure surfaces as a typed observable failure instead of being
- * swallowed into a fabricated low-authority context.
- */
+/** Validate the exact delivery turn's process-local runtime binding. */
+function trustedDeliveryTurnDenial(
+	runtime: IAgentRuntime,
+	deliveryMessage: Memory,
+): OwnerExclusiveDisclosureDenial | undefined {
+	if (!trustedDeliveryAudienceIsBoundToRuntime(deliveryMessage, runtime)) {
+		return "runtime_mismatch";
+	}
+	const decision = evaluateOwnerExclusiveDisclosure(deliveryMessage);
+	if (decision.allowed) return undefined;
+
+	// A valid shared/group audience is sufficient for same-room recall even
+	// though it cannot authorize owner-private cross-room disclosure. All
+	// binding, freshness, actor, agent, and room failures fail closed here.
+	switch (decision.reason) {
+		case "owner_mismatch":
+		case "participant_mismatch":
+		case "destination_not_private":
+			return undefined;
+		default:
+			return decision.reason;
+	}
+}
+
 async function resolveRequesterAccessContext(
 	runtime: IAgentRuntime,
 	deliveryMessage: Memory,
-): Promise<{ ok: true; context: AccessContext } | { ok: false; cause: unknown }> {
+): Promise<
+	{ ok: true; context: AccessContext } | { ok: false; cause: unknown }
+> {
 	try {
 		// buildAccessContext is the same composition the disclosure gate trusts:
 		// it resolves role/isOwner/worldId against the single world the message
@@ -588,6 +614,18 @@ export async function searchCanonicalConversationMemories(
 ): Promise<CanonicalRecallResult> {
 	const { deliveryMessage } = input;
 	const destinationRoomId = deliveryMessage.roomId;
+	const deliveryTurnDenial = trustedDeliveryTurnDenial(
+		input.runtime,
+		deliveryMessage,
+	);
+	if (deliveryTurnDenial) {
+		return {
+			items: [],
+			withheld: [],
+			availability: "unavailable",
+			candidateWindowComplete: false,
+		};
+	}
 
 	const requesterResult = await resolveRequesterAccessContext(
 		input.runtime,
@@ -631,10 +669,7 @@ export async function searchCanonicalConversationMemories(
 	// (it hit the end of the eligible set or its own limit) the window is
 	// marked incomplete.
 	const overfetchFactor = 3;
-	const candidateCount = Math.max(
-		input.count,
-		input.count * overfetchFactor,
-	);
+	const candidateCount = Math.max(input.count, input.count * overfetchFactor);
 
 	let candidates: Memory[];
 	try {
@@ -676,7 +711,7 @@ export async function searchCanonicalConversationMemories(
 
 	const evaluated = evaluateCanonicalRecall({
 		candidates,
-		agentId: input.agentId,
+		agentId: input.runtime.agentId,
 		requester,
 		destinationRoomId,
 		crossRoomGate,
@@ -687,11 +722,13 @@ export async function searchCanonicalConversationMemories(
 	const normalizedSource = input.source
 		? normalizeConnectorSource(input.source)
 		: undefined;
-	const items = normalizedSource
-		? evaluated.items.filter(
-				(item) => item.provenance.source === normalizedSource,
-			)
-		: evaluated.items;
+	const items = (
+		normalizedSource
+			? evaluated.items.filter(
+					(item) => item.provenance.source === normalizedSource,
+				)
+			: evaluated.items
+	).slice(0, input.count);
 
 	if (
 		deliveryMessage &&

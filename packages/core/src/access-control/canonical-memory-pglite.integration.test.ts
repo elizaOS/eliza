@@ -280,15 +280,11 @@ describe("canonical connector memory recall on AgentRuntime + PGlite", () => {
 		});
 
 		expect(deniedRecall.items).toEqual([]);
-		expect(deniedRecall.withheld).toEqual(
-			expect.arrayContaining([
-				expect.objectContaining({
-					code: "cross_room_denied",
-					reason:
-						"cross-room recall denied by trusted delivery audience: participant_mismatch",
-				}),
-			]),
-		);
+		// The denied cross-room row is excluded by the room-constrained adapter
+		// query, so it is neither returned nor exposed through diagnostics.
+		expect(deniedRecall.withheld).toEqual([]);
+		expect(deniedRecall.availability).toBe("complete");
+		expect(deniedRecall.candidateWindowComplete).toBe(true);
 		expect(ownerExclusiveDisclosureWasUsed(groupTurn)).toBe(false);
 		expect(ownerExclusiveSuppressionNote(groupTurn)).toBeUndefined();
 	});

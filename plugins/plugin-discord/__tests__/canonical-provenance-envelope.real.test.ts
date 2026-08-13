@@ -16,7 +16,6 @@
  */
 import {
 	attestDeliveryAudienceFromCanonicalRoom,
-	type CanonicalProvenance,
 	ChannelType,
 	canonicalDedupeKey,
 	deriveCanonicalProvenance,
@@ -271,7 +270,11 @@ describe("canonical provenance envelope", () => {
 		// the agent because the requester is an ordinary user, not the canonical
 		// owner. Cross-room recall is denied by the gate, so same-room
 		// containment applies and the cross-room candidate is withheld.
-		const delivery = await ownerDeliveryTurn(runtime, destinationRoomId, requester);
+		const delivery = await ownerDeliveryTurn(
+			runtime,
+			destinationRoomId,
+			requester,
+		);
 		vi.spyOn(runtime, "searchMemories").mockResolvedValue([
 			messageMemory({ agentId: runtime.agentId, roomId: id("other-room") }),
 		]);
@@ -308,6 +311,113 @@ describe("canonical provenance envelope", () => {
 		expect(recall.items).toHaveLength(0);
 		expect(recall.availability).toBe("unavailable");
 		expect(recall.candidateWindowComplete).toBe(false);
+	});
+
+	it("requires fresh delivery evidence bound to the recalling runtime", async () => {
+		const harness = track(await createTestRuntimeWithModelProvider({}));
+		const { runtime } = harness;
+		const requester = id("delivery-evidence-requester");
+
+		const missingRoomId = id("missing-delivery-evidence-room");
+		await createRoom(runtime, missingRoomId, ChannelType.DM, [requester]);
+		const missingDelivery = messageMemory({
+			agentId: runtime.agentId,
+			roomId: missingRoomId,
+			entityId: requester,
+		});
+		const searchSpy = vi.spyOn(runtime, "searchMemories");
+		await expect(
+			searchCanonicalConversationMemories({
+				runtime,
+				embedding: [0.1, 0.2],
+				deliveryMessage: missingDelivery,
+				count: 10,
+			}),
+		).resolves.toMatchObject({
+			items: [],
+			availability: "unavailable",
+			candidateWindowComplete: false,
+		});
+
+		const expiredDelivery = await ownerDeliveryTurn(
+			runtime,
+			id("expired-delivery-evidence-room"),
+			requester,
+		);
+		await attestDeliveryAudienceFromCanonicalRoom(runtime, expiredDelivery, {
+			nowMs: Date.now() - 1_000,
+			ttlMs: 1,
+		});
+		await expect(
+			searchCanonicalConversationMemories({
+				runtime,
+				embedding: [0.1, 0.2],
+				deliveryMessage: expiredDelivery,
+				count: 10,
+			}),
+		).resolves.toMatchObject({
+			items: [],
+			availability: "unavailable",
+			candidateWindowComplete: false,
+		});
+		expect(searchSpy).not.toHaveBeenCalled();
+
+		const otherHarness = track(await createTestRuntimeWithModelProvider({}));
+		const otherSearchSpy = vi.spyOn(otherHarness.runtime, "searchMemories");
+		const runtimeBoundDelivery = await ownerDeliveryTurn(
+			runtime,
+			id("wrong-runtime-delivery-evidence-room"),
+			requester,
+		);
+		await expect(
+			searchCanonicalConversationMemories({
+				runtime: otherHarness.runtime,
+				embedding: [0.1, 0.2],
+				deliveryMessage: runtimeBoundDelivery,
+				count: 10,
+			}),
+		).resolves.toMatchObject({
+			items: [],
+			availability: "unavailable",
+			candidateWindowComplete: false,
+		});
+		expect(otherSearchSpy).not.toHaveBeenCalled();
+	});
+
+	it("ignores a spoofed caller agent id and caps results to count", async () => {
+		const harness = track(await createTestRuntimeWithModelProvider({}));
+		const { runtime } = harness;
+		const roomId = id("spoofed-agent-room");
+		const requester = id("spoofed-agent-requester");
+		const delivery = await ownerDeliveryTurn(runtime, roomId, requester);
+		const candidates = [0, 1, 2, 3].map((index) =>
+			messageMemory({
+				id: id(`spoofed-agent-candidate-${index}`),
+				agentId: runtime.agentId,
+				roomId,
+				entityId: requester,
+				metadata: {
+					scope: index === 0 ? "agent-private" : "room",
+					messageIdFull: `discord-message-${index}`,
+				},
+			}),
+		);
+		vi.spyOn(runtime, "searchMemories").mockResolvedValue(candidates);
+
+		const recall = await searchCanonicalConversationMemories({
+			runtime,
+			embedding: [0.1, 0.2],
+			// This formerly minted the AGENT tier because it matched requester.
+			agentId: requester,
+			deliveryMessage: delivery,
+			count: 2,
+		});
+
+		expect(recall.withheld[0]?.code).toBe("scope_denied");
+		expect(recall.items).toHaveLength(2);
+		expect(recall.items.every((item) => item.provenance.scope === "room")).toBe(
+			true,
+		);
 	});
 
 	it("dedupes by source/account/room/platform id across distinct database primary keys", async () => {
@@ -392,11 +502,13 @@ describe("canonical provenance envelope", () => {
 		const roomA = messageMemory({
 			id: id("telegram-room-a-msg"),
 			roomId: id("telegram-chat-a"),
+			content: { source: "telegram" },
 			metadata: baseMeta,
 		});
 		const roomB = messageMemory({
 			id: id("telegram-room-b-msg"),
 			roomId: id("telegram-chat-b"),
+			content: { source: "telegram" },
 			metadata: baseMeta,
 		});
 		const provA = deriveCanonicalProvenance(roomA, id("agent"));
@@ -548,8 +660,8 @@ describe("canonical provenance envelope", () => {
 			createdAt: 1_700_000_010_000,
 			embedding,
 		});
-		// A candidate in a DIFFERENT room: must be withheld (cross_room_denied),
-		// never silently returned into this destination.
+		// A candidate in a DIFFERENT room: the room-constrained adapter query must
+		// exclude it before canonical evaluation.
 		const crossRoom = messageMemory({
 			id: id("production-cross-room"),
 			agentId: runtime.agentId,
@@ -565,15 +677,17 @@ describe("canonical provenance envelope", () => {
 		vi.spyOn(runtime, "useModel").mockResolvedValue(embedding as never);
 		const searchSpy = vi.spyOn(runtime, "searchMemories");
 
+		const request = messageMemory({
+			id: id("production-request"),
+			agentId: runtime.agentId,
+			roomId,
+			entityId: requester,
+			content: { text: "Find deploy key", source: "client_chat" },
+		});
+		await attestDeliveryAudienceFromCanonicalRoom(runtime, request);
 		const result = await messageAction.handler(
 			runtime,
-			messageMemory({
-				id: id("production-request"),
-				agentId: runtime.agentId,
-				roomId,
-				entityId: requester,
-				content: { text: "Find deploy key", source: "client_chat" },
-			}),
+			request,
 			undefined,
 			{ parameters: { action: "search", query: "deploy key" } },
 			undefined,
@@ -588,11 +702,12 @@ describe("canonical provenance envelope", () => {
 			availability?: string;
 			withheld?: Array<{ code: string }>;
 		};
-		// Duplicate collapsed to the earliest row; the cross-room row withheld.
+		// Duplicate collapsed to the earliest row; the cross-room row never
+		// entered the candidate window.
 		expect(data.results).toHaveLength(1);
 		expect(data.results?.[0]?.id).toBe(first.id);
 		expect(data.results?.every((r) => r.roomId === roomId)).toBe(true);
-		expect(data.availability).toBe("partial");
-		expect(data.withheld?.[0]?.code).toBe("cross_room_denied");
+		expect(data.availability).toBe("complete");
+		expect(data.withheld).toEqual([]);
 	});
 });
