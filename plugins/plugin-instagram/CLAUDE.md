@@ -84,7 +84,7 @@ apply when `accountId === "default"` (the single-account case). Multi-account de
 | `INSTAGRAM_POLLING_INTERVAL` | No | Poll interval in seconds (default `60`) |
 | `INSTAGRAM_ACCOUNT_ID` | No | Override default account ID |
 | `INSTAGRAM_DEFAULT_ACCOUNT_ID` | No | Alias for `INSTAGRAM_ACCOUNT_ID` |
-| `INSTAGRAM_ACCOUNTS` | No | JSON array/object of additional account configs |
+| `INSTAGRAM_ACCOUNTS` | No | JSON array/object of additional account configs. Malformed JSON or a primitive throws `ElizaError` (`INSTAGRAM_CONFIG_INVALID`). Account IDs are trimmed so object keys and `accountId`/`id` resolve to the same map entry. |
 | `INSTAGRAM_PAGE_ACCESS_TOKEN` | No | Meta Graph API page access token for workflow nodes |
 
 Character-level config goes in `character.settings.instagram`:
@@ -126,6 +126,8 @@ pattern).
   `src/service.ts`.
 - **Multi-account:** Each configured account gets its own `InstagramService` instance. The `start()`
   static method iterates `listInstagramAccountIds()` and registers one connector pair per account.
+  `INSTAGRAM_ACCOUNTS` and `character.settings.instagram.accounts` keys are trimmed before lookup;
+  invalid JSON is a fatal config error, not an empty account list.
 - **Length caps:** `MAX_COMMENT_LENGTH = 1000` and `MAX_DM_LENGTH = 1000` are enforced in
   `service.ts` — DMs over the cap throw in `sendDirectMessage`, and `contentShaping.postProcess`
   auto-truncates comments via the module-local `truncateInstagramComment`. `MAX_CAPTION_LENGTH = 2200`

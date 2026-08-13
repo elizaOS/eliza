@@ -3,8 +3,10 @@
  * env/character values (the implicit `default` account), an `INSTAGRAM_ACCOUNTS`
  * JSON map, and `character.settings.instagram` — merging per field. Supplies
  * `InstagramService` the account id list and credentials for each configured account.
+ * `INSTAGRAM_ACCOUNTS` is fail-closed: malformed or non-object JSON throws
+ * `ElizaError` (`INSTAGRAM_CONFIG_INVALID`) instead of looking like no accounts.
  */
-import type { IAgentRuntime } from "@elizaos/core";
+import { ElizaError, type IAgentRuntime } from "@elizaos/core";
 import type { InstagramConfig } from "./types";
 
 export const DEFAULT_INSTAGRAM_ACCOUNT_ID = "default";
@@ -29,39 +31,79 @@ function characterConfig(runtime: IAgentRuntime): InstagramMultiAccountConfig {
   return raw && typeof raw === "object" ? (raw as InstagramMultiAccountConfig) : {};
 }
 
+function isAccountConfig(value: unknown): value is InstagramAccountConfig {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function indexAccountConfigs(
+  entries: Iterable<readonly [unknown, unknown]>
+): Record<string, InstagramAccountConfig> {
+  const indexed: Record<string, InstagramAccountConfig> = {};
+  for (const [rawId, value] of entries) {
+    if (!isAccountConfig(value)) continue;
+    const explicitId =
+      (typeof value.accountId === "string" && value.accountId.trim()
+        ? value.accountId
+        : undefined) ?? (typeof value.id === "string" && value.id.trim() ? value.id : undefined);
+    const id = normalizeInstagramAccountId(explicitId ?? rawId);
+    indexed[id] = value;
+  }
+  return indexed;
+}
+
 function parseAccountsJson(runtime: IAgentRuntime): Record<string, InstagramAccountConfig> {
   const raw = stringSetting(runtime, "INSTAGRAM_ACCOUNTS");
   if (!raw) return {};
 
+  let parsed: unknown;
   try {
-    const parsed = JSON.parse(raw) as unknown;
-    if (Array.isArray(parsed)) {
-      return Object.fromEntries(
-        parsed
-          .filter(
-            (item): item is InstagramAccountConfig => Boolean(item) && typeof item === "object"
-          )
-          .map((item) => [normalizeInstagramAccountId(item.accountId ?? item.id), item])
-      );
-    }
-    return parsed && typeof parsed === "object"
-      ? (parsed as Record<string, InstagramAccountConfig>)
-      : {};
-  } catch {
-    return {};
+    parsed = JSON.parse(raw) as unknown;
+  } catch (error) {
+    // error-policy:J2 wrap JSON.parse so operators get INSTAGRAM_CONFIG_INVALID
+    throw new ElizaError("Instagram accounts config is not valid JSON.", {
+      code: "INSTAGRAM_CONFIG_INVALID",
+      cause: error,
+      context: { setting: "INSTAGRAM_ACCOUNTS" },
+      severity: "fatal",
+    });
   }
+
+  if (Array.isArray(parsed)) {
+    return indexAccountConfigs(
+      parsed.map((item) => [isAccountConfig(item) ? (item.accountId ?? item.id) : undefined, item])
+    );
+  }
+
+  if (!parsed || typeof parsed !== "object") {
+    throw new ElizaError("Instagram accounts config must be a JSON object or array.", {
+      code: "INSTAGRAM_CONFIG_INVALID",
+      context: {
+        setting: "INSTAGRAM_ACCOUNTS",
+        valueType: parsed === null ? "null" : typeof parsed,
+      },
+      severity: "fatal",
+    });
+  }
+
+  return indexAccountConfigs(Object.entries(parsed as Record<string, unknown>));
 }
 
 function allAccountConfigs(runtime: IAgentRuntime): Record<string, InstagramAccountConfig> {
+  const characterAccounts = characterConfig(runtime).accounts;
+  const fromCharacter =
+    characterAccounts && typeof characterAccounts === "object" && !Array.isArray(characterAccounts)
+      ? indexAccountConfigs(Object.entries(characterAccounts))
+      : {};
   return {
-    ...(characterConfig(runtime).accounts ?? {}),
+    ...fromCharacter,
     ...parseAccountsJson(runtime),
   };
 }
 
 function accountConfig(runtime: IAgentRuntime, accountId: string): InstagramAccountConfig {
   const accounts = allAccountConfigs(runtime);
-  return accounts[accountId] ?? accounts[normalizeInstagramAccountId(accountId)] ?? {};
+  const normalized = normalizeInstagramAccountId(accountId);
+  return accounts[accountId] ?? accounts[normalized] ?? {};
 }
 
 function boolValue(value: unknown, fallback = false): boolean {
