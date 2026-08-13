@@ -27,8 +27,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # b8525 is the exact minimum scripts/gpu-vision/lib.mjs (MIN_LLAMA_BUILD)
 # demands; every llama.cpp CI build is tagged bNNNN so the ref is stable.
+#
+# The clone must keep full commit history. llama.cpp's cmake/build-info.cmake
+# derives the reported build number from `git rev-list --count HEAD`, so a
+# `--depth 1` clone bakes a binary that reports `version: 1` — which
+# assertLlamaBuildSupported rejects on the billed instance, after the rental is
+# already running. A blobless partial clone restores the true count (8525) for
+# ~65 MB of metadata instead of the full blob history.
 ARG LLAMA_CPP_REF=b8525
-RUN git clone --depth 1 --branch "${LLAMA_CPP_REF}" \
+RUN git clone --filter=blob:none --single-branch --branch "${LLAMA_CPP_REF}" \
       https://github.com/ggml-org/llama.cpp /opt/llama.cpp
 
 # Static-ish build (no shared ggml libs to carry over) for the two GPU
@@ -82,20 +89,30 @@ ENV PLAYWRIGHT_BROWSERS_PATH=/opt/playwright-browsers
 RUN npx --yes "playwright@${PLAYWRIGHT_VERSION}" install --with-deps chromium \
     && rm -rf /var/lib/apt/lists/*
 
+# The gpu-vision trio lands before the smoke test so the build can hold the
+# baked binary to the same floor serve.mjs enforces on the billed instance
+# (lockfile resolves relative to lib.mjs, so the three are copied together).
+# ELIZA_GPU_VISION_CACHE points the cloned repo's serve.mjs at this baked cache
+# at runtime — no model download on the billed instance.
+ENV ELIZA_GPU_VISION_CACHE=/opt/eliza/gpu-vision-cache
+COPY scripts/gpu-vision/setup.mjs scripts/gpu-vision/lib.mjs scripts/gpu-vision/models.lock.json /opt/eliza/gpu-vision/
+
 # CUDA llama-server from the builder.
 COPY --from=llama-builder /opt/llama.cpp/build/bin/llama-server /usr/local/bin/llama-server
 # The real CUDA driver is injected by NVIDIA's container runtime, so a CPU-only
 # image build uses the link stub solely for this executable smoke test. The bind
-# mount keeps the stub out of the published image.
+# mount keeps the stub out of the published image. Running the output through
+# assertLlamaBuildSupported is the point of the smoke test: merely executing is
+# not enough, because a binary reporting a build below MIN_LLAMA_BUILD is
+# rejected by serve.mjs only after the GPU rental is already billing.
 RUN --mount=type=bind,from=llama-builder,source=/tmp/libcuda.so.1,target=/tmp/libcuda.so.1,ro \
-    LD_LIBRARY_PATH=/tmp llama-server --version
+    LD_LIBRARY_PATH=/tmp llama-server --version >/tmp/llama-version.txt 2>&1 \
+    && cat /tmp/llama-version.txt \
+    && node --input-type=module -e "import { readFileSync } from 'node:fs'; const { assertLlamaBuildSupported } = await import('/opt/eliza/gpu-vision/lib.mjs'); console.log('[gpu-vision] baked llama-server build', assertLlamaBuildSupported(readFileSync('/tmp/llama-version.txt', 'utf8')));" \
+    && rm -f /tmp/llama-version.txt
 
-# Pinned GPU-vision models, fetched + sha256-verified by the repo's own
-# setup script (lockfile resolves relative to lib.mjs, so the trio is copied
-# together). ELIZA_GPU_VISION_CACHE points the cloned repo's serve.mjs at
-# this baked cache at runtime — no model download on the billed instance.
-ENV ELIZA_GPU_VISION_CACHE=/opt/eliza/gpu-vision-cache
-COPY scripts/gpu-vision/setup.mjs scripts/gpu-vision/lib.mjs scripts/gpu-vision/models.lock.json /opt/eliza/gpu-vision/
+# Pinned GPU-vision models, fetched + sha256-verified by the repo's own setup
+# script.
 RUN node /opt/eliza/gpu-vision/setup.mjs --with-vlm
 
 WORKDIR /workspace
