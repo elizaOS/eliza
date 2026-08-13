@@ -19,6 +19,10 @@ export default defineConfig({
     include: ["src/**/*.test.ts", "src/__tests__/**/*.test.ts"],
     exclude: ["dist/**", "**/node_modules/**"],
     testTimeout: 180_000,
+    // Each worker transforms the full source-aliased runtime and personal-
+    // assistant helper graph. Higher host-derived concurrency can starve the
+    // helper-loading contract until its 180s timeout on shared CI runners.
+    maxWorkers: 2,
   },
   resolve: {
     alias: [
