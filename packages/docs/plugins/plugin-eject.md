@@ -85,7 +85,7 @@ bun run build
 Restart Eliza. The runtime auto-discovers ejected plugins and loads them instead of the npm versions:
 
 ```bash
-eliza start
+bun run start
 ```
 
 Look for log messages like `Loading ejected plugin:` to confirm.

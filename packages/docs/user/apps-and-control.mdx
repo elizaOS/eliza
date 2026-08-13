@@ -13,7 +13,7 @@ Eliza has multiple surfaces. The runtime does the work; the app is the surface y
 | Desktop app | day-to-day local use | open the installed app |
 | Browser dashboard | browser-based control | open the dashboard URL or desktop shell |
 | Mobile app | remote check-ins | open the iOS or Android app |
-| CLI runtime | servers, terminals, headless use | `eliza start` |
+| CLI runtime | servers, terminals, headless use | `bun run start` |
 
 ## Desktop app
 
@@ -24,17 +24,20 @@ Eliza has multiple surfaces. The runtime does the work; the app is the surface y
 ## CLI runtime
 
 ```bash
-eliza start       # start the API server
+bun run start     # start the standalone agent host
+bun run dev       # start the API and Eliza app development UI
 ```
 
-Stop the CLI runtime with `Ctrl-C` in the terminal, or quit the desktop app normally. See the [CLI overview](/cli/overview) for the full command list.
+Stop the CLI runtime with `Ctrl-C` in the terminal, or quit the desktop app normally. The published `elizaos` binary is the scaffold CLI only; see the [CLI overview](/cli/overview).
 
 ## Browser dashboard
 
-If the runtime is local, the desktop app usually embeds the dashboard. If you installed the CLI, you can also open the dashboard from a terminal:
+If the runtime is local, the desktop app usually embeds the dashboard. If you started the runtime from a project checkout, open the URL printed at startup (default `http://localhost:2138`). For local development, `bun run dev` starts the API and the Eliza app UI together.
 
 ```bash
-the web app```
+bun run start     # standalone agent host; prints the dashboard URL
+bun run dev       # API plus Eliza app development UI
+```
 
 ## Remote and cloud instances
 

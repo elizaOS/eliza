@@ -2,7 +2,9 @@
  * Docs site integrity tests for Mintlify navigation, metadata, and links.
  *
  * Runs against the real files on disk so docs.json, redirects, frontmatter,
- * local assets, and internal links stay deployable together.
+ * local assets, and internal links stay deployable together. Also rejects
+ * public pages that prescribe retired `eliza start` / `eliza dashboard`
+ * binaries as if they were published commands.
  */
 
 import assert from "node:assert";
@@ -627,6 +629,29 @@ describe("documentation files", () => {
     }
 
     assert.deepStrictEqual(missingScripts, []);
+  });
+
+  it("does not prescribe retired eliza start or dashboard binaries", () => {
+    const prescribed = [];
+
+    for (const file of collectMarkdownFiles()) {
+      const content = readFileSync(file, "utf-8");
+      const normalized = content.replace(/\s+/g, " ");
+      const retiredCommand = /\b(?:eliza|elizaos)\s+(?:start|dashboard)\b/g;
+
+      for (const match of normalized.matchAll(retiredCommand)) {
+        const start = match.index ?? 0;
+        const before = normalized.slice(Math.max(0, start - 200), start);
+        const allowedNegation =
+          /\bthere is no\b/i.test(before) ||
+          /\bno such command\b/i.test(before);
+        if (!allowedNegation) {
+          prescribed.push(`${relative(DOCS_DIR, file)} -> ${match[0]}`);
+        }
+      }
+    }
+
+    assert.deepStrictEqual(prescribed, []);
   });
 
   it("documented Eliza Cloud API paths exist in the generated router", () => {

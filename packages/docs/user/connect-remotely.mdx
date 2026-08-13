@@ -44,7 +44,7 @@ Minimal example:
 ```bash
 ELIZA_API_BIND=0.0.0.0 \
 ELIZA_API_TOKEN="$(openssl rand -hex 32)" \
-eliza start
+bun run start
 ```
 
 Use the `ELIZA_API_TOKEN` value as the access token when you connect from another device.
