@@ -65,20 +65,41 @@ describe("rankMessageSearch", () => {
 	});
 });
 
-describe("BM25", () => {
-	it("returns results in descending score order when fewer than topK documents match", () => {
-		const bm25 = new BM25([
-			{ content: "alpha beta" },
-			{ content: "alpha alpha alpha alpha alpha" },
-			{ content: "alpha alpha gamma" },
-			{ content: "nothing here" },
-		]);
+describe("BM25.search result ordering", () => {
+	// One "signal" occurrence per short doc scores higher than one occurrence
+	// diluted across a longer doc, so relevance order differs from index order.
+	const docs = [
+		{ body: "signal buried in a much longer document about other topics" },
+		{ body: "irrelevant filler text" },
+		{ body: "signal signal signal" },
+	];
 
-		// Three documents score above zero for "alpha", and topK (4) is larger,
-		// so the fill-phase sort that runs at `results.length === topK` never
-		// fires. The returned array must still be sorted by descending score.
-		const scores = bm25.search("alpha", 4).map((result) => result.score);
+	it("returns descending scores even when fewer matches exist than topK", () => {
+		const bm25 = new BM25(docs);
+		const results = bm25.search("signal", 10);
 
-		expect(scores).toEqual([...scores].sort((a, b) => b - a));
+		expect(results.map((r) => r.index)).toEqual([2, 0]);
+		expect(results[0].score).toBeGreaterThan(results[1].score);
+	});
+
+	it("keeps the bounded top-K path intact when the buffer fills", () => {
+		const bm25 = new BM25(docs);
+		const results = bm25.search("signal", 2);
+
+		expect(results).toHaveLength(2);
+		expect(results.map((r) => r.index)).toEqual([2, 0]);
+	});
+
+	it("breaks score ties in ascending document order on the partial path", () => {
+		const twins = [
+			{ body: "unique filler alpha" },
+			{ body: "echo chamber" },
+			{ body: "echo chamber" },
+		];
+		const bm25 = new BM25(twins);
+		const results = bm25.search("echo", 10);
+
+		expect(results.map((r) => r.index)).toEqual([1, 2]);
+		expect(results[0].score).toBe(results[1].score);
 	});
 });
