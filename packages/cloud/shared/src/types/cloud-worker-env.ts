@@ -103,9 +103,10 @@ export interface Bindings {
   // ---- Cartesia ----
   /**
    * Server-side Cartesia API key. When set, un-pinned/default cloud TTS
-   * synthesizes with Cartesia Sonic. MP3 uses Cartesia's REST bytes endpoint;
-   * WAV uses the streaming adapter for codec-less clients. Unset falls back to
-   * the Kokoro/ElevenLabs selection chain.
+   * synthesizes with Cartesia Sonic (MP3 via the REST bytes endpoint, WAV via
+   * the streaming adapter for codec-less clients) and batch STT defaults to
+   * Cartesia's `/stt` ink-whisper endpoint. Unset falls back to the
+   * Kokoro/ElevenLabs TTS chain and the Whisper/ElevenLabs STT chain.
    */
   CARTESIA_API_KEY?: string;
   /** Overrides the default Cartesia voice id used for un-pinned requests. */
@@ -140,7 +141,8 @@ export interface Bindings {
   /**
    * Base URL of the self-hosted Whisper STT service (OpenAI-compatible
    * `/v1/audio/transcriptions`, e.g. the Railway deploy). When set, the cloud
-   * STT endpoint serves Whisper for free; ElevenLabs STT is the fallback.
+   * STT endpoint serves Whisper for free whenever Cartesia does not claim the
+   * batch default; ElevenLabs STT is the fallback.
    */
   WHISPER_STT_URL?: string;
   /**
@@ -210,7 +212,12 @@ export interface Bindings {
 
   // ---- AI providers ----
   CEREBRAS_API_KEY?: string;
-  /** Opt-in batch STT provider. Deepgram is never selected by key presence alone. */
+  /**
+   * Batch STT provider override: `deepgram` | `cartesia` | `whisper` |
+   * `elevenlabs`. Unset → Cartesia when CARTESIA_API_KEY is configured, else
+   * Whisper, else ElevenLabs. Deepgram is never selected by key presence
+   * alone, and an override whose binding is missing fails the route closed.
+   */
   VOICE_BATCH_STT_PROVIDER?: string;
   /** Opt-in prerecorded Deepgram STT key (server-held; never returned to clients). */
   DEEPGRAM_API_KEY?: string;

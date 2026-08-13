@@ -3,7 +3,9 @@
  * handler runs end to end with only auth/billing/provider modules mocked at
  * the module boundary. Covers the shared upload-validation gates (multipart,
  * size, declared-type and magic-number checks), the Deepgram prerecorded lane,
- * the whisper lane against a local OpenAI-shaped upstream (#14806 verbose_json
+ * the Cartesia batch lane (the configured default whenever CARTESIA_API_KEY is
+ * present, plus the VOICE_BATCH_STT_PROVIDER override matrix), the whisper
+ * lane against a local OpenAI-shaped upstream (#14806 verbose_json
  * word/segment timestamps + the J3 malformed-200 boundary), the billed
  * ElevenLabs lane with its error mapping, and — gated on
  * ELIZA_VOICE_LIVE_RAILWAY=1 — the deployed Railway faster-whisper with real
@@ -304,8 +306,19 @@ interface DeepgramCapture {
   contentType: string | null;
   url: string | null;
 }
+interface CartesiaCapture {
+  apiKey: string | null;
+  version: string | null;
+  fields: Record<string, string[]>;
+  fileName: string | null;
+  fileType: string | null;
+  fileBytes: Uint8Array;
+  url: string | null;
+}
 let upstreamReply: () => Response = () => Response.json({ text: "" });
 let deepgramReply: () => Response = () => Response.json({ results: {} });
+let cartesiaReply: () => Response = () =>
+  Response.json({ type: "transcript", text: "" });
 const captured: UpstreamCapture = {
   fields: {},
   fileName: null,
@@ -315,6 +328,15 @@ const deepgramCaptured: DeepgramCapture = {
   authorization: null,
   bodyBytes: new Uint8Array(),
   contentType: null,
+  url: null,
+};
+const cartesiaCaptured: CartesiaCapture = {
+  apiKey: null,
+  version: null,
+  fields: {},
+  fileName: null,
+  fileType: null,
+  fileBytes: new Uint8Array(),
   url: null,
 };
 
@@ -339,6 +361,32 @@ globalThis.fetch = (async (
       : new ArrayBuffer(0);
     deepgramCaptured.bodyBytes = new Uint8Array(bytes);
     return deepgramReply();
+  }
+  if (url.origin === "https://api.cartesia.ai") {
+    const headers = new Headers(
+      init?.headers ?? (input instanceof Request ? input.headers : undefined),
+    );
+    cartesiaCaptured.apiKey = headers.get("x-api-key");
+    cartesiaCaptured.version = headers.get("cartesia-version");
+    cartesiaCaptured.url = url.toString();
+    const body = init?.body;
+    if (!(body instanceof FormData)) {
+      throw new Error("Cartesia mock expected a FormData body");
+    }
+    for (const [key, value] of body.entries()) {
+      if (isFilePart(value)) {
+        cartesiaCaptured.fileName = value.name;
+        cartesiaCaptured.fileType = value.type;
+        cartesiaCaptured.fileBytes = new Uint8Array(
+          await (value as unknown as Blob).arrayBuffer(),
+        );
+      } else {
+        const values = cartesiaCaptured.fields[key] ?? [];
+        values.push(String(value));
+        cartesiaCaptured.fields[key] = values;
+      }
+    }
+    return cartesiaReply();
   }
   return originalFetch.call(globalThis, input, init);
 }) as typeof fetch;
@@ -387,6 +435,13 @@ const deepgramEnv = {
 const deepgramAndWhisperEnv = {
   VOICE_BATCH_STT_PROVIDER: "deepgram",
   DEEPGRAM_API_KEY: "dg-secret",
+  WHISPER_STT_URL: `http://localhost:${upstream.port}`,
+} as never;
+const cartesiaEnv = { CARTESIA_API_KEY: "car-secret" } as never;
+// Cartesia + Whisper both configured: the Cartesia batch default must win by
+// key presence alone, mirroring the TTS route's Cartesia-first selection.
+const cartesiaAndWhisperEnv = {
+  CARTESIA_API_KEY: "car-secret",
   WHISPER_STT_URL: `http://localhost:${upstream.port}`,
 } as never;
 // No WHISPER_STT_URL binding: the route falls through to the billed
@@ -447,6 +502,21 @@ const DEEPGRAM_SHAPE = {
   },
 };
 
+// Cartesia batch `/stt` (ink-whisper) response shape — `text` plus optional
+// word timings in seconds; the batch endpoint emits no utterances/segments.
+const CARTESIA_SHAPE = {
+  type: "transcript",
+  request_id: "req-cartesia-1",
+  text: "Hello there world.",
+  language: "en",
+  duration: 0.84,
+  words: [
+    { word: "Hello", start: 0, end: 0.31 },
+    { word: "there", start: 0.31, end: 0.52 },
+    { word: "world", start: 0.52, end: 0.84 },
+  ],
+};
+
 /** Every string that reached any logger method in this test, joined. */
 function allLoggedContent(): string {
   return JSON.stringify([
@@ -485,6 +555,7 @@ beforeEach(() => {
   );
   upstreamReply = () => Response.json({ text: "" });
   deepgramReply = () => Response.json(DEEPGRAM_SHAPE);
+  cartesiaReply = () => Response.json(CARTESIA_SHAPE);
   captured.fields = {};
   captured.fileName = null;
   captured.fileType = null;
@@ -492,6 +563,13 @@ beforeEach(() => {
   deepgramCaptured.bodyBytes = new Uint8Array();
   deepgramCaptured.contentType = null;
   deepgramCaptured.url = null;
+  cartesiaCaptured.apiKey = null;
+  cartesiaCaptured.version = null;
+  cartesiaCaptured.fields = {};
+  cartesiaCaptured.fileName = null;
+  cartesiaCaptured.fileType = null;
+  cartesiaCaptured.fileBytes = new Uint8Array();
+  cartesiaCaptured.url = null;
 });
 
 describe("POST /api/v1/voice/stt — shared upload validation gates", () => {
@@ -1187,6 +1265,307 @@ describe("POST /api/v1/voice/stt — Deepgram prerecorded lane", () => {
       sttRequest(),
       undefined,
       deepgramAndWhisperEnv,
+    );
+
+    expect(res.status).toBe(502);
+    expect(await readJson(res)).toEqual({ error: "Speech-to-text failed" });
+    expect(captured.fileName).toBeNull();
+    expect(reconcile).toHaveBeenCalledWith(0);
+    const logs = allLoggedContent();
+    expect(logs).not.toContain("secret provider socket failure");
+    expect(logs).toContain('"errorType":"TypeError"');
+  });
+});
+
+describe("POST /api/v1/voice/stt — Cartesia batch lane (configured default)", () => {
+  test("prefers Cartesia ink-whisper over Whisper from key presence alone (mirrors the TTS default)", async () => {
+    upstreamReply = () => Response.json({ text: "whisper should not run" });
+    const res = await app.request(
+      sttRequest(),
+      undefined,
+      cartesiaAndWhisperEnv,
+    );
+
+    expect(res.status).toBe(200);
+    const body = (await readJson(res)) as Record<string, unknown>;
+    expect(body.transcript).toBe("Hello there world.");
+    expect(cartesiaCaptured.url).toBe("https://api.cartesia.ai/stt");
+    expect(captured.fileName).toBeNull();
+    expect(speechToText).not.toHaveBeenCalled();
+    expect(reserve).toHaveBeenCalledTimes(1);
+    expect(billFlatUsage).toHaveBeenCalledTimes(1);
+  });
+
+  test("VOICE_BATCH_STT_PROVIDER=whisper forces free Whisper past a configured Cartesia key", async () => {
+    upstreamReply = () => Response.json({ text: "whisper forced" });
+    const res = await app.request(sttRequest(), undefined, {
+      ...(cartesiaAndWhisperEnv as unknown as Record<string, string>),
+      VOICE_BATCH_STT_PROVIDER: "whisper",
+    } as never);
+
+    expect(res.status).toBe(200);
+    expect(await readJson(res)).toEqual({
+      transcript: "whisper forced",
+      duration_ms: expect.any(Number),
+    });
+    expect(cartesiaCaptured.url).toBeNull();
+    expect(reserve).not.toHaveBeenCalled();
+  });
+
+  test("VOICE_BATCH_STT_PROVIDER=elevenlabs forces the billed ElevenLabs lane past Cartesia and Whisper", async () => {
+    upstreamReply = () => Response.json({ text: "whisper should not run" });
+    const res = await app.request(sttRequest(), undefined, {
+      ...(cartesiaAndWhisperEnv as unknown as Record<string, string>),
+      VOICE_BATCH_STT_PROVIDER: "elevenlabs",
+    } as never);
+
+    expect(res.status).toBe(200);
+    const body = (await readJson(res)) as Record<string, unknown>;
+    expect(body.transcript).toBe("elevenlabs transcript");
+    expect(cartesiaCaptured.url).toBeNull();
+    expect(captured.fileName).toBeNull();
+    expect(speechToText).toHaveBeenCalledTimes(1);
+  });
+
+  test("VOICE_BATCH_STT_PROVIDER=deepgram still wins over a configured Cartesia key", async () => {
+    const res = await app.request(sttRequest(), undefined, {
+      ...(cartesiaAndWhisperEnv as unknown as Record<string, string>),
+      VOICE_BATCH_STT_PROVIDER: "deepgram",
+      DEEPGRAM_API_KEY: "dg-secret",
+    } as never);
+
+    expect(res.status).toBe(200);
+    const body = (await readJson(res)) as Record<string, unknown>;
+    expect(body.transcript).toBe("Hello there world.");
+    expect(deepgramCaptured.url).not.toBeNull();
+    expect(cartesiaCaptured.url).toBeNull();
+  });
+
+  test("fails closed when Cartesia is selected without its key", async () => {
+    const res = await app.request(sttRequest(), undefined, {
+      VOICE_BATCH_STT_PROVIDER: "cartesia",
+      WHISPER_STT_URL: `http://localhost:${upstream.port}`,
+    } as never);
+
+    expect(res.status).toBe(503);
+    expect(await readJson(res)).toEqual({
+      error: "Speech-to-text service is not configured",
+    });
+    expect(cartesiaCaptured.url).toBeNull();
+    expect(captured.fileName).toBeNull();
+  });
+
+  test("fails closed when Whisper is forced without its URL instead of degrading to Cartesia", async () => {
+    const res = await app.request(sttRequest(), undefined, {
+      VOICE_BATCH_STT_PROVIDER: "whisper",
+      CARTESIA_API_KEY: "car-secret",
+    } as never);
+
+    expect(res.status).toBe(503);
+    expect(await readJson(res)).toEqual({
+      error: "Speech-to-text service is not configured",
+    });
+    expect(cartesiaCaptured.url).toBeNull();
+  });
+
+  test("sends X-API-Key auth, version, model, word granularity, and the ISO-639-1 language", async () => {
+    const file = wavFile("cartesia-probe.wav", "audio/wav");
+    const expectedBytes = new Uint8Array(await file.arrayBuffer());
+    const res = await app.request(
+      sttRequest(file, { languageCode: "en-US" }),
+      undefined,
+      cartesiaEnv,
+    );
+
+    expect(res.status).toBe(200);
+    expect(cartesiaCaptured.apiKey).toBe("car-secret");
+    expect(cartesiaCaptured.version).toBe("2026-03-01");
+    expect(cartesiaCaptured.url).toBe("https://api.cartesia.ai/stt");
+    expect(cartesiaCaptured.fields.model).toEqual(["ink-whisper"]);
+    // BCP-47 region tags are trimmed to the ISO-639-1 primary subtag.
+    expect(cartesiaCaptured.fields.language).toEqual(["en"]);
+    expect(cartesiaCaptured.fields["timestamp_granularities[]"]).toEqual([
+      "word",
+    ]);
+    expect(cartesiaCaptured.fileName).toBe("cartesia-probe.wav");
+    const cartesiaFileType = cartesiaCaptured.fileType;
+    if (!cartesiaFileType) {
+      throw new Error("Cartesia never received a file part");
+    }
+    expect(["audio/wav", "audio/x-wav"]).toContain(cartesiaFileType);
+    expect(cartesiaCaptured.fileBytes).toEqual(expectedBytes);
+  });
+
+  test("omits the language field when languageCode is absent", async () => {
+    const res = await app.request(sttRequest(), undefined, cartesiaEnv);
+
+    expect(res.status).toBe(200);
+    expect(cartesiaCaptured.fields.language).toBeUndefined();
+  });
+
+  test("reserves, bills, reconciles, and records Cartesia usage on success", async () => {
+    const res = await app.request(
+      sttRequest(wavFile(), { languageCode: "en-US" }),
+      undefined,
+      cartesiaEnv,
+    );
+
+    expect(res.status).toBe(200);
+    expect(calculateSTTCostFromCatalog).toHaveBeenCalledWith({
+      model: "elevenlabs/scribe_v1",
+      durationSeconds: expect.any(Number),
+    });
+    expect(reserve).toHaveBeenCalledTimes(1);
+    const reserveCalls = reserve.mock.calls as unknown as [
+      [Record<string, unknown>, Record<string, unknown>],
+    ];
+    const [reserveContext, reserveCost] = reserveCalls[0];
+    expect(reserveContext).toMatchObject({
+      organizationId: "org-1",
+      userId: "user-1",
+      model: "ink-whisper",
+      provider: "cartesia",
+      billingSource: "elevenlabs",
+      metadata: {
+        pricingProxyProvider: "elevenlabs",
+        pricingProxyModel: "elevenlabs/scribe_v1",
+      },
+    });
+    expect(reserveCost).toMatchObject({
+      totalCost: 0.0012,
+      baseTotalCost: 0.001,
+      platformMarkup: 0.0002,
+    });
+
+    expect(billFlatUsage).toHaveBeenCalledTimes(1);
+    expect(reconcile).toHaveBeenCalledWith(0.0012);
+
+    await Bun.sleep(0);
+    expect(usageCreate).toHaveBeenCalledTimes(1);
+    const usageRecord = usageCreate.mock.calls[0][0] as {
+      model: string;
+      provider: string;
+      input_cost: string;
+      markup: string;
+      metadata: Record<string, unknown>;
+    };
+    expect(usageRecord.model).toBe("ink-whisper");
+    expect(usageRecord.provider).toBe("cartesia");
+    expect(usageRecord.input_cost).toBe("0.0012");
+    expect(usageRecord.markup).toBe("0.0002");
+    expect(usageRecord.metadata).toMatchObject({
+      billingSource: "elevenlabs",
+      pricingProxyProvider: "elevenlabs",
+      pricingProxyModel: "elevenlabs/scribe_v1",
+      provider: "cartesia",
+      model: "ink-whisper",
+      languageCode: "en-US",
+    });
+    expect(usageRecord.metadata.audioFileName).toBeUndefined();
+  });
+
+  test("insufficient Cartesia credits is a 402 before the provider call", async () => {
+    reserve.mockRejectedValue(new MockInsufficientCreditsError(42));
+    const res = await app.request(sttRequest(), undefined, cartesiaEnv);
+
+    expect(res.status).toBe(402);
+    expect(await readJson(res)).toEqual({
+      error: "Insufficient credits for speech-to-text",
+      required: 42,
+    });
+    expect(cartesiaCaptured.url).toBeNull();
+    expect(billFlatUsage).not.toHaveBeenCalled();
+    expect(usageCreate).not.toHaveBeenCalled();
+  });
+
+  test("maps Cartesia word timings to millisecond spans", async () => {
+    const res = await app.request(sttRequest(), undefined, cartesiaEnv);
+
+    expect(res.status).toBe(200);
+    const body = (await readJson(res)) as Record<string, unknown>;
+    expect(body.transcript).toBe("Hello there world.");
+    expect(typeof body.duration_ms).toBe("number");
+    expect(body.words).toEqual([
+      { text: "Hello", startMs: 0, endMs: 310 },
+      { text: "there", startMs: 310, endMs: 520 },
+      { text: "world", startMs: 520, endMs: 840 },
+    ]);
+    expect("segments" in body).toBe(false);
+  });
+
+  test("a words-free Cartesia payload keeps the plain DTO", async () => {
+    cartesiaReply = () =>
+      Response.json({ type: "transcript", text: "plain cartesia" });
+    const res = await app.request(sttRequest(), undefined, cartesiaEnv);
+
+    expect(res.status).toBe(200);
+    const body = (await readJson(res)) as Record<string, unknown>;
+    expect(body.transcript).toBe("plain cartesia");
+    expect("words" in body).toBe(false);
+  });
+
+  test("a malformed Cartesia 200 fails closed, refunds, and never falls back to Whisper", async () => {
+    upstreamReply = () => Response.json({ text: "whisper fallback" });
+    cartesiaReply = () => Response.json({ type: "transcript" });
+    const res = await app.request(
+      sttRequest(),
+      undefined,
+      cartesiaAndWhisperEnv,
+    );
+
+    expect(res.status).toBe(502);
+    expect(await readJson(res)).toEqual({ error: "Speech-to-text failed" });
+    expect(captured.fileName).toBeNull();
+    expect(reconcile).toHaveBeenCalledWith(0);
+    expect(billFlatUsage).not.toHaveBeenCalled();
+  });
+
+  test("partially malformed Cartesia word timings fail closed instead of dropping spans", async () => {
+    cartesiaReply = () =>
+      Response.json({
+        type: "transcript",
+        text: "PII appears in the missing span",
+        words: [
+          { word: "PII", start: 0, end: 0.2 },
+          { word: "missing", start: 0.3, end: "invalid" },
+        ],
+      });
+    const res = await app.request(sttRequest(), undefined, cartesiaEnv);
+
+    expect(res.status).toBe(502);
+    expect(await readJson(res)).toEqual({ error: "Speech-to-text failed" });
+    expect(reconcile).toHaveBeenCalledWith(0);
+  });
+
+  test("an upstream Cartesia error is a 502 without logging provider body or key", async () => {
+    cartesiaReply = () =>
+      new Response("secret transcript and provider key car-secret", {
+        status: 503,
+      });
+    const res = await app.request(
+      sttRequest(),
+      undefined,
+      cartesiaAndWhisperEnv,
+    );
+
+    expect(res.status).toBe(502);
+    expect(await readJson(res)).toEqual({ error: "Speech-to-text failed" });
+    expect(captured.fileName).toBeNull();
+    expect(reconcile).toHaveBeenCalledWith(0);
+    const logs = allLoggedContent();
+    expect(logs).not.toContain("secret transcript");
+    expect(logs).not.toContain("car-secret");
+    expect(logs).toContain('"status":503');
+  });
+
+  test("a transport failure refunds and is a 502 logged as its type only", async () => {
+    cartesiaReply = () => {
+      throw new TypeError("secret provider socket failure");
+    };
+    const res = await app.request(
+      sttRequest(),
+      undefined,
+      cartesiaAndWhisperEnv,
     );
 
     expect(res.status).toBe(502);
