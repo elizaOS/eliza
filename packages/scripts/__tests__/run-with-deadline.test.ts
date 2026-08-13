@@ -109,7 +109,7 @@ describe("run-with-deadline", () => {
       symlinkSync(WRAPPER, linkedWrapper);
       const valid = spawnSync(
         NODE_BIN,
-        [linkedWrapper, "00050", "--", NODE_BIN, "-e", "process.exit(7)"],
+        [linkedWrapper, "00030000", "--", NODE_BIN, "-e", "process.exit(7)"],
         { encoding: "utf8", timeout: 30_000 },
       );
       expect(valid.status).toBe(7);
