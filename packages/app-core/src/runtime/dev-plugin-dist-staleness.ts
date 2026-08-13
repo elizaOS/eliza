@@ -23,6 +23,9 @@ const IGNORED_DIRS = new Set([
   "dist",
   "node_modules",
   "__tests__",
+  "test",
+  "tests",
+  "e2e",
   ".turbo",
   "coverage",
 ]);

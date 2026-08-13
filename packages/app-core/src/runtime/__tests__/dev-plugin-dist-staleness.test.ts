@@ -89,6 +89,9 @@ describe("checkPluginDistStaleness", () => {
     writeAt(path.join(pkg, "node_modules", "dep", "index.ts"), 5_000);
     writeAt(path.join(pkg, ".turbo", "cache.ts"), 5_000);
     writeAt(path.join(pkg, "__tests__", "x.test.ts"), 5_000);
+    writeAt(path.join(pkg, "test", "stubs", "stub-plugin.ts"), 5_000);
+    writeAt(path.join(pkg, "test", "fixtures", "fixture.ts"), 5_000);
+    writeAt(path.join(pkg, "e2e", "flow.ts"), 5_000);
     writeAt(path.join(pkg, "service.test.ts"), 5_000);
     writeAt(path.join(pkg, "README.md"), 5_000);
     expect(checkPluginDistStaleness(pkg).status).toBe("fresh");
