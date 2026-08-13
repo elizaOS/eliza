@@ -132,6 +132,16 @@ describe("runSharedAgentTurn — internal failure propagates vs designed-empty d
     expect(navTurn.navIntent?.viewId).toBe("settings");
     expect(dispatches).toBe(1);
 
+    const capabilityTurn = await runSharedAgentTurn({
+      character: { name: "Nova", system: "You are Nova." },
+      history: [],
+      message: "save this as a note",
+      onProviderDispatch,
+    });
+    expect(capabilityTurn.capabilityWall?.capability).toBe("notes");
+    expect(capabilityTurn.model).toBe("capability-wall");
+    expect(dispatches).toBe(1);
+
     providerConfigured = false;
     const degradedTurn = await runSharedAgentTurn({
       character: { name: "Nova", system: "You are Nova." },

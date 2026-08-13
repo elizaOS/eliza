@@ -54,7 +54,8 @@ import {
   type SharedTurnMessage,
 } from "./run-shared-agent-turn";
 import { projectSharedAgentCharacter } from "./shared-agent-character";
-import { navIntentActionResult } from "./shared-nav-intent";
+import { capabilityWallActionResult, type SharedCapabilityWall } from "./shared-capability-wall";
+import { navIntentActionResult, type SharedNavIntent } from "./shared-nav-intent";
 import type { SharedRuntimeAgent } from "./shared-runtime-agent";
 import { SharedRuntimeCacheWarmingError, SharedTurnConflictError } from "./shared-runtime-errors";
 import { MAX_HISTORY_MESSAGES } from "./shared-runtime-history-policy";
@@ -67,6 +68,24 @@ const linkedCharacterMemoryCache = new InMemoryLRUCache<UserCharacter>(256, 60_0
 export type BridgeExecutionContext = {
   waitUntil(promise: Promise<unknown>): void;
 };
+
+function deterministicActionResults(turn: {
+  navIntent?: SharedNavIntent;
+  capabilityWall?: SharedCapabilityWall;
+}): unknown[] | undefined {
+  if (turn.capabilityWall) {
+    return [capabilityWallActionResult(turn.capabilityWall)];
+  }
+  if (turn.navIntent) return [navIntentActionResult(turn.navIntent)];
+  return undefined;
+}
+
+function isDeterministicFreeTurn(turn: {
+  navIntent?: SharedNavIntent;
+  capabilityWall?: SharedCapabilityWall;
+}): boolean {
+  return Boolean(turn.navIntent || turn.capabilityWall);
+}
 
 export interface SharedRuntimeHistoryStore {
   load(agentId: string, channelId: string): Promise<SharedTurnMessage[]>;
@@ -717,7 +736,8 @@ export class SharedRuntimeChatService {
     let turnCompleted = false;
     let turnIsProvablyFree = false;
     try {
-      turnIsProvablyFree = turn.degraded || Boolean(turn.navIntent);
+      turnIsProvablyFree = turn.degraded || isDeterministicFreeTurn(turn);
+      const actionResults = deterministicActionResults(turn);
       const result: SharedTurnTerminalResult = {
         text: turn.reply,
         messageId: messageIds.assistant,
@@ -728,7 +748,7 @@ export class SharedRuntimeChatService {
         degraded: turn.degraded,
         runtime: "shared",
         transport: "shared-runtime",
-        ...(turn.navIntent ? { actionResults: [navIntentActionResult(turn.navIntent)] } : {}),
+        ...(actionResults ? { actionResults } : {}),
       };
       if (turn.degraded) {
         await billing?.settle(0);
@@ -748,7 +768,7 @@ export class SharedRuntimeChatService {
         if (claimKey && options.turnClaims) {
           await options.turnClaims.complete(claimKey, result);
         }
-        if (turn.navIntent) {
+        if (isDeterministicFreeTurn(turn)) {
           await billing?.settle(0);
         } else if (billing) {
           await settleOffResponsePath(options.executionCtx, () =>
@@ -937,7 +957,7 @@ export class SharedRuntimeChatService {
     const settleInterruptedTurn = async (reason: string): Promise<void> => {
       if (terminalSettlementStarted) return;
       terminalSettlementStarted = true;
-      if (turn.navIntent) {
+      if (isDeterministicFreeTurn(turn)) {
         await billing?.settle(0);
         return;
       }
@@ -1009,6 +1029,7 @@ export class SharedRuntimeChatService {
               );
               continue;
             }
+            const actionResults = deterministicActionResults(turn);
             await finalizeMessages(finalReply, false, async () => {
               // Durable claim completion before the done frame: a lost/dropped
               // terminal frame replays this result on retry instead of
@@ -1024,12 +1045,10 @@ export class SharedRuntimeChatService {
                   degraded: false,
                   runtime: "shared",
                   transport: "shared-runtime",
-                  ...(turn.navIntent
-                    ? { actionResults: [navIntentActionResult(turn.navIntent)] }
-                    : {}),
+                  ...(actionResults ? { actionResults } : {}),
                 });
               }
-              if (turn.navIntent) {
+              if (isDeterministicFreeTurn(turn)) {
                 terminalSettlementStarted = true;
                 await billing?.settle(0);
               } else if (billing) {
@@ -1039,13 +1058,13 @@ export class SharedRuntimeChatService {
                 );
               }
             });
-            const done = turn.navIntent
+            const done = actionResults
               ? {
                   messageId: messageIds.assistant,
                   userMessageId: messageIds.user,
                   text: finalReply,
                   fullText: finalReply,
-                  actionResults: [navIntentActionResult(turn.navIntent)],
+                  actionResults,
                 }
               : {
                   messageId: messageIds.assistant,

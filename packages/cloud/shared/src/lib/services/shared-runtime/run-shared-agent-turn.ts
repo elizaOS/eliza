@@ -26,6 +26,7 @@ import {
   getInteractiveCerebrasLanguageModel,
   hasLanguageModelProviderConfigured,
 } from "../../providers/language-model";
+import { resolveSharedCapabilityWall, type SharedCapabilityWall } from "./shared-capability-wall";
 import { resolveSharedNavIntent, type SharedNavIntent } from "./shared-nav-intent";
 
 export interface SharedTurnMessage {
@@ -89,6 +90,8 @@ export interface RunSharedAgentTurnResult {
    * `done` SSE frame so the PWA opens the view. See shared-nav-intent.ts.
    */
   navIntent?: SharedNavIntent;
+  /** Typed Dedicated boundary for a capability Shared cannot execute. */
+  capabilityWall?: SharedCapabilityWall;
 }
 
 export type SharedAgentTurnStreamPart =
@@ -110,6 +113,8 @@ export interface RunSharedAgentTurnStreamResult {
    * PWA opens the view. See shared-nav-intent.ts.
    */
   navIntent?: SharedNavIntent;
+  /** Typed Dedicated boundary for a capability Shared cannot execute. */
+  capabilityWall?: SharedCapabilityWall;
 }
 
 /**
@@ -228,6 +233,17 @@ export async function runSharedAgentTurn(
 ): Promise<RunSharedAgentTurnResult> {
   const message = input.message.trim();
 
+  const capabilityWall = resolveSharedCapabilityWall(message);
+  if (capabilityWall) {
+    return {
+      reply: capabilityWall.reply,
+      history: appendTurn(input.history, message, capabilityWall.reply, input.messageIds),
+      model: "capability-wall",
+      degraded: false,
+      capabilityWall,
+    };
+  }
+
   // Deterministic in-app navigation fast path (no LLM, no plugin). A Tier-0
   // shared agent has no VIEWS action, so "go to settings" would otherwise be a
   // hallucinated prose refusal; resolve it here and hand the client a VIEWS
@@ -306,6 +322,23 @@ export async function runSharedAgentTurnStream(
   input: RunSharedAgentTurnInput,
 ): Promise<RunSharedAgentTurnStreamResult> {
   const message = input.message.trim();
+
+  const capabilityWall = resolveSharedCapabilityWall(message);
+  if (capabilityWall) {
+    const reply = capabilityWall.reply;
+    const parts = (async function* (): AsyncIterable<SharedAgentTurnStreamPart> {
+      yield { type: "text-delta", text: reply };
+      yield { type: "finish", text: reply };
+    })();
+    return {
+      model: "capability-wall",
+      degraded: false,
+      reply,
+      history: appendTurn(input.history, message, reply, input.messageIds),
+      parts,
+      capabilityWall,
+    };
+  }
 
   // Deterministic in-app navigation fast path (no LLM, no plugin). Synthesize a
   // one-shot stream that yields the confirmation text so the SSE shape is

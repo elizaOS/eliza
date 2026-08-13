@@ -439,6 +439,50 @@ describe("SharedRuntimeChatService", () => {
     expect(h.history()).toHaveLength(3);
   });
 
+  test("returns and persists a typed Dedicated capability wall without provider billing", async () => {
+    const service = new SharedRuntimeChatService();
+    const h = harness();
+    turn = {
+      degraded: false,
+      reply: "Persistent notes require Dedicated.",
+      history: [
+        { role: "user", content: "save this as a note" },
+        { role: "assistant", content: "Persistent notes require Dedicated." },
+      ],
+      model: "capability-wall",
+      capabilityWall: {
+        capability: "notes",
+        label: "Notes",
+        reply: "Persistent notes require Dedicated.",
+      },
+    };
+
+    const response = await service.bridge(agent, rpc, {
+      executionCtx: h.executionCtx,
+      historyStore: h.historyStore,
+      funding: "platform",
+    });
+
+    expect(response.result).toMatchObject({
+      text: "Persistent notes require Dedicated.",
+      model: "capability-wall",
+      actionResults: [
+        {
+          actionName: "DEDICATED_CAPABILITY_REQUIRED",
+          success: false,
+          values: {
+            capability: "notes",
+            currentExecutionTier: "shared",
+            requiredExecutionTier: "dedicated-always",
+            automatic: false,
+          },
+        },
+      ],
+    });
+    expect(billCalls).toHaveLength(0);
+    expect(h.history()).toHaveLength(3);
+  });
+
   test("rate denial and policy warming stop before billing admission or provider dispatch", async () => {
     const service = new SharedRuntimeChatService();
     const h = harness();
@@ -574,6 +618,28 @@ describe("SharedRuntimeChatService", () => {
     expect(h.history()).toHaveLength(3);
     await Promise.all(h.background);
     expect(settleCalls).toEqual([0.004]);
+  });
+
+  test("streams the typed capability wall and settles the deterministic turn at zero", async () => {
+    streamTurn = {
+      degraded: false,
+      model: "capability-wall",
+      capabilityWall: {
+        capability: "filesystem",
+        label: "Files",
+        reply: "File access requires Dedicated.",
+      },
+      parts: (async function* () {
+        yield { type: "text-delta", text: "File access requires Dedicated." };
+        yield { type: "finish", text: "File access requires Dedicated." };
+      })(),
+    };
+
+    const body = await (await new SharedRuntimeChatService().stream(agent, rpc, harness())).text();
+    expect(body).toContain("DEDICATED_CAPABILITY_REQUIRED");
+    expect(body).toContain('"capability":"filesystem"');
+    expect(settleCalls).toEqual([0]);
+    expect(billCalls).toHaveLength(0);
   });
 
   test("no-model degradation remains a complete canonical SSE turn", async () => {
