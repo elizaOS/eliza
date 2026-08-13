@@ -16,6 +16,9 @@
  *   POST /api/connections/:id/verify   live probe
  *   POST /api/gates             toggle an opt-in gate
  *   POST /api/run               start a run {mode, lane, labels?, concurrency?}
+ *                               concurrency is an integer 1..8 (default 3);
+ *                               anything else is rejected 400 before any
+ *                               discovery, credential, or OAuth side effect
  *   POST /api/run/cancel        cancel the active run
  *   GET  /api/runs/:id/log?task=<label>  persisted log text
  *   POST /api/cloud/login/start + GET /api/cloud/login/poll   device-code login
@@ -111,6 +114,38 @@ function currentState() {
   };
 }
 
+export const CONCURRENCY_DEFAULT = 3;
+export const CONCURRENCY_MIN = 1;
+export const CONCURRENCY_MAX = 8;
+
+/**
+ * Validates an operator-supplied `POST /api/run` body before anything with
+ * side effects runs. The concurrency field drives process fan-out, so it is
+ * bounded fail-closed: only an integer JSON number in
+ * [CONCURRENCY_MIN, CONCURRENCY_MAX] is accepted; omitting it selects the
+ * default. Every other shape (strings, fractions, zero, negatives, out of
+ * range, null, booleans) is rejected so a malformed request can never reach
+ * task discovery, credential reads, OAuth refresh, or run creation.
+ */
+export function validateRunRequest(body) {
+  const { mode = "all", lane = "pr", labels, concurrency } = body ?? {};
+  if (concurrency === undefined) {
+    return { ok: true, mode, lane, labels, concurrency: CONCURRENCY_DEFAULT };
+  }
+  if (
+    typeof concurrency !== "number" ||
+    !Number.isInteger(concurrency) ||
+    concurrency < CONCURRENCY_MIN ||
+    concurrency > CONCURRENCY_MAX
+  ) {
+    return {
+      ok: false,
+      error: `concurrency must be an integer between ${CONCURRENCY_MIN} and ${CONCURRENCY_MAX}`,
+    };
+  }
+  return { ok: true, mode, lane, labels, concurrency };
+}
+
 function selectTasks({ mode, labels }) {
   const plan = discoverPlan();
   const history = loadHistory();
@@ -145,12 +180,9 @@ const routes = {
   },
 
   "POST /api/run": async (req, res) => {
-    const {
-      mode = "all",
-      lane = "pr",
-      labels,
-      concurrency,
-    } = await readBody(req);
+    const parsed = validateRunRequest(await readBody(req));
+    if (!parsed.ok) return json(res, 400, { error: parsed.error });
+    const { mode, lane, labels, concurrency } = parsed;
     if (runManager.isRunning())
       return json(res, 409, { error: "run already in progress" });
     const tasks = selectTasks({ mode, labels });
@@ -347,7 +379,35 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-server.listen(PORT, HOST, () => {
-  console.log(`[TestConsole] listening on http://${HOST}:${PORT}`);
-  console.log(`[TestConsole] state dir: ${consoleDir()}`);
-});
+/**
+ * True when this file is the process entrypoint. Compared via realpath on
+ * both sides: Node resolves `import.meta.url` through symlinks while argv[1]
+ * keeps the spelling the operator launched, so a URL/string comparison breaks
+ * for symlinked checkouts, and file-URL escaping breaks it for paths with
+ * spaces. Realpath-vs-realpath is stable across all of those.
+ */
+function isMainEntrypoint() {
+  const entry = process.argv[1];
+  if (!entry) return false;
+  try {
+    return (
+      fs.realpathSync(entry) === fs.realpathSync(fileURLToPath(import.meta.url))
+    );
+  } catch {
+    // error-policy:J3 untrusted-input sanitizing — an unresolvable argv[1]
+    // yields an explicit "not the entrypoint", never a throw at import time.
+    return false;
+  }
+}
+
+/** Binds the console; exported so tests can import routes without listening. */
+export function startServer() {
+  server.listen(PORT, HOST, () => {
+    const { port } = server.address();
+    console.log(`[TestConsole] listening on http://${HOST}:${port}`);
+    console.log(`[TestConsole] state dir: ${consoleDir()}`);
+  });
+  return server;
+}
+
+if (isMainEntrypoint()) startServer();
