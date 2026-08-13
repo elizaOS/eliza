@@ -26,6 +26,9 @@ export const DEFAULT_VOICE_SELFTEST_ATTEMPTS = 300;
 /** Default delay between Preferences polls when env overrides are unset. */
 export const DEFAULT_VOICE_SELFTEST_DELAY_MS = 1000;
 
+/** Node clamps setTimeout delays above this value to 1 ms. */
+export const MAX_TIMER_DELAY_MS = 2_147_483_647;
+
 /**
  * Accept only complete positive safe-integer decimal strings (or numbers).
  * Rejects partial numbers, signed values, fractions, and non-positive values.
@@ -42,7 +45,7 @@ export function parsePositiveSafeInteger(value, label) {
     }
     return value;
   }
-  const raw = String(value ?? "").trim();
+  const raw = String(value ?? "");
   if (!/^\d+$/.test(raw)) {
     throw new Error(
       `${label} must be a positive safe-integer decimal (received ${JSON.stringify(String(value ?? ""))})`,
@@ -60,27 +63,35 @@ export function parsePositiveSafeInteger(value, label) {
 /**
  * Accept only complete non-negative safe-integer decimal strings (or numbers),
  * including zero. Same reject set as {@link parsePositiveSafeInteger} except 0.
+ * An optional max enforces a runtime timer ceiling.
  * @param {string | number} value
  * @param {string} label
+ * @param {{ max?: number }} [options]
  * @returns {number}
  */
-export function parseNonNegativeSafeInteger(value, label) {
+export function parseNonNegativeSafeInteger(value, label, options = {}) {
+  const max = options.max ?? Number.MAX_SAFE_INTEGER;
   if (typeof value === "number") {
-    if (!Number.isSafeInteger(value) || value < 0) {
+    if (!Number.isSafeInteger(value) || value < 0 || value > max) {
       throw new Error(
         `${label} must be a non-negative safe-integer decimal (received ${JSON.stringify(value)})`,
       );
     }
     return value;
   }
-  const raw = String(value ?? "").trim();
+  const raw = String(value ?? "");
   if (!/^\d+$/.test(raw)) {
     throw new Error(
       `${label} must be a non-negative safe-integer decimal (received ${JSON.stringify(String(value ?? ""))})`,
     );
   }
   const parsed = Number.parseInt(raw, 10);
-  if (!Number.isSafeInteger(parsed) || parsed < 0 || String(parsed) !== raw) {
+  if (
+    !Number.isSafeInteger(parsed) ||
+    parsed < 0 ||
+    parsed > max ||
+    String(parsed) !== raw
+  ) {
     throw new Error(
       `${label} must be a non-negative safe-integer decimal (received ${JSON.stringify(String(value ?? ""))})`,
     );
@@ -104,14 +115,15 @@ export function resolveVoiceSelfTestPollPolicy({ env = process.env } = {}) {
   const attempts = isUnsetEnv(env.IOS_VOICE_SELFTEST_ATTEMPTS)
     ? DEFAULT_VOICE_SELFTEST_ATTEMPTS
     : parsePositiveSafeInteger(
-        String(env.IOS_VOICE_SELFTEST_ATTEMPTS).trim(),
+        String(env.IOS_VOICE_SELFTEST_ATTEMPTS),
         "IOS_VOICE_SELFTEST_ATTEMPTS",
       );
   const delayMs = isUnsetEnv(env.IOS_VOICE_SELFTEST_DELAY_MS)
     ? DEFAULT_VOICE_SELFTEST_DELAY_MS
     : parseNonNegativeSafeInteger(
-        String(env.IOS_VOICE_SELFTEST_DELAY_MS).trim(),
+        String(env.IOS_VOICE_SELFTEST_DELAY_MS),
         "IOS_VOICE_SELFTEST_DELAY_MS",
+        { max: MAX_TIMER_DELAY_MS },
       );
   return { attempts, delayMs };
 }
