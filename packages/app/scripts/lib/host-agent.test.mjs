@@ -145,6 +145,14 @@ describe("host-agent helper", () => {
     expect(() => resolveReadyOptions({ readyDelayMs: null })).toThrow(
       /Invalid host-agent readyDelayMs/,
     );
+    for (const value of ["", "   "]) {
+      expect(() => resolveReadyOptions({ readyAttempts: value })).toThrow(
+        /Invalid host-agent readyAttempts/,
+      );
+      expect(() => resolveReadyOptions({ readyDelayMs: value })).toThrow(
+        /Invalid host-agent readyDelayMs/,
+      );
+    }
     expect(() =>
       resolveReadyOptions({
         env: { ELIZA_HOST_AGENT_READY_DELAY_MS: " 2000 " },
@@ -173,6 +181,55 @@ describe("host-agent helper", () => {
         env: {},
       }),
     ).rejects.toThrow(/Invalid host-agent readyAttempts/);
+    expect(fs.existsSync(path.join(artifactDir, "host-agent.log"))).toBe(false);
+  });
+
+  it("rejects an overflowing delay before creating the artifact or child", async () => {
+    const artifactDir = makeTmpDir();
+    await expect(
+      startDeviceE2eHostAgent({
+        repoRoot: process.cwd(),
+        artifactDir,
+        requestedPort: await chooseHostAgentPort(),
+        readyAttempts: 2,
+        readyDelayMs: MAX_TIMER_DELAY_MS + 1,
+        command: process.execPath,
+        args: ["-e", "process.exit(0)"],
+        env: {},
+      }),
+    ).rejects.toThrow(/Invalid host-agent readyDelayMs/);
+    expect(fs.existsSync(path.join(artifactDir, "host-agent.log"))).toBe(false);
+  });
+
+  it("rejects overflowing delay under pinned Node before spawn", () => {
+    const pinnedNode = "/Users/symbiex/.nvm/versions/node/v24.15.0/bin/node";
+    if (!fs.existsSync(pinnedNode)) return;
+    const artifactDir = makeTmpDir();
+    const moduleUrl = new URL("./host-agent.mjs", import.meta.url).href;
+    const script = `
+      import { startDeviceE2eHostAgent, MAX_TIMER_DELAY_MS } from ${JSON.stringify(moduleUrl)};
+      try {
+        await startDeviceE2eHostAgent({
+          repoRoot: process.cwd(),
+          artifactDir: process.env.TEST_ARTIFACT_DIR,
+          readyAttempts: 2,
+          readyDelayMs: MAX_TIMER_DELAY_MS + 1,
+          command: process.execPath,
+          args: ["-e", "process.exit(0)"],
+          env: {},
+        });
+        process.exit(1);
+      } catch (error) {
+        if (!/Invalid host-agent readyDelayMs/.test(String(error?.message))) process.exit(2);
+        process.stdout.write("rejected-before-spawn");
+      }
+    `;
+    const result = spawnSync(pinnedNode, ["--input-type=module", "-e", script], {
+      encoding: "utf8",
+      env: { ...process.env, TEST_ARTIFACT_DIR: artifactDir },
+    });
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain("rejected-before-spawn");
     expect(fs.existsSync(path.join(artifactDir, "host-agent.log"))).toBe(false);
   });
 
