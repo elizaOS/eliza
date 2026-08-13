@@ -513,9 +513,16 @@ function runProviderExecution<T>(
 			once: true,
 		});
 	});
-	const providerPromise = signal.aborted
-		? Promise.reject(signal.reason)
-		: Promise.resolve().then(run);
+	const providerPromise = Promise.resolve().then(() => {
+		// The execution controller can be aborted after this promise is created
+		// but before its microtask starts (an already-cancelled caller and runtime
+		// teardown both take this path). Recheck here so provider work never begins
+		// after its final lifecycle owner has already departed.
+		if (signal.aborted) {
+			throw signal.reason ?? new Error("Provider execution aborted");
+		}
+		return run();
+	});
 	return Promise.race([providerPromise, aborted]).finally(() => {
 		if (rejectFromSignal) {
 			signal.removeEventListener("abort", rejectFromSignal);
@@ -534,14 +541,21 @@ function providerCancellationReason(
 	);
 }
 
-function throwIfProviderOwnerAborted(signal: AbortSignal | undefined): void {
-	if (!signal?.aborted) return;
-	const reason = signal.reason;
-	throw reason instanceof TurnAbortedError
-		? reason
-		: new TurnAbortedError(
-				reason instanceof Error ? reason.message : String(reason),
-			);
+function throwIfProviderCompositionAborted(
+	signal: AbortSignal | undefined,
+	runtimeStopped: boolean,
+): void {
+	if (signal?.aborted) {
+		const reason = signal.reason;
+		throw reason instanceof TurnAbortedError
+			? reason
+			: new TurnAbortedError(
+					reason instanceof Error ? reason.message : String(reason),
+				);
+	}
+	if (runtimeStopped) {
+		throw new TurnAbortedError("runtime-stop");
+	}
 }
 const STABLE_PROMPT_TEMPLATE_KEYS = new Set([
 	"agentName",
@@ -1241,6 +1255,10 @@ export class AgentRuntime implements IAgentRuntime {
 		string,
 		InFlightProviderExecution
 	>();
+	// Includes keyed/coalescible work and one-off executions (missing message id
+	// or an explicit refresh). The coalescing map alone cannot own shutdown:
+	// those one-off executions still need their controller aborted at teardown.
+	private providerExecutionsActive = new Set<InFlightProviderExecution>();
 	// Turn-scoped single-flight read coalescing (see runtime/single-flight-memo).
 	// A Stage-1 compose issues getRoom 4x (RECENT_MESSAGES / CHARACTER /
 	// PLATFORM_* / WORLD) and 3 overlapping room messages-scans (RECENT_MESSAGES
@@ -2817,9 +2835,10 @@ export class AgentRuntime implements IAgentRuntime {
 		// its provider work — no caller retains the controller — so clearing
 		// alone would strand in-flight provider calls past teardown with nothing
 		// left able to cancel them.
-		for (const execution of this.providerExecutionsInFlight.values()) {
+		for (const execution of this.providerExecutionsActive) {
 			execution.controller.abort(new Error("Runtime stopped"));
 		}
+		this.providerExecutionsActive.clear();
 		this.providerExecutionsInFlight.clear();
 		this.roomReadMemo.invalidate();
 		this.roomMessagesMemo.invalidate();
@@ -5068,6 +5087,10 @@ export class AgentRuntime implements IAgentRuntime {
 						startedAt,
 						startedAtMonotonic,
 					};
+					this.providerExecutionsActive.add(execution);
+					if (this.stopRequested) {
+						workController.abort(new Error("Runtime stopped"));
+					}
 					if (inFlightKey !== null) {
 						this.providerExecutionsInFlight.set(inFlightKey, execution);
 					}
@@ -5093,8 +5116,15 @@ export class AgentRuntime implements IAgentRuntime {
 								}
 							}
 						: () => {};
-				if (!providerCoalesced && inFlightKey !== null) {
-					void attachedExecution.promise.then(evict, evict);
+				if (!providerCoalesced) {
+					const releaseExecution = () => {
+						this.providerExecutionsActive.delete(attachedExecution);
+						evict();
+					};
+					void attachedExecution.promise.then(
+						releaseExecution,
+						releaseExecution,
+					);
 				}
 				try {
 					const result = await awaitProviderExecution(
@@ -5382,7 +5412,7 @@ export class AgentRuntime implements IAgentRuntime {
 		// assembly window. Surface that owner cancellation even when every provider
 		// already settled; provider-originated failures were reported above and are
 		// not misclassified as aborts merely because their Error name resembles one.
-		throwIfProviderOwnerAborted(providerSignal);
+		throwIfProviderCompositionAborted(providerSignal, this.stopRequested);
 		if (failedProviderData.length === 1) {
 			const failedProvider = failedProviderData[0];
 			if (failedProvider?.providerError) {
@@ -5427,7 +5457,7 @@ export class AgentRuntime implements IAgentRuntime {
 				});
 			}
 		}
-		throwIfProviderOwnerAborted(providerSignal);
+		throwIfProviderCompositionAborted(providerSignal, this.stopRequested);
 		const conversationSeed = buildDeterministicSeed(
 			this.agentId,
 			message.roomId,
@@ -5477,7 +5507,7 @@ export class AgentRuntime implements IAgentRuntime {
 		// Provider values can be lazily materialized while assembling the state;
 		// recheck at the mutation boundary so a cancellation in that window cannot
 		// populate either the normal cache or the audience-scoped public cache.
-		throwIfProviderOwnerAborted(providerSignal);
+		throwIfProviderCompositionAborted(providerSignal, this.stopRequested);
 		if (message.id && !containsSensitiveProvider) {
 			this.publicProviderStateByMessage.delete(message);
 			this.stateCache.set(message.id, newState);
@@ -5514,6 +5544,10 @@ export class AgentRuntime implements IAgentRuntime {
 				}
 			}
 			const publicText = this.redactSecrets(publicTexts.join("\n"));
+			// Public projection assembly reads provider-owned values after the full
+			// state guard above. A getter can synchronously cancel the owner in that
+			// window, so guard the actual WeakMap mutation as well.
+			throwIfProviderCompositionAborted(providerSignal, this.stopRequested);
 			this.publicProviderStateByMessage.set(message, {
 				text: message.content.text,
 				state: {
