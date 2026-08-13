@@ -280,6 +280,45 @@ describe("onboarding scope migration", () => {
     expect(strandedPlatformHistory.size).toBe(0);
   });
 
+  test("a legacy ledger migration leaves a durable platform pointer when the cache misses", async () => {
+    const harness = createHarness();
+    const first = await readResult(
+      await telegramTurn(harness, "My name is Sam", "telegram:message-1"),
+    );
+    const platformScope = `platform:${encodeURIComponent(harness.sessionId)}`;
+
+    await harness.storage.delete(platformScopeKey(harness.sessionId));
+    await harness.storage.delete([
+      ...(
+        await harness.storage.list({ prefix: `history:${platformScope}:` })
+      ).keys(),
+    ]);
+    await harness.storage.put("ledger", { session: first.session });
+
+    const authenticated = await readResult(
+      await telegramTurn(harness, "signed in", "telegram:continuation", {
+        ...account,
+        telegramId: harness.telegramId,
+      }),
+    );
+    expect(authenticated.requiresLogin).toBe(false);
+    expect(await harness.storage.get("ledger")).toBeUndefined();
+    expect(
+      await harness.storage.get<Record<string, unknown>>(
+        platformScopeKey(harness.sessionId),
+      ),
+    ).toEqual({
+      aliasScope: `account:${account.organizationId}:${account.userId}`,
+    });
+
+    const afterLogin = await readResult(
+      await telegramTurn(harness, "hey again", "telegram:message-2"),
+    );
+    expect(afterLogin.requiresLogin).toBe(false);
+    expect(afterLogin.session.id).toBe(authenticated.session.id);
+    expect(afterLogin.session.userId).toBe(account.userId);
+  });
+
   test("a second account never inherits the first account's transcript through the pointer", async () => {
     const harness = createHarness();
 
