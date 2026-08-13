@@ -16,6 +16,7 @@ import {
   DEFAULT_READY_DELAY_MS,
   hostAgentApiBase,
   isPortAvailable,
+  MAX_TIMER_DELAY_MS,
   parseNonNegativeSafeInteger,
   parsePort,
   parsePositiveSafeInteger,
@@ -24,6 +25,47 @@ import {
 } from "./host-agent.mjs";
 
 const tmpDirs = [];
+const PINNED_NODE_VERSION = "24.15.0";
+
+function resolvePinnedNode() {
+  const candidates = [];
+  if (process.env.ELIZA_NODE_PATH) {
+    candidates.push(process.env.ELIZA_NODE_PATH);
+  }
+  const nvmDir = process.env.NVM_DIR ?? path.join(os.homedir(), ".nvm");
+  candidates.push(
+    path.join(
+      nvmDir,
+      "versions",
+      "node",
+      `v${PINNED_NODE_VERSION}`,
+      "bin",
+      "node",
+    ),
+  );
+  const lookup = spawnSync(
+    process.platform === "win32" ? "where" : "which",
+    ["node"],
+    {
+      encoding: "utf8",
+    },
+  );
+  if (lookup.status === 0) {
+    candidates.push(...lookup.stdout.trim().split(/\r?\n/));
+  }
+  for (const candidate of candidates) {
+    const result = spawnSync(candidate, ["--version"], { encoding: "utf8" });
+    if (
+      result.status === 0 &&
+      result.stdout.trim() === `v${PINNED_NODE_VERSION}`
+    ) {
+      return candidate;
+    }
+  }
+  throw new Error(
+    `Pinned Node.js ${PINNED_NODE_VERSION} is required for this real-process regression; set ELIZA_NODE_PATH or install it through the repository toolchain.`,
+  );
+}
 
 function makeTmpDir() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-host-agent-test-"));
@@ -87,7 +129,7 @@ describe("host-agent helper", () => {
         /Invalid attempts/,
       );
     }
-    for (const value of ["", "abc", "10abc", "1.5", "-1", NaN, -3]) {
+    for (const value of ["", "abc", "10abc", "1.5", "-1", " 2000 ", NaN, -3]) {
       expect(() => parseNonNegativeSafeInteger(value, "delay")).toThrow(
         /Invalid delay/,
       );
@@ -113,6 +155,17 @@ describe("host-agent helper", () => {
         },
       }),
     ).toEqual({ readyAttempts: 7, readyDelayMs: 25 });
+    expect(
+      resolveReadyOptions({
+        env: {
+          ELIZA_HOST_AGENT_READY_ATTEMPTS: "   ",
+          ELIZA_HOST_AGENT_READY_DELAY_MS: "",
+        },
+      }),
+    ).toEqual({
+      readyAttempts: DEFAULT_READY_ATTEMPTS,
+      readyDelayMs: DEFAULT_READY_DELAY_MS,
+    });
 
     expect(() =>
       resolveReadyOptions({
@@ -127,6 +180,32 @@ describe("host-agent helper", () => {
     expect(() => resolveReadyOptions({ readyAttempts: "0" })).toThrow(
       /Invalid host-agent readyAttempts/,
     );
+    expect(() => resolveReadyOptions({ readyAttempts: null })).toThrow(
+      /Invalid host-agent readyAttempts/,
+    );
+    expect(() => resolveReadyOptions({ readyDelayMs: null })).toThrow(
+      /Invalid host-agent readyDelayMs/,
+    );
+    for (const value of ["", "   "]) {
+      expect(() => resolveReadyOptions({ readyAttempts: value })).toThrow(
+        /Invalid host-agent readyAttempts/,
+      );
+      expect(() => resolveReadyOptions({ readyDelayMs: value })).toThrow(
+        /Invalid host-agent readyDelayMs/,
+      );
+    }
+    expect(() =>
+      resolveReadyOptions({
+        env: { ELIZA_HOST_AGENT_READY_DELAY_MS: " 2000 " },
+      }),
+    ).toThrow(/Invalid host-agent readyDelayMs/);
+    expect(() =>
+      resolveReadyOptions({
+        env: {
+          ELIZA_HOST_AGENT_READY_DELAY_MS: String(MAX_TIMER_DELAY_MS + 1),
+        },
+      }),
+    ).toThrow(`no greater than ${MAX_TIMER_DELAY_MS}`);
   });
 
   it("rejects invalid readyAttempts before spawning a host agent child", async () => {
@@ -143,6 +222,59 @@ describe("host-agent helper", () => {
         env: {},
       }),
     ).rejects.toThrow(/Invalid host-agent readyAttempts/);
+    expect(fs.existsSync(path.join(artifactDir, "host-agent.log"))).toBe(false);
+  });
+
+  it("rejects an overflowing delay before creating the artifact or child", async () => {
+    const artifactDir = makeTmpDir();
+    await expect(
+      startDeviceE2eHostAgent({
+        repoRoot: process.cwd(),
+        artifactDir,
+        requestedPort: await chooseHostAgentPort(),
+        readyAttempts: 2,
+        readyDelayMs: MAX_TIMER_DELAY_MS + 1,
+        command: process.execPath,
+        args: ["-e", "process.exit(0)"],
+        env: {},
+      }),
+    ).rejects.toThrow(/Invalid host-agent readyDelayMs/);
+    expect(fs.existsSync(path.join(artifactDir, "host-agent.log"))).toBe(false);
+  });
+
+  it("rejects overflowing delay under pinned Node before spawn", () => {
+    const pinnedNode = resolvePinnedNode();
+    const artifactDir = makeTmpDir();
+    const moduleUrl = new URL("./host-agent.mjs", import.meta.url).href;
+    const script = `
+      import { startDeviceE2eHostAgent, MAX_TIMER_DELAY_MS } from ${JSON.stringify(moduleUrl)};
+      try {
+        await startDeviceE2eHostAgent({
+          repoRoot: process.cwd(),
+          artifactDir: process.env.TEST_ARTIFACT_DIR,
+          readyAttempts: 2,
+          readyDelayMs: MAX_TIMER_DELAY_MS + 1,
+          command: process.execPath,
+          args: ["-e", "process.exit(0)"],
+          env: {},
+        });
+        process.exit(1);
+      } catch (error) {
+        if (!/Invalid host-agent readyDelayMs/.test(String(error?.message))) process.exit(2);
+        process.stdout.write("rejected-before-spawn");
+      }
+    `;
+    const result = spawnSync(
+      pinnedNode,
+      ["--input-type=module", "-e", script],
+      {
+        encoding: "utf8",
+        env: { ...process.env, TEST_ARTIFACT_DIR: artifactDir },
+      },
+    );
+    expect(result.status).toBe(0);
+    expect(result.stderr).not.toContain("TimeoutOverflowWarning");
+    expect(result.stdout).toContain("rejected-before-spawn");
     expect(fs.existsSync(path.join(artifactDir, "host-agent.log"))).toBe(false);
   });
 
