@@ -25,11 +25,15 @@ const DEFAULT_REDACT_PATTERNS: string[] = [
 	String.raw`\b[A-Z0-9_]*(?:KEY|TOKEN|SECRET|PASSWORD|PASSWD|PASSPHRASE|MNEMONIC|SEED|CREDENTIAL)\b\s*[=:]\s*(["']?)([^\s"'\\]+)\1`,
 	// JSON fields.
 	String.raw`"(?:apiKey|token|secret|password|passwd|accessToken|refreshToken|mnemonic|seedPhrase|passphrase|privateKey|credential)"\s*:\s*"([^"]+)"`,
-	// CLI flags.
-	String.raw`--(?:api[-_]?key|token|secret|password|passwd)\s+(["']?)([^\s"']+)\1`,
+	// CLI flags (space-separated and --flag=value forms).
+	String.raw`--(?:api[-_]?key|token|secret|password|passwd)(?:\s+|=)(["']?)([^\s"']+)\1`,
 	// Authorization headers.
 	String.raw`Authorization\s*[:=]\s*Bearer\s+([A-Za-z0-9._\-+=]+)`,
 	String.raw`\bBearer\s+([A-Za-z0-9._\-+=]{18,})\b`,
+	// URI userinfo. Mask the complete userinfo component (user:password,
+	// token-only, or password-only) so credentials in database URLs, curl
+	// arguments, and remote URLs never survive as output.
+	String.raw`\b[a-z][a-z0-9+.-]*:\/\/([^\s/@]+)@`,
 	// PEM blocks.
 	String.raw`-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]+?-----END [A-Z ]*PRIVATE KEY-----`,
 	// Common token prefixes.
@@ -189,6 +193,11 @@ function redactMatch(match: string, groups: string[]): string {
 		(value) => typeof value === "string" && value.length > 0,
 	);
 	const token = filteredGroups[filteredGroups.length - 1] ?? match;
+	// Unlike provider tokens, URI userinfo includes an account identifier; do
+	// not preserve its usual six-character prefix in diagnostics.
+	if (/^[a-z][a-z0-9+.-]*:\/\//i.test(match) && match.endsWith("@")) {
+		return match.replace(token, () => "***");
+	}
 	const masked = maskToken(token);
 	if (token === match) {
 		return masked;
