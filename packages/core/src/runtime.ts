@@ -10924,7 +10924,7 @@ ${section_end}`;
 		);
 	}
 	async addEmbeddingToMemory(memory: Memory): Promise<Memory> {
-		if (memory.embedding) {
+		if (Array.isArray(memory.embedding) && memory.embedding.length > 0) {
 			return memory;
 		}
 		const memoryText = memory.content.text;
@@ -10980,7 +10980,11 @@ ${section_end}`;
 		priority?: "high" | "normal" | "low",
 	): Promise<void> {
 		priority = priority || "normal";
-		if (!memory || memory.embedding || !memory.content.text) {
+		if (
+			!memory ||
+			(Array.isArray(memory.embedding) && memory.embedding.length > 0) ||
+			!memory.content.text
+		) {
 			return;
 		}
 		if (this.embeddingGenerationDisabledReason !== null) {
