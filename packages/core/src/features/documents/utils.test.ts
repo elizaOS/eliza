@@ -9,7 +9,10 @@ import {
 	deriveDocumentTitle,
 	extractFirstLines,
 	generateContentBasedId,
+	isBinaryContentType,
+	isTextBackedDocumentContent,
 	looksLikeBase64,
+	normalizeDocumentContentType,
 	normalizeDocumentSourceValue,
 	normalizeS3Url,
 	stripDocumentFilenameExtension,
@@ -49,6 +52,31 @@ describe("filename + title derivation", () => {
 });
 
 describe("classification", () => {
+	it.each([
+		["application/pdf", "application/pdf"],
+		[" APPLICATION/PDF ; charset=UTF-8 ", "application/pdf"],
+		["TEXT/PLAIN; charset=utf-8", "text/plain"],
+	])("normalizes MIME essence %#", (input, expected) => {
+		expect(normalizeDocumentContentType(input)).toBe(expected);
+	});
+
+	it.each([
+		"application/pdf",
+		"APPLICATION/PDF",
+		"application/pdf; charset=UTF-8",
+	])("classifies PDF MIME variants as binary: %s", (contentType) => {
+		expect(isBinaryContentType(contentType, "upload.blob")).toBe(true);
+	});
+
+	it.each(["text/plain", "TEXT/PLAIN; charset=UTF-8"])(
+		"classifies text MIME variants as text-backed: %s",
+		(contentType) => {
+			expect(isTextBackedDocumentContent(contentType, "upload.blob")).toBe(
+				true,
+			);
+		},
+	);
+
 	it("normalizeDocumentSourceValue maps known sources, else 'unknown'", () => {
 		expect(normalizeDocumentSourceValue("upload")).toBe("upload");
 		expect(normalizeDocumentSourceValue("rag-service-main-upload")).toBe(
